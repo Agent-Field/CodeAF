@@ -146,7 +146,7 @@ The load-bearing decisions, for readers who want them ([full specs](docs/README.
 - **Encryption below the transport.** XChaCha20-Poly1305, opaque remote names, every chunk verified against its BLAKE3 identity on restore; path traversal and symlink-escape tricks rejected at the boundary.
 - **The store never lives inside the repository.** `.furrow/` holds a pointer and policy; deleting it is recoverable. Exclusions (`.furrowpolicy`: `exclude node_modules`) are honored by capture, watcher, and rewind alike.
 
-Reproducible performance claims — `cargo bench --bench engine` (CI-enforced regression ceilings on macOS and Linux; a 1M-file reference profile available). Methodology and baselines: [docs/performance.md](docs/performance.md).
+Reproducible performance claims — `cargo bench --bench engine` (regression ceilings checked on macOS and Linux; a 1M-file reference profile available). Methodology and baselines: [docs/performance.md](docs/performance.md).
 
 ## Honest edges
 
