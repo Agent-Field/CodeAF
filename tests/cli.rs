@@ -7,6 +7,15 @@ use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 use tempfile::TempDir;
 
+struct ChildGuard(std::process::Child);
+
+impl Drop for ChildGuard {
+    fn drop(&mut self) {
+        let _ = self.0.kill();
+        let _ = self.0.wait();
+    }
+}
+
 struct Fixture {
     _temp: TempDir,
     repo: PathBuf,
@@ -85,6 +94,40 @@ fn collect_files(root: &Path, files: &mut Vec<PathBuf>) {
             files.push(entry.path());
         }
     }
+}
+
+fn tree_physical_bytes(root: &Path) -> u64 {
+    let mut files = Vec::new();
+    collect_files(root, &mut files);
+    files
+        .into_iter()
+        .map(|path| fs::metadata(path).unwrap().len())
+        .sum()
+}
+
+fn wait_until(description: &str, timeout: Duration, mut predicate: impl FnMut() -> bool) {
+    let deadline = Instant::now() + timeout;
+    while Instant::now() < deadline {
+        if predicate() {
+            return;
+        }
+        std::thread::sleep(Duration::from_millis(25));
+    }
+    panic!("timed out waiting for {description}");
+}
+
+fn follow_process(repo: &Path, data: &Path) -> ChildGuard {
+    let child = std::process::Command::new(env!("CARGO_BIN_EXE_agit"))
+        .env("AGIT_DATA_DIR", data)
+        .env("AGIT_NO_DAEMON", "1")
+        .arg("--repo")
+        .arg(repo)
+        .args(["sync", "--follow", "--poll-seconds", "1"])
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .spawn()
+        .unwrap();
+    ChildGuard(child)
 }
 
 fn ndjson(bytes: &[u8]) -> Vec<Value> {
@@ -2247,6 +2290,199 @@ fn encrypted_two_store_sync_fast_forwards_and_preserves_divergence() {
             .windows(b"TOKEN=original".len())
             .any(|window| window == b"TOKEN=original"));
     }
+}
+
+#[test]
+fn remote_add_and_follow_keep_two_directory_backed_machines_current_with_small_deltas() {
+    let fixture = Fixture::new();
+    let peer = fixture.repo.parent().unwrap().join("follow-peer");
+    let peer_data = fixture.repo.parent().unwrap().join("follow-peer-data");
+    let remote = fixture.repo.parent().unwrap().join("follow-remote");
+    git(
+        fixture.repo.parent().unwrap(),
+        &["clone", fixture.repo.to_str().unwrap(), "follow-peer"],
+    );
+    fixture.watch();
+    agit_at(&peer, &peer_data)
+        .args(["watch", "--no-daemon"])
+        .assert()
+        .success();
+
+    let add = fixture
+        .agit()
+        .args([
+            "--json",
+            "remote",
+            "add",
+            remote.to_str().unwrap(),
+            "--name",
+            "live-workspace",
+        ])
+        .assert()
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+    let add: Value = serde_json::from_slice(&add).unwrap();
+    assert_eq!(add["namespace"], "live-workspace");
+    assert_eq!(
+        PathBuf::from(add["remote"].as_str().unwrap()),
+        fs::canonicalize(&remote).unwrap()
+    );
+    let key = add["key_hex"].as_str().unwrap();
+    assert_eq!(key.len(), 64);
+
+    agit_at(&peer, &peer_data)
+        .args([
+            "remote",
+            "add",
+            remote.to_str().unwrap(),
+            "--name",
+            "live-workspace",
+            "--key",
+            key,
+        ])
+        .assert()
+        .success();
+
+    let _publisher = follow_process(&fixture.repo, &fixture.data);
+    wait_until(
+        "the first followed snapshot to publish",
+        Duration::from_secs(10),
+        || {
+            let mut files = Vec::new();
+            collect_files(&remote, &mut files);
+            files.iter().any(|path| path.file_name().unwrap() == "HEAD")
+        },
+    );
+    let bootstrap = agit_at(&peer, &peer_data)
+        .args(["--json", "sync", "--pull", "--bootstrap"])
+        .assert()
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+    let bootstrap: Value = serde_json::from_slice(&bootstrap).unwrap();
+    assert_eq!(bootstrap["disposition"], "bootstrapped");
+    assert_eq!(fs::read(peer.join(".env")).unwrap(), b"TOKEN=original\n");
+
+    let _subscriber = follow_process(&peer, &peer_data);
+    let bytes_before_delta = tree_physical_bytes(&remote);
+    fs::write(fixture.repo.join("app.txt"), b"one small agent edit\n").unwrap();
+    fixture
+        .agit()
+        .args(["snap", "-m", "agent completed report edit"])
+        .assert()
+        .success();
+
+    wait_until(
+        "the peer to receive the followed delta",
+        Duration::from_secs(12),
+        || fs::read(peer.join("app.txt")).ok().as_deref() == Some(b"one small agent edit\n"),
+    );
+    let delta_bytes = tree_physical_bytes(&remote).saturating_sub(bytes_before_delta);
+    assert!(
+        delta_bytes < 64 * 1024,
+        "a tiny edit unexpectedly added {delta_bytes} remote bytes"
+    );
+    assert_eq!(
+        fs::read(peer.join("cache/dependency.bin")).unwrap(),
+        vec![7_u8; 180_000]
+    );
+}
+
+#[test]
+fn network_clone_materializes_exact_state_and_removes_failed_destinations() {
+    let fixture = Fixture::new();
+    let remote_data = fixture.repo.parent().unwrap().join("clone-remote-data");
+    let clone_data = fixture.repo.parent().unwrap().join("clone-client-data");
+    let wrapper = fixture.repo.parent().unwrap().join("clone-fake-ssh.sh");
+    fs::write(
+        &wrapper,
+        b"#!/bin/sh\nwhile [ \"$1\" != \"--\" ]; do shift; done\nshift\nshift\nshift\nexec \"$AGIT_TEST_BIN\" \"$@\"\n",
+    )
+    .unwrap();
+    let mut mode = fs::metadata(&wrapper).unwrap().permissions();
+    mode.set_mode(0o755);
+    fs::set_permissions(&wrapper, mode).unwrap();
+    fixture.watch();
+
+    let ssh_agit = |repo: &Path, data: &Path| {
+        let mut command = agit_at(repo, data);
+        command
+            .env("AGIT_SSH_COMMAND", &wrapper)
+            .env("AGIT_REMOTE_DATA_DIR", &remote_data)
+            .env("AGIT_TEST_BIN", env!("CARGO_BIN_EXE_agit"));
+        command
+    };
+    let add = ssh_agit(&fixture.repo, &fixture.data)
+        .args([
+            "--json",
+            "remote",
+            "add",
+            "ssh://fake-host",
+            "--name",
+            "clone-workspace",
+        ])
+        .assert()
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+    let add: Value = serde_json::from_slice(&add).unwrap();
+    let key = add["key_hex"].as_str().unwrap();
+    ssh_agit(&fixture.repo, &fixture.data)
+        .args(["sync", "--push"])
+        .assert()
+        .success();
+
+    let failed = fixture.repo.parent().unwrap().join("failed-clone");
+    ssh_agit(&fixture.repo, &clone_data)
+        .args([
+            "clone",
+            "ssh://fake-host/clone-workspace",
+            failed.to_str().unwrap(),
+            "--key",
+            &"00".repeat(32),
+            "--no-watch",
+        ])
+        .assert()
+        .failure()
+        .stderr(predicates::str::contains(
+            "incomplete destination was removed",
+        ));
+    assert!(!failed.exists());
+
+    let destination = fixture.repo.parent().unwrap().join("network-clone");
+    let output = ssh_agit(&fixture.repo, &clone_data)
+        .args([
+            "--json",
+            "clone",
+            "ssh://fake-host/clone-workspace",
+            destination.to_str().unwrap(),
+            "--key",
+            key,
+            "--no-watch",
+        ])
+        .assert()
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+    let output: Value = serde_json::from_slice(&output).unwrap();
+    assert_eq!(output["sync"]["disposition"], "bootstrapped");
+    assert_eq!(
+        fs::read(destination.join(".env")).unwrap(),
+        b"TOKEN=original\n"
+    );
+    assert_eq!(
+        fs::read(destination.join("cache/dependency.bin")).unwrap(),
+        vec![7_u8; 180_000]
+    );
+    assert_eq!(
+        fs::read_link(destination.join("app-link")).unwrap(),
+        PathBuf::from("app.txt")
+    );
 }
 
 #[test]

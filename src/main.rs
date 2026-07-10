@@ -1,5 +1,5 @@
 use agit::model::{id_hex, SnapshotTrigger};
-use agit::{AgitRepository, SyncDisposition};
+use agit::{AgitRepository, SyncDisposition, SyncFollowOutcome};
 use anyhow::Context;
 use clap::{Parser, Subcommand};
 use std::ffi::OsString;
@@ -266,12 +266,36 @@ enum Command {
         #[arg(long)]
         key: Option<String>,
     },
+    /// Configure the encrypted transport for this workspace.
+    Remote {
+        #[command(subcommand)]
+        command: RemoteCommand,
+    },
+    /// Materialize a complete workspace from an encrypted network remote.
+    Clone {
+        /// Workspace URL printed by `agit remote add`.
+        remote: String,
+        /// New destination directory. Defaults to the remote workspace name.
+        destination: Option<PathBuf>,
+        /// Existing 64-character recovery key.
+        #[arg(long, env = "AGIT_RECOVERY_KEY")]
+        key: String,
+        /// Attach without starting the background watcher.
+        #[arg(long)]
+        no_watch: bool,
+    },
     /// Transfer complete encrypted working-state snapshots through the paired remote.
     Sync {
-        #[arg(long, conflicts_with = "pull")]
+        #[arg(long, conflicts_with_all = ["pull", "follow"])]
         push: bool,
-        #[arg(long, conflicts_with = "push")]
+        #[arg(long, conflicts_with_all = ["push", "follow"])]
         pull: bool,
+        /// Continuously reconcile sealed local state and the encrypted remote.
+        #[arg(long, conflicts_with_all = ["push", "pull", "takeover", "bootstrap"])]
+        follow: bool,
+        /// Bucket polling interval while following.
+        #[arg(long, default_value_t = 5, requires = "follow")]
+        poll_seconds: u64,
         /// Explicitly take the single-writer lease from another machine.
         #[arg(long, requires = "push")]
         takeover: bool,
@@ -281,6 +305,20 @@ enum Command {
     },
     /// Serve agit tools to coding agents over MCP stdio.
     Mcp,
+}
+
+#[derive(Subcommand)]
+enum RemoteCommand {
+    /// Add an encrypted directory, SSH, or S3-compatible remote.
+    Add {
+        remote: PathBuf,
+        /// Shared workspace name. Defaults to the source folder name.
+        #[arg(long)]
+        name: Option<String>,
+        /// Existing 64-character recovery key.
+        #[arg(long)]
+        key: Option<String>,
+    },
 }
 
 #[derive(Subcommand)]
@@ -1196,25 +1234,122 @@ fn main() -> anyhow::Result<()> {
             let repository = AgitRepository::open(&cli.repo)?;
             let namespace = name.unwrap_or_else(|| default_sync_name(&repository));
             let summary = repository.pair(&remote, &namespace, key.as_deref())?;
+            print_pair_summary(&summary, cli.json)?;
+        }
+        Command::Remote {
+            command: RemoteCommand::Add { remote, name, key },
+        } => {
+            let repository = AgitRepository::open(&cli.repo)?;
+            let namespace = name.unwrap_or_else(|| default_sync_name(&repository));
+            let summary = repository.pair(&remote, &namespace, key.as_deref())?;
+            print_pair_summary(&summary, cli.json)?;
+            if !cli.json {
+                println!(
+                    "Clone URL {}/{}",
+                    summary.remote.trim_end_matches('/'),
+                    summary.namespace
+                );
+            }
+        }
+        Command::Clone {
+            remote,
+            destination,
+            key,
+            no_watch,
+        } => {
+            let (transport, namespace) = split_clone_url(&remote)?;
+            let destination = destination.unwrap_or_else(|| PathBuf::from(&namespace));
+            anyhow::ensure!(
+                !destination.exists(),
+                "clone destination already exists: {}",
+                destination.display()
+            );
+            fs::create_dir_all(&destination)?;
+            let result = (|| -> anyhow::Result<(AgitRepository, agit::SyncPullOutcome)> {
+                let status = std::process::Command::new("git")
+                    .arg("init")
+                    .arg("--quiet")
+                    .arg("--")
+                    .arg(&destination)
+                    .status()
+                    .context("start git for clone destination")?;
+                anyhow::ensure!(status.success(), "git init failed for clone destination");
+                let (mut repository, _) = AgitRepository::watch(&destination)?;
+                repository.pair(PathBuf::from(&transport).as_path(), &namespace, Some(&key))?;
+                let outcome = repository
+                    .sync_pull(true)
+                    .context("workspace was not found or the recovery key does not match")?;
+                Ok((repository, outcome))
+            })();
+            let (repository, outcome) = match result {
+                Ok(value) => value,
+                Err(error) => {
+                    let _ = fs::remove_dir_all(&destination);
+                    return Err(error.context("clone failed; incomplete destination was removed"));
+                }
+            };
+            if !no_watch && std::env::var_os("AGIT_NO_DAEMON").is_none() {
+                spawn_background_watcher(&repository, 500)?;
+            }
             if cli.json {
-                println!("{}", serde_json::to_string_pretty(&summary)?);
+                println!(
+                    "{}",
+                    serde_json::json!({
+                        "workspace": repository.root(),
+                        "remote": remote,
+                        "sync": outcome,
+                    })
+                );
             } else {
-                println!("Paired {}", summary.namespace);
-                println!("Remote {}", summary.remote);
-                println!("Machine {}", summary.machine_id);
-                println!("Pairing key {}", summary.key_hex);
-                println!("Keep the pairing key private; use it once on each additional machine.");
+                println!("Cloned {}", repository.root().display());
+                println!("Remote snapshot {}", &outcome.remote_snapshot[..12]);
+                println!(
+                    "{} objects fetched ({} bytes); {} reused",
+                    outcome.fetched_objects, outcome.fetched_bytes, outcome.reused_objects
+                );
             }
         }
         Command::Sync {
             push,
             pull,
+            follow,
+            poll_seconds,
             takeover,
             bootstrap,
         } => {
-            anyhow::ensure!(push || pull, "choose exactly one of --push or --pull");
+            anyhow::ensure!(
+                push || pull || follow,
+                "choose exactly one of --push, --pull, or --follow"
+            );
             let mut repository = AgitRepository::open(&cli.repo)?;
-            if push {
+            if follow {
+                anyhow::ensure!(poll_seconds > 0, "--poll-seconds must be greater than zero");
+                loop {
+                    match repository.sync_follow_once() {
+                        Ok(SyncFollowOutcome::Idle) => {}
+                        Ok(SyncFollowOutcome::Published { report }) => println!(
+                            "Published {} ({} objects, {} bytes)",
+                            &report.snapshot[..12],
+                            report.uploaded_objects,
+                            report.uploaded_bytes
+                        ),
+                        Ok(SyncFollowOutcome::Pulled { outcome }) => {
+                            println!(
+                                "Remote {} {:?}",
+                                &outcome.remote_snapshot[..12],
+                                outcome.disposition
+                            );
+                            if outcome.disposition == SyncDisposition::Diverged {
+                                eprintln!(
+                                    "Divergence preserved; follow is paused until it is resolved"
+                                );
+                            }
+                        }
+                        Err(error) => eprintln!("sync follow: {error:#}"),
+                    }
+                    std::thread::sleep(std::time::Duration::from_secs(poll_seconds));
+                }
+            } else if push {
                 let report = repository.sync_push(takeover)?;
                 if cli.json {
                     println!("{}", serde_json::to_string_pretty(&report)?);
@@ -1267,6 +1402,42 @@ fn default_fork_name() -> String {
         .unwrap_or_default()
         .as_secs();
     format!("fork-{seconds}")
+}
+
+fn print_pair_summary(summary: &agit::sync::PairSummary, json: bool) -> anyhow::Result<()> {
+    if json {
+        println!("{}", serde_json::to_string_pretty(summary)?);
+    } else {
+        println!("Paired {}", summary.namespace);
+        println!("Remote {}", summary.remote);
+        println!("Machine {}", summary.machine_id);
+        println!("Recovery key {}", summary.key_hex);
+        println!("Keep the recovery key private; enter it once on each additional machine.");
+    }
+    Ok(())
+}
+
+fn split_clone_url(value: &str) -> anyhow::Result<(String, String)> {
+    let trimmed = value.trim_end_matches('/');
+    let (transport, namespace) = trimmed
+        .rsplit_once('/')
+        .context("clone URL must end with a workspace name")?;
+    agit::remote::validate_namespace(namespace)?;
+    if transport.starts_with("s3://") {
+        anyhow::ensure!(
+            transport.len() > "s3://".len(),
+            "clone URL must include a bucket and workspace name"
+        );
+        agit::s3_remote::S3Spec::from_uri(transport)?;
+    } else if let Some(host) = transport.strip_prefix("ssh://") {
+        anyhow::ensure!(
+            !host.is_empty() && !host.contains('/'),
+            "SSH clone URL must be ssh://HOST/WORKSPACE"
+        );
+    } else {
+        anyhow::bail!("clone currently requires an ssh:// or s3:// URL");
+    }
+    Ok((transport.to_owned(), namespace.to_owned()))
 }
 
 fn default_exec_name() -> String {
@@ -1746,7 +1917,7 @@ fn spawn_background_watcher(repository: &AgitRepository, debounce_ms: u64) -> an
 
 #[cfg(test)]
 mod tests {
-    use super::parse_byte_size;
+    use super::{parse_byte_size, split_clone_url};
 
     #[test]
     fn parses_human_budget_sizes_without_ambiguous_fractions() {
@@ -1755,5 +1926,22 @@ mod tests {
         assert_eq!(parse_byte_size("1000").unwrap(), 1000);
         assert!(parse_byte_size("1.5GiB").is_err());
         assert!(parse_byte_size("lots").is_err());
+    }
+
+    #[test]
+    fn clone_urls_separate_transport_from_workspace_name() {
+        let (transport, namespace) = split_clone_url("s3://my-bucket/agit/myproject").unwrap();
+        assert_eq!(transport, "s3://my-bucket/agit");
+        assert_eq!(namespace, "myproject");
+        assert!(split_clone_url("s3://my-bucket").is_err());
+        assert!(split_clone_url("s3://my-bucket/agit/../project").is_err());
+        assert!(split_clone_url("https://example.com/project").is_err());
+        assert_eq!(
+            split_clone_url("ssh://developer@laptop-a/myproject").unwrap(),
+            (
+                "ssh://developer@laptop-a".to_owned(),
+                "myproject".to_owned()
+            )
+        );
     }
 }

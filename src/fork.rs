@@ -376,7 +376,7 @@ fn try_atomic_hierarchy_clone(
             fs::remove_file(path)?;
         }
     }
-    repair_directory_metadata(source, staging_path)?;
+    repair_directory_metadata(source, staging_path, excluded)?;
     let (counters, source_has_hardlinks) = measure_cloned_hierarchy(source, staging_path)?;
     if source_has_hardlinks || counters.skipped_special > 0 {
         return Ok(None);
@@ -402,7 +402,11 @@ fn try_atomic_hierarchy_clone(
 }
 
 #[cfg(target_os = "macos")]
-fn repair_directory_metadata(source: &Path, destination: &Path) -> anyhow::Result<()> {
+fn repair_directory_metadata(
+    source: &Path,
+    destination: &Path,
+    excluded: &[&Path],
+) -> anyhow::Result<()> {
     struct Frame {
         source: PathBuf,
         destination: PathBuf,
@@ -432,6 +436,9 @@ fn repair_directory_metadata(source: &Path, destination: &Path) -> anyhow::Resul
         let metadata = fs::symlink_metadata(entry.path())?;
         if metadata.is_dir() && !metadata.file_type().is_symlink() {
             let relative = entry.path().strip_prefix(source)?.to_owned();
+            if excluded.iter().any(|excluded| relative == *excluded) {
+                continue;
+            }
             let destination = destination.join(relative);
             stack.push(Frame {
                 source: entry.path(),

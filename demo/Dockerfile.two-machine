@@ -1,0 +1,15 @@
+FROM rust:1.83-bookworm AS build
+WORKDIR /src
+COPY Cargo.toml Cargo.lock ./
+COPY src ./src
+COPY benches ./benches
+COPY ui ./ui
+RUN cargo build --release --bin agit
+
+FROM debian:bookworm-slim
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends ca-certificates coreutils findutils git \
+    && rm -rf /var/lib/apt/lists/*
+COPY --from=build /src/target/release/agit /usr/local/bin/agit
+WORKDIR /machine
+CMD ["sleep", "infinity"]

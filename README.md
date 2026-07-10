@@ -4,7 +4,9 @@
 
 Git protects commits. Agent checkpoints usually protect edits made through one agent's editing tools. `agit` protects the complete working state between commits: dirty tracked files, untracked notes, ignored `.env` files, dependencies, generated output, SQLite data, symlinks, executable bits, extended attributes, and Git's own mutable state.
 
-`agit` is local-first and open source. Snapshot bytes stay on your machine.
+`agit` is local-first and open source. Snapshot bytes stay on your machine unless
+you configure an encrypted sync remote; remotes receive only ciphertext and
+opaque object names.
 
 ## Working Demo
 
@@ -130,31 +132,87 @@ agit budget --max 20GiB --reserve-free 2GiB
 # Return a permanent restore point to normal retention when it is no longer needed.
 agit unpin <snapshot>
 
-# Pair two machines through an encrypted directory remote you control.
-agit pair /mnt/private/agit-sync --name my-project
+# Publish the current workspace through a configured remote.
+agit remote add ssh://developer@workstation.tailnet --name my-project
 agit sync --push
 
-# On the second machine, use the printed pairing key once.
-agit pair /mnt/private/agit-sync --name my-project --key <pairing-key>
-agit sync --pull --bootstrap
-
-# Later transfers are encrypted, deduplicated deltas.
-agit sync --pull
+# Keep sealed changes moving in both directions after the second machine joins.
+agit sync --follow
 ```
 
-For a direct laptop-to-desktop path with no central data plane, install `agit` on both machines and use existing public-key SSH access:
+## Two-Machine Sync
+
+For two machines that are online together, use Tailscale (or any private
+network) for reachability and SSH for transport. `agit` does not require a
+hosted data plane, an open public port, or UDP access of its own. The machine in
+the SSH URL must run an SSH server, accept noninteractive public-key login, and
+remain reachable while sync is active.
 
 ```bash
-# Laptop: publish ciphertext directly into the desktop's agit helper.
-agit pair ssh://developer@desktop.local --name my-project
+# Machine A: the existing project
+cd my-project
+agit watch
+agit remote add ssh://developer@machine-a.tailnet --name my-project
 agit sync --push
+# Save the printed clone URL and recovery key, then keep this process running.
+agit sync --follow
 
-# Desktop: pair to the same local account/namespace using the laptop's key.
-agit pair ssh://localhost --name my-project --key <pairing-key>
-agit sync --pull --bootstrap
+# Machine B: start from an empty destination
+AGIT_RECOVERY_KEY=<recovery-key> \
+  agit clone ssh://developer@machine-a.tailnet/my-project
+cd my-project
+agit sync --follow
 ```
 
-SSH sync keeps one `BatchMode` connection open, batches up to 1,024 opaque object have-checks, and holds the remote writer lock until the authenticated HEAD is durable. The receiving machine can pull the stored state later after the sender disconnects.
+The clone is a complete materialization, not a Git-only checkout. It includes
+the captured working state: dirty tracked files, untracked and ignored files,
+`.env`, the Git index and other mutable Git state, symlinks, permissions, and
+local databases. Paths explicitly excluded by `.agitpolicy` are not captured or
+transferred. Later updates are content-addressed, deduplicated deltas; unchanged
+chunks are reused instead of retransmitting the folder.
+
+The remote side stores agit's authenticated encrypted chunk store, not browsable
+project files. The 64-character recovery key is entered once on each new machine
+and is required to decrypt the workspace; SSH or bucket credentials alone are
+not sufficient. Keep that key outside the synced folder.
+
+`sync --follow` polls for a new sealed head (every five seconds by default) and
+publishes local snapshots created by the watcher or agent hooks. Sequential
+handoffs converge automatically. If both machines edit from the same base while
+disconnected or at the same time, agit preserves the local and remote states and
+reports divergence instead of choosing a winner. Automatic content merging is
+not part of this flow yet; pause follow, inspect the two states, and resolve the
+work explicitly. For the smoothest current workflow, let one machine write at a
+time and hand off after it has converged.
+
+SSH sync keeps one `BatchMode` connection open per reconciliation, pipelines
+bounded object reads, and coalesces small encrypted objects into durable indexed
+frames instead of waiting for one fsync and acknowledgment per object. The
+authenticated head is published only after its frames are durable. If Machine A
+is the SSH endpoint and goes offline,
+Machine B retains its full local workspace but cannot exchange newer states until
+A is reachable again.
+
+An S3-compatible store is an optional always-available mailbox for machines that
+are not online together. AWS S3, Cloudflare R2, Backblaze B2, and MinIO use the
+same client path; provider credentials and endpoint settings come from the usual
+AWS environment plus `AGIT_S3_ENDPOINT` for custom services.
+
+```bash
+# Machine A
+agit remote add s3://my-bucket/agit --name my-project
+agit sync --push
+agit sync --follow
+
+# Machine B
+AGIT_RECOVERY_KEY=<recovery-key> agit clone s3://my-bucket/agit/my-project
+cd my-project && agit sync --follow
+```
+
+Bucket polling is near-live rather than push-driven. The bucket contains only
+ciphertext, and normal transfers upload and download missing chunks rather than
+the entire workspace. A shared mounted directory remains available through the
+lower-level `agit pair <directory>` command for local testing and private storage.
 
 `agit shrink` recognizes common JavaScript, Python, frontend, and Rust dependency/build caches. Preview is read-only; `--yes` first seals a complete restore point. Its result separates workspace bytes removed from protected-store bytes added and reports the net, because a never-before-captured cache cannot be both locally recoverable and immediately free its full physical size. Use repeated `--path <relative-path>` options for project-specific regenerable directories; Git and agit internals are always refused.
 
@@ -269,6 +327,7 @@ The separate hosted product may provide identity, tenancy, signaling and hole pu
 - Authenticated XChaCha20-Poly1305 sync with opaque remote object names
 - Delta-only directory-remote push/pull across independent local stores
 - Persistent direct SSH helper transport with batched opaque have-checks
+- S3-compatible encrypted object transport with conditional head publication
 - Reversible first-machine bootstrap and proven fast-forward materialization
 - Mandatory single-writer leases with stale-head and rollback rejection
 - Durable sibling preservation when machines edit concurrently or offline
@@ -276,7 +335,13 @@ The separate hosted product may provide identity, tenancy, signaling and hole pu
 - Agent-safe snapshot, timeline, diff, fork, claims, merge-plan, and confirmed rewind tools
 - Vendor-neutral executable pre-turn/post-tool/turn-end hooks with bounded attribution metadata
 
-The current implementation covers the recovery engine, continuous protection, warm forks, the process wrapper, exact merge planning with verification gating, exact reachability GC, MCP, and follow-only multi-machine sync over directories or persistent SSH. S3/WebDAV adapters, richer class-directed merge strategies, and provenance-accelerated teleport remain subsequent milestones from [the system specification](DISTRIBUTED_AGENT_WORKSPACE_SPEC.md).
+The current implementation covers the recovery engine, continuous protection,
+warm forks, the process wrapper, exact merge planning with verification gating,
+exact reachability GC, MCP, and follow-mode multi-machine sync over directories,
+SSH, and S3-compatible object stores. Automatic cross-machine divergence merging,
+WebDAV, richer class-directed merge strategies, and provenance-accelerated
+teleport remain subsequent milestones from
+[the system specification](DISTRIBUTED_AGENT_WORKSPACE_SPEC.md).
 
 ## Performance Benchmarks
 

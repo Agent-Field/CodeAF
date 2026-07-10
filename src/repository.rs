@@ -39,6 +39,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 const WORKSPACE_FILE: &str = ".agit/workspace-id";
 const WORKSPACE_FILE_BYTES: &[u8] = b".agit/workspace-id";
 const FAMILY_FILE: &str = ".agit/family-id";
+const FAMILY_FILE_BYTES: &[u8] = b".agit/family-id";
 const FORK_FILE: &str = ".agit/fork-id";
 const FORK_FILE_BYTES: &[u8] = b".agit/fork-id";
 
@@ -271,6 +272,14 @@ pub struct SyncPullOutcome {
     pub fetched_bytes: u64,
 }
 
+#[derive(Debug, Serialize)]
+#[serde(tag = "action", rename_all = "snake_case")]
+pub enum SyncFollowOutcome {
+    Idle,
+    Published { report: sync::PushReport },
+    Pulled { outcome: SyncPullOutcome },
+}
+
 #[derive(Clone)]
 struct FlatEntry {
     entry: TreeEntry,
@@ -286,6 +295,8 @@ struct RestoreIntent {
 #[derive(Debug, SerdeSerialize, Deserialize)]
 struct SyncState {
     remote_root: ObjectId,
+    #[serde(default)]
+    local_root: Option<ObjectId>,
 }
 
 impl AgitRepository {
@@ -390,8 +401,7 @@ impl AgitRepository {
             .into_iter()
             .filter(|path| {
                 !policy.excludes_path(&self.root, path)
-                    && !changed_path_matches(&self.root, path, WORKSPACE_FILE_BYTES)
-                    && !changed_path_matches(&self.root, path, FORK_FILE_BYTES)
+                    && !changed_path_is_identity(&self.root, path)
             })
             .collect())
     }
@@ -815,6 +825,7 @@ impl AgitRepository {
     }
 
     pub fn sync_pull(&mut self, bootstrap: bool) -> anyhow::Result<SyncPullOutcome> {
+        let prior_sync = self.read_sync_state()?;
         let local = self.snapshot(
             Some("sync pull boundary".to_owned()),
             SnapshotTrigger::SyncLocal,
@@ -846,7 +857,13 @@ impl AgitRepository {
             self.write_sync_state(pulled.root)?;
             self.clear_sync_incoming()?;
             SyncDisposition::UpToDate
-        } else if pulled.base_root == Some(local_snapshot.root_tree) || bootstrap {
+        } else if pulled.base_root == Some(local_snapshot.root_tree)
+            || prior_sync.as_ref().is_some_and(|state| {
+                pulled.base_root == Some(state.remote_root)
+                    && state.local_root == Some(local_snapshot.root_tree)
+            })
+            || bootstrap
+        {
             self.rewind(&pulled.snapshot, &[], false)?;
             let synced = self.snapshot(
                 Some(format!(
@@ -882,6 +899,46 @@ impl AgitRepository {
             reused_objects: pulled.report.reused_objects,
             fetched_bytes: pulled.report.fetched_bytes,
         })
+    }
+
+    pub fn sync_follow_once(&mut self) -> anyhow::Result<SyncFollowOutcome> {
+        let config = sync::load(&self.sync_config_path())?;
+        let remote_root = sync::published_root(&config)?;
+        let local_head = self
+            .store
+            .workspace_head(&self.workspace_id)?
+            .context("workspace has no sealed snapshot")?;
+        let local_snapshot: Snapshot = self.store.read_struct(&local_head, ObjectKind::Snapshot)?;
+        let last_synced = self.read_sync_state()?;
+
+        match remote_root {
+            None => Ok(SyncFollowOutcome::Published {
+                report: self.sync_push(true)?,
+            }),
+            Some(remote_root)
+                if last_synced.as_ref().is_some_and(|state| {
+                    state.remote_root == remote_root
+                        && state.local_root == Some(local_snapshot.root_tree)
+                }) || (last_synced.is_none() && local_snapshot.root_tree == remote_root) =>
+            {
+                if last_synced.is_none() {
+                    self.write_sync_state(remote_root)?;
+                }
+                Ok(SyncFollowOutcome::Idle)
+            }
+            Some(remote_root)
+                if last_synced
+                    .as_ref()
+                    .is_some_and(|state| state.remote_root == remote_root) =>
+            {
+                Ok(SyncFollowOutcome::Published {
+                    report: self.sync_push(true)?,
+                })
+            }
+            Some(_) => Ok(SyncFollowOutcome::Pulled {
+                outcome: self.sync_pull(false)?,
+            }),
+        }
     }
 
     pub fn prepare_fork(&mut self, name: &str, destination: &Path) -> anyhow::Result<ForkPlan> {
@@ -951,11 +1008,7 @@ impl AgitRepository {
         );
         let base = parse_id(&plan.base_snapshot)?;
         let _: Snapshot = self.store.read_struct(&base, ObjectKind::Snapshot)?;
-        let report = fork_workspace_excluding(
-            &self.root,
-            &destination,
-            &[Path::new(WORKSPACE_FILE), Path::new(FORK_FILE)],
-        )?;
+        let report = fork_workspace_excluding(&self.root, &destination, &[Path::new(".agit")])?;
 
         // A copied workspace identity would alias two mutable directories onto
         // one timeline. It is transport metadata, not captured user state.
@@ -1062,6 +1115,9 @@ impl AgitRepository {
                 let paths: Vec<_> = entries.iter().map(|(path, _)| path.clone()).collect();
                 let cached = self.store.cached_files(&self.workspace_id, &paths)?;
                 for ((relative, indexed), cached) in entries.iter().zip(&cached) {
+                    if is_identity_path(relative) {
+                        continue;
+                    }
                     self.verify_atomic_entry(destination, relative, indexed, cached.as_ref())?;
                 }
                 after = entries.last().map(|(path, _)| path.clone());
@@ -1714,7 +1770,9 @@ impl AgitRepository {
         let current_policy = CapturePolicy::from_rules(&current.excluded_paths)?;
         let target_policy = CapturePolicy::from_rules(&target_snapshot.excluded_paths)?;
         let protected = current_policy.union(&target_policy);
-        changes.retain(|change| !protected.excludes_bytes(&change.raw_path));
+        changes.retain(|change| {
+            change.raw_path != b".agit" && !protected.excludes_bytes(&change.raw_path)
+        });
         let target_id = id_hex(target);
         let current_tree = id_hex(&current.root_tree);
         let plan = RewindPlan {
@@ -1789,7 +1847,22 @@ impl AgitRepository {
         if let Some(parent) = path.parent() {
             fs::create_dir_all(parent)?;
         }
-        atomic_write(&path, &serde_json::to_vec(&SyncState { remote_root })?)
+        let local_root = self
+            .store
+            .workspace_head(&self.workspace_id)?
+            .map(|snapshot| {
+                self.store
+                    .read_struct::<Snapshot>(&snapshot, ObjectKind::Snapshot)
+                    .map(|snapshot| snapshot.root_tree)
+            })
+            .transpose()?;
+        atomic_write(
+            &path,
+            &serde_json::to_vec(&SyncState {
+                remote_root,
+                local_root,
+            })?,
+        )
     }
 
     fn clear_sync_incoming(&self) -> anyhow::Result<()> {
@@ -1816,7 +1889,12 @@ impl AgitRepository {
 
         // Attaching the destination updates the .agit directory timestamp, but
         // its actual policy and hook children still participate in comparison.
-        for internal in [b".agit".as_slice(), WORKSPACE_FILE_BYTES, FORK_FILE_BYTES] {
+        for internal in [
+            b".agit".as_slice(),
+            WORKSPACE_FILE_BYTES,
+            FAMILY_FILE_BYTES,
+            FORK_FILE_BYTES,
+        ] {
             base_entries.remove(internal);
             fork_entries.remove(internal);
         }
@@ -1885,7 +1963,11 @@ impl AgitRepository {
             paths,
             &mut changes,
         )?;
-        changes.retain(|change| !protected.excludes_bytes(&change.raw_path));
+        changes.retain(|change| {
+            change.raw_path != b".agit"
+                && !is_identity_path(&change.raw_path)
+                && !protected.excludes_bytes(&change.raw_path)
+        });
         let target_id = id_hex(target);
         let current_tree = id_hex(&current_tree);
         Ok(RewindPlan {
@@ -2211,7 +2293,11 @@ impl AgitRepository {
             if child_path.starts_with(self.store.root()) {
                 continue;
             }
+            if child_path == self.root.join(".agit") {
+                continue;
+            }
             if child_path == self.root.join(WORKSPACE_FILE)
+                || child_path == self.root.join(FAMILY_FILE)
                 || child_path == self.root.join(FORK_FILE)
             {
                 continue;
@@ -2652,6 +2738,9 @@ impl AgitRepository {
         selected_paths: &[PathBuf],
     ) -> anyhow::Result<()> {
         for change in &plan.changes {
+            if change.raw_path == b".agit" || is_identity_path(&change.raw_path) {
+                continue;
+            }
             if !selected(&change.raw_path, selected_paths) {
                 continue;
             }
@@ -2708,10 +2797,48 @@ impl AgitRepository {
                 return Ok(false);
             }
         }
-        if matches!(entry.kind, EntryKind::File | EntryKind::Directory) {
-            let xattrs = self.capture_xattrs(path)?;
-            if xattrs != entry.xattrs {
-                return Ok(false);
+        if matches!(entry.kind, EntryKind::File | EntryKind::Directory)
+            && !self.xattrs_match_best_effort(path, entry.xattrs)?
+        {
+            return Ok(false);
+        }
+        Ok(true)
+    }
+
+    fn xattrs_match_best_effort(
+        &self,
+        path: &Path,
+        expected: Option<ObjectId>,
+    ) -> anyhow::Result<bool> {
+        let Some(expected) = expected else {
+            return Ok(true);
+        };
+        let expected: Xattrs = self.store.read_struct(&expected, ObjectKind::Xattrs)?;
+        for entry in expected.entries {
+            let name = OsStr::from_bytes(&entry.name);
+            let actual = match xattr::get(path, name) {
+                Ok(actual) => actual,
+                Err(error)
+                    if matches!(
+                        error.kind(),
+                        std::io::ErrorKind::PermissionDenied | std::io::ErrorKind::Unsupported
+                    ) || error.raw_os_error() == Some(libc::ENOTSUP) =>
+                {
+                    continue
+                }
+                Err(error) => return Err(error.into()),
+            };
+            if actual.as_deref() == Some(entry.value.as_slice()) {
+                continue;
+            }
+            match xattr::set(path, name, &entry.value) {
+                Ok(()) => {}
+                Err(error)
+                    if matches!(
+                        error.kind(),
+                        std::io::ErrorKind::PermissionDenied | std::io::ErrorKind::Unsupported
+                    ) || error.raw_os_error() == Some(libc::ENOTSUP) => {}
+                Err(error) => return Err(error.into()),
             }
         }
         Ok(true)
@@ -2906,7 +3033,11 @@ impl AgitRepository {
             for xattr in xattrs.entries {
                 match xattr::set(temp.path(), OsStr::from_bytes(&xattr.name), &xattr.value) {
                     Ok(()) => {}
-                    Err(error) if error.kind() == std::io::ErrorKind::PermissionDenied => {}
+                    Err(error)
+                        if matches!(
+                            error.kind(),
+                            std::io::ErrorKind::PermissionDenied | std::io::ErrorKind::Unsupported
+                        ) || error.raw_os_error() == Some(libc::ENOTSUP) => {}
                     Err(error) => return Err(error.into()),
                 }
             }
@@ -3503,8 +3634,20 @@ fn changed_path_matches(root: &Path, path: &Path, expected: &[u8]) -> bool {
         .is_some_and(|relative| relative.as_os_str().as_bytes() == expected)
 }
 
+fn changed_path_is_identity(root: &Path, path: &Path) -> bool {
+    let absolute = if path.is_absolute() {
+        path.to_owned()
+    } else {
+        root.join(path)
+    };
+    absolute
+        .strip_prefix(root)
+        .ok()
+        .is_some_and(|relative| is_identity_path(relative.as_os_str().as_bytes()))
+}
+
 fn is_identity_path(path: &[u8]) -> bool {
-    path == WORKSPACE_FILE_BYTES || path == FORK_FILE_BYTES
+    path == b".agit" || path.starts_with(b".agit/")
 }
 
 fn test_pause(variable: &str) {

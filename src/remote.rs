@@ -6,8 +6,9 @@ use anyhow::Context;
 use directories::ProjectDirs;
 use fs2::FileExt;
 use serde::{Deserialize, Serialize};
+use std::collections::BTreeSet;
 use std::fs::{self, OpenOptions};
-use std::io::{BufReader, BufWriter, Read, Write};
+use std::io::{BufReader, BufWriter, Read, Seek, SeekFrom, Write};
 use std::path::{Path, PathBuf};
 use std::process::{Child, ChildStdin, ChildStdout, Command, Stdio};
 
@@ -18,6 +19,7 @@ const OP_READ: u8 = 2;
 const OP_WRITE: u8 = 3;
 const OP_LOCK: u8 = 4;
 const OP_HAS_OBJECTS: u8 = 5;
+const OP_WRITE_FRAME: u8 = 6;
 const STATUS_OK: u8 = 0;
 const STATUS_ERROR: u8 = 1;
 const MAX_KEY_BYTES: usize = 96;
@@ -25,6 +27,8 @@ const MAX_ERROR_BYTES: usize = 8 * 1024;
 pub(crate) const MAX_OBJECT_BYTES: u64 = 256 * 1024 * 1024 + 1024;
 pub(crate) const MAX_METADATA_BYTES: u64 = 1024 * 1024 + 1024;
 const MAX_HAVE_BATCH: usize = 4096;
+const MAX_FRAME_BYTES: u64 = 20 * 1024 * 1024;
+const FRAME_POINTER_MAGIC: &[u8; 5] = b"AGFP\x01";
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(untagged)]
@@ -197,7 +201,7 @@ impl Session {
         validate_key(key)?;
         anyhow::ensure!(limit <= MAX_OBJECT_BYTES, "invalid remote read limit");
         match &mut self.inner {
-            SessionInner::Directory { root, .. } => read_bounded(&root.join(key), limit),
+            SessionInner::Directory { root, .. } => read_remote_value(root, key, limit),
             SessionInner::Ssh { input, output, .. } => {
                 request(
                     input.as_mut().context("SSH helper input is closed")?,
@@ -209,6 +213,39 @@ impl Session {
             }
             SessionInner::S3(session) => session.read(key, limit),
         }
+    }
+
+    pub fn read_many(
+        &mut self,
+        values: &[(String, u64)],
+        mut handle: impl FnMut(usize, Vec<u8>) -> anyhow::Result<()>,
+    ) -> anyhow::Result<()> {
+        for (key, limit) in values {
+            validate_key(key)?;
+            anyhow::ensure!(*limit <= key_limit(key)?, "invalid remote read limit");
+        }
+        match &mut self.inner {
+            SessionInner::Directory { root, .. } => {
+                for (index, (key, limit)) in values.iter().enumerate() {
+                    handle(index, read_remote_value(root, key, *limit)?)?;
+                }
+            }
+            SessionInner::Ssh { input, output, .. } => {
+                let input = input.as_mut().context("SSH helper input is closed")?;
+                for (key, limit) in values {
+                    request(input, OP_READ, key, &limit.to_le_bytes())?;
+                }
+                for (index, (_, limit)) in values.iter().enumerate() {
+                    handle(index, read_ok_response(output, *limit)?)?;
+                }
+            }
+            SessionInner::S3(session) => {
+                for (index, (key, limit)) in values.iter().enumerate() {
+                    handle(index, session.read(key, *limit)?)?;
+                }
+            }
+        }
+        Ok(())
     }
 
     pub fn write(&mut self, key: &str, bytes: &[u8]) -> anyhow::Result<()> {
@@ -234,6 +271,53 @@ impl Session {
                 Ok(())
             }
             SessionInner::S3(session) => session.write(key, bytes),
+        }
+    }
+
+    pub fn write_many(&mut self, values: &[(String, Vec<u8>)]) -> anyhow::Result<()> {
+        for (key, bytes) in values {
+            validate_key(key)?;
+            anyhow::ensure!(
+                bytes.len() as u64 <= key_limit(key)?,
+                "remote value exceeds its size limit"
+            );
+        }
+        match &mut self.inner {
+            SessionInner::Directory { root, lock } => {
+                anyhow::ensure!(lock.is_some(), "remote write requires the writer lock");
+                for (key, bytes) in values {
+                    atomic_write(&root.join(key), bytes)?;
+                }
+                Ok(())
+            }
+            SessionInner::Ssh { input, output, .. } => {
+                let input = input.as_mut().context("SSH helper input is closed")?;
+                let capacity = 4 + values
+                    .iter()
+                    .map(|(key, bytes)| 2 + 8 + key.len() + bytes.len())
+                    .sum::<usize>();
+                let mut frame = Vec::with_capacity(capacity);
+                frame.extend_from_slice(&(values.len() as u32).to_le_bytes());
+                for (key, bytes) in values {
+                    frame.extend_from_slice(&(key.len() as u16).to_le_bytes());
+                    frame.extend_from_slice(&(bytes.len() as u64).to_le_bytes());
+                    frame.extend_from_slice(key.as_bytes());
+                    frame.extend_from_slice(bytes);
+                }
+                anyhow::ensure!(
+                    frame.len() as u64 <= MAX_FRAME_BYTES,
+                    "remote frame is too large"
+                );
+                request(input, OP_WRITE_FRAME, "", &frame)?;
+                read_ok_response(output, MAX_ERROR_BYTES as u64)?;
+                Ok(())
+            }
+            SessionInner::S3(session) => {
+                for (key, bytes) in values {
+                    session.write(key, bytes)?;
+                }
+                Ok(())
+            }
         }
     }
 
@@ -348,6 +432,7 @@ fn read_request(input: &mut impl Read) -> anyhow::Result<Option<RequestFrame>> {
         OP_READ => 8,
         OP_WRITE => MAX_OBJECT_BYTES,
         OP_HAS_OBJECTS => 4 + (MAX_HAVE_BATCH * 32) as u64,
+        OP_WRITE_FRAME => MAX_FRAME_BYTES,
         _ => anyhow::bail!("unknown remote operation"),
     };
     anyhow::ensure!(
@@ -380,7 +465,7 @@ fn handle_request(
         OP_READ => {
             let limit = u64::from_le_bytes(payload.try_into().context("invalid read limit")?);
             anyhow::ensure!(limit <= key_limit(key)?, "invalid remote read limit");
-            read_bounded(&root.join(key), limit)
+            read_remote_value(root, key, limit)
         }
         OP_WRITE => {
             anyhow::ensure!(lock.is_some(), "remote write requires the writer lock");
@@ -420,6 +505,12 @@ fn handle_request(
                     root.join(object_key(&object)).is_file() as u8
                 })
                 .collect())
+        }
+        OP_WRITE_FRAME => {
+            anyhow::ensure!(lock.is_some(), "remote write requires the writer lock");
+            let values = decode_write_frame(payload)?;
+            write_packed_frame(root, payload, &values)?;
+            Ok(Vec::new())
         }
         _ => anyhow::bail!("unknown remote operation"),
     }
@@ -503,7 +594,7 @@ fn validate_key(key: &str) -> anyhow::Result<()> {
     Ok(())
 }
 
-pub(crate) fn validate_namespace(namespace: &str) -> anyhow::Result<()> {
+pub fn validate_namespace(namespace: &str) -> anyhow::Result<()> {
     anyhow::ensure!(
         !namespace.is_empty() && namespace.len() <= 96,
         "invalid sync namespace"
@@ -553,6 +644,125 @@ fn read_bounded(path: &Path, limit: u64) -> anyhow::Result<Vec<u8>> {
         bytes.len() as u64 <= limit,
         "remote file exceeds its size limit"
     );
+    Ok(bytes)
+}
+
+fn decode_write_frame(payload: &[u8]) -> anyhow::Result<Vec<(String, &[u8])>> {
+    anyhow::ensure!(payload.len() >= 4, "invalid remote write frame");
+    let count = u32::from_le_bytes(payload[..4].try_into().unwrap()) as usize;
+    anyhow::ensure!(
+        count <= MAX_HAVE_BATCH,
+        "remote write frame has too many objects"
+    );
+    let mut cursor = 4_usize;
+    let mut values = Vec::with_capacity(count);
+    for _ in 0..count {
+        anyhow::ensure!(cursor + 10 <= payload.len(), "truncated remote write frame");
+        let key_len = u16::from_le_bytes(payload[cursor..cursor + 2].try_into().unwrap()) as usize;
+        let value_len = u64::from_le_bytes(payload[cursor + 2..cursor + 10].try_into().unwrap());
+        cursor += 10;
+        anyhow::ensure!(key_len <= MAX_KEY_BYTES, "remote frame key is too long");
+        let value_len = usize::try_from(value_len).context("remote frame value is too large")?;
+        let end = cursor
+            .checked_add(key_len)
+            .and_then(|value| value.checked_add(value_len))
+            .context("remote frame length overflow")?;
+        anyhow::ensure!(end <= payload.len(), "truncated remote write frame");
+        let key = std::str::from_utf8(&payload[cursor..cursor + key_len])?.to_owned();
+        cursor += key_len;
+        validate_key(&key)?;
+        anyhow::ensure!(
+            value_len as u64 <= key_limit(&key)?,
+            "remote frame value is too large"
+        );
+        values.push((key, &payload[cursor..cursor + value_len]));
+        cursor += value_len;
+    }
+    anyhow::ensure!(
+        cursor == payload.len(),
+        "remote write frame has trailing bytes"
+    );
+    Ok(values)
+}
+
+fn atomic_write_relaxed(path: &Path, bytes: &[u8]) -> anyhow::Result<()> {
+    let parent = path.parent().context("remote object has no parent")?;
+    ensure_durable_directory(parent)?;
+    let mut temporary = tempfile::NamedTempFile::new_in(parent)?;
+    temporary.write_all(bytes)?;
+    temporary.persist(path).map_err(|error| error.error)?;
+    Ok(())
+}
+
+fn write_packed_frame(
+    root: &Path,
+    payload: &[u8],
+    values: &[(String, &[u8])],
+) -> anyhow::Result<()> {
+    let frame_id = hex::encode(blake3::hash(payload).as_bytes());
+    let frame_key = format!("frames/{frame_id}");
+    let frame_path = root.join(&frame_key);
+    if !frame_path.is_file() {
+        atomic_write(&frame_path, payload)?;
+    }
+    let payload_start = payload.as_ptr() as usize;
+    let mut parents = BTreeSet::new();
+    for (key, bytes) in values {
+        let offset = (bytes.as_ptr() as usize)
+            .checked_sub(payload_start)
+            .context("frame value is outside its payload")? as u64;
+        let mut pointer = Vec::with_capacity(85);
+        pointer.extend_from_slice(FRAME_POINTER_MAGIC);
+        pointer.extend_from_slice(frame_id.as_bytes());
+        pointer.extend_from_slice(&offset.to_le_bytes());
+        pointer.extend_from_slice(&(bytes.len() as u64).to_le_bytes());
+        let path = root.join(key);
+        atomic_write_relaxed(&path, &pointer)?;
+        parents.insert(
+            path.parent()
+                .context("remote pointer has no parent")?
+                .to_owned(),
+        );
+    }
+    for parent in parents {
+        fs::File::open(parent)?.sync_all()?;
+    }
+    fs::File::open(root)?.sync_all()?;
+    Ok(())
+}
+
+fn read_remote_value(root: &Path, key: &str, limit: u64) -> anyhow::Result<Vec<u8>> {
+    let pointer = read_bounded(&root.join(key), limit.max(85))?;
+    if !pointer.starts_with(FRAME_POINTER_MAGIC) {
+        anyhow::ensure!(
+            pointer.len() as u64 <= limit,
+            "remote file exceeds its size limit"
+        );
+        return Ok(pointer);
+    }
+    anyhow::ensure!(pointer.len() == 85, "invalid remote frame pointer");
+    let frame_id = std::str::from_utf8(&pointer[5..69])?;
+    anyhow::ensure!(
+        frame_id.len() == 64
+            && frame_id
+                .bytes()
+                .all(|byte| byte.is_ascii_hexdigit() && !byte.is_ascii_uppercase()),
+        "invalid remote frame ID"
+    );
+    let offset = u64::from_le_bytes(pointer[69..77].try_into().unwrap());
+    let length = u64::from_le_bytes(pointer[77..85].try_into().unwrap());
+    anyhow::ensure!(length <= limit, "remote frame value exceeds its size limit");
+    let mut frame = fs::File::open(root.join("frames").join(frame_id))?;
+    let frame_len = frame.metadata()?.len();
+    anyhow::ensure!(
+        offset
+            .checked_add(length)
+            .is_some_and(|end| end <= frame_len),
+        "remote frame pointer is out of bounds"
+    );
+    frame.seek(SeekFrom::Start(offset))?;
+    let mut bytes = vec![0; length as usize];
+    frame.read_exact(&mut bytes)?;
     Ok(bytes)
 }
 

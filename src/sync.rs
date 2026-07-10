@@ -6,7 +6,7 @@ use crate::remote::{self, RemoteSpec, Session};
 use crate::remote_crypto::RemoteCrypto;
 use crate::store::ObjectStore;
 use anyhow::Context;
-use rusqlite::{params, Connection, OptionalExtension};
+use rusqlite::{params, Connection};
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::os::unix::fs::PermissionsExt;
@@ -16,6 +16,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 const LEASE_SECONDS: u64 = 60 * 60;
 const HAVE_BATCH: usize = 1024;
 const HAVE_BATCH_BYTES: usize = 16 * 1024 * 1024;
+const PULL_BATCH: usize = 128;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PairConfig {
@@ -244,6 +245,7 @@ fn flush_push_batch(
         existing.len() == pending.len(),
         "invalid remote have response"
     );
+    let mut uploads = Vec::new();
     for (((id, kind, bytes), remote_id), exists) in pending.drain(..).zip(remote_ids).zip(existing)
     {
         if exists {
@@ -251,11 +253,11 @@ fn flush_push_batch(
             continue;
         }
         let encrypted = crypto.encrypt_object(&id, kind, &bytes)?;
-        remote.write(&remote::object_key(&remote_id), &encrypted)?;
         *uploaded_objects += 1;
         *uploaded_bytes += encrypted.len() as u64;
+        uploads.push((remote::object_key(&remote_id), encrypted));
     }
-    Ok(())
+    remote.write_many(&uploads)
 }
 
 pub fn pull(store: &ObjectStore, config: &PairConfig) -> anyhow::Result<PulledHead> {
@@ -279,17 +281,32 @@ pub fn pull(store: &ObjectStore, config: &PairConfig) -> anyhow::Result<PulledHe
     let mut fetched_objects = 0_u64;
     let mut reused_objects = 0_u64;
     let mut fetched_bytes = 0_u64;
-    while let Some((id, expected)) = next(&queue)? {
-        let bytes = if store.contains_object(&id)? {
+    loop {
+        let batch = next_batch(&queue, PULL_BATCH)?;
+        if batch.is_empty() {
+            break;
+        }
+        let mut missing = Vec::new();
+        for (id, expected) in batch {
+            if !store.contains_object(&id)? {
+                missing.push((id, expected));
+                continue;
+            }
             reused_objects += 1;
-            store.read_bytes(&id, expected)?
-        } else {
-            let encrypted = remote
-                .read(
-                    &remote::object_key(&crypto.remote_id(&id)),
+            let bytes = store.read_bytes(&id, expected)?;
+            process_pulled_object(&queue, id, expected, &bytes)?;
+        }
+        let requests: Vec<_> = missing
+            .iter()
+            .map(|(id, _)| {
+                (
+                    remote::object_key(&crypto.remote_id(id)),
                     remote::MAX_OBJECT_BYTES,
                 )
-                .with_context(|| format!("remote is missing object {}", hex::encode(id)))?;
+            })
+            .collect();
+        remote.read_many(&requests, |index, encrypted| {
+            let (id, expected) = missing[index];
             let (kind, bytes) = crypto.decrypt_object(&id, &encrypted)?;
             anyhow::ensure!(kind == expected, "remote object kind mismatch");
             anyhow::ensure!(
@@ -298,15 +315,9 @@ pub fn pull(store: &ObjectStore, config: &PairConfig) -> anyhow::Result<PulledHe
             );
             fetched_objects += 1;
             fetched_bytes += encrypted.len() as u64;
-            bytes
-        };
-        for (child, child_kind) in bundle::object_edges(expected, &bytes)? {
-            enqueue(&queue, &child, child_kind)?;
-        }
-        queue.execute(
-            "UPDATE queue SET processed = 1 WHERE id = ?1",
-            params![id.as_slice()],
-        )?;
+            process_pulled_object(&queue, id, expected, &bytes)
+                .with_context(|| format!("import remote object {}", hex::encode(id)))
+        })?;
     }
     queue.execute_batch("COMMIT;")?;
     // Existing objects are trusted only because the local completeness gate
@@ -328,6 +339,15 @@ pub fn pull(store: &ObjectStore, config: &PairConfig) -> anyhow::Result<PulledHe
             fetched_bytes,
         },
     })
+}
+
+pub fn published_root(config: &PairConfig) -> anyhow::Result<Option<ObjectId>> {
+    let mut remote = Session::open(&config.remote, storage_namespace(config))?;
+    if !remote.exists("HEAD")? {
+        return Ok(None);
+    }
+    let crypto = RemoteCrypto::new(config.key);
+    Ok(Some(read_remote_head(&mut remote, config, &crypto)?.root))
 }
 
 fn prepare_writer_lease(
@@ -425,15 +445,17 @@ fn enqueue(connection: &Connection, id: &ObjectId, kind: ObjectKind) -> anyhow::
     Ok(())
 }
 
-fn next(connection: &Connection) -> anyhow::Result<Option<(ObjectId, ObjectKind)>> {
-    let raw: Option<(Vec<u8>, u8)> = connection
-        .query_row(
-            "SELECT id, kind FROM queue WHERE processed = 0 ORDER BY id LIMIT 1",
-            [],
-            |row| Ok((row.get(0)?, row.get(1)?)),
-        )
-        .optional()?;
-    raw.map(|(bytes, kind)| {
+fn next_batch(
+    connection: &Connection,
+    limit: usize,
+) -> anyhow::Result<Vec<(ObjectId, ObjectKind)>> {
+    let mut statement = connection
+        .prepare("SELECT id, kind FROM queue WHERE processed = 0 ORDER BY id LIMIT ?1")?;
+    let rows = statement.query_map([limit as u64], |row| {
+        Ok((row.get::<_, Vec<u8>>(0)?, row.get::<_, u8>(1)?))
+    })?;
+    rows.map(|row| {
+        let (bytes, kind) = row?;
         anyhow::ensure!(bytes.len() == 32, "invalid queued object ID");
         let mut id = [0; 32];
         id.copy_from_slice(&bytes);
@@ -442,7 +464,23 @@ fn next(connection: &Connection) -> anyhow::Result<Option<(ObjectId, ObjectKind)
             ObjectKind::from_u8(kind).context("invalid queued object kind")?,
         ))
     })
-    .transpose()
+    .collect()
+}
+
+fn process_pulled_object(
+    connection: &Connection,
+    id: ObjectId,
+    expected: ObjectKind,
+    bytes: &[u8],
+) -> anyhow::Result<()> {
+    for (child, child_kind) in bundle::object_edges(expected, bytes)? {
+        enqueue(connection, &child, child_kind)?;
+    }
+    connection.execute(
+        "UPDATE queue SET processed = 1 WHERE id = ?1",
+        params![id.as_slice()],
+    )?;
+    Ok(())
 }
 
 #[cfg(test)]

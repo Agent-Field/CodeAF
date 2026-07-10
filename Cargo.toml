@@ -14,7 +14,7 @@ categories = ["command-line-utilities", "development-tools"]
 anyhow = "=1.0.95"
 blake3 = "=1.5.5"
 chacha20poly1305 = "=0.10.1"
-clap = { version = "=4.5.31", features = ["derive"] }
+clap = { version = "=4.5.31", features = ["derive", "env"] }
 directories = "=5.0.1"
 fs2 = "=0.4.3"
 filetime = "=0.2.25"

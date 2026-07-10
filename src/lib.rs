@@ -38,5 +38,6 @@ pub use repository::{
     new_fork_id, AgitRepository, BisectCheck, BisectOutcome, ClaimOutcome, CoordOutcome,
     DiffChange, DiffSummary, FidelityAspect, FidelityReport, ForkPlan, ForkRemoval, ForkSummary,
     ForkUpdates, MaterializationReport, MergeOutcome, MissingMaterializationPath, ReleaseOutcome,
-    RepositoryStatus, RewindPlan, SnapshotSummary, SyncDisposition, SyncPullOutcome,
+    RepositoryStatus, RewindPlan, SnapshotSummary, SyncDisposition, SyncFollowOutcome,
+    SyncPullOutcome,
 };
