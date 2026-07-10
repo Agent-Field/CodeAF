@@ -155,10 +155,6 @@ Reproducible performance claims — `cargo bench --bench engine` (regression cei
 - Cold internet sync has been rerun; the final receiver optimization still needs a warm internet rerun.
 - Fidelity is declared, not implied: `furrow status --fidelity` is the contract.
 
-## Open source boundary
-
-This Apache-2.0 binary is the complete local product — capture, rewind, universes, radar, merge, Mission Control, MCP, SSH/S3 sync, all on-disk formats — usable forever with no account. A separate hosted service may add identity, NAT hole-punching, relay, stored quota, and managed fleet services; none of it is required for anything in this repository.
-
 ## Development
 
 ```bash
