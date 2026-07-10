@@ -141,6 +141,13 @@ impl PathIndex {
         Ok(removed as u64)
     }
 
+    pub fn remove(&self, path: &[u8]) -> anyhow::Result<bool> {
+        Ok(self
+            .connection
+            .execute("DELETE FROM entries WHERE path = ?1", params![path])?
+            != 0)
+    }
+
     pub fn children_after(
         &self,
         parent: &[u8],

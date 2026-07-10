@@ -1358,6 +1358,7 @@ fn main() -> anyhow::Result<()> {
                             }
                             if timings {
                                 print_transport_timings(&outcome.timings);
+                                print_apply_timings(&outcome.apply_timings);
                             }
                         }
                         Err(error) => eprintln!("sync follow: {error:#}"),
@@ -1393,6 +1394,7 @@ fn main() -> anyhow::Result<()> {
                 let outcome = repository.sync_pull(bootstrap)?;
                 if timings {
                     print_transport_timings(&outcome.timings);
+                    print_apply_timings(&outcome.apply_timings);
                 }
                 if cli.json {
                     println!("{}", serde_json::to_string_pretty(&outcome)?);
@@ -1440,6 +1442,18 @@ fn print_transport_timings(timings: &agit::sync::TransportTimings) {
             .map_or_else(|| "n/a".to_owned(), |value| format!("{value}ms")),
         timings.total_ms,
         timings.connection_reused
+    );
+}
+
+fn print_apply_timings(timings: &agit::repository::ApplyTimings) {
+    eprintln!(
+        "apply timings: diff-compute={}ms divergence-check={}ms write={}ms fsync={}ms baseline-install={}ms watcher-requiesce={}ms",
+        timings.diff_compute_ms,
+        timings.divergence_check_ms,
+        timings.write_ms,
+        timings.fsync_ms,
+        timings.baseline_install_ms,
+        timings.watcher_requiesce_ms,
     );
 }
 

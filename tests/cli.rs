@@ -2,7 +2,7 @@ use assert_cmd::Command;
 use serde_json::Value;
 use std::fs;
 use std::io::{BufRead, BufReader, Write};
-use std::os::unix::fs::{symlink, PermissionsExt};
+use std::os::unix::fs::{symlink, MetadataExt, PermissionsExt};
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 use tempfile::TempDir;
@@ -2216,6 +2216,9 @@ fn encrypted_two_store_sync_fast_forwards_and_preserves_divergence() {
         fs::read(peer.join("cache/dependency.bin")).unwrap(),
         vec![7_u8; 180_000]
     );
+    let unchanged_inode = fs::metadata(peer.join("cache/dependency.bin"))
+        .unwrap()
+        .ino();
 
     fs::write(fixture.repo.join("app.txt"), b"remote delta\n").unwrap();
     let second_push = fixture
@@ -2229,16 +2232,52 @@ fn encrypted_two_store_sync_fast_forwards_and_preserves_divergence() {
     let second_push: Value = serde_json::from_slice(&second_push).unwrap();
     assert!(second_push["reused_objects"].as_u64().unwrap() > 0);
     assert!(second_push["uploaded_objects"].as_u64().unwrap() < 10);
-    let pull_output = agit_at(&peer, &peer_data)
-        .args(["--json", "sync", "--pull"])
+    let mut pull_command = agit_at(&peer, &peer_data);
+    let pull = pull_command
+        .args(["--json", "sync", "--pull", "--timings"])
+        .assert()
+        .success();
+    let pull_stderr = String::from_utf8_lossy(&pull.get_output().stderr);
+    for phase in [
+        "diff-compute=",
+        "divergence-check=",
+        "write=",
+        "fsync=",
+        "baseline-install=",
+        "watcher-requiesce=",
+    ] {
+        assert!(
+            pull_stderr.contains(phase),
+            "pull --timings omitted apply phase {phase}: {pull_stderr}"
+        );
+    }
+    let pull: Value = serde_json::from_slice(&pull.get_output().stdout).unwrap();
+    assert_eq!(pull["disposition"], "fast_forwarded");
+    assert_eq!(
+        pull["local_snapshot"], second_push["snapshot"],
+        "a clean receiver must adopt the already-sealed remote identity"
+    );
+    assert_eq!(
+        pull["remote_snapshot"], second_push["snapshot"],
+        "the authenticated remote head must remain the adopted identity"
+    );
+    assert_eq!(fs::read(peer.join("app.txt")).unwrap(), b"remote delta\n");
+    assert_eq!(
+        fs::metadata(peer.join("cache/dependency.bin"))
+            .unwrap()
+            .ino(),
+        unchanged_inode,
+        "delta materialization must not replace an unchanged repository path"
+    );
+    let status = agit_at(&peer, &peer_data)
+        .args(["--json", "status"])
         .assert()
         .success()
         .get_output()
         .stdout
         .clone();
-    let pull: Value = serde_json::from_slice(&pull_output).unwrap();
-    assert_eq!(pull["disposition"], "fast_forwarded");
-    assert_eq!(fs::read(peer.join("app.txt")).unwrap(), b"remote delta\n");
+    let status: Value = serde_json::from_slice(&status).unwrap();
+    assert_eq!(status["head"], second_push["snapshot"]);
 
     fs::write(peer.join("notes.txt"), b"offline peer work\n").unwrap();
     fs::write(fixture.repo.join("app.txt"), b"new remote work\n").unwrap();

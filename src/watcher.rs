@@ -1,5 +1,6 @@
 use crate::model::SnapshotTrigger;
 use crate::repository::AgitRepository;
+use crate::self_write::{self, FilterResult};
 use anyhow::Context;
 use notify::{Event, RecommendedWatcher, RecursiveMode, Watcher};
 use std::collections::BTreeSet;
@@ -42,6 +43,14 @@ pub fn run(mut repository: AgitRepository, debounce: Duration) -> anyhow::Result
         }
 
         let overflowed = overflow.swap(false, Ordering::AcqRel);
+        while self_write::filter_events(
+            &repository.workspace_data_dir(),
+            repository.root(),
+            &mut changed_paths,
+        )? == FilterResult::ApplyActive
+        {
+            std::thread::sleep(Duration::from_millis(20));
+        }
         let changed_paths = match repository.filter_capture_paths(changed_paths) {
             Ok(paths) => paths,
             Err(error) => {

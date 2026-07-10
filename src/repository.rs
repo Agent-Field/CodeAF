@@ -15,6 +15,7 @@ use crate::model::{
 use crate::path_index::{PathIndex, CHILD_BATCH};
 use crate::policy::{CapturePolicy, POLICY_FILE_BYTES};
 use crate::radar::{EventPage, Radar, UniverseRegistration};
+use crate::self_write::ApplyGuard;
 use crate::sorted_dir::SortedDirectory;
 use crate::sqlite_adapter;
 use crate::store::ObjectStore;
@@ -34,7 +35,7 @@ use std::os::unix::ffi::{OsStrExt, OsStringExt};
 use std::os::unix::fs::{FileTypeExt, MetadataExt, PermissionsExt};
 use std::path::{Component, Path, PathBuf};
 use std::process::Stdio;
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::time::{Instant, SystemTime, UNIX_EPOCH};
 
 const WORKSPACE_FILE: &str = ".agit/workspace-id";
 const WORKSPACE_FILE_BYTES: &[u8] = b".agit/workspace-id";
@@ -271,6 +272,17 @@ pub struct SyncPullOutcome {
     pub reused_objects: u64,
     pub fetched_bytes: u64,
     pub timings: sync::TransportTimings,
+    pub apply_timings: ApplyTimings,
+}
+
+#[derive(Debug, Clone, Default, Serialize)]
+pub struct ApplyTimings {
+    pub diff_compute_ms: u64,
+    pub divergence_check_ms: u64,
+    pub write_ms: u64,
+    pub fsync_ms: u64,
+    pub baseline_install_ms: u64,
+    pub watcher_requiesce_ms: u64,
 }
 
 #[derive(Debug, Serialize)]
@@ -857,20 +869,27 @@ impl AgitRepository {
     pub fn sync_pull(&mut self, bootstrap: bool) -> anyhow::Result<SyncPullOutcome> {
         let config = sync::load(&self.sync_config_path())?;
         let mut remote = sync::open_session(&config)?;
-        self.sync_pull_on(bootstrap, &config, &mut remote)
+        self.sync_pull_on(bootstrap, true, &config, &mut remote)
     }
 
     fn sync_pull_on(
         &mut self,
         bootstrap: bool,
+        seal_boundary: bool,
         config: &sync::PairConfig,
         remote: &mut crate::remote::Session,
     ) -> anyhow::Result<SyncPullOutcome> {
         let prior_sync = self.read_sync_state()?;
-        let local = self.snapshot(
-            Some("sync pull boundary".to_owned()),
-            SnapshotTrigger::SyncLocal,
-        )?;
+        let local = if seal_boundary {
+            self.snapshot(
+                Some("sync pull boundary".to_owned()),
+                SnapshotTrigger::SyncLocal,
+            )?
+        } else {
+            self.store
+                .workspace_head(&self.workspace_id)?
+                .context("workspace has no sealed snapshot")?
+        };
         let local_snapshot: Snapshot = self.store.read_struct(&local, ObjectKind::Snapshot)?;
         let pulled = {
             // Imported objects are not reachable until incoming.json is
@@ -904,13 +923,11 @@ impl AgitRepository {
             })
             || bootstrap
         {
-            self.rewind(&pulled.snapshot, &[], false)?;
-            let synced = self.snapshot(
-                Some(format!(
-                    "fast-forwarded from remote {}",
-                    &id_hex(&pulled.snapshot)[..12]
-                )),
-                SnapshotTrigger::SyncPull,
+            let apply_timings = self.apply_and_adopt_snapshot(
+                local,
+                &local_snapshot,
+                pulled.snapshot,
+                &remote_snapshot,
             )?;
             self.write_sync_state(pulled.root)?;
             self.clear_sync_incoming()?;
@@ -920,13 +937,14 @@ impl AgitRepository {
                 } else {
                     SyncDisposition::FastForwarded
                 },
-                local_snapshot: id_hex(&synced),
+                local_snapshot: id_hex(&pulled.snapshot),
                 remote_snapshot: id_hex(&pulled.snapshot),
                 remote_base_root: pulled.base_root.map(|id| id_hex(&id)),
                 fetched_objects: pulled.report.fetched_objects,
                 reused_objects: pulled.report.reused_objects,
                 fetched_bytes: pulled.report.fetched_bytes,
                 timings: pulled.report.timings,
+                apply_timings,
             });
         } else {
             SyncDisposition::Diverged
@@ -940,7 +958,223 @@ impl AgitRepository {
             reused_objects: pulled.report.reused_objects,
             fetched_bytes: pulled.report.fetched_bytes,
             timings: pulled.report.timings,
+            apply_timings: ApplyTimings::default(),
         })
+    }
+
+    fn apply_and_adopt_snapshot(
+        &mut self,
+        local_id: ObjectId,
+        local: &Snapshot,
+        incoming_id: ObjectId,
+        incoming: &Snapshot,
+    ) -> anyhow::Result<ApplyTimings> {
+        let lock = self.acquire_mutation_lock()?;
+        let diff_started = Instant::now();
+        let policy = CapturePolicy::load(&self.root)?;
+        let protected = policy.union(&CapturePolicy::from_rules(&incoming.excluded_paths)?);
+        let mut changes = Vec::new();
+        self.diff_directory(
+            Some(local.root_tree),
+            Some(incoming.root_tree),
+            Vec::new(),
+            &[],
+            &mut changes,
+        )?;
+        changes.retain(|change| {
+            change.raw_path != b".agit"
+                && !is_identity_path(&change.raw_path)
+                && !protected.excludes_bytes(&change.raw_path)
+        });
+        let plan = RewindPlan {
+            preview_digest: rewind_preview_digest(
+                &id_hex(&incoming_id),
+                Some(&id_hex(&local.root_tree)),
+                &changes,
+            ),
+            target: id_hex(&incoming_id),
+            current_tree: Some(id_hex(&local.root_tree)),
+            changes,
+        };
+        let local_entries = self.entries_for_changed_paths(&local.root_tree, &plan)?;
+        let incoming_entries = self.entries_for_plan(&incoming.root_tree, &plan)?;
+        let diff_compute_ms = duration_ms(diff_started.elapsed());
+
+        // The sync boundary snapshot is the divergence proof. Check only paths
+        // in the delta before mutating, then trust the verified CAS objects we
+        // just imported rather than hashing the materialized files again.
+        let divergence_started = Instant::now();
+        self.verify_plan_state(&self.root, &local_entries, &plan, &[])?;
+        let divergence_check_ms = duration_ms(divergence_started.elapsed());
+        let apply_guard = ApplyGuard::begin(
+            &self.workspace_data_dir(),
+            &self.root,
+            plan.changes
+                .iter()
+                .map(|change| PathBuf::from(OsString::from_vec(change.raw_path.clone()))),
+        )?;
+        self.write_restore_intent(&RestoreIntent {
+            pre_snapshot: local_id,
+            target_snapshot: incoming_id,
+            paths: Vec::new(),
+        })?;
+        let write_started = Instant::now();
+        if let Err(error) =
+            self.apply_plan_at_with_file_sync(&self.root, &incoming_entries, &plan, &[], false)
+        {
+            let mut rollback_changes = Vec::new();
+            self.diff_directory(
+                Some(incoming.root_tree),
+                Some(local.root_tree),
+                Vec::new(),
+                &[],
+                &mut rollback_changes,
+            )?;
+            rollback_changes.retain(|change| {
+                change.raw_path != b".agit"
+                    && !is_identity_path(&change.raw_path)
+                    && !protected.excludes_bytes(&change.raw_path)
+            });
+            let rollback_plan = RewindPlan {
+                preview_digest: String::new(),
+                target: id_hex(&local_id),
+                current_tree: Some(id_hex(&incoming.root_tree)),
+                changes: rollback_changes,
+            };
+            let rollback_entries = self.entries_for_plan(&local.root_tree, &rollback_plan)?;
+            self.apply_plan_at(&self.root, &rollback_entries, &rollback_plan, &[])
+                .context("sync apply failed and rollback also failed")?;
+            self.clear_restore_intent()?;
+            FileExt::unlock(&lock)?;
+            return Err(error.context("sync apply failed; the local state was restored"));
+        }
+        let write_ms = duration_ms(write_started.elapsed());
+
+        let fsync_started = Instant::now();
+        self.sync_applied_delta(&incoming_entries, &plan)?;
+        let fsync_ms = duration_ms(fsync_started.elapsed());
+
+        let baseline_started = Instant::now();
+        self.install_snapshot_index(incoming.root_tree, &plan)?;
+        let baseline_install_ms = duration_ms(baseline_started.elapsed());
+        let watcher_started = Instant::now();
+        apply_guard.finish()?;
+        let watcher_requiesce_ms = duration_ms(watcher_started.elapsed());
+        self.store.publish_snapshot(
+            &self.workspace_id,
+            incoming_id,
+            incoming.sealed_at_secs,
+            incoming.label.clone(),
+            incoming.trigger.clone(),
+        )?;
+        self.clear_restore_intent()?;
+        FileExt::unlock(&lock)?;
+        Ok(ApplyTimings {
+            diff_compute_ms,
+            divergence_check_ms,
+            write_ms,
+            fsync_ms,
+            baseline_install_ms,
+            watcher_requiesce_ms,
+        })
+    }
+
+    fn install_snapshot_index(&self, root: ObjectId, plan: &RewindPlan) -> anyhow::Result<()> {
+        let mut index = self.open_path_index()?;
+        index.begin()?;
+        for change in &plan.changes {
+            if change.action == "remove" {
+                index.remove_subtree(&change.raw_path)?;
+            } else {
+                index.remove(&change.raw_path)?;
+            }
+        }
+        for change in &plan.changes {
+            let Some(entry) = self.lookup_tree_path(&root, &change.raw_path)? else {
+                continue;
+            };
+            let parent = change
+                .raw_path
+                .iter()
+                .rposition(|byte| *byte == b'/')
+                .map_or(&[][..], |separator| &change.raw_path[..separator]);
+            index.upsert(&change.raw_path, parent, &entry)?;
+        }
+        index.set_root(&root, &self.store_generation()?)?;
+        index.commit()
+    }
+
+    fn sync_applied_delta(
+        &self,
+        target: &BTreeMap<Vec<u8>, FlatEntry>,
+        plan: &RewindPlan,
+    ) -> anyhow::Result<()> {
+        let changed: BTreeSet<_> = plan
+            .changes
+            .iter()
+            .map(|change| change.raw_path.as_slice())
+            .collect();
+        let files: Vec<_> = target
+            .iter()
+            .filter(|(path, flat)| {
+                changed.contains(path.as_slice()) && flat.entry.kind == EntryKind::File
+            })
+            .map(|(path, _)| safe_join(&self.root, path))
+            .collect::<anyhow::Result<_>>()?;
+
+        for batch in files.chunks(4) {
+            std::thread::scope(|scope| -> anyhow::Result<()> {
+                let handles: Vec<_> = batch
+                    .iter()
+                    .map(|path| {
+                        scope.spawn(move || -> anyhow::Result<()> {
+                            File::open(path)?.sync_all()?;
+                            Ok(())
+                        })
+                    })
+                    .collect();
+                for handle in handles {
+                    handle.join().expect("sync worker panicked")?;
+                }
+                Ok(())
+            })?;
+        }
+
+        let mut directories = BTreeSet::new();
+        directories.insert(self.root.clone());
+        for change in &plan.changes {
+            let path = safe_join(&self.root, &change.raw_path)?;
+            let mut parent = path.parent();
+            while let Some(candidate) = parent {
+                if candidate
+                    .symlink_metadata()
+                    .is_ok_and(|metadata| metadata.is_dir())
+                {
+                    directories.insert(candidate.to_owned());
+                    break;
+                }
+                parent = candidate.parent();
+            }
+        }
+        let directories: Vec<_> = directories.into_iter().collect();
+        for batch in directories.chunks(4) {
+            std::thread::scope(|scope| -> anyhow::Result<()> {
+                let handles: Vec<_> = batch
+                    .iter()
+                    .map(|path| {
+                        scope.spawn(move || -> anyhow::Result<()> {
+                            File::open(path)?.sync_all()?;
+                            Ok(())
+                        })
+                    })
+                    .collect();
+                for handle in handles {
+                    handle.join().expect("directory sync worker panicked")?;
+                }
+                Ok(())
+            })?;
+        }
+        Ok(())
     }
 
     pub fn sync_follow_session(&self) -> anyhow::Result<SyncFollowSession> {
@@ -990,7 +1224,8 @@ impl AgitRepository {
                 })
             }
             Some(_) => {
-                let mut outcome = self.sync_pull_on(false, &session.config, &mut session.remote)?;
+                let mut outcome =
+                    self.sync_pull_on(false, false, &session.config, &mut session.remote)?;
                 outcome.timings.notify_ms = session.pending_notify_ms.take();
                 Ok(SyncFollowOutcome::Pulled { outcome })
             }
@@ -2956,6 +3191,17 @@ impl AgitRepository {
         plan: &RewindPlan,
         selected_paths: &[PathBuf],
     ) -> anyhow::Result<()> {
+        self.apply_plan_at_with_file_sync(root, target, plan, selected_paths, true)
+    }
+
+    fn apply_plan_at_with_file_sync(
+        &self,
+        root: &Path,
+        target: &BTreeMap<Vec<u8>, FlatEntry>,
+        plan: &RewindPlan,
+        selected_paths: &[PathBuf],
+        sync_each_file: bool,
+    ) -> anyhow::Result<()> {
         let mut applied_operations = 0_usize;
         let changed: BTreeSet<Vec<u8>> = plan
             .changes
@@ -3006,7 +3252,9 @@ impl AgitRepository {
                 remove_path(&destination)?;
             }
             match flat.entry.kind {
-                EntryKind::File => self.restore_file(&destination, &flat.entry)?,
+                EntryKind::File => {
+                    self.restore_file_with_sync(&destination, &flat.entry, sync_each_file)?
+                }
                 EntryKind::Symlink => {
                     std::os::unix::fs::symlink(
                         OsString::from_vec(flat.entry.link_target.clone()),
@@ -3071,6 +3319,15 @@ impl AgitRepository {
     }
 
     fn restore_file(&self, destination: &Path, entry: &TreeEntry) -> anyhow::Result<()> {
+        self.restore_file_with_sync(destination, entry, true)
+    }
+
+    fn restore_file_with_sync(
+        &self,
+        destination: &Path,
+        entry: &TreeEntry,
+        sync_file: bool,
+    ) -> anyhow::Result<()> {
         let blob: Blob = self.store.read_struct(
             &entry.target.context("file missing blob ID")?,
             ObjectKind::Blob,
@@ -3082,7 +3339,9 @@ impl AgitRepository {
             anyhow::ensure!(bytes.len() == chunk.len as usize, "chunk length mismatch");
             temp.write_all(&bytes)?;
         }
-        temp.as_file().sync_all()?;
+        if sync_file {
+            temp.as_file().sync_all()?;
+        }
         fs::set_permissions(temp.path(), fs::Permissions::from_mode(entry.mode))?;
         if let Some(xattrs_id) = entry.xattrs {
             let xattrs: Xattrs = self.store.read_struct(&xattrs_id, ObjectKind::Xattrs)?;
@@ -3771,4 +4030,8 @@ fn is_not_found(error: &anyhow::Error) -> bool {
             .downcast_ref::<std::io::Error>()
             .is_some_and(|io| io.kind() == std::io::ErrorKind::NotFound)
     })
+}
+
+fn duration_ms(duration: std::time::Duration) -> u64 {
+    u64::try_from(duration.as_millis()).unwrap_or(u64::MAX)
 }

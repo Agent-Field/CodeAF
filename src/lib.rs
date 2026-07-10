@@ -20,6 +20,7 @@ pub mod remote_crypto;
 pub mod repository;
 pub mod retention;
 pub mod s3_remote;
+pub mod self_write;
 pub mod shrink;
 pub mod sorted_dir;
 pub mod sqlite_adapter;
@@ -35,9 +36,9 @@ pub use estimate::CaptureEstimate;
 pub use gc::GcReport;
 pub use radar::{EventPage, RadarEvent};
 pub use repository::{
-    new_fork_id, AgitRepository, BisectCheck, BisectOutcome, ClaimOutcome, CoordOutcome,
-    DiffChange, DiffSummary, FidelityAspect, FidelityReport, ForkPlan, ForkRemoval, ForkSummary,
-    ForkUpdates, MaterializationReport, MergeOutcome, MissingMaterializationPath, ReleaseOutcome,
-    RepositoryStatus, RewindPlan, SnapshotSummary, SyncDisposition, SyncFollowOutcome,
-    SyncFollowSession, SyncPullOutcome,
+    new_fork_id, AgitRepository, ApplyTimings, BisectCheck, BisectOutcome, ClaimOutcome,
+    CoordOutcome, DiffChange, DiffSummary, FidelityAspect, FidelityReport, ForkPlan, ForkRemoval,
+    ForkSummary, ForkUpdates, MaterializationReport, MergeOutcome, MissingMaterializationPath,
+    ReleaseOutcome, RepositoryStatus, RewindPlan, SnapshotSummary, SyncDisposition,
+    SyncFollowOutcome, SyncFollowSession, SyncPullOutcome,
 };
