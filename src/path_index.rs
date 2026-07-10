@@ -4,6 +4,7 @@ use crate::model::{EntryKind, ObjectId, TreeEntry};
 use anyhow::Context;
 use rusqlite::{params, Connection, OptionalExtension};
 use std::path::Path;
+use std::time::Duration;
 
 pub const CHILD_BATCH: usize = 512;
 
@@ -66,6 +67,13 @@ impl PathIndex {
         anyhow::ensure!(!self.transaction_active, "path-index transaction is active");
         self.connection.execute_batch("BEGIN IMMEDIATE")?;
         self.transaction_active = true;
+        Ok(())
+    }
+
+    pub fn backup_to(&self, path: &Path) -> anyhow::Result<()> {
+        let mut destination = Connection::open(path)?;
+        let backup = rusqlite::backup::Backup::new(&self.connection, &mut destination)?;
+        backup.run_to_completion(256, Duration::from_millis(1), None)?;
         Ok(())
     }
 
@@ -159,6 +167,30 @@ impl PathIndex {
         })
         .collect::<Result<Vec<_>, _>>()
         .map_err(Into::into)
+    }
+
+    pub fn entries_after(
+        &self,
+        after_path: Option<&[u8]>,
+        limit: usize,
+    ) -> anyhow::Result<Vec<(Vec<u8>, TreeEntry)>> {
+        let after_path = after_path.unwrap_or_default();
+        let mut statement = self.connection.prepare(
+            "SELECT path, entry FROM entries
+             WHERE path > ?1 ORDER BY path LIMIT ?2",
+        )?;
+        let rows = statement.query_map(params![after_path, limit as i64], |row| {
+            Ok((row.get::<_, Vec<u8>>(0)?, row.get::<_, Vec<u8>>(1)?))
+        })?;
+        let mut entries = Vec::new();
+        for row in rows {
+            let (path, entry) = row?;
+            entries.push((
+                path,
+                serde_json::from_slice(&entry).context("decode indexed tree entry")?,
+            ));
+        }
+        Ok(entries)
     }
 
     pub fn set_root(&self, root: &ObjectId, generation: &str) -> anyhow::Result<()> {

@@ -66,6 +66,8 @@ pub struct ForkReport {
     /// File entries recreated by linking to an inode already forked.
     pub hardlinked_files: u64,
     pub elapsed: Duration,
+    /// The platform cloned the hierarchy in one atomic operation.
+    pub atomic_hierarchy: bool,
 }
 
 #[derive(Default)]
@@ -162,6 +164,17 @@ pub(crate) fn fork_workspace_excluding(
     }
 
     let staging_path = unique_staging_path(&destination_parent, destination_name);
+    #[cfg(target_os = "macos")]
+    if let Some(report) = try_atomic_hierarchy_clone(
+        &source,
+        &staging_path,
+        &destination,
+        &destination_parent,
+        excluded,
+        started,
+    )? {
+        return Ok(report);
+    }
     fs::create_dir(&staging_path)
         .with_context(|| format!("create fork staging directory {}", staging_path.display()))?;
     let mut staging = StagingDirectory {
@@ -319,7 +332,163 @@ pub(crate) fn fork_workspace_excluding(
         copied_bytes: counters.copied_bytes,
         hardlinked_files: counters.hardlinked_files,
         elapsed: started.elapsed(),
+        atomic_hierarchy: false,
     })
+}
+
+#[cfg(target_os = "macos")]
+fn try_atomic_hierarchy_clone(
+    source: &Path,
+    staging_path: &Path,
+    destination: &Path,
+    destination_parent: &Path,
+    excluded: &[&Path],
+    started: Instant,
+) -> anyhow::Result<Option<ForkReport>> {
+    match native_clone(source, staging_path) {
+        Ok(()) => {}
+        Err(_) => {
+            if staging_path.exists() {
+                fs::remove_dir_all(staging_path)?;
+            }
+            return Ok(None);
+        }
+    }
+    let mut staging = StagingDirectory {
+        path: staging_path.to_owned(),
+        armed: true,
+    };
+    for relative in excluded {
+        anyhow::ensure!(
+            !relative.is_absolute()
+                && relative
+                    .components()
+                    .all(|component| matches!(component, std::path::Component::Normal(_))),
+            "fork exclusion must be a safe relative path"
+        );
+        let path = staging_path.join(relative);
+        let Ok(metadata) = fs::symlink_metadata(&path) else {
+            continue;
+        };
+        if metadata.is_dir() && !metadata.file_type().is_symlink() {
+            fs::remove_dir_all(path)?;
+        } else {
+            fs::remove_file(path)?;
+        }
+    }
+    repair_directory_metadata(source, staging_path)?;
+    let (counters, source_has_hardlinks) = measure_cloned_hierarchy(source, staging_path)?;
+    if source_has_hardlinks || counters.skipped_special > 0 {
+        return Ok(None);
+    }
+    fs::rename(staging_path, destination)
+        .with_context(|| format!("publish fork {}", destination.display()))?;
+    File::open(destination_parent)?.sync_all()?;
+    staging.armed = false;
+    Ok(Some(ForkReport {
+        tier: ForkTier::NativeCow,
+        files: counters.files,
+        directories: counters.directories,
+        symlinks: counters.symlinks,
+        fifos: counters.fifos,
+        skipped_special: counters.skipped_special,
+        logical_bytes: counters.logical_bytes,
+        cloned_bytes: counters.logical_bytes,
+        copied_bytes: 0,
+        hardlinked_files: counters.hardlinked_files,
+        elapsed: started.elapsed(),
+        atomic_hierarchy: true,
+    }))
+}
+
+#[cfg(target_os = "macos")]
+fn repair_directory_metadata(source: &Path, destination: &Path) -> anyhow::Result<()> {
+    struct Frame {
+        source: PathBuf,
+        destination: PathBuf,
+        metadata: Metadata,
+        entries: ReadDir,
+    }
+
+    let metadata = fs::symlink_metadata(source)?;
+    let mut stack = vec![Frame {
+        source: source.to_owned(),
+        destination: destination.to_owned(),
+        metadata,
+        entries: fs::read_dir(source)?,
+    }];
+    while let Some(frame) = stack.last_mut() {
+        let Some(entry) = frame.entries.next() else {
+            let completed = stack.pop().expect("directory stack is nonempty");
+            apply_metadata(
+                &completed.source,
+                &completed.destination,
+                &completed.metadata,
+                false,
+            )?;
+            continue;
+        };
+        let entry = entry?;
+        let metadata = fs::symlink_metadata(entry.path())?;
+        if metadata.is_dir() && !metadata.file_type().is_symlink() {
+            let relative = entry.path().strip_prefix(source)?.to_owned();
+            let destination = destination.join(relative);
+            stack.push(Frame {
+                source: entry.path(),
+                destination,
+                metadata,
+                entries: fs::read_dir(entry.path())?,
+            });
+        }
+    }
+    Ok(())
+}
+
+#[cfg(target_os = "macos")]
+fn measure_cloned_hierarchy(source: &Path, root: &Path) -> anyhow::Result<(Counters, bool)> {
+    let mut counters = Counters {
+        directories: 1,
+        ..Counters::default()
+    };
+    let mut directories = vec![fs::read_dir(root)?];
+    let mut hardlinks = std::collections::HashSet::<Inode>::new();
+    let mut source_has_hardlinks = false;
+    while let Some(entries) = directories.last_mut() {
+        let Some(entry) = entries.next() else {
+            directories.pop();
+            continue;
+        };
+        let entry = entry?;
+        let metadata = fs::symlink_metadata(entry.path())?;
+        let file_type = metadata.file_type();
+        if file_type.is_dir() {
+            counters.directories += 1;
+            directories.push(fs::read_dir(entry.path())?);
+        } else if file_type.is_file() {
+            counters.files += 1;
+            counters.logical_bytes = counters.logical_bytes.saturating_add(metadata.len());
+            if metadata.nlink() > 1
+                && !hardlinks.insert(Inode {
+                    device: metadata.dev(),
+                    number: metadata.ino(),
+                })
+            {
+                counters.hardlinked_files += 1;
+            }
+            let relative = entry.path().strip_prefix(root)?.to_owned();
+            if fs::symlink_metadata(source.join(relative))?.nlink() > 1 {
+                source_has_hardlinks = true;
+            }
+        } else if file_type.is_symlink() {
+            counters.symlinks += 1;
+        } else if file_type.is_fifo() {
+            counters.fifos += 1;
+        } else {
+            counters.skipped_special += 1;
+            fs::remove_file(entry.path())?;
+        }
+    }
+    Ok((counters, source_has_hardlinks))
 }
 
 fn create_fifo(path: &Path, mode: u32) -> io::Result<()> {
@@ -575,5 +744,27 @@ mod tests {
         let error = fork_workspace(&source, &existing).unwrap_err();
         assert!(error.to_string().contains("already exists"));
         assert!(source.join("kept").exists());
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn atomic_hierarchy_fast_path_preserves_directory_metadata() {
+        let temporary = tempfile::tempdir().unwrap();
+        let source = temporary.path().join("source");
+        let destination = temporary.path().join("destination");
+        fs::create_dir_all(source.join("nested/deep")).unwrap();
+        fs::write(source.join("nested/deep/file"), b"atomic clone").unwrap();
+        let report = fork_workspace(&source, &destination).unwrap();
+        assert!(report.atomic_hierarchy);
+        assert_eq!(
+            fs::metadata(source.join("nested")).unwrap().mtime_nsec(),
+            fs::metadata(destination.join("nested"))
+                .unwrap()
+                .mtime_nsec()
+        );
+        assert_eq!(
+            fs::read(destination.join("nested/deep/file")).unwrap(),
+            b"atomic clone"
+        );
     }
 }

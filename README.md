@@ -239,7 +239,24 @@ Every actual rewind first publishes a complete `pre_rewind` snapshot. Rewinding 
 
 The current implementation covers the recovery engine, continuous protection, warm forks, the process wrapper, exact merge planning with verification gating, exact reachability GC, MCP, and follow-only multi-machine sync over directories or persistent SSH. S3/WebDAV adapters, richer class-directed merge strategies, and provenance-accelerated teleport remain subsequent milestones from [the system specification](DISTRIBUTED_AGENT_WORKSPACE_SPEC.md).
 
-On a local APFS benchmark with one flat directory containing 50,000 files, a one-file watcher delta sealed in 0.165-0.170 seconds. The path index is disk-backed; the process does not retain a repository-sized in-memory file map.
+## Performance Benchmarks
+
+The benchmark harness runs every sample in a fresh subprocess and reports wall time, user+system CPU, peak RSS, operations per second, byte throughput where meaningful, and the inner platform-clone time. It covers streaming chunking, paged Merkle diff, reverse-index timeline reads, cold seal, 100-file delta seal, full-state fork, and six-month retention GC.
+
+Measured baselines, optimization comparisons, methodology, and unproven reference-scale gaps are recorded in [BENCHMARKS.md](BENCHMARKS.md).
+
+```bash
+# Three-sample developer profile: 5k files, 128 MiB stream, 721-snapshot history.
+cargo bench --bench engine
+
+# Fail when the portable regression ceilings are exceeded.
+AGIT_BENCH_ENFORCE=1 cargo bench --bench engine
+
+# Specification profile: 1M files, five samples, 1 GiB stream, 17,281 snapshots.
+AGIT_BENCH_PROFILE=reference cargo bench --bench engine
+```
+
+Every dataset dimension can be overridden with `AGIT_BENCH_FILES`, `AGIT_BENCH_CHANGED_FILES`, `AGIT_BENCH_CHUNK_BYTES`, `AGIT_BENCH_WARM_BYTES`, `AGIT_BENCH_HISTORY_SNAPSHOTS`, `AGIT_BENCH_LOOKUP_ITERATIONS`, and `AGIT_BENCH_ITERATIONS`. CI runs a smaller enforced smoke profile on both macOS and Linux. The path index, retention marker, and GC mark set are disk-backed; benchmark RSS therefore measures bounded working state rather than a repository-sized in-memory map.
 
 ## Safety Model
 

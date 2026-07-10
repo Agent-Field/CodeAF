@@ -40,3 +40,7 @@ lto = "thin"
 opt-level = 3
 panic = "abort"
 strip = true
+
+[[bench]]
+name = "engine"
+harness = false

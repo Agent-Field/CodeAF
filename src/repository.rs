@@ -162,6 +162,8 @@ pub struct ForkSummary {
     pub copied_bytes: u64,
     pub hardlinked_files: u64,
     pub elapsed_ms: u64,
+    #[serde(default)]
+    pub atomic_hierarchy: bool,
     pub created_at: i64,
 }
 
@@ -882,7 +884,13 @@ impl AgitRepository {
             .saturating_add(usage.symlinks)
             .saturating_add(usage.fifos)
             .saturating_add(usage.special);
-        let projected_native_cow_ms = ceiling_div(entries.saturating_mul(1_000), 100_000).max(10);
+        let metadata_entries_per_second = if cfg!(target_os = "macos") {
+            7_500
+        } else {
+            2_500
+        };
+        let projected_native_cow_ms =
+            ceiling_div(entries.saturating_mul(1_000), metadata_entries_per_second).max(10);
         let projected_streaming_copy_ms = projected_native_cow_ms.saturating_add(ceiling_div(
             usage.logical_bytes.saturating_mul(1_000),
             250 * 1024 * 1024,
@@ -926,13 +934,22 @@ impl AgitRepository {
         if copied_identity.exists() {
             fs::remove_file(&copied_identity)?;
         }
-        let (fork_repository, fork_head) = AgitRepository::watch(&destination)?;
-        if !self.snapshots_match_fork(&base, &fork_repository, &fork_head)? {
-            bail!(
-                "source changed while the fork was being created; the isolated copy remains at {} for inspection",
-                destination.display()
-            );
-        }
+        let fork_head = if report.atomic_hierarchy {
+            self.verify_atomic_fork(&base, &destination, &report)?;
+            let fork_repository = AgitRepository::attach_existing_snapshot(&destination, base)?;
+            self.open_path_index()?
+                .backup_to(&fork_repository.workspace_data_dir().join("paths.sqlite3"))?;
+            base
+        } else {
+            let (fork_repository, fork_head) = AgitRepository::watch(&destination)?;
+            if !self.snapshots_match_fork(&base, &fork_repository, &fork_head)? {
+                bail!(
+                    "source changed while the fork was being created; the isolated copy remains at {} for inspection",
+                    destination.display()
+                );
+            }
+            fork_head
+        };
 
         let summary = fork_summary(&plan.name, destination, base, fork_head, report);
         let record_path = self.forks_dir().join(format!("{}.json", plan.name));
@@ -944,6 +961,151 @@ impl AgitRepository {
     pub fn fork(&mut self, name: &str, destination: &Path) -> anyhow::Result<ForkSummary> {
         let plan = self.prepare_fork(name, destination)?;
         self.materialize_fork(plan)
+    }
+
+    fn attach_existing_snapshot(root: &Path, snapshot_id: ObjectId) -> anyhow::Result<Self> {
+        let root = root.canonicalize()?;
+        fs::create_dir_all(root.join(".agit"))?;
+        let workspace_id = new_workspace_id(&root);
+        atomic_write(
+            &root.join(WORKSPACE_FILE),
+            format!("{workspace_id}\n").as_bytes(),
+        )?;
+        let mut store = ObjectStore::open(data_root()?.join("store-v1"))?;
+        let snapshot: Snapshot = store.read_struct(&snapshot_id, ObjectKind::Snapshot)?;
+        store.ensure_workspace(&workspace_id, root.as_os_str().as_bytes())?;
+        let family_id = ensure_family_id(&root, &store, &workspace_id)?;
+        store.publish_snapshot(
+            &workspace_id,
+            snapshot_id,
+            snapshot.sealed_at_secs,
+            Some("atomic fork base".to_owned()),
+            SnapshotTrigger::ForkBase,
+        )?;
+        Ok(Self {
+            root,
+            workspace_id,
+            family_id,
+            store,
+        })
+    }
+
+    fn verify_atomic_fork(
+        &self,
+        base: &ObjectId,
+        destination: &Path,
+        report: &ForkReport,
+    ) -> anyhow::Result<()> {
+        let snapshot: Snapshot = self.store.read_struct(base, ObjectKind::Snapshot)?;
+        let index = self.open_path_index()?;
+        anyhow::ensure!(
+            index.root(&self.store_generation()?)? == Some(snapshot.root_tree),
+            "source path index no longer describes the fork base"
+        );
+        let usage = index.usage()?;
+        let expected_entries = usage
+            .files
+            .saturating_add(usage.directories.saturating_sub(1))
+            .saturating_add(usage.symlinks)
+            .saturating_add(usage.fifos)
+            .saturating_add(usage.special);
+        let policy = CapturePolicy::load(&self.root)?;
+        let counts_match = report.files == usage.files
+            && report.directories == usage.directories
+            && report.symlinks == usage.symlinks
+            && report.fifos == usage.fifos
+            && report.skipped_special == usage.special;
+        if policy.rule_strings().is_empty() && counts_match {
+            let mut after: Option<Vec<u8>> = None;
+            loop {
+                let entries = index.entries_after(after.as_deref(), CHILD_BATCH)?;
+                if entries.is_empty() {
+                    break;
+                }
+                let paths: Vec<_> = entries.iter().map(|(path, _)| path.clone()).collect();
+                let cached = self.store.cached_files(&self.workspace_id, &paths)?;
+                for ((relative, indexed), cached) in entries.iter().zip(&cached) {
+                    self.verify_atomic_entry(destination, relative, indexed, cached.as_ref())?;
+                }
+                after = entries.last().map(|(path, _)| path.clone());
+            }
+            return Ok(());
+        }
+
+        let mut visited = 0_u64;
+        let mut stack = vec![destination.to_owned()];
+        while let Some(directory) = stack.pop() {
+            for entry in fs::read_dir(&directory)? {
+                let entry = entry?;
+                let path = entry.path();
+                let relative = path.strip_prefix(destination)?.as_os_str().as_bytes();
+                if relative == WORKSPACE_FILE_BYTES || policy.excludes_bytes(relative) {
+                    continue;
+                }
+                let indexed = index.entry(relative)?.with_context(|| {
+                    format!(
+                        "atomic fork added `{}` after its base seal",
+                        String::from_utf8_lossy(relative)
+                    )
+                })?;
+                let cached = if indexed.kind == EntryKind::File {
+                    self.store.cached_file(&self.workspace_id, relative)?
+                } else {
+                    None
+                };
+                self.verify_atomic_entry(destination, relative, &indexed, cached.as_ref())?;
+                if indexed.kind == EntryKind::Directory {
+                    stack.push(path);
+                }
+                visited += 1;
+            }
+        }
+        anyhow::ensure!(
+            visited == expected_entries,
+            "atomic fork is missing {} base path(s)",
+            expected_entries.saturating_sub(visited)
+        );
+        Ok(())
+    }
+
+    fn verify_atomic_entry(
+        &self,
+        destination: &Path,
+        relative: &[u8],
+        indexed: &TreeEntry,
+        cached: Option<&CachedFile>,
+    ) -> anyhow::Result<()> {
+        let path = safe_join(destination, relative)?;
+        let metadata = fs::symlink_metadata(&path)?;
+        anyhow::ensure!(
+            entry_matches_metadata(indexed, &metadata),
+            "atomic fork metadata changed for `{}`",
+            String::from_utf8_lossy(relative)
+        );
+        match indexed.kind {
+            EntryKind::Directory => anyhow::ensure!(
+                self.capture_xattrs(&path)? == indexed.xattrs,
+                "atomic fork xattrs changed for `{}`",
+                String::from_utf8_lossy(relative)
+            ),
+            EntryKind::File => {
+                let source = safe_join(&self.root, relative)?;
+                let source_metadata = fs::symlink_metadata(source)?;
+                let cached = cached.context("fork base file cache is incomplete")?;
+                anyhow::ensure!(
+                    cached_matches(cached, &source_metadata)
+                        && indexed.target == Some(cached.blob_id),
+                    "source changed while its atomic fork was created"
+                );
+            }
+            EntryKind::Symlink => anyhow::ensure!(
+                fs::read_link(&path)?.as_os_str().as_bytes() == indexed.link_target,
+                "atomic fork symlink changed for `{}`",
+                String::from_utf8_lossy(relative)
+            ),
+            EntryKind::Fifo | EntryKind::SocketMarker => {}
+        }
+        Ok(())
     }
 
     pub fn forks(&self) -> anyhow::Result<Vec<ForkSummary>> {
@@ -2852,6 +3014,23 @@ fn cached_matches(cached: &CachedFile, metadata: &fs::Metadata) -> bool {
         && cached.mode == metadata.mode()
 }
 
+fn entry_matches_metadata(entry: &TreeEntry, metadata: &fs::Metadata) -> bool {
+    let file_type = metadata.file_type();
+    let kind_matches = match entry.kind {
+        EntryKind::File => file_type.is_file(),
+        EntryKind::Directory => file_type.is_dir(),
+        EntryKind::Symlink => file_type.is_symlink(),
+        EntryKind::Fifo => file_type.is_fifo(),
+        EntryKind::SocketMarker => file_type.is_socket(),
+    };
+    let (secs, nanos) = metadata_time(metadata);
+    kind_matches
+        && entry.mode == metadata.mode()
+        && entry.mtime_secs == secs
+        && entry.mtime_nanos == nanos
+        && (entry.kind != EntryKind::File || entry.size == metadata.len())
+}
+
 fn cached_from_metadata(metadata: &fs::Metadata, blob_id: ObjectId) -> CachedFile {
     CachedFile {
         device: metadata.dev(),
@@ -2938,6 +3117,7 @@ fn fork_summary(
         copied_bytes: report.copied_bytes,
         hardlinked_files: report.hardlinked_files,
         elapsed_ms: report.elapsed.as_millis().min(u64::MAX as u128) as u64,
+        atomic_hierarchy: report.atomic_hierarchy,
         created_at: now().0,
     }
 }

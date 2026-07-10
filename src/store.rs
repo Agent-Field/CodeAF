@@ -371,6 +371,14 @@ impl ObjectStore {
         self.catalog.cached_file(workspace_id, path)
     }
 
+    pub fn cached_files(
+        &self,
+        workspace_id: &str,
+        paths: &[Vec<u8>],
+    ) -> anyhow::Result<Vec<Option<CachedFile>>> {
+        self.catalog.cached_files(workspace_id, paths)
+    }
+
     pub fn cache_file(
         &self,
         workspace_id: &str,

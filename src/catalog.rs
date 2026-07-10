@@ -140,6 +140,65 @@ impl Catalog {
             .transpose()
     }
 
+    pub fn cached_files(
+        &self,
+        workspace_id: &str,
+        paths: &[Vec<u8>],
+    ) -> anyhow::Result<Vec<Option<CachedFile>>> {
+        let mut statement = self.conn.prepare(
+            "SELECT device, inode, size, mtime_secs, mtime_nanos,
+                    ctime_secs, ctime_nanos, mode, blob_id
+             FROM file_cache WHERE workspace_id = ?1 AND path = ?2",
+        )?;
+        let mut result = Vec::with_capacity(paths.len());
+        for path in paths {
+            let raw = statement
+                .query_row(params![workspace_id, path], |row| {
+                    Ok((
+                        row.get::<_, i64>(0)? as u64,
+                        row.get::<_, i64>(1)? as u64,
+                        row.get::<_, i64>(2)? as u64,
+                        row.get(3)?,
+                        row.get::<_, i64>(4)?,
+                        row.get(5)?,
+                        row.get::<_, i64>(6)?,
+                        row.get::<_, i64>(7)? as u32,
+                        row.get::<_, Vec<u8>>(8)?,
+                    ))
+                })
+                .optional()?;
+            result.push(
+                raw.map(
+                    |(
+                        device,
+                        inode,
+                        size,
+                        mtime_secs,
+                        mtime_nanos,
+                        ctime_secs,
+                        ctime_nanos,
+                        mode,
+                        id,
+                    )| {
+                        Ok::<CachedFile, anyhow::Error>(CachedFile {
+                            device,
+                            inode,
+                            size,
+                            mtime_secs,
+                            mtime_nanos,
+                            ctime_secs,
+                            ctime_nanos,
+                            mode,
+                            blob_id: vec_to_id(id)?,
+                        })
+                    },
+                )
+                .transpose()?,
+            );
+        }
+        Ok(result)
+    }
+
     pub fn cache_file(
         &self,
         workspace_id: &str,

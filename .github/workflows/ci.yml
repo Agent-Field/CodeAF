@@ -19,4 +19,14 @@ jobs:
       - run: cargo clippy --all-targets --all-features -- -D warnings
       - run: cargo test --all
       - run: cargo build --release
+      - run: cargo bench --bench engine
+        env:
+          AGIT_BENCH_FILES: "1000"
+          AGIT_BENCH_CHANGED_FILES: "100"
+          AGIT_BENCH_CHUNK_BYTES: "8388608"
+          AGIT_BENCH_WARM_BYTES: "8388608"
+          AGIT_BENCH_ITERATIONS: "1"
+          AGIT_BENCH_HISTORY_SNAPSHOTS: "120"
+          AGIT_BENCH_LOOKUP_ITERATIONS: "100"
+          AGIT_BENCH_ENFORCE: "1"
       - run: cargo package --locked
