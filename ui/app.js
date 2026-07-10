@@ -44,11 +44,11 @@ function extractToken() {
   const fragment = new URLSearchParams(location.hash.slice(1));
   const launchToken = fragment.get("token");
   if (launchToken) {
-    sessionStorage.setItem("agit-ui-token", launchToken);
+    sessionStorage.setItem("furrow-ui-token", launchToken);
     history.replaceState(null, "", location.pathname);
   }
-  state.token = sessionStorage.getItem("agit-ui-token") || "";
-  if (!state.token) throw new Error("Mission Control capability is missing. Reopen it with `agit ui`.");
+  state.token = sessionStorage.getItem("furrow-ui-token") || "";
+  if (!state.token) throw new Error("Mission Control capability is missing. Reopen it with `furrow ui`.");
 }
 
 async function api(path, options = {}) {
@@ -56,7 +56,7 @@ async function api(path, options = {}) {
   headers.set("Authorization", `Bearer ${state.token}`);
   if (options.method === "POST") {
     headers.set("Content-Type", "application/json");
-    headers.set("X-Agit-UI", "1");
+    headers.set("X-Furrow-UI", "1");
   }
   const response = await fetch(path, { ...options, headers, cache: "no-store" });
   const payload = await response.json().catch(() => ({}));
@@ -193,12 +193,12 @@ function renderForks() {
     const badgeIcon = fork.radar_stale ? "triangle-alert" : fork.conflicts ? "triangle-alert" : "check";
     badge.append(icon(badgeIcon), document.createTextNode(fork.radar_stale ? "Offline" : fork.conflicts ? `${fork.conflicts} collision${fork.conflicts === 1 ? "" : "s"}` : "Clear"));
     badge.dataset.tooltip = fork.radar_stale
-      ? "agit cannot currently read this universe; its last sealed state is preserved"
+      ? "furrow cannot currently read this universe; its last sealed state is preserved"
       : fork.conflicts
         ? "This universe and at least one other universe changed the same path differently"
         : "No other active universe changed the same path differently";
     stateCell.append(badge);
-    const cost = document.createElement("td"); cost.className = "cost-cell"; cost.textContent = `${formatTier(fork.tier)} · ${fork.elapsed_ms} ms`; cost.dataset.tooltip = `agit created this isolated workspace in ${fork.elapsed_ms} ms using ${formatTierLong(fork.tier)}`;
+    const cost = document.createElement("td"); cost.className = "cost-cell"; cost.textContent = `${formatTier(fork.tier)} · ${fork.elapsed_ms} ms`; cost.dataset.tooltip = `furrow created this isolated workspace in ${fork.elapsed_ms} ms using ${formatTierLong(fork.tier)}`;
     const head = document.createElement("td"); head.className = "head-cell"; const headCode = document.createElement("code"); headCode.textContent = fork.head_snapshot.slice(0, 12); headCode.dataset.tooltip = `Latest universe snapshot: ${fork.head_snapshot}`; head.append(headCode);
     const actions = document.createElement("td"); const actionSet = document.createElement("div"); actionSet.className = "row-actions";
     actionSet.append(
@@ -324,14 +324,14 @@ async function previewRewind(snapshot) {
     const body = document.createDocumentFragment();
     const summary = document.createElement("p"); summary.className = "dialog-summary";
     summary.textContent = plan.changes.length
-      ? `${plan.changes.length} path${plan.changes.length === 1 ? "" : "s"} will change. agit creates a complete undo point before restoring anything.`
+      ? `${plan.changes.length} path${plan.changes.length === 1 ? "" : "s"} will change. furrow creates a complete undo point before restoring anything.`
       : "The source folder already matches this restore point. Rewind would not change any files.";
     const id = document.createElement("code"); id.className = "dialog-id"; id.textContent = snapshot.id;
     body.append(summary, id, changeList(plan.changes));
     const apply = commandButton("undo-2", "Restore this point", async (control) => {
       await guarded(control, async () => {
         await post("/api/v1/rewind/apply", { snapshot: snapshot.id, confirm_snapshot: snapshot.id, preview_digest: plan.preview_digest, paths: [], sqlite_consistent: false });
-        elements.inspector.close(); toast("agit restored the workspace"); await refresh();
+        elements.inspector.close(); toast("furrow restored the workspace"); await refresh();
       });
     }, "primary");
     apply.disabled = plan.changes.length === 0;
@@ -351,11 +351,11 @@ async function previewMerge(fork) {
       const apply = commandButton("git-merge", "Merge verified result", async (control) => {
         await guarded(control, async () => {
           await post("/api/v1/merge/apply", { fork: fork.name, preview_digest: preview.preview_digest });
-          elements.inspector.close(); toast("agit merged the verified universe"); await refresh();
+          elements.inspector.close(); toast("furrow merged the verified universe"); await refresh();
         });
       }, "primary");
       apply.disabled = !state.config.merge_apply;
-      apply.title = state.config.merge_apply ? "" : "Restart agit ui with --merge-check to enable merge";
+      apply.title = state.config.merge_apply ? "" : "Restart furrow ui with --merge-check to enable merge";
       actions.push(apply);
     }
     openDialog("Merge preview", fork.name, body, actions);
@@ -369,7 +369,7 @@ function confirmDiscard(fork) {
   const discard = commandButton("trash-2", "Discard universe", async (control) => {
     await guarded(control, async () => {
       await post("/api/v1/forks/discard", { fork_id: fork.fork_id, confirm_fork_id: fork.fork_id });
-      elements.inspector.close(); toast("agit discarded the universe"); await refresh();
+      elements.inspector.close(); toast("furrow discarded the universe"); await refresh();
     });
   }, "danger");
   openDialog("Discard universe", fork.name, body, [discard]);

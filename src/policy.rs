@@ -5,8 +5,8 @@ use std::fs;
 use std::os::unix::ffi::OsStrExt;
 use std::path::Path;
 
-pub const POLICY_FILE: &str = ".agitpolicy";
-pub const POLICY_FILE_BYTES: &[u8] = b".agitpolicy";
+pub const POLICY_FILE: &str = ".furrowpolicy";
+pub const POLICY_FILE_BYTES: &[u8] = b".furrowpolicy";
 const MAX_POLICY_BYTES: u64 = 64 * 1024;
 const MAX_RULES: usize = 1_024;
 
@@ -27,13 +27,13 @@ impl CapturePolicy {
         };
         anyhow::ensure!(
             metadata.is_file() && !metadata.file_type().is_symlink(),
-            ".agitpolicy must be a regular file"
+            ".furrowpolicy must be a regular file"
         );
         anyhow::ensure!(
             metadata.len() <= MAX_POLICY_BYTES,
-            ".agitpolicy exceeds 64 KiB"
+            ".furrowpolicy exceeds 64 KiB"
         );
-        let contents = fs::read_to_string(&path).context(".agitpolicy must be valid UTF-8")?;
+        let contents = fs::read_to_string(&path).context(".furrowpolicy must be valid UTF-8")?;
         let mut excluded = Vec::new();
         for (index, raw) in contents.lines().enumerate() {
             let line = raw.trim();
@@ -42,18 +42,18 @@ impl CapturePolicy {
             }
             let value = line.strip_prefix("exclude ").with_context(|| {
                 format!(
-                    ".agitpolicy line {} must use `exclude <relative-subtree>`",
+                    ".furrowpolicy line {} must use `exclude <relative-subtree>`",
                     index + 1
                 )
             })?;
             let value = value.trim().trim_end_matches('/');
             let bytes = value.as_bytes();
             validate_rule(bytes)
-                .with_context(|| format!("invalid .agitpolicy line {}", index + 1))?;
+                .with_context(|| format!("invalid .furrowpolicy line {}", index + 1))?;
             excluded.push(bytes.to_vec());
             anyhow::ensure!(
                 excluded.len() <= MAX_RULES,
-                ".agitpolicy exceeds 1024 rules"
+                ".furrowpolicy exceeds 1024 rules"
             );
         }
         excluded.sort();
@@ -120,8 +120,8 @@ fn validate_rule(rule: &[u8]) -> anyhow::Result<()> {
     );
     let first = rule.split(|byte| *byte == b'/').next().unwrap_or_default();
     anyhow::ensure!(
-        first != b".git" && first != b".agit" && rule != POLICY_FILE_BYTES,
-        "Git and agit control state cannot be excluded"
+        first != b".git" && first != b".furrow" && rule != POLICY_FILE_BYTES,
+        "Git and furrow control state cannot be excluded"
     );
     Ok(())
 }

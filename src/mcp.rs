@@ -1,7 +1,7 @@
 //! Lightweight Model Context Protocol server over newline-delimited stdio.
 
 use crate::model::{id_hex, SnapshotTrigger};
-use crate::repository::AgitRepository;
+use crate::repository::FurrowRepository;
 use anyhow::Context;
 use serde::Serialize;
 use serde_json::{json, Map, Value};
@@ -19,7 +19,7 @@ enum Lifecycle {
     Ready,
 }
 
-pub fn run(repository: AgitRepository) -> anyhow::Result<()> {
+pub fn run(repository: FurrowRepository) -> anyhow::Result<()> {
     run_with_io(
         repository,
         BufReader::new(io::stdin().lock()),
@@ -28,7 +28,7 @@ pub fn run(repository: AgitRepository) -> anyhow::Result<()> {
 }
 
 fn run_with_io(
-    mut repository: AgitRepository,
+    mut repository: FurrowRepository,
     mut input: impl BufRead,
     mut output: impl Write,
 ) -> anyhow::Result<()> {
@@ -118,8 +118,8 @@ fn run_with_io(
                                     "protocolVersion": protocol,
                                     "capabilities": {"tools": {"listChanged": false}},
                                     "serverInfo": {
-                                        "name": "agit",
-                                        "title": "agit Working-State Engine",
+                                        "name": "furrow",
+                                        "title": "furrow Working-State Engine",
                                         "version": env!("CARGO_PKG_VERSION"),
                                         "description": "Reversible snapshots, isolated forks, and verified convergence"
                                     },
@@ -167,13 +167,13 @@ fn run_with_io(
 }
 
 fn call_tool(
-    repository: &mut AgitRepository,
+    repository: &mut FurrowRepository,
     name: &str,
     arguments: &Map<String, Value>,
 ) -> anyhow::Result<Value> {
     validate_argument_keys(name, arguments)?;
     match name {
-        "agit.status" => {
+        "furrow.status" => {
             let status = repository.status()?;
             if optional_bool(arguments, "fidelity")?.unwrap_or(false) {
                 Ok(json!({"status": status, "fidelity": repository.fidelity()?}))
@@ -181,7 +181,7 @@ fn call_tool(
                 serialize(status)
             }
         }
-        "agit.timeline" => {
+        "furrow.timeline" => {
             let limit = optional_u64(arguments, "limit")?.unwrap_or(20);
             anyhow::ensure!(
                 (1..=1000).contains(&limit),
@@ -190,7 +190,7 @@ fn call_tool(
             let limit = limit as usize;
             serialize(repository.timeline(limit)?)
         }
-        "agit.snapshot" => {
+        "furrow.snapshot" => {
             let message = optional_string(arguments, "message")?.map(str::to_owned);
             anyhow::ensure!(
                 message.as_ref().map_or(0, String::len) <= 4096,
@@ -199,24 +199,24 @@ fn call_tool(
             let id = repository.snapshot(message, SnapshotTrigger::Manual)?;
             Ok(json!({"snapshot": id_hex(&id)}))
         }
-        "agit.diff" => serialize(repository.diff(required_string(arguments, "target")?)?),
-        "agit.forks" => serialize(repository.forks()?),
-        "agit.events" => serialize(repository.events(
+        "furrow.diff" => serialize(repository.diff(required_string(arguments, "target")?)?),
+        "furrow.forks" => serialize(repository.forks()?),
+        "furrow.events" => serialize(repository.events(
             optional_string(arguments, "after")?,
             optional_u64(arguments, "limit")?.unwrap_or(100).min(1000) as usize,
         )?),
-        "agit.fork" => {
+        "furrow.fork" => {
             let name = required_string(arguments, "name")?;
             let destination = default_fork_destination(repository.root(), name);
             let plan = repository.prepare_fork(name, &destination)?;
             let result = repository.materialize_fork(plan.clone())?;
             Ok(json!({"plan": plan, "result": result}))
         }
-        "agit.merge_plan" => {
+        "furrow.merge_plan" => {
             serialize(repository.merge(required_string(arguments, "fork")?, None, true)?)
         }
-        "agit.claims" => serialize(repository.claims()?),
-        "agit.claim" => {
+        "furrow.claims" => serialize(repository.claims()?),
+        "furrow.claim" => {
             let owner = optional_string(arguments, "owner")?
                 .map(str::to_owned)
                 .unwrap_or_else(|| repository.default_claim_owner());
@@ -226,20 +226,20 @@ fn call_tool(
                 optional_u64(arguments, "ttl_seconds")?.unwrap_or(3600),
             )?)
         }
-        "agit.release" => {
+        "furrow.release" => {
             let owner = optional_string(arguments, "owner")?
                 .map(str::to_owned)
                 .unwrap_or_else(|| repository.default_claim_owner());
             serialize(repository.release_claim(required_string(arguments, "claim")?, &owner)?)
         }
-        "agit.coord_list" => serialize(repository.coord_list()?),
-        "agit.coord_read" => {
+        "furrow.coord_list" => serialize(repository.coord_list()?),
+        "furrow.coord_read" => {
             let path = required_string(arguments, "path")?;
             let bytes = repository.coord_read(Path::new(path))?;
             let value = String::from_utf8(bytes).context("coord value is not UTF-8")?;
             Ok(json!({"path": path, "value": value}))
         }
-        "agit.coord_write" => {
+        "furrow.coord_write" => {
             let owner = optional_string(arguments, "owner")?
                 .map(str::to_owned)
                 .unwrap_or_else(|| repository.default_claim_owner());
@@ -249,7 +249,7 @@ fn call_tool(
                 &owner,
             )?)
         }
-        "agit.coord_remove" => {
+        "furrow.coord_remove" => {
             let owner = optional_string(arguments, "owner")?
                 .map(str::to_owned)
                 .unwrap_or_else(|| repository.default_claim_owner());
@@ -257,12 +257,12 @@ fn call_tool(
                 repository.coord_remove(Path::new(required_string(arguments, "path")?), &owner)?,
             )
         }
-        "agit.fork_updates" => serialize(repository.fork_updates(
+        "furrow.fork_updates" => serialize(repository.fork_updates(
             required_string(arguments, "fork")?,
             optional_string(arguments, "after")?,
             optional_u64(arguments, "limit")?.unwrap_or(100).min(1000) as usize,
         )?),
-        "agit.rewind_plan" => {
+        "furrow.rewind_plan" => {
             let requested = required_string(arguments, "snapshot")?;
             anyhow::ensure!(
                 requested.len() == 64,
@@ -273,7 +273,7 @@ fn call_tool(
             let plan = repository.plan_rewind(&target, &paths)?;
             Ok(json!({"applied": false, "plan": plan}))
         }
-        "agit.rewind_apply" => {
+        "furrow.rewind_apply" => {
             let requested = required_string(arguments, "snapshot")?;
             anyhow::ensure!(
                 requested.len() == 64,
@@ -302,47 +302,47 @@ fn call_tool(
 
 fn tool_names() -> &'static [&'static str] {
     &[
-        "agit.status",
-        "agit.timeline",
-        "agit.snapshot",
-        "agit.diff",
-        "agit.forks",
-        "agit.events",
-        "agit.fork",
-        "agit.merge_plan",
-        "agit.claims",
-        "agit.claim",
-        "agit.release",
-        "agit.coord_list",
-        "agit.coord_read",
-        "agit.coord_write",
-        "agit.coord_remove",
-        "agit.fork_updates",
-        "agit.rewind_plan",
-        "agit.rewind_apply",
+        "furrow.status",
+        "furrow.timeline",
+        "furrow.snapshot",
+        "furrow.diff",
+        "furrow.forks",
+        "furrow.events",
+        "furrow.fork",
+        "furrow.merge_plan",
+        "furrow.claims",
+        "furrow.claim",
+        "furrow.release",
+        "furrow.coord_list",
+        "furrow.coord_read",
+        "furrow.coord_write",
+        "furrow.coord_remove",
+        "furrow.fork_updates",
+        "furrow.rewind_plan",
+        "furrow.rewind_apply",
     ]
 }
 
 fn validate_argument_keys(name: &str, arguments: &Map<String, Value>) -> anyhow::Result<()> {
     let allowed: &[&str] = match name {
-        "agit.status" => &["fidelity"],
-        "agit.timeline" => &["limit"],
-        "agit.snapshot" => &["message"],
-        "agit.diff" => &["target"],
-        "agit.forks" => &[],
-        "agit.events" => &["after", "limit"],
-        "agit.fork" => &["name"],
-        "agit.merge_plan" => &["fork"],
-        "agit.claims" => &[],
-        "agit.claim" => &["pattern", "owner", "ttl_seconds"],
-        "agit.release" => &["claim", "owner"],
-        "agit.coord_list" => &[],
-        "agit.coord_read" => &["path"],
-        "agit.coord_write" => &["path", "value", "owner"],
-        "agit.coord_remove" => &["path", "owner"],
-        "agit.fork_updates" => &["fork", "after", "limit"],
-        "agit.rewind_plan" => &["snapshot", "paths"],
-        "agit.rewind_apply" => &["snapshot", "paths", "confirm_snapshot", "sqlite_consistent"],
+        "furrow.status" => &["fidelity"],
+        "furrow.timeline" => &["limit"],
+        "furrow.snapshot" => &["message"],
+        "furrow.diff" => &["target"],
+        "furrow.forks" => &[],
+        "furrow.events" => &["after", "limit"],
+        "furrow.fork" => &["name"],
+        "furrow.merge_plan" => &["fork"],
+        "furrow.claims" => &[],
+        "furrow.claim" => &["pattern", "owner", "ttl_seconds"],
+        "furrow.release" => &["claim", "owner"],
+        "furrow.coord_list" => &[],
+        "furrow.coord_read" => &["path"],
+        "furrow.coord_write" => &["path", "value", "owner"],
+        "furrow.coord_remove" => &["path", "owner"],
+        "furrow.fork_updates" => &["fork", "after", "limit"],
+        "furrow.rewind_plan" => &["snapshot", "paths"],
+        "furrow.rewind_apply" => &["snapshot", "paths", "confirm_snapshot", "sqlite_consistent"],
         _ => unreachable!("tool name was validated before dispatch"),
     };
     for key in arguments.keys() {
@@ -354,7 +354,7 @@ fn validate_argument_keys(name: &str, arguments: &Map<String, Value>) -> anyhow:
 fn tool_definitions() -> Vec<Value> {
     vec![
         tool(
-            "agit.status",
+            "furrow.status",
             "Inspect workspace protection, store health, and optional capture fidelity.",
             json!({
                 "type": "object",
@@ -365,7 +365,7 @@ fn tool_definitions() -> Vec<Value> {
             false,
         ),
         tool(
-            "agit.timeline",
+            "furrow.timeline",
             "List recent complete working-state snapshots.",
             json!({
                 "type": "object",
@@ -376,7 +376,7 @@ fn tool_definitions() -> Vec<Value> {
             false,
         ),
         tool(
-            "agit.snapshot",
+            "furrow.snapshot",
             "Seal the complete current workspace, including ignored and untracked files.",
             json!({
                 "type": "object",
@@ -387,7 +387,7 @@ fn tool_definitions() -> Vec<Value> {
             false,
         ),
         tool(
-            "agit.diff",
+            "furrow.diff",
             "Inspect path-level additions, modifications, and deletions in a fork or since a snapshot.",
             json!({
                 "type": "object",
@@ -399,14 +399,14 @@ fn tool_definitions() -> Vec<Value> {
             false,
         ),
         tool(
-            "agit.forks",
+            "furrow.forks",
             "List isolated universes with stable IDs and live conflict counts.",
             json!({"type": "object", "additionalProperties": false}),
             true,
             false,
         ),
         tool(
-            "agit.events",
+            "furrow.events",
             "Read durable conflict transitions after an exclusive event cursor.",
             json!({
                 "type": "object",
@@ -420,7 +420,7 @@ fn tool_definitions() -> Vec<Value> {
             false,
         ),
         tool(
-            "agit.fork",
+            "furrow.fork",
             "Create an isolated full-state workspace and return its pre-materialization cost plan.",
             json!({
                 "type": "object",
@@ -434,7 +434,7 @@ fn tool_definitions() -> Vec<Value> {
             false,
         ),
         tool(
-            "agit.merge_plan",
+            "furrow.merge_plan",
             "Plan a three-way full-state fork merge without executing checks or changing files.",
             json!({
                 "type": "object",
@@ -446,14 +446,14 @@ fn tool_definitions() -> Vec<Value> {
             false,
         ),
         tool(
-            "agit.claims",
+            "furrow.claims",
             "List active advisory path claims shared by sibling forks.",
             json!({"type": "object", "additionalProperties": false}),
             true,
             false,
         ),
         tool(
-            "agit.claim",
+            "furrow.claim",
             "Claim a path glob with a TTL; overlapping claims from another agent are refused.",
             json!({
                 "type": "object",
@@ -469,7 +469,7 @@ fn tool_definitions() -> Vec<Value> {
             false,
         ),
         tool(
-            "agit.release",
+            "furrow.release",
             "Release this agent's claim by ID or exact pattern.",
             json!({
                 "type": "object",
@@ -484,14 +484,14 @@ fn tool_definitions() -> Vec<Value> {
             false,
         ),
         tool(
-            "agit.coord_list",
+            "furrow.coord_list",
             "List eagerly replicated coordination files without reading their content.",
             json!({"type": "object", "additionalProperties": false}),
             true,
             false,
         ),
         tool(
-            "agit.coord_read",
+            "furrow.coord_read",
             "Read one UTF-8 value from the versioned coordination directory.",
             json!({
                 "type": "object",
@@ -503,7 +503,7 @@ fn tool_definitions() -> Vec<Value> {
             false,
         ),
         tool(
-            "agit.coord_write",
+            "furrow.coord_write",
             "Write a UTF-8 coordination value and eagerly propagate it to live sibling forks.",
             json!({
                 "type": "object",
@@ -519,7 +519,7 @@ fn tool_definitions() -> Vec<Value> {
             false,
         ),
         tool(
-            "agit.coord_remove",
+            "furrow.coord_remove",
             "Remove a coordination value and propagate a durable tombstone to sibling forks.",
             json!({
                 "type": "object",
@@ -534,7 +534,7 @@ fn tool_definitions() -> Vec<Value> {
             false,
         ),
         tool(
-            "agit.fork_updates",
+            "furrow.fork_updates",
             "Return fork seals newer than an optional exact snapshot cursor.",
             json!({
                 "type": "object",
@@ -550,7 +550,7 @@ fn tool_definitions() -> Vec<Value> {
             false,
         ),
         tool(
-            "agit.rewind_plan",
+            "furrow.rewind_plan",
             "Preview the exact impact of a rewind without changing workspace files.",
             json!({
                 "type": "object",
@@ -565,7 +565,7 @@ fn tool_definitions() -> Vec<Value> {
             false,
         ),
         tool(
-            "agit.rewind_apply",
+            "furrow.rewind_apply",
             "Apply a reversible rewind after an exact-ID impact preview and explicit repeated confirmation.",
             json!({
                 "type": "object",
@@ -803,7 +803,7 @@ fn default_fork_destination(root: &Path, name: &str) -> PathBuf {
         .file_name()
         .unwrap_or_else(|| std::ffi::OsStr::new("workspace"));
     let mut forks_name = repository_name.to_os_string();
-    forks_name.push(".agit-forks");
+    forks_name.push(".furrow-forks");
     parent.join(forks_name).join(name)
 }
 

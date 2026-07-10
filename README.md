@@ -1,10 +1,10 @@
-# agit
+# furrow
 
 **Run a team of coding agents on one repository — in parallel, across machines — without them stepping on each other.**
 
-agit forks your *entire working state* — dependencies, `.env`, the dev database, Git's own index — into warm, isolated universes in about a second. Agents work in parallel while conflict radar watches every universe live. Results merge back only through your verification command. And the same sealed state travels — exactly, encrypted — to your other machines, so agents can run wherever the compute is.
+furrow forks your *entire working state* — dependencies, `.env`, the dev database, Git's own index — into warm, isolated universes in about a second. Agents work in parallel while conflict radar watches every universe live. Results merge back only through your verification command. And the same sealed state travels — exactly, encrypted — to your other machines, so agents can run wherever the compute is.
 
-Underneath is one primitive: your workspace, continuously sealed into an immutable, content-addressed timeline. Fork it, diff it, merge it, materialize it on another machine, rewind it when anything — human or agent — breaks it. Git versions your commits; agit versions everything between them.
+Underneath is one primitive: your workspace, continuously sealed into an immutable, content-addressed timeline. Fork it, diff it, merge it, materialize it on another machine, rewind it when anything — human or agent — breaks it. Git versions your commits; furrow versions everything between them.
 
 Local-first and Apache-2.0. No account, no telemetry, works offline. Remotes, when you add them, receive only ciphertext.
 
@@ -12,10 +12,10 @@ Local-first and Apache-2.0. No account, no telemetry, works offline. Remotes, wh
 
 ```bash
 cargo install --path .        # Rust 1.83+
-cd my-project && agit watch
+cd my-project && furrow watch
 ```
 
-That's the whole setup. From this moment protection is ambient: agit seals your workspace at quiet moments and agent-turn boundaries, automatically, forever. You keep working exactly as you did — there is no workflow to adopt.
+That's the whole setup. From this moment protection is ambient: furrow seals your workspace at quiet moments and agent-turn boundaries, automatically, forever. You keep working exactly as you did — there is no workflow to adopt.
 
 Every scenario below is a runnable script in [`./demo/`](demo/).
 
@@ -26,7 +26,7 @@ Every scenario below is a runnable script in [`./demo/`](demo/).
 Start your agents the way you always start them — just more of them. One optional alias gives every session its own universe automatically:
 
 ```bash
-alias claude='agit exec -- claude'    # once, in your shell profile
+alias claude='furrow exec -- claude'    # once, in your shell profile
 ```
 
 Now open three terminals and run `claude` in each. Each session gets a warm, isolated copy of the *full* working state — dependencies, `.env`, database, everything — via filesystem copy-on-write: ready in about a second, and ten universes cost roughly the disk of one. No cold `npm install`, no port collisions, no shared files to fight over.
@@ -34,33 +34,33 @@ Now open three terminals and run `claude` in each. Each session gets a warm, iso
 While they work, **conflict radar** watches all universes and flags two agents touching the same file *before* merge time. Agents can partition work and leave notes for each other through plain files — no orchestrator. When a universe is done:
 
 ```bash
-agit merge <universe> --check "cargo test --all"    # lands only if your checks pass
+furrow merge <universe> --check "cargo test --all"    # lands only if your checks pass
 ```
 
-Skip the alias and sessions simply share the directory like today — still sealed continuously, still collision-warned. `agit forks` shows every universe, its real disk cost, and live conflicts whenever you're curious.
+Skip the alias and sessions simply share the directory like today — still sealed continuously, still collision-warned. `furrow forks` shows every universe, its real disk cost, and live conflicts whenever you're curious.
 
 ## Your state travels — agents on any machine
 
-Cloud sandboxes and second machines see your last push — never your dirty edits, `.env`, dev database, or Git index. agit materializes your *current state*, exactly, on any machine that can reach yours (SSH over LAN or Tailscale), or through any S3-compatible bucket as an always-available encrypted mailbox. No hosted service required.
+Cloud sandboxes and second machines see your last push — never your dirty edits, `.env`, dev database, or Git index. furrow materializes your *current state*, exactly, on any machine that can reach yours (SSH over LAN or Tailscale), or through any S3-compatible bucket as an always-available encrypted mailbox. No hosted service required.
 
 ```bash
-agit remote add ssh://dev@machine-a.tailnet --name my-project && agit sync --follow
+furrow remote add ssh://dev@machine-a.tailnet --name my-project && furrow sync --follow
 
 # on the other machine — the clone is your complete working state, not a checkout
-AGIT_RECOVERY_KEY=<key> agit clone ssh://dev@machine-a.tailnet/my-project
+FURROW_RECOVERY_KEY=<key> furrow clone ssh://dev@machine-a.tailnet/my-project
 ```
 
 `sync --follow` keeps a warm session both ways: seal on one machine, and it's on the other before you've switched chairs. Transfers are deduplicated deltas — a day of work syncs as kilobytes. Remotes hold only ciphertext; the recovery key (entered once per machine) is the only thing that can read a workspace.
 
-**Measured, end-to-end:** Agent A edits source and tests on one machine, agit
+**Measured, end-to-end:** Agent A edits source and tests on one machine, furrow
 encrypts and publishes the sealed state, and Agent B receives a usable workspace
 on a separate machine, reviews it, and sends a follow-up change back.
 
 | Two-agent workflow | End-to-end rate |
 |---|---:|
 | Optimized warm handoff gate between two running workspaces | **4.1 handoffs/s** |
-| Actual agit repo, cold publish over the internet | **0.27 MB/s** |
-| Actual agit repo, cold materialization on machine B | **0.40 MB/s** |
+| Actual furrow repo, cold publish over the internet | **0.27 MB/s** |
+| Actual furrow repo, cold materialization on machine B | **0.40 MB/s** |
 | Raw `scp` of the same uncompressed repo payload | **0.71 MB/s** |
 
 The real-repo run covered 67 files / 1.14 MB plus two source-and-test agent
@@ -72,26 +72,26 @@ observed integration results, not guarantees.
 
 ## Rewind what Git can't see
 
-An agent just ran `git clean -fdx`, trashed `.env`, and corrupted the dev database. Git protects none of that; agit's timeline holds all of it — and every rewind seals the current state first, so rewinding is itself rewindable.
+An agent just ran `git clean -fdx`, trashed `.env`, and corrupted the dev database. Git protects none of that; furrow's timeline holds all of it — and every rewind seals the current state first, so rewinding is itself rewindable.
 
 ```bash
-agit timeline                          # scrub your history — turns, labels, quiet points
-agit rewind <snapshot> --paths .env    # one secret back, newer work untouched
-agit rewind <snapshot>                 # or the whole workspace, byte-exact
+furrow timeline                          # scrub your history — turns, labels, quiet points
+furrow rewind <snapshot> --paths .env    # one secret back, newer work untouched
+furrow rewind <snapshot>                 # or the whole workspace, byte-exact
 ```
 
 Restoration covers symlinks, permissions, extended attributes, SQLite (with a logically consistent image available), and Git's own mutable state. `--dry-run` previews any rewind's impact first.
 
 ## The rest of the daily kit
 
-- **`agit try -- npm install framework@latest`** — run anything risky with automatic before/after restore points. Keep the result or be back in seconds.
-- **`agit bisect -- cargo test`** — "it worked twenty minutes ago" usually has no commit to bisect. This bisects *states*, in disposable CoW forks, and finds the breaking moment even when the culprit was an `.env` edit or a dependency change Git never saw.
-- **`agit shrink`** — reclaims recognized dependency/build caches with honest numbers; everything removed stays exactly restorable.
-- **`agit ui`** — Mission Control: timeline scrubbing, universes, live radar, diffs, and merge preview in a local page embedded in the binary. No Node, no CDN, no account.
+- **`furrow try -- npm install framework@latest`** — run anything risky with automatic before/after restore points. Keep the result or be back in seconds.
+- **`furrow bisect -- cargo test`** — "it worked twenty minutes ago" usually has no commit to bisect. This bisects *states*, in disposable CoW forks, and finds the breaking moment even when the culprit was an `.env` edit or a dependency change Git never saw.
+- **`furrow shrink`** — reclaims recognized dependency/build caches with honest numbers; everything removed stays exactly restorable.
+- **`furrow ui`** — Mission Control: timeline scrubbing, universes, live radar, diffs, and merge preview in a local page embedded in the binary. No Node, no CDN, no account.
 
 ## Built for agents as first-class users
 
-The CLI is the agent API: `--json` everywhere, stable IDs from every mutation, structured errors, and destructive operations gated on explicit IDs plus `--yes` — a prompt in machine mode is an error, not a hang. `agit hook install` turns agent turns into attributed restore points; `agit events --follow` streams seals, conflicts, and merges as resumable NDJSON; `agit mcp` serves harnesses that prefer MCP. Nothing in agit knows which agent is calling — Claude Code, Codex, Cursor, or a shell script get the same contract.
+The CLI is the agent API: `--json` everywhere, stable IDs from every mutation, structured errors, and destructive operations gated on explicit IDs plus `--yes` — a prompt in machine mode is an error, not a hang. `furrow hook install` turns agent turns into attributed restore points; `furrow events --follow` streams seals, conflicts, and merges as resumable NDJSON; `furrow mcp` serves harnesses that prefer MCP. Nothing in furrow knows which agent is calling — Claude Code, Codex, Cursor, or a shell script get the same contract.
 
 ## How it's built
 
@@ -100,9 +100,9 @@ The load-bearing decisions, for readers who want them ([full specs](docs/README.
 - **Immutable Merkle DAG over content-defined chunks.** A snapshot ID exists only after every referenced byte is durable. Sealing cost scales with changed entries, never repository size; memory stays bounded regardless of file size.
 - **Crash-safe by construction.** Hash-verified append-only packs, an fsynced hash-chained publication log, recovery from truncated pack tails and deleted indexes — SQLite is an advisory index, never the truth.
 - **Warm forks via native CoW** — APFS `clonefile`, Linux `FICLONE` — with a streaming-copy fallback whose cost is disclosed before the fork runs.
-- **Retention with honest grades.** Timelines thin under hard disk budgets; every snapshot knows whether it's byte-exact or partial, and every missing path knows its recovery route. Pins override everything. `agit estimate` projects store cost before you ever attach.
+- **Retention with honest grades.** Timelines thin under hard disk budgets; every snapshot knows whether it's byte-exact or partial, and every missing path knows its recovery route. Pins override everything. `furrow estimate` projects store cost before you ever attach.
 - **Encryption below the transport.** XChaCha20-Poly1305, opaque remote names, every chunk verified against its BLAKE3 identity on restore; path traversal and symlink-escape tricks rejected at the boundary.
-- **The store never lives inside the repository.** `.agit/` holds a pointer and policy; deleting it is recoverable. Exclusions (`.agitpolicy`: `exclude node_modules`) are honored by capture, watcher, and rewind alike.
+- **The store never lives inside the repository.** `.furrow/` holds a pointer and policy; deleting it is recoverable. Exclusions (`.furrowpolicy`: `exclude node_modules`) are honored by capture, watcher, and rewind alike.
 
 Reproducible performance claims — `cargo bench --bench engine` (CI-enforced regression ceilings on macOS and Linux; a 1M-file reference profile available). Methodology and baselines: [docs/performance.md](docs/performance.md).
 
@@ -111,7 +111,7 @@ Reproducible performance claims — `cargo bench --bench engine` (CI-enforced re
 - Cross-machine divergence is preserved and reported, not yet auto-merged — smoothest today: one writer at a time, hand off after convergence.
 - Same-path universes are Linux; macOS uses disclosed sibling directories.
 - Cold internet sync has been rerun; the final receiver optimization still needs a warm internet rerun.
-- Fidelity is declared, not implied: `agit status --fidelity` is the contract.
+- Fidelity is declared, not implied: `furrow status --fidelity` is the contract.
 
 ## Open source boundary
 

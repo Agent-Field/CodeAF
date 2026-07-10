@@ -420,7 +420,7 @@ fn compact(store: &mut ObjectStore, marks: &MarkDatabase) -> anyhow::Result<u64>
     fs::rename(&temporary, &final_path)?;
     File::open(&packs)?.sync_all()?;
 
-    if std::env::var_os("AGIT_GC_FAILPOINT").as_deref()
+    if std::env::var_os("FURROW_GC_FAILPOINT").as_deref()
         == Some(std::ffi::OsStr::new("after_pack_publish"))
     {
         anyhow::bail!("injected GC failure after pack publish");
@@ -434,7 +434,7 @@ fn compact(store: &mut ObjectStore, marks: &MarkDatabase) -> anyhow::Result<u64>
     };
     store.replace_objects_from_gc(&marks.path, &pack_name, &checkpoint)?;
 
-    if std::env::var_os("AGIT_GC_FAILPOINT").as_deref()
+    if std::env::var_os("FURROW_GC_FAILPOINT").as_deref()
         == Some(std::ffi::OsStr::new("after_catalog_swap"))
     {
         anyhow::bail!("injected GC failure after catalog swap");

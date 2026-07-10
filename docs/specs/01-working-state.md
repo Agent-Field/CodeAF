@@ -1,4 +1,4 @@
-# agit: The Working-State Layer for Every Repository
+# furrow: The Working-State Layer for Every Repository
 
 **Status:** Product and system specification, draft 0.3 (supersedes 0.2; original 0.1 was "Distributed Agent Workspace")
 **Audience:** Product, architecture, security, and independent technical reviewers
@@ -12,18 +12,18 @@ Draft 0.3 resolves the blocking review findings against 0.2: store placement, sn
 
 ## 1. Executive Summary
 
-> **Git versions your commits. agit versions everything between them.**
+> **Git versions your commits. furrow versions everything between them.**
 
 A developer's real working state is larger than what git tracks: dirty edits, untracked files, `.env`, the dev SQLite database, `node_modules`, build caches, generated files, and the `.git` directory's own mutable state (index, stashes, refs). Coding agents mutate all of it, at machine speed, in parallel. Git protects none of it.
 
-agit is a background engine plus CLI that gives any repository, in any language, four daily-use capabilities:
+furrow is a background engine plus CLI that gives any repository, in any language, four daily-use capabilities:
 
 1. **Rewind** — continuous, near-free snapshots of the captured working state (fidelity defined precisely in §6). Scrub back to any moment, including untracked files, ignored files, and git's own state.
 2. **Fork** — cheap copies of the full working state, dependencies and caches included, via tiered filesystem CoW. Run N agents in N parallel universes of one repo, then converge them with op-aware, verification-gated merge.
 3. **Sync** — the same workspace on multiple machines, open source and self-hostable: daemon-to-daemon over SSH or through any dumb encrypted remote the user owns. Divergence between machines resolves through the same merge engine as agent forks.
 4. **Teleport** — move the exact working state to another machine or cloud sandbox fast, with public dependency bytes hydrated from a provenance-verified registry chunk pool instead of the user's uplink.
 
-agit composes with git rather than replacing it: git history remains canonical for commits; agit owns the uncommitted, ephemeral, parallel layer. It is language-agnostic by construction — the core operates on bytes, files, and file operations, never on parsed source.
+furrow composes with git rather than replacing it: git history remains canonical for commits; furrow owns the uncommitted, ephemeral, parallel layer. It is language-agnostic by construction — the core operates on bytes, files, and file operations, never on parsed source.
 
 The open-source core (engine, rewind, fork, merge, self-hosted multi-machine sync) is the adoption engine. The hosted plane (zero-config relay, registry pool CDN, managed encrypted backup, cloud-sandbox warm start) is the business: **capability is free, convenience is paid.**
 
@@ -42,7 +42,7 @@ These are the same underlying gap: **there is no versioned, forkable, transporta
 ### 2.1 Why existing tools do not cover this
 
 - **git / worktrees:** tracked files only; snapshots are manual; forks are shallow (no deps/caches).
-- **Jujutsu (jj):** auto-snapshots the working copy, but tracked files only; no ignored/untracked capture, no CoW dependency forks, no dirty-state transport. Closest philosophical neighbor; agit composes with it as it composes with git.
+- **Jujutsu (jj):** auto-snapshots the working copy, but tracked files only; no ignored/untracked capture, no CoW dependency forks, no dirty-state transport. Closest philosophical neighbor; furrow composes with it as it composes with git.
 - **Dura / git-branchless:** background commits of tracked files only.
 - **Time Machine / restic / borg:** too coarse, not repo-aware, no fork, no merge, no agent integration.
 - **Docker / devcontainer snapshots:** image-granularity, minutes not seconds, heavyweight per fork.
@@ -55,32 +55,32 @@ These are the same underlying gap: **there is no versioned, forkable, transporta
 ### 3.1 Commands (the daily loop)
 
 ```text
-agit watch                       # attach the engine to a repo (one-time; auto via agent hooks)
-agit snap -m <label>             # force a labeled seal right now
-agit timeline                    # browse snapshots: quiescent points, agent turns, labels, grades
-agit rewind [<time>|<snap>] [--paths <glob>...] [--dry-run]
+furrow watch                       # attach the engine to a repo (one-time; auto via agent hooks)
+furrow snap -m <label>             # force a labeled seal right now
+furrow timeline                    # browse snapshots: quiescent points, agent turns, labels, grades
+furrow rewind [<time>|<snap>] [--paths <glob>...] [--dry-run]
                                  # preview → confirm → restore; leased, abortable, never destructive
-agit fork [<name>]               # full-state fork via best available CoW tier (cost disclosed first)
-agit forks                       # list universes, divergence summary, true disk cost
-agit merge <fork-or-machine> [--check "<cmd>"]
+furrow fork [<name>]               # full-state fork via best available CoW tier (cost disclosed first)
+furrow forks                       # list universes, divergence summary, true disk cost
+furrow merge <fork-or-machine> [--check "<cmd>"]
                                  # op-aware merge; gated on the check command passing
-agit pair <machine|remote-url>   # link another machine or register a self-hosted sync remote
-agit sync [--follow]             # push/pull snapshots between paired machines or via a remote
-agit teleport <target>           # exact working state → machine / cloud sandbox
-agit status [--fidelity]         # storage by class, engine health, capture-fidelity report
-agit forget [--purge]            # detach a repo; --purge deletes its store data
-agit gc                          # enforce retention and disk budget (also automatic)
+furrow pair <machine|remote-url>   # link another machine or register a self-hosted sync remote
+furrow sync [--follow]             # push/pull snapshots between paired machines or via a remote
+furrow teleport <target>           # exact working state → machine / cloud sandbox
+furrow status [--fidelity]         # storage by class, engine health, capture-fidelity report
+furrow forget [--purge]            # detach a repo; --purge deletes its store data
+furrow gc                          # enforce retention and disk budget (also automatic)
 ```
 
 ### 3.2 Agent integration (the distribution channel)
 
-- **MCP server** (`agit mcp`): exposes snapshot/rewind/fork/merge/timeline as tools, so Claude Code, Cursor, and custom agents adopt agit with one config line.
+- **MCP server** (`furrow mcp`): exposes snapshot/rewind/fork/merge/timeline as tools, so Claude Code, Cursor, and custom agents adopt furrow with one config line.
 - **Turn-boundary hooks:** pre/post tool-use and turn-end hooks seal labeled snapshots ("before agent edit", "turn 14 complete"). The timeline reads as an agent flight path.
 - **Auto-fork mode:** a hook policy that gives each spawned agent its own fork automatically and queues merges at turn end.
 
 ### 3.3 What the user must never need to understand
 
-Chunks, Merkle trees, packs, quiescence sealing, or CoW tiers. The visible model is five nouns — **timeline, snapshot, fork, machine, teleport** — and `agit status` explains cost, health, and fidelity in those terms.
+Chunks, Merkle trees, packs, quiescence sealing, or CoW tiers. The visible model is five nouns — **timeline, snapshot, fork, machine, teleport** — and `furrow status` explains cost, health, and fidelity in those terms.
 
 ---
 
@@ -91,11 +91,11 @@ Chunks, Merkle trees, packs, quiescence sealing, or CoW tiers. The visible model
 3. **Rewind is never destructive.** Every rewind first seals the current state; rewind is itself rewindable. No operation in the product discards unsaved state.
 4. **The Merkle DAG is the only source of truth.** The operation journal, indexes, and caches are advisory accelerations; deleting them loses no data and changes no semantics.
 5. **Snapshots are honest about consistency.** Each snapshot is labeled `quiescent` or `turbulent`; database captures carry their consistency contract (§9.4). The UI steers rewind and merge toward quiescent points.
-6. **Capture fidelity is declared, not implied.** "Working state" means exactly the per-OS fidelity matrix (§6); anything not captured is enumerable via `agit status --fidelity`, never silently dropped.
-7. **The store never lives inside a watched root.** Packs, journals, and indexes reside in per-user application data; the in-repo `.agit/` holds only configuration, policy, and hooks.
+6. **Capture fidelity is declared, not implied.** "Working state" means exactly the per-OS fidelity matrix (§6); anything not captured is enumerable via `furrow status --fidelity`, never silently dropped.
+7. **The store never lives inside a watched root.** Packs, journals, and indexes reside in per-user application data; the in-repo `.furrow/` holds only configuration, policy, and hooks.
 8. **Plaintext identity never leaves the machine unverified.** Remote storage uses opaque per-account chunk IDs; the only plaintext-hash disclosure is pool-eligible content that has passed registry provenance verification (§8.4), and it is disclosed as package identity, not raw content hashes to test.
 9. **Resource use is bounded against a declared reference configuration** (§12). No operation allocates memory proportional to file size; ingestion and transport are streaming.
-10. **agit never mutates git's object store or history.** It captures `.git` as data but writes into it only during an explicit, leased, user-invoked rewind.
+10. **furrow never mutates git's object store or history.** It captures `.git` as data but writes into it only during an explicit, leased, user-invoked rewind.
 11. **Forks and syncs are cheap or honest.** Cost scales are disclosed before the operation runs (tier, entry count, bytes); degradation is reported, never silent.
 12. **Merges are gated, attributed, and reversible.** No auto-merge lands without its verification check passing; every merge is a multi-parent snapshot; a bad merge is one rewind away.
 13. **Local and self-hosted features work offline, forever, for free.** The hosted plane adds convenience and durability, never capability or correctness.
@@ -108,10 +108,10 @@ Object identity is BLAKE3. All objects live in a per-user content-addressed stor
 
 ### 5.1 Store placement
 
-- **Store root:** platform application-data directory — `~/Library/Application Support/agit/store` (macOS), `${XDG_DATA_HOME:-~/.local/share}/agit/store` (Linux), `%LOCALAPPDATA%\agit\store` (Windows). Never inside any watched root; the watcher additionally hard-excludes any configured store path as defense in depth.
-- **In-repo `.agit/`:** configuration, `.agitpolicy`, hooks, and a workspace-ID pointer only. Small, plain text, and itself captured (it is legitimate working state).
+- **Store root:** platform application-data directory — `~/Library/Application Support/furrow/store` (macOS), `${XDG_DATA_HOME:-~/.local/share}/furrow/store` (Linux), `%LOCALAPPDATA%\furrow\store` (Windows). Never inside any watched root; the watcher additionally hard-excludes any configured store path as defense in depth.
+- **In-repo `.furrow/`:** configuration, `.furrowpolicy`, hooks, and a workspace-ID pointer only. Small, plain text, and itself captured (it is legitimate working state).
 - **Fork materializations:** sibling directories (default `<repo>.forks/<name>`, configurable), each a watched root sharing the same store.
-- **Lifecycle:** `agit forget` detaches a repo; `--purge` removes its snapshots and any chunks unreachable from other workspaces. There is no "delete a directory inside the repo" footgun.
+- **Lifecycle:** `furrow forget` detaches a repo; `--purge` removes its snapshots and any chunks unreachable from other workspaces. There is no "delete a directory inside the repo" footgun.
 
 ### 5.2 Chunk
 
@@ -201,7 +201,7 @@ Inferred from watcher events plus file-ID tracking (inode/dev on POSIX, FileID o
 
 ### 5.9 Content classes
 
-Class drives cadence, retention, transport, and merge behavior. Rule-based (defaults + `.agitpolicy`), cheap, visible in `agit status`:
+Class drives cadence, retention, transport, and merge behavior. Rule-based (defaults + `.furrowpolicy`), cheap, visible in `furrow status`:
 
 ```text
 source        tracked / human-authored          full retention, merge=3way
@@ -220,7 +220,7 @@ Classification is a *local policy* mechanism. It never confers pool eligibility 
 
 ## 6. Capture Fidelity Matrix
 
-"Entire working state" means precisely this, per OS. Anything marked ✗ is reported by `agit status --fidelity` and documented; nothing is silently dropped.
+"Entire working state" means precisely this, per OS. Anything marked ✗ is reported by `furrow status --fidelity` and documented; nothing is silently dropped.
 
 | Aspect | macOS | Linux | Windows (staged, Phase 5) |
 |---|---|---|---|
@@ -236,7 +236,7 @@ Classification is a *local policy* mechanism. It never confers pool eligibility 
 | Ownership (uid/gid) | recorded; restored only when restoring as the same user | same | — |
 | Case/Unicode name forms | preserved byte-exact; cross-OS teleport collisions detected and reported before materialization | same | same |
 | Git submodules | ✔ (directories like any other, including their `.git`) | ✔ | ✔ |
-| Git worktrees / alternates | captured within the watched root; object stores *outside* the root are out of scope — agit detects alternates/worktree pointers that leave the root and warns explicitly | same | same |
+| Git worktrees / alternates | captured within the watched root; object stores *outside* the root are out of scope — furrow detects alternates/worktree pointers that leave the root and warns explicitly | same | same |
 | Running processes, ports, containers | ✗ by design (files, not processes; see fork hooks §8.2) | ✗ | ✗ |
 
 Cross-OS teleport applies a declared normalization step (name-form collisions, mode bits, link groups) and refuses with a precise report rather than guessing.
@@ -247,7 +247,7 @@ Cross-OS teleport applies a declared normalization step (name-form collisions, m
 
 ```text
                        ┌────────────────────────────────────────────┐
-                       │              agit daemon (per user)         │
+                       │              furrow daemon (per user)         │
   FS events ──────────►│ watcher → classifier → dirty-set tracker    │
   (FSEvents/fanotify/  │      │                     │                │
    inotify/RDCW +      │  op-journal (advisory)     ▼                │
@@ -299,14 +299,14 @@ Five pillars. Each states its target, mechanism, and honest cost model.
 
 **Target:** fork cost that is O(1) in entry count where the platform allows, O(entries) metadata where it doesn't — **with the tier, projected latency, and disk cost disclosed before the fork runs** (Invariant 11).
 
-**Tiers, ordered by preference; agit selects the best correct backend per filesystem:**
+**Tiers, ordered by preference; furrow selects the best correct backend per filesystem:**
 
 - **Tier 0 — native filesystem snapshots (O(1) in entries):** Btrfs/ZFS subvolume or dataset snapshot+clone when the repo resides on one. Constant-time regardless of tree size; the headline `< 1 s for any repo` claim applies **only here**.
 - **Tier 1 — overlay mounts (O(1) in entries):** overlayfs in an unprivileged user namespace (Linux); lower = sealed snapshot materialization, upper = divergence. Near-constant-time; per-kernel syscall caveats documented.
-- **Tier 2 — per-file CoW clone (O(entries) metadata, zero data copy):** APFS `clonefile`, XFS/Btrfs reflink, ReFS block clone. Realistic throughput is on the order of 10⁴–10⁵ entries/s, so: ≤ 100k entries ≈ ≤ 1 s; a 1M-entry tree is **tens of seconds** and agit says so before starting. This is the best available tier on macOS (APFS snapshots are volume-level and unsuitable for per-repo forks).
+- **Tier 2 — per-file CoW clone (O(entries) metadata, zero data copy):** APFS `clonefile`, XFS/Btrfs reflink, ReFS block clone. Realistic throughput is on the order of 10⁴–10⁵ entries/s, so: ≤ 100k entries ≈ ≤ 1 s; a 1M-entry tree is **tens of seconds** and furrow says so before starting. This is the best available tier on macOS (APFS snapshots are volume-level and unsuitable for per-repo forks).
 - **Tier 3 — deduped eager copy (fallback, incl. NTFS):** parallel copy; store-level dedup intact; working-copy bytes real. Cost projected up front; Dev Drive/filesystem migration recommended where relevant.
 
-Fork hooks (`.agit/hooks/fork`) remap ports, database names, or `.env` values per universe — a fork copies files, not running processes (§6 last row; risk R14).
+Fork hooks (`.furrow/hooks/fork`) remap ports, database names, or `.env` values per universe — a fork copies files, not running processes (§6 last row; risk R14).
 
 ### 8.3 IP-3: Op-aware, verification-gated merge
 
@@ -328,7 +328,7 @@ Fork hooks (`.agit/hooks/fork`) remap ports, database names, or `.env` values pe
 1. **Lockfile provenance:** the client parses lockfiles (`package-lock.json` integrity hashes, pnpm/yarn locks, `Cargo.lock` checksums, pip/poetry/uv hashes, `go.sum`) to map dependency directories to `(registry, package, version, integrity)` claims.
 2. **Pool extraction manifests:** the hosted pool ingests **public registries only**, extracting each package tarball under deterministic, versioned extraction rules and publishing a manifest: the exact expected file set with per-file BLAKE3 for that `(package, version, integrity)`.
 3. **Per-file verification:** a file is pool-eligible iff its lockfile entry's integrity matches a pool manifest **and** the file's own hash is in that manifest. Patched files, post-install artifacts, private packages, and anything else fails closed to the private path.
-4. **Minimal disclosure:** because eligibility is decided client-side against the manifest, no membership query over raw content hashes ever occurs. Teleport discloses only "this account references public package P@V" — disclosed in docs, shown in `agit status`, opt-out (falls back to full encrypted upload).
+4. **Minimal disclosure:** because eligibility is decided client-side against the manifest, no membership query over raw content hashes ever occurs. Teleport discloses only "this account references public package P@V" — disclosed in docs, shown in `furrow status`, opt-out (falls back to full encrypted upload).
 
 **Everything non-eligible is E2E encrypted** (XChaCha20-Poly1305, per-account keys, device keychain + recovery phrase) and addressed by opaque `remote_id` (§5.2) — the server, hosted or self-hosted, cannot test known-content membership. Convergent encryption within the account boundary only; cross-account plaintext dedup is rejected permanently.
 
@@ -336,16 +336,16 @@ Fork hooks (`.agit/hooks/fork`) remap ports, database names, or `.env` values pe
 
 ### 8.5 IP-5: Multi-machine sync (open source, self-hostable)
 
-**Target:** an indie developer with a laptop, a desktop, and a home server keeps one workspace live across all of them — "work at the latest" — using only open-source agit and infrastructure they already have.
+**Target:** an indie developer with a laptop, a desktop, and a home server keeps one workspace live across all of them — "work at the latest" — using only open-source furrow and infrastructure they already have.
 
 **Mechanism:**
 
-- **Pairing:** `agit pair` exchanges device keys (SSH bootstrap or short code). A workspace's machines share one DAG namespace; each machine seals to its own head (§5.7).
+- **Pairing:** `furrow pair` exchanges device keys (SSH bootstrap or short code). A workspace's machines share one DAG namespace; each machine seals to its own head (§5.7).
 - **Transports (both OSS):** direct daemon↔daemon over SSH (works on LAN, Tailscale, any reachable host), or a **dumb remote** the user owns — S3-compatible bucket, WebDAV, sftp directory — holding encrypted chunks and manifests. E2E encryption applies to self-hosted remotes too: the bucket sees ciphertext and opaque IDs only.
-- **Follow mode:** `agit sync --follow` pushes on seal and auto-pulls. If the local head is an ancestor of the incoming head → fast-forward materialization (leased like rewind, §9.3). If both machines diverged → the heads are siblings, resolved by the standard merge engine (`agit merge machine/laptop`) or interactive pick. Divergence is never lost, only surfaced.
+- **Follow mode:** `furrow sync --follow` pushes on seal and auto-pulls. If the local head is an ancestor of the incoming head → fast-forward materialization (leased like rewind, §9.3). If both machines diverged → the heads are siblings, resolved by the standard merge engine (`furrow merge machine/laptop`) or interactive pick. Divergence is never lost, only surfaced.
 - **Single-writer lease (optional):** for strict "latest" semantics, a per-workspace lease is granted via the sync path — conditional-put on dumb remotes (e.g. S3 `If-None-Match`), pairwise grant over SSH. A stale lease from an offline machine can be taken over explicitly; the offline machine's later seals become siblings, not casualties.
 - **What stays paid:** zero-config relay (no SSH/Tailscale setup), the registry pool CDN (self-hosted syncs move dependency bytes themselves or regenerate via install), managed durable backup, cloud-sandbox warm-start integration. The Syncthing lesson, applied deliberately: OSS multi-machine is the strongest proof of the local-first posture, and the subscription sells infrastructure, not capability.
-- **Staged delivery — follow-only subset first (Phase 2):** multi-machine ships before the merge engine as a restricted mode: pairing, SSH/dumb-remote transport, and follow mode with the **single-writer lease mandatory**. Only fast-forwards execute; if a machine seals without holding the lease (e.g. edited while offline), its head is parked as a sibling — preserved, browsable, restorable by explicit pick (`agit rewind`/materialize), but not merged. Full divergence convergence arrives with the merge engine (Phase 4 lifts the restriction). This gives "work at the latest across my machines" a full product phase earlier without ever risking silent state loss.
+- **Staged delivery — follow-only subset first (Phase 2):** multi-machine ships before the merge engine as a restricted mode: pairing, SSH/dumb-remote transport, and follow mode with the **single-writer lease mandatory**. Only fast-forwards execute; if a machine seals without holding the lease (e.g. edited while offline), its head is parked as a sibling — preserved, browsable, restorable by explicit pick (`furrow rewind`/materialize), but not merged. Full divergence convergence arrives with the merge engine (Phase 4 lifts the restriction). This gives "work at the latest across my machines" a full product phase earlier without ever risking silent state loss.
 
 ---
 
@@ -353,7 +353,7 @@ Fork hooks (`.agit/hooks/fork`) remap ports, database names, or `.env` values pe
 
 ### 9.1 Attach and first seal
 
-1. `agit watch` registers the repo; classifier applies defaults + `.agitpolicy`; store lives in app-data (§5.1).
+1. `furrow watch` registers the repo; classifier applies defaults + `.furrowpolicy`; store lives in app-data (§5.1).
 2. Prioritized ingest streams classes in order (`config-secret`/`source`/`vcs-meta` → `database`/`lockfile` → `dependency`/`build-output`), deduping against the global store.
 3. **First complete seal** fires when all referenced bytes are durable (Invariant 2); the UI shows progress and the moment protection begins. Typical repos with a warm global store: seconds. Cold multi-GB dependency trees: minutes, with an ETA — never a snapshot that lies.
 4. Engine drops to event-driven idle.
@@ -364,8 +364,8 @@ Watcher events → dirty set + op journal → quiescence sealer emits complete s
 
 ### 9.3 Rewind (leased)
 
-1. `agit rewind 20m` (or snapshot ID / timeline pick, optionally `--paths`).
-2. **Impact preview and confirmation.** Before anything runs, agit shows a concise preview: target snapshot and its seal quality/grade, counts of files restored/deleted/changed by class, database captures involved and their contract level, and processes holding open write handles on affected paths. Interactive human invocations require confirmation (`--dry-run` shows the preview alone). **Noninteractive/agent invocations require an explicit snapshot ID plus `--yes`** — relative times and confirmations are for humans; agents must name exactly what they restore.
+1. `furrow rewind 20m` (or snapshot ID / timeline pick, optionally `--paths`).
+2. **Impact preview and confirmation.** Before anything runs, furrow shows a concise preview: target snapshot and its seal quality/grade, counts of files restored/deleted/changed by class, database captures involved and their contract level, and processes holding open write handles on affected paths. Interactive human invocations require confirmation (`--dry-run` shows the preview alone). **Noninteractive/agent invocations require an explicit snapshot ID plus `--yes`** — relative times and confirmations are for humans; agents must name exactly what they restore.
 3. Engine seals current state (`pre_rewind`) — Invariant 3.
 4. Engine takes the **workspace mutation lease**: agent hooks pause managed agents holding the workspace; open write handles and known dev-server processes touching target paths are detected and reported.
 5. Restore executes as a monitored critical section. If concurrent writes to target paths are observed mid-restore, the default policy **aborts and rolls back to the pre-rewind seal**, naming the offending paths/processes. `--force` selects explicit best-effort mode instead. There is no "warn and hope" mode.
@@ -374,7 +374,7 @@ Watcher events → dirty set + op journal → quiescence sealer emits complete s
 
 ### 9.4 Database capture contract (tiered, labeled)
 
-A sequentially-read group cannot prove a single instant. agit therefore offers three explicit levels, and every database capture is labeled with the level that produced it:
+A sequentially-read group cannot prove a single instant. furrow therefore offers three explicit levels, and every database capture is labeled with the level that produced it:
 
 - **L0 (default) — best-effort crash-consistent:** verified-stable group capture (§8.1) of `db + WAL + SHM` at quiescence. For crash-safe engines (SQLite in WAL or rollback mode), a group whose members were individually stable across the read window is *very likely* equivalent to a valid crash image, but this is a best-effort contract, not a proof. Restores of known formats run an integrity probe and report.
 - **L1 (auto-scheduled at boundaries) — engine-aware:** for SQLite, capture via the online backup API / `VACUUM INTO` from a read-only helper process — a consistent point-in-time image by the engine's own semantics, at the cost of touching the database through SQLite rather than the filesystem. **Scheduling:** SQLite is auto-detected; L1 runs at forced boundaries (manual seals, agent-turn seals, pre-rewind/pre-merge/pre-sync), while continuous background seals use labeled L0 to bound overhead. If L1 fails (locked/busy database), the seal falls back to L0 with the label saying so. Per-path policy can force L1-always, L0-only, or disable database capture.
@@ -384,16 +384,16 @@ Non-crash-safe stores are documented as L0-only best-effort. `merge` never auto-
 
 ### 9.5 Fork / parallel agents
 
-1. `agit fork agent-a` → tier selected, projected latency and disk cost shown, then materialized; fork timeline begins.
+1. `furrow fork agent-a` → tier selected, projected latency and disk cost shown, then materialized; fork timeline begins.
 2. Agent works in the fork; turn hooks seal labeled snapshots.
-3. `agit merge agent-a --check "npm test"` → class-directed merge → gate → two-parent snapshot, or a conflict workspace.
+3. `furrow merge agent-a --check "npm test"` → class-directed merge → gate → two-parent snapshot, or a conflict workspace.
 
 ### 9.6 Multi-machine daily loop
 
-1. `agit pair desktop` once (or `agit pair s3://my-bucket/agit` for a dumb remote).
-2. `agit sync --follow` on each machine.
+1. `furrow pair desktop` once (or `furrow pair s3://my-bucket/furrow` for a dumb remote).
+2. `furrow sync --follow` on each machine.
 3. Laptop seals → pushes; desktop fast-forwards on next quiescence (leased materialization, §9.3 semantics).
-4. Both edited while apart → siblings on reconnect → `agit merge machine/laptop --check "npm test"` converges them like any agent fork.
+4. Both edited while apart → siblings on reconnect → `furrow merge machine/laptop --check "npm test"` converges them like any agent fork.
 
 ### 9.7 Teleport
 
@@ -406,16 +406,16 @@ Manifest diff → provenance-verified pool hydration for eligible dependency chu
 ### 10.1 Local store
 
 - Append-only pack files with per-chunk checksums; a snapshot record is journaled only after its chunks are durable (fsync ordering); recovery truncates torn pack tails and replays the journal. Crash at any instant loses at most the unsealed window.
-- Per-user global CAS (all classes; `dependency` chunks dedupe across repos). Per-repo reachability metadata makes `agit forget --purge` precise.
+- Per-user global CAS (all classes; `dependency` chunks dedupe across repos). Per-repo reachability metadata makes `furrow forget --purge` precise.
 - Background scrub verifies pack checksums; corrupt chunks re-fetch from any replica (fork, machine, remote, pool) or mark affected snapshots degraded — never silently wrong.
 
 ### 10.2 Retention (two dimensions: manifests and bytes)
 
 Retention is defined separately for **manifests** (snapshot structure, entries, hashes — cheap, kept long) and **bytes** (chunk contents — the disk cost). This is what reconciles a thinning timeline with honest reconstruction claims:
 
-- **Materialization grade.** Every snapshot has a derivable grade, shown in `agit timeline`:
+- **Materialization grade.** Every snapshot has a derivable grade, shown in `furrow timeline`:
   - `exact` — every referenced byte is present; byte-for-byte materialization guaranteed.
-  - `partial(classes)` — manifests are exact for the whole tree, but byte retention has lapsed for the named classes; agit lists every non-restorable path with its recovery route (pool provenance, regeneration command, or none).
+  - `partial(classes)` — manifests are exact for the whole tree, but byte retention has lapsed for the named classes; furrow lists every non-restorable path with its recovery route (pool provenance, regeneration command, or none).
 - **Byte-drop rule.** A chunk's bytes are eligible for deletion only when unreachable from **all** of: (a) any snapshot inside its class's byte-retention window, (b) any fork or machine head, (c) any pin. Consequence: dependency bytes that haven't changed remain reachable from current heads and therefore stay `exact` indefinitely — only *orphaned* versions (replaced packages, stale build outputs) age out.
 - **Snapshot thinning** (which snapshot IDs the timeline keeps) and **byte windows** (how long each class's bytes outlive thinning) default to:
 
@@ -429,9 +429,9 @@ byte retention:
     scratch:                                       24 h total
 ```
 
-- **Nothing degrades silently.** Before a drop takes a snapshot from `exact` to `partial`, `agit status` reports it and states the recovery route; `pin` upgrades any snapshot to permanent `exact`.
+- **Nothing degrades silently.** Before a drop takes a snapshot from `exact` to `partial`, `furrow status` reports it and states the recovery route; `pin` upgrades any snapshot to permanent `exact`.
 
-A hard disk budget with a reserved-free-space floor overrides byte windows (oldest eligible bytes first; pinned, head-reachable, and in-window chunks protected). `agit status` shows bytes by class and the current grade distribution of the timeline.
+A hard disk budget with a reserved-free-space floor overrides byte windows (oldest eligible bytes first; pinned, head-reachable, and in-window chunks protected). `furrow status` shows bytes by class and the current grade distribution of the timeline.
 
 ### 10.3 Client resource budgets (reference configuration)
 
@@ -453,20 +453,20 @@ Budgets are stated against a declared reference, not "unlimited repos":
 | R2 | Torn captures of half-written files | Recheck-and-retry; verified-stable groups; quiescence sealing; seal-quality labels | `turbulent` snapshots may hold mid-build states; UI steers away |
 | R3 | Live databases captured mid-transaction | **Tiered, labeled contract (§9.4):** L0 best-effort crash-consistent (stated as such, not "valid by definition"), L1 SQLite backup API opt-in, L2 fs-snapshot true point-in-time; restore-time integrity probes | L0 is best-effort by name; non-crash-safe stores documented |
 | R4 | FS event unreliability (drops, coalescing, overflow) | Journal advisory-only (Invariant 4); overflow → dirty-epoch rescan; periodic verification scans | Dropped events delay capture until rescan; cannot corrupt a seal |
-| R5 | Store inside the watched root (recursive capture) | **Structurally impossible:** store in per-user app-data (§5.1, Invariant 7); watcher hard-excludes store paths; in-repo `.agit/` is config only | None |
+| R5 | Store inside the watched root (recursive capture) | **Structurally impossible:** store in per-user app-data (§5.1, Invariant 7); watcher hard-excludes store paths; in-repo `.furrow/` is config only | None |
 | R6 | Incomplete snapshots during background ingest | **Complete snapshots only (Invariant 2):** no ID until all bytes durable; prioritized ingest; UI-live-but-honest attach (§9.1) | Cold multi-GB attach delays first protection by minutes, with ETA |
 | R7 | Fork latency overclaimed for large trees | Tier restructure (§8.2): O(1) claims restricted to fs-snapshot/overlay tiers; per-file clone stated O(entries) with throughput math; cost disclosed pre-fork | macOS (Tier 2 best) 1M-entry forks take tens of seconds — disclosed, not hidden |
 | R8 | Re-chunk cost overclaimed as O(delta) | Honest cost model (§8.1): O(changed files' bytes) read; O(delta) applies to storage/trees/transport; anchors are an optimization, changed-extents info optional-only | Large modified files cost a full sequential read — physics |
 | R9 | Private bytes leak via the pool (private registries, patches, postinstall output) | **Provenance gate (§8.4):** lockfile integrity → pool extraction manifest → per-file hash membership, verified client-side, fail-closed to encrypted path; classification never confers eligibility | Disclosure reduces to public package identity at teleport; opt-out exists |
 | R10 | Remote tests known-content membership | Opaque `remote_id = HMAC(account_key, chunk_id)` + ciphertext checksums for all non-pool chunks, hosted **and** self-hosted (§5.2, Invariant 8) | Server learns sizes/timing of ciphertext only |
 | R11 | Secrets leave the machine (`.env` is core content) | E2E by default for all transport; `config-secret` never pool-matched, never plaintext-identified remotely; local-only mode exists | Key loss = remote-backup loss; recovery phrase mandatory at onboarding |
-| R12 | LLM merge lands wrong code | Verification gate in a scratch fork; conflicts land as workspaces; merges multi-parent and rewindable (§8.3) | Weak/absent check command weakens the gate; agit nags per repo |
+| R12 | LLM merge lands wrong code | Verification gate in a scratch fork; conflicts land as workspaces; merges multi-parent and rewindable (§8.3) | Weak/absent check command weakens the gate; furrow nags per repo |
 | R13 | Crash corrupts the CAS | Append-only packs, per-chunk checksums, journal-after-durable, torn-tail truncation, scrub (§10.1) | ≤ unsealed window lost |
 | R14 | Fork ≠ running environment (ports, daemons) | Explicit scope (files, not processes; §6); fork hooks remap per universe | Environment virtualization is a non-goal |
 | R15 | Rewind races concurrent writers | **Mutation lease (§9.3):** agent pause hooks, monitored critical section, abort-and-rollback default, explicit `--force` best-effort | Unmanaged external processes can force an abort; reported precisely |
 | R16 | Capturing `.git` during active git operations | Lock/operation-state detection defers `vcs-meta` sealing and refuses mid-operation rewind | Mid-rebase seals mark `vcs-meta` turbulent |
 | R17 | GC deletes chunks a fork or machine still needs | Mark-sweep roots include fork heads, machine heads, pins; grace period; refcounts never authoritative | Worst case delayed reclamation, never premature deletion |
-| R18 | Fidelity gaps misrepresent "entire working state" | **Declared fidelity matrix (§6, Invariant 6);** `agit status --fidelity`; cross-OS normalization refuses rather than guesses | Windows fidelity staged; ADS/sparse/ACL gaps explicit |
+| R18 | Fidelity gaps misrepresent "entire working state" | **Declared fidelity matrix (§6, Invariant 6);** `furrow status --fidelity`; cross-OS normalization refuses rather than guesses | Windows fidelity staged; ADS/sparse/ACL gaps explicit |
 | R19 | Daemon budget unbounded across repos | Reference configuration + disk-backed indexes + idle-repo hibernation with rescan-on-wake (§10.3) | Beyond-reference RSS grows linearly and predictably |
 | R20 | Multi-machine split-brain | Sibling-head model (never lost work), optional single-writer lease with explicit stale-lease takeover, merge-engine convergence (§8.5) | Simultaneous offline edits require a merge — surfaced, not auto-guessed |
 | R21 | Battery/thermal drain | Event-driven (no polling), BLAKE3 SIMD, storm back-off, throttle-to-boundaries on battery | Heavy churn on battery coarsens cadence; visible |
@@ -535,7 +535,7 @@ Acceptance gates: byte-for-byte reconstruction of every snapshot graded `exact` 
 
 ## 15. Non-Goals
 
-- Replacing git, GitHub, code review, or CI. agit composes with them.
+- Replacing git, GitHub, code review, or CI. furrow composes with them.
 - Process/environment virtualization (services, containers, port namespaces) — fork hooks are the extension point.
 - Language-aware semantic indexing in the core; language semantics enter exactly once, optionally, at LLM merge resolution.
 - Enterprise audit/provenance/compliance surfaces in v1 (derivable later from the DAG without re-architecture).
@@ -548,7 +548,7 @@ Acceptance gates: byte-for-byte reconstruction of every snapshot graded `exact` 
 ## 16. Delivery Phases
 
 **Phase 0 — POC (subset of Phase 1).**
-Boundary: `agit watch`, `agit snap -m <label>` (manual seal), `agit timeline`, `agit rewind` (including `--paths` and `--dry-run` — recovering a single `.env` is the hero scenario), `agit status`, `agit forget`. One repository at a time; macOS and Linux; SQLite adapter (auto-detect, L1 at forced boundaries, L0 continuous per §9.4). No fork, sync, MCP, or hosted components. **Default capture includes `node_modules`, build caches, and other large ignored directories** — this is the differentiation from git and must be proven at real-world scale — with an onboarding size estimate (post-dedup projected store cost) and one-line `.agitpolicy` exclusions. Rewind UX per §9.3: impact preview, interactive confirmation, agent path gated on explicit snapshot ID + `--yes`. *Exit: attach → break the workspace (delete `.env`, corrupt a rebase, trash a dev DB) → preview → rewind → byte-exact recovery, on both OSes, with §10.3-order overhead.*
+Boundary: `furrow watch`, `furrow snap -m <label>` (manual seal), `furrow timeline`, `furrow rewind` (including `--paths` and `--dry-run` — recovering a single `.env` is the hero scenario), `furrow status`, `furrow forget`. One repository at a time; macOS and Linux; SQLite adapter (auto-detect, L1 at forced boundaries, L0 continuous per §9.4). No fork, sync, MCP, or hosted components. **Default capture includes `node_modules`, build caches, and other large ignored directories** — this is the differentiation from git and must be proven at real-world scale — with an onboarding size estimate (post-dedup projected store cost) and one-line `.furrowpolicy` exclusions. Rewind UX per §9.3: impact preview, interactive confirmation, agent path gated on explicit snapshot ID + `--yes`. *Exit: attach → break the workspace (delete `.env`, corrupt a rebase, trash a dev DB) → preview → rewind → byte-exact recovery, on both OSes, with §10.3-order overhead.*
 
 **Phase 1 — Engine + rewind (macOS, Linux).**
 Watcher, classifier, quiescence sealer, app-data CAS/packs/journal, Merkle DAG, completeness gate, retention/GC, crash recovery, mutation lease, fidelity matrix v1, `watch/timeline/rewind/status/forget`. *Exit: kill-matrix and rewind-vs-writers tests green; a user recovers a deleted `.env` and a broken rebase.*
@@ -569,7 +569,7 @@ Dev Drive Tier 2 (ReFS clone), NTFS Tier 3, staged fidelity (ADS, sparse); then 
 
 ## 17. Business Model
 
-- **Open source, permissive, forever-free:** engine, rewind, fork, merge, MCP, **and multi-machine self-hosted sync**. Local-first means the free tier is genuinely whole; OSS multi-machine is the proof of posture, and every "agit saved my workspace" story is distribution.
+- **Open source, permissive, forever-free:** engine, rewind, fork, merge, MCP, **and multi-machine self-hosted sync**. Local-first means the free tier is genuinely whole; OSS multi-machine is the proof of posture, and every "furrow saved my workspace" story is distribution.
 - **Subscription (indie, ~$10–15/mo):** zero-config relay between machines, registry pool CDN hydration, managed encrypted continuous backup, cloud-sandbox warm start. The line: *your state on your machines and your own remotes is free; our infrastructure moving and keeping it is the product.*
 - **Team tier (later):** shared forks, merge queues, fleet timelines, org key management.
 - **Distribution:** MCP + agent hooks make the fastest-growing dev tools the install channel; "works on any repo, any language, one command" is the README claim — backed by the fidelity matrix, not vibes.
@@ -580,7 +580,7 @@ Dev Drive Tier 2 (ReFS clone), NTFS Tier 3, staged fidelity (ADS, sparse); then 
 
 | 0.2 claim / design | 0.3 disposition |
 |---|---|
-| CAS under in-repo `.agit/` | **Fixed:** store in per-user app-data; `.agit/` is config-only; watcher hard-excludes store paths (Invariant 7, §5.1) |
+| CAS under in-repo `.furrow/` | **Fixed:** store in per-user app-data; `.furrow/` is config-only; watcher hard-excludes store paths (Invariant 7, §5.1) |
 | "Import usable immediately" with background byte ingest | **Fixed:** complete snapshots only (Invariant 2); prioritized ingest; protection begins at first complete seal with ETA (§9.1) |
 | Pool eligibility by `dependency` classification | **Fixed:** provenance gate — lockfile integrity → registry extraction manifests → per-file hash membership, fail-closed; classification is local policy only (§8.4) |
 | "Snapshot cost O(changed bytes)" implying O(delta) reads | **Fixed:** honest cost model — O(changed files' bytes) read, O(delta) storage/trees; anchors optimize storage, not reads (§8.1) |
@@ -599,7 +599,7 @@ Dev Drive Tier 2 (ReFS clone), NTFS Tier 3, staged fidelity (ADS, sparse); then 
 1. Pool ecosystem sequencing beyond npm/PyPI/crates/Go; community-seeded pool content is rejected initially on integrity grounds — revisit with signed reproducible extraction.
 2. Auto-fork default policy for agent hooks: fork-per-agent, fork-per-task, or opt-in only.
 3. Minimum viable check-command UX for the merge gate in repos with no tests (R12's residual).
-4. `agit timeline` Phase-1 surface: TUI, local web UI, or both.
+4. `furrow timeline` Phase-1 surface: TUI, local web UI, or both.
 5. Recovery-phrase UX vs. optional social/org escrow for remote-backup keys.
 6. Single-writer lease default once Phase 4 lifts the follow-only restriction: keep it mandatory-by-default (Phase-2 behavior, safest "latest" semantics) or relax to opt-in (fewer takeover prompts, more merges)?
 7. Windows GA criteria: acceptable NTFS Tier-3 fork latency and minimum fidelity coverage (ADS? sparse?) before launch.

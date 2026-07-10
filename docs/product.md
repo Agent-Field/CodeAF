@@ -10,7 +10,7 @@ Independent developers running several coding agents or terminal workflows again
 
 ## Product Purpose
 
-agit makes parallel agent work inspectable and reversible without requiring an account, a hosted control plane, or a replacement for Git. Mission Control is the local operational view of the real agit engine. Success means a developer can identify what changed, understand which universes collide, preview destructive operations, and safely act on the actual workspace state without learning internal storage mechanics.
+furrow makes parallel agent work inspectable and reversible without requiring an account, a hosted control plane, or a replacement for Git. Mission Control is the local operational view of the real furrow engine. Success means a developer can identify what changed, understand which universes collide, preview destructive operations, and safely act on the actual workspace state without learning internal storage mechanics.
 
 ## Brand Personality
 
@@ -21,12 +21,12 @@ Exact, composed, and technically candid. The product should feel like a mature n
 - Generic AI-agent dashboards with decorative cards, glowing gradients, synthetic avatars, or fake activity.
 - Marketing-page composition inside an operational tool.
 - Tiny uppercase labels repeated as visual scaffolding.
-- Ambiguous icon-only actions, invented symbols, or controls that do not change real agit state.
+- Ambiguous icon-only actions, invented symbols, or controls that do not change real furrow state.
 - Terminal cosplay, novelty monospace everywhere, and visual density without hierarchy.
 
 ## Design Principles
 
-1. Show engine truth. Every count, event, diff, and mutation comes from the local agit contracts; no sample data enters the production UI.
+1. Show engine truth. Every count, event, diff, and mutation comes from the local furrow contracts; no sample data enters the production UI.
 2. Make parallel work spatially legible. Universes, their heads, and their shared dirty paths are the primary visual structure.
 3. Separate inspection, preview, and mutation. The interface states what has run, what is only planned, and what requires confirmation.
 4. Spend attention only on exceptions. Healthy state remains quiet; collisions, stale universes, partial fidelity, and failed checks receive semantic emphasis.

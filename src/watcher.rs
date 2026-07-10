@@ -1,5 +1,5 @@
 use crate::model::SnapshotTrigger;
-use crate::repository::AgitRepository;
+use crate::repository::FurrowRepository;
 use crate::self_write::{self, FilterResult};
 use anyhow::Context;
 use notify::{Event, RecommendedWatcher, RecursiveMode, Watcher};
@@ -12,7 +12,7 @@ use std::time::Instant;
 
 const EVENT_QUEUE: usize = 4096;
 
-pub fn run(mut repository: AgitRepository, debounce: Duration) -> anyhow::Result<()> {
+pub fn run(mut repository: FurrowRepository, debounce: Duration) -> anyhow::Result<()> {
     let (sender, receiver) = mpsc::sync_channel::<notify::Result<Event>>(EVENT_QUEUE);
     let overflow = Arc::new(AtomicBool::new(false));
     let callback_overflow = Arc::clone(&overflow);
@@ -23,7 +23,7 @@ pub fn run(mut repository: AgitRepository, debounce: Duration) -> anyhow::Result
     })?;
     watcher.watch(repository.root(), RecursiveMode::Recursive)?;
     eprintln!(
-        "agit: continuously protecting {} (Ctrl-C to stop)",
+        "furrow: continuously protecting {} (Ctrl-C to stop)",
         repository.root().display()
     );
 
@@ -54,7 +54,7 @@ pub fn run(mut repository: AgitRepository, debounce: Duration) -> anyhow::Result
         let changed_paths = match repository.filter_capture_paths(changed_paths) {
             Ok(paths) => paths,
             Err(error) => {
-                eprintln!("agit: automatic snapshot deferred: {error:#}");
+                eprintln!("furrow: automatic snapshot deferred: {error:#}");
                 continue;
             }
         };
@@ -78,11 +78,11 @@ pub fn run(mut repository: AgitRepository, debounce: Duration) -> anyhow::Result
         };
         match result {
             Ok(id) => eprintln!(
-                "agit: sealed {} in {:.3}s",
+                "furrow: sealed {} in {:.3}s",
                 &hex::encode(id)[..12],
                 seal_started.elapsed().as_secs_f64()
             ),
-            Err(error) => eprintln!("agit: automatic snapshot deferred: {error:#}"),
+            Err(error) => eprintln!("furrow: automatic snapshot deferred: {error:#}"),
         }
     }
 }
@@ -95,7 +95,7 @@ fn record_event(
     match event {
         Ok(event) => changed_paths.extend(event.paths),
         Err(error) => {
-            eprintln!("agit: watcher warning: {error}");
+            eprintln!("furrow: watcher warning: {error}");
             overflow.store(true, Ordering::Release);
         }
     }

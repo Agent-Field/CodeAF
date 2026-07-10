@@ -1,5 +1,5 @@
 @font-face {
-  font-family: "Agit Geist";
+  font-family: "Furrow Geist";
   src: url("/assets/geist.woff2") format("woff2");
   font-style: normal;
   font-weight: 100 900;
@@ -28,7 +28,7 @@
   --warning: oklch(0.77 0.13 72);
   --warning-wash: oklch(0.255 0.04 72);
   --focus: oklch(0.74 0.16 252);
-  --sans: "Agit Geist", "Inter", "Segoe UI", system-ui, sans-serif;
+  --sans: "Furrow Geist", "Inter", "Segoe UI", system-ui, sans-serif;
   --mono: "SFMono-Regular", "Cascadia Code", "Liberation Mono", monospace;
   --z-dialog: 30;
   --z-toast: 40;

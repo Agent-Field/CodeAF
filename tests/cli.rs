@@ -43,7 +43,7 @@ impl Fixture {
         let mut permissions = fs::metadata(repo.join("app.txt")).unwrap().permissions();
         permissions.set_mode(0o755);
         fs::set_permissions(repo.join("app.txt"), permissions).unwrap();
-        xattr::set(repo.join("app.txt"), "user.agit-test", b"preserved").unwrap();
+        xattr::set(repo.join("app.txt"), "user.furrow-test", b"preserved").unwrap();
         Self {
             _temp: temp,
             repo,
@@ -51,11 +51,11 @@ impl Fixture {
         }
     }
 
-    fn agit(&self) -> Command {
-        let mut command = Command::cargo_bin("agit").unwrap();
+    fn furrow(&self) -> Command {
+        let mut command = Command::cargo_bin("furrow").unwrap();
         command
-            .env("AGIT_DATA_DIR", &self.data)
-            .env("AGIT_NO_DAEMON", "1")
+            .env("FURROW_DATA_DIR", &self.data)
+            .env("FURROW_NO_DAEMON", "1")
             .arg("--repo")
             .arg(&self.repo);
         command
@@ -63,7 +63,7 @@ impl Fixture {
 
     fn watch(&self) -> String {
         let output = self
-            .agit()
+            .furrow()
             .args(["--json", "watch"])
             .assert()
             .success()
@@ -75,11 +75,11 @@ impl Fixture {
     }
 }
 
-fn agit_at(repo: &Path, data: &Path) -> Command {
-    let mut command = Command::cargo_bin("agit").unwrap();
+fn furrow_at(repo: &Path, data: &Path) -> Command {
+    let mut command = Command::cargo_bin("furrow").unwrap();
     command
-        .env("AGIT_DATA_DIR", data)
-        .env("AGIT_NO_DAEMON", "1")
+        .env("FURROW_DATA_DIR", data)
+        .env("FURROW_NO_DAEMON", "1")
         .arg("--repo")
         .arg(repo);
     command
@@ -117,9 +117,9 @@ fn wait_until(description: &str, timeout: Duration, mut predicate: impl FnMut() 
 }
 
 fn follow_process(repo: &Path, data: &Path) -> ChildGuard {
-    let child = std::process::Command::new(env!("CARGO_BIN_EXE_agit"))
-        .env("AGIT_DATA_DIR", data)
-        .env("AGIT_NO_DAEMON", "1")
+    let child = std::process::Command::new(env!("CARGO_BIN_EXE_furrow"))
+        .env("FURROW_DATA_DIR", data)
+        .env("FURROW_NO_DAEMON", "1")
         .arg("--repo")
         .arg(repo)
         .args(["sync", "--follow", "--poll-seconds", "1"])
@@ -147,7 +147,7 @@ fn path_rewind_restores_ignored_secret_without_touching_new_work() {
     fs::write(fixture.repo.join("later.txt"), b"keep this\n").unwrap();
 
     let preview = fixture
-        .agit()
+        .furrow()
         .args(["rewind", &snapshot, "--paths", ".env", "--dry-run"])
         .assert()
         .success()
@@ -163,7 +163,7 @@ fn path_rewind_restores_ignored_secret_without_touching_new_work() {
     );
 
     fixture
-        .agit()
+        .furrow()
         .args(["rewind", &snapshot, "--paths", ".env", "--yes"])
         .assert()
         .success();
@@ -182,7 +182,7 @@ fn status_fidelity_reports_exact_and_known_partial_capture_contracts() {
     let fixture = Fixture::new();
     fixture.watch();
     let output = fixture
-        .agit()
+        .furrow()
         .args(["--json", "status", "--fidelity"])
         .assert()
         .success()
@@ -207,7 +207,7 @@ fn status_fidelity_reports_exact_and_known_partial_capture_contracts() {
 #[test]
 fn policy_excluded_subtrees_survive_rewind_and_can_later_be_included() {
     let fixture = Fixture::new();
-    fs::write(fixture.repo.join(".agitpolicy"), b"exclude cache\n").unwrap();
+    fs::write(fixture.repo.join(".furrowpolicy"), b"exclude cache\n").unwrap();
     let excluded_snapshot = fixture.watch();
 
     fs::write(
@@ -216,9 +216,9 @@ fn policy_excluded_subtrees_survive_rewind_and_can_later_be_included() {
     )
     .unwrap();
     fs::write(fixture.repo.join("app.txt"), b"damaged app\n").unwrap();
-    fs::remove_file(fixture.repo.join(".agitpolicy")).unwrap();
+    fs::remove_file(fixture.repo.join(".furrowpolicy")).unwrap();
     fixture
-        .agit()
+        .furrow()
         .args(["rewind", &excluded_snapshot, "--yes"])
         .assert()
         .success();
@@ -231,11 +231,11 @@ fn policy_excluded_subtrees_survive_rewind_and_can_later_be_included() {
         b"tracked original\n"
     );
     assert_eq!(
-        fs::read(fixture.repo.join(".agitpolicy")).unwrap(),
+        fs::read(fixture.repo.join(".furrowpolicy")).unwrap(),
         b"exclude cache\n"
     );
     let fidelity = fixture
-        .agit()
+        .furrow()
         .args(["--json", "status", "--fidelity"])
         .assert()
         .success()
@@ -246,12 +246,12 @@ fn policy_excluded_subtrees_survive_rewind_and_can_later_be_included() {
     assert_eq!(fidelity["fidelity"]["excluded_subtrees"][0], "cache");
 
     fs::write(
-        fixture.repo.join(".agitpolicy"),
+        fixture.repo.join(".furrowpolicy"),
         b"# cache is protected again\n",
     )
     .unwrap();
     let included = fixture
-        .agit()
+        .furrow()
         .args(["--json", "snap", "-m", "include cache"])
         .assert()
         .success()
@@ -266,7 +266,7 @@ fn policy_excluded_subtrees_survive_rewind_and_can_later_be_included() {
     )
     .unwrap();
     fixture
-        .agit()
+        .furrow()
         .args(["rewind", included, "--yes"])
         .assert()
         .success();
@@ -279,9 +279,9 @@ fn policy_excluded_subtrees_survive_rewind_and_can_later_be_included() {
 #[test]
 fn estimate_is_read_only_policy_aware_and_accounts_for_existing_cas_chunks() {
     let fixture = Fixture::new();
-    fs::write(fixture.repo.join(".agitpolicy"), b"exclude cache\n").unwrap();
+    fs::write(fixture.repo.join(".furrowpolicy"), b"exclude cache\n").unwrap();
     let before = fixture
-        .agit()
+        .furrow()
         .args(["--json", "estimate"])
         .assert()
         .success()
@@ -293,11 +293,11 @@ fn estimate_is_read_only_policy_aware_and_accounts_for_existing_cas_chunks() {
     assert_eq!(before["excluded_subtrees"], 1);
     assert!(before["projected_new_chunk_bytes"].as_u64().unwrap() > 0);
     assert_eq!(before["deduplicated_chunk_bytes"], 0);
-    assert!(!fixture.repo.join(".agit").exists());
+    assert!(!fixture.repo.join(".furrow").exists());
 
     fixture.watch();
     let after = fixture
-        .agit()
+        .furrow()
         .args(["--json", "estimate"])
         .assert()
         .success()
@@ -316,7 +316,7 @@ fn estimate_is_read_only_policy_aware_and_accounts_for_existing_cas_chunks() {
 fn installed_turn_hooks_seal_attributed_boundaries_from_any_working_directory() {
     let fixture = Fixture::new();
     let installed = fixture
-        .agit()
+        .furrow()
         .args(["--json", "hook", "install"])
         .assert()
         .success()
@@ -325,18 +325,18 @@ fn installed_turn_hooks_seal_attributed_boundaries_from_any_working_directory() 
         .clone();
     let installed: Value = serde_json::from_slice(&installed).unwrap();
     assert_eq!(installed["hooks"].as_array().unwrap().len(), 3);
-    let pre_turn = fixture.repo.join(".agit/hooks/pre-turn");
+    let pre_turn = fixture.repo.join(".furrow/hooks/pre-turn");
     assert!(fs::metadata(&pre_turn).unwrap().permissions().mode() & 0o111 != 0);
 
     let outside = fixture._temp.path().join("outside");
     fs::create_dir(&outside).unwrap();
     let output = std::process::Command::new(&pre_turn)
         .current_dir(&outside)
-        .env("AGIT_DATA_DIR", &fixture.data)
-        .env("AGIT_NO_DAEMON", "1")
-        .env("AGIT_BIN", env!("CARGO_BIN_EXE_agit"))
-        .env("AGIT_AGENT_ID", "alpha")
-        .env("AGIT_TURN_ID", "7")
+        .env("FURROW_DATA_DIR", &fixture.data)
+        .env("FURROW_NO_DAEMON", "1")
+        .env("FURROW_BIN", env!("CARGO_BIN_EXE_furrow"))
+        .env("FURROW_AGENT_ID", "alpha")
+        .env("FURROW_TURN_ID", "7")
         .output()
         .unwrap();
     assert!(
@@ -345,7 +345,7 @@ fn installed_turn_hooks_seal_attributed_boundaries_from_any_working_directory() 
         String::from_utf8_lossy(&output.stderr)
     );
     fixture
-        .agit()
+        .furrow()
         .args([
             "hook",
             "post-tool",
@@ -360,7 +360,7 @@ fn installed_turn_hooks_seal_attributed_boundaries_from_any_working_directory() 
         .success();
 
     let timeline = fixture
-        .agit()
+        .furrow()
         .args(["--json", "timeline", "--limit", "5"])
         .assert()
         .success()
@@ -383,7 +383,7 @@ fn installed_turn_hooks_seal_attributed_boundaries_from_any_working_directory() 
 fn try_auto_protects_an_unwatched_workspace_and_preserves_the_command_exit_code() {
     let fixture = Fixture::new();
     let output = fixture
-        .agit()
+        .furrow()
         .args([
             "try",
             "-m",
@@ -403,7 +403,7 @@ fn try_auto_protects_an_unwatched_workspace_and_preserves_the_command_exit_code(
         .find_map(|line| line.strip_prefix("Protected "))
         .expect("pre-command snapshot was reported");
     assert_eq!(before.len(), 64);
-    assert!(stderr.contains(&format!("Undo with: agit rewind {before}")));
+    assert!(stderr.contains(&format!("Undo with: furrow rewind {before}")));
     assert!(!fixture.repo.join(".env").exists());
     assert_eq!(
         fs::read(fixture.repo.join("app.txt")).unwrap(),
@@ -411,7 +411,7 @@ fn try_auto_protects_an_unwatched_workspace_and_preserves_the_command_exit_code(
     );
 
     fixture
-        .agit()
+        .furrow()
         .args(["rewind", before, "--yes"])
         .assert()
         .success();
@@ -425,7 +425,7 @@ fn try_auto_protects_an_unwatched_workspace_and_preserves_the_command_exit_code(
     );
 
     let timeline = fixture
-        .agit()
+        .furrow()
         .args(["--json", "timeline", "--limit", "4"])
         .assert()
         .success()
@@ -451,7 +451,7 @@ fn shrink_previews_without_mutation_then_deletes_and_restores_dependency_caches(
     fs::write(&dependency, vec![0x5a; 512 * 1024]).unwrap();
 
     let preview = fixture
-        .agit()
+        .furrow()
         .args(["--json", "shrink"])
         .assert()
         .success()
@@ -463,10 +463,10 @@ fn shrink_previews_without_mutation_then_deletes_and_restores_dependency_caches(
     assert_eq!(preview["candidates"][0]["path"], "node_modules");
     assert!(preview["total_logical_bytes"].as_u64().unwrap() >= 512 * 1024);
     assert!(dependency.exists());
-    assert!(!fixture.repo.join(".agit").exists());
+    assert!(!fixture.repo.join(".furrow").exists());
 
     let applied = fixture
-        .agit()
+        .furrow()
         .args(["--json", "shrink", "--yes"])
         .assert()
         .success()
@@ -489,14 +489,14 @@ fn shrink_previews_without_mutation_then_deletes_and_restores_dependency_caches(
     assert!(fixture.repo.join("cache/dependency.bin").exists());
 
     fixture
-        .agit()
+        .furrow()
         .args(["rewind", before, "--yes"])
         .assert()
         .success();
     assert_eq!(fs::read(dependency).unwrap(), vec![0x5a; 512 * 1024]);
 
     fixture
-        .agit()
+        .furrow()
         .args(["shrink", "--path", ".git", "--yes"])
         .assert()
         .failure()
@@ -509,14 +509,14 @@ fn bisect_finds_the_first_bad_snapshot_without_leaking_probe_side_effects() {
     fixture.watch();
     fs::write(fixture.repo.join("notes.txt"), b"still good\n").unwrap();
     fixture
-        .agit()
+        .furrow()
         .args(["snap", "-m", "still good"])
         .assert()
         .success();
 
     fs::write(fixture.repo.join("app.txt"), b"regression\n").unwrap();
     let first_bad = fixture
-        .agit()
+        .furrow()
         .args(["--json", "snap", "-m", "introduced regression"])
         .assert()
         .success()
@@ -527,13 +527,13 @@ fn bisect_finds_the_first_bad_snapshot_without_leaking_probe_side_effects() {
     let first_bad = first_bad["snapshot"].as_str().unwrap();
     fs::write(fixture.repo.join("later.txt"), b"unrelated later work\n").unwrap();
     fixture
-        .agit()
+        .furrow()
         .args(["snap", "-m", "later bad state"])
         .assert()
         .success();
 
     let outcome = fixture
-        .agit()
+        .furrow()
         .args([
             "--json",
             "bisect",
@@ -570,7 +570,7 @@ fn bisect_finds_the_first_bad_snapshot_without_leaking_probe_side_effects() {
         .any(|entry| entry
             .file_name()
             .to_string_lossy()
-            .starts_with(".agit-bisect-")));
+            .starts_with(".furrow-bisect-")));
 }
 
 #[test]
@@ -585,7 +585,7 @@ fn full_rewind_restores_git_ignored_untracked_metadata_and_is_reversible() {
     fs::write(fixture.repo.join("notes.txt"), b"destroyed notes\n").unwrap();
 
     let output = fixture
-        .agit()
+        .furrow()
         .args(["rewind", &snapshot, "--yes"])
         .assert()
         .success()
@@ -624,7 +624,7 @@ fn full_rewind_restores_git_ignored_untracked_metadata_and_is_reversible() {
         0o755
     );
     assert_eq!(
-        xattr::get(fixture.repo.join("app.txt"), "user.agit-test")
+        xattr::get(fixture.repo.join("app.txt"), "user.furrow-test")
             .unwrap()
             .unwrap(),
         b"preserved"
@@ -637,7 +637,7 @@ fn full_rewind_restores_git_ignored_untracked_metadata_and_is_reversible() {
     );
 
     fixture
-        .agit()
+        .furrow()
         .args(["rewind", &undo, "--yes"])
         .assert()
         .success();
@@ -666,7 +666,7 @@ fn catalog_is_rebuilt_from_pack_and_authoritative_refs() {
     }
 
     let output = fixture
-        .agit()
+        .furrow()
         .args(["--json", "timeline"])
         .assert()
         .success()
@@ -688,10 +688,10 @@ fn incomplete_pack_tail_is_truncated_without_losing_visible_snapshots() {
     file.write_all(b"AGOB\x01").unwrap();
     file.sync_all().unwrap();
 
-    fixture.agit().arg("status").assert().success();
+    fixture.furrow().arg("status").assert().success();
     assert_eq!(fs::metadata(&pack).unwrap().len(), valid_len);
     let output = fixture
-        .agit()
+        .furrow()
         .args(["--json", "timeline"])
         .assert()
         .success()
@@ -725,7 +725,7 @@ fn sqlite_consistent_rewind_restores_a_logical_database_snapshot() {
     }
 
     fixture
-        .agit()
+        .furrow()
         .args([
             "rewind",
             &snapshot,
@@ -761,7 +761,7 @@ fn path_rewind_refuses_to_follow_a_symlink_parent_outside_workspace() {
     symlink(&outside, fixture.repo.join("nested")).unwrap();
 
     fixture
-        .agit()
+        .furrow()
         .args(["rewind", &snapshot, "--paths", "nested/value.txt", "--yes"])
         .assert()
         .failure()
@@ -772,10 +772,10 @@ fn path_rewind_refuses_to_follow_a_symlink_parent_outside_workspace() {
 #[test]
 fn watch_refuses_non_git_directories() {
     let temp = tempfile::tempdir().unwrap();
-    Command::cargo_bin("agit")
+    Command::cargo_bin("furrow")
         .unwrap()
-        .env("AGIT_DATA_DIR", temp.path().join("data"))
-        .env("AGIT_NO_DAEMON", "1")
+        .env("FURROW_DATA_DIR", temp.path().join("data"))
+        .env("FURROW_NO_DAEMON", "1")
         .arg("--repo")
         .arg(temp.path())
         .arg("watch")
@@ -792,7 +792,7 @@ fn unchanged_snapshots_reuse_cached_blobs_and_add_only_small_metadata() {
     let initial = fs::metadata(&pack).unwrap().len();
 
     fixture
-        .agit()
+        .furrow()
         .args(["snap", "-m", "unchanged"])
         .assert()
         .success();
@@ -805,7 +805,7 @@ fn unchanged_snapshots_reuse_cached_blobs_and_add_only_small_metadata() {
     fs::write(fixture.repo.join("notes.txt"), b"one small delta\n").unwrap();
     let before_delta = fs::metadata(&pack).unwrap().len();
     fixture
-        .agit()
+        .furrow()
         .args(["snap", "-m", "small delta"])
         .assert()
         .success();
@@ -823,7 +823,7 @@ fn warm_fork_is_independent_complete_listed_and_can_run_a_command() {
     let destination = fixture._temp.path().join("agent-one");
 
     let output = fixture
-        .agit()
+        .furrow()
         .args(["--json", "fork", "agent-one", "--destination"])
         .arg(&destination)
         .assert()
@@ -860,8 +860,8 @@ fn warm_fork_is_independent_complete_listed_and_can_run_a_command() {
         180_000
     );
     assert_ne!(
-        fs::read_to_string(destination.join(".agit/workspace-id")).unwrap(),
-        fs::read_to_string(fixture.repo.join(".agit/workspace-id")).unwrap()
+        fs::read_to_string(destination.join(".furrow/workspace-id")).unwrap(),
+        fs::read_to_string(fixture.repo.join(".furrow/workspace-id")).unwrap()
     );
 
     fs::write(destination.join("app.txt"), b"fork-only change\n").unwrap();
@@ -873,7 +873,7 @@ fn warm_fork_is_independent_complete_listed_and_can_run_a_command() {
     );
 
     let diff_output = fixture
-        .agit()
+        .furrow()
         .args(["--json", "diff", "agent-one"])
         .assert()
         .success()
@@ -893,7 +893,7 @@ fn warm_fork_is_independent_complete_listed_and_can_run_a_command() {
         .any(|change| change["path"] == "notes.txt" && change["action"] == "delete"));
 
     let listed = fixture
-        .agit()
+        .furrow()
         .args(["--json", "forks"])
         .assert()
         .success()
@@ -909,7 +909,7 @@ fn warm_fork_is_independent_complete_listed_and_can_run_a_command() {
 
     let command_destination = fixture._temp.path().join("agent-command");
     fixture
-        .agit()
+        .furrow()
         .args(["run", "agent-command", "--destination"])
         .arg(&command_destination)
         .args(["--", "sh", "-c", "printf isolated > command-result.txt"])
@@ -922,13 +922,13 @@ fn warm_fork_is_independent_complete_listed_and_can_run_a_command() {
     assert!(!fixture.repo.join("command-result.txt").exists());
 
     fixture
-        .agit()
+        .furrow()
         .args(["fork-rm", "agent-one"])
         .assert()
         .success();
     assert!(!destination.exists());
     let remaining = fixture
-        .agit()
+        .furrow()
         .args(["--json", "forks"])
         .assert()
         .success()
@@ -945,8 +945,8 @@ fn exec_plan_discloses_the_fallback_driver_paths_and_ports() {
     let fixture = Fixture::new();
     fixture.watch();
     let output = fixture
-        .agit()
-        .env("AGIT_DISABLE_NAMESPACES", "1")
+        .furrow()
+        .env("FURROW_DISABLE_NAMESPACES", "1")
         .args(["--json", "exec", "-n", "3", "--plan"])
         .assert()
         .success()
@@ -974,8 +974,8 @@ fn exec_runs_multiple_complete_universes_concurrently_and_seals_each_result() {
     let fixture = Fixture::new();
     fixture.watch();
     let output = fixture
-        .agit()
-        .env("AGIT_DISABLE_NAMESPACES", "1")
+        .furrow()
+        .env("FURROW_DISABLE_NAMESPACES", "1")
         .args([
             "--json",
             "exec",
@@ -984,7 +984,7 @@ fn exec_runs_multiple_complete_universes_concurrently_and_seals_each_result() {
             "--",
             "sh",
             "-c",
-            "printf '%s|%s|%s' \"$AGIT_UNIVERSE_INDEX\" \"$AGIT_WORKDIR\" \"$PORT\" > universe.txt",
+            "printf '%s|%s|%s' \"$FURROW_UNIVERSE_INDEX\" \"$FURROW_WORKDIR\" \"$PORT\" > universe.txt",
         ])
         .assert()
         .success()
@@ -1007,7 +1007,7 @@ fn exec_runs_multiple_complete_universes_concurrently_and_seals_each_result() {
     }
     assert!(!fixture.repo.join("universe.txt").exists());
 
-    let forks = fixture.agit().args(["--json", "forks"]).output().unwrap();
+    let forks = fixture.furrow().args(["--json", "forks"]).output().unwrap();
     let forks: Value = serde_json::from_slice(&forks.stdout).unwrap();
     assert_eq!(forks.as_array().unwrap().len(), 2);
 }
@@ -1017,7 +1017,7 @@ fn exec_uses_the_disclosed_workdir_and_preserves_failed_results() {
     let fixture = Fixture::new();
     fixture.watch();
     let plan_output = fixture
-        .agit()
+        .furrow()
         .args(["--json", "exec", "--fork", "failed-universe", "--plan"])
         .output()
         .unwrap();
@@ -1029,7 +1029,7 @@ fn exec_uses_the_disclosed_workdir_and_preserves_failed_results() {
         .to_owned();
 
     let output = fixture
-        .agit()
+        .furrow()
         .args([
             "--json",
             "exec",
@@ -1071,13 +1071,13 @@ fn conflict_radar_opens_once_resolves_and_replays_from_a_durable_cursor() {
     let alpha = fixture._temp.path().join("radar-alpha");
     let beta = fixture._temp.path().join("radar-beta");
     fixture
-        .agit()
+        .furrow()
         .args(["fork", "radar-alpha", "--destination"])
         .arg(&alpha)
         .assert()
         .success();
     fixture
-        .agit()
+        .furrow()
         .args(["fork", "radar-beta", "--destination"])
         .arg(&beta)
         .assert()
@@ -1085,12 +1085,15 @@ fn conflict_radar_opens_once_resolves_and_replays_from_a_durable_cursor() {
 
     fs::write(alpha.join("app.txt"), b"alpha implementation\n").unwrap();
     fs::write(beta.join("notes.txt"), b"beta notes\n").unwrap();
-    agit_at(&alpha, &fixture.data)
+    furrow_at(&alpha, &fixture.data)
         .arg("snap")
         .assert()
         .success();
-    agit_at(&beta, &fixture.data).arg("snap").assert().success();
-    let disjoint = fixture.agit().args(["--json", "forks"]).output().unwrap();
+    furrow_at(&beta, &fixture.data)
+        .arg("snap")
+        .assert()
+        .success();
+    let disjoint = fixture.furrow().args(["--json", "forks"]).output().unwrap();
     assert!(
         disjoint.status.success(),
         "{}",
@@ -1104,8 +1107,11 @@ fn conflict_radar_opens_once_resolves_and_replays_from_a_durable_cursor() {
         .all(|fork| fork["conflicts"] == 0));
 
     fs::write(beta.join("app.txt"), b"beta implementation\n").unwrap();
-    agit_at(&beta, &fixture.data).arg("snap").assert().success();
-    let conflicted = fixture.agit().args(["--json", "forks"]).output().unwrap();
+    furrow_at(&beta, &fixture.data)
+        .arg("snap")
+        .assert()
+        .success();
+    let conflicted = fixture.furrow().args(["--json", "forks"]).output().unwrap();
     let conflicted: Value = serde_json::from_slice(&conflicted.stdout).unwrap();
     for fork in conflicted.as_array().unwrap() {
         assert_eq!(fork["fork_id"].as_str().unwrap().len(), 32);
@@ -1113,7 +1119,7 @@ fn conflict_radar_opens_once_resolves_and_replays_from_a_durable_cursor() {
         assert_eq!(fork["conflict_paths"][0], "app.txt");
     }
 
-    let events = fixture.agit().arg("events").output().unwrap();
+    let events = fixture.furrow().arg("events").output().unwrap();
     assert!(events.status.success());
     let events = ndjson(&events.stdout);
     let opened: Vec<_> = events
@@ -1126,22 +1132,22 @@ fn conflict_radar_opens_once_resolves_and_replays_from_a_durable_cursor() {
     let cursor = opened[0]["cursor"].as_str().unwrap().to_owned();
 
     // Repeated reconciliation must not duplicate a stable transition.
-    fixture.agit().arg("forks").assert().success();
+    fixture.furrow().arg("forks").assert().success();
     let repeated = fixture
-        .agit()
+        .furrow()
         .args(["events", "--after", &cursor])
         .output()
         .unwrap();
     assert!(repeated.status.success());
     assert!(repeated.stdout.is_empty());
 
-    agit_at(&alpha, &fixture.data)
+    furrow_at(&alpha, &fixture.data)
         .args(["claim", "app.txt", "--owner", "alpha-agent"])
         .assert()
         .success();
-    fixture.agit().arg("forks").assert().success();
+    fixture.furrow().arg("forks").assert().success();
     let claimed = fixture
-        .agit()
+        .furrow()
         .args(["events", "--after", &cursor])
         .output()
         .unwrap();
@@ -1153,7 +1159,7 @@ fn conflict_radar_opens_once_resolves_and_replays_from_a_durable_cursor() {
 
     let offline = fixture._temp.path().join("radar-beta-offline");
     fs::rename(&beta, &offline).unwrap();
-    let stale = fixture.agit().args(["--json", "forks"]).output().unwrap();
+    let stale = fixture.furrow().args(["--json", "forks"]).output().unwrap();
     let stale: Value = serde_json::from_slice(&stale.stdout).unwrap();
     let beta_status = stale
         .as_array()
@@ -1166,8 +1172,11 @@ fn conflict_radar_opens_once_resolves_and_replays_from_a_durable_cursor() {
     fs::rename(&offline, &beta).unwrap();
 
     fs::write(beta.join("app.txt"), b"tracked original\n").unwrap();
-    agit_at(&beta, &fixture.data).arg("snap").assert().success();
-    let resolved = fixture.agit().args(["--json", "forks"]).output().unwrap();
+    furrow_at(&beta, &fixture.data)
+        .arg("snap")
+        .assert()
+        .success();
+    let resolved = fixture.furrow().args(["--json", "forks"]).output().unwrap();
     let resolved: Value = serde_json::from_slice(&resolved.stdout).unwrap();
     assert!(resolved
         .as_array()
@@ -1175,7 +1184,7 @@ fn conflict_radar_opens_once_resolves_and_replays_from_a_durable_cursor() {
         .iter()
         .all(|fork| fork["conflicts"] == 0));
     let events = fixture
-        .agit()
+        .furrow()
         .args(["events", "--after", &cursor])
         .output()
         .unwrap();
@@ -1195,13 +1204,13 @@ fn conflict_radar_distinguishes_sibling_edits_from_subtree_deletion() {
     let alpha = fixture._temp.path().join("tree-alpha");
     let beta = fixture._temp.path().join("tree-beta");
     fixture
-        .agit()
+        .furrow()
         .args(["fork", "tree-alpha", "--destination"])
         .arg(&alpha)
         .assert()
         .success();
     fixture
-        .agit()
+        .furrow()
         .args(["fork", "tree-beta", "--destination"])
         .arg(&beta)
         .assert()
@@ -1209,12 +1218,15 @@ fn conflict_radar_distinguishes_sibling_edits_from_subtree_deletion() {
 
     fs::write(alpha.join("src/alpha.rs"), b"alpha changed\n").unwrap();
     fs::write(beta.join("src/beta.rs"), b"beta changed\n").unwrap();
-    agit_at(&alpha, &fixture.data)
+    furrow_at(&alpha, &fixture.data)
         .arg("snap")
         .assert()
         .success();
-    agit_at(&beta, &fixture.data).arg("snap").assert().success();
-    let disjoint = fixture.agit().args(["--json", "forks"]).output().unwrap();
+    furrow_at(&beta, &fixture.data)
+        .arg("snap")
+        .assert()
+        .success();
+    let disjoint = fixture.furrow().args(["--json", "forks"]).output().unwrap();
     assert!(
         disjoint.status.success(),
         "{}",
@@ -1228,11 +1240,11 @@ fn conflict_radar_distinguishes_sibling_edits_from_subtree_deletion() {
         .all(|fork| fork["conflicts"] == 0));
 
     fs::remove_dir_all(alpha.join("src")).unwrap();
-    agit_at(&alpha, &fixture.data)
+    furrow_at(&alpha, &fixture.data)
         .arg("snap")
         .assert()
         .success();
-    let conflicted = fixture.agit().args(["--json", "forks"]).output().unwrap();
+    let conflicted = fixture.furrow().args(["--json", "forks"]).output().unwrap();
     let conflicted: Value = serde_json::from_slice(&conflicted.stdout).unwrap();
     for fork in conflicted.as_array().unwrap() {
         assert_eq!(fork["conflicts"], 1);
@@ -1247,16 +1259,19 @@ fn conflict_radar_groups_many_forks_into_one_path_event() {
     for name in ["group-alpha", "group-beta", "group-gamma"] {
         let path = fixture._temp.path().join(name);
         fixture
-            .agit()
+            .furrow()
             .args(["fork", name, "--destination"])
             .arg(&path)
             .assert()
             .success();
         fs::write(path.join("app.txt"), format!("{name}\n")).unwrap();
-        agit_at(&path, &fixture.data).arg("snap").assert().success();
+        furrow_at(&path, &fixture.data)
+            .arg("snap")
+            .assert()
+            .success();
     }
 
-    let human = fixture.agit().arg("forks").output().unwrap();
+    let human = fixture.furrow().arg("forks").output().unwrap();
     assert!(human.status.success());
     assert_eq!(
         String::from_utf8_lossy(&human.stdout)
@@ -1265,7 +1280,7 @@ fn conflict_radar_groups_many_forks_into_one_path_event() {
             .count(),
         3
     );
-    let events = fixture.agit().arg("events").output().unwrap();
+    let events = fixture.furrow().arg("events").output().unwrap();
     let opened: Vec<_> = ndjson(&events.stdout)
         .into_iter()
         .filter(|event| event["state"] == "opened")
@@ -1276,12 +1291,12 @@ fn conflict_radar_groups_many_forks_into_one_path_event() {
     let cursor = opened[0]["cursor"].as_str().unwrap();
 
     fixture
-        .agit()
+        .furrow()
         .args(["fork-rm", "group-gamma"])
         .assert()
         .success();
     let events = fixture
-        .agit()
+        .furrow()
         .args(["events", "--after", cursor])
         .output()
         .unwrap();
@@ -1292,19 +1307,19 @@ fn conflict_radar_groups_many_forks_into_one_path_event() {
     let cursor = events[0]["cursor"].as_str().unwrap();
 
     fixture
-        .agit()
+        .furrow()
         .args(["fork-rm", "group-beta"])
         .assert()
         .success();
     let events = fixture
-        .agit()
+        .furrow()
         .args(["events", "--after", cursor])
         .output()
         .unwrap();
     let events = ndjson(&events.stdout);
     assert_eq!(events.len(), 1);
     assert_eq!(events[0]["state"], "resolved");
-    let remaining = fixture.agit().args(["--json", "forks"]).output().unwrap();
+    let remaining = fixture.furrow().args(["--json", "forks"]).output().unwrap();
     let remaining: Value = serde_json::from_slice(&remaining.stdout).unwrap();
     assert_eq!(remaining.as_array().unwrap().len(), 1);
     assert_eq!(remaining[0]["conflicts"], 0);
@@ -1317,22 +1332,22 @@ fn conflict_event_follower_observes_seals_without_an_in_memory_queue() {
     let alpha = fixture._temp.path().join("follow-alpha");
     let beta = fixture._temp.path().join("follow-beta");
     fixture
-        .agit()
+        .furrow()
         .args(["fork", "follow-alpha", "--destination"])
         .arg(&alpha)
         .assert()
         .success();
     fixture
-        .agit()
+        .furrow()
         .args(["fork", "follow-beta", "--destination"])
         .arg(&beta)
         .assert()
         .success();
-    fixture.agit().arg("forks").assert().success();
+    fixture.furrow().arg("forks").assert().success();
 
-    let mut child = std::process::Command::new(env!("CARGO_BIN_EXE_agit"))
-        .env("AGIT_DATA_DIR", &fixture.data)
-        .env("AGIT_NO_DAEMON", "1")
+    let mut child = std::process::Command::new(env!("CARGO_BIN_EXE_furrow"))
+        .env("FURROW_DATA_DIR", &fixture.data)
+        .env("FURROW_NO_DAEMON", "1")
         .arg("--repo")
         .arg(&fixture.repo)
         .args(["events", "--follow", "--interval-ms", "50"])
@@ -1350,11 +1365,14 @@ fn conflict_event_follower_observes_seals_without_an_in_memory_queue() {
 
     fs::write(alpha.join("app.txt"), b"alpha live\n").unwrap();
     fs::write(beta.join("app.txt"), b"beta live\n").unwrap();
-    agit_at(&alpha, &fixture.data)
+    furrow_at(&alpha, &fixture.data)
         .arg("snap")
         .assert()
         .success();
-    agit_at(&beta, &fixture.data).arg("snap").assert().success();
+    furrow_at(&beta, &fixture.data)
+        .arg("snap")
+        .assert()
+        .success();
     let (read, line) = receiver
         .recv_timeout(Duration::from_secs(5))
         .expect("event follower did not receive the conflict");
@@ -1374,7 +1392,7 @@ fn verified_merge_converges_independent_source_and_fork_changes() {
     fixture.watch();
     let fork = fixture._temp.path().join("merge-agent");
     fixture
-        .agit()
+        .furrow()
         .args(["fork", "merge-agent", "--destination"])
         .arg(&fork)
         .assert()
@@ -1383,7 +1401,7 @@ fn verified_merge_converges_independent_source_and_fork_changes() {
     fs::write(fixture.repo.join("app.txt"), b"source-only work\n").unwrap();
     fs::write(fork.join("agent-result.txt"), b"fork-only work\n").unwrap();
     fixture
-        .agit()
+        .furrow()
         .args([
             "merge",
             "merge-agent",
@@ -1402,7 +1420,7 @@ fn verified_merge_converges_independent_source_and_fork_changes() {
         b"fork-only work\n"
     );
     let timeline = fixture
-        .agit()
+        .furrow()
         .args(["--json", "timeline"])
         .output()
         .unwrap();
@@ -1417,19 +1435,19 @@ fn advisory_claims_coordinate_sibling_forks_and_are_timeline_recorded() {
     let alpha = fixture._temp.path().join("claim-alpha");
     let beta = fixture._temp.path().join("claim-beta");
     fixture
-        .agit()
+        .furrow()
         .args(["fork", "claim-alpha", "--destination"])
         .arg(&alpha)
         .assert()
         .success();
     fixture
-        .agit()
+        .furrow()
         .args(["fork", "claim-beta", "--destination"])
         .arg(&beta)
         .assert()
         .success();
 
-    let alpha_claim = agit_at(&alpha, &fixture.data)
+    let alpha_claim = furrow_at(&alpha, &fixture.data)
         .args(["--json", "claim", "src/auth/**", "--owner", "alpha-agent"])
         .assert()
         .success()
@@ -1437,18 +1455,18 @@ fn advisory_claims_coordinate_sibling_forks_and_are_timeline_recorded() {
         .stdout
         .clone();
     let alpha_claim: Value = serde_json::from_slice(&alpha_claim).unwrap();
-    agit_at(&beta, &fixture.data)
+    furrow_at(&beta, &fixture.data)
         .args(["claim", "src/auth/login.rs", "--owner", "beta-agent"])
         .assert()
         .failure()
         .stderr(predicates::str::contains("held by alpha-agent"));
-    agit_at(&beta, &fixture.data)
+    furrow_at(&beta, &fixture.data)
         .args(["claim", "src/payments/**", "--owner", "beta-agent"])
         .assert()
         .success();
 
     let active = fixture
-        .agit()
+        .furrow()
         .args(["--json", "claims"])
         .assert()
         .success()
@@ -1457,7 +1475,7 @@ fn advisory_claims_coordinate_sibling_forks_and_are_timeline_recorded() {
         .clone();
     let active: Value = serde_json::from_slice(&active).unwrap();
     assert_eq!(active.as_array().unwrap().len(), 2);
-    let timeline = agit_at(&alpha, &fixture.data)
+    let timeline = furrow_at(&alpha, &fixture.data)
         .args(["--json", "timeline"])
         .assert()
         .success()
@@ -1467,7 +1485,7 @@ fn advisory_claims_coordinate_sibling_forks_and_are_timeline_recorded() {
     let timeline: Value = serde_json::from_slice(&timeline).unwrap();
     assert_eq!(timeline[0]["trigger"], "claim");
 
-    agit_at(&alpha, &fixture.data)
+    furrow_at(&alpha, &fixture.data)
         .args([
             "release",
             alpha_claim["claim"]["id"].as_str().unwrap(),
@@ -1476,7 +1494,7 @@ fn advisory_claims_coordinate_sibling_forks_and_are_timeline_recorded() {
         ])
         .assert()
         .success();
-    agit_at(&beta, &fixture.data)
+    furrow_at(&beta, &fixture.data)
         .args(["claim", "src/auth/login.rs", "--owner", "beta-agent"])
         .assert()
         .success();
@@ -1489,19 +1507,19 @@ fn coord_values_propagate_eagerly_and_reconcile_offline_forks_and_tombstones() {
     let alpha = fixture._temp.path().join("coord-alpha");
     let beta = fixture._temp.path().join("coord-beta");
     fixture
-        .agit()
+        .furrow()
         .args(["fork", "coord-alpha", "--destination"])
         .arg(&alpha)
         .assert()
         .success();
     fixture
-        .agit()
+        .furrow()
         .args(["fork", "coord-beta", "--destination"])
         .arg(&beta)
         .assert()
         .success();
 
-    agit_at(&alpha, &fixture.data)
+    furrow_at(&alpha, &fixture.data)
         .args([
             "coord",
             "write",
@@ -1515,14 +1533,14 @@ fn coord_values_propagate_eagerly_and_reconcile_offline_forks_and_tombstones() {
         .success();
     for root in [&fixture.repo, &alpha, &beta] {
         assert_eq!(
-            fs::read(root.join(".agit/coord/tasks/current.md")).unwrap(),
+            fs::read(root.join(".furrow/coord/tasks/current.md")).unwrap(),
             b"alpha is working"
         );
     }
 
     let offline = fixture._temp.path().join("coord-alpha-offline");
     fs::rename(&alpha, &offline).unwrap();
-    agit_at(&beta, &fixture.data)
+    furrow_at(&beta, &fixture.data)
         .args([
             "coord",
             "write",
@@ -1535,11 +1553,11 @@ fn coord_values_propagate_eagerly_and_reconcile_offline_forks_and_tombstones() {
         .assert()
         .success();
     assert_eq!(
-        fs::read(offline.join(".agit/coord/tasks/current.md")).unwrap(),
+        fs::read(offline.join(".furrow/coord/tasks/current.md")).unwrap(),
         b"alpha is working"
     );
     fs::rename(&offline, &alpha).unwrap();
-    let recovered = agit_at(&alpha, &fixture.data)
+    let recovered = furrow_at(&alpha, &fixture.data)
         .args(["coord", "read", "tasks/current.md"])
         .assert()
         .success()
@@ -1549,7 +1567,7 @@ fn coord_values_propagate_eagerly_and_reconcile_offline_forks_and_tombstones() {
     assert_eq!(recovered, b"beta continued");
 
     fs::rename(&alpha, &offline).unwrap();
-    agit_at(&beta, &fixture.data)
+    furrow_at(&beta, &fixture.data)
         .args([
             "coord",
             "remove",
@@ -1559,9 +1577,9 @@ fn coord_values_propagate_eagerly_and_reconcile_offline_forks_and_tombstones() {
         ])
         .assert()
         .success();
-    assert!(offline.join(".agit/coord/tasks/current.md").exists());
+    assert!(offline.join(".furrow/coord/tasks/current.md").exists());
     fs::rename(&offline, &alpha).unwrap();
-    let listed = agit_at(&alpha, &fixture.data)
+    let listed = furrow_at(&alpha, &fixture.data)
         .args(["--json", "coord", "list"])
         .assert()
         .success()
@@ -1570,9 +1588,9 @@ fn coord_values_propagate_eagerly_and_reconcile_offline_forks_and_tombstones() {
         .clone();
     let listed: Value = serde_json::from_slice(&listed).unwrap();
     assert!(listed.as_array().unwrap().is_empty());
-    assert!(!alpha.join(".agit/coord/tasks/current.md").exists());
+    assert!(!alpha.join(".furrow/coord/tasks/current.md").exists());
 
-    let timeline = agit_at(&beta, &fixture.data)
+    let timeline = furrow_at(&beta, &fixture.data)
         .args(["--json", "timeline"])
         .assert()
         .success()
@@ -1589,13 +1607,13 @@ fn watch_fork_returns_seals_after_an_exact_cursor() {
     fixture.watch();
     let worker = fixture._temp.path().join("observer-agent");
     fixture
-        .agit()
+        .furrow()
         .args(["fork", "observer-agent", "--destination"])
         .arg(&worker)
         .assert()
         .success();
 
-    let timeline = agit_at(&worker, &fixture.data)
+    let timeline = furrow_at(&worker, &fixture.data)
         .args(["--json", "timeline"])
         .assert()
         .success()
@@ -1606,7 +1624,7 @@ fn watch_fork_returns_seals_after_an_exact_cursor() {
     let cursor = timeline[0]["id"].as_str().unwrap();
 
     fs::write(worker.join("agent-result.txt"), b"completed\n").unwrap();
-    let sealed = agit_at(&worker, &fixture.data)
+    let sealed = furrow_at(&worker, &fixture.data)
         .args(["--json", "snap", "-m", "agent completed task"])
         .assert()
         .success()
@@ -1616,7 +1634,7 @@ fn watch_fork_returns_seals_after_an_exact_cursor() {
     let sealed: Value = serde_json::from_slice(&sealed).unwrap();
 
     let updates = fixture
-        .agit()
+        .furrow()
         .args([
             "--json",
             "watch-fork",
@@ -1644,7 +1662,7 @@ fn merge_conflict_or_failed_check_never_mutates_source() {
     fixture.watch();
     let conflict_fork = fixture._temp.path().join("conflict-agent");
     fixture
-        .agit()
+        .furrow()
         .args(["fork", "conflict-agent", "--destination"])
         .arg(&conflict_fork)
         .assert()
@@ -1653,7 +1671,7 @@ fn merge_conflict_or_failed_check_never_mutates_source() {
     fs::write(conflict_fork.join("app.txt"), b"fork version\n").unwrap();
 
     fixture
-        .agit()
+        .furrow()
         .args(["merge", "conflict-agent", "--dry-run"])
         .assert()
         .failure()
@@ -1665,14 +1683,14 @@ fn merge_conflict_or_failed_check_never_mutates_source() {
 
     let check_fork = fixture._temp.path().join("check-agent");
     fixture
-        .agit()
+        .furrow()
         .args(["fork", "check-agent", "--destination"])
         .arg(&check_fork)
         .assert()
         .success();
     fs::write(check_fork.join("check-only.txt"), b"candidate\n").unwrap();
     fixture
-        .agit()
+        .furrow()
         .args(["merge", "check-agent", "--check", "false"])
         .assert()
         .failure()
@@ -1702,7 +1720,7 @@ fn paged_flat_directory_snapshot_restores_entries_across_pages() {
     }
 
     fixture
-        .agit()
+        .furrow()
         .args(["rewind", &snapshot, "--paths", "flat", "--yes"])
         .assert()
         .success();
@@ -1722,8 +1740,8 @@ fn interrupted_rewind_rolls_back_to_pre_rewind_state_on_next_command() {
     fs::write(fixture.repo.join("app.txt"), b"broken app\n").unwrap();
 
     fixture
-        .agit()
-        .env("AGIT_FAILPOINT", "rewind_after_first_change")
+        .furrow()
+        .env("FURROW_FAILPOINT", "rewind_after_first_change")
         .args(["rewind", &snapshot, "--yes"])
         .assert()
         .code(86);
@@ -1731,7 +1749,7 @@ fn interrupted_rewind_rolls_back_to_pre_rewind_state_on_next_command() {
     // Opening the repository detects the durable intent and restores the
     // automatic pre-rewind snapshot before serving status.
     fixture
-        .agit()
+        .furrow()
         .arg("status")
         .assert()
         .success()
@@ -1752,10 +1770,10 @@ fn live_writer_interference_is_rescued_and_rewind_rolls_back() {
     let target = fixture.watch();
     fs::write(fixture.repo.join("app.txt"), b"pre-rewind damage\n").unwrap();
 
-    let mut child = std::process::Command::new(env!("CARGO_BIN_EXE_agit"))
-        .env("AGIT_DATA_DIR", &fixture.data)
-        .env("AGIT_NO_DAEMON", "1")
-        .env("AGIT_TEST_REWIND_PAUSE_AFTER_APPLY_MS", "750")
+    let mut child = std::process::Command::new(env!("CARGO_BIN_EXE_furrow"))
+        .env("FURROW_DATA_DIR", &fixture.data)
+        .env("FURROW_NO_DAEMON", "1")
+        .env("FURROW_TEST_REWIND_PAUSE_AFTER_APPLY_MS", "750")
         .arg("--repo")
         .arg(&fixture.repo)
         .args(["rewind", &target, "--yes"])
@@ -1794,7 +1812,7 @@ fn live_writer_interference_is_rescued_and_rewind_rolls_back() {
     );
 
     fixture
-        .agit()
+        .furrow()
         .args(["rewind", rescue, "--yes"])
         .assert()
         .success();
@@ -1810,10 +1828,10 @@ fn precondition_interference_cancels_rewind_without_touching_writer_bytes() {
     let target = fixture.watch();
     fs::write(fixture.repo.join("app.txt"), b"pre-rewind damage\n").unwrap();
 
-    let child = std::process::Command::new(env!("CARGO_BIN_EXE_agit"))
-        .env("AGIT_DATA_DIR", &fixture.data)
-        .env("AGIT_NO_DAEMON", "1")
-        .env("AGIT_TEST_REWIND_PAUSE_BEFORE_PRECONDITION_MS", "750")
+    let child = std::process::Command::new(env!("CARGO_BIN_EXE_furrow"))
+        .env("FURROW_DATA_DIR", &fixture.data)
+        .env("FURROW_NO_DAEMON", "1")
+        .env("FURROW_TEST_REWIND_PAUSE_BEFORE_PRECONDITION_MS", "750")
         .arg("--repo")
         .arg(&fixture.repo)
         .args(["rewind", &target, "--yes"])
@@ -1828,7 +1846,7 @@ fn precondition_interference_cancels_rewind_without_touching_writer_bytes() {
             "pre-rewind seal was not published"
         );
         let timeline = fixture
-            .agit()
+            .furrow()
             .args(["--json", "timeline", "--limit", "1"])
             .output()
             .unwrap();
@@ -1856,8 +1874,8 @@ fn precondition_interference_cancels_rewind_without_touching_writer_bytes() {
 #[test]
 fn foreground_watcher_seals_after_write_quiescence() {
     let fixture = Fixture::new();
-    let mut child = std::process::Command::new(env!("CARGO_BIN_EXE_agit"))
-        .env("AGIT_DATA_DIR", &fixture.data)
+    let mut child = std::process::Command::new(env!("CARGO_BIN_EXE_furrow"))
+        .env("FURROW_DATA_DIR", &fixture.data)
         .arg("--repo")
         .arg(&fixture.repo)
         .args(["watch", "--foreground", "--debounce-ms", "100"])
@@ -1867,7 +1885,7 @@ fn foreground_watcher_seals_after_write_quiescence() {
         .unwrap();
 
     let deadline = Instant::now() + Duration::from_secs(10);
-    while !fixture.repo.join(".agit/workspace-id").exists() {
+    while !fixture.repo.join(".furrow/workspace-id").exists() {
         assert!(Instant::now() < deadline, "watcher did not attach in time");
         std::thread::sleep(Duration::from_millis(25));
     }
@@ -1897,7 +1915,7 @@ fn foreground_watcher_seals_after_write_quiescence() {
     let mut watcher_snapshot = None;
     while Instant::now() < deadline {
         let output = fixture
-            .agit()
+            .furrow()
             .args(["--json", "timeline"])
             .output()
             .unwrap();
@@ -1926,7 +1944,7 @@ fn foreground_watcher_seals_after_write_quiescence() {
     fs::create_dir(fixture.repo.join("cache")).unwrap();
     fs::write(fixture.repo.join("cache/damage"), b"recreated\n").unwrap();
     fixture
-        .agit()
+        .furrow()
         .args(["rewind", &watcher_snapshot, "--yes"])
         .assert()
         .success();
@@ -1945,8 +1963,8 @@ fn foreground_watcher_seals_after_write_quiescence() {
 #[test]
 fn watcher_reloads_policy_and_ignores_excluded_subtree_churn() {
     let fixture = Fixture::new();
-    let mut child = std::process::Command::new(env!("CARGO_BIN_EXE_agit"))
-        .env("AGIT_DATA_DIR", &fixture.data)
+    let mut child = std::process::Command::new(env!("CARGO_BIN_EXE_furrow"))
+        .env("FURROW_DATA_DIR", &fixture.data)
         .arg("--repo")
         .arg(&fixture.repo)
         .args(["watch", "--foreground", "--debounce-ms", "75"])
@@ -1955,24 +1973,24 @@ fn watcher_reloads_policy_and_ignores_excluded_subtree_churn() {
         .spawn()
         .unwrap();
     let deadline = Instant::now() + Duration::from_secs(10);
-    while !fixture.repo.join(".agit/workspace-id").exists() {
+    while !fixture.repo.join(".furrow/workspace-id").exists() {
         assert!(Instant::now() < deadline, "watcher did not attach in time");
         std::thread::sleep(Duration::from_millis(25));
     }
     std::thread::sleep(Duration::from_millis(1200));
     let before = fixture
-        .agit()
+        .furrow()
         .args(["--json", "timeline", "--limit", "1"])
         .output()
         .unwrap();
     let before: Value = serde_json::from_slice(&before.stdout).unwrap();
     let before = before[0]["id"].as_str().unwrap().to_owned();
 
-    fs::write(fixture.repo.join(".agitpolicy"), b"exclude cache\n").unwrap();
+    fs::write(fixture.repo.join(".furrowpolicy"), b"exclude cache\n").unwrap();
     let policy_head = loop {
         assert!(Instant::now() < deadline, "policy change was not sealed");
         let output = fixture
-            .agit()
+            .furrow()
             .args(["--json", "timeline", "--limit", "1"])
             .output()
             .unwrap();
@@ -1993,7 +2011,7 @@ fn watcher_reloads_policy_and_ignores_excluded_subtree_churn() {
     .unwrap();
     std::thread::sleep(Duration::from_millis(500));
     let after = fixture
-        .agit()
+        .furrow()
         .args(["--json", "timeline", "--limit", "1"])
         .output()
         .unwrap();
@@ -2006,8 +2024,8 @@ fn watcher_reloads_policy_and_ignores_excluded_subtree_churn() {
 #[test]
 fn default_watch_starts_background_protection_and_forget_stops_it() {
     let fixture = Fixture::new();
-    std::process::Command::new(env!("CARGO_BIN_EXE_agit"))
-        .env("AGIT_DATA_DIR", &fixture.data)
+    std::process::Command::new(env!("CARGO_BIN_EXE_furrow"))
+        .env("FURROW_DATA_DIR", &fixture.data)
         .arg("--repo")
         .arg(&fixture.repo)
         .arg("watch")
@@ -2017,11 +2035,15 @@ fn default_watch_starts_background_protection_and_forget_stops_it() {
         .then_some(())
         .expect("watch failed");
 
-    let output = fixture.agit().args(["--json", "status"]).output().unwrap();
+    let output = fixture
+        .furrow()
+        .args(["--json", "status"])
+        .output()
+        .unwrap();
     let status: Value = serde_json::from_slice(&output.stdout).unwrap();
     assert_eq!(status["watcher_running"], true);
 
-    fixture.agit().arg("forget").assert().success();
+    fixture.furrow().arg("forget").assert().success();
     let workspace = fixture.data.join("store-v1/workspaces");
     let pid_files: Vec<_> = fs::read_dir(workspace)
         .unwrap()
@@ -2037,11 +2059,11 @@ fn recovery_rediscovers_workspace_after_git_clean_removes_pointer() {
     let fixture = Fixture::new();
     let snapshot = fixture.watch();
     git(&fixture.repo, &["clean", "-fdx"]);
-    assert!(!fixture.repo.join(".agit/workspace-id").exists());
+    assert!(!fixture.repo.join(".furrow/workspace-id").exists());
     assert!(!fixture.repo.join(".env").exists());
 
     fixture
-        .agit()
+        .furrow()
         .args(["rewind", &snapshot, "--yes"])
         .assert()
         .success();
@@ -2049,25 +2071,25 @@ fn recovery_rediscovers_workspace_after_git_clean_removes_pointer() {
         fs::read(fixture.repo.join(".env")).unwrap(),
         b"TOKEN=original\n"
     );
-    assert!(fixture.repo.join(".agit/workspace-id").exists());
+    assert!(fixture.repo.join(".furrow/workspace-id").exists());
 }
 
 #[test]
 fn plain_forget_stays_detached_instead_of_being_rediscovered() {
     let fixture = Fixture::new();
     fixture.watch();
-    let workspace_id = fs::read_to_string(fixture.repo.join(".agit/workspace-id")).unwrap();
+    let workspace_id = fs::read_to_string(fixture.repo.join(".furrow/workspace-id")).unwrap();
 
-    fixture.agit().arg("forget").assert().success();
-    assert!(!fixture.repo.join(".agit/workspace-id").exists());
+    fixture.furrow().arg("forget").assert().success();
+    assert!(!fixture.repo.join(".furrow/workspace-id").exists());
     fixture
-        .agit()
+        .furrow()
         .arg("status")
         .assert()
         .failure()
         .stderr(predicates::str::contains("not watched"));
     let output = fixture
-        .agit()
+        .furrow()
         .args(["--json", "gc", "--dry-run"])
         .assert()
         .success()
@@ -2078,11 +2100,11 @@ fn plain_forget_stays_detached_instead_of_being_rediscovered() {
     assert!(report["roots"].as_u64().unwrap() > 0);
 
     fixture
-        .agit()
+        .furrow()
         .args(["watch", "--no-daemon"])
         .assert()
         .success();
-    let new_workspace_id = fs::read_to_string(fixture.repo.join(".agit/workspace-id")).unwrap();
+    let new_workspace_id = fs::read_to_string(fixture.repo.join(".furrow/workspace-id")).unwrap();
     assert_ne!(workspace_id, new_workspace_id);
 }
 
@@ -2096,16 +2118,16 @@ fn purge_then_gc_reclaims_only_unshared_history() {
         fixture.repo.parent().unwrap(),
         &["clone", fixture.repo.to_str().unwrap(), "second"],
     );
-    let second_agit = || {
-        let mut command = Command::cargo_bin("agit").unwrap();
+    let second_furrow = || {
+        let mut command = Command::cargo_bin("furrow").unwrap();
         command
-            .env("AGIT_DATA_DIR", &fixture.data)
-            .env("AGIT_NO_DAEMON", "1")
+            .env("FURROW_DATA_DIR", &fixture.data)
+            .env("FURROW_NO_DAEMON", "1")
             .arg("--repo")
             .arg(&second);
         command
     };
-    let output = second_agit()
+    let output = second_furrow()
         .args(["--json", "watch", "--no-daemon"])
         .assert()
         .success()
@@ -2118,12 +2140,12 @@ fn purge_then_gc_reclaims_only_unshared_history() {
         .to_owned();
 
     fixture
-        .agit()
+        .furrow()
         .args(["forget", "--purge"])
         .assert()
         .success();
     let preview_output = fixture
-        .agit()
+        .furrow()
         .args(["--json", "gc", "--dry-run"])
         .assert()
         .success()
@@ -2135,7 +2157,7 @@ fn purge_then_gc_reclaims_only_unshared_history() {
     assert!(preview["unreachable_objects"].as_u64().unwrap() > 0);
 
     let output = fixture
-        .agit()
+        .furrow()
         .args(["--json", "gc"])
         .assert()
         .success()
@@ -2147,7 +2169,7 @@ fn purge_then_gc_reclaims_only_unshared_history() {
     assert!(report["reclaimed_bytes"].as_u64().unwrap() > 0);
 
     fs::write(second.join("app.txt"), b"destroyed after gc\n").unwrap();
-    second_agit()
+    second_furrow()
         .args(["rewind", &second_snapshot, "--paths", "app.txt", "--yes"])
         .assert()
         .success();
@@ -2168,13 +2190,13 @@ fn encrypted_two_store_sync_fast_forwards_and_preserves_divergence() {
         &["clone", fixture.repo.to_str().unwrap(), "peer"],
     );
     fixture.watch();
-    agit_at(&peer, &peer_data)
+    furrow_at(&peer, &peer_data)
         .args(["watch", "--no-daemon"])
         .assert()
         .success();
 
     let pair_output = fixture
-        .agit()
+        .furrow()
         .args([
             "--json",
             "pair",
@@ -2189,7 +2211,7 @@ fn encrypted_two_store_sync_fast_forwards_and_preserves_divergence() {
         .clone();
     let pair: Value = serde_json::from_slice(&pair_output).unwrap();
     let key = pair["key_hex"].as_str().unwrap();
-    agit_at(&peer, &peer_data)
+    furrow_at(&peer, &peer_data)
         .args([
             "pair",
             remote.to_str().unwrap(),
@@ -2201,8 +2223,8 @@ fn encrypted_two_store_sync_fast_forwards_and_preserves_divergence() {
         .assert()
         .success();
 
-    fixture.agit().args(["sync", "--push"]).assert().success();
-    let bootstrap_output = agit_at(&peer, &peer_data)
+    fixture.furrow().args(["sync", "--push"]).assert().success();
+    let bootstrap_output = furrow_at(&peer, &peer_data)
         .args(["--json", "sync", "--pull", "--bootstrap"])
         .assert()
         .success()
@@ -2222,7 +2244,7 @@ fn encrypted_two_store_sync_fast_forwards_and_preserves_divergence() {
 
     fs::write(fixture.repo.join("app.txt"), b"remote delta\n").unwrap();
     let second_push = fixture
-        .agit()
+        .furrow()
         .args(["--json", "sync", "--push"])
         .assert()
         .success()
@@ -2232,7 +2254,7 @@ fn encrypted_two_store_sync_fast_forwards_and_preserves_divergence() {
     let second_push: Value = serde_json::from_slice(&second_push).unwrap();
     assert!(second_push["reused_objects"].as_u64().unwrap() > 0);
     assert!(second_push["uploaded_objects"].as_u64().unwrap() < 10);
-    let mut pull_command = agit_at(&peer, &peer_data);
+    let mut pull_command = furrow_at(&peer, &peer_data);
     let pull = pull_command
         .args(["--json", "sync", "--pull", "--timings"])
         .assert()
@@ -2269,7 +2291,7 @@ fn encrypted_two_store_sync_fast_forwards_and_preserves_divergence() {
         unchanged_inode,
         "delta materialization must not replace an unchanged repository path"
     );
-    let status = agit_at(&peer, &peer_data)
+    let status = furrow_at(&peer, &peer_data)
         .args(["--json", "status"])
         .assert()
         .success()
@@ -2281,8 +2303,8 @@ fn encrypted_two_store_sync_fast_forwards_and_preserves_divergence() {
 
     fs::write(peer.join("notes.txt"), b"offline peer work\n").unwrap();
     fs::write(fixture.repo.join("app.txt"), b"new remote work\n").unwrap();
-    fixture.agit().args(["sync", "--push"]).assert().success();
-    let divergence_output = agit_at(&peer, &peer_data)
+    fixture.furrow().args(["sync", "--push"]).assert().success();
+    let divergence_output = furrow_at(&peer, &peer_data)
         .args(["--json", "sync", "--pull"])
         .assert()
         .failure()
@@ -2298,8 +2320,8 @@ fn encrypted_two_store_sync_fast_forwards_and_preserves_divergence() {
 
     // The incoming sibling remains an exact GC root and can still be
     // materialized by its full authenticated snapshot ID after compaction.
-    agit_at(&peer, &peer_data).arg("gc").assert().success();
-    agit_at(&peer, &peer_data)
+    furrow_at(&peer, &peer_data).arg("gc").assert().success();
+    furrow_at(&peer, &peer_data)
         .args([
             "rewind",
             divergence["remote_snapshot"].as_str().unwrap(),
@@ -2307,7 +2329,7 @@ fn encrypted_two_store_sync_fast_forwards_and_preserves_divergence() {
         ])
         .assert()
         .success();
-    agit_at(&peer, &peer_data)
+    furrow_at(&peer, &peer_data)
         .args(["sync", "--push", "--takeover"])
         .assert()
         .failure()
@@ -2319,7 +2341,7 @@ fn encrypted_two_store_sync_fast_forwards_and_preserves_divergence() {
         b"writer retained\n",
     )
     .unwrap();
-    fixture.agit().args(["sync", "--push"]).assert().success();
+    fixture.furrow().args(["sync", "--push"]).assert().success();
 
     let mut remote_files = Vec::new();
     collect_files(&remote, &mut remote_files);
@@ -2342,13 +2364,13 @@ fn remote_add_and_follow_keep_two_directory_backed_machines_current_with_small_d
         &["clone", fixture.repo.to_str().unwrap(), "follow-peer"],
     );
     fixture.watch();
-    agit_at(&peer, &peer_data)
+    furrow_at(&peer, &peer_data)
         .args(["watch", "--no-daemon"])
         .assert()
         .success();
 
     let add = fixture
-        .agit()
+        .furrow()
         .args([
             "--json",
             "remote",
@@ -2371,7 +2393,7 @@ fn remote_add_and_follow_keep_two_directory_backed_machines_current_with_small_d
     let key = add["key_hex"].as_str().unwrap();
     assert_eq!(key.len(), 64);
 
-    agit_at(&peer, &peer_data)
+    furrow_at(&peer, &peer_data)
         .args([
             "remote",
             "add",
@@ -2394,7 +2416,7 @@ fn remote_add_and_follow_keep_two_directory_backed_machines_current_with_small_d
             files.iter().any(|path| path.file_name().unwrap() == "HEAD")
         },
     );
-    let bootstrap = agit_at(&peer, &peer_data)
+    let bootstrap = furrow_at(&peer, &peer_data)
         .args(["--json", "sync", "--pull", "--bootstrap"])
         .assert()
         .success()
@@ -2409,7 +2431,7 @@ fn remote_add_and_follow_keep_two_directory_backed_machines_current_with_small_d
     let bytes_before_delta = tree_physical_bytes(&remote);
     fs::write(fixture.repo.join("app.txt"), b"one small agent edit\n").unwrap();
     fixture
-        .agit()
+        .furrow()
         .args(["snap", "-m", "agent completed report edit"])
         .assert()
         .success();
@@ -2438,7 +2460,7 @@ fn network_clone_materializes_exact_state_and_removes_failed_destinations() {
     let wrapper = fixture.repo.parent().unwrap().join("clone-fake-ssh.sh");
     fs::write(
         &wrapper,
-        b"#!/bin/sh\nwhile [ \"$1\" != \"--\" ]; do shift; done\nshift\nshift\nshift\nexec \"$AGIT_TEST_BIN\" \"$@\"\n",
+        b"#!/bin/sh\nwhile [ \"$1\" != \"--\" ]; do shift; done\nshift\nshift\nshift\nexec \"$FURROW_TEST_BIN\" \"$@\"\n",
     )
     .unwrap();
     let mut mode = fs::metadata(&wrapper).unwrap().permissions();
@@ -2446,15 +2468,15 @@ fn network_clone_materializes_exact_state_and_removes_failed_destinations() {
     fs::set_permissions(&wrapper, mode).unwrap();
     fixture.watch();
 
-    let ssh_agit = |repo: &Path, data: &Path| {
-        let mut command = agit_at(repo, data);
+    let ssh_furrow = |repo: &Path, data: &Path| {
+        let mut command = furrow_at(repo, data);
         command
-            .env("AGIT_SSH_COMMAND", &wrapper)
-            .env("AGIT_REMOTE_DATA_DIR", &remote_data)
-            .env("AGIT_TEST_BIN", env!("CARGO_BIN_EXE_agit"));
+            .env("FURROW_SSH_COMMAND", &wrapper)
+            .env("FURROW_REMOTE_DATA_DIR", &remote_data)
+            .env("FURROW_TEST_BIN", env!("CARGO_BIN_EXE_furrow"));
         command
     };
-    let add = ssh_agit(&fixture.repo, &fixture.data)
+    let add = ssh_furrow(&fixture.repo, &fixture.data)
         .args([
             "--json",
             "remote",
@@ -2470,13 +2492,13 @@ fn network_clone_materializes_exact_state_and_removes_failed_destinations() {
         .clone();
     let add: Value = serde_json::from_slice(&add).unwrap();
     let key = add["key_hex"].as_str().unwrap();
-    ssh_agit(&fixture.repo, &fixture.data)
+    ssh_furrow(&fixture.repo, &fixture.data)
         .args(["sync", "--push"])
         .assert()
         .success();
 
     let failed = fixture.repo.parent().unwrap().join("failed-clone");
-    ssh_agit(&fixture.repo, &clone_data)
+    ssh_furrow(&fixture.repo, &clone_data)
         .args([
             "clone",
             "ssh://fake-host/clone-workspace",
@@ -2493,7 +2515,7 @@ fn network_clone_materializes_exact_state_and_removes_failed_destinations() {
     assert!(!failed.exists());
 
     let destination = fixture.repo.parent().unwrap().join("network-clone");
-    let output = ssh_agit(&fixture.repo, &clone_data)
+    let output = ssh_furrow(&fixture.repo, &clone_data)
         .args([
             "--json",
             "clone",
@@ -2537,7 +2559,7 @@ fn persistent_ssh_helper_syncs_independent_stores_over_framed_stdio() {
     );
     fs::write(
         &wrapper,
-        b"#!/bin/sh\ntest -z \"${AGIT_SSH_START_LOG:-}\" || printf 'start\\n' >> \"$AGIT_SSH_START_LOG\"\nwhile [ \"$1\" != \"--\" ]; do shift; done\nshift\nshift\nshift\nexec \"$AGIT_TEST_BIN\" \"$@\"\n",
+        b"#!/bin/sh\ntest -z \"${FURROW_SSH_START_LOG:-}\" || printf 'start\\n' >> \"$FURROW_SSH_START_LOG\"\nwhile [ \"$1\" != \"--\" ]; do shift; done\nshift\nshift\nshift\nexec \"$FURROW_TEST_BIN\" \"$@\"\n",
     )
     .unwrap();
     let mut mode = fs::metadata(&wrapper).unwrap().permissions();
@@ -2545,20 +2567,20 @@ fn persistent_ssh_helper_syncs_independent_stores_over_framed_stdio() {
     fs::set_permissions(&wrapper, mode).unwrap();
 
     fixture.watch();
-    agit_at(&peer, &peer_data)
+    furrow_at(&peer, &peer_data)
         .args(["watch", "--no-daemon"])
         .assert()
         .success();
-    let ssh_agit = |repo: &Path, data: &Path| {
-        let mut command = agit_at(repo, data);
+    let ssh_furrow = |repo: &Path, data: &Path| {
+        let mut command = furrow_at(repo, data);
         command
-            .env("AGIT_SSH_COMMAND", &wrapper)
-            .env("AGIT_REMOTE_DATA_DIR", &remote_data)
-            .env("AGIT_TEST_BIN", env!("CARGO_BIN_EXE_agit"));
+            .env("FURROW_SSH_COMMAND", &wrapper)
+            .env("FURROW_REMOTE_DATA_DIR", &remote_data)
+            .env("FURROW_TEST_BIN", env!("CARGO_BIN_EXE_furrow"));
         command
     };
 
-    let pair_output = ssh_agit(&fixture.repo, &fixture.data)
+    let pair_output = ssh_furrow(&fixture.repo, &fixture.data)
         .args([
             "--json",
             "pair",
@@ -2574,7 +2596,7 @@ fn persistent_ssh_helper_syncs_independent_stores_over_framed_stdio() {
     let pair: Value = serde_json::from_slice(&pair_output).unwrap();
     assert_eq!(pair["remote"], "ssh://fake-host");
     let key = pair["key_hex"].as_str().unwrap();
-    ssh_agit(&peer, &peer_data)
+    ssh_furrow(&peer, &peer_data)
         .args([
             "pair",
             "ssh://fake-host",
@@ -2585,11 +2607,11 @@ fn persistent_ssh_helper_syncs_independent_stores_over_framed_stdio() {
         ])
         .assert()
         .success();
-    ssh_agit(&fixture.repo, &fixture.data)
+    ssh_furrow(&fixture.repo, &fixture.data)
         .args(["sync", "--push"])
         .assert()
         .success();
-    let pull = ssh_agit(&peer, &peer_data)
+    let pull = ssh_furrow(&peer, &peer_data)
         .args(["--json", "sync", "--pull", "--bootstrap"])
         .assert()
         .success()
@@ -2605,7 +2627,7 @@ fn persistent_ssh_helper_syncs_independent_stores_over_framed_stdio() {
     );
 
     fs::write(fixture.repo.join("app.txt"), b"ssh delta\n").unwrap();
-    let push = ssh_agit(&fixture.repo, &fixture.data)
+    let push = ssh_furrow(&fixture.repo, &fixture.data)
         .args(["--json", "sync", "--push"])
         .assert()
         .success()
@@ -2614,7 +2636,7 @@ fn persistent_ssh_helper_syncs_independent_stores_over_framed_stdio() {
         .clone();
     let push: Value = serde_json::from_slice(&push).unwrap();
     assert!(push["uploaded_objects"].as_u64().unwrap() < 10);
-    let pull = ssh_agit(&peer, &peer_data)
+    let pull = ssh_furrow(&peer, &peer_data)
         .args(["--json", "sync", "--pull"])
         .assert()
         .success()
@@ -2627,13 +2649,13 @@ fn persistent_ssh_helper_syncs_independent_stores_over_framed_stdio() {
 
     let start_log = fixture.repo.parent().unwrap().join("ssh-starts.log");
     let timing_log = fixture.repo.parent().unwrap().join("follow-timings.log");
-    let follower = std::process::Command::new(env!("CARGO_BIN_EXE_agit"))
-        .env("AGIT_DATA_DIR", &fixture.data)
-        .env("AGIT_NO_DAEMON", "1")
-        .env("AGIT_SSH_COMMAND", &wrapper)
-        .env("AGIT_REMOTE_DATA_DIR", &remote_data)
-        .env("AGIT_TEST_BIN", env!("CARGO_BIN_EXE_agit"))
-        .env("AGIT_SSH_START_LOG", &start_log)
+    let follower = std::process::Command::new(env!("CARGO_BIN_EXE_furrow"))
+        .env("FURROW_DATA_DIR", &fixture.data)
+        .env("FURROW_NO_DAEMON", "1")
+        .env("FURROW_SSH_COMMAND", &wrapper)
+        .env("FURROW_REMOTE_DATA_DIR", &remote_data)
+        .env("FURROW_TEST_BIN", env!("CARGO_BIN_EXE_furrow"))
+        .env("FURROW_SSH_START_LOG", &start_log)
         .arg("--repo")
         .arg(&fixture.repo)
         .args(["sync", "--follow", "--poll-seconds", "1", "--timings"])
@@ -2648,12 +2670,12 @@ fn persistent_ssh_helper_syncs_independent_stores_over_framed_stdio() {
     std::thread::sleep(Duration::from_millis(100));
 
     fs::write(peer.join("app.txt"), b"warm session notification\n").unwrap();
-    agit_at(&peer, &peer_data)
+    furrow_at(&peer, &peer_data)
         .args(["snap", "-m", "peer notification"])
         .assert()
         .success();
     let notify_started = Instant::now();
-    let publish = ssh_agit(&peer, &peer_data)
+    let publish = ssh_furrow(&peer, &peer_data)
         .args(["sync", "--push", "--takeover", "--timings"])
         .assert()
         .success();
@@ -2702,9 +2724,9 @@ fn mcp_stdio_negotiates_lifecycle_lists_tools_and_keeps_errors_in_protocol() {
     let snapshot = fixture.watch();
     fs::write(fixture.repo.join(".env"), b"TOKEN=changed\n").unwrap();
 
-    let mut child = std::process::Command::new(env!("CARGO_BIN_EXE_agit"))
-        .env("AGIT_DATA_DIR", &fixture.data)
-        .env("AGIT_NO_DAEMON", "1")
+    let mut child = std::process::Command::new(env!("CARGO_BIN_EXE_furrow"))
+        .env("FURROW_DATA_DIR", &fixture.data)
+        .env("FURROW_NO_DAEMON", "1")
         .arg("--repo")
         .arg(&fixture.repo)
         .arg("mcp")
@@ -2718,34 +2740,34 @@ fn mcp_stdio_negotiates_lifecycle_lists_tools_and_keeps_errors_in_protocol() {
         serde_json::json!({
             "jsonrpc":"2.0","id":2,"method":"initialize","params":{
                 "protocolVersion":"2025-11-25","capabilities":{},
-                "clientInfo":{"name":"agit-test","version":"1"}
+                "clientInfo":{"name":"furrow-test","version":"1"}
             }
         }),
         serde_json::json!({"jsonrpc":"2.0","method":"notifications/initialized"}),
         serde_json::json!({"jsonrpc":"2.0","id":3,"method":"tools/list"}),
         serde_json::json!({
             "jsonrpc":"2.0","id":"status","method":"tools/call",
-            "params":{"name":"agit.status","arguments":{"fidelity":true}}
+            "params":{"name":"furrow.status","arguments":{"fidelity":true}}
         }),
         serde_json::json!({
             "jsonrpc":"2.0","id":5,"method":"tools/call",
-            "params":{"name":"agit.snapshot","arguments":{"message":"agent boundary"}}
+            "params":{"name":"furrow.snapshot","arguments":{"message":"agent boundary"}}
         }),
         serde_json::json!({
             "jsonrpc":"2.0","id":6,"method":"tools/call",
-            "params":{"name":"agit.rewind_apply","arguments":{"snapshot":snapshot}}
+            "params":{"name":"furrow.rewind_apply","arguments":{"snapshot":snapshot}}
         }),
         serde_json::json!({
             "jsonrpc":"2.0","id":"forks","method":"tools/call",
-            "params":{"name":"agit.forks","arguments":{}}
+            "params":{"name":"furrow.forks","arguments":{}}
         }),
         serde_json::json!({
             "jsonrpc":"2.0","id":"events","method":"tools/call",
-            "params":{"name":"agit.events","arguments":{"limit":10}}
+            "params":{"name":"furrow.events","arguments":{"limit":10}}
         }),
         serde_json::json!({
             "jsonrpc":"2.0","id":7,"method":"tools/call",
-            "params":{"name":"agit.unknown","arguments":{}}
+            "params":{"name":"furrow.unknown","arguments":{}}
         }),
     ];
     {
@@ -2771,13 +2793,19 @@ fn mcp_stdio_negotiates_lifecycle_lists_tools_and_keeps_errors_in_protocol() {
     assert_eq!(responses[0]["error"]["code"], -32002);
     assert_eq!(responses[1]["result"]["protocolVersion"], "2025-11-25");
     let tools = responses[2]["result"]["tools"].as_array().unwrap();
-    assert!(tools.iter().any(|tool| tool["name"] == "agit.rewind_plan"));
-    assert!(tools.iter().any(|tool| tool["name"] == "agit.fork"));
-    assert!(tools.iter().any(|tool| tool["name"] == "agit.claim"));
-    assert!(tools.iter().any(|tool| tool["name"] == "agit.coord_write"));
-    assert!(tools.iter().any(|tool| tool["name"] == "agit.fork_updates"));
-    assert!(tools.iter().any(|tool| tool["name"] == "agit.forks"));
-    assert!(tools.iter().any(|tool| tool["name"] == "agit.events"));
+    assert!(tools
+        .iter()
+        .any(|tool| tool["name"] == "furrow.rewind_plan"));
+    assert!(tools.iter().any(|tool| tool["name"] == "furrow.fork"));
+    assert!(tools.iter().any(|tool| tool["name"] == "furrow.claim"));
+    assert!(tools
+        .iter()
+        .any(|tool| tool["name"] == "furrow.coord_write"));
+    assert!(tools
+        .iter()
+        .any(|tool| tool["name"] == "furrow.fork_updates"));
+    assert!(tools.iter().any(|tool| tool["name"] == "furrow.forks"));
+    assert!(tools.iter().any(|tool| tool["name"] == "furrow.events"));
     assert_eq!(responses[3]["id"], "status");
     assert_eq!(responses[3]["result"]["isError"], false);
     assert_eq!(
@@ -2809,7 +2837,7 @@ fn snapshots_can_be_pinned_and_unpinned_idempotently() {
     let snapshot = fixture.watch();
 
     let pin = fixture
-        .agit()
+        .furrow()
         .args(["--json", "pin", &snapshot])
         .assert()
         .success()
@@ -2822,7 +2850,7 @@ fn snapshots_can_be_pinned_and_unpinned_idempotently() {
     assert_eq!(pin["changed"], true);
 
     let repeated = fixture
-        .agit()
+        .furrow()
         .args(["--json", "pin", &snapshot])
         .assert()
         .success()
@@ -2835,7 +2863,7 @@ fn snapshots_can_be_pinned_and_unpinned_idempotently() {
     );
 
     let unpin = fixture
-        .agit()
+        .furrow()
         .args(["--json", "unpin", &snapshot])
         .assert()
         .success()
@@ -2853,7 +2881,7 @@ fn global_budget_is_persistent_visible_and_never_deletes_the_head_to_fit() {
     let fixture = Fixture::new();
     let head = fixture.watch();
     let configured = fixture
-        .agit()
+        .furrow()
         .args(["--json", "budget", "--max", "1", "--reserve-free", "0"])
         .assert()
         .success()
@@ -2867,7 +2895,7 @@ fn global_budget_is_persistent_visible_and_never_deletes_the_head_to_fit() {
     assert!(configured["over_store_bytes"].as_u64().unwrap() > 0);
 
     let status = fixture
-        .agit()
+        .furrow()
         .args(["--json", "status"])
         .assert()
         .success()
@@ -2880,7 +2908,7 @@ fn global_budget_is_persistent_visible_and_never_deletes_the_head_to_fit() {
     assert_eq!(status["budget"]["satisfied"], false);
 
     let timeline = fixture
-        .agit()
+        .furrow()
         .args(["--json", "timeline", "--limit", "1"])
         .assert()
         .success()

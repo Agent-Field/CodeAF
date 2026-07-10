@@ -2,14 +2,14 @@
 set -euo pipefail
 
 PROJECT_ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
-BIN="$PROJECT_ROOT/target/release/agit"
-DEMO_ROOT=${AGIT_DEMO_DIR:-$(mktemp -d "${TMPDIR:-/tmp}/agit-sync.XXXXXX")}
+BIN="$PROJECT_ROOT/target/release/furrow"
+DEMO_ROOT=${FURROW_DEMO_DIR:-$(mktemp -d "${TMPDIR:-/tmp}/furrow-sync.XXXXXX")}
 LAPTOP="$DEMO_ROOT/laptop/project"
 DESKTOP="$DEMO_ROOT/desktop/project"
 REMOTE="$DEMO_ROOT/encrypted-remote"
-LAPTOP_DATA="$DEMO_ROOT/laptop/agit-data"
-DESKTOP_DATA="$DEMO_ROOT/desktop/agit-data"
-export AGIT_NO_DAEMON=1
+LAPTOP_DATA="$DEMO_ROOT/laptop/furrow-data"
+DESKTOP_DATA="$DEMO_ROOT/desktop/furrow-data"
+export FURROW_NO_DAEMON=1
 
 green='\033[0;32m'
 red='\033[0;31m'
@@ -19,17 +19,17 @@ reset='\033[0m'
 step() { printf '\n%b%s%b\n' "$bold" "$1" "$reset"; }
 ok() { printf '%bPASS%b  %s\n' "$green" "$reset" "$1"; }
 fail() { printf '%bFAIL%b  %s\n' "$red" "$reset" "$1"; exit 1; }
-laptop() { AGIT_DATA_DIR="$LAPTOP_DATA" "$BIN" --repo "$LAPTOP" "$@"; }
-desktop() { AGIT_DATA_DIR="$DESKTOP_DATA" "$BIN" --repo "$DESKTOP" "$@"; }
+laptop() { FURROW_DATA_DIR="$LAPTOP_DATA" "$BIN" --repo "$LAPTOP" "$@"; }
+desktop() { FURROW_DATA_DIR="$DESKTOP_DATA" "$BIN" --repo "$DESKTOP" "$@"; }
 
-step "Build agit"
+step "Build furrow"
 cargo build --manifest-path "$PROJECT_ROOT/Cargo.toml" --release --quiet
 
 step "Create independent laptop and desktop repositories"
 mkdir -p "$LAPTOP"
 git -C "$LAPTOP" init -b main --quiet
-git -C "$LAPTOP" config user.email demo@agit.dev
-git -C "$LAPTOP" config user.name "agit demo"
+git -C "$LAPTOP" config user.email demo@furrow.dev
+git -C "$LAPTOP" config user.name "furrow demo"
 printf '.env\n.cache/\n' > "$LAPTOP/.gitignore"
 printf 'export const machine = "base";\n' > "$LAPTOP/app.js"
 git -C "$LAPTOP" add app.js .gitignore

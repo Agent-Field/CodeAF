@@ -27,11 +27,11 @@ impl ObjectKind {
 
     pub fn domain(self) -> &'static [u8] {
         match self {
-            Self::Chunk => b"agit:chunk:v1\0",
-            Self::Blob => b"agit:blob:v1\0",
-            Self::Tree => b"agit:tree:v1\0",
-            Self::Snapshot => b"agit:snapshot:v1\0",
-            Self::Xattrs => b"agit:xattrs:v1\0",
+            Self::Chunk => b"furrow:chunk:v1\0",
+            Self::Blob => b"furrow:blob:v1\0",
+            Self::Tree => b"furrow:tree:v1\0",
+            Self::Snapshot => b"furrow:snapshot:v1\0",
+            Self::Xattrs => b"furrow:xattrs:v1\0",
         }
     }
 }

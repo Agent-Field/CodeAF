@@ -1,7 +1,7 @@
-use agit::model::{id_hex, SnapshotTrigger};
-use agit::{AgitRepository, SyncDisposition, SyncFollowOutcome};
 use anyhow::Context;
 use clap::{Parser, Subcommand};
+use furrow::model::{id_hex, SnapshotTrigger};
+use furrow::{FurrowRepository, SyncDisposition, SyncFollowOutcome};
 use std::ffi::OsString;
 use std::fs;
 use std::io::{self, IsTerminal, Read, Write};
@@ -9,7 +9,11 @@ use std::os::unix::fs::PermissionsExt;
 use std::path::PathBuf;
 
 #[derive(Parser)]
-#[command(name = "agit", version, about = "Undo everything between Git commits")]
+#[command(
+    name = "furrow",
+    version,
+    about = "Undo everything between Git commits"
+)]
 struct Cli {
     #[arg(long, global = true, default_value = ".")]
     repo: PathBuf,
@@ -104,9 +108,9 @@ enum Command {
     },
     /// Create an isolated full-state workspace, optionally running a command inside it.
     Fork {
-        /// Stable name used by `agit forks` and as the default directory name.
+        /// Stable name used by `furrow forks` and as the default directory name.
         name: Option<String>,
-        /// Destination directory. Defaults to <repo>.agit-forks/<name> beside the repository.
+        /// Destination directory. Defaults to <repo>.furrow-forks/<name> beside the repository.
         #[arg(long)]
         destination: Option<PathBuf>,
         /// Command to run inside the completed fork, supplied after `--`.
@@ -273,12 +277,12 @@ enum Command {
     },
     /// Materialize a complete workspace from an encrypted network remote.
     Clone {
-        /// Workspace URL printed by `agit remote add`.
+        /// Workspace URL printed by `furrow remote add`.
         remote: String,
         /// New destination directory. Defaults to the remote workspace name.
         destination: Option<PathBuf>,
         /// Existing 64-character recovery key.
-        #[arg(long, env = "AGIT_RECOVERY_KEY")]
+        #[arg(long, env = "FURROW_RECOVERY_KEY")]
         key: String,
         /// Attach without starting the background watcher.
         #[arg(long)]
@@ -306,7 +310,7 @@ enum Command {
         #[arg(long)]
         timings: bool,
     },
-    /// Serve agit tools to coding agents over MCP stdio.
+    /// Serve furrow tools to coding agents over MCP stdio.
     Mcp,
 }
 
@@ -381,7 +385,7 @@ fn main() -> anyhow::Result<()> {
     let cli = Cli::parse();
     match cli.command {
         Command::Estimate => {
-            let estimate = AgitRepository::estimate(&cli.repo)?;
+            let estimate = FurrowRepository::estimate(&cli.repo)?;
             if cli.json {
                 println!("{}", serde_json::to_string_pretty(&estimate)?);
             } else {
@@ -409,7 +413,7 @@ fn main() -> anyhow::Result<()> {
             no_daemon,
             debounce_ms,
         } => {
-            let (repository, id) = AgitRepository::watch(&cli.repo)?;
+            let (repository, id) = FurrowRepository::watch(&cli.repo)?;
             if cli.json {
                 println!(
                     "{}",
@@ -425,36 +429,36 @@ fn main() -> anyhow::Result<()> {
                 println!("Store {}", repository.store_root().display());
             }
             if foreground {
-                agit::watcher::run(
+                furrow::watcher::run(
                     repository,
                     std::time::Duration::from_millis(debounce_ms.max(10)),
                 )?;
-            } else if !no_daemon && std::env::var_os("AGIT_NO_DAEMON").is_none() {
+            } else if !no_daemon && std::env::var_os("FURROW_NO_DAEMON").is_none() {
                 spawn_background_watcher(&repository, debounce_ms.max(10))?;
             }
         }
         Command::Daemon { debounce_ms } => {
-            let repository = AgitRepository::open(&cli.repo)?;
-            agit::watcher::run(
+            let repository = FurrowRepository::open(&cli.repo)?;
+            furrow::watcher::run(
                 repository,
                 std::time::Duration::from_millis(debounce_ms.max(10)),
             )?;
         }
         Command::RemoteHelper { namespace } => {
-            agit::remote::serve(&namespace)?;
+            furrow::remote::serve(&namespace)?;
         }
         Command::NamespaceProbe => {
-            agit::universe::probe_namespace_helper()?;
+            furrow::universe::probe_namespace_helper()?;
         }
         Command::ExecNamespace {
             source,
             target,
             command,
         } => {
-            agit::universe::exec_linux_namespace(&source, &target, &command)?;
+            furrow::universe::exec_linux_namespace(&source, &target, &command)?;
         }
         Command::Snap { message } => {
-            let mut repository = AgitRepository::open(&cli.repo)?;
+            let mut repository = FurrowRepository::open(&cli.repo)?;
             let id = repository.snapshot(message, SnapshotTrigger::Manual)?;
             if cli.json {
                 println!("{}", serde_json::json!({"snapshot": id_hex(&id)}));
@@ -463,7 +467,7 @@ fn main() -> anyhow::Result<()> {
             }
         }
         Command::Timeline { limit } => {
-            let repository = AgitRepository::open(&cli.repo)?;
+            let repository = FurrowRepository::open(&cli.repo)?;
             let timeline = repository.timeline(limit)?;
             if cli.json {
                 println!("{}", serde_json::to_string_pretty(&timeline)?);
@@ -481,7 +485,7 @@ fn main() -> anyhow::Result<()> {
             }
         }
         Command::Pin { snapshot } => {
-            let mut repository = AgitRepository::open(&cli.repo)?;
+            let mut repository = FurrowRepository::open(&cli.repo)?;
             let id = repository.resolve_snapshot(&snapshot)?;
             let changed = repository.pin(&id)?;
             if cli.json {
@@ -496,7 +500,7 @@ fn main() -> anyhow::Result<()> {
             }
         }
         Command::Unpin { snapshot } => {
-            let mut repository = AgitRepository::open(&cli.repo)?;
+            let mut repository = FurrowRepository::open(&cli.repo)?;
             let id = repository.resolve_snapshot(&snapshot)?;
             let changed = repository.unpin(&id)?;
             if cli.json {
@@ -511,7 +515,7 @@ fn main() -> anyhow::Result<()> {
             }
         }
         Command::Diff { target } => {
-            let mut repository = AgitRepository::open(&cli.repo)?;
+            let mut repository = FurrowRepository::open(&cli.repo)?;
             let diff = repository.diff(&target)?;
             if cli.json {
                 println!("{}", serde_json::to_string_pretty(&diff)?);
@@ -538,7 +542,7 @@ fn main() -> anyhow::Result<()> {
             yes,
             sqlite_consistent,
         } => {
-            let mut repository = AgitRepository::open(&cli.repo)?;
+            let mut repository = FurrowRepository::open(&cli.repo)?;
             let target = repository.resolve_snapshot(&snapshot)?;
             let plan = repository.plan_rewind(&target, &paths)?;
             if cli.json || dry_run {
@@ -578,7 +582,7 @@ fn main() -> anyhow::Result<()> {
             }
         }
         Command::Status { fidelity } => {
-            let repository = AgitRepository::open(&cli.repo)?;
+            let repository = FurrowRepository::open(&cli.repo)?;
             let status = repository.status()?;
             if cli.json {
                 if fidelity {
@@ -634,8 +638,8 @@ fn main() -> anyhow::Result<()> {
             no_open,
             merge_check,
         } => {
-            let repository = AgitRepository::open(&cli.repo)?;
-            agit::ui::run(repository.root(), port, no_open, merge_check, cli.json)?;
+            let repository = FurrowRepository::open(&cli.repo)?;
+            furrow::ui::run(repository.root(), port, no_open, merge_check, cli.json)?;
         }
         Command::Fork {
             name,
@@ -646,7 +650,7 @@ fn main() -> anyhow::Result<()> {
                 !cli.json || command.is_empty(),
                 "--json cannot be combined with a fork command"
             );
-            let mut repository = AgitRepository::open(&cli.repo)?;
+            let mut repository = FurrowRepository::open(&cli.repo)?;
             let name = name.unwrap_or_else(default_fork_name);
             let destination =
                 destination.unwrap_or_else(|| default_fork_destination(&repository, &name));
@@ -676,15 +680,15 @@ fn main() -> anyhow::Result<()> {
                 let status = std::process::Command::new(program)
                     .args(arguments)
                     .current_dir(&summary.destination)
-                    .env("AGIT_FORK_NAME", &summary.name)
-                    .env("AGIT_FORK_BASE", &summary.base_snapshot)
+                    .env("FURROW_FORK_NAME", &summary.name)
+                    .env("FURROW_FORK_BASE", &summary.base_snapshot)
                     .status()
                     .with_context(|| format!("run {:?} in fork", program))?;
                 anyhow::ensure!(status.success(), "fork command exited with {status}");
             }
         }
         Command::Forks => {
-            let repository = AgitRepository::open(&cli.repo)?;
+            let repository = FurrowRepository::open(&cli.repo)?;
             let forks = repository.forks()?;
             if cli.json {
                 println!("{}", serde_json::to_string_pretty(&forks)?);
@@ -717,7 +721,7 @@ fn main() -> anyhow::Result<()> {
             follow,
             interval_ms,
         } => {
-            let repository = AgitRepository::open(&cli.repo)?;
+            let repository = FurrowRepository::open(&cli.repo)?;
             let mut cursor = after;
             loop {
                 let page = repository.events(cursor.as_deref(), limit)?;
@@ -746,7 +750,7 @@ fn main() -> anyhow::Result<()> {
             once,
             interval_ms,
         } => {
-            let repository = AgitRepository::open(&cli.repo)?;
+            let repository = FurrowRepository::open(&cli.repo)?;
             let mut cursor = after;
             loop {
                 let updates = repository.fork_updates(&name, cursor.as_deref(), 1000)?;
@@ -778,7 +782,7 @@ fn main() -> anyhow::Result<()> {
             }
         }
         Command::ForkRemove { name, keep_files } => {
-            let mut repository = AgitRepository::open(&cli.repo)?;
+            let mut repository = FurrowRepository::open(&cli.repo)?;
             let removal = repository.remove_fork(&name, keep_files)?;
             if cli.json {
                 println!("{}", serde_json::to_string_pretty(&removal)?);
@@ -801,7 +805,7 @@ fn main() -> anyhow::Result<()> {
             owner,
             ttl_seconds,
         } => {
-            let mut repository = AgitRepository::open(&cli.repo)?;
+            let mut repository = FurrowRepository::open(&cli.repo)?;
             let owner = owner.unwrap_or_else(|| repository.default_claim_owner());
             let outcome = repository.claim(&pattern, &owner, ttl_seconds)?;
             if cli.json {
@@ -816,7 +820,7 @@ fn main() -> anyhow::Result<()> {
             }
         }
         Command::Claims => {
-            let repository = AgitRepository::open(&cli.repo)?;
+            let repository = FurrowRepository::open(&cli.repo)?;
             let claims = repository.claims()?;
             if cli.json {
                 println!("{}", serde_json::to_string_pretty(&claims)?);
@@ -835,7 +839,7 @@ fn main() -> anyhow::Result<()> {
             }
         }
         Command::Release { claim, owner } => {
-            let mut repository = AgitRepository::open(&cli.repo)?;
+            let mut repository = FurrowRepository::open(&cli.repo)?;
             let owner = owner.unwrap_or_else(|| repository.default_claim_owner());
             let outcome = repository.release_claim(&claim, &owner)?;
             if cli.json {
@@ -863,7 +867,7 @@ fn main() -> anyhow::Result<()> {
                     (Some(_), Some(_)) => unreachable!("clap enforces conflicts"),
                 };
                 anyhow::ensure!(bytes.len() <= 1024 * 1024, "coord value exceeds 1 MiB");
-                let mut repository = AgitRepository::open(&cli.repo)?;
+                let mut repository = FurrowRepository::open(&cli.repo)?;
                 let owner = owner.unwrap_or_else(|| repository.default_claim_owner());
                 let outcome = repository.coord_write(&path, &bytes, &owner)?;
                 if cli.json {
@@ -886,7 +890,7 @@ fn main() -> anyhow::Result<()> {
                 }
             }
             CoordCommand::Read { path } => {
-                let repository = AgitRepository::open(&cli.repo)?;
+                let repository = FurrowRepository::open(&cli.repo)?;
                 let bytes = repository.coord_read(&path)?;
                 if cli.json {
                     let value = String::from_utf8(bytes)
@@ -897,7 +901,7 @@ fn main() -> anyhow::Result<()> {
                 }
             }
             CoordCommand::List => {
-                let repository = AgitRepository::open(&cli.repo)?;
+                let repository = FurrowRepository::open(&cli.repo)?;
                 let entries = repository.coord_list()?;
                 if cli.json {
                     println!("{}", serde_json::to_string_pretty(&entries)?);
@@ -910,7 +914,7 @@ fn main() -> anyhow::Result<()> {
                 }
             }
             CoordCommand::Remove { path, owner } => {
-                let mut repository = AgitRepository::open(&cli.repo)?;
+                let mut repository = FurrowRepository::open(&cli.repo)?;
                 let owner = owner.unwrap_or_else(|| repository.default_claim_owner());
                 let outcome = repository.coord_remove(&path, &owner)?;
                 if cli.json {
@@ -927,7 +931,7 @@ fn main() -> anyhow::Result<()> {
         Command::Hook { command } => match command {
             HookCommand::Install => {
                 let hooks = install_hook_adapters(&cli.repo)?;
-                let (_, snapshot) = AgitRepository::attach_and_snapshot(
+                let (_, snapshot) = FurrowRepository::attach_and_snapshot(
                     &cli.repo,
                     Some("installed agent hooks".to_owned()),
                     SnapshotTrigger::AgentRun,
@@ -959,8 +963,8 @@ fn main() -> anyhow::Result<()> {
             destination,
             command,
         } => {
-            anyhow::ensure!(!cli.json, "--json cannot be combined with `agit run`");
-            let mut repository = AgitRepository::open(&cli.repo)?;
+            anyhow::ensure!(!cli.json, "--json cannot be combined with `furrow run`");
+            let mut repository = FurrowRepository::open(&cli.repo)?;
             let destination =
                 destination.unwrap_or_else(|| default_fork_destination(&repository, &name));
             let plan = repository.prepare_fork(&name, &destination)?;
@@ -976,15 +980,15 @@ fn main() -> anyhow::Result<()> {
             );
             let (program, arguments) = command
                 .split_first()
-                .context("`agit run` requires a command after --")?;
+                .context("`furrow run` requires a command after --")?;
             let status = std::process::Command::new(program)
                 .args(arguments)
                 .current_dir(&summary.destination)
-                .env("AGIT_FORK_NAME", &summary.name)
-                .env("AGIT_FORK_BASE", &summary.base_snapshot)
+                .env("FURROW_FORK_NAME", &summary.name)
+                .env("FURROW_FORK_BASE", &summary.base_snapshot)
                 .status()
                 .with_context(|| format!("run {:?} in fork", program))?;
-            let mut fork_repository = AgitRepository::open(&summary.destination)?;
+            let mut fork_repository = FurrowRepository::open(&summary.destination)?;
             let head = fork_repository.snapshot(
                 Some(format!("command completed in {}", summary.name)),
                 SnapshotTrigger::AgentRun,
@@ -992,7 +996,7 @@ fn main() -> anyhow::Result<()> {
             println!("Fork head {}", &id_hex(&head)[..12]);
             println!("Source workspace was not modified");
             println!(
-                "Merge with: agit merge {} --check '<command>'",
+                "Merge with: furrow merge {} --check '<command>'",
                 summary.name
             );
             anyhow::ensure!(status.success(), "fork command exited with {status}");
@@ -1006,10 +1010,10 @@ fn main() -> anyhow::Result<()> {
             execute_universes(&cli.repo, cli.json, fork, count, plan, &command)?;
         }
         Command::Attempt { message, command } => {
-            anyhow::ensure!(!cli.json, "--json cannot be combined with `agit try`");
+            anyhow::ensure!(!cli.json, "--json cannot be combined with `furrow try`");
             let (program, arguments) = command
                 .split_first()
-                .context("`agit try` requires a command after --")?;
+                .context("`furrow try` requires a command after --")?;
             let command_name = std::path::Path::new(program)
                 .file_name()
                 .unwrap_or(program.as_os_str())
@@ -1017,7 +1021,7 @@ fn main() -> anyhow::Result<()> {
             let label = message.unwrap_or_else(|| command_name.into_owned());
             anyhow::ensure!(!label.trim().is_empty(), "try label cannot be empty");
             anyhow::ensure!(label.len() <= 256, "try label is limited to 256 bytes");
-            let (mut repository, before) = AgitRepository::attach_and_snapshot(
+            let (mut repository, before) = FurrowRepository::attach_and_snapshot(
                 &cli.repo,
                 Some(format!("before try: {label}")),
                 SnapshotTrigger::AgentRun,
@@ -1027,7 +1031,7 @@ fn main() -> anyhow::Result<()> {
             let status = std::process::Command::new(program)
                 .args(arguments)
                 .current_dir(repository.root())
-                .env("AGIT_TRY_SNAPSHOT", id_hex(&before))
+                .env("FURROW_TRY_SNAPSHOT", id_hex(&before))
                 .status()
                 .with_context(|| format!("run {:?}", program))?;
             let outcome = status
@@ -1038,13 +1042,13 @@ fn main() -> anyhow::Result<()> {
                 SnapshotTrigger::AgentRun,
             )?;
             eprintln!("Result {}", id_hex(&after));
-            eprintln!("Undo with: agit rewind {}", id_hex(&before));
+            eprintln!("Undo with: furrow rewind {}", id_hex(&before));
             if !status.success() {
                 exit_with_status(status);
             }
         }
         Command::Shrink { yes, paths } => {
-            let plan = agit::shrink::discover(&cli.repo, &paths)?;
+            let plan = furrow::shrink::discover(&cli.repo, &paths)?;
             if !yes {
                 if cli.json {
                     println!("{}", serde_json::to_string_pretty(&plan)?);
@@ -1065,14 +1069,14 @@ fn main() -> anyhow::Result<()> {
                 return Ok(());
             }
 
-            let store_before = AgitRepository::global_store_physical_bytes()?;
-            let (mut repository, before) = AgitRepository::attach_and_snapshot(
+            let store_before = FurrowRepository::global_store_physical_bytes()?;
+            let (mut repository, before) = FurrowRepository::attach_and_snapshot(
                 &cli.repo,
                 Some("before shrink".to_owned()),
                 SnapshotTrigger::Manual,
             )?;
             eprintln!("Protected {}", id_hex(&before));
-            let removal = agit::shrink::apply(repository.root(), &plan);
+            let removal = furrow::shrink::apply(repository.root(), &plan);
             let after =
                 repository.snapshot(Some("after shrink".to_owned()), SnapshotTrigger::Manual)?;
             let store_after = repository.store_physical_bytes()?;
@@ -1111,7 +1115,7 @@ fn main() -> anyhow::Result<()> {
                         human_bytes(net_added)
                     );
                 }
-                println!("Undo with: agit rewind {}", id_hex(&before));
+                println!("Undo with: furrow rewind {}", id_hex(&before));
             }
             removal?;
         }
@@ -1121,7 +1125,7 @@ fn main() -> anyhow::Result<()> {
             limit,
             command,
         } => {
-            let mut repository = AgitRepository::open(&cli.repo)?;
+            let mut repository = FurrowRepository::open(&cli.repo)?;
             let outcome = repository.bisect(&command, good.as_deref(), bad.as_deref(), limit)?;
             if cli.json {
                 println!("{}", serde_json::to_string_pretty(&outcome)?);
@@ -1145,7 +1149,7 @@ fn main() -> anyhow::Result<()> {
             check,
             dry_run,
         } => {
-            let mut repository = AgitRepository::open(&cli.repo)?;
+            let mut repository = FurrowRepository::open(&cli.repo)?;
             let outcome = repository.merge(&fork, check.as_deref(), dry_run)?;
             if cli.json {
                 println!("{}", serde_json::to_string_pretty(&outcome)?);
@@ -1181,11 +1185,11 @@ fn main() -> anyhow::Result<()> {
             );
         }
         Command::Forget { purge } => {
-            AgitRepository::open(&cli.repo)?.forget(purge)?;
-            println!("Repository detached from agit");
+            FurrowRepository::open(&cli.repo)?.forget(purge)?;
+            println!("Repository detached from furrow");
         }
         Command::Gc { dry_run } => {
-            let report = AgitRepository::gc_global(dry_run)?;
+            let report = FurrowRepository::gc_global(dry_run)?;
             if cli.json {
                 println!("{}", serde_json::to_string_pretty(&report)?);
             } else {
@@ -1209,7 +1213,7 @@ fn main() -> anyhow::Result<()> {
         Command::Budget { max, reserve_free } => {
             let max = max.as_deref().map(parse_byte_size).transpose()?;
             let reserve_free = reserve_free.as_deref().map(parse_byte_size).transpose()?;
-            let status = AgitRepository::budget_global(max, reserve_free)?;
+            let status = FurrowRepository::budget_global(max, reserve_free)?;
             if cli.json {
                 println!("{}", serde_json::to_string_pretty(&status)?);
             } else {
@@ -1234,7 +1238,7 @@ fn main() -> anyhow::Result<()> {
             }
         }
         Command::Pair { remote, name, key } => {
-            let repository = AgitRepository::open(&cli.repo)?;
+            let repository = FurrowRepository::open(&cli.repo)?;
             let namespace = name.unwrap_or_else(|| default_sync_name(&repository));
             let summary = repository.pair(&remote, &namespace, key.as_deref())?;
             print_pair_summary(&summary, cli.json)?;
@@ -1242,7 +1246,7 @@ fn main() -> anyhow::Result<()> {
         Command::Remote {
             command: RemoteCommand::Add { remote, name, key },
         } => {
-            let repository = AgitRepository::open(&cli.repo)?;
+            let repository = FurrowRepository::open(&cli.repo)?;
             let namespace = name.unwrap_or_else(|| default_sync_name(&repository));
             let summary = repository.pair(&remote, &namespace, key.as_deref())?;
             print_pair_summary(&summary, cli.json)?;
@@ -1268,7 +1272,7 @@ fn main() -> anyhow::Result<()> {
                 destination.display()
             );
             fs::create_dir_all(&destination)?;
-            let result = (|| -> anyhow::Result<(AgitRepository, agit::SyncPullOutcome)> {
+            let result = (|| -> anyhow::Result<(FurrowRepository, furrow::SyncPullOutcome)> {
                 let status = std::process::Command::new("git")
                     .arg("init")
                     .arg("--quiet")
@@ -1277,7 +1281,7 @@ fn main() -> anyhow::Result<()> {
                     .status()
                     .context("start git for clone destination")?;
                 anyhow::ensure!(status.success(), "git init failed for clone destination");
-                let (mut repository, _) = AgitRepository::watch(&destination)?;
+                let (mut repository, _) = FurrowRepository::watch(&destination)?;
                 repository.pair(PathBuf::from(&transport).as_path(), &namespace, Some(&key))?;
                 let outcome = repository
                     .sync_pull(true)
@@ -1291,7 +1295,7 @@ fn main() -> anyhow::Result<()> {
                     return Err(error.context("clone failed; incomplete destination was removed"));
                 }
             };
-            if !no_watch && std::env::var_os("AGIT_NO_DAEMON").is_none() {
+            if !no_watch && std::env::var_os("FURROW_NO_DAEMON").is_none() {
                 spawn_background_watcher(&repository, 500)?;
             }
             if cli.json {
@@ -1325,7 +1329,7 @@ fn main() -> anyhow::Result<()> {
                 push || pull || follow,
                 "choose exactly one of --push, --pull, or --follow"
             );
-            let mut repository = AgitRepository::open(&cli.repo)?;
+            let mut repository = FurrowRepository::open(&cli.repo)?;
             if follow {
                 anyhow::ensure!(poll_seconds > 0, "--poll-seconds must be greater than zero");
                 let mut session = repository.sync_follow_session()?;
@@ -1423,14 +1427,14 @@ fn main() -> anyhow::Result<()> {
             }
         }
         Command::Mcp => {
-            let repository = AgitRepository::open(&cli.repo)?;
-            agit::mcp::run(repository)?;
+            let repository = FurrowRepository::open(&cli.repo)?;
+            furrow::mcp::run(repository)?;
         }
     }
     Ok(())
 }
 
-fn print_transport_timings(timings: &agit::sync::TransportTimings) {
+fn print_transport_timings(timings: &furrow::sync::TransportTimings) {
     eprintln!(
         "sync timings: connect/auth={}ms negotiate={}ms stream={}ms fsync-wait={}ms notify={} total={}ms reused_connection={}",
         timings.connect_auth_ms,
@@ -1445,7 +1449,7 @@ fn print_transport_timings(timings: &agit::sync::TransportTimings) {
     );
 }
 
-fn print_apply_timings(timings: &agit::repository::ApplyTimings) {
+fn print_apply_timings(timings: &furrow::repository::ApplyTimings) {
     eprintln!(
         "apply timings: diff-compute={}ms divergence-check={}ms write={}ms fsync={}ms baseline-install={}ms watcher-requiesce={}ms",
         timings.diff_compute_ms,
@@ -1465,7 +1469,7 @@ fn default_fork_name() -> String {
     format!("fork-{seconds}")
 }
 
-fn print_pair_summary(summary: &agit::sync::PairSummary, json: bool) -> anyhow::Result<()> {
+fn print_pair_summary(summary: &furrow::sync::PairSummary, json: bool) -> anyhow::Result<()> {
     if json {
         println!("{}", serde_json::to_string_pretty(summary)?);
     } else {
@@ -1483,13 +1487,13 @@ fn split_clone_url(value: &str) -> anyhow::Result<(String, String)> {
     let (transport, namespace) = trimmed
         .rsplit_once('/')
         .context("clone URL must end with a workspace name")?;
-    agit::remote::validate_namespace(namespace)?;
+    furrow::remote::validate_namespace(namespace)?;
     if transport.starts_with("s3://") {
         anyhow::ensure!(
             transport.len() > "s3://".len(),
             "clone URL must include a bucket and workspace name"
         );
-        agit::s3_remote::S3Spec::from_uri(transport)?;
+        furrow::s3_remote::S3Spec::from_uri(transport)?;
     } else if let Some(host) = transport.strip_prefix("ssh://") {
         anyhow::ensure!(
             !host.is_empty() && !host.contains('/'),
@@ -1517,7 +1521,7 @@ fn execute_universes(
     plan_only: bool,
     command: &[OsString],
 ) -> anyhow::Result<()> {
-    use agit::universe::{ExecPlan, ExecutionDriver, UniverseCommand, UniversePlan};
+    use furrow::universe::{ExecPlan, ExecutionDriver, UniverseCommand, UniversePlan};
 
     anyhow::ensure!((1..=32).contains(&count), "-n must be between 1 and 32");
     anyhow::ensure!(
@@ -1526,12 +1530,12 @@ fn execute_universes(
     );
     anyhow::ensure!(
         plan_only || !command.is_empty(),
-        "`agit exec` requires a command after -- (or use --plan)"
+        "`furrow exec` requires a command after -- (or use --plan)"
     );
 
-    let mut repository = AgitRepository::open(repo)?;
+    let mut repository = FurrowRepository::open(repo)?;
     let canonical_workdir = repository.root().to_path_buf();
-    let driver = agit::universe::select_driver();
+    let driver = furrow::universe::select_driver();
     let base_name = explicit_name.unwrap_or_else(default_exec_name);
     let first_name = if count == 1 {
         base_name.clone()
@@ -1565,7 +1569,7 @@ fn execute_universes(
         };
         let mut fork_plan = first_fork_plan.clone();
         if offset > 0 {
-            fork_plan.fork_id = agit::new_fork_id()?;
+            fork_plan.fork_id = furrow::new_fork_id()?;
         }
         fork_plan.name = name.clone();
         fork_plan.destination = destination.clone();
@@ -1616,7 +1620,7 @@ fn execute_universes(
         io::stdout().flush()?;
     }
 
-    let executable = std::env::current_exe().context("resolve agit executable")?;
+    let executable = std::env::current_exe().context("resolve furrow executable")?;
     let mut children = Vec::with_capacity(count);
     for (universe, summary) in exec_plan.universes.iter().zip(&summaries) {
         let mut child = UniverseCommand {
@@ -1628,12 +1632,12 @@ fn execute_universes(
         }
         .command()?;
         child
-            .env("AGIT_WORKDIR", &universe.process_workdir)
-            .env("AGIT_CANONICAL_WORKDIR", &exec_plan.canonical_workdir)
-            .env("AGIT_FORK_NAME", &summary.name)
-            .env("AGIT_FORK_BASE", &summary.base_snapshot)
-            .env("AGIT_UNIVERSE_INDEX", universe.index.to_string())
-            .env("AGIT_UNIVERSE_COUNT", count.to_string())
+            .env("FURROW_WORKDIR", &universe.process_workdir)
+            .env("FURROW_CANONICAL_WORKDIR", &exec_plan.canonical_workdir)
+            .env("FURROW_FORK_NAME", &summary.name)
+            .env("FURROW_FORK_BASE", &summary.base_snapshot)
+            .env("FURROW_UNIVERSE_INDEX", universe.index.to_string())
+            .env("FURROW_UNIVERSE_COUNT", count.to_string())
             .env("PORT", universe.port.to_string());
         if json {
             redirect_stdout_to_stderr(&mut child)?;
@@ -1659,7 +1663,7 @@ fn execute_universes(
 
     let mut results = Vec::with_capacity(count);
     for ((universe, summary), status) in exec_plan.universes.iter().zip(&summaries).zip(&statuses) {
-        let mut fork_repository = AgitRepository::open(&summary.destination)?;
+        let mut fork_repository = FurrowRepository::open(&summary.destination)?;
         let outcome = status
             .code()
             .map_or_else(|| status.to_string(), |code| format!("exit {code}"));
@@ -1676,7 +1680,7 @@ fn execute_universes(
             "path": summary.destination,
             "process_workdir": universe.process_workdir,
             "port": universe.port,
-            "exit_code": agit::universe::exit_code(*status),
+            "exit_code": furrow::universe::exit_code(*status),
         }));
     }
 
@@ -1707,7 +1711,7 @@ fn execute_universes(
     Ok(())
 }
 
-fn print_exec_plan(plan: &agit::universe::ExecPlan) {
+fn print_exec_plan(plan: &furrow::universe::ExecPlan) {
     println!(
         "Driver {} | same canonical path: {}",
         plan.driver.driver,
@@ -1756,18 +1760,18 @@ fn redirect_stdout_to_stderr(command: &mut std::process::Command) -> anyhow::Res
     Ok(())
 }
 
-fn default_fork_destination(repository: &AgitRepository, name: &str) -> PathBuf {
+fn default_fork_destination(repository: &FurrowRepository, name: &str) -> PathBuf {
     let root = repository.root();
     let parent = root.parent().unwrap_or_else(|| std::path::Path::new("."));
     let repository_name = root
         .file_name()
         .unwrap_or_else(|| std::ffi::OsStr::new("workspace"));
     let mut forks_name = repository_name.to_os_string();
-    forks_name.push(".agit-forks");
+    forks_name.push(".furrow-forks");
     parent.join(forks_name).join(name)
 }
 
-fn default_sync_name(repository: &AgitRepository) -> String {
+fn default_sync_name(repository: &FurrowRepository) -> String {
     repository
         .root()
         .file_name()
@@ -1777,14 +1781,14 @@ fn default_sync_name(repository: &AgitRepository) -> String {
         .to_owned()
 }
 
-fn print_plan(plan: &agit::RewindPlan) {
+fn print_plan(plan: &furrow::RewindPlan) {
     println!("Rewind to {}", &plan.target[..12]);
     for change in &plan.changes {
         println!("  {:<8} {}", change.action, change.path);
     }
 }
 
-fn print_fork_plan(plan: &agit::ForkPlan) {
+fn print_fork_plan(plan: &furrow::ForkPlan) {
     println!(
         "Fork plan: {} files, {} directories, {} logical",
         plan.files,
@@ -1799,7 +1803,7 @@ fn print_fork_plan(plan: &agit::ForkPlan) {
     );
 }
 
-fn print_shrink_plan(plan: &agit::shrink::ShrinkPlan) {
+fn print_shrink_plan(plan: &furrow::shrink::ShrinkPlan) {
     if plan.candidates.is_empty() {
         println!("No recognized dependency or build caches found");
         return;
@@ -1861,15 +1865,15 @@ fn install_hook_adapters(root: &std::path::Path) -> anyhow::Result<Vec<PathBuf>>
     let root = root.canonicalize()?;
     anyhow::ensure!(
         root.join(".git").exists(),
-        "agit currently requires a Git repository"
+        "furrow currently requires a Git repository"
     );
-    let directory = root.join(".agit/hooks");
+    let directory = root.join(".furrow/hooks");
     fs::create_dir_all(&directory)?;
     let mut installed = Vec::new();
     for event in ["pre-turn", "post-tool", "turn-end"] {
         let destination = directory.join(event);
         let script = format!(
-            "#!/bin/sh\nset -eu\nrepo=$(CDPATH= cd \"$(dirname \"$0\")/../..\" && pwd)\nexec \"${{AGIT_BIN:-agit}}\" --repo \"$repo\" hook {event} \"$@\"\n"
+            "#!/bin/sh\nset -eu\nrepo=$(CDPATH= cd \"$(dirname \"$0\")/../..\" && pwd)\nexec \"${{FURROW_BIN:-furrow}}\" --repo \"$repo\" hook {event} \"$@\"\n"
         );
         let mut temporary = tempfile::NamedTempFile::new_in(&directory)?;
         temporary.write_all(script.as_bytes())?;
@@ -1892,9 +1896,9 @@ fn run_hook(
     turn: Option<String>,
     tool: Option<String>,
 ) -> anyhow::Result<()> {
-    let agent = hook_value(agent, "AGIT_AGENT_ID")?.unwrap_or_else(|| "agent".to_owned());
-    let turn = hook_value(turn, "AGIT_TURN_ID")?;
-    let tool = hook_value(tool, "AGIT_TOOL_NAME")?;
+    let agent = hook_value(agent, "FURROW_AGENT_ID")?.unwrap_or_else(|| "agent".to_owned());
+    let turn = hook_value(turn, "FURROW_TURN_ID")?;
+    let tool = hook_value(tool, "FURROW_TOOL_NAME")?;
     let mut label = format!("hook {event} agent={agent}");
     if let Some(turn) = turn {
         label.push_str(" turn=");
@@ -1904,8 +1908,11 @@ fn run_hook(
         label.push_str(" tool=");
         label.push_str(&tool);
     }
-    let (_, snapshot) =
-        AgitRepository::attach_and_snapshot(root, Some(label.clone()), SnapshotTrigger::AgentRun)?;
+    let (_, snapshot) = FurrowRepository::attach_and_snapshot(
+        root,
+        Some(label.clone()),
+        SnapshotTrigger::AgentRun,
+    )?;
     if json {
         println!(
             "{}",
@@ -1941,7 +1948,7 @@ fn exit_with_status(status: std::process::ExitStatus) -> ! {
     std::process::exit(code)
 }
 
-fn spawn_background_watcher(repository: &AgitRepository, debounce_ms: u64) -> anyhow::Result<()> {
+fn spawn_background_watcher(repository: &FurrowRepository, debounce_ms: u64) -> anyhow::Result<()> {
     let daemon_dir = repository.workspace_data_dir();
     std::fs::create_dir_all(&daemon_dir)?;
     let pid_path = daemon_dir.join("daemon.pid");
@@ -1991,11 +1998,11 @@ mod tests {
 
     #[test]
     fn clone_urls_separate_transport_from_workspace_name() {
-        let (transport, namespace) = split_clone_url("s3://my-bucket/agit/myproject").unwrap();
-        assert_eq!(transport, "s3://my-bucket/agit");
+        let (transport, namespace) = split_clone_url("s3://my-bucket/furrow/myproject").unwrap();
+        assert_eq!(transport, "s3://my-bucket/furrow");
         assert_eq!(namespace, "myproject");
         assert!(split_clone_url("s3://my-bucket").is_err());
-        assert!(split_clone_url("s3://my-bucket/agit/../project").is_err());
+        assert!(split_clone_url("s3://my-bucket/furrow/../project").is_err());
         assert!(split_clone_url("https://example.com/project").is_err());
         assert_eq!(
             split_clone_url("ssh://developer@laptop-a/myproject").unwrap(),

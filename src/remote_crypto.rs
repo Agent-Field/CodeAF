@@ -30,7 +30,7 @@ impl RemoteCrypto {
 
     pub fn remote_id(&self, id: &ObjectId) -> ObjectId {
         let mut hasher = blake3::Hasher::new_keyed(&self.key);
-        hasher.update(b"agit:remote-id:v1\0");
+        hasher.update(b"furrow:remote-id:v1\0");
         hasher.update(id);
         *hasher.finalize().as_bytes()
     }
@@ -183,7 +183,7 @@ impl RemoteCrypto {
 
     fn object_nonce(&self, id: &ObjectId) -> [u8; NONCE_LEN] {
         let mut hasher = blake3::Hasher::new_keyed(&self.key);
-        hasher.update(b"agit:object-nonce:v1\0");
+        hasher.update(b"furrow:object-nonce:v1\0");
         hasher.update(id);
         let mut nonce = [0; NONCE_LEN];
         hasher.finalize_xof().fill(&mut nonce);

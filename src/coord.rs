@@ -10,8 +10,8 @@ use std::path::{Component, Path, PathBuf};
 
 const MAX_COORD_BYTES: u64 = 1024 * 1024;
 const MAX_COORD_FILES: usize = 10_000;
-const FAMILY_FILE: &str = ".agit/family-id";
-const COORD_ROOT: &str = ".agit/coord";
+const FAMILY_FILE: &str = ".furrow/family-id";
+const COORD_ROOT: &str = ".furrow/coord";
 
 #[derive(Debug, Clone, Serialize)]
 pub struct CoordFailure {

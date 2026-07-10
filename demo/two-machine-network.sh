@@ -2,13 +2,13 @@
 set -euo pipefail
 
 root=$(cd "$(dirname "$0")/.." && pwd)
-tag=${AGIT_DEMO_IMAGE:-agit-two-machine:local}
-network=agit-two-machine-net
-minio=agit-two-machine-minio
-laptop_a=agit-laptop-a
-laptop_b=agit-laptop-b
-volume_a=agit-laptop-a-data
-volume_b=agit-laptop-b-data
+tag=${FURROW_DEMO_IMAGE:-furrow-two-machine:local}
+network=furrow-two-machine-net
+minio=furrow-two-machine-minio
+laptop_a=furrow-laptop-a
+laptop_b=furrow-laptop-b
+volume_a=furrow-laptop-a-data
+volume_b=furrow-laptop-b-data
 follow_a=
 follow_b=
 
@@ -26,7 +26,7 @@ cleanup() {
 
 remote_usage() {
   docker run --rm --network "$network" --entrypoint /bin/sh minio/mc:latest -c '
-    mc alias set local http://agit-two-machine-minio:9000 agit-test agit-test-secret >/dev/null
+    mc alias set local http://furrow-two-machine-minio:9000 furrow-test furrow-test-secret >/dev/null
     mc du --json --recursive local/sync | tail -1
   '
 }
@@ -38,7 +38,7 @@ json_number() {
 tree_digest() {
   docker exec "$1" sh -c '
     cd /machine/project
-    find . -type f ! -path "./.agit/*" -print0 |
+    find . -type f ! -path "./.furrow/*" -print0 |
       sort -z | xargs -0 sha256sum | sha256sum | cut -d " " -f 1
   '
 }
@@ -65,10 +65,10 @@ docker network create "$network" >/dev/null
 docker volume create "$volume_a" >/dev/null
 docker volume create "$volume_b" >/dev/null
 docker run -d --name "$minio" --network "$network" \
-  -e MINIO_ROOT_USER=agit-test -e MINIO_ROOT_PASSWORD=agit-test-secret \
+  -e MINIO_ROOT_USER=furrow-test -e MINIO_ROOT_PASSWORD=furrow-test-secret \
   minio/minio:latest server /data >/dev/null
 docker run --rm --network "$network" --entrypoint /bin/sh minio/mc:latest -c '
-  until mc alias set local http://agit-two-machine-minio:9000 agit-test agit-test-secret >/dev/null 2>&1; do sleep 1; done
+  until mc alias set local http://furrow-two-machine-minio:9000 furrow-test furrow-test-secret >/dev/null 2>&1; do sleep 1; done
   mc mb local/sync >/dev/null
 '
 
@@ -76,11 +76,11 @@ for machine in "$laptop_a:$volume_a" "$laptop_b:$volume_b"; do
   name=${machine%%:*}
   volume=${machine#*:}
   docker run -d --name "$name" --network "$network" -v "$volume:/machine" \
-    -e AGIT_DATA_DIR=/machine/agit-data \
-    -e AWS_ACCESS_KEY_ID=agit-test \
-    -e AWS_SECRET_ACCESS_KEY=agit-test-secret \
-    -e AGIT_S3_ENDPOINT=http://agit-two-machine-minio:9000 \
-    -e AGIT_S3_ALLOW_HTTP=1 -e AGIT_S3_PATH_STYLE=1 \
+    -e FURROW_DATA_DIR=/machine/furrow-data \
+    -e AWS_ACCESS_KEY_ID=furrow-test \
+    -e AWS_SECRET_ACCESS_KEY=furrow-test-secret \
+    -e FURROW_S3_ENDPOINT=http://furrow-two-machine-minio:9000 \
+    -e FURROW_S3_ALLOW_HTTP=1 -e FURROW_S3_PATH_STYLE=1 \
     "$tag" >/dev/null
 done
 
@@ -102,17 +102,17 @@ docker exec "$laptop_a" sh -c '
   git add src .gitignore fixtures/research-corpus.bin
   git commit -qm "seed analysis project"
   printf "Uncommitted hypothesis: cohorts 7 and 12 need review.\n" >> agent-notes.txt
-  agit watch --no-daemon >/dev/null
+  furrow watch --no-daemon >/dev/null
 '
 
 source_bytes=$(docker exec "$laptop_a" sh -c 'du -sb /machine/project | cut -f 1')
-source_files=$(docker exec "$laptop_a" sh -c 'find /machine/project -type f ! -path "*/.agit/*" | wc -l | tr -d " "')
-add_output=$(docker exec "$laptop_a" sh -c 'cd /machine/project && agit remote add s3://sync/transport --name project')
+source_files=$(docker exec "$laptop_a" sh -c 'find /machine/project -type f ! -path "*/.furrow/*" | wc -l | tr -d " "')
+add_output=$(docker exec "$laptop_a" sh -c 'cd /machine/project && furrow remote add s3://sync/transport --name project')
 key=$(printf '%s\n' "$add_output" | sed -n 's/^Recovery key //p')
 test ${#key} -eq 64
 
 push_started=$(now_ms)
-initial_push=$(docker exec "$laptop_a" sh -c 'cd /machine/project && agit sync --push')
+initial_push=$(docker exec "$laptop_a" sh -c 'cd /machine/project && furrow sync --push')
 push_latency_ms=$(( $(now_ms) - push_started ))
 initial_usage=$(remote_usage)
 initial_remote_bytes=$(json_number "$initial_usage" size)
@@ -120,9 +120,9 @@ initial_remote_objects=$(json_number "$initial_usage" objects)
 test -n "$initial_remote_bytes"
 
 clone_started=$(now_ms)
-clone_output=$(docker exec -e AGIT_RECOVERY_KEY="$key" "$laptop_b" sh -c '
+clone_output=$(docker exec -e FURROW_RECOVERY_KEY="$key" "$laptop_b" sh -c '
   cd /machine
-  agit clone s3://sync/transport/project --no-watch
+  furrow clone s3://sync/transport/project --no-watch
 ')
 clone_latency_ms=$(( $(now_ms) - clone_started ))
 
@@ -131,9 +131,9 @@ docker exec "$laptop_b" grep -qx 'MODEL_TOKEN=encrypted-working-state' /machine/
 docker exec "$laptop_b" grep -qx 'Uncommitted hypothesis: cohorts 7 and 12 need review.' /machine/project/agent-notes.txt
 docker exec "$laptop_b" sh -c 'cd /machine/project && test "$(git log -1 --format=%s)" = "seed analysis project"'
 
-docker exec "$laptop_a" sh -c 'cd /machine/project && agit sync --follow --poll-seconds 1' >/tmp/agit-follow-a.log 2>&1 &
+docker exec "$laptop_a" sh -c 'cd /machine/project && furrow sync --follow --poll-seconds 1' >/tmp/furrow-follow-a.log 2>&1 &
 follow_a=$!
-docker exec "$laptop_b" sh -c 'cd /machine/project && agit sync --follow --poll-seconds 1' >/tmp/agit-follow-b.log 2>&1 &
+docker exec "$laptop_b" sh -c 'cd /machine/project && furrow sync --follow --poll-seconds 1' >/tmp/furrow-follow-b.log 2>&1 &
 follow_b=$!
 
 # Agent A produces several related artifacts in one turn. The completion marker
@@ -152,7 +152,7 @@ docker exec "$laptop_a" sh -c '
   } > reports/analysis.md
   printf "{\"candidate_cohorts\":[7,12],\"rows\":160}\n" > artifacts/summary.json
   printf "Agent A complete\n" > artifacts/agent-a.done
-  agit snap -m "agent A: cohort analysis" >/dev/null
+  furrow snap -m "agent A: cohort analysis" >/dev/null
 '
 wait_for_file "$laptop_b" /machine/project/artifacts/agent-a.done 'Agent A complete'
 a_latency_ms=$(( $(now_ms) - a_started ))
@@ -183,7 +183,7 @@ EOF
     printf "Decision: investigate cohorts 7 and 12.\n"
   } > reports/final.md
   printf "Agent B complete\n" > artifacts/agent-b.done
-  agit snap -m "agent B: methodology review" >/dev/null
+  furrow snap -m "agent B: methodology review" >/dev/null
 '
 wait_for_file "$laptop_a" /machine/project/artifacts/agent-b.done 'Agent B complete'
 b_latency_ms=$(( $(now_ms) - b_started ))

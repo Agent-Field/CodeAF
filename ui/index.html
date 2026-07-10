@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="color-scheme" content="dark">
-  <title>agit Mission Control</title>
+  <title>furrow Mission Control</title>
   <link rel="stylesheet" href="/assets/app.css">
 </head>
 <body data-view="universes">
@@ -12,7 +12,7 @@
     <div class="brand-block">
       <span class="brand-mark"><svg aria-hidden="true"><use href="/assets/icons.svg#gem"></use></svg></span>
       <div>
-        <strong>agit</strong>
+        <strong>furrow</strong>
         <span>Mission Control</span>
       </div>
     </div>
@@ -35,7 +35,7 @@
   </nav>
 
   <section class="status-rail" aria-label="Workspace summary">
-    <div data-tooltip="Whether agit is continuously watching this source workspace"><span>Protection</span><strong id="protection-value">Checking</strong></div>
+    <div data-tooltip="Whether furrow is continuously watching this source workspace"><span>Protection</span><strong id="protection-value">Checking</strong></div>
     <div data-tooltip="Independent copies of this folder created for separate agents or tasks"><span>Universes</span><strong id="universe-count">0</strong></div>
     <div data-tooltip="Paths changed differently in two or more universes"><span>Collisions</span><strong id="conflict-count">0</strong></div>
     <div data-tooltip="Recoverable snapshots of this source workspace"><span>Restore points</span><strong id="snapshot-count">0</strong></div>
@@ -70,7 +70,7 @@
 
     <aside class="event-pane" data-pane="events" aria-labelledby="events-heading">
       <div class="pane-heading">
-        <div class="heading-with-help"><h2 id="events-heading">Activity</h2><button class="help-button" type="button" aria-label="About activity" data-tooltip="Durable conflict-radar events. Detected means agit found a new overlap; resolved means that overlap disappeared."><svg><use href="/assets/icons.svg#info"></use></svg></button></div>
+        <div class="heading-with-help"><h2 id="events-heading">Activity</h2><button class="help-button" type="button" aria-label="About activity" data-tooltip="Durable conflict-radar events. Detected means furrow found a new overlap; resolved means that overlap disappeared."><svg><use href="/assets/icons.svg#info"></use></svg></button></div>
         <span class="count-label" id="event-cursor">0 events</span>
       </div>
       <div class="event-list" id="event-list" aria-live="polite"></div>

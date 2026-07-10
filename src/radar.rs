@@ -727,10 +727,10 @@ fn insert_event(
     forks: &[EventFork],
     claim_state: &str,
 ) -> anyhow::Result<()> {
-    let conflict_id = digest_id(b"agit:radar-conflict:v1\0", &[family_id.as_bytes(), path]);
+    let conflict_id = digest_id(b"furrow:radar-conflict:v1\0", &[family_id.as_bytes(), path]);
     let signature = fork_signature(forks);
     let event_id = digest_id(
-        b"agit:radar-event:v1\0",
+        b"furrow:radar-event:v1\0",
         &[
             conflict_id.as_bytes(),
             state.as_bytes(),
@@ -844,7 +844,10 @@ fn relevant(class: ContentClass) -> bool {
 }
 
 fn ignored_path(path: &[u8]) -> bool {
-    path == b".agit" || path.starts_with(b".agit/") || path == b".git" || path.starts_with(b".git/")
+    path == b".furrow"
+        || path.starts_with(b".furrow/")
+        || path == b".git"
+        || path.starts_with(b".git/")
 }
 
 fn display_path(path: &[u8]) -> String {

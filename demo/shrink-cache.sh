@@ -2,11 +2,11 @@
 set -euo pipefail
 
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
-BIN="$ROOT/target/release/agit"
-WORK=$(mktemp -d "${TMPDIR:-/tmp}/agit-shrink.XXXXXX")
+BIN="$ROOT/target/release/furrow"
+WORK=$(mktemp -d "${TMPDIR:-/tmp}/furrow-shrink.XXXXXX")
 REPO="$WORK/project"
-export AGIT_DATA_DIR="$WORK/data"
-export AGIT_NO_DAEMON=1
+export FURROW_DATA_DIR="$WORK/data"
+export FURROW_NO_DAEMON=1
 
 bold='\033[1m'
 green='\033[0;32m'
@@ -16,7 +16,7 @@ step() { printf '\n%b%s%b\n' "$bold" "$1" "$reset"; }
 ok() { printf '%bPASS%b  %s\n' "$green" "$reset" "$1"; }
 fail() { printf 'FAIL  %s\n' "$1" >&2; exit 1; }
 
-step "Build agit"
+step "Build furrow"
 cargo build --release --quiet --manifest-path "$ROOT/Cargo.toml"
 
 step "Create a warm project with a 24 MiB ignored dependency tree"
@@ -43,7 +43,7 @@ ok "preview was read-only"
 step "Remove the redundant workspace copy with an exact undo point"
 REPORT="$WORK/shrink-report"
 "$BIN" --repo "$REPO" shrink --yes | tee "$REPORT"
-BEFORE=$(sed -n 's/^Undo with: agit rewind //p' "$REPORT")
+BEFORE=$(sed -n 's/^Undo with: furrow rewind //p' "$REPORT")
 test "${#BEFORE}" -eq 64 || fail "shrink did not report an exact restore point"
 test ! -e "$REPO/node_modules" || fail "dependency tree was not removed"
 grep -q ready "$REPO/app.js" || fail "source was changed"

@@ -13,36 +13,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "agit"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "assert_cmd",
- "blake3",
- "chacha20poly1305",
- "clap",
- "directories",
- "filetime",
- "fs2",
- "getrandom",
- "hex",
- "libc",
- "notify",
- "predicates",
- "rusqlite",
- "rusty-s3",
- "serde",
- "serde_bytes",
- "serde_json",
- "tempfile",
- "tiny_http",
- "ureq",
- "url",
- "xattr",
- "zeroize",
-]
-
-[[package]]
 name = "ahash"
 version = "0.8.12"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -470,6 +440,36 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "76ee7a02da4d231650c7cea31349b889be2f45ddb3ef3032d2ec8185f6313fd2"
 dependencies = [
  "libc",
+]
+
+[[package]]
+name = "furrow"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "assert_cmd",
+ "blake3",
+ "chacha20poly1305",
+ "clap",
+ "directories",
+ "filetime",
+ "fs2",
+ "getrandom",
+ "hex",
+ "libc",
+ "notify",
+ "predicates",
+ "rusqlite",
+ "rusty-s3",
+ "serde",
+ "serde_bytes",
+ "serde_json",
+ "tempfile",
+ "tiny_http",
+ "ureq",
+ "url",
+ "xattr",
+ "zeroize",
 ]
 
 [[package]]

@@ -2,11 +2,11 @@
 set -euo pipefail
 
 PROJECT_ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
-BIN="$PROJECT_ROOT/target/release/agit"
-DEMO_ROOT=${AGIT_DEMO_DIR:-$(mktemp -d "${TMPDIR:-/tmp}/agit-demo.XXXXXX")}
+BIN="$PROJECT_ROOT/target/release/furrow"
+DEMO_ROOT=${FURROW_DEMO_DIR:-$(mktemp -d "${TMPDIR:-/tmp}/furrow-demo.XXXXXX")}
 REPO="$DEMO_ROOT/project"
-export AGIT_DATA_DIR="$DEMO_ROOT/agit-data"
-export AGIT_NO_DAEMON=1
+export FURROW_DATA_DIR="$DEMO_ROOT/furrow-data"
+export FURROW_NO_DAEMON=1
 
 green='\033[0;32m'
 red='\033[0;31m'
@@ -17,14 +17,14 @@ step() { printf '\n%b%s%b\n' "$bold" "$1" "$reset"; }
 ok() { printf '%bPASS%b  %s\n' "$green" "$reset" "$1"; }
 fail() { printf '%bFAIL%b  %s\n' "$red" "$reset" "$1"; exit 1; }
 
-step "Build agit"
+step "Build furrow"
 cargo build --manifest-path "$PROJECT_ROOT/Cargo.toml" --release --quiet
 
 step "Create a realistic agent workspace"
 mkdir -p "$REPO/node_modules/demo-package" "$REPO/dist"
 git -C "$REPO" init -b main --quiet
-git -C "$REPO" config user.email demo@agit.dev
-git -C "$REPO" config user.name "agit demo"
+git -C "$REPO" config user.email demo@furrow.dev
+git -C "$REPO" config user.name "furrow demo"
 cat > "$REPO/.gitignore" <<'EOF'
 .env
 dev.sqlite*

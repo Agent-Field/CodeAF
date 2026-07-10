@@ -2,11 +2,11 @@
 set -euo pipefail
 
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
-BIN="$ROOT/target/release/agit"
-WORK=$(mktemp -d "${TMPDIR:-/tmp}/agit-five-agents.XXXXXX")
+BIN="$ROOT/target/release/furrow"
+WORK=$(mktemp -d "${TMPDIR:-/tmp}/furrow-five-agents.XXXXXX")
 REPO="$WORK/project"
-export AGIT_DATA_DIR="$WORK/data"
-export AGIT_NO_DAEMON=1
+export FURROW_DATA_DIR="$WORK/data"
+export FURROW_NO_DAEMON=1
 
 bold='\033[1m'
 green='\033[0;32m'
@@ -16,7 +16,7 @@ step() { printf '\n%b%s%b\n' "$bold" "$1" "$reset"; }
 ok() { printf '%bPASS%b  %s\n' "$green" "$reset" "$1"; }
 fail() { printf 'FAIL  %s\n' "$1" >&2; exit 1; }
 
-step "Build agit"
+step "Build furrow"
 cargo build --release --quiet --manifest-path "$ROOT/Cargo.toml"
 
 step "Create one dirty workspace with a 32 MiB warm dependency"
@@ -36,8 +36,8 @@ ok "complete warm state protected"
 
 step "Start five complete universes in one command"
 "$BIN" --repo "$REPO" exec -n 5 -- sh -c '
-  printf "result from agent %s\n" "$AGIT_UNIVERSE_INDEX" >"result-$AGIT_UNIVERSE_INDEX.txt"
-  printf "agent %s implementation\n" "$AGIT_UNIVERSE_INDEX" >app.txt
+  printf "result from agent %s\n" "$FURROW_UNIVERSE_INDEX" >"result-$FURROW_UNIVERSE_INDEX.txt"
+  printf "agent %s implementation\n" "$FURROW_UNIVERSE_INDEX" >app.txt
 '
 
 step "Verify pairwise isolation and complete warm state"
@@ -45,7 +45,7 @@ test "$(cat "$REPO/app.txt")" = "dirty source must survive" \
   || fail "an agent modified the source"
 test ! -e "$REPO/result-1.txt" || fail "an agent result leaked into the source"
 for index in 1 2 3 4 5; do
-  fork=$(find "$WORK/project.agit-forks" -maxdepth 1 -type d -name "exec-*-$index" -print -quit)
+  fork=$(find "$WORK/project.furrow-forks" -maxdepth 1 -type d -name "exec-*-$index" -print -quit)
   test -n "$fork" || fail "agent $index universe was not retained"
   test -f "$fork/result-$index.txt" || fail "agent $index lost its result"
   test -f "$fork/node_modules/runtime/cache.bin" || fail "agent $index lost warm dependencies"

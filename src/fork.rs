@@ -516,7 +516,7 @@ fn unique_staging_path(parent: &Path, destination_name: &std::ffi::OsStr) -> Pat
         let sequence = STAGING_SEQUENCE.fetch_add(1, Ordering::Relaxed);
         let mut name = OsString::from(".");
         name.push(destination_name);
-        name.push(format!(".agit-fork-{}-{sequence}", std::process::id()));
+        name.push(format!(".furrow-fork-{}-{sequence}", std::process::id()));
         let candidate = parent.join(name);
         if fs::symlink_metadata(&candidate).is_err() {
             return candidate;
@@ -700,7 +700,7 @@ mod tests {
         .unwrap();
         fs::hard_link(source.join("nested/tool"), source.join("tool-alias")).unwrap();
         symlink("nested/tool", source.join("tool-link")).unwrap();
-        xattr::set(source.join("nested/tool"), "user.agit-fork-test", b"kept").unwrap();
+        xattr::set(source.join("nested/tool"), "user.furrow-fork-test", b"kept").unwrap();
 
         let report = fork_workspace(&source, &destination).unwrap();
 
@@ -721,7 +721,7 @@ mod tests {
             0o751
         );
         assert_eq!(
-            xattr::get(destination.join("nested/tool"), "user.agit-fork-test").unwrap(),
+            xattr::get(destination.join("nested/tool"), "user.furrow-fork-test").unwrap(),
             Some(b"kept".to_vec())
         );
         assert_eq!(

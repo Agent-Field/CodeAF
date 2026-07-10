@@ -131,7 +131,7 @@ pub fn pair(
 pub fn load(config_path: &Path) -> anyhow::Result<PairConfig> {
     let config: PairConfig = serde_json::from_slice(&fs::read(config_path).with_context(|| {
         format!(
-            "repository is not paired; run `agit pair <directory>` first ({})",
+            "repository is not paired; run `furrow pair <directory>` first ({})",
             config_path.display()
         )
     })?)
@@ -497,7 +497,7 @@ fn prepare_writer_lease(
     if remote.exists("LEASE")? {
         let lease = crypto.decrypt_head(
             &remote.read("LEASE", remote::MAX_METADATA_BYTES)?,
-            b"agit:writer-lease:v1",
+            b"furrow:writer-lease:v1",
         )?;
         let mut owner = [0; 16];
         owner.copy_from_slice(&lease[..16]);
@@ -510,11 +510,11 @@ fn prepare_writer_lease(
     let mut lease = [0; 32];
     lease[..16].copy_from_slice(&config.machine_id);
     lease[16..24].copy_from_slice(&(now + LEASE_SECONDS).to_le_bytes());
-    crypto.encrypt_head(&lease, b"agit:writer-lease:v1")
+    crypto.encrypt_head(&lease, b"furrow:writer-lease:v1")
 }
 
 fn head_context(namespace: &str) -> String {
-    format!("agit:remote-head:v1:{namespace}")
+    format!("furrow:remote-head:v1:{namespace}")
 }
 
 fn read_remote_head(
@@ -550,7 +550,7 @@ fn storage_namespace(config: &PairConfig) -> &str {
 
 fn opaque_namespace(key: &[u8; 32], namespace: &str) -> String {
     let mut hasher = blake3::Hasher::new_keyed(key);
-    hasher.update(b"agit remote namespace v1\0");
+    hasher.update(b"furrow remote namespace v1\0");
     hasher.update(namespace.as_bytes());
     hex::encode(&hasher.finalize().as_bytes()[..16])
 }

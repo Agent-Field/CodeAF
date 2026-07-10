@@ -2,13 +2,13 @@
 set -euo pipefail
 
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
-BIN="$ROOT/target/release/agit"
-WORK=$(mktemp -d "${TMPDIR:-/tmp}/agit-radar.XXXXXX")
+BIN="$ROOT/target/release/furrow"
+WORK=$(mktemp -d "${TMPDIR:-/tmp}/furrow-radar.XXXXXX")
 REPO="$WORK/project"
 ALPHA="$WORK/alpha"
 BETA="$WORK/beta"
-export AGIT_DATA_DIR="$WORK/data"
-export AGIT_NO_DAEMON=1
+export FURROW_DATA_DIR="$WORK/data"
+export FURROW_NO_DAEMON=1
 
 bold='\033[1m'
 green='\033[0;32m'
@@ -18,7 +18,7 @@ step() { printf '\n%b%s%b\n' "$bold" "$1" "$reset"; }
 ok() { printf '%bPASS%b  %s\n' "$green" "$reset" "$1"; }
 fail() { printf 'FAIL  %s\n' "$1" >&2; exit 1; }
 
-step "Build agit"
+step "Build furrow"
 cargo build --release --quiet --manifest-path "$ROOT/Cargo.toml"
 
 step "Create one complete dirty workspace"

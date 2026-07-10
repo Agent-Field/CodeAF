@@ -70,7 +70,7 @@ pub fn calculate(root: &Path, store: &ObjectStore) -> anyhow::Result<CaptureEsti
         let entry = entry?;
         let path = entry.path();
         let relative = path.strip_prefix(&root)?.as_os_str().as_bytes();
-        if relative == b".agit/workspace-id" {
+        if relative == b".furrow/workspace-id" {
             continue;
         }
         if policy.excludes_bytes(relative) {
@@ -190,7 +190,7 @@ mod tests {
         fs::write(root.join("one.bin"), vec![7_u8; 80_000]).unwrap();
         fs::write(root.join("two.bin"), vec![7_u8; 80_000]).unwrap();
         fs::write(root.join("cache/ignored.bin"), vec![9_u8; 80_000]).unwrap();
-        fs::write(root.join(".agitpolicy"), b"exclude cache\n").unwrap();
+        fs::write(root.join(".furrowpolicy"), b"exclude cache\n").unwrap();
         let store = ObjectStore::open(temporary.path().join("store")).unwrap();
 
         let first = calculate(&root, &store).unwrap();

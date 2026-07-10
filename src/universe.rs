@@ -35,11 +35,11 @@ pub struct DriverSelection {
 pub fn select_driver() -> DriverSelection {
     #[cfg(target_os = "linux")]
     {
-        if std::env::var_os("AGIT_DISABLE_NAMESPACES").is_some() {
+        if std::env::var_os("FURROW_DISABLE_NAMESPACES").is_some() {
             return DriverSelection {
                 driver: ExecutionDriver::SiblingDirectory,
                 same_canonical_path: false,
-                reason: "mount namespaces disabled by AGIT_DISABLE_NAMESPACES".to_owned(),
+                reason: "mount namespaces disabled by FURROW_DISABLE_NAMESPACES".to_owned(),
             };
         }
         match probe_linux_namespace() {
@@ -67,7 +67,7 @@ pub fn select_driver() -> DriverSelection {
 
 #[cfg(target_os = "linux")]
 fn probe_linux_namespace() -> anyhow::Result<()> {
-    let executable = std::env::current_exe().context("resolve agit executable")?;
+    let executable = std::env::current_exe().context("resolve furrow executable")?;
     let output = Command::new(executable)
         .arg("__namespace-probe")
         .stdin(Stdio::null())

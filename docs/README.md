@@ -1,4 +1,4 @@
-# agit Documentation
+# furrow Documentation
 
 Start with the repository [README](../README.md) for installation, daily use,
 two-machine sync, and current implementation status.

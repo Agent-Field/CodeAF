@@ -1,11 +1,11 @@
 [package]
-name = "agit"
+name = "furrow"
 version = "0.1.0"
 edition = "2021"
 rust-version = "1.83"
 description = "Local-first working-state snapshots for agentic development"
 license = "Apache-2.0"
-repository = "https://github.com/agent-field/agit"
+repository = "https://github.com/Agent-Field/furrow"
 readme = "README.md"
 keywords = ["snapshot", "backup", "agents", "filesystem", "developer-tools"]
 categories = ["command-line-utilities", "development-tools"]

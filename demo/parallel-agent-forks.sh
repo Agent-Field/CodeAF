@@ -2,13 +2,13 @@
 set -euo pipefail
 
 PROJECT_ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
-BIN="$PROJECT_ROOT/target/release/agit"
-DEMO_ROOT=${AGIT_DEMO_DIR:-$(mktemp -d "${TMPDIR:-/tmp}/agit-forks.XXXXXX")}
+BIN="$PROJECT_ROOT/target/release/furrow"
+DEMO_ROOT=${FURROW_DEMO_DIR:-$(mktemp -d "${TMPDIR:-/tmp}/furrow-forks.XXXXXX")}
 REPO="$DEMO_ROOT/project"
 ALPHA="$DEMO_ROOT/alpha"
 BETA="$DEMO_ROOT/beta"
-export AGIT_DATA_DIR="$DEMO_ROOT/agit-data"
-export AGIT_NO_DAEMON=1
+export FURROW_DATA_DIR="$DEMO_ROOT/furrow-data"
+export FURROW_NO_DAEMON=1
 
 green='\033[0;32m'
 red='\033[0;31m'
@@ -19,14 +19,14 @@ step() { printf '\n%b%s%b\n' "$bold" "$1" "$reset"; }
 ok() { printf '%bPASS%b  %s\n' "$green" "$reset" "$1"; }
 fail() { printf '%bFAIL%b  %s\n' "$red" "$reset" "$1"; exit 1; }
 
-step "Build agit"
+step "Build furrow"
 cargo build --manifest-path "$PROJECT_ROOT/Cargo.toml" --release --quiet
 
 step "Create one dirty, warm developer workspace"
 mkdir -p "$REPO/node_modules/example" "$REPO/.cache/build"
 git -C "$REPO" init -b main --quiet
-git -C "$REPO" config user.email demo@agit.dev
-git -C "$REPO" config user.name "agit demo"
+git -C "$REPO" config user.email demo@furrow.dev
+git -C "$REPO" config user.name "furrow demo"
 printf '.env\nnode_modules/\n.cache/\n' > "$REPO/.gitignore"
 printf 'export const result = "original";\n' > "$REPO/app.js"
 git -C "$REPO" add app.js .gitignore
@@ -52,7 +52,7 @@ else
 fi
 "$BIN" --repo "$ALPHA" coord write tasks/alpha.txt \
   --value "alpha owns app.js" --owner alpha-agent >/dev/null
-grep -q 'alpha owns app.js' "$BETA/.agit/coord/tasks/alpha.txt" \
+grep -q 'alpha owns app.js' "$BETA/.furrow/coord/tasks/alpha.txt" \
   && ok "alpha's versioned coordination note propagated eagerly to beta" \
   || fail "coordination note did not propagate"
 
@@ -80,8 +80,8 @@ grep -q 'beta implementation' "$BETA/app.js" \
   && ok "both agents started with the 32 MiB warm dependency tree" || fail "warm state missing"
 grep -q 'local-only' "$ALPHA/.env" && grep -q 'local-only' "$BETA/.env" \
   && ok "ignored local configuration exists in both forks" || fail "ignored state missing"
-[[ $(cat "$REPO/.agit/workspace-id") != $(cat "$ALPHA/.agit/workspace-id") ]] \
-  && [[ $(cat "$ALPHA/.agit/workspace-id") != $(cat "$BETA/.agit/workspace-id") ]] \
+[[ $(cat "$REPO/.furrow/workspace-id") != $(cat "$ALPHA/.furrow/workspace-id") ]] \
+  && [[ $(cat "$ALPHA/.furrow/workspace-id") != $(cat "$BETA/.furrow/workspace-id") ]] \
   && ok "every fork has an independent timeline" || fail "workspace identities collided"
 
 "$BIN" --repo "$ALPHA" snap -m "alpha agent boundary" >/dev/null

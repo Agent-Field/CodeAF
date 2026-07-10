@@ -46,25 +46,25 @@ impl S3Spec {
             .or_else(|_| std::env::var("AWS_DEFAULT_REGION"))
             .unwrap_or_else(|_| "us-east-1".to_owned());
         anyhow::ensure!(!region.trim().is_empty(), "S3 region cannot be empty");
-        let custom_endpoint = std::env::var("AGIT_S3_ENDPOINT").ok();
+        let custom_endpoint = std::env::var("FURROW_S3_ENDPOINT").ok();
         let endpoint = custom_endpoint
             .clone()
             .unwrap_or_else(|| format!("https://s3.{region}.amazonaws.com"));
-        let endpoint_url = Url::parse(&endpoint).context("invalid AGIT_S3_ENDPOINT")?;
+        let endpoint_url = Url::parse(&endpoint).context("invalid FURROW_S3_ENDPOINT")?;
         anyhow::ensure!(
             matches!(endpoint_url.scheme(), "http" | "https"),
             "S3 endpoint must use http or https"
         );
         if endpoint_url.scheme() == "http" {
             anyhow::ensure!(
-                std::env::var("AGIT_S3_ALLOW_HTTP").as_deref() == Ok("1"),
-                "plain HTTP S3 endpoint requires AGIT_S3_ALLOW_HTTP=1"
+                std::env::var("FURROW_S3_ALLOW_HTTP").as_deref() == Ok("1"),
+                "plain HTTP S3 endpoint requires FURROW_S3_ALLOW_HTTP=1"
             );
         }
-        let path_style = match std::env::var("AGIT_S3_PATH_STYLE").as_deref() {
+        let path_style = match std::env::var("FURROW_S3_PATH_STYLE").as_deref() {
             Ok("1" | "true") => true,
             Ok("0" | "false") => false,
-            Ok(_) => anyhow::bail!("AGIT_S3_PATH_STYLE must be true or false"),
+            Ok(_) => anyhow::bail!("FURROW_S3_PATH_STYLE must be true or false"),
             Err(_) => custom_endpoint.is_some(),
         };
         Ok(Self {
@@ -350,12 +350,12 @@ mod tests {
 
     #[test]
     fn parses_provider_neutral_s3_uris_without_credentials() {
-        std::env::remove_var("AGIT_S3_ENDPOINT");
-        std::env::remove_var("AGIT_S3_PATH_STYLE");
-        let spec = S3Spec::from_uri("s3://my-bucket/agit/workspaces").unwrap();
+        std::env::remove_var("FURROW_S3_ENDPOINT");
+        std::env::remove_var("FURROW_S3_PATH_STYLE");
+        let spec = S3Spec::from_uri("s3://my-bucket/furrow/workspaces").unwrap();
         assert_eq!(spec.bucket, "my-bucket");
-        assert_eq!(spec.prefix, "agit/workspaces");
-        assert_eq!(spec.display(), "s3://my-bucket/agit/workspaces");
+        assert_eq!(spec.prefix, "furrow/workspaces");
+        assert_eq!(spec.display(), "s3://my-bucket/furrow/workspaces");
         assert!(!spec.path_style);
         assert!(S3Spec::from_uri("s3://key:secret@bucket/path").is_err());
         assert!(S3Spec::from_uri("s3://bucket/a/../b").is_err());

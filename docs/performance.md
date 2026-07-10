@@ -1,4 +1,4 @@
-# agit Performance Baselines
+# furrow Performance Baselines
 
 This document records reproducible measurements, not extrapolated product claims. The harness is `benches/engine.rs`; every sample runs in a fresh subprocess so CPU and peak RSS are isolated from other scenarios.
 
@@ -6,8 +6,8 @@ This document records reproducible measurements, not extrapolated product claims
 
 ```bash
 cargo bench --bench engine
-AGIT_BENCH_ENFORCE=1 cargo bench --bench engine
-AGIT_BENCH_PROFILE=reference cargo bench --bench engine
+FURROW_BENCH_ENFORCE=1 cargo bench --bench engine
+FURROW_BENCH_PROFILE=reference cargo bench --bench engine
 ```
 
 The default developer profile uses three samples, 5,000 files, 100 changed files, a 128 MiB generated stream, a 32 MiB warm dependency, 721 snapshots spread over six months, and 1,000 tree/ref lookups. CI uses one smaller enforced smoke sample on macOS and Linux. The `reference` profile uses five samples, 1,000,000 files, a 1 GiB stream, and 17,281 historical snapshots.
@@ -49,7 +49,7 @@ This is a 3.8x wall-time improvement and a 45% peak-RSS reduction. The fast path
 
 ## Gates And Gaps
 
-`AGIT_BENCH_ENFORCE=1` currently requires at least 50 MiB/s chunk throughput, a 2 s delta seal ceiling, at most 100 ms per paged-tree diff, at most 5 ms per indexed ref read, tier-aware fork and multi-universe ceilings, a 10 s conflict-radar ceiling, a 10 s GC ceiling, and at most 512 MiB peak RSS per isolated scenario.
+`FURROW_BENCH_ENFORCE=1` currently requires at least 50 MiB/s chunk throughput, a 2 s delta seal ceiling, at most 100 ms per paged-tree diff, at most 5 ms per indexed ref read, tier-aware fork and multi-universe ceilings, a 10 s conflict-radar ceiling, a 10 s GC ceiling, and at most 512 MiB peak RSS per isolated scenario.
 
 Still unproven and therefore not claimed as achieved:
 

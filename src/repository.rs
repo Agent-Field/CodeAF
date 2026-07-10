@@ -37,14 +37,14 @@ use std::path::{Component, Path, PathBuf};
 use std::process::Stdio;
 use std::time::{Instant, SystemTime, UNIX_EPOCH};
 
-const WORKSPACE_FILE: &str = ".agit/workspace-id";
-const WORKSPACE_FILE_BYTES: &[u8] = b".agit/workspace-id";
-const FAMILY_FILE: &str = ".agit/family-id";
-const FAMILY_FILE_BYTES: &[u8] = b".agit/family-id";
-const FORK_FILE: &str = ".agit/fork-id";
-const FORK_FILE_BYTES: &[u8] = b".agit/fork-id";
+const WORKSPACE_FILE: &str = ".furrow/workspace-id";
+const WORKSPACE_FILE_BYTES: &[u8] = b".furrow/workspace-id";
+const FAMILY_FILE: &str = ".furrow/family-id";
+const FAMILY_FILE_BYTES: &[u8] = b".furrow/family-id";
+const FORK_FILE: &str = ".furrow/fork-id";
+const FORK_FILE_BYTES: &[u8] = b".furrow/fork-id";
 
-pub struct AgitRepository {
+pub struct FurrowRepository {
     root: PathBuf,
     workspace_id: String,
     family_id: String,
@@ -331,7 +331,7 @@ struct SyncState {
     local_root: Option<ObjectId>,
 }
 
-impl AgitRepository {
+impl FurrowRepository {
     pub fn watch(root: &Path) -> anyhow::Result<(Self, ObjectId)> {
         Self::attach_and_snapshot(
             root,
@@ -350,9 +350,9 @@ impl AgitRepository {
             .with_context(|| format!("open {}", root.display()))?;
         anyhow::ensure!(
             root.join(".git").exists(),
-            "agit currently requires a Git repository"
+            "furrow currently requires a Git repository"
         );
-        fs::create_dir_all(root.join(".agit"))?;
+        fs::create_dir_all(root.join(".furrow"))?;
         let workspace_path = root.join(WORKSPACE_FILE);
         let workspace_id = if workspace_path.exists() {
             fs::read_to_string(&workspace_path)?.trim().to_owned()
@@ -365,7 +365,7 @@ impl AgitRepository {
         let store_root = data_root()?.join("store-v1");
         anyhow::ensure!(
             !root.starts_with(&store_root),
-            "workspace cannot contain the agit store"
+            "workspace cannot contain the furrow store"
         );
         let mut store = ObjectStore::open(store_root)?;
         store.ensure_workspace(&workspace_id, root.as_os_str().as_bytes())?;
@@ -402,8 +402,8 @@ impl AgitRepository {
         } else {
             let id = store
                 .find_workspace(root.as_os_str().as_bytes())?
-                .context("this repository is not watched; run `agit watch` first")?;
-            fs::create_dir_all(root.join(".agit"))?;
+                .context("this repository is not watched; run `furrow watch` first")?;
+            fs::create_dir_all(root.join(".furrow"))?;
             atomic_write(&workspace_path, format!("{id}\n").as_bytes())?;
             id
         };
@@ -686,7 +686,7 @@ impl AgitRepository {
         let root = root.canonicalize()?;
         anyhow::ensure!(
             root.join(".git").exists(),
-            "agit currently requires a Git repository"
+            "furrow currently requires a Git repository"
         );
         let store = ObjectStore::open(data_root()?.join("store-v1"))?;
         estimate::calculate(&root, &store)
@@ -734,8 +734,8 @@ impl AgitRepository {
     }
 
     pub fn default_claim_owner(&self) -> String {
-        std::env::var("AGIT_AGENT_ID")
-            .or_else(|_| std::env::var("AGIT_FORK_NAME"))
+        std::env::var("FURROW_AGENT_ID")
+            .or_else(|_| std::env::var("FURROW_FORK_NAME"))
             .unwrap_or_else(|_| format!("workspace-{}", &self.workspace_id[..12]))
     }
 
@@ -796,7 +796,7 @@ impl AgitRepository {
             .find(|fork| fork.name == name)
             .with_context(|| format!("fork `{name}` was not found"))?;
         anyhow::ensure!(fork.destination.exists(), "fork directory no longer exists");
-        let repository = AgitRepository::open(&fork.destination)?;
+        let repository = FurrowRepository::open(&fork.destination)?;
         let timeline = repository.timeline(limit.saturating_add(1))?;
         let head = timeline.first().map(|snapshot| snapshot.id.clone());
         let (cursor_found, mut snapshots) = match after {
@@ -833,7 +833,7 @@ impl AgitRepository {
         let mut key = [0_u8; 32];
         key.copy_from_slice(&key_bytes);
         let mut hasher = blake3::Hasher::new_keyed(&key);
-        hasher.update(b"agit:paired-family:v1\0");
+        hasher.update(b"furrow:paired-family:v1\0");
         hasher.update(namespace.as_bytes());
         let family_id = hex::encode(&hasher.finalize().as_bytes()[..16]);
         write_family_id(&self.root, &self.store, &self.workspace_id, &family_id)?;
@@ -982,7 +982,7 @@ impl AgitRepository {
             &mut changes,
         )?;
         changes.retain(|change| {
-            change.raw_path != b".agit"
+            change.raw_path != b".furrow"
                 && !is_identity_path(&change.raw_path)
                 && !protected.excludes_bytes(&change.raw_path)
         });
@@ -1031,7 +1031,7 @@ impl AgitRepository {
                 &mut rollback_changes,
             )?;
             rollback_changes.retain(|change| {
-                change.raw_path != b".agit"
+                change.raw_path != b".furrow"
                     && !is_identity_path(&change.raw_path)
                     && !protected.excludes_bytes(&change.raw_path)
             });
@@ -1299,7 +1299,7 @@ impl AgitRepository {
         );
         let base = parse_id(&plan.base_snapshot)?;
         let _: Snapshot = self.store.read_struct(&base, ObjectKind::Snapshot)?;
-        let report = fork_workspace_excluding(&self.root, &destination, &[Path::new(".agit")])?;
+        let report = fork_workspace_excluding(&self.root, &destination, &[Path::new(".furrow")])?;
 
         // A copied workspace identity would alias two mutable directories onto
         // one timeline. It is transport metadata, not captured user state.
@@ -1309,12 +1309,12 @@ impl AgitRepository {
         }
         let (fork_repository, fork_head) = if report.atomic_hierarchy {
             self.verify_atomic_fork(&base, &destination, &report)?;
-            let fork_repository = AgitRepository::attach_existing_snapshot(&destination, base)?;
+            let fork_repository = FurrowRepository::attach_existing_snapshot(&destination, base)?;
             self.open_path_index()?
                 .backup_to(&fork_repository.workspace_data_dir().join("paths.sqlite3"))?;
             (fork_repository, base)
         } else {
-            let (fork_repository, fork_head) = AgitRepository::watch(&destination)?;
+            let (fork_repository, fork_head) = FurrowRepository::watch(&destination)?;
             if !self.snapshots_match_fork(&base, &fork_repository, &fork_head)? {
                 bail!(
                     "source changed while the fork was being created; the isolated copy remains at {} for inspection",
@@ -1346,7 +1346,7 @@ impl AgitRepository {
 
     fn attach_existing_snapshot(root: &Path, snapshot_id: ObjectId) -> anyhow::Result<Self> {
         let root = root.canonicalize()?;
-        fs::create_dir_all(root.join(".agit"))?;
+        fs::create_dir_all(root.join(".furrow"))?;
         let workspace_id = new_workspace_id(&root);
         atomic_write(
             &root.join(WORKSPACE_FILE),
@@ -1534,7 +1534,7 @@ impl AgitRepository {
             if !fork.destination.exists() {
                 continue;
             }
-            let fork_repository = match AgitRepository::open(&fork.destination) {
+            let fork_repository = match FurrowRepository::open(&fork.destination) {
                 Ok(repository) => repository,
                 Err(_) => {
                     fork.radar_stale = true;
@@ -1591,7 +1591,7 @@ impl AgitRepository {
                 "fork directory no longer exists: {}",
                 fork.destination.display()
             );
-            let mut fork_repository = AgitRepository::open(&fork.destination)?;
+            let mut fork_repository = FurrowRepository::open(&fork.destination)?;
             let head = fork_repository.snapshot(
                 Some(format!("inspection boundary for {}", fork.name)),
                 SnapshotTrigger::Inspection,
@@ -1670,7 +1670,7 @@ impl AgitRepository {
 
         let parent = self.root.parent().unwrap_or_else(|| Path::new("."));
         let owner = tempfile::Builder::new()
-            .prefix(".agit-bisect-")
+            .prefix(".furrow-bisect-")
             .tempdir_in(parent)?;
         let scratch = owner.path().join("workspace");
         fork_workspace_excluding(
@@ -1678,7 +1678,7 @@ impl AgitRepository {
             &scratch,
             &[Path::new(WORKSPACE_FILE), Path::new(FORK_FILE)],
         )?;
-        let (scratch_repository, scratch_head) = AgitRepository::watch(&scratch)?;
+        let (scratch_repository, scratch_head) = FurrowRepository::watch(&scratch)?;
         let operation = (|| {
             anyhow::ensure!(
                 self.snapshots_match_fork(&boundary, &scratch_repository, &scratch_head)?,
@@ -1725,7 +1725,7 @@ impl AgitRepository {
                     && !self.root.starts_with(&destination),
                 "refusing to remove an unsafe fork destination"
             );
-            let fork_repository = AgitRepository::open(&destination)
+            let fork_repository = FurrowRepository::open(&destination)
                 .context("fork identity is missing or no longer matches its recorded directory")?;
             fork_repository.forget(true)?;
             fs::remove_dir_all(&destination)?;
@@ -1760,7 +1760,7 @@ impl AgitRepository {
             .with_context(|| format!("fork `{fork_name}` was not found"))?;
         anyhow::ensure!(fork.destination.exists(), "fork directory no longer exists");
 
-        let mut fork_repository = AgitRepository::open(&fork.destination)?;
+        let mut fork_repository = FurrowRepository::open(&fork.destination)?;
         let (ours, theirs) = if dry_run {
             (
                 self.store
@@ -1843,7 +1843,7 @@ impl AgitRepository {
             merge_rewind_plan(&self.store, &ours_snapshot.root_tree, &merge_plan.changes)?;
         let scratch_parent = self.root.parent().unwrap_or_else(|| Path::new("."));
         let scratch_owner = tempfile::Builder::new()
-            .prefix(".agit-merge-")
+            .prefix(".furrow-merge-")
             .tempdir_in(scratch_parent)?;
         let scratch = scratch_owner.path().join("workspace");
         fork_workspace_excluding(
@@ -2062,7 +2062,7 @@ impl AgitRepository {
         let target_policy = CapturePolicy::from_rules(&target_snapshot.excluded_paths)?;
         let protected = current_policy.union(&target_policy);
         changes.retain(|change| {
-            change.raw_path != b".agit" && !protected.excludes_bytes(&change.raw_path)
+            change.raw_path != b".furrow" && !protected.excludes_bytes(&change.raw_path)
         });
         let target_id = id_hex(target);
         let current_tree = id_hex(&current.root_tree);
@@ -2168,7 +2168,7 @@ impl AgitRepository {
     fn snapshots_match_fork(
         &self,
         base: &ObjectId,
-        fork_repository: &AgitRepository,
+        fork_repository: &FurrowRepository,
         fork_head: &ObjectId,
     ) -> anyhow::Result<bool> {
         let base_snapshot: Snapshot = self.store.read_struct(base, ObjectKind::Snapshot)?;
@@ -2178,10 +2178,10 @@ impl AgitRepository {
         let mut base_entries = self.flatten_tree(&base_snapshot.root_tree)?;
         let mut fork_entries = fork_repository.flatten_tree(&fork_snapshot.root_tree)?;
 
-        // Attaching the destination updates the .agit directory timestamp, but
+        // Attaching the destination updates the .furrow directory timestamp, but
         // its actual policy and hook children still participate in comparison.
         for internal in [
-            b".agit".as_slice(),
+            b".furrow".as_slice(),
             WORKSPACE_FILE_BYTES,
             FAMILY_FILE_BYTES,
             FORK_FILE_BYTES,
@@ -2255,7 +2255,7 @@ impl AgitRepository {
             &mut changes,
         )?;
         changes.retain(|change| {
-            change.raw_path != b".agit"
+            change.raw_path != b".furrow"
                 && !is_identity_path(&change.raw_path)
                 && !protected.excludes_bytes(&change.raw_path)
         });
@@ -2285,7 +2285,7 @@ impl AgitRepository {
         let target_snapshot: Snapshot = self.store.read_struct(target, ObjectKind::Snapshot)?;
         let pre_entries = self.entries_for_changed_paths(&pre_snapshot.root_tree, &plan)?;
         let target_entries = self.entries_for_plan(&target_snapshot.root_tree, &plan)?;
-        test_pause("AGIT_TEST_REWIND_PAUSE_BEFORE_PRECONDITION_MS");
+        test_pause("FURROW_TEST_REWIND_PAUSE_BEFORE_PRECONDITION_MS");
         if let Err(error) = self.verify_plan_state(&self.root, &pre_entries, &plan, paths) {
             FileExt::unlock(&lock)?;
             return Err(error
@@ -2303,7 +2303,7 @@ impl AgitRepository {
         let result = self
             .apply_plan_at(&self.root, &target_entries, &plan, paths)
             .and_then(|_| {
-                test_pause("AGIT_TEST_REWIND_PAUSE_AFTER_APPLY_MS");
+                test_pause("FURROW_TEST_REWIND_PAUSE_AFTER_APPLY_MS");
                 self.verify_plan_state(&self.root, &target_entries, &plan, paths)?;
                 if sqlite_consistent {
                     self.restore_sqlite_backups(&target_snapshot.sqlite_backups, paths)?;
@@ -2368,7 +2368,7 @@ impl AgitRepository {
         if purge {
             self.store.purge_workspace(&self.workspace_id)?;
             if announce {
-                eprintln!("workspace detached; unreachable data will be removed by `agit gc`");
+                eprintln!("workspace detached; unreachable data will be removed by `furrow gc`");
             }
         }
         Ok(())
@@ -2584,7 +2584,7 @@ impl AgitRepository {
             if child_path.starts_with(self.store.root()) {
                 continue;
             }
-            if child_path == self.root.join(".agit") {
+            if child_path == self.root.join(".furrow") {
                 continue;
             }
             if child_path == self.root.join(WORKSPACE_FILE)
@@ -3029,7 +3029,7 @@ impl AgitRepository {
         selected_paths: &[PathBuf],
     ) -> anyhow::Result<()> {
         for change in &plan.changes {
-            if change.raw_path == b".agit" || is_identity_path(&change.raw_path) {
+            if change.raw_path == b".furrow" || is_identity_path(&change.raw_path) {
                 continue;
             }
             if !selected(&change.raw_path, selected_paths) {
@@ -3277,7 +3277,7 @@ impl AgitRepository {
             }
             applied_operations += 1;
             if applied_operations == 1
-                && std::env::var_os("AGIT_FAILPOINT").as_deref()
+                && std::env::var_os("FURROW_FAILPOINT").as_deref()
                     == Some(OsStr::new("rewind_after_first_change"))
             {
                 std::process::exit(86);
@@ -3408,7 +3408,7 @@ impl AgitRepository {
         let lock = self.acquire_mutation_lock()?;
         let intent: RestoreIntent = serde_json::from_slice(&fs::read(&path)?)?;
         eprintln!(
-            "agit: recovering interrupted rewind; restoring pre-rewind snapshot {}",
+            "furrow: recovering interrupted rewind; restoring pre-rewind snapshot {}",
             &id_hex(&intent.pre_snapshot)[..12]
         );
         let snapshot: Snapshot = self
@@ -3430,10 +3430,10 @@ impl AgitRepository {
 }
 
 fn data_root() -> anyhow::Result<PathBuf> {
-    if let Some(path) = std::env::var_os("AGIT_DATA_DIR") {
+    if let Some(path) = std::env::var_os("FURROW_DATA_DIR") {
         return Ok(PathBuf::from(path));
     }
-    let dirs = ProjectDirs::from("dev", "agit", "agit")
+    let dirs = ProjectDirs::from("dev", "furrow", "furrow")
         .context("cannot determine application data directory")?;
     Ok(dirs.data_dir().to_owned())
 }
@@ -3746,14 +3746,14 @@ fn validate_fork_id(value: &str) -> anyhow::Result<()> {
 
 fn legacy_fork_id(name: &str, base_snapshot: &str) -> String {
     let mut hasher = blake3::Hasher::new();
-    hasher.update(b"agit:legacy-fork-id:v1\0");
+    hasher.update(b"furrow:legacy-fork-id:v1\0");
     hasher.update(name.as_bytes());
     hasher.update(b"\0");
     hasher.update(base_snapshot.as_bytes());
     hex::encode(&hasher.finalize().as_bytes()[..16])
 }
 
-fn write_fork_id(repository: &AgitRepository, fork_id: &str) -> anyhow::Result<()> {
+fn write_fork_id(repository: &FurrowRepository, fork_id: &str) -> anyhow::Result<()> {
     validate_fork_id(fork_id)?;
     atomic_write(
         &repository.root.join(FORK_FILE),
@@ -3805,10 +3805,10 @@ fn merge_rewind_plan(
 }
 
 fn merge_path_allowed(path: &[u8]) -> bool {
-    // Git remains canonical for repository history. The .agit directory's
+    // Git remains canonical for repository history. The .furrow directory's
     // mtime is transport metadata, while its policy and hook children remain
     // ordinary merge inputs.
-    path != b".agit" && path != b".git" && !path.starts_with(b".git/")
+    path != b".furrow" && path != b".git" && !path.starts_with(b".git/")
 }
 
 fn rewind_preview_digest(
@@ -3817,7 +3817,7 @@ fn rewind_preview_digest(
     changes: &[RewindChange],
 ) -> String {
     let mut hasher = blake3::Hasher::new();
-    hasher.update(b"agit:rewind-preview:v1\0");
+    hasher.update(b"furrow:rewind-preview:v1\0");
     hasher.update(target.as_bytes());
     hasher.update(b"\0");
     hasher.update(current_tree.unwrap_or_default().as_bytes());
@@ -3837,7 +3837,7 @@ fn merge_preview_digest(
     plan: &merge::MergePlan,
 ) -> String {
     let mut hasher = blake3::Hasher::new();
-    hasher.update(b"agit:merge-preview:v1\0");
+    hasher.update(b"furrow:merge-preview:v1\0");
     for value in [base, ours_tree, theirs_tree] {
         hasher.update(value.as_bytes());
         hasher.update(b"\0");
@@ -3962,7 +3962,7 @@ fn changed_path_is_identity(root: &Path, path: &Path) -> bool {
 }
 
 fn is_identity_path(path: &[u8]) -> bool {
-    path == b".agit" || path.starts_with(b".agit/")
+    path == b".furrow" || path.starts_with(b".furrow/")
 }
 
 fn test_pause(variable: &str) {

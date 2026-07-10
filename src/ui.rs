@@ -1,7 +1,7 @@
 //! Embedded, loopback-only Mission Control server.
 
 use crate::model::{id_hex, parse_id};
-use crate::AgitRepository;
+use crate::FurrowRepository;
 use anyhow::Context;
 use serde::Deserialize;
 use serde_json::{json, Value};
@@ -169,7 +169,7 @@ fn dispatch(request: &mut Request, state: &State) -> anyhow::Result<HttpResponse
 
     match (request.method(), path.as_str()) {
         (&Method::Get, "/api/v1/status") => {
-            let repository = AgitRepository::open(&state.root)?;
+            let repository = FurrowRepository::open(&state.root)?;
             if query_bool(&query, "fidelity")? {
                 json_response(json!({
                     "status": repository.status()?,
@@ -182,17 +182,17 @@ fn dispatch(request: &mut Request, state: &State) -> anyhow::Result<HttpResponse
         (&Method::Get, "/api/v1/timeline") => {
             let limit = query_usize(&query, "limit", 100, 1, 1000)?;
             json_response(serde_json::to_value(
-                AgitRepository::open(&state.root)?.timeline(limit)?,
+                FurrowRepository::open(&state.root)?.timeline(limit)?,
             )?)
         }
         (&Method::Get, "/api/v1/forks") => json_response(serde_json::to_value(
-            AgitRepository::open(&state.root)?.forks()?,
+            FurrowRepository::open(&state.root)?.forks()?,
         )?),
         (&Method::Get, "/api/v1/events") => {
             let limit = query_usize(&query, "limit", 100, 1, 1000)?;
             let after = query.get("after").map(String::as_str);
             json_response(serde_json::to_value(
-                AgitRepository::open(&state.root)?.events(after, limit)?,
+                FurrowRepository::open(&state.root)?.events(after, limit)?,
             )?)
         }
         (&Method::Get, "/api/v1/config") => json_response(json!({
@@ -202,12 +202,12 @@ fn dispatch(request: &mut Request, state: &State) -> anyhow::Result<HttpResponse
         (&Method::Post, "/api/v1/diff") => {
             let body: DiffRequest = body_json(request)?;
             json_response(serde_json::to_value(
-                AgitRepository::open(&state.root)?.diff(&body.target)?,
+                FurrowRepository::open(&state.root)?.diff(&body.target)?,
             )?)
         }
         (&Method::Post, "/api/v1/rewind/plan") => {
             let body: RewindPlanRequest = body_json(request)?;
-            let repository = AgitRepository::open(&state.root)?;
+            let repository = FurrowRepository::open(&state.root)?;
             let target = exact_snapshot(&repository, &body.snapshot)?;
             json_response(serde_json::to_value(
                 repository.plan_rewind(&target, &body.paths)?,
@@ -219,7 +219,7 @@ fn dispatch(request: &mut Request, state: &State) -> anyhow::Result<HttpResponse
                 body.snapshot == body.confirm_snapshot,
                 "confirm_snapshot must exactly match snapshot"
             );
-            let mut repository = AgitRepository::open(&state.root)?;
+            let mut repository = FurrowRepository::open(&state.root)?;
             let target = exact_snapshot(&repository, &body.snapshot)?;
             let current = repository.plan_rewind(&target, &body.paths)?;
             if !constant_time_equal(&current.preview_digest, &body.preview_digest) {
@@ -244,15 +244,15 @@ fn dispatch(request: &mut Request, state: &State) -> anyhow::Result<HttpResponse
         (&Method::Post, "/api/v1/merge/preview") => {
             let body: MergeRequest = body_json(request)?;
             json_response(serde_json::to_value(
-                AgitRepository::open(&state.root)?.merge(&body.fork, None, true)?,
+                FurrowRepository::open(&state.root)?.merge(&body.fork, None, true)?,
             )?)
         }
         (&Method::Post, "/api/v1/merge/apply") => {
             let body: MergeApplyRequest = body_json(request)?;
             let check = state.merge_check.as_deref().context(
-                "merge apply is disabled; restart `agit ui` with --merge-check <command>",
+                "merge apply is disabled; restart `furrow ui` with --merge-check <command>",
             )?;
-            let mut repository = AgitRepository::open(&state.root)?;
+            let mut repository = FurrowRepository::open(&state.root)?;
             let current = repository.merge(&body.fork, None, true)?;
             if !constant_time_equal(&current.preview_digest, &body.preview_digest) {
                 return Ok(api_error(
@@ -274,7 +274,7 @@ fn dispatch(request: &mut Request, state: &State) -> anyhow::Result<HttpResponse
                 body.fork_id == body.confirm_fork_id,
                 "confirm_fork_id must exactly match fork_id"
             );
-            let mut repository = AgitRepository::open(&state.root)?;
+            let mut repository = FurrowRepository::open(&state.root)?;
             let fork = repository
                 .forks()?
                 .into_iter()
@@ -285,7 +285,7 @@ fn dispatch(request: &mut Request, state: &State) -> anyhow::Result<HttpResponse
         }
         (&Method::Post, "/api/v1/pins") => {
             let body: PinRequest = body_json(request)?;
-            let mut repository = AgitRepository::open(&state.root)?;
+            let mut repository = FurrowRepository::open(&state.root)?;
             let snapshot = exact_snapshot(&repository, &body.snapshot)?;
             let changed = if body.pinned {
                 repository.pin(&snapshot)?
@@ -352,7 +352,7 @@ struct PinRequest {
     pinned: bool,
 }
 
-fn exact_snapshot(repository: &AgitRepository, value: &str) -> anyhow::Result<[u8; 32]> {
+fn exact_snapshot(repository: &FurrowRepository, value: &str) -> anyhow::Result<[u8; 32]> {
     anyhow::ensure!(
         value.len() == 64,
         "Mission Control actions require a full snapshot ID"
@@ -389,7 +389,7 @@ fn authorize(request: &Request, state: &State, mutation: bool) -> anyhow::Result
     );
     if mutation {
         require_single_header(request, "Origin", &state.origin)?;
-        require_single_header(request, "X-Agit-UI", "1")?;
+        require_single_header(request, "X-Furrow-UI", "1")?;
         if let Some(site) = header(request, "Sec-Fetch-Site") {
             anyhow::ensure!(site == "same-origin", "cross-site mutation refused");
         }

@@ -244,8 +244,8 @@ fn validate_relative(path: &Path) -> anyhow::Result<PathBuf> {
 fn refuse_internal_path(path: &Path) -> anyhow::Result<()> {
     let first = path.components().next();
     anyhow::ensure!(
-        !matches!(first, Some(Component::Normal(name)) if name == OsStr::new(".git") || name == OsStr::new(".agit")),
-        "refusing to shrink agit or Git internal state"
+        !matches!(first, Some(Component::Normal(name)) if name == OsStr::new(".git") || name == OsStr::new(".furrow")),
+        "refusing to shrink furrow or Git internal state"
     );
     Ok(())
 }
@@ -253,7 +253,7 @@ fn refuse_internal_path(path: &Path) -> anyhow::Result<()> {
 fn is_internal_root(path: &Path) -> bool {
     matches!(
         path.components().next(),
-        Some(Component::Normal(name)) if name == OsStr::new(".git") || name == OsStr::new(".agit")
+        Some(Component::Normal(name)) if name == OsStr::new(".git") || name == OsStr::new(".furrow")
     )
 }
 
@@ -317,7 +317,7 @@ mod tests {
         assert!(discover(temporary.path(), &[PathBuf::from("../outside")]).is_err());
         assert!(discover(temporary.path(), &[PathBuf::from(".git")]).is_err());
 
-        fs::write(temporary.path().join(".agitpolicy"), b"exclude cache\n").unwrap();
+        fs::write(temporary.path().join(".furrowpolicy"), b"exclude cache\n").unwrap();
         assert!(discover(temporary.path(), &[PathBuf::from("cache")])
             .unwrap_err()
             .to_string()

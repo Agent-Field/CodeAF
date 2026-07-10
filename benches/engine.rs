@@ -1,13 +1,13 @@
-use agit::chunker::ChunkStream;
-use agit::content_class::ContentClass;
-use agit::model::{
+use anyhow::Context;
+use furrow::chunker::ChunkStream;
+use furrow::content_class::ContentClass;
+use furrow::model::{
     Blob, ChunkRef, EntryKind, ObjectId, ObjectKind, SealQuality, Snapshot, SnapshotTrigger, Tree,
     TreeEntry,
 };
-use agit::store::ObjectStore;
-use agit::AgitRepository;
-use agit::{refs::RefLog, tree};
-use anyhow::Context;
+use furrow::store::ObjectStore;
+use furrow::FurrowRepository;
+use furrow::{refs::RefLog, tree};
 use serde::{Deserialize, Serialize};
 use std::fs::{self, File};
 use std::io::{Read, Write};
@@ -135,14 +135,14 @@ fn main() -> anyhow::Result<()> {
         );
     }
     println!("BENCHMARK_RESULT {}", serde_json::to_string(&summaries)?);
-    if std::env::var_os("AGIT_BENCH_ENFORCE").is_some() {
+    if std::env::var_os("FURROW_BENCH_ENFORCE").is_some() {
         enforce(&summaries, profile)?;
     }
     Ok(())
 }
 
 fn profile() -> anyhow::Result<Profile> {
-    let reference = std::env::var_os("AGIT_BENCH_PROFILE").as_deref()
+    let reference = std::env::var_os("FURROW_BENCH_PROFILE").as_deref()
         == Some(std::ffi::OsStr::new("reference"));
     let defaults = if reference {
         Profile {
@@ -168,20 +168,20 @@ fn profile() -> anyhow::Result<Profile> {
         }
     };
     Ok(Profile {
-        files: environment_usize("AGIT_BENCH_FILES", defaults.files)?,
-        changed_files: environment_usize("AGIT_BENCH_CHANGED_FILES", defaults.changed_files)?,
-        chunk_bytes: environment_u64("AGIT_BENCH_CHUNK_BYTES", defaults.chunk_bytes)?,
-        warm_bytes: environment_u64("AGIT_BENCH_WARM_BYTES", defaults.warm_bytes)?,
-        iterations: environment_usize("AGIT_BENCH_ITERATIONS", defaults.iterations)?.max(1),
+        files: environment_usize("FURROW_BENCH_FILES", defaults.files)?,
+        changed_files: environment_usize("FURROW_BENCH_CHANGED_FILES", defaults.changed_files)?,
+        chunk_bytes: environment_u64("FURROW_BENCH_CHUNK_BYTES", defaults.chunk_bytes)?,
+        warm_bytes: environment_u64("FURROW_BENCH_WARM_BYTES", defaults.warm_bytes)?,
+        iterations: environment_usize("FURROW_BENCH_ITERATIONS", defaults.iterations)?.max(1),
         history_snapshots: environment_usize(
-            "AGIT_BENCH_HISTORY_SNAPSHOTS",
+            "FURROW_BENCH_HISTORY_SNAPSHOTS",
             defaults.history_snapshots,
         )?,
         lookup_iterations: environment_usize(
-            "AGIT_BENCH_LOOKUP_ITERATIONS",
+            "FURROW_BENCH_LOOKUP_ITERATIONS",
             defaults.lookup_iterations,
         )?,
-        universes: environment_usize("AGIT_BENCH_UNIVERSES", defaults.universes)?.max(1),
+        universes: environment_usize("FURROW_BENCH_UNIVERSES", defaults.universes)?.max(1),
     })
 }
 
@@ -295,7 +295,7 @@ fn benchmark_cold_seal(profile: Profile) -> anyhow::Result<Sample> {
     let workspace = Workspace::new(profile, false)?;
     let before = usage()?;
     let started = Instant::now();
-    let _ = AgitRepository::attach_and_snapshot(
+    let _ = FurrowRepository::attach_and_snapshot(
         &workspace.repo,
         Some("benchmark cold seal".to_owned()),
         SnapshotTrigger::Manual,
@@ -312,7 +312,7 @@ fn benchmark_cold_seal(profile: Profile) -> anyhow::Result<Sample> {
 
 fn benchmark_delta_seal(profile: Profile) -> anyhow::Result<Sample> {
     let workspace = Workspace::new(profile, false)?;
-    let (mut repository, _) = AgitRepository::attach_and_snapshot(
+    let (mut repository, _) = FurrowRepository::attach_and_snapshot(
         &workspace.repo,
         Some("benchmark baseline".to_owned()),
         SnapshotTrigger::Manual,
@@ -337,7 +337,7 @@ fn benchmark_delta_seal(profile: Profile) -> anyhow::Result<Sample> {
 
 fn benchmark_fork(profile: Profile) -> anyhow::Result<Sample> {
     let workspace = Workspace::new(profile, true)?;
-    let (mut repository, _) = AgitRepository::attach_and_snapshot(
+    let (mut repository, _) = FurrowRepository::attach_and_snapshot(
         &workspace.repo,
         Some("benchmark fork baseline".to_owned()),
         SnapshotTrigger::Manual,
@@ -360,7 +360,7 @@ fn benchmark_fork(profile: Profile) -> anyhow::Result<Sample> {
 
 fn benchmark_universes(profile: Profile) -> anyhow::Result<Sample> {
     let workspace = Workspace::new(profile, true)?;
-    let (mut repository, _) = AgitRepository::attach_and_snapshot(
+    let (mut repository, _) = FurrowRepository::attach_and_snapshot(
         &workspace.repo,
         Some("benchmark universe baseline".to_owned()),
         SnapshotTrigger::Manual,
@@ -406,7 +406,7 @@ fn benchmark_universes(profile: Profile) -> anyhow::Result<Sample> {
 
 fn benchmark_radar(profile: Profile) -> anyhow::Result<Sample> {
     let workspace = Workspace::new(profile, false)?;
-    let (mut repository, _) = AgitRepository::attach_and_snapshot(
+    let (mut repository, _) = FurrowRepository::attach_and_snapshot(
         &workspace.repo,
         Some("benchmark radar baseline".to_owned()),
         SnapshotTrigger::Manual,
@@ -423,7 +423,7 @@ fn benchmark_radar(profile: Profile) -> anyhow::Result<Sample> {
                 vec![u8::try_from(index % 251)?; Workspace::FILE_BYTES],
             )?;
         }
-        AgitRepository::open(&destination)?.snapshot(
+        FurrowRepository::open(&destination)?.snapshot(
             Some(format!("radar universe {index}")),
             SnapshotTrigger::AgentRun,
         )?;
@@ -510,7 +510,7 @@ fn benchmark_gc(profile: Profile) -> anyhow::Result<Sample> {
     }
     let before = usage()?;
     let started = Instant::now();
-    let report = agit::gc::collect(&mut store, false)?;
+    let report = furrow::gc::collect(&mut store, false)?;
     sample(
         "gc",
         started,
@@ -681,8 +681,8 @@ impl Workspace {
                 remaining -= take as u64;
             }
         }
-        std::env::set_var("AGIT_DATA_DIR", root.path().join("data"));
-        std::env::set_var("AGIT_NO_DAEMON", "1");
+        std::env::set_var("FURROW_DATA_DIR", root.path().join("data"));
+        std::env::set_var("FURROW_NO_DAEMON", "1");
         Ok(Self { root, repo })
     }
 

@@ -1,4 +1,4 @@
-# agit — Document 2: Distributed Runtime, Developer Experience, and Commercial Model
+# furrow — Document 2: Distributed Runtime, Developer Experience, and Commercial Model
 
 **Status:** Draft 0.1 — companion to [Document 1](01-working-state.md), draft 0.3
 **Audience:** Product, architecture, infrastructure, and business reviewers
@@ -9,7 +9,7 @@
 
 ## 1. Governing Principles
 
-1. **Vendor neutrality is absolute.** Nothing specific to Claude Code, Codex, Cursor, or any agent product enters agit code. Integration surfaces are generic: filesystem semantics, CLI, hooks (any command can call `agit snap`), and MCP (an open protocol). Agent-specific glue lives in user config or contrib examples, never in core.
+1. **Vendor neutrality is absolute.** Nothing specific to Claude Code, Codex, Cursor, or any agent product enters furrow code. Integration surfaces are generic: filesystem semantics, CLI, hooks (any command can call `furrow snap`), and MCP (an open protocol). Agent-specific glue lives in user config or contrib examples, never in core.
 2. **Open code is never artificially slow.** Every algorithm ships in source: hydration planner, prefetch profiles, dedup, memoization, coordination primitives. The commercial tier is faster only through *physics* (compute colocated with state), *shared infrastructure* (registry pool, prewarmed sandboxes), and *absence of setup* — never through withheld or degraded code paths. The open client is complete (§5.1); what it cannot do without us is exactly what requires someone else's presence, not someone else's code.
 3. **All connections are outbound.** No participant — laptop, desktop, runner — ever requires an inbound port, NAT traversal, VPN, or Tailscale. Optional direct paths (LAN, tailnet) are auto-detected accelerations; correctness never depends on connectivity luck.
 4. **Capability is free; adjacency and absence-of-setup are paid.** The paywall sits exactly on "I could do this myself in ~30 minutes of setup and upkeep, or pay a small amount and not."
@@ -18,14 +18,14 @@
 
 ---
 
-## 2. IP-6: Ephemeral Runners (`agit run`)
+## 2. IP-6: Ephemeral Runners (`furrow run`)
 
 ### 2.1 What it does
 
 ```text
-agit run --cloud 3 "claude -p 'fix issue #42'"      # hosted (paid)
-agit run --host ssh://my-hetzner-box "cargo test"    # BYO compute (OSS)
-agit run --driver docker "npx codemod ..."           # local container (OSS)
+furrow run --cloud 3 "claude -p 'fix issue #42'"      # hosted (paid)
+furrow run --host ssh://my-hetzner-box "cargo test"    # BYO compute (OSS)
+furrow run --driver docker "npx codemod ..."           # local container (OSS)
 ```
 
 Lifecycle, identical across drivers:
@@ -34,7 +34,7 @@ Lifecycle, identical across drivers:
 2. **Provision N sandboxes.** Hosted: prewarmed micro-VMs colocated with the managed store. BYO: any Linux host reachable outbound (SSH, Docker socket, or a cloud driver with the user's API key).
 3. **Lazy attach.** Each sandbox mounts a fork of the snapshot via FUSE (or NFS-loopback) — *server-side Linux only*, where lazy mounts are cheap and controlled. An agent that reads 40 files and edits 6 transfers kilobytes. Dev machines never require FUSE (Doc 1's materialization rules stand).
 4. **Run + seal continuously.** The command executes; the runner's engine seals to its own fork timeline; logs and progress stream back live.
-5. **Runners die; snapshots survive.** Results appear locally as sibling forks: `agit forks` → diff → `agit try`/merge one, discard the rest. Sandboxes are destroyed; nothing durable lives on a runner.
+5. **Runners die; snapshots survive.** Results appear locally as sibling forks: `furrow forks` → diff → `furrow try`/merge one, discard the rest. Sandboxes are destroyed; nothing durable lives on a runner.
 
 ### 2.2 Driver interface (OSS)
 
@@ -43,16 +43,16 @@ A small trait: `provision(n, image) / attach(snapshot, fork) / exec(cmd, streams
 ### 2.3 Secrets and keys on runners
 
 - A runner executing code necessarily sees plaintext of what it mounts. Therefore: **session-scoped keys**, granted per run, living only inside the sandbox, dying with it.
-- **`config-secret` class is never shipped to runners by default** (Doc 1 §5.9). Specific secrets are allowlisted per-path in `.agitpolicy` (e.g., a test API key). The default answer to "you run my code with my `.env` on your machines?" is "no — unless you name the exact file."
-- Runner-sealed snapshots are signed by the session key; local `agit forks` shows which universe came from which runner.
+- **`config-secret` class is never shipped to runners by default** (Doc 1 §5.9). Specific secrets are allowlisted per-path in `.furrowpolicy` (e.g., a test API key). The default answer to "you run my code with my `.env` on your machines?" is "no — unless you name the exact file."
+- Runner-sealed snapshots are signed by the session key; local `furrow forks` shows which universe came from which runner.
 
 ### 2.4 Third-party sandboxes as machines (Claude Code web, Codex cloud, any Linux sandbox)
 
-Cloud agent sandboxes normally clone from a git host — they see the last *push*, never the working state. Because they are Linux boxes with outbound internet that permit setup commands, they can become agit machines with two lines and **no vendor partnership**:
+Cloud agent sandboxes normally clone from a git host — they see the last *push*, never the working state. Because they are Linux boxes with outbound internet that permit setup commands, they can become furrow machines with two lines and **no vendor partnership**:
 
 ```text
-curl -fsSL https://agit.sh | sh
-agit clone you/myproject --token $AGIT_TOKEN
+curl -fsSL https://furrow.sh | sh
+furrow clone you/myproject --token $FURROW_TOKEN
 ```
 
 - **Scoped tokens:** per-sandbox, short-lived, fork-scoped — the sandbox writes only to its own fork namespace, can never fast-forward the user's main, and is revocable at any time.
@@ -97,9 +97,9 @@ This is Document 3's Capability D arriving early through the front door: it need
 
 | Tier | Setup | Cost | What works |
 |---|---|---|---|
-| Hosted | `agit login` — once | free tier (§5.4), subscription + per-minute runners | everything, zero config: live P2P sync, relay, stored quota, pool, runners |
-| BYO bucket | `agit remote add r2://…` — paste one URL + key | free; cents of storage | **async** sync + backup (a dumb bucket has no live coordination — by physics), BYO runners against your bucket |
-| BYO compute | `agit run --host ssh://box` or a cloud API key | free; your hardware | runners without any hosted component; SSH is its own control plane |
+| Hosted | `furrow login` — once | free tier (§5.4), subscription + per-minute runners | everything, zero config: live P2P sync, relay, stored quota, pool, runners |
+| BYO bucket | `furrow remote add r2://…` — paste one URL + key | free; cents of storage | **async** sync + backup (a dumb bucket has no live coordination — by physics), BYO runners against your bucket |
+| BYO compute | `furrow run --host ssh://box` or a cloud API key | free; your hardware | runners without any hosted component; SSH is its own control plane |
 | Local only | install binary | free | rewind, fork, exec, try, bisect, shrink, merge, MCP — unlimited repos |
 
 Every tier above "local only" degrades gracefully to the tier below it when offline.
@@ -145,9 +145,9 @@ Discovered empirically (initial SSH publish: 3+ minutes, near-zero CPU — per-o
 
 Agents coordinate **through versioned state, not APIs** — filesystem-level, so anything that can read and write files (or speak MCP) can participate. All primitives are OSS.
 
-- **`agit claim <glob>`** — advisory path leases recorded in the DAG. Agent A claims `src/auth/**`; agent B's overlapping claim is refused with A's identity and claim time. Work partitioning with zero orchestrator. Claims expire with the fork or by TTL; they are advisory (the engine never blocks writes — it makes contention *visible*, and merge classification uses claim history as a signal).
-- **`coord` content class** — a designated directory (default `.agit/coord/`) replicated *eagerly* between sibling forks — not waiting for quiescence seals. Agents leave task lists, notes, partial results; it is a versioned blackboard with the same history, rewind, and attribution as everything else.
-- **`agit watch-fork <name>`** — subscribe to a sibling fork's seals (CLI stream and MCP notification): "agent B just sealed changes to the file you are editing."
+- **`furrow claim <glob>`** — advisory path leases recorded in the DAG. Agent A claims `src/auth/**`; agent B's overlapping claim is refused with A's identity and claim time. Work partitioning with zero orchestrator. Claims expire with the fork or by TTL; they are advisory (the engine never blocks writes — it makes contention *visible*, and merge classification uses claim history as a signal).
+- **`coord` content class** — a designated directory (default `.furrow/coord/`) replicated *eagerly* between sibling forks — not waiting for quiescence seals. Agents leave task lists, notes, partial results; it is a versioned blackboard with the same history, rewind, and attribution as everything else.
+- **`furrow watch-fork <name>`** — subscribe to a sibling fork's seals (CLI stream and MCP notification): "agent B just sealed changes to the file you are editing."
 - **MCP surface:** `claim`, `release`, `coord-read/write`, `watch-fork`, `fork-diff` — the complete multi-agent toolkit exposed through one open protocol, with zero knowledge of which agent product is calling.
 
 **Colocation acceleration (hosted, by physics):** sibling forks on the same runner host share one local CAS, so coord-class propagation and watch-fork latency drop from bucket-round-trip to milliseconds. Same primitives, faster adjacency — consistent with Principle 2.
@@ -156,20 +156,20 @@ Agents coordinate **through versioned state, not APIs** — filesystem-level, so
 
 ## 5. Source Strategy and Commercial Model
 
-The posture is the Sentry/Lago model, adapted: **easy local, easy hosted, possible self-host** (Principle 6). We take the full benefit of open source — trust, distribution, packaging, contributions, embedding, the dead-man's answer — while the operationally natural path to multi-machine and cloud features is `agit login`.
+The posture is the Sentry/Lago model, adapted: **easy local, easy hosted, possible self-host** (Principle 6). We take the full benefit of open source — trust, distribution, packaging, contributions, embedding, the dead-man's answer — while the operationally natural path to multi-machine and cloud features is `furrow login`.
 
 ### 5.1 The two artifacts and their postures
 
 | Artifact | License | Posture |
 |---|---|---|
-| **Client/engine** (binary, CLI, MCP adapter, Mission Control, SSH/LAN device sync, bucket remotes, BYO runner drivers — plus the documented protocol and on-disk/bucket formats) | Apache-2.0 | **Effortless, polished, forever-free, and genuinely complete.** Everything that can happen on or between the user's own machines lives here — including the entire parallel-agent product and serverless multi-machine sync. This is the viral surface and the embed channel (Plaid play). Defaults wire to the hosted rendezvous; `agit login` is the golden path printed by the installer. |
-| **`agit-cloud`** (signaling/hole-punch brokering, relay, stored quota, identity/SSO, tenancy, billing, sandbox token issuance, account console, registry pool, prewarmed runner fleet, specialized subharness recipes) | closed | **The only server anywhere in the product — and it's ours.** Partly service code, partly operations-and-data that cannot be downloaded because they are not software (pool content, fleet, global presence). No public server artifact exists: self-hosters need none (Principle 6), so there is nothing to license-lawyer, no crippled reference server to criticize, and no enterprise-auth burden in public. |
+| **Client/engine** (binary, CLI, MCP adapter, Mission Control, SSH/LAN device sync, bucket remotes, BYO runner drivers — plus the documented protocol and on-disk/bucket formats) | Apache-2.0 | **Effortless, polished, forever-free, and genuinely complete.** Everything that can happen on or between the user's own machines lives here — including the entire parallel-agent product and serverless multi-machine sync. This is the viral surface and the embed channel (Plaid play). Defaults wire to the hosted rendezvous; `furrow login` is the golden path printed by the installer. |
+| **`furrow-cloud`** (signaling/hole-punch brokering, relay, stored quota, identity/SSO, tenancy, billing, sandbox token issuance, account console, registry pool, prewarmed runner fleet, specialized subharness recipes) | closed | **The only server anywhere in the product — and it's ours.** Partly service code, partly operations-and-data that cannot be downloaded because they are not software (pool content, fleet, global presence). No public server artifact exists: self-hosters need none (Principle 6), so there is nothing to license-lawyer, no crippled reference server to criticize, and no enterprise-auth burden in public. |
 
-The boundary is **natural, never inserted** (Principle 6): the client is complete for everything the user's own infrastructure can reach; our service exists precisely for what it can't — machines that can't dial each other, machines that aren't awake together, and shared assets (pool, fleet). The lock-in answer lives in the client plus documented formats, not in a server: any bucket written by agit is readable forever with the Apache client alone. If the community builds a third-party coordination server against the documented protocol (the Headscale pattern), that validates the protocol and is welcome — it will still have none of our data assets or fleet.
+The boundary is **natural, never inserted** (Principle 6): the client is complete for everything the user's own infrastructure can reach; our service exists precisely for what it can't — machines that can't dial each other, machines that aren't awake together, and shared assets (pool, fleet). The lock-in answer lives in the client plus documented formats, not in a server: any bucket written by furrow is readable forever with the Apache client alone. If the community builds a third-party coordination server against the documented protocol (the Headscale pattern), that validates the protocol and is welcome — it will still have none of our data assets or fleet.
 
 ### 5.2 What each path gets
 
-| | Client alone (free, offline-capable) | + Hosted (`agit login`) | Self-managed (client + own infra) |
+| | Client alone (free, offline-capable) | + Hosted (`furrow login`) | Self-managed (client + own infra) |
 |---|---|---|---|
 | Engine: rewind, fork, exec, try, bisect, shrink, merge, timeline, MCP, Mission Control | ✔ unlimited repos | ✔ | ✔ |
 | Parallel agents: universes, radar, merge preview, coordination | ✔ fully local | ✔ | ✔ |
@@ -189,7 +189,7 @@ The boundary is **natural, never inserted** (Principle 6): the client is complet
 
 ### 5.4 Friction audit — does the open code still go viral?
 
-The viral surface — `shrink` freeing 50 GB, `try` making any risky command reversible, bisect answering "what broke it", `exec` running parallel agents on one laptop — carries **zero setup and zero account**: one binary, offline. Those spread on their own; every rescue and every disk-space screenshot is distribution. And the *first* multi-machine taste is now also zero-setup (`agit login`, free live sync), so the demo moment no longer requires a bucket ceremony. Self-hosting frictions gate exactly the population that was never going to pay — while their existence keeps the "you're not locked in" answer true, which is worth more than their revenue.
+The viral surface — `shrink` freeing 50 GB, `try` making any risky command reversible, bisect answering "what broke it", `exec` running parallel agents on one laptop — carries **zero setup and zero account**: one binary, offline. Those spread on their own; every rescue and every disk-space screenshot is distribution. And the *first* multi-machine taste is now also zero-setup (`furrow login`, free live sync), so the demo moment no longer requires a bucket ceremony. Self-hosting frictions gate exactly the population that was never going to pay — while their existence keeps the "you're not locked in" answer true, which is worth more than their revenue.
 
 ### 5.5 Unit economics (hosted, indie ~$12/mo + metered runner minutes)
 
@@ -206,22 +206,22 @@ Two repos, mirroring the two artifacts of §5.1 — the Tailscale shape (open cl
 
 | Repo | Visibility / license | Contents |
 |---|---|---|
-| `agit` | public, Apache-2.0, single license for the whole repo | Client/engine, CLI, MCP adapter, **Mission Control** (the local daemon-served UI, Doc 3 §7 — ships in the binary, open), SSH/LAN device sync, bucket remotes, BYO runner drivers, the *client side* of `agit login` (OAuth device-code flow, auditable), and `docs/protocol/` — the documented wire protocol and on-disk/bucket formats (the lock-in answer and the dead-man's switch) |
-| `agit-cloud` | private, closed | Everything served: signaling/hole-punch brokering, relay, stored-quota storage, identity (OAuth/SSO sign-in, device linking), multi-tenancy, orgs/teams, billing and quotas, sandbox token issuance (§2.4), the **hosted account console** (devices, usage, tokens, billing), pool tooling, fleet orchestration, admin. Speaks the public protocol; the client repo's protocol tests are the compatibility contract |
+| `furrow` | public, Apache-2.0, single license for the whole repo | Client/engine, CLI, MCP adapter, **Mission Control** (the local daemon-served UI, Doc 3 §7 — ships in the binary, open), SSH/LAN device sync, bucket remotes, BYO runner drivers, the *client side* of `furrow login` (OAuth device-code flow, auditable), and `docs/protocol/` — the documented wire protocol and on-disk/bucket formats (the lock-in answer and the dead-man's switch) |
+| `furrow-cloud` | private, closed | Everything served: signaling/hole-punch brokering, relay, stored-quota storage, identity (OAuth/SSO sign-in, device linking), multi-tenancy, orgs/teams, billing and quotas, sandbox token issuance (§2.4), the **hosted account console** (devices, usage, tokens, billing), pool tooling, fleet orchestration, admin. Speaks the public protocol; the client repo's protocol tests are the compatibility contract |
 
 Notes:
 - **Two UIs, deliberately distinct — and only one of them exists as a public artifact:** Mission Control (open, local, per-machine, renders CLI JSON — Doc 3 §7) is about the *workspace*; the account console (closed, hosted) is about the *account* (devices, tokens, quotas, billing). There is no third "server admin UI" because there is no public server. Neither UI ever grows the other's job.
-- **`agit login` is open code talking to a closed service.** Self-managed users simply never call it — their client federates over SSH/tailnet/buckets with no account at all.
-- **SSO/SAML lives only in `agit-cloud`** as a team-tier feature — no pressure to ever maintain enterprise auth in public.
+- **`furrow login` is open code talking to a closed service.** Self-managed users simply never call it — their client federates over SSH/tailnet/buckets with no account at all.
+- **SSO/SAML lives only in `furrow-cloud`** as a team-tier feature — no pressure to ever maintain enterprise auth in public.
 - Single license per repo — no per-directory licensing, no GitLab-EE-style enterprise folders, nothing to lawyer. The open repo is honestly and entirely Apache.
 
 ---
 
 ## 6. DX / UX Contracts
 
-1. **One-command onboarding per tier:** `agit login` (hosted) or `agit remote add <url>` (BYO) unlock their whole tier; no further configuration is required for defaults to be safe and useful.
-2. **Cost is disclosed before it is incurred:** `agit run` prints sandbox count, estimated minutes (from prior runs when available), and hydration plan (pool/regenerate/fetch split) before provisioning; `agit teleport` prints estimated upload bytes. No surprise bills, no surprise waits (extends Doc 1 Invariant 11 to money and minutes).
-3. **Live, attributable output:** every runner streams logs prefixed by fork name; `agit forks` is the single pane for what every universe is doing and what it costs.
+1. **One-command onboarding per tier:** `furrow login` (hosted) or `furrow remote add <url>` (BYO) unlock their whole tier; no further configuration is required for defaults to be safe and useful.
+2. **Cost is disclosed before it is incurred:** `furrow run` prints sandbox count, estimated minutes (from prior runs when available), and hydration plan (pool/regenerate/fetch split) before provisioning; `furrow teleport` prints estimated upload bytes. No surprise bills, no surprise waits (extends Doc 1 Invariant 11 to money and minutes).
+3. **Live, attributable output:** every runner streams logs prefixed by fork name; `furrow forks` is the single pane for what every universe is doing and what it costs.
 4. **Failure is legible:** a dead runner leaves its last sealed snapshot and a terminal status (`completed | failed(exit) | lost(timeout)`); partial work is never silently discarded — it is a sibling fork like any other.
 5. **Offline never breaks local:** losing connectivity mid-run means results arrive when connectivity returns; local features are untouched (Doc 1 Invariant 13).
 6. **Agent-facing surfaces are explicit:** runners and agents address snapshots by ID, destructive operations require explicit flags (Doc 1 §9.3), and MCP tools mirror CLI semantics one-to-one — no agent-only behavior.
@@ -258,7 +258,7 @@ Notes:
 ## 9. Open Questions
 
 1. Default runner image contents (language runtimes preinstalled vs. hydrated per-project via the planner) — image weight vs. cold-start variance.
-2. Whether `agit run` without `--cloud`/`--host` should default to the `docker` driver locally (safest demo) or refuse (least surprise).
+2. Whether `furrow run` without `--cloud`/`--host` should default to the `docker` driver locally (safest demo) or refuse (least surprise).
 3. Included-minutes quantity in the base subscription vs. pure metering — habit formation vs. margin predictability.
 4. Claim TTL defaults and whether claims should optionally *block* MCP-mediated writes (strict mode) despite the advisory-only engine stance.
 5. Relay protocol: reuse an existing open tunnel protocol vs. minimal bespoke WebSocket framing (leaning bespoke-minimal; scope discipline).

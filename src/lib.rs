@@ -36,9 +36,9 @@ pub use estimate::CaptureEstimate;
 pub use gc::GcReport;
 pub use radar::{EventPage, RadarEvent};
 pub use repository::{
-    new_fork_id, AgitRepository, ApplyTimings, BisectCheck, BisectOutcome, ClaimOutcome,
-    CoordOutcome, DiffChange, DiffSummary, FidelityAspect, FidelityReport, ForkPlan, ForkRemoval,
-    ForkSummary, ForkUpdates, MaterializationReport, MergeOutcome, MissingMaterializationPath,
+    new_fork_id, ApplyTimings, BisectCheck, BisectOutcome, ClaimOutcome, CoordOutcome, DiffChange,
+    DiffSummary, FidelityAspect, FidelityReport, ForkPlan, ForkRemoval, ForkSummary, ForkUpdates,
+    FurrowRepository, MaterializationReport, MergeOutcome, MissingMaterializationPath,
     ReleaseOutcome, RepositoryStatus, RewindPlan, SnapshotSummary, SyncDisposition,
     SyncFollowOutcome, SyncFollowSession, SyncPullOutcome,
 };

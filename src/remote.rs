@@ -124,14 +124,15 @@ impl Session {
                 SessionInner::Directory { root, lock: None }
             }
             RemoteSpec::Ssh { ssh } => {
-                let program = std::env::var_os("AGIT_SSH_COMMAND").unwrap_or_else(|| "ssh".into());
+                let program =
+                    std::env::var_os("FURROW_SSH_COMMAND").unwrap_or_else(|| "ssh".into());
                 let mut child = Command::new(program)
                     .arg("-T")
                     .arg("-o")
                     .arg("BatchMode=yes")
                     .arg("--")
                     .arg(ssh)
-                    .arg("agit")
+                    .arg("furrow")
                     .arg("__remote")
                     .arg(namespace)
                     .stdin(Stdio::piped())
@@ -803,11 +804,11 @@ fn validate_ssh_host(host: &str) -> anyhow::Result<()> {
 }
 
 fn remote_helper_root() -> anyhow::Result<PathBuf> {
-    if let Some(root) = std::env::var_os("AGIT_REMOTE_DATA_DIR") {
+    if let Some(root) = std::env::var_os("FURROW_REMOTE_DATA_DIR") {
         return Ok(PathBuf::from(root));
     }
-    let directories = ProjectDirs::from("dev", "agit", "agit")
-        .context("could not determine agit remote data directory")?;
+    let directories = ProjectDirs::from("dev", "furrow", "furrow")
+        .context("could not determine furrow remote data directory")?;
     Ok(directories.data_local_dir().join("remote-v1"))
 }
 
