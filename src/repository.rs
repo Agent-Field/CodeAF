@@ -1401,7 +1401,11 @@ impl AgitRepository {
         check: Option<&str>,
         dry_run: bool,
     ) -> anyhow::Result<MergeOutcome> {
-        let mutation = self.acquire_mutation_lock()?;
+        let mutation = if dry_run {
+            None
+        } else {
+            Some(self.acquire_mutation_lock()?)
+        };
         let fork = self
             .forks()?
             .into_iter()
@@ -1410,30 +1414,55 @@ impl AgitRepository {
         anyhow::ensure!(fork.destination.exists(), "fork directory no longer exists");
 
         let mut fork_repository = AgitRepository::open(&fork.destination)?;
-        let theirs = fork_repository.snapshot(
-            Some(format!("merge source for {fork_name}")),
-            SnapshotTrigger::MergeSource,
-        )?;
-        let ours = self.snapshot(
-            Some(format!("before merge from {fork_name}")),
-            SnapshotTrigger::PreMerge,
-        )?;
+        let (ours, theirs) = if dry_run {
+            (
+                self.store
+                    .workspace_head(&self.workspace_id)?
+                    .context("source workspace has no sealed snapshot")?,
+                fork_repository
+                    .store
+                    .workspace_head(&fork_repository.workspace_id)?
+                    .context("universe has no sealed snapshot")?,
+            )
+        } else {
+            (
+                self.snapshot(
+                    Some(format!("before merge from {fork_name}")),
+                    SnapshotTrigger::PreMerge,
+                )?,
+                fork_repository.snapshot(
+                    Some(format!("merge source for {fork_name}")),
+                    SnapshotTrigger::MergeSource,
+                )?,
+            )
+        };
         let base = parse_id(&fork.base_snapshot)?;
         let ours_snapshot: Snapshot = self.store.read_struct(&ours, ObjectKind::Snapshot)?;
         let theirs_snapshot: Snapshot = self.store.read_struct(&theirs, ObjectKind::Snapshot)?;
-        let base_entries = self.snapshot_entry_map(&base)?;
-        let ours_entries = self.snapshot_entry_map(&ours)?;
-        let theirs_entries = self.snapshot_entry_map(&theirs)?;
-        let mut merge_plan = merge::plan(&base_entries, &ours_entries, &theirs_entries);
+        let base_snapshot: Snapshot = self.store.read_struct(&base, ObjectKind::Snapshot)?;
+        let (ours_root, theirs_root) = if dry_run {
+            (
+                self.capture_root_retry()?,
+                fork_repository.capture_root_retry()?,
+            )
+        } else {
+            (ours_snapshot.root_tree, theirs_snapshot.root_tree)
+        };
+        let mut merge_plan = merge::plan_trees(
+            &self.store,
+            &base_snapshot.root_tree,
+            &ours_root,
+            &theirs_root,
+        )?;
         let policy = CapturePolicy::load(&self.root)?;
-        merge_plan
-            .changes
-            .retain(|change| !policy.excludes_bytes(&change.path));
-        merge_plan
-            .conflicts
-            .retain(|conflict| !policy.excludes_bytes(&conflict.path));
-        let ours_tree = id_hex(&ours_snapshot.root_tree);
-        let theirs_tree = id_hex(&theirs_snapshot.root_tree);
+        merge_plan.changes.retain(|change| {
+            merge_path_allowed(&change.path) && !policy.excludes_bytes(&change.path)
+        });
+        merge_plan.conflicts.retain(|conflict| {
+            merge_path_allowed(&conflict.path) && !policy.excludes_bytes(&conflict.path)
+        });
+        let ours_tree = id_hex(&ours_root);
+        let theirs_tree = id_hex(&theirs_root);
         let preview_digest =
             merge_preview_digest(&fork.base_snapshot, &ours_tree, &theirs_tree, &merge_plan);
         let mut outcome = MergeOutcome {
@@ -1451,16 +1480,20 @@ impl AgitRepository {
             preview_digest,
         };
         if dry_run || !outcome.conflicts.is_empty() {
-            FileExt::unlock(&mutation)?;
+            if let Some(mutation) = mutation.as_ref() {
+                FileExt::unlock(mutation)?;
+            }
             return Ok(outcome);
         }
+        let mutation = mutation.context("merge mutation lock is missing")?;
         let check = check.context("merge requires --check <command>")?;
         anyhow::ensure!(
             !check.trim().is_empty(),
             "merge check command cannot be empty"
         );
 
-        let (rewind_plan, target_entries) = merge_rewind_plan(&ours_entries, &merge_plan.changes);
+        let (rewind_plan, target_entries) =
+            merge_rewind_plan(&self.store, &ours_snapshot.root_tree, &merge_plan.changes)?;
         let scratch_parent = self.root.parent().unwrap_or_else(|| Path::new("."));
         let scratch_owner = tempfile::Builder::new()
             .prefix(".agit-merge-")
@@ -1766,26 +1799,6 @@ impl AgitRepository {
             File::open(path.parent().context("sync root has no parent")?)?.sync_all()?;
         }
         Ok(())
-    }
-
-    fn snapshot_entry_map(
-        &self,
-        snapshot_id: &ObjectId,
-    ) -> anyhow::Result<BTreeMap<Vec<u8>, TreeEntry>> {
-        let snapshot: Snapshot = self.store.read_struct(snapshot_id, ObjectKind::Snapshot)?;
-        let mut entries: BTreeMap<Vec<u8>, TreeEntry> = self
-            .flatten_tree(&snapshot.root_tree)?
-            .into_iter()
-            .map(|(path, entry)| (path, entry.entry))
-            .collect();
-        // The pointer file is already excluded from snapshots; the containing
-        // directory mtime is likewise transport metadata, while its policy and
-        // hook children remain ordinary merge inputs.
-        entries.remove(b".agit".as_slice());
-        // Git remains canonical for repository history. Fork refs, indexes,
-        // worktree locks, and object-store mutations are never merged as files.
-        entries.retain(|path, _| path != b".git" && !path.starts_with(b".git/"));
-        Ok(entries)
     }
 
     fn snapshots_match_fork(
@@ -3303,15 +3316,16 @@ fn write_fork_id(repository: &AgitRepository, fork_id: &str) -> anyhow::Result<(
 }
 
 fn merge_rewind_plan(
-    ours: &BTreeMap<Vec<u8>, TreeEntry>,
+    store: &ObjectStore,
+    ours_root: &ObjectId,
     changes: &[merge::MergeChange],
-) -> (RewindPlan, BTreeMap<Vec<u8>, FlatEntry>) {
+) -> anyhow::Result<(RewindPlan, BTreeMap<Vec<u8>, FlatEntry>)> {
     let mut rewind_changes = Vec::with_capacity(changes.len());
     let mut target = BTreeMap::new();
     for change in changes {
         let (action, entry) = match &change.action {
             MergeAction::Set(entry) => (
-                if ours.contains_key(&change.path) {
+                if tree::find_path(store, ours_root, &change.path)?.is_some() {
                     "replace"
                 } else {
                     "restore"
@@ -3329,7 +3343,7 @@ fn merge_rewind_plan(
             target.insert(change.path.clone(), FlatEntry { entry });
         }
     }
-    (
+    Ok((
         RewindPlan {
             preview_digest: rewind_preview_digest("merge", None, &rewind_changes),
             target: "merge".to_owned(),
@@ -3337,7 +3351,14 @@ fn merge_rewind_plan(
             changes: rewind_changes,
         },
         target,
-    )
+    ))
+}
+
+fn merge_path_allowed(path: &[u8]) -> bool {
+    // Git remains canonical for repository history. The .agit directory's
+    // mtime is transport metadata, while its policy and hook children remain
+    // ordinary merge inputs.
+    path != b".agit" && path != b".git" && !path.starts_with(b".git/")
 }
 
 fn rewind_preview_digest(

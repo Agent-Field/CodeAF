@@ -324,6 +324,7 @@ fn mission_control_applies_a_real_verified_merge() {
     assert!(snap.status.success());
 
     let ui = fixture.ui_with_merge_check(Some("git diff --check"));
+    let timeline_before = ui.request("GET", "/api/v1/timeline?limit=100", None).json();
     let preview = ui.request(
         "POST",
         "/api/v1/merge/preview",
@@ -333,6 +334,12 @@ fn mission_control_applies_a_real_verified_merge() {
     let preview = preview.json();
     assert!(preview["conflicts"].as_array().unwrap().is_empty());
     assert_eq!(preview["changes"], 1);
+    let timeline_after = ui.request("GET", "/api/v1/timeline?limit=100", None).json();
+    assert_eq!(
+        timeline_after, timeline_before,
+        "merge preview must not publish restore points"
+    );
+    assert_eq!(fs::read(fixture.repo.join("app.txt")).unwrap(), b"base\n");
 
     let apply = ui.request(
         "POST",
