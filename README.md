@@ -2,10 +2,9 @@
 
 # furrow
 
-### Git for everything else
+### Instant, byte-exact workspace forks for agents
 
 [![License](https://img.shields.io/badge/license-Apache%202.0-0c0b09.svg?style=flat&labelColor=8b7355)](LICENSE)
-[![Rust](https://img.shields.io/badge/built%20with-Rust-0c0b09.svg?style=flat&logo=rust&logoColor=e8e5dc&labelColor=8b7355)](Cargo.toml)
 [![More from Agent-Field](https://img.shields.io/badge/More_from-Agent--Field-0c0b09?style=flat&logo=github&logoColor=e8e5dc&labelColor=8b7355)](https://github.com/Agent-Field)
 
 <p>
@@ -16,13 +15,13 @@
   <a href="#how-its-built">Architecture</a>
 </p>
 
-<img src="assets/banner.png" alt="furrow — Git for everything else. Fork your whole workspace, run agents anywhere, zero merge conflicts." width="100%" />
+<img src="assets/banner.png" alt="furrow. Fork your whole workspace in a second. Run agents here, or anywhere else." width="100%" />
 
 </div>
 
-**furrow copy-on-write forks your entire workspace — dependencies, `.env`, the dev database, Git's index, all of it — so agents get a byte-exact copy wherever they actually run: another terminal, a cloud sandbox, or your other laptop.**
+**furrow copy-on-write forks your entire workspace, every file, dependency, and piece of local state, into a byte-exact copy in about a second. Fork it right here on your machine for another terminal, or send it to a cloud sandbox or your other laptop with the same guarantee.**
 
-One fork, one primitive, everywhere an agent might run: instant and disk-cheap right next to you, or sealed and encrypted so it can reach a sandbox or a second machine with the same guarantee. You stop being the one who copies `.env` files and reseeds databases by hand before an agent can even start.
+One fork, one primitive, wherever an agent runs: instant and disk-cheap right next to you, or sealed and encrypted so it can reach a completely different machine. You stop being the one who copies config and reseeds state by hand before an agent can even start.
 
 ```bash
 cd my-project && furrow watch
