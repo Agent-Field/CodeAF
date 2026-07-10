@@ -137,7 +137,7 @@ The CLI is the agent API: `--json` everywhere, stable IDs from every mutation, s
 
 ## How it's built
 
-The load-bearing decisions, for readers who want them ([full specs](docs/README.md)):
+The load-bearing decisions, for readers who want them:
 
 - **Immutable Merkle DAG over content-defined chunks.** A snapshot ID exists only after every referenced byte is durable. Sealing cost scales with changed entries, never repository size; memory stays bounded regardless of file size.
 - **Crash-safe by construction.** Hash-verified append-only packs, an fsynced hash-chained publication log, recovery from truncated pack tails and deleted indexes — SQLite is an advisory index, never the truth.
