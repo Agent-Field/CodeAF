@@ -2904,7 +2904,11 @@ impl AgitRepository {
         if let Some(xattrs_id) = entry.xattrs {
             let xattrs: Xattrs = self.store.read_struct(&xattrs_id, ObjectKind::Xattrs)?;
             for xattr in xattrs.entries {
-                xattr::set(temp.path(), OsStr::from_bytes(&xattr.name), &xattr.value)?;
+                match xattr::set(temp.path(), OsStr::from_bytes(&xattr.name), &xattr.value) {
+                    Ok(()) => {}
+                    Err(error) if error.kind() == std::io::ErrorKind::PermissionDenied => {}
+                    Err(error) => return Err(error.into()),
+                }
             }
         }
         temp.persist(destination).map_err(|error| error.error)?;

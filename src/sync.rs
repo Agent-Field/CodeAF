@@ -21,6 +21,8 @@ const HAVE_BATCH_BYTES: usize = 16 * 1024 * 1024;
 pub struct PairConfig {
     pub remote: RemoteSpec,
     pub namespace: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub remote_namespace: Option<String>,
     pub key: [u8; 32],
     pub machine_id: [u8; 16],
 }
@@ -86,6 +88,7 @@ pub fn pair(
     let config = PairConfig {
         remote: remote.clone(),
         namespace: namespace.to_owned(),
+        remote_namespace: Some(opaque_namespace(&key, namespace)),
         key,
         machine_id,
     };
@@ -95,7 +98,7 @@ pub fn pair(
     fs::set_permissions(config_path, fs::Permissions::from_mode(0o600))?;
     // Opening verifies SSH availability and creates the namespace through the
     // same opaque helper protocol used by normal transfers.
-    drop(Session::open(&config.remote, namespace)?);
+    drop(Session::open(&config.remote, storage_namespace(&config))?);
     Ok(PairSummary {
         remote: remote.display(),
         namespace: namespace.to_owned(),
@@ -124,7 +127,7 @@ pub fn push(
     expected_remote_root: Option<ObjectId>,
     takeover: bool,
 ) -> anyhow::Result<PushReport> {
-    let mut remote = Session::open(&config.remote, &config.namespace)?;
+    let mut remote = Session::open(&config.remote, storage_namespace(config))?;
     remote.begin_writer()?;
     let new_lease = prepare_writer_lease(&mut remote, config, takeover)?;
     let crypto = RemoteCrypto::new(config.key);
@@ -256,7 +259,7 @@ fn flush_push_batch(
 }
 
 pub fn pull(store: &ObjectStore, config: &PairConfig) -> anyhow::Result<PulledHead> {
-    let mut remote = Session::open(&config.remote, &config.namespace)?;
+    let mut remote = Session::open(&config.remote, storage_namespace(config))?;
     let crypto = RemoteCrypto::new(config.key);
     let head = read_remote_head(&mut remote, config, &crypto)?;
     let queue_file = tempfile::NamedTempFile::new()?;
@@ -381,6 +384,20 @@ fn parse_key(value: &str) -> anyhow::Result<[u8; 32]> {
     Ok(key)
 }
 
+fn storage_namespace(config: &PairConfig) -> &str {
+    config
+        .remote_namespace
+        .as_deref()
+        .unwrap_or(&config.namespace)
+}
+
+fn opaque_namespace(key: &[u8; 32], namespace: &str) -> String {
+    let mut hasher = blake3::Hasher::new_keyed(key);
+    hasher.update(b"agit remote namespace v1\0");
+    hasher.update(namespace.as_bytes());
+    hex::encode(&hasher.finalize().as_bytes()[..16])
+}
+
 fn local_atomic_write(path: &Path, bytes: &[u8]) -> anyhow::Result<()> {
     let parent = path.parent().context("sync config has no parent")?;
     let mut temporary = tempfile::NamedTempFile::new_in(parent)?;
@@ -498,7 +515,7 @@ mod tests {
         );
         let first_config = load(&config_one).unwrap();
         let mut first_remote =
-            Session::open(&first_config.remote, &first_config.namespace).unwrap();
+            Session::open(&first_config.remote, storage_namespace(&first_config)).unwrap();
         first_remote.begin_writer().unwrap();
         let first_lease = prepare_writer_lease(&mut first_remote, &first_config, false).unwrap();
         first_remote.write("LEASE", &first_lease).unwrap();
@@ -508,12 +525,12 @@ mod tests {
         pair(&config_two, &remote, "project", Some(&first.key_hex)).unwrap();
         let second_config = load(&config_two).unwrap();
         let mut second_remote =
-            Session::open(&second_config.remote, &second_config.namespace).unwrap();
+            Session::open(&second_config.remote, storage_namespace(&second_config)).unwrap();
         second_remote.begin_writer().unwrap();
         assert!(prepare_writer_lease(&mut second_remote, &second_config, false).is_err());
         drop(second_remote);
         let mut takeover_remote =
-            Session::open(&second_config.remote, &second_config.namespace).unwrap();
+            Session::open(&second_config.remote, storage_namespace(&second_config)).unwrap();
         takeover_remote.begin_writer().unwrap();
         let takeover = prepare_writer_lease(&mut takeover_remote, &second_config, true).unwrap();
         takeover_remote.write("LEASE", &takeover).unwrap();

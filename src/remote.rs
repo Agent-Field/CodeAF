@@ -1,6 +1,7 @@
 //! Opaque remote storage adapters for directory and persistent SSH sync.
 
 use crate::model::ObjectId;
+use crate::s3_remote::{S3Session, S3Spec};
 use anyhow::Context;
 use directories::ProjectDirs;
 use fs2::FileExt;
@@ -30,6 +31,7 @@ const MAX_HAVE_BATCH: usize = 4096;
 pub enum RemoteSpec {
     Directory(PathBuf),
     Ssh { ssh: String },
+    S3 { s3: S3Spec },
 }
 
 impl RemoteSpec {
@@ -41,6 +43,12 @@ impl RemoteSpec {
                 ssh: host.to_owned(),
             });
         }
+        if value.starts_with("s3://") {
+            return Ok(Self::S3 {
+                s3: S3Spec::from_uri(&value)?,
+            });
+        }
+        anyhow::ensure!(!value.contains("://"), "unsupported remote URI scheme");
         let path = if input.is_absolute() {
             input.to_owned()
         } else {
@@ -54,6 +62,7 @@ impl RemoteSpec {
         match self {
             Self::Directory(path) => path.display().to_string(),
             Self::Ssh { ssh } => format!("ssh://{ssh}"),
+            Self::S3 { s3 } => s3.display(),
         }
     }
 
@@ -63,6 +72,7 @@ impl RemoteSpec {
                 anyhow::ensure!(path.is_absolute(), "remote directory must be absolute");
             }
             Self::Ssh { ssh } => validate_ssh_host(ssh)?,
+            Self::S3 { s3 } => s3.validate()?,
         }
         Ok(())
     }
@@ -83,6 +93,7 @@ enum SessionInner {
         output: BufReader<ChildStdout>,
         locked: bool,
     },
+    S3(S3Session),
 }
 
 impl Session {
@@ -121,6 +132,7 @@ impl Session {
                     locked: false,
                 }
             }
+            RemoteSpec::S3 { s3 } => SessionInner::S3(S3Session::open(s3, namespace)?),
         };
         Ok(Self { inner })
     }
@@ -158,6 +170,7 @@ impl Session {
                 *locked = true;
                 Ok(())
             }
+            SessionInner::S3(session) => session.begin_writer(),
         }
     }
 
@@ -176,6 +189,7 @@ impl Session {
                 anyhow::ensure!(payload.len() == 1, "invalid SSH exists response");
                 Ok(payload[0] != 0)
             }
+            SessionInner::S3(session) => session.exists(key),
         }
     }
 
@@ -193,6 +207,7 @@ impl Session {
                 )?;
                 read_ok_response(output, limit)
             }
+            SessionInner::S3(session) => session.read(key, limit),
         }
     }
 
@@ -218,6 +233,7 @@ impl Session {
                 read_ok_response(output, MAX_ERROR_BYTES as u64)?;
                 Ok(())
             }
+            SessionInner::S3(session) => session.write(key, bytes),
         }
     }
 
@@ -247,6 +263,7 @@ impl Session {
                 anyhow::ensure!(response.len() == ids.len(), "invalid SSH have response");
                 Ok(response.into_iter().map(|value| value != 0).collect())
             }
+            SessionInner::S3(session) => session.has_objects(ids),
         }
     }
 }
@@ -273,6 +290,7 @@ impl Drop for Session {
                 let _ = child.kill();
                 let _ = child.wait();
             }
+            SessionInner::S3(_) => {}
         }
     }
 }
