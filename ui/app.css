@@ -75,8 +75,10 @@ svg { width: 17px; height: 17px; fill: none; stroke: currentColor; stroke-width:
 .brand-block > div { display: flex; flex-direction: column; line-height: 1; }
 .brand-block strong { font-size: 16px; font-weight: 680; }
 .brand-block span:last-child { margin-top: 5px; color: var(--header-soft); font-size: 11px; }
-.workspace-title { min-width: 0; padding-left: 18px; border-left: 1px solid oklch(1 0 0 / 0.13); }
-.workspace-title > span { display: block; color: var(--header-soft); font-size: 10px; }
+.workspace-title { min-width: 0; display: flex; align-items: center; gap: 9px; padding-left: 18px; border-left: 1px solid oklch(1 0 0 / 0.13); }
+.workspace-title > svg { flex: none; color: var(--header-soft); }
+.workspace-title > div { min-width: 0; }
+.workspace-title span { display: block; color: var(--header-soft); font-size: 10px; }
 .workspace-title strong { display: block; margin-top: 3px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; font-weight: 560; }
 .top-actions { display: flex; align-items: center; gap: 12px; }
 .connection { display: flex; align-items: center; gap: 7px; color: var(--header-soft); font-size: 11px; font-weight: 540; }
@@ -100,6 +102,9 @@ svg { width: 17px; height: 17px; fill: none; stroke: currentColor; stroke-width:
 .topbar .icon-button { background: oklch(1 0 0 / 0.07); color: oklch(0.9 0.01 250); }
 .topbar .icon-button:hover { background: oklch(1 0 0 / 0.13); color: white; }
 .icon-button.selected { background: var(--action-wash); color: var(--action); }
+.help-button { width: 24px; height: 24px; display: inline-grid; place-items: center; padding: 0; border: 0; border-radius: 4px; background: transparent; color: var(--ink-faint); cursor: help; }
+.help-button:hover, .help-button:focus-visible { background: var(--surface-raised); color: var(--ink); }
+.help-button svg { width: 13px; height: 13px; }
 
 .status-rail {
   min-height: 58px;
@@ -109,6 +114,7 @@ svg { width: 17px; height: 17px; fill: none; stroke: currentColor; stroke-width:
   background: var(--surface-raised);
 }
 .status-rail > div { display: flex; flex-direction: column; justify-content: center; padding: 9px 17px; border-right: 1px solid var(--line); }
+.status-rail > div[data-tooltip] { cursor: help; }
 .status-rail span { color: var(--ink-faint); font-size: 10px; }
 .status-rail strong { margin-top: 3px; font-size: 15px; font-weight: 620; font-variant-numeric: tabular-nums; }
 .status-rail code { margin-top: 5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--ink-soft); }
@@ -135,6 +141,8 @@ svg { width: 17px; height: 17px; fill: none; stroke: currentColor; stroke-width:
 .universe-heading h1 { font-size: 17px; font-weight: 680; }
 .heading-with-icon { display: flex; align-items: center; gap: 9px; }
 .heading-with-icon svg { color: var(--action); }
+.heading-with-icon .help-button svg { color: currentColor; }
+.heading-with-help { display: flex; align-items: center; gap: 5px; min-width: 0; }
 .count-label, .pane-heading > code { color: var(--ink-faint); font-size: 10px; }
 .legend { display: flex; gap: 13px; color: var(--ink-faint); font-size: 10px; }
 .legend span { display: inline-flex; align-items: center; gap: 5px; }
@@ -162,6 +170,7 @@ svg { width: 17px; height: 17px; fill: none; stroke: currentColor; stroke-width:
 .timeline-item:hover .timeline-stem i { border-color: var(--surface-raised); }
 .timeline-copy { min-width: 0; }
 .timeline-copy strong { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 11.5px; font-weight: 590; }
+.current-badge { display: inline-block; margin-left: 6px; padding: 2px 5px; border-radius: 3px; background: var(--action-wash); color: var(--action); font-size: 8.5px; font-weight: 650; vertical-align: 1px; }
 .timeline-meta { display: flex; flex-wrap: wrap; gap: 4px 7px; margin-top: 6px; color: var(--ink-faint); font: 9.5px var(--mono); }
 .timeline-actions { display: flex; gap: 1px; opacity: 0.45; transition: opacity 140ms ease; }
 .timeline-item:hover .timeline-actions, .timeline-item:focus-within .timeline-actions { opacity: 1; }
@@ -184,18 +193,21 @@ svg { width: 17px; height: 17px; fill: none; stroke: currentColor; stroke-width:
 .universe-table th:nth-child(2) { width: 19%; }
 .universe-table th:nth-child(3) { width: 18%; }
 .universe-table th:nth-child(4) { width: 19%; }
-.universe-table th:last-child { width: 126px; }
+.universe-table th:last-child { width: 154px; }
 .universe-table td { height: 64px; padding: 8px 12px; border-bottom: 1px solid var(--line); vertical-align: middle; }
 .universe-table tbody tr:hover { background: var(--surface-raised); }
 .fork-name { display: flex; align-items: center; gap: 9px; min-width: 0; }
-.fork-name .lane-mark { width: 7px; height: 7px; flex: none; border-radius: 50%; background: var(--accent-dark); }
-.fork-name.conflicted .lane-mark { background: var(--conflict); box-shadow: 0 0 0 3px var(--conflict-wash); }
-.fork-name.stale .lane-mark { background: var(--warning); box-shadow: 0 0 0 3px var(--warning-wash); }
 .fork-name div { min-width: 0; }
-.fork-name strong, .fork-name code { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.fork-name strong, .entity-kind { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .fork-name strong { font-size: 12px; font-weight: 610; }
-.fork-name code { margin-top: 4px; color: var(--ink-faint); font-size: 9px; }
+.entity-kind { margin-top: 4px; color: var(--ink-faint); font-size: 9.5px; }
+.entity-icon { display: inline-grid; place-items: center; flex: none; }
+.universe-icon { width: 27px; height: 27px; border-radius: 5px; background: var(--action-wash); color: var(--action); }
+.universe-icon svg { width: 14px; height: 14px; }
+.fork-name.conflicted .universe-icon { background: var(--conflict-wash); color: var(--conflict); }
+.fork-name.stale .universe-icon { background: var(--warning-wash); color: var(--warning); }
 .state-badge { display: inline-flex; align-items: center; gap: 5px; font-size: 10.5px; font-weight: 600; }
+.state-badge[data-tooltip] { cursor: help; }
 .state-badge svg { width: 13px; height: 13px; }
 .state-badge.clear { color: var(--accent-dark); }
 .state-badge.conflict { color: var(--conflict); }
@@ -212,7 +224,10 @@ svg { width: 17px; height: 17px; fill: none; stroke: currentColor; stroke-width:
 .section-label h2 { margin: 0; font-size: 12px; font-weight: 640; }
 .section-label span { color: var(--ink-faint); font-size: 10px; }
 .conflict-lane { display: grid; grid-template-columns: minmax(120px, 0.8fr) minmax(260px, 2fr) auto; align-items: center; gap: 14px; min-height: 60px; padding: 8px 14px; border-bottom: 1px solid var(--line); }
-.conflict-lane > code { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--conflict); font-weight: 600; }
+.path-entity { min-width: 0; display: flex; align-items: center; gap: 8px; color: var(--conflict); cursor: help; }
+.path-entity code { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
+.file-icon { width: 24px; height: 24px; border-radius: 4px; background: var(--conflict-wash); color: var(--conflict); }
+.file-icon svg { width: 13px; height: 13px; }
 .lane-track { position: relative; min-width: 0; display: flex; align-items: center; justify-content: space-around; gap: 8px; }
 .lane-track::before { content: ""; position: absolute; left: 18px; right: 18px; top: 9px; height: 1px; background: var(--conflict); }
 .lane-branch { position: relative; z-index: 1; min-width: 0; max-width: 48%; display: inline-flex; align-items: center; gap: 6px; padding: 3px 6px; border-radius: 4px; background: var(--surface); color: var(--ink-soft); font-size: 9.5px; }
@@ -228,8 +243,11 @@ svg { width: 17px; height: 17px; fill: none; stroke: currentColor; stroke-width:
 .event-item.resolved .event-icon { background: var(--accent-wash); color: var(--accent-dark); }
 .event-icon svg { width: 12px; height: 12px; }
 .event-line strong { font-size: 10.5px; font-weight: 610; }
-.event-item code { display: block; margin: 8px 0 0 31px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.event-forks { margin: 5px 0 0 31px; overflow-wrap: anywhere; color: var(--ink-faint); font-size: 9.5px; line-height: 1.4; }
+.event-path { display: flex; align-items: center; gap: 7px; margin: 8px 0 0 31px; cursor: help; }
+.event-path .file-icon { width: 21px; height: 21px; }
+.event-path code { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.event-forks, .event-meaning { margin: 5px 0 0 31px; overflow-wrap: anywhere; color: var(--ink-soft); font-size: 9.5px; line-height: 1.4; }
+.event-meaning { margin-top: 2px; color: var(--ink-faint); }
 
 .mobile-tabs { display: none; }
 .inspector {
@@ -262,10 +280,16 @@ svg { width: 17px; height: 17px; fill: none; stroke: currentColor; stroke-width:
 .change-list code { overflow-wrap: anywhere; }
 .dialog-summary { max-width: 65ch; margin: 0 0 14px; color: var(--ink-soft); line-height: 1.5; text-wrap: pretty; }
 .dialog-id { display: block; padding: 9px; border-radius: 4px; background: var(--canvas); overflow-wrap: anywhere; }
+.detail-list { display: grid; grid-template-columns: 116px minmax(0, 1fr); margin: 0; border-top: 1px solid var(--line); }
+.detail-list dt, .detail-list dd { margin: 0; padding: 9px 4px; border-bottom: 1px solid var(--line); }
+.detail-list dt { color: var(--ink-faint); font-size: 10px; }
+.detail-list dd { overflow-wrap: anywhere; color: var(--ink-soft); font: 10px/1.45 var(--mono); }
 .toast { z-index: var(--z-toast); position: fixed; right: 16px; bottom: 16px; max-width: 380px; padding: 10px 13px; border-radius: 5px; background: var(--header); color: white; opacity: 0; transform: translateY(6px); pointer-events: none; transition: opacity 160ms ease, transform 160ms ease; }
 .toast.visible { opacity: 1; transform: translateY(0); }
 .toast.error { background: var(--conflict); }
 .spinning svg { animation: spin 700ms linear infinite; }
+.tooltip { z-index: 50; position: fixed; left: 0; top: 0; width: max-content; max-width: min(320px, calc(100vw - 16px)); padding: 7px 9px; border-radius: 4px; background: oklch(0.92 0.008 250); color: oklch(0.16 0.015 255); font-size: 10.5px; font-weight: 540; line-height: 1.35; box-shadow: 0 4px 10px oklch(0.05 0.01 255 / 0.35); opacity: 0; visibility: hidden; pointer-events: none; }
+.tooltip.visible { opacity: 1; visibility: visible; }
 
 @keyframes spin { to { transform: rotate(360deg); } }
 

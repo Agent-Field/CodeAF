@@ -17,12 +17,12 @@
       </div>
     </div>
     <div class="workspace-title">
-      <span>Workspace</span>
-      <strong id="workspace-name">Loading</strong>
+      <svg aria-hidden="true"><use href="/assets/icons.svg#folder-git-2"></use></svg>
+      <div><span>Source folder</span><strong id="workspace-name">Loading</strong></div>
     </div>
     <div class="top-actions">
       <span class="connection" id="connection-state"><i></i> Connecting</span>
-      <button class="icon-button" id="refresh-button" type="button" aria-label="Refresh workspace" title="Refresh workspace">
+      <button class="icon-button" id="refresh-button" type="button" aria-label="Refresh workspace" data-tooltip="Refresh this workspace now">
         <svg><use href="/assets/icons.svg#refresh-cw"></use></svg>
       </button>
     </div>
@@ -35,17 +35,17 @@
   </nav>
 
   <section class="status-rail" aria-label="Workspace summary">
-    <div><span>Protection</span><strong id="protection-value">Checking</strong></div>
-    <div><span>Universes</span><strong id="universe-count">0</strong></div>
-    <div><span>Collisions</span><strong id="conflict-count">0</strong></div>
-    <div><span>Restore points</span><strong id="snapshot-count">0</strong></div>
-    <div class="head-stat"><span>Head</span><code id="head-value">-</code></div>
+    <div data-tooltip="Whether agit is continuously watching this source workspace"><span>Protection</span><strong id="protection-value">Checking</strong></div>
+    <div data-tooltip="Independent copies of this folder created for separate agents or tasks"><span>Universes</span><strong id="universe-count">0</strong></div>
+    <div data-tooltip="Paths changed differently in two or more universes"><span>Collisions</span><strong id="conflict-count">0</strong></div>
+    <div data-tooltip="Recoverable snapshots of this source workspace"><span>Restore points</span><strong id="snapshot-count">0</strong></div>
+    <div class="head-stat" data-tooltip="The latest snapshot of the source workspace"><span>Current snapshot</span><code id="head-value">-</code></div>
   </section>
 
   <main class="mission-grid">
     <aside class="timeline-pane" data-pane="timeline" aria-labelledby="timeline-heading">
       <div class="pane-heading">
-        <h2 id="timeline-heading">Restore points</h2>
+        <div class="heading-with-help"><h2 id="timeline-heading">Restore points</h2><button class="help-button" type="button" aria-label="About restore points" data-tooltip="Snapshots of the source folder. Choose an older point to preview exactly what rewind would change."><svg><use href="/assets/icons.svg#info"></use></svg></button></div>
         <span class="count-label" id="timeline-count">0 points</span>
       </div>
       <div class="timeline-list" id="timeline-list" aria-live="polite"></div>
@@ -53,25 +53,25 @@
 
     <section class="universe-pane" data-pane="universes" aria-labelledby="universes-heading">
       <div class="pane-heading universe-heading">
-        <div class="heading-with-icon"><svg aria-hidden="true"><use href="/assets/icons.svg#folder-git-2"></use></svg><h1 id="universes-heading">Universes</h1></div>
+        <div class="heading-with-icon"><svg aria-hidden="true"><use href="/assets/icons.svg#folder-git-2"></use></svg><h1 id="universes-heading">Universes</h1><button class="help-button" type="button" aria-label="About universes" data-tooltip="Each universe is an isolated full copy of this folder for one agent or task. It cannot change the source folder until you merge it."><svg><use href="/assets/icons.svg#info"></use></svg></button></div>
         <div class="legend" aria-label="Status legend"><span><i class="dot clear"></i>Clear</span><span><i class="dot conflict"></i>Collision</span><span><i class="dot stale"></i>Offline</span></div>
       </div>
       <div class="table-wrap">
         <table class="universe-table">
-          <thead><tr><th>Universe</th><th>State</th><th>Fork cost</th><th>Head</th><th><span class="sr-only">Actions</span></th></tr></thead>
+          <thead><tr><th>Isolated workspace</th><th>Overlap</th><th>Created</th><th>Latest snapshot</th><th><span class="sr-only">Actions</span></th></tr></thead>
           <tbody id="fork-table"></tbody>
         </table>
       </div>
       <section class="conflict-section" aria-labelledby="conflict-heading">
-        <div class="section-label"><h2 id="conflict-heading">Shared paths</h2><span id="conflict-subtitle">No shared dirty paths</span></div>
+        <div class="section-label"><div class="heading-with-help"><h2 id="conflict-heading">Overlapping paths</h2><button class="help-button" type="button" aria-label="About overlapping paths" data-tooltip="A path appears here when multiple universes changed it differently. The line names every universe involved."><svg><use href="/assets/icons.svg#info"></use></svg></button></div><span id="conflict-subtitle">No overlapping changes</span></div>
         <div id="conflict-lanes" class="conflict-lanes"></div>
       </section>
     </section>
 
     <aside class="event-pane" data-pane="events" aria-labelledby="events-heading">
       <div class="pane-heading">
-        <h2 id="events-heading">Activity</h2>
-        <code id="event-cursor">cursor -</code>
+        <div class="heading-with-help"><h2 id="events-heading">Activity</h2><button class="help-button" type="button" aria-label="About activity" data-tooltip="Durable conflict-radar events. Detected means agit found a new overlap; resolved means that overlap disappeared."><svg><use href="/assets/icons.svg#info"></use></svg></button></div>
+        <span class="count-label" id="event-cursor">0 events</span>
       </div>
       <div class="event-list" id="event-list" aria-live="polite"></div>
     </aside>
@@ -80,13 +80,14 @@
   <dialog id="inspector" class="inspector">
     <div class="dialog-bar">
       <div><span class="dialog-context" id="dialog-kicker">Inspect</span><h2 id="dialog-title">Details</h2></div>
-      <button class="icon-button" id="dialog-close" type="button" aria-label="Close details" title="Close details"><svg><use href="/assets/icons.svg#x"></use></svg></button>
+      <button class="icon-button" id="dialog-close" type="button" aria-label="Close details" data-tooltip="Close details"><svg><use href="/assets/icons.svg#x"></use></svg></button>
     </div>
     <div id="dialog-body" class="dialog-body"></div>
     <div id="dialog-actions" class="dialog-actions"></div>
   </dialog>
 
   <div class="toast" id="toast" role="status" aria-live="polite"></div>
+  <div class="tooltip" id="tooltip" role="tooltip"></div>
   <script src="/assets/app.js" defer></script>
 </body>
 </html>
