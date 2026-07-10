@@ -4,8 +4,8 @@
 
 ### Every agent, its own fork, any machine
 
-[![License](https://img.shields.io/badge/license-Apache%202.0-0c0b09.svg?style=flat&labelColor=8b7355)](LICENSE)
-[![More from Agent-Field](https://img.shields.io/badge/More_from-Agent--Field-0c0b09?style=flat&logo=github&logoColor=e8e5dc&labelColor=8b7355)](https://github.com/Agent-Field)
+[![License](https://img.shields.io/badge/license-Apache%202.0-141414?style=flat&labelColor=1f1f1f)](LICENSE)
+[![More from Agent-Field](https://img.shields.io/badge/More_from-Agent--Field-141414?style=flat&logo=github&logoColor=e8e5dc&labelColor=1f1f1f)](https://github.com/Agent-Field)
 
 <p>
   <a href="#parallel-agents-one-machine">Parallel Agents</a> •
