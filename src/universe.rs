@@ -261,6 +261,7 @@ impl UniverseCommand<'_> {
 #[derive(Clone, Debug, Serialize)]
 pub struct UniversePlan {
     pub index: usize,
+    pub fork_id: String,
     pub name: String,
     pub destination: PathBuf,
     pub process_workdir: PathBuf,

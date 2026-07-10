@@ -131,6 +131,36 @@ pub fn find_entry(
     }
 }
 
+/// Look up a repository-relative byte path without flattening any directory.
+pub fn find_path(
+    store: &ObjectStore,
+    root: &ObjectId,
+    path: &[u8],
+) -> anyhow::Result<Option<TreeEntry>> {
+    if path.is_empty() {
+        return Ok(None);
+    }
+    let mut tree = *root;
+    let mut components = path.split(|byte| *byte == b'/').peekable();
+    while let Some(component) = components.next() {
+        anyhow::ensure!(
+            !component.is_empty(),
+            "tree path contains an empty component"
+        );
+        let Some(entry) = find_entry(store, &tree, component)? else {
+            return Ok(None);
+        };
+        if components.peek().is_none() {
+            return Ok(Some(entry));
+        }
+        if entry.kind != crate::model::EntryKind::Directory {
+            return Ok(None);
+        }
+        tree = entry.target.context("directory entry has no tree target")?;
+    }
+    Ok(None)
+}
+
 pub fn diff_entries<F>(
     store: &ObjectStore,
     left: &ObjectId,

@@ -253,6 +253,101 @@ fn patterns_may_overlap(left: &str, right: &str) -> bool {
     component_prefix(&left_prefix, &right_prefix) || component_prefix(&right_prefix, &left_prefix)
 }
 
+/// Match a validated claim glob against a lossless repository-relative path.
+/// `*` and `?` stay within one component; `**` may cross `/` boundaries.
+pub fn matches_path(pattern: &str, path: &[u8]) -> bool {
+    let pattern = pattern.as_bytes();
+    let width = path.len() + 1;
+    let mut memo = vec![None; (pattern.len() + 1).saturating_mul(width)];
+    glob_match(pattern, path, 0, 0, width, &mut memo)
+}
+
+fn glob_match(
+    pattern: &[u8],
+    path: &[u8],
+    pattern_index: usize,
+    path_index: usize,
+    width: usize,
+    memo: &mut [Option<bool>],
+) -> bool {
+    let slot = pattern_index * width + path_index;
+    if let Some(result) = memo[slot] {
+        return result;
+    }
+    let result = if pattern_index == pattern.len() {
+        path_index == path.len()
+    } else if pattern[pattern_index] == b'*' {
+        let recursive = pattern.get(pattern_index + 1) == Some(&b'*');
+        let next = pattern_index + if recursive { 2 } else { 1 };
+        glob_match(pattern, path, next, path_index, width, memo)
+            || (path_index < path.len()
+                && (recursive || path[path_index] != b'/')
+                && glob_match(pattern, path, pattern_index, path_index + 1, width, memo))
+    } else if pattern[pattern_index] == b'?' {
+        path_index < path.len()
+            && path[path_index] != b'/'
+            && glob_match(
+                pattern,
+                path,
+                pattern_index + 1,
+                path_index + 1,
+                width,
+                memo,
+            )
+    } else if pattern[pattern_index] == b'[' {
+        match character_class(pattern, pattern_index, path.get(path_index).copied()) {
+            Some((matches, next)) => {
+                matches && glob_match(pattern, path, next, path_index + 1, width, memo)
+            }
+            None => {
+                path.get(path_index) == Some(&b'[')
+                    && glob_match(
+                        pattern,
+                        path,
+                        pattern_index + 1,
+                        path_index + 1,
+                        width,
+                        memo,
+                    )
+            }
+        }
+    } else {
+        path.get(path_index) == Some(&pattern[pattern_index])
+            && glob_match(
+                pattern,
+                path,
+                pattern_index + 1,
+                path_index + 1,
+                width,
+                memo,
+            )
+    };
+    memo[slot] = Some(result);
+    result
+}
+
+fn character_class(pattern: &[u8], start: usize, value: Option<u8>) -> Option<(bool, usize)> {
+    let value = value.filter(|value| *value != b'/')?;
+    let mut index = start + 1;
+    let negated = matches!(pattern.get(index), Some(b'!' | b'^'));
+    index += usize::from(negated);
+    let content_start = index;
+    let mut matched = false;
+    while index < pattern.len() && pattern[index] != b']' {
+        if index + 2 < pattern.len() && pattern[index + 1] == b'-' && pattern[index + 2] != b']' {
+            matched |= pattern[index] <= value && value <= pattern[index + 2];
+            index += 3;
+        } else {
+            matched |= pattern[index] == value;
+            index += 1;
+        }
+    }
+    if index == pattern.len() || index == content_start {
+        return None;
+    }
+    Some((matched != negated, index + 1))
+}
+
 fn literal_prefix(pattern: &str) -> Vec<&str> {
     pattern
         .split('/')
@@ -318,5 +413,15 @@ mod tests {
         registry
             .claim("src/auth/login.rs", "beta", "workspace-b", 3600)
             .unwrap();
+    }
+
+    #[test]
+    fn claim_globs_match_components_and_recursive_subtrees() {
+        assert!(matches_path("src/auth/**", b"src/auth/login/session.rs"));
+        assert!(matches_path("src/*.rs", b"src/main.rs"));
+        assert!(!matches_path("src/*.rs", b"src/nested/main.rs"));
+        assert!(matches_path("src/file[0-9].rs", b"src/file7.rs"));
+        assert!(!matches_path("src/file[!0-9].rs", b"src/file7.rs"));
+        assert!(matches_path("config/?.env", b"config/a.env"));
     }
 }

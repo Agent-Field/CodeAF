@@ -1,7 +1,7 @@
 use assert_cmd::Command;
 use serde_json::Value;
 use std::fs;
-use std::io::Write;
+use std::io::{BufRead, BufReader, Write};
 use std::os::unix::fs::{symlink, PermissionsExt};
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
@@ -85,6 +85,15 @@ fn collect_files(root: &Path, files: &mut Vec<PathBuf>) {
             files.push(entry.path());
         }
     }
+}
+
+fn ndjson(bytes: &[u8]) -> Vec<Value> {
+    std::str::from_utf8(bytes)
+        .unwrap()
+        .lines()
+        .filter(|line| !line.is_empty())
+        .map(|line| serde_json::from_str(line).unwrap())
+        .collect()
 }
 
 #[test]
@@ -946,7 +955,7 @@ fn exec_runs_multiple_complete_universes_concurrently_and_seals_each_result() {
 
     for (offset, universe) in result["universes"].as_array().unwrap().iter().enumerate() {
         assert_eq!(universe["exit_code"], 0);
-        assert_eq!(universe["fork_id"], universe["fork"]);
+        assert_eq!(universe["fork_id"].as_str().unwrap().len(), 32);
         assert_ne!(universe["head_snapshot"], universe["base_snapshot"]);
         let path = PathBuf::from(universe["path"].as_str().unwrap());
         let contents = fs::read_to_string(path.join("universe.txt")).unwrap();
@@ -1010,6 +1019,310 @@ fn exec_uses_the_disclosed_workdir_and_preserves_failed_results() {
         result["universes"][0]["base_snapshot"]
     );
     assert!(!fixture.repo.join("failed-result.txt").exists());
+}
+
+#[test]
+fn conflict_radar_opens_once_resolves_and_replays_from_a_durable_cursor() {
+    let fixture = Fixture::new();
+    fixture.watch();
+    let alpha = fixture._temp.path().join("radar-alpha");
+    let beta = fixture._temp.path().join("radar-beta");
+    fixture
+        .agit()
+        .args(["fork", "radar-alpha", "--destination"])
+        .arg(&alpha)
+        .assert()
+        .success();
+    fixture
+        .agit()
+        .args(["fork", "radar-beta", "--destination"])
+        .arg(&beta)
+        .assert()
+        .success();
+
+    fs::write(alpha.join("app.txt"), b"alpha implementation\n").unwrap();
+    fs::write(beta.join("notes.txt"), b"beta notes\n").unwrap();
+    agit_at(&alpha, &fixture.data)
+        .arg("snap")
+        .assert()
+        .success();
+    agit_at(&beta, &fixture.data).arg("snap").assert().success();
+    let disjoint = fixture.agit().args(["--json", "forks"]).output().unwrap();
+    assert!(
+        disjoint.status.success(),
+        "{}",
+        String::from_utf8_lossy(&disjoint.stderr)
+    );
+    let disjoint: Value = serde_json::from_slice(&disjoint.stdout).unwrap();
+    assert!(disjoint
+        .as_array()
+        .unwrap()
+        .iter()
+        .all(|fork| fork["conflicts"] == 0));
+
+    fs::write(beta.join("app.txt"), b"beta implementation\n").unwrap();
+    agit_at(&beta, &fixture.data).arg("snap").assert().success();
+    let conflicted = fixture.agit().args(["--json", "forks"]).output().unwrap();
+    let conflicted: Value = serde_json::from_slice(&conflicted.stdout).unwrap();
+    for fork in conflicted.as_array().unwrap() {
+        assert_eq!(fork["fork_id"].as_str().unwrap().len(), 32);
+        assert_eq!(fork["conflicts"], 1);
+        assert_eq!(fork["conflict_paths"][0], "app.txt");
+    }
+
+    let events = fixture.agit().arg("events").output().unwrap();
+    assert!(events.status.success());
+    let events = ndjson(&events.stdout);
+    let opened: Vec<_> = events
+        .iter()
+        .filter(|event| event["state"] == "opened")
+        .collect();
+    assert_eq!(opened.len(), 1);
+    assert_eq!(opened[0]["path"]["display"], "app.txt");
+    assert_eq!(opened[0]["forks"].as_array().unwrap().len(), 2);
+    let cursor = opened[0]["cursor"].as_str().unwrap().to_owned();
+
+    // Repeated reconciliation must not duplicate a stable transition.
+    fixture.agit().arg("forks").assert().success();
+    let repeated = fixture
+        .agit()
+        .args(["events", "--after", &cursor])
+        .output()
+        .unwrap();
+    assert!(repeated.status.success());
+    assert!(repeated.stdout.is_empty());
+
+    agit_at(&alpha, &fixture.data)
+        .args(["claim", "app.txt", "--owner", "alpha-agent"])
+        .assert()
+        .success();
+    fixture.agit().arg("forks").assert().success();
+    let claimed = fixture
+        .agit()
+        .args(["events", "--after", &cursor])
+        .output()
+        .unwrap();
+    let claimed = ndjson(&claimed.stdout);
+    assert_eq!(claimed.len(), 1);
+    assert_eq!(claimed[0]["state"], "updated");
+    assert_eq!(claimed[0]["claim_state"], "covered");
+    let cursor = claimed[0]["cursor"].as_str().unwrap().to_owned();
+
+    let offline = fixture._temp.path().join("radar-beta-offline");
+    fs::rename(&beta, &offline).unwrap();
+    let stale = fixture.agit().args(["--json", "forks"]).output().unwrap();
+    let stale: Value = serde_json::from_slice(&stale.stdout).unwrap();
+    let beta_status = stale
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|fork| fork["name"] == "radar-beta")
+        .unwrap();
+    assert_eq!(beta_status["conflicts"], 1);
+    assert_eq!(beta_status["radar_stale"], true);
+    fs::rename(&offline, &beta).unwrap();
+
+    fs::write(beta.join("app.txt"), b"tracked original\n").unwrap();
+    agit_at(&beta, &fixture.data).arg("snap").assert().success();
+    let resolved = fixture.agit().args(["--json", "forks"]).output().unwrap();
+    let resolved: Value = serde_json::from_slice(&resolved.stdout).unwrap();
+    assert!(resolved
+        .as_array()
+        .unwrap()
+        .iter()
+        .all(|fork| fork["conflicts"] == 0));
+    let events = fixture
+        .agit()
+        .args(["events", "--after", &cursor])
+        .output()
+        .unwrap();
+    let events = ndjson(&events.stdout);
+    assert_eq!(events.len(), 1);
+    assert_eq!(events[0]["state"], "resolved");
+    assert_eq!(events[0]["conflict_id"], opened[0]["conflict_id"]);
+}
+
+#[test]
+fn conflict_radar_distinguishes_sibling_edits_from_subtree_deletion() {
+    let fixture = Fixture::new();
+    fs::create_dir(fixture.repo.join("src")).unwrap();
+    fs::write(fixture.repo.join("src/alpha.rs"), b"alpha base\n").unwrap();
+    fs::write(fixture.repo.join("src/beta.rs"), b"beta base\n").unwrap();
+    fixture.watch();
+    let alpha = fixture._temp.path().join("tree-alpha");
+    let beta = fixture._temp.path().join("tree-beta");
+    fixture
+        .agit()
+        .args(["fork", "tree-alpha", "--destination"])
+        .arg(&alpha)
+        .assert()
+        .success();
+    fixture
+        .agit()
+        .args(["fork", "tree-beta", "--destination"])
+        .arg(&beta)
+        .assert()
+        .success();
+
+    fs::write(alpha.join("src/alpha.rs"), b"alpha changed\n").unwrap();
+    fs::write(beta.join("src/beta.rs"), b"beta changed\n").unwrap();
+    agit_at(&alpha, &fixture.data)
+        .arg("snap")
+        .assert()
+        .success();
+    agit_at(&beta, &fixture.data).arg("snap").assert().success();
+    let disjoint = fixture.agit().args(["--json", "forks"]).output().unwrap();
+    assert!(
+        disjoint.status.success(),
+        "{}",
+        String::from_utf8_lossy(&disjoint.stderr)
+    );
+    let disjoint: Value = serde_json::from_slice(&disjoint.stdout).unwrap();
+    assert!(disjoint
+        .as_array()
+        .unwrap()
+        .iter()
+        .all(|fork| fork["conflicts"] == 0));
+
+    fs::remove_dir_all(alpha.join("src")).unwrap();
+    agit_at(&alpha, &fixture.data)
+        .arg("snap")
+        .assert()
+        .success();
+    let conflicted = fixture.agit().args(["--json", "forks"]).output().unwrap();
+    let conflicted: Value = serde_json::from_slice(&conflicted.stdout).unwrap();
+    for fork in conflicted.as_array().unwrap() {
+        assert_eq!(fork["conflicts"], 1);
+        assert_eq!(fork["conflict_paths"][0], "src");
+    }
+}
+
+#[test]
+fn conflict_radar_groups_many_forks_into_one_path_event() {
+    let fixture = Fixture::new();
+    fixture.watch();
+    for name in ["group-alpha", "group-beta", "group-gamma"] {
+        let path = fixture._temp.path().join(name);
+        fixture
+            .agit()
+            .args(["fork", name, "--destination"])
+            .arg(&path)
+            .assert()
+            .success();
+        fs::write(path.join("app.txt"), format!("{name}\n")).unwrap();
+        agit_at(&path, &fixture.data).arg("snap").assert().success();
+    }
+
+    let human = fixture.agit().arg("forks").output().unwrap();
+    assert!(human.status.success());
+    assert_eq!(
+        String::from_utf8_lossy(&human.stdout)
+            .lines()
+            .filter(|line| line.contains("1 conflict"))
+            .count(),
+        3
+    );
+    let events = fixture.agit().arg("events").output().unwrap();
+    let opened: Vec<_> = ndjson(&events.stdout)
+        .into_iter()
+        .filter(|event| event["state"] == "opened")
+        .collect();
+    assert_eq!(opened.len(), 1);
+    assert_eq!(opened[0]["path"]["display"], "app.txt");
+    assert_eq!(opened[0]["forks"].as_array().unwrap().len(), 3);
+    let cursor = opened[0]["cursor"].as_str().unwrap();
+
+    fixture
+        .agit()
+        .args(["fork-rm", "group-gamma"])
+        .assert()
+        .success();
+    let events = fixture
+        .agit()
+        .args(["events", "--after", cursor])
+        .output()
+        .unwrap();
+    let events = ndjson(&events.stdout);
+    assert_eq!(events.len(), 1);
+    assert_eq!(events[0]["state"], "updated");
+    assert_eq!(events[0]["forks"].as_array().unwrap().len(), 2);
+    let cursor = events[0]["cursor"].as_str().unwrap();
+
+    fixture
+        .agit()
+        .args(["fork-rm", "group-beta"])
+        .assert()
+        .success();
+    let events = fixture
+        .agit()
+        .args(["events", "--after", cursor])
+        .output()
+        .unwrap();
+    let events = ndjson(&events.stdout);
+    assert_eq!(events.len(), 1);
+    assert_eq!(events[0]["state"], "resolved");
+    let remaining = fixture.agit().args(["--json", "forks"]).output().unwrap();
+    let remaining: Value = serde_json::from_slice(&remaining.stdout).unwrap();
+    assert_eq!(remaining.as_array().unwrap().len(), 1);
+    assert_eq!(remaining[0]["conflicts"], 0);
+}
+
+#[test]
+fn conflict_event_follower_observes_seals_without_an_in_memory_queue() {
+    let fixture = Fixture::new();
+    fixture.watch();
+    let alpha = fixture._temp.path().join("follow-alpha");
+    let beta = fixture._temp.path().join("follow-beta");
+    fixture
+        .agit()
+        .args(["fork", "follow-alpha", "--destination"])
+        .arg(&alpha)
+        .assert()
+        .success();
+    fixture
+        .agit()
+        .args(["fork", "follow-beta", "--destination"])
+        .arg(&beta)
+        .assert()
+        .success();
+    fixture.agit().arg("forks").assert().success();
+
+    let mut child = std::process::Command::new(env!("CARGO_BIN_EXE_agit"))
+        .env("AGIT_DATA_DIR", &fixture.data)
+        .env("AGIT_NO_DAEMON", "1")
+        .arg("--repo")
+        .arg(&fixture.repo)
+        .args(["events", "--follow", "--interval-ms", "50"])
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::null())
+        .spawn()
+        .unwrap();
+    let stdout = child.stdout.take().unwrap();
+    let (sender, receiver) = std::sync::mpsc::channel();
+    let reader = std::thread::spawn(move || {
+        let mut line = String::new();
+        let result = BufReader::new(stdout).read_line(&mut line);
+        let _ = sender.send((result, line));
+    });
+
+    fs::write(alpha.join("app.txt"), b"alpha live\n").unwrap();
+    fs::write(beta.join("app.txt"), b"beta live\n").unwrap();
+    agit_at(&alpha, &fixture.data)
+        .arg("snap")
+        .assert()
+        .success();
+    agit_at(&beta, &fixture.data).arg("snap").assert().success();
+    let (read, line) = receiver
+        .recv_timeout(Duration::from_secs(5))
+        .expect("event follower did not receive the conflict");
+    assert!(read.unwrap() > 0);
+    let event: Value = serde_json::from_str(line.trim()).unwrap();
+    assert_eq!(event["type"], "fork_conflict");
+    assert_eq!(event["state"], "opened");
+    assert_eq!(event["path"]["display"], "app.txt");
+    child.kill().ok();
+    child.wait().ok();
+    reader.join().unwrap();
 }
 
 #[test]
@@ -2078,6 +2391,14 @@ fn mcp_stdio_negotiates_lifecycle_lists_tools_and_keeps_errors_in_protocol() {
             "params":{"name":"agit.rewind_apply","arguments":{"snapshot":snapshot}}
         }),
         serde_json::json!({
+            "jsonrpc":"2.0","id":"forks","method":"tools/call",
+            "params":{"name":"agit.forks","arguments":{}}
+        }),
+        serde_json::json!({
+            "jsonrpc":"2.0","id":"events","method":"tools/call",
+            "params":{"name":"agit.events","arguments":{"limit":10}}
+        }),
+        serde_json::json!({
             "jsonrpc":"2.0","id":7,"method":"tools/call",
             "params":{"name":"agit.unknown","arguments":{}}
         }),
@@ -2101,7 +2422,7 @@ fn mcp_stdio_negotiates_lifecycle_lists_tools_and_keeps_errors_in_protocol() {
         .lines()
         .map(|line| serde_json::from_str(line).unwrap())
         .collect();
-    assert_eq!(responses.len(), 7);
+    assert_eq!(responses.len(), 9);
     assert_eq!(responses[0]["error"]["code"], -32002);
     assert_eq!(responses[1]["result"]["protocolVersion"], "2025-11-25");
     let tools = responses[2]["result"]["tools"].as_array().unwrap();
@@ -2110,6 +2431,8 @@ fn mcp_stdio_negotiates_lifecycle_lists_tools_and_keeps_errors_in_protocol() {
     assert!(tools.iter().any(|tool| tool["name"] == "agit.claim"));
     assert!(tools.iter().any(|tool| tool["name"] == "agit.coord_write"));
     assert!(tools.iter().any(|tool| tool["name"] == "agit.fork_updates"));
+    assert!(tools.iter().any(|tool| tool["name"] == "agit.forks"));
+    assert!(tools.iter().any(|tool| tool["name"] == "agit.events"));
     assert_eq!(responses[3]["id"], "status");
     assert_eq!(responses[3]["result"]["isError"], false);
     assert_eq!(
@@ -2122,7 +2445,17 @@ fn mcp_stdio_negotiates_lifecycle_lists_tools_and_keeps_errors_in_protocol() {
         .as_str()
         .unwrap()
         .contains("confirm_snapshot"));
-    assert_eq!(responses[6]["error"]["code"], -32602);
+    assert_eq!(responses[6]["id"], "forks");
+    assert_eq!(
+        responses[6]["result"]["structuredContent"],
+        serde_json::json!([])
+    );
+    assert_eq!(responses[7]["id"], "events");
+    assert_eq!(
+        responses[7]["result"]["structuredContent"]["events"],
+        serde_json::json!([])
+    );
+    assert_eq!(responses[8]["error"]["code"], -32602);
 }
 
 #[test]

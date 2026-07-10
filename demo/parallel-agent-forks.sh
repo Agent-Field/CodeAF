@@ -84,8 +84,16 @@ grep -q 'local-only' "$ALPHA/.env" && grep -q 'local-only' "$BETA/.env" \
   && [[ $(cat "$ALPHA/.agit/workspace-id") != $(cat "$BETA/.agit/workspace-id") ]] \
   && ok "every fork has an independent timeline" || fail "workspace identities collided"
 
-step "List the parallel workspaces"
+"$BIN" --repo "$ALPHA" snap -m "alpha agent boundary" >/dev/null
+"$BIN" --repo "$BETA" snap -m "beta agent boundary" >/dev/null
+
+step "List the parallel workspaces with live conflict radar"
 "$BIN" --repo "$REPO" forks
+events=$("$BIN" --repo "$REPO" events)
+printf '%s\n' "$events"
+printf '%s\n' "$events" | grep -q '"state":"opened"' \
+  && ok "one durable conflict event names both forks and app.js" \
+  || fail "conflict radar event missing"
 
 step "Verification-gated merge of alpha"
 "$BIN" --repo "$REPO" merge alpha \

@@ -13,6 +13,7 @@ pub mod merge;
 pub mod model;
 pub mod path_index;
 pub mod policy;
+pub mod radar;
 pub mod refs;
 pub mod remote;
 pub mod remote_crypto;
@@ -30,9 +31,10 @@ pub mod watcher;
 pub use budget::{BudgetConfig, BudgetStatus};
 pub use estimate::CaptureEstimate;
 pub use gc::GcReport;
+pub use radar::{EventPage, RadarEvent};
 pub use repository::{
-    AgitRepository, BisectCheck, BisectOutcome, ClaimOutcome, CoordOutcome, DiffChange,
-    DiffSummary, FidelityAspect, FidelityReport, ForkPlan, ForkRemoval, ForkSummary, ForkUpdates,
-    MaterializationReport, MergeOutcome, MissingMaterializationPath, ReleaseOutcome,
+    new_fork_id, AgitRepository, BisectCheck, BisectOutcome, ClaimOutcome, CoordOutcome,
+    DiffChange, DiffSummary, FidelityAspect, FidelityReport, ForkPlan, ForkRemoval, ForkSummary,
+    ForkUpdates, MaterializationReport, MergeOutcome, MissingMaterializationPath, ReleaseOutcome,
     RepositoryStatus, RewindPlan, SnapshotSummary, SyncDisposition, SyncPullOutcome,
 };

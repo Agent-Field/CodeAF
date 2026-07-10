@@ -14,6 +14,7 @@ use crate::model::{
 };
 use crate::path_index::{PathIndex, CHILD_BATCH};
 use crate::policy::{CapturePolicy, POLICY_FILE_BYTES};
+use crate::radar::{EventPage, Radar, UniverseRegistration};
 use crate::sorted_dir::SortedDirectory;
 use crate::sqlite_adapter;
 use crate::store::ObjectStore;
@@ -38,6 +39,8 @@ use std::time::{SystemTime, UNIX_EPOCH};
 const WORKSPACE_FILE: &str = ".agit/workspace-id";
 const WORKSPACE_FILE_BYTES: &[u8] = b".agit/workspace-id";
 const FAMILY_FILE: &str = ".agit/family-id";
+const FORK_FILE: &str = ".agit/fork-id";
+const FORK_FILE_BYTES: &[u8] = b".agit/fork-id";
 
 pub struct AgitRepository {
     root: PathBuf,
@@ -147,6 +150,8 @@ pub struct FidelityReport {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ForkSummary {
+    #[serde(default)]
+    pub fork_id: String,
     pub name: String,
     pub destination: PathBuf,
     pub base_snapshot: String,
@@ -165,10 +170,19 @@ pub struct ForkSummary {
     #[serde(default)]
     pub atomic_hierarchy: bool,
     pub created_at: i64,
+    #[serde(default)]
+    pub conflicts: u64,
+    #[serde(default)]
+    pub conflict_paths: Vec<String>,
+    #[serde(default)]
+    pub radar_stale: bool,
+    #[serde(default)]
+    pub radar_updated_at: Option<i64>,
 }
 
 #[derive(Debug, Clone, Serialize)]
 pub struct ForkPlan {
+    pub fork_id: String,
     pub name: String,
     pub destination: PathBuf,
     pub base_snapshot: String,
@@ -370,6 +384,7 @@ impl AgitRepository {
             .filter(|path| {
                 !policy.excludes_path(&self.root, path)
                     && !changed_path_matches(&self.root, path, WORKSPACE_FILE_BYTES)
+                    && !changed_path_matches(&self.root, path, FORK_FILE_BYTES)
             })
             .collect())
     }
@@ -896,6 +911,7 @@ impl AgitRepository {
             250 * 1024 * 1024,
         ));
         Ok(ForkPlan {
+            fork_id: new_fork_id()?,
             name: name.to_owned(),
             destination,
             base_snapshot: id_hex(&base),
@@ -913,6 +929,7 @@ impl AgitRepository {
 
     pub fn materialize_fork(&mut self, plan: ForkPlan) -> anyhow::Result<ForkSummary> {
         validate_fork_name(&plan.name)?;
+        validate_fork_id(&plan.fork_id)?;
         let destination = absolute_destination(&plan.destination)?;
         anyhow::ensure!(
             destination == plan.destination,
@@ -925,8 +942,11 @@ impl AgitRepository {
         );
         let base = parse_id(&plan.base_snapshot)?;
         let _: Snapshot = self.store.read_struct(&base, ObjectKind::Snapshot)?;
-        let report =
-            fork_workspace_excluding(&self.root, &destination, &[Path::new(WORKSPACE_FILE)])?;
+        let report = fork_workspace_excluding(
+            &self.root,
+            &destination,
+            &[Path::new(WORKSPACE_FILE), Path::new(FORK_FILE)],
+        )?;
 
         // A copied workspace identity would alias two mutable directories onto
         // one timeline. It is transport metadata, not captured user state.
@@ -934,12 +954,12 @@ impl AgitRepository {
         if copied_identity.exists() {
             fs::remove_file(&copied_identity)?;
         }
-        let fork_head = if report.atomic_hierarchy {
+        let (fork_repository, fork_head) = if report.atomic_hierarchy {
             self.verify_atomic_fork(&base, &destination, &report)?;
             let fork_repository = AgitRepository::attach_existing_snapshot(&destination, base)?;
             self.open_path_index()?
                 .backup_to(&fork_repository.workspace_data_dir().join("paths.sqlite3"))?;
-            base
+            (fork_repository, base)
         } else {
             let (fork_repository, fork_head) = AgitRepository::watch(&destination)?;
             if !self.snapshots_match_fork(&base, &fork_repository, &fork_head)? {
@@ -948,10 +968,18 @@ impl AgitRepository {
                     destination.display()
                 );
             }
-            fork_head
+            (fork_repository, fork_head)
         };
+        write_fork_id(&fork_repository, &plan.fork_id)?;
 
-        let summary = fork_summary(&plan.name, destination, base, fork_head, report);
+        let summary = fork_summary(
+            &plan.fork_id,
+            &plan.name,
+            destination,
+            base,
+            fork_head,
+            report,
+        );
         let record_path = self.forks_dir().join(format!("{}.json", plan.name));
         fs::create_dir_all(self.forks_dir())?;
         atomic_write(&record_path, &serde_json::to_vec_pretty(&summary)?)?;
@@ -1039,7 +1067,7 @@ impl AgitRepository {
                 let entry = entry?;
                 let path = entry.path();
                 let relative = path.strip_prefix(destination)?.as_os_str().as_bytes();
-                if relative == WORKSPACE_FILE_BYTES || policy.excludes_bytes(relative) {
+                if is_identity_path(relative) || policy.excludes_bytes(relative) {
                     continue;
                 }
                 let indexed = index.entry(relative)?.with_context(|| {
@@ -1110,15 +1138,24 @@ impl AgitRepository {
 
     pub fn forks(&self) -> anyhow::Result<Vec<ForkSummary>> {
         let directory = self.forks_dir();
-        if !directory.exists() {
-            return Ok(Vec::new());
-        }
         let mut forks = Vec::new();
-        for entry in fs::read_dir(directory)? {
-            let entry = entry?;
-            if entry.file_type()?.is_file() && entry.path().extension() == Some(OsStr::new("json"))
-            {
-                forks.push(serde_json::from_slice(&fs::read(entry.path())?)?);
+        if directory.exists() {
+            for entry in fs::read_dir(directory)? {
+                let entry = entry?;
+                if entry.file_type()?.is_file()
+                    && entry.path().extension() == Some(OsStr::new("json"))
+                {
+                    let mut fork: ForkSummary = serde_json::from_slice(&fs::read(entry.path())?)?;
+                    if fork.fork_id.is_empty() {
+                        fork.fork_id = legacy_fork_id(&fork.name, &fork.base_snapshot);
+                    }
+                    // Radar fields are derived from family state at read time.
+                    fork.conflicts = 0;
+                    fork.conflict_paths.clear();
+                    fork.radar_stale = false;
+                    fork.radar_updated_at = None;
+                    forks.push(fork);
+                }
             }
         }
         forks.sort_by(|left: &ForkSummary, right: &ForkSummary| {
@@ -1127,7 +1164,68 @@ impl AgitRepository {
                 .cmp(&left.created_at)
                 .then_with(|| left.name.cmp(&right.name))
         });
+        let mut radar = Radar::open(self.store.root(), &self.family_id)?;
+        let claims = self.active_claims()?;
+        radar.retain_universes(
+            &forks
+                .iter()
+                .map(|fork| fork.fork_id.clone())
+                .collect::<Vec<_>>(),
+            &claims,
+        )?;
+        for fork in &mut forks {
+            fork.radar_stale = !fork.destination.exists();
+            if !fork.destination.exists() {
+                continue;
+            }
+            let fork_repository = match AgitRepository::open(&fork.destination) {
+                Ok(repository) => repository,
+                Err(_) => {
+                    fork.radar_stale = true;
+                    continue;
+                }
+            };
+            let Some(head) = fork_repository
+                .store
+                .workspace_head(&fork_repository.workspace_id)?
+            else {
+                continue;
+            };
+            let base = parse_id(&fork.base_snapshot)?;
+            radar.observe(
+                &self.store,
+                UniverseRegistration {
+                    fork_id: &fork.fork_id,
+                    name: &fork.name,
+                    workspace_id: &fork_repository.workspace_id,
+                    base_snapshot: base,
+                    head_snapshot: head,
+                },
+            )?;
+            fork.head_snapshot = id_hex(&head);
+        }
+        radar.reconcile(&claims)?;
+        let conflicts = radar.summaries()?;
+        let updated_at = radar.updated_at()?;
+        for fork in &mut forks {
+            fork.radar_updated_at = updated_at.get(&fork.fork_id).copied();
+            if let Some(summary) = conflicts.get(&fork.fork_id) {
+                fork.conflicts = summary.count;
+                fork.conflict_paths = summary
+                    .paths
+                    .iter()
+                    .map(|path| display_relative(path))
+                    .collect();
+            }
+        }
         Ok(forks)
+    }
+
+    pub fn events(&self, after: Option<&str>, limit: usize) -> anyhow::Result<EventPage> {
+        // Inventory refresh is also the reconciliation path for seals published
+        // before a crash or while no event consumer was connected.
+        let _ = self.forks()?;
+        Radar::open(self.store.root(), &self.family_id)?.events_after(after, limit)
     }
 
     pub fn diff(&mut self, target: &str) -> anyhow::Result<DiffSummary> {
@@ -1219,7 +1317,11 @@ impl AgitRepository {
             .prefix(".agit-bisect-")
             .tempdir_in(parent)?;
         let scratch = owner.path().join("workspace");
-        fork_workspace_excluding(&self.root, &scratch, &[Path::new(WORKSPACE_FILE)])?;
+        fork_workspace_excluding(
+            &self.root,
+            &scratch,
+            &[Path::new(WORKSPACE_FILE), Path::new(FORK_FILE)],
+        )?;
         let (scratch_repository, scratch_head) = AgitRepository::watch(&scratch)?;
         let operation = (|| {
             anyhow::ensure!(
@@ -1346,7 +1448,11 @@ impl AgitRepository {
             .prefix(".agit-merge-")
             .tempdir_in(scratch_parent)?;
         let scratch = scratch_owner.path().join("workspace");
-        fork_workspace_excluding(&self.root, &scratch, &[Path::new(WORKSPACE_FILE)])?;
+        fork_workspace_excluding(
+            &self.root,
+            &scratch,
+            &[Path::new(WORKSPACE_FILE), Path::new(FORK_FILE)],
+        )?;
         let scratch_identity = scratch.join(WORKSPACE_FILE);
         if scratch_identity.exists() {
             fs::remove_file(scratch_identity)?;
@@ -1506,7 +1612,11 @@ impl AgitRepository {
             .prefix("probe-")
             .tempdir_in(parent)?;
         let probe = owner.path().join("workspace");
-        let fork = fork_workspace_excluding(scratch, &probe, &[Path::new(WORKSPACE_FILE)])?;
+        let fork = fork_workspace_excluding(
+            scratch,
+            &probe,
+            &[Path::new(WORKSPACE_FILE), Path::new(FORK_FILE)],
+        )?;
         let started = std::time::Instant::now();
         let (program, arguments) = command
             .split_first()
@@ -1671,7 +1781,7 @@ impl AgitRepository {
 
         // Attaching the destination updates the .agit directory timestamp, but
         // its actual policy and hook children still participate in comparison.
-        for internal in [b".agit".as_slice(), WORKSPACE_FILE_BYTES] {
+        for internal in [b".agit".as_slice(), WORKSPACE_FILE_BYTES, FORK_FILE_BYTES] {
             base_entries.remove(internal);
             fork_entries.remove(internal);
         }
@@ -1970,7 +2080,7 @@ impl AgitRepository {
                 index.reset()?;
                 return self.capture_directory_impl(&self.root, index, policy);
             }
-            if relative == WORKSPACE_FILE_BYTES {
+            if is_identity_path(&relative) {
                 continue;
             }
             validate_relative_path(&relative)?;
@@ -2062,7 +2172,9 @@ impl AgitRepository {
             if child_path.starts_with(self.store.root()) {
                 continue;
             }
-            if child_path == self.root.join(WORKSPACE_FILE) {
+            if child_path == self.root.join(WORKSPACE_FILE)
+                || child_path == self.root.join(FORK_FILE)
+            {
                 continue;
             }
             let child_relative = child_path
@@ -3095,6 +3207,7 @@ fn absolute_destination(destination: &Path) -> anyhow::Result<PathBuf> {
 }
 
 fn fork_summary(
+    fork_id: &str,
     name: &str,
     destination: PathBuf,
     base: ObjectId,
@@ -3102,6 +3215,7 @@ fn fork_summary(
     report: ForkReport,
 ) -> ForkSummary {
     ForkSummary {
+        fork_id: fork_id.to_owned(),
         name: name.to_owned(),
         destination,
         base_snapshot: id_hex(&base),
@@ -3119,7 +3233,47 @@ fn fork_summary(
         elapsed_ms: report.elapsed.as_millis().min(u64::MAX as u128) as u64,
         atomic_hierarchy: report.atomic_hierarchy,
         created_at: now().0,
+        conflicts: 0,
+        conflict_paths: Vec::new(),
+        radar_stale: false,
+        radar_updated_at: None,
     }
+}
+
+pub fn new_fork_id() -> anyhow::Result<String> {
+    let mut bytes = [0_u8; 16];
+    getrandom::getrandom(&mut bytes)
+        .map_err(|error| anyhow::anyhow!("generate fork ID: {error}"))?;
+    Ok(hex::encode(bytes))
+}
+
+fn validate_fork_id(value: &str) -> anyhow::Result<()> {
+    anyhow::ensure!(
+        value.len() == 32 && value.bytes().all(|byte| byte.is_ascii_hexdigit()),
+        "invalid fork ID"
+    );
+    Ok(())
+}
+
+fn legacy_fork_id(name: &str, base_snapshot: &str) -> String {
+    let mut hasher = blake3::Hasher::new();
+    hasher.update(b"agit:legacy-fork-id:v1\0");
+    hasher.update(name.as_bytes());
+    hasher.update(b"\0");
+    hasher.update(base_snapshot.as_bytes());
+    hex::encode(&hasher.finalize().as_bytes()[..16])
+}
+
+fn write_fork_id(repository: &AgitRepository, fork_id: &str) -> anyhow::Result<()> {
+    validate_fork_id(fork_id)?;
+    atomic_write(
+        &repository.root.join(FORK_FILE),
+        format!("{fork_id}\n").as_bytes(),
+    )?;
+    atomic_write(
+        &repository.workspace_data_dir().join("fork.id"),
+        format!("{fork_id}\n").as_bytes(),
+    )
 }
 
 fn merge_rewind_plan(
@@ -3259,6 +3413,10 @@ fn changed_path_matches(root: &Path, path: &Path, expected: &[u8]) -> bool {
         .strip_prefix(root)
         .ok()
         .is_some_and(|relative| relative.as_os_str().as_bytes() == expected)
+}
+
+fn is_identity_path(path: &[u8]) -> bool {
+    path == WORKSPACE_FILE_BYTES || path == FORK_FILE_BYTES
 }
 
 fn test_pause(variable: &str) {

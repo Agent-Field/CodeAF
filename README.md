@@ -15,6 +15,7 @@ Git protects commits. Agent checkpoints usually protect edits made through one a
 ./demo/find-regression.sh
 ./demo/parallel-agent-forks.sh
 ./demo/five-agent-scale.sh
+./demo/conflict-radar.sh
 ./demo/two-machine-sync.sh
 ```
 
@@ -28,7 +29,7 @@ The demo creates a real Git repository containing:
 
 It then snapshots the workspace, runs `git clean -fdx`, damages the tracked application, previews the impact, and rewinds everything. Independent shell and SQLite checks verify the result.
 
-The parallel-fork demo creates two independent full-state workspaces from one dirty repository, including a 32 MiB ignored dependency cache and local configuration. The five-agent demo starts five warm, isolated universes with one `agit exec -n 5` command and proves there is no cross-workspace leakage.
+The parallel-fork demo creates two independent full-state workspaces from one dirty repository, including a 32 MiB ignored dependency cache and local configuration. The five-agent demo starts five warm, isolated universes with one `agit exec -n 5` command and proves there is no cross-workspace leakage. The conflict-radar demo shows two agents colliding on one file, one grouped event carrying advisory claim state, and resolution before merge work begins.
 
 ## Install
 
@@ -90,6 +91,9 @@ agit exec --fork auth-refactor -- claude
 
 # Inspect active parallel workspaces and their actual clone/copy cost.
 agit forks
+
+# Agents can resume a bounded durable NDJSON stream from any returned cursor.
+agit events --follow
 
 # Review exactly what a fork added, modified, or deleted.
 agit diff auth-refactor
@@ -224,6 +228,10 @@ Every actual rewind first publishes a complete `pre_rewind` snapshot. Rewinding 
 - Independent fork timelines, full-state consistency verification, and command launch
 - Concurrent `agit exec -n N` universes from one sealed base, with stable per-universe environment, port offsets, and machine-readable results
 - Capability-tested Linux same-path bind mounts with an honestly disclosed macOS/Linux sibling-directory fallback
+- Stable location-independent fork IDs and incremental family-level conflict radar
+- Exact/subtree collision semantics that catch directory deletion versus descendant edits without flagging unrelated sibling edits
+- Grouped, durable `fork_conflict` transitions with lossless byte paths, advisory claim state, bounded cursors, and NDJSON follow mode
+- Conflict counts and stale/offline state in both human and JSON `forks` output
 - Exact base-to-head fork inspection with path-level add/modify/delete reporting
 - Explicit fork cleanup with safe timeline detachment
 - Transactional advisory path claims shared across sibling forks
@@ -249,7 +257,7 @@ The current implementation covers the recovery engine, continuous protection, wa
 
 ## Performance Benchmarks
 
-The benchmark harness runs every sample in a fresh subprocess and reports wall time, user+system CPU, peak RSS, operations per second, byte throughput where meaningful, and the inner platform-clone time. It covers streaming chunking, paged Merkle diff, reverse-index timeline reads, cold seal, 100-file delta seal, full-state fork, five-universe startup, and six-month retention GC.
+The benchmark harness runs every sample in a fresh subprocess and reports wall time, user+system CPU, peak RSS, operations per second, byte throughput where meaningful, and the inner platform-clone time. It covers streaming chunking, paged Merkle diff, reverse-index timeline reads, cold seal, 100-file delta seal, full-state fork, five-universe startup, five-fork conflict radar, and six-month retention GC.
 
 Measured baselines, optimization comparisons, methodology, and unproven reference-scale gaps are recorded in [BENCHMARKS.md](BENCHMARKS.md).
 

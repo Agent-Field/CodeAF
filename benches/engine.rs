@@ -85,6 +85,7 @@ fn main() -> anyhow::Result<()> {
         "delta-seal",
         "fork",
         "universes",
+        "radar",
         "gc",
     ] {
         let mut samples = Vec::new();
@@ -193,6 +194,7 @@ fn run_scenario(name: &str, profile: Profile) -> anyhow::Result<Sample> {
         "delta-seal" => benchmark_delta_seal(profile),
         "fork" => benchmark_fork(profile),
         "universes" => benchmark_universes(profile),
+        "radar" => benchmark_radar(profile),
         "gc" => benchmark_gc(profile),
         _ => anyhow::bail!("unknown benchmark scenario `{name}`"),
     }
@@ -402,6 +404,52 @@ fn benchmark_universes(profile: Profile) -> anyhow::Result<Sample> {
     )
 }
 
+fn benchmark_radar(profile: Profile) -> anyhow::Result<Sample> {
+    let workspace = Workspace::new(profile, false)?;
+    let (mut repository, _) = AgitRepository::attach_and_snapshot(
+        &workspace.repo,
+        Some("benchmark radar baseline".to_owned()),
+        SnapshotTrigger::Manual,
+    )?;
+    let changed = profile.changed_files.min(profile.files);
+    for offset in 0..profile.universes {
+        let index = offset + 1;
+        let name = format!("radar-{index}");
+        let destination = workspace.root.path().join(&name);
+        repository.fork(&name, &destination)?;
+        for file in 0..changed {
+            fs::write(
+                file_path(&destination, file),
+                vec![u8::try_from(index % 251)?; Workspace::FILE_BYTES],
+            )?;
+        }
+        AgitRepository::open(&destination)?.snapshot(
+            Some(format!("radar universe {index}")),
+            SnapshotTrigger::AgentRun,
+        )?;
+    }
+
+    let before = usage()?;
+    let started = Instant::now();
+    let forks = repository.forks()?;
+    let mut sample = sample(
+        "radar",
+        started,
+        before,
+        (profile.universes * changed) as u64,
+        0,
+        Some("exact-path-sql".to_owned()),
+    )?;
+    anyhow::ensure!(
+        forks.iter().all(|fork| fork.conflicts == changed as u64),
+        "radar benchmark conflict count is incomplete"
+    );
+    let no_op = Instant::now();
+    let _ = repository.forks()?;
+    sample.inner_ms = Some(no_op.elapsed().as_secs_f64() * 1000.0);
+    Ok(sample)
+}
+
 fn benchmark_gc(profile: Profile) -> anyhow::Result<Sample> {
     let root = tempfile::tempdir()?;
     let mut store = ObjectStore::open(root.path().join("store"))?;
@@ -586,6 +634,10 @@ fn enforce(summaries: &[Summary], profile: Profile) -> anyhow::Result<()> {
     anyhow::ensure!(
         universes.wall_p95_ms <= 30_000.0,
         "multi-universe startup exceeded 30 s"
+    );
+    anyhow::ensure!(
+        find("radar")?.wall_p95_ms <= 10_000.0,
+        "radar exceeded 10 s"
     );
     anyhow::ensure!(find("gc")?.wall_p95_ms <= 10_000.0, "GC exceeded 10 s");
     for summary in summaries {

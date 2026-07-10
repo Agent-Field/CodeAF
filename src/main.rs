@@ -103,6 +103,19 @@ enum Command {
     },
     /// List full-state workspace forks created from this repository.
     Forks,
+    /// Stream durable machine-readable workspace events as NDJSON.
+    #[command(hide = true)]
+    Events {
+        /// Exclusive event cursor returned by an earlier line.
+        #[arg(long)]
+        after: Option<String>,
+        #[arg(long, default_value_t = 100)]
+        limit: usize,
+        #[arg(long)]
+        follow: bool,
+        #[arg(long, default_value_t = 250)]
+        interval_ms: u64,
+    },
     /// Stream newly sealed snapshots from a sibling fork.
     WatchFork {
         name: String,
@@ -619,13 +632,51 @@ fn main() -> anyhow::Result<()> {
             } else {
                 for fork in forks {
                     println!(
-                        "{:<20} {:<14} {:>8} ms  {}",
+                        "{:<20} {:<14} {:>8} ms  {:>9}  {}",
                         fork.name,
                         fork.tier,
                         fork.elapsed_ms,
+                        if fork.conflicts == 0 && !fork.radar_stale {
+                            "clear".to_owned()
+                        } else if fork.conflicts == 0 {
+                            "clear/stale".to_owned()
+                        } else if fork.radar_stale {
+                            format!("{} conflict/stale", fork.conflicts)
+                        } else {
+                            format!("{} conflict", fork.conflicts)
+                        },
                         fork.destination.display()
                     );
                 }
+            }
+        }
+        Command::Events {
+            after,
+            limit,
+            follow,
+            interval_ms,
+        } => {
+            let repository = AgitRepository::open(&cli.repo)?;
+            let mut cursor = after;
+            loop {
+                let page = repository.events(cursor.as_deref(), limit)?;
+                anyhow::ensure!(
+                    page.cursor_found,
+                    "event cursor expired; resume from {}",
+                    page.earliest_cursor
+                        .as_deref()
+                        .unwrap_or("the current stream")
+                );
+                for event in &page.events {
+                    write_ndjson(event)?;
+                }
+                if let Some(event) = page.events.last() {
+                    cursor = Some(event.cursor.clone());
+                }
+                if !follow {
+                    break;
+                }
+                std::thread::sleep(std::time::Duration::from_millis(interval_ms.max(50)));
             }
         }
         Command::WatchFork {
@@ -1261,6 +1312,9 @@ fn execute_universes(
             default_fork_destination(&repository, &name)
         };
         let mut fork_plan = first_fork_plan.clone();
+        if offset > 0 {
+            fork_plan.fork_id = agit::new_fork_id()?;
+        }
         fork_plan.name = name.clone();
         fork_plan.destination = destination.clone();
         let process_workdir = match driver.driver {
@@ -1269,6 +1323,7 @@ fn execute_universes(
         };
         universes.push(UniversePlan {
             index,
+            fork_id: fork_plan.fork_id.clone(),
             name,
             destination,
             process_workdir,
@@ -1363,7 +1418,7 @@ fn execute_universes(
         results.push(serde_json::json!({
             "index": universe.index,
             "fork": universe.name,
-            "fork_id": universe.name,
+            "fork_id": universe.fork_id,
             "base_snapshot": summary.base_snapshot,
             "head_snapshot": id_hex(&head),
             "path": summary.destination,
@@ -1420,6 +1475,21 @@ fn print_exec_plan(plan: &agit::universe::ExecPlan) {
             universe.process_workdir.display()
         );
     }
+}
+
+fn write_ndjson(value: &impl serde::Serialize) -> anyhow::Result<()> {
+    let stdout = io::stdout();
+    let mut output = stdout.lock();
+    if let Err(error) = serde_json::to_writer(&mut output, value)
+        .and_then(|()| writeln!(output).map_err(serde_json::Error::io))
+    {
+        if error.io_error_kind() == Some(io::ErrorKind::BrokenPipe) {
+            return Ok(());
+        }
+        return Err(error.into());
+    }
+    output.flush()?;
+    Ok(())
 }
 
 fn redirect_stdout_to_stderr(command: &mut std::process::Command) -> anyhow::Result<()> {

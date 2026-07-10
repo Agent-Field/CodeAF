@@ -200,6 +200,11 @@ fn call_tool(
             Ok(json!({"snapshot": id_hex(&id)}))
         }
         "agit.diff" => serialize(repository.diff(required_string(arguments, "target")?)?),
+        "agit.forks" => serialize(repository.forks()?),
+        "agit.events" => serialize(repository.events(
+            optional_string(arguments, "after")?,
+            optional_u64(arguments, "limit")?.unwrap_or(100).min(1000) as usize,
+        )?),
         "agit.fork" => {
             let name = required_string(arguments, "name")?;
             let destination = default_fork_destination(repository.root(), name);
@@ -301,6 +306,8 @@ fn tool_names() -> &'static [&'static str] {
         "agit.timeline",
         "agit.snapshot",
         "agit.diff",
+        "agit.forks",
+        "agit.events",
         "agit.fork",
         "agit.merge_plan",
         "agit.claims",
@@ -322,6 +329,8 @@ fn validate_argument_keys(name: &str, arguments: &Map<String, Value>) -> anyhow:
         "agit.timeline" => &["limit"],
         "agit.snapshot" => &["message"],
         "agit.diff" => &["target"],
+        "agit.forks" => &[],
+        "agit.events" => &["after", "limit"],
         "agit.fork" => &["name"],
         "agit.merge_plan" => &["fork"],
         "agit.claims" => &[],
@@ -387,6 +396,27 @@ fn tool_definitions() -> Vec<Value> {
                 "additionalProperties": false
             }),
             false,
+            false,
+        ),
+        tool(
+            "agit.forks",
+            "List isolated universes with stable IDs and live conflict counts.",
+            json!({"type": "object", "additionalProperties": false}),
+            true,
+            false,
+        ),
+        tool(
+            "agit.events",
+            "Read durable conflict transitions after an exclusive event cursor.",
+            json!({
+                "type": "object",
+                "properties": {
+                    "after": {"type": "string"},
+                    "limit": {"type": "integer", "minimum": 1, "maximum": 1000, "default": 100}
+                },
+                "additionalProperties": false
+            }),
+            true,
             false,
         ),
         tool(
