@@ -2,7 +2,7 @@
 
 # furrow
 
-### Instant, byte-exact workspace forks for agents
+### Every agent, its own fork, any machine
 
 [![License](https://img.shields.io/badge/license-Apache%202.0-0c0b09.svg?style=flat&labelColor=8b7355)](LICENSE)
 [![More from Agent-Field](https://img.shields.io/badge/More_from-Agent--Field-0c0b09?style=flat&logo=github&logoColor=e8e5dc&labelColor=8b7355)](https://github.com/Agent-Field)
@@ -15,7 +15,7 @@
   <a href="#how-its-built">Architecture</a>
 </p>
 
-<img src="assets/banner.png" alt="furrow. Fork your whole workspace in a second. Run agents here, or anywhere else." width="100%" />
+<img src="assets/banner.png" alt="furrow. Every agent, its own fork, any machine. Byte-exact workspace copies, local or across the network." width="100%" />
 
 </div>
 
