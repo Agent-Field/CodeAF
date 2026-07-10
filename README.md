@@ -194,9 +194,29 @@ object reads, and coalesces small encrypted objects into durable indexed frames.
 The authenticated head is published only after its frames are durable. Use
 `agit sync --push --timings`, `--pull --timings`, or `--follow --timings` to emit
 connect/auth, negotiation, stream, durability-wait, notification, total, and
-connection-reuse measurements to stderr. If Machine A is the SSH endpoint and goes offline,
-Machine B retains its full local workspace but cannot exchange newer states until
-A is reachable again.
+connection-reuse measurements to stderr. If Machine A is the SSH endpoint and
+goes offline, Machine B retains its full local workspace but cannot exchange
+newer states until A is reachable again.
+
+### Sync Benchmarks
+
+Observed end-to-end results include encryption, transfer, and destination
+materialization where applicable:
+
+| Path | Workload | Observed time |
+|---|---|---:|
+| Warm direct session | Small delta, publish through notification and materialization | **255-342 ms** |
+| Cold nearby transfer | 192 files, 8.8 MB initial publish | **1.08 s** |
+| Cold nearby clone | 192 files, 8.8 MB into an empty machine | **1.23 s** |
+| Nearby incremental handoff | Agent report changes, machine A to B | **1.66 s** |
+| Nearby incremental handoff | Agent review changes, machine B to A | **1.14 s** |
+| Internet cold baseline | 1,478 objects, 3.82 MB publish | **5.32 s** |
+| Internet incremental baseline | 42 objects, 530 KB publish | **4.08 s** |
+
+The warm-session figure exercises the current persistent connection and
+push-notification path. The internet figures are the earlier one-shot baseline;
+they have not yet been rerun after the warm-session optimization. These are
+observations from the checked-in integration workflows, not latency guarantees.
 
 An S3-compatible store is an optional always-available mailbox for machines that
 are not online together. AWS S3, Cloudflare R2, Backblaze B2, and MinIO use the
