@@ -16,6 +16,7 @@ Git protects commits. Agent checkpoints usually protect edits made through one a
 ./demo/parallel-agent-forks.sh
 ./demo/five-agent-scale.sh
 ./demo/conflict-radar.sh
+./demo/mission-control.sh
 ./demo/two-machine-sync.sh
 ```
 
@@ -63,6 +64,9 @@ agit bisect -- cargo test
 
 # Browse protected states.
 agit timeline
+
+# Open the local Mission Control timeline, universes, conflicts, and events UI.
+agit ui
 
 # Keep an important state exact regardless of its age.
 agit pin <snapshot>
@@ -198,6 +202,24 @@ The server exposes status, timeline, snapshots, fork inspection/creation, merge 
 
 Every actual rewind first publishes a complete `pre_rewind` snapshot. Rewinding is therefore itself rewindable.
 
+## Mission Control
+
+`agit ui` opens the current workspace in a read-mostly local control surface. It renders the same timeline, fidelity, fork, conflict-radar, event, diff, rewind, merge-preview, discard, and pin contracts exposed by the CLI. It has no editor, chat, hosted account settings, or required network services.
+
+The server binds only to a random `127.0.0.1` port. A per-launch capability moves from the URL fragment into session storage; API requests require it, mutations additionally require same-origin headers, and responses disallow caching, framing, and external content. Merge apply stays disabled unless the operator supplies the project's fixed verification command:
+
+```bash
+agit ui --merge-check "cargo test --all"
+```
+
+The HTML, CSS, icons, and JavaScript are embedded in the Rust binary. There is no Node runtime, CDN, telemetry, or separate UI install.
+
+## Open Source Boundary
+
+The Apache-licensed `agit` binary owns the complete local product: capture and recovery, retention, warm universes, coordination, conflict radar, merge planning, local Mission Control, MCP, directory/SSH remotes, encryption, and all on-disk formats. It remains usable without an account or hosted service.
+
+The separate hosted product may provide identity, tenancy, signaling and hole punching, relay bandwidth, stored quota, billing, an account console, and managed registry/fleet services. Those hosted control-plane features are not required for local operation and are not implemented by this repository.
+
 ## What Works Today
 
 - Complete immutable snapshots of tracked, untracked, and ignored state
@@ -213,6 +235,7 @@ Every actual rewind first publishes a complete `pre_rewind` snapshot. Rewinding 
 - Catalog reconstruction after deleting the SQLite index
 - Recovery from truncated pack tails
 - Human and JSON timelines
+- Embedded, offline local Mission Control UI with capability-guarded mutations
 - Human, JSON, and MCP fidelity reporting with explicit partial-grade limitations
 - Read-only, disk-backed first-capture estimation with exact new-chunk payload projection
 - Snapshot-recorded literal subtree policy with rewind-safe exclusions and watcher churn suppression

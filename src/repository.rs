@@ -56,6 +56,7 @@ pub struct SnapshotSummary {
     pub label: Option<String>,
     pub trigger: String,
     pub materialization: MaterializationReport,
+    pub pinned: bool,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -85,7 +86,10 @@ pub struct RewindChange {
 #[derive(Debug, Clone, Serialize)]
 pub struct RewindPlan {
     pub target: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub current_tree: Option<String>,
     pub changes: Vec<RewindChange>,
+    pub preview_digest: String,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -237,11 +241,14 @@ pub struct MergeOutcome {
     pub base_snapshot: String,
     pub ours_snapshot: String,
     pub theirs_snapshot: String,
+    pub ours_tree: String,
+    pub theirs_tree: String,
     pub result_snapshot: Option<String>,
     pub changes: usize,
     pub conflicts: Vec<MergeConflict>,
     pub check: Option<String>,
     pub check_output: Option<String>,
+    pub preview_digest: String,
 }
 
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
@@ -469,6 +476,7 @@ impl AgitRepository {
     }
 
     pub fn timeline(&self, limit: usize) -> anyhow::Result<Vec<SnapshotSummary>> {
+        let pinned = self.store.pinned_snapshots(&self.workspace_id)?;
         self.store
             .timeline(&self.workspace_id, limit)?
             .into_iter()
@@ -479,6 +487,7 @@ impl AgitRepository {
                     label: row.label,
                     trigger: row.trigger,
                     materialization: self.materialization(&row.id)?,
+                    pinned: pinned.contains(&row.id),
                 })
             })
             .collect()
@@ -1410,6 +1419,8 @@ impl AgitRepository {
             SnapshotTrigger::PreMerge,
         )?;
         let base = parse_id(&fork.base_snapshot)?;
+        let ours_snapshot: Snapshot = self.store.read_struct(&ours, ObjectKind::Snapshot)?;
+        let theirs_snapshot: Snapshot = self.store.read_struct(&theirs, ObjectKind::Snapshot)?;
         let base_entries = self.snapshot_entry_map(&base)?;
         let ours_entries = self.snapshot_entry_map(&ours)?;
         let theirs_entries = self.snapshot_entry_map(&theirs)?;
@@ -1421,16 +1432,23 @@ impl AgitRepository {
         merge_plan
             .conflicts
             .retain(|conflict| !policy.excludes_bytes(&conflict.path));
+        let ours_tree = id_hex(&ours_snapshot.root_tree);
+        let theirs_tree = id_hex(&theirs_snapshot.root_tree);
+        let preview_digest =
+            merge_preview_digest(&fork.base_snapshot, &ours_tree, &theirs_tree, &merge_plan);
         let mut outcome = MergeOutcome {
             fork: fork_name.to_owned(),
             base_snapshot: id_hex(&base),
             ours_snapshot: id_hex(&ours),
             theirs_snapshot: id_hex(&theirs),
+            ours_tree,
+            theirs_tree,
             result_snapshot: None,
             changes: merge_plan.changes.len(),
             conflicts: merge_plan.conflicts,
             check: check.map(str::to_owned),
             check_output: None,
+            preview_digest,
         };
         if dry_run || !outcome.conflicts.is_empty() {
             FileExt::unlock(&mutation)?;
@@ -1664,8 +1682,12 @@ impl AgitRepository {
         let target_policy = CapturePolicy::from_rules(&target_snapshot.excluded_paths)?;
         let protected = current_policy.union(&target_policy);
         changes.retain(|change| !protected.excludes_bytes(&change.raw_path));
+        let target_id = id_hex(target);
+        let current_tree = id_hex(&current.root_tree);
         let plan = RewindPlan {
-            target: id_hex(target),
+            preview_digest: rewind_preview_digest(&target_id, Some(&current_tree), &changes),
+            target: target_id,
+            current_tree: Some(current_tree),
             changes,
         };
         let entries = self.entries_for_plan(&target_snapshot.root_tree, &plan)?;
@@ -1851,8 +1873,12 @@ impl AgitRepository {
             &mut changes,
         )?;
         changes.retain(|change| !protected.excludes_bytes(&change.raw_path));
+        let target_id = id_hex(target);
+        let current_tree = id_hex(&current_tree);
         Ok(RewindPlan {
-            target: id_hex(target),
+            preview_digest: rewind_preview_digest(&target_id, Some(&current_tree), &changes),
+            target: target_id,
+            current_tree: Some(current_tree),
             changes,
         })
     }
@@ -3305,11 +3331,48 @@ fn merge_rewind_plan(
     }
     (
         RewindPlan {
+            preview_digest: rewind_preview_digest("merge", None, &rewind_changes),
             target: "merge".to_owned(),
+            current_tree: None,
             changes: rewind_changes,
         },
         target,
     )
+}
+
+fn rewind_preview_digest(
+    target: &str,
+    current_tree: Option<&str>,
+    changes: &[RewindChange],
+) -> String {
+    let mut hasher = blake3::Hasher::new();
+    hasher.update(b"agit:rewind-preview:v1\0");
+    hasher.update(target.as_bytes());
+    hasher.update(b"\0");
+    hasher.update(current_tree.unwrap_or_default().as_bytes());
+    for change in changes {
+        hasher.update(b"\0");
+        hasher.update(change.action.as_bytes());
+        hasher.update(b"\0");
+        hasher.update(&change.raw_path);
+    }
+    hex::encode(hasher.finalize().as_bytes())
+}
+
+fn merge_preview_digest(
+    base: &str,
+    ours_tree: &str,
+    theirs_tree: &str,
+    plan: &merge::MergePlan,
+) -> String {
+    let mut hasher = blake3::Hasher::new();
+    hasher.update(b"agit:merge-preview:v1\0");
+    for value in [base, ours_tree, theirs_tree] {
+        hasher.update(value.as_bytes());
+        hasher.update(b"\0");
+    }
+    hasher.update(&serde_json::to_vec(plan).expect("merge plan is serializable"));
+    hex::encode(hasher.finalize().as_bytes())
 }
 
 fn command_output(stdout: &[u8], stderr: &[u8]) -> String {

@@ -1,0 +1,107 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <title>agit Mission Control</title>
+  <link rel="stylesheet" href="/assets/app.css">
+</head>
+<body data-view="universes">
+  <svg class="icon-sprite" aria-hidden="true">
+    <symbol id="i-refresh" viewBox="0 0 24 24"><path d="M20 12a8 8 0 1 1-2.34-5.66L20 8"/><path d="M20 4v4h-4"/></symbol>
+    <symbol id="i-activity" viewBox="0 0 24 24"><path d="M3 12h4l3-9 4 18 3-9h4"/></symbol>
+    <symbol id="i-git-branch" viewBox="0 0 24 24"><circle cx="6" cy="5" r="3"/><circle cx="18" cy="6" r="3"/><circle cx="6" cy="19" r="3"/><path d="M6 8v8"/><path d="M9 19h3a6 6 0 0 0 6-6V9"/></symbol>
+    <symbol id="i-history" viewBox="0 0 24 24"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/><path d="M12 7v5l3 2"/></symbol>
+    <symbol id="i-eye" viewBox="0 0 24 24"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12"/><circle cx="12" cy="12" r="3"/></symbol>
+    <symbol id="i-merge" viewBox="0 0 24 24"><circle cx="6" cy="5" r="3"/><circle cx="18" cy="5" r="3"/><circle cx="12" cy="19" r="3"/><path d="M6 8v1a7 7 0 0 0 6 7"/><path d="M18 8v1a7 7 0 0 1-6 7"/></symbol>
+    <symbol id="i-trash" viewBox="0 0 24 24"><path d="M3 6h18"/><path d="M8 6V4h8v2"/><path d="m19 6-1 14H6L5 6"/><path d="M10 11v5M14 11v5"/></symbol>
+    <symbol id="i-pin" viewBox="0 0 24 24"><path d="m12 17-5 5"/><path d="M5 3l16 16"/><path d="m15 4 5 5-4 4 1 4-2 2-4-5-5-5 2-2 4 1 3-4Z"/></symbol>
+    <symbol id="i-rewind" viewBox="0 0 24 24"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/><path d="m11 9-3 3 3 3"/><path d="M8 12h7"/></symbol>
+    <symbol id="i-x" viewBox="0 0 24 24"><path d="m6 6 12 12M18 6 6 18"/></symbol>
+    <symbol id="i-check" viewBox="0 0 24 24"><path d="m5 12 4 4L19 6"/></symbol>
+    <symbol id="i-alert" viewBox="0 0 24 24"><path d="M12 3 2 21h20L12 3Z"/><path d="M12 9v5M12 18h.01"/></symbol>
+  </svg>
+
+  <header class="topbar">
+    <div class="brand-block">
+      <span class="brand-mark">a/</span>
+      <div>
+        <strong>agit</strong>
+        <span>Mission Control</span>
+      </div>
+    </div>
+    <div class="workspace-title">
+      <span class="eyebrow">Workspace</span>
+      <strong id="workspace-name">Loading</strong>
+    </div>
+    <div class="top-actions">
+      <span class="connection" id="connection-state"><i></i> Connecting</span>
+      <button class="icon-button" id="refresh-button" type="button" aria-label="Refresh workspace" title="Refresh workspace">
+        <svg><use href="#i-refresh"></use></svg>
+      </button>
+    </div>
+  </header>
+
+  <nav class="mobile-tabs" aria-label="Mission Control views">
+    <button type="button" data-view="universes" aria-pressed="true"><svg><use href="#i-git-branch"></use></svg>Universes</button>
+    <button type="button" data-view="timeline" aria-pressed="false"><svg><use href="#i-history"></use></svg>Timeline</button>
+    <button type="button" data-view="events" aria-pressed="false"><svg><use href="#i-activity"></use></svg>Events</button>
+  </nav>
+
+  <section class="status-rail" aria-label="Workspace summary">
+    <div><span>Protection</span><strong id="protection-value">Checking</strong></div>
+    <div><span>Universes</span><strong id="universe-count">0</strong></div>
+    <div><span>Collisions</span><strong id="conflict-count">0</strong></div>
+    <div><span>Restore points</span><strong id="snapshot-count">0</strong></div>
+    <div class="head-stat"><span>Head</span><code id="head-value">-</code></div>
+  </section>
+
+  <main class="mission-grid">
+    <aside class="timeline-pane" data-pane="timeline" aria-labelledby="timeline-heading">
+      <div class="pane-heading">
+        <div><span class="eyebrow">Flight recorder</span><h2 id="timeline-heading">Timeline</h2></div>
+        <span class="count-label" id="timeline-count">0 points</span>
+      </div>
+      <div class="timeline-list" id="timeline-list" aria-live="polite"></div>
+    </aside>
+
+    <section class="universe-pane" data-pane="universes" aria-labelledby="universes-heading">
+      <div class="pane-heading universe-heading">
+        <div><span class="eyebrow">Parallel work</span><h1 id="universes-heading">Universes</h1></div>
+        <div class="legend" aria-label="Status legend"><span><i class="dot clear"></i>Clear</span><span><i class="dot conflict"></i>Collision</span><span><i class="dot stale"></i>Offline</span></div>
+      </div>
+      <div class="table-wrap">
+        <table class="universe-table">
+          <thead><tr><th>Universe</th><th>State</th><th>Fork cost</th><th>Head</th><th><span class="sr-only">Actions</span></th></tr></thead>
+          <tbody id="fork-table"></tbody>
+        </table>
+      </div>
+      <section class="conflict-section" aria-labelledby="conflict-heading">
+        <div class="section-label"><h2 id="conflict-heading">Conflict lanes</h2><span id="conflict-subtitle">No shared dirty paths</span></div>
+        <div id="conflict-lanes" class="conflict-lanes"></div>
+      </section>
+    </section>
+
+    <aside class="event-pane" data-pane="events" aria-labelledby="events-heading">
+      <div class="pane-heading">
+        <div><span class="eyebrow">Durable stream</span><h2 id="events-heading">Events</h2></div>
+        <code id="event-cursor">cursor -</code>
+      </div>
+      <div class="event-list" id="event-list" aria-live="polite"></div>
+    </aside>
+  </main>
+
+  <dialog id="inspector" class="inspector">
+    <div class="dialog-bar">
+      <div><span class="eyebrow" id="dialog-kicker">Inspect</span><h2 id="dialog-title">Details</h2></div>
+      <button class="icon-button" id="dialog-close" type="button" aria-label="Close details" title="Close details"><svg><use href="#i-x"></use></svg></button>
+    </div>
+    <div id="dialog-body" class="dialog-body"></div>
+    <div id="dialog-actions" class="dialog-actions"></div>
+  </dialog>
+
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+  <script src="/assets/app.js" defer></script>
+</body>
+</html>

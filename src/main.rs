@@ -90,6 +90,18 @@ enum Command {
         #[arg(long)]
         fidelity: bool,
     },
+    /// Open the local Mission Control workspace dashboard.
+    Ui {
+        /// Loopback port; 0 selects an available ephemeral port.
+        #[arg(long, default_value_t = 0)]
+        port: u16,
+        /// Print the URL without launching a browser.
+        #[arg(long)]
+        no_open: bool,
+        /// Fixed verification command allowed for UI merge actions.
+        #[arg(long)]
+        merge_check: Option<String>,
+    },
     /// Create an isolated full-state workspace, optionally running a command inside it.
     Fork {
         /// Stable name used by `agit forks` and as the default directory name.
@@ -575,6 +587,14 @@ fn main() -> anyhow::Result<()> {
                     }
                 }
             }
+        }
+        Command::Ui {
+            port,
+            no_open,
+            merge_check,
+        } => {
+            let repository = AgitRepository::open(&cli.repo)?;
+            agit::ui::run(repository.root(), port, no_open, merge_check, cli.json)?;
         }
         Command::Fork {
             name,

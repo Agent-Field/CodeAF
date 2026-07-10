@@ -344,6 +344,18 @@ impl ObjectStore {
             .retained_count(head))
     }
 
+    pub fn pinned_snapshots(
+        &self,
+        workspace_id: &str,
+    ) -> anyhow::Result<std::collections::BTreeSet<ObjectId>> {
+        Ok(RetentionLog::open(&self.root, workspace_id)?
+            .state()?
+            .pins
+            .into_iter()
+            .map(|pin| pin.snapshot_id)
+            .collect())
+    }
+
     pub fn pin_snapshot(&self, workspace_id: &str, snapshot_id: ObjectId) -> anyhow::Result<bool> {
         let _maintenance = self.acquire_maintenance_exclusive()?;
         anyhow::ensure!(
