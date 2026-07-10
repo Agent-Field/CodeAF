@@ -147,6 +147,11 @@ impl S3Session {
         Ok(())
     }
 
+    pub fn end_writer(&mut self) {
+        self.writer = false;
+        self.expected_head_etag = None;
+    }
+
     pub fn exists(&self, key: &str) -> anyhow::Result<bool> {
         Ok(self.head(key)?.is_some())
     }

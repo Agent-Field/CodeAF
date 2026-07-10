@@ -2498,7 +2498,7 @@ fn persistent_ssh_helper_syncs_independent_stores_over_framed_stdio() {
     );
     fs::write(
         &wrapper,
-        b"#!/bin/sh\nwhile [ \"$1\" != \"--\" ]; do shift; done\nshift\nshift\nshift\nexec \"$AGIT_TEST_BIN\" \"$@\"\n",
+        b"#!/bin/sh\ntest -z \"${AGIT_SSH_START_LOG:-}\" || printf 'start\\n' >> \"$AGIT_SSH_START_LOG\"\nwhile [ \"$1\" != \"--\" ]; do shift; done\nshift\nshift\nshift\nexec \"$AGIT_TEST_BIN\" \"$@\"\n",
     )
     .unwrap();
     let mut mode = fs::metadata(&wrapper).unwrap().permissions();
@@ -2585,6 +2585,76 @@ fn persistent_ssh_helper_syncs_independent_stores_over_framed_stdio() {
     let pull: Value = serde_json::from_slice(&pull).unwrap();
     assert_eq!(pull["disposition"], "fast_forwarded");
     assert_eq!(fs::read(peer.join("app.txt")).unwrap(), b"ssh delta\n");
+
+    let start_log = fixture.repo.parent().unwrap().join("ssh-starts.log");
+    let timing_log = fixture.repo.parent().unwrap().join("follow-timings.log");
+    let follower = std::process::Command::new(env!("CARGO_BIN_EXE_agit"))
+        .env("AGIT_DATA_DIR", &fixture.data)
+        .env("AGIT_NO_DAEMON", "1")
+        .env("AGIT_SSH_COMMAND", &wrapper)
+        .env("AGIT_REMOTE_DATA_DIR", &remote_data)
+        .env("AGIT_TEST_BIN", env!("CARGO_BIN_EXE_agit"))
+        .env("AGIT_SSH_START_LOG", &start_log)
+        .arg("--repo")
+        .arg(&fixture.repo)
+        .args(["sync", "--follow", "--poll-seconds", "1", "--timings"])
+        .stdout(std::process::Stdio::null())
+        .stderr(fs::File::create(&timing_log).unwrap())
+        .spawn()
+        .unwrap();
+    let follower = ChildGuard(follower);
+    wait_until("follow session to connect", Duration::from_secs(5), || {
+        start_log.exists()
+    });
+    std::thread::sleep(Duration::from_millis(100));
+
+    fs::write(peer.join("app.txt"), b"warm session notification\n").unwrap();
+    agit_at(&peer, &peer_data)
+        .args(["snap", "-m", "peer notification"])
+        .assert()
+        .success();
+    let notify_started = Instant::now();
+    let publish = ssh_agit(&peer, &peer_data)
+        .args(["sync", "--push", "--takeover", "--timings"])
+        .assert()
+        .success();
+    assert!(
+        String::from_utf8_lossy(&publish.get_output().stderr).contains("sync timings:"),
+        "--timings must expose the transport phase log"
+    );
+    wait_until(
+        "warm follower to materialize the notified head",
+        Duration::from_secs(2),
+        || {
+            fs::read(fixture.repo.join("app.txt")).ok().as_deref()
+                == Some(b"warm session notification\n")
+        },
+    );
+    let notify_elapsed = notify_started.elapsed();
+    assert!(
+        notify_elapsed < Duration::from_secs(2),
+        "a local warm-session publish should not wait for the fallback poll interval"
+    );
+    eprintln!(
+        "warm_session_publish_to_materialize_ms={}",
+        notify_elapsed.as_millis()
+    );
+    std::thread::sleep(Duration::from_millis(1100));
+    drop(follower);
+    assert_eq!(
+        fs::read_to_string(start_log).unwrap().lines().count(),
+        1,
+        "follow must reuse one SSH process across reconciliation cycles"
+    );
+    let follow_timings = fs::read_to_string(timing_log).unwrap();
+    assert!(
+        follow_timings.contains("reused_connection=true"),
+        "the second operation on a follow session must pay zero connection cost"
+    );
+    assert!(
+        follow_timings.contains("notify=") && !follow_timings.contains("notify=n/a"),
+        "a live-session pull must measure durable publish-to-notify latency"
+    );
 }
 
 #[test]

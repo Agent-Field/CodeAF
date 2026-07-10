@@ -270,6 +270,7 @@ pub struct SyncPullOutcome {
     pub fetched_objects: u64,
     pub reused_objects: u64,
     pub fetched_bytes: u64,
+    pub timings: sync::TransportTimings,
 }
 
 #[derive(Debug, Serialize)]
@@ -278,6 +279,25 @@ pub enum SyncFollowOutcome {
     Idle,
     Published { report: sync::PushReport },
     Pulled { outcome: SyncPullOutcome },
+}
+
+pub struct SyncFollowSession {
+    config: sync::PairConfig,
+    remote: crate::remote::Session,
+    pending_notify_ms: Option<u64>,
+}
+
+impl SyncFollowSession {
+    pub fn wait_for_remote_change(
+        &mut self,
+        fallback: std::time::Duration,
+    ) -> anyhow::Result<bool> {
+        let change = self.remote.wait_for_head_change(fallback)?;
+        if change.changed {
+            self.pending_notify_ms = change.notify_ms;
+        }
+        Ok(change.changed)
+    }
 }
 
 #[derive(Clone)]
@@ -813,31 +833,51 @@ impl AgitRepository {
     }
 
     pub fn sync_push(&mut self, takeover: bool) -> anyhow::Result<sync::PushReport> {
+        let config = sync::load(&self.sync_config_path())?;
+        let mut remote = sync::open_session(&config)?;
+        self.sync_push_on(takeover, &config, &mut remote)
+    }
+
+    fn sync_push_on(
+        &mut self,
+        takeover: bool,
+        config: &sync::PairConfig,
+        remote: &mut crate::remote::Session,
+    ) -> anyhow::Result<sync::PushReport> {
         let snapshot = self.snapshot(
             Some("sync push boundary".to_owned()),
             SnapshotTrigger::SyncPush,
         )?;
-        let config = sync::load(&self.sync_config_path())?;
         let expected = self.read_sync_state()?.map(|state| state.remote_root);
-        let report = sync::push(&self.store, snapshot, &config, expected, takeover)?;
+        let report = sync::push_on(&self.store, snapshot, config, expected, takeover, remote)?;
         self.write_sync_state(parse_id(&report.root)?)?;
         Ok(report)
     }
 
     pub fn sync_pull(&mut self, bootstrap: bool) -> anyhow::Result<SyncPullOutcome> {
+        let config = sync::load(&self.sync_config_path())?;
+        let mut remote = sync::open_session(&config)?;
+        self.sync_pull_on(bootstrap, &config, &mut remote)
+    }
+
+    fn sync_pull_on(
+        &mut self,
+        bootstrap: bool,
+        config: &sync::PairConfig,
+        remote: &mut crate::remote::Session,
+    ) -> anyhow::Result<SyncPullOutcome> {
         let prior_sync = self.read_sync_state()?;
         let local = self.snapshot(
             Some("sync pull boundary".to_owned()),
             SnapshotTrigger::SyncLocal,
         )?;
         let local_snapshot: Snapshot = self.store.read_struct(&local, ObjectKind::Snapshot)?;
-        let config = sync::load(&self.sync_config_path())?;
         let pulled = {
             // Imported objects are not reachable until incoming.json is
             // durable. Holding this guard closes the assembly/publication GC
             // race while keeping memory bounded by the disk-backed queue.
             let _maintenance = self.store.acquire_maintenance_shared()?;
-            let pulled = sync::pull(&self.store, &config)?;
+            let pulled = sync::pull_on(&self.store, config, remote)?;
             let incoming = serde_json::json!({"snapshot": pulled.snapshot});
             let path = self.sync_incoming_path();
             if let Some(parent) = path.parent() {
@@ -886,6 +926,7 @@ impl AgitRepository {
                 fetched_objects: pulled.report.fetched_objects,
                 reused_objects: pulled.report.reused_objects,
                 fetched_bytes: pulled.report.fetched_bytes,
+                timings: pulled.report.timings,
             });
         } else {
             SyncDisposition::Diverged
@@ -898,12 +939,25 @@ impl AgitRepository {
             fetched_objects: pulled.report.fetched_objects,
             reused_objects: pulled.report.reused_objects,
             fetched_bytes: pulled.report.fetched_bytes,
+            timings: pulled.report.timings,
         })
     }
 
-    pub fn sync_follow_once(&mut self) -> anyhow::Result<SyncFollowOutcome> {
+    pub fn sync_follow_session(&self) -> anyhow::Result<SyncFollowSession> {
         let config = sync::load(&self.sync_config_path())?;
-        let remote_root = sync::published_root(&config)?;
+        let remote = sync::open_session(&config)?;
+        Ok(SyncFollowSession {
+            config,
+            remote,
+            pending_notify_ms: None,
+        })
+    }
+
+    pub fn sync_follow_once(
+        &mut self,
+        session: &mut SyncFollowSession,
+    ) -> anyhow::Result<SyncFollowOutcome> {
+        let remote_root = sync::published_root_on(&session.config, &mut session.remote)?;
         let local_head = self
             .store
             .workspace_head(&self.workspace_id)?
@@ -913,7 +967,7 @@ impl AgitRepository {
 
         match remote_root {
             None => Ok(SyncFollowOutcome::Published {
-                report: self.sync_push(true)?,
+                report: self.sync_push_on(true, &session.config, &mut session.remote)?,
             }),
             Some(remote_root)
                 if last_synced.as_ref().is_some_and(|state| {
@@ -932,12 +986,14 @@ impl AgitRepository {
                     .is_some_and(|state| state.remote_root == remote_root) =>
             {
                 Ok(SyncFollowOutcome::Published {
-                    report: self.sync_push(true)?,
+                    report: self.sync_push_on(true, &session.config, &mut session.remote)?,
                 })
             }
-            Some(_) => Ok(SyncFollowOutcome::Pulled {
-                outcome: self.sync_pull(false)?,
-            }),
+            Some(_) => {
+                let mut outcome = self.sync_pull_on(false, &session.config, &mut session.remote)?;
+                outcome.timings.notify_ms = session.pending_notify_ms.take();
+                Ok(SyncFollowOutcome::Pulled { outcome })
+            }
         }
     }
 

@@ -176,8 +176,11 @@ project files. The 64-character recovery key is entered once on each new machine
 and is required to decrypt the workspace; SSH or bucket credentials alone are
 not sufficient. Keep that key outside the synced folder.
 
-`sync --follow` polls for a new sealed head (every five seconds by default) and
-publishes local snapshots created by the watcher or agent hooks. Sequential
+`sync --follow` keeps one bidirectional session open. SSH and directory remotes
+hold a HEAD-change subscription, so a durable publish wakes the other machine
+without waiting for a poll tick; S3-compatible buckets use the configured
+fallback interval because the storage API cannot push. Local snapshots created
+by the watcher or agent hooks publish on the same warm session. Sequential
 handoffs converge automatically. If both machines edit from the same base while
 disconnected or at the same time, agit preserves the local and remote states and
 reports divergence instead of choosing a winner. Automatic content merging is
@@ -185,11 +188,13 @@ not part of this flow yet; pause follow, inspect the two states, and resolve the
 work explicitly. For the smoothest current workflow, let one machine write at a
 time and hand off after it has converged.
 
-SSH sync keeps one `BatchMode` connection open per reconciliation, pipelines
-bounded object reads, and coalesces small encrypted objects into durable indexed
-frames instead of waiting for one fsync and acknowledgment per object. The
-authenticated head is published only after its frames are durable. If Machine A
-is the SSH endpoint and goes offline,
+SSH sync keeps one `BatchMode` process for the lifetime of follow, releases its
+writer lock after each publish without closing the channel, pipelines bounded
+object reads, and coalesces small encrypted objects into durable indexed frames.
+The authenticated head is published only after its frames are durable. Use
+`agit sync --push --timings`, `--pull --timings`, or `--follow --timings` to emit
+connect/auth, negotiation, stream, durability-wait, notification, total, and
+connection-reuse measurements to stderr. If Machine A is the SSH endpoint and goes offline,
 Machine B retains its full local workspace but cannot exchange newer states until
 A is reachable again.
 

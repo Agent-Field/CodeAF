@@ -11,7 +11,7 @@ use serde::{Deserialize, Serialize};
 use std::fs;
 use std::os::unix::fs::PermissionsExt;
 use std::path::Path;
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::time::{Instant, SystemTime, UNIX_EPOCH};
 
 const LEASE_SECONDS: u64 = 60 * 60;
 const HAVE_BATCH: usize = 1024;
@@ -44,6 +44,7 @@ pub struct PushReport {
     pub uploaded_objects: u64,
     pub reused_objects: u64,
     pub uploaded_bytes: u64,
+    pub timings: TransportTimings,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -52,6 +53,25 @@ pub struct PullReport {
     pub fetched_objects: u64,
     pub reused_objects: u64,
     pub fetched_bytes: u64,
+    pub timings: TransportTimings,
+}
+
+#[derive(Debug, Clone, Default, Serialize)]
+pub struct TransportTimings {
+    pub connect_auth_ms: u64,
+    pub negotiate_ms: u64,
+    pub stream_ms: u64,
+    pub durability_ms: u64,
+    pub notify_ms: Option<u64>,
+    pub total_ms: u64,
+    pub connection_reused: bool,
+}
+
+struct OperationTiming {
+    connect_auth_ms: u64,
+    connection_reused: bool,
+    total_started: Instant,
+    lock_ms: u64,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -129,12 +149,78 @@ pub fn push(
     takeover: bool,
 ) -> anyhow::Result<PushReport> {
     let mut remote = Session::open(&config.remote, storage_namespace(config))?;
+    push_on(
+        store,
+        snapshot,
+        config,
+        expected_remote_root,
+        takeover,
+        &mut remote,
+    )
+}
+
+pub(crate) fn open_session(config: &PairConfig) -> anyhow::Result<Session> {
+    Session::open(&config.remote, storage_namespace(config))
+}
+
+pub(crate) fn push_on(
+    store: &ObjectStore,
+    snapshot: ObjectId,
+    config: &PairConfig,
+    expected_remote_root: Option<ObjectId>,
+    takeover: bool,
+    remote: &mut Session,
+) -> anyhow::Result<PushReport> {
+    let total_started = Instant::now();
+    let (connect_auth_ms, connection_reused) = remote.begin_operation();
+    let negotiate_started = Instant::now();
     remote.begin_writer()?;
-    let new_lease = prepare_writer_lease(&mut remote, config, takeover)?;
+    let lock_ms = elapsed_ms(negotiate_started);
+    let result = push_locked(
+        store,
+        snapshot,
+        config,
+        expected_remote_root,
+        takeover,
+        remote,
+        OperationTiming {
+            connect_auth_ms,
+            connection_reused,
+            total_started,
+            lock_ms,
+        },
+    );
+    let durability_started = Instant::now();
+    let unlock = remote.end_writer();
+    match (result, unlock) {
+        (Err(error), _) => Err(error),
+        (Ok(_), Err(error)) => Err(error).context("release remote writer lock"),
+        (Ok(mut report), Ok(())) => {
+            report.timings.durability_ms = report
+                .timings
+                .durability_ms
+                .saturating_add(elapsed_ms(durability_started));
+            report.timings.total_ms = connect_auth_ms.saturating_add(elapsed_ms(total_started));
+            Ok(report)
+        }
+    }
+}
+
+fn push_locked(
+    store: &ObjectStore,
+    snapshot: ObjectId,
+    config: &PairConfig,
+    expected_remote_root: Option<ObjectId>,
+    takeover: bool,
+    remote: &mut Session,
+    timing: OperationTiming,
+) -> anyhow::Result<PushReport> {
+    let negotiate_started = Instant::now();
+    let new_lease = prepare_writer_lease(remote, config, takeover)?;
     let crypto = RemoteCrypto::new(config.key);
     let snapshot_value: Snapshot = store.read_struct(&snapshot, ObjectKind::Snapshot)?;
     let base_root = if remote.exists("HEAD")? {
-        let current = read_remote_head(&mut remote, config, &crypto)?;
+        let current = read_remote_head(remote, config, &crypto)?;
         anyhow::ensure!(
             current.snapshot == snapshot || Some(current.root) == expected_remote_root,
             "remote workspace changed since this machine last synchronized; pull before pushing"
@@ -151,6 +237,8 @@ pub fn push(
     // takeover attempt must not disrupt the current writer when no new HEAD
     // can be committed.
     remote.write("LEASE", &new_lease)?;
+    let negotiate_ms = timing.lock_ms.saturating_add(elapsed_ms(negotiate_started));
+    let stream_started = Instant::now();
     let mut uploaded_objects = 0_u64;
     let mut reused_objects = 0_u64;
     let mut uploaded_bytes = 0_u64;
@@ -160,7 +248,7 @@ pub fn push(
         if bytes.len() >= HAVE_BATCH_BYTES {
             flush_push_batch(
                 &crypto,
-                &mut remote,
+                remote,
                 &mut pending,
                 &mut uploaded_objects,
                 &mut reused_objects,
@@ -183,7 +271,7 @@ pub fn push(
         {
             flush_push_batch(
                 &crypto,
-                &mut remote,
+                remote,
                 &mut pending,
                 &mut uploaded_objects,
                 &mut reused_objects,
@@ -197,12 +285,14 @@ pub fn push(
     })?;
     flush_push_batch(
         &crypto,
-        &mut remote,
+        remote,
         &mut pending,
         &mut uploaded_objects,
         &mut reused_objects,
         &mut uploaded_bytes,
     )?;
+    let stream_ms = elapsed_ms(stream_started);
+    let durability_started = Instant::now();
     let head = RemoteHead {
         version: 1,
         snapshot,
@@ -215,6 +305,7 @@ pub fn push(
         head_context(&config.namespace).as_bytes(),
     )?;
     remote.write("HEAD", &encrypted_head)?;
+    let durability_ms = elapsed_ms(durability_started);
     Ok(PushReport {
         snapshot: hex::encode(snapshot),
         root: hex::encode(snapshot_value.root_tree),
@@ -222,6 +313,17 @@ pub fn push(
         uploaded_objects,
         reused_objects,
         uploaded_bytes,
+        timings: TransportTimings {
+            connect_auth_ms: timing.connect_auth_ms,
+            negotiate_ms,
+            stream_ms,
+            durability_ms,
+            notify_ms: None,
+            total_ms: timing
+                .connect_auth_ms
+                .saturating_add(elapsed_ms(timing.total_started)),
+            connection_reused: timing.connection_reused,
+        },
     })
 }
 
@@ -262,8 +364,21 @@ fn flush_push_batch(
 
 pub fn pull(store: &ObjectStore, config: &PairConfig) -> anyhow::Result<PulledHead> {
     let mut remote = Session::open(&config.remote, storage_namespace(config))?;
+    pull_on(store, config, &mut remote)
+}
+
+pub(crate) fn pull_on(
+    store: &ObjectStore,
+    config: &PairConfig,
+    remote: &mut Session,
+) -> anyhow::Result<PulledHead> {
+    let total_started = Instant::now();
+    let (connect_auth_ms, connection_reused) = remote.begin_operation();
+    let negotiate_started = Instant::now();
     let crypto = RemoteCrypto::new(config.key);
-    let head = read_remote_head(&mut remote, config, &crypto)?;
+    let head = read_remote_head(remote, config, &crypto)?;
+    let negotiate_ms = elapsed_ms(negotiate_started);
+    let stream_started = Instant::now();
     let queue_file = tempfile::NamedTempFile::new()?;
     let queue = Connection::open(queue_file.path())?;
     queue.execute_batch(
@@ -328,6 +443,7 @@ pub fn pull(store: &ObjectStore, config: &PairConfig) -> anyhow::Result<PulledHe
         remote_snapshot.root_tree == head.root,
         "authenticated remote head does not match its snapshot root"
     );
+    let stream_ms = elapsed_ms(stream_started);
     Ok(PulledHead {
         snapshot: head.snapshot,
         root: head.root,
@@ -337,17 +453,38 @@ pub fn pull(store: &ObjectStore, config: &PairConfig) -> anyhow::Result<PulledHe
             fetched_objects,
             reused_objects,
             fetched_bytes,
+            timings: TransportTimings {
+                connect_auth_ms,
+                negotiate_ms,
+                stream_ms,
+                durability_ms: 0,
+                notify_ms: None,
+                total_ms: connect_auth_ms.saturating_add(elapsed_ms(total_started)),
+                connection_reused,
+            },
         },
     })
 }
 
 pub fn published_root(config: &PairConfig) -> anyhow::Result<Option<ObjectId>> {
     let mut remote = Session::open(&config.remote, storage_namespace(config))?;
+    published_root_on(config, &mut remote)
+}
+
+pub(crate) fn published_root_on(
+    config: &PairConfig,
+    remote: &mut Session,
+) -> anyhow::Result<Option<ObjectId>> {
+    remote.begin_operation();
     if !remote.exists("HEAD")? {
         return Ok(None);
     }
     let crypto = RemoteCrypto::new(config.key);
-    Ok(Some(read_remote_head(&mut remote, config, &crypto)?.root))
+    Ok(Some(read_remote_head(remote, config, &crypto)?.root))
+}
+
+fn elapsed_ms(started: Instant) -> u64 {
+    started.elapsed().as_millis().try_into().unwrap_or(u64::MAX)
 }
 
 fn prepare_writer_lease(

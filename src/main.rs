@@ -293,7 +293,7 @@ enum Command {
         /// Continuously reconcile sealed local state and the encrypted remote.
         #[arg(long, conflicts_with_all = ["push", "pull", "takeover", "bootstrap"])]
         follow: bool,
-        /// Bucket polling interval while following.
+        /// Bucket polling interval and live-session subscription fallback.
         #[arg(long, default_value_t = 5, requires = "follow")]
         poll_seconds: u64,
         /// Explicitly take the single-writer lease from another machine.
@@ -302,6 +302,9 @@ enum Command {
         /// Replace this machine's initial state with the remote state, reversibly.
         #[arg(long, requires = "pull")]
         bootstrap: bool,
+        /// Print transport phase timings to stderr.
+        #[arg(long)]
+        timings: bool,
     },
     /// Serve agit tools to coding agents over MCP stdio.
     Mcp,
@@ -1316,6 +1319,7 @@ fn main() -> anyhow::Result<()> {
             poll_seconds,
             takeover,
             bootstrap,
+            timings,
         } => {
             anyhow::ensure!(
                 push || pull || follow,
@@ -1324,15 +1328,23 @@ fn main() -> anyhow::Result<()> {
             let mut repository = AgitRepository::open(&cli.repo)?;
             if follow {
                 anyhow::ensure!(poll_seconds > 0, "--poll-seconds must be greater than zero");
+                let mut session = repository.sync_follow_session()?;
                 loop {
-                    match repository.sync_follow_once() {
+                    let result = repository.sync_follow_once(&mut session);
+                    let session_failed = result.is_err();
+                    match result {
                         Ok(SyncFollowOutcome::Idle) => {}
-                        Ok(SyncFollowOutcome::Published { report }) => println!(
-                            "Published {} ({} objects, {} bytes)",
-                            &report.snapshot[..12],
-                            report.uploaded_objects,
-                            report.uploaded_bytes
-                        ),
+                        Ok(SyncFollowOutcome::Published { report }) => {
+                            println!(
+                                "Published {} ({} objects, {} bytes)",
+                                &report.snapshot[..12],
+                                report.uploaded_objects,
+                                report.uploaded_bytes
+                            );
+                            if timings {
+                                print_transport_timings(&report.timings);
+                            }
+                        }
                         Ok(SyncFollowOutcome::Pulled { outcome }) => {
                             println!(
                                 "Remote {} {:?}",
@@ -1344,13 +1356,30 @@ fn main() -> anyhow::Result<()> {
                                     "Divergence preserved; follow is paused until it is resolved"
                                 );
                             }
+                            if timings {
+                                print_transport_timings(&outcome.timings);
+                            }
                         }
                         Err(error) => eprintln!("sync follow: {error:#}"),
                     }
-                    std::thread::sleep(std::time::Duration::from_secs(poll_seconds));
+                    if session_failed {
+                        std::thread::sleep(std::time::Duration::from_secs(poll_seconds));
+                        session = repository.sync_follow_session()?;
+                        continue;
+                    }
+                    if let Err(error) =
+                        session.wait_for_remote_change(std::time::Duration::from_secs(poll_seconds))
+                    {
+                        eprintln!("sync follow notification: {error:#}");
+                        std::thread::sleep(std::time::Duration::from_secs(poll_seconds));
+                        session = repository.sync_follow_session()?;
+                    }
                 }
             } else if push {
                 let report = repository.sync_push(takeover)?;
+                if timings {
+                    print_transport_timings(&report.timings);
+                }
                 if cli.json {
                     println!("{}", serde_json::to_string_pretty(&report)?);
                 } else {
@@ -1362,6 +1391,9 @@ fn main() -> anyhow::Result<()> {
                 }
             } else {
                 let outcome = repository.sync_pull(bootstrap)?;
+                if timings {
+                    print_transport_timings(&outcome.timings);
+                }
                 if cli.json {
                     println!("{}", serde_json::to_string_pretty(&outcome)?);
                 } else {
@@ -1394,6 +1426,21 @@ fn main() -> anyhow::Result<()> {
         }
     }
     Ok(())
+}
+
+fn print_transport_timings(timings: &agit::sync::TransportTimings) {
+    eprintln!(
+        "sync timings: connect/auth={}ms negotiate={}ms stream={}ms fsync-wait={}ms notify={} total={}ms reused_connection={}",
+        timings.connect_auth_ms,
+        timings.negotiate_ms,
+        timings.stream_ms,
+        timings.durability_ms,
+        timings
+            .notify_ms
+            .map_or_else(|| "n/a".to_owned(), |value| format!("{value}ms")),
+        timings.total_ms,
+        timings.connection_reused
+    );
 }
 
 fn default_fork_name() -> String {

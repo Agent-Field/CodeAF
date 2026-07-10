@@ -11,6 +11,7 @@ use std::fs::{self, OpenOptions};
 use std::io::{BufReader, BufWriter, Read, Seek, SeekFrom, Write};
 use std::path::{Path, PathBuf};
 use std::process::{Child, ChildStdin, ChildStdout, Command, Stdio};
+use std::time::{Duration, Instant, SystemTime};
 
 const REQUEST_MAGIC: &[u8; 5] = b"AGRP\x01";
 const RESPONSE_MAGIC: &[u8; 5] = b"AGRS\x01";
@@ -20,6 +21,9 @@ const OP_WRITE: u8 = 3;
 const OP_LOCK: u8 = 4;
 const OP_HAS_OBJECTS: u8 = 5;
 const OP_WRITE_FRAME: u8 = 6;
+const OP_UNLOCK: u8 = 7;
+const OP_PING: u8 = 8;
+const OP_WAIT_HEAD: u8 = 9;
 const STATUS_OK: u8 = 0;
 const STATUS_ERROR: u8 = 1;
 const MAX_KEY_BYTES: usize = 96;
@@ -84,6 +88,14 @@ impl RemoteSpec {
 
 pub(crate) struct Session {
     inner: SessionInner,
+    connect_ms: u64,
+    operations: u64,
+    last_head_hash: Option<[u8; 32]>,
+}
+
+pub(crate) struct HeadChange {
+    pub changed: bool,
+    pub notify_ms: Option<u64>,
 }
 
 enum SessionInner {
@@ -102,6 +114,7 @@ enum SessionInner {
 
 impl Session {
     pub fn open(spec: &RemoteSpec, namespace: &str) -> anyhow::Result<Self> {
+        let started = Instant::now();
         validate_namespace(namespace)?;
         spec.validate()?;
         let inner = match spec {
@@ -138,7 +151,29 @@ impl Session {
             }
             RemoteSpec::S3 { s3 } => SessionInner::S3(S3Session::open(s3, namespace)?),
         };
-        Ok(Self { inner })
+        let mut session = Self {
+            inner,
+            connect_ms: 0,
+            operations: 0,
+            last_head_hash: None,
+        };
+        if let SessionInner::Ssh { input, output, .. } = &mut session.inner {
+            request(
+                input.as_mut().context("SSH helper input is closed")?,
+                OP_PING,
+                "",
+                &[],
+            )?;
+            read_ok_response(output, MAX_ERROR_BYTES as u64)?;
+        }
+        session.connect_ms = elapsed_ms(started);
+        Ok(session)
+    }
+
+    pub fn begin_operation(&mut self) -> (u64, bool) {
+        let reused = self.operations > 0;
+        self.operations += 1;
+        (if reused { 0 } else { self.connect_ms }, reused)
     }
 
     pub fn begin_writer(&mut self) -> anyhow::Result<()> {
@@ -178,6 +213,40 @@ impl Session {
         }
     }
 
+    pub fn end_writer(&mut self) -> anyhow::Result<()> {
+        match &mut self.inner {
+            SessionInner::Directory { lock, .. } => {
+                if let Some(file) = lock.take() {
+                    FileExt::unlock(&file)?;
+                }
+                Ok(())
+            }
+            SessionInner::Ssh {
+                input,
+                output,
+                locked,
+                ..
+            } => {
+                if !*locked {
+                    return Ok(());
+                }
+                request(
+                    input.as_mut().context("SSH helper input is closed")?,
+                    OP_UNLOCK,
+                    "",
+                    &[],
+                )?;
+                read_ok_response(output, MAX_ERROR_BYTES as u64)?;
+                *locked = false;
+                Ok(())
+            }
+            SessionInner::S3(session) => {
+                session.end_writer();
+                Ok(())
+            }
+        }
+    }
+
     pub fn exists(&mut self, key: &str) -> anyhow::Result<bool> {
         validate_key(key)?;
         match &mut self.inner {
@@ -200,7 +269,7 @@ impl Session {
     pub fn read(&mut self, key: &str, limit: u64) -> anyhow::Result<Vec<u8>> {
         validate_key(key)?;
         anyhow::ensure!(limit <= MAX_OBJECT_BYTES, "invalid remote read limit");
-        match &mut self.inner {
+        let bytes = match &mut self.inner {
             SessionInner::Directory { root, .. } => read_remote_value(root, key, limit),
             SessionInner::Ssh { input, output, .. } => {
                 request(
@@ -212,7 +281,11 @@ impl Session {
                 read_ok_response(output, limit)
             }
             SessionInner::S3(session) => session.read(key, limit),
+        }?;
+        if key == "HEAD" {
+            self.last_head_hash = Some(*blake3::hash(&bytes).as_bytes());
         }
+        Ok(bytes)
     }
 
     pub fn read_many(
@@ -255,7 +328,7 @@ impl Session {
             bytes.len() as u64 <= limit,
             "remote value exceeds its size limit"
         );
-        match &mut self.inner {
+        let result = match &mut self.inner {
             SessionInner::Directory { root, lock } => {
                 anyhow::ensure!(lock.is_some(), "remote write requires the writer lock");
                 atomic_write(&root.join(key), bytes)
@@ -271,7 +344,11 @@ impl Session {
                 Ok(())
             }
             SessionInner::S3(session) => session.write(key, bytes),
+        };
+        if result.is_ok() && key == "HEAD" {
+            self.last_head_hash = Some(*blake3::hash(bytes).as_bytes());
         }
+        result
     }
 
     pub fn write_many(&mut self, values: &[(String, Vec<u8>)]) -> anyhow::Result<()> {
@@ -348,6 +425,58 @@ impl Session {
                 Ok(response.into_iter().map(|value| value != 0).collect())
             }
             SessionInner::S3(session) => session.has_objects(ids),
+        }
+    }
+
+    pub fn wait_for_head_change(&mut self, timeout: Duration) -> anyhow::Result<HeadChange> {
+        let timeout = if matches!(&self.inner, SessionInner::S3(_)) {
+            timeout
+        } else {
+            timeout.min(Duration::from_secs(1))
+        };
+        let timeout_ms = timeout.as_millis().min(30_000) as u64;
+        let Some(known) = self.last_head_hash else {
+            std::thread::sleep(timeout);
+            return Ok(HeadChange {
+                changed: true,
+                notify_ms: None,
+            });
+        };
+        match &mut self.inner {
+            SessionInner::Directory { root, .. } => {
+                let notify_ms = wait_for_head_hash_change(root, &known, timeout_ms)?;
+                Ok(HeadChange {
+                    changed: notify_ms.is_some(),
+                    notify_ms,
+                })
+            }
+            SessionInner::Ssh { input, output, .. } => {
+                let mut payload = Vec::with_capacity(40);
+                payload.extend_from_slice(&timeout_ms.to_le_bytes());
+                payload.extend_from_slice(&known);
+                request(
+                    input.as_mut().context("SSH helper input is closed")?,
+                    OP_WAIT_HEAD,
+                    "",
+                    &payload,
+                )?;
+                let response = read_ok_response(output, 9)?;
+                anyhow::ensure!(response.len() == 9, "invalid SSH notification response");
+                let changed = response[0] != 0;
+                let measured = u64::from_le_bytes(response[1..].try_into().unwrap());
+                Ok(HeadChange {
+                    changed,
+                    notify_ms: (changed && measured != u64::MAX).then_some(measured),
+                })
+            }
+            SessionInner::S3(session) => {
+                std::thread::sleep(timeout);
+                let bytes = session.read("HEAD", MAX_METADATA_BYTES)?;
+                Ok(HeadChange {
+                    changed: blake3::hash(&bytes).as_bytes() != &known,
+                    notify_ms: None,
+                })
+            }
         }
     }
 }
@@ -428,7 +557,8 @@ fn read_request(input: &mut impl Read) -> anyhow::Result<Option<RequestFrame>> {
     let payload_len = u64::from_le_bytes(fixed[3..11].try_into().unwrap());
     anyhow::ensure!(key_len <= MAX_KEY_BYTES, "remote request key is too long");
     let max_payload = match op {
-        OP_EXISTS | OP_LOCK => 0,
+        OP_EXISTS | OP_LOCK | OP_UNLOCK | OP_PING => 0,
+        OP_WAIT_HEAD => 40,
         OP_READ => 8,
         OP_WRITE => MAX_OBJECT_BYTES,
         OP_HAS_OBJECTS => 4 + (MAX_HAVE_BATCH * 32) as u64,
@@ -488,6 +618,23 @@ fn handle_request(
                 .context("another sync operation is updating the remote")?;
             *lock = Some(file);
             Ok(Vec::new())
+        }
+        OP_UNLOCK => {
+            if let Some(file) = lock.take() {
+                FileExt::unlock(&file)?;
+            }
+            Ok(Vec::new())
+        }
+        OP_PING => Ok(Vec::new()),
+        OP_WAIT_HEAD => {
+            anyhow::ensure!(payload.len() == 40, "invalid wait request");
+            let timeout_ms = u64::from_le_bytes(payload[..8].try_into().unwrap()).min(30_000);
+            let known: [u8; 32] = payload[8..].try_into().unwrap();
+            let notify_ms = wait_for_head_hash_change(root, &known, timeout_ms)?;
+            let mut response = Vec::with_capacity(9);
+            response.push(notify_ms.is_some() as u8);
+            response.extend_from_slice(&notify_ms.unwrap_or(u64::MAX).to_le_bytes());
+            Ok(response)
         }
         OP_HAS_OBJECTS => {
             anyhow::ensure!(payload.len() >= 4, "invalid have request");
@@ -560,6 +707,36 @@ fn read_ok_response(input: &mut impl Read, limit: u64) -> anyhow::Result<Vec<u8>
         Ok(payload)
     } else {
         anyhow::bail!("remote helper: {}", String::from_utf8_lossy(&payload))
+    }
+}
+
+fn elapsed_ms(started: Instant) -> u64 {
+    started.elapsed().as_millis().try_into().unwrap_or(u64::MAX)
+}
+
+fn wait_for_head_hash_change(
+    root: &Path,
+    known: &[u8; 32],
+    timeout_ms: u64,
+) -> anyhow::Result<Option<u64>> {
+    let deadline = Instant::now() + Duration::from_millis(timeout_ms);
+    loop {
+        if let Ok(bytes) = read_remote_value(root, "HEAD", MAX_METADATA_BYTES) {
+            if blake3::hash(&bytes).as_bytes() != known {
+                let modified = fs::metadata(root.join("HEAD"))?.modified()?;
+                let notify_ms = SystemTime::now()
+                    .duration_since(modified)
+                    .unwrap_or_default()
+                    .as_millis()
+                    .try_into()
+                    .unwrap_or(u64::MAX);
+                return Ok(Some(notify_ms));
+            }
+        }
+        if Instant::now() >= deadline {
+            return Ok(None);
+        }
+        std::thread::sleep(Duration::from_millis(20));
     }
 }
 

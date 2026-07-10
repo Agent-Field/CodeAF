@@ -39,5 +39,5 @@ pub use repository::{
     DiffChange, DiffSummary, FidelityAspect, FidelityReport, ForkPlan, ForkRemoval, ForkSummary,
     ForkUpdates, MaterializationReport, MergeOutcome, MissingMaterializationPath, ReleaseOutcome,
     RepositoryStatus, RewindPlan, SnapshotSummary, SyncDisposition, SyncFollowOutcome,
-    SyncPullOutcome,
+    SyncFollowSession, SyncPullOutcome,
 };
