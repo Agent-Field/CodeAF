@@ -1,27 +1,42 @@
+<div align="center">
+
 # furrow
 
-**Run a team of coding agents on one repository — in parallel, across machines — without them stepping on each other.**
+### Git for everything else
 
-furrow forks your *entire working state* — dependencies, `.env`, the dev database, Git's own index — into warm, isolated universes in about a second. Agents work in parallel while conflict radar watches every universe live. Results merge back only through your verification command. And the same sealed state travels — exactly, encrypted — to your other machines, so agents can run wherever the compute is.
+[![License](https://img.shields.io/badge/license-Apache%202.0-0c0b09.svg?style=flat&labelColor=8b7355)](LICENSE)
+[![Rust](https://img.shields.io/badge/built%20with-Rust-0c0b09.svg?style=flat&logo=rust&logoColor=e8e5dc&labelColor=8b7355)](Cargo.toml)
+[![More from Agent-Field](https://img.shields.io/badge/More_from-Agent--Field-0c0b09?style=flat&logo=github&logoColor=e8e5dc&labelColor=8b7355)](https://github.com/Agent-Field)
 
-Underneath is one primitive: your workspace, continuously sealed into an immutable, content-addressed timeline. Fork it, diff it, merge it, materialize it on another machine, rewind it when anything — human or agent — breaks it. Git versions your commits; furrow versions everything between them.
+<p>
+  <a href="#parallel-agents-one-machine">Parallel Agents</a> •
+  <a href="#parallel-agents-another-machine">Distributed Agents</a> •
+  <a href="#rewind-what-git-cant-see">Rewind</a> •
+  <a href="#the-rest-of-the-daily-kit">Daily Kit</a> •
+  <a href="#how-its-built">Architecture</a>
+</p>
 
-Local-first and Apache-2.0. No account, no telemetry, works offline. Remotes, when you add them, receive only ciphertext.
+<img src="assets/banner.png" alt="furrow — Git for everything else. Fork your whole workspace, run agents anywhere, zero merge conflicts." width="100%" />
 
-## Setup — once, then forget it's there
+</div>
+
+**furrow copy-on-write forks your entire workspace — dependencies, `.env`, the dev database, Git's index, all of it — so agents get a byte-exact copy wherever they actually run: another terminal, a cloud sandbox, or your other laptop.**
+
+One fork, one primitive, everywhere an agent might run: instant and disk-cheap right next to you, or sealed and encrypted so it can reach a sandbox or a second machine with the same guarantee. You stop being the one who copies `.env` files and reseeds databases by hand before an agent can even start.
 
 ```bash
-cargo install --path .        # Rust 1.83+
 cd my-project && furrow watch
 ```
 
-That's the whole setup. From this moment protection is ambient: furrow seals your workspace at quiet moments and agent-turn boundaries, automatically, forever. You keep working exactly as you did — there is no workflow to adopt.
+That's the whole setup. From this moment your workspace is continuously sealed into an immutable, content-addressed timeline: fork it, diff it, merge it, materialize it on another machine, rewind it when anything — human or agent — breaks it. Git versions your commits; furrow versions everything between them.
+
+Local-first and Apache-2.0. No account, no telemetry, works offline. Remotes, when you add them, receive only ciphertext.
 
 Every scenario below is a runnable script in [`./demo/`](demo/).
 
 ---
 
-## Five agents, one repo
+## Parallel agents, one machine
 
 Start your agents the way you always start them — just more of them. One optional alias gives every session its own universe automatically:
 
@@ -39,9 +54,9 @@ furrow merge <universe> --check "cargo test --all"    # lands only if your check
 
 Skip the alias and sessions simply share the directory like today — still sealed continuously, still collision-warned. `furrow forks` shows every universe, its real disk cost, and live conflicts whenever you're curious.
 
-## Your state travels — agents on any machine
+## Parallel agents, another machine
 
-Cloud sandboxes and second machines see your last push — never your dirty edits, `.env`, dev database, or Git index. furrow materializes your *current state*, exactly, on any machine that can reach yours (SSH over LAN or Tailscale), or through any S3-compatible bucket as an always-available encrypted mailbox. No hosted service required.
+Same fork, different machine. Cloud sandboxes and second machines normally see your last push — never your dirty edits, `.env`, dev database, or Git index. furrow materializes your *current state*, exactly, on any machine that can reach yours (SSH over LAN or Tailscale), or through any S3-compatible bucket as an always-available encrypted mailbox. No hosted service required.
 
 ```bash
 furrow remote add ssh://dev@machine-a.tailnet --name my-project && furrow sync --follow
@@ -51,6 +66,8 @@ FURROW_RECOVERY_KEY=<key> furrow clone ssh://dev@machine-a.tailnet/my-project
 ```
 
 `sync --follow` keeps a warm session both ways: seal on one machine, and it's on the other before you've switched chairs. Transfers are deduplicated deltas — a day of work syncs as kilobytes. Remotes hold only ciphertext; the recovery key (entered once per machine) is the only thing that can read a workspace.
+
+> A laptop died mid-session. The exact working directory — dirty edits, `.env`, dev database — came back on a different machine from an S3 bucket that never saw plaintext.
 
 **Measured, end-to-end:** Agent A edits source and tests on one machine, furrow
 encrypts and publishes the sealed state, and Agent B receives a usable workspace
@@ -82,6 +99,8 @@ furrow rewind <snapshot>                 # or the whole workspace, byte-exact
 
 Restoration covers symlinks, permissions, extended attributes, SQLite (with a logically consistent image available), and Git's own mutable state. `--dry-run` previews any rewind's impact first.
 
+> `.env` and the dev SQLite database, both back, both intact, after an agent ran `git clean -fdx`.
+
 ## The rest of the daily kit
 
 - **`furrow try -- npm install framework@latest`** — run anything risky with automatic before/after restore points. Keep the result or be back in seconds.
@@ -92,6 +111,30 @@ Restoration covers symlinks, permissions, extended attributes, SQLite (with a lo
 ## Built for agents as first-class users
 
 The CLI is the agent API: `--json` everywhere, stable IDs from every mutation, structured errors, and destructive operations gated on explicit IDs plus `--yes` — a prompt in machine mode is an error, not a hang. `furrow hook install` turns agent turns into attributed restore points; `furrow events --follow` streams seals, conflicts, and merges as resumable NDJSON; `furrow mcp` serves harnesses that prefer MCP. Nothing in furrow knows which agent is calling — Claude Code, Codex, Cursor, or a shell script get the same contract.
+
+<details>
+<summary><strong>Full command reference</strong> — every command, one line each</summary>
+
+| Command | What it does |
+|---|---|
+| `furrow watch` | Attach a repo and start continuous sealing |
+| `furrow exec -- <cmd>` | Run a command inside its own isolated universe |
+| `furrow merge <universe> --check "<cmd>"` | Land a universe's changes, only if checks pass |
+| `furrow forks` | List universes, disk cost, live conflicts |
+| `furrow timeline` | Scrub sealed history |
+| `furrow rewind <snapshot> [--paths] [--dry-run]` | Restore workspace state, whole or partial |
+| `furrow try -- <cmd>` | Run something risky with automatic before/after restore points |
+| `furrow bisect -- <cmd>` | Bisect workspace state, not just commits |
+| `furrow shrink` | Reclaim recognized dependency/build caches |
+| `furrow ui` | Mission Control — local web UI, no account |
+| `furrow remote add <url>` | Add a remote (SSH or S3-compatible) |
+| `furrow sync --follow` | Keep a warm two-way sync session with a remote |
+| `furrow clone <url>` | Materialize a workspace's exact state on another machine |
+| `furrow hook install` | Turn agent turns into attributed restore points |
+| `furrow events --follow` | Stream seals/conflicts/merges as NDJSON |
+| `furrow mcp` | Serve furrow over MCP for harnesses that prefer it |
+
+</details>
 
 ## How it's built
 
