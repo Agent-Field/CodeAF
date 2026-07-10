@@ -41,6 +41,17 @@ enum Command {
     },
     #[command(name = "__remote", hide = true)]
     RemoteHelper { namespace: String },
+    #[command(name = "__namespace-probe", hide = true)]
+    NamespaceProbe,
+    #[command(name = "__exec-namespace", hide = true)]
+    ExecNamespace {
+        #[arg(long)]
+        source: PathBuf,
+        #[arg(long)]
+        target: PathBuf,
+        #[arg(last = true, required = true)]
+        command: Vec<OsString>,
+    },
     /// Create a complete labeled snapshot now.
     Snap {
         #[arg(short, long)]
@@ -142,6 +153,20 @@ enum Command {
         #[arg(long)]
         destination: Option<PathBuf>,
         #[arg(last = true, required = true)]
+        command: Vec<OsString>,
+    },
+    /// Run one or more commands in isolated, whole-workspace universes.
+    Exec {
+        /// Stable fork name. May only be used for a single universe.
+        #[arg(long)]
+        fork: Option<String>,
+        /// Number of universes to create and run concurrently.
+        #[arg(short = 'n', default_value_t = 1)]
+        count: usize,
+        /// Print the platform driver, paths, ports, and fork costs without executing.
+        #[arg(long)]
+        plan: bool,
+        #[arg(last = true)]
         command: Vec<OsString>,
     },
     /// Run a command with exact before/after restore points in the current workspace.
@@ -351,6 +376,16 @@ fn main() -> anyhow::Result<()> {
         }
         Command::RemoteHelper { namespace } => {
             agit::remote::serve(&namespace)?;
+        }
+        Command::NamespaceProbe => {
+            agit::universe::probe_namespace_helper()?;
+        }
+        Command::ExecNamespace {
+            source,
+            target,
+            command,
+        } => {
+            agit::universe::exec_linux_namespace(&source, &target, &command)?;
         }
         Command::Snap { message } => {
             let mut repository = AgitRepository::open(&cli.repo)?;
@@ -850,6 +885,14 @@ fn main() -> anyhow::Result<()> {
             );
             anyhow::ensure!(status.success(), "fork command exited with {status}");
         }
+        Command::Exec {
+            fork,
+            count,
+            plan,
+            command,
+        } => {
+            execute_universes(&cli.repo, cli.json, fork, count, plan, &command)?;
+        }
         Command::Attempt { message, command } => {
             anyhow::ensure!(!cli.json, "--json cannot be combined with `agit try`");
             let (program, arguments) = command
@@ -1153,6 +1196,242 @@ fn default_fork_name() -> String {
         .unwrap_or_default()
         .as_secs();
     format!("fork-{seconds}")
+}
+
+fn default_exec_name() -> String {
+    let seconds = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs();
+    format!("exec-{seconds}-{}", std::process::id())
+}
+
+fn execute_universes(
+    repo: &std::path::Path,
+    json: bool,
+    explicit_name: Option<String>,
+    count: usize,
+    plan_only: bool,
+    command: &[OsString],
+) -> anyhow::Result<()> {
+    use agit::universe::{ExecPlan, ExecutionDriver, UniverseCommand, UniversePlan};
+
+    anyhow::ensure!((1..=32).contains(&count), "-n must be between 1 and 32");
+    anyhow::ensure!(
+        explicit_name.is_none() || count == 1,
+        "--fork names one universe and cannot be combined with -n greater than 1"
+    );
+    anyhow::ensure!(
+        plan_only || !command.is_empty(),
+        "`agit exec` requires a command after -- (or use --plan)"
+    );
+
+    let mut repository = AgitRepository::open(repo)?;
+    let canonical_workdir = repository.root().to_path_buf();
+    let driver = agit::universe::select_driver();
+    let base_name = explicit_name.unwrap_or_else(default_exec_name);
+    let first_name = if count == 1 {
+        base_name.clone()
+    } else {
+        format!("{base_name}-1")
+    };
+    let first_destination = default_fork_destination(&repository, &first_name);
+    let first_fork_plan = repository.prepare_fork(&first_name, &first_destination)?;
+    let base_port = std::env::var("PORT")
+        .ok()
+        .and_then(|value| value.parse::<u16>().ok())
+        .unwrap_or(3000);
+    anyhow::ensure!(
+        usize::from(base_port).saturating_add(count - 1) <= usize::from(u16::MAX),
+        "PORT range exceeds 65535"
+    );
+
+    let mut fork_plans = Vec::with_capacity(count);
+    let mut universes = Vec::with_capacity(count);
+    for offset in 0..count {
+        let index = offset + 1;
+        let name = if count == 1 {
+            base_name.clone()
+        } else {
+            format!("{base_name}-{index}")
+        };
+        let destination = if offset == 0 {
+            first_fork_plan.destination.clone()
+        } else {
+            default_fork_destination(&repository, &name)
+        };
+        let mut fork_plan = first_fork_plan.clone();
+        fork_plan.name = name.clone();
+        fork_plan.destination = destination.clone();
+        let process_workdir = match driver.driver {
+            ExecutionDriver::LinuxMountNamespace => canonical_workdir.clone(),
+            ExecutionDriver::SiblingDirectory => destination.clone(),
+        };
+        universes.push(UniversePlan {
+            index,
+            name,
+            destination,
+            process_workdir,
+            port: base_port + u16::try_from(offset)?,
+            base_snapshot: fork_plan.base_snapshot.clone(),
+            logical_bytes: fork_plan.logical_bytes,
+            projected_fork_ms: fork_plan.projected_native_cow_ms,
+        });
+        fork_plans.push(fork_plan);
+    }
+    let exec_plan = ExecPlan {
+        driver,
+        canonical_workdir,
+        universes,
+    };
+
+    if plan_only {
+        if json {
+            println!("{}", serde_json::to_string_pretty(&exec_plan)?);
+        } else {
+            print_exec_plan(&exec_plan);
+        }
+        return Ok(());
+    }
+
+    if !json {
+        print_exec_plan(&exec_plan);
+        io::stdout().flush()?;
+    }
+    let started = std::time::Instant::now();
+    let mut summaries = Vec::with_capacity(count);
+    for fork_plan in fork_plans {
+        summaries.push(repository.materialize_fork(fork_plan)?);
+    }
+    let materialized_ms = u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX);
+    if !json {
+        println!("Materialized {count} universe(s) in {materialized_ms} ms");
+        io::stdout().flush()?;
+    }
+
+    let executable = std::env::current_exe().context("resolve agit executable")?;
+    let mut children = Vec::with_capacity(count);
+    for (universe, summary) in exec_plan.universes.iter().zip(&summaries) {
+        let mut child = UniverseCommand {
+            driver: exec_plan.driver.driver,
+            executable: &executable,
+            source: &summary.destination,
+            canonical_target: &exec_plan.canonical_workdir,
+            command,
+        }
+        .command()?;
+        child
+            .env("AGIT_WORKDIR", &universe.process_workdir)
+            .env("AGIT_CANONICAL_WORKDIR", &exec_plan.canonical_workdir)
+            .env("AGIT_FORK_NAME", &summary.name)
+            .env("AGIT_FORK_BASE", &summary.base_snapshot)
+            .env("AGIT_UNIVERSE_INDEX", universe.index.to_string())
+            .env("AGIT_UNIVERSE_COUNT", count.to_string())
+            .env("PORT", universe.port.to_string());
+        if json {
+            redirect_stdout_to_stderr(&mut child)?;
+        }
+        match child.spawn() {
+            Ok(child) => children.push(child),
+            Err(error) => {
+                for child in &mut children {
+                    let _ = child.kill();
+                }
+                for mut child in children {
+                    let _ = child.wait();
+                }
+                return Err(error).with_context(|| format!("start universe {}", universe.name));
+            }
+        }
+    }
+
+    let mut statuses = Vec::with_capacity(count);
+    for mut child in children {
+        statuses.push(child.wait().context("wait for universe command")?);
+    }
+
+    let mut results = Vec::with_capacity(count);
+    for ((universe, summary), status) in exec_plan.universes.iter().zip(&summaries).zip(&statuses) {
+        let mut fork_repository = AgitRepository::open(&summary.destination)?;
+        let outcome = status
+            .code()
+            .map_or_else(|| status.to_string(), |code| format!("exit {code}"));
+        let head = fork_repository.snapshot(
+            Some(format!("exec {} completed ({outcome})", universe.name)),
+            SnapshotTrigger::AgentRun,
+        )?;
+        results.push(serde_json::json!({
+            "index": universe.index,
+            "fork": universe.name,
+            "fork_id": universe.name,
+            "base_snapshot": summary.base_snapshot,
+            "head_snapshot": id_hex(&head),
+            "path": summary.destination,
+            "process_workdir": universe.process_workdir,
+            "port": universe.port,
+            "exit_code": agit::universe::exit_code(*status),
+        }));
+    }
+
+    if json {
+        println!(
+            "{}",
+            serde_json::to_string_pretty(&serde_json::json!({
+                "driver": exec_plan.driver,
+                "materialized_ms": materialized_ms,
+                "universes": results,
+            }))?
+        );
+    } else {
+        for result in &results {
+            println!(
+                "{}  exit {}  port {}  {}",
+                result["fork"].as_str().unwrap_or("unknown"),
+                result["exit_code"],
+                result["port"],
+                result["path"].as_str().unwrap_or("unknown")
+            );
+        }
+        println!("Source workspace was not modified");
+    }
+    if let Some(status) = statuses.iter().find(|status| !status.success()) {
+        exit_with_status(*status);
+    }
+    Ok(())
+}
+
+fn print_exec_plan(plan: &agit::universe::ExecPlan) {
+    println!(
+        "Driver {} | same canonical path: {}",
+        plan.driver.driver,
+        if plan.driver.same_canonical_path {
+            "yes"
+        } else {
+            "no"
+        }
+    );
+    println!("Reason: {}", plan.driver.reason);
+    for universe in &plan.universes {
+        println!(
+            "  {:>2}  {:<28} port {:>5}  {}",
+            universe.index,
+            universe.name,
+            universe.port,
+            universe.process_workdir.display()
+        );
+    }
+}
+
+fn redirect_stdout_to_stderr(command: &mut std::process::Command) -> anyhow::Result<()> {
+    use std::os::fd::FromRawFd;
+
+    let descriptor = unsafe { libc::dup(libc::STDERR_FILENO) };
+    if descriptor < 0 {
+        return Err(std::io::Error::last_os_error()).context("duplicate stderr");
+    }
+    let stderr = unsafe { std::fs::File::from_raw_fd(descriptor) };
+    command.stdout(std::process::Stdio::from(stderr));
+    Ok(())
 }
 
 fn default_fork_destination(repository: &AgitRepository, name: &str) -> PathBuf {

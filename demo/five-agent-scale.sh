@@ -34,28 +34,19 @@ dd if=/dev/zero of="$REPO/node_modules/runtime/cache.bin" bs=1048576 count=32 2>
 "$BIN" --repo "$REPO" watch --no-daemon >/dev/null
 ok "complete warm state protected"
 
-step "Materialize five full-state agent workspaces"
-for index in 1 2 3 4 5; do
-  "$BIN" --repo "$REPO" fork "agent-$index" \
-    --destination "$WORK/agent-$index"
-done
-
-step "Run and seal five agents concurrently"
-for index in 1 2 3 4 5; do
-  (
-    printf 'result from agent %s\n' "$index" >"$WORK/agent-$index/result-$index.txt"
-    printf 'agent %s implementation\n' "$index" >"$WORK/agent-$index/app.txt"
-    "$BIN" --repo "$WORK/agent-$index" snap -m "agent $index complete" >/dev/null
-  ) &
-done
-wait
+step "Start five complete universes in one command"
+"$BIN" --repo "$REPO" exec -n 5 -- sh -c '
+  printf "result from agent %s\n" "$AGIT_UNIVERSE_INDEX" >"result-$AGIT_UNIVERSE_INDEX.txt"
+  printf "agent %s implementation\n" "$AGIT_UNIVERSE_INDEX" >app.txt
+'
 
 step "Verify pairwise isolation and complete warm state"
 test "$(cat "$REPO/app.txt")" = "dirty source must survive" \
   || fail "an agent modified the source"
 test ! -e "$REPO/result-1.txt" || fail "an agent result leaked into the source"
 for index in 1 2 3 4 5; do
-  fork="$WORK/agent-$index"
+  fork=$(find "$WORK/project.agit-forks" -maxdepth 1 -type d -name "exec-*-$index" -print -quit)
+  test -n "$fork" || fail "agent $index universe was not retained"
   test -f "$fork/result-$index.txt" || fail "agent $index lost its result"
   test -f "$fork/node_modules/runtime/cache.bin" || fail "agent $index lost warm dependencies"
   grep -q LOCAL_TOKEN "$fork/.env" || fail "agent $index lost ignored local configuration"

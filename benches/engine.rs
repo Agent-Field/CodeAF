@@ -25,6 +25,7 @@ struct Profile {
     iterations: usize,
     history_snapshots: usize,
     lookup_iterations: usize,
+    universes: usize,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -83,6 +84,7 @@ fn main() -> anyhow::Result<()> {
         "cold-seal",
         "delta-seal",
         "fork",
+        "universes",
         "gc",
     ] {
         let mut samples = Vec::new();
@@ -150,6 +152,7 @@ fn profile() -> anyhow::Result<Profile> {
             iterations: 5,
             history_snapshots: 17_281,
             lookup_iterations: 10_000,
+            universes: 10,
         }
     } else {
         Profile {
@@ -160,6 +163,7 @@ fn profile() -> anyhow::Result<Profile> {
             iterations: 3,
             history_snapshots: 721,
             lookup_iterations: 1_000,
+            universes: 5,
         }
     };
     Ok(Profile {
@@ -176,6 +180,7 @@ fn profile() -> anyhow::Result<Profile> {
             "AGIT_BENCH_LOOKUP_ITERATIONS",
             defaults.lookup_iterations,
         )?,
+        universes: environment_usize("AGIT_BENCH_UNIVERSES", defaults.universes)?.max(1),
     })
 }
 
@@ -187,6 +192,7 @@ fn run_scenario(name: &str, profile: Profile) -> anyhow::Result<Sample> {
         "cold-seal" => benchmark_cold_seal(profile),
         "delta-seal" => benchmark_delta_seal(profile),
         "fork" => benchmark_fork(profile),
+        "universes" => benchmark_universes(profile),
         "gc" => benchmark_gc(profile),
         _ => anyhow::bail!("unknown benchmark scenario `{name}`"),
     }
@@ -350,6 +356,52 @@ fn benchmark_fork(profile: Profile) -> anyhow::Result<Sample> {
     Ok(sample)
 }
 
+fn benchmark_universes(profile: Profile) -> anyhow::Result<Sample> {
+    let workspace = Workspace::new(profile, true)?;
+    let (mut repository, _) = AgitRepository::attach_and_snapshot(
+        &workspace.repo,
+        Some("benchmark universe baseline".to_owned()),
+        SnapshotTrigger::Manual,
+    )?;
+    let first_destination = workspace.root.path().join("universe-1");
+    let first = repository.prepare_fork("universe-1", &first_destination)?;
+    let before = usage()?;
+    let started = Instant::now();
+    let mut destinations = Vec::with_capacity(profile.universes);
+    for offset in 0..profile.universes {
+        let index = offset + 1;
+        let mut plan = first.clone();
+        plan.name = format!("universe-{index}");
+        plan.destination = workspace.root.path().join(&plan.name);
+        let summary = repository.materialize_fork(plan)?;
+        destinations.push(summary.destination);
+    }
+    let mut children = Vec::with_capacity(profile.universes);
+    for destination in &destinations {
+        children.push(
+            Command::new("true")
+                .current_dir(destination)
+                .spawn()
+                .context("start benchmark universe")?,
+        );
+    }
+    for mut child in children {
+        anyhow::ensure!(child.wait()?.success(), "benchmark universe failed");
+    }
+    sample(
+        "universes",
+        started,
+        before,
+        profile.universes as u64,
+        first.logical_bytes.saturating_mul(profile.universes as u64),
+        Some(if cfg!(target_os = "linux") {
+            "sibling-benchmark; namespace excluded".to_owned()
+        } else {
+            "sibling-directory".to_owned()
+        }),
+    )
+}
+
 fn benchmark_gc(profile: Profile) -> anyhow::Result<Sample> {
     let root = tempfile::tempdir()?;
     let mut store = ObjectStore::open(root.path().join("store"))?;
@@ -468,15 +520,16 @@ fn summarize(mut samples: Vec<Sample>) -> Summary {
     } else {
         None
     };
-    let min_throughput_mib_s = if matches!(samples[0].scenario.as_str(), "chunk" | "fork") {
-        samples
-            .iter()
-            .filter(|sample| sample.bytes > 0 && sample.wall_ms > 0.0)
-            .map(|sample| sample.bytes as f64 / 1024.0 / 1024.0 / (sample.wall_ms / 1000.0))
-            .min_by(f64::total_cmp)
-    } else {
-        None
-    };
+    let min_throughput_mib_s =
+        if matches!(samples[0].scenario.as_str(), "chunk" | "fork" | "universes") {
+            samples
+                .iter()
+                .filter(|sample| sample.bytes > 0 && sample.wall_ms > 0.0)
+                .map(|sample| sample.bytes as f64 / 1024.0 / 1024.0 / (sample.wall_ms / 1000.0))
+                .min_by(f64::total_cmp)
+        } else {
+            None
+        };
     let min_units_per_second = samples
         .iter()
         .map(|sample| sample.units as f64 / (sample.wall_ms / 1000.0))
@@ -529,6 +582,11 @@ fn enforce(summaries: &[Summary], profile: Profile) -> anyhow::Result<()> {
         15_000.0
     };
     anyhow::ensure!(fork.wall_p95_ms <= fork_limit, "fork latency regressed");
+    let universes = find("universes")?;
+    anyhow::ensure!(
+        universes.wall_p95_ms <= 30_000.0,
+        "multi-universe startup exceeded 30 s"
+    );
     anyhow::ensure!(find("gc")?.wall_p95_ms <= 10_000.0, "GC exceeded 10 s");
     for summary in summaries {
         anyhow::ensure!(

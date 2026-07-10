@@ -889,6 +889,130 @@ fn warm_fork_is_independent_complete_listed_and_can_run_a_command() {
 }
 
 #[test]
+fn exec_plan_discloses_the_fallback_driver_paths_and_ports() {
+    let fixture = Fixture::new();
+    fixture.watch();
+    let output = fixture
+        .agit()
+        .env("AGIT_DISABLE_NAMESPACES", "1")
+        .args(["--json", "exec", "-n", "3", "--plan"])
+        .assert()
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+    let plan: Value = serde_json::from_slice(&output).unwrap();
+    assert_eq!(plan["driver"]["driver"], "sibling-directory");
+    assert_eq!(plan["driver"]["same_canonical_path"], false);
+    assert_eq!(plan["universes"].as_array().unwrap().len(), 3);
+    assert_eq!(plan["universes"][0]["port"], 3000);
+    assert_eq!(plan["universes"][2]["port"], 3002);
+    assert_ne!(
+        plan["universes"][0]["process_workdir"],
+        fixture.repo.to_string_lossy().as_ref()
+    );
+    assert_eq!(
+        plan["universes"][0]["base_snapshot"],
+        plan["universes"][2]["base_snapshot"]
+    );
+}
+
+#[test]
+fn exec_runs_multiple_complete_universes_concurrently_and_seals_each_result() {
+    let fixture = Fixture::new();
+    fixture.watch();
+    let output = fixture
+        .agit()
+        .env("AGIT_DISABLE_NAMESPACES", "1")
+        .args([
+            "--json",
+            "exec",
+            "-n",
+            "2",
+            "--",
+            "sh",
+            "-c",
+            "printf '%s|%s|%s' \"$AGIT_UNIVERSE_INDEX\" \"$AGIT_WORKDIR\" \"$PORT\" > universe.txt",
+        ])
+        .assert()
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+    let result: Value = serde_json::from_slice(&output).unwrap();
+    assert_eq!(result["driver"]["driver"], "sibling-directory");
+    assert_eq!(result["universes"].as_array().unwrap().len(), 2);
+    assert!(result["materialized_ms"].as_u64().is_some());
+
+    for (offset, universe) in result["universes"].as_array().unwrap().iter().enumerate() {
+        assert_eq!(universe["exit_code"], 0);
+        assert_eq!(universe["fork_id"], universe["fork"]);
+        assert_ne!(universe["head_snapshot"], universe["base_snapshot"]);
+        let path = PathBuf::from(universe["path"].as_str().unwrap());
+        let contents = fs::read_to_string(path.join("universe.txt")).unwrap();
+        let expected_prefix = format!("{}|{}|{}", offset + 1, path.display(), 3000 + offset);
+        assert_eq!(contents, expected_prefix);
+    }
+    assert!(!fixture.repo.join("universe.txt").exists());
+
+    let forks = fixture.agit().args(["--json", "forks"]).output().unwrap();
+    let forks: Value = serde_json::from_slice(&forks.stdout).unwrap();
+    assert_eq!(forks.as_array().unwrap().len(), 2);
+}
+
+#[test]
+fn exec_uses_the_disclosed_workdir_and_preserves_failed_results() {
+    let fixture = Fixture::new();
+    fixture.watch();
+    let plan_output = fixture
+        .agit()
+        .args(["--json", "exec", "--fork", "failed-universe", "--plan"])
+        .output()
+        .unwrap();
+    assert!(plan_output.status.success());
+    let plan: Value = serde_json::from_slice(&plan_output.stdout).unwrap();
+    let expected_workdir = plan["universes"][0]["process_workdir"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+
+    let output = fixture
+        .agit()
+        .args([
+            "--json",
+            "exec",
+            "--fork",
+            "failed-universe",
+            "--",
+            "sh",
+            "-c",
+            "pwd > observed-workdir.txt; printf retained > failed-result.txt; exit 7",
+        ])
+        .output()
+        .unwrap();
+    assert_eq!(output.status.code(), Some(7));
+    let result: Value = serde_json::from_slice(&output.stdout).unwrap();
+    assert_eq!(result["universes"][0]["exit_code"], 7);
+    assert_eq!(result["universes"][0]["process_workdir"], expected_workdir);
+    let fork = PathBuf::from(result["universes"][0]["path"].as_str().unwrap());
+    assert_eq!(
+        fs::read_to_string(fork.join("observed-workdir.txt"))
+            .unwrap()
+            .trim(),
+        expected_workdir
+    );
+    assert_eq!(
+        fs::read(fork.join("failed-result.txt")).unwrap(),
+        b"retained"
+    );
+    assert_ne!(
+        result["universes"][0]["head_snapshot"],
+        result["universes"][0]["base_snapshot"]
+    );
+    assert!(!fixture.repo.join("failed-result.txt").exists());
+}
+
+#[test]
 fn verified_merge_converges_independent_source_and_fork_changes() {
     let fixture = Fixture::new();
     fixture.watch();

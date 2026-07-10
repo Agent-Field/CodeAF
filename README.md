@@ -28,7 +28,7 @@ The demo creates a real Git repository containing:
 
 It then snapshots the workspace, runs `git clean -fdx`, damages the tracked application, previews the impact, and rewinds everything. Independent shell and SQLite checks verify the result.
 
-The parallel-fork demo creates two independent full-state workspaces from one dirty repository, including a 32 MiB ignored dependency cache and local configuration. Two simulated agents modify them concurrently while checks prove the source remains untouched.
+The parallel-fork demo creates two independent full-state workspaces from one dirty repository, including a 32 MiB ignored dependency cache and local configuration. The five-agent demo starts five warm, isolated universes with one `agit exec -n 5` command and proves there is no cross-workspace leakage.
 
 ## Install
 
@@ -79,8 +79,14 @@ agit rewind <snapshot>
 # Prefer the logically consistent SQLite image captured with the snapshot.
 agit rewind <snapshot> --sqlite-consistent
 
-# Give an agent or risky command an isolated copy of the complete dirty state.
-agit run auth-refactor -- claude
+# Disclose the exact platform isolation, work paths, ports, and fork cost first.
+agit exec -n 3 --plan
+
+# Start three agents concurrently from one exact complete working state.
+agit exec -n 3 -- claude -p "solve the assigned task"
+
+# Use a stable name when running one universe that you will merge later.
+agit exec --fork auth-refactor -- claude
 
 # Inspect active parallel workspaces and their actual clone/copy cost.
 agit forks
@@ -169,7 +175,7 @@ agit hook install
 # .agit/hooks/turn-end
 ```
 
-The adapters locate the repository from their own path, so the agent may invoke them from any working directory. Set `AGIT_AGENT_ID`, `AGIT_TURN_ID`, and optionally `AGIT_TOOL_NAME`; each boundary becomes an attributed `agent_run` snapshot. The underlying commands can also be called directly, for example `agit hook post-tool --agent alpha --turn 7 --tool edit`. Wrap the agent with `agit run alpha -- <agent-command>` when every session should start in an isolated full-state fork; the installed hooks then record that fork's independent timeline.
+The adapters locate the repository from their own path, so the agent may invoke them from any working directory. Set `AGIT_AGENT_ID`, `AGIT_TURN_ID`, and optionally `AGIT_TOOL_NAME`; each boundary becomes an attributed `agent_run` snapshot. The underlying commands can also be called directly, for example `agit hook post-tool --agent alpha --turn 7 --tool edit`. Start sessions with `agit exec --fork alpha -- <agent-command>`; the installed hooks then record that universe's independent timeline.
 
 `agit mcp` is a local stdio MCP server. Bind it to one watched repository in any MCP-compatible coding agent:
 
@@ -216,6 +222,8 @@ Every actual rewind first publishes a complete `pre_rewind` snapshot. Rewinding 
 - Pre-materialization fork disclosure from a streaming disk-backed index: entries, logical bytes, native-CoW projection, and worst-case copied bytes
 - Streaming-copy fallback with disclosed physical copy cost
 - Independent fork timelines, full-state consistency verification, and command launch
+- Concurrent `agit exec -n N` universes from one sealed base, with stable per-universe environment, port offsets, and machine-readable results
+- Capability-tested Linux same-path bind mounts with an honestly disclosed macOS/Linux sibling-directory fallback
 - Exact base-to-head fork inspection with path-level add/modify/delete reporting
 - Explicit fork cleanup with safe timeline detachment
 - Transactional advisory path claims shared across sibling forks
@@ -241,7 +249,7 @@ The current implementation covers the recovery engine, continuous protection, wa
 
 ## Performance Benchmarks
 
-The benchmark harness runs every sample in a fresh subprocess and reports wall time, user+system CPU, peak RSS, operations per second, byte throughput where meaningful, and the inner platform-clone time. It covers streaming chunking, paged Merkle diff, reverse-index timeline reads, cold seal, 100-file delta seal, full-state fork, and six-month retention GC.
+The benchmark harness runs every sample in a fresh subprocess and reports wall time, user+system CPU, peak RSS, operations per second, byte throughput where meaningful, and the inner platform-clone time. It covers streaming chunking, paged Merkle diff, reverse-index timeline reads, cold seal, 100-file delta seal, full-state fork, five-universe startup, and six-month retention GC.
 
 Measured baselines, optimization comparisons, methodology, and unproven reference-scale gaps are recorded in [BENCHMARKS.md](BENCHMARKS.md).
 
@@ -256,7 +264,7 @@ AGIT_BENCH_ENFORCE=1 cargo bench --bench engine
 AGIT_BENCH_PROFILE=reference cargo bench --bench engine
 ```
 
-Every dataset dimension can be overridden with `AGIT_BENCH_FILES`, `AGIT_BENCH_CHANGED_FILES`, `AGIT_BENCH_CHUNK_BYTES`, `AGIT_BENCH_WARM_BYTES`, `AGIT_BENCH_HISTORY_SNAPSHOTS`, `AGIT_BENCH_LOOKUP_ITERATIONS`, and `AGIT_BENCH_ITERATIONS`. CI runs a smaller enforced smoke profile on both macOS and Linux. The path index, retention marker, and GC mark set are disk-backed; benchmark RSS therefore measures bounded working state rather than a repository-sized in-memory map.
+Every dataset dimension can be overridden with `AGIT_BENCH_FILES`, `AGIT_BENCH_CHANGED_FILES`, `AGIT_BENCH_CHUNK_BYTES`, `AGIT_BENCH_WARM_BYTES`, `AGIT_BENCH_HISTORY_SNAPSHOTS`, `AGIT_BENCH_LOOKUP_ITERATIONS`, `AGIT_BENCH_UNIVERSES`, and `AGIT_BENCH_ITERATIONS`. CI runs a smaller enforced smoke profile on both macOS and Linux. The path index, retention marker, and GC mark set are disk-backed; benchmark RSS therefore measures bounded working state rather than a repository-sized in-memory map.
 
 ## Safety Model
 

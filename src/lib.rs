@@ -24,6 +24,7 @@ pub mod sqlite_adapter;
 pub mod store;
 pub mod sync;
 pub mod tree;
+pub mod universe;
 pub mod watcher;
 
 pub use budget::{BudgetConfig, BudgetStatus};
