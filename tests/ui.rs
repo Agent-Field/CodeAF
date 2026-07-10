@@ -48,16 +48,23 @@ impl Fixture {
     }
 
     fn ui(&self) -> RunningUi {
-        let mut child = std::process::Command::new(env!("CARGO_BIN_EXE_agit"))
+        self.ui_with_merge_check(None)
+    }
+
+    fn ui_with_merge_check(&self, merge_check: Option<&str>) -> RunningUi {
+        let mut command = std::process::Command::new(env!("CARGO_BIN_EXE_agit"));
+        command
             .env("AGIT_DATA_DIR", &self.data)
             .env("AGIT_NO_DAEMON", "1")
             .arg("--repo")
             .arg(&self.repo)
             .args(["--json", "ui", "--no-open", "--port", "0"])
             .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
-            .spawn()
-            .unwrap();
+            .stderr(Stdio::piped());
+        if let Some(check) = merge_check {
+            command.args(["--merge-check", check]);
+        }
+        let mut child = command.spawn().unwrap();
         let stdout = child.stdout.take().unwrap();
         let mut reader = BufReader::new(stdout);
         let mut line = String::new();
@@ -188,7 +195,25 @@ fn mission_control_is_loopback_capability_guarded_and_offline() {
     assert!(page.headers.contains("Referrer-Policy: no-referrer"));
     let html = String::from_utf8(page.body).unwrap();
     assert!(html.contains("Mission Control"));
+    assert!(html.contains("/assets/icons.svg#gem"));
+    assert!(html.contains("name=\"color-scheme\" content=\"dark\""));
     assert!(!html.contains("https://"));
+
+    let icons = ui.request_with("GET", "/assets/icons.svg", None, false, false, &ui.address);
+    assert_eq!(icons.status, 200);
+    assert!(icons.headers.contains("Content-Type: image/svg+xml"));
+    assert!(icons.headers.contains("max-age=31536000, immutable"));
+    let font = ui.request_with(
+        "GET",
+        "/assets/geist.woff2",
+        None,
+        false,
+        false,
+        &ui.address,
+    );
+    assert_eq!(font.status, 200);
+    assert!(font.headers.contains("Content-Type: font/woff2"));
+    assert!(font.body.len() > 20_000);
 
     let script = ui.request_with("GET", "/assets/app.js", None, false, false, &ui.address);
     assert_eq!(script.status, 200);
@@ -269,6 +294,64 @@ fn mission_control_pins_and_refuses_a_stale_rewind_preview() {
     assert_eq!(
         fs::read(fixture.repo.join("app.txt")).unwrap(),
         b"newer writer bytes\n"
+    );
+}
+
+#[test]
+fn mission_control_applies_a_real_verified_merge() {
+    let fixture = Fixture::new();
+    fixture.watch();
+    let fork = fixture.repo.parent().unwrap().join("review");
+    let fork_output = std::process::Command::new(env!("CARGO_BIN_EXE_agit"))
+        .env("AGIT_DATA_DIR", &fixture.data)
+        .env("AGIT_NO_DAEMON", "1")
+        .arg("--repo")
+        .arg(&fixture.repo)
+        .args(["fork", "review", "--destination"])
+        .arg(&fork)
+        .output()
+        .unwrap();
+    assert!(fork_output.status.success());
+    fs::write(fork.join("app.txt"), b"verified merge bytes\n").unwrap();
+    let snap = std::process::Command::new(env!("CARGO_BIN_EXE_agit"))
+        .env("AGIT_DATA_DIR", &fixture.data)
+        .env("AGIT_NO_DAEMON", "1")
+        .arg("--repo")
+        .arg(&fork)
+        .args(["snap", "-m", "review result"])
+        .output()
+        .unwrap();
+    assert!(snap.status.success());
+
+    let ui = fixture.ui_with_merge_check(Some("git diff --check"));
+    let preview = ui.request(
+        "POST",
+        "/api/v1/merge/preview",
+        Some(&serde_json::json!({"fork": "review"})),
+    );
+    assert_eq!(preview.status, 200);
+    let preview = preview.json();
+    assert!(preview["conflicts"].as_array().unwrap().is_empty());
+    assert_eq!(preview["changes"], 1);
+
+    let apply = ui.request(
+        "POST",
+        "/api/v1/merge/apply",
+        Some(&serde_json::json!({
+            "fork": "review",
+            "preview_digest": preview["preview_digest"]
+        })),
+    );
+    assert_eq!(
+        apply.status,
+        200,
+        "{}",
+        String::from_utf8_lossy(&apply.body)
+    );
+    assert!(apply.json()["result_snapshot"].is_string());
+    assert_eq!(
+        fs::read(fixture.repo.join("app.txt")).unwrap(),
+        b"verified merge bytes\n"
     );
 }
 

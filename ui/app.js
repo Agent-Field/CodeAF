@@ -24,7 +24,7 @@ const elements = {
 function icon(name) {
   const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
   const use = document.createElementNS("http://www.w3.org/2000/svg", "use");
-  use.setAttribute("href", `#i-${name}`);
+  use.setAttribute("href", `/assets/icons.svg#${name}`);
   svg.append(use);
   return svg;
 }
@@ -152,8 +152,8 @@ function renderTimeline() {
     copy.append(title, meta);
     const actions = document.createElement("div"); actions.className = "timeline-actions";
     actions.append(
-      button("pin", snapshot.pinned ? "Unpin restore point" : "Pin restore point", () => togglePin(snapshot)),
-      button("rewind", "Preview rewind", () => previewRewind(snapshot)),
+      button(snapshot.pinned ? "pin-off" : "pin", snapshot.pinned ? "Unpin restore point" : "Pin restore point", () => togglePin(snapshot), snapshot.pinned ? "icon-button selected" : "icon-button"),
+      button("rotate-ccw", "Preview rewind", () => previewRewind(snapshot)),
     );
     item.append(stem, copy, actions);
     elements.timeline.append(item);
@@ -179,16 +179,16 @@ function renderForks() {
     const stateCell = document.createElement("td");
     const badge = document.createElement("span");
     badge.className = `state-badge ${fork.radar_stale ? "stale" : fork.conflicts ? "conflict" : "clear"}`;
-    const badgeIcon = fork.radar_stale ? "alert" : fork.conflicts ? "alert" : "check";
+    const badgeIcon = fork.radar_stale ? "triangle-alert" : fork.conflicts ? "triangle-alert" : "check";
     badge.append(icon(badgeIcon), document.createTextNode(fork.radar_stale ? "Offline" : fork.conflicts ? `${fork.conflicts} collision${fork.conflicts === 1 ? "" : "s"}` : "Clear"));
     stateCell.append(badge);
     const cost = document.createElement("td"); cost.className = "cost-cell"; cost.textContent = `${fork.tier} · ${fork.elapsed_ms} ms`;
     const head = document.createElement("td"); head.className = "head-cell"; const headCode = document.createElement("code"); headCode.textContent = fork.head_snapshot.slice(0, 12); headCode.title = fork.head_snapshot; head.append(headCode);
     const actions = document.createElement("td"); const actionSet = document.createElement("div"); actionSet.className = "row-actions";
     actionSet.append(
-      button("eye", "Inspect changes", () => inspectFork(fork)),
-      button("merge", "Preview merge", () => previewMerge(fork)),
-      button("trash", "Discard universe", () => confirmDiscard(fork)),
+      button("file-diff", "Inspect changes", () => inspectFork(fork)),
+      button("git-merge", "Preview merge", () => previewMerge(fork)),
+      button("trash-2", "Discard universe", () => confirmDiscard(fork)),
     );
     actions.append(actionSet); row.append(nameCell, stateCell, cost, head, actions); elements.forks.append(row);
   }
@@ -207,7 +207,12 @@ function renderConflictLanes() {
     const lane = document.createElement("div"); lane.className = "conflict-lane";
     const code = document.createElement("code"); code.textContent = path; code.title = path;
     const track = document.createElement("div"); track.className = "lane-track"; track.setAttribute("aria-label", forks.map((fork) => fork.name).join(", "));
-    forks.forEach((fork) => { const node = document.createElement("i"); node.className = "lane-node"; node.title = fork.name; track.append(node); });
+    forks.forEach((fork) => {
+      const branch = document.createElement("span"); branch.className = "lane-branch"; branch.title = fork.name;
+      const node = document.createElement("i"); node.className = "lane-node";
+      const label = document.createElement("span"); label.textContent = fork.name;
+      branch.append(node, label); track.append(branch);
+    });
     const claim = document.createElement("span"); claim.className = "claim-label";
     const related = [...state.events].reverse().find((event) => event.path.display === path && event.state !== "resolved");
     claim.textContent = related?.claim_state || "unclaimed";
@@ -222,7 +227,7 @@ function renderEvents() {
   for (const event of [...state.events].reverse()) {
     const item = document.createElement("article"); item.className = `event-item ${event.state}`;
     const line = document.createElement("div"); line.className = "event-line";
-    const eventIcon = document.createElement("span"); eventIcon.className = "event-icon"; eventIcon.append(icon(event.state === "resolved" ? "check" : "alert"));
+    const eventIcon = document.createElement("span"); eventIcon.className = "event-icon"; eventIcon.append(icon(event.state === "resolved" ? "check" : "triangle-alert"));
     const title = document.createElement("strong"); title.textContent = `${capitalize(event.state)} · ${relativeTime(event.occurred_at)}`;
     line.append(eventIcon, title);
     const path = document.createElement("code"); path.textContent = event.path.display; path.title = event.path.bytes_hex;
@@ -248,7 +253,7 @@ async function previewRewind(snapshot) {
     const apply = commandButton("rewind", "Restore this point", async (control) => {
       await guarded(control, async () => {
         await post("/api/v1/rewind/apply", { snapshot: snapshot.id, confirm_snapshot: snapshot.id, preview_digest: plan.preview_digest, paths: [], sqlite_consistent: false });
-        elements.inspector.close(); toast("Workspace restored"); await refresh();
+        elements.inspector.close(); toast("agit restored the workspace"); await refresh();
       });
     }, "primary");
     apply.disabled = plan.changes.length === 0;
@@ -268,7 +273,7 @@ async function previewMerge(fork) {
       const apply = commandButton("merge", "Merge verified result", async (control) => {
         await guarded(control, async () => {
           await post("/api/v1/merge/apply", { fork: fork.name, preview_digest: preview.preview_digest });
-          elements.inspector.close(); toast("Universe merged"); await refresh();
+          elements.inspector.close(); toast("agit merged the verified universe"); await refresh();
         });
       }, "primary");
       apply.disabled = !state.config.merge_apply;
@@ -283,10 +288,10 @@ function confirmDiscard(fork) {
   const body = document.createDocumentFragment();
   const summary = document.createElement("p"); summary.className = "dialog-summary"; summary.textContent = "The universe directory and its independent timeline will be removed. The source workspace is not changed.";
   const id = document.createElement("code"); id.className = "dialog-id"; id.textContent = fork.fork_id; body.append(summary, id);
-  const discard = commandButton("trash", "Discard universe", async (control) => {
+  const discard = commandButton("trash-2", "Discard universe", async (control) => {
     await guarded(control, async () => {
       await post("/api/v1/forks/discard", { fork_id: fork.fork_id, confirm_fork_id: fork.fork_id });
-      elements.inspector.close(); toast("Universe discarded"); await refresh();
+      elements.inspector.close(); toast("agit discarded the universe"); await refresh();
     });
   }, "danger");
   openDialog("Discard universe", fork.name, body, [discard]);
@@ -324,8 +329,9 @@ function commandButton(iconName, label, handler, variant = "") {
 
 async function guarded(control, operation) {
   control.disabled = true;
+  control.setAttribute("aria-busy", "true");
   try { await operation(); } catch (error) { toast(error.remedy ? `${error.message}. ${error.remedy}` : error.message, true); }
-  finally { control.disabled = false; }
+  finally { control.disabled = false; control.removeAttribute("aria-busy"); }
 }
 
 function empty(message) { const element = document.createElement("div"); element.className = "conflict-empty"; element.textContent = message; return element; }

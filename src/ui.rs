@@ -16,6 +16,8 @@ use tiny_http::{Header, Method, Request, Response, Server, StatusCode};
 const INDEX_HTML: &str = include_str!("../ui/index.html");
 const APP_CSS: &str = include_str!("../ui/app.css");
 const APP_JS: &str = include_str!("../ui/app.js");
+const ICONS: &[u8] = include_bytes!("../ui/assets/icons.svg");
+const GEIST: &[u8] = include_bytes!("../ui/assets/geist-latin-wght-normal.woff2");
 const MAX_BODY: usize = 1024 * 1024;
 const MAX_URL: usize = 8192;
 const MAX_HEADERS: usize = 64;
@@ -148,6 +150,12 @@ fn dispatch(request: &mut Request, state: &State) -> anyhow::Result<HttpResponse
             APP_JS.as_bytes(),
             false,
         ));
+    }
+    if path == "/assets/icons.svg" && request.method() == &Method::Get {
+        return Ok(static_response(200, "image/svg+xml", ICONS, true));
+    }
+    if path == "/assets/geist.woff2" && request.method() == &Method::Get {
+        return Ok(static_response(200, "font/woff2", GEIST, true));
     }
     if !path.starts_with("/api/v1/") {
         return Ok(api_error(
