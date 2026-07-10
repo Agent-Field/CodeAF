@@ -4,7 +4,7 @@
 **Audience:** Product, architecture, security, and independent technical reviewers
 **Scope:** A local-first engine that versions, forks, merges, and transports the *working state* of any repository — the layer git deliberately ignores
 **Last updated:** 2026-07-09
-**Companion:** `RUNNERS_DX_AND_COMMERCIAL_SPEC.md` (Document 2) covers the distributed runtime — ephemeral runners, network architecture, inter-agent coordination primitives, DX tiers, and the open-source/commercial model. This document remains authoritative for engine semantics wherever the two touch. Document 2 has no Phase-0/1 footprint.
+**Companions:** [Document 2](02-distributed-runtime.md) covers the distributed runtime — ephemeral runners, network architecture, coordination primitives, DX tiers, and the open-source/commercial model. [Document 3](03-parallel-universes.md) covers the primary product theme (worktree replacement for parallel agents), capability sets A–C (true universes, precomputed convergence, zero-cost capture), the CLI/agent-experience anti-bloat contract, and the single sanctioned UI; it also resolves open question 4 (web UI). This document remains authoritative for engine semantics wherever they touch. Documents 2 and 3 have no Phase-0/1 footprint.
 
 Draft 0.3 resolves the blocking review findings against 0.2: store placement, snapshot completeness, pool provenance, re-chunk cost claims, database capture semantics, fork-latency scaling, capture fidelity definition, rewind concurrency, remote chunk identity, and daemon budget reference configuration. It also adds first-class multi-machine sync to the open-source core.
 

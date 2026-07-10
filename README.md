@@ -303,6 +303,11 @@ The Apache-licensed `agit` binary owns the complete local product: capture and r
 
 The separate hosted product may provide identity, tenancy, signaling and hole punching, relay bandwidth, stored quota, billing, an account console, and managed registry/fleet services. Those hosted control-plane features are not required for local operation and are not implemented by this repository.
 
+## Documentation
+
+The documentation index is at [docs/README.md](docs/README.md). It links the
+product direction, performance results, and the three numbered specifications.
+
 ## What Works Today
 
 - Complete immutable snapshots of tracked, untracked, and ignored state
@@ -366,13 +371,13 @@ exact reachability GC, MCP, and follow-mode multi-machine sync over directories,
 SSH, and S3-compatible object stores. Automatic cross-machine divergence merging,
 WebDAV, richer class-directed merge strategies, and provenance-accelerated
 teleport remain subsequent milestones from
-[the system specification](DISTRIBUTED_AGENT_WORKSPACE_SPEC.md).
+[the system specification](docs/specs/01-working-state.md).
 
 ## Performance Benchmarks
 
 The benchmark harness runs every sample in a fresh subprocess and reports wall time, user+system CPU, peak RSS, operations per second, byte throughput where meaningful, and the inner platform-clone time. It covers streaming chunking, paged Merkle diff, reverse-index timeline reads, cold seal, 100-file delta seal, full-state fork, five-universe startup, five-fork conflict radar, and six-month retention GC.
 
-Measured baselines, optimization comparisons, methodology, and unproven reference-scale gaps are recorded in [BENCHMARKS.md](BENCHMARKS.md).
+Measured baselines, optimization comparisons, methodology, and unproven reference-scale gaps are recorded in [docs/performance.md](docs/performance.md).
 
 ```bash
 # Three-sample developer profile: 5k files, 128 MiB stream, 721-snapshot history.
