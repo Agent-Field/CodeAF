@@ -203,6 +203,7 @@ fn mission_control_is_loopback_capability_guarded_and_offline() {
     assert_eq!(icons.status, 200);
     assert!(icons.headers.contains("Content-Type: image/svg+xml"));
     assert!(icons.headers.contains("max-age=31536000, immutable"));
+    assert!(String::from_utf8_lossy(&icons.body).contains("id=\"undo-2\""));
     let font = ui.request_with(
         "GET",
         "/assets/geist.woff2",
@@ -220,6 +221,8 @@ fn mission_control_is_loopback_capability_guarded_and_offline() {
     let script = String::from_utf8(script.body).unwrap();
     assert!(!script.contains("https://"));
     assert!(script.contains("http://www.w3.org/2000/svg"));
+    assert!(script.contains("item.addEventListener(\"click\", () => inspectSnapshot(snapshot))"));
+    assert!(script.contains("button(\"undo-2\", \"Preview restore to this point\""));
     assert!(!script
         .replace("http://www.w3.org/2000/svg", "")
         .contains("http://"));

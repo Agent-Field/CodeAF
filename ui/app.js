@@ -143,6 +143,17 @@ function renderTimeline() {
     const current = snapshot.id === state.status?.status?.head;
     const item = document.createElement("article");
     item.className = `timeline-item ${snapshot.materialization?.grade === "exact" ? "" : "partial"} ${current ? "current" : ""}`;
+    item.tabIndex = 0;
+    item.setAttribute("role", "button");
+    item.setAttribute("aria-label", `Inspect restore point ${snapshotTitle(snapshot)}`);
+    item.dataset.tooltip = current ? "Inspect the current restore point" : "Inspect this restore point and preview restoring it";
+    item.addEventListener("click", () => inspectSnapshot(snapshot));
+    item.addEventListener("keydown", (event) => {
+      if (event.key === "Enter" || event.key === " ") {
+        event.preventDefault();
+        inspectSnapshot(snapshot);
+      }
+    });
     const stem = document.createElement("span"); stem.className = "timeline-stem"; stem.append(document.createElement("i"));
     const copy = document.createElement("div"); copy.className = "timeline-copy";
     const title = document.createElement("strong"); title.textContent = snapshotTitle(snapshot);
@@ -154,7 +165,7 @@ function renderTimeline() {
     copy.append(title, meta);
     const actions = document.createElement("div"); actions.className = "timeline-actions";
     actions.append(button(snapshot.pinned ? "pin-off" : "pin", snapshot.pinned ? "Unpin restore point" : "Keep this restore point permanently", () => togglePin(snapshot), snapshot.pinned ? "icon-button selected" : "icon-button"));
-    if (!current) actions.append(button("rotate-ccw", "Preview rewind to this point", () => previewRewind(snapshot)));
+    if (!current) actions.append(button("undo-2", "Preview restore to this point", () => previewRewind(snapshot)));
     item.append(stem, copy, actions);
     elements.timeline.append(item);
   }
@@ -267,6 +278,35 @@ function inspectUniverse(fork) {
   openDialog("Universe details", fork.name, body, []);
 }
 
+function inspectSnapshot(snapshot) {
+  const current = snapshot.id === state.status?.status?.head;
+  const body = document.createDocumentFragment();
+  const summary = document.createElement("p"); summary.className = "dialog-summary";
+  summary.textContent = current
+    ? "This is the source folder's current sealed state."
+    : "Inspect this sealed state before previewing any changes to the source folder.";
+  body.append(summary, detailList([
+    ["Snapshot", snapshot.id],
+    ["Created", `${new Date(snapshot.sealed_at * 1000).toLocaleString()} · ${relativeTime(snapshot.sealed_at)}`],
+    ["Reason", triggerLabel(snapshot.trigger)],
+    ["Capture", snapshot.materialization?.grade || "unknown"],
+    ["Retention", snapshot.pinned ? "Pinned permanently" : "Normal retention"],
+    ["Position", current ? "Current source state" : "Earlier restore point"],
+  ]));
+  const pin = commandButton(snapshot.pinned ? "pin-off" : "pin", snapshot.pinned ? "Unpin restore point" : "Pin restore point", async (control) => {
+    await guarded(control, async () => {
+      await post("/api/v1/pins", { snapshot: snapshot.id, pinned: !snapshot.pinned });
+      elements.inspector.close(); toast(snapshot.pinned ? "Restore point unpinned" : "Restore point pinned"); await refresh();
+    });
+  });
+  const actions = [pin];
+  if (!current) actions.push(commandButton("undo-2", "Preview restore", () => {
+    elements.inspector.close();
+    previewRewind(snapshot);
+  }, "primary"));
+  openDialog("Restore point details", snapshotTitle(snapshot), body, actions);
+}
+
 async function inspectFork(fork) {
   try {
     const diff = await post("/api/v1/diff", { target: fork.name });
@@ -288,7 +328,7 @@ async function previewRewind(snapshot) {
       : "The source folder already matches this restore point. Rewind would not change any files.";
     const id = document.createElement("code"); id.className = "dialog-id"; id.textContent = snapshot.id;
     body.append(summary, id, changeList(plan.changes));
-    const apply = commandButton("rotate-ccw", "Restore this point", async (control) => {
+    const apply = commandButton("undo-2", "Restore this point", async (control) => {
       await guarded(control, async () => {
         await post("/api/v1/rewind/apply", { snapshot: snapshot.id, confirm_snapshot: snapshot.id, preview_digest: plan.preview_digest, paths: [], sqlite_consistent: false });
         elements.inspector.close(); toast("agit restored the workspace"); await refresh();

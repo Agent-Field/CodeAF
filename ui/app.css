@@ -161,13 +161,19 @@ svg { width: 17px; height: 17px; fill: none; stroke: currentColor; stroke-width:
   padding: 12px 8px 12px 14px;
   border-bottom: 1px solid var(--line);
   background: transparent;
+  cursor: pointer;
 }
 .timeline-item:hover { background: var(--surface-raised); }
+.timeline-item:focus-visible {
+  outline: 2px solid var(--action);
+  outline-offset: -2px;
+  background: var(--surface-raised);
+}
 .timeline-stem { position: relative; min-height: 34px; }
 .timeline-stem::before { content: ""; position: absolute; left: 5px; top: 5px; bottom: -18px; width: 1px; background: var(--line-strong); }
 .timeline-item:last-child .timeline-stem::before { bottom: 21px; }
 .timeline-stem i { position: relative; display: block; width: 11px; height: 11px; border: 3px solid var(--surface); border-radius: 50%; background: var(--action); box-shadow: 0 0 0 1px var(--action); }
-.timeline-item:hover .timeline-stem i { border-color: var(--surface-raised); }
+.timeline-item:hover .timeline-stem i, .timeline-item:focus-visible .timeline-stem i { border-color: var(--surface-raised); }
 .timeline-copy { min-width: 0; }
 .timeline-copy strong { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 11.5px; font-weight: 590; }
 .current-badge { display: inline-block; margin-left: 6px; padding: 2px 5px; border-radius: 3px; background: var(--action-wash); color: var(--action); font-size: 8.5px; font-weight: 650; vertical-align: 1px; }
