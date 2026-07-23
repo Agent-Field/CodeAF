@@ -844,9 +844,13 @@ impl FurrowRepository {
         Ok(summary)
     }
 
-    pub fn sync_push(&mut self, takeover: bool) -> anyhow::Result<sync::PushReport> {
+    pub fn sync_push(
+        &mut self,
+        takeover: bool,
+        ref_name: Option<&str>,
+    ) -> anyhow::Result<sync::PushReport> {
         let config = sync::load(&self.sync_config_path())?;
-        let mut remote = sync::open_session(&config)?;
+        let mut remote = sync::open_session(&config, ref_name)?;
         self.sync_push_on(takeover, &config, &mut remote)
     }
 
@@ -866,9 +870,13 @@ impl FurrowRepository {
         Ok(report)
     }
 
-    pub fn sync_pull(&mut self, bootstrap: bool) -> anyhow::Result<SyncPullOutcome> {
+    pub fn sync_pull(
+        &mut self,
+        bootstrap: bool,
+        ref_name: Option<&str>,
+    ) -> anyhow::Result<SyncPullOutcome> {
         let config = sync::load(&self.sync_config_path())?;
-        let mut remote = sync::open_session(&config)?;
+        let mut remote = sync::open_session(&config, ref_name)?;
         self.sync_pull_on(bootstrap, true, &config, &mut remote)
     }
 
@@ -1177,9 +1185,9 @@ impl FurrowRepository {
         Ok(())
     }
 
-    pub fn sync_follow_session(&self) -> anyhow::Result<SyncFollowSession> {
+    pub fn sync_follow_session(&self, ref_name: Option<&str>) -> anyhow::Result<SyncFollowSession> {
         let config = sync::load(&self.sync_config_path())?;
-        let remote = sync::open_session(&config)?;
+        let remote = sync::open_session(&config, ref_name)?;
         Ok(SyncFollowSession {
             config,
             remote,

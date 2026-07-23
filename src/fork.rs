@@ -222,7 +222,7 @@ pub(crate) fn fork_workspace_excluding(
         })?;
         let source_path = entry.path();
         let relative = source_path.strip_prefix(&source)?;
-        if excluded.iter().any(|excluded| relative == *excluded) {
+        if excluded.contains(&relative) {
             continue;
         }
         let destination_path = directories
@@ -613,10 +613,9 @@ fn streaming_copy(source: &Path, destination: &Path) -> io::Result<u64> {
         }
     }
 
-    Err(io::Error::new(
-        io::ErrorKind::Other,
-        format!("source changed repeatedly while copying ({last_length} bytes in last attempt)"),
-    ))
+    Err(io::Error::other(format!(
+        "source changed repeatedly while copying ({last_length} bytes in last attempt)"
+    )))
 }
 
 fn stable_file(before: &Metadata, after: &Metadata) -> bool {

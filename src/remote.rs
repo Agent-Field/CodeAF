@@ -27,6 +27,7 @@ const OP_WAIT_HEAD: u8 = 9;
 const STATUS_OK: u8 = 0;
 const STATUS_ERROR: u8 = 1;
 const MAX_KEY_BYTES: usize = 96;
+const MAX_REF_BYTES: usize = 80;
 const MAX_ERROR_BYTES: usize = 8 * 1024;
 pub(crate) const MAX_OBJECT_BYTES: u64 = 256 * 1024 * 1024 + 1024;
 pub(crate) const MAX_METADATA_BYTES: u64 = 1024 * 1024 + 1024;
@@ -91,6 +92,10 @@ pub(crate) struct Session {
     connect_ms: u64,
     operations: u64,
     last_head_hash: Option<[u8; 32]>,
+    // `None` addresses the well-known, backward-compatible `HEAD`/`LEASE`
+    // keys. `Some(name)` scopes every head/lease/lock operation below to an
+    // independent named ref so concurrent publishers never contend.
+    active_ref: Option<String>,
 }
 
 pub(crate) struct HeadChange {
@@ -109,7 +114,7 @@ enum SessionInner {
         output: BufReader<ChildStdout>,
         locked: bool,
     },
-    S3(S3Session),
+    S3(Box<S3Session>),
 }
 
 impl Session {
@@ -150,13 +155,14 @@ impl Session {
                     locked: false,
                 }
             }
-            RemoteSpec::S3 { s3 } => SessionInner::S3(S3Session::open(s3, namespace)?),
+            RemoteSpec::S3 { s3 } => SessionInner::S3(Box::new(S3Session::open(s3, namespace)?)),
         };
         let mut session = Self {
             inner,
             connect_ms: 0,
             operations: 0,
             last_head_hash: None,
+            active_ref: None,
         };
         if let SessionInner::Ssh { input, output, .. } = &mut session.inner {
             request(
@@ -177,11 +183,30 @@ impl Session {
         (if reused { 0 } else { self.connect_ms }, reused)
     }
 
+    /// Scope every subsequent head/lease/lock operation on this session to
+    /// `ref_name`. `None` preserves the well-known `HEAD`/`LEASE` keys used
+    /// before named refs existed.
+    pub fn set_ref(&mut self, ref_name: Option<&str>) -> anyhow::Result<()> {
+        if let Some(name) = ref_name {
+            validate_ref(name)?;
+        }
+        self.active_ref = ref_name.map(str::to_owned);
+        Ok(())
+    }
+
+    pub fn ref_name(&self) -> Option<&str> {
+        self.active_ref.as_deref()
+    }
+
     pub fn begin_writer(&mut self) -> anyhow::Result<()> {
+        let ref_name = self.active_ref.clone();
         match &mut self.inner {
             SessionInner::Directory { root, lock } => {
                 anyhow::ensure!(lock.is_none(), "remote writer lock is already held");
-                let path = root.join("LEASE.lock");
+                let path = root.join(lock_relative_path(ref_name.as_deref()));
+                if let Some(parent) = path.parent() {
+                    ensure_durable_directory(parent)?;
+                }
                 let file = OpenOptions::new()
                     .create(true)
                     .truncate(false)
@@ -203,14 +228,14 @@ impl Session {
                 request(
                     input.as_mut().context("SSH helper input is closed")?,
                     OP_LOCK,
-                    "",
+                    ref_name.as_deref().unwrap_or(""),
                     &[],
                 )?;
                 read_ok_response(output, MAX_ERROR_BYTES as u64)?;
                 *locked = true;
                 Ok(())
             }
-            SessionInner::S3(session) => session.begin_writer(),
+            SessionInner::S3(session) => session.begin_writer(&head_key(ref_name.as_deref())),
         }
     }
 
@@ -283,7 +308,7 @@ impl Session {
             }
             SessionInner::S3(session) => session.read(key, limit),
         }?;
-        if key == "HEAD" {
+        if key == head_key(self.active_ref.as_deref()) {
             self.last_head_hash = Some(*blake3::hash(&bytes).as_bytes());
         }
         Ok(bytes)
@@ -346,7 +371,7 @@ impl Session {
             }
             SessionInner::S3(session) => session.write(key, bytes),
         };
-        if result.is_ok() && key == "HEAD" {
+        if result.is_ok() && key == head_key(self.active_ref.as_deref()) {
             self.last_head_hash = Some(*blake3::hash(bytes).as_bytes());
         }
         result
@@ -430,6 +455,7 @@ impl Session {
     }
 
     pub fn wait_for_head_change(&mut self, timeout: Duration) -> anyhow::Result<HeadChange> {
+        let ref_name = self.active_ref.clone();
         let timeout = if matches!(&self.inner, SessionInner::S3(_)) {
             timeout
         } else {
@@ -445,7 +471,12 @@ impl Session {
         };
         match &mut self.inner {
             SessionInner::Directory { root, .. } => {
-                let notify_ms = wait_for_head_hash_change(root, &known, timeout_ms)?;
+                let notify_ms = wait_for_head_hash_change(
+                    root,
+                    &known,
+                    timeout_ms,
+                    &head_key(ref_name.as_deref()),
+                )?;
                 Ok(HeadChange {
                     changed: notify_ms.is_some(),
                     notify_ms,
@@ -458,7 +489,7 @@ impl Session {
                 request(
                     input.as_mut().context("SSH helper input is closed")?,
                     OP_WAIT_HEAD,
-                    "",
+                    ref_name.as_deref().unwrap_or(""),
                     &payload,
                 )?;
                 let response = read_ok_response(output, 9)?;
@@ -472,7 +503,7 @@ impl Session {
             }
             SessionInner::S3(session) => {
                 std::thread::sleep(timeout);
-                let bytes = session.read("HEAD", MAX_METADATA_BYTES)?;
+                let bytes = session.read(&head_key(ref_name.as_deref()), MAX_METADATA_BYTES)?;
                 Ok(HeadChange {
                     changed: blake3::hash(&bytes).as_bytes() != &known,
                     notify_ms: None,
@@ -574,7 +605,14 @@ fn read_request(input: &mut impl Read) -> anyhow::Result<Option<RequestFrame>> {
     input.read_exact(&mut key)?;
     let key = String::from_utf8(key).context("remote request key is not UTF-8")?;
     if !key.is_empty() {
-        validate_key(&key)?;
+        // OP_LOCK and OP_WAIT_HEAD carry a ref name rather than a full
+        // storage key: the server derives the actual lock file / head key
+        // from it, scoping concurrent writers and followers per ref.
+        if matches!(op, OP_LOCK | OP_WAIT_HEAD) {
+            validate_ref(&key)?;
+        } else {
+            validate_key(&key)?;
+        }
     }
     if op == OP_WRITE {
         anyhow::ensure!(payload_len <= key_limit(&key)?, "remote value is too large");
@@ -609,12 +647,17 @@ fn handle_request(
         }
         OP_LOCK => {
             anyhow::ensure!(lock.is_none(), "remote writer lock is already held");
+            let ref_name = (!key.is_empty()).then_some(key);
+            let path = root.join(lock_relative_path(ref_name));
+            if let Some(parent) = path.parent() {
+                ensure_durable_directory(parent)?;
+            }
             let file = OpenOptions::new()
                 .create(true)
                 .truncate(false)
                 .read(true)
                 .write(true)
-                .open(root.join("LEASE.lock"))?;
+                .open(path)?;
             file.try_lock_exclusive()
                 .context("another sync operation is updating the remote")?;
             *lock = Some(file);
@@ -631,7 +674,9 @@ fn handle_request(
             anyhow::ensure!(payload.len() == 40, "invalid wait request");
             let timeout_ms = u64::from_le_bytes(payload[..8].try_into().unwrap()).min(30_000);
             let known: [u8; 32] = payload[8..].try_into().unwrap();
-            let notify_ms = wait_for_head_hash_change(root, &known, timeout_ms)?;
+            let ref_name = (!key.is_empty()).then_some(key);
+            let notify_ms =
+                wait_for_head_hash_change(root, &known, timeout_ms, &head_key(ref_name))?;
             let mut response = Vec::with_capacity(9);
             response.push(notify_ms.is_some() as u8);
             response.extend_from_slice(&notify_ms.unwrap_or(u64::MAX).to_le_bytes());
@@ -719,12 +764,13 @@ fn wait_for_head_hash_change(
     root: &Path,
     known: &[u8; 32],
     timeout_ms: u64,
+    head_key: &str,
 ) -> anyhow::Result<Option<u64>> {
     let deadline = Instant::now() + Duration::from_millis(timeout_ms);
     loop {
-        if let Ok(bytes) = read_remote_value(root, "HEAD", MAX_METADATA_BYTES) {
+        if let Ok(bytes) = read_remote_value(root, head_key, MAX_METADATA_BYTES) {
             if blake3::hash(&bytes).as_bytes() != known {
-                let modified = fs::metadata(root.join("HEAD"))?.modified()?;
+                let modified = fs::metadata(root.join(head_key))?.modified()?;
                 let notify_ms = SystemTime::now()
                     .duration_since(modified)
                     .unwrap_or_default()
@@ -759,6 +805,12 @@ fn validate_key(key: &str) -> anyhow::Result<()> {
     if matches!(key, "HEAD" | "LEASE") {
         return Ok(());
     }
+    if let Some(rest) = key.strip_prefix("refs/") {
+        let (ref_name, suffix) = rest.rsplit_once('/').context("invalid remote key")?;
+        anyhow::ensure!(matches!(suffix, "HEAD" | "LEASE"), "invalid remote key");
+        validate_ref(ref_name)?;
+        return Ok(());
+    }
     let Some(value) = key.strip_prefix("objects/") else {
         anyhow::bail!("invalid remote key")
     };
@@ -768,6 +820,59 @@ fn validate_key(key: &str) -> anyhow::Result<()> {
             && value.bytes().enumerate().all(|(index, byte)| index == 2
                 || byte.is_ascii_hexdigit() && !byte.is_ascii_uppercase()),
         "invalid remote object key"
+    );
+    Ok(())
+}
+
+/// The published head key for `ref_name`. `None` is the well-known `HEAD`
+/// key used before named refs existed; `Some(name)` is an independent,
+/// non-contending slot nested under `refs/<name>/`.
+pub(crate) fn head_key(ref_name: Option<&str>) -> String {
+    match ref_name {
+        None => "HEAD".to_owned(),
+        Some(name) => format!("refs/{name}/HEAD"),
+    }
+}
+
+/// The single-writer lease key for `ref_name`, mirroring [`head_key`].
+pub(crate) fn lease_key(ref_name: Option<&str>) -> String {
+    match ref_name {
+        None => "LEASE".to_owned(),
+        Some(name) => format!("refs/{name}/LEASE"),
+    }
+}
+
+/// Path, relative to the namespace root, of the advisory lock file guarding
+/// writes to `ref_name`. Distinct refs use distinct lock files so concurrent
+/// publishers to different refs never contend.
+fn lock_relative_path(ref_name: Option<&str>) -> String {
+    match ref_name {
+        None => "LEASE.lock".to_owned(),
+        Some(name) => format!("refs/{name}/LEASE.lock"),
+    }
+}
+
+/// Validate a `--ref` name: a safe, non-empty charset with no path
+/// traversal or empty segments, so it can be nested into remote storage
+/// keys and advisory lock file paths without escaping the namespace root.
+pub fn validate_ref(name: &str) -> anyhow::Result<()> {
+    anyhow::ensure!(
+        !name.is_empty() && name.len() <= MAX_REF_BYTES,
+        "invalid sync ref name"
+    );
+    anyhow::ensure!(
+        name.bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'.' | b'_' | b'-' | b'/')),
+        "sync ref name may contain only letters, numbers, dot, dash, underscore, and slash"
+    );
+    anyhow::ensure!(
+        !name.starts_with('/') && !name.ends_with('/'),
+        "sync ref name must not start or end with a slash"
+    );
+    anyhow::ensure!(
+        name.split('/')
+            .all(|segment| !segment.is_empty() && segment != "." && segment != ".."),
+        "sync ref name must not contain empty, '.', or '..' path segments"
     );
     Ok(())
 }
@@ -1019,5 +1124,68 @@ mod tests {
         drop(first);
         second.begin_writer().unwrap();
         assert_eq!(second.read("HEAD", 32).unwrap(), b"locked");
+    }
+
+    #[test]
+    fn validates_ref_names() {
+        assert!(validate_ref("team-a").is_ok());
+        assert!(validate_ref("team/a.b_c-9").is_ok());
+        assert!(validate_ref("").is_err());
+        assert!(validate_ref(&"x".repeat(200)).is_err());
+        assert!(validate_ref("/leading").is_err());
+        assert!(validate_ref("trailing/").is_err());
+        assert!(validate_ref("a//b").is_err());
+        assert!(validate_ref("../escape").is_err());
+        assert!(validate_ref("a/../b").is_err());
+        assert!(validate_ref("a/./b").is_err());
+        assert!(validate_ref("has space").is_err());
+        assert!(validate_ref("has:colon").is_err());
+    }
+
+    #[test]
+    fn validate_key_accepts_ref_scoped_head_and_lease_keys() {
+        assert!(validate_key(&head_key(None)).is_ok());
+        assert!(validate_key(&lease_key(None)).is_ok());
+        assert!(validate_key(&head_key(Some("team-a"))).is_ok());
+        assert!(validate_key(&lease_key(Some("team-a"))).is_ok());
+        assert!(validate_key(&head_key(Some("nested/team"))).is_ok());
+        assert!(validate_key("refs/../HEAD").is_err());
+        assert!(validate_key("refs/team-a/LOCK").is_err());
+    }
+
+    #[test]
+    fn named_refs_on_a_directory_remote_use_independent_lock_files() {
+        let temporary = tempfile::tempdir().unwrap();
+        let spec = RemoteSpec::Directory(temporary.path().to_owned());
+        let mut team_a = Session::open(&spec, "project").unwrap();
+        team_a.set_ref(Some("team-a")).unwrap();
+        team_a.begin_writer().unwrap();
+
+        // A concurrent writer on a different ref must not contend for the
+        // same advisory lock file.
+        let mut team_b = Session::open(&spec, "project").unwrap();
+        team_b.set_ref(Some("team-b")).unwrap();
+        team_b.begin_writer().unwrap();
+
+        // A second writer on the SAME ref is still correctly refused.
+        let mut team_a_again = Session::open(&spec, "project").unwrap();
+        team_a_again.set_ref(Some("team-a")).unwrap();
+        assert!(team_a_again.begin_writer().is_err());
+
+        team_a.write(&head_key(Some("team-a")), b"a-value").unwrap();
+        team_b.write(&head_key(Some("team-b")), b"b-value").unwrap();
+        team_a.end_writer().unwrap();
+        team_b.end_writer().unwrap();
+
+        assert_eq!(
+            team_a.read(&head_key(Some("team-a")), 32).unwrap(),
+            b"a-value"
+        );
+        assert_eq!(
+            team_b.read(&head_key(Some("team-b")), 32).unwrap(),
+            b"b-value"
+        );
+        // The default, ref-less HEAD key is untouched.
+        assert!(!team_a.exists("HEAD").unwrap());
     }
 }

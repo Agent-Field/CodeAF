@@ -306,6 +306,11 @@ enum Command {
         /// Replace this machine's initial state with the remote state, reversibly.
         #[arg(long, requires = "pull")]
         bootstrap: bool,
+        /// Publish or follow an independent named ref instead of the
+        /// default HEAD, so concurrent publishers to the same remote never
+        /// contend. Omit to use today's single, well-known HEAD.
+        #[arg(long = "ref")]
+        ref_name: Option<String>,
         /// Print transport phase timings to stderr.
         #[arg(long)]
         timings: bool,
@@ -1284,7 +1289,7 @@ fn main() -> anyhow::Result<()> {
                 let (mut repository, _) = FurrowRepository::watch(&destination)?;
                 repository.pair(PathBuf::from(&transport).as_path(), &namespace, Some(&key))?;
                 let outcome = repository
-                    .sync_pull(true)
+                    .sync_pull(true, None)
                     .context("workspace was not found or the recovery key does not match")?;
                 Ok((repository, outcome))
             })();
@@ -1323,16 +1328,18 @@ fn main() -> anyhow::Result<()> {
             poll_seconds,
             takeover,
             bootstrap,
+            ref_name,
             timings,
         } => {
             anyhow::ensure!(
                 push || pull || follow,
                 "choose exactly one of --push, --pull, or --follow"
             );
+            let ref_name = ref_name.as_deref();
             let mut repository = FurrowRepository::open(&cli.repo)?;
             if follow {
                 anyhow::ensure!(poll_seconds > 0, "--poll-seconds must be greater than zero");
-                let mut session = repository.sync_follow_session()?;
+                let mut session = repository.sync_follow_session(ref_name)?;
                 loop {
                     let result = repository.sync_follow_once(&mut session);
                     let session_failed = result.is_err();
@@ -1369,7 +1376,7 @@ fn main() -> anyhow::Result<()> {
                     }
                     if session_failed {
                         std::thread::sleep(std::time::Duration::from_secs(poll_seconds));
-                        session = repository.sync_follow_session()?;
+                        session = repository.sync_follow_session(ref_name)?;
                         continue;
                     }
                     if let Err(error) =
@@ -1377,11 +1384,11 @@ fn main() -> anyhow::Result<()> {
                     {
                         eprintln!("sync follow notification: {error:#}");
                         std::thread::sleep(std::time::Duration::from_secs(poll_seconds));
-                        session = repository.sync_follow_session()?;
+                        session = repository.sync_follow_session(ref_name)?;
                     }
                 }
             } else if push {
-                let report = repository.sync_push(takeover)?;
+                let report = repository.sync_push(takeover, ref_name)?;
                 if timings {
                     print_transport_timings(&report.timings);
                 }
@@ -1395,7 +1402,7 @@ fn main() -> anyhow::Result<()> {
                     );
                 }
             } else {
-                let outcome = repository.sync_pull(bootstrap)?;
+                let outcome = repository.sync_pull(bootstrap, ref_name)?;
                 if timings {
                     print_transport_timings(&outcome.timings);
                     print_apply_timings(&outcome.apply_timings);
