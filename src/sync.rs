@@ -1,12 +1,12 @@
 //! Encrypted, delta-only synchronization through a directory or direct SSH helper.
 
 use crate::bundle;
-use crate::model::{ObjectId, ObjectKind, Snapshot};
+use crate::model::{Blob, ObjectId, ObjectKind, Snapshot};
 use crate::remote::{self, RemoteSpec, Session};
 use crate::remote_crypto::RemoteCrypto;
 use crate::store::ObjectStore;
 use anyhow::Context;
-use rusqlite::{params, Connection};
+use rusqlite::{params, Connection, OptionalExtension};
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::os::unix::fs::PermissionsExt;
@@ -53,6 +53,11 @@ pub struct PullReport {
     pub fetched_objects: u64,
     pub reused_objects: u64,
     pub fetched_bytes: u64,
+    /// Files materialized into the workspace while the fetch was still in
+    /// flight. Streaming pulls advance this alongside `fetched_objects` so the
+    /// caller can observe checkout progress; a non-streaming pull leaves it 0.
+    #[serde(default)]
+    pub materialized_files: u64,
     pub timings: TransportTimings,
 }
 
@@ -453,6 +458,7 @@ pub(crate) fn pull_on(
             fetched_objects,
             reused_objects,
             fetched_bytes,
+            materialized_files: 0,
             timings: TransportTimings {
                 connect_auth_ms,
                 negotiate_ms,
@@ -464,6 +470,248 @@ pub(crate) fn pull_on(
             },
         },
     })
+}
+
+/// A pull that separates skeleton transfer (snapshot + trees) from bulk blob
+/// transfer so the caller can materialize files while blobs are still being
+/// fetched.
+///
+/// The lifecycle is: [`StreamingPull::begin`] fetches the snapshot and every
+/// tree object, which is enough to compute an apply plan. The caller then walks
+/// that plan in deterministic tree order, calling [`StreamingPull::fetch_file`]
+/// for each file to pull just that file's blob/chunk subgraph before writing
+/// it. Finally [`StreamingPull::finish`] drains any objects the plan did not
+/// cover (reused paths, SQLite backups) and re-verifies the whole graph exactly
+/// like a non-streaming pull, so the snapshot is adopted only once every
+/// reachable object is durable.
+///
+/// The disk-backed queue keeps memory bounded on very large graphs and doubles
+/// as the deduplication ledger: every object is fetched (or reused) at most
+/// once regardless of how the plan interleaves file fetches with the final
+/// drain, so the reported counters match the non-streaming path object-for-object.
+pub(crate) struct StreamingPull<'session, 'store> {
+    store: &'store ObjectStore,
+    remote: &'session mut Session,
+    crypto: RemoteCrypto,
+    head: RemoteHead,
+    _queue_file: tempfile::NamedTempFile,
+    queue: Connection,
+    fetched_objects: u64,
+    reused_objects: u64,
+    fetched_bytes: u64,
+    materialized_files: u64,
+    connect_auth_ms: u64,
+    connection_reused: bool,
+    negotiate_ms: u64,
+    total_started: Instant,
+    stream_started: Instant,
+}
+
+impl<'session, 'store> StreamingPull<'session, 'store> {
+    pub(crate) fn begin(
+        store: &'store ObjectStore,
+        config: &PairConfig,
+        remote: &'session mut Session,
+    ) -> anyhow::Result<Self> {
+        let total_started = Instant::now();
+        let (connect_auth_ms, connection_reused) = remote.begin_operation();
+        let negotiate_started = Instant::now();
+        let crypto = RemoteCrypto::new(config.key);
+        let head = read_remote_head(remote, config, &crypto)?;
+        let negotiate_ms = elapsed_ms(negotiate_started);
+        let stream_started = Instant::now();
+        let queue_file = tempfile::NamedTempFile::new()?;
+        let queue = Connection::open(queue_file.path())?;
+        queue.execute_batch(
+            "PRAGMA journal_mode=OFF;
+             PRAGMA synchronous=OFF;
+             CREATE TABLE queue(
+                id BLOB PRIMARY KEY,
+                kind INTEGER NOT NULL,
+                processed INTEGER NOT NULL DEFAULT 0
+             ) WITHOUT ROWID;
+             CREATE INDEX queue_pending ON queue(processed, id);
+             BEGIN;",
+        )?;
+        enqueue(&queue, &head.snapshot, ObjectKind::Snapshot)?;
+        let mut pull = StreamingPull {
+            store,
+            remote,
+            crypto,
+            head,
+            _queue_file: queue_file,
+            queue,
+            fetched_objects: 0,
+            reused_objects: 0,
+            fetched_bytes: 0,
+            materialized_files: 0,
+            connect_auth_ms,
+            connection_reused,
+            negotiate_ms,
+            total_started,
+            stream_started,
+        };
+        pull.fetch_skeleton()?;
+        Ok(pull)
+    }
+
+    pub(crate) fn snapshot(&self) -> ObjectId {
+        self.head.snapshot
+    }
+
+    pub(crate) fn base_root(&self) -> Option<ObjectId> {
+        self.head.base_root
+    }
+
+    /// Record that a file backed by the given blob has been written to the
+    /// workspace, advancing the materialized-files progress counter.
+    pub(crate) fn note_materialized(&mut self) {
+        self.materialized_files += 1;
+    }
+
+    /// Fetch the blob object and its chunk subgraph in deterministic tree
+    /// order, leaving them durable in the store so the file can be written.
+    pub(crate) fn fetch_file(&mut self, blob: ObjectId) -> anyhow::Result<()> {
+        self.fetch_pending(&[(blob, ObjectKind::Blob)])?;
+        let blob_value: Blob = self.store.read_struct(&blob, ObjectKind::Blob)?;
+        let chunks: Vec<(ObjectId, ObjectKind)> = blob_value
+            .chunks
+            .iter()
+            .map(|chunk| (chunk.id, ObjectKind::Chunk))
+            .collect();
+        self.fetch_pending(&chunks)
+    }
+
+    /// Fetch a single leaf object (e.g. a file's extended attributes) that
+    /// materialization needs before the whole graph is drained.
+    pub(crate) fn fetch_object(&mut self, id: ObjectId, kind: ObjectKind) -> anyhow::Result<()> {
+        self.fetch_pending(&[(id, kind)])
+    }
+
+    /// Fetch every object the plan-driven file fetches did not cover, then
+    /// prove the assembled remote root exactly like [`pull_on`].
+    pub(crate) fn finish(mut self) -> anyhow::Result<PulledHead> {
+        loop {
+            let batch = next_batch(&self.queue, PULL_BATCH)?;
+            if batch.is_empty() {
+                break;
+            }
+            self.fetch_batch(batch)?;
+        }
+        self.queue.execute_batch("COMMIT;")?;
+        // Existing objects are trusted only because the local completeness gate
+        // made them visible. A final traversal proves the assembled remote root.
+        bundle::for_each_reachable(self.store, self.head.snapshot, |_id, _kind, _bytes| Ok(()))?;
+        let remote_snapshot: Snapshot = self
+            .store
+            .read_struct(&self.head.snapshot, ObjectKind::Snapshot)?;
+        anyhow::ensure!(
+            remote_snapshot.root_tree == self.head.root,
+            "authenticated remote head does not match its snapshot root"
+        );
+        let stream_ms = elapsed_ms(self.stream_started);
+        Ok(PulledHead {
+            snapshot: self.head.snapshot,
+            root: self.head.root,
+            base_root: self.head.base_root,
+            report: PullReport {
+                snapshot: hex::encode(self.head.snapshot),
+                fetched_objects: self.fetched_objects,
+                reused_objects: self.reused_objects,
+                fetched_bytes: self.fetched_bytes,
+                materialized_files: self.materialized_files,
+                timings: TransportTimings {
+                    connect_auth_ms: self.connect_auth_ms,
+                    negotiate_ms: self.negotiate_ms,
+                    stream_ms,
+                    durability_ms: 0,
+                    notify_ms: None,
+                    total_ms: self
+                        .connect_auth_ms
+                        .saturating_add(elapsed_ms(self.total_started)),
+                    connection_reused: self.connection_reused,
+                },
+            },
+        })
+    }
+
+    fn fetch_skeleton(&mut self) -> anyhow::Result<()> {
+        loop {
+            let batch = next_batch_of_kinds(
+                &self.queue,
+                PULL_BATCH,
+                &[ObjectKind::Snapshot, ObjectKind::Tree],
+            )?;
+            if batch.is_empty() {
+                break;
+            }
+            self.fetch_batch(batch)?;
+        }
+        Ok(())
+    }
+
+    fn fetch_pending(&mut self, ids: &[(ObjectId, ObjectKind)]) -> anyhow::Result<()> {
+        let mut batch = Vec::new();
+        for (id, kind) in ids {
+            match queue_status(&self.queue, id)? {
+                Some(true) => continue,
+                Some(false) => batch.push((*id, *kind)),
+                None => {
+                    enqueue(&self.queue, id, *kind)?;
+                    batch.push((*id, *kind));
+                }
+            }
+        }
+        if batch.is_empty() {
+            return Ok(());
+        }
+        self.fetch_batch(batch)
+    }
+
+    fn fetch_batch(&mut self, batch: Vec<(ObjectId, ObjectKind)>) -> anyhow::Result<()> {
+        let mut missing = Vec::new();
+        for (id, expected) in batch {
+            if !self.store.contains_object(&id)? {
+                missing.push((id, expected));
+                continue;
+            }
+            self.reused_objects += 1;
+            let bytes = self.store.read_bytes(&id, expected)?;
+            process_pulled_object(&self.queue, id, expected, &bytes)?;
+        }
+        if missing.is_empty() {
+            return Ok(());
+        }
+        let requests: Vec<_> = missing
+            .iter()
+            .map(|(id, _)| {
+                (
+                    remote::object_key(&self.crypto.remote_id(id)),
+                    remote::MAX_OBJECT_BYTES,
+                )
+            })
+            .collect();
+        // Disjoint field borrows keep the remote transfer and the queue/store
+        // updates from aliasing while the read callback runs.
+        let store = self.store;
+        let crypto = &self.crypto;
+        let queue = &self.queue;
+        let fetched_objects = &mut self.fetched_objects;
+        let fetched_bytes = &mut self.fetched_bytes;
+        self.remote.read_many(&requests, |index, encrypted| {
+            let (id, expected) = missing[index];
+            let (kind, bytes) = crypto.decrypt_object(&id, &encrypted)?;
+            anyhow::ensure!(kind == expected, "remote object kind mismatch");
+            anyhow::ensure!(
+                store.put_bytes(kind, &bytes)? == id,
+                "remote import ID mismatch"
+            );
+            *fetched_objects += 1;
+            *fetched_bytes += encrypted.len() as u64;
+            process_pulled_object(queue, id, expected, &bytes)
+                .with_context(|| format!("import remote object {}", hex::encode(id)))
+        })
+    }
 }
 
 pub fn published_root(config: &PairConfig) -> anyhow::Result<Option<ObjectId>> {
@@ -602,6 +850,49 @@ fn next_batch(
         ))
     })
     .collect()
+}
+
+fn next_batch_of_kinds(
+    connection: &Connection,
+    limit: usize,
+    kinds: &[ObjectKind],
+) -> anyhow::Result<Vec<(ObjectId, ObjectKind)>> {
+    let placeholders = kinds.iter().map(|_| "?").collect::<Vec<_>>().join(", ");
+    let mut statement = connection.prepare(&format!(
+        "SELECT id, kind FROM queue WHERE processed = 0 AND kind IN ({placeholders}) ORDER BY id LIMIT ?"
+    ))?;
+    let kind_values: Vec<u8> = kinds.iter().map(|kind| *kind as u8).collect();
+    let limit = limit as u64;
+    let bindable: Vec<&dyn rusqlite::ToSql> = kind_values
+        .iter()
+        .map(|value| value as &dyn rusqlite::ToSql)
+        .chain(std::iter::once(&limit as &dyn rusqlite::ToSql))
+        .collect();
+    let rows = statement.query_map(bindable.as_slice(), |row| {
+        Ok((row.get::<_, Vec<u8>>(0)?, row.get::<_, u8>(1)?))
+    })?;
+    rows.map(|row| {
+        let (bytes, kind) = row?;
+        anyhow::ensure!(bytes.len() == 32, "invalid queued object ID");
+        let mut id = [0; 32];
+        id.copy_from_slice(&bytes);
+        Ok((
+            id,
+            ObjectKind::from_u8(kind).context("invalid queued object kind")?,
+        ))
+    })
+    .collect()
+}
+
+fn queue_status(connection: &Connection, id: &ObjectId) -> anyhow::Result<Option<bool>> {
+    let processed: Option<u8> = connection
+        .query_row(
+            "SELECT processed FROM queue WHERE id = ?1",
+            params![id.as_slice()],
+            |row| row.get(0),
+        )
+        .optional()?;
+    Ok(processed.map(|value| value != 0))
 }
 
 fn process_pulled_object(

@@ -2929,3 +2929,167 @@ fn git(repo: &Path, args: &[&str]) {
         .unwrap();
     assert!(status.success());
 }
+
+/// Pair `fixture` and a freshly watched `peer` clone to a shared directory
+/// remote, returning the peer/data/remote paths. The source is pushed so the
+/// peer can bootstrap from it.
+fn prepare_streaming_peer(fixture: &Fixture, tag: &str) -> (PathBuf, PathBuf, PathBuf) {
+    let parent = fixture.repo.parent().unwrap();
+    let peer = parent.join(format!("{tag}-peer"));
+    let peer_data = parent.join(format!("{tag}-peer-data"));
+    let remote = parent.join(format!("{tag}-remote"));
+    git(
+        parent,
+        &[
+            "clone",
+            fixture.repo.to_str().unwrap(),
+            &format!("{tag}-peer"),
+        ],
+    );
+    fixture.watch();
+    furrow_at(&peer, &peer_data)
+        .args(["watch", "--no-daemon"])
+        .assert()
+        .success();
+
+    let pair_output = fixture
+        .furrow()
+        .args([
+            "--json",
+            "pair",
+            remote.to_str().unwrap(),
+            "--name",
+            "streamed-workspace",
+        ])
+        .assert()
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+    let pair: Value = serde_json::from_slice(&pair_output).unwrap();
+    let key = pair["key_hex"].as_str().unwrap();
+    furrow_at(&peer, &peer_data)
+        .args([
+            "pair",
+            remote.to_str().unwrap(),
+            "--name",
+            "streamed-workspace",
+            "--key",
+            key,
+        ])
+        .assert()
+        .success();
+    fixture.furrow().args(["sync", "--push"]).assert().success();
+    (peer, peer_data, remote)
+}
+
+fn assert_workspace_matches_source(fixture: &Fixture, peer: &Path, context: &str) {
+    for relative in [".env", "notes.txt", "app.txt", "cache/dependency.bin"] {
+        assert_eq!(
+            fs::read(peer.join(relative)).unwrap(),
+            fs::read(fixture.repo.join(relative)).unwrap(),
+            "{context}: byte mismatch for {relative}"
+        );
+    }
+    assert_eq!(
+        fs::read_link(peer.join("app-link")).unwrap(),
+        fs::read_link(fixture.repo.join("app-link")).unwrap(),
+        "{context}: symlink mismatch"
+    );
+    assert_eq!(
+        fs::metadata(peer.join("app.txt")).unwrap().mode() & 0o777,
+        fs::metadata(fixture.repo.join("app.txt")).unwrap().mode() & 0o777,
+        "{context}: mode mismatch"
+    );
+    assert_eq!(
+        xattr::get(peer.join("app.txt"), "user.furrow-test")
+            .unwrap()
+            .as_deref(),
+        Some(&b"preserved"[..]),
+        "{context}: xattr mismatch"
+    );
+}
+
+#[test]
+fn streamed_clone_is_byte_identical_and_reports_materialized_progress() {
+    let fixture = Fixture::new();
+    let (peer, peer_data, _remote) = prepare_streaming_peer(&fixture, "streamed");
+
+    let bootstrap_output = furrow_at(&peer, &peer_data)
+        .args(["--json", "sync", "--pull", "--bootstrap"])
+        .assert()
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+    let bootstrap: Value = serde_json::from_slice(&bootstrap_output).unwrap();
+    assert_eq!(bootstrap["disposition"], "bootstrapped");
+
+    // Streaming pipelines fetch and checkout: files are written while blobs are
+    // still arriving, so the materialized-files counter must advance and the
+    // transfer must actually have moved objects.
+    assert!(
+        bootstrap["materialized_files"].as_u64().unwrap() > 0,
+        "streamed pull reported no materialized files: {bootstrap}"
+    );
+    assert!(bootstrap["fetched_objects"].as_u64().unwrap() > 0);
+
+    // The streamed result is byte-identical to the source workspace, including
+    // gitignored payloads, the large binary, executable mode, xattrs, and the
+    // symlink — exactly what the fully-resolved checkout produced before.
+    assert_workspace_matches_source(&fixture, &peer, "streamed clone");
+    assert_eq!(
+        fs::read(peer.join("cache/dependency.bin")).unwrap(),
+        vec![7_u8; 180_000]
+    );
+}
+
+#[test]
+fn interrupted_streamed_pull_recovers_and_completes_byte_identical() {
+    let fixture = Fixture::new();
+    let (peer, peer_data, _remote) = prepare_streaming_peer(&fixture, "interrupted");
+
+    // Kill the pull mid-stream: the failpoint exits the process immediately
+    // after the first file is materialized, long before the whole graph lands.
+    furrow_at(&peer, &peer_data)
+        .env("FURROW_FAILPOINT", "pull_after_first_file")
+        .args(["sync", "--pull", "--bootstrap"])
+        .assert()
+        .code(87);
+
+    // The large gitignored payload never arrived because the transfer aborted,
+    // so materialization was genuinely partial rather than all-or-nothing.
+    assert!(
+        !peer.join("cache/dependency.bin").exists(),
+        "the interrupted pull materialized the whole tree, not a partial stream"
+    );
+
+    // Opening the workspace detects the durable restore intent and rolls the
+    // partially materialized delta back to the pre-pull snapshot.
+    furrow_at(&peer, &peer_data)
+        .arg("status")
+        .assert()
+        .success()
+        .stderr(predicates::str::contains("recovering interrupted rewind"));
+    assert!(
+        !peer.join(".env").exists(),
+        "the partially streamed delta was not rolled back on recovery"
+    );
+
+    // Re-pulling after recovery completes cleanly and reproduces the exact
+    // source workspace, reusing whatever the aborted attempt already fetched.
+    let bootstrap_output = furrow_at(&peer, &peer_data)
+        .args(["--json", "sync", "--pull", "--bootstrap"])
+        .assert()
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+    let bootstrap: Value = serde_json::from_slice(&bootstrap_output).unwrap();
+    assert_eq!(bootstrap["disposition"], "bootstrapped");
+    assert_workspace_matches_source(&fixture, &peer, "recovered clone");
+    assert_eq!(
+        fs::read(peer.join("cache/dependency.bin")).unwrap(),
+        vec![7_u8; 180_000]
+    );
+}
