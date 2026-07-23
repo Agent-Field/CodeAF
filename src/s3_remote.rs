@@ -104,6 +104,7 @@ pub(crate) struct S3Session {
     prefix: String,
     writer: bool,
     expected_head_etag: Option<Option<String>>,
+    head_key: Option<String>,
 }
 
 impl S3Session {
@@ -137,12 +138,14 @@ impl S3Session {
             prefix,
             writer: false,
             expected_head_etag: None,
+            head_key: None,
         })
     }
 
-    pub fn begin_writer(&mut self) -> anyhow::Result<()> {
+    pub fn begin_writer(&mut self, head_key: &str) -> anyhow::Result<()> {
         anyhow::ensure!(!self.writer, "remote writer session is already active");
-        self.expected_head_etag = Some(self.head("HEAD")?);
+        self.expected_head_etag = Some(self.head(head_key)?);
+        self.head_key = Some(head_key.to_owned());
         self.writer = true;
         Ok(())
     }
@@ -150,6 +153,7 @@ impl S3Session {
     pub fn end_writer(&mut self) {
         self.writer = false;
         self.expected_head_etag = None;
+        self.head_key = None;
     }
 
     pub fn exists(&self, key: &str) -> anyhow::Result<bool> {
@@ -189,7 +193,7 @@ impl S3Session {
                 Err(error) => Err(error.into_anyhow(key)),
             };
         }
-        if key == "HEAD" {
+        if Some(key) == self.head_key.as_deref() {
             let condition = match self
                 .expected_head_etag
                 .as_ref()

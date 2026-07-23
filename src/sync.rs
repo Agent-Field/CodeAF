@@ -148,7 +148,7 @@ pub fn push(
     expected_remote_root: Option<ObjectId>,
     takeover: bool,
 ) -> anyhow::Result<PushReport> {
-    let mut remote = Session::open(&config.remote, storage_namespace(config))?;
+    let mut remote = open_session(config, None)?;
     push_on(
         store,
         snapshot,
@@ -159,8 +159,15 @@ pub fn push(
     )
 }
 
-pub(crate) fn open_session(config: &PairConfig) -> anyhow::Result<Session> {
-    Session::open(&config.remote, storage_namespace(config))
+pub(crate) fn open_session(config: &PairConfig, ref_name: Option<&str>) -> anyhow::Result<Session> {
+    // Validate before paying for a connection so an invalid `--ref` fails
+    // fast and identically across all three transports.
+    if let Some(name) = ref_name {
+        remote::validate_ref(name)?;
+    }
+    let mut session = Session::open(&config.remote, storage_namespace(config))?;
+    session.set_ref(ref_name)?;
+    Ok(session)
 }
 
 pub(crate) fn push_on(
@@ -216,10 +223,13 @@ fn push_locked(
     timing: OperationTiming,
 ) -> anyhow::Result<PushReport> {
     let negotiate_started = Instant::now();
+    let ref_name = remote.ref_name().map(str::to_owned);
+    let head_key = remote::head_key(ref_name.as_deref());
+    let lease_key = remote::lease_key(ref_name.as_deref());
     let new_lease = prepare_writer_lease(remote, config, takeover)?;
     let crypto = RemoteCrypto::new(config.key);
     let snapshot_value: Snapshot = store.read_struct(&snapshot, ObjectKind::Snapshot)?;
-    let base_root = if remote.exists("HEAD")? {
+    let base_root = if remote.exists(&head_key)? {
         let current = read_remote_head(remote, config, &crypto)?;
         anyhow::ensure!(
             current.snapshot == snapshot || Some(current.root) == expected_remote_root,
@@ -236,7 +246,7 @@ fn push_locked(
     // Publish ownership only after the locked expected-head check. A stale
     // takeover attempt must not disrupt the current writer when no new HEAD
     // can be committed.
-    remote.write("LEASE", &new_lease)?;
+    remote.write(&lease_key, &new_lease)?;
     let negotiate_ms = timing.lock_ms.saturating_add(elapsed_ms(negotiate_started));
     let stream_started = Instant::now();
     let mut uploaded_objects = 0_u64;
@@ -302,9 +312,9 @@ fn push_locked(
     };
     let encrypted_head = crypto.encrypt_metadata(
         &serde_json::to_vec(&head)?,
-        head_context(&config.namespace).as_bytes(),
+        head_context(&config.namespace, ref_name.as_deref()).as_bytes(),
     )?;
-    remote.write("HEAD", &encrypted_head)?;
+    remote.write(&head_key, &encrypted_head)?;
     let durability_ms = elapsed_ms(durability_started);
     Ok(PushReport {
         snapshot: hex::encode(snapshot),
@@ -363,7 +373,7 @@ fn flush_push_batch(
 }
 
 pub fn pull(store: &ObjectStore, config: &PairConfig) -> anyhow::Result<PulledHead> {
-    let mut remote = Session::open(&config.remote, storage_namespace(config))?;
+    let mut remote = open_session(config, None)?;
     pull_on(store, config, &mut remote)
 }
 
@@ -467,7 +477,7 @@ pub(crate) fn pull_on(
 }
 
 pub fn published_root(config: &PairConfig) -> anyhow::Result<Option<ObjectId>> {
-    let mut remote = Session::open(&config.remote, storage_namespace(config))?;
+    let mut remote = open_session(config, None)?;
     published_root_on(config, &mut remote)
 }
 
@@ -476,7 +486,8 @@ pub(crate) fn published_root_on(
     remote: &mut Session,
 ) -> anyhow::Result<Option<ObjectId>> {
     remote.begin_operation();
-    if !remote.exists("HEAD")? {
+    let head_key = remote::head_key(remote.ref_name());
+    if !remote.exists(&head_key)? {
         return Ok(None);
     }
     let crypto = RemoteCrypto::new(config.key);
@@ -494,10 +505,13 @@ fn prepare_writer_lease(
 ) -> anyhow::Result<Vec<u8>> {
     let crypto = RemoteCrypto::new(config.key);
     let now = SystemTime::now().duration_since(UNIX_EPOCH)?.as_secs();
-    if remote.exists("LEASE")? {
+    let ref_name = remote.ref_name().map(str::to_owned);
+    let lease_key = remote::lease_key(ref_name.as_deref());
+    let context = lease_context(ref_name.as_deref());
+    if remote.exists(&lease_key)? {
         let lease = crypto.decrypt_head(
-            &remote.read("LEASE", remote::MAX_METADATA_BYTES)?,
-            b"furrow:writer-lease:v1",
+            &remote.read(&lease_key, remote::MAX_METADATA_BYTES)?,
+            context.as_bytes(),
         )?;
         let mut owner = [0; 16];
         owner.copy_from_slice(&lease[..16]);
@@ -510,11 +524,21 @@ fn prepare_writer_lease(
     let mut lease = [0; 32];
     lease[..16].copy_from_slice(&config.machine_id);
     lease[16..24].copy_from_slice(&(now + LEASE_SECONDS).to_le_bytes());
-    crypto.encrypt_head(&lease, b"furrow:writer-lease:v1")
+    crypto.encrypt_head(&lease, context.as_bytes())
 }
 
-fn head_context(namespace: &str) -> String {
-    format!("furrow:remote-head:v1:{namespace}")
+fn head_context(namespace: &str, ref_name: Option<&str>) -> String {
+    match ref_name {
+        None => format!("furrow:remote-head:v1:{namespace}"),
+        Some(name) => format!("furrow:remote-head:v1:{namespace}:ref:{name}"),
+    }
+}
+
+fn lease_context(ref_name: Option<&str>) -> String {
+    match ref_name {
+        None => "furrow:writer-lease:v1".to_owned(),
+        Some(name) => format!("furrow:writer-lease:v1:ref:{name}"),
+    }
 }
 
 fn read_remote_head(
@@ -522,12 +546,18 @@ fn read_remote_head(
     config: &PairConfig,
     crypto: &RemoteCrypto,
 ) -> anyhow::Result<RemoteHead> {
+    let ref_name = remote.ref_name().map(str::to_owned);
+    let head_key = remote::head_key(ref_name.as_deref());
     let encrypted = remote
-        .read("HEAD", remote::MAX_METADATA_BYTES)
-        .context("sync remote has no published HEAD")?;
-    let head: RemoteHead = serde_json::from_slice(
-        &crypto.decrypt_metadata(&encrypted, head_context(&config.namespace).as_bytes())?,
-    )
+        .read(&head_key, remote::MAX_METADATA_BYTES)
+        .with_context(|| match &ref_name {
+            None => "sync remote has no published HEAD".to_owned(),
+            Some(name) => format!("sync remote has no published ref '{name}'"),
+        })?;
+    let head: RemoteHead = serde_json::from_slice(&crypto.decrypt_metadata(
+        &encrypted,
+        head_context(&config.namespace, ref_name.as_deref()).as_bytes(),
+    )?)
     .context("decode authenticated remote head")?;
     anyhow::ensure!(head.version == 1, "unsupported remote head version");
     Ok(head)
@@ -678,6 +708,60 @@ mod tests {
             .unwrap()
     }
 
+    fn snapshot_fixture_with_content(store: &ObjectStore, content: &[u8]) -> ObjectId {
+        let chunk = store.put_bytes(ObjectKind::Chunk, content).unwrap();
+        let blob = store
+            .put_struct(
+                ObjectKind::Blob,
+                &Blob {
+                    chunks: vec![ChunkRef {
+                        id: chunk,
+                        len: content.len() as u32,
+                    }],
+                    total_len: content.len() as u64,
+                },
+            )
+            .unwrap();
+        let tree = store
+            .put_struct(
+                ObjectKind::Tree,
+                &Tree {
+                    entries: vec![TreeEntry {
+                        name: b"state.txt".to_vec(),
+                        kind: EntryKind::File,
+                        target: Some(blob),
+                        link_target: Vec::new(),
+                        mode: 0o100644,
+                        size: content.len() as u64,
+                        mtime_secs: 0,
+                        mtime_nanos: 0,
+                        xattrs: None,
+                        class: Default::default(),
+                    }],
+                    pages: Vec::new(),
+                },
+            )
+            .unwrap();
+        store
+            .put_struct(
+                ObjectKind::Snapshot,
+                &Snapshot {
+                    root_tree: tree,
+                    parent: None,
+                    merge_parents: Vec::new(),
+                    sealed_at_secs: 0,
+                    sealed_at_nanos: 0,
+                    quality: SealQuality::Quiescent,
+                    trigger: SnapshotTrigger::Manual,
+                    label: None,
+                    sqlite_backups: Vec::new(),
+                    claims: Vec::new(),
+                    excluded_paths: Vec::new(),
+                },
+            )
+            .unwrap()
+    }
+
     #[test]
     fn pair_config_is_private_and_lease_rejects_a_second_writer() {
         let temporary = tempfile::tempdir().unwrap();
@@ -738,5 +822,105 @@ mod tests {
             bundle::for_each_reachable(&destination, snapshot, |_, _, _| Ok(())).unwrap(),
             4
         );
+    }
+
+    #[test]
+    fn default_push_uses_the_well_known_head_and_lease_keys() {
+        let temporary = tempfile::tempdir().unwrap();
+        let source = ObjectStore::open(temporary.path().join("source-store")).unwrap();
+        let snapshot = snapshot_fixture(&source);
+        let config_path = temporary.path().join("pair.json");
+        let remote = temporary.path().join("remote");
+        pair(&config_path, &remote, "project", None).unwrap();
+        let config = load(&config_path).unwrap();
+        push(&source, snapshot, &config, None, false).unwrap();
+
+        let namespace_root = remote.join(storage_namespace(&config));
+        assert!(namespace_root.join("HEAD").is_file());
+        assert!(namespace_root.join("LEASE").is_file());
+        assert!(!namespace_root.join("refs").exists());
+    }
+
+    #[test]
+    fn different_refs_on_one_directory_remote_do_not_contend_and_both_heads_are_readable() {
+        let temporary = tempfile::tempdir().unwrap();
+        let remote = temporary.path().join("remote");
+        let config_path = temporary.path().join("pair.json");
+        pair(&config_path, &remote, "project", None).unwrap();
+        let config = load(&config_path).unwrap();
+
+        // Holding the writer lease on ref "team-a" must not block a
+        // concurrent writer on ref "team-b" against the same directory
+        // remote: they use independent lease/lock keys.
+        let mut lock_a = open_session(&config, Some("team-a")).unwrap();
+        lock_a.begin_writer().unwrap();
+        let mut lock_b = open_session(&config, Some("team-b")).unwrap();
+        lock_b.begin_writer().unwrap();
+        // A second writer on the SAME ref is still correctly refused.
+        let mut lock_a_again = open_session(&config, Some("team-a")).unwrap();
+        assert!(lock_a_again.begin_writer().is_err());
+        lock_a.end_writer().unwrap();
+        lock_b.end_writer().unwrap();
+        drop(lock_a);
+        drop(lock_b);
+        drop(lock_a_again);
+
+        let store_a = ObjectStore::open(temporary.path().join("store-a")).unwrap();
+        let snapshot_a = snapshot_fixture_with_content(&store_a, b"ref team-a state");
+        let store_b = ObjectStore::open(temporary.path().join("store-b")).unwrap();
+        let snapshot_b = snapshot_fixture_with_content(&store_b, b"ref team-b state");
+
+        let mut push_a = open_session(&config, Some("team-a")).unwrap();
+        push_on(&store_a, snapshot_a, &config, None, false, &mut push_a).unwrap();
+        let mut push_b = open_session(&config, Some("team-b")).unwrap();
+        push_on(&store_b, snapshot_b, &config, None, false, &mut push_b).unwrap();
+
+        // The default, ref-less HEAD/LEASE remain untouched by either push.
+        assert_eq!(published_root(&config).unwrap(), None);
+
+        let mut check_a = open_session(&config, Some("team-a")).unwrap();
+        let root_a = published_root_on(&config, &mut check_a).unwrap().unwrap();
+        let mut check_b = open_session(&config, Some("team-b")).unwrap();
+        let root_b = published_root_on(&config, &mut check_b).unwrap().unwrap();
+        assert_ne!(root_a, root_b);
+
+        let destination_a = ObjectStore::open(temporary.path().join("dest-a")).unwrap();
+        let mut pull_a = open_session(&config, Some("team-a")).unwrap();
+        let pulled_a = pull_on(&destination_a, &config, &mut pull_a).unwrap();
+        assert_eq!(pulled_a.snapshot, snapshot_a);
+
+        let destination_b = ObjectStore::open(temporary.path().join("dest-b")).unwrap();
+        let mut pull_b = open_session(&config, Some("team-b")).unwrap();
+        let pulled_b = pull_on(&destination_b, &config, &mut pull_b).unwrap();
+        assert_eq!(pulled_b.snapshot, snapshot_b);
+    }
+
+    #[test]
+    fn pulling_a_nonexistent_ref_fails_with_a_clear_error() {
+        let temporary = tempfile::tempdir().unwrap();
+        let remote = temporary.path().join("remote");
+        let config_path = temporary.path().join("pair.json");
+        pair(&config_path, &remote, "project", None).unwrap();
+        let config = load(&config_path).unwrap();
+
+        let destination = ObjectStore::open(temporary.path().join("dest")).unwrap();
+        let mut session = open_session(&config, Some("does-not-exist")).unwrap();
+        let error = pull_on(&destination, &config, &mut session).unwrap_err();
+        let message = format!("{error:#}");
+        assert!(
+            message.contains("does-not-exist"),
+            "unexpected error: {message}"
+        );
+    }
+
+    #[test]
+    fn invalid_ref_names_are_rejected_before_connecting() {
+        let temporary = tempfile::tempdir().unwrap();
+        let remote = temporary.path().join("remote");
+        let config_path = temporary.path().join("pair.json");
+        pair(&config_path, &remote, "project", None).unwrap();
+        let config = load(&config_path).unwrap();
+        assert!(open_session(&config, Some("../escape")).is_err());
+        assert!(open_session(&config, Some("")).is_err());
     }
 }

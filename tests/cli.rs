@@ -2535,6 +2535,94 @@ fn encrypted_two_store_sync_fast_forwards_and_preserves_divergence() {
 }
 
 #[test]
+fn sync_ref_flag_publishes_and_pulls_an_independent_named_head() {
+    let fixture = Fixture::new();
+    let peer = fixture.repo.parent().unwrap().join("peer");
+    let peer_data = fixture.repo.parent().unwrap().join("peer-data");
+    let remote = fixture.repo.parent().unwrap().join("remote");
+    git(
+        fixture.repo.parent().unwrap(),
+        &["clone", fixture.repo.to_str().unwrap(), "peer"],
+    );
+    fixture.watch();
+    furrow_at(&peer, &peer_data)
+        .args(["watch", "--no-daemon"])
+        .assert()
+        .success();
+
+    let pair_output = fixture
+        .furrow()
+        .args([
+            "--json",
+            "pair",
+            remote.to_str().unwrap(),
+            "--name",
+            "shared-workspace",
+        ])
+        .assert()
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+    let pair: Value = serde_json::from_slice(&pair_output).unwrap();
+    let key = pair["key_hex"].as_str().unwrap();
+    furrow_at(&peer, &peer_data)
+        .args([
+            "pair",
+            remote.to_str().unwrap(),
+            "--name",
+            "shared-workspace",
+            "--key",
+            key,
+        ])
+        .assert()
+        .success();
+
+    // Publish under a named ref rather than the default HEAD.
+    fixture
+        .furrow()
+        .args(["sync", "--push", "--ref", "team-a"])
+        .assert()
+        .success();
+
+    // Pulling a ref that was never published fails with a clear error
+    // naming the missing ref, not a generic one.
+    furrow_at(&peer, &peer_data)
+        .args(["sync", "--pull", "--ref", "does-not-exist"])
+        .assert()
+        .failure()
+        .stderr(predicates::str::contains("does-not-exist"));
+
+    // Pulling the actual named ref materializes it on a clean receiver.
+    let pull_output = furrow_at(&peer, &peer_data)
+        .args(["--json", "sync", "--pull", "--ref", "team-a", "--bootstrap"])
+        .assert()
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+    let pull: Value = serde_json::from_slice(&pull_output).unwrap();
+    assert_eq!(pull["disposition"], "bootstrapped");
+    assert_eq!(
+        fs::read(peer.join("app.txt")).unwrap(),
+        b"tracked original\n"
+    );
+
+    // The default, ref-less HEAD/LEASE keys stay untouched; the named ref
+    // lives in its own nested, independent slot.
+    let namespace_root = fs::read_dir(&remote)
+        .unwrap()
+        .next()
+        .unwrap()
+        .unwrap()
+        .path();
+    assert!(!namespace_root.join("HEAD").exists());
+    assert!(!namespace_root.join("LEASE").exists());
+    assert!(namespace_root.join("refs/team-a/HEAD").is_file());
+    assert!(namespace_root.join("refs/team-a/LEASE").is_file());
+}
+
+#[test]
 fn remote_add_and_follow_keep_two_directory_backed_machines_current_with_small_deltas() {
     let fixture = Fixture::new();
     let peer = fixture.repo.parent().unwrap().join("follow-peer");
