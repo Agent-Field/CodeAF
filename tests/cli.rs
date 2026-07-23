@@ -4,6 +4,8 @@ use std::fs;
 use std::io::{BufRead, BufReader, Write};
 use std::os::unix::fs::{symlink, MetadataExt, PermissionsExt};
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tempfile::TempDir;
 
@@ -128,6 +130,43 @@ fn follow_process(repo: &Path, data: &Path) -> ChildGuard {
         .spawn()
         .unwrap();
     ChildGuard(child)
+}
+
+/// Spawn `furrow watch --foreground` and return once the daemon has actually
+/// installed its filesystem watch, not merely written the workspace pointer.
+/// The watcher prints its readiness line only after `Watcher::watch` succeeds,
+/// so keying off it removes the race between a fixed startup sleep and a slow
+/// initial ingest. The reader thread also keeps draining stderr so the child
+/// never blocks writing later "sealed ..." lines.
+fn spawn_foreground_watcher(fixture: &Fixture, debounce_ms: &str) -> std::process::Child {
+    let mut child = std::process::Command::new(env!("CARGO_BIN_EXE_furrow"))
+        .env("FURROW_DATA_DIR", &fixture.data)
+        .arg("--repo")
+        .arg(&fixture.repo)
+        .args(["watch", "--foreground", "--debounce-ms", debounce_ms])
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::piped())
+        .spawn()
+        .unwrap();
+    let stderr = child.stderr.take().unwrap();
+    let ready = Arc::new(AtomicBool::new(false));
+    let ready_writer = Arc::clone(&ready);
+    std::thread::spawn(move || {
+        for line in BufReader::new(stderr).lines().map_while(Result::ok) {
+            if line.contains("continuously protecting") {
+                ready_writer.store(true, Ordering::Release);
+            }
+        }
+    });
+    wait_until(
+        "foreground watcher to install its filesystem watch",
+        Duration::from_secs(10),
+        || ready.load(Ordering::Acquire),
+    );
+    // Give the native FSEvents stream a moment to warm up before creating the
+    // events the test expects to be sealed.
+    std::thread::sleep(Duration::from_millis(500));
+    child
 }
 
 fn ndjson(bytes: &[u8]) -> Vec<Value> {
@@ -2055,25 +2094,8 @@ fn precondition_interference_cancels_rewind_without_touching_writer_bytes() {
 #[test]
 fn foreground_watcher_seals_after_write_quiescence() {
     let fixture = Fixture::new();
-    let mut child = std::process::Command::new(env!("CARGO_BIN_EXE_furrow"))
-        .env("FURROW_DATA_DIR", &fixture.data)
-        .arg("--repo")
-        .arg(&fixture.repo)
-        .args(["watch", "--foreground", "--debounce-ms", "100"])
-        .stdout(std::process::Stdio::null())
-        .stderr(std::process::Stdio::null())
-        .spawn()
-        .unwrap();
-
+    let mut child = spawn_foreground_watcher(&fixture, "100");
     let deadline = Instant::now() + Duration::from_secs(10);
-    while !fixture.repo.join(".furrow/workspace-id").exists() {
-        assert!(Instant::now() < deadline, "watcher did not attach in time");
-        std::thread::sleep(Duration::from_millis(25));
-    }
-    // The initial snapshot precedes watcher installation. Give the native
-    // backend time to enter its event loop before creating the test event.
-    // Avoid polling the growing pack during this one-time ingest.
-    std::thread::sleep(Duration::from_millis(1500));
     assert!(
         child.try_wait().unwrap().is_none(),
         "foreground watcher exited during initial protection"
@@ -2144,21 +2166,8 @@ fn foreground_watcher_seals_after_write_quiescence() {
 #[test]
 fn watcher_reloads_policy_and_ignores_excluded_subtree_churn() {
     let fixture = Fixture::new();
-    let mut child = std::process::Command::new(env!("CARGO_BIN_EXE_furrow"))
-        .env("FURROW_DATA_DIR", &fixture.data)
-        .arg("--repo")
-        .arg(&fixture.repo)
-        .args(["watch", "--foreground", "--debounce-ms", "75"])
-        .stdout(std::process::Stdio::null())
-        .stderr(std::process::Stdio::null())
-        .spawn()
-        .unwrap();
+    let mut child = spawn_foreground_watcher(&fixture, "75");
     let deadline = Instant::now() + Duration::from_secs(10);
-    while !fixture.repo.join(".furrow/workspace-id").exists() {
-        assert!(Instant::now() < deadline, "watcher did not attach in time");
-        std::thread::sleep(Duration::from_millis(25));
-    }
-    std::thread::sleep(Duration::from_millis(1200));
     let before = fixture
         .furrow()
         .args(["--json", "timeline", "--limit", "1"])
