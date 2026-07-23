@@ -2920,6 +2920,202 @@ fn global_budget_is_persistent_visible_and_never_deletes_the_head_to_fit() {
     assert_eq!(timeline[0]["materialization"]["grade"], "exact");
 }
 
+#[derive(Debug, PartialEq, Eq)]
+enum ManifestEntry {
+    File {
+        content_hash: [u8; 32],
+        mode: u32,
+        mtime: (i64, i64),
+    },
+    Directory {
+        mode: u32,
+    },
+    Symlink {
+        target: PathBuf,
+    },
+}
+
+/// A path-sorted, content-hashed description of everything under `root`
+/// except the internal `.furrow` directory, suitable for asserting that two
+/// independently materialized workspaces are byte-identical.
+fn directory_manifest(root: &Path) -> Vec<(PathBuf, ManifestEntry)> {
+    fn walk(root: &Path, dir: &Path, entries: &mut Vec<(PathBuf, ManifestEntry)>) {
+        for entry in fs::read_dir(dir).unwrap() {
+            let entry = entry.unwrap();
+            let path = entry.path();
+            let relative = path.strip_prefix(root).unwrap().to_path_buf();
+            if relative == Path::new(".furrow") {
+                continue;
+            }
+            let metadata = fs::symlink_metadata(&path).unwrap();
+            let file_type = metadata.file_type();
+            if file_type.is_symlink() {
+                entries.push((
+                    relative,
+                    ManifestEntry::Symlink {
+                        target: fs::read_link(&path).unwrap(),
+                    },
+                ));
+            } else if file_type.is_dir() {
+                entries.push((
+                    relative,
+                    ManifestEntry::Directory {
+                        mode: metadata.permissions().mode() & 0o777,
+                    },
+                ));
+                walk(root, &path, entries);
+            } else {
+                let content_hash = *blake3::hash(&fs::read(&path).unwrap()).as_bytes();
+                entries.push((
+                    relative,
+                    ManifestEntry::File {
+                        content_hash,
+                        mode: metadata.permissions().mode() & 0o777,
+                        mtime: (metadata.mtime(), metadata.mtime_nsec()),
+                    },
+                ));
+            }
+        }
+    }
+    let mut entries = Vec::new();
+    walk(root, root, &mut entries);
+    entries.sort_by(|left, right| left.0.cmp(&right.0));
+    entries
+}
+
+#[test]
+fn fork_at_snapshot_matches_rewind_and_does_not_touch_the_source() {
+    let fixture = Fixture::new();
+    let base = fixture.watch();
+
+    // Diverge the live workspace after the snapshot was sealed.
+    fs::write(fixture.repo.join("app.txt"), b"diverged after snapshot\n").unwrap();
+    fs::write(
+        fixture.repo.join("new-file.txt"),
+        b"created after snapshot\n",
+    )
+    .unwrap();
+    fs::remove_file(fixture.repo.join("notes.txt")).unwrap();
+
+    let at_dest = fixture._temp.path().join("fork-at-dest");
+    fixture
+        .furrow()
+        .args(["fork", "snap-fork", "--at", &base, "--destination"])
+        .arg(&at_dest)
+        .assert()
+        .success();
+
+    // Independently reproduce the same snapshot by rewinding a plain live
+    // fork, and compare the two resulting trees byte-for-byte.
+    let check_dest = fixture._temp.path().join("rewind-check-dest");
+    fixture
+        .furrow()
+        .args(["fork", "rewind-check", "--destination"])
+        .arg(&check_dest)
+        .assert()
+        .success();
+    furrow_at(&check_dest, &fixture.data)
+        .args(["rewind", &base, "--yes"])
+        .assert()
+        .success();
+
+    assert_eq!(
+        directory_manifest(&at_dest),
+        directory_manifest(&check_dest)
+    );
+
+    // The source workspace was not touched by `fork --at`.
+    assert_eq!(
+        fs::read(fixture.repo.join("app.txt")).unwrap(),
+        b"diverged after snapshot\n"
+    );
+    assert!(fixture.repo.join("new-file.txt").exists());
+    assert!(!fixture.repo.join("notes.txt").exists());
+
+    let forks = fixture
+        .furrow()
+        .args(["--json", "forks"])
+        .assert()
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+    let forks: Value = serde_json::from_slice(&forks).unwrap();
+    let snap_fork = forks
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|fork| fork["name"] == "snap-fork")
+        .unwrap();
+    assert_eq!(snap_fork["base_snapshot"], base);
+}
+
+#[test]
+fn merge_of_a_snapshot_fork_uses_the_specified_base_despite_source_divergence() {
+    let fixture = Fixture::new();
+    let base = fixture.watch();
+
+    // The source moves on after `base` was sealed.
+    fs::write(fixture.repo.join("app.txt"), b"source diverged\n").unwrap();
+    fixture.furrow().arg("snap").assert().success();
+
+    let fork_dest = fixture._temp.path().join("fork-at-merge");
+    fixture
+        .furrow()
+        .args(["fork", "at-merge", "--at", &base, "--destination"])
+        .arg(&fork_dest)
+        .assert()
+        .success();
+    // The fork itself still reflects `base`, not the source's later edit.
+    assert_eq!(
+        fs::read(fork_dest.join("app.txt")).unwrap(),
+        b"tracked original\n"
+    );
+    fs::write(
+        fork_dest.join("agent-result.txt"),
+        b"fork-only work based on base\n",
+    )
+    .unwrap();
+
+    fixture
+        .furrow()
+        .args([
+            "merge",
+            "at-merge",
+            "--check",
+            "grep -q 'source diverged' app.txt && grep -q 'fork-only work based on base' agent-result.txt",
+        ])
+        .assert()
+        .success();
+
+    // If the merge base had incorrectly been the source's current head
+    // instead of `base`, app.txt would look unchanged there and the fork's
+    // reversion to the old content would "win", clobbering the source edit.
+    assert_eq!(
+        fs::read(fixture.repo.join("app.txt")).unwrap(),
+        b"source diverged\n"
+    );
+    assert_eq!(
+        fs::read(fixture.repo.join("agent-result.txt")).unwrap(),
+        b"fork-only work based on base\n"
+    );
+}
+
+#[test]
+fn fork_at_rejects_an_unresolvable_snapshot_without_creating_the_destination() {
+    let fixture = Fixture::new();
+    fixture.watch();
+    let dest = fixture._temp.path().join("fork-at-unknown");
+    fixture
+        .furrow()
+        .args(["fork", "ghost", "--at", "deadbeef", "--destination"])
+        .arg(&dest)
+        .assert()
+        .failure()
+        .stderr(predicates::str::contains("was not found"));
+    assert!(!dest.exists());
+}
+
 fn git(repo: &Path, args: &[&str]) {
     let status = std::process::Command::new("git")
         .arg("-C")

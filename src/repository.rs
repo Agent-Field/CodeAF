@@ -5,7 +5,7 @@ use crate::claims;
 use crate::content_class;
 use crate::coord;
 use crate::estimate::{self, CaptureEstimate};
-use crate::fork::{fork_workspace_excluding, ForkReport, ForkTier};
+use crate::fork::{fork_workspace_excluding, try_clone_file, ForkReport, ForkTier};
 use crate::gc::{self, GcReport};
 use crate::merge::{self, MergeAction, MergeConflict};
 use crate::model::{
@@ -201,6 +201,10 @@ pub struct ForkPlan {
     pub worst_case_copied_bytes: u64,
     pub projected_native_cow_ms: u64,
     pub projected_streaming_copy_ms: u64,
+    /// Materialize `base_snapshot` from the object store (`furrow fork --at`)
+    /// instead of cloning the live working directory.
+    #[serde(default)]
+    pub at_snapshot: bool,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -1234,54 +1238,70 @@ impl FurrowRepository {
 
     pub fn prepare_fork(&mut self, name: &str, destination: &Path) -> anyhow::Result<ForkPlan> {
         validate_fork_name(name)?;
-        let destination = absolute_destination(destination)?;
-        anyhow::ensure!(
-            !destination.exists(),
-            "fork destination already exists: {}",
-            destination.display()
-        );
-        if let Some(parent) = destination.parent() {
-            fs::create_dir_all(parent)
-                .with_context(|| format!("create fork parent {}", parent.display()))?;
-        }
+        let destination = prepare_fork_destination(destination)?;
 
         let base = self.snapshot(
             Some(format!("fork base: {name}")),
             SnapshotTrigger::ForkBase,
         )?;
         let usage = self.open_path_index()?.usage()?;
-        let entries = usage
-            .files
-            .saturating_add(usage.directories)
-            .saturating_add(usage.symlinks)
-            .saturating_add(usage.fifos)
-            .saturating_add(usage.special);
-        let metadata_entries_per_second = if cfg!(target_os = "macos") {
-            7_500
-        } else {
-            2_500
-        };
-        let projected_native_cow_ms =
-            ceiling_div(entries.saturating_mul(1_000), metadata_entries_per_second).max(10);
-        let projected_streaming_copy_ms = projected_native_cow_ms.saturating_add(ceiling_div(
-            usage.logical_bytes.saturating_mul(1_000),
-            250 * 1024 * 1024,
-        ));
-        Ok(ForkPlan {
-            fork_id: new_fork_id()?,
-            name: name.to_owned(),
+        Ok(build_fork_plan(
+            new_fork_id()?,
+            name,
             destination,
-            base_snapshot: id_hex(&base),
-            files: usage.files,
-            directories: usage.directories,
-            symlinks: usage.symlinks,
-            fifos: usage.fifos,
-            skipped_special: usage.special,
-            logical_bytes: usage.logical_bytes,
-            worst_case_copied_bytes: usage.logical_bytes,
-            projected_native_cow_ms,
-            projected_streaming_copy_ms,
-        })
+            id_hex(&base),
+            TreeUsage {
+                files: usage.files,
+                directories: usage.directories,
+                symlinks: usage.symlinks,
+                fifos: usage.fifos,
+                skipped_special: usage.special,
+                logical_bytes: usage.logical_bytes,
+            },
+            false,
+        ))
+    }
+
+    /// Plan a fork materialized from a stored snapshot instead of the live
+    /// working directory (`furrow fork --at <snapshot-id>`).
+    pub fn prepare_fork_at(
+        &mut self,
+        name: &str,
+        destination: &Path,
+        at: &ObjectId,
+    ) -> anyhow::Result<ForkPlan> {
+        validate_fork_name(name)?;
+        let destination = prepare_fork_destination(destination)?;
+
+        let snapshot: Snapshot = self
+            .store
+            .read_struct(at, ObjectKind::Snapshot)
+            .with_context(|| format!("unknown snapshot {}", id_hex(at)))?;
+        let materialization = self.materialization(at)?;
+        anyhow::ensure!(
+            materialization.grade == "exact",
+            "snapshot {} is partial and cannot be forked; {} path(s) are missing bytes: {}",
+            id_hex(at),
+            materialization.missing_paths.len(),
+            materialization
+                .missing_paths
+                .iter()
+                .map(|missing| missing.path.as_str())
+                .collect::<Vec<_>>()
+                .join(", ")
+        );
+        let mut usage = TreeUsage::default();
+        for entry in self.flatten_tree(&snapshot.root_tree)?.values() {
+            usage.record(&entry.entry);
+        }
+        Ok(build_fork_plan(
+            new_fork_id()?,
+            name,
+            destination,
+            id_hex(at),
+            usage,
+            true,
+        ))
     }
 
     pub fn materialize_fork(&mut self, plan: ForkPlan) -> anyhow::Result<ForkSummary> {
@@ -1299,6 +1319,11 @@ impl FurrowRepository {
         );
         let base = parse_id(&plan.base_snapshot)?;
         let _: Snapshot = self.store.read_struct(&base, ObjectKind::Snapshot)?;
+
+        if plan.at_snapshot {
+            return self.materialize_fork_from_snapshot(&plan, destination, base);
+        }
+
         let report = fork_workspace_excluding(&self.root, &destination, &[Path::new(".furrow")])?;
 
         // A copied workspace identity would alias two mutable directories onto
@@ -1323,8 +1348,178 @@ impl FurrowRepository {
             }
             (fork_repository, fork_head)
         };
-        write_fork_id(&fork_repository, &plan.fork_id)?;
+        self.finalize_fork(&plan, destination, base, fork_repository, fork_head, report)
+    }
 
+    pub fn fork(&mut self, name: &str, destination: &Path) -> anyhow::Result<ForkSummary> {
+        let plan = self.prepare_fork(name, destination)?;
+        self.materialize_fork(plan)
+    }
+
+    /// Fork `plan` (already scoped to `base_snapshot`, see [`Self::prepare_fork_at`])
+    /// by materializing it from the object store instead of the live workspace.
+    ///
+    /// Entries that already match the live workspace are cloned per-file with
+    /// the same native copy-on-write primitive used by a live fork; entries
+    /// that differ, are missing, or where cloning is unavailable are restored
+    /// from the store, exactly as `rewind` would produce them. The result is
+    /// verified against `base` before publication, so a source that changes
+    /// concurrently is caught rather than silently forked from a torn state.
+    fn materialize_fork_from_snapshot(
+        &mut self,
+        plan: &ForkPlan,
+        destination: PathBuf,
+        base: ObjectId,
+    ) -> anyhow::Result<ForkSummary> {
+        let started = Instant::now();
+        let _maintenance = self.store.acquire_maintenance_shared()?;
+        let snapshot: Snapshot = self.store.read_struct(&base, ObjectKind::Snapshot)?;
+        let target = self.flatten_tree(&snapshot.root_tree)?;
+
+        // Entries absent from this diff are byte-identical to the live
+        // workspace (same content, mode, mtime, and xattrs) and are eligible
+        // for the CoW fast path instead of a store restore.
+        let current_tree = self.capture_root_retry()?;
+        let mut diff = Vec::new();
+        self.diff_directory(
+            Some(current_tree),
+            Some(snapshot.root_tree),
+            Vec::new(),
+            &[],
+            &mut diff,
+        )?;
+        let differs_from_live: BTreeSet<Vec<u8>> =
+            diff.into_iter().map(|change| change.raw_path).collect();
+        drop(_maintenance);
+
+        let destination_parent = destination
+            .parent()
+            .unwrap_or_else(|| Path::new("."))
+            .to_path_buf();
+        let staging = tempfile::Builder::new()
+            .prefix(".furrow-fork-at-")
+            .tempdir_in(&destination_parent)
+            .with_context(|| {
+                format!(
+                    "create fork staging directory in {}",
+                    destination_parent.display()
+                )
+            })?;
+        let staging_path = staging.path().to_path_buf();
+        let root_mode = fs::symlink_metadata(&self.root)?.permissions().mode();
+        fs::set_permissions(&staging_path, fs::Permissions::from_mode(root_mode))?;
+
+        let mut usage = TreeUsage::default();
+        let mut cow_cloned = TreeUsage::default();
+        let mut store_restored = TreeUsage::default();
+        for (path, flat) in &target {
+            usage.record(&flat.entry);
+            let destination_path = safe_join(&staging_path, path)?;
+            match flat.entry.kind {
+                EntryKind::Directory => {
+                    fs::create_dir_all(&destination_path)?;
+                    fs::set_permissions(
+                        &destination_path,
+                        fs::Permissions::from_mode(flat.entry.mode),
+                    )?;
+                }
+                EntryKind::File => {
+                    if let Some(parent) = destination_path.parent() {
+                        fs::create_dir_all(parent)?;
+                    }
+                    let live_path = safe_join(&self.root, path)?;
+                    let cloned = !differs_from_live.contains(path)
+                        && try_clone_file(&live_path, &destination_path);
+                    if cloned {
+                        self.apply_captured_metadata(&destination_path, &flat.entry)?;
+                        cow_cloned.record(&flat.entry);
+                    } else {
+                        self.restore_file(&destination_path, &flat.entry)?;
+                        store_restored.record(&flat.entry);
+                    }
+                }
+                EntryKind::Symlink => {
+                    if let Some(parent) = destination_path.parent() {
+                        fs::create_dir_all(parent)?;
+                    }
+                    std::os::unix::fs::symlink(
+                        OsString::from_vec(flat.entry.link_target.clone()),
+                        &destination_path,
+                    )?;
+                    let mtime =
+                        FileTime::from_unix_time(flat.entry.mtime_secs, flat.entry.mtime_nanos);
+                    filetime::set_symlink_file_times(&destination_path, mtime, mtime)?;
+                }
+                EntryKind::Fifo => {
+                    if let Some(parent) = destination_path.parent() {
+                        fs::create_dir_all(parent)?;
+                    }
+                    let cpath = std::ffi::CString::new(destination_path.as_os_str().as_bytes())?;
+                    let result =
+                        unsafe { libc::mkfifo(cpath.as_ptr(), flat.entry.mode as libc::mode_t) };
+                    if result != 0 {
+                        return Err(std::io::Error::last_os_error().into());
+                    }
+                }
+                EntryKind::SocketMarker => {}
+            }
+        }
+        // Directory mtimes are applied last so materializing their children
+        // does not overwrite the captured timestamp.
+        for (path, flat) in target.iter().rev() {
+            if flat.entry.kind != EntryKind::Directory {
+                continue;
+            }
+            let destination_path = safe_join(&staging_path, path)?;
+            let mtime = FileTime::from_unix_time(flat.entry.mtime_secs, flat.entry.mtime_nanos);
+            filetime::set_file_mtime(destination_path, mtime)?;
+        }
+
+        fs::rename(&staging_path, &destination)
+            .with_context(|| format!("publish fork {}", destination.display()))?;
+        File::open(&destination_parent)?.sync_all()?;
+        std::mem::forget(staging);
+
+        let tier = match (cow_cloned.files, store_restored.files) {
+            (_, 0) if cow_cloned.files > 0 => ForkTier::NativeCow,
+            (0, _) => ForkTier::StreamingCopy,
+            _ => ForkTier::Mixed,
+        };
+        let report = ForkReport {
+            tier,
+            files: usage.files,
+            directories: usage.directories,
+            symlinks: usage.symlinks,
+            fifos: usage.fifos,
+            skipped_special: usage.skipped_special,
+            logical_bytes: usage.logical_bytes,
+            cloned_bytes: cow_cloned.logical_bytes,
+            copied_bytes: store_restored.logical_bytes,
+            hardlinked_files: 0,
+            elapsed: started.elapsed(),
+            atomic_hierarchy: false,
+        };
+
+        let (fork_repository, fork_head) = FurrowRepository::watch(&destination)?;
+        if !self.snapshots_match_fork(&base, &fork_repository, &fork_head)? {
+            bail!(
+                "source changed while the fork was being created; the isolated copy remains at {} for inspection",
+                destination.display()
+            );
+        }
+        self.finalize_fork(plan, destination, base, fork_repository, fork_head, report)
+    }
+
+    fn finalize_fork(
+        &mut self,
+        plan: &ForkPlan,
+        destination: PathBuf,
+        base: ObjectId,
+        fork_repository: FurrowRepository,
+        fork_head: ObjectId,
+        report: ForkReport,
+    ) -> anyhow::Result<ForkSummary> {
+        write_fork_id(&fork_repository, &plan.fork_id)?;
         let summary = fork_summary(
             &plan.fork_id,
             &plan.name,
@@ -1339,9 +1534,27 @@ impl FurrowRepository {
         Ok(summary)
     }
 
-    pub fn fork(&mut self, name: &str, destination: &Path) -> anyhow::Result<ForkSummary> {
-        let plan = self.prepare_fork(name, destination)?;
-        self.materialize_fork(plan)
+    /// Reapply a captured entry's mode, extended attributes, and mtime after
+    /// cloning its content straight from the live workspace file.
+    fn apply_captured_metadata(&self, destination: &Path, entry: &TreeEntry) -> anyhow::Result<()> {
+        fs::set_permissions(destination, fs::Permissions::from_mode(entry.mode))?;
+        if let Some(xattrs_id) = entry.xattrs {
+            let xattrs: Xattrs = self.store.read_struct(&xattrs_id, ObjectKind::Xattrs)?;
+            for xattr in xattrs.entries {
+                match xattr::set(destination, OsStr::from_bytes(&xattr.name), &xattr.value) {
+                    Ok(()) => {}
+                    Err(error)
+                        if matches!(
+                            error.kind(),
+                            std::io::ErrorKind::PermissionDenied | std::io::ErrorKind::Unsupported
+                        ) || error.raw_os_error() == Some(libc::ENOTSUP) => {}
+                    Err(error) => return Err(error.into()),
+                }
+            }
+        }
+        let mtime = FileTime::from_unix_time(entry.mtime_secs, entry.mtime_nanos);
+        filetime::set_file_mtime(destination, mtime)?;
+        Ok(())
     }
 
     fn attach_existing_snapshot(root: &Path, snapshot_id: ObjectId) -> anyhow::Result<Self> {
@@ -3692,6 +3905,93 @@ fn absolute_destination(destination: &Path) -> anyhow::Result<PathBuf> {
         Ok(destination.to_owned())
     } else {
         Ok(std::env::current_dir()?.join(destination))
+    }
+}
+
+/// Resolve and validate a fork destination shared by every `prepare_fork*`
+/// variant: it must be absolute, absent, and its parent must exist.
+fn prepare_fork_destination(destination: &Path) -> anyhow::Result<PathBuf> {
+    let destination = absolute_destination(destination)?;
+    anyhow::ensure!(
+        !destination.exists(),
+        "fork destination already exists: {}",
+        destination.display()
+    );
+    if let Some(parent) = destination.parent() {
+        fs::create_dir_all(parent)
+            .with_context(|| format!("create fork parent {}", parent.display()))?;
+    }
+    Ok(destination)
+}
+
+/// Tally of tree-entry kinds and bytes, shared by fork planning (from either
+/// the live path index or a stored snapshot's tree) and by CoW/store
+/// materialization accounting.
+#[derive(Default, Clone, Copy)]
+struct TreeUsage {
+    files: u64,
+    directories: u64,
+    symlinks: u64,
+    fifos: u64,
+    skipped_special: u64,
+    logical_bytes: u64,
+}
+
+impl TreeUsage {
+    fn record(&mut self, entry: &TreeEntry) {
+        match entry.kind {
+            EntryKind::File => {
+                self.files += 1;
+                self.logical_bytes = self.logical_bytes.saturating_add(entry.size);
+            }
+            EntryKind::Directory => self.directories += 1,
+            EntryKind::Symlink => self.symlinks += 1,
+            EntryKind::Fifo => self.fifos += 1,
+            EntryKind::SocketMarker => self.skipped_special += 1,
+        }
+    }
+}
+
+fn build_fork_plan(
+    fork_id: String,
+    name: &str,
+    destination: PathBuf,
+    base_snapshot: String,
+    usage: TreeUsage,
+    at_snapshot: bool,
+) -> ForkPlan {
+    let entries = usage
+        .files
+        .saturating_add(usage.directories)
+        .saturating_add(usage.symlinks)
+        .saturating_add(usage.fifos)
+        .saturating_add(usage.skipped_special);
+    let metadata_entries_per_second = if cfg!(target_os = "macos") {
+        7_500
+    } else {
+        2_500
+    };
+    let projected_native_cow_ms =
+        ceiling_div(entries.saturating_mul(1_000), metadata_entries_per_second).max(10);
+    let projected_streaming_copy_ms = projected_native_cow_ms.saturating_add(ceiling_div(
+        usage.logical_bytes.saturating_mul(1_000),
+        250 * 1024 * 1024,
+    ));
+    ForkPlan {
+        fork_id,
+        name: name.to_owned(),
+        destination,
+        base_snapshot,
+        files: usage.files,
+        directories: usage.directories,
+        symlinks: usage.symlinks,
+        fifos: usage.fifos,
+        skipped_special: usage.skipped_special,
+        logical_bytes: usage.logical_bytes,
+        worst_case_copied_bytes: usage.logical_bytes,
+        projected_native_cow_ms,
+        projected_streaming_copy_ms,
+        at_snapshot,
     }
 }
 

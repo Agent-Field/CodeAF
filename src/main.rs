@@ -113,6 +113,10 @@ enum Command {
         /// Destination directory. Defaults to <repo>.furrow-forks/<name> beside the repository.
         #[arg(long)]
         destination: Option<PathBuf>,
+        /// Materialize from this stored snapshot instead of the live workspace;
+        /// it also becomes the fork's merge base.
+        #[arg(long)]
+        at: Option<String>,
         /// Command to run inside the completed fork, supplied after `--`.
         #[arg(last = true)]
         command: Vec<OsString>,
@@ -181,6 +185,10 @@ enum Command {
         name: String,
         #[arg(long)]
         destination: Option<PathBuf>,
+        /// Materialize from this stored snapshot instead of the live workspace;
+        /// it also becomes the fork's merge base.
+        #[arg(long)]
+        at: Option<String>,
         #[arg(last = true, required = true)]
         command: Vec<OsString>,
     },
@@ -192,6 +200,10 @@ enum Command {
         /// Number of universes to create and run concurrently.
         #[arg(short = 'n', default_value_t = 1)]
         count: usize,
+        /// Materialize every universe from this stored snapshot instead of
+        /// the live workspace; it also becomes each fork's merge base.
+        #[arg(long)]
+        at: Option<String>,
         /// Print the platform driver, paths, ports, and fork costs without executing.
         #[arg(long)]
         plan: bool,
@@ -644,6 +656,7 @@ fn main() -> anyhow::Result<()> {
         Command::Fork {
             name,
             destination,
+            at,
             command,
         } => {
             anyhow::ensure!(
@@ -654,7 +667,13 @@ fn main() -> anyhow::Result<()> {
             let name = name.unwrap_or_else(default_fork_name);
             let destination =
                 destination.unwrap_or_else(|| default_fork_destination(&repository, &name));
-            let plan = repository.prepare_fork(&name, &destination)?;
+            let plan = match at {
+                Some(at) => {
+                    let at = repository.resolve_snapshot(&at)?;
+                    repository.prepare_fork_at(&name, &destination, &at)?
+                }
+                None => repository.prepare_fork(&name, &destination)?,
+            };
             if !cli.json {
                 print_fork_plan(&plan);
                 io::stdout().flush()?;
@@ -961,13 +980,20 @@ fn main() -> anyhow::Result<()> {
         Command::Run {
             name,
             destination,
+            at,
             command,
         } => {
             anyhow::ensure!(!cli.json, "--json cannot be combined with `furrow run`");
             let mut repository = FurrowRepository::open(&cli.repo)?;
             let destination =
                 destination.unwrap_or_else(|| default_fork_destination(&repository, &name));
-            let plan = repository.prepare_fork(&name, &destination)?;
+            let plan = match at {
+                Some(at) => {
+                    let at = repository.resolve_snapshot(&at)?;
+                    repository.prepare_fork_at(&name, &destination, &at)?
+                }
+                None => repository.prepare_fork(&name, &destination)?,
+            };
             print_fork_plan(&plan);
             io::stdout().flush()?;
             let summary = repository.materialize_fork(plan)?;
@@ -1004,10 +1030,11 @@ fn main() -> anyhow::Result<()> {
         Command::Exec {
             fork,
             count,
+            at,
             plan,
             command,
         } => {
-            execute_universes(&cli.repo, cli.json, fork, count, plan, &command)?;
+            execute_universes(&cli.repo, cli.json, fork, count, at, plan, &command)?;
         }
         Command::Attempt { message, command } => {
             anyhow::ensure!(!cli.json, "--json cannot be combined with `furrow try`");
@@ -1518,6 +1545,7 @@ fn execute_universes(
     json: bool,
     explicit_name: Option<String>,
     count: usize,
+    at: Option<String>,
     plan_only: bool,
     command: &[OsString],
 ) -> anyhow::Result<()> {
@@ -1543,7 +1571,13 @@ fn execute_universes(
         format!("{base_name}-1")
     };
     let first_destination = default_fork_destination(&repository, &first_name);
-    let first_fork_plan = repository.prepare_fork(&first_name, &first_destination)?;
+    let first_fork_plan = match at {
+        Some(at) => {
+            let at = repository.resolve_snapshot(&at)?;
+            repository.prepare_fork_at(&first_name, &first_destination, &at)?
+        }
+        None => repository.prepare_fork(&first_name, &first_destination)?,
+    };
     let base_port = std::env::var("PORT")
         .ok()
         .and_then(|value| value.parse::<u16>().ok())
@@ -1801,6 +1835,12 @@ fn print_fork_plan(plan: &furrow::ForkPlan) {
         plan.projected_streaming_copy_ms,
         human_bytes(plan.worst_case_copied_bytes)
     );
+    if plan.at_snapshot {
+        println!(
+            "Materializing from stored snapshot {}",
+            &plan.base_snapshot[..12]
+        );
+    }
 }
 
 fn print_shrink_plan(plan: &furrow::shrink::ShrinkPlan) {

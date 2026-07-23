@@ -109,7 +109,7 @@ enum SessionInner {
         output: BufReader<ChildStdout>,
         locked: bool,
     },
-    S3(S3Session),
+    S3(Box<S3Session>),
 }
 
 impl Session {
@@ -150,7 +150,7 @@ impl Session {
                     locked: false,
                 }
             }
-            RemoteSpec::S3 { s3 } => SessionInner::S3(S3Session::open(s3, namespace)?),
+            RemoteSpec::S3 { s3 } => SessionInner::S3(Box::new(S3Session::open(s3, namespace)?)),
         };
         let mut session = Self {
             inner,

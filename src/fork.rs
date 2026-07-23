@@ -222,7 +222,7 @@ pub(crate) fn fork_workspace_excluding(
         })?;
         let source_path = entry.path();
         let relative = source_path.strip_prefix(&source)?;
-        if excluded.iter().any(|excluded| relative == *excluded) {
+        if excluded.contains(&relative) {
             continue;
         }
         let destination_path = directories
@@ -436,7 +436,7 @@ fn repair_directory_metadata(
         let metadata = fs::symlink_metadata(entry.path())?;
         if metadata.is_dir() && !metadata.file_type().is_symlink() {
             let relative = entry.path().strip_prefix(source)?.to_owned();
-            if excluded.iter().any(|excluded| relative == *excluded) {
+            if excluded.contains(&relative.as_ref()) {
                 continue;
             }
             let destination = destination.join(relative);
@@ -530,6 +530,22 @@ enum FileMethod {
     StreamingCopy(u64),
 }
 
+/// Attempt a native copy-on-write clone of a single regular file. Returns
+/// `false` (leaving `destination` absent) when the platform or filesystem
+/// does not support cloning, so a caller with another source of truth for
+/// the same content — such as an object store — can fall back to it instead
+/// of a byte-for-byte streaming copy.
+pub(crate) fn try_clone_file(source: &Path, destination: &Path) -> bool {
+    match native_clone(source, destination) {
+        Ok(()) => true,
+        Err(_) => {
+            // clonefile may leave a destination behind for some error classes.
+            let _ = fs::remove_file(destination);
+            false
+        }
+    }
+}
+
 fn clone_or_copy(source: &Path, destination: &Path) -> io::Result<FileMethod> {
     match native_clone(source, destination) {
         Ok(()) => Ok(FileMethod::NativeCow),
@@ -613,10 +629,9 @@ fn streaming_copy(source: &Path, destination: &Path) -> io::Result<u64> {
         }
     }
 
-    Err(io::Error::new(
-        io::ErrorKind::Other,
-        format!("source changed repeatedly while copying ({last_length} bytes in last attempt)"),
-    ))
+    Err(io::Error::other(format!(
+        "source changed repeatedly while copying ({last_length} bytes in last attempt)"
+    )))
 }
 
 fn stable_file(before: &Metadata, after: &Metadata) -> bool {
