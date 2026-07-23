@@ -213,7 +213,21 @@ fn call_tool(
             Ok(json!({"plan": plan, "result": result}))
         }
         "furrow.merge_plan" => {
-            serialize(repository.merge(required_string(arguments, "fork")?, None, true)?)
+            let fork = optional_string(arguments, "fork")?;
+            let snapshot = optional_string(arguments, "snapshot")?;
+            match (fork, snapshot) {
+                (Some(fork), None) => serialize(repository.merge(fork, None, true)?),
+                (None, Some(snapshot)) => serialize(repository.merge_snapshot(
+                    snapshot,
+                    optional_string(arguments, "base")?,
+                    None,
+                    true,
+                )?),
+                (Some(_), Some(_)) => {
+                    anyhow::bail!("provide either `fork` or `snapshot`, not both")
+                }
+                (None, None) => anyhow::bail!("provide either `fork` or `snapshot`"),
+            }
         }
         "furrow.claims" => serialize(repository.claims()?),
         "furrow.claim" => {
@@ -332,7 +346,7 @@ fn validate_argument_keys(name: &str, arguments: &Map<String, Value>) -> anyhow:
         "furrow.forks" => &[],
         "furrow.events" => &["after", "limit"],
         "furrow.fork" => &["name"],
-        "furrow.merge_plan" => &["fork"],
+        "furrow.merge_plan" => &["fork", "snapshot", "base"],
         "furrow.claims" => &[],
         "furrow.claim" => &["pattern", "owner", "ttl_seconds"],
         "furrow.release" => &["claim", "owner"],
@@ -435,11 +449,15 @@ fn tool_definitions() -> Vec<Value> {
         ),
         tool(
             "furrow.merge_plan",
-            "Plan a three-way full-state fork merge without executing checks or changing files.",
+            "Plan a three-way full-state merge from a fork or a stored snapshot ID without \
+             executing checks or changing files.",
             json!({
                 "type": "object",
-                "properties": {"fork": {"type": "string"}},
-                "required": ["fork"],
+                "properties": {
+                    "fork": {"type": "string"},
+                    "snapshot": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+                    "base": {"type": "string", "pattern": "^[0-9a-f]{64}$"}
+                },
                 "additionalProperties": false
             }),
             false,

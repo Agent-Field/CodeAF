@@ -1784,8 +1784,6 @@ impl FurrowRepository {
             )
         };
         let base = parse_id(&fork.base_snapshot)?;
-        let ours_snapshot: Snapshot = self.store.read_struct(&ours, ObjectKind::Snapshot)?;
-        let theirs_snapshot: Snapshot = self.store.read_struct(&theirs, ObjectKind::Snapshot)?;
         let base_snapshot: Snapshot = self.store.read_struct(&base, ObjectKind::Snapshot)?;
         let (ours_root, theirs_root) = if dry_run {
             (
@@ -1793,14 +1791,194 @@ impl FurrowRepository {
                 fork_repository.capture_root_retry()?,
             )
         } else {
+            let ours_snapshot: Snapshot = self.store.read_struct(&ours, ObjectKind::Snapshot)?;
+            let theirs_snapshot: Snapshot =
+                self.store.read_struct(&theirs, ObjectKind::Snapshot)?;
             (ours_snapshot.root_tree, theirs_snapshot.root_tree)
         };
-        let mut merge_plan = merge::plan_trees(
-            &self.store,
-            &base_snapshot.root_tree,
-            &ours_root,
-            &theirs_root,
-        )?;
+        self.finish_merge(
+            fork_name.to_owned(),
+            mutation,
+            base,
+            ours,
+            theirs,
+            base_snapshot.root_tree,
+            ours_root,
+            theirs_root,
+            format!("merged fork {fork_name}"),
+            check,
+            dry_run,
+        )
+    }
+
+    /// Three-way merge directly from stored snapshot IDs instead of a fork.
+    ///
+    /// `theirs_id` and an optional `base_id` must each be the full
+    /// 64-character ID of a snapshot already present in the local object
+    /// store, for example one fetched with `furrow sync --pull`. When
+    /// `base_id` is omitted, the base is derived from `theirs`' recorded
+    /// ancestry: the nearest snapshot that is both reachable from `theirs`
+    /// by following its `parent`/`merge_parents` chain and part of this
+    /// workspace's own published lineage. Callers must pass `--base`
+    /// explicitly when that ancestry is incomplete locally, shares no
+    /// common ancestor with this workspace, or resolves more than one
+    /// candidate. The rest of the flow (plan, conflicts, `--check`,
+    /// `--dry-run`) is identical to a fork merge.
+    pub fn merge_snapshot(
+        &mut self,
+        theirs_id: &str,
+        base_id: Option<&str>,
+        check: Option<&str>,
+        dry_run: bool,
+    ) -> anyhow::Result<MergeOutcome> {
+        let mutation = if dry_run {
+            None
+        } else {
+            Some(self.acquire_mutation_lock()?)
+        };
+        let theirs = self.resolve_exact_snapshot(theirs_id, "--snapshot")?;
+        let theirs_snapshot: Snapshot = self.store.read_struct(&theirs, ObjectKind::Snapshot)?;
+        let base = match base_id {
+            Some(base_id) => self.resolve_exact_snapshot(base_id, "--base")?,
+            None => self.derive_merge_base(&theirs)?,
+        };
+        let base_snapshot: Snapshot = self.store.read_struct(&base, ObjectKind::Snapshot)?;
+        let theirs_short = &id_hex(&theirs)[..12];
+
+        let ours = if dry_run {
+            self.store
+                .workspace_head(&self.workspace_id)?
+                .context("source workspace has no sealed snapshot")?
+        } else {
+            self.snapshot(
+                Some(format!("before merge from snapshot {theirs_short}")),
+                SnapshotTrigger::PreMerge,
+            )?
+        };
+        let ours_root = if dry_run {
+            self.capture_root_retry()?
+        } else {
+            let ours_snapshot: Snapshot = self.store.read_struct(&ours, ObjectKind::Snapshot)?;
+            ours_snapshot.root_tree
+        };
+
+        self.finish_merge(
+            format!("snapshot:{theirs_short}"),
+            mutation,
+            base,
+            ours,
+            theirs,
+            base_snapshot.root_tree,
+            ours_root,
+            theirs_snapshot.root_tree,
+            format!("merged snapshot {theirs_short}"),
+            check,
+            dry_run,
+        )
+    }
+
+    /// Resolves an implicit `--base` for `theirs` from recorded ancestry:
+    /// the nearest snapshot that is both reachable from `theirs` by
+    /// following `parent`/`merge_parents` pointers and a snapshot this
+    /// workspace has itself published. Once a candidate is found along a
+    /// path, that path stops expanding, since any earlier ancestor along it
+    /// is necessarily dominated by (an ancestor of) the candidate already
+    /// found. Every error path names `--base` as the way to proceed.
+    fn derive_merge_base(&self, theirs: &ObjectId) -> anyhow::Result<ObjectId> {
+        const ANCESTRY_LIMIT: usize = 100_000;
+        let lineage: BTreeSet<ObjectId> = self
+            .store
+            .timeline(&self.workspace_id, ANCESTRY_LIMIT)?
+            .into_iter()
+            .map(|row| row.id)
+            .collect();
+        anyhow::ensure!(
+            !lineage.is_empty(),
+            "source workspace has no sealed snapshot; pass --base explicitly"
+        );
+
+        let mut pending = vec![*theirs];
+        let mut visited = BTreeSet::from([*theirs]);
+        let mut candidates = BTreeSet::new();
+        while let Some(id) = pending.pop() {
+            anyhow::ensure!(
+                visited.len() <= ANCESTRY_LIMIT,
+                "snapshot `{}` has more than {ANCESTRY_LIMIT} locally known ancestors; \
+                 pass --base explicitly",
+                id_hex(theirs)
+            );
+            if lineage.contains(&id) {
+                candidates.insert(id);
+                continue;
+            }
+            let snapshot: Snapshot = self
+                .store
+                .read_struct(&id, ObjectKind::Snapshot)
+                .with_context(|| {
+                    format!(
+                        "snapshot `{}` references ancestor `{}`, which is not present in the \
+                         local object store; run `furrow sync --pull` to fetch the missing \
+                         history or pass --base explicitly",
+                        id_hex(theirs),
+                        id_hex(&id)
+                    )
+                })?;
+            for parent in snapshot.parent.into_iter().chain(snapshot.merge_parents) {
+                if visited.insert(parent) {
+                    pending.push(parent);
+                }
+            }
+        }
+
+        match candidates.len() {
+            0 => bail!(
+                "snapshot `{}` shares no common ancestor with the current workspace lineage; \
+                 pass --base explicitly",
+                id_hex(theirs)
+            ),
+            1 => Ok(*candidates.iter().next().expect("length checked above")),
+            _ => bail!(
+                "snapshot `{}` has more than one possible merge base against the current \
+                 workspace lineage; pass --base explicitly",
+                id_hex(theirs)
+            ),
+        }
+    }
+
+    fn resolve_exact_snapshot(&self, value: &str, flag: &str) -> anyhow::Result<ObjectId> {
+        anyhow::ensure!(
+            value.len() == 64,
+            "{flag} requires the full 64-character snapshot ID"
+        );
+        let id = parse_id(value)?;
+        self.store
+            .read_bytes(&id, ObjectKind::Snapshot)
+            .with_context(|| {
+                format!("{flag} snapshot `{value}` was not found in the local object store")
+            })?;
+        Ok(id)
+    }
+
+    /// Shared plan/conflict/`--check`/`--dry-run` tail for both fork and
+    /// snapshot merges. `source` labels the merge in `MergeOutcome::fork`
+    /// (a fork name, or `snapshot:<id-prefix>`); `result_label` becomes the
+    /// landed merge snapshot's message.
+    #[allow(clippy::too_many_arguments)]
+    fn finish_merge(
+        &mut self,
+        source: String,
+        mutation: Option<File>,
+        base: ObjectId,
+        ours: ObjectId,
+        theirs: ObjectId,
+        base_root: ObjectId,
+        ours_root: ObjectId,
+        theirs_root: ObjectId,
+        result_label: String,
+        check: Option<&str>,
+        dry_run: bool,
+    ) -> anyhow::Result<MergeOutcome> {
+        let mut merge_plan = merge::plan_trees(&self.store, &base_root, &ours_root, &theirs_root)?;
         let policy = CapturePolicy::load(&self.root)?;
         merge_plan.changes.retain(|change| {
             merge_path_allowed(&change.path) && !policy.excludes_bytes(&change.path)
@@ -1811,9 +1989,9 @@ impl FurrowRepository {
         let ours_tree = id_hex(&ours_root);
         let theirs_tree = id_hex(&theirs_root);
         let preview_digest =
-            merge_preview_digest(&fork.base_snapshot, &ours_tree, &theirs_tree, &merge_plan);
+            merge_preview_digest(&id_hex(&base), &ours_tree, &theirs_tree, &merge_plan);
         let mut outcome = MergeOutcome {
-            fork: fork_name.to_owned(),
+            fork: source,
             base_snapshot: id_hex(&base),
             ours_snapshot: id_hex(&ours),
             theirs_snapshot: id_hex(&theirs),
@@ -1840,7 +2018,7 @@ impl FurrowRepository {
         );
 
         let (rewind_plan, target_entries) =
-            merge_rewind_plan(&self.store, &ours_snapshot.root_tree, &merge_plan.changes)?;
+            merge_rewind_plan(&self.store, &ours_root, &merge_plan.changes)?;
         let scratch_parent = self.root.parent().unwrap_or_else(|| Path::new("."));
         let scratch_owner = tempfile::Builder::new()
             .prefix(".furrow-merge-")
@@ -1887,7 +2065,7 @@ impl FurrowRepository {
             .and_then(|_| {
                 self.invalidate_path_index()?;
                 self.snapshot_internal(
-                    Some(format!("merged fork {fork_name}")),
+                    Some(result_label),
                     SnapshotTrigger::Merge,
                     None,
                     vec![ours, theirs],

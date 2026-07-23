@@ -230,9 +230,21 @@ enum Command {
         #[arg(last = true, required = true)]
         command: Vec<OsString>,
     },
-    /// Three-way merge a fork after verifying the result in a scratch workspace.
+    /// Three-way merge a fork, or a stored snapshot, after verifying the
+    /// result in a scratch workspace.
     Merge {
-        fork: String,
+        /// Fork name to merge from. Mutually exclusive with --snapshot.
+        #[arg(conflicts_with = "snapshot", required_unless_present = "snapshot")]
+        fork: Option<String>,
+        /// Merge from a stored snapshot ID (for example one fetched with
+        /// `furrow sync --pull`) instead of a fork.
+        #[arg(long, conflicts_with = "fork")]
+        snapshot: Option<String>,
+        /// Explicit merge base snapshot ID. Only valid with --snapshot;
+        /// required when its ancestry does not unambiguously resolve one
+        /// against this workspace's own lineage.
+        #[arg(long, requires = "snapshot")]
+        base: Option<String>,
         /// Project verification command executed through /bin/sh in the scratch workspace.
         #[arg(long)]
         check: Option<String>,
@@ -1146,11 +1158,19 @@ fn main() -> anyhow::Result<()> {
         }
         Command::Merge {
             fork,
+            snapshot,
+            base,
             check,
             dry_run,
         } => {
             let mut repository = FurrowRepository::open(&cli.repo)?;
-            let outcome = repository.merge(&fork, check.as_deref(), dry_run)?;
+            let outcome = if let Some(snapshot) = snapshot {
+                repository.merge_snapshot(&snapshot, base.as_deref(), check.as_deref(), dry_run)?
+            } else {
+                let fork =
+                    fork.context("merge requires a fork name or --snapshot <snapshot-id>")?;
+                repository.merge(&fork, check.as_deref(), dry_run)?
+            };
             if cli.json {
                 println!("{}", serde_json::to_string_pretty(&outcome)?);
             } else {

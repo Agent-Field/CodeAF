@@ -222,7 +222,7 @@ pub(crate) fn fork_workspace_excluding(
         })?;
         let source_path = entry.path();
         let relative = source_path.strip_prefix(&source)?;
-        if excluded.iter().any(|excluded| relative == *excluded) {
+        if excluded.contains(&relative) {
             continue;
         }
         let destination_path = directories
@@ -436,7 +436,7 @@ fn repair_directory_metadata(
         let metadata = fs::symlink_metadata(entry.path())?;
         if metadata.is_dir() && !metadata.file_type().is_symlink() {
             let relative = entry.path().strip_prefix(source)?.to_owned();
-            if excluded.iter().any(|excluded| relative == *excluded) {
+            if excluded.contains(&relative.as_path()) {
                 continue;
             }
             let destination = destination.join(relative);
@@ -613,10 +613,9 @@ fn streaming_copy(source: &Path, destination: &Path) -> io::Result<u64> {
         }
     }
 
-    Err(io::Error::new(
-        io::ErrorKind::Other,
-        format!("source changed repeatedly while copying ({last_length} bytes in last attempt)"),
-    ))
+    Err(io::Error::other(format!(
+        "source changed repeatedly while copying ({last_length} bytes in last attempt)"
+    )))
 }
 
 fn stable_file(before: &Metadata, after: &Metadata) -> bool {

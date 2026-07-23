@@ -1702,6 +1702,187 @@ fn merge_conflict_or_failed_check_never_mutates_source() {
     );
 }
 
+/// Clones `fixture.repo` into `peer`, pairs both sides through a plain
+/// directory remote, and bootstraps `peer` to the source's current head, so
+/// both workspaces share a recorded common ancestor snapshot.
+fn pair_via_directory_remote(
+    fixture: &Fixture,
+    peer: &Path,
+    peer_data: &Path,
+    remote: &Path,
+    name: &str,
+) {
+    git(
+        fixture.repo.parent().unwrap(),
+        &[
+            "clone",
+            fixture.repo.to_str().unwrap(),
+            peer.file_name().unwrap().to_str().unwrap(),
+        ],
+    );
+    fixture.watch();
+    furrow_at(peer, peer_data)
+        .args(["watch", "--no-daemon"])
+        .assert()
+        .success();
+
+    let pair_output = fixture
+        .furrow()
+        .args(["--json", "pair", remote.to_str().unwrap(), "--name", name])
+        .assert()
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+    let pair: Value = serde_json::from_slice(&pair_output).unwrap();
+    let key = pair["key_hex"].as_str().unwrap().to_owned();
+    furrow_at(peer, peer_data)
+        .args([
+            "pair",
+            remote.to_str().unwrap(),
+            "--name",
+            name,
+            "--key",
+            &key,
+        ])
+        .assert()
+        .success();
+
+    fixture.furrow().args(["sync", "--push"]).assert().success();
+    furrow_at(peer, peer_data)
+        .args(["sync", "--pull", "--bootstrap"])
+        .assert()
+        .success();
+}
+
+/// Pushes the source's current state and pulls it on `peer`, which is
+/// expected to report a divergence (each side already carries independent
+/// edits). Returns the source's snapshot ID, which sync still fetches into
+/// `peer`'s local object store even though it refuses to auto-merge it.
+fn push_and_expect_divergence(fixture: &Fixture, peer: &Path, peer_data: &Path) -> String {
+    fixture.furrow().args(["sync", "--push"]).assert().success();
+    let divergence_output = furrow_at(peer, peer_data)
+        .args(["--json", "sync", "--pull"])
+        .assert()
+        .failure()
+        .get_output()
+        .stdout
+        .clone();
+    let divergence: Value = serde_json::from_slice(&divergence_output).unwrap();
+    assert_eq!(divergence["disposition"], "diverged");
+    divergence["remote_snapshot"].as_str().unwrap().to_owned()
+}
+
+#[test]
+fn merge_by_snapshot_id_converges_independent_changes_synced_through_a_directory_remote() {
+    let fixture = Fixture::new();
+    let peer = fixture.repo.parent().unwrap().join("snapshot-merge-peer");
+    let peer_data = fixture
+        .repo
+        .parent()
+        .unwrap()
+        .join("snapshot-merge-peer-data");
+    let remote = fixture.repo.parent().unwrap().join("snapshot-merge-remote");
+    pair_via_directory_remote(&fixture, &peer, &peer_data, &remote, "snapshot-merge");
+
+    fs::write(peer.join("peer-only.txt"), b"peer work\n").unwrap();
+    fs::write(fixture.repo.join("source-only.txt"), b"source work\n").unwrap();
+    let theirs = push_and_expect_divergence(&fixture, &peer, &peer_data);
+
+    // No --base: the pull boundary snapshot the two sides share is the only
+    // common ancestor, so it must be derived unambiguously.
+    furrow_at(&peer, &peer_data)
+        .args([
+            "merge",
+            "--snapshot",
+            &theirs,
+            "--check",
+            "grep -q 'peer work' peer-only.txt && grep -q 'source work' source-only.txt",
+        ])
+        .assert()
+        .success();
+
+    assert_eq!(
+        fs::read(peer.join("peer-only.txt")).unwrap(),
+        b"peer work\n"
+    );
+    assert_eq!(
+        fs::read(peer.join("source-only.txt")).unwrap(),
+        b"source work\n"
+    );
+    let timeline = furrow_at(&peer, &peer_data)
+        .args(["--json", "timeline"])
+        .assert()
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+    let timeline: Value = serde_json::from_slice(&timeline).unwrap();
+    assert_eq!(timeline[0]["trigger"], "merge");
+}
+
+#[test]
+fn merge_by_snapshot_id_reports_conflicts_identically_to_a_fork_merge() {
+    let fixture = Fixture::new();
+    let peer = fixture
+        .repo
+        .parent()
+        .unwrap()
+        .join("snapshot-conflict-peer");
+    let peer_data = fixture
+        .repo
+        .parent()
+        .unwrap()
+        .join("snapshot-conflict-peer-data");
+    let remote = fixture
+        .repo
+        .parent()
+        .unwrap()
+        .join("snapshot-conflict-remote");
+    pair_via_directory_remote(&fixture, &peer, &peer_data, &remote, "snapshot-conflict");
+
+    fs::write(peer.join("app.txt"), b"peer version\n").unwrap();
+    fs::write(fixture.repo.join("app.txt"), b"source version\n").unwrap();
+    let theirs = push_and_expect_divergence(&fixture, &peer, &peer_data);
+
+    let snapshot_output = furrow_at(&peer, &peer_data)
+        .args(["--json", "merge", "--snapshot", &theirs, "--dry-run"])
+        .assert()
+        .failure()
+        .get_output()
+        .stdout
+        .clone();
+    let snapshot_outcome: Value = serde_json::from_slice(&snapshot_output).unwrap();
+    let snapshot_conflicts = snapshot_outcome["conflicts"].clone();
+    assert_eq!(snapshot_conflicts.as_array().unwrap().len(), 1);
+    assert_eq!(snapshot_conflicts[0]["kind"], "modify_modify");
+    assert!(fs::read(peer.join("app.txt")).unwrap() == b"peer version\n");
+
+    // The identical conflicting edit through a plain fork merge must report
+    // the same conflict shape: same path, same kind.
+    let conflict_fixture = Fixture::new();
+    conflict_fixture.watch();
+    let fork = conflict_fixture._temp.path().join("app-conflict-fork");
+    conflict_fixture
+        .furrow()
+        .args(["fork", "app-conflict-fork", "--destination"])
+        .arg(&fork)
+        .assert()
+        .success();
+    fs::write(conflict_fixture.repo.join("app.txt"), b"source version\n").unwrap();
+    fs::write(fork.join("app.txt"), b"peer version\n").unwrap();
+    let fork_output = conflict_fixture
+        .furrow()
+        .args(["--json", "merge", "app-conflict-fork", "--dry-run"])
+        .assert()
+        .failure()
+        .get_output()
+        .stdout
+        .clone();
+    let fork_outcome: Value = serde_json::from_slice(&fork_output).unwrap();
+    assert_eq!(fork_outcome["conflicts"], snapshot_conflicts);
+}
+
 #[test]
 fn paged_flat_directory_snapshot_restores_entries_across_pages() {
     let fixture = Fixture::new();
