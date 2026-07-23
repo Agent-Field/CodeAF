@@ -1363,8 +1363,11 @@ fn main() -> anyhow::Result<()> {
                 println!("Cloned {}", repository.root().display());
                 println!("Remote snapshot {}", &outcome.remote_snapshot[..12]);
                 println!(
-                    "{} objects fetched ({} bytes); {} reused",
-                    outcome.fetched_objects, outcome.fetched_bytes, outcome.reused_objects
+                    "{} objects fetched ({} bytes); {} reused; {} files materialized",
+                    outcome.fetched_objects,
+                    outcome.fetched_bytes,
+                    outcome.reused_objects,
+                    outcome.materialized_files
                 );
             }
         }
@@ -1459,8 +1462,11 @@ fn main() -> anyhow::Result<()> {
                 } else {
                     println!("Remote snapshot {}", &outcome.remote_snapshot[..12]);
                     println!(
-                        "{} objects fetched ({} bytes); {} reused",
-                        outcome.fetched_objects, outcome.fetched_bytes, outcome.reused_objects
+                        "{} objects fetched ({} bytes); {} reused; {} files materialized",
+                        outcome.fetched_objects,
+                        outcome.fetched_bytes,
+                        outcome.reused_objects,
+                        outcome.materialized_files
                     );
                     match outcome.disposition {
                         SyncDisposition::FastForwarded => println!("Workspace fast-forwarded"),

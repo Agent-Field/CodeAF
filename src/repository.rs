@@ -275,6 +275,8 @@ pub struct SyncPullOutcome {
     pub fetched_objects: u64,
     pub reused_objects: u64,
     pub fetched_bytes: u64,
+    #[serde(default)]
+    pub materialized_files: u64,
     pub timings: sync::TransportTimings,
     pub apply_timings: ApplyTimings,
 }
@@ -903,84 +905,70 @@ impl FurrowRepository {
                 .context("workspace has no sealed snapshot")?
         };
         let local_snapshot: Snapshot = self.store.read_struct(&local, ObjectKind::Snapshot)?;
-        let pulled = {
-            // Imported objects are not reachable until incoming.json is
-            // durable. Holding this guard closes the assembly/publication GC
-            // race while keeping memory bounded by the disk-backed queue.
-            let _maintenance = self.store.acquire_maintenance_shared()?;
-            let pulled = sync::pull_on(&self.store, config, remote)?;
-            let incoming = serde_json::json!({"snapshot": pulled.snapshot});
-            let path = self.sync_incoming_path();
-            if let Some(parent) = path.parent() {
-                fs::create_dir_all(parent)?;
-            }
-            atomic_write(&path, &serde_json::to_vec(&incoming)?)?;
-            pulled
-        };
+
+        // The maintenance guard spans the entire transfer. Imported objects are
+        // not reachable until a durable root (restore.intent or incoming.json)
+        // names them, so holding it shut closes the assembly/publication GC race
+        // while streaming keeps memory bounded by the disk-backed queue.
+        let maintenance = self.store.acquire_maintenance_shared()?;
+
+        // Fetch the snapshot and full tree skeleton first: enough to compute the
+        // apply plan and the adopt/divergence decision before any blob moves.
+        let mut pull = sync::StreamingPull::begin(&self.store, config, remote)?;
         let remote_snapshot: Snapshot = self
             .store
-            .read_struct(&pulled.snapshot, ObjectKind::Snapshot)?;
+            .read_struct(&pull.snapshot(), ObjectKind::Snapshot)?;
         if !remote_snapshot.claims.is_empty() {
             claims::Registry::open(self.store.root(), &self.family_id)?
                 .restore(&remote_snapshot.claims)?;
         }
-        let disposition = if local_snapshot.root_tree == remote_snapshot.root_tree {
+
+        if local_snapshot.root_tree == remote_snapshot.root_tree {
+            // Nothing to materialize, but the whole graph must still land and be
+            // verified before the local identity adopts the remote snapshot.
+            let pulled = pull.finish()?;
+            self.write_sync_incoming(pulled.snapshot)?;
+            drop(maintenance);
             self.write_sync_state(pulled.root)?;
             self.clear_sync_incoming()?;
-            SyncDisposition::UpToDate
-        } else if pulled.base_root == Some(local_snapshot.root_tree)
+            return Ok(sync_pull_outcome(
+                SyncDisposition::UpToDate,
+                id_hex(&local),
+                &pulled,
+                ApplyTimings::default(),
+            ));
+        }
+
+        let can_fast_forward = pull.base_root() == Some(local_snapshot.root_tree)
             || prior_sync.as_ref().is_some_and(|state| {
-                pulled.base_root == Some(state.remote_root)
+                pull.base_root() == Some(state.remote_root)
                     && state.local_root == Some(local_snapshot.root_tree)
             })
-            || bootstrap
-        {
-            let apply_timings = self.apply_and_adopt_snapshot(
-                local,
-                &local_snapshot,
-                pulled.snapshot,
-                &remote_snapshot,
-            )?;
-            self.write_sync_state(pulled.root)?;
-            self.clear_sync_incoming()?;
-            return Ok(SyncPullOutcome {
-                disposition: if bootstrap {
-                    SyncDisposition::Bootstrapped
-                } else {
-                    SyncDisposition::FastForwarded
-                },
-                local_snapshot: id_hex(&pulled.snapshot),
-                remote_snapshot: id_hex(&pulled.snapshot),
-                remote_base_root: pulled.base_root.map(|id| id_hex(&id)),
-                fetched_objects: pulled.report.fetched_objects,
-                reused_objects: pulled.report.reused_objects,
-                fetched_bytes: pulled.report.fetched_bytes,
-                timings: pulled.report.timings,
-                apply_timings,
-            });
-        } else {
-            SyncDisposition::Diverged
-        };
-        Ok(SyncPullOutcome {
-            disposition,
-            local_snapshot: id_hex(&local),
-            remote_snapshot: id_hex(&pulled.snapshot),
-            remote_base_root: pulled.base_root.map(|id| id_hex(&id)),
-            fetched_objects: pulled.report.fetched_objects,
-            reused_objects: pulled.report.reused_objects,
-            fetched_bytes: pulled.report.fetched_bytes,
-            timings: pulled.report.timings,
-            apply_timings: ApplyTimings::default(),
-        })
-    }
+            || bootstrap;
 
-    fn apply_and_adopt_snapshot(
-        &mut self,
-        local_id: ObjectId,
-        local: &Snapshot,
-        incoming_id: ObjectId,
-        incoming: &Snapshot,
-    ) -> anyhow::Result<ApplyTimings> {
+        if !can_fast_forward {
+            // Divergence: land and verify the whole remote graph so it can be
+            // inspected or materialized later, leaving incoming.json as its root.
+            let pulled = pull.finish()?;
+            self.write_sync_incoming(pulled.snapshot)?;
+            drop(maintenance);
+            return Ok(sync_pull_outcome(
+                SyncDisposition::Diverged,
+                id_hex(&local),
+                &pulled,
+                ApplyTimings::default(),
+            ));
+        }
+
+        // Fast-forward / bootstrap: stream-materialize the delta while blobs are
+        // still arriving, then adopt the remote snapshot once the whole graph is
+        // durable and verified. This body is inlined (rather than a helper) so
+        // that `pull`'s shared borrow of the store is seen to end at
+        // `pull.finish()`, freeing the exclusive publish that follows.
+        let incoming_id = pull.snapshot();
+        let incoming = &remote_snapshot;
+        let local_id = local;
+        let local = &local_snapshot;
         let lock = self.acquire_mutation_lock()?;
         let diff_started = Instant::now();
         let policy = CapturePolicy::load(&self.root)?;
@@ -1031,9 +1019,26 @@ impl FurrowRepository {
             paths: Vec::new(),
         })?;
         let write_started = Instant::now();
-        if let Err(error) =
-            self.apply_plan_at_with_file_sync(&self.root, &incoming_entries, &plan, &[], false)
-        {
+        // Stream the delta: fetch each file's blob/chunk subgraph immediately
+        // before writing it, in deterministic tree order (the target map iterates
+        // paths in sorted order). Materialization therefore overlaps the transfer
+        // instead of waiting for the full graph.
+        let stream_result = self.apply_plan_at_with_file_sync(
+            &self.root,
+            &incoming_entries,
+            &plan,
+            &[],
+            false,
+            |entry| {
+                pull.fetch_file(entry.target.context("file missing blob ID")?)?;
+                if let Some(xattrs) = entry.xattrs {
+                    pull.fetch_object(xattrs, ObjectKind::Xattrs)?;
+                }
+                pull.note_materialized();
+                Ok(())
+            },
+        );
+        if let Err(error) = stream_result {
             let mut rollback_changes = Vec::new();
             self.diff_directory(
                 Some(incoming.root_tree),
@@ -1062,6 +1067,16 @@ impl FurrowRepository {
         }
         let write_ms = duration_ms(write_started.elapsed());
 
+        // Every planned file is durable. Fetch whatever the plan did not cover
+        // (reused paths, SQLite backups) and re-verify the entire graph before
+        // adopting — the identical crash-safe gate as a non-streaming pull.
+        let pulled = pull.finish()?;
+        self.write_sync_incoming(pulled.snapshot)?;
+        // The full graph is durable and kept alive by restore.intent and
+        // incoming.json, so the shared guard can be released for publication to
+        // take the exclusive maintenance lock.
+        drop(maintenance);
+
         let fsync_started = Instant::now();
         self.sync_applied_delta(&incoming_entries, &plan)?;
         let fsync_ms = duration_ms(fsync_started.elapsed());
@@ -1081,14 +1096,35 @@ impl FurrowRepository {
         )?;
         self.clear_restore_intent()?;
         FileExt::unlock(&lock)?;
-        Ok(ApplyTimings {
+        let apply_timings = ApplyTimings {
             diff_compute_ms,
             divergence_check_ms,
             write_ms,
             fsync_ms,
             baseline_install_ms,
             watcher_requiesce_ms,
-        })
+        };
+        self.write_sync_state(pulled.root)?;
+        self.clear_sync_incoming()?;
+        Ok(sync_pull_outcome(
+            if bootstrap {
+                SyncDisposition::Bootstrapped
+            } else {
+                SyncDisposition::FastForwarded
+            },
+            id_hex(&pulled.snapshot),
+            &pulled,
+            apply_timings,
+        ))
+    }
+
+    fn write_sync_incoming(&self, snapshot: ObjectId) -> anyhow::Result<()> {
+        let incoming = serde_json::json!({ "snapshot": snapshot });
+        let path = self.sync_incoming_path();
+        if let Some(parent) = path.parent() {
+            fs::create_dir_all(parent)?;
+        }
+        atomic_write(&path, &serde_json::to_vec(&incoming)?)
     }
 
     fn install_snapshot_index(&self, root: ObjectId, plan: &RewindPlan) -> anyhow::Result<()> {
@@ -3590,9 +3626,13 @@ impl FurrowRepository {
         plan: &RewindPlan,
         selected_paths: &[PathBuf],
     ) -> anyhow::Result<()> {
-        self.apply_plan_at_with_file_sync(root, target, plan, selected_paths, true)
+        self.apply_plan_at_with_file_sync(root, target, plan, selected_paths, true, |_| Ok(()))
     }
 
+    /// Materialize `plan` at `root`. `before_file` runs immediately before each
+    /// regular file is written, letting a streaming pull fetch that file's
+    /// blob/chunk subgraph on demand so checkout can proceed while the transfer
+    /// is still in flight. Non-streaming callers pass a no-op.
     fn apply_plan_at_with_file_sync(
         &self,
         root: &Path,
@@ -3600,6 +3640,7 @@ impl FurrowRepository {
         plan: &RewindPlan,
         selected_paths: &[PathBuf],
         sync_each_file: bool,
+        mut before_file: impl FnMut(&TreeEntry) -> anyhow::Result<()>,
     ) -> anyhow::Result<()> {
         let mut applied_operations = 0_usize;
         let changed: BTreeSet<Vec<u8>> = plan
@@ -3652,6 +3693,7 @@ impl FurrowRepository {
             }
             match flat.entry.kind {
                 EntryKind::File => {
+                    before_file(&flat.entry)?;
                     self.restore_file_with_sync(&destination, &flat.entry, sync_each_file)?
                 }
                 EntryKind::Symlink => {
@@ -3675,11 +3717,18 @@ impl FurrowRepository {
                 EntryKind::Directory => unreachable!(),
             }
             applied_operations += 1;
-            if applied_operations == 1
-                && std::env::var_os("FURROW_FAILPOINT").as_deref()
-                    == Some(OsStr::new("rewind_after_first_change"))
-            {
-                std::process::exit(86);
+            if applied_operations == 1 {
+                match std::env::var_os("FURROW_FAILPOINT").as_deref() {
+                    Some(value) if value == OsStr::new("rewind_after_first_change") => {
+                        std::process::exit(86)
+                    }
+                    // Simulate a process killed mid-stream: the first file is
+                    // durable but the transfer is abandoned before adoption.
+                    Some(value) if value == OsStr::new("pull_after_first_file") => {
+                        std::process::exit(87)
+                    }
+                    _ => {}
+                }
             }
         }
 
@@ -4520,4 +4569,24 @@ fn is_not_found(error: &anyhow::Error) -> bool {
 
 fn duration_ms(duration: std::time::Duration) -> u64 {
     u64::try_from(duration.as_millis()).unwrap_or(u64::MAX)
+}
+
+fn sync_pull_outcome(
+    disposition: SyncDisposition,
+    local_snapshot: String,
+    pulled: &sync::PulledHead,
+    apply_timings: ApplyTimings,
+) -> SyncPullOutcome {
+    SyncPullOutcome {
+        disposition,
+        local_snapshot,
+        remote_snapshot: id_hex(&pulled.snapshot),
+        remote_base_root: pulled.base_root.map(|id| id_hex(&id)),
+        fetched_objects: pulled.report.fetched_objects,
+        reused_objects: pulled.report.reused_objects,
+        fetched_bytes: pulled.report.fetched_bytes,
+        materialized_files: pulled.report.materialized_files,
+        timings: pulled.report.timings.clone(),
+        apply_timings,
+    }
 }
