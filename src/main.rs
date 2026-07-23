@@ -339,6 +339,35 @@ enum Command {
         #[arg(long)]
         timings: bool,
     },
+    /// Run a headless job at a remote input snapshot and publish the result.
+    ///
+    /// Pulls `--ref` from the remote into the local store, materializes an
+    /// isolated fork at that snapshot, runs the command after `--` inside it,
+    /// then seals and pushes the resulting state to `--result-ref`, recording
+    /// the input snapshot as its merge base. The process exit code mirrors the
+    /// command; the fork is removed unless `--keep`.
+    Work {
+        /// Remote directory, ssh://, or s3:// spec, as accepted by `pair`.
+        #[arg(long)]
+        remote: PathBuf,
+        /// Shared remote workspace name. Must match the publisher's `--name`.
+        #[arg(long)]
+        name: Option<String>,
+        /// 64-character recovery key for the shared remote workspace.
+        #[arg(long, env = "FURROW_RECOVERY_KEY")]
+        key: String,
+        /// Named input ref to pull the job's starting snapshot from.
+        #[arg(long = "ref")]
+        input_ref: String,
+        /// Named output ref to publish the sealed result snapshot to.
+        #[arg(long = "result-ref")]
+        result_ref: String,
+        /// Keep the fork workspace and its checkout instead of removing it.
+        #[arg(long)]
+        keep: bool,
+        #[arg(last = true, required = true)]
+        command: Vec<OsString>,
+    },
     /// Serve furrow tools to coding agents over MCP stdio.
     Mcp,
 }
@@ -1486,6 +1515,26 @@ fn main() -> anyhow::Result<()> {
                 );
             }
         }
+        Command::Work {
+            remote,
+            name,
+            key,
+            input_ref,
+            result_ref,
+            keep,
+            command,
+        } => {
+            run_work(WorkArgs {
+                json: cli.json,
+                remote: &remote,
+                name: name.as_deref(),
+                key: &key,
+                input_ref: &input_ref,
+                result_ref: &result_ref,
+                keep,
+                command: &command,
+            })?;
+        }
         Command::Mcp => {
             let repository = FurrowRepository::open(&cli.repo)?;
             furrow::mcp::run(repository)?;
@@ -1776,6 +1825,198 @@ fn execute_universes(
         exit_with_status(*status);
     }
     Ok(())
+}
+
+struct WorkArgs<'a> {
+    json: bool,
+    remote: &'a std::path::Path,
+    name: Option<&'a str>,
+    key: &'a str,
+    input_ref: &'a str,
+    result_ref: &'a str,
+    keep: bool,
+    command: &'a [OsString],
+}
+
+/// Execute a headless job: pull the input ref, fork at its snapshot, run the
+/// command in an isolated universe, then seal and publish the result under the
+/// result ref. The working directory holding both the throwaway bootstrap
+/// workspace and the job fork is removed unless `--keep`, and the process exit
+/// code mirrors the command.
+fn run_work(args: WorkArgs<'_>) -> anyhow::Result<()> {
+    anyhow::ensure!(
+        !args.command.is_empty(),
+        "`furrow work` requires a command after --"
+    );
+
+    let unique = format!(
+        "{}-{}",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_nanos()
+    );
+    let work_dir = std::env::temp_dir().join(format!("furrow-work-{unique}"));
+    anyhow::ensure!(
+        !work_dir.exists(),
+        "work directory already exists: {}",
+        work_dir.display()
+    );
+    fs::create_dir_all(&work_dir)?;
+
+    match work_core(&args, &work_dir, &unique) {
+        Ok((status, fork_destination)) => {
+            if args.keep {
+                // The fork is the durable artifact; the bootstrap workspace was
+                // only a pull target and can go regardless.
+                let _ = fs::remove_dir_all(work_dir.join("base"));
+                if !args.json {
+                    println!("Kept fork {}", fork_destination.display());
+                }
+            } else {
+                let _ = fs::remove_dir_all(&work_dir);
+            }
+            if !status.success() {
+                exit_with_status(status);
+            }
+            Ok(())
+        }
+        Err(error) => {
+            let _ = fs::remove_dir_all(&work_dir);
+            Err(error)
+        }
+    }
+}
+
+fn work_core(
+    args: &WorkArgs<'_>,
+    work_dir: &std::path::Path,
+    unique: &str,
+) -> anyhow::Result<(std::process::ExitStatus, PathBuf)> {
+    use furrow::universe::{ExecutionDriver, UniverseCommand};
+
+    let namespace = match args.name {
+        Some(name) => name.to_owned(),
+        None => {
+            let derived = args
+                .remote
+                .file_name()
+                .and_then(|name| name.to_str())
+                .context("could not derive a workspace name from --remote; pass --name")?;
+            furrow::remote::validate_namespace(derived)?;
+            derived.to_owned()
+        }
+    };
+
+    // Bootstrap a throwaway workspace at the input snapshot, mirroring `clone`:
+    // git init, pair to the shared remote, then a bootstrap pull of the named
+    // input ref lands its objects and head into the local store.
+    let base_root = work_dir.join("base");
+    fs::create_dir_all(&base_root)?;
+    let status = std::process::Command::new("git")
+        .arg("init")
+        .arg("--quiet")
+        .arg("--")
+        .arg(&base_root)
+        .status()
+        .context("start git for the work bootstrap workspace")?;
+    anyhow::ensure!(status.success(), "git init failed for the work workspace");
+
+    let (mut base_repository, _) = FurrowRepository::watch(&base_root)?;
+    base_repository
+        .pair(args.remote, &namespace, Some(args.key))
+        .context("pair the work machine with the shared remote")?;
+    let pull = base_repository
+        .sync_pull(true, Some(args.input_ref))
+        .with_context(|| format!("pull input ref '{}' from the remote", args.input_ref))?;
+    let input_snapshot = base_repository.resolve_snapshot(&pull.remote_snapshot)?;
+
+    // Materialize an isolated fork at the input snapshot, reusing the
+    // `fork --at` machinery so the job never observes the bootstrap workspace.
+    let fork_name = format!("work-{unique}");
+    let fork_destination = work_dir.join("fork");
+    let plan = base_repository.prepare_fork_at(&fork_name, &fork_destination, &input_snapshot)?;
+    let summary = base_repository.materialize_fork(plan)?;
+
+    // Run the command through the existing universe execution driver, streaming
+    // stdout/stderr straight through by inheriting them.
+    let driver = furrow::universe::select_driver();
+    let canonical_workdir = base_repository.root().to_path_buf();
+    let process_workdir = match driver.driver {
+        ExecutionDriver::LinuxMountNamespace => canonical_workdir.clone(),
+        ExecutionDriver::SiblingDirectory => summary.destination.clone(),
+    };
+    let executable = std::env::current_exe().context("resolve furrow executable")?;
+    let mut child = UniverseCommand {
+        driver: driver.driver,
+        executable: &executable,
+        source: &summary.destination,
+        canonical_target: &canonical_workdir,
+        command: args.command,
+    }
+    .command()?;
+    child
+        .env("FURROW_WORKDIR", &process_workdir)
+        .env("FURROW_CANONICAL_WORKDIR", &canonical_workdir)
+        .env("FURROW_FORK_NAME", &summary.name)
+        .env("FURROW_FORK_BASE", &summary.base_snapshot);
+    let status = child
+        .status()
+        .with_context(|| format!("run {:?} in the job fork", args.command[0]))?;
+
+    // Seal the resulting state, recording the input snapshot as the merge base
+    // so a downstream `merge --snapshot` derives it, then publish to the result
+    // ref regardless of the command's exit status.
+    let mut fork_repository = FurrowRepository::open(&summary.destination)?;
+    let outcome = status
+        .code()
+        .map_or_else(|| status.to_string(), |code| format!("exit {code}"));
+    let result_snapshot = fork_repository.snapshot_recording_base(
+        Some(format!("furrow work result ({outcome})")),
+        SnapshotTrigger::AgentRun,
+        &input_snapshot,
+    )?;
+    let report = base_repository
+        .push_snapshot_to_ref(&result_snapshot, args.result_ref)
+        .with_context(|| format!("publish result to ref '{}'", args.result_ref))?;
+
+    if args.json {
+        println!(
+            "{}",
+            serde_json::json!({
+                "namespace": namespace,
+                "input_ref": args.input_ref,
+                "result_ref": args.result_ref,
+                "input_snapshot": id_hex(&input_snapshot),
+                "result_snapshot": id_hex(&result_snapshot),
+                "base_snapshot": summary.base_snapshot,
+                "uploaded_objects": report.uploaded_objects,
+                "uploaded_bytes": report.uploaded_bytes,
+                "exit_code": furrow::universe::exit_code(status),
+                "fork": summary.destination,
+                "kept": args.keep,
+            })
+        );
+    } else {
+        println!(
+            "Input {} @ {}",
+            args.input_ref,
+            &id_hex(&input_snapshot)[..12]
+        );
+        println!(
+            "Result {} @ {}",
+            args.result_ref,
+            &id_hex(&result_snapshot)[..12]
+        );
+        println!(
+            "{} objects uploaded ({} bytes); {} reused",
+            report.uploaded_objects, report.uploaded_bytes, report.reused_objects
+        );
+        println!("Command exit {}", furrow::universe::exit_code(status));
+    }
+
+    Ok((status, summary.destination))
 }
 
 fn print_exec_plan(plan: &furrow::universe::ExecPlan) {

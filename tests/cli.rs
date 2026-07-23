@@ -3567,3 +3567,294 @@ fn interrupted_streamed_pull_recovers_and_completes_byte_identical() {
         vec![7_u8; 180_000]
     );
 }
+
+/// Builds a `furrow work` invocation for a headless worker with its own object
+/// store and recovery key, mirroring how a job runner would be provisioned on a
+/// machine that never attached the source workspace.
+fn work_command(data: &Path, key: &str) -> Command {
+    let mut command = Command::cargo_bin("furrow").unwrap();
+    command
+        .env("FURROW_DATA_DIR", data)
+        .env("FURROW_NO_DAEMON", "1")
+        .env("FURROW_RECOVERY_KEY", key)
+        .args(["--json", "work"]);
+    command
+}
+
+/// Spawns a `furrow work` worker as a real child process so two of them can run
+/// at once, capturing stdout for the JSON result summary.
+fn spawn_work(
+    data: &Path,
+    key: &str,
+    remote: &Path,
+    name: &str,
+    result_ref: &str,
+    shell: &str,
+) -> std::process::Child {
+    std::process::Command::new(env!("CARGO_BIN_EXE_furrow"))
+        .env("FURROW_DATA_DIR", data)
+        .env("FURROW_NO_DAEMON", "1")
+        .env("FURROW_RECOVERY_KEY", key)
+        .args([
+            "--json",
+            "work",
+            "--remote",
+            remote.to_str().unwrap(),
+            "--name",
+            name,
+            "--ref",
+            "jobs/1",
+            "--result-ref",
+            result_ref,
+            "--",
+            "sh",
+            "-c",
+            shell,
+        ])
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .spawn()
+        .unwrap()
+}
+
+/// Materializes `result_ref` from `remote` into a brand-new headless workspace
+/// and returns its path, so a test can inspect exactly what a job published.
+fn materialize_result(
+    parent: &Path,
+    label: &str,
+    remote: &Path,
+    name: &str,
+    key: &str,
+    result_ref: &str,
+) -> PathBuf {
+    let repo = parent.join(format!("{label}-repo"));
+    let data = parent.join(format!("{label}-data"));
+    fs::create_dir_all(&repo).unwrap();
+    git(&repo, &["init", "-b", "main"]);
+    git(&repo, &["config", "user.email", "consumer@example.com"]);
+    git(&repo, &["config", "user.name", "Consumer"]);
+    furrow_at(&repo, &data)
+        .args(["watch", "--no-daemon"])
+        .assert()
+        .success();
+    furrow_at(&repo, &data)
+        .args([
+            "pair",
+            remote.to_str().unwrap(),
+            "--name",
+            name,
+            "--key",
+            key,
+        ])
+        .assert()
+        .success();
+    furrow_at(&repo, &data)
+        .args(["sync", "--pull", "--ref", result_ref, "--bootstrap"])
+        .assert()
+        .success();
+    repo
+}
+
+#[test]
+fn work_runs_a_headless_job_at_a_remote_snapshot_and_publishes_a_mergeable_result() {
+    let fixture = Fixture::new();
+    let remote = fixture.repo.parent().unwrap().join("work-remote");
+    let worker_data = fixture.repo.parent().unwrap().join("work-worker-data");
+
+    // Machine A protects its workspace and publishes it as the job input ref.
+    fixture.watch();
+    let pair_output = fixture
+        .furrow()
+        .args([
+            "--json",
+            "pair",
+            remote.to_str().unwrap(),
+            "--name",
+            "work-shared",
+        ])
+        .assert()
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+    let pair: Value = serde_json::from_slice(&pair_output).unwrap();
+    let key = pair["key_hex"].as_str().unwrap().to_owned();
+    fixture
+        .furrow()
+        .args(["sync", "--push", "--ref", "jobs/1"])
+        .assert()
+        .success();
+
+    // The headless worker pulls jobs/1, forks at that snapshot, edits files in
+    // the isolated fork, and publishes the sealed result to results/1.
+    let work_output = work_command(&worker_data, &key)
+        .args([
+            "--remote",
+            remote.to_str().unwrap(),
+            "--name",
+            "work-shared",
+            "--ref",
+            "jobs/1",
+            "--result-ref",
+            "results/1",
+            "--",
+            "sh",
+            "-c",
+            "printf 'job edit\\n' >> app.txt && printf 'created by job\\n' > job-output.txt",
+        ])
+        .assert()
+        .success();
+    let work_json = work_output.get_output().stdout.clone();
+    let work: Value = serde_json::from_slice(&work_json).unwrap();
+    assert_eq!(work["exit_code"], 0);
+    assert_eq!(work["input_ref"], "jobs/1");
+    assert_eq!(work["result_ref"], "results/1");
+    let input_snapshot = work["input_snapshot"].as_str().unwrap().to_owned();
+    let result_snapshot = work["result_snapshot"].as_str().unwrap().to_owned();
+    assert_ne!(input_snapshot, result_snapshot);
+    // Without --keep the fork and its bootstrap workspace are removed.
+    assert!(!Path::new(work["fork"].as_str().unwrap()).exists());
+
+    // A pulls the published result. The two sides carry independent history, so
+    // the pull fetches the whole graph and reports a divergence rather than
+    // overwriting A's workspace.
+    let divergence_output = fixture
+        .furrow()
+        .args(["--json", "sync", "--pull", "--ref", "results/1"])
+        .assert()
+        .failure()
+        .get_output()
+        .stdout
+        .clone();
+    let divergence: Value = serde_json::from_slice(&divergence_output).unwrap();
+    assert_eq!(divergence["disposition"], "diverged");
+    assert_eq!(divergence["remote_snapshot"], result_snapshot);
+
+    // Merging the result by snapshot ID with no --base hint must derive the
+    // job's input snapshot as the base and land the job's edits into A.
+    fixture
+        .furrow()
+        .args([
+            "merge",
+            "--snapshot",
+            &result_snapshot,
+            "--check",
+            "grep -q 'job edit' app.txt && test -f job-output.txt",
+        ])
+        .assert()
+        .success();
+    assert!(fs::read_to_string(fixture.repo.join("app.txt"))
+        .unwrap()
+        .contains("job edit"));
+    assert_eq!(
+        fs::read(fixture.repo.join("job-output.txt")).unwrap(),
+        b"created by job\n"
+    );
+}
+
+#[test]
+fn concurrent_work_runs_on_one_input_ref_publish_independent_results() {
+    let fixture = Fixture::new();
+    let parent = fixture.repo.parent().unwrap().to_path_buf();
+    let remote = parent.join("cwork-remote");
+    let worker_a_data = parent.join("cwork-a-data");
+    let worker_b_data = parent.join("cwork-b-data");
+
+    fixture.watch();
+    let pair_output = fixture
+        .furrow()
+        .args([
+            "--json",
+            "pair",
+            remote.to_str().unwrap(),
+            "--name",
+            "cwork-shared",
+        ])
+        .assert()
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+    let pair: Value = serde_json::from_slice(&pair_output).unwrap();
+    let key = pair["key_hex"].as_str().unwrap().to_owned();
+    fixture
+        .furrow()
+        .args(["sync", "--push", "--ref", "jobs/1"])
+        .assert()
+        .success();
+
+    // Two workers start from the same input ref at the same time, each writing a
+    // distinct marker and publishing to its own result ref.
+    let child_a = spawn_work(
+        &worker_a_data,
+        &key,
+        &remote,
+        "cwork-shared",
+        "results/a",
+        "printf 'from a\\n' > marker-a.txt",
+    );
+    let child_b = spawn_work(
+        &worker_b_data,
+        &key,
+        &remote,
+        "cwork-shared",
+        "results/b",
+        "printf 'from b\\n' > marker-b.txt",
+    );
+    let out_a = child_a.wait_with_output().unwrap();
+    let out_b = child_b.wait_with_output().unwrap();
+    assert!(
+        out_a.status.success(),
+        "worker A failed: {}",
+        String::from_utf8_lossy(&out_a.stderr)
+    );
+    assert!(
+        out_b.status.success(),
+        "worker B failed: {}",
+        String::from_utf8_lossy(&out_b.stderr)
+    );
+    let result_a: Value = serde_json::from_slice(&out_a.stdout).unwrap();
+    let result_b: Value = serde_json::from_slice(&out_b.stdout).unwrap();
+    // Both started from the identical input snapshot yet produced independent
+    // results published under independent refs.
+    assert_eq!(result_a["input_snapshot"], result_b["input_snapshot"]);
+    assert_ne!(result_a["result_snapshot"], result_b["result_snapshot"]);
+
+    // Materializing each result ref in a clean workspace proves the jobs did not
+    // observe or clobber each other: each carries only its own marker.
+    let consumer_a = materialize_result(
+        &parent,
+        "cwork-a",
+        &remote,
+        "cwork-shared",
+        &key,
+        "results/a",
+    );
+    let consumer_b = materialize_result(
+        &parent,
+        "cwork-b",
+        &remote,
+        "cwork-shared",
+        &key,
+        "results/b",
+    );
+    assert_eq!(
+        fs::read(consumer_a.join("marker-a.txt")).unwrap(),
+        b"from a\n"
+    );
+    assert!(!consumer_a.join("marker-b.txt").exists());
+    assert_eq!(
+        fs::read(consumer_b.join("marker-b.txt")).unwrap(),
+        b"from b\n"
+    );
+    assert!(!consumer_b.join("marker-a.txt").exists());
+    // The shared input file survived untouched in both results.
+    assert_eq!(
+        fs::read(consumer_a.join("app.txt")).unwrap(),
+        b"tracked original\n"
+    );
+    assert_eq!(
+        fs::read(consumer_b.join("app.txt")).unwrap(),
+        b"tracked original\n"
+    );
+}

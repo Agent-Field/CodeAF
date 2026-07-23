@@ -480,8 +480,27 @@ impl FurrowRepository {
         changed_paths: Option<&[PathBuf]>,
         merge_parents: Vec<ObjectId>,
     ) -> anyhow::Result<ObjectId> {
+        self.snapshot_internal_with_parent(label, trigger, changed_paths, merge_parents, None)
+    }
+
+    /// As [`Self::snapshot_internal`], but records `parent_override` as the
+    /// sealed snapshot's first parent instead of the workspace's current head.
+    /// `furrow work` uses this so the result descends directly from the job's
+    /// input snapshot, keeping the throwaway fork checkpoint out of the
+    /// transported ancestry that a downstream merge base derivation follows.
+    fn snapshot_internal_with_parent(
+        &mut self,
+        label: Option<String>,
+        trigger: SnapshotTrigger,
+        changed_paths: Option<&[PathBuf]>,
+        merge_parents: Vec<ObjectId>,
+        parent_override: Option<ObjectId>,
+    ) -> anyhow::Result<ObjectId> {
         let _maintenance = self.store.acquire_maintenance_shared()?;
-        let parent = self.store.workspace_head(&self.workspace_id)?;
+        let parent = match parent_override {
+            Some(parent) => Some(parent),
+            None => self.store.workspace_head(&self.workspace_id)?,
+        };
         let policy = CapturePolicy::load(&self.root)?;
         let root_tree = match changed_paths {
             Some(paths)
@@ -884,6 +903,37 @@ impl FurrowRepository {
         let config = sync::load(&self.sync_config_path())?;
         let mut remote = sync::open_session(&config, ref_name)?;
         self.sync_pull_on(bootstrap, true, &config, &mut remote)
+    }
+
+    /// Publish an already sealed snapshot from the shared object store to a
+    /// named remote ref through this workspace's pairing, without touching the
+    /// workspace's own head. Used by `furrow work` to push a headless job
+    /// result under an independent result ref so it never contends with the
+    /// input ref or another concurrent job.
+    pub fn push_snapshot_to_ref(
+        &self,
+        snapshot: &ObjectId,
+        ref_name: &str,
+    ) -> anyhow::Result<sync::PushReport> {
+        let _: Snapshot = self.store.read_struct(snapshot, ObjectKind::Snapshot)?;
+        let config = sync::load(&self.sync_config_path())?;
+        let mut remote = sync::open_session(&config, Some(ref_name))?;
+        sync::push_on(&self.store, *snapshot, &config, None, false, &mut remote)
+    }
+
+    /// Seal the current workspace state as a direct descendant of `base`, so a
+    /// downstream `furrow merge --snapshot` derives the job's input snapshot as
+    /// its merge base. The fork the job ran in was materialized from the store
+    /// and carries its own fresh checkpoint head; recording that head would
+    /// sever the input snapshot from the ancestry a merge can follow (and it is
+    /// never transported), so `base` is recorded as the parent instead.
+    pub fn snapshot_recording_base(
+        &mut self,
+        label: Option<String>,
+        trigger: SnapshotTrigger,
+        base: &ObjectId,
+    ) -> anyhow::Result<ObjectId> {
+        self.snapshot_internal_with_parent(label, trigger, None, Vec::new(), Some(*base))
     }
 
     fn sync_pull_on(
