@@ -530,6 +530,22 @@ enum FileMethod {
     StreamingCopy(u64),
 }
 
+/// Attempt a native copy-on-write clone of a single regular file. Returns
+/// `false` (leaving `destination` absent) when the platform or filesystem
+/// does not support cloning, so a caller with another source of truth for
+/// the same content — such as an object store — can fall back to it instead
+/// of a byte-for-byte streaming copy.
+pub(crate) fn try_clone_file(source: &Path, destination: &Path) -> bool {
+    match native_clone(source, destination) {
+        Ok(()) => true,
+        Err(_) => {
+            // clonefile may leave a destination behind for some error classes.
+            let _ = fs::remove_file(destination);
+            false
+        }
+    }
+}
+
 fn clone_or_copy(source: &Path, destination: &Path) -> io::Result<FileMethod> {
     match native_clone(source, destination) {
         Ok(()) => Ok(FileMethod::NativeCow),
