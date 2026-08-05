@@ -533,6 +533,27 @@ func (g *Graph) Sinks() []int {
 	return sinks
 }
 
+// deliverableOwner names the single node that produces whatever final
+// deliverable the goal asks for. Everything else contributes material to it.
+//
+// The goal text reaches every agent, so without an owner every agent reads
+// "produce REVIEW.md" as its own instruction — one run had five nodes writing
+// that file over the top of each other. Ownership is structural rather than
+// asked for: it is the one node nothing else consumes.
+//
+// A zero id means the owner does not exist yet. Several sinks means the
+// synthesis appended at the end of planning will gather them, and briefs for the
+// rest of the graph are written before that node is created, so it is named by
+// role instead of by number.
+func (g *Graph) deliverableOwner() (int, string) {
+	if sinks := g.Sinks(); len(sinks) == 1 {
+		if node := g.Node(sinks[0]); node != nil {
+			return node.ID, fmt.Sprintf("node %d, %q", node.ID, node.Title)
+		}
+	}
+	return 0, "the final step that assembles every result"
+}
+
 // Waves groups nodes by earliest possible start. A node's wave is one past the
 // deepest wave it depends on, so a node needing nothing starts in wave 0 no
 // matter which stage produced it. This is the whole point of binding: stage

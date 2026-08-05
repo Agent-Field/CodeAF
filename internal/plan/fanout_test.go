@@ -51,3 +51,22 @@ func TestFanoutPromptStatesTheSharedSetupRule(t *testing.T) {
 		})
 	}
 }
+
+// TestFanoutPromptStatesOneOwnerPerDeliverable is the fan-out side of the
+// single-owner rule: parts make the material, one node makes the thing.
+func TestFanoutPromptStatesOneOwnerPerDeliverable(t *testing.T) {
+	for _, want := range []struct {
+		name   string
+		phrase string
+	}{
+		{"no part produces it", "no\npart of this stage produces it"},
+		{"parts make the material", "The parts produce the material it is made of"},
+		{"duplicate endings collapse", "both end in writing the same\ndocument are one part"},
+	} {
+		t.Run(want.name, func(t *testing.T) {
+			if !strings.Contains(fanoutPrompt, want.phrase) {
+				t.Errorf("fan-out prompt no longer states %s: missing %q", want.name, want.phrase)
+			}
+		})
+	}
+}

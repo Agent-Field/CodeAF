@@ -301,7 +301,7 @@ func announce(graph *Graph, options Options, settled map[int]bool, briefs *brief
 				inputs = append(inputs, fmt.Sprintf("%q (%s)", source.Title, source.Summary))
 			}
 		}
-		briefs.launch(shared, *node, inputs)
+		briefs.launch(shared, *node, inputs, graph.deliverableLine(node.ID))
 		if len(node.Needs) == 0 && options.OnReady != nil {
 			options.OnReady(*node, elapsed)
 		}

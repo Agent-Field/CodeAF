@@ -34,6 +34,13 @@ Write directly to it:
 - Where other agents are delivering something adjacent, say which results are
   theirs, so this one does not redo them.
 
+Exactly one node produces the goal's final deliverable, and you are told which.
+When it is not this one, say plainly that the deliverable is that other agent's
+to produce and that this agent hands its own result over instead of writing any
+version of it — every agent sees the goal, and without this line they each write
+the same file over the top of the others. When it is this one, say that it is
+this agent's alone and that the other results arrive as inputs to it.
+
 The boundary is always about what an agent is responsible for delivering, never
 about what it is allowed to touch. Say nothing about which files, sections,
 components or parts of the work it may or may not change. It must be free to do
@@ -81,16 +88,17 @@ func newBriefWriter(ctx context.Context, client Completer, enabled bool) *briefW
 	return &briefWriter{ctx: ctx, client: client, enabled: enabled, results: map[int]string{}}
 }
 
-// launch starts one node's brief. Everything it needs is passed by value, so
+// launch starts one node's brief. Everything it needs is passed by value —
+// including the ownership line, which is read off the graph by the caller — so
 // the goroutine never reads the graph while the graph is being modified.
-func (w *briefWriter) launch(shared string, node Node, inputs []string) {
+func (w *briefWriter) launch(shared string, node Node, inputs []string, deliverable string) {
 	if !w.enabled || node.Kind != KindWork {
 		return
 	}
 	w.group.Add(1)
 	go func() {
 		defer w.group.Done()
-		brief, usage, err := writeBrief(w.ctx, w.client, shared, node, inputs)
+		brief, usage, err := writeBrief(w.ctx, w.client, shared, node, inputs, deliverable)
 		w.mutex.Lock()
 		defer w.mutex.Unlock()
 		w.usage.Add(usage)
@@ -132,17 +140,33 @@ func Briefs(ctx context.Context, client Completer, graph *Graph) (Usage, error) 
 				inputs = append(inputs, fmt.Sprintf("%q (%s)", source.Title, source.Summary))
 			}
 		}
-		writer.launch(shared, *node, inputs)
+		writer.launch(shared, *node, inputs, graph.deliverableLine(node.ID))
 	}
 	return writer.apply(graph)
 }
 
-func writeBrief(ctx context.Context, client Completer, shared string, node Node, inputs []string) (string, *ai.Usage, error) {
+// deliverableLine tells one node whether the goal's final deliverable is its to
+// produce. Every node is told, and only one is told yes: an agent that is not
+// the owner has to be told so explicitly, because the goal it also receives
+// names the deliverable and reads as an instruction to build it.
+func (g *Graph) deliverableLine(nodeID int) string {
+	owner, label := g.deliverableOwner()
+	if owner == nodeID {
+		return "This node owns the final deliverable the goal asks for: it is the only " +
+			"one that produces it, and the other results arrive here as inputs.\n"
+	}
+	return fmt.Sprintf("The final deliverable the goal asks for — whatever single file, report or "+
+		"document it names — is produced by %s, not here. This node produces its own result "+
+		"and hands it over.\n", label)
+}
+
+func writeBrief(ctx context.Context, client Completer, shared string, node Node, inputs []string, deliverable string) (string, *ai.Usage, error) {
 	var target strings.Builder
 	fmt.Fprintf(&target, "Write the instruction for node %d, %q: %s\n", node.ID, node.Title, node.Summary)
 	if len(node.Sources) > 0 {
 		fmt.Fprintf(&target, "It is expected to touch: %s\n", strings.Join(node.Sources, "; "))
 	}
+	target.WriteString(deliverable)
 	if len(inputs) > 0 {
 		fmt.Fprintf(&target, "It will already have the results of: %s\n", strings.Join(inputs, "; "))
 	} else {
