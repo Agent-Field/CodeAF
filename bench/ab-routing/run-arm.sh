@@ -21,6 +21,11 @@ ARM="${ARM:-a}"
 ARM_UC="$(printf "%s" "$ARM" | tr "[:lower:]" "[:upper:]")"
 TASKS="${TASKS:-t1-logstore t2-synthesis t3-shiftplan}"
 REPS="${REPS:-3}"
+# START_REP resumes a shared-ledger arm that was interrupted. The ledger is the
+# point of that arm, so discarding the cells already run would discard the
+# sequence they built; pointing RESULTS at the existing run directory keeps the
+# same ledger and continues it.
+START_REP="${START_REP:-1}"
 RESULTS="${RESULTS:-$HERE/runs/arm$ARM_UC-$(date +%Y%m%d-%H%M%S)}"
 JSONL="${JSONL:-$HERE/results-arm$ARM_UC.jsonl}"
 
@@ -178,7 +183,7 @@ run_cell() {
 # Cells run in sequence. Arm B needs it (the ledger has to carry forward in a
 # defined order) and arm A keeps it so wall-clock and provider latency are
 # measured under the same contention as arm B rather than under a quieter one.
-for rep in $(seq 1 "$REPS"); do
+for rep in $(seq "$START_REP" "$REPS"); do
   for task in $TASKS; do
     run_cell "$task" "$rep"
   done
