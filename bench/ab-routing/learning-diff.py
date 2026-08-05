@@ -55,25 +55,63 @@ def short(slug):
 
 
 def load(path):
+    """Rows, each stamped with which results file it came from.
+
+    The stamp matters: the shared arm and its control have the same (task,
+    replicate) keys, so a companion lookup that searched every loaded table
+    would answer the control with the shared arm's events and report the two as
+    identical — which is exactly the conclusion the control exists to test.
+    """
+    table = load_companion(path)
     rows = []
     with open(path) as f:
         for line in f:
             line = line.strip()
             if line:
-                rows.append(json.loads(line))
+                row = json.loads(line)
+                row["_events"] = table.get((row["task"], row["rep"]), [])
+                rows.append(row)
     return rows
+
+
+_COMPANION = {}
+
+
+def load_companion(results_path):
+    """Per-cell events, from the file beside the results.
+
+    The events are the substrate of this whole analysis, but inlining them into
+    every results row duplicated one log nine times over. They live in
+    `events-<arm>.jsonl` keyed by (task, replicate); a row that still carries
+    its own inline list is used as-is, so both layouts work.
+    """
+    name = os.path.basename(results_path).replace("results-", "events-")
+    path = os.path.join(os.path.dirname(os.path.abspath(results_path)), name)
+    table = {}
+    if os.path.exists(path):
+        with open(path) as f:
+            for line in f:
+                line = line.strip()
+                if line:
+                    row = json.loads(line)
+                    table[(row["task"], row["rep"])] = row["events"]
+    _COMPANION[results_path] = table
+    return table
+
+
+def all_events(row):
+    inline = (row.get("ledger") or {}).get("events") or []
+    return inline or row.get("_events") or []
 
 
 def events_of(row):
     """Attempt rows only. A `final` row is the settled verdict appended against
     an existing call id and carries no fresh decision."""
-    return [e for e in ((row.get("ledger") or {}).get("events") or [])
-            if not e.get("final")]
+    return [e for e in all_events(row) if not e.get("final")]
 
 
 def finals_of(row):
-    return [e for e in ((row.get("ledger") or {}).get("events") or [])
-            if e.get("final")]
+    return [e for e in all_events(row) if e.get("final")]
 
 
 def rung_orders(rows):

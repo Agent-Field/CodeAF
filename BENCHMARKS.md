@@ -134,14 +134,16 @@ pi and opencode both hit the 40-minute cap having produced no output at all.
 That is a total failure on this task shape rather than a slow result, and it is
 the largest gap in either benchmark.
 
-## 3. Model routing — arm A baseline
+## 3. Model routing — single model against a routed panel
 
 A different question again: not how aforge compares to another harness, but
 whether sending every call to one model is leaving anything on the table. The
 protocol is in [`bench/ab-routing/DESIGN.md`](bench/ab-routing/DESIGN.md), the
 panel and its measurements in `bench/ab-routing/panel.json`, and the full write
-up in [`bench/ab-routing/BASELINE.md`](bench/ab-routing/BASELINE.md). Only arm A
-— today's shipped configuration, no environment overrides — has been run.
+up in [`bench/ab-routing/BASELINE.md`](bench/ab-routing/BASELINE.md) and
+[`bench/ab-routing/REPORT.md`](bench/ab-routing/REPORT.md). Arm A is today's
+shipped configuration with no environment overrides; arm B is the same harness
+with `AFORGE_MODELS` naming a five-model panel.
 
 Three tasks, run end to end through the CLI, n=3, every one graded by code with
 no LLM judge anywhere.
@@ -154,7 +156,7 @@ no LLM judge anywhere.
 
 **3 of 9 overall, $0.88, 99 minutes.** Zero harness crashes; no cell rerun.
 
-Two results are worth quoting outside that document.
+Two results from the baseline are worth quoting outside that document.
 
 **The failures reproduce exactly.** All three t1 replicates failed the identical
 three tests and all three t3 replicates failed the same defect family. These are
@@ -174,6 +176,41 @@ change to anything else.
 Two tasks needed hardening after arm A aced them, which is recorded round by
 round; t2 survived its hardening and stays in the suite as a regression control
 rather than a discriminator.
+
+### Arm B — the routed panel
+
+The router (`internal/router/`) over the five-model panel, same three tasks, same
+n=3, `AFORGE_MODELS` pointing at `bench/ab-routing/panel.json`.
+
+| task | A success | B success | A score | B score | A $ mean | B $ mean |
+| ---- | --------- | --------- | ------- | ------- | -------- | -------- |
+| t1-logstore | 0/3 | 0/3 | 0.667 | 0.667 | $0.144 | $0.038 |
+| t2-synthesis | **3/3** | **2/3** | 1.000 | 1.000 | $0.073 | $0.071 |
+| t3-shiftplan | 0/3 | 0/3 | 0.714 | 0.571 | $0.075 | $0.089 |
+| **overall** | **3/9** | **2/9** | 0.714 | 0.667 | $0.877 | $0.593 |
+
+**Routing did not help.** The only cell that moved got worse, the 23% cost
+saving sits inside the planner's own node-count variance, and
+`moonshotai/kimi-k2.6` — the model the panel exists for — **served zero calls**.
+Three of five panel members were never called at all.
+
+**The continual-learning check came back positive and harmful.** Against a
+fresh-ledger control, eight of eleven call classes reordered between run 1 and
+run 3 with a shared ledger and **zero** reordered without one, so the change is
+attributable to the ledger. What it learned was to drop its best model: the
+terminal rung went from kimi-k2.6 to qwen3-30b-a3b. On the same tasks, run 3
+scored 0.000 on t2 and t3 where the control's run 3 scored 1.000 and 0.857.
+
+The mechanism is worth recording here because it is a property of the harness
+rather than of the router. Of 108 settled `exec.leaf` verdicts, 103 were
+`unverified_success` — a finished leaf is not checked by anything, since the
+graders run after `aforge run` exits — so the leaf rating was fitted to the five
+that were graded, all of them budget stops from one task. `exec.leaf` is a single
+global class, so that lesson was applied to every leaf of every other task.
+
+Six router defects and their evidence are in
+[`bench/ab-routing/REPORT.md`](bench/ab-routing/REPORT.md). The recommendation is
+not to ship the router in this configuration.
 
 ## 4. Caveats
 
