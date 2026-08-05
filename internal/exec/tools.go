@@ -7,7 +7,9 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
@@ -69,7 +71,10 @@ type Toolbox struct {
 	workspace *Workspace
 	nodeID    int
 	web       *Web
-	spills    int
+	// spills is atomic because a turn's tool calls execute concurrently, and
+	// two large results spilling at once must not race the counter into the
+	// same file name.
+	spills atomic.Int64
 }
 
 func NewToolbox(workspace *Workspace, nodeID int, web *Web) *Toolbox {
@@ -135,21 +140,54 @@ func (t *Toolbox) spill(result Result) Result {
 	if result.IsError || len(result.Content) <= spillBytes {
 		return result
 	}
-	t.spills++
-	relative := filepath.Join(obsDir, fmt.Sprintf("%d-%d.txt", t.nodeID, t.spills))
-	full, err := t.workspace.Resolve(relative)
-	if err != nil {
-		return result
-	}
-	if err := os.MkdirAll(filepath.Dir(full), 0o755); err != nil {
-		return result
-	}
-	if err := os.WriteFile(full, []byte(result.Content), 0o644); err != nil {
+	relative, ok := t.writeObs(fmt.Sprintf("%d-%d.txt", t.nodeID, t.spills.Add(1)), result.Content)
+	if !ok {
 		return result
 	}
 	return Result{Content: fmt.Sprintf(
 		"%s\n\n... [%d of %d bytes shown. Full output saved to %s — read the part you need with sh, for example: sed -n '1,80p' %s]",
 		result.Content[:previewBytes], previewBytes, len(result.Content), relative, relative)}
+}
+
+// decaySpill preserves a decaying observation's full body under the
+// workspace's observation directory. The file is named by tool call id, so
+// writing is naturally idempotent — the decayer additionally guarantees it is
+// invoked at most once per id.
+func (t *Toolbox) decaySpill(toolCallID, body string) (string, bool) {
+	return t.writeObs(fmt.Sprintf("%d-decay-%s.txt", t.nodeID, safeName(toolCallID)), body)
+}
+
+// writeObs writes one observation file and returns its workspace-relative
+// path. It is the one place spilled bytes land, shared by the size-triggered
+// spill and the decay pass.
+func (t *Toolbox) writeObs(name, content string) (string, bool) {
+	relative := filepath.Join(obsDir, name)
+	full, err := t.workspace.Resolve(relative)
+	if err != nil {
+		return "", false
+	}
+	if err := os.MkdirAll(filepath.Dir(full), 0o755); err != nil {
+		return "", false
+	}
+	if err := os.WriteFile(full, []byte(content), 0o644); err != nil {
+		return "", false
+	}
+	return relative, true
+}
+
+var unsafeName = regexp.MustCompile(`[^A-Za-z0-9_-]+`)
+
+// safeName makes a tool call id usable as a file name. Ids differ at the tail,
+// so that is the part kept when one is too long.
+func safeName(id string) string {
+	cleaned := unsafeName.ReplaceAllString(id, "")
+	if len(cleaned) > 40 {
+		cleaned = cleaned[len(cleaned)-40:]
+	}
+	if cleaned == "" {
+		cleaned = "x"
+	}
+	return cleaned
 }
 
 func (t *Toolbox) sh(ctx context.Context, args map[string]any) Result {
