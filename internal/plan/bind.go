@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"sync"
 
+	"github.com/Agent-Field/aforge-v2/internal/provider"
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 )
 
@@ -226,6 +227,7 @@ func worthBinding(graph *Graph, stage int) bool {
 }
 
 func bindStage(ctx context.Context, client Completer, shared string, graph *Graph, stage int) (bindReply, *ai.Usage, error) {
+	ctx = provider.WithCall(ctx, provider.ClassPlanBind)
 	var targets string
 	for _, node := range graph.Nodes {
 		if node.Stage == stage {
@@ -237,13 +239,40 @@ func bindStage(ctx context.Context, client Completer, shared string, graph *Grap
 		userMessage(shared),
 		userMessage(fmt.Sprintf("For each of these stage %d nodes, list what it must wait for:\n%s", stage, targets)),
 	}
-	response, err := client.CompleteWithMessages(ctx, messages, ai.WithSchema(bindSchema))
-	if err != nil {
-		return bindReply{}, nil, fmt.Errorf("bind stage %d: %w", stage, err)
-	}
 	var reply bindReply
-	if err := decodeJSON(response.Text(), &reply); err != nil {
-		return bindReply{}, usageOf(response), annotate(fmt.Errorf("bind stage %d: %w", stage, err), response)
+	response, err := structured(ctx, client, messages, bindSchema, &reply)
+	if err != nil {
+		return bindReply{}, usageOf(response), fmt.Errorf("bind stage %d: %w", stage, err)
 	}
+	// An id nobody has heard of is the bind pass's characteristic failure: the
+	// catalog is long, the answer is numbers, and a model that has lost track
+	// invents them. setNeeds drops those edges silently, which is right for the
+	// graph and wrong for the record — so the reply is checked here, where the
+	// difference between "this plan needs no edges" and "this model could not
+	// read the catalog" is still visible.
+	if bindNamesUnknownNodes(graph, reply) {
+		provider.Report(ctx, provider.VerdictSemanticFailure)
+		return reply, usageOf(response), nil
+	}
+	provider.Report(ctx, provider.VerdictVerifiedSuccess)
 	return reply, usageOf(response), nil
+}
+
+func bindNamesUnknownNodes(graph *Graph, reply bindReply) bool {
+	for _, entry := range reply.Bindings {
+		if graph.Node(entry.Node) == nil {
+			return true
+		}
+		for _, need := range entry.Needs {
+			if graph.Node(need) == nil {
+				return true
+			}
+		}
+	}
+	for _, duplicate := range reply.Duplicates {
+		if graph.Node(duplicate.Node) == nil || graph.Node(duplicate.SameAs) == nil {
+			return true
+		}
+	}
+	return false
 }

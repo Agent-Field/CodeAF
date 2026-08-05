@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"sync"
 
+	"github.com/Agent-Field/aforge-v2/internal/provider"
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 )
 
@@ -146,20 +147,18 @@ func FanOut(ctx context.Context, client Completer, premise string, stages []Stag
 }
 
 func fanOutStage(ctx context.Context, client Completer, shared string, stage int, definition Stage) ([]Node, *ai.Usage, error) {
+	ctx = provider.WithCall(ctx, provider.ClassPlanFanOut)
 	messages := []ai.Message{
 		systemMessage(fanoutPrompt),
 		userMessage(shared),
 		userMessage(fmt.Sprintf("List the simultaneous parts of stage %d, %q: %s", stage, definition.Title, definition.Summary)),
 	}
-	response, err := client.CompleteWithMessages(ctx, messages, ai.WithSchema(fanoutSchema))
-	if err != nil {
-		return nil, nil, fmt.Errorf("fan-out stage %d: %w", stage, err)
-	}
 	var decoded struct {
 		Parts []Node `json:"parts"`
 	}
-	if err := decodeJSON(response.Text(), &decoded); err != nil {
-		return nil, usageOf(response), annotate(fmt.Errorf("fan-out stage %d: %w", stage, err), response)
+	response, err := structured(ctx, client, messages, fanoutSchema, &decoded)
+	if err != nil {
+		return nil, usageOf(response), fmt.Errorf("fan-out stage %d: %w", stage, err)
 	}
 	nodes := make([]Node, 0, len(decoded.Parts))
 	for _, node := range decoded.Parts {
@@ -175,8 +174,10 @@ func fanOutStage(ctx context.Context, client Completer, shared string, stage int
 		nodes = append(nodes, node)
 	}
 	if len(nodes) == 0 {
+		provider.Report(ctx, provider.VerdictSemanticFailure)
 		return nil, usageOf(response), annotate(fmt.Errorf("fan-out stage %d: no parts returned", stage), response)
 	}
+	provider.Report(ctx, provider.VerdictVerifiedSuccess)
 	return nodes, usageOf(response), nil
 }
 

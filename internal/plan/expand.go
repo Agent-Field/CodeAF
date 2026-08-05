@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"strings"
 	"sync"
+
+	"github.com/Agent-Field/aforge-v2/internal/provider"
 )
 
 // expandScope is the context a sub-planner is given. It is deliberately thin.
@@ -162,6 +164,13 @@ func expandOne(ctx context.Context, client Completer, graph *Graph, nodeID int, 
 	}
 	scope := scopeFor(graph, node)
 	goal := scope.render(node)
+
+	// An expansion reuses the fan-out and sizing passes, but it is not doing what
+	// they do at the top of a plan: the premise is one node rather than the whole
+	// goal, the catalog is short, and the question is narrower. Ability on the two
+	// is not the same measurement, so the class the inner calls would name for
+	// themselves is overridden for the whole subtree.
+	ctx = provider.WithCallClass(ctx, provider.ClassPlanExpand)
 
 	// A sub-decomposition is deliberately flat: one fan-out, no spine, no
 	// binding. Running a full staged build inside each node was the first

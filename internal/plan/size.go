@@ -7,6 +7,7 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/Agent-Field/aforge-v2/internal/provider"
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 )
 
@@ -235,6 +236,7 @@ func shortLabels(values []string) []string {
 }
 
 func sizeStage(ctx context.Context, client Completer, shared string, graph *Graph, stage int) ([]sizeVerdict, *ai.Usage, error) {
+	ctx = provider.WithCall(ctx, provider.ClassPlanSize)
 	var targets strings.Builder
 	found := false
 	for _, node := range graph.Nodes {
@@ -255,15 +257,26 @@ func sizeStage(ctx context.Context, client Completer, shared string, graph *Grap
 		userMessage(shared),
 		userMessage(fmt.Sprintf("Judge the size of each of these stage %d nodes:\n%s", stage, targets.String())),
 	}
-	response, err := client.CompleteWithMessages(ctx, messages, ai.WithSchema(sizeSchema))
-	if err != nil {
-		return nil, nil, fmt.Errorf("size stage %d: %w", stage, err)
-	}
 	var decoded struct {
 		Sizes []sizeVerdict `json:"sizes"`
 	}
-	if err := decodeJSON(response.Text(), &decoded); err != nil {
-		return nil, usageOf(response), annotate(fmt.Errorf("size stage %d: %w", stage, err), response)
+	response, err := structured(ctx, client, messages, sizeSchema, &decoded)
+	if err != nil {
+		return nil, usageOf(response), fmt.Errorf("size stage %d: %w", stage, err)
 	}
+	// The pass was asked about a named set of nodes; an answer that judges none
+	// of them, or judges one that does not exist, did not do the job. Sizes
+	// themselves are opinions and are not checkable here.
+	if len(decoded.Sizes) == 0 {
+		provider.Report(ctx, provider.VerdictSemanticFailure)
+		return decoded.Sizes, usageOf(response), nil
+	}
+	for _, verdict := range decoded.Sizes {
+		if graph.Node(verdict.Node) == nil {
+			provider.Report(ctx, provider.VerdictSemanticFailure)
+			return decoded.Sizes, usageOf(response), nil
+		}
+	}
+	provider.Report(ctx, provider.VerdictVerifiedSuccess)
 	return decoded.Sizes, usageOf(response), nil
 }
