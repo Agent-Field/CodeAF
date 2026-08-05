@@ -160,9 +160,9 @@ func Build(ctx context.Context, client Completer, goal string, options Options) 
 	}()
 	go func() {
 		defer opening.Done()
-		settled, open, usage, err := Ground(ctx, client, goal)
+		grounding, usage, err := Ground(ctx, client, goal)
 		groundUsage.Add(usage)
-		graph.Settled, graph.Open, groundErr = settled, open, err
+		graph.Settled, graph.Open, graph.Evidence, groundErr = grounding.Settled, grounding.Open, grounding.Evidence, err
 	}()
 	opening.Wait()
 	if spineErr != nil {

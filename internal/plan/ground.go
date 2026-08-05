@@ -23,6 +23,14 @@ import (
 // answer everywhere else is the same: bind it once, upstream, and give every
 // consumer the bound value.
 //
+// The evidence standard is the same shape of variable and is settled the same
+// way. A goal asking for "a short written report comparing three vector
+// databases" once became a fifteen-node benchmarking project with VM setup
+// scripts, because nothing said how much support a claim in this work needs and
+// each subtree answered generously. How hard the evidence has to be earned is a
+// scope decision, not a finding: it is read off the goal's own words, stated
+// once, and inherited, so no subtree can escalate it alone.
+//
 // The distinction the prompt turns on is the one that matters. Some unknowns
 // need to be *consistent* — which cities, which vendors, what period, for whom.
 // Those can be settled by fiat, and must be, or agents diverge. Other unknowns
@@ -67,38 +75,71 @@ point does not contain the actual names, numbers, or values, it is not settled,
 and it does not belong in the list.
 
 Keep both lists short and one line each. At most six settled points. If the goal
-is already fully specific, settle nothing and say so with an empty list.`
+is already fully specific, settle nothing and say so with an empty list.
+
+One more thing is settled here, separately: the evidence this goal warrants.
+
+Work can be supported by reading sources and citing them, by running something
+and measuring it, or by building something and demonstrating that it works. Each
+costs far more than the one before it, and the goal's own words say which it is
+asking for. "A short written report comparing three options" warrants reading
+and citing — building infrastructure to benchmark them is a different and much
+larger goal that nobody asked for. "Show that the new path is faster" warrants
+running and measuring. "Ship a working importer" warrants building and
+demonstrating.
+
+Write it as one line, as a decision already made: what counts as adequate
+support for a claim in this work. It is the ceiling as well as the floor — no
+part of the work may quietly buy stronger evidence than this, and none may
+settle for weaker. Read the goal, not your ambition for it: the cheapest
+standard that actually satisfies what was asked is the correct one.`
 
 var groundSchema = json.RawMessage(`{
   "type": "object",
   "properties": {
-    "settled": { "type": "array", "items": { "type": "string" } },
-    "open":    { "type": "array", "items": { "type": "string" } }
+    "settled":  { "type": "array", "items": { "type": "string" } },
+    "open":     { "type": "array", "items": { "type": "string" } },
+    "evidence": { "type": "string" }
   },
-  "required": ["settled", "open"],
+  "required": ["settled", "open", "evidence"],
   "additionalProperties": false
 }`)
+
+// Grounding is everything the ground pass binds: the goal's scope variables and
+// the standard of evidence the goal warrants. They travel together because they
+// are the same kind of decision — settled once, upstream, and inherited by every
+// call after it rather than re-answered per subtree.
+type Grounding struct {
+	Settled  []string
+	Open     []string
+	Evidence string
+}
 
 // Ground resolves the goal's free variables. It runs concurrently with the
 // spine — both need only the goal — so it costs no wall clock, and its output
 // joins the prefix every later call already shares, so it costs no cache either.
-func Ground(ctx context.Context, client Completer, goal string) ([]string, []string, *ai.Usage, error) {
+func Ground(ctx context.Context, client Completer, goal string) (Grounding, *ai.Usage, error) {
 	messages := []ai.Message{
 		systemMessage(groundPrompt),
 		userMessage("Goal:\n" + strings.TrimSpace(goal)),
 	}
 	response, err := client.CompleteWithMessages(ctx, messages, ai.WithSchema(groundSchema))
 	if err != nil {
-		return nil, nil, nil, fmt.Errorf("ground: %w", err)
+		return Grounding{}, nil, fmt.Errorf("ground: %w", err)
 	}
 	var decoded struct {
-		Settled []string `json:"settled"`
-		Open    []string `json:"open"`
+		Settled  []string `json:"settled"`
+		Open     []string `json:"open"`
+		Evidence string   `json:"evidence"`
 	}
 	if err := decodeJSON(response.Text(), &decoded); err != nil {
-		return nil, nil, usageOf(response), annotate(fmt.Errorf("ground: %w", err), response)
+		return Grounding{}, usageOf(response), annotate(fmt.Errorf("ground: %w", err), response)
 	}
-	return cleanStrings(decoded.Settled), cleanStrings(decoded.Open), usageOf(response), nil
+	return Grounding{
+		Settled:  cleanStrings(decoded.Settled),
+		Open:     cleanStrings(decoded.Open),
+		Evidence: trim(decoded.Evidence),
+	}, usageOf(response), nil
 }
 
 // context is the frozen preamble every planning call shares: the goal, what has
@@ -124,6 +165,10 @@ func (g *Graph) context() string {
 		for _, item := range g.Open {
 			fmt.Fprintf(&block, "  - %s\n", item)
 		}
+	}
+	if g.Evidence != "" {
+		block.WriteString("\nThe evidence this goal warrants. It is the ceiling as well as the floor: no\npart of the work may buy stronger evidence than this, and none may settle for\nweaker:\n")
+		fmt.Fprintf(&block, "  - %s\n", g.Evidence)
 	}
 	return block.String()
 }

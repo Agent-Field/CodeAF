@@ -140,6 +140,13 @@ type Graph struct {
 	Settled []string `json:"settled,omitempty"`
 	Open    []string `json:"open,omitempty"`
 
+	// Evidence is the standard of support the goal warrants — reading and
+	// citing, running and measuring, or building and demonstrating. It is
+	// settled with the scope and for the same reason: left unsaid, each subtree
+	// picks its own and the expensive answer wins, which is how a short written
+	// report became a benchmarking project.
+	Evidence string `json:"evidence,omitempty"`
+
 	Stages []Stage `json:"stages"`
 	Nodes  []Node  `json:"nodes"`
 	NextID int     `json:"next_id"`
