@@ -29,7 +29,7 @@ for rep in $(seq 1 "$REPS"); do
   # they are concatenated once everything has landed.
   RESULTS="$HERE/runs/armA-$STAMP-r$rep" \
   JSONL="$HERE/runs/armA-$STAMP-r$rep.jsonl" \
-  ARM=a REPS=1 TASKS="$TASKS" REP_LABEL="$rep" \
+  ARM=a REPS=1 TASKS="$TASKS" \
     bash "$HERE/run-arm.sh" > "$HERE/runs/armA-$STAMP-r$rep.log" 2>&1 &
   pids+=($!)
   echo "stream $rep started (pid ${pids[-1]})"
