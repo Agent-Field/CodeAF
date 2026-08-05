@@ -21,8 +21,11 @@ GROUPS = {
     2: "durability: data survives close and reopen",
     3: "scan: half-open bounds, byte-lexicographic order, deletes excluded",
     4: "recovery: torn or corrupt tail discarded and truncated off",
-    5: "compact: reclaims bytes, drops tombstoned keys, keeps last-write-wins",
+    5: "compact: merges every segment into one, drops tombstoned keys",
     6: "format: bytes on disk match the specified frame (independent parser)",
+    7: "segments: the active segment rolls at the threshold",
+    8: "manifest: a missing or corrupt manifest is rebuilt from the directory",
+    9: "performance: 100k keys are indexed, not rescanned; scan is lazy",
 }
 
 
@@ -62,12 +65,15 @@ def grade(workspace):
     if gated != raw:
         result["score_before_gates"] = raw
     # A single number for the A/B table. tinylog is built from nothing, so
-    # demanding all six groups would floor both arms and measure nothing;
-    # "success" is the point at which the store is actually a usable store —
-    # it round-trips, survives a reopen, scans correctly, and writes the
-    # specified bytes. Recovery and compaction are the hard tail and are
-    # reported separately rather than folded into a pass/fail.
-    core = [result["groups"].get(str(n), {}).get("ok", False) for n in (1, 2, 3, 6)]
+    # demanding all nine groups would floor both arms and measure nothing.
+    # "success" is the point at which the thing is actually the store that was
+    # asked for: it round-trips, survives a reopen, scans correctly, writes the
+    # specified bytes, and is segmented with a manifest — which is what round 2
+    # added and what round 1 could be passed without doing. Recovery,
+    # compaction and the performance floor are the hard tail and are reported
+    # separately rather than folded into a pass/fail.
+    core = [result["groups"].get(str(n), {}).get("ok", False)
+            for n in (1, 2, 3, 6, 7, 8)]
     result["success"] = bool(all(core)) and result["score"] > 0
     result["core_groups_passed"] = sum(core)
     return result
