@@ -244,11 +244,16 @@ func renderRunSummary(graph *plan.Graph, space *exec.Workspace, usage exec.Usage
 			if relative, err := filepath.Rel(space.Root(), path); err == nil && !strings.HasPrefix(relative, "..") {
 				display = relative
 			}
-			size := int64(0)
-			if info, err := os.Stat(path); err == nil {
-				size = info.Size()
+			// Sizes come from the workspace rather than os.Stat on the
+			// recorded string: that string is workspace-relative and the root
+			// may be spelled through a symlink, so statting it directly
+			// reported every artifact as 0 bytes — a run that produced a full
+			// deliverable read as one that produced nothing.
+			if size, ok := space.Size(path); ok {
+				fmt.Printf("    %-40s %6d bytes\n", display, size)
+			} else {
+				fmt.Printf("    %-40s %6s\n", display, "missing")
 			}
-			fmt.Printf("    %-40s %6d bytes\n", display, size)
 		}
 	}
 
