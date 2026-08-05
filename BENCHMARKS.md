@@ -95,8 +95,14 @@ fact.
 | aforge, one node          | 4                | 0               | 10m42s     | $0.18        |
 | aforge, parallel pipeline | 8                | —               | 19m28s     | $0.41        |
 | aforge, parallel pipeline (2026-08-05 re-run) | **INVALID** | — | 19m43s | — |
+| aforge, parallel pipeline (2026-08-05, all fixes) | 8 | 0 observed | ~29m17s¹ | $0.32 |
 | pi                        | 0 (timed out)    | —               | 40m (cap)  | not measured |
 | opencode                  | 0 (timed out)    | —               | 40m (cap)  | not measured |
+
+¹ The machine slept 12 minutes mid-run (caught and excluded by the clock-jump
+detector); several provider calls also stalled for 3–6 minutes each (reported
+live by the new stall heartbeat), so this is an honest but provider-degraded
+wall clock, not a clean measurement of the harness.
 
 "Verified" means independently confirmed against #13/#18, not self-reported by
 the reviewer.
@@ -112,11 +118,17 @@ that ends binding with empty needs to the unconsumed frontier of earlier stages
 — is the fix for the planner half, and the benchmark will be re-run.
 
 The parallel pipeline found twice as many defects as the single node, which is
-the result the graph exists to produce. It was also nearly twice as slow, and
-that part is not a property of the approach: the run was held up by a defect in
-the planner's graph shape, since fixed — see the git history. The 19m28s is the
-number that was measured, not the number the fixed planner would produce, and it
-has not been re-measured.
+the result the graph exists to produce. The 2026-08-05 all-fixes re-run
+(anchorLateStarts guard, run landing, lossless decay) confirms the depth is
+reproducible: 8 defects again, every one reproduced by executing the code in
+the run's own venv, with the default-preset corruption correctly ranked most
+severe, at $0.32 (128 calls, 2.74M in / 205k out). The graph shape was correct
+this time — only the diff scan started at t=0, and REVIEW.md was written
+exactly once by its owner. Defect families match the previously verified set
+(#13/#18); a per-defect re-verification against those PRs was not repeated.
+Two open issues the run surfaced: one leaf overran its 500k token budget to
+748k because the landing reserve is uncapped, and provider stalls — not
+harness time — dominated the wall clock.
 
 pi and opencode both hit the 40-minute cap having produced no output at all.
 That is a total failure on this task shape rather than a slow result, and it is
