@@ -68,6 +68,11 @@ Every dependency costs twice. It stops this node from starting until the other
 finishes, and it pours another node's output into a context that was otherwise
 clean. Most nodes need nothing: an empty list is the normal answer.
 
+The exception is a node that gathers — one whose job is to assemble, judge,
+review, or deliver what other nodes produce. For that node an empty list is
+almost always wrong: it would start alongside the very work it exists to
+consume. Name the nodes whose outputs it assembles.
+
 You may list nodes from earlier stages for either reason. You may also list a
 node from this same stage, but only for STATE — the parts of one stage were
 written to run at the same time, so the only thing that may order them is one of
@@ -122,25 +127,38 @@ type bindReply struct {
 	} `json:"duplicates"`
 }
 
+// bindResult is one stage's answer. asked separates a stage that answered
+// nothing from a stage that was never called: both leave an empty reply behind,
+// and counting the second as a call would put calls in the accounting that
+// nobody made.
+type bindResult struct {
+	asked bool
+	reply bindReply
+	usage *ai.Usage
+	err   error
+}
+
 // Bind resolves dependencies for every stage, all at once. Stage 1 is asked
 // only when it holds more than one node: the only edge it can produce is the
 // mutation ordering between two siblings, and a stage of one has no siblings.
+//
+// It is split into a gather phase and an apply phase so a concurrent pass can
+// share the graph. Gathering only reads and calls; every write waits for
+// bindApply, which the builder runs serially — the sizing pass copies nodes
+// while binding is in flight, and interleaved writes were a data race.
 func Bind(ctx context.Context, client Completer, graph *Graph) (Usage, error) {
+	return bindApply(graph, bindGather(ctx, client, graph))
+}
+
+// bindGather renders the catalog and runs every stage's call. It never writes
+// to the graph.
+func bindGather(ctx context.Context, client Completer, graph *Graph) []bindResult {
 	if len(graph.Stages) == 0 || len(graph.Nodes) < 2 {
-		return Usage{}, nil
+		return nil
 	}
 	shared := graph.context() + "\nEvery node in the plan:\n" + graph.catalog()
 
-	// asked separates a stage that answered nothing from a stage that was never
-	// called. Both leave an empty reply behind, and counting the second as a call
-	// would put calls in the accounting that nobody made.
-	type result struct {
-		asked bool
-		reply bindReply
-		usage *ai.Usage
-		err   error
-	}
-	results := make([]result, len(graph.Stages))
+	results := make([]bindResult, len(graph.Stages))
 	var group sync.WaitGroup
 	for stage := 1; stage <= len(graph.Stages); stage++ {
 		if !worthBinding(graph, stage) {
@@ -150,11 +168,15 @@ func Bind(ctx context.Context, client Completer, graph *Graph) (Usage, error) {
 		go func(stage int) {
 			defer group.Done()
 			reply, usage, err := bindStage(ctx, client, shared, graph, stage)
-			results[stage-1] = result{asked: true, reply: reply, usage: usage, err: err}
+			results[stage-1] = bindResult{asked: true, reply: reply, usage: usage, err: err}
 		}(stage)
 	}
 	group.Wait()
+	return results
+}
 
+// bindApply writes the gathered answers into the graph.
+func bindApply(graph *Graph, results []bindResult) (Usage, error) {
 	var usage Usage
 	var failures []error
 	for _, item := range results {

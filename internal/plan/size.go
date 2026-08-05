@@ -143,33 +143,49 @@ type sizeVerdict struct {
 	Parts []string `json:"split_into"`
 }
 
+// sizeResult is one stage's verdicts.
+type sizeResult struct {
+	verdicts []sizeVerdict
+	usage    *ai.Usage
+	err      error
+}
+
 // SizeNodes judges every node in the graph, one call per stage, all at once.
 // It reads nothing that bind writes, so it is run concurrently with binding
 // rather than as a pass of its own — the judgment is free in wall clock.
+//
+// Like Bind, it is split into gather and apply: the calls run while another
+// pass reads the same graph, so no write may happen until the builder runs
+// sizeApply serially.
 func SizeNodes(ctx context.Context, client Completer, graph *Graph) (Usage, error) {
+	return sizeApply(graph, sizeGather(ctx, client, graph))
+}
+
+// sizeGather renders the catalog and runs every stage's call. It never writes
+// to the graph.
+func sizeGather(ctx context.Context, client Completer, graph *Graph) []sizeResult {
 	stages := len(graph.Stages)
 	if stages == 0 {
 		stages = 1
 	}
 	shared := graph.context() + "\nEvery node in the plan:\n" + graph.catalog()
 
-	type result struct {
-		verdicts []sizeVerdict
-		usage    *ai.Usage
-		err      error
-	}
-	results := make([]result, stages)
+	results := make([]sizeResult, stages)
 	var group sync.WaitGroup
 	for stage := 1; stage <= stages; stage++ {
 		group.Add(1)
 		go func(stage int) {
 			defer group.Done()
 			verdicts, usage, err := sizeStage(ctx, client, shared, graph, stage)
-			results[stage-1] = result{verdicts: verdicts, usage: usage, err: err}
+			results[stage-1] = sizeResult{verdicts: verdicts, usage: usage, err: err}
 		}(stage)
 	}
 	group.Wait()
+	return results
+}
 
+// sizeApply writes the gathered verdicts into the graph.
+func sizeApply(graph *Graph, results []sizeResult) (Usage, error) {
 	var usage Usage
 	var failures []error
 	for _, item := range results {

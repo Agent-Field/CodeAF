@@ -28,6 +28,21 @@ func TestBindPromptStatesBothReasons(t *testing.T) {
 	}
 }
 
+// TestBindPromptExemptsGatheringNodes pins the exception to "an empty list is
+// the normal answer". Without it, the node that assembles the deliverable reads
+// the empty answer as the blessed one — a real run left the review writer with
+// no inputs and it launched at t=0 next to the work it was meant to consume.
+func TestBindPromptExemptsGatheringNodes(t *testing.T) {
+	for _, phrase := range []string{
+		"The exception is a node that gathers",
+		"Name the nodes whose outputs it assembles",
+	} {
+		if !strings.Contains(bindPrompt, phrase) {
+			t.Errorf("bind prompt no longer exempts gathering nodes: missing %q", phrase)
+		}
+	}
+}
+
 // TestSameStageEdgeOrdersMutatorFirst is the structural half of the rule. The
 // run that motivated it had four stage-1 siblings sharing one workspace, one of
 // them patching it; before this, an edge between siblings was silently dropped
