@@ -156,7 +156,8 @@ func TestBindSkipsAStageWithNothingToPointAt(t *testing.T) {
 	graph.Add(Node{Stage: 1, Title: "Only", Summary: "The one thing in stage 1"})
 	graph.Add(Node{Stage: 2, Title: "After", Summary: "Comes later"})
 
-	if _, err := Bind(t.Context(), client, graph); err != nil {
+	usage, err := Bind(t.Context(), client, graph)
+	if err != nil {
 		t.Fatalf("Bind: %v", err)
 	}
 	if client.asked("stage 1") {
@@ -164,5 +165,8 @@ func TestBindSkipsAStageWithNothingToPointAt(t *testing.T) {
 	}
 	if !client.asked("stage 2") {
 		t.Error("bind skipped stage 2")
+	}
+	if usage.Calls != 1 {
+		t.Errorf("usage counts %d calls, want 1 — a stage that was never asked is not a call", usage.Calls)
 	}
 }

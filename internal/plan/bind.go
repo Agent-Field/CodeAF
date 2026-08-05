@@ -131,7 +131,11 @@ func Bind(ctx context.Context, client Completer, graph *Graph) (Usage, error) {
 	}
 	shared := graph.context() + "\nEvery node in the plan:\n" + graph.catalog()
 
+	// asked separates a stage that answered nothing from a stage that was never
+	// called. Both leave an empty reply behind, and counting the second as a call
+	// would put calls in the accounting that nobody made.
 	type result struct {
+		asked bool
 		reply bindReply
 		usage *ai.Usage
 		err   error
@@ -146,7 +150,7 @@ func Bind(ctx context.Context, client Completer, graph *Graph) (Usage, error) {
 		go func(stage int) {
 			defer group.Done()
 			reply, usage, err := bindStage(ctx, client, shared, graph, stage)
-			results[stage-1] = result{reply: reply, usage: usage, err: err}
+			results[stage-1] = result{asked: true, reply: reply, usage: usage, err: err}
 		}(stage)
 	}
 	group.Wait()
@@ -154,6 +158,9 @@ func Bind(ctx context.Context, client Completer, graph *Graph) (Usage, error) {
 	var usage Usage
 	var failures []error
 	for _, item := range results {
+		if !item.asked {
+			continue
+		}
 		usage.Add(item.usage)
 		if item.err != nil {
 			failures = append(failures, item.err)
