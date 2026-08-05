@@ -36,6 +36,12 @@ const (
 // empty document.
 func (c *Client) send(ctx context.Context, request *ai.Request, body []byte, stream bool) (*http.Response, error) {
 	var lastErr error
+	maxTokens := 0
+	if request.MaxTokens != nil {
+		maxTokens = *request.MaxTokens
+	}
+	httpClient := *c.http
+	httpClient.Timeout = adaptiveCompletionTimeout(maxTokens, c.config.Timeout)
 	for attempt := 0; attempt < maxAttempts; attempt++ {
 		if attempt > 0 {
 			// Jittered, so several leaves that were rate-limited together do not
@@ -53,7 +59,7 @@ func (c *Client) send(ctx context.Context, request *ai.Request, body []byte, str
 		if err != nil {
 			return nil, err
 		}
-		response, err := c.http.Do(httpRequest)
+		response, err := httpClient.Do(httpRequest)
 		if err != nil {
 			// A cancelled or expired parent is a decision, not a fault. Retrying
 			// it would burn the remaining deadline on calls that cannot land.
