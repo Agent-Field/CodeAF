@@ -61,7 +61,7 @@ func TestFanoutPromptStatesOneOwnerPerDeliverable(t *testing.T) {
 	}{
 		{"no part produces it", "no\npart of this stage produces it"},
 		{"parts make the material", "The parts produce the material it is made of"},
-		{"duplicate endings collapse", "both end in writing the same\ndocument are one part"},
+		{"duplicate endings collapse", "both end in writing the\nsame document are one part"},
 	} {
 		t.Run(want.name, func(t *testing.T) {
 			if !strings.Contains(fanoutPrompt, want.phrase) {

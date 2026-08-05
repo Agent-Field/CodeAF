@@ -16,11 +16,17 @@ import (
 // on the other side sees nothing but these words — not the goal, not the graph,
 // not its neighbours — so anything the instruction leaves out is simply absent.
 //
-// Two failure modes are worth writing against. An instruction that assumes
+// Three failure modes are worth writing against. An instruction that assumes
 // context produces an agent that invents it; and an instruction without
 // explicit boundaries produces agents that all drift toward the same
 // interesting middle of the problem, which is how a wide graph collapses back
 // into duplicated work.
+//
+// The third is narrower and was the most expensive. The goal reaches every
+// agent, so a goal naming a deliverable reads to all of them as an instruction
+// to produce it — five nodes once wrote the same REVIEW.md over the top of each
+// other. The graph already knows who owns it, so the brief is told, and every
+// non-owner is told in words that its result is handed over instead.
 const briefPrompt = `You write the instruction that one agent receives.
 
 That agent works alone, in order, with tools. It sees only what you write — not
@@ -39,7 +45,8 @@ When it is not this one, say plainly that the deliverable is that other agent's
 to produce and that this agent hands its own result over instead of writing any
 version of it — every agent sees the goal, and without this line they each write
 the same file over the top of the others. When it is this one, say that it is
-this agent's alone and that the other results arrive as inputs to it.
+this agent's alone and that the other results arrive as inputs to it. This is a
+statement about what the agent delivers, not a fence around what it may touch.
 
 The boundary is always about what an agent is responsible for delivering, never
 about what it is allowed to touch. Say nothing about which files, sections,

@@ -69,9 +69,9 @@ correct answer, not a failure to decompose.
 
 When the goal names one final deliverable — a file, a report, a document — no
 part of this stage produces it. The parts produce the material it is made of;
-producing it is one job with one owner, and that owner is the last node or the
-assembly that follows every part. Two parts that both end in writing the same
-document are one part.
+producing it is one job with one owner, and that owner is the plan's last node
+or the assembly that is added after you. Two parts that both end in writing the
+same document are one part.
 
 Cover the stage with minimal overlap. Do not include a merge or summary part.
 Stay inside this stage: do not produce work that belongs to another stage.
