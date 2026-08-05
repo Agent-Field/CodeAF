@@ -15,8 +15,9 @@ import (
 // scriptedCompleter plays back a fixed sequence of model turns and records
 // every message list it was shown, so a test can assert what the model saw.
 type scriptedCompleter struct {
-	turns [][]ai.ToolCall
-	seen  [][]ai.Message
+	turns  [][]ai.ToolCall
+	errors []error
+	seen   [][]ai.Message
 }
 
 func (s *scriptedCompleter) CompleteWithMessages(ctx context.Context, messages []ai.Message, options ...ai.Option) (*ai.Response, error) {
@@ -25,6 +26,9 @@ func (s *scriptedCompleter) CompleteWithMessages(ctx context.Context, messages [
 	s.seen = append(s.seen, copied)
 
 	index := len(s.seen) - 1
+	if index < len(s.errors) && s.errors[index] != nil {
+		return nil, s.errors[index]
+	}
 	message := ai.Message{Role: "assistant", Content: []ai.ContentPart{{Type: "text", Text: "working"}}}
 	if index < len(s.turns) {
 		message.ToolCalls = s.turns[index]
@@ -39,6 +43,27 @@ func (s *scriptedCompleter) CompleteWithMessages(ctx context.Context, messages [
 
 func call(id, name, arguments string) ai.ToolCall {
 	return ai.ToolCall{ID: id, Type: "function", Function: ai.ToolCallFunction{Name: name, Arguments: arguments}}
+}
+
+func TestCallFailureRetriesAndCompletes(t *testing.T) {
+	client := &scriptedCompleter{errors: []error{
+		fmt.Errorf("first timeout"),
+		fmt.Errorf("second timeout"),
+	}}
+	linear := NewLinear(client, workspace(t), nil, 10, 1_000_000, time.Minute)
+	outcome, err := linear.Run(context.Background(), Task{NodeID: 1, Brief: "work"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if outcome.Stop != StopDone {
+		t.Fatalf("stop = %s, want done", outcome.Stop)
+	}
+	if outcome.Text != "done" {
+		t.Fatalf("text = %q, want done", outcome.Text)
+	}
+	if len(client.seen) != 3 {
+		t.Fatalf("calls = %d, want 3", len(client.seen))
+	}
 }
 
 // TestRepeatedReadAfterEditSeesTheNewContent guards the cache invalidation

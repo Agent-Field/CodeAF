@@ -175,10 +175,12 @@ func (l *Linear) Run(ctx context.Context, task Task) (*Outcome, error) {
 
 	for turn := 0; turn < l.maxTurns; turn++ {
 		outcome.Decayed += decayObservations(messages, labels, obsBudget)
-		response, err := l.client.CompleteWithMessages(ctx, messages, ai.WithTools(definitions))
+		response, err := l.complete(ctx, messages, definitions)
 		if err != nil {
 			outcome.Stop = StopError
+			outcome.Artifacts = l.workspace.Artifacts(task.NodeID)
 			outcome.Elapsed = time.Since(started)
+			outcome.Text = strings.TrimSpace(lastAssistantText(messages))
 			if ctx.Err() != nil {
 				outcome.Stop = StopDeadline
 			}
@@ -351,6 +353,38 @@ func (l *Linear) Run(ctx context.Context, task Task) (*Outcome, error) {
 	outcome.Elapsed = time.Since(started)
 	outcome.Text = strings.TrimSpace(lastAssistantText(messages))
 	return outcome, nil
+}
+
+const (
+	nodeCallAttempts = 3
+	nodeCallBackoff  = 500 * time.Millisecond
+)
+
+// complete absorbs failures that escape the provider's transport retries. It
+// stops immediately when the node context is done because no later attempt can
+// outlive that decision.
+func (l *Linear) complete(ctx context.Context, messages []ai.Message, definitions []ai.ToolDefinition) (*ai.Response, error) {
+	var lastErr error
+	for attempt := 0; attempt < nodeCallAttempts; attempt++ {
+		response, err := l.client.CompleteWithMessages(ctx, messages, ai.WithTools(definitions))
+		if err == nil {
+			return response, nil
+		}
+		lastErr = err
+		if ctx.Err() != nil {
+			return nil, err
+		}
+		if attempt == nodeCallAttempts-1 {
+			break
+		}
+		delay := nodeCallBackoff * time.Duration(1<<attempt)
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		case <-time.After(delay):
+		}
+	}
+	return nil, fmt.Errorf("after %d node call attempts: %w", nodeCallAttempts, lastErr)
 }
 
 // brief assembles what the agent sees. The order matters: the goal orients it,
