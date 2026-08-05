@@ -47,6 +47,18 @@ CONTRADICTIONS = [
     {"claim_doc": "09", "authoritative_doc": "02", "field": "incident_duration_minutes"},
     # 09 says team-platform owns svc-notify; the catalog says vacant.
     {"claim_doc": "09", "authoritative_doc": "01", "field": "owner"},
+    # 07 prices rabbit-legacy at 12 cents/10k and kafka-shared at 7; 08 is the
+    # schedule in force and says 9 and 4.
+    #
+    # ROUND 2. This entry was missing from round 1's key, and the round-1
+    # calibration run found it: arm A returned it, was marked wrong, and was
+    # right. Under the brief's own definition -- a disagreement between two
+    # documents about the same fact, decided by RULES.md -- doc 07 states a
+    # value for a field doc 08 owns under rule 4, so it qualifies exactly as
+    # 03 and 09 do. Round 1 had assumed "superseded" and "contradicting" were
+    # exclusive; they are not, and `unit_price` was in the field vocabulary
+    # with nothing pointing at it, which made the omission look deliberate.
+    {"claim_doc": "07", "authoritative_doc": "08", "field": "unit_price"},
 ]
 
 FIELD_VOCABULARY = ["incident_duration_minutes", "owner", "queue_client", "unit_price"]
