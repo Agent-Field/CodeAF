@@ -1,7 +1,7 @@
 Audit the platform-group documents in `corpus/` and produce two files in the
 workspace root: `findings.json` and `REPORT.md`.
 
-There are eleven documents. **Read all of them.** They disagree with each other in
+There are ten documents. **Read all of them.** They disagree with each other in
 places, and `corpus/RULES.md` decides every disagreement — it is not advice, it
 is the answer key for which document wins. Some documents are superseded by
 others and are wrong about things the superseding document changed. At least
@@ -35,12 +35,11 @@ Strict JSON, exactly these seven keys, no others:
   force. Sorted ascending. Follow the ADR chain to its end before answering;
   an ADR that has been superseded is not authoritative about anything.
 
-- **`total_incident_minutes`** — the sum, over every **distinct incident** in
-  the corpus, of that incident's customer-impact duration in whole minutes.
-  Each report defines its own impact window explicitly; use the window the
-  report says is customer impact, not the whole timeline. One report states its
-  duration in words, one gives clock times, and one crosses midnight UTC. Count
-  incidents, not reports — see `RULES.md` on an incident filed more than once.
+- **`total_incident_minutes`** — the sum, over every incident report in the
+  corpus, of that incident's customer-impact duration in whole minutes. Each
+  report defines its own impact window explicitly; use the window the report
+  says is customer impact, not the whole timeline. One report states its
+  duration in words, one gives clock times, and one crosses midnight UTC.
 
 - **`most_impacted_service`** — the single service id with the largest total
   customer-impact minutes across all incidents.
@@ -48,10 +47,8 @@ Strict JSON, exactly these seven keys, no others:
 - **`monthly_cost_usd_cents`** — the total monthly queue bill for the whole
   catalog, in whole cents, under the pricing schedule currently in force.
   Volume comes from the service catalog's messages-per-day figure; a billing
-  month is 30 days. Read the schedule carefully: not every technology is priced
-  flat, and where it is not, the schedule says what the price is assessed on.
-  The answer is an exact integer — no rounding is required and none should be
-  applied.
+  month is 30 days. The answer is an exact integer — no rounding is required
+  and none should be applied.
 
 - **`unowned_services`** — every service id with no owner. Sorted ascending.
 
