@@ -174,16 +174,19 @@ func expandOne(ctx context.Context, client Completer, graph *Graph, nodeID int, 
 	// what is inside it is a sequence, splitting it buys nothing and the node
 	// should stay whole, which is exactly what the shrinkage guard then decides.
 	// As a side effect the expansion costs two calls instead of eight.
-	// The subtree inherits the settled points verbatim. Without this a
-	// sub-planner rebinds the goal's free variables for itself, which is exactly
-	// how one expansion produced Berlin, Paris and Madrid while another produced
-	// Amsterdam — each answer defensible, the pair useless.
+	// The subtree inherits the settled points verbatim, the evidence standard
+	// included. Without this a sub-planner rebinds the goal's free variables for
+	// itself, which is exactly how one expansion produced Berlin, Paris and
+	// Madrid while another produced Amsterdam — each answer defensible, the pair
+	// useless — and how a subtree of a written report decides on its own that the
+	// comparison needs a benchmark harness first.
 	sub := &Graph{
-		Goal:    goal,
-		Settled: graph.Settled,
-		Open:    graph.Open,
-		Stages:  []Stage{{Title: node.Title, Summary: node.Summary}},
-		NextID:  1,
+		Goal:     goal,
+		Settled:  graph.Settled,
+		Open:     graph.Open,
+		Evidence: graph.Evidence,
+		Stages:   []Stage{{Title: node.Title, Summary: node.Summary}},
+		NextID:   1,
 	}
 	nodes, fanUsage, err := FanOut(ctx, client, sub.context(), sub.Stages)
 	usage := fanUsage

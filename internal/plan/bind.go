@@ -22,6 +22,15 @@ import (
 // answer is named as the normal one, so returning nothing reads as success
 // rather than as a failure to find something.
 //
+// Reading is not the only thing that can order two nodes, and pretending it was
+// cost a whole run: four agents were handed one workspace, one of them patching
+// it while the others read it, and every result was drawn from a tree that was
+// changing underneath them. So state mutation is a second reason for an edge
+// with the same standing as information. It is the one reason that can order two
+// nodes inside a single stage — the parts of a stage are simultaneous by
+// construction, and the only thing that may break that is one of them changing
+// what the others work on — which is why this pass now covers stage 1 too.
+//
 // It also collects duplicates, which is not a detour: this is the first call
 // that sees every stage at once, and the fan-out's blindness means the same
 // work can appear twice. The later node is the one flagged, since edges point
@@ -33,10 +42,21 @@ separate AI agent that receives the original goal and the outputs of the nodes
 you list — and nothing else. So the list does two jobs at once: it decides when
 the node may start, and it decides what its agent is allowed to see.
 
-A node depends on an upstream node only when it is impossible to produce a
-correct, complete result without reading that node's actual output. Name to
-yourself the specific fact, number, decision, or artifact that crosses over. If
-you cannot name one, there is no dependency.
+There are two reasons for an edge, and they count equally.
+
+INFORMATION — this node cannot produce a correct, complete result without
+reading that node's actual output. Name to yourself the specific fact, number,
+decision, or artifact that crosses over. If you cannot name one, there is no
+edge of this kind.
+
+STATE — that node changes the shared material this node works from: patching a
+tree, installing or upgrading what others run against, fetching or generating
+the corpus everyone reads, restructuring a document others quote. Whoever
+changes shared material runs before everyone who reads it, even when no fact
+crosses over and nothing is quoted. Two nodes that only read the same unchanged
+material need no edge between them; a node that changes it is upstream of every
+node that touches it afterwards. They run at the same time otherwise, and one
+agent rewriting what three others are reading corrupts all four results.
 
 These are not dependencies:
 - sharing a topic, a subject, or a theme
@@ -48,7 +68,10 @@ Every dependency costs twice. It stops this node from starting until the other
 finishes, and it pours another node's output into a context that was otherwise
 clean. Most nodes need nothing: an empty list is the normal answer.
 
-You may only list nodes from earlier stages.
+You may list nodes from earlier stages for either reason. You may also list a
+node from this same stage, but only for STATE — the parts of one stage were
+written to run at the same time, so the only thing that may order them is one of
+them changing what the others work on.
 
 Separately, report duplicates. The stages were written independently, so the
 same work sometimes appears twice under different names. Report a node as a
@@ -99,28 +122,35 @@ type bindReply struct {
 	} `json:"duplicates"`
 }
 
-// Bind resolves dependencies for every stage after the first, all at once.
-// Stage 1 is skipped rather than asked: it has nothing earlier to point at, so
-// its answer is known without spending a call.
+// Bind resolves dependencies for every stage, all at once. Stage 1 is asked
+// only when it holds more than one node: the only edge it can produce is the
+// mutation ordering between two siblings, and a stage of one has no siblings.
 func Bind(ctx context.Context, client Completer, graph *Graph) (Usage, error) {
-	if len(graph.Stages) < 2 {
+	if len(graph.Stages) == 0 || len(graph.Nodes) < 2 {
 		return Usage{}, nil
 	}
 	shared := graph.context() + "\nEvery node in the plan:\n" + graph.catalog()
 
+	// asked separates a stage that answered nothing from a stage that was never
+	// called. Both leave an empty reply behind, and counting the second as a call
+	// would put calls in the accounting that nobody made.
 	type result struct {
+		asked bool
 		reply bindReply
 		usage *ai.Usage
 		err   error
 	}
 	results := make([]result, len(graph.Stages))
 	var group sync.WaitGroup
-	for stage := 2; stage <= len(graph.Stages); stage++ {
+	for stage := 1; stage <= len(graph.Stages); stage++ {
+		if !worthBinding(graph, stage) {
+			continue
+		}
 		group.Add(1)
 		go func(stage int) {
 			defer group.Done()
 			reply, usage, err := bindStage(ctx, client, shared, graph, stage)
-			results[stage-1] = result{reply: reply, usage: usage, err: err}
+			results[stage-1] = result{asked: true, reply: reply, usage: usage, err: err}
 		}(stage)
 	}
 	group.Wait()
@@ -128,6 +158,9 @@ func Bind(ctx context.Context, client Completer, graph *Graph) (Usage, error) {
 	var usage Usage
 	var failures []error
 	for _, item := range results {
+		if !item.asked {
+			continue
+		}
 		usage.Add(item.usage)
 		if item.err != nil {
 			failures = append(failures, item.err)
@@ -152,6 +185,22 @@ func Bind(ctx context.Context, client Completer, graph *Graph) (Usage, error) {
 		}
 	}
 	return usage, joinErrors(failures)
+}
+
+// worthBinding says whether a stage can produce an edge at all. Every stage
+// after the first has earlier nodes to point at; the first has only its own
+// siblings, so a single-node stage 1 would spend a call to be told nothing.
+func worthBinding(graph *Graph, stage int) bool {
+	count := 0
+	for _, node := range graph.Nodes {
+		if node.Stage == stage {
+			count++
+		}
+	}
+	if stage == 1 {
+		return count > 1
+	}
+	return count > 0
 }
 
 func bindStage(ctx context.Context, client Completer, shared string, graph *Graph, stage int) (bindReply, *ai.Usage, error) {

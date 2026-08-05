@@ -140,6 +140,13 @@ type Graph struct {
 	Settled []string `json:"settled,omitempty"`
 	Open    []string `json:"open,omitempty"`
 
+	// Evidence is the standard of support the goal warrants — reading and
+	// citing, running and measuring, or building and demonstrating. It is
+	// settled with the scope and for the same reason: left unsaid, each subtree
+	// picks its own and the expensive answer wins, which is how a short written
+	// report became a benchmarking project.
+	Evidence string `json:"evidence,omitempty"`
+
 	Stages []Stage `json:"stages"`
 	Nodes  []Node  `json:"nodes"`
 	NextID int     `json:"next_id"`
@@ -247,8 +254,14 @@ func (g *Graph) AddNeed(id, need int) error {
 	return nil
 }
 
-// setNeeds replaces a node's dependency list wholesale during generation, where
-// the backward-stage rule already guarantees acyclicity.
+// setNeeds replaces a node's dependency list wholesale during generation.
+//
+// Edges into an earlier stage are acyclic by construction and go straight in. A
+// same-stage edge is not — it is the mutation ordering, the one case where two
+// simultaneous parts have to be sequenced because one of them changes what the
+// other works on — so those are added through AddNeed, which drops the second
+// edge of any pair that would close a cycle. Edges into a later stage are still
+// impossible and are discarded.
 func (g *Graph) setNeeds(id int, needs []int) {
 	node := g.Node(id)
 	if node == nil || node.State.Frozen() {
@@ -256,16 +269,24 @@ func (g *Graph) setNeeds(id int, needs []int) {
 	}
 	kept := make([]int, 0, len(needs))
 	seen := map[int]bool{}
+	var siblings []int
 	for _, need := range needs {
 		source := g.Node(need)
-		if source == nil || need == id || seen[need] || source.Stage >= node.Stage {
+		if source == nil || need == id || seen[need] || source.Stage > node.Stage {
 			continue
 		}
 		seen[need] = true
+		if source.Stage == node.Stage {
+			siblings = append(siblings, need)
+			continue
+		}
 		kept = append(kept, need)
 	}
 	sort.Ints(kept)
 	node.Needs = kept
+	for _, sibling := range siblings {
+		_ = g.AddNeed(id, sibling)
+	}
 }
 
 // hasCycle is only needed on the revision path. Generation cannot produce a
@@ -517,6 +538,27 @@ func (g *Graph) Sinks() []int {
 		}
 	}
 	return sinks
+}
+
+// deliverableOwner names the single node that produces whatever final
+// deliverable the goal asks for. Everything else contributes material to it.
+//
+// The goal text reaches every agent, so without an owner every agent reads
+// "produce REVIEW.md" as its own instruction — one run had five nodes writing
+// that file over the top of each other. Ownership is structural rather than
+// asked for: it is the one node nothing else consumes.
+//
+// A zero id means the owner does not exist yet. Several sinks means the
+// synthesis appended at the end of planning will gather them, and briefs for the
+// rest of the graph are written before that node is created, so it is named by
+// role instead of by number.
+func (g *Graph) deliverableOwner() (int, string) {
+	if sinks := g.Sinks(); len(sinks) == 1 {
+		if node := g.Node(sinks[0]); node != nil {
+			return node.ID, fmt.Sprintf("node %d, %q", node.ID, node.Title)
+		}
+	}
+	return 0, "the final step that assembles every result"
 }
 
 // Waves groups nodes by earliest possible start. A node's wave is one past the

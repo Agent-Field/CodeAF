@@ -16,6 +16,15 @@ import (
 // is exactly what lets every stage expand at the same time, and it is also the
 // design's one accepted blind spot, since two stages can unknowingly produce
 // the same node. Bind catches that afterwards.
+//
+// The subject test is the guard against the failure that locality invites.
+// Asked to split anything, a model reaches for the phases of the procedure it
+// would follow itself — gather, analyse, write — and those come back as
+// siblings, which the harness then runs at the same time. Reviewing a pull
+// request produced exactly that: "Apply diff", "Read code", "Run tests" and
+// "Find defects" as four dependency-free parts. Phases are not independent;
+// they are one node's internal shape, and the only correct answer for them is
+// to leave the procedure whole.
 const fanoutPrompt = `You list the parts of one stage that all run at the same time.
 
 ` + agentPremise + `
@@ -27,10 +36,42 @@ split it into steps.
 Anything that must happen in order belongs to the stage sequence, which is
 already fixed and not yours to change.
 
+A part is legitimate only when it is a subject someone can own: one agent takes
+it from start to finished while knowing nothing about what the other parts
+produced. Test every part that way before you keep it.
+
+Phases of one procedure are never parts. "Gather the material", "analyse it",
+"write it up" is one procedure — the analysis has nothing to work on until the
+gathering is done, and the write-up needs both — so none of the three is ownable
+alone. "Apply the change", "check it", "report on what happened" is the same
+shape. A subject split looks different: one part per venue, per component, per
+option, per region — each finishable on its own, none reading another's output.
+
+When the split you have in mind comes out phase-shaped, the answer is not a
+better set of phases. Keep the whole procedure inside one node — gathering,
+analysing and writing up one subject is a single part — and split along a
+subject axis instead, or return one part.
+
+One thing does get its own part even though it is not a subject: an action that
+changes the material every other part works from — prepare the workspace, apply
+the patch, fetch or generate the corpus, install what the others run against.
+That is one part on its own, and it comes first; the others are written as
+working on the material it leaves behind, not as doing it again. It is also
+where a shared orientation summary belongs — it reads the material once and
+writes down what the others would otherwise each have to rediscover, so five
+siblings do not each re-read the same material. Do not invent one where nothing
+shared is actually changed; most stages have no such part.
+
 Default to fewer parts. Only split out a part when you can say what makes it
 doable by an agent that knows nothing about the others. Give 1 to 5 parts, and
 return a single part when the stage is genuinely one piece of work — that is a
 correct answer, not a failure to decompose.
+
+When the goal names one final deliverable — a file, a report, a document — no
+part of this stage produces it. The parts produce the material it is made of;
+producing it is one job with one owner, and that owner is the plan's last node
+or the assembly that is added after you. Two parts that both end in writing the
+same document are one part.
 
 Cover the stage with minimal overlap. Do not include a merge or summary part.
 Stay inside this stage: do not produce work that belongs to another stage.
