@@ -510,8 +510,11 @@ func ensembleHook(ctx context.Context, client Completer, graph *Graph, options O
 	}
 	ensembleUsage, ensembleErr := Ensemble(ctx, client, graph, *panel, panelists)
 	graph.Usage.merge(ensembleUsage)
-	detail := fmt.Sprintf("%s + merge", plural(panelists, "independent pass"))
-	if panel.SetupTitle != "" {
+	detail := fmt.Sprintf("%d independent passes + merge", panelists)
+	// Read the setup back off the graph rather than off the verdict: a
+	// half-described setup is dropped during normalisation, and the report
+	// should say what was built.
+	if len(graph.Leaves()) > panelists {
 		detail = "setup + " + detail
 	}
 	report("ensemble", time.Since(start), detail)
@@ -529,15 +532,15 @@ func ensembleHook(ctx context.Context, client Completer, graph *Graph, options O
 	return graph, true, ensembleErr
 }
 
+// clipReason fits a model's sentence or a provider's error into one column of
+// the progress report. It counts runes rather than bytes: these strings carry
+// em dashes and quotes, and a byte-sliced one prints as a broken glyph.
 func clipReason(text string, width int) string {
-	text = strings.Join(strings.Fields(text), " ")
-	if len(text) <= width {
-		return text
+	runes := []rune(strings.Join(strings.Fields(text), " "))
+	if len(runes) <= width || width < 2 {
+		return string(runes)
 	}
-	if width < 2 {
-		return text[:width]
-	}
-	return text[:width-1] + "…"
+	return string(runes[:width-1]) + "…"
 }
 
 // clampPanelists keeps a panel between "enough to disagree" and "an obvious
