@@ -50,7 +50,7 @@ func run() error {
 
 const usageText = `aforge — build and revise task graphs
 
-  aforge plan "<goal>" [-o graph.json] [--json] [--brief]
+  aforge plan "<goal>" [-o graph.json] [--json] [--brief] [--ensemble N]
   aforge revise <graph.json> "<what happened>" [--done 1,2,3] [-o graph.json]
   aforge run  <graph.json> [-w dir] [-j 8] [-o done.json]
   aforge show <graph.json>
@@ -73,7 +73,8 @@ func runPlan(args []string) error {
 	output := flags.String("o", "", "write the graph as JSON to this file")
 	asJSON := flags.Bool("json", false, "print the graph as JSON instead of a table")
 	briefs := flags.Bool("brief", false, "write a self-contained instruction for every leaf")
-	if err := flags.Parse(reorder(args, map[string]bool{"o": true})); err != nil {
+	ensemble := flags.Int("ensemble", plan.EnsembleAuto, "0 decide from the goal, -1 never, N>=2 force N independent passes and merge them")
+	if err := flags.Parse(reorder(args, map[string]bool{"o": true, "ensemble": true})); err != nil {
 		return err
 	}
 	goal, err := readText(flags.Args())
@@ -118,6 +119,7 @@ func runPlan(args []string) error {
 		MaxDepth:     settings.MaxDepth,
 		NodeBudget:   settings.NodeBudget,
 		Briefs:       *briefs,
+		Ensemble:     *ensemble,
 		Report:       report,
 		OnReady: func(node plan.Node, elapsed time.Duration) {
 			if !*asJSON {
