@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 
+	"github.com/Agent-Field/aforge-v2/internal/provider"
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 )
 
@@ -110,23 +111,36 @@ func Revise(ctx context.Context, client Completer, graph *Graph, event string) (
 		userMessage("Goal:\n" + graph.Goal + "\n\nThe plan as it stands:\n" + graph.stateBlock()),
 		userMessage("What has happened:\n" + event),
 	}
-	response, err := client.CompleteWithMessages(ctx, messages, ai.WithSchema(reviseSchema))
+	ctx = provider.WithCall(ctx, provider.ClassPlanRevise)
+	var decoded struct {
+		Operations []Operation `json:"operations"`
+	}
+	response, err := structured(ctx, client, messages, reviseSchema, &decoded)
 	usage.Add(usageOf(response))
 	if err != nil {
 		return nil, usage, fmt.Errorf("revise: %w", err)
 	}
-	var decoded struct {
-		Operations []Operation `json:"operations"`
-	}
-	if err := decodeJSON(response.Text(), &decoded); err != nil {
-		return nil, usage, annotate(fmt.Errorf("revise: %w", err), response)
-	}
 
 	applied := make([]Operation, 0, len(decoded.Operations))
+	refused := 0
 	for _, operation := range decoded.Operations {
-		applied = append(applied, apply(graph, operation))
+		result := apply(graph, operation)
+		if result.Refused != "" {
+			refused++
+		}
+		applied = append(applied, result)
 	}
 	graph.Prune()
+	// Refusals are the graph's own rules rejecting an edit — editing frozen
+	// work, naming a node that is not there, closing a cycle. They are recorded
+	// rather than swallowed for exactly this reason: a pass whose every
+	// operation was refused produced a legal document describing an illegal
+	// plan, which is a semantic failure and nothing else can see it.
+	if refused > 0 && refused == len(applied) {
+		provider.Report(ctx, provider.VerdictSemanticFailure)
+		return applied, usage, nil
+	}
+	provider.Report(ctx, provider.VerdictVerifiedSuccess)
 	return applied, usage, nil
 }
 

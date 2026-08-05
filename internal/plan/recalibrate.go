@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/Agent-Field/aforge-v2/internal/profile"
+	"github.com/Agent-Field/aforge-v2/internal/provider"
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 )
 
@@ -79,22 +80,22 @@ func Recalibrate(ctx context.Context, client Completer, store *profile.Profile) 
 		userMessage("The ruler currently in force:\n\n" + Anchors),
 		userMessage("Tasks this model actually ran:\n\n" + evidence.String()),
 	}
-	response, err := client.CompleteWithMessages(ctx, messages, ai.WithSchema(recalibrateSchema))
-	usage.Add(usageOf(response))
-	if err != nil {
-		return "", reason, usage, fmt.Errorf("recalibrate: %w", err)
-	}
+	ctx = provider.WithCall(ctx, provider.ClassPlanRecalibrate)
 	var decoded struct {
 		Anchors string `json:"anchors"`
 	}
-	if err := decodeJSON(response.Text(), &decoded); err != nil {
-		return "", reason, usage, annotate(fmt.Errorf("recalibrate: %w", err), response)
+	response, err := structured(ctx, client, messages, recalibrateSchema, &decoded)
+	usage.Add(usageOf(response))
+	if err != nil {
+		return "", reason, usage, fmt.Errorf("recalibrate: %w", err)
 	}
 	anchors := strings.TrimSpace(decoded.Anchors)
 	// A ruler shorter than a sentence per anchor is not a ruler. Refusing it
 	// keeps a bad call from replacing a working prior with nothing.
 	if len(anchors) < 200 {
+		provider.Report(ctx, provider.VerdictSemanticFailure)
 		return "", "the rewritten ruler came back too thin to use", usage, nil
 	}
+	provider.Report(ctx, provider.VerdictVerifiedSuccess)
 	return anchors, reason, usage, nil
 }

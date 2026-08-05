@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/Agent-Field/aforge-v2/internal/provider"
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 )
 
@@ -119,22 +120,24 @@ type Grounding struct {
 // spine — both need only the goal — so it costs no wall clock, and its output
 // joins the prefix every later call already shares, so it costs no cache either.
 func Ground(ctx context.Context, client Completer, goal string) (Grounding, *ai.Usage, error) {
+	ctx = provider.WithCall(ctx, provider.ClassPlanGround)
 	messages := []ai.Message{
 		systemMessage(groundPrompt),
 		userMessage("Goal:\n" + strings.TrimSpace(goal)),
-	}
-	response, err := client.CompleteWithMessages(ctx, messages, ai.WithSchema(groundSchema))
-	if err != nil {
-		return Grounding{}, nil, fmt.Errorf("ground: %w", err)
 	}
 	var decoded struct {
 		Settled  []string `json:"settled"`
 		Open     []string `json:"open"`
 		Evidence string   `json:"evidence"`
 	}
-	if err := decodeJSON(response.Text(), &decoded); err != nil {
-		return Grounding{}, usageOf(response), annotate(fmt.Errorf("ground: %w", err), response)
+	response, err := structured(ctx, client, messages, groundSchema, &decoded)
+	if err != nil {
+		return Grounding{}, usageOf(response), fmt.Errorf("ground: %w", err)
 	}
+	// Grounding has no wrong answer a checker could name — an empty settled list
+	// is a legitimate reading of a goal with no free variables — so the schema is
+	// the whole of the verification here.
+	provider.Report(ctx, provider.VerdictVerifiedSuccess)
 	return Grounding{
 		Settled:  cleanStrings(decoded.Settled),
 		Open:     cleanStrings(decoded.Open),
