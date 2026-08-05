@@ -110,6 +110,55 @@ func TestWriteRecordsArtifact(t *testing.T) {
 	}
 }
 
+// TestSizeResolvesThroughSymlinkedRoot is the run summary's honesty check.
+// Recorded artifact paths are workspace-relative and the root may be reached
+// through a symlink — /tmp is one on macOS — so statting the recorded string
+// from the process working directory finds nothing and reports every file as
+// 0 bytes, which reads as a run that produced nothing at all.
+func TestSizeResolvesThroughSymlinkedRoot(t *testing.T) {
+	base := t.TempDir()
+	target := filepath.Join(base, "real")
+	if err := os.MkdirAll(target, 0o755); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	link := filepath.Join(base, "link")
+	if err := os.Symlink(target, link); err != nil {
+		t.Skipf("symlinks unavailable here: %v", err)
+	}
+
+	space, err := NewWorkspace(link)
+	if err != nil {
+		t.Fatalf("NewWorkspace: %v", err)
+	}
+	tools := NewToolbox(space, 3, nil)
+	if result := tools.Execute(context.Background(), "write", `{"path":"report.md","text":"body"}`); result.IsError {
+		t.Fatalf("write failed: %s", result.Content)
+	}
+
+	recorded := space.Artifacts(3)
+	if len(recorded) != 1 {
+		t.Fatalf("artifacts = %v, want one entry", recorded)
+	}
+	size, ok := space.Size(recorded[0])
+	if !ok {
+		t.Fatalf("Size(%q) did not find the file the run just wrote", recorded[0])
+	}
+	if size != int64(len("body")) {
+		t.Errorf("Size(%q) = %d, want %d", recorded[0], size, len("body"))
+	}
+
+	// Both spellings of the root name the same file, and an agent that learned
+	// the resolved one from pwd must not make the summary lie.
+	for _, spelling := range []string{filepath.Join(link, "report.md"), filepath.Join(target, "report.md")} {
+		if size, ok := space.Size(spelling); !ok || size != int64(len("body")) {
+			t.Errorf("Size(%q) = %d, %v; want %d, true", spelling, size, ok, len("body"))
+		}
+	}
+	if _, ok := space.Size("never-written.md"); ok {
+		t.Error("Size reported a file that does not exist")
+	}
+}
+
 // TestSchedulerDispatchAndBlocking covers the two behaviours that decide
 // whether a run is worth anything: a node with no inputs must not wait for
 // anything, and one failure must cost only its own descendants.

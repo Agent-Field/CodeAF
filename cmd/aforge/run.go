@@ -101,7 +101,9 @@ func runExecute(args []string) error {
 	}
 	linear := exec.NewLinear(client, space, web, *maxTurns, *maxTokens, deadline)
 	scheduler := exec.NewScheduler(exec.NewRegistry(linear), space, *concurrency)
+	clock := newClockWatch()
 	scheduler.OnEvent = func(event exec.Event) {
+		clock.sample()
 		marker := map[plan.State]string{
 			plan.StateRunning: "▶", plan.StateDone: "✓",
 			plan.StateFailed: "✗", plan.StateBlocked: "·",
@@ -126,8 +128,9 @@ func runExecute(args []string) error {
 	graph.Usage.CompletionTokens += scheduler.Usage().CompletionTokens
 	graph.Usage.CachedTokens += scheduler.Usage().CachedTokens
 	graph.Usage.Cost += scheduler.Usage().Cost
+	clock.sample()
 	recordAndCalibrate(ctx, client, settings, graph)
-	renderRunSummary(graph, space, scheduler.Usage(), time.Since(start))
+	renderRunSummary(graph, space, scheduler.Usage(), time.Since(start), clock)
 	if *output != "" {
 		encoded, err := graph.JSON()
 		if err != nil {
@@ -200,7 +203,45 @@ func missingBriefs(graph *plan.Graph) int {
 	return count
 }
 
-func renderRunSummary(graph *plan.Graph, space *exec.Workspace, usage exec.Usage, elapsed time.Duration) {
+// clockJumpThreshold is how far the two clocks may drift before the run is
+// treated as having been suspended. Ordinary NTP correction moves the wall
+// clock by milliseconds; a closed laptop moves it by minutes.
+const clockJumpThreshold = 2 * time.Minute
+
+// clockWatch notices the machine sleeping mid-run.
+//
+// A suspended host stalls every leaf, and the monotonic clock stops with it, so
+// every elapsed time reported afterwards is short by however long the machine
+// was out — silently, which is the problem. The gap is measured as the
+// divergence between wall and monotonic time rather than as the delay between
+// two scheduler events, because a long leaf legitimately emits nothing for a
+// quarter of an hour and would otherwise look identical to a suspend.
+type clockWatch struct {
+	wall time.Time // monotonic reading stripped, so subtraction is real time
+	mono time.Time
+	gap  time.Duration
+}
+
+func newClockWatch() *clockWatch {
+	now := time.Now()
+	return &clockWatch{wall: now.Round(0), mono: now}
+}
+
+// sample is called from the scheduler's own goroutine, the only one that emits
+// events, so the largest-gap update needs no lock.
+func (c *clockWatch) sample() {
+	if gap := time.Now().Round(0).Sub(c.wall) - time.Since(c.mono); gap > c.gap {
+		c.gap = gap
+	}
+}
+
+// jumped reports the suspend in whole minutes: the point is the order of
+// magnitude, not the precision.
+func (c *clockWatch) jumped() (int, bool) {
+	return int(c.gap.Minutes()), c.gap >= clockJumpThreshold
+}
+
+func renderRunSummary(graph *plan.Graph, space *exec.Workspace, usage exec.Usage, elapsed time.Duration, clock *clockWatch) {
 	var done, failed, blocked, turns int
 	for _, node := range graph.Nodes {
 		switch node.State {
@@ -244,11 +285,16 @@ func renderRunSummary(graph *plan.Graph, space *exec.Workspace, usage exec.Usage
 			if relative, err := filepath.Rel(space.Root(), path); err == nil && !strings.HasPrefix(relative, "..") {
 				display = relative
 			}
-			size := int64(0)
-			if info, err := os.Stat(path); err == nil {
-				size = info.Size()
+			// Sizes come from the workspace rather than os.Stat on the
+			// recorded string: that string is workspace-relative and the root
+			// may be spelled through a symlink, so statting it directly
+			// reported every artifact as 0 bytes — a run that produced a full
+			// deliverable read as one that produced nothing.
+			if size, ok := space.Size(path); ok {
+				fmt.Printf("    %-40s %6d bytes\n", display, size)
+			} else {
+				fmt.Printf("    %-40s %6s\n", display, "missing")
 			}
-			fmt.Printf("    %-40s %6d bytes\n", display, size)
 		}
 	}
 
@@ -262,6 +308,9 @@ func renderRunSummary(graph *plan.Graph, space *exec.Workspace, usage exec.Usage
 	fmt.Printf("  |  %d agent turns  |  %d calls  |  %d in (%d cached) / %d out  |  $%.4f  |  %s\n",
 		turns, usage.Calls, usage.PromptTokens, usage.CachedTokens, usage.CompletionTokens, usage.Cost,
 		elapsed.Round(time.Second))
+	if minutes, ok := clock.jumped(); ok {
+		fmt.Printf("  clock jumped %dm — machine likely slept; timings unreliable\n", minutes)
+	}
 	for _, node := range graph.Nodes {
 		if node.State == plan.StateFailed || node.State == plan.StateBlocked {
 			fmt.Printf("    %2d %-24s %s: %s\n", node.ID, clip(node.Title, 24), node.State, node.Failure)

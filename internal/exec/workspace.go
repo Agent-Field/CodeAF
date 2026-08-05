@@ -85,6 +85,51 @@ func (w *Workspace) Resolve(path string) (string, error) {
 	return filepath.Join(w.root, cleaned), nil
 }
 
+// Locate maps a recorded artifact path back onto disk.
+//
+// Recorded paths are workspace-relative, and a caller that stats one directly
+// measures whatever sits at that name under its own working directory —
+// usually nothing. An absolute path is no safer: the root has two honest
+// spellings whenever it sits under a symlink (macOS /tmp -> /private/tmp), and
+// only one of them is the spelling the file was recorded with. Both are tried
+// here so the caller never has to know which one it holds.
+func (w *Workspace) Locate(path string) (string, bool) {
+	trimmed := strings.TrimSpace(path)
+	if trimmed == "" {
+		return "", false
+	}
+	var candidates []string
+	if resolved, err := w.Resolve(trimmed); err == nil {
+		candidates = append(candidates, resolved)
+	}
+	if filepath.IsAbs(trimmed) {
+		candidates = append(candidates, trimmed)
+	} else {
+		candidates = append(candidates, filepath.Join(w.real, trimmed))
+	}
+	for _, candidate := range candidates {
+		if _, err := os.Stat(candidate); err == nil {
+			return candidate, true
+		}
+	}
+	return "", false
+}
+
+// Size reports an artifact's size on disk. The second result separates a file
+// that is empty from one that is not there — a summary listing every artifact
+// as 0 bytes looks like a run that produced nothing.
+func (w *Workspace) Size(path string) (int64, bool) {
+	located, ok := w.Locate(path)
+	if !ok {
+		return 0, false
+	}
+	info, err := os.Stat(located)
+	if err != nil {
+		return 0, false
+	}
+	return info.Size(), true
+}
+
 // Record notes that a node produced a file.
 func (w *Workspace) Record(nodeID int, path string) {
 	relative, err := filepath.Rel(w.root, path)
