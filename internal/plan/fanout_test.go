@@ -29,3 +29,25 @@ func TestFanoutPromptStatesTheSubjectTest(t *testing.T) {
 		})
 	}
 }
+
+// TestFanoutPromptStatesTheSharedSetupRule covers the other exception in the
+// same prompt: a genuine mutating action is one early part everything else works
+// behind, and it carries the orientation the siblings would otherwise each redo.
+func TestFanoutPromptStatesTheSharedSetupRule(t *testing.T) {
+	for _, want := range []struct {
+		name   string
+		phrase string
+	}{
+		{"mutating action is its own part", "changes the material every other part works from"},
+		{"it comes first", "one part on its own, and it comes first"},
+		{"orientation lives there", "shared orientation summary belongs"},
+		{"no re-reading", "do not each re-read the same material"},
+		{"not invented", "Do not invent one where nothing"},
+	} {
+		t.Run(want.name, func(t *testing.T) {
+			if !strings.Contains(fanoutPrompt, want.phrase) {
+				t.Errorf("fan-out prompt no longer states %s: missing %q", want.name, want.phrase)
+			}
+		})
+	}
+}

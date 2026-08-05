@@ -247,8 +247,14 @@ func (g *Graph) AddNeed(id, need int) error {
 	return nil
 }
 
-// setNeeds replaces a node's dependency list wholesale during generation, where
-// the backward-stage rule already guarantees acyclicity.
+// setNeeds replaces a node's dependency list wholesale during generation.
+//
+// Edges into an earlier stage are acyclic by construction and go straight in. A
+// same-stage edge is not — it is the mutation ordering, the one case where two
+// simultaneous parts have to be sequenced because one of them changes what the
+// other works on — so those are added through AddNeed, which drops the second
+// edge of any pair that would close a cycle. Edges into a later stage are still
+// impossible and are discarded.
 func (g *Graph) setNeeds(id int, needs []int) {
 	node := g.Node(id)
 	if node == nil || node.State.Frozen() {
@@ -256,16 +262,24 @@ func (g *Graph) setNeeds(id int, needs []int) {
 	}
 	kept := make([]int, 0, len(needs))
 	seen := map[int]bool{}
+	var siblings []int
 	for _, need := range needs {
 		source := g.Node(need)
-		if source == nil || need == id || seen[need] || source.Stage >= node.Stage {
+		if source == nil || need == id || seen[need] || source.Stage > node.Stage {
 			continue
 		}
 		seen[need] = true
+		if source.Stage == node.Stage {
+			siblings = append(siblings, need)
+			continue
+		}
 		kept = append(kept, need)
 	}
 	sort.Ints(kept)
 	node.Needs = kept
+	for _, sibling := range siblings {
+		_ = g.AddNeed(id, sibling)
+	}
 }
 
 // hasCycle is only needed on the revision path. Generation cannot produce a

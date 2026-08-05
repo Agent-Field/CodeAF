@@ -52,6 +52,16 @@ better set of phases. Keep the whole procedure inside one node — gathering,
 analysing and writing up one subject is a single part — and split along a
 subject axis instead, or return one part.
 
+One thing does get its own part even though it is not a subject: an action that
+changes the material every other part works from — prepare the workspace, apply
+the patch, fetch or generate the corpus, install what the others run against.
+That is one part on its own, and it comes first; the others are written as
+working on the material it leaves behind, not as doing it again. It is also
+where a shared orientation summary belongs — it reads the material once and
+writes down what the others would otherwise each have to rediscover, so five
+siblings do not each re-read the same material. Do not invent one where nothing
+shared is actually changed; most stages have no such part.
+
 Default to fewer parts. Only split out a part when you can say what makes it
 doable by an agent that knows nothing about the others. Give 1 to 5 parts, and
 return a single part when the stage is genuinely one piece of work — that is a
