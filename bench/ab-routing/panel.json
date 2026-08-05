@@ -1,0 +1,137 @@
+{
+  "phase": "B",
+  "selected": "2026-08-05",
+  "price_cap_out_per_mtok": 5.0,
+  "catalog": "https://openrouter.ai/api/v1/models, fetched 2026-08-05, 338 models",
+  "shape": "barbell, not a ladder",
+  "shape_note": "Phase A found the middle of its panel statistically inseparable (ds-v4-flash, glm-4.7, ds-v4-pro, qwen3-30b-a3b within one logit, 9 of 21 pairwise comparisons non-significant). The Phase B anchor battery went looking for a rung between the $0.19 base and the $2.48 top and did not find one: every candidate priced between them scored at or below the incumbent. The panel is therefore two cheap rungs, a base, and one strong terminus -- there is nothing to put in the middle, and padding it would have bought calls rather than ability.",
+  "hard_gates": [
+    "output price <= $5.00 / M tokens",
+    "advertises `tools` -- aforge's executor is a tool-calling loop (internal/exec/tools.go); ability is irrelevant to a model the harness cannot drive",
+    "advertises `structured_outputs` -- aforge's planner asks for it"
+  ],
+  "measurement": {
+    "battery": "bench/routerlab's 10-task anchor block, 2 replicates, deterministic graders only, no LLM judge",
+    "why": "that block is what pinned Phase A's Rasch scale, so a candidate's score on it is directly comparable to the seven models already measured",
+    "reasoning_mode": "off matches aforge production (DefaultReasoning and DefaultExecReasoning are both EffortOff in internal/config/config.go); the `on` arms exist because Phase A's report flagged reasoning-off as unfair to reasoning-first models and asked for the re-run",
+    "max_tokens": "4096 for reasoning-off arms (identical to Phase A, so the controls are comparable); 16384 for reasoning-on arms, because at 4096 a reasoning-first model spends the whole budget thinking and the cell measures the ceiling instead of the model",
+    "cells": 220,
+    "spend_usd": 0.6739,
+    "raw": "panel/anchor-results.jsonl",
+    "controls_reproduced": "kimi-k2.6 20/20 vs Phase A 0.968, ds-v4-flash 18/20 vs 0.871, gemma-3-12b 11/20 vs 0.548 -- the scale has not drifted, so the new measurements sit on it"
+  },
+  "panel": [
+    {
+      "slug": "google/gemma-3-12b-it",
+      "label": "gemma-3-12b",
+      "rung": "floor (cheapest)",
+      "price_in_per_mtok": 0.05,
+      "price_out_per_mtok": 0.15,
+      "context_length": 131072,
+      "anchor_score": "11/20",
+      "phase_a_theta": -1.724,
+      "justification": "The cheapest model that clears both hard gates, measured on-scale twice (Phase A 0.548, here 11/20) -- it is the rung that makes a first attempt on an easy leaf almost free, which is where Phase A's winning cascade got its economics."
+    },
+    {
+      "slug": "z-ai/glm-4.7-flash",
+      "label": "glm-4.7-flash",
+      "rung": "floor (latency-safe)",
+      "price_in_per_mtok": 0.06,
+      "price_out_per_mtok": 0.4,
+      "context_length": 202752,
+      "anchor_score": "13/20",
+      "phase_a_theta": null,
+      "justification": "Scores two cells above gemma at half its median latency (4.19 s vs 8.63 s) with zero empty completions, which is the specific defect Phase A named as the reason gemma is a bad first rung -- 2.7x gemma's price buys the floor back for latency-sensitive work."
+    },
+    {
+      "slug": "~deepseek/deepseek-v4-flash-latest",
+      "label": "ds-v4-flash",
+      "rung": "base (incumbent)",
+      "price_in_per_mtok": 0.09,
+      "price_out_per_mtok": 0.18,
+      "context_length": 1048576,
+      "anchor_score": "18/20",
+      "phase_a_theta": 1.387,
+      "justification": "aforge's current default and arm A itself; 18/20 including 8/8 on code at $0.18/M makes it the best ability-per-dollar anything measured in either phase, and it was the first cascade rung on 25 of Phase A's 36 tasks."
+    },
+    {
+      "slug": "qwen/qwen3-30b-a3b-instruct-2507",
+      "label": "qwen3-30b-a3b",
+      "rung": "base (family insurance)",
+      "price_in_per_mtok": 0.048,
+      "price_out_per_mtok": 0.193,
+      "context_length": 262144,
+      "anchor_score": "not re-measured; Phase A 25/31 = 0.806 over 31 cells",
+      "phase_a_theta": 0.238,
+      "justification": "Statistically indistinguishable from the incumbent in Phase A at essentially the same price but from a different family and provider, so a correlated regression in the DeepSeek line does not take the whole base rung with it."
+    },
+    {
+      "slug": "moonshotai/kimi-k2.6",
+      "label": "kimi-k2.6",
+      "rung": "top (terminus)",
+      "price_in_per_mtok": 0.589,
+      "price_out_per_mtok": 2.48,
+      "context_length": 262144,
+      "anchor_score": "20/20",
+      "phase_a_theta": 4.092,
+      "justification": "The only model in either phase significantly above the pack (theta +4.09, every pairwise comparison significant; 20/20 here) and it is also the fastest thing measured at 1.38 s median -- there is no cheaper way to buy an escalation target that is genuinely stronger."
+    }
+  ],
+  "excluded": [
+    {
+      "slug": "z-ai/glm-5.2",
+      "price_out_per_mtok": 2.42,
+      "reason": "The fairness re-run Phase A asked for was run, and it does not rescue it: reasoning-on scored 17/20 against reasoning-off's 16/20 -- one cell out of twenty for 12x the spend ($0.175 vs $0.0145 on the same battery) -- while burning 62,766 reasoning tokens and returning 3 empty completions. Dominated by kimi-k2.6, which is cheaper per point, faster, and 20/20."
+    },
+    {
+      "slug": "qwen/qwen3-coder-plus",
+      "price_out_per_mtok": 3.25,
+      "reason": "The strongest coder under the cap scored 13/20 overall and 5/8 on code -- worse on code than the incumbent's 8/8 at 18x the output price. A specialist that loses to the generalist on its own specialty does not earn a slot."
+    },
+    {
+      "slug": "qwen/qwen3-coder",
+      "price_out_per_mtok": 1.0,
+      "reason": "16/20 with 6/8 on code: better value than coder-plus and still strictly below ds-v4-flash on both ability and price. The coder rung was tested twice and lost twice."
+    },
+    {
+      "slug": "moonshotai/kimi-k2.7-code",
+      "price_out_per_mtok": 3.5,
+      "reason": "18/20 overall but 6/8 on code, at 19x the incumbent's output price, with 2 of 20 completions returned empty after burning the token ceiling. Probe lab named runaway reasoning the most expensive possible outcome; a 10% rate of it disqualifies a terminus."
+    },
+    {
+      "slug": "qwen/qwen3.7-plus",
+      "price_out_per_mtok": 1.28,
+      "reason": "The cheapest plausible second top rung scored 14/20 with a 24.66 s median latency -- 18x kimi-k2.6's -- and 4 empty completions. Cheaper than the terminus and much worse than the base."
+    },
+    {
+      "slug": "minimax/minimax-m2.7",
+      "price_out_per_mtok": 1.08,
+      "reason": "13/20 while spending 132,326 reasoning tokens and returning 7 of 20 completions empty. The worst runaway-reasoning rate measured in either phase."
+    },
+    {
+      "slug": "z-ai/glm-4.7",
+      "price_out_per_mtok": 1.75,
+      "reason": "Phase A: ability indistinguishable from ds-v4-flash at 9.7x the output price."
+    },
+    {
+      "slug": "deepseek/deepseek-v4-pro",
+      "price_out_per_mtok": 0.87,
+      "reason": "Phase A: ability indistinguishable from ds-v4-flash at 4.8x the output price; the in-family upgrade does not pay."
+    },
+    {
+      "slug": "anthropic/claude-haiku-4.5",
+      "price_out_per_mtok": 5.0,
+      "reason": "At the cap and closed-weight. Both phases restricted the panel to open-weight families so that the routing result is about routing rather than about buying a frontier model; recorded here because it is the obvious thing to reach for."
+    },
+    {
+      "slug": "moonshotai/kimi-k3",
+      "price_out_per_mtok": 15.0,
+      "reason": "3x over the cap."
+    }
+  ],
+  "open_risks": [
+    "The anchor battery is single-turn. Every panel member advertises `tools`, but nothing here proves a model can hold a 30-turn tool loop without emitting a malformed call -- which is what aforge actually asks of it. The routed arm should record per-model tool-call error rates and treat a model that cannot hold the loop as excluded regardless of anchor score.",
+    "qwen3-30b-a3b carries a Phase A number rather than a Phase B one; it was kept on the strength of 31 Phase A cells and family diversification, not re-measured here.",
+    "Phase A's cascade economics assume a cheap, trustworthy verifier. All three Phase B tasks have one by construction (the graders). Work without one falls back to route-by-IRT at a lower ceiling, and nothing in this experiment measures that case."
+  ]
+}

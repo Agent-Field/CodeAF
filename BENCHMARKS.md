@@ -134,7 +134,48 @@ pi and opencode both hit the 40-minute cap having produced no output at all.
 That is a total failure on this task shape rather than a slow result, and it is
 the largest gap in either benchmark.
 
-## 3. Caveats
+## 3. Model routing — arm A baseline
+
+A different question again: not how aforge compares to another harness, but
+whether sending every call to one model is leaving anything on the table. The
+protocol is in [`bench/ab-routing/DESIGN.md`](bench/ab-routing/DESIGN.md), the
+panel and its measurements in `bench/ab-routing/panel.json`, and the full write
+up in [`bench/ab-routing/BASELINE.md`](bench/ab-routing/BASELINE.md). Only arm A
+— today's shipped configuration, no environment overrides — has been run.
+
+Three tasks, run end to end through the CLI, n=3, every one graded by code with
+no LLM judge anywhere.
+
+| task | success | score median | $ mean | turns median |
+| ---- | ------- | ------------ | ------ | ------------ |
+| t1-logstore (build a segmented KV store) | 0 / 3 | 0.67 | $0.144 | 127 |
+| t2-synthesis (audit an 11-document corpus) | 3 / 3 | 1.00 | $0.073 | 47 |
+| t3-shiftplan (repair and refactor a package) | 0 / 3 | 0.71 | $0.075 | 79 |
+
+**3 of 9 overall, $0.88, 99 minutes.** Zero harness crashes; no cell rerun.
+
+Two results are worth quoting outside that document.
+
+**The failures reproduce exactly.** All three t1 replicates failed the identical
+three tests and all three t3 replicates failed the same defect family. These are
+capability boundaries rather than unlucky draws, and all of them are about
+conforming to a stated contract rather than being internally consistent — the
+store reads a segment it wrote and not one the spec describes. Whatever only had
+to agree with itself was correct in every run.
+
+**Decomposition was never the problem.** On t2 the synthesis node measurably
+improved on its own ensemble members, removing contradictions they had invented.
+But the planner drew **5 nodes and 26 nodes for the same brief**, at 5.4x the
+cost, for the same perfect score — and on t3 the cheapest 3-node plan scored
+*higher* than the 8-node one. A large part of aforge's run-to-run cost variance
+is the plan it happens to draw, which is worth knowing before attributing a cost
+change to anything else.
+
+Two tasks needed hardening after arm A aced them, which is recorded round by
+round; t2 survived its hardening and stays in the suite as a regression control
+rather than a discriminator.
+
+## 4. Caveats
 
 **pi and opencode cost figures are unreliable.** The starred figures in the #21
 table are account-level credit readings taken around the runs. The API key is
