@@ -120,6 +120,12 @@ type Options struct {
 	// execute them.
 	Briefs bool
 
+	// Ensemble chooses between the two ways of spending parallelism: splitting
+	// work by subject, or doing one judgment several times over independently
+	// and merging. 0 lets the planner decide from the goal, -1 never asks, and
+	// N >= 2 forces a panel of N. See ensemble.go.
+	Ensemble int
+
 	Report Progress
 
 	// OnReady fires the instant a node is final and has nothing to wait for.
@@ -172,6 +178,17 @@ func Build(ctx context.Context, client Completer, goal string, options Options) 
 	report("ground", time.Since(start), fmt.Sprintf("%s settled, %s open",
 		plural(len(graph.Settled), "point"), plural(len(graph.Open), "question")))
 	report("spine", time.Since(start), fmt.Sprintf("%s %s", plural(len(choice.Stages), "stage"), spreadLabel(choice)))
+
+	// --- ensemble hook (ensemble.go) ---------------------------------------
+	// Redundancy is the other way to spend parallelism, and it replaces
+	// decomposition rather than refining it: if this goal is one judgment over
+	// one body of material, everything below this line is the wrong shape for
+	// it. It is decided here because grounding and the spine are both already
+	// paid for and both feed the judgment.
+	if ensemble, chosen, ensembleErr := ensembleHook(ctx, client, graph, options, report, start); chosen {
+		return ensemble, errors.Join(groundErr, ensembleErr)
+	}
+	// --- end ensemble hook --------------------------------------------------
 
 	nodes, fanUsage, fanErr := FanOut(ctx, client, graph.context(), choice.Stages)
 	graph.Usage.merge(fanUsage)
