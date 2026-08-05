@@ -193,7 +193,16 @@ def check_t2_corpus():
 # ---------------------------------------------------------------------------
 # T2: reference submission and decoys
 
+def seed_corpus(directory):
+    """Every t2 workspace carries the corpus, because the grader gates on it
+    being unaltered. A decoy workspace without one would fail the gate rather
+    than the field it was built to test, which would make every decoy check
+    pass for the wrong reason."""
+    shutil.copytree(CORPUS, os.path.join(directory, "corpus"))
+
+
 def write_submission(directory, findings, report_text):
+    seed_corpus(directory)
     with open(os.path.join(directory, "findings.json"), "w") as f:
         json.dump(findings, f, indent=2)
     with open(os.path.join(directory, "REPORT.md"), "w") as f:
@@ -269,9 +278,29 @@ def check_t2_grader():
               json.dumps({k: v for k, v in r.get("checks", {}).items() if not v}))
 
     with tempfile.TemporaryDirectory() as d:
+        seed_corpus(d)
         r = run_grader("t2-synthesis", d)
-        check("t2 empty workspace scores zero",
+        check("t2 a workspace with the corpus and no deliverables scores zero",
               r.get("score") == 0.0 and r.get("success") is False)
+
+    # the corpus gate: a submission that is right about everything but altered
+    # the evidence it was reasoning from scores nothing
+    with tempfile.TemporaryDirectory() as d:
+        write_submission(d, key, reference_report(key))
+        with open(os.path.join(d, "corpus", "01-service-catalog.md"), "a") as f:
+            f.write("\n<!-- a harmless-looking edit -->\n")
+        r = run_grader("t2-synthesis", d)
+        check("t2 editing the corpus zeroes the score",
+              r.get("score") == 0.0 and r.get("score_before_gates") == 1.0
+              and r.get("gates", {}).get("corpus_intact") is False,
+              json.dumps(r.get("gates", {})))
+
+    with tempfile.TemporaryDirectory() as d:
+        write_submission(d, key, reference_report(key))
+        os.remove(os.path.join(d, "corpus", "09-oncall-notes.md"))
+        r = run_grader("t2-synthesis", d)
+        check("t2 deleting a corpus document zeroes the score",
+              r.get("score") == 0.0)
 
     # One decoy per field: correct everywhere else, so the grader must lose
     # exactly the field that was spoiled and nothing else.
@@ -317,6 +346,7 @@ def check_t2_grader():
 
     # a correct JSON with no report is not a pass
     with tempfile.TemporaryDirectory() as d:
+        seed_corpus(d)
         with open(os.path.join(d, "findings.json"), "w") as f:
             json.dump(key, f)
         r = run_grader("t2-synthesis", d)
