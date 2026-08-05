@@ -540,6 +540,83 @@ func (g *Graph) Sinks() []int {
 	return sinks
 }
 
+// anchorLateStarts is the structural backstop behind bind and audit.
+//
+// Both of those passes are judgment calls, and both can legitimately leave a
+// late node with no inputs: bind is written to under-connect, and audit asks
+// only whether a node is finishable — which a synthesis-shaped node technically
+// is, by redoing everything upstream itself. One run did exactly that: the node
+// meant to write the final review ended binding with an empty list, launched at
+// t=0 alongside the work it existed to consume, and exhausted its whole budget
+// reproducing the plan single-handed while the deliverable never appeared.
+//
+// The contradiction is structural, so the repair is too. The spine placed a
+// late node late for a reason; a stage>1 node that ends up needing nothing is
+// wired to the frontier — every earlier-stage node whose output nothing else
+// consumes. Needs is also the context routing table, and for a gathering node
+// the unconsumed frontier is exactly the right input. If the frontier is empty
+// (everything earlier already consumed), it falls back to the nearest earlier
+// stage that has nodes. Nodes are anchored in stage-then-ID order and the
+// frontier is recomputed after each, so a second loose node chains behind the
+// first deterministically. Edges go through AddNeed, so nothing here can close
+// a cycle. Stage-1 nodes are untouched: needing nothing is their normal state.
+// It returns how many edges it forced.
+func (g *Graph) anchorLateStarts() int {
+	var loose []int
+	for _, node := range g.Nodes {
+		if node.Stage > 1 && len(node.Needs) == 0 && !node.State.Frozen() {
+			loose = append(loose, node.ID)
+		}
+	}
+	sort.Slice(loose, func(i, j int) bool {
+		left, right := g.Node(loose[i]), g.Node(loose[j])
+		if left.Stage != right.Stage {
+			return left.Stage < right.Stage
+		}
+		return left.ID < right.ID
+	})
+
+	forced := 0
+	for _, id := range loose {
+		node := g.Node(id)
+		if node == nil || len(node.Needs) > 0 {
+			continue
+		}
+		consumed := make(map[int]bool, len(g.Nodes))
+		for _, other := range g.Nodes {
+			for _, need := range other.Needs {
+				consumed[need] = true
+			}
+		}
+		var sources []int
+		for _, other := range g.Nodes {
+			if other.ID != id && other.Stage < node.Stage && !consumed[other.ID] {
+				sources = append(sources, other.ID)
+			}
+		}
+		if len(sources) == 0 {
+			nearest := 0
+			for _, other := range g.Nodes {
+				if other.ID != id && other.Stage < node.Stage && other.Stage > nearest {
+					nearest = other.Stage
+				}
+			}
+			for _, other := range g.Nodes {
+				if other.ID != id && other.Stage == nearest && nearest > 0 {
+					sources = append(sources, other.ID)
+				}
+			}
+		}
+		sort.Ints(sources)
+		for _, source := range sources {
+			if g.AddNeed(id, source) == nil {
+				forced++
+			}
+		}
+	}
+	return forced
+}
+
 // deliverableOwner names the single node that produces whatever final
 // deliverable the goal asks for. Everything else contributes material to it.
 //
