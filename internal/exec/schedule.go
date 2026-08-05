@@ -22,10 +22,35 @@ type Scheduler struct {
 	concurrency int
 	usage       Usage
 
+	// Budget bounds the whole run's token spend, in prompt+completion tokens.
+	// Zero means unbounded — each leaf still has its own budget. When the
+	// cumulative spend passes it, no new node is launched; whatever is in
+	// flight lands (mirroring the per-leaf landing reserve), never-started
+	// nodes are marked, and Run reports the stop reason.
+	Budget int
+
+	// NodeTimeout is the watchdog on a single node. The executor has its own
+	// deadline, so this only fires when an executor is wedged past every
+	// deadline it was given — a hung pipe, a stuck transport. The node is
+	// recorded as failed and abandoned rather than letting one stuck goroutine
+	// freeze the run silently and forever. Zero disables it.
+	NodeTimeout time.Duration
+
 	// OnEvent reports state changes as they happen. A run is long and mostly
 	// invisible; without this the only feedback is silence followed by a graph.
 	OnEvent func(Event)
 }
+
+// stallAfter is how long the run may go without a completion before the
+// scheduler says which nodes it is still waiting on. A wedged provider call
+// once froze the log for thirteen minutes mid-run; the only thing worse than
+// the stall was that it was indistinguishable from the process having died.
+const stallAfter = 3 * time.Minute
+
+// drainGrace bounds how long a stopping run waits for in-flight nodes to
+// land. Their contexts are already cancelled, so an honest executor returns
+// in seconds; anything still out after this is recorded and abandoned.
+const drainGrace = 30 * time.Second
 
 // Event is one thing happening to one node.
 type Event struct {
@@ -57,14 +82,20 @@ func (s *Scheduler) Usage() Usage { return s.usage }
 // cost us a duplicated subtree once.
 func (s *Scheduler) Run(ctx context.Context, graph *plan.Graph) error {
 	started := time.Now()
-	type completion struct {
-		nodeID  int
-		outcome *Outcome
-		err     error
-	}
-	done := make(chan completion)
-	slots := make(chan struct{}, s.concurrency)
-	inFlight := 0
+	// Buffered to the whole graph so a worker can always deliver its result
+	// and exit, even after the scheduler has stopped listening for it — an
+	// abandoned worker blocked on an unbuffered send would leak forever.
+	done := make(chan completion, len(graph.Nodes))
+	// When a node started, keyed by id. Doubles as the in-flight set.
+	inFlight := map[int]time.Time{}
+	// Why launching stopped. Once set, nothing new starts, in-flight work
+	// lands, and Run reports it — a run may stop early, but it must never
+	// stop silently.
+	var stop string
+	lastProgress := time.Now()
+
+	ticker := time.NewTicker(s.tickEvery())
+	defer ticker.Stop()
 
 	for {
 		// Anything whose inputs all failed can never run; retiring it before
@@ -72,35 +103,152 @@ func (s *Scheduler) Run(ctx context.Context, graph *plan.Graph) error {
 		// become ready.
 		s.propagateBlocked(graph)
 
-		ready := s.ready(graph)
-		for _, id := range ready {
-			node := graph.Node(id)
-			node.State = plan.StateRunning
-			s.emit(Event{NodeID: id, Title: node.Title, State: plan.StateRunning, Elapsed: time.Since(started)})
-			task := s.taskFor(graph, node)
-			inFlight++
-			go func(id int, task Task) {
-				slots <- struct{}{}
-				defer func() { <-slots }()
-				outcome, err := s.registry.For("linear").Run(ctx, task)
-				done <- completion{nodeID: id, outcome: outcome, err: err}
-			}(id, task)
+		if stop == "" && s.Budget > 0 && s.usage.PromptTokens+s.usage.CompletionTokens >= s.Budget {
+			stop = fmt.Sprintf("global budget exhausted: %d of %d tokens spent",
+				s.usage.PromptTokens+s.usage.CompletionTokens, s.Budget)
+		}
+		if stop == "" {
+			for _, id := range s.ready(graph) {
+				if len(inFlight) >= s.concurrency {
+					break
+				}
+				node := graph.Node(id)
+				node.State = plan.StateRunning
+				s.emit(Event{NodeID: id, Title: node.Title, State: plan.StateRunning, Elapsed: time.Since(started)})
+				task := s.taskFor(graph, node)
+				inFlight[id] = time.Now()
+				go s.work(ctx, id, task, done)
+			}
 		}
 
 		// Nothing running and nothing newly runnable means everything that can
-		// be done has been.
-		if inFlight == 0 {
-			return nil
+		// be done has been — or that the run was told to stop and the last
+		// in-flight node has landed. A cancellation that emptied the in-flight
+		// set through the nodes' own child contexts still counts as a stop:
+		// the race between a node landing cancelled and the scheduler seeing
+		// ctx.Done must not decide whether the reason gets reported.
+		if len(inFlight) == 0 {
+			if stop == "" && ctx.Err() != nil {
+				stop = fmt.Sprintf("run context cancelled (%v)", ctx.Err())
+			}
+			return s.finish(graph, stop)
 		}
 
 		select {
 		case finished := <-done:
-			inFlight--
+			delete(inFlight, finished.nodeID)
+			lastProgress = time.Now()
 			s.apply(graph, finished.nodeID, finished.outcome, finished.err, started)
 		case <-ctx.Done():
-			return ctx.Err()
+			// The run context being cancelled — an interrupt, an operator
+			// deadline — is a stop, not a vanishing act. In-flight nodes hold
+			// child contexts that are already cancelled, so they are drained
+			// with a bounded grace and their outcomes recorded before the
+			// stop is reported.
+			if stop == "" {
+				stop = fmt.Sprintf("run context cancelled (%v)", ctx.Err())
+			}
+			s.drain(graph, done, inFlight, started)
+			return s.finish(graph, stop)
+		case <-ticker.C:
+			now := time.Now()
+			for id, since := range inFlight {
+				if s.NodeTimeout > 0 && now.Sub(since) > s.NodeTimeout {
+					node := graph.Node(id)
+					node.State = plan.StateFailed
+					node.Failure = fmt.Sprintf("executor did not return within %s; abandoned", s.NodeTimeout.Round(time.Second))
+					s.emit(Event{NodeID: id, Title: node.Title, State: plan.StateFailed, Detail: node.Failure, Elapsed: time.Since(started)})
+					delete(inFlight, id)
+				}
+			}
+			// A silent run is indistinguishable from a dead one. When nothing
+			// has completed for a while, say what is still out and for how
+			// long, so a frozen log reads as waiting rather than as death.
+			if len(inFlight) > 0 && now.Sub(lastProgress) >= stallAfter {
+				lastProgress = now
+				for id, since := range inFlight {
+					node := graph.Node(id)
+					s.emit(Event{NodeID: id, Title: node.Title, State: plan.StateRunning,
+						Detail:  fmt.Sprintf("still in flight after %s — the run is waiting, not dead", now.Sub(since).Round(time.Second)),
+						Elapsed: time.Since(started)})
+				}
+			}
 		}
 	}
+}
+
+// completion is one worker's report back to the scheduler's goroutine.
+type completion struct {
+	nodeID  int
+	outcome *Outcome
+	err     error
+}
+
+// work runs one node and always reports back, even when the executor panics —
+// a panic that unwinds a worker silently would strand the scheduler waiting on
+// a completion that can never come.
+func (s *Scheduler) work(ctx context.Context, id int, task Task, done chan<- completion) {
+	defer func() {
+		if recovered := recover(); recovered != nil {
+			done <- completion{nodeID: id, err: fmt.Errorf("executor panicked: %v", recovered)}
+		}
+	}()
+	outcome, err := s.registry.For("linear").Run(ctx, task)
+	done <- completion{nodeID: id, outcome: outcome, err: err}
+}
+
+// drain lets in-flight nodes land after the run has been told to stop. Their
+// contexts are already cancelled, so each executor's own landing procedure is
+// what runs here; the grace period only bounds a worker that is wedged past
+// even that.
+func (s *Scheduler) drain(graph *plan.Graph, done <-chan completion, inFlight map[int]time.Time, started time.Time) {
+	grace := time.NewTimer(drainGrace)
+	defer grace.Stop()
+	for len(inFlight) > 0 {
+		select {
+		case finished := <-done:
+			delete(inFlight, finished.nodeID)
+			s.apply(graph, finished.nodeID, finished.outcome, finished.err, started)
+		case <-grace.C:
+			for id := range inFlight {
+				node := graph.Node(id)
+				node.State = plan.StateFailed
+				node.Failure = fmt.Sprintf("in flight when the run stopped and did not land within %s", drainGrace)
+				s.emit(Event{NodeID: id, Title: node.Title, State: plan.StateFailed, Detail: node.Failure, Elapsed: time.Since(started)})
+				delete(inFlight, id)
+			}
+		}
+	}
+}
+
+// finish annotates whatever never ran and turns the stop reason into the run's
+// error. Every early return in Run funnels through here, so no path can end
+// the run without the graph saying what happened to each node.
+func (s *Scheduler) finish(graph *plan.Graph, stop string) error {
+	if stop == "" {
+		return nil
+	}
+	for index := range graph.Nodes {
+		node := &graph.Nodes[index]
+		if node.State == plan.StatePending {
+			node.State = plan.StateBlocked
+			node.Failure = "never started: " + stop
+		}
+	}
+	return fmt.Errorf("run stopped: %s", stop)
+}
+
+// tickEvery sizes the housekeeping tick to the watchdog it drives; without a
+// timeout the tick only feeds the stall heartbeat.
+func (s *Scheduler) tickEvery() time.Duration {
+	tick := 15 * time.Second
+	if s.NodeTimeout > 0 && s.NodeTimeout/4 < tick {
+		tick = s.NodeTimeout / 4
+	}
+	if tick < 10*time.Millisecond {
+		tick = 10 * time.Millisecond
+	}
+	return tick
 }
 
 // ready lists pending nodes whose inputs are all done.
@@ -219,6 +367,14 @@ func fallbackBrief(node *plan.Node) string {
 func (s *Scheduler) apply(graph *plan.Graph, nodeID int, outcome *Outcome, err error, started time.Time) {
 	node := graph.Node(nodeID)
 	if node == nil {
+		return
+	}
+	// A node the watchdog already retired may still report in late. Its state
+	// has been decided; only the spend is real and must not be lost.
+	if node.State != plan.StateRunning {
+		if outcome != nil {
+			s.usage.merge(outcome.Usage)
+		}
 		return
 	}
 	if outcome != nil {

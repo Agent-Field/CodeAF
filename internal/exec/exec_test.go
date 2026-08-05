@@ -70,6 +70,25 @@ func TestToolFailuresAreResults(t *testing.T) {
 	}
 }
 
+// TestShDoesNotHangOnBackgroundChildren covers the hang that once wedged a
+// whole run: a command leaves a background child sharing its stdout, bash
+// exits, and CombinedOutput blocks until the child does — past every deadline,
+// silently. The tool must return shortly after the command itself finishes.
+func TestShDoesNotHangOnBackgroundChildren(t *testing.T) {
+	tools := NewToolbox(workspace(t), 1, nil)
+	started := time.Now()
+	result := tools.Execute(context.Background(), "sh", `{"cmd":"sleep 15 & echo started"}`)
+	if elapsed := time.Since(started); elapsed > 10*time.Second {
+		t.Fatalf("sh blocked %s on a background child holding the pipe", elapsed.Round(time.Millisecond))
+	}
+	if result.IsError {
+		t.Fatalf("a finished command with a detached child was reported as failed: %s", result.Content)
+	}
+	if !strings.Contains(result.Content, "started") {
+		t.Errorf("the command's own output was lost: %q", result.Content)
+	}
+}
+
 // TestEditRefusesAmbiguousMatch keeps a silent wrong edit from happening.
 // Replacing the first of several matches looks like success and is the hardest
 // kind of mistake to notice later.
