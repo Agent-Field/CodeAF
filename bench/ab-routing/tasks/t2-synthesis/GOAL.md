@@ -62,9 +62,18 @@ Strict JSON, exactly these seven keys, no others:
   `"incident_duration_minutes"`, `"owner"`, `"queue_client"`, `"unit_price"`.
   Order does not matter and duplicates are ignored, but the set must be exactly
   right: a contradiction you missed and one you invented both cost the same.
-  A document being superseded is not by itself a contradiction — a superseded
-  document only contradicts if it makes a claim about a fact some other
-  document owns.
+
+  Two edges are worth stating so this is decidable rather than a matter of
+  taste:
+
+  - **Being superseded and contradicting are not exclusive.** A superseded
+    document that still states a *value* for a field some other document owns
+    contradicts it, and belongs in this list as well as in `superseded_docs`.
+  - **A difference between two architecture decisions is not a contradiction.**
+    An ADR records a decision, not a fact about a subject, and no entry in the
+    field vocabulary above covers "which technology is deprecated". A later ADR
+    replacing an earlier one is supersession and belongs only in
+    `superseded_docs`.
 
 ## `REPORT.md`
 

@@ -168,6 +168,16 @@ def check_t2_corpus():
           "team-platform owns it" in notes)
     check("t2 contradiction 03/01: the wrong queue is in the incident report",
           "pulsar-edge" in search_feb and truth.CATALOG["svc-search"]["queue"] != "pulsar-edge")
+    check("t2 contradiction 07/08: the superseded schedule really states "
+          "different prices for the same technologies",
+          any(int(re.search(rf"\|\s*{re.escape(t)}\s*\|\s*(\d+) cents", superseded).group(1)) != c
+              for t, c in truth.PRICE_CENTS_PER_10K.items()))
+    check("t2 every field in the vocabulary is used by at least one "
+          "contradiction, or is documented as unused",
+          {c["field"] for c in truth.CONTRADICTIONS} == set(truth.FIELD_VOCABULARY),
+          f"unused: {sorted(set(truth.FIELD_VOCABULARY) - {c['field'] for c in truth.CONTRADICTIONS})}"
+          " — a field offered with nothing pointing at it reads as a deliberate "
+          "trap and was exactly how round 1's key went wrong")
     check("t2 contradiction fields are all in the closed vocabulary",
           all(c["field"] in truth.FIELD_VOCABULARY for c in truth.CONTRADICTIONS))
     check("t2 the answer is internally consistent",
@@ -287,9 +297,13 @@ def check_t2_grader():
     # contradictions: one missing, and one invented, must both be rejected
     for label, bad in [
         ("a missing contradiction", key["contradictions"][:-1]),
-        ("an invented contradiction",
-         key["contradictions"] + [{"claim_doc": "07", "authoritative_doc": "08",
-                                   "field": "unit_price"}]),
+        # The ADR pair. Round 1's arm-A run returned this alongside the
+        # pricing pair; the pricing pair turned out to be correct and is now in
+        # the key, this one is not, and the brief says why. Both readings are
+        # pinned here so neither can drift back into ambiguity.
+        ("the ADR pair, which is supersession rather than contradiction",
+         key["contradictions"] + [{"claim_doc": "05", "authoritative_doc": "06",
+                                   "field": "queue_client"}]),
         ("a right pair with the wrong field",
          [dict(c, field="owner") for c in key["contradictions"]]),
     ]:
