@@ -39,7 +39,16 @@ case "$ARM" in
     ;;
   b)
     ARM_LABEL="routed panel"
-    ARM_ENV=(AFORGE_ROUTER=on "AFORGE_PANEL=$HERE/panel.json")
+    # One variable, which is the whole interface: AFORGE_MODELS is either a
+    # comma-separated list of slugs or a path to a JSON panel
+    # (internal/router/panel.go). panel.json is written in that schema and
+    # carries its own justification in keys the router's decoder ignores.
+    #
+    # This corrects a guess. The harness was written before the router landed
+    # and assumed AFORGE_ROUTER=on plus AFORGE_PANEL; there is no AFORGE_ROUTER
+    # and the panel variable is named differently. The design said this block
+    # would be the only edit an arm-B run needed, and it was.
+    ARM_ENV=("AFORGE_MODELS=$HERE/panel.json")
     # Shared, and the runs go in sequence. This is the learning check: the
     # ledger carries what the router learned in run 1 into run 3, and the diff
     # between the routing events of the two is the measurement.
@@ -105,6 +114,15 @@ run_cell() {
   local goal
   goal="$(cat "$HERE/tasks/$task/GOAL.md")"
 
+  # The router's event log is append-only for the whole arm, so the rows this
+  # cell is responsible for are the ones after this mark. Event.Run cannot
+  # substitute: it is the run cache key, derived from the goal, and the goal is
+  # byte-identical across the three replicates of a task.
+  local events_before=0
+  if [ -f "$ledger/router-events.jsonl" ]; then
+    events_before=$(wc -l < "$ledger/router-events.jsonl" | tr -d ' ')
+  fi
+
   printf '%-14s r%-2s ' "$task" "$rep"
   local started plan_seconds run_seconds plan_code run_code
   started=$(date +%s)
@@ -136,28 +154,22 @@ run_cell() {
   # replicate really did start cold.
   cp -R "$ledger" "$cell/ledger-after" 2>/dev/null
 
+  # `aforge models` rendered against the ledger as it stands now. It reads the
+  # ledger and makes no API call, so it is free, and it is the only view of the
+  # ratings that shows observation counts next to them -- a rating backed by
+  # three observations and one backed by three hundred are different claims.
+  env "${ARM_ENV[@]}" AFORGE_PROFILE_DIR="$ledger" \
+    "$AFORGE_BIN" models > "$cell/models-after.txt" 2>&1
+
   python3 "$HERE/collect.py" \
     --arm "$ARM" --task "$task" --rep "$rep" --cell "$cell" \
     --workspace "$workspace" --tasks-dir "$HERE/tasks" \
     --plan-seconds "$plan_seconds" --run-seconds "$run_seconds" \
     --plan-exit "$plan_code" --run-exit "$run_code" \
-    --ledger-mode "$LEDGER_MODE" \
+    --ledger-mode "$LEDGER_MODE" --events-before "$events_before" \
     >> "$JSONL" 2>"$cell/collect.err"
 
-  # Read the row back through a heredoc rather than -c with an inline script:
-  # the single-quoted -c form cannot carry the double quotes an f-string needs,
-  # and the calibration round printed three SyntaxErrors instead of three
-  # results. The cells themselves were fine — only the progress line was lost —
-  # but a runner whose only live feedback is broken is a runner you cannot
-  # watch.
-  tail -1 "$JSONL" | python3 - <<'PY'
-import json, sys
-r = json.loads(sys.stdin.read())
-print(f"score {r['score']:.3f}  success={str(r['success']):5s}  "
-      f"${r['cost_usd']:.4f}  {r['wall_seconds']}s  "
-      f"{r['turns']} turns  {r['leaves_done']}/{r['leaves_total']} leaves  "
-      f"stops={r['stop_reasons']}")
-PY
+  python3 "$HERE/lastrow.py" "$JSONL"
 }
 
 # Cells run in sequence. Arm B needs it (the ledger has to carry forward in a
@@ -168,6 +180,19 @@ for rep in $(seq 1 "$REPS"); do
     run_cell "$task" "$rep"
   done
 done
+
+# The ledger and the event log as they finished, at a path that is committed
+# rather than under runs/ — the per-cell copies live in the gitignored results
+# tree, and the arm's final learned state is a deliverable in its own right.
+if [ "$LEDGER_MODE" = "shared" ]; then
+  FINAL="$HERE/ledger-arm${ARM}-${LEDGER_MODE}"
+  rm -rf "$FINAL"
+  mkdir -p "$FINAL"
+  cp -R "$SHARED_LEDGER/." "$FINAL/" 2>/dev/null
+  env "${ARM_ENV[@]}" AFORGE_PROFILE_DIR="$SHARED_LEDGER" \
+    "$AFORGE_BIN" models > "$FINAL/models.txt" 2>&1
+  echo "final ledger in $FINAL"
+fi
 
 echo
 python3 "$HERE/summarize.py" "$JSONL" --arm "$ARM"
