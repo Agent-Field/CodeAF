@@ -199,6 +199,21 @@ func TestPanelParsesBothForms(t *testing.T) {
 	if _, err := LoadPanel(filepath.Join(t.TempDir(), "panel.yaml")); err == nil {
 		t.Fatal("a YAML path must be refused with an explanation, not parsed as a slug")
 	}
+
+	// The tilde is the trap. OpenRouter's floating-alias prefix opens a slug and
+	// a home directory opens a path, and the harness's own default model is one
+	// of the first kind — so a single-model panel naming it must not be read as
+	// a filename.
+	alias, err := LoadPanel("~deepseek/deepseek-v4-flash-latest")
+	if err != nil {
+		t.Fatalf("a floating-alias slug was read as a path: %v", err)
+	}
+	if len(alias.Models) != 1 || alias.Models[0].Slug != "~deepseek/deepseek-v4-flash-latest" {
+		t.Fatalf("alias panel = %+v", alias.Models)
+	}
+	if !looksLikePath("~/.aforge/models.json") {
+		t.Fatal("a home-directory path was read as a slug")
+	}
 }
 
 // TestPanelRefusesAModelOverTheCap is the sanity cap doing what it is for. A
