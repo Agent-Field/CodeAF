@@ -1,0 +1,458 @@
+{
+  "n_rows": 72,
+  "models": [
+    "deepseek-v4-flash",
+    "glm-4.7",
+    "qwen3-30b-a3b"
+  ],
+  "n_tasks": 24,
+  "failure_base_rate": 0.2638888888888889,
+  "signal_table": [
+    {
+      "signal": "self_consistency (1-agreement)",
+      "family": "self_consistency",
+      "auroc": 0.5312810327706058,
+      "ci_lo": 0.38594145792288204,
+      "ci_hi": 0.6732626560599865,
+      "coverage": 72,
+      "cost_per_probe": 0.00016837847222222221,
+      "auroc_lift": 0.03128103277060579,
+      "lift_per_dollar": 185.7781007142158
+    },
+    {
+      "signal": "sc_secondary (1-majority/charsim)",
+      "family": "self_consistency",
+      "auroc": 0.4925521350546177,
+      "ci_lo": 0.3425549326850467,
+      "ci_hi": 0.6305567849445812,
+      "coverage": 72,
+      "cost_per_probe": 0.00016837847222222221,
+      "auroc_lift": -0.007447864945382299,
+      "lift_per_dollar": -44.23288112243215
+    },
+    {
+      "signal": "sc_length_cv",
+      "family": "self_consistency",
+      "auroc": 0.5134061569016882,
+      "ci_lo": 0.38154080472768814,
+      "ci_hi": 0.647321574082697,
+      "coverage": 72,
+      "cost_per_probe": 0.00016837847222222221,
+      "auroc_lift": 0.013406156901688226,
+      "lift_per_dollar": 79.6191860203784
+    },
+    {
+      "signal": "sketch_instability (1-jaccard)",
+      "family": "sketch",
+      "auroc": 0.5918570009930486,
+      "ci_lo": 0.43001504897814063,
+      "ci_hi": 0.7417126878809885,
+      "coverage": 72,
+      "cost_per_probe": 0.00012248,
+      "auroc_lift": 0.09185700099304861,
+      "lift_per_dollar": 749.9755143129377
+    },
+    {
+      "signal": "sketch_instability (1-charsim)",
+      "family": "sketch",
+      "auroc": 0.5779543197616683,
+      "ci_lo": 0.42632700456323336,
+      "ci_hi": 0.7248132353888003,
+      "coverage": 72,
+      "cost_per_probe": 0.00012248,
+      "auroc_lift": 0.07795431976166833,
+      "lift_per_dollar": 636.4657067412502
+    },
+    {
+      "signal": "verbalized_conf (1-conf)",
+      "family": "vconf",
+      "auroc": 0.5277777777777778,
+      "ci_lo": 0.37985752675979684,
+      "ci_hi": 0.6671079502279633,
+      "coverage": 68,
+      "cost_per_probe": 4.713763888888889e-05,
+      "auroc_lift": 0.02777777777777779,
+      "lift_per_dollar": 589.2908179651201
+    },
+    {
+      "signal": "logprob mean (negated)",
+      "family": "logprob",
+      "auroc": 0.9140625,
+      "ci_lo": 0.7788888888888889,
+      "ci_hi": 1.0,
+      "coverage": 24,
+      "cost_per_probe": 0.00012310416666666665,
+      "auroc_lift": 0.4140625,
+      "lift_per_dollar": 3363.513284819767
+    },
+    {
+      "signal": "logprob min (negated)",
+      "family": "logprob",
+      "auroc": 0.8515625,
+      "ci_lo": 0.679653354458042,
+      "ci_hi": 0.9857142857142858,
+      "coverage": 24,
+      "cost_per_probe": 0.00012310416666666665,
+      "auroc_lift": 0.3515625,
+      "lift_per_dollar": 2855.813166356406
+    },
+    {
+      "signal": "logprob p10 (negated)",
+      "family": "logprob",
+      "auroc": 0.859375,
+      "ci_lo": 0.6824342324342325,
+      "ci_hi": 0.9921976273148148,
+      "coverage": 24,
+      "cost_per_probe": 0.00012310416666666665,
+      "auroc_lift": 0.359375,
+      "lift_per_dollar": 2919.2756811643258
+    },
+    {
+      "signal": "logprob frac<-1",
+      "family": "logprob",
+      "auroc": 0.6875,
+      "ci_lo": 0.4804318211659664,
+      "ci_hi": 0.8889035087719297,
+      "coverage": 24,
+      "cost_per_probe": 0.00012310416666666665,
+      "auroc_lift": 0.1875,
+      "lift_per_dollar": 1523.100355390083
+    },
+    {
+      "signal": "logprob mean entropy",
+      "family": "logprob",
+      "auroc": 0.9453125,
+      "ci_lo": 0.8151260504201681,
+      "ci_hi": 1.0,
+      "coverage": 24,
+      "cost_per_probe": 0.00012310416666666665,
+      "auroc_lift": 0.4453125,
+      "lift_per_dollar": 3617.3633440514473
+    },
+    {
+      "signal": "logprob max entropy",
+      "family": "logprob",
+      "auroc": 0.828125,
+      "ci_lo": 0.6148015873015873,
+      "ci_hi": 0.9831932773109243,
+      "coverage": 24,
+      "cost_per_probe": 0.00012310416666666665,
+      "auroc_lift": 0.328125,
+      "lift_per_dollar": 2665.4256219326453
+    },
+    {
+      "signal": "feat:prompt_chars",
+      "family": "features",
+      "auroc": 0.7964250248262165,
+      "ci_lo": 0.6725764738598443,
+      "ci_hi": 0.9038464092533565,
+      "coverage": 72,
+      "cost_per_probe": 0.0,
+      "auroc_lift": 0.29642502482621647,
+      "lift_per_dollar": Infinity
+    },
+    {
+      "signal": "feat:n_tests",
+      "family": "features",
+      "auroc": 0.8232373386295928,
+      "ci_lo": 0.6918265716374269,
+      "ci_hi": 0.9313671760177836,
+      "coverage": 72,
+      "cost_per_probe": 0.0,
+      "auroc_lift": 0.3232373386295928,
+      "lift_per_dollar": Infinity
+    },
+    {
+      "signal": "feat:schema_depth",
+      "family": "features",
+      "auroc": 0.5342601787487586,
+      "ci_lo": 0.3989879675828665,
+      "ci_hi": 0.665845194747876,
+      "coverage": 72,
+      "cost_per_probe": 0.0,
+      "auroc_lift": 0.03426017874875864,
+      "lift_per_dollar": Infinity
+    },
+    {
+      "signal": "feat:n_constraint_words",
+      "family": "features",
+      "auroc": 0.7040714995034757,
+      "ci_lo": 0.5763431342364531,
+      "ci_hi": 0.8180645576131687,
+      "coverage": 72,
+      "cost_per_probe": 0.0,
+      "auroc_lift": 0.2040714995034757,
+      "lift_per_dollar": Infinity
+    },
+    {
+      "signal": "feat:n_digits",
+      "family": "features",
+      "auroc": 0.6757696127110229,
+      "ci_lo": 0.5307211538461538,
+      "ci_hi": 0.8046905048076923,
+      "coverage": 72,
+      "cost_per_probe": 0.0,
+      "auroc_lift": 0.17576961271102287,
+      "lift_per_dollar": Infinity
+    }
+  ],
+  "per_model_auroc": {
+    "self_consistency (1-agreement)|deepseek-v4-flash": 0.4,
+    "self_consistency (1-agreement)|glm-4.7": 0.5042016806722689,
+    "self_consistency (1-agreement)|qwen3-30b-a3b": 0.6328125,
+    "sc_secondary (1-majority/charsim)|deepseek-v4-flash": 0.325,
+    "sc_secondary (1-majority/charsim)|glm-4.7": 0.4789915966386555,
+    "sc_secondary (1-majority/charsim)|qwen3-30b-a3b": 0.625,
+    "sc_length_cv|deepseek-v4-flash": 0.6125,
+    "sc_length_cv|glm-4.7": 0.37815126050420167,
+    "sc_length_cv|qwen3-30b-a3b": 0.62890625,
+    "sketch_instability (1-jaccard)|deepseek-v4-flash": 0.7125,
+    "sketch_instability (1-jaccard)|glm-4.7": 0.680672268907563,
+    "sketch_instability (1-jaccard)|qwen3-30b-a3b": 0.5625,
+    "sketch_instability (1-charsim)|deepseek-v4-flash": 0.55625,
+    "sketch_instability (1-charsim)|glm-4.7": 0.6470588235294118,
+    "sketch_instability (1-charsim)|qwen3-30b-a3b": 0.62890625,
+    "verbalized_conf (1-conf)|deepseek-v4-flash": 0.29411764705882354,
+    "verbalized_conf (1-conf)|glm-4.7": 0.5462184873949579,
+    "verbalized_conf (1-conf)|qwen3-30b-a3b": 0.72265625,
+    "logprob mean (negated)|deepseek-v4-flash": null,
+    "logprob mean (negated)|glm-4.7": null,
+    "logprob mean (negated)|qwen3-30b-a3b": 0.9140625,
+    "logprob min (negated)|deepseek-v4-flash": null,
+    "logprob min (negated)|glm-4.7": null,
+    "logprob min (negated)|qwen3-30b-a3b": 0.8515625,
+    "logprob p10 (negated)|deepseek-v4-flash": null,
+    "logprob p10 (negated)|glm-4.7": null,
+    "logprob p10 (negated)|qwen3-30b-a3b": 0.859375,
+    "logprob frac<-1|deepseek-v4-flash": null,
+    "logprob frac<-1|glm-4.7": null,
+    "logprob frac<-1|qwen3-30b-a3b": 0.6875,
+    "logprob mean entropy|deepseek-v4-flash": null,
+    "logprob mean entropy|glm-4.7": null,
+    "logprob mean entropy|qwen3-30b-a3b": 0.9453125,
+    "logprob max entropy|deepseek-v4-flash": null,
+    "logprob max entropy|glm-4.7": null,
+    "logprob max entropy|qwen3-30b-a3b": 0.828125
+  },
+  "classifiers": {
+    "features|logreg": {
+      "auroc": 0.7576961271102284,
+      "ci": [
+        0.5966738703107237,
+        0.8885251450676982
+      ],
+      "brier": 0.18883058191928667,
+      "acc": 0.75
+    },
+    "features|gbt": {
+      "auroc": 0.7576961271102284,
+      "ci": [
+        0.6176638646190022,
+        0.8756207942947294
+      ],
+      "brier": 0.1845659858575244,
+      "acc": 0.7083333333333334
+    },
+    "probes|logreg": {
+      "auroc": 0.7676266137040715,
+      "ci": [
+        0.6510416666666666,
+        0.8719338522978369
+      ],
+      "brier": 0.18806209788377426,
+      "acc": 0.6805555555555556
+    },
+    "probes|gbt": {
+      "auroc": 0.6434955312810328,
+      "ci": [
+        0.4922994652406417,
+        0.7865762138188607
+      ],
+      "brier": 0.22290799715043277,
+      "acc": 0.7083333333333334
+    },
+    "combined|logreg": {
+      "auroc": 0.8381330685203575,
+      "ci": [
+        0.7249498663101605,
+        0.9321104045482927
+      ],
+      "brier": 0.16108850393851462,
+      "acc": 0.7916666666666666
+    },
+    "combined|gbt": {
+      "auroc": 0.8599801390268124,
+      "ci": [
+        0.7307531901649549,
+        0.9556651851947001
+      ],
+      "brier": 0.1440591677818629,
+      "acc": 0.7916666666666666
+    },
+    "combined+model|logreg": {
+      "auroc": 0.8411122144985105,
+      "ci": [
+        0.7346125730994153,
+        0.9285714285714286
+      ],
+      "brier": 0.15942215444784025,
+      "acc": 0.8055555555555556
+    },
+    "combined+model|gbt": {
+      "auroc": 0.8649453823237339,
+      "ci": [
+        0.7561387400495992,
+        0.9467834861217214
+      ],
+      "brier": 0.14161820752102175,
+      "acc": 0.7916666666666666
+    }
+  },
+  "best_classifier": "combined+model|gbt",
+  "op_95_solvable_retained": {
+    "thr": 0.7421083581201966,
+    "tp": 7,
+    "fp": 2,
+    "fn": 12,
+    "tn": 51,
+    "escalation_precision": 0.7777777777777778,
+    "failure_recall": 0.3684210526315789,
+    "solvable_retained": 0.9622641509433962,
+    "solvable_wrongly_escalated": 0.037735849056603765,
+    "escalation_rate": 0.125
+  },
+  "chow": {
+    "threshold": 0.21052631578947367,
+    "c_escalate": 5.0,
+    "c_fail": 20.0,
+    "c_attempt": 1.0,
+    "thr": 0.21052631578947367,
+    "tp": 13,
+    "fp": 7,
+    "fn": 6,
+    "tn": 46,
+    "escalation_precision": 0.65,
+    "failure_recall": 0.6842105263157895,
+    "solvable_retained": 0.8679245283018868,
+    "solvable_wrongly_escalated": 0.13207547169811318,
+    "escalation_rate": 0.2777777777777778
+  },
+  "calibration": {
+    "clf_ece": 0.08560556492607294,
+    "clf_brier": 0.14161820752102175,
+    "vconf_ece": 0.2676470588235294,
+    "vconf_brier": 0.2776470588235294,
+    "mean_stated_conf": 0.8970588235294118,
+    "actual_success": 0.7352941176470589
+  },
+  "policies": {
+    "always-cheap": {
+      "success": 0.6666666666666666,
+      "mean_cost": 0.00020554166666666667,
+      "cost_per_success": 0.00030831250000000005
+    },
+    "always-strongest-of-3": {
+      "success": 0.8333333333333334,
+      "mean_cost": 0.001174463333333333,
+      "cost_per_success": 0.0014093559999999996
+    },
+    "cheap-then-escalate-on-failure": {
+      "success": 0.9166666666666666,
+      "mean_cost": 0.0008953216666666668,
+      "cost_per_success": 0.0009767145454545455
+    },
+    "probe-then-route (Chow p*)": {
+      "success": 0.8333333333333334,
+      "mean_cost": 0.0013446091666666667,
+      "cost_per_success": 0.0016135309999999999
+    },
+    "probe-then-route (thr 0.5)": {
+      "success": 0.8333333333333334,
+      "mean_cost": 0.0010085708333333332,
+      "cost_per_success": 0.0012102849999999997
+    },
+    "oracle route (upper bound)": {
+      "success": 0.9166666666666666,
+      "mean_cost": 0.0008509508333333334,
+      "cost_per_success": 0.0009283100000000001
+    }
+  },
+  "probe_overhead_pct_of_attempt": {
+    "deepseek-v4-flash": 17.033879303738733,
+    "glm-4.7": 7.181178473093016,
+    "qwen3-30b-a3b": 82.09000608149199
+  },
+  "cheap_model": "qwen3-30b-a3b",
+  "strong_model": "deepseek-v4-flash",
+  "solve_rate": {
+    "deepseek-v4-flash": 0.8333333333333334,
+    "glm-4.7": 0.7083333333333334,
+    "qwen3-30b-a3b": 0.6666666666666666
+  },
+  "router_auroc_cheap_only": 0.9296875,
+  "router_op_at_chow": {
+    "thr": 0.21052631578947367,
+    "tp": 8,
+    "fp": 6,
+    "fn": 0,
+    "tn": 10,
+    "escalation_precision": 0.5714285714285714,
+    "failure_recall": 1.0,
+    "solvable_retained": 0.625,
+    "solvable_wrongly_escalated": 0.375,
+    "escalation_rate": 0.5833333333333334
+  },
+  "label_noise": {
+    "n": 72,
+    "flips": 5,
+    "flip_rate": 0.06944444444444445
+  },
+  "breakeven": {
+    "base_cheap_attempt": 0.00020554166666666667,
+    "probe_cost": 0.00016872916666666666,
+    "F_cross": {
+      "probe-then-route": null,
+      "probe-route-then-retry": null
+    },
+    "policies_at_F20": {
+      "always-cheap": {
+        "success": 0.6666666666666666,
+        "spend": 0.00020554166666666667,
+        "total": 0.0015758194444444446
+      },
+      "always-strong": {
+        "success": 0.8333333333333334,
+        "spend": 0.001174463333333333,
+        "total": 0.0018596022222222219
+      },
+      "cheap-then-escalate": {
+        "success": 0.9166666666666666,
+        "spend": 0.0008953216666666668,
+        "total": 0.0012378911111111113
+      },
+      "probe-then-route": {
+        "success": 0.8333333333333334,
+        "spend": 0.0013446091666666667,
+        "total": 0.0020297480555555554
+      },
+      "probe-route-then-retry": {
+        "success": 0.8333333333333334,
+        "spend": 0.0013446091666666667,
+        "total": 0.0020297480555555554
+      }
+    }
+  },
+  "latency_s": {
+    "probe_parallel": 1.7083333333333333,
+    "cheap_attempt": 9.817499999999999,
+    "strong_attempt": 45.574999999999996,
+    "always_cheap": 9.817499999999999,
+    "cheap_then_escalate": 35.65083333333333,
+    "probe_then_route": 32.384375
+  },
+  "truncation": {
+    "deepseek-v4-flash": 4,
+    "glm-4.7": 7,
+    "qwen3-30b-a3b": 0
+  }
+}

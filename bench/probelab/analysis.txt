@@ -1,0 +1,193 @@
+==============================================================================
+PROBE LAB ANALYSIS
+==============================================================================
+rows=72  models=['deepseek-v4-flash', 'glm-4.7', 'qwen3-30b-a3b']  tasks=24
+failure base rate = 19/72 = 0.264
+
+------------------------------------------------------------------------------
+1. PER-SIGNAL AUROC for predicting FAILURE (higher score = predicted failure)
+------------------------------------------------------------------------------
+signal                              pooled AUROC            n     $/probe    AUROC-1/2 per $ cov
+self_consistency (1-agreement)      0.531 [0.386,0.673]   72    0.000168           185.8  72/72
+sc_secondary (1-majority/charsim)   0.493 [0.343,0.631]   72    0.000168           -44.2  72/72
+sc_length_cv                        0.513 [0.382,0.647]   72    0.000168            79.6  72/72
+sketch_instability (1-jaccard)      0.592 [0.430,0.742]   72    0.000122           750.0  72/72
+sketch_instability (1-charsim)      0.578 [0.426,0.725]   72    0.000122           636.5  72/72
+verbalized_conf (1-conf)            0.528 [0.380,0.667]   68    0.000047           589.3  68/72
+logprob mean (negated)              0.914 [0.779,1.000]   24    0.000123          3363.5  24/72
+logprob min (negated)               0.852 [0.680,0.986]   24    0.000123          2855.8  24/72
+logprob p10 (negated)               0.859 [0.682,0.992]   24    0.000123          2919.3  24/72
+logprob frac<-1                     0.688 [0.480,0.889]   24    0.000123          1523.1  24/72
+logprob mean entropy                0.945 [0.815,1.000]   24    0.000123          3617.4  24/72
+logprob max entropy                 0.828 [0.615,0.983]   24    0.000123          2665.4  24/72
+
+per-model AUROC (pooled signals may hide model-specific behaviour)
+signal                              deepseek-v4-fla  glm-4.7          qwen3-30b-a3b    
+self_consistency (1-agreement)      0.400 (4f)       0.504 (7f)       0.633 (8f)       
+sc_secondary (1-majority/charsim)   0.325 (4f)       0.479 (7f)       0.625 (8f)       
+sc_length_cv                        0.613 (4f)       0.378 (7f)       0.629 (8f)       
+sketch_instability (1-jaccard)      0.713 (4f)       0.681 (7f)       0.562 (8f)       
+sketch_instability (1-charsim)      0.556 (4f)       0.647 (7f)       0.629 (8f)       
+verbalized_conf (1-conf)            0.294 (3f)       0.546 (7f)       0.723 (8f)       
+logprob mean (negated)              n/a              n/a              0.914 (8f)       
+logprob min (negated)               n/a              n/a              0.852 (8f)       
+logprob p10 (negated)               n/a              n/a              0.859 (8f)       
+logprob frac<-1                     n/a              n/a              0.688 (8f)       
+logprob mean entropy                n/a              n/a              0.945 (8f)       
+logprob max entropy                 n/a              n/a              0.828 (8f)       
+
+deterministic task features (free -- no API call)
+  prompt_chars              AUROC 0.796 [0.673,0.904]
+  n_tests                   AUROC 0.823 [0.692,0.931]
+  schema_depth              AUROC 0.534 [0.399,0.666]
+  n_constraint_words        AUROC 0.704 [0.576,0.818]
+  n_digits                  AUROC 0.676 [0.531,0.805]
+
+------------------------------------------------------------------------------
+2. CLASSIFIERS (leave-one-task-out CV: all 3 rows of a task are held out together)
+------------------------------------------------------------------------------
+feature set           model     AUROC (LOTO-CV)           Brier    acc@0.5
+features              logreg    0.758 [0.597,0.889]        0.189    0.750
+features              gbt       0.758 [0.618,0.876]        0.185    0.708
+probes                logreg    0.768 [0.651,0.872]        0.188    0.681
+probes                gbt       0.643 [0.492,0.787]        0.223    0.708
+combined              logreg    0.838 [0.725,0.932]        0.161    0.792
+combined              gbt       0.860 [0.731,0.956]        0.144    0.792
+combined+model        logreg    0.841 [0.735,0.929]        0.159    0.806
+combined+model        gbt       0.865 [0.756,0.947]        0.142    0.792
+
+(best single probe signal for reference: logprob mean entropy AUROC 0.945)
+BEST classifier: combined+model / gbt  AUROC=0.865
+
+------------------------------------------------------------------------------
+3. ASYMMETRIC OPERATING POINT (positive = escalate)
+------------------------------------------------------------------------------
+threshold with >=95% of truly-solvable tasks NOT escalated:
+  threshold                          = 0.7421
+  escalation precision               = 0.778 (7/9)
+  failure recall (caught)            = 0.368 (7/19)
+  truly-solvable wrongly escalated   = 0.038 (2/53)
+  overall escalation rate            = 0.125
+
+Chow rule with escalate=5.0x, failure=20.0x, cheap attempt=1.0x:
+  indifference threshold p* = (5.0-1.0)/(20.0-1.0) = 0.2105
+  escalation precision               = 0.650 (13/20)
+  failure recall                     = 0.684
+  truly-solvable wrongly escalated   = 0.132
+  escalation rate                    = 0.278
+
+  expected cost/task (units of one cheap attempt):
+    always-attempt      = 6.014
+    always-escalate     = 5.000
+    Chow-threshold      = 3.694
+    oracle-tuned thr 0.075 = 3.042
+
+------------------------------------------------------------------------------
+4. CALIBRATION
+------------------------------------------------------------------------------
+best classifier (combined+model/gbt) reliability (predicted P(fail) vs observed):
+  pred 0.050  observed 0.115  n=52
+  pred 0.244  observed 0.500  n=4
+  pred 0.534  observed 0.600  n=5
+  pred 0.693  observed 0.667  n=3
+  pred 0.914  observed 0.750  n=8
+  ECE = 0.086   Brier = 0.142
+
+verbalized confidence as a probability of success (n=68):
+  implied P(fail) 0.054  observed 0.286  n=63
+  implied P(fail) 0.300  observed 0.000  n=1
+  implied P(fail) 0.400  observed 0.000  n=1
+  implied P(fail) 0.967  observed 0.000  n=3
+  ECE = 0.268   Brier = 0.278
+  mean stated confidence = 0.897  vs  actual success rate = 0.735   -> overconfidence gap = 0.162
+
+------------------------------------------------------------------------------
+5. POLICY / ECONOMICS SIMULATION (real measured $ per call)
+------------------------------------------------------------------------------
+cheap model  = qwen3-30b-a3b (mean attempt $0.00021, solve 0.667)
+strong model = deepseek-v4-flash (mean attempt $0.00117, solve 0.833)
+   deepseek-v4-flash    solve=0.833 mean_attempt=$0.00117 mean_probe=$0.00020
+   glm-4.7              solve=0.708 mean_attempt=$0.01413 mean_probe=$0.00101
+   qwen3-30b-a3b        solve=0.667 mean_attempt=$0.00021 mean_probe=$0.00017
+
+router (cheap-model-only, combined features, LOTO-CV) AUROC = 0.930  (n=24, failures=8)
+  at the Chow threshold 0.211: escalates 14/24 tasks, precision=0.571, recall=1.000, solvable wrongly escalated=0.375
+  recall is 1.0, so no cheap-model failure survives routing -- which is why
+  'probe-then-route' and 'probe-route-then-retry' score identically below.
+
+policy                            success    mean $/task    $ per success
+always-cheap                      0.667      $0.00021       $0.00031
+always-strongest-of-3             0.833      $0.00117       $0.00141
+cheap-then-escalate-on-failure    0.917      $0.00090       $0.00098
+probe-then-route (Chow p*)        0.833      $0.00134       $0.00161
+probe-then-route (thr 0.5)        0.833      $0.00101       $0.00121
+oracle route (upper bound)        0.917      $0.00085       $0.00093
+
+probe overhead on the cheap model: $0.00017 probe vs $0.00021 attempt = 82.1% of attempt cost
+   deepseek-v4-flash    probe/attempt =  17.0%   (probe $0.00020, attempt $0.00117)
+   glm-4.7              probe/attempt =   7.2%   (probe $0.00101, attempt $0.01413)
+   qwen3-30b-a3b        probe/attempt =  82.1%   (probe $0.00017, attempt $0.00021)
+
+break-even analysis (does the probe pay for itself?)
+  probe-then-route buys +0.167 success for +0.00114 $/task
+  -> $0.00683 per extra solved task
+
+------------------------------------------------------------------------------
+6. BREAK-EVEN: at what task cost does the probe pay for itself?
+------------------------------------------------------------------------------
+Probe cost is ~fixed (7 short calls, output capped at 96-256 tokens); attempt cost
+scales with the size of the job. Sweep k = attempt-cost multiplier (k=1 is measured).
+
+'$ per success' is the wrong lens on its own: it never charges for a failure, so
+always-cheap wins by simply failing a third of the time for free. The decision-relevant
+quantity is total expected cost INCLUDING a downstream cost F for each unsolved task
+(a failed agent step costs a retry loop, a human, or a bad artifact). Sweep F.
+
+measured: cheap attempt $0.00021, probe $0.00017, strong attempt $0.00117
+
+policies at k=1 with no failure cost (F=0):
+   always-cheap              success=0.667  spend=$0.00021
+   always-strong             success=0.833  spend=$0.00117
+   cheap-then-escalate       success=0.917  spend=$0.00090
+   probe-then-route          success=0.833  spend=$0.00134
+   probe-route-then-retry    success=0.833  spend=$0.00134
+
+F (x cheap attempt)   always-cheap          always-strong         cheap-then-escalate   probe-then-route      probe-route-then-ret  winner
+0                     $0.00021              $0.00117              $0.00090              $0.00134              $0.00134              always-cheap
+1                     $0.00027              $0.00121              $0.00091              $0.00138              $0.00138              always-cheap
+5                     $0.00055              $0.00135              $0.00098              $0.00152              $0.00152              always-cheap
+10                    $0.00089              $0.00152              $0.00107              $0.00169              $0.00169              always-cheap
+20                    $0.00158              $0.00186              $0.00124              $0.00203              $0.00203              cheap-then-escalate
+50                    $0.00363              $0.00289              $0.00175              $0.00306              $0.00306              cheap-then-escalate
+100                   $0.00706              $0.00460              $0.00261              $0.00477              $0.00477              cheap-then-escalate
+500                   $0.03446              $0.01830              $0.00946              $0.01847              $0.01847              cheap-then-escalate
+
+probe-then-route is never the outright best policy at k=1 for any failure cost
+
+probe-route-then-retry is never the outright best policy at k=1 for any failure cost
+
+with F fixed at the Chow assumption (20x a cheap attempt), sweeping task size k:
+k       always-cheap          always-strong         cheap-then-escalate   probe-then-route      probe-route-then-ret  winner
+1       $0.00158              $0.00186              $0.00124              $0.00203              $0.00203              cheap-then-escalate
+2       $0.00315              $0.00372              $0.00248              $0.00389              $0.00389              cheap-then-escalate
+5       $0.00788              $0.00930              $0.00619              $0.00947              $0.00947              cheap-then-escalate
+10      $0.01576              $0.01860              $0.01238              $0.01878              $0.01878              cheap-then-escalate
+30      $0.04727              $0.05579              $0.03714              $0.05600              $0.05600              cheap-then-escalate
+100     $0.15758              $0.18596              $0.12379              $0.18627              $0.18627              cheap-then-escalate
+
+latency (mean s/task): probe(parallel)=1.7  cheap attempt=9.8  strong attempt=45.6
+  always-cheap=9.8   cheap-then-escalate=35.7   probe-then-route=32.4
+
+------------------------------------------------------------------------------
+7. LABEL NOISE (attempt re-run at identical settings)
+------------------------------------------------------------------------------
+  5/72 outcomes flipped = 6.9% label noise
+  This bounds the AUROC any predictor could achieve; a perfect predictor of the
+  *distribution* still mislabels flipped cells.
+    FLIP qwen3-30b-a3b     json_courses            False -> True
+    FLIP qwen3-30b-a3b     code_roman_strict       False -> True
+    FLIP glm-4.7           exact_committee         False -> True
+    FLIP glm-4.7           exact_dice              False -> True
+    FLIP qwen3-30b-a3b     exact_dice              True -> False
+
+wrote analysis.json and plots/*.png
