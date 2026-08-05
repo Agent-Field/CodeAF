@@ -1,0 +1,18 @@
+{
+  "goal": "__GOAL__",
+  "stages": [{ "title": "Implement", "summary": "One agent, one issue, start to finish." }],
+  "next_id": 2,
+  "nodes": [
+    {
+      "id": 1,
+      "stage": 1,
+      "depth": 0,
+      "title": "__TITLE__",
+      "summary": "__GOAL__",
+      "needs": [],
+      "state": "pending",
+      "kind": "work",
+      "brief": "__BRIEF__"
+    }
+  ]
+}
