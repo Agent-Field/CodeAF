@@ -15,6 +15,8 @@ import (
 	"context"
 	"fmt"
 	"time"
+
+	"github.com/Agent-Field/aforge-v2/internal/provider"
 )
 
 // Input is one upstream result routed into a task.
@@ -55,6 +57,13 @@ type Outcome struct {
 	Usage     Usage
 	Stop      StopReason
 	Elapsed   time.Duration
+
+	// Verdict is the same ending seen from the other side. Stop is written for a
+	// person reading the run; Verdict is written for whatever learns from it, and
+	// the two part company in exactly the case that matters — a leaf that
+	// produced text and stopped because it was out of budget reads as "budget"
+	// and grades as a failure.
+	Verdict provider.Verdict
 }
 
 // StopReason says how the loop ended. It is recorded rather than inferred
@@ -68,6 +77,13 @@ const (
 	StopBudget   StopReason = "budget"   // ran out of tokens; the leaf was too expensive
 	StopDeadline StopReason = "deadline" // ran out of wall clock
 	StopError    StopReason = "error"    // the provider failed in a way we could not absorb
+
+	// StopEmpty is the runaway-reasoning circuit breaker: a turn that spent most
+	// of what the leaf had left and returned no visible text at all. It is
+	// separate from StopError because nothing failed — the call succeeded and
+	// was paid for in full — and separate from StopDone because nothing was
+	// produced.
+	StopEmpty StopReason = "empty"
 )
 
 // Usage is the running cost of one task.
