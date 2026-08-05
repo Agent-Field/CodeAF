@@ -144,13 +144,20 @@ run_cell() {
     --ledger-mode "$LEDGER_MODE" \
     >> "$JSONL" 2>"$cell/collect.err"
 
-  tail -1 "$JSONL" | python3 -c '
+  # Read the row back through a heredoc rather than -c with an inline script:
+  # the single-quoted -c form cannot carry the double quotes an f-string needs,
+  # and the calibration round printed three SyntaxErrors instead of three
+  # results. The cells themselves were fine — only the progress line was lost —
+  # but a runner whose only live feedback is broken is a runner you cannot
+  # watch.
+  tail -1 "$JSONL" | python3 - <<'PY'
 import json, sys
 r = json.loads(sys.stdin.read())
-print(f"score {r[\"score\"]:.3f}  success={str(r[\"success\"]):5s}  "
-      f"${r[\"cost_usd\"]:.4f}  {r[\"wall_seconds\"]}s  "
-      f"{r[\"turns\"]} turns  {r[\"leaves_done\"]}/{r[\"leaves_total\"]} leaves  "
-      f"stops={r[\"stop_reasons\"]}")'
+print(f"score {r['score']:.3f}  success={str(r['success']):5s}  "
+      f"${r['cost_usd']:.4f}  {r['wall_seconds']}s  "
+      f"{r['turns']} turns  {r['leaves_done']}/{r['leaves_total']} leaves  "
+      f"stops={r['stop_reasons']}")
+PY
 }
 
 # Cells run in sequence. Arm B needs it (the ledger has to carry forward in a
