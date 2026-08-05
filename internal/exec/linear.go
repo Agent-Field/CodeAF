@@ -128,6 +128,8 @@ func (l *Linear) Run(ctx context.Context, task Task) (*Outcome, error) {
 	started := time.Now()
 	ctx, cancel := context.WithTimeout(ctx, l.deadline)
 	defer cancel()
+	deadline, _ := ctx.Deadline()
+	landingReserve := deadlineLandingReserve(time.Until(deadline))
 
 	tools := NewToolbox(l.workspace, task.NodeID, l.web)
 	definitions := tools.Definitions()
@@ -155,9 +157,10 @@ func (l *Linear) Run(ctx context.Context, task Task) (*Outcome, error) {
 	// What each tool result was, so a faded one can still be recognised.
 	labels := map[string]string{}
 	warned := false
-	// landing counts the reserved turns left after budget exhaustion; zero
-	// means the budget has not run out yet.
+	// landing counts the reserved turns left after the node has been told to
+	// finish; zero means no landing has begun yet.
 	landing := 0
+	landingStop := StopReason("")
 
 	// The observation window scales with the task's budget rather than sitting
 	// at a constant. The constant was tuned for the default budget, and a task
@@ -174,6 +177,16 @@ func (l *Linear) Run(ctx context.Context, task Task) (*Outcome, error) {
 	}
 
 	for turn := 0; turn < l.maxTurns; turn++ {
+		if landing == 0 && time.Until(deadline) <= landingReserve {
+			landing = landingTurns
+			landingStop = StopDeadline
+			trace.note("deadline close — landing reserve started")
+			messages = append(messages, ai.Message{Role: "user", Content: text(
+				"The wall-clock deadline for this task is close. Use the remaining time only to " +
+					"land the work safely. In order: make whatever you were changing consistent " +
+					"again; run the single quickest check that would catch breakage; fix only what " +
+					"it reveals. Do not start anything new. Then give your final answer.")})
+		}
 		outcome.Decayed += decayObservations(messages, labels, obsBudget)
 		response, err := l.complete(ctx, messages, definitions)
 		if err != nil {
@@ -301,25 +314,26 @@ func (l *Linear) Run(ctx context.Context, task Task) (*Outcome, error) {
 		// every turn always execute (they are paid for), and exhaustion buys a
 		// short landing instead of a guillotine: a few reserved turns whose only
 		// job is to leave the workspace consistent, checked, and answered.
-		if spent(outcome) >= l.maxTokens {
-			switch {
-			case landing == 0:
-				landing = landingTurns
-				trace.note("budget exhausted — landing reserve granted")
-				messages = append(messages, ai.Message{Role: "user", Content: text(
-					"The budget for this task is spent. You have a few final tool calls to land the " +
-						"work safely, and nothing more. In order: make whatever you were changing " +
-						"consistent again; run the single quickest check that would catch breakage; fix " +
-						"only what it reveals. Do not start anything new. Then give your final answer.")})
-			case landing == 1:
-				outcome.Stop = StopBudget
+		if spent(outcome) >= l.maxTokens && landing == 0 {
+			landing = landingTurns
+			landingStop = StopBudget
+			trace.note("budget exhausted — landing reserve granted")
+			messages = append(messages, ai.Message{Role: "user", Content: text(
+				"The budget for this task is spent. You have a few final tool calls to land the " +
+					"work safely, and nothing more. In order: make whatever you were changing " +
+					"consistent again; run the single quickest check that would catch breakage; fix " +
+					"only what it reveals. Do not start anything new. Then give your final answer.")})
+			continue
+		}
+		if landing > 0 {
+			if landing == 1 {
+				outcome.Stop = landingStop
 				outcome.Artifacts = l.workspace.Artifacts(task.NodeID)
 				outcome.Elapsed = time.Since(started)
 				outcome.Text = strings.TrimSpace(lastAssistantText(messages))
 				return outcome, nil
-			default:
-				landing--
 			}
+			landing--
 			continue
 		}
 
@@ -424,6 +438,16 @@ const wrapUpAt = 0.7
 // enough to keep working. The reserve is what stands between "budget reached"
 // and "workspace left broken mid-edit".
 const landingTurns = 4
+
+// deadlineLandingReserve leaves enough of a node's own deadline for a bounded
+// landing without taking more than two minutes away from long-running work.
+func deadlineLandingReserve(deadline time.Duration) time.Duration {
+	reserve := deadline / 10
+	if reserve > 2*time.Minute {
+		return 2 * time.Minute
+	}
+	return reserve
+}
 
 func spent(outcome *Outcome) int {
 	return outcome.Usage.PromptTokens + outcome.Usage.CompletionTokens

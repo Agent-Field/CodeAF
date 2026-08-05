@@ -17,6 +17,7 @@ import (
 type scriptedCompleter struct {
 	turns  [][]ai.ToolCall
 	errors []error
+	delays []time.Duration
 	seen   [][]ai.Message
 }
 
@@ -26,6 +27,13 @@ func (s *scriptedCompleter) CompleteWithMessages(ctx context.Context, messages [
 	s.seen = append(s.seen, copied)
 
 	index := len(s.seen) - 1
+	if index < len(s.delays) && s.delays[index] > 0 {
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		case <-time.After(s.delays[index]):
+		}
+	}
 	if index < len(s.errors) && s.errors[index] != nil {
 		return nil, s.errors[index]
 	}
@@ -63,6 +71,38 @@ func TestCallFailureRetriesAndCompletes(t *testing.T) {
 	}
 	if len(client.seen) != 3 {
 		t.Fatalf("calls = %d, want 3", len(client.seen))
+	}
+}
+
+func TestDeadlineExhaustionLandsWithTranscriptOutcome(t *testing.T) {
+	space := workspace(t)
+	client := &scriptedCompleter{
+		turns:  [][]ai.ToolCall{{call("c1", "write", `{"path":"result.txt","text":"partial"}`)}},
+		delays: []time.Duration{925 * time.Millisecond, time.Second},
+	}
+	linear := NewLinear(client, space, nil, 10, 1_000_000, time.Second)
+	outcome, err := linear.Run(context.Background(), Task{NodeID: 2, Brief: "work"})
+	if err == nil {
+		t.Fatal("deadline exhaustion returned no error")
+	}
+	if outcome.Stop != StopDeadline {
+		t.Fatalf("stop = %s, want deadline", outcome.Stop)
+	}
+	if outcome.Text == "" {
+		t.Fatal("deadline outcome discarded the last assistant text")
+	}
+	if len(outcome.Artifacts) == 0 {
+		t.Fatal("deadline outcome discarded the node artifacts")
+	}
+
+	var landed bool
+	for _, message := range client.seen[len(client.seen)-1] {
+		if message.Role == "user" && strings.Contains(message.Content[0].Text, "wall-clock deadline") {
+			landed = true
+		}
+	}
+	if !landed {
+		t.Fatal("deadline landing instruction was not added to the transcript")
 	}
 }
 
