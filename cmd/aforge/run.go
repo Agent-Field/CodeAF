@@ -183,7 +183,7 @@ func recordAndCalibrate(ctx context.Context, client plan.Completer, settings con
 			Turns:   node.Turns,
 			Tokens:  node.Tokens,
 			Stop:    node.Stop,
-			Done:    node.State == plan.StateDone,
+			Verdict: node.Verdict,
 		})
 	}
 

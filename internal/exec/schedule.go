@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/Agent-Field/aforge-v2/internal/plan"
+	"github.com/Agent-Field/aforge-v2/internal/provider"
 )
 
 // Scheduler drives a graph to completion.
@@ -28,6 +29,17 @@ type Scheduler struct {
 	// flight lands (mirroring the per-leaf landing reserve), never-started
 	// nodes are marked, and Run reports the stop reason.
 	Budget int
+
+	// Escalations is how many times a failed leaf may be re-run on a stronger
+	// model. Zero — the default — is exactly today's behaviour: a leaf that
+	// fails, fails. It is only worth setting when there is somewhere stronger to
+	// go, so the caller sets it from the panel rather than the scheduler
+	// assuming one exists.
+	//
+	// Only verdicts that a better model could plausibly fix count: running out
+	// of budget, running out of turns, returning nothing at all. A provider
+	// failure is weather and a rate limit is not cured by spending more.
+	Escalations int
 
 	// NodeTimeout is the watchdog on a single node. The executor has its own
 	// deadline, so this only fires when an executor is wedged past every
@@ -88,6 +100,10 @@ func (s *Scheduler) Run(ctx context.Context, graph *plan.Graph) error {
 	done := make(chan completion, len(graph.Nodes))
 	// When a node started, keyed by id. Doubles as the in-flight set.
 	inFlight := map[int]time.Time{}
+	// How many times each node has already been given up on. It is also the
+	// attempt number the leaf runs under, which is how a router is told to climb
+	// without the scheduler knowing what it is climbing.
+	retries := map[int]int{}
 	// Why launching stopped. Once set, nothing new starts, in-flight work
 	// lands, and Run reports it — a run may stop early, but it must never
 	// stop silently.
@@ -117,7 +133,7 @@ func (s *Scheduler) Run(ctx context.Context, graph *plan.Graph) error {
 				s.emit(Event{NodeID: id, Title: node.Title, State: plan.StateRunning, Elapsed: time.Since(started)})
 				task := s.taskFor(graph, node)
 				inFlight[id] = time.Now()
-				go s.work(ctx, id, task, done)
+				go s.work(ctx, id, task, retries[id], done)
 			}
 		}
 
@@ -138,7 +154,7 @@ func (s *Scheduler) Run(ctx context.Context, graph *plan.Graph) error {
 		case finished := <-done:
 			delete(inFlight, finished.nodeID)
 			lastProgress = time.Now()
-			s.apply(graph, finished.nodeID, finished.outcome, finished.err, started)
+			s.apply(graph, finished.nodeID, finished.outcome, finished.err, started, retries)
 		case <-ctx.Done():
 			// The run context being cancelled — an interrupt, an operator
 			// deadline — is a stop, not a vanishing act. In-flight nodes hold
@@ -187,12 +203,18 @@ type completion struct {
 // work runs one node and always reports back, even when the executor panics —
 // a panic that unwinds a worker silently would strand the scheduler waiting on
 // a completion that can never come.
-func (s *Scheduler) work(ctx context.Context, id int, task Task, done chan<- completion) {
+func (s *Scheduler) work(ctx context.Context, id int, task Task, attempt int, done chan<- completion) {
 	defer func() {
 		if recovered := recover(); recovered != nil {
 			done <- completion{nodeID: id, err: fmt.Errorf("executor panicked: %v", recovered)}
 		}
 	}()
+	// One leaf is one routable unit, opened here rather than inside the loop.
+	// Every turn the executor takes belongs to this slot, so a router picks a
+	// model once and the whole transcript stays on it — a leaf that changed
+	// model mid-loop would rewrite its prefix cache every turn and splice two
+	// lineages into one conversation.
+	ctx = provider.WithCallAttempt(ctx, provider.ClassExecLeaf, attempt)
 	outcome, err := s.registry.For("linear").Run(ctx, task)
 	done <- completion{nodeID: id, outcome: outcome, err: err}
 }
@@ -208,7 +230,10 @@ func (s *Scheduler) drain(graph *plan.Graph, done <-chan completion, inFlight ma
 		select {
 		case finished := <-done:
 			delete(inFlight, finished.nodeID)
-			s.apply(graph, finished.nodeID, finished.outcome, finished.err, started)
+			// No retries while draining: the run has already been told to stop,
+			// and putting a node back to pending here would leave it pending
+			// forever with nothing left to launch it.
+			s.apply(graph, finished.nodeID, finished.outcome, finished.err, started, nil)
 		case <-grace.C:
 			for id := range inFlight {
 				node := graph.Node(id)
@@ -364,7 +389,7 @@ func fallbackBrief(node *plan.Node) string {
 	return node.Summary
 }
 
-func (s *Scheduler) apply(graph *plan.Graph, nodeID int, outcome *Outcome, err error, started time.Time) {
+func (s *Scheduler) apply(graph *plan.Graph, nodeID int, outcome *Outcome, err error, started time.Time, retries map[int]int) {
 	node := graph.Node(nodeID)
 	if node == nil {
 		return
@@ -383,8 +408,26 @@ func (s *Scheduler) apply(graph *plan.Graph, nodeID int, outcome *Outcome, err e
 		node.Tokens = outcome.Usage.PromptTokens + outcome.Usage.CompletionTokens
 		node.Cost = outcome.Usage.Cost
 		node.Stop = string(outcome.Stop)
+		node.Verdict = outcome.Verdict
 		node.Artifacts = outcome.Artifacts
 		node.Result = outcome.Text
+	}
+	// A leaf that failed in a way a stronger model might fix is worth one more
+	// run. It is expressed by putting the node back to pending rather than by
+	// launching from here: the scheduler's own ready-and-launch path is the only
+	// place a node may start, and going through it keeps concurrency, budget and
+	// blocking checks applying to a retry exactly as they do to a first attempt.
+	//
+	// The spend already made is kept. It was really spent, and a retry that
+	// hid it would understate the run.
+	if s.Escalations > 0 && retries != nil && outcome != nil &&
+		retries[nodeID] < s.Escalations && outcome.Verdict.Escalates() {
+		retries[nodeID]++
+		node.State = plan.StatePending
+		s.emit(Event{NodeID: nodeID, Title: node.Title, State: plan.StatePending,
+			Detail:  fmt.Sprintf("%s — retrying on a stronger model", outcome.Verdict),
+			Elapsed: time.Since(started)})
+		return
 	}
 	if err != nil || outcome == nil || strings.TrimSpace(node.Result) == "" {
 		node.State = plan.StateFailed
