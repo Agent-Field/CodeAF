@@ -1,0 +1,188 @@
+package store
+
+import (
+	"context"
+	"database/sql"
+	"encoding/json"
+	"fmt"
+)
+
+// Rebuild discards and reconstructs both materialized views solely by replaying
+// the immutable event journal. The replacement happens in one transaction, so
+// readers never observe a half-rebuilt graph.
+func (s *Store) Rebuild() error {
+	tx, err := s.db.BeginTx(context.Background(), nil)
+	if err != nil {
+		return fmt.Errorf("rebuild: %w", err)
+	}
+	defer tx.Rollback()
+
+	events, err := readEvents(tx)
+	if err != nil {
+		return fmt.Errorf("rebuild: %w", err)
+	}
+	if len(events) == 0 {
+		return fmt.Errorf("rebuild: event journal has no spine event")
+	}
+	if _, err := tx.Exec(`DELETE FROM edges`); err != nil {
+		return fmt.Errorf("rebuild edges: %w", err)
+	}
+	if _, err := tx.Exec(`DELETE FROM nodes`); err != nil {
+		return fmt.Errorf("rebuild nodes: %w", err)
+	}
+	for _, event := range events {
+		if err := replayEvent(tx, event); err != nil {
+			return fmt.Errorf("replay event %d (%s): %w", event.Seq, event.Kind, err)
+		}
+	}
+
+	var roots, spine int
+	if err := tx.QueryRow(`SELECT COUNT(*), COUNT(*) FILTER (WHERE id = ?) FROM nodes WHERE parent_id IS NULL`, RootID).Scan(&roots, &spine); err != nil {
+		return fmt.Errorf("validate rebuilt spine: %w", err)
+	}
+	if roots != 1 || spine != 1 {
+		return fmt.Errorf("validate rebuilt spine: got %d roots (%d permanent)", roots, spine)
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("rebuild: %w", err)
+	}
+	return nil
+}
+
+func readEvents(tx *sql.Tx) ([]Event, error) {
+	rows, err := tx.Query(`SELECT seq, ts, node_id, kind, payload FROM events ORDER BY seq`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	events := make([]Event, 0)
+	for rows.Next() {
+		var event Event
+		var timestamp, payload string
+		if err := rows.Scan(&event.Seq, &timestamp, &event.NodeID, &event.Kind, &payload); err != nil {
+			return nil, err
+		}
+		parsed, err := parseTime(timestamp)
+		if err != nil {
+			return nil, fmt.Errorf("parse event %d time: %w", event.Seq, err)
+		}
+		event.Time = parsed
+		event.Payload = json.RawMessage(payload)
+		events = append(events, event)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return events, nil
+}
+
+func replayEvent(tx *sql.Tx, event Event) error {
+	switch event.Kind {
+	case EventSpineCreated:
+		var payload spinePayload
+		if err := json.Unmarshal(event.Payload, &payload); err != nil {
+			return err
+		}
+		_, err := tx.Exec(`
+			INSERT INTO nodes (
+			    id, parent_id, brief, stage, status, origin, session_id,
+			    intent, created_seq, created_order, updated_seq, started_at
+			) VALUES (?, NULL, ?, 0, ?, ?, ?, ?, ?, 0, ?, ?)`,
+			payload.ID, payload.Brief, Running, payload.Provenance.Origin,
+			nullIfEmpty(payload.Provenance.SessionID), payload.Provenance.Intent,
+			event.Seq, event.Seq, formatTime(event.Time))
+		return err
+
+	case EventSubtreeSpliced:
+		var payload splicedPayload
+		if err := json.Unmarshal(event.Payload, &payload); err != nil {
+			return err
+		}
+		return applySpliceView(tx, payload, event.Seq)
+
+	case EventNodeClaimed:
+		var payload claimPayload
+		if err := json.Unmarshal(event.Payload, &payload); err != nil {
+			return err
+		}
+		return replayUpdate(tx, event.NodeID, `
+			UPDATE nodes
+			SET status = ?, owner = ?, claim_token = ?, attempt = attempt + 1, updated_seq = ?
+			WHERE id = ?`, Claimed, payload.Owner, payload.Token, event.Seq, event.NodeID)
+
+	case EventNodeStarted:
+		var payload claimPayload
+		if err := json.Unmarshal(event.Payload, &payload); err != nil {
+			return err
+		}
+		return replayUpdate(tx, event.NodeID, `
+			UPDATE nodes
+			SET status = ?, owner = ?, claim_token = ?, started_at = ?, updated_seq = ?
+			WHERE id = ?`, Running, payload.Owner, payload.Token,
+			formatTime(event.Time), event.Seq, event.NodeID)
+
+	case EventNodeCompleted:
+		var payload completePayload
+		if err := json.Unmarshal(event.Payload, &payload); err != nil {
+			return err
+		}
+		return replayUpdate(tx, event.NodeID, `
+			UPDATE nodes
+			SET status = ?, owner = ?, claim_token = ?, summary = ?, finished_at = ?, updated_seq = ?
+			WHERE id = ?`, Done, payload.Owner, payload.Token, payload.Summary,
+			formatTime(event.Time), event.Seq, event.NodeID)
+
+	case EventNodeFailed:
+		var payload failPayload
+		if err := json.Unmarshal(event.Payload, &payload); err != nil {
+			return err
+		}
+		return replayUpdate(tx, event.NodeID, `
+			UPDATE nodes
+			SET status = ?, owner = ?, claim_token = ?, error = ?, finished_at = ?, updated_seq = ?
+			WHERE id = ?`, Failed, payload.Owner, payload.Token, payload.Message,
+			formatTime(event.Time), event.Seq, event.NodeID)
+
+	case EventNodeReleased:
+		var payload releasePayload
+		if err := json.Unmarshal(event.Payload, &payload); err != nil {
+			return err
+		}
+		return replayUpdate(tx, event.NodeID, `
+			UPDATE nodes
+			SET status = ?, owner = '', claim_token = ?, started_at = NULL, updated_seq = ?
+			WHERE id = ?`, Pending, payload.NextToken, event.Seq, event.NodeID)
+
+	case EventSubtreeFolded:
+		var payload foldPayload
+		if err := json.Unmarshal(event.Payload, &payload); err != nil {
+			return err
+		}
+		pointers, err := json.Marshal(payload.Pointers)
+		if err != nil {
+			return err
+		}
+		return applyFoldView(tx, event.NodeID, payload.Digest, string(pointers), event.Seq)
+
+	default:
+		// The journal is expected to gain accounting and artifact events that do
+		// not affect these two views. Unknown kinds therefore remain durable but
+		// are intentionally a no-op during graph reconstruction.
+		return nil
+	}
+}
+
+func replayUpdate(tx *sql.Tx, nodeID, statement string, args ...any) error {
+	result, err := tx.Exec(statement, args...)
+	if err != nil {
+		return err
+	}
+	changed, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if changed != 1 {
+		return fmt.Errorf("event targets missing node %q", nodeID)
+	}
+	return nil
+}
