@@ -16,10 +16,13 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT="$(cd "$HERE/../.." && pwd)"
 
 ARM="${ARM:-a}"
+# Uppercased for every path this writes: the deliverables are results-armA
+# and results-armB, and taking the case from $ARM produced results-armb.jsonl.
+ARM_UC="$(printf "%s" "$ARM" | tr "[:lower:]" "[:upper:]")"
 TASKS="${TASKS:-t1-logstore t2-synthesis t3-shiftplan}"
 REPS="${REPS:-3}"
-RESULTS="${RESULTS:-$HERE/runs/arm$ARM-$(date +%Y%m%d-%H%M%S)}"
-JSONL="${JSONL:-$HERE/results-arm$ARM.jsonl}"
+RESULTS="${RESULTS:-$HERE/runs/arm$ARM_UC-$(date +%Y%m%d-%H%M%S)}"
+JSONL="${JSONL:-$HERE/results-arm$ARM_UC.jsonl}"
 
 # ── the one thing that differs between the arms ─────────────────────────────
 #
@@ -185,7 +188,7 @@ done
 # rather than under runs/ — the per-cell copies live in the gitignored results
 # tree, and the arm's final learned state is a deliverable in its own right.
 if [ "$LEDGER_MODE" = "shared" ]; then
-  FINAL="$HERE/ledger-arm${ARM}-${LEDGER_MODE}"
+  FINAL="$HERE/ledger-arm${ARM_UC}-${LEDGER_MODE}"
   rm -rf "$FINAL"
   mkdir -p "$FINAL"
   cp -R "$SHARED_LEDGER/." "$FINAL/" 2>/dev/null
