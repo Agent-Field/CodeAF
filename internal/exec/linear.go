@@ -156,6 +156,10 @@ func (l *Linear) Run(ctx context.Context, task Task) (*Outcome, error) {
 	seen := map[string]string{}
 	// What each tool result was, so a faded one can still be recognised.
 	labels := map[string]string{}
+	// fade shortens old observations losslessly: before a result is stubbed
+	// its bytes go to a spill file the agent can re-read with sh. The decayer
+	// carries the once-per-result bookkeeping across turns.
+	fade := newDecayer(labels, tools.decaySpill)
 	warned := false
 	// landing counts the reserved turns left after the node has been told to
 	// finish; zero means no landing has begun yet.
@@ -187,7 +191,7 @@ func (l *Linear) Run(ctx context.Context, task Task) (*Outcome, error) {
 					"again; run the single quickest check that would catch breakage; fix only what " +
 					"it reveals. Do not start anything new. Then give your final answer.")})
 		}
-		outcome.Decayed += decayObservations(messages, labels, obsBudget)
+		outcome.Decayed += fade.decay(messages, obsBudget)
 		response, err := l.complete(ctx, messages, definitions)
 		if err != nil {
 			outcome.Stop = StopError
