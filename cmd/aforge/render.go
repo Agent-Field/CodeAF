@@ -26,7 +26,7 @@ func render(graph *plan.Graph) {
 // disagree with — and the cheapest thing to correct, since everything below
 // inherits them.
 func renderGround(graph *plan.Graph) {
-	if len(graph.Settled) == 0 && len(graph.Open) == 0 {
+	if len(graph.Settled) == 0 && len(graph.Open) == 0 && graph.Evidence == "" {
 		return
 	}
 	fmt.Printf("\n── settled ─────────────────────────────────────────────────────────\n")
@@ -35,6 +35,9 @@ func renderGround(graph *plan.Graph) {
 	}
 	for _, item := range graph.Open {
 		fmt.Printf("  ? %s  (decided by the work)\n", item)
+	}
+	if graph.Evidence != "" {
+		fmt.Printf("  ⊢ %s  (evidence standard)\n", graph.Evidence)
 	}
 }
 

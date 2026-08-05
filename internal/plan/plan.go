@@ -4,9 +4,11 @@
 // The graph is generated through a spine of ordered stages and then immediately
 // freed from it. Stages exist for two reasons, neither of which is scheduling.
 // They keep generation cheap, because a stage can be fanned out knowing only
-// the spine, so every stage expands at the same time. And they make the result
-// acyclic without a cycle check, because a generated dependency may only point
-// at an earlier stage. Once the real edges are known, stage membership gates
+// the spine, so every stage expands at the same time. And they keep the result
+// acyclic almost for free, because a generated dependency may only point at an
+// earlier stage — or, in the single case where one part changes the material its
+// siblings work on, at another node of the same stage, which is the one edge
+// that is cycle-checked. Once the real edges are known, stage membership gates
 // nothing: a node that needs no input starts immediately, whichever stage
 // produced it.
 //
@@ -14,7 +16,7 @@
 //
 //	spine    1 call     ordered stages — the only serial call in the system
 //	fan-out  S calls    every stage split into simultaneous parts, at once
-//	bind     S-1 calls  what each node reads, and what duplicates what
+//	bind     ≤S calls   what each node reads or waits behind, and what duplicates what
 //	audit    S-1 calls  what each node is missing — the counterweight to bind
 //
 // Bind and audit are deliberately opposed. Bind is written to resist the
@@ -164,9 +166,9 @@ func Build(ctx context.Context, client Completer, goal string, options Options) 
 	}()
 	go func() {
 		defer opening.Done()
-		settled, open, usage, err := Ground(ctx, client, goal)
+		grounding, usage, err := Ground(ctx, client, goal)
 		groundUsage.Add(usage)
-		graph.Settled, graph.Open, groundErr = settled, open, err
+		graph.Settled, graph.Open, graph.Evidence, groundErr = grounding.Settled, grounding.Open, grounding.Evidence, err
 	}()
 	opening.Wait()
 	if spineErr != nil {
@@ -219,9 +221,10 @@ func Build(ctx context.Context, client Completer, goal string, options Options) 
 	graph.Usage.merge(sizeUsage)
 	report("bind+size", time.Since(start), fmt.Sprintf("%s, %s", plural(graph.Edges(), "edge"), sizeSummary(graph)))
 
-	// Stage 1 is settled already. Bind and audit both skip it — it has no
-	// earlier stage to point at — so once sizing has run and we know which
-	// nodes will be expanded, every stage-1 node that is not a candidate is
+	// Stage 1 is settled already. Binding has run over it — the only edge it can
+	// take is a sibling that changes what it works on — and audit skips it, since
+	// it has no earlier stage to point at. So once sizing has run and we know
+	// which nodes will be expanded, every stage-1 node that is not a candidate is
 	// final. Announcing them here rather than at the end is most of the win:
 	// they are also the nodes most likely to have no dependencies, which makes
 	// them exactly the ones something could start on immediately.
@@ -315,7 +318,7 @@ func announce(graph *Graph, options Options, settled map[int]bool, briefs *brief
 				inputs = append(inputs, fmt.Sprintf("%q (%s)", source.Title, source.Summary))
 			}
 		}
-		briefs.launch(shared, *node, inputs)
+		briefs.launch(shared, *node, inputs, graph.deliverableLine(node.ID))
 		if len(node.Needs) == 0 && options.OnReady != nil {
 			options.OnReady(*node, elapsed)
 		}
