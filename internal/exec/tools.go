@@ -3,6 +3,7 @@ package exec
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -10,6 +11,7 @@ import (
 	"regexp"
 	"strings"
 	"sync/atomic"
+	"syscall"
 	"time"
 
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
@@ -204,10 +206,31 @@ func (t *Toolbox) sh(ctx context.Context, args map[string]any) Result {
 
 	cmd := exec.CommandContext(runCtx, "bash", "-lc", command)
 	cmd.Dir = t.workspace.Root()
+	// A command that leaves a background child sharing its stdout used to hang
+	// the whole run: killing bash at the timeout is not enough, because Wait
+	// blocks until every inherited pipe writer exits, and a scheduler goroutine
+	// stuck there wedges the graph silently and forever. The process group
+	// makes the timeout kill reach grandchildren, and WaitDelay force-closes
+	// the pipes shortly after bash itself is gone for anything that survives —
+	// a stuck tool call must cost its timeout, never the run.
+	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+	cmd.Cancel = func() error {
+		if cmd.Process == nil {
+			return os.ErrProcessDone
+		}
+		return syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL)
+	}
+	cmd.WaitDelay = 3 * time.Second
 	output, err := cmd.CombinedOutput()
 	body := clamp(string(output))
 	if runCtx.Err() == context.DeadlineExceeded {
 		return errorf("command timed out after %ds. Partial output:\n%s", seconds, body)
+	}
+	if errors.Is(err, exec.ErrWaitDelay) {
+		// The command itself finished; something it started in the background
+		// kept the output pipe open until the grace ran out. That is a
+		// completed command with a detached child, not a failure.
+		return Result{Content: body + "\n(a background process the command started was left running detached)"}
 	}
 	if err != nil {
 		// The exit status matters less than the output; a build failure's value

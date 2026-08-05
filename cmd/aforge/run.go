@@ -5,9 +5,11 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"os/signal"
 	"path/filepath"
 	"sort"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/Agent-Field/aforge-v2/internal/config"
@@ -23,8 +25,9 @@ func runExecute(args []string) error {
 	concurrency := flags.Int("j", 8, "how many leaves may run at once")
 	maxTurns := flags.Int("turns", 200, "runaway backstop on iterations per leaf")
 	maxTokens := flags.Int("budget", 150000, "token budget per leaf — the limit that actually binds")
+	runBudget := flags.Int("run-budget", 0, "global token budget for the whole run; once passed, nothing new launches and in-flight leaves land (0 = per-leaf budgets only)")
 	contracts := flags.Bool("contracts", true, "write a per-leaf working method before executing")
-	if err := flags.Parse(reorder(args, map[string]bool{"w": true, "o": true, "j": true, "turns": true, "budget": true})); err != nil {
+	if err := flags.Parse(reorder(args, map[string]bool{"w": true, "o": true, "j": true, "turns": true, "budget": true, "run-budget": true})); err != nil {
 		return err
 	}
 	rest := flags.Args()
@@ -101,6 +104,11 @@ func runExecute(args []string) error {
 	}
 	linear := exec.NewLinear(client, space, web, *maxTurns, *maxTokens, deadline)
 	scheduler := exec.NewScheduler(exec.NewRegistry(linear), space, *concurrency)
+	scheduler.Budget = *runBudget
+	// The watchdog sits above every deadline a leaf was given: it only fires
+	// when an executor is wedged past all of them, and it turns that from a
+	// silent forever-hang into a recorded failure the run survives.
+	scheduler.NodeTimeout = deadline + 2*time.Minute
 	clock := newClockWatch()
 	scheduler.OnEvent = func(event exec.Event) {
 		clock.sample()
@@ -117,11 +125,18 @@ func runExecute(args []string) error {
 
 	fmt.Printf("\n── executing ───────────────────────────────────────────────────────\n")
 	start := time.Now()
+	// An interrupt must land the run, not vanish it: a Go process dies on
+	// Ctrl+C with nothing written, which is indistinguishable from a crash.
+	// Routed through the context instead, the scheduler stops launching,
+	// drains what is in flight, and the summary below still prints.
+	runCtx, stopSignals := signal.NotifyContext(settings.ExecContext(ctx), os.Interrupt, syscall.SIGTERM)
+	defer stopSignals()
 	// The executor gets its own reasoning level. The run-wide context carries
 	// the planning economy (reasoning off), which is right for briefs and wrong
 	// for the loop: an agent that cannot think between tool calls writes
 	// nothing down and never converges.
-	runErr := scheduler.Run(settings.ExecContext(ctx), graph)
+	runErr := scheduler.Run(runCtx, graph)
+	stopSignals()
 
 	graph.Usage.Calls += scheduler.Usage().Calls
 	graph.Usage.PromptTokens += scheduler.Usage().PromptTokens
@@ -130,7 +145,7 @@ func runExecute(args []string) error {
 	graph.Usage.Cost += scheduler.Usage().Cost
 	clock.sample()
 	recordAndCalibrate(ctx, client, settings, graph)
-	renderRunSummary(graph, space, scheduler.Usage(), time.Since(start), clock)
+	renderRunSummary(graph, space, scheduler.Usage(), time.Since(start), clock, runErr)
 	if *output != "" {
 		encoded, err := graph.JSON()
 		if err != nil {
@@ -241,8 +256,8 @@ func (c *clockWatch) jumped() (int, bool) {
 	return int(c.gap.Minutes()), c.gap >= clockJumpThreshold
 }
 
-func renderRunSummary(graph *plan.Graph, space *exec.Workspace, usage exec.Usage, elapsed time.Duration, clock *clockWatch) {
-	var done, failed, blocked, turns int
+func renderRunSummary(graph *plan.Graph, space *exec.Workspace, usage exec.Usage, elapsed time.Duration, clock *clockWatch, runErr error) {
+	var done, failed, blocked, inFlight, neverStarted, turns int
 	for _, node := range graph.Nodes {
 		switch node.State {
 		case plan.StateDone:
@@ -251,6 +266,10 @@ func renderRunSummary(graph *plan.Graph, space *exec.Workspace, usage exec.Usage
 			failed++
 		case plan.StateBlocked:
 			blocked++
+		case plan.StateRunning:
+			inFlight++
+		case plan.StatePending:
+			neverStarted++
 		}
 		turns += node.Turns
 	}
@@ -305,15 +324,32 @@ func renderRunSummary(graph *plan.Graph, space *exec.Workspace, usage exec.Usage
 	if blocked > 0 {
 		fmt.Printf(", %d blocked", blocked)
 	}
+	if inFlight > 0 {
+		fmt.Printf(", %d in flight when the run stopped", inFlight)
+	}
+	if neverStarted > 0 {
+		fmt.Printf(", %d never started", neverStarted)
+	}
 	fmt.Printf("  |  %d agent turns  |  %d calls  |  %d in (%d cached) / %d out  |  $%.4f  |  %s\n",
 		turns, usage.Calls, usage.PromptTokens, usage.CachedTokens, usage.CompletionTokens, usage.Cost,
 		elapsed.Round(time.Second))
+	// The stop reason is part of the summary, not something to reconstruct
+	// from a bare exit code: a run that stopped early must say so here, next
+	// to the accounting of what it managed before stopping.
+	if runErr != nil {
+		fmt.Printf("  stopped early: %v\n", runErr)
+	}
 	if minutes, ok := clock.jumped(); ok {
 		fmt.Printf("  clock jumped %dm — machine likely slept; timings unreliable\n", minutes)
 	}
 	for _, node := range graph.Nodes {
-		if node.State == plan.StateFailed || node.State == plan.StateBlocked {
+		switch node.State {
+		case plan.StateFailed, plan.StateBlocked:
 			fmt.Printf("    %2d %-24s %s: %s\n", node.ID, clip(node.Title, 24), node.State, node.Failure)
+		case plan.StateRunning:
+			fmt.Printf("    %2d %-24s in flight when the run stopped\n", node.ID, clip(node.Title, 24))
+		case plan.StatePending:
+			fmt.Printf("    %2d %-24s never started\n", node.ID, clip(node.Title, 24))
 		}
 	}
 }
