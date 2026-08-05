@@ -14,6 +14,14 @@ seems more sensible.
    affected service, and the duration of customer impact come from the incident
    report filed for it. No other document may adjust them.
 
+   **An incident filed more than once is still one incident.** Two reports
+   describing the same event — same service, same night, same cause — are one
+   incident, counted once. The **earliest filing** is authoritative and the
+   later one is superseded, whatever either says about its own completeness.
+   Counting a re-filing as a second incident is the most expensive mistake
+   available in this corpus, because it inflates every total that depends on
+   it.
+
 3. **Architecture decisions are owned by the newest ADR that has not been
    superseded.** An ADR whose status line says it was superseded is not
    authoritative for anything, including the parts the superseding ADR did not

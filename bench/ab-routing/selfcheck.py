@@ -119,9 +119,30 @@ def check_t2_corpus():
           re.search(r"Effective date:\*\*\s*2026-03-01", current) is not None
           and re.search(r"Effective date:\*\*\s*2025-11-01", superseded) is not None)
     for tech, cents in truth.PRICE_CENTS_PER_10K.items():
+        if tech in truth.TIERS:
+            continue          # tiered technologies are checked below
         row = re.search(rf"\|\s*{re.escape(tech)}\s*\|\s*(\d+) cents per 10,000", current)
         check(f"t2 pricing {tech}", row is not None and int(row.group(1)) == cents,
               f"document says {row.group(1) if row else None}, truth says {cents}")
+    # the round-2 tier, read out of the document rather than trusted
+    for tech, tier in truth.TIERS.items():
+        threshold = f"{tier['threshold_messages']:,}"
+        check(f"t2 tier {tech}: threshold is in the document",
+              threshold in current, f"looking for {threshold}")
+        check(f"t2 tier {tech}: first-tier rate is in the document",
+              re.search(rf"the first {re.escape(threshold)}\s*\|\s*"
+                        rf"{truth.PRICE_CENTS_PER_10K[tech]} cents", current) is not None)
+        check(f"t2 tier {tech}: above-tier rate is in the document",
+              re.search(rf"above {re.escape(threshold)}\s*\|\s*"
+                        rf"{tier['above_cents_per_10k']} cents", current) is not None)
+        check(f"t2 tier {tech}: the estate actually crosses the threshold",
+              truth.monthly_messages_by_queue()[tech] > tier["threshold_messages"],
+              "a tier nobody reaches changes no answer and traps nothing")
+    check("t2 the tier changes the answer",
+          truth.monthly_cost_usd_cents() != sum(
+              (m["msgs_per_day"] * truth.BILLING_DAYS // 10_000)
+              * truth.PRICE_CENTS_PER_10K[m["queue"]] for m in truth.CATALOG.values()),
+          "tiered and flat pricing give the same total, so the tier is invisible")
     check("t2 pricing: the superseded schedule really does differ",
           any(re.search(rf"\|\s*{re.escape(t)}\s*\|\s*(\d+) cents", superseded).group(1)
               != str(c) for t, c in truth.PRICE_CENTS_PER_10K.items()),
@@ -157,8 +178,8 @@ def check_t2_corpus():
           "rabbit-legacy" in adr11 and "kafka-shared" in adr11
           and "deprecated as of this ADR" in adr11
           and truth.DEPRECATED_QUEUES == {"rabbit-legacy", "kafka-shared"})
-    check("t2 superseded_docs matches the two superseded documents",
-          sorted(truth.SUPERSEDED_DOCS) == ["05", "07"])
+    check("t2 superseded_docs matches the three superseded documents",
+          sorted(truth.SUPERSEDED_DOCS) == ["05", "07", "10"])
 
     # The planted contradictions must actually be present in the claiming docs.
     notes = read("09-oncall-notes.md")
@@ -183,11 +204,32 @@ def check_t2_corpus():
     check("t2 the answer is internally consistent",
           truth.most_impacted_service() == "svc-auth"
           and truth.total_incident_minutes() == 490
-          and truth.monthly_cost_usd_cents() == 257820)
+          and truth.monthly_cost_usd_cents() == 224820,
+          f"minutes={truth.total_incident_minutes()} "
+          f"cost={truth.monthly_cost_usd_cents()}")
 
     # The corpus must be readable at all: ten documents, no more, no fewer.
     files = sorted(os.listdir(CORPUS))
-    check("t2 corpus has exactly ten documents", len(files) == 10, str(files))
+    check("t2 corpus has exactly eleven documents", len(files) == 11, str(files))
+
+    # the round-2 duplicate filing
+    refiled = read("10-incident-2026-02-27-refiled.md")
+    original = read("04-incident-2026-02-27.md")
+    check("t2 refiling 10: same service and night as doc 04",
+          "**Affected service:** svc-auth" in refiled and "2026-02-27" in refiled)
+    check("t2 refiling 10: states a different duration from doc 04",
+          "3 hours and 5 minutes" in refiled
+          and truth.REFILINGS["10"]["claimed_minutes"] != truth.INCIDENTS["04"]["minutes"])
+    check("t2 refiling 10: doc 04 is demonstrably the earlier filing",
+          "2026-02-28 03:10" in original and "2026-03-02 09:20" in refiled)
+    check("t2 refiling 10: RULES states the one-incident rule",
+          "filed more than once is still one incident" in read("RULES.md"))
+    check("t2 refiling 10: it is not counted as a fourth incident",
+          "10" not in truth.INCIDENTS and truth.total_incident_minutes() == 490)
+    check("t2 refiling 10: it is superseded and it contradicts doc 04",
+          "10" in truth.SUPERSEDED_DOCS
+          and {"claim_doc": "10", "authoritative_doc": "04",
+               "field": "incident_duration_minutes"} in truth.CONTRADICTIONS)
 
 
 # ---------------------------------------------------------------------------
