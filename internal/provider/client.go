@@ -259,6 +259,27 @@ func (c *Client) isOpenRouter() bool {
 		strings.HasPrefix(strings.ToLower(c.config.Model), "openrouter/")
 }
 
+// adaptiveCompletionTimeout accounts for reasoning and output tokens being
+// generated serially. It scales at one second per 64 requested tokens, keeps
+// the old five-minute timeout as its floor, and caps wedged calls at 15 minutes.
+func adaptiveCompletionTimeout(maxTokens int, configuredFloor time.Duration) time.Duration {
+	const (
+		floor   = 5 * time.Minute
+		ceiling = 15 * time.Minute
+	)
+	if configuredFloor < floor {
+		configuredFloor = floor
+	}
+	scaled := time.Duration(maxTokens/64) * time.Second
+	if scaled < configuredFloor {
+		scaled = configuredFloor
+	}
+	if scaled > ceiling {
+		return ceiling
+	}
+	return scaled
+}
+
 // apiError keeps the SDK's exact error phrasing. The harness's provider-error
 // taxonomy recovers a status code from that text, so changing the wording here
 // would silently disable rate-limit and transient-failure retries.
