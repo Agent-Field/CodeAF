@@ -204,19 +204,24 @@ func Build(ctx context.Context, client Completer, goal string, options Options) 
 
 	// Binding and sizing read the same thing — the node catalog — and neither
 	// reads what the other writes, so the size judgment is free in wall clock.
-	var bindUsage, sizeUsage Usage
-	var bindErr, sizeErr error
+	// Only their calls overlap: each pass gathers concurrently and is applied
+	// serially afterwards, because one pass writing node fields while the other
+	// copies nodes to render its prompts is a data race.
+	var bindResults []bindResult
+	var sizeResults []sizeResult
 	var passes sync.WaitGroup
 	passes.Add(2)
 	go func() {
 		defer passes.Done()
-		bindUsage, bindErr = Bind(ctx, client, graph)
+		bindResults = bindGather(ctx, client, graph)
 	}()
 	go func() {
 		defer passes.Done()
-		sizeUsage, sizeErr = SizeNodes(ctx, client, graph)
+		sizeResults = sizeGather(ctx, client, graph)
 	}()
 	passes.Wait()
+	bindUsage, bindErr := bindApply(graph, bindResults)
+	sizeUsage, sizeErr := sizeApply(graph, sizeResults)
 	graph.Usage.merge(bindUsage)
 	graph.Usage.merge(sizeUsage)
 	report("bind+size", time.Since(start), fmt.Sprintf("%s, %s", plural(graph.Edges(), "edge"), sizeSummary(graph)))
@@ -242,8 +247,18 @@ func Build(ctx context.Context, client Completer, goal string, options Options) 
 	graph.Usage.merge(auditUsage)
 	report("audit", time.Since(start), fmt.Sprintf("%s recovered", plural(added, "edge")))
 
-	// With audit done, no more edges will be added to anything that already
-	// exists. Every node not queued for expansion has stopped changing.
+	// Bind under-connects by design and audit only asks whether a node is
+	// finishable — which a gathering node technically is, by redoing everything
+	// itself. Neither judgment can be trusted to wire a late node that both
+	// left empty, so the graph enforces it structurally before anything is
+	// announced ready: nothing the spine placed after stage 1 may start at t=0.
+	if forced := graph.anchorLateStarts(); forced > 0 {
+		report("anchor", time.Since(start), fmt.Sprintf("%s forced", plural(forced, "edge")))
+	}
+
+	// With audit and the anchor done, no more edges will be added to anything
+	// that already exists. Every node not queued for expansion has stopped
+	// changing.
 	announce(graph, options, settled, briefs, start, func(node *Node) bool {
 		return !pending[node.ID]
 	})

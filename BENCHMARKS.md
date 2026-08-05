@@ -94,11 +94,22 @@ fact.
 | ------------------------- | ---------------- | --------------- | ---------- | ------------ |
 | aforge, one node          | 4                | 0               | 10m42s     | $0.18        |
 | aforge, parallel pipeline | 8                | —               | 19m28s     | $0.41        |
+| aforge, parallel pipeline (2026-08-05 re-run) | **INVALID** | — | 19m43s | — |
 | pi                        | 0 (timed out)    | —               | 40m (cap)  | not measured |
 | opencode                  | 0 (timed out)    | —               | 40m (cap)  | not measured |
 
 "Verified" means independently confirmed against #13/#18, not self-reported by
 the reviewer.
+
+**INVALID — 2026-08-05 post-merge regression re-run.** Plan 72s, run 1183s
+(~19m43s), no REVIEW.md produced. The planner's bind pass left the deliverable
+owner — the "Write review" node — with no dependencies (`needs: []`), so the
+scheduler launched it at t=0 with zero inputs; it spun 33 turns, exhausted 624k
+tokens producing nothing, and the run then stopped without a summary (the
+runtime's stop-without-summary behaviour is tracked separately). The structural
+guard added in this commit — `anchorLateStarts`, which wires any late-stage node
+that ends binding with empty needs to the unconsumed frontier of earlier stages
+— is the fix for the planner half, and the benchmark will be re-run.
 
 The parallel pipeline found twice as many defects as the single node, which is
 the result the graph exists to produce. It was also nearly twice as slow, and
