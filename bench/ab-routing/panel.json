@@ -1,7 +1,70 @@
 {
+  "_schema": "internal/router/panel.go \u2014 max_output_price + models[{slug,role,price}]; every other key here is documentation the router's decoder ignores",
+  "max_output_price": 3.0,
+  "models": [
+    {
+      "slug": "google/gemma-3-12b-it",
+      "role": "base",
+      "price": 0.15,
+      "label": "gemma-3-12b",
+      "rung": "floor (cheapest)",
+      "anchor_score": "11/20",
+      "phase_a_theta": -1.724,
+      "price_in_per_mtok": 0.05,
+      "context_length": 131072,
+      "justification": "The cheapest model that clears both hard gates, measured on-scale twice (Phase A 0.548, here 11/20) -- it is the rung that makes a first attempt on an easy leaf almost free, which is where Phase A's winning cascade got its economics."
+    },
+    {
+      "slug": "~deepseek/deepseek-v4-flash-latest",
+      "role": "mid",
+      "price": 0.18,
+      "label": "ds-v4-flash",
+      "rung": "base (incumbent)",
+      "anchor_score": "18/20",
+      "phase_a_theta": 1.387,
+      "price_in_per_mtok": 0.09,
+      "context_length": 1048576,
+      "justification": "aforge's current default and arm A itself; 18/20 including 8/8 on code at $0.18/M makes it the best ability-per-dollar anything measured in either phase, and it was the first cascade rung on 25 of Phase A's 36 tasks."
+    },
+    {
+      "slug": "qwen/qwen3-30b-a3b-instruct-2507",
+      "role": "base",
+      "price": 0.193,
+      "label": "qwen3-30b-a3b",
+      "rung": "base (family insurance)",
+      "anchor_score": "not re-measured; Phase A 25/31 = 0.806 over 31 cells",
+      "phase_a_theta": 0.238,
+      "price_in_per_mtok": 0.048,
+      "context_length": 262144,
+      "justification": "Statistically indistinguishable from the incumbent in Phase A at essentially the same price but from a different family and provider, so a correlated regression in the DeepSeek line does not take the whole base rung with it."
+    },
+    {
+      "slug": "z-ai/glm-4.7-flash",
+      "role": "base",
+      "price": 0.4,
+      "label": "glm-4.7-flash",
+      "rung": "floor (latency-safe)",
+      "anchor_score": "13/20",
+      "phase_a_theta": null,
+      "price_in_per_mtok": 0.06,
+      "context_length": 202752,
+      "justification": "Scores two cells above gemma at half its median latency (4.19 s vs 8.63 s) with zero empty completions, which is the specific defect Phase A named as the reason gemma is a bad first rung -- 2.7x gemma's price buys the floor back for latency-sensitive work."
+    },
+    {
+      "slug": "moonshotai/kimi-k2.6",
+      "role": "top",
+      "price": 2.48,
+      "label": "kimi-k2.6",
+      "rung": "top (terminus)",
+      "anchor_score": "20/20",
+      "phase_a_theta": 4.092,
+      "price_in_per_mtok": 0.589,
+      "context_length": 262144,
+      "justification": "The only model in either phase significantly above the pack (theta +4.09, every pairwise comparison significant; 20/20 here) and it is also the fastest thing measured at 1.38 s median -- there is no cheaper way to buy an escalation target that is genuinely stronger."
+    }
+  ],
   "phase": "B",
   "selected": "2026-08-05",
-  "price_cap_out_per_mtok": 5.0,
   "catalog": "https://openrouter.ai/api/v1/models, fetched 2026-08-05, 338 models",
   "shape": "barbell, not a ladder",
   "shape_note": "Phase A found the middle of its panel statistically inseparable (ds-v4-flash, glm-4.7, ds-v4-pro, qwen3-30b-a3b within one logit, 9 of 21 pairwise comparisons non-significant). The Phase B anchor battery went looking for a rung between the $0.19 base and the $2.48 top and did not find one: every candidate priced between them scored at or below the incumbent. The panel is therefore two cheap rungs, a base, and one strong terminus -- there is nothing to put in the middle, and padding it would have bought calls rather than ability.",
@@ -10,6 +73,9 @@
     "advertises `tools` -- aforge's executor is a tool-calling loop (internal/exec/tools.go); ability is irrelevant to a model the harness cannot drive",
     "advertises `structured_outputs` -- aforge's planner asks for it"
   ],
+  "role_note": "role is a cold-start hint worth about one observation, not a measurement. It encodes the measured ability ordering from the anchor battery: the three sub-$0.40 models are base, the incumbent is mid because it measured 18/20 against their 11-13/20, and kimi-k2.6 is top on theta +4.09 and 20/20.",
+  "price_note": "prices are pinned from the live catalog on 2026-08-05 rather than left for the router to fetch. The rung ordering is this experiment's independent variable, so it must not depend on a catalog fetch that could fail or drift between the sequential runs and the fresh-ledger control.",
+  "order_note": "written cheapest-first, which is the router's tie-break of last resort when nothing has been measured \u2014 i.e. the state run 1 starts in.",
   "measurement": {
     "battery": "bench/routerlab's 10-task anchor block, 2 replicates, deterministic graders only, no LLM judge",
     "why": "that block is what pinned Phase A's Rasch scale, so a candidate's score on it is directly comparable to the seven models already measured",
@@ -20,63 +86,6 @@
     "raw": "panel/anchor-results.jsonl",
     "controls_reproduced": "kimi-k2.6 20/20 vs Phase A 0.968, ds-v4-flash 18/20 vs 0.871, gemma-3-12b 11/20 vs 0.548 -- the scale has not drifted, so the new measurements sit on it"
   },
-  "panel": [
-    {
-      "slug": "google/gemma-3-12b-it",
-      "label": "gemma-3-12b",
-      "rung": "floor (cheapest)",
-      "price_in_per_mtok": 0.05,
-      "price_out_per_mtok": 0.15,
-      "context_length": 131072,
-      "anchor_score": "11/20",
-      "phase_a_theta": -1.724,
-      "justification": "The cheapest model that clears both hard gates, measured on-scale twice (Phase A 0.548, here 11/20) -- it is the rung that makes a first attempt on an easy leaf almost free, which is where Phase A's winning cascade got its economics."
-    },
-    {
-      "slug": "z-ai/glm-4.7-flash",
-      "label": "glm-4.7-flash",
-      "rung": "floor (latency-safe)",
-      "price_in_per_mtok": 0.06,
-      "price_out_per_mtok": 0.4,
-      "context_length": 202752,
-      "anchor_score": "13/20",
-      "phase_a_theta": null,
-      "justification": "Scores two cells above gemma at half its median latency (4.19 s vs 8.63 s) with zero empty completions, which is the specific defect Phase A named as the reason gemma is a bad first rung -- 2.7x gemma's price buys the floor back for latency-sensitive work."
-    },
-    {
-      "slug": "~deepseek/deepseek-v4-flash-latest",
-      "label": "ds-v4-flash",
-      "rung": "base (incumbent)",
-      "price_in_per_mtok": 0.09,
-      "price_out_per_mtok": 0.18,
-      "context_length": 1048576,
-      "anchor_score": "18/20",
-      "phase_a_theta": 1.387,
-      "justification": "aforge's current default and arm A itself; 18/20 including 8/8 on code at $0.18/M makes it the best ability-per-dollar anything measured in either phase, and it was the first cascade rung on 25 of Phase A's 36 tasks."
-    },
-    {
-      "slug": "qwen/qwen3-30b-a3b-instruct-2507",
-      "label": "qwen3-30b-a3b",
-      "rung": "base (family insurance)",
-      "price_in_per_mtok": 0.048,
-      "price_out_per_mtok": 0.193,
-      "context_length": 262144,
-      "anchor_score": "not re-measured; Phase A 25/31 = 0.806 over 31 cells",
-      "phase_a_theta": 0.238,
-      "justification": "Statistically indistinguishable from the incumbent in Phase A at essentially the same price but from a different family and provider, so a correlated regression in the DeepSeek line does not take the whole base rung with it."
-    },
-    {
-      "slug": "moonshotai/kimi-k2.6",
-      "label": "kimi-k2.6",
-      "rung": "top (terminus)",
-      "price_in_per_mtok": 0.589,
-      "price_out_per_mtok": 2.48,
-      "context_length": 262144,
-      "anchor_score": "20/20",
-      "phase_a_theta": 4.092,
-      "justification": "The only model in either phase significantly above the pack (theta +4.09, every pairwise comparison significant; 20/20 here) and it is also the fastest thing measured at 1.38 s median -- there is no cheaper way to buy an escalation target that is genuinely stronger."
-    }
-  ],
   "excluded": [
     {
       "slug": "z-ai/glm-5.2",

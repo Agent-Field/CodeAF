@@ -41,16 +41,26 @@ def grade(tasks_dir, task, workspace):
     return json.loads(lines[-1])
 
 
-def ledger_snapshot(cell):
+def ledger_snapshot(cell, events_before=0):
     """Whatever the harness wrote to the profile directory, verbatim.
 
-    The router does not exist yet, so this cannot know the shape of a routing
-    event. It records every file under the ledger so the arm-B learning check
-    can diff run 1 against run 3 whatever format the router settles on, and so
-    arm A's rows carry evidence that each replicate really did start cold.
+    Two shapes live here. `router-ledger.json` and the per-model profiles are
+    whole-file state and are captured whole. `router-events.jsonl` is
+    **append-only across the entire arm** — run 2 appends to what run 1 wrote —
+    so capturing it whole in every row would store the same rows nine times and,
+    worse, would make "the events of run 1" unrecoverable.
+
+    So the events file is sliced: the runner counts its lines before the cell
+    starts and passes that in, and only the rows this cell appended are stored.
+    That slice is what the learning diff compares run over run.
+
+    The Event.Run field cannot do this job. It is the run cache key, derived
+    from the goal and the model, and the goal is byte-identical across the three
+    replicates of a task — so all three runs of t1 carry the same Run value.
+    Line position is the only thing that separates them.
     """
     root = os.path.join(cell, "ledger-after")
-    out = {"files": {}, "bytes": 0}
+    out = {"files": {}, "bytes": 0, "events": [], "events_before": events_before}
     if not os.path.isdir(root):
         return out
     for dirpath, _dirs, files in os.walk(root):
@@ -65,13 +75,61 @@ def ledger_snapshot(cell):
                 continue
             out["bytes"] += size
             entry = {"bytes": size}
-            try:
-                entry["json"] = json.loads(body)
-            except Exception:
-                entry["lines"] = body.count("\n") + 1 if body else 0
-                entry["text"] = body[:4000]
+            if name.endswith(".jsonl"):
+                rows = []
+                for line in body.splitlines():
+                    line = line.strip()
+                    if not line:
+                        continue
+                    try:
+                        rows.append(json.loads(line))
+                    except Exception:
+                        pass
+                entry["lines"] = len(rows)
+                if name == "router-events.jsonl":
+                    out["events"] = rows[events_before:]
+                    entry["cell_events"] = len(out["events"])
+            else:
+                try:
+                    entry["json"] = json.loads(body)
+                except Exception:
+                    entry["lines"] = body.count("\n") + 1 if body else 0
+                    entry["text"] = body[:4000]
             out["files"][relative] = entry
     return out
+
+
+def summarize_events(events):
+    """The per-cell routing picture, so a row is readable without re-parsing."""
+    if not events:
+        return {}
+    by_class, by_model, verdicts = {}, {}, {}
+    escalations = []
+    cost = 0.0
+    for e in events:
+        if e.get("final"):
+            # the settled-verdict row; it carries no fresh attempt
+            verdicts[e.get("verdict", "?")] = verdicts.get(e.get("verdict", "?"), 0) + 1
+            continue
+        cls, model = e.get("class", "?"), e.get("model", "?")
+        by_class.setdefault(cls, {})
+        by_class[cls][model] = by_class[cls].get(model, 0) + 1
+        by_model[model] = by_model.get(model, 0) + 1
+        cost += float(e.get("cost") or 0.0)
+        if e.get("escalation"):
+            escalations.append({"call": e.get("call"), "class": cls,
+                                "from": e["escalation"], "to": model,
+                                "rung": e.get("rung"),
+                                "verdict": e.get("verdict")})
+    return {
+        "attempts": sum(by_model.values()),
+        "by_model": by_model,
+        "by_class": by_class,
+        "final_verdicts": verdicts,
+        "escalations": escalations,
+        "escalated_calls": len({e["call"] for e in escalations}),
+        "event_cost_usd": round(cost, 6),
+    }
 
 
 def main():
@@ -80,6 +138,9 @@ def main():
                  "plan-seconds", "run-seconds", "plan-exit", "run-exit",
                  "ledger-mode"):
         ap.add_argument("--" + name, required=True)
+    # How many router events already existed before this cell ran, so the
+    # append-only log can be sliced into the rows this cell is responsible for.
+    ap.add_argument("--events-before", default="0")
     args = ap.parse_args()
 
     graph = load_graph(os.path.join(args.cell, "done.json")) or \
@@ -132,7 +193,8 @@ def main():
     row["success"] = bool(graded.get("success"))
     row["grade"] = graded
 
-    row["ledger"] = ledger_snapshot(args.cell)
+    row["ledger"] = ledger_snapshot(args.cell, int(args.events_before))
+    row["routing"] = summarize_events(row["ledger"]["events"])
     print(json.dumps(row))
 
 
