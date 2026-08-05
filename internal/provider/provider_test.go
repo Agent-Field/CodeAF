@@ -9,9 +9,31 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 )
+
+func TestAdaptiveCompletionTimeoutScalesAndBoundsRequests(t *testing.T) {
+	tests := []struct {
+		name       string
+		maxTokens  int
+		configured time.Duration
+		want       time.Duration
+	}{
+		{name: "floor", maxTokens: 4_096, want: 5 * time.Minute},
+		{name: "scaled", maxTokens: 32_768, want: 512 * time.Second},
+		{name: "configured floor", maxTokens: 4_096, configured: 10 * time.Minute, want: 10 * time.Minute},
+		{name: "ceiling", maxTokens: 1_000_000, want: 15 * time.Minute},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			if got := adaptiveCompletionTimeout(test.maxTokens, test.configured); got != test.want {
+				t.Fatalf("adaptiveCompletionTimeout(%d, %s) = %s, want %s", test.maxTokens, test.configured, got, test.want)
+			}
+		})
+	}
+}
 
 // capture records exactly what the adapter put on the wire. The whole point of
 // this package is the request shape, so the tests assert bytes and headers
