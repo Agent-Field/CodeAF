@@ -116,10 +116,20 @@ def summarize_events(events):
         by_class[cls][model] = by_class[cls].get(model, 0) + 1
         by_model[model] = by_model.get(model, 0) + 1
         cost += float(e.get("cost") or 0.0)
-        if e.get("escalation"):
+        # An attempt above rung 0 is an escalation however it got there, and the
+        # two paths record it differently. The cascade fills `escalation` with
+        # what it had already tried; the leaf path passes nil for that field
+        # (internal/router/router.go, r.record(..., nil, index, ...)), so a leaf
+        # retried on a stronger rung carries rung=1 and an empty chain. Keying
+        # on `escalation` alone therefore misses every leaf escalation — which
+        # is the only kind these tasks produce.
+        if e.get("escalation") or e.get("rung", 0) > 0:
             escalations.append({"call": e.get("call"), "class": cls,
-                                "from": e["escalation"], "to": model,
+                                "from": e.get("escalation") or
+                                        [(e.get("candidates") or [None])[0]],
+                                "to": model,
                                 "rung": e.get("rung"),
+                                "chain_recorded": bool(e.get("escalation")),
                                 "verdict": e.get("verdict")})
     return {
         "attempts": sum(by_model.values()),
