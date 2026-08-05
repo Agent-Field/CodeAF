@@ -96,6 +96,28 @@ def ledger_fingerprint(row):
     return {name: entry.get("bytes") for name, entry in sorted(files.items())}
 
 
+def models_from_profiles(row):
+    """Which models the run actually used, read off the profile store.
+
+    aforge writes one profile file per (model, skill) -- the calibration cells
+    produced `profile-deepseek-deepseek-v4-flash-latest-linear.json` and nothing
+    else, because arm A uses one model. Under routing the *set of files* is
+    therefore direct evidence of the panel members that were exercised, and the
+    record count inside each is how much work each one was given.
+
+    This works whether or not the router logs a routing event, which is why it
+    is here: the learning check should not be blind because a schema was named
+    differently than expected.
+    """
+    out = {}
+    for name, entry in ((row.get("ledger") or {}).get("files") or {}).items():
+        blob = entry.get("json")
+        if not isinstance(blob, dict) or "model" not in blob:
+            continue
+        out[blob["model"]] = len(blob.get("records") or [])
+    return out
+
+
 def report(rows, label):
     by_task_rep = {(r["task"], r["rep"]): r for r in rows}
     reps = sorted({r["rep"] for r in rows})
@@ -150,7 +172,21 @@ def report(rows, label):
             print(f"      leaf {node}: {labels.get(x, x)} -> {labels.get(y, y)}")
     if not any_decisions:
         print("  -> no routing decisions found in either run; the decision diff "
-              "cannot be computed and no learning claim can be made from these rows")
+              "cannot be computed from per-leaf records")
+    print()
+
+    # Fallback and cross-check: the profile store names one file per model, so
+    # the set of files says which panel members were exercised even when no
+    # routing event was logged.
+    print("models exercised, per the profile store (model: leaves recorded):")
+    for task in tasks:
+        for rep in (first, last):
+            row = by_task_rep.get((task, rep))
+            if not row:
+                continue
+            used = models_from_profiles(row)
+            pretty = ", ".join(f"{labels.get(m, m)}:{n}" for m, n in sorted(used.items()))
+            print(f"  {task:<15} run {rep}  {pretty or '(none recorded)'}")
     print()
 
     # 3. outcome at constant task
