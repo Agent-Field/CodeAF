@@ -434,9 +434,17 @@ func writePanelBriefs(ctx context.Context, client Completer, graph *Graph, panel
 		failures              []error
 		passBrief, setupBrief string
 	)
+	// Neither the setup node nor a panelist ever owns the goal's final
+	// deliverable — the merge synthesis does. Saying so in the same terms the
+	// ordinary brief pass uses matters doubly here, because every panelist
+	// receives a goal that names the deliverable and N of them would otherwise
+	// each produce it.
+	const deliverable = "The final deliverable the goal asks for — whatever single file, report or " +
+		"document it names — is produced by the merge step that combines every pass, not here. " +
+		"This node produces its own result and hands it over.\n"
 	write := func(node Node, inputs []string, into *string) {
 		defer group.Done()
-		brief, callUsage, err := writeBrief(ctx, client, shared, node, inputs)
+		brief, callUsage, err := writeBrief(ctx, client, shared, node, inputs, deliverable)
 		mutex.Lock()
 		defer mutex.Unlock()
 		usage.Add(callUsage)
