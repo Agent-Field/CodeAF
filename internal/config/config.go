@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/Agent-Field/aforge-v2/internal/provider"
+	"github.com/Agent-Field/aforge-v2/internal/router"
 )
 
 const (
@@ -93,6 +94,12 @@ type Config struct {
 	MaxDepth      int
 	NodeBudget    int
 
+	// Panel is the set of models a run may route across, from AFORGE_MODELS. An
+	// empty panel is the default and is the kill switch: with no panel the
+	// harness builds the same single adapter it always did and no routing code
+	// runs at all.
+	Panel router.Panel
+
 	// ProfileDir holds measured executor behaviour. Empty means ~/.aforge.
 	ProfileDir string
 }
@@ -152,6 +159,11 @@ func Load() (Config, error) {
 		}
 		*knob.target = value
 	}
+	panel, err := router.LoadPanel(os.Getenv("AFORGE_MODELS"))
+	if err != nil {
+		return Config{}, err
+	}
+	config.Panel = panel
 	return config, nil
 }
 
@@ -174,18 +186,30 @@ func (c Config) ExecContext(ctx context.Context) context.Context {
 	return provider.WithConfiguredReasoningEffort(ctx, c.ExecReasoning)
 }
 
-// Client builds the provider adapter for this configuration.
-func (c Config) Client() (*provider.Client, error) {
-	return provider.NewClient(provider.Config{
+// Client builds what the planner and the executor call.
+//
+// With no panel configured this is the single adapter it has always been, built
+// exactly as before — that is the kill switch, and it is the default. With a
+// panel it is a router over one adapter per model, which satisfies the same
+// interface, so nothing above this line changes.
+func (c Config) Client() (router.Client, error) {
+	if len(c.Panel.Models) == 0 {
+		return provider.NewClient(c.providerConfig(c.Model))
+	}
+	return router.New(c.Panel, c.providerConfig(c.Model), c.ProfileDir)
+}
+
+func (c Config) providerConfig(model string) provider.Config {
+	return provider.Config{
 		APIKey:      c.APIKey,
 		BaseURL:     c.BaseURL,
-		Model:       c.Model,
+		Model:       model,
 		Temperature: c.Temperature,
 		MaxTokens:   c.MaxTokens,
 		Timeout:     c.Timeout,
 		SiteURL:     c.SiteURL,
 		SiteName:    c.SiteName,
-	})
+	}
 }
 
 func firstNonEmpty(values ...string) string {
