@@ -219,6 +219,10 @@ func (r *Router) leaf(ctx context.Context, call *provider.Call, messages []ai.Me
 		index = len(order) - 1
 	}
 	pick := r.rungOf(call.Pin(order[index].spec.Slug), order[index])
+	// Where the pinned model actually sits, which is not always where the
+	// attempt number pointed: a pin set on turn one survives a ledger update
+	// that reordered the panel underneath it, and honouring the pin is the point.
+	index = indexOf(order, pick)
 
 	started := time.Now()
 	response, err := pick.client.CompleteWithMessages(pick.affinity(ctx), messages, options...)
@@ -462,6 +466,15 @@ func resolvedOf(response *ai.Response) string {
 		return ""
 	}
 	return strings.TrimSpace(response.Model)
+}
+
+func indexOf(rungs []*rung, target *rung) int {
+	for index, item := range rungs {
+		if item == target {
+			return index
+		}
+	}
+	return len(rungs) - 1
 }
 
 func slugs(rungs []*rung) []string {

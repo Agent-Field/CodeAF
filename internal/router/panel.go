@@ -28,6 +28,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 )
 
@@ -53,7 +54,10 @@ type Panel struct {
 
 	// MaxOutputPrice refuses a model dearer than this, in $/M output tokens. It
 	// is a sanity cap rather than a budget: a typo in a slug that resolves to a
-	// frontier model would otherwise be discovered on the invoice.
+	// frontier model would otherwise be discovered on the invoice. It can only
+	// act on a price it knows, so it does not fire for a model the catalog has
+	// never described and the operator did not price — which is the offline case,
+	// where refusing to run would be the worse failure.
 	MaxOutputPrice float64 `json:"max_output_price,omitempty"`
 }
 
@@ -89,6 +93,7 @@ func LoadPanel(value string) (Panel, error) {
 }
 
 func loadPanelFile(path string) (Panel, error) {
+	path = expandHome(path)
 	if extension := strings.ToLower(path); strings.HasSuffix(extension, ".yaml") || strings.HasSuffix(extension, ".yml") {
 		return Panel{}, fmt.Errorf("AFORGE_MODELS: %s is YAML, which this build cannot read — "+
 			"write the panel as JSON, or list the slugs directly: AFORGE_MODELS=a/b,c/d", path)
@@ -121,16 +126,33 @@ func loadPanelFile(path string) (Panel, error) {
 	return panel, nil
 }
 
-// looksLikePath separates the two forms. A model slug is `vendor/model` and a
-// path is anything with a directory in it, a leading dot, or a file extension —
-// which never collide, because no slug carries an extension and no path is a
-// bare `vendor/model`.
+// looksLikePath separates the two forms.
+//
+// The tilde is the trap: `~/.aforge/models.json` is a path and
+// `~deepseek/deepseek-v4-flash-latest` is a slug — OpenRouter's floating-alias
+// prefix, and the harness's own default model. Only `~/` is a home directory, so
+// only `~/` is treated as one. Everything else is decided by a leading slash or
+// dot, or by an extension, none of which a slug ever carries.
 func looksLikePath(value string) bool {
-	if strings.ContainsAny(value, ",") {
+	if strings.Contains(value, ",") {
 		return false
 	}
-	return strings.HasPrefix(value, "/") || strings.HasPrefix(value, ".") || strings.HasPrefix(value, "~") ||
+	return strings.HasPrefix(value, "/") || strings.HasPrefix(value, ".") || strings.HasPrefix(value, "~/") ||
 		strings.HasSuffix(value, ".json") || strings.HasSuffix(value, ".yaml") || strings.HasSuffix(value, ".yml")
+}
+
+// expandHome resolves a leading `~/`. A shell would have done it already; this
+// covers the path being written down somewhere a shell never sees, which is
+// where a config file usually lives.
+func expandHome(path string) string {
+	if !strings.HasPrefix(path, "~/") {
+		return path
+	}
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return path
+	}
+	return filepath.Join(home, path[2:])
 }
 
 // coldStart is the rating a model nobody has measured starts from.
