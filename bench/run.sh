@@ -125,10 +125,10 @@ run_harness() {
         >>"$log" 2>&1
       ;;
     pi)
-      (cd "$dir" && "$TIMEOUT_BIN" "$CELL_TIMEOUT" "$PI_BIN" -m "$MODEL" "$prompt") >>"$log" 2>&1
+      (cd "$dir" && "$TIMEOUT_BIN" "$CELL_TIMEOUT" "$PI_BIN" -p --provider openrouter --model "$MODEL" "$prompt") >>"$log" 2>&1
       ;;
     opencode)
-      (cd "$dir" && "$TIMEOUT_BIN" "$CELL_TIMEOUT" "$OPENCODE_BIN" run -m "$MODEL" "$prompt") >>"$log" 2>&1
+      (cd "$dir" && "$TIMEOUT_BIN" "$CELL_TIMEOUT" "$OPENCODE_BIN" run -m "openrouter/$MODEL" "$prompt") >>"$log" 2>&1
       ;;
     *)
       echo "unknown harness $harness" >&2

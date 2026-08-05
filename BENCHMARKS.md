@@ -29,9 +29,11 @@ tests.
 | pi       | 548           | 12m15s     | $0.174 *       |
 | opencode | 539           | 23m35s     | $0.349 *       |
 
-aforge is quoted as a range because several variants of the run were taken and
-they did not converge on the same number of passing tests; the range is the
-spread across those variants rather than an average. It was roughly twice as
+aforge is quoted as a range across two configurations run as a controlled
+ablation: with a generated per-leaf contract it finished at 529 passing, and
+without one at 554 — both with zero failures, both in 5m56s. The contract
+halved turns (45 vs 81) and cost ($0.104 vs $0.185) at a small test-count
+price. It was roughly twice as
 fast as pi and four times as fast as opencode, at a comparable or better
 outcome, but it did not lead on tests passing — pi's 548 sits inside aforge's
 range and above its lower end.
