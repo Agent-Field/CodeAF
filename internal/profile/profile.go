@@ -33,11 +33,13 @@ type Record struct {
 	Sources int    `json:"sources"`
 	// SourcesKnown distinguishes an observed zero from old and direct records
 	// whose omitted source count decoded to zero.
-	SourcesKnown bool   `json:"sources_known,omitempty"`
-	Size         string `json:"size"`  // planner prediction, or direct when none was made
-	Turns        int    `json:"turns"` // what it actually took
-	Tokens       int    `json:"tokens"`
-	Stop         string `json:"stop"`
+	SourcesKnown bool    `json:"sources_known,omitempty"`
+	Size         string  `json:"size"`  // planner prediction, or direct when none was made
+	Turns        int     `json:"turns"` // what it actually took
+	Tokens       int     `json:"tokens"`
+	Stop         string  `json:"stop"`
+	Cost         float64 `json:"cost,omitempty"`
+	Promoted     bool    `json:"promoted,omitempty"`
 
 	// Verdict is how the leaf actually ended. It replaced a `done` flag that was
 	// the scheduler's StateDone carried across — true of a leaf that exhausted
@@ -50,10 +52,13 @@ type Record struct {
 // BucketDirect labels work dispatched without a planner size judgment. Keeping
 // it separate lets the compiler learn direct-job costs without teaching the
 // ruler that an unmeasured task was atomic.
-const BucketDirect = "direct"
+const (
+	BucketDirect = "direct"
+	BucketReflex = "reflex"
+)
 
 func (r Record) rulerEvidence() bool {
-	return r.Size != BucketDirect
+	return r.Size != BucketDirect && r.Size != BucketReflex
 }
 
 // HasSourceCount keeps nonzero counts from legacy profiles usable while
@@ -175,6 +180,52 @@ type Spread struct {
 	MaxTurns int
 	Overran  int
 	MedianKb int
+}
+
+// ReflexStats is the measured boundary between work that finishes as one
+// quick action and work that promotes into the compiled path.
+type ReflexStats struct {
+	Samples      int
+	Successes    int
+	Promotions   int
+	MedianTurns  int
+	MedianTokens int
+	AverageCost  float64
+}
+
+// MeasureReflex summarises reflex records without admitting them as planner
+// ruler evidence. An unverified completion still counts here: this statistic
+// asks whether the micro-leaf finished, not whether it should rate a model.
+func (p *Profile) MeasureReflex() ReflexStats {
+	p.mutex.Lock()
+	defer p.mutex.Unlock()
+	var stats ReflexStats
+	var turns, tokens []int
+	var cost float64
+	for _, record := range p.Records {
+		if record.Size != BucketReflex {
+			continue
+		}
+		stats.Samples++
+		turns = append(turns, record.Turns)
+		tokens = append(tokens, record.Tokens)
+		cost += record.Cost
+		if record.Promoted {
+			stats.Promotions++
+		} else if record.Verdict == provider.VerdictVerifiedSuccess ||
+			record.Verdict == provider.VerdictUnverifiedSuccess {
+			stats.Successes++
+		}
+	}
+	if stats.Samples == 0 {
+		return stats
+	}
+	sort.Ints(turns)
+	sort.Ints(tokens)
+	stats.MedianTurns = turns[len(turns)/2]
+	stats.MedianTokens = tokens[len(tokens)/2]
+	stats.AverageCost = cost / float64(stats.Samples)
+	return stats
 }
 
 // Measure summarises the recorded work.

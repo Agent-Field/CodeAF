@@ -18,12 +18,14 @@ type fakeClient struct {
 	mutex     sync.Mutex
 	responses []string
 	calls     int
+	seen      []ai.Message
 }
 
-func (client *fakeClient) CompleteWithMessages(context.Context, []ai.Message, ...ai.Option) (*ai.Response, error) {
+func (client *fakeClient) CompleteWithMessages(_ context.Context, messages []ai.Message, _ ...ai.Option) (*ai.Response, error) {
 	client.mutex.Lock()
 	defer client.mutex.Unlock()
 	client.calls++
+	client.seen = append([]ai.Message(nil), messages...)
 	if len(client.responses) == 0 {
 		return nil, errors.New("no fake response left")
 	}
@@ -319,4 +321,101 @@ func textResponse(text string) *ai.Response {
 		Message:      ai.Message{Role: "assistant", Content: []ai.ContentPart{{Type: "text", Text: text}}},
 		FinishReason: "stop",
 	}}}
+}
+
+func TestHeadParsesReflexAndAnchorsVerbatimIntent(t *testing.T) {
+	graphStore := openHeadStore(t)
+	client := &fakeClient{responses: []string{
+		`{"reply":"Doing that now.","command":{"kind":"reflex","target":"","instruction":"model rewrite"}}`,
+	}}
+	user, err := graphStore.PostMessage(store.Message{
+		SessionID: "chat-reflex", Role: store.RoleUser,
+		Body: "Read VERSION and tell me the value.",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if err := New(client, graphStore).answer(context.Background(), user); err != nil {
+		t.Fatal(err)
+	}
+	commands, err := graphStore.PendingCommands(0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(commands) != 1 {
+		t.Fatalf("pending reflex commands = %+v", commands)
+	}
+	command := commands[0]
+	if command.Kind != store.CommandSplice || !command.Reflex || command.Instruction != user.Body {
+		t.Fatalf("parsed reflex command = %+v, want verbatim %q", command, user.Body)
+	}
+}
+
+func TestHeadPromotesConsequentialReflexDecisionBeforePersistence(t *testing.T) {
+	unsafe := routeDecision{
+		Reply:   "On it.",
+		Command: &routeCommand{Kind: routeReflexKind, Instruction: "Pay the vendor five dollars."},
+	}
+	if err := unsafe.validate(); err == nil {
+		t.Fatal("routing decision validation accepted a money-shaped reflex")
+	}
+	for _, ask := range []string{
+		"Pay the vendor five dollars.",
+		"Delete /etc/obsolete.conf.",
+		"Publish the draft release.",
+	} {
+		t.Run(ask, func(t *testing.T) {
+			graphStore := openHeadStore(t)
+			client := &fakeClient{responses: []string{
+				`{"reply":"On it.","command":{"kind":"reflex","target":"","instruction":"ignored"}}`,
+			}}
+			user, err := graphStore.PostMessage(store.Message{
+				SessionID: "chat-consequence", Role: store.RoleUser, Body: ask,
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+			decision, err := New(client, graphStore).route(context.Background(), user)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if decision.Command == nil || decision.Command.Kind != string(store.CommandSplice) {
+				t.Fatalf("decision for %q = %+v, want ordinary splice", ask, decision.Command)
+			}
+			_, reflex, _ := commandKind(decision.Command.Kind)
+			if reflex {
+				t.Fatalf("consequential ask %q remained a reflex", ask)
+			}
+			if decision.Command.Instruction != ask {
+				t.Fatalf("instruction = %q, want %q", decision.Command.Instruction, ask)
+			}
+		})
+	}
+}
+
+func TestHeadReceivesMeasuredReflexPrior(t *testing.T) {
+	graphStore := openHeadStore(t)
+	client := &fakeClient{responses: []string{
+		`{"reply":"Nothing is running.","command":null}`,
+	}}
+	user, err := graphStore.PostMessage(store.Message{
+		SessionID: "chat-prior", Role: store.RoleUser, Body: "what is running?",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = New(client, graphStore).
+		WithSelfKnowledge(func() string {
+			return "reflex: median 200 tokens, 2 turns; n=10; success=90.0%; promoted=10.0%; avg cost=$0.0010"
+		}).
+		route(context.Background(), user)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(client.seen) != 2 ||
+		!strings.Contains(client.seen[1].Content[0].Text, "Measured execution history") ||
+		!strings.Contains(client.seen[1].Content[0].Text, "promoted=10.0%") {
+		t.Fatalf("measured reflex prior did not reach head: %+v", client.seen)
+	}
 }
