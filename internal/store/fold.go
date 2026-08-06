@@ -78,37 +78,48 @@ func (s *Store) Fold(subtreeRoot, digest string, pointers []string) error {
 		return fmt.Errorf("fold %q: %w: node %q is %s", subtreeRoot, ErrOpenSubtree, openID, openStatus)
 	}
 
-	// The graph carries only a bounded map. When a fold is larger, preserve its
-	// full territory in the immutable CAS and put the ordinary filesystem path
-	// on the fold so the executor can read it with the same tool as any artifact.
-	if len(digest) > MaxDigestBytes {
-		ref, err := s.blobs.PutBytes([]byte(digest))
-		if err != nil {
-			return fmt.Errorf("fold %q: spill digest: %w", subtreeRoot, err)
-		}
-		path, err := s.blobs.Path(ref)
-		if err != nil {
-			return fmt.Errorf("fold %q: locate spilled digest: %w", subtreeRoot, err)
-		}
-		pointers = uniqueStrings(append(pointers, path))
-	}
-	payload := foldPayload{Digest: bounded(digest, MaxDigestBytes), Pointers: pointers}
-	encodedPointers, err := json.Marshal(payload.Pointers)
+	payload, encodedPointers, err := s.prepareFold(digest, pointers)
 	if err != nil {
-		return fmt.Errorf("fold %q: encode pointers: %w", subtreeRoot, err)
+		return fmt.Errorf("fold %q: %w", subtreeRoot, err)
 	}
 
 	seq, _, err := appendEvent(tx, subtreeRoot, EventSubtreeFolded, payload)
 	if err != nil {
 		return fmt.Errorf("fold %q: %w", subtreeRoot, err)
 	}
-	if err := applyFoldView(tx, subtreeRoot, payload.Digest, string(encodedPointers), seq); err != nil {
+	if err := applyFoldView(tx, subtreeRoot, payload.Digest, encodedPointers, seq); err != nil {
 		return fmt.Errorf("materialize fold %q: %w", subtreeRoot, err)
 	}
 	if err := tx.Commit(); err != nil {
 		return fmt.Errorf("fold %q: %w", subtreeRoot, err)
 	}
 	return nil
+}
+
+func (s *Store) prepareFold(digest string, pointers []string) (foldPayload, string, error) {
+	digest = strings.TrimSpace(digest)
+	pointers = uniqueStrings(pointers)
+
+	// The graph carries only a bounded map. When a fold is larger, preserve its
+	// full territory in the immutable CAS and put the ordinary filesystem path
+	// on the fold so the executor can read it with the same tool as any artifact.
+	if len(digest) > MaxDigestBytes {
+		ref, err := s.blobs.PutBytes([]byte(digest))
+		if err != nil {
+			return foldPayload{}, "", fmt.Errorf("spill digest: %w", err)
+		}
+		path, err := s.blobs.Path(ref)
+		if err != nil {
+			return foldPayload{}, "", fmt.Errorf("locate spilled digest: %w", err)
+		}
+		pointers = uniqueStrings(append(pointers, path))
+	}
+	payload := foldPayload{Digest: bounded(digest, MaxDigestBytes), Pointers: pointers}
+	encodedPointers, err := json.Marshal(payload.Pointers)
+	if err != nil {
+		return foldPayload{}, "", fmt.Errorf("encode pointers: %w", err)
+	}
+	return payload, string(encodedPointers), nil
 }
 
 func applyFoldView(tx *sql.Tx, root, digest, pointers string, seq int64) error {
@@ -122,7 +133,7 @@ func applyFoldView(tx *sql.Tx, root, digest, pointers string, seq int64) error {
 		)
 		UPDATE nodes
 		SET folded = 1,
-		    fold_root = CASE WHEN id = ? THEN 1 ELSE 0 END,
+		    fold_root = CASE WHEN id = ? THEN 1 ELSE fold_root END,
 		    fold_digest = CASE WHEN id = ? THEN ? ELSE fold_digest END,
 		    fold_pointers = CASE WHEN id = ? THEN ? ELSE fold_pointers END,
 		    updated_seq = ?
