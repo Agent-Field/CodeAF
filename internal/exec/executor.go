@@ -41,6 +41,13 @@ type Task struct {
 	Contract   string // the working method: how this kind of job is done well
 	Inputs     []Input
 	OutputHint string // suggested artifact path when the deliverable is a file
+
+	// Steer, when set, is polled between turns for mid-flight guidance from
+	// the user. Each returned line lands in the transcript as a user message
+	// before the next model call, so a running worker can be redirected
+	// without being killed. Nil (the default, and the whole one-shot path)
+	// costs nothing.
+	Steer func() []string
 }
 
 // Outcome is what came back.

@@ -129,7 +129,10 @@ func (h *Head) poll(ctx context.Context, cursor int64) (int64, error) {
 			return cursor, nil
 		}
 		for _, message := range messages {
-			if message.Role == store.RoleUser {
+			// A user message anchored to a node is mid-flight steering for
+			// that worker, not a new ask — the executor consumes it between
+			// turns and the head stays out of the way.
+			if message.Role == store.RoleUser && message.NodeID == "" {
 				if err := h.answer(ctx, message); err != nil {
 					return cursor, err
 				}

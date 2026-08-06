@@ -192,6 +192,17 @@ func (l *Linear) Run(ctx context.Context, task Task) (*Outcome, error) {
 					"again; run the single quickest check that would catch breakage; fix only what " +
 					"it reveals. Do not start anything new. Then give your final answer.")})
 		}
+		if task.Steer != nil {
+			for _, guidance := range task.Steer() {
+				guidance = strings.TrimSpace(guidance)
+				if guidance == "" {
+					continue
+				}
+				trace.note("steered: " + guidance)
+				messages = append(messages, ai.Message{Role: "user", Content: text(
+					"Guidance from the user, mid-task — adjust course without discarding sound work already done:\n" + guidance)})
+			}
+		}
 		outcome.Decayed += fade.decay(messages, obsBudget)
 		// What the leaf had left before this turn, so the circuit breaker below
 		// can weigh what the turn cost against what remained rather than against

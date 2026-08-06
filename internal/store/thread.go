@@ -219,6 +219,42 @@ func (s *Store) Messages(sessionID string, afterSeq int64, limit int) ([]Message
 	return messages, nil
 }
 
+// NodeMessages returns the messages anchored to one node after a journal
+// sequence, oldest first — a running worker's steering mailbox, and a node
+// view's conversation trail.
+func (s *Store) NodeMessages(nodeID string, afterSeq int64, limit int) ([]Message, error) {
+	if limit <= 0 {
+		limit = 200
+	}
+	rows, err := s.db.Query(`
+		SELECT seq, ts, session_id, role, body, node_id, command_seq
+		FROM messages WHERE node_id = ? AND seq > ? ORDER BY seq LIMIT ?`,
+		nodeID, afterSeq, limit)
+	if err != nil {
+		return nil, fmt.Errorf("node messages: %w", err)
+	}
+	defer rows.Close()
+	messages := make([]Message, 0)
+	for rows.Next() {
+		var message Message
+		var timestamp string
+		if err := rows.Scan(&message.Seq, &timestamp, &message.SessionID,
+			&message.Role, &message.Body, &message.NodeID, &message.CommandSeq); err != nil {
+			return nil, fmt.Errorf("node messages: %w", err)
+		}
+		at, err := parseTime(timestamp)
+		if err != nil {
+			return nil, fmt.Errorf("node messages: parse time: %w", err)
+		}
+		message.Time = at
+		messages = append(messages, message)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("node messages: %w", err)
+	}
+	return messages, nil
+}
+
 // RequestCommand records one asynchronous mutation request and returns
 // immediately. The reconciler picks it up via PendingCommands and settles it
 // with ResolveCommand; the requester never blocks on the mutation itself.
