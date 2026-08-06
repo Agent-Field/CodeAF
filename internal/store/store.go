@@ -94,6 +94,8 @@ const (
 
 	// EventFactLearned is one durable fact distilled from finished work.
 	EventFactLearned EventKind = "fact_learned"
+	// EventFactActivated records execution promoting a skill candidate.
+	EventFactActivated EventKind = "fact_activated"
 	// EventFactSuperseded retires one fact in favour of a newer one.
 	EventFactSuperseded EventKind = "fact_superseded"
 

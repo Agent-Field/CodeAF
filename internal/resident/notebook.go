@@ -109,7 +109,11 @@ func NotebookDigest(graph *store.Store, brief, goal string, limit int) string {
 			digest.WriteByte('\n')
 			continue
 		}
-		digest.WriteString("- ")
+		if fact.Kind == store.FactSkill {
+			digest.WriteString("- skill: ")
+		} else {
+			digest.WriteString("- ")
+		}
 		digest.WriteString(fact.Body)
 		digest.WriteByte('\n')
 	}
@@ -184,9 +188,10 @@ func (r *Reconciler) consolidateNotebook(ctx context.Context) {
 		originalByBody[strings.ToLower(strings.TrimSpace(original.Body))] = original.Seq
 	}
 	type plannedRewrite struct {
-		learned Learned
-		sources []int64
-		nodeID  string
+		learned     Learned
+		sources     []int64
+		nodeID      string
+		skillSource int64
 	}
 	planned := make([]plannedRewrite, 0, len(rewritten))
 	claimedSources := make(map[int64]bool, len(originals))
@@ -225,13 +230,26 @@ func (r *Reconciler) consolidateNotebook(ctx context.Context) {
 				nodeID = original.NodeID
 			}
 		}
+		var skillSource int64
+		if learned.Kind == store.FactSkill {
+			for _, sourceSeq := range sourceSeqs {
+				source := originalBySeq[sourceSeq]
+				if source.Kind == store.FactSkill && source.Artifact != "" {
+					skillSource = source.Seq
+					break
+				}
+			}
+			if skillSource == 0 {
+				return
+			}
+		}
 		// RecordFact's ordinary duplicate hygiene may supersede an unchanged
 		// original while recording. Require that original to belong to this
 		// output so its automatic event remains the truthful mapping.
 		if duplicateSeq := originalByBody[bodyKey]; duplicateSeq != 0 && !containsFactSeq(sourceSeqs, duplicateSeq) {
 			return
 		}
-		planned = append(planned, plannedRewrite{learned: learned, sources: sourceSeqs, nodeID: nodeID})
+		planned = append(planned, plannedRewrite{learned: learned, sources: sourceSeqs, nodeID: nodeID, skillSource: skillSource})
 	}
 	// Mapping validation is all-or-nothing. A malformed model mapping must not
 	// add rewrites or leave a source attached to an invented replacement.
@@ -241,7 +259,13 @@ func (r *Reconciler) consolidateNotebook(ctx context.Context) {
 
 	replacementFor := make(map[int64]int64, len(originals))
 	for _, rewrite := range planned {
-		fact, err := r.recordLearnedFact(rewrite.nodeID, rewrite.learned)
+		var fact store.Fact
+		var err error
+		if rewrite.learned.Kind == store.FactSkill {
+			fact, err = r.store.RewriteActiveSkill(rewrite.nodeID, rewrite.learned.Scope, clipFactBody(rewrite.learned.Body), rewrite.skillSource)
+		} else {
+			fact, err = r.recordLearnedFact(rewrite.nodeID, rewrite.learned)
+		}
 		if err != nil {
 			return
 		}
