@@ -406,7 +406,7 @@ func TestSteeringPostsNodeAnchoredUserMessageAndShowsImmediately(t *testing.T) {
 	if command == nil {
 		t.Fatal("steering enter returned no post command")
 	}
-	if feed := renderActivityFeed(model.nodeTraceText, model.nodeMessages, 80); !strings.Contains(feed, "please check the edge case") {
+	if feed := model.renderActivityFeed(80); !strings.Contains(feed, "please check the edge case") {
 		t.Fatalf("steer was not shown optimistically:\n%s", feed)
 	}
 	result := command()
@@ -977,7 +977,9 @@ func TestActivityFeedParsesTraceIntoGlyphs(t *testing.T) {
 		"call web {\"q\":\"ffmpeg concat mp4\"}\n" +
 		"  → 902B ERROR: exa 503: upstream\n" +
 		"steered: focus on scene 10 only\n"
-	feed := renderActivityFeed(trace, nil, 80)
+	model := New(&fakeBackend{}, "feed-test")
+	model.nodeTraceText = trace
+	feed := model.renderActivityFeed(80)
 	for _, want := range []string{
 		"turn 1 · 45 tok", "$ ls -la clips/", "→ 1.4KB", "turn 2 · 58 tok · nudge",
 		"✳ ", "⌕ ffmpeg concat mp4", "ERROR", "▸ you", "focus on scene 10 only",
