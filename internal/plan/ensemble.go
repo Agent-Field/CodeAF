@@ -495,10 +495,12 @@ func writePanelBriefs(ctx context.Context, client Completer, graph *Graph, panel
 // and the stage count is the evidence the judgment call leans on. Its one cost
 // on the ordinary path is a single extra call round, which EnsembleNever buys
 // back for a caller that never wants a panel.
-func ensembleHook(ctx context.Context, client Completer, graph *Graph, options Options, report Progress, start time.Time) (*Graph, bool, error) {
+func ensembleHook(ctx context.Context, client Completer, graph *Graph, options Options, report Report, start time.Time) (*Graph, bool, error) {
+	progress := serialProgress(options.Progress)
 	if options.Ensemble == EnsembleNever {
 		return nil, false, nil
 	}
+	progress("ensemble", "deciding whether independent passes beat splitting the work")
 	forced := options.Ensemble >= 2
 
 	panel, usage, err := DecidePanel(ctx, client, graph.Goal, graph.Stages)
@@ -519,6 +521,7 @@ func ensembleHook(ctx context.Context, client Completer, graph *Graph, options O
 		report("ensemble", time.Since(start), "decompose: "+clipReason(panel.Reason, 40))
 		return nil, false, nil
 	}
+	progress("ensemble", "drawing independent passes over the same material")
 
 	panelists := DefaultPanelists
 	if forced {
@@ -533,6 +536,8 @@ func ensembleHook(ctx context.Context, client Completer, graph *Graph, options O
 	if len(graph.Leaves()) > panelists {
 		detail = "setup + " + detail
 	}
+	progress("ensemble", fmt.Sprintf("%d independent passes and a merge", panelists))
+	progress("briefs", fmt.Sprintf("%d/%d", len(graph.Leaves()), len(graph.Leaves())))
 	report("ensemble", time.Since(start), detail)
 
 	// The panelists — or the setup, when there is one — are dispatchable the

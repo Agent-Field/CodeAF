@@ -39,7 +39,13 @@ func TestTickAppliesSpliceAndPostsCompiledReceipt(t *testing.T) {
 			Scale: "project",
 		}, nil
 	}
-	plan := func(_ context.Context, compiled Compiled) (store.Subtree, error) {
+	plan := func(ctx context.Context, compiled Compiled) (store.Subtree, error) {
+		anchor, ok := PlanAnchorFromContext(ctx)
+		wantNodeID := fmt.Sprintf("task-%d", command.Seq)
+		if !ok || anchor.NodeID != wantNodeID || anchor.SessionID != command.SessionID ||
+			anchor.CommandSeq != command.Seq {
+			return store.Subtree{}, fmt.Errorf("plan anchor = %+v ok=%t", anchor, ok)
+		}
 		if compiled.Goal != "Benchmark the parser and preserve observable output" {
 			return store.Subtree{}, fmt.Errorf("goal = %q", compiled.Goal)
 		}

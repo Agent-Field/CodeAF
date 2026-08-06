@@ -86,8 +86,9 @@ func runExecute(args []string) error {
 	// call's latency for the whole preamble however wide it is.
 	if missingBriefs(graph) > 0 || *contracts {
 		start := time.Now()
+		progress := headlessPlanProgress(os.Stderr)
 		if missingBriefs(graph) > 0 {
-			usage, err := plan.Briefs(ctx, client, graph)
+			usage, err := plan.Briefs(ctx, client, graph, progress)
 			graph.Usage.Calls += usage.Calls
 			graph.Usage.Cost += usage.Cost
 			if err != nil {
@@ -95,7 +96,7 @@ func runExecute(args []string) error {
 			}
 		}
 		if *contracts {
-			usage, err := plan.Contracts(ctx, client, graph, resident.ContractPlaybook(history))
+			usage, err := plan.Contracts(ctx, client, graph, resident.ContractPlaybook(history), progress)
 			graph.Usage.Calls += usage.Calls
 			graph.Usage.Cost += usage.Cost
 			if err != nil {

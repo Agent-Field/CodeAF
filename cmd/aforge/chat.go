@@ -1053,9 +1053,20 @@ func (j *jobPlans) put(prefix string, graph *plan.Graph, root, model string, cli
 	j.graphs[prefix] = plannedJob{graph: graph, root: root, model: model, client: client}
 }
 
-// lookup resolves a store node id ("<prefix>-n<planID>") back to its plan
-// node. Single-task jobs have no plan graph and resolve to nil.
+// lookup resolves a store node id back to its plan node. The job root uses the
+// bare prefix so planning messages can name it before admission; other nodes
+// retain "<prefix>-n<planID>".
 func (j *jobPlans) lookup(nodeID string) (*plan.Graph, *plan.Node, string, router.Client) {
+	j.mu.Lock()
+	defer j.mu.Unlock()
+
+	if entry, ok := j.graphs[nodeID]; ok {
+		if len(entry.graph.Nodes) == 0 {
+			return entry.graph, nil, entry.model, entry.client
+		}
+		return entry.graph, &entry.graph.Nodes[len(entry.graph.Nodes)-1], entry.model, entry.client
+	}
+
 	cut := strings.LastIndex(nodeID, "-n")
 	if cut < 0 {
 		return nil, nil, "", nil
@@ -1064,8 +1075,6 @@ func (j *jobPlans) lookup(nodeID string) (*plan.Graph, *plan.Node, string, route
 	if err != nil {
 		return nil, nil, "", nil
 	}
-	j.mu.Lock()
-	defer j.mu.Unlock()
 	entry, ok := j.graphs[nodeID[:cut]]
 	if !ok {
 		return nil, nil, "", nil
@@ -1103,12 +1112,17 @@ func (j *jobPlans) recordOutcome(node *plan.Node, outcome *exec.Outcome, err err
 // graph's sink — the moment its leaves become profile evidence. Any other
 // node returns nil and the graph stays for the leaves still to land.
 func (j *jobPlans) takeIfRoot(nodeID string) *plan.Graph {
+	j.mu.Lock()
+	defer j.mu.Unlock()
+	if entry, ok := j.graphs[nodeID]; ok && entry.root == nodeID {
+		delete(j.graphs, nodeID)
+		return entry.graph
+	}
+
 	cut := strings.LastIndex(nodeID, "-n")
 	if cut < 0 {
 		return nil
 	}
-	j.mu.Lock()
-	defer j.mu.Unlock()
 	entry, ok := j.graphs[nodeID[:cut]]
 	if !ok || entry.root != nodeID {
 		return nil
@@ -1387,9 +1401,14 @@ func recordProfileSurprise(graph *store.Store, nodeID string, record profile.Rec
 
 func planSubtree(settings config.Config, client *liveClient, plans *jobPlans, history *store.Store) resident.PlanFunc {
 	return func(ctx context.Context, compiled resident.Compiled) (store.Subtree, error) {
-		prefix, err := subtreePrefix()
-		if err != nil {
-			return store.Subtree{}, err
+		anchor, anchored := resident.PlanAnchorFromContext(ctx)
+		prefix := anchor.NodeID
+		if !anchored {
+			var err error
+			prefix, err = subtreePrefix()
+			if err != nil {
+				return store.Subtree{}, err
+			}
 		}
 		if compiled.Scale != head.ScaleProject {
 			return store.Subtree{Nodes: []store.NodeSpec{{
@@ -1399,6 +1418,7 @@ func planSubtree(settings config.Config, client *liveClient, plans *jobPlans, hi
 			}}}, nil
 		}
 		workingModel, workingClient := client.Snapshot()
+		progress := chatPlanProgress(history, anchor)
 		graph, err := plan.Build(settings.Context(ctx, compiled.Goal), workingClient, compiled.Goal, plan.Options{
 			Recall:       recallHits(history, compiled.Goal, groundRecallLimit),
 			SpineSamples: settings.SpineSamples,
@@ -1408,13 +1428,14 @@ func planSubtree(settings config.Config, client *liveClient, plans *jobPlans, hi
 			MaxDepth:   settings.MaxDepth + 1,
 			NodeBudget: settings.NodeBudget,
 			Briefs:     true,
+			Progress:   progress,
 		})
 		if err != nil {
 			return store.Subtree{}, err
 		}
 		// Per-leaf working contracts, exactly as a headless run writes them
 		// before dispatch. A contract failure costs specificity, not the job.
-		if _, err := plan.Contracts(ctx, workingClient, graph, resident.ContractPlaybook(history)); err != nil {
+		if _, err := plan.Contracts(ctx, workingClient, graph, resident.ContractPlaybook(history), progress); err != nil {
 			fmt.Fprintf(os.Stderr, "note: could not write contracts: %v\n", err)
 		}
 		subtree, err := resident.SubtreeFromPlan(graph, prefix)
@@ -1445,12 +1466,15 @@ func subtreeSink(subtree store.Subtree) string {
 func replanRemainder(settings config.Config, client *liveClient, plans *jobPlans, history *store.Store) resident.OverrunPlanFunc {
 	return func(ctx context.Context, goal, prefix string) (store.Subtree, error) {
 		workingModel, workingClient := client.Snapshot()
+		anchor, _ := resident.PlanAnchorFromContext(ctx)
+		progress := chatPlanProgress(history, anchor)
 		graph, err := plan.Build(settings.Context(ctx, goal), workingClient, goal, plan.Options{
 			Recall:       recallHits(history, goal, groundRecallLimit),
 			SpineSamples: settings.SpineSamples,
 			MaxDepth:     settings.MaxDepth,
 			NodeBudget:   settings.NodeBudget,
 			Briefs:       true,
+			Progress:     progress,
 		})
 		if err != nil {
 			return store.Subtree{Nodes: []store.NodeSpec{{
@@ -1460,7 +1484,7 @@ func replanRemainder(settings config.Config, client *liveClient, plans *jobPlans
 				Stage: 1,
 			}}}, nil
 		}
-		if _, err := plan.Contracts(ctx, workingClient, graph, resident.ContractPlaybook(history)); err != nil {
+		if _, err := plan.Contracts(ctx, workingClient, graph, resident.ContractPlaybook(history), progress); err != nil {
 			fmt.Fprintf(os.Stderr, "note: could not write repair contracts: %v\n", err)
 		}
 		subtree, err := resident.SubtreeFromPlan(graph, prefix)
