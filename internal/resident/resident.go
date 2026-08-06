@@ -371,7 +371,7 @@ func (r *Reconciler) announceNode(event store.Event) error {
 		return nil
 	}
 
-	brief := firstLine(node.Brief)
+	brief := clipLabel(firstLine(node.Brief), 72)
 	var body string
 	switch event.Kind {
 	case store.EventNodeCompleted:
@@ -448,4 +448,13 @@ func boundMessage(value string) string {
 		cut--
 	}
 	return strings.TrimSpace(value[:cut]) + "..."
+}
+
+// clipLabel bounds a node label for thread announcements, where the body
+// that follows carries the substance and a full goal statement is noise.
+func clipLabel(label string, limit int) string {
+	if limit <= 3 || len(label) <= limit {
+		return label
+	}
+	return strings.TrimSpace(label[:limit-1]) + "…"
 }
