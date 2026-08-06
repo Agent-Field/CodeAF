@@ -149,6 +149,7 @@ func runPlan(args []string) error {
 		Briefs:       *briefs,
 		Ensemble:     *ensemble,
 		Report:       report,
+		Progress:     headlessPlanProgress(os.Stderr),
 		OnReady: func(node plan.Node, elapsed time.Duration) {
 			if !*asJSON {
 				fmt.Printf("    ready   %-22s %s\n", clip(node.Title, 22), elapsed.Round(10*time.Millisecond))

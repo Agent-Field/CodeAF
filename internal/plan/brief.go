@@ -81,19 +81,25 @@ task", or "this node". 90-160 words of plain instruction.`
 // while expansion is still appending to it, which is the exact aliasing hazard
 // that already cost us a duplicated subtree.
 type briefWriter struct {
-	ctx     context.Context
-	client  Completer
-	enabled bool
+	ctx      context.Context
+	client   Completer
+	enabled  bool
+	progress Progress
 
-	group   sync.WaitGroup
-	mutex   sync.Mutex
-	results map[int]string
-	usage   Usage
-	errs    []error
+	group     sync.WaitGroup
+	mutex     sync.Mutex
+	results   map[int]string
+	usage     Usage
+	errs      []error
+	launched  int
+	completed int
+	base      int
+	total     int
+	reporting bool
 }
 
-func newBriefWriter(ctx context.Context, client Completer, enabled bool) *briefWriter {
-	return &briefWriter{ctx: ctx, client: client, enabled: enabled, results: map[int]string{}}
+func newBriefWriter(ctx context.Context, client Completer, enabled bool, progress Progress) *briefWriter {
+	return &briefWriter{ctx: ctx, client: client, enabled: enabled, progress: progress, results: map[int]string{}}
 }
 
 // launch starts one node's brief. Everything it needs is passed by value —
@@ -103,6 +109,9 @@ func (w *briefWriter) launch(shared string, node Node, inputs []string, delivera
 	if !w.enabled || node.Kind != KindWork {
 		return
 	}
+	w.mutex.Lock()
+	w.launched++
+	w.mutex.Unlock()
 	w.group.Add(1)
 	go func() {
 		defer w.group.Done()
@@ -112,14 +121,28 @@ func (w *briefWriter) launch(shared string, node Node, inputs []string, delivera
 		w.usage.Add(usage)
 		if err != nil {
 			w.errs = append(w.errs, err)
-			return
+		} else {
+			w.results[node.ID] = brief
 		}
-		w.results[node.ID] = brief
+		w.completed++
+		if w.reporting && w.progress != nil {
+			w.progress("briefs", fmt.Sprintf("%d/%d", w.base+w.completed, w.total))
+		}
 	}()
 }
 
 // apply waits for every brief and writes them in.
 func (w *briefWriter) apply(graph *Graph) (Usage, error) {
+	if w.enabled {
+		w.mutex.Lock()
+		w.reporting = true
+		w.total = len(graph.Leaves())
+		w.base = w.total - w.launched
+		if w.progress != nil {
+			w.progress("briefs", fmt.Sprintf("%d/%d", w.base+w.completed, w.total))
+		}
+		w.mutex.Unlock()
+	}
 	w.group.Wait()
 	w.mutex.Lock()
 	defer w.mutex.Unlock()
@@ -134,8 +157,12 @@ func (w *briefWriter) apply(graph *Graph) (Usage, error) {
 // Briefs writes an instruction for every leaf that lacks one, all at once. The
 // planner writes briefs in the background as nodes settle; this is the batch
 // form, for a graph that was planned without them and is about to be executed.
-func Briefs(ctx context.Context, client Completer, graph *Graph) (Usage, error) {
-	writer := newBriefWriter(ctx, client, true)
+func Briefs(ctx context.Context, client Completer, graph *Graph, callbacks ...Progress) (Usage, error) {
+	var callback Progress
+	if len(callbacks) > 0 {
+		callback = serialProgress(callbacks[0])
+	}
+	writer := newBriefWriter(ctx, client, true, callback)
 	shared := graph.context() + "\nThe full plan:\n" + graph.briefCatalog()
 	for _, id := range graph.Leaves() {
 		node := graph.Node(id)

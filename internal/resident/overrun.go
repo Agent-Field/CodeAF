@@ -54,7 +54,9 @@ func ReplanOverrun(ctx context.Context, graph *store.Store, node store.Node, par
 		return 0, "", nil
 	}
 	prefix := node.ID + overrunMarker
-	subtree, err := planRemainder(ctx, OverrunGoal(node, partial, artifacts), prefix)
+	anchor := PlanAnchor{NodeID: jobRootID(graph, node), SessionID: node.Provenance.SessionID}
+	planCtx := withPlanAnchor(ctx, anchor)
+	subtree, err := planRemainder(planCtx, OverrunGoal(node, partial, artifacts), prefix)
 	if err != nil {
 		return 0, "", fmt.Errorf("replan overrun %s: %w", node.ID, err)
 	}
@@ -107,6 +109,18 @@ func ReplanOverrun(ctx context.Context, graph *store.Store, node store.Node, par
 		}
 	}
 	return len(subtree.Nodes), sink, nil
+}
+
+func jobRootID(graph *store.Store, node store.Node) string {
+	root := node
+	for root.Parent != "" && root.Parent != store.RootID {
+		parent, ok, err := graph.Node(root.Parent)
+		if err != nil || !ok {
+			return node.ID
+		}
+		root = parent
+	}
+	return root.ID
 }
 
 // attachNeeds points every entry node of a subtree at prior work, the same

@@ -94,6 +94,31 @@ type CompileFunc func(ctx context.Context, instruction string, graphContext stri
 // PlanFunc turns one compiled goal into an atomic subtree admission.
 type PlanFunc func(ctx context.Context, compiled Compiled) (store.Subtree, error)
 
+// PlanAnchor is the durable identity a planner can speak against before the
+// subtree itself has landed. CommandSeq is set for a new chat job; replanning
+// an existing job carries only its already-admitted node and session.
+type PlanAnchor struct {
+	NodeID     string
+	SessionID  string
+	CommandSeq int64
+}
+
+type planAnchorKey struct{}
+
+func withPlanAnchor(ctx context.Context, anchor PlanAnchor) context.Context {
+	return context.WithValue(ctx, planAnchorKey{}, anchor)
+}
+
+// PlanAnchorFromContext returns the journal anchor for planning progress. It is
+// optional so PlanFunc remains usable outside the resident command loop.
+func PlanAnchorFromContext(ctx context.Context) (PlanAnchor, bool) {
+	if ctx == nil {
+		return PlanAnchor{}, false
+	}
+	anchor, ok := ctx.Value(planAnchorKey{}).(PlanAnchor)
+	return anchor, ok && strings.TrimSpace(anchor.NodeID) != ""
+}
+
 // Reconciler is the replaceable background half of the resident thread. The
 // store remains the source of truth; this type keeps only a restart-safe event
 // cursor and injected planning behavior in memory.
@@ -347,7 +372,11 @@ func (r *Reconciler) splice(ctx context.Context, command store.Command) (command
 			Stage: 1,
 		}}}
 	} else {
-		subtree, err = r.plan(ctx, compiled)
+		planCtx := withPlanAnchor(ctx, PlanAnchor{
+			NodeID:    fmt.Sprintf("task-%d", command.Seq),
+			SessionID: command.SessionID, CommandSeq: command.Seq,
+		})
+		subtree, err = r.plan(planCtx, compiled)
 		if err != nil {
 			return commandOutcome{}, fmt.Errorf("plan request: %w", err)
 		}

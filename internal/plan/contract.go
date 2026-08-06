@@ -69,8 +69,12 @@ type ContractPlaybook func(Node) string
 // Contracts writes a working method for every leaf that lacks one, all leaves
 // at once. Like Briefs, it is the batch form used at run time; the wall-clock
 // cost is one call however many leaves there are.
-func Contracts(ctx context.Context, client Completer, graph *Graph, playbook ContractPlaybook) (Usage, error) {
+func Contracts(ctx context.Context, client Completer, graph *Graph, playbook ContractPlaybook, callbacks ...Progress) (Usage, error) {
 	shared := graph.context()
+	var progress Progress
+	if len(callbacks) > 0 {
+		progress = serialProgress(callbacks[0])
+	}
 
 	type result struct {
 		id       int
@@ -81,12 +85,22 @@ func Contracts(ctx context.Context, client Completer, graph *Graph, playbook Con
 	var group sync.WaitGroup
 	var mutex sync.Mutex
 	var results []result
+	var targets []Node
 
 	for _, id := range graph.Leaves() {
 		node := graph.Node(id)
 		if node == nil || node.Kind != KindWork || strings.TrimSpace(node.Contract) != "" {
 			continue
 		}
+		targets = append(targets, *node)
+	}
+	total := len(graph.Leaves())
+	base := total - len(targets)
+	if progress != nil {
+		progress("contracts", fmt.Sprintf("%d/%d", base, total))
+	}
+	completed := 0
+	for _, node := range targets {
 		group.Add(1)
 		go func(node Node) {
 			defer group.Done()
@@ -98,7 +112,11 @@ func Contracts(ctx context.Context, client Completer, graph *Graph, playbook Con
 			mutex.Lock()
 			defer mutex.Unlock()
 			results = append(results, result{id: node.ID, contract: contract, usage: usage, err: err})
-		}(*node)
+			completed++
+			if progress != nil {
+				progress("contracts", fmt.Sprintf("%d/%d", base+completed, total))
+			}
+		}(node)
 	}
 	group.Wait()
 

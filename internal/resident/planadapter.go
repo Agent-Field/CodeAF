@@ -85,7 +85,12 @@ func SubtreeFromPlan(graph *plan.Graph, prefix string) (store.Subtree, error) {
 		return strings.Join(chain, " › ")
 	}
 
-	id := func(planID int) string { return fmt.Sprintf("%s-n%d", prefix, planID) }
+	id := func(planID int) string {
+		if planID == rootID {
+			return prefix
+		}
+		return fmt.Sprintf("%s-n%d", prefix, planID)
+	}
 	specs := make([]store.NodeSpec, 0, len(admitted))
 	for _, node := range admitted {
 		spec := store.NodeSpec{
