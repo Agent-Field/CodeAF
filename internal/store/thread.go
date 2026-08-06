@@ -70,10 +70,14 @@ type Message struct {
 
 // Command is one materialized mutation request.
 type Command struct {
-	Seq         int64
-	Time        time.Time
-	SessionID   string
-	Kind        CommandKind
+	Seq       int64
+	Time      time.Time
+	SessionID string
+	Kind      CommandKind
+	// Reflex asks the reconciler to admit exactly one verbatim micro-leaf
+	// without compiling or planning it. It remains a splice command so a
+	// promotion can enqueue the ordinary path with the same instruction.
+	Reflex      bool
 	Target      string
 	Instruction string
 	Status      CommandStatus
@@ -98,6 +102,7 @@ CREATE TABLE IF NOT EXISTS commands (
     ts          TEXT NOT NULL,
     session_id  TEXT NOT NULL DEFAULT '',
     kind        TEXT NOT NULL CHECK (kind IN ('splice', 'amend', 'cancel')),
+    reflex      INTEGER NOT NULL DEFAULT 0 CHECK (reflex IN (0, 1)),
     target      TEXT NOT NULL DEFAULT '',
     instruction TEXT NOT NULL,
     status      TEXT NOT NULL CHECK (status IN ('pending', 'applied', 'rejected')),
@@ -118,6 +123,7 @@ type messagePayload struct {
 type commandPayload struct {
 	SessionID   string      `json:"session_id,omitempty"`
 	Kind        CommandKind `json:"kind"`
+	Reflex      bool        `json:"reflex,omitempty"`
 	Target      string      `json:"target,omitempty"`
 	Instruction string      `json:"instruction"`
 }
@@ -265,6 +271,9 @@ func (s *Store) RequestCommand(command Command) (Command, error) {
 	if strings.TrimSpace(command.Instruction) == "" {
 		return Command{}, fmt.Errorf("request command: %w: empty instruction", ErrInvalid)
 	}
+	if command.Reflex && (command.Kind != CommandSplice || strings.TrimSpace(command.Target) != "") {
+		return Command{}, fmt.Errorf("request command: %w: reflex must be an untargeted splice", ErrInvalid)
+	}
 	if command.Kind != CommandSplice && strings.TrimSpace(command.Target) == "" {
 		return Command{}, fmt.Errorf("request command: %w: %s requires a target node", ErrInvalid, command.Kind)
 	}
@@ -283,6 +292,7 @@ func (s *Store) RequestCommand(command Command) (Command, error) {
 	payload := commandPayload{
 		SessionID:   command.SessionID,
 		Kind:        command.Kind,
+		Reflex:      command.Reflex,
 		Target:      command.Target,
 		Instruction: command.Instruction,
 	}
@@ -322,6 +332,19 @@ func (s *Store) CommandBySeq(seq int64) (Command, bool, error) {
 		return Command{}, false, nil
 	}
 	return commands[0], true, nil
+}
+
+// HasCommandTarget reports whether the journaled command view contains a
+// command of kind aimed at target. A targeted splice is the durable marker for
+// a reflex promotion.
+func (s *Store) HasCommandTarget(target string, kind CommandKind) (bool, error) {
+	var found bool
+	if err := s.db.QueryRow(`SELECT EXISTS(
+		SELECT 1 FROM commands WHERE target = ? AND kind = ?
+	)`, target, kind).Scan(&found); err != nil {
+		return false, fmt.Errorf("find targeted command: %w", err)
+	}
+	return found, nil
 }
 
 // ResolveCommand settles a pending command exactly once. Status must be
@@ -365,7 +388,7 @@ func (s *Store) ResolveCommand(seq int64, status CommandStatus, result string) e
 
 func (s *Store) queryCommands(where string, args []any) ([]Command, error) {
 	rows, err := s.db.Query(`
-		SELECT seq, ts, session_id, kind, target, instruction, status, result, updated_seq
+		SELECT seq, ts, session_id, kind, reflex, target, instruction, status, result, updated_seq
 		FROM commands WHERE `+where, args...)
 	if err != nil {
 		return nil, fmt.Errorf("list commands: %w", err)
@@ -375,9 +398,10 @@ func (s *Store) queryCommands(where string, args []any) ([]Command, error) {
 	commands := make([]Command, 0)
 	for rows.Next() {
 		var command Command
+		var reflex int
 		var timestamp string
 		if err := rows.Scan(&command.Seq, &timestamp, &command.SessionID, &command.Kind,
-			&command.Target, &command.Instruction, &command.Status, &command.Result,
+			&reflex, &command.Target, &command.Instruction, &command.Status, &command.Result,
 			&command.UpdatedSeq); err != nil {
 			return nil, fmt.Errorf("list commands: %w", err)
 		}
@@ -385,6 +409,7 @@ func (s *Store) queryCommands(where string, args []any) ([]Command, error) {
 		if err != nil {
 			return nil, fmt.Errorf("list commands: parse time: %w", err)
 		}
+		command.Reflex = reflex != 0
 		command.Time = at
 		commands = append(commands, command)
 	}
@@ -405,10 +430,41 @@ func applyMessageView(tx *sql.Tx, payload messagePayload, seq int64, at time.Tim
 
 func applyCommandView(tx *sql.Tx, payload commandPayload, seq int64, at time.Time) error {
 	_, err := tx.Exec(`
-		INSERT INTO commands (seq, ts, session_id, kind, target, instruction, status, result, updated_seq)
-		VALUES (?, ?, ?, ?, ?, ?, ?, '', ?)`,
-		seq, formatTime(at), payload.SessionID, payload.Kind, payload.Target,
+		INSERT INTO commands (seq, ts, session_id, kind, reflex, target, instruction, status, result, updated_seq)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, '', ?)`,
+		seq, formatTime(at), payload.SessionID, payload.Kind, payload.Reflex, payload.Target,
 		payload.Instruction, CommandPending, seq)
+	return err
+}
+
+// migrateThreadSchema keeps command events from older stores replayable after
+// reflex routing was added. The event payload defaults to false, so adding the
+// materialized column is the whole migration.
+func migrateThreadSchema(db *sql.DB) error {
+	rows, err := db.Query(`PRAGMA table_info(commands)`)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+	found := false
+	for rows.Next() {
+		var cid, notNull, primaryKey int
+		var name, columnType string
+		var defaultValue any
+		if err := rows.Scan(&cid, &name, &columnType, &notNull, &defaultValue, &primaryKey); err != nil {
+			return err
+		}
+		if name == "reflex" {
+			found = true
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return err
+	}
+	if found {
+		return nil
+	}
+	_, err = db.Exec(`ALTER TABLE commands ADD COLUMN reflex INTEGER NOT NULL DEFAULT 0 CHECK (reflex IN (0, 1))`)
 	return err
 }
 

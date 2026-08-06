@@ -201,3 +201,30 @@ func TestRebuildReplaysThread(t *testing.T) {
 		t.Fatalf("rebuilt command wrong: %+v", rebuilt)
 	}
 }
+
+func TestReflexCommandSurvivesJournalRebuild(t *testing.T) {
+	s := openThreadStore(t)
+	command, err := s.RequestCommand(Command{
+		SessionID: "reflex-session", Kind: CommandSplice, Reflex: true,
+		Instruction: "Read VERSION and report it verbatim.",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := s.Rebuild(); err != nil {
+		t.Fatal(err)
+	}
+	rebuilt, found, err := s.CommandBySeq(command.Seq)
+	if err != nil || !found {
+		t.Fatalf("command found=%t err=%v", found, err)
+	}
+	if !rebuilt.Reflex || rebuilt.Kind != CommandSplice ||
+		rebuilt.SessionID != command.SessionID || rebuilt.Instruction != command.Instruction {
+		t.Fatalf("rebuilt reflex command = %+v", rebuilt)
+	}
+	if _, err := s.RequestCommand(Command{
+		Kind: CommandSplice, Reflex: true, Target: "existing", Instruction: "wrong shape",
+	}); !errors.Is(err, ErrInvalid) {
+		t.Fatalf("targeted reflex error = %v, want ErrInvalid", err)
+	}
+}

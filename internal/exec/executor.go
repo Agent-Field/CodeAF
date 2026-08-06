@@ -41,6 +41,10 @@ type Task struct {
 	Contract   string // the working method: how this kind of job is done well
 	Inputs     []Input
 	OutputHint string // suggested artifact path when the deliverable is a file
+	// Reflex constrains the general loop to one obvious micro-action and gives
+	// it an explicit promotion verdict when the assignment is larger than it
+	// first appeared.
+	Reflex bool
 
 	// Steer, when set, is polled between turns for mid-flight guidance from
 	// the user. Each returned line lands in the transcript as a user message
@@ -64,6 +68,9 @@ type Outcome struct {
 	Usage     Usage
 	Stop      StopReason
 	Elapsed   time.Duration
+	// Promote is the executor's explicit verdict that a reflex needs the normal
+	// compiled path. Text remains the useful partial discovered before stopping.
+	Promote bool
 
 	// Verdict is the same ending seen from the other side. Stop is written for a
 	// person reading the run; Verdict is written for whatever learns from it, and
@@ -84,6 +91,7 @@ const (
 	StopBudget   StopReason = "budget"   // ran out of tokens; the leaf was too expensive
 	StopDeadline StopReason = "deadline" // ran out of wall clock
 	StopError    StopReason = "error"    // the provider failed in a way we could not absorb
+	StopPromote  StopReason = "promote"  // a reflex discovered that it is a job
 
 	// StopEmpty is the runaway-reasoning circuit breaker: a turn that spent most
 	// of what the leaf had left and returned no visible text at all. It is

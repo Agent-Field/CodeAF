@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Agent-Field/aforge-v2/internal/provider"
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 )
 
@@ -206,5 +207,29 @@ func TestBudgetExhaustionLandsInsteadOfGuillotining(t *testing.T) {
 		if _, err := os.Stat(filepath.Join(space.Root(), fmt.Sprintf("out-%d.txt", index))); err != nil {
 			t.Fatalf("turn %d's emitted write was discarded: %v", index, err)
 		}
+	}
+}
+
+func TestReflexExecutorPromotesWithUsefulPartial(t *testing.T) {
+	client := &scriptedCompleter{turns: [][]ai.ToolCall{{
+		call("promote-1", "promote", `{"partial":"found two coupled migrations and preserved the schema notes"}`),
+	}}}
+	linear := NewLinear(client, workspace(t), nil, 4, 18_750, time.Minute)
+	outcome, err := linear.Run(context.Background(), Task{
+		NodeID: 9, Brief: "Make the tiny schema change", Reflex: true,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !outcome.Promote || outcome.Stop != StopPromote ||
+		outcome.Text != "found two coupled migrations and preserved the schema notes" {
+		t.Fatalf("promotion outcome = %+v", outcome)
+	}
+	if outcome.Turns != 1 || outcome.Verdict != provider.VerdictUnverifiedSuccess {
+		t.Fatalf("promotion turns/verdict = %d/%s", outcome.Turns, outcome.Verdict)
+	}
+	if len(client.seen) != 1 || len(client.seen[0]) == 0 ||
+		!strings.Contains(client.seen[0][0].Content[0].Text, "This assignment is a reflex") {
+		t.Fatalf("reflex contract did not reach executor: %+v", client.seen)
 	}
 }

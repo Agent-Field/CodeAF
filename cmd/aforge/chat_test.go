@@ -11,6 +11,7 @@ import (
 	"github.com/Agent-Field/aforge-v2/internal/exec"
 	"github.com/Agent-Field/aforge-v2/internal/profile"
 	"github.com/Agent-Field/aforge-v2/internal/provider"
+	"github.com/Agent-Field/aforge-v2/internal/resident"
 	"github.com/Agent-Field/aforge-v2/internal/store"
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 )
@@ -232,5 +233,113 @@ func TestParseLearnedFactsAcceptsQuarantineOnlyDecision(t *testing.T) {
 	if len(learned) != 1 || len(learned[0].Quarantines) != 2 ||
 		learned[0].Quarantines[0] != 12 || learned[0].Quarantines[1] != 13 {
 		t.Fatalf("parsed quarantine = %+v", learned)
+	}
+}
+
+func TestReflexEnvelopeSkipsDeliveryGate(t *testing.T) {
+	if reflexTurns != 4 || reflexTokens != chatLeafTokens/8 {
+		t.Fatalf("reflex envelope = %d turns/%d tokens", reflexTurns, reflexTokens)
+	}
+	outcome := &exec.Outcome{Stop: exec.StopDone}
+	reflex := store.Node{ID: "reflex-1", Parent: store.RootID, Group: resident.ReflexGroup}
+	if shouldGate(reflex, outcome) {
+		t.Fatal("reflex reached delivery gate")
+	}
+	if !shouldPromoteReflex(reflex, &exec.Outcome{Stop: exec.StopBudget}) {
+		t.Fatal("budget-stopped reflex did not promote")
+	}
+	ordinary := store.Node{ID: "task-1", Parent: store.RootID}
+	if !shouldGate(ordinary, outcome) {
+		t.Fatal("ordinary root leaf unexpectedly skipped delivery gate")
+	}
+	if shouldPromoteReflex(ordinary, &exec.Outcome{Stop: exec.StopBudget}) {
+		t.Fatal("ordinary budget stop was mislabeled reflex promotion")
+	}
+	if shouldGate(ordinary, &exec.Outcome{Stop: exec.StopBudget}) {
+		t.Fatal("budget partial reached delivery gate")
+	}
+}
+
+func TestRecordReflexPersistsBoundaryEvidence(t *testing.T) {
+	dir := t.TempDir()
+	settings := config.Config{Model: "configured/model", ProfileDir: dir}
+	node := store.Node{Brief: "quick local action", Title: "Quick action"}
+	outcome := &exec.Outcome{
+		Turns: 4, Stop: exec.StopBudget, Verdict: provider.VerdictBudgetStop,
+		Usage: exec.Usage{PromptTokens: 80, CompletionTokens: 20, Cost: 0.0125},
+	}
+	recordReflex(settings, "worker/model", node, outcome, true)
+
+	measured, err := profile.Load(dir, "worker/model", "linear")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(measured.Records) != 1 {
+		t.Fatalf("profile records = %+v", measured.Records)
+	}
+	record := measured.Records[0]
+	if record.Size != profile.BucketReflex || !record.Promoted || record.Cost != 0.0125 ||
+		record.Tokens != 100 || record.Turns != 4 || record.Verdict != provider.VerdictBudgetStop {
+		t.Fatalf("reflex profile record = %+v", record)
+	}
+}
+
+func TestBudgetStoppedReflexCarriesPartialIntoCompiledJob(t *testing.T) {
+	graph, err := store.Open(filepath.Join(t.TempDir(), "reflex.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer graph.Close()
+	ask := "Inspect the parser and fix its edge case."
+	command, err := graph.RequestCommand(store.Command{
+		SessionID: "budget-promotion", Kind: store.CommandSplice, Reflex: true, Instruction: ask,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var compiledInstruction, compiledContext string
+	reconciler := resident.New(graph,
+		func(_ context.Context, instruction, graphContext string) (resident.Compiled, error) {
+			compiledInstruction, compiledContext = instruction, graphContext
+			return resident.Compiled{Goal: "Fix and verify the parser edge case"}, nil
+		},
+		func(_ context.Context, compiled resident.Compiled) (store.Subtree, error) {
+			return store.Subtree{Nodes: []store.NodeSpec{{
+				ID: "compiled-after-budget", Brief: compiled.Goal, Stage: 1,
+			}}}, nil
+		},
+	)
+	if err := reconciler.Tick(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	reflexID := fmt.Sprintf("reflex-%d", command.Seq)
+	budgetOutcome := &exec.Outcome{
+		Stop: exec.StopBudget, Text: "partial: isolated the malformed escape sequence",
+	}
+	runner := resident.NewRunner(graph, func(_ context.Context, node store.Node) (resident.ExecResult, error) {
+		return resident.ExecResult{
+			Summary: budgetOutcome.Text,
+			Promote: shouldPromoteReflex(node, budgetOutcome),
+		}, nil
+	}, "budget-reflex", 1)
+	if _, err := runner.Tick(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	runner.Wait()
+	if err := reconciler.Tick(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+
+	if compiledInstruction != ask {
+		t.Fatalf("compiled instruction = %q, want %q", compiledInstruction, ask)
+	}
+	for _, want := range []string{reflexID, ask, budgetOutcome.Text} {
+		if !strings.Contains(compiledContext, want) {
+			t.Errorf("compiled context omitted %q:\n%s", want, compiledContext)
+		}
+	}
+	node, found, err := graph.Node("compiled-after-budget")
+	if err != nil || !found || node.Provenance.Intent != ask {
+		t.Fatalf("compiled job = %+v found=%t err=%v", node, found, err)
 	}
 }
