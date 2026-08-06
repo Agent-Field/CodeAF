@@ -121,7 +121,8 @@ func runChat(args []string) error {
 		WithDistiller(distillFacts(settings, chatClient, graph)).
 		WithConsolidator(consolidateFacts(settings, chatClient, graph)).
 		WithTitler(titleGoal(settings, chatClient)).
-		WithReflector(reflectAcrossJobs(settings, chatClient, graph))
+		WithReflector(reflectAcrossJobs(settings, chatClient, graph)).
+		WithTerritoryDigester(digestTerritory(settings, chatClient))
 
 	web := exec.NewWeb()
 	runner := resident.NewRunner(graph, func(ctx context.Context, node store.Node) (resident.ExecResult, error) {
@@ -1532,6 +1533,34 @@ func reflectAcrossJobs(settings config.Config, client *liveClient, graph *store.
 			return nil, err
 		}
 		return parseLearnedFacts(response.Text(), 4), nil
+	}
+}
+
+const territoryDigestSystemPrompt = `You write one compact map of a territory made from several completed jobs. Return plain text, no JSON and no heading.
+
+Begin with the exact job count. State what the series learned, then where its durable assets live. Preserve member IDs in square brackets beside the claims they support so a reader can route back to a job fold. Mention only paths supplied in the input. Be specific and bounded: at most 180 words.`
+
+// digestTerritory is the territory mechanism's only model call. Membership
+// and the display noun have already been chosen deterministically.
+func digestTerritory(settings config.Config, client *liveClient) resident.TerritoryDigestFunc {
+	return func(ctx context.Context, title string, jobs []resident.TerritoryDigestJob) (string, error) {
+		var input strings.Builder
+		fmt.Fprintf(&input, "Territory: %s\nJobs: %d\n", title, len(jobs))
+		for _, job := range jobs {
+			fmt.Fprintf(&input, "\n[%s] %s\nasked: %s\nlearned: %s\n",
+				job.ID, job.Title, job.Ask, job.Outcome)
+			if len(job.Pointers) > 0 {
+				fmt.Fprintf(&input, "assets: %s\n", strings.Join(job.Pointers, ", "))
+			}
+		}
+		response, err := client.CompleteWithMessages(settings.Context(ctx, "reflect"), []ai.Message{
+			{Role: "system", Content: []ai.ContentPart{{Type: "text", Text: territoryDigestSystemPrompt}}},
+			{Role: "user", Content: []ai.ContentPart{{Type: "text", Text: input.String()}}},
+		}, ai.WithMaxTokens(300))
+		if err != nil || response == nil {
+			return "", err
+		}
+		return strings.TrimSpace(response.Text()), nil
 	}
 }
 

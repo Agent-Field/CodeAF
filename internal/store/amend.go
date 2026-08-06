@@ -22,6 +22,10 @@ type nodeCancelledPayload struct {
 	Reason string `json:"reason"`
 }
 
+type nodeReparentedPayload struct {
+	Parent string `json:"parent"`
+}
+
 type edgeRemovedPayload struct {
 	From string   `json:"from"`
 	To   string   `json:"to"`
@@ -142,6 +146,21 @@ func applyNodeAmendedView(tx *sql.Tx, id, brief, title string, seq int64) error 
 		if _, err := tx.Exec(`UPDATE nodes SET title = ?, updated_seq = ? WHERE id = ?`, title, seq, id); err != nil {
 			return err
 		}
+	}
+	return nil
+}
+
+func applyNodeReparentedView(tx *sql.Tx, id, parent string, seq int64) error {
+	result, err := tx.Exec(`UPDATE nodes SET parent_id = ?, updated_seq = ? WHERE id = ?`, parent, seq, id)
+	if err != nil {
+		return err
+	}
+	changed, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if changed == 0 {
+		return ErrNotFound
 	}
 	return nil
 }

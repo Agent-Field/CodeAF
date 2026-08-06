@@ -71,10 +71,17 @@ func (s *Store) Nodes() ([]Node, error) {
 	return s.queryNodes(``, nil)
 }
 
-// ActiveNodes returns the live graph plus one compact representative for each
-// fold. Historical nodes inside a folded subtree are absent from this view.
+// ActiveNodes returns the live graph plus the outermost compact representative
+// for each fold. Nested fold roots remain addressable history, but their folded
+// parent already represents them in the active view.
 func (s *Store) ActiveNodes() ([]Node, error) {
-	return s.queryNodes(`WHERE folded = 0 OR fold_root = 1`, nil)
+	return s.queryNodes(`
+		WHERE folded = 0 OR (
+			fold_root = 1 AND NOT EXISTS (
+				SELECT 1 FROM nodes AS parent
+				WHERE parent.id = nodes.parent_id AND parent.fold_root = 1
+			)
+		)`, nil)
 }
 
 func (s *Store) queryNodes(where string, args []any) ([]Node, error) {
@@ -158,8 +165,14 @@ func (s *Store) ActiveEdges() ([]Edge, error) {
 	return s.queryEdges(`
 		JOIN nodes AS source ON source.id = edge.from_id
 		JOIN nodes AS target ON target.id = edge.to_id
-		WHERE (source.folded = 0 OR source.fold_root = 1)
-		  AND (target.folded = 0 OR target.fold_root = 1)`)
+		WHERE (source.folded = 0 OR (source.fold_root = 1 AND NOT EXISTS (
+		          SELECT 1 FROM nodes AS parent
+		          WHERE parent.id = source.parent_id AND parent.fold_root = 1
+		      )))
+		  AND (target.folded = 0 OR (target.fold_root = 1 AND NOT EXISTS (
+		          SELECT 1 FROM nodes AS parent
+		          WHERE parent.id = target.parent_id AND parent.fold_root = 1
+		      )))`)
 }
 
 func (s *Store) queryEdges(joinWhere string) ([]Edge, error) {

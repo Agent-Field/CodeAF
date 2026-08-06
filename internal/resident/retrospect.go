@@ -89,6 +89,7 @@ func (r *Reconciler) reflectOnJobs(ctx context.Context) {
 	if _, err := r.store.CheckpointRetrospective(settledJobs); err != nil {
 		return
 	}
+	r.maintainTerritories(ctx, now)
 
 	learned, err := r.reflect(ctx, jobs)
 	if err != nil {
@@ -115,7 +116,7 @@ func (r *Reconciler) reflectOnJobs(ctx context.Context) {
 // first. Folded jobs contribute their digests — the retrospective reads the
 // filed history, not the raw archive.
 func (r *Reconciler) settledJobSketches(now time.Time) ([]JobSketch, int) {
-	nodes, err := r.store.ActiveNodes()
+	nodes, err := r.store.Nodes()
 	if err != nil {
 		return nil, 0
 	}
@@ -123,11 +124,18 @@ func (r *Reconciler) settledJobSketches(now time.Time) ([]JobSketch, int) {
 	if err != nil {
 		return nil, 0
 	}
+	territories := make(map[string]bool)
+	for _, node := range nodes {
+		if node.Group == store.TerritoryGroup {
+			territories[node.ID] = true
+		}
+	}
 	sketches := make([]JobSketch, 0, reflectionJobLimit)
 	settledJobs := 0
 	for index := len(nodes) - 1; index >= 0; index-- {
 		node := nodes[index]
-		if node.Parent != store.RootID {
+		if node.Group == store.TerritoryGroup ||
+			node.Parent != store.RootID && !territories[node.Parent] {
 			continue
 		}
 		settled := node.FoldRoot || node.Status == store.Done || node.Status == store.Failed || node.Status == store.Cancelled

@@ -91,13 +91,19 @@ func (s *Store) Usage() (TotalUsage, error) {
 	return total, nil
 }
 
-// TopLevelJobUsage joins every node and usage event to its top-level ancestor.
-// Folded history remains in nodes, so a filed job keeps its original node
-// count and complete measured cost.
+// TopLevelJobUsage joins every node and usage event to its job root. A job
+// remains a job root when a territory moves it one level below the spine.
+// Folded history therefore keeps its original node count and measured cost.
 func (s *Store) TopLevelJobUsage() (map[string]JobUsage, error) {
 	rows, err := s.db.Query(`
-		WITH RECURSIVE descendants(job_id, node_id) AS (
-			SELECT id, id FROM nodes WHERE parent_id = ?
+		WITH RECURSIVE job_roots(id) AS (
+			SELECT node.id
+			FROM nodes AS node
+			LEFT JOIN nodes AS parent ON parent.id = node.parent_id
+			WHERE node.grp <> ?
+			  AND (node.parent_id = ? OR parent.grp = ?)
+		), descendants(job_id, node_id) AS (
+			SELECT id, id FROM job_roots
 			UNION ALL
 			SELECT descendants.job_id, child.id
 			FROM descendants
@@ -118,7 +124,7 @@ func (s *Store) TopLevelJobUsage() (map[string]JobUsage, error) {
 		SELECT node_counts.job_id, node_counts.node_count, spends.runs,
 		       spends.prompt_tokens, spends.completion_tokens, spends.cost
 		FROM node_counts
-		JOIN spends ON spends.job_id = node_counts.job_id`, RootID)
+		JOIN spends ON spends.job_id = node_counts.job_id`, TerritoryGroup, RootID, TerritoryGroup)
 	if err != nil {
 		return nil, fmt.Errorf("top-level job usage: %w", err)
 	}
