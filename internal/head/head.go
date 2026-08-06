@@ -11,6 +11,7 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"github.com/Agent-Field/aforge-v2/internal/resident"
 	"github.com/Agent-Field/aforge-v2/internal/store"
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 )
@@ -321,7 +322,9 @@ func renderNotebook(graphStore *store.Store, message string) string {
 			lines = append(lines, line)
 		}
 	}
-	if found, err := graphStore.SearchFacts(store.FactQuery{Terms: message, Limit: 8}); err == nil {
+	if found, err := graphStore.SearchFacts(store.FactQuery{
+		Cues: resident.ExtractCues(message), Terms: message, Limit: 8,
+	}); err == nil {
 		add(found)
 	}
 	if recent, err := graphStore.RecentFacts(10); err == nil {

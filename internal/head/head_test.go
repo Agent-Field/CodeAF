@@ -115,6 +115,18 @@ func TestHeadMalformedOutputFallsBackToRawReply(t *testing.T) {
 	}
 }
 
+func TestRenderNotebookUsesMessageScopeCues(t *testing.T) {
+	graphStore := openHeadStore(t)
+	if _, err := graphStore.RecordFact("", "file:internal/resident/notebook.go", store.FactQuirk,
+		"scope-only memory with unrelated vocabulary"); err != nil {
+		t.Fatalf("record fact: %v", err)
+	}
+	rendered := renderNotebook(graphStore, "Please inspect internal/resident/notebook.go")
+	if !strings.Contains(rendered, "scope-only memory with unrelated vocabulary") {
+		t.Fatalf("scope-exact notebook fact did not reach head: %q", rendered)
+	}
+}
+
 func TestCompilerParsesAssumptions(t *testing.T) {
 	client := &fakeClient{responses: []string{strings.Join([]string{
 		"Here is the brief:",

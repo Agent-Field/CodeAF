@@ -201,6 +201,17 @@ type FactQuery struct {
 // cue order, then BM25 matches for the terms, deduplicated, capped. Returned
 // facts have their use telemetry bumped.
 func (s *Store) SearchFacts(query FactQuery) ([]Fact, error) {
+	return s.searchFacts(query, true)
+}
+
+// SearchFactsUncounted performs the same retrieval without changing use
+// telemetry. Notebook maintenance calls use it so the notebook cannot make
+// its own lines look useful merely by inspecting them.
+func (s *Store) SearchFactsUncounted(query FactQuery) ([]Fact, error) {
+	return s.searchFacts(query, false)
+}
+
+func (s *Store) searchFacts(query FactQuery, countUses bool) ([]Fact, error) {
 	if query.Limit <= 0 {
 		query.Limit = 12
 	}
@@ -247,7 +258,7 @@ func (s *Store) SearchFacts(query FactQuery) ([]Fact, error) {
 		// An FTS syntax error from hostile terms is a miss, not a failure.
 	}
 
-	if len(results) > 0 {
+	if countUses && len(results) > 0 {
 		ids := make([]any, 0, len(results)+1)
 		placeholders := make([]string, 0, len(results))
 		now := formatTime(time.Now())

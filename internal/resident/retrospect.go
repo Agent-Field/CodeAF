@@ -7,6 +7,7 @@ package resident
 
 import (
 	"context"
+	"fmt"
 	"strings"
 	"time"
 
@@ -16,10 +17,29 @@ import (
 // JobSketch is one settled job as the retrospective sees it: what was asked
 // in the user's words, what came back, and how long ago.
 type JobSketch struct {
-	Title   string
-	Ask     string
-	Outcome string
-	Age     string
+	Title            string
+	Ask              string
+	Outcome          string
+	Age              string
+	NodeCount        int
+	PromptTokens     int
+	CompletionTokens int
+	Cost             float64
+}
+
+// CostSummary renders the structural size and measured spend compactly for
+// the reflector prompt.
+func (j JobSketch) CostSummary() string {
+	nodes := "nodes"
+	if j.NodeCount == 1 {
+		nodes = "node"
+	}
+	cost := strings.TrimRight(strings.TrimRight(fmt.Sprintf("%.4f", j.Cost), "0"), ".")
+	if cost == "" {
+		cost = "0"
+	}
+	return fmt.Sprintf("%d %s · %d tok · $%s", j.NodeCount, nodes,
+		j.PromptTokens+j.CompletionTokens, cost)
 }
 
 // ReflectFunc looks across recent jobs for what only the series reveals and
@@ -54,16 +74,21 @@ func (r *Reconciler) reflectOnJobs(ctx context.Context) {
 	if r.reflect == nil {
 		return
 	}
-	now := time.Now()
-	if !r.lastReflection.IsZero() && now.Sub(r.lastReflection) < reflectionInterval {
+	now := r.now()
+	watermark, reflected, err := r.store.RetrospectiveWatermark()
+	if err != nil {
 		return
 	}
-	jobs := r.settledJobSketches(now)
-	if len(jobs) < reflectionMinJobs || len(jobs) < r.lastReflectedJobs+reflectionMinNew {
+	if reflected && now.Sub(watermark.At) < reflectionInterval {
 		return
 	}
-	r.lastReflection = now
-	r.lastReflectedJobs = len(jobs)
+	jobs, settledJobs := r.settledJobSketches(now)
+	if settledJobs < reflectionMinJobs || reflected && settledJobs < watermark.SettledJobs+reflectionMinNew {
+		return
+	}
+	if _, err := r.store.CheckpointRetrospective(settledJobs); err != nil {
+		return
+	}
 
 	learned, err := r.reflect(ctx, jobs)
 	if err != nil {
@@ -86,19 +111,28 @@ func (r *Reconciler) reflectOnJobs(ctx context.Context) {
 // settledJobSketches renders the newest finished top-level jobs, newest
 // first. Folded jobs contribute their digests — the retrospective reads the
 // filed history, not the raw archive.
-func (r *Reconciler) settledJobSketches(now time.Time) []JobSketch {
+func (r *Reconciler) settledJobSketches(now time.Time) ([]JobSketch, int) {
 	nodes, err := r.store.ActiveNodes()
 	if err != nil {
-		return nil
+		return nil, 0
+	}
+	usageByJob, err := r.store.TopLevelJobUsage()
+	if err != nil {
+		return nil, 0
 	}
 	sketches := make([]JobSketch, 0, reflectionJobLimit)
-	for index := len(nodes) - 1; index >= 0 && len(sketches) < reflectionJobLimit; index-- {
+	settledJobs := 0
+	for index := len(nodes) - 1; index >= 0; index-- {
 		node := nodes[index]
 		if node.Parent != store.RootID {
 			continue
 		}
 		settled := node.FoldRoot || node.Status == store.Done || node.Status == store.Failed || node.Status == store.Cancelled
 		if !settled {
+			continue
+		}
+		settledJobs++
+		if len(sketches) == reflectionJobLimit {
 			continue
 		}
 		outcome := strings.TrimSpace(node.Summary)
@@ -108,12 +142,17 @@ func (r *Reconciler) settledJobSketches(now time.Time) []JobSketch {
 		if outcome == "" {
 			outcome = strings.TrimSpace(node.Error)
 		}
+		usage := usageByJob[node.ID]
 		sketches = append(sketches, JobSketch{
-			Title:   strings.TrimSpace(node.Title),
-			Ask:     clipLabel(node.Provenance.Intent, reflectionAskBytes),
-			Outcome: clipLabel(outcome, reflectionOutBytes),
-			Age:     store.AgeLabel(node.FinishedAt, now),
+			Title:            strings.TrimSpace(node.Title),
+			Ask:              clipLabel(node.Provenance.Intent, reflectionAskBytes),
+			Outcome:          clipLabel(outcome, reflectionOutBytes),
+			Age:              store.AgeLabel(node.FinishedAt, now),
+			NodeCount:        usage.NodeCount,
+			PromptTokens:     usage.PromptTokens,
+			CompletionTokens: usage.CompletionTokens,
+			Cost:             usage.Cost,
 		})
 	}
-	return sketches
+	return sketches, settledJobs
 }
