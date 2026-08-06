@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"sync"
 
+	"github.com/Agent-Field/aforge-v2/internal/provider"
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 )
 
@@ -126,6 +127,7 @@ func Audit(ctx context.Context, client Completer, graph *Graph) (int, Usage, err
 }
 
 func auditStage(ctx context.Context, client Completer, shared string, graph *Graph, stage int) ([]auditCheck, *ai.Usage, error) {
+	ctx = provider.WithCall(ctx, provider.ClassPlanAudit)
 	var targets string
 	for _, node := range graph.Nodes {
 		if node.Stage != stage {
@@ -142,15 +144,22 @@ func auditStage(ctx context.Context, client Completer, shared string, graph *Gra
 		userMessage(shared),
 		userMessage(fmt.Sprintf("Check each of these stage %d nodes:\n%s", stage, targets)),
 	}
-	response, err := client.CompleteWithMessages(ctx, messages, ai.WithSchema(auditSchema))
-	if err != nil {
-		return nil, nil, fmt.Errorf("audit stage %d: %w", stage, err)
-	}
 	var decoded struct {
 		Checks []auditCheck `json:"checks"`
 	}
-	if err := decodeJSON(response.Text(), &decoded); err != nil {
-		return nil, usageOf(response), annotate(fmt.Errorf("audit stage %d: %w", stage, err), response)
+	response, err := structured(ctx, client, messages, auditSchema, &decoded)
+	if err != nil {
+		return nil, usageOf(response), fmt.Errorf("audit stage %d: %w", stage, err)
 	}
+	// Audit answers about specific nodes, so naming one that does not exist is
+	// the same tell as in bind: the model stopped reading the catalog. An audit
+	// that legitimately finds nothing missing returns an empty list and is right.
+	for _, check := range decoded.Checks {
+		if graph.Node(check.Node) == nil {
+			provider.Report(ctx, provider.VerdictSemanticFailure)
+			return decoded.Checks, usageOf(response), nil
+		}
+	}
+	provider.Report(ctx, provider.VerdictVerifiedSuccess)
 	return decoded.Checks, usageOf(response), nil
 }

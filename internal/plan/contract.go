@@ -7,6 +7,7 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/Agent-Field/aforge-v2/internal/provider"
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 )
 
@@ -121,19 +122,21 @@ func writeContract(ctx context.Context, client Completer, shared string, node No
 		userMessage(shared),
 		userMessage(target.String()),
 	}
-	response, err := client.CompleteWithMessages(ctx, messages, ai.WithSchema(contractSchema))
-	if err != nil {
-		return "", nil, fmt.Errorf("contract %q: %w", node.Title, err)
-	}
+	ctx = provider.WithCall(ctx, provider.ClassPlanContract)
 	var decoded struct {
 		Contract string `json:"contract"`
 	}
-	if err := decodeJSON(response.Text(), &decoded); err != nil {
-		return "", usageOf(response), annotate(fmt.Errorf("contract %q: %w", node.Title, err), response)
+	response, err := structured(ctx, client, messages, contractSchema, &decoded)
+	if err != nil {
+		return "", usageOf(response), fmt.Errorf("contract %q: %w", node.Title, err)
 	}
 	contract := trim(decoded.Contract)
 	if contract == "" {
+		provider.Report(ctx, provider.VerdictSemanticFailure)
 		return "", usageOf(response), annotate(fmt.Errorf("contract %q: empty response", node.Title), response)
 	}
+	// The schema held and the field is not empty; whether the method it
+	// describes is a good one is not checkable without running the leaf.
+	provider.Report(ctx, provider.VerdictUnverifiedSuccess)
 	return contract, usageOf(response), nil
 }

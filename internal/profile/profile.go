@@ -22,6 +22,8 @@ import (
 	"sort"
 	"strings"
 	"sync"
+
+	"github.com/Agent-Field/aforge-v2/internal/provider"
 )
 
 // Record is one executed leaf.
@@ -33,12 +35,30 @@ type Record struct {
 	Turns   int    `json:"turns"` // what it actually took
 	Tokens  int    `json:"tokens"`
 	Stop    string `json:"stop"`
-	Done    bool   `json:"done"`
+
+	// Verdict is how the leaf actually ended. It replaced a `done` flag that was
+	// the scheduler's StateDone carried across — true of a leaf that exhausted
+	// its budget mid-edit as much as of one that finished — and the flag was
+	// never read, because a ruler calibrated against it would have been
+	// calibrated against the budget rather than against the work.
+	Verdict provider.Verdict `json:"verdict,omitempty"`
 }
 
 // Overran reports a task that could not finish inside its budget — the clearest
 // evidence that the ruler let too much into one node.
-func (r Record) Overran() bool { return r.Stop == "budget" || r.Stop == "turn-cap" }
+//
+// The verdict is the authority where there is one; the stop reason is read for
+// records written before verdicts existed, so an old profile still calibrates.
+func (r Record) Overran() bool {
+	switch r.Verdict {
+	case provider.VerdictBudgetStop, provider.VerdictTurnCap:
+		return true
+	case "":
+		return r.Stop == "budget" || r.Stop == "turn-cap"
+	default:
+		return false
+	}
+}
 
 // Profile is the accumulated experience of one model running one kind of work.
 //
