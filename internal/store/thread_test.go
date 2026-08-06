@@ -165,8 +165,24 @@ func TestRebuildReplaysThread(t *testing.T) {
 		t.Fatalf("resolve command: %v", err)
 	}
 
+	if err := s.Splice(RootID, Subtree{Nodes: []NodeSpec{{ID: "spent", Brief: "work", Stage: 1}}},
+		Provenance{Origin: OriginUser, SessionID: "s1", Intent: "spend"}); err != nil {
+		t.Fatalf("splice: %v", err)
+	}
+	if err := s.RecordUsage(NodeUsage{NodeID: "spent", PromptTokens: 500, CompletionTokens: 40, Cost: 0.02}); err != nil {
+		t.Fatalf("record usage: %v", err)
+	}
+
 	if err := s.Rebuild(); err != nil {
 		t.Fatalf("rebuild: %v", err)
+	}
+
+	total, err := s.Usage()
+	if err != nil {
+		t.Fatalf("usage after rebuild: %v", err)
+	}
+	if total.Nodes != 1 || total.PromptTokens != 500 || total.Cost < 0.019 {
+		t.Fatalf("usage lost in rebuild: %+v", total)
 	}
 
 	messages, err := s.Messages("s1", 0, 0)

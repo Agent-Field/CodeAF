@@ -40,11 +40,11 @@ func TestRunnerExecutesDependencyChain(t *testing.T) {
 
 	var mu sync.Mutex
 	ran := make([]string, 0, 2)
-	runner := NewRunner(s, func(ctx context.Context, node store.Node) (string, error) {
+	runner := NewRunner(s, func(ctx context.Context, node store.Node) (ExecResult, error) {
 		mu.Lock()
 		ran = append(ran, node.ID)
 		mu.Unlock()
-		return "did " + node.Brief, nil
+		return ExecResult{Summary: "did " + node.Brief, PromptTokens: 100, CompletionTokens: 20, Cost: 0.01}, nil
 	}, "test-runner", 2)
 
 	ctx := context.Background()
@@ -69,6 +69,13 @@ func TestRunnerExecutesDependencyChain(t *testing.T) {
 	if second.Status != store.Done || second.Summary != "did write" {
 		t.Fatalf("second not landed: %+v", second)
 	}
+	total, err := s.Usage()
+	if err != nil {
+		t.Fatalf("usage: %v", err)
+	}
+	if total.Nodes != 2 || total.PromptTokens != 200 || total.Cost < 0.019 {
+		t.Fatalf("usage not recorded: %+v", total)
+	}
 }
 
 func TestRunnerRecordsExecutionFailure(t *testing.T) {
@@ -80,8 +87,8 @@ func TestRunnerRecordsExecutionFailure(t *testing.T) {
 		t.Fatalf("splice: %v", err)
 	}
 
-	runner := NewRunner(s, func(ctx context.Context, node store.Node) (string, error) {
-		return "", errors.New("the tool caught fire")
+	runner := NewRunner(s, func(ctx context.Context, node store.Node) (ExecResult, error) {
+		return ExecResult{}, errors.New("the tool caught fire")
 	}, "test-runner", 1)
 	if _, err := runner.Tick(context.Background()); err != nil {
 		t.Fatalf("tick: %v", err)
@@ -108,8 +115,8 @@ func TestRunnerRespectsWorkerSlots(t *testing.T) {
 		t.Fatalf("splice: %v", err)
 	}
 
-	runner := NewRunner(s, func(ctx context.Context, node store.Node) (string, error) {
-		return "ok", nil
+	runner := NewRunner(s, func(ctx context.Context, node store.Node) (ExecResult, error) {
+		return ExecResult{Summary: "ok"}, nil
 	}, "test-runner", 1)
 	dispatched, err := runner.Tick(context.Background())
 	if err != nil {

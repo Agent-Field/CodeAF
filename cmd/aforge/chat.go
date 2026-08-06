@@ -99,7 +99,7 @@ func runChat(args []string) error {
 	)
 
 	linear := exec.NewLinear(taskClient, workspace, exec.NewWeb(), 0, 0, 0)
-	runner := resident.NewRunner(graph, func(ctx context.Context, node store.Node) (string, error) {
+	runner := resident.NewRunner(graph, func(ctx context.Context, node store.Node) (resident.ExecResult, error) {
 		inputs := make([]exec.Input, 0)
 		digests, err := graph.DependencyDigests(node.ID, store.MaxDigestBytes)
 		if err == nil {
@@ -115,7 +115,7 @@ func runChat(args []string) error {
 			Inputs: inputs,
 		})
 		if err != nil {
-			return "", err
+			return resident.ExecResult{}, err
 		}
 		text := outcome.Text
 		// Artifact paths come back workspace-relative; the user's next act is
@@ -126,7 +126,12 @@ func runChat(args []string) error {
 				text += "\n" + filepath.Join(workspaceRoot, artifact)
 			}
 		}
-		return text, nil
+		return resident.ExecResult{
+			Summary:          text,
+			PromptTokens:     outcome.Usage.PromptTokens,
+			CompletionTokens: outcome.Usage.CompletionTokens,
+			Cost:             outcome.Usage.Cost,
+		}, nil
 	}, "chat-runner", 4)
 
 	ctx, cancel := context.WithCancel(context.Background())
