@@ -133,7 +133,7 @@ func (s *Scheduler) Run(ctx context.Context, graph *plan.Graph) error {
 				s.emit(Event{NodeID: id, Title: node.Title, State: plan.StateRunning, Elapsed: time.Since(started)})
 				task := s.taskFor(graph, node)
 				inFlight[id] = time.Now()
-				go s.work(ctx, id, task, retries[id], done)
+				go s.work(ctx, id, task, retries[id], leafShape(node), done)
 			}
 		}
 
@@ -203,7 +203,7 @@ type completion struct {
 // work runs one node and always reports back, even when the executor panics —
 // a panic that unwinds a worker silently would strand the scheduler waiting on
 // a completion that can never come.
-func (s *Scheduler) work(ctx context.Context, id int, task Task, attempt int, done chan<- completion) {
+func (s *Scheduler) work(ctx context.Context, id int, task Task, attempt int, shape string, done chan<- completion) {
 	defer func() {
 		if recovered := recover(); recovered != nil {
 			done <- completion{nodeID: id, err: fmt.Errorf("executor panicked: %v", recovered)}
@@ -214,9 +214,42 @@ func (s *Scheduler) work(ctx context.Context, id int, task Task, attempt int, do
 	// model once and the whole transcript stays on it — a leaf that changed
 	// model mid-loop would rewrite its prefix cache every turn and splice two
 	// lineages into one conversation.
-	ctx = provider.WithCallAttempt(ctx, provider.ClassExecLeaf, attempt)
+	ctx = provider.WithCallShape(ctx, provider.ClassExecLeaf, attempt, shape)
 	outcome, err := s.registry.For("linear").Run(ctx, task)
 	done <- completion{nodeID: id, outcome: outcome, err: err}
+}
+
+// leafShape says which population of leaves this node belongs to, so that what a
+// router learns about one kind of leaf is not applied to every other kind.
+//
+// Three buckets, and the count is the design. Every leaf used to be one class,
+// and arm B measured what that costs: five leaves that exhausted their budget on
+// t1 — the one task whose leaves carry 2.2M prompt tokens — moved the single
+// global rating far enough to reroute t2's document reading and t3's small
+// repairs, where the demoted model had never once failed, and both collapsed
+// from working to zero. But the opposite mistake is just as easy: a key so fine
+// that no bucket ever accumulates enough graded outcomes to pass MinGraded is a
+// ledger that has learned nothing at all, expensively.
+//
+// So it splits on the two things the harness already knows about a node before
+// it runs, and nothing else. Kind separates the synthesis nodes the harness owns
+// — many long inputs, a roll-up rather than a job — from the work the plan asked
+// for. Size separates the rest along the axis the failures actually fell on:
+// oversized and borderline are the leaves one agent may not fit, which is what a
+// budget stop usually means, and atomic is the rest. Borderline sits with
+// oversized rather than with atomic because the risk it names is the same risk,
+// and because erring that way keeps a lesson learned on a doubtful leaf away
+// from the leaves nobody doubted.
+func leafShape(node *plan.Node) string {
+	if node.Kind == plan.KindSynthesis {
+		return "synthesis"
+	}
+	switch node.Size {
+	case plan.SizeOversized, plan.SizeBorderline:
+		return "oversized"
+	default:
+		return "atomic"
+	}
 }
 
 // drain lets in-flight nodes land after the run has been told to stop. Their
