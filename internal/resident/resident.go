@@ -73,6 +73,7 @@ type Reconciler struct {
 	narrate     NarrateFunc
 	distill     DistillFunc
 	consolidate ConsolidateFunc
+	title       TitleFunc
 
 	mu                 sync.Mutex
 	watcherInitialized bool
@@ -270,6 +271,7 @@ func (r *Reconciler) splice(ctx context.Context, command store.Command) (command
 		return commandOutcome{}, err
 	}
 	subtree = r.wireContinuity(subtree, compiled.BuildsOn)
+	r.titleSubtree(ctx, &subtree, compiled)
 
 	provenance := store.Provenance{
 		Origin:    store.OriginUser,
@@ -287,6 +289,44 @@ func (r *Reconciler) splice(ctx context.Context, command store.Command) (command
 		result:  fmt.Sprintf("spliced %d nodes", len(subtree.Nodes)),
 		receipt: compileReceipt(compiled.Goal, compiled.Assumptions),
 	}, nil
+}
+
+// TitleFunc compresses one goal into a few display words. It is a chat-surface
+// nicety: headless runs never construct a reconciler, so they never pay for it.
+type TitleFunc func(ctx context.Context, goal string) (string, error)
+
+// WithTitler sets the display-title compressor. Nil stays valid: nodes fall
+// back to the first line of their brief everywhere titles are shown.
+func (r *Reconciler) WithTitler(title TitleFunc) *Reconciler {
+	r.title = title
+	return r
+}
+
+// titleSubtree names the job's root node — the line the rail shows for the
+// whole job. Planned leaves keep the planner's own short titles; the root is
+// the one node whose title would otherwise be a generic "Synthesis" or the
+// full compiled goal. Best effort by design: a titling failure costs a long
+// label, never the job.
+func (r *Reconciler) titleSubtree(ctx context.Context, subtree *store.Subtree, compiled Compiled) {
+	if r.title == nil {
+		return
+	}
+	for index := range subtree.Nodes {
+		node := &subtree.Nodes[index]
+		if node.Parent != "" {
+			continue
+		}
+		if node.Title != "" && !strings.EqualFold(node.Title, "synthesis") {
+			return
+		}
+		short, err := r.title(ctx, compiled.Goal)
+		short = strings.TrimSpace(short)
+		if err != nil || short == "" {
+			return
+		}
+		node.Title = clipLabel(short, 48)
+		return
+	}
 }
 
 func (r *Reconciler) defaultSpliceExists(command store.Command) bool {

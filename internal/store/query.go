@@ -9,9 +9,43 @@ import (
 )
 
 const nodeColumns = `
-    id, parent_id, brief, stage, status, owner, claim_token, attempt,
+    id, parent_id, brief, title, grp, stage, status, owner, claim_token, attempt,
     summary, error, origin, session_id, intent, created_seq, created_order, updated_seq,
     started_at, finished_at, folded, fold_root, fold_digest, fold_pointers`
+
+// migrateNodesSchema adds the display columns to node tables created before
+// titles existed. ALTER TABLE is idempotent-by-inspection: the column list is
+// read first, so re-opening an already-migrated store does nothing.
+func migrateNodesSchema(db *sql.DB) error {
+	rows, err := db.Query(`PRAGMA table_info(nodes)`)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+	existing := map[string]bool{}
+	for rows.Next() {
+		var cid int
+		var name, kind string
+		var notNull, primary int
+		var dflt sql.NullString
+		if err := rows.Scan(&cid, &name, &kind, &notNull, &dflt, &primary); err != nil {
+			return err
+		}
+		existing[name] = true
+	}
+	if err := rows.Err(); err != nil {
+		return err
+	}
+	for _, column := range []string{"title", "grp"} {
+		if existing[column] {
+			continue
+		}
+		if _, err := db.Exec(`ALTER TABLE nodes ADD COLUMN ` + column + ` TEXT NOT NULL DEFAULT ''`); err != nil {
+			return err
+		}
+	}
+	return nil
+}
 
 // Node returns one node from the complete materialized view.
 func (s *Store) Node(id string) (Node, bool, error) {
@@ -76,7 +110,7 @@ func scanNode(scanner rowScanner) (Node, error) {
 	var parent, session, started, finished sql.NullString
 	var pointers string
 	if err := scanner.Scan(
-		&node.ID, &parent, &node.Brief, &node.Stage, &node.Status,
+		&node.ID, &parent, &node.Brief, &node.Title, &node.Group, &node.Stage, &node.Status,
 		&node.Owner, &node.ClaimToken, &node.Attempt, &node.Summary, &node.Error,
 		&node.Provenance.Origin, &session, &node.Provenance.Intent,
 		&node.CreatedSeq, &node.CreatedOrder, &node.UpdatedSeq, &started, &finished,

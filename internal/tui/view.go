@@ -232,10 +232,7 @@ func (m *Model) renderNodePane() string {
 	innerWidth := max(1, m.width-4)
 	now := time.Now()
 	glyph, _ := m.nodeGlyphStyled(m.inspectedNode, now, false)
-	title := firstLine(m.inspectedNode.Brief)
-	if title == "" {
-		title = m.inspectedNode.ID
-	}
+	title := nodeLabel(m.inspectedNode)
 	timing := m.nodeTiming(now)
 	if timing != "" {
 		timing = truncate(timing, max(1, innerWidth-lipgloss.Width(glyph)-4))
@@ -744,6 +741,21 @@ func (m *Model) renderTree(width, height int) string {
 	// the eye lands on what is happening now; everything settled sinks below
 	// and renders dimmed.
 	roots := orderRoots(children[store.RootID], children)
+
+	// Dependency edges are the pipeline structure the tree cannot draw, so
+	// they surface two ways: a hollow dotted glyph for work that is queued
+	// but waiting on another node, and a "waits:" line under the selection.
+	nodeByID := make(map[string]store.Node, len(m.snapshot.Nodes))
+	for _, node := range m.snapshot.Nodes {
+		nodeByID[node.ID] = node
+	}
+	waitsOn := make(map[string][]string)
+	for _, edge := range m.snapshot.Edges {
+		source, ok := nodeByID[edge.From]
+		if ok && !nodeSettled(source) {
+			waitsOn[edge.To] = append(waitsOn[edge.To], edge.From)
+		}
+	}
 	if len(roots) == 0 && len(lines) == 0 {
 		empty := truncate("the graph is quiet — ask for something", max(1, width))
 		return lipgloss.Place(
@@ -758,6 +770,7 @@ func (m *Model) renderTree(width, height int) string {
 	seen := make(map[string]bool, len(m.snapshot.Nodes))
 	var walk func([]store.Node, string)
 	walk = func(nodes []store.Node, ancestorGuide string) {
+		lastGroup := ""
 		for index, node := range nodes {
 			if seen[node.ID] {
 				continue
@@ -771,25 +784,37 @@ func (m *Model) renderTree(width, height int) string {
 				nextGuide = ancestorGuide + "   "
 			}
 
+			// A change of planning container gets a label line: the nesting
+			// the planner built survives here even though execution flattened
+			// it to edges.
+			if node.Group != lastGroup {
+				lastGroup = node.Group
+				if node.Group != "" {
+					header := "  " + ancestorGuide + "┄ " + node.Group
+					lines = append(lines, mutedStyle.Faint(true).Render(truncate(header, max(1, width))))
+				}
+			}
+
 			row := len(lines)
 			dimmed := subtreeSettled(node, children) && !m.completionFlashing(node, now)
 			glyph, active := m.nodeGlyphStyled(node, now, dimmed)
+			waiting := waitsOn[node.ID]
+			if node.Status == store.Pending && len(waiting) > 0 && !dimmed {
+				glyph = mutedStyle.Render("◌")
+			}
 			selected := node.ID == m.selectedNodeID
 			marker := "  "
 			if selected {
 				marker = lipgloss.NewStyle().Foreground(lavender).Bold(true).Render("▸ ")
 			}
 			prefix := marker + mutedStyle.Render(ancestorGuide+branch) + glyph + " "
-			brief := firstLine(node.Brief)
-			if brief == "" {
-				brief = node.ID
-			}
-			briefStyle := lipgloss.NewStyle().Foreground(ink)
+			label := nodeLabel(node)
+			labelStyle := lipgloss.NewStyle().Foreground(ink)
 			if dimmed {
-				briefStyle = mutedStyle
+				labelStyle = mutedStyle
 			}
-			line := prefix + briefStyle.Render(
-				truncate(brief, max(1, width-lipgloss.Width(prefix))),
+			line := prefix + labelStyle.Render(
+				truncate(label, max(1, width-lipgloss.Width(prefix))),
 			)
 			if selected {
 				line = lipgloss.NewStyle().Background(selectionBand).Width(width).Render(line)
@@ -805,6 +830,15 @@ func (m *Model) renderTree(width, height int) string {
 				elapsed := formatElapsed(now.Sub(node.StartedAt)) + " elapsed"
 				lines = append(lines, mutedStyle.Render(elapsedPrefix+truncate(elapsed, max(1, width-lipgloss.Width(elapsedPrefix)))))
 			}
+			if selected && len(waiting) > 0 {
+				names := make([]string, 0, len(waiting))
+				for _, id := range waiting {
+					names = append(names, nodeLabel(nodeByID[id]))
+				}
+				waitPrefix := "  " + nextGuide + "   "
+				waits := "waits: " + strings.Join(names, " · ")
+				lines = append(lines, mutedStyle.Render(waitPrefix+truncate(waits, max(1, width-lipgloss.Width(waitPrefix)))))
+			}
 			walk(children[node.ID], nextGuide)
 		}
 	}
@@ -814,6 +848,19 @@ func (m *Model) renderTree(width, height int) string {
 		lines = lines[:height]
 	}
 	return strings.Join(lines, "\n")
+}
+
+// nodeLabel is the display name of a node anywhere space is short: the
+// planner's (or titler's) few-word title when one exists, else the brief's
+// first line, else the id.
+func nodeLabel(node store.Node) string {
+	if title := strings.TrimSpace(node.Title); title != "" {
+		return title
+	}
+	if brief := firstLine(node.Brief); brief != "" {
+		return brief
+	}
+	return node.ID
 }
 
 // nodeSettled reports whether one node has nothing left to do: it landed,

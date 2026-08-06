@@ -101,7 +101,8 @@ func runChat(args []string) error {
 		planSubtree(settings, taskClient),
 	).WithNarrator(narrateProgress(settings, chatClient)).
 		WithDistiller(distillFacts(settings, chatClient)).
-		WithConsolidator(consolidateFacts(settings, chatClient))
+		WithConsolidator(consolidateFacts(settings, chatClient)).
+		WithTitler(titleGoal(settings, chatClient))
 
 	web := exec.NewWeb()
 	runner := resident.NewRunner(graph, func(ctx context.Context, node store.Node) (resident.ExecResult, error) {
@@ -775,6 +776,29 @@ const consolidatorSystemPrompt = `You rewrite one scope's accumulated notebook l
 Merge duplicates and near-duplicates. Drop stale lines. Resolve contradictions in favour of the newest line. Keep every load-bearing specific, including paths, values, and names. Each output must stand alone, use exactly the target scope, and preserve the best fitting kind. Return at most eight lines.`
 
 // distillFacts wires the reconciler's notebook to the talk model.
+// titleGoalPrompt earns its own call by what it is not: not a summary, not a
+// restatement, a NAME. The rail has ~30 characters per node; a name that
+// needs the brief to be understood has failed.
+const titleGoalPrompt = `You name jobs for a narrow task list. Given a goal, answer with ONLY a name of 3 to 5 words — no quotes, no punctuation at the end, no explanation.
+
+Judge a good name by one test: someone who asked for this work yesterday must recognise it at a glance among unrelated jobs. Prefer the distinctive noun over the generic verb — "Mahabharata nighttime podcast" beats "Create audio content", "Org-wide star count" beats "Gather repository data". Never use the words task, job, request, or goal.`
+
+// titleGoal compresses a job's goal to a rail-sized display name with one
+// tiny model call at splice time — chat-surface only, and only for the one
+// root node per job that would otherwise show a paragraph.
+func titleGoal(settings config.Config, client *liveClient) resident.TitleFunc {
+	return func(ctx context.Context, goal string) (string, error) {
+		response, err := client.CompleteWithMessages(settings.Context(ctx, "title"), []ai.Message{
+			{Role: "system", Content: []ai.ContentPart{{Type: "text", Text: titleGoalPrompt}}},
+			{Role: "user", Content: []ai.ContentPart{{Type: "text", Text: firstLine(goal)}}},
+		}, ai.WithMaxTokens(30))
+		if err != nil || response == nil {
+			return "", err
+		}
+		return strings.Trim(strings.TrimSpace(response.Text()), `"'`), nil
+	}
+}
+
 func distillFacts(settings config.Config, client *liveClient) resident.DistillFunc {
 	return func(ctx context.Context, goal, outcome string, failed bool) ([]resident.Learned, error) {
 		input := fmt.Sprintf("Goal:\n%s\n\nFAILED: %t\n\nOutcome:\n%s", goal, failed, outcome)

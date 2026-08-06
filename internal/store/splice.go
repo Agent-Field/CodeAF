@@ -238,10 +238,10 @@ func applySpliceView(tx *sql.Tx, payload splicedPayload, seq int64) error {
 		}
 		if _, err := tx.Exec(`
 			INSERT INTO nodes (
-			    id, parent_id, brief, stage, status, origin, session_id,
+			    id, parent_id, brief, title, grp, stage, status, origin, session_id,
 			    intent, created_seq, created_order, updated_seq
-			) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-			node.ID, parent, node.Brief, node.Stage, Pending,
+			) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+			node.ID, parent, node.Brief, node.Title, node.Group, node.Stage, Pending,
 			payload.Provenance.Origin, nullIfEmpty(payload.Provenance.SessionID),
 			payload.Provenance.Intent, seq, orderByID[node.ID], seq); err != nil {
 			return fmt.Errorf("insert node %q: %w", node.ID, err)
