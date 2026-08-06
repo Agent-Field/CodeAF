@@ -16,6 +16,7 @@ import (
 	"github.com/Agent-Field/aforge-v2/internal/config"
 	"github.com/Agent-Field/aforge-v2/internal/exec"
 	"github.com/Agent-Field/aforge-v2/internal/head"
+	"github.com/Agent-Field/aforge-v2/internal/plan"
 	"github.com/Agent-Field/aforge-v2/internal/resident"
 	"github.com/Agent-Field/aforge-v2/internal/router"
 	"github.com/Agent-Field/aforge-v2/internal/store"
@@ -83,14 +84,18 @@ func runChat(args []string) error {
 
 	compiler := head.NewCompiler(chatClient)
 	reconciler := resident.New(graph,
-		func(ctx context.Context, instruction, graphContext string) (string, []string, error) {
+		func(ctx context.Context, instruction, graphContext string) (resident.Compiled, error) {
 			brief, err := compiler.Compile(settings.Context(ctx, instruction), instruction, graphContext)
 			if err != nil {
-				return "", nil, err
+				return resident.Compiled{}, err
 			}
-			return brief.Goal, brief.Assumptions, nil
+			return resident.Compiled{
+				Goal:        brief.Goal,
+				Assumptions: brief.Assumptions,
+				Scale:       brief.Scale,
+			}, nil
 		},
-		nil, // default single-node plan; the full planner adapter is next
+		planSubtree(settings, taskClient),
 	)
 
 	linear := exec.NewLinear(taskClient, workspace, exec.NewWeb(), 0, 0, 0)
@@ -113,7 +118,7 @@ func runChat(args []string) error {
 			return "", err
 		}
 		return outcome.Text, nil
-	}, "chat-runner", 2)
+	}, "chat-runner", 4)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -378,4 +383,43 @@ func newSessionID() string {
 		return hex.EncodeToString(random[:])
 	}
 	return fmt.Sprintf("%08x", time.Now().UnixNano())
+}
+
+// planSubtree decides how much structure a compiled request deserves. A
+// lookup or single task is one node — the head already replied, so the only
+// latency that matters is the work itself. A project runs the full planning
+// pipeline and splices the resulting graph, which is where parallel workers
+// pay for the planning pass.
+func planSubtree(settings config.Config, client *liveClient) resident.PlanFunc {
+	return func(ctx context.Context, compiled resident.Compiled) (store.Subtree, error) {
+		prefix, err := subtreePrefix()
+		if err != nil {
+			return store.Subtree{}, err
+		}
+		if compiled.Scale != head.ScaleProject {
+			return store.Subtree{Nodes: []store.NodeSpec{{
+				ID:    prefix,
+				Brief: compiled.Goal,
+				Stage: 1,
+			}}}, nil
+		}
+		graph, err := plan.Build(settings.Context(ctx, compiled.Goal), client, compiled.Goal, plan.Options{
+			SpineSamples: settings.SpineSamples,
+			MaxDepth:     settings.MaxDepth,
+			NodeBudget:   settings.NodeBudget,
+			Briefs:       true,
+		})
+		if err != nil {
+			return store.Subtree{}, err
+		}
+		return resident.SubtreeFromPlan(graph, prefix)
+	}
+}
+
+func subtreePrefix() (string, error) {
+	var random [4]byte
+	if _, err := rand.Read(random[:]); err != nil {
+		return "", fmt.Errorf("generate subtree id: %w", err)
+	}
+	return "t" + hex.EncodeToString(random[:]), nil
 }
