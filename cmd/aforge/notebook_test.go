@@ -12,6 +12,7 @@ import (
 )
 
 func TestNotebookCommandListsRetractsAndRestores(t *testing.T) {
+	t.Setenv("AFORGE_DAILY_BUDGET", "")
 	path := filepath.Join(t.TempDir(), "graph.db")
 	graph, err := store.Open(path)
 	if err != nil {
@@ -66,6 +67,9 @@ func TestNotebookCommandListsRetractsAndRestores(t *testing.T) {
 			t.Errorf("notebook output omitted heading %q: %q", heading, rendered)
 		}
 	}
+	if !strings.Contains(rendered, "today's spend: $0.00 of $20.00 daily rail") {
+		t.Fatalf("notebook omitted daily rail: %q", rendered)
+	}
 	activeLine := normalizedNotebookLine(rendered, active.Seq)
 	wantActive := fmt.Sprintf("#%d tool:git lesson 3h ago 1 1 1 active always verify changes", active.Seq)
 	if activeLine != wantActive {
@@ -99,6 +103,7 @@ func TestNotebookCommandListsRetractsAndRestores(t *testing.T) {
 }
 
 func TestNotebookDisplaysCanonicalScopesAndAliases(t *testing.T) {
+	t.Setenv("AFORGE_DAILY_BUDGET", "")
 	graph, err := store.Open(filepath.Join(t.TempDir(), "graph.db"))
 	if err != nil {
 		t.Fatal(err)

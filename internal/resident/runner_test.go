@@ -130,6 +130,48 @@ func TestRunnerRespectsWorkerSlots(t *testing.T) {
 	runner.Wait()
 }
 
+func TestRunnerPausesClaimsAndPostsOneRailQuestion(t *testing.T) {
+	s := openRunnerStore(t)
+	spliceChain(t, s)
+	if err := s.RecordUsage(store.NodeUsage{NodeID: store.RootID, Cost: 1}); err != nil {
+		t.Fatal(err)
+	}
+	ran := 0
+	runner := NewRunner(s, func(context.Context, store.Node) (ExecResult, error) {
+		ran++
+		return ExecResult{Summary: "done"}, nil
+	}, "rail-runner", 1).WithDailyBudgetUSD(1)
+
+	for tick := 0; tick < 2; tick++ {
+		dispatched, err := runner.Tick(context.Background())
+		if err != nil {
+			t.Fatal(err)
+		}
+		if dispatched != 0 {
+			t.Fatalf("tick %d dispatched %d nodes at the rail", tick, dispatched)
+		}
+	}
+	if ran != 0 {
+		t.Fatalf("executor ran %d times at the rail", ran)
+	}
+	first, ok, err := s.Node("first")
+	if err != nil || !ok || first.Status != store.Pending {
+		t.Fatalf("paused first node = %+v ok=%t err=%v", first, ok, err)
+	}
+	messages, err := s.Messages("s1", 0, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	questions := 0
+	for _, message := range messages {
+		if strings.HasPrefix(message.Body, store.DailyRailQuestionPrefix) {
+			questions++
+		}
+	}
+	if questions != 1 {
+		t.Fatalf("rail questions = %d, want exactly one: %+v", questions, messages)
+	}
+}
 func TestReflexMicroLeafIsJournaledClaimedSettledAndRebuildSafe(t *testing.T) {
 	s := openRunnerStore(t)
 	ask := "Read VERSION and report its value."

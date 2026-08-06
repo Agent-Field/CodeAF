@@ -267,6 +267,22 @@ func replayEvent(tx *sql.Tx, event Event) error {
 		}
 		return applySurpriseView(tx, payload, event.Seq, event.Time)
 
+	case EventRailRaised:
+		// Rail raises have no materialized view: their event timestamps define
+		// "today", so replay only validates the policy record.
+		var payload RailAdjustment
+		return json.Unmarshal(event.Payload, &payload)
+
+	case EventOverrunDeferred:
+		var payload DeferredOverrun
+		return json.Unmarshal(event.Payload, &payload)
+
+	case EventOverrunResumed:
+		// Deferred continuations are journal-native; replay validates both sides
+		// while PendingOverruns derives their current state from event order.
+		var payload overrunResumed
+		return json.Unmarshal(event.Payload, &payload)
+
 	case EventDeliveryGate:
 		// Gate evidence is journal-native and has no materialized view. Decode it
 		// during reconstruction so a corrupt payload still fails loudly.

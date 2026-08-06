@@ -40,7 +40,7 @@ func TestReplanOverrunSplicesRepairAndRewiresWaiters(t *testing.T) {
 		if !ok || anchor.NodeID != "job" || anchor.SessionID != "s1" || anchor.CommandSeq != 0 {
 			t.Fatalf("replan anchor = %+v ok=%t", anchor, ok)
 		}
-		if !strings.Contains(goal, "partial progress text") || !strings.Contains(goal, "/tmp/partial.md") {
+		if prefix == "job-a-x1" && (!strings.Contains(goal, "partial progress text") || !strings.Contains(goal, "/tmp/partial.md")) {
 			t.Fatalf("replan goal does not carry the partial result:\n%s", goal)
 		}
 		return store.Subtree{Nodes: []store.NodeSpec{
@@ -48,7 +48,7 @@ func TestReplanOverrunSplicesRepairAndRewiresWaiters(t *testing.T) {
 			{ID: prefix + "-n5", Parent: prefix + "-n9", Brief: "remaining piece", Title: "Remaining piece"},
 		}}, nil
 	}
-	spliced, sink, err := ReplanOverrun(context.Background(), graph, nodeA, "partial progress text", []string{"/tmp/partial.md"}, planned)
+	spliced, sink, err := ReplanOverrun(context.Background(), graph, nodeA, "partial progress text", []string{"/tmp/partial.md"}, 20, planned)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -112,10 +112,122 @@ func TestReplanOverrunSplicesRepairAndRewiresWaiters(t *testing.T) {
 		t.Fatalf("rebuild after edge additions: %v", err)
 	}
 
-	// One oversized estimate never cascades: re-expansions do not re-expand.
+	// Repair leaves may split for as many rounds as the dollar rail permits.
+	// The round counter replaces the old suffix instead of stacking markers.
 	repair, _, _ := graph.Node("job-a-x1-n5")
-	spliced, _, err = ReplanOverrun(context.Background(), graph, repair, "more partial", nil, planned)
-	if err != nil || spliced != 0 {
-		t.Fatalf("re-expansion of a re-expansion: spliced=%d err=%v", spliced, err)
+	spliced, sink, err = ReplanOverrun(context.Background(), graph, repair, "more partial", nil, 20, planned)
+	if err != nil || spliced != 2 || sink != "job-a-x2-n9" {
+		t.Fatalf("round two: spliced=%d sink=%q err=%v", spliced, sink, err)
+	}
+	repair, _, _ = graph.Node("job-a-x2-n5")
+	spliced, sink, err = ReplanOverrun(context.Background(), graph, repair, "last partial", nil, 20, planned)
+	if err != nil || spliced != 2 || sink != "job-a-x3-n9" {
+		t.Fatalf("round three: spliced=%d sink=%q err=%v", spliced, sink, err)
+	}
+	nodes, err := graph.Nodes()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, node := range nodes {
+		if strings.HasPrefix(node.ID, "job-a-x") && strings.Count(node.ID, "-x") != 1 {
+			t.Fatalf("overrun id stacked round suffixes: %q", node.ID)
+		}
+	}
+	if err := graph.Rebuild(); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok, err := graph.Node("job-a-x3-n9"); err != nil || !ok {
+		t.Fatalf("rebuilt third round missing: ok=%t err=%v", ok, err)
+	}
+}
+
+func TestReplanOverrunPausesBeforeSpliceAtDailyRail(t *testing.T) {
+	graph, err := store.Open(filepath.Join(t.TempDir(), "rail.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer graph.Close()
+	if err := graph.Splice(store.RootID, store.Subtree{Nodes: []store.NodeSpec{
+		{ID: "rail-job", Brief: "finish it", Stage: 2},
+		{ID: "oversized", Parent: "rail-job", Brief: "finish the oversized task", Stage: 1},
+		{ID: "consumer", Parent: "rail-job", Brief: "assemble the result", Stage: 2, Needs: []store.Need{{NodeID: "oversized", Kind: store.FeedsInto}}},
+	}}, store.Provenance{Origin: store.OriginUser, SessionID: "rail-session", Intent: "finish it"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := graph.RecordUsage(store.NodeUsage{NodeID: store.RootID, Cost: 1}); err != nil {
+		t.Fatal(err)
+	}
+	claim, won, err := graph.Claim("oversized", "rail-worker")
+	if err != nil || !won {
+		t.Fatalf("claim oversized: won=%t err=%v", won, err)
+	}
+	if err := graph.Start(claim); err != nil {
+		t.Fatal(err)
+	}
+	node, _, _ := graph.Node("oversized")
+	plans := 0
+	plan := func(_ context.Context, _, prefix string) (store.Subtree, error) {
+		plans++
+		return store.Subtree{Nodes: []store.NodeSpec{{ID: prefix, Brief: "finish deferred remainder"}}}, nil
+	}
+	for attempt := 0; attempt < 2; attempt++ {
+		spliced, sink, err := ReplanOverrun(context.Background(), graph, node, "partial", nil, 1, plan)
+		if err != nil || spliced != 0 || sink != "" {
+			t.Fatalf("rail replan %d = spliced %d sink %q err=%v", attempt, spliced, sink, err)
+		}
+	}
+	if plans != 0 {
+		t.Fatalf("planner called %d times at the rail", plans)
+	}
+	if _, ok, err := graph.Node("must-not-land"); err != nil || ok {
+		t.Fatalf("repair node landed at rail: ok=%t err=%v", ok, err)
+	}
+	messages, err := graph.Messages("rail-session", 0, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	questions := 0
+	for _, message := range messages {
+		if strings.HasPrefix(message.Body, store.DailyRailQuestionPrefix) {
+			questions++
+		}
+	}
+	if questions != 1 {
+		t.Fatalf("rail questions = %d, want one", questions)
+	}
+	pending, err := graph.PendingOverruns(0)
+	if err != nil || len(pending) != 1 || pending[0].Prefix != "oversized-x1" {
+		t.Fatalf("deferred overruns = %+v err=%v", pending, err)
+	}
+	if err := graph.Complete(claim, "partial"); err != nil {
+		t.Fatal(err)
+	}
+	if err := graph.RaiseDailyRail(1, "test:yes"); err != nil {
+		t.Fatal(err)
+	}
+	runs := 0
+	runner := NewRunner(graph, func(context.Context, store.Node) (ExecResult, error) {
+		runs++
+		return ExecResult{Summary: "done"}, nil
+	}, "deferred-runner", 1).WithDailyBudgetUSD(1)
+	if dispatched, err := runner.Tick(context.Background()); err != nil || dispatched != 0 || runs != 0 {
+		t.Fatalf("claim raced deferred replan: dispatched=%d runs=%d err=%v", dispatched, runs, err)
+	}
+	reconciler := New(graph, nil, nil).WithOverrunPlanner(1, plan)
+	if err := reconciler.Tick(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if plans != 1 {
+		t.Fatalf("planner calls after raise = %d, want one", plans)
+	}
+	if _, ok, err := graph.Node("oversized-x1"); err != nil || !ok {
+		t.Fatalf("deferred repair missing after raise: ok=%t err=%v", ok, err)
+	}
+	if err := graph.Rebuild(); err != nil {
+		t.Fatal(err)
+	}
+	pending, err = graph.PendingOverruns(0)
+	if err != nil || len(pending) != 0 {
+		t.Fatalf("rebuilt pending overruns = %+v err=%v, want none", pending, err)
 	}
 }

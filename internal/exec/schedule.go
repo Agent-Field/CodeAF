@@ -48,6 +48,10 @@ type Scheduler struct {
 	// freeze the run silently and forever. Zero disables it.
 	NodeTimeout time.Duration
 
+	// BeforeLaunch applies process policy immediately before a leaf starts.
+	// Returning an error stops new launches while already-running leaves land.
+	BeforeLaunch func(context.Context) error
+
 	// OnEvent reports state changes as they happen. A run is long and mostly
 	// invisible; without this the only feedback is silence followed by a graph.
 	OnEvent func(Event)
@@ -108,6 +112,7 @@ func (s *Scheduler) Run(ctx context.Context, graph *plan.Graph) error {
 	// lands, and Run reports it — a run may stop early, but it must never
 	// stop silently.
 	var stop string
+	var stopCause error
 	lastProgress := time.Now()
 
 	ticker := time.NewTicker(s.tickEvery())
@@ -128,6 +133,12 @@ func (s *Scheduler) Run(ctx context.Context, graph *plan.Graph) error {
 				if len(inFlight) >= s.concurrency {
 					break
 				}
+				if s.BeforeLaunch != nil {
+					if err := s.BeforeLaunch(ctx); err != nil {
+						stop, stopCause = err.Error(), err
+						break
+					}
+				}
 				node := graph.Node(id)
 				node.State = plan.StateRunning
 				s.emit(Event{NodeID: id, Title: node.Title, State: plan.StateRunning, Elapsed: time.Since(started)})
@@ -147,7 +158,7 @@ func (s *Scheduler) Run(ctx context.Context, graph *plan.Graph) error {
 			if stop == "" && ctx.Err() != nil {
 				stop = fmt.Sprintf("run context cancelled (%v)", ctx.Err())
 			}
-			return s.finish(graph, stop)
+			return s.finish(graph, stop, stopCause)
 		}
 
 		select {
@@ -165,7 +176,7 @@ func (s *Scheduler) Run(ctx context.Context, graph *plan.Graph) error {
 				stop = fmt.Sprintf("run context cancelled (%v)", ctx.Err())
 			}
 			s.drain(graph, done, inFlight, started)
-			return s.finish(graph, stop)
+			return s.finish(graph, stop, stopCause)
 		case <-ticker.C:
 			now := time.Now()
 			for id, since := range inFlight {
@@ -287,7 +298,7 @@ func (s *Scheduler) drain(graph *plan.Graph, done <-chan completion, inFlight ma
 // finish annotates whatever never ran and turns the stop reason into the run's
 // error. Every early return in Run funnels through here, so no path can end
 // the run without the graph saying what happened to each node.
-func (s *Scheduler) finish(graph *plan.Graph, stop string) error {
+func (s *Scheduler) finish(graph *plan.Graph, stop string, cause error) error {
 	if stop == "" {
 		return nil
 	}
@@ -297,6 +308,9 @@ func (s *Scheduler) finish(graph *plan.Graph, stop string) error {
 			node.State = plan.StateBlocked
 			node.Failure = "never started: " + stop
 		}
+	}
+	if cause != nil {
+		return fmt.Errorf("run stopped: %w", cause)
 	}
 	return fmt.Errorf("run stopped: %s", stop)
 }
@@ -478,14 +492,6 @@ func (s *Scheduler) apply(graph *plan.Graph, nodeID int, outcome *Outcome, err e
 	}
 	node.State = plan.StateDone
 	detail := fmt.Sprintf("%d turns, %dk tok", outcome.Turns, node.Tokens/1000)
-	switch outcome.Stop {
-	case StopTurnCap:
-		detail += ", hit the iteration backstop — the leaf could not converge"
-	case StopBudget:
-		// Worth surfacing rather than burying: a leaf that exhausted its token
-		// budget is evidence the sizing anchors let too much into one node.
-		detail += ", exhausted its token budget — the leaf was too large"
-	}
 	if outcome.Decayed > 0 {
 		detail += fmt.Sprintf(", %d observations faded", outcome.Decayed)
 	}

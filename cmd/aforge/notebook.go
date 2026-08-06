@@ -10,6 +10,7 @@ import (
 	"text/tabwriter"
 	"time"
 
+	"github.com/Agent-Field/aforge-v2/internal/config"
 	"github.com/Agent-Field/aforge-v2/internal/store"
 	"github.com/charmbracelet/lipgloss"
 )
@@ -108,6 +109,20 @@ func writeNotebook(output io.Writer, graph *store.Store, now time.Time) error {
 	}
 	if err := table.Flush(); err != nil {
 		return fmt.Errorf("write notebook: %w", err)
+	}
+	dailyBudget, err := config.DailyBudgetUSD()
+	if err != nil {
+		return err
+	}
+	rail, err := graph.DailyRailToday(dailyBudget)
+	if err != nil {
+		return err
+	}
+	fmt.Fprintln(output)
+	if rail.Unlimited {
+		fmt.Fprintf(output, "today's spend: $%.2f; daily rail unlimited\n", rail.Spend)
+	} else {
+		fmt.Fprintf(output, "today's spend: $%.2f of $%.2f daily rail\n", rail.Spend, rail.Ceiling)
 	}
 	if len(aliases) > 0 {
 		fmt.Fprintln(output)

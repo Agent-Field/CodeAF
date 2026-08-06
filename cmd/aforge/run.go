@@ -2,8 +2,10 @@ package main
 
 import (
 	"context"
+	"errors"
 	"flag"
 	"fmt"
+	"io"
 	"os"
 	"os/signal"
 	"path/filepath"
@@ -18,6 +20,8 @@ import (
 	"github.com/Agent-Field/aforge-v2/internal/profile"
 	"github.com/Agent-Field/aforge-v2/internal/resident"
 	"github.com/Agent-Field/aforge-v2/internal/router"
+	"github.com/Agent-Field/aforge-v2/internal/store"
+	"github.com/charmbracelet/x/term"
 )
 
 func runExecute(args []string) error {
@@ -29,6 +33,7 @@ func runExecute(args []string) error {
 	maxTokens := flags.Int("budget", 150000, "token budget per leaf — the limit that actually binds")
 	runBudget := flags.Int("run-budget", 0, "global token budget for the whole run; once passed, nothing new launches and in-flight leaves land (0 = per-leaf budgets only)")
 	contracts := flags.Bool("contracts", true, "write a per-leaf working method before executing")
+	yesSpend := flags.Bool("yes-spend", false, "preauthorize raising today's dollar rail when reached")
 	if err := flags.Parse(reorder(args, map[string]bool{"w": true, "o": true, "j": true, "turns": true, "budget": true, "run-budget": true})); err != nil {
 		return err
 	}
@@ -73,6 +78,12 @@ func runExecute(args []string) error {
 		defer history.Close()
 	}
 
+	railStore, err := openDailyRailStore()
+	if err != nil {
+		return err
+	}
+	defer railStore.Close()
+
 	fmt.Printf("goal:      %s\nworkspace: %s\n", graph.Goal, space.Root())
 	if len(settings.Panel.Models) > 0 {
 		fmt.Printf("panel:     %s\n", strings.Join(panelSlugs(settings.Panel), ", "))
@@ -84,6 +95,7 @@ func runExecute(args []string) error {
 	// Within each pass every leaf is one independent call and all leaves run at
 	// once, so a graph that already carries briefs — the normal case — pays one
 	// call's latency for the whole preamble however wide it is.
+	var preparedUsage plan.Usage
 	if missingBriefs(graph) > 0 || *contracts {
 		start := time.Now()
 		progress := headlessPlanProgress(os.Stderr)
@@ -91,6 +103,11 @@ func runExecute(args []string) error {
 			usage, err := plan.Briefs(ctx, client, graph, progress)
 			graph.Usage.Calls += usage.Calls
 			graph.Usage.Cost += usage.Cost
+			preparedUsage.Calls += usage.Calls
+			preparedUsage.PromptTokens += usage.PromptTokens
+			preparedUsage.CompletionTokens += usage.CompletionTokens
+			preparedUsage.CachedTokens += usage.CachedTokens
+			preparedUsage.Cost += usage.Cost
 			if err != nil {
 				fmt.Fprintf(os.Stderr, "warning: %v\n", err)
 			}
@@ -99,11 +116,24 @@ func runExecute(args []string) error {
 			usage, err := plan.Contracts(ctx, client, graph, resident.ContractPlaybook(history), progress)
 			graph.Usage.Calls += usage.Calls
 			graph.Usage.Cost += usage.Cost
+			preparedUsage.Calls += usage.Calls
+			preparedUsage.PromptTokens += usage.PromptTokens
+			preparedUsage.CompletionTokens += usage.CompletionTokens
+			preparedUsage.CachedTokens += usage.CachedTokens
+			preparedUsage.Cost += usage.Cost
 			if err != nil {
 				fmt.Fprintf(os.Stderr, "warning: %v\n", err)
 			}
 		}
 		fmt.Printf("prepared:  %s in %s\n", plural(len(graph.Leaves()), "leaf"), time.Since(start).Round(10*time.Millisecond))
+	}
+	if preparedUsage.Calls > 0 {
+		if err := railStore.RecordUsage(store.NodeUsage{
+			NodeID: store.RootID, PromptTokens: preparedUsage.PromptTokens,
+			CompletionTokens: preparedUsage.CompletionTokens, Cost: preparedUsage.Cost,
+		}); err != nil {
+			return fmt.Errorf("journal headless preparation usage: %w", err)
+		}
 	}
 
 	web := exec.NewWeb()
@@ -120,6 +150,32 @@ func runExecute(args []string) error {
 	linear := exec.NewLinear(client, space, web, *maxTurns, *maxTokens, deadline).WithStore(history)
 	scheduler := exec.NewScheduler(exec.NewRegistry(linear), space, *concurrency)
 	scheduler.Budget = *runBudget
+	preauthorized := spendPreauthorized(*yesSpend, os.Getenv)
+	interactive := stdinIsTerminal(os.Stdin)
+	scheduler.BeforeLaunch = func(context.Context) error {
+		rail, err := railStore.DailyRailToday(settings.DailyBudgetUSD)
+		if err != nil {
+			return err
+		}
+		rail = rail.WithAdditionalSpend(scheduler.Usage().Cost)
+		if !rail.Reached {
+			return nil
+		}
+		allowed, err := authorizeHeadlessRail(os.Stdin, os.Stderr, interactive, preauthorized, rail)
+		if err != nil {
+			return err
+		}
+		if !allowed {
+			return errDailyRailNotAuthorized
+		}
+		origin := "headless:stdin"
+		if *yesSpend {
+			origin = "headless:--yes-spend"
+		} else if preauthorized {
+			origin = "headless:AFORGE_PREAUTHORIZE_SPEND"
+		}
+		return railStore.RaiseDailyRail(rail.RaiseAmount(), origin)
+	}
 	// A failed leaf is only worth re-running when there is somewhere stronger to
 	// run it, so the panel decides rather than the scheduler assuming. One
 	// escalation, not a ladder: the router lab's cascade averaged 1.35 calls a
@@ -160,16 +216,31 @@ func runExecute(args []string) error {
 	runErr := scheduler.Run(runCtx, graph)
 	stopSignals()
 
-	graph.Usage.Calls += scheduler.Usage().Calls
-	graph.Usage.PromptTokens += scheduler.Usage().PromptTokens
-	graph.Usage.CompletionTokens += scheduler.Usage().CompletionTokens
-	graph.Usage.CachedTokens += scheduler.Usage().CachedTokens
-	graph.Usage.Cost += scheduler.Usage().Cost
+	runUsage := scheduler.Usage()
+	if runUsage.Calls > 0 {
+		if err := railStore.RecordUsage(store.NodeUsage{
+			NodeID: store.RootID, PromptTokens: runUsage.PromptTokens,
+			CompletionTokens: runUsage.CompletionTokens, Cost: runUsage.Cost,
+		}); err != nil && runErr == nil {
+			runErr = fmt.Errorf("journal headless usage: %w", err)
+		}
+	}
+	railDeclined := errors.Is(runErr, errDailyRailNotAuthorized)
+	summaryErr := runErr
+	if railDeclined {
+		summaryErr = nil
+	}
+
+	graph.Usage.Calls += runUsage.Calls
+	graph.Usage.PromptTokens += runUsage.PromptTokens
+	graph.Usage.CompletionTokens += runUsage.CompletionTokens
+	graph.Usage.CachedTokens += runUsage.CachedTokens
+	graph.Usage.Cost += runUsage.Cost
 	clock.sample()
 	if report := recordAndCalibrate(ctx, client, settings, settings.Model, graph); report != "" {
 		fmt.Printf("\n%s\n", report)
 	}
-	renderRunSummary(graph, space, scheduler.Usage(), time.Since(start), clock, runErr)
+	renderRunSummary(graph, space, runUsage, time.Since(start), clock, summaryErr)
 	if *output != "" {
 		encoded, err := graph.JSON()
 		if err != nil {
@@ -180,7 +251,59 @@ func runExecute(args []string) error {
 		}
 		fmt.Printf("\nwritten to %s\n", *output)
 	}
+	if railDeclined {
+		return nil
+	}
 	return runErr
+}
+
+var errDailyRailNotAuthorized = errors.New("daily budget reached; approval not granted")
+
+func openDailyRailStore() (*store.Store, error) {
+	path := defaultChatDB()
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+		return nil, fmt.Errorf("create daily rail store: %w", err)
+	}
+	graph, err := store.Open(path)
+	if err != nil {
+		return nil, fmt.Errorf("open daily rail store: %w", err)
+	}
+	return graph, nil
+}
+
+func spendPreauthorized(flagged bool, getenv func(string) string) bool {
+	return flagged || (getenv != nil && getenv("AFORGE_PREAUTHORIZE_SPEND") == "1")
+}
+
+func authorizeHeadlessRail(input io.Reader, output io.Writer, interactive, preauthorized bool, rail store.DailyRail) (bool, error) {
+	fmt.Fprintln(output, rail.Question())
+	if preauthorized {
+		fmt.Fprintln(output, "spend preauthorized; raising today's rail and continuing")
+		return true, nil
+	}
+	if !interactive {
+		fmt.Fprintln(output, "stdin is not a TTY; rerun with --yes-spend or AFORGE_PREAUTHORIZE_SPEND=1 to continue without a prompt")
+		return false, nil
+	}
+	fmt.Fprint(output, "Continue? [y/N] ")
+	var answer string
+	if _, err := fmt.Fscan(input, &answer); err != nil {
+		if errors.Is(err, io.EOF) {
+			fmt.Fprintln(output)
+			return false, nil
+		}
+		return false, err
+	}
+	fmt.Fprintln(output)
+	answer = strings.ToLower(strings.TrimSpace(answer))
+	return answer == "y" || answer == "yes", nil
+}
+
+func stdinIsTerminal(input *os.File) bool {
+	if input == nil {
+		return false
+	}
+	return term.IsTerminal(input.Fd())
 }
 
 // recordAndCalibrate turns the run into evidence, and lets that evidence rewrite

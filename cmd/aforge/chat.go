@@ -122,7 +122,8 @@ func runChat(args []string) error {
 		WithConsolidator(consolidateFacts(settings, chatClient, graph)).
 		WithTitler(titleGoal(settings, chatClient)).
 		WithReflector(reflectAcrossJobs(settings, chatClient, graph)).
-		WithTerritoryDigester(digestTerritory(settings, chatClient))
+		WithTerritoryDigester(digestTerritory(settings, chatClient)).
+		WithOverrunPlanner(settings.DailyBudgetUSD, replanRemainder(settings, taskClient, plans, graph))
 
 	web := exec.NewWeb()
 	runner := resident.NewRunner(graph, func(ctx context.Context, node store.Node) (resident.ExecResult, error) {
@@ -284,13 +285,38 @@ func runChat(args []string) error {
 		if len(absolute) > 0 {
 			text += "\n\nFiles:\n" + strings.Join(absolute, "\n")
 		}
+		continuing := false
+		// Resource exhaustion is invisible: it grows the graph and the final
+		// assembled deliverable reaches the gate. Semantic failure stays honest
+		// and still lands with the evidence from the failing leaf.
+		if !isReflex && (outcome.Stop == exec.StopBudget || outcome.Stop == exec.StopTurnCap) {
+			spliced, _, replanErr := resident.ReplanOverrun(ctx, graph, node, outcome.Text, absolute,
+				settings.DailyBudgetUSD, replanRemainder(settings, taskClient, plans, graph))
+			if replanErr == nil && spliced > 0 {
+				continuing = true
+				text += "\n\n[" + continuationMessage(spliced) + "]"
+				_, _ = graph.PostMessage(store.Message{
+					SessionID: node.Provenance.SessionID,
+					Role:      store.RoleSystem,
+					NodeID:    node.ID,
+					Body:      continuationMessage(spliced),
+				})
+			} else if replanErr == nil {
+				// A zero splice at the rail is a pause, not a final partial. The
+				// question and deferred remainder are journaled; the reconciler
+				// resumes the split after the head records consent.
+				if rail, err := graph.DailyRailToday(settings.DailyBudgetUSD); err == nil {
+					continuing = rail.Reached
+				}
+			}
+		}
 		promoted := shouldPromoteReflex(node, outcome)
 		// The quality gate: before a deliverable lands in the thread, one
 		// judge call asks the only question that matters — would the person
 		// who asked accept this as done? A named gap earns exactly one
 		// revision pass with the critique as input; then the result ships
 		// either way, because a gate that can loop is a gate that can stall.
-		if shouldGate(node, outcome) {
+		if shouldGate(node, outcome, continuing) {
 			gate := judgeDeliverable(ctx, settings, taskClient, graph, node, text, workerModel)
 			if gate.Checked {
 				evidence := store.DeliveryGate{Pass: gate.Pass, Gap: gate.Gaps}
@@ -347,29 +373,6 @@ func runChat(args []string) error {
 				_ = graph.RecordDeliveryGate(node.ID, evidence)
 			}
 		}
-		// Just-in-time re-decomposition: a budget or turn-cap stop is the
-		// planner's clearest "one node held too much". The partial result
-		// lands as this node's summary; the remainder — planned from what
-		// the partial actually contains — is spliced in as deeper structure
-		// that consumes it and feeds everything that was waiting.
-		if !isReflex && (outcome.Stop == exec.StopBudget || outcome.Stop == exec.StopTurnCap) {
-			spliced, sink, replanErr := resident.ReplanOverrun(ctx, graph, node, outcome.Text, absolute,
-				replanRemainder(settings, taskClient, plans, graph))
-			if replanErr == nil && spliced > 0 {
-				text += fmt.Sprintf("\n\n[partial: ran out of %s — the remainder was re-planned into %d follow-up nodes; the finished result lands with %s]",
-					outcome.Stop, spliced, sink)
-				_, _ = graph.PostMessage(store.Message{
-					SessionID: node.Provenance.SessionID,
-					Role:      store.RoleSystem,
-					NodeID:    node.ID,
-					Body: fmt.Sprintf("%s ran out of room mid-work — kept its partial progress and split the remainder into %d queued pieces",
-						firstLine(node.Brief), spliced),
-				})
-			}
-		}
-		// Profile evidence is written only after the gate and its one repair pass,
-		// so the record describes what was actually delivered and the gate's final
-		// checked verdict rather than the unpolished draft.
 		outcome.Text = text
 		outcome.Usage = spent
 		outcome.Turns = spentTurns
@@ -419,7 +422,7 @@ func runChat(args []string) error {
 			Cost:             spent.Cost,
 			Promote:          promoted,
 		}, nil
-	}, "chat-runner", 4)
+	}, "chat-runner", 4).WithDailyBudgetUSD(settings.DailyBudgetUSD)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -452,6 +455,7 @@ func runChat(args []string) error {
 		})
 		_ = head.New(chatClient, graph).
 			WithSelfKnowledge(func() string { return selfKnowledge(settings, taskClient.Model()) }).
+			WithDailyBudgetUSD(settings.DailyBudgetUSD).
 			Serve(headContext)
 	}()
 	go func() { defer background.Done(); _ = reconciler.Serve(ctx) }()
@@ -1006,12 +1010,15 @@ const (
 	reflexDeadline = 90 * time.Second
 )
 
+func continuationMessage(pieces int) string {
+	return resident.OverrunContinuationMessage(pieces)
+}
+
 // shouldGate keeps the delivery ceremony off the reflex rung. A promoted
 // partial is evidence for the compiled job, not a deliverable to review.
-func shouldGate(node store.Node, outcome *exec.Outcome) bool {
-	return node.Group != resident.ReflexGroup &&
-		node.Parent == store.RootID && outcome != nil &&
-		outcome.Stop != exec.StopBudget && outcome.Stop != exec.StopTurnCap
+func shouldGate(node store.Node, outcome *exec.Outcome, continuing bool) bool {
+	return !continuing && node.Group != resident.ReflexGroup &&
+		node.Parent == store.RootID && outcome != nil
 }
 
 func shouldPromoteReflex(node store.Node, outcome *exec.Outcome) bool {

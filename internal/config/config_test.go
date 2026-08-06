@@ -17,6 +17,7 @@ func settings(t *testing.T) Config {
 	// case, which the catalog is required to tolerate.
 	t.Setenv("AFORGE_BASE_URL", "http://127.0.0.1:1")
 	t.Setenv("AFORGE_PROFILE_DIR", t.TempDir())
+	t.Setenv("AFORGE_DAILY_BUDGET", "")
 	config, err := Load()
 	if err != nil {
 		t.Fatal(err)
@@ -140,5 +141,37 @@ func TestAnUnreadablePanelIsAStartupError(t *testing.T) {
 	t.Setenv("AFORGE_MODELS", filepath.Join(t.TempDir(), "missing.json"))
 	if _, err := Load(); err == nil {
 		t.Fatal("a panel file that does not exist was accepted")
+	}
+}
+
+func TestDailyBudgetUSDDefaultOverrideAndUnlimited(t *testing.T) {
+	t.Setenv("OPENROUTER_API_KEY", "test-key")
+	for _, test := range []struct {
+		raw  string
+		want float64
+	}{
+		{"", DefaultDailyBudgetUSD},
+		{"37.25", 37.25},
+		{"0", 0},
+	} {
+		t.Run(test.raw, func(t *testing.T) {
+			t.Setenv("AFORGE_DAILY_BUDGET", test.raw)
+			got, err := Load()
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got.DailyBudgetUSD != test.want {
+				t.Fatalf("daily budget = %v, want %v", got.DailyBudgetUSD, test.want)
+			}
+		})
+	}
+
+	for _, raw := range []string{"-1", "NaN", "Inf", "twenty"} {
+		t.Run("invalid-"+raw, func(t *testing.T) {
+			t.Setenv("AFORGE_DAILY_BUDGET", raw)
+			if _, err := DailyBudgetUSD(); err == nil {
+				t.Fatalf("invalid daily budget %q was accepted", raw)
+			}
+		})
 	}
 }
