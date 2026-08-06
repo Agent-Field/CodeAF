@@ -18,6 +18,7 @@ const (
 	paletteModelCompletion
 	paletteCancelCompletion
 	paletteModel
+	paletteMemory
 	paletteHelp
 )
 
@@ -29,6 +30,7 @@ type commandSpec struct {
 
 var slashCommands = []commandSpec{
 	{name: "model", description: "choose the talk or work model", takesArg: true},
+	{name: "memory", description: "browse the scoped notebook"},
 	{name: "session", description: "show the current session and database"},
 	{name: "new", description: "start a fresh chat session"},
 	{name: "cancel", description: "cancel a non-terminal graph node", takesArg: true},
@@ -54,7 +56,7 @@ func (m *Model) closePalette() {
 }
 
 func (m *Model) syncPalette() {
-	if m.palette == paletteModel || m.palette == paletteHelp {
+	if m.palette == paletteModel || m.palette == paletteMemory || m.palette == paletteHelp {
 		return
 	}
 	value := m.input.Value()
@@ -90,6 +92,29 @@ func (m *Model) updatePaletteKey(key string) (tea.Cmd, bool) {
 			return nil, true
 		case "enter":
 			return m.applySelectedModel(choices), true
+		}
+	case paletteMemory:
+		switch key {
+		case "up":
+			m.scrollMemory(-1)
+			return nil, true
+		case "down":
+			m.scrollMemory(1)
+			return nil, true
+		case "pgup":
+			m.scrollMemory(-max(1, m.paletteLineLimit()-1))
+			return nil, true
+		case "pgdown":
+			m.scrollMemory(max(1, m.paletteLineLimit()-1))
+			return nil, true
+		case "home":
+			m.paletteSelected = 0
+			return nil, true
+		case "end":
+			m.paletteSelected = max(0, m.memoryLineCount()-m.paletteLineLimit())
+			return nil, true
+		case "enter", "tab":
+			return nil, true
 		}
 	case paletteHelp:
 		if key == "enter" {
@@ -378,6 +403,8 @@ func (m *Model) executeSlash(body string) tea.Cmd {
 			return m.showStatus("no matching model")
 		}
 		return m.applyModel(role, entries[0].value)
+	case "/memory":
+		return m.openMemory()
 	case "/session":
 		detail := "session " + m.sessionID
 		if source, ok := m.commander.(interface{ DatabasePath() string }); ok && source.DatabasePath() != "" {
@@ -408,6 +435,39 @@ func (m *Model) executeSlash(body string) tea.Cmd {
 	default:
 		return m.showStatus("unknown command · /help lists available commands")
 	}
+}
+
+func (m *Model) openMemory() tea.Cmd {
+	if m.commander == nil {
+		return m.showStatus("memory unavailable — no Commander")
+	}
+	m.input.Reset()
+	m.memoryFacts = m.commander.Notebook(100)
+	m.palette = paletteMemory
+	m.paletteSelected = 0
+	m.setSize(m.width, m.height)
+	return nil
+}
+
+func (m *Model) scrollMemory(delta int) {
+	maximum := max(0, m.memoryLineCount()-m.paletteLineLimit())
+	m.paletteSelected = max(0, min(maximum, m.paletteSelected+delta))
+}
+
+func (m *Model) memoryLineCount() int {
+	if len(m.memoryFacts) == 0 {
+		return 1
+	}
+	count := len(m.memoryFacts)
+	seen := make(map[string]bool)
+	for _, fact := range m.memoryFacts {
+		scope := strings.TrimSpace(fact.Scope)
+		if !seen[scope] {
+			seen[scope] = true
+			count++
+		}
+	}
+	return count
 }
 
 func (m *Model) openModelPicker(role string) tea.Cmd {

@@ -30,6 +30,7 @@ type fakeCommander struct {
 	setModel   string
 	newSession string
 	cancelled  []string
+	facts      []store.Fact
 	database   string
 	err        error
 }
@@ -59,6 +60,14 @@ func (f *fakeCommander) Cancel(nodeID string) error {
 	}
 	f.cancelled = append(f.cancelled, nodeID)
 	return nil
+}
+
+func (f *fakeCommander) Notebook(limit int) []store.Fact {
+	facts := append([]store.Fact(nil), f.facts...)
+	if limit > 0 && len(facts) > limit {
+		facts = facts[:limit]
+	}
+	return facts
 }
 
 func (f *fakeCommander) DatabasePath() string { return f.database }
@@ -286,10 +295,78 @@ func TestHintsDescribeReceiptsGraphViewAndTwoVoices(t *testing.T) {
 
 	_ = model.executeSlash("/help")
 	view := model.View()
-	for _, expected := range []string{"you ask · aforge answers", "v toggles receipts", "tab focus / graph view"} {
+	for _, expected := range []string{"「/memory」", "you ask · aforge answers", "v toggles receipts", "tab focus / graph view"} {
 		if !strings.Contains(view, expected) {
 			t.Fatalf("help does not contain %q:\n%s", expected, view)
 		}
+	}
+}
+
+func TestMemoryWithoutCommanderDegradesGracefully(t *testing.T) {
+	model := New(&fakeBackend{}, "test-session")
+	_ = model.executeSlash("/memory")
+	if model.palette != paletteNone || !strings.Contains(model.View(), "memory unavailable — no Commander") {
+		t.Fatalf("memory without a Commander did not degrade gracefully:\n%s", model.View())
+	}
+}
+
+func TestMemoryPanelGroupsScopesRendersKindsAndCloses(t *testing.T) {
+	commander := newFakeCommander()
+	commander.facts = []store.Fact{
+		{Scope: "file:/repo/main.go", Kind: store.FactQuirk, Body: "Generated section must stay last."},
+		{Scope: "user", Kind: store.FactPreference, Body: "Keep status updates compact."},
+		{Scope: "file:/repo/main.go", Kind: store.FactPlain, Body: "The entry point is runMain."},
+		{Scope: "repo:/repo", Kind: store.FactLesson, Body: "Run race tests after TUI changes."},
+	}
+	model := NewWithCommander(&fakeBackend{}, "test-session", commander)
+	_ = model.executeSlash("/memory")
+	if model.palette != paletteMemory {
+		t.Fatalf("palette = %v, want memory", model.palette)
+	}
+	view := model.View()
+	for _, expected := range []string{
+		"file:/repo/main.go", "user", "repo:/repo",
+		"▲", "Generated section must stay last.",
+		"◆", "Keep status updates compact.",
+		"·", "The entry point is runMain.",
+		"●", "Run race tests after TUI changes.",
+	} {
+		if !strings.Contains(view, expected) {
+			t.Fatalf("memory panel does not contain %q:\n%s", expected, view)
+		}
+	}
+	if count := strings.Count(view, "file:/repo/main.go"); count != 1 {
+		t.Fatalf("file scope rendered %d times, want one group header:\n%s", count, view)
+	}
+	fileHeader := strings.Index(view, "file:/repo/main.go")
+	fileQuirk := strings.Index(view, "Generated section must stay last.")
+	fileFact := strings.Index(view, "The entry point is runMain.")
+	userHeader := strings.Index(view, "user")
+	if !(fileHeader < fileQuirk && fileQuirk < fileFact && fileFact < userHeader) {
+		t.Fatalf("memory facts are not grouped under their scope:\n%s", view)
+	}
+
+	_, command := model.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	if command != nil || model.palette != paletteNone {
+		t.Fatal("escape should close the memory panel without quitting")
+	}
+}
+
+func TestMemoryPanelScrolls(t *testing.T) {
+	commander := newFakeCommander()
+	for index := range 14 {
+		commander.facts = append(commander.facts, store.Fact{
+			Scope: "repo:/repo", Kind: store.FactPlain, Body: fmt.Sprintf("memory-%02d", index),
+		})
+	}
+	model := NewWithCommander(&fakeBackend{}, "test-session", commander)
+	model.setSize(72, 15)
+	_ = model.executeSlash("/memory")
+	before := strings.Join(model.paletteLines(68), "\n")
+	_, _ = model.Update(tea.KeyMsg{Type: tea.KeyPgDown})
+	after := strings.Join(model.paletteLines(68), "\n")
+	if model.paletteSelected == 0 || before == after || !strings.Contains(after, "memory-") {
+		t.Fatalf("page down did not scroll memory: offset %d\nbefore:\n%s\nafter:\n%s", model.paletteSelected, before, after)
 	}
 }
 
