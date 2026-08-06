@@ -23,24 +23,31 @@ func TestTickAppliesSpliceAndPostsCompiledReceipt(t *testing.T) {
 		t.Fatalf("request command: %v", err)
 	}
 
-	compile := func(_ context.Context, got, graphContext string) (string, []string, error) {
+	compile := func(_ context.Context, got, graphContext string) (Compiled, error) {
 		if got != instruction {
-			return "", nil, fmt.Errorf("instruction = %q, want verbatim %q", got, instruction)
+			return Compiled{}, fmt.Errorf("instruction = %q, want verbatim %q", got, instruction)
 		}
 		if !strings.Contains(graphContext, "root | Permanent Aforge spine | running") {
-			return "", nil, fmt.Errorf("graph context omitted active root: %q", graphContext)
+			return Compiled{}, fmt.Errorf("graph context omitted active root: %q", graphContext)
 		}
-		return "Benchmark the parser and preserve observable output", []string{
-			"main is the comparison baseline",
-			"the existing benchmark harness is sufficient",
+		return Compiled{
+			Goal: "Benchmark the parser and preserve observable output",
+			Assumptions: []string{
+				"main is the comparison baseline",
+				"the existing benchmark harness is sufficient",
+			},
+			Scale: "project",
 		}, nil
 	}
-	plan := func(_ context.Context, goal string) (store.Subtree, error) {
-		if goal != "Benchmark the parser and preserve observable output" {
-			return store.Subtree{}, fmt.Errorf("goal = %q", goal)
+	plan := func(_ context.Context, compiled Compiled) (store.Subtree, error) {
+		if compiled.Goal != "Benchmark the parser and preserve observable output" {
+			return store.Subtree{}, fmt.Errorf("goal = %q", compiled.Goal)
+		}
+		if compiled.Scale != "project" {
+			return store.Subtree{}, fmt.Errorf("scale = %q, want project", compiled.Scale)
 		}
 		return store.Subtree{Nodes: []store.NodeSpec{
-			{ID: "benchmark", Brief: goal, Stage: 1},
+			{ID: "benchmark", Brief: compiled.Goal, Stage: 1},
 			{ID: "compare", Parent: "benchmark", Brief: "Compare results", Stage: 2,
 				Needs: []store.Need{{NodeID: "benchmark", Kind: store.FeedsInto}}},
 		}}, nil

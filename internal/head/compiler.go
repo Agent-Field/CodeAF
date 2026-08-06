@@ -15,7 +15,7 @@ import (
 const compilerSystemPrompt = `You are the intent compiler for an asynchronous task graph. Apply ASSUME-AND-DECLARE.
 
 Turn the user's verbatim instruction and the current graph context into a complete execution brief. Return exactly one JSON object with this shape and no text outside it:
-{"goal":"...","deliverable":"...","budget":"...","assumptions":["..."]}
+{"goal":"...","deliverable":"...","budget":"...","scale":"lookup|task|project","assumptions":["..."]}
 
 Rules:
 - State a clear goal that names the final deliverable, what success means, and the evidence standard that will prove it.
@@ -26,6 +26,7 @@ Rules:
 - Never ask a question back and never leave a placeholder such as TBD, unknown, or ask user.
 - The user's words are the authority. Do not narrow or replace them with an inferred request.
 - End goal with a line beginning "Verbatim request:" followed by the user's instruction exactly as supplied.
+- Judge scale honestly. "lookup" is one fact fetched or computed in a single step. "task" is one coherent piece of work a single worker finishes end to end. "project" has multiple distinguishable parts — separate sources to cover, separate deliverable sections, verification distinct from production — where parallel workers genuinely pay off. When in doubt between task and project, choose task; planning overhead is only worth real parallelism.
 
 Be precise enough for downstream planning, but do not design the task graph yourself.`
 
@@ -36,6 +37,12 @@ type Brief struct {
 	Assumptions []string `json:"assumptions"`
 	Deliverable string   `json:"deliverable"`
 	Budget      string   `json:"budget"`
+
+	// Scale is the compiler's honest judgement of shape: "lookup" (one fact,
+	// one step), "task" (one worker end to end), or "project" (parallel parts
+	// worth a planning pass). Downstream decides what to do with it; an
+	// unrecognised value degrades to task.
+	Scale string `json:"scale"`
 }
 
 // Compiler converts verbatim user intent into a planning brief without asking
@@ -77,7 +84,27 @@ func (c *Compiler) Compile(ctx context.Context, instruction string, graphContext
 		return Brief{}, fmt.Errorf("compile intent: %w", err)
 	}
 	brief.Goal = anchorGoal(brief.Goal, instruction)
+	brief.Scale = normalizeScale(brief.Scale)
 	return brief, nil
+}
+
+// Scale values the compiler may emit. ScaleTask is also the degradation
+// target for anything unrecognised: the safe default shape is one worker.
+const (
+	ScaleLookup  = "lookup"
+	ScaleTask    = "task"
+	ScaleProject = "project"
+)
+
+func normalizeScale(scale string) string {
+	switch strings.ToLower(strings.TrimSpace(scale)) {
+	case ScaleLookup:
+		return ScaleLookup
+	case ScaleProject:
+		return ScaleProject
+	default:
+		return ScaleTask
+	}
 }
 
 func validateBrief(brief Brief) error {

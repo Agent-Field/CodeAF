@@ -20,12 +20,22 @@ const (
 	eventBatchSize   = 200
 )
 
+// Compiled is one instruction after assume-and-declare: the goal to act on,
+// the defaults that were filled (each a revisable receipt), and the
+// compiler's judgement of shape — "lookup", "task", or "project" — which the
+// planner may use to decide how much structure the work deserves.
+type Compiled struct {
+	Goal        string
+	Assumptions []string
+	Scale       string
+}
+
 // CompileFunc turns a verbatim thread instruction into a goal the planner can
 // act on. graphContext is a compact rendering of the active graph.
-type CompileFunc func(ctx context.Context, instruction string, graphContext string) (goal string, assumptions []string, err error)
+type CompileFunc func(ctx context.Context, instruction string, graphContext string) (Compiled, error)
 
 // PlanFunc turns one compiled goal into an atomic subtree admission.
-type PlanFunc func(ctx context.Context, goal string) (store.Subtree, error)
+type PlanFunc func(ctx context.Context, compiled Compiled) (store.Subtree, error)
 
 // Reconciler is the replaceable background half of the resident thread. The
 // store remains the source of truth; this type keeps only a restart-safe event
@@ -45,8 +55,8 @@ type Reconciler struct {
 // is derived from the command sequence.
 func New(graph *store.Store, compile CompileFunc, plan PlanFunc) *Reconciler {
 	if compile == nil {
-		compile = func(_ context.Context, instruction, _ string) (string, []string, error) {
-			return instruction, nil, nil
+		compile = func(_ context.Context, instruction, _ string) (Compiled, error) {
+			return Compiled{Goal: instruction}, nil
 		}
 	}
 	return &Reconciler{store: graph, compile: compile, plan: plan}
@@ -179,11 +189,11 @@ func (r *Reconciler) splice(ctx context.Context, command store.Command) (command
 		return commandOutcome{}, err
 	}
 
-	goal, assumptions, err := r.compile(ctx, command.Instruction, renderGraphContext(snapshot))
+	compiled, err := r.compile(ctx, command.Instruction, renderGraphContext(snapshot))
 	if err != nil {
 		return commandOutcome{}, fmt.Errorf("compile request: %w", err)
 	}
-	if strings.TrimSpace(goal) == "" {
+	if strings.TrimSpace(compiled.Goal) == "" {
 		return commandOutcome{}, errors.New("compile request: compiler returned an empty goal")
 	}
 	if err := ctx.Err(); err != nil {
@@ -194,11 +204,11 @@ func (r *Reconciler) splice(ctx context.Context, command store.Command) (command
 	if r.plan == nil {
 		subtree = store.Subtree{Nodes: []store.NodeSpec{{
 			ID:    fmt.Sprintf("task-%d", command.Seq),
-			Brief: goal,
+			Brief: compiled.Goal,
 			Stage: 1,
 		}}}
 	} else {
-		subtree, err = r.plan(ctx, goal)
+		subtree, err = r.plan(ctx, compiled)
 		if err != nil {
 			return commandOutcome{}, fmt.Errorf("plan request: %w", err)
 		}
@@ -221,7 +231,7 @@ func (r *Reconciler) splice(ctx context.Context, command store.Command) (command
 	return commandOutcome{
 		status:  store.CommandApplied,
 		result:  fmt.Sprintf("spliced %d nodes", len(subtree.Nodes)),
-		receipt: compileReceipt(goal, assumptions),
+		receipt: compileReceipt(compiled.Goal, compiled.Assumptions),
 	}, nil
 }
 
