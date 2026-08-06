@@ -108,9 +108,20 @@ func (m *Model) openSelectedNode() tea.Cmd {
 	if m.selectedNodeID == "" {
 		return nil
 	}
-	node, ok := m.snapshotNode(m.selectedNodeID)
-	if !ok {
+	if _, ok := m.snapshotNode(m.selectedNodeID); !ok {
 		return m.showStatus("selected node is no longer visible")
+	}
+	return m.openNodeByID(m.selectedNodeID)
+}
+
+// openNodeByID opens the activity view for any node the store knows about —
+// from the rail selection or from a provenance chip in chat. A node missing
+// from the live snapshot (folded away, old session) opens as a placeholder
+// that the next poll fills in.
+func (m *Model) openNodeByID(nodeID string) tea.Cmd {
+	node, ok := m.snapshotNode(nodeID)
+	if !ok {
+		node = store.Node{ID: nodeID}
 	}
 	m.returnFocus = m.focus
 	m.chatDraft = m.input.Value()
@@ -238,11 +249,11 @@ func (m *Model) cancelInspectedNode() tea.Cmd {
 // scrollable region means one obvious scroll — the wheel, PgUp, and arrows
 // all move the same thing.
 func (m *Model) sizeNodeViewports() {
-	innerWidth := max(1, m.width-4)
-	innerHeight := max(1, m.chatHeight-2)
+	innerWidth := max(1, m.width-2)
+	innerHeight := max(1, m.chatHeight)
 	m.nodeDetailsText = m.renderNodeDetailsContent(innerWidth, max(2, innerHeight/3))
 	detailLines := strings.Count(m.nodeDetailsText, "\n") + 1
-	// header + blank + BRIEF label + details + blank + ACTIVITY label
+	// header + hairline + BRIEF label + details + blank + ACTIVITY label
 	m.nodeTraceHeight = max(3, innerHeight-5-detailLines)
 	m.nodeTrace.Width, m.nodeTrace.Height = innerWidth, m.nodeTraceHeight
 }
@@ -287,7 +298,7 @@ func (m *Model) toggleFeedBlockAt(x, y int) bool {
 func (m *Model) renderNodeDetailsContent(width, maxLines int) string {
 	brief := strings.TrimSpace(m.inspectedNode.Brief)
 	if brief == "" {
-		brief = m.inspectedNode.ID
+		brief = nodeLabel(m.inspectedNode)
 	}
 	content := inputTextStyle.Render(wrapText(brief, width))
 	if terminalStatus(m.inspectedNode.Status) {
@@ -615,6 +626,12 @@ func (m *Model) scrollNodeAt(x, y int, down bool) bool {
 }
 
 func (m *Model) updateMouseClick(x, y int) bool {
+	if m.activityBarBounds.contains(x, y) {
+		if !m.graphOpen {
+			m.toggleGraph()
+		}
+		return true
+	}
 	if m.inputBounds.contains(x, y) {
 		m.focus = focusInput
 		m.inputFocused = true
@@ -665,14 +682,19 @@ func (m *Model) updateMouseClick(x, y int) bool {
 	return false
 }
 
-// toggleChatMessageAt opens or closes the answer under a click, keeping the
-// scroll where the reader left it. Clicking a message that never collapsed
-// is a harmless no-op.
+// toggleChatMessageAt handles a click inside the chat column: a provenance
+// chip jumps to its task, a collapsed answer opens or closes in place, and
+// anything else is a harmless no-op.
 func (m *Model) toggleChatMessageAt(x, y int) bool {
-	contentTop := m.chatBounds.y + 3 // top border, CHAT title, blank line
-	line := y - contentTop + m.chat.YOffset
+	line := y - m.chatBounds.y + m.chat.YOffset
 	if line < 0 {
 		return false
+	}
+	for _, chip := range m.chatChipRows {
+		if line == chip.line {
+			_ = m.openNodeByID(chip.nodeID)
+			return true
+		}
 	}
 	for _, row := range m.chatMessageRows {
 		if line < row.start || line > row.end {

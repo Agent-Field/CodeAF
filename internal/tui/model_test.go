@@ -212,7 +212,7 @@ func TestMessageArrivalKeepsStickyBottomAndPreservesPinnedScroll(t *testing.T) {
 		Seq: 16, Time: time.Now(), SessionID: "test-session", Role: store.RoleAgent, Body: "One more update.",
 	}}})
 	_, _ = model.Update(tea.MouseMsg{
-		X: model.chatWidth - 2, Y: 2 + model.chatHeight - 2,
+		X: model.chatWidth - 4, Y: 2 + model.chatHeight - 1,
 		Button: tea.MouseButtonLeft, Action: tea.MouseActionPress,
 	})
 	if !model.autoScroll || model.newMessages != 0 || !model.chat.AtBottom() {
@@ -330,7 +330,8 @@ func TestHintsDescribeReceiptsGraphViewAndTwoVoices(t *testing.T) {
 	_ = model.executeSlash("/help")
 	view := model.View()
 	for _, expected := range []string{
-		"「/memory」", "you ask · aforge answers", "v toggles receipts", "enter inspect node", "enter to steer", "mouse",
+		"「/memory」", "you ask · aforge answers", "v toggles receipts", "^g opens the rail",
+		"chips jump to the task", "enter to steer", "mouse",
 	} {
 		if !strings.Contains(view, expected) {
 			t.Fatalf("help does not contain %q:\n%s", expected, view)
@@ -348,8 +349,7 @@ func TestGraphSelectionMovesAcrossNodesAndSkipsPlanningRows(t *testing.T) {
 	}}
 	model.refreshGraph()
 
-	_, _ = model.Update(tea.KeyMsg{Type: tea.KeyTab})
-	_, _ = model.Update(tea.KeyMsg{Type: tea.KeyTab})
+	model.toggleGraph()
 	if model.selectedNodeID != "first" {
 		t.Fatalf("initial graph selection = %q, want first", model.selectedNodeID)
 	}
@@ -374,20 +374,19 @@ func TestEnterOpensNodeViewAndEscapeClosesIt(t *testing.T) {
 	model := New(backend, "test-session")
 	model.snapshot = backend.snapshot
 	model.refreshGraph()
-	_, _ = model.Update(tea.KeyMsg{Type: tea.KeyTab})
-	_, _ = model.Update(tea.KeyMsg{Type: tea.KeyTab})
+	model.toggleGraph()
 
 	_, _ = model.Update(tea.KeyMsg{Type: tea.KeyEnter})
 	if model.nodeViewID != "worker" || !strings.Contains(model.input.Placeholder, "steer this worker") {
 		t.Fatalf("node view did not open: id=%q placeholder=%q", model.nodeViewID, model.input.Placeholder)
 	}
-	if view := model.View(); !strings.Contains(view, "Inspect this worker") || strings.Contains(view, "CHAT") {
+	if view := model.View(); !strings.Contains(view, "Inspect this worker") || !strings.Contains(view, "BRIEF") {
 		t.Fatalf("node view did not replace the chat/graph row:\n%s", view)
 	}
 
-	_, command := model.Update(tea.KeyMsg{Type: tea.KeyEsc})
-	if command != nil || model.nodeViewID != "" || model.focus != focusGraph {
-		t.Fatalf("escape did not return to graph: command=%v id=%q focus=%v", command, model.nodeViewID, model.focus)
+	_, _ = model.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	if model.nodeViewID != "" || model.focus != focusGraph {
+		t.Fatalf("escape did not return to graph: id=%q focus=%v", model.nodeViewID, model.focus)
 	}
 }
 
@@ -453,6 +452,7 @@ func TestGroupedRenderingMergesAndSplitsByVoiceAndTime(t *testing.T) {
 func TestMouseClickSelectsGraphRowFromTrackedBounds(t *testing.T) {
 	model := New(&fakeBackend{}, "test-session")
 	model.setSize(120, 30)
+	model.toggleGraph()
 	model.snapshot = store.Snapshot{Nodes: []store.Node{
 		{ID: store.RootID},
 		{ID: "first", Parent: store.RootID, Brief: "First", Status: store.Pending},
@@ -747,8 +747,8 @@ func TestPendingSpliceRendersPlanningPlaceholderAndTally(t *testing.T) {
 			t.Fatalf("planning placeholder does not contain %q:\n%s", expected, tree)
 		}
 	}
-	if tally := model.renderTally(); !strings.Contains(tally, "1 planning") || !strings.Contains(tally, "0 done") {
-		t.Fatalf("planning tally is wrong: %s", tally)
+	if bar := model.renderActivityBar(); !strings.Contains(bar, "planning") {
+		t.Fatalf("activity bar does not show planning: %s", bar)
 	}
 }
 
@@ -785,14 +785,17 @@ func TestUsageSpendFormatsAndHidesAtZero(t *testing.T) {
 		{ID: "done-2", Status: store.Done},
 	}}
 	model.usage = store.TotalUsage{Nodes: 2, PromptTokens: 1_000, CompletionTokens: 234, Cost: 0.876}
-	if tally := model.renderTally(); !strings.Contains(tally, "2 done  ·  1.2k tok · $0.88") {
-		t.Fatalf("usage tally is wrong: %s", tally)
+	spend := model.renderSpend()
+	if !strings.Contains(spend, "1.2k tok") || !strings.Contains(spend, "$0.88") {
+		t.Fatalf("usage spend is wrong: %s", spend)
+	}
+	if strings.Contains(spend, "done") || strings.Contains(spend, "failed") {
+		t.Fatalf("spend line should not carry status tallies: %s", spend)
 	}
 
 	model.usage = store.TotalUsage{}
-	tally := model.renderTally()
-	if strings.Contains(tally, "tok") || strings.Contains(tally, "$") {
-		t.Fatalf("zero usage should hide spend entirely: %s", tally)
+	if spend := model.renderSpend(); spend != "" {
+		t.Fatalf("zero usage should hide spend entirely: %s", spend)
 	}
 }
 
@@ -824,7 +827,7 @@ func TestEnterPostsUserMessageAndClearsInput(t *testing.T) {
 	}
 }
 
-func TestNarrowTerminalsCollapseGraphToStripAndCycleFullPane(t *testing.T) {
+func TestGraphCollapsesToActivityBarAndTogglesOpen(t *testing.T) {
 	model := New(&fakeBackend{}, "test-session")
 	model.snapshot = store.Snapshot{Nodes: []store.Node{
 		{ID: store.RootID},
@@ -833,29 +836,41 @@ func TestNarrowTerminalsCollapseGraphToStripAndCycleFullPane(t *testing.T) {
 	}}
 	_, _ = model.Update(tea.WindowSizeMsg{Width: 72, Height: 30})
 	if model.horizontal {
-		t.Fatal("72-column terminal should collapse the graph rail")
+		t.Fatal("72-column terminal should not qualify for the side rail")
 	}
-	if model.chatWidth != 72 || model.graphWidth != 72 {
-		t.Fatalf("full-pane widths are chat=%d graph=%d, want 72", model.chatWidth, model.graphWidth)
+	if model.graphOpen {
+		t.Fatal("tasks should start collapsed — chat is the primary surface")
 	}
-	strip := model.renderGraphStrip()
-	if !strings.Contains(strip, "● 1 running · ○ 1 waiting — tab to view") {
-		t.Fatalf("narrow graph strip is wrong: %s", strip)
+	if model.chatWidth != 72 {
+		t.Fatalf("collapsed chat width = %d, want the full 72", model.chatWidth)
 	}
-	if view := model.View(); !strings.Contains(view, "CHAT") || strings.Contains(view, "GRAPH") {
-		t.Fatalf("narrow default view should show only chat:\n%s", view)
+	bar := model.renderActivityBar()
+	for _, want := range []string{"1 working", "1 queued", "^g tasks"} {
+		if !strings.Contains(bar, want) {
+			t.Fatalf("activity bar missing %q: %s", want, bar)
+		}
+	}
+	if view := model.View(); strings.Contains(view, "Active work") {
+		t.Fatalf("collapsed view should not render the task tree:\n%s", view)
 	}
 
-	_, _ = model.Update(tea.KeyMsg{Type: tea.KeyTab})
-	_, _ = model.Update(tea.KeyMsg{Type: tea.KeyTab})
-	if view := model.View(); !strings.Contains(view, "GRAPH") || strings.Contains(view, "CHAT") {
-		t.Fatalf("graph focus should show the full-pane graph:\n%s", view)
+	_, _ = model.Update(tea.KeyMsg{Type: tea.KeyCtrlG})
+	if !model.graphOpen || model.focus != focusGraph {
+		t.Fatalf("^g did not open tasks with focus: open=%v focus=%v", model.graphOpen, model.focus)
+	}
+	if view := model.View(); !strings.Contains(view, "Active work") || !strings.Contains(view, "tasks") {
+		t.Fatalf("open tasks pane should render the tree:\n%s", view)
+	}
+	_, _ = model.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	if model.graphOpen || !model.inputFocused {
+		t.Fatalf("esc did not close tasks back to the input: open=%v", model.graphOpen)
 	}
 }
 
 func TestWideLayoutKeepsChatAtEightyPercentAndWrapsMessages(t *testing.T) {
 	model := New(&fakeBackend{}, "test-session")
 	model.setSize(120, 30)
+	model.toggleGraph()
 	if !model.horizontal {
 		t.Fatal("120-column terminal should show the graph rail")
 	}
@@ -920,8 +935,7 @@ func TestGraphViewportScrollsOnlyWhenFocused(t *testing.T) {
 		})
 	}
 	model.refreshGraph()
-	_, _ = model.Update(tea.KeyMsg{Type: tea.KeyTab})
-	_, _ = model.Update(tea.KeyMsg{Type: tea.KeyTab})
+	model.toggleGraph()
 	chatOffset := model.chat.YOffset
 	_, _ = model.Update(tea.KeyMsg{Type: tea.KeyPgDown})
 	if model.graph.YOffset == 0 {
@@ -987,6 +1001,38 @@ func TestActivityFeedParsesTraceIntoGlyphs(t *testing.T) {
 		if !strings.Contains(feed, want) {
 			t.Fatalf("feed missing %q:\n%s", want, feed)
 		}
+	}
+}
+
+func TestProvenanceChipNamesTheTaskAndOpensItOnClick(t *testing.T) {
+	backend := &fakeBackend{snapshot: store.Snapshot{Nodes: []store.Node{
+		{ID: store.RootID},
+		{ID: "task-1", Parent: store.RootID, Brief: "long brief text", Title: "Speed up parser", Status: store.Done},
+	}}}
+	model := New(backend, "test-session")
+	model.setSize(100, 30)
+	model.snapshot = backend.snapshot
+	model.messages = []store.Message{
+		{Seq: 1, Time: time.Now(), Role: store.RoleSystem, NodeID: "task-1", Body: "The parser is now twice as fast."},
+	}
+	model.refreshChat()
+
+	rendered := model.renderMessages()
+	if !strings.Contains(rendered, "↳ Speed up parser") {
+		t.Fatalf("task-anchored answer is missing its provenance chip:\n%s", rendered)
+	}
+	if len(model.chatChipRows) != 1 {
+		t.Fatalf("chip rows = %d, want 1", len(model.chatChipRows))
+	}
+
+	_ = model.View()
+	chip := model.chatChipRows[0]
+	_, _ = model.Update(tea.MouseMsg{
+		X: model.chatBounds.x + 1, Y: model.chatBounds.y + chip.line - model.chat.YOffset,
+		Button: tea.MouseButtonLeft, Action: tea.MouseActionPress,
+	})
+	if model.nodeViewID != "task-1" {
+		t.Fatalf("chip click opened %q, want task-1", model.nodeViewID)
 	}
 }
 

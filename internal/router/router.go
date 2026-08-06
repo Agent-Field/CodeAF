@@ -66,6 +66,7 @@ const exploreEvery = 10
 // is more than one model behind it.
 type Router struct {
 	rungs  []*rung
+	opener *rung
 	ledger *Ledger
 	events *Events
 
@@ -88,8 +89,37 @@ type rung struct {
 // New builds a router over a panel. base carries everything the adapter needs
 // except the model, which each rung supplies for itself.
 func New(panel Panel, base provider.Config, dir string) (*Router, error) {
+	return buildRouter(panel, base, dir, "")
+}
+
+// NewPinned builds a router whose first attempt honours an explicit model
+// choice. The choice joins the panel when it is not already present, so a chat
+// picker may name any model without giving up ledger observation or the panel's
+// terminal escalation rung.
+func NewPinned(panel Panel, base provider.Config, dir, opener string) (*Router, error) {
+	opener = strings.TrimSpace(opener)
+	if opener == "" {
+		return nil, errors.New("router: the pinned opener is empty")
+	}
+	return buildRouter(panel, base, dir, opener)
+}
+
+func buildRouter(panel Panel, base provider.Config, dir, opener string) (*Router, error) {
 	if len(panel.Models) == 0 {
 		return nil, errors.New("router: the panel is empty")
+	}
+	models := append([]Spec(nil), panel.Models...)
+	if opener != "" {
+		found := false
+		for _, spec := range models {
+			if spec.Slug == opener {
+				found = true
+				break
+			}
+		}
+		if !found {
+			models = append([]Spec{{Slug: opener}}, models...)
+		}
 	}
 	catalog := LoadCatalog(dir, base.BaseURL, base.APIKey, base.HTTPClient)
 	ledger, err := LoadLedger(dir)
@@ -103,7 +133,7 @@ func New(panel Panel, base provider.Config, dir string) (*Router, error) {
 	}
 
 	router := &Router{ledger: ledger, events: events, draws: map[provider.CallClass]int{}}
-	for _, spec := range panel.Models {
+	for _, spec := range models {
 		price := spec.Price
 		if price <= 0 {
 			if entry, known := catalog.Entry(spec.Slug); known {
@@ -123,15 +153,24 @@ func New(panel Panel, base provider.Config, dir string) (*Router, error) {
 		if err != nil {
 			return nil, fmt.Errorf("router: %s: %w", spec.Slug, err)
 		}
-		router.rungs = append(router.rungs, &rung{spec: spec, price: price, client: client})
+		item := &rung{spec: spec, price: price, client: client}
+		router.rungs = append(router.rungs, item)
+		if opener != "" && spec.Slug == opener && router.opener == nil {
+			router.opener = item
+		}
 	}
 	return router, nil
 }
 
-// Model reports the panel's first model. It is what the harness prints and what
+// Model reports the configured opener. It is what the harness prints and what
 // the profile is keyed on; which model actually served a given call is in the
 // events log, where a per-call answer belongs.
-func (r *Router) Model() string { return r.rungs[0].spec.Slug }
+func (r *Router) Model() string {
+	if r.opener != nil {
+		return r.opener.spec.Slug
+	}
+	return r.rungs[0].spec.Slug
+}
 
 // Rungs is how many models the panel holds. The scheduler reads it to decide
 // whether re-running a failed leaf could possibly help.
@@ -198,6 +237,7 @@ func (r *Router) cascade(ctx context.Context, call *provider.Call, messages []ai
 		}
 		order = order[start:]
 	}
+	order = preferDifferent(order, avoidedModelFrom(ctx))
 	candidates := slugs(order)
 
 	var tried []string
@@ -414,7 +454,34 @@ func (r *Router) rank(class provider.CallClass) []ranked {
 // ordering falls back to price, which is how a cold panel generates its own
 // evidence: the cheap models get tried, and what they get wrong escalates.
 func (r *Router) order(class provider.CallClass) []*rung {
-	return seat(r.rank(class))
+	return pinOpener(seat(r.rank(class)), r.opener, len(r.rungs))
+}
+
+// pinOpener seats an explicit choice first without evicting the terminal rung.
+// The middle remains the ordinary value ordering, bounded by the same cascade
+// budget as every other call.
+func pinOpener(order []*rung, opener *rung, available int) []*rung {
+	if opener == nil || len(order) == 0 || order[0] == opener {
+		return order
+	}
+	limit := min(maxRungs, available)
+	terminal := order[len(order)-1]
+	pinned := make([]*rung, 0, limit)
+	pinned = append(pinned, opener)
+	reserveTerminal := terminal != opener
+	for _, item := range order {
+		if item == opener || item == terminal {
+			continue
+		}
+		if len(pinned) >= limit || reserveTerminal && len(pinned) == limit-1 {
+			break
+		}
+		pinned = append(pinned, item)
+	}
+	if reserveTerminal && len(pinned) < limit {
+		pinned = append(pinned, terminal)
+	}
+	return pinned
 }
 
 // seat turns a ranking into a cascade: value decides who opens, ability decides
@@ -497,7 +564,10 @@ func seat(scored []ranked) []*rung {
 // is the honest thing to offer: there is nowhere stronger to send it.
 func (r *Router) leafLadder(class provider.CallClass) []*rung {
 	scored := r.rank(class)
-	opener := seat(scored)[0]
+	opener := r.opener
+	if opener == nil {
+		opener = seat(scored)[0]
+	}
 	ladder := []*rung{opener}
 	if terminal := terminalOf(scored); terminal.rung != opener {
 		ladder = append(ladder, terminal.rung)

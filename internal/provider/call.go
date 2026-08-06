@@ -184,6 +184,18 @@ func (c *Call) Pin(model string) string {
 	return c.model
 }
 
+// Model reports the model pinned to this unit of work. It is empty when no
+// router served the call, which lets callers degrade to their configured model
+// without making the single-adapter path participate in routing state.
+func (c *Call) Model() string {
+	if c == nil {
+		return ""
+	}
+	c.mutex.Lock()
+	defer c.mutex.Unlock()
+	return c.model
+}
+
 // Observe registers the router's side of the verdict contract. It is set after
 // the call has been placed, because until then there is nothing to attribute a
 // verdict to.

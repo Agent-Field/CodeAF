@@ -34,18 +34,20 @@ var (
 )
 
 // View composes the complete frame once, avoiding terminal-clearing redraws.
+// The frame is open text — hierarchy comes from ink and whitespace, not boxes.
 func (m *Model) View() string {
 	m.trackPaneBounds()
 	top := m.renderTopBar()
 
 	var main string
-	if m.nodeViewID != "" {
+	switch {
+	case m.nodeViewID != "":
 		main = m.renderNodePane()
-	} else if m.horizontal {
+	case m.graphVisible() && m.horizontal:
 		main = lipgloss.JoinHorizontal(lipgloss.Top, m.renderChatPane(), "  ", m.renderGraphPane())
-	} else if m.focus == focusGraph {
+	case m.graphVisible():
 		main = m.renderGraphPane()
-	} else {
+	default:
 		main = m.renderChatPane()
 	}
 
@@ -53,16 +55,19 @@ func (m *Model) View() string {
 	if m.paletteOpen() {
 		parts = append(parts, m.renderPalette())
 	}
-	if !m.horizontal && m.nodeViewID == "" {
-		parts = append(parts, m.renderGraphStrip())
+	if m.activityBarVisible() {
+		parts = append(parts, m.renderActivityBar())
 	}
 	parts = append(parts, m.renderInput())
 	if !m.paletteOpen() {
-		hint := "/ cmds · tab · ↑/↓ select · enter inspect · v receipts · node input steers · mouse click/wheel · ctrl+c quit"
-		if m.nodeViewID != "" {
-			hint = "type to steer · enter send · c cancel · esc back · mouse wheel scroll"
+		hint := "/ commands · tab focus · ^g tasks · v receipts · ? help"
+		switch {
+		case m.nodeViewID != "":
+			hint = "type to steer · enter send · c cancel · esc back"
+		case m.focus == focusGraph:
+			hint = "↑/↓ select · enter inspect · esc close · ^g hide"
 		}
-		parts = append(parts, mutedStyle.Render(truncate(hint, m.width)))
+		parts = append(parts, mutedStyle.Faint(true).Render(truncate(hint, m.width)))
 	}
 	return lipgloss.JoinVertical(lipgloss.Left, parts...)
 }
@@ -74,31 +79,33 @@ func (m *Model) trackPaneBounds() {
 	m.inputBounds = paneBounds{}
 	m.nodeBounds = paneBounds{}
 	m.nodeTraceBounds = paneBounds{}
+	m.activityBarBounds = paneBounds{}
 
 	const mainY = 2
-	if m.nodeViewID != "" {
+	switch {
+	case m.nodeViewID != "":
 		m.nodeBounds = paneBounds{x: 0, y: mainY, width: m.width, height: m.chatHeight}
-	} else if m.horizontal {
+	case m.graphVisible() && m.horizontal:
 		m.chatBounds = paneBounds{x: 0, y: mainY, width: m.chatWidth, height: m.chatHeight}
 		m.graphBounds = paneBounds{x: m.chatWidth + 2, y: mainY, width: m.graphWidth, height: m.graphHeight}
-	} else if m.focus == focusGraph {
+	case m.graphVisible():
 		m.graphBounds = paneBounds{x: 0, y: mainY, width: m.graphWidth, height: m.graphHeight}
-	} else {
+	default:
 		m.chatBounds = paneBounds{x: 0, y: mainY, width: m.chatWidth, height: m.chatHeight}
 	}
 	if m.graphBounds.width > 0 {
 		m.graphRowsBounds = paneBounds{
-			x: m.graphBounds.x + 2, y: m.graphBounds.y + 3,
+			x: m.graphBounds.x, y: m.graphBounds.y + 2,
 			width: m.graph.Width, height: m.graph.Height,
 		}
 	}
 
-	stripHeight := 0
-	if !m.horizontal && m.nodeViewID == "" {
-		stripHeight = 1
+	barY := mainY + m.chatHeight + 1 + m.paletteHeight()
+	if m.activityBarVisible() {
+		m.activityBarBounds = paneBounds{x: 0, y: barY, width: m.width, height: 1}
+		barY++
 	}
-	inputY := mainY + m.chatHeight + 1 + m.paletteHeight() + stripHeight
-	m.inputBounds = paneBounds{x: 0, y: inputY, width: m.width, height: lipgloss.Height(m.renderInput())}
+	m.inputBounds = paneBounds{x: 0, y: barY, width: m.width, height: m.input.LineCount()}
 }
 
 func (m *Model) renderTopBar() string {
@@ -107,7 +114,7 @@ func (m *Model) renderTopBar() string {
 		" · work " + truncate(modelShort(m.currentModel("work")), 18)
 	left := wordmark + mutedStyle.Render(" · "+m.sessionID+" · "+models)
 
-	right := m.renderTally()
+	right := m.renderSpend()
 	if m.status != "" && time.Now().Before(m.statusUntil) {
 		right = lipgloss.NewStyle().Foreground(powder).Render(truncate(m.status, max(8, m.width/2)))
 	}
@@ -126,42 +133,20 @@ func (m *Model) renderTopBar() string {
 	return left + strings.Repeat(" ", space) + right
 }
 
-func (m *Model) renderTally() string {
-	planning, running, done, failed := m.planningCount(), 0, 0, 0
-	for _, node := range m.snapshot.Nodes {
-		if node.ID == store.RootID {
-			continue
-		}
-		switch node.Status {
-		case store.Claimed, store.Running:
-			running++
-		case store.Done:
-			done++
-		case store.Failed:
-			failed++
-		}
+// renderSpend is the one number that is always worth the top-right corner:
+// what this session has consumed. Tokens stay muted; dollars read in full ink.
+func (m *Model) renderSpend() string {
+	if m.usage.Nodes == 0 {
+		return ""
 	}
-	segments := make([]string, 0, 4)
-	if planning > 0 {
-		segments = append(segments, mutedStyle.Render(fmt.Sprintf("%d planning", planning)))
-	}
-	if running > 0 {
-		segments = append(segments, mutedStyle.Render(fmt.Sprintf("%d running", running)))
-	}
-	segments = append(segments, mutedStyle.Render(fmt.Sprintf("%d done", done)))
-	if failed > 0 {
-		segments = append(segments, lipgloss.NewStyle().Foreground(rose).Render(fmt.Sprintf("%d failed", failed)))
-	}
-	tally := strings.Join(segments, mutedStyle.Render(" · "))
-	if m.usage.Nodes > 0 {
-		spend := fmt.Sprintf("%s tok · $%.2f", humanizeTokens(m.usage.PromptTokens+m.usage.CompletionTokens), m.usage.Cost)
-		tally += mutedStyle.Render("  ·  " + spend)
-	}
-	return tally
+	tokens := humanizeTokens(m.usage.PromptTokens + m.usage.CompletionTokens)
+	return mutedStyle.Render(tokens+" tok · ") +
+		lipgloss.NewStyle().Foreground(ink).Bold(true).Render(fmt.Sprintf("$%.2f", m.usage.Cost))
 }
 
-func (m *Model) renderGraphStrip() string {
-	running, waiting := 0, 0
+// taskCounts sweeps the snapshot once for the activity bar and the rail
+// header: work in flight, work queued, and anything that failed.
+func (m *Model) taskCounts() (running, queued, failed int) {
 	for _, node := range m.snapshot.Nodes {
 		if node.ID == store.RootID {
 			continue
@@ -170,69 +155,94 @@ func (m *Model) renderGraphStrip() string {
 		case store.Claimed, store.Running:
 			running++
 		case store.Pending:
-			waiting++
+			queued++
+		case store.Failed:
+			failed++
 		}
 	}
-	destination := "view"
-	if m.focus == focusGraph {
-		destination = "chat"
-	}
-	strip := fmt.Sprintf("● %d running · ○ %d waiting — tab to %s", running, waiting, destination)
-	style := mutedStyle
-	if m.focus == focusGraph {
-		style = lipgloss.NewStyle().Foreground(lavender)
-	}
-	return style.Render(truncate(strip, m.width))
+	return running, queued, failed
 }
 
-func (m *Model) renderChatPane() string {
-	border := muted
-	if m.focus == focusChat {
-		border = lavender
-	}
+// liveWorkCount is everything still moving: planning placeholders plus
+// running workers. It drives the collapsed-rail spinner.
+func (m *Model) liveWorkCount() int {
+	running, _, _ := m.taskCounts()
+	return running + m.planningCount()
+}
 
-	title := mutedStyle.Render("CHAT")
-	content := title + "\n\n" + m.chat.View()
-	lines := strings.Split(content, "\n")
-	innerHeight := max(1, m.chatHeight-2)
-	for len(lines) < innerHeight {
+// renderActivityBar is the whole task stack in one quiet line while the rail
+// is closed: a spinner when work moves, counts only when they are non-zero,
+// failures in rose. Clicking it (or ^g) opens the rail.
+func (m *Model) renderActivityBar() string {
+	running, queued, failed := m.taskCounts()
+	planning := m.planningCount()
+	segments := make([]string, 0, 4)
+	if planning > 0 {
+		frame := spinnerFrames[m.spinnerFrame%len(spinnerFrames)]
+		segments = append(segments, lipgloss.NewStyle().Foreground(peach).Render(
+			fmt.Sprintf("%s planning", frame)))
+	}
+	if running > 0 {
+		frame := spinnerFrames[m.spinnerFrame%len(spinnerFrames)]
+		segments = append(segments, lipgloss.NewStyle().Foreground(peach).Render(
+			fmt.Sprintf("%s %d working", frame, running)))
+	}
+	if queued > 0 {
+		segments = append(segments, mutedStyle.Render(fmt.Sprintf("○ %d queued", queued)))
+	}
+	if failed > 0 {
+		segments = append(segments, lipgloss.NewStyle().Foreground(rose).Render(fmt.Sprintf("%d failed", failed)))
+	}
+	bar := strings.Join(segments, mutedStyle.Render(" · "))
+	if bar == "" {
+		bar = mutedStyle.Faint(true).Render("no tasks in flight")
+	}
+	bar += mutedStyle.Faint(true).Render(" — ^g tasks")
+	return truncate(bar, m.width)
+}
+
+// renderChatPane is the conversation itself, full-bleed: no border, no title,
+// just the thread. The unread pill floats over the bottom line when scrolled.
+func (m *Model) renderChatPane() string {
+	lines := strings.Split(m.chat.View(), "\n")
+	for len(lines) < m.chatHeight {
 		lines = append(lines, "")
 	}
-	if len(lines) > innerHeight {
-		lines = lines[:innerHeight]
+	if len(lines) > m.chatHeight {
+		lines = lines[:m.chatHeight]
 	}
 	if m.newMessages > 0 {
 		pill := pillStyle.Render(m.newMessageLabel())
 		index := len(lines) - 1
-		available := max(1, m.chatWidth-4)
-		lines[index] = overlayRight(lines[index], pill, available)
+		lines[index] = overlayRight(lines[index], pill, max(1, m.chatWidth-2))
 	}
-	return paneStyle(border, m.chatWidth, m.chatHeight).Render(strings.Join(lines, "\n"))
+	return lipgloss.NewStyle().Width(m.chatWidth).Render(strings.Join(lines, "\n"))
 }
 
+// renderGraphPane is the task rail: a faint header naming it, then the tree.
+// The header brightens while the rail holds focus.
 func (m *Model) renderGraphPane() string {
-	border := muted
+	title := mutedStyle.Faint(true).Render("tasks")
 	if m.focus == focusGraph {
-		border = lavender
+		title = lipgloss.NewStyle().Foreground(lavender).Render("tasks")
 	}
-	title := mutedStyle.Render("GRAPH")
-	content := title + "\n\n" + m.graph.View()
-	lines := strings.Split(content, "\n")
-	innerHeight := max(1, m.graphHeight-2)
-	for len(lines) < innerHeight {
+	lines := append([]string{title, ""}, strings.Split(m.graph.View(), "\n")...)
+	for len(lines) < m.graphHeight {
 		lines = append(lines, "")
 	}
-	if len(lines) > innerHeight {
-		lines = lines[:innerHeight]
+	if len(lines) > m.graphHeight {
+		lines = lines[:m.graphHeight]
 	}
-	return paneStyle(border, m.graphWidth, m.graphHeight).Render(strings.Join(lines, "\n"))
+	return lipgloss.NewStyle().Width(m.graphWidth).Render(strings.Join(lines, "\n"))
 }
 
+// renderNodePane is one task's flight recorder, full-bleed: a header line,
+// a faint hairline, the brief, then the scrolling activity feed.
 func (m *Model) renderNodePane() string {
-	innerWidth := max(1, m.width-4)
+	innerWidth := max(1, m.width-2)
 	now := time.Now()
 	back := lipgloss.NewStyle().Foreground(lavender).Render("‹ back")
-	m.nodeBackBounds = paneBounds{x: m.nodeBounds.x + 2, y: m.nodeBounds.y + 1, width: lipgloss.Width(back), height: 1}
+	m.nodeBackBounds = paneBounds{x: m.nodeBounds.x, y: m.nodeBounds.y, width: lipgloss.Width(back), height: 1}
 	glyph, _ := m.nodeGlyphStyled(m.inspectedNode, now, false)
 	title := nodeLabel(m.inspectedNode)
 	timing := m.nodeTiming(now)
@@ -249,9 +259,10 @@ func (m *Model) renderNodePane() string {
 		header += mutedStyle.Render("  ·  " + timing)
 	}
 
-	lines := []string{header, ""}
-	contentX := m.nodeBounds.x + 2
-	contentY := m.nodeBounds.y + 1 + len(lines)
+	hairline := mutedStyle.Faint(true).Render(strings.Repeat("─", innerWidth))
+	lines := []string{header, hairline}
+	contentX := m.nodeBounds.x
+	contentY := m.nodeBounds.y + len(lines)
 	appendSection := func(label string, view string, height int, bounds *paneBounds) {
 		lines = append(lines, mutedStyle.Faint(true).Render(label))
 		contentY++
@@ -278,47 +289,23 @@ func (m *Model) renderNodePane() string {
 	appendSection("ACTIVITY   ✳ model · $ shell · ✎ file · ⌕ web · ▸ you · ⋯ click expands",
 		m.nodeTrace.View(), m.nodeTraceHeight, &m.nodeTraceBounds)
 
-	innerHeight := max(1, m.chatHeight-2)
-	for len(lines) < innerHeight {
+	for len(lines) < m.chatHeight {
 		lines = append(lines, "")
 	}
-	if len(lines) > innerHeight {
-		lines = lines[:innerHeight]
+	if len(lines) > m.chatHeight {
+		lines = lines[:m.chatHeight]
 	}
-	return paneStyle(lavender, m.width, m.chatHeight).Render(strings.Join(lines, "\n"))
+	return lipgloss.NewStyle().Width(m.width).Render(strings.Join(lines, "\n"))
 }
 
-func paneStyle(border lipgloss.AdaptiveColor, width, height int) lipgloss.Style {
-	return lipgloss.NewStyle().
-		Border(lipgloss.RoundedBorder()).
-		BorderForeground(border).
-		Padding(0, 1).
-		Width(max(1, width-2)).
-		Height(max(1, height-2))
-}
-
+// renderInput is a bare prompt line — the `›` is the whole affordance.
 func (m *Model) renderInput() string {
-	border := muted
-	if m.inputFocused {
-		border = lavender
-	}
-	return lipgloss.NewStyle().
-		Border(lipgloss.RoundedBorder()).
-		BorderForeground(border).
-		Padding(0, 1).
-		Width(max(1, m.width-2)).
-		Render(m.input.View())
+	return lipgloss.NewStyle().PaddingLeft(0).Width(m.width).Render(m.input.View())
 }
 
 func (m *Model) renderPalette() string {
-	innerWidth := max(1, m.width-4)
-	lines := m.paletteLines(innerWidth)
-	return lipgloss.NewStyle().
-		Border(lipgloss.RoundedBorder()).
-		BorderForeground(lavender).
-		Padding(0, 1).
-		Width(max(1, m.width-2)).
-		Render(strings.Join(lines, "\n"))
+	innerWidth := max(1, m.width-2)
+	return strings.Join(m.paletteLines(innerWidth), "\n")
 }
 
 func (m *Model) paletteHeight() int {
@@ -359,7 +346,8 @@ func (m *Model) paletteLines(width int) []string {
 		}
 		lines = append(lines,
 			mutedStyle.Render(truncate("voice  you ask · aforge answers · v toggles receipts", width)),
-			mutedStyle.Render(truncate("keys   tab focus · ↑/↓ select · enter inspect node · esc back", width)),
+			mutedStyle.Render(truncate("tasks  ^g opens the rail · ↑/↓ select · enter inspect · esc closes", width)),
+			mutedStyle.Render(truncate("chat   ↳ chips jump to the task an answer came from", width)),
 			mutedStyle.Render(truncate("node   type guidance + enter to steer · c cancels worker", width)),
 			mutedStyle.Render(truncate("mouse  click focus/select/open · wheel scrolls pointed pane", width)),
 			mutedStyle.Render(truncate("menus  tab/↑/↓ choose · enter accept · esc close · ctrl+c quit", width)),
@@ -470,12 +458,10 @@ func (m *Model) modelPickerLines(width int) []string {
 }
 
 func (m *Model) paletteLineLimit() int {
-	minimumMainHeight := 3
-	stripHeight := 0
-	if !m.horizontal {
-		stripHeight = 1
-	}
-	available := m.height - 3 - (m.input.LineCount() + 2) - minimumMainHeight - stripHeight - 2
+	const minimumMainHeight = 3
+	// top bar + blank + main + blank + palette + input; the hint yields while
+	// the palette is open.
+	available := m.height - 3 - m.input.LineCount() - minimumMainHeight
 	return max(1, available)
 }
 
@@ -582,8 +568,16 @@ type chatMessageRow struct {
 	seq   int64
 }
 
+// chatChipRow maps a rendered provenance-chip line (`↳ title`) to the task
+// node it came from, so clicking it opens that task's activity view.
+type chatChipRow struct {
+	line   int
+	nodeID string
+}
+
 func (m *Model) renderMessages() string {
 	m.chatMessageRows = m.chatMessageRows[:0]
+	m.chatChipRows = m.chatChipRows[:0]
 	if len(m.messages) == 0 {
 		return mutedStyle.Render("No messages yet. Start with a thought or a task.")
 	}
@@ -664,6 +658,14 @@ func (m *Model) renderMessageGroup(group messageGroup, atLine int) string {
 		default:
 			item = m.renderAnswer(message, available)
 		}
+		// A task-anchored answer names its origin: a small clickable chip that
+		// jumps to that task's activity view.
+		if message.NodeID != "" && message.Role != store.RoleUser && !secondaryMessage(message) {
+			chip := lipgloss.NewStyle().Foreground(peach).Render(
+				"↳ " + truncate(m.nodeChipLabel(message.NodeID), 40))
+			m.chatChipRows = append(m.chatChipRows, chatChipRow{line: line, nodeID: message.NodeID})
+			item = chip + "\n" + item
+		}
 		items = append(items, item)
 		height := lipgloss.Height(item)
 		if message.Seq != 0 {
@@ -675,12 +677,16 @@ func (m *Model) renderMessageGroup(group messageGroup, atLine int) string {
 	if len(items) > 0 {
 		content += "\n" + strings.Join(items, "\n\n")
 	}
+	return content
+}
 
-	return lipgloss.NewStyle().
-		Border(lipgloss.Border{Left: "│"}, false, false, false, true).
-		BorderForeground(accent).
-		PaddingLeft(1).
-		Render(content)
+// nodeChipLabel is the short human name for a task referenced from chat: the
+// node's title while it is visible in the snapshot, its id once folded away.
+func (m *Model) nodeChipLabel(nodeID string) string {
+	if node, ok := m.snapshotNode(nodeID); ok {
+		return nodeLabel(node)
+	}
+	return nodeID
 }
 
 // renderAnswer presents an agent-side message the way a person reads one:
@@ -993,7 +999,7 @@ func (m *Model) completionFlashing(node store.Node, now time.Time) bool {
 }
 
 func (m *Model) noteAnimatedGraphRow(row int) {
-	if !m.horizontal && m.focus != focusGraph {
+	if !m.graphVisible() {
 		return
 	}
 	start := m.graph.YOffset

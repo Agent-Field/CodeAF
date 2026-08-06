@@ -151,6 +151,7 @@ type Model struct {
 
 	inputFocused     bool
 	focus            paneFocus
+	graphOpen        bool
 	autoScroll       bool
 	newMessages      int
 	spinnerFrame     int
@@ -175,17 +176,22 @@ type Model struct {
 	splitPct      int
 	draggingSplit bool
 
-	chatBounds      paneBounds
-	graphBounds     paneBounds
-	graphRowsBounds paneBounds
-	inputBounds     paneBounds
-	nodeBounds      paneBounds
-	nodeTraceBounds paneBounds
-	nodeBackBounds  paneBounds
+	chatBounds        paneBounds
+	graphBounds       paneBounds
+	graphRowsBounds   paneBounds
+	inputBounds       paneBounds
+	nodeBounds        paneBounds
+	nodeTraceBounds   paneBounds
+	nodeBackBounds    paneBounds
+	activityBarBounds paneBounds
 
 	// chatMessageRows maps rendered chat lines to the message seq they
 	// belong to, so clicking a collapsed deliverable opens it in place.
 	chatMessageRows []chatMessageRow
+
+	// chatChipRows maps rendered provenance-chip lines to the task they
+	// point at, so clicking `↳ title` opens that task's activity view.
+	chatChipRows []chatChipRow
 }
 
 type paneFocus int
@@ -403,6 +409,10 @@ func (m *Model) updateKey(message tea.KeyMsg) (tea.Cmd, bool) {
 		}
 		return nil, false
 	}
+	if key == "ctrl+g" {
+		m.toggleGraph()
+		return nil, true
+	}
 	if key == "esc" {
 		switch {
 		case m.palette == paletteModel || m.palette == paletteMemory || m.palette == paletteHelp:
@@ -411,6 +421,8 @@ func (m *Model) updateKey(message tea.KeyMsg) (tea.Cmd, bool) {
 			m.palette = paletteNone
 			m.paletteDismissed = true
 			m.setSize(m.width, m.height)
+		case m.graphVisible() && m.focus == focusGraph:
+			m.toggleGraph()
 		case m.input.Value() != "":
 			m.input.Reset()
 			m.paletteDismissed = false
@@ -644,8 +656,25 @@ func (m *Model) submit() tea.Cmd {
 	}
 }
 
+// toggleFocus cycles through the panes that are actually on screen: input and
+// chat always, the task rail only while it is open.
 func (m *Model) toggleFocus() tea.Cmd {
-	m.focus = (m.focus + 1) % 3
+	order := []paneFocus{focusInput, focusChat}
+	if m.graphVisible() {
+		if m.horizontal {
+			order = []paneFocus{focusInput, focusChat, focusGraph}
+		} else {
+			order = []paneFocus{focusInput, focusGraph}
+		}
+	}
+	at := 0
+	for index, pane := range order {
+		if pane == m.focus {
+			at = index
+			break
+		}
+	}
+	m.focus = order[(at+1)%len(order)]
 	m.inputFocused = m.focus == focusInput
 	if m.focus == focusGraph {
 		m.ensureGraphSelection()
@@ -655,6 +684,33 @@ func (m *Model) toggleFocus() tea.Cmd {
 	}
 	m.input.Blur()
 	return nil
+}
+
+// toggleGraph opens or closes the task rail. Opening moves focus into it so
+// the arrows work immediately; closing hands focus back to the input.
+func (m *Model) toggleGraph() {
+	m.graphOpen = !m.graphOpen
+	if m.graphOpen {
+		m.focus = focusGraph
+		m.inputFocused = false
+		m.input.Blur()
+		m.ensureGraphSelection()
+	} else {
+		m.focus = focusInput
+		m.inputFocused = true
+		_ = m.input.Focus()
+	}
+	m.setSize(m.width, m.height)
+}
+
+// graphVisible reports whether the task rail (or full task pane, when the
+// terminal is narrow) is on screen.
+func (m *Model) graphVisible() bool { return m.graphOpen && m.nodeViewID == "" }
+
+// activityBarVisible reports whether the one-line task summary sits above the
+// input. It stands in for the rail whenever the rail is closed.
+func (m *Model) activityBarVisible() bool {
+	return !m.graphVisible() && m.nodeViewID == "" && !m.paletteOpen()
 }
 
 func (m *Model) setSize(width, height int) {
@@ -667,12 +723,13 @@ func (m *Model) setSize(width, height int) {
 	if m.paletteOpen() {
 		footerHeight = 0
 	}
-	stripHeight := 0
-	if !m.horizontal && m.nodeViewID == "" {
-		stripHeight = 1
+	barHeight := 0
+	if m.activityBarVisible() {
+		barHeight = 1
 	}
-	mainHeight := max(3, m.height-3-(m.input.LineCount()+2)-paletteHeight-footerHeight-stripHeight)
-	if m.horizontal {
+	// top bar + blank + main + blank + palette + activity bar + input + hint
+	mainHeight := max(3, m.height-3-paletteHeight-barHeight-m.input.LineCount()-footerHeight)
+	if m.graphVisible() && m.horizontal {
 		const gap = 2
 		pct := m.splitPct
 		if pct == 0 {
@@ -687,11 +744,11 @@ func (m *Model) setSize(width, height int) {
 	m.chatHeight = mainHeight
 	m.graphHeight = mainHeight
 
-	m.chat.Width = max(1, m.chatWidth-4)   // border and horizontal padding
-	m.chat.Height = max(1, m.chatHeight-4) // title, breathing room, border
-	m.graph.Width = max(1, m.graphWidth-4)
-	m.graph.Height = max(1, m.graphHeight-4)
-	m.input.Width = max(1, m.width-6)
+	m.chat.Width = max(1, m.chatWidth-2)  // breathing room on the right
+	m.chat.Height = max(1, m.chatHeight)
+	m.graph.Width = max(1, m.graphWidth-2)
+	m.graph.Height = max(1, m.graphHeight-2) // header + blank
+	m.input.Width = max(1, m.width-4)
 	m.sizeNodeViewports()
 	m.refreshChat()
 	m.refreshGraph()
@@ -704,6 +761,11 @@ func (m *Model) refreshGraph() {
 	offset := m.graph.YOffset
 	m.graph.SetContent(m.renderTree(max(1, m.graph.Width), 0))
 	m.graph.SetYOffset(offset)
+	// The collapsed rail still shows a spinner in the activity bar, so live
+	// work keeps the animation ticking even with the tree off screen.
+	if !m.graphVisible() && m.nodeViewID == "" && m.liveWorkCount() > 0 {
+		m.graphAnimating = true
+	}
 	if m.nodeViewID != "" &&
 		(m.inspectedNode.Status == store.Claimed || m.inspectedNode.Status == store.Running ||
 			m.completionFlashing(m.inspectedNode, time.Now())) {
@@ -808,7 +870,9 @@ func (m *Model) splitDividerHit(x, y int) bool {
 	if y < m.chatBounds.y || y >= m.chatBounds.bottom() {
 		return false
 	}
-	return x >= m.chatBounds.right()-1 && x <= m.graphBounds.x
+	// Only the gap columns between the panes grab — the rail's first column
+	// stays clickable for selecting nodes.
+	return x >= m.chatBounds.right() && x < m.graphBounds.x
 }
 
 func (m *Model) dragSplitTo(x int) {
@@ -845,15 +909,12 @@ func (m *Model) saveSplit() {
 }
 
 func (m *Model) newMessagePillHit(x, y int) bool {
-	if m.newMessages == 0 {
-		return false
-	}
-	if m.nodeViewID != "" || (!m.horizontal && m.focus == focusGraph) {
+	if m.newMessages == 0 || m.chatBounds.width == 0 {
 		return false
 	}
 	pillWidth := lipgloss.Width(m.newMessageLabel()) + 2
-	return x >= m.chatBounds.x+m.chatBounds.width-pillWidth-1 && x < m.chatBounds.right()-1 &&
-		y >= m.chatBounds.y+m.chatBounds.height-2 && y < m.chatBounds.bottom()-1
+	return x >= m.chatBounds.right()-pillWidth-2 && x < m.chatBounds.right() &&
+		y == m.chatBounds.bottom()-1
 }
 
 func (m *Model) refreshChat() {
