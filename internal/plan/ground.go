@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/Agent-Field/aforge-v2/internal/provider"
+	"github.com/Agent-Field/aforge-v2/internal/store"
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 )
 
@@ -120,10 +121,21 @@ type Grounding struct {
 // spine — both need only the goal — so it costs no wall clock, and its output
 // joins the prefix every later call already shares, so it costs no cache either.
 func Ground(ctx context.Context, client Completer, goal string) (Grounding, *ai.Usage, error) {
+	return GroundWith(ctx, client, goal, nil)
+}
+
+// GroundWith resolves the goal with optional folded history. Keeping Ground as
+// the empty-memory wrapper is the compatibility boundary: callers without a
+// store send exactly the same prompt bytes they did before recall existed.
+func GroundWith(ctx context.Context, client Completer, goal string, recall []store.RecallHit) (Grounding, *ai.Usage, error) {
 	ctx = provider.WithCall(ctx, provider.ClassPlanGround)
+	user := "Goal:\n" + strings.TrimSpace(goal)
+	if remembered := store.FormatRecall(recall, 8<<10); remembered != "" {
+		user += "\n\n" + remembered
+	}
 	messages := []ai.Message{
 		systemMessage(groundPrompt),
-		userMessage("Goal:\n" + strings.TrimSpace(goal)),
+		userMessage(user),
 	}
 	var decoded struct {
 		Settled  []string `json:"settled"`

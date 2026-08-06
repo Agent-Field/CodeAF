@@ -753,6 +753,12 @@ func (r *Reconciler) renderCompileContext(snapshot store.Snapshot, instruction s
 		context.WriteString(notebook)
 		context.WriteString("\n\n")
 	}
+	if hits, err := r.store.Recall(instruction, ExtractCues(instruction), 5); err == nil {
+		if recalled := store.FormatRecall(hits, compileContextBytes); recalled != "" {
+			context.WriteString(recalled)
+			context.WriteString("\n\n")
+		}
+	}
 	context.WriteString(renderGraphContext(snapshot))
 	return context.String()
 }

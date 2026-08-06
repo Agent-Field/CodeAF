@@ -2,6 +2,8 @@ package exec
 
 import (
 	"context"
+	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -10,6 +12,7 @@ import (
 	"time"
 
 	"github.com/Agent-Field/aforge-v2/internal/plan"
+	graphstore "github.com/Agent-Field/aforge-v2/internal/store"
 )
 
 func workspace(t *testing.T) *Workspace {
@@ -19,6 +22,74 @@ func workspace(t *testing.T) *Workspace {
 		t.Fatalf("NewWorkspace: %v", err)
 	}
 	return space
+}
+
+func TestRecallToolIsStoreGatedAndBounded(t *testing.T) {
+	plain := NewToolbox(workspace(t), 1, nil)
+	if definitions := plain.Definitions(); len(definitions) != 4 {
+		t.Fatalf("plain toolbox definitions = %d, want original four", len(definitions))
+	}
+	if result := plain.Execute(context.Background(), "recall", `{"terms":"parser"}`); !result.IsError || !strings.Contains(result.Content, "without an attached store") {
+		t.Fatalf("plain recall result = %+v, want unavailable", result)
+	}
+
+	history, err := graphstore.Open(filepath.Join(t.TempDir(), "history.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = history.Close() })
+	for index := 0; index < 12; index++ {
+		id := fmt.Sprintf("memory-%02d", index)
+		intent := fmt.Sprintf("Repair chromatic parser %02d", index)
+		if err := history.Splice(graphstore.RootID, graphstore.Subtree{Nodes: []graphstore.NodeSpec{{
+			ID: id, Brief: intent, Stage: 1,
+		}}}, graphstore.Provenance{Origin: graphstore.OriginUser, Intent: intent}); err != nil {
+			t.Fatal(err)
+		}
+		claim, won, err := history.Claim(id, "worker")
+		if err != nil || !won {
+			t.Fatalf("claim %s: won=%v err=%v", id, won, err)
+		}
+		digest := fmt.Sprintf("memory %02d: %s", index, strings.Repeat("chromatic parser detail ", 220))
+		if err := history.Complete(claim, digest); err != nil {
+			t.Fatal(err)
+		}
+		if err := history.Fold(id, digest, []string{fmt.Sprintf("/workspace/parser/%02d.md", index)}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := history.RecordFact("memory-11", "repo:/workspace/parser", graphstore.FactLesson,
+		"The chromatic parser keeps sentinel values explicit"); err != nil {
+		t.Fatal(err)
+	}
+
+	tools := NewToolboxWithStore(workspace(t), 2, nil, history)
+	definitions := tools.Definitions()
+	if len(definitions) != 5 || definitions[4].Function.Name != "recall" ||
+		!strings.Contains(definitions[4].Function.Description, "map") ||
+		!strings.Contains(definitions[4].Function.Description, "territory") {
+		t.Fatalf("store toolbox definitions = %+v", definitions)
+	}
+	result := tools.Execute(context.Background(), "recall",
+		`{"terms":"chromatic parser","scope_cues":["/workspace/parser"],"limit":10}`)
+	if result.IsError {
+		t.Fatalf("recall failed: %s", result.Content)
+	}
+	if len(result.Content) > maxRecallResultBytes {
+		t.Fatalf("recall result = %d bytes, limit %d", len(result.Content), maxRecallResultBytes)
+	}
+	var decoded recallToolResponse
+	if err := json.Unmarshal([]byte(result.Content), &decoded); err != nil {
+		t.Fatalf("recall returned invalid JSON: %v\n%s", err, result.Content)
+	}
+	if len(decoded.Folds) == 0 || len(decoded.Folds[0].Pointers) == 0 ||
+		!strings.HasPrefix(decoded.Folds[0].Pointers[0], "/workspace/parser/") {
+		t.Fatalf("recall folds omitted bounded pointers: %+v", decoded.Folds)
+	}
+	if len(decoded.Notebook) != 1 || !strings.Contains(decoded.Notebook[0].Body, "sentinel") ||
+		len(decoded.Notebook[0].Pointers) == 0 || decoded.Notebook[0].Pointers[0] != "/workspace/parser/11.md" {
+		t.Fatalf("recall notebook = %+v", decoded.Notebook)
+	}
 }
 
 // TestClampKeepsBothEnds guards the truncation rule. Keeping only the head is

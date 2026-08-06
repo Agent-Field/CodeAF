@@ -24,6 +24,9 @@ func (s *Store) Rebuild() error {
 	if len(events) == 0 {
 		return fmt.Errorf("rebuild: event journal has no spine event")
 	}
+	if _, err := tx.Exec(`DELETE FROM graph_fts`); err != nil {
+		return fmt.Errorf("rebuild graph index: %w", err)
+	}
 	if _, err := tx.Exec(`DELETE FROM edges`); err != nil {
 		return fmt.Errorf("rebuild edges: %w", err)
 	}
@@ -106,7 +109,10 @@ func replayEvent(tx *sql.Tx, event Event) error {
 			payload.ID, payload.Brief, Running, payload.Provenance.Origin,
 			nullIfEmpty(payload.Provenance.SessionID), payload.Provenance.Intent,
 			event.Seq, event.Seq, formatTime(event.Time))
-		return err
+		if err != nil {
+			return err
+		}
+		return refreshGraphFTS(tx, payload.ID)
 
 	case EventSubtreeSpliced:
 		var payload splicedPayload
@@ -141,11 +147,14 @@ func replayEvent(tx *sql.Tx, event Event) error {
 		if err := json.Unmarshal(event.Payload, &payload); err != nil {
 			return err
 		}
-		return replayUpdate(tx, event.NodeID, `
+		if err := replayUpdate(tx, event.NodeID, `
 			UPDATE nodes
 			SET status = ?, owner = ?, claim_token = ?, summary = ?, finished_at = ?, updated_seq = ?
 			WHERE id = ?`, Done, payload.Owner, payload.Token, payload.Summary,
-			formatTime(event.Time), event.Seq, event.NodeID)
+			formatTime(event.Time), event.Seq, event.NodeID); err != nil {
+			return err
+		}
+		return refreshGraphFTS(tx, event.NodeID)
 
 	case EventNodeFailed:
 		var payload failPayload

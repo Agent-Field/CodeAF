@@ -37,6 +37,7 @@ import (
 	"time"
 
 	"github.com/Agent-Field/aforge-v2/internal/provider"
+	"github.com/Agent-Field/aforge-v2/internal/store"
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 )
 
@@ -103,6 +104,11 @@ type Progress func(pass string, elapsed time.Duration, detail string)
 
 // Options configures a build.
 type Options struct {
+	// Recall is folded history relevant to this goal. Empty preserves the
+	// pre-memory prompt byte for byte; populated memory is consumed only by the
+	// ground pass, before parallel planning can reinterpret the goal.
+	Recall []store.RecallHit
+
 	// SpineSamples is how many spines to draw before choosing one. The spine is
 	// the only call whose framing every later pass inherits, so it is the only
 	// one worth sampling; the samples run concurrently and cost no wall clock.
@@ -167,7 +173,7 @@ func Build(ctx context.Context, client Completer, goal string, options Options) 
 	}()
 	go func() {
 		defer opening.Done()
-		grounding, usage, err := Ground(ctx, client, goal)
+		grounding, usage, err := GroundWith(ctx, client, goal, options.Recall)
 		groundUsage.Add(usage)
 		graph.Settled, graph.Open, graph.Evidence, groundErr = grounding.Settled, grounding.Open, grounding.Evidence, err
 	}()
