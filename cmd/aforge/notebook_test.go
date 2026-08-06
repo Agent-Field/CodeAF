@@ -98,6 +98,36 @@ func TestNotebookCommandListsRetractsAndRestores(t *testing.T) {
 	assertNotebookStatus(t, path, active.Seq, store.FactActive)
 }
 
+func TestNotebookDisplaysCanonicalScopesAndAliases(t *testing.T) {
+	graph, err := store.Open(filepath.Join(t.TempDir(), "graph.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer graph.Close()
+	historical, err := graph.RecordFact("", "domain:podcasts", store.FactPlain, "podcasts use a loudness target")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := graph.ReplaceFact(historical.Seq, "", "domain:podcasts", store.FactPlain,
+		"podcasts use an explicit loudness target"); err != nil {
+		t.Fatal(err)
+	}
+	if err := graph.AliasScope("domain:podcasts", "domain:podcast"); err != nil {
+		t.Fatal(err)
+	}
+
+	var output bytes.Buffer
+	if err := writeNotebook(&output, graph, time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	if line := normalizedNotebookLine(output.String(), historical.Seq); !strings.Contains(line, "domain:podcast") || strings.Contains(line, "domain:podcasts") {
+		t.Fatalf("historical notebook row did not display its canonical scope: %q", line)
+	}
+	if !strings.Contains(output.String(), "domain:podcasts → domain:podcast") {
+		t.Fatalf("notebook alias list = %q", output.String())
+	}
+}
+
 func normalizedNotebookLine(rendered string, seq int64) string {
 	prefix := fmt.Sprintf("#%d ", seq)
 	for _, line := range strings.Split(rendered, "\n") {
