@@ -1,0 +1,956 @@
+{
+  "model": "~deepseek/deepseek-v4-flash-latest",
+  "skill": "linear",
+  "records": [
+    {
+      "title": "Implement LogStore",
+      "summary": "Implement the complete LogStore package",
+      "sources": 3,
+      "size": "oversized",
+      "turns": 14,
+      "tokens": 152160,
+      "stop": "done",
+      "verdict": "unverified_success"
+    },
+    {
+      "title": "Assemble corpus and workspace",
+      "summary": "Ensure all corpus files are present and readable in the corpus/ directory, and that the workspace root is writable for the two output files.",
+      "sources": 0,
+      "size": "atomic",
+      "turns": 4,
+      "tokens": 15999,
+      "stop": "done",
+      "verdict": "unverified_success"
+    },
+    {
+      "title": "Full corpus audit and findings extraction 1",
+      "summary": "Read every document in corpus/ (all eleven files plus RULES.md), extract all facts and rules, resolve supersession and contradictions per RULES.md, and produce the complete findings.json and REPORT.md exactly as specified.",
+      "sources": 12,
+      "size": "atomic",
+      "turns": 17,
+      "tokens": 222252,
+      "stop": "done",
+      "verdict": "unverified_success"
+    },
+    {
+      "title": "Full corpus audit and findings extraction 2",
+      "summary": "Read every document in corpus/ (all eleven files plus RULES.md), extract all facts and rules, resolve supersession and contradictions per RULES.md, and produce the complete findings.json and REPORT.md exactly as specified.",
+      "sources": 12,
+      "size": "atomic",
+      "turns": 11,
+      "tokens": 142296,
+      "stop": "done",
+      "verdict": "unverified_success"
+    },
+    {
+      "title": "Full corpus audit and findings extraction 3",
+      "summary": "Read every document in corpus/ (all eleven files plus RULES.md), extract all facts and rules, resolve supersession and contradictions per RULES.md, and produce the complete findings.json and REPORT.md exactly as specified.",
+      "sources": 12,
+      "size": "atomic",
+      "turns": 14,
+      "tokens": 189633,
+      "stop": "done",
+      "verdict": "unverified_success"
+    },
+    {
+      "title": "module-audit",
+      "summary": "Read every module and map docstring-code disagreements.",
+      "sources": 6,
+      "size": "atomic",
+      "turns": 12,
+      "tokens": 784558,
+      "stop": "done",
+      "verdict": "unverified_success"
+    },
+    {
+      "title": "test-audit",
+      "summary": "Read all tests and identify covered defect areas.",
+      "sources": 2,
+      "size": "atomic",
+      "turns": 6,
+      "tokens": 36763,
+      "stop": "done",
+      "verdict": "unverified_success"
+    },
+    {
+      "title": "Implement tinylog",
+      "summary": "Implement the complete tinylog package with all features.",
+      "sources": 20,
+      "size": "oversized",
+      "turns": 19,
+      "tokens": 253919,
+      "stop": "done",
+      "verdict": "unverified_success"
+    },
+    {
+      "title": "Resolve rules",
+      "summary": "Determine which documents are superseded and which win.",
+      "sources": 3,
+      "size": "atomic",
+      "turns": 5,
+      "tokens": 38232,
+      "stop": "done",
+      "verdict": "unverified_success"
+    },
+    {
+      "title": "Compute queue findings",
+      "summary": "Calculate deprecated-queue services, monthly cost, and unowned services.",
+      "sources": 5,
+      "size": "atomic",
+      "turns": 4,
+      "tokens": 26905,
+      "stop": "done",
+      "verdict": "unverified_success"
+    },
+    {
+      "title": "Compute incident findings",
+      "summary": "Calculate incident minutes, most impacted service, and contradictions.",
+      "sources": 5,
+      "size": "atomic",
+      "turns": 4,
+      "tokens": 28980,
+      "stop": "done",
+      "verdict": "unverified_success"
+    },
+    {
+      "title": "Write findings.json",
+      "summary": "Produce the strict JSON file with all seven findings.",
+      "sources": 2,
+      "size": "atomic",
+      "turns": 2,
+      "tokens": 9079,
+      "stop": "done",
+      "verdict": "unverified_success"
+    },
+    {
+      "title": "Write REPORT.md",
+      "summary": "Produce the prose report with citations and contradiction explanations.",
+      "sources": 3,
+      "size": "atomic",
+      "turns": 9,
+      "tokens": 110689,
+      "stop": "done",
+      "verdict": "unverified_success"
+    },
+    {
+      "title": "Extract incident facts",
+      "summary": "Read all incident reports and extract impact durations.",
+      "sources": 12,
+      "size": "atomic",
+      "turns": 4,
+      "tokens": 24620,
+      "stop": "done",
+      "verdict": "unverified_success"
+    },
+    {
+      "title": "Extract doc relations",
+      "summary": "Read all documents and extract supersession and contradiction facts.",
+      "sources": 12,
+      "size": "atomic",
+      "turns": 5,
+      "tokens": 41562,
+      "stop": "done",
+      "verdict": "unverified_success"
+    },
+    {
+      "title": "ownership",
+      "summary": "Extract every service's owner from all documents.",
+      "sources": 12,
+      "size": "atomic",
+      "turns": 6,
+      "tokens": 44255,
+      "stop": "done",
+      "verdict": "unverified_success"
+    },
+    {
+      "title": "queue-tech",
+      "summary": "Extract each service's queue technology and deprecation status.",
+      "sources": 12,
+      "size": "atomic",
+      "turns": 6,
+      "tokens": 40675,
+      "stop": "done",
+      "verdict": "unverified_success"
+    },
+    {
+      "title": "volume",
+      "summary": "Extract each service's messages-per-day and pricing inputs.",
+      "sources": 12,
+      "size": "atomic",
+      "turns": 7,
+      "tokens": 284096,
+      "stop": "done",
+      "verdict": "unverified_success"
+    },
+    {
+      "title": "module-audit",
+      "summary": "Read every package module and map its docstring-vs-code defects.",
+      "sources": 7,
+      "size": "atomic",
+      "turns": 9,
+      "tokens": 63594,
+      "stop": "done",
+      "verdict": "unverified_success"
+    },
+    {
+      "title": "test-audit",
+      "summary": "Read all shipped tests to infer intended behaviour and coverage gaps.",
+      "sources": 4,
+      "size": "atomic",
+      "turns": 5,
+      "tokens": 34022,
+      "stop": "done",
+      "verdict": "unverified_success"
+    },
+    {
+      "title": "Fix defects",
+      "summary": "Fix all defects in the package source.",
+      "sources": 10,
+      "size": "oversized",
+      "turns": 18,
+      "tokens": 171771,
+      "stop": "done",
+      "verdict": "unverified_success"
+    },
+    {
+      "title": "Refactor strategy",
+      "summary": "Add strategy module and refactor assignment.",
+      "sources": 4,
+      "size": "atomic",
+      "turns": 7,
+      "tokens": 32314,
+      "stop": "done",
+      "verdict": "unverified_success"
+    },
+    {
+      "title": "core-modules",
+      "summary": "Map defects in core scheduling and assignment modules",
+      "sources": 5,
+      "size": "atomic",
+      "turns": 16,
+      "tokens": 246464,
+      "stop": "done",
+      "verdict": "unverified_success"
+    },
+    {
+      "title": "support-modules",
+      "summary": "Map defects in strategy, availability, and data models",
+      "sources": 4,
+      "size": "atomic",
+      "turns": 14,
+      "tokens": 134994,
+      "stop": "done",
+      "verdict": "unverified_success"
+    },
+    {
+      "title": "test-coverage",
+      "summary": "Map defects visible from shipped and additional tests",
+      "sources": 4,
+      "size": "atomic",
+      "turns": 25,
+      "tokens": 386432,
+      "stop": "done",
+      "verdict": "unverified_success"
+    },
+    {
+      "title": "repair-core",
+      "summary": "Fix defects and add strategy module",
+      "sources": 7,
+      "size": "oversized",
+      "turns": 15,
+      "tokens": 202899,
+      "stop": "done",
+      "verdict": "unverified_success"
+    },
+    {
+      "title": "run-tests",
+      "summary": "Run the full shipped test suite",
+      "sources": 6,
+      "size": "atomic",
+      "turns": 4,
+      "tokens": 13065,
+      "stop": "done",
+      "verdict": "unverified_success"
+    },
+    {
+      "title": "check-imports",
+      "summary": "Verify all public names import correctly",
+      "sources": 5,
+      "size": "atomic",
+      "turns": 8,
+      "tokens": 36196,
+      "stop": "done",
+      "verdict": "unverified_success"
+    },
+    {
+      "title": "verify-strategy",
+      "summary": "Confirm strategy pluggability and ranking behavior",
+      "sources": 2,
+      "size": "atomic",
+      "turns": 15,
+      "tokens": 117959,
+      "stop": "done",
+      "verdict": "unverified_success"
+    },
+    {
+      "title": "manifest-dir",
+      "summary": "Read, validate, and rewrite the manifest from disk.",
+      "sources": 5,
+      "size": "atomic",
+      "turns": 20,
+      "tokens": 182610,
+      "stop": "done",
+      "verdict": "unverified_success"
+    },
+    {
+      "title": "frame-codec",
+      "summary": "Implement exact record framing and payload codec.",
+      "sources": 5,
+      "size": "atomic",
+      "turns": 9,
+      "tokens": 359842,
+      "stop": "done",
+      "verdict": "unverified_success"
+    },
+    {
+      "title": "segment-writer",
+      "summary": "Implement append-only writes with segment rolling and naming.",
+      "sources": 5,
+      "size": "atomic",
+      "turns": 17,
+      "tokens": 143620,
+      "stop": "done",
+      "verdict": "unverified_success"
+    },
+    {
+      "title": "segment-reader",
+      "summary": "Implement trustworthy-record reading and torn-tail truncation.",
+      "sources": 5,
+      "size": "atomic",
+      "turns": 10,
+      "tokens": 65253,
+      "stop": "done",
+      "verdict": "unverified_success"
+    },
+    {
+      "title": "index-build",
+      "summary": "Build in-memory key→(segment, offset, value) index from all segments.",
+      "sources": 3,
+      "size": "oversized",
+      "turns": 20,
+      "tokens": 294750,
+      "stop": "done",
+      "verdict": "unverified_success"
+    },
+    {
+      "title": "get-lookup",
+      "summary": "Serve get() from index, returning latest live value or None.",
+      "sources": 2,
+      "size": "atomic",
+      "turns": 7,
+      "tokens": 60476,
+      "stop": "done",
+      "verdict": "unverified_success"
+    },
+    {
+      "title": "scan-generator",
+      "summary": "Yield live keys in byte-lexicographic order, half-open range, lazily.",
+      "sources": 3,
+      "size": "atomic",
+      "turns": 7,
+      "tokens": 60210,
+      "stop": "done",
+      "verdict": "unverified_success"
+    },
+    {
+      "title": "live-count",
+      "summary": "Count keys whose latest record is live, excluding tombstones.",
+      "sources": 2,
+      "size": "atomic",
+      "turns": 26,
+      "tokens": 406468,
+      "stop": "budget",
+      "verdict": "budget_stop"
+    },
+    {
+      "title": "compact-merge",
+      "summary": "Merge all segments into one new segment, keeping only live keys.",
+      "sources": 4,
+      "size": "atomic",
+      "turns": 23,
+      "tokens": 435924,
+      "stop": "budget",
+      "verdict": "budget_stop"
+    },
+    {
+      "title": "reclaim-bytes",
+      "summary": "Compute total segment bytes before and after compaction.",
+      "sources": 2,
+      "size": "atomic",
+      "turns": 22,
+      "tokens": 262190,
+      "stop": "done",
+      "verdict": "unverified_success"
+    },
+    {
+      "title": "remove-old-files",
+      "summary": "Delete all old segment files after the new one is written.",
+      "sources": 2,
+      "size": "atomic",
+      "turns": 25,
+      "tokens": 428713,
+      "stop": "budget",
+      "verdict": "budget_stop"
+    },
+    {
+      "title": "rewrite-manifest",
+      "summary": "Write the manifest listing only the new merged segment.",
+      "sources": 2,
+      "size": "atomic",
+      "turns": 24,
+      "tokens": 351125,
+      "stop": "done",
+      "verdict": "unverified_success"
+    },
+    {
+      "title": "close-cleanly",
+      "summary": "Flush and close all open files, leaving state consistent.",
+      "sources": 3,
+      "size": "atomic",
+      "turns": 19,
+      "tokens": 256815,
+      "stop": "done",
+      "verdict": "unverified_success"
+    },
+    {
+      "title": "Read-index",
+      "summary": "Read all corpus docs, extract facts and rules.",
+      "sources": 12,
+      "size": "oversized",
+      "turns": 1,
+      "tokens": 3741,
+      "stop": "done",
+      "verdict": "unverified_success"
+    },
+    {
+      "title": "Resolve ADRs",
+      "summary": "Follow ADR chain to identify superseded docs and current decisions.",
+      "sources": 2,
+      "size": "atomic",
+      "turns": 1,
+      "tokens": 4535,
+      "stop": "done",
+      "verdict": "unverified_success"
+    },
+    {
+      "title": "Compute incidents",
+      "summary": "Sum incident minutes and find most impacted service.",
+      "sources": 2,
+      "size": "atomic",
+      "turns": 1,
+      "tokens": 4575,
+      "stop": "done",
+      "verdict": "unverified_success"
+    },
+    {
+      "title": "Compute catalog",
+      "summary": "Calculate queue costs, deprecated queues, and unowned services.",
+      "sources": 3,
+      "size": "atomic",
+      "turns": 1,
+      "tokens": 4148,
+      "stop": "done",
+      "verdict": "unverified_success"
+    },
+    {
+      "title": "Write findings.json",
+      "summary": "Produce the strict JSON file with all seven findings.",
+      "sources": 3,
+      "size": "atomic",
+      "turns": 1,
+      "tokens": 4881,
+      "stop": "done",
+      "verdict": "unverified_success"
+    },
+    {
+      "title": "Write REPORT.md",
+      "summary": "Produce the prose report with citations and contradiction explanations.",
+      "sources": 5,
+      "size": "atomic",
+      "turns": 1,
+      "tokens": 5178,
+      "stop": "done",
+      "verdict": "unverified_success"
+    },
+    {
+      "title": "segments",
+      "summary": "Segment file reading, validation, truncation, and discovery.",
+      "sources": 3,
+      "size": "atomic",
+      "turns": 22,
+      "tokens": 361282,
+      "stop": "done",
+      "verdict": "unverified_success"
+    },
+    {
+      "title": "writes",
+      "summary": "Append records, roll segments, and update the index.",
+      "sources": 4,
+      "size": "atomic",
+      "turns": 1,
+      "tokens": 6115,
+      "stop": "done",
+      "verdict": "unverified_success"
+    },
+    {
+      "title": "reads",
+      "summary": "Point lookups and lazy lexicographic scans over the index.",
+      "sources": 3,
+      "size": "atomic",
+      "turns": 1,
+      "tokens": 5984,
+      "stop": "done",
+      "verdict": "unverified_success"
+    },
+    {
+      "title": "compact",
+      "summary": "Merge all segments into one, rewrite manifest, remove old files.",
+      "sources": 5,
+      "size": "atomic",
+      "turns": 1,
+      "tokens": 6368,
+      "stop": "done",
+      "verdict": "unverified_success"
+    },
+    {
+      "title": "manifest-read",
+      "summary": "Read and validate the manifest file, fall back to directory discovery.",
+      "sources": 2,
+      "size": "atomic",
+      "turns": 1,
+      "tokens": 4539,
+      "stop": "done",
+      "verdict": "unverified_success"
+    },
+    {
+      "title": "segment-scan",
+      "summary": "Parse each segment file, verify frames, truncate torn tails.",
+      "sources": 3,
+      "size": "atomic",
+      "turns": 1,
+      "tokens": 5159,
+      "stop": "done",
+      "verdict": "unverified_success"
+    },
+    {
+      "title": "index-build",
+      "summary": "Build the in-memory key→(segment,offset) index from parsed records.",
+      "sources": 2,
+      "size": "atomic",
+      "turns": 1,
+      "tokens": 4920,
+      "stop": "done",
+      "verdict": "unverified_success"
+    },
+    {
+      "title": "Resolve-ADR-chain",
+      "summary": "Determine which ADRs are superseded and which queue tech is deprecated.",
+      "sources": 2,
+      "size": "oversized",
+      "turns": 1,
+      "tokens": 5038,
+      "stop": "done",
+      "verdict": "unverified_success"
+    },
+    {
+      "title": "Write findings.json",
+      "summary": "Produce the exact JSON answer file.",
+      "sources": 3,
+      "size": "atomic",
+      "turns": 1,
+      "tokens": 6319,
+      "stop": "done",
+      "verdict": "unverified_success"
+    },
+    {
+      "title": "Write REPORT.md",
+      "summary": "Produce the prose report with citations.",
+      "sources": 3,
+      "size": "atomic",
+      "turns": 1,
+      "tokens": 6256,
+      "stop": "done",
+      "verdict": "unverified_success"
+    },
+    {
+      "title": "Index-docs",
+      "summary": "Read all corpus docs, build id map.",
+      "sources": 12,
+      "size": "atomic",
+      "turns": 1,
+      "tokens": 3417,
+      "stop": "done",
+      "verdict": "unverified_success"
+    },
+    {
+      "title": "Extract-facts",
+      "summary": "Extract facts from indexed corpus docs.",
+      "sources": 12,
+      "size": "atomic",
+      "turns": 1,
+      "tokens": 4016,
+      "stop": "done",
+      "verdict": "unverified_success"
+    },
+    {
+      "title": "Read-incidents",
+      "summary": "Read all incident reports and RULES.md for incident rules.",
+      "sources": 12,
+      "size": "atomic",
+      "turns": 1,
+      "tokens": 5152,
+      "stop": "done",
+      "verdict": "unverified_success"
+    },
+    {
+      "title": "Sum-minutes",
+      "summary": "Sum distinct incident customer-impact minutes from all reports.",
+      "sources": 12,
+      "size": "atomic",
+      "turns": 1,
+      "tokens": 9348,
+      "stop": "done",
+      "verdict": "unverified_success"
+    },
+    {
+      "title": "Find-most-impacted",
+      "summary": "Find service with largest total customer-impact minutes.",
+      "sources": 12,
+      "size": "atomic",
+      "turns": 1,
+      "tokens": 4982,
+      "stop": "done",
+      "verdict": "unverified_success"
+    },
+    {
+      "title": "cost",
+      "summary": "Compute monthly queue bill from catalog and pricing.",
+      "sources": 4,
+      "size": "atomic",
+      "turns": 1,
+      "tokens": 4451,
+      "stop": "done",
+      "verdict": "unverified_success"
+    },
+    {
+      "title": "owners",
+      "summary": "List services with no owner from all documents.",
+      "sources": 3,
+      "size": "atomic",
+      "turns": 1,
+      "tokens": 4583,
+      "stop": "done",
+      "verdict": "unverified_success"
+    },
+    {
+      "title": "Extract-facts",
+      "summary": "Read all corpus docs, extract every field value per doc.",
+      "sources": 12,
+      "size": "atomic",
+      "turns": 1,
+      "tokens": 5523,
+      "stop": "done",
+      "verdict": "unverified_success"
+    },
+    {
+      "title": "Apply-rules",
+      "summary": "Determine winning doc per field using RULES.md precedence.",
+      "sources": 2,
+      "size": "atomic",
+      "turns": 1,
+      "tokens": 4370,
+      "stop": "done",
+      "verdict": "unverified_success"
+    },
+    {
+      "title": "List-contradictions",
+      "summary": "List every losing doc's field value vs winner's.",
+      "sources": 2,
+      "size": "atomic",
+      "turns": 1,
+      "tokens": 5205,
+      "stop": "done",
+      "verdict": "unverified_success"
+    },
+    {
+      "title": "audit-core",
+      "summary": "Read core modules and docstrings; map defect families.",
+      "sources": 11,
+      "size": "atomic",
+      "turns": 1,
+      "tokens": 2896,
+      "stop": "done",
+      "verdict": "unverified_success"
+    },
+    {
+      "title": "audit-tests",
+      "summary": "Run shipped tests; record failures and coverage gaps.",
+      "sources": 3,
+      "size": "atomic",
+      "turns": 1,
+      "tokens": 2728,
+      "stop": "done",
+      "verdict": "unverified_success"
+    },
+    {
+      "title": "strategy-module",
+      "summary": "Add Strategy and GreedyCheapest with abstract rank.",
+      "sources": 2,
+      "size": "atomic",
+      "turns": 1,
+      "tokens": 3397,
+      "stop": "done",
+      "verdict": "unverified_success"
+    },
+    {
+      "title": "assigner-update",
+      "summary": "Change assign_shifts signature and strategy wiring.",
+      "sources": 2,
+      "size": "atomic",
+      "turns": 1,
+      "tokens": 3496,
+      "stop": "done",
+      "verdict": "unverified_success"
+    },
+    {
+      "title": "assignment-boundaries",
+      "summary": "Fix shift assignment boundary semantics per docstrings.",
+      "sources": 4,
+      "size": "atomic",
+      "turns": 1,
+      "tokens": 3299,
+      "stop": "done",
+      "verdict": "unverified_success"
+    },
+    {
+      "title": "payroll-boundaries",
+      "summary": "Fix payroll boundary semantics per docstrings.",
+      "sources": 4,
+      "size": "atomic",
+      "turns": 1,
+      "tokens": 3339,
+      "stop": "done",
+      "verdict": "unverified_success"
+    },
+    {
+      "title": "schedule-boundaries",
+      "summary": "Fix schedule boundary semantics per docstrings.",
+      "sources": 4,
+      "size": "atomic",
+      "turns": 1,
+      "tokens": 3095,
+      "stop": "done",
+      "verdict": "unverified_success"
+    },
+    {
+      "title": "assignment-state",
+      "summary": "Remove cross-call state from assign_shifts and its helpers.",
+      "sources": 2,
+      "size": "atomic",
+      "turns": 1,
+      "tokens": 3337,
+      "stop": "done",
+      "verdict": "unverified_success"
+    },
+    {
+      "title": "worker-state",
+      "summary": "Purge worker-level state that leaks between bookings.",
+      "sources": 2,
+      "size": "atomic",
+      "turns": 1,
+      "tokens": 3674,
+      "stop": "done",
+      "verdict": "unverified_success"
+    },
+    {
+      "title": "schedule-state",
+      "summary": "Clear schedule-level state that persists across calls.",
+      "sources": 2,
+      "size": "atomic",
+      "turns": 1,
+      "tokens": 3661,
+      "stop": "done",
+      "verdict": "unverified_success"
+    },
+    {
+      "title": "payroll-cache",
+      "summary": "Fix payroll caching to key on the exact question.",
+      "sources": 3,
+      "size": "atomic",
+      "turns": 1,
+      "tokens": 3150,
+      "stop": "done",
+      "verdict": "unverified_success"
+    },
+    {
+      "title": "assignment-cache",
+      "summary": "Fix assignment caching to key on the exact question.",
+      "sources": 3,
+      "size": "atomic",
+      "turns": 1,
+      "tokens": 4935,
+      "stop": "done",
+      "verdict": "unverified_success"
+    },
+    {
+      "title": "schedule-cache",
+      "summary": "Fix schedule caching to key on the exact question.",
+      "sources": 3,
+      "size": "atomic",
+      "turns": 1,
+      "tokens": 3706,
+      "stop": "done",
+      "verdict": "unverified_success"
+    },
+    {
+      "title": "worker-cache",
+      "summary": "Fix worker caching to key on the exact question.",
+      "sources": 3,
+      "size": "atomic",
+      "turns": 1,
+      "tokens": 3438,
+      "stop": "done",
+      "verdict": "unverified_success"
+    },
+    {
+      "title": "export-check",
+      "summary": "Verify all exports remain importable after cache fixes.",
+      "sources": 2,
+      "size": "atomic",
+      "turns": 1,
+      "tokens": 3738,
+      "stop": "done",
+      "verdict": "unverified_success"
+    },
+    {
+      "title": "payroll-exactness",
+      "summary": "Fix cents-based arithmetic in payroll module.",
+      "sources": 5,
+      "size": "atomic",
+      "turns": 1,
+      "tokens": 3400,
+      "stop": "done",
+      "verdict": "unverified_success"
+    },
+    {
+      "title": "assignment-exactness",
+      "summary": "Fix cents-based arithmetic in assignment module.",
+      "sources": 5,
+      "size": "atomic",
+      "turns": 1,
+      "tokens": 3595,
+      "stop": "done",
+      "verdict": "unverified_success"
+    },
+    {
+      "title": "assignment-errors",
+      "summary": "Make assignment raise on invalid input and impossible bookings.",
+      "sources": 6,
+      "size": "oversized",
+      "turns": 1,
+      "tokens": 4155,
+      "stop": "done",
+      "verdict": "unverified_success"
+    },
+    {
+      "title": "payroll-errors",
+      "summary": "Make payroll raise on missing or invalid data.",
+      "sources": 5,
+      "size": "atomic",
+      "turns": 1,
+      "tokens": 3337,
+      "stop": "done",
+      "verdict": "unverified_success"
+    },
+    {
+      "title": "schedule-errors",
+      "summary": "Make schedule raise on malformed or conflicting entries.",
+      "sources": 4,
+      "size": "atomic",
+      "turns": 1,
+      "tokens": 4678,
+      "stop": "done",
+      "verdict": "unverified_success"
+    },
+    {
+      "title": "worker-errors",
+      "summary": "Make worker raise on invalid construction and state.",
+      "sources": 3,
+      "size": "atomic",
+      "turns": 1,
+      "tokens": 3029,
+      "stop": "done",
+      "verdict": "unverified_success"
+    },
+    {
+      "title": "Full audit of shiftplan against its docstrings 1",
+      "summary": "Read every module in shiftplan and its shipped tests, compare each module's code against its own docstring specification, and identify every defect: wrong boundary semantics, leaked state between calls, caching that answers unasked questions, arithmetic that loses exactness, and error handling that turns failure into quiet success. Also identify what the refactor requires: the exact Strategy and GreedyCheapest API, the new assign_shifts signature, and the required exports. Produce a complete list of every defect and every required change, with the specific code location and the docstring statement it violates.",
+      "sources": 8,
+      "size": "atomic",
+      "turns": 1,
+      "tokens": 5219,
+      "stop": "done",
+      "verdict": "unverified_success"
+    },
+    {
+      "title": "Full audit of shiftplan against its docstrings 2",
+      "summary": "Read every module in shiftplan and its shipped tests, compare each module's code against its own docstring specification, and identify every defect: wrong boundary semantics, leaked state between calls, caching that answers unasked questions, arithmetic that loses exactness, and error handling that turns failure into quiet success. Also identify what the refactor requires: the exact Strategy and GreedyCheapest API, the new assign_shifts signature, and the required exports. Produce a complete list of every defect and every required change, with the specific code location and the docstring statement it violates.",
+      "sources": 8,
+      "size": "atomic",
+      "turns": 2,
+      "tokens": 7407,
+      "stop": "done",
+      "verdict": "unverified_success"
+    },
+    {
+      "title": "Full audit of shiftplan against its docstrings 3",
+      "summary": "Read every module in shiftplan and its shipped tests, compare each module's code against its own docstring specification, and identify every defect: wrong boundary semantics, leaked state between calls, caching that answers unasked questions, arithmetic that loses exactness, and error handling that turns failure into quiet success. Also identify what the refactor requires: the exact Strategy and GreedyCheapest API, the new assign_shifts signature, and the required exports. Produce a complete list of every defect and every required change, with the specific code location and the docstring statement it violates.",
+      "sources": 8,
+      "size": "atomic",
+      "turns": 1,
+      "tokens": 4275,
+      "stop": "done",
+      "verdict": "unverified_success"
+    },
+    {
+      "title": "Full corpus audit: read all documents, resolve under RULES.md, compute all seven findings and write REPORT.md 1",
+      "summary": "Independently read every document in corpus/ (all eleven, including RULES.md as the answer key). Determine the currently authoritative ADR by following the supersession chain to its end; identify all superseded documents. Resolve every disagreement by applying RULES.md's precedence rules. Compute all seven findings exactly: services_on_deprecated_queue, total_incident_minutes (counting distinct incidents, using each report's stated customer-impact window), most_impacted_service, monthly_cost_usd_cents (using the current pricing schedule and 30-day month, exact integer), unowned_services, superseded_docs, and contradictions (only for fields in the allowed vocabulary, including superseded docs that still state a value for a field another doc owns). Write REPORT.md with prose findings, doc NN citations for every finding, all contradictions with the winning doc and the RULES.md rule that decided it, and at least 400 words. Do not speculate beyond the corpus.",
+      "sources": 12,
+      "size": "atomic",
+      "turns": 11,
+      "tokens": 122590,
+      "stop": "done",
+      "verdict": "unverified_success"
+    },
+    {
+      "title": "Full corpus audit: read all documents, resolve under RULES.md, compute all seven findings and write REPORT.md 2",
+      "summary": "Independently read every document in corpus/ (all eleven, including RULES.md as the answer key). Determine the currently authoritative ADR by following the supersession chain to its end; identify all superseded documents. Resolve every disagreement by applying RULES.md's precedence rules. Compute all seven findings exactly: services_on_deprecated_queue, total_incident_minutes (counting distinct incidents, using each report's stated customer-impact window), most_impacted_service, monthly_cost_usd_cents (using the current pricing schedule and 30-day month, exact integer), unowned_services, superseded_docs, and contradictions (only for fields in the allowed vocabulary, including superseded docs that still state a value for a field another doc owns). Write REPORT.md with prose findings, doc NN citations for every finding, all contradictions with the winning doc and the RULES.md rule that decided it, and at least 400 words. Do not speculate beyond the corpus.",
+      "sources": 12,
+      "size": "atomic",
+      "turns": 6,
+      "tokens": 35357,
+      "stop": "done",
+      "verdict": "unverified_success"
+    },
+    {
+      "title": "Full corpus audit: read all documents, resolve under RULES.md, compute all seven findings and write REPORT.md 3",
+      "summary": "Independently read every document in corpus/ (all eleven, including RULES.md as the answer key). Determine the currently authoritative ADR by following the supersession chain to its end; identify all superseded documents. Resolve every disagreement by applying RULES.md's precedence rules. Compute all seven findings exactly: services_on_deprecated_queue, total_incident_minutes (counting distinct incidents, using each report's stated customer-impact window), most_impacted_service, monthly_cost_usd_cents (using the current pricing schedule and 30-day month, exact integer), unowned_services, superseded_docs, and contradictions (only for fields in the allowed vocabulary, including superseded docs that still state a value for a field another doc owns). Write REPORT.md with prose findings, doc NN citations for every finding, all contradictions with the winning doc and the RULES.md rule that decided it, and at least 400 words. Do not speculate beyond the corpus.",
+      "sources": 12,
+      "size": "atomic",
+      "turns": 4,
+      "tokens": 23323,
+      "stop": "done",
+      "verdict": "unverified_success"
+    }
+  ]
+}

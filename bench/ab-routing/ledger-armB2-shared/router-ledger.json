@@ -1,0 +1,168 @@
+{
+  "entries": [
+    {
+      "model": "deepseek/deepseek-v4-flash-0731",
+      "class": "exec.leaf/atomic",
+      "rating": -0.25349479849415985,
+      "count": 4,
+      "updated": "2026-08-06T03:07:08.2888Z"
+    },
+    {
+      "model": "deepseek/deepseek-v4-flash-0731",
+      "class": "exec.leaf/synthesis",
+      "rating": -0.075,
+      "count": 1,
+      "updated": "2026-08-06T02:26:48.338227Z"
+    },
+    {
+      "model": "deepseek/deepseek-v4-flash-0731",
+      "class": "plan.audit",
+      "rating": 1.3396379005530539,
+      "count": 9,
+      "updated": "2026-08-06T03:36:44.1477Z"
+    },
+    {
+      "model": "deepseek/deepseek-v4-flash-0731",
+      "class": "plan.bind",
+      "rating": 1.1503583748457018,
+      "count": 14,
+      "updated": "2026-08-06T03:36:43.171987Z"
+    },
+    {
+      "model": "deepseek/deepseek-v4-flash-0731",
+      "class": "plan.contract",
+      "rating": -0.8564608285457631,
+      "count": 4,
+      "updated": "2026-08-06T02:09:38.116165Z"
+    },
+    {
+      "model": "deepseek/deepseek-v4-flash-0731",
+      "class": "plan.ensemble",
+      "rating": 1.3212576157346274,
+      "count": 13,
+      "updated": "2026-08-06T03:36:33.638691Z"
+    },
+    {
+      "model": "deepseek/deepseek-v4-flash-0731",
+      "class": "plan.expand",
+      "rating": 2.147925194413454,
+      "count": 46,
+      "updated": "2026-08-06T03:13:57.11076Z"
+    },
+    {
+      "model": "deepseek/deepseek-v4-flash-0731",
+      "class": "plan.fanout",
+      "rating": 1.5291853579223547,
+      "count": 18,
+      "updated": "2026-08-06T03:36:35.901259Z"
+    },
+    {
+      "model": "deepseek/deepseek-v4-flash-0731",
+      "class": "plan.ground",
+      "rating": 1.5199863706730299,
+      "count": 12,
+      "updated": "2026-08-06T03:36:31.715456Z"
+    },
+    {
+      "model": "deepseek/deepseek-v4-flash-0731",
+      "class": "plan.size",
+      "rating": 1.1503583748457018,
+      "count": 14,
+      "updated": "2026-08-06T03:36:43.104287Z"
+    },
+    {
+      "model": "deepseek/deepseek-v4-flash-0731",
+      "class": "plan.spine",
+      "rating": 2.163734973206412,
+      "count": 36,
+      "updated": "2026-08-06T03:28:04.10257Z"
+    },
+    {
+      "model": "google/gemma-3-12b-it",
+      "class": "plan.bind",
+      "rating": -0.13986867810358822,
+      "count": 2,
+      "updated": "2026-08-06T02:09:24.983512Z"
+    },
+    {
+      "model": "google/gemma-3-12b-it",
+      "class": "plan.ensemble",
+      "rating": -0.5,
+      "count": 1,
+      "updated": "2026-08-06T02:27:31.332331Z"
+    },
+    {
+      "model": "google/gemma-3-12b-it",
+      "class": "plan.expand",
+      "rating": -0.5,
+      "count": 1,
+      "updated": "2026-08-06T02:09:31.521656Z"
+    },
+    {
+      "model": "google/gemma-3-12b-it",
+      "class": "plan.ground",
+      "rating": -0.5,
+      "count": 1,
+      "updated": "2026-08-06T02:49:11.873541Z"
+    },
+    {
+      "model": "google/gemma-3-12b-it",
+      "class": "plan.size",
+      "rating": -0.13986867810358822,
+      "count": 2,
+      "updated": "2026-08-06T02:09:22.367603Z"
+    },
+    {
+      "model": "google/gemma-3-12b-it",
+      "class": "plan.spine",
+      "rating": -0.5,
+      "count": 1,
+      "updated": "2026-08-06T02:34:28.289534Z"
+    },
+    {
+      "model": "qwen/qwen3-30b-a3b-instruct-2507",
+      "class": "plan.bind",
+      "rating": -0.5,
+      "count": 1,
+      "updated": "2026-08-06T03:13:45.223429Z"
+    },
+    {
+      "model": "qwen/qwen3-30b-a3b-instruct-2507",
+      "class": "plan.expand",
+      "rating": -0.13986867810358822,
+      "count": 2,
+      "updated": "2026-08-06T03:13:53.65099Z"
+    },
+    {
+      "model": "qwen/qwen3-30b-a3b-instruct-2507",
+      "class": "plan.size",
+      "rating": -0.13986867810358822,
+      "count": 2,
+      "updated": "2026-08-06T03:36:39.72721Z"
+    },
+    {
+      "model": "qwen/qwen3-30b-a3b-instruct-2507",
+      "class": "plan.spine",
+      "rating": -0.5,
+      "count": 1,
+      "updated": "2026-08-06T02:43:00.499472Z"
+    },
+    {
+      "model": "z-ai/glm-4.7-flash",
+      "class": "plan.size",
+      "rating": -0.5,
+      "count": 1,
+      "updated": "2026-08-06T03:13:45.274361Z"
+    },
+    {
+      "model": "z-ai/glm-4.7-flash",
+      "class": "plan.spine",
+      "rating": -0.5,
+      "count": 1,
+      "updated": "2026-08-06T03:13:34.506526Z"
+    }
+  ],
+  "aliases": {
+    "~deepseek/deepseek-v4-flash-latest": "deepseek/deepseek-v4-flash-0731"
+  }
+}

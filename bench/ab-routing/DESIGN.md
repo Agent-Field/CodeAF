@@ -261,3 +261,218 @@ A. A cell that fails for **model** reasons stands.
 | `collect.py`, `summarize.py` | one cell to one JSONL row; rows to a summary |
 | `results-armA.jsonl` | every arm-A cell |
 | `BASELINE.md` | what arm A did, and how it failed |
+
+---
+
+## 11. Phase B2 — the re-run against the fixed router
+
+Written before the fixed router merged, so that what counts as success is fixed
+in advance rather than chosen once the numbers are in.
+
+Phase B produced a clean negative: routing went 3/9 to 2/9, the top rung served
+zero calls, and the ledger's only measurable effect was to demote the panel's
+best model and collapse two working tasks to zero. `REPORT.md` §5 lists six
+defects and §8 orders the fixes. B2 asks whether fixing them turns the negative
+into a positive, and it adds the assertions that would have caught the collapse
+on the first run rather than the ninth.
+
+### 11.1 What changed in the suite first
+
+**t4-pathmatch is new, and it exists because of a flaw in Phase B's design.**
+t1 and t3 both scored 0/3 in *both* arms on the *same* items. That is a stable
+capability boundary, which is good for detecting a change — but with no cell in
+either arm ever moving from fail to pass, Phase B could only ever have detected
+harm. A routing experiment whose suite cannot express improvement is not a fair
+test of routing.
+
+t4 is built on the axis arm A's own failure data identified: leaf-level
+conformance to a specification stated once in prose. Where t1 had three
+all-or-nothing groups, t4 has **twelve small independent rules** spanning an
+easy-to-hard range, so a submission can land anywhere on a gradient instead of
+at one of two points. Four of the rules deliberately diverge from `.gitignore`,
+and the grader reports **baseline groups (8) and divergence groups (4)
+separately** — which is what lets "read the spec" be told apart from "wrote a
+glob from memory".
+
+### 11.2 Arms
+
+| arm | ledger | runs | purpose |
+|---|---|---|---|
+| **B2** | shared, sequential | 4 tasks x n=3 | the headline; the learning check |
+| **B2-fresh** | fresh per cell | 4 tasks x n=3 | the control that separates learning from variance |
+| **B2-warm** | the B2 ledger, as it stands afterwards | t2 x1 | does the graded-observation gate stop the t2 regression recurring? |
+
+Arm A's numbers for t1-t3 are already recorded and are **not** re-run; t4 gets
+its own arm-A baseline from the calibration in §11.6, which is why that
+calibration is n=3 rather than n=1.
+
+**B2-warm is the cheapest test in the programme and the most direct.** Phase B's
+single worst outcome was t2 going 1.000 to 0.000 in run 3 once five budget stops
+from t1 had poisoned the global `exec.leaf` rating. Defect 1's fix — gating a
+learned rating behind a minimum count of graded observations — should make that
+impossible. Starting from the ledger state that produced the collapse and
+running t2 once more asks exactly that question for the price of one cell.
+
+### 11.3 Assertions that must hold — the checks Phase B lacked
+
+These are pass/fail properties of the run, not of the model, and each one is a
+defect from `REPORT.md` §5 turned into something the harness can check. They are
+implemented in `assert-b2.py` and run over the results and event logs.
+
+| # | assertion | the defect it guards |
+|---|---|---|
+| A1 | **The terminal rung is never weaker than rung 0.** For every recorded `candidates` list, the last entry's ledger rating must not be below the first's. | 3 — success demoting the top rung |
+| A2 | **kimi-k2.6 appears in at least one escalation chain** on a hard-task (t1, t3, t4) cell that failed. If the strong model is never reached when the cheap one demonstrably failed, the cascade is decorative. | 4, 6 |
+| A3 | **No escalation lands on a model rated below the one it escalated from.** Escalating to something weaker cannot help by construction. | 4 |
+| A4 | **Every panel member has at least one observation** by the end of the shared arm, or the run is reported as exploration-starved. | 6 |
+| A5 | **No rating with fewer than the gate's minimum graded observations changes a rung order.** Compare each run's `candidates` against the ledger's observation counts. | 1 |
+| A6 | **`exec.leaf` ratings are conditioned**, i.e. more than one leaf key exists in the ledger once tasks of different sizes have run. | 2 |
+| A7 | **A leaf escalation records its chain** — `escalation` is non-empty whenever `rung > 0`. | 5 |
+
+**The assertions are validated against Phase B's own data**, which is the only
+way to know they are not vacuous: run over `results-armB.jsonl` and its ledger,
+**all seven fail**, and each failure names the defect it was written for.
+
+```
+FAIL A1  plan.bind: kimi-k2.6 (+1.00) terminal under ds-v4-flash (+1.74)
+FAIL A2  models reached above rung 0 on failed hard cells: ds-v4-flash, gemma-3-12b
+FAIL A3  t1-logstore: ds-v4-flash (-0.98) -> gemma-3-12b (-1.00)
+FAIL A4  unobserved: gemma-3-12b, glm-4.7-flash, kimi-k2.6, qwen3-30b-a3b
+FAIL A5  exec.leaf: gemma-3-12b n=0; exec.leaf: kimi-k2.6 n=0
+FAIL A6  leaf classes in the ledger: ['exec.leaf']
+FAIL A7  23 attempts above rung 0 with an empty `escalation`
+```
+
+Writing them was not enough on its own. On the first attempt **A1 and A3 passed
+on the very run they were written to catch**: both compared ledger ratings, an
+unmeasured model has no ledger row, so the comparison was skipped — and an
+unmeasured model is exactly what the router was ordering against. They now fall
+back to the cold-start prior the router itself uses, which is what makes them
+bite in the case that matters. A5 had the same shape of hole: it asked whether
+any rating was thin, when the question is whether a *reordered class* contains a
+thin model.
+
+A2 is the one that matters most: its failure in Phase B was invisible until the
+whole arm had been analysed.
+
+### 11.4 Capture
+
+Unchanged from Phase B except that it is now enforced rather than hoped for:
+
+- `aforge models` after **every cell**, into `models-after.txt` — already done,
+  and additionally copied per replicate into the committed ledger directory.
+- `router-events.jsonl` sliced per cell by line position, into
+  `events-armB2.jsonl` beside the results.
+- The full ledger directory after each replicate.
+- **A run token** (§11.5) on every row.
+
+### 11.5 Two harness guards, added after Phase B's incidents
+
+Both incidents cost real analysis time and neither was a model failure.
+
+- **Case-collision guard.** `run-arm.sh` refuses to start if the results path
+  differs only by case from a file already in that directory. On this
+  filesystem `results-armB.jsonl` and `results-armb.jsonl` are one file, and an
+  `rm` of either name deletes both — which is how Phase B's arm-B results were
+  destroyed and had to be rebuilt from the cell directories.
+- **Run tokens.** Every invocation generates a token, stamps it on every row,
+  and appends it to `.run-tokens` in the ledger directory. A shared ledger
+  written by two overlapping passes now says so on sight, instead of having to
+  be reconstructed from file ordering afterwards.
+
+### 11.6 t4 calibration protocol
+
+Same as Phase B's, with a sharper target learned from t1. It is not enough for
+arm A to fail:
+
+- **arm A must score at most 1 of 3 successes**, and
+- **its scores must vary**. t1's arm-A cells scored exactly 0.667 three times
+  out of three; a task that fails identically every time is another harm-only
+  detector wearing a gradient's clothes. A spread of at least two distinct
+  scores across three replicates is the bar.
+- **The floor is not acceptable either.** All-zero means nothing above it can be
+  measured.
+
+If arm A aces it, harden. If arm A floors it, soften — and the softening lever
+is named in advance so it is not chosen to flatter a result: **drop the hardest
+divergence group from `success` and report it as a stretch group**, rather than
+rewriting the task.
+
+#### What calibration actually found
+
+**Round 1: arm A scored 1.000, twice out of two.** Degenerate, and for a reason
+that generalises to any "conformance" task: the brief carried a section headed
+*"The four divergences — read these twice"*, numbered them, and worked an
+example for each. Noticing that a familiar tool behaves differently is the whole
+difficulty, and the brief had done the noticing. Round 1's cells cost $0.034 and
+$0.130.
+
+**Round 2** removed the signposting — every rule stated flat, in neutral prose,
+no "this differs from X" framing — and added two groups that reading cannot
+supply: nested `**` needs real backtracking past a false start, and a few hundred
+patterns over tens of thousands of paths needs the patterns compiled once.
+Selection also gained a second ordering key that a single pass over the list gets
+wrong.
+
+| rep | score | success | baseline | divergence | effort | $ | wall |
+|---|---|---|---|---|---|---|---|
+| 1 | 1.000 | yes | 8/8 | 4/4 | 2/2 | $0.251 | 2124 s |
+| 2 | 0.929 | no | 8/8 | 4/4 | 1/2 | $0.099 | 408 s |
+| 3 | 0.929 | no | 8/8 | 4/4 | 1/2 | $0.271 | 644 s |
+
+**1 of 3 successes, two distinct scores, well off the floor** — the target. Total
+$0.620 against the $3 cap, across both rounds.
+
+#### Three things this says, and one limitation
+
+**Flash reads a complete specification well.** It won every divergence group in
+every replicate of both rounds, including after the signposting was removed.
+That was not the expectation going in, and it **reframes the t1 failures**: those
+were not a spec-reading deficit. t1's leaves carry 2.2M prompt tokens and produced
+all five budget stops in the experiment, so what beat flash there was conformance
+*at scale*, not conformance. Any future task aiming at flash's ceiling should
+vary volume, not subtlety.
+
+**Difficulty moved even where the score did not.** Round 2's cells cost 7x round
+1's and ran 6x longer for the same or a lower score. A task can be materially
+harder without the pass rate showing it, which is worth remembering when reading
+any single-number comparison in this experiment.
+
+**The limitation, stated plainly: t4's discrimination currently rests on one
+group.** Both failing replicates failed group 14 and nothing else, so if the
+routed arm's models all clear the performance floor, t4 will report 3/3 and
+separate nothing — the same shape of narrowness already recorded for t3, whose
+every arm-A replicate failed group 1 alone. t4 is therefore added as a
+**gradient probe rather than a decisive discriminator**, and B2 should read its
+*score* rather than its success flag.
+
+If B2 shows all arms at 14/14 on t4, the lever to pull is volume rather than more
+rules: raise the scale group from 20,000 paths to a size that forces streaming,
+which is the axis t1's evidence actually points at.
+
+### 11.7 Budget and stopping
+
+| item | cells | budget |
+|---|---|---|
+| t4 arm-A calibration | 3 | ≤ $3 |
+| B2 shared | 12 | |
+| B2-fresh | 12 | |
+| B2-warm | 1 | |
+| **B2 total** | **25** | **≤ $8** |
+
+Phase B's 21 cells cost $1.40, so 25 cells at ≤$8 is roughly 4x headroom.
+
+**Do not start B2 until the router fixes are merged**, and re-run
+`selfcheck.py` and `go test ./...` first: a suite that has drifted since the
+baseline would make the comparison meaningless in a way no amount of replicates
+would reveal.
+
+### 11.8 What B2 can and cannot conclude
+
+It can conclude that the six defects are fixed, or that they are not. It can
+conclude whether routing beats the single model **on a suite containing one task
+where improvement is expressible** — which Phase B's did not.
+
+It still cannot conclude anything about work without a cheap verifier, because
+all four tasks have one by construction. And with n=3 on four tasks it remains a
+controlled comparison of two configurations, not a benchmark.
