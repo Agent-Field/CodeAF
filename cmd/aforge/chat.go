@@ -1473,7 +1473,7 @@ Judgment framework:
 - An empty list is the common correct answer.
 - Return at most five memories.`
 
-const consolidatorSystemPrompt = `You rewrite one scope's accumulated notebook lines into a smaller, sharper notebook. Return exactly one JSON object: {"facts":[{"scope":"...","kind":"preference|quirk|lesson|fact|unsettled|skill|playbook","body":"...","unsettled":{"approaches":[{"approach":"...","scope":"...","evidence":[123]},{"approach":"...","scope":"...","evidence":[456]}]},"sources":[123,456],"replaces":0},{"quarantines":[456]}]}.
+const consolidatorSystemPrompt = `You rewrite one scope's accumulated notebook lines into a smaller, sharper notebook. Return exactly one JSON object: {"facts":[{"scope":"...","kind":"preference|quirk|lesson|fact|unsettled|skill|playbook","body":"...","unsettled":{"approaches":[{"approach":"...","scope":"...","evidence":[123]},{"approach":"...","scope":"...","evidence":[456]}]},"sources":[123,456],"replaces":0},{"quarantines":[456]}],"scope_alias":{"merge":true,"canonical":"domain:example"}}.
 
 Merge duplicates and near-duplicates. Resolve contradictions in favour of the newest line. Keep every load-bearing specific, including paths, values, and names. Each output must stand alone, use exactly the target scope, and preserve the best fitting kind. Return at most eight lines.
 An input skill was admitted by execution. Preserve kind skill only when an output derives from a skill input; never turn an ordinary fact into a skill.
@@ -1485,7 +1485,9 @@ Each line carries its age and how often retrieval has used it. Judge staleness b
 
 A line that rode jobs may carry how many of those jobs ended badly — execution failed, a delivery gate failed, or the work overran. Repeated bad co-occurrence is evidence against the line: quarantine it when the pattern makes preserving it more dangerous than withholding it. Co-occurrence is not causation, so one bad job is never enough; require a repeated pattern across at least two jobs, and keep or cautiously rewrite the line when another explanation remains plausible.
 
-A line may also carry the evidence it was distilled from: the job that taught it, in the words it was asked and what it actually delivered. Weigh lines by that evidence. Strip a claim its own evidence does not support back to only what the evidence establishes; when nothing else survives, merge that dated evidence into the closest output without preserving the unsupported claim. When two lines compete and their evidence cannot settle which is right, do not pick. Emit one kind "unsettled" line with exactly two structured approaches. Each approach names the method, the scope where it worked, and the numbered input fact seqs supporting that side in evidence. For a newly formed pair those evidence seqs are numbered inputs and also appear in sources; when preserving an existing pair, carry its earlier evidence seqs forward. The body is a concise readable projection of the same pair. This structure, not an "— unsettled" prose suffix, is what makes a future job test it.`
+A line may also carry the evidence it was distilled from: the job that taught it, in the words it was asked and what it actually delivered. Weigh lines by that evidence. Strip a claim its own evidence does not support back to only what the evidence establishes; when nothing else survives, merge that dated evidence into the closest output without preserving the unsupported claim. When two lines compete and their evidence cannot settle which is right, do not pick. Emit one kind "unsettled" line with exactly two structured approaches. Each approach names the method, the scope where it worked, and the numbered input fact seqs supporting that side in evidence. For a newly formed pair those evidence seqs are numbered inputs and also appear in sources; when preserving an existing pair, carry its earlier evidence seqs forward. The body is a concise readable projection of the same pair. This structure, not an "— unsettled" prose suffix, is what makes a future job test it.
+
+When one scope-gardening candidate is shown, make exactly one additional judgment in "scope_alias". Merge only when both names mean the same shelf, not merely related subjects: use {"merge":true,"canonical":"<one of the two shown scopes>"} and choose the clearer durable name. Otherwise use {"merge":false,"canonical":""}. Similar spelling earned the comparison, not the merge. Omit "scope_alias" when no candidate is shown.`
 
 // reflectorSystemPrompt is the retrospective an effective employee runs on
 // their own work: not what any single job taught — the distiller owns that —
@@ -1591,7 +1593,7 @@ func distillFacts(settings config.Config, client *liveClient, graph *store.Store
 // consolidateFacts sharpens a crowded scope without losing the specifics
 // that made its entries worth retaining.
 func consolidateFacts(settings config.Config, client *liveClient, graph *store.Store) resident.ConsolidateFunc {
-	return func(ctx context.Context, scope string, facts []store.Fact) ([]resident.Learned, error) {
+	return func(ctx context.Context, scope string, facts []store.Fact, candidate *resident.ScopePair) (resident.Consolidation, error) {
 		ordered := append([]store.Fact(nil), facts...)
 		sort.SliceStable(ordered, func(i, j int) bool {
 			return ordered[i].Seq > ordered[j].Seq
@@ -1603,7 +1605,11 @@ func consolidateFacts(settings config.Config, client *liveClient, graph *store.S
 			outcomes = nil
 		}
 		now := time.Now()
-		fmt.Fprintf(&input, "Target scope: %s\n\nNotebook lines, newest first:\n", scope)
+		if scope == "" {
+			input.WriteString("No scope needs notebook-line rewriting this tick.\n")
+		} else {
+			fmt.Fprintf(&input, "Target scope: %s\n\nNotebook lines, newest first:\n", scope)
+		}
 		for _, fact := range ordered {
 			outcome := outcomes[fact.Seq]
 			badRides := ""
@@ -1642,27 +1648,41 @@ func consolidateFacts(settings config.Config, client *liveClient, graph *store.S
 			}
 			fmt.Fprintf(&input, "   evidence — %s\n", strings.Join(evidence, " · "))
 		}
+		if candidate != nil {
+			fmt.Fprintf(&input, "\nScope-gardening candidate:\n- %s\n- %s\n", candidate.First, candidate.Second)
+		}
 		response, err := client.CompleteWithMessages(settings.Context(ctx, "consolidate"), []ai.Message{
 			{Role: "system", Content: []ai.ContentPart{{Type: "text", Text: consolidatorSystemPrompt}}},
 			{Role: "user", Content: []ai.ContentPart{{Type: "text", Text: input.String()}}},
 		}, ai.WithMaxTokens(700))
 		if err != nil || response == nil {
-			return nil, err
+			return resident.Consolidation{}, err
 		}
-		return parseLearnedFacts(response.Text(), 8), nil
+		return parseConsolidation(response.Text(), 8), nil
 	}
+}
+
+func parseConsolidation(raw string, limit int) resident.Consolidation {
+	result := resident.Consolidation{Facts: parseLearnedFacts(raw, limit)}
+	object := jsonResponseObject(raw)
+	if object == "" {
+		return result
+	}
+	var parsed struct {
+		ScopeAlias *resident.ScopeAliasJudgment `json:"scope_alias"`
+	}
+	if err := json.NewDecoder(strings.NewReader(object)).Decode(&parsed); err == nil {
+		result.ScopeAlias = parsed.ScopeAlias
+	}
+	return result
 }
 
 func parseLearnedFacts(raw string, limit int) []resident.Learned {
 	if limit <= 0 {
 		return nil
 	}
-	raw = strings.TrimSpace(raw)
-	raw = strings.TrimPrefix(raw, "```json")
-	raw = strings.TrimPrefix(raw, "```")
-	raw = strings.TrimSuffix(raw, "```")
-	start := strings.IndexByte(raw, '{')
-	if start < 0 {
+	raw = jsonResponseObject(raw)
+	if raw == "" {
 		return nil
 	}
 	var parsed struct {
@@ -1679,7 +1699,7 @@ func parseLearnedFacts(raw string, limit int) []resident.Learned {
 			} `json:"skill"`
 		} `json:"facts"`
 	}
-	if err := json.NewDecoder(strings.NewReader(raw[start:])).Decode(&parsed); err != nil {
+	if err := json.NewDecoder(strings.NewReader(raw)).Decode(&parsed); err != nil {
 		return nil
 	}
 	learned := make([]resident.Learned, 0, min(limit, len(parsed.Facts)))
@@ -1719,6 +1739,18 @@ func parseLearnedFacts(raw string, limit int) []resident.Learned {
 		}
 	}
 	return learned
+}
+
+func jsonResponseObject(raw string) string {
+	raw = strings.TrimSpace(raw)
+	raw = strings.TrimPrefix(raw, "```json")
+	raw = strings.TrimPrefix(raw, "```")
+	raw = strings.TrimSuffix(raw, "```")
+	start := strings.IndexByte(raw, '{')
+	if start < 0 {
+		return ""
+	}
+	return raw[start:]
 }
 
 func validLearnedKind(kind store.FactKind) bool {

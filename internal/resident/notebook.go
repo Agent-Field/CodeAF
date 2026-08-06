@@ -4,8 +4,10 @@ import (
 	"context"
 	"fmt"
 	"path"
+	"sort"
 	"strings"
 	"time"
+	"unicode"
 	"unicode/utf8"
 
 	"github.com/Agent-Field/aforge-v2/internal/plan"
@@ -170,7 +172,7 @@ func (r *Reconciler) consolidateNotebook(ctx context.Context) {
 	if r.consolidate == nil {
 		return
 	}
-	now := time.Now()
+	now := r.now()
 	if !r.lastConsolidation.IsZero() && now.Sub(r.lastConsolidation) < consolidationInterval {
 		return
 	}
@@ -220,15 +222,25 @@ func (r *Reconciler) consolidateNotebook(ctx context.Context) {
 			worstCount = count
 		}
 	}
-	if worstScope == "" {
+	candidates := scopeAliasCandidates(scopeOrder)
+	var candidate *ScopePair
+	if len(candidates) > 0 {
+		candidate = &candidates[0]
+	}
+	if worstScope == "" && candidate == nil {
 		return
 	}
 
 	originals := byScope[worstScope]
-	rewritten, err := r.consolidate(ctx, worstScope, originals)
+	consolidated, err := r.consolidate(ctx, worstScope, originals, candidate)
 	if err != nil {
 		return
 	}
+	defer r.applyScopeAliasJudgment(candidate, consolidated.ScopeAlias)
+	if worstScope == "" {
+		return
+	}
+	rewritten := consolidated.Facts
 	if len(rewritten) > consolidationOutputLimit {
 		rewritten = rewritten[:consolidationOutputLimit]
 	}
@@ -382,6 +394,151 @@ func (r *Reconciler) consolidateNotebook(ctx context.Context) {
 			return
 		}
 	}
+}
+
+func (r *Reconciler) applyScopeAliasJudgment(candidate *ScopePair, judgment *ScopeAliasJudgment) {
+	if candidate == nil || judgment == nil || !judgment.Merge {
+		return
+	}
+	canonical := strings.ToLower(strings.TrimSpace(judgment.Canonical))
+	first := strings.ToLower(strings.TrimSpace(candidate.First))
+	second := strings.ToLower(strings.TrimSpace(candidate.Second))
+	from := ""
+	switch canonical {
+	case first:
+		from = second
+	case second:
+		from = first
+	default:
+		return
+	}
+	_ = r.store.AliasScope(from, canonical)
+}
+
+type scoredScopePair struct {
+	ScopePair
+	score int
+}
+
+// scopeAliasCandidates compares only canonical domain, repo, and tool shelves.
+// Token normalization makes punctuation and simple inflection differences
+// cheap to spot; the model still decides whether similar names mean one thing.
+func scopeAliasCandidates(scopes []string) []ScopePair {
+	unique := make(map[string]bool, len(scopes))
+	canonical := make([]string, 0, len(scopes))
+	for _, scope := range scopes {
+		scope = strings.ToLower(strings.TrimSpace(scope))
+		if _, _, ok := gardenScopeParts(scope); !ok || unique[scope] {
+			continue
+		}
+		unique[scope] = true
+		canonical = append(canonical, scope)
+	}
+	sort.Strings(canonical)
+	var scored []scoredScopePair
+	for first := 0; first < len(canonical); first++ {
+		firstPrefix, firstTokens, _ := gardenScopeParts(canonical[first])
+		for second := first + 1; second < len(canonical); second++ {
+			secondPrefix, secondTokens, _ := gardenScopeParts(canonical[second])
+			if firstPrefix != secondPrefix {
+				continue
+			}
+			score := normalizedTokenSimilarity(firstTokens, secondTokens)
+			if score == 0 {
+				continue
+			}
+			scored = append(scored, scoredScopePair{
+				ScopePair: ScopePair{First: canonical[first], Second: canonical[second]},
+				score:     score,
+			})
+		}
+	}
+	sort.SliceStable(scored, func(i, j int) bool {
+		if scored[i].score != scored[j].score {
+			return scored[i].score > scored[j].score
+		}
+		if scored[i].First != scored[j].First {
+			return scored[i].First < scored[j].First
+		}
+		return scored[i].Second < scored[j].Second
+	})
+	result := make([]ScopePair, len(scored))
+	for index := range scored {
+		result[index] = scored[index].ScopePair
+	}
+	return result
+}
+
+func gardenScopeParts(scope string) (string, []string, bool) {
+	for _, prefix := range []string{"domain:", "repo:", "tool:"} {
+		if !strings.HasPrefix(scope, prefix) {
+			continue
+		}
+		name := strings.TrimSpace(strings.TrimPrefix(scope, prefix))
+		if name == "" {
+			return "", nil, false
+		}
+		fields := strings.FieldsFunc(name, func(char rune) bool {
+			return !unicode.IsLetter(char) && !unicode.IsDigit(char)
+		})
+		seen := make(map[string]bool, len(fields))
+		tokens := make([]string, 0, len(fields))
+		for _, field := range fields {
+			token := singularScopeToken(strings.ToLower(field))
+			if token == "" || seen[token] {
+				continue
+			}
+			seen[token] = true
+			tokens = append(tokens, token)
+		}
+		sort.Strings(tokens)
+		return prefix, tokens, len(tokens) > 0
+	}
+	return "", nil, false
+}
+
+func singularScopeToken(token string) string {
+	switch {
+	case len(token) > 4 && strings.HasSuffix(token, "ies"):
+		return strings.TrimSuffix(token, "ies") + "y"
+	case len(token) > 4 && strings.HasSuffix(token, "sses"):
+		return strings.TrimSuffix(token, "es")
+	case len(token) > 4 && (strings.HasSuffix(token, "xes") ||
+		strings.HasSuffix(token, "ches") || strings.HasSuffix(token, "shes") ||
+		strings.HasSuffix(token, "zes")):
+		return strings.TrimSuffix(token, "es")
+	case len(token) > 3 && strings.HasSuffix(token, "s") && !strings.HasSuffix(token, "ss"):
+		return strings.TrimSuffix(token, "s")
+	default:
+		return token
+	}
+}
+
+func normalizedTokenSimilarity(first, second []string) int {
+	if len(first) == 0 || len(second) == 0 {
+		return 0
+	}
+	firstSet := make(map[string]bool, len(first))
+	for _, token := range first {
+		firstSet[token] = true
+	}
+	overlap := 0
+	for _, token := range second {
+		if firstSet[token] {
+			overlap++
+		}
+	}
+	if overlap == len(first) && overlap == len(second) {
+		return 1000 + overlap
+	}
+	if overlap == min(len(first), len(second)) {
+		return 800 + overlap
+	}
+	union := len(first) + len(second) - overlap
+	if overlap*5 >= union*3 {
+		return overlap * 100 / union
+	}
+	return 0
 }
 
 func uniqueFactSeqs(seqs []int64) []int64 {

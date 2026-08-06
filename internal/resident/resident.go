@@ -83,9 +83,31 @@ type Learned struct {
 // outcome is the summary on success or the error on failure.
 type DistillFunc func(ctx context.Context, goal, outcome string, failed bool) ([]Learned, error)
 
-// ConsolidateFunc rewrites one scope's accumulated facts into fewer, better
-// lines. Each returned line maps itself to its originals through Sources.
-type ConsolidateFunc func(ctx context.Context, scope string, facts []store.Fact) ([]Learned, error)
+// ScopePair is one cheap taxonomy candidate offered to consolidation. Both
+// names have the same gardenable prefix and are still canonical shelves.
+type ScopePair struct {
+	First  string
+	Second string
+}
+
+// ScopeAliasJudgment is the consolidator's one taxonomy decision. Canonical
+// is empty for keep-separate and one member of the candidate pair for merge.
+type ScopeAliasJudgment struct {
+	Merge     bool   `json:"merge"`
+	Canonical string `json:"canonical"`
+}
+
+// Consolidation carries the ordinary line rewrite and, when a candidate was
+// offered, the one merge-or-separate taxonomy judgment made in the same call.
+type Consolidation struct {
+	Facts      []Learned
+	ScopeAlias *ScopeAliasJudgment
+}
+
+// ConsolidateFunc rewrites at most one scope's accumulated facts into fewer,
+// better lines and judges at most one emergent scope pair. Each returned line
+// maps itself to its originals through Sources.
+type ConsolidateFunc func(ctx context.Context, scope string, facts []store.Fact, candidate *ScopePair) (Consolidation, error)
 
 // CompileFunc turns a verbatim thread instruction into a goal the planner can
 // act on. graphContext is a compact rendering of the active graph.
