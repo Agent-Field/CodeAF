@@ -164,6 +164,29 @@ func TestCompilerPreservesVerbatimInstruction(t *testing.T) {
 	}
 }
 
+func TestCompilerUsesOnlyExplicitUnsettledFlagForTrial(t *testing.T) {
+	client := &fakeClient{responses: []string{
+		`{"goal":"Compare both approaches cheaply, then use the observed winner.","deliverable":"tested implementation","budget":"$0.40","assumptions":[],"trial_of":0}`,
+		`{"goal":"Use the requested approach.","deliverable":"tested implementation","budget":"$0.40","assumptions":[],"trial_of":999}`,
+	}}
+	compiler := NewCompiler(client)
+	flagged := "notebook:\n- " + store.UnsettledFactFlag + "42\n  approach A vs approach B"
+	brief, err := compiler.Compile(context.Background(), "build it", flagged)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if brief.TrialOf != 42 {
+		t.Fatalf("flagged trial_of = %d, want 42", brief.TrialOf)
+	}
+	plain, err := compiler.Compile(context.Background(), "build it again", "ordinary prose says two options are unsettled")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if plain.TrialOf != 0 {
+		t.Fatalf("unflagged trial_of = %d, want 0", plain.TrialOf)
+	}
+}
+
 func TestHeadRestartSkipsAnsweredHistory(t *testing.T) {
 	graphStore := openHeadStore(t)
 	if _, err := graphStore.PostMessage(store.Message{SessionID: "chat-4", Role: store.RoleUser, Body: "old question"}); err != nil {

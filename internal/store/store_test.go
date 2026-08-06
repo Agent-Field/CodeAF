@@ -158,6 +158,67 @@ func TestRebuildMatchesMixedIncrementalWorkload(t *testing.T) {
 	}
 }
 
+func TestUnsettledFactAndTrialProvenanceSurviveRebuild(t *testing.T) {
+	graph := openTestStore(t, filepath.Join(t.TempDir(), "trial.db"))
+	first, err := graph.RecordFact("", "domain:search", FactLesson,
+		"breadth-first search worked for shallow dependency trees")
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, err := graph.RecordFact("", "domain:search", FactLesson,
+		"depth-first search worked for deeply nested dependency trees")
+	if err != nil {
+		t.Fatal(err)
+	}
+	pair := UnsettledPair{Approaches: []UnsettledApproach{
+		{Approach: "breadth-first search", Scope: "shallow dependency trees", Evidence: []int64{first.Seq}},
+		{Approach: "depth-first search", Scope: "deeply nested dependency trees", Evidence: []int64{second.Seq}},
+	}}
+	unsettled, err := graph.RecordUnsettledFact("", "domain:search", pair)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if unsettled.Kind != FactUnsettled || !reflect.DeepEqual(unsettled.Unsettled, &pair) {
+		t.Fatalf("recorded unsettled fact = %+v", unsettled)
+	}
+
+	provenance := Provenance{
+		Origin: OriginUser, SessionID: "trial-session", Intent: "choose a search strategy", TrialOf: unsettled.Seq,
+	}
+	if err := graph.Splice(RootID, Subtree{Nodes: []NodeSpec{
+		{ID: "trial", Brief: "compare both search strategies", Stage: 1},
+		{ID: "trial-result", Parent: "trial", Brief: "apply the observed winner", Stage: 2},
+	}}, provenance); err != nil {
+		t.Fatal(err)
+	}
+	for _, id := range []string{"trial", "trial-result"} {
+		node, ok, err := graph.Node(id)
+		if err != nil || !ok || node.Provenance.TrialOf != unsettled.Seq {
+			t.Fatalf("node %s provenance = %+v ok=%t err=%v", id, node.Provenance, ok, err)
+		}
+	}
+	stats, err := graph.TrialStats()
+	if err != nil || stats.Fired != 1 || stats.Pending != 1 || stats.Settled != 0 || stats.Inconclusive != 0 {
+		t.Fatalf("pending trial stats = %+v err=%v", stats, err)
+	}
+
+	if err := graph.Rebuild(); err != nil {
+		t.Fatal(err)
+	}
+	rebuilt, ok, err := graph.Fact(unsettled.Seq)
+	if err != nil || !ok || rebuilt.Status != FactActive || !reflect.DeepEqual(rebuilt.Unsettled, &pair) {
+		t.Fatalf("rebuilt unsettled fact = %+v ok=%t err=%v", rebuilt, ok, err)
+	}
+	node, ok, err := graph.Node("trial")
+	if err != nil || !ok || node.Provenance.TrialOf != unsettled.Seq {
+		t.Fatalf("rebuilt trial provenance = %+v ok=%t err=%v", node.Provenance, ok, err)
+	}
+	rebuiltStats, err := graph.TrialStats()
+	if err != nil || !reflect.DeepEqual(rebuiltStats, stats) {
+		t.Fatalf("rebuilt trial stats = %+v, want %+v (err=%v)", rebuiltStats, stats, err)
+	}
+}
+
 func TestFoldSpillsOversizedDigestToCASAndRebuildKeepsPointer(t *testing.T) {
 	graph := openTestStore(t, filepath.Join(t.TempDir(), "cas-fold.db"))
 	if err := graph.Splice(RootID, Subtree{Nodes: []NodeSpec{{

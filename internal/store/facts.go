@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"fmt"
 	"strings"
 	"time"
@@ -54,7 +55,116 @@ const (
 	FactLesson FactKind = "lesson"
 	// FactPlain is an entity and its stable attributes.
 	FactPlain FactKind = "fact"
+	// FactUnsettled is a machine-readable pair of approaches whose evidence
+	// does not yet establish one standing rule.
+	FactUnsettled FactKind = "unsettled"
 )
+
+// UnsettledApproach is one side of a competing pair. Scope describes where
+// the approach worked; Evidence names the durable fact sequences behind it.
+type UnsettledApproach struct {
+	Approach string  `json:"approach"`
+	Scope    string  `json:"scope"`
+	Evidence []int64 `json:"evidence"`
+}
+
+// UnsettledTrial records that one trial ran without resolving the pair. A
+// conclusive trial replaces the pair with an ordinary fact instead.
+type UnsettledTrial struct {
+	NodeID  string `json:"node_id"`
+	Outcome string `json:"outcome"`
+}
+
+const TrialDidNotSettle = "ran, didn't settle"
+
+// UnsettledFactFlag is the deterministic compiler-context signal. The fact
+// number following it becomes Provenance.TrialOf when the compiler acts.
+const UnsettledFactFlag = "an unsettled pair applies here: fact #"
+
+// UnsettledPair is the structured payload of an unsettled fact. Approaches
+// must contain exactly two entries; Trials is append-only evidence carried
+// forward when an experiment cannot choose a winner.
+type UnsettledPair struct {
+	Approaches []UnsettledApproach `json:"approaches"`
+	Trials     []UnsettledTrial    `json:"trials,omitempty"`
+}
+
+// Validate rejects prose-only or ambiguous pairs before they enter the
+// journal. Evidence sequences are positive and deduplicated per approach.
+func (pair UnsettledPair) Validate() error {
+	if len(pair.Approaches) != 2 {
+		return fmt.Errorf("unsettled pair requires exactly two approaches")
+	}
+	for index, approach := range pair.Approaches {
+		if strings.TrimSpace(approach.Approach) == "" {
+			return fmt.Errorf("unsettled approach %d has no name", index+1)
+		}
+		if strings.TrimSpace(approach.Scope) == "" {
+			return fmt.Errorf("unsettled approach %d has no scope", index+1)
+		}
+		if len(approach.Evidence) == 0 {
+			return fmt.Errorf("unsettled approach %d has no evidence", index+1)
+		}
+		seen := make(map[int64]bool, len(approach.Evidence))
+		for _, seq := range approach.Evidence {
+			if seq <= 0 || seen[seq] {
+				return fmt.Errorf("unsettled approach %d has invalid evidence sequence %d", index+1, seq)
+			}
+			seen[seq] = true
+		}
+	}
+	if strings.EqualFold(strings.TrimSpace(pair.Approaches[0].Approach), strings.TrimSpace(pair.Approaches[1].Approach)) {
+		return fmt.Errorf("unsettled approaches must be distinct")
+	}
+	for index, trial := range pair.Trials {
+		if strings.TrimSpace(trial.NodeID) == "" || trial.Outcome != TrialDidNotSettle {
+			return fmt.Errorf("unsettled trial %d is invalid", index+1)
+		}
+	}
+	return nil
+}
+
+// WithInconclusiveTrial carries the pair forward with one new piece of
+// evidence. The returned value owns its slices and does not mutate pair.
+func (pair UnsettledPair) WithInconclusiveTrial(nodeID string) UnsettledPair {
+	cloned := UnsettledPair{
+		Approaches: make([]UnsettledApproach, len(pair.Approaches)),
+		Trials:     append([]UnsettledTrial(nil), pair.Trials...),
+	}
+	for index, approach := range pair.Approaches {
+		cloned.Approaches[index] = approach
+		cloned.Approaches[index].Evidence = append([]int64(nil), approach.Evidence...)
+	}
+	cloned.Trials = append(cloned.Trials, UnsettledTrial{
+		NodeID: strings.TrimSpace(nodeID), Outcome: TrialDidNotSettle,
+	})
+	return cloned
+}
+
+// FormatUnsettledPair is the readable projection indexed by FTS and handed
+// to models. The Unsettled field remains the authoritative representation.
+func FormatUnsettledPair(pair UnsettledPair) string {
+	if len(pair.Approaches) != 2 {
+		return "unsettled pair"
+	}
+	formatApproach := func(approach UnsettledApproach) string {
+		seqs := make([]string, 0, len(approach.Evidence))
+		for _, seq := range approach.Evidence {
+			seqs = append(seqs, fmt.Sprintf("#%d", seq))
+		}
+		return fmt.Sprintf("%s [%s; evidence %s]", strings.TrimSpace(approach.Approach),
+			strings.TrimSpace(approach.Scope), strings.Join(seqs, ", "))
+	}
+	body := formatApproach(pair.Approaches[0]) + " vs " + formatApproach(pair.Approaches[1]) + " — unsettled"
+	if count := len(pair.Trials); count > 0 {
+		word := "trials"
+		if count == 1 {
+			word = "trial"
+		}
+		body += fmt.Sprintf("; %d inconclusive %s (latest: %s)", count, word, pair.Trials[count-1].NodeID)
+	}
+	return bounded(body, MaxFactBytes)
+}
 
 // Fact statuses. Superseded facts stay in the table — the journal never
 // forgets — but retrieval returns active facts only.
@@ -73,6 +183,10 @@ type Fact struct {
 	Body   string
 	Status string
 
+	// Unsettled is present only when Kind is FactUnsettled. Body is its
+	// readable projection; this payload is what code branches on.
+	Unsettled *UnsettledPair
+
 	// Uses and LastUsed are retrieval telemetry for consolidation, not
 	// journaled truth: Rebuild resets them, deliberately.
 	Uses     int
@@ -85,8 +199,9 @@ CREATE TABLE IF NOT EXISTS facts (
     ts        TEXT NOT NULL,
     node_id   TEXT NOT NULL,
     scope     TEXT NOT NULL DEFAULT 'user',
-    kind      TEXT NOT NULL DEFAULT 'fact' CHECK (kind IN ('preference', 'quirk', 'lesson', 'fact')),
+    kind      TEXT NOT NULL DEFAULT 'fact' CHECK (kind IN ('preference', 'quirk', 'lesson', 'fact', 'unsettled')),
     body      TEXT NOT NULL,
+    unsettled JSON NOT NULL DEFAULT 'null' CHECK (json_valid(unsettled)),
     status    TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'superseded')),
     uses      INTEGER NOT NULL DEFAULT 0,
     last_used TEXT NOT NULL DEFAULT ''
@@ -96,10 +211,11 @@ CREATE VIRTUAL TABLE IF NOT EXISTS facts_fts USING fts5(body, scope);
 `
 
 type factPayload struct {
-	NodeID string   `json:"node_id"`
-	Scope  string   `json:"scope,omitempty"`
-	Kind   FactKind `json:"kind,omitempty"`
-	Body   string   `json:"body"`
+	NodeID    string         `json:"node_id"`
+	Scope     string         `json:"scope,omitempty"`
+	Kind      FactKind       `json:"kind,omitempty"`
+	Body      string         `json:"body"`
+	Unsettled *UnsettledPair `json:"unsettled,omitempty"`
 }
 
 type factSupersededPayload struct {
@@ -111,6 +227,46 @@ type factSupersededPayload struct {
 // scope is superseded rather than duplicated — write-time hygiene is what
 // keeps the notebook worth reading.
 func (s *Store) RecordFact(nodeID, scope string, kind FactKind, body string) (Fact, error) {
+	if kind == FactUnsettled {
+		return Fact{}, fmt.Errorf("record fact: %w: unsettled fact requires a structured pair", ErrInvalid)
+	}
+	return s.recordFact(nodeID, scope, kind, body, nil, 0)
+}
+
+// RecordUnsettledFact appends one structured competing pair. Its Body is
+// derived from the pair so the searchable prose cannot disagree with code.
+func (s *Store) RecordUnsettledFact(nodeID, scope string, pair UnsettledPair) (Fact, error) {
+	if err := pair.Validate(); err != nil {
+		return Fact{}, fmt.Errorf("record unsettled fact: %w: %v", ErrInvalid, err)
+	}
+	return s.recordFact(nodeID, scope, FactUnsettled, FormatUnsettledPair(pair), &pair, 0)
+}
+
+// ReplaceFact records a new ordinary fact and supersedes factSeq in the same
+// transaction. A failed replacement leaves neither event behind.
+func (s *Store) ReplaceFact(factSeq int64, nodeID, scope string, kind FactKind, body string) (Fact, error) {
+	if factSeq <= 0 {
+		return Fact{}, fmt.Errorf("replace fact: %w: invalid replaced sequence %d", ErrInvalid, factSeq)
+	}
+	if kind == FactUnsettled {
+		return Fact{}, fmt.Errorf("replace fact: %w: unsettled fact requires a structured pair", ErrInvalid)
+	}
+	return s.recordFact(nodeID, scope, kind, body, nil, factSeq)
+}
+
+// ReplaceUnsettledFact carries an unresolved pair forward and consumes its
+// prior fact sequence atomically.
+func (s *Store) ReplaceUnsettledFact(factSeq int64, nodeID, scope string, pair UnsettledPair) (Fact, error) {
+	if factSeq <= 0 {
+		return Fact{}, fmt.Errorf("replace unsettled fact: %w: invalid replaced sequence %d", ErrInvalid, factSeq)
+	}
+	if err := pair.Validate(); err != nil {
+		return Fact{}, fmt.Errorf("replace unsettled fact: %w: %v", ErrInvalid, err)
+	}
+	return s.recordFact(nodeID, scope, FactUnsettled, FormatUnsettledPair(pair), &pair, factSeq)
+}
+
+func (s *Store) recordFact(nodeID, scope string, kind FactKind, body string, unsettled *UnsettledPair, replaces int64) (Fact, error) {
 	body = strings.TrimSpace(body)
 	if body == "" {
 		return Fact{}, fmt.Errorf("record fact: %w: empty fact", ErrInvalid)
@@ -121,6 +277,13 @@ func (s *Store) RecordFact(nodeID, scope string, kind FactKind, body string) (Fa
 	scope = normalizeScope(scope)
 	if !validFactKind(kind) {
 		kind = FactPlain
+	}
+	if kind == FactUnsettled {
+		if unsettled == nil {
+			return Fact{}, fmt.Errorf("record fact: %w: unsettled fact requires a structured pair", ErrInvalid)
+		}
+	} else if unsettled != nil {
+		return Fact{}, fmt.Errorf("record fact: %w: only unsettled facts carry a pair", ErrInvalid)
 	}
 
 	tx, err := s.db.BeginTx(context.Background(), nil)
@@ -134,6 +297,11 @@ func (s *Store) RecordFact(nodeID, scope string, kind FactKind, body string) (Fa
 			return Fact{}, fmt.Errorf("record fact: %w", err)
 		}
 	}
+	if unsettled != nil {
+		if err := requireUnsettledEvidence(tx, *unsettled); err != nil {
+			return Fact{}, fmt.Errorf("record fact: %w", err)
+		}
+	}
 
 	var duplicate int64
 	err = tx.QueryRow(`
@@ -144,7 +312,7 @@ func (s *Store) RecordFact(nodeID, scope string, kind FactKind, body string) (Fa
 		return Fact{}, fmt.Errorf("record fact: %w", err)
 	}
 
-	payload := factPayload{NodeID: nodeID, Scope: scope, Kind: kind, Body: body}
+	payload := factPayload{NodeID: nodeID, Scope: scope, Kind: kind, Body: body, Unsettled: unsettled}
 	seq, at, err := appendEvent(tx, nodeID, EventFactLearned, payload)
 	if err != nil {
 		return Fact{}, fmt.Errorf("record fact: %w", err)
@@ -152,8 +320,15 @@ func (s *Store) RecordFact(nodeID, scope string, kind FactKind, body string) (Fa
 	if err := applyFactView(tx, payload, seq, at); err != nil {
 		return Fact{}, fmt.Errorf("record fact: %w", err)
 	}
+	supersededSeqs := make([]int64, 0, 2)
 	if duplicate != 0 {
-		superseded := factSupersededPayload{FactSeq: duplicate, BySeq: seq}
+		supersededSeqs = append(supersededSeqs, duplicate)
+	}
+	if replaces != 0 && replaces != duplicate {
+		supersededSeqs = append(supersededSeqs, replaces)
+	}
+	for _, supersededSeq := range supersededSeqs {
+		superseded := factSupersededPayload{FactSeq: supersededSeq, BySeq: seq}
 		if _, _, err := appendEvent(tx, "", EventFactSuperseded, superseded); err != nil {
 			return Fact{}, fmt.Errorf("record fact: %w", err)
 		}
@@ -164,7 +339,8 @@ func (s *Store) RecordFact(nodeID, scope string, kind FactKind, body string) (Fa
 	if err := tx.Commit(); err != nil {
 		return Fact{}, fmt.Errorf("record fact: %w", err)
 	}
-	return Fact{Seq: seq, Time: at, NodeID: nodeID, Scope: scope, Kind: kind, Body: body, Status: FactActive}, nil
+	return Fact{Seq: seq, Time: at, NodeID: nodeID, Scope: scope, Kind: kind, Body: body,
+		Status: FactActive, Unsettled: unsettled}, nil
 }
 
 // SupersedeFact retires one active fact in favour of another, journaled.
@@ -238,7 +414,7 @@ func (s *Store) searchFacts(query FactQuery, countUses bool) ([]Fact, error) {
 
 	if terms := ftsQueryFrom(query.Terms); terms != "" && len(results) < query.Limit {
 		rows, err := s.db.Query(`
-			SELECT f.seq, f.ts, f.node_id, f.scope, f.kind, f.body, f.status, f.uses, f.last_used
+			SELECT f.seq, f.ts, f.node_id, f.scope, f.kind, f.body, f.unsettled, f.status, f.uses, f.last_used
 			FROM facts_fts
 			JOIN facts AS f ON f.seq = facts_fts.rowid
 			WHERE facts_fts MATCH ? AND f.status = ?
@@ -291,9 +467,22 @@ func (s *Store) RecentFacts(limit int) ([]Fact, error) {
 	return s.ActiveFacts("", limit)
 }
 
+// Fact returns one notebook entry by its durable event sequence, including a
+// superseded entry needed to explain an already-fired trial.
+func (s *Store) Fact(seq int64) (Fact, bool, error) {
+	facts, err := s.factsWhere(`seq = ?`, seq)
+	if err != nil {
+		return Fact{}, false, err
+	}
+	if len(facts) == 0 {
+		return Fact{}, false, nil
+	}
+	return facts[0], true, nil
+}
+
 func (s *Store) factsWhere(where string, args ...any) ([]Fact, error) {
 	rows, err := s.db.Query(`
-		SELECT seq, ts, node_id, scope, kind, body, status, uses, last_used
+		SELECT seq, ts, node_id, scope, kind, body, unsettled, status, uses, last_used
 		FROM facts WHERE `+where, args...)
 	if err != nil {
 		return nil, fmt.Errorf("query facts: %w", err)
@@ -306,9 +495,9 @@ func scanFacts(rows *sql.Rows) ([]Fact, error) {
 	facts := make([]Fact, 0)
 	for rows.Next() {
 		var fact Fact
-		var timestamp, lastUsed string
+		var timestamp, unsettled, lastUsed string
 		if err := rows.Scan(&fact.Seq, &timestamp, &fact.NodeID, &fact.Scope, &fact.Kind,
-			&fact.Body, &fact.Status, &fact.Uses, &lastUsed); err != nil {
+			&fact.Body, &unsettled, &fact.Status, &fact.Uses, &lastUsed); err != nil {
 			return nil, fmt.Errorf("scan fact: %w", err)
 		}
 		at, err := parseTime(timestamp)
@@ -316,6 +505,11 @@ func scanFacts(rows *sql.Rows) ([]Fact, error) {
 			return nil, fmt.Errorf("scan fact time: %w", err)
 		}
 		fact.Time = at
+		if unsettled != "null" {
+			if err := json.Unmarshal([]byte(unsettled), &fact.Unsettled); err != nil {
+				return nil, fmt.Errorf("decode unsettled fact %d: %w", fact.Seq, err)
+			}
+		}
 		if lastUsed != "" {
 			if used, err := parseTime(lastUsed); err == nil {
 				fact.LastUsed = used
@@ -335,14 +529,46 @@ func applyFactView(tx *sql.Tx, payload factPayload, seq int64, at time.Time) err
 	if !validFactKind(kind) {
 		kind = FactPlain
 	}
-	if _, err := tx.Exec(`
-		INSERT INTO facts (seq, ts, node_id, scope, kind, body) VALUES (?, ?, ?, ?, ?, ?)`,
-		seq, formatTime(at), payload.NodeID, scope, kind, payload.Body); err != nil {
+	if kind == FactUnsettled {
+		if payload.Unsettled == nil {
+			return fmt.Errorf("unsettled fact %d has no structured pair", seq)
+		}
+		if err := payload.Unsettled.Validate(); err != nil {
+			return fmt.Errorf("unsettled fact %d: %w", seq, err)
+		}
+		if err := requireUnsettledEvidence(tx, *payload.Unsettled); err != nil {
+			return fmt.Errorf("unsettled fact %d: %w", seq, err)
+		}
+	} else if payload.Unsettled != nil {
+		return fmt.Errorf("non-unsettled fact %d carries an unsettled pair", seq)
+	}
+	encoded, err := json.Marshal(payload.Unsettled)
+	if err != nil {
 		return err
 	}
-	_, err := tx.Exec(`INSERT INTO facts_fts (rowid, body, scope) VALUES (?, ?, ?)`,
+	if _, err := tx.Exec(`
+		INSERT INTO facts (seq, ts, node_id, scope, kind, body, unsettled) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+		seq, formatTime(at), payload.NodeID, scope, kind, payload.Body, string(encoded)); err != nil {
+		return err
+	}
+	_, err = tx.Exec(`INSERT INTO facts_fts (rowid, body, scope) VALUES (?, ?, ?)`,
 		seq, payload.Body, scope)
 	return err
+}
+
+func requireUnsettledEvidence(tx *sql.Tx, pair UnsettledPair) error {
+	for _, approach := range pair.Approaches {
+		for _, evidenceSeq := range approach.Evidence {
+			var exists int
+			if err := tx.QueryRow(`SELECT COUNT(*) FROM facts WHERE seq = ?`, evidenceSeq).Scan(&exists); err != nil {
+				return fmt.Errorf("verify evidence #%d: %w", evidenceSeq, err)
+			}
+			if exists == 0 {
+				return fmt.Errorf("%w: evidence fact #%d does not exist", ErrInvalid, evidenceSeq)
+			}
+		}
+	}
+	return nil
 }
 
 func applyFactSupersession(tx *sql.Tx, payload factSupersededPayload) error {
@@ -391,7 +617,7 @@ func normalizeScope(scope string) string {
 
 func validFactKind(kind FactKind) bool {
 	switch kind {
-	case FactPreference, FactQuirk, FactLesson, FactPlain:
+	case FactPreference, FactQuirk, FactLesson, FactPlain, FactUnsettled:
 		return true
 	}
 	return false
@@ -406,6 +632,7 @@ func migrateFactsSchema(db *sql.DB) error {
 		return err
 	}
 	hasScope := false
+	hasUnsettled := false
 	for rows.Next() {
 		var cid int
 		var name, kind string
@@ -418,12 +645,19 @@ func migrateFactsSchema(db *sql.DB) error {
 		if name == "scope" {
 			hasScope = true
 		}
+		if name == "unsettled" {
+			hasUnsettled = true
+		}
 	}
 	rows.Close()
 	if err := rows.Err(); err != nil {
 		return err
 	}
-	if hasScope {
+	var tableSQL string
+	if err := db.QueryRow(`SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'facts'`).Scan(&tableSQL); err != nil {
+		return err
+	}
+	if hasScope && hasUnsettled && strings.Contains(tableSQL, "'unsettled'") {
 		return nil
 	}
 
