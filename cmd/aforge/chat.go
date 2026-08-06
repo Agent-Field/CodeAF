@@ -132,6 +132,9 @@ func runChat(args []string) error {
 		shape := "atomic"
 		if planNode != nil {
 			shape = chatLeafShape(planNode)
+			// Frozen means frozen everywhere: the sentinel may not edit a
+			// node whose transcript is already being written.
+			plans.markRunning(planNode)
 		}
 
 		inputs := make([]exec.Input, 0)
@@ -201,6 +204,13 @@ func runChat(args []string) error {
 		if planNode != nil {
 			plans.recordOutcome(planNode, outcome, err)
 		}
+		// Result-driven revision: each landed leaf is shown to the sentinel,
+		// which edits the job's unstarted remainder only when this result
+		// contradicts a specific assumption in a specific node. Its default
+		// is no change; the store refuses everything else.
+		if planGraph != nil && outcome != nil {
+			plans.reviseAfter(ctx, settings, taskClient, graph, node, planGraph, outcome.Text, err != nil)
+		}
 		// A graph's sink landing means its run is over: the measured leaves
 		// become profile evidence, exactly as recordAndCalibrate does after a
 		// headless run. Detached, because the ruler is telemetry and the
@@ -222,6 +232,36 @@ func runChat(args []string) error {
 		}
 		if len(absolute) > 0 {
 			text += "\n\nFiles:\n" + strings.Join(absolute, "\n")
+		}
+		// The quality gate: before a deliverable lands in the thread, one
+		// judge call asks the only question that matters — would the person
+		// who asked accept this as done? A named gap earns exactly one
+		// revision pass with the critique as input; then the result ships
+		// either way, because a gate that can loop is a gate that can stall.
+		if node.Parent == store.RootID && outcome.Stop != exec.StopBudget && outcome.Stop != exec.StopTurnCap {
+			if gaps := judgeDeliverable(ctx, settings, taskClient, node, text); gaps != "" {
+				revision := task
+				revision.Inputs = append(append([]exec.Input{}, inputs...), exec.Input{
+					Result: "A reviewer compared the previous attempt against the original request and found gaps that must be closed:\n" + gaps +
+						"\n\nThe previous attempt (build on it, fix the gaps, do not start over):\n" + text,
+				})
+				retryCtx := provider.WithCallShape(settings.ExecContext(ctx), provider.ClassExecLeaf, 1, shape)
+				polished, polishErr := runLeafWithWatchdog(retryCtx, linear, revision, deadline+2*time.Minute)
+				if polishErr == nil && polished != nil && strings.TrimSpace(polished.Text) != "" {
+					spent.PromptTokens += polished.Usage.PromptTokens
+					spent.CompletionTokens += polished.Usage.CompletionTokens
+					spent.Cost += polished.Usage.Cost
+					text = polished.Text
+					for _, artifact := range polished.Artifacts {
+						text += "\n" + filepath.Join(jobDir, artifact)
+					}
+					_, _ = graph.PostMessage(store.Message{
+						SessionID: node.Provenance.SessionID,
+						Role:      store.RoleSystem,
+						Body:      "a review found gaps in the first draft — revised before delivering: " + firstLine(gaps),
+					})
+				}
+			}
 		}
 		// Just-in-time re-decomposition: a budget or turn-cap stop is the
 		// planner's clearest "one node held too much". The partial result
@@ -854,6 +894,121 @@ func (j *jobPlans) takeIfRoot(nodeID string) *plan.Graph {
 	}
 	delete(j.graphs, nodeID[:cut])
 	return entry.graph
+}
+
+func (j *jobPlans) markRunning(node *plan.Node) {
+	j.mu.Lock()
+	defer j.mu.Unlock()
+	node.State = plan.StateRunning
+}
+
+// reviseAfter runs the sentinel over a job's remaining plan in light of one
+// landed result, and mirrors whatever it legally edits onto the store. The
+// whole pass holds the registry lock — the sentinel must see a consistent
+// graph, and its call is a short structuring call — and it skips entirely
+// when the job has no unstarted work left to edit.
+func (j *jobPlans) reviseAfter(ctx context.Context, settings config.Config, client *liveClient, graph *store.Store, node store.Node, planGraph *plan.Graph, summary string, failed bool) {
+	cut := strings.LastIndex(node.ID, "-n")
+	if cut < 0 {
+		return
+	}
+	prefix := node.ID[:cut]
+	j.mu.Lock()
+	entry, ok := j.graphs[prefix]
+	j.mu.Unlock()
+	if !ok || entry.root == node.ID {
+		return
+	}
+	active, err := graph.ActiveNodes()
+	if err != nil {
+		return
+	}
+	pending := 0
+	for _, sibling := range active {
+		if sibling.Status == store.Pending && strings.HasPrefix(sibling.ID, prefix) && sibling.ID != entry.root {
+			pending++
+		}
+	}
+	if pending == 0 {
+		return
+	}
+
+	j.mu.Lock()
+	defer j.mu.Unlock()
+	operations, _, err := plan.Revise(settings.Context(ctx, planGraph.Goal), client, planGraph,
+		resident.RevisionEvent(node, summary, failed))
+	if err != nil || len(operations) == 0 {
+		return
+	}
+	applied, _ := resident.ApplyRevision(graph, planGraph, prefix, entry.root, operations)
+	if applied == 0 {
+		return
+	}
+	reasons := make([]string, 0, len(operations))
+	for _, operation := range operations {
+		if operation.Applied && strings.TrimSpace(operation.Reason) != "" {
+			reasons = append(reasons, operation.Op+": "+firstLine(operation.Reason))
+		}
+	}
+	body := fmt.Sprintf("revised the remaining plan after %q — %d change(s)", firstLine(nodeDisplay(node)), applied)
+	if len(reasons) > 0 {
+		body += "\n" + strings.Join(reasons, "\n")
+	}
+	_, _ = graph.PostMessage(store.Message{
+		SessionID: node.Provenance.SessionID,
+		Role:      store.RoleSystem,
+		Body:      body,
+	})
+}
+
+func nodeDisplay(node store.Node) string {
+	if title := strings.TrimSpace(node.Title); title != "" {
+		return title
+	}
+	return firstLine(node.Brief)
+}
+
+// judgeDeliverablePrompt is a gate, not a critic: its default is pass, and a
+// fail must name the specific element of the request that is absent. The
+// failure mode being prevented is the gate that always finds something —
+// polish loops that spend the user's money on taste.
+const judgeDeliverablePrompt = `You are the final gate before a finished piece of work is handed to the person who asked for it. You receive their verbatim request, the compiled goal, and the deliverable as produced.
+
+Judge exactly one question: would the person who asked accept this as done? Default to PASS. The gate exists for real gaps, not polish — wording, style, and things they never asked for are not gaps.
+
+FAIL only when you can name a specific element of the request that is absent, unanswered, or unsupported by evidence the goal promised. Quote or name the missing element concretely enough that a worker could close the gap from your words alone.
+
+Return exactly one JSON object, nothing else: {"pass": true} or {"pass": false, "gaps": "<the named gaps>"}`
+
+// judgeDeliverable returns the named gaps, or "" for pass. Every failure of
+// the gate itself — provider error, unparseable reply — is a pass: the gate
+// must never be the reason a finished job cannot land.
+func judgeDeliverable(ctx context.Context, settings config.Config, client *liveClient, node store.Node, deliverable string) string {
+	ask := node.Provenance.Intent
+	body := "Verbatim request:\n" + ask + "\n\nCompiled goal:\n" + node.Brief + "\n\nDeliverable as produced:\n" + deliverable
+	response, err := client.CompleteWithMessages(settings.Context(ctx, "gate"), []ai.Message{
+		{Role: "system", Content: []ai.ContentPart{{Type: "text", Text: judgeDeliverablePrompt}}},
+		{Role: "user", Content: []ai.ContentPart{{Type: "text", Text: body}}},
+	}, ai.WithMaxTokens(400))
+	if err != nil || response == nil {
+		return ""
+	}
+	text := strings.TrimSpace(response.Text())
+	start, end := strings.Index(text, "{"), strings.LastIndex(text, "}")
+	if start < 0 || end <= start {
+		return ""
+	}
+	var verdict struct {
+		Pass bool   `json:"pass"`
+		Gaps string `json:"gaps"`
+	}
+	if err := json.Unmarshal([]byte(text[start:end+1]), &verdict); err != nil {
+		return ""
+	}
+	if verdict.Pass {
+		return ""
+	}
+	return strings.TrimSpace(verdict.Gaps)
 }
 
 // chatLeafShape is the scheduler's leaf population key, verbatim: synthesis

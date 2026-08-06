@@ -186,6 +186,27 @@ func replayEvent(tx *sql.Tx, event Event) error {
 		}
 		return applyEdgeAddedView(tx, payload.From, payload.To, payload.Kind, event.Seq)
 
+	case EventEdgeRemoved:
+		var payload edgeRemovedPayload
+		if err := json.Unmarshal(event.Payload, &payload); err != nil {
+			return err
+		}
+		return applyEdgeRemovedView(tx, payload.From, payload.To, payload.Kind)
+
+	case EventNodeAmended:
+		var payload nodeAmendedPayload
+		if err := json.Unmarshal(event.Payload, &payload); err != nil {
+			return err
+		}
+		return applyNodeAmendedView(tx, event.NodeID, payload.Brief, payload.Title, event.Seq)
+
+	case EventNodeCancelled:
+		var payload nodeCancelledPayload
+		if err := json.Unmarshal(event.Payload, &payload); err != nil {
+			return err
+		}
+		return applyNodeCancelledView(tx, event.NodeID, payload.Reason, event.Seq, formatTime(event.Time))
+
 	case EventMessagePosted:
 		var payload messagePayload
 		if err := json.Unmarshal(event.Payload, &payload); err != nil {
