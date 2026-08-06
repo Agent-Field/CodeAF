@@ -15,7 +15,7 @@ import (
 const compilerSystemPrompt = `You are the intent compiler for an asynchronous task graph. Apply ASSUME-AND-DECLARE.
 
 Turn the user's verbatim instruction and the current graph context into a complete execution brief. Return exactly one JSON object with this shape and no text outside it:
-{"goal":"...","deliverable":"...","budget":"...","scale":"lookup|task|project","assumptions":["..."]}
+{"goal":"...","deliverable":"...","budget":"...","scale":"lookup|task|project","builds_on":["<job id>"],"assumptions":["..."]}
 
 Rules:
 - State a clear goal that names the final deliverable, what success means, and the evidence standard that will prove it.
@@ -26,6 +26,8 @@ Rules:
 - Never ask a question back and never leave a placeholder such as TBD, unknown, or ask user.
 - The user's words are the authority. Do not narrow or replace them with an inferred request.
 - End goal with a line beginning "Verbatim request:" followed by the user's instruction exactly as supplied.
+- The graph context lists earlier jobs with their ids, what was asked, and their results. When the instruction continues, improves, or refers to earlier work, name those job ids in builds_on AND restate in the goal the concrete starting points from their results — file paths, names, findings — so the work never starts blind. When the instruction stands alone, builds_on is [].
+- For project scale, make the parallel structure explicit in the goal: name the parts if they are known, or state that the first step enumerates them and each then proceeds independently. Downstream planning fans out exactly what the goal names; a vague goal collapses into needlessly serial work.
 - Judge scale by the structure of the work, never by its topic. Ask two questions. First: does the job enumerate — does doing it mean repeating the same operation over a set of items, sources, or sections that do not depend on each other? Second: does it stratify — does it separate into stages with different working modes, such as gathering, verifying, and synthesizing, where intermediate outputs feed a final deliverable? If either answer is yes, the scale is "project": independent parts are parallel structure, and parallel structure is the point even when one worker could grind through serially. If both answers are no and the job still requires acting — producing, transforming, fetching-then-shaping — it is "task": one worker, one thread of attention, end to end. If the whole job is retrieving or computing a single thing, where the answer is itself the deliverable, it is "lookup".
 
 Be precise enough for downstream planning, but do not design the task graph yourself.`
@@ -43,6 +45,12 @@ type Brief struct {
 	// worth a planning pass). Downstream decides what to do with it; an
 	// unrecognised value degrades to task.
 	Scale string `json:"scale"`
+
+	// BuildsOn names earlier jobs this instruction continues or improves.
+	// The reconciler turns each into a real dependency edge, so the prior
+	// result flows to the new workers as an input digest instead of being
+	// rediscovered or guessed at.
+	BuildsOn []string `json:"builds_on"`
 }
 
 // Compiler converts verbatim user intent into a planning brief without asking
@@ -85,7 +93,22 @@ func (c *Compiler) Compile(ctx context.Context, instruction string, graphContext
 	}
 	brief.Goal = anchorGoal(brief.Goal, instruction)
 	brief.Scale = normalizeScale(brief.Scale)
+	brief.BuildsOn = normalizeBuildsOn(brief.BuildsOn)
 	return brief, nil
+}
+
+func normalizeBuildsOn(ids []string) []string {
+	kept := make([]string, 0, len(ids))
+	seen := make(map[string]bool, len(ids))
+	for _, id := range ids {
+		id = strings.TrimSpace(id)
+		if id == "" || seen[id] {
+			continue
+		}
+		seen[id] = true
+		kept = append(kept, id)
+	}
+	return kept
 }
 
 // Scale values the compiler may emit. ScaleTask is also the degradation
