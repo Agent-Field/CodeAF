@@ -36,6 +36,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/Agent-Field/aforge-v2/internal/provider"
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 )
 
@@ -360,6 +361,31 @@ func sizeSummary(graph *Graph) string {
 		return "no work nodes"
 	}
 	return strings.Join(parts, "/")
+}
+
+// structured performs one planning call and turns its reply into a Go value.
+//
+// Every pass in this package does the same three things — send, decode, and say
+// whether what came back was usable — and the last of those is what anything
+// downstream learns from. Doing it once here is what keeps the verdict honest: a
+// pass that hand-rolled the sequence would sooner or later report a parse
+// failure as a success, and nothing reading the verdict could tell.
+//
+// It reports only the two verdicts it can determine by itself. Whether a reply
+// that parsed is actually *right* is a question only the caller can answer, so
+// the slot is left open for it; a caller that never answers leaves the call
+// unverified, which is the truth.
+func structured(ctx context.Context, client Completer, messages []ai.Message, schema json.RawMessage, into any) (*ai.Response, error) {
+	response, err := client.CompleteWithMessages(ctx, messages, ai.WithSchema(schema))
+	if err != nil {
+		provider.Report(ctx, provider.VerdictProviderFailure)
+		return nil, err
+	}
+	if err := decodeJSON(response.Text(), into); err != nil {
+		provider.Report(ctx, provider.VerdictFormatFailure)
+		return response, annotate(err, response)
+	}
+	return response, nil
 }
 
 // decodeJSON reads a structured reply. The fence stripping is defensive: strict

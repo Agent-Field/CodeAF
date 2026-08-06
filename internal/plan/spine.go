@@ -9,6 +9,7 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/Agent-Field/aforge-v2/internal/provider"
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 )
 
@@ -212,19 +213,17 @@ func vocabulary(stages []Stage) map[string]bool {
 }
 
 func spineOnce(ctx context.Context, client Completer, goal string) ([]Stage, *ai.Usage, error) {
+	ctx = provider.WithCall(ctx, provider.ClassPlanSpine)
 	messages := []ai.Message{
 		systemMessage(spinePrompt),
 		userMessage("Goal:\n" + goal),
 	}
-	response, err := client.CompleteWithMessages(ctx, messages, ai.WithSchema(spineSchema))
-	if err != nil {
-		return nil, nil, fmt.Errorf("spine: %w", err)
-	}
 	var decoded struct {
 		Stages []Stage `json:"stages"`
 	}
-	if err := decodeJSON(response.Text(), &decoded); err != nil {
-		return nil, usageOf(response), annotate(fmt.Errorf("spine: %w", err), response)
+	response, err := structured(ctx, client, messages, spineSchema, &decoded)
+	if err != nil {
+		return nil, usageOf(response), fmt.Errorf("spine: %w", err)
 	}
 	stages := make([]Stage, 0, len(decoded.Stages))
 	for _, stage := range decoded.Stages {
@@ -236,8 +235,13 @@ func spineOnce(ctx context.Context, client Completer, goal string) ([]Stage, *ai
 		stages = append(stages, stage)
 	}
 	if len(stages) == 0 {
+		// Schema-valid and useless: the reply parsed, so nothing upstream of here
+		// could have caught it. This is the semantic half of verification and the
+		// only place it can be observed.
+		provider.Report(ctx, provider.VerdictSemanticFailure)
 		return nil, usageOf(response), annotate(errors.New("spine: no stages returned"), response)
 	}
+	provider.Report(ctx, provider.VerdictVerifiedSuccess)
 	return stages, usageOf(response), nil
 }
 

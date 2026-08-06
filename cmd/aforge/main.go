@@ -41,6 +41,8 @@ func run() error {
 		return runExecute(os.Args[2:])
 	case "show":
 		return runShow(os.Args[2:])
+	case "models":
+		return runModels(os.Args[2:])
 	case "-h", "--help", "help":
 		return usage()
 	default:
@@ -54,14 +56,24 @@ const usageText = `aforge — build and revise task graphs
   aforge revise <graph.json> "<what happened>" [--done 1,2,3] [-o graph.json]
   aforge run  <graph.json> [-w dir] [-j 8] [-o done.json]
   aforge show <graph.json>
+  aforge models
 
 Environment:
   OPENROUTER_API_KEY   required
   AFORGE_MODEL         default ` + config.DefaultModel + `
+  AFORGE_MODELS        unset: one model, exactly as above. Set it to a panel and
+                       calls cascade — cheapest model first, escalating when a
+                       verifier catches a failure. Either a comma-separated list
+                       of slugs, or a path to a JSON file:
+                         AFORGE_MODELS=google/gemma-3-12b-it,~deepseek/deepseek-v4-flash-latest,moonshotai/kimi-k2.6
+                         AFORGE_MODELS=~/.aforge/models.json
+                       Ratings accumulate in ~/.aforge/router-ledger.json across
+                       runs; see them with ` + "`aforge models`" + `.
   AFORGE_REASONING     planning calls: off (default), low, medium, high
   AFORGE_EXEC_REASONING  executor calls: model default (unset), off, low, medium, high
   AFORGE_MAX_DEPTH     2   how many levels of decomposition
-  AFORGE_NODE_BUDGET   60  hard ceiling on total nodes`
+  AFORGE_NODE_BUDGET   60  hard ceiling on total nodes
+  AFORGE_PROFILE_DIR   where measured behaviour is kept (default ~/.aforge)`
 
 func usage() error {
 	fmt.Println(usageText)
@@ -90,6 +102,7 @@ func runPlan(args []string) error {
 	if err != nil {
 		return err
 	}
+	defer closeRouter(client)
 	ctx := settings.Context(context.Background(), goal)
 
 	// The ruler in force comes from measured work when there is any; the
@@ -174,6 +187,7 @@ func runRevise(args []string) error {
 	if err != nil {
 		return err
 	}
+	defer closeRouter(client)
 	ctx := settings.Context(context.Background(), graph.Goal)
 
 	if !*asJSON {

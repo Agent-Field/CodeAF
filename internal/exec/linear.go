@@ -9,6 +9,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/Agent-Field/aforge-v2/internal/provider"
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 )
 
@@ -192,16 +193,18 @@ func (l *Linear) Run(ctx context.Context, task Task) (*Outcome, error) {
 					"it reveals. Do not start anything new. Then give your final answer.")})
 		}
 		outcome.Decayed += fade.decay(messages, obsBudget)
+		// What the leaf had left before this turn, so the circuit breaker below
+		// can weigh what the turn cost against what remained rather than against
+		// the budget it started with.
+		remaining := l.maxTokens - spent(outcome)
 		response, err := l.complete(ctx, messages, definitions)
 		if err != nil {
 			outcome.Stop = StopError
-			outcome.Artifacts = l.workspace.Artifacts(task.NodeID)
-			outcome.Elapsed = time.Since(started)
 			outcome.Text = strings.TrimSpace(lastAssistantText(messages))
 			if ctx.Err() != nil {
 				outcome.Stop = StopDeadline
 			}
-			return outcome, fmt.Errorf("node %d: %w", task.NodeID, err)
+			return l.land(ctx, task, outcome, started), fmt.Errorf("node %d: %w", task.NodeID, err)
 		}
 		outcome.Turns++
 		addUsage(&outcome.Usage, response)
@@ -209,6 +212,24 @@ func (l *Linear) Run(ctx context.Context, task Task) (*Outcome, error) {
 		calls := response.ToolCalls()
 		if len(calls) == 0 {
 			outcome.Text = strings.TrimSpace(response.Text())
+			// A turn that returns no visible text has either been cut off
+			// mid-think or spent its whole pass on private deliberation.
+			// Continuing is the right answer to the first and a trap for the
+			// second: the probe lab watched a model burn an entire 16k budget on
+			// reasoning and emit zero characters, four tasks running, which is
+			// the most expensive way there is to fail — full price, nothing
+			// delivered, and 15% of all failures. So a turn that eats most of
+			// what the leaf has left and says nothing is not a hiccup, it is the
+			// mode, and nudging the same model only buys it again. The leaf is
+			// abandoned here rather than retried in place, so that whatever
+			// routed it can send the work somewhere else.
+			if outcome.Text == "" && remaining > 0 && completionOf(response) > remaining/2 {
+				outcome.Stop = StopEmpty
+				trace.turn(outcome.Turns, response, nil, nil, fmt.Sprintf(
+					"empty reply burned %d of %d remaining tokens — abandoned for escalation",
+					completionOf(response), remaining))
+				return l.land(ctx, task, outcome, started), nil
+			}
 			// An empty message with no tool calls is not a deliverable — it is
 			// what a reasoning model produces when the output ceiling cut it
 			// off mid-think, or when a turn's whole budget went to private
@@ -241,10 +262,8 @@ func (l *Linear) Run(ctx context.Context, task Task) (*Outcome, error) {
 				trace.turn(outcome.Turns, response, nil, nil, "truncated reply — nudged to use tools")
 				continue
 			}
-			outcome.Artifacts = l.workspace.Artifacts(task.NodeID)
-			outcome.Elapsed = time.Since(started)
 			trace.turn(outcome.Turns, response, nil, nil, "final")
-			return outcome, nil
+			return l.land(ctx, task, outcome, started), nil
 		}
 
 		messages = append(messages, ai.Message{
@@ -332,10 +351,8 @@ func (l *Linear) Run(ctx context.Context, task Task) (*Outcome, error) {
 		if landing > 0 {
 			if landing == 1 {
 				outcome.Stop = landingStop
-				outcome.Artifacts = l.workspace.Artifacts(task.NodeID)
-				outcome.Elapsed = time.Since(started)
 				outcome.Text = strings.TrimSpace(lastAssistantText(messages))
-				return outcome, nil
+				return l.land(ctx, task, outcome, started), nil
 			}
 			landing--
 			continue
@@ -367,10 +384,52 @@ func (l *Linear) Run(ctx context.Context, task Task) (*Outcome, error) {
 	// finish in well under it, so reaching it is evidence the sizing anchors put
 	// too much into one node — which is worth reporting rather than hiding.
 	outcome.Stop = StopTurnCap
+	outcome.Text = strings.TrimSpace(lastAssistantText(messages))
+	return l.land(ctx, task, outcome, started), nil
+}
+
+// land finishes a leaf. It collects what the leaf left behind, decides the
+// verdict, and tells whatever routed the leaf how it went — in one place,
+// because there are five ways out of the loop above and a verdict that is set on
+// four of them is worse than none at all.
+func (l *Linear) land(ctx context.Context, task Task, outcome *Outcome, started time.Time) *Outcome {
 	outcome.Artifacts = l.workspace.Artifacts(task.NodeID)
 	outcome.Elapsed = time.Since(started)
-	outcome.Text = strings.TrimSpace(lastAssistantText(messages))
-	return outcome, nil
+	outcome.Verdict = verdictFor(outcome)
+	provider.Report(ctx, outcome.Verdict)
+	return outcome
+}
+
+// verdictFor reads the leaf's own accounting.
+//
+// A leaf that stopped under its own power is an *unverified* success, never a
+// verified one: this is the general loop, and the general loop has no test
+// suite it can assume. That is the honest reading and it is also the one the
+// probe lab argues for — where you cannot check an outcome, do not claim to
+// have. A specialised executor that does own a verifier can say more, by
+// setting the verdict itself before landing.
+//
+// A timeout is a provider fact rather than an ability one, so a deadline stop
+// grades nothing. Everything else is a way of not finishing inside what the
+// leaf was given, and that is precisely what a rating measures.
+func verdictFor(outcome *Outcome) provider.Verdict {
+	if outcome.Verdict != "" {
+		return outcome.Verdict
+	}
+	switch outcome.Stop {
+	case StopBudget:
+		return provider.VerdictBudgetStop
+	case StopTurnCap:
+		return provider.VerdictTurnCap
+	case StopEmpty:
+		return provider.VerdictEmptyResponse
+	case StopError, StopDeadline:
+		return provider.VerdictProviderFailure
+	}
+	if strings.TrimSpace(outcome.Text) == "" {
+		return provider.VerdictEmptyResponse
+	}
+	return provider.VerdictUnverifiedSuccess
 }
 
 const (
@@ -460,6 +519,13 @@ func spent(outcome *Outcome) int {
 func fingerprint(call ai.ToolCall) string {
 	sum := sha256.Sum256([]byte(call.Function.Name + "\x00" + call.Function.Arguments))
 	return hex.EncodeToString(sum[:12])
+}
+
+func completionOf(response *ai.Response) int {
+	if response == nil || response.Usage == nil {
+		return 0
+	}
+	return response.Usage.CompletionTokens
 }
 
 func finishOf(response *ai.Response) string {

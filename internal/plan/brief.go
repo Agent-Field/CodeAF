@@ -6,6 +6,7 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/Agent-Field/aforge-v2/internal/provider"
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 )
 
@@ -185,14 +186,25 @@ func writeBrief(ctx context.Context, client Completer, shared string, node Node,
 		userMessage(shared),
 		userMessage(target.String()),
 	}
+	ctx = provider.WithCall(ctx, provider.ClassPlanBrief)
 	response, err := client.CompleteWithMessages(ctx, messages)
 	if err != nil {
+		provider.Report(ctx, provider.VerdictProviderFailure)
 		return "", nil, fmt.Errorf("brief %q: %w", node.Title, err)
 	}
 	brief := trim(response.Text())
 	if brief == "" {
+		// Nothing at all came back. On a reasoning model the usual cause is the
+		// whole budget going to private deliberation, which is a different fact
+		// about the model than a badly written instruction and is worth naming.
+		provider.Report(ctx, provider.VerdictEmptyResponse)
 		return "", usageOf(response), annotate(fmt.Errorf("brief %q: empty response", node.Title), response)
 	}
+	// A brief is prose. There is no schema to check it against and nothing cheap
+	// that can say whether it is a good instruction, so this is exactly the case
+	// the unverified verdict exists for: output that worked, evidence that does
+	// not move a rating.
+	provider.Report(ctx, provider.VerdictUnverifiedSuccess)
 	return brief, usageOf(response), nil
 }
 

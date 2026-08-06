@@ -8,6 +8,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/Agent-Field/aforge-v2/internal/provider"
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 )
 
@@ -221,16 +222,23 @@ func DecidePanel(ctx context.Context, client Completer, goal string, stages []St
 		systemMessage(ensemblePrompt),
 		userMessage(evidence.String()),
 	}
-	response, err := client.CompleteWithMessages(ctx, messages, ai.WithSchema(ensembleSchema))
-	if err != nil {
-		return nil, nil, fmt.Errorf("ensemble: %w", err)
-	}
+	ctx = provider.WithCall(ctx, provider.ClassPlanEnsemble)
 	var panel Panel
-	if err := decodeJSON(response.Text(), &panel); err != nil {
-		return nil, usageOf(response), annotate(fmt.Errorf("ensemble: %w", err), response)
+	response, err := structured(ctx, client, messages, ensembleSchema, &panel)
+	if err != nil {
+		return nil, usageOf(response), fmt.Errorf("ensemble: %w", err)
 	}
 	panel.Mode = strings.ToLower(trim(panel.Mode))
 	panel.Reason = trim(panel.Reason)
+	// Mode is a two-value enum and anything else is read downstream as
+	// "decompose". That silent correction is the right thing for the plan and
+	// the wrong thing for the record: a third answer means the pass did not
+	// answer the question it was asked.
+	if panel.Mode != "decompose" && panel.Mode != "ensemble" {
+		provider.Report(ctx, provider.VerdictSemanticFailure)
+		return &panel, usageOf(response), nil
+	}
+	provider.Report(ctx, provider.VerdictVerifiedSuccess)
 	return &panel, usageOf(response), nil
 }
 

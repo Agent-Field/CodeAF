@@ -95,8 +95,14 @@ fact.
 | aforge, one node          | 4                | 0               | 10m42s     | $0.18        |
 | aforge, parallel pipeline | 8                | —               | 19m28s     | $0.41        |
 | aforge, parallel pipeline (2026-08-05 re-run) | **INVALID** | — | 19m43s | — |
+| aforge, parallel pipeline (2026-08-05, all fixes) | 8 | 0 observed | ~29m17s¹ | $0.32 |
 | pi                        | 0 (timed out)    | —               | 40m (cap)  | not measured |
 | opencode                  | 0 (timed out)    | —               | 40m (cap)  | not measured |
+
+¹ The machine slept 12 minutes mid-run (caught and excluded by the clock-jump
+detector); several provider calls also stalled for 3–6 minutes each (reported
+live by the new stall heartbeat), so this is an honest but provider-degraded
+wall clock, not a clean measurement of the harness.
 
 "Verified" means independently confirmed against #13/#18, not self-reported by
 the reviewer.
@@ -112,17 +118,101 @@ that ends binding with empty needs to the unconsumed frontier of earlier stages
 — is the fix for the planner half, and the benchmark will be re-run.
 
 The parallel pipeline found twice as many defects as the single node, which is
-the result the graph exists to produce. It was also nearly twice as slow, and
-that part is not a property of the approach: the run was held up by a defect in
-the planner's graph shape, since fixed — see the git history. The 19m28s is the
-number that was measured, not the number the fixed planner would produce, and it
-has not been re-measured.
+the result the graph exists to produce. The 2026-08-05 all-fixes re-run
+(anchorLateStarts guard, run landing, lossless decay) confirms the depth is
+reproducible: 8 defects again, every one reproduced by executing the code in
+the run's own venv, with the default-preset corruption correctly ranked most
+severe, at $0.32 (128 calls, 2.74M in / 205k out). The graph shape was correct
+this time — only the diff scan started at t=0, and REVIEW.md was written
+exactly once by its owner. Defect families match the previously verified set
+(#13/#18); a per-defect re-verification against those PRs was not repeated.
+Two open issues the run surfaced: one leaf overran its 500k token budget to
+748k because the landing reserve is uncapped, and provider stalls — not
+harness time — dominated the wall clock.
 
 pi and opencode both hit the 40-minute cap having produced no output at all.
 That is a total failure on this task shape rather than a slow result, and it is
 the largest gap in either benchmark.
 
-## 3. Caveats
+## 3. Model routing — single model against a routed panel
+
+A different question again: not how aforge compares to another harness, but
+whether sending every call to one model is leaving anything on the table. The
+protocol is in [`bench/ab-routing/DESIGN.md`](bench/ab-routing/DESIGN.md), the
+panel and its measurements in `bench/ab-routing/panel.json`, and the full write
+up in [`bench/ab-routing/BASELINE.md`](bench/ab-routing/BASELINE.md) and
+[`bench/ab-routing/REPORT.md`](bench/ab-routing/REPORT.md). Arm A is today's
+shipped configuration with no environment overrides; arm B is the same harness
+with `AFORGE_MODELS` naming a five-model panel.
+
+Three tasks, run end to end through the CLI, n=3, every one graded by code with
+no LLM judge anywhere.
+
+| task | success | score median | $ mean | turns median |
+| ---- | ------- | ------------ | ------ | ------------ |
+| t1-logstore (build a segmented KV store) | 0 / 3 | 0.67 | $0.144 | 127 |
+| t2-synthesis (audit an 11-document corpus) | 3 / 3 | 1.00 | $0.073 | 47 |
+| t3-shiftplan (repair and refactor a package) | 0 / 3 | 0.71 | $0.075 | 79 |
+
+**3 of 9 overall, $0.88, 99 minutes.** Zero harness crashes; no cell rerun.
+
+Two results from the baseline are worth quoting outside that document.
+
+**The failures reproduce exactly.** All three t1 replicates failed the identical
+three tests and all three t3 replicates failed the same defect family. These are
+capability boundaries rather than unlucky draws, and all of them are about
+conforming to a stated contract rather than being internally consistent — the
+store reads a segment it wrote and not one the spec describes. Whatever only had
+to agree with itself was correct in every run.
+
+**Decomposition was never the problem.** On t2 the synthesis node measurably
+improved on its own ensemble members, removing contradictions they had invented.
+But the planner drew **5 nodes and 26 nodes for the same brief**, at 5.4x the
+cost, for the same perfect score — and on t3 the cheapest 3-node plan scored
+*higher* than the 8-node one. A large part of aforge's run-to-run cost variance
+is the plan it happens to draw, which is worth knowing before attributing a cost
+change to anything else.
+
+Two tasks needed hardening after arm A aced them, which is recorded round by
+round; t2 survived its hardening and stays in the suite as a regression control
+rather than a discriminator.
+
+### Arm B — the routed panel
+
+The router (`internal/router/`) over the five-model panel, same three tasks, same
+n=3, `AFORGE_MODELS` pointing at `bench/ab-routing/panel.json`.
+
+| task | A success | B success | A score | B score | A $ mean | B $ mean |
+| ---- | --------- | --------- | ------- | ------- | -------- | -------- |
+| t1-logstore | 0/3 | 0/3 | 0.667 | 0.667 | $0.144 | $0.038 |
+| t2-synthesis | **3/3** | **2/3** | 1.000 | 1.000 | $0.073 | $0.071 |
+| t3-shiftplan | 0/3 | 0/3 | 0.714 | 0.571 | $0.075 | $0.089 |
+| **overall** | **3/9** | **2/9** | 0.714 | 0.667 | $0.877 | $0.593 |
+
+**Routing did not help.** The only cell that moved got worse, the 23% cost
+saving sits inside the planner's own node-count variance, and
+`moonshotai/kimi-k2.6` — the model the panel exists for — **served zero calls**.
+Three of five panel members were never called at all.
+
+**The continual-learning check came back positive and harmful.** Against a
+fresh-ledger control, eight of eleven call classes reordered between run 1 and
+run 3 with a shared ledger and **zero** reordered without one, so the change is
+attributable to the ledger. What it learned was to drop its best model: the
+terminal rung went from kimi-k2.6 to qwen3-30b-a3b. On the same tasks, run 3
+scored 0.000 on t2 and t3 where the control's run 3 scored 1.000 and 0.857.
+
+The mechanism is worth recording here because it is a property of the harness
+rather than of the router. Of 108 settled `exec.leaf` verdicts, 103 were
+`unverified_success` — a finished leaf is not checked by anything, since the
+graders run after `aforge run` exits — so the leaf rating was fitted to the five
+that were graded, all of them budget stops from one task. `exec.leaf` is a single
+global class, so that lesson was applied to every leaf of every other task.
+
+Six router defects and their evidence are in
+[`bench/ab-routing/REPORT.md`](bench/ab-routing/REPORT.md). The recommendation is
+not to ship the router in this configuration.
+
+## 4. Caveats
 
 **pi and opencode cost figures are unreliable.** The starred figures in the #21
 table are account-level credit readings taken around the runs. The API key is

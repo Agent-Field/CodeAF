@@ -16,6 +16,7 @@ import (
 	"github.com/Agent-Field/aforge-v2/internal/exec"
 	"github.com/Agent-Field/aforge-v2/internal/plan"
 	"github.com/Agent-Field/aforge-v2/internal/profile"
+	"github.com/Agent-Field/aforge-v2/internal/router"
 )
 
 func runExecute(args []string) error {
@@ -51,6 +52,7 @@ func runExecute(args []string) error {
 	if err != nil {
 		return err
 	}
+	defer closeRouter(client)
 	ctx := settings.Context(context.Background(), graph.Goal)
 
 	root := *workspace
@@ -63,6 +65,9 @@ func runExecute(args []string) error {
 	}
 
 	fmt.Printf("goal:      %s\nworkspace: %s\n", graph.Goal, space.Root())
+	if len(settings.Panel.Models) > 0 {
+		fmt.Printf("panel:     %s\n", strings.Join(panelSlugs(settings.Panel), ", "))
+	}
 
 	// A graph planned without --brief has nothing for an agent to read, so the
 	// instructions are written now rather than failing at dispatch, and then
@@ -105,6 +110,13 @@ func runExecute(args []string) error {
 	linear := exec.NewLinear(client, space, web, *maxTurns, *maxTokens, deadline)
 	scheduler := exec.NewScheduler(exec.NewRegistry(linear), space, *concurrency)
 	scheduler.Budget = *runBudget
+	// A failed leaf is only worth re-running when there is somewhere stronger to
+	// run it, so the panel decides rather than the scheduler assuming. One
+	// escalation, not a ladder: the router lab's cascade averaged 1.35 calls a
+	// task, and a leaf is the most expensive thing in the system to repeat.
+	if panel, routed := client.(*router.Router); routed && panel.Rungs() > 1 {
+		scheduler.Escalations = 1
+	}
 	// The watchdog sits above every deadline a leaf was given: it only fires
 	// when an executor is wedged past all of them, and it turns that from a
 	// silent forever-hang into a recorded failure the run survives.
@@ -183,7 +195,7 @@ func recordAndCalibrate(ctx context.Context, client plan.Completer, settings con
 			Turns:   node.Turns,
 			Tokens:  node.Tokens,
 			Stop:    node.Stop,
-			Done:    node.State == plan.StateDone,
+			Verdict: node.Verdict,
 		})
 	}
 

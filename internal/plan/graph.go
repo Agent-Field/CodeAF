@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+
+	"github.com/Agent-Field/aforge-v2/internal/provider"
 )
 
 // State is what has happened to a node. It exists to make the graph editable
@@ -113,6 +115,14 @@ type Node struct {
 	Tokens int     `json:"tokens,omitempty"`
 	Cost   float64 `json:"cost,omitempty"`
 	Stop   string  `json:"stop,omitempty"`
+
+	// Verdict is how the leaf ended, as distinct from State. State answers "may
+	// its dependents run", and StateDone answers yes to a leaf that stopped
+	// halfway because it ran out of budget — correctly, since the dependents
+	// still need whatever it produced. Verdict answers the other question, the
+	// one nothing could ask before: was that a success. Anything that learns
+	// from a run reads this field and never State.
+	Verdict provider.Verdict `json:"verdict,omitempty"`
 
 	Failure string `json:"failure,omitempty"`
 }

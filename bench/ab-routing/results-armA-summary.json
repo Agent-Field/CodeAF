@@ -1,0 +1,259 @@
+{
+  "cells": 9,
+  "by_task": {
+    "t1-logstore": {
+      "n": 3,
+      "successes": 0,
+      "success_rate": 0.0,
+      "score": {
+        "n": 3,
+        "min": 0.6667,
+        "max": 0.6667,
+        "median": 0.6667,
+        "mean": 0.6667,
+        "total": 2.0001
+      },
+      "cost_usd": {
+        "n": 3,
+        "min": 0.104158506,
+        "max": 0.18143406799999998,
+        "median": 0.146682526,
+        "mean": 0.1441,
+        "total": 0.4323
+      },
+      "wall_seconds": {
+        "n": 3,
+        "min": 666,
+        "max": 1785,
+        "median": 805,
+        "mean": 1085.3333,
+        "total": 3256
+      },
+      "turns": {
+        "n": 3,
+        "min": 113,
+        "max": 161,
+        "median": 127,
+        "mean": 133.6667,
+        "total": 401
+      },
+      "calls": {
+        "n": 3,
+        "min": 135,
+        "max": 189,
+        "median": 155,
+        "mean": 159.6667,
+        "total": 479
+      },
+      "prompt_tokens": {
+        "n": 3,
+        "min": 2032475,
+        "max": 2288693,
+        "median": 2280695,
+        "mean": 2200621.0,
+        "total": 6601863
+      },
+      "completion_tokens": {
+        "n": 3,
+        "min": 64042,
+        "max": 82489,
+        "median": 65600,
+        "mean": 70710.3333,
+        "total": 212131
+      },
+      "leaves": {
+        "n": 3,
+        "min": 7,
+        "max": 9,
+        "median": 9,
+        "mean": 8.3333,
+        "total": 25
+      },
+      "leaves_not_done": 5,
+      "stop_reasons": {
+        "budget": 5,
+        "done": 19
+      },
+      "plan_failures": 0,
+      "run_nonzero_exit": 3
+    },
+    "t2-synthesis": {
+      "n": 3,
+      "successes": 3,
+      "success_rate": 1.0,
+      "score": {
+        "n": 3,
+        "min": 1.0,
+        "max": 1.0,
+        "median": 1.0,
+        "mean": 1.0,
+        "total": 3.0
+      },
+      "cost_usd": {
+        "n": 3,
+        "min": 0.026199221999999998,
+        "max": 0.140390564,
+        "median": 0.053609564,
+        "mean": 0.0734,
+        "total": 0.2202
+      },
+      "wall_seconds": {
+        "n": 3,
+        "min": 252,
+        "max": 609,
+        "median": 343,
+        "mean": 401.3333,
+        "total": 1204
+      },
+      "turns": {
+        "n": 3,
+        "min": 35,
+        "max": 171,
+        "median": 47,
+        "mean": 84.3333,
+        "total": 253
+      },
+      "calls": {
+        "n": 3,
+        "min": 46,
+        "max": 248,
+        "median": 58,
+        "mean": 117.3333,
+        "total": 352
+      },
+      "prompt_tokens": {
+        "n": 3,
+        "min": 361468,
+        "max": 1594553,
+        "median": 439622,
+        "mean": 798547.6667,
+        "total": 2395643
+      },
+      "completion_tokens": {
+        "n": 3,
+        "min": 22788,
+        "max": 82964,
+        "median": 27800,
+        "mean": 44517.3333,
+        "total": 133552
+      },
+      "leaves": {
+        "n": 3,
+        "min": 5,
+        "max": 20,
+        "median": 5,
+        "mean": 10.0,
+        "total": 30
+      },
+      "leaves_not_done": 0,
+      "stop_reasons": {
+        "done": 36
+      },
+      "plan_failures": 0,
+      "run_nonzero_exit": 0
+    },
+    "t3-shiftplan": {
+      "n": 3,
+      "successes": 0,
+      "success_rate": 0.0,
+      "score": {
+        "n": 3,
+        "min": 0.5714,
+        "max": 0.8571,
+        "median": 0.7143,
+        "mean": 0.7143,
+        "total": 2.1428
+      },
+      "cost_usd": {
+        "n": 3,
+        "min": 0.042094248,
+        "max": 0.10924311800000001,
+        "median": 0.073130706,
+        "mean": 0.0748,
+        "total": 0.2245
+      },
+      "wall_seconds": {
+        "n": 3,
+        "min": 421,
+        "max": 629,
+        "median": 438,
+        "mean": 496.0,
+        "total": 1488
+      },
+      "turns": {
+        "n": 3,
+        "min": 37,
+        "max": 95,
+        "median": 79,
+        "mean": 70.3333,
+        "total": 211
+      },
+      "calls": {
+        "n": 3,
+        "min": 53,
+        "max": 121,
+        "median": 90,
+        "mean": 88.0,
+        "total": 264
+      },
+      "prompt_tokens": {
+        "n": 3,
+        "min": 355967,
+        "max": 883361,
+        "median": 837232,
+        "mean": 692186.6667,
+        "total": 2076560
+      },
+      "completion_tokens": {
+        "n": 3,
+        "min": 37303,
+        "max": 101686,
+        "median": 51646,
+        "mean": 63545.0,
+        "total": 190635
+      },
+      "leaves": {
+        "n": 3,
+        "min": 3,
+        "max": 7,
+        "median": 5,
+        "mean": 5.0,
+        "total": 15
+      },
+      "leaves_not_done": 0,
+      "stop_reasons": {
+        "done": 16
+      },
+      "plan_failures": 0,
+      "run_nonzero_exit": 0
+    }
+  },
+  "overall": {
+    "success_rate": 0.3333,
+    "score": {
+      "n": 9,
+      "min": 0.5714,
+      "max": 1.0,
+      "median": 0.7143,
+      "mean": 0.7937,
+      "total": 7.1429
+    },
+    "cost_usd": {
+      "n": 9,
+      "min": 0.026199221999999998,
+      "max": 0.18143406799999998,
+      "median": 0.104158506,
+      "mean": 0.0974,
+      "total": 0.8769
+    },
+    "wall_seconds": {
+      "n": 9,
+      "min": 252,
+      "max": 1785,
+      "median": 609,
+      "mean": 660.8889,
+      "total": 5948
+    },
+    "total_spend": 0.8769
+  }
+}
