@@ -233,8 +233,11 @@ func TestCompletionAnnouncementIsDeduplicatedAcrossRestart(t *testing.T) {
 	if len(messages) != 1 {
 		t.Fatalf("messages after repeated tick = %+v", messages)
 	}
+	// A deliverable owner (parented on the spine root) posts its whole
+	// summary: that summary is the answer the user asked for, and a one-line
+	// notice was measured to hide the result entirely.
 	if messages[0].NodeID != "land" || messages[0].CommandSeq != 0 ||
-		messages[0].Body != "Write the report landed — Report is in cas://report" {
+		messages[0].Body != "Report is in cas://report\nsecondary detail" {
 		t.Fatalf("announcement = %+v", messages[0])
 	}
 

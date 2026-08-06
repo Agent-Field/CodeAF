@@ -385,6 +385,13 @@ func (r *Reconciler) announceNode(event store.Event) error {
 	var body string
 	switch event.Kind {
 	case store.EventNodeCompleted:
+		// A deliverable owner's summary IS the answer the user asked for, so
+		// the whole thing goes to the thread. Intermediate nodes stay one
+		// line: their substance flows to dependents, not to the user.
+		if node.Parent == store.RootID && strings.TrimSpace(node.Summary) != "" {
+			body = node.Summary
+			break
+		}
 		summary := firstLine(node.Summary)
 		if summary == "" {
 			summary = "completed"
@@ -403,7 +410,7 @@ func (r *Reconciler) announceNode(event store.Event) error {
 	_, err = r.store.PostMessage(store.Message{
 		SessionID: node.Provenance.SessionID,
 		Role:      store.RoleSystem,
-		Body:      body,
+		Body:      boundMessage(body),
 		NodeID:    node.ID,
 	})
 	return err
