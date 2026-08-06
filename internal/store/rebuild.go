@@ -260,6 +260,13 @@ func replayEvent(tx *sql.Tx, event Event) error {
 		}
 		return applyFactView(tx, payload, event.Seq, event.Time)
 
+	case EventFactActivated:
+		var payload factActivatedPayload
+		if err := json.Unmarshal(event.Payload, &payload); err != nil {
+			return err
+		}
+		return applyFactActivation(tx, payload)
+
 	case EventFactSuperseded:
 		var payload factSupersededPayload
 		if err := json.Unmarshal(event.Payload, &payload); err != nil {

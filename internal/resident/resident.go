@@ -44,6 +44,12 @@ type Compiled struct {
 	Question string
 }
 
+// SkillCandidate names the artifact directory a job proved useful. It remains
+// a belief until recurrence and an executable self-test promote it.
+type SkillCandidate struct {
+	Artifact string
+}
+
 // Learned is one distilled memory: what it is about, what kind, one line.
 // Replaces names an existing fact this one supersedes — reconsolidation: a
 // belief met by contradicting experience is rewritten, and the journal keeps
@@ -59,6 +65,9 @@ type Learned struct {
 	// Sources names the existing facts a consolidated line derives from,
 	// strongest evidence first. It is empty outside consolidation.
 	Sources []int64
+	// Skill is set only when this memory names a reusable artifact produced by
+	// the job. Its fact enters the notebook as a non-retrievable candidate.
+	Skill *SkillCandidate
 }
 
 // DistillFunc extracts durable memories from one finished or failed job.
@@ -177,6 +186,8 @@ func (r *Reconciler) Tick(ctx context.Context) error {
 	}
 	r.consolidateNotebook(ctx)
 	r.reflectOnJobs(ctx)
+	r.promoteRecurringSkills(ctx)
+	r.syncSkillBins()
 	return nil
 }
 
@@ -771,6 +782,18 @@ func (r *Reconciler) distillJob(ctx context.Context, node store.Node, failed boo
 			continue
 		}
 		if strings.TrimSpace(fact.Body) == "" {
+			continue
+		}
+		if fact.Skill != nil {
+			if strings.TrimSpace(fact.Skill.Artifact) != "" {
+				_, _ = r.store.RecordSkillCandidate(node.ID, fact.Scope,
+					clipFactBody(fact.Body), fact.Skill.Artifact)
+			}
+			continue
+		}
+		// A skill kind without an artifact can describe an existing skill during
+		// consolidation, but distillation may never mint it active by assertion.
+		if fact.Kind == store.FactSkill {
 			continue
 		}
 		recorded, err := r.recordLearnedFact(node.ID, fact)

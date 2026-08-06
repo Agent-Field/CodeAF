@@ -484,6 +484,63 @@ func TestFoldWithoutPointersRebuildsExactly(t *testing.T) {
 	if !reflect.DeepEqual(after, before) {
 		t.Fatalf("empty-pointer fold changed during rebuild\nbefore: %#v\nafter:  %#v", before, after)
 	}
+
+}
+func TestSkillFactStatusTransitionsSurviveRebuild(t *testing.T) {
+	graph := openTestStore(t, filepath.Join(t.TempDir(), "skills.db"))
+	if _, err := graph.RecordFact("", "tool:git", FactSkill, "asserted skill"); !errors.Is(err, ErrInvalid) {
+		t.Fatalf("RecordFact accepted an unevaluated active skill: %v", err)
+	}
+
+	first, err := graph.RecordSkillCandidate("", "tool:git",
+		"git-audit checks a repository before delivery", "/workspace/first")
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, err := graph.RecordSkillCandidate("", "tool:git",
+		"git-audit checks a repository before delivery", "/workspace/second")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if hits, err := graph.SearchFacts(FactQuery{Cues: []string{"tool:git"}, Terms: "git audit"}); err != nil || len(hits) != 0 {
+		t.Fatalf("candidate leaked into retrieval: hits=%+v err=%v", hits, err)
+	}
+
+	installed := "/home/test/.aforge/skills/git-audit"
+	if err := graph.ActivateSkill(first.Seq, installed); err != nil {
+		t.Fatal(err)
+	}
+	const failure = "check.sh exited 7: fixture rejected"
+	if err := graph.SupersedeFactWithReason(second.Seq, first.Seq, failure); err != nil {
+		t.Fatal(err)
+	}
+	before, err := graph.SkillFacts("", 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(before) != 2 {
+		t.Fatalf("skill facts before rebuild = %+v", before)
+	}
+	bySeq := map[int64]Fact{before[0].Seq: before[0], before[1].Seq: before[1]}
+	if got := bySeq[first.Seq]; got.Status != FactActive || got.Artifact != installed {
+		t.Fatalf("activated skill = %+v", got)
+	}
+	if got := bySeq[second.Seq]; got.Status != FactSuperseded || got.StatusNote != failure {
+		t.Fatalf("failed candidate = %+v", got)
+	}
+	if err := graph.Rebuild(); err != nil {
+		t.Fatal(err)
+	}
+	after, err := graph.SkillFacts("", 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(after, before) {
+		t.Fatalf("skill statuses changed during rebuild\nbefore: %#v\nafter:  %#v", before, after)
+	}
+	if hits, err := graph.SearchFacts(FactQuery{Cues: []string{"tool:git"}, Terms: "git audit"}); err != nil || len(hits) != 1 || hits[0].Seq != first.Seq {
+		t.Fatalf("rebuilt active skill retrieval = %+v err=%v", hits, err)
+	}
 }
 
 func openTestStore(t *testing.T, path string) *Store {

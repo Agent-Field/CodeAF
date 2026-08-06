@@ -98,6 +98,9 @@ func (r *Reconciler) reflectOnJobs(ctx context.Context) {
 		learned = learned[:reflectionFactLimit]
 	}
 	for _, fact := range learned {
+		if fact.Skill != nil || fact.Kind == store.FactSkill {
+			continue
+		}
 		if strings.TrimSpace(fact.Body) == "" {
 			continue
 		}

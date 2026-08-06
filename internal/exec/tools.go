@@ -381,9 +381,23 @@ func (t *Toolbox) sh(ctx context.Context, args map[string]any) Result {
 	}
 	runCtx, cancel := context.WithTimeout(ctx, time.Duration(seconds)*time.Second)
 	defer cancel()
+	var environment []string
+	if t.history != nil {
+		if bin, err := store.SkillsBinDir(); err == nil {
+			environment = os.Environ()
+			// The login shell may rewrite inherited PATH while reading its
+			// profile. Export inside that shell so a store adds the learned
+			// shelf without changing the benchmarked no-store command path.
+			environment = replaceEnv(environment, "AFORGE_SKILLS_BIN", bin)
+			command = "export PATH=\"${AFORGE_SKILLS_BIN:?}:$PATH\"\n" + command
+		}
+	}
 
 	cmd := exec.CommandContext(runCtx, "bash", "-lc", command)
 	cmd.Dir = t.workspace.Root()
+	if environment != nil {
+		cmd.Env = environment
+	}
 	// A command that leaves a background child sharing its stdout used to hang
 	// the whole run: killing bash at the timeout is not enough, because Wait
 	// blocks until every inherited pipe writer exits, and a scheduler goroutine
@@ -531,6 +545,17 @@ func stringArg(args map[string]any, key string) string {
 		return value
 	}
 	return ""
+}
+
+func replaceEnv(environment []string, key, value string) []string {
+	prefix := key + "="
+	replaced := make([]string, 0, len(environment)+1)
+	for _, entry := range environment {
+		if !strings.HasPrefix(entry, prefix) {
+			replaced = append(replaced, entry)
+		}
+	}
+	return append(replaced, prefix+value)
 }
 
 func intArg(args map[string]any, key string, fallback int) int {

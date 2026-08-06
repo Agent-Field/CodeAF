@@ -1376,7 +1376,7 @@ func jobIDOf(graph *store.Store, node store.Node) string {
 
 // distillerSystemPrompt writes the notebook. The bar is durability: a memory
 // must still matter after this job is forgotten.
-const distillerSystemPrompt = `You judge whether a finished job taught an assistant anything worth keeping in its scoped notebook. You receive the goal, the outcome, and whether the job FAILED. Return exactly one JSON object: {"facts":[{"scope":"...","kind":"preference|quirk|lesson|fact|unsettled","body":"...","unsettled":{"approaches":[{"approach":"...","scope":"...","evidence":[123]},{"approach":"...","scope":"...","evidence":[456]}]},"replaces":0}]}.
+const distillerSystemPrompt = `You judge whether a finished job taught an assistant anything worth keeping in its scoped notebook. You receive the goal, the outcome, and whether the job FAILED. Return exactly one JSON object: {"facts":[{"scope":"...","kind":"preference|quirk|lesson|fact|unsettled|skill","body":"...","unsettled":{"approaches":[{"approach":"...","scope":"...","evidence":[123]},{"approach":"...","scope":"...","evidence":[456]}]},"replaces":0,"skill":{"artifact":"/absolute/path/to/artifact-directory"}}]}.
 
 Judgment framework:
 - A memory qualifies only if it will matter after this job is forgotten.
@@ -1385,6 +1385,7 @@ Judgment framework:
 - Judge like an after-action review: what was expected, what actually happened, and what explains the gap. The explanation is the memory; the events themselves are not.
 - When the direct route failed and a substitute route worked — a different source, tool, or method reached the same end — record the working route as a lesson in the narrowest scope it applies to. A proven detour is the most transferable thing a job can teach.
 - Beliefs must stay true as the world moves. When this job's evidence updates, contradicts, or outdates one of the standing numbered entries shown to you, write the corrected memory in full and set "replaces" to that entry's number — the old belief retires when the new one lands. Accumulating a contradiction beside the belief it contradicts is worse than either alone.
+- Make one additional judgment: when the job leaves a reusable procedure it actually used — a script written in the workspace, a repeated command sequence captured as an artifact, or a proven detour — emit one skill memory whose body is a one-line command doc and whose skill.artifact is the absolute path to its command-named directory; that directory must contain executable check.sh plus run.sh or another executable. This only proposes a candidate. If a FAILED job shows a standing skill broke, emit the failure lesson with replaces set to that skill's number so it retires.
 - When the job compared approaches — deliberately, or by failing over from one route to another — the comparison's outcome is the memory: record the winner as the standing approach with what decided it, and point "replaces" at any entry that backed the loser. A settled experiment is worth more than either belief that preceded it.
 - When the outcome contains TRIAL VERDICT REQUIRED for unsettled fact #N, consume that pair explicitly. If the evidence settles it, emit the winning ordinary lesson or fact with "replaces":N. If it does not, emit kind "unsettled" with "replaces":N and the same two structured approaches and evidence sequences. Never omit the replacement merely because the result was inconclusive.
 - Include "unsettled" only for kind "unsettled"; omit it for every ordinary fact.
@@ -1393,9 +1394,10 @@ Judgment framework:
 - An empty list is the common correct answer.
 - Return at most five memories.`
 
-const consolidatorSystemPrompt = `You rewrite one scope's accumulated notebook lines into a smaller, sharper notebook. Return exactly one JSON object: {"facts":[{"scope":"...","kind":"preference|quirk|lesson|fact|unsettled","body":"...","unsettled":{"approaches":[{"approach":"...","scope":"...","evidence":[123]},{"approach":"...","scope":"...","evidence":[456]}]},"sources":[123,456],"replaces":0}]}.
+const consolidatorSystemPrompt = `You rewrite one scope's accumulated notebook lines into a smaller, sharper notebook. Return exactly one JSON object: {"facts":[{"scope":"...","kind":"preference|quirk|lesson|fact|unsettled|skill","body":"...","unsettled":{"approaches":[{"approach":"...","scope":"...","evidence":[123]},{"approach":"...","scope":"...","evidence":[456]}]},"sources":[123,456],"replaces":0}]}.
 
 Merge duplicates and near-duplicates. Resolve contradictions in favour of the newest line. Keep every load-bearing specific, including paths, values, and names. Each output must stand alone, use exactly the target scope, and preserve the best fitting kind. Return at most eight lines.
+An input skill was admitted by execution. Preserve kind skill only when an output derives from a skill input; never turn an ordinary fact into a skill.
 
 Every input line is numbered with its durable notebook number. Each output must name in "sources" every input it derives from, strongest evidence first, and every input must be assigned to exactly one output. The sources are the evidence and supersession map, not citations to invent. When an output corrects a standing line, also set "replaces" to that input's number; omit it or use 0 otherwise.
 
@@ -1575,6 +1577,9 @@ func parseLearnedFacts(raw string, limit int) []resident.Learned {
 			Unsettled *store.UnsettledPair `json:"unsettled"`
 			Replaces  int64                `json:"replaces"`
 			Sources   []int64              `json:"sources"`
+			Skill     *struct {
+				Artifact string `json:"artifact"`
+			} `json:"skill"`
 		} `json:"facts"`
 	}
 	if err := json.NewDecoder(strings.NewReader(raw[start:])).Decode(&parsed); err != nil {
@@ -1595,9 +1600,17 @@ func parseLearnedFacts(raw string, limit int) []resident.Learned {
 		if fact.Scope == "" || fact.Body == "" || !validLearnedKind(fact.Kind) {
 			continue
 		}
+		var skill *resident.SkillCandidate
+		if fact.Skill != nil {
+			artifact := strings.TrimSpace(fact.Skill.Artifact)
+			if artifact == "" || fact.Kind != store.FactSkill {
+				continue
+			}
+			skill = &resident.SkillCandidate{Artifact: artifact}
+		}
 		learned = append(learned, resident.Learned{
 			Scope: fact.Scope, Kind: fact.Kind, Body: fact.Body, Unsettled: fact.Unsettled,
-			Replaces: fact.Replaces, Sources: fact.Sources,
+			Replaces: fact.Replaces, Sources: fact.Sources, Skill: skill,
 		})
 		if len(learned) == limit {
 			break
@@ -1608,7 +1621,7 @@ func parseLearnedFacts(raw string, limit int) []resident.Learned {
 
 func validLearnedKind(kind store.FactKind) bool {
 	switch kind {
-	case store.FactPreference, store.FactQuirk, store.FactLesson, store.FactPlain, store.FactUnsettled:
+	case store.FactPreference, store.FactQuirk, store.FactLesson, store.FactPlain, store.FactUnsettled, store.FactSkill:
 		return true
 	default:
 		return false

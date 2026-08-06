@@ -92,6 +92,72 @@ func TestRecallToolIsStoreGatedAndBounded(t *testing.T) {
 	}
 }
 
+func TestShPrependsSkillPathOnlyWithStore(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	bin, err := graphstore.SkillsBinDir()
+	if err != nil {
+		t.Fatal(err)
+	}
+	command := `{"cmd":"printf '%s' \"$PATH\""}`
+
+	plain := NewToolbox(workspace(t), 1, nil)
+	plainResult := plain.Execute(context.Background(), "sh", command)
+	if plainResult.IsError {
+		t.Fatalf("plain sh: %s", plainResult.Content)
+	}
+	if strings.Split(plainResult.Content, string(os.PathListSeparator))[0] == bin {
+		t.Fatalf("no-store PATH unexpectedly starts with skill bin: %q", plainResult.Content)
+	}
+
+	history, err := graphstore.Open(filepath.Join(t.TempDir(), "history.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = history.Close() })
+	attached := NewToolboxWithStore(workspace(t), 2, nil, history)
+	attachedResult := attached.Execute(context.Background(), "sh", command)
+	if attachedResult.IsError {
+		t.Fatalf("store-attached sh: %s", attachedResult.Content)
+	}
+	if got := strings.Split(attachedResult.Content, string(os.PathListSeparator))[0]; got != bin {
+		t.Fatalf("store-attached PATH starts with %q, want %q: %q", got, bin, attachedResult.Content)
+	}
+}
+
+func TestRecallSurfacesActiveSkillKind(t *testing.T) {
+	history, err := graphstore.Open(filepath.Join(t.TempDir(), "history.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = history.Close() })
+	candidate, err := history.RecordSkillCandidate("", "tool:git",
+		"repo-audit checks repository invariants", "/workspace/repo-audit")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := history.ActivateSkill(candidate.Seq, "/home/test/.aforge/skills/repo-audit"); err != nil {
+		t.Fatal(err)
+	}
+
+	tools := NewToolboxWithStore(workspace(t), 2, nil, history)
+	result := tools.Execute(context.Background(), "recall", `{"terms":"repo audit invariants"}`)
+	if result.IsError {
+		t.Fatalf("recall failed: %s", result.Content)
+	}
+	var decoded recallToolResponse
+	if err := json.Unmarshal([]byte(result.Content), &decoded); err != nil {
+		t.Fatal(err)
+	}
+	if len(decoded.Notebook) != 1 || decoded.Notebook[0].Kind != graphstore.FactSkill ||
+		decoded.Notebook[0].Body != "repo-audit checks repository invariants" {
+		t.Fatalf("recalled skills = %+v", decoded.Notebook)
+	}
+	if !strings.Contains(result.Content, `"kind":"skill"`) {
+		t.Fatalf("recall did not render the skill kind distinctly: %s", result.Content)
+	}
+}
+
 // TestClampKeepsBothEnds guards the truncation rule. Keeping only the head is
 // the obvious implementation and loses the most valuable line: a command's
 // verdict is at the end, so head-only truncation reliably discards the error
