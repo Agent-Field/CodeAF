@@ -20,6 +20,12 @@ const (
 	eventBatchSize   = 200
 )
 
+// ReflexGroup is the durable node marker for the no-compiler, no-planner rung.
+// Group is already part of the splice event and rebuilt node view.
+const ReflexGroup = "reflex"
+
+const reflexPromotionLine = "this turned out to be a job — doing it properly"
+
 // Compiled is one instruction after assume-and-declare: the goal to act on,
 // the defaults that were filled (each a revisable receipt), and the
 // compiler's judgement of shape — "lookup", "task", or "project" — which the
@@ -217,6 +223,9 @@ func (r *Reconciler) reconcileCommand(ctx context.Context, command store.Command
 	if err := r.store.ResolveCommand(command.Seq, outcome.status, outcome.result); err != nil {
 		return err
 	}
+	if strings.TrimSpace(outcome.receipt) == "" {
+		return nil
+	}
 	role := store.RoleSystem
 	if outcome.asAgent {
 		role = store.RoleAgent
@@ -231,6 +240,9 @@ func (r *Reconciler) reconcileCommand(ctx context.Context, command store.Command
 }
 
 func (r *Reconciler) applyCommand(ctx context.Context, command store.Command) (commandOutcome, error) {
+	if command.Reflex {
+		return r.reflex(command)
+	}
 	switch command.Kind {
 	case store.CommandSplice:
 		return r.splice(ctx, command)
@@ -253,6 +265,36 @@ func (r *Reconciler) applyCommand(ctx context.Context, command store.Command) (c
 	}
 }
 
+func (r *Reconciler) reflex(command store.Command) (commandOutcome, error) {
+	if command.Kind != store.CommandSplice || strings.TrimSpace(command.Target) != "" {
+		return commandOutcome{}, errors.New("reflex must be an untargeted splice")
+	}
+	id := fmt.Sprintf("reflex-%d", command.Seq)
+	subtree := store.Subtree{Nodes: []store.NodeSpec{{
+		ID: id, Brief: command.Instruction, Title: clipLabel(firstLine(command.Instruction), 48),
+		Stage: 1, Group: ReflexGroup,
+	}}}
+	provenance := store.Provenance{
+		Origin: store.OriginUser, SessionID: command.SessionID, Intent: command.Instruction,
+	}
+	if err := r.store.Splice(store.RootID, subtree, provenance); err != nil {
+		node, ok, readErr := r.store.Node(id)
+		if readErr != nil || !ok || node.Parent != store.RootID || node.Group != ReflexGroup ||
+			node.Provenance.Origin != store.OriginUser ||
+			node.Provenance.SessionID != command.SessionID ||
+			node.Provenance.Intent != command.Instruction {
+			return commandOutcome{}, err
+		}
+	}
+	return commandOutcome{
+		status: store.CommandApplied,
+		result: "spliced 1 reflex node",
+		// The head already acknowledged the action. Skipping a second receipt is
+		// part of keeping this rung to one breath.
+		receipt: "",
+	}, nil
+}
+
 func (r *Reconciler) splice(ctx context.Context, command store.Command) (commandOutcome, error) {
 	snapshot, err := r.store.ActiveSnapshot()
 	if err != nil {
@@ -262,9 +304,22 @@ func (r *Reconciler) splice(ctx context.Context, command store.Command) (command
 		return commandOutcome{}, err
 	}
 
-	compiled, err := r.compile(ctx, command.Instruction, r.renderCompileContext(snapshot, command.Instruction))
+	compileContext := r.renderCompileContext(snapshot, command.Instruction)
+	promotion, promoted, err := r.promotionSource(command)
+	if err != nil {
+		return commandOutcome{}, err
+	}
+	if promoted {
+		compileContext += "\n\nPromoted reflex (reuse this partial; compile the SAME verbatim ask as normal work):\n" +
+			"node: " + promotion.ID + "\nverbatim ask: " + promotion.Provenance.Intent +
+			"\npartial result:\n" + clipBlock(promotion.Summary, store.MaxDigestBytes)
+	}
+	compiled, err := r.compile(ctx, command.Instruction, compileContext)
 	if err != nil {
 		return commandOutcome{}, fmt.Errorf("compile request: %w", err)
+	}
+	if promoted {
+		compiled.BuildsOn = append([]string{promotion.ID}, compiled.BuildsOn...)
 	}
 	if question := strings.TrimSpace(compiled.Question); question != "" {
 		// One gap was too consequential to guess. Ask in the agent's voice
@@ -315,11 +370,34 @@ func (r *Reconciler) splice(ctx context.Context, command store.Command) (command
 		}
 	}
 
+	receipt := compileReceipt(compiled.Goal, compiled.Assumptions)
+	if promoted {
+		receipt = reflexPromotionLine
+	}
 	return commandOutcome{
 		status:  store.CommandApplied,
 		result:  fmt.Sprintf("spliced %d nodes", len(subtree.Nodes)),
-		receipt: compileReceipt(compiled.Goal, compiled.Assumptions),
+		receipt: receipt,
 	}, nil
+}
+
+func (r *Reconciler) promotionSource(command store.Command) (store.Node, bool, error) {
+	if strings.TrimSpace(command.Target) == "" {
+		return store.Node{}, false, nil
+	}
+	node, ok, err := r.store.Node(command.Target)
+	if err != nil {
+		return store.Node{}, false, err
+	}
+	if !ok || node.Group != ReflexGroup {
+		return store.Node{}, false, nil
+	}
+	if node.Status != store.Done ||
+		node.Provenance.Intent != command.Instruction ||
+		node.Provenance.SessionID != command.SessionID {
+		return store.Node{}, false, fmt.Errorf("splice target %q is not the matching settled reflex", command.Target)
+	}
+	return node, true, nil
 }
 
 // TitleFunc compresses one goal into a few display words. It is a chat-surface
@@ -506,7 +584,7 @@ func (r *Reconciler) announceTransitions(ctx context.Context) error {
 				if ok && node.Provenance.SessionID != "" {
 					if event.Kind == store.EventNodeFailed {
 						r.distillJob(ctx, node, true)
-					} else if node.Parent == store.RootID {
+					} else if node.Parent == store.RootID && !r.reflexPromoted(node) {
 						r.distillJob(ctx, node, false)
 					}
 					if node.Parent == store.RootID {
@@ -533,6 +611,9 @@ func (r *Reconciler) announceNode(event store.Event) error {
 		return fmt.Errorf("event %d names missing node %q", event.Seq, event.NodeID)
 	}
 	if node.Provenance.SessionID == "" {
+		return nil
+	}
+	if event.Kind == store.EventNodeCompleted && r.reflexPromoted(node) {
 		return nil
 	}
 
@@ -567,6 +648,14 @@ func (r *Reconciler) announceNode(event store.Event) error {
 		NodeID:    node.ID,
 	})
 	return err
+}
+
+func (r *Reconciler) reflexPromoted(node store.Node) bool {
+	if node.Group != ReflexGroup {
+		return false
+	}
+	promoted, err := r.store.HasCommandTarget(node.ID, store.CommandSplice)
+	return err == nil && promoted
 }
 
 // compileContextBytes bounds what the compiler sees of the graph. Continuity

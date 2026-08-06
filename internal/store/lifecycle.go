@@ -185,6 +185,81 @@ func (s *Store) Complete(claim Claim, summary string) error {
 	return nil
 }
 
+// CompleteAndRequestFollowup atomically settles one node and journals the
+// ordinary splice that will continue it. Reflex promotion uses this instead of
+// two writes so a process exit can leave neither a lost promotion nor a command
+// whose partial is still absent from the graph.
+func (s *Store) CompleteAndRequestFollowup(claim Claim, summary string, command Command) (Command, error) {
+	if command.Kind != CommandSplice || command.Reflex || command.Target != claim.ID ||
+		strings.TrimSpace(command.Instruction) == "" {
+		return Command{}, fmt.Errorf("complete %q with follow-up: %w: follow-up must be an ordinary splice targeted at the completed node", claim.ID, ErrInvalid)
+	}
+	summary = bounded(summary, MaxDigestBytes)
+	tx, err := s.db.BeginTx(context.Background(), nil)
+	if err != nil {
+		return Command{}, fmt.Errorf("complete %q with follow-up: %w", claim.ID, err)
+	}
+	defer tx.Rollback()
+
+	if err := validateClaim(tx, claim, Claimed, Running); err != nil {
+		return Command{}, fmt.Errorf("complete %q with follow-up: %w", claim.ID, err)
+	}
+	var openChild string
+	err = tx.QueryRow(`
+		SELECT id FROM nodes
+		WHERE parent_id = ? AND status NOT IN (?, ?, ?)
+		ORDER BY created_seq, id LIMIT 1`, claim.ID, Done, Failed, Cancelled).Scan(&openChild)
+	if err == nil {
+		return Command{}, fmt.Errorf("complete %q with follow-up: %w %q", claim.ID, ErrOpenChild, openChild)
+	}
+	if !errors.Is(err, sql.ErrNoRows) {
+		return Command{}, fmt.Errorf("complete %q with follow-up: inspect children: %w", claim.ID, err)
+	}
+
+	result, err := tx.Exec(`
+		UPDATE nodes SET status = ?, summary = ?
+		WHERE id = ? AND owner = ? AND claim_token = ? AND status IN (?, ?)`,
+		Done, summary, claim.ID, claim.Owner, claim.Token, Claimed, Running)
+	if err != nil {
+		return Command{}, fmt.Errorf("complete %q with follow-up: %w", claim.ID, err)
+	}
+	if err := requireChanged(tx, result, claim, Claimed, Running); err != nil {
+		return Command{}, fmt.Errorf("complete %q with follow-up: %w", claim.ID, err)
+	}
+	completion := completePayload{Owner: claim.Owner, Token: claim.Token, Summary: summary}
+	completionSeq, completedAt, err := appendEvent(tx, claim.ID, EventNodeCompleted, completion)
+	if err != nil {
+		return Command{}, fmt.Errorf("complete %q with follow-up: %w", claim.ID, err)
+	}
+	if _, err := tx.Exec(`UPDATE nodes SET finished_at = ?, updated_seq = ? WHERE id = ?`,
+		formatTime(completedAt), completionSeq, claim.ID); err != nil {
+		return Command{}, fmt.Errorf("materialize completion %q with follow-up: %w", claim.ID, err)
+	}
+	if err := refreshGraphFTS(tx, claim.ID); err != nil {
+		return Command{}, fmt.Errorf("index completion %q with follow-up: %w", claim.ID, err)
+	}
+
+	payload := commandPayload{
+		SessionID: command.SessionID, Kind: command.Kind, Target: command.Target,
+		Instruction: command.Instruction,
+	}
+	commandSeq, commandAt, err := appendEvent(tx, command.Target, EventCommandRequested, payload)
+	if err != nil {
+		return Command{}, fmt.Errorf("request follow-up for %q: %w", claim.ID, err)
+	}
+	if err := applyCommandView(tx, payload, commandSeq, commandAt); err != nil {
+		return Command{}, fmt.Errorf("materialize follow-up for %q: %w", claim.ID, err)
+	}
+	if err := tx.Commit(); err != nil {
+		return Command{}, fmt.Errorf("complete %q with follow-up: %w", claim.ID, err)
+	}
+	command.Seq = commandSeq
+	command.Time = commandAt
+	command.Status = CommandPending
+	command.UpdatedSeq = commandSeq
+	return command, nil
+}
+
 // Fail settles a claimed or running node unsuccessfully. Failed is terminal,
 // so dependents become ready and receive the failure digest instead of being
 // stranded.

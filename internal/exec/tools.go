@@ -131,6 +131,30 @@ func (t *Toolbox) Definitions() []ai.ToolDefinition {
 	return definitions
 }
 
+func reflexPromotionDefinition() ai.ToolDefinition {
+	return define("promote", "Stop this reflex and hand the original request to a full job. Use immediately when the action is not one obvious reversible step. partial says what you learned or changed before stopping.", map[string]any{
+		"partial": prop("string", "useful partial result or discovery for the full job to build on"),
+	}, "partial")
+}
+
+// reflexPromotion reads the executor's explicit larger-than-it-looked verdict.
+// The promote call is intercepted by Linear and never reaches the toolbox.
+func reflexPromotion(calls []ai.ToolCall) (string, bool) {
+	for _, call := range calls {
+		if call.Function.Name != "promote" {
+			continue
+		}
+		var args struct {
+			Partial string `json:"partial"`
+		}
+		if err := json.Unmarshal([]byte(call.Function.Arguments), &args); err != nil {
+			return "", true
+		}
+		return strings.TrimSpace(args.Partial), true
+	}
+	return "", false
+}
+
 // Execute dispatches one call. An unknown name is answered with the valid list
 // rather than refused, because a model that guessed a tool name can recover
 // from being told the real ones and cannot recover from a dead loop.

@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"strings"
 	"time"
+	"unicode"
 	"unicode/utf8"
 
 	"github.com/Agent-Field/aforge-v2/internal/resident"
@@ -37,14 +38,18 @@ Alongside the snapshot you carry a notebook: durable lessons, quirks, preference
 
 Return exactly one JSON object with this shape and no text outside it:
 {"reply":"<what to say right now>","command":null,"remember":null,"retract":null}
-where command may instead be {"kind":"splice|amend|cancel","target":"<node id or empty>","instruction":"<the user's instruction, preserving their words verbatim>"}
+where command may instead be {"kind":"reflex|splice|amend|cancel","target":"<node id or empty>","instruction":"<the user's instruction, preserving their words verbatim>"}
 and remember may instead be {"scope":"<scope>","kind":"preference|fact","body":"<one sharp sentence>"}
 and retract may instead be {"seq":123}, naming exactly one numbered notebook line.
 
 Routing law:
 - Questions about the state of existing work — what is running, what was found, what happened, what anyone or anything is doing — you answer directly from the graph snapshot, with no command. Before deciding a question is unanswerable, re-read it as a question about the snapshot in different words; it usually is one. "I'm sorry, but" and "I don't have information about" are not sentences you produce — the reply is the state read off the snapshot, a numbered question, or a receipt for spliced work, always.
 - Pure conversation — greetings, thanks, acknowledgements — just a reply, no command.
-- EVERYTHING else is work for the workforce: a fact you do not have (weather, prices, news, anything about the world), research, code, files, any task at all. Emit a splice command with the user's own words verbatim in instruction — do not improve, summarize, or reinterpret them. Never refuse and never say you cannot or lack access: you always can, by splicing. A quick lookup is still a splice.
+- EVERYTHING else is work for the workforce. Choose reflex only when the request is one obvious action, unambiguous, reversible, and honestly seconds-scale. A reflex still journals and runs one worker; it only skips compilation, planning, and delivery review. Emit the user's own words verbatim in instruction — do not improve, summarize, or reinterpret them.
+- Reversibility, not apparent size, is the license for reflex. Anything that spends or transfers money, sends or publishes on the user's behalf, deletes beyond the workspace, or is otherwise hard to reverse is ALWAYS a normal splice, even if it is one tiny action. When scope or consequence is unclear, use splice.
+- Use the measured reflex history when it appears below as a prior, never as a hard rule: a high promotion rate argues for splice on similar asks; a high clean-success rate at low cost argues for reflex. The current request and its consequences still decide.
+- A reflex is not a synonym for lookup. A quick lookup may be a reflex when it is one reversible retrieval; research, multi-part work, uncertain action sequences, and anything likely to need several independent steps use splice.
+- Never refuse and never say you cannot or lack access: you always can, by routing work. A normal splice receives the same verbatim instruction.
 - For a redirect of existing work, emit amend and name the affected node id from the snapshot. For stopping work, emit cancel with its target. Never invent a node id; if there is no unambiguous target, explain that briefly and emit no command.
 - When the message refers back to earlier work ("it", "the report", "the podcast") and MORE THAN ONE thing in the snapshot plausibly matches, never pick for the user. Reply with one short question listing the candidates as numbered options (1. ..., 2. ...), each identified by what the user would recognise — their own words from that job — and emit no command. Their next message chooses. A single plausible match is not ambiguity; proceed.
 - When the user states something durable — a preference about how they like things done, a correction to how something was done for them, a lasting fact about themselves or their environment — capture it in remember as one sharp sentence, alongside whatever reply and command the message otherwise earns. Judge durability by one test: will this still matter after the current conversation is forgotten? Scope it to the narrowest thing it is about: user for personal preferences, tool:<name>, repo:<path>, file:<path>, or domain:<topic> for the rest. Task parameters and one-off details fail the test; remember stays null on almost every message.
@@ -63,13 +68,21 @@ type Client interface {
 // Head tails the durable thread and turns each new user message into one fast
 // routing call, one reply, and at most one asynchronous command.
 type Head struct {
-	client Client
-	store  *store.Store
+	client    Client
+	store     *store.Store
+	knowledge func() string
 }
 
 // New returns a conversational head backed by graphStore.
 func New(client Client, graphStore *store.Store) *Head {
 	return &Head{client: client, store: graphStore}
+}
+
+// WithSelfKnowledge supplies measured execution history to the routing call.
+// Nil and empty values preserve the original prompt exactly.
+func (h *Head) WithSelfKnowledge(knowledge func() string) *Head {
+	h.knowledge = knowledge
+	return h
 }
 
 // Serve tails every session until ctx is cancelled.
@@ -191,7 +204,7 @@ func (h *Head) answer(ctx context.Context, user store.Message) error {
 
 	var commandSeq int64
 	if decision.Command != nil {
-		kind, ok := commandKind(decision.Command.Kind)
+		kind, reflex, ok := commandKind(decision.Command.Kind)
 		if !ok {
 			// Validation normally catches this. Keeping the guard at the store
 			// membrane prevents a future decoder change from emitting bad work.
@@ -200,6 +213,7 @@ func (h *Head) answer(ctx context.Context, user store.Message) error {
 		command, requestErr := h.store.RequestCommand(store.Command{
 			SessionID:   user.SessionID,
 			Kind:        kind,
+			Reflex:      reflex,
 			Target:      decision.Command.Target,
 			Instruction: decision.Command.Instruction,
 		})
@@ -225,6 +239,11 @@ func (h *Head) route(ctx context.Context, user store.Message) (routeDecision, er
 		"\n\nNotebook (durable memory across jobs and conversations):\n" + renderNotebook(h.store, user.Body) +
 		"\n\nRecent thread before this message:\n" + renderThread(recent) +
 		"\n\nCurrent user message (verbatim):\n" + user.Body
+	if h.knowledge != nil {
+		if measured := strings.TrimSpace(h.knowledge()); measured != "" {
+			prompt = "Measured execution history (evidence for routing priors):\n" + measured + "\n\n" + prompt
+		}
+	}
 	messages := []ai.Message{
 		textMessage("system", headSystemPrompt),
 		textMessage("user", prompt),
@@ -258,7 +277,17 @@ func (h *Head) route(ctx context.Context, user store.Message) (routeDecision, er
 		}
 	}
 	var decision routeDecision
-	if err := decodeJSONObject(raw, &decision); err != nil || decision.validate() != nil {
+	if err := decodeJSONObject(raw, &decision); err != nil {
+		if raw == "" {
+			return routeDecision{}, errors.New("provider returned an empty response")
+		}
+		return routeDecision{Reply: raw}, nil
+	}
+	if decision.Command != nil && decision.Command.Kind == routeReflexKind {
+		decision.Command.Instruction = user.Body
+		decision.enforceConsequences()
+	}
+	if decision.validate() != nil {
 		if raw == "" {
 			return routeDecision{}, errors.New("provider returned an empty response")
 		}
@@ -389,29 +418,87 @@ func (decision routeDecision) validate() error {
 	if decision.Command == nil {
 		return nil
 	}
-	if _, ok := commandKind(decision.Command.Kind); !ok {
+	_, reflex, ok := commandKind(decision.Command.Kind)
+	if !ok {
 		return fmt.Errorf("unknown command kind %q", decision.Command.Kind)
 	}
 	if strings.TrimSpace(decision.Command.Instruction) == "" {
 		return errors.New("empty command instruction")
 	}
-	if decision.Command.Kind != string(store.CommandSplice) && strings.TrimSpace(decision.Command.Target) == "" {
+	if reflex && consequenceGated(decision.Command.Instruction) {
+		return errors.New("consequential instruction cannot use reflex")
+	}
+	if decision.Command.Kind != string(store.CommandSplice) && !reflex && strings.TrimSpace(decision.Command.Target) == "" {
 		return fmt.Errorf("%s command has no target", decision.Command.Kind)
+	}
+	if reflex && strings.TrimSpace(decision.Command.Target) != "" {
+		return errors.New("reflex command cannot target existing work")
 	}
 	return nil
 }
 
-func commandKind(kind string) (store.CommandKind, bool) {
+const routeReflexKind = "reflex"
+
+func commandKind(kind string) (store.CommandKind, bool, bool) {
 	switch kind {
+	case routeReflexKind:
+		return store.CommandSplice, true, true
 	case string(store.CommandSplice):
-		return store.CommandSplice, true
+		return store.CommandSplice, false, true
 	case string(store.CommandAmend):
-		return store.CommandAmend, true
+		return store.CommandAmend, false, true
 	case string(store.CommandCancel):
-		return store.CommandCancel, true
+		return store.CommandCancel, false, true
 	default:
-		return "", false
+		return "", false, false
 	}
+}
+
+func (decision *routeDecision) enforceConsequences() {
+	if decision.Command != nil && decision.Command.Kind == routeReflexKind &&
+		consequenceGated(decision.Command.Instruction) {
+		decision.Command.Kind = string(store.CommandSplice)
+	}
+}
+
+// consequenceGated is a safety membrane, not a triviality classifier. It names
+// only irreversible effect families; everything about how small or obvious an
+// action is remains a learned model judgment.
+func consequenceGated(instruction string) bool {
+	lower := strings.ToLower(instruction)
+	words := strings.FieldsFunc(lower, func(r rune) bool {
+		return !unicode.IsLetter(r) && !unicode.IsNumber(r)
+	})
+	contains := func(candidates ...string) bool {
+		for _, word := range words {
+			for _, candidate := range candidates {
+				if word == candidate {
+					return true
+				}
+			}
+		}
+		return false
+	}
+	if contains("buy", "purchase", "pay", "spend", "transfer", "donate", "subscribe", "order", "refund") {
+		return true
+	}
+	if contains("publish", "post", "tweet", "email", "send", "deploy", "release", "push", "merge") {
+		return true
+	}
+	if !contains("delete", "remove", "erase", "wipe", "destroy", "drop") {
+		return false
+	}
+	if strings.Contains(lower, "outside the workspace") ||
+		contains("account", "database", "production", "remote", "cloud", "system") {
+		return true
+	}
+	for _, field := range strings.Fields(lower) {
+		field = strings.Trim(field, `"'(),;:`)
+		if strings.HasPrefix(field, "/") || strings.HasPrefix(field, "~/") {
+			return true
+		}
+	}
+	return false
 }
 
 func renderGraph(snapshot store.Snapshot) string {

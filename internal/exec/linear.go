@@ -84,6 +84,17 @@ piece of work that depends on you, so length there is paid for many times over.
 Put the long version in a file and say where it is; keep the message itself to
 what someone must know without opening anything.`
 
+const reflexSystemPrompt = `
+
+This assignment is a reflex: one obvious, reversible action with a deliberately
+small budget. Do the action directly and finish as soon as its result is known.
+Do not widen it into research, a sequence of independent changes, or a project.
+If inspection reveals that the request is ambiguous, needs several real steps,
+or cannot be landed safely in this short run, stop and call promote with the
+useful partial you have so the same request can continue as a normal job. A
+correct promotion is better than stretching a reflex until its budget cuts it
+off.`
+
 // Linear is a single agent working in order: think, call tools, look, repeat.
 type Linear struct {
 	client    Completer
@@ -156,6 +167,9 @@ func (l *Linear) Run(ctx context.Context, task Task) (*Outcome, error) {
 
 	tools := NewToolboxWithStore(l.workspace, task.NodeID, l.web, l.history)
 	definitions := tools.Definitions()
+	if task.Reflex {
+		definitions = append(definitions, reflexPromotionDefinition())
+	}
 	trace := newTracer(l.workspace, task.NodeID)
 	defer trace.close()
 	// The system prompt is the harness's invariants; the contract, when the
@@ -163,6 +177,9 @@ func (l *Linear) Run(ctx context.Context, task Task) (*Outcome, error) {
 	// Together they are what a specialised harness would have hand-written for
 	// this domain — generated instead, which is what keeps the loop generic.
 	system := systemPrompt
+	if task.Reflex {
+		system += reflexSystemPrompt
+	}
 	if contract := strings.TrimSpace(task.Contract); contract != "" {
 		system += "\n\nHow this particular kind of job is done well:\n" + contract
 		trace.note("contract:\n" + contract)
@@ -243,6 +260,21 @@ func (l *Linear) Run(ctx context.Context, task Task) (*Outcome, error) {
 		addUsage(&outcome.Usage, response)
 
 		calls := response.ToolCalls()
+		if task.Reflex {
+			if partial, promote := reflexPromotion(calls); promote {
+				outcome.Stop = StopPromote
+				outcome.Promote = true
+				outcome.Text = partial
+				if outcome.Text == "" {
+					outcome.Text = strings.TrimSpace(response.Text())
+				}
+				if outcome.Text == "" {
+					outcome.Text = "The quick pass found that this needs a full job."
+				}
+				trace.turn(outcome.Turns, response, calls, nil, "promoted")
+				return l.land(ctx, task, outcome, started), nil
+			}
+		}
 		if len(calls) == 0 {
 			outcome.Text = strings.TrimSpace(response.Text())
 			// A turn that returns no visible text has either been cut off
@@ -454,6 +486,8 @@ func verdictFor(outcome *Outcome) provider.Verdict {
 		return provider.VerdictBudgetStop
 	case StopTurnCap:
 		return provider.VerdictTurnCap
+	case StopPromote:
+		return provider.VerdictUnverifiedSuccess
 	case StopEmpty:
 		return provider.VerdictEmptyResponse
 	case StopError, StopDeadline:
