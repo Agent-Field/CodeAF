@@ -92,7 +92,8 @@ func TestNarratorSpeaksBatchedProgressCasually(t *testing.T) {
 			narrated = &messages[i]
 		}
 	}
-	if narrated == nil || narrated.Body != "City A is in — city B is close behind." {
+	if narrated == nil || narrated.Body != "City A is in — city B is close behind." ||
+		narrated.NodeID != "goal" {
 		t.Fatalf("narration not posted as the agent voice: %+v", messages)
 	}
 }

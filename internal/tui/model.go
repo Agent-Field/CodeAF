@@ -40,10 +40,13 @@ type Backend interface {
 	Messages(sessionID string, afterSeq int64, limit int) ([]store.Message, error)
 	PostMessage(store.Message) (store.Message, error)
 	ActiveSnapshot() (store.Snapshot, error)
+	Snapshot() (store.Snapshot, error)
 	Node(id string) (store.Node, bool, error)
 	NodeMessages(nodeID string, afterSeq int64, limit int) ([]store.Message, error)
 	PendingCommands(limit int) ([]store.Command, error)
+	CommandBySeq(seq int64) (store.Command, bool, error)
 	Usage() (store.TotalUsage, error)
+	TopLevelJobUsage() (map[string]store.JobUsage, error)
 }
 
 // Commander owns the live operations that do not belong to the thread lens.
@@ -71,15 +74,21 @@ type catalogResultMsg struct {
 }
 
 type pollResultMsg struct {
-	sessionID   string
-	messages    []store.Message
-	snapshot    store.Snapshot
-	pending     []store.Command
-	usage       store.TotalUsage
-	messagesErr error
-	snapshotErr error
-	pendingErr  error
-	usageErr    error
+	sessionID       string
+	messages        []store.Message
+	snapshot        store.Snapshot
+	cardSnapshot    store.Snapshot
+	pending         []store.Command
+	usage           store.TotalUsage
+	jobUsage        map[string]store.JobUsage
+	commands        []store.Command
+	messagesErr     error
+	snapshotErr     error
+	cardSnapshotErr error
+	pendingErr      error
+	usageErr        error
+	jobUsageErr     error
+	commandsErr     error
 
 	nodeID          string
 	node            store.Node
@@ -108,11 +117,20 @@ type Model struct {
 
 	nodeTrace viewport.Model
 
-	messages []store.Message
-	snapshot store.Snapshot
-	pending  []store.Command
-	usage    store.TotalUsage
-	lastSeq  int64
+	messages     []store.Message
+	snapshot     store.Snapshot
+	cardSnapshot store.Snapshot
+	pending      []store.Command
+	usage        store.TotalUsage
+	jobUsage     map[string]store.JobUsage
+	commands     map[int64]store.Command
+	lastSeq      int64
+
+	cards           []jobCard
+	cardExpanded    map[string]bool
+	selectedCardID  string
+	graphScopeID    string
+	cardReturnFocus paneFocus
 
 	selectedNodeID string
 	graphRows      []graphRow
@@ -184,6 +202,9 @@ type Model struct {
 	nodeTraceBounds   paneBounds
 	nodeBackBounds    paneBounds
 	activityBarBounds paneBounds
+	cardDockRows      []cardRow
+	chatCardRows      []cardRow
+	cardPartRows      []cardPartRow
 
 	// chatMessageRows maps rendered chat lines to the message seq they
 	// belong to, so clicking a collapsed deliverable opens it in place.
@@ -199,6 +220,7 @@ type paneFocus int
 const (
 	focusInput paneFocus = iota
 	focusChat
+	focusCards
 	focusGraph
 )
 
@@ -241,6 +263,9 @@ func newModel(backend Backend, sessionID string, commander Commander) *Model {
 		modelRole:        "talk",
 		feedExpanded:     map[int]bool{},
 		expandedMessages: map[int64]bool{},
+		jobUsage:         map[string]store.JobUsage{},
+		commands:         map[int64]store.Command{},
+		cardExpanded:     map[string]bool{},
 	}
 	if saved, ok := commander.(splitStore); ok {
 		m.splitPct = clampSplitPct(saved.SplitPct())
@@ -421,6 +446,14 @@ func (m *Model) updateKey(message tea.KeyMsg) (tea.Cmd, bool) {
 			m.palette = paletteNone
 			m.paletteDismissed = true
 			m.setSize(m.width, m.height)
+		case m.graphVisible() && m.focus == focusGraph && m.closeScopedGraph():
+		case m.focus == focusCards && m.collapseSelectedCard():
+		case m.focus == focusChat && m.collapseSelectedCard():
+		case m.focus == focusCards:
+			m.focus = focusInput
+			m.inputFocused = true
+			_ = m.input.Focus()
+			m.setSize(m.width, m.height)
 		case m.graphVisible() && m.focus == focusGraph:
 			m.toggleGraph()
 		case m.input.Value() != "":
@@ -441,6 +474,22 @@ func (m *Model) updateKey(message tea.KeyMsg) (tea.Cmd, bool) {
 	if m.paletteOpen() {
 		if command, handled := m.updatePaletteKey(key); handled {
 			return command, true
+		}
+	}
+	if m.focus == focusCards && (key == "up" || key == "k" || key == "down" || key == "j") {
+		delta := -1
+		if key == "down" || key == "j" {
+			delta = 1
+		}
+		m.moveCardSelection(delta)
+		return nil, true
+	}
+	if key == "enter" && m.focus == focusCards {
+		return m.advanceCard(m.selectedCardID, focusCards), true
+	}
+	if key == "enter" && m.focus == focusChat && m.selectedCardID != "" {
+		if card := m.cardByID(m.selectedCardID); card != nil && card.State == cardSettled {
+			return m.advanceCard(card.ID, focusChat), true
 		}
 	}
 	if key == "v" && !m.inputFocused {
@@ -506,18 +555,37 @@ func (m *Model) poll() tea.Cmd {
 	return func() tea.Msg {
 		messages, messagesErr := backend.Messages(sessionID, afterSeq, pollLimit)
 		snapshot, snapshotErr := backend.ActiveSnapshot()
+		cardSnapshot, cardSnapshotErr := backend.Snapshot()
 		pending, pendingErr := backend.PendingCommands(pollLimit)
 		usage, usageErr := backend.Usage()
+		jobUsage, jobUsageErr := backend.TopLevelJobUsage()
 		result := pollResultMsg{
-			sessionID:   sessionID,
-			messages:    messages,
-			snapshot:    snapshot,
-			pending:     pending,
-			usage:       usage,
-			messagesErr: messagesErr,
-			snapshotErr: snapshotErr,
-			pendingErr:  pendingErr,
-			usageErr:    usageErr,
+			sessionID:       sessionID,
+			messages:        messages,
+			snapshot:        snapshot,
+			cardSnapshot:    cardSnapshot,
+			pending:         pending,
+			usage:           usage,
+			jobUsage:        jobUsage,
+			messagesErr:     messagesErr,
+			snapshotErr:     snapshotErr,
+			cardSnapshotErr: cardSnapshotErr,
+			pendingErr:      pendingErr,
+			usageErr:        usageErr,
+			jobUsageErr:     jobUsageErr,
+		}
+		seenCommands := make(map[int64]bool)
+		for _, message := range messages {
+			if message.CommandSeq == 0 || seenCommands[message.CommandSeq] {
+				continue
+			}
+			seenCommands[message.CommandSeq] = true
+			command, found, err := backend.CommandBySeq(message.CommandSeq)
+			if err != nil {
+				result.commandsErr = errors.Join(result.commandsErr, err)
+			} else if found {
+				result.commands = append(result.commands, command)
+			}
 		}
 		if nodeID != "" {
 			result.nodeID = nodeID
@@ -555,11 +623,22 @@ func (m *Model) applyPoll(result pollResultMsg) {
 	if result.snapshotErr == nil {
 		m.snapshot = result.snapshot
 	}
+	if result.cardSnapshotErr == nil {
+		m.cardSnapshot = result.cardSnapshot
+	}
 	if result.pendingErr == nil {
 		m.pending = result.pending
 	}
 	if result.usageErr == nil {
 		m.usage = result.usage
+	}
+	if result.jobUsageErr == nil && result.jobUsage != nil {
+		m.jobUsage = result.jobUsage
+	}
+	if result.commandsErr == nil {
+		for _, command := range result.commands {
+			m.commands[command.Seq] = command
+		}
 	}
 	if result.nodeID != "" && result.nodeID == m.nodeViewID {
 		if result.nodeErr == nil && result.nodeFound {
@@ -572,7 +651,7 @@ func (m *Model) applyPoll(result pollResultMsg) {
 		m.refreshNodeView(false)
 	}
 
-	added := 0
+	var accepted []store.Message
 	if result.messagesErr == nil && (result.sessionID == "" || result.sessionID == m.sessionID) {
 		for _, message := range result.messages {
 			// Polls can briefly overlap after a post. Journal sequence numbers
@@ -584,20 +663,38 @@ func (m *Model) applyPoll(result pollResultMsg) {
 			if message.Seq > m.lastSeq {
 				m.lastSeq = message.Seq
 			}
-			if message.Role != store.RoleUser || message.NodeID == "" {
-				added++
-				// A fresh agent-side message reveals progressively while the
-				// reader is following the bottom of the conversation.
-				if message.Role != store.RoleUser && m.autoScroll {
-					m.revealSeq = message.Seq
-					m.revealShown = 1
-				}
-			}
+			accepted = append(accepted, message)
 		}
 	}
 
+	m.rebuildCards()
+	added := 0
+	questionArrived := false
+	for _, message := range accepted {
+		if isQuestionMessage(message) {
+			questionArrived = true
+		}
+		if !m.attentionMessage(message) {
+			continue
+		}
+		added++
+		// Only attention events animate. Ambient narration mutates its docked
+		// card without manufacturing a new arrival in the conversation.
+		if message.Role != store.RoleUser && m.autoScroll {
+			m.revealSeq = message.Seq
+			m.revealShown = 1
+		}
+	}
+
+	// A state-only poll can move a card between the dock and its birth place,
+	// so the footer and conversation both reflow even without a new message.
+	if questionArrived {
+		m.focus = focusInput
+		m.inputFocused = true
+		_ = m.input.Focus()
+	}
+	m.setSize(m.width, m.height)
 	if added > 0 {
-		m.refreshChat()
 		if m.autoScroll {
 			m.chat.GotoBottom()
 			m.newMessages = 0
@@ -613,11 +710,20 @@ func (m *Model) applyPoll(result pollResultMsg) {
 	if result.snapshotErr != nil {
 		problems = append(problems, fmt.Errorf("read graph: %w", result.snapshotErr))
 	}
+	if result.cardSnapshotErr != nil {
+		problems = append(problems, fmt.Errorf("read card graph: %w", result.cardSnapshotErr))
+	}
 	if result.pendingErr != nil {
 		problems = append(problems, fmt.Errorf("read pending commands: %w", result.pendingErr))
 	}
 	if result.usageErr != nil {
 		problems = append(problems, fmt.Errorf("read usage: %w", result.usageErr))
+	}
+	if result.jobUsageErr != nil {
+		problems = append(problems, fmt.Errorf("read job usage: %w", result.jobUsageErr))
+	}
+	if result.commandsErr != nil {
+		problems = append(problems, fmt.Errorf("read card commands: %w", result.commandsErr))
 	}
 	if result.nodeID != "" && result.nodeID == m.nodeViewID {
 		if result.nodeErr != nil {
@@ -630,7 +736,6 @@ func (m *Model) applyPoll(result pollResultMsg) {
 		}
 	}
 	m.err = errors.Join(problems...)
-	m.refreshGraph()
 }
 
 func (m *Model) submit() tea.Cmd {
@@ -660,6 +765,9 @@ func (m *Model) submit() tea.Cmd {
 // chat always, the task rail only while it is open.
 func (m *Model) toggleFocus() tea.Cmd {
 	order := []paneFocus{focusInput, focusChat}
+	if m.activityBarVisible() && m.activeCardCount() > 0 {
+		order = append(order, focusCards)
+	}
 	if m.graphVisible() {
 		if m.horizontal {
 			order = []paneFocus{focusInput, focusChat, focusGraph}
@@ -679,10 +787,15 @@ func (m *Model) toggleFocus() tea.Cmd {
 	if m.focus == focusGraph {
 		m.ensureGraphSelection()
 	}
+	if m.focus == focusCards {
+		m.ensureCardSelection()
+	}
 	if m.inputFocused {
+		m.setSize(m.width, m.height)
 		return m.input.Focus()
 	}
 	m.input.Blur()
+	m.setSize(m.width, m.height)
 	return nil
 }
 
@@ -690,6 +803,7 @@ func (m *Model) toggleFocus() tea.Cmd {
 // the arrows work immediately; closing hands focus back to the input.
 func (m *Model) toggleGraph() {
 	m.graphOpen = !m.graphOpen
+	m.graphScopeID = ""
 	if m.graphOpen {
 		m.focus = focusGraph
 		m.inputFocused = false
@@ -707,8 +821,8 @@ func (m *Model) toggleGraph() {
 // terminal is narrow) is on screen.
 func (m *Model) graphVisible() bool { return m.graphOpen && m.nodeViewID == "" }
 
-// activityBarVisible reports whether the one-line task summary sits above the
-// input. It stands in for the rail whenever the rail is closed.
+// activityBarVisible reports whether the active-card dock sits above the
+// input. Its quiet fallback still opens the rail for graph-only stores.
 func (m *Model) activityBarVisible() bool {
 	return !m.graphVisible() && m.nodeViewID == "" && !m.paletteOpen()
 }
@@ -725,7 +839,7 @@ func (m *Model) setSize(width, height int) {
 	}
 	barHeight := 0
 	if m.activityBarVisible() {
-		barHeight = 1
+		barHeight = m.cardDockHeight()
 	}
 	// top bar + blank + main + blank + palette + activity bar + input + hint
 	mainHeight := max(3, m.height-3-paletteHeight-barHeight-m.input.LineCount()-footerHeight)
@@ -744,7 +858,7 @@ func (m *Model) setSize(width, height int) {
 	m.chatHeight = mainHeight
 	m.graphHeight = mainHeight
 
-	m.chat.Width = max(1, m.chatWidth-2)  // breathing room on the right
+	m.chat.Width = max(1, m.chatWidth-2) // breathing room on the right
 	m.chat.Height = max(1, m.chatHeight)
 	m.graph.Width = max(1, m.graphWidth-2)
 	m.graph.Height = max(1, m.graphHeight-2) // header + blank

@@ -169,6 +169,14 @@ func (m *Model) snapshotNode(nodeID string) (store.Node, bool) {
 			return node, true
 		}
 	}
+	if m.graphScopeID == "" {
+		return store.Node{}, false
+	}
+	for _, node := range m.cardSnapshot.Nodes {
+		if node.ID == nodeID {
+			return node, true
+		}
+	}
 	return store.Node{}, false
 }
 
@@ -627,10 +635,7 @@ func (m *Model) scrollNodeAt(x, y int, down bool) bool {
 
 func (m *Model) updateMouseClick(x, y int) bool {
 	if m.activityBarBounds.contains(x, y) {
-		if !m.graphOpen {
-			m.toggleGraph()
-		}
-		return true
+		return m.clickCardDock(y - m.activityBarBounds.y)
 	}
 	if m.inputBounds.contains(x, y) {
 		m.focus = focusInput
@@ -682,6 +687,34 @@ func (m *Model) updateMouseClick(x, y int) bool {
 	return false
 }
 
+func (m *Model) clickCardDock(line int) bool {
+	active, _ := placeJobCards(m.cards)
+	if len(active) > 3 && m.focus != focusCards {
+		m.focusCardDock()
+		return true
+	}
+	for _, part := range m.cardPartRows {
+		if part.dock && part.line == line {
+			m.selectedCardID = part.cardID
+			_ = m.openNodeByID(part.nodeID)
+			return true
+		}
+	}
+	for _, row := range m.cardDockRows {
+		if line < row.start || line > row.end {
+			continue
+		}
+		_ = m.advanceCard(row.cardID, focusCards)
+		return true
+	}
+	if len(active) > 0 {
+		m.focusCardDock()
+		return true
+	}
+	m.toggleGraph()
+	return true
+}
+
 // toggleChatMessageAt handles a click inside the chat column: a provenance
 // chip jumps to its task, a collapsed answer opens or closes in place, and
 // anything else is a harmless no-op.
@@ -696,6 +729,13 @@ func (m *Model) toggleChatMessageAt(x, y int) bool {
 			return true
 		}
 	}
+	for _, part := range m.cardPartRows {
+		if !part.dock && part.line == line {
+			m.selectedCardID = part.cardID
+			_ = m.openNodeByID(part.nodeID)
+			return true
+		}
+	}
 	for _, row := range m.chatMessageRows {
 		if line < row.start || line > row.end {
 			continue
@@ -704,6 +744,13 @@ func (m *Model) toggleChatMessageAt(x, y int) bool {
 		offset := m.chat.YOffset
 		m.refreshChat()
 		m.chat.SetYOffset(offset)
+		return true
+	}
+	for _, row := range m.chatCardRows {
+		if line < row.start || line > row.end {
+			continue
+		}
+		_ = m.advanceCard(row.cardID, focusChat)
 		return true
 	}
 	return false
