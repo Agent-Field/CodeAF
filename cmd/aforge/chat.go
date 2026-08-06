@@ -397,6 +397,7 @@ func runChat(args []string) error {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	var background sync.WaitGroup
+	streamEvents := make(chan tui.StreamEvent, 256)
 	background.Add(3)
 	// Routing is a structuring call, and it was the one loop served with a bare
 	// context: without the configured effort knob, a reasoning model spends the
@@ -404,9 +405,27 @@ func runChat(args []string) error {
 	// 600/600 completion tokens of thought and zero answer on the default model.
 	go func() {
 		defer background.Done()
+		defer close(streamEvents)
+		headContext := provider.WithStreamObserver(settings.Context(ctx, "head"), func(event provider.StreamEvent) {
+			translated := tui.StreamEvent{Delta: event.Delta}
+			switch event.Kind {
+			case provider.StreamStarted:
+				translated.Kind = tui.StreamStarted
+			case provider.StreamDelta:
+				translated.Kind = tui.StreamDelta
+			case provider.StreamFinished:
+				translated.Kind = tui.StreamFinished
+			case provider.StreamFailed:
+				translated.Kind = tui.StreamFailed
+			}
+			select {
+			case streamEvents <- translated:
+			case <-ctx.Done():
+			}
+		})
 		_ = head.New(chatClient, graph).
 			WithSelfKnowledge(func() string { return selfKnowledge(settings, taskClient.Model()) }).
-			Serve(settings.Context(ctx, "head"))
+			Serve(headContext)
 	}()
 	go func() { defer background.Done(); _ = reconciler.Serve(ctx) }()
 	go func() { defer background.Done(); _ = runner.Serve(ctx) }()
@@ -421,6 +440,7 @@ func runChat(args []string) error {
 		store:         graph,
 		prefs:         prefs,
 		sessionID:     *sessionID,
+		streamEvents:  streamEvents,
 	}
 	err = tui.RunWithCommander(graph, *sessionID, commander)
 	cancel()
@@ -468,13 +488,16 @@ type chatCommander struct {
 	taskClient *liveClient
 	store      *store.Store
 
-	mu        sync.Mutex
-	prefs     chatPrefs
-	sessionID string
+	mu           sync.Mutex
+	prefs        chatPrefs
+	sessionID    string
+	streamEvents <-chan tui.StreamEvent
 
 	catalogOnce sync.Once
 	catalog     []tui.ModelChoice
 }
+
+func (c *chatCommander) StreamEvents() <-chan tui.StreamEvent { return c.streamEvents }
 
 func (c *chatCommander) Models() []string {
 	candidates := make([]string, 0, len(c.settings.Panel.Models)+7)

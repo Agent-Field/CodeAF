@@ -13,9 +13,9 @@ import (
 // to exactly what was written.
 var (
 	mdCode    = lipgloss.NewStyle().Foreground(butter)
-	mdHeading = lipgloss.NewStyle().Foreground(lavender).Bold(true)
+	mdHeading = lipgloss.NewStyle().Foreground(ink).Bold(true)
 	mdQuote   = lipgloss.NewStyle().Foreground(muted)
-	mdBold    = lipgloss.NewStyle().Bold(true)
+	mdBold    = lipgloss.NewStyle().Foreground(ink).Bold(true)
 )
 
 func renderMarkdown(text string, width int) string {
@@ -97,7 +97,7 @@ func pathLink(path string, width int) string {
 
 func styleBold(text string) string {
 	if strings.Count(text, "**") < 2 {
-		return text
+		return inputTextStyle.Render(text)
 	}
 	parts := strings.Split(text, "**")
 	var rebuilt strings.Builder
@@ -105,7 +105,7 @@ func styleBold(text string) string {
 		if index%2 == 1 && index < len(parts)-(len(parts)%2) {
 			rebuilt.WriteString(mdBold.Render(part))
 		} else {
-			rebuilt.WriteString(part)
+			rebuilt.WriteString(inputTextStyle.Render(part))
 		}
 	}
 	return rebuilt.String()
