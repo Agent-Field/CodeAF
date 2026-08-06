@@ -198,7 +198,7 @@ func deriveJobCards(
 			card.Latest = fallbackLatest
 		}
 
-		commandSeq := matchingCommandSeq(root, commands)
+		commandSeq := matchingCommandSeq(root, commands, matchedCommands)
 		if commandSeq != 0 {
 			matchedCommands[commandSeq] = true
 			card.CommandSeq = commandSeq
@@ -312,13 +312,20 @@ func deriveJobCards(
 	return cards
 }
 
-func matchingCommandSeq(root store.Node, commands map[int64]store.Command) int64 {
+// matchingCommandSeq pairs a job root with the command that asked for it.
+// Roots are visited in creation order and each command matches at most one
+// root (used tracks consumption), so two identical asks in flight keep their
+// own receipts instead of both attaching to the later command.
+func matchingCommandSeq(root store.Node, commands map[int64]store.Command, used map[int64]bool) int64 {
 	var matched int64
 	for seq, command := range commands {
-		if command.Kind == store.CommandSplice &&
-			command.SessionID == root.Provenance.SessionID &&
-			command.Instruction == root.Provenance.Intent &&
-			seq > matched && (root.CreatedSeq == 0 || seq <= root.CreatedSeq) {
+		if used[seq] || command.Kind != store.CommandSplice ||
+			command.SessionID != root.Provenance.SessionID ||
+			command.Instruction != root.Provenance.Intent ||
+			(root.CreatedSeq != 0 && seq > root.CreatedSeq) {
+			continue
+		}
+		if matched == 0 || seq < matched {
 			matched = seq
 		}
 	}
@@ -338,12 +345,24 @@ func subtreeCardSettled(nodes []store.Node) bool {
 }
 
 func cardDeliverable(root store.Node, messages []store.Message) *store.Message {
-	for index := len(messages) - 1; index >= 0; index-- {
-		message := &messages[index]
-		if message.NodeID == root.ID && message.Role == store.RoleSystem &&
-			(root.FinishedAt.IsZero() || message.Time.IsZero() ||
-				!message.Time.Before(root.FinishedAt)) {
-			return message
+	if !root.FinishedAt.IsZero() {
+		// The deliverable is the FIRST root-anchored system message at or after
+		// the finish — the landing itself. Later system posts (a detached
+		// recalibration report, follow-up notes) must not replace the answer.
+		for index := range messages {
+			message := &messages[index]
+			if message.NodeID == root.ID && message.Role == store.RoleSystem &&
+				(message.Time.IsZero() || !message.Time.Before(root.FinishedAt)) {
+				return message
+			}
+		}
+	}
+	if root.FinishedAt.IsZero() {
+		for index := len(messages) - 1; index >= 0; index-- {
+			message := &messages[index]
+			if message.NodeID == root.ID && message.Role == store.RoleSystem {
+				return message
+			}
 		}
 	}
 	if strings.TrimSpace(root.Summary) == "" && strings.TrimSpace(root.Error) == "" {

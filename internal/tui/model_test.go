@@ -1510,3 +1510,63 @@ func TestRailGroupHeaderDoesNotBleedAcrossSiblingSubtrees(t *testing.T) {
 		t.Fatalf("group headers = %d, want one per job (2):\n%s", headers, tree)
 	}
 }
+
+// The settled card's chat portion is the landing itself: the first system
+// message at or after the finish, never a later detached report.
+func TestSettledCardDeliverableIsTheLandingNotALaterReport(t *testing.T) {
+	finished := time.Now().Add(-time.Minute)
+	snapshot := store.Snapshot{Nodes: []store.Node{
+		{ID: store.RootID},
+		{
+			ID: "job", Parent: store.RootID, Title: "Ship it", Status: store.Done,
+			CreatedSeq: 2, FinishedAt: finished, Summary: "Shipped.",
+			Provenance: store.Provenance{SessionID: "cards", Intent: "ship it"},
+		},
+	}}
+	messages := []store.Message{
+		{
+			Seq: 5, Time: finished.Add(time.Second), SessionID: "cards",
+			Role: store.RoleSystem, NodeID: "job", Body: "Shipped. Version 2 is live.",
+		},
+		{
+			Seq: 7, Time: finished.Add(5 * time.Second), SessionID: "cards",
+			Role: store.RoleSystem, NodeID: "job", Body: "recalibration: raised the worker budget after this job",
+		},
+	}
+	cards := deriveJobCards("cards", snapshot, messages, nil, nil, nil)
+	card := requireCard(t, cards, "job")
+	if card.Deliverable == nil || card.Deliverable.Seq != 5 {
+		t.Fatalf("deliverable = %#v, want the landing (seq 5)", card.Deliverable)
+	}
+	if card.Outcome != "Shipped. Version 2 is live." {
+		t.Fatalf("outcome = %q, want the landing's first line", card.Outcome)
+	}
+}
+
+// Two jobs born from the same words keep their own receipts: command matching
+// is one-to-one in creation order, never many-roots-to-one-command.
+func TestTwoJobsWithTheSameAskKeepTheirOwnReceipts(t *testing.T) {
+	commands := map[int64]store.Command{
+		1: {Seq: 1, SessionID: "cards", Kind: store.CommandSplice, Instruction: "fix the tests"},
+		2: {Seq: 2, SessionID: "cards", Kind: store.CommandSplice, Instruction: "fix the tests"},
+	}
+	provenance := store.Provenance{SessionID: "cards", Intent: "fix the tests"}
+	snapshot := store.Snapshot{Nodes: []store.Node{
+		{ID: store.RootID},
+		{ID: "job-1", Parent: store.RootID, Title: "First fix", CreatedSeq: 3, Status: store.Running, Provenance: provenance},
+		{ID: "job-2", Parent: store.RootID, Title: "Second fix", CreatedSeq: 4, Status: store.Running, Provenance: provenance},
+	}}
+	messages := []store.Message{
+		{Seq: 5, SessionID: "cards", Role: store.RoleSystem, CommandSeq: 1, Body: "Reading one.\nAssumed: alpha."},
+		{Seq: 6, SessionID: "cards", Role: store.RoleSystem, CommandSeq: 2, Body: "Reading two.\nAssumed: beta."},
+	}
+	cards := deriveJobCards("cards", snapshot, messages, nil, nil, commands)
+	first := requireCard(t, cards, "job-1")
+	second := requireCard(t, cards, "job-2")
+	if first.CommandSeq != 1 || !strings.Contains(first.Receipt, "alpha") {
+		t.Fatalf("first job matched command %d with receipt %q, want command 1 / alpha", first.CommandSeq, first.Receipt)
+	}
+	if second.CommandSeq != 2 || !strings.Contains(second.Receipt, "beta") {
+		t.Fatalf("second job matched command %d with receipt %q, want command 2 / beta", second.CommandSeq, second.Receipt)
+	}
+}
