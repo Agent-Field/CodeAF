@@ -44,10 +44,12 @@ type Reconciler struct {
 	store   *store.Store
 	compile CompileFunc
 	plan    PlanFunc
+	narrate NarrateFunc
 
 	mu                 sync.Mutex
 	watcherInitialized bool
 	lastEventSeq       int64
+	progress           map[string]*subtreeProgress
 }
 
 // New constructs a reconciler. A nil compiler preserves the instruction
@@ -124,6 +126,9 @@ func (r *Reconciler) Tick(ctx context.Context) error {
 	}
 	if err := r.announceTransitions(ctx); err != nil {
 		return fmt.Errorf("resident tick: watch graph: %w", err)
+	}
+	if err := r.speakProgress(ctx); err != nil {
+		return fmt.Errorf("resident tick: narrate progress: %w", err)
 	}
 	return nil
 }
@@ -352,14 +357,29 @@ func (r *Reconciler) announceTransitions(ctx context.Context) error {
 		if err != nil {
 			return err
 		}
+		var byID map[string]store.Node
+		if r.narrate != nil {
+			nodes, err := r.store.ActiveNodes()
+			if err != nil {
+				return err
+			}
+			byID = make(map[string]store.Node, len(nodes))
+			for _, node := range nodes {
+				byID[node.ID] = node
+			}
+		}
 		for _, event := range events {
 			if err := ctx.Err(); err != nil {
 				return err
 			}
-			if event.Kind == store.EventNodeCompleted || event.Kind == store.EventNodeFailed {
+			switch event.Kind {
+			case store.EventNodeCompleted, store.EventNodeFailed:
 				if err := r.announceNode(event); err != nil {
 					return err
 				}
+				r.recordForNarration(byID, event)
+			case store.EventNodeStarted:
+				r.recordForNarration(byID, event)
 			}
 			r.lastEventSeq = event.Seq
 		}
