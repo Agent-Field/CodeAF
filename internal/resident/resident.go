@@ -50,6 +50,9 @@ type Learned struct {
 	Kind     store.FactKind
 	Body     string
 	Replaces int64
+	// Sources names the existing facts a consolidated line derives from,
+	// strongest evidence first. It is empty outside consolidation.
+	Sources []int64
 }
 
 // DistillFunc extracts durable memories from one finished or failed job.
@@ -57,7 +60,7 @@ type Learned struct {
 type DistillFunc func(ctx context.Context, goal, outcome string, failed bool) ([]Learned, error)
 
 // ConsolidateFunc rewrites one scope's accumulated facts into fewer, better
-// lines. Returned lines replace the input set entirely.
+// lines. Each returned line maps itself to its originals through Sources.
 type ConsolidateFunc func(ctx context.Context, scope string, facts []store.Fact) ([]Learned, error)
 
 // CompileFunc turns a verbatim thread instruction into a goal the planner can
@@ -85,8 +88,7 @@ type Reconciler struct {
 	lastEventSeq       int64
 	progress           map[string]*subtreeProgress
 	lastConsolidation  time.Time
-	lastReflection     time.Time
-	lastReflectedJobs  int
+	now                func() time.Time
 }
 
 // New constructs a reconciler. A nil compiler preserves the instruction
@@ -98,7 +100,7 @@ func New(graph *store.Store, compile CompileFunc, plan PlanFunc) *Reconciler {
 			return Compiled{Goal: instruction}, nil
 		}
 	}
-	return &Reconciler{store: graph, compile: compile, plan: plan}
+	return &Reconciler{store: graph, compile: compile, plan: plan, now: time.Now}
 }
 
 // Serve polls until ctx is cancelled or the store can no longer be read or
