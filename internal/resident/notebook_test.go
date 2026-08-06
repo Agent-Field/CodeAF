@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/Agent-Field/aforge-v2/internal/plan"
 	"github.com/Agent-Field/aforge-v2/internal/store"
 )
 
@@ -35,6 +36,66 @@ func TestExtractCuesIncludesEveryExecutorTool(t *testing.T) {
 		if !containsString(got, want) {
 			t.Errorf("ExtractCues() = %#v, missing %q", got, want)
 		}
+	}
+}
+
+func TestContractPlaybookRetrievalOrdersBoundsAndCountsUses(t *testing.T) {
+	graph := openStore(t)
+	const scope = "repo:internal/parser"
+	popularBody := "Run make check before delivery; direct go test misses generated parser fixtures. " + strings.Repeat("p", 220)
+	popular, err := graph.RecordFact("", scope, store.FactPlaybook, popularBody)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for range 2 {
+		if _, err := graph.SearchFacts(store.FactQuery{
+			Cues: []string{scope}, Kind: store.FactPlaybook, Limit: 1,
+		}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	middleBody := "Keep the generated parser fixture list synchronized with the grammar. " + strings.Repeat("m", 220)
+	middle, err := graph.RecordFact("", scope, store.FactPlaybook, middleBody)
+	if err != nil {
+		t.Fatal(err)
+	}
+	newestBody := "Exercise the parser through make check so the repository wrapper configures fixtures. " + strings.Repeat("n", 210)
+	newest, err := graph.RecordFact("", scope, store.FactPlaybook, newestBody)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := graph.RecordFact("", scope, store.FactLesson,
+		"the parser grammar uses generated fixtures"); err != nil {
+		t.Fatal(err)
+	}
+
+	notes := ContractPlaybook(graph)(plan.Node{
+		Title: "Parser repair", Summary: "Repair parser validation",
+		Sources: []string{"internal/parser/check.go"},
+		Brief:   "Update internal/parser/check.go and use go tooling.",
+	})
+	popularAt := strings.Index(notes, popularBody)
+	newestAt := strings.Index(notes, newestBody)
+	if popularAt < 0 || newestAt < 0 || popularAt > newestAt {
+		t.Fatalf("playbook ordering = %q, want popular then newest", notes)
+	}
+	if strings.Contains(notes, middleBody) {
+		t.Fatalf("bounded playbook included the lower-ranked overflow bullet: %q", notes)
+	}
+	if got := len(contractPlaybookHeader) + len(notes); got > contractPlaybookBytes {
+		t.Fatalf("contract playbook = %d bytes, want at most %d", got, contractPlaybookBytes)
+	}
+
+	active, err := graph.ActiveFacts(scope, 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	uses := make(map[int64]int, len(active))
+	for _, fact := range active {
+		uses[fact.Seq] = fact.Uses
+	}
+	if uses[popular.Seq] != 3 || uses[newest.Seq] != 1 || uses[middle.Seq] != 0 {
+		t.Fatalf("contract playbook uses = popular:%d newest:%d middle:%d", uses[popular.Seq], uses[newest.Seq], uses[middle.Seq])
 	}
 }
 
@@ -327,6 +388,55 @@ func TestConsolidationFiresOnlyAboveThresholdAndReplacesScope(t *testing.T) {
 	})
 }
 
+func TestConsolidationMergesNearDuplicatePlaybooksViaReplaces(t *testing.T) {
+	graph := openStore(t)
+	const scope = "repo:parser"
+	var originals []store.Fact
+	for index := 0; index < playbookConsolidationThreshold+1; index++ {
+		fact, err := graph.RecordFact("", scope, store.FactPlaybook,
+			fmt.Sprintf("Run make check for parser changes; variant %02d confirms the wrapper route", index))
+		if err != nil {
+			t.Fatal(err)
+		}
+		originals = append(originals, fact)
+	}
+	calls := 0
+	reconciler := New(graph, nil, nil).WithConsolidator(
+		func(_ context.Context, gotScope string, facts []store.Fact) ([]Learned, error) {
+			calls++
+			if gotScope != scope || len(facts) != len(originals) {
+				t.Fatalf("playbook consolidation = scope %q facts %d", gotScope, len(facts))
+			}
+			for _, fact := range facts {
+				if fact.Kind != store.FactPlaybook {
+					t.Fatalf("consolidation input kind = %q", fact.Kind)
+				}
+			}
+			return []Learned{{
+				Scope: scope, Kind: store.FactPlaybook,
+				Body:     "Run make check for parser changes; the repository wrapper configures generated fixtures",
+				Sources:  factSeqs(facts[1:]),
+				Replaces: facts[0].Seq,
+			}}, nil
+		})
+	if err := reconciler.Tick(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if calls != 1 {
+		t.Fatalf("playbook consolidator calls = %d, want 1", calls)
+	}
+	active, err := graph.ActiveFacts(scope, 10)
+	if err != nil || len(active) != 1 || active[0].Kind != store.FactPlaybook {
+		t.Fatalf("active consolidated playbook = %+v err=%v", active, err)
+	}
+	for _, original := range originals {
+		retired, found, err := graph.FactBySeq(original.Seq)
+		if err != nil || !found || retired.Status != store.FactSuperseded || retired.EvidenceSeq != active[0].Seq {
+			t.Fatalf("playbook #%d replacement = %+v found=%t err=%v", original.Seq, retired, found, err)
+		}
+	}
+}
+
 func TestConsolidationThreadsEvidenceAndMapsEachOriginal(t *testing.T) {
 	graph := openStore(t)
 	for _, node := range []store.NodeSpec{
@@ -615,7 +725,7 @@ func TestUnsettledRetrievalFlagsCompilerAndThreadsTrial(t *testing.T) {
 	}
 }
 
-func TestTrialLandingRendersEvidenceAndSupersedesWithWinner(t *testing.T) {
+func TestTrialLandingRendersEvidenceAndSupersedesWithPlaybookWinner(t *testing.T) {
 	graph := openStore(t)
 	trial := spliceTrialFixture(t, graph, "winner")
 	var distilled string
@@ -626,7 +736,7 @@ func TestTrialLandingRendersEvidenceAndSupersedesWithWinner(t *testing.T) {
 				t.Fatal("successful trial was marked failed")
 			}
 			return []Learned{{
-				Scope: "domain:parsing", Kind: store.FactLesson,
+				Scope: "domain:parsing", Kind: store.FactPlaybook,
 				Body:     "table-driven parsing wins for this grammar because its benchmark was faster",
 				Replaces: trial.Seq,
 			}}, nil
@@ -765,7 +875,7 @@ func assertTrialWinner(t *testing.T, graph *store.Store, trialSeq int64, nodeID 
 	}
 	winner := false
 	for _, fact := range active {
-		if fact.NodeID == nodeID && fact.Kind == store.FactLesson && strings.Contains(fact.Body, "table-driven parsing wins") {
+		if fact.NodeID == nodeID && fact.Kind == store.FactPlaybook && strings.Contains(fact.Body, "table-driven parsing wins") {
 			winner = true
 		}
 	}

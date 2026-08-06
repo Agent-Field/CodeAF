@@ -1252,7 +1252,7 @@ func planSubtree(settings config.Config, client *liveClient, plans *jobPlans, hi
 		}
 		// Per-leaf working contracts, exactly as a headless run writes them
 		// before dispatch. A contract failure costs specificity, not the job.
-		if _, err := plan.Contracts(ctx, workingClient, graph); err != nil {
+		if _, err := plan.Contracts(ctx, workingClient, graph, resident.ContractPlaybook(history)); err != nil {
 			fmt.Fprintf(os.Stderr, "note: could not write contracts: %v\n", err)
 		}
 		subtree, err := resident.SubtreeFromPlan(graph, prefix)
@@ -1298,7 +1298,7 @@ func replanRemainder(settings config.Config, client *liveClient, plans *jobPlans
 				Stage: 1,
 			}}}, nil
 		}
-		if _, err := plan.Contracts(ctx, workingClient, graph); err != nil {
+		if _, err := plan.Contracts(ctx, workingClient, graph, resident.ContractPlaybook(history)); err != nil {
 			fmt.Fprintf(os.Stderr, "note: could not write repair contracts: %v\n", err)
 		}
 		subtree, err := resident.SubtreeFromPlan(graph, prefix)
@@ -1376,7 +1376,7 @@ func jobIDOf(graph *store.Store, node store.Node) string {
 
 // distillerSystemPrompt writes the notebook. The bar is durability: a memory
 // must still matter after this job is forgotten.
-const distillerSystemPrompt = `You judge whether a finished job taught an assistant anything worth keeping in its scoped notebook. You receive the goal, the outcome, and whether the job FAILED. Return exactly one JSON object: {"facts":[{"scope":"...","kind":"preference|quirk|lesson|fact|unsettled|skill","body":"...","unsettled":{"approaches":[{"approach":"...","scope":"...","evidence":[123]},{"approach":"...","scope":"...","evidence":[456]}]},"replaces":0,"skill":{"artifact":"/absolute/path/to/artifact-directory"}}]}.
+const distillerSystemPrompt = `You judge whether a finished job taught an assistant anything worth keeping in its scoped notebook. You receive the goal, the outcome, and whether the job FAILED. Return exactly one JSON object: {"facts":[{"scope":"...","kind":"preference|quirk|lesson|fact|unsettled|skill|playbook","body":"...","unsettled":{"approaches":[{"approach":"...","scope":"...","evidence":[123]},{"approach":"...","scope":"...","evidence":[456]}]},"replaces":0,"skill":{"artifact":"/absolute/path/to/artifact-directory"}}]}.
 
 Judgment framework:
 - A memory qualifies only if it will matter after this job is forgotten.
@@ -1384,20 +1384,22 @@ Judgment framework:
 - When the job FAILED, the single most valuable memory is the cause and its fix or workaround. Classify it as a quirk or lesson.
 - Judge like an after-action review: what was expected, what actually happened, and what explains the gap. The explanation is the memory; the events themselves are not.
 - When the direct route failed and a substitute route worked — a different source, tool, or method reached the same end — record the working route as a lesson in the narrowest scope it applies to. A proven detour is the most transferable thing a job can teach.
+- Emit kind "playbook" when the experience yields one method rule actionable while writing a future job's working contract: what to do, avoid, verify, or try instead. Its body is one self-contained strategy bullet and its scope must be repo:<dir>, tool:<name>, or domain:<topic>. Emit at most one playbook delta per job: add that bullet or supersede one numbered bullet, never rewrite a scope's playbook. A fact about the world that does not change how the work should be done is not a playbook bullet.
 - Beliefs must stay true as the world moves. When this job's evidence updates, contradicts, or outdates one of the standing numbered entries shown to you, write the corrected memory in full and set "replaces" to that entry's number — the old belief retires when the new one lands. Accumulating a contradiction beside the belief it contradicts is worse than either alone.
 - Make one additional judgment: when the job leaves a reusable procedure it actually used — a script written in the workspace, a repeated command sequence captured as an artifact, or a proven detour — emit one skill memory whose body is a one-line command doc and whose skill.artifact is the absolute path to its command-named directory; that directory must contain executable check.sh plus run.sh or another executable. This only proposes a candidate. If a FAILED job shows a standing skill broke, emit the failure lesson with replaces set to that skill's number so it retires.
-- When the job compared approaches — deliberately, or by failing over from one route to another — the comparison's outcome is the memory: record the winner as the standing approach with what decided it, and point "replaces" at any entry that backed the loser. A settled experiment is worth more than either belief that preceded it.
-- When the outcome contains TRIAL VERDICT REQUIRED for unsettled fact #N, consume that pair explicitly. If the evidence settles it, emit the winning ordinary lesson or fact with "replaces":N. If it does not, emit kind "unsettled" with "replaces":N and the same two structured approaches and evidence sequences. Never omit the replacement merely because the result was inconclusive.
+- When the job compared approaches — deliberately, or by failing over from one route to another — the comparison's outcome is the memory: record the winner as the standing approach with what decided it, and point "replaces" at any entry that backed the loser. Use kind "playbook" when the winner is a method future work should follow. A settled experiment is worth more than either belief that preceded it.
+- When the outcome contains TRIAL VERDICT REQUIRED for unsettled fact #N, consume that pair explicitly. If the evidence settles it, emit the winning lesson, fact, or actionable playbook method with "replaces":N. If it does not, emit kind "unsettled" with "replaces":N and the same two structured approaches and evidence sequences. Never omit the replacement merely because the result was inconclusive.
 - Include "unsettled" only for kind "unsettled"; omit it for every ordinary fact.
 - Each fact object may carry "replaces": <number of the standing entry it supersedes>; omit it otherwise.
 - Job status and transient results never qualify.
 - An empty list is the common correct answer.
 - Return at most five memories.`
 
-const consolidatorSystemPrompt = `You rewrite one scope's accumulated notebook lines into a smaller, sharper notebook. Return exactly one JSON object: {"facts":[{"scope":"...","kind":"preference|quirk|lesson|fact|unsettled|skill","body":"...","unsettled":{"approaches":[{"approach":"...","scope":"...","evidence":[123]},{"approach":"...","scope":"...","evidence":[456]}]},"sources":[123,456],"replaces":0},{"quarantines":[456]}]}.
+const consolidatorSystemPrompt = `You rewrite one scope's accumulated notebook lines into a smaller, sharper notebook. Return exactly one JSON object: {"facts":[{"scope":"...","kind":"preference|quirk|lesson|fact|unsettled|skill|playbook","body":"...","unsettled":{"approaches":[{"approach":"...","scope":"...","evidence":[123]},{"approach":"...","scope":"...","evidence":[456]}]},"sources":[123,456],"replaces":0},{"quarantines":[456]}]}.
 
 Merge duplicates and near-duplicates. Resolve contradictions in favour of the newest line. Keep every load-bearing specific, including paths, values, and names. Each output must stand alone, use exactly the target scope, and preserve the best fitting kind. Return at most eight lines.
 An input skill was admitted by execution. Preserve kind skill only when an output derives from a skill input; never turn an ordinary fact into a skill.
+An input playbook line is earned contract doctrine. Merge near-duplicate playbook bullets only through the numbered sources/replaces delta operations below, preserve kind playbook, and keep the result actionable at contract-writing time. Never rewrite a playbook wholesale or turn an ordinary fact into one.
 
 Every input line is numbered with its durable notebook number. Each output must name in "sources" every input it derives from, strongest evidence first, and every input must be assigned exactly once: either to one output's "sources" or to one "quarantines" list. The sources are the evidence and supersession map, not citations to invent. When an output corrects a standing line, also set "replaces" to that input's number; omit it or use 0 otherwise. A quarantine-only object needs no scope, kind, or body.
 
@@ -1530,8 +1532,12 @@ func consolidateFacts(settings config.Config, client *liveClient, graph *store.S
 			if outcome.Bad > 0 {
 				badRides = fmt.Sprintf(" · rode %d jobs, %d ended badly", outcome.Rides, outcome.Bad)
 			}
+			kind := string(fact.Kind)
+			if fact.Kind == store.FactPlaybook {
+				kind = fact.Scope + " · " + kind
+			}
 			fmt.Fprintf(&input, "#%d [%s · %s · used %d×%s] %s\n", fact.Seq,
-				fact.Kind, store.AgeLabel(fact.Time, now), fact.Uses, badRides, fact.Body)
+				kind, store.AgeLabel(fact.Time, now), fact.Uses, badRides, fact.Body)
 			// Belief audit: every fact names the job that taught it and that
 			// job is still in the graph, so a line can be weighed against the
 			// evidence it was distilled from rather than against its own
@@ -1639,7 +1645,7 @@ func parseLearnedFacts(raw string, limit int) []resident.Learned {
 
 func validLearnedKind(kind store.FactKind) bool {
 	switch kind {
-	case store.FactPreference, store.FactQuirk, store.FactLesson, store.FactPlain, store.FactUnsettled, store.FactSkill:
+	case store.FactPreference, store.FactQuirk, store.FactLesson, store.FactPlain, store.FactUnsettled, store.FactSkill, store.FactPlaybook:
 		return true
 	default:
 		return false

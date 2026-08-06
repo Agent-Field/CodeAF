@@ -8,14 +8,18 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"github.com/Agent-Field/aforge-v2/internal/plan"
 	"github.com/Agent-Field/aforge-v2/internal/store"
 )
 
 const (
-	consolidationInterval    = time.Minute
-	consolidationThreshold   = 12
-	consolidationScanLimit   = 10_000
-	consolidationOutputLimit = 8
+	consolidationInterval          = time.Minute
+	consolidationThreshold         = 12
+	playbookConsolidationThreshold = 8
+	consolidationScanLimit         = 10_000
+	consolidationOutputLimit       = 8
+	contractPlaybookBytes          = 800
+	contractPlaybookHeader         = "Earned method notes for this territory:\n"
 )
 
 // knownToolWords is deliberately a list: adding a tool should not require
@@ -79,6 +83,38 @@ func ExtractCues(text string) []string {
 	add("user")
 	add("env")
 	return cues
+}
+
+// ContractPlaybook builds the optional earned-doctrine lookup used by the
+// contract pass. SearchFacts counts every returned bullet as a real use.
+func ContractPlaybook(graph *store.Store) plan.ContractPlaybook {
+	if graph == nil {
+		return nil
+	}
+	return func(node plan.Node) string {
+		work := strings.Join([]string{
+			node.Title,
+			node.Summary,
+			strings.Join(node.Sources, "\n"),
+			node.Brief,
+		}, "\n")
+		facts, err := graph.SearchFacts(store.FactQuery{
+			Cues:         ExtractCues(work),
+			Terms:        work,
+			Kind:         store.FactPlaybook,
+			PreferUseful: true,
+			MaxBytes:     contractPlaybookBytes - len(contractPlaybookHeader),
+			Limit:        consolidationOutputLimit,
+		})
+		if err != nil || len(facts) == 0 {
+			return ""
+		}
+		var notes strings.Builder
+		for _, fact := range facts {
+			fmt.Fprintf(&notes, "- [%s] %s\n", fact.Scope, fact.Body)
+		}
+		return strings.TrimSuffix(notes.String(), "\n")
+	}
 }
 
 // NotebookDigest retrieves the facts relevant to one piece of work and
@@ -153,6 +189,7 @@ func (r *Reconciler) consolidateNotebook(ctx context.Context) {
 		}
 	}
 	byScope := make(map[string][]store.Fact)
+	playbooksByScope := make(map[string]int)
 	blockedScopes := make(map[string]bool)
 	var scopeOrder []string
 	for _, fact := range facts {
@@ -160,6 +197,9 @@ func (r *Reconciler) consolidateNotebook(ctx context.Context) {
 			scopeOrder = append(scopeOrder, fact.Scope)
 		}
 		byScope[fact.Scope] = append(byScope[fact.Scope], fact)
+		if fact.Kind == store.FactPlaybook {
+			playbooksByScope[fact.Scope]++
+		}
 		if pendingTrials[fact.Seq] {
 			blockedScopes[fact.Scope] = true
 		}
@@ -171,12 +211,16 @@ func (r *Reconciler) consolidateNotebook(ctx context.Context) {
 			continue
 		}
 		scoped := byScope[scope]
+		if len(scoped) <= consolidationThreshold &&
+			playbooksByScope[scope] <= playbookConsolidationThreshold {
+			continue
+		}
 		if count := len(scoped); count > worstCount {
 			worstScope = scope
 			worstCount = count
 		}
 	}
-	if worstCount <= consolidationThreshold {
+	if worstScope == "" {
 		return
 	}
 

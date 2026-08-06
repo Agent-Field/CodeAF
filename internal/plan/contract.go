@@ -62,10 +62,14 @@ var contractSchema = json.RawMessage(`{
   "additionalProperties": false
 }`)
 
+// ContractPlaybook returns the earned method bullets relevant to one leaf.
+// Nil and empty results preserve the fixed contract prompt byte for byte.
+type ContractPlaybook func(Node) string
+
 // Contracts writes a working method for every leaf that lacks one, all leaves
 // at once. Like Briefs, it is the batch form used at run time; the wall-clock
 // cost is one call however many leaves there are.
-func Contracts(ctx context.Context, client Completer, graph *Graph) (Usage, error) {
+func Contracts(ctx context.Context, client Completer, graph *Graph, playbook ContractPlaybook) (Usage, error) {
 	shared := graph.context()
 
 	type result struct {
@@ -86,7 +90,11 @@ func Contracts(ctx context.Context, client Completer, graph *Graph) (Usage, erro
 		group.Add(1)
 		go func(node Node) {
 			defer group.Done()
-			contract, usage, err := writeContract(ctx, client, shared, node)
+			notes := ""
+			if playbook != nil {
+				notes = playbook(node)
+			}
+			contract, usage, err := writeContract(ctx, client, shared, node, notes)
 			mutex.Lock()
 			defer mutex.Unlock()
 			results = append(results, result{id: node.ID, contract: contract, usage: usage, err: err})
@@ -111,7 +119,7 @@ func Contracts(ctx context.Context, client Completer, graph *Graph) (Usage, erro
 	return usage, joinErrors(failures)
 }
 
-func writeContract(ctx context.Context, client Completer, shared string, node Node) (string, *ai.Usage, error) {
+func writeContract(ctx context.Context, client Completer, shared string, node Node, playbook string) (string, *ai.Usage, error) {
 	var target strings.Builder
 	fmt.Fprintf(&target, "The job: %s — %s\n", node.Title, node.Summary)
 	if len(node.Sources) > 0 {
@@ -122,8 +130,12 @@ func writeContract(ctx context.Context, client Completer, shared string, node No
 	}
 	target.WriteString("\nWrite the working method for this kind of job.")
 
+	doctrine := contractPrompt
+	if playbook = strings.TrimSpace(playbook); playbook != "" {
+		doctrine += "\n\nEarned method notes for this territory:\n" + playbook
+	}
 	messages := []ai.Message{
-		systemMessage(contractPrompt),
+		systemMessage(doctrine),
 		userMessage(shared),
 		userMessage(target.String()),
 	}

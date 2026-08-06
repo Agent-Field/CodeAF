@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"sort"
 	"strings"
 	"time"
 )
@@ -60,6 +61,8 @@ const (
 	FactUnsettled FactKind = "unsettled"
 	// FactSkill is an execution-verified procedure offered to future work.
 	FactSkill FactKind = "skill"
+	// FactPlaybook is one scoped strategy bullet earned from earlier work.
+	FactPlaybook FactKind = "playbook"
 )
 
 // UnsettledApproach is one side of a competing pair. Scope describes where
@@ -222,7 +225,7 @@ CREATE TABLE IF NOT EXISTS facts (
     ts        TEXT NOT NULL,
     node_id   TEXT NOT NULL,
     scope     TEXT NOT NULL DEFAULT 'user',
-    kind      TEXT NOT NULL DEFAULT 'fact' CHECK (kind IN ('preference', 'quirk', 'lesson', 'fact', 'unsettled', 'skill')),
+    kind      TEXT NOT NULL DEFAULT 'fact' CHECK (kind IN ('preference', 'quirk', 'lesson', 'fact', 'unsettled', 'skill', 'playbook')),
     body      TEXT NOT NULL,
     unsettled JSON NOT NULL DEFAULT 'null' CHECK (json_valid(unsettled)),
     status    TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('candidate', 'active', 'superseded', 'quarantined')),
@@ -358,6 +361,14 @@ func (s *Store) recordFact(nodeID, scope string, kind FactKind, body string, uns
 	scope = normalizeScope(scope)
 	if !validFactKind(kind) {
 		kind = FactPlain
+	}
+	if kind == FactPlaybook {
+		if strings.ContainsAny(body, "\r\n") {
+			return Fact{}, fmt.Errorf("record playbook: %w: bullet must be one line", ErrInvalid)
+		}
+		if !validPlaybookScope(scope) {
+			return Fact{}, fmt.Errorf("record playbook: %w: scope %q is not repo, tool, or domain", ErrInvalid, scope)
+		}
 	}
 	if kind == FactUnsettled {
 		if unsettled == nil {
@@ -713,7 +724,15 @@ type FactQuery struct {
 	Cues []string
 	// Terms feed FTS5/BM25 and may be empty.
 	Terms string
-	Limit int
+	// Kind restricts retrieval to one fact kind. Empty includes every kind.
+	Kind FactKind
+	// PreferUseful orders most-used matches first and newest matches next.
+	// Scope cue order remains the primary match signal when this is false.
+	PreferUseful bool
+	// MaxBytes bounds the returned scope-and-body bullet lines. Zero is
+	// unbounded; the small per-line allowance covers "- [scope] body\n".
+	MaxBytes int
+	Limit    int
 }
 
 // SearchFacts blends the two retrieval layers: scope-cue matches first in
@@ -734,16 +753,30 @@ func (s *Store) searchFacts(query FactQuery, countUses bool) ([]Fact, error) {
 	if query.Limit <= 0 {
 		query.Limit = 12
 	}
+	if query.Kind != "" && !validFactKind(query.Kind) {
+		return nil, fmt.Errorf("search facts: %w: invalid kind %q", ErrInvalid, query.Kind)
+	}
 	seen := make(map[int64]bool)
 	results := make([]Fact, 0, query.Limit)
+	order := "seq DESC"
+	if query.PreferUseful {
+		order = "uses DESC, seq DESC"
+	}
 
 	for _, cue := range query.Cues {
 		if len(results) >= query.Limit {
 			break
 		}
 		cue = normalizeScope(cue)
-		facts, err := s.factsWhere(`scope = ? AND status = ? ORDER BY seq DESC LIMIT ?`,
-			cue, FactActive, query.Limit)
+		where := `scope = ? AND status = ?`
+		args := []any{cue, FactActive}
+		if query.Kind != "" {
+			where += ` AND kind = ?`
+			args = append(args, query.Kind)
+		}
+		where += ` ORDER BY ` + order + ` LIMIT ?`
+		args = append(args, query.Limit)
+		facts, err := s.factsWhere(where, args...)
 		if err != nil {
 			return nil, err
 		}
@@ -756,13 +789,20 @@ func (s *Store) searchFacts(query FactQuery, countUses bool) ([]Fact, error) {
 	}
 
 	if terms := ftsQueryFrom(query.Terms); terms != "" && len(results) < query.Limit {
+		kindClause := ""
+		args := []any{terms, FactActive}
+		if query.Kind != "" {
+			kindClause = " AND f.kind = ?"
+			args = append(args, query.Kind)
+		}
+		args = append(args, query.Limit)
 		rows, err := s.db.Query(`
 			SELECT f.seq, f.ts, f.node_id, f.scope, f.kind, f.body, f.unsettled, f.status, f.artifact, f.status_note,
 			       f.status_seq, f.evidence_seq, f.status_origin, f.uses, f.last_used
 			FROM facts_fts
 			JOIN facts AS f ON f.seq = facts_fts.rowid
-			WHERE facts_fts MATCH ? AND f.status = ?
-			ORDER BY bm25(facts_fts) LIMIT ?`, terms, FactActive, query.Limit)
+			WHERE facts_fts MATCH ? AND f.status = ?`+kindClause+`
+			ORDER BY bm25(facts_fts) LIMIT ?`, args...)
 		if err == nil {
 			facts, scanErr := scanFacts(rows)
 			if scanErr != nil {
@@ -776,6 +816,27 @@ func (s *Store) searchFacts(query FactQuery, countUses bool) ([]Fact, error) {
 			}
 		}
 		// An FTS syntax error from hostile terms is a miss, not a failure.
+	}
+	if query.PreferUseful {
+		sort.SliceStable(results, func(i, j int) bool {
+			if results[i].Uses != results[j].Uses {
+				return results[i].Uses > results[j].Uses
+			}
+			return results[i].Seq > results[j].Seq
+		})
+	}
+	if query.MaxBytes > 0 {
+		bounded := make([]Fact, 0, len(results))
+		used := 0
+		for _, fact := range results {
+			lineBytes := len(fact.Scope) + len(fact.Body) + len("- [] \n")
+			if used+lineBytes > query.MaxBytes {
+				continue
+			}
+			bounded = append(bounded, fact)
+			used += lineBytes
+		}
+		results = bounded
 	}
 
 	if countUses && len(results) > 0 {
@@ -809,6 +870,19 @@ func (s *Store) ActiveFacts(scope string, limit int) ([]Fact, error) {
 // RecentFacts returns the newest active facts across all scopes.
 func (s *Store) RecentFacts(limit int) ([]Fact, error) {
 	return s.ActiveFacts("", limit)
+}
+
+// HasActiveFactKind reports whether one kind can change a retrieval surface.
+func (s *Store) HasActiveFactKind(kind FactKind) (bool, error) {
+	if !validFactKind(kind) {
+		return false, fmt.Errorf("check active facts: %w: invalid kind %q", ErrInvalid, kind)
+	}
+	var exists int
+	if err := s.db.QueryRow(`SELECT EXISTS(SELECT 1 FROM facts WHERE kind = ? AND status = ?)`,
+		kind, FactActive).Scan(&exists); err != nil {
+		return false, fmt.Errorf("check active facts: %w", err)
+	}
+	return exists != 0, nil
 }
 
 // Fact returns one notebook entry by its durable event sequence, including a
@@ -874,6 +948,9 @@ func applyFactView(tx *sql.Tx, payload factPayload, seq int64, at time.Time) err
 	kind := payload.Kind
 	if !validFactKind(kind) {
 		kind = FactPlain
+	}
+	if kind == FactPlaybook && !validPlaybookScope(scope) {
+		return fmt.Errorf("playbook fact %d has invalid scope %q", seq, scope)
 	}
 	if kind == FactUnsettled {
 		if payload.Unsettled == nil {
@@ -1081,8 +1158,17 @@ func normalizeScope(scope string) string {
 
 func validFactKind(kind FactKind) bool {
 	switch kind {
-	case FactPreference, FactQuirk, FactLesson, FactPlain, FactUnsettled, FactSkill:
+	case FactPreference, FactQuirk, FactLesson, FactPlain, FactUnsettled, FactSkill, FactPlaybook:
 		return true
+	}
+	return false
+}
+
+func validPlaybookScope(scope string) bool {
+	for _, prefix := range []string{"repo:", "tool:", "domain:"} {
+		if strings.HasPrefix(scope, prefix) && strings.TrimSpace(strings.TrimPrefix(scope, prefix)) != "" {
+			return true
+		}
 	}
 	return false
 }
@@ -1152,7 +1238,8 @@ func migrateFactsSchema(db *sql.DB) error {
 	if hasScope && hasUnsettled && hasArtifact && hasStatusNote &&
 		hasStatusSeq && hasEvidenceSeq && hasStatusOrigin &&
 		strings.Contains(createSQL, "'unsettled'") &&
-		strings.Contains(createSQL, "'skill'") && strings.Contains(createSQL, "'candidate'") &&
+		strings.Contains(createSQL, "'skill'") && strings.Contains(createSQL, "'playbook'") &&
+		strings.Contains(createSQL, "'candidate'") &&
 		strings.Contains(createSQL, "'quarantined'") {
 		return nil
 	}
