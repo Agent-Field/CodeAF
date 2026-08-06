@@ -176,6 +176,7 @@ type Model struct {
 	animationPending bool
 	graphAnimating   bool
 	receiptsExpanded bool
+	historyExpanded  bool
 	err              error
 
 	palette          paletteKind
@@ -209,6 +210,10 @@ type Model struct {
 	// chatMessageRows maps rendered chat lines to the message seq they
 	// belong to, so clicking a collapsed deliverable opens it in place.
 	chatMessageRows []chatMessageRow
+
+	// chatExpandRows maps the visible disclosure affordances in the thread
+	// to the state they toggle. The whole rendered line is a click target.
+	chatExpandRows []chatExpandRow
 
 	// chatChipRows maps rendered provenance-chip lines to the task they
 	// point at, so clicking `↳ title` opens that task's activity view.

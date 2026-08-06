@@ -17,6 +17,8 @@ type graphRow struct {
 	nodeID string
 }
 
+const historyGraphRowID = "\x00history"
+
 type paneBounds struct {
 	x      int
 	y      int
@@ -108,10 +110,20 @@ func (m *Model) openSelectedNode() tea.Cmd {
 	if m.selectedNodeID == "" {
 		return nil
 	}
+	if m.selectedNodeID == historyGraphRowID {
+		m.toggleHistory()
+		return nil
+	}
 	if _, ok := m.snapshotNode(m.selectedNodeID); !ok {
 		return m.showStatus("selected node is no longer visible")
 	}
 	return m.openNodeByID(m.selectedNodeID)
+}
+
+func (m *Model) toggleHistory() {
+	m.historyExpanded = !m.historyExpanded
+	m.refreshGraph()
+	m.ensureGraphSelectionVisible()
 }
 
 // openNodeByID opens the activity view for any node the store knows about —
@@ -306,7 +318,7 @@ func (m *Model) toggleFeedBlockAt(x, y int) bool {
 func (m *Model) renderNodeDetailsContent(width, maxLines int) string {
 	brief := strings.TrimSpace(m.inspectedNode.Brief)
 	if brief == "" {
-		brief = nodeLabel(m.inspectedNode)
+		brief = nodeLabelInSnapshot(m.inspectedNode, m.snapshot)
 	}
 	content := inputTextStyle.Render(wrapText(brief, width))
 	if terminalStatus(m.inspectedNode.Status) {
@@ -665,6 +677,11 @@ func (m *Model) updateMouseClick(x, y int) bool {
 		if m.graphRowsBounds.contains(x, y) {
 			nodeID := m.graphNodeAtLine(y - m.graphRowsBounds.y + m.graph.YOffset)
 			if nodeID != "" {
+				if nodeID == historyGraphRowID {
+					m.selectedNodeID = nodeID
+					m.toggleHistory()
+					return true
+				}
 				alreadySelected := nodeID == m.selectedNodeID
 				m.selectedNodeID = nodeID
 				m.refreshGraph()
@@ -735,6 +752,21 @@ func (m *Model) toggleChatMessageAt(x, y int) bool {
 			_ = m.openNodeByID(part.nodeID)
 			return true
 		}
+	}
+	for _, row := range m.chatExpandRows {
+		if row.line != line {
+			continue
+		}
+		switch row.action {
+		case chatExpandReceipts:
+			m.receiptsExpanded = !m.receiptsExpanded
+		case chatExpandMessage:
+			m.expandedMessages[row.seq] = !m.expandedMessages[row.seq]
+		}
+		offset := m.chat.YOffset
+		m.refreshChat()
+		m.chat.SetYOffset(offset)
+		return true
 	}
 	for _, row := range m.chatMessageRows {
 		if line < row.start || line > row.end {

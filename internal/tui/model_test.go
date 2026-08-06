@@ -329,7 +329,7 @@ func TestCardsDeriveFromSeededStore(t *testing.T) {
 	}
 	model.cardExpanded["live"] = true
 	if expanded := model.renderCardDock(false); !strings.Contains(expanded, "Assumed: prices") ||
-		!strings.Contains(expanded, "running summary") || !strings.Contains(expanded, "Collect prices") {
+		!strings.Contains(expanded, "running summary") || !strings.Contains(expanded, "collect prices") {
 		t.Fatalf("expanded card is missing its receipt, narration, or parts:\n%s", expanded)
 	}
 	settled := requireCard(t, model.cards, "settled")
@@ -519,7 +519,7 @@ func TestCardDisclosureLadderClimbsBackOneRungAtATime(t *testing.T) {
 		t.Fatalf("second enter did not open scoped graph: open=%v scope=%q focus=%v",
 			model.graphOpen, model.graphScopeID, model.focus)
 	}
-	if tree := model.renderTree(60, 0); !strings.Contains(tree, "One part") {
+	if tree := model.renderTree(60, 0); !strings.Contains(tree, "one part") {
 		t.Fatalf("scoped graph did not use the job's full subtree:\n%s", tree)
 	}
 	_ = model.openNodeByID("part")
@@ -691,6 +691,68 @@ func TestReceiptsCollapseAndExpandTogether(t *testing.T) {
 		if !strings.Contains(expanded, expected) {
 			t.Fatalf("expanded receipt does not contain %q:\n%s", expected, expanded)
 		}
+	}
+}
+
+func TestThreadDisclosureAffordancesRegisterClickableRows(t *testing.T) {
+	model := New(&fakeBackend{}, "test-session")
+	model.setSize(90, 60)
+	model.messages = []store.Message{
+		{
+			Seq: 1, Time: time.Now(), Role: store.RoleSystem, CommandSeq: 42,
+			Body: "Read the compiled request.\nAssumed: local files are authoritative.\nAssumed: output stays uncommitted.",
+		},
+		{
+			Seq: 2, Time: time.Now(), Role: store.RoleAgent,
+			Body: strings.Repeat("Detail line with enough content.\n\n", 24),
+		},
+	}
+	model.refreshChat()
+	view := model.View()
+	if !strings.Contains(view, "reading + 2 assumptions — v to expand") || !strings.Contains(view, "more lines — click to expand") {
+		t.Fatalf("thread is missing disclosure affordances:\n%s", view)
+	}
+
+	var receiptRow, answerRow *chatExpandRow
+	for index := range model.chatExpandRows {
+		row := &model.chatExpandRows[index]
+		switch row.action {
+		case chatExpandReceipts:
+			receiptRow = row
+		case chatExpandMessage:
+			answerRow = row
+		}
+	}
+	if receiptRow == nil || answerRow == nil || answerRow.seq != 2 {
+		t.Fatalf("registered thread disclosure rows = %+v", model.chatExpandRows)
+	}
+
+	// Hit the far edge of each pane row to prove the whole line, not only the
+	// rendered phrase, is active.
+	_, _ = model.Update(tea.MouseMsg{
+		X: model.chatBounds.right() - 1, Y: model.chatBounds.y + answerRow.line - model.chat.YOffset,
+		Button: tea.MouseButtonLeft, Action: tea.MouseActionPress,
+	})
+	if !model.expandedMessages[2] {
+		t.Fatal("clicking the long-answer affordance did not expand the answer")
+	}
+
+	receiptRow = nil
+	for index := range model.chatExpandRows {
+		if model.chatExpandRows[index].action == chatExpandReceipts {
+			receiptRow = &model.chatExpandRows[index]
+			break
+		}
+	}
+	if receiptRow == nil {
+		t.Fatal("receipt click zone disappeared after expanding the answer")
+	}
+	_, _ = model.Update(tea.MouseMsg{
+		X: model.chatBounds.right() - 1, Y: model.chatBounds.y + receiptRow.line - model.chat.YOffset,
+		Button: tea.MouseButtonLeft, Action: tea.MouseActionPress,
+	})
+	if !model.receiptsExpanded {
+		t.Fatal("clicking the receipt affordance did not expand receipts")
 	}
 }
 
@@ -1087,6 +1149,58 @@ func TestNewCommandSwitchesAndResetsSession(t *testing.T) {
 	}
 }
 
+func TestNodeLabelDerivesCompactDisplayTitles(t *testing.T) {
+	tests := []struct {
+		name string
+		node store.Node
+		root store.Node
+		want string
+	}{
+		{
+			name: "distinct stored title stays intact",
+			node: store.Node{ID: "job", Title: "Nighttime podcast", Brief: "Produce the episode audio."},
+			want: "Nighttime podcast",
+		},
+		{
+			name: "empty title uses meaningful words",
+			node: store.Node{ID: "inspect", Brief: "Inspect the parser for edge cases and malformed tokens."},
+			want: "inspect parser edge cases malformed tokens",
+		},
+		{
+			name: "you are prompt becomes imperative",
+			node: store.Node{
+				ID:    "voiceover",
+				Title: "You are producing the voiceover layer for a Mahabharata pod…",
+				Brief: "You are producing the voiceover layer for a Mahabharata podcast.",
+			},
+			want: "produce voiceover layer mahabharata podcast",
+		},
+		{
+			name: "receive preamble yields requested object",
+			node: store.Node{ID: "script", Brief: "You will receive source notes.\nWrite the final episode script with citations."},
+			want: "final episode script citations",
+		},
+		{
+			name: "write preamble keeps object phrase",
+			node: store.Node{ID: "release", Brief: "Write the release note for the parser and its tests."},
+			want: "release note parser tests",
+		},
+		{
+			name: "generic synthesis names its job",
+			node: store.Node{ID: "merge", Title: "Synthesis", Brief: "Merge every voiceover result."},
+			root: store.Node{ID: "job", Title: "Mahabharata nighttime podcast", Brief: "Produce a podcast episode."},
+			want: "synthesis · mahabharata nighttime podcast",
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			if got := nodeLabel(test.node, test.root); got != test.want {
+				t.Fatalf("nodeLabel() = %q, want %q", got, test.want)
+			}
+		})
+	}
+}
+
 func TestNodeGlyphsAndTreeRendering(t *testing.T) {
 	model := New(&fakeBackend{}, "test-session")
 	tests := []struct {
@@ -1119,10 +1233,84 @@ func TestNodeGlyphsAndTreeRendering(t *testing.T) {
 		{ID: "write", Parent: store.RootID, Brief: "Write the answer\nwith extra detail", Status: store.Pending},
 	}}
 	tree := model.renderTree(50, 20)
-	for _, expected := range []string{"├─", "╰─", "Plan the work", "Research constraints", "Write the answer", "elapsed"} {
+	for _, expected := range []string{"├─", "╰─", "plan work", "research constraints", "answer extra detail", "elapsed"} {
 		if !strings.Contains(tree, expected) {
 			t.Fatalf("tree does not contain %q:\n%s", expected, tree)
 		}
+	}
+}
+
+func TestRailHistoryCollapseRowMathAndNavigation(t *testing.T) {
+	model := New(&fakeBackend{}, "test-session")
+	nodes := []store.Node{
+		{ID: store.RootID},
+		{ID: "live", Parent: store.RootID, Title: "current work", Brief: "Handle the current work.", Status: store.Running, CreatedSeq: 8},
+	}
+	for index := 1; index <= 7; index++ {
+		nodes = append(nodes, store.Node{
+			ID: fmt.Sprintf("job-%d", index), Parent: store.RootID,
+			Title: fmt.Sprintf("job %d", index), Brief: fmt.Sprintf("Archive historical item %d.", index),
+			Status: store.Done, CreatedSeq: int64(index),
+		})
+	}
+	model.snapshot = store.Snapshot{Nodes: nodes}
+
+	tree := model.renderTree(60, 0)
+	if !strings.Contains(tree, "history (2)") || strings.Contains(tree, "job 1") || strings.Contains(tree, "job 2") {
+		t.Fatalf("collapsed history did not hide exactly the two oldest jobs:\n%s", tree)
+	}
+	if len(model.graphRows) != 7 {
+		t.Fatalf("collapsed graph rows = %d, want live + 5 recent + history", len(model.graphRows))
+	}
+	historyRow := model.graphRows[len(model.graphRows)-1]
+	if historyRow.nodeID != historyGraphRowID || historyRow.line != len(strings.Split(tree, "\n"))-1 ||
+		model.graphNodeAtLine(historyRow.line) != historyGraphRowID {
+		t.Fatalf("history row math = %+v across %d lines", historyRow, len(strings.Split(tree, "\n")))
+	}
+
+	model.selectedNodeID = "job-3"
+	model.moveGraphSelection(1)
+	if model.selectedNodeID != historyGraphRowID {
+		t.Fatalf("down from last visible settled job selected %q, want history", model.selectedNodeID)
+	}
+	_ = model.openSelectedNode()
+	if !model.historyExpanded {
+		t.Fatal("enter on history did not expand it")
+	}
+	foundOldest := false
+	for _, row := range model.graphRows {
+		foundOldest = foundOldest || row.nodeID == "job-1"
+	}
+	if !foundOldest {
+		t.Fatalf("expanded rows omit oldest job: %+v", model.graphRows)
+	}
+	model.moveGraphSelection(-1)
+	if model.selectedNodeID != "job-1" {
+		t.Fatalf("up from expanded history selected %q, want oldest job", model.selectedNodeID)
+	}
+
+	model.selectedNodeID = historyGraphRowID
+	_ = model.openSelectedNode()
+	if model.historyExpanded {
+		t.Fatal("second enter on history did not collapse it")
+	}
+	for _, row := range model.graphRows {
+		if row.nodeID == "job-1" || row.nodeID == "job-2" {
+			t.Fatalf("collapsed navigation retained hidden row %+v", row)
+		}
+	}
+
+	model.setSize(120, 30)
+	model.toggleGraph()
+	_ = model.View()
+	historyRow = model.graphRows[len(model.graphRows)-1]
+	_, _ = model.Update(tea.MouseMsg{
+		X:      model.graphRowsBounds.x + 1,
+		Y:      model.graphRowsBounds.y + historyRow.line - model.graph.YOffset,
+		Button: tea.MouseButtonLeft, Action: tea.MouseActionPress,
+	})
+	if !model.historyExpanded {
+		t.Fatal("single click on history did not expand it")
 	}
 }
 
@@ -1247,7 +1435,7 @@ func TestGraphCollapsesToActivityBarAndTogglesOpen(t *testing.T) {
 			t.Fatalf("activity bar missing %q: %s", want, bar)
 		}
 	}
-	if view := model.View(); strings.Contains(view, "Active work") {
+	if view := model.View(); strings.Contains(view, "active work") {
 		t.Fatalf("collapsed view should not render the task tree:\n%s", view)
 	}
 
@@ -1255,7 +1443,7 @@ func TestGraphCollapsesToActivityBarAndTogglesOpen(t *testing.T) {
 	if !model.graphOpen || model.focus != focusGraph {
 		t.Fatalf("^g did not open tasks with focus: open=%v focus=%v", model.graphOpen, model.focus)
 	}
-	if view := model.View(); !strings.Contains(view, "Active work") || !strings.Contains(view, "tasks") {
+	if view := model.View(); !strings.Contains(view, "active work") || !strings.Contains(view, "tasks") {
 		t.Fatalf("open tasks pane should render the tree:\n%s", view)
 	}
 	_, _ = model.Update(tea.KeyMsg{Type: tea.KeyEsc})
@@ -1447,7 +1635,7 @@ func TestRailShowsTitlesGroupsAndDependencyWaits(t *testing.T) {
 	model.snapshot = snapshot
 	model.selectedNodeID = "mix"
 	tree := model.renderTree(80, 0)
-	for _, want := range []string{"Nighttime podcast", "┄ Research", "┄ Production", "Mix audio", "◌", "waits: Collect sources"} {
+	for _, want := range []string{"Nighttime podcast", "┄ Research", "┄ Production", "Mix audio", "◌", "waits: collect sources"} {
 		if !strings.Contains(tree, want) {
 			t.Fatalf("rail missing %q:\n%s", want, tree)
 		}
