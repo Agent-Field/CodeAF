@@ -5,6 +5,7 @@ import (
 	"sort"
 	"strings"
 	"time"
+	"unicode"
 
 	"github.com/Agent-Field/aforge-v2/internal/store"
 	"github.com/charmbracelet/lipgloss"
@@ -242,7 +243,7 @@ func (m *Model) renderGraphPane() string {
 	if m.graphScopeID != "" {
 		label = m.graphScopeID
 		if node, ok := m.snapshotNode(m.graphScopeID); ok {
-			label = nodeLabel(node)
+			label = nodeLabelInSnapshot(node, m.snapshot)
 		}
 		label = "‹ card · " + label
 	}
@@ -276,7 +277,7 @@ func (m *Model) renderNodePane() string {
 	back := lipgloss.NewStyle().Foreground(powder).Render("‹ back")
 	m.nodeBackBounds = paneBounds{x: m.nodeBounds.x, y: m.nodeBounds.y, width: lipgloss.Width(back), height: 1}
 	glyph, _ := m.nodeGlyphStyled(m.inspectedNode, now, false)
-	title := nodeLabel(m.inspectedNode)
+	title := nodeLabelInSnapshot(m.inspectedNode, m.snapshot)
 	timing := m.nodeTiming(now)
 	if timing != "" {
 		timing = truncate(timing, max(1, innerWidth-lipgloss.Width(glyph)-4))
@@ -630,6 +631,22 @@ type chatMessageRow struct {
 	seq   int64
 }
 
+type chatExpandAction uint8
+
+const (
+	chatExpandMessage chatExpandAction = iota
+	chatExpandReceipts
+)
+
+// chatExpandRow is one explicit disclosure line in the thread. Keeping these
+// separate from message spans makes receipt labels clickable without changing
+// the existing click-anywhere behavior of folded deliverables.
+type chatExpandRow struct {
+	line   int
+	action chatExpandAction
+	seq    int64
+}
+
 // chatChipRow maps a rendered provenance-chip line (`↳ title`) to the task
 // node it came from, so clicking it opens that task's activity view.
 type chatChipRow struct {
@@ -647,6 +664,7 @@ type threadRenderItem struct {
 
 func (m *Model) renderMessages() string {
 	m.chatMessageRows = m.chatMessageRows[:0]
+	m.chatExpandRows = m.chatExpandRows[:0]
 	m.chatChipRows = m.chatChipRows[:0]
 	m.chatCardRows = m.chatCardRows[:0]
 	kept := m.cardPartRows[:0]
@@ -794,13 +812,16 @@ func (m *Model) renderMessageGroup(group messageGroup, atLine int) string {
 	items := make([]string, 0, len(group.messages))
 	for _, message := range group.messages {
 		var item string
+		var foldedAnswer bool
+		receipt := false
 		switch {
 		case secondaryMessage(message):
 			item = m.renderReceipt(message, available)
+			receipt = true
 		case message.Role == store.RoleUser:
 			item = inputTextStyle.Render(wrapText(message.Body, available))
 		default:
-			item = m.renderAnswer(message, available)
+			item, foldedAnswer = m.renderAnswerFold(message, available)
 		}
 		// A task-anchored answer names its origin: a small clickable chip that
 		// jumps to that task's activity view.
@@ -812,6 +833,16 @@ func (m *Model) renderMessageGroup(group messageGroup, atLine int) string {
 		}
 		items = append(items, item)
 		height := lipgloss.Height(item)
+		if receipt {
+			m.chatExpandRows = append(m.chatExpandRows, chatExpandRow{
+				line: line, action: chatExpandReceipts,
+			})
+		}
+		if foldedAnswer {
+			m.chatExpandRows = append(m.chatExpandRows, chatExpandRow{
+				line: line + height - 1, action: chatExpandMessage, seq: message.Seq,
+			})
+		}
 		if message.Seq != 0 {
 			m.chatMessageRows = append(m.chatMessageRows, chatMessageRow{start: line, end: line + height - 1, seq: message.Seq})
 		}
@@ -828,7 +859,7 @@ func (m *Model) renderMessageGroup(group messageGroup, atLine int) string {
 // node's title while it is visible in the snapshot, its id once folded away.
 func (m *Model) nodeChipLabel(nodeID string) string {
 	if node, ok := m.snapshotNode(nodeID); ok {
-		return nodeLabel(node)
+		return nodeLabelInSnapshot(node, m.snapshot)
 	}
 	return nodeID
 }
@@ -837,6 +868,13 @@ func (m *Model) nodeChipLabel(nodeID string) string {
 // markdown styled, file paths clickable, long answers led by their opening
 // with the rest one click away, and arrivals paced token by token.
 func (m *Model) renderAnswer(message store.Message, width int) string {
+	rendered, _ := m.renderAnswerFold(message, width)
+	return rendered
+}
+
+// renderAnswerFold reports, alongside the rendered answer, whether its tail is
+// folded behind a click target.
+func (m *Model) renderAnswerFold(message store.Message, width int) (string, bool) {
 	body := message.Body
 	streaming := message.Seq == 0 && m.streamMode == streamReal
 	if shown, ok := m.streamedBody(message); ok {
@@ -847,15 +885,15 @@ func (m *Model) renderAnswer(message store.Message, width int) string {
 		if rendered != "" {
 			rendered += "\n"
 		}
-		return rendered + lipgloss.NewStyle().Foreground(powder).Render("▌")
+		return rendered + lipgloss.NewStyle().Foreground(powder).Render("▌"), false
 	}
 	lines := strings.Split(rendered, "\n")
 	if len(lines) <= deliverableLead+4 || m.expandedMessages[message.Seq] {
-		return rendered
+		return rendered, false
 	}
 	head := strings.Join(lines[:deliverableLead], "\n")
 	return head + "\n" + mutedStyle.Faint(true).Render(
-		fmt.Sprintf("⋯ %d more lines — click to expand", len(lines)-deliverableLead))
+		fmt.Sprintf("⋯ %d more lines — click to expand", len(lines)-deliverableLead)), true
 }
 
 func (m *Model) renderReceipt(message store.Message, width int) string {
@@ -907,6 +945,8 @@ func receiptSummary(message store.Message) string {
 func indentLines(text, prefix string) string {
 	return prefix + strings.ReplaceAll(text, "\n", "\n"+prefix)
 }
+
+const railHistoryLimit = 5
 
 func (m *Model) renderTree(width, height int) string {
 	snapshot := m.snapshot
@@ -962,6 +1002,10 @@ func (m *Model) renderTree(width, height int) string {
 	} else {
 		roots = orderRoots(children[store.RootID], children)
 	}
+	historyCount := 0
+	if m.graphScopeID == "" {
+		roots, historyCount = visibleRootHistory(roots, children, m.historyExpanded)
+	}
 
 	// Dependency edges are the pipeline structure the tree cannot draw, so
 	// they surface two ways: a hollow dotted glyph for work that is queued
@@ -970,6 +1014,7 @@ func (m *Model) renderTree(width, height int) string {
 	for _, node := range snapshot.Nodes {
 		nodeByID[node.ID] = node
 	}
+	jobRoots := nodeJobRoots(snapshot.Nodes)
 	waitsOn := make(map[string][]string)
 	for _, edge := range snapshot.Edges {
 		source, ok := nodeByID[edge.From]
@@ -1034,7 +1079,7 @@ func (m *Model) renderTree(width, height int) string {
 				marker = lipgloss.NewStyle().Foreground(powder).Bold(true).Render("▸ ")
 			}
 			prefix := marker + mutedStyle.Render(ancestorGuide+branch) + glyph + " "
-			label := nodeLabel(node)
+			label := nodeLabel(node, jobRoots[node.ID])
 			labelStyle := lipgloss.NewStyle().Foreground(ink)
 			if dimmed {
 				labelStyle = mutedStyle
@@ -1059,7 +1104,7 @@ func (m *Model) renderTree(width, height int) string {
 			if selected && len(waiting) > 0 {
 				names := make([]string, 0, len(waiting))
 				for _, id := range waiting {
-					names = append(names, nodeLabel(nodeByID[id]))
+					names = append(names, nodeLabel(nodeByID[id], jobRoots[id]))
 				}
 				waitPrefix := "  " + nextGuide + "   "
 				waits := "waits: " + strings.Join(names, " · ")
@@ -1072,6 +1117,24 @@ func (m *Model) renderTree(width, height int) string {
 		}
 	}
 	walk(roots, "")
+	if historyCount > 0 {
+		row := len(lines)
+		selected := m.selectedNodeID == historyGraphRowID
+		marker := "  "
+		if selected {
+			marker = lipgloss.NewStyle().Foreground(lavender).Bold(true).Render("▸ ")
+		}
+		disclosure := "›"
+		if m.historyExpanded {
+			disclosure = "⌄"
+		}
+		line := marker + mutedStyle.Faint(true).Render(fmt.Sprintf("%s history (%d)", disclosure, historyCount))
+		if selected {
+			line = lipgloss.NewStyle().Background(selectionBand).Width(width).Render(line)
+		}
+		lines = append(lines, line)
+		m.graphRows = append(m.graphRows, graphRow{line: row, nodeID: historyGraphRowID})
+	}
 
 	if height > 0 && len(lines) > height {
 		lines = lines[:height]
@@ -1079,17 +1142,225 @@ func (m *Model) renderTree(width, height int) string {
 	return strings.Join(lines, "\n")
 }
 
-// nodeLabel is the display name of a node anywhere space is short: the
-// planner's (or titler's) few-word title when one exists, else the brief's
-// first line, else the id.
-func nodeLabel(node store.Node) string {
-	if title := strings.TrimSpace(node.Title); title != "" {
+// nodeLabel is the display name of a node anywhere space is short. It is a
+// pure display projection: durable titles and briefs remain verbatim in the
+// store, while prompt-shaped fallbacks are compressed here.
+func nodeLabel(node store.Node, jobRoot ...store.Node) string {
+	title := strings.TrimSpace(node.Title)
+	if strings.EqualFold(title, "synthesis") {
+		root := node
+		if len(jobRoot) > 0 && jobRoot[0].ID != "" {
+			root = jobRoot[0]
+		}
+		if noun := synthesisJobNoun(root); noun != "" && noun != "synthesis" {
+			return "synthesis · " + noun
+		}
+		return "synthesis"
+	}
+	if title != "" && !titleMatchesBriefPrefix(title, node.Brief) && !instructionShapedTitle(title) {
 		return title
 	}
-	if brief := firstLine(node.Brief); brief != "" {
-		return brief
+	source := node.Brief
+	if strings.TrimSpace(source) == "" {
+		source = title
+	}
+	if label := deriveNodeLabel(source); label != "" {
+		return label
+	}
+	if title != "" {
+		return strings.ToLower(title)
 	}
 	return node.ID
+}
+
+func instructionShapedTitle(title string) bool {
+	title = strings.ToLower(strings.TrimSpace(title))
+	for _, prefix := range []string{
+		"you are ", "you're ", "you will receive ", "you'll receive ",
+		"write the ", "write a ", "write an ",
+	} {
+		if strings.HasPrefix(title, prefix) {
+			return true
+		}
+	}
+	return false
+}
+
+func nodeLabelInSnapshot(node store.Node, snapshot store.Snapshot) string {
+	if root, ok := nodeJobRoots(snapshot.Nodes)[node.ID]; ok {
+		return nodeLabel(node, root)
+	}
+	return nodeLabel(node)
+}
+
+// nodeJobRoots resolves every visible node to its top-level job. Cycles and
+// partial snapshots fail closed: the ordinary node label remains available.
+func nodeJobRoots(nodes []store.Node) map[string]store.Node {
+	byID := make(map[string]store.Node, len(nodes))
+	for _, node := range nodes {
+		byID[node.ID] = node
+	}
+	roots := make(map[string]store.Node, len(nodes))
+	visiting := make(map[string]bool, len(nodes))
+	var resolve func(string) (store.Node, bool)
+	resolve = func(id string) (store.Node, bool) {
+		if root, ok := roots[id]; ok {
+			return root, true
+		}
+		node, ok := byID[id]
+		if !ok || node.ID == store.RootID || visiting[id] {
+			return store.Node{}, false
+		}
+		visiting[id] = true
+		defer delete(visiting, id)
+		if node.Parent == store.RootID {
+			roots[id] = node
+			return node, true
+		}
+		root, ok := resolve(node.Parent)
+		if ok {
+			roots[id] = root
+		}
+		return root, ok
+	}
+	for id := range byID {
+		_, _ = resolve(id)
+	}
+	return roots
+}
+
+func titleMatchesBriefPrefix(title, brief string) bool {
+	clipped := strings.HasSuffix(strings.TrimSpace(title), "…") || strings.HasSuffix(strings.TrimSpace(title), "...")
+	normalize := func(value string) string {
+		value = strings.TrimSpace(strings.TrimSuffix(strings.TrimSuffix(value, "…"), "..."))
+		return strings.ToLower(strings.Join(strings.Fields(value), " "))
+	}
+	title = normalize(title)
+	brief = normalize(brief)
+	if title == "" || brief == "" || !strings.HasPrefix(brief, title) {
+		return false
+	}
+	if len(brief) == len(title) || clipped {
+		return true
+	}
+	for _, next := range brief[len(title):] {
+		return unicode.IsSpace(next) || strings.ContainsRune(".,:;!?—–-", next)
+	}
+	return false
+}
+
+func deriveNodeLabel(brief string) string {
+	brief, imperative := stripInstructionBoilerplate(brief)
+	words := meaningfulLabelWords(brief, 6)
+	if len(words) == 0 {
+		return ""
+	}
+	if imperative {
+		words[0] = imperativeWord(words[0])
+	}
+	return strings.Join(words, " ")
+}
+
+func stripInstructionBoilerplate(text string) (string, bool) {
+	text = strings.TrimSpace(text)
+	lower := strings.ToLower(text)
+	for _, prefix := range []string{"you will receive ", "you'll receive "} {
+		if !strings.HasPrefix(lower, prefix) {
+			continue
+		}
+		rest := text[len(prefix):]
+		if boundary := strings.IndexAny(rest, ".;\n"); boundary >= 0 && strings.TrimSpace(rest[boundary+1:]) != "" {
+			text = strings.TrimSpace(rest[boundary+1:])
+		} else {
+			text = strings.TrimSpace(rest)
+		}
+		lower = strings.ToLower(text)
+		break
+	}
+	for _, prefix := range []string{"write the ", "write a ", "write an "} {
+		if strings.HasPrefix(lower, prefix) {
+			return strings.TrimSpace(text[len(prefix):]), false
+		}
+	}
+	for _, prefix := range []string{"you are ", "you're "} {
+		if strings.HasPrefix(lower, prefix) {
+			return strings.TrimSpace(text[len(prefix):]), true
+		}
+	}
+	return text, false
+}
+
+func meaningfulLabelWords(text string, limit int) []string {
+	stop := map[string]bool{
+		"a": true, "an": true, "the": true, "and": true, "or": true,
+		"of": true, "for": true, "to": true, "from": true, "with": true,
+		"in": true, "on": true, "at": true, "by": true, "into": true,
+		"this": true, "that": true, "these": true, "those": true,
+		"your": true, "its": true, "their": true, "it": true, "them": true,
+	}
+	fields := strings.FieldsFunc(strings.ToLower(text), func(char rune) bool {
+		return !unicode.IsLetter(char) && !unicode.IsNumber(char) && char != '-'
+	})
+	words := make([]string, 0, min(limit, len(fields)))
+	for _, field := range fields {
+		field = strings.Trim(field, "-")
+		if field == "" || stop[field] {
+			continue
+		}
+		words = append(words, field)
+		if len(words) == limit {
+			break
+		}
+	}
+	return words
+}
+
+func imperativeWord(word string) string {
+	known := map[string]string{
+		"analyzing": "analyze", "assembling": "assemble", "creating": "create",
+		"designing": "design", "editing": "edit", "generating": "generate",
+		"implementing": "implement", "preparing": "prepare", "producing": "produce",
+		"recording": "record", "reviewing": "review", "studying": "study",
+		"writing": "write",
+	}
+	if imperative, ok := known[word]; ok {
+		return imperative
+	}
+	if strings.HasSuffix(word, "ing") && len(word) > 5 {
+		stem := strings.TrimSuffix(word, "ing")
+		if len(stem) > 2 && stem[len(stem)-1] == stem[len(stem)-2] {
+			stem = stem[:len(stem)-1]
+		}
+		return stem
+	}
+	return word
+}
+
+func synthesisJobNoun(root store.Node) string {
+	source := strings.TrimSpace(root.Title)
+	if source == "" || strings.EqualFold(source, "synthesis") {
+		source = strings.TrimSpace(root.Provenance.Intent)
+	}
+	if source == "" {
+		source = root.Brief
+	}
+	words := strings.Fields(deriveNodeLabel(source))
+	if len(words) > 5 {
+		words = words[:5]
+	}
+	if len(words) == 0 {
+		return ""
+	}
+	objectVerbs := map[string]bool{
+		"assemble": true, "build": true, "create": true, "deliver": true,
+		"generate": true, "make": true, "prepare": true, "produce": true,
+		"review": true, "write": true,
+	}
+	words[0] = imperativeWord(words[0])
+	if len(words) > 1 && objectVerbs[words[0]] {
+		words = words[1:]
+	}
+	return strings.Join(words, " ")
 }
 
 // nodeSettled reports whether one node has nothing left to do: it landed,
@@ -1140,6 +1411,28 @@ func orderRoots(roots []store.Node, children map[string][]store.Node) []store.No
 	newestFirst(live)
 	newestFirst(settled)
 	return append(live, settled...)
+}
+
+// visibleRootHistory keeps live work and the five freshest settled jobs in
+// the primary rail. Older top-level jobs remain reachable through one row.
+func visibleRootHistory(roots []store.Node, children map[string][]store.Node, expanded bool) ([]store.Node, int) {
+	visible := make([]store.Node, 0, len(roots))
+	settled := 0
+	history := 0
+	for _, root := range roots {
+		if !subtreeSettled(root, children) {
+			visible = append(visible, root)
+			continue
+		}
+		settled++
+		if settled <= railHistoryLimit || expanded {
+			visible = append(visible, root)
+		}
+		if settled > railHistoryLimit {
+			history++
+		}
+	}
+	return visible, history
 }
 
 func (m *Model) nodeGlyph(node store.Node) (string, bool) {
