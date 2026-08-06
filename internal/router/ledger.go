@@ -50,6 +50,7 @@ type observation struct {
 	class    provider.CallClass
 	prior    float64
 	positive bool
+	weight   float64
 }
 
 type ledgerFile struct {
@@ -83,6 +84,25 @@ const (
 	maxStep       = 0.5
 	ratingBound   = 6.0
 )
+
+// MinGraded is how much graded evidence a rating needs before the ordering may
+// prefer it to the cold-start prior.
+//
+// Eight, which is profile.MinSamples — the number this codebase already uses for
+// exactly this decision, "may a measurement overwrite a default". Deliberately
+// the same number rather than a new one, and it is comfortably above what went
+// wrong: arm B's collapse was **five** graded observations, all of them budget
+// stops on a single oversized task, outvoting a prior and rerouting every leaf
+// on the panel. The report's own conclusion is that this gate alone would have
+// prevented the whole thing.
+//
+// The gate is on *graded* observations specifically, and that is the point.
+// 103 of 108 leaf outcomes in that arm were unverified successes, which move
+// nothing and are correct to move nothing — so a count that looked like plenty
+// of experience was five failures wearing a hundred and eight's clothes. Below
+// the gate the ordering falls back to the cold-start prior, which is the honest
+// statement that nothing is known yet.
+const MinGraded = 8
 
 // LoadLedger reads what has been learned, returning an empty ledger when there
 // is nothing yet. A corrupt file is treated as an empty one, exactly as the
@@ -126,10 +146,11 @@ func (l *Ledger) Observe(model string, class provider.CallClass, prior float64, 
 	if !graded || model == "" {
 		return
 	}
+	weight := verdict.Weight()
 	l.mutex.Lock()
 	defer l.mutex.Unlock()
-	l.entries[key(model, class)] = update(l.entryOr(model, class, prior), positive)
-	l.pending = append(l.pending, observation{model: model, class: class, prior: prior, positive: positive})
+	l.entries[key(model, class)] = update(l.entryOr(model, class, prior), positive, weight)
+	l.pending = append(l.pending, observation{model: model, class: class, prior: prior, positive: positive, weight: weight})
 	l.unsaved = true
 	// Flushed as it goes rather than at the end of the run: a run that is
 	// interrupted has still learned what it learned, and the cost is one locked
@@ -235,7 +256,7 @@ func (l *Ledger) flush() error {
 	}
 	for _, item := range l.pending {
 		merged.entries[key(item.model, item.class)] = update(
-			merged.entryOr(item.model, item.class, item.prior), item.positive)
+			merged.entryOr(item.model, item.class, item.prior), item.positive, item.weight)
 	}
 
 	encoded, err := json.MarshalIndent(merged.file(), "", "  ")
@@ -291,8 +312,19 @@ func decodeLedger(data []byte) ledgerFile {
 }
 
 // update applies one graded outcome. See the comment on the constants above for
-// why each brake is here.
-func update(entry Entry, positive bool) Entry {
+// why each brake is here, and Verdict.Weight for why the last one is not a
+// constant: how far an outcome may move a rating depends on how much of it was
+// about the model.
+//
+// Count is the number of graded observations and is incremented whatever the
+// weight, because it meters two things that are not the same question. The step
+// size decays with how much has been seen, and the MinGraded gate asks how much
+// has been seen — a down-weighted observation is still something the router
+// looked at. What the weight buys is a smaller move, not a smaller count.
+func update(entry Entry, positive bool, weight float64) Entry {
+	if weight <= 0 {
+		weight = 1
+	}
 	expected := 1 / (1 + math.Exp(-entry.Rating))
 	observed := 0.0
 	if positive {
@@ -302,7 +334,7 @@ func update(entry Entry, positive bool) Entry {
 	// what a prior worth one pseudo-observation looks like once it is spread
 	// across the evidence that has arrived since.
 	pull := entry.Rating / (priorVariance * float64(entry.Count+1))
-	step := rate(entry.Count) * (observed - expected - pull)
+	step := weight * rate(entry.Count) * (observed - expected - pull)
 	step = math.Max(-maxStep, math.Min(maxStep, step))
 
 	entry.Rating = math.Max(-ratingBound, math.Min(ratingBound, entry.Rating+step))
