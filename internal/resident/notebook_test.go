@@ -92,6 +92,50 @@ func TestFailureDistillationRecordsScopedQuirkOnce(t *testing.T) {
 	}
 }
 
+func TestDistillerEmitsNonRetrievableSkillCandidate(t *testing.T) {
+	graph := openStore(t)
+	if err := graph.Splice(store.RootID, store.Subtree{Nodes: []store.NodeSpec{{
+		ID: "skill-job", Brief: "capture the working procedure", Stage: 1,
+	}}}, store.Provenance{Origin: store.OriginUser, SessionID: "skill-session", Intent: "make the audit repeatable"}); err != nil {
+		t.Fatal(err)
+	}
+	artifact := "/workspace/audit-skill"
+	reconciler := New(graph, nil, nil).WithDistiller(
+		func(context.Context, string, string, bool) ([]Learned, error) {
+			return []Learned{{
+				Scope: "tool:git",
+				Kind:  store.FactSkill,
+				Body:  "git-audit runs the verified repository audit",
+				Skill: &SkillCandidate{Artifact: artifact},
+			}}, nil
+		})
+	if err := reconciler.Tick(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	claim, won, err := graph.Claim("skill-job", "worker")
+	if err != nil || !won {
+		t.Fatalf("claim: won=%t err=%v", won, err)
+	}
+	if err := graph.Complete(claim, "wrote the audit procedure"); err != nil {
+		t.Fatal(err)
+	}
+	if err := reconciler.Tick(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+
+	candidates, err := graph.SkillFacts(store.FactCandidate, 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(candidates) != 1 || candidates[0].NodeID != "skill-job" ||
+		candidates[0].Body != "git-audit runs the verified repository audit" ||
+		candidates[0].Artifact != artifact {
+		t.Fatalf("skill candidates = %+v", candidates)
+	}
+	if digest := NotebookDigest(graph, "use git", "audit this repository", 5); digest != "" {
+		t.Fatalf("candidate appeared in notebook digest: %q", digest)
+	}
+}
 func TestFailedDeliveryGateReachesDistillerInput(t *testing.T) {
 	graph := openStore(t)
 	if err := graph.Splice(store.RootID, store.Subtree{Nodes: []store.NodeSpec{{
@@ -151,9 +195,25 @@ func TestNotebookDigestRetrievesPathScopeAndEmptyNotebook(t *testing.T) {
 		t.Fatalf("record fact: %v", err)
 	}
 
+	skill, err := graph.RecordSkillCandidate("", "file:internal/resident/notebook.go",
+		"notebook-audit verifies cue ordering", "/workspace/notebook-audit")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := graph.ActivateSkill(skill.Seq, "/home/test/.aforge/skills/notebook-audit"); err != nil {
+		t.Fatal(err)
+	}
 	got := NotebookDigest(graph, "inspect internal/resident/notebook.go", "fix cue lookup", 5)
+
 	if !strings.HasPrefix(got, "notebook") || !strings.Contains(got, "- notebook.go keeps cues in priority order") {
 		t.Fatalf("NotebookDigest() = %q, want header plus the recorded fact", got)
+	}
+	if !strings.Contains(got, "- skill: notebook-audit verifies cue ordering") {
+		t.Fatalf("NotebookDigest() did not label the active skill: %q", got)
+	}
+	skills, err := graph.SkillFacts(store.FactActive, 5)
+	if err != nil || len(skills) != 1 || skills[0].Uses != 1 || skills[0].LastUsed.IsZero() {
+		t.Fatalf("skill retrieval telemetry = %+v err=%v", skills, err)
 	}
 }
 
