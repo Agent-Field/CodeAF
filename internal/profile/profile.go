@@ -41,6 +41,13 @@ type Record struct {
 	Cost         float64 `json:"cost,omitempty"`
 	Promoted     bool    `json:"promoted,omitempty"`
 
+	// ExpectedTurns and ExpectedTokens are the profile's own medians for this
+	// size before the record landed. Nil means the bucket had too little prior
+	// evidence to make an expectation; that is distinct from a zero residual.
+	ExpectedTurns  *int     `json:"expected_turns,omitempty"`
+	ExpectedTokens *int     `json:"expected_tokens,omitempty"`
+	Surprise       *float64 `json:"surprise,omitempty"`
+
 	// Verdict is how the leaf actually ended. It replaced a `done` flag that was
 	// the scheduler's StateDone carried across — true of a leaf that exhausted
 	// its budget mid-edit as much as of one that finished — and the flag was
@@ -109,6 +116,10 @@ const maxRecords = 200
 // enough to tell a systematically wrong anchor from one unlucky task.
 const MinSamples = 8
 
+// maxSurprise keeps one pathological run from dominating a bucket's error
+// bar forever. Ten is still an honest 1000% miss while bounding bad telemetry.
+const maxSurprise = 10.0
+
 // Load reads the profile for a model and skill, returning an empty one when
 // there is nothing recorded yet.
 func Load(dir, model, skill string) (*Profile, error) {
@@ -138,20 +149,71 @@ func Load(dir, model, skill string) (*Profile, error) {
 	return profile, nil
 }
 
-// Add appends measurements.
-func (p *Profile) Add(records ...Record) {
+// Add appends measurements and returns the records as they were journaled.
+// Each expectation is taken before its record enters the profile, so a leaf
+// can never make its own prediction look better.
+func (p *Profile) Add(records ...Record) []Record {
 	p.mutex.Lock()
 	defer p.mutex.Unlock()
+	added := make([]Record, 0, len(records))
 	for _, record := range records {
 		if strings.TrimSpace(record.Title) == "" {
 			continue
 		}
+		record.ExpectedTurns = nil
+		record.ExpectedTokens = nil
+		record.Surprise = nil
+		if expectedTurns, expectedTokens, ok := p.expectation(record.Size); ok {
+			record.ExpectedTurns = intPointer(expectedTurns)
+			record.ExpectedTokens = intPointer(expectedTokens)
+			surprise := (normalizedResidual(record.Turns, expectedTurns) +
+				normalizedResidual(record.Tokens, expectedTokens)) / 2
+			if surprise > maxSurprise {
+				surprise = maxSurprise
+			}
+			record.Surprise = floatPointer(surprise)
+		}
 		p.Records = append(p.Records, record)
+		added = append(added, record)
 	}
 	if len(p.Records) > maxRecords {
 		p.Records = p.Records[len(p.Records)-maxRecords:]
 	}
+	return added
 }
+
+// expectation returns the median turns and tokens for one size bucket. The
+// same evidence floor that protects ruler changes protects predictions: below
+// it, surprise is unknown rather than deceptively recorded as zero.
+func (p *Profile) expectation(size string) (int, int, bool) {
+	turns := make([]int, 0, len(p.Records))
+	tokens := make([]int, 0, len(p.Records))
+	for _, record := range p.Records {
+		if record.Size != size {
+			continue
+		}
+		turns = append(turns, record.Turns)
+		tokens = append(tokens, record.Tokens)
+	}
+	if len(turns) < MinSamples {
+		return 0, 0, false
+	}
+	sort.Ints(turns)
+	sort.Ints(tokens)
+	return turns[len(turns)/2], tokens[len(tokens)/2], true
+}
+
+func normalizedResidual(actual, expected int) float64 {
+	difference := actual - expected
+	if difference < 0 {
+		difference = -difference
+	}
+	return float64(difference) / float64(max(expected, 1))
+}
+
+func intPointer(value int) *int { return &value }
+
+func floatPointer(value float64) *float64 { return &value }
 
 // Save writes the profile back.
 func (p *Profile) Save() error {

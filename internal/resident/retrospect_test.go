@@ -95,9 +95,15 @@ func TestRetrospectiveSketchCarriesJobCost(t *testing.T) {
 	if err := graph.RecordUsage(store.NodeUsage{NodeID: "cost-child", PromptTokens: 100, CompletionTokens: 20, Cost: 0.01}); err != nil {
 		t.Fatalf("record child usage: %v", err)
 	}
+	if err := graph.RecordSurprise(store.NodeSurprise{NodeID: "cost-child", ActualTokens: 120, ExpectedTokens: 60, Surprise: 1}); err != nil {
+		t.Fatalf("record child surprise: %v", err)
+	}
 	completeRetrospectiveNode(t, graph, "cost-root", "delivery complete")
 	if err := graph.RecordUsage(store.NodeUsage{NodeID: "cost-root", PromptTokens: 40, CompletionTokens: 5, Cost: 0.0025}); err != nil {
 		t.Fatalf("record root usage: %v", err)
+	}
+	if err := graph.RecordSurprise(store.NodeSurprise{NodeID: "cost-root", ActualTokens: 45, ExpectedTokens: 12, Surprise: 2.75}); err != nil {
+		t.Fatalf("record root surprise: %v", err)
 	}
 
 	sketches, settled := New(graph, nil, nil).settledJobSketches(time.Now())
@@ -105,10 +111,11 @@ func TestRetrospectiveSketchCarriesJobCost(t *testing.T) {
 		t.Fatalf("settled/sketches = %d/%d, want 1/1", settled, len(sketches))
 	}
 	job := sketches[0]
-	if job.NodeCount != 2 || job.PromptTokens != 140 || job.CompletionTokens != 25 || job.Cost != 0.0125 {
+	if job.NodeCount != 2 || job.PromptTokens != 140 || job.CompletionTokens != 25 || job.Cost != 0.0125 ||
+		job.Surprise == nil || *job.Surprise != 1.875 || job.ExpectedTokens != 72 || job.SurpriseTokens != 165 {
 		t.Fatalf("job cost sketch = %+v", job)
 	}
-	if got, want := job.CostSummary(), "2 nodes · 165 tok · $0.0125"; got != want {
+	if got, want := job.CostSummary(), "2 nodes · 165 tok · $0.0125, predicted 72 tok — 2.3× over"; got != want {
 		t.Fatalf("CostSummary() = %q, want %q", got, want)
 	}
 }

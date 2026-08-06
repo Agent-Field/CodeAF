@@ -42,6 +42,9 @@ func (s *Store) Rebuild() error {
 	if _, err := tx.Exec(`DELETE FROM usage`); err != nil {
 		return fmt.Errorf("rebuild usage: %w", err)
 	}
+	if _, err := tx.Exec(`DELETE FROM surprises`); err != nil {
+		return fmt.Errorf("rebuild surprises: %w", err)
+	}
 	if _, err := tx.Exec(`DELETE FROM facts`); err != nil {
 		return fmt.Errorf("rebuild facts: %w", err)
 	}
@@ -246,6 +249,13 @@ func replayEvent(tx *sql.Tx, event Event) error {
 			return err
 		}
 		return applyUsageView(tx, payload, event.Seq, event.Time)
+
+	case EventSurpriseRecorded:
+		var payload NodeSurprise
+		if err := json.Unmarshal(event.Payload, &payload); err != nil {
+			return err
+		}
+		return applySurpriseView(tx, payload, event.Seq, event.Time)
 
 	case EventDeliveryGate:
 		// Gate evidence is journal-native and has no materialized view. Decode it

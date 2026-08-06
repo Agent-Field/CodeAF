@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"math"
 	"sort"
 	"strings"
 	"sync"
@@ -28,6 +29,7 @@ type selfKnowledgeBucket struct {
 	successes  int
 	promotions int
 	cost       float64
+	surprises  []float64
 }
 
 var (
@@ -63,6 +65,7 @@ func measureSelfKnowledge(settings config.Config, model string) string {
 	}
 
 	buckets := make(map[string]selfKnowledgeBucket)
+	var globalTokens, globalTurns []int
 	for _, record := range measured.Records {
 		switch record.Size {
 		case profile.BucketReflex, profile.BucketDirect, "atomic", "borderline", "oversized", "synthesis":
@@ -73,6 +76,11 @@ func measureSelfKnowledge(settings config.Config, model string) string {
 		bucket.tokens = append(bucket.tokens, record.Tokens)
 		bucket.turns = append(bucket.turns, record.Turns)
 		bucket.cost += record.Cost
+		globalTokens = append(globalTokens, record.Tokens)
+		globalTurns = append(globalTurns, record.Turns)
+		if record.Surprise != nil {
+			bucket.surprises = append(bucket.surprises, *record.Surprise)
+		}
 		if record.Size == profile.BucketReflex {
 			if record.Promoted {
 				bucket.promotions++
@@ -87,6 +95,11 @@ func measureSelfKnowledge(settings config.Config, model string) string {
 		}
 		buckets[record.Size] = bucket
 	}
+	if len(globalTokens) == 0 {
+		return ""
+	}
+	globalTokenMedian := selfKnowledgeMedian(globalTokens)
+	globalTurnMedian := selfKnowledgeMedian(globalTurns)
 
 	lines := make([]string, 0, len(buckets))
 	for _, size := range []string{profile.BucketReflex, profile.BucketDirect, "atomic", "borderline", "oversized", "synthesis"} {
@@ -94,18 +107,41 @@ func measureSelfKnowledge(settings config.Config, model string) string {
 		if !ok {
 			continue
 		}
+		samples := len(bucket.tokens)
+		tokens := selfKnowledgeShrunkMedian(selfKnowledgeMedian(bucket.tokens), globalTokenMedian, samples)
+		turns := selfKnowledgeShrunkMedian(selfKnowledgeMedian(bucket.turns), globalTurnMedian, samples)
+		miss := ""
+		if len(bucket.surprises) > 0 {
+			miss = fmt.Sprintf("; typical miss: ±%.0f%%", 100*selfKnowledgeMean(bucket.surprises))
+		}
 		if size == profile.BucketReflex {
-			samples := float64(len(bucket.tokens))
-			lines = append(lines, fmt.Sprintf("%s: median %d tokens, %d turns; n=%d; success=%.1f%%; promoted=%.1f%%; avg cost=$%.4f",
-				size, selfKnowledgeMedian(bucket.tokens), selfKnowledgeMedian(bucket.turns), len(bucket.tokens),
-				100*float64(bucket.successes)/samples, 100*float64(bucket.promotions)/samples, bucket.cost/samples))
+			lines = append(lines, fmt.Sprintf("%s: median %d tokens, %d turns; n=%d, shrunk toward global%s; success=%.1f%%; promoted=%.1f%%; avg cost=$%.4f",
+				size, tokens, turns, samples, miss,
+				100*float64(bucket.successes)/float64(samples), 100*float64(bucket.promotions)/float64(samples), bucket.cost/float64(samples)))
 			continue
 		}
-		failureShare := 100 * float64(bucket.failures) / float64(len(bucket.tokens))
-		lines = append(lines, fmt.Sprintf("%s: median %d tokens, %d turns; n=%d; failures=%.1f%%",
-			size, selfKnowledgeMedian(bucket.tokens), selfKnowledgeMedian(bucket.turns), len(bucket.tokens), failureShare))
+		failureShare := 100 * float64(bucket.failures) / float64(samples)
+		lines = append(lines, fmt.Sprintf("%s: median %d tokens, %d turns; n=%d, shrunk toward global%s; failures=%.1f%%",
+			size, tokens, turns, samples, miss, failureShare))
 	}
 	return strings.Join(lines, "\n")
+}
+
+// Eight pseudo-samples matches profile.MinSamples and the router's MinGraded:
+// one evidence gate worth of work makes local and global history count equally.
+const selfKnowledgeShrinkage = 8
+
+func selfKnowledgeShrunkMedian(observed, global, samples int) int {
+	return int(math.Round(float64(samples*observed+selfKnowledgeShrinkage*global) /
+		float64(samples+selfKnowledgeShrinkage)))
+}
+
+func selfKnowledgeMean(values []float64) float64 {
+	var total float64
+	for _, value := range values {
+		total += value
+	}
+	return total / float64(len(values))
 }
 
 func selfKnowledgeMedian(values []int) int {

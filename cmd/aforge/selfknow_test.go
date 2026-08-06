@@ -66,3 +66,45 @@ func TestMeasureSelfKnowledgeReportsReflexBoundary(t *testing.T) {
 		}
 	}
 }
+
+func TestSelfKnowledgeShrinkageWeightsByBucketEvidence(t *testing.T) {
+	if got := selfKnowledgeShrunkMedian(900, 100, 8); got != 500 {
+		t.Fatalf("eight-sample estimate = %d, want equal local/global weight at 500", got)
+	}
+	if got := selfKnowledgeShrunkMedian(900, 100, 24); got != 700 {
+		t.Fatalf("24-sample estimate = %d, want 3:1 local/global weight at 700", got)
+	}
+}
+
+func TestMeasureSelfKnowledgeAddsCompilerErrorBars(t *testing.T) {
+	settings := config.Config{ProfileDir: t.TempDir(), Model: "worker-model"}
+	measured, err := profile.Load(settings.ProfileDir, settings.Model, "linear")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for index := 0; index < profile.MinSamples; index++ {
+		measured.Add(profile.Record{
+			Title: "baseline", Size: "atomic", Turns: 1, Tokens: 100,
+		})
+	}
+	// The first measured miss is 100% on both dimensions; the following exact
+	// run is a defined zero, so the bucket's mean surprise is 50%.
+	measured.Add(
+		profile.Record{Title: "miss", Size: "atomic", Turns: 2, Tokens: 200},
+		profile.Record{Title: "exact", Size: "atomic", Turns: 1, Tokens: 100},
+	)
+	if err := measured.Save(); err != nil {
+		t.Fatal(err)
+	}
+
+	got := measureSelfKnowledge(settings, settings.Model)
+	for _, want := range []string{
+		"atomic: median 100 tokens, 1 turns",
+		"n=10, shrunk toward global",
+		"typical miss: ±50%",
+	} {
+		if !strings.Contains(got, want) {
+			t.Errorf("compiler measured-cost line = %q, want %q", got, want)
+		}
+	}
+}
