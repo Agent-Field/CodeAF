@@ -42,7 +42,7 @@ func (c *passClient) CompleteWithMessages(_ context.Context, messages []ai.Messa
 		return textResponse(`{"parts":[{"title":"Review","summary":"Write REVIEW.md."}]}`), nil
 	case bindPrompt:
 		return textResponse(`{"bindings":[],"duplicates":[]}`), nil
-	case sizePromptWith(Anchors):
+	case sizePromptWith(Anchors()):
 		return textResponse(`{"sizes":[
 			{"node":1,"size":"atomic","split_into":[]},
 			{"node":2,"size":"atomic","split_into":[]},
