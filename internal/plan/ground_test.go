@@ -1,8 +1,11 @@
 package plan
 
 import (
+	"reflect"
 	"strings"
 	"testing"
+
+	"github.com/Agent-Field/aforge-v2/internal/store"
 )
 
 // TestGroundPromptSettlesTheEvidenceStandard pins the rule that stops "a short
@@ -25,6 +28,48 @@ func TestGroundPromptSettlesTheEvidenceStandard(t *testing.T) {
 				t.Errorf("ground prompt no longer states %s: missing %q", want.name, want.phrase)
 			}
 		})
+	}
+}
+
+func TestGroundWithoutRecallKeepsPromptByteIdentical(t *testing.T) {
+	reply := func(_, _ string) string {
+		return `{"settled":[],"open":[],"evidence":"Read the requested material."}`
+	}
+	legacy := &stubClient{reply: reply}
+	optional := &stubClient{reply: reply}
+	if _, _, err := Ground(t.Context(), legacy, "  inspect the parser  "); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := GroundWith(t.Context(), optional, "  inspect the parser  ", nil); err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(legacy.prompts, optional.prompts) {
+		t.Fatalf("empty recall changed Ground prompt\nlegacy: %#v\nnew:    %#v", legacy.prompts, optional.prompts)
+	}
+	if got, want := optional.prompts[0], "Goal:\ninspect the parser"; got != want {
+		t.Fatalf("empty-recall prompt = %q, want %q", got, want)
+	}
+}
+
+func TestGroundWithRecallCarriesDigestAndPointers(t *testing.T) {
+	client := &stubClient{reply: func(_, _ string) string {
+		return `{"settled":[],"open":[],"evidence":"Run the focused check."}`
+	}}
+	recall := []store.RecallHit{{
+		NodeID: "old", Intent: "repair the parser", Digest: "The sentinel must stay explicit",
+		Pointers: []string{"/workspace/parser/notes.md"}, Age: "2d ago", Score: 4,
+	}}
+	if _, _, err := GroundWith(t.Context(), client, "repair it again", recall); err != nil {
+		t.Fatal(err)
+	}
+	prompt := client.prompts[0]
+	for _, want := range []string{
+		"You have worked here before; here is what was learned and where the details live",
+		"The sentinel must stay explicit", "/workspace/parser/notes.md", "2d ago",
+	} {
+		if !strings.Contains(prompt, want) {
+			t.Errorf("recall prompt omitted %q:\n%s", want, prompt)
+		}
 	}
 }
 

@@ -26,10 +26,35 @@ type panelServer struct {
 	reply  func(model string) (int, string)
 }
 
-func newPanel(t *testing.T, reply func(model string) (int, string)) (*httptest.Server, *panelServer) {
+type roundTripFunc func(*http.Request) (*http.Response, error)
+
+func (fn roundTripFunc) RoundTrip(request *http.Request) (*http.Response, error) {
+	return fn(request)
+}
+
+type testServer struct {
+	URL     string
+	handler http.Handler
+}
+
+func newTestServer(handler http.Handler) *testServer {
+	return &testServer{URL: "http://router.test", handler: handler}
+}
+
+func (s *testServer) Client() *http.Client {
+	return &http.Client{Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
+		recorder := httptest.NewRecorder()
+		s.handler.ServeHTTP(recorder, request)
+		return recorder.Result(), nil
+	})}
+}
+
+func (s *testServer) Close() {}
+
+func newPanel(t *testing.T, reply func(model string) (int, string)) (*testServer, *panelServer) {
 	t.Helper()
 	panel := &panelServer{reply: reply}
-	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+	server := newTestServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 		// The catalog fetch hits the same base URL. It is answered with nothing
 		// usable on purpose — that is the offline case, where every price is
 		// unknown and the panel is ordered as the operator wrote it — and it is
@@ -70,16 +95,16 @@ func answer(model, content string) string {
 
 var testSchema = json.RawMessage(`{"type":"object","properties":{"stages":{"type":"array"}},"required":["stages"]}`)
 
-func newRouter(t *testing.T, url string, panel Panel) *Router {
+func newRouter(t *testing.T, server *testServer, panel Panel) *Router {
 	t.Helper()
 	dir := t.TempDir()
 	router, err := New(panel, provider.Config{
 		APIKey:  "test-key",
-		BaseURL: url,
+		BaseURL: server.URL,
 		// A catalog fetch against the fake server returns nothing usable, which
 		// is exactly the offline case: every price is unknown and the panel is
 		// ordered as written.
-		HTTPClient: &http.Client{},
+		HTTPClient: server.Client(),
 	}, dir)
 	if err != nil {
 		t.Fatal(err)
@@ -107,7 +132,7 @@ func TestCascadeEscalatesOnFormatFailureAndStopsOnSuccess(t *testing.T) {
 		}
 		return http.StatusOK, answer(model, `{"stages":[{"title":"a"}]}`)
 	})
-	router := newRouter(t, server.URL, threeModels())
+	router := newRouter(t, server, threeModels())
 
 	ctx := provider.WithCall(context.Background(), provider.ClassPlanSpine)
 	response, err := router.CompleteWithMessages(ctx, userMessages("go"), ai.WithSchema(testSchema))
@@ -132,7 +157,7 @@ func TestCascadeEscalatesOnAnEmptyReply(t *testing.T) {
 		}
 		return http.StatusOK, answer(model, `{"stages":[]}`)
 	})
-	router := newRouter(t, server.URL, threeModels())
+	router := newRouter(t, server, threeModels())
 
 	ctx := provider.WithCall(context.Background(), provider.ClassPlanSpine)
 	if _, err := router.CompleteWithMessages(ctx, userMessages("go"), ai.WithSchema(testSchema)); err != nil {
@@ -158,7 +183,7 @@ func TestProviderFailuresNeverMoveRatings(t *testing.T) {
 		}
 		return http.StatusOK, answer(model, `{"stages":[]}`)
 	})
-	router := newRouter(t, server.URL, threeModels())
+	router := newRouter(t, server, threeModels())
 
 	ctx := provider.WithCall(context.Background(), provider.ClassPlanSpine)
 	if _, err := router.CompleteWithMessages(ctx, userMessages("go"), ai.WithSchema(testSchema)); err != nil {
@@ -176,7 +201,7 @@ func TestReportedVerdictSettlesTheCallSiteHalf(t *testing.T) {
 	server, _ := newPanel(t, func(model string) (int, string) {
 		return http.StatusOK, answer(model, `{"stages":[]}`)
 	})
-	router := newRouter(t, server.URL, threeModels())
+	router := newRouter(t, server, threeModels())
 
 	unreported := provider.WithCall(context.Background(), provider.ClassPlanBind)
 	if _, err := router.CompleteWithMessages(unreported, userMessages("go"), ai.WithSchema(testSchema)); err != nil {
@@ -211,7 +236,7 @@ func TestALeafStaysOnOneModelForItsWholeLoop(t *testing.T) {
 	server, panel := newPanel(t, func(model string) (int, string) {
 		return http.StatusOK, answer(model, "working")
 	})
-	router := newRouter(t, server.URL, threeModels())
+	router := newRouter(t, server, threeModels())
 
 	ctx := provider.WithCall(context.Background(), provider.ClassExecLeaf)
 	for range 4 {
@@ -247,7 +272,7 @@ func TestCascadeOrdersByExpectedSuccessPerDollar(t *testing.T) {
 	server, _ := newPanel(t, func(model string) (int, string) {
 		return http.StatusOK, answer(model, `{"stages":[]}`)
 	})
-	router := newRouter(t, server.URL, threeModels())
+	router := newRouter(t, server, threeModels())
 
 	if got := slugs(router.order(provider.ClassPlanSpine)); got[0] != "cheap/one" {
 		t.Fatalf("cold order = %v, want the cheapest model first", got)
@@ -274,7 +299,7 @@ func TestTheStrongestModelIsSeatedLast(t *testing.T) {
 	server, _ := newPanel(t, func(model string) (int, string) {
 		return http.StatusOK, answer(model, `{"stages":[]}`)
 	})
-	router := newRouter(t, server.URL, threeModels())
+	router := newRouter(t, server, threeModels())
 
 	// Measured strong but not cheap enough to open with: by value it ranks
 	// second, and it still has to be the rung of last resort.
@@ -297,7 +322,7 @@ func TestEveryRungFailingIsAnError(t *testing.T) {
 	server, panel := newPanel(t, func(model string) (int, string) {
 		return http.StatusOK, answer(model, "not json at all")
 	})
-	router := newRouter(t, server.URL, threeModels())
+	router := newRouter(t, server, threeModels())
 
 	ctx := provider.WithCall(context.Background(), provider.ClassPlanSpine)
 	if _, err := router.CompleteWithMessages(ctx, userMessages("go"), ai.WithSchema(testSchema)); err == nil {
@@ -318,7 +343,7 @@ func TestCascadeIsCappedAtThreeRungs(t *testing.T) {
 	server, panel := newPanel(t, func(model string) (int, string) {
 		return http.StatusOK, answer(model, "not json")
 	})
-	router := newRouter(t, server.URL, Panel{Models: models})
+	router := newRouter(t, server, Panel{Models: models})
 
 	ctx := provider.WithCall(context.Background(), provider.ClassPlanSpine)
 	_, _ = router.CompleteWithMessages(ctx, userMessages("go"), ai.WithSchema(testSchema))
@@ -333,7 +358,7 @@ func TestCascadeIsCappedAtThreeRungs(t *testing.T) {
 func TestRungsGetSeparateCacheLineages(t *testing.T) {
 	var keys []string
 	var mutex sync.Mutex
-	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+	server := newTestServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 		if !strings.HasSuffix(request.URL.Path, "/chat/completions") {
 			writer.WriteHeader(http.StatusNotFound)
 			return
@@ -356,7 +381,7 @@ func TestRungsGetSeparateCacheLineages(t *testing.T) {
 	}))
 	defer server.Close()
 
-	router := newRouter(t, server.URL, threeModels())
+	router := newRouter(t, server, threeModels())
 	ctx := provider.WithCacheKey(context.Background(), provider.RunCacheKey("a goal", "panel"))
 	ctx = provider.WithCall(ctx, provider.ClassPlanSpine)
 	if _, err := router.CompleteWithMessages(ctx, userMessages("go"), ai.WithSchema(testSchema)); err != nil {
@@ -374,7 +399,7 @@ func TestLedgerKeysOnTheResolvedSnapshot(t *testing.T) {
 	server, _ := newPanel(t, func(string) (int, string) {
 		return http.StatusOK, answer("vendor/model-0731", "not json")
 	})
-	router := newRouter(t, server.URL, Panel{Models: []Spec{{Slug: "~vendor/model-latest", Price: 1}}})
+	router := newRouter(t, server, Panel{Models: []Spec{{Slug: "~vendor/model-latest", Price: 1}}})
 
 	ctx := provider.WithCall(context.Background(), provider.ClassPlanSpine)
 	_, _ = router.CompleteWithMessages(ctx, userMessages("go"), ai.WithSchema(testSchema))
@@ -398,7 +423,7 @@ func TestEventsRecordTheCandidatesNotJustTheChoice(t *testing.T) {
 		}
 		return http.StatusOK, answer(model, `{"stages":[]}`)
 	})
-	router, err := New(threeModels(), provider.Config{APIKey: "k", BaseURL: server.URL, HTTPClient: &http.Client{}}, dir)
+	router, err := New(threeModels(), provider.Config{APIKey: "k", BaseURL: server.URL, HTTPClient: server.Client()}, dir)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -465,7 +490,7 @@ const (
 // answering is a panel server that gives every model the same well-formed reply.
 // The ordering tests never need a model to fail; what they are about is who gets
 // asked.
-func answering(t *testing.T) *httptest.Server {
+func answering(t *testing.T) *testServer {
 	t.Helper()
 	server, _ := newPanel(t, func(model string) (int, string) {
 		return http.StatusOK, answer(model, `{"stages":[]}`)
@@ -483,7 +508,7 @@ func answering(t *testing.T) *httptest.Server {
 // the panel to the weaker model. Below MinGraded the ordering must not look at
 // the learned number at all.
 func TestAFewGradedOutcomesCannotOutvoteThePrior(t *testing.T) {
-	router := newRouter(t, answering(t).URL, armBPanel())
+	router := newRouter(t, answering(t), armBPanel())
 	if got := slugs(router.order(provider.ClassExecLeaf))[0]; got != flash {
 		t.Fatalf("cold opener = %s, want the mid model that opens on value", got)
 	}
@@ -516,7 +541,7 @@ func TestAFewGradedOutcomesCannotOutvoteThePrior(t *testing.T) {
 // reading and t3's small repairs, where the demoted model had never once failed.
 // That single fact is the whole of the t2 and t3 collapse.
 func TestLeafRatingsAreKeyedByTheShapeOfLeaf(t *testing.T) {
-	router := newRouter(t, answering(t).URL, armBPanel())
+	router := newRouter(t, answering(t), armBPanel())
 	oversized := shaped(provider.ClassExecLeaf, "oversized")
 	atomic := shaped(provider.ClassExecLeaf, "atomic")
 
@@ -547,7 +572,7 @@ func TestLeafRatingsAreKeyedByTheShapeOfLeaf(t *testing.T) {
 // and the last rung reverted to whatever ranked third on value. Eight of eleven
 // classes went from ending in kimi to ending in qwen between run 1 and run 3.
 func TestSuccessCannotDemoteTheTerminalRung(t *testing.T) {
-	router := newRouter(t, answering(t).URL, armBPanel())
+	router := newRouter(t, answering(t), armBPanel())
 	cold := slugs(router.order(provider.ClassPlanExpand))
 	if cold[len(cold)-1] != kimi {
 		t.Fatalf("cold cascade = %v, want it to end in the declared top model", cold)
@@ -586,7 +611,7 @@ func TestLeafEscalationClimbsAbilityNotValue(t *testing.T) {
 	server, panel := newPanel(t, func(model string) (int, string) {
 		return http.StatusOK, answer(model, "working")
 	})
-	router := newRouter(t, server.URL, armBPanel())
+	router := newRouter(t, server, armBPanel())
 
 	opened := provider.WithCall(context.Background(), provider.ClassExecLeaf)
 	if _, err := router.CompleteWithMessages(opened, userMessages("turn")); err != nil {
@@ -621,7 +646,7 @@ func TestARetriedLeafRecordsTheChainItClimbed(t *testing.T) {
 	server, _ := newPanel(t, func(model string) (int, string) {
 		return http.StatusOK, answer(model, "working")
 	})
-	router, err := New(armBPanel(), provider.Config{APIKey: "k", BaseURL: server.URL, HTTPClient: &http.Client{}}, dir)
+	router, err := New(armBPanel(), provider.Config{APIKey: "k", BaseURL: server.URL, HTTPClient: server.Client()}, dir)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -670,7 +695,7 @@ func TestExplorationMeasuresThePanelItChoosesAgainst(t *testing.T) {
 	server, _ := newPanel(t, func(model string) (int, string) {
 		return http.StatusOK, answer(model, `{"stages":[]}`)
 	})
-	router := newRouter(t, server.URL, armBPanel())
+	router := newRouter(t, server, armBPanel())
 
 	// Exploration only starts once the router has stopped generating evidence on
 	// its own — that is, once the opener is past the gate. While the panel is
@@ -713,7 +738,7 @@ func TestExplorationIsDeterministicForOneRun(t *testing.T) {
 		server, _ := newPanel(t, func(model string) (int, string) {
 			return http.StatusOK, answer(model, `{"stages":[]}`)
 		})
-		router := newRouter(t, server.URL, armBPanel())
+		router := newRouter(t, server, armBPanel())
 		for range MinGraded {
 			router.ledger.Observe(flash, provider.ClassPlanExpand, 0, provider.VerdictVerifiedSuccess)
 		}
@@ -748,7 +773,7 @@ func TestExplorationWaitsForTheRouterToStopLearningOnItsOwn(t *testing.T) {
 	server, panel := newPanel(t, func(model string) (int, string) {
 		return http.StatusOK, answer(model, `{"stages":[]}`)
 	})
-	router := newRouter(t, server.URL, armBPanel())
+	router := newRouter(t, server, armBPanel())
 	for range 60 {
 		ctx := provider.WithCall(context.Background(), provider.ClassPlanSpine)
 		if _, err := router.CompleteWithMessages(ctx, userMessages("go"), ai.WithSchema(testSchema)); err != nil {
@@ -770,7 +795,7 @@ func TestExplorationNeverTouchesALeaf(t *testing.T) {
 	server, panel := newPanel(t, func(model string) (int, string) {
 		return http.StatusOK, answer(model, "working")
 	})
-	router := newRouter(t, server.URL, armBPanel())
+	router := newRouter(t, server, armBPanel())
 	leafClass := shaped(provider.ClassExecLeaf, "atomic")
 	for range MinGraded {
 		router.ledger.Observe(flash, leafClass, 0, provider.VerdictVerifiedSuccess)
@@ -797,7 +822,7 @@ func TestExplorationNeverTouchesALeaf(t *testing.T) {
 // model out of every cascade, and collapsed two working tasks to zero. Each
 // assertion here is one of the four things that had to hold and did not.
 func TestTheArmBCollapseCannotReproduce(t *testing.T) {
-	router := newRouter(t, answering(t).URL, armBPanel())
+	router := newRouter(t, answering(t), armBPanel())
 	oversized := shaped(provider.ClassExecLeaf, "oversized")
 	atomic := shaped(provider.ClassExecLeaf, "atomic")
 

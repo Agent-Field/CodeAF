@@ -176,6 +176,9 @@ func (s *Store) Complete(claim Claim, summary string) error {
 	if _, err := tx.Exec(`UPDATE nodes SET finished_at = ?, updated_seq = ? WHERE id = ?`, formatTime(at), seq, claim.ID); err != nil {
 		return fmt.Errorf("materialize completion %q: %w", claim.ID, err)
 	}
+	if err := refreshGraphFTS(tx, claim.ID); err != nil {
+		return fmt.Errorf("index completion %q: %w", claim.ID, err)
+	}
 	if err := tx.Commit(); err != nil {
 		return fmt.Errorf("complete %q: %w", claim.ID, err)
 	}

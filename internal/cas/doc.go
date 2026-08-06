@@ -1,6 +1,6 @@
 // Package cas stores immutable blobs by their SHA-256 digest.
 //
-// The store intentionally has no garbage collector in this milestone.
-// Reachability-based garbage collection arrives with fold integration, when
-// the graph can authoritatively identify which blobs are still live.
+// Fold pointers make graph reachability explicit. Garbage collection remains
+// intentionally out of scope: immutable overflow is kept until a later pass
+// can prove that no journal event refers to it.
 package cas
