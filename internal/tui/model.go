@@ -124,6 +124,19 @@ type Model struct {
 	chatDraft      string
 	returnFocus    paneFocus
 
+	feedRows     []feedRow
+	feedBlocks   []feedBlock
+	feedExpanded map[int]bool
+
+	// expandedMessages holds the seqs of long chat deliverables opened in
+	// place; everything else shows its lead and a ⋯.
+	expandedMessages map[int64]bool
+
+	// revealSeq/revealShown drive the arrival animation: the newest agent
+	// message unrolls a few lines per tick instead of appearing whole.
+	revealSeq   int64
+	revealShown int
+
 	width  int
 	height int
 
@@ -168,6 +181,11 @@ type Model struct {
 	inputBounds     paneBounds
 	nodeBounds      paneBounds
 	nodeTraceBounds paneBounds
+	nodeBackBounds  paneBounds
+
+	// chatMessageRows maps rendered chat lines to the message seq they
+	// belong to, so clicking a collapsed deliverable opens it in place.
+	chatMessageRows []chatMessageRow
 }
 
 type paneFocus int
@@ -204,17 +222,19 @@ func newModel(backend Backend, sessionID string, commander Commander) *Model {
 	_ = input.Focus()
 
 	m := &Model{
-		backend:      backend,
-		sessionID:    sessionID,
-		commander:    commander,
-		input:        input,
-		chat:         viewport.New(1, 1),
-		graph:        viewport.New(1, 1),
-		nodeTrace:    viewport.New(1, 1),
-		inputFocused: true,
-		focus:        focusInput,
-		autoScroll:   true,
-		modelRole:    "talk",
+		backend:          backend,
+		sessionID:        sessionID,
+		commander:        commander,
+		input:            input,
+		chat:             viewport.New(1, 1),
+		graph:            viewport.New(1, 1),
+		nodeTrace:        viewport.New(1, 1),
+		inputFocused:     true,
+		focus:            focusInput,
+		autoScroll:       true,
+		modelRole:        "talk",
+		feedExpanded:     map[int]bool{},
+		expandedMessages: map[int64]bool{},
 	}
 	if saved, ok := commander.(splitStore); ok {
 		m.splitPct = clampSplitPct(saved.SplitPct())
@@ -284,7 +304,16 @@ func (m *Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 
 	case animationTickMsg:
 		m.animationPending = false
-		if !m.graphAnimating {
+		if m.revealSeq != 0 {
+			// The reveal: a landed message unrolls a few lines per tick, so
+			// an answer reads as arriving rather than materialising.
+			m.revealShown += 3
+			m.refreshChat()
+			if m.autoScroll {
+				m.chat.GotoBottom()
+			}
+		}
+		if !m.graphAnimating && m.revealSeq == 0 {
 			return m, nil
 		}
 		m.spinnerFrame = (m.spinnerFrame + 1) % len(spinnerFrames)
@@ -503,7 +532,7 @@ func nextAnimationTick() tea.Cmd {
 }
 
 func (m *Model) scheduleAnimation() tea.Cmd {
-	if m.animationPending || !m.graphAnimating {
+	if m.animationPending || (!m.graphAnimating && m.revealSeq == 0) {
 		return nil
 	}
 	m.animationPending = true
@@ -545,6 +574,12 @@ func (m *Model) applyPoll(result pollResultMsg) {
 			}
 			if message.Role != store.RoleUser || message.NodeID == "" {
 				added++
+				// A fresh agent-side message reveals progressively while the
+				// reader is following the bottom of the conversation.
+				if message.Role != store.RoleUser && m.autoScroll {
+					m.revealSeq = message.Seq
+					m.revealShown = 1
+				}
 			}
 		}
 	}

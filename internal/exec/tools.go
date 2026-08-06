@@ -88,8 +88,8 @@ func NewToolbox(workspace *Workspace, nodeID int, web *Web) *Toolbox {
 // being told.
 func (t *Toolbox) Definitions() []ai.ToolDefinition {
 	return []ai.ToolDefinition{
-		define("sh", "Run a shell command in the workspace. Use it to read, list, search, and inspect. Chain with && and pipes to do several things in one call.", map[string]any{
-			"cmd": prop("string", "shell command"),
+		define("sh", "Run a shell command in the workspace. Use it to read, list, search, and inspect. cmd is one command string (chain with && and pipes), or an array of commands run in order, stopping at the first failure. For INDEPENDENT commands, prefer separate sh calls in the same turn — they run at the same time.", map[string]any{
+			"cmd": prop("string", "shell command, or an array of commands run serially"),
 			"t":   prop("integer", "timeout seconds, default 60"),
 		}, "cmd"),
 		define("write", "Write a file with exact content. Use this for any deliverable prose; never emit documents through sh.", map[string]any{
@@ -194,6 +194,19 @@ func safeName(id string) string {
 
 func (t *Toolbox) sh(ctx context.Context, args map[string]any) Result {
 	command := stringArg(args, "cmd")
+	if command == "" {
+		// An array is an explicit serial script: each step runs only when
+		// the one before it succeeded, exactly like hand-written a && b.
+		if list, ok := args["cmd"].([]any); ok {
+			steps := make([]string, 0, len(list))
+			for _, step := range list {
+				if text, ok := step.(string); ok && strings.TrimSpace(text) != "" {
+					steps = append(steps, strings.TrimSpace(text))
+				}
+			}
+			command = strings.Join(steps, " && ")
+		}
+	}
 	if command == "" {
 		return errorf("sh needs cmd")
 	}

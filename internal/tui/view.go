@@ -231,6 +231,8 @@ func (m *Model) renderGraphPane() string {
 func (m *Model) renderNodePane() string {
 	innerWidth := max(1, m.width-4)
 	now := time.Now()
+	back := lipgloss.NewStyle().Foreground(lavender).Render("‹ back")
+	m.nodeBackBounds = paneBounds{x: m.nodeBounds.x + 2, y: m.nodeBounds.y + 1, width: lipgloss.Width(back), height: 1}
 	glyph, _ := m.nodeGlyphStyled(m.inspectedNode, now, false)
 	title := nodeLabel(m.inspectedNode)
 	timing := m.nodeTiming(now)
@@ -241,8 +243,8 @@ func (m *Model) renderNodePane() string {
 	if timing != "" {
 		timingWidth = lipgloss.Width("  ·  " + timing)
 	}
-	title = truncate(title, max(1, innerWidth-lipgloss.Width(glyph)-1-timingWidth))
-	header := glyph + " " + lipgloss.NewStyle().Foreground(ink).Bold(true).Render(title)
+	title = truncate(title, max(1, innerWidth-lipgloss.Width(glyph)-10-timingWidth))
+	header := back + "  " + glyph + " " + lipgloss.NewStyle().Foreground(ink).Bold(true).Render(title)
 	if timing != "" {
 		header += mutedStyle.Render("  ·  " + timing)
 	}
@@ -273,7 +275,7 @@ func (m *Model) renderNodePane() string {
 	appendSection("BRIEF", m.nodeDetailsText, strings.Count(m.nodeDetailsText, "\n")+1, new(paneBounds))
 	lines = append(lines, "")
 	contentY++
-	appendSection("ACTIVITY   ✳ model · $ shell · ✎ file · ⌕ web · ▸ you",
+	appendSection("ACTIVITY   ✳ model · $ shell · ✎ file · ⌕ web · ▸ you · ⋯ click expands",
 		m.nodeTrace.View(), m.nodeTraceHeight, &m.nodeTraceBounds)
 
 	innerHeight := max(1, m.chatHeight-2)
@@ -572,7 +574,16 @@ func overlayRight(line, overlay string, width int) string {
 	return line + strings.Repeat(" ", gap) + overlay
 }
 
+// chatMessageRow maps a span of rendered chat lines to the message shown
+// there, so a click on a collapsed answer opens it in place.
+type chatMessageRow struct {
+	start int
+	end   int
+	seq   int64
+}
+
 func (m *Model) renderMessages() string {
+	m.chatMessageRows = m.chatMessageRows[:0]
 	if len(m.messages) == 0 {
 		return mutedStyle.Render("No messages yet. Start with a thought or a task.")
 	}
@@ -582,8 +593,11 @@ func (m *Model) renderMessages() string {
 		return mutedStyle.Render("No messages yet. Start with a thought or a task.")
 	}
 	blocks := make([]string, 0, len(groups))
+	line := 0
 	for _, group := range groups {
-		blocks = append(blocks, m.renderMessageGroup(group))
+		block := m.renderMessageGroup(group, line)
+		blocks = append(blocks, block)
+		line += lipgloss.Height(block) + 1
 	}
 	return strings.Join(blocks, "\n\n")
 }
@@ -623,27 +637,39 @@ func messageGap(previous, next store.Message) time.Duration {
 	return next.Time.Sub(previous.Time)
 }
 
-func (m *Model) renderMessageGroup(group messageGroup) string {
+// deliverableLead is how much of a long answer shows before the ⋯. The lead
+// carries the answer itself — workers are prompted to put the conclusion
+// first — and the full detail is one click away.
+const deliverableLead = 14
+
+func (m *Model) renderMessageGroup(group messageGroup, atLine int) string {
 	latest := group.messages[len(group.messages)-1]
 	accent, label := messagePresentation(latest)
 	available := max(8, m.chat.Width-2)
 	header := lipgloss.NewStyle().Foreground(accent).Faint(true).Render(label)
 	header += mutedStyle.Faint(true).Render("  " + relativeTime(latest.Time, time.Now()))
 
+	// One voice: everything the agent side says — replies, narration, landed
+	// deliverables — reads in the same ink with the same markdown treatment.
+	// The only distinct color is yours.
+	line := atLine + 1
 	items := make([]string, 0, len(group.messages))
 	for _, message := range group.messages {
-		if secondaryMessage(message) {
-			items = append(items, m.renderReceipt(message, available))
-			continue
+		var item string
+		switch {
+		case secondaryMessage(message):
+			item = m.renderReceipt(message, available)
+		case message.Role == store.RoleUser:
+			item = lipgloss.NewStyle().Foreground(powder).Render(wrapText(message.Body, available))
+		default:
+			item = m.renderAnswer(message, available)
 		}
-		bodyStyle := inputTextStyle
-		if message.Role == store.RoleUser {
-			bodyStyle = lipgloss.NewStyle().Foreground(powder)
+		items = append(items, item)
+		height := lipgloss.Height(item)
+		if message.Seq != 0 {
+			m.chatMessageRows = append(m.chatMessageRows, chatMessageRow{start: line, end: line + height - 1, seq: message.Seq})
 		}
-		if message.Role == store.RoleSystem && message.NodeID != "" {
-			bodyStyle = lipgloss.NewStyle().Foreground(lavender).Bold(true)
-		}
-		items = append(items, bodyStyle.Render(wrapText(message.Body, available)))
+		line += height + 1
 	}
 	content := header
 	if len(items) > 0 {
@@ -655,6 +681,27 @@ func (m *Model) renderMessageGroup(group messageGroup) string {
 		BorderForeground(accent).
 		PaddingLeft(1).
 		Render(content)
+}
+
+// renderAnswer presents an agent-side message the way a person reads one:
+// markdown styled, file paths clickable, long answers led by their opening
+// with the rest one click away, and the newest arrival unrolling live.
+func (m *Model) renderAnswer(message store.Message, width int) string {
+	rendered := renderMarkdown(message.Body, width)
+	lines := strings.Split(rendered, "\n")
+	if message.Seq != 0 && message.Seq == m.revealSeq {
+		if m.revealShown < len(lines) {
+			return strings.Join(lines[:max(1, m.revealShown)], "\n") + "\n" +
+				lipgloss.NewStyle().Foreground(lavender).Render("▌")
+		}
+		m.revealSeq, m.revealShown = 0, 0
+	}
+	if len(lines) <= deliverableLead+4 || m.expandedMessages[message.Seq] {
+		return rendered
+	}
+	head := strings.Join(lines[:deliverableLead], "\n")
+	return head + "\n" + mutedStyle.Faint(true).Render(
+		fmt.Sprintf("⋯ %d more lines — click to expand", len(lines)-deliverableLead))
 }
 
 func (m *Model) renderReceipt(message store.Message, width int) string {
