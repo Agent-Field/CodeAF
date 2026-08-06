@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -91,6 +92,62 @@ func TestParseLearnedFactsCarriesSkillCandidate(t *testing.T) {
 	}
 }
 
+func TestConsolidatorSeesBadRidePatternAndCausationCaution(t *testing.T) {
+	graph, err := store.Open(filepath.Join(t.TempDir(), "graph.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer graph.Close()
+	if err := graph.Splice(store.RootID, store.Subtree{Nodes: []store.NodeSpec{
+		{ID: "job", Brief: "exercise bad rides", Stage: 0},
+		{ID: "bad-a", Parent: "job", Brief: "first bad ride", Stage: 1},
+		{ID: "bad-b", Parent: "job", Brief: "second bad ride", Stage: 1},
+	}}, store.Provenance{Origin: store.OriginUser, Intent: "exercise bad rides"}); err != nil {
+		t.Fatal(err)
+	}
+	fact, err := graph.RecordFact("", "repo:test", store.FactLesson, "always skip verification")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, nodeID := range []string{"bad-a", "bad-b"} {
+		if err := graph.RecordFactInjection(nodeID, []int64{fact.Seq}); err != nil {
+			t.Fatal(err)
+		}
+		claim, won, err := graph.Claim(nodeID, "worker")
+		if err != nil || !won {
+			t.Fatalf("claim %s: won=%t err=%v", nodeID, won, err)
+		}
+		if err := graph.Fail(claim, "verification was skipped"); err != nil {
+			t.Fatal(err)
+		}
+	}
+	facts, err := graph.ActiveFacts("repo:test", 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	settings := config.Config{Model: "talk/model"}
+	capture := &gateCaptureClient{model: "talk/model"}
+	client := &liveClient{settings: settings, model: capture.model, client: capture}
+	if _, err := consolidateFacts(settings, client, graph)(context.Background(), "repo:test", facts); err != nil {
+		t.Fatal(err)
+	}
+	if len(capture.messages) != 2 {
+		t.Fatalf("consolidator messages = %d, want 2", len(capture.messages))
+	}
+	system := capture.messages[0].Content[0].Text
+	for _, want := range []string{"Co-occurrence is not causation", "one bad job is never enough", "quarantines"} {
+		if !strings.Contains(system, want) {
+			t.Errorf("consolidator doctrine omitted %q", want)
+		}
+	}
+	user := capture.messages[1].Content[0].Text
+	wantRide := fmt.Sprintf("#%d [lesson · ", fact.Seq)
+	if !strings.Contains(user, wantRide) || !strings.Contains(user, "rode 2 jobs, 2 ended badly") {
+		t.Fatalf("consolidator input omitted bad rides: %q", user)
+	}
+}
+
 func TestSingleLeafProfileCarriesPolishedGateVerdict(t *testing.T) {
 	dir := t.TempDir()
 	settings := config.Config{Model: "configured/model", ProfileDir: dir}
@@ -123,5 +180,13 @@ func TestParseLearnedFactsKeepsStructuredUnsettledPair(t *testing.T) {
 	}
 	if learned[0].Body != store.FormatUnsettledPair(*pair) {
 		t.Fatalf("body = %q, want canonical projection %q", learned[0].Body, store.FormatUnsettledPair(*pair))
+	}
+}
+
+func TestParseLearnedFactsAcceptsQuarantineOnlyDecision(t *testing.T) {
+	learned := parseLearnedFacts(`{"facts":[{"quarantines":[12,13]}]}`, 8)
+	if len(learned) != 1 || len(learned[0].Quarantines) != 2 ||
+		learned[0].Quarantines[0] != 12 || learned[0].Quarantines[1] != 13 {
+		t.Fatalf("parsed quarantine = %+v", learned)
 	}
 }
