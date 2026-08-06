@@ -48,6 +48,10 @@ func runExecute(args []string) error {
 	if err != nil {
 		return err
 	}
+	// A graph may be loaded from disk and expanded again after an overrun, so
+	// run installs the measured ruler before any planning-capable work starts.
+	measured, _ := profile.Load(settings.ProfileDir, settings.Model, "linear")
+	plan.UseAnchors(measured.Anchors)
 	client, err := settings.Client()
 	if err != nil {
 		return err
@@ -156,7 +160,9 @@ func runExecute(args []string) error {
 	graph.Usage.CachedTokens += scheduler.Usage().CachedTokens
 	graph.Usage.Cost += scheduler.Usage().Cost
 	clock.sample()
-	recordAndCalibrate(ctx, client, settings, graph)
+	if report := recordAndCalibrate(ctx, client, settings, settings.Model, graph); report != "" {
+		fmt.Printf("\n%s\n", report)
+	}
 	renderRunSummary(graph, space, scheduler.Usage(), time.Since(start), clock, runErr)
 	if *output != "" {
 		encoded, err := graph.JSON()
@@ -178,46 +184,51 @@ func runExecute(args []string) error {
 // anything had ever executed; now every leaf that runs says how much a task of
 // its shape really costs this model, and once that contradicts the ruler, the
 // ruler is rewritten from tasks that actually happened.
-func recordAndCalibrate(ctx context.Context, client plan.Completer, settings config.Config, graph *plan.Graph) {
-	store, err := profile.Load(settings.ProfileDir, settings.Model, "linear")
+func recordAndCalibrate(ctx context.Context, client plan.Completer, settings config.Config, model string, graph *plan.Graph) string {
+	store, err := profile.Load(settings.ProfileDir, model, "linear")
 	if err != nil {
-		return
+		return fmt.Sprintf("ruler: could not load profile: %v", err)
 	}
 	for _, node := range graph.Nodes {
 		if node.Kind != plan.KindWork || node.Turns == 0 {
 			continue
 		}
 		store.Add(profile.Record{
-			Title:   node.Title,
-			Summary: node.Summary,
-			Sources: len(node.Sources),
-			Size:    string(node.Size),
-			Turns:   node.Turns,
-			Tokens:  node.Tokens,
-			Stop:    node.Stop,
-			Verdict: node.Verdict,
+			Title:        node.Title,
+			Summary:      node.Summary,
+			Sources:      len(node.Sources),
+			SourcesKnown: true,
+			Size:         string(node.Size),
+			Turns:        node.Turns,
+			Tokens:       node.Tokens,
+			Stop:         node.Stop,
+			Verdict:      node.Verdict,
 		})
 	}
 
-	anchors, reason, _, err := plan.Recalibrate(ctx, client, store)
+	anchors, reason, _, recalibrateErr := plan.Recalibrate(ctx, client, store)
+	var report string
 	switch {
-	case err != nil:
-		fmt.Fprintf(os.Stderr, "note: could not recalibrate: %v\n", err)
+	case recalibrateErr != nil:
+		report = fmt.Sprintf("ruler: could not recalibrate: %v", recalibrateErr)
 	case anchors != "":
 		store.Anchors = anchors
-		fmt.Printf("\n── ruler ───────────────────────────────────────────────────────────\n")
-		fmt.Printf("  recalibrated: %s\n", reason)
+		plan.UseAnchors(anchors)
+		var rendered strings.Builder
+		fmt.Fprintf(&rendered, "ruler recalibrated: %s", reason)
 		for _, line := range strings.Split(anchors, "\n") {
 			if strings.TrimSpace(line) != "" {
-				fmt.Printf("  │ %s\n", clip(strings.TrimSpace(line), 70))
+				fmt.Fprintf(&rendered, "\n│ %s", clip(strings.TrimSpace(line), 70))
 			}
 		}
+		report = rendered.String()
 	default:
-		fmt.Printf("\n  ruler: %s\n", reason)
+		report = "ruler: " + reason
 	}
-	if err := store.Save(); err != nil {
-		fmt.Fprintf(os.Stderr, "note: could not save profile: %v\n", err)
+	if saveErr := store.Save(); saveErr != nil {
+		report += fmt.Sprintf("\nprofile: could not save: %v", saveErr)
 	}
+	return report
 }
 
 func missingBriefs(graph *plan.Graph) int {
