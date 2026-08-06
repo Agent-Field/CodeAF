@@ -70,6 +70,12 @@ type cardPartRow struct {
 	dock   bool
 }
 
+type cardCloseRow struct {
+	line   int
+	cardID string
+	dock   bool
+}
+
 // deriveJobCards is the living-card query. It intentionally accepts store
 // values rather than a database handle: the TUI remains a replayable lens and
 // tests can exercise the same derivation with a seeded store.
@@ -508,6 +514,13 @@ func (m *Model) renderCardDock(track bool) string {
 		}
 		m.cardPartRows = kept
 	}
+	keptClose := m.cardCloseRows[:0]
+	for _, row := range m.cardCloseRows {
+		if !row.dock {
+			keptClose = append(keptClose, row)
+		}
+	}
+	m.cardCloseRows = keptClose
 	if len(active) == 0 {
 		return m.renderLegacyActivityBar()
 	}
@@ -572,13 +585,13 @@ func (m *Model) renderJobCard(card jobCard, width int, expanded bool, atLine int
 			addText("asked · "+card.Ask, mutedStyle)
 		}
 		if card.Reading != "" && strings.TrimSpace(card.Reading) != strings.TrimSpace(card.Ask) {
-			addText("reading this as · "+firstLine(card.Reading), inputTextStyle)
+			addText("reading this as · "+firstLine(card.Reading), mutedStyle)
 		}
 		if card.State == cardCompiling && card.Latest != "" {
-			addText("reading this as · "+card.Latest, inputTextStyle)
+			addText("reading this as · "+card.Latest, mutedStyle)
 		}
 		if card.State == cardQuestion {
-			addText(card.Question, inputTextStyle)
+			addText(card.Question, questionStyle)
 		}
 		for _, assumption := range cardAssumptions(card.Receipt) {
 			addText(assumption, mutedStyle)
@@ -606,7 +619,8 @@ func (m *Model) renderJobCard(card jobCard, width int, expanded bool, atLine int
 				if result == "" {
 					result = string(part.Status)
 				}
-				line := "│   " + glyph + " " + part.Title + " — " + result
+				line := "│   " + glyph + " " + lipgloss.NewStyle().Foreground(ink).Bold(true).Render(part.Title) +
+					mutedStyle.Render(" — "+result)
 				lines = append(lines, truncate(line, width))
 				if track {
 					m.cardPartRows = append(m.cardPartRows, cardPartRow{
@@ -620,12 +634,12 @@ func (m *Model) renderJobCard(card jobCard, width int, expanded bool, atLine int
 				humanizeTokens(card.Usage.PromptTokens+card.Usage.CompletionTokens)), mutedStyle)
 		}
 	} else if card.State == cardQuestion {
-		addText(card.Question, inputTextStyle)
+		addText(card.Question, questionStyle)
 	}
 
 	if card.State == cardSettled && card.Deliverable != nil {
 		if expanded && card.Outcome != "" {
-			addText("outcome · "+card.Outcome, inputTextStyle)
+			addText("outcome · "+card.Outcome, mutedStyle)
 		}
 		rendered := m.renderAnswer(*card.Deliverable, max(1, width-4))
 		bodyStart := atLine + len(lines)
@@ -640,12 +654,18 @@ func (m *Model) renderJobCard(card jobCard, width int, expanded bool, atLine int
 	}
 
 	hint := "click for details"
-	if expanded && card.RootID != "" {
-		hint = "enter or click for job graph"
-	} else if expanded {
-		hint = "compiling the job graph…"
+	if expanded {
+		hint = "⟨×⟩ close · compiling the job graph…"
+		if card.RootID != "" {
+			hint = "⟨×⟩ close · enter or click for job graph"
+		}
 	}
 	lines = append(lines, mutedStyle.Faint(true).Render("╰─ "+hint))
+	if track && expanded {
+		m.cardCloseRows = append(m.cardCloseRows, cardCloseRow{
+			line: atLine + len(lines) - 1, cardID: card.ID, dock: dock,
+		})
+	}
 	return strings.Join(lines, "\n")
 }
 
@@ -661,9 +681,9 @@ func (m *Model) renderCompactCard(card jobCard, width int) string {
 	}
 	marker := ""
 	if m.focus == focusCards && m.selectedCardID == card.ID {
-		marker = lipgloss.NewStyle().Foreground(lavender).Render("▸ ")
+		marker = lipgloss.NewStyle().Foreground(powder).Render("▸ ")
 	}
-	line := marker + glyph + " " + inputTextStyle.Render(title)
+	line := marker + glyph + " " + lipgloss.NewStyle().Foreground(ink).Bold(true).Render(title)
 	if meta != "" {
 		line += mutedStyle.Render(" · " + meta)
 	}
@@ -675,7 +695,7 @@ func (m *Model) cardGlyph(card jobCard) string {
 	case cardCompiling:
 		return lipgloss.NewStyle().Foreground(butter).Render("◌")
 	case cardQuestion:
-		return lipgloss.NewStyle().Foreground(rose).Render("⚑")
+		return questionStyle.Render("⚑")
 	case cardSettled:
 		if card.Failed {
 			return lipgloss.NewStyle().Foreground(rose).Render("✗")

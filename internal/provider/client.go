@@ -133,8 +133,12 @@ func (c *Client) newRequest(messages []ai.Message, options []ai.Option) (*ai.Req
 	return request, nil
 }
 
-// CompleteWithMessages performs one non-streaming completion.
+// CompleteWithMessages performs one completion. Interactive callers may attach
+// a stream observer while retaining the accumulated response contract.
 func (c *Client) CompleteWithMessages(ctx context.Context, messages []ai.Message, options ...ai.Option) (*ai.Response, error) {
+	if observer := streamObserverFrom(ctx); observer != nil {
+		return c.completeWithMessagesStreaming(ctx, observer, messages, options...)
+	}
 	request, err := c.newRequest(messages, options)
 	if err != nil {
 		return nil, err
@@ -161,6 +165,91 @@ func (c *Client) CompleteWithMessages(ctx context.Context, messages []ai.Message
 		return nil, fmt.Errorf("unmarshal response: %w", err)
 	}
 	return &response, nil
+}
+
+// completeWithMessagesStreaming preserves the completion interface while
+// exposing each text delta to an interactive observer. The accumulated
+// response is the same shape callers already parse after the stream closes.
+func (c *Client) completeWithMessagesStreaming(
+	ctx context.Context,
+	observer StreamObserver,
+	messages []ai.Message,
+	options ...ai.Option,
+) (*ai.Response, error) {
+	request, err := c.newRequest(messages, append(append([]ai.Option(nil), options...), ai.WithStream()))
+	if err != nil {
+		return nil, err
+	}
+	request.Stream = true
+	body, err := c.encodeRequest(request, knobsFrom(ctx))
+	if err != nil {
+		return nil, fmt.Errorf("marshal request: %w", err)
+	}
+	httpResponse, err := c.send(ctx, request, body, true)
+	if err != nil {
+		return nil, err
+	}
+	defer httpResponse.Body.Close()
+	if httpResponse.StatusCode >= 400 {
+		payload, _ := io.ReadAll(httpResponse.Body)
+		return nil, apiError(httpResponse.StatusCode, payload)
+	}
+
+	observer(StreamEvent{Kind: StreamStarted})
+	finished := false
+	defer func() {
+		if !finished {
+			observer(StreamEvent{Kind: StreamFailed})
+		}
+	}()
+
+	response := &ai.Response{Model: request.Model}
+	var content strings.Builder
+	finishReason := ""
+	decoder := ai.NewSSEDecoder(httpResponse.Body)
+	for {
+		chunk, decodeErr := decoder.Decode()
+		if decodeErr != nil {
+			if errors.Is(decodeErr, io.EOF) {
+				break
+			}
+			return nil, fmt.Errorf("decode stream: %w", decodeErr)
+		}
+		if response.ID == "" {
+			response.ID = chunk.ID
+			response.Object = chunk.Object
+			response.Created = chunk.Created
+		}
+		if chunk.Model != "" {
+			response.Model = chunk.Model
+		}
+		if chunk.Usage != nil {
+			response.Usage = chunk.Usage
+		}
+		for _, choice := range chunk.Choices {
+			if choice.Index != 0 {
+				continue
+			}
+			if choice.Delta.Content != "" {
+				content.WriteString(choice.Delta.Content)
+				observer(StreamEvent{Kind: StreamDelta, Delta: choice.Delta.Content})
+			}
+			if choice.FinishReason != nil {
+				finishReason = *choice.FinishReason
+			}
+		}
+	}
+	response.Choices = []ai.Choice{{
+		Index: 0,
+		Message: ai.Message{
+			Role:    "assistant",
+			Content: []ai.ContentPart{{Type: "text", Text: content.String()}},
+		},
+		FinishReason: finishReason,
+	}}
+	finished = true
+	observer(StreamEvent{Kind: StreamFinished})
+	return response, nil
 }
 
 // StreamComplete performs one streaming completion over a single user prompt.

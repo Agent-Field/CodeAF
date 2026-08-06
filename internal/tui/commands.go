@@ -28,13 +28,25 @@ type commandSpec struct {
 	takesArg    bool
 }
 
+// keyBindings is the single source for routed chords and every help label
+// that names them. Bubble Tea reports option-G as the literal "alt+g".
+var keyBindings = struct {
+	graph string
+}{
+	graph: "alt+g",
+}
+
 var slashCommands = []commandSpec{
+	{name: "graph", description: "toggle the task rail"},
+	{name: "tasks", description: "focus and expand the active-task dock"},
+	{name: "node", description: "open a node by id prefix or current selection", takesArg: true},
+	{name: "notebook", description: "browse the scoped notebook"},
+	{name: "help", description: "show commands and keyboard shortcuts"},
 	{name: "model", description: "choose the talk or work model", takesArg: true},
-	{name: "memory", description: "browse the scoped notebook"},
+	{name: "memory", description: "alias for /notebook"},
 	{name: "session", description: "show the current session and database"},
 	{name: "new", description: "start a fresh chat session"},
 	{name: "cancel", description: "cancel a non-terminal graph node", takesArg: true},
-	{name: "help", description: "show commands and keyboard shortcuts"},
 	{name: "quit", description: "exit aforge cleanly"},
 }
 
@@ -274,6 +286,7 @@ func fuzzyScore(value, query string) (int, bool) {
 
 func (m *Model) acceptCommand(entries []paletteEntry) tea.Cmd {
 	if len(entries) == 0 {
+		m.input.Reset()
 		return m.showStatus("no matching command")
 	}
 	selected := entries[min(m.paletteSelected, len(entries)-1)].value
@@ -290,7 +303,7 @@ func (m *Model) acceptCommand(entries []paletteEntry) tea.Cmd {
 		m.setSize(m.width, m.height)
 		return nil
 	}
-	return m.executeSlash("/" + selected)
+	return m.executeSlash(m.input.Value())
 }
 
 func commandByName(name string) commandSpec {
@@ -373,13 +386,7 @@ func (m *Model) cancelNode(nodeID string) tea.Cmd {
 	m.input.Reset()
 	m.paletteDismissed = false
 	m.palette = paletteNone
-	m.setSize(m.width, m.height)
-	backend := m.backend
-	message := store.Message{SessionID: m.sessionID, Role: store.RoleUser, Body: "cancel " + nodeID}
-	return func() tea.Msg {
-		_, err := backend.PostMessage(message)
-		return postResultMsg{err: err}
-	}
+	return m.showStatus("cancel requested → " + nodeID)
 }
 
 func (m *Model) executeSlash(body string) tea.Cmd {
@@ -388,6 +395,27 @@ func (m *Model) executeSlash(body string) tea.Cmd {
 		return nil
 	}
 	switch fields[0] {
+	case "/":
+		m.input.Reset()
+		return m.showStatus("/graph · /tasks · /node · /notebook · /help")
+	case "/graph":
+		m.input.Reset()
+		if m.nodeViewID != "" {
+			m.closeNodeView()
+		}
+		m.toggleGraph()
+		return nil
+	case "/tasks":
+		m.input.Reset()
+		return m.openTasksDock()
+	case "/node":
+		prefix := ""
+		if len(fields) > 1 {
+			prefix = fields[1]
+		}
+		return m.openNodePrefix(prefix)
+	case "/notebook", "/memory":
+		return m.openMemory()
 	case "/model":
 		role := "talk"
 		arguments := fields[1:]
@@ -403,8 +431,6 @@ func (m *Model) executeSlash(body string) tea.Cmd {
 			return m.showStatus("no matching model")
 		}
 		return m.applyModel(role, entries[0].value)
-	case "/memory":
-		return m.openMemory()
 	case "/session":
 		detail := "session " + m.sessionID
 		if source, ok := m.commander.(interface{ DatabasePath() string }); ok && source.DatabasePath() != "" {
@@ -433,7 +459,67 @@ func (m *Model) executeSlash(body string) tea.Cmd {
 	case "/quit":
 		return tea.Quit
 	default:
-		return m.showStatus("unknown command · /help lists available commands")
+		m.input.Reset()
+		return m.showStatus(fields[0] + " is not a command · /help lists them")
+	}
+}
+
+func (m *Model) openTasksDock() tea.Cmd {
+	if m.nodeViewID != "" {
+		m.closeNodeView()
+	}
+	if m.graphVisible() {
+		m.toggleGraph()
+	}
+	if m.activeCardCount() == 0 {
+		return m.showStatus("no active tasks to expand")
+	}
+	m.focusCardDock()
+	return nil
+}
+
+func (m *Model) openNodePrefix(prefix string) tea.Cmd {
+	prefix = strings.TrimSpace(prefix)
+	if prefix == "" {
+		prefix = m.selectedNodeID
+	}
+	if prefix == "" && m.nodeViewID != "" {
+		prefix = m.nodeViewID
+	}
+	if prefix == "" {
+		m.input.Reset()
+		return m.showStatus("/node needs an id prefix or selected node")
+	}
+
+	seen := make(map[string]bool)
+	var matches []string
+	for _, snapshot := range []store.Snapshot{m.snapshot, m.cardSnapshot} {
+		for _, node := range snapshot.Nodes {
+			if node.ID == store.RootID || seen[node.ID] || !strings.HasPrefix(node.ID, prefix) {
+				continue
+			}
+			seen[node.ID] = true
+			if node.ID == prefix {
+				matches = []string{node.ID}
+				break
+			}
+			matches = append(matches, node.ID)
+		}
+		if len(matches) == 1 && matches[0] == prefix {
+			break
+		}
+	}
+	m.input.Reset()
+	switch len(matches) {
+	case 0:
+		return m.showStatus("no node starts with " + prefix)
+	case 1:
+		if m.nodeViewID != "" {
+			m.closeNodeView()
+		}
+		return m.openNodeByID(matches[0])
+	default:
+		return m.showStatus(fmt.Sprintf("%s matches %d nodes · type more of the id", prefix, len(matches)))
 	}
 }
 
@@ -557,6 +643,8 @@ func (m *Model) newSession() tea.Cmd {
 	m.autoScroll = true
 	m.newMessages = 0
 	m.input.Reset()
+	m.streamQueue = nil
+	m.clearStream()
 	m.chat.SetContent(m.renderMessages())
 	m.chat.GotoBottom()
 	m.showStatus("new session → " + sessionID)
@@ -564,6 +652,7 @@ func (m *Model) newSession() tea.Cmd {
 }
 
 func (m *Model) showStatus(status string) tea.Cmd {
+	m.err = nil
 	m.status = status
 	m.statusUntil = time.Now().Add(statusTTL)
 	m.palette = paletteNone

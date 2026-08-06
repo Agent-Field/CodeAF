@@ -150,10 +150,16 @@ type Model struct {
 	// place; everything else shows its lead and a ⋯.
 	expandedMessages map[int64]bool
 
-	// revealSeq/revealShown drive the arrival animation: the newest agent
-	// message unrolls a few lines per tick instead of appearing whole.
-	revealSeq   int64
-	revealShown int
+	// The provider stream is optional Commander input. Real head deltas and
+	// simulated landed answers share one paced renderer so neither path pops.
+	streamEvents       <-chan StreamEvent
+	streamMode         streamMode
+	streamRaw          string
+	streamTarget       string
+	streamShown        string
+	streamSeq          int64
+	streamProviderDone bool
+	streamQueue        []store.Message
 
 	width  int
 	height int
@@ -175,6 +181,7 @@ type Model struct {
 	spinnerFrame     int
 	animationPending bool
 	graphAnimating   bool
+	shimmerFrame     int
 	receiptsExpanded bool
 	err              error
 
@@ -194,17 +201,20 @@ type Model struct {
 	splitPct      int
 	draggingSplit bool
 
-	chatBounds        paneBounds
-	graphBounds       paneBounds
-	graphRowsBounds   paneBounds
-	inputBounds       paneBounds
-	nodeBounds        paneBounds
-	nodeTraceBounds   paneBounds
-	nodeBackBounds    paneBounds
-	activityBarBounds paneBounds
-	cardDockRows      []cardRow
-	chatCardRows      []cardRow
-	cardPartRows      []cardPartRow
+	chatBounds         paneBounds
+	graphBounds        paneBounds
+	graphRowsBounds    paneBounds
+	graphToggleBounds  paneBounds
+	inputBounds        paneBounds
+	nodeBounds         paneBounds
+	nodeTraceBounds    paneBounds
+	nodeBackBounds     paneBounds
+	paletteCloseBounds paneBounds
+	activityBarBounds  paneBounds
+	cardDockRows       []cardRow
+	chatCardRows       []cardRow
+	cardPartRows       []cardPartRow
+	cardCloseRows      []cardCloseRow
 
 	// chatMessageRows maps rendered chat lines to the message seq they
 	// belong to, so clicking a collapsed deliverable opens it in place.
@@ -267,6 +277,9 @@ func newModel(backend Backend, sessionID string, commander Commander) *Model {
 		commands:         map[int64]store.Command{},
 		cardExpanded:     map[string]bool{},
 	}
+	if source, ok := commander.(streamSource); ok {
+		m.streamEvents = source.StreamEvents()
+	}
 	if saved, ok := commander.(splitStore); ok {
 		m.splitPct = clampSplitPct(saved.SplitPct())
 	}
@@ -315,7 +328,7 @@ func RunWithCommander(backend Backend, sessionID string, commander Commander) er
 
 // Init starts cursor blinking and performs the first read immediately.
 func (m *Model) Init() tea.Cmd {
-	return tea.Batch(textinput.Blink, m.poll())
+	return tea.Batch(textinput.Blink, m.poll(), waitForStream(m.streamEvents))
 }
 
 // Update applies terminal events and store results. All store I/O is returned
@@ -333,21 +346,29 @@ func (m *Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		m.applyPoll(message)
 		return m, tea.Batch(nextPollTick(), m.scheduleAnimation())
 
+	case StreamEvent:
+		m.applyStreamEvent(message)
+		return m, tea.Batch(waitForStream(m.streamEvents), m.scheduleAnimation())
+
+	case streamClosedMsg:
+		m.streamEvents = nil
+		return m, nil
+
 	case animationTickMsg:
 		m.animationPending = false
-		if m.revealSeq != 0 {
-			// The reveal: a landed message unrolls a few lines per tick, so
-			// an answer reads as arriving rather than materialising.
-			m.revealShown += 3
+		if m.streamMode != streamNone {
+			m.advanceStream()
 			m.refreshChat()
 			if m.autoScroll {
 				m.chat.GotoBottom()
 			}
 		}
-		if !m.graphAnimating && m.revealSeq == 0 {
+		m.shimmerFrame++
+		if !m.graphAnimating && !m.streamAnimating() && !m.shimmerVisible() {
 			return m, nil
 		}
 		m.spinnerFrame = (m.spinnerFrame + 1) % len(spinnerFrames)
+		m.refreshChat()
 		m.refreshGraph()
 		return m, m.scheduleAnimation()
 
@@ -413,6 +434,13 @@ func (m *Model) updateKey(message tea.KeyMsg) (tea.Cmd, bool) {
 	if key == "ctrl+c" {
 		return tea.Quit, true
 	}
+	if key == keyBindings.graph {
+		if m.nodeViewID != "" {
+			m.closeNodeView()
+		}
+		m.toggleGraph()
+		return nil, true
+	}
 	if m.nodeViewID != "" {
 		switch {
 		case key == "esc":
@@ -433,10 +461,6 @@ func (m *Model) updateKey(message tea.KeyMsg) (tea.Cmd, bool) {
 			return nil, true
 		}
 		return nil, false
-	}
-	if key == "ctrl+g" {
-		m.toggleGraph()
-		return nil, true
 	}
 	if key == "esc" {
 		switch {
@@ -612,7 +636,7 @@ func nextAnimationTick() tea.Cmd {
 }
 
 func (m *Model) scheduleAnimation() tea.Cmd {
-	if m.animationPending || (!m.graphAnimating && m.revealSeq == 0) {
+	if m.animationPending || (!m.graphAnimating && !m.streamAnimating() && !m.shimmerVisible()) {
 		return nil
 	}
 	m.animationPending = true
@@ -678,11 +702,12 @@ func (m *Model) applyPoll(result pollResultMsg) {
 			continue
 		}
 		added++
-		// Only attention events animate. Ambient narration mutates its docked
-		// card without manufacturing a new arrival in the conversation.
-		if message.Role != store.RoleUser && m.autoScroll {
-			m.revealSeq = message.Seq
-			m.revealShown = 1
+		// Real head deltas keep their durable landing; provider paths that did
+		// not stream, plus settled deliverables, enter the same paced renderer.
+		// Ambient narration only mutates its card and shimmer line.
+		if message.Role != store.RoleUser && !m.matchRealStream(message) &&
+			m.shouldSimulateStream(message) {
+			m.queueSimulatedStream(message)
 		}
 	}
 
@@ -804,6 +829,8 @@ func (m *Model) toggleFocus() tea.Cmd {
 func (m *Model) toggleGraph() {
 	m.graphOpen = !m.graphOpen
 	m.graphScopeID = ""
+	m.palette = paletteNone
+	m.paletteDismissed = false
 	if m.graphOpen {
 		m.focus = focusGraph
 		m.inputFocused = false
