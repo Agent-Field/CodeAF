@@ -182,14 +182,15 @@ func runChat(args []string) error {
 	go func() { defer background.Done(); _ = runner.Serve(ctx) }()
 
 	commander := &chatCommander{
-		settings:   settings,
-		database:   path,
-		prefsDir:   filepath.Dir(path),
-		chatClient: chatClient,
-		taskClient: taskClient,
-		store:      graph,
-		prefs:      prefs,
-		sessionID:  *sessionID,
+		settings:      settings,
+		database:      path,
+		prefsDir:      filepath.Dir(path),
+		workspaceRoot: workspaceRoot,
+		chatClient:    chatClient,
+		taskClient:    taskClient,
+		store:         graph,
+		prefs:         prefs,
+		sessionID:     *sessionID,
 	}
 	err = tui.RunWithCommander(graph, *sessionID, commander)
 	cancel()
@@ -203,6 +204,10 @@ func runChat(args []string) error {
 type chatPrefs struct {
 	ChatModel string `json:"chat_model,omitempty"`
 	TaskModel string `json:"task_model,omitempty"`
+
+	// SplitPct is the chat pane's share of the terminal width in percent,
+	// set by dragging the divider (or [ and ]) in the TUI.
+	SplitPct int `json:"split_pct,omitempty"`
 }
 
 var fallbackChatModels = []string{
@@ -224,9 +229,10 @@ var modelCatalogHTTPClient = &http.Client{Timeout: 15 * time.Second}
 // and the durable command journal. Session state lives here so /new and a
 // subsequent /cancel always agree about which thread owns the request.
 type chatCommander struct {
-	settings config.Config
-	database string
-	prefsDir string
+	settings      config.Config
+	database      string
+	prefsDir      string
+	workspaceRoot string
 
 	chatClient *liveClient
 	taskClient *liveClient
@@ -316,6 +322,21 @@ func (c *chatCommander) SetModel(role, slug string) error {
 	return nil
 }
 
+// SplitPct and SaveSplitPct persist the TUI's chat/graph divider position in
+// the same prefs file as the model choices.
+func (c *chatCommander) SplitPct() int {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.prefs.SplitPct
+}
+
+func (c *chatCommander) SaveSplitPct(pct int) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.prefs.SplitPct = pct
+	_ = saveChatPrefs(c.prefsDir, c.prefs)
+}
+
 func (c *chatCommander) NewSession() (string, error) {
 	sessionID := newSessionID()
 	c.mu.Lock()
@@ -335,6 +356,38 @@ func (c *chatCommander) Cancel(nodeID string) error {
 		Instruction: "cancelled from the TUI",
 	})
 	return err
+}
+
+func (c *chatCommander) NodeTrace(nodeID string, maxBytes int) string {
+	if c == nil || c.store == nil || c.workspaceRoot == "" || nodeID == "" || maxBytes <= 0 {
+		return ""
+	}
+	node, ok, err := c.store.Node(nodeID)
+	if err != nil || !ok {
+		return ""
+	}
+	jobDir := filepath.Join(c.workspaceRoot, jobIDOf(c.store, node))
+	file, err := os.Open(filepath.Join(jobDir, ".obs", fmt.Sprintf("%d.trace.log", node.CreatedSeq)))
+	if err != nil {
+		return ""
+	}
+	defer file.Close()
+	info, err := file.Stat()
+	if err != nil {
+		return ""
+	}
+	offset := info.Size() - int64(maxBytes)
+	if offset < 0 {
+		offset = 0
+	}
+	if _, err := file.Seek(offset, io.SeekStart); err != nil {
+		return ""
+	}
+	data, err := io.ReadAll(io.LimitReader(file, int64(maxBytes)))
+	if err != nil {
+		return ""
+	}
+	return string(data)
 }
 
 func (c *chatCommander) Notebook(limit int) []store.Fact {
@@ -707,6 +760,8 @@ Judgment framework:
 - A memory qualifies only if it will matter after this job is forgotten.
 - Scope every memory to the narrowest thing it is about: file:<absolute path> for a file's quirk, repo:<dir> for a codebase-wide one, tool:<name> for a tool's behaviour, domain:<topic> for subject knowledge, user for preferences, or env for machine facts.
 - When the job FAILED, the single most valuable memory is the cause and its fix or workaround. Classify it as a quirk or lesson.
+- Judge like an after-action review: what was expected, what actually happened, and what explains the gap. The explanation is the memory; the events themselves are not.
+- When the direct route failed and a substitute route worked — a different source, tool, or method reached the same end — record the working route as a lesson in the narrowest scope it applies to. A proven detour is the most transferable thing a job can teach.
 - Job status and transient results never qualify.
 - An empty list is the common correct answer.
 - Return at most five memories.`
