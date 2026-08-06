@@ -24,6 +24,9 @@ var (
 	placeholderStyle = lipgloss.NewStyle().Foreground(muted)
 	cursorStyle      = lipgloss.NewStyle().Foreground(lavender)
 	mutedStyle       = lipgloss.NewStyle().Foreground(muted)
+	selectedInk      = lipgloss.AdaptiveColor{Light: "#FFFFFF", Dark: "#24202E"}
+	selectedStyle    = lipgloss.NewStyle().Foreground(selectedInk).Background(lavender)
+	pillStyle        = lipgloss.NewStyle().Foreground(selectedInk).Background(peach).Padding(0, 1)
 
 	spinnerFrames = []string{"◜", "◠", "◝", "◞", "◡", "◟"}
 )
@@ -38,25 +41,35 @@ func (m *Model) View() string {
 	if m.horizontal {
 		main = lipgloss.JoinHorizontal(lipgloss.Top, chat, "  ", graph)
 	} else {
-		main = lipgloss.JoinVertical(lipgloss.Left, chat, "", graph)
+		if m.stackGap() == 0 {
+			main = lipgloss.JoinVertical(lipgloss.Left, chat, graph)
+		} else {
+			main = lipgloss.JoinVertical(lipgloss.Left, chat, "", graph)
+		}
 	}
 
-	return lipgloss.JoinVertical(
-		lipgloss.Left,
-		top,
-		"",
-		main,
-		"",
-		m.renderInput(),
-	)
+	parts := []string{top, "", main, ""}
+	if m.paletteOpen() {
+		parts = append(parts, m.renderPalette())
+	}
+	parts = append(parts, m.renderInput())
+	if !m.paletteOpen() {
+		hint := "/ commands · tab complete · pgup/pgdn scroll · ctrl+c quit"
+		parts = append(parts, mutedStyle.Render(truncate(hint, m.width)))
+	}
+	return lipgloss.JoinVertical(lipgloss.Left, parts...)
 }
 
 func (m *Model) renderTopBar() string {
 	wordmark := lipgloss.NewStyle().Foreground(lavender).Bold(true).Render("aforge")
-	session := mutedStyle.Render("  " + m.sessionID)
-	left := wordmark + session
+	models := "talk " + truncate(modelShort(m.currentModel("talk")), 18) +
+		" · work " + truncate(modelShort(m.currentModel("work")), 18)
+	left := wordmark + mutedStyle.Render(" · "+m.sessionID+" · "+models)
 
 	right := m.renderTally()
+	if m.status != "" && time.Now().Before(m.statusUntil) {
+		right = lipgloss.NewStyle().Foreground(powder).Render(truncate(m.status, max(8, m.width/2)))
+	}
 	if m.err != nil {
 		right = lipgloss.NewStyle().Foreground(rose).Render(truncate(m.err.Error(), max(8, m.width/2)))
 	}
@@ -73,7 +86,7 @@ func (m *Model) renderTopBar() string {
 }
 
 func (m *Model) renderTally() string {
-	running, done := 0, 0
+	running, done, failed := 0, 0, 0
 	for _, node := range m.snapshot.Nodes {
 		if node.ID == store.RootID {
 			continue
@@ -83,36 +96,54 @@ func (m *Model) renderTally() string {
 			running++
 		case store.Done:
 			done++
+		case store.Failed:
+			failed++
 		}
 	}
-	return mutedStyle.Render(fmt.Sprintf("%d running · %d done · $–", running, done))
+	return mutedStyle.Render(fmt.Sprintf("%d running · %d done · %d failed", running, done, failed))
 }
 
 func (m *Model) renderChatPane() string {
 	border := muted
-	if !m.inputFocused {
+	if m.focus == focusChat {
 		border = lavender
 	}
 
 	title := mutedStyle.Render("CHAT")
-	if m.newMessages > 0 {
-		hint := "↓ new"
-		if m.newMessages > 1 {
-			hint = fmt.Sprintf("↓ %d new", m.newMessages)
-		}
-		gap := max(1, m.chat.Width-lipgloss.Width("CHAT")-lipgloss.Width(hint))
-		title += strings.Repeat(" ", gap) + lipgloss.NewStyle().Foreground(peach).Render(hint)
-	}
-
 	content := title + "\n\n" + m.chat.View()
-	return paneStyle(border, m.chatWidth, m.chatHeight).Render(content)
+	lines := strings.Split(content, "\n")
+	innerHeight := max(1, m.chatHeight-2)
+	for len(lines) < innerHeight {
+		lines = append(lines, "")
+	}
+	if len(lines) > innerHeight {
+		lines = lines[:innerHeight]
+	}
+	if m.newMessages > 0 {
+		pill := pillStyle.Render(m.newMessageLabel())
+		index := len(lines) - 1
+		available := max(1, m.chatWidth-4)
+		lines[index] = overlayRight(lines[index], pill, available)
+	}
+	return paneStyle(border, m.chatWidth, m.chatHeight).Render(strings.Join(lines, "\n"))
 }
 
 func (m *Model) renderGraphPane() string {
+	border := muted
+	if m.focus == focusGraph {
+		border = lavender
+	}
 	title := mutedStyle.Render("GRAPH")
-	contentHeight := max(1, m.graphHeight-4)
-	tree := m.renderTree(m.graphWidth-4, contentHeight)
-	return paneStyle(muted, m.graphWidth, m.graphHeight).Render(title + "\n\n" + tree)
+	content := title + "\n\n" + m.graph.View()
+	lines := strings.Split(content, "\n")
+	innerHeight := max(1, m.graphHeight-2)
+	for len(lines) < innerHeight {
+		lines = append(lines, "")
+	}
+	if len(lines) > innerHeight {
+		lines = lines[:innerHeight]
+	}
+	return paneStyle(border, m.graphWidth, m.graphHeight).Render(strings.Join(lines, "\n"))
 }
 
 func paneStyle(border lipgloss.AdaptiveColor, width, height int) lipgloss.Style {
@@ -135,6 +166,201 @@ func (m *Model) renderInput() string {
 		Padding(0, 1).
 		Width(max(1, m.width-2)).
 		Render(m.input.View())
+}
+
+func (m *Model) renderPalette() string {
+	innerWidth := max(1, m.width-4)
+	lines := m.paletteLines(innerWidth)
+	return lipgloss.NewStyle().
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(lavender).
+		Padding(0, 1).
+		Width(max(1, m.width-2)).
+		Render(strings.Join(lines, "\n"))
+}
+
+func (m *Model) paletteHeight() int {
+	if !m.paletteOpen() {
+		return 0
+	}
+	return lipgloss.Height(m.renderPalette())
+}
+
+func (m *Model) paletteLines(width int) []string {
+	switch m.palette {
+	case paletteCommands:
+		entries := m.commandEntries()
+		start, end := visiblePaletteWindow(m.paletteSelected, len(entries), m.paletteLineLimit())
+		lines := make([]string, 0, end-start)
+		for index := start; index < end; index++ {
+			entry := entries[index]
+			lines = append(lines, m.paletteRow(
+				fmt.Sprintf("「/%s」 %s", entry.value, entry.description), index == m.paletteSelected, width,
+			))
+		}
+		if len(lines) == 0 {
+			return []string{mutedStyle.Render("no matching command")}
+		}
+		return lines
+	case paletteModelCompletion:
+		return m.completionLines(m.modelEntries(), "models", width)
+	case paletteCancelCompletion:
+		return m.completionLines(m.cancelEntries(), "non-terminal nodes", width)
+	case paletteModel:
+		return m.modelPickerLines(width)
+	case paletteHelp:
+		lines := make([]string, 0, len(slashCommands)+1)
+		for _, command := range slashCommands {
+			lines = append(lines, truncate(fmt.Sprintf("「/%s」 %s", command.name, command.description), width))
+		}
+		cheatsheet := truncate("keys  tab/↑/↓ choose · enter accept · esc close · ctrl+c quit", width)
+		lines = append(lines, mutedStyle.Render(cheatsheet))
+		if limit := m.paletteLineLimit(); len(lines) > limit {
+			lines = lines[:limit]
+		}
+		return lines
+	default:
+		return nil
+	}
+}
+
+func (m *Model) completionLines(entries []paletteEntry, label string, width int) []string {
+	if len(entries) == 0 {
+		return []string{mutedStyle.Render("no matching " + label)}
+	}
+	start, end := visiblePaletteWindow(m.paletteSelected, len(entries), min(6, m.paletteLineLimit()))
+	lines := make([]string, 0, end-start)
+	for index := start; index < end; index++ {
+		lines = append(lines, m.paletteRow(entries[index].value, index == m.paletteSelected, width))
+	}
+	return lines
+}
+
+func (m *Model) modelPickerLines(width int) []string {
+	talk, work := "○ talk", "○ work"
+	if m.modelRole == "talk" {
+		talk = "◉ talk"
+	} else {
+		work = "◉ work"
+	}
+	talkView := mutedStyle.Render(talk)
+	workView := mutedStyle.Render(work)
+	if m.modelRole == "talk" {
+		talkView = lipgloss.NewStyle().Foreground(lavender).Bold(true).Render(talk)
+	} else {
+		workView = lipgloss.NewStyle().Foreground(lavender).Bold(true).Render(work)
+	}
+	lines := []string{talkView + mutedStyle.Render("    ") + workView}
+
+	models := m.models()
+	if len(models) == 0 {
+		return append(lines, mutedStyle.Render("no models configured"))
+	}
+	columns := 2
+	if width < 56 {
+		columns = 1
+	}
+	rows := (len(models) + columns - 1) / columns
+	selectedRow := m.paletteSelected % rows
+	rowLimit := max(1, min(4, m.paletteLineLimit()-1))
+	startRow, endRow := visiblePaletteWindow(selectedRow, rows, rowLimit)
+	cellWidth := max(8, width/columns)
+	for row := startRow; row < endRow; row++ {
+		cells := make([]string, 0, columns)
+		for column := range columns {
+			index := row + column*rows
+			if index >= len(models) {
+				cells = append(cells, strings.Repeat(" ", cellWidth))
+				continue
+			}
+			cells = append(cells, m.modelCell(models[index], index == m.paletteSelected, cellWidth))
+		}
+		lines = append(lines, strings.Join(cells, ""))
+	}
+	return lines
+}
+
+func (m *Model) paletteLineLimit() int {
+	minimumMainHeight := 3
+	if !m.horizontal {
+		minimumMainHeight = 6 + m.stackGap()
+	}
+	available := m.height - 3 - (m.input.LineCount() + 2) - minimumMainHeight - 2
+	return max(1, available)
+}
+
+func (m *Model) modelCell(model string, selected bool, width int) string {
+	marker := "  "
+	current := m.commander != nil && m.commander.CurrentModel(m.modelRole) == model
+	if current {
+		marker = "● "
+	}
+	text := truncate(model, max(1, width-2))
+	padding := strings.Repeat(" ", max(0, width-2-lipgloss.Width(text)))
+	if !selected {
+		markerView := mutedStyle.Render(marker)
+		if current {
+			markerView = lipgloss.NewStyle().Foreground(mint).Render(marker)
+		}
+		return markerView + inputTextStyle.Render(text) + padding
+	}
+	markerStyle := selectedStyle
+	if current {
+		markerStyle = lipgloss.NewStyle().Foreground(mint).Background(lavender)
+	}
+	return markerStyle.Render(marker) + selectedStyle.Render(text+padding)
+}
+
+func (m *Model) paletteRow(text string, selected bool, width int) string {
+	text = truncate(text, width)
+	if selected {
+		return selectedStyle.Width(width).Render(text)
+	}
+	return text
+}
+
+func visiblePaletteWindow(selected, count, limit int) (int, int) {
+	if count <= limit {
+		return 0, count
+	}
+	start := max(0, selected-limit/2)
+	start = min(start, count-limit)
+	return start, start + limit
+}
+
+func (m *Model) currentModel(role string) string {
+	if m.commander == nil {
+		return "–"
+	}
+	return m.commander.CurrentModel(role)
+}
+
+func modelShort(model string) string {
+	model = strings.TrimSpace(model)
+	if model == "" {
+		return "–"
+	}
+	if index := strings.LastIndex(model, "/"); index >= 0 && index+1 < len(model) {
+		return model[index+1:]
+	}
+	return model
+}
+
+func (m *Model) newMessageLabel() string {
+	if m.newMessages > 1 {
+		return fmt.Sprintf("↓ %d new messages", m.newMessages)
+	}
+	return "↓ new messages"
+}
+
+func overlayRight(line, overlay string, width int) string {
+	overlayWidth := lipgloss.Width(overlay)
+	if overlayWidth >= width {
+		return truncate(overlay, width)
+	}
+	line = truncate(line, width-overlayWidth-1)
+	gap := max(1, width-lipgloss.Width(line)-overlayWidth)
+	return line + strings.Repeat(" ", gap) + overlay
 }
 
 func (m *Model) renderMessages() string {
@@ -190,12 +416,13 @@ func (m *Model) renderTree(width, height int) string {
 	}
 	roots := children[store.RootID]
 	if len(roots) == 0 {
+		empty := truncate("the graph is quiet — ask for something", max(1, width))
 		return lipgloss.Place(
 			max(1, width),
 			max(1, height),
 			lipgloss.Center,
 			lipgloss.Center,
-			mutedStyle.Render("the graph is quiet — ask for something"),
+			mutedStyle.Render(empty),
 		)
 	}
 
@@ -236,7 +463,7 @@ func (m *Model) renderTree(width, height int) string {
 	}
 	walk(roots, "")
 
-	if len(lines) > height {
+	if height > 0 && len(lines) > height {
 		lines = lines[:height]
 	}
 	return strings.Join(lines, "\n")

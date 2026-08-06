@@ -123,7 +123,17 @@ func runChat(args []string) error {
 	go func() { defer background.Done(); _ = reconciler.Serve(ctx) }()
 	go func() { defer background.Done(); _ = runner.Serve(ctx) }()
 
-	err = tui.Run(graph, *sessionID)
+	commander := &chatCommander{
+		settings:   settings,
+		database:   path,
+		prefsDir:   filepath.Dir(path),
+		chatClient: chatClient,
+		taskClient: taskClient,
+		store:      graph,
+		prefs:      prefs,
+		sessionID:  *sessionID,
+	}
+	err = tui.RunWithCommander(graph, *sessionID, commander)
 	cancel()
 	waitWithGrace(&background, 5*time.Second)
 	return err
@@ -135,6 +145,114 @@ func runChat(args []string) error {
 type chatPrefs struct {
 	ChatModel string `json:"chat_model,omitempty"`
 	TaskModel string `json:"task_model,omitempty"`
+}
+
+var fallbackChatModels = []string{
+	"~deepseek/deepseek-v4-flash-latest",
+	"moonshotai/kimi-k2.6",
+	"qwen/qwen3-30b-a3b",
+	"google/gemma-3-12b-it",
+}
+
+// chatCommander bridges surface commands to the two hot-swappable clients
+// and the durable command journal. Session state lives here so /new and a
+// subsequent /cancel always agree about which thread owns the request.
+type chatCommander struct {
+	settings config.Config
+	database string
+	prefsDir string
+
+	chatClient *liveClient
+	taskClient *liveClient
+	store      *store.Store
+
+	mu        sync.Mutex
+	prefs     chatPrefs
+	sessionID string
+}
+
+func (c *chatCommander) Models() []string {
+	candidates := make([]string, 0, len(c.settings.Panel.Models)+7)
+	for _, spec := range c.settings.Panel.Models {
+		candidates = append(candidates, spec.Slug)
+	}
+	candidates = append(candidates, c.settings.Model, c.chatClient.Model(), c.taskClient.Model())
+	models := dedupeModels(candidates)
+	if len(models) < 4 {
+		models = dedupeModels(append(models, fallbackChatModels...))
+	}
+	return models
+}
+
+func (c *chatCommander) CurrentModel(role string) string {
+	if role == "work" {
+		return c.taskClient.Model()
+	}
+	return c.chatClient.Model()
+}
+
+func (c *chatCommander) SetModel(role, slug string) error {
+	switch role {
+	case "talk":
+		if err := c.chatClient.SetModel(slug); err != nil {
+			return err
+		}
+	case "work":
+		if err := c.taskClient.SetModel(slug); err != nil {
+			return err
+		}
+	default:
+		return fmt.Errorf("unknown model role %q", role)
+	}
+
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if role == "talk" {
+		c.prefs.ChatModel = c.chatClient.Model()
+	} else {
+		c.prefs.TaskModel = c.taskClient.Model()
+	}
+	if err := saveChatPrefs(c.prefsDir, c.prefs); err != nil {
+		return fmt.Errorf("save chat model preference: %w", err)
+	}
+	return nil
+}
+
+func (c *chatCommander) NewSession() (string, error) {
+	sessionID := newSessionID()
+	c.mu.Lock()
+	c.sessionID = sessionID
+	c.mu.Unlock()
+	return sessionID, nil
+}
+
+func (c *chatCommander) Cancel(nodeID string) error {
+	c.mu.Lock()
+	sessionID := c.sessionID
+	c.mu.Unlock()
+	_, err := c.store.RequestCommand(store.Command{
+		SessionID:   sessionID,
+		Kind:        store.CommandCancel,
+		Target:      nodeID,
+		Instruction: "cancelled from the TUI",
+	})
+	return err
+}
+
+func (c *chatCommander) DatabasePath() string { return c.database }
+
+func dedupeModels(candidates []string) []string {
+	seen := make(map[string]bool, len(candidates))
+	models := make([]string, 0, len(candidates))
+	for _, candidate := range candidates {
+		candidate = strings.TrimSpace(candidate)
+		if candidate == "" || seen[candidate] {
+			continue
+		}
+		seen[candidate] = true
+		models = append(models, candidate)
+	}
+	return models
 }
 
 func prefsPath(dir string) string { return filepath.Join(dir, "settings.json") }
