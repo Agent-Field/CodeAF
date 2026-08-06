@@ -352,6 +352,9 @@ func Open(path string) (*Store, error) {
 	if _, err := db.Exec(threadSchema); err != nil {
 		return closeOnError(fmt.Errorf("initialize thread schema: %w", err))
 	}
+	if err := migrateThreadSchema(db); err != nil {
+		return closeOnError(fmt.Errorf("migrate thread schema: %w", err))
+	}
 	if _, err := db.Exec(usageSchema); err != nil {
 		return closeOnError(fmt.Errorf("initialize usage schema: %w", err))
 	}

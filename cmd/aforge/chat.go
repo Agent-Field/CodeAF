@@ -125,6 +125,7 @@ func runChat(args []string) error {
 
 	web := exec.NewWeb()
 	runner := resident.NewRunner(graph, func(ctx context.Context, node store.Node) (resident.ExecResult, error) {
+		isReflex := node.Group == resident.ReflexGroup
 		// Each top-level job works in its own directory: one thread hosts
 		// many unrelated jobs, and continuity between them travels through
 		// the graph as digests and absolute paths, never through a shared
@@ -141,11 +142,21 @@ func runChat(args []string) error {
 		if workingClient == nil {
 			workingModel, workingClient = taskClient.Snapshot()
 		}
-		// The exact leaf configuration the headless scheduler uses: the same turn
-		// backstop, binding token budget, and deadline scaled with that budget.
-		deadline := leafDeadline(chatLeafTokens)
-		linear := exec.NewLinear(workingClient, jobSpace, web, chatLeafTurns, chatLeafTokens, deadline).WithStore(graph)
+		// Ordinary leaves retain the byte-identical headless envelope. Reflexes use
+		// the deliberately tiny rung budget and a seconds-scale watchdog.
+		turns, tokens := chatLeafTurns, chatLeafTokens
+		deadline := leafDeadline(tokens)
+		watchdog := deadline + 2*time.Minute
+		if isReflex {
+			turns, tokens = reflexTurns, reflexTokens
+			deadline = reflexDeadline
+			watchdog = deadline + 15*time.Second
+		}
+		linear := exec.NewLinear(workingClient, jobSpace, web, turns, tokens, deadline).WithStore(graph)
 		shape := "atomic"
+		if isReflex {
+			shape = "reflex"
+		}
 		if planNode != nil {
 			shape = exec.LeafShape(planNode)
 			// Frozen means frozen everywhere: the sentinel may not edit a
@@ -183,6 +194,7 @@ func runChat(args []string) error {
 		}
 
 		task := exec.Task{
+			Reflex: isReflex,
 			NodeID: int(node.CreatedSeq),
 			Title:  firstLine(node.Brief),
 			Goal:   node.Provenance.Intent,
@@ -196,7 +208,7 @@ func runChat(args []string) error {
 		// than a silent hang, and a leaf whose verdict says a stronger model
 		// might fix it gets exactly one escalation when a panel offers one.
 		attempts := 1
-		if taskClient.escalatable() {
+		if !isReflex && taskClient.escalatable() {
 			attempts = 2
 		}
 		// One job is one cache lineage, exactly as one headless run is: the
@@ -209,7 +221,7 @@ func runChat(args []string) error {
 		workerModel := taskClient.Model()
 		for attempt := 0; attempt < attempts; attempt++ {
 			runCtx := provider.WithCallShape(settings.ExecContext(ctx), provider.ClassExecLeaf, attempt, shape)
-			outcome, err = runLeafWithWatchdog(runCtx, linear, task, deadline+2*time.Minute)
+			outcome, err = runLeafWithWatchdog(runCtx, linear, task, watchdog)
 			if model := provider.CallFrom(runCtx).Model(); model != "" {
 				workerModel = model
 			}
@@ -230,7 +242,7 @@ func runChat(args []string) error {
 		// which edits the job's unstarted remainder only when this result
 		// contradicts a specific assumption in a specific node. Its default
 		// is no change; the store refuses everything else.
-		if planGraph != nil && outcome != nil {
+		if !isReflex && planGraph != nil && outcome != nil {
 			plans.reviseAfter(ctx, settings, taskClient, graph, node, planGraph, outcome.Text, err != nil, workerModel)
 		}
 		if err != nil {
@@ -239,7 +251,11 @@ func runChat(args []string) error {
 			if landed := plans.takeIfRoot(node.ID); landed != nil {
 				go recordAndCalibrate(settings.Context(context.Background(), landed.Goal), workingClient, settings, workingModel, landed)
 			} else if planGraph == nil && node.Parent == store.RootID && outcome != nil {
-				go recordSingleLeaf(settings, workerModel, node, outcome)
+				if isReflex {
+					go recordReflex(settings, workerModel, node, outcome, false)
+				} else {
+					go recordSingleLeaf(settings, workerModel, node, outcome)
+				}
 			}
 			return resident.ExecResult{}, err
 		}
@@ -253,12 +269,13 @@ func runChat(args []string) error {
 		if len(absolute) > 0 {
 			text += "\n\nFiles:\n" + strings.Join(absolute, "\n")
 		}
+		promoted := shouldPromoteReflex(node, outcome)
 		// The quality gate: before a deliverable lands in the thread, one
 		// judge call asks the only question that matters — would the person
 		// who asked accept this as done? A named gap earns exactly one
 		// revision pass with the critique as input; then the result ships
 		// either way, because a gate that can loop is a gate that can stall.
-		if node.Parent == store.RootID && outcome.Stop != exec.StopBudget && outcome.Stop != exec.StopTurnCap {
+		if shouldGate(node, outcome) {
 			gate := judgeDeliverable(ctx, settings, taskClient, graph, node, text, workerModel)
 			if gate.Checked {
 				evidence := store.DeliveryGate{Pass: gate.Pass, Gap: gate.Gaps}
@@ -320,7 +337,7 @@ func runChat(args []string) error {
 		// lands as this node's summary; the remainder — planned from what
 		// the partial actually contains — is spliced in as deeper structure
 		// that consumes it and feeds everything that was waiting.
-		if outcome.Stop == exec.StopBudget || outcome.Stop == exec.StopTurnCap {
+		if !isReflex && (outcome.Stop == exec.StopBudget || outcome.Stop == exec.StopTurnCap) {
 			spliced, sink, replanErr := resident.ReplanOverrun(ctx, graph, node, outcome.Text, absolute,
 				replanRemainder(settings, taskClient, plans, graph))
 			if replanErr == nil && spliced > 0 {
@@ -360,13 +377,18 @@ func runChat(args []string) error {
 				})
 			}()
 		} else if planGraph == nil && node.Parent == store.RootID {
-			go recordSingleLeaf(settings, workerModel, node, outcome)
+			if isReflex {
+				go recordReflex(settings, workerModel, node, outcome, promoted)
+			} else {
+				go recordSingleLeaf(settings, workerModel, node, outcome)
+			}
 		}
 		return resident.ExecResult{
 			Summary:          text,
 			PromptTokens:     spent.PromptTokens,
 			CompletionTokens: spent.CompletionTokens,
 			Cost:             spent.Cost,
+			Promote:          promoted,
 		}, nil
 	}, "chat-runner", 4)
 
@@ -378,7 +400,12 @@ func runChat(args []string) error {
 	// context: without the configured effort knob, a reasoning model spends the
 	// head's whole token cap deliberating and returns empty text — measured as
 	// 600/600 completion tokens of thought and zero answer on the default model.
-	go func() { defer background.Done(); _ = head.New(chatClient, graph).Serve(settings.Context(ctx, "head")) }()
+	go func() {
+		defer background.Done()
+		_ = head.New(chatClient, graph).
+			WithSelfKnowledge(func() string { return selfKnowledge(settings, taskClient.Model()) }).
+			Serve(settings.Context(ctx, "head"))
+	}()
 	go func() { defer background.Done(); _ = reconciler.Serve(ctx) }()
 	go func() { defer background.Done(); _ = runner.Serve(ctx) }()
 
@@ -907,7 +934,27 @@ func newSessionID() string {
 const (
 	chatLeafTurns  = 200
 	chatLeafTokens = 150_000
+
+	// A reflex gets four exchanges and one eighth of a normal chat leaf's
+	// token allowance: enough to use a tool and report its result, but small
+	// enough that ambiguous work promotes before impersonating a full job.
+	reflexTurns    = 4
+	reflexTokens   = chatLeafTokens / 8
+	reflexDeadline = 90 * time.Second
 )
+
+// shouldGate keeps the delivery ceremony off the reflex rung. A promoted
+// partial is evidence for the compiled job, not a deliverable to review.
+func shouldGate(node store.Node, outcome *exec.Outcome) bool {
+	return node.Group != resident.ReflexGroup &&
+		node.Parent == store.RootID && outcome != nil &&
+		outcome.Stop != exec.StopBudget && outcome.Stop != exec.StopTurnCap
+}
+
+func shouldPromoteReflex(node store.Node, outcome *exec.Outcome) bool {
+	return node.Group == resident.ReflexGroup && outcome != nil &&
+		(outcome.Promote || outcome.Stop == exec.StopBudget || outcome.Stop == exec.StopTurnCap)
+}
 
 // leafDeadline scales the hang backstop with the granted budget, as the
 // headless runner does: 15 minutes floor, one minute per 50k tokens above it.
@@ -1219,6 +1266,34 @@ func recordSingleLeaf(settings config.Config, model string, node store.Node, out
 		Tokens:  outcome.Usage.PromptTokens + outcome.Usage.CompletionTokens,
 		Stop:    string(outcome.Stop),
 		Verdict: outcome.Verdict,
+	})
+	_ = measured.Save()
+}
+
+// recordReflex learns the boundary independently from the planner's ruler.
+// Promotions remain observations, including the cost of the useful partial.
+func recordReflex(settings config.Config, model string, node store.Node, outcome *exec.Outcome, promoted bool) {
+	if strings.TrimSpace(model) == "" {
+		model = settings.Model
+	}
+	measured, err := profile.Load(settings.ProfileDir, model, "linear")
+	if err != nil {
+		return
+	}
+	title := strings.TrimSpace(node.Title)
+	if title == "" {
+		title = firstLine(node.Brief)
+	}
+	measured.Add(profile.Record{
+		Title:    title,
+		Summary:  firstLine(node.Brief),
+		Size:     profile.BucketReflex,
+		Turns:    outcome.Turns,
+		Tokens:   outcome.Usage.PromptTokens + outcome.Usage.CompletionTokens,
+		Stop:     string(outcome.Stop),
+		Cost:     outcome.Usage.Cost,
+		Promoted: promoted,
+		Verdict:  outcome.Verdict,
 	})
 	_ = measured.Save()
 }

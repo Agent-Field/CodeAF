@@ -167,3 +167,21 @@ func repeatedRecords(count, turns int, verdict provider.Verdict) []Record {
 	}
 	return records
 }
+
+func TestReflexBucketRecordsSuccessPromotionAndCost(t *testing.T) {
+	measured := &Profile{}
+	measured.Add(
+		Record{Title: "clean", Size: BucketReflex, Turns: 1, Tokens: 100, Cost: 0.01, Verdict: provider.VerdictVerifiedSuccess},
+		Record{Title: "quick", Size: BucketReflex, Turns: 2, Tokens: 200, Cost: 0.02, Verdict: provider.VerdictUnverifiedSuccess},
+		Record{Title: "promoted", Size: BucketReflex, Turns: 4, Tokens: 400, Cost: 0.04, Promoted: true, Verdict: provider.VerdictBudgetStop},
+	)
+	stats := measured.MeasureReflex()
+	if stats.Samples != 3 || stats.Successes != 2 || stats.Promotions != 1 ||
+		stats.MedianTurns != 2 || stats.MedianTokens != 200 ||
+		stats.AverageCost < 0.0233 || stats.AverageCost > 0.0234 {
+		t.Fatalf("MeasureReflex() = %+v", stats)
+	}
+	if spread := measured.Measure(); spread.Samples != 0 {
+		t.Fatalf("reflex records leaked into planner ruler: %+v", spread)
+	}
+}

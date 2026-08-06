@@ -3,7 +3,9 @@ package resident
 import (
 	"context"
 	"errors"
+	"fmt"
 	"path/filepath"
+	"strings"
 	"sync"
 	"testing"
 
@@ -126,4 +128,200 @@ func TestRunnerRespectsWorkerSlots(t *testing.T) {
 		t.Fatalf("one worker slot should dispatch exactly 1, got %d", dispatched)
 	}
 	runner.Wait()
+}
+
+func TestReflexMicroLeafIsJournaledClaimedSettledAndRebuildSafe(t *testing.T) {
+	s := openRunnerStore(t)
+	ask := "Read VERSION and report its value."
+	command, err := s.RequestCommand(store.Command{
+		SessionID: "reflex-session", Kind: store.CommandSplice, Reflex: true, Instruction: ask,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	compileCalls := 0
+	planCalls := 0
+	reconciler := New(s, func(context.Context, string, string) (Compiled, error) {
+		compileCalls++
+		return Compiled{Goal: "should not compile"}, nil
+	}, func(context.Context, Compiled) (store.Subtree, error) {
+		planCalls++
+		return store.Subtree{}, nil
+	})
+	if err := reconciler.Tick(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if compileCalls != 0 || planCalls != 0 {
+		t.Fatalf("compiler/planner calls = %d/%d, want zero", compileCalls, planCalls)
+	}
+
+	id := fmt.Sprintf("reflex-%d", command.Seq)
+	node, ok, err := s.Node(id)
+	if err != nil || !ok {
+		t.Fatalf("node %q: ok=%t err=%v", id, ok, err)
+	}
+	if node.Group != ReflexGroup || node.Brief != ask || node.Parent != store.RootID ||
+		node.Provenance.Origin != store.OriginUser ||
+		node.Provenance.SessionID != "reflex-session" || node.Provenance.Intent != ask {
+		t.Fatalf("reflex provenance = %+v node=%+v", node.Provenance, node)
+	}
+	settled, _, err := s.CommandBySeq(command.Seq)
+	if err != nil || settled.Status != store.CommandApplied || !settled.Reflex {
+		t.Fatalf("reflex command = %+v err=%v", settled, err)
+	}
+
+	runner := NewRunner(s, func(context.Context, store.Node) (ExecResult, error) {
+		return ExecResult{Summary: "VERSION is 2.0"}, nil
+	}, "reflex-runner", 1)
+	if _, err := runner.Tick(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	runner.Wait()
+
+	node, ok, err = s.Node(id)
+	if err != nil || !ok || node.Status != store.Done || node.Summary != "VERSION is 2.0" {
+		t.Fatalf("settled reflex = %+v ok=%t err=%v", node, ok, err)
+	}
+	events, err := s.Events(0, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	seen := map[store.EventKind]bool{}
+	for _, event := range events {
+		if event.NodeID == id {
+			if event.Kind == store.EventSubtreeSpliced && strings.Contains(string(event.Payload), id) {
+				seen[event.Kind] = true
+			}
+			seen[event.Kind] = true
+		}
+	}
+	for _, kind := range []store.EventKind{store.EventSubtreeSpliced, store.EventNodeClaimed, store.EventNodeStarted, store.EventNodeCompleted} {
+		if !seen[kind] {
+			t.Errorf("reflex lifecycle omitted %s", kind)
+		}
+	}
+	if _, found, err := s.DeliveryGateFor(id); err != nil || found {
+		t.Fatalf("delivery gate found=%t err=%v, want none", found, err)
+	}
+	if err := s.Rebuild(); err != nil {
+		t.Fatal(err)
+	}
+	rebuilt, ok, err := s.Node(id)
+	if err != nil || !ok || rebuilt.Status != store.Done || rebuilt.Group != ReflexGroup ||
+		rebuilt.Provenance.Intent != ask {
+		t.Fatalf("rebuilt reflex = %+v ok=%t err=%v", rebuilt, ok, err)
+	}
+}
+
+func TestReflexPromotionCarriesPartialIntoCompiledJob(t *testing.T) {
+	s := openRunnerStore(t)
+	ask := "Inspect the parser and fix the reported edge case."
+	command, err := s.RequestCommand(store.Command{
+		SessionID: "promotion-session", Kind: store.CommandSplice, Reflex: true, Instruction: ask,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var compiledInstruction, compiledContext string
+	reconciler := New(s,
+		func(_ context.Context, instruction, graphContext string) (Compiled, error) {
+			compiledInstruction, compiledContext = instruction, graphContext
+			return Compiled{Goal: "Fix and verify the parser edge case"}, nil
+		},
+		func(_ context.Context, compiled Compiled) (store.Subtree, error) {
+			if len(compiled.BuildsOn) != 1 || compiled.BuildsOn[0] != fmt.Sprintf("reflex-%d", command.Seq) {
+				return store.Subtree{}, fmt.Errorf("builds_on = %v", compiled.BuildsOn)
+			}
+			return store.Subtree{Nodes: []store.NodeSpec{{
+				ID: "proper-job", Brief: compiled.Goal, Stage: 1,
+			}}}, nil
+		},
+	)
+	if err := reconciler.Tick(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	id := fmt.Sprintf("reflex-%d", command.Seq)
+	runner := NewRunner(s, func(context.Context, store.Node) (ExecResult, error) {
+		return ExecResult{Summary: "partial: isolated the failing escape sequence", Promote: true}, nil
+	}, "reflex-runner", 1)
+	if _, err := runner.Tick(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	runner.Wait()
+	if err := reconciler.Tick(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+
+	if compiledInstruction != ask {
+		t.Fatalf("compiled instruction = %q, want exact ask %q", compiledInstruction, ask)
+	}
+	for _, want := range []string{ask, "partial: isolated the failing escape sequence", id} {
+		if !strings.Contains(compiledContext, want) {
+			t.Errorf("compiled context omitted %q:\n%s", want, compiledContext)
+		}
+	}
+	partial, ok, err := s.Node(id)
+	if err != nil || !ok || partial.Status != store.Done ||
+		partial.Summary != "partial: isolated the failing escape sequence" {
+		t.Fatalf("promoted partial = %+v ok=%t err=%v", partial, ok, err)
+	}
+	proper, ok, err := s.Node("proper-job")
+	if err != nil || !ok || proper.Provenance.Intent != ask ||
+		proper.Provenance.SessionID != "promotion-session" {
+		t.Fatalf("compiled job = %+v ok=%t err=%v", proper, ok, err)
+	}
+	snapshot, err := s.Snapshot()
+	if err != nil {
+		t.Fatal(err)
+	}
+	linked := false
+	for _, edge := range snapshot.Edges {
+		if edge.From == id && edge.To == "proper-job" && edge.Kind == store.FeedsInto {
+			linked = true
+		}
+	}
+	if !linked {
+		t.Fatalf("promotion partial did not feed compiled job: %+v", snapshot.Edges)
+	}
+	messages, err := s.Messages("promotion-session", 0, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(messages) != 1 || messages[0].Body != reflexPromotionLine {
+		t.Fatalf("promotion messages = %+v", messages)
+	}
+}
+
+func TestFailedReflexStillDistills(t *testing.T) {
+	s := openRunnerStore(t)
+	ask := "Read the local status file."
+	if _, err := s.RequestCommand(store.Command{
+		SessionID: "failed-reflex", Kind: store.CommandSplice, Reflex: true, Instruction: ask,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	var gotGoal, gotOutcome string
+	var gotFailed bool
+	reconciler := New(s, nil, nil).WithDistiller(
+		func(_ context.Context, goal, outcome string, failed bool) ([]Learned, error) {
+			gotGoal, gotOutcome, gotFailed = goal, outcome, failed
+			return nil, nil
+		},
+	)
+	if err := reconciler.Tick(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	runner := NewRunner(s, func(context.Context, store.Node) (ExecResult, error) {
+		return ExecResult{}, errors.New("status file was unreadable")
+	}, "reflex-runner", 1)
+	if _, err := runner.Tick(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	runner.Wait()
+	if err := reconciler.Tick(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if gotGoal != ask || gotOutcome != "status file was unreadable" || !gotFailed {
+		t.Fatalf("distill input = goal %q outcome %q failed=%t", gotGoal, gotOutcome, gotFailed)
+	}
 }

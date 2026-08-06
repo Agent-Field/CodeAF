@@ -17,6 +17,9 @@ type ExecResult struct {
 	PromptTokens     int
 	CompletionTokens int
 	Cost             float64
+	// Promote asks the runner to settle this reflex partial and enqueue the
+	// same verbatim instruction on the ordinary compiled path atomically.
+	Promote bool
 }
 
 // ExecuteFunc runs one claimed node to completion. The runner owns the claim
@@ -158,7 +161,17 @@ func (r *Runner) runOne(ctx context.Context, node store.Node) {
 	if strings.TrimSpace(summary) == "" {
 		summary = "finished with no summary"
 	}
-	if err := r.graph.Complete(claim, summary); err != nil {
+	var settleErr error
+	if result.Promote && node.Group == ReflexGroup {
+		_, settleErr = r.graph.CompleteAndRequestFollowup(claim, summary, store.Command{
+			SessionID: node.Provenance.SessionID,
+			Kind:      store.CommandSplice, Target: node.ID,
+			Instruction: node.Provenance.Intent,
+		})
+	} else {
+		settleErr = r.graph.Complete(claim, summary)
+	}
+	if settleErr != nil {
 		// A refused completion (a child opened underneath us, a lost claim)
 		// must not strand the node mid-flight; release returns it to pending
 		// where a later tick can pick it up cleanly.
