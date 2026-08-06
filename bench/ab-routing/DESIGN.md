@@ -395,8 +395,60 @@ arm A to fail:
 
 If arm A aces it, harden. If arm A floors it, soften — and the softening lever
 is named in advance so it is not chosen to flatter a result: **drop the hardest
-divergence group (11, first-match-wins) from `success` and report it as a
-stretch group**, rather than rewriting the task.
+divergence group from `success` and report it as a stretch group**, rather than
+rewriting the task.
+
+#### What calibration actually found
+
+**Round 1: arm A scored 1.000, twice out of two.** Degenerate, and for a reason
+that generalises to any "conformance" task: the brief carried a section headed
+*"The four divergences — read these twice"*, numbered them, and worked an
+example for each. Noticing that a familiar tool behaves differently is the whole
+difficulty, and the brief had done the noticing. Round 1's cells cost $0.034 and
+$0.130.
+
+**Round 2** removed the signposting — every rule stated flat, in neutral prose,
+no "this differs from X" framing — and added two groups that reading cannot
+supply: nested `**` needs real backtracking past a false start, and a few hundred
+patterns over tens of thousands of paths needs the patterns compiled once.
+Selection also gained a second ordering key that a single pass over the list gets
+wrong.
+
+| rep | score | success | baseline | divergence | effort | $ | wall |
+|---|---|---|---|---|---|---|---|
+| 1 | 1.000 | yes | 8/8 | 4/4 | 2/2 | $0.251 | 2124 s |
+| 2 | 0.929 | no | 8/8 | 4/4 | 1/2 | $0.099 | 408 s |
+| 3 | 0.929 | no | 8/8 | 4/4 | 1/2 | $0.271 | 644 s |
+
+**1 of 3 successes, two distinct scores, well off the floor** — the target. Total
+$0.620 against the $3 cap, across both rounds.
+
+#### Three things this says, and one limitation
+
+**Flash reads a complete specification well.** It won every divergence group in
+every replicate of both rounds, including after the signposting was removed.
+That was not the expectation going in, and it **reframes the t1 failures**: those
+were not a spec-reading deficit. t1's leaves carry 2.2M prompt tokens and produced
+all five budget stops in the experiment, so what beat flash there was conformance
+*at scale*, not conformance. Any future task aiming at flash's ceiling should
+vary volume, not subtlety.
+
+**Difficulty moved even where the score did not.** Round 2's cells cost 7x round
+1's and ran 6x longer for the same or a lower score. A task can be materially
+harder without the pass rate showing it, which is worth remembering when reading
+any single-number comparison in this experiment.
+
+**The limitation, stated plainly: t4's discrimination currently rests on one
+group.** Both failing replicates failed group 14 and nothing else, so if the
+routed arm's models all clear the performance floor, t4 will report 3/3 and
+separate nothing — the same shape of narrowness already recorded for t3, whose
+every arm-A replicate failed group 1 alone. t4 is therefore added as a
+**gradient probe rather than a decisive discriminator**, and B2 should read its
+*score* rather than its success flag.
+
+If B2 shows all arms at 14/14 on t4, the lever to pull is volume rather than more
+rules: raise the scale group from 20,000 paths to a size that forces streaming,
+which is the axis t1's evidence actually points at.
 
 ### 11.7 Budget and stopping
 
