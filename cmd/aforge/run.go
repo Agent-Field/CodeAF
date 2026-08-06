@@ -190,15 +190,26 @@ func runExecute(args []string) error {
 // its shape really costs this model, and once that contradicts the ruler, the
 // ruler is rewritten from tasks that actually happened.
 func recordAndCalibrate(ctx context.Context, client plan.Completer, settings config.Config, model string, graph *plan.Graph) string {
-	store, err := profile.Load(settings.ProfileDir, model, "linear")
+	report, _ := recordAndCalibrateDetailed(ctx, client, settings, model, graph)
+	return report
+}
+
+type landedProfileRecord struct {
+	planID int
+	record profile.Record
+}
+
+func recordAndCalibrateDetailed(ctx context.Context, client plan.Completer, settings config.Config, model string, graph *plan.Graph) (string, []landedProfileRecord) {
+	measured, err := profile.Load(settings.ProfileDir, model, "linear")
 	if err != nil {
-		return fmt.Sprintf("ruler: could not load profile: %v", err)
+		return fmt.Sprintf("ruler: could not load profile: %v", err), nil
 	}
+	var pending []landedProfileRecord
 	for _, node := range graph.Nodes {
-		if node.Kind != plan.KindWork || node.Turns == 0 {
+		if node.Kind != plan.KindWork || node.Turns == 0 || strings.TrimSpace(node.Title) == "" {
 			continue
 		}
-		store.Add(profile.Record{
+		pending = append(pending, landedProfileRecord{planID: node.ID, record: profile.Record{
 			Title:        node.Title,
 			Summary:      node.Summary,
 			Sources:      len(node.Sources),
@@ -208,16 +219,24 @@ func recordAndCalibrate(ctx context.Context, client plan.Completer, settings con
 			Tokens:       node.Tokens,
 			Stop:         node.Stop,
 			Verdict:      node.Verdict,
-		})
+		}})
+	}
+	records := make([]profile.Record, len(pending))
+	for index := range pending {
+		records[index] = pending[index].record
+	}
+	added := measured.Add(records...)
+	for index := range added {
+		pending[index].record = added[index]
 	}
 
-	anchors, reason, _, recalibrateErr := plan.Recalibrate(ctx, client, store)
+	anchors, reason, _, recalibrateErr := plan.Recalibrate(ctx, client, measured)
 	var report string
 	switch {
 	case recalibrateErr != nil:
 		report = fmt.Sprintf("ruler: could not recalibrate: %v", recalibrateErr)
 	case anchors != "":
-		store.Anchors = anchors
+		measured.Anchors = anchors
 		plan.UseAnchors(anchors)
 		var rendered strings.Builder
 		fmt.Fprintf(&rendered, "ruler recalibrated: %s", reason)
@@ -230,10 +249,11 @@ func recordAndCalibrate(ctx context.Context, client plan.Completer, settings con
 	default:
 		report = "ruler: " + reason
 	}
-	if saveErr := store.Save(); saveErr != nil {
+	if saveErr := measured.Save(); saveErr != nil {
 		report += fmt.Sprintf("\nprofile: could not save: %v", saveErr)
+		pending = nil
 	}
-	return report
+	return report, pending
 }
 
 func missingBriefs(graph *plan.Graph) int {

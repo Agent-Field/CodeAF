@@ -155,6 +155,71 @@ func TestSourceCountCompatibility(t *testing.T) {
 	}
 }
 
+func TestAddRecordsSurpriseAgainstPriorBucketMedian(t *testing.T) {
+	measured := &Profile{}
+	baseline := make([]Record, MinSamples)
+	for index := range baseline {
+		baseline[index] = Record{Title: "baseline", Size: "atomic", Turns: 10, Tokens: 1_000}
+	}
+	for index, record := range measured.Add(baseline...) {
+		if record.ExpectedTurns != nil || record.ExpectedTokens != nil || record.Surprise != nil {
+			t.Fatalf("baseline record %d has an expectation before %d prior samples: %+v", index, MinSamples, record)
+		}
+	}
+
+	landed := measured.Add(Record{Title: "miss", Size: "atomic", Turns: 30, Tokens: 4_000})[0]
+	if landed.ExpectedTurns == nil || *landed.ExpectedTurns != 10 ||
+		landed.ExpectedTokens == nil || *landed.ExpectedTokens != 1_000 {
+		t.Fatalf("expectation = turns %v tokens %v, want 10/1000", landed.ExpectedTurns, landed.ExpectedTokens)
+	}
+	// Turn error is 200%, token error is 300%; their normalized mean is 250%.
+	if landed.Surprise == nil || *landed.Surprise != 2.5 {
+		t.Fatalf("surprise = %v, want 2.5", landed.Surprise)
+	}
+
+	exact := measured.Add(Record{Title: "exact", Size: "atomic", Turns: 10, Tokens: 1_000})[0]
+	if exact.Surprise == nil || *exact.Surprise != 0 {
+		t.Fatalf("exact surprise = %v, want defined zero", exact.Surprise)
+	}
+	other := measured.Add(Record{Title: "new bucket", Size: "borderline", Turns: 10, Tokens: 1_000})[0]
+	if other.Surprise != nil {
+		t.Fatalf("new bucket surprise = %v, want absent despite global history", *other.Surprise)
+	}
+
+	capped := measured.Add(Record{Title: "pathological", Size: "atomic", Turns: 1_000, Tokens: 100_000})[0]
+	if capped.Surprise == nil || *capped.Surprise != maxSurprise {
+		t.Fatalf("capped surprise = %v, want %.0f", capped.Surprise, maxSurprise)
+	}
+}
+
+func TestSurpriseJSONIsBackwardCompatible(t *testing.T) {
+	var old Record
+	if err := json.Unmarshal([]byte(`{"title":"old","size":"atomic","turns":2,"tokens":200}`), &old); err != nil {
+		t.Fatal(err)
+	}
+	if old.ExpectedTurns != nil || old.ExpectedTokens != nil || old.Surprise != nil {
+		t.Fatalf("legacy record gained a defined surprise: %+v", old)
+	}
+
+	encoded, err := json.Marshal(old)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, field := range []string{"expected_turns", "expected_tokens", "surprise"} {
+		if strings.Contains(string(encoded), field) {
+			t.Fatalf("absent legacy field %q was emitted: %s", field, encoded)
+		}
+	}
+
+	var exact Record
+	if err := json.Unmarshal([]byte(`{"expected_turns":2,"expected_tokens":200,"surprise":0}`), &exact); err != nil {
+		t.Fatal(err)
+	}
+	if exact.Surprise == nil || *exact.Surprise != 0 {
+		t.Fatalf("defined zero surprise did not survive JSON: %+v", exact)
+	}
+}
+
 func repeatedRecords(count, turns int, verdict provider.Verdict) []Record {
 	records := make([]Record, count)
 	for index := range records {

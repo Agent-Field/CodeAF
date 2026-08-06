@@ -249,12 +249,26 @@ func runChat(args []string) error {
 			// Preserve failed-attempt evidence even though no delivery reaches the
 			// gate. This is the pre-existing profile path, kept on the early return.
 			if landed := plans.takeIfRoot(node.ID); landed != nil {
-				go recordAndCalibrate(settings.Context(context.Background(), landed.Goal), workingClient, settings, workingModel, landed)
+				prefix := node.ID[:strings.LastIndex(node.ID, "-n")]
+				go func() {
+					_, records := recordAndCalibrateDetailed(settings.Context(context.Background(), landed.Goal), workingClient, settings, workingModel, landed)
+					recordPlanSurprises(graph, prefix, records)
+				}()
 			} else if planGraph == nil && node.Parent == store.RootID && outcome != nil {
 				if isReflex {
-					go recordReflex(settings, workerModel, node, outcome, false)
+					go func() {
+						record, ok := recordReflex(settings, workerModel, node, outcome, false)
+						if ok {
+							recordProfileSurprise(graph, node.ID, record)
+						}
+					}()
 				} else {
-					go recordSingleLeaf(settings, workerModel, node, outcome)
+					go func() {
+						record, ok := recordSingleLeaf(settings, workerModel, node, outcome)
+						if ok {
+							recordProfileSurprise(graph, node.ID, record)
+						}
+					}()
 				}
 			}
 			return resident.ExecResult{}, err
@@ -366,8 +380,10 @@ func runChat(args []string) error {
 			// owns; detached, because the ruler is telemetry and the user's
 			// result must not wait on it.
 			sessionID := node.Provenance.SessionID
+			prefix := node.ID[:strings.LastIndex(node.ID, "-n")]
 			go func() {
-				report := recordAndCalibrate(settings.Context(context.Background(), landed.Goal), workingClient, settings, workingModel, landed)
+				report, records := recordAndCalibrateDetailed(settings.Context(context.Background(), landed.Goal), workingClient, settings, workingModel, landed)
+				recordPlanSurprises(graph, prefix, records)
 				if strings.TrimSpace(report) == "" {
 					return
 				}
@@ -380,9 +396,19 @@ func runChat(args []string) error {
 			}()
 		} else if planGraph == nil && node.Parent == store.RootID {
 			if isReflex {
-				go recordReflex(settings, workerModel, node, outcome, promoted)
+				go func() {
+					record, ok := recordReflex(settings, workerModel, node, outcome, promoted)
+					if ok {
+						recordProfileSurprise(graph, node.ID, record)
+					}
+				}()
 			} else {
-				go recordSingleLeaf(settings, workerModel, node, outcome)
+				go func() {
+					record, ok := recordSingleLeaf(settings, workerModel, node, outcome)
+					if ok {
+						recordProfileSurprise(graph, node.ID, record)
+					}
+				}()
 			}
 		}
 		return resident.ExecResult{
@@ -1283,19 +1309,19 @@ func runLeafWithWatchdog(ctx context.Context, linear *exec.Linear, task exec.Tas
 
 // recordSingleLeaf keeps direct-job costs available to compiler self-knowledge
 // without pretending an unplanned task was atomic ruler evidence.
-func recordSingleLeaf(settings config.Config, model string, node store.Node, outcome *exec.Outcome) {
+func recordSingleLeaf(settings config.Config, model string, node store.Node, outcome *exec.Outcome) (profile.Record, bool) {
 	if strings.TrimSpace(model) == "" {
 		model = settings.Model
 	}
 	measured, err := profile.Load(settings.ProfileDir, model, "linear")
 	if err != nil {
-		return
+		return profile.Record{}, false
 	}
 	title := strings.TrimSpace(node.Title)
 	if title == "" {
 		title = firstLine(node.Brief)
 	}
-	measured.Add(profile.Record{
+	added := measured.Add(profile.Record{
 		Title:   title,
 		Summary: firstLine(node.Brief),
 		Size:    profile.BucketDirect,
@@ -1304,24 +1330,27 @@ func recordSingleLeaf(settings config.Config, model string, node store.Node, out
 		Stop:    string(outcome.Stop),
 		Verdict: outcome.Verdict,
 	})
-	_ = measured.Save()
+	if len(added) == 0 || measured.Save() != nil {
+		return profile.Record{}, false
+	}
+	return added[0], true
 }
 
 // recordReflex learns the boundary independently from the planner's ruler.
 // Promotions remain observations, including the cost of the useful partial.
-func recordReflex(settings config.Config, model string, node store.Node, outcome *exec.Outcome, promoted bool) {
+func recordReflex(settings config.Config, model string, node store.Node, outcome *exec.Outcome, promoted bool) (profile.Record, bool) {
 	if strings.TrimSpace(model) == "" {
 		model = settings.Model
 	}
 	measured, err := profile.Load(settings.ProfileDir, model, "linear")
 	if err != nil {
-		return
+		return profile.Record{}, false
 	}
 	title := strings.TrimSpace(node.Title)
 	if title == "" {
 		title = firstLine(node.Brief)
 	}
-	measured.Add(profile.Record{
+	added := measured.Add(profile.Record{
 		Title:    title,
 		Summary:  firstLine(node.Brief),
 		Size:     profile.BucketReflex,
@@ -1332,7 +1361,28 @@ func recordReflex(settings config.Config, model string, node store.Node, outcome
 		Promoted: promoted,
 		Verdict:  outcome.Verdict,
 	})
-	_ = measured.Save()
+	if len(added) == 0 || measured.Save() != nil {
+		return profile.Record{}, false
+	}
+	return added[0], true
+}
+
+func recordPlanSurprises(graph *store.Store, prefix string, records []landedProfileRecord) {
+	for _, landed := range records {
+		recordProfileSurprise(graph, fmt.Sprintf("%s-n%d", prefix, landed.planID), landed.record)
+	}
+}
+
+func recordProfileSurprise(graph *store.Store, nodeID string, record profile.Record) {
+	if record.Surprise == nil || record.ExpectedTokens == nil {
+		return
+	}
+	_ = graph.RecordSurprise(store.NodeSurprise{
+		NodeID:         nodeID,
+		ActualTokens:   record.Tokens,
+		ExpectedTokens: *record.ExpectedTokens,
+		Surprise:       *record.Surprise,
+	})
 }
 
 func planSubtree(settings config.Config, client *liveClient, plans *jobPlans, history *store.Store) resident.PlanFunc {
@@ -1531,6 +1581,8 @@ Look only for what the SERIES shows and no single job could:
 - A need that keeps recurring — the user comes back for the same kind of thing. Record who the user is and what they regularly want, so future work anticipates it.
 - A correction that repeats — successive asks that rework the same aspect of earlier deliveries reveal a standard the user holds and the work keeps missing. Record the standard.
 - An approach that consistently worked, or consistently cost too much, across several jobs of the same shape. Record the pattern with what made it work or fail.
+
+Consider the most mispredicted jobs first: where the self-model is most wrong is where the series has the most to teach.
 
 The bar for a pattern is at least two independent occurrences; one job is an anecdote and the distiller already handled it. Scope user for who the user is and what they recurrently want; domain:<topic> for proven approaches. Do not restate a numbered standing notebook entry. When the series corrects or sharpens one, write the replacement in full and set "replaces" to its number. One sharp sentence each, at most four, and an empty list is the common correct answer.`
 
