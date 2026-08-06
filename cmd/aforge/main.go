@@ -30,9 +30,13 @@ func main() {
 
 func run() error {
 	if len(os.Args) < 2 {
-		return usage()
+		// No arguments opens the resident surface: the chat thread over the
+		// durable graph. The one-shot commands below are unchanged.
+		return runChat(nil)
 	}
 	switch os.Args[1] {
+	case "chat":
+		return runChat(os.Args[2:])
 	case "plan":
 		return runPlan(os.Args[2:])
 	case "revise":
@@ -52,6 +56,8 @@ func run() error {
 
 const usageText = `aforge — build and revise task graphs
 
+  aforge                 open the chat surface over the durable graph
+  aforge chat [--db path] [--session id]
   aforge plan "<goal>" [-o graph.json] [--json] [--brief] [--ensemble N]
   aforge revise <graph.json> "<what happened>" [--done 1,2,3] [-o graph.json]
   aforge run  <graph.json> [-w dir] [-j 8] [-o done.json]
