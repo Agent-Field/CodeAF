@@ -928,6 +928,7 @@ func (m *Model) renderTree(width, height int) string {
 	var walk func([]store.Node, string)
 	walk = func(nodes []store.Node, ancestorGuide string) {
 		lastGroup := ""
+		groupLabeled := true
 		for index, node := range nodes {
 			if seen[node.ID] {
 				continue
@@ -943,9 +944,13 @@ func (m *Model) renderTree(width, height int) string {
 
 			// A change of planning container gets a label line: the nesting
 			// the planner built survives here even though execution flattened
-			// it to edges.
-			if node.Group != lastGroup {
+			// it to edges. The label is scoped to a contiguous run of rows: once
+			// another subtree's rows have rendered in between (top-level jobs
+			// are siblings, so a whole other job can sit there), the group is
+			// announced again rather than left bleeding over foreign rows.
+			if node.Group != lastGroup || !groupLabeled {
 				lastGroup = node.Group
+				groupLabeled = true
 				if node.Group != "" {
 					header := "  " + ancestorGuide + "┄ " + node.Group
 					lines = append(lines, mutedStyle.Faint(true).Render(truncate(header, max(1, width))))
@@ -996,7 +1001,10 @@ func (m *Model) renderTree(width, height int) string {
 				waits := "waits: " + strings.Join(names, " · ")
 				lines = append(lines, mutedStyle.Render(waitPrefix+truncate(waits, max(1, width-lipgloss.Width(waitPrefix)))))
 			}
-			walk(children[node.ID], nextGuide)
+			if descendants := children[node.ID]; len(descendants) > 0 {
+				walk(descendants, nextGuide)
+				groupLabeled = false
+			}
 		}
 	}
 	walk(roots, "")
