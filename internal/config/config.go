@@ -24,6 +24,11 @@ const (
 	// structured_outputs and reasoning on OpenRouter.
 	DefaultModel = "~deepseek/deepseek-v4-flash-latest"
 
+	// DefaultVoiceModel is the independent speech-to-text slot. Voice never
+	// enters the talk/work router: OpenRouter exposes it through the dedicated
+	// audio transcription endpoint.
+	DefaultVoiceModel = "qwen/qwen3-asr-flash-2026-02-10"
+
 	// DefaultBaseURL is OpenRouter's OpenAI-compatible endpoint.
 	DefaultBaseURL = "https://openrouter.ai/api/v1"
 
@@ -96,6 +101,7 @@ type Config struct {
 	APIKey         string
 	BaseURL        string
 	Model          string
+	VoiceModel     string
 	Temperature    float64
 	MaxTokens      int
 	Timeout        time.Duration
@@ -126,6 +132,7 @@ func Load() (Config, error) {
 		APIKey:         firstNonEmpty(os.Getenv("OPENROUTER_API_KEY"), os.Getenv("OPENAI_API_KEY")),
 		BaseURL:        firstNonEmpty(os.Getenv("AFORGE_BASE_URL"), DefaultBaseURL),
 		Model:          firstNonEmpty(os.Getenv("AFORGE_MODEL"), DefaultModel),
+		VoiceModel:     firstNonEmpty(os.Getenv("AFORGE_VOICE_MODEL"), DefaultVoiceModel),
 		Temperature:    DefaultTemperature,
 		MaxTokens:      DefaultMaxTokens,
 		Timeout:        DefaultTimeout,

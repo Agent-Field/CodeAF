@@ -15,17 +15,17 @@ import (
 // ── The design system ────────────────────────────────────────────────────────
 //
 // Voice hierarchy (four typographic levels, one accent, no new colors):
-//   1. aforge speaks: the speaker label in lavender — the single conversational
-//      accent — with its body in primary ink, markdown-rendered. The answer is
-//      the product; it gets the brightest ink.
-//   2. you speak: the label dim (muted, faint) and the body in softened ink
-//      (ink, faint). The reader knows their own words; they recede slightly so
-//      the answers carry the page.
-//   3. machine status is ambient: cards, shimmer, receipts, timestamps, and
-//      meta all live in muted ink. Status never borrows the conversational
-//      accent — attention stays budgeted.
-//   4. structure is faint: frames (╭ │ ╰), rules, gutters, and hints render
-//      muted+faint. They shape the page without competing with words.
+//  1. aforge speaks: the speaker label in lavender — the single conversational
+//     accent — with its body in primary ink, markdown-rendered. The answer is
+//     the product; it gets the brightest ink.
+//  2. you speak: the label dim (muted, faint) and the body in softened ink
+//     (ink, faint). The reader knows their own words; they recede slightly so
+//     the answers carry the page.
+//  3. machine status is ambient: cards, shimmer, receipts, timestamps, and
+//     meta all live in muted ink. Status never borrows the conversational
+//     accent — attention stays budgeted.
+//  4. structure is faint: frames (╭ │ ╰), rules, gutters, and hints render
+//     muted+faint. They shape the page without competing with words.
 //
 // Node-view tool blocks share the same system: a call line is its kind glyph +
 // tool name in the working accent (peach, semibold) followed by the command in
@@ -34,13 +34,16 @@ import (
 //
 // Affordance grammar (terminals have no hover, so every clickable element
 // declares its action at rest, in muted ink, never the accent):
-//   ▸  expandable — click or enter opens it (also the focus/selection marker,
-//      which renders in powder so target and affordance stay distinguishable)
-//   ▾  expanded — click or enter collapses it
-//   ⋯  truncated content — click reveals the rest
-//   ⟨×⟩ dismiss/close a surface
-//   ↳  jump to the task an answer came from
-//   ‹  go back one surface
+//
+//	▸  expandable — click or enter opens it (also the focus/selection marker,
+//	   which renders in powder so target and affordance stay distinguishable)
+//	▾  expanded — click or enter collapses it
+//	⋯  truncated content — click reveals the rest
+//	⟨×⟩ dismiss/close a surface
+//	↳  jump to the task an answer came from
+//	‹  go back one surface
+//	⌄  open a dropdown
+//
 // Hints stay dim and short, and appear only when glyph + noun cannot carry the
 // action alone; global keys live in the one footer line and are not repeated
 // per element. Plain "…" marks static overflow that is not clickable.
@@ -110,12 +113,20 @@ func (m *Model) View() string {
 	if !m.paletteOpen() {
 		hint := "/ commands · tab focus · " + keyBindings.graph + " tasks · v receipts · ? help"
 		switch {
+		case m.voiceHint != "" && time.Now().Before(m.voiceHintUntil):
+			hint = m.voiceHint
+		case m.voiceState == voiceRecording:
+			hint = keyBindings.voice + " finish · esc discard · keep typing to preserve your draft"
+		case m.voiceState == voiceStarting || m.voiceState == voiceFinalizing:
+			hint = "voice working · esc discard"
 		case m.focus == focusCards:
 			hint = "↑/↓ select card · enter details/graph · esc back · " + keyBindings.graph + " all tasks"
 		case m.nodeViewID != "":
 			hint = "type to steer · enter send · c cancel · esc back"
 		case m.focus == focusGraph:
 			hint = "↑/↓ select · enter inspect · esc close · " + keyBindings.graph + " hide"
+		case !m.voiceHintShown:
+			hint = "/ commands · tab focus · " + keyBindings.voice + " voice · " + keyBindings.graph + " tasks · v receipts · ? help"
 		}
 		parts = append(parts, mutedStyle.Faint(true).Render(truncate(hint, m.width)))
 	}
@@ -130,6 +141,9 @@ func (m *Model) trackPaneBounds() {
 	m.graphToggleBounds = paneBounds{}
 	m.paletteCloseBounds = paneBounds{}
 	m.inputBounds = paneBounds{}
+	m.micBounds = paneBounds{}
+	m.voiceCancelBounds = paneBounds{}
+	m.headerVoiceBounds = paneBounds{}
 	m.nodeBounds = paneBounds{}
 	m.nodeTraceBounds = paneBounds{}
 	m.activityBarBounds = paneBounds{}
@@ -169,9 +183,12 @@ func (m *Model) trackPaneBounds() {
 
 func (m *Model) renderTopBar() string {
 	wordmark := lipgloss.NewStyle().Foreground(ink).Bold(true).Render("aforge")
-	models := "talk " + truncate(modelShort(m.currentModel("talk")), 18) +
-		" · work " + truncate(modelShort(m.currentModel("work")), 18)
-	left := wordmark + mutedStyle.Render(" · "+m.sessionID+" · "+models)
+	prefixText := " · " + m.sessionID + " · "
+	talkText := "talk " + truncate(modelShort(m.currentModel("talk")), 18)
+	workText := " · work " + truncate(modelShort(m.currentModel("work")), 18)
+	voiceText := " · voice " + truncate(modelShort(m.currentModel("voice")), 18) + " ⌄"
+	left := wordmark + mutedStyle.Render(prefixText+talkText+workText+voiceText)
+	voiceX := lipgloss.Width(wordmark) + lipgloss.Width(prefixText+talkText+workText)
 
 	right := m.renderSpend()
 	if m.status != "" && time.Now().Before(m.statusUntil) {
@@ -193,6 +210,7 @@ func (m *Model) renderTopBar() string {
 	if space < 1 {
 		// The button outlives the model names when width runs out.
 		left = wordmark
+		m.headerVoiceBounds = paneBounds{}
 		space = m.width - lipgloss.Width(left) - lipgloss.Width(right)
 	}
 	if space < 1 {
@@ -201,6 +219,9 @@ func (m *Model) renderTopBar() string {
 	}
 	buttonWidth := lipgloss.Width(button)
 	m.headerTasksBounds = paneBounds{x: m.width - buttonWidth, y: 0, width: buttonWidth, height: 1}
+	if left != wordmark {
+		m.headerVoiceBounds = paneBounds{x: voiceX, y: 0, width: lipgloss.Width(voiceText), height: 1}
+	}
 	return left + strings.Repeat(" ", space) + right
 }
 
@@ -414,9 +435,43 @@ func (m *Model) renderNodePane() string {
 	return lipgloss.NewStyle().Width(m.width).Render(strings.Join(lines, "\n"))
 }
 
-// renderInput is a bare prompt line — the `›` is the whole affordance.
+// renderInput keeps editable text owned by textinput while laying the pending
+// transcript beside it as non-editable, visibly provisional ink. The mic is
+// overlaid at the right edge after ANSI-aware clipping, so neither a long
+// draft nor a live transcript can widen the pane.
 func (m *Model) renderInput() string {
-	return lipgloss.NewStyle().PaddingLeft(0).Width(m.width).Render(m.input.View())
+	input := m.input
+	if strings.TrimSpace(m.voicePending) != "" {
+		input.Placeholder = ""
+	}
+	lines := strings.Split(input.View(), "\n")
+	last := len(lines) - 1
+	if strings.TrimSpace(m.voicePending) != "" {
+		lines[last] += mutedStyle.Faint(true).Italic(true).Render(" " + m.voicePending)
+	}
+	control := m.voiceControl()
+	for index := range lines {
+		if index == last {
+			lines[index] = overlayRight(lines[index], control, m.width)
+		} else {
+			lines[index] = truncate(lines[index], m.width)
+		}
+	}
+	controlWidth := lipgloss.Width(control)
+	controlX := max(0, m.width-controlWidth)
+	micWidth := lipgloss.Width(m.voiceMicGlyph())
+	m.micBounds = paneBounds{
+		x: controlX, y: m.inputBounds.y + last,
+		width: micWidth, height: 1,
+	}
+	if m.voiceState != voiceIdle {
+		cancelWidth := lipgloss.Width("⟨×⟩")
+		m.voiceCancelBounds = paneBounds{
+			x: m.width - cancelWidth, y: m.inputBounds.y + last,
+			width: cancelWidth, height: 1,
+		}
+	}
+	return lipgloss.NewStyle().PaddingLeft(0).Width(m.width).Render(strings.Join(lines, "\n"))
 }
 
 func (m *Model) renderPalette() string {
@@ -490,6 +545,7 @@ func (m *Model) paletteLines(width int) []string {
 		// accelerators, never the only door in.
 		lines = append(lines,
 			mutedStyle.Render(truncate("voice  you ask · aforge answers · v toggles receipts (or click their ▸ line)", width)),
+			mutedStyle.Render(truncate("mic    "+keyBindings.voice+" starts/stops voice · click ◌ at the input edge · esc discards", width)),
 			mutedStyle.Render(truncate("tasks  "+keyBindings.graph+" toggles the rail · or click ⟨tasks ▸⟩ in the header · or /graph", width)),
 			mutedStyle.Render(truncate("rail   ↑/↓ select · enter inspect (or click a row twice) · esc closes", width)),
 			mutedStyle.Render(truncate("cards  tab or click the dock · enter expands then opens its job · esc climbs back", width)),
@@ -566,24 +622,29 @@ func (m *Model) completionLines(entries []paletteEntry, label string, width int)
 }
 
 func (m *Model) modelPickerLines(width int) []string {
-	talk, work := "○ talk", "○ work"
+	talk, work, voiceRole := "○ talk", "○ work", "○ voice"
 	if m.modelRole == "talk" {
 		talk = "◉ talk"
-	} else {
+	} else if m.modelRole == "work" {
 		work = "◉ work"
+	} else {
+		voiceRole = "◉ voice"
 	}
 	talkView := mutedStyle.Render(talk)
 	workView := mutedStyle.Render(work)
+	voiceView := mutedStyle.Render(voiceRole)
 	if m.modelRole == "talk" {
 		talkView = lipgloss.NewStyle().Foreground(powder).Bold(true).Render(talk)
-	} else {
+	} else if m.modelRole == "work" {
 		workView = lipgloss.NewStyle().Foreground(powder).Bold(true).Render(work)
+	} else {
+		voiceView = lipgloss.NewStyle().Foreground(mint).Bold(true).Render(voiceRole)
 	}
 	lines := []string{
-		talkView + mutedStyle.Render("    ") + workView,
+		talkView + mutedStyle.Render("    ") + workView + mutedStyle.Render("    ") + voiceView,
 		mutedStyle.Render("filter: ") + inputTextStyle.Render(m.input.Value()),
 	}
-	if m.catalogLoading {
+	if m.modelCatalogIsLoading(m.modelRole) {
 		lines = append(lines, mutedStyle.Render("fetching full catalog…"))
 	}
 
@@ -648,6 +709,8 @@ func (m *Model) modelChoiceRow(choice ModelChoice, selected bool, width int) str
 	accent := powder
 	if m.modelRole == "work" {
 		accent = peach
+	} else if m.modelRole == "voice" {
+		accent = mint
 	}
 	slugStyle := lipgloss.NewStyle().Foreground(accent).Bold(selected)
 	row := markerStyle.Render(marker) + slugStyle.Render(slug)

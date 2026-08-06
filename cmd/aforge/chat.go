@@ -29,6 +29,7 @@ import (
 	"github.com/Agent-Field/aforge-v2/internal/router"
 	"github.com/Agent-Field/aforge-v2/internal/store"
 	"github.com/Agent-Field/aforge-v2/internal/tui"
+	"github.com/Agent-Field/aforge-v2/internal/voice"
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 )
 
@@ -65,6 +66,9 @@ func runChat(args []string) error {
 		return err
 	}
 	prefs := loadChatPrefs(filepath.Dir(path))
+	if strings.TrimSpace(prefs.VoiceModel) == "" {
+		prefs.VoiceModel = settings.VoiceModel
+	}
 
 	chatClient, err := newLiveClient(settings, firstNonEmptyString(prefs.ChatModel, settings.Model))
 	if err != nil {
@@ -486,6 +490,14 @@ func runChat(args []string) error {
 		prefs:         prefs,
 		sessionID:     *sessionID,
 		streamEvents:  streamEvents,
+		voiceRecorder: voice.NewSystemRecorder(),
+	}
+	commander.voiceTranscriber, err = voice.NewClient(voice.ClientConfig{
+		APIKey: settings.APIKey, BaseURL: settings.BaseURL, Timeout: settings.Timeout,
+		SiteURL: settings.SiteURL, SiteName: settings.SiteName,
+	})
+	if err != nil {
+		return err
 	}
 	err = tui.RunWithCommander(graph, *sessionID, commander)
 	cancel()
@@ -508,8 +520,9 @@ func residentDeliveryBrief(graph *store.Store, node store.Node) string {
 // beside the graph database so the whole resident state moves as one
 // directory.
 type chatPrefs struct {
-	ChatModel string `json:"chat_model,omitempty"`
-	TaskModel string `json:"task_model,omitempty"`
+	ChatModel  string `json:"chat_model,omitempty"`
+	TaskModel  string `json:"task_model,omitempty"`
+	VoiceModel string `json:"voice_model,omitempty"`
 
 	// SplitPct is the chat pane's share of the terminal width in percent,
 	// set by dragging the divider (or [ and ]) in the TUI.
@@ -544,16 +557,30 @@ type chatCommander struct {
 	taskClient *liveClient
 	store      *store.Store
 
-	mu           sync.Mutex
-	prefs        chatPrefs
-	sessionID    string
-	streamEvents <-chan tui.StreamEvent
+	mu               sync.Mutex
+	prefs            chatPrefs
+	sessionID        string
+	streamEvents     <-chan tui.StreamEvent
+	voiceRecorder    voice.Recorder
+	voiceTranscriber voice.Transcriber
 
-	catalogOnce sync.Once
-	catalog     []tui.ModelChoice
+	catalogOnce      sync.Once
+	catalog          []tui.ModelChoice
+	voiceCatalogOnce sync.Once
+	voiceCatalog     []tui.ModelChoice
 }
 
 func (c *chatCommander) StreamEvents() <-chan tui.StreamEvent { return c.streamEvents }
+
+func (c *chatCommander) VoiceRecorder() voice.Recorder       { return c.voiceRecorder }
+func (c *chatCommander) VoiceTranscriber() voice.Transcriber { return c.voiceTranscriber }
+
+func (c *chatCommander) RecordVoiceUsage(cost float64) {
+	if c == nil || c.store == nil || cost <= 0 {
+		return
+	}
+	_ = c.store.RecordUsage(store.NodeUsage{NodeID: store.RootID, Cost: cost})
+}
 
 func (c *chatCommander) Models() []string {
 	candidates := make([]string, 0, len(c.settings.Panel.Models)+7)
@@ -597,9 +624,39 @@ func (c *chatCommander) Catalog() []tui.ModelChoice {
 	return append([]tui.ModelChoice(nil), c.catalog...)
 }
 
+func (c *chatCommander) CatalogFor(role string) []tui.ModelChoice {
+	if role != "voice" {
+		return c.Catalog()
+	}
+	c.voiceCatalogOnce.Do(func() {
+		cached, cachedOK := loadVoiceModelCatalog(c.prefsDir)
+		if cachedOK && time.Now().Before(cached.FetchedAt.Add(modelCatalogTTL)) {
+			c.voiceCatalog = cached.Models
+			return
+		}
+		models, err := fetchVoiceModelCatalog()
+		if err == nil && len(models) > 0 {
+			c.voiceCatalog = models
+			_ = saveVoiceModelCatalog(c.prefsDir, modelCatalogCache{FetchedAt: time.Now(), Models: models})
+			return
+		}
+		if cachedOK {
+			c.voiceCatalog = cached.Models
+			return
+		}
+		c.voiceCatalog = []tui.ModelChoice{{Slug: c.CurrentModel("voice")}}
+	})
+	return append([]tui.ModelChoice(nil), c.voiceCatalog...)
+}
+
 func (c *chatCommander) CurrentModel(role string) string {
-	if role == "work" {
+	switch role {
+	case "work":
 		return c.taskClient.Model()
+	case "voice":
+		c.mu.Lock()
+		defer c.mu.Unlock()
+		return firstNonEmptyString(c.prefs.VoiceModel, c.settings.VoiceModel)
 	}
 	return c.chatClient.Model()
 }
@@ -618,6 +675,10 @@ func (c *chatCommander) SetModel(role, slug string) error {
 		// own ruler before the next planning call can observe the new client.
 		measured, _ := profile.Load(c.settings.ProfileDir, c.taskClient.Model(), "linear")
 		plan.UseAnchors(measured.Anchors)
+	case "voice":
+		if strings.TrimSpace(slug) == "" {
+			return fmt.Errorf("voice model cannot be empty")
+		}
 	default:
 		return fmt.Errorf("unknown model role %q", role)
 	}
@@ -626,8 +687,10 @@ func (c *chatCommander) SetModel(role, slug string) error {
 	defer c.mu.Unlock()
 	if role == "talk" {
 		c.prefs.ChatModel = c.chatClient.Model()
-	} else {
+	} else if role == "work" {
 		c.prefs.TaskModel = c.taskClient.Model()
+	} else {
+		c.prefs.VoiceModel = strings.TrimSpace(slug)
 	}
 	if err := saveChatPrefs(c.prefsDir, c.prefs); err != nil {
 		return fmt.Errorf("save chat model preference: %w", err)
@@ -726,8 +789,11 @@ type modelCatalogCache struct {
 
 type openRouterCatalogResponse struct {
 	Data []struct {
-		ID      string `json:"id"`
-		Name    string `json:"name"`
+		ID           string `json:"id"`
+		Name         string `json:"name"`
+		Architecture struct {
+			OutputModalities []string `json:"output_modalities"`
+		} `json:"architecture"`
 		Pricing struct {
 			Prompt     string `json:"prompt"`
 			Completion string `json:"completion"`
@@ -736,6 +802,14 @@ type openRouterCatalogResponse struct {
 }
 
 func fetchModelCatalog() ([]tui.ModelChoice, error) {
+	return fetchModelCatalogFiltered(false)
+}
+
+func fetchVoiceModelCatalog() ([]tui.ModelChoice, error) {
+	return fetchModelCatalogFiltered(true)
+}
+
+func fetchModelCatalogFiltered(transcriptionOnly bool) ([]tui.ModelChoice, error) {
 	request, err := http.NewRequest(http.MethodGet, openRouterModelsURL, nil)
 	if err != nil {
 		return nil, err
@@ -759,6 +833,9 @@ func fetchModelCatalog() ([]tui.ModelChoice, error) {
 	models := make([]tui.ModelChoice, 0, len(payload.Data))
 	seen := make(map[string]bool, len(payload.Data))
 	for _, item := range payload.Data {
+		if transcriptionOnly && !containsFold(item.Architecture.OutputModalities, "transcription") {
+			continue
+		}
 		slug := strings.TrimSpace(item.ID)
 		if slug == "" || seen[slug] {
 			continue
@@ -771,9 +848,21 @@ func fetchModelCatalog() ([]tui.ModelChoice, error) {
 		})
 	}
 	if len(models) == 0 {
+		if transcriptionOnly {
+			return nil, fmt.Errorf("OpenRouter transcription model catalog is empty")
+		}
 		return nil, fmt.Errorf("OpenRouter model catalog is empty")
 	}
 	return models, nil
+}
+
+func containsFold(values []string, wanted string) bool {
+	for _, value := range values {
+		if strings.EqualFold(strings.TrimSpace(value), wanted) {
+			return true
+		}
+	}
+	return false
 }
 
 func formatModelPrice(prompt, completion string) string {
@@ -800,9 +889,19 @@ func formatMillionPrice(price float64) string {
 
 func modelCatalogPath(dir string) string { return filepath.Join(dir, "models-catalog.json") }
 
+func voiceModelCatalogPath(dir string) string { return filepath.Join(dir, "voice-models-catalog.json") }
+
 func loadModelCatalog(dir string) (modelCatalogCache, bool) {
+	return loadModelCatalogPath(modelCatalogPath(dir))
+}
+
+func loadVoiceModelCatalog(dir string) (modelCatalogCache, bool) {
+	return loadModelCatalogPath(voiceModelCatalogPath(dir))
+}
+
+func loadModelCatalogPath(path string) (modelCatalogCache, bool) {
 	var cached modelCatalogCache
-	raw, err := os.ReadFile(modelCatalogPath(dir))
+	raw, err := os.ReadFile(path)
 	if err != nil || json.Unmarshal(raw, &cached) != nil || cached.FetchedAt.IsZero() || len(cached.Models) == 0 {
 		return modelCatalogCache{}, false
 	}
@@ -821,11 +920,19 @@ func loadModelCatalog(dir string) (modelCatalogCache, bool) {
 }
 
 func saveModelCatalog(dir string, cached modelCatalogCache) error {
+	return saveModelCatalogPath(modelCatalogPath(dir), cached)
+}
+
+func saveVoiceModelCatalog(dir string, cached modelCatalogCache) error {
+	return saveModelCatalogPath(voiceModelCatalogPath(dir), cached)
+}
+
+func saveModelCatalogPath(path string, cached modelCatalogCache) error {
 	raw, err := json.MarshalIndent(cached, "", "  ")
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(modelCatalogPath(dir), raw, 0o600)
+	return os.WriteFile(path, raw, 0o600)
 }
 
 func dedupeModels(candidates []string) []string {
