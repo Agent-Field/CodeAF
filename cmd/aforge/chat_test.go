@@ -321,21 +321,28 @@ func TestReflexEnvelopeSkipsDeliveryGate(t *testing.T) {
 	}
 	outcome := &exec.Outcome{Stop: exec.StopDone}
 	reflex := store.Node{ID: "reflex-1", Parent: store.RootID, Group: resident.ReflexGroup}
-	if shouldGate(reflex, outcome) {
+	if shouldGate(reflex, outcome, false) {
 		t.Fatal("reflex reached delivery gate")
 	}
 	if !shouldPromoteReflex(reflex, &exec.Outcome{Stop: exec.StopBudget}) {
 		t.Fatal("budget-stopped reflex did not promote")
 	}
 	ordinary := store.Node{ID: "task-1", Parent: store.RootID}
-	if !shouldGate(ordinary, outcome) {
+	if !shouldGate(ordinary, outcome, false) {
 		t.Fatal("ordinary root leaf unexpectedly skipped delivery gate")
 	}
 	if shouldPromoteReflex(ordinary, &exec.Outcome{Stop: exec.StopBudget}) {
 		t.Fatal("ordinary budget stop was mislabeled reflex promotion")
 	}
-	if shouldGate(ordinary, &exec.Outcome{Stop: exec.StopBudget}) {
+	if shouldGate(ordinary, &exec.Outcome{Stop: exec.StopBudget}, true) {
 		t.Fatal("budget partial reached delivery gate")
+	}
+	repair := store.Node{ID: "task-1-x2-n1", Parent: store.RootID}
+	if !shouldGate(repair, &exec.Outcome{Stop: exec.StopDone}, false) {
+		t.Fatal("completed continuation skipped the final delivery gate")
+	}
+	if got, want := continuationMessage(3), "splitting the remaining work -- 3 pieces queued"; got != want {
+		t.Fatalf("continuation message = %q, want %q", got, want)
 	}
 }
 

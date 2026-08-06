@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Agent-Field/aforge-v2/internal/resident"
 	"github.com/Agent-Field/aforge-v2/internal/store"
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 )
@@ -476,5 +477,99 @@ func TestHeadRememberPathCapturesStatedVoicePreference(t *testing.T) {
 	}
 	if len(facts) != 1 || facts[0].Kind != store.FactPreference || facts[0].Body != preference {
 		t.Fatalf("remembered voice preference = %+v", facts)
+	}
+}
+
+func TestHeadAffirmativeRaisesRailAndRunnerResumes(t *testing.T) {
+	graph := openHeadStore(t)
+	if err := graph.Splice(store.RootID, store.Subtree{Nodes: []store.NodeSpec{{
+		ID: "paused-work", Brief: "finish after approval", Stage: 1,
+	}}}, store.Provenance{Origin: store.OriginUser, SessionID: "rail-head", Intent: "finish it"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := graph.RecordUsage(store.NodeUsage{NodeID: store.RootID, Cost: 1}); err != nil {
+		t.Fatal(err)
+	}
+	runs := 0
+	runner := resident.NewRunner(graph, func(context.Context, store.Node) (resident.ExecResult, error) {
+		runs++
+		return resident.ExecResult{Summary: "finished after approval"}, nil
+	}, "head-rail-runner", 1).WithDailyBudgetUSD(1)
+	if dispatched, err := runner.Tick(context.Background()); err != nil || dispatched != 0 {
+		t.Fatalf("paused tick dispatched=%d err=%v", dispatched, err)
+	}
+
+	user, err := graph.PostMessage(store.Message{SessionID: "rail-head", Role: store.RoleUser, Body: "yes"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	client := &fakeClient{}
+	if err := New(client, graph).WithDailyBudgetUSD(1).answer(context.Background(), user); err != nil {
+		t.Fatal(err)
+	}
+	if client.calls != 0 {
+		t.Fatalf("affirmative rail reply used %d model calls, want zero", client.calls)
+	}
+	events, err := graph.Events(0, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	raises := 0
+	for _, event := range events {
+		if event.Kind == store.EventRailRaised {
+			raises++
+		}
+	}
+	if raises != 1 {
+		t.Fatalf("rail raise events = %d, want one", raises)
+	}
+	if dispatched, err := runner.Tick(context.Background()); err != nil || dispatched != 1 {
+		t.Fatalf("resumed tick dispatched=%d err=%v", dispatched, err)
+	}
+	runner.Wait()
+	if runs != 1 {
+		t.Fatalf("resumed executor runs = %d, want one", runs)
+	}
+	node, ok, err := graph.Node("paused-work")
+	if err != nil || !ok || node.Status != store.Done {
+		t.Fatalf("resumed node = %+v ok=%t err=%v", node, ok, err)
+	}
+	messages, err := graph.Messages("rail-head", user.Seq, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(messages) != 1 || !strings.Contains(messages[0].Body, "continuing") {
+		t.Fatalf("rail acknowledgement = %+v", messages)
+	}
+}
+
+func TestHeadSnapshotIncludesDailySpendAndCeiling(t *testing.T) {
+	graph := openHeadStore(t)
+	if err := graph.RecordUsage(store.NodeUsage{NodeID: store.RootID, Cost: 2.5}); err != nil {
+		t.Fatal(err)
+	}
+	client := &fakeClient{responses: []string{
+		`{"reply":"Nothing is running.","command":null,"remember":null,"retract":null}`,
+	}}
+	user := store.Message{SessionID: "rail-status", Body: "what is running?"}
+	if _, err := New(client, graph).WithDailyBudgetUSD(20).route(context.Background(), user); err != nil {
+		t.Fatal(err)
+	}
+	if len(client.seen) != 2 || !strings.Contains(client.seen[1].Content[0].Text,
+		"today's spend: $2.50 of $20.00 daily rail") {
+		t.Fatalf("head snapshot omitted daily rail: %+v", client.seen)
+	}
+}
+
+func TestAffirmativeRailReplyVocabulary(t *testing.T) {
+	for _, reply := range []string{"y", "Yes.", "continue", "go ahead", "proceed", "okay"} {
+		if !affirmativeRailReply(reply) {
+			t.Errorf("%q was not recognized as affirmative", reply)
+		}
+	}
+	for _, reply := range []string{"no", "not yet", "what will it cost?"} {
+		if affirmativeRailReply(reply) {
+			t.Errorf("%q was recognized as affirmative", reply)
+		}
 	}
 }

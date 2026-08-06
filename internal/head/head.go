@@ -68,9 +68,11 @@ type Client interface {
 // Head tails the durable thread and turns each new user message into one fast
 // routing call, one reply, and at most one asynchronous command.
 type Head struct {
-	client    Client
-	store     *store.Store
-	knowledge func() string
+	client         Client
+	store          *store.Store
+	knowledge      func() string
+	dailyBudgetUSD float64
+	dailyRailSet   bool
 }
 
 // New returns a conversational head backed by graphStore.
@@ -82,6 +84,14 @@ func New(client Client, graphStore *store.Store) *Head {
 // Nil and empty values preserve the original prompt exactly.
 func (h *Head) WithSelfKnowledge(knowledge func() string) *Head {
 	h.knowledge = knowledge
+	return h
+}
+
+// WithDailyBudgetUSD lets the head render policy state and consume a pending
+// rail question deterministically. Zero is unlimited.
+func (h *Head) WithDailyBudgetUSD(amount float64) *Head {
+	h.dailyBudgetUSD = amount
+	h.dailyRailSet = true
 	return h
 }
 
@@ -166,6 +176,12 @@ func (h *Head) poll(ctx context.Context, cursor int64) (int64, error) {
 }
 
 func (h *Head) answer(ctx context.Context, user store.Message) error {
+	if raised, err := h.raiseRailFromReply(user); err != nil {
+		return fmt.Errorf("serve head: raise daily rail: %w", err)
+	} else if raised {
+		return nil
+	}
+
 	decision, err := h.route(ctx, user)
 	if err != nil {
 		if ctx.Err() != nil {
@@ -225,6 +241,37 @@ func (h *Head) answer(ctx context.Context, user store.Message) error {
 	return h.postAgent(user.SessionID, decision.Reply, commandSeq)
 }
 
+func (h *Head) raiseRailFromReply(user store.Message) (bool, error) {
+	if h == nil || h.store == nil || h.dailyBudgetUSD <= 0 || !affirmativeRailReply(user.Body) {
+		return false, nil
+	}
+	rail, pending, err := h.store.PendingDailyRailApproval(h.dailyBudgetUSD, user.SessionID)
+	if err != nil || !pending {
+		return false, err
+	}
+	amount := rail.RaiseAmount()
+	if err := h.store.RaiseDailyRail(amount, "head:"+user.SessionID); err != nil {
+		return false, err
+	}
+	updated, err := h.store.DailyRailToday(h.dailyBudgetUSD)
+	if err != nil {
+		return false, err
+	}
+	reply := fmt.Sprintf("Daily rail raised by $%.2f to $%.2f -- continuing.", amount, updated.Ceiling)
+	return true, h.postAgent(user.SessionID, reply, 0)
+}
+
+func affirmativeRailReply(body string) bool {
+	normalized := strings.ToLower(strings.TrimSpace(body))
+	normalized = strings.Trim(normalized, " .,!?:;\t\n\r")
+	switch normalized {
+	case "y", "yes", "yes please", "continue", "go ahead", "go on", "proceed", "do it", "sure", "ok", "okay":
+		return true
+	default:
+		return false
+	}
+}
+
 func (h *Head) route(ctx context.Context, user store.Message) (routeDecision, error) {
 	snapshot, err := h.store.ActiveSnapshot()
 	if err != nil {
@@ -235,7 +282,17 @@ func (h *Head) route(ctx context.Context, user store.Message) (routeDecision, er
 		return routeDecision{}, fmt.Errorf("read recent thread: %w", err)
 	}
 
-	prompt := "Live graph snapshot:\n" + renderGraph(snapshot) +
+	graphContext := renderGraph(snapshot)
+	if h.dailyRailSet {
+		if rail, railErr := h.store.DailyRailToday(h.dailyBudgetUSD); railErr == nil {
+			line := fmt.Sprintf("today's spend: $%.2f of $%.2f daily rail", rail.Spend, rail.Ceiling)
+			if rail.Unlimited {
+				line = fmt.Sprintf("today's spend: $%.2f; daily rail unlimited", rail.Spend)
+			}
+			graphContext = line + "\n" + graphContext
+		}
+	}
+	prompt := "Live graph snapshot:\n" + graphContext +
 		"\n\nNotebook (durable memory across jobs and conversations):\n" + renderNotebook(h.store, user.Body) +
 		"\n\nRecent thread before this message:\n" + renderThread(recent) +
 		"\n\nCurrent user message (verbatim):\n" + user.Body

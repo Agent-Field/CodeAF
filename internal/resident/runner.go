@@ -31,11 +31,12 @@ type ExecuteFunc func(ctx context.Context, node store.Node) (ExecResult, error)
 // one, claims make ownership a compare-and-swap, and a crashed runner leaves
 // nothing worse than claimed nodes another Release can recover.
 type Runner struct {
-	graph   *store.Store
-	execute ExecuteFunc
-	owner   string
-	slots   chan struct{}
-	wg      sync.WaitGroup
+	graph          *store.Store
+	execute        ExecuteFunc
+	owner          string
+	slots          chan struct{}
+	wg             sync.WaitGroup
+	dailyBudgetUSD float64
 }
 
 // NewRunner builds a runner executing at most workers nodes concurrently.
@@ -52,6 +53,13 @@ func NewRunner(graph *store.Store, execute ExecuteFunc, owner string, workers in
 		owner:   owner,
 		slots:   make(chan struct{}, workers),
 	}
+}
+
+// WithDailyBudgetUSD installs the policy rail checked immediately before each
+// claim. Zero is unlimited and preserves the old scheduling path.
+func (r *Runner) WithDailyBudgetUSD(amount float64) *Runner {
+	r.dailyBudgetUSD = amount
+	return r
 }
 
 // Serve polls for ready work until ctx ends, then waits for in-flight nodes
@@ -107,6 +115,15 @@ func (r *Runner) Tick(ctx context.Context) (int, error) {
 func (r *Runner) Wait() { r.wg.Wait() }
 
 func (r *Runner) claimNext() (store.Node, bool, error) {
+	// A raised rail must let the reconciler admit every durable repair before a
+	// former consumer can race ahead using only the partial result.
+	deferred, err := r.graph.PendingOverruns(1)
+	if err != nil {
+		return store.Node{}, false, fmt.Errorf("list deferred overruns: %w", err)
+	}
+	if len(deferred) > 0 {
+		return store.Node{}, false, nil
+	}
 	ready, err := r.graph.Ready(8)
 	if err != nil {
 		return store.Node{}, false, fmt.Errorf("list ready nodes: %w", err)
@@ -124,6 +141,15 @@ func (r *Runner) claimNext() (store.Node, bool, error) {
 		// completion anyway. Skip it until the children are terminal.
 		if open[node.ID] {
 			continue
+		}
+		if r.dailyBudgetUSD > 0 {
+			rail, _, err := r.graph.PauseDailyRail(r.dailyBudgetUSD, node.Provenance.SessionID)
+			if err != nil {
+				return store.Node{}, false, err
+			}
+			if rail.Reached {
+				return store.Node{}, false, nil
+			}
 		}
 		claim, ok, err := r.graph.Claim(node.ID, r.owner)
 		if err != nil {
