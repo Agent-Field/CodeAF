@@ -62,12 +62,37 @@ func SubtreeFromPlan(graph *plan.Graph, prefix string) (store.Subtree, error) {
 		rootID = admitted[len(admitted)-1].ID
 	}
 
+	// The dropped containers still carry the plan's shape: each admitted
+	// leaf remembers the container chain it expanded out of, and every node
+	// keeps the planner's own short title. Execution ignores both; the rail
+	// renders them as the nesting the flat store no longer encodes.
+	byID := make(map[int]plan.Node, len(graph.Nodes))
+	for _, node := range graph.Nodes {
+		byID[node.ID] = node
+	}
+	groupOf := func(node plan.Node) string {
+		var chain []string
+		for parent := node.Parent; parent != 0; {
+			container, ok := byID[parent]
+			if !ok {
+				break
+			}
+			if title := strings.TrimSpace(container.Title); title != "" {
+				chain = append([]string{title}, chain...)
+			}
+			parent = container.Parent
+		}
+		return strings.Join(chain, " › ")
+	}
+
 	id := func(planID int) string { return fmt.Sprintf("%s-n%d", prefix, planID) }
 	specs := make([]store.NodeSpec, 0, len(admitted))
 	for _, node := range admitted {
 		spec := store.NodeSpec{
 			ID:    id(node.ID),
 			Brief: nodeBrief(node),
+			Title: strings.TrimSpace(node.Title),
+			Group: groupOf(node),
 			Stage: node.Stage,
 		}
 		if node.ID != rootID {

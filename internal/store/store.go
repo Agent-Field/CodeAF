@@ -123,6 +123,14 @@ type NodeSpec struct {
 	Brief  string `json:"brief"`
 	Stage  int    `json:"stage"`
 	Needs  []Need `json:"needs,omitempty"`
+
+	// Title is a few-word display name for surfaces that cannot afford the
+	// brief; empty is valid and means "derive from the brief".
+	Title string `json:"title,omitempty"`
+
+	// Group names the planning container this node expanded out of. It is
+	// provenance for display — execution reads only Parent and Needs.
+	Group string `json:"group,omitempty"`
 }
 
 // Subtree is the atomic unit of admission.
@@ -135,6 +143,8 @@ type Node struct {
 	ID         string
 	Parent     string
 	Brief      string
+	Title      string
+	Group      string
 	Stage      int
 	Status     Status
 	Owner      string
@@ -229,6 +239,8 @@ CREATE TABLE IF NOT EXISTS nodes (
     fold_root      INTEGER NOT NULL DEFAULT 0 CHECK (fold_root IN (0, 1)),
     fold_digest    TEXT NOT NULL DEFAULT '',
     fold_pointers  JSON NOT NULL DEFAULT '[]' CHECK (json_valid(fold_pointers)),
+    title          TEXT NOT NULL DEFAULT '',
+    grp            TEXT NOT NULL DEFAULT '',
     CHECK (fold_root = 0 OR folded = 1)
 );
 
@@ -321,6 +333,9 @@ func Open(path string) (*Store, error) {
 	}
 	if err := migrateFactsSchema(db); err != nil {
 		return closeOnError(fmt.Errorf("migrate facts schema: %w", err))
+	}
+	if err := migrateNodesSchema(db); err != nil {
+		return closeOnError(fmt.Errorf("migrate nodes schema: %w", err))
 	}
 
 	store := &Store{db: db}

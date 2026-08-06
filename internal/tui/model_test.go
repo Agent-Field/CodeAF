@@ -987,3 +987,27 @@ func TestActivityFeedParsesTraceIntoGlyphs(t *testing.T) {
 		}
 	}
 }
+
+func TestRailShowsTitlesGroupsAndDependencyWaits(t *testing.T) {
+	snapshot := store.Snapshot{
+		Nodes: []store.Node{
+			{ID: store.RootID},
+			{ID: "job", Parent: store.RootID, Brief: "long goal text", Title: "Nighttime podcast", Status: store.Pending},
+			{ID: "gather", Parent: "job", Brief: "collect sources", Title: "Collect sources", Group: "Research", Status: store.Running, StartedAt: time.Now()},
+			{ID: "mix", Parent: "job", Brief: "mix the audio", Title: "Mix audio", Group: "Production", Status: store.Pending},
+		},
+		Edges: []store.Edge{{From: "gather", To: "mix", Kind: store.FeedsInto}},
+	}
+	model := New(&fakeBackend{snapshot: snapshot}, "test-session")
+	model.snapshot = snapshot
+	model.selectedNodeID = "mix"
+	tree := model.renderTree(80, 0)
+	for _, want := range []string{"Nighttime podcast", "┄ Research", "┄ Production", "Mix audio", "◌", "waits: Collect sources"} {
+		if !strings.Contains(tree, want) {
+			t.Fatalf("rail missing %q:\n%s", want, tree)
+		}
+	}
+	if strings.Contains(tree, "long goal text") {
+		t.Fatalf("rail shows brief where a title exists:\n%s", tree)
+	}
+}
