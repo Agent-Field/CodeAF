@@ -132,6 +132,16 @@ type Model struct {
 	graphScopeID    string
 	cardReturnFocus paneFocus
 
+	// dockExpanded holds the overflow dock open without card focus; the
+	// dockSummaryLine is the rendered ▸/▾ summary row, -1 when absent.
+	dockExpanded    bool
+	dockSummaryLine int
+
+	// chatFocusIndex walks the thread zone's interactive lines (folds,
+	// receipts, chips, cards) under keyboard traversal; enter activates
+	// exactly what a click on that line would.
+	chatFocusIndex int
+
 	selectedNodeID string
 	graphRows      []graphRow
 	nodeViewID     string
@@ -207,6 +217,7 @@ type Model struct {
 	draggingSplit bool
 
 	chatBounds         paneBounds
+	headerTasksBounds  paneBounds
 	graphBounds        paneBounds
 	graphRowsBounds    paneBounds
 	graphToggleBounds  paneBounds
@@ -285,6 +296,7 @@ func newModel(backend Backend, sessionID string, commander Commander) *Model {
 		jobUsage:         map[string]store.JobUsage{},
 		commands:         map[int64]store.Command{},
 		cardExpanded:     map[string]bool{},
+		dockSummaryLine:  -1,
 	}
 	if source, ok := commander.(streamSource); ok {
 		m.streamEvents = source.StreamEvents()
@@ -472,6 +484,8 @@ func (m *Model) updateKey(message tea.KeyMsg) (tea.Cmd, bool) {
 		return nil, false
 	}
 	if key == "esc" {
+		// The back-out ladder (see the design-system comment in view.go):
+		// expanded element → collapsed element → zone → input → quit.
 		switch {
 		case m.palette == paletteModel || m.palette == paletteMemory || m.palette == paletteHelp:
 			m.closePalette()
@@ -483,6 +497,12 @@ func (m *Model) updateKey(message tea.KeyMsg) (tea.Cmd, bool) {
 		case m.focus == focusCards && m.collapseSelectedCard():
 		case m.focus == focusChat && m.collapseSelectedCard():
 		case m.focus == focusCards:
+			m.dockExpanded = false
+			m.focus = focusInput
+			m.inputFocused = true
+			_ = m.input.Focus()
+			m.setSize(m.width, m.height)
+		case m.focus == focusChat:
 			m.focus = focusInput
 			m.inputFocused = true
 			_ = m.input.Focus()
@@ -520,10 +540,25 @@ func (m *Model) updateKey(message tea.KeyMsg) (tea.Cmd, bool) {
 	if key == "enter" && m.focus == focusCards {
 		return m.advanceCard(m.selectedCardID, focusCards), true
 	}
-	if key == "enter" && m.focus == focusChat && m.selectedCardID != "" {
+	// Thread-zone traversal: ↑/↓ walk the interactive lines, enter activates
+	// exactly what a click on the focused line would; pgup/pgdn and the wheel
+	// keep scrolling.
+	if m.focus == focusChat && (key == "up" || key == "k" || key == "down" || key == "j") {
+		delta := -1
+		if key == "down" || key == "j" {
+			delta = 1
+		}
+		m.moveChatFocus(delta)
+		return nil, true
+	}
+	if key == "enter" && m.focus == focusChat {
+		if m.activateChatFocus() {
+			return nil, true
+		}
 		if card := m.cardByID(m.selectedCardID); card != nil && card.State == cardSettled {
 			return m.advanceCard(card.ID, focusChat), true
 		}
+		return nil, true
 	}
 	if key == "v" && !m.inputFocused {
 		m.receiptsExpanded = !m.receiptsExpanded
@@ -795,13 +830,15 @@ func (m *Model) submit() tea.Cmd {
 	}
 }
 
-// toggleFocus cycles through the panes that are actually on screen: input and
-// chat always, the task rail only while it is open.
+// toggleFocus cycles the zones actually on screen, in the documented order:
+// input → dock → thread → rail (rail only while open; a narrow rail takes the
+// whole main area, so the thread zone yields to it).
 func (m *Model) toggleFocus() tea.Cmd {
-	order := []paneFocus{focusInput, focusChat}
+	order := []paneFocus{focusInput}
 	if m.activityBarVisible() && m.activeCardCount() > 0 {
 		order = append(order, focusCards)
 	}
+	order = append(order, focusChat)
 	if m.graphVisible() {
 		if m.horizontal {
 			order = []paneFocus{focusInput, focusChat, focusGraph}
@@ -823,6 +860,11 @@ func (m *Model) toggleFocus() tea.Cmd {
 	}
 	if m.focus == focusCards {
 		m.ensureCardSelection()
+	}
+	if m.focus == focusChat {
+		// Enter the thread at its newest interactive line — context lives at
+		// the bottom of a conversation.
+		m.chatFocusIndex = 1 << 30
 	}
 	if m.inputFocused {
 		m.setSize(m.width, m.height)
@@ -960,6 +1002,37 @@ func (m *Model) pinChat() {
 	m.chat.GotoBottom()
 	m.autoScroll = true
 	m.newMessages = 0
+}
+
+// moveChatFocus walks the thread's interactive lines with the arrows. A
+// thread with nothing interactive keeps the arrows useful by scrolling.
+func (m *Model) moveChatFocus(delta int) {
+	targets := m.chatFocusLines()
+	if len(targets) == 0 {
+		m.chat.SetYOffset(m.chat.YOffset + 3*delta)
+		m.syncChatScroll()
+		return
+	}
+	m.chatFocusIndex = max(0, min(len(targets)-1, m.chatFocusIndex+delta))
+	m.refreshChat()
+	line := targets[m.chatFocusIndex]
+	if line < m.chat.YOffset {
+		m.chat.SetYOffset(line)
+	} else if line >= m.chat.YOffset+max(1, m.chat.Height) {
+		m.chat.SetYOffset(line - max(1, m.chat.Height) + 1)
+	}
+	m.syncChatScroll()
+}
+
+// activateChatFocus is enter-equals-click for the thread zone: it triggers
+// whatever a click on the focused interactive line would.
+func (m *Model) activateChatFocus() bool {
+	targets := m.chatFocusLines()
+	if len(targets) == 0 {
+		return false
+	}
+	m.chatFocusIndex = max(0, min(m.chatFocusIndex, len(targets)-1))
+	return m.activateChatLine(targets[m.chatFocusIndex])
 }
 
 func (m *Model) updateMouse(message tea.MouseMsg) bool {

@@ -9,8 +9,47 @@ import (
 
 	"github.com/Agent-Field/aforge-v2/internal/store"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/charmbracelet/x/ansi"
 )
 
+// ── The design system ────────────────────────────────────────────────────────
+//
+// Voice hierarchy (four typographic levels, one accent, no new colors):
+//   1. aforge speaks: the speaker label in lavender — the single conversational
+//      accent — with its body in primary ink, markdown-rendered. The answer is
+//      the product; it gets the brightest ink.
+//   2. you speak: the label dim (muted, faint) and the body in softened ink
+//      (ink, faint). The reader knows their own words; they recede slightly so
+//      the answers carry the page.
+//   3. machine status is ambient: cards, shimmer, receipts, timestamps, and
+//      meta all live in muted ink. Status never borrows the conversational
+//      accent — attention stays budgeted.
+//   4. structure is faint: frames (╭ │ ╰), rules, gutters, and hints render
+//      muted+faint. They shape the page without competing with words.
+//
+// Node-view tool blocks share the same system: a call line is its kind glyph +
+// tool name in the working accent (peach, semibold) followed by the command in
+// primary ink; output sits indented behind a faint "│" gutter in dim ink;
+// failure is a rose ✗ on the status position only — never a whole red block.
+//
+// Affordance grammar (terminals have no hover, so every clickable element
+// declares its action at rest, in muted ink, never the accent):
+//   ▸  expandable — click or enter opens it (also the focus/selection marker,
+//      which renders in powder so target and affordance stay distinguishable)
+//   ▾  expanded — click or enter collapses it
+//   ⋯  truncated content — click reveals the rest
+//   ⟨×⟩ dismiss/close a surface
+//   ↳  jump to the task an answer came from
+//   ‹  go back one surface
+// Hints stay dim and short, and appear only when glyph + noun cannot carry the
+// action alone; global keys live in the one footer line and are not repeated
+// per element. Plain "…" marks static overflow that is not clickable.
+//
+// Interaction zones and the back-out ladder: tab cycles input → dock → thread
+// (→ rail while it is open). Within a zone ↑/↓ move the focus marker across
+// that zone's interactive elements and enter activates exactly what a click
+// would; pgup/pgdn and the wheel scroll. esc climbs one rung at a time:
+// expanded element → collapsed element → zone → input → quit.
 var (
 	lavender = lipgloss.AdaptiveColor{Light: "#6D4BC3", Dark: "#C6B4F5"}
 	powder   = lipgloss.AdaptiveColor{Light: "#256B8C", Dark: "#AEDFF7"}
@@ -31,6 +70,11 @@ var (
 	selectionBand    = lipgloss.AdaptiveColor{Light: "#E8E7EE", Dark: "#343442"}
 	selectedStyle    = lipgloss.NewStyle().Foreground(ink).Background(selectionBand)
 	pillStyle        = lipgloss.NewStyle().Foreground(selectedInk).Background(peach).Padding(0, 1)
+
+	// The two conversational voices (level 1 and 2 above).
+	aforgeLabelStyle = lipgloss.NewStyle().Foreground(lavender)
+	youLabelStyle    = lipgloss.NewStyle().Foreground(muted).Faint(true)
+	youTextStyle     = lipgloss.NewStyle().Foreground(ink).Faint(true)
 
 	spinnerFrames = []string{"⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"}
 )
@@ -58,7 +102,9 @@ func (m *Model) View() string {
 		parts = append(parts, m.renderPalette())
 	}
 	if m.activityBarVisible() {
-		parts = append(parts, m.renderActivityBar())
+		if bar := m.renderActivityBar(); bar != "" {
+			parts = append(parts, bar)
+		}
 	}
 	parts = append(parts, m.renderInput())
 	if !m.paletteOpen() {
@@ -78,6 +124,7 @@ func (m *Model) View() string {
 
 func (m *Model) trackPaneBounds() {
 	m.chatBounds = paneBounds{}
+	m.headerTasksBounds = paneBounds{}
 	m.graphBounds = paneBounds{}
 	m.graphRowsBounds = paneBounds{}
 	m.graphToggleBounds = paneBounds{}
@@ -133,16 +180,36 @@ func (m *Model) renderTopBar() string {
 	if m.err != nil {
 		right = lipgloss.NewStyle().Foreground(rose).Render(truncate(m.err.Error(), max(8, m.width/2)))
 	}
+	// The rail toggle is a real button: alt+g and /graph are accelerators, the
+	// click path is always visible. It follows the affordance grammar (▸ when
+	// the rail would open, ▾ while it is on screen).
+	button := m.renderTasksButton()
+	if right != "" {
+		right += "  "
+	}
+	right += button
 
 	space := m.width - lipgloss.Width(left) - lipgloss.Width(right)
 	if space < 1 {
+		// The button outlives the model names when width runs out.
 		left = wordmark
 		space = m.width - lipgloss.Width(left) - lipgloss.Width(right)
 	}
 	if space < 1 {
+		m.headerTasksBounds = paneBounds{}
 		return truncate(left+" "+right, m.width)
 	}
+	buttonWidth := lipgloss.Width(button)
+	m.headerTasksBounds = paneBounds{x: m.width - buttonWidth, y: 0, width: buttonWidth, height: 1}
 	return left + strings.Repeat(" ", space) + right
+}
+
+func (m *Model) renderTasksButton() string {
+	disclosure := "▸"
+	if m.graphVisible() {
+		disclosure = "▾"
+	}
+	return mutedStyle.Faint(true).Render("⟨tasks " + disclosure + "⟩")
 }
 
 // renderSpend is the one number that is always worth the top-right corner:
@@ -212,7 +279,8 @@ func (m *Model) renderLegacyActivityBar() string {
 	}
 	bar := strings.Join(segments, mutedStyle.Render(" · "))
 	if bar == "" {
-		bar = mutedStyle.Faint(true).Render("no tasks in flight")
+		// Nothing in flight: no dock at all — a quiet screen owes no chrome.
+		return ""
 	}
 	bar += mutedStyle.Faint(true).Render(" — " + keyBindings.graph + " tasks")
 	return truncate(bar, m.width)
@@ -228,12 +296,25 @@ func (m *Model) renderChatPane() string {
 	if len(lines) > m.chatHeight {
 		lines = lines[:m.chatHeight]
 	}
+	// Hard clamp: any line wider than the pane would be soft-wrapped by the
+	// Width style below, growing the frame taller than the terminal and
+	// letting ghost frames overlap. After the clamp the style only pads.
+	clampLines(lines, m.chatWidth)
 	if m.newMessages > 0 {
 		pill := pillStyle.Render(m.newMessageLabel())
 		index := len(lines) - 1
 		lines[index] = overlayRight(lines[index], pill, max(1, m.chatWidth-2))
 	}
 	return lipgloss.NewStyle().Width(m.chatWidth).Render(strings.Join(lines, "\n"))
+}
+
+// clampLines truncates, ANSI-aware, every line that exceeds the pane width.
+func clampLines(lines []string, width int) {
+	for index, line := range lines {
+		if lipgloss.Width(line) > width {
+			lines[index] = truncate(line, width)
+		}
+	}
 }
 
 // renderGraphPane is the task rail: a faint header naming it, then the tree.
@@ -259,6 +340,7 @@ func (m *Model) renderGraphPane() string {
 	if len(lines) > m.graphHeight {
 		lines = lines[:m.graphHeight]
 	}
+	clampLines(lines, m.graphWidth)
 	return lipgloss.NewStyle().Width(m.graphWidth).Render(strings.Join(lines, "\n"))
 }
 
@@ -319,7 +401,7 @@ func (m *Model) renderNodePane() string {
 	appendSection("BRIEF", m.nodeDetailsText, strings.Count(m.nodeDetailsText, "\n")+1, new(paneBounds))
 	lines = append(lines, "")
 	contentY++
-	appendSection("ACTIVITY   ✳ model · $ shell · ✎ file · ⌕ web · ▸ you · ⋯ click expands",
+	appendSection("ACTIVITY   ✳ model · $ shell · ✎ file · ⌕ web · › you · ⋯ expands",
 		m.nodeTrace.View(), m.nodeTraceHeight, &m.nodeTraceBounds)
 
 	for len(lines) < m.chatHeight {
@@ -328,6 +410,7 @@ func (m *Model) renderNodePane() string {
 	if len(lines) > m.chatHeight {
 		lines = lines[:m.chatHeight]
 	}
+	clampLines(lines, m.width)
 	return lipgloss.NewStyle().Width(m.width).Render(strings.Join(lines, "\n"))
 }
 
@@ -403,12 +486,15 @@ func (m *Model) paletteLines(width int) []string {
 		for _, command := range slashCommands {
 			lines = append(lines, truncate(fmt.Sprintf("「/%s」 %s", command.name, command.description), width))
 		}
+		// Every action lists its key and its click path: chords are
+		// accelerators, never the only door in.
 		lines = append(lines,
-			mutedStyle.Render(truncate("voice  you ask · aforge answers · v toggles receipts", width)),
-			mutedStyle.Render(truncate("tasks  "+keyBindings.graph+" toggles the rail · ↑/↓ select · enter inspect · esc closes", width)),
-			mutedStyle.Render(truncate("cards  tab focuses dock · enter expands then opens its job · esc climbs back", width)),
-			mutedStyle.Render(truncate("chat   ↳ chips jump to the task an answer came from", width)),
-			mutedStyle.Render(truncate("node   type guidance + enter to steer · c cancels worker", width)),
+			mutedStyle.Render(truncate("voice  you ask · aforge answers · v toggles receipts (or click their ▸ line)", width)),
+			mutedStyle.Render(truncate("tasks  "+keyBindings.graph+" toggles the rail · or click ⟨tasks ▸⟩ in the header · or /graph", width)),
+			mutedStyle.Render(truncate("rail   ↑/↓ select · enter inspect (or click a row twice) · esc closes", width)),
+			mutedStyle.Render(truncate("cards  tab or click the dock · enter expands then opens its job · esc climbs back", width)),
+			mutedStyle.Render(truncate("chat   ↳ chips jump to the task · tab focuses the thread · ↑/↓ walk lines · enter = click", width)),
+			mutedStyle.Render(truncate("node   type guidance + enter to steer · c cancels worker · ‹ back or esc returns", width)),
 			mutedStyle.Render(truncate("mouse  click focus/select/open · wheel scrolls pointed pane", width)),
 			mutedStyle.Render(truncate("menus  tab/↑/↓ choose · enter accept · esc close · ctrl+c quit", width)),
 		)
@@ -756,7 +842,59 @@ func (m *Model) renderMessages() string {
 		appendBlock(shimmer)
 	}
 	flushGroup()
-	return strings.Join(blocks, "\n\n")
+	return m.applyChatFocus(strings.Join(blocks, "\n\n"))
+}
+
+// chatFocusLines lists, in order, every thread line a click would activate:
+// receipts, folds, provenance chips, card headers, part rows, and close rows.
+func (m *Model) chatFocusLines() []int {
+	seen := make(map[int]bool)
+	for _, row := range m.chatExpandRows {
+		seen[row.line] = true
+	}
+	for _, row := range m.chatChipRows {
+		seen[row.line] = true
+	}
+	for _, row := range m.chatCardRows {
+		seen[row.start] = true
+	}
+	for _, row := range m.cardPartRows {
+		if !row.dock {
+			seen[row.line] = true
+		}
+	}
+	for _, row := range m.cardCloseRows {
+		if !row.dock {
+			seen[row.line] = true
+		}
+	}
+	lines := make([]int, 0, len(seen))
+	for line := range seen {
+		lines = append(lines, line)
+	}
+	sort.Ints(lines)
+	return lines
+}
+
+// applyChatFocus paints the focused interactive line with the same selection
+// band the rail uses, so keyboard users see the exact target a click would hit.
+func (m *Model) applyChatFocus(content string) string {
+	if m.focus != focusChat {
+		return content
+	}
+	targets := m.chatFocusLines()
+	if len(targets) == 0 {
+		return content
+	}
+	m.chatFocusIndex = max(0, min(m.chatFocusIndex, len(targets)-1))
+	line := targets[m.chatFocusIndex]
+	rows := strings.Split(content, "\n")
+	if line < 0 || line >= len(rows) {
+		return content
+	}
+	rows[line] = lipgloss.NewStyle().Background(selectionBand).
+		Width(max(1, m.chat.Width)).Render(rows[line])
+	return strings.Join(rows, "\n")
 }
 
 const messageGroupWindow = 3 * time.Minute
@@ -801,10 +939,8 @@ const deliverableLead = 14
 
 func (m *Model) renderMessageGroup(group messageGroup, atLine int) string {
 	latest := group.messages[len(group.messages)-1]
-	accent, label := messagePresentation(latest)
 	available := max(8, m.chat.Width-2)
-	header := lipgloss.NewStyle().Foreground(accent).Faint(true).Render(label)
-	header += mutedStyle.Faint(true).Render("  " + relativeTime(latest.Time, time.Now()))
+	header := speakerHeader(latest, time.Now())
 
 	// One voice: every conversational body reads in primary ink with the same
 	// markdown treatment. Headers and provenance remain quiet metadata.
@@ -819,7 +955,7 @@ func (m *Model) renderMessageGroup(group messageGroup, atLine int) string {
 			item = m.renderReceipt(message, available)
 			receipt = true
 		case message.Role == store.RoleUser:
-			item = inputTextStyle.Render(wrapText(message.Body, available))
+			item = youTextStyle.Render(wrapText(message.Body, available))
 		default:
 			item, foldedAnswer = m.renderAnswerFold(message, available)
 		}
@@ -888,32 +1024,45 @@ func (m *Model) renderAnswerFold(message store.Message, width int) (string, bool
 		return rendered + lipgloss.NewStyle().Foreground(powder).Render("▌"), false
 	}
 	lines := strings.Split(rendered, "\n")
-	if len(lines) <= deliverableLead+4 || m.expandedMessages[message.Seq] {
+	if len(lines) <= deliverableLead+4 {
 		return rendered, false
+	}
+	if m.expandedMessages[message.Seq] {
+		// The affordance flips with state: an opened fold shows how to close.
+		return rendered + "\n" + mutedStyle.Faint(true).Render("▾ collapse"), true
 	}
 	head := strings.Join(lines[:deliverableLead], "\n")
 	return head + "\n" + mutedStyle.Faint(true).Render(
-		fmt.Sprintf("⋯ %d more lines — click to expand", len(lines)-deliverableLead)), true
+		fmt.Sprintf("▸ %d more lines", len(lines)-deliverableLead)), true
 }
 
 func (m *Model) renderReceipt(message store.Message, width int) string {
 	summary := receiptSummary(message)
 	if !m.receiptsExpanded {
-		return mutedStyle.Render(truncate(summary+" — v to expand", width))
+		return mutedStyle.Render(truncate("▸ "+summary, width))
 	}
-	label := mutedStyle.Render(truncate(summary+" — v to collapse", width))
+	label := mutedStyle.Render(truncate("▾ "+summary, width))
 	body := wrapText(message.Body, max(1, width-2))
 	return label + "\n" + mutedStyle.Render(indentLines(body, "  "))
 }
 
 func messagePresentation(message store.Message) (lipgloss.AdaptiveColor, string) {
-	if isQuestionMessage(message) {
-		return lavender, "aforge"
-	}
 	if message.Role == store.RoleUser {
 		return muted, "you"
 	}
-	return muted, "aforge"
+	return lavender, "aforge"
+}
+
+// speakerHeader renders the one-line attribution above a message group in the
+// voice hierarchy: aforge in the lavender accent, you dim. The timestamp is
+// ambient either way.
+func speakerHeader(message store.Message, now time.Time) string {
+	_, label := messagePresentation(message)
+	style := aforgeLabelStyle
+	if label == "you" {
+		style = youLabelStyle
+	}
+	return style.Render(label) + mutedStyle.Faint(true).Render("  "+relativeTime(message.Time, now))
 }
 
 func messageVoice(message store.Message) string {
@@ -933,13 +1082,13 @@ func receiptSummary(message store.Message) string {
 				assumptions++
 			}
 		}
-		return fmt.Sprintf("· reading + %d assumptions", assumptions)
+		return fmt.Sprintf("reading + %d assumptions", assumptions)
 	}
 	label := firstLine(message.Body)
 	if label == "" {
 		label = "update"
 	}
-	return "· " + label
+	return label
 }
 
 func indentLines(text, prefix string) string {
@@ -1124,9 +1273,9 @@ func (m *Model) renderTree(width, height int) string {
 		if selected {
 			marker = lipgloss.NewStyle().Foreground(lavender).Bold(true).Render("▸ ")
 		}
-		disclosure := "›"
+		disclosure := "▸"
 		if m.historyExpanded {
-			disclosure = "⌄"
+			disclosure = "▾"
 		}
 		line := marker + mutedStyle.Faint(true).Render(fmt.Sprintf("%s history (%d)", disclosure, historyCount))
 		if selected {
@@ -1539,6 +1688,10 @@ func firstLine(text string) string {
 	return strings.TrimSpace(line)
 }
 
+// truncate clips text to width terminal cells. It is ANSI-aware: styled input
+// is cut between escape sequences, never through them, so a clipped line can
+// neither split a style mid-word nor leave a dangling escape that eats the
+// leading characters of the next line the terminal draws.
 func truncate(text string, width int) string {
 	if width <= 0 {
 		return ""
@@ -1549,17 +1702,7 @@ func truncate(text string, width int) string {
 	if width == 1 {
 		return "…"
 	}
-	var result strings.Builder
-	used := 0
-	for _, char := range text {
-		charWidth := lipgloss.Width(string(char))
-		if used+charWidth+1 > width {
-			break
-		}
-		result.WriteRune(char)
-		used += charWidth
-	}
-	return strings.TrimRight(result.String(), " ") + "…"
+	return ansi.Truncate(text, width, "…")
 }
 
 func wrapText(text string, width int) string {
@@ -1603,23 +1746,15 @@ func wrapText(text string, width int) string {
 	return strings.Join(wrapped, "\n")
 }
 
+// splitWidth cuts one over-wide word at a cell boundary, ANSI-aware, always
+// making progress even when the first grapheme alone is wider than the room.
 func splitWidth(text string, width int) (string, string) {
-	used := 0
-	index := 0
-	for offset, char := range text {
-		charWidth := lipgloss.Width(string(char))
-		if used+charWidth > width {
-			index = offset
-			break
-		}
-		used += charWidth
-		index = offset + len(string(char))
-	}
-	if index == 0 {
+	piece := ansi.Truncate(text, width, "")
+	if piece == "" || len(piece) >= len(text) {
 		_, size := firstRune(text)
-		index = size
+		return text[:size], text[size:]
 	}
-	return text[:index], text[index:]
+	return piece, ansi.TruncateLeft(text, width, "")
 }
 
 func firstRune(text string) (rune, int) {

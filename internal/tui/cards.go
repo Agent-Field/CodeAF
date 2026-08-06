@@ -195,7 +195,8 @@ func deriveJobCards(
 			if card.BirthSeq == 0 || (message.Seq != 0 && message.Seq < card.BirthSeq) {
 				card.BirthSeq = message.Seq
 			}
-			if message.Role == store.RoleAgent {
+			switch {
+			case message.Role == store.RoleAgent:
 				line := firstLine(message.Body)
 				if line != "" {
 					card.Narration = append(card.Narration, line)
@@ -204,7 +205,15 @@ func deriveJobCards(
 				if isQuestionMessage(message) {
 					card.Question = strings.TrimSpace(message.Body)
 				}
-			} else if message.Role != store.RoleUser {
+			case message.Role == store.RoleSystem && message.CommandSeq != 0:
+				// Plan-progress posts are anchored to the job node and stamped
+				// with their command. They are card state — the current line and
+				// the running summary — never stream blocks.
+				if line := firstLine(message.Body); line != "" {
+					card.Narration = append(card.Narration, line)
+					card.Latest = line
+				}
+			case message.Role != store.RoleUser:
 				fallbackLatest = firstLine(message.Body)
 			}
 		}
@@ -218,7 +227,10 @@ func deriveJobCards(
 			card.CommandSeq = commandSeq
 		}
 		for _, message := range messages {
-			if commandSeq != 0 && message.CommandSeq == commandSeq && message.Role == store.RoleSystem {
+			// The receipt is the command's un-anchored system post; node-anchored
+			// posts with the same command seq are plan progress, not the receipt.
+			if commandSeq != 0 && message.CommandSeq == commandSeq &&
+				message.Role == store.RoleSystem && message.NodeID == "" {
 				card.Receipt = strings.TrimSpace(message.Body)
 			}
 		}
@@ -270,9 +282,19 @@ func deriveJobCards(
 			if message.CommandSeq != command.Seq {
 				continue
 			}
-			if message.Role == store.RoleAgent {
-				card.Latest = firstLine(message.Body)
-			} else if message.Role == store.RoleSystem {
+			switch {
+			case message.Role == store.RoleAgent:
+				// The compiler's own words are how the ask was read.
+				card.Reading = firstLine(message.Body)
+			case message.Role == store.RoleSystem && message.NodeID != "":
+				// Node-anchored plan progress: the compiling card's live status,
+				// replacing in place tick by tick, accumulated for the expanded
+				// running summary — never a thread block.
+				if line := firstLine(message.Body); line != "" {
+					card.Narration = append(card.Narration, line)
+					card.Latest = line
+				}
+			case message.Role == store.RoleSystem:
 				card.Receipt = strings.TrimSpace(message.Body)
 			}
 		}
@@ -471,11 +493,41 @@ func (m *Model) cardForNodeID(nodeID string) *jobCard {
 	return nil
 }
 
+// cardForMessage resolves the card that owns a node-anchored message. During
+// planning the job's subtree is not spliced yet, so the node id resolves
+// nothing — the command seq still names the compiling card.
+func (m *Model) cardForMessage(message store.Message) *jobCard {
+	if message.NodeID != "" {
+		if card := m.cardForNodeID(message.NodeID); card != nil {
+			return card
+		}
+	}
+	if message.CommandSeq != 0 {
+		for index := range m.cards {
+			if m.cards[index].CommandSeq == message.CommandSeq {
+				return &m.cards[index]
+			}
+		}
+	}
+	return nil
+}
+
+// planProgressMessage recognises the planner's node-anchored, command-stamped
+// status posts. By THREAD-UX law they mutate card state and never enter the
+// stream — even in the poll window where neither the pending command nor the
+// spliced subtree is visible yet.
+func planProgressMessage(message store.Message) bool {
+	return message.Role == store.RoleSystem && message.NodeID != "" && message.CommandSeq != 0
+}
+
 func (m *Model) streamMessage(message store.Message) bool {
 	if message.Role == store.RoleUser && message.NodeID != "" {
 		return false
 	}
-	if message.NodeID == "" || m.cardForNodeID(message.NodeID) == nil {
+	if planProgressMessage(message) {
+		return false
+	}
+	if message.NodeID == "" || m.cardForMessage(message) == nil {
 		return true
 	}
 	if isQuestionMessage(message) {
@@ -500,10 +552,13 @@ func (m *Model) attentionMessage(message store.Message) bool {
 	if message.Role == store.RoleUser && message.NodeID != "" {
 		return false
 	}
+	if planProgressMessage(message) {
+		return false
+	}
 	if message.NodeID == "" {
 		return true
 	}
-	card := m.cardForNodeID(message.NodeID)
+	card := m.cardForMessage(message)
 	return card == nil || card.State == cardSettled || isQuestionMessage(message) ||
 		func() bool {
 			node, ok := m.cardNode(message.NodeID)
@@ -512,14 +567,25 @@ func (m *Model) attentionMessage(message store.Message) bool {
 }
 
 func (m *Model) cardDockHeight() int {
-	return lipgloss.Height(m.renderCardDock(false))
+	content := m.renderCardDock(false)
+	if content == "" {
+		return 0
+	}
+	return lipgloss.Height(content)
 }
 
 func (m *Model) limitCardDock(content string) string {
+	return m.clampCardDock(content, 0)
+}
+
+func (m *Model) clampCardDock(content string, lineCap int) string {
 	lines := strings.Split(content, "\n")
 	// Keep the minimum three-line conversation viewport and the fixed frame,
 	// input, and hint rows. A very detailed card yields with an honest tail.
 	limit := max(1, m.height-7-m.input.LineCount())
+	if lineCap > 0 {
+		limit = min(limit, lineCap)
+	}
 	if len(lines) <= limit {
 		return content
 	}
@@ -527,6 +593,33 @@ func (m *Model) limitCardDock(content string) string {
 	lines = lines[:limit]
 	lines[limit-1] = mutedStyle.Faint(true).Render(fmt.Sprintf("… %d more card lines", hidden))
 	return strings.Join(lines, "\n")
+}
+
+// dockOverflowLimit is how many active cards render directly before the dock
+// collapses to a one-line summary.
+const dockOverflowLimit = 3
+
+func dockSummaryCounts(active []jobCard) (running, waiting int) {
+	for _, card := range active {
+		if card.State == cardQuestion {
+			waiting++
+		} else {
+			running++
+		}
+	}
+	return running, waiting
+}
+
+func dockSummaryText(running, waiting int) string {
+	line := fmt.Sprintf("%d running", running)
+	if waiting > 0 {
+		line += fmt.Sprintf(" · %d waiting ⚑", waiting)
+	}
+	return line
+}
+
+func (m *Model) dockOverflowOpen() bool {
+	return m.dockExpanded || m.focus == focusCards
 }
 
 func (m *Model) renderCardDock(track bool) string {
@@ -540,6 +633,7 @@ func (m *Model) renderCardDock(track bool) string {
 			}
 		}
 		m.cardPartRows = kept
+		m.dockSummaryLine = -1
 	}
 	keptClose := m.cardCloseRows[:0]
 	for _, row := range m.cardCloseRows {
@@ -549,25 +643,34 @@ func (m *Model) renderCardDock(track bool) string {
 	}
 	m.cardCloseRows = keptClose
 	if len(active) == 0 {
+		// Zero active cards: the dock is absent unless a graph-only store has
+		// live work to summarise.
 		return m.renderLegacyActivityBar()
 	}
-	if len(active) > 3 && m.focus != focusCards {
-		questions := 0
-		for _, card := range active {
-			if card.State == cardQuestion {
-				questions++
-			}
+	overflow := len(active) > dockOverflowLimit
+	running, waiting := dockSummaryCounts(active)
+	if overflow && !m.dockOverflowOpen() {
+		if track {
+			m.dockSummaryLine = 0
 		}
-		line := fmt.Sprintf("%d running", len(active))
-		if questions > 0 {
-			line += fmt.Sprintf(" · %d question ⚑", questions)
-		}
-		line += " — tab or click to expand"
-		return m.limitCardDock(truncate(lipgloss.NewStyle().Foreground(peach).Render(line), m.width))
+		line := mutedStyle.Render("▸ ") +
+			lipgloss.NewStyle().Foreground(peach).Render(dockSummaryText(running, waiting))
+		return truncate(line, m.width)
 	}
 
-	lines := make([]string, 0, len(active))
+	lines := make([]string, 0, len(active)+1)
 	atLine := 0
+	if overflow {
+		// The open overflow list leads with its flipped affordance; clicking it
+		// (or esc) collapses back to the summary.
+		if track {
+			m.dockSummaryLine = 0
+		}
+		header := mutedStyle.Render("▾ ") +
+			lipgloss.NewStyle().Foreground(peach).Render(dockSummaryText(running, waiting))
+		lines = append(lines, truncate(header, m.width))
+		atLine = 1
+	}
 	for _, card := range active {
 		expanded := m.cardExpanded[card.ID]
 		rendered := m.renderJobCard(card, m.width, expanded, atLine, true, track)
@@ -579,7 +682,13 @@ func (m *Model) renderCardDock(track bool) string {
 		lines = append(lines, rendered)
 		atLine += lipgloss.Height(rendered)
 	}
-	return m.limitCardDock(strings.Join(lines, "\n"))
+	lineCap := 0
+	if overflow {
+		// The expanded overflow list stays a dock, not a takeover: cap it near
+		// two fifths of the terminal and keep the honest tail.
+		lineCap = max(4, m.height*2/5)
+	}
+	return m.clampCardDock(strings.Join(lines, "\n"), lineCap)
 }
 
 func (m *Model) renderJobCard(card jobCard, width int, expanded bool, atLine int, dock, track bool) string {
@@ -613,9 +722,6 @@ func (m *Model) renderJobCard(card jobCard, width int, expanded bool, atLine int
 		}
 		if card.Reading != "" && strings.TrimSpace(card.Reading) != strings.TrimSpace(card.Ask) {
 			addText("reading this as · "+firstLine(card.Reading), mutedStyle)
-		}
-		if card.State == cardCompiling && card.Latest != "" {
-			addText("reading this as · "+card.Latest, mutedStyle)
 		}
 		if card.State == cardQuestion {
 			addText(card.Question, questionStyle)
@@ -687,11 +793,11 @@ func (m *Model) renderJobCard(card jobCard, width int, expanded bool, atLine int
 		}
 	}
 
-	hint := "click for details"
+	hint := "▸ details"
 	if expanded {
 		hint = "⟨×⟩ close · compiling the job graph…"
 		if card.RootID != "" {
-			hint = "⟨×⟩ close · enter or click for job graph"
+			hint = "⟨×⟩ close · ▸ job graph"
 		}
 	}
 	lines = append(lines, mutedStyle.Faint(true).Render("╰─ "+hint))
@@ -721,7 +827,9 @@ func (m *Model) renderCompactCard(card jobCard, width int) string {
 	if meta != "" {
 		line += mutedStyle.Render(" · " + meta)
 	}
-	return truncate(line, width)
+	// The compact card is clickable (it expands); the grammar glyph rides the
+	// end of the line and survives truncation.
+	return truncate(line, max(1, width-2)) + mutedStyle.Faint(true).Render(" ▸")
 }
 
 func (m *Model) cardGlyph(card jobCard) string {
@@ -745,8 +853,12 @@ func (m *Model) cardMeta(card jobCard, now time.Time) string {
 	parts := make([]string, 0, 4)
 	if card.State == cardCompiling {
 		parts = append(parts, "compiling")
-		if card.Latest != "" {
+		// The live planning line replaces in place, tick by tick.
+		switch {
+		case card.Latest != "":
 			parts = append(parts, card.Latest)
+		case card.Reading != "":
+			parts = append(parts, card.Reading)
 		}
 	}
 	if card.State != cardCompiling && card.Total > 0 {

@@ -666,13 +666,13 @@ func TestReceiptsCollapseAndExpandTogether(t *testing.T) {
 	model.refreshChat()
 
 	collapsed := model.renderMessages()
-	if !strings.Contains(collapsed, "· reading + 2 assumptions — v to expand") {
+	if !strings.Contains(collapsed, "▸ reading + 2 assumptions") {
 		t.Fatalf("collapsed receipt summary is missing:\n%s", collapsed)
 	}
 	if strings.Contains(collapsed, "Read the compiled request.") {
 		t.Fatalf("collapsed receipt exposed its body:\n%s", collapsed)
 	}
-	if !strings.Contains(collapsed, "· Background sync complete. — v to expand") ||
+	if !strings.Contains(collapsed, "▸ Background sync complete.") ||
 		strings.Contains(collapsed, "This is secondary plumbing.") {
 		t.Fatalf("rare system message did not collapse to its first line:\n%s", collapsed)
 	}
@@ -687,7 +687,7 @@ func TestReceiptsCollapseAndExpandTogether(t *testing.T) {
 	}
 	expanded := model.renderMessages()
 	for _, expected := range []string{
-		"Read the compiled request.", "Assumed: no schema changes.", "This is secondary plumbing.", "v to collapse",
+		"Read the compiled request.", "Assumed: no schema changes.", "This is secondary plumbing.", "▾ reading + 2 assumptions",
 	} {
 		if !strings.Contains(expanded, expected) {
 			t.Fatalf("expanded receipt does not contain %q:\n%s", expected, expanded)
@@ -710,7 +710,7 @@ func TestThreadDisclosureAffordancesRegisterClickableRows(t *testing.T) {
 	}
 	model.refreshChat()
 	view := model.View()
-	if !strings.Contains(view, "reading + 2 assumptions — v to expand") || !strings.Contains(view, "more lines — click to expand") {
+	if !strings.Contains(view, "▸ reading + 2 assumptions") || !strings.Contains(view, "more lines") {
 		t.Fatalf("thread is missing disclosure affordances:\n%s", view)
 	}
 
@@ -1575,8 +1575,8 @@ func TestActivityFeedParsesTraceIntoGlyphs(t *testing.T) {
 	model.nodeTraceText = trace
 	feed := model.renderActivityFeed(80)
 	for _, want := range []string{
-		"turn 1 · 45 tok", "$ ls -la clips/", "→ 1.4KB", "turn 2 · 58 tok · nudge",
-		"✳ ", "⌕ ffmpeg concat mp4", "ERROR", "▸ you", "focus on scene 10 only",
+		"turn 1 · 45 tok", "$ sh", "ls -la clips/", "│ 1.4KB", "turn 2 · 58 tok · nudge",
+		"✳ ", "⌕ web", "ffmpeg concat mp4", "✗", "› you", "focus on scene 10 only",
 	} {
 		if !strings.Contains(feed, want) {
 			t.Fatalf("feed missing %q:\n%s", want, feed)

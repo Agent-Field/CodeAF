@@ -345,16 +345,21 @@ func (m *Model) renderNodeDetailsContent(width, maxLines int) string {
 }
 
 // The activity feed's visual grammar, kept to five distinct voices so the eye
-// learns it once: a muted rule per turn, the model's own words behind ✳, tool
-// calls behind their glyph, results as faint arrows, and you in powder.
+// learns it once (block anatomy documented with the design system in view.go):
+// a muted rule per turn; the model's own words behind ✳, markdown-rendered; a
+// tool call as kind glyph + tool name in the working accent followed by its
+// command in primary ink; output dim behind a faint "│" gutter with failure as
+// a rose ✗ on the status position only; and you in powder behind ›.
 var (
 	feedTurnRule   = regexp.MustCompile(`^── turn (\d+)\s+finish=(\S*)\s+in=(\d+) out=(\d+)\s*(?:\[([^\]]*)\])?\s*──$`)
 	feedThought    = lipgloss.NewStyle().Foreground(powder)
-	feedToolGlyph  = lipgloss.NewStyle().Foreground(peach)
+	feedToolName   = lipgloss.NewStyle().Foreground(peach).Bold(true)
 	feedResult     = lipgloss.NewStyle().Foreground(muted).Faint(true)
+	feedGutter     = lipgloss.NewStyle().Foreground(muted).Faint(true)
 	feedError      = lipgloss.NewStyle().Foreground(rose)
 	feedYou        = lipgloss.NewStyle().Foreground(powder)
 	feedThoughtCap = 6
+	feedOutputCap  = 3
 )
 
 // feedBlock is one visual unit of the activity feed. When full is non-nil the
@@ -387,7 +392,9 @@ func (m *Model) renderActivityFeed(width int) string {
 	for index, block := range blocks {
 		lines := block.brief
 		if block.expandable() && m.feedExpanded[m.feedKeys[index]] {
-			lines = block.full
+			// The affordance flips with state: an opened block ends in the
+			// collapse glyph, itself part of the block's click target.
+			lines = append(append([]string(nil), block.full...), mutedStyle.Faint(true).Render("  ▾"))
 		}
 		for _, line := range lines {
 			m.feedRows = append(m.feedRows, feedRow{line: len(out), block: index})
@@ -446,7 +453,7 @@ func parseFeedBlocks(trace string, messages []store.Message, width int) []feedBl
 		case strings.HasPrefix(line, "  → "):
 			blocks = append(blocks, toolResultBlock(strings.TrimPrefix(line, "  → "), width))
 		case strings.HasPrefix(line, "steered: "):
-			blocks = append(blocks, feedBlock{brief: []string{feedYou.Render("▸ you  ") +
+			blocks = append(blocks, feedBlock{brief: []string{feedYou.Render("› you  ") +
 				inputTextStyle.Render(truncate(strings.TrimPrefix(line, "steered: "), max(1, width-7)))}})
 		default:
 			blocks = append(blocks, feedBlock{brief: []string{
@@ -459,9 +466,7 @@ func parseFeedBlocks(trace string, messages []store.Message, width int) []feedBl
 		blocks = append(blocks, feedBlock{brief: []string{"", mutedStyle.Faint(true).Render(rule)}})
 		now := time.Now()
 		for _, message := range messages {
-			accent, label := messagePresentation(message)
-			header := lipgloss.NewStyle().Foreground(accent).Faint(true).Render(label) +
-				mutedStyle.Faint(true).Render("  "+relativeTime(message.Time, now))
+			header := speakerHeader(message, now)
 			body := strings.Split(renderMarkdown(message.Body, width), "\n")
 			blocks = append(blocks, feedBlock{brief: append([]string{header}, body...)})
 		}
@@ -470,11 +475,13 @@ func parseFeedBlocks(trace string, messages []store.Message, width int) []feedBl
 }
 
 // thoughtBlock renders the model's own words with markdown, capped when long;
-// the full version is a click away.
+// the full version is a click away. A leading blank line keeps thoughts
+// visually apart from the tool blocks around them.
 func thoughtBlock(raw string, width int) feedBlock {
 	thought := strings.ReplaceAll(raw, "⏎", "\n")
 	rendered := strings.Split(renderMarkdown(thought, max(1, width-2)), "\n")
-	full := make([]string, 0, len(rendered))
+	full := make([]string, 0, len(rendered)+1)
+	full = append(full, "")
 	for index, line := range rendered {
 		prefix := "  "
 		if index == 0 {
@@ -482,66 +489,67 @@ func thoughtBlock(raw string, width int) feedBlock {
 		}
 		full = append(full, prefix+line)
 	}
-	if len(full) <= feedThoughtCap {
+	if len(full) <= feedThoughtCap+1 {
 		return feedBlock{brief: full}
 	}
-	brief := append(append([]string{}, full[:feedThoughtCap]...), mutedStyle.Faint(true).Render("  ⋯"))
+	brief := append(append([]string{}, full[:feedThoughtCap+1]...), mutedStyle.Faint(true).Render("  ⋯"))
 	return feedBlock{brief: brief, full: full}
 }
 
-// toolCallBlock turns `sh {"cmd":"ls"}` into `$ ls` — the glyph names the
-// tool, the salient argument names the act, and the JSON plumbing disappears.
-// Multi-line commands collapse to their first line with a ⋯; the full command
-// opens on click. Extraction tolerates the trace's truncated JSON.
+// toolCallBlock turns `sh {"cmd":"ls"}` into a distinct call line — the kind
+// glyph and tool name carry the working accent, the salient argument reads in
+// primary ink, and the JSON plumbing disappears. A leading blank line lets
+// each call breathe. Multi-line commands collapse to their first line with a
+// ⋯; the full command opens on click. Extraction tolerates truncated JSON.
 func toolCallBlock(rest string, width int) feedBlock {
 	name, args, _ := strings.Cut(rest, " ")
-	glyph, detail := "⚙ "+name+" ", ""
+	glyph, detail := "⚙", ""
 	salient := map[string]string{"sh": "cmd", "write": "path", "edit": "path", "web": "q"}[name]
 	if salient != "" {
+		switch name {
+		case "sh":
+			glyph = "$"
+		case "write", "edit":
+			glyph = "✎"
+		case "web":
+			glyph = "⌕"
+		}
 		if value, ok := extractStringField(args, salient); ok {
 			detail = value
-			switch name {
-			case "sh":
-				glyph = "$ "
-			case "write", "edit":
-				glyph = "✎ "
-			case "web":
-				glyph = "⌕ "
-			}
 		} else if name == "web" {
-			glyph, detail = "⌕ ", "fetch pages"
+			detail = "fetch pages"
 		}
 	}
 	if detail == "" {
 		detail = strings.ReplaceAll(args, "⏎", " ")
 	}
 	detail = strings.TrimSpace(detail)
+	head := feedToolName.Render(glyph+" "+name) + "  "
+	headWidth := lipgloss.Width(glyph+" "+name) + 2
 	lines := strings.Split(detail, "\n")
-	first := feedToolGlyph.Render(glyph) + renderToolDetail(name, lines[0], max(1, width-lipgloss.Width(glyph)-2))
-	if len(lines) == 1 && lipgloss.Width(lines[0]) <= width-lipgloss.Width(glyph)-2 {
-		return feedBlock{brief: []string{first}}
+	room := max(1, width-headWidth-2)
+	first := head + renderToolDetail(name, lines[0], room)
+	if len(lines) == 1 && lipgloss.Width(lines[0]) <= room {
+		return feedBlock{brief: []string{"", first}}
 	}
-	full := []string{feedToolGlyph.Render(glyph) + renderToolDetail(name, lines[0], max(1, width-4))}
+	full := []string{"", head + renderToolDetail(name, lines[0], room)}
 	for _, line := range lines[1:] {
-		full = append(full, "  "+mdCode.Render(truncate(strings.TrimRight(line, " "), max(1, width-2))))
+		full = append(full, "  "+inputTextStyle.Render(truncate(strings.TrimRight(line, " "), max(1, width-2))))
 	}
-	return feedBlock{brief: []string{first + mutedStyle.Faint(true).Render(" ⋯")}, full: full}
+	return feedBlock{brief: []string{"", first + mutedStyle.Faint(true).Render(" ⋯")}, full: full}
 }
 
 func renderToolDetail(name, detail string, width int) string {
 	if (name == "write" || name == "edit") && strings.HasPrefix(detail, "/") {
 		return pathLink(detail, width)
 	}
-	detail = truncate(detail, width)
-	if name == "sh" || name == "write" || name == "edit" {
-		return mdCode.Render(detail)
-	}
-	return inputTextStyle.Render(detail)
+	return inputTextStyle.Render(truncate(detail, width))
 }
 
-// toolResultBlock compresses `1438B: content…` to a faint one-liner — enough
-// to see that something came back and roughly what — with the full recorded
-// snippet a click away.
+// toolResultBlock renders what came back under the call it answers: dim mono
+// behind a faint "│" gutter, collapsed to a few lines with the rest a click
+// away. Failure is a rose ✗ on the status position only — the output itself
+// never turns red.
 func toolResultBlock(rest string, width int) feedBlock {
 	size, content, _ := strings.Cut(rest, ": ")
 	failed := strings.HasSuffix(size, " ERROR")
@@ -549,24 +557,28 @@ func toolResultBlock(rest string, width int) feedBlock {
 	if bytes, err := strconv.Atoi(size); err == nil {
 		size = humanBytes(bytes)
 	}
-	head := "  → " + size + "  "
+	gutter := feedGutter.Render("  │ ")
+	status := ""
 	if failed {
-		head = "  → " + size + " " + feedError.Render("ERROR") + "  "
+		status = feedError.Render("✗ ")
 	}
-	flat := strings.ReplaceAll(content, "⏎", " ")
-	brief := feedResult.Render(head + truncate(flat, max(1, width-lipgloss.Width(head)-2)))
-	if lipgloss.Width(flat) <= width-lipgloss.Width(head)-2 {
-		return feedBlock{brief: []string{brief}}
-	}
-	var full []string
-	for index, line := range strings.Split(wrapText(strings.ReplaceAll(content, "⏎", "\n"), max(1, width-4)), "\n") {
-		prefix := "    "
-		if index == 0 {
-			prefix = head
+	wrapped := strings.Split(wrapText(strings.ReplaceAll(content, "⏎", "\n"), max(1, width-10)), "\n")
+	render := func(count int) []string {
+		out := make([]string, 0, count)
+		for index, line := range wrapped[:count] {
+			if index == 0 {
+				out = append(out, truncate(gutter+status+feedResult.Render(size+"  "+line), width))
+			} else {
+				out = append(out, truncate(gutter+feedResult.Render(line), width))
+			}
 		}
-		full = append(full, feedResult.Render(prefix+line))
+		return out
 	}
-	return feedBlock{brief: []string{brief + mutedStyle.Faint(true).Render(" ⋯")}, full: full}
+	if len(wrapped) <= feedOutputCap {
+		return feedBlock{brief: render(len(wrapped))}
+	}
+	brief := append(render(feedOutputCap), gutter+mutedStyle.Faint(true).Render("⋯"))
+	return feedBlock{brief: brief, full: render(len(wrapped))}
 }
 
 // extractStringField pulls one string value out of raw JSON text by scanning,
@@ -686,6 +698,13 @@ func (m *Model) scrollNodeAt(x, y int, down bool) bool {
 }
 
 func (m *Model) updateMouseClick(x, y int) bool {
+	if m.headerTasksBounds.contains(x, y) {
+		if m.nodeViewID != "" {
+			m.closeNodeView()
+		}
+		m.toggleGraph()
+		return true
+	}
 	if m.activityBarBounds.contains(x, y) {
 		return m.clickCardDock(y - m.activityBarBounds.y)
 	}
@@ -754,7 +773,24 @@ func (m *Model) updateMouseClick(x, y int) bool {
 
 func (m *Model) clickCardDock(line int) bool {
 	active, _ := placeJobCards(m.cards)
-	if len(active) > 3 && m.focus != focusCards {
+	if m.dockSummaryLine >= 0 && line == m.dockSummaryLine {
+		// The ▸/▾ summary row flips the overflow dock open and closed.
+		if m.dockOverflowOpen() {
+			m.dockExpanded = false
+			if m.focus == focusCards {
+				m.focus = focusInput
+				m.inputFocused = true
+				_ = m.input.Focus()
+			}
+			m.setSize(m.width, m.height)
+		} else {
+			m.dockExpanded = true
+			m.focusCardDock()
+		}
+		return true
+	}
+	if len(active) > dockOverflowLimit && !m.dockOverflowOpen() {
+		m.dockExpanded = true
 		m.focusCardDock()
 		return true
 	}
@@ -796,6 +832,12 @@ func (m *Model) toggleChatMessageAt(x, y int) bool {
 	if line < 0 {
 		return false
 	}
+	return m.activateChatLine(line)
+}
+
+// activateChatLine is the one activation path for a thread content line —
+// clicks and keyboard traversal both land here, so enter always equals click.
+func (m *Model) activateChatLine(line int) bool {
 	for _, row := range m.cardCloseRows {
 		if !row.dock && row.line == line {
 			m.selectedCardID = row.cardID
