@@ -122,7 +122,9 @@ func runChat(args []string) error {
 		WithConsolidator(consolidateFacts(settings, chatClient, graph)).
 		WithTitler(titleGoal(settings, chatClient)).
 		WithReflector(reflectAcrossJobs(settings, chatClient, graph)).
+		WithCharterProposals().
 		WithTerritoryDigester(digestTerritory(settings, chatClient)).
+		WithWatchEngine(settings.DailyBudgetUSD, checkSentinel(settings, chatClient)).
 		WithOverrunPlanner(settings.DailyBudgetUSD, replanRemainder(settings, taskClient, plans, graph))
 
 	web := exec.NewWeb()
@@ -1681,6 +1683,39 @@ func digestTerritory(settings config.Config, client *liveClient) resident.Territ
 			return "", err
 		}
 		return strings.TrimSpace(response.Text()), nil
+	}
+}
+
+const sentinelSystemPrompt = `You are a cheap standing-watch sentinel. Decide only whether the supplied condition occurred or the invariant is threatened now. Answer exactly "yes — <one line>" or "no — <one line>". No markdown, no qualifications, no suggested work.`
+
+// checkSentinel reuses the resident talk client just like consolidation. The
+// store, not this parser, decides whether a yes may spend or fire.
+func checkSentinel(settings config.Config, client *liveClient) resident.SentinelFunc {
+	return func(ctx context.Context, prompt resident.SentinelPrompt) (resident.SentinelVerdict, error) {
+		input := fmt.Sprintf("Invariant (verbatim):\n%s\n\nSentinel hint:\n%s\n\nWake evidence:\n%s",
+			prompt.Invariant, prompt.SentinelHint, prompt.Evidence)
+		response, err := client.CompleteWithMessages(settings.Context(ctx, "sentinel"), []ai.Message{
+			{Role: "system", Content: []ai.ContentPart{{Type: "text", Text: sentinelSystemPrompt}}},
+			{Role: "user", Content: []ai.ContentPart{{Type: "text", Text: input}}},
+		}, ai.WithMaxTokens(60))
+		if err != nil {
+			return resident.SentinelVerdict{}, err
+		}
+		if response == nil {
+			return resident.SentinelVerdict{}, fmt.Errorf("sentinel returned no response")
+		}
+		answer := strings.TrimSpace(response.Text())
+		lower := strings.ToLower(answer)
+		yes := strings.HasPrefix(lower, "yes")
+		if !yes && !strings.HasPrefix(lower, "no") {
+			return resident.SentinelVerdict{Line: "sentinel returned no clear yes"}, nil
+		}
+		line := answer
+		if fields := strings.Fields(answer); len(fields) > 1 {
+			line = strings.TrimSpace(strings.Join(fields[1:], " "))
+		}
+		line = strings.TrimSpace(strings.TrimLeft(line, "—:- "))
+		return resident.SentinelVerdict{Yes: yes, Line: line}, nil
 	}
 }
 
