@@ -19,6 +19,8 @@ Turn the user's verbatim instruction and the current graph context into a comple
 
 Rules:
 - State a clear goal that names the final deliverable, what success means, and the evidence standard that will prove it.
+- Write the goal as commander's intent: the end-state and why it matters, never one fixed method. Workers will hit obstacles no one can foresee; a goal that names the outcome lets them substitute means and still land it, while a goal that prescribes a method dies with that method.
+- No instruction compiles to impossible. When the ask looks blocked or out of reach, name what actually makes it hard — access, tooling, scale, uncertainty — and reshape around that by safe means: substitute an available source or route for an unavailable one, split the achievable core from the blocked remainder and name both in the goal, or reach the target by approximation first and refinement after. Every such reshaping is declared in assumptions like any other default.
 - Name that same concrete final deliverable separately in deliverable.
 - Give a sensible free-text budget, including a currency amount when cost is otherwise unspecified.
 - Fill every missing decision with a practical default: scope, audience, format, quality bar, evidence, timing, tools, and constraints whenever the user did not settle them.
