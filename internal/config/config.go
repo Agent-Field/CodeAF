@@ -199,6 +199,13 @@ func (c Config) Client() (router.Client, error) {
 	return router.New(c.Panel, c.providerConfig(c.Model), c.ProfileDir)
 }
 
+// ClientFor builds a single-model adapter for an explicitly chosen model,
+// bypassing the panel. The chat surface uses it to pick the talking model and
+// the working model independently at runtime.
+func (c Config) ClientFor(model string) (router.Client, error) {
+	return provider.NewClient(c.providerConfig(model))
+}
+
 func (c Config) providerConfig(model string) provider.Config {
 	return provider.Config{
 		APIKey:      c.APIKey,
