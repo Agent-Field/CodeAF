@@ -654,35 +654,7 @@ func (r *Reconciler) wireContinuity(subtree store.Subtree, buildsOn []string) st
 	if len(sources) == 0 {
 		return subtree
 	}
-
-	inSubtree := make(map[string]bool, len(subtree.Nodes))
-	for _, spec := range subtree.Nodes {
-		inSubtree[spec.ID] = true
-	}
-	for index, spec := range subtree.Nodes {
-		entry := true
-		for _, need := range spec.Needs {
-			if inSubtree[need.NodeID] {
-				entry = false
-				break
-			}
-		}
-		if !entry {
-			continue
-		}
-		existing := make(map[string]bool, len(spec.Needs))
-		for _, need := range spec.Needs {
-			existing[need.NodeID] = true
-		}
-		for _, source := range sources {
-			if existing[source] {
-				continue
-			}
-			subtree.Nodes[index].Needs = append(subtree.Nodes[index].Needs,
-				store.Need{NodeID: source, Kind: store.FeedsInto})
-		}
-	}
-	return subtree
+	return attachNeeds(subtree, sources)
 }
 
 // WithDistiller installs the notebook's writer and returns the reconciler

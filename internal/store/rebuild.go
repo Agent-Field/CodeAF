@@ -179,6 +179,13 @@ func replayEvent(tx *sql.Tx, event Event) error {
 		}
 		return applyFoldView(tx, event.NodeID, payload.Digest, string(pointers), event.Seq)
 
+	case EventEdgeAdded:
+		var payload edgeAddedPayload
+		if err := json.Unmarshal(event.Payload, &payload); err != nil {
+			return err
+		}
+		return applyEdgeAddedView(tx, payload.From, payload.To, payload.Kind, event.Seq)
+
 	case EventMessagePosted:
 		var payload messagePayload
 		if err := json.Unmarshal(event.Payload, &payload); err != nil {

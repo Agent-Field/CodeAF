@@ -74,6 +74,7 @@ const (
 	EventNodeFailed     EventKind = "node_failed"
 	EventNodeReleased   EventKind = "node_released"
 	EventSubtreeFolded  EventKind = "subtree_folded"
+	EventEdgeAdded      EventKind = "edge_added"
 
 	// Thread events: the conversation and its asynchronous mutation requests
 	// live in the same journal as the graph they act on.
