@@ -12,6 +12,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -99,7 +100,8 @@ func runChat(args []string) error {
 		},
 		planSubtree(settings, taskClient),
 	).WithNarrator(narrateProgress(settings, chatClient)).
-		WithDistiller(distillFacts(settings, chatClient))
+		WithDistiller(distillFacts(settings, chatClient)).
+		WithConsolidator(consolidateFacts(settings, chatClient))
 
 	web := exec.NewWeb()
 	runner := resident.NewRunner(graph, func(ctx context.Context, node store.Node) (resident.ExecResult, error) {
@@ -115,6 +117,9 @@ func runChat(args []string) error {
 		linear := exec.NewLinear(taskClient, jobSpace, web, 0, 0, 0)
 
 		inputs := make([]exec.Input, 0)
+		if digest := resident.NotebookDigest(graph, node.Brief, node.Provenance.Intent, 8); digest != "" {
+			inputs = append(inputs, exec.Input{Result: digest})
+		}
 		digests, err := graph.DependencyDigests(node.ID, store.MaxDigestBytes)
 		if err == nil {
 			for _, digest := range digests {
@@ -310,6 +315,20 @@ func (c *chatCommander) Cancel(nodeID string) error {
 		Instruction: "cancelled from the TUI",
 	})
 	return err
+}
+
+func (c *chatCommander) Notebook(limit int) []store.Fact {
+	if c == nil || c.store == nil {
+		return nil
+	}
+	facts, err := c.store.ActiveFacts("", 100)
+	if err != nil {
+		return nil
+	}
+	if limit > 0 && len(facts) > limit {
+		facts = facts[:limit]
+	}
+	return facts
 }
 
 func (c *chatCommander) DatabasePath() string { return c.database }
@@ -660,38 +679,104 @@ func jobIDOf(graph *store.Store, node store.Node) string {
 	return current.ID
 }
 
-// distillerSystemPrompt writes the notebook. The bar is durability: a fact
+// distillerSystemPrompt writes the notebook. The bar is durability: a memory
 // must still matter after this job is forgotten.
-const distillerSystemPrompt = `You extract durable facts from a finished job for an assistant's notebook. Return exactly one JSON object: {"facts":["..."]}.
+const distillerSystemPrompt = `You judge whether a finished job taught an assistant anything worth keeping in its scoped notebook. You receive the goal, the outcome, and whether the job FAILED. Return exactly one JSON object: {"facts":[{"scope":"...","kind":"preference|quirk|lesson|fact","body":"..."}]}.
 
-A fact qualifies only if it will still matter after this job is forgotten: a preference the user expressed or implied, an environment fact (a path, a key's location, a tool that is or isn't available), or an entity and its stable attributes. One standalone line each, specific enough to act on later. Job status, transient results, and anything already obvious from the request itself do not qualify. An empty list is the common, correct answer. At most five.`
+Judgment framework:
+- A memory qualifies only if it will matter after this job is forgotten.
+- Scope every memory to the narrowest thing it is about: file:<absolute path> for a file's quirk, repo:<dir> for a codebase-wide one, tool:<name> for a tool's behaviour, domain:<topic> for subject knowledge, user for preferences, or env for machine facts.
+- When the job FAILED, the single most valuable memory is the cause and its fix or workaround. Classify it as a quirk or lesson.
+- Job status and transient results never qualify.
+- An empty list is the common correct answer.
+- Return at most five memories.`
+
+const consolidatorSystemPrompt = `You rewrite one scope's accumulated notebook lines into a smaller, sharper notebook. Return exactly one JSON object: {"facts":[{"scope":"...","kind":"preference|quirk|lesson|fact","body":"..."}]}.
+
+Merge duplicates and near-duplicates. Drop stale lines. Resolve contradictions in favour of the newest line. Keep every load-bearing specific, including paths, values, and names. Each output must stand alone, use exactly the target scope, and preserve the best fitting kind. Return at most eight lines.`
 
 // distillFacts wires the reconciler's notebook to the talk model.
 func distillFacts(settings config.Config, client *liveClient) resident.DistillFunc {
-	return func(ctx context.Context, goal, result string) ([]string, error) {
-		input := "The job asked (verbatim): " + goal + "\n\nWhat came back:\n" + result
+	return func(ctx context.Context, goal, outcome string, failed bool) ([]resident.Learned, error) {
+		input := fmt.Sprintf("Goal:\n%s\n\nFAILED: %t\n\nOutcome:\n%s", goal, failed, outcome)
 		response, err := client.CompleteWithMessages(settings.Context(ctx, "distill"), []ai.Message{
 			{Role: "system", Content: []ai.ContentPart{{Type: "text", Text: distillerSystemPrompt}}},
 			{Role: "user", Content: []ai.ContentPart{{Type: "text", Text: input}}},
-		}, ai.WithMaxTokens(300))
+		}, ai.WithMaxTokens(500))
 		if err != nil || response == nil {
 			return nil, err
 		}
-		raw := strings.TrimSpace(response.Text())
-		raw = strings.TrimPrefix(raw, "```json")
-		raw = strings.TrimPrefix(raw, "```")
-		raw = strings.TrimSuffix(raw, "```")
-		start := strings.IndexByte(raw, '{')
-		end := strings.LastIndexByte(raw, '}')
-		if start < 0 || end <= start {
-			return nil, nil
+		return parseLearnedFacts(response.Text(), 5), nil
+	}
+}
+
+// consolidateFacts sharpens a crowded scope without losing the specifics
+// that made its entries worth retaining.
+func consolidateFacts(settings config.Config, client *liveClient) resident.ConsolidateFunc {
+	return func(ctx context.Context, scope string, facts []store.Fact) ([]resident.Learned, error) {
+		ordered := append([]store.Fact(nil), facts...)
+		sort.SliceStable(ordered, func(i, j int) bool {
+			return ordered[i].Seq > ordered[j].Seq
+		})
+
+		var input strings.Builder
+		fmt.Fprintf(&input, "Target scope: %s\n\nNotebook lines, newest first:\n", scope)
+		for index, fact := range ordered {
+			fmt.Fprintf(&input, "%d. [%s] %s\n", index+1, fact.Kind, fact.Body)
 		}
-		var parsed struct {
-			Facts []string `json:"facts"`
+		response, err := client.CompleteWithMessages(settings.Context(ctx, "consolidate"), []ai.Message{
+			{Role: "system", Content: []ai.ContentPart{{Type: "text", Text: consolidatorSystemPrompt}}},
+			{Role: "user", Content: []ai.ContentPart{{Type: "text", Text: input.String()}}},
+		}, ai.WithMaxTokens(700))
+		if err != nil || response == nil {
+			return nil, err
 		}
-		if err := json.Unmarshal([]byte(raw[start:end+1]), &parsed); err != nil {
-			return nil, nil
+		return parseLearnedFacts(response.Text(), 8), nil
+	}
+}
+
+func parseLearnedFacts(raw string, limit int) []resident.Learned {
+	if limit <= 0 {
+		return nil
+	}
+	raw = strings.TrimSpace(raw)
+	raw = strings.TrimPrefix(raw, "```json")
+	raw = strings.TrimPrefix(raw, "```")
+	raw = strings.TrimSuffix(raw, "```")
+	start := strings.IndexByte(raw, '{')
+	if start < 0 {
+		return nil
+	}
+	var parsed struct {
+		Facts []struct {
+			Scope string         `json:"scope"`
+			Kind  store.FactKind `json:"kind"`
+			Body  string         `json:"body"`
+		} `json:"facts"`
+	}
+	if err := json.NewDecoder(strings.NewReader(raw[start:])).Decode(&parsed); err != nil {
+		return nil
+	}
+	learned := make([]resident.Learned, 0, min(limit, len(parsed.Facts)))
+	for _, fact := range parsed.Facts {
+		fact.Scope = strings.TrimSpace(fact.Scope)
+		fact.Body = strings.TrimSpace(fact.Body)
+		if fact.Scope == "" || fact.Body == "" || !validLearnedKind(fact.Kind) {
+			continue
 		}
-		return parsed.Facts, nil
+		learned = append(learned, resident.Learned{Scope: fact.Scope, Kind: fact.Kind, Body: fact.Body})
+		if len(learned) == limit {
+			break
+		}
+	}
+	return learned
+}
+
+func validLearnedKind(kind store.FactKind) bool {
+	switch kind {
+	case store.FactPreference, store.FactQuirk, store.FactLesson, store.FactPlain:
+		return true
+	default:
+		return false
 	}
 }

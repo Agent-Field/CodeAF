@@ -51,6 +51,7 @@ type Commander interface {
 	Catalog() []ModelChoice
 	CurrentModel(role string) string
 	SetModel(role, slug string) error
+	Notebook(limit int) []store.Fact
 	NewSession() (string, error)
 	Cancel(nodeID string) error
 }
@@ -123,6 +124,7 @@ type Model struct {
 	modelCatalog     []ModelChoice
 	catalogRequested bool
 	catalogLoading   bool
+	memoryFacts      []store.Fact
 	status           string
 	statusUntil      time.Time
 }
@@ -279,7 +281,7 @@ func (m *Model) updateKey(message tea.KeyMsg) (tea.Cmd, bool) {
 	}
 	if key == "esc" {
 		switch {
-		case m.palette == paletteModel || m.palette == paletteHelp:
+		case m.palette == paletteModel || m.palette == paletteMemory || m.palette == paletteHelp:
 			m.closePalette()
 		case m.paletteOpen():
 			m.palette = paletteNone

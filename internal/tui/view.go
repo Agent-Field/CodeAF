@@ -248,6 +248,8 @@ func (m *Model) paletteLines(width int) []string {
 		return m.completionLines(m.cancelEntries(), "non-terminal nodes", width)
 	case paletteModel:
 		return m.modelPickerLines(width)
+	case paletteMemory:
+		return m.memoryPanelLines(width)
 	case paletteHelp:
 		lines := make([]string, 0, len(slashCommands)+3)
 		for _, command := range slashCommands {
@@ -265,6 +267,52 @@ func (m *Model) paletteLines(width int) []string {
 	default:
 		return nil
 	}
+}
+
+func (m *Model) memoryPanelLines(width int) []string {
+	if len(m.memoryFacts) == 0 {
+		return []string{mutedStyle.Render("notebook is empty")}
+	}
+
+	order := make([]string, 0)
+	groups := make(map[string][]store.Fact)
+	for _, fact := range m.memoryFacts {
+		scope := strings.TrimSpace(fact.Scope)
+		if _, ok := groups[scope]; !ok {
+			order = append(order, scope)
+		}
+		groups[scope] = append(groups[scope], fact)
+	}
+	lines := make([]string, 0, m.memoryLineCount())
+	for _, scope := range order {
+		lines = append(lines, mutedStyle.Faint(true).Render(truncate(scope, width)))
+		for _, fact := range groups[scope] {
+			lines = append(lines, memoryFactRow(fact, width))
+		}
+	}
+
+	limit := m.paletteLineLimit()
+	start := min(m.paletteSelected, max(0, len(lines)-limit))
+	end := min(len(lines), start+limit)
+	return lines[start:end]
+}
+
+func memoryFactRow(fact store.Fact, width int) string {
+	glyph := "·"
+	style := mutedStyle
+	switch fact.Kind {
+	case store.FactPreference:
+		glyph = "◆"
+		style = lipgloss.NewStyle().Foreground(lavender)
+	case store.FactQuirk:
+		glyph = "▲"
+		style = lipgloss.NewStyle().Foreground(peach)
+	case store.FactLesson:
+		glyph = "●"
+		style = lipgloss.NewStyle().Foreground(mint)
+	}
+	body := truncate(strings.TrimSpace(fact.Body), max(1, width-lipgloss.Width(glyph)-1))
+	return style.Render(glyph) + " " + inputTextStyle.Render(body)
 }
 
 func (m *Model) completionLines(entries []paletteEntry, label string, width int) []string {

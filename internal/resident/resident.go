@@ -41,10 +41,20 @@ type Compiled struct {
 	Question string
 }
 
-// DistillFunc extracts durable facts from a finished job — preferences,
-// environment, entities — as distinct from the job's result. At most a
-// handful of standalone lines; an empty list is the common, correct answer.
-type DistillFunc func(ctx context.Context, goal, result string) ([]string, error)
+// Learned is one distilled memory: what it is about, what kind, one line.
+type Learned struct {
+	Scope string
+	Kind  store.FactKind
+	Body  string
+}
+
+// DistillFunc extracts durable memories from one finished or failed job.
+// outcome is the summary on success or the error on failure.
+type DistillFunc func(ctx context.Context, goal, outcome string, failed bool) ([]Learned, error)
+
+// ConsolidateFunc rewrites one scope's accumulated facts into fewer, better
+// lines. Returned lines replace the input set entirely.
+type ConsolidateFunc func(ctx context.Context, scope string, facts []store.Fact) ([]Learned, error)
 
 // CompileFunc turns a verbatim thread instruction into a goal the planner can
 // act on. graphContext is a compact rendering of the active graph.
@@ -57,16 +67,18 @@ type PlanFunc func(ctx context.Context, compiled Compiled) (store.Subtree, error
 // store remains the source of truth; this type keeps only a restart-safe event
 // cursor and injected planning behavior in memory.
 type Reconciler struct {
-	store   *store.Store
-	compile CompileFunc
-	plan    PlanFunc
-	narrate NarrateFunc
-	distill DistillFunc
+	store       *store.Store
+	compile     CompileFunc
+	plan        PlanFunc
+	narrate     NarrateFunc
+	distill     DistillFunc
+	consolidate ConsolidateFunc
 
 	mu                 sync.Mutex
 	watcherInitialized bool
 	lastEventSeq       int64
 	progress           map[string]*subtreeProgress
+	lastConsolidation  time.Time
 }
 
 // New constructs a reconciler. A nil compiler preserves the instruction
@@ -147,6 +159,7 @@ func (r *Reconciler) Tick(ctx context.Context) error {
 	if err := r.speakProgress(ctx); err != nil {
 		return fmt.Errorf("resident tick: narrate progress: %w", err)
 	}
+	r.consolidateNotebook(ctx)
 	return nil
 }
 
@@ -218,7 +231,7 @@ func (r *Reconciler) splice(ctx context.Context, command store.Command) (command
 		return commandOutcome{}, err
 	}
 
-	compiled, err := r.compile(ctx, command.Instruction, r.renderCompileContext(snapshot))
+	compiled, err := r.compile(ctx, command.Instruction, r.renderCompileContext(snapshot, command.Instruction))
 	if err != nil {
 		return commandOutcome{}, fmt.Errorf("compile request: %w", err)
 	}
@@ -414,10 +427,15 @@ func (r *Reconciler) announceTransitions(ctx context.Context) error {
 					return err
 				}
 				r.recordForNarration(byID, event)
-				if event.Kind == store.EventNodeCompleted {
-					if node, ok, err := r.store.Node(event.NodeID); err == nil && ok &&
-						node.Parent == store.RootID && node.Provenance.SessionID != "" {
-						r.distillJob(ctx, node)
+				node, ok, err := r.store.Node(event.NodeID)
+				if err != nil {
+					return err
+				}
+				if ok && node.Provenance.SessionID != "" {
+					if event.Kind == store.EventNodeFailed {
+						r.distillJob(ctx, node, true)
+					} else if node.Parent == store.RootID {
+						r.distillJob(ctx, node, false)
 					}
 				}
 			case store.EventNodeStarted:
@@ -634,13 +652,17 @@ func (r *Reconciler) WithDistiller(distill DistillFunc) *Reconciler {
 // distillLimit bounds how much one job may add to the notebook.
 const distillLimit = 5
 
-// distillJob extracts durable facts from a landed deliverable, best effort:
-// a failed distillation costs the notebook entry, never the loop.
-func (r *Reconciler) distillJob(ctx context.Context, node store.Node) {
-	if r.distill == nil || strings.TrimSpace(node.Summary) == "" {
+// distillJob extracts durable facts from one settled node, best effort: a
+// failed distillation costs the notebook entry, never the loop.
+func (r *Reconciler) distillJob(ctx context.Context, node store.Node, failed bool) {
+	if r.distill == nil {
 		return
 	}
-	facts, err := r.distill(ctx, node.Provenance.Intent, node.Summary)
+	outcome := node.Summary
+	if failed {
+		outcome = node.Error
+	}
+	facts, err := r.distill(ctx, node.Provenance.Intent, outcome, failed)
 	if err != nil {
 		return
 	}
@@ -648,25 +670,20 @@ func (r *Reconciler) distillJob(ctx context.Context, node store.Node) {
 		facts = facts[:distillLimit]
 	}
 	for _, fact := range facts {
-		if strings.TrimSpace(fact) == "" {
+		if strings.TrimSpace(fact.Body) == "" {
 			continue
 		}
-		// The cue-and-kind-aware distiller lands with the notebook upgrade;
-		// until callers classify, everything files under the user scope.
-		_, _ = r.store.RecordFact(node.ID, "user", store.FactPlain, clipLabel(fact, store.MaxFactBytes-1))
+		_, _ = r.store.RecordFact(node.ID, fact.Scope, fact.Kind, clipFactBody(fact.Body))
 	}
 }
 
 // renderCompileContext is the compiler's whole view: the notebook first —
 // durable facts the user should never have to repeat — then the graph.
-func (r *Reconciler) renderCompileContext(snapshot store.Snapshot) string {
+func (r *Reconciler) renderCompileContext(snapshot store.Snapshot, instruction string) string {
 	var context strings.Builder
-	if facts, err := r.store.RecentFacts(12); err == nil && len(facts) > 0 {
-		context.WriteString("notebook (durable facts learned earlier; treat as true unless the instruction contradicts them):\n")
-		for _, fact := range facts {
-			context.WriteString("- " + fact.Body + "\n")
-		}
-		context.WriteString("\n")
+	if notebook := NotebookDigest(r.store, "", instruction, 12); notebook != "" {
+		context.WriteString(notebook)
+		context.WriteString("\n\n")
 	}
 	context.WriteString(renderGraphContext(snapshot))
 	return context.String()
