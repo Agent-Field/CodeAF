@@ -154,6 +154,8 @@ type Reconciler struct {
 	title           TitleFunc
 	reflect         ReflectFunc
 	digestTerritory TerritoryDigestFunc
+	overrunPlan     OverrunPlanFunc
+	dailyBudgetUSD  float64
 
 	mu                 sync.Mutex
 	watcherInitialized bool
@@ -229,6 +231,12 @@ func (r *Reconciler) Tick(ctx context.Context) error {
 		}
 		if len(commands) < commandBatchSize {
 			break
+		}
+	}
+
+	if r.overrunPlan != nil {
+		if _, err := ResumeDeferredOverruns(ctx, r.store, r.dailyBudgetUSD, r.overrunPlan); err != nil {
+			return fmt.Errorf("resident tick: resume deferred overruns: %w", err)
 		}
 	}
 
@@ -463,6 +471,14 @@ func (r *Reconciler) WithTitler(title TitleFunc) *Reconciler {
 	return r
 }
 
+// WithOverrunPlanner installs restart-safe resumption for repairs deferred at
+// the daily rail. Zero budget keeps the planner unlimited.
+func (r *Reconciler) WithOverrunPlanner(dailyBudgetUSD float64, plan OverrunPlanFunc) *Reconciler {
+	r.dailyBudgetUSD = dailyBudgetUSD
+	r.overrunPlan = plan
+	return r
+}
+
 // titleSubtree names the job's root node — the line the rail shows for the
 // whole job. Planned leaves keep the planner's own short titles; the root is
 // the one node whose title would otherwise be a generic "Synthesis" or the
@@ -625,14 +641,23 @@ func (r *Reconciler) announceTransitions(ctx context.Context) error {
 			}
 			switch event.Kind {
 			case store.EventNodeCompleted, store.EventNodeFailed:
-				if err := r.announceNode(event); err != nil {
-					return err
-				}
-				r.recordForNarration(byID, event)
 				node, ok, err := r.store.Node(event.NodeID)
 				if err != nil {
 					return err
 				}
+				if event.Kind == store.EventNodeCompleted && ok {
+					continuing, err := r.continuingNode(node)
+					if err != nil {
+						return err
+					}
+					if continuing {
+						break
+					}
+				}
+				if err := r.announceNode(event); err != nil {
+					return err
+				}
+				r.recordForNarration(byID, event)
 				if ok && node.Provenance.SessionID != "" {
 					if event.Kind == store.EventNodeFailed {
 						r.distillJob(ctx, node, true)
@@ -652,6 +677,13 @@ func (r *Reconciler) announceTransitions(ctx context.Context) error {
 			return nil
 		}
 	}
+}
+
+func (r *Reconciler) continuingNode(node store.Node) (bool, error) {
+	if strings.Contains(node.Summary, "[splitting the remaining work --") {
+		return true, nil
+	}
+	return r.store.OverrunDeferred(node.ID)
 }
 
 func (r *Reconciler) announceNode(event store.Event) error {

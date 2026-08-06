@@ -92,6 +92,17 @@ const (
 	EventUsageRecorded    EventKind = "usage_recorded"
 	EventSurpriseRecorded EventKind = "surprise_recorded"
 
+	// EventRailRaised records the user's decision to extend today's dollar
+	// ceiling. The journal is the policy record; no process-local flag resumes
+	// work.
+	EventRailRaised EventKind = "rail_raised"
+
+	// Overrun deferrals preserve a landed partial whose repair could not be
+	// admitted at the rail. Resumption is a separate event so a rebuild can
+	// recover exactly the continuations that still need to be spliced.
+	EventOverrunDeferred EventKind = "overrun_deferred"
+	EventOverrunResumed  EventKind = "overrun_resumed"
+
 	// EventDeliveryGate is the final judge's evidence about one delivered job.
 	EventDeliveryGate EventKind = "delivery_gate"
 

@@ -62,7 +62,7 @@ const usageText = `aforge — build and revise task graphs
   aforge chat [--db path] [--session id]
   aforge plan "<goal>" [-o graph.json] [--json] [--brief] [--ensemble N]
   aforge revise <graph.json> "<what happened>" [--done 1,2,3] [-o graph.json]
-  aforge run  <graph.json> [-w dir] [-j 8] [-o done.json]
+  aforge run  <graph.json> [-w dir] [-j 8] [-o done.json] [--yes-spend]
   aforge show <graph.json>
   aforge models
   aforge notebook [--db path]
@@ -83,6 +83,8 @@ Environment:
   AFORGE_EXEC_REASONING  executor calls: model default (unset), off, low, medium, high
   AFORGE_MAX_DEPTH     2   how many levels of decomposition
   AFORGE_NODE_BUDGET   60  hard ceiling on total nodes
+  AFORGE_DAILY_BUDGET  20.0  daily dollar rail (0 = unlimited)
+  AFORGE_PREAUTHORIZE_SPEND  1 raises the rail without a headless stdin prompt
   AFORGE_PROFILE_DIR   where measured behaviour is kept (default ~/.aforge)`
 
 func usage() error {

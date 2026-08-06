@@ -2,6 +2,7 @@ package exec
 
 import (
 	"context"
+	"errors"
 	"strings"
 	"sync"
 	"testing"
@@ -143,6 +144,65 @@ func TestGlobalBudgetStopsLaunchingAndLands(t *testing.T) {
 	fake.mutex.Unlock()
 	if launched != 2 {
 		t.Errorf("executor was invoked %d times, want 2 — the budget must stop launches, not just mark nodes", launched)
+	}
+}
+
+type landingExecutor struct {
+	first, second int
+	secondStarted chan struct{}
+	releaseSecond chan struct{}
+
+	mutex sync.Mutex
+	ran   []int
+}
+
+func (e *landingExecutor) Skill() string { return "linear" }
+
+func (e *landingExecutor) Run(_ context.Context, task Task) (*Outcome, error) {
+	e.mutex.Lock()
+	e.ran = append(e.ran, task.NodeID)
+	e.mutex.Unlock()
+	if task.NodeID == e.first {
+		<-e.secondStarted
+	}
+	if task.NodeID == e.second {
+		close(e.secondStarted)
+		<-e.releaseSecond
+	}
+	return &Outcome{Text: "landed", Turns: 1, Stop: StopDone, Usage: Usage{Calls: 1}}, nil
+}
+
+func TestBeforeLaunchStopsClaimsAndLandsInflightWork(t *testing.T) {
+	graph := &plan.Graph{Goal: "g", Stages: []plan.Stage{{Title: "One"}}, NextID: 1}
+	first := graph.Add(plan.Node{Stage: 1, Title: "First"})
+	second := graph.Add(plan.Node{Stage: 1, Title: "Second"})
+	third := graph.Add(plan.Node{Stage: 1, Title: "Third"})
+	fake := &landingExecutor{first: first, second: second, secondStarted: make(chan struct{}), releaseSecond: make(chan struct{})}
+	scheduler := NewScheduler(NewRegistry(fake), workspace(t), 2)
+	stop := errors.New("daily rail pause")
+	checks := 0
+	scheduler.BeforeLaunch = func(context.Context) error {
+		checks++
+		if checks == 3 {
+			close(fake.releaseSecond)
+			return stop
+		}
+		return nil
+	}
+	err := scheduler.Run(context.Background(), graph)
+	if !errors.Is(err, stop) {
+		t.Fatalf("run error = %v, want wrapped rail pause", err)
+	}
+	if graph.Node(first).State != plan.StateDone || graph.Node(second).State != plan.StateDone {
+		t.Fatalf("in-flight states = %s/%s, want done/done", graph.Node(first).State, graph.Node(second).State)
+	}
+	if graph.Node(third).State != plan.StateBlocked {
+		t.Fatalf("unclaimed node = %s, want blocked", graph.Node(third).State)
+	}
+	fake.mutex.Lock()
+	defer fake.mutex.Unlock()
+	if len(fake.ran) != 2 {
+		t.Fatalf("executor ran %d leaves, want two in flight only", len(fake.ran))
 	}
 }
 

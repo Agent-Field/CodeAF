@@ -10,6 +10,7 @@ package resident
 import (
 	"context"
 	"fmt"
+	"strconv"
 	"strings"
 
 	"github.com/Agent-Field/aforge-v2/internal/store"
@@ -19,10 +20,10 @@ import (
 // subtree, with prefix as the id namespace for the new nodes.
 type OverrunPlanFunc func(ctx context.Context, goal, prefix string) (store.Subtree, error)
 
-// overrunMarker tags re-expansion namespaces. Its presence in a node id is
-// the recursion guard: work that is already a re-expansion does not re-expand
-// again, so one oversized estimate can never cascade into unbounded splitting.
-const overrunMarker = "-x1"
+// overrunMarker tags re-expansion namespaces. Splitting is bounded by dollars,
+// not by rounds: the counter advances for every repair while replacing the old
+// suffix, so journal ids stay unique without growing a stack of -x1 markers.
+const overrunMarker = "-x"
 
 // OverrunGoal phrases the replan brief. The partial result is in the goal on
 // purpose — "based on the current result" is the whole point: the planner
@@ -47,13 +48,33 @@ func OverrunGoal(node store.Node, partial string, artifacts []string) string {
 // digest, its sink feeds every consumer that was waiting on the exhausted
 // node and has not started, and the whole thing lives under the same job so
 // workspaces, folding, and narration all treat it as the job's own work.
-// Returns the spliced node count and the repair sink's id (0, "" when the
-// node is itself a re-expansion and the guard declines).
-func ReplanOverrun(ctx context.Context, graph *store.Store, node store.Node, partial string, artifacts []string, planRemainder OverrunPlanFunc) (int, string, error) {
-	if strings.Contains(node.ID, overrunMarker) {
-		return 0, "", nil
+// Returns the spliced node count and the repair sink's id. DailyBudgetUSD zero
+// is unlimited; at the rail the durable question is posted and no splice lands.
+func ReplanOverrun(ctx context.Context, graph *store.Store, node store.Node, partial string, artifacts []string, dailyBudgetUSD float64, planRemainder OverrunPlanFunc) (int, string, error) {
+	return replanOverrun(ctx, graph, node, partial, artifacts, dailyBudgetUSD, "", planRemainder)
+}
+
+func replanOverrun(ctx context.Context, graph *store.Store, node store.Node, partial string, artifacts []string, dailyBudgetUSD float64, prefix string, planRemainder OverrunPlanFunc) (int, string, error) {
+	var err error
+	if prefix == "" {
+		prefix, err = nextOverrunPrefix(graph, node.ID)
+		if err != nil {
+			return 0, "", fmt.Errorf("replan overrun %s: %w", node.ID, err)
+		}
 	}
-	prefix := node.ID + overrunMarker
+	if dailyBudgetUSD > 0 {
+		rail, _, err := graph.PauseDailyRail(dailyBudgetUSD, node.Provenance.SessionID)
+		if err != nil {
+			return 0, "", fmt.Errorf("replan overrun %s: check daily rail: %w", node.ID, err)
+		}
+		if rail.Reached {
+			deferred := store.DeferredOverrun{NodeID: node.ID, Partial: partial, Artifacts: artifacts, Prefix: prefix}
+			if err := graph.DeferOverrun(deferred); err != nil {
+				return 0, "", fmt.Errorf("replan overrun %s: defer at daily rail: %w", node.ID, err)
+			}
+			return 0, "", nil
+		}
+	}
 	anchor := PlanAnchor{NodeID: jobRootID(graph, node), SessionID: node.Provenance.SessionID}
 	planCtx := withPlanAnchor(ctx, anchor)
 	subtree, err := planRemainder(planCtx, OverrunGoal(node, partial, artifacts), prefix)
@@ -86,7 +107,7 @@ func ReplanOverrun(ctx context.Context, graph *store.Store, node store.Node, par
 	provenance := store.Provenance{
 		Origin:    store.OriginSelf,
 		SessionID: node.Provenance.SessionID,
-		Intent:    "re-expand " + node.ID + ": ran out of budget; the remainder continues as its own subtree",
+		Intent:    node.Provenance.Intent,
 	}
 	if err := graph.Splice(parent, subtree, provenance); err != nil {
 		return 0, "", fmt.Errorf("replan overrun %s: %w", node.ID, err)
@@ -109,6 +130,122 @@ func ReplanOverrun(ctx context.Context, graph *store.Store, node store.Node, par
 		}
 	}
 	return len(subtree.Nodes), sink, nil
+}
+
+// ResumeDeferredOverruns admits journaled repairs after the rail is raised.
+// The splice precedes the resolved event; after a crash, an existing prefix is
+// enough evidence to resolve without planning or admitting a duplicate.
+func ResumeDeferredOverruns(ctx context.Context, graph *store.Store, dailyBudgetUSD float64, planRemainder OverrunPlanFunc) (int, error) {
+	pending, err := graph.PendingOverruns(100)
+	if err != nil {
+		return 0, err
+	}
+	resumed := 0
+	for _, deferred := range pending {
+		if err := ctx.Err(); err != nil {
+			return resumed, err
+		}
+		node, ok, err := graph.Node(deferred.NodeID)
+		if err != nil {
+			return resumed, err
+		}
+		if !ok {
+			if err := graph.ResolveOverrun(deferred); err != nil {
+				return resumed, err
+			}
+			continue
+		}
+		exists, err := overrunPrefixExists(graph, deferred.Prefix)
+		if err != nil {
+			return resumed, err
+		}
+		if exists {
+			if err := graph.ResolveOverrun(deferred); err != nil {
+				return resumed, err
+			}
+			continue
+		}
+		spliced, _, err := replanOverrun(ctx, graph, node, deferred.Partial, deferred.Artifacts,
+			dailyBudgetUSD, deferred.Prefix, planRemainder)
+		if err != nil {
+			return resumed, err
+		}
+		if spliced == 0 {
+			return resumed, nil
+		}
+		if err := graph.ResolveOverrun(deferred); err != nil {
+			return resumed, err
+		}
+		resumed += spliced
+		_, _ = graph.PostMessage(store.Message{
+			SessionID: node.Provenance.SessionID,
+			Role:      store.RoleSystem,
+			NodeID:    node.ID,
+			Body:      OverrunContinuationMessage(spliced),
+		})
+	}
+	return resumed, nil
+}
+
+// OverrunContinuationMessage is the calm user receipt shared by immediate and
+// rail-deferred splitting.
+func OverrunContinuationMessage(pieces int) string {
+	return fmt.Sprintf("splitting the remaining work -- %d pieces queued", pieces)
+}
+
+func overrunPrefixExists(graph *store.Store, prefix string) (bool, error) {
+	nodes, err := graph.Nodes()
+	if err != nil {
+		return false, err
+	}
+	for _, node := range nodes {
+		if node.ID == prefix || strings.HasPrefix(node.ID, prefix+"-") {
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
+func nextOverrunPrefix(graph *store.Store, nodeID string) (string, error) {
+	base := nodeID
+	if marked, _, ok := splitOverrunID(nodeID); ok {
+		base = marked
+	}
+	nodes, err := graph.Nodes()
+	if err != nil {
+		return "", err
+	}
+	maxRound := 0
+	for _, candidate := range nodes {
+		candidateBase, round, ok := splitOverrunID(candidate.ID)
+		if ok && candidateBase == base && round > maxRound {
+			maxRound = round
+		}
+	}
+	return fmt.Sprintf("%s%s%d", base, overrunMarker, maxRound+1), nil
+}
+
+func splitOverrunID(id string) (string, int, bool) {
+	for offset := 0; offset < len(id); {
+		index := strings.Index(id[offset:], overrunMarker)
+		if index < 0 {
+			return "", 0, false
+		}
+		index += offset
+		start := index + len(overrunMarker)
+		end := start
+		for end < len(id) && id[end] >= '0' && id[end] <= '9' {
+			end++
+		}
+		if end > start && (end == len(id) || id[end] == '-') {
+			round, err := strconv.Atoi(id[start:end])
+			if err == nil && round > 0 {
+				return id[:index], round, true
+			}
+		}
+		offset = start
+	}
+	return "", 0, false
 }
 
 func jobRootID(graph *store.Store, node store.Node) string {
