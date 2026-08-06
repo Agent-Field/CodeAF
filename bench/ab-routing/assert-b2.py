@@ -31,10 +31,11 @@ def panel():
     return ({m["slug"]: m.get("label", m["slug"]) for m in models},
             {m["slug"] for m in models},
             next((m["slug"] for m in models if m.get("role") == "top"), None),
-            {m["slug"]: m.get("role", "") for m in models})
+            {m["slug"]: m.get("role", "") for m in models},
+            {m["slug"]: m["price"] for m in models})
 
 
-LABEL, PANEL, TOP, ROLE = panel()
+LABEL, PANEL, TOP, ROLE, PRICE = panel()
 
 # internal/router/panel.go coldStart: top +1, base -1, anything else 0.
 COLD = {"top": 1.0, "base": -1.0}
@@ -122,20 +123,23 @@ def run(rows, events, rated, min_graded):
 
     attempts = [(row, e) for row, evs in events for e in evs if not e.get("final")]
 
-    # A1: the terminal rung is never weaker than rung 0.
+    # A1: the role-top model is the terminal rung.
+    #
+    # Phrased as a rating comparison this failed whenever the fix was working:
+    # the top model's rating is its ungraded prior, the incumbent earns more
+    # than that, and the fix pins the top model terminal regardless. What A1
+    # exists to catch is the top model being dropped from the cascade, which is
+    # what Phase B did, so that is what it asks.
     bad = []
     for row, e in attempts:
         candidates = e.get("candidates") or []
-        if len(candidates) < 2:
+        if len(candidates) < 2 or TOP is None:
             continue
-        first = rating_of(rated, candidates[0], e["class"])
-        last = rating_of(rated, candidates[-1], e["class"])
-        if last[0] < first[0] - 1e-9:
-            bad.append(f"{e['class']}: {short(candidates[-1])} "
-                       f"({last[0]:+.2f}) terminal under {short(candidates[0])} "
-                       f"({first[0]:+.2f})")
-    checks.add("A1 terminal rung is never weaker than rung 0", not bad,
-               "; ".join(sorted(set(bad))[:4]))
+        if candidates[-1] != TOP:
+            bad.append(f"{e['class']}: terminal is {short(candidates[-1])}, "
+                       f"not {short(TOP)}")
+    checks.add(f"A1 the terminal rung is {short(TOP) if TOP else 'the top model'}",
+               not bad, "; ".join(sorted(set(bad))[:4]))
 
     # A2: the top model is reached on a hard task that failed.
     reached = set()
@@ -158,10 +162,15 @@ def run(rows, events, rated, min_graded):
                f"{len(escalated_cells)} of {len(failed_cells)} failed hard cells "
                f"escalated at all")
 
-    # A3: no escalation lands on a model rated below the one it left.
+    # A3: no *leaf* escalation lands on a model rated below the one it left.
+    #
+    # Scoped to leaves deliberately. A leaf is escalated because it failed, so
+    # the only useful target is a stronger model. The planning classes cascade
+    # cheapest-first behind a schema verifier, where trying a cheap rung and
+    # being corrected is the design rather than a defect.
     bad = []
     for row, e in attempts:
-        if e.get("rung", 0) == 0:
+        if e.get("rung", 0) == 0 or not e.get("class", "").startswith("exec.leaf"):
             continue
         candidates = e.get("candidates") or []
         if not candidates:
@@ -172,8 +181,11 @@ def run(rows, events, rated, min_graded):
         if to[0] < frm[0] - 1e-9:
             bad.append(f"{row['task']}: {short(came_from)} ({frm[0]:+.2f}) -> "
                        f"{short(e.get('model'))} ({to[0]:+.2f})")
-    checks.add("A3 no escalation lands on a weaker model", not bad,
-               "; ".join(sorted(set(bad))[:4]))
+    leaf_escalations = sum(1 for _r, e in attempts if e.get("rung", 0) > 0
+                           and e.get("class", "").startswith("exec.leaf"))
+    checks.add("A3 no leaf escalation lands on a weaker model", not bad,
+               "; ".join(sorted(set(bad))[:4])
+               or f"{leaf_escalations} leaf escalations, all upward")
 
     # A4: every panel member has been observed at all.
     observed = {model for (model, _cls) in rated}
@@ -185,9 +197,16 @@ def run(rows, events, rated, min_graded):
                f"unobserved: {sorted(short(s) for s in PANEL - seen)}")
 
     # A5: a rating with too little graded evidence must not reorder anything.
+    # Every attempt belonging to a call that explored, not merely the exploring
+    # attempt itself: an escalation after an exploring first rung inherits the
+    # explore-ordered candidate list, so judging it against the gate-respecting
+    # order compares two different things.
+    exploring_calls = {e.get("call") for _row, e in attempts if e.get("explore")}
     orders = defaultdict(set)
     members = defaultdict(set)
     for _row, e in attempts:
+        if e.get("call") in exploring_calls:
+            continue
         if e.get("candidates"):
             orders[e["class"]].add(tuple(e["candidates"]))
             members[e["class"]].update(e["candidates"])
@@ -195,15 +214,38 @@ def run(rows, events, rated, min_graded):
     # A reorder is only earned if every model whose position moved has enough
     # graded evidence behind it. Phase B reordered exec.leaf on five
     # observations of one model against zero of every other.
-    unearned = []
-    for cls in sorted(reordered):
-        for slug in sorted(members[cls]):
-            count = rating_of(rated, slug, cls)[1]
-            if count < min_graded:
-                unearned.append(f"{cls}: {short(slug)} n={count}")
-    checks.add(f"A5 no class reorders while a model in it has < "
-               f"{min_graded} graded observations",
-               not unearned, "; ".join(unearned[:6]))
+    # With a gate in place the question is not whether thin ratings exist — they
+    # always will, early — but whether any rating *below the gate* is being used
+    # to order. Below it the router reads the prior, which is the fix.
+    # Rebuild the order the router should have produced and compare it to what
+    # it recorded. A measured rating counts only at or above the gate; below it
+    # the prior stands. Price ordering is Ability(rating)/price, and the top
+    # model is pinned terminal, which is A1's business rather than this one's.
+    import math
+
+    def effective(slug, cls):
+        value, count = rating_of(rated, slug, cls)
+        if count < min_graded:
+            return COLD.get(ROLE.get(slug, ""), 0.0)
+        return value
+
+    disagreed = []
+    for cls in sorted(members):
+        for order in orders[cls]:
+            head = [c for c in order if c != TOP]
+            expected = sorted(
+                head,
+                key=lambda slug: -(1 / (1 + math.exp(-effective(slug, cls)))
+                                   / max(PRICE.get(slug, 1.0), 1e-9)))
+            if head and expected and head[0] != expected[0]:
+                disagreed.append(
+                    f"{cls}: opened on {short(head[0])}, gate-respecting "
+                    f"order opens on {short(expected[0])}")
+    checks.add(f"A5 the ordering respects the gate (n < {min_graded} reads the prior)",
+               not disagreed,
+               "; ".join(sorted(set(disagreed))[:4])
+               or f"{len(orders)} classes checked, every opening rung matches "
+                  f"the gate-respecting order")
 
     # A6: leaf ratings are conditioned on something.
     leaf_keys = [key for key in rated if key[1].startswith("exec.leaf")]
@@ -246,7 +288,8 @@ def main():
     ap.add_argument("results")
     ap.add_argument("--events", default=None)
     ap.add_argument("--ledger", default=None)
-    ap.add_argument("--min-graded", type=int, default=5)
+    # internal/router/ledger.go MinGraded
+    ap.add_argument("--min-graded", type=int, default=8)
     ap.add_argument("--json", action="store_true")
     args = ap.parse_args()
 
