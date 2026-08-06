@@ -353,6 +353,88 @@ Three rules from the failure-mode literature, cheap to honor now:
   the learning they measure, and `NeedsRecalibration`-style guards (refuse to
   learn from confounded evidence) are the template for every new loop.
 
+### 3.9 Pruning: outcome-linked belief hygiene
+
+A memory that only accumulates is a memory that can be poisoned — by a wrong
+lesson confidently distilled, by a user's offhand remark captured as law, by
+a stale claim that keeps outranking fresh evidence. The literature's warning
+is blunt (self-curated memories entrench errors; nobody has a validated
+deletion rule). aforge already has the right half: supersession instead of
+deletion, evidence links, aging by claim type, consolidation that drops
+claims their own evidence does not support. What is missing is the *feedback*
+half — beliefs are never scored against what they did to the work. Three
+additions, in order of leverage:
+
+- **Injection attribution.** Record (as an event) which notebook lines were
+  injected into which node's context. The counters already exist per fact
+  (`uses`, `last_used`); this adds the join to outcomes. A belief repeatedly
+  present in jobs whose gate failed or whose leaves overran is a *suspect* —
+  surfaced to the consolidator with its failure co-occurrence, exactly as
+  age and use count are surfaced today. Credit assignment for memory: the
+  same discipline the ledger applies to models, applied to beliefs.
+- **Quarantine, not deletion.** A suspect belief (or one the user flags) is
+  demoted to a quarantined status: excluded from retrieval, retained in the
+  journal with the evidence that demoted it, eligible for one rehabilitation
+  trial (3.2's machinery — an experiment can clear a belief's name). The
+  journal remains the whole life; pruning is a status change, so a wrong
+  prune is reversible and auditable.
+- **User-facing retraction.** "Forget that" / "that's wrong" in conversation
+  must be a first-class head verb: the head already captures (`remember`);
+  it gains `retract` — supersede the named belief on the spot, scoped as
+  narrowly as the capture was. And the notebook must be *inspectable*: a
+  lens (`aforge notebook` / a TUI pane) listing beliefs with age, uses,
+  evidence pointers, and one-keystroke retraction — the file-is-truth
+  philosophy applied to the agent's own head. Trust in a learning system
+  comes from being able to see and veto what it learned.
+
+### 3.10 The reflex ladder: matching ceremony to consequence
+
+The observed failure: asked to open a file, the resident compiled an
+intention, spliced a task, planned, executed, gated — ceremony an order of
+magnitude heavier than the ask. The wrong fix is a hardcoded triviality
+list (that is authored behavior, and it will always be wrong somewhere).
+The right fix: the head already chooses among verbs (answer / command /
+askback); give it a **ladder of ceremony** and let the choice be judged —
+and learned — like everything else:
+
+| rung | what runs | latency | ledger |
+|---|---|---|---|
+| **answer** | read from snapshot/notebook/folds | instant | none |
+| **reflex** | one micro-leaf: splice+claim+run+settle in one breath — no compiler, no planner, no gate, tiny tool budget | seconds | one node, full provenance |
+| **task** | compile → single leaf, gate | today's path | as today |
+| **project** | compile → plan → graph | as today | as today |
+
+The load-bearing decisions:
+
+- **The graph stays the truth at every rung.** A reflex is not "outside the
+  system" — it is one node journaled like any other, so learning still
+  captures it, `aforge why` still answers, and cost is still attributed.
+  What the ladder removes is ceremony (three LLM calls and a receipt), not
+  provenance. The UX cost of "open a file" was never the node; it was the
+  compile/plan/gate calls around it.
+- **Promotion, never silent demotion.** A reflex that discovers mid-action
+  it is bigger than it looked stops and splices a real task with what it
+  learned ("this turned out to be a job — doing it properly"), exactly the
+  assume-and-declare shape: act, declare, revise. The head may guess low;
+  the system corrects upward. Guessing high (a task for a triviality) is
+  the failure mode we have today — visible, annoying, and now measurable.
+- **The boundary is learned, not authored.** The profile records reflexes
+  like any leaf shape: success rate, promotion rate, cost. A reflex class
+  that keeps promoting teaches the head's prior (via notebook/playbook
+  lines) to start it as a task; an ask class that always reflexes clean
+  stays a reflex. Emergent triage — the answer to "which asks deserve a
+  graph" is measured, per user, per domain, not written by us.
+- **Consequence gates the rung, not size.** Anything spending money,
+  deleting, publishing, or hard to reverse takes the compiled path with its
+  ask-first exceptions regardless of how small it looks. Reversibility is
+  the license for speed.
+
+End-user experience: trivial asks feel like talking to a person who just
+does it — one line back, done, a small receipt with a clickable path.
+Heavier asks visibly become jobs with plans and gates. The user never
+chooses a mode; the system's choice is visible, cheap to correct
+("actually, make that a proper job"), and improves with use.
+
 ---
 
 ## Sequencing
