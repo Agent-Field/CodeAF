@@ -124,33 +124,127 @@ func (snapshotStandingReader) Charters(
 		if !ok {
 			continue
 		}
-		at := node.FinishedAt
-		if at.IsZero() {
-			at = node.StartedAt
+		accumulateFiring(&charters[byID[charterID]], node, usage, now)
+	}
+	finishStandingCharters(charters)
+	return charters
+}
+
+// charterLister is the store-native charter view. *store.Store implements it;
+// backends without a charter table (tests, embedders) keep the snapshot
+// projection above.
+type charterLister interface {
+	Charters() ([]store.Charter, error)
+}
+
+type storeStandingReader struct {
+	list charterLister
+}
+
+// Charters projects first-class store charters into the same presentation
+// values the snapshot seam produced, so every renderer below stays unchanged.
+// Firing history still comes from the snapshot: firings are ordinary jobs
+// pointing back through Provenance.CharterID.
+func (r storeStandingReader) Charters(
+	snapshot store.Snapshot,
+	usage map[string]store.JobUsage,
+	now time.Time,
+) []standingCharter {
+	records, err := r.list.Charters()
+	if err != nil {
+		return snapshotStandingReader{}.Charters(snapshot, usage, now)
+	}
+	charters := make([]standingCharter, 0, len(records))
+	byID := make(map[string]int, len(records))
+	for _, record := range records {
+		if record.Status == store.CharterRetired {
+			continue
 		}
-		outcome := strings.TrimSpace(node.Summary)
-		if node.Status == store.Failed || node.Status == store.Cancelled {
-			outcome = strings.TrimSpace(node.Error)
+		rails := record.Rails()
+		charter := standingCharter{
+			ID:        record.ID,
+			Name:      charterShortName(record.Invariant, record.ID),
+			Invariant: strings.TrimSpace(record.Invariant),
+			Watch:     record.Watch.String(),
+			Quote:     fmt.Sprintf("~$%.2f", rails.PerFiringBudgetUSD),
+			Cap:       fmt.Sprintf("≤%d/day", rails.MaxFiringsPerDay),
+			Expiry:    "never",
+			State:     string(record.Status),
+			Proposed:  record.Status == store.CharterProposed,
+			Breathing: record.WakePending,
 		}
-		if outcome == "" {
-			outcome = string(node.Status)
+		if rails.ExpiresAt != nil {
+			charter.Expiry = rails.ExpiresAt.Local().Format("2006-01-02 15:04")
 		}
-		active := node.Status == store.Claimed || node.Status == store.Running
-		firing := standingFiring{
-			JobID: node.ID, At: at, Cost: usage[node.ID].Cost,
-			Outcome: firstLine(outcome), Status: node.Status, Active: active,
+		if charter.Proposed {
+			charter.ProposalReason = strings.TrimSpace(record.Ratification.Evidence)
+			if charter.ProposalReason == "" {
+				charter.ProposalReason = strings.TrimSpace(record.ProposalShape)
+			}
 		}
-		index := byID[charterID]
-		charters[index].Firings = append(charters[index].Firings, firing)
-		charters[index].Breathing = charters[index].Breathing || active
-		if !at.IsZero() && (charters[index].LastFired.IsZero() || at.After(charters[index].LastFired)) {
-			charters[index].LastFired = at
-		}
-		if sameLocalDay(at, now) {
-			charters[index].Today++
-		}
+		charters = append(charters, charter)
+		byID[record.ID] = len(charters) - 1
 	}
 
+	for _, node := range snapshot.Nodes {
+		if node.Provenance.Origin != store.OriginTrigger || node.Provenance.CharterID == "" {
+			continue
+		}
+		index, ok := byID[node.Provenance.CharterID]
+		if !ok {
+			continue
+		}
+		accumulateFiring(&charters[index], node, usage, now)
+	}
+	finishStandingCharters(charters)
+	return charters
+}
+
+// charterShortName condenses an invariant into the few words the rail line
+// can afford; the full invariant stays on the card.
+func charterShortName(invariant, id string) string {
+	words := strings.Fields(strings.TrimSpace(invariant))
+	if len(words) == 0 {
+		return id
+	}
+	if len(words) > 4 {
+		words = words[:4]
+	}
+	return strings.Join(words, " ")
+}
+
+func accumulateFiring(
+	charter *standingCharter,
+	node store.Node,
+	usage map[string]store.JobUsage,
+	now time.Time,
+) {
+	at := node.FinishedAt
+	if at.IsZero() {
+		at = node.StartedAt
+	}
+	outcome := strings.TrimSpace(node.Summary)
+	if node.Status == store.Failed || node.Status == store.Cancelled {
+		outcome = strings.TrimSpace(node.Error)
+	}
+	if outcome == "" {
+		outcome = string(node.Status)
+	}
+	active := node.Status == store.Claimed || node.Status == store.Running
+	charter.Firings = append(charter.Firings, standingFiring{
+		JobID: node.ID, At: at, Cost: usage[node.ID].Cost,
+		Outcome: firstLine(outcome), Status: node.Status, Active: active,
+	})
+	charter.Breathing = charter.Breathing || active
+	if !at.IsZero() && (charter.LastFired.IsZero() || at.After(charter.LastFired)) {
+		charter.LastFired = at
+	}
+	if sameLocalDay(at, now) {
+		charter.Today++
+	}
+}
+
+func finishStandingCharters(charters []standingCharter) {
 	for index := range charters {
 		sort.SliceStable(charters[index].Firings, func(i, j int) bool {
 			return charters[index].Firings[i].At.After(charters[index].Firings[j].At)
@@ -159,7 +253,6 @@ func (snapshotStandingReader) Charters(
 			charters[index].Firings = charters[index].Firings[:charterHistoryLimit]
 		}
 	}
-	return charters
 }
 
 func charterFieldValue(node store.Node) string {
@@ -213,7 +306,11 @@ func (m *Model) standingTime() time.Time {
 func (m *Model) standingCharters() []standingCharter {
 	reader := m.standingReader
 	if reader == nil {
-		reader = snapshotStandingReader{}
+		if lister, ok := m.backend.(charterLister); ok {
+			reader = storeStandingReader{list: lister}
+		} else {
+			reader = snapshotStandingReader{}
+		}
 	}
 	return reader.Charters(m.standingSnapshot(), m.jobUsage, m.standingTime())
 }

@@ -372,3 +372,58 @@ func TestFrameHeightExactAcrossStandingRailStates(t *testing.T) {
 		})
 	}
 }
+
+type charterListingBackend struct {
+	*fakeBackend
+	charters []store.Charter
+}
+
+func (b *charterListingBackend) Charters() ([]store.Charter, error) { return b.charters, nil }
+
+// The store-native path: first-class charters render without any Group:
+// "charter" compatibility nodes, and firings attach through
+// Provenance.CharterID alone.
+func TestStoreNativeChartersRenderWithoutCompatibilityNodes(t *testing.T) {
+	now := time.Date(2026, time.August, 6, 14, 0, 0, 0, time.Local)
+	expires := time.Date(2026, time.September, 1, 9, 0, 0, 0, time.Local)
+	charter, err := store.NewCharter(
+		"pr-watch",
+		"watch PRs on Agent-Field/aforge — review each new one",
+		store.WatchSpec{Kind: store.WatchPoll, Poll: &store.PollWatch{
+			Condition: "new PRs", Cadence: 2 * time.Minute,
+		}},
+		"has a new PR opened?",
+		store.CharterAction{Template: "review each new PR and post a summary"},
+		store.CharterRails{PerFiringBudgetUSD: 0.15, MaxFiringsPerDay: 10, ExpiresAt: &expires},
+		store.CharterActive,
+		store.Ratification{Origin: store.OriginUser, Evidence: "yes, stand this up"},
+	)
+	if err != nil {
+		t.Fatalf("NewCharter: %v", err)
+	}
+	firing := store.Node{
+		ID: "fire-native", Parent: store.RootID, Title: "review PR 41",
+		Status: store.Done, StartedAt: now.Add(-time.Hour), FinishedAt: now.Add(-time.Hour),
+		Summary:    "One review note delivered.",
+		Provenance: store.Provenance{Origin: store.OriginTrigger, CharterID: "pr-watch"},
+	}
+	snapshot := store.Snapshot{Nodes: []store.Node{{ID: store.RootID}, firing}}
+	backend := &charterListingBackend{fakeBackend: &fakeBackend{snapshot: snapshot}, charters: []store.Charter{charter}}
+	model := standingModel(backend, now, snapshot)
+	model.jobUsage = map[string]store.JobUsage{"fire-native": {Cost: 0.11}}
+
+	charters := model.standingCharters()
+	if len(charters) != 1 {
+		t.Fatalf("expected one store-native charter, got %#v", charters)
+	}
+	got := charters[0]
+	if got.ID != "pr-watch" || got.Proposed || got.State != "active" {
+		t.Fatalf("unexpected projection: %#v", got)
+	}
+	if got.Quote != "~$0.15" || got.Cap != "≤10/day" || !strings.Contains(got.Expiry, "2026-09-01") {
+		t.Fatalf("rails not projected: %#v", got)
+	}
+	if len(got.Firings) != 1 || got.Firings[0].Cost != 0.11 || got.Today != 1 || got.LastFired.IsZero() {
+		t.Fatalf("firing not attached through CharterID: %#v", got)
+	}
+}
