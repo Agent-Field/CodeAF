@@ -127,6 +127,7 @@ func (m *Model) trackPaneBounds() {
 	m.headerTasksBounds = paneBounds{}
 	m.graphBounds = paneBounds{}
 	m.graphRowsBounds = paneBounds{}
+	m.standingRowsBounds = paneBounds{}
 	m.graphToggleBounds = paneBounds{}
 	m.paletteCloseBounds = paneBounds{}
 	m.inputBounds = paneBounds{}
@@ -147,11 +148,21 @@ func (m *Model) trackPaneBounds() {
 		m.chatBounds = paneBounds{x: 0, y: mainY, width: m.chatWidth, height: m.chatHeight}
 	}
 	if m.graphBounds.width > 0 {
+		standingHeight := m.standingSectionHeight()
+		if standingHeight > 0 {
+			m.standingRowsBounds = paneBounds{
+				x: m.graphBounds.x, y: m.graphBounds.y + 1,
+				width: m.graph.Width, height: standingHeight - 2,
+			}
+		}
 		m.graphRowsBounds = paneBounds{
-			x: m.graphBounds.x, y: m.graphBounds.y + 2,
+			x: m.graphBounds.x, y: m.graphBounds.y + standingHeight + 2,
 			width: m.graph.Width, height: m.graph.Height,
 		}
-		m.graphToggleBounds = paneBounds{x: m.graphBounds.x, y: m.graphBounds.y, width: m.graphBounds.width, height: 1}
+		m.graphToggleBounds = paneBounds{
+			x: m.graphBounds.x, y: m.graphBounds.y + standingHeight,
+			width: m.graphBounds.width, height: 1,
+		}
 	}
 	paletteY := mainY + m.chatHeight + 1
 	if m.paletteHasClose() {
@@ -225,8 +236,9 @@ func (m *Model) renderSpend() string {
 // taskCounts sweeps the snapshot once for the activity bar and the rail
 // header: work in flight, work queued, and anything that failed.
 func (m *Model) taskCounts() (running, queued, failed int) {
+	definitions := charterDefinitionIDs(m.snapshot)
 	for _, node := range m.snapshot.Nodes {
-		if node.ID == store.RootID {
+		if node.ID == store.RootID || definitions[node.ID] {
 			continue
 		}
 		switch node.Status {
@@ -324,16 +336,25 @@ func (m *Model) renderGraphPane() string {
 	if m.graphScopeID != "" {
 		label = m.graphScopeID
 		if node, ok := m.snapshotNode(m.graphScopeID); ok {
-			label = nodeLabelInSnapshot(node, m.snapshot)
+			label = nodeLabelInSnapshot(node, m.cardSnapshot)
 		}
 		label = "‹ card · " + label
+	} else if charter, ok := m.standingCharter(m.charterCardID); ok {
+		label = "‹ card · " + charter.Name
 	}
 	title := mutedStyle.Faint(true).Render(label)
 	if m.focus == focusGraph {
 		title = lipgloss.NewStyle().Foreground(powder).Render(label)
 	}
 	title += mutedStyle.Faint(true).Render("  ⟨×⟩")
-	lines := append([]string{title, ""}, strings.Split(m.graph.View(), "\n")...)
+	lines := make([]string, 0, m.graphHeight)
+	if m.graphScopeID == "" && m.charterCardID == "" {
+		if section := m.renderStandingSection(max(1, m.graphWidth)); section != "" {
+			lines = append(lines, strings.Split(section, "\n")...)
+		}
+	}
+	lines = append(lines, title, "")
+	lines = append(lines, strings.Split(m.graph.View(), "\n")...)
 	for len(lines) < m.graphHeight {
 		lines = append(lines, "")
 	}
@@ -760,6 +781,13 @@ func (m *Model) renderMessages() string {
 		}
 	}
 	m.cardPartRows = kept
+	keptOptions := m.cardOptionRows[:0]
+	for _, row := range m.cardOptionRows {
+		if row.dock {
+			keptOptions = append(keptOptions, row)
+		}
+	}
+	m.cardOptionRows = keptOptions
 	keptClose := m.cardCloseRows[:0]
 	for _, row := range m.cardCloseRows {
 		if row.dock {
@@ -1130,9 +1158,10 @@ func (m *Model) renderTree(width, height int) string {
 		m.noteAnimatedGraphRow(row)
 	}
 
+	definitions := charterDefinitionIDs(snapshot)
 	children := make(map[string][]store.Node, len(snapshot.Nodes))
 	for _, node := range snapshot.Nodes {
-		if node.ID == store.RootID {
+		if node.ID == store.RootID || definitions[node.ID] {
 			continue
 		}
 		children[node.Parent] = append(children[node.Parent], node)
@@ -1161,7 +1190,9 @@ func (m *Model) renderTree(width, height int) string {
 	// but waiting on another node, and a "waits:" line under the selection.
 	nodeByID := make(map[string]store.Node, len(snapshot.Nodes))
 	for _, node := range snapshot.Nodes {
-		nodeByID[node.ID] = node
+		if !definitions[node.ID] {
+			nodeByID[node.ID] = node
+		}
 	}
 	jobRoots := nodeJobRoots(snapshot.Nodes)
 	waitsOn := make(map[string][]string)
