@@ -41,6 +41,11 @@ Concretely, for this kind of work:
   result's eventual user would reach it.
 - The two or three mistakes most often made in this kind of work, stated as
   things to watch for.
+- Where this kind of work most often gets stuck — the source that is down, the
+  tool that refuses, the case that resists — and the route an experienced hand
+  takes around it: the substitute source, method, or construction that reaches
+  the same end. The agent cannot ask anyone when it hits that wall; this line
+  is what carries it through.
 
 Every line must be specific to this kind of work — advice that would fit any
 job ("plan first", "be thorough") is filler and wastes the agent's attention.
