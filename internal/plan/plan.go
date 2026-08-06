@@ -98,9 +98,15 @@ func (u *Usage) merge(other Usage) {
 	u.Cost += other.Cost
 }
 
-// Progress reports each pass as it finishes, so a caller can show the spine
-// before the rest of the graph exists.
-type Progress func(pass string, elapsed time.Duration, detail string)
+// Report exposes the planner's diagnostic pass timings. It is deliberately
+// separate from Progress: reports are operator telemetry, while progress is
+// phrased for the person waiting on the work.
+type Report func(pass string, elapsed time.Duration, detail string)
+
+// Progress reports human-readable movement through planning. Stage and detail
+// are kept separate so a terminal, journal, or API can render them in its own
+// voice without having to parse a formatted log line.
+type Progress func(stage, detail string)
 
 // Options configures a build.
 type Options struct {
@@ -135,7 +141,11 @@ type Options struct {
 	// N >= 2 forces a panel of N. See ensemble.go.
 	Ensemble int
 
-	Report Progress
+	Report Report
+
+	// Progress is called at pass boundaries. Nil keeps planning behavior and
+	// output unchanged.
+	Progress Progress
 
 	// OnReady fires the instant a node is final and has nothing to wait for.
 	// Those nodes are dispatchable at once — a linear harness could be running
@@ -155,8 +165,10 @@ func Build(ctx context.Context, client Completer, goal string, options Options) 
 	if report == nil {
 		report = func(string, time.Duration, string) {}
 	}
+	progress := serialProgress(options.Progress)
 	start := time.Now()
 	graph := &Graph{Goal: goal, NextID: 1}
+	progress("grounding", "settling what to look at")
 
 	// Grounding and the spine both need only the goal, so they run together and
 	// the grounding is free. It has to finish before the fan-out, though, and
@@ -169,7 +181,7 @@ func Build(ctx context.Context, client Completer, goal string, options Options) 
 	opening.Add(2)
 	go func() {
 		defer opening.Done()
-		choice, spineUsage, spineErr = Spine(ctx, client, goal, options.SpineSamples)
+		choice, spineUsage, spineErr = spineWithProgress(ctx, client, goal, options.SpineSamples, progress)
 	}()
 	go func() {
 		defer opening.Done()
@@ -184,6 +196,8 @@ func Build(ctx context.Context, client Completer, goal string, options Options) 
 	graph.Stages = choice.Stages
 	graph.Usage.merge(spineUsage)
 	graph.Usage.merge(groundUsage)
+	progress("grounded", groundedSummary(graph.Settled))
+	progress("spine", plural(len(choice.Stages), "stage"))
 	report("ground", time.Since(start), fmt.Sprintf("%s settled, %s open",
 		plural(len(graph.Settled), "point"), plural(len(graph.Open), "question")))
 	report("spine", time.Since(start), fmt.Sprintf("%s %s", plural(len(choice.Stages), "stage"), spreadLabel(choice)))
@@ -207,6 +221,7 @@ func Build(ctx context.Context, client Completer, goal string, options Options) 
 	for _, node := range nodes {
 		graph.Add(node)
 	}
+	progress("fan-out", plural(len(graph.Nodes), "node"))
 	report("fan-out", time.Since(start), plural(len(graph.Nodes), "node"))
 
 	// Binding and sizing read the same thing — the node catalog — and neither
@@ -231,6 +246,8 @@ func Build(ctx context.Context, client Completer, goal string, options Options) 
 	sizeUsage, sizeErr := sizeApply(graph, sizeResults)
 	graph.Usage.merge(bindUsage)
 	graph.Usage.merge(sizeUsage)
+	progress("sizing", fmt.Sprintf("%s — %s to split",
+		plural(len(graph.Nodes), "node"), countLabel(len(selectForExpansion(graph, options)))))
 	report("bind+size", time.Since(start), fmt.Sprintf("%s, %s", plural(graph.Edges(), "edge"), sizeSummary(graph)))
 
 	// Stage 1 is settled already. Binding has run over it — the only edge it can
@@ -240,7 +257,7 @@ func Build(ctx context.Context, client Completer, goal string, options Options) 
 	// final. Announcing them here rather than at the end is most of the win:
 	// they are also the nodes most likely to have no dependencies, which makes
 	// them exactly the ones something could start on immediately.
-	briefs := newBriefWriter(ctx, client, options.Briefs)
+	briefs := newBriefWriter(ctx, client, options.Briefs, progress)
 	settled := map[int]bool{}
 	pending := map[int]bool{}
 	for _, id := range selectForExpansion(graph, options) {
@@ -252,6 +269,7 @@ func Build(ctx context.Context, client Completer, goal string, options Options) 
 
 	added, auditUsage, auditErr := Audit(ctx, client, graph)
 	graph.Usage.merge(auditUsage)
+	progress("audit", fmt.Sprintf("%s restored", plural(added, "link")))
 	report("audit", time.Since(start), fmt.Sprintf("%s recovered", plural(added, "edge")))
 
 	// Bind under-connects by design and audit only asks whether a node is
@@ -280,8 +298,11 @@ func Build(ctx context.Context, client Completer, goal string, options Options) 
 			auditErr = errors.Join(auditErr, expandErr)
 		}
 		if spliced == 0 {
+			progress("expand", "nothing else needs splitting")
 			break
 		}
+		progress("expand", fmt.Sprintf("%s split — %s total",
+			plural(spliced, "node"), plural(len(graph.Nodes), "node")))
 		report("expand", time.Since(start), fmt.Sprintf("%s split, %s total",
 			plural(spliced, "node"), plural(len(graph.Nodes), "node")))
 
@@ -367,6 +388,67 @@ func sizeSummary(graph *Graph) string {
 		return "no work nodes"
 	}
 	return strings.Join(parts, "/")
+}
+
+// serialProgress makes concurrent pass completions safe for callbacks that
+// append to a journal or write to a stream. It also keeps count updates in the
+// order their completion numbers were assigned.
+func serialProgress(callback Progress) Progress {
+	if callback == nil {
+		return func(string, string) {}
+	}
+	var mutex sync.Mutex
+	return func(stage, detail string) {
+		mutex.Lock()
+		defer mutex.Unlock()
+		callback(stage, detail)
+	}
+}
+
+// groundedSummary names the scope variable the grounding pass actually bound.
+// Grounding commonly returns one sentence containing several concrete members
+// ("The three cities are ..."), so counting result rows alone would hide the
+// load-bearing number the user is waiting to learn.
+func groundedSummary(settled []string) string {
+	if len(settled) == 0 {
+		return "scope already clear"
+	}
+	for _, point := range settled {
+		fields := strings.Fields(point)
+		for index, field := range fields {
+			count, ok := cardinal(strings.Trim(field, ".,:;()[]{}\"'"))
+			if !ok || index+1 >= len(fields) {
+				continue
+			}
+			noun := strings.ToLower(strings.Trim(fields[index+1], ".,:;()[]{}\"'"))
+			if noun != "" {
+				return fmt.Sprintf("%d %s settled", count, noun)
+			}
+		}
+	}
+	return plural(len(settled), "scope decision") + " settled"
+}
+
+func cardinal(word string) (int, bool) {
+	words := map[string]int{
+		"one": 1, "two": 2, "three": 3, "four": 4, "five": 5,
+		"six": 6, "seven": 7, "eight": 8, "nine": 9, "ten": 10,
+	}
+	if count, ok := words[strings.ToLower(word)]; ok {
+		return count, true
+	}
+	var count int
+	if _, err := fmt.Sscanf(word, "%d", &count); err == nil && count >= 0 {
+		return count, true
+	}
+	return 0, false
+}
+
+func countLabel(count int) string {
+	if count == 1 {
+		return "1 node"
+	}
+	return fmt.Sprintf("%d nodes", count)
 }
 
 // structured performs one planning call and turns its reply into a Go value.

@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -156,7 +157,9 @@ func (s *Store) PostMessage(message Message) (Message, error) {
 
 	if message.NodeID != "" {
 		if err := requireNode(tx, message.NodeID); err != nil {
-			return Message{}, fmt.Errorf("post message: %w", err)
+			if !errors.Is(err, ErrNotFound) || !pendingMessageAnchor(tx, message) {
+				return Message{}, fmt.Errorf("post message: %w", err)
+			}
 		}
 	}
 	payload := messagePayload{
@@ -179,6 +182,23 @@ func (s *Store) PostMessage(message Message) (Message, error) {
 	message.Seq = seq
 	message.Time = at
 	return message, nil
+}
+
+// pendingMessageAnchor permits planning narration to name the root that a
+// pending splice will admit. The command link is the proof that the unknown ID
+// is provisional rather than a dangling message.
+func pendingMessageAnchor(tx *sql.Tx, message Message) bool {
+	if message.CommandSeq == 0 {
+		return false
+	}
+	var sessionID string
+	var kind CommandKind
+	var status CommandStatus
+	err := tx.QueryRow(`
+		SELECT session_id, kind, status FROM commands WHERE seq = ?`,
+		message.CommandSeq).Scan(&sessionID, &kind, &status)
+	return err == nil && kind == CommandSplice && status == CommandPending &&
+		sessionID == message.SessionID
 }
 
 // Messages returns thread messages after a journal sequence, oldest first.

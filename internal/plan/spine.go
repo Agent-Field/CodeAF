@@ -93,6 +93,10 @@ type SpineChoice struct {
 // it that way: a judge would add a serial round to the one path that has no
 // other serial work to hide behind.
 func Spine(ctx context.Context, client Completer, goal string, samples int) (*SpineChoice, Usage, error) {
+	return spineWithProgress(ctx, client, goal, samples, nil)
+}
+
+func spineWithProgress(ctx context.Context, client Completer, goal string, samples int, progress Progress) (*SpineChoice, Usage, error) {
 	goal = strings.TrimSpace(goal)
 	if goal == "" {
 		return nil, Usage{}, errors.New("goal is required")
@@ -108,12 +112,20 @@ func Spine(ctx context.Context, client Completer, goal string, samples int) (*Sp
 	}
 	results := make([]result, samples)
 	var group sync.WaitGroup
+	var progressMutex sync.Mutex
+	completed := 0
 	for index := 0; index < samples; index++ {
 		group.Add(1)
 		go func(index int) {
 			defer group.Done()
 			stages, usage, err := spineOnce(ctx, client, goal)
 			results[index] = result{stages: stages, usage: usage, err: err}
+			if progress != nil && samples > 1 {
+				progressMutex.Lock()
+				completed++
+				progress("spine", fmt.Sprintf("sample %d/%d", completed, samples))
+				progressMutex.Unlock()
+			}
 		}(index)
 	}
 	group.Wait()
