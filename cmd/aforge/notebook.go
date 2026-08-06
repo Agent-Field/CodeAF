@@ -11,7 +11,12 @@ import (
 	"time"
 
 	"github.com/Agent-Field/aforge-v2/internal/store"
+	"github.com/charmbracelet/lipgloss"
 )
+
+var notebookAliasStyle = lipgloss.NewStyle().
+	Foreground(lipgloss.AdaptiveColor{Light: "#686A78", Dark: "#6C7086"}).
+	Faint(true)
 
 func runNotebook(args []string) error {
 	return runNotebookTo(args, os.Stdout, time.Now())
@@ -85,16 +90,31 @@ func writeNotebook(output io.Writer, graph *store.Store, now time.Time) error {
 	if err != nil {
 		return err
 	}
+	aliases, err := graph.ScopeAliases()
+	if err != nil {
+		return err
+	}
 	table := tabwriter.NewWriter(output, 0, 4, 2, ' ', 0)
 	fmt.Fprintln(table, "SEQ\tSCOPE\tKIND\tAGE\tUSES\tRIDES\tBAD\tSTATUS\tBELIEF")
 	for _, fact := range facts {
+		canonical, err := graph.ResolveScope(fact.Scope)
+		if err != nil {
+			return err
+		}
 		outcome := outcomes[fact.Seq]
 		fmt.Fprintf(table, "#%d\t%s\t%s\t%s\t%d\t%d\t%d\t%s\t%s\n",
-			fact.Seq, fact.Scope, fact.Kind, store.AgeLabel(fact.Time, now), fact.Uses,
+			fact.Seq, canonical, fact.Kind, store.AgeLabel(fact.Time, now), fact.Uses,
 			outcome.Rides, outcome.Bad, fact.Status, oneLineFact(fact.Body))
 	}
 	if err := table.Flush(); err != nil {
 		return fmt.Errorf("write notebook: %w", err)
+	}
+	if len(aliases) > 0 {
+		fmt.Fprintln(output)
+		fmt.Fprintln(output, notebookAliasStyle.Render("aliases"))
+		for _, alias := range aliases {
+			fmt.Fprintln(output, notebookAliasStyle.Render("  "+alias.From+" → "+alias.To))
+		}
 	}
 	return nil
 }

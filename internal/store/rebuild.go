@@ -42,6 +42,9 @@ func (s *Store) Rebuild() error {
 	if _, err := tx.Exec(`DELETE FROM usage`); err != nil {
 		return fmt.Errorf("rebuild usage: %w", err)
 	}
+	if _, err := tx.Exec(`DELETE FROM scope_aliases`); err != nil {
+		return fmt.Errorf("rebuild scope aliases: %w", err)
+	}
 	if _, err := tx.Exec(`DELETE FROM facts`); err != nil {
 		return fmt.Errorf("rebuild facts: %w", err)
 	}
@@ -300,6 +303,13 @@ func replayEvent(tx *sql.Tx, event Event) error {
 			return fmt.Errorf("invalid fact restoration origin %q", payload.Origin)
 		}
 		return applyFactRestore(tx, payload, event.Seq)
+
+	case EventScopeAliased:
+		var payload scopeAliasedPayload
+		if err := json.Unmarshal(event.Payload, &payload); err != nil {
+			return err
+		}
+		return applyScopeAlias(tx, payload, event.Seq)
 
 	case EventRetrospectiveCheckpointed:
 		var payload retrospectiveCheckpointPayload

@@ -106,6 +106,9 @@ const (
 	EventFactQuarantined EventKind = "fact_quarantined"
 	// EventFactRestored returns a quarantined fact to active retrieval.
 	EventFactRestored EventKind = "fact_restored"
+	// EventScopeAliased shelves one emergent scope under another while keeping
+	// the old name valid as a retrieval cue.
+	EventScopeAliased EventKind = "scope_aliased"
 
 	// EventRetrospectiveCheckpointed records how much settled top-level work
 	// the periodic retrospective has already considered.
@@ -360,6 +363,9 @@ func Open(path string) (*Store, error) {
 	}
 	if _, err := db.Exec(factsSchema); err != nil {
 		return closeOnError(fmt.Errorf("initialize facts schema: %w", err))
+	}
+	if _, err := db.Exec(scopeAliasesSchema); err != nil {
+		return closeOnError(fmt.Errorf("initialize scope aliases schema: %w", err))
 	}
 	if _, err := db.Exec(retrospectiveSchema); err != nil {
 		return closeOnError(fmt.Errorf("initialize retrospective schema: %w", err))

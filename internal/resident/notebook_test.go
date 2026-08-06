@@ -39,6 +39,35 @@ func TestExtractCuesIncludesEveryExecutorTool(t *testing.T) {
 	}
 }
 
+func TestScopeAliasCandidateDetectionNormalizesTokens(t *testing.T) {
+	candidates := scopeAliasCandidates([]string{
+		"domain:podcasts",
+		"domain:podcast-production",
+		"domain:podcast_productions",
+		"domain:gardening",
+		"tool:podcast-production",
+		"repo:internal/store",
+		"repo:external/renderer",
+		"user",
+	})
+	for _, want := range []ScopePair{
+		{First: "domain:podcast-production", Second: "domain:podcast_productions"},
+		{First: "domain:podcast-production", Second: "domain:podcasts"},
+	} {
+		if !containsScopePair(candidates, want) {
+			t.Errorf("scope candidates = %+v, missing %+v", candidates, want)
+		}
+	}
+	for _, candidate := range candidates {
+		if strings.Contains(candidate.First, "gardening") || strings.Contains(candidate.Second, "gardening") {
+			t.Errorf("unrelated scope became a candidate: %+v", candidate)
+		}
+		if strings.HasPrefix(candidate.First, "domain:") != strings.HasPrefix(candidate.Second, "domain:") {
+			t.Errorf("cross-prefix candidate = %+v", candidate)
+		}
+	}
+}
+
 func TestContractPlaybookRetrievalOrdersBoundsAndCountsUses(t *testing.T) {
 	graph := openStore(t)
 	const scope = "repo:internal/parser"
@@ -320,9 +349,9 @@ func TestConsolidationFiresOnlyAboveThresholdAndReplacesScope(t *testing.T) {
 		recordScopeFacts(t, graph, "repo:threshold", consolidationThreshold)
 		calls := 0
 		reconciler := New(graph, nil, nil).WithConsolidator(
-			func(context.Context, string, []store.Fact) ([]Learned, error) {
+			func(context.Context, string, []store.Fact, *ScopePair) (Consolidation, error) {
 				calls++
-				return nil, nil
+				return Consolidation{}, nil
 			})
 		if err := reconciler.Tick(context.Background()); err != nil {
 			t.Fatalf("tick: %v", err)
@@ -337,16 +366,16 @@ func TestConsolidationFiresOnlyAboveThresholdAndReplacesScope(t *testing.T) {
 		recordScopeFacts(t, graph, "repo:overgrown", consolidationThreshold+1)
 		calls := 0
 		reconciler := New(graph, nil, nil).WithConsolidator(
-			func(_ context.Context, scope string, facts []store.Fact) ([]Learned, error) {
+			func(_ context.Context, scope string, facts []store.Fact, _ *ScopePair) (Consolidation, error) {
 				calls++
 				if scope != "repo:overgrown" || len(facts) != consolidationThreshold+1 {
 					t.Fatalf("consolidation input = scope %q facts %d", scope, len(facts))
 				}
 				midpoint := len(facts) / 2
-				return []Learned{
+				return Consolidation{Facts: []Learned{
 					{Scope: scope, Kind: store.FactLesson, Body: "overgrown uses bounded retries", Sources: factSeqs(facts[:midpoint])},
 					{Scope: scope, Kind: store.FactPlain, Body: "overgrown keeps a journal", Sources: factSeqs(facts[midpoint:])},
-				}, nil
+				}}, nil
 			})
 		if err := reconciler.Tick(context.Background()); err != nil {
 			t.Fatalf("tick: %v", err)
@@ -388,6 +417,54 @@ func TestConsolidationFiresOnlyAboveThresholdAndReplacesScope(t *testing.T) {
 	})
 }
 
+func TestConsolidationAppliesAtMostOneScopeMergePerTick(t *testing.T) {
+	graph := openStore(t)
+	for index, scope := range []string{
+		"domain:podcast",
+		"domain:podcasts",
+		"domain:podcast-production",
+	} {
+		if _, err := graph.RecordFact("", scope, store.FactPlain,
+			fmt.Sprintf("podcast note %d", index)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	calls := 0
+	reconciler := New(graph, nil, nil).WithConsolidator(
+		func(_ context.Context, scope string, facts []store.Fact, candidate *ScopePair) (Consolidation, error) {
+			calls++
+			if scope != "" || len(facts) != 0 || candidate == nil {
+				t.Fatalf("gardening-only consolidation = scope %q facts %d candidate %+v", scope, len(facts), candidate)
+			}
+			return Consolidation{ScopeAlias: &ScopeAliasJudgment{
+				Merge: true, Canonical: candidate.First,
+			}}, nil
+		})
+	if err := reconciler.Tick(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if err := reconciler.Tick(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	events, err := graph.Events(0, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	merges := 0
+	for _, event := range events {
+		if event.Kind == store.EventScopeAliased {
+			merges++
+		}
+	}
+	if calls != 1 || merges != 1 {
+		t.Fatalf("consolidator calls=%d scope merges=%d, want one of each", calls, merges)
+	}
+	aliases, err := graph.ScopeAliases()
+	if err != nil || len(aliases) != 1 {
+		t.Fatalf("scope aliases = %+v err=%v, want exactly one", aliases, err)
+	}
+}
+
 func TestConsolidationMergesNearDuplicatePlaybooksViaReplaces(t *testing.T) {
 	graph := openStore(t)
 	const scope = "repo:parser"
@@ -402,7 +479,7 @@ func TestConsolidationMergesNearDuplicatePlaybooksViaReplaces(t *testing.T) {
 	}
 	calls := 0
 	reconciler := New(graph, nil, nil).WithConsolidator(
-		func(_ context.Context, gotScope string, facts []store.Fact) ([]Learned, error) {
+		func(_ context.Context, gotScope string, facts []store.Fact, _ *ScopePair) (Consolidation, error) {
 			calls++
 			if gotScope != scope || len(facts) != len(originals) {
 				t.Fatalf("playbook consolidation = scope %q facts %d", gotScope, len(facts))
@@ -412,12 +489,12 @@ func TestConsolidationMergesNearDuplicatePlaybooksViaReplaces(t *testing.T) {
 					t.Fatalf("consolidation input kind = %q", fact.Kind)
 				}
 			}
-			return []Learned{{
+			return Consolidation{Facts: []Learned{{
 				Scope: scope, Kind: store.FactPlaybook,
 				Body:     "Run make check for parser changes; the repository wrapper configures generated fixtures",
 				Sources:  factSeqs(facts[1:]),
 				Replaces: facts[0].Seq,
-			}}, nil
+			}}}, nil
 		})
 	if err := reconciler.Tick(context.Background()); err != nil {
 		t.Fatal(err)
@@ -465,7 +542,7 @@ func TestConsolidationThreadsEvidenceAndMapsEachOriginal(t *testing.T) {
 
 	wantReplacement := make(map[int64]string, len(originals))
 	reconciler := New(graph, nil, nil).WithConsolidator(
-		func(_ context.Context, gotScope string, facts []store.Fact) ([]Learned, error) {
+		func(_ context.Context, gotScope string, facts []store.Fact, _ *ScopePair) (Consolidation, error) {
 			if gotScope != scope {
 				t.Fatalf("scope = %q, want %q", gotScope, scope)
 			}
@@ -483,10 +560,10 @@ func TestConsolidationThreadsEvidenceAndMapsEachOriginal(t *testing.T) {
 			// honored as an additional source by consolidation.
 			replaces := sourcesB[len(sourcesB)-1]
 			sourcesB = sourcesB[:len(sourcesB)-1]
-			return []Learned{
+			return Consolidation{Facts: []Learned{
 				{Scope: scope, Kind: store.FactLesson, Body: "consolidated A", Sources: sourcesA},
 				{Scope: scope, Kind: store.FactLesson, Body: "consolidated B", Sources: sourcesB, Replaces: replaces},
-			}, nil
+			}}, nil
 		})
 	if err := reconciler.Tick(context.Background()); err != nil {
 		t.Fatalf("consolidate: %v", err)
@@ -537,15 +614,15 @@ func TestConsolidationEmitsRetrievableStructuredUnsettledPair(t *testing.T) {
 	graph := openStore(t)
 	recordScopeFacts(t, graph, "user", consolidationThreshold+1)
 	reconciler := New(graph, nil, nil).WithConsolidator(
-		func(_ context.Context, scope string, facts []store.Fact) ([]Learned, error) {
+		func(_ context.Context, scope string, facts []store.Fact, _ *ScopePair) (Consolidation, error) {
 			midpoint := len(facts) / 2
 			pair := store.UnsettledPair{Approaches: []store.UnsettledApproach{
 				{Approach: "batch updates", Scope: "large mechanical changes", Evidence: factSeqs(facts[:midpoint])},
 				{Approach: "incremental updates", Scope: "small risky changes", Evidence: factSeqs(facts[midpoint:])},
 			}}
-			return []Learned{{
+			return Consolidation{Facts: []Learned{{
 				Scope: scope, Kind: store.FactUnsettled, Unsettled: &pair, Sources: factSeqs(facts),
-			}}, nil
+			}}}, nil
 		})
 	if err := reconciler.Tick(context.Background()); err != nil {
 		t.Fatal(err)
@@ -598,14 +675,14 @@ func TestConsolidatorQuarantinesOnlyRepeatedBadCooccurrence(t *testing.T) {
 	}
 
 	reconciler := New(graph, nil, nil).WithConsolidator(
-		func(_ context.Context, gotScope string, facts []store.Fact) ([]Learned, error) {
+		func(_ context.Context, gotScope string, facts []store.Fact, _ *ScopePair) (Consolidation, error) {
 			if gotScope != scope || len(facts) != consolidationThreshold+1 {
 				t.Fatalf("consolidation input = %q with %d facts", gotScope, len(facts))
 			}
-			return []Learned{
+			return Consolidation{Facts: []Learned{
 				{Quarantines: []int64{suspect.Seq}},
 				{Scope: scope, Kind: store.FactPlain, Body: "retained evidence remains", Sources: retained},
-			}, nil
+			}}, nil
 		})
 	if err := reconciler.Tick(context.Background()); err != nil {
 		t.Fatal(err)
@@ -951,6 +1028,15 @@ func factSeqs(facts []store.Fact) []int64 {
 		seqs = append(seqs, fact.Seq)
 	}
 	return seqs
+}
+
+func containsScopePair(pairs []ScopePair, want ScopePair) bool {
+	for _, pair := range pairs {
+		if pair == want {
+			return true
+		}
+	}
+	return false
 }
 
 func containsString(values []string, want string) bool {
