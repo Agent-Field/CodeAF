@@ -82,6 +82,55 @@ func TestFailureDistillationRecordsScopedQuirkOnce(t *testing.T) {
 	}
 }
 
+func TestFailedDeliveryGateReachesDistillerInput(t *testing.T) {
+	graph := openStore(t)
+	if err := graph.Splice(store.RootID, store.Subtree{Nodes: []store.NodeSpec{{
+		ID: "job", Brief: "deliver a supported answer", Stage: 1,
+	}}}, store.Provenance{Origin: store.OriginUser, SessionID: "session-gate", Intent: "include the benchmark"}); err != nil {
+		t.Fatal(err)
+	}
+
+	var distilled string
+	reconciler := New(graph, nil, nil).WithDistiller(
+		func(_ context.Context, _ string, outcome string, failed bool) ([]Learned, error) {
+			distilled = outcome
+			if failed {
+				t.Fatal("a delivered job with gate evidence was marked as an execution failure")
+			}
+			return nil, nil
+		})
+	if err := reconciler.Tick(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	claim, won, err := graph.Claim("job", "worker")
+	if err != nil || !won {
+		t.Fatalf("claim: won=%t err=%v", won, err)
+	}
+	if err := graph.Start(claim); err != nil {
+		t.Fatal(err)
+	}
+	if err := graph.RecordDeliveryGate("job", store.DeliveryGate{
+		Pass: false, Gap: "the benchmark result is missing", PolishClosed: true,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := graph.Complete(claim, "the polished answer includes benchmark 42"); err != nil {
+		t.Fatal(err)
+	}
+	if err := reconciler.Tick(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{
+		"the polished answer includes benchmark 42",
+		"the benchmark result is missing",
+		"The one polish pass closed it",
+	} {
+		if !strings.Contains(distilled, want) {
+			t.Fatalf("distiller input %q does not contain %q", distilled, want)
+		}
+	}
+}
+
 func TestNotebookDigestRetrievesPathScopeAndEmptyNotebook(t *testing.T) {
 	graph := openStore(t)
 	if got := NotebookDigest(graph, "inspect internal/resident/notebook.go", "fix cue lookup", 5); got != "" {

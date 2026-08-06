@@ -725,6 +725,14 @@ func (r *Reconciler) distillJob(ctx context.Context, node store.Node, failed boo
 		outcome += "\n\n[This job continued or revised earlier delivered work:\n" + prior +
 			"When the new instruction reworks an earlier delivery, the difference between them is evidence of the user's real standard — record the standard, not the episode.]"
 	}
+	if gate, ok, err := r.store.DeliveryGateFor(node.ID); err == nil && ok && !gate.Pass {
+		ending := "The one polish pass did not close it."
+		if gate.PolishClosed {
+			ending = "The one polish pass closed it."
+		}
+		outcome += "\n\n[Delivery gate evidence: the job delivered the outcome above, and the gate caught this missing element: " +
+			gate.Gap + " " + ending + " Distill the transferable lesson in what was delivered versus what the gate required.]"
+	}
 	facts, err := r.distill(ctx, node.Provenance.Intent, outcome, failed)
 	if err != nil {
 		return

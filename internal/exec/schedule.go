@@ -252,6 +252,11 @@ func leafShape(node *plan.Node) string {
 	}
 }
 
+// LeafShape exposes the scheduler's population key to resident execution. Both
+// surfaces must write observations into the same ledger cells or neither has
+// enough evidence to learn a useful ordering.
+func LeafShape(node *plan.Node) string { return leafShape(node) }
+
 // drain lets in-flight nodes land after the run has been told to stop. Their
 // contexts are already cancelled, so each executor's own landing procedure is
 // what runs here; the grace period only bounds a worker that is wedged past

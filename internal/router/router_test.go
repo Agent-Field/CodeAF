@@ -26,6 +26,37 @@ type panelServer struct {
 	reply  func(model string) (int, string)
 }
 
+type panelRoundTrip func(*http.Request) (*http.Response, error)
+
+func (roundTrip panelRoundTrip) RoundTrip(request *http.Request) (*http.Response, error) {
+	return roundTrip(request)
+}
+
+func memoryPanel(reply func(model string) (int, string)) (*http.Client, *panelServer) {
+	panel := &panelServer{reply: reply}
+	client := &http.Client{Transport: panelRoundTrip(func(request *http.Request) (*http.Response, error) {
+		status, body := http.StatusNotFound, ""
+		if strings.HasSuffix(request.URL.Path, "/chat/completions") {
+			payload, _ := io.ReadAll(request.Body)
+			var decoded struct {
+				Model string `json:"model"`
+			}
+			_ = json.Unmarshal(payload, &decoded)
+			panel.mutex.Lock()
+			panel.served = append(panel.served, decoded.Model)
+			panel.mutex.Unlock()
+			status, body = panel.reply(decoded.Model)
+		}
+		return &http.Response{
+			StatusCode: status,
+			Header:     http.Header{"Content-Type": []string{"application/json"}},
+			Body:       io.NopCloser(strings.NewReader(body)),
+			Request:    request,
+		}, nil
+	})}
+	return client, panel
+}
+
 func newPanel(t *testing.T, reply func(model string) (int, string)) (*httptest.Server, *panelServer) {
 	t.Helper()
 	panel := &panelServer{reply: reply}
@@ -94,6 +125,67 @@ func threeModels() Panel {
 		{Slug: "mid/two", Price: 0.90},
 		{Slug: "top/three", Price: 2.50},
 	}}
+}
+
+// TestPinnedOpenerKeepsLeafLearningAndEscalation covers the resident surface's
+// contract in one path: the picker wins the first attempt, the verdict reaches
+// the shape-keyed ledger, and the one retry still jumps to the panel ceiling.
+func TestPinnedOpenerKeepsLeafLearningAndEscalation(t *testing.T) {
+	httpClient, panel := memoryPanel(func(model string) (int, string) {
+		return http.StatusOK, answer(model, "working")
+	})
+	dir := t.TempDir()
+	routed, err := NewPinned(threeModels(), provider.Config{
+		APIKey: "test-key", BaseURL: "http://panel.test", HTTPClient: httpClient,
+	}, dir, "mid/two")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = routed.Close() })
+
+	first := provider.WithCallShape(context.Background(), provider.ClassExecLeaf, 0, "atomic")
+	if _, err := routed.CompleteWithMessages(first, userMessages("turn")); err != nil {
+		t.Fatal(err)
+	}
+	provider.Report(first, provider.VerdictSemanticFailure)
+
+	retry := provider.WithCallShape(context.Background(), provider.ClassExecLeaf, 1, "atomic")
+	if _, err := routed.CompleteWithMessages(retry, userMessages("turn")); err != nil {
+		t.Fatal(err)
+	}
+	provider.Report(retry, provider.VerdictVerifiedSuccess)
+
+	if got := panel.calls(); len(got) != 2 || got[0] != "mid/two" || got[1] != "top/three" {
+		t.Fatalf("calls = %v, want the explicit opener then the ceiling", got)
+	}
+	leafClass := shaped(provider.ClassExecLeaf, "atomic")
+	if rating, count := routed.Ledger().Rating("mid/two", leafClass, 0); count != 1 || rating >= 0 {
+		t.Fatalf("opener rating = %.3f over %d observations, want one negative leaf verdict", rating, count)
+	}
+	if rating, count := routed.Ledger().Rating("top/three", leafClass, 0); count != 1 || rating <= 0 {
+		t.Fatalf("ceiling rating = %.3f over %d observations, want one positive leaf verdict", rating, count)
+	}
+}
+
+func TestPinnedRouterCanPreferAnIndependentJudge(t *testing.T) {
+	httpClient, panel := memoryPanel(func(model string) (int, string) {
+		return http.StatusOK, answer(model, `{"stages":[]}`)
+	})
+	routed, err := NewPinned(threeModels(), provider.Config{
+		APIKey: "test-key", BaseURL: "http://panel.test", HTTPClient: httpClient,
+	}, t.TempDir(), "mid/two")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = routed.Close() })
+
+	ctx := provider.WithCall(WithAvoidModel(context.Background(), "mid/two"), provider.ClassPlanAudit)
+	if _, err := routed.CompleteWithMessages(ctx, userMessages("judge"), ai.WithSchema(testSchema)); err != nil {
+		t.Fatal(err)
+	}
+	if got := panel.calls(); len(got) != 1 || got[0] == "mid/two" {
+		t.Fatalf("judge calls = %v, want a different opener", got)
+	}
 }
 
 // TestCascadeEscalatesOnFormatFailureAndStopsOnSuccess is the policy itself. The

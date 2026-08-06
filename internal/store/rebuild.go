@@ -235,6 +235,12 @@ func replayEvent(tx *sql.Tx, event Event) error {
 		}
 		return applyUsageView(tx, payload, event.Seq, event.Time)
 
+	case EventDeliveryGate:
+		// Gate evidence is journal-native and has no materialized view. Decode it
+		// during reconstruction so a corrupt payload still fails loudly.
+		var payload DeliveryGate
+		return json.Unmarshal(event.Payload, &payload)
+
 	case EventFactLearned:
 		var payload factPayload
 		if err := json.Unmarshal(event.Payload, &payload); err != nil {
