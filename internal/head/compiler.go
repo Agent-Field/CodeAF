@@ -17,7 +17,7 @@ import (
 const compilerSystemPrompt = `You are the intent compiler for an asynchronous task graph. Apply ASSUME-AND-DECLARE.
 
 Turn the user's verbatim instruction and the current graph context into a complete execution brief. Return exactly one JSON object with this shape and no text outside it:
-{"goal":"...","deliverable":"...","budget":"...","scale":"lookup|task|project","builds_on":["<job id>"],"assumptions":["..."],"question":"","trial_of":0}
+{"goal":"...","deliverable":"...","budget":"...","scale":"lookup|task|project","builds_on":["<job id>"],"assumptions":["..."],"question":"","question_options":[{"label":"...","value":"..."}],"trial_of":0}
 
 Rules:
 - State a clear goal that names the final deliverable, what success means, and the evidence standard that will prove it.
@@ -29,6 +29,7 @@ Rules:
 - Fill every missing decision with a practical default: scope, audience, format, quality bar, evidence, timing, tools, and constraints whenever the user did not settle them.
 - List every default you supplied explicitly in assumptions. Assumptions are revisable receipts, not hidden guesses.
 - Fill gaps with defaults, with two exceptions that go in "question" (empty otherwise). First: a gap both high-consequence and hard to reverse — spending real money externally, deleting or overwriting something that exists, sending or publishing on the user's behalf, or a wrong guess that would waste most of the budget — asked as ONE crisp casual question stating your best-guess default so the user can simply say yes. Second: referent ambiguity — the instruction points at earlier work and MORE THAN ONE prior job plausibly matches. Guessing the referent wastes the whole job and reads as not listening; ask which one, listing the candidates as numbered options identified by the user's own words from each job. A single plausible match is not ambiguity. Never ask about reversible preferences, and never leave placeholders such as TBD or unknown.
+- When the answers are enumerable, put them in question_options in the order they should be shown. Options never prevent a free-text answer. Use [] when the question has no useful choices.
 - The trial-shaping rule fires only on the explicit notebook flag "an unsettled pair applies here: fact #N". When that flag appears, set trial_of to N and shape the goal so a small, cheap trial of both named approaches runs first and the bulk of the work follows whichever proves out. When no such flag appears, set trial_of to 0. Never infer a trial from ordinary prose.
 - The user's words are the authority. Do not narrow or replace them with an inferred request.
 - End goal with a line beginning "Verbatim request:" followed by the user's instruction exactly as supplied.
@@ -66,6 +67,11 @@ type Brief struct {
 	// TrialOf is the fact sequence of the retrieved unsettled pair that this
 	// brief deliberately compares. Zero means no experiment was shaped.
 	TrialOf int64 `json:"trial_of"`
+
+	// QuestionOptions is the generic selectable askback surface. Charter is set
+	// only by the temporal compiler; both omit cleanly for ordinary work.
+	QuestionOptions []store.QuestionOption `json:"question_options,omitempty"`
+	Charter         *store.CharterSpec     `json:"charter,omitempty"`
 }
 
 // Compiler converts verbatim user intent into a planning brief without asking
@@ -85,6 +91,9 @@ func NewCompiler(client Client) *Compiler {
 func (c *Compiler) Compile(ctx context.Context, instruction string, graphContext string) (Brief, error) {
 	if c == nil || c.client == nil {
 		return Brief{}, errors.New("compile intent: nil client")
+	}
+	if RecognizesStandingIntent(instruction) {
+		return c.compileStanding(ctx, instruction, graphContext)
 	}
 	user := "Current graph context:\n" + graphContext +
 		"\n\nUser instruction (verbatim; preserve exactly):\n" + instruction
@@ -107,8 +116,10 @@ func (c *Compiler) Compile(ctx context.Context, instruction string, graphContext
 		// A question suspends the brief: the rest of the fields are drafts at
 		// best, and validating them would reject the ask itself.
 		brief.Question = question
+		brief.QuestionOptions = normalizeQuestionOptions(brief.QuestionOptions)
 		return brief, nil
 	}
+	brief.QuestionOptions = nil
 	if err := validateBrief(brief); err != nil {
 		return Brief{}, fmt.Errorf("compile intent: %w", err)
 	}

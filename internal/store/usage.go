@@ -56,8 +56,9 @@ type JobUsage struct {
 
 // RailAdjustment is one journaled increase to today's dollar ceiling.
 type RailAdjustment struct {
-	Amount float64 `json:"amount"`
-	Origin string  `json:"origin"`
+	Amount    float64 `json:"amount"`
+	Origin    string  `json:"origin"`
+	Unlimited bool    `json:"unlimited,omitempty"`
 }
 
 // DailyRail is today's policy state. Base zero is unlimited; Raised remains
@@ -242,6 +243,28 @@ func (s *Store) RaiseDailyRail(amount float64, origin string) error {
 	return nil
 }
 
+// RaiseDailyRailUnlimited journals consent to remove today's ceiling. The
+// configured default remains unchanged and returns at local midnight.
+func (s *Store) RaiseDailyRailUnlimited(origin string) error {
+	origin = strings.TrimSpace(origin)
+	if origin == "" {
+		return fmt.Errorf("raise daily rail unlimited: %w: origin is required", ErrInvalid)
+	}
+	tx, err := s.db.BeginTx(context.Background(), nil)
+	if err != nil {
+		return fmt.Errorf("raise daily rail unlimited: %w", err)
+	}
+	defer tx.Rollback()
+	payload := RailAdjustment{Origin: origin, Unlimited: true}
+	if _, _, err := appendEvent(tx, "", EventRailRaised, payload); err != nil {
+		return fmt.Errorf("raise daily rail unlimited: %w", err)
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("raise daily rail unlimited: %w", err)
+	}
+	return nil
+}
+
 // PauseDailyRail checks policy immediately before a claim or replan. At the
 // rail it atomically posts at most one agent question since the latest raise;
 // callers simply stop claiming and try again on their next tick.
@@ -314,13 +337,18 @@ func dailyRailAt(query rowQuerier, base float64, now time.Time) (DailyRail, erro
 		formatTime(start), formatTime(end)).Scan(&spend); err != nil {
 		return DailyRail{}, fmt.Errorf("read spend: %w", err)
 	}
+	var unlimited int
 	if err := query.QueryRow(`
-		SELECT COALESCE(SUM(CAST(json_extract(payload, '$.amount') AS REAL)), 0)
+		SELECT COALESCE(SUM(CAST(json_extract(payload, '$.amount') AS REAL)), 0),
+		       COALESCE(MAX(CASE WHEN json_extract(payload, '$.unlimited') = 1 THEN 1 ELSE 0 END), 0)
 		FROM events WHERE kind = ? AND ts >= ? AND ts < ?`,
-		EventRailRaised, formatTime(start), formatTime(end)).Scan(&raised); err != nil {
+		EventRailRaised, formatTime(start), formatTime(end)).Scan(&raised, &unlimited); err != nil {
 		return DailyRail{}, fmt.Errorf("read raises: %w", err)
 	}
-	rail := DailyRail{Base: base, Raised: raised, Spend: spend, Ceiling: base + raised, Unlimited: base == 0}
+	rail := DailyRail{
+		Base: base, Raised: raised, Spend: spend, Ceiling: base + raised,
+		Unlimited: base == 0 || unlimited != 0,
+	}
 	rail.Reached = !rail.Unlimited && rail.Spend >= rail.Ceiling
 	return rail, nil
 }

@@ -108,12 +108,14 @@ func runChat(args []string) error {
 				return resident.Compiled{}, err
 			}
 			return resident.Compiled{
-				Goal:        brief.Goal,
-				Assumptions: brief.Assumptions,
-				Scale:       brief.Scale,
-				TrialOf:     brief.TrialOf,
-				BuildsOn:    brief.BuildsOn,
-				Question:    brief.Question,
+				Goal:            brief.Goal,
+				Assumptions:     brief.Assumptions,
+				Scale:           brief.Scale,
+				TrialOf:         brief.TrialOf,
+				BuildsOn:        brief.BuildsOn,
+				Question:        brief.Question,
+				QuestionOptions: brief.QuestionOptions,
+				Charter:         brief.Charter,
 			}, nil
 		},
 		planSubtree(settings, taskClient, plans, graph),
