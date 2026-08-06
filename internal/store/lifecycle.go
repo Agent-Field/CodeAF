@@ -335,6 +335,42 @@ func (s *Store) Release(claim Claim) error {
 	return nil
 }
 
+// ReleaseOrphans returns every claimed or running node to pending. It exists
+// for surface startup: the chat store has exactly one resident writer, so any
+// claim found at open belongs to a process that died or was closed mid-run —
+// the user watched a leaf sit "running" for 49 minutes with no worker behind
+// it. Each release goes through the ordinary CAS path with the recorded
+// owner and token, so the journal tells the truth and a genuinely live
+// worker (a race at the margin) keeps its claim by failing our stale CAS.
+func (s *Store) ReleaseOrphans() ([]string, error) {
+	rows, err := s.db.Query(
+		`SELECT id, owner, claim_token FROM nodes WHERE status IN (?, ?)`,
+		Claimed, Running)
+	if err != nil {
+		return nil, fmt.Errorf("release orphans: %w", err)
+	}
+	claims := make([]Claim, 0, 4)
+	for rows.Next() {
+		var claim Claim
+		if err := rows.Scan(&claim.ID, &claim.Owner, &claim.Token); err != nil {
+			rows.Close()
+			return nil, fmt.Errorf("release orphans: %w", err)
+		}
+		claims = append(claims, claim)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, fmt.Errorf("release orphans: %w", err)
+	}
+	released := make([]string, 0, len(claims))
+	for _, claim := range claims {
+		if err := s.Release(claim); err != nil {
+			continue
+		}
+		released = append(released, claim.ID)
+	}
+	return released, nil
+}
+
 func requireChanged(tx *sql.Tx, result sql.Result, claim Claim, allowed ...Status) error {
 	changed, err := result.RowsAffected()
 	if err != nil {
