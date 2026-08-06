@@ -142,7 +142,7 @@ func deriveJobCards(
 			ID:        root.ID,
 			RootID:    root.ID,
 			State:     cardWorking,
-			Title:     nodeLabel(root),
+			Title:     nodeLabel(root, root),
 			Ask:       strings.TrimSpace(root.Provenance.Intent),
 			Reading:   strings.TrimSpace(root.Brief),
 			BirthSeq:  root.CreatedSeq,
@@ -171,7 +171,7 @@ func deriveJobCards(
 			}
 			card.Parts = append(card.Parts, cardPart{
 				NodeID: node.ID,
-				Title:  nodeLabel(node),
+				Title:  nodeLabel(node, root),
 				Status: node.Status,
 				Result: firstLine(result),
 			})
@@ -660,7 +660,7 @@ func (m *Model) renderJobCard(card jobCard, width int, expanded bool, atLine int
 		if expanded && card.Outcome != "" {
 			addText("outcome · "+card.Outcome, mutedStyle)
 		}
-		rendered := m.renderAnswer(*card.Deliverable, max(1, width-4))
+		rendered, foldedAnswer := m.renderAnswerFold(*card.Deliverable, max(1, width-4))
 		bodyStart := atLine + len(lines)
 		for _, line := range strings.Split(rendered, "\n") {
 			lines = append(lines, mutedStyle.Faint(true).Render("│ ")+line)
@@ -669,6 +669,13 @@ func (m *Model) renderJobCard(card jobCard, width int, expanded bool, atLine int
 			m.chatMessageRows = append(m.chatMessageRows, chatMessageRow{
 				start: bodyStart, end: bodyStart + lipgloss.Height(rendered) - 1, seq: card.Deliverable.Seq,
 			})
+			if foldedAnswer {
+				m.chatExpandRows = append(m.chatExpandRows, chatExpandRow{
+					line:   bodyStart + lipgloss.Height(rendered) - 1,
+					action: chatExpandMessage,
+					seq:    card.Deliverable.Seq,
+				})
+			}
 		}
 	}
 
