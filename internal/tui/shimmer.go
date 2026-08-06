@@ -63,23 +63,53 @@ func (m *Model) renderShimmerLines(width int) string {
 	return strings.Join(lines, "\n")
 }
 
+// The sweep is a small bright band crossing the line left→right: a primary-ink
+// core with softened-ink shoulders (the leading edge eases in, matte, no new
+// colors) over the muted base. One full sweep takes ~12 animation ticks —
+// about 1.4s at the 120ms tick — regardless of line length.
+const (
+	sweepCoreRadius = 2
+	sweepSoftRadius = 5
+	sweepTicks      = 12
+)
+
+var (
+	sweepBaseStyle = lipgloss.NewStyle().Foreground(muted)
+	sweepSoftStyle = lipgloss.NewStyle().Foreground(ink).Faint(true)
+	sweepCoreStyle = lipgloss.NewStyle().Foreground(ink)
+)
+
+// sweepCenter returns the highlight's cell position at an animation frame.
+// The center starts off-screen left, advances rightward every tick, and exits
+// off-screen right before wrapping, so the phase math can only move the band
+// left→right.
+func sweepCenter(frame, cells int) int {
+	period := cells + 2*sweepSoftRadius + 1
+	step := max(1, period/sweepTicks)
+	return (frame*step)%period - sweepSoftRadius
+}
+
 func (m *Model) matteSweep(text string) string {
 	if text == "" {
 		return ""
 	}
-	colors := []lipgloss.AdaptiveColor{muted, muted, ink, ink, muted, muted}
-	runes := utf8.RuneCountInString(text)
-	phase := (m.shimmerFrame / 4) % len(colors)
+	center := sweepCenter(m.shimmerFrame, utf8.RuneCountInString(text))
 	var rendered strings.Builder
 	rendered.Grow(len(text) * 2)
 	index := 0
 	for _, char := range text {
-		band := 0
-		if runes > 1 {
-			band = index * len(colors) / runes
+		distance := index - center
+		if distance < 0 {
+			distance = -distance
 		}
-		color := colors[(band+phase)%len(colors)]
-		rendered.WriteString(lipgloss.NewStyle().Foreground(color).Render(string(char)))
+		style := sweepBaseStyle
+		switch {
+		case distance <= sweepCoreRadius:
+			style = sweepCoreStyle
+		case distance <= sweepSoftRadius:
+			style = sweepSoftStyle
+		}
+		rendered.WriteString(style.Render(string(char)))
 		index++
 	}
 	return rendered.String()
