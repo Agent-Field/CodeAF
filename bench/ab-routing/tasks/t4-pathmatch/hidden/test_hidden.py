@@ -11,6 +11,13 @@ Groups 1–4 are the parts any competent glob implementation gets right. Groups
 deliberately diverges from gitignore, and are where a submission that
 pattern-matched its way to a familiar answer loses.
 
+  Round 2 hardened it in two ways. The brief no longer flags which rules are
+  unusual — round 1 carried a section headed "the four divergences, read these
+  twice" with worked examples, and arm A scored 12/12 twice, because being told
+  what is surprising is most of the work. And two groups were added that reading
+  cannot supply on its own: nested `**` needs real backtracking, and the
+  performance floor needs patterns compiled once instead of per path.
+
   1  literals and case
   2  `?`
   3  `*` stays inside a segment
@@ -21,9 +28,13 @@ pattern-matched its way to a familiar answer loses.
   8  compile of blanks, comments and errors
   9  `[!…]` negates and `[^…]` does not          (divergence)
  10  directory-only means the path ends in `/`   (divergence)
- 11  first matching pattern wins                 (divergence)
+ 11  anchored patterns first, then list order    (divergence)
  12  select ordering and de-duplication          (divergence)
+ 13  nested `**` backtracks correctly
+ 14  patterns are compiled once, not per path
 """
+
+import time
 
 import pytest
 
@@ -228,10 +239,9 @@ def test_GROUP_10_without_the_slash_a_directory_still_matches():
     assert matches("build", "build/")
 
 
-# ---- group 11: first matching pattern wins  (divergence) --------------------
+# ---- group 11: precedence  (divergence) -------------------------------------
 
 def test_GROUP_11_first_match_decides_not_last():
-    # gitignore would let the later `!` win; here the first pattern decides.
     assert select(["*.py", "!keep.py"], ["keep.py"]) == ["keep.py"]
 
 
@@ -243,9 +253,17 @@ def test_GROUP_11_unmatched_paths_are_not_selected():
     assert select(["*.py"], ["a.txt"]) == []
 
 
-def test_GROUP_11_later_patterns_still_apply_to_other_paths():
-    chosen = select(["!secret.py", "*.py"], ["secret.py", "a.py", "b.txt"])
-    assert chosen == ["a.py"]
+def test_GROUP_11_anchored_patterns_are_consulted_before_unanchored_ones():
+    # `*.py` is unanchored and comes first in the list; `!src/keep.py` is
+    # anchored, so it is consulted first anyway and the path is excluded.
+    assert select(["*.py", "!src/keep.py"], ["src/keep.py"]) == []
+    # and the same two patterns leave an unrelated path to the unanchored rule
+    assert select(["*.py", "!src/keep.py"], ["src/other.py"]) == ["src/other.py"]
+
+
+def test_GROUP_11_within_a_group_list_order_still_decides():
+    assert select(["src/*.py", "!src/keep.py"], ["src/keep.py"]) == ["src/keep.py"]
+    assert select(["!src/keep.py", "src/*.py"], ["src/keep.py"]) == []
 
 
 # ---- group 12: select ordering and de-duplication  (divergence) -------------
@@ -266,3 +284,52 @@ def test_GROUP_12_duplicate_of_an_excluded_path_stays_excluded():
 def test_GROUP_12_empty_inputs():
     assert select([], ["a.py"]) == []
     assert select(["*.py"], []) == []
+
+
+# ---- group 13: nested `**` backtracking -------------------------------------
+
+def test_GROUP_13_two_double_stars_in_one_pattern():
+    assert matches("a/**/b/**/c", "a/b/c")
+    assert matches("a/**/b/**/c", "a/x/b/y/c")
+    assert matches("a/**/b/**/c", "a/x/y/b/z/w/c")
+    assert not matches("a/**/b/**/c", "a/x/y/c")
+
+
+def test_GROUP_13_double_star_must_backtrack_past_a_false_start():
+    # A greedy or leftmost-only match commits to the first `b` and fails.
+    assert matches("a/**/b/c", "a/b/x/b/c")
+    assert matches("**/b/**/b/c", "b/q/b/c")
+
+
+def test_GROUP_13_double_star_around_wildcards():
+    assert matches("**/*.py", "a/b/main.py")
+    assert matches("**/*.py", "main.py")
+    assert not matches("**/*.py", "main.txt")
+
+
+def test_GROUP_13_adjacent_double_stars_collapse():
+    assert matches("a/**/**/b", "a/b")
+    assert matches("a/**/**/b", "a/x/y/b")
+
+
+# ---- group 14: compiled once, not per path ----------------------------------
+
+def test_GROUP_14_select_scales_to_many_paths():
+    patterns = [f"src/mod{n:03d}/**/*.py" for n in range(200)]
+    patterns.append("*.py")
+    paths = [f"src/mod{n % 200:03d}/pkg/file{n}.py" for n in range(20000)]
+    started = time.monotonic()
+    chosen = select(patterns, paths)
+    elapsed = time.monotonic() - started
+    assert len(chosen) == 20000
+    # Compiling 201 patterns once and reusing them is comfortably inside this.
+    # Recompiling per path is 4,020,000 compilations and is not.
+    assert elapsed < 20.0, f"{elapsed:.1f}s for 200 patterns over 20k paths"
+
+
+def test_GROUP_14_matches_is_not_quadratic_in_pattern_length():
+    started = time.monotonic()
+    for _ in range(2000):
+        assert matches("a/**/b/**/c/**/d", "a/x/b/y/c/z/d")
+    elapsed = time.monotonic() - started
+    assert elapsed < 10.0, f"{elapsed:.1f}s for 2000 nested-** matches"

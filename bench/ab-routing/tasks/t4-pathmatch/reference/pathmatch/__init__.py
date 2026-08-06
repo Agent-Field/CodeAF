@@ -216,15 +216,18 @@ def matches(pattern, path):
 def select(patterns, paths):
     """Paths chosen by the pattern list, in the order `paths` gave them.
 
-    The **first** matching pattern decides, which is the reverse of the rule
-    the obvious reference implementation uses. A path no pattern matches is not
-    selected.
+    Two ordering rules stack, and the second is the one a single pass over the
+    list gets wrong: every anchored pattern is consulted before any unanchored
+    one, and only within a group does list order decide. The first pattern to
+    match under that ordering settles the path.
     """
     compiled = []
     for pattern in patterns:
         item = compile_pattern(pattern)
         if item is not None:
             compiled.append(item)
+    # Stable, so list order survives inside each group.
+    compiled.sort(key=lambda item: 0 if item.anchored else 1)
 
     # Duplicates collapse to their first appearance before anything is decided,
     # so a repeated path cannot appear twice in the output whatever it matches.
