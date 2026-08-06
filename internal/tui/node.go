@@ -698,6 +698,10 @@ func (m *Model) scrollNodeAt(x, y int, down bool) bool {
 }
 
 func (m *Model) updateMouseClick(x, y int) bool {
+	if m.headerVoiceBounds.contains(x, y) {
+		m.pendingMouseCmd = m.openModelPicker("voice")
+		return true
+	}
 	if m.headerTasksBounds.contains(x, y) {
 		if m.nodeViewID != "" {
 			m.closeNodeView()
@@ -710,6 +714,24 @@ func (m *Model) updateMouseClick(x, y int) bool {
 	}
 	if m.paletteCloseBounds.contains(x, y) {
 		m.closePalette()
+		return true
+	}
+	if m.palette == paletteModel {
+		if role, ok := m.modelRoleAtPalettePoint(x, y); ok {
+			m.pendingMouseCmd = m.selectModelRole(role)
+			return true
+		}
+		if choice, ok := m.modelChoiceAtPaletteLine(y); ok {
+			m.pendingMouseCmd = m.modelPickerSeam().selectChoice(choice)
+			return true
+		}
+	}
+	if m.voiceCancelBounds.contains(x, y) {
+		m.pendingMouseCmd = m.cancelVoice()
+		return true
+	}
+	if m.micBounds.contains(x, y) {
+		m.pendingMouseCmd = m.toggleVoice()
 		return true
 	}
 	if m.inputBounds.contains(x, y) {
