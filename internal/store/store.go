@@ -78,6 +78,7 @@ const (
 	EventEdgeAdded      EventKind = "edge_added"
 	EventEdgeRemoved    EventKind = "edge_removed"
 	EventNodeAmended    EventKind = "node_amended"
+	EventNodeReparented EventKind = "node_reparented"
 	EventNodeCancelled  EventKind = "node_cancelled"
 
 	// Thread events: the conversation and its asynchronous mutation requests
