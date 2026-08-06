@@ -236,7 +236,22 @@ done
 # rather than under runs/ — the per-cell copies live in the gitignored results
 # tree, and the arm's final learned state is a deliverable in its own right.
 if [ "$LEDGER_MODE" = "shared" ]; then
-  FINAL="$HERE/ledger-arm${ARM_UC}-${LEDGER_MODE}"
+  # LEDGER_OUT names where the finished ledger is published. It is a parameter
+  # because the default very nearly destroyed the experiment: an arm-B run with
+  # any RESULTS directory published to ledger-armB-shared and `rm -rf`'d
+  # whatever was there, which is where Phase B's collapsed ledger -- the input
+  # to the B2-warm condition -- was being preserved. It was recovered from git;
+  # a second copy would not have been.
+  FINAL="${LEDGER_OUT:-$HERE/ledger-arm${ARM_UC}-${LEDGER_MODE}}"
+  if [ -e "$FINAL" ] && [ -z "${LEDGER_OUT_OVERWRITE:-}" ]; then
+    echo "refusing to overwrite $FINAL — it already exists." >&2
+    echo "Set LEDGER_OUT to publish elsewhere, or LEDGER_OUT_OVERWRITE=1 if" >&2
+    echo "replacing it is really what you want." >&2
+    echo "the run itself is finished; only publication was skipped" >&2
+    FINAL=""
+  fi
+fi
+if [ -n "${FINAL:-}" ]; then
   rm -rf "$FINAL"
   mkdir -p "$FINAL"
   cp -R "$SHARED_LEDGER/." "$FINAL/" 2>/dev/null

@@ -142,11 +142,21 @@ def run(rows, events, rated, min_graded):
     for row, e in attempts:
         if row["task"] in HARD_TASKS and not row["success"] and e.get("rung", 0) > 0:
             reached.add(e.get("model"))
+    # With escalate-to-ceiling, any escalation on a hard task should land on the
+    # top model directly; a hard cell that failed without ever escalating is a
+    # different finding and is reported rather than counted as a pass.
+    escalated_cells = {(row["task"], row["rep"]) for row, e in attempts
+                       if row["task"] in HARD_TASKS and not row["success"]
+                       and e.get("rung", 0) > 0}
+    failed_cells = {(row["task"], row["rep"]) for row, _e in attempts
+                    if row["task"] in HARD_TASKS and not row["success"]}
     checks.add(f"A2 {short(TOP) if TOP else 'the top rung'} is reached by an "
                f"escalation on a failed hard task",
                TOP in reached,
                f"models reached above rung 0 on failed hard cells: "
-               f"{sorted(short(m) for m in reached) or 'none'}")
+               f"{sorted(short(m) for m in reached) or 'none'}; "
+               f"{len(escalated_cells)} of {len(failed_cells)} failed hard cells "
+               f"escalated at all")
 
     # A3: no escalation lands on a model rated below the one it left.
     bad = []
@@ -198,15 +208,35 @@ def run(rows, events, rated, min_graded):
     # A6: leaf ratings are conditioned on something.
     leaf_keys = [key for key in rated if key[1].startswith("exec.leaf")]
     distinct = {key[1] for key in leaf_keys}
-    checks.add("A6 exec.leaf ratings are conditioned, not one global class",
-               len(distinct) > 1,
-               f"leaf classes in the ledger: {sorted(distinct) or 'none'}")
+    shaped = {cls for cls in distinct if "/" in cls}
+    # One shaped key is already conditioning; the unshaped `exec.leaf` on its own
+    # is the Phase B state. With no graded leaf at all there is nothing to
+    # condition and the check is advisory rather than failed.
+    checks.add("A6 exec.leaf ratings are conditioned by leaf shape",
+               bool(shaped) or not distinct,
+               f"leaf classes in the ledger: {sorted(distinct) or 'none'}",
+               advisory=not distinct)
 
     # A7: a leaf escalation records its chain.
     missing = sum(1 for _row, e in attempts
                   if e.get("rung", 0) > 0 and not e.get("escalation"))
     checks.add("A7 every escalation records its chain", missing == 0,
                f"{missing} attempts above rung 0 with an empty `escalation`")
+
+    # A8: deterministic exploration should reach panel members the ordering
+    # would never open on. This is the mechanism that was entirely absent in
+    # Phase B, where three of five models had zero observations after ~1,000
+    # calls, so it is worth checking on its own rather than only through A4.
+    # Keyed strictly on the router's own `explore` flag. An earlier draft fell
+    # back to "a non-incumbent opened at rung 0", which passed on Phase B data —
+    # where gemma opening calls was the collapse, not exploration. A heuristic
+    # that reports the bug as the fix is worse than no check at all.
+    explored = {e.get("model") for _row, e in attempts if e.get("explore")}
+    checks.add("A8 exploration opens calls on models the ordering would not",
+               bool(explored),
+               f"models explored: {sorted(short(m) for m in explored) or 'none'}"
+               + ("" if explored else
+                  " — no attempt carried the `explore` flag"))
 
     return checks
 
