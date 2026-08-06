@@ -22,6 +22,8 @@ import (
 	"github.com/Agent-Field/aforge-v2/internal/exec"
 	"github.com/Agent-Field/aforge-v2/internal/head"
 	"github.com/Agent-Field/aforge-v2/internal/plan"
+	"github.com/Agent-Field/aforge-v2/internal/profile"
+	"github.com/Agent-Field/aforge-v2/internal/provider"
 	"github.com/Agent-Field/aforge-v2/internal/resident"
 	"github.com/Agent-Field/aforge-v2/internal/router"
 	"github.com/Agent-Field/aforge-v2/internal/store"
@@ -83,6 +85,12 @@ func runChat(args []string) error {
 		return fmt.Errorf("create chat workspace: %w", err)
 	}
 
+	// plans retains each planned job's graph so execution can be the headless
+	// mechanism exactly: call shapes for the router, escalation verdicts, and
+	// the profile records that calibrate the planner's ruler all read from the
+	// same plan nodes the scheduler would have read.
+	plans := &jobPlans{graphs: map[string]*plan.Graph{}}
+
 	compiler := head.NewCompiler(chatClient)
 	reconciler := resident.New(graph,
 		func(ctx context.Context, instruction, graphContext string) (resident.Compiled, error) {
@@ -98,7 +106,7 @@ func runChat(args []string) error {
 				Question:    brief.Question,
 			}, nil
 		},
-		planSubtree(settings, taskClient),
+		planSubtree(settings, taskClient, plans),
 	).WithNarrator(narrateProgress(settings, chatClient)).
 		WithDistiller(distillFacts(settings, chatClient)).
 		WithConsolidator(consolidateFacts(settings, chatClient)).
@@ -115,7 +123,16 @@ func runChat(args []string) error {
 		if err != nil {
 			return resident.ExecResult{}, err
 		}
-		linear := exec.NewLinear(taskClient, jobSpace, web, 0, 0, 0)
+		// The exact leaf configuration the headless scheduler uses: the same
+		// turn backstop, the same binding token budget, and a deadline that
+		// scales with that budget.
+		deadline := leafDeadline(chatLeafTokens)
+		linear := exec.NewLinear(taskClient, jobSpace, web, chatLeafTurns, chatLeafTokens, deadline)
+		planGraph, planNode := plans.lookup(node.ID)
+		shape := "atomic"
+		if planNode != nil {
+			shape = chatLeafShape(planNode)
+		}
 
 		inputs := make([]exec.Input, 0)
 		if digest := resident.NotebookDigest(graph, node.Brief, node.Provenance.Intent, 8); digest != "" {
@@ -146,14 +163,56 @@ func runChat(args []string) error {
 			return lines
 		}
 
-		outcome, err := linear.Run(settings.ExecContext(ctx), exec.Task{
+		task := exec.Task{
 			NodeID: int(node.CreatedSeq),
 			Title:  firstLine(node.Brief),
 			Goal:   node.Provenance.Intent,
 			Brief:  node.Brief,
 			Inputs: inputs,
 			Steer:  steer,
-		})
+		}
+		// The scheduler's quality loop, inline: each attempt is one routable
+		// unit carrying its call shape, a watchdog sits above the leaf's own
+		// deadline so a wedged executor becomes a recorded failure rather
+		// than a silent hang, and a leaf whose verdict says a stronger model
+		// might fix it gets exactly one escalation when a panel offers one.
+		attempts := 1
+		if taskClient.escalatable() {
+			attempts = 2
+		}
+		// One job is one cache lineage, exactly as one headless run is: the
+		// affinity key rides every leaf of the job so a prefix cache warmed
+		// by one worker serves its siblings.
+		ctx = provider.WithCacheKey(ctx, provider.RunCacheKey(node.Provenance.Intent, taskClient.Model()))
+		var outcome *exec.Outcome
+		var spent exec.Usage
+		for attempt := 0; attempt < attempts; attempt++ {
+			runCtx := provider.WithCallShape(settings.ExecContext(ctx), provider.ClassExecLeaf, attempt, shape)
+			outcome, err = runLeafWithWatchdog(runCtx, linear, task, deadline+2*time.Minute)
+			if outcome != nil {
+				spent.PromptTokens += outcome.Usage.PromptTokens
+				spent.CompletionTokens += outcome.Usage.CompletionTokens
+				spent.Cost += outcome.Usage.Cost
+			}
+			if err == nil && outcome != nil && !outcome.Verdict.Escalates() {
+				break
+			}
+		}
+		if planNode != nil {
+			plans.recordOutcome(planNode, outcome, err)
+		}
+		if node.Parent == store.RootID {
+			// The job landed (the root runs last): its measured leaves become
+			// profile evidence, exactly as recordAndCalibrate does after a
+			// headless run. Detached, because the ruler is telemetry and the
+			// user's result must not wait on it.
+			if planGraph != nil {
+				plans.take(node.ID)
+				go recordAndCalibrate(settings.Context(context.Background(), planGraph.Goal), taskClient, settings, planGraph)
+			} else if outcome != nil {
+				go recordSingleLeaf(settings, node, outcome)
+			}
+		}
 		if err != nil {
 			return resident.ExecResult{}, err
 		}
@@ -168,9 +227,9 @@ func runChat(args []string) error {
 		}
 		return resident.ExecResult{
 			Summary:          text,
-			PromptTokens:     outcome.Usage.PromptTokens,
-			CompletionTokens: outcome.Usage.CompletionTokens,
-			Cost:             outcome.Usage.Cost,
+			PromptTokens:     spent.PromptTokens,
+			CompletionTokens: spent.CompletionTokens,
+			Cost:             spent.Cost,
 		}, nil
 	}, "chat-runner", 4)
 
@@ -585,6 +644,17 @@ func (l *liveClient) Model() string {
 	return l.model
 }
 
+// escalatable reports whether a failed leaf has somewhere stronger to go —
+// the same condition the headless runner uses to grant one escalation.
+func (l *liveClient) escalatable() bool {
+	l.mu.RLock()
+	defer l.mu.RUnlock()
+	if panel, ok := l.client.(*router.Router); ok {
+		return panel.Rungs() > 1
+	}
+	return false
+}
+
 func (l *liveClient) SetModel(model string) error {
 	model = strings.TrimSpace(model)
 	if model == "" {
@@ -664,7 +734,160 @@ func newSessionID() string {
 // latency that matters is the work itself. A project runs the full planning
 // pipeline and splices the resulting graph, which is where parallel workers
 // pay for the planning pass.
-func planSubtree(settings config.Config, client *liveClient) resident.PlanFunc {
+// chatLeafTurns and chatLeafTokens mirror the headless run defaults exactly:
+// the same runaway backstop and the same binding per-leaf token budget, so a
+// worker in the chat surface is the same worker the benchmarks measured.
+const (
+	chatLeafTurns  = 200
+	chatLeafTokens = 150_000
+)
+
+// leafDeadline scales the hang backstop with the granted budget, as the
+// headless runner does: 15 minutes floor, one minute per 50k tokens above it.
+func leafDeadline(budget int) time.Duration {
+	deadline := 15 * time.Minute
+	if scaled := time.Duration(budget/50_000) * time.Minute; scaled > deadline {
+		deadline = scaled
+	}
+	return deadline
+}
+
+// jobPlans retains each planned job's graph for the lifetime of its run, so
+// per-leaf execution reads the same plan facts the headless scheduler reads:
+// kind and size for the call shape, and the measured outcome fields that
+// become profile records. Best-effort by design — a restart forgets in-flight
+// graphs and costs only telemetry, never work.
+type jobPlans struct {
+	mu     sync.Mutex
+	graphs map[string]*plan.Graph
+}
+
+func (j *jobPlans) put(prefix string, graph *plan.Graph) {
+	j.mu.Lock()
+	defer j.mu.Unlock()
+	j.graphs[prefix] = graph
+}
+
+// lookup resolves a store node id ("<prefix>-n<planID>") back to its plan
+// node. Single-task jobs have no plan graph and resolve to nil.
+func (j *jobPlans) lookup(nodeID string) (*plan.Graph, *plan.Node) {
+	cut := strings.LastIndex(nodeID, "-n")
+	if cut < 0 {
+		return nil, nil
+	}
+	planID, err := strconv.Atoi(nodeID[cut+2:])
+	if err != nil {
+		return nil, nil
+	}
+	j.mu.Lock()
+	defer j.mu.Unlock()
+	graph, ok := j.graphs[nodeID[:cut]]
+	if !ok {
+		return nil, nil
+	}
+	for index := range graph.Nodes {
+		if graph.Nodes[index].ID == planID {
+			return graph, &graph.Nodes[index]
+		}
+	}
+	return graph, nil
+}
+
+// recordOutcome writes a leaf's measured ending onto its plan node — the same
+// fields, in the same shape, that the headless scheduler records.
+func (j *jobPlans) recordOutcome(node *plan.Node, outcome *exec.Outcome, err error) {
+	j.mu.Lock()
+	defer j.mu.Unlock()
+	if outcome != nil {
+		node.Turns = outcome.Turns
+		node.Tokens = outcome.Usage.PromptTokens + outcome.Usage.CompletionTokens
+		node.Cost = outcome.Usage.Cost
+		node.Stop = string(outcome.Stop)
+		node.Verdict = outcome.Verdict
+		node.Artifacts = outcome.Artifacts
+		node.Result = outcome.Text
+	}
+	if err != nil || outcome == nil || strings.TrimSpace(node.Result) == "" {
+		node.State = plan.StateFailed
+	} else {
+		node.State = plan.StateDone
+	}
+}
+
+func (j *jobPlans) take(nodeID string) {
+	cut := strings.LastIndex(nodeID, "-n")
+	if cut < 0 {
+		return
+	}
+	j.mu.Lock()
+	defer j.mu.Unlock()
+	delete(j.graphs, nodeID[:cut])
+}
+
+// chatLeafShape is the scheduler's leaf population key, verbatim: synthesis
+// apart from work, and the leaves one agent may not fit apart from the rest.
+func chatLeafShape(node *plan.Node) string {
+	if node.Kind == plan.KindSynthesis {
+		return "synthesis"
+	}
+	switch node.Size {
+	case plan.SizeOversized, plan.SizeBorderline:
+		return "oversized"
+	default:
+		return "atomic"
+	}
+}
+
+// runLeafWithWatchdog is the scheduler's node watchdog, inline: the executor
+// has its own deadline, so this only fires when a worker is wedged past every
+// limit it was given — turning a silent forever-hang into a recorded failure.
+func runLeafWithWatchdog(ctx context.Context, linear *exec.Linear, task exec.Task, timeout time.Duration) (*exec.Outcome, error) {
+	type landing struct {
+		outcome *exec.Outcome
+		err     error
+	}
+	done := make(chan landing, 1)
+	go func() {
+		defer func() {
+			if recovered := recover(); recovered != nil {
+				done <- landing{nil, fmt.Errorf("executor panicked: %v", recovered)}
+			}
+		}()
+		outcome, err := linear.Run(ctx, task)
+		done <- landing{outcome, err}
+	}()
+	select {
+	case result := <-done:
+		return result.outcome, result.err
+	case <-time.After(timeout):
+		return nil, fmt.Errorf("executor did not return within %s; abandoned", timeout.Round(time.Second))
+	}
+}
+
+// recordSingleLeaf keeps single-task jobs contributing to the same ruler the
+// planner sizes with: one honest record, no recalibration call.
+func recordSingleLeaf(settings config.Config, node store.Node, outcome *exec.Outcome) {
+	measured, err := profile.Load(settings.ProfileDir, settings.Model, "linear")
+	if err != nil {
+		return
+	}
+	title := strings.TrimSpace(node.Title)
+	if title == "" {
+		title = firstLine(node.Brief)
+	}
+	measured.Add(profile.Record{
+		Title:   title,
+		Summary: firstLine(node.Brief),
+		Size:    string(plan.SizeAtomic),
+		Turns:   outcome.Turns,
+		Tokens:  outcome.Usage.PromptTokens + outcome.Usage.CompletionTokens,
+		Stop:    string(outcome.Stop),
+		Verdict: outcome.Verdict,
+	})
+	_ = measured.Save()
+}
+
+func planSubtree(settings config.Config, client *liveClient, plans *jobPlans) resident.PlanFunc {
 	return func(ctx context.Context, compiled resident.Compiled) (store.Subtree, error) {
 		prefix, err := subtreePrefix()
 		if err != nil {
@@ -689,6 +912,12 @@ func planSubtree(settings config.Config, client *liveClient) resident.PlanFunc {
 		if err != nil {
 			return store.Subtree{}, err
 		}
+		// Per-leaf working contracts, exactly as a headless run writes them
+		// before dispatch. A contract failure costs specificity, not the job.
+		if _, err := plan.Contracts(ctx, client, graph); err != nil {
+			fmt.Fprintf(os.Stderr, "note: could not write contracts: %v\n", err)
+		}
+		plans.put(prefix, graph)
 		return resident.SubtreeFromPlan(graph, prefix)
 	}
 }
