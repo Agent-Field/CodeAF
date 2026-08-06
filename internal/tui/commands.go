@@ -56,6 +56,13 @@ type paletteEntry struct {
 	score       int
 }
 
+type modelCommandResultMsg struct {
+	role     string
+	slug     string
+	previous string
+	err      error
+}
+
 func (m *Model) paletteOpen() bool { return m.palette != paletteNone }
 
 func (m *Model) closePalette() {
@@ -347,15 +354,35 @@ func (m *Model) applySelectedModel(choices []ModelChoice) tea.Cmd {
 }
 
 func (m *Model) applyModel(role, slug string) tea.Cmd {
-	if m.commander == nil {
-		return m.showStatus("model switching unavailable — no Commander")
+	if role != "talk" && role != "work" {
+		return m.showStatus(fmt.Sprintf("unknown model role %q", role))
 	}
-	if err := m.commander.SetModel(role, slug); err != nil {
-		return m.showStatus(fmt.Sprintf("could not set %s model: %v", role, err))
+	previous := m.currentModel(role)
+	if m.commander != nil {
+		if err := m.commander.SetModel(role, slug); err != nil {
+			return m.showStatus(fmt.Sprintf("could not set %s model: %v", role, err))
+		}
+		delete(m.optimisticModels, role)
+		m.input.Reset()
+		m.paletteDismissed = false
+		return m.showStatus(fmt.Sprintf("%s model → %s", role, slug))
 	}
+	requester, ok := m.backend.(commandRequester)
+	if !ok {
+		return m.showStatus("model switching unavailable — command requests unsupported")
+	}
+	m.optimisticModels[role] = slug
 	m.input.Reset()
 	m.paletteDismissed = false
-	return m.showStatus(fmt.Sprintf("%s model → %s", role, slug))
+	m.showStatus(fmt.Sprintf("%s model requested → %s", role, slug))
+	request := store.Command{
+		SessionID: m.sessionID, Kind: store.CommandAmend, Target: store.RootID,
+		Instruction: "use " + slug + " for " + role,
+	}
+	return func() tea.Msg {
+		_, err := requester.RequestCommand(request)
+		return modelCommandResultMsg{role: role, slug: slug, previous: previous, err: err}
+	}
 }
 
 func (m *Model) completeCancel(entries []paletteEntry) {
@@ -557,25 +584,28 @@ func (m *Model) memoryLineCount() int {
 }
 
 func (m *Model) openModelPicker(role string) tea.Cmd {
-	if m.commander == nil {
-		return m.showStatus("model switching unavailable — no Commander")
-	}
 	fallback := m.fallbackModelChoices()
+	if len(fallback) == 0 {
+		fallback = normalizeModelChoices(m.modelCatalog)
+	}
 	if len(fallback) == 0 {
 		return m.showStatus("model switching unavailable — no models configured")
 	}
 	m.input.Reset()
 	m.modelRole = role
 	m.palette = paletteModel
+	m.focus = focusInput
+	m.inputFocused = true
+	_ = m.input.Focus()
 	if len(m.modelCatalog) == 0 {
 		m.modelCatalog = fallback
 	}
-	m.paletteSelected = indexModelChoice(m.modelCatalog, m.commander.CurrentModel(role))
-	if !m.catalogRequested {
+	m.paletteSelected = indexModelChoice(m.modelCatalog, m.currentModel(role))
+	if !m.catalogRequested && m.commander != nil {
 		m.catalogLoading = true
 	}
 	m.setSize(m.width, m.height)
-	if m.catalogRequested {
+	if m.catalogRequested || m.commander == nil {
 		return nil
 	}
 	m.catalogRequested = true
@@ -592,8 +622,8 @@ func (m *Model) switchModelRole() {
 		m.modelRole = "talk"
 	}
 	choices := m.filteredModelChoices()
-	if m.commander != nil && strings.TrimSpace(m.input.Value()) == "" {
-		m.paletteSelected = indexModelChoice(choices, m.commander.CurrentModel(m.modelRole))
+	if strings.TrimSpace(m.input.Value()) == "" {
+		m.paletteSelected = indexModelChoice(choices, m.currentModel(m.modelRole))
 	} else {
 		m.paletteSelected = min(m.paletteSelected, max(0, len(choices)-1))
 	}
@@ -602,14 +632,16 @@ func (m *Model) switchModelRole() {
 func (m *Model) applyCatalog(choices []ModelChoice) {
 	m.catalogLoading = false
 	if normalized := normalizeModelChoices(choices); len(normalized) > 0 {
-		m.modelCatalog = normalized
+		// A remote catalog enriches the configured/current choices; it must not
+		// erase a pinned model merely because the provider omitted an alias.
+		m.modelCatalog = normalizeModelChoices(append(normalized, m.fallbackModelChoices()...))
 	}
 	if m.palette != paletteModel {
 		return
 	}
 	filtered := m.filteredModelChoices()
-	if strings.TrimSpace(m.input.Value()) == "" && m.commander != nil {
-		m.paletteSelected = indexModelChoice(filtered, m.commander.CurrentModel(m.modelRole))
+	if strings.TrimSpace(m.input.Value()) == "" {
+		m.paletteSelected = indexModelChoice(filtered, m.currentModel(m.modelRole))
 	} else if len(filtered) == 0 {
 		m.paletteSelected = 0
 	} else {
@@ -636,8 +668,14 @@ func (m *Model) newSession() tea.Cmd {
 	m.cards = nil
 	m.commands = map[int64]store.Command{}
 	m.cardExpanded = map[string]bool{}
+	m.questionSelection = map[string]int{}
+	m.questionDismissed = map[string]bool{}
 	m.selectedCardID = ""
 	m.graphScopeID = ""
+	m.charterCardID = ""
+	m.charterFocusIndex = 0
+	m.standingRows = nil
+	m.charterRows = nil
 	m.graphOpen = false
 	m.focus = focusInput
 	m.autoScroll = true
@@ -662,9 +700,6 @@ func (m *Model) showStatus(status string) tea.Cmd {
 }
 
 func (m *Model) models() []string {
-	if m.commander == nil {
-		return nil
-	}
 	choices := m.modelCatalog
 	if len(choices) == 0 {
 		choices = m.fallbackModelChoices()
@@ -678,7 +713,7 @@ func (m *Model) models() []string {
 
 func (m *Model) fallbackModelChoices() []ModelChoice {
 	if m.commander == nil {
-		return nil
+		return normalizeModelChoices(m.modelCatalog)
 	}
 	models := m.commander.Models()
 	choices := make([]ModelChoice, 0, len(models))
@@ -686,6 +721,25 @@ func (m *Model) fallbackModelChoices() []ModelChoice {
 		choices = append(choices, ModelChoice{Slug: model})
 	}
 	return normalizeModelChoices(choices)
+}
+
+func (m *Model) activateHeaderFocus() tea.Cmd {
+	switch m.headerFocusIndex {
+	case 0:
+		return m.openModelPicker("talk")
+	case 1:
+		return m.openModelPicker("work")
+	default:
+		if m.hasPendingQuestion() {
+			m.focusPendingQuestion()
+			return nil
+		}
+		if m.nodeViewID != "" {
+			m.closeNodeView()
+		}
+		m.toggleGraph()
+		return nil
+	}
 }
 
 func (m *Model) filteredModelChoices() []ModelChoice {
