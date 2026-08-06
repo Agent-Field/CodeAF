@@ -89,7 +89,7 @@ func runChat(args []string) error {
 	// mechanism exactly: call shapes for the router, escalation verdicts, and
 	// the profile records that calibrate the planner's ruler all read from the
 	// same plan nodes the scheduler would have read.
-	plans := &jobPlans{graphs: map[string]*plan.Graph{}}
+	plans := &jobPlans{graphs: map[string]plannedJob{}}
 
 	compiler := head.NewCompiler(chatClient)
 	reconciler := resident.New(graph,
@@ -201,17 +201,14 @@ func runChat(args []string) error {
 		if planNode != nil {
 			plans.recordOutcome(planNode, outcome, err)
 		}
-		if node.Parent == store.RootID {
-			// The job landed (the root runs last): its measured leaves become
-			// profile evidence, exactly as recordAndCalibrate does after a
-			// headless run. Detached, because the ruler is telemetry and the
-			// user's result must not wait on it.
-			if planGraph != nil {
-				plans.take(node.ID)
-				go recordAndCalibrate(settings.Context(context.Background(), planGraph.Goal), taskClient, settings, planGraph)
-			} else if outcome != nil {
-				go recordSingleLeaf(settings, node, outcome)
-			}
+		// A graph's sink landing means its run is over: the measured leaves
+		// become profile evidence, exactly as recordAndCalibrate does after a
+		// headless run. Detached, because the ruler is telemetry and the
+		// user's result must not wait on it.
+		if landed := plans.takeIfRoot(node.ID); landed != nil {
+			go recordAndCalibrate(settings.Context(context.Background(), landed.Goal), taskClient, settings, landed)
+		} else if planGraph == nil && node.Parent == store.RootID && outcome != nil {
+			go recordSingleLeaf(settings, node, outcome)
 		}
 		if err != nil {
 			return resident.ExecResult{}, err
@@ -219,10 +216,30 @@ func runChat(args []string) error {
 		text := outcome.Text
 		// Artifact paths come back workspace-relative; the user's next act is
 		// opening the file, so the summary carries where it actually lives.
-		if len(outcome.Artifacts) > 0 {
-			text += "\n\nFiles:"
-			for _, artifact := range outcome.Artifacts {
-				text += "\n" + filepath.Join(jobDir, artifact)
+		absolute := make([]string, 0, len(outcome.Artifacts))
+		for _, artifact := range outcome.Artifacts {
+			absolute = append(absolute, filepath.Join(jobDir, artifact))
+		}
+		if len(absolute) > 0 {
+			text += "\n\nFiles:\n" + strings.Join(absolute, "\n")
+		}
+		// Just-in-time re-decomposition: a budget or turn-cap stop is the
+		// planner's clearest "one node held too much". The partial result
+		// lands as this node's summary; the remainder — planned from what
+		// the partial actually contains — is spliced in as deeper structure
+		// that consumes it and feeds everything that was waiting.
+		if outcome.Stop == exec.StopBudget || outcome.Stop == exec.StopTurnCap {
+			spliced, sink, replanErr := resident.ReplanOverrun(ctx, graph, node, outcome.Text, absolute,
+				replanRemainder(settings, taskClient, plans))
+			if replanErr == nil && spliced > 0 {
+				text += fmt.Sprintf("\n\n[partial: ran out of %s — the remainder was re-planned into %d follow-up nodes; the finished result lands with %s]",
+					outcome.Stop, spliced, sink)
+				_, _ = graph.PostMessage(store.Message{
+					SessionID: node.Provenance.SessionID,
+					Role:      store.RoleSystem,
+					Body: fmt.Sprintf("%s ran out of room mid-work — kept its partial progress and split the remainder into %d queued pieces",
+						firstLine(node.Brief), spliced),
+				})
 			}
 		}
 		return resident.ExecResult{
@@ -759,13 +776,20 @@ func leafDeadline(budget int) time.Duration {
 // graphs and costs only telemetry, never work.
 type jobPlans struct {
 	mu     sync.Mutex
-	graphs map[string]*plan.Graph
+	graphs map[string]plannedJob
 }
 
-func (j *jobPlans) put(prefix string, graph *plan.Graph) {
+// plannedJob pairs a retained graph with the store id of its sink node — the
+// landing that means "this graph's run is over, record it".
+type plannedJob struct {
+	graph *plan.Graph
+	root  string
+}
+
+func (j *jobPlans) put(prefix string, graph *plan.Graph, root string) {
 	j.mu.Lock()
 	defer j.mu.Unlock()
-	j.graphs[prefix] = graph
+	j.graphs[prefix] = plannedJob{graph: graph, root: root}
 }
 
 // lookup resolves a store node id ("<prefix>-n<planID>") back to its plan
@@ -781,16 +805,16 @@ func (j *jobPlans) lookup(nodeID string) (*plan.Graph, *plan.Node) {
 	}
 	j.mu.Lock()
 	defer j.mu.Unlock()
-	graph, ok := j.graphs[nodeID[:cut]]
+	entry, ok := j.graphs[nodeID[:cut]]
 	if !ok {
 		return nil, nil
 	}
-	for index := range graph.Nodes {
-		if graph.Nodes[index].ID == planID {
-			return graph, &graph.Nodes[index]
+	for index := range entry.graph.Nodes {
+		if entry.graph.Nodes[index].ID == planID {
+			return entry.graph, &entry.graph.Nodes[index]
 		}
 	}
-	return graph, nil
+	return entry.graph, nil
 }
 
 // recordOutcome writes a leaf's measured ending onto its plan node — the same
@@ -814,14 +838,22 @@ func (j *jobPlans) recordOutcome(node *plan.Node, outcome *exec.Outcome, err err
 	}
 }
 
-func (j *jobPlans) take(nodeID string) {
+// takeIfRoot removes and returns a job's graph when the landed node is that
+// graph's sink — the moment its leaves become profile evidence. Any other
+// node returns nil and the graph stays for the leaves still to land.
+func (j *jobPlans) takeIfRoot(nodeID string) *plan.Graph {
 	cut := strings.LastIndex(nodeID, "-n")
 	if cut < 0 {
-		return
+		return nil
 	}
 	j.mu.Lock()
 	defer j.mu.Unlock()
+	entry, ok := j.graphs[nodeID[:cut]]
+	if !ok || entry.root != nodeID {
+		return nil
+	}
 	delete(j.graphs, nodeID[:cut])
+	return entry.graph
 }
 
 // chatLeafShape is the scheduler's leaf population key, verbatim: synthesis
@@ -917,8 +949,56 @@ func planSubtree(settings config.Config, client *liveClient, plans *jobPlans) re
 		if _, err := plan.Contracts(ctx, client, graph); err != nil {
 			fmt.Fprintf(os.Stderr, "note: could not write contracts: %v\n", err)
 		}
-		plans.put(prefix, graph)
-		return resident.SubtreeFromPlan(graph, prefix)
+		subtree, err := resident.SubtreeFromPlan(graph, prefix)
+		if err != nil {
+			return store.Subtree{}, err
+		}
+		plans.put(prefix, graph, subtreeSink(subtree))
+		return subtree, nil
+	}
+}
+
+// subtreeSink is the one spec with no parent — the node whose landing means
+// the whole subtree has run.
+func subtreeSink(subtree store.Subtree) string {
+	for _, spec := range subtree.Nodes {
+		if spec.Parent == "" {
+			return spec.ID
+		}
+	}
+	return ""
+}
+
+// replanRemainder plans an exhausted leaf's remaining work: the same full
+// planning pass a fresh project gets — briefs, contracts, the retained graph
+// for call shapes and profile records — scoped to what the partial left
+// undone. Falls back to one continuation node rather than failing: a leaf
+// out of budget deserves at least one fresh worker on the remainder.
+func replanRemainder(settings config.Config, client *liveClient, plans *jobPlans) resident.OverrunPlanFunc {
+	return func(ctx context.Context, goal, prefix string) (store.Subtree, error) {
+		graph, err := plan.Build(settings.Context(ctx, goal), client, goal, plan.Options{
+			SpineSamples: settings.SpineSamples,
+			MaxDepth:     settings.MaxDepth,
+			NodeBudget:   settings.NodeBudget,
+			Briefs:       true,
+		})
+		if err != nil {
+			return store.Subtree{Nodes: []store.NodeSpec{{
+				ID:    prefix,
+				Brief: goal,
+				Title: "Finish the remainder",
+				Stage: 1,
+			}}}, nil
+		}
+		if _, err := plan.Contracts(ctx, client, graph); err != nil {
+			fmt.Fprintf(os.Stderr, "note: could not write repair contracts: %v\n", err)
+		}
+		subtree, err := resident.SubtreeFromPlan(graph, prefix)
+		if err != nil {
+			return store.Subtree{}, err
+		}
+		plans.put(prefix, graph, subtreeSink(subtree))
+		return subtree, nil
 	}
 }
 
