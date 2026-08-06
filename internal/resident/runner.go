@@ -10,10 +10,18 @@ import (
 	"github.com/Agent-Field/aforge-v2/internal/store"
 )
 
-// ExecuteFunc runs one claimed node to completion and returns the summary
-// that flows to dependents. The runner owns the claim lifecycle around it;
-// the function owns nothing but the work.
-type ExecuteFunc func(ctx context.Context, node store.Node) (summary string, err error)
+// ExecResult is what one execution produced: the summary that flows to
+// dependents, and what producing it cost.
+type ExecResult struct {
+	Summary          string
+	PromptTokens     int
+	CompletionTokens int
+	Cost             float64
+}
+
+// ExecuteFunc runs one claimed node to completion. The runner owns the claim
+// lifecycle around it; the function owns nothing but the work.
+type ExecuteFunc func(ctx context.Context, node store.Node) (ExecResult, error)
 
 // Runner drains ready nodes from the durable graph and executes them. It is
 // the store-side counterpart of the one-shot scheduler: any process may run
@@ -133,11 +141,20 @@ func (r *Runner) claimNext() (store.Node, bool, error) {
 
 func (r *Runner) runOne(ctx context.Context, node store.Node) {
 	claim := store.Claim{ID: node.ID, Owner: node.Owner, Token: node.ClaimToken}
-	summary, err := r.execute(ctx, node)
+	result, err := r.execute(ctx, node)
 	if err != nil {
 		_ = r.graph.Fail(claim, err.Error())
 		return
 	}
+	// Spend is recorded before completion settles: a refused completion is
+	// still money spent, and the journal should say so.
+	_ = r.graph.RecordUsage(store.NodeUsage{
+		NodeID:           node.ID,
+		PromptTokens:     result.PromptTokens,
+		CompletionTokens: result.CompletionTokens,
+		Cost:             result.Cost,
+	})
+	summary := result.Summary
 	if strings.TrimSpace(summary) == "" {
 		summary = "finished with no summary"
 	}

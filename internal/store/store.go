@@ -80,6 +80,9 @@ const (
 	EventMessagePosted    EventKind = "message_posted"
 	EventCommandRequested EventKind = "command_requested"
 	EventCommandResolved  EventKind = "command_resolved"
+
+	// EventUsageRecorded is one executed node's spend.
+	EventUsageRecorded EventKind = "usage_recorded"
 )
 
 var (
@@ -304,6 +307,9 @@ func Open(path string) (*Store, error) {
 	}
 	if _, err := db.Exec(threadSchema); err != nil {
 		return closeOnError(fmt.Errorf("initialize thread schema: %w", err))
+	}
+	if _, err := db.Exec(usageSchema); err != nil {
+		return closeOnError(fmt.Errorf("initialize usage schema: %w", err))
 	}
 
 	store := &Store{db: db}

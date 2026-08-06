@@ -36,6 +36,9 @@ func (s *Store) Rebuild() error {
 	if _, err := tx.Exec(`DELETE FROM commands`); err != nil {
 		return fmt.Errorf("rebuild commands: %w", err)
 	}
+	if _, err := tx.Exec(`DELETE FROM usage`); err != nil {
+		return fmt.Errorf("rebuild usage: %w", err)
+	}
 	for _, event := range events {
 		if err := replayEvent(tx, event); err != nil {
 			return fmt.Errorf("replay event %d (%s): %w", event.Seq, event.Kind, err)
@@ -190,6 +193,13 @@ func replayEvent(tx *sql.Tx, event Event) error {
 			return err
 		}
 		return applyCommandResolution(tx, payload, event.Seq)
+
+	case EventUsageRecorded:
+		var payload NodeUsage
+		if err := json.Unmarshal(event.Payload, &payload); err != nil {
+			return err
+		}
+		return applyUsageView(tx, payload, event.Seq, event.Time)
 
 	default:
 		// The journal is expected to gain accounting and artifact events that do

@@ -381,28 +381,26 @@ func (r *Reconciler) announceNode(event store.Event) error {
 		return nil
 	}
 
-	brief := clipLabel(firstLine(node.Brief), 72)
+	// The rail is the status; the thread is the conversation. Intermediate
+	// completions are progress, which the graph lens already shows live, so
+	// posting them read as machine reporting. The thread speaks only when
+	// something needs the user: the deliverable's answer, or a failure.
 	var body string
 	switch event.Kind {
 	case store.EventNodeCompleted:
-		// A deliverable owner's summary IS the answer the user asked for, so
-		// the whole thing goes to the thread. Intermediate nodes stay one
-		// line: their substance flows to dependents, not to the user.
-		if node.Parent == store.RootID && strings.TrimSpace(node.Summary) != "" {
-			body = node.Summary
-			break
+		if node.Parent != store.RootID {
+			return nil
 		}
-		summary := firstLine(node.Summary)
-		if summary == "" {
-			summary = "completed"
+		body = node.Summary
+		if strings.TrimSpace(body) == "" {
+			body = "That's done — it finished without leaving a summary."
 		}
-		body = fmt.Sprintf("%s landed — %s", brief, summary)
 	case store.EventNodeFailed:
 		failure := firstLine(node.Error)
 		if failure == "" {
-			failure = "no reason recorded"
+			failure = "no reason was recorded"
 		}
-		body = fmt.Sprintf("%s failed — %s", brief, failure)
+		body = fmt.Sprintf("I hit a problem with %q: %s", clipLabel(firstLine(node.Brief), 60), failure)
 	default:
 		return nil
 	}
