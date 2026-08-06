@@ -225,3 +225,89 @@ func TestPanelRefusesAModelOverTheCap(t *testing.T) {
 		t.Fatal("a model over the cap was accepted")
 	}
 }
+
+// TestAppendingAnEventRacesCleanlyWithClose is the locking story, and it is a
+// -race test rather than an assertion test: a closed *os.File returns an error
+// instead of panicking, so the unsynchronised read of the handle was invisible
+// to every other means of noticing.
+//
+// It is a real sequence, not a contrived one. A leaf's settled verdict is
+// appended from whichever goroutine reported it, which may be after the run has
+// begun shutting down — so Append and Close genuinely overlap.
+func TestAppendingAnEventRacesCleanlyWithClose(t *testing.T) {
+	events, err := OpenEvents(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	var writers sync.WaitGroup
+	for range 8 {
+		writers.Add(1)
+		go func() {
+			defer writers.Done()
+			for range 50 {
+				events.Append(Event{Class: string(provider.ClassExecLeaf), Model: "a/one",
+					Verdict: provider.VerdictUnverifiedSuccess, Final: true})
+			}
+		}()
+	}
+	if err := events.Close(); err != nil {
+		t.Fatal(err)
+	}
+	writers.Wait()
+	// And closing twice is not an error, because the shutdown path joins several
+	// closers and must not turn a second call into a failed run.
+	if err := events.Close(); err != nil {
+		t.Fatalf("second Close: %v", err)
+	}
+}
+
+// TestABudgetStopMovesARatingLessThanAWrongAnswer is defect 1's second half.
+//
+// Both verdicts are graded and both are negative, but they are not the same
+// claim. A reply that parsed and was wrong is the model failing at the work; a
+// leaf that exhausted its budget may be the model wandering, or it may be a leaf
+// that was three nodes' worth of work — and BASELINE.md measured a byte-identical
+// brief drawing anywhere from 5 to 26 nodes, so sizing dominates what a leaf
+// costs. Arm B let five of the second kind outvote a prior; a quarter of a step
+// is what stops that arithmetic from working.
+func TestABudgetStopMovesARatingLessThanAWrongAnswer(t *testing.T) {
+	ledger, err := LoadLedger(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	ledger.Observe("a/one", provider.ClassExecLeaf, 0, provider.VerdictBudgetStop)
+	ledger.Observe("b/two", provider.ClassExecLeaf, 0, provider.VerdictSemanticFailure)
+
+	stopped, _ := ledger.Rating("a/one", provider.ClassExecLeaf, 0)
+	wrong, _ := ledger.Rating("b/two", provider.ClassExecLeaf, 0)
+	if stopped >= 0 || wrong >= 0 {
+		t.Fatalf("budget stop = %.4f, wrong answer = %.4f, want both negative", stopped, wrong)
+	}
+	if stopped <= wrong {
+		t.Fatalf("budget stop moved the rating to %.4f and a wrong answer to %.4f — "+
+			"a sizing failure must not count for as much as an ability one", stopped, wrong)
+	}
+	// A quarter, not an arbitrary fraction: four oversized leaves say about as
+	// much about a model as one wrong answer does.
+	if ratio := stopped / wrong; ratio < 0.2 || ratio > 0.3 {
+		t.Fatalf("a budget stop moved %.3f of a wrong answer's step, want about a quarter", ratio)
+	}
+}
+
+// TestBudgetStopsStillCountTowardsTheGate keeps the two brakes independent. The
+// weight decides how far an observation may move a rating; the count decides how
+// much the router has looked at. A down-weighted outcome is still something it
+// saw, and conflating the two would hold the gate shut forever on a model that
+// only ever runs out of budget.
+func TestBudgetStopsStillCountTowardsTheGate(t *testing.T) {
+	ledger, err := LoadLedger(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	for range MinGraded {
+		ledger.Observe("a/one", provider.ClassExecLeaf, 0, provider.VerdictBudgetStop)
+	}
+	if _, count := ledger.Rating("a/one", provider.ClassExecLeaf, 0); count != MinGraded {
+		t.Fatalf("count = %d after %d budget stops, want every one counted", count, MinGraded)
+	}
+}
