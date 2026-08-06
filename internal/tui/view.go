@@ -73,8 +73,6 @@ func (m *Model) trackPaneBounds() {
 	m.graphRowsBounds = paneBounds{}
 	m.inputBounds = paneBounds{}
 	m.nodeBounds = paneBounds{}
-	m.nodeDetailsBounds = paneBounds{}
-	m.nodeTrailBounds = paneBounds{}
 	m.nodeTraceBounds = paneBounds{}
 
 	const mainY = 2
@@ -275,11 +273,11 @@ func (m *Model) renderNodePane() string {
 		lines = append(lines, visible...)
 		contentY += height
 	}
-	appendSection("BRIEF", m.nodeDetails.View(), m.nodeDetailsHeight, &m.nodeDetailsBounds)
-	appendSection("TRAIL", m.nodeTrail.View(), m.nodeTrailHeight, &m.nodeTrailBounds)
-	if m.commander != nil {
-		appendSection("TRACE TAIL", m.nodeTrace.View(), m.nodeTraceHeight, &m.nodeTraceBounds)
-	}
+	appendSection("BRIEF", m.nodeDetailsText, strings.Count(m.nodeDetailsText, "\n")+1, new(paneBounds))
+	lines = append(lines, "")
+	contentY++
+	appendSection("ACTIVITY   ✳ model · $ shell · ✎ file · ⌕ web · ▸ you",
+		m.nodeTrace.View(), m.nodeTraceHeight, &m.nodeTraceBounds)
 
 	innerHeight := max(1, m.chatHeight-2)
 	for len(lines) < innerHeight {

@@ -406,8 +406,8 @@ func TestSteeringPostsNodeAnchoredUserMessageAndShowsImmediately(t *testing.T) {
 	if command == nil {
 		t.Fatal("steering enter returned no post command")
 	}
-	if trail := model.renderNodeTrailContent(); !strings.Contains(trail, "please check the edge case") {
-		t.Fatalf("steer was not shown optimistically:\n%s", trail)
+	if feed := renderActivityFeed(model.nodeTraceText, model.nodeMessages, 80); !strings.Contains(feed, "please check the edge case") {
+		t.Fatalf("steer was not shown optimistically:\n%s", feed)
 	}
 	result := command()
 	_, _ = model.Update(result)
@@ -964,5 +964,26 @@ func newFakeCommander() *fakeCommander {
 func typeIntoModel(model *Model, text string) {
 	for _, char := range text {
 		_, _ = model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{char}})
+	}
+}
+
+func TestActivityFeedParsesTraceIntoGlyphs(t *testing.T) {
+	trace := "contract in force: verify before finishing\n" +
+		"── turn 1  finish=tool_calls  in=1372 out=45 ──\n" +
+		"call sh {\"cmd\":\"ls -la clips/\"}\n" +
+		"  → 1438B: total 3984⏎drwx------\n" +
+		"── turn 2  finish=tool_calls  in=2007 out=58  [nudge] ──\n" +
+		"text: The handoff says the video is incomplete.⏎Checking generation state.\n" +
+		"call web {\"q\":\"ffmpeg concat mp4\"}\n" +
+		"  → 902B ERROR: exa 503: upstream\n" +
+		"steered: focus on scene 10 only\n"
+	feed := renderActivityFeed(trace, nil, 80)
+	for _, want := range []string{
+		"turn 1 · 45 tok", "$ ls -la clips/", "→ 1.4KB", "turn 2 · 58 tok · nudge",
+		"✳ ", "⌕ ffmpeg concat mp4", "ERROR", "▸ you", "focus on scene 10 only",
+	} {
+		if !strings.Contains(feed, want) {
+			t.Fatalf("feed missing %q:\n%s", want, feed)
+		}
 	}
 }
