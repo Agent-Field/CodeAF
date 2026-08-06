@@ -2,6 +2,7 @@ package head
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"path/filepath"
@@ -567,9 +568,376 @@ func TestAffirmativeRailReplyVocabulary(t *testing.T) {
 			t.Errorf("%q was not recognized as affirmative", reply)
 		}
 	}
+
 	for _, reply := range []string{"no", "not yet", "what will it cost?"} {
 		if affirmativeRailReply(reply) {
 			t.Errorf("%q was recognized as affirmative", reply)
 		}
 	}
+}
+
+func TestStandingRecognitionTable(t *testing.T) {
+	tests := []struct {
+		instruction string
+		standing    bool
+	}{
+		{"Whenever a PR opens, review it.", true},
+		{"Every morning send me a digest.", true},
+		{"Each time the build fails, summarize it.", true},
+		{"Keep the suite green.", true},
+		{"Watch this folder for new PDFs.", true},
+		{"Remind me when the deployment finishes.", true},
+		{"Remind me in 20 minutes to stretch.", true},
+		{"Make sure the release branch stays green.", true},
+		{"Summarize this file.", false},
+		{"Build the widget and keep the API name.", false},
+		{"When I say go, do X once.", false},
+		{"Review every file in this directory once.", false},
+	}
+	for _, test := range tests {
+		t.Run(test.instruction, func(t *testing.T) {
+			if got := RecognizesStandingIntent(test.instruction); got != test.standing {
+				t.Fatalf("standing = %t, want %t", got, test.standing)
+			}
+		})
+	}
+}
+
+func TestCompilerBuildsStandingCharterDraftFields(t *testing.T) {
+	tests := []struct {
+		name        string
+		instruction string
+		context     string
+		wantKind    store.WatchKind
+		wantCadence string
+		wantCron    func(t *testing.T, schedule store.CronSchedule)
+		wantExpiry  string
+		wantMax     int
+		wantCost    float64
+	}{
+		{
+			name: "measured recurring invariant", instruction: "Every morning review new PRs.",
+			context: "reflex: avg cost=$0.07", wantKind: store.WatchCron,
+			wantCadence: "Every morning",
+			wantCron: func(t *testing.T, schedule store.CronSchedule) {
+				if schedule.Kind != store.CronDaily || schedule.Hour != 9 || schedule.Minute != 0 {
+					t.Fatalf("morning cadence compiled to %+v, want daily 09:00", schedule)
+				}
+			},
+			wantExpiry: "never", wantMax: 10, wantCost: 0.07,
+		},
+		{
+			name: "reminder degenerate charter", instruction: "Remind me tomorrow at 9 to call Mom.",
+			wantKind: store.WatchCron, wantCadence: "tomorrow at 9",
+			wantCron: func(t *testing.T, schedule store.CronSchedule) {
+				tomorrow := time.Now().AddDate(0, 0, 1)
+				if schedule.Kind != store.CronAt || schedule.At.Hour() != 9 ||
+					schedule.At.Minute() != 0 || schedule.At.Day() != tomorrow.Day() {
+					t.Fatalf("reminder cadence compiled to %+v, want at tomorrow 09:00", schedule)
+				}
+			},
+			wantExpiry: "once", wantMax: 1, wantCost: 0.15,
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			client := &fakeClient{responses: []string{
+				`{"invariant":"model rewrite","watch":{},"sentinel":"Has the condition occurred?","action":"Carry out the requested action.","rails":{}}`,
+			}}
+			brief, err := NewCompiler(client).Compile(context.Background(), test.instruction, test.context)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if brief.Charter == nil || brief.Question == "" || len(brief.QuestionOptions) != 3 {
+				t.Fatalf("standing brief = %+v", brief)
+			}
+			charter := brief.Charter
+			if charter.Invariant != test.instruction || charter.Watch.Kind != test.wantKind ||
+				charter.Watch.Cadence != test.wantCadence {
+				t.Fatalf("charter watch/invariant = %+v", charter)
+			}
+			if charter.Watch.Spec.Kind != store.WatchCron || charter.Watch.Spec.Cron == nil {
+				t.Fatalf("cadence words did not compile to a typed cron spec: %+v", charter.Watch.Spec)
+			}
+			test.wantCron(t, *charter.Watch.Spec.Cron)
+			if charter.Rails.Expiry != test.wantExpiry || charter.Rails.MaxPerDay != test.wantMax ||
+				charter.Rails.EstimatedCostUSD != test.wantCost ||
+				strings.TrimSpace(charter.Rails.MaxPerDayJustification) == "" {
+				t.Fatalf("charter rails = %+v", charter.Rails)
+			}
+			if charter.Sentinel == "" || charter.Action == "" ||
+				(test.name == "reminder degenerate charter" && charter.Action != "Say: call Mom.") {
+				t.Fatalf("charter judgment/action missing: %+v", charter)
+			}
+			if reminder := test.name == "reminder degenerate charter"; charter.SayOnly != reminder {
+				t.Fatalf("say-only = %t, want %t", charter.SayOnly, reminder)
+			}
+		})
+	}
+}
+
+func TestCompilerEpisodicOutputByteIdentity(t *testing.T) {
+	client := &fakeClient{responses: []string{
+		`{"goal":"Produce the requested summary.","deliverable":"summary","budget":"$0.10","assumptions":["Use the current file"]}`,
+	}}
+	brief, err := NewCompiler(client).Compile(context.Background(), "Summarize this file.", "root is running")
+	if err != nil {
+		t.Fatal(err)
+	}
+	encoded, err := json.Marshal(brief)
+	if err != nil {
+		t.Fatal(err)
+	}
+	const want = `{"goal":"Produce the requested summary.\n\nVerbatim request:\nSummarize this file.","assumptions":["Use the current file"],"deliverable":"summary","budget":"$0.10","scale":"task","builds_on":[],"question":"","trial_of":0}`
+	if string(encoded) != want {
+		t.Fatalf("episodic compile bytes changed:\n got %s\nwant %s", encoded, want)
+	}
+}
+
+func TestCompilerQuestionOptionsPreserveOrder(t *testing.T) {
+	client := &fakeClient{responses: []string{
+		`{"question":"Which region?","question_options":[{"label":"Toronto","value":"ca"},{"label":"London","value":"uk"}]}`,
+	}}
+	brief, err := NewCompiler(client).Compile(context.Background(), "Publish the regional report.", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(brief.QuestionOptions) != 2 || brief.QuestionOptions[0].Label != "Toronto" ||
+		brief.QuestionOptions[1].Value != "uk" {
+		t.Fatalf("question options = %+v", brief.QuestionOptions)
+	}
+}
+
+func TestRatificationOptionRoundTrip(t *testing.T) {
+	for _, test := range []struct {
+		name       string
+		reply      string
+		wantStatus store.CharterStatus
+		wantOnce   bool
+	}{
+		{name: "affirmative activates", reply: "yes", wantStatus: store.CharterActive},
+		{name: "numeric activates", reply: "1", wantStatus: store.CharterActive},
+		{name: "decline stays disarmed", reply: "3", wantStatus: store.CharterRetired, wantOnce: true},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			graph := openHeadStore(t)
+			client := &fakeClient{responses: []string{
+				`{"watch":{},"sentinel":"Is there a new PR?","action":"Review the new PR.","rails":{}}`,
+			}}
+			compiler := NewCompiler(client)
+			compile := func(ctx context.Context, instruction, graphContext string) (resident.Compiled, error) {
+				brief, err := compiler.Compile(ctx, instruction, graphContext)
+				if err != nil {
+					return resident.Compiled{}, err
+				}
+				return resident.Compiled{
+					Goal: brief.Goal, Assumptions: brief.Assumptions, Scale: brief.Scale,
+					BuildsOn: brief.BuildsOn, Question: brief.Question,
+					QuestionOptions: brief.QuestionOptions, Charter: brief.Charter,
+				}, nil
+			}
+			reconciler := resident.New(graph, compile, nil)
+			command, err := graph.RequestCommand(store.Command{
+				SessionID: "ratify", Kind: store.CommandSplice,
+				Instruction: "Whenever a PR opens, review it.",
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := reconciler.Tick(context.Background()); err != nil {
+				t.Fatal(err)
+			}
+			question := waitForAgentReply(t, graph, "ratify", command.Seq)
+			if len(question.Options) != 3 || question.Options[0].Label != "yes, stand this up" {
+				t.Fatalf("ratification question = %+v", question)
+			}
+			user, err := graph.PostMessage(store.Message{
+				SessionID: "ratify", Role: store.RoleUser, Body: test.reply,
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := New(&fakeClient{}, graph).answer(context.Background(), user); err != nil {
+				t.Fatal(err)
+			}
+			if err := reconciler.Tick(context.Background()); err != nil {
+				t.Fatal(err)
+			}
+			charters, err := graph.Charters()
+			if err != nil || len(charters) != 1 || charters[0].Status != test.wantStatus {
+				t.Fatalf("charters = %+v err=%v", charters, err)
+			}
+			if test.wantStatus == store.CharterActive {
+				// The point of the whole seam: a recognized then ratified ask
+				// lands in the one canonical table the watch engine reads.
+				due, err := graph.DueCharters(time.Now().Add(time.Minute), 10)
+				if err != nil {
+					t.Fatal(err)
+				}
+				visible := false
+				for _, charter := range due {
+					visible = visible || charter.ID == charters[0].ID
+				}
+				if !visible {
+					t.Fatalf("ratified charter is invisible to the watch engine: due=%+v", due)
+				}
+			}
+			if test.wantOnce {
+				nodes, err := graph.Nodes()
+				if err != nil {
+					t.Fatal(err)
+				}
+				found := false
+				for _, node := range nodes {
+					found = found || (node.Parent == store.RootID && node.Provenance.Intent == charters[0].Invariant)
+				}
+				if !found {
+					t.Fatal("declining standing did not splice the requested action once")
+				}
+			}
+		})
+	}
+}
+
+func TestGenericQuestionNumericSelectionContinuesCompile(t *testing.T) {
+	graph := openHeadStore(t)
+	compile := func(context.Context, string, string) (resident.Compiled, error) {
+		return resident.Compiled{
+			Question: "Which region?",
+			QuestionOptions: []store.QuestionOption{
+				{Label: "Toronto", Value: "ca"}, {Label: "London", Value: "uk"},
+			},
+		}, nil
+	}
+	reconciler := resident.New(graph, compile, nil)
+	original, err := graph.RequestCommand(store.Command{
+		SessionID: "generic-options", Kind: store.CommandSplice, Instruction: "Publish the regional report.",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := reconciler.Tick(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	question := waitForAgentReply(t, graph, "generic-options", original.Seq)
+	if len(question.Options) != 2 {
+		t.Fatalf("question options = %+v", question.Options)
+	}
+	user, err := graph.PostMessage(store.Message{
+		SessionID: "generic-options", Role: store.RoleUser, Body: "2",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := New(&fakeClient{}, graph).answer(context.Background(), user); err != nil {
+		t.Fatal(err)
+	}
+	pending, err := graph.PendingCommands(0)
+	if err != nil || len(pending) != 1 ||
+		!strings.Contains(pending[0].Instruction, "Answer to compiler question: London") {
+		t.Fatalf("continued command = %+v err=%v", pending, err)
+	}
+}
+
+func TestConversationalCharterManagement(t *testing.T) {
+	tests := []struct {
+		name        string
+		message     string
+		wantStatus  store.CharterStatus
+		wantCadence string
+	}{
+		{name: "pause", message: "pause the morning digest", wantStatus: store.CharterPaused},
+		{name: "retire", message: "stop watching the morning digest", wantStatus: store.CharterRetired},
+		{name: "edit cadence", message: "make the morning digest hourly", wantStatus: store.CharterActive, wantCadence: "hourly"},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			graph := openHeadStore(t)
+			charter := activateHeadCharter(t, graph, "digest",
+				"Every morning send the release digest.")
+			user, err := graph.PostMessage(store.Message{
+				SessionID: "manage", Role: store.RoleUser, Body: test.message,
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := New(&fakeClient{}, graph).answer(context.Background(), user); err != nil {
+				t.Fatal(err)
+			}
+			if err := resident.New(graph, nil, nil).Tick(context.Background()); err != nil {
+				t.Fatal(err)
+			}
+			updated, found, err := graph.Charter(charter.ID)
+			if err != nil || !found || updated.Status != test.wantStatus {
+				t.Fatalf("updated charter = %+v found=%t err=%v", updated, found, err)
+			}
+			if test.wantCadence != "" {
+				if updated.Watch.Cadence != test.wantCadence {
+					t.Fatalf("cadence = %q, want %q", updated.Watch.Cadence, test.wantCadence)
+				}
+				if updated.Watch.Cron == nil || updated.Watch.Cron.Kind != store.CronEveryHours ||
+					updated.Watch.Cron.Interval != 1 {
+					t.Fatalf("cadence edit did not produce a typed hourly schedule: %+v", updated.Watch)
+				}
+			}
+			messages, err := graph.Messages("manage", user.Seq, 0)
+			if err != nil || len(messages) < 2 || messages[len(messages)-1].Role != store.RoleSystem ||
+				strings.Contains(messages[len(messages)-1].Body, "\n") {
+				t.Fatalf("management receipts = %+v err=%v", messages, err)
+			}
+		})
+	}
+}
+
+func TestAmbiguousCharterManagementProducesOptions(t *testing.T) {
+	graph := openHeadStore(t)
+	activateHeadCharter(t, graph, "frontend-prs", "Whenever frontend PRs open, review them.")
+	activateHeadCharter(t, graph, "backend-prs", "Whenever backend PRs open, review them.")
+	user, err := graph.PostMessage(store.Message{
+		SessionID: "ambiguous-charter", Role: store.RoleUser, Body: "stop watching PRs",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := New(&fakeClient{}, graph).answer(context.Background(), user); err != nil {
+		t.Fatal(err)
+	}
+	reply := waitForAgentReply(t, graph, "ambiguous-charter", user.Seq)
+	if !strings.HasPrefix(reply.Body, "Which standing charter do you mean?") || len(reply.Options) != 2 {
+		t.Fatalf("ambiguous reply = %+v", reply)
+	}
+	// The body carries the structured payload the TUI's question components
+	// read, beside the durable option rows.
+	if !strings.Contains(reply.Body, `"kind":"choose"`) {
+		t.Fatalf("ambiguous reply lacks the structured question payload: %q", reply.Body)
+	}
+	pending, err := graph.PendingCommands(0)
+	if err != nil || len(pending) != 0 {
+		t.Fatalf("ambiguous management emitted commands: %+v err=%v", pending, err)
+	}
+}
+
+func activateHeadCharter(t *testing.T, graph *store.Store, id, invariant string) store.Charter {
+	t.Helper()
+	charter, err := graph.DraftCharter(id, "manage", 0, store.CharterSpec{
+		Invariant: invariant,
+		Watch: store.CharterWatch{
+			Kind: store.WatchCron, Cadence: "every morning", Schedule: "0 9 * * *",
+		},
+		Sentinel: "Is a delivery due?", Action: "Send the digest.",
+		Rails: store.CharterSpecRails{
+			EstimatedCostUSD: 0.05, MaxPerDay: 1,
+			MaxPerDayJustification: "one scheduled delivery", Expiry: "never",
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := graph.SetCharterStatus(id, store.CharterActive, store.Ratification{
+		Origin: store.OriginUser, SessionID: "manage", Evidence: "yes, stand this up",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	charter.Status = store.CharterActive
+	return charter
 }

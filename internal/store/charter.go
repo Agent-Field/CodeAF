@@ -9,6 +9,7 @@ import (
 	"math"
 	"strings"
 	"time"
+	"unicode"
 )
 
 // CharterStatus is the ratification lifecycle of standing intent.
@@ -40,14 +41,18 @@ const (
 	CronEveryHours   CronKind = "every_hours"
 	CronDaily        CronKind = "daily"
 	CronWeekdays     CronKind = "weekdays"
+	// CronAt is a single wall-clock instant: the reminder schedule. After it
+	// fires once, its expiry rail retires the charter.
+	CronAt CronKind = "at"
 )
 
 // CronSchedule is a local-time schedule with no raw-cron escape hatch.
 type CronSchedule struct {
-	Kind     CronKind `json:"kind"`
-	Interval int      `json:"interval,omitempty"`
-	Hour     int      `json:"hour,omitempty"`
-	Minute   int      `json:"minute,omitempty"`
+	Kind     CronKind  `json:"kind"`
+	Interval int       `json:"interval,omitempty"`
+	Hour     int       `json:"hour,omitempty"`
+	Minute   int       `json:"minute,omitempty"`
+	At       time.Time `json:"at,omitempty"`
 }
 
 // FileWatch is an mtime-polled glob. Cadence bounds filesystem work even when
@@ -83,13 +88,16 @@ type PollWatch struct {
 	Cadence   time.Duration `json:"cadence"`
 }
 
-// WatchSpec is exactly one of cron, file, graph, or poll.
+// WatchSpec is exactly one of cron, file, graph, or poll. Cadence preserves
+// the user's own cadence words for surfaces; the typed fields are what the
+// engine executes.
 type WatchSpec struct {
-	Kind  WatchKind     `json:"kind"`
-	Cron  *CronSchedule `json:"cron,omitempty"`
-	File  *FileWatch    `json:"file,omitempty"`
-	Graph *GraphWatch   `json:"graph,omitempty"`
-	Poll  *PollWatch    `json:"poll,omitempty"`
+	Kind    WatchKind     `json:"kind"`
+	Cadence string        `json:"cadence,omitempty"`
+	Cron    *CronSchedule `json:"cron,omitempty"`
+	File    *FileWatch    `json:"file,omitempty"`
+	Graph   *GraphWatch   `json:"graph,omitempty"`
+	Poll    *PollWatch    `json:"poll,omitempty"`
 }
 
 // String renders the internal structured schedule with the interface's stable
@@ -109,6 +117,8 @@ func (watch WatchSpec) String() string {
 			return fmt.Sprintf("cron:daily %02d:%02d", watch.Cron.Hour, watch.Cron.Minute)
 		case CronWeekdays:
 			return fmt.Sprintf("cron:weekdays %02d:%02d", watch.Cron.Hour, watch.Cron.Minute)
+		case CronAt:
+			return "cron:at " + watch.Cron.At.Local().Format("2006-01-02 15:04")
 		}
 	case WatchFile:
 		if watch.File != nil {
@@ -295,6 +305,10 @@ func validateCron(schedule CronSchedule) error {
 		if schedule.Hour < 0 || schedule.Hour > 23 || schedule.Minute < 0 || schedule.Minute > 59 {
 			return fmt.Errorf("%w: cron wall time is invalid", ErrInvalid)
 		}
+	case CronAt:
+		if schedule.At.IsZero() {
+			return fmt.Errorf("%w: cron at-schedule requires an instant", ErrInvalid)
+		}
 	default:
 		return fmt.Errorf("%w: unknown cron schedule %q", ErrInvalid, schedule.Kind)
 	}
@@ -334,6 +348,9 @@ CREATE TABLE IF NOT EXISTS charters (
     updated_seq       INTEGER NOT NULL REFERENCES events(seq)
 );
 CREATE INDEX IF NOT EXISTS charters_due ON charters (status, next_due, created_seq);
+CREATE VIRTUAL TABLE IF NOT EXISTS charters_fts USING fts5(
+    charter_id UNINDEXED, invariant, tokenize='porter unicode61'
+);
 `
 
 type charterRecord struct {
@@ -503,7 +520,20 @@ func applyCharterCreated(tx *sql.Tx, payload charterRecord, seq int64, at time.T
 	if err != nil {
 		return err
 	}
+	if err := refreshCharterFTS(tx, payload.ID, payload.Invariant); err != nil {
+		return err
+	}
 	return refreshGraphFTS(tx, payload.ID)
+}
+
+// refreshCharterFTS keeps the BM25 invariant index in step with the charters
+// view on every event that can change an invariant.
+func refreshCharterFTS(tx *sql.Tx, id, invariant string) error {
+	if _, err := tx.Exec(`DELETE FROM charters_fts WHERE charter_id = ?`, id); err != nil {
+		return err
+	}
+	_, err := tx.Exec(`INSERT INTO charters_fts (charter_id, invariant) VALUES (?, ?)`, id, invariant)
+	return err
 }
 
 func firstCharterLine(value string) string {
@@ -538,6 +568,16 @@ const charterColumns = `
     id, invariant, watch, sentinel_hint, action, rails, status, ratification,
     proposal_shape, last_wake, next_due, wake_seq, wake_pending, sentinel_yes, wake_evidence,
     file_fingerprint, graph_cursor, graph_day, graph_triggered, created_seq, updated_seq`
+
+// qualifiedCharterColumns prefixes every charter column for queries that join
+// tables sharing column names, such as the invariant FTS index.
+func qualifiedCharterColumns(table string) string {
+	columns := strings.Split(charterColumns, ",")
+	for index, column := range columns {
+		columns[index] = table + "." + strings.TrimSpace(column)
+	}
+	return strings.Join(columns, ", ")
+}
 
 func scanCharter(scanner rowScanner) (Charter, error) {
 	var c Charter
@@ -596,6 +636,90 @@ func (s *Store) Charters() ([]Charter, error) {
 		return nil, fmt.Errorf("list charters: %w", err)
 	}
 	return result, nil
+}
+
+// ActiveCharters is the plain standing list used by conversation and
+// /standing: ratified work only, newest first.
+func (s *Store) ActiveCharters() ([]Charter, error) {
+	rows, err := s.db.Query(`SELECT `+charterColumns+` FROM charters WHERE status = ? ORDER BY created_seq DESC`,
+		CharterActive)
+	if err != nil {
+		return nil, fmt.Errorf("list active charters: %w", err)
+	}
+	defer rows.Close()
+	var result []Charter
+	for rows.Next() {
+		charter, err := scanCharter(rows)
+		if err != nil {
+			return nil, fmt.Errorf("list active charters: %w", err)
+		}
+		result = append(result, charter)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("list active charters: %w", err)
+	}
+	return result, nil
+}
+
+// SearchActiveCharters uses SQLite's BM25 rank over invariant text. An empty
+// reference deliberately returns every active charter so pronouns can resolve
+// when there is exactly one and ask back when there is more than one.
+func (s *Store) SearchActiveCharters(reference string) ([]Charter, error) {
+	terms := charterSearchTerms(reference)
+	if len(terms) == 0 {
+		return s.ActiveCharters()
+	}
+	quoted := make([]string, 0, len(terms))
+	for _, term := range terms {
+		quoted = append(quoted, `"`+strings.ReplaceAll(term, `"`, `""`)+`"`)
+	}
+	rows, err := s.db.Query(`SELECT `+qualifiedCharterColumns("charters")+` FROM charters
+		JOIN charters_fts ON charters_fts.charter_id = charters.id
+		WHERE charters.status = ? AND charters_fts MATCH ?
+		ORDER BY bm25(charters_fts), charters.created_seq DESC`,
+		CharterActive, strings.Join(quoted, " OR "))
+	if err != nil {
+		return nil, fmt.Errorf("search active charters: %w", err)
+	}
+	defer rows.Close()
+	var result []Charter
+	for rows.Next() {
+		charter, err := scanCharter(rows)
+		if err != nil {
+			return nil, fmt.Errorf("search active charters: %w", err)
+		}
+		result = append(result, charter)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("search active charters: %w", err)
+	}
+	return result, nil
+}
+
+func charterSearchTerms(reference string) []string {
+	seen := make(map[string]bool)
+	var terms []string
+	for _, term := range strings.FieldsFunc(strings.ToLower(reference), func(r rune) bool {
+		return !unicode.IsLetter(r) && !unicode.IsNumber(r)
+	}) {
+		if len(term) < 2 || seen[term] {
+			continue
+		}
+		seen[term] = true
+		terms = append(terms, term)
+	}
+	return terms
+}
+
+func requireCharter(tx *sql.Tx, id string) error {
+	var count int
+	if err := tx.QueryRow(`SELECT COUNT(*) FROM charters WHERE id = ?`, id).Scan(&count); err != nil {
+		return err
+	}
+	if count == 0 {
+		return fmt.Errorf("%w: charter %q", ErrNotFound, id)
+	}
+	return nil
 }
 
 // ReviseCharter replaces the editable definition while preserving identity,
@@ -665,6 +789,9 @@ func applyCharterRevision(tx *sql.Tx, payload charterRecord, seq int64) error {
 	brief := bounded("Charter: "+payload.Invariant, MaxDigestBytes)
 	if _, err := tx.Exec(`UPDATE nodes SET brief=?, title=?, summary=?, fold_digest=?, updated_seq=? WHERE id=?`,
 		brief, firstCharterLine(payload.Invariant), brief, brief, seq, payload.ID); err != nil {
+		return err
+	}
+	if err := refreshCharterFTS(tx, payload.ID, payload.Invariant); err != nil {
 		return err
 	}
 	return refreshGraphFTS(tx, payload.ID)
@@ -1225,6 +1352,13 @@ func NextCronDue(schedule CronSchedule, after time.Time) (time.Time, error) {
 		return after.Add(time.Duration(schedule.Interval) * time.Minute), nil
 	case CronEveryHours:
 		return after.Add(time.Duration(schedule.Interval) * time.Hour), nil
+	case CronAt:
+		// One occurrence. After it has passed, park the next due far beyond
+		// the reminder's expiry rail so the watch engine never re-wakes it.
+		if after.Before(schedule.At) {
+			return schedule.At, nil
+		}
+		return schedule.At.AddDate(1, 0, 0), nil
 	case CronDaily, CronWeekdays:
 		local := after.In(location)
 		for offset := 0; offset <= 8; offset++ {
