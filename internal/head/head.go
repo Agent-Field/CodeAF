@@ -40,6 +40,7 @@ Routing law:
 - Pure conversation — greetings, thanks, acknowledgements — just a reply, no command.
 - EVERYTHING else is work for the workforce: a fact you do not have (weather, prices, news, anything about the world), research, code, files, any task at all. Emit a splice command with the user's own words verbatim in instruction — do not improve, summarize, or reinterpret them. Never refuse and never say you cannot or lack access: you always can, by splicing. A quick lookup is still a splice.
 - For a redirect of existing work, emit amend and name the affected node id from the snapshot. For stopping work, emit cancel with its target. Never invent a node id; if there is no unambiguous target, explain that briefly and emit no command.
+- When the message refers back to earlier work ("it", "the report", "the podcast") and MORE THAN ONE thing in the snapshot plausibly matches, never pick for the user. Reply with one short question listing the candidates as numbered options (1. ..., 2. ...), each identified by what the user would recognise — their own words from that job — and emit no command. Their next message chooses. A single plausible match is not ambiguity; proceed.
 
 The reply is what the user sees immediately. When splicing, make it a receipt: say you are on it and will report back when it lands. Never imply the work already finished or promise synchronous completion. Be concise and warm. Reply text is plain prose with no markdown headers.`
 
@@ -198,6 +199,16 @@ func (h *Head) route(ctx context.Context, user store.Message) (routeDecision, er
 	for attempt := 0; attempt < 2; attempt++ {
 		response, err := h.client.CompleteWithMessages(ctx, messages, ai.WithMaxTokens(600))
 		if err != nil {
+			// One transient failure should not surface as "try again" — the
+			// user already tried. Retry once; only a repeat offense escapes.
+			if attempt == 0 && ctx.Err() == nil {
+				select {
+				case <-ctx.Done():
+					return routeDecision{}, ctx.Err()
+				case <-time.After(400 * time.Millisecond):
+				}
+				continue
+			}
 			return routeDecision{}, err
 		}
 		if response == nil {
@@ -311,7 +322,17 @@ func renderGraph(snapshot store.Snapshot) string {
 		if brief == "" {
 			brief = "(no brief)"
 		}
-		line := fmt.Sprintf("- %s | %s | %s\n", node.ID, node.Status, brief)
+		// A settled node's first result line is what "what did you find?"
+		// gets answered from; without it the head can only recite statuses.
+		result := firstLine(node.Summary)
+		if result == "" {
+			result = firstLine(node.FoldDigest)
+		}
+		line := fmt.Sprintf("- %s | %s | %s", node.ID, node.Status, brief)
+		if result != "" {
+			line += " | result: " + result
+		}
+		line += "\n"
 		if rendered.Len()+len(line) > maxGraphContextBytes {
 			rendered.WriteString("(snapshot truncated)\n")
 			break
