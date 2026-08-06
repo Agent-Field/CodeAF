@@ -90,6 +90,20 @@ func runChat(args []string) error {
 		return fmt.Errorf("create chat workspace: %w", err)
 	}
 
+	// Any claim alive at open belongs to a previous chat process — the store
+	// has one resident writer, so a closed terminal mid-run leaves leaves
+	// stranded as "running" forever. Release them back to pending before the
+	// reconciler starts, and say so once: recovered work resumes rather than
+	// haunting the rail.
+	if released, err := graph.ReleaseOrphans(); err == nil && len(released) > 0 {
+		_, _ = graph.PostMessage(store.Message{
+			SessionID: *sessionID,
+			Role:      store.RoleSystem,
+			Body: fmt.Sprintf("recovered %d interrupted task(s) from the last session — resuming where they left off",
+				len(released)),
+		})
+	}
+
 	// plans retains each planned job's graph so execution can be the headless
 	// mechanism exactly: call shapes for the router, escalation verdicts, and
 	// the profile records that calibrate the planner's ruler all read from the

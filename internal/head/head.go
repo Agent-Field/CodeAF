@@ -7,6 +7,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"sort"
 	"strings"
 	"time"
 	"unicode"
@@ -562,8 +563,38 @@ func renderGraph(snapshot store.Snapshot) string {
 	if len(snapshot.Nodes) == 0 {
 		return "(no active nodes)"
 	}
+	// Live work first, then the freshest history. The snapshot budget is
+	// finite and the store returns creation order, so a long-lived graph fed
+	// the head months of settled nodes before the job running right now —
+	// which is how the head answered "I don't see anything labeled webgpu"
+	// about a subtree the rail was rendering 49 minutes into its run. The
+	// one thing the snapshot must never truncate away is what is happening.
+	nodes := append([]store.Node(nil), snapshot.Nodes...)
+	rank := func(node store.Node) int {
+		switch {
+		case node.Status == store.Running || node.Status == store.Claimed:
+			return 0
+		case node.Status == store.Pending:
+			return 1
+		case node.FoldRoot:
+			// Packed history: reachable, but last in line for the budget.
+			return 3
+		default:
+			return 2
+		}
+	}
+	sort.SliceStable(nodes, func(i, j int) bool {
+		ri, rj := rank(nodes[i]), rank(nodes[j])
+		if ri != rj {
+			return ri < rj
+		}
+		if ri >= 2 {
+			return nodes[i].FinishedAt.After(nodes[j].FinishedAt)
+		}
+		return nodes[i].CreatedSeq > nodes[j].CreatedSeq
+	})
 	var rendered strings.Builder
-	for _, node := range snapshot.Nodes {
+	for _, node := range nodes {
 		brief := firstLine(node.Brief)
 		if brief == "" {
 			brief = "(no brief)"
