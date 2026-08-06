@@ -97,7 +97,7 @@ func NotebookDigest(graph *store.Store, brief, goal string, limit int) string {
 	}
 
 	var digest strings.Builder
-	digest.WriteString("notebook:\n")
+	digest.WriteString("notebook (lessons from earlier work; if your own experience in this task contradicts one, trust the experience and state the correction explicitly in your final message — that is how the notebook stays true):\n")
 	for _, fact := range facts {
 		digest.WriteString("- ")
 		digest.WriteString(fact.Body)

@@ -93,9 +93,8 @@ func TestNotebookDigestRetrievesPathScopeAndEmptyNotebook(t *testing.T) {
 	}
 
 	got := NotebookDigest(graph, "inspect internal/resident/notebook.go", "fix cue lookup", 5)
-	const want = "notebook:\n- notebook.go keeps cues in priority order"
-	if got != want {
-		t.Fatalf("NotebookDigest() = %q, want %q", got, want)
+	if !strings.HasPrefix(got, "notebook") || !strings.Contains(got, "- notebook.go keeps cues in priority order") {
+		t.Fatalf("NotebookDigest() = %q, want header plus the recorded fact", got)
 	}
 }
 
