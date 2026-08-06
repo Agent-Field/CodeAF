@@ -1612,3 +1612,50 @@ func TestFeedExpansionSurvivesTraceTruncation(t *testing.T) {
 		t.Fatalf("head truncation moved the expansion off the thought:\n%s", feed)
 	}
 }
+
+// A reader scrolled up must keep the exact content on screen when a job
+// settles and its card lands at the birth position above them; pinned-to-
+// bottom must stay pinned.
+func TestScrolledUpChatKeepsContentWhenACardSettlesAbove(t *testing.T) {
+	model := New(&fakeBackend{}, "cards")
+	model.setSize(80, 14)
+	base := time.Now().Add(-2 * time.Hour)
+	for index := 1; index <= 24; index++ {
+		model.messages = append(model.messages, store.Message{
+			Seq: int64(index), Time: base.Add(time.Duration(index) * 4 * time.Minute),
+			SessionID: "cards", Role: store.RoleAgent, Body: fmt.Sprintf("update number %02d", index),
+		})
+	}
+	model.cards = []jobCard{{ID: "job", RootID: "job", State: cardWorking, Title: "Working job", BirthSeq: 5}}
+	model.refreshChat()
+	if !model.chat.AtBottom() {
+		t.Fatal("auto-follow did not pin the seeded thread")
+	}
+	_, _ = model.Update(tea.KeyMsg{Type: tea.KeyPgUp})
+	_, _ = model.Update(tea.KeyMsg{Type: tea.KeyPgUp})
+	if model.autoScroll {
+		t.Fatal("paging up should release auto-follow")
+	}
+	before := model.chat.View()
+
+	delivery := store.Message{Seq: 205, Role: store.RoleSystem, Body: "The landed answer.\nWith detail lines.\nAnd more."}
+	model.cards[0].State = cardSettled
+	model.cards[0].Outcome = "The landed answer."
+	model.cards[0].Deliverable = &delivery
+	model.refreshChat()
+	if !strings.Contains(model.renderMessages(), "Working job") {
+		t.Fatal("settled card did not land in the thread")
+	}
+	if after := model.chat.View(); after != before {
+		t.Fatalf("card settling above the reader moved their view:\nbefore:\n%s\nafter:\n%s", before, after)
+	}
+
+	model.pinChat()
+	model.messages = append(model.messages, store.Message{
+		Seq: 30, Time: base.Add(3 * time.Hour), SessionID: "cards", Role: store.RoleAgent, Body: "one more update",
+	})
+	model.refreshChat()
+	if !model.chat.AtBottom() {
+		t.Fatal("pinned-to-bottom did not stay pinned through a refresh")
+	}
+}
