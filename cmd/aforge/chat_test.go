@@ -21,6 +21,7 @@ type gateCaptureClient struct {
 	messages     []ai.Message
 	class        provider.CallClass
 	responseMode bool
+	response     string
 }
 
 func (c *gateCaptureClient) CompleteWithMessages(ctx context.Context, messages []ai.Message, options ...ai.Option) (*ai.Response, error) {
@@ -33,8 +34,12 @@ func (c *gateCaptureClient) CompleteWithMessages(ctx context.Context, messages [
 		}
 	}
 	c.responseMode = request.ResponseFormat != nil
+	text := c.response
+	if text == "" {
+		text = `{"pass":true}`
+	}
 	return &ai.Response{Choices: []ai.Choice{{
-		Message: ai.Message{Role: "assistant", Content: []ai.ContentPart{{Type: "text", Text: `{"pass":true}`}}},
+		Message: ai.Message{Role: "assistant", Content: []ai.ContentPart{{Type: "text", Text: text}}},
 	}}}, nil
 }
 
@@ -341,5 +346,130 @@ func TestBudgetStoppedReflexCarriesPartialIntoCompiledJob(t *testing.T) {
 	node, found, err := graph.Node("compiled-after-budget")
 	if err != nil || !found || node.Provenance.Intent != ask {
 		t.Fatalf("compiled job = %+v found=%t err=%v", node, found, err)
+	}
+}
+
+func TestResidentUserFacingPromptsKeepEmptyNotebookBytes(t *testing.T) {
+	graph, err := store.Open(filepath.Join(t.TempDir(), "graph.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer graph.Close()
+
+	settings := config.Config{Model: "talk/model"}
+	capture := &gateCaptureClient{model: "talk/model"}
+	client := &liveClient{settings: settings, model: capture.model, client: capture}
+	if _, err := narrateProgress(settings, client, graph)(context.Background(), resident.Narration{
+		Goal: "prepare the report",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if got := capture.messages[0].Content[0].Text; got != narratorSystemPrompt {
+		t.Fatalf("empty-notebook narrator prompt changed:\n got %q\nwant %q", got, narratorSystemPrompt)
+	}
+
+	node := store.Node{
+		ID: "job", Parent: store.RootID, Brief: "assemble the finished report",
+		Provenance: store.Provenance{Intent: "prepare the report"},
+	}
+	if got := residentDeliveryBrief(graph, node); got != node.Brief {
+		t.Fatalf("empty-notebook delivery brief changed:\n got %q\nwant %q", got, node.Brief)
+	}
+	initial := exec.Task{Brief: residentDeliveryBrief(graph, node)}
+	polish := initial
+	if initial.Brief != node.Brief || polish.Brief != node.Brief {
+		t.Fatalf("empty-notebook initial/polish briefs changed: initial=%q polish=%q", initial.Brief, polish.Brief)
+	}
+
+	const deliverable = "the finished report"
+	judgment := judgeDeliverable(context.Background(), settings, client, graph, node, deliverable, "worker/model")
+	if !judgment.Checked || !judgment.Pass {
+		t.Fatalf("judgment = %+v, want checked pass", judgment)
+	}
+	if got := capture.messages[0].Content[0].Text; got != judgeDeliverablePrompt {
+		t.Fatalf("empty-notebook gate system prompt changed:\n got %q\nwant %q", got, judgeDeliverablePrompt)
+	}
+	wantBody := "Verbatim request:\n" + node.Provenance.Intent +
+		"\n\nCompiled goal:\n" + node.Brief +
+		"\n\nDeliverable as produced:\n" + deliverable
+	if got := capture.messages[1].Content[0].Text; got != wantBody {
+		t.Fatalf("empty-notebook gate body changed:\n got %q\nwant %q", got, wantBody)
+	}
+}
+
+func TestResidentDeliveryAndPolishBriefShareLearnedVoice(t *testing.T) {
+	graph, err := store.Open(filepath.Join(t.TempDir(), "graph.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer graph.Close()
+	const preference = "keep answers short; no preamble"
+	if _, err := graph.RecordFact("", "user", store.FactPreference, preference); err != nil {
+		t.Fatal(err)
+	}
+	node := store.Node{
+		ID: "job", Parent: store.RootID, Brief: "assemble the finished report",
+		Provenance: store.Provenance{Intent: "prepare the report"},
+	}
+	initial := exec.Task{Brief: residentDeliveryBrief(graph, node)}
+	polish := initial
+	for name, brief := range map[string]string{"delivery": initial.Brief, "polish": polish.Brief} {
+		if !strings.Contains(brief, preference) {
+			t.Fatalf("%s brief omitted learned voice: %q", name, brief)
+		}
+	}
+	settings := config.Config{Model: "talk/model"}
+	capture := &gateCaptureClient{model: "talk/model"}
+	client := &liveClient{settings: settings, model: capture.model, client: capture}
+	if _, err := narrateProgress(settings, client, graph)(context.Background(), resident.Narration{
+		Goal: node.Provenance.Intent,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if system := capture.messages[0].Content[0].Text; !strings.Contains(system, preference) {
+		t.Fatalf("narrator prompt omitted learned voice: %q", system)
+	}
+	child := node
+	child.Parent = node.ID
+	if got := residentDeliveryBrief(graph, child); got != child.Brief {
+		t.Fatalf("worker-to-worker child brief gained user voice: %q", got)
+	}
+}
+
+func TestDistillerParsesVoiceCorrectionAsUserPreference(t *testing.T) {
+	graph, err := store.Open(filepath.Join(t.TempDir(), "graph.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer graph.Close()
+
+	settings := config.Config{Model: "talk/model"}
+	capture := &gateCaptureClient{
+		model:    "talk/model",
+		response: `{"facts":[{"scope":"user","kind":"preference","body":"keep answers short; no preamble"}]}`,
+	}
+	client := &liveClient{settings: settings, model: capture.model, client: capture}
+	learned, err := distillFacts(settings, client, graph)(
+		context.Background(),
+		"Revise the earlier report",
+		"The user corrected the delivery: make it shorter and remove the preamble.",
+		false,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(learned) != 1 || learned[0].Scope != "user" ||
+		learned[0].Kind != store.FactPreference ||
+		learned[0].Body != "keep answers short; no preamble" {
+		t.Fatalf("distilled voice correction = %+v", learned)
+	}
+	system := capture.messages[0].Content[0].Text
+	for _, want := range []string{"HOW something was communicated", `scope "user"`, `kind "preference"`, "direct instruction"} {
+		if !strings.Contains(system, want) {
+			t.Errorf("distiller voice judgment omitted %q", want)
+		}
+	}
+	if user := capture.messages[1].Content[0].Text; !strings.Contains(user, "make it shorter and remove the preamble") {
+		t.Fatalf("distiller input omitted the voice correction: %q", user)
 	}
 }

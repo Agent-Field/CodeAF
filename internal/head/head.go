@@ -245,7 +245,7 @@ func (h *Head) route(ctx context.Context, user store.Message) (routeDecision, er
 		}
 	}
 	messages := []ai.Message{
-		textMessage("system", headSystemPrompt),
+		textMessage("system", resident.VoicePrompt(h.store, headSystemPrompt, user.Body)),
 		textMessage("user", prompt),
 	}
 	// No response-format schema here: measured against the shipped default
