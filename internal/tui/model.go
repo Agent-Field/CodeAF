@@ -153,6 +153,7 @@ type Model struct {
 
 	// Question options remain selected while the ordinary input keeps focus.
 	questionSelection map[string]int
+	questionDismissed map[string]bool
 	cardOptionRows    []cardOptionRow
 
 	selectedNodeID string
@@ -218,6 +219,7 @@ type Model struct {
 	paletteDismissed bool
 	modelRole        string
 	modelCatalog     []ModelChoice
+	optimisticModels map[string]string
 	catalogRequested bool
 	catalogLoading   bool
 	memoryFacts      []store.Fact
@@ -229,22 +231,31 @@ type Model struct {
 	splitPct      int
 	draggingSplit bool
 
-	chatBounds         paneBounds
-	headerTasksBounds  paneBounds
-	graphBounds        paneBounds
-	graphRowsBounds    paneBounds
-	standingRowsBounds paneBounds
-	graphToggleBounds  paneBounds
-	inputBounds        paneBounds
-	nodeBounds         paneBounds
-	nodeTraceBounds    paneBounds
-	nodeBackBounds     paneBounds
-	paletteCloseBounds paneBounds
-	activityBarBounds  paneBounds
-	cardDockRows       []cardRow
-	chatCardRows       []cardRow
-	cardPartRows       []cardPartRow
-	cardCloseRows      []cardCloseRow
+	chatBounds                paneBounds
+	headerTasksBounds         paneBounds
+	headerQuestionBounds      paneBounds
+	headerTalkBounds          paneBounds
+	headerWorkBounds          paneBounds
+	headerFocusIndex          int
+	graphBounds               paneBounds
+	graphRowsBounds           paneBounds
+	standingRowsBounds        paneBounds
+	graphToggleBounds         paneBounds
+	inputBounds               paneBounds
+	nodeBounds                paneBounds
+	nodeTraceBounds           paneBounds
+	nodeBackBounds            paneBounds
+	paletteCloseBounds        paneBounds
+	modelPickerBounds         paneBounds
+	modelTalkBounds           paneBounds
+	modelWorkBounds           paneBounds
+	modelPickerRows           []modelPickerRow
+	activityBarBounds         paneBounds
+	textQuestionDismissBounds paneBounds
+	cardDockRows              []cardRow
+	chatCardRows              []cardRow
+	cardPartRows              []cardPartRow
+	cardCloseRows             []cardCloseRow
 
 	// chatMessageRows maps rendered chat lines to the message seq they
 	// belong to, so clicking a collapsed deliverable opens it in place.
@@ -266,7 +277,13 @@ const (
 	focusChat
 	focusCards
 	focusGraph
+	focusHeader
 )
+
+type modelPickerRow struct {
+	bounds paneBounds
+	index  int
+}
 
 // New returns a ready-to-run chat model. The default dimensions make View
 // useful in tests before Bubble Tea sends its first WindowSizeMsg.
@@ -311,6 +328,8 @@ func newModel(backend Backend, sessionID string, commander Commander) *Model {
 		commands:          map[int64]store.Command{},
 		cardExpanded:      map[string]bool{},
 		questionSelection: map[string]int{},
+		questionDismissed: map[string]bool{},
+		optimisticModels:  map[string]string{},
 		dockSummaryLine:   -1,
 	}
 	if source, ok := commander.(streamSource); ok {
@@ -433,6 +452,21 @@ func (m *Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		m.statusUntil = time.Now().Add(statusTTL)
 		return m, nil
 
+	case modelCommandResultMsg:
+		if message.err != nil {
+			if message.previous == "" || message.previous == "–" {
+				delete(m.optimisticModels, message.role)
+			} else {
+				m.optimisticModels[message.role] = message.previous
+			}
+			m.err = fmt.Errorf("request %s model: %w", message.role, message.err)
+			return m, nil
+		}
+		m.err = nil
+		m.status = fmt.Sprintf("%s model → %s", message.role, message.slug)
+		m.statusUntil = time.Now().Add(statusTTL)
+		return m, nil
+
 	case tea.KeyMsg:
 		if command, handled := m.updateKey(message); handled {
 			if command == nil {
@@ -535,6 +569,12 @@ func (m *Model) updateKey(message tea.KeyMsg) (tea.Cmd, bool) {
 			m.setSize(m.width, m.height)
 		case m.graphVisible() && m.focus == focusGraph:
 			m.toggleGraph()
+		case m.focus == focusHeader:
+			m.focus = focusInput
+			m.inputFocused = true
+			_ = m.input.Focus()
+			m.setSize(m.width, m.height)
+		case m.focus == focusInput && m.dismissTextQuestion():
 		case m.input.Value() != "":
 			m.input.Reset()
 			m.paletteDismissed = false
@@ -553,6 +593,18 @@ func (m *Model) updateKey(message tea.KeyMsg) (tea.Cmd, bool) {
 	if m.paletteOpen() {
 		if command, handled := m.updatePaletteKey(key); handled {
 			return command, true
+		}
+	}
+	if m.focus == focusHeader {
+		switch key {
+		case "left", "up", "k":
+			m.headerFocusIndex = (m.headerFocusIndex + 2) % 3
+			return nil, true
+		case "right", "down", "j":
+			m.headerFocusIndex = (m.headerFocusIndex + 1) % 3
+			return nil, true
+		case "enter":
+			return m.activateHeaderFocus(), true
 		}
 	}
 	// Numbered question options are a layer over the normal live input. An
@@ -815,6 +867,9 @@ func (m *Model) applyPoll(result pollResultMsg) {
 	for _, message := range accepted {
 		if isQuestionMessage(message) {
 			questionArrived = true
+			if card := m.cardForMessage(message); card != nil {
+				delete(m.questionDismissed, card.ID)
+			}
 		}
 		if !m.attentionMessage(message) {
 			continue
@@ -922,10 +977,12 @@ func (m *Model) toggleFocus() tea.Cmd {
 	order = append(order, focusChat)
 	if m.graphVisible() {
 		if m.horizontal {
-			order = []paneFocus{focusInput, focusChat, focusGraph}
+			order = []paneFocus{focusInput, focusChat, focusGraph, focusHeader}
 		} else {
-			order = []paneFocus{focusInput, focusGraph}
+			order = []paneFocus{focusInput, focusGraph, focusHeader}
 		}
+	} else {
+		order = append(order, focusHeader)
 	}
 	at := 0
 	for index, pane := range order {
@@ -946,6 +1003,9 @@ func (m *Model) toggleFocus() tea.Cmd {
 		// Enter the thread at its newest interactive line — context lives at
 		// the bottom of a conversation.
 		m.chatFocusIndex = 1 << 30
+	}
+	if m.focus == focusHeader {
+		m.headerFocusIndex = max(0, min(2, m.headerFocusIndex))
 	}
 	if m.inputFocused {
 		m.setSize(m.width, m.height)
@@ -997,7 +1057,7 @@ func (m *Model) setSize(width, height int) {
 	// or a resize computes the frame against the stale wrap.
 	m.input.Width = max(1, m.width-4)
 
-	paletteHeight := m.paletteHeight()
+	paletteHeight := m.layoutPaletteHeight()
 	footerHeight := 1
 	if m.paletteOpen() {
 		footerHeight = 0
@@ -1007,7 +1067,7 @@ func (m *Model) setSize(width, height int) {
 		barHeight = m.cardDockHeight()
 	}
 	// top bar + blank + main + blank + palette + activity bar + input + hint
-	mainHeight := max(3, m.height-3-paletteHeight-barHeight-m.input.LineCount()-footerHeight)
+	mainHeight := max(3, m.height-3-paletteHeight-barHeight-m.inputSurfaceHeight()-footerHeight)
 	if m.graphVisible() && m.horizontal {
 		const gap = 2
 		pct := m.splitPct

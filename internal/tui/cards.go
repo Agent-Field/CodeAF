@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"encoding/json"
 	"fmt"
 	"sort"
 	"strconv"
@@ -21,32 +22,46 @@ const (
 	cardSettled   cardState = "settled"
 )
 
+type questionKind string
+
+const (
+	questionChoose  questionKind = "choose"
+	questionConfirm questionKind = "confirm"
+	questionText    questionKind = "text"
+
+	stuckQuestionAfter = 2 * time.Minute
+)
+
 // jobCard is a presentation-only rollup of one top-level subtree. Everything
 // here is rebuilt from durable messages, graph nodes, commands, and usage.
 type jobCard struct {
-	ID          string
-	RootID      string
-	State       cardState
-	Title       string
-	Ask         string
-	Reading     string
-	Receipt     string
-	Latest      string
-	Question    string
-	Options     []questionOption
-	Outcome     string
-	BirthSeq    int64
-	CommandSeq  int64
-	StartedAt   time.Time
-	FinishedAt  time.Time
-	Done        int
-	Total       int
-	Usage       store.JobUsage
-	Messages    []store.Message
-	Narration   []string
-	Parts       []cardPart
-	Deliverable *store.Message
-	Failed      bool
+	ID           string
+	RootID       string
+	State        cardState
+	Title        string
+	Ask          string
+	Reading      string
+	Receipt      string
+	Latest       string
+	QuestionKind questionKind
+	Question     string
+	Options      []questionOption
+	Default      string
+	AllowFree    bool
+	QuestionAt   time.Time
+	Outcome      string
+	BirthSeq     int64
+	CommandSeq   int64
+	StartedAt    time.Time
+	FinishedAt   time.Time
+	Done         int
+	Total        int
+	Usage        store.JobUsage
+	Messages     []store.Message
+	Narration    []string
+	Parts        []cardPart
+	Deliverable  *store.Message
+	Failed       bool
 }
 
 type cardPart struct {
@@ -80,15 +95,41 @@ type cardCloseRow struct {
 
 type questionOption struct {
 	Number int
-	Text   string
+	Key    string
+	Label  string
+	Hint   string
 	Reply  string
 }
 
 type cardOptionRow struct {
 	line        int
+	startX      int
+	endX        int
 	cardID      string
 	optionIndex int
 	dock        bool
+}
+
+type questionComponent struct {
+	Kind      questionKind
+	Prompt    string
+	Options   []questionOption
+	Default   string
+	AllowFree bool
+}
+
+type structuredQuestion struct {
+	Kind      questionKind               `json:"kind"`
+	Prompt    string                     `json:"prompt"`
+	Options   []structuredQuestionOption `json:"options"`
+	Default   any                        `json:"default"`
+	AllowFree bool                       `json:"allowFree"`
+}
+
+type structuredQuestionOption struct {
+	Key   any    `json:"key"`
+	Label string `json:"label"`
+	Hint  string `json:"hint,omitempty"`
 }
 
 // deriveJobCards is the living-card query. It intentionally accepts store
@@ -212,13 +253,14 @@ func deriveJobCards(
 			}
 			switch {
 			case message.Role == store.RoleAgent:
+				if component, ok := readQuestionComponent(message.Body); ok {
+					card.applyQuestion(component, message.Time)
+					continue
+				}
 				line := firstLine(message.Body)
 				if line != "" {
 					card.Narration = append(card.Narration, line)
 					card.Latest = line
-				}
-				if isQuestionMessage(message) {
-					card.Question, card.Options = questionPayload(message.Body)
 				}
 			case message.Role == store.RoleSystem && message.CommandSeq != 0:
 				// Plan-progress posts are anchored to the job node and stamped
@@ -341,18 +383,22 @@ func deriveJobCards(
 		if answered {
 			continue
 		}
-		prompt, options := questionPayload(question.Body)
+		component, _ := readQuestionComponent(question.Body)
 		cards = append(cards, jobCard{
-			ID:         fmt.Sprintf("command:%d", seq),
-			State:      cardQuestion,
-			Title:      firstLine(command.Instruction),
-			Ask:        strings.TrimSpace(command.Instruction),
-			Question:   prompt,
-			Options:    options,
-			Latest:     firstLine(prompt),
-			BirthSeq:   command.Seq,
-			CommandSeq: command.Seq,
-			StartedAt:  command.Time,
+			ID:           fmt.Sprintf("command:%d", seq),
+			State:        cardQuestion,
+			Title:        firstLine(command.Instruction),
+			Ask:          strings.TrimSpace(command.Instruction),
+			QuestionKind: component.Kind,
+			Question:     component.Prompt,
+			Options:      component.Options,
+			Default:      component.Default,
+			AllowFree:    component.AllowFree,
+			QuestionAt:   question.Time,
+			Latest:       firstLine(component.Prompt),
+			BirthSeq:     command.Seq,
+			CommandSeq:   command.Seq,
+			StartedAt:    command.Time,
 		})
 	}
 
@@ -437,13 +483,137 @@ func isQuestionMessage(message store.Message) bool {
 	if message.Role != store.RoleAgent {
 		return false
 	}
-	prompt, options := questionPayload(message.Body)
-	return len(options) > 0 || strings.HasSuffix(strings.TrimSpace(prompt), "?")
+	_, ok := readQuestionComponent(message.Body)
+	return ok
 }
 
-// questionPayload reads the generic numbered-option spelling carried by the
-// existing message body payload. Options may share a line or use one line each.
+func (card *jobCard) applyQuestion(component questionComponent, at time.Time) {
+	card.QuestionKind = component.Kind
+	card.Question = component.Prompt
+	card.Options = component.Options
+	card.Default = component.Default
+	card.AllowFree = component.AllowFree
+	card.QuestionAt = at
+	card.Latest = firstLine(component.Prompt)
+}
+
+// readQuestionComponent prefers a structured JSON payload, whether it is the
+// whole body, a fenced block, or an object embedded in explanatory prose. The
+// numbered ▸ spelling remains the compatibility seam for already-landed heads.
+func readQuestionComponent(body string) (questionComponent, bool) {
+	for _, candidate := range jsonObjects(body) {
+		var payload structuredQuestion
+		if json.Unmarshal([]byte(candidate), &payload) != nil {
+			continue
+		}
+		component, ok := normalizeStructuredQuestion(payload)
+		if ok {
+			return component, true
+		}
+	}
+	prompt, options := numberedQuestionPayload(body)
+	if len(options) == 0 && !strings.HasSuffix(strings.TrimSpace(prompt), "?") {
+		return questionComponent{}, false
+	}
+	kind := questionText
+	if len(options) > 0 {
+		kind = questionChoose
+	}
+	return questionComponent{Kind: kind, Prompt: prompt, Options: options, AllowFree: true}, true
+}
+
+// questionPayload is kept as a narrow test/compatibility helper for callers
+// that only understand the original prompt-plus-options shape.
 func questionPayload(body string) (string, []questionOption) {
+	component, _ := readQuestionComponent(body)
+	return component.Prompt, component.Options
+}
+
+func normalizeStructuredQuestion(payload structuredQuestion) (questionComponent, bool) {
+	payload.Kind = questionKind(strings.ToLower(strings.TrimSpace(string(payload.Kind))))
+	switch payload.Kind {
+	case questionChoose, questionConfirm, questionText:
+	default:
+		return questionComponent{}, false
+	}
+	prompt := strings.TrimSpace(payload.Prompt)
+	if prompt == "" {
+		return questionComponent{}, false
+	}
+	options := make([]questionOption, 0, len(payload.Options))
+	seen := make(map[string]bool)
+	for index, rawOption := range payload.Options {
+		key := strings.TrimSpace(fmt.Sprint(rawOption.Key))
+		if rawOption.Key == nil || key == "<nil>" {
+			key = ""
+		}
+		option := questionOption{
+			Key:   key,
+			Label: strings.TrimSpace(rawOption.Label), Hint: strings.TrimSpace(rawOption.Hint),
+		}
+		if option.Key == "" {
+			option.Key = strconv.Itoa(index + 1)
+		}
+		if option.Label == "" || seen[option.Key] {
+			continue
+		}
+		seen[option.Key] = true
+		option.Number = len(options) + 1
+		option.Reply = option.Key
+		options = append(options, option)
+	}
+	if payload.Kind == questionText {
+		options = nil
+	} else if len(options) == 0 {
+		return questionComponent{}, false
+	}
+	defaultKey := strings.TrimSpace(fmt.Sprint(payload.Default))
+	if payload.Default == nil || defaultKey == "<nil>" {
+		defaultKey = ""
+	}
+	return questionComponent{
+		Kind: payload.Kind, Prompt: prompt, Options: options,
+		Default: defaultKey, AllowFree: payload.AllowFree,
+	}, true
+}
+
+// jsonObjects returns balanced object candidates while respecting quoted
+// braces. Trying every object makes the reader tolerant of markdown fences and
+// metadata envelopes without coupling the TUI to one head serialization.
+func jsonObjects(body string) []string {
+	var objects []string
+	for start := 0; start < len(body); start++ {
+		if body[start] != '{' {
+			continue
+		}
+		depth := 0
+		quoted, escaped := false, false
+		for end := start; end < len(body); end++ {
+			switch character := body[end]; {
+			case escaped:
+				escaped = false
+			case quoted && character == '\\':
+				escaped = true
+			case character == '"':
+				quoted = !quoted
+			case !quoted && character == '{':
+				depth++
+			case !quoted && character == '}':
+				depth--
+				if depth == 0 {
+					objects = append(objects, body[start:end+1])
+					end = len(body)
+				}
+			}
+		}
+	}
+	return objects
+}
+
+// numberedQuestionPayload reads the generic numbered-option spelling carried
+// by the existing message body payload. Options may share a line or use one
+// line each.
+func numberedQuestionPayload(body string) (string, []questionOption) {
 	lines := strings.Split(strings.ReplaceAll(body, "\r\n", "\n"), "\n")
 	promptLines := make([]string, 0, len(lines))
 	options := make([]questionOption, 0)
@@ -482,8 +652,9 @@ func questionPayload(body string) (string, []questionOption) {
 			promptLines = append(promptLines, prefix)
 		}
 		for _, option := range parsed {
-			if !seen[option.Number] {
-				seen[option.Number] = true
+			number, _ := strconv.Atoi(option.Key)
+			if !seen[number] {
+				seen[number] = true
 				options = append(options, option)
 			}
 		}
@@ -505,7 +676,7 @@ func parseQuestionOptionSegment(segment string) (questionOption, bool) {
 	if text == "" {
 		return questionOption{}, false
 	}
-	return questionOption{Number: number, Text: text, Reply: text}, true
+	return questionOption{Number: number, Key: strconv.Itoa(number), Label: text, Reply: text}, true
 }
 
 func placeJobCards(cards []jobCard) (active, settled []jobCard) {
@@ -517,6 +688,30 @@ func placeJobCards(cards []jobCard) (active, settled []jobCard) {
 		}
 	}
 	return active, settled
+}
+
+// dockJobCards promotes only stale unanswered questions. Fresh questions keep
+// their conversational birth order, so the quiet signal appears only after the
+// user has genuinely had time to miss one.
+func dockJobCards(cards []jobCard, now time.Time) []jobCard {
+	active, _ := placeJobCards(cards)
+	sort.SliceStable(active, func(i, j int) bool {
+		leftStale := questionIsStuck(active[i], now)
+		rightStale := questionIsStuck(active[j], now)
+		if leftStale != rightStale {
+			return leftStale
+		}
+		if leftStale && !active[i].QuestionAt.Equal(active[j].QuestionAt) {
+			return active[i].QuestionAt.Before(active[j].QuestionAt)
+		}
+		return false
+	})
+	return active
+}
+
+func questionIsStuck(card jobCard, now time.Time) bool {
+	return card.State == cardQuestion && !card.QuestionAt.IsZero() &&
+		now.Sub(card.QuestionAt) >= stuckQuestionAfter
 }
 
 func (m *Model) rebuildCards() {
@@ -670,7 +865,7 @@ func (m *Model) clampCardDock(content string, lineCap int) string {
 	lines := strings.Split(content, "\n")
 	// Keep the minimum three-line conversation viewport and the fixed frame,
 	// input, and hint rows. A very detailed card yields with an honest tail.
-	limit := max(1, m.height-7-m.input.LineCount())
+	limit := max(1, m.height-7-m.inputSurfaceHeight())
 	if lineCap > 0 {
 		limit = min(limit, lineCap)
 	}
@@ -711,7 +906,7 @@ func (m *Model) dockOverflowOpen() bool {
 }
 
 func (m *Model) renderCardDock(track bool) string {
-	active, _ := placeJobCards(m.cards)
+	active := dockJobCards(m.cards, m.standingTime())
 	if track {
 		m.cardDockRows = m.cardDockRows[:0]
 		kept := m.cardPartRows[:0]
@@ -745,6 +940,18 @@ func (m *Model) renderCardDock(track bool) string {
 	overflow := len(active) > dockOverflowLimit
 	running, waiting := dockSummaryCounts(active)
 	if overflow && !m.dockOverflowOpen() {
+		if questionIsStuck(active[0], m.standingTime()) {
+			chip := m.renderCompactCard(active[0], m.width)
+			summary := mutedStyle.Render("▸ ") +
+				lipgloss.NewStyle().Foreground(peach).Render(dockSummaryText(running, waiting))
+			if track {
+				m.cardDockRows = append(m.cardDockRows, cardRow{
+					start: 0, end: 0, cardID: active[0].ID, dock: true,
+				})
+				m.dockSummaryLine = 1
+			}
+			return truncate(chip, m.width) + "\n" + truncate(summary, m.width)
+		}
 		if track {
 			m.dockSummaryLine = 0
 		}
@@ -788,14 +995,19 @@ func (m *Model) renderCardDock(track bool) string {
 
 func (m *Model) renderJobCard(card jobCard, width int, expanded bool, atLine int, dock, track bool) string {
 	width = max(12, width)
-	if dock && !expanded && !(card.State == cardQuestion && len(card.Options) > 0) {
+	if dock && !expanded && !(card.State == cardQuestion && card.QuestionKind != questionText) {
 		return m.renderCompactCard(card, width)
 	}
 
 	glyph := m.cardGlyph(card)
 	meta := m.cardMeta(card, time.Now())
 	titleWidth := max(1, width-lipgloss.Width(glyph)-lipgloss.Width(meta)-7)
-	title := lipgloss.NewStyle().Foreground(ink).Bold(true).Render(truncate(card.Title, titleWidth))
+	titleStyle := lipgloss.NewStyle().Foreground(ink).Bold(true)
+	if dock && questionIsStuck(card, m.standingTime()) {
+		glyph = questionStyle.Bold(true).Render("?")
+		titleStyle = questionStyle.Bold(true)
+	}
+	title := titleStyle.Render(truncate(card.Title, titleWidth))
 	header := mutedStyle.Faint(true).Render("╭─ ") + glyph + " " + title
 	if meta != "" {
 		header += mutedStyle.Render(" · " + meta)
@@ -865,7 +1077,7 @@ func (m *Model) renderJobCard(card jobCard, width int, expanded bool, atLine int
 		addText(card.Question, questionStyle)
 	}
 	if card.State == cardQuestion {
-		m.appendQuestionOptions(&lines, card, width, atLine, dock, track)
+		m.appendQuestionComponent(&lines, card, width, atLine, dock, track)
 	}
 
 	if card.State == cardSettled && card.Deliverable != nil {
@@ -907,43 +1119,109 @@ func (m *Model) renderJobCard(card jobCard, width int, expanded bool, atLine int
 	return strings.Join(lines, "\n")
 }
 
-func (m *Model) appendQuestionOptions(
+func (m *Model) appendQuestionComponent(
 	lines *[]string, card jobCard, width, atLine int, dock, track bool,
 ) {
-	selected := m.questionOptionIndex(card.ID, len(card.Options))
+	switch card.QuestionKind {
+	case questionConfirm:
+		m.appendConfirmQuestion(lines, card, width, atLine, dock, track)
+	case questionChoose, "":
+		m.appendChooseQuestion(lines, card, width, atLine, dock, track)
+	}
+}
+
+func (m *Model) appendChooseQuestion(
+	lines *[]string, card jobCard, width, atLine int, dock, track bool,
+) {
+	selected := m.questionOptionIndex(card)
 	for index, option := range card.Options {
 		prefix := mutedStyle.Faint(true).Render("│   ")
 		markerStyle := mutedStyle
 		if index == selected {
 			markerStyle = lipgloss.NewStyle().Foreground(powder).Bold(true)
 		}
-		text := fmt.Sprintf("%d %s", option.Number, option.Text)
-		line := prefix + markerStyle.Render("▸ ") + questionStyle.Render(
-			truncate(text, max(1, width-lipgloss.Width(prefix)-2)),
-		)
+		text := strconv.Itoa(option.Number) + " " + option.Label
+		available := max(1, width-lipgloss.Width(prefix)-2)
+		label := questionStyle.Render(truncate(text, available))
+		if option.Hint != "" {
+			remaining := available - lipgloss.Width(text) - 3
+			if remaining > 0 {
+				label += mutedStyle.Faint(true).Render(" · " + truncate(option.Hint, remaining))
+			}
+		}
+		line := prefix + markerStyle.Render("▸ ") + label
 		if index == selected {
 			line = lipgloss.NewStyle().Background(selectionBand).Width(width).Render(line)
 		}
 		*lines = append(*lines, truncate(line, width))
 		if track {
 			m.cardOptionRows = append(m.cardOptionRows, cardOptionRow{
-				line: atLine + len(*lines) - 1, cardID: card.ID,
+				line: atLine + len(*lines) - 1, startX: 0, endX: width, cardID: card.ID,
 				optionIndex: index, dock: dock,
 			})
 		}
 	}
 }
 
-func (m *Model) questionOptionIndex(cardID string, count int) int {
-	if count <= 0 {
+func (m *Model) appendConfirmQuestion(
+	lines *[]string, card jobCard, width, atLine int, dock, track bool,
+) {
+	if len(card.Options) == 0 {
+		return
+	}
+	selected := m.questionOptionIndex(card)
+	prefix := mutedStyle.Faint(true).Render("│   ")
+	line := prefix
+	x := lipgloss.Width(prefix)
+	for index, option := range card.Options {
+		if index > 0 {
+			separator := mutedStyle.Faint(true).Render(" · ")
+			line += separator
+			x += lipgloss.Width(separator)
+		}
+		markerStyle := mutedStyle
+		if index == selected {
+			markerStyle = lipgloss.NewStyle().Foreground(powder).Bold(true)
+		}
+		segment := markerStyle.Render("▸ ") + questionStyle.Render(strconv.Itoa(option.Number)+" "+option.Label)
+		startX := x
+		line += segment
+		x += lipgloss.Width(segment)
+		if track {
+			m.cardOptionRows = append(m.cardOptionRows, cardOptionRow{
+				line: atLine + len(*lines), startX: startX, endX: x,
+				cardID: card.ID, optionIndex: index, dock: dock,
+			})
+		}
+	}
+	*lines = append(*lines, truncate(line, width))
+}
+
+func (m *Model) questionOptionIndex(card jobCard) int {
+	if len(card.Options) <= 0 {
 		return 0
 	}
 	if m.questionSelection == nil {
 		m.questionSelection = make(map[string]int)
 	}
-	index := max(0, min(m.questionSelection[cardID], count-1))
-	m.questionSelection[cardID] = index
+	index, selected := m.questionSelection[card.ID]
+	if !selected {
+		index = defaultQuestionOption(card)
+	}
+	index = max(0, min(index, len(card.Options)-1))
+	m.questionSelection[card.ID] = index
 	return index
+}
+
+func defaultQuestionOption(card jobCard) int {
+	wanted := strings.TrimSpace(card.Default)
+	for index, option := range card.Options {
+		if strings.EqualFold(option.Key, wanted) || strings.EqualFold(option.Label, wanted) ||
+			strconv.Itoa(option.Number) == wanted {
+			return index
+		}
+	}
+	return 0
 }
 
 func (m *Model) questionCardWithOptions() *jobCard {
@@ -972,7 +1250,7 @@ func (m *Model) moveQuestionSelection(cardID string, delta int) {
 	if card == nil || len(card.Options) == 0 {
 		return
 	}
-	index := m.questionOptionIndex(cardID, len(card.Options))
+	index := m.questionOptionIndex(*card)
 	m.questionSelection[cardID] = max(0, min(len(card.Options)-1, index+delta))
 	m.setSize(m.width, m.height)
 }
@@ -982,7 +1260,7 @@ func (m *Model) submitSelectedQuestionOption(cardID string) tea.Cmd {
 	if card == nil || len(card.Options) == 0 {
 		return nil
 	}
-	return m.submitQuestionOption(cardID, m.questionOptionIndex(cardID, len(card.Options)))
+	return m.submitQuestionOption(cardID, m.questionOptionIndex(*card))
 }
 
 func (m *Model) submitQuestionOptionNumber(cardID string, number int) (tea.Cmd, bool) {
@@ -1008,7 +1286,11 @@ func (m *Model) submitQuestionOption(cardID string, optionIndex int) tea.Cmd {
 	m.focus = focusInput
 	m.inputFocused = true
 	_ = m.input.Focus()
-	return m.postUserMessage(card.Options[optionIndex].Reply)
+	reply := card.Options[optionIndex].Reply
+	if reply == "" {
+		reply = card.Options[optionIndex].Key
+	}
+	return m.postUserMessage(reply)
 }
 
 func (m *Model) renderCompactCard(card jobCard, width int) string {
@@ -1025,7 +1307,12 @@ func (m *Model) renderCompactCard(card jobCard, width int) string {
 	if m.focus == focusCards && m.selectedCardID == card.ID {
 		marker = lipgloss.NewStyle().Foreground(powder).Render("▸ ")
 	}
-	line := marker + glyph + " " + lipgloss.NewStyle().Foreground(ink).Bold(true).Render(title)
+	titleStyle := lipgloss.NewStyle().Foreground(ink).Bold(true)
+	if questionIsStuck(card, m.standingTime()) {
+		glyph = questionStyle.Bold(true).Render("?")
+		titleStyle = questionStyle.Bold(true)
+	}
+	line := marker + glyph + " " + titleStyle.Render(title)
 	if meta != "" {
 		line += mutedStyle.Render(" · " + meta)
 	}
@@ -1147,7 +1434,7 @@ func (m *Model) advanceCard(cardID string, returnFocus paneFocus) tea.Cmd {
 }
 
 func (m *Model) ensureCardSelection() {
-	active, _ := placeJobCards(m.cards)
+	active := dockJobCards(m.cards, m.standingTime())
 	for _, card := range active {
 		if card.ID == m.selectedCardID {
 			return
@@ -1159,7 +1446,7 @@ func (m *Model) ensureCardSelection() {
 }
 
 func (m *Model) moveCardSelection(delta int) {
-	active, _ := placeJobCards(m.cards)
+	active := dockJobCards(m.cards, m.standingTime())
 	if len(active) == 0 {
 		return
 	}
@@ -1186,6 +1473,73 @@ func (m *Model) focusCardDock() {
 func (m *Model) activeCardCount() int {
 	active, _ := placeJobCards(m.cards)
 	return len(active)
+}
+
+func (m *Model) pendingQuestionCard() *jobCard {
+	for _, dockCard := range dockJobCards(m.cards, m.standingTime()) {
+		if dockCard.State == cardQuestion {
+			return m.cardByID(dockCard.ID)
+		}
+	}
+	return nil
+}
+
+func (m *Model) hasPendingQuestion() bool { return m.pendingQuestionCard() != nil }
+
+func (m *Model) activeTextQuestion() *jobCard {
+	if m.paletteOpen() || m.nodeViewID != "" {
+		return nil
+	}
+	for index := len(m.cards) - 1; index >= 0; index-- {
+		card := &m.cards[index]
+		if card.State == cardQuestion && card.QuestionKind == questionText &&
+			!m.questionDismissed[card.ID] {
+			return card
+		}
+	}
+	return nil
+}
+
+func (m *Model) dismissTextQuestion() bool {
+	card := m.activeTextQuestion()
+	if card == nil {
+		return false
+	}
+	if m.questionDismissed == nil {
+		m.questionDismissed = make(map[string]bool)
+	}
+	m.questionDismissed[card.ID] = true
+	m.setSize(m.width, m.height)
+	return true
+}
+
+func (m *Model) inputSurfaceHeight() int {
+	height := m.input.LineCount()
+	if m.activeTextQuestion() != nil {
+		height++
+	}
+	return height
+}
+
+func (m *Model) focusPendingQuestion() bool {
+	card := m.pendingQuestionCard()
+	if card == nil {
+		return false
+	}
+	if m.nodeViewID != "" {
+		m.closeNodeView()
+	}
+	if m.graphVisible() {
+		m.graphOpen = false
+		m.graphScopeID = ""
+		m.charterCardID = ""
+	}
+	m.selectedCardID = card.ID
+	if m.activeCardCount() > dockOverflowLimit {
+		m.dockExpanded = true
+	}
+	m.focusCardDock()
+	return true
 }
 
 func (m *Model) collapseSelectedCard() bool {

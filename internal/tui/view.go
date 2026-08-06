@@ -15,17 +15,17 @@ import (
 // ── The design system ────────────────────────────────────────────────────────
 //
 // Voice hierarchy (four typographic levels, one accent, no new colors):
-//   1. aforge speaks: the speaker label in lavender — the single conversational
-//      accent — with its body in primary ink, markdown-rendered. The answer is
-//      the product; it gets the brightest ink.
-//   2. you speak: the label dim (muted, faint) and the body in softened ink
-//      (ink, faint). The reader knows their own words; they recede slightly so
-//      the answers carry the page.
-//   3. machine status is ambient: cards, shimmer, receipts, timestamps, and
-//      meta all live in muted ink. Status never borrows the conversational
-//      accent — attention stays budgeted.
-//   4. structure is faint: frames (╭ │ ╰), rules, gutters, and hints render
-//      muted+faint. They shape the page without competing with words.
+//  1. aforge speaks: the speaker label in lavender — the single conversational
+//     accent — with its body in primary ink, markdown-rendered. The answer is
+//     the product; it gets the brightest ink.
+//  2. you speak: the label dim (muted, faint) and the body in softened ink
+//     (ink, faint). The reader knows their own words; they recede slightly so
+//     the answers carry the page.
+//  3. machine status is ambient: cards, shimmer, receipts, timestamps, and
+//     meta all live in muted ink. Status never borrows the conversational
+//     accent — attention stays budgeted.
+//  4. structure is faint: frames (╭ │ ╰), rules, gutters, and hints render
+//     muted+faint. They shape the page without competing with words.
 //
 // Node-view tool blocks share the same system: a call line is its kind glyph +
 // tool name in the working accent (peach, semibold) followed by the command in
@@ -34,13 +34,15 @@ import (
 //
 // Affordance grammar (terminals have no hover, so every clickable element
 // declares its action at rest, in muted ink, never the accent):
-//   ▸  expandable — click or enter opens it (also the focus/selection marker,
-//      which renders in powder so target and affordance stay distinguishable)
-//   ▾  expanded — click or enter collapses it
-//   ⋯  truncated content — click reveals the rest
-//   ⟨×⟩ dismiss/close a surface
-//   ↳  jump to the task an answer came from
-//   ‹  go back one surface
+//
+//	▸  expandable — click or enter opens it (also the focus/selection marker,
+//	   which renders in powder so target and affordance stay distinguishable)
+//	▾  expanded — click or enter collapses it
+//	⋯  truncated content — click reveals the rest
+//	⟨×⟩ dismiss/close a surface
+//	↳  jump to the task an answer came from
+//	‹  go back one surface
+//
 // Hints stay dim and short, and appear only when glyph + noun cannot carry the
 // action alone; global keys live in the one footer line and are not repeated
 // per element. Plain "…" marks static overflow that is not clickable.
@@ -98,7 +100,7 @@ func (m *Model) View() string {
 	}
 
 	parts := []string{top, "", main, ""}
-	if m.paletteOpen() {
+	if m.paletteOpen() && m.palette != paletteModel {
 		parts = append(parts, m.renderPalette())
 	}
 	if m.activityBarVisible() {
@@ -116,21 +118,35 @@ func (m *Model) View() string {
 			hint = "type to steer · enter send · c cancel · esc back"
 		case m.focus == focusGraph:
 			hint = "↑/↓ select · enter inspect · esc close · " + keyBindings.graph + " hide"
+		case m.focus == focusHeader:
+			hint = "←/→ choose header control · enter open · esc back"
 		}
 		parts = append(parts, mutedStyle.Faint(true).Render(truncate(hint, m.width)))
 	}
-	return lipgloss.JoinVertical(lipgloss.Left, parts...)
+	frame := lipgloss.JoinVertical(lipgloss.Left, parts...)
+	if m.palette == paletteModel {
+		frame = m.overlayModelDropdown(frame)
+	}
+	return frame
 }
 
 func (m *Model) trackPaneBounds() {
 	m.chatBounds = paneBounds{}
 	m.headerTasksBounds = paneBounds{}
+	m.headerQuestionBounds = paneBounds{}
+	m.headerTalkBounds = paneBounds{}
+	m.headerWorkBounds = paneBounds{}
 	m.graphBounds = paneBounds{}
 	m.graphRowsBounds = paneBounds{}
 	m.standingRowsBounds = paneBounds{}
 	m.graphToggleBounds = paneBounds{}
 	m.paletteCloseBounds = paneBounds{}
+	m.modelPickerBounds = paneBounds{}
+	m.modelTalkBounds = paneBounds{}
+	m.modelWorkBounds = paneBounds{}
+	m.modelPickerRows = m.modelPickerRows[:0]
 	m.inputBounds = paneBounds{}
+	m.textQuestionDismissBounds = paneBounds{}
 	m.nodeBounds = paneBounds{}
 	m.nodeTraceBounds = paneBounds{}
 	m.activityBarBounds = paneBounds{}
@@ -169,50 +185,81 @@ func (m *Model) trackPaneBounds() {
 		m.paletteCloseBounds = paneBounds{x: 0, y: paletteY, width: lipgloss.Width("⟨×⟩"), height: 1}
 	}
 
-	barY := mainY + m.chatHeight + 1 + m.paletteHeight()
+	barY := mainY + m.chatHeight + 1 + m.layoutPaletteHeight()
 	if m.activityBarVisible() {
 		height := m.cardDockHeight()
 		m.activityBarBounds = paneBounds{x: 0, y: barY, width: m.width, height: height}
 		barY += height
 	}
-	m.inputBounds = paneBounds{x: 0, y: barY, width: m.width, height: m.input.LineCount()}
+	m.inputBounds = paneBounds{x: 0, y: barY, width: m.width, height: m.inputSurfaceHeight()}
 }
 
 func (m *Model) renderTopBar() string {
 	wordmark := lipgloss.NewStyle().Foreground(ink).Bold(true).Render("aforge")
-	models := "talk " + truncate(modelShort(m.currentModel("talk")), 18) +
-		" · work " + truncate(modelShort(m.currentModel("work")), 18)
-	left := wordmark + mutedStyle.Render(" · "+m.sessionID+" · "+models)
+	left := wordmark + mutedStyle.Faint(true).Render("  "+m.sessionID)
+	talk := m.renderHeaderModel("talk", 0)
+	work := m.renderHeaderModel("work", 1)
+	models := talk + mutedStyle.Faint(true).Render("  ·  ") + work
 
-	right := m.renderSpend()
+	rightMeta := m.renderSpend()
 	if m.status != "" && time.Now().Before(m.statusUntil) {
-		right = mutedStyle.Render(truncate(m.status, max(8, m.width/2)))
+		rightMeta = mutedStyle.Render(truncate(m.status, max(8, m.width/2)))
 	}
 	if m.err != nil {
-		right = lipgloss.NewStyle().Foreground(rose).Render(truncate(m.err.Error(), max(8, m.width/2)))
+		rightMeta = lipgloss.NewStyle().Foreground(rose).Render(truncate(m.err.Error(), max(8, m.width/2)))
 	}
 	// The rail toggle is a real button: alt+g and /graph are accelerators, the
 	// click path is always visible. It follows the affordance grammar (▸ when
 	// the rail would open, ▾ while it is on screen).
 	button := m.renderTasksButton()
-	if right != "" {
-		right += "  "
+	right := models
+	if rightMeta != "" {
+		right += "  " + rightMeta
 	}
-	right += button
+	right += "  " + button
 
 	space := m.width - lipgloss.Width(left) - lipgloss.Width(right)
 	if space < 1 {
-		// The button outlives the model names when width runs out.
+		// The controls outlive the session label when width runs out.
 		left = wordmark
 		space = m.width - lipgloss.Width(left) - lipgloss.Width(right)
 	}
 	if space < 1 {
+		// On a narrow terminal the task button remains the last header action.
+		right = button
+		space = m.width - lipgloss.Width(left) - lipgloss.Width(right)
+		m.headerTalkBounds = paneBounds{}
+		m.headerWorkBounds = paneBounds{}
+	}
+	if space < 1 {
 		m.headerTasksBounds = paneBounds{}
+		m.headerQuestionBounds = paneBounds{}
 		return truncate(left+" "+right, m.width)
+	}
+	rightX := lipgloss.Width(left) + space
+	if strings.Contains(right, "talk") {
+		m.headerTalkBounds = paneBounds{x: rightX, y: 0, width: lipgloss.Width(talk), height: 1}
+		m.headerWorkBounds = paneBounds{
+			x: rightX + lipgloss.Width(talk) + lipgloss.Width("  ·  "),
+			y: 0, width: lipgloss.Width(work), height: 1,
+		}
 	}
 	buttonWidth := lipgloss.Width(button)
 	m.headerTasksBounds = paneBounds{x: m.width - buttonWidth, y: 0, width: buttonWidth, height: 1}
+	if m.hasPendingQuestion() {
+		offset := lipgloss.Width("⟨tasks ")
+		m.headerQuestionBounds = paneBounds{x: m.headerTasksBounds.x + offset, y: 0, width: 1, height: 1}
+	}
 	return left + strings.Repeat(" ", space) + right
+}
+
+func (m *Model) renderHeaderModel(role string, focusIndex int) string {
+	label := mutedStyle.Faint(true).Render(role + " ⌄ ")
+	valueStyle := inputTextStyle
+	if m.focus == focusHeader && m.headerFocusIndex == focusIndex {
+		valueStyle = lipgloss.NewStyle().Foreground(powder).Bold(true)
+	}
+	return label + valueStyle.Render(truncate(modelShort(m.currentModel(role)), 18))
 }
 
 func (m *Model) renderTasksButton() string {
@@ -220,7 +267,15 @@ func (m *Model) renderTasksButton() string {
 	if m.graphVisible() {
 		disclosure = "▾"
 	}
-	return mutedStyle.Faint(true).Render("⟨tasks " + disclosure + "⟩")
+	dot := ""
+	if m.hasPendingQuestion() {
+		dot = questionStyle.Bold(true).Render("●") + " "
+	}
+	style := mutedStyle.Faint(true)
+	if m.focus == focusHeader && m.headerFocusIndex == 2 {
+		style = lipgloss.NewStyle().Foreground(powder)
+	}
+	return style.Render("⟨tasks ") + dot + style.Render(disclosure+"⟩")
 }
 
 // renderSpend is the one number that is always worth the top-right corner:
@@ -435,9 +490,87 @@ func (m *Model) renderNodePane() string {
 	return lipgloss.NewStyle().Width(m.width).Render(strings.Join(lines, "\n"))
 }
 
-// renderInput is a bare prompt line — the `›` is the whole affordance.
+// renderInput is a bare prompt line — the `›` is the whole affordance. A text
+// question adds one quiet context line without changing what enter submits.
 func (m *Model) renderInput() string {
-	return lipgloss.NewStyle().PaddingLeft(0).Width(m.width).Render(m.input.View())
+	input := lipgloss.NewStyle().PaddingLeft(0).Width(m.width).Render(m.input.View())
+	card := m.activeTextQuestion()
+	if card == nil {
+		return input
+	}
+	close := "⟨×⟩"
+	prefix := "answering: "
+	available := max(1, m.width-lipgloss.Width(prefix)-lipgloss.Width(close)-3)
+	line := mutedStyle.Faint(true).Render(prefix+truncate(card.Question, available)+" · ") +
+		mutedStyle.Render(close)
+	m.textQuestionDismissBounds = paneBounds{
+		x: lipgloss.Width(line) - lipgloss.Width(close), y: m.inputBounds.y,
+		width: lipgloss.Width(close), height: 1,
+	}
+	return line + "\n" + input
+}
+
+// overlayModelDropdown paints a small matte menu over the first rows beneath
+// the header. The frame keeps its exact height; the dropdown does not steal
+// conversation space or move the input while the user searches.
+func (m *Model) overlayModelDropdown(frame string) string {
+	width := min(72, max(36, m.width*2/3))
+	x := m.headerTalkBounds.x
+	if m.modelRole == "work" && m.headerWorkBounds.width > 0 {
+		x = m.headerWorkBounds.x
+	}
+	if x == 0 && m.headerTalkBounds.width == 0 {
+		x = max(0, m.width-width)
+	}
+	x = max(0, min(x, m.width-width))
+	y := 1
+	innerWidth := max(1, width-2)
+	body := m.modelPickerLines(innerWidth)
+	lines := append([]string{"⟨×⟩ esc · models"}, body...)
+	panelStyle := lipgloss.NewStyle().Foreground(ink).Background(selectionBand).Padding(0, 1).Width(width)
+	for index := range lines {
+		lines[index] = panelStyle.Render(truncate(lines[index], innerWidth))
+	}
+	panel := strings.Join(lines, "\n")
+	m.modelPickerBounds = paneBounds{x: x, y: y, width: width, height: len(lines)}
+	m.paletteCloseBounds = paneBounds{x: x, y: y, width: width, height: 1}
+	m.modelTalkBounds = paneBounds{x: x + 1, y: y + 1, width: lipgloss.Width("◉ talk"), height: 1}
+	m.modelWorkBounds = paneBounds{x: x + 1 + lipgloss.Width("◉ talk    "), y: y + 1, width: lipgloss.Width("◉ work"), height: 1}
+
+	choiceLine := y + 1 + 2
+	prefixLines := 2
+	if m.catalogLoading {
+		choiceLine++
+		prefixLines++
+	}
+	choices := m.filteredModelChoices()
+	rowLimit := max(1, min(8, m.paletteLineLimit()-prefixLines))
+	start, end := visiblePaletteWindow(m.paletteSelected, len(choices), rowLimit)
+	for index := start; index < end; index++ {
+		m.modelPickerRows = append(m.modelPickerRows, modelPickerRow{
+			bounds: paneBounds{x: x, y: choiceLine + index - start, width: width, height: 1},
+			index:  index,
+		})
+	}
+	return overlayBlock(frame, panel, x, y, m.width)
+}
+
+func overlayBlock(base, overlay string, x, y, width int) string {
+	baseLines := strings.Split(base, "\n")
+	for index, overlayLine := range strings.Split(overlay, "\n") {
+		at := y + index
+		if at < 0 || at >= len(baseLines) {
+			continue
+		}
+		left := ansi.Cut(baseLines[at], 0, x)
+		if gap := x - lipgloss.Width(left); gap > 0 {
+			left += strings.Repeat(" ", gap)
+		}
+		overlayWidth := min(lipgloss.Width(overlayLine), max(0, width-x))
+		right := ansi.Cut(baseLines[at], x+overlayWidth, width)
+		baseLines[at] = truncate(left+truncate(overlayLine, overlayWidth)+right, width)
+	}
+	return strings.Join(baseLines, "\n")
 }
 
 func (m *Model) renderPalette() string {
@@ -472,6 +605,13 @@ func (m *Model) paletteHeight() int {
 		return 0
 	}
 	return lipgloss.Height(m.renderPalette())
+}
+
+func (m *Model) layoutPaletteHeight() int {
+	if m.palette == paletteModel {
+		return 0
+	}
+	return m.paletteHeight()
 }
 
 func (m *Model) paletteLines(width int) []string {
@@ -628,7 +768,7 @@ func (m *Model) paletteLineLimit() int {
 	const minimumMainHeight = 3
 	// top bar + blank + main + blank + palette + input; the hint yields while
 	// the palette is open.
-	available := m.height - 3 - m.input.LineCount() - minimumMainHeight
+	available := m.height - 3 - m.inputSurfaceHeight() - minimumMainHeight
 	if m.paletteHasClose() {
 		available--
 	}
@@ -638,7 +778,7 @@ func (m *Model) paletteLineLimit() int {
 func (m *Model) modelChoiceRow(choice ModelChoice, selected bool, width int) string {
 	marker := "  "
 	markerStyle := mutedStyle
-	if m.commander != nil && m.commander.CurrentModel(m.modelRole) == choice.Slug {
+	if m.currentModel(m.modelRole) == choice.Slug {
 		marker = "● "
 		markerStyle = lipgloss.NewStyle().Foreground(mint)
 	}
@@ -696,6 +836,9 @@ func visiblePaletteWindow(selected, count, limit int) (int, int) {
 }
 
 func (m *Model) currentModel(role string) string {
+	if model := strings.TrimSpace(m.optimisticModels[role]); model != "" {
+		return model
+	}
 	if m.commander == nil {
 		return "–"
 	}
@@ -1040,6 +1183,11 @@ func (m *Model) renderAnswer(message store.Message, width int) string {
 // folded behind a click target.
 func (m *Model) renderAnswerFold(message store.Message, width int) (string, bool) {
 	body := message.Body
+	if message.Role == store.RoleAgent {
+		if component, ok := readQuestionComponent(body); ok {
+			body = component.Prompt
+		}
+	}
 	streaming := message.Seq == 0 && m.streamMode == streamReal
 	if shown, ok := m.streamedBody(message); ok {
 		body, streaming = shown, true

@@ -725,6 +725,16 @@ func (m *Model) scrollNodeAt(x, y int, down bool) bool {
 }
 
 func (m *Model) updateMouseClick(x, y int) (tea.Cmd, bool) {
+	if m.headerQuestionBounds.contains(x, y) {
+		m.focusPendingQuestion()
+		return nil, true
+	}
+	if m.headerTalkBounds.contains(x, y) {
+		return m.openModelPicker("talk"), true
+	}
+	if m.headerWorkBounds.contains(x, y) {
+		return m.openModelPicker("work"), true
+	}
 	if m.headerTasksBounds.contains(x, y) {
 		if m.nodeViewID != "" {
 			m.closeNodeView()
@@ -733,13 +743,49 @@ func (m *Model) updateMouseClick(x, y int) (tea.Cmd, bool) {
 		return nil, true
 	}
 	if m.activityBarBounds.contains(x, y) {
-		return m.clickCardDock(y - m.activityBarBounds.y)
+		return m.clickCardDock(x-m.activityBarBounds.x, y-m.activityBarBounds.y)
+	}
+	if m.palette == paletteModel {
+		if m.paletteCloseBounds.contains(x, y) {
+			m.closePalette()
+			return nil, true
+		}
+		if m.modelTalkBounds.contains(x, y) {
+			m.modelRole = "talk"
+			m.paletteSelected = indexModelChoice(m.filteredModelChoices(), m.currentModel("talk"))
+			return nil, true
+		}
+		if m.modelWorkBounds.contains(x, y) {
+			m.modelRole = "work"
+			m.paletteSelected = indexModelChoice(m.filteredModelChoices(), m.currentModel("work"))
+			return nil, true
+		}
+		for _, row := range m.modelPickerRows {
+			if !row.bounds.contains(x, y) {
+				continue
+			}
+			choices := m.filteredModelChoices()
+			if row.index >= 0 && row.index < len(choices) {
+				m.paletteSelected = row.index
+				return m.applySelectedModel(choices), true
+			}
+		}
+		if m.modelPickerBounds.contains(x, y) {
+			m.focus = focusInput
+			m.inputFocused = true
+			_ = m.input.Focus()
+			return nil, true
+		}
 	}
 	if m.paletteCloseBounds.contains(x, y) {
 		m.closePalette()
 		return nil, true
 	}
 	if m.inputBounds.contains(x, y) {
+		if m.textQuestionDismissBounds.contains(x, y) {
+			m.dismissTextQuestion()
+			return nil, true
+		}
 		m.focus = focusInput
 		m.inputFocused = true
 		_ = m.input.Focus()
@@ -817,8 +863,8 @@ func (m *Model) updateMouseClick(x, y int) (tea.Cmd, bool) {
 	return nil, false
 }
 
-func (m *Model) clickCardDock(line int) (tea.Cmd, bool) {
-	active, _ := placeJobCards(m.cards)
+func (m *Model) clickCardDock(x, line int) (tea.Cmd, bool) {
+	active := dockJobCards(m.cards, m.standingTime())
 	if m.dockSummaryLine >= 0 && line == m.dockSummaryLine {
 		if m.dockOverflowOpen() {
 			m.dockExpanded = false
@@ -835,12 +881,22 @@ func (m *Model) clickCardDock(line int) (tea.Cmd, bool) {
 		return nil, true
 	}
 	if len(active) > dockOverflowLimit && !m.dockOverflowOpen() {
+		for _, row := range m.cardDockRows {
+			if row.dock && line >= row.start && line <= row.end {
+				m.selectedCardID = row.cardID
+				m.dockExpanded = true
+				m.focusCardDock()
+				return nil, true
+			}
+		}
+	}
+	if len(active) > dockOverflowLimit && !m.dockOverflowOpen() {
 		m.dockExpanded = true
 		m.focusCardDock()
 		return nil, true
 	}
 	for _, option := range m.cardOptionRows {
-		if option.dock && option.line == line {
+		if option.dock && option.line == line && x >= option.startX && x < option.endX {
 			m.questionSelection[option.cardID] = option.optionIndex
 			return m.submitQuestionOption(option.cardID, option.optionIndex), true
 		}
