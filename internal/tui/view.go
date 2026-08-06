@@ -34,27 +34,26 @@ var (
 // View composes the complete frame once, avoiding terminal-clearing redraws.
 func (m *Model) View() string {
 	top := m.renderTopBar()
-	chat := m.renderChatPane()
-	graph := m.renderGraphPane()
 
 	var main string
 	if m.horizontal {
-		main = lipgloss.JoinHorizontal(lipgloss.Top, chat, "  ", graph)
+		main = lipgloss.JoinHorizontal(lipgloss.Top, m.renderChatPane(), "  ", m.renderGraphPane())
+	} else if m.focus == focusGraph {
+		main = m.renderGraphPane()
 	} else {
-		if m.stackGap() == 0 {
-			main = lipgloss.JoinVertical(lipgloss.Left, chat, graph)
-		} else {
-			main = lipgloss.JoinVertical(lipgloss.Left, chat, "", graph)
-		}
+		main = m.renderChatPane()
 	}
 
 	parts := []string{top, "", main, ""}
 	if m.paletteOpen() {
 		parts = append(parts, m.renderPalette())
 	}
+	if !m.horizontal {
+		parts = append(parts, m.renderGraphStrip())
+	}
 	parts = append(parts, m.renderInput())
 	if !m.paletteOpen() {
-		hint := "/ commands · tab complete · pgup/pgdn scroll · ctrl+c quit"
+		hint := "/ commands · tab focus/view · v receipts · pgup/pgdn scroll · ctrl+c quit"
 		parts = append(parts, mutedStyle.Render(truncate(hint, m.width)))
 	}
 	return lipgloss.JoinVertical(lipgloss.Left, parts...)
@@ -101,6 +100,31 @@ func (m *Model) renderTally() string {
 		}
 	}
 	return mutedStyle.Render(fmt.Sprintf("%d running · %d done · %d failed", running, done, failed))
+}
+
+func (m *Model) renderGraphStrip() string {
+	running, waiting := 0, 0
+	for _, node := range m.snapshot.Nodes {
+		if node.ID == store.RootID {
+			continue
+		}
+		switch node.Status {
+		case store.Claimed, store.Running:
+			running++
+		case store.Pending:
+			waiting++
+		}
+	}
+	destination := "view"
+	if m.focus == focusGraph {
+		destination = "chat"
+	}
+	strip := fmt.Sprintf("● %d running · ○ %d waiting — tab to %s", running, waiting, destination)
+	style := mutedStyle
+	if m.focus == focusGraph {
+		style = lipgloss.NewStyle().Foreground(lavender)
+	}
+	return style.Render(truncate(strip, m.width))
 }
 
 func (m *Model) renderChatPane() string {
@@ -209,12 +233,15 @@ func (m *Model) paletteLines(width int) []string {
 	case paletteModel:
 		return m.modelPickerLines(width)
 	case paletteHelp:
-		lines := make([]string, 0, len(slashCommands)+1)
+		lines := make([]string, 0, len(slashCommands)+3)
 		for _, command := range slashCommands {
 			lines = append(lines, truncate(fmt.Sprintf("「/%s」 %s", command.name, command.description), width))
 		}
-		cheatsheet := truncate("keys  tab/↑/↓ choose · enter accept · esc close · ctrl+c quit", width)
-		lines = append(lines, mutedStyle.Render(cheatsheet))
+		lines = append(lines,
+			mutedStyle.Render(truncate("voice  you ask · aforge answers · v toggles receipts", width)),
+			mutedStyle.Render(truncate("keys   tab focus / graph view · pgup/pgdn scroll · end latest", width)),
+			mutedStyle.Render(truncate("menus  tab/↑/↓ choose · enter accept · esc close · ctrl+c quit", width)),
+		)
 		if limit := m.paletteLineLimit(); len(lines) > limit {
 			lines = lines[:limit]
 		}
@@ -282,10 +309,11 @@ func (m *Model) modelPickerLines(width int) []string {
 
 func (m *Model) paletteLineLimit() int {
 	minimumMainHeight := 3
+	stripHeight := 0
 	if !m.horizontal {
-		minimumMainHeight = 6 + m.stackGap()
+		stripHeight = 1
 	}
-	available := m.height - 3 - (m.input.LineCount() + 2) - minimumMainHeight - 2
+	available := m.height - 3 - (m.input.LineCount() + 2) - minimumMainHeight - stripHeight - 2
 	return max(1, available)
 }
 
@@ -369,41 +397,102 @@ func (m *Model) renderMessages() string {
 	}
 
 	blocks := make([]string, 0, len(m.messages))
-	for _, message := range m.messages {
-		accent, label, marker, indent := rolePresentation(message.Role)
-		available := max(8, m.chat.Width-2-indent)
-		if marker != "" {
-			available = max(8, available-lipgloss.Width(marker+" "))
+	for index := 0; index < len(m.messages); {
+		message := m.messages[index]
+		if secondaryMessage(message) {
+			receipts := []store.Message{message}
+			index++
+			for index < len(m.messages) && secondaryMessage(m.messages[index]) {
+				receipts = append(receipts, m.messages[index])
+				index++
+			}
+			blocks = append(blocks, m.renderMessageBlock(store.Message{
+				Time: message.Time,
+				Role: store.RoleAgent,
+			}, receipts))
+			continue
 		}
-		header := lipgloss.NewStyle().Foreground(accent).Bold(true).Render(label)
-		header += mutedStyle.Render("  " + relativeTime(message.Time, time.Now()))
 
-		body := wrapText(message.Body, available)
-		if marker != "" {
-			body = marker + " " + body
+		index++
+		receipts := make([]store.Message, 0)
+		if messageVoice(message) == "aforge" {
+			for index < len(m.messages) && secondaryMessage(m.messages[index]) {
+				receipts = append(receipts, m.messages[index])
+				index++
+			}
 		}
-		body = lipgloss.NewStyle().Foreground(accent).Render(body)
-
-		block := lipgloss.NewStyle().
-			Border(lipgloss.Border{Left: "│"}, false, false, false, true).
-			BorderForeground(accent).
-			PaddingLeft(1).
-			MarginLeft(indent).
-			Render(header + "\n" + body)
-		blocks = append(blocks, block)
+		blocks = append(blocks, m.renderMessageBlock(message, receipts))
 	}
 	return strings.Join(blocks, "\n\n")
 }
 
-func rolePresentation(role store.Role) (lipgloss.AdaptiveColor, string, string, int) {
-	switch role {
-	case store.RoleUser:
-		return powder, "USER", "", 0
-	case store.RoleSystem:
-		return mint, "SYSTEM", "◇", 2
-	default:
-		return lavender, "AGENT", "", 0
+func (m *Model) renderMessageBlock(message store.Message, receipts []store.Message) string {
+	accent, label := messagePresentation(message)
+	available := max(8, m.chat.Width-2)
+	header := lipgloss.NewStyle().Foreground(accent).Bold(true).Render(label)
+	header += mutedStyle.Render("  " + relativeTime(message.Time, time.Now()))
+
+	content := header
+	if message.Body != "" {
+		body := lipgloss.NewStyle().Foreground(accent).Render(wrapText(message.Body, available))
+		content += "\n" + body
 	}
+	for _, receipt := range receipts {
+		content += "\n" + m.renderReceipt(receipt, available)
+	}
+
+	return lipgloss.NewStyle().
+		Border(lipgloss.Border{Left: "│"}, false, false, false, true).
+		BorderForeground(accent).
+		PaddingLeft(1).
+		Render(content)
+}
+
+func (m *Model) renderReceipt(message store.Message, width int) string {
+	summary := receiptSummary(message)
+	if !m.receiptsExpanded {
+		return mutedStyle.Render(truncate(summary+" — v to expand", width))
+	}
+	label := mutedStyle.Render(truncate(summary+" — v to collapse", width))
+	body := wrapText(message.Body, max(1, width-2))
+	return label + "\n" + mutedStyle.Render(indentLines(body, "  "))
+}
+
+func messagePresentation(message store.Message) (lipgloss.AdaptiveColor, string) {
+	if message.Role == store.RoleUser {
+		return powder, "you"
+	}
+	return lavender, "aforge"
+}
+
+func messageVoice(message store.Message) string {
+	_, label := messagePresentation(message)
+	return label
+}
+
+func secondaryMessage(message store.Message) bool {
+	return message.Role == store.RoleSystem && message.NodeID == ""
+}
+
+func receiptSummary(message store.Message) string {
+	if message.CommandSeq != 0 {
+		assumptions := 0
+		for _, line := range strings.Split(strings.ReplaceAll(message.Body, "\r\n", "\n"), "\n") {
+			if strings.HasPrefix(line, "Assumed:") {
+				assumptions++
+			}
+		}
+		return fmt.Sprintf("· reading + %d assumptions", assumptions)
+	}
+	label := firstLine(message.Body)
+	if label == "" {
+		label = "update"
+	}
+	return "· " + label
+}
+
+func indentLines(text, prefix string) string {
+	return prefix + strings.ReplaceAll(text, "\n", "\n"+prefix)
 }
 
 func (m *Model) renderTree(width, height int) string {

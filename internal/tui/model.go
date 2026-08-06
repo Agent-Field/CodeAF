@@ -19,7 +19,7 @@ import (
 const (
 	pollInterval = 400 * time.Millisecond
 	pollLimit    = 200
-	stackAtWidth = 90
+	railAtWidth  = 100
 	statusTTL    = 3 * time.Second
 )
 
@@ -82,12 +82,13 @@ type Model struct {
 	graphWidth  int
 	graphHeight int
 
-	inputFocused bool
-	focus        paneFocus
-	autoScroll   bool
-	newMessages  int
-	spinnerFrame int
-	err          error
+	inputFocused     bool
+	focus            paneFocus
+	autoScroll       bool
+	newMessages      int
+	spinnerFrame     int
+	receiptsExpanded bool
+	err              error
 
 	palette          paletteKind
 	paletteSelected  int
@@ -260,6 +261,11 @@ func (m *Model) updateKey(message tea.KeyMsg) (tea.Cmd, bool) {
 			return command, true
 		}
 	}
+	if key == "v" && !m.inputFocused {
+		m.receiptsExpanded = !m.receiptsExpanded
+		m.refreshChat()
+		return nil, true
+	}
 	if key == "tab" {
 		return m.toggleFocus(), true
 	}
@@ -378,31 +384,28 @@ func (m *Model) toggleFocus() tea.Cmd {
 func (m *Model) setSize(width, height int) {
 	m.width = max(20, width)
 	m.height = max(8, height)
-	m.horizontal = m.width >= stackAtWidth
+	m.horizontal = m.width >= railAtWidth
 
 	paletteHeight := m.paletteHeight()
 	footerHeight := 1
 	if m.paletteOpen() {
 		footerHeight = 0
 	}
-	minimumMainHeight := 3
+	stripHeight := 0
 	if !m.horizontal {
-		minimumMainHeight = 6 + m.stackGap()
+		stripHeight = 1
 	}
-	mainHeight := max(minimumMainHeight, m.height-3-(m.input.LineCount()+2)-paletteHeight-footerHeight)
+	mainHeight := max(3, m.height-3-(m.input.LineCount()+2)-paletteHeight-footerHeight-stripHeight)
 	if m.horizontal {
 		const gap = 2
-		m.chatWidth = max(20, (m.width-gap)*62/100)
+		m.chatWidth = max(20, (m.width-gap)*80/100)
 		m.graphWidth = max(12, m.width-gap-m.chatWidth)
-		m.chatHeight = mainHeight
-		m.graphHeight = mainHeight
 	} else {
-		gap := m.stackGap()
 		m.chatWidth = m.width
 		m.graphWidth = m.width
-		m.chatHeight = max(3, (mainHeight-gap)*62/100)
-		m.graphHeight = max(3, mainHeight-gap-m.chatHeight)
 	}
+	m.chatHeight = mainHeight
+	m.graphHeight = mainHeight
 
 	m.chat.Width = max(1, m.chatWidth-4)   // border and horizontal padding
 	m.chat.Height = max(1, m.chatHeight-4) // title, breathing room, border
@@ -414,13 +417,6 @@ func (m *Model) setSize(width, height int) {
 	if m.autoScroll {
 		m.chat.GotoBottom()
 	}
-}
-
-func (m *Model) stackGap() int {
-	if m.paletteOpen() {
-		return 0
-	}
-	return 1
 }
 
 func (m *Model) refreshGraph() {
@@ -491,17 +487,17 @@ func (m *Model) mouseInGraph(x, y int) bool {
 	if m.horizontal {
 		return y >= 2 && y < 2+m.graphHeight && x >= m.chatWidth+2
 	}
-	return y >= 2+m.chatHeight+1 && y < 2+m.chatHeight+1+m.graphHeight
+	return m.focus == focusGraph && y >= 2 && y < 2+m.graphHeight
 }
 
 func (m *Model) newMessagePillHit(x, y int) bool {
 	if m.newMessages == 0 {
 		return false
 	}
-	chatX, chatY := 0, 2
-	if !m.horizontal {
-		chatX = 0
+	if !m.horizontal && m.focus == focusGraph {
+		return false
 	}
+	chatX, chatY := 0, 2
 	pillWidth := lipgloss.Width(m.newMessageLabel()) + 2
 	return x >= chatX+m.chatWidth-pillWidth-1 && x < chatX+m.chatWidth-1 &&
 		y >= chatY+m.chatHeight-2 && y < chatY+m.chatHeight-1
