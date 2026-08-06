@@ -42,10 +42,14 @@ type Compiled struct {
 }
 
 // Learned is one distilled memory: what it is about, what kind, one line.
+// Replaces names an existing fact this one supersedes — reconsolidation: a
+// belief met by contradicting experience is rewritten, and the journal keeps
+// the retired version.
 type Learned struct {
-	Scope string
-	Kind  store.FactKind
-	Body  string
+	Scope    string
+	Kind     store.FactKind
+	Body     string
+	Replaces int64
 }
 
 // DistillFunc extracts durable memories from one finished or failed job.
@@ -688,7 +692,12 @@ func (r *Reconciler) distillJob(ctx context.Context, node store.Node, failed boo
 		if strings.TrimSpace(fact.Body) == "" {
 			continue
 		}
-		_, _ = r.store.RecordFact(node.ID, fact.Scope, fact.Kind, clipFactBody(fact.Body))
+		recorded, err := r.store.RecordFact(node.ID, fact.Scope, fact.Kind, clipFactBody(fact.Body))
+		if err == nil && fact.Replaces > 0 {
+			// The distiller judged this memory to update a specific older
+			// belief: the old one retires in favour of the new, journaled.
+			_ = r.store.SupersedeFact(fact.Replaces, recorded.Seq)
+		}
 	}
 }
 

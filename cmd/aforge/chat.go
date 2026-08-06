@@ -108,7 +108,7 @@ func runChat(args []string) error {
 		},
 		planSubtree(settings, taskClient, plans),
 	).WithNarrator(narrateProgress(settings, chatClient)).
-		WithDistiller(distillFacts(settings, chatClient)).
+		WithDistiller(distillFacts(settings, chatClient, graph)).
 		WithConsolidator(consolidateFacts(settings, chatClient)).
 		WithTitler(titleGoal(settings, chatClient))
 
@@ -1231,13 +1231,17 @@ Judgment framework:
 - When the job FAILED, the single most valuable memory is the cause and its fix or workaround. Classify it as a quirk or lesson.
 - Judge like an after-action review: what was expected, what actually happened, and what explains the gap. The explanation is the memory; the events themselves are not.
 - When the direct route failed and a substitute route worked — a different source, tool, or method reached the same end — record the working route as a lesson in the narrowest scope it applies to. A proven detour is the most transferable thing a job can teach.
+- Beliefs must stay true as the world moves. When this job's evidence updates, contradicts, or outdates one of the standing numbered entries shown to you, write the corrected memory in full and set "replaces" to that entry's number — the old belief retires when the new one lands. Accumulating a contradiction beside the belief it contradicts is worse than either alone.
+- Each fact object may carry "replaces": <number of the standing entry it supersedes>; omit it otherwise.
 - Job status and transient results never qualify.
 - An empty list is the common correct answer.
 - Return at most five memories.`
 
 const consolidatorSystemPrompt = `You rewrite one scope's accumulated notebook lines into a smaller, sharper notebook. Return exactly one JSON object: {"facts":[{"scope":"...","kind":"preference|quirk|lesson|fact","body":"..."}]}.
 
-Merge duplicates and near-duplicates. Drop stale lines. Resolve contradictions in favour of the newest line. Keep every load-bearing specific, including paths, values, and names. Each output must stand alone, use exactly the target scope, and preserve the best fitting kind. Return at most eight lines.`
+Merge duplicates and near-duplicates. Resolve contradictions in favour of the newest line. Keep every load-bearing specific, including paths, values, and names. Each output must stand alone, use exactly the target scope, and preserve the best fitting kind. Return at most eight lines.
+
+Each line carries its age and how often retrieval has used it. Judge staleness by what the claim is about, not by the age alone: a preference or a filesystem quirk ages slowly, while a ranking, a price, a version, or a "current state" claim rots fast. Rewrite fast-rotting claims to name their time ("as of <when>, …") or drop them when their moment has passed; a never-used old line about a moving target is the first candidate to go.`
 
 // distillFacts wires the reconciler's notebook to the talk model.
 // titleGoalPrompt earns its own call by what it is not: not a summary, not a
@@ -1263,9 +1267,24 @@ func titleGoal(settings config.Config, client *liveClient) resident.TitleFunc {
 	}
 }
 
-func distillFacts(settings config.Config, client *liveClient) resident.DistillFunc {
+func distillFacts(settings config.Config, client *liveClient, graph *store.Store) resident.DistillFunc {
 	return func(ctx context.Context, goal, outcome string, failed bool) ([]resident.Learned, error) {
 		input := fmt.Sprintf("Goal:\n%s\n\nFAILED: %t\n\nOutcome:\n%s", goal, failed, outcome)
+		// Reconsolidation: the distiller sees the standing beliefs its new
+		// evidence might touch, numbered, so a memory that updates one can
+		// retire it instead of accumulating beside it.
+		if related, err := graph.SearchFacts(store.FactQuery{
+			Cues:  resident.ExtractCues(goal + "\n" + outcome),
+			Terms: goal,
+			Limit: 10,
+		}); err == nil && len(related) > 0 {
+			var standing strings.Builder
+			now := time.Now()
+			for _, fact := range related {
+				fmt.Fprintf(&standing, "#%d [%s · %s · %s] %s\n", fact.Seq, fact.Scope, fact.Kind, store.AgeLabel(fact.Time, now), fact.Body)
+			}
+			input += "\n\nStanding notebook entries this job's evidence may touch:\n" + standing.String()
+		}
 		response, err := client.CompleteWithMessages(settings.Context(ctx, "distill"), []ai.Message{
 			{Role: "system", Content: []ai.ContentPart{{Type: "text", Text: distillerSystemPrompt}}},
 			{Role: "user", Content: []ai.ContentPart{{Type: "text", Text: input}}},
@@ -1287,9 +1306,10 @@ func consolidateFacts(settings config.Config, client *liveClient) resident.Conso
 		})
 
 		var input strings.Builder
+		now := time.Now()
 		fmt.Fprintf(&input, "Target scope: %s\n\nNotebook lines, newest first:\n", scope)
 		for index, fact := range ordered {
-			fmt.Fprintf(&input, "%d. [%s] %s\n", index+1, fact.Kind, fact.Body)
+			fmt.Fprintf(&input, "%d. [%s · %s · used %d×] %s\n", index+1, fact.Kind, store.AgeLabel(fact.Time, now), fact.Uses, fact.Body)
 		}
 		response, err := client.CompleteWithMessages(settings.Context(ctx, "consolidate"), []ai.Message{
 			{Role: "system", Content: []ai.ContentPart{{Type: "text", Text: consolidatorSystemPrompt}}},
@@ -1316,9 +1336,10 @@ func parseLearnedFacts(raw string, limit int) []resident.Learned {
 	}
 	var parsed struct {
 		Facts []struct {
-			Scope string         `json:"scope"`
-			Kind  store.FactKind `json:"kind"`
-			Body  string         `json:"body"`
+			Scope    string         `json:"scope"`
+			Kind     store.FactKind `json:"kind"`
+			Body     string         `json:"body"`
+			Replaces int64          `json:"replaces"`
 		} `json:"facts"`
 	}
 	if err := json.NewDecoder(strings.NewReader(raw[start:])).Decode(&parsed); err != nil {
@@ -1331,7 +1352,7 @@ func parseLearnedFacts(raw string, limit int) []resident.Learned {
 		if fact.Scope == "" || fact.Body == "" || !validLearnedKind(fact.Kind) {
 			continue
 		}
-		learned = append(learned, resident.Learned{Scope: fact.Scope, Kind: fact.Kind, Body: fact.Body})
+		learned = append(learned, resident.Learned{Scope: fact.Scope, Kind: fact.Kind, Body: fact.Body, Replaces: fact.Replaces})
 		if len(learned) == limit {
 			break
 		}

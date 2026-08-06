@@ -20,6 +20,29 @@ import (
 const MaxFactBytes = 512
 
 // FactKind classifies what a notebook entry teaches.
+// AgeLabel renders how old a fact is, for retrieval surfaces: every reader
+// of a memory sees when it was written, because a claim's age is part of its
+// evidence — "the dev server has been up for days" means something different
+// noted yesterday versus noted last quarter.
+func AgeLabel(at, now time.Time) string {
+	if at.IsZero() {
+		return ""
+	}
+	age := now.Sub(at)
+	switch {
+	case age < time.Hour:
+		return "just now"
+	case age < 24*time.Hour:
+		return fmt.Sprintf("%dh ago", int(age.Hours()))
+	case age < 14*24*time.Hour:
+		return fmt.Sprintf("%dd ago", int(age.Hours()/24))
+	case age < 60*24*time.Hour:
+		return fmt.Sprintf("%dw ago", int(age.Hours()/(24*7)))
+	default:
+		return fmt.Sprintf("%dmo ago", int(age.Hours()/(24*30)))
+	}
+}
+
 type FactKind string
 
 const (

@@ -32,10 +32,12 @@ const headSystemPrompt = `You are the front desk of a task-graph agent. Behind y
 
 The snapshot IS your workforce, seen live. Every line is one worker's assignment: "running" is a worker doing that thing at this moment, "pending" is work waiting its turn, "done" and "failed" are how assignments ended, and the result field is what came back. Whatever words the user reaches for — workers, agents, employees, tasks, jobs, threads, "what's everyone up to" — they mean these lines, because there is nothing else they could mean: you have no other staff, no hidden status system, no information channel besides this snapshot and the thread. So a question about activity, progress, or who is doing what is never outside your knowledge — it is a read of the snapshot, translated into plain speech.
 
+Alongside the snapshot you carry a notebook: durable lessons, quirks, preferences, and facts distilled from past jobs and conversations. The notebook is your accumulated experience the way the snapshot is your present awareness. Questions about what you know, remember, or have learned are answered from the notebook exactly as status questions are answered from the snapshot; and when a notebook entry changes what you would say — a known quirk of a tool the user is asking about, a preference they stated before — let it shape the reply naturally.
+
 Return exactly one JSON object with this shape and no text outside it:
-{"reply":"<what to say right now>","command":null}
-or
-{"reply":"<what to say right now>","command":{"kind":"splice|amend|cancel","target":"<node id or empty>","instruction":"<the user's instruction, preserving their words verbatim>"}}
+{"reply":"<what to say right now>","command":null,"remember":null}
+where command may instead be {"kind":"splice|amend|cancel","target":"<node id or empty>","instruction":"<the user's instruction, preserving their words verbatim>"}
+and remember may instead be {"scope":"<scope>","kind":"preference|fact","body":"<one sharp sentence>"}
 
 Routing law:
 - Questions about the state of existing work — what is running, what was found, what happened, what anyone or anything is doing — you answer directly from the graph snapshot, with no command. Before deciding a question is unanswerable, re-read it as a question about the snapshot in different words; it usually is one. "I'm sorry, but" and "I don't have information about" are not sentences you produce — the reply is the state read off the snapshot, a numbered question, or a receipt for spliced work, always.
@@ -43,6 +45,7 @@ Routing law:
 - EVERYTHING else is work for the workforce: a fact you do not have (weather, prices, news, anything about the world), research, code, files, any task at all. Emit a splice command with the user's own words verbatim in instruction — do not improve, summarize, or reinterpret them. Never refuse and never say you cannot or lack access: you always can, by splicing. A quick lookup is still a splice.
 - For a redirect of existing work, emit amend and name the affected node id from the snapshot. For stopping work, emit cancel with its target. Never invent a node id; if there is no unambiguous target, explain that briefly and emit no command.
 - When the message refers back to earlier work ("it", "the report", "the podcast") and MORE THAN ONE thing in the snapshot plausibly matches, never pick for the user. Reply with one short question listing the candidates as numbered options (1. ..., 2. ...), each identified by what the user would recognise — their own words from that job — and emit no command. Their next message chooses. A single plausible match is not ambiguity; proceed.
+- When the user states something durable — a preference about how they like things done, a correction to how something was done for them, a lasting fact about themselves or their environment — capture it in remember as one sharp sentence, alongside whatever reply and command the message otherwise earns. Judge durability by one test: will this still matter after the current conversation is forgotten? Scope it to the narrowest thing it is about: user for personal preferences, tool:<name>, repo:<path>, file:<path>, or domain:<topic> for the rest. Task parameters and one-off details fail the test; remember stays null on almost every message.
 - Never hand back a dead end. When something failed, is blocked, or cannot be done as literally asked, the reply pairs that fact with the nearest thing that CAN be done — a retry by another route, a narrower version, an adjacent source — offered as the default you will proceed with, or as numbered choices when the routes genuinely differ. A bare "that failed" or "that is not possible" hands the user a problem; your job is to hand them a decision already made or one crisp choice.
 
 The reply is what the user sees immediately. When splicing, make it a receipt: say you are on it and will report back when it lands. Never imply the work already finished or promise synchronous completion. Be concise and warm. Reply text is plain prose with no markdown headers. Speak entirely in the user's terms — what each piece of work is about and how it is going. Your internals stay backstage: the permanent spine or root is plumbing rather than an assignment and is never worth mentioning, and words like node, splice, snapshot, or raw ids belong to the machinery, not the conversation.`
@@ -155,6 +158,22 @@ func (h *Head) answer(ctx context.Context, user store.Message) error {
 		return h.postAgent(user.SessionID, providerErrorReply, 0)
 	}
 
+	if memory := decision.Remember; memory != nil {
+		if body := strings.TrimSpace(memory.Body); body != "" {
+			scope := strings.TrimSpace(strings.ToLower(memory.Scope))
+			if scope == "" {
+				scope = "user"
+			}
+			kind := store.FactKind(strings.ToLower(strings.TrimSpace(memory.Kind)))
+			switch kind {
+			case store.FactPreference, store.FactQuirk, store.FactLesson, store.FactPlain:
+			default:
+				kind = store.FactPreference
+			}
+			_, _ = h.store.RecordFact(store.RootID, scope, kind, body)
+		}
+	}
+
 	var commandSeq int64
 	if decision.Command != nil {
 		kind, ok := commandKind(decision.Command.Kind)
@@ -188,6 +207,7 @@ func (h *Head) route(ctx context.Context, user store.Message) (routeDecision, er
 	}
 
 	prompt := "Live graph snapshot:\n" + renderGraph(snapshot) +
+		"\n\nNotebook (durable memory across jobs and conversations):\n" + renderNotebook(h.store, user.Body) +
 		"\n\nRecent thread before this message:\n" + renderThread(recent) +
 		"\n\nCurrent user message (verbatim):\n" + user.Body
 	messages := []ai.Message{
@@ -272,9 +292,59 @@ func (h *Head) postAgent(sessionID, body string, commandSeq int64) error {
 	return nil
 }
 
+// notebookContextBytes bounds the memory shown to the router: enough for the
+// beliefs that matter to this message, never the whole archive.
+const notebookContextBytes = 2000
+
+// renderNotebook blends the two free retrieval layers — BM25 relevance to
+// this message, then recency — into a bounded, age-annotated view. The age
+// on every line is deliberate: a claim's freshness is part of its evidence.
+func renderNotebook(graphStore *store.Store, message string) string {
+	if graphStore == nil {
+		return "(no notebook)"
+	}
+	now := time.Now()
+	seen := make(map[int64]bool)
+	total := 0
+	var lines []string
+	add := func(facts []store.Fact) {
+		for _, fact := range facts {
+			if seen[fact.Seq] {
+				continue
+			}
+			seen[fact.Seq] = true
+			line := "- [" + fact.Scope + " · " + string(fact.Kind) + " · " + store.AgeLabel(fact.Time, now) + "] " + fact.Body
+			if total+len(line) > notebookContextBytes {
+				return
+			}
+			total += len(line)
+			lines = append(lines, line)
+		}
+	}
+	if found, err := graphStore.SearchFacts(store.FactQuery{Terms: message, Limit: 8}); err == nil {
+		add(found)
+	}
+	if recent, err := graphStore.RecentFacts(10); err == nil {
+		add(recent)
+	}
+	if len(lines) == 0 {
+		return "(nothing learned yet)"
+	}
+	return strings.Join(lines, "\n")
+}
+
 type routeDecision struct {
-	Reply   string        `json:"reply"`
-	Command *routeCommand `json:"command"`
+	Reply    string        `json:"reply"`
+	Command  *routeCommand `json:"command"`
+	Remember *routeMemory  `json:"remember"`
+}
+
+// routeMemory is a durable fact the user just stated, captured into the
+// notebook at conversation speed rather than waiting for a job to distill it.
+type routeMemory struct {
+	Scope string `json:"scope"`
+	Kind  string `json:"kind"`
+	Body  string `json:"body"`
 }
 
 type routeCommand struct {
