@@ -3,6 +3,7 @@ package resident
 import (
 	"context"
 	"fmt"
+	"strings"
 	"testing"
 	"time"
 
@@ -117,6 +118,63 @@ func TestRetrospectiveSketchCarriesJobCost(t *testing.T) {
 	}
 	if got, want := job.CostSummary(), "2 nodes · 165 tok · $0.0125, predicted 72 tok — 2.3× over"; got != want {
 		t.Fatalf("CostSummary() = %q, want %q", got, want)
+	}
+}
+
+func TestRetrospectiveProposesOnceAndDeclinePreventsReproposal(t *testing.T) {
+	graph := openStore(t)
+	for index := 1; index <= 3; index++ {
+		settleRetrospectiveJob(t, graph, index)
+	}
+	reflector := func(_ context.Context, _ []JobSketch) ([]Learned, error) { return nil, nil }
+	reconciler := New(graph, nil, nil).WithReflector(reflector).WithCharterProposals()
+	reconciler.reflectOnJobs(context.Background())
+	charters, err := graph.Charters()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(charters) != 1 || charters[0].Status != store.CharterProposed || charters[0].ProposalShape == "" {
+		t.Fatalf("retrospective proposals = %+v", charters)
+	}
+	proposal := charters[0]
+	if err := graph.DeclineCharterProposal(proposal.ID, "keep these as one-off asks"); err != nil {
+		t.Fatal(err)
+	}
+	declined, err := graph.CharterProposalDeclined(proposal.ProposalShape)
+	if err != nil || !declined {
+		t.Fatalf("declined shape found=%t err=%v", declined, err)
+	}
+	facts, err := graph.ActiveFacts("user", 20)
+	if err != nil {
+		t.Fatal(err)
+	}
+	foundFact := false
+	for _, fact := range facts {
+		if strings.Contains(fact.Body, proposal.ProposalShape) && strings.Contains(fact.Body, "Do not propose") {
+			foundFact = true
+		}
+	}
+	if !foundFact {
+		t.Fatalf("decline notebook facts = %+v", facts)
+	}
+	if err := graph.Rebuild(); err != nil {
+		t.Fatal(err)
+	}
+
+	settleRetrospectiveJob(t, graph, 4)
+	watermark, found, err := graph.RetrospectiveWatermark()
+	if err != nil || !found {
+		t.Fatalf("watermark = %+v found=%t err=%v", watermark, found, err)
+	}
+	restarted := New(graph, nil, nil).WithReflector(reflector).WithCharterProposals()
+	restarted.now = func() time.Time { return watermark.At.Add(reflectionInterval + time.Second) }
+	restarted.reflectOnJobs(context.Background())
+	charters, err = graph.Charters()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(charters) != 1 || charters[0].ID != proposal.ID || charters[0].Status != store.CharterRetired {
+		t.Fatalf("declined shape was reproposed: %+v", charters)
 	}
 }
 
