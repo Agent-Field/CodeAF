@@ -41,6 +41,8 @@ var slashCommands = []commandSpec{
 	{name: "tasks", description: "focus and expand the active-task dock"},
 	{name: "node", description: "open a node by id prefix or current selection", takesArg: true},
 	{name: "notebook", description: "browse the scoped notebook"},
+	{name: "budget", description: "show or change today's dollar rail"},
+	{name: "standing", description: "list active standing charters"},
 	{name: "help", description: "show commands and keyboard shortcuts"},
 	{name: "model", description: "choose the talk or work model", takesArg: true},
 	{name: "memory", description: "alias for /notebook"},
@@ -424,7 +426,7 @@ func (m *Model) executeSlash(body string) tea.Cmd {
 	switch fields[0] {
 	case "/":
 		m.input.Reset()
-		return m.showStatus("/graph · /tasks · /node · /notebook · /help")
+		return m.showStatus("/graph · /tasks · /budget · /standing · /notebook · /help")
 	case "/graph":
 		m.input.Reset()
 		if m.nodeViewID != "" {
@@ -435,6 +437,34 @@ func (m *Model) executeSlash(body string) tea.Cmd {
 	case "/tasks":
 		m.input.Reset()
 		return m.openTasksDock()
+	case "/budget":
+		handler, ok := m.commander.(interface {
+			Budget(arguments []string) (string, error)
+		})
+		if !ok {
+			m.input.Reset()
+			return m.showStatus("budget unavailable — no Commander")
+		}
+		result, err := handler.Budget(fields[1:])
+		m.input.Reset()
+		if err != nil {
+			return m.showStatus("could not change budget: " + err.Error())
+		}
+		return m.showStatus(result)
+	case "/standing":
+		handler, ok := m.commander.(interface {
+			Standing() (string, error)
+		})
+		if !ok {
+			m.input.Reset()
+			return m.showStatus("standing unavailable — no Commander")
+		}
+		result, err := handler.Standing()
+		m.input.Reset()
+		if err != nil {
+			return m.showStatus("could not list standing charters: " + err.Error())
+		}
+		return m.showStatus(result)
 	case "/node":
 		prefix := ""
 		if len(fields) > 1 {

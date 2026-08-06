@@ -25,17 +25,20 @@ type fakeBackend struct {
 }
 
 type fakeCommander struct {
-	models     []string
-	catalog    []ModelChoice
-	current    map[string]string
-	setRole    string
-	setModel   string
-	newSession string
-	cancelled  []string
-	facts      []store.Fact
-	database   string
-	trace      string
-	err        error
+	models          []string
+	catalog         []ModelChoice
+	current         map[string]string
+	setRole         string
+	setModel        string
+	newSession      string
+	cancelled       []string
+	facts           []store.Fact
+	database        string
+	trace           string
+	budgetArguments [][]string
+	budgetResult    string
+	standingResult  string
+	err             error
 }
 
 func (f *fakeCommander) Models() []string { return append([]string(nil), f.models...) }
@@ -74,6 +77,15 @@ func (f *fakeCommander) Notebook(limit int) []store.Fact {
 }
 
 func (f *fakeCommander) DatabasePath() string { return f.database }
+
+func (f *fakeCommander) Budget(arguments []string) (string, error) {
+	f.budgetArguments = append(f.budgetArguments, append([]string(nil), arguments...))
+	return f.budgetResult, f.err
+}
+
+func (f *fakeCommander) Standing() (string, error) {
+	return f.standingResult, f.err
+}
 
 func (f *fakeCommander) NodeTrace(nodeID string, maxBytes int) string {
 	if maxBytes > 0 && len(f.trace) > maxBytes {
@@ -1952,6 +1964,23 @@ func TestSlashCommandsAreConsumedAndRouteLocally(t *testing.T) {
 	_, _ = model.Update(tea.KeyMsg{Type: tea.KeyEnter})
 	if model.palette != paletteMemory || !strings.Contains(model.renderPalette(), "Keep it concise") {
 		t.Fatalf("/notebook did not open the scrollable notebook pane:\n%s", model.renderPalette())
+	}
+
+	commander.budgetResult = "default daily budget → $35"
+	model.closePalette()
+	model.input.SetValue("/budget default 35")
+	_, _ = model.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	if len(commander.budgetArguments) != 1 || len(commander.budgetArguments[0]) != 2 ||
+		commander.budgetArguments[0][0] != "default" || commander.budgetArguments[0][1] != "35" ||
+		model.status != commander.budgetResult {
+		t.Fatalf("/budget route = args %#v status %q", commander.budgetArguments, model.status)
+	}
+
+	commander.standingResult = "digest · every morning · Send the digest."
+	model.input.SetValue("/standing")
+	_, _ = model.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	if model.status != commander.standingResult {
+		t.Fatalf("/standing route status = %q", model.status)
 	}
 
 	backend.mu.Lock()

@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
@@ -29,6 +30,13 @@ const (
 	RoleSystem Role = "system"
 )
 
+// QuestionOption is one ordered, selectable answer carried beside an askback.
+// Value is machine-facing continuation data; Label is the user's wording.
+type QuestionOption struct {
+	Label string `json:"label"`
+	Value string `json:"value,omitempty"`
+}
+
 // CommandKind names an asynchronous graph mutation requested from the thread.
 type CommandKind string
 
@@ -41,6 +49,14 @@ const (
 	CommandAmend CommandKind = "amend"
 	// CommandCancel withdraws work: Target names the subtree root to cancel.
 	CommandCancel CommandKind = "cancel"
+
+	// Charter commands are requested through the same durable reconciler queue
+	// as graph mutations. Their target names a charter rather than a node.
+	CommandCharterRatify  CommandKind = "charter_ratify"
+	CommandCharterPause   CommandKind = "charter_pause"
+	CommandCharterRetire  CommandKind = "charter_retire"
+	CommandCharterCadence CommandKind = "charter_cadence"
+	CommandCharterOnce    CommandKind = "charter_once"
 )
 
 // CommandStatus is the lifecycle of a requested command. Commands are durable
@@ -67,6 +83,9 @@ type Message struct {
 	// CommandSeq optionally links the message to the command it acknowledges
 	// or reports on.
 	CommandSeq int64
+	// Options is the ordered set of selectable answers for an askback.
+	// Nil means the question accepts free text only.
+	Options []QuestionOption
 }
 
 // Command is one materialized mutation request.
@@ -94,7 +113,8 @@ CREATE TABLE IF NOT EXISTS messages (
     role        TEXT NOT NULL CHECK (role IN ('user', 'agent', 'system')),
     body        TEXT NOT NULL,
     node_id     TEXT NOT NULL DEFAULT '',
-    command_seq INTEGER NOT NULL DEFAULT 0
+    command_seq INTEGER NOT NULL DEFAULT 0,
+    options     JSON NOT NULL DEFAULT '[]' CHECK (json_valid(options))
 );
 CREATE INDEX IF NOT EXISTS messages_session_seq ON messages (session_id, seq);
 
@@ -102,7 +122,7 @@ CREATE TABLE IF NOT EXISTS commands (
     seq         INTEGER PRIMARY KEY REFERENCES events(seq),
     ts          TEXT NOT NULL,
     session_id  TEXT NOT NULL DEFAULT '',
-    kind        TEXT NOT NULL CHECK (kind IN ('splice', 'amend', 'cancel')),
+    kind        TEXT NOT NULL,
     reflex      INTEGER NOT NULL DEFAULT 0 CHECK (reflex IN (0, 1)),
     target      TEXT NOT NULL DEFAULT '',
     instruction TEXT NOT NULL,
@@ -114,11 +134,12 @@ CREATE INDEX IF NOT EXISTS commands_status_seq ON commands (status, seq);
 `
 
 type messagePayload struct {
-	SessionID  string `json:"session_id,omitempty"`
-	Role       Role   `json:"role"`
-	Body       string `json:"body"`
-	NodeID     string `json:"node_id,omitempty"`
-	CommandSeq int64  `json:"command_seq,omitempty"`
+	SessionID  string           `json:"session_id,omitempty"`
+	Role       Role             `json:"role"`
+	Body       string           `json:"body"`
+	NodeID     string           `json:"node_id,omitempty"`
+	CommandSeq int64            `json:"command_seq,omitempty"`
+	Options    []QuestionOption `json:"options,omitempty"`
 }
 
 type commandPayload struct {
@@ -148,6 +169,10 @@ func (s *Store) PostMessage(message Message) (Message, error) {
 		return Message{}, fmt.Errorf("post message: %w: body is %d bytes (limit %d); spill to the blob store and reference it",
 			ErrInvalid, len(message.Body), MaxMessageBytes)
 	}
+	options, err := normalizeQuestionOptions(message.Options)
+	if err != nil {
+		return Message{}, fmt.Errorf("post message: %w", err)
+	}
 
 	tx, err := s.db.BeginTx(context.Background(), nil)
 	if err != nil {
@@ -168,6 +193,7 @@ func (s *Store) PostMessage(message Message) (Message, error) {
 		Body:       message.Body,
 		NodeID:     message.NodeID,
 		CommandSeq: message.CommandSeq,
+		Options:    options,
 	}
 	seq, at, err := appendEvent(tx, message.NodeID, EventMessagePosted, payload)
 	if err != nil {
@@ -181,6 +207,7 @@ func (s *Store) PostMessage(message Message) (Message, error) {
 	}
 	message.Seq = seq
 	message.Time = at
+	message.Options = options
 	return message, nil
 }
 
@@ -217,7 +244,7 @@ func (s *Store) Messages(sessionID string, afterSeq int64, limit int) ([]Message
 	}
 	args = append(args, limit)
 	rows, err := s.db.Query(`
-		SELECT seq, ts, session_id, role, body, node_id, command_seq
+		SELECT seq, ts, session_id, role, body, node_id, command_seq, options
 		FROM messages WHERE `+where+` ORDER BY seq LIMIT ?`, args...)
 	if err != nil {
 		return nil, fmt.Errorf("list messages: %w", err)
@@ -227,9 +254,12 @@ func (s *Store) Messages(sessionID string, afterSeq int64, limit int) ([]Message
 	messages := make([]Message, 0)
 	for rows.Next() {
 		var message Message
-		var timestamp string
+		var timestamp, options string
 		if err := rows.Scan(&message.Seq, &timestamp, &message.SessionID,
-			&message.Role, &message.Body, &message.NodeID, &message.CommandSeq); err != nil {
+			&message.Role, &message.Body, &message.NodeID, &message.CommandSeq, &options); err != nil {
+			return nil, fmt.Errorf("list messages: %w", err)
+		}
+		if err := decodeQuestionOptions(options, &message.Options); err != nil {
 			return nil, fmt.Errorf("list messages: %w", err)
 		}
 		at, err := parseTime(timestamp)
@@ -253,7 +283,7 @@ func (s *Store) NodeMessages(nodeID string, afterSeq int64, limit int) ([]Messag
 		limit = 200
 	}
 	rows, err := s.db.Query(`
-		SELECT seq, ts, session_id, role, body, node_id, command_seq
+		SELECT seq, ts, session_id, role, body, node_id, command_seq, options
 		FROM messages WHERE node_id = ? AND seq > ? ORDER BY seq LIMIT ?`,
 		nodeID, afterSeq, limit)
 	if err != nil {
@@ -263,9 +293,12 @@ func (s *Store) NodeMessages(nodeID string, afterSeq int64, limit int) ([]Messag
 	messages := make([]Message, 0)
 	for rows.Next() {
 		var message Message
-		var timestamp string
+		var timestamp, options string
 		if err := rows.Scan(&message.Seq, &timestamp, &message.SessionID,
-			&message.Role, &message.Body, &message.NodeID, &message.CommandSeq); err != nil {
+			&message.Role, &message.Body, &message.NodeID, &message.CommandSeq, &options); err != nil {
+			return nil, fmt.Errorf("node messages: %w", err)
+		}
+		if err := decodeQuestionOptions(options, &message.Options); err != nil {
 			return nil, fmt.Errorf("node messages: %w", err)
 		}
 		at, err := parseTime(timestamp)
@@ -295,7 +328,7 @@ func (s *Store) RequestCommand(command Command) (Command, error) {
 		return Command{}, fmt.Errorf("request command: %w: reflex must be an untargeted splice", ErrInvalid)
 	}
 	if command.Kind != CommandSplice && strings.TrimSpace(command.Target) == "" {
-		return Command{}, fmt.Errorf("request command: %w: %s requires a target node", ErrInvalid, command.Kind)
+		return Command{}, fmt.Errorf("request command: %w: %s requires a target", ErrInvalid, command.Kind)
 	}
 
 	tx, err := s.db.BeginTx(context.Background(), nil)
@@ -305,7 +338,11 @@ func (s *Store) RequestCommand(command Command) (Command, error) {
 	defer tx.Rollback()
 
 	if command.Target != "" {
-		if err := requireNode(tx, command.Target); err != nil {
+		if isCharterCommand(command.Kind) {
+			if err := requireCharter(tx, command.Target); err != nil {
+				return Command{}, fmt.Errorf("request command: %w", err)
+			}
+		} else if err := requireNode(tx, command.Target); err != nil {
 			return Command{}, fmt.Errorf("request command: %w", err)
 		}
 	}
@@ -440,11 +477,15 @@ func (s *Store) queryCommands(where string, args []any) ([]Command, error) {
 }
 
 func applyMessageView(tx *sql.Tx, payload messagePayload, seq int64, at time.Time) error {
-	_, err := tx.Exec(`
-		INSERT INTO messages (seq, ts, session_id, role, body, node_id, command_seq)
-		VALUES (?, ?, ?, ?, ?, ?, ?)`,
+	options, err := json.Marshal(payload.Options)
+	if err != nil {
+		return err
+	}
+	_, err = tx.Exec(`
+		INSERT INTO messages (seq, ts, session_id, role, body, node_id, command_seq, options)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
 		seq, formatTime(at), payload.SessionID, payload.Role, payload.Body,
-		payload.NodeID, payload.CommandSeq)
+		payload.NodeID, payload.CommandSeq, string(options))
 	return err
 }
 
@@ -454,37 +495,6 @@ func applyCommandView(tx *sql.Tx, payload commandPayload, seq int64, at time.Tim
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?, '', ?)`,
 		seq, formatTime(at), payload.SessionID, payload.Kind, payload.Reflex, payload.Target,
 		payload.Instruction, CommandPending, seq)
-	return err
-}
-
-// migrateThreadSchema keeps command events from older stores replayable after
-// reflex routing was added. The event payload defaults to false, so adding the
-// materialized column is the whole migration.
-func migrateThreadSchema(db *sql.DB) error {
-	rows, err := db.Query(`PRAGMA table_info(commands)`)
-	if err != nil {
-		return err
-	}
-	defer rows.Close()
-	found := false
-	for rows.Next() {
-		var cid, notNull, primaryKey int
-		var name, columnType string
-		var defaultValue any
-		if err := rows.Scan(&cid, &name, &columnType, &notNull, &defaultValue, &primaryKey); err != nil {
-			return err
-		}
-		if name == "reflex" {
-			found = true
-		}
-	}
-	if err := rows.Err(); err != nil {
-		return err
-	}
-	if found {
-		return nil
-	}
-	_, err = db.Exec(`ALTER TABLE commands ADD COLUMN reflex INTEGER NOT NULL DEFAULT 0 CHECK (reflex IN (0, 1))`)
 	return err
 }
 
@@ -522,5 +532,21 @@ func validRole(role Role) bool {
 }
 
 func validCommandKind(kind CommandKind) bool {
-	return kind == CommandSplice || kind == CommandAmend || kind == CommandCancel
+	switch kind {
+	case CommandSplice, CommandAmend, CommandCancel, CommandCharterRatify,
+		CommandCharterPause, CommandCharterRetire, CommandCharterCadence, CommandCharterOnce:
+		return true
+	default:
+		return false
+	}
+}
+
+func isCharterCommand(kind CommandKind) bool {
+	switch kind {
+	case CommandCharterRatify, CommandCharterPause, CommandCharterRetire,
+		CommandCharterCadence, CommandCharterOnce:
+		return true
+	default:
+		return false
+	}
 }
