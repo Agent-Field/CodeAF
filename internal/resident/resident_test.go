@@ -260,6 +260,42 @@ func TestCompletionAnnouncementIsDeduplicatedAcrossRestart(t *testing.T) {
 	}
 }
 
+func TestDeferredResourceCompletionStaysInternal(t *testing.T) {
+	graph := openStore(t)
+	if err := graph.Splice(store.RootID, store.Subtree{Nodes: []store.NodeSpec{{
+		ID: "deferred-partial", Brief: "finish all of it", Stage: 1,
+	}}}, store.Provenance{Origin: store.OriginUser, SessionID: "deferred-session", Intent: "finish all of it"}); err != nil {
+		t.Fatal(err)
+	}
+	reconciler := New(graph, nil, nil)
+	if err := reconciler.Tick(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	claim, won, err := graph.Claim("deferred-partial", "worker")
+	if err != nil || !won {
+		t.Fatalf("claim: won=%t err=%v", won, err)
+	}
+	if err := graph.DeferOverrun(store.DeferredOverrun{
+		NodeID: "deferred-partial", Partial: "useful but unfinished", Prefix: "deferred-partial-x1",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := graph.Complete(claim, "useful but unfinished"); err != nil {
+		t.Fatal(err)
+	}
+	if err := reconciler.Tick(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	messages, err := graph.Messages("deferred-session", 0, 0)
+	if err != nil || len(messages) != 0 {
+		t.Fatalf("deferred partial announcements = %+v err=%v", messages, err)
+	}
+	node, ok, err := graph.Node("deferred-partial")
+	if err != nil || !ok || node.Folded {
+		t.Fatalf("deferred partial was folded: node=%+v ok=%t err=%v", node, ok, err)
+	}
+}
+
 func openStore(t *testing.T) *store.Store {
 	t.Helper()
 	graph, err := store.Open(filepath.Join(t.TempDir(), "graph.db"))

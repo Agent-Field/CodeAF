@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"fmt"
 	"math"
+	"strings"
 	"time"
 )
 
@@ -51,6 +52,38 @@ type JobUsage struct {
 	SurpriseTokens   int
 	ExpectedTokens   int
 	Surprise         *float64
+}
+
+// RailAdjustment is one journaled increase to today's dollar ceiling.
+type RailAdjustment struct {
+	Amount float64 `json:"amount"`
+	Origin string  `json:"origin"`
+}
+
+// DailyRail is today's policy state. Base zero is unlimited; Raised remains
+// visible as journal history but cannot make an unlimited rail more unlimited.
+type DailyRail struct {
+	Base      float64
+	Raised    float64
+	Spend     float64
+	Ceiling   float64
+	Unlimited bool
+	Reached   bool
+}
+
+// DailyRailQuestionPrefix is stable because the journaled message is also the
+// durable once-per-raise question marker.
+const DailyRailQuestionPrefix = "Daily budget reached -- "
+
+// RaiseAmount restores one configured budget unit of headroom. Concurrent
+// leaves may overshoot the old rail while landing, so the raise also covers
+// that overshoot instead of immediately asking the same question again.
+func (rail DailyRail) RaiseAmount() float64 {
+	if rail.Unlimited || rail.Base <= 0 {
+		return 0
+	}
+	amount := rail.Base + math.Max(0, rail.Spend-rail.Ceiling)
+	return math.Ceil(amount*100) / 100
 }
 
 const usageSchema = `
@@ -148,6 +181,175 @@ func (s *Store) Usage() (TotalUsage, error) {
 		return TotalUsage{}, fmt.Errorf("total usage: %w", err)
 	}
 	return total, nil
+}
+
+// SpendToday sums recorded execution cost since local midnight. Event times
+// are UTC on disk; the boundary is local policy time converted to UTC, so DST
+// and non-UTC operators get the day they actually mean.
+func (s *Store) SpendToday() (float64, error) {
+	return s.spendTodayAt(time.Now())
+}
+
+func (s *Store) spendTodayAt(now time.Time) (float64, error) {
+	start, end := localDayBounds(now)
+	var spend float64
+	if err := s.db.QueryRow(`
+		SELECT COALESCE(SUM(cost), 0) FROM usage WHERE ts >= ? AND ts < ?`,
+		formatTime(start), formatTime(end)).Scan(&spend); err != nil {
+		return 0, fmt.Errorf("spend today: %w", err)
+	}
+	return spend, nil
+}
+
+// DailyRailToday combines the configured base with today's journaled raises.
+func (s *Store) DailyRailToday(base float64) (DailyRail, error) {
+	return dailyRailAt(s.db, base, time.Now())
+}
+
+// WithAdditionalSpend includes not-yet-journaled in-process cost in a rail
+// check. Headless scheduling uses it between landed leaves, then journals the
+// aggregate before exit.
+func (rail DailyRail) WithAdditionalSpend(amount float64) DailyRail {
+	rail.Spend += amount
+	rail.Reached = !rail.Unlimited && rail.Spend >= rail.Ceiling
+	return rail
+}
+
+// Question renders the one user-visible policy stop. Resource units stay
+// backstage; only today's spend, ceiling, and exact effect of consent appear.
+func (rail DailyRail) Question() string {
+	return fmt.Sprintf("%s$%.2f spent of $%.2f. Say the word and I'll continue (raises today's rail by $%.2f).",
+		DailyRailQuestionPrefix, rail.Spend, rail.Ceiling, rail.RaiseAmount())
+}
+
+// RaiseDailyRail journals consent to extend today's ceiling.
+func (s *Store) RaiseDailyRail(amount float64, origin string) error {
+	origin = strings.TrimSpace(origin)
+	if amount <= 0 || math.IsNaN(amount) || math.IsInf(amount, 0) || origin == "" {
+		return fmt.Errorf("raise daily rail: %w: positive amount and origin are required", ErrInvalid)
+	}
+	tx, err := s.db.BeginTx(context.Background(), nil)
+	if err != nil {
+		return fmt.Errorf("raise daily rail: %w", err)
+	}
+	defer tx.Rollback()
+	if _, _, err := appendEvent(tx, "", EventRailRaised, RailAdjustment{Amount: amount, Origin: origin}); err != nil {
+		return fmt.Errorf("raise daily rail: %w", err)
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("raise daily rail: %w", err)
+	}
+	return nil
+}
+
+// PauseDailyRail checks policy immediately before a claim or replan. At the
+// rail it atomically posts at most one agent question since the latest raise;
+// callers simply stop claiming and try again on their next tick.
+func (s *Store) PauseDailyRail(base float64, sessionID string) (DailyRail, bool, error) {
+	tx, err := s.db.BeginTx(context.Background(), nil)
+	if err != nil {
+		return DailyRail{}, false, fmt.Errorf("pause daily rail: %w", err)
+	}
+	defer tx.Rollback()
+	now := time.Now()
+	rail, err := dailyRailAt(tx, base, now)
+	if err != nil {
+		return DailyRail{}, false, fmt.Errorf("pause daily rail: %w", err)
+	}
+	if !rail.Reached {
+		return rail, false, nil
+	}
+	questionSeq, raiseSeq, err := latestRailMarkers(tx, now, "")
+	if err != nil {
+		return DailyRail{}, false, fmt.Errorf("pause daily rail: %w", err)
+	}
+	if questionSeq > raiseSeq {
+		return rail, false, nil
+	}
+	payload := messagePayload{SessionID: sessionID, Role: RoleAgent, Body: rail.Question()}
+	seq, at, err := appendEvent(tx, "", EventMessagePosted, payload)
+	if err != nil {
+		return DailyRail{}, false, fmt.Errorf("pause daily rail: %w", err)
+	}
+	if err := applyMessageView(tx, payload, seq, at); err != nil {
+		return DailyRail{}, false, fmt.Errorf("pause daily rail: %w", err)
+	}
+	if err := tx.Commit(); err != nil {
+		return DailyRail{}, false, fmt.Errorf("pause daily rail: %w", err)
+	}
+	return rail, true, nil
+}
+
+// PendingDailyRailApproval reports whether this session's most recent rail
+// question still awaits a raise. The head uses it to intercept a plain "yes"
+// without spending a model call or inventing a graph command.
+func (s *Store) PendingDailyRailApproval(base float64, sessionID string) (DailyRail, bool, error) {
+	now := time.Now()
+	rail, err := dailyRailAt(s.db, base, now)
+	if err != nil {
+		return DailyRail{}, false, err
+	}
+	if !rail.Reached {
+		return rail, false, nil
+	}
+	questionSeq, raiseSeq, err := latestRailMarkers(s.db, now, sessionID)
+	if err != nil {
+		return DailyRail{}, false, err
+	}
+	return rail, questionSeq > raiseSeq, nil
+}
+
+type rowQuerier interface {
+	QueryRow(query string, args ...any) *sql.Row
+}
+
+func dailyRailAt(query rowQuerier, base float64, now time.Time) (DailyRail, error) {
+	if base < 0 || math.IsNaN(base) || math.IsInf(base, 0) {
+		return DailyRail{}, fmt.Errorf("daily rail: %w: invalid base", ErrInvalid)
+	}
+	start, end := localDayBounds(now)
+	var spend, raised float64
+	if err := query.QueryRow(`
+		SELECT COALESCE(SUM(cost), 0) FROM usage WHERE ts >= ? AND ts < ?`,
+		formatTime(start), formatTime(end)).Scan(&spend); err != nil {
+		return DailyRail{}, fmt.Errorf("read spend: %w", err)
+	}
+	if err := query.QueryRow(`
+		SELECT COALESCE(SUM(CAST(json_extract(payload, '$.amount') AS REAL)), 0)
+		FROM events WHERE kind = ? AND ts >= ? AND ts < ?`,
+		EventRailRaised, formatTime(start), formatTime(end)).Scan(&raised); err != nil {
+		return DailyRail{}, fmt.Errorf("read raises: %w", err)
+	}
+	rail := DailyRail{Base: base, Raised: raised, Spend: spend, Ceiling: base + raised, Unlimited: base == 0}
+	rail.Reached = !rail.Unlimited && rail.Spend >= rail.Ceiling
+	return rail, nil
+}
+
+func latestRailMarkers(query rowQuerier, now time.Time, sessionID string) (questionSeq, raiseSeq int64, err error) {
+	start, end := localDayBounds(now)
+	if err = query.QueryRow(`
+		SELECT COALESCE(MAX(seq), 0) FROM events
+		WHERE kind = ? AND ts >= ? AND ts < ?`,
+		EventRailRaised, formatTime(start), formatTime(end)).Scan(&raiseSeq); err != nil {
+		return 0, 0, err
+	}
+	statement := `SELECT COALESCE(MAX(seq), 0) FROM messages
+		WHERE role = ? AND body LIKE ? AND ts >= ? AND ts < ?`
+	args := []any{RoleAgent, DailyRailQuestionPrefix + "%", formatTime(start), formatTime(end)}
+	if sessionID != "" {
+		statement += ` AND session_id = ?`
+		args = append(args, sessionID)
+	}
+	if err = query.QueryRow(statement, args...).Scan(&questionSeq); err != nil {
+		return 0, 0, err
+	}
+	return questionSeq, raiseSeq, nil
+}
+
+func localDayBounds(now time.Time) (time.Time, time.Time) {
+	local := now.In(time.Local)
+	start := time.Date(local.Year(), local.Month(), local.Day(), 0, 0, 0, 0, time.Local)
+	return start.UTC(), start.AddDate(0, 0, 1).UTC()
 }
 
 // TopLevelJobUsage joins every node and usage event to its job root. A job

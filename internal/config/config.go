@@ -7,6 +7,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math"
 	"os"
 	"strconv"
 	"strings"
@@ -83,23 +84,29 @@ const (
 	// stop condition is pressure applied through a prompt; this one is
 	// arithmetic, and it is what guarantees the recursion terminates.
 	DefaultNodeBudget = 60
+
+	// DefaultDailyBudgetUSD is the policy rail across every task using the
+	// resident store. Token slices shape leaves internally; dollars decide when
+	// new work needs the user's word. Zero disables the rail.
+	DefaultDailyBudgetUSD = 20.0
 )
 
 // Config is the resolved runtime configuration.
 type Config struct {
-	APIKey        string
-	BaseURL       string
-	Model         string
-	Temperature   float64
-	MaxTokens     int
-	Timeout       time.Duration
-	SiteURL       string
-	SiteName      string
-	Reasoning     provider.Effort
-	ExecReasoning provider.Effort
-	SpineSamples  int
-	MaxDepth      int
-	NodeBudget    int
+	APIKey         string
+	BaseURL        string
+	Model          string
+	Temperature    float64
+	MaxTokens      int
+	Timeout        time.Duration
+	SiteURL        string
+	SiteName       string
+	Reasoning      provider.Effort
+	ExecReasoning  provider.Effort
+	SpineSamples   int
+	MaxDepth       int
+	NodeBudget     int
+	DailyBudgetUSD float64
 
 	// Panel is the set of models a run may route across, from AFORGE_MODELS. An
 	// empty panel is the default and is the kill switch: with no panel the
@@ -116,20 +123,21 @@ type Config struct {
 // unconfigured.
 func Load() (Config, error) {
 	config := Config{
-		APIKey:        firstNonEmpty(os.Getenv("OPENROUTER_API_KEY"), os.Getenv("OPENAI_API_KEY")),
-		BaseURL:       firstNonEmpty(os.Getenv("AFORGE_BASE_URL"), DefaultBaseURL),
-		Model:         firstNonEmpty(os.Getenv("AFORGE_MODEL"), DefaultModel),
-		Temperature:   DefaultTemperature,
-		MaxTokens:     DefaultMaxTokens,
-		Timeout:       DefaultTimeout,
-		SiteURL:       firstNonEmpty(os.Getenv("AFORGE_SITE_URL"), os.Getenv("AGENTFIELD_OPENROUTER_SITE_URL"), os.Getenv("OR_SITE_URL"), DefaultSiteURL),
-		SiteName:      firstNonEmpty(os.Getenv("AFORGE_SITE_NAME"), os.Getenv("AGENTFIELD_OPENROUTER_APP_NAME"), os.Getenv("OR_APP_NAME"), DefaultSiteName),
-		Reasoning:     DefaultReasoning,
-		ExecReasoning: DefaultExecReasoning,
-		SpineSamples:  DefaultSpineSamples,
-		MaxDepth:      DefaultMaxDepth,
-		NodeBudget:    DefaultNodeBudget,
-		ProfileDir:    os.Getenv("AFORGE_PROFILE_DIR"),
+		APIKey:         firstNonEmpty(os.Getenv("OPENROUTER_API_KEY"), os.Getenv("OPENAI_API_KEY")),
+		BaseURL:        firstNonEmpty(os.Getenv("AFORGE_BASE_URL"), DefaultBaseURL),
+		Model:          firstNonEmpty(os.Getenv("AFORGE_MODEL"), DefaultModel),
+		Temperature:    DefaultTemperature,
+		MaxTokens:      DefaultMaxTokens,
+		Timeout:        DefaultTimeout,
+		SiteURL:        firstNonEmpty(os.Getenv("AFORGE_SITE_URL"), os.Getenv("AGENTFIELD_OPENROUTER_SITE_URL"), os.Getenv("OR_SITE_URL"), DefaultSiteURL),
+		SiteName:       firstNonEmpty(os.Getenv("AFORGE_SITE_NAME"), os.Getenv("AGENTFIELD_OPENROUTER_APP_NAME"), os.Getenv("OR_APP_NAME"), DefaultSiteName),
+		Reasoning:      DefaultReasoning,
+		ExecReasoning:  DefaultExecReasoning,
+		SpineSamples:   DefaultSpineSamples,
+		MaxDepth:       DefaultMaxDepth,
+		NodeBudget:     DefaultNodeBudget,
+		DailyBudgetUSD: DefaultDailyBudgetUSD,
+		ProfileDir:     os.Getenv("AFORGE_PROFILE_DIR"),
 	}
 	if config.APIKey == "" {
 		return Config{}, errors.New("OPENROUTER_API_KEY (or OPENAI_API_KEY) is required")
@@ -166,12 +174,31 @@ func Load() (Config, error) {
 		}
 		*knob.target = value
 	}
+	dailyBudget, err := DailyBudgetUSD()
+	if err != nil {
+		return Config{}, err
+	}
+	config.DailyBudgetUSD = dailyBudget
 	panel, err := router.LoadPanel(os.Getenv("AFORGE_MODELS"))
 	if err != nil {
 		return Config{}, err
 	}
 	config.Panel = panel
 	return config, nil
+}
+
+// DailyBudgetUSD resolves the dollar rail without requiring a provider key.
+// Status-only commands use it even when they never construct a model client.
+func DailyBudgetUSD() (float64, error) {
+	raw := strings.TrimSpace(os.Getenv("AFORGE_DAILY_BUDGET"))
+	if raw == "" {
+		return DefaultDailyBudgetUSD, nil
+	}
+	value, err := strconv.ParseFloat(raw, 64)
+	if err != nil || value < 0 || math.IsNaN(value) || math.IsInf(value, 0) {
+		return 0, fmt.Errorf("AFORGE_DAILY_BUDGET: want a non-negative dollar amount, got %q", raw)
+	}
+	return value, nil
 }
 
 // Context stamps the run's provider knobs onto ctx: the effort the operator
