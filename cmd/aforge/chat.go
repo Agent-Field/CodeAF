@@ -329,6 +329,7 @@ func runChat(args []string) error {
 				_, _ = graph.PostMessage(store.Message{
 					SessionID: node.Provenance.SessionID,
 					Role:      store.RoleSystem,
+					NodeID:    node.ID,
 					Body: fmt.Sprintf("%s ran out of room mid-work — kept its partial progress and split the remainder into %d queued pieces",
 						firstLine(node.Brief), spliced),
 				})
@@ -356,6 +357,7 @@ func runChat(args []string) error {
 				_, _ = graph.PostMessage(store.Message{
 					SessionID: sessionID,
 					Role:      store.RoleSystem,
+					NodeID:    node.ID,
 					Body:      report,
 				})
 			}()
@@ -1078,6 +1080,7 @@ func (j *jobPlans) reviseAfter(ctx context.Context, settings config.Config, clie
 	_, _ = graph.PostMessage(store.Message{
 		SessionID: node.Provenance.SessionID,
 		Role:      store.RoleSystem,
+		NodeID:    node.ID,
 		Body:      body,
 	})
 }

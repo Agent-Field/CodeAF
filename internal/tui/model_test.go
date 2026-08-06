@@ -17,7 +17,9 @@ type fakeBackend struct {
 	messages []store.Message
 	snapshot store.Snapshot
 	pending  []store.Command
+	commands []store.Command
 	usage    store.TotalUsage
+	jobUsage map[string]store.JobUsage
 	posted   []store.Message
 	postErr  error
 }
@@ -114,6 +116,12 @@ func (f *fakeBackend) ActiveSnapshot() (store.Snapshot, error) {
 	return f.snapshot, nil
 }
 
+func (f *fakeBackend) Snapshot() (store.Snapshot, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.snapshot, nil
+}
+
 func (f *fakeBackend) Node(id string) (store.Node, bool, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -150,10 +158,399 @@ func (f *fakeBackend) PendingCommands(limit int) ([]store.Command, error) {
 	return commands, nil
 }
 
+func (f *fakeBackend) CommandBySeq(seq int64) (store.Command, bool, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	for _, command := range append(append([]store.Command(nil), f.commands...), f.pending...) {
+		if command.Seq == seq {
+			return command, true, nil
+		}
+	}
+	return store.Command{}, false, nil
+}
+
 func (f *fakeBackend) Usage() (store.TotalUsage, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	return f.usage, nil
+}
+
+func (f *fakeBackend) TopLevelJobUsage() (map[string]store.JobUsage, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	result := make(map[string]store.JobUsage, len(f.jobUsage))
+	for jobID, usage := range f.jobUsage {
+		result[jobID] = usage
+	}
+	return result, nil
+}
+
+func TestCardsDeriveFromSeededStore(t *testing.T) {
+	graph, err := store.Open(t.TempDir() + "/cards.db")
+	if err != nil {
+		t.Fatalf("open store: %v", err)
+	}
+	defer graph.Close()
+
+	provenance := func(intent string) store.Provenance {
+		return store.Provenance{Origin: store.OriginUser, SessionID: "cards", Intent: intent}
+	}
+	liveCommand, err := graph.RequestCommand(store.Command{
+		SessionID: "cards", Kind: store.CommandSplice, Instruction: "compare the market",
+	})
+	if err != nil {
+		t.Fatalf("request live command: %v", err)
+	}
+	if err := graph.Splice(store.RootID, store.Subtree{Nodes: []store.NodeSpec{
+		{ID: "live", Brief: "Compile the market report", Title: "Market report", Stage: 2, Needs: []store.Need{
+			{NodeID: "live-a", Kind: store.FeedsInto}, {NodeID: "live-b", Kind: store.FeedsInto},
+		}},
+		{ID: "live-a", Parent: "live", Brief: "Collect prices", Title: "Collect prices", Stage: 1},
+		{ID: "live-b", Parent: "live", Brief: "Compare vendors", Title: "Compare vendors", Stage: 1},
+	}}, provenance("compare the market")); err != nil {
+		t.Fatalf("splice live job: %v", err)
+	}
+	if err := graph.ResolveCommand(liveCommand.Seq, store.CommandApplied, "spliced 3 nodes"); err != nil {
+		t.Fatalf("resolve live command: %v", err)
+	}
+	if _, err := graph.PostMessage(store.Message{
+		SessionID: "cards", Role: store.RoleSystem, CommandSeq: liveCommand.Seq,
+		Body: "Read the request as a market comparison.\nAssumed: prices are in Canadian dollars.",
+	}); err != nil {
+		t.Fatalf("post assumptions receipt: %v", err)
+	}
+	claimA, won, err := graph.Claim("live-a", "test")
+	if err != nil || !won {
+		t.Fatalf("claim live-a: won=%v err=%v", won, err)
+	}
+	if err := graph.Start(claimA); err != nil {
+		t.Fatalf("start live-a: %v", err)
+	}
+	if err := graph.RecordUsage(store.NodeUsage{
+		NodeID: "live-a", PromptTokens: 800, CompletionTokens: 200, Cost: 0.12,
+	}); err != nil {
+		t.Fatalf("record live usage: %v", err)
+	}
+	if err := graph.Complete(claimA, "Three prices collected"); err != nil {
+		t.Fatalf("complete live-a: %v", err)
+	}
+	claimB, won, err := graph.Claim("live-b", "test")
+	if err != nil || !won {
+		t.Fatalf("claim live-b: won=%v err=%v", won, err)
+	}
+	if err := graph.Start(claimB); err != nil {
+		t.Fatalf("start live-b: %v", err)
+	}
+	if _, err := graph.PostMessage(store.Message{
+		SessionID: "cards", Role: store.RoleAgent, NodeID: "live",
+		Body: "I have the price sample and I am comparing the vendors now.",
+	}); err != nil {
+		t.Fatalf("post narration: %v", err)
+	}
+	if _, err := graph.PostMessage(store.Message{
+		SessionID: "cards", Role: store.RoleSystem, NodeID: "live-a",
+		Body: "The price collection part landed.",
+	}); err != nil {
+		t.Fatalf("post part result: %v", err)
+	}
+
+	if err := graph.Splice(store.RootID, store.Subtree{Nodes: []store.NodeSpec{{
+		ID: "settled", Brief: "Write the release note", Title: "Release note", Stage: 1,
+	}}}, provenance("write the release note")); err != nil {
+		t.Fatalf("splice settled job: %v", err)
+	}
+	settledClaim, won, err := graph.Claim("settled", "test")
+	if err != nil || !won {
+		t.Fatalf("claim settled: won=%v err=%v", won, err)
+	}
+	if err := graph.Start(settledClaim); err != nil {
+		t.Fatalf("start settled: %v", err)
+	}
+	if err := graph.RecordUsage(store.NodeUsage{
+		NodeID: "settled", PromptTokens: 400, CompletionTokens: 100, Cost: 0.08,
+	}); err != nil {
+		t.Fatalf("record settled usage: %v", err)
+	}
+	if err := graph.Complete(settledClaim, "Version 2 is ready to ship."); err != nil {
+		t.Fatalf("complete settled: %v", err)
+	}
+	if _, err := graph.PostMessage(store.Message{
+		SessionID: "cards", Role: store.RoleSystem, NodeID: "settled",
+		Body: "Version 2 is ready to ship.\n\n- Faster startup\n- Clearer errors",
+	}); err != nil {
+		t.Fatalf("post deliverable: %v", err)
+	}
+
+	questionCommand, err := graph.RequestCommand(store.Command{
+		SessionID: "cards", Kind: store.CommandSplice, Instruction: "deploy the service",
+	})
+	if err != nil {
+		t.Fatalf("request question job: %v", err)
+	}
+	if err := graph.ResolveCommand(questionCommand.Seq, store.CommandRejected, "asked for a region"); err != nil {
+		t.Fatalf("resolve question job: %v", err)
+	}
+	if _, err := graph.PostMessage(store.Message{
+		SessionID: "cards", Role: store.RoleAgent, CommandSeq: questionCommand.Seq,
+		Body: "Which region should I deploy to?",
+	}); err != nil {
+		t.Fatalf("post question: %v", err)
+	}
+	pending, err := graph.RequestCommand(store.Command{
+		SessionID: "cards", Kind: store.CommandSplice, Instruction: "audit the support queue",
+	})
+	if err != nil {
+		t.Fatalf("request compiling job: %v", err)
+	}
+
+	model := New(graph, "cards")
+	model.focus = focusChat
+	model.inputFocused = false
+	result, ok := model.poll()().(pollResultMsg)
+	if !ok {
+		t.Fatal("poll did not return a pollResultMsg")
+	}
+	model.applyPoll(result)
+	if model.focus != focusInput || !model.inputFocused {
+		t.Fatalf("question did not focus its answer box: focus=%v input=%v", model.focus, model.inputFocused)
+	}
+	if len(model.cards) != 4 {
+		t.Fatalf("derived %d cards, want 4: %#v", len(model.cards), model.cards)
+	}
+
+	live := requireCard(t, model.cards, "live")
+	if live.State != cardWorking || live.Done != 1 || live.Total != 3 {
+		t.Fatalf("live card state/counts = %s %d/%d, want working 1/3", live.State, live.Done, live.Total)
+	}
+	if live.Usage.Cost != 0.12 || len(live.Messages) != 2 || len(live.Narration) != 1 ||
+		!strings.Contains(live.Receipt, "Assumed: prices") ||
+		!strings.Contains(live.Latest, "comparing the vendors") {
+		t.Fatalf("live card did not group subtree messages and usage: %#v", live)
+	}
+	model.cardExpanded["live"] = true
+	if expanded := model.renderCardDock(false); !strings.Contains(expanded, "Assumed: prices") ||
+		!strings.Contains(expanded, "running summary") || !strings.Contains(expanded, "Collect prices") {
+		t.Fatalf("expanded card is missing its receipt, narration, or parts:\n%s", expanded)
+	}
+	settled := requireCard(t, model.cards, "settled")
+	if settled.State != cardSettled || settled.Done != 1 || settled.Total != 1 ||
+		settled.Deliverable == nil || settled.Usage.Cost != 0.08 {
+		t.Fatalf("settled card is incomplete: %#v", settled)
+	}
+	question := requireCard(t, model.cards, fmt.Sprintf("command:%d", questionCommand.Seq))
+	if question.State != cardQuestion || !strings.Contains(question.Question, "Which region") {
+		t.Fatalf("question card = %#v", question)
+	}
+	compiling := requireCard(t, model.cards, fmt.Sprintf("command:%d", pending.Seq))
+	if compiling.State != cardCompiling || compiling.Ask != "audit the support queue" {
+		t.Fatalf("compiling card = %#v", compiling)
+	}
+	if _, err := graph.PostMessage(store.Message{
+		SessionID: "cards", Role: store.RoleUser, Body: "Use the Toronto region.",
+	}); err != nil {
+		t.Fatalf("post question answer: %v", err)
+	}
+	result = model.poll()().(pollResultMsg)
+	model.applyPoll(result)
+	if card := model.cardByID(fmt.Sprintf("command:%d", questionCommand.Seq)); card != nil {
+		t.Fatalf("answered question card stayed active: %#v", card)
+	}
+}
+
+func TestCompilingCardKeepsDisclosureWhenItsRootAppears(t *testing.T) {
+	command := store.Command{
+		Seq: 7, SessionID: "cards", Kind: store.CommandSplice,
+		Instruction: "compare the market", Status: store.CommandPending,
+	}
+	model := New(&fakeBackend{}, "cards")
+	model.commands[command.Seq] = command
+	model.pending = []store.Command{command}
+	model.cardSnapshot = store.Snapshot{Nodes: []store.Node{{ID: store.RootID}}}
+	model.rebuildCards()
+	compilingID := fmt.Sprintf("command:%d", command.Seq)
+	model.cardExpanded[compilingID] = true
+	model.selectedCardID = compilingID
+
+	command.Status = store.CommandApplied
+	model.commands[command.Seq] = command
+	model.pending = nil
+	model.cardSnapshot = store.Snapshot{Nodes: []store.Node{
+		{ID: store.RootID},
+		{
+			ID: "job", Parent: store.RootID, Brief: "Compare the market", CreatedSeq: 9,
+			Status: store.Pending, Provenance: store.Provenance{
+				SessionID: "cards", Intent: "compare the market",
+			},
+		},
+	}}
+	model.rebuildCards()
+
+	card := requireCard(t, model.cards, "job")
+	if card.CommandSeq != command.Seq || !model.cardExpanded["job"] || model.selectedCardID != "job" {
+		t.Fatalf("compiling-to-working transition lost disclosure state: card=%#v expanded=%v selected=%q",
+			card, model.cardExpanded, model.selectedCardID)
+	}
+}
+
+func TestCardsDockWhileActiveAndSettleAtBirth(t *testing.T) {
+	model := New(&fakeBackend{}, "cards")
+	delivery := store.Message{Seq: 12, Role: store.RoleSystem, Body: "The landed deliverable."}
+	model.messages = []store.Message{
+		{Seq: 1, Role: store.RoleUser, Body: "First ask"},
+		{Seq: 20, Role: store.RoleUser, Body: "Later conversation"},
+	}
+	model.cards = []jobCard{
+		{ID: "active", RootID: "active", State: cardWorking, Title: "Docked work", BirthSeq: 2, Done: 1, Total: 3},
+		{
+			ID: "settled", RootID: "settled", State: cardSettled, Title: "Settled work",
+			BirthSeq: 10, Done: 1, Total: 1, Outcome: "The landed deliverable.", Deliverable: &delivery,
+		},
+	}
+
+	active, settled := placeJobCards(model.cards)
+	if len(active) != 1 || active[0].ID != "active" || len(settled) != 1 || settled[0].ID != "settled" {
+		t.Fatalf("card placement = active %#v settled %#v", active, settled)
+	}
+	thread := model.renderMessages()
+	first := strings.Index(thread, "First ask")
+	landed := strings.Index(thread, "Settled work")
+	later := strings.Index(thread, "Later conversation")
+	if first < 0 || landed < first || later < landed || strings.Contains(thread, "Docked work") {
+		t.Fatalf("settled card did not land at birth while active card stayed docked:\n%s", thread)
+	}
+	dock := model.renderActivityBar()
+	if !strings.Contains(dock, "Docked work") || strings.Contains(dock, "Settled work") {
+		t.Fatalf("dock placement is wrong: %s", dock)
+	}
+
+	for index := 0; index < 3; index++ {
+		model.cards = append(model.cards, jobCard{
+			ID: fmt.Sprintf("extra-%d", index), State: cardWorking, Title: fmt.Sprintf("Extra %d", index),
+		})
+	}
+	model.focus = focusInput
+	if collapsed := model.renderActivityBar(); !strings.Contains(collapsed, "4 running") {
+		t.Fatalf("four-card dock did not collapse: %s", collapsed)
+	}
+	model.focusCardDock()
+	if expanded := model.renderActivityBar(); !strings.Contains(expanded, "Extra 2") {
+		t.Fatalf("focused dock did not expand:\n%s", expanded)
+	}
+}
+
+func TestCardsKeepProgressOutOfTheAttentionStream(t *testing.T) {
+	model := New(&fakeBackend{}, "cards")
+	model.cardSnapshot = store.Snapshot{Nodes: []store.Node{
+		{ID: store.RootID},
+		{ID: "job", Parent: store.RootID, Status: store.Pending},
+		{ID: "done-part", Parent: "job", Status: store.Done},
+		{ID: "failed-part", Parent: "job", Status: store.Failed},
+	}}
+	model.cards = []jobCard{{
+		ID: "job", RootID: "job", State: cardQuestion,
+		Parts: []cardPart{
+			{NodeID: "job"}, {NodeID: "done-part", Status: store.Done},
+			{NodeID: "failed-part", Status: store.Failed},
+		},
+	}}
+	model.messages = []store.Message{
+		{Seq: 1, Role: store.RoleAgent, NodeID: "job", Body: "Quiet narration mutates the card."},
+		{Seq: 2, Role: store.RoleSystem, NodeID: "done-part", Body: "Ambient part progress."},
+		{Seq: 3, Role: store.RoleSystem, NodeID: "failed-part", Body: "A worker failed visibly."},
+		{Seq: 4, Role: store.RoleAgent, NodeID: "job", Body: "Which region should I use?"},
+	}
+
+	rendered := model.renderMessages()
+	for _, hidden := range []string{"Quiet narration", "Ambient part progress"} {
+		if strings.Contains(rendered, hidden) {
+			t.Fatalf("ambient progress leaked into the stream:\n%s", rendered)
+		}
+	}
+	for _, interruption := range []string{"A worker failed visibly.", "Which region should I use?"} {
+		if !strings.Contains(rendered, interruption) {
+			t.Fatalf("stream lost interruption %q:\n%s", interruption, rendered)
+		}
+	}
+}
+
+func TestCardDisclosureLadderClimbsBackOneRungAtATime(t *testing.T) {
+	activeSnapshot := store.Snapshot{Nodes: []store.Node{
+		{ID: store.RootID},
+		{ID: "job", Parent: store.RootID, Brief: "The job", Status: store.Pending},
+	}}
+	cardSnapshot := store.Snapshot{Nodes: append(append([]store.Node(nil), activeSnapshot.Nodes...),
+		store.Node{ID: "part", Parent: "job", Brief: "One part", Status: store.Running},
+	)}
+	model := New(&fakeBackend{snapshot: cardSnapshot}, "cards")
+	model.snapshot = activeSnapshot
+	model.cardSnapshot = cardSnapshot
+	model.cards = []jobCard{{
+		ID: "job", RootID: "job", State: cardWorking, Title: "The job", Total: 2,
+		Parts: []cardPart{{NodeID: "job", Title: "The job"}, {NodeID: "part", Title: "One part", Status: store.Running}},
+	}}
+	model.focusCardDock()
+
+	_, _ = model.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	if !model.cardExpanded["job"] || model.graphOpen {
+		t.Fatalf("first enter did not expand card: expanded=%v graph=%v", model.cardExpanded["job"], model.graphOpen)
+	}
+	_ = model.View()
+	var partRow cardPartRow
+	for _, row := range model.cardPartRows {
+		if row.dock && row.nodeID == "part" {
+			partRow = row
+			break
+		}
+	}
+	_, _ = model.Update(tea.MouseMsg{
+		X: model.activityBarBounds.x + 2, Y: model.activityBarBounds.y + partRow.line,
+		Button: tea.MouseButtonLeft, Action: tea.MouseActionPress,
+	})
+	if model.nodeViewID != "part" {
+		t.Fatalf("clicking an expanded part opened %q, want its flight recorder", model.nodeViewID)
+	}
+	_, _ = model.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	if model.nodeViewID != "" || model.focus != focusCards || !model.cardExpanded["job"] {
+		t.Fatalf("escaping a clicked part did not return to its expanded card")
+	}
+
+	_, _ = model.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	if !model.graphOpen || model.graphScopeID != "job" || model.focus != focusGraph {
+		t.Fatalf("second enter did not open scoped graph: open=%v scope=%q focus=%v",
+			model.graphOpen, model.graphScopeID, model.focus)
+	}
+	if tree := model.renderTree(60, 0); !strings.Contains(tree, "One part") {
+		t.Fatalf("scoped graph did not use the job's full subtree:\n%s", tree)
+	}
+	_ = model.openNodeByID("part")
+	if model.nodeViewID != "part" {
+		t.Fatalf("part did not open flight recorder: %q", model.nodeViewID)
+	}
+	_, _ = model.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	if model.nodeViewID != "" || model.focus != focusGraph || model.graphScopeID != "job" {
+		t.Fatalf("first escape did not return to scoped graph: node=%q focus=%v scope=%q",
+			model.nodeViewID, model.focus, model.graphScopeID)
+	}
+	_, _ = model.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	if model.graphOpen || model.focus != focusCards || !model.cardExpanded["job"] {
+		t.Fatalf("second escape did not return to expanded card: graph=%v focus=%v expanded=%v",
+			model.graphOpen, model.focus, model.cardExpanded["job"])
+	}
+	_, _ = model.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	if model.cardExpanded["job"] {
+		t.Fatal("third escape did not collapse the card")
+	}
+}
+
+func requireCard(t *testing.T, cards []jobCard, id string) jobCard {
+	t.Helper()
+	for _, card := range cards {
+		if card.ID == id {
+			return card
+		}
+	}
+	t.Fatalf("card %q not found in %#v", id, cards)
+	return jobCard{}
 }
 
 func TestMessageArrivalKeepsStickyBottomAndPreservesPinnedScroll(t *testing.T) {
@@ -747,7 +1144,7 @@ func TestPendingSpliceRendersPlanningPlaceholderAndTally(t *testing.T) {
 			t.Fatalf("planning placeholder does not contain %q:\n%s", expected, tree)
 		}
 	}
-	if bar := model.renderActivityBar(); !strings.Contains(bar, "planning") {
+	if bar := model.renderActivityBar(); !strings.Contains(bar, "compiling") {
 		t.Fatalf("activity bar does not show planning: %s", bar)
 	}
 }

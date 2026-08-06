@@ -62,6 +62,8 @@ func (m *Model) View() string {
 	if !m.paletteOpen() {
 		hint := "/ commands · tab focus · ^g tasks · v receipts · ? help"
 		switch {
+		case m.focus == focusCards:
+			hint = "↑/↓ select card · enter details/graph · esc back · ^g all tasks"
 		case m.nodeViewID != "":
 			hint = "type to steer · enter send · c cancel · esc back"
 		case m.focus == focusGraph:
@@ -102,8 +104,9 @@ func (m *Model) trackPaneBounds() {
 
 	barY := mainY + m.chatHeight + 1 + m.paletteHeight()
 	if m.activityBarVisible() {
-		m.activityBarBounds = paneBounds{x: 0, y: barY, width: m.width, height: 1}
-		barY++
+		height := m.cardDockHeight()
+		m.activityBarBounds = paneBounds{x: 0, y: barY, width: m.width, height: height}
+		barY += height
 	}
 	m.inputBounds = paneBounds{x: 0, y: barY, width: m.width, height: m.input.LineCount()}
 }
@@ -170,10 +173,16 @@ func (m *Model) liveWorkCount() int {
 	return running + m.planningCount()
 }
 
-// renderActivityBar is the whole task stack in one quiet line while the rail
-// is closed: a spinner when work moves, counts only when they are non-zero,
-// failures in rose. Clicking it (or ^g) opens the rail.
+// renderActivityBar hosts the active-card dock. The legacy aggregate remains
+// its quiet empty-state and covers graph-only stores without thread provenance.
 func (m *Model) renderActivityBar() string {
+	return m.renderCardDock(true)
+}
+
+// renderLegacyActivityBar is the graph-only fallback: a spinner when work
+// moves, counts only when they are non-zero, and failures in rose. Clicking it
+// opens the unscoped rail.
+func (m *Model) renderLegacyActivityBar() string {
 	running, queued, failed := m.taskCounts()
 	planning := m.planningCount()
 	segments := make([]string, 0, 4)
@@ -223,8 +232,17 @@ func (m *Model) renderChatPane() string {
 // The header brightens while the rail holds focus.
 func (m *Model) renderGraphPane() string {
 	title := mutedStyle.Faint(true).Render("tasks")
+	if m.graphScopeID != "" {
+		label := m.graphScopeID
+		if node, ok := m.snapshotNode(m.graphScopeID); ok {
+			label = nodeLabel(node)
+		}
+		title = mutedStyle.Faint(true).Render("‹ card · " + label)
+	}
 	if m.focus == focusGraph {
-		title = lipgloss.NewStyle().Foreground(lavender).Render("tasks")
+		if m.graphScopeID == "" {
+			title = lipgloss.NewStyle().Foreground(lavender).Render("tasks")
+		}
 	}
 	lines := append([]string{title, ""}, strings.Split(m.graph.View(), "\n")...)
 	for len(lines) < m.graphHeight {
@@ -347,6 +365,7 @@ func (m *Model) paletteLines(width int) []string {
 		lines = append(lines,
 			mutedStyle.Render(truncate("voice  you ask · aforge answers · v toggles receipts", width)),
 			mutedStyle.Render(truncate("tasks  ^g opens the rail · ↑/↓ select · enter inspect · esc closes", width)),
+			mutedStyle.Render(truncate("cards  tab focuses dock · enter expands then opens its job · esc climbs back", width)),
 			mutedStyle.Render(truncate("chat   ↳ chips jump to the task an answer came from", width)),
 			mutedStyle.Render(truncate("node   type guidance + enter to steer · c cancels worker", width)),
 			mutedStyle.Render(truncate("mouse  click focus/select/open · wheel scrolls pointed pane", width)),
@@ -575,24 +594,90 @@ type chatChipRow struct {
 	nodeID string
 }
 
+type threadRenderItem struct {
+	order   int64
+	index   int
+	message store.Message
+	card    jobCard
+	isCard  bool
+}
+
 func (m *Model) renderMessages() string {
 	m.chatMessageRows = m.chatMessageRows[:0]
 	m.chatChipRows = m.chatChipRows[:0]
-	if len(m.messages) == 0 {
+	m.chatCardRows = m.chatCardRows[:0]
+	kept := m.cardPartRows[:0]
+	for _, row := range m.cardPartRows {
+		if row.dock {
+			kept = append(kept, row)
+		}
+	}
+	m.cardPartRows = kept
+
+	items := make([]threadRenderItem, 0, len(m.messages)+len(m.cards))
+	for index, message := range m.messages {
+		if !m.streamMessage(message) {
+			continue
+		}
+		order := message.Seq
+		if order == 0 {
+			order = int64(index - len(m.messages) - 1)
+		}
+		items = append(items, threadRenderItem{order: order, index: index, message: message})
+	}
+	_, settled := placeJobCards(m.cards)
+	for index, card := range settled {
+		items = append(items, threadRenderItem{
+			order: card.BirthSeq, index: len(m.messages) + index, card: card, isCard: true,
+		})
+	}
+	sort.SliceStable(items, func(i, j int) bool {
+		if items[i].order == items[j].order {
+			return items[i].index < items[j].index
+		}
+		return items[i].order < items[j].order
+	})
+	if len(items) == 0 {
 		return mutedStyle.Render("No messages yet. Start with a thought or a task.")
 	}
 
-	groups := groupMessages(m.messages)
-	if len(groups) == 0 {
-		return mutedStyle.Render("No messages yet. Start with a thought or a task.")
-	}
-	blocks := make([]string, 0, len(groups))
+	blocks := make([]string, 0, len(items))
 	line := 0
-	for _, group := range groups {
-		block := m.renderMessageGroup(group, line)
+	appendBlock := func(block string) {
 		blocks = append(blocks, block)
 		line += lipgloss.Height(block) + 1
 	}
+	var group messageGroup
+	flushGroup := func() {
+		if len(group.messages) == 0 {
+			return
+		}
+		block := m.renderMessageGroup(group, line)
+		appendBlock(block)
+		group = messageGroup{}
+	}
+	for _, item := range items {
+		if item.isCard {
+			flushGroup()
+			block := m.renderJobCard(item.card, max(8, m.chat.Width-2),
+				m.cardExpanded[item.card.ID], line, false, true)
+			m.chatCardRows = append(m.chatCardRows, cardRow{
+				start: line, end: line + lipgloss.Height(block) - 1, cardID: item.card.ID,
+			})
+			appendBlock(block)
+			continue
+		}
+		voice := messageVoice(item.message)
+		if len(group.messages) > 0 &&
+			(group.voice != voice || messageGap(group.messages[len(group.messages)-1], item.message) > messageGroupWindow) {
+			flushGroup()
+		}
+		if len(group.messages) == 0 {
+			group.voice = voice
+		}
+		group.messages = append(group.messages, item.message)
+	}
+	flushGroup()
 	return strings.Join(blocks, "\n\n")
 }
 
@@ -758,11 +843,18 @@ func indentLines(text, prefix string) string {
 }
 
 func (m *Model) renderTree(width, height int) string {
+	snapshot := m.snapshot
+	if m.graphScopeID != "" {
+		snapshot = m.cardSnapshot
+	}
 	now := time.Now()
 	m.graphAnimating = false
 	m.graphRows = nil
-	lines := make([]string, 0, len(m.snapshot.Nodes)+len(m.pending))
+	lines := make([]string, 0, len(snapshot.Nodes)+len(m.pending))
 	for _, command := range m.pending {
+		if m.graphScopeID != "" {
+			continue
+		}
 		if command.Kind != store.CommandSplice {
 			continue
 		}
@@ -783,8 +875,8 @@ func (m *Model) renderTree(width, height int) string {
 		m.noteAnimatedGraphRow(row)
 	}
 
-	children := make(map[string][]store.Node, len(m.snapshot.Nodes))
-	for _, node := range m.snapshot.Nodes {
+	children := make(map[string][]store.Node, len(snapshot.Nodes))
+	for _, node := range snapshot.Nodes {
 		if node.ID == store.RootID {
 			continue
 		}
@@ -793,17 +885,27 @@ func (m *Model) renderTree(width, height int) string {
 	// Live work reads top-down: jobs still moving sit first, newest first, so
 	// the eye lands on what is happening now; everything settled sinks below
 	// and renders dimmed.
-	roots := orderRoots(children[store.RootID], children)
+	var roots []store.Node
+	if m.graphScopeID != "" {
+		for _, node := range snapshot.Nodes {
+			if node.ID == m.graphScopeID {
+				roots = []store.Node{node}
+				break
+			}
+		}
+	} else {
+		roots = orderRoots(children[store.RootID], children)
+	}
 
 	// Dependency edges are the pipeline structure the tree cannot draw, so
 	// they surface two ways: a hollow dotted glyph for work that is queued
 	// but waiting on another node, and a "waits:" line under the selection.
-	nodeByID := make(map[string]store.Node, len(m.snapshot.Nodes))
-	for _, node := range m.snapshot.Nodes {
+	nodeByID := make(map[string]store.Node, len(snapshot.Nodes))
+	for _, node := range snapshot.Nodes {
 		nodeByID[node.ID] = node
 	}
 	waitsOn := make(map[string][]string)
-	for _, edge := range m.snapshot.Edges {
+	for _, edge := range snapshot.Edges {
 		source, ok := nodeByID[edge.From]
 		if ok && !nodeSettled(source) {
 			waitsOn[edge.To] = append(waitsOn[edge.To], edge.From)
@@ -820,7 +922,7 @@ func (m *Model) renderTree(width, height int) string {
 		)
 	}
 
-	seen := make(map[string]bool, len(m.snapshot.Nodes))
+	seen := make(map[string]bool, len(snapshot.Nodes))
 	var walk func([]store.Node, string)
 	walk = func(nodes []store.Node, ancestorGuide string) {
 		lastGroup := ""
