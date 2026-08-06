@@ -200,3 +200,44 @@ func TestContinuityEdgesCarryThePriorResult(t *testing.T) {
 		t.Fatalf("new job should be ready — its dependency is already done: %+v", ready)
 	}
 }
+
+func TestLandedJobsFoldOutOfTheActiveView(t *testing.T) {
+	s, err := store.Open(filepath.Join(t.TempDir(), "graph.db"))
+	if err != nil {
+		t.Fatalf("open store: %v", err)
+	}
+	defer s.Close()
+	spliceProject(t, s)
+
+	reconciler := New(s, nil, nil)
+	if err := reconciler.Tick(context.Background()); err != nil {
+		t.Fatalf("initial tick: %v", err)
+	}
+	landNode(t, s, "part-a", "a done")
+	landNode(t, s, "part-b", "b done")
+	landNode(t, s, "goal", "Comparison written. Files:\n/tmp/ws/report.md")
+	if err := reconciler.Tick(context.Background()); err != nil {
+		t.Fatalf("tick after landing: %v", err)
+	}
+
+	root, ok, err := s.Node("goal")
+	if err != nil || !ok {
+		t.Fatalf("goal node: ok=%v err=%v", ok, err)
+	}
+	if !root.FoldRoot || root.FoldDigest == "" {
+		t.Fatalf("landed job should fold into a digest root: %+v", root)
+	}
+	if len(root.FoldPointers) != 1 || root.FoldPointers[0] != "/tmp/ws/report.md" {
+		t.Fatalf("artifact pointer lost in fold: %+v", root.FoldPointers)
+	}
+
+	active, err := s.ActiveNodes()
+	if err != nil {
+		t.Fatalf("active nodes: %v", err)
+	}
+	for _, node := range active {
+		if node.ID == "part-a" || node.ID == "part-b" {
+			t.Fatalf("folded children still in the active view: %+v", active)
+		}
+	}
+}

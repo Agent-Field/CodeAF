@@ -437,6 +437,9 @@ func (r *Reconciler) announceTransitions(ctx context.Context) error {
 					} else if node.Parent == store.RootID {
 						r.distillJob(ctx, node, false)
 					}
+					if node.Parent == store.RootID {
+						r.foldJob(node)
+					}
 				}
 			case store.EventNodeStarted:
 				r.recordForNarration(byID, event)
@@ -687,4 +690,32 @@ func (r *Reconciler) renderCompileContext(snapshot store.Snapshot, instruction s
 	}
 	context.WriteString(renderGraphContext(snapshot))
 	return context.String()
+}
+
+// foldJob compacts a landed job in the active view: the subtree collapses to
+// its root carrying a bounded digest and pointers to the files it left
+// behind. This is the graph's context economy — the head, the compiler, and
+// the rail all read the active view, and without folding every finished job
+// would weigh on every future turn. The journal keeps every original node;
+// folding loses nothing, it files it. A subtree with anything still open is
+// left alone.
+func (r *Reconciler) foldJob(node store.Node) {
+	digest := node.Summary
+	if strings.TrimSpace(digest) == "" {
+		digest = node.Error
+	}
+	_ = r.store.Fold(node.ID, digest, filePointers(digest))
+}
+
+// filePointers pulls the absolute paths a summary names, so a fold keeps
+// durable references to the artifacts even after the working view compacts.
+func filePointers(summary string) []string {
+	var pointers []string
+	for _, line := range strings.Split(summary, "\n") {
+		line = strings.TrimSpace(line)
+		if strings.HasPrefix(line, "/") && !strings.ContainsAny(line, " \t") {
+			pointers = append(pointers, line)
+		}
+	}
+	return pointers
 }
