@@ -435,6 +435,66 @@ Heavier asks visibly become jobs with plans and gates. The user never
 chooses a mode; the system's choice is visible, cheap to correct
 ("actually, make that a proper job"), and improves with use.
 
+### 3.11 The adaptive voice: how it speaks is also learned
+
+Every rendered word the user reads comes from a prompt we wrote once — the
+head's reply doctrine, the deliverable's shape, the receipt's phrasing. But
+communication preference is exactly the kind of durable, per-user fact the
+notebook already holds ("prefers bullets", "no preamble", "wants numbers
+inline", "answers in Portuguese"). Close the loop:
+
+- **One voice contract, composed not hardcoded**: the prompts that speak to
+  the user (head reply, deliverable synthesis, gate-polished delivery,
+  receipts) share one assembled voice section: fixed doctrine (plain
+  speech, no plumbing words) + the user's standing voice preferences
+  (scope `user`, cue-matched, bounded ~400 bytes). Empty notebook → today's
+  prompts, byte-identical.
+- **Learned where corrections happen**: the distiller already reads
+  continuity ("delivered then vs asked now"); a *stylistic* correction
+  ("shorter", "just the numbers", "stop apologizing") distills as a voice
+  preference like any other — and the head's remember path already catches
+  the stated ones. No new capture machinery; one new render site.
+- **Aging protects against drift**: preferences age slowly (already
+  doctrine), and quarantine applies — a voice rule that rides failing
+  deliveries (gate: "user asked for detail that was omitted") is a suspect
+  like any belief. The voice cannot ossify into a caricature of one week's
+  mood.
+
+### 3.12 The surprise ledger: learn where you are most wrong
+
+Borrowed from predictive processing (the free-energy view of cognition:
+systems learn by minimizing prediction error, and attention goes where
+surprise is largest) and from the psychometrics already in the router
+(Rasch residuals *are* surprises). aforge makes predictions constantly —
+the ruler predicts size, the compiler predicts budget, the profile predicts
+tokens and turns, the quote predicts cost — and today it throws the
+*residuals* away, learning from outcomes but not from **how wrong its
+expectations were**. Record them:
+
+- **Every leaf lands with its surprise**: predicted (size class, median
+  tokens/turns for that shape) vs actual, as one journaled number set — no
+  model calls, pure arithmetic at land time.
+- **Surprise ranks the learning agenda**: the retrospective's job input
+  gains each job's aggregate surprise; its prompt asks first about the
+  *most mispredicted* work, not the most recent — attention goes where the
+  model of self is worst (this is also exactly where practice jobs (3.4)
+  should be generated when M3 rails land).
+- **Calibration by shrinkage**: per-scope cost estimates are few-sample and
+  noisy; blend each scope's observed medians toward the global median by
+  sample count (empirical-Bayes partial pooling — the hierarchical trick
+  every field uses for small-N estimates). A new repo inherits the global
+  prior and earns its own numbers as evidence arrives; no more n=3 medians
+  masquerading as knowledge.
+- **Hysteresis, stated as law**: no single surprise flips a belief or a
+  ruler (the recalibration guard and the two-occurrence bar already encode
+  this — physics calls it hysteresis, statistics calls it shrinkage; the
+  principle is one: resistance to noise proportional to evidence).
+
+Why this matters for "better at everything, whatever the field": surprise
+is domain-free. It needs no taxonomy of coding vs research vs experiment —
+wherever predictions miss, that is where the next unit of learning effort
+goes, in any domain the user happens to bring.
+
 ---
 
 ## Sequencing
