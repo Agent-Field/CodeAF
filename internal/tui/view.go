@@ -638,7 +638,9 @@ func (m *Model) renderMessages() string {
 		return items[i].order < items[j].order
 	})
 	if len(items) == 0 {
-		return mutedStyle.Render("No messages yet. Start with a thought or a task.")
+		// Wrapped, not raw: a line wider than the pane would be soft-wrapped by
+		// the pane style, growing the frame and shifting every row below it.
+		return mutedStyle.Render(wrapText("No messages yet. Start with a thought or a task.", max(8, m.chat.Width-2)))
 	}
 
 	blocks := make([]string, 0, len(items))
@@ -747,7 +749,7 @@ func (m *Model) renderMessageGroup(group messageGroup, atLine int) string {
 		// jumps to that task's activity view.
 		if message.NodeID != "" && message.Role != store.RoleUser && !secondaryMessage(message) {
 			chip := lipgloss.NewStyle().Foreground(peach).Render(
-				"↳ " + truncate(m.nodeChipLabel(message.NodeID), 40))
+				"↳ " + truncate(m.nodeChipLabel(message.NodeID), max(6, min(40, available-2))))
 			m.chatChipRows = append(m.chatChipRows, chatChipRow{line: line, nodeID: message.NodeID})
 			item = chip + "\n" + item
 		}
@@ -926,6 +928,7 @@ func (m *Model) renderTree(width, height int) string {
 	var walk func([]store.Node, string)
 	walk = func(nodes []store.Node, ancestorGuide string) {
 		lastGroup := ""
+		groupLabeled := true
 		for index, node := range nodes {
 			if seen[node.ID] {
 				continue
@@ -941,9 +944,13 @@ func (m *Model) renderTree(width, height int) string {
 
 			// A change of planning container gets a label line: the nesting
 			// the planner built survives here even though execution flattened
-			// it to edges.
-			if node.Group != lastGroup {
+			// it to edges. The label is scoped to a contiguous run of rows: once
+			// another subtree's rows have rendered in between (top-level jobs
+			// are siblings, so a whole other job can sit there), the group is
+			// announced again rather than left bleeding over foreign rows.
+			if node.Group != lastGroup || !groupLabeled {
 				lastGroup = node.Group
+				groupLabeled = true
 				if node.Group != "" {
 					header := "  " + ancestorGuide + "┄ " + node.Group
 					lines = append(lines, mutedStyle.Faint(true).Render(truncate(header, max(1, width))))
@@ -994,7 +1001,10 @@ func (m *Model) renderTree(width, height int) string {
 				waits := "waits: " + strings.Join(names, " · ")
 				lines = append(lines, mutedStyle.Render(waitPrefix+truncate(waits, max(1, width-lipgloss.Width(waitPrefix)))))
 			}
-			walk(children[node.ID], nextGuide)
+			if descendants := children[node.ID]; len(descendants) > 0 {
+				walk(descendants, nextGuide)
+				groupLabeled = false
+			}
 		}
 	}
 	walk(roots, "")

@@ -2,6 +2,7 @@ package tui
 
 import (
 	"fmt"
+	"hash/fnv"
 	"regexp"
 	"strconv"
 	"strings"
@@ -130,7 +131,7 @@ func (m *Model) openNodeByID(nodeID string) tea.Cmd {
 	m.nodeMessages = nil
 	m.nodeLastSeq = 0
 	m.nodeTraceText = ""
-	m.feedExpanded = map[int]bool{}
+	m.feedExpanded = map[string]bool{}
 	m.nodeTrace.GotoBottom()
 	m.palette = paletteNone
 	m.input.Reset()
@@ -294,7 +295,8 @@ func (m *Model) toggleFeedBlockAt(x, y int) bool {
 		if row.block >= len(m.feedBlocks) || !m.feedBlocks[row.block].expandable() {
 			return false
 		}
-		m.feedExpanded[row.block] = !m.feedExpanded[row.block]
+		key := m.feedKeys[row.block]
+		m.feedExpanded[key] = !m.feedExpanded[key]
 		offset := m.nodeTrace.YOffset
 		m.nodeTrace.SetContent(m.renderActivityFeed(max(1, m.nodeTrace.Width)))
 		m.nodeTrace.SetYOffset(offset)
@@ -365,10 +367,11 @@ func (m *Model) renderActivityFeed(width int) string {
 	blocks := parseFeedBlocks(m.nodeTraceText, m.nodeMessages, width)
 	m.feedRows = m.feedRows[:0]
 	m.feedBlocks = blocks
+	m.feedKeys = feedBlockKeys(blocks)
 	var out []string
 	for index, block := range blocks {
 		lines := block.brief
-		if block.expandable() && m.feedExpanded[index] {
+		if block.expandable() && m.feedExpanded[m.feedKeys[index]] {
 			lines = block.full
 		}
 		for _, line := range lines {
@@ -380,6 +383,29 @@ func (m *Model) renderActivityFeed(width int) string {
 		return mutedStyle.Faint(true).Render("waiting for the worker's first turn…")
 	}
 	return strings.Join(out, "\n")
+}
+
+// feedBlockKeys derives a stable identity per block from its own content plus
+// an occurrence counter for identical blocks. Identity survives the trace's
+// head truncation and new blocks appending, which block indices do not.
+func feedBlockKeys(blocks []feedBlock) []string {
+	keys := make([]string, len(blocks))
+	occurrences := make(map[uint64]int, len(blocks))
+	for index, block := range blocks {
+		lines := block.full
+		if lines == nil {
+			lines = block.brief
+		}
+		digest := fnv.New64a()
+		for _, line := range lines {
+			_, _ = digest.Write([]byte(line))
+			_, _ = digest.Write([]byte{'\n'})
+		}
+		sum := digest.Sum64()
+		keys[index] = fmt.Sprintf("%016x#%d", sum, occurrences[sum])
+		occurrences[sum]++
+	}
+	return keys
 }
 
 func parseFeedBlocks(trace string, messages []store.Message, width int) []feedBlock {

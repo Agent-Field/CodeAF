@@ -142,9 +142,13 @@ type Model struct {
 	chatDraft      string
 	returnFocus    paneFocus
 
-	feedRows     []feedRow
-	feedBlocks   []feedBlock
-	feedExpanded map[int]bool
+	feedRows   []feedRow
+	feedBlocks []feedBlock
+	// feedKeys are content-derived identities for feedBlocks, index-aligned.
+	// feedExpanded is keyed by them, never by block position: the trace is
+	// tail-truncated at its byte budget, so positions shift as it grows.
+	feedKeys     []string
+	feedExpanded map[string]bool
 
 	// expandedMessages holds the seqs of long chat deliverables opened in
 	// place; everything else shows its lead and a ⋯.
@@ -261,7 +265,7 @@ func newModel(backend Backend, sessionID string, commander Commander) *Model {
 		focus:            focusInput,
 		autoScroll:       true,
 		modelRole:        "talk",
-		feedExpanded:     map[int]bool{},
+		feedExpanded:     map[string]bool{},
 		expandedMessages: map[int64]bool{},
 		jobUsage:         map[string]store.JobUsage{},
 		commands:         map[int64]store.Command{},
@@ -831,6 +835,10 @@ func (m *Model) setSize(width, height int) {
 	m.width = max(20, width)
 	m.height = max(8, height)
 	m.horizontal = m.width >= railAtWidth
+	// The input's width determines how many rows it wraps to, and every height
+	// below is measured against that row count — so the width must land first
+	// or a resize computes the frame against the stale wrap.
+	m.input.Width = max(1, m.width-4)
 
 	paletteHeight := m.paletteHeight()
 	footerHeight := 1
@@ -862,7 +870,6 @@ func (m *Model) setSize(width, height int) {
 	m.chat.Height = max(1, m.chatHeight)
 	m.graph.Width = max(1, m.graphWidth-2)
 	m.graph.Height = max(1, m.graphHeight-2) // header + blank
-	m.input.Width = max(1, m.width-4)
 	m.sizeNodeViewports()
 	m.refreshChat()
 	m.refreshGraph()
@@ -1031,12 +1038,95 @@ func (m *Model) newMessagePillHit(x, y int) bool {
 		y == m.chatBounds.bottom()-1
 }
 
+// refreshChat re-renders the thread. Pinned-to-bottom stays pinned; a reader
+// scrolled up keeps the same content on screen even when a card lands at its
+// birth position above them or an earlier block changes height — the offset is
+// re-derived from a stable anchor (message seq or card id), not reused raw.
 func (m *Model) refreshChat() {
-	offset := m.chat.YOffset
-	m.chat.SetContent(m.renderMessages())
 	if m.autoScroll {
+		m.chat.SetContent(m.renderMessages())
 		m.chat.GotoBottom()
 		return
 	}
-	m.chat.SetYOffset(offset)
+	offset := m.chat.YOffset
+	anchor := m.captureChatAnchor(offset)
+	m.chat.SetContent(m.renderMessages())
+	m.chat.SetYOffset(m.resolveChatAnchor(anchor, offset))
+}
+
+// chatAnchor names the stable thing rendered at the top of the viewport: a
+// message by journal seq or a card by id, plus how far into it the reader was.
+type chatAnchor struct {
+	ok     bool
+	seq    int64
+	cardID string
+	delta  int
+}
+
+// captureChatAnchor reads the current row maps (built by the previous render)
+// and picks the last row starting at or above the offset.
+func (m *Model) captureChatAnchor(offset int) chatAnchor {
+	anchor := chatAnchor{}
+	best := -1
+	for _, row := range m.chatCardRows {
+		if row.start <= offset && row.start > best {
+			best = row.start
+			anchor = chatAnchor{ok: true, cardID: row.cardID, delta: offset - row.start}
+		}
+	}
+	// A message row wins ties: it is the finer anchor (a settled card's
+	// deliverable body has its own message row inside the card's span).
+	for _, row := range m.chatMessageRows {
+		if row.start <= offset && row.start >= best {
+			best = row.start
+			anchor = chatAnchor{ok: true, seq: row.seq, delta: offset - row.start}
+		}
+	}
+	return anchor
+}
+
+// resolveChatAnchor maps an anchor back to an offset against the freshly
+// rendered row maps. A message that was absorbed into a card since the last
+// render resolves to that card; anything unresolvable keeps the raw offset.
+func (m *Model) resolveChatAnchor(anchor chatAnchor, fallback int) int {
+	if !anchor.ok {
+		return fallback
+	}
+	if anchor.seq != 0 {
+		for _, row := range m.chatMessageRows {
+			if row.seq == anchor.seq {
+				return row.start + anchor.delta
+			}
+		}
+		if card := m.cardForMessageSeq(anchor.seq); card != nil {
+			for _, row := range m.chatCardRows {
+				if row.cardID == card.ID {
+					return row.start
+				}
+			}
+		}
+		return fallback
+	}
+	for _, row := range m.chatCardRows {
+		if row.cardID == anchor.cardID {
+			return row.start + anchor.delta
+		}
+	}
+	return fallback
+}
+
+// cardForMessageSeq finds the card that owns a thread message, if any.
+func (m *Model) cardForMessageSeq(seq int64) *jobCard {
+	for index := range m.cards {
+		card := &m.cards[index]
+		if card.Deliverable != nil && card.Deliverable.Seq == seq {
+			return card
+		}
+		for _, message := range card.Messages {
+			if message.Seq == seq {
+				return card
+			}
+		}
+	}
+	return nil
 }

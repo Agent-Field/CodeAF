@@ -1456,3 +1456,206 @@ func TestRailShowsTitlesGroupsAndDependencyWaits(t *testing.T) {
 		t.Fatalf("rail shows brief where a title exists:\n%s", tree)
 	}
 }
+
+// A dock that grows and an input that wraps must both be charged against the
+// frame in the same pass: the height budget is computed from the same widths
+// the final render uses, so the frame never gains or loses rows.
+func TestFrameHeightStaysExactAsDockAndInputGrow(t *testing.T) {
+	model := New(&fakeBackend{}, "cards")
+	model.setSize(100, 24)
+	model.cards = []jobCard{{
+		ID: "job", RootID: "job", State: cardWorking, Title: "Long job",
+		Ask: strings.Repeat("chase every branch of the question ", 4), Total: 3,
+	}}
+	model.cardExpanded["job"] = true
+	model.setSize(100, 24)
+	if height := lipgloss.Height(model.View()); height != 24 {
+		t.Fatalf("view with an expanded docked card is %d rows, want 24", height)
+	}
+	dock := model.cardDockHeight()
+	if dock < 3 {
+		t.Fatalf("expanded card dock is %d rows, expected several", dock)
+	}
+	if want := max(3, 24-3-dock-model.input.LineCount()-1); model.chatHeight != want {
+		t.Fatalf("chat height = %d, want %d (dock %d rows)", model.chatHeight, want, dock)
+	}
+
+	// Shrinking the terminal re-wraps the input to more rows; the same resize
+	// must account for the new wrap, not the stale one.
+	model.cardExpanded["job"] = false
+	model.input.SetValue(strings.Repeat("steer the fleet ", 12))
+	_, _ = model.Update(tea.WindowSizeMsg{Width: 40, Height: 24})
+	if lines := model.input.LineCount(); lines < 3 {
+		t.Fatalf("input did not re-wrap on resize: %d lines", lines)
+	}
+	if height := lipgloss.Height(model.View()); height != 24 {
+		t.Fatalf("view after resize is %d rows, want 24", height)
+	}
+}
+
+// A group label announced for one sibling must not be left standing over a
+// later sibling once a whole subtree (for top-level rows: a whole other job)
+// has rendered in between.
+func TestRailGroupHeaderDoesNotBleedAcrossSiblingSubtrees(t *testing.T) {
+	snapshot := store.Snapshot{Nodes: []store.Node{
+		{ID: store.RootID},
+		{ID: "job-a", Parent: store.RootID, Title: "Job A", Group: "reflex", Status: store.Running, CreatedSeq: 1},
+		{ID: "job-b", Parent: store.RootID, Title: "Job B", Group: "reflex", Status: store.Running, CreatedSeq: 3},
+		{ID: "b-part", Parent: "job-b", Title: "B part", Status: store.Running, CreatedSeq: 4},
+	}}
+	model := New(&fakeBackend{snapshot: snapshot}, "test-session")
+	model.snapshot = snapshot
+	tree := model.renderTree(60, 0)
+	if headers := strings.Count(tree, "┄ reflex"); headers != 2 {
+		t.Fatalf("group headers = %d, want one per job (2):\n%s", headers, tree)
+	}
+}
+
+// The settled card's chat portion is the landing itself: the first system
+// message at or after the finish, never a later detached report.
+func TestSettledCardDeliverableIsTheLandingNotALaterReport(t *testing.T) {
+	finished := time.Now().Add(-time.Minute)
+	snapshot := store.Snapshot{Nodes: []store.Node{
+		{ID: store.RootID},
+		{
+			ID: "job", Parent: store.RootID, Title: "Ship it", Status: store.Done,
+			CreatedSeq: 2, FinishedAt: finished, Summary: "Shipped.",
+			Provenance: store.Provenance{SessionID: "cards", Intent: "ship it"},
+		},
+	}}
+	messages := []store.Message{
+		{
+			Seq: 5, Time: finished.Add(time.Second), SessionID: "cards",
+			Role: store.RoleSystem, NodeID: "job", Body: "Shipped. Version 2 is live.",
+		},
+		{
+			Seq: 7, Time: finished.Add(5 * time.Second), SessionID: "cards",
+			Role: store.RoleSystem, NodeID: "job", Body: "recalibration: raised the worker budget after this job",
+		},
+	}
+	cards := deriveJobCards("cards", snapshot, messages, nil, nil, nil)
+	card := requireCard(t, cards, "job")
+	if card.Deliverable == nil || card.Deliverable.Seq != 5 {
+		t.Fatalf("deliverable = %#v, want the landing (seq 5)", card.Deliverable)
+	}
+	if card.Outcome != "Shipped. Version 2 is live." {
+		t.Fatalf("outcome = %q, want the landing's first line", card.Outcome)
+	}
+}
+
+// Two jobs born from the same words keep their own receipts: command matching
+// is one-to-one in creation order, never many-roots-to-one-command.
+func TestTwoJobsWithTheSameAskKeepTheirOwnReceipts(t *testing.T) {
+	commands := map[int64]store.Command{
+		1: {Seq: 1, SessionID: "cards", Kind: store.CommandSplice, Instruction: "fix the tests"},
+		2: {Seq: 2, SessionID: "cards", Kind: store.CommandSplice, Instruction: "fix the tests"},
+	}
+	provenance := store.Provenance{SessionID: "cards", Intent: "fix the tests"}
+	snapshot := store.Snapshot{Nodes: []store.Node{
+		{ID: store.RootID},
+		{ID: "job-1", Parent: store.RootID, Title: "First fix", CreatedSeq: 3, Status: store.Running, Provenance: provenance},
+		{ID: "job-2", Parent: store.RootID, Title: "Second fix", CreatedSeq: 4, Status: store.Running, Provenance: provenance},
+	}}
+	messages := []store.Message{
+		{Seq: 5, SessionID: "cards", Role: store.RoleSystem, CommandSeq: 1, Body: "Reading one.\nAssumed: alpha."},
+		{Seq: 6, SessionID: "cards", Role: store.RoleSystem, CommandSeq: 2, Body: "Reading two.\nAssumed: beta."},
+	}
+	cards := deriveJobCards("cards", snapshot, messages, nil, nil, commands)
+	first := requireCard(t, cards, "job-1")
+	second := requireCard(t, cards, "job-2")
+	if first.CommandSeq != 1 || !strings.Contains(first.Receipt, "alpha") {
+		t.Fatalf("first job matched command %d with receipt %q, want command 1 / alpha", first.CommandSeq, first.Receipt)
+	}
+	if second.CommandSeq != 2 || !strings.Contains(second.Receipt, "beta") {
+		t.Fatalf("second job matched command %d with receipt %q, want command 2 / beta", second.CommandSeq, second.Receipt)
+	}
+}
+
+// An expanded feed block stays expanded when the trace's head is trimmed by
+// the byte budget: expansion follows the block's content, not its position.
+func TestFeedExpansionSurvivesTraceTruncation(t *testing.T) {
+	model := New(&fakeBackend{}, "test-session")
+	model.nodeViewID = "worker"
+	model.inspectedNode = store.Node{ID: "worker", Brief: "do a thing", Status: store.Running}
+	thought := "text: " + strings.Repeat("one deliberate thought⏎", 9)
+	model.nodeTraceText = "boot noise\n" + thought
+	model.setSize(90, 30)
+	model.refreshNodeView(true)
+	_ = model.View()
+
+	expandableAt := -1
+	for index, block := range model.feedBlocks {
+		if block.expandable() {
+			expandableAt = index
+		}
+	}
+	if expandableAt < 0 {
+		t.Fatalf("no expandable block in feed:\n%s", model.renderActivityFeed(model.nodeTrace.Width))
+	}
+	line := -1
+	for _, row := range model.feedRows {
+		if row.block == expandableAt {
+			line = row.line
+			break
+		}
+	}
+	if !model.toggleFeedBlockAt(model.nodeTraceBounds.x+1, model.nodeTraceBounds.y+line-model.nodeTrace.YOffset) {
+		t.Fatal("clicking the collapsed thought did not toggle it")
+	}
+	if feed := model.renderActivityFeed(model.nodeTrace.Width); strings.Contains(feed, "⋯") {
+		t.Fatalf("thought did not expand:\n%s", feed)
+	}
+
+	model.nodeTraceText = thought // the byte budget trimmed the head
+	model.refreshNodeView(false)
+	if feed := model.renderActivityFeed(model.nodeTrace.Width); strings.Contains(feed, "⋯") {
+		t.Fatalf("head truncation moved the expansion off the thought:\n%s", feed)
+	}
+}
+
+// A reader scrolled up must keep the exact content on screen when a job
+// settles and its card lands at the birth position above them; pinned-to-
+// bottom must stay pinned.
+func TestScrolledUpChatKeepsContentWhenACardSettlesAbove(t *testing.T) {
+	model := New(&fakeBackend{}, "cards")
+	model.setSize(80, 14)
+	base := time.Now().Add(-2 * time.Hour)
+	for index := 1; index <= 24; index++ {
+		model.messages = append(model.messages, store.Message{
+			Seq: int64(index), Time: base.Add(time.Duration(index) * 4 * time.Minute),
+			SessionID: "cards", Role: store.RoleAgent, Body: fmt.Sprintf("update number %02d", index),
+		})
+	}
+	model.cards = []jobCard{{ID: "job", RootID: "job", State: cardWorking, Title: "Working job", BirthSeq: 5}}
+	model.refreshChat()
+	if !model.chat.AtBottom() {
+		t.Fatal("auto-follow did not pin the seeded thread")
+	}
+	_, _ = model.Update(tea.KeyMsg{Type: tea.KeyPgUp})
+	_, _ = model.Update(tea.KeyMsg{Type: tea.KeyPgUp})
+	if model.autoScroll {
+		t.Fatal("paging up should release auto-follow")
+	}
+	before := model.chat.View()
+
+	delivery := store.Message{Seq: 205, Role: store.RoleSystem, Body: "The landed answer.\nWith detail lines.\nAnd more."}
+	model.cards[0].State = cardSettled
+	model.cards[0].Outcome = "The landed answer."
+	model.cards[0].Deliverable = &delivery
+	model.refreshChat()
+	if !strings.Contains(model.renderMessages(), "Working job") {
+		t.Fatal("settled card did not land in the thread")
+	}
+	if after := model.chat.View(); after != before {
+		t.Fatalf("card settling above the reader moved their view:\nbefore:\n%s\nafter:\n%s", before, after)
+	}
+
+	model.pinChat()
+	model.messages = append(model.messages, store.Message{
+		Seq: 30, Time: base.Add(3 * time.Hour), SessionID: "cards", Role: store.RoleAgent, Body: "one more update",
+	})
+	model.refreshChat()
+	if !model.chat.AtBottom() {
+		t.Fatal("pinned-to-bottom did not stay pinned through a refresh")
+	}
+}
