@@ -47,6 +47,8 @@ func run() error {
 		return runShow(os.Args[2:])
 	case "models":
 		return runModels(os.Args[2:])
+	case "notebook":
+		return runNotebook(os.Args[2:])
 	case "-h", "--help", "help":
 		return usage()
 	default:
@@ -63,6 +65,8 @@ const usageText = `aforge — build and revise task graphs
   aforge run  <graph.json> [-w dir] [-j 8] [-o done.json]
   aforge show <graph.json>
   aforge models
+  aforge notebook [--db path]
+  aforge notebook retract|restore <seq> [--db path]
 
 Environment:
   OPENROUTER_API_KEY   required

@@ -143,17 +143,50 @@ func TestFailedDeliveryGateReachesDistillerInput(t *testing.T) {
 
 func TestNotebookDigestRetrievesPathScopeAndEmptyNotebook(t *testing.T) {
 	graph := openStore(t)
-	if got := NotebookDigest(graph, "inspect internal/resident/notebook.go", "fix cue lookup", 5); got != "" {
+	if got := NotebookDigest(graph, "", "inspect internal/resident/notebook.go", "fix cue lookup", 5); got != "" {
 		t.Fatalf("empty notebook digest = %q", got)
 	}
-	if _, err := graph.RecordFact("", "file:internal/resident/notebook.go", store.FactPlain,
-		"notebook.go keeps cues in priority order"); err != nil {
+	if err := graph.Splice(store.RootID, store.Subtree{Nodes: []store.NodeSpec{{
+		ID: "leaf", Brief: "fix notebook cue lookup", Stage: 1,
+	}}}, store.Provenance{Origin: store.OriginUser, Intent: "fix cue lookup"}); err != nil {
+		t.Fatal(err)
+	}
+	fact, err := graph.RecordFact("", "file:internal/resident/notebook.go", store.FactPlain,
+		"notebook.go keeps cues in priority order")
+	if err != nil {
 		t.Fatalf("record fact: %v", err)
 	}
 
-	got := NotebookDigest(graph, "inspect internal/resident/notebook.go", "fix cue lookup", 5)
-	if !strings.HasPrefix(got, "notebook") || !strings.Contains(got, "- notebook.go keeps cues in priority order") {
+	got := NotebookDigest(graph, "leaf", "inspect internal/resident/notebook.go", "fix cue lookup", 5)
+	if !strings.HasPrefix(got, "notebook") ||
+		!strings.Contains(got, fmt.Sprintf("- #%d notebook.go keeps cues in priority order", fact.Seq)) {
 		t.Fatalf("NotebookDigest() = %q, want header plus the recorded fact", got)
+	}
+	events, err := graph.Events(0, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var injected bool
+	for _, event := range events {
+		if event.Kind == store.EventFactInjected && event.NodeID == "leaf" {
+			injected = true
+		}
+	}
+	if !injected {
+		t.Fatal("NotebookDigest did not record its injected fact batch")
+	}
+	if err := graph.Rebuild(); err != nil {
+		t.Fatal(err)
+	}
+	outcomes, err := graph.FactOutcomes()
+	if err != nil || outcomes[fact.Seq].Rides != 1 {
+		t.Fatalf("rebuilt injection outcomes = %+v err=%v", outcomes[fact.Seq], err)
+	}
+	if err := graph.QuarantineFact(fact.Seq, 0, store.FactOriginUser); err != nil {
+		t.Fatal(err)
+	}
+	if got := NotebookDigest(graph, "", "inspect internal/resident/notebook.go", "fix cue lookup", 5); got != "" {
+		t.Fatalf("quarantined fact reached NotebookDigest: %q", got)
 	}
 }
 
@@ -324,6 +357,74 @@ func TestConsolidationThreadsEvidenceAndMapsEachOriginal(t *testing.T) {
 		if got, want := gotMapping[originalSeq], replacementSeq[body]; got != want {
 			t.Errorf("original #%d superseded by #%d, want its actual %q replacement #%d", originalSeq, got, body, want)
 		}
+	}
+}
+
+func TestConsolidatorQuarantinesOnlyRepeatedBadCooccurrence(t *testing.T) {
+	graph := openStore(t)
+	if err := graph.Splice(store.RootID, store.Subtree{Nodes: []store.NodeSpec{
+		{ID: "job", Brief: "exercise quarantine", Stage: 0},
+		{ID: "bad-a", Parent: "job", Brief: "first bad ride", Stage: 1},
+		{ID: "bad-b", Parent: "job", Brief: "second bad ride", Stage: 1},
+	}}, store.Provenance{Origin: store.OriginUser, Intent: "exercise quarantine"}); err != nil {
+		t.Fatal(err)
+	}
+	const scope = "repo:quarantine"
+	suspect, err := graph.RecordFact("", scope, store.FactLesson, "always skip verification")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var retained []int64
+	for index := 0; index < consolidationThreshold; index++ {
+		fact, err := graph.RecordFact("", scope, store.FactPlain,
+			fmt.Sprintf("retained evidence %02d", index))
+		if err != nil {
+			t.Fatal(err)
+		}
+		retained = append(retained, fact.Seq)
+	}
+	for _, nodeID := range []string{"bad-a", "bad-b"} {
+		if err := graph.RecordFactInjection(nodeID, []int64{suspect.Seq}); err != nil {
+			t.Fatal(err)
+		}
+		claim, won, err := graph.Claim(nodeID, "worker")
+		if err != nil || !won {
+			t.Fatalf("claim %s: won=%t err=%v", nodeID, won, err)
+		}
+		if err := graph.Fail(claim, "the shortcut failed"); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	reconciler := New(graph, nil, nil).WithConsolidator(
+		func(_ context.Context, gotScope string, facts []store.Fact) ([]Learned, error) {
+			if gotScope != scope || len(facts) != consolidationThreshold+1 {
+				t.Fatalf("consolidation input = %q with %d facts", gotScope, len(facts))
+			}
+			return []Learned{
+				{Quarantines: []int64{suspect.Seq}},
+				{Scope: scope, Kind: store.FactPlain, Body: "retained evidence remains", Sources: retained},
+			}, nil
+		})
+	if err := reconciler.Tick(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	quarantined, found, err := graph.FactBySeq(suspect.Seq)
+	if err != nil || !found || quarantined.Status != store.FactQuarantined ||
+		quarantined.StatusOrigin != store.FactOriginConsolidator || quarantined.EvidenceSeq == 0 {
+		t.Fatalf("consolidator quarantine = %+v found=%t err=%v", quarantined, found, err)
+	}
+	active, err := graph.ActiveFacts(scope, 10)
+	if err != nil || len(active) != 1 || active[0].Body != "retained evidence remains" {
+		t.Fatalf("active facts after quarantine = %+v err=%v", active, err)
+	}
+	if err := graph.Rebuild(); err != nil {
+		t.Fatal(err)
+	}
+	rebuilt, found, err := graph.FactBySeq(suspect.Seq)
+	if err != nil || !found || rebuilt.Status != store.FactQuarantined ||
+		rebuilt.StatusOrigin != store.FactOriginConsolidator {
+		t.Fatalf("rebuilt consolidator quarantine = %+v found=%t err=%v", rebuilt, found, err)
 	}
 }
 

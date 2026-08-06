@@ -2,6 +2,7 @@ package resident
 
 import (
 	"context"
+	"fmt"
 	"path"
 	"strings"
 	"time"
@@ -81,8 +82,9 @@ func ExtractCues(text string) []string {
 }
 
 // NotebookDigest retrieves the facts relevant to one piece of work and
-// renders the bounded block workers receive with their inputs.
-func NotebookDigest(graph *store.Store, brief, goal string, limit int) string {
+// renders the bounded block workers receive with their inputs. A non-empty
+// nodeID attributes the whole injected batch to that node in one event.
+func NotebookDigest(graph *store.Store, nodeID, brief, goal string, limit int) string {
 	if graph == nil {
 		return ""
 	}
@@ -95,11 +97,18 @@ func NotebookDigest(graph *store.Store, brief, goal string, limit int) string {
 	if err != nil || len(facts) == 0 {
 		return ""
 	}
+	if nodeID != "" {
+		seqs := make([]int64, 0, len(facts))
+		for _, fact := range facts {
+			seqs = append(seqs, fact.Seq)
+		}
+		_ = graph.RecordFactInjection(nodeID, seqs)
+	}
 
 	var digest strings.Builder
 	digest.WriteString("notebook (lessons from earlier work; if your own experience in this task contradicts one, trust the experience and state the correction explicitly in your final message — that is how the notebook stays true):\n")
 	for _, fact := range facts {
-		digest.WriteString("- ")
+		fmt.Fprintf(&digest, "- #%d ", fact.Seq)
 		digest.WriteString(fact.Body)
 		digest.WriteByte('\n')
 	}
@@ -144,6 +153,10 @@ func (r *Reconciler) consolidateNotebook(ctx context.Context) {
 	if len(rewritten) > consolidationOutputLimit {
 		rewritten = rewritten[:consolidationOutputLimit]
 	}
+	outcomes, err := r.store.FactOutcomes()
+	if err != nil {
+		return
+	}
 
 	originalBySeq := make(map[int64]store.Fact, len(originals))
 	originalByBody := make(map[string]int64, len(originals))
@@ -156,12 +169,36 @@ func (r *Reconciler) consolidateNotebook(ctx context.Context) {
 		sources []int64
 		nodeID  string
 	}
+	type plannedQuarantine struct {
+		seq         int64
+		evidenceSeq int64
+	}
 	planned := make([]plannedRewrite, 0, len(rewritten))
+	quarantines := make([]plannedQuarantine, 0)
 	claimedSources := make(map[int64]bool, len(originals))
 	seenBodies := make(map[string]bool, len(rewritten))
 	for _, learned := range rewritten {
+		quarantineSeqs := uniqueFactSeqs(learned.Quarantines)
+		for _, quarantineSeq := range quarantineSeqs {
+			if _, ok := originalBySeq[quarantineSeq]; !ok || claimedSources[quarantineSeq] {
+				return
+			}
+			outcome := outcomes[quarantineSeq]
+			// One bad job is an anecdote. The store enforces the same pattern bar
+			// the prompt teaches before accepting a model-requested quarantine.
+			if outcome.Bad < 2 || outcome.LatestBadSeq == 0 {
+				return
+			}
+			claimedSources[quarantineSeq] = true
+			quarantines = append(quarantines, plannedQuarantine{
+				seq: quarantineSeq, evidenceSeq: outcome.LatestBadSeq,
+			})
+		}
 		bodyKey := strings.ToLower(strings.TrimSpace(learned.Body))
 		if bodyKey == "" {
+			if len(quarantineSeqs) == 0 || len(learned.Sources) > 0 || learned.Replaces > 0 {
+				return
+			}
 			continue
 		}
 		if !strings.EqualFold(strings.TrimSpace(learned.Scope), worstScope) || seenBodies[bodyKey] {
@@ -197,7 +234,7 @@ func (r *Reconciler) consolidateNotebook(ctx context.Context) {
 	}
 	// Mapping validation is all-or-nothing. A malformed model mapping must not
 	// add rewrites or leave a source attached to an invented replacement.
-	if len(planned) == 0 || len(claimedSources) != len(originals) {
+	if len(planned)+len(quarantines) == 0 || len(claimedSources) != len(originals) {
 		return
 	}
 
@@ -232,6 +269,12 @@ func (r *Reconciler) consolidateNotebook(ctx context.Context) {
 			continue
 		}
 		if err := r.store.SupersedeFact(original.Seq, replacementSeq); err != nil {
+			return
+		}
+	}
+	for _, quarantine := range quarantines {
+		if err := r.store.QuarantineFact(quarantine.seq, quarantine.evidenceSeq,
+			store.FactOriginConsolidator); err != nil {
 			return
 		}
 	}
