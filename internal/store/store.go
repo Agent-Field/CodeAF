@@ -92,6 +92,10 @@ const (
 	EventFactLearned EventKind = "fact_learned"
 	// EventFactSuperseded retires one fact in favour of a newer one.
 	EventFactSuperseded EventKind = "fact_superseded"
+
+	// EventRetrospectiveCheckpointed records how much settled top-level work
+	// the periodic retrospective has already considered.
+	EventRetrospectiveCheckpointed EventKind = "retrospective_checkpointed"
 )
 
 var (
@@ -334,6 +338,9 @@ func Open(path string) (*Store, error) {
 	}
 	if _, err := db.Exec(factsSchema); err != nil {
 		return closeOnError(fmt.Errorf("initialize facts schema: %w", err))
+	}
+	if _, err := db.Exec(retrospectiveSchema); err != nil {
+		return closeOnError(fmt.Errorf("initialize retrospective schema: %w", err))
 	}
 	if err := migrateFactsSchema(db); err != nil {
 		return closeOnError(fmt.Errorf("migrate facts schema: %w", err))
