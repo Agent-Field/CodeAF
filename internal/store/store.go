@@ -98,6 +98,14 @@ const (
 	EventFactActivated EventKind = "fact_activated"
 	// EventFactSuperseded retires one fact in favour of a newer one.
 	EventFactSuperseded EventKind = "fact_superseded"
+	// EventFactInjected attributes a batch of notebook facts to one node's
+	// context.
+	EventFactInjected EventKind = "fact_injected"
+	// EventFactQuarantined removes a suspect fact from retrieval without
+	// deleting it.
+	EventFactQuarantined EventKind = "fact_quarantined"
+	// EventFactRestored returns a quarantined fact to active retrieval.
+	EventFactRestored EventKind = "fact_restored"
 
 	// EventRetrospectiveCheckpointed records how much settled top-level work
 	// the periodic retrospective has already considered.

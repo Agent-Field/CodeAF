@@ -3,6 +3,7 @@ package head
 import (
 	"context"
 	"errors"
+	"fmt"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -117,13 +118,55 @@ func TestHeadMalformedOutputFallsBackToRawReply(t *testing.T) {
 
 func TestRenderNotebookUsesMessageScopeCues(t *testing.T) {
 	graphStore := openHeadStore(t)
-	if _, err := graphStore.RecordFact("", "file:internal/resident/notebook.go", store.FactQuirk,
-		"scope-only memory with unrelated vocabulary"); err != nil {
+	fact, err := graphStore.RecordFact("", "file:internal/resident/notebook.go", store.FactQuirk,
+		"scope-only memory with unrelated vocabulary")
+	if err != nil {
 		t.Fatalf("record fact: %v", err)
 	}
 	rendered := renderNotebook(graphStore, "Please inspect internal/resident/notebook.go")
-	if !strings.Contains(rendered, "scope-only memory with unrelated vocabulary") {
+	if !strings.Contains(rendered, fmt.Sprintf("#%d [", fact.Seq)) ||
+		!strings.Contains(rendered, "scope-only memory with unrelated vocabulary") {
 		t.Fatalf("scope-exact notebook fact did not reach head: %q", rendered)
+	}
+}
+
+func TestHeadRetractsNumberedNotebookBelief(t *testing.T) {
+	graphStore := openHeadStore(t)
+	fact, err := graphStore.RecordFact(store.RootID, "tool:git", store.FactQuirk,
+		"git always destroys worktrees")
+	if err != nil {
+		t.Fatal(err)
+	}
+	client := &fakeClient{responses: []string{fmt.Sprintf(
+		`{"reply":"I'll forget that.","command":null,"remember":null,"retract":{"seq":%d}}`, fact.Seq,
+	)}}
+	user, err := graphStore.PostMessage(store.Message{
+		SessionID: "chat-retract", Role: store.RoleUser, Body: "that's wrong — forget that",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	stop := startServing(t, New(client, graphStore))
+	defer stop()
+	reply := waitForAgentReply(t, graphStore, "chat-retract", user.Seq)
+	if want := fmt.Sprintf("Forgot #%d: %s", fact.Seq, fact.Body); reply.Body != want {
+		t.Fatalf("retraction reply = %q, want %q", reply.Body, want)
+	}
+	quarantined, found, err := graphStore.FactBySeq(fact.Seq)
+	if err != nil || !found || quarantined.Status != store.FactQuarantined ||
+		quarantined.EvidenceSeq != user.Seq || quarantined.StatusOrigin != store.FactOriginUser {
+		t.Fatalf("retracted fact = %+v found=%t err=%v", quarantined, found, err)
+	}
+	if rendered := renderNotebook(graphStore, "git worktrees"); strings.Contains(rendered, fact.Body) {
+		t.Fatalf("quarantined fact reached head retrieval: %q", rendered)
+	}
+	if err := graphStore.Rebuild(); err != nil {
+		t.Fatal(err)
+	}
+	rebuilt, found, err := graphStore.FactBySeq(fact.Seq)
+	if err != nil || !found || rebuilt.Status != store.FactQuarantined || rebuilt.EvidenceSeq != user.Seq {
+		t.Fatalf("rebuilt retraction = %+v found=%t err=%v", rebuilt, found, err)
 	}
 }
 

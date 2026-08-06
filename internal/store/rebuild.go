@@ -272,7 +272,34 @@ func replayEvent(tx *sql.Tx, event Event) error {
 		if err := json.Unmarshal(event.Payload, &payload); err != nil {
 			return err
 		}
-		return applyFactSupersession(tx, payload)
+		return applyFactSupersession(tx, payload, event.Seq)
+
+	case EventFactInjected:
+		var payload factInjectionPayload
+		if err := json.Unmarshal(event.Payload, &payload); err != nil {
+			return err
+		}
+		return replayFactInjection(tx, event.NodeID, payload)
+
+	case EventFactQuarantined:
+		var payload factStatusPayload
+		if err := json.Unmarshal(event.Payload, &payload); err != nil {
+			return err
+		}
+		if !validFactChangeOrigin(payload.Origin) {
+			return fmt.Errorf("invalid fact quarantine origin %q", payload.Origin)
+		}
+		return applyFactQuarantine(tx, payload, event.Seq)
+
+	case EventFactRestored:
+		var payload factStatusPayload
+		if err := json.Unmarshal(event.Payload, &payload); err != nil {
+			return err
+		}
+		if !validFactChangeOrigin(payload.Origin) {
+			return fmt.Errorf("invalid fact restoration origin %q", payload.Origin)
+		}
+		return applyFactRestore(tx, payload, event.Seq)
 
 	case EventRetrospectiveCheckpointed:
 		var payload retrospectiveCheckpointPayload

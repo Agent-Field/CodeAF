@@ -154,7 +154,7 @@ func runChat(args []string) error {
 		}
 
 		inputs := make([]exec.Input, 0)
-		if digest := resident.NotebookDigest(graph, node.Brief, node.Provenance.Intent, 8); digest != "" {
+		if digest := resident.NotebookDigest(graph, node.ID, node.Brief, node.Provenance.Intent, 8); digest != "" {
 			inputs = append(inputs, exec.Input{Result: digest})
 		}
 		digests, err := graph.DependencyDigests(node.ID, store.MaxDigestBytes)
@@ -1125,7 +1125,7 @@ const gateNotebookBytes = 1 << 10
 func judgeDeliverable(ctx context.Context, settings config.Config, client *liveClient, graph *store.Store, node store.Node, deliverable, workerModel string) deliverableJudgment {
 	ask := node.Provenance.Intent
 	body := "Verbatim request:\n" + ask + "\n\nCompiled goal:\n" + node.Brief + "\n\nDeliverable as produced:\n" + deliverable
-	if digest := resident.NotebookDigest(graph, node.Brief, ask, 8); digest != "" {
+	if digest := resident.NotebookDigest(graph, node.ID, node.Brief, ask, 8); digest != "" {
 		body += "\n\nStanding preferences and relevant lessons:\n" + clipUTF8Bytes(digest, gateNotebookBytes)
 	}
 	judgeCtx := settings.Context(router.WithAvoidModel(ctx, workerModel), "gate")
@@ -1394,14 +1394,16 @@ Judgment framework:
 - An empty list is the common correct answer.
 - Return at most five memories.`
 
-const consolidatorSystemPrompt = `You rewrite one scope's accumulated notebook lines into a smaller, sharper notebook. Return exactly one JSON object: {"facts":[{"scope":"...","kind":"preference|quirk|lesson|fact|unsettled|skill","body":"...","unsettled":{"approaches":[{"approach":"...","scope":"...","evidence":[123]},{"approach":"...","scope":"...","evidence":[456]}]},"sources":[123,456],"replaces":0}]}.
+const consolidatorSystemPrompt = `You rewrite one scope's accumulated notebook lines into a smaller, sharper notebook. Return exactly one JSON object: {"facts":[{"scope":"...","kind":"preference|quirk|lesson|fact|unsettled|skill","body":"...","unsettled":{"approaches":[{"approach":"...","scope":"...","evidence":[123]},{"approach":"...","scope":"...","evidence":[456]}]},"sources":[123,456],"replaces":0},{"quarantines":[456]}]}.
 
 Merge duplicates and near-duplicates. Resolve contradictions in favour of the newest line. Keep every load-bearing specific, including paths, values, and names. Each output must stand alone, use exactly the target scope, and preserve the best fitting kind. Return at most eight lines.
 An input skill was admitted by execution. Preserve kind skill only when an output derives from a skill input; never turn an ordinary fact into a skill.
 
-Every input line is numbered with its durable notebook number. Each output must name in "sources" every input it derives from, strongest evidence first, and every input must be assigned to exactly one output. The sources are the evidence and supersession map, not citations to invent. When an output corrects a standing line, also set "replaces" to that input's number; omit it or use 0 otherwise.
+Every input line is numbered with its durable notebook number. Each output must name in "sources" every input it derives from, strongest evidence first, and every input must be assigned exactly once: either to one output's "sources" or to one "quarantines" list. The sources are the evidence and supersession map, not citations to invent. When an output corrects a standing line, also set "replaces" to that input's number; omit it or use 0 otherwise. A quarantine-only object needs no scope, kind, or body.
 
 Each line carries its age and how often retrieval has used it. Judge staleness by what the claim is about, not by the age alone: a preference or a filesystem quirk ages slowly, while a ranking, a price, a version, or a "current state" claim rots fast. Rewrite fast-rotting claims to name their time ("as of <when>, …"); a never-used old line about a moving target should survive only as compact, explicitly dated evidence when another input still makes it useful.
+
+A line that rode jobs may carry how many of those jobs ended badly — execution failed, a delivery gate failed, or the work overran. Repeated bad co-occurrence is evidence against the line: quarantine it when the pattern makes preserving it more dangerous than withholding it. Co-occurrence is not causation, so one bad job is never enough; require a repeated pattern across at least two jobs, and keep or cautiously rewrite the line when another explanation remains plausible.
 
 A line may also carry the evidence it was distilled from: the job that taught it, in the words it was asked and what it actually delivered. Weigh lines by that evidence. Strip a claim its own evidence does not support back to only what the evidence establishes; when nothing else survives, merge that dated evidence into the closest output without preserving the unsupported claim. When two lines compete and their evidence cannot settle which is right, do not pick. Emit one kind "unsettled" line with exactly two structured approaches. Each approach names the method, the scope where it worked, and the numbered input fact seqs supporting that side in evidence. For a newly formed pair those evidence seqs are numbered inputs and also appear in sources; when preserving an existing pair, carry its earlier evidence seqs forward. The body is a concise readable projection of the same pair. This structure, not an "— unsettled" prose suffix, is what makes a future job test it.`
 
@@ -1516,10 +1518,20 @@ func consolidateFacts(settings config.Config, client *liveClient, graph *store.S
 		})
 
 		var input strings.Builder
+		outcomes, outcomesErr := graph.FactOutcomes()
+		if outcomesErr != nil {
+			outcomes = nil
+		}
 		now := time.Now()
 		fmt.Fprintf(&input, "Target scope: %s\n\nNotebook lines, newest first:\n", scope)
 		for _, fact := range ordered {
-			fmt.Fprintf(&input, "#%d [%s · %s · used %d×] %s\n", fact.Seq, fact.Kind, store.AgeLabel(fact.Time, now), fact.Uses, fact.Body)
+			outcome := outcomes[fact.Seq]
+			badRides := ""
+			if outcome.Bad > 0 {
+				badRides = fmt.Sprintf(" · rode %d jobs, %d ended badly", outcome.Rides, outcome.Bad)
+			}
+			fmt.Fprintf(&input, "#%d [%s · %s · used %d×%s] %s\n", fact.Seq,
+				fact.Kind, store.AgeLabel(fact.Time, now), fact.Uses, badRides, fact.Body)
 			// Belief audit: every fact names the job that taught it and that
 			// job is still in the graph, so a line can be weighed against the
 			// evidence it was distilled from rather than against its own
@@ -1571,13 +1583,14 @@ func parseLearnedFacts(raw string, limit int) []resident.Learned {
 	}
 	var parsed struct {
 		Facts []struct {
-			Scope     string               `json:"scope"`
-			Kind      store.FactKind       `json:"kind"`
-			Body      string               `json:"body"`
-			Unsettled *store.UnsettledPair `json:"unsettled"`
-			Replaces  int64                `json:"replaces"`
-			Sources   []int64              `json:"sources"`
-			Skill     *struct {
+			Scope       string               `json:"scope"`
+			Kind        store.FactKind       `json:"kind"`
+			Body        string               `json:"body"`
+			Unsettled   *store.UnsettledPair `json:"unsettled"`
+			Replaces    int64                `json:"replaces"`
+			Sources     []int64              `json:"sources"`
+			Quarantines []int64              `json:"quarantines"`
+			Skill       *struct {
 				Artifact string `json:"artifact"`
 			} `json:"skill"`
 		} `json:"facts"`
@@ -1597,7 +1610,11 @@ func parseLearnedFacts(raw string, limit int) []resident.Learned {
 		} else if fact.Unsettled != nil {
 			continue
 		}
-		if fact.Scope == "" || fact.Body == "" || !validLearnedKind(fact.Kind) {
+		hasLine := fact.Scope != "" || fact.Body != "" || fact.Kind != ""
+		if hasLine && (fact.Scope == "" || fact.Body == "" || !validLearnedKind(fact.Kind)) {
+			continue
+		}
+		if !hasLine && len(fact.Quarantines) == 0 {
 			continue
 		}
 		var skill *resident.SkillCandidate
@@ -1611,6 +1628,7 @@ func parseLearnedFacts(raw string, limit int) []resident.Learned {
 		learned = append(learned, resident.Learned{
 			Scope: fact.Scope, Kind: fact.Kind, Body: fact.Body, Unsettled: fact.Unsettled,
 			Replaces: fact.Replaces, Sources: fact.Sources, Skill: skill,
+			Quarantines: fact.Quarantines,
 		})
 		if len(learned) == limit {
 			break
