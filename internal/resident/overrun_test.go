@@ -35,7 +35,11 @@ func TestReplanOverrunSplicesRepairAndRewiresWaiters(t *testing.T) {
 	}
 
 	nodeA, _, _ := graph.Node("job-a")
-	planned := func(_ context.Context, goal, prefix string) (store.Subtree, error) {
+	planned := func(ctx context.Context, goal, prefix string) (store.Subtree, error) {
+		anchor, ok := PlanAnchorFromContext(ctx)
+		if !ok || anchor.NodeID != "job" || anchor.SessionID != "s1" || anchor.CommandSeq != 0 {
+			t.Fatalf("replan anchor = %+v ok=%t", anchor, ok)
+		}
 		if !strings.Contains(goal, "partial progress text") || !strings.Contains(goal, "/tmp/partial.md") {
 			t.Fatalf("replan goal does not carry the partial result:\n%s", goal)
 		}

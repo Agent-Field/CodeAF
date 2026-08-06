@@ -26,7 +26,7 @@ func TestSubtreeFromPlanMakesTheSynthesisSinkTheRoot(t *testing.T) {
 		byID[spec.ID] = spec
 	}
 
-	root, ok := byID["t0ff-n3"]
+	root, ok := byID["t0ff"]
 	if !ok || root.Parent != "" {
 		t.Fatalf("synthesis sink should be the parentless root: %+v", subtree.Nodes)
 	}
@@ -35,7 +35,7 @@ func TestSubtreeFromPlanMakesTheSynthesisSinkTheRoot(t *testing.T) {
 	}
 	for _, id := range []string{"t0ff-n1", "t0ff-n2"} {
 		child, ok := byID[id]
-		if !ok || child.Parent != "t0ff-n3" {
+		if !ok || child.Parent != "t0ff" {
 			t.Fatalf("%s should be a child of the root: %+v", id, child)
 		}
 	}
@@ -56,7 +56,7 @@ func TestSubtreeFromPlanMakesTheSynthesisSinkTheRoot(t *testing.T) {
 		t.Fatalf("ready: %v", err)
 	}
 	for _, node := range ready {
-		if node.ID == "t0ff-n3" {
+		if node.ID == "t0ff" {
 			t.Fatalf("the goal node must not be ready before its inputs: %+v", ready)
 		}
 	}
