@@ -14,6 +14,17 @@ import (
 // settled top-level jobs one level above their ordinary folds.
 const TerritoryGroup = "territory"
 
+// CharterGroup deliberately shares the existing organizational group value.
+// The TUI's territory-family filter therefore keeps charter furniture out of
+// ordinary job cards without acquiring charter-specific surface code.
+const CharterGroup = TerritoryGroup
+
+// IsOrganizationalGroup identifies durable spine furniture rather than work
+// a runner may claim. New organizational node kinds join this one family.
+func IsOrganizationalGroup(group string) bool {
+	return group == TerritoryGroup
+}
+
 const territoryOwner = "territory-retrospective"
 
 // TerritoryJob is one folded job plus the local signals the retrospective
