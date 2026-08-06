@@ -831,6 +831,10 @@ func (m *Model) setSize(width, height int) {
 	m.width = max(20, width)
 	m.height = max(8, height)
 	m.horizontal = m.width >= railAtWidth
+	// The input's width determines how many rows it wraps to, and every height
+	// below is measured against that row count — so the width must land first
+	// or a resize computes the frame against the stale wrap.
+	m.input.Width = max(1, m.width-4)
 
 	paletteHeight := m.paletteHeight()
 	footerHeight := 1
@@ -862,7 +866,6 @@ func (m *Model) setSize(width, height int) {
 	m.chat.Height = max(1, m.chatHeight)
 	m.graph.Width = max(1, m.graphWidth-2)
 	m.graph.Height = max(1, m.graphHeight-2) // header + blank
-	m.input.Width = max(1, m.width-4)
 	m.sizeNodeViewports()
 	m.refreshChat()
 	m.refreshGraph()
