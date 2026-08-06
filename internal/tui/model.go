@@ -434,6 +434,18 @@ func (m *Model) updateKey(message tea.KeyMsg) (tea.Cmd, bool) {
 	if key == "enter" && m.inputFocused {
 		return m.submit(), true
 	}
+	// An empty input has nothing for the arrows to do, so they read backwards
+	// through the conversation instead of dying silently: up scrolls history
+	// into view, down walks back toward now, End (or sending) re-pins.
+	if m.inputFocused && m.input.Value() == "" && (key == "up" || key == "down") {
+		if key == "up" {
+			m.chat.SetYOffset(m.chat.YOffset - 3)
+		} else {
+			m.chat.SetYOffset(m.chat.YOffset + 3)
+		}
+		m.syncChatScroll()
+		return nil, true
+	}
 	if key == "pgup" || key == "pgdown" {
 		m.pageFocused(key == "pgdown")
 		return nil, true

@@ -177,7 +177,11 @@ func runChat(args []string) error {
 	defer cancel()
 	var background sync.WaitGroup
 	background.Add(3)
-	go func() { defer background.Done(); _ = head.New(chatClient, graph).Serve(ctx) }()
+	// Routing is a structuring call, and it was the one loop served with a bare
+	// context: without the configured effort knob, a reasoning model spends the
+	// head's whole token cap deliberating and returns empty text — measured as
+	// 600/600 completion tokens of thought and zero answer on the default model.
+	go func() { defer background.Done(); _ = head.New(chatClient, graph).Serve(settings.Context(ctx, "head")) }()
 	go func() { defer background.Done(); _ = reconciler.Serve(ctx) }()
 	go func() { defer background.Done(); _ = runner.Serve(ctx) }()
 

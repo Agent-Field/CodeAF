@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	neturl "net/url"
 	"os"
 	"regexp"
 	"strings"
@@ -23,26 +24,43 @@ type Web struct {
 	http   *http.Client
 }
 
-// NewWeb returns nil when no key is configured, so the tool reports itself
-// unavailable rather than failing at the moment it is first needed.
+// NewWeb is always available: fetching needs no key at all, and search
+// degrades from Exa (when EXA_API_KEY is set) to DuckDuckGo's keyless HTML
+// endpoint rather than disappearing. A worker without internet is a worker
+// that fails jobs it could have finished.
 func NewWeb() *Web {
-	key := strings.TrimSpace(os.Getenv("EXA_API_KEY"))
-	if key == "" {
-		return nil
+	return &Web{
+		apiKey: strings.TrimSpace(os.Getenv("EXA_API_KEY")),
+		http:   &http.Client{Timeout: 45 * time.Second},
 	}
-	return &Web{apiKey: key, http: &http.Client{Timeout: 45 * time.Second}}
 }
 
 const perResultChars = 1200
 
-// Search returns ranked results with enough text to judge them. The snippet is
-// bounded deliberately: the point of a search result is to decide whether the
-// page is worth fetching, and a full page pasted into the result defeats both
-// the ranking and the budget.
+// Search returns ranked results with enough text to judge them. Exa answers
+// when a key is configured; DuckDuckGo covers both the keyless case and an
+// Exa outage, so one provider having a bad day never blinds the workforce.
 func (w *Web) Search(ctx context.Context, query string, limit int) (string, error) {
 	if limit <= 0 || limit > 15 {
 		limit = 6
 	}
+	if w.apiKey == "" {
+		return w.searchDuckDuckGo(ctx, query, limit)
+	}
+	found, err := w.searchExa(ctx, query, limit)
+	if err == nil {
+		return found, nil
+	}
+	fallback, ddgErr := w.searchDuckDuckGo(ctx, query, limit)
+	if ddgErr != nil {
+		return "", fmt.Errorf("exa: %v; duckduckgo fallback: %v", err, ddgErr)
+	}
+	return fallback, nil
+}
+
+// searchExa is the paid path: ranked results with page text inline, so a good
+// hit often needs no follow-up fetch at all.
+func (w *Web) searchExa(ctx context.Context, query string, limit int) (string, error) {
 	payload, _ := json.Marshal(map[string]any{
 		"query":      query,
 		"numResults": limit,
@@ -83,6 +101,70 @@ func (w *Web) Search(ctx context.Context, query string, limit int) (string, erro
 		fmt.Fprintf(&out, "\n[%d] %s\n%s\n%s\n", index+1, item.Title, item.URL, strings.TrimSpace(item.Text))
 	}
 	return out.String(), nil
+}
+
+var (
+	ddgResult  = regexp.MustCompile(`(?s)<a[^>]*class="result__a"[^>]*href="([^"]+)"[^>]*>(.*?)</a>`)
+	ddgSnippet = regexp.MustCompile(`(?s)<a[^>]*class="result__snippet"[^>]*>(.*?)</a>`)
+)
+
+// searchDuckDuckGo is the free path: the keyless HTML endpoint, parsed just
+// enough to yield title, real URL, and snippet. Quality is below Exa's and
+// there is no inline page text, but it turns "no key, no internet" into
+// "search, then fetch what looks right".
+func (w *Web) searchDuckDuckGo(ctx context.Context, query string, limit int) (string, error) {
+	request, err := http.NewRequestWithContext(ctx, http.MethodGet,
+		"https://html.duckduckgo.com/html/?q="+neturl.QueryEscape(query), nil)
+	if err != nil {
+		return "", err
+	}
+	request.Header.Set("User-Agent", "Mozilla/5.0 (compatible; aforge/1.0)")
+	response, err := w.http.Do(request)
+	if err != nil {
+		return "", err
+	}
+	defer response.Body.Close()
+	if response.StatusCode >= 400 {
+		return "", fmt.Errorf("duckduckgo http %d", response.StatusCode)
+	}
+	body, err := io.ReadAll(io.LimitReader(response.Body, 2<<20))
+	if err != nil {
+		return "", err
+	}
+	page := string(body)
+	links := ddgResult.FindAllStringSubmatch(page, limit)
+	snippets := ddgSnippet.FindAllStringSubmatch(page, limit)
+	if len(links) == 0 {
+		return "no results", nil
+	}
+	var out strings.Builder
+	fmt.Fprintf(&out, "search: %s\n", query)
+	for index, link := range links {
+		title := htmlToText(link[2])
+		fmt.Fprintf(&out, "\n[%d] %s\n%s\n", index+1, title, decodeDDGURL(link[1]))
+		if index < len(snippets) {
+			out.WriteString(htmlToText(snippets[index][1]) + "\n")
+		}
+	}
+	return out.String(), nil
+}
+
+// decodeDDGURL unwraps DuckDuckGo's redirect links (//duckduckgo.com/l/?uddg=…)
+// back to the destination URL, so fetch calls hit the page rather than the
+// redirector.
+func decodeDDGURL(raw string) string {
+	raw = strings.ReplaceAll(raw, "&amp;", "&")
+	if strings.HasPrefix(raw, "//") {
+		raw = "https:" + raw
+	}
+	parsed, err := neturl.Parse(raw)
+	if err != nil {
+		return raw
+	}
+	if target := parsed.Query().Get("uddg"); target != "" {
+		return target
+	}
+	return raw
 }
 
 // Fetch retrieves several pages at once and returns them as text. A page that
