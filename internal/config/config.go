@@ -206,10 +206,14 @@ func (c Config) Client() (router.Client, error) {
 	return router.New(c.Panel, c.providerConfig(c.Model), c.ProfileDir)
 }
 
-// ClientFor builds a single-model adapter for an explicitly chosen model,
-// bypassing the panel. The chat surface uses it to pick the talking model and
-// the working model independently at runtime.
+// ClientFor builds a client for an explicitly chosen model. With no panel it is
+// exactly the single-model adapter it always was. With a panel the choice is
+// pinned as the router's opener, so chat keeps its runtime picker without
+// bypassing observation and escalation.
 func (c Config) ClientFor(model string) (router.Client, error) {
+	if len(c.Panel.Models) > 0 {
+		return router.NewPinned(c.Panel, c.providerConfig(model), c.ProfileDir, model)
+	}
 	return provider.NewClient(c.providerConfig(model))
 }
 

@@ -88,6 +88,9 @@ const (
 	// EventUsageRecorded is one executed node's spend.
 	EventUsageRecorded EventKind = "usage_recorded"
 
+	// EventDeliveryGate is the final judge's evidence about one delivered job.
+	EventDeliveryGate EventKind = "delivery_gate"
+
 	// EventFactLearned is one durable fact distilled from finished work.
 	EventFactLearned EventKind = "fact_learned"
 	// EventFactSuperseded retires one fact in favour of a newer one.
