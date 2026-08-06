@@ -78,12 +78,15 @@ type Reconciler struct {
 	distill     DistillFunc
 	consolidate ConsolidateFunc
 	title       TitleFunc
+	reflect     ReflectFunc
 
 	mu                 sync.Mutex
 	watcherInitialized bool
 	lastEventSeq       int64
 	progress           map[string]*subtreeProgress
 	lastConsolidation  time.Time
+	lastReflection     time.Time
+	lastReflectedJobs  int
 }
 
 // New constructs a reconciler. A nil compiler preserves the instruction
@@ -165,6 +168,7 @@ func (r *Reconciler) Tick(ctx context.Context) error {
 		return fmt.Errorf("resident tick: narrate progress: %w", err)
 	}
 	r.consolidateNotebook(ctx)
+	r.reflectOnJobs(ctx)
 	return nil
 }
 
@@ -673,6 +677,39 @@ const distillLimit = 5
 
 // distillJob extracts durable facts from one settled node, best effort: a
 // failed distillation costs the notebook entry, never the loop.
+// continuitySources renders the earlier jobs this one was wired to build on
+// — the feeds_into edges that cross into its subtree from outside. Empty for
+// a job that stands alone.
+func (r *Reconciler) continuitySources(node store.Node) string {
+	edges, err := r.store.ActiveEdges()
+	if err != nil {
+		return ""
+	}
+	prefix := node.ID
+	if cut := strings.LastIndex(node.ID, "-n"); cut > 0 {
+		prefix = node.ID[:cut]
+	}
+	seen := make(map[string]bool)
+	var out strings.Builder
+	for _, edge := range edges {
+		if !strings.HasPrefix(edge.To, prefix) || strings.HasPrefix(edge.From, prefix) || seen[edge.From] {
+			continue
+		}
+		seen[edge.From] = true
+		source, ok, err := r.store.Node(edge.From)
+		if err != nil || !ok {
+			continue
+		}
+		delivered := firstLine(source.Summary)
+		if delivered == "" {
+			delivered = firstLine(source.FoldDigest)
+		}
+		out.WriteString("- asked: " + clipLabel(firstLine(source.Provenance.Intent), 200) +
+			" → delivered: " + clipLabel(delivered, 200) + "\n")
+	}
+	return out.String()
+}
+
 func (r *Reconciler) distillJob(ctx context.Context, node store.Node, failed bool) {
 	if r.distill == nil {
 		return
@@ -680,6 +717,13 @@ func (r *Reconciler) distillJob(ctx context.Context, node store.Node, failed boo
 	outcome := node.Summary
 	if failed {
 		outcome = node.Error
+	}
+	// A job that continues or reworks an earlier delivery carries the richest
+	// preference signal there is: the gap between what was delivered then and
+	// what was asked now is the user's actual standard, stated in actions.
+	if prior := r.continuitySources(node); prior != "" {
+		outcome += "\n\n[This job continued or revised earlier delivered work:\n" + prior +
+			"When the new instruction reworks an earlier delivery, the difference between them is evidence of the user's real standard — record the standard, not the episode.]"
 	}
 	facts, err := r.distill(ctx, node.Provenance.Intent, outcome, failed)
 	if err != nil {
