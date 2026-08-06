@@ -1726,6 +1726,35 @@ func TestSettledCardDeliverableIsTheLandingNotALaterReport(t *testing.T) {
 	}
 }
 
+// A territory is the retrospective packing settled history, not a job anyone
+// asked for. When one formed mid-session it rendered as a freshly settled
+// card wearing another job's digest — the user saw a "finished task" they
+// never requested. Organizational nodes must never become cards.
+func TestTerritoryNodesNeverBecomeCards(t *testing.T) {
+	finished := time.Now().Add(-time.Minute)
+	snapshot := store.Snapshot{Nodes: []store.Node{
+		{ID: store.RootID},
+		{
+			ID: "job", Parent: store.RootID, Title: "Ship it", Status: store.Done,
+			CreatedSeq: 2, FinishedAt: finished, Summary: "Shipped.",
+			Provenance: store.Provenance{SessionID: "cards", Intent: "ship it"},
+		},
+		{
+			ID: "terr", Parent: store.RootID, Title: "Podcast Audio work",
+			Group: store.TerritoryGroup, Status: store.Done, FoldRoot: true,
+			CreatedSeq: 9, FinishedAt: time.Now(),
+			Provenance: store.Provenance{Origin: store.OriginSelf, Intent: "Territory: Podcast Audio work"},
+		},
+	}}
+	cards := deriveJobCards("cards", snapshot, nil, nil, nil, nil)
+	for _, card := range cards {
+		if card.RootID == "terr" {
+			t.Fatalf("territory node produced a card: %#v", card)
+		}
+	}
+	requireCard(t, cards, "job")
+}
+
 // Two jobs born from the same words keep their own receipts: command matching
 // is one-to-one in creation order, never many-roots-to-one-command.
 func TestTwoJobsWithTheSameAskKeepTheirOwnReceipts(t *testing.T) {

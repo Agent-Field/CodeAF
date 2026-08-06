@@ -137,6 +137,14 @@ func deriveJobCards(
 			(sessionID != "" && root.Provenance.SessionID != "" && root.Provenance.SessionID != sessionID) {
 			continue
 		}
+		// A territory is the retrospective packing history, not a job anyone
+		// asked for. The moment one formed mid-session it rendered as a
+		// freshly settled card — the user saw a "finished task" they never
+		// requested, wearing another job's digest. Organizational nodes
+		// belong to the rail; cards are conversation.
+		if root.Group == store.TerritoryGroup {
+			continue
+		}
 		nodes := nodesByRoot[root.ID]
 		card := jobCard{
 			ID:        root.ID,
