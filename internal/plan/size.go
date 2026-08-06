@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"strings"
 	"sync"
+	"sync/atomic"
 
 	"github.com/Agent-Field/aforge-v2/internal/provider"
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
@@ -60,19 +61,27 @@ oversized.`
 // but told what splitting costs and what not splitting costs, it optimises for
 // the thing we care about. This is the same lever that made the spine stop
 // inventing stages.
-// Anchors is the ruler in force. It is a variable rather than a constant so a
-// measured profile can replace the built-in prior: the anchors were always meant
-// to become real examples once an executor existed to produce them.
-var Anchors = sizeAnchors
+// anchors is the ruler in force. It is mutable because a measured profile can
+// replace the built-in prior, and atomic because chat can recalibrate while a
+// model change or another plan reads the ruler.
+var anchorValue atomic.Value
+
+func init() {
+	anchorValue.Store(sizeAnchors)
+}
+
+// Anchors returns one stable snapshot of the ruler in force.
+func Anchors() string {
+	return anchorValue.Load().(string)
+}
 
 // UseAnchors installs a calibrated ruler. An empty string restores the prior,
 // which is the right fallback whenever a profile is missing or unreadable.
 func UseAnchors(anchors string) {
 	if strings.TrimSpace(anchors) == "" {
-		Anchors = sizeAnchors
-		return
+		anchors = sizeAnchors
 	}
-	Anchors = anchors
+	anchorValue.Store(anchors)
 }
 
 func sizePromptWith(anchors string) string {
@@ -253,7 +262,7 @@ func sizeStage(ctx context.Context, client Completer, shared string, graph *Grap
 		return nil, nil, nil
 	}
 	messages := []ai.Message{
-		systemMessage(sizePromptWith(Anchors)),
+		systemMessage(sizePromptWith(Anchors())),
 		userMessage(shared),
 		userMessage(fmt.Sprintf("Judge the size of each of these stage %d nodes:\n%s", stage, targets.String())),
 	}

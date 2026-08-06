@@ -31,10 +31,13 @@ type Record struct {
 	Title   string `json:"title"`
 	Summary string `json:"summary"`
 	Sources int    `json:"sources"`
-	Size    string `json:"size"`  // what the planner predicted
-	Turns   int    `json:"turns"` // what it actually took
-	Tokens  int    `json:"tokens"`
-	Stop    string `json:"stop"`
+	// SourcesKnown distinguishes an observed zero from old and direct records
+	// whose omitted source count decoded to zero.
+	SourcesKnown bool   `json:"sources_known,omitempty"`
+	Size         string `json:"size"`  // planner prediction, or direct when none was made
+	Turns        int    `json:"turns"` // what it actually took
+	Tokens       int    `json:"tokens"`
+	Stop         string `json:"stop"`
 
 	// Verdict is how the leaf actually ended. It replaced a `done` flag that was
 	// the scheduler's StateDone carried across — true of a leaf that exhausted
@@ -42,6 +45,21 @@ type Record struct {
 	// never read, because a ruler calibrated against it would have been
 	// calibrated against the budget rather than against the work.
 	Verdict provider.Verdict `json:"verdict,omitempty"`
+}
+
+// BucketDirect labels work dispatched without a planner size judgment. Keeping
+// it separate lets the compiler learn direct-job costs without teaching the
+// ruler that an unmeasured task was atomic.
+const BucketDirect = "direct"
+
+func (r Record) rulerEvidence() bool {
+	return r.Size != BucketDirect
+}
+
+// HasSourceCount keeps nonzero counts from legacy profiles usable while
+// treating their indistinguishable zero value as unknown.
+func (r Record) HasSourceCount() bool {
+	return r.SourcesKnown || r.Sources != 0
 }
 
 // Overran reports a task that could not finish inside its budget — the clearest
@@ -163,18 +181,22 @@ type Spread struct {
 func (p *Profile) Measure() Spread {
 	p.mutex.Lock()
 	defer p.mutex.Unlock()
-	if len(p.Records) == 0 {
-		return Spread{}
-	}
 	turns := make([]int, 0, len(p.Records))
 	tokens := make([]int, 0, len(p.Records))
-	spread := Spread{Samples: len(p.Records)}
+	var spread Spread
 	for _, record := range p.Records {
+		if !record.rulerEvidence() {
+			continue
+		}
 		turns = append(turns, record.Turns)
 		tokens = append(tokens, record.Tokens)
+		spread.Samples++
 		if record.Overran() {
 			spread.Overran++
 		}
+	}
+	if spread.Samples == 0 {
+		return Spread{}
 	}
 	sort.Ints(turns)
 	sort.Ints(tokens)
@@ -226,7 +248,12 @@ func (p *Profile) NeedsRecalibration() (bool, string) {
 func (p *Profile) Evidence(each int) (small, middle, large []Record) {
 	p.mutex.Lock()
 	defer p.mutex.Unlock()
-	sorted := append([]Record(nil), p.Records...)
+	sorted := make([]Record, 0, len(p.Records))
+	for _, record := range p.Records {
+		if record.rulerEvidence() {
+			sorted = append(sorted, record)
+		}
+	}
 	sort.Slice(sorted, func(i, j int) bool { return sorted[i].Turns < sorted[j].Turns })
 	if len(sorted) == 0 {
 		return nil, nil, nil

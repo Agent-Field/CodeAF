@@ -31,29 +31,29 @@ var (
 	selfKnowledgeCached cachedSelfKnowledge
 )
 
-func selfKnowledge(settings config.Config) string {
+func selfKnowledge(settings config.Config, model string) string {
 	selfKnowledgeMu.Lock()
 	defer selfKnowledgeMu.Unlock()
 
 	now := time.Now()
 	if selfKnowledgeCached.profileDir == settings.ProfileDir &&
-		selfKnowledgeCached.model == settings.Model &&
+		selfKnowledgeCached.model == model &&
 		now.Before(selfKnowledgeCached.expires) {
 		return selfKnowledgeCached.text
 	}
 
-	text := measureSelfKnowledge(settings)
+	text := measureSelfKnowledge(settings, model)
 	selfKnowledgeCached = cachedSelfKnowledge{
 		profileDir: settings.ProfileDir,
-		model:      settings.Model,
+		model:      model,
 		text:       text,
 		expires:    now.Add(selfKnowledgeTTL),
 	}
 	return text
 }
 
-func measureSelfKnowledge(settings config.Config) string {
-	measured, err := profile.Load(settings.ProfileDir, settings.Model, "linear")
+func measureSelfKnowledge(settings config.Config, model string) string {
+	measured, err := profile.Load(settings.ProfileDir, model, "linear")
 	if err != nil || len(measured.Records) < 5 {
 		return ""
 	}
@@ -61,7 +61,7 @@ func measureSelfKnowledge(settings config.Config) string {
 	buckets := make(map[string]selfKnowledgeBucket)
 	for _, record := range measured.Records {
 		switch record.Size {
-		case "atomic", "borderline", "oversized", "synthesis":
+		case profile.BucketDirect, "atomic", "borderline", "oversized", "synthesis":
 		default:
 			continue
 		}
@@ -76,7 +76,7 @@ func measureSelfKnowledge(settings config.Config) string {
 	}
 
 	lines := make([]string, 0, len(buckets))
-	for _, size := range []string{"atomic", "borderline", "oversized", "synthesis"} {
+	for _, size := range []string{profile.BucketDirect, "atomic", "borderline", "oversized", "synthesis"} {
 		bucket, ok := buckets[size]
 		if !ok {
 			continue
