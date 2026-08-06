@@ -13,7 +13,9 @@ import (
 	"sync/atomic"
 	"syscall"
 	"time"
+	"unicode/utf8"
 
+	"github.com/Agent-Field/aforge-v2/internal/store"
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 )
 
@@ -54,6 +56,10 @@ const (
 	// decay pass's job; spill only has to stop the genuinely huge result.
 	spillBytes   = 10 << 10
 	previewBytes = 4 << 10
+	// maxRecallResultBytes bounds persistent memory more tightly than ordinary
+	// observations: recall is a map used to choose what to read, not a second
+	// copy of the territory.
+	maxRecallResultBytes = 8 << 10
 )
 
 // Result is one tool's answer. A failure is a Result, never a Go error: the
@@ -73,6 +79,7 @@ type Toolbox struct {
 	workspace *Workspace
 	nodeID    int
 	web       *Web
+	history   *store.Store
 	// spills is atomic because a turn's tool calls execute concurrently, and
 	// two large results spilling at once must not race the counter into the
 	// same file name.
@@ -83,11 +90,18 @@ func NewToolbox(workspace *Workspace, nodeID int, web *Web) *Toolbox {
 	return &Toolbox{workspace: workspace, nodeID: nodeID, web: web}
 }
 
+// NewToolboxWithStore adds persistent recall to the generic toolbox. A nil
+// store deliberately collapses to NewToolbox so one-shot leaves retain the
+// original four-definition prompt.
+func NewToolboxWithStore(workspace *Workspace, nodeID int, web *Web, history *store.Store) *Toolbox {
+	return &Toolbox{workspace: workspace, nodeID: nodeID, web: web, history: history}
+}
+
 // Definitions are what the model sees. Descriptions are terse because they are
 // resent every turn, but each one states the thing an agent gets wrong without
 // being told.
 func (t *Toolbox) Definitions() []ai.ToolDefinition {
-	return []ai.ToolDefinition{
+	definitions := []ai.ToolDefinition{
 		define("sh", "Run a shell command in the workspace. Use it to read, list, search, and inspect. cmd is one command string (chain with && and pipes), or an array of commands run in order, stopping at the first failure. For INDEPENDENT commands, prefer separate sh calls in the same turn — they run at the same time.", map[string]any{
 			"cmd": prop("string", "shell command, or an array of commands run serially"),
 			"t":   prop("integer", "timeout seconds, default 60"),
@@ -107,6 +121,14 @@ func (t *Toolbox) Definitions() []ai.ToolDefinition {
 			"n":    prop("integer", "max search results, default 6"),
 		}),
 	}
+	if t.history != nil {
+		definitions = append(definitions, define("recall", "Search folded work and the notebook. Recall gives the map, not the territory: use the returned digest to choose what matters, then read the returned pointer paths with sh for the verbatim details. terms are free text; scope_cues are optional workspace or file paths.", map[string]any{
+			"terms":      prop("string", "words describing the prior work or lesson"),
+			"scope_cues": map[string]any{"type": "array", "items": map[string]any{"type": "string"}, "description": "optional workspace or file paths"},
+			"limit":      prop("integer", "maximum fold and notebook hits, default 5, maximum 10"),
+		}, "terms"))
+	}
+	return definitions
 }
 
 // Execute dispatches one call. An unknown name is answered with the valid list
@@ -129,10 +151,153 @@ func (t *Toolbox) Execute(ctx context.Context, name string, arguments string) Re
 		result = t.edit(args)
 	case "web":
 		result = t.webCall(ctx, args)
+	case "recall":
+		result = t.recall(args)
 	default:
-		return errorf("no tool named %q. Available: sh, write, edit, web", name)
+		available := "sh, write, edit, web"
+		if t.history != nil {
+			available += ", recall"
+		}
+		return errorf("no tool named %q. Available: %s", name, available)
 	}
 	return t.spill(result)
+}
+
+type recallToolFact struct {
+	NodeID   string         `json:"node_id,omitempty"`
+	Scope    string         `json:"scope"`
+	Kind     store.FactKind `json:"kind"`
+	Body     string         `json:"body"`
+	Pointers []string       `json:"pointers"`
+	Age      string         `json:"age"`
+}
+
+type recallToolResponse struct {
+	Folds    []store.RecallHit `json:"folds"`
+	Notebook []recallToolFact  `json:"notebook"`
+}
+
+func (t *Toolbox) recall(args map[string]any) Result {
+	if t.history == nil {
+		return errorf("recall is not available without an attached store")
+	}
+	terms := strings.TrimSpace(stringArg(args, "terms"))
+	cues := stringsArg(args, "scope_cues")
+	if terms == "" && len(cues) == 0 {
+		return errorf("recall needs terms or scope_cues")
+	}
+	limit := intArg(args, "limit", 5)
+	if limit <= 0 {
+		limit = 5
+	}
+	if limit > 10 {
+		limit = 10
+	}
+	folds, err := t.history.Recall(terms, cues, limit)
+	if err != nil {
+		return errorf("recall folds: %v", err)
+	}
+	facts, err := t.history.SearchFacts(store.FactQuery{Cues: recallFactCues(cues), Terms: terms, Limit: limit})
+	if err != nil {
+		return errorf("recall notebook: %v", err)
+	}
+
+	response := recallToolResponse{Folds: make([]store.RecallHit, 0), Notebook: make([]recallToolFact, 0)}
+	for _, hit := range folds {
+		hit.Intent = recallClip(hit.Intent, 512)
+		hit.Digest = recallClip(hit.Digest, 2<<10)
+		if len(hit.Pointers) > 8 {
+			hit.Pointers = hit.Pointers[:8]
+		}
+		for index := range hit.Pointers {
+			hit.Pointers[index] = recallClip(hit.Pointers[index], 512)
+		}
+		candidate := response
+		candidate.Folds = append(append([]store.RecallHit(nil), response.Folds...), hit)
+		if recallJSONFits(candidate) {
+			response = candidate
+		}
+	}
+	now := time.Now().UTC()
+	for _, fact := range facts {
+		item := recallToolFact{NodeID: fact.NodeID, Scope: recallClip(fact.Scope, 256), Kind: fact.Kind,
+			Body: recallClip(fact.Body, store.MaxFactBytes), Pointers: t.foldPointers(fact.NodeID),
+			Age: store.AgeLabel(fact.Time, now)}
+		candidate := response
+		candidate.Notebook = append(append([]recallToolFact(nil), response.Notebook...), item)
+		if recallJSONFits(candidate) {
+			response = candidate
+		}
+	}
+	encoded, err := json.Marshal(response)
+	if err != nil {
+		return errorf("encode recall: %v", err)
+	}
+	return Result{Content: string(encoded)}
+}
+
+func (t *Toolbox) foldPointers(nodeID string) []string {
+	for nodeID != "" && nodeID != store.RootID {
+		node, ok, err := t.history.Node(nodeID)
+		if err != nil || !ok {
+			return nil
+		}
+		if node.FoldRoot {
+			pointers := append([]string(nil), node.FoldPointers...)
+			if len(pointers) > 8 {
+				pointers = pointers[:8]
+			}
+			for index := range pointers {
+				pointers[index] = recallClip(pointers[index], 512)
+			}
+			return pointers
+		}
+		nodeID = node.Parent
+	}
+	return nil
+}
+
+func recallFactCues(cues []string) []string {
+	seen := make(map[string]bool)
+	result := make([]string, 0, len(cues)*3)
+	add := func(cue string) {
+		cue = strings.TrimSpace(cue)
+		if cue == "" || seen[cue] {
+			return
+		}
+		seen[cue] = true
+		result = append(result, cue)
+	}
+	for _, cue := range cues {
+		add(cue)
+		if strings.Contains(cue, ":") {
+			continue
+		}
+		cleaned := filepath.ToSlash(filepath.Clean(cue))
+		add("file:" + cleaned)
+		add("repo:" + cleaned)
+		if parent := filepath.ToSlash(filepath.Dir(cleaned)); parent != "." && parent != cleaned {
+			add("repo:" + parent)
+		}
+	}
+	return result
+}
+
+func recallJSONFits(response recallToolResponse) bool {
+	encoded, err := json.Marshal(response)
+	return err == nil && len(encoded) <= maxRecallResultBytes
+}
+
+func recallClip(value string, limit int) string {
+	value = strings.TrimSpace(value)
+	if len(value) <= limit {
+		return value
+	}
+	cut := limit - len("...")
+	for cut > 0 && !utf8.ValidString(value[:cut]) {
+		cut--
+	}
+	return value[:cut] + "..."
 }
 
 // spill moves a large result out of context and leaves a pointer to it. Errors

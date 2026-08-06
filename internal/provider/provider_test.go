@@ -45,6 +45,23 @@ type capture struct {
 	headers []http.Header
 }
 
+type roundTripFunc func(*http.Request) (*http.Response, error)
+
+func (fn roundTripFunc) RoundTrip(request *http.Request) (*http.Response, error) {
+	return fn(request)
+}
+
+// handlerClient exercises the complete HTTP request/response boundary without
+// opening a listener. Besides working in network-denied sandboxes, it keeps
+// these wire-shape tests deterministic: no kernel socket is part of the test.
+func handlerClient(handler http.Handler) *http.Client {
+	return &http.Client{Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
+		recorder := httptest.NewRecorder()
+		handler.ServeHTTP(recorder, request)
+		return recorder.Result(), nil
+	})}
+}
+
 func (c *capture) record(request *http.Request) {
 	payload, _ := io.ReadAll(request.Body)
 	var decoded map[string]any
@@ -68,15 +85,15 @@ func (c *capture) body(index int) map[string]any {
 func newTestClient(t *testing.T, config Config) (*Client, *capture) {
 	t.Helper()
 	recorded := &capture{}
-	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+	handler := http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 		recorded.record(request)
 		writer.Header().Set("Content-Type", "application/json")
 		_, _ = writer.Write([]byte(`{"model":"sim/model","choices":[{"index":0,"finish_reason":"stop","message":{"role":"assistant","content":"ok"}}],"usage":{"prompt_tokens":10,"completion_tokens":2,"total_tokens":12}}`))
-	}))
-	t.Cleanup(server.Close)
+	})
 
 	config.APIKey = "test-key"
-	config.BaseURL = server.URL
+	config.BaseURL = "http://provider.test"
+	config.HTTPClient = handlerClient(handler)
 	if config.Model == "" {
 		config.Model = "sim/model"
 	}
@@ -334,15 +351,14 @@ func TestAdapterRewritesMaxTokensOnlyForVouchedOpenAIFamilies(t *testing.T) {
 
 func TestAdapterStreamsWithTheSameEconomyFields(t *testing.T) {
 	recorded := &capture{}
-	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+	handler := http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 		recorded.record(request)
 		writer.Header().Set("Content-Type", "text/event-stream")
 		_, _ = writer.Write([]byte("data: {\"choices\":[{\"index\":0,\"delta\":{\"role\":\"assistant\",\"content\":\"hi\"}}]}\n\ndata: [DONE]\n\n"))
-	}))
-	defer server.Close()
+	})
 
 	client, err := NewClient(Config{
-		APIKey: "k", BaseURL: server.URL, Model: "sim/model",
+		APIKey: "k", BaseURL: "http://provider.test", Model: "sim/model", HTTPClient: handlerClient(handler),
 		SupportsParameter: func(string, string) (bool, bool) { return true, true },
 	})
 	if err != nil {
@@ -382,13 +398,12 @@ func TestAdapterStreamsWithTheSameEconomyFields(t *testing.T) {
 }
 
 func TestAdapterErrorsKeepTheStatusCodeTheHarnessClassifiesOn(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
+	handler := http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
 		writer.WriteHeader(http.StatusTooManyRequests)
 		_, _ = writer.Write([]byte(`{"error":{"message":"rate limited"}}`))
-	}))
-	defer server.Close()
+	})
 
-	client, err := NewClient(Config{APIKey: "k", BaseURL: server.URL, Model: "sim/model"})
+	client, err := NewClient(Config{APIKey: "k", BaseURL: "http://provider.test", Model: "sim/model", HTTPClient: handlerClient(handler)})
 	if err != nil {
 		t.Fatal(err)
 	}

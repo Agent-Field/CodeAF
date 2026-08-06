@@ -114,7 +114,7 @@ func runChat(args []string) error {
 				Question:    brief.Question,
 			}, nil
 		},
-		planSubtree(settings, taskClient, plans),
+		planSubtree(settings, taskClient, plans, graph),
 	).WithNarrator(narrateProgress(settings, chatClient)).
 		WithDistiller(distillFacts(settings, chatClient, graph)).
 		WithConsolidator(consolidateFacts(settings, chatClient, graph)).
@@ -142,7 +142,7 @@ func runChat(args []string) error {
 		// The exact leaf configuration the headless scheduler uses: the same turn
 		// backstop, binding token budget, and deadline scaled with that budget.
 		deadline := leafDeadline(chatLeafTokens)
-		linear := exec.NewLinear(workingClient, jobSpace, web, chatLeafTurns, chatLeafTokens, deadline)
+		linear := exec.NewLinear(workingClient, jobSpace, web, chatLeafTurns, chatLeafTokens, deadline).WithStore(graph)
 		shape := "atomic"
 		if planNode != nil {
 			shape = chatLeafShape(planNode)
@@ -295,7 +295,7 @@ func runChat(args []string) error {
 		// that consumes it and feeds everything that was waiting.
 		if outcome.Stop == exec.StopBudget || outcome.Stop == exec.StopTurnCap {
 			spliced, sink, replanErr := resident.ReplanOverrun(ctx, graph, node, outcome.Text, absolute,
-				replanRemainder(settings, taskClient, plans))
+				replanRemainder(settings, taskClient, plans, graph))
 			if replanErr == nil && spliced > 0 {
 				text += fmt.Sprintf("\n\n[partial: ran out of %s — the remainder was re-planned into %d follow-up nodes; the finished result lands with %s]",
 					outcome.Stop, spliced, sink)
@@ -1113,7 +1113,7 @@ func recordSingleLeaf(settings config.Config, model string, node store.Node, out
 	_ = measured.Save()
 }
 
-func planSubtree(settings config.Config, client *liveClient, plans *jobPlans) resident.PlanFunc {
+func planSubtree(settings config.Config, client *liveClient, plans *jobPlans, history *store.Store) resident.PlanFunc {
 	return func(ctx context.Context, compiled resident.Compiled) (store.Subtree, error) {
 		prefix, err := subtreePrefix()
 		if err != nil {
@@ -1128,6 +1128,7 @@ func planSubtree(settings config.Config, client *liveClient, plans *jobPlans) re
 		}
 		workingModel, workingClient := client.Snapshot()
 		graph, err := plan.Build(settings.Context(ctx, compiled.Goal), workingClient, compiled.Goal, plan.Options{
+			Recall:       recallHits(history, compiled.Goal, groundRecallLimit),
 			SpineSamples: settings.SpineSamples,
 			// One level deeper than the one-shot default: chat projects are
 			// where visible fan-out is the product, and the compiler now
@@ -1169,10 +1170,11 @@ func subtreeSink(subtree store.Subtree) string {
 // for call shapes and profile records — scoped to what the partial left
 // undone. Falls back to one continuation node rather than failing: a leaf
 // out of budget deserves at least one fresh worker on the remainder.
-func replanRemainder(settings config.Config, client *liveClient, plans *jobPlans) resident.OverrunPlanFunc {
+func replanRemainder(settings config.Config, client *liveClient, plans *jobPlans, history *store.Store) resident.OverrunPlanFunc {
 	return func(ctx context.Context, goal, prefix string) (store.Subtree, error) {
 		workingModel, workingClient := client.Snapshot()
 		graph, err := plan.Build(settings.Context(ctx, goal), workingClient, goal, plan.Options{
+			Recall:       recallHits(history, goal, groundRecallLimit),
 			SpineSamples: settings.SpineSamples,
 			MaxDepth:     settings.MaxDepth,
 			NodeBudget:   settings.NodeBudget,

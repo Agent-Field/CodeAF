@@ -3,6 +3,7 @@ package store
 import (
 	"errors"
 	"fmt"
+	"os"
 	"path/filepath"
 	"reflect"
 	"strings"
@@ -115,7 +116,8 @@ func TestRebuildMatchesMixedIncrementalWorkload(t *testing.T) {
 	if !goalNode.Folded || !goalNode.FoldRoot || len(goalNode.FoldDigest) > MaxDigestBytes {
 		t.Fatalf("fold root = folded:%v root:%v digest:%d bytes", goalNode.Folded, goalNode.FoldRoot, len(goalNode.FoldDigest))
 	}
-	if !reflect.DeepEqual(goalNode.FoldPointers, []string{"cas://draft", "workspace://run-17"}) {
+	if len(goalNode.FoldPointers) != 3 ||
+		!reflect.DeepEqual(goalNode.FoldPointers[:2], []string{"cas://draft", "workspace://run-17"}) {
 		t.Fatalf("fold pointers = %v", goalNode.FoldPointers)
 	}
 	active, err := store.ActiveNodes()
@@ -153,6 +155,46 @@ func TestRebuildMatchesMixedIncrementalWorkload(t *testing.T) {
 	}
 	if !reflect.DeepEqual(eventsAfter, eventsBefore) {
 		t.Fatal("Rebuild changed the source event journal")
+	}
+}
+
+func TestFoldSpillsOversizedDigestToCASAndRebuildKeepsPointer(t *testing.T) {
+	graph := openTestStore(t, filepath.Join(t.TempDir(), "cas-fold.db"))
+	if err := graph.Splice(RootID, Subtree{Nodes: []NodeSpec{{
+		ID: "oversized", Brief: "Preserve the full fold", Stage: 1,
+	}}}, Provenance{Origin: OriginUser, Intent: "preserve the oversized fold"}); err != nil {
+		t.Fatal(err)
+	}
+	claim := mustClaim(t, graph, "oversized", "worker")
+	if err := graph.Complete(claim, "complete"); err != nil {
+		t.Fatal(err)
+	}
+	full := strings.Repeat("full fold territory with evidence\n", 400)
+	workspacePointer := "/workspace/result.md"
+	if err := graph.Fold("oversized", full, []string{workspacePointer}); err != nil {
+		t.Fatal(err)
+	}
+	node, ok, err := graph.Node("oversized")
+	if err != nil || !ok {
+		t.Fatalf("read fold: ok=%v err=%v", ok, err)
+	}
+	if len(node.FoldDigest) > MaxDigestBytes || len(node.FoldPointers) != 2 || node.FoldPointers[0] != workspacePointer {
+		t.Fatalf("fold = digest:%d pointers:%v", len(node.FoldDigest), node.FoldPointers)
+	}
+	spilled, err := os.ReadFile(node.FoldPointers[1])
+	if err != nil {
+		t.Fatalf("read CAS spill %q: %v", node.FoldPointers[1], err)
+	}
+	if string(spilled) != strings.TrimSpace(full) {
+		t.Fatalf("CAS spill changed full digest: got %d bytes, want %d", len(spilled), len(strings.TrimSpace(full)))
+	}
+
+	if err := graph.Rebuild(); err != nil {
+		t.Fatal(err)
+	}
+	rebuilt, ok, err := graph.Node("oversized")
+	if err != nil || !ok || !reflect.DeepEqual(rebuilt.FoldPointers, node.FoldPointers) {
+		t.Fatalf("rebuilt CAS pointers = (%v, %v, %v), want %v", rebuilt.FoldPointers, ok, err, node.FoldPointers)
 	}
 }
 

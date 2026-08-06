@@ -22,14 +22,8 @@ func (s *Store) Fold(subtreeRoot, digest string, pointers []string) error {
 	if subtreeRoot == "" || subtreeRoot == RootID {
 		return fmt.Errorf("fold %q: %w: the permanent spine cannot be folded", subtreeRoot, ErrInvalid)
 	}
-	payload := foldPayload{
-		Digest:   bounded(digest, MaxDigestBytes),
-		Pointers: uniqueStrings(pointers),
-	}
-	encodedPointers, err := json.Marshal(payload.Pointers)
-	if err != nil {
-		return fmt.Errorf("fold %q: encode pointers: %w", subtreeRoot, err)
-	}
+	digest = strings.TrimSpace(digest)
+	pointers = uniqueStrings(pointers)
 
 	tx, err := s.db.BeginTx(context.Background(), nil)
 	if err != nil {
@@ -84,6 +78,26 @@ func (s *Store) Fold(subtreeRoot, digest string, pointers []string) error {
 		return fmt.Errorf("fold %q: %w: node %q is %s", subtreeRoot, ErrOpenSubtree, openID, openStatus)
 	}
 
+	// The graph carries only a bounded map. When a fold is larger, preserve its
+	// full territory in the immutable CAS and put the ordinary filesystem path
+	// on the fold so the executor can read it with the same tool as any artifact.
+	if len(digest) > MaxDigestBytes {
+		ref, err := s.blobs.PutBytes([]byte(digest))
+		if err != nil {
+			return fmt.Errorf("fold %q: spill digest: %w", subtreeRoot, err)
+		}
+		path, err := s.blobs.Path(ref)
+		if err != nil {
+			return fmt.Errorf("fold %q: locate spilled digest: %w", subtreeRoot, err)
+		}
+		pointers = uniqueStrings(append(pointers, path))
+	}
+	payload := foldPayload{Digest: bounded(digest, MaxDigestBytes), Pointers: pointers}
+	encodedPointers, err := json.Marshal(payload.Pointers)
+	if err != nil {
+		return fmt.Errorf("fold %q: encode pointers: %w", subtreeRoot, err)
+	}
+
 	seq, _, err := appendEvent(tx, subtreeRoot, EventSubtreeFolded, payload)
 	if err != nil {
 		return fmt.Errorf("fold %q: %w", subtreeRoot, err)
@@ -124,7 +138,7 @@ func applyFoldView(tx *sql.Tx, root, digest, pointers string, seq int64) error {
 	if changed == 0 {
 		return ErrNotFound
 	}
-	return nil
+	return refreshGraphFTS(tx, root)
 }
 
 func uniqueStrings(values []string) []string {

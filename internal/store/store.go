@@ -17,6 +17,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Agent-Field/aforge-v2/internal/cas"
 	_ "modernc.org/sqlite"
 )
 
@@ -212,7 +213,8 @@ type Snapshot struct {
 
 // Store is one handle onto the shared SQLite graph.
 type Store struct {
-	db *sql.DB
+	db    *sql.DB
+	blobs *cas.Store
 }
 
 const schema = `
@@ -348,8 +350,15 @@ func Open(path string) (*Store, error) {
 	if err := migrateNodesSchema(db); err != nil {
 		return closeOnError(fmt.Errorf("migrate nodes schema: %w", err))
 	}
+	if err := migrateGraphFTS(db); err != nil {
+		return closeOnError(fmt.Errorf("migrate graph index: %w", err))
+	}
 
-	store := &Store{db: db}
+	blobs, err := cas.New(filepath.Join(filepath.Dir(absolute), "cas"))
+	if err != nil {
+		return closeOnError(fmt.Errorf("open content store: %w", err))
+	}
+	store := &Store{db: db, blobs: blobs}
 	if err := store.ensureSpine(); err != nil {
 		return closeOnError(err)
 	}
@@ -397,6 +406,9 @@ func (s *Store) ensureSpine() error {
 			RootID, payload.Brief, Running, payload.Provenance.Origin,
 			payload.Provenance.Intent, seq, seq, formatTime(at)); err != nil {
 			return fmt.Errorf("initialize spine view: %w", err)
+		}
+		if err := refreshGraphFTS(tx, RootID); err != nil {
+			return fmt.Errorf("initialize spine index: %w", err)
 		}
 	} else {
 		var roots, spine int
