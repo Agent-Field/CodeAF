@@ -42,6 +42,9 @@ func (s *Store) Rebuild() error {
 	if _, err := tx.Exec(`DELETE FROM facts`); err != nil {
 		return fmt.Errorf("rebuild facts: %w", err)
 	}
+	if _, err := tx.Exec(`DELETE FROM facts_fts`); err != nil {
+		return fmt.Errorf("rebuild facts index: %w", err)
+	}
 	for _, event := range events {
 		if err := replayEvent(tx, event); err != nil {
 			return fmt.Errorf("replay event %d (%s): %w", event.Seq, event.Kind, err)
@@ -210,6 +213,13 @@ func replayEvent(tx *sql.Tx, event Event) error {
 			return err
 		}
 		return applyFactView(tx, payload, event.Seq, event.Time)
+
+	case EventFactSuperseded:
+		var payload factSupersededPayload
+		if err := json.Unmarshal(event.Payload, &payload); err != nil {
+			return err
+		}
+		return applyFactSupersession(tx, payload)
 
 	default:
 		// The journal is expected to gain accounting and artifact events that do

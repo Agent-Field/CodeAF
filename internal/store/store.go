@@ -86,6 +86,8 @@ const (
 
 	// EventFactLearned is one durable fact distilled from finished work.
 	EventFactLearned EventKind = "fact_learned"
+	// EventFactSuperseded retires one fact in favour of a newer one.
+	EventFactSuperseded EventKind = "fact_superseded"
 )
 
 var (
@@ -316,6 +318,9 @@ func Open(path string) (*Store, error) {
 	}
 	if _, err := db.Exec(factsSchema); err != nil {
 		return closeOnError(fmt.Errorf("initialize facts schema: %w", err))
+	}
+	if err := migrateFactsSchema(db); err != nil {
+		return closeOnError(fmt.Errorf("migrate facts schema: %w", err))
 	}
 
 	store := &Store{db: db}

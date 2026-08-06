@@ -651,7 +651,9 @@ func (r *Reconciler) distillJob(ctx context.Context, node store.Node) {
 		if strings.TrimSpace(fact) == "" {
 			continue
 		}
-		_, _ = r.store.RecordFact(node.ID, clipLabel(fact, store.MaxFactBytes-1))
+		// The cue-and-kind-aware distiller lands with the notebook upgrade;
+		// until callers classify, everything files under the user scope.
+		_, _ = r.store.RecordFact(node.ID, "user", store.FactPlain, clipLabel(fact, store.MaxFactBytes-1))
 	}
 }
 
