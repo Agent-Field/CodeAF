@@ -106,9 +106,7 @@ type Model struct {
 	chat  viewport.Model
 	graph viewport.Model
 
-	nodeDetails viewport.Model
-	nodeTrail   viewport.Model
-	nodeTrace   viewport.Model
+	nodeTrace viewport.Model
 
 	messages []store.Message
 	snapshot store.Snapshot
@@ -123,7 +121,6 @@ type Model struct {
 	nodeMessages   []store.Message
 	nodeLastSeq    int64
 	nodeTraceText  string
-	nodeScroll     nodeSection
 	chatDraft      string
 	returnFocus    paneFocus
 
@@ -136,9 +133,8 @@ type Model struct {
 	graphWidth  int
 	graphHeight int
 
-	nodeDetailsHeight int
-	nodeTrailHeight   int
-	nodeTraceHeight   int
+	nodeDetailsText string
+	nodeTraceHeight int
 
 	inputFocused     bool
 	focus            paneFocus
@@ -166,14 +162,12 @@ type Model struct {
 	splitPct      int
 	draggingSplit bool
 
-	chatBounds        paneBounds
-	graphBounds       paneBounds
-	graphRowsBounds   paneBounds
-	inputBounds       paneBounds
-	nodeBounds        paneBounds
-	nodeDetailsBounds paneBounds
-	nodeTrailBounds   paneBounds
-	nodeTraceBounds   paneBounds
+	chatBounds      paneBounds
+	graphBounds     paneBounds
+	graphRowsBounds paneBounds
+	inputBounds     paneBounds
+	nodeBounds      paneBounds
+	nodeTraceBounds paneBounds
 }
 
 type paneFocus int
@@ -216,8 +210,6 @@ func newModel(backend Backend, sessionID string, commander Commander) *Model {
 		input:        input,
 		chat:         viewport.New(1, 1),
 		graph:        viewport.New(1, 1),
-		nodeDetails:  viewport.New(1, 1),
-		nodeTrail:    viewport.New(1, 1),
 		nodeTrace:    viewport.New(1, 1),
 		inputFocused: true,
 		focus:        focusInput,
@@ -372,6 +364,12 @@ func (m *Model) updateKey(message tea.KeyMsg) (tea.Cmd, bool) {
 			return m.submitSteer(), true
 		case key == "pgup" || key == "pgdown":
 			m.pageNodeViewport(key == "pgdown")
+			return nil, true
+		case (key == "up" || key == "down") && m.input.Value() == "":
+			m.scrollNodeFeed(key == "down")
+			return nil, true
+		case key == "end":
+			m.nodeTrace.GotoBottom()
 			return nil, true
 		}
 		return nil, false
