@@ -48,6 +48,12 @@ type Compiled struct {
 	// to guess. Nothing is spliced; the question is asked in the thread and
 	// the user's reply arrives as an ordinary next message.
 	Question string
+
+	// QuestionOptions makes any compiler askback selectable without removing
+	// free text. Charter is an inert standing draft until the reconciler records
+	// a separate ratification command.
+	QuestionOptions []store.QuestionOption
+	Charter         *store.CharterSpec
 }
 
 // SkillCandidate names the artifact directory a job proved useful. It remains
@@ -268,6 +274,8 @@ type commandOutcome struct {
 	// asAgent posts the receipt in the agent's own voice instead of as a
 	// collapsed system receipt — a question must be heard, not filed.
 	asAgent bool
+	// options travels with any agent question as structured payload.
+	options []store.QuestionOption
 }
 
 func (r *Reconciler) reconcileCommand(ctx context.Context, command store.Command) error {
@@ -296,6 +304,7 @@ func (r *Reconciler) reconcileCommand(ctx context.Context, command store.Command
 		Role:       role,
 		Body:       boundMessage(outcome.receipt),
 		CommandSeq: command.Seq,
+		Options:    outcome.options,
 	})
 	return err
 }
@@ -309,6 +318,9 @@ func (r *Reconciler) applyCommand(ctx context.Context, command store.Command) (c
 		return r.splice(ctx, command)
 	case store.CommandCancel:
 		return r.cancel(ctx, command)
+	case store.CommandCharterRatify, store.CommandCharterPause, store.CommandCharterRetire,
+		store.CommandCharterCadence, store.CommandCharterOnce:
+		return r.applyCharterCommand(command)
 	case store.CommandAmend:
 		const reason = "amend is not implemented yet; cancel and re-ask, or splice an addition"
 		return commandOutcome{
@@ -382,6 +394,19 @@ func (r *Reconciler) splice(ctx context.Context, command store.Command) (command
 	if promoted {
 		compiled.BuildsOn = append([]string{promotion.ID}, compiled.BuildsOn...)
 	}
+	if compiled.Charter != nil {
+		id := fmt.Sprintf("charter-%d", command.Seq)
+		charter, err := r.store.DraftCharter(id, command.SessionID, command.Seq, *compiled.Charter)
+		if err != nil {
+			return commandOutcome{}, fmt.Errorf("draft charter: %w", err)
+		}
+		question, options := charterRatificationQuestion(charter)
+		return commandOutcome{
+			status: store.CommandRejected, result: "drafted charter pending ratification",
+			receipt: question, asAgent: true, options: options,
+		}, nil
+	}
+
 	if question := strings.TrimSpace(compiled.Question); question != "" {
 		// One gap was too consequential to guess. Ask in the agent's voice
 		// and stop; the reply arrives as an ordinary next message and the
@@ -391,6 +416,7 @@ func (r *Reconciler) splice(ctx context.Context, command store.Command) (command
 			result:  "asked the user: " + clipLabel(question, 200),
 			receipt: question,
 			asAgent: true,
+			options: compiled.QuestionOptions,
 		}, nil
 	}
 	if strings.TrimSpace(compiled.Goal) == "" {
