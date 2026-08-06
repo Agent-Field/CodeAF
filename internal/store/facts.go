@@ -241,6 +241,16 @@ CREATE INDEX IF NOT EXISTS facts_scope ON facts (scope, status);
 CREATE VIRTUAL TABLE IF NOT EXISTS facts_fts USING fts5(body, scope);
 `
 
+const scopeAliasesSchema = `
+CREATE TABLE IF NOT EXISTS scope_aliases (
+    from_scope TEXT PRIMARY KEY,
+    to_scope   TEXT NOT NULL,
+    event_seq  INTEGER NOT NULL REFERENCES events(seq),
+    CHECK (from_scope <> to_scope)
+);
+CREATE INDEX IF NOT EXISTS scope_aliases_to ON scope_aliases (to_scope);
+`
+
 type factPayload struct {
 	NodeID    string         `json:"node_id"`
 	Scope     string         `json:"scope,omitempty"`
@@ -270,6 +280,88 @@ type factStatusPayload struct {
 	FactSeq     int64            `json:"fact_seq"`
 	EvidenceSeq int64            `json:"evidence_seq,omitempty"`
 	Origin      FactChangeOrigin `json:"origin"`
+}
+
+type scopeAliasedPayload struct {
+	From string `json:"from_scope"`
+	To   string `json:"to_scope"`
+}
+
+// ScopeAlias is one old scope name and the canonical scope it now resolves
+// to. Seq is the journal event that introduced the direct alias.
+type ScopeAlias struct {
+	From string
+	To   string
+	Seq  int64
+}
+
+// AliasScope journals one taxonomy merge and re-shelves only active facts.
+// Retired and quarantined rows retain the scope they had as historical
+// evidence; retrieval and display resolve that name through the alias table.
+func (s *Store) AliasScope(from, to string) error {
+	from = normalizeScope(from)
+	to = normalizeScope(to)
+	if !compatibleGardenScopes(from, to) || from == to {
+		return fmt.Errorf("alias scope: %w: incompatible scopes %q and %q", ErrInvalid, from, to)
+	}
+	tx, err := s.db.BeginTx(context.Background(), nil)
+	if err != nil {
+		return fmt.Errorf("alias scope: %w", err)
+	}
+	defer tx.Rollback()
+
+	payload := scopeAliasedPayload{From: from, To: to}
+	seq, _, err := appendEvent(tx, "", EventScopeAliased, payload)
+	if err != nil {
+		return fmt.Errorf("alias scope: %w", err)
+	}
+	if err := applyScopeAlias(tx, payload, seq); err != nil {
+		return fmt.Errorf("alias scope: %w", err)
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("alias scope: %w", err)
+	}
+	return nil
+}
+
+// ResolveScope follows aliases to the current shelf. A corrupt cycle is an
+// error rather than a partial answer; the visited-set guard also makes old or
+// manually edited databases safe to query.
+func (s *Store) ResolveScope(scope string) (string, error) {
+	resolved, err := resolveScope(s.db, scope)
+	if err != nil {
+		return "", fmt.Errorf("resolve scope: %w", err)
+	}
+	return resolved, nil
+}
+
+// ScopeAliases lists old names with their transitive canonical destination.
+func (s *Store) ScopeAliases() ([]ScopeAlias, error) {
+	rows, err := s.db.Query(`SELECT from_scope, event_seq FROM scope_aliases ORDER BY from_scope`)
+	if err != nil {
+		return nil, fmt.Errorf("list scope aliases: %w", err)
+	}
+	aliases := make([]ScopeAlias, 0)
+	for rows.Next() {
+		var alias ScopeAlias
+		if err := rows.Scan(&alias.From, &alias.Seq); err != nil {
+			rows.Close()
+			return nil, fmt.Errorf("list scope aliases: %w", err)
+		}
+		aliases = append(aliases, alias)
+	}
+	if err := rows.Err(); err != nil {
+		rows.Close()
+		return nil, fmt.Errorf("list scope aliases: %w", err)
+	}
+	rows.Close()
+	for index := range aliases {
+		aliases[index].To, err = resolveScope(s.db, aliases[index].From)
+		if err != nil {
+			return nil, fmt.Errorf("list scope aliases: %w", err)
+		}
+	}
+	return aliases, nil
 }
 
 // RecordFact appends one learned fact. An identical active or quarantined fact
@@ -386,6 +478,11 @@ func (s *Store) recordFact(nodeID, scope string, kind FactKind, body string, uns
 		return Fact{}, fmt.Errorf("record fact: %w", err)
 	}
 	defer tx.Rollback()
+	resolvedScope, err := resolveScope(tx, scope)
+	if err != nil {
+		return Fact{}, fmt.Errorf("record fact: %w", err)
+	}
+	scope = resolvedScope
 
 	if nodeID != "" {
 		if err := requireNode(tx, nodeID); err != nil {
@@ -767,7 +864,10 @@ func (s *Store) searchFacts(query FactQuery, countUses bool) ([]Fact, error) {
 		if len(results) >= query.Limit {
 			break
 		}
-		cue = normalizeScope(cue)
+		cue, err := resolveScope(s.db, cue)
+		if err != nil {
+			return nil, fmt.Errorf("search facts: %w", err)
+		}
 		where := `scope = ? AND status = ?`
 		args := []any{cue, FactActive}
 		if query.Kind != "" {
@@ -863,8 +963,12 @@ func (s *Store) ActiveFacts(scope string, limit int) ([]Fact, error) {
 	if scope == "" {
 		return s.factsWhere(`status = ? ORDER BY seq DESC LIMIT ?`, FactActive, limit)
 	}
+	resolved, err := resolveScope(s.db, scope)
+	if err != nil {
+		return nil, fmt.Errorf("query active facts: %w", err)
+	}
 	return s.factsWhere(`scope = ? AND status = ? ORDER BY seq DESC LIMIT ?`,
-		normalizeScope(scope), FactActive, limit)
+		resolved, FactActive, limit)
 }
 
 // RecentFacts returns the newest active facts across all scopes.
@@ -974,6 +1078,12 @@ func applyFactView(tx *sql.Tx, payload factPayload, seq int64, at time.Time) err
 		// fact_learned events predating skill candidacy have no status field.
 		status = FactActive
 	}
+	if status == FactActive {
+		scope, err = resolveScope(tx, scope)
+		if err != nil {
+			return err
+		}
+	}
 
 	if _, err := tx.Exec(`
 		INSERT INTO facts (seq, ts, node_id, scope, kind, body, unsettled, status, artifact, status_seq)
@@ -1021,6 +1131,13 @@ func applyFactActivation(tx *sql.Tx, payload factActivatedPayload) error {
 	}
 	var body, scope string
 	if err := tx.QueryRow(`SELECT body, scope FROM facts WHERE seq = ?`, payload.FactSeq).Scan(&body, &scope); err != nil {
+		return err
+	}
+	scope, err = resolveScope(tx, scope)
+	if err != nil {
+		return err
+	}
+	if _, err := tx.Exec(`UPDATE facts SET scope = ? WHERE seq = ?`, scope, payload.FactSeq); err != nil {
 		return err
 	}
 	_, err = tx.Exec(`INSERT INTO facts_fts (rowid, body, scope) VALUES (?, ?, ?)`,
@@ -1081,8 +1198,13 @@ func applyFactRestore(tx *sql.Tx, payload factStatusPayload, seq int64) error {
 		}
 		return err
 	}
+	var err error
+	scope, err = resolveScope(tx, scope)
+	if err != nil {
+		return err
+	}
 	var duplicate int64
-	err := tx.QueryRow(`
+	err = tx.QueryRow(`
 		SELECT seq FROM facts
 		WHERE seq != ? AND scope = ? AND status = ? AND lower(body) = lower(?)
 		LIMIT 1`, payload.FactSeq, scope, FactActive, body).Scan(&duplicate)
@@ -1094,8 +1216,8 @@ func applyFactRestore(tx *sql.Tx, payload factStatusPayload, seq int64) error {
 	}
 	result, err := tx.Exec(`
 		UPDATE facts
-		SET status = ?, status_seq = ?, evidence_seq = 0, status_origin = ?
-		WHERE seq = ? AND status = ?`, FactActive, seq, payload.Origin,
+		SET scope = ?, status = ?, status_seq = ?, evidence_seq = 0, status_origin = ?
+		WHERE seq = ? AND status = ?`, scope, FactActive, seq, payload.Origin,
 		payload.FactSeq, FactQuarantined)
 	if err != nil {
 		return err
@@ -1127,6 +1249,105 @@ func replayFactInjection(tx *sql.Tx, nodeID string, payload factInjectionPayload
 		}
 	}
 	return nil
+}
+
+type scopeQueryer interface {
+	QueryRow(query string, args ...any) *sql.Row
+}
+
+func resolveScope(queryer scopeQueryer, scope string) (string, error) {
+	current := normalizeScope(scope)
+	seen := make(map[string]bool)
+	for {
+		if seen[current] {
+			return "", fmt.Errorf("%w: scope alias cycle at %q", ErrInvalid, current)
+		}
+		seen[current] = true
+		var next string
+		err := queryer.QueryRow(`SELECT to_scope FROM scope_aliases WHERE from_scope = ?`, current).Scan(&next)
+		if err == sql.ErrNoRows {
+			return current, nil
+		}
+		if err != nil {
+			return "", err
+		}
+		current = normalizeScope(next)
+	}
+}
+
+func applyScopeAlias(tx *sql.Tx, payload scopeAliasedPayload, seq int64) error {
+	from := normalizeScope(payload.From)
+	to := normalizeScope(payload.To)
+	if !compatibleGardenScopes(from, to) || from == to {
+		return fmt.Errorf("%w: incompatible scopes %q and %q", ErrInvalid, from, to)
+	}
+	var exists int
+	err := tx.QueryRow(`SELECT 1 FROM scope_aliases WHERE from_scope = ?`, from).Scan(&exists)
+	if err != nil && err != sql.ErrNoRows {
+		return err
+	}
+	if exists != 0 {
+		return fmt.Errorf("%w: scope %q is already an alias", ErrInvalid, from)
+	}
+	canonical, err := resolveScope(tx, to)
+	if err != nil {
+		return err
+	}
+	if canonical == from {
+		return fmt.Errorf("%w: alias %q to %q would create a cycle", ErrInvalid, from, to)
+	}
+	if _, err := tx.Exec(`
+		INSERT INTO scope_aliases (from_scope, to_scope, event_seq)
+		VALUES (?, ?, ?)`, from, to, seq); err != nil {
+		return err
+	}
+
+	rows, err := tx.Query(`SELECT seq, body FROM facts WHERE scope = ? AND status = ?`, from, FactActive)
+	if err != nil {
+		return err
+	}
+	type activeFact struct {
+		seq  int64
+		body string
+	}
+	active := make([]activeFact, 0)
+	for rows.Next() {
+		var fact activeFact
+		if err := rows.Scan(&fact.seq, &fact.body); err != nil {
+			rows.Close()
+			return err
+		}
+		active = append(active, fact)
+	}
+	if err := rows.Err(); err != nil {
+		rows.Close()
+		return err
+	}
+	rows.Close()
+	if _, err := tx.Exec(`UPDATE facts SET scope = ? WHERE scope = ? AND status = ?`,
+		canonical, from, FactActive); err != nil {
+		return err
+	}
+	for _, fact := range active {
+		if _, err := tx.Exec(`DELETE FROM facts_fts WHERE rowid = ?`, fact.seq); err != nil {
+			return err
+		}
+		if _, err := tx.Exec(`INSERT INTO facts_fts (rowid, body, scope) VALUES (?, ?, ?)`,
+			fact.seq, fact.body, canonical); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func compatibleGardenScopes(first, second string) bool {
+	for _, prefix := range []string{"domain:", "repo:", "tool:"} {
+		if strings.HasPrefix(first, prefix) && strings.HasPrefix(second, prefix) &&
+			strings.TrimPrefix(first, prefix) != "" && strings.TrimPrefix(second, prefix) != "" {
+			return true
+		}
+	}
+	return false
 }
 
 // ftsQueryFrom turns free text into a safe FTS5 query: bare terms OR-ed, so
@@ -1258,6 +1479,9 @@ func migrateFactsSchema(db *sql.DB) error {
 	if _, err := tx.Exec(factsSchema); err != nil {
 		return err
 	}
+	if _, err := tx.Exec(`DELETE FROM scope_aliases`); err != nil {
+		return err
+	}
 	events, err := readEvents(tx)
 	if err != nil {
 		return err
@@ -1265,7 +1489,8 @@ func migrateFactsSchema(db *sql.DB) error {
 	for _, event := range events {
 		switch event.Kind {
 		case EventFactLearned, EventFactActivated, EventFactSuperseded,
-			EventFactInjected, EventFactQuarantined, EventFactRestored:
+			EventFactInjected, EventFactQuarantined, EventFactRestored,
+			EventScopeAliased:
 		default:
 			continue
 		}

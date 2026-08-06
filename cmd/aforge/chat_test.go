@@ -132,7 +132,7 @@ func TestConsolidatorRendersPlaybookScope(t *testing.T) {
 	settings := config.Config{Model: "talk/model"}
 	capture := &gateCaptureClient{model: "talk/model"}
 	client := &liveClient{settings: settings, model: capture.model, client: capture}
-	if _, err := consolidateFacts(settings, client, graph)(context.Background(), fact.Scope, []store.Fact{fact}); err != nil {
+	if _, err := consolidateFacts(settings, client, graph)(context.Background(), fact.Scope, []store.Fact{fact}, nil); err != nil {
 		t.Fatal(err)
 	}
 	user := capture.messages[1].Content[0].Text
@@ -179,7 +179,7 @@ func TestConsolidatorSeesBadRidePatternAndCausationCaution(t *testing.T) {
 	settings := config.Config{Model: "talk/model"}
 	capture := &gateCaptureClient{model: "talk/model"}
 	client := &liveClient{settings: settings, model: capture.model, client: capture}
-	if _, err := consolidateFacts(settings, client, graph)(context.Background(), "repo:test", facts); err != nil {
+	if _, err := consolidateFacts(settings, client, graph)(context.Background(), "repo:test", facts, nil); err != nil {
 		t.Fatal(err)
 	}
 	if len(capture.messages) != 2 {
@@ -276,6 +276,42 @@ func TestParseLearnedFactsAcceptsQuarantineOnlyDecision(t *testing.T) {
 	if len(learned) != 1 || len(learned[0].Quarantines) != 2 ||
 		learned[0].Quarantines[0] != 12 || learned[0].Quarantines[1] != 13 {
 		t.Fatalf("parsed quarantine = %+v", learned)
+	}
+}
+
+func TestParseConsolidationKeepsOneScopeAliasJudgment(t *testing.T) {
+	parsed := parseConsolidation(`{"facts":[],"scope_alias":{"merge":true,"canonical":"domain:podcast"}}`, 8)
+	if parsed.ScopeAlias == nil || !parsed.ScopeAlias.Merge || parsed.ScopeAlias.Canonical != "domain:podcast" {
+		t.Fatalf("scope alias judgment = %+v", parsed.ScopeAlias)
+	}
+}
+
+func TestConsolidatorOffersExactlyOneScopeCandidateJudgment(t *testing.T) {
+	graph, err := store.Open(filepath.Join(t.TempDir(), "graph.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer graph.Close()
+	settings := config.Config{Model: "talk/model"}
+	capture := &gateCaptureClient{model: "talk/model"}
+	client := &liveClient{settings: settings, model: capture.model, client: capture}
+	candidate := &resident.ScopePair{First: "domain:podcast", Second: "domain:podcasts"}
+	if _, err := consolidateFacts(settings, client, graph)(context.Background(), "", nil, candidate); err != nil {
+		t.Fatal(err)
+	}
+	if len(capture.messages) != 2 {
+		t.Fatalf("consolidator messages = %d, want 2", len(capture.messages))
+	}
+	system := capture.messages[0].Content[0].Text
+	if !strings.Contains(system, "make exactly one additional judgment") ||
+		!strings.Contains(system, `{"merge":false,"canonical":""}`) {
+		t.Fatalf("scope gardening doctrine missing from prompt: %q", system)
+	}
+	user := capture.messages[1].Content[0].Text
+	if strings.Count(user, "Scope-gardening candidate:") != 1 ||
+		strings.Count(user, "- "+candidate.First+"\n") != 1 ||
+		strings.Count(user, "- "+candidate.Second+"\n") != 1 {
+		t.Fatalf("scope candidate input = %q", user)
 	}
 }
 
