@@ -1570,3 +1570,45 @@ func TestTwoJobsWithTheSameAskKeepTheirOwnReceipts(t *testing.T) {
 		t.Fatalf("second job matched command %d with receipt %q, want command 2 / beta", second.CommandSeq, second.Receipt)
 	}
 }
+
+// An expanded feed block stays expanded when the trace's head is trimmed by
+// the byte budget: expansion follows the block's content, not its position.
+func TestFeedExpansionSurvivesTraceTruncation(t *testing.T) {
+	model := New(&fakeBackend{}, "test-session")
+	model.nodeViewID = "worker"
+	model.inspectedNode = store.Node{ID: "worker", Brief: "do a thing", Status: store.Running}
+	thought := "text: " + strings.Repeat("one deliberate thought⏎", 9)
+	model.nodeTraceText = "boot noise\n" + thought
+	model.setSize(90, 30)
+	model.refreshNodeView(true)
+	_ = model.View()
+
+	expandableAt := -1
+	for index, block := range model.feedBlocks {
+		if block.expandable() {
+			expandableAt = index
+		}
+	}
+	if expandableAt < 0 {
+		t.Fatalf("no expandable block in feed:\n%s", model.renderActivityFeed(model.nodeTrace.Width))
+	}
+	line := -1
+	for _, row := range model.feedRows {
+		if row.block == expandableAt {
+			line = row.line
+			break
+		}
+	}
+	if !model.toggleFeedBlockAt(model.nodeTraceBounds.x+1, model.nodeTraceBounds.y+line-model.nodeTrace.YOffset) {
+		t.Fatal("clicking the collapsed thought did not toggle it")
+	}
+	if feed := model.renderActivityFeed(model.nodeTrace.Width); strings.Contains(feed, "⋯") {
+		t.Fatalf("thought did not expand:\n%s", feed)
+	}
+
+	model.nodeTraceText = thought // the byte budget trimmed the head
+	model.refreshNodeView(false)
+	if feed := model.renderActivityFeed(model.nodeTrace.Width); strings.Contains(feed, "⋯") {
+		t.Fatalf("head truncation moved the expansion off the thought:\n%s", feed)
+	}
+}

@@ -142,9 +142,13 @@ type Model struct {
 	chatDraft      string
 	returnFocus    paneFocus
 
-	feedRows     []feedRow
-	feedBlocks   []feedBlock
-	feedExpanded map[int]bool
+	feedRows   []feedRow
+	feedBlocks []feedBlock
+	// feedKeys are content-derived identities for feedBlocks, index-aligned.
+	// feedExpanded is keyed by them, never by block position: the trace is
+	// tail-truncated at its byte budget, so positions shift as it grows.
+	feedKeys     []string
+	feedExpanded map[string]bool
 
 	// expandedMessages holds the seqs of long chat deliverables opened in
 	// place; everything else shows its lead and a ⋯.
@@ -261,7 +265,7 @@ func newModel(backend Backend, sessionID string, commander Commander) *Model {
 		focus:            focusInput,
 		autoScroll:       true,
 		modelRole:        "talk",
-		feedExpanded:     map[int]bool{},
+		feedExpanded:     map[string]bool{},
 		expandedMessages: map[int64]bool{},
 		jobUsage:         map[string]store.JobUsage{},
 		commands:         map[int64]store.Command{},
