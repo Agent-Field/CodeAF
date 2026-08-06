@@ -488,8 +488,13 @@ def check_t4():
           r.get("divergence_passed") == 0,
           f"divergence {r.get('divergence_passed')}/4 — a divergence the "
           f"familiar implementation happens to satisfy separates nothing")
-    check("t4 the decoy therefore scores 8/12, not 12/12 and not 0/12",
-          r.get("score") == round(8 / 12, 4), str(r.get("score")))
+    check("t4 the decoy passes both effort groups",
+          r.get("effort_passed") == 2,
+          f"effort {r.get('effort_passed')}/2 — these are about backtracking "
+          f"and compiling once, not about which semantics were chosen, so a "
+          f"competent implementation should get them either way")
+    check("t4 the decoy therefore scores 10/14, not 14/14 and not 0/14",
+          r.get("score") == round(10 / 14, 4), str(r.get("score")))
 
 
 def check_t3():

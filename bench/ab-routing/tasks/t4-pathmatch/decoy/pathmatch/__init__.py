@@ -180,6 +180,7 @@ def matches(pattern, path):
 
 
 def select(patterns, paths):
+    # DIVERGENCE 5 missed: no specificity ordering, just the list as written.
     compiled = [c for c in (compile_pattern(p) for p in patterns) if c is not None]
     out = []
     for path in paths:
