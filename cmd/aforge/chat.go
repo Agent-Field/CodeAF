@@ -117,7 +117,16 @@ func runChat(args []string) error {
 		if err != nil {
 			return "", err
 		}
-		return outcome.Text, nil
+		text := outcome.Text
+		// Artifact paths come back workspace-relative; the user's next act is
+		// opening the file, so the summary carries where it actually lives.
+		if len(outcome.Artifacts) > 0 {
+			text += "\n\nFiles:"
+			for _, artifact := range outcome.Artifacts {
+				text += "\n" + filepath.Join(workspaceRoot, artifact)
+			}
+		}
+		return text, nil
 	}, "chat-runner", 4)
 
 	ctx, cancel := context.WithCancel(context.Background())
