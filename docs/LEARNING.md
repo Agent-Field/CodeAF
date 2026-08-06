@@ -495,6 +495,29 @@ is domain-free. It needs no taxonomy of coding vs research vs experiment —
 wherever predictions miss, that is where the next unit of learning effort
 goes, in any domain the user happens to bring.
 
+### 3.13 Organization: derived structure, gardened taxonomy, packed territories
+
+Four organizing systems already run at once — hierarchy (spine/subtrees/
+folds), facets (emergent scopes), typed links (edges, evidence, replaces),
+similarity (FTS) — the faceted-classification insight: no single tree fits
+knowledge that belongs in many places. The rule stands: **structure is
+derived; storage is flat events; no second truth.** Two additions close
+the real gaps:
+
+- **Scope gardening.** Emergent tags fragment (`domain:podcast` vs
+  `domain:podcast-production`). During idle consolidation, near-duplicate
+  scopes merge under a journaled alias event; old cues resolve through the
+  alias forever. Emergent taxonomy, emergently maintained.
+- **Territories: folds of folds.** After fifty settled jobs, fifty fold
+  roots sit as flat siblings. When the retrospective sees a cluster of
+  settled jobs sharing workspace, scope, or continuity edges, it folds
+  them into one territory digest — "the podcast work: 14 jobs, what was
+  learned, where assets live" — same fold mechanism one level up,
+  O(clusters) calls, one rail line, one recall unit.
+- **Deferred by doctrine**: fact-to-fact Zettelkasten links. Co-injection
+  events already record de-facto association; promote to explicit edges
+  only on a measured multi-hop recall failure.
+
 ---
 
 ## Sequencing
