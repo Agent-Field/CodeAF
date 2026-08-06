@@ -310,3 +310,16 @@ func TestTickReturnsCancelledContextWithoutTouchingCommand(t *testing.T) {
 		t.Fatalf("command status = %s, want pending", got)
 	}
 }
+
+func TestCompileReceiptKeepsLegacyBytes(t *testing.T) {
+	got := compileReceipt("  Benchmark the parser  ", []string{
+		"main is the baseline", "", "keep observable output",
+	})
+	const want = "Here's my reading: Benchmark the parser\n" +
+		"Assumed: main is the baseline\n" +
+		"Assumed: keep observable output\n" +
+		"Correct me anytime — redirects are cheap."
+	if got != want {
+		t.Fatalf("compile receipt changed:\n got %q\nwant %q", got, want)
+	}
+}

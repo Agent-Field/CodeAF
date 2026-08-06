@@ -419,3 +419,62 @@ func TestHeadReceivesMeasuredReflexPrior(t *testing.T) {
 		t.Fatalf("measured reflex prior did not reach head: %+v", client.seen)
 	}
 }
+
+func TestHeadVoicePromptPreservesEmptyBytesAndRendersPreference(t *testing.T) {
+	t.Run("empty notebook", func(t *testing.T) {
+		graphStore := openHeadStore(t)
+		client := &fakeClient{responses: []string{
+			`{"reply":"Ready.","command":null}`,
+		}}
+		user := store.Message{SessionID: "voice-empty", Body: "answer this plainly"}
+		if _, err := New(client, graphStore).route(context.Background(), user); err != nil {
+			t.Fatal(err)
+		}
+		if len(client.seen) != 2 || client.seen[0].Content[0].Text != headSystemPrompt {
+			t.Fatalf("empty-notebook head system prompt changed: %+v", client.seen)
+		}
+	})
+
+	t.Run("standing preference", func(t *testing.T) {
+		graphStore := openHeadStore(t)
+		const preference = "keep answers short; no preamble"
+		if _, err := graphStore.RecordFact("", "user", store.FactPreference, preference); err != nil {
+			t.Fatal(err)
+		}
+		client := &fakeClient{responses: []string{
+			`{"reply":"Ready.","command":null}`,
+		}}
+		user := store.Message{SessionID: "voice-learned", Body: "answer this plainly"}
+		if _, err := New(client, graphStore).route(context.Background(), user); err != nil {
+			t.Fatal(err)
+		}
+		if len(client.seen) != 2 || !strings.Contains(client.seen[0].Content[0].Text, preference) {
+			t.Fatalf("head system prompt omitted voice preference: %+v", client.seen)
+		}
+	})
+}
+
+func TestHeadRememberPathCapturesStatedVoicePreference(t *testing.T) {
+	graphStore := openHeadStore(t)
+	const preference = "keep answers short; no preamble"
+	client := &fakeClient{responses: []string{
+		`{"reply":"Got it.","command":null,"remember":{"scope":"user","kind":"preference","body":"keep answers short; no preamble"},"retract":null}`,
+	}}
+	user, err := graphStore.PostMessage(store.Message{
+		SessionID: "voice-remember", Role: store.RoleUser,
+		Body: "From now on, keep answers short and skip the preamble.",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := New(client, graphStore).answer(context.Background(), user); err != nil {
+		t.Fatal(err)
+	}
+	facts, err := graphStore.ActiveFacts("user", 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(facts) != 1 || facts[0].Kind != store.FactPreference || facts[0].Body != preference {
+		t.Fatalf("remembered voice preference = %+v", facts)
+	}
+}
