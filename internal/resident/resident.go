@@ -28,6 +28,12 @@ type Compiled struct {
 	Goal        string
 	Assumptions []string
 	Scale       string
+
+	// BuildsOn names earlier top-level jobs this one continues. Each becomes
+	// a feeds_into edge onto the new subtree's entry nodes, so the prior
+	// result arrives as an input digest — continuity through the graph, not
+	// through a shared workspace.
+	BuildsOn []string
 }
 
 // CompileFunc turns a verbatim thread instruction into a goal the planner can
@@ -221,6 +227,7 @@ func (r *Reconciler) splice(ctx context.Context, command store.Command) (command
 	if err := ctx.Err(); err != nil {
 		return commandOutcome{}, err
 	}
+	subtree = r.wireContinuity(subtree, compiled.BuildsOn)
 
 	provenance := store.Provenance{
 		Origin:    store.OriginUser,
@@ -434,12 +441,52 @@ func (r *Reconciler) announceNode(event store.Event) error {
 	return err
 }
 
+// compileContextBytes bounds what the compiler sees of the graph. Continuity
+// needs the recent jobs' asks and results; it does not need the whole forest.
+const compileContextBytes = 6 << 10
+
 func renderGraphContext(snapshot store.Snapshot) string {
 	var context strings.Builder
+
+	// Jobs first, newest first: "improve it" almost always reaches for the
+	// most recent thing, and a job's summary carries the artifact paths the
+	// next job starts from.
+	context.WriteString("jobs (newest first):\n")
+	for i := len(snapshot.Nodes) - 1; i >= 0; i-- {
+		node := snapshot.Nodes[i]
+		if node.Parent != store.RootID || context.Len() > compileContextBytes {
+			continue
+		}
+		fmt.Fprintf(&context, "job %s [%s]\n", node.ID, node.Status)
+		if intent := strings.TrimSpace(node.Provenance.Intent); intent != "" {
+			fmt.Fprintf(&context, "  asked: %s\n", clipLabel(firstLine(intent), 180))
+		}
+		if summary := strings.TrimSpace(node.Summary); summary != "" {
+			fmt.Fprintf(&context, "  result: %s\n", clipBlock(summary, 600))
+		}
+	}
+
+	context.WriteString("\nnodes:\n")
 	for _, node := range snapshot.Nodes {
+		if context.Len() > compileContextBytes {
+			break
+		}
 		fmt.Fprintf(&context, "%s | %s | %s\n", node.ID, firstLine(node.Brief), node.Status)
 	}
 	return strings.TrimSuffix(context.String(), "\n")
+}
+
+// clipBlock bounds a multi-line block, keeping its newlines: a result's file
+// paths live on their own lines and survive clipping.
+func clipBlock(block string, limit int) string {
+	if len(block) <= limit {
+		return block
+	}
+	cut := limit
+	for cut > 0 && !utf8.ValidString(block[:cut]) {
+		cut--
+	}
+	return strings.TrimSpace(block[:cut]) + "…"
 }
 
 func compileReceipt(goal string, assumptions []string) string {
@@ -492,4 +539,52 @@ func clipLabel(label string, limit int) string {
 		return label
 	}
 	return strings.TrimSpace(label[:limit-1]) + "…"
+}
+
+// wireContinuity attaches declared prior jobs as inputs to the new subtree's
+// entry nodes — the ones that would otherwise start from nothing. Unknown ids
+// are dropped rather than failing the splice: a mistaken reference should
+// cost the continuity, not the work.
+func (r *Reconciler) wireContinuity(subtree store.Subtree, buildsOn []string) store.Subtree {
+	if len(buildsOn) == 0 {
+		return subtree
+	}
+	sources := make([]string, 0, len(buildsOn))
+	for _, id := range buildsOn {
+		if _, ok, err := r.store.Node(id); err == nil && ok {
+			sources = append(sources, id)
+		}
+	}
+	if len(sources) == 0 {
+		return subtree
+	}
+
+	inSubtree := make(map[string]bool, len(subtree.Nodes))
+	for _, spec := range subtree.Nodes {
+		inSubtree[spec.ID] = true
+	}
+	for index, spec := range subtree.Nodes {
+		entry := true
+		for _, need := range spec.Needs {
+			if inSubtree[need.NodeID] {
+				entry = false
+				break
+			}
+		}
+		if !entry {
+			continue
+		}
+		existing := make(map[string]bool, len(spec.Needs))
+		for _, need := range spec.Needs {
+			existing[need.NodeID] = true
+		}
+		for _, source := range sources {
+			if existing[source] {
+				continue
+			}
+			subtree.Nodes[index].Needs = append(subtree.Nodes[index].Needs,
+				store.Need{NodeID: source, Kind: store.FeedsInto})
+		}
+	}
+	return subtree
 }

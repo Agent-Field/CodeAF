@@ -2,6 +2,7 @@ package resident
 
 import (
 	"context"
+	"fmt"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -133,5 +134,69 @@ func TestNarratorGoesQuietWhenTheAnswerLands(t *testing.T) {
 	}
 	if _, ok := reconciler.progress["goal"]; ok {
 		t.Fatalf("terminal job should drop its progress state")
+	}
+}
+
+func TestContinuityEdgesCarryThePriorResult(t *testing.T) {
+	s, err := store.Open(filepath.Join(t.TempDir(), "graph.db"))
+	if err != nil {
+		t.Fatalf("open store: %v", err)
+	}
+	defer s.Close()
+
+	// An earlier job, landed: its summary carries the artifact the next job
+	// starts from.
+	if err := s.Splice(store.RootID, store.Subtree{Nodes: []store.NodeSpec{
+		{ID: "podcast", Brief: "Make the podcast", Stage: 1},
+	}}, store.Provenance{Origin: store.OriginUser, SessionID: "s1", Intent: "make me a podcast"}); err != nil {
+		t.Fatalf("splice prior job: %v", err)
+	}
+	landNode(t, s, "podcast", "Podcast done. Files:\n/abs/path/prehistoric_men_podcast.mp3")
+
+	command, err := s.RequestCommand(store.Command{
+		SessionID: "s1", Kind: store.CommandSplice,
+		Instruction: "improve the pacing and add background music",
+	})
+	if err != nil {
+		t.Fatalf("request command: %v", err)
+	}
+
+	compile := func(_ context.Context, _, graphContext string) (Compiled, error) {
+		if !strings.Contains(graphContext, "asked: make me a podcast") ||
+			!strings.Contains(graphContext, "prehistoric_men_podcast.mp3") {
+			t.Fatalf("compiler cannot see the prior job: %q", graphContext)
+		}
+		return Compiled{
+			Goal:     "Improve the podcast pacing and add music",
+			Scale:    "task",
+			BuildsOn: []string{"podcast", "no-such-job"},
+		}, nil
+	}
+	if err := New(s, compile, nil).Tick(context.Background()); err != nil {
+		t.Fatalf("tick: %v", err)
+	}
+
+	newID := fmt.Sprintf("task-%d", command.Seq)
+	digests, err := s.DependencyDigests(newID, store.MaxDigestBytes)
+	if err != nil {
+		t.Fatalf("digests: %v", err)
+	}
+	joined := strings.Join(digests, "\n")
+	if !strings.Contains(joined, "prehistoric_men_podcast.mp3") {
+		t.Fatalf("prior result does not flow to the new job: %q", joined)
+	}
+
+	ready, err := s.Ready(10)
+	if err != nil {
+		t.Fatalf("ready: %v", err)
+	}
+	found := false
+	for _, node := range ready {
+		if node.ID == newID {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("new job should be ready — its dependency is already done: %+v", ready)
 	}
 }
