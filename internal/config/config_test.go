@@ -54,6 +54,13 @@ func TestNoPanelIsTheKillSwitch(t *testing.T) {
 	if provider.CallClassFrom(ctx) != "" {
 		t.Fatal("a call class was stamped where no call site opened one")
 	}
+	picked, err := config.ClientFor("user/explicit-pick")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, plain := picked.(*provider.Client); !plain || picked.Model() != "user/explicit-pick" {
+		t.Fatalf("explicit no-panel client = %T model %q, want the unchanged bare adapter", picked, picked.Model())
+	}
 }
 
 // TestAPanelSwitchesInTheRouter is the other side of the switch, and it is one
@@ -78,6 +85,28 @@ func TestAPanelSwitchesInTheRouter(t *testing.T) {
 	}
 	if client.Model() != "google/gemma-3-12b-it" {
 		t.Fatalf("model = %q, want the first panel entry", client.Model())
+	}
+	picked, err := config.ClientFor("moonshotai/kimi-k2.6")
+	if err != nil {
+		t.Fatal(err)
+	}
+	pickedPanel, routed := picked.(*router.Router)
+	if !routed {
+		t.Fatalf("explicit panel client = %T, want a router", picked)
+	}
+	defer pickedPanel.Close()
+	if picked.Model() != "moonshotai/kimi-k2.6" {
+		t.Fatalf("explicit panel model = %q, want the picker choice", picked.Model())
+	}
+	outside, err := config.ClientFor("user/model-outside-panel")
+	if err != nil {
+		t.Fatal(err)
+	}
+	outsidePanel := outside.(*router.Router)
+	defer outsidePanel.Close()
+	if outside.Model() != "user/model-outside-panel" || outsidePanel.Rungs() != 4 {
+		t.Fatalf("outside picker = model %q over %d rungs, want the explicit opener plus the panel",
+			outside.Model(), outsidePanel.Rungs())
 	}
 }
 

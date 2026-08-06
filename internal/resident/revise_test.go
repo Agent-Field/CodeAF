@@ -2,6 +2,7 @@ package resident
 
 import (
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/Agent-Field/aforge-v2/internal/plan"
@@ -92,8 +93,9 @@ func TestApplyRevisionMirrorsSentinelEditsOntoTheStore(t *testing.T) {
 	_ = graph.Start(claim)
 	applied, notes = ApplyRevision(graph, planGraph, "job", "job-n9", []plan.Operation{
 		{Op: "remove", Node: 1, Reason: "should be refused", Applied: true},
+		{Op: "rewire", Node: 1, Refused: "node 1 is running"},
 	})
-	if applied != 0 || len(notes) == 0 {
+	if applied != 0 || len(notes) < 2 || !strings.Contains(strings.Join(notes, "\n"), "node 1 is running") {
 		t.Fatalf("started node was edited: applied=%d notes=%v", applied, notes)
 	}
 }

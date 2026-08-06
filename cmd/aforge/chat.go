@@ -17,6 +17,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"unicode/utf8"
 
 	"github.com/Agent-Field/aforge-v2/internal/config"
 	"github.com/Agent-Field/aforge-v2/internal/exec"
@@ -145,7 +146,7 @@ func runChat(args []string) error {
 		linear := exec.NewLinear(workingClient, jobSpace, web, chatLeafTurns, chatLeafTokens, deadline).WithStore(graph)
 		shape := "atomic"
 		if planNode != nil {
-			shape = chatLeafShape(planNode)
+			shape = exec.LeafShape(planNode)
 			// Frozen means frozen everywhere: the sentinel may not edit a
 			// node whose transcript is already being written.
 			plans.markRunning(planNode)
@@ -203,13 +204,19 @@ func runChat(args []string) error {
 		ctx = provider.WithCacheKey(ctx, provider.RunCacheKey(node.Provenance.Intent, workingModel))
 		var outcome *exec.Outcome
 		var spent exec.Usage
+		spentTurns := 0
+		workerModel := taskClient.Model()
 		for attempt := 0; attempt < attempts; attempt++ {
 			runCtx := provider.WithCallShape(settings.ExecContext(ctx), provider.ClassExecLeaf, attempt, shape)
 			outcome, err = runLeafWithWatchdog(runCtx, linear, task, deadline+2*time.Minute)
+			if model := provider.CallFrom(runCtx).Model(); model != "" {
+				workerModel = model
+			}
 			if outcome != nil {
 				spent.PromptTokens += outcome.Usage.PromptTokens
 				spent.CompletionTokens += outcome.Usage.CompletionTokens
 				spent.Cost += outcome.Usage.Cost
+				spentTurns += outcome.Turns
 			}
 			if err == nil && outcome != nil && !outcome.Verdict.Escalates() {
 				break
@@ -223,29 +230,16 @@ func runChat(args []string) error {
 		// contradicts a specific assumption in a specific node. Its default
 		// is no change; the store refuses everything else.
 		if planGraph != nil && outcome != nil {
-			plans.reviseAfter(ctx, settings, taskClient, graph, node, planGraph, outcome.Text, err != nil)
-		}
-		// A graph's sink landing means its run is over: the measured leaves
-		// become profile evidence, exactly as recordAndCalibrate does after a
-		// headless run. Detached, because the ruler is telemetry and the
-		// user's result must not wait on it.
-		if landed := plans.takeIfRoot(node.ID); landed != nil {
-			sessionID := node.Provenance.SessionID
-			go func() {
-				report := recordAndCalibrate(settings.Context(context.Background(), landed.Goal), workingClient, settings, workingModel, landed)
-				if strings.TrimSpace(report) == "" {
-					return
-				}
-				_, _ = graph.PostMessage(store.Message{
-					SessionID: sessionID,
-					Role:      store.RoleSystem,
-					Body:      report,
-				})
-			}()
-		} else if planGraph == nil && node.Parent == store.RootID && outcome != nil {
-			go recordSingleLeaf(settings, workingModel, node, outcome)
+			plans.reviseAfter(ctx, settings, taskClient, graph, node, planGraph, outcome.Text, err != nil, workerModel)
 		}
 		if err != nil {
+			// Preserve failed-attempt evidence even though no delivery reaches the
+			// gate. This is the pre-existing profile path, kept on the early return.
+			if landed := plans.takeIfRoot(node.ID); landed != nil {
+				go recordAndCalibrate(settings.Context(context.Background(), landed.Goal), workingClient, settings, workingModel, landed)
+			} else if planGraph == nil && node.Parent == store.RootID && outcome != nil {
+				go recordSingleLeaf(settings, workerModel, node, outcome)
+			}
 			return resident.ExecResult{}, err
 		}
 		text := outcome.Text
@@ -264,28 +258,60 @@ func runChat(args []string) error {
 		// revision pass with the critique as input; then the result ships
 		// either way, because a gate that can loop is a gate that can stall.
 		if node.Parent == store.RootID && outcome.Stop != exec.StopBudget && outcome.Stop != exec.StopTurnCap {
-			if gaps := judgeDeliverable(ctx, settings, taskClient, node, text); gaps != "" {
-				revision := task
-				revision.Inputs = append(append([]exec.Input{}, inputs...), exec.Input{
-					Result: "A reviewer compared the previous attempt against the original request and found gaps that must be closed:\n" + gaps +
-						"\n\nThe previous attempt (build on it, fix the gaps, do not start over):\n" + text,
-				})
-				retryCtx := provider.WithCallShape(settings.ExecContext(ctx), provider.ClassExecLeaf, 1, shape)
-				polished, polishErr := runLeafWithWatchdog(retryCtx, linear, revision, deadline+2*time.Minute)
-				if polishErr == nil && polished != nil && strings.TrimSpace(polished.Text) != "" {
-					spent.PromptTokens += polished.Usage.PromptTokens
-					spent.CompletionTokens += polished.Usage.CompletionTokens
-					spent.Cost += polished.Usage.Cost
-					text = polished.Text
-					for _, artifact := range polished.Artifacts {
-						text += "\n" + filepath.Join(jobDir, artifact)
-					}
-					_, _ = graph.PostMessage(store.Message{
-						SessionID: node.Provenance.SessionID,
-						Role:      store.RoleSystem,
-						Body:      "a review found gaps in the first draft — revised before delivering: " + firstLine(gaps),
-					})
+			gate := judgeDeliverable(ctx, settings, taskClient, graph, node, text, workerModel)
+			if gate.Checked {
+				evidence := store.DeliveryGate{Pass: gate.Pass, Gap: gate.Gaps}
+				if gate.Pass {
+					outcome.Verdict = provider.VerdictVerifiedSuccess
 				}
+				if !gate.Pass {
+					revision := task
+					revision.Inputs = append(append([]exec.Input{}, inputs...), exec.Input{
+						Result: "A reviewer compared the previous attempt against the original request and found gaps that must be closed:\n" + gate.Gaps +
+							"\n\nThe previous attempt (build on it, fix the gaps, do not start over):\n" + text,
+					})
+					retryCtx := provider.WithCallShape(settings.ExecContext(ctx), provider.ClassExecLeaf, 1, shape)
+					polished, polishErr := runLeafWithWatchdog(retryCtx, linear, revision, deadline+2*time.Minute)
+					polishModel := workerModel
+					if model := provider.CallFrom(retryCtx).Model(); model != "" {
+						polishModel = model
+					}
+					if polishErr == nil && polished != nil && strings.TrimSpace(polished.Text) != "" {
+						spent.PromptTokens += polished.Usage.PromptTokens
+						spent.CompletionTokens += polished.Usage.CompletionTokens
+						spent.Cost += polished.Usage.Cost
+						spentTurns += polished.Turns
+						outcome = polished
+						workerModel = polishModel
+						text = polished.Text
+						absolute = absolute[:0]
+						for _, artifact := range polished.Artifacts {
+							absolute = append(absolute, filepath.Join(jobDir, artifact))
+						}
+						if len(absolute) > 0 {
+							text += "\n\nFiles:\n" + strings.Join(absolute, "\n")
+						}
+						closed := judgeDeliverable(ctx, settings, taskClient, graph, node, text, polishModel)
+						evidence.PolishClosed = closed.Checked && closed.Pass
+						outcome.Verdict = provider.VerdictSemanticFailure
+						if evidence.PolishClosed {
+							outcome.Verdict = provider.VerdictVerifiedSuccess
+						}
+						message := "a review found gaps in the first draft — revised before delivering: " + firstLine(gate.Gaps)
+						if !evidence.PolishClosed {
+							message += " (the follow-up gate did not confirm the gap was closed)"
+						}
+						_, _ = graph.PostMessage(store.Message{
+							SessionID: node.Provenance.SessionID,
+							Role:      store.RoleSystem,
+							NodeID:    node.ID,
+							Body:      message,
+						})
+					} else {
+						outcome.Verdict = provider.VerdictSemanticFailure
+					}
+				}
+				_ = graph.RecordDeliveryGate(node.ID, evidence)
 			}
 		}
 		// Just-in-time re-decomposition: a budget or turn-cap stop is the
@@ -306,6 +332,34 @@ func runChat(args []string) error {
 						firstLine(node.Brief), spliced),
 				})
 			}
+		}
+		// Profile evidence is written only after the gate and its one repair pass,
+		// so the record describes what was actually delivered and the gate's final
+		// checked verdict rather than the unpolished draft.
+		outcome.Text = text
+		outcome.Usage = spent
+		outcome.Turns = spentTurns
+		if planNode != nil {
+			plans.recordOutcome(planNode, outcome, nil)
+		}
+		if landed := plans.takeIfRoot(node.ID); landed != nil {
+			// The recalibration report reaches the thread, not a stdout the TUI
+			// owns; detached, because the ruler is telemetry and the user's
+			// result must not wait on it.
+			sessionID := node.Provenance.SessionID
+			go func() {
+				report := recordAndCalibrate(settings.Context(context.Background(), landed.Goal), workingClient, settings, workingModel, landed)
+				if strings.TrimSpace(report) == "" {
+					return
+				}
+				_, _ = graph.PostMessage(store.Message{
+					SessionID: sessionID,
+					Role:      store.RoleSystem,
+					Body:      report,
+				})
+			}()
+		} else if planGraph == nil && node.Parent == store.RootID {
+			go recordSingleLeaf(settings, workerModel, node, outcome)
 		}
 		return resident.ExecResult{
 			Summary:          text,
@@ -749,6 +803,13 @@ func (l *liveClient) escalatable() bool {
 	return false
 }
 
+func (l *liveClient) routed() bool {
+	l.mu.RLock()
+	defer l.mu.RUnlock()
+	_, ok := l.client.(*router.Router)
+	return ok
+}
+
 func (l *liveClient) SetModel(model string) error {
 	model = strings.TrimSpace(model)
 	if model == "" {
@@ -779,6 +840,17 @@ func firstLine(text string) string {
 		return text[:index]
 	}
 	return text
+}
+
+func clipUTF8Bytes(value string, limit int) string {
+	if limit <= 3 || len(value) <= limit {
+		return value
+	}
+	cut := limit - 3
+	for cut > 0 && !utf8.ValidString(value[:cut]) {
+		cut--
+	}
+	return strings.TrimSpace(value[:cut]) + "..."
 }
 
 func firstNonEmptyString(values ...string) string {
@@ -946,7 +1018,7 @@ func (j *jobPlans) markRunning(node *plan.Node) {
 // whole pass holds the registry lock — the sentinel must see a consistent
 // graph, and its call is a short structuring call — and it skips entirely
 // when the job has no unstarted work left to edit.
-func (j *jobPlans) reviseAfter(ctx context.Context, settings config.Config, client *liveClient, graph *store.Store, node store.Node, planGraph *plan.Graph, summary string, failed bool) {
+func (j *jobPlans) reviseAfter(ctx context.Context, settings config.Config, client *liveClient, graph *store.Store, node store.Node, planGraph *plan.Graph, summary string, failed bool, workerModel string) {
 	cut := strings.LastIndex(node.ID, "-n")
 	if cut < 0 {
 		return
@@ -974,12 +1046,21 @@ func (j *jobPlans) reviseAfter(ctx context.Context, settings config.Config, clie
 
 	j.mu.Lock()
 	defer j.mu.Unlock()
-	operations, _, err := plan.Revise(settings.Context(ctx, planGraph.Goal), client, planGraph,
+	judgeCtx := router.WithAvoidModel(ctx, workerModel)
+	operations, _, err := plan.Revise(settings.Context(judgeCtx, planGraph.Goal), client, planGraph,
 		resident.RevisionEvent(node, summary, failed))
 	if err != nil || len(operations) == 0 {
 		return
 	}
-	applied, _ := resident.ApplyRevision(graph, planGraph, prefix, entry.root, operations)
+	applied, notes := resident.ApplyRevision(graph, planGraph, prefix, entry.root, operations)
+	if len(notes) > 0 {
+		_, _ = graph.PostMessage(store.Message{
+			SessionID: node.Provenance.SessionID,
+			Role:      store.RoleSystem,
+			NodeID:    node.ID,
+			Body:      "revision sentinel refusals after " + fmt.Sprintf("%q", firstLine(nodeDisplay(node))) + ":\n" + strings.Join(notes, "\n"),
+		})
+	}
 	if applied == 0 {
 		return
 	}
@@ -1019,49 +1100,74 @@ FAIL only when you can name a specific element of the request that is absent, un
 
 Return exactly one JSON object, nothing else: {"pass": true} or {"pass": false, "gaps": "<the named gaps>"}`
 
-// judgeDeliverable returns the named gaps, or "" for pass. Every failure of
-// the gate itself — provider error, unparseable reply — is a pass: the gate
-// must never be the reason a finished job cannot land.
-func judgeDeliverable(ctx context.Context, settings config.Config, client *liveClient, node store.Node, deliverable string) string {
+var judgeDeliverableSchema = json.RawMessage(`{
+  "type": "object",
+  "properties": {
+    "pass": {"type": "boolean"},
+    "gaps": {"type": "string"}
+  },
+  "required": ["pass"],
+  "additionalProperties": false
+}`)
+
+type deliverableJudgment struct {
+	Pass    bool
+	Gaps    string
+	Checked bool
+}
+
+const gateNotebookBytes = 1 << 10
+
+// judgeDeliverable returns a checked pass or named gap. Every failure of the
+// gate itself remains fail-open: Checked is false, so it neither blocks delivery
+// nor manufactures verified evidence for the profile.
+func judgeDeliverable(ctx context.Context, settings config.Config, client *liveClient, graph *store.Store, node store.Node, deliverable, workerModel string) deliverableJudgment {
 	ask := node.Provenance.Intent
 	body := "Verbatim request:\n" + ask + "\n\nCompiled goal:\n" + node.Brief + "\n\nDeliverable as produced:\n" + deliverable
-	response, err := client.CompleteWithMessages(settings.Context(ctx, "gate"), []ai.Message{
+	if digest := resident.NotebookDigest(graph, node.Brief, ask, 8); digest != "" {
+		body += "\n\nStanding preferences and relevant lessons:\n" + clipUTF8Bytes(digest, gateNotebookBytes)
+	}
+	judgeCtx := settings.Context(router.WithAvoidModel(ctx, workerModel), "gate")
+	judgeCtx = provider.WithCall(judgeCtx, provider.ClassPlanAudit)
+	options := []ai.Option{ai.WithMaxTokens(400)}
+	// Structured output is the cascade's free verifier. Keep the no-panel
+	// adapter's request options unchanged; there is no second rung to unlock.
+	if client.routed() {
+		options = append(options, ai.WithSchema(judgeDeliverableSchema))
+	}
+	response, err := client.CompleteWithMessages(judgeCtx, []ai.Message{
 		{Role: "system", Content: []ai.ContentPart{{Type: "text", Text: judgeDeliverablePrompt}}},
 		{Role: "user", Content: []ai.ContentPart{{Type: "text", Text: body}}},
-	}, ai.WithMaxTokens(400))
+	}, options...)
 	if err != nil || response == nil {
-		return ""
+		provider.Report(judgeCtx, provider.VerdictProviderFailure)
+		return deliverableJudgment{Pass: true}
 	}
 	text := strings.TrimSpace(response.Text())
 	start, end := strings.Index(text, "{"), strings.LastIndex(text, "}")
 	if start < 0 || end <= start {
-		return ""
+		provider.Report(judgeCtx, provider.VerdictFormatFailure)
+		return deliverableJudgment{Pass: true}
 	}
 	var verdict struct {
 		Pass bool   `json:"pass"`
 		Gaps string `json:"gaps"`
 	}
 	if err := json.Unmarshal([]byte(text[start:end+1]), &verdict); err != nil {
-		return ""
+		provider.Report(judgeCtx, provider.VerdictFormatFailure)
+		return deliverableJudgment{Pass: true}
 	}
 	if verdict.Pass {
-		return ""
+		provider.Report(judgeCtx, provider.VerdictVerifiedSuccess)
+		return deliverableJudgment{Pass: true, Checked: true}
 	}
-	return strings.TrimSpace(verdict.Gaps)
-}
-
-// chatLeafShape is the scheduler's leaf population key, verbatim: synthesis
-// apart from work, and the leaves one agent may not fit apart from the rest.
-func chatLeafShape(node *plan.Node) string {
-	if node.Kind == plan.KindSynthesis {
-		return "synthesis"
+	gaps := strings.TrimSpace(verdict.Gaps)
+	if gaps == "" {
+		provider.Report(judgeCtx, provider.VerdictSemanticFailure)
+		return deliverableJudgment{Pass: true}
 	}
-	switch node.Size {
-	case plan.SizeOversized, plan.SizeBorderline:
-		return "oversized"
-	default:
-		return "atomic"
-	}
+	provider.Report(judgeCtx, provider.VerdictVerifiedSuccess)
+	return deliverableJudgment{Gaps: gaps, Checked: true}
 }
 
 // runLeafWithWatchdog is the scheduler's node watchdog, inline: the executor
@@ -1093,6 +1199,9 @@ func runLeafWithWatchdog(ctx context.Context, linear *exec.Linear, task exec.Tas
 // recordSingleLeaf keeps direct-job costs available to compiler self-knowledge
 // without pretending an unplanned task was atomic ruler evidence.
 func recordSingleLeaf(settings config.Config, model string, node store.Node, outcome *exec.Outcome) {
+	if strings.TrimSpace(model) == "" {
+		model = settings.Model
+	}
 	measured, err := profile.Load(settings.ProfileDir, model, "linear")
 	if err != nil {
 		return

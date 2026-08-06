@@ -28,6 +28,9 @@ func ApplyRevision(graph *store.Store, planGraph *plan.Graph, prefix, jobRoot st
 
 	for _, operation := range operations {
 		if !operation.Applied {
+			if strings.TrimSpace(operation.Refused) != "" {
+				notes = append(notes, fmt.Sprintf("%s %s: %s", operation.Op, id(operation.Node), operation.Refused))
+			}
 			continue
 		}
 		switch operation.Op {
