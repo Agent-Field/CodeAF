@@ -155,6 +155,8 @@ type Reconciler struct {
 	reflect         ReflectFunc
 	digestTerritory TerritoryDigestFunc
 	overrunPlan     OverrunPlanFunc
+	sentinel        SentinelFunc
+	proposeCharters bool
 	dailyBudgetUSD  float64
 
 	mu                 sync.Mutex
@@ -238,6 +240,9 @@ func (r *Reconciler) Tick(ctx context.Context) error {
 		if _, err := ResumeDeferredOverruns(ctx, r.store, r.dailyBudgetUSD, r.overrunPlan); err != nil {
 			return fmt.Errorf("resident tick: resume deferred overruns: %w", err)
 		}
+	}
+	if _, err := r.watchOnceLocked(ctx); err != nil {
+		return fmt.Errorf("resident tick: standing watches: %w", err)
 	}
 
 	if err := ctx.Err(); err != nil {

@@ -259,25 +259,39 @@ func (s *Store) PauseDailyRail(base float64, sessionID string) (DailyRail, bool,
 	if !rail.Reached {
 		return rail, false, nil
 	}
-	questionSeq, raiseSeq, err := latestRailMarkers(tx, now, "")
+	posted, err := pauseDailyRailTx(tx, rail, sessionID, now)
 	if err != nil {
 		return DailyRail{}, false, fmt.Errorf("pause daily rail: %w", err)
 	}
-	if questionSeq > raiseSeq {
+	if !posted {
 		return rail, false, nil
-	}
-	payload := messagePayload{SessionID: sessionID, Role: RoleAgent, Body: rail.Question()}
-	seq, at, err := appendEvent(tx, "", EventMessagePosted, payload)
-	if err != nil {
-		return DailyRail{}, false, fmt.Errorf("pause daily rail: %w", err)
-	}
-	if err := applyMessageView(tx, payload, seq, at); err != nil {
-		return DailyRail{}, false, fmt.Errorf("pause daily rail: %w", err)
 	}
 	if err := tx.Commit(); err != nil {
 		return DailyRail{}, false, fmt.Errorf("pause daily rail: %w", err)
 	}
 	return rail, true, nil
+}
+
+// pauseDailyRailTx is shared by ordinary claims and charter preflight. A
+// charter may mark rail.Reached from projected per-firing spend before the
+// recorded spend itself reaches the ceiling.
+func pauseDailyRailTx(tx *sql.Tx, rail DailyRail, sessionID string, now time.Time) (bool, error) {
+	questionSeq, raiseSeq, err := latestRailMarkers(tx, now, "")
+	if err != nil {
+		return false, err
+	}
+	if questionSeq > raiseSeq {
+		return false, nil
+	}
+	payload := messagePayload{SessionID: sessionID, Role: RoleAgent, Body: rail.Question()}
+	seq, at, err := appendEvent(tx, "", EventMessagePosted, payload)
+	if err != nil {
+		return false, err
+	}
+	if err := applyMessageView(tx, payload, seq, at); err != nil {
+		return false, err
+	}
+	return true, nil
 }
 
 // PendingDailyRailApproval reports whether this session's most recent rail
@@ -289,14 +303,15 @@ func (s *Store) PendingDailyRailApproval(base float64, sessionID string) (DailyR
 	if err != nil {
 		return DailyRail{}, false, err
 	}
-	if !rail.Reached {
-		return rail, false, nil
-	}
 	questionSeq, raiseSeq, err := latestRailMarkers(s.db, now, sessionID)
 	if err != nil {
 		return DailyRail{}, false, err
 	}
-	return rail, questionSeq > raiseSeq, nil
+	pending := questionSeq > raiseSeq
+	if pending {
+		rail.Reached = true
+	}
+	return rail, pending, nil
 }
 
 type rowQuerier interface {

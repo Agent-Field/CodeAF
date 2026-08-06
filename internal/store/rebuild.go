@@ -57,6 +57,9 @@ func (s *Store) Rebuild() error {
 	if _, err := tx.Exec(`DELETE FROM retrospective_watermark`); err != nil {
 		return fmt.Errorf("rebuild retrospective watermark: %w", err)
 	}
+	if _, err := tx.Exec(`DELETE FROM charters`); err != nil {
+		return fmt.Errorf("rebuild charters: %w", err)
+	}
 	for _, event := range events {
 		if err := replayEvent(tx, event); err != nil {
 			return fmt.Errorf("replay event %d (%s): %w", event.Seq, event.Kind, err)
@@ -350,6 +353,12 @@ func replayEvent(tx *sql.Tx, event Event) error {
 			return err
 		}
 		return applyRetrospectiveCheckpoint(tx, payload, event.Seq, event.Time)
+
+	case EventCharterCreated, EventCharterRevised, EventCharterStatusChanged,
+		EventCharterWatchAdvanced, EventCharterWoken, EventSentinelChecked,
+		EventCharterFired, EventCharterFiringBlocked, EventCharterFiringDeferred,
+		EventCharterProposalDeclined:
+		return replayCharterEvent(tx, event)
 
 	default:
 		// The journal is expected to gain accounting and artifact events that do

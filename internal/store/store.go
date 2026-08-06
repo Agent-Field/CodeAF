@@ -127,6 +127,19 @@ const (
 	// EventRetrospectiveCheckpointed records how much settled top-level work
 	// the periodic retrospective has already considered.
 	EventRetrospectiveCheckpointed EventKind = "retrospective_checkpointed"
+
+	// Charter events keep standing intent and every watch decision in the same
+	// append-only policy record as the work a firing creates.
+	EventCharterCreated          EventKind = "charter_created"
+	EventCharterRevised          EventKind = "charter_revised"
+	EventCharterStatusChanged    EventKind = "charter_status_changed"
+	EventCharterWatchAdvanced    EventKind = "charter_watch_advanced"
+	EventCharterWoken            EventKind = "charter_woken"
+	EventSentinelChecked         EventKind = "sentinel_checked"
+	EventCharterFired            EventKind = "charter_fired"
+	EventCharterFiringBlocked    EventKind = "charter_firing_blocked"
+	EventCharterFiringDeferred   EventKind = "charter_firing_deferred"
+	EventCharterProposalDeclined EventKind = "charter_proposal_declined"
 )
 
 var (
@@ -145,6 +158,9 @@ type Provenance struct {
 	Origin    Origin `json:"origin"`
 	SessionID string `json:"session_id,omitempty"`
 	Intent    string `json:"intent"`
+	// CharterID points trigger-born work back to the standing responsibility
+	// whose firing admitted it. It is empty for user and self work.
+	CharterID string `json:"charter_id,omitempty"`
 	// TrialOf is the fact sequence of the unsettled pair this subtree tests.
 	// Zero means the splice is ordinary work.
 	TrialOf int64 `json:"trial_of,omitempty"`
@@ -273,6 +289,7 @@ CREATE TABLE IF NOT EXISTS nodes (
     origin         TEXT NOT NULL CHECK (origin IN ('user', 'trigger', 'self')),
     session_id     TEXT,
     intent         TEXT NOT NULL,
+    charter_id     TEXT NOT NULL DEFAULT '',
     trial_of       INTEGER NOT NULL DEFAULT 0 CHECK (trial_of >= 0),
     created_seq    INTEGER NOT NULL REFERENCES events(seq),
     created_order  INTEGER NOT NULL CHECK (created_order >= 0),
@@ -386,6 +403,9 @@ func Open(path string) (*Store, error) {
 	}
 	if _, err := db.Exec(retrospectiveSchema); err != nil {
 		return closeOnError(fmt.Errorf("initialize retrospective schema: %w", err))
+	}
+	if _, err := db.Exec(charterSchema); err != nil {
+		return closeOnError(fmt.Errorf("initialize charter schema: %w", err))
 	}
 	if err := migrateFactsSchema(db); err != nil {
 		return closeOnError(fmt.Errorf("migrate facts schema: %w", err))

@@ -7,9 +7,12 @@ package resident
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
 	"strings"
 	"time"
+	"unicode"
 
 	"github.com/Agent-Field/aforge-v2/internal/store"
 )
@@ -17,6 +20,7 @@ import (
 // JobSketch is one settled job as the retrospective sees it: what was asked
 // in the user's words, what came back, and how long ago.
 type JobSketch struct {
+	Origin           store.Origin
 	Title            string
 	Ask              string
 	Outcome          string
@@ -69,6 +73,13 @@ func (r *Reconciler) WithReflector(reflect ReflectFunc) *Reconciler {
 	return r
 }
 
+// WithCharterProposals lets the resident retrospective surface recurring asks
+// through the explicit ratification door. Non-chat embedding paths stay inert.
+func (r *Reconciler) WithCharterProposals() *Reconciler {
+	r.proposeCharters = true
+	return r
+}
+
 const (
 	// reflectionInterval paces the retrospective; reflectionMinJobs and
 	// reflectionMinNew gate it on having enough history to hold a pattern
@@ -106,6 +117,9 @@ func (r *Reconciler) reflectOnJobs(ctx context.Context) {
 		return
 	}
 	r.maintainTerritories(ctx, now)
+	if r.proposeCharters {
+		r.proposeRecurringCharter(jobs)
+	}
 
 	learned, err := r.reflect(ctx, jobs)
 	if err != nil {
@@ -128,6 +142,99 @@ func (r *Reconciler) reflectOnJobs(ctx context.Context) {
 	}
 }
 
+// proposeRecurringCharter turns at most one three-occurrence ask shape into a
+// default-declined standing proposal. Recognition is deterministic; the
+// ordinary reflection call remains responsible only for notebook learning.
+func (r *Reconciler) proposeRecurringCharter(jobs []JobSketch) {
+	type recurrence struct {
+		count int
+		ask   string
+	}
+	shapes := make(map[string]recurrence)
+	for _, job := range jobs {
+		if job.Origin != store.OriginUser {
+			continue
+		}
+		shape := recurringAskShape(job.Ask)
+		if shape == "" {
+			continue
+		}
+		current := shapes[shape]
+		current.count++
+		if current.ask == "" {
+			current.ask = strings.TrimSpace(job.Ask)
+		}
+		shapes[shape] = current
+	}
+	bestShape, best := "", recurrence{}
+	for shape, candidate := range shapes {
+		if candidate.count < 3 {
+			continue
+		}
+		if candidate.count > best.count || candidate.count == best.count && (bestShape == "" || shape < bestShape) {
+			bestShape, best = shape, candidate
+		}
+	}
+	if bestShape == "" {
+		return
+	}
+	charters, err := r.store.Charters()
+	if err != nil {
+		return
+	}
+	for _, charter := range charters {
+		if charter.ProposalShape == bestShape {
+			return
+		}
+	}
+	declined, err := r.store.CharterProposalDeclined(bestShape)
+	if err != nil || declined {
+		return
+	}
+	sum := sha256.Sum256([]byte(bestShape))
+	id := "charter-proposal-" + hex.EncodeToString(sum[:6])
+	charter, err := store.NewCharter(
+		id,
+		best.ask,
+		store.WatchSpec{Kind: store.WatchPoll, Poll: &store.PollWatch{
+			Condition: "Check whether this recurring request is due again",
+			Cadence:   24 * time.Hour,
+		}},
+		"Has the recurring need returned or is the invariant threatened?",
+		store.CharterAction{Template: best.ask},
+		store.CharterRails{PerFiringBudgetUSD: 0.25, MaxFiringsPerDay: 1},
+		store.CharterProposed,
+		store.Ratification{},
+	)
+	if err != nil {
+		return
+	}
+	_ = r.store.CreateCharter(charter.WithProposalShape(bestShape))
+}
+
+func recurringAskShape(ask string) string {
+	var shape strings.Builder
+	space, number := false, false
+	for _, char := range strings.ToLower(strings.TrimSpace(ask)) {
+		switch {
+		case unicode.IsDigit(char):
+			if !number {
+				shape.WriteByte('#')
+			}
+			number, space = true, false
+		case unicode.IsLetter(char):
+			if space && shape.Len() > 0 {
+				shape.WriteByte(' ')
+			}
+			shape.WriteRune(char)
+			space, number = false, false
+		default:
+			space, number = true, false
+		}
+	}
+	return strings.TrimSpace(shape.String())
+}
+
 // settledJobSketches renders the newest finished top-level jobs, newest
 // first. Folded jobs contribute their digests — the retrospective reads the
 // filed history, not the raw archive.
@@ -142,7 +249,7 @@ func (r *Reconciler) settledJobSketches(now time.Time) ([]JobSketch, int) {
 	}
 	territories := make(map[string]bool)
 	for _, node := range nodes {
-		if node.Group == store.TerritoryGroup {
+		if store.IsOrganizationalGroup(node.Group) {
 			territories[node.ID] = true
 		}
 	}
@@ -150,7 +257,7 @@ func (r *Reconciler) settledJobSketches(now time.Time) ([]JobSketch, int) {
 	settledJobs := 0
 	for index := len(nodes) - 1; index >= 0; index-- {
 		node := nodes[index]
-		if node.Group == store.TerritoryGroup ||
+		if store.IsOrganizationalGroup(node.Group) ||
 			node.Parent != store.RootID && !territories[node.Parent] {
 			continue
 		}
@@ -171,6 +278,7 @@ func (r *Reconciler) settledJobSketches(now time.Time) ([]JobSketch, int) {
 		}
 		usage := usageByJob[node.ID]
 		sketches = append(sketches, JobSketch{
+			Origin:           node.Provenance.Origin,
 			Title:            strings.TrimSpace(node.Title),
 			Ask:              clipLabel(node.Provenance.Intent, reflectionAskBytes),
 			Outcome:          clipLabel(outcome, reflectionOutBytes),
