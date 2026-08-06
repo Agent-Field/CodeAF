@@ -226,3 +226,43 @@ func (panickyExecutor) Skill() string { return "linear" }
 func (panickyExecutor) Run(ctx context.Context, task Task) (*Outcome, error) {
 	panic("boom")
 }
+
+// TestLeafShapeSeparatesTheKindsOfLeaf is defect 2's other half: the router can
+// only key a leaf rating on a population the scheduler names, and the naming has
+// to fall along the axis the failures actually fell on.
+//
+// Arm B had one class for every leaf, so five budget stops on t1 — the task
+// whose leaves carry 2.2M prompt tokens into a 300k budget — rerouted t2's
+// document reading and t3's small repairs, where the demoted model had never
+// failed once. Size is that axis and Kind is the one it cannot see: a synthesis
+// node has no size at all, and is a roll-up over many long inputs rather than a
+// job, which is a different population again.
+func TestLeafShapeSeparatesTheKindsOfLeaf(t *testing.T) {
+	cases := []struct {
+		node plan.Node
+		want string
+	}{
+		{plan.Node{Kind: plan.KindWork, Size: plan.SizeAtomic}, "atomic"},
+		{plan.Node{Kind: plan.KindWork, Size: plan.SizeUnknown}, "atomic"},
+		// Borderline sits with oversized because the risk it names is the same
+		// risk, and erring that way keeps a lesson learned on a doubtful leaf
+		// away from the leaves nobody doubted.
+		{plan.Node{Kind: plan.KindWork, Size: plan.SizeBorderline}, "oversized"},
+		{plan.Node{Kind: plan.KindWork, Size: plan.SizeOversized}, "oversized"},
+		{plan.Node{Kind: plan.KindSynthesis, Size: plan.SizeUnknown}, "synthesis"},
+	}
+	buckets := map[string]bool{}
+	for _, item := range cases {
+		got := leafShape(&item.node)
+		if got != item.want {
+			t.Errorf("leafShape(%s/%s) = %q, want %q", item.node.Kind, item.node.Size, got, item.want)
+		}
+		buckets[got] = true
+	}
+	// Three, and the count is the design. A key fine enough to name every node
+	// is a key no bucket ever fills, and a rating that never reaches
+	// router.MinGraded has learned nothing at all — expensively.
+	if len(buckets) != 3 {
+		t.Fatalf("leaves fall into %d buckets, want three", len(buckets))
+	}
+}

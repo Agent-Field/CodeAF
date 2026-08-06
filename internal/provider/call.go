@@ -47,6 +47,7 @@ const (
 // absent on every path that has no router, and every method here is a no-op then.
 type Call struct {
 	class   CallClass
+	shape   string
 	attempt int
 
 	mutex    sync.Mutex
@@ -69,13 +70,33 @@ func WithCall(ctx context.Context, class CallClass) context.Context {
 // "whatever you chose last time was not good enough", and it is the router's job
 // to decide what that costs.
 func WithCallAttempt(ctx context.Context, class CallClass, attempt int) context.Context {
+	return WithCallShape(ctx, class, attempt, "")
+}
+
+// WithCallShape opens a slot and names the sub-population this call belongs to
+// within its class.
+//
+// A class is the grain ability varies at across *kinds of work*; a shape is the
+// grain it varies at within one kind. It exists for exactly one class today.
+// `exec.leaf` covers every leaf the executor runs, and arm B measured what that
+// costs: five leaves that exhausted their budget on one oversized task moved the
+// single global leaf rating far enough to reroute the leaves of every other
+// task, including two where the demoted model had never once failed. A rating is
+// only transferable between calls drawn from the same population, and leaves are
+// not one population.
+//
+// The shape is the call site's to name because only it knows: the router sees a
+// conversation, the scheduler sees the node the conversation is for. Empty means
+// the class is not divided, which is every planning call — those are already one
+// request against one schema, which is as narrow as a population gets.
+func WithCallShape(ctx context.Context, class CallClass, attempt int, shape string) context.Context {
 	if override, ok := ctx.Value(callClassContextKey{}).(CallClass); ok {
 		class = override
 	}
 	if attempt < 0 {
 		attempt = 0
 	}
-	return context.WithValue(ctx, callContextKey{}, &Call{class: class, attempt: attempt})
+	return context.WithValue(ctx, callContextKey{}, &Call{class: class, shape: shape, attempt: attempt})
 }
 
 // WithCallClass overrides the class every call opened under ctx belongs to.
@@ -129,6 +150,15 @@ func (c *Call) Class() CallClass {
 		return ""
 	}
 	return c.class
+}
+
+// Shape reports the sub-population within the class, empty when the class is
+// not divided.
+func (c *Call) Shape() string {
+	if c == nil {
+		return ""
+	}
+	return c.shape
 }
 
 // Attempt reports how many times this unit of work has already been given up on.

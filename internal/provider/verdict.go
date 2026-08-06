@@ -75,6 +75,32 @@ func (v Verdict) Graded() (positive bool, graded bool) {
 	}
 }
 
+// Weight is how much of a rating step one graded verdict is worth.
+//
+// Graded is a yes-or-no question and this is the follow-up: not every failure
+// says the same amount about the model that produced it. A reply that did not
+// parse, was semantically wrong, or was empty is the model failing at the work
+// it was handed. A leaf that ran out of budget or turns may be the same thing —
+// or it may be a leaf that was three nodes' worth of work, which is a fact about
+// the planner and not about the model. BASELINE.md measured that variance
+// directly: a byte-identical brief drew graphs from 5 to 26 nodes and cost
+// tracked node count almost exactly, so sizing dominates what a leaf costs and
+// therefore what exhausts it.
+//
+// A quarter, rather than zero, because it is still evidence — a model that
+// wanders is a model that runs out — and rather than one, because arm B watched
+// five budget stops on a single oversized task outvote a prior and reroute every
+// leaf on the panel. Weighted at a quarter those five move a rating about as far
+// as one wrong answer does, which is the right size for what they are.
+func (v Verdict) Weight() float64 {
+	switch v {
+	case VerdictBudgetStop, VerdictTurnCap:
+		return 0.25
+	default:
+		return 1
+	}
+}
+
 // Escalates reports whether a verdict is worth re-running on a stronger model.
 // A provider failure is not — the next rung would hit the same weather — and an
 // unverified success is not, because nothing said it was wrong.

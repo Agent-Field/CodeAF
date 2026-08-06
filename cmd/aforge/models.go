@@ -61,16 +61,26 @@ func runModels(args []string) error {
 			"run a plan or a graph with AFORGE_MODELS set.")
 		return nil
 	}
-	fmt.Printf("\n  %-16s %-44s %7s %7s %6s\n", "class", "model", "rating", "p(pass)", "n")
+	fmt.Printf("\n  %-22s %-38s %7s %7s %6s\n", "class", "model", "rating", "p(pass)", "n")
 	for _, entry := range entries {
-		fmt.Printf("  %-16s %-44s %+7.2f %7.2f %6d\n",
-			entry.Class, clip(entry.Model, 44), entry.Rating, router.Ability(entry.Rating), entry.Count)
+		// Whether a rating is being *used* is a different question from what it
+		// says, and it is the one worth seeing: under the gate the ordering reads
+		// the cold-start prior instead, so a striking number with n=5 beside it is
+		// not driving anything. Arm B's collapse is what happens when that is
+		// invisible.
+		gate := ""
+		if entry.Count < router.MinGraded {
+			gate = fmt.Sprintf("  under the gate — ordering uses the prior until n=%d", router.MinGraded)
+		}
+		fmt.Printf("  %-22s %-38s %+7.2f %7.2f %6d%s\n",
+			entry.Class, clip(entry.Model, 38), entry.Rating, router.Ability(entry.Rating), entry.Count, gate)
 	}
 	// Said once, at the bottom, because it is the thing most likely to be
 	// misread: these are relative abilities within one class, on a logit scale,
 	// and they are not comparable across classes.
 	fmt.Println("\n  rating is a Rasch ability in logits, comparable only within a class.")
 	fmt.Println("  p(pass) is that rating against an average call of the class.")
+	fmt.Println("  a class written class/shape is one sub-population of it, rated separately.")
 	return nil
 }
 
