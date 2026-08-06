@@ -86,8 +86,10 @@ const (
 	EventCommandRequested EventKind = "command_requested"
 	EventCommandResolved  EventKind = "command_resolved"
 
-	// EventUsageRecorded is one executed node's spend.
-	EventUsageRecorded EventKind = "usage_recorded"
+	// Usage and surprise are journaled separately because a planned leaf's
+	// prediction becomes known when the complete plan lands, after its spend.
+	EventUsageRecorded    EventKind = "usage_recorded"
+	EventSurpriseRecorded EventKind = "surprise_recorded"
 
 	// EventDeliveryGate is the final judge's evidence about one delivered job.
 	EventDeliveryGate EventKind = "delivery_gate"
@@ -357,6 +359,9 @@ func Open(path string) (*Store, error) {
 	}
 	if _, err := db.Exec(usageSchema); err != nil {
 		return closeOnError(fmt.Errorf("initialize usage schema: %w", err))
+	}
+	if _, err := db.Exec(surpriseSchema); err != nil {
+		return closeOnError(fmt.Errorf("initialize surprise schema: %w", err))
 	}
 	if _, err := db.Exec(factsSchema); err != nil {
 		return closeOnError(fmt.Errorf("initialize facts schema: %w", err))

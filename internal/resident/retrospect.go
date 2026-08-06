@@ -25,6 +25,9 @@ type JobSketch struct {
 	PromptTokens     int
 	CompletionTokens int
 	Cost             float64
+	SurpriseTokens   int
+	ExpectedTokens   int
+	Surprise         *float64
 }
 
 // CostSummary renders the structural size and measured spend compactly for
@@ -38,8 +41,21 @@ func (j JobSketch) CostSummary() string {
 	if cost == "" {
 		cost = "0"
 	}
-	return fmt.Sprintf("%d %s · %d tok · $%s", j.NodeCount, nodes,
+	summary := fmt.Sprintf("%d %s · %d tok · $%s", j.NodeCount, nodes,
 		j.PromptTokens+j.CompletionTokens, cost)
+	if j.Surprise == nil {
+		return summary
+	}
+	comparison := fmt.Sprintf("typical leaf miss ±%.0f%%", 100**j.Surprise)
+	switch {
+	case j.ExpectedTokens > 0 && j.SurpriseTokens > j.ExpectedTokens:
+		comparison = fmt.Sprintf("%.1f× over", float64(j.SurpriseTokens)/float64(j.ExpectedTokens))
+	case j.ExpectedTokens > 0 && j.SurpriseTokens < j.ExpectedTokens && j.SurpriseTokens > 0:
+		comparison = fmt.Sprintf("%.1f× under", float64(j.ExpectedTokens)/float64(j.SurpriseTokens))
+	case j.ExpectedTokens > 0 && j.SurpriseTokens == j.ExpectedTokens:
+		comparison = "on prediction"
+	}
+	return fmt.Sprintf("%s, predicted %d tok — %s", summary, j.ExpectedTokens, comparison)
 }
 
 // ReflectFunc looks across recent jobs for what only the series reveals and
@@ -155,6 +171,9 @@ func (r *Reconciler) settledJobSketches(now time.Time) ([]JobSketch, int) {
 			PromptTokens:     usage.PromptTokens,
 			CompletionTokens: usage.CompletionTokens,
 			Cost:             usage.Cost,
+			SurpriseTokens:   usage.SurpriseTokens,
+			ExpectedTokens:   usage.ExpectedTokens,
+			Surprise:         usage.Surprise,
 		})
 	}
 	return sketches, settledJobs

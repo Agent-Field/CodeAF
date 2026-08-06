@@ -218,6 +218,44 @@ func TestSingleLeafProfileCarriesPolishedGateVerdict(t *testing.T) {
 	}
 }
 
+func TestRetrospectivePrioritizesAndRendersSurprise(t *testing.T) {
+	graph, err := store.Open(filepath.Join(t.TempDir(), "reflection.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer graph.Close()
+
+	settings := config.Config{Model: "talk/model"}
+	capture := &gateCaptureClient{model: settings.Model}
+	client := &liveClient{settings: settings, model: capture.model, client: capture}
+	surprise := 1.875
+	jobs := []resident.JobSketch{{
+		Title: "Mispredicted report", Ask: "write the report", Outcome: "report delivered", Age: "today",
+		NodeCount: 2, PromptTokens: 140, CompletionTokens: 25, Cost: 0.0125,
+		SurpriseTokens: 165, ExpectedTokens: 72, Surprise: &surprise,
+	}}
+	if _, err := reflectAcrossJobs(settings, client, graph)(context.Background(), jobs); err != nil {
+		t.Fatal(err)
+	}
+	if len(capture.messages) != 2 {
+		t.Fatalf("reflection messages = %d, want 2", len(capture.messages))
+	}
+	system := capture.messages[0].Content[0].Text
+	if !strings.Contains(system, "Consider the most mispredicted jobs first") ||
+		!strings.Contains(system, "where the self-model is most wrong") {
+		t.Fatalf("reflection prompt omitted surprise priority: %q", system)
+	}
+	user := capture.messages[1].Content[0].Text
+	for _, want := range []string{
+		"2 nodes · 165 tok · $0.0125",
+		"predicted 72 tok — 2.3× over",
+	} {
+		if !strings.Contains(user, want) {
+			t.Errorf("reflection input = %q, want %q", user, want)
+		}
+	}
+}
+
 func TestParseLearnedFactsKeepsStructuredUnsettledPair(t *testing.T) {
 	raw := `{"facts":[{"scope":"domain:parsing","kind":"unsettled","body":"ignored projection","unsettled":{"approaches":[{"approach":"table-driven","scope":"stable grammars","evidence":[11]},{"approach":"combinators","scope":"changing grammars","evidence":[17]}]},"sources":[11,17]}]}`
 	learned := parseLearnedFacts(raw, 5)
