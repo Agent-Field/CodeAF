@@ -1456,3 +1456,39 @@ func TestRailShowsTitlesGroupsAndDependencyWaits(t *testing.T) {
 		t.Fatalf("rail shows brief where a title exists:\n%s", tree)
 	}
 }
+
+// A dock that grows and an input that wraps must both be charged against the
+// frame in the same pass: the height budget is computed from the same widths
+// the final render uses, so the frame never gains or loses rows.
+func TestFrameHeightStaysExactAsDockAndInputGrow(t *testing.T) {
+	model := New(&fakeBackend{}, "cards")
+	model.setSize(100, 24)
+	model.cards = []jobCard{{
+		ID: "job", RootID: "job", State: cardWorking, Title: "Long job",
+		Ask: strings.Repeat("chase every branch of the question ", 4), Total: 3,
+	}}
+	model.cardExpanded["job"] = true
+	model.setSize(100, 24)
+	if height := lipgloss.Height(model.View()); height != 24 {
+		t.Fatalf("view with an expanded docked card is %d rows, want 24", height)
+	}
+	dock := model.cardDockHeight()
+	if dock < 3 {
+		t.Fatalf("expanded card dock is %d rows, expected several", dock)
+	}
+	if want := max(3, 24-3-dock-model.input.LineCount()-1); model.chatHeight != want {
+		t.Fatalf("chat height = %d, want %d (dock %d rows)", model.chatHeight, want, dock)
+	}
+
+	// Shrinking the terminal re-wraps the input to more rows; the same resize
+	// must account for the new wrap, not the stale one.
+	model.cardExpanded["job"] = false
+	model.input.SetValue(strings.Repeat("steer the fleet ", 12))
+	_, _ = model.Update(tea.WindowSizeMsg{Width: 40, Height: 24})
+	if lines := model.input.LineCount(); lines < 3 {
+		t.Fatalf("input did not re-wrap on resize: %d lines", lines)
+	}
+	if height := lipgloss.Height(model.View()); height != 24 {
+		t.Fatalf("view after resize is %d rows, want 24", height)
+	}
+}

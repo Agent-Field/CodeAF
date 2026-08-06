@@ -638,7 +638,9 @@ func (m *Model) renderMessages() string {
 		return items[i].order < items[j].order
 	})
 	if len(items) == 0 {
-		return mutedStyle.Render("No messages yet. Start with a thought or a task.")
+		// Wrapped, not raw: a line wider than the pane would be soft-wrapped by
+		// the pane style, growing the frame and shifting every row below it.
+		return mutedStyle.Render(wrapText("No messages yet. Start with a thought or a task.", max(8, m.chat.Width-2)))
 	}
 
 	blocks := make([]string, 0, len(items))
@@ -747,7 +749,7 @@ func (m *Model) renderMessageGroup(group messageGroup, atLine int) string {
 		// jumps to that task's activity view.
 		if message.NodeID != "" && message.Role != store.RoleUser && !secondaryMessage(message) {
 			chip := lipgloss.NewStyle().Foreground(peach).Render(
-				"↳ " + truncate(m.nodeChipLabel(message.NodeID), 40))
+				"↳ " + truncate(m.nodeChipLabel(message.NodeID), max(6, min(40, available-2))))
 			m.chatChipRows = append(m.chatChipRows, chatChipRow{line: line, nodeID: message.NodeID})
 			item = chip + "\n" + item
 		}
