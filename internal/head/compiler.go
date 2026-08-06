@@ -15,7 +15,7 @@ import (
 const compilerSystemPrompt = `You are the intent compiler for an asynchronous task graph. Apply ASSUME-AND-DECLARE.
 
 Turn the user's verbatim instruction and the current graph context into a complete execution brief. Return exactly one JSON object with this shape and no text outside it:
-{"goal":"...","deliverable":"...","budget":"...","scale":"lookup|task|project","builds_on":["<job id>"],"assumptions":["..."]}
+{"goal":"...","deliverable":"...","budget":"...","scale":"lookup|task|project","builds_on":["<job id>"],"assumptions":["..."],"question":""}
 
 Rules:
 - State a clear goal that names the final deliverable, what success means, and the evidence standard that will prove it.
@@ -23,7 +23,7 @@ Rules:
 - Give a sensible free-text budget, including a currency amount when cost is otherwise unspecified.
 - Fill every missing decision with a practical default: scope, audience, format, quality bar, evidence, timing, tools, and constraints whenever the user did not settle them.
 - List every default you supplied explicitly in assumptions. Assumptions are revisable receipts, not hidden guesses.
-- Never ask a question back and never leave a placeholder such as TBD, unknown, or ask user.
+- Fill gaps with defaults, with one exception: a gap that is both high-consequence and hard to reverse — spending real money externally, deleting or overwriting something that exists, sending or publishing on the user's behalf, or a wrong guess that would waste most of the budget. For exactly that kind of gap, put ONE crisp casual question in "question" (empty otherwise), stating your best-guess default so the user can simply say yes. Never ask about anything reversible, and never leave placeholders such as TBD or unknown.
 - The user's words are the authority. Do not narrow or replace them with an inferred request.
 - End goal with a line beginning "Verbatim request:" followed by the user's instruction exactly as supplied.
 - The graph context lists earlier jobs with their ids, what was asked, and their results. When the instruction continues, improves, or refers to earlier work, name those job ids in builds_on AND restate in the goal the concrete starting points from their results — file paths, names, findings — so the work never starts blind. When the instruction stands alone, builds_on is [].
@@ -51,6 +51,11 @@ type Brief struct {
 	// result flows to the new workers as an input digest instead of being
 	// rediscovered or guessed at.
 	BuildsOn []string `json:"builds_on"`
+
+	// Question is the one gap too consequential to guess, when one exists.
+	// Empty is the overwhelmingly common, correct value: asking is reserved
+	// for irreversible or expensive mistakes, never for preferences.
+	Question string `json:"question"`
 }
 
 // Compiler converts verbatim user intent into a planning brief without asking
@@ -87,6 +92,12 @@ func (c *Compiler) Compile(ctx context.Context, instruction string, graphContext
 	var brief Brief
 	if err := decodeJSONObject(response.Text(), &brief); err != nil {
 		return Brief{}, fmt.Errorf("compile intent: %w", err)
+	}
+	if question := strings.TrimSpace(brief.Question); question != "" {
+		// A question suspends the brief: the rest of the fields are drafts at
+		// best, and validating them would reject the ask itself.
+		brief.Question = question
+		return brief, nil
 	}
 	if err := validateBrief(brief); err != nil {
 		return Brief{}, fmt.Errorf("compile intent: %w", err)

@@ -34,7 +34,17 @@ type Compiled struct {
 	// result arrives as an input digest — continuity through the graph, not
 	// through a shared workspace.
 	BuildsOn []string
+
+	// Question, when set, means the compiler judged one gap too consequential
+	// to guess. Nothing is spliced; the question is asked in the thread and
+	// the user's reply arrives as an ordinary next message.
+	Question string
 }
+
+// DistillFunc extracts durable facts from a finished job — preferences,
+// environment, entities — as distinct from the job's result. At most a
+// handful of standalone lines; an empty list is the common, correct answer.
+type DistillFunc func(ctx context.Context, goal, result string) ([]string, error)
 
 // CompileFunc turns a verbatim thread instruction into a goal the planner can
 // act on. graphContext is a compact rendering of the active graph.
@@ -51,6 +61,7 @@ type Reconciler struct {
 	compile CompileFunc
 	plan    PlanFunc
 	narrate NarrateFunc
+	distill DistillFunc
 
 	mu                 sync.Mutex
 	watcherInitialized bool
@@ -143,6 +154,9 @@ type commandOutcome struct {
 	status  store.CommandStatus
 	result  string
 	receipt string
+	// asAgent posts the receipt in the agent's own voice instead of as a
+	// collapsed system receipt — a question must be heard, not filed.
+	asAgent bool
 }
 
 func (r *Reconciler) reconcileCommand(ctx context.Context, command store.Command) error {
@@ -159,9 +173,13 @@ func (r *Reconciler) reconcileCommand(ctx context.Context, command store.Command
 	if err := r.store.ResolveCommand(command.Seq, outcome.status, outcome.result); err != nil {
 		return err
 	}
+	role := store.RoleSystem
+	if outcome.asAgent {
+		role = store.RoleAgent
+	}
 	_, err = r.store.PostMessage(store.Message{
 		SessionID:  command.SessionID,
-		Role:       store.RoleSystem,
+		Role:       role,
 		Body:       boundMessage(outcome.receipt),
 		CommandSeq: command.Seq,
 	})
@@ -200,9 +218,20 @@ func (r *Reconciler) splice(ctx context.Context, command store.Command) (command
 		return commandOutcome{}, err
 	}
 
-	compiled, err := r.compile(ctx, command.Instruction, renderGraphContext(snapshot))
+	compiled, err := r.compile(ctx, command.Instruction, r.renderCompileContext(snapshot))
 	if err != nil {
 		return commandOutcome{}, fmt.Errorf("compile request: %w", err)
+	}
+	if question := strings.TrimSpace(compiled.Question); question != "" {
+		// One gap was too consequential to guess. Ask in the agent's voice
+		// and stop; the reply arrives as an ordinary next message and the
+		// head routes it with this exchange in context.
+		return commandOutcome{
+			status:  store.CommandRejected,
+			result:  "asked the user: " + clipLabel(question, 200),
+			receipt: question,
+			asAgent: true,
+		}, nil
 	}
 	if strings.TrimSpace(compiled.Goal) == "" {
 		return commandOutcome{}, errors.New("compile request: compiler returned an empty goal")
@@ -385,6 +414,12 @@ func (r *Reconciler) announceTransitions(ctx context.Context) error {
 					return err
 				}
 				r.recordForNarration(byID, event)
+				if event.Kind == store.EventNodeCompleted {
+					if node, ok, err := r.store.Node(event.NodeID); err == nil && ok &&
+						node.Parent == store.RootID && node.Provenance.SessionID != "" {
+						r.distillJob(ctx, node)
+					}
+				}
 			case store.EventNodeStarted:
 				r.recordForNarration(byID, event)
 			}
@@ -587,4 +622,50 @@ func (r *Reconciler) wireContinuity(subtree store.Subtree, buildsOn []string) st
 		}
 	}
 	return subtree
+}
+
+// WithDistiller installs the notebook's writer and returns the reconciler
+// for chaining. A nil distiller (the default) records no facts.
+func (r *Reconciler) WithDistiller(distill DistillFunc) *Reconciler {
+	r.distill = distill
+	return r
+}
+
+// distillLimit bounds how much one job may add to the notebook.
+const distillLimit = 5
+
+// distillJob extracts durable facts from a landed deliverable, best effort:
+// a failed distillation costs the notebook entry, never the loop.
+func (r *Reconciler) distillJob(ctx context.Context, node store.Node) {
+	if r.distill == nil || strings.TrimSpace(node.Summary) == "" {
+		return
+	}
+	facts, err := r.distill(ctx, node.Provenance.Intent, node.Summary)
+	if err != nil {
+		return
+	}
+	if len(facts) > distillLimit {
+		facts = facts[:distillLimit]
+	}
+	for _, fact := range facts {
+		if strings.TrimSpace(fact) == "" {
+			continue
+		}
+		_, _ = r.store.RecordFact(node.ID, clipLabel(fact, store.MaxFactBytes-1))
+	}
+}
+
+// renderCompileContext is the compiler's whole view: the notebook first —
+// durable facts the user should never have to repeat — then the graph.
+func (r *Reconciler) renderCompileContext(snapshot store.Snapshot) string {
+	var context strings.Builder
+	if facts, err := r.store.RecentFacts(12); err == nil && len(facts) > 0 {
+		context.WriteString("notebook (durable facts learned earlier; treat as true unless the instruction contradicts them):\n")
+		for _, fact := range facts {
+			context.WriteString("- " + fact.Body + "\n")
+		}
+		context.WriteString("\n")
+	}
+	context.WriteString(renderGraphContext(snapshot))
+	return context.String()
 }
