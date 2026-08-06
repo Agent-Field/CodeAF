@@ -25,6 +25,9 @@ type Event struct {
 	Call  string    `json:"call"` // ties every row about one unit of work together
 	Run   string    `json:"run"`  // the run cache key, which is a run identity
 	Class string    `json:"class"`
+	// Shape is the sub-population within the class the rating was keyed on —
+	// which leaves this leaf was ordered against. Empty for an undivided class.
+	Shape string `json:"shape,omitempty"`
 
 	// Candidates is the ordered rung list the choice was made from, and Rung is
 	// where in it Model sits. Escalation is what had already been tried and
@@ -38,6 +41,16 @@ type Event struct {
 	// dated snapshot and it is what the ledger keys on, because a rating pooled
 	// across two sets of weights measures neither.
 	Resolved string `json:"resolved,omitempty"`
+
+	// Explore marks an attempt the router took to buy evidence rather than
+	// because it expected the best answer, and Propensity is the probability it
+	// would have. The pair is what makes the log usable for offline policy work:
+	// evidence gathered by a rule that chose it for its own reasons is biased in
+	// the direction of the rule, and only a recorded propensity lets a later
+	// estimator weight it back out. It is one number and it is written down at
+	// the moment it applied, which is the only moment it can be known.
+	Explore    bool    `json:"explore,omitempty"`
+	Propensity float64 `json:"propensity,omitempty"`
 
 	Verdict provider.Verdict `json:"verdict"`
 	// Final marks the row that carries the settled verdict. An attempt is
@@ -78,8 +91,15 @@ func OpenEvents(dir string) (*Events, error) {
 // Append writes one row. Rows are written whole and O_APPEND is atomic for a
 // write of this size on every platform this runs on, so two concurrent aforge
 // processes interleave rows without ever interleaving bytes.
+//
+// Every read of the file handle happens under the mutex, including the one that
+// asks whether there is a file at all. A leaf's settled verdict is appended from
+// whichever goroutine reported it, which may be after the run has begun shutting
+// down, so Close and Append genuinely do race — the check outside the lock was a
+// data race on the handle that only the race detector would ever have shown,
+// since a closed *os.File returns an error rather than panicking.
 func (e *Events) Append(event Event) {
-	if e == nil || e.file == nil {
+	if e == nil {
 		return
 	}
 	event.At = time.Now().UTC()
@@ -89,6 +109,9 @@ func (e *Events) Append(event Event) {
 	}
 	e.mutex.Lock()
 	defer e.mutex.Unlock()
+	if e.file == nil {
+		return
+	}
 	_, _ = e.file.Write(append(encoded, '\n'))
 }
 
