@@ -126,12 +126,32 @@ func runChat(args []string) error {
 				inputs = append(inputs, exec.Input{Result: digest})
 			}
 		}
+		// The steering mailbox: user messages anchored to this node land in
+		// the worker's transcript before its next turn. The cursor starts at
+		// zero so guidance sent while the node was still queued applies too.
+		var steerCursor int64
+		steer := func() []string {
+			messages, err := graph.NodeMessages(node.ID, steerCursor, 20)
+			if err != nil {
+				return nil
+			}
+			var lines []string
+			for _, message := range messages {
+				steerCursor = message.Seq
+				if message.Role == store.RoleUser {
+					lines = append(lines, message.Body)
+				}
+			}
+			return lines
+		}
+
 		outcome, err := linear.Run(settings.ExecContext(ctx), exec.Task{
 			NodeID: int(node.CreatedSeq),
 			Title:  firstLine(node.Brief),
 			Goal:   node.Provenance.Intent,
 			Brief:  node.Brief,
 			Inputs: inputs,
+			Steer:  steer,
 		})
 		if err != nil {
 			return resident.ExecResult{}, err
