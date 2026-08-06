@@ -56,22 +56,36 @@ const (
 	FactPlain FactKind = "fact"
 )
 
-// Fact statuses. Superseded facts stay in the table — the journal never
-// forgets — but retrieval returns active facts only.
+// Fact statuses. Settled facts stay in the table — the journal never forgets
+// — but retrieval returns active facts only.
 const (
-	FactActive     = "active"
-	FactSuperseded = "superseded"
+	FactActive      = "active"
+	FactSuperseded  = "superseded"
+	FactQuarantined = "quarantined"
+)
+
+// FactChangeOrigin names who changed a fact's retrieval status.
+type FactChangeOrigin string
+
+const (
+	FactOriginUser         FactChangeOrigin = "user"
+	FactOriginCLI          FactChangeOrigin = "cli"
+	FactOriginConsolidator FactChangeOrigin = "consolidator"
+	FactOriginSupersession FactChangeOrigin = "supersession"
 )
 
 // Fact is one materialized notebook entry.
 type Fact struct {
-	Seq    int64
-	Time   time.Time
-	NodeID string // the node whose work taught this
-	Scope  string // what it is about: user, env, tool:x, repo:/p, file:/p/f, domain:x
-	Kind   FactKind
-	Body   string
-	Status string
+	Seq          int64
+	Time         time.Time
+	NodeID       string // the node whose work taught this
+	Scope        string // what it is about: user, env, tool:x, repo:/p, file:/p/f, domain:x
+	Kind         FactKind
+	Body         string
+	Status       string
+	StatusSeq    int64
+	EvidenceSeq  int64
+	StatusOrigin FactChangeOrigin
 
 	// Uses and LastUsed are retrieval telemetry for consolidation, not
 	// journaled truth: Rebuild resets them, deliberately.
@@ -87,7 +101,10 @@ CREATE TABLE IF NOT EXISTS facts (
     scope     TEXT NOT NULL DEFAULT 'user',
     kind      TEXT NOT NULL DEFAULT 'fact' CHECK (kind IN ('preference', 'quirk', 'lesson', 'fact')),
     body      TEXT NOT NULL,
-    status    TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'superseded')),
+    status    TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'superseded', 'quarantined')),
+    status_seq INTEGER NOT NULL DEFAULT 0,
+    evidence_seq INTEGER NOT NULL DEFAULT 0,
+    status_origin TEXT NOT NULL DEFAULT '',
     uses      INTEGER NOT NULL DEFAULT 0,
     last_used TEXT NOT NULL DEFAULT ''
 );
@@ -107,9 +124,19 @@ type factSupersededPayload struct {
 	BySeq   int64 `json:"by_seq"`
 }
 
-// RecordFact appends one learned fact. An identical active fact in the same
-// scope is superseded rather than duplicated — write-time hygiene is what
-// keeps the notebook worth reading.
+type factInjectionPayload struct {
+	FactSeqs []int64 `json:"fact_seqs"`
+}
+
+type factStatusPayload struct {
+	FactSeq     int64            `json:"fact_seq"`
+	EvidenceSeq int64            `json:"evidence_seq,omitempty"`
+	Origin      FactChangeOrigin `json:"origin"`
+}
+
+// RecordFact appends one learned fact. An identical active or quarantined fact
+// in the same scope is superseded rather than duplicated — write-time hygiene
+// is what keeps the notebook worth reading.
 func (s *Store) RecordFact(nodeID, scope string, kind FactKind, body string) (Fact, error) {
 	body = strings.TrimSpace(body)
 	if body == "" {
@@ -138,8 +165,9 @@ func (s *Store) RecordFact(nodeID, scope string, kind FactKind, body string) (Fa
 	var duplicate int64
 	err = tx.QueryRow(`
 		SELECT seq FROM facts
-		WHERE scope = ? AND status = ? AND lower(body) = lower(?)
-		LIMIT 1`, scope, FactActive, body).Scan(&duplicate)
+		WHERE scope = ? AND status IN (?, ?) AND lower(body) = lower(?)
+		ORDER BY status = ? DESC, seq DESC LIMIT 1`,
+		scope, FactActive, FactQuarantined, body, FactActive).Scan(&duplicate)
 	if err != nil && err != sql.ErrNoRows {
 		return Fact{}, fmt.Errorf("record fact: %w", err)
 	}
@@ -154,20 +182,23 @@ func (s *Store) RecordFact(nodeID, scope string, kind FactKind, body string) (Fa
 	}
 	if duplicate != 0 {
 		superseded := factSupersededPayload{FactSeq: duplicate, BySeq: seq}
-		if _, _, err := appendEvent(tx, "", EventFactSuperseded, superseded); err != nil {
+		supersessionSeq, _, err := appendEvent(tx, "", EventFactSuperseded, superseded)
+		if err != nil {
 			return Fact{}, fmt.Errorf("record fact: %w", err)
 		}
-		if err := applyFactSupersession(tx, superseded); err != nil {
+		if err := applyFactSupersession(tx, superseded, supersessionSeq); err != nil {
 			return Fact{}, fmt.Errorf("record fact: %w", err)
 		}
 	}
 	if err := tx.Commit(); err != nil {
 		return Fact{}, fmt.Errorf("record fact: %w", err)
 	}
-	return Fact{Seq: seq, Time: at, NodeID: nodeID, Scope: scope, Kind: kind, Body: body, Status: FactActive}, nil
+	return Fact{Seq: seq, Time: at, NodeID: nodeID, Scope: scope, Kind: kind, Body: body,
+		Status: FactActive, StatusSeq: seq}, nil
 }
 
-// SupersedeFact retires one active fact in favour of another, journaled.
+// SupersedeFact retires one active or quarantined fact in favour of another,
+// journaled.
 // Consolidation uses it to rewrite a scope into fewer, better lines.
 func (s *Store) SupersedeFact(factSeq, bySeq int64) error {
 	tx, err := s.db.BeginTx(context.Background(), nil)
@@ -177,13 +208,221 @@ func (s *Store) SupersedeFact(factSeq, bySeq int64) error {
 	defer tx.Rollback()
 
 	payload := factSupersededPayload{FactSeq: factSeq, BySeq: bySeq}
-	if _, _, err := appendEvent(tx, "", EventFactSuperseded, payload); err != nil {
+	seq, _, err := appendEvent(tx, "", EventFactSuperseded, payload)
+	if err != nil {
 		return fmt.Errorf("supersede fact: %w", err)
 	}
-	if err := applyFactSupersession(tx, payload); err != nil {
+	if err := applyFactSupersession(tx, payload, seq); err != nil {
 		return fmt.Errorf("supersede fact: %w", err)
 	}
 	return tx.Commit()
+}
+
+// RecordFactInjection attributes one bounded notebook batch to the node whose
+// context received it. Repeated calls are legal; outcome accounting counts a
+// fact's ride on a node once.
+func (s *Store) RecordFactInjection(nodeID string, factSeqs []int64) error {
+	nodeID = strings.TrimSpace(nodeID)
+	factSeqs = normalizedFactSeqs(factSeqs)
+	if nodeID == "" {
+		return fmt.Errorf("record fact injection: %w: empty node id", ErrInvalid)
+	}
+	if len(factSeqs) == 0 {
+		return nil
+	}
+
+	tx, err := s.db.BeginTx(context.Background(), nil)
+	if err != nil {
+		return fmt.Errorf("record fact injection: %w", err)
+	}
+	defer tx.Rollback()
+	if err := requireNode(tx, nodeID); err != nil {
+		return fmt.Errorf("record fact injection: %w", err)
+	}
+	for _, factSeq := range factSeqs {
+		var exists int
+		if err := tx.QueryRow(`SELECT 1 FROM facts WHERE seq = ?`, factSeq).Scan(&exists); err != nil {
+			if err == sql.ErrNoRows {
+				return fmt.Errorf("record fact injection: %w: fact %d not found", ErrNotFound, factSeq)
+			}
+			return fmt.Errorf("record fact injection: %w", err)
+		}
+	}
+	if _, _, err := appendEvent(tx, nodeID, EventFactInjected,
+		factInjectionPayload{FactSeqs: factSeqs}); err != nil {
+		return fmt.Errorf("record fact injection: %w", err)
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("record fact injection: %w", err)
+	}
+	return nil
+}
+
+// QuarantineFact removes one active fact from every retrieval path. The event
+// itself is the evidence when evidenceSeq is zero, as for a direct CLI veto.
+func (s *Store) QuarantineFact(factSeq, evidenceSeq int64, origin FactChangeOrigin) error {
+	if factSeq <= 0 || !validFactChangeOrigin(origin) {
+		return fmt.Errorf("quarantine fact: %w: invalid fact or origin", ErrInvalid)
+	}
+	tx, err := s.db.BeginTx(context.Background(), nil)
+	if err != nil {
+		return fmt.Errorf("quarantine fact: %w", err)
+	}
+	defer tx.Rollback()
+	if evidenceSeq > 0 {
+		var exists int
+		if err := tx.QueryRow(`SELECT 1 FROM events WHERE seq = ?`, evidenceSeq).Scan(&exists); err != nil {
+			if err == sql.ErrNoRows {
+				return fmt.Errorf("quarantine fact: %w: evidence event %d not found", ErrNotFound, evidenceSeq)
+			}
+			return fmt.Errorf("quarantine fact: %w", err)
+		}
+	}
+	payload := factStatusPayload{FactSeq: factSeq, EvidenceSeq: evidenceSeq, Origin: origin}
+	seq, _, err := appendEvent(tx, "", EventFactQuarantined, payload)
+	if err != nil {
+		return fmt.Errorf("quarantine fact: %w", err)
+	}
+	if err := applyFactQuarantine(tx, payload, seq); err != nil {
+		return fmt.Errorf("quarantine fact: %w", err)
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("quarantine fact: %w", err)
+	}
+	return nil
+}
+
+// RestoreFact returns one quarantined fact to retrieval. Restoration is a new
+// journal event; the quarantine evidence remains intact in the earlier event.
+func (s *Store) RestoreFact(factSeq int64, origin FactChangeOrigin) error {
+	if factSeq <= 0 || !validFactChangeOrigin(origin) {
+		return fmt.Errorf("restore fact: %w: invalid fact or origin", ErrInvalid)
+	}
+	tx, err := s.db.BeginTx(context.Background(), nil)
+	if err != nil {
+		return fmt.Errorf("restore fact: %w", err)
+	}
+	defer tx.Rollback()
+	payload := factStatusPayload{FactSeq: factSeq, Origin: origin}
+	seq, _, err := appendEvent(tx, "", EventFactRestored, payload)
+	if err != nil {
+		return fmt.Errorf("restore fact: %w", err)
+	}
+	if err := applyFactRestore(tx, payload, seq); err != nil {
+		return fmt.Errorf("restore fact: %w", err)
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("restore fact: %w", err)
+	}
+	return nil
+}
+
+// FactBySeq returns one notebook entry regardless of retrieval status.
+func (s *Store) FactBySeq(seq int64) (Fact, bool, error) {
+	facts, err := s.factsWhere(`seq = ?`, seq)
+	if err != nil {
+		return Fact{}, false, err
+	}
+	if len(facts) == 0 {
+		return Fact{}, false, nil
+	}
+	return facts[0], true, nil
+}
+
+// Facts lists notebook entries in journal order, including settled and
+// quarantined beliefs. A non-positive limit returns the complete notebook.
+func (s *Store) Facts(limit int) ([]Fact, error) {
+	if limit <= 0 {
+		return s.factsWhere(`1 = 1 ORDER BY seq DESC`)
+	}
+	return s.factsWhere(`1 = 1 ORDER BY seq DESC LIMIT ?`, limit)
+}
+
+// FactOutcome is the outcome co-occurrence attached to one notebook fact.
+// Bad counts distinct injected nodes that failed, hit a failed delivery gate,
+// or grew an overrun continuation. LatestBadSeq is evidence for quarantine.
+type FactOutcome struct {
+	FactSeq      int64
+	Rides        int
+	Bad          int
+	LatestBadSeq int64
+}
+
+// FactOutcomes joins journal-native injections to graph and gate outcomes.
+// The query deliberately assigns correlation, not causation; policy about how
+// much repeated evidence warrants quarantine belongs to consolidation.
+func (s *Store) FactOutcomes() (map[int64]FactOutcome, error) {
+	rows, err := s.db.Query(`
+		WITH injection_pairs AS (
+			SELECT DISTINCT injected.node_id AS node_id,
+			       CAST(fact.value AS INTEGER) AS fact_seq
+			FROM events AS injected, json_each(injected.payload, '$.fact_seqs') AS fact
+			WHERE injected.kind = ?
+		), latest_gates AS (
+			SELECT gate.node_id, gate.seq,
+			       CAST(json_extract(gate.payload, '$.pass') AS INTEGER) AS pass
+			FROM events AS gate
+			JOIN (
+				SELECT node_id, MAX(seq) AS seq
+				FROM events WHERE kind = ? GROUP BY node_id
+			) AS latest ON latest.seq = gate.seq
+		), failures AS (
+			SELECT node_id, MAX(seq) AS seq
+			FROM events WHERE kind = ? GROUP BY node_id
+		), overruns AS (
+			SELECT injected.node_id, MAX(continuation.created_seq) AS seq
+			FROM (SELECT DISTINCT node_id FROM injection_pairs) AS injected
+			JOIN nodes AS continuation
+			  ON instr(continuation.id, injected.node_id || '-x1') = 1
+			GROUP BY injected.node_id
+		), outcomes AS (
+			SELECT injected.fact_seq, injected.node_id,
+			       max(
+				CASE WHEN node.status = ? THEN COALESCE(failures.seq, 0) ELSE 0 END,
+				CASE WHEN latest_gates.pass = 0 THEN latest_gates.seq ELSE 0 END,
+				COALESCE(overruns.seq, 0)
+			       ) AS bad_seq
+			FROM injection_pairs AS injected
+			JOIN nodes AS node ON node.id = injected.node_id
+			LEFT JOIN latest_gates ON latest_gates.node_id = injected.node_id
+			LEFT JOIN failures ON failures.node_id = injected.node_id
+			LEFT JOIN overruns ON overruns.node_id = injected.node_id
+		)
+		SELECT fact_seq, COUNT(*) AS rides,
+		       SUM(CASE WHEN bad_seq > 0 THEN 1 ELSE 0 END) AS bad,
+		       MAX(bad_seq) AS latest_bad_seq
+		FROM outcomes GROUP BY fact_seq`,
+		EventFactInjected, EventDeliveryGate, EventNodeFailed, Failed)
+	if err != nil {
+		return nil, fmt.Errorf("fact outcomes: %w", err)
+	}
+	defer rows.Close()
+	outcomes := make(map[int64]FactOutcome)
+	for rows.Next() {
+		var outcome FactOutcome
+		if err := rows.Scan(&outcome.FactSeq, &outcome.Rides, &outcome.Bad,
+			&outcome.LatestBadSeq); err != nil {
+			return nil, fmt.Errorf("fact outcomes: %w", err)
+		}
+		outcomes[outcome.FactSeq] = outcome
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("fact outcomes: %w", err)
+	}
+	return outcomes, nil
+}
+
+func normalizedFactSeqs(seqs []int64) []int64 {
+	seen := make(map[int64]bool, len(seqs))
+	normalized := make([]int64, 0, len(seqs))
+	for _, seq := range seqs {
+		if seq <= 0 || seen[seq] {
+			continue
+		}
+		seen[seq] = true
+		normalized = append(normalized, seq)
+	}
+	return normalized
 }
 
 // FactQuery is one retrieval: ordered scope cues (most specific first) plus
@@ -238,7 +477,8 @@ func (s *Store) searchFacts(query FactQuery, countUses bool) ([]Fact, error) {
 
 	if terms := ftsQueryFrom(query.Terms); terms != "" && len(results) < query.Limit {
 		rows, err := s.db.Query(`
-			SELECT f.seq, f.ts, f.node_id, f.scope, f.kind, f.body, f.status, f.uses, f.last_used
+			SELECT f.seq, f.ts, f.node_id, f.scope, f.kind, f.body, f.status,
+			       f.status_seq, f.evidence_seq, f.status_origin, f.uses, f.last_used
 			FROM facts_fts
 			JOIN facts AS f ON f.seq = facts_fts.rowid
 			WHERE facts_fts MATCH ? AND f.status = ?
@@ -293,7 +533,8 @@ func (s *Store) RecentFacts(limit int) ([]Fact, error) {
 
 func (s *Store) factsWhere(where string, args ...any) ([]Fact, error) {
 	rows, err := s.db.Query(`
-		SELECT seq, ts, node_id, scope, kind, body, status, uses, last_used
+		SELECT seq, ts, node_id, scope, kind, body, status,
+		       status_seq, evidence_seq, status_origin, uses, last_used
 		FROM facts WHERE `+where, args...)
 	if err != nil {
 		return nil, fmt.Errorf("query facts: %w", err)
@@ -308,7 +549,7 @@ func scanFacts(rows *sql.Rows) ([]Fact, error) {
 		var fact Fact
 		var timestamp, lastUsed string
 		if err := rows.Scan(&fact.Seq, &timestamp, &fact.NodeID, &fact.Scope, &fact.Kind,
-			&fact.Body, &fact.Status, &fact.Uses, &lastUsed); err != nil {
+			&fact.Body, &fact.Status, &fact.StatusSeq, &fact.EvidenceSeq, &fact.StatusOrigin, &fact.Uses, &lastUsed); err != nil {
 			return nil, fmt.Errorf("scan fact: %w", err)
 		}
 		at, err := parseTime(timestamp)
@@ -336,8 +577,9 @@ func applyFactView(tx *sql.Tx, payload factPayload, seq int64, at time.Time) err
 		kind = FactPlain
 	}
 	if _, err := tx.Exec(`
-		INSERT INTO facts (seq, ts, node_id, scope, kind, body) VALUES (?, ?, ?, ?, ?, ?)`,
-		seq, formatTime(at), payload.NodeID, scope, kind, payload.Body); err != nil {
+		INSERT INTO facts (seq, ts, node_id, scope, kind, body, status_seq)
+		VALUES (?, ?, ?, ?, ?, ?, ?)`,
+		seq, formatTime(at), payload.NodeID, scope, kind, payload.Body, seq); err != nil {
 		return err
 	}
 	_, err := tx.Exec(`INSERT INTO facts_fts (rowid, body, scope) VALUES (?, ?, ?)`,
@@ -345,9 +587,13 @@ func applyFactView(tx *sql.Tx, payload factPayload, seq int64, at time.Time) err
 	return err
 }
 
-func applyFactSupersession(tx *sql.Tx, payload factSupersededPayload) error {
-	result, err := tx.Exec(`UPDATE facts SET status = ? WHERE seq = ? AND status = ?`,
-		FactSuperseded, payload.FactSeq, FactActive)
+func applyFactSupersession(tx *sql.Tx, payload factSupersededPayload, seq int64) error {
+	result, err := tx.Exec(`
+		UPDATE facts
+		SET status = ?, status_seq = ?, evidence_seq = ?, status_origin = ?
+		WHERE seq = ? AND status IN (?, ?)`,
+		FactSuperseded, seq, payload.BySeq, FactOriginSupersession,
+		payload.FactSeq, FactActive, FactQuarantined)
 	if err != nil {
 		return err
 	}
@@ -360,6 +606,87 @@ func applyFactSupersession(tx *sql.Tx, payload factSupersededPayload) error {
 	}
 	_, err = tx.Exec(`DELETE FROM facts_fts WHERE rowid = ?`, payload.FactSeq)
 	return err
+}
+
+func applyFactQuarantine(tx *sql.Tx, payload factStatusPayload, seq int64) error {
+	evidenceSeq := payload.EvidenceSeq
+	if evidenceSeq == 0 {
+		evidenceSeq = seq
+	}
+	result, err := tx.Exec(`
+		UPDATE facts
+		SET status = ?, status_seq = ?, evidence_seq = ?, status_origin = ?
+		WHERE seq = ? AND status = ?`, FactQuarantined, seq, evidenceSeq,
+		payload.Origin, payload.FactSeq, FactActive)
+	if err != nil {
+		return err
+	}
+	changed, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if changed != 1 {
+		return fmt.Errorf("quarantine targets missing or inactive fact %d", payload.FactSeq)
+	}
+	_, err = tx.Exec(`DELETE FROM facts_fts WHERE rowid = ?`, payload.FactSeq)
+	return err
+}
+
+func applyFactRestore(tx *sql.Tx, payload factStatusPayload, seq int64) error {
+	var scope, body string
+	if err := tx.QueryRow(`SELECT scope, body FROM facts WHERE seq = ? AND status = ?`,
+		payload.FactSeq, FactQuarantined).Scan(&scope, &body); err != nil {
+		if err == sql.ErrNoRows {
+			return fmt.Errorf("restore targets missing or unquarantined fact %d", payload.FactSeq)
+		}
+		return err
+	}
+	var duplicate int64
+	err := tx.QueryRow(`
+		SELECT seq FROM facts
+		WHERE seq != ? AND scope = ? AND status = ? AND lower(body) = lower(?)
+		LIMIT 1`, payload.FactSeq, scope, FactActive, body).Scan(&duplicate)
+	if err != nil && err != sql.ErrNoRows {
+		return err
+	}
+	if duplicate != 0 {
+		return fmt.Errorf("restore would duplicate active fact %d", duplicate)
+	}
+	result, err := tx.Exec(`
+		UPDATE facts
+		SET status = ?, status_seq = ?, evidence_seq = 0, status_origin = ?
+		WHERE seq = ? AND status = ?`, FactActive, seq, payload.Origin,
+		payload.FactSeq, FactQuarantined)
+	if err != nil {
+		return err
+	}
+	changed, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if changed != 1 {
+		return fmt.Errorf("restore targets missing or unquarantined fact %d", payload.FactSeq)
+	}
+	_, err = tx.Exec(`INSERT INTO facts_fts (rowid, body, scope) VALUES (?, ?, ?)`,
+		payload.FactSeq, body, scope)
+	return err
+}
+
+func replayFactInjection(tx *sql.Tx, nodeID string, payload factInjectionPayload) error {
+	if err := requireNode(tx, nodeID); err != nil {
+		return err
+	}
+	seqs := normalizedFactSeqs(payload.FactSeqs)
+	if len(seqs) == 0 || len(seqs) != len(payload.FactSeqs) {
+		return fmt.Errorf("invalid fact injection payload")
+	}
+	for _, factSeq := range seqs {
+		var exists int
+		if err := tx.QueryRow(`SELECT 1 FROM facts WHERE seq = ?`, factSeq).Scan(&exists); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // ftsQueryFrom turns free text into a safe FTS5 query: bare terms OR-ed, so
@@ -397,7 +724,16 @@ func validFactKind(kind FactKind) bool {
 	return false
 }
 
-// migrateFactsSchema upgrades a pre-scope facts table in place: drop the
+func validFactChangeOrigin(origin FactChangeOrigin) bool {
+	switch origin {
+	case FactOriginUser, FactOriginCLI, FactOriginConsolidator, FactOriginSupersession:
+		return true
+	default:
+		return false
+	}
+}
+
+// migrateFactsSchema upgrades older facts tables in place: drop the
 // materialized view and index, recreate, and replay the journal's fact
 // events. The journal is the truth; the view is disposable.
 func migrateFactsSchema(db *sql.DB) error {
@@ -405,7 +741,7 @@ func migrateFactsSchema(db *sql.DB) error {
 	if err != nil {
 		return err
 	}
-	hasScope := false
+	hasScope, hasStatusSeq, hasEvidenceSeq, hasStatusOrigin := false, false, false, false
 	for rows.Next() {
 		var cid int
 		var name, kind string
@@ -415,15 +751,28 @@ func migrateFactsSchema(db *sql.DB) error {
 			rows.Close()
 			return err
 		}
-		if name == "scope" {
+		switch name {
+		case "scope":
 			hasScope = true
+		case "status_seq":
+			hasStatusSeq = true
+		case "evidence_seq":
+			hasEvidenceSeq = true
+		case "status_origin":
+			hasStatusOrigin = true
 		}
 	}
-	rows.Close()
 	if err := rows.Err(); err != nil {
+		rows.Close()
 		return err
 	}
-	if hasScope {
+	rows.Close()
+	var definition string
+	if err := db.QueryRow(`SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'facts'`).Scan(&definition); err != nil {
+		return err
+	}
+	if hasScope && hasStatusSeq && hasEvidenceSeq && hasStatusOrigin &&
+		strings.Contains(definition, "'quarantined'") {
 		return nil
 	}
 
@@ -446,7 +795,10 @@ func migrateFactsSchema(db *sql.DB) error {
 		return err
 	}
 	for _, event := range events {
-		if event.Kind != EventFactLearned && event.Kind != EventFactSuperseded {
+		switch event.Kind {
+		case EventFactLearned, EventFactSuperseded, EventFactInjected,
+			EventFactQuarantined, EventFactRestored:
+		default:
 			continue
 		}
 		if err := replayEvent(tx, event); err != nil {

@@ -36,9 +36,10 @@ The snapshot IS your workforce, seen live. Every line is one worker's assignment
 Alongside the snapshot you carry a notebook: durable lessons, quirks, preferences, and facts distilled from past jobs and conversations. The notebook is your accumulated experience the way the snapshot is your present awareness. Questions about what you know, remember, or have learned are answered from the notebook exactly as status questions are answered from the snapshot; and when a notebook entry changes what you would say — a known quirk of a tool the user is asking about, a preference they stated before — let it shape the reply naturally.
 
 Return exactly one JSON object with this shape and no text outside it:
-{"reply":"<what to say right now>","command":null,"remember":null}
+{"reply":"<what to say right now>","command":null,"remember":null,"retract":null}
 where command may instead be {"kind":"splice|amend|cancel","target":"<node id or empty>","instruction":"<the user's instruction, preserving their words verbatim>"}
 and remember may instead be {"scope":"<scope>","kind":"preference|fact","body":"<one sharp sentence>"}
+and retract may instead be {"seq":123}, naming exactly one numbered notebook line.
 
 Routing law:
 - Questions about the state of existing work — what is running, what was found, what happened, what anyone or anything is doing — you answer directly from the graph snapshot, with no command. Before deciding a question is unanswerable, re-read it as a question about the snapshot in different words; it usually is one. "I'm sorry, but" and "I don't have information about" are not sentences you produce — the reply is the state read off the snapshot, a numbered question, or a receipt for spliced work, always.
@@ -47,6 +48,7 @@ Routing law:
 - For a redirect of existing work, emit amend and name the affected node id from the snapshot. For stopping work, emit cancel with its target. Never invent a node id; if there is no unambiguous target, explain that briefly and emit no command.
 - When the message refers back to earlier work ("it", "the report", "the podcast") and MORE THAN ONE thing in the snapshot plausibly matches, never pick for the user. Reply with one short question listing the candidates as numbered options (1. ..., 2. ...), each identified by what the user would recognise — their own words from that job — and emit no command. Their next message chooses. A single plausible match is not ambiguity; proceed.
 - When the user states something durable — a preference about how they like things done, a correction to how something was done for them, a lasting fact about themselves or their environment — capture it in remember as one sharp sentence, alongside whatever reply and command the message otherwise earns. Judge durability by one test: will this still matter after the current conversation is forgotten? Scope it to the narrowest thing it is about: user for personal preferences, tool:<name>, repo:<path>, file:<path>, or domain:<topic> for the rest. Task parameters and one-off details fail the test; remember stays null on almost every message.
+- When the user rejects a notebook belief ("forget that", "that's wrong"), set retract to the exact #seq shown beside that belief and leave remember null. Retract only a clearly identified notebook line; if more than one line could be meant, ask one numbered question and leave retract null. Never invent a sequence number. Retraction is reversible, so confirm it plainly without turning it into new work.
 - Never hand back a dead end. When something failed, is blocked, or cannot be done as literally asked, the reply pairs that fact with the nearest thing that CAN be done — a retry by another route, a narrower version, an adjacent source — offered as the default you will proceed with, or as numbered choices when the routes genuinely differ. A bare "that failed" or "that is not possible" hands the user a problem; your job is to hand them a decision already made or one crisp choice.
 
 The reply is what the user sees immediately. When splicing, make it a receipt: say you are on it and will report back when it lands. Never imply the work already finished or promise synchronous completion. Be concise and warm. Reply text is plain prose with no markdown headers. Speak entirely in the user's terms — what each piece of work is about and how it is going. Your internals stay backstage: the permanent spine or root is plumbing rather than an assignment and is never worth mentioning, and words like node, splice, snapshot, or raw ids belong to the machinery, not the conversation.`
@@ -172,6 +174,18 @@ func (h *Head) answer(ctx context.Context, user store.Message) error {
 				kind = store.FactPreference
 			}
 			_, _ = h.store.RecordFact(store.RootID, scope, kind, body)
+		}
+	}
+
+	if retraction := decision.Retract; retraction != nil {
+		fact, found, readErr := h.store.FactBySeq(retraction.Seq)
+		if readErr != nil || !found || fact.Status != store.FactActive {
+			decision.Reply = fmt.Sprintf("I couldn't find an active notebook belief #%d to forget.", retraction.Seq)
+		} else if err := h.store.QuarantineFact(retraction.Seq, user.Seq,
+			store.FactOriginUser); err != nil {
+			decision.Reply = fmt.Sprintf("I couldn't retract notebook belief #%d.", retraction.Seq)
+		} else {
+			decision.Reply = fmt.Sprintf("Forgot #%d: %s", retraction.Seq, firstLine(fact.Body))
 		}
 	}
 
@@ -314,7 +328,8 @@ func renderNotebook(graphStore *store.Store, message string) string {
 				continue
 			}
 			seen[fact.Seq] = true
-			line := "- [" + fact.Scope + " · " + string(fact.Kind) + " · " + store.AgeLabel(fact.Time, now) + "] " + fact.Body
+			line := fmt.Sprintf("- #%d [%s · %s · %s] %s", fact.Seq, fact.Scope,
+				fact.Kind, store.AgeLabel(fact.Time, now), fact.Body)
 			if total+len(line) > notebookContextBytes {
 				return
 			}
@@ -337,9 +352,10 @@ func renderNotebook(graphStore *store.Store, message string) string {
 }
 
 type routeDecision struct {
-	Reply    string        `json:"reply"`
-	Command  *routeCommand `json:"command"`
-	Remember *routeMemory  `json:"remember"`
+	Reply    string           `json:"reply"`
+	Command  *routeCommand    `json:"command"`
+	Remember *routeMemory     `json:"remember"`
+	Retract  *routeRetraction `json:"retract"`
 }
 
 // routeMemory is a durable fact the user just stated, captured into the
@@ -348,6 +364,10 @@ type routeMemory struct {
 	Scope string `json:"scope"`
 	Kind  string `json:"kind"`
 	Body  string `json:"body"`
+}
+
+type routeRetraction struct {
+	Seq int64 `json:"seq"`
 }
 
 type routeCommand struct {
@@ -359,6 +379,12 @@ type routeCommand struct {
 func (decision routeDecision) validate() error {
 	if strings.TrimSpace(decision.Reply) == "" {
 		return errors.New("empty reply")
+	}
+	if decision.Retract != nil {
+		if decision.Retract.Seq <= 0 || decision.Command != nil || decision.Remember != nil {
+			return errors.New("invalid or conflicting retraction")
+		}
+		return nil
 	}
 	if decision.Command == nil {
 		return nil

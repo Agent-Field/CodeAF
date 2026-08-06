@@ -42,9 +42,9 @@ type Compiled struct {
 }
 
 // Learned is one distilled memory: what it is about, what kind, one line.
-// Replaces names an existing fact this one supersedes — reconsolidation: a
-// belief met by contradicting experience is rewritten, and the journal keeps
-// the retired version.
+// Replaces names one existing fact this line supersedes. Quarantines names
+// suspect inputs that consolidation removes from retrieval without replacing;
+// both transitions remain reversible journal events.
 type Learned struct {
 	Scope    string
 	Kind     store.FactKind
@@ -53,6 +53,9 @@ type Learned struct {
 	// Sources names the existing facts a consolidated line derives from,
 	// strongest evidence first. It is empty outside consolidation.
 	Sources []int64
+	// Quarantines names source facts rejected by a repeated bad-outcome pattern.
+	// It is honored only by consolidation.
+	Quarantines []int64
 }
 
 // DistillFunc extracts durable memories from one finished or failed job.
@@ -759,7 +762,7 @@ func (r *Reconciler) distillJob(ctx context.Context, node store.Node, failed boo
 // durable facts the user should never have to repeat — then the graph.
 func (r *Reconciler) renderCompileContext(snapshot store.Snapshot, instruction string) string {
 	var context strings.Builder
-	if notebook := NotebookDigest(r.store, "", instruction, 12); notebook != "" {
+	if notebook := NotebookDigest(r.store, "", "", instruction, 12); notebook != "" {
 		context.WriteString(notebook)
 		context.WriteString("\n\n")
 	}
