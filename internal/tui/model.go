@@ -107,9 +107,11 @@ type postResultMsg struct {
 
 // Model is the Bubble Tea model for an aforge chat session.
 type Model struct {
-	backend   Backend
-	sessionID string
-	commander Commander
+	backend        Backend
+	sessionID      string
+	commander      Commander
+	standingReader standingReader
+	standingNow    func() time.Time
 
 	input textinput.Model
 	chat  viewport.Model
@@ -132,6 +134,13 @@ type Model struct {
 	graphScopeID    string
 	cardReturnFocus paneFocus
 
+	// A charter card is a rail sub-surface. Its firing history can open a
+	// scoped job graph while the card id remains as the next back-out rung.
+	charterCardID     string
+	charterFocusIndex int
+	standingRows      []standingRow
+	charterRows       []charterCardRow
+
 	// dockExpanded holds the overflow dock open without card focus; the
 	// dockSummaryLine is the rendered ▸/▾ summary row, -1 when absent.
 	dockExpanded    bool
@@ -141,6 +150,11 @@ type Model struct {
 	// receipts, chips, cards) under keyboard traversal; enter activates
 	// exactly what a click on that line would.
 	chatFocusIndex int
+
+	// Question options remain selected while the ordinary input keeps focus.
+	questionSelection map[string]int
+	questionDismissed map[string]bool
+	cardOptionRows    []cardOptionRow
 
 	selectedNodeID string
 	graphRows      []graphRow
@@ -205,6 +219,7 @@ type Model struct {
 	paletteDismissed bool
 	modelRole        string
 	modelCatalog     []ModelChoice
+	optimisticModels map[string]string
 	catalogRequested bool
 	catalogLoading   bool
 	memoryFacts      []store.Fact
@@ -216,21 +231,31 @@ type Model struct {
 	splitPct      int
 	draggingSplit bool
 
-	chatBounds         paneBounds
-	headerTasksBounds  paneBounds
-	graphBounds        paneBounds
-	graphRowsBounds    paneBounds
-	graphToggleBounds  paneBounds
-	inputBounds        paneBounds
-	nodeBounds         paneBounds
-	nodeTraceBounds    paneBounds
-	nodeBackBounds     paneBounds
-	paletteCloseBounds paneBounds
-	activityBarBounds  paneBounds
-	cardDockRows       []cardRow
-	chatCardRows       []cardRow
-	cardPartRows       []cardPartRow
-	cardCloseRows      []cardCloseRow
+	chatBounds                paneBounds
+	headerTasksBounds         paneBounds
+	headerQuestionBounds      paneBounds
+	headerTalkBounds          paneBounds
+	headerWorkBounds          paneBounds
+	headerFocusIndex          int
+	graphBounds               paneBounds
+	graphRowsBounds           paneBounds
+	standingRowsBounds        paneBounds
+	graphToggleBounds         paneBounds
+	inputBounds               paneBounds
+	nodeBounds                paneBounds
+	nodeTraceBounds           paneBounds
+	nodeBackBounds            paneBounds
+	paletteCloseBounds        paneBounds
+	modelPickerBounds         paneBounds
+	modelTalkBounds           paneBounds
+	modelWorkBounds           paneBounds
+	modelPickerRows           []modelPickerRow
+	activityBarBounds         paneBounds
+	textQuestionDismissBounds paneBounds
+	cardDockRows              []cardRow
+	chatCardRows              []cardRow
+	cardPartRows              []cardPartRow
+	cardCloseRows             []cardCloseRow
 
 	// chatMessageRows maps rendered chat lines to the message seq they
 	// belong to, so clicking a collapsed deliverable opens it in place.
@@ -252,7 +277,13 @@ const (
 	focusChat
 	focusCards
 	focusGraph
+	focusHeader
 )
+
+type modelPickerRow struct {
+	bounds paneBounds
+	index  int
+}
 
 // New returns a ready-to-run chat model. The default dimensions make View
 // useful in tests before Bubble Tea sends its first WindowSizeMsg.
@@ -280,23 +311,26 @@ func newModel(backend Backend, sessionID string, commander Commander) *Model {
 	_ = input.Focus()
 
 	m := &Model{
-		backend:          backend,
-		sessionID:        sessionID,
-		commander:        commander,
-		input:            input,
-		chat:             viewport.New(1, 1),
-		graph:            viewport.New(1, 1),
-		nodeTrace:        viewport.New(1, 1),
-		inputFocused:     true,
-		focus:            focusInput,
-		autoScroll:       true,
-		modelRole:        "talk",
-		feedExpanded:     map[string]bool{},
-		expandedMessages: map[int64]bool{},
-		jobUsage:         map[string]store.JobUsage{},
-		commands:         map[int64]store.Command{},
-		cardExpanded:     map[string]bool{},
-		dockSummaryLine:  -1,
+		backend:           backend,
+		sessionID:         sessionID,
+		commander:         commander,
+		input:             input,
+		chat:              viewport.New(1, 1),
+		graph:             viewport.New(1, 1),
+		nodeTrace:         viewport.New(1, 1),
+		inputFocused:      true,
+		focus:             focusInput,
+		autoScroll:        true,
+		modelRole:         "talk",
+		feedExpanded:      map[string]bool{},
+		expandedMessages:  map[int64]bool{},
+		jobUsage:          map[string]store.JobUsage{},
+		commands:          map[int64]store.Command{},
+		cardExpanded:      map[string]bool{},
+		questionSelection: map[string]int{},
+		questionDismissed: map[string]bool{},
+		optimisticModels:  map[string]string{},
+		dockSummaryLine:   -1,
 	}
 	if source, ok := commander.(streamSource); ok {
 		m.streamEvents = source.StreamEvents()
@@ -408,6 +442,31 @@ func (m *Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		m.err = nil
 		return m, nil
 
+	case charterCommandResultMsg:
+		if message.err != nil {
+			m.err = fmt.Errorf("%s charter: %w", message.action, message.err)
+			return m, nil
+		}
+		m.err = nil
+		m.status = message.action + " requested → " + message.name
+		m.statusUntil = time.Now().Add(statusTTL)
+		return m, nil
+
+	case modelCommandResultMsg:
+		if message.err != nil {
+			if message.previous == "" || message.previous == "–" {
+				delete(m.optimisticModels, message.role)
+			} else {
+				m.optimisticModels[message.role] = message.previous
+			}
+			m.err = fmt.Errorf("request %s model: %w", message.role, message.err)
+			return m, nil
+		}
+		m.err = nil
+		m.status = fmt.Sprintf("%s model → %s", message.role, message.slug)
+		m.statusUntil = time.Now().Add(statusTTL)
+		return m, nil
+
 	case tea.KeyMsg:
 		if command, handled := m.updateKey(message); handled {
 			if command == nil {
@@ -417,8 +476,8 @@ func (m *Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		}
 
 	case tea.MouseMsg:
-		if m.updateMouse(message) {
-			return m, m.scheduleAnimation()
+		if command, handled := m.updateMouse(message); handled {
+			return m, tea.Batch(command, m.scheduleAnimation())
 		}
 	}
 
@@ -494,6 +553,7 @@ func (m *Model) updateKey(message tea.KeyMsg) (tea.Cmd, bool) {
 			m.paletteDismissed = true
 			m.setSize(m.width, m.height)
 		case m.graphVisible() && m.focus == focusGraph && m.closeScopedGraph():
+		case m.graphVisible() && m.focus == focusGraph && m.closeCharterCard():
 		case m.focus == focusCards && m.collapseSelectedCard():
 		case m.focus == focusChat && m.collapseSelectedCard():
 		case m.focus == focusCards:
@@ -509,6 +569,12 @@ func (m *Model) updateKey(message tea.KeyMsg) (tea.Cmd, bool) {
 			m.setSize(m.width, m.height)
 		case m.graphVisible() && m.focus == focusGraph:
 			m.toggleGraph()
+		case m.focus == focusHeader:
+			m.focus = focusInput
+			m.inputFocused = true
+			_ = m.input.Focus()
+			m.setSize(m.width, m.height)
+		case m.focus == focusInput && m.dismissTextQuestion():
 		case m.input.Value() != "":
 			m.input.Reset()
 			m.paletteDismissed = false
@@ -527,6 +593,54 @@ func (m *Model) updateKey(message tea.KeyMsg) (tea.Cmd, bool) {
 	if m.paletteOpen() {
 		if command, handled := m.updatePaletteKey(key); handled {
 			return command, true
+		}
+	}
+	if m.focus == focusHeader {
+		switch key {
+		case "left", "up", "k":
+			m.headerFocusIndex = (m.headerFocusIndex + 2) % 3
+			return nil, true
+		case "right", "down", "j":
+			m.headerFocusIndex = (m.headerFocusIndex + 1) % 3
+			return nil, true
+		case "enter":
+			return m.activateHeaderFocus(), true
+		}
+	}
+	// Numbered question options are a layer over the normal live input. An
+	// empty input enables shortcuts; once text exists, every key and enter
+	// continue through the ordinary free-text path.
+	if m.inputFocused && m.input.Value() == "" {
+		if card := m.questionCardWithOptions(); card != nil {
+			switch {
+			case key == "up" || key == "k":
+				m.moveQuestionSelection(card.ID, -1)
+				return nil, true
+			case key == "down" || key == "j":
+				m.moveQuestionSelection(card.ID, 1)
+				return nil, true
+			case key == "enter":
+				return m.submitSelectedQuestionOption(card.ID), true
+			case len(key) == 1 && key[0] >= '1' && key[0] <= '9':
+				if command, ok := m.submitQuestionOptionNumber(card.ID, int(key[0]-'0')); ok {
+					return command, true
+				}
+			}
+		}
+	}
+	if m.focus == focusCards {
+		if card := m.selectedQuestionCardWithOptions(); card != nil {
+			if key == "up" || key == "k" || key == "down" || key == "j" {
+				delta := -1
+				if key == "down" || key == "j" {
+					delta = 1
+				}
+				m.moveQuestionSelection(card.ID, delta)
+				return nil, true
+			}
+			if key == "enter" {
+				return m.submitSelectedQuestionOption(card.ID), true
+			}
 		}
 	}
 	if m.focus == focusCards && (key == "up" || key == "k" || key == "down" || key == "j") {
@@ -575,6 +689,18 @@ func (m *Model) updateKey(message tea.KeyMsg) (tea.Cmd, bool) {
 		}
 		m.nudgeSplit(delta)
 		return nil, true
+	}
+	if m.focus == focusGraph && m.charterCardID != "" && m.graphScopeID == "" &&
+		(key == "up" || key == "k" || key == "down" || key == "j") {
+		delta := -1
+		if key == "down" || key == "j" {
+			delta = 1
+		}
+		m.moveCharterSelection(delta)
+		return nil, true
+	}
+	if key == "enter" && m.focus == focusGraph && m.charterCardID != "" && m.graphScopeID == "" {
+		return m.activateCharterSelection(), true
 	}
 	if m.focus == focusGraph && (key == "up" || key == "k" || key == "down" || key == "j") {
 		delta := -1
@@ -741,6 +867,9 @@ func (m *Model) applyPoll(result pollResultMsg) {
 	for _, message := range accepted {
 		if isQuestionMessage(message) {
 			questionArrived = true
+			if card := m.cardForMessage(message); card != nil {
+				delete(m.questionDismissed, card.ID)
+			}
 		}
 		if !m.attentionMessage(message) {
 			continue
@@ -816,8 +945,15 @@ func (m *Model) submit() tea.Cmd {
 		return m.executeSlash(body)
 	}
 	m.input.Reset()
-	m.err = nil
+	return m.postUserMessage(body)
+}
 
+func (m *Model) postUserMessage(body string) tea.Cmd {
+	body = strings.TrimSpace(body)
+	if body == "" {
+		return nil
+	}
+	m.err = nil
 	backend := m.backend
 	message := store.Message{
 		SessionID: m.sessionID,
@@ -841,10 +977,12 @@ func (m *Model) toggleFocus() tea.Cmd {
 	order = append(order, focusChat)
 	if m.graphVisible() {
 		if m.horizontal {
-			order = []paneFocus{focusInput, focusChat, focusGraph}
+			order = []paneFocus{focusInput, focusChat, focusGraph, focusHeader}
 		} else {
-			order = []paneFocus{focusInput, focusGraph}
+			order = []paneFocus{focusInput, focusGraph, focusHeader}
 		}
+	} else {
+		order = append(order, focusHeader)
 	}
 	at := 0
 	for index, pane := range order {
@@ -866,6 +1004,9 @@ func (m *Model) toggleFocus() tea.Cmd {
 		// the bottom of a conversation.
 		m.chatFocusIndex = 1 << 30
 	}
+	if m.focus == focusHeader {
+		m.headerFocusIndex = max(0, min(2, m.headerFocusIndex))
+	}
 	if m.inputFocused {
 		m.setSize(m.width, m.height)
 		return m.input.Focus()
@@ -880,6 +1021,8 @@ func (m *Model) toggleFocus() tea.Cmd {
 func (m *Model) toggleGraph() {
 	m.graphOpen = !m.graphOpen
 	m.graphScopeID = ""
+	m.charterCardID = ""
+	m.charterFocusIndex = 0
 	m.palette = paletteNone
 	m.paletteDismissed = false
 	if m.graphOpen {
@@ -914,7 +1057,7 @@ func (m *Model) setSize(width, height int) {
 	// or a resize computes the frame against the stale wrap.
 	m.input.Width = max(1, m.width-4)
 
-	paletteHeight := m.paletteHeight()
+	paletteHeight := m.layoutPaletteHeight()
 	footerHeight := 1
 	if m.paletteOpen() {
 		footerHeight = 0
@@ -924,7 +1067,7 @@ func (m *Model) setSize(width, height int) {
 		barHeight = m.cardDockHeight()
 	}
 	// top bar + blank + main + blank + palette + activity bar + input + hint
-	mainHeight := max(3, m.height-3-paletteHeight-barHeight-m.input.LineCount()-footerHeight)
+	mainHeight := max(3, m.height-3-paletteHeight-barHeight-m.inputSurfaceHeight()-footerHeight)
 	if m.graphVisible() && m.horizontal {
 		const gap = 2
 		pct := m.splitPct
@@ -943,7 +1086,8 @@ func (m *Model) setSize(width, height int) {
 	m.chat.Width = max(1, m.chatWidth-2) // breathing room on the right
 	m.chat.Height = max(1, m.chatHeight)
 	m.graph.Width = max(1, m.graphWidth-2)
-	m.graph.Height = max(1, m.graphHeight-2) // header + blank
+	// Header + blank + the exact static standing-section budget.
+	m.graph.Height = max(1, m.graphHeight-2-m.standingSectionHeight())
 	m.sizeNodeViewports()
 	m.refreshChat()
 	m.refreshGraph()
@@ -954,8 +1098,18 @@ func (m *Model) setSize(width, height int) {
 
 func (m *Model) refreshGraph() {
 	offset := m.graph.YOffset
-	m.graph.SetContent(m.renderTree(max(1, m.graph.Width), 0))
+	if m.charterCardID != "" && m.graphScopeID == "" {
+		m.graphRows = nil
+		m.standingRows = nil
+		m.graphAnimating = false
+		m.graph.SetContent(m.renderCharterCardBody(max(1, m.graph.Width)))
+	} else {
+		m.graph.SetContent(m.renderTree(max(1, m.graph.Width), 0))
+	}
 	m.graph.SetYOffset(offset)
+	if m.standingBreathing() {
+		m.graphAnimating = true
+	}
 	// The collapsed rail still shows a spinner in the activity bar, so live
 	// work keeps the animation ticking even with the tree off screen.
 	if !m.graphVisible() && m.nodeViewID == "" && m.liveWorkCount() > 0 {
@@ -1035,36 +1189,36 @@ func (m *Model) activateChatFocus() bool {
 	return m.activateChatLine(targets[m.chatFocusIndex])
 }
 
-func (m *Model) updateMouse(message tea.MouseMsg) bool {
+func (m *Model) updateMouse(message tea.MouseMsg) (tea.Cmd, bool) {
 	event := tea.MouseEvent(message)
 	if m.draggingSplit {
 		switch event.Action {
 		case tea.MouseActionMotion:
 			m.dragSplitTo(event.X)
-			return true
+			return nil, true
 		case tea.MouseActionRelease:
 			m.draggingSplit = false
 			m.saveSplit()
-			return true
+			return nil, true
 		}
 	}
 	if event.Button == tea.MouseButtonLeft && event.Action == tea.MouseActionPress && m.splitDividerHit(event.X, event.Y) {
 		m.draggingSplit = true
-		return true
+		return nil, true
 	}
 	if event.Button == tea.MouseButtonLeft && event.Action == tea.MouseActionPress && m.newMessagePillHit(event.X, event.Y) {
 		m.pinChat()
-		return true
+		return nil, true
 	}
 	if event.Button == tea.MouseButtonLeft && event.Action == tea.MouseActionPress {
 		return m.updateMouseClick(event.X, event.Y)
 	}
 	if event.Button != tea.MouseButtonWheelUp && event.Button != tea.MouseButtonWheelDown {
-		return false
+		return nil, false
 	}
 	down := event.Button == tea.MouseButtonWheelDown
 	if m.nodeViewID != "" {
-		return m.scrollNodeAt(event.X, event.Y, down)
+		return nil, m.scrollNodeAt(event.X, event.Y, down)
 	}
 	if m.graphBounds.contains(event.X, event.Y) {
 		if down {
@@ -1073,7 +1227,7 @@ func (m *Model) updateMouse(message tea.MouseMsg) bool {
 			m.graph.SetYOffset(m.graph.YOffset - 3)
 		}
 		m.refreshGraph()
-		return true
+		return nil, true
 	}
 	if m.chatBounds.contains(event.X, event.Y) {
 		if down {
@@ -1082,9 +1236,9 @@ func (m *Model) updateMouse(message tea.MouseMsg) bool {
 			m.chat.SetYOffset(m.chat.YOffset - 3)
 		}
 		m.syncChatScroll()
-		return true
+		return nil, true
 	}
-	return false
+	return nil, false
 }
 
 // splitDividerHit reports whether (x, y) lands on the gap between the chat

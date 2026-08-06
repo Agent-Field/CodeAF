@@ -34,21 +34,39 @@ func (b paneBounds) contains(x, y int) bool {
 func (b paneBounds) right() int  { return b.x + b.width }
 func (b paneBounds) bottom() int { return b.y + b.height }
 
+func (m *Model) railSelectionIDs() []string {
+	ids := make([]string, 0, len(m.graphRows)+len(m.standingRows))
+	if m.graphScopeID == "" && m.charterCardID == "" {
+		for _, charter := range m.standingCharters() {
+			ids = append(ids, standingGraphRowID(charter.ID))
+		}
+	}
+	for _, row := range m.graphRows {
+		ids = append(ids, row.nodeID)
+	}
+	return ids
+}
+
 func (m *Model) ensureGraphSelection() {
+	if m.charterCardID != "" && m.graphScopeID == "" {
+		m.ensureCharterSelection()
+		return
+	}
 	if len(m.graphRows) == 0 {
 		m.refreshGraph()
 	}
-	if len(m.graphRows) == 0 {
+	ids := m.railSelectionIDs()
+	if len(ids) == 0 {
 		m.selectedNodeID = ""
 		return
 	}
-	for _, row := range m.graphRows {
-		if row.nodeID == m.selectedNodeID {
+	for _, id := range ids {
+		if id == m.selectedNodeID {
 			m.ensureGraphSelectionVisible()
 			return
 		}
 	}
-	m.selectedNodeID = m.graphRows[0].nodeID
+	m.selectedNodeID = ids[0]
 	m.refreshGraph()
 	m.ensureGraphSelectionVisible()
 }
@@ -57,32 +75,37 @@ func (m *Model) moveGraphSelection(delta int) {
 	if len(m.graphRows) == 0 {
 		m.refreshGraph()
 	}
-	if len(m.graphRows) == 0 {
+	ids := m.railSelectionIDs()
+	if len(ids) == 0 {
 		return
 	}
 	selected := -1
-	for index, row := range m.graphRows {
-		if row.nodeID == m.selectedNodeID {
+	for index, id := range ids {
+		if id == m.selectedNodeID {
 			selected = index
 			break
 		}
 	}
 	if selected < 0 {
 		if delta < 0 {
-			selected = len(m.graphRows) - 1
+			selected = len(ids) - 1
 		} else {
 			selected = 0
 		}
 	} else {
-		selected = max(0, min(len(m.graphRows)-1, selected+delta))
+		selected = max(0, min(len(ids)-1, selected+delta))
 	}
-	m.selectedNodeID = m.graphRows[selected].nodeID
+	m.selectedNodeID = ids[selected]
 	m.refreshGraph()
 	m.ensureGraphSelectionVisible()
 }
 
 func (m *Model) ensureGraphSelectionVisible() {
 	if m.selectedNodeID == "" {
+		return
+	}
+	if _, ok := charterIDFromGraphRow(m.selectedNodeID); ok {
+		m.graph.SetYOffset(0)
 		return
 	}
 	for _, row := range m.graphRows {
@@ -109,6 +132,10 @@ func (m *Model) graphNodeAtLine(line int) string {
 
 func (m *Model) openSelectedNode() tea.Cmd {
 	if m.selectedNodeID == "" {
+		return nil
+	}
+	if charterID, ok := charterIDFromGraphRow(m.selectedNodeID); ok {
+		m.openStandingCharter(charterID)
 		return nil
 	}
 	if m.selectedNodeID == historyGraphRowID {
@@ -697,84 +724,148 @@ func (m *Model) scrollNodeAt(x, y int, down bool) bool {
 	return true
 }
 
-func (m *Model) updateMouseClick(x, y int) bool {
+func (m *Model) updateMouseClick(x, y int) (tea.Cmd, bool) {
+	if m.headerQuestionBounds.contains(x, y) {
+		m.focusPendingQuestion()
+		return nil, true
+	}
+	if m.headerTalkBounds.contains(x, y) {
+		return m.openModelPicker("talk"), true
+	}
+	if m.headerWorkBounds.contains(x, y) {
+		return m.openModelPicker("work"), true
+	}
 	if m.headerTasksBounds.contains(x, y) {
 		if m.nodeViewID != "" {
 			m.closeNodeView()
 		}
 		m.toggleGraph()
-		return true
+		return nil, true
 	}
 	if m.activityBarBounds.contains(x, y) {
-		return m.clickCardDock(y - m.activityBarBounds.y)
+		return m.clickCardDock(x-m.activityBarBounds.x, y-m.activityBarBounds.y)
+	}
+	if m.palette == paletteModel {
+		if m.paletteCloseBounds.contains(x, y) {
+			m.closePalette()
+			return nil, true
+		}
+		if m.modelTalkBounds.contains(x, y) {
+			m.modelRole = "talk"
+			m.paletteSelected = indexModelChoice(m.filteredModelChoices(), m.currentModel("talk"))
+			return nil, true
+		}
+		if m.modelWorkBounds.contains(x, y) {
+			m.modelRole = "work"
+			m.paletteSelected = indexModelChoice(m.filteredModelChoices(), m.currentModel("work"))
+			return nil, true
+		}
+		for _, row := range m.modelPickerRows {
+			if !row.bounds.contains(x, y) {
+				continue
+			}
+			choices := m.filteredModelChoices()
+			if row.index >= 0 && row.index < len(choices) {
+				m.paletteSelected = row.index
+				return m.applySelectedModel(choices), true
+			}
+		}
+		if m.modelPickerBounds.contains(x, y) {
+			m.focus = focusInput
+			m.inputFocused = true
+			_ = m.input.Focus()
+			return nil, true
+		}
 	}
 	if m.paletteCloseBounds.contains(x, y) {
 		m.closePalette()
-		return true
+		return nil, true
 	}
 	if m.inputBounds.contains(x, y) {
+		if m.textQuestionDismissBounds.contains(x, y) {
+			m.dismissTextQuestion()
+			return nil, true
+		}
 		m.focus = focusInput
 		m.inputFocused = true
 		_ = m.input.Focus()
-		return true
+		return nil, true
 	}
 	if m.nodeViewID != "" {
 		if m.nodeBackBounds.contains(x, y) {
 			m.closeNodeView()
-			return true
+			return nil, true
 		}
 		if m.toggleFeedBlockAt(x, y) {
-			return true
+			return nil, true
 		}
 		if !m.nodeBounds.contains(x, y) {
-			return false
+			return nil, false
 		}
 		m.inputFocused = false
 		m.input.Blur()
-		return true
+		return nil, true
 	}
 	if m.graphToggleHit(x, y) {
-		m.toggleGraph()
-		return true
+		if !m.closeScopedGraph() && !m.closeCharterCard() {
+			m.toggleGraph()
+		}
+		return nil, true
 	}
 	if m.graphBounds.contains(x, y) {
 		m.focus = focusGraph
 		m.inputFocused = false
 		m.input.Blur()
+		if m.standingRowsBounds.contains(x, y) {
+			line := y - m.graphBounds.y
+			for _, row := range m.standingRows {
+				if row.line == line {
+					m.selectedNodeID = standingGraphRowID(row.charterID)
+					m.openStandingCharter(row.charterID)
+					return nil, true
+				}
+			}
+		}
 		if m.graphRowsBounds.contains(x, y) {
-			nodeID := m.graphNodeAtLine(y - m.graphRowsBounds.y + m.graph.YOffset)
+			line := y - m.graphRowsBounds.y + m.graph.YOffset
+			if m.charterCardID != "" && m.graphScopeID == "" {
+				if command, ok := m.activateCharterLine(line); ok {
+					return command, true
+				}
+				return nil, true
+			}
+			nodeID := m.graphNodeAtLine(line)
 			if nodeID != "" {
 				if nodeID == historyGraphRowID {
 					m.selectedNodeID = nodeID
 					m.toggleHistory()
-					return true
+					return nil, true
 				}
 				alreadySelected := nodeID == m.selectedNodeID
 				m.selectedNodeID = nodeID
 				m.refreshGraph()
 				if alreadySelected {
-					_ = m.openSelectedNode()
+					return m.openSelectedNode(), true
 				}
 			}
 		}
-		return true
+		return nil, true
 	}
 	if m.chatBounds.contains(x, y) {
 		if m.toggleChatMessageAt(x, y) {
-			return true
+			return nil, true
 		}
 		m.focus = focusChat
 		m.inputFocused = false
 		m.input.Blur()
-		return true
+		return nil, true
 	}
-	return false
+	return nil, false
 }
 
-func (m *Model) clickCardDock(line int) bool {
-	active, _ := placeJobCards(m.cards)
+func (m *Model) clickCardDock(x, line int) (tea.Cmd, bool) {
+	active := dockJobCards(m.cards, m.standingTime())
 	if m.dockSummaryLine >= 0 && line == m.dockSummaryLine {
-		// The ▸/▾ summary row flips the overflow dock open and closed.
 		if m.dockOverflowOpen() {
 			m.dockExpanded = false
 			if m.focus == focusCards {
@@ -787,41 +878,55 @@ func (m *Model) clickCardDock(line int) bool {
 			m.dockExpanded = true
 			m.focusCardDock()
 		}
-		return true
+		return nil, true
+	}
+	if len(active) > dockOverflowLimit && !m.dockOverflowOpen() {
+		for _, row := range m.cardDockRows {
+			if row.dock && line >= row.start && line <= row.end {
+				m.selectedCardID = row.cardID
+				m.dockExpanded = true
+				m.focusCardDock()
+				return nil, true
+			}
+		}
 	}
 	if len(active) > dockOverflowLimit && !m.dockOverflowOpen() {
 		m.dockExpanded = true
 		m.focusCardDock()
-		return true
+		return nil, true
+	}
+	for _, option := range m.cardOptionRows {
+		if option.dock && option.line == line && x >= option.startX && x < option.endX {
+			m.questionSelection[option.cardID] = option.optionIndex
+			return m.submitQuestionOption(option.cardID, option.optionIndex), true
+		}
 	}
 	for _, row := range m.cardCloseRows {
 		if row.dock && row.line == line {
 			m.selectedCardID = row.cardID
 			m.cardExpanded[row.cardID] = false
 			m.setSize(m.width, m.height)
-			return true
+			return nil, true
 		}
 	}
 	for _, part := range m.cardPartRows {
 		if part.dock && part.line == line {
 			m.selectedCardID = part.cardID
-			_ = m.openNodeByID(part.nodeID)
-			return true
+			return m.openNodeByID(part.nodeID), true
 		}
 	}
 	for _, row := range m.cardDockRows {
 		if line < row.start || line > row.end {
 			continue
 		}
-		_ = m.advanceCard(row.cardID, focusCards)
-		return true
+		return m.advanceCard(row.cardID, focusCards), true
 	}
 	if len(active) > 0 {
 		m.focusCardDock()
-		return true
+		return nil, true
 	}
 	m.toggleGraph()
-	return true
+	return nil, true
 }
 
 // toggleChatMessageAt handles a click inside the chat column: a provenance
