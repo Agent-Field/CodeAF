@@ -4,8 +4,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strconv"
 	"strings"
 
+	"github.com/Agent-Field/aforge-v2/internal/store"
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 )
 
@@ -15,7 +17,7 @@ import (
 const compilerSystemPrompt = `You are the intent compiler for an asynchronous task graph. Apply ASSUME-AND-DECLARE.
 
 Turn the user's verbatim instruction and the current graph context into a complete execution brief. Return exactly one JSON object with this shape and no text outside it:
-{"goal":"...","deliverable":"...","budget":"...","scale":"lookup|task|project","builds_on":["<job id>"],"assumptions":["..."],"question":""}
+{"goal":"...","deliverable":"...","budget":"...","scale":"lookup|task|project","builds_on":["<job id>"],"assumptions":["..."],"question":"","trial_of":0}
 
 Rules:
 - State a clear goal that names the final deliverable, what success means, and the evidence standard that will prove it.
@@ -27,7 +29,7 @@ Rules:
 - Fill every missing decision with a practical default: scope, audience, format, quality bar, evidence, timing, tools, and constraints whenever the user did not settle them.
 - List every default you supplied explicitly in assumptions. Assumptions are revisable receipts, not hidden guesses.
 - Fill gaps with defaults, with two exceptions that go in "question" (empty otherwise). First: a gap both high-consequence and hard to reverse — spending real money externally, deleting or overwriting something that exists, sending or publishing on the user's behalf, or a wrong guess that would waste most of the budget — asked as ONE crisp casual question stating your best-guess default so the user can simply say yes. Second: referent ambiguity — the instruction points at earlier work and MORE THAN ONE prior job plausibly matches. Guessing the referent wastes the whole job and reads as not listening; ask which one, listing the candidates as numbered options identified by the user's own words from each job. A single plausible match is not ambiguity. Never ask about reversible preferences, and never leave placeholders such as TBD or unknown.
-- When the notebook context offers two competing approaches to the same situation and neither is settled, do not pick one on faith. Shape the goal so a small, cheap trial of each runs first and the bulk of the work follows whichever proves out — running both once costs less than believing wrongly once, and the trial's result settles the notebook for every job after this one.
+- The trial-shaping rule fires only on the explicit notebook flag "an unsettled pair applies here: fact #N". When that flag appears, set trial_of to N and shape the goal so a small, cheap trial of both named approaches runs first and the bulk of the work follows whichever proves out. When no such flag appears, set trial_of to 0. Never infer a trial from ordinary prose.
 - The user's words are the authority. Do not narrow or replace them with an inferred request.
 - End goal with a line beginning "Verbatim request:" followed by the user's instruction exactly as supplied.
 - The graph context lists earlier jobs with their ids, what was asked, and their results. When the instruction continues, improves, or refers to earlier work, name those job ids in builds_on AND restate in the goal the concrete starting points from their results — file paths, names, findings — so the work never starts blind. When the instruction stands alone, builds_on is [].
@@ -60,6 +62,10 @@ type Brief struct {
 	// Empty is the overwhelmingly common, correct value: asking is reserved
 	// for irreversible or expensive mistakes, never for preferences.
 	Question string `json:"question"`
+
+	// TrialOf is the fact sequence of the retrieved unsettled pair that this
+	// brief deliberately compares. Zero means no experiment was shaped.
+	TrialOf int64 `json:"trial_of"`
 }
 
 // Compiler converts verbatim user intent into a planning brief without asking
@@ -109,7 +115,47 @@ func (c *Compiler) Compile(ctx context.Context, instruction string, graphContext
 	brief.Goal = anchorGoal(brief.Goal, instruction)
 	brief.Scale = normalizeScale(brief.Scale)
 	brief.BuildsOn = normalizeBuildsOn(brief.BuildsOn)
+	brief.TrialOf = normalizeTrialOf(graphContext, brief.TrialOf)
 	return brief, nil
+}
+
+func normalizeTrialOf(graphContext string, selected int64) int64 {
+	flagged := unsettledFactSeqs(graphContext)
+	for _, seq := range flagged {
+		if seq == selected {
+			return selected
+		}
+	}
+	if len(flagged) > 0 {
+		return flagged[0]
+	}
+	return 0
+}
+
+func unsettledFactSeqs(graphContext string) []int64 {
+	seen := make(map[int64]bool)
+	var seqs []int64
+	for remaining := graphContext; ; {
+		index := strings.Index(remaining, store.UnsettledFactFlag)
+		if index < 0 {
+			break
+		}
+		remaining = remaining[index+len(store.UnsettledFactFlag):]
+		end := 0
+		for end < len(remaining) && '0' <= remaining[end] && remaining[end] <= '9' {
+			end++
+		}
+		if end == 0 {
+			continue
+		}
+		seq, err := strconv.ParseInt(remaining[:end], 10, 64)
+		if err == nil && seq > 0 && !seen[seq] {
+			seen[seq] = true
+			seqs = append(seqs, seq)
+		}
+		remaining = remaining[end:]
+	}
+	return seqs
 }
 
 func normalizeBuildsOn(ids []string) []string {

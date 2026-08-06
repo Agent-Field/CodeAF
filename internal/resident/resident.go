@@ -28,6 +28,9 @@ type Compiled struct {
 	Goal        string
 	Assumptions []string
 	Scale       string
+	// TrialOf is the retrieved unsettled fact this goal deliberately tests.
+	// Zero means the compiled job is ordinary work.
+	TrialOf int64
 
 	// BuildsOn names earlier top-level jobs this one continues. Each becomes
 	// a feeds_into edge onto the new subtree's entry nodes, so the prior
@@ -46,10 +49,13 @@ type Compiled struct {
 // belief met by contradicting experience is rewritten, and the journal keeps
 // the retired version.
 type Learned struct {
-	Scope    string
-	Kind     store.FactKind
-	Body     string
-	Replaces int64
+	Scope string
+	Kind  store.FactKind
+	Body  string
+	// Unsettled is the structured pair required by FactUnsettled. Body is a
+	// searchable projection and is regenerated from this payload on write.
+	Unsettled *store.UnsettledPair
+	Replaces  int64
 	// Sources names the existing facts a consolidated line derives from,
 	// strongest evidence first. It is empty outside consolidation.
 	Sources []int64
@@ -287,9 +293,10 @@ func (r *Reconciler) splice(ctx context.Context, command store.Command) (command
 		Origin:    store.OriginUser,
 		SessionID: command.SessionID,
 		Intent:    command.Instruction,
+		TrialOf:   compiled.TrialOf,
 	}
 	if err := r.store.Splice(store.RootID, subtree, provenance); err != nil {
-		if r.plan != nil || !r.defaultSpliceExists(command) {
+		if r.plan != nil || !r.defaultSpliceExists(command, compiled) {
 			return commandOutcome{}, err
 		}
 	}
@@ -339,7 +346,7 @@ func (r *Reconciler) titleSubtree(ctx context.Context, subtree *store.Subtree, c
 	}
 }
 
-func (r *Reconciler) defaultSpliceExists(command store.Command) bool {
+func (r *Reconciler) defaultSpliceExists(command store.Command, compiled Compiled) bool {
 	node, ok, err := r.store.Node(fmt.Sprintf("task-%d", command.Seq))
 	if err != nil || !ok {
 		return false
@@ -347,7 +354,8 @@ func (r *Reconciler) defaultSpliceExists(command store.Command) bool {
 	return node.Parent == store.RootID &&
 		node.Provenance.Origin == store.OriginUser &&
 		node.Provenance.SessionID == command.SessionID &&
-		node.Provenance.Intent == command.Instruction
+		node.Provenance.Intent == command.Instruction &&
+		node.Provenance.TrialOf == compiled.TrialOf
 }
 
 func (r *Reconciler) cancel(ctx context.Context, command store.Command) (commandOutcome, error) {
@@ -716,6 +724,7 @@ func (r *Reconciler) distillJob(ctx context.Context, node store.Node, failed boo
 	if r.distill == nil {
 		return
 	}
+	trial, isTrial := r.trialFact(node)
 	outcome := node.Summary
 	if failed {
 		outcome = node.Error
@@ -735,24 +744,110 @@ func (r *Reconciler) distillJob(ctx context.Context, node store.Node, failed boo
 		outcome += "\n\n[Delivery gate evidence: the job delivered the outcome above, and the gate caught this missing element: " +
 			gate.Gap + " " + ending + " Distill the transferable lesson in what was delivered versus what the gate required.]"
 	}
+	if isTrial {
+		outcome += "\n\n" + r.renderTrialForDistiller(trial)
+	}
 	facts, err := r.distill(ctx, node.Provenance.Intent, outcome, failed)
 	if err != nil {
+		if isTrial {
+			r.recordInconclusiveTrial(node, trial)
+		}
 		return
 	}
 	if len(facts) > distillLimit {
 		facts = facts[:distillLimit]
 	}
+	trialConsumed := false
 	for _, fact := range facts {
+		if isTrial && fact.Replaces == trial.Seq {
+			if !trialConsumed && r.recordTrialVerdict(node, trial, fact) == nil {
+				trialConsumed = true
+			}
+			continue
+		}
+		// Child failures still teach ordinary lessons, but only the top-level
+		// trial landing is allowed to consume the pair it was assembled to test.
+		if node.Parent != store.RootID && node.Provenance.TrialOf > 0 && fact.Replaces == node.Provenance.TrialOf {
+			continue
+		}
 		if strings.TrimSpace(fact.Body) == "" {
 			continue
 		}
-		recorded, err := r.store.RecordFact(node.ID, fact.Scope, fact.Kind, clipFactBody(fact.Body))
+		recorded, err := r.recordLearnedFact(node.ID, fact)
 		if err == nil && fact.Replaces > 0 {
 			// The distiller judged this memory to update a specific older
 			// belief: the old one retires in favour of the new, journaled.
 			_ = r.store.SupersedeFact(fact.Replaces, recorded.Seq)
 		}
 	}
+	if isTrial && !trialConsumed {
+		r.recordInconclusiveTrial(node, trial)
+	}
+}
+
+func (r *Reconciler) trialFact(node store.Node) (store.Fact, bool) {
+	if node.Parent != store.RootID || node.Provenance.TrialOf <= 0 {
+		return store.Fact{}, false
+	}
+	fact, ok, err := r.store.Fact(node.Provenance.TrialOf)
+	if err != nil || !ok || fact.Status != store.FactActive || fact.Kind != store.FactUnsettled || fact.Unsettled == nil {
+		return store.Fact{}, false
+	}
+	return fact, true
+}
+
+func (r *Reconciler) renderTrialForDistiller(fact store.Fact) string {
+	var rendered strings.Builder
+	fmt.Fprintf(&rendered, "[TRIAL VERDICT REQUIRED: this job tested unsettled fact #%d.\n", fact.Seq)
+	for index, approach := range fact.Unsettled.Approaches {
+		fmt.Fprintf(&rendered, "Approach %d: %s\nApplicable scope: %s\nEvidence:\n", index+1,
+			approach.Approach, approach.Scope)
+		for _, evidenceSeq := range approach.Evidence {
+			evidence, ok, err := r.store.Fact(evidenceSeq)
+			if err != nil || !ok {
+				fmt.Fprintf(&rendered, "- #%d (unavailable)\n", evidenceSeq)
+				continue
+			}
+			fmt.Fprintf(&rendered, "- #%d [%s · %s] %s\n", evidence.Seq, evidence.Scope, evidence.Kind, evidence.Body)
+		}
+	}
+	if len(fact.Unsettled.Trials) > 0 {
+		rendered.WriteString("Earlier inconclusive trials:\n")
+		for _, trial := range fact.Unsettled.Trials {
+			fmt.Fprintf(&rendered, "- %s: %s\n", trial.NodeID, trial.Outcome)
+		}
+	}
+	fmt.Fprintf(&rendered, "If this job settled the comparison, emit the winning standing lesson or fact with replaces:%d. If it did not settle the comparison, emit kind unsettled with replaces:%d; the store will carry the exact pair forward and note this run. Do not leave the verdict implicit.]",
+		fact.Seq, fact.Seq)
+	return rendered.String()
+}
+
+func (r *Reconciler) recordTrialVerdict(node store.Node, trial store.Fact, verdict Learned) error {
+	if verdict.Kind == store.FactUnsettled {
+		pair := trial.Unsettled.WithInconclusiveTrial(node.ID)
+		_, err := r.store.ReplaceUnsettledFact(trial.Seq, node.ID, trial.Scope, pair)
+		return err
+	}
+	if strings.TrimSpace(verdict.Body) == "" {
+		return fmt.Errorf("record trial verdict: empty winner")
+	}
+	_, err := r.store.ReplaceFact(trial.Seq, node.ID, verdict.Scope, verdict.Kind, clipFactBody(verdict.Body))
+	return err
+}
+
+func (r *Reconciler) recordInconclusiveTrial(node store.Node, trial store.Fact) {
+	pair := trial.Unsettled.WithInconclusiveTrial(node.ID)
+	_, _ = r.store.ReplaceUnsettledFact(trial.Seq, node.ID, trial.Scope, pair)
+}
+
+func (r *Reconciler) recordLearnedFact(nodeID string, learned Learned) (store.Fact, error) {
+	if learned.Kind == store.FactUnsettled {
+		if learned.Unsettled == nil {
+			return store.Fact{}, fmt.Errorf("record learned fact: unsettled fact has no pair")
+		}
+		return r.store.RecordUnsettledFact(nodeID, learned.Scope, *learned.Unsettled)
+	}
+	return r.store.RecordFact(nodeID, learned.Scope, learned.Kind, clipFactBody(learned.Body))
 }
 
 // renderCompileContext is the compiler's whole view: the notebook first —

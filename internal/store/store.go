@@ -118,6 +118,9 @@ type Provenance struct {
 	Origin    Origin `json:"origin"`
 	SessionID string `json:"session_id,omitempty"`
 	Intent    string `json:"intent"`
+	// TrialOf is the fact sequence of the unsettled pair this subtree tests.
+	// Zero means the splice is ordinary work.
+	TrialOf int64 `json:"trial_of,omitempty"`
 }
 
 // Need is one incoming edge named by a node specification.
@@ -243,6 +246,7 @@ CREATE TABLE IF NOT EXISTS nodes (
     origin         TEXT NOT NULL CHECK (origin IN ('user', 'trigger', 'self')),
     session_id     TEXT,
     intent         TEXT NOT NULL,
+    trial_of       INTEGER NOT NULL DEFAULT 0 CHECK (trial_of >= 0),
     created_seq    INTEGER NOT NULL REFERENCES events(seq),
     created_order  INTEGER NOT NULL CHECK (created_order >= 0),
     updated_seq    INTEGER NOT NULL REFERENCES events(seq),
