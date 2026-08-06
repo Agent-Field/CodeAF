@@ -145,14 +145,15 @@ func PlanAnchorFromContext(ctx context.Context) (PlanAnchor, bool) {
 // store remains the source of truth; this type keeps only a restart-safe event
 // cursor and injected planning behavior in memory.
 type Reconciler struct {
-	store       *store.Store
-	compile     CompileFunc
-	plan        PlanFunc
-	narrate     NarrateFunc
-	distill     DistillFunc
-	consolidate ConsolidateFunc
-	title       TitleFunc
-	reflect     ReflectFunc
+	store           *store.Store
+	compile         CompileFunc
+	plan            PlanFunc
+	narrate         NarrateFunc
+	distill         DistillFunc
+	consolidate     ConsolidateFunc
+	title           TitleFunc
+	reflect         ReflectFunc
+	digestTerritory TerritoryDigestFunc
 
 	mu                 sync.Mutex
 	watcherInitialized bool

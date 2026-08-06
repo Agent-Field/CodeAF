@@ -218,6 +218,13 @@ func replayEvent(tx *sql.Tx, event Event) error {
 		}
 		return applyNodeAmendedView(tx, event.NodeID, payload.Brief, payload.Title, event.Seq)
 
+	case EventNodeReparented:
+		var payload nodeReparentedPayload
+		if err := json.Unmarshal(event.Payload, &payload); err != nil {
+			return err
+		}
+		return applyNodeReparentedView(tx, event.NodeID, payload.Parent, event.Seq)
+
 	case EventNodeCancelled:
 		var payload nodeCancelledPayload
 		if err := json.Unmarshal(event.Payload, &payload); err != nil {

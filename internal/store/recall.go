@@ -109,10 +109,11 @@ func FormatRecall(hits []RecallHit, maxBytes int) string {
 
 type recallCandidate struct {
 	RecallHit
-	at         time.Time
-	updatedSeq int64
-	ftsRank    int
-	scopeHits  int
+	territoryParent bool
+	at              time.Time
+	updatedSeq      int64
+	ftsRank         int
+	scopeHits       int
 }
 
 // HasFolds reports whether recall can change a headless run. Callers use it as
@@ -206,6 +207,9 @@ func (s *Store) Recall(terms string, scopeCues []string, limit int) ([]RecallHit
 			byID[candidate.NodeID] = candidate
 		}
 	}
+	if err := s.addTerritoryParents(byID); err != nil {
+		return nil, err
+	}
 	if len(byID) == 0 {
 		return nil, nil
 	}
@@ -226,6 +230,9 @@ func (s *Store) Recall(terms string, scopeCues []string, limit int) ([]RecallHit
 			age = 0
 		}
 		score += .25 / (1 + age.Hours()/(24*30))
+		if candidate.territoryParent {
+			score += .5
+		}
 		candidate.Score = score
 		candidate.Age = AgeLabel(candidate.at, now)
 		candidates = append(candidates, candidate)
@@ -247,6 +254,79 @@ func (s *Store) Recall(terms string, scopeCues []string, limit int) ([]RecallHit
 		hits[index] = candidate.RecallHit
 	}
 	return hits, nil
+}
+
+// addTerritoryParents expands a member hit by one parent join. Territories are
+// exactly one level above jobs, so recall never needs a recursive traversal.
+func (s *Store) addTerritoryParents(byID map[string]*recallCandidate) error {
+	if len(byID) == 0 {
+		return nil
+	}
+	memberIDs := make([]string, 0, len(byID))
+	for id := range byID {
+		memberIDs = append(memberIDs, id)
+	}
+	sort.Strings(memberIDs)
+	placeholders := make([]string, len(memberIDs))
+	args := make([]any, 0, len(memberIDs)+1)
+	for index, id := range memberIDs {
+		placeholders[index] = "?"
+		args = append(args, id)
+	}
+	args = append(args, TerritoryGroup)
+	rows, err := s.db.Query(`
+		SELECT member.id, territory.id, territory.intent,
+		       CASE WHEN territory.fold_digest <> '' THEN territory.fold_digest ELSE territory.summary END,
+		       territory.fold_pointers, event.ts, territory.updated_seq
+		FROM nodes AS member
+		JOIN nodes AS territory ON territory.id = member.parent_id
+		JOIN events AS event ON event.seq = territory.updated_seq
+		WHERE member.id IN (`+strings.Join(placeholders, ",")+`)
+		  AND member.fold_root = 1
+		  AND territory.fold_root = 1
+		  AND territory.grp = ?`, args...)
+	if err != nil {
+		return fmt.Errorf("recall territory parents: %w", err)
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var memberID, pointers, timestamp string
+		var parent recallCandidate
+		if err := rows.Scan(&memberID, &parent.NodeID, &parent.Intent, &parent.Digest,
+			&pointers, &timestamp, &parent.updatedSeq); err != nil {
+			return fmt.Errorf("scan recall territory: %w", err)
+		}
+		if err := json.Unmarshal([]byte(pointers), &parent.Pointers); err != nil {
+			return fmt.Errorf("decode recall pointers for %q: %w", parent.NodeID, err)
+		}
+		parent.at, err = parseTime(timestamp)
+		if err != nil {
+			return fmt.Errorf("parse recall time for %q: %w", parent.NodeID, err)
+		}
+		source := byID[memberID]
+		if source == nil {
+			continue
+		}
+		existing := byID[parent.NodeID]
+		if existing == nil {
+			parent.territoryParent = true
+			parent.ftsRank = source.ftsRank
+			parent.scopeHits = source.scopeHits
+			byID[parent.NodeID] = &parent
+			continue
+		}
+		if source.ftsRank > 0 && (existing.ftsRank == 0 || source.ftsRank < existing.ftsRank) {
+			existing.ftsRank = source.ftsRank
+		}
+		if source.scopeHits > existing.scopeHits {
+			existing.scopeHits = source.scopeHits
+		}
+		existing.territoryParent = true
+	}
+	if err := rows.Err(); err != nil {
+		return fmt.Errorf("scan recall territories: %w", err)
+	}
+	return nil
 }
 
 func scanRecallCandidates(rows *sql.Rows) ([]*recallCandidate, error) {
