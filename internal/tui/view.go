@@ -2,6 +2,7 @@ package tui
 
 import (
 	"fmt"
+	"sort"
 	"strings"
 	"time"
 
@@ -25,6 +26,7 @@ var (
 	cursorStyle      = lipgloss.NewStyle().Foreground(lavender)
 	mutedStyle       = lipgloss.NewStyle().Foreground(muted)
 	selectedInk      = lipgloss.AdaptiveColor{Light: "#FFFFFF", Dark: "#24202E"}
+	selectionBand    = lipgloss.AdaptiveColor{Light: "#E8E7EE", Dark: "#343442"}
 	selectedStyle    = lipgloss.NewStyle().Foreground(selectedInk).Background(lavender)
 	pillStyle        = lipgloss.NewStyle().Foreground(selectedInk).Background(peach).Padding(0, 1)
 
@@ -33,10 +35,13 @@ var (
 
 // View composes the complete frame once, avoiding terminal-clearing redraws.
 func (m *Model) View() string {
+	m.trackPaneBounds()
 	top := m.renderTopBar()
 
 	var main string
-	if m.horizontal {
+	if m.nodeViewID != "" {
+		main = m.renderNodePane()
+	} else if m.horizontal {
 		main = lipgloss.JoinHorizontal(lipgloss.Top, m.renderChatPane(), "  ", m.renderGraphPane())
 	} else if m.focus == focusGraph {
 		main = m.renderGraphPane()
@@ -48,15 +53,54 @@ func (m *Model) View() string {
 	if m.paletteOpen() {
 		parts = append(parts, m.renderPalette())
 	}
-	if !m.horizontal {
+	if !m.horizontal && m.nodeViewID == "" {
 		parts = append(parts, m.renderGraphStrip())
 	}
 	parts = append(parts, m.renderInput())
 	if !m.paletteOpen() {
-		hint := "/ commands · tab focus/view · v receipts · pgup/pgdn scroll · ctrl+c quit"
+		hint := "/ cmds · tab · ↑/↓ select · enter inspect · v receipts · node input steers · mouse click/wheel · ctrl+c quit"
+		if m.nodeViewID != "" {
+			hint = "type to steer · enter send · c cancel · esc back · mouse wheel scroll"
+		}
 		parts = append(parts, mutedStyle.Render(truncate(hint, m.width)))
 	}
 	return lipgloss.JoinVertical(lipgloss.Left, parts...)
+}
+
+func (m *Model) trackPaneBounds() {
+	m.chatBounds = paneBounds{}
+	m.graphBounds = paneBounds{}
+	m.graphRowsBounds = paneBounds{}
+	m.inputBounds = paneBounds{}
+	m.nodeBounds = paneBounds{}
+	m.nodeDetailsBounds = paneBounds{}
+	m.nodeTrailBounds = paneBounds{}
+	m.nodeTraceBounds = paneBounds{}
+
+	const mainY = 2
+	if m.nodeViewID != "" {
+		m.nodeBounds = paneBounds{x: 0, y: mainY, width: m.width, height: m.chatHeight}
+	} else if m.horizontal {
+		m.chatBounds = paneBounds{x: 0, y: mainY, width: m.chatWidth, height: m.chatHeight}
+		m.graphBounds = paneBounds{x: m.chatWidth + 2, y: mainY, width: m.graphWidth, height: m.graphHeight}
+	} else if m.focus == focusGraph {
+		m.graphBounds = paneBounds{x: 0, y: mainY, width: m.graphWidth, height: m.graphHeight}
+	} else {
+		m.chatBounds = paneBounds{x: 0, y: mainY, width: m.chatWidth, height: m.chatHeight}
+	}
+	if m.graphBounds.width > 0 {
+		m.graphRowsBounds = paneBounds{
+			x: m.graphBounds.x + 2, y: m.graphBounds.y + 3,
+			width: m.graph.Width, height: m.graph.Height,
+		}
+	}
+
+	stripHeight := 0
+	if !m.horizontal && m.nodeViewID == "" {
+		stripHeight = 1
+	}
+	inputY := mainY + m.chatHeight + 1 + m.paletteHeight() + stripHeight
+	m.inputBounds = paneBounds{x: 0, y: inputY, width: m.width, height: lipgloss.Height(m.renderInput())}
 }
 
 func (m *Model) renderTopBar() string {
@@ -186,6 +230,67 @@ func (m *Model) renderGraphPane() string {
 	return paneStyle(border, m.graphWidth, m.graphHeight).Render(strings.Join(lines, "\n"))
 }
 
+func (m *Model) renderNodePane() string {
+	innerWidth := max(1, m.width-4)
+	now := time.Now()
+	glyph, _ := m.nodeGlyphStyled(m.inspectedNode, now, false)
+	title := firstLine(m.inspectedNode.Brief)
+	if title == "" {
+		title = m.inspectedNode.ID
+	}
+	timing := m.nodeTiming(now)
+	if timing != "" {
+		timing = truncate(timing, max(1, innerWidth-lipgloss.Width(glyph)-4))
+	}
+	timingWidth := 0
+	if timing != "" {
+		timingWidth = lipgloss.Width("  ·  " + timing)
+	}
+	title = truncate(title, max(1, innerWidth-lipgloss.Width(glyph)-1-timingWidth))
+	header := glyph + " " + lipgloss.NewStyle().Foreground(ink).Bold(true).Render(title)
+	if timing != "" {
+		header += mutedStyle.Render("  ·  " + timing)
+	}
+
+	lines := []string{header, ""}
+	contentX := m.nodeBounds.x + 2
+	contentY := m.nodeBounds.y + 1 + len(lines)
+	appendSection := func(label string, view string, height int, bounds *paneBounds) {
+		lines = append(lines, mutedStyle.Faint(true).Render(label))
+		contentY++
+		if height <= 0 {
+			return
+		}
+		*bounds = paneBounds{x: contentX, y: contentY, width: innerWidth, height: height}
+		visible := strings.Split(view, "\n")
+		if view == "" {
+			visible = nil
+		}
+		for len(visible) < height {
+			visible = append(visible, "")
+		}
+		if len(visible) > height {
+			visible = visible[:height]
+		}
+		lines = append(lines, visible...)
+		contentY += height
+	}
+	appendSection("BRIEF", m.nodeDetails.View(), m.nodeDetailsHeight, &m.nodeDetailsBounds)
+	appendSection("TRAIL", m.nodeTrail.View(), m.nodeTrailHeight, &m.nodeTrailBounds)
+	if m.commander != nil {
+		appendSection("TRACE TAIL", m.nodeTrace.View(), m.nodeTraceHeight, &m.nodeTraceBounds)
+	}
+
+	innerHeight := max(1, m.chatHeight-2)
+	for len(lines) < innerHeight {
+		lines = append(lines, "")
+	}
+	if len(lines) > innerHeight {
+		lines = lines[:innerHeight]
+	}
+	return paneStyle(lavender, m.width, m.chatHeight).Render(strings.Join(lines, "\n"))
+}
+
 func paneStyle(border lipgloss.AdaptiveColor, width, height int) lipgloss.Style {
 	return lipgloss.NewStyle().
 		Border(lipgloss.RoundedBorder()).
@@ -251,13 +356,15 @@ func (m *Model) paletteLines(width int) []string {
 	case paletteMemory:
 		return m.memoryPanelLines(width)
 	case paletteHelp:
-		lines := make([]string, 0, len(slashCommands)+3)
+		lines := make([]string, 0, len(slashCommands)+5)
 		for _, command := range slashCommands {
 			lines = append(lines, truncate(fmt.Sprintf("「/%s」 %s", command.name, command.description), width))
 		}
 		lines = append(lines,
 			mutedStyle.Render(truncate("voice  you ask · aforge answers · v toggles receipts", width)),
-			mutedStyle.Render(truncate("keys   tab focus / graph view · pgup/pgdn scroll · end latest", width)),
+			mutedStyle.Render(truncate("keys   tab focus · ↑/↓ select · enter inspect node · esc back", width)),
+			mutedStyle.Render(truncate("node   type guidance + enter to steer · c cancels worker", width)),
+			mutedStyle.Render(truncate("mouse  click focus/select/open · wheel scrolls pointed pane", width)),
 			mutedStyle.Render(truncate("menus  tab/↑/↓ choose · enter accept · esc close · ctrl+c quit", width)),
 		)
 		if limit := m.paletteLineLimit(); len(lines) > limit {
@@ -475,49 +582,77 @@ func (m *Model) renderMessages() string {
 		return mutedStyle.Render("No messages yet. Start with a thought or a task.")
 	}
 
-	blocks := make([]string, 0, len(m.messages))
-	for index := 0; index < len(m.messages); {
-		message := m.messages[index]
-		if secondaryMessage(message) {
-			receipts := []store.Message{message}
-			index++
-			for index < len(m.messages) && secondaryMessage(m.messages[index]) {
-				receipts = append(receipts, m.messages[index])
-				index++
-			}
-			blocks = append(blocks, m.renderMessageBlock(store.Message{
-				Time: message.Time,
-				Role: store.RoleAgent,
-			}, receipts))
-			continue
-		}
-
-		index++
-		receipts := make([]store.Message, 0)
-		if messageVoice(message) == "aforge" {
-			for index < len(m.messages) && secondaryMessage(m.messages[index]) {
-				receipts = append(receipts, m.messages[index])
-				index++
-			}
-		}
-		blocks = append(blocks, m.renderMessageBlock(message, receipts))
+	groups := groupMessages(m.messages)
+	if len(groups) == 0 {
+		return mutedStyle.Render("No messages yet. Start with a thought or a task.")
+	}
+	blocks := make([]string, 0, len(groups))
+	for _, group := range groups {
+		blocks = append(blocks, m.renderMessageGroup(group))
 	}
 	return strings.Join(blocks, "\n\n")
 }
 
-func (m *Model) renderMessageBlock(message store.Message, receipts []store.Message) string {
-	accent, label := messagePresentation(message)
-	available := max(8, m.chat.Width-2)
-	header := lipgloss.NewStyle().Foreground(accent).Bold(true).Render(label)
-	header += mutedStyle.Render("  " + relativeTime(message.Time, time.Now()))
+const messageGroupWindow = 3 * time.Minute
 
-	content := header
-	if message.Body != "" {
-		body := lipgloss.NewStyle().Foreground(accent).Render(wrapText(message.Body, available))
-		content += "\n" + body
+type messageGroup struct {
+	messages []store.Message
+	voice    string
+}
+
+func groupMessages(messages []store.Message) []messageGroup {
+	groups := make([]messageGroup, 0, len(messages))
+	for _, message := range messages {
+		if message.Role == store.RoleUser && message.NodeID != "" {
+			continue
+		}
+		voice := messageVoice(message)
+		startGroup := len(groups) == 0
+		if !startGroup {
+			latest := groups[len(groups)-1]
+			startGroup = latest.voice != voice ||
+				messageGap(latest.messages[len(latest.messages)-1], message) > messageGroupWindow
+		}
+		if startGroup {
+			groups = append(groups, messageGroup{voice: voice})
+		}
+		groups[len(groups)-1].messages = append(groups[len(groups)-1].messages, message)
 	}
-	for _, receipt := range receipts {
-		content += "\n" + m.renderReceipt(receipt, available)
+	return groups
+}
+
+func messageGap(previous, next store.Message) time.Duration {
+	if previous.Time.IsZero() || next.Time.IsZero() || !next.Time.After(previous.Time) {
+		return 0
+	}
+	return next.Time.Sub(previous.Time)
+}
+
+func (m *Model) renderMessageGroup(group messageGroup) string {
+	latest := group.messages[len(group.messages)-1]
+	accent, label := messagePresentation(latest)
+	available := max(8, m.chat.Width-2)
+	header := lipgloss.NewStyle().Foreground(accent).Faint(true).Render(label)
+	header += mutedStyle.Faint(true).Render("  " + relativeTime(latest.Time, time.Now()))
+
+	items := make([]string, 0, len(group.messages))
+	for _, message := range group.messages {
+		if secondaryMessage(message) {
+			items = append(items, m.renderReceipt(message, available))
+			continue
+		}
+		bodyStyle := inputTextStyle
+		if message.Role == store.RoleUser {
+			bodyStyle = lipgloss.NewStyle().Foreground(powder)
+		}
+		if message.Role == store.RoleSystem && message.NodeID != "" {
+			bodyStyle = lipgloss.NewStyle().Foreground(lavender).Bold(true)
+		}
+		items = append(items, bodyStyle.Render(wrapText(message.Body, available)))
+	}
+	content := header
+	if len(items) > 0 {
+		content += "\n" + strings.Join(items, "\n\n")
 	}
 
 	return lipgloss.NewStyle().
@@ -577,6 +712,7 @@ func indentLines(text, prefix string) string {
 func (m *Model) renderTree(width, height int) string {
 	now := time.Now()
 	m.graphAnimating = false
+	m.graphRows = nil
 	lines := make([]string, 0, len(m.snapshot.Nodes)+len(m.pending))
 	for _, command := range m.pending {
 		if command.Kind != store.CommandSplice {
@@ -606,7 +742,10 @@ func (m *Model) renderTree(width, height int) string {
 		}
 		children[node.Parent] = append(children[node.Parent], node)
 	}
-	roots := children[store.RootID]
+	// Live work reads top-down: jobs still moving sit first, newest first, so
+	// the eye lands on what is happening now; everything settled sinks below
+	// and renders dimmed.
+	roots := orderRoots(children[store.RootID], children)
 	if len(roots) == 0 && len(lines) == 0 {
 		empty := truncate("the graph is quiet — ask for something", max(1, width))
 		return lipgloss.Place(
@@ -635,21 +774,36 @@ func (m *Model) renderTree(width, height int) string {
 			}
 
 			row := len(lines)
-			glyph, active := m.nodeGlyphAt(node, now)
-			prefix := mutedStyle.Render(ancestorGuide+branch) + glyph + " "
+			dimmed := subtreeSettled(node, children) && !m.completionFlashing(node, now)
+			glyph, active := m.nodeGlyphStyled(node, now, dimmed)
+			selected := node.ID == m.selectedNodeID
+			marker := "  "
+			if selected {
+				marker = lipgloss.NewStyle().Foreground(lavender).Bold(true).Render("▸ ")
+			}
+			prefix := marker + mutedStyle.Render(ancestorGuide+branch) + glyph + " "
 			brief := firstLine(node.Brief)
 			if brief == "" {
 				brief = node.ID
 			}
-			lines = append(lines, prefix+lipgloss.NewStyle().Foreground(ink).Render(
+			briefStyle := lipgloss.NewStyle().Foreground(ink)
+			if dimmed {
+				briefStyle = mutedStyle
+			}
+			line := prefix + briefStyle.Render(
 				truncate(brief, max(1, width-lipgloss.Width(prefix))),
-			))
+			)
+			if selected {
+				line = lipgloss.NewStyle().Background(selectionBand).Width(width).Render(line)
+			}
+			lines = append(lines, line)
+			m.graphRows = append(m.graphRows, graphRow{line: row, nodeID: node.ID})
 			if active || m.completionFlashing(node, now) {
 				m.noteAnimatedGraphRow(row)
 			}
 
 			if active && !node.StartedAt.IsZero() {
-				elapsedPrefix := nextGuide + "   "
+				elapsedPrefix := "  " + nextGuide + "   "
 				elapsed := formatElapsed(now.Sub(node.StartedAt)) + " elapsed"
 				lines = append(lines, mutedStyle.Render(elapsedPrefix+truncate(elapsed, max(1, width-lipgloss.Width(elapsedPrefix)))))
 			}
@@ -664,22 +818,78 @@ func (m *Model) renderTree(width, height int) string {
 	return strings.Join(lines, "\n")
 }
 
-func (m *Model) nodeGlyph(node store.Node) (string, bool) {
-	return m.nodeGlyphAt(node, time.Now())
+// nodeSettled reports whether one node has nothing left to do: it landed,
+// failed, was cancelled, or is the digest of a folded subtree.
+func nodeSettled(node store.Node) bool {
+	if node.FoldRoot {
+		return true
+	}
+	switch node.Status {
+	case store.Done, store.Failed, store.Cancelled:
+		return true
+	}
+	return false
 }
 
-func (m *Model) nodeGlyphAt(node store.Node, now time.Time) (string, bool) {
+// subtreeSettled reports whether a node and every visible descendant are
+// settled — the condition for a job to sink below live work and dim.
+func subtreeSettled(node store.Node, children map[string][]store.Node) bool {
+	if !nodeSettled(node) {
+		return false
+	}
+	for _, child := range children[node.ID] {
+		if !subtreeSettled(child, children) {
+			return false
+		}
+	}
+	return true
+}
+
+// orderRoots puts jobs that are still moving first, newest first, and sinks
+// fully settled jobs below them (also newest first). Children keep creation
+// order — inside a job the pipeline shape is the information.
+func orderRoots(roots []store.Node, children map[string][]store.Node) []store.Node {
+	live := make([]store.Node, 0, len(roots))
+	settled := make([]store.Node, 0, len(roots))
+	for _, root := range roots {
+		if subtreeSettled(root, children) {
+			settled = append(settled, root)
+		} else {
+			live = append(live, root)
+		}
+	}
+	newestFirst := func(nodes []store.Node) {
+		sort.SliceStable(nodes, func(i, j int) bool {
+			return nodes[i].CreatedSeq > nodes[j].CreatedSeq
+		})
+	}
+	newestFirst(live)
+	newestFirst(settled)
+	return append(live, settled...)
+}
+
+func (m *Model) nodeGlyph(node store.Node) (string, bool) {
+	return m.nodeGlyphStyled(node, time.Now(), false)
+}
+
+func (m *Model) nodeGlyphStyled(node store.Node, now time.Time, dimmed bool) (string, bool) {
+	tint := func(color lipgloss.AdaptiveColor) lipgloss.AdaptiveColor {
+		if dimmed {
+			return muted
+		}
+		return color
+	}
 	if node.FoldRoot {
-		return lipgloss.NewStyle().Foreground(lavender).Render("◆"), false
+		return lipgloss.NewStyle().Foreground(tint(lavender)).Render("◆"), false
 	}
 	switch node.Status {
 	case store.Done:
-		return lipgloss.NewStyle().Foreground(mint).Bold(m.completionFlashing(node, now)).Render("●"), false
+		return lipgloss.NewStyle().Foreground(tint(mint)).Bold(m.completionFlashing(node, now)).Render("●"), false
 	case store.Claimed, store.Running:
 		frame := spinnerFrames[m.spinnerFrame%len(spinnerFrames)]
 		return lipgloss.NewStyle().Foreground(peach).Render("● " + frame), true
 	case store.Failed, store.Cancelled:
-		return lipgloss.NewStyle().Foreground(rose).Render("●"), false
+		return lipgloss.NewStyle().Foreground(tint(rose)).Render("●"), false
 	default:
 		return lipgloss.NewStyle().Foreground(butter).Render("○"), false
 	}

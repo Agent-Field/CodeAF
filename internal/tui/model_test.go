@@ -32,6 +32,7 @@ type fakeCommander struct {
 	cancelled  []string
 	facts      []store.Fact
 	database   string
+	trace      string
 	err        error
 }
 
@@ -72,6 +73,13 @@ func (f *fakeCommander) Notebook(limit int) []store.Fact {
 
 func (f *fakeCommander) DatabasePath() string { return f.database }
 
+func (f *fakeCommander) NodeTrace(nodeID string, maxBytes int) string {
+	if maxBytes > 0 && len(f.trace) > maxBytes {
+		return f.trace[len(f.trace)-maxBytes:]
+	}
+	return f.trace
+}
+
 func (f *fakeBackend) Messages(sessionID string, afterSeq int64, limit int) ([]store.Message, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -104,6 +112,32 @@ func (f *fakeBackend) ActiveSnapshot() (store.Snapshot, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	return f.snapshot, nil
+}
+
+func (f *fakeBackend) Node(id string) (store.Node, bool, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	for _, node := range f.snapshot.Nodes {
+		if node.ID == id {
+			return node, true, nil
+		}
+	}
+	return store.Node{}, false, nil
+}
+
+func (f *fakeBackend) NodeMessages(nodeID string, afterSeq int64, limit int) ([]store.Message, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	var result []store.Message
+	for _, message := range f.messages {
+		if message.NodeID == nodeID && message.Seq > afterSeq {
+			result = append(result, message)
+			if limit > 0 && len(result) == limit {
+				break
+			}
+		}
+	}
+	return result, nil
 }
 
 func (f *fakeBackend) PendingCommands(limit int) ([]store.Command, error) {
@@ -295,10 +329,170 @@ func TestHintsDescribeReceiptsGraphViewAndTwoVoices(t *testing.T) {
 
 	_ = model.executeSlash("/help")
 	view := model.View()
-	for _, expected := range []string{"「/memory」", "you ask · aforge answers", "v toggles receipts", "tab focus / graph view"} {
+	for _, expected := range []string{
+		"「/memory」", "you ask · aforge answers", "v toggles receipts", "enter inspect node", "enter to steer", "mouse",
+	} {
 		if !strings.Contains(view, expected) {
 			t.Fatalf("help does not contain %q:\n%s", expected, view)
 		}
+	}
+}
+
+func TestGraphSelectionMovesAcrossNodesAndSkipsPlanningRows(t *testing.T) {
+	model := New(&fakeBackend{}, "test-session")
+	model.pending = []store.Command{{Kind: store.CommandSplice, Instruction: "planning placeholder"}}
+	model.snapshot = store.Snapshot{Nodes: []store.Node{
+		{ID: store.RootID},
+		{ID: "first", Parent: store.RootID, Brief: "First node", Status: store.Pending},
+		{ID: "second", Parent: store.RootID, Brief: "Second node", Status: store.Pending},
+	}}
+	model.refreshGraph()
+
+	_, _ = model.Update(tea.KeyMsg{Type: tea.KeyTab})
+	_, _ = model.Update(tea.KeyMsg{Type: tea.KeyTab})
+	if model.selectedNodeID != "first" {
+		t.Fatalf("initial graph selection = %q, want first", model.selectedNodeID)
+	}
+	_, _ = model.Update(tea.KeyMsg{Type: tea.KeyDown})
+	if model.selectedNodeID != "second" {
+		t.Fatalf("down selected %q, want second", model.selectedNodeID)
+	}
+	_, _ = model.Update(tea.KeyMsg{Type: tea.KeyUp})
+	if model.selectedNodeID != "first" {
+		t.Fatalf("up selected %q, want first", model.selectedNodeID)
+	}
+	if strings.Contains(model.selectedNodeID, "planning") {
+		t.Fatalf("planning placeholder became selectable: %q", model.selectedNodeID)
+	}
+}
+
+func TestEnterOpensNodeViewAndEscapeClosesIt(t *testing.T) {
+	backend := &fakeBackend{snapshot: store.Snapshot{Nodes: []store.Node{
+		{ID: store.RootID},
+		{ID: "worker", Parent: store.RootID, Brief: "Inspect this worker\nFull brief", Status: store.Running},
+	}}}
+	model := New(backend, "test-session")
+	model.snapshot = backend.snapshot
+	model.refreshGraph()
+	_, _ = model.Update(tea.KeyMsg{Type: tea.KeyTab})
+	_, _ = model.Update(tea.KeyMsg{Type: tea.KeyTab})
+
+	_, _ = model.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	if model.nodeViewID != "worker" || !strings.Contains(model.input.Placeholder, "steer this worker") {
+		t.Fatalf("node view did not open: id=%q placeholder=%q", model.nodeViewID, model.input.Placeholder)
+	}
+	if view := model.View(); !strings.Contains(view, "Inspect this worker") || strings.Contains(view, "CHAT") {
+		t.Fatalf("node view did not replace the chat/graph row:\n%s", view)
+	}
+
+	_, command := model.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	if command != nil || model.nodeViewID != "" || model.focus != focusGraph {
+		t.Fatalf("escape did not return to graph: command=%v id=%q focus=%v", command, model.nodeViewID, model.focus)
+	}
+}
+
+func TestSteeringPostsNodeAnchoredUserMessageAndShowsImmediately(t *testing.T) {
+	backend := &fakeBackend{snapshot: store.Snapshot{Nodes: []store.Node{
+		{ID: store.RootID},
+		{ID: "worker", Parent: store.RootID, Brief: "Running worker", Status: store.Running},
+	}}}
+	model := New(backend, "session-42")
+	model.snapshot = backend.snapshot
+	model.selectedNodeID = "worker"
+	_ = model.openSelectedNode()
+	typeIntoModel(model, "please check the edge case")
+
+	_, command := model.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	if command == nil {
+		t.Fatal("steering enter returned no post command")
+	}
+	if trail := model.renderNodeTrailContent(); !strings.Contains(trail, "please check the edge case") {
+		t.Fatalf("steer was not shown optimistically:\n%s", trail)
+	}
+	result := command()
+	_, _ = model.Update(result)
+
+	backend.mu.Lock()
+	defer backend.mu.Unlock()
+	if len(backend.posted) != 1 {
+		t.Fatalf("posted %d messages, want 1", len(backend.posted))
+	}
+	posted := backend.posted[0]
+	if posted.SessionID != "session-42" || posted.Role != store.RoleUser || posted.NodeID != "worker" ||
+		posted.Body != "please check the edge case" {
+		t.Fatalf("unexpected steering message: %#v", posted)
+	}
+}
+
+func TestGroupedRenderingMergesAndSplitsByVoiceAndTime(t *testing.T) {
+	now := time.Now()
+	model := New(&fakeBackend{}, "test-session")
+	model.messages = []store.Message{
+		{Time: now, Role: store.RoleAgent, Body: "first aforge line"},
+		{Time: now.Add(time.Minute), Role: store.RoleSystem, NodeID: "result", Body: "node result"},
+		{Time: now.Add(2 * time.Minute), Role: store.RoleUser, Body: "first user line"},
+		{Time: now.Add(4 * time.Minute), Role: store.RoleUser, Body: "same user group"},
+		{Time: now.Add(8 * time.Minute), Role: store.RoleUser, Body: "later user group"},
+	}
+
+	rendered := model.renderMessages()
+	groups := groupMessages(model.messages)
+	if len(groups) != 3 || len(groups[0].messages) != 2 || len(groups[1].messages) != 2 || len(groups[2].messages) != 1 {
+		t.Fatalf("unexpected message groups: %#v", groups)
+	}
+	if count := strings.Count(rendered, "you  now"); count != 2 {
+		t.Fatalf("user messages rendered %d labels, want 2 after time split:\n%s", count, rendered)
+	}
+	for _, body := range []string{"first aforge line", "node result", "first user line", "same user group", "later user group"} {
+		if !strings.Contains(rendered, body) {
+			t.Fatalf("grouped rendering lost %q:\n%s", body, rendered)
+		}
+	}
+}
+
+func TestMouseClickSelectsGraphRowFromTrackedBounds(t *testing.T) {
+	model := New(&fakeBackend{}, "test-session")
+	model.setSize(120, 30)
+	model.snapshot = store.Snapshot{Nodes: []store.Node{
+		{ID: store.RootID},
+		{ID: "first", Parent: store.RootID, Brief: "First", Status: store.Pending},
+		{ID: "second", Parent: store.RootID, Brief: "Second", Status: store.Pending},
+	}}
+	model.refreshGraph()
+	_ = model.View()
+
+	var target graphRow
+	for _, row := range model.graphRows {
+		if row.nodeID == "second" {
+			target = row
+		}
+	}
+	_, _ = model.Update(tea.MouseMsg{
+		X:      model.graphRowsBounds.x,
+		Y:      model.graphRowsBounds.y + target.line - model.graph.YOffset,
+		Button: tea.MouseButtonLeft,
+		Action: tea.MouseActionPress,
+	})
+	if model.selectedNodeID != "second" || model.focus != focusGraph {
+		t.Fatalf("mouse selected %q with focus %v, want second/graph", model.selectedNodeID, model.focus)
+	}
+}
+
+func TestNodeTraceWithoutCommanderHasNoSectionAndDoesNotPanic(t *testing.T) {
+	backend := &fakeBackend{snapshot: store.Snapshot{Nodes: []store.Node{
+		{ID: store.RootID},
+		{ID: "worker", Parent: store.RootID, Brief: "No trace commander", Status: store.Running},
+	}}}
+	model := New(backend, "test-session")
+	model.snapshot = backend.snapshot
+	model.selectedNodeID = "worker"
+	poll := model.openSelectedNode()
+	if poll == nil {
+		t.Fatal("opening a node should request an immediate poll")
+	}
+	_, _ = model.Update(poll())
+	if view := model.View(); strings.Contains(view, "TRACE TAIL") {
+		t.Fatalf("nil Commander rendered a trace section:\n%s", view)
 	}
 }
 

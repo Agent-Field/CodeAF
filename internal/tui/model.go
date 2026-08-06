@@ -22,6 +22,7 @@ const (
 	pollLimit         = 200
 	railAtWidth       = 100
 	statusTTL         = 3 * time.Second
+	nodeTraceMaxBytes = 64 << 10
 )
 
 // ModelChoice is one model advertised by the live provider catalog. Price is
@@ -39,6 +40,8 @@ type Backend interface {
 	Messages(sessionID string, afterSeq int64, limit int) ([]store.Message, error)
 	PostMessage(store.Message) (store.Message, error)
 	ActiveSnapshot() (store.Snapshot, error)
+	Node(id string) (store.Node, bool, error)
+	NodeMessages(nodeID string, afterSeq int64, limit int) ([]store.Message, error)
 	PendingCommands(limit int) ([]store.Command, error)
 	Usage() (store.TotalUsage, error)
 }
@@ -54,6 +57,7 @@ type Commander interface {
 	Notebook(limit int) []store.Fact
 	NewSession() (string, error)
 	Cancel(nodeID string) error
+	NodeTrace(nodeID string, maxBytes int) string
 }
 
 var _ Backend = (*store.Store)(nil)
@@ -76,10 +80,20 @@ type pollResultMsg struct {
 	snapshotErr error
 	pendingErr  error
 	usageErr    error
+
+	nodeID          string
+	node            store.Node
+	nodeFound       bool
+	nodeMessages    []store.Message
+	nodeTrace       string
+	nodeErr         error
+	nodeMessagesErr error
 }
 
 type postResultMsg struct {
-	err error
+	message store.Message
+	nodeID  string
+	err     error
 }
 
 // Model is the Bubble Tea model for an aforge chat session.
@@ -92,11 +106,26 @@ type Model struct {
 	chat  viewport.Model
 	graph viewport.Model
 
+	nodeDetails viewport.Model
+	nodeTrail   viewport.Model
+	nodeTrace   viewport.Model
+
 	messages []store.Message
 	snapshot store.Snapshot
 	pending  []store.Command
 	usage    store.TotalUsage
 	lastSeq  int64
+
+	selectedNodeID string
+	graphRows      []graphRow
+	nodeViewID     string
+	inspectedNode  store.Node
+	nodeMessages   []store.Message
+	nodeLastSeq    int64
+	nodeTraceText  string
+	nodeScroll     nodeSection
+	chatDraft      string
+	returnFocus    paneFocus
 
 	width  int
 	height int
@@ -106,6 +135,10 @@ type Model struct {
 	chatHeight  int
 	graphWidth  int
 	graphHeight int
+
+	nodeDetailsHeight int
+	nodeTrailHeight   int
+	nodeTraceHeight   int
 
 	inputFocused     bool
 	focus            paneFocus
@@ -127,6 +160,20 @@ type Model struct {
 	memoryFacts      []store.Fact
 	status           string
 	statusUntil      time.Time
+
+	// splitPct is the chat pane's share of the width in percent; zero means
+	// the default. draggingSplit is true while the divider is held.
+	splitPct      int
+	draggingSplit bool
+
+	chatBounds        paneBounds
+	graphBounds       paneBounds
+	graphRowsBounds   paneBounds
+	inputBounds       paneBounds
+	nodeBounds        paneBounds
+	nodeDetailsBounds paneBounds
+	nodeTrailBounds   paneBounds
+	nodeTraceBounds   paneBounds
 }
 
 type paneFocus int
@@ -169,13 +216,41 @@ func newModel(backend Backend, sessionID string, commander Commander) *Model {
 		input:        input,
 		chat:         viewport.New(1, 1),
 		graph:        viewport.New(1, 1),
+		nodeDetails:  viewport.New(1, 1),
+		nodeTrail:    viewport.New(1, 1),
+		nodeTrace:    viewport.New(1, 1),
 		inputFocused: true,
 		focus:        focusInput,
 		autoScroll:   true,
 		modelRole:    "talk",
 	}
+	if saved, ok := commander.(splitStore); ok {
+		m.splitPct = clampSplitPct(saved.SplitPct())
+	}
 	m.setSize(100, 30)
 	return m
+}
+
+// splitStore is the optional Commander capability of remembering the divider
+// position across launches. A Commander without it still resizes live; the
+// position just resets next launch.
+type splitStore interface {
+	SplitPct() int
+	SaveSplitPct(pct int)
+}
+
+// The divider clamps so neither pane can be dragged into uselessness.
+const (
+	defaultSplitPct = 80
+	minSplitPct     = 25
+	maxSplitPct     = 85
+)
+
+func clampSplitPct(pct int) int {
+	if pct == 0 {
+		return 0 // zero stays "unset" and resolves to the default at layout time
+	}
+	return max(minSplitPct, min(maxSplitPct, pct))
 }
 
 // Run starts a full-screen terminal session and restores the caller's screen
@@ -233,6 +308,9 @@ func (m *Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 			m.err = fmt.Errorf("send message: %w", message.err)
 			return m, nil
 		}
+		if message.nodeID != "" {
+			m.landOptimisticNodeMessage(message.nodeID, message.message)
+		}
 		m.err = nil
 		return m, nil
 
@@ -254,7 +332,7 @@ func (m *Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		before := m.input.Value()
 		var command tea.Cmd
 		m.input, command = m.input.Update(message)
-		if m.input.Value() != before {
+		if m.input.Value() != before && m.nodeViewID == "" {
 			m.paletteSelected = 0
 			m.paletteDismissed = false
 			m.syncPalette()
@@ -264,6 +342,10 @@ func (m *Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 	}
 
 	var command tea.Cmd
+	if m.nodeViewID != "" {
+		m.updateNodeViewport(message)
+		return m, nil
+	}
 	if m.focus == focusGraph {
 		m.graph, command = m.graph.Update(message)
 		m.refreshGraph()
@@ -278,6 +360,21 @@ func (m *Model) updateKey(message tea.KeyMsg) (tea.Cmd, bool) {
 	key := message.String()
 	if key == "ctrl+c" {
 		return tea.Quit, true
+	}
+	if m.nodeViewID != "" {
+		switch {
+		case key == "esc":
+			m.closeNodeView()
+			return nil, true
+		case key == "c" && m.input.Value() == "":
+			return m.cancelInspectedNode(), true
+		case key == "enter" && m.inputFocused:
+			return m.submitSteer(), true
+		case key == "pgup" || key == "pgdown":
+			m.pageNodeViewport(key == "pgdown")
+			return nil, true
+		}
+		return nil, false
 	}
 	if key == "esc" {
 		switch {
@@ -315,6 +412,25 @@ func (m *Model) updateKey(message tea.KeyMsg) (tea.Cmd, bool) {
 	if key == "tab" {
 		return m.toggleFocus(), true
 	}
+	if !m.inputFocused && (key == "[" || key == "]") {
+		delta := -5
+		if key == "]" {
+			delta = 5
+		}
+		m.nudgeSplit(delta)
+		return nil, true
+	}
+	if m.focus == focusGraph && (key == "up" || key == "k" || key == "down" || key == "j") {
+		delta := -1
+		if key == "down" || key == "j" {
+			delta = 1
+		}
+		m.moveGraphSelection(delta)
+		return nil, true
+	}
+	if key == "enter" && m.focus == focusGraph {
+		return m.openSelectedNode(), true
+	}
 	if key == "enter" && m.inputFocused {
 		return m.submit(), true
 	}
@@ -333,12 +449,15 @@ func (m *Model) poll() tea.Cmd {
 	backend := m.backend
 	sessionID := m.sessionID
 	afterSeq := m.lastSeq
+	nodeID := m.nodeViewID
+	nodeAfterSeq := m.nodeLastSeq
+	commander := m.commander
 	return func() tea.Msg {
 		messages, messagesErr := backend.Messages(sessionID, afterSeq, pollLimit)
 		snapshot, snapshotErr := backend.ActiveSnapshot()
 		pending, pendingErr := backend.PendingCommands(pollLimit)
 		usage, usageErr := backend.Usage()
-		return pollResultMsg{
+		result := pollResultMsg{
 			sessionID:   sessionID,
 			messages:    messages,
 			snapshot:    snapshot,
@@ -349,6 +468,15 @@ func (m *Model) poll() tea.Cmd {
 			pendingErr:  pendingErr,
 			usageErr:    usageErr,
 		}
+		if nodeID != "" {
+			result.nodeID = nodeID
+			result.node, result.nodeFound, result.nodeErr = backend.Node(nodeID)
+			result.nodeMessages, result.nodeMessagesErr = backend.NodeMessages(nodeID, nodeAfterSeq, pollLimit)
+			if commander != nil {
+				result.nodeTrace = commander.NodeTrace(nodeID, nodeTraceMaxBytes)
+			}
+		}
+		return result
 	}
 }
 
@@ -382,6 +510,16 @@ func (m *Model) applyPoll(result pollResultMsg) {
 	if result.usageErr == nil {
 		m.usage = result.usage
 	}
+	if result.nodeID != "" && result.nodeID == m.nodeViewID {
+		if result.nodeErr == nil && result.nodeFound {
+			m.inspectedNode = result.node
+		}
+		if result.nodeMessagesErr == nil {
+			m.appendNodeMessages(result.nodeMessages)
+		}
+		m.nodeTraceText = result.nodeTrace
+		m.refreshNodeView(false)
+	}
 
 	added := 0
 	if result.messagesErr == nil && (result.sessionID == "" || result.sessionID == m.sessionID) {
@@ -395,7 +533,9 @@ func (m *Model) applyPoll(result pollResultMsg) {
 			if message.Seq > m.lastSeq {
 				m.lastSeq = message.Seq
 			}
-			added++
+			if message.Role != store.RoleUser || message.NodeID == "" {
+				added++
+			}
 		}
 	}
 
@@ -422,6 +562,16 @@ func (m *Model) applyPoll(result pollResultMsg) {
 	if result.usageErr != nil {
 		problems = append(problems, fmt.Errorf("read usage: %w", result.usageErr))
 	}
+	if result.nodeID != "" && result.nodeID == m.nodeViewID {
+		if result.nodeErr != nil {
+			problems = append(problems, fmt.Errorf("read node: %w", result.nodeErr))
+		} else if !result.nodeFound {
+			problems = append(problems, fmt.Errorf("read node: %s not found", result.nodeID))
+		}
+		if result.nodeMessagesErr != nil {
+			problems = append(problems, fmt.Errorf("read node messages: %w", result.nodeMessagesErr))
+		}
+	}
 	m.err = errors.Join(problems...)
 	m.refreshGraph()
 }
@@ -444,14 +594,17 @@ func (m *Model) submit() tea.Cmd {
 		Body:      body,
 	}
 	return func() tea.Msg {
-		_, err := backend.PostMessage(message)
-		return postResultMsg{err: err}
+		posted, err := backend.PostMessage(message)
+		return postResultMsg{message: posted, err: err}
 	}
 }
 
 func (m *Model) toggleFocus() tea.Cmd {
 	m.focus = (m.focus + 1) % 3
 	m.inputFocused = m.focus == focusInput
+	if m.focus == focusGraph {
+		m.ensureGraphSelection()
+	}
 	if m.inputFocused {
 		return m.input.Focus()
 	}
@@ -470,13 +623,17 @@ func (m *Model) setSize(width, height int) {
 		footerHeight = 0
 	}
 	stripHeight := 0
-	if !m.horizontal {
+	if !m.horizontal && m.nodeViewID == "" {
 		stripHeight = 1
 	}
 	mainHeight := max(3, m.height-3-(m.input.LineCount()+2)-paletteHeight-footerHeight-stripHeight)
 	if m.horizontal {
 		const gap = 2
-		m.chatWidth = max(20, (m.width-gap)*80/100)
+		pct := m.splitPct
+		if pct == 0 {
+			pct = defaultSplitPct
+		}
+		m.chatWidth = max(20, (m.width-gap)*pct/100)
 		m.graphWidth = max(12, m.width-gap-m.chatWidth)
 	} else {
 		m.chatWidth = m.width
@@ -490,6 +647,7 @@ func (m *Model) setSize(width, height int) {
 	m.graph.Width = max(1, m.graphWidth-4)
 	m.graph.Height = max(1, m.graphHeight-4)
 	m.input.Width = max(1, m.width-6)
+	m.sizeNodeViewports()
 	m.refreshChat()
 	m.refreshGraph()
 	if m.autoScroll {
@@ -501,9 +659,18 @@ func (m *Model) refreshGraph() {
 	offset := m.graph.YOffset
 	m.graph.SetContent(m.renderTree(max(1, m.graph.Width), 0))
 	m.graph.SetYOffset(offset)
+	if m.nodeViewID != "" &&
+		(m.inspectedNode.Status == store.Claimed || m.inspectedNode.Status == store.Running ||
+			m.completionFlashing(m.inspectedNode, time.Now())) {
+		m.graphAnimating = true
+	}
 }
 
 func (m *Model) pageFocused(down bool) {
+	if m.nodeViewID != "" {
+		m.pageNodeViewport(down)
+		return
+	}
 	if m.focus == focusGraph {
 		if down {
 			m.graph.PageDown()
@@ -537,15 +704,36 @@ func (m *Model) pinChat() {
 
 func (m *Model) updateMouse(message tea.MouseMsg) bool {
 	event := tea.MouseEvent(message)
+	if m.draggingSplit {
+		switch event.Action {
+		case tea.MouseActionMotion:
+			m.dragSplitTo(event.X)
+			return true
+		case tea.MouseActionRelease:
+			m.draggingSplit = false
+			m.saveSplit()
+			return true
+		}
+	}
+	if event.Button == tea.MouseButtonLeft && event.Action == tea.MouseActionPress && m.splitDividerHit(event.X, event.Y) {
+		m.draggingSplit = true
+		return true
+	}
 	if event.Button == tea.MouseButtonLeft && event.Action == tea.MouseActionPress && m.newMessagePillHit(event.X, event.Y) {
 		m.pinChat()
 		return true
+	}
+	if event.Button == tea.MouseButtonLeft && event.Action == tea.MouseActionPress {
+		return m.updateMouseClick(event.X, event.Y)
 	}
 	if event.Button != tea.MouseButtonWheelUp && event.Button != tea.MouseButtonWheelDown {
 		return false
 	}
 	down := event.Button == tea.MouseButtonWheelDown
-	if m.mouseInGraph(event.X, event.Y) {
+	if m.nodeViewID != "" {
+		return m.scrollNodeAt(event.X, event.Y, down)
+	}
+	if m.graphBounds.contains(event.X, event.Y) {
 		if down {
 			m.graph.SetYOffset(m.graph.YOffset + 3)
 		} else {
@@ -554,33 +742,73 @@ func (m *Model) updateMouse(message tea.MouseMsg) bool {
 		m.refreshGraph()
 		return true
 	}
-	if down {
-		m.chat.SetYOffset(m.chat.YOffset + 3)
-	} else {
-		m.chat.SetYOffset(m.chat.YOffset - 3)
+	if m.chatBounds.contains(event.X, event.Y) {
+		if down {
+			m.chat.SetYOffset(m.chat.YOffset + 3)
+		} else {
+			m.chat.SetYOffset(m.chat.YOffset - 3)
+		}
+		m.syncChatScroll()
+		return true
 	}
-	m.syncChatScroll()
-	return true
+	return false
 }
 
-func (m *Model) mouseInGraph(x, y int) bool {
-	if m.horizontal {
-		return y >= 2 && y < 2+m.graphHeight && x >= m.chatWidth+2
+// splitDividerHit reports whether (x, y) lands on the gap between the chat
+// and graph panes — the grab zone for htop-style drag-to-resize.
+func (m *Model) splitDividerHit(x, y int) bool {
+	if !m.horizontal || m.nodeViewID != "" || m.graphBounds.width == 0 {
+		return false
 	}
-	return m.focus == focusGraph && y >= 2 && y < 2+m.graphHeight
+	if y < m.chatBounds.y || y >= m.chatBounds.bottom() {
+		return false
+	}
+	return x >= m.chatBounds.right()-1 && x <= m.graphBounds.x
+}
+
+func (m *Model) dragSplitTo(x int) {
+	total := m.width - 2
+	if total <= 0 {
+		return
+	}
+	pct := clampSplitPct(x * 100 / total)
+	if pct == 0 || pct == m.splitPct {
+		return
+	}
+	m.splitPct = pct
+	m.setSize(m.width, m.height)
+}
+
+func (m *Model) nudgeSplit(delta int) {
+	pct := m.splitPct
+	if pct == 0 {
+		pct = defaultSplitPct
+	}
+	pct = clampSplitPct(pct + delta)
+	if pct == m.splitPct {
+		return
+	}
+	m.splitPct = pct
+	m.setSize(m.width, m.height)
+	m.saveSplit()
+}
+
+func (m *Model) saveSplit() {
+	if saved, ok := m.commander.(splitStore); ok && m.splitPct != 0 {
+		saved.SaveSplitPct(m.splitPct)
+	}
 }
 
 func (m *Model) newMessagePillHit(x, y int) bool {
 	if m.newMessages == 0 {
 		return false
 	}
-	if !m.horizontal && m.focus == focusGraph {
+	if m.nodeViewID != "" || (!m.horizontal && m.focus == focusGraph) {
 		return false
 	}
-	chatX, chatY := 0, 2
 	pillWidth := lipgloss.Width(m.newMessageLabel()) + 2
-	return x >= chatX+m.chatWidth-pillWidth-1 && x < chatX+m.chatWidth-1 &&
-		y >= chatY+m.chatHeight-2 && y < chatY+m.chatHeight-1
+	return x >= m.chatBounds.x+m.chatBounds.width-pillWidth-1 && x < m.chatBounds.right()-1 &&
+		y >= m.chatBounds.y+m.chatBounds.height-2 && y < m.chatBounds.bottom()-1
 }
 
 func (m *Model) refreshChat() {
