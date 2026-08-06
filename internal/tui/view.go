@@ -28,7 +28,7 @@ var (
 	selectedStyle    = lipgloss.NewStyle().Foreground(selectedInk).Background(lavender)
 	pillStyle        = lipgloss.NewStyle().Foreground(selectedInk).Background(peach).Padding(0, 1)
 
-	spinnerFrames = []string{"◜", "◠", "◝", "◞", "◡", "◟"}
+	spinnerFrames = []string{"⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"}
 )
 
 // View composes the complete frame once, avoiding terminal-clearing redraws.
@@ -85,7 +85,7 @@ func (m *Model) renderTopBar() string {
 }
 
 func (m *Model) renderTally() string {
-	running, done, failed := 0, 0, 0
+	planning, running, done, failed := m.planningCount(), 0, 0, 0
 	for _, node := range m.snapshot.Nodes {
 		if node.ID == store.RootID {
 			continue
@@ -99,7 +99,23 @@ func (m *Model) renderTally() string {
 			failed++
 		}
 	}
-	return mutedStyle.Render(fmt.Sprintf("%d running · %d done · %d failed", running, done, failed))
+	segments := make([]string, 0, 4)
+	if planning > 0 {
+		segments = append(segments, mutedStyle.Render(fmt.Sprintf("%d planning", planning)))
+	}
+	if running > 0 {
+		segments = append(segments, mutedStyle.Render(fmt.Sprintf("%d running", running)))
+	}
+	segments = append(segments, mutedStyle.Render(fmt.Sprintf("%d done", done)))
+	if failed > 0 {
+		segments = append(segments, lipgloss.NewStyle().Foreground(rose).Render(fmt.Sprintf("%d failed", failed)))
+	}
+	tally := strings.Join(segments, mutedStyle.Render(" · "))
+	if m.usage.Nodes > 0 {
+		spend := fmt.Sprintf("%s tok · $%.2f", humanizeTokens(m.usage.PromptTokens+m.usage.CompletionTokens), m.usage.Cost)
+		tally += mutedStyle.Render("  ·  " + spend)
+	}
+	return tally
 }
 
 func (m *Model) renderGraphStrip() string {
@@ -277,32 +293,26 @@ func (m *Model) modelPickerLines(width int) []string {
 	} else {
 		workView = lipgloss.NewStyle().Foreground(lavender).Bold(true).Render(work)
 	}
-	lines := []string{talkView + mutedStyle.Render("    ") + workView}
+	lines := []string{
+		talkView + mutedStyle.Render("    ") + workView,
+		mutedStyle.Render("filter: ") + inputTextStyle.Render(m.input.Value()),
+	}
+	if m.catalogLoading {
+		lines = append(lines, mutedStyle.Render("fetching full catalog…"))
+	}
 
-	models := m.models()
-	if len(models) == 0 {
-		return append(lines, mutedStyle.Render("no models configured"))
-	}
-	columns := 2
-	if width < 56 {
-		columns = 1
-	}
-	rows := (len(models) + columns - 1) / columns
-	selectedRow := m.paletteSelected % rows
-	rowLimit := max(1, min(4, m.paletteLineLimit()-1))
-	startRow, endRow := visiblePaletteWindow(selectedRow, rows, rowLimit)
-	cellWidth := max(8, width/columns)
-	for row := startRow; row < endRow; row++ {
-		cells := make([]string, 0, columns)
-		for column := range columns {
-			index := row + column*rows
-			if index >= len(models) {
-				cells = append(cells, strings.Repeat(" ", cellWidth))
-				continue
-			}
-			cells = append(cells, m.modelCell(models[index], index == m.paletteSelected, cellWidth))
+	choices := m.filteredModelChoices()
+	if len(choices) == 0 {
+		empty := "no models configured"
+		if strings.TrimSpace(m.input.Value()) != "" {
+			empty = "no matching models"
 		}
-		lines = append(lines, strings.Join(cells, ""))
+		return append(lines, mutedStyle.Render(empty))
+	}
+	rowLimit := max(1, min(8, m.paletteLineLimit()-len(lines)))
+	start, end := visiblePaletteWindow(m.paletteSelected, len(choices), rowLimit)
+	for index := start; index < end; index++ {
+		lines = append(lines, m.modelChoiceRow(choices[index], index == m.paletteSelected, width))
 	}
 	return lines
 }
@@ -317,26 +327,47 @@ func (m *Model) paletteLineLimit() int {
 	return max(1, available)
 }
 
-func (m *Model) modelCell(model string, selected bool, width int) string {
+func (m *Model) modelChoiceRow(choice ModelChoice, selected bool, width int) string {
 	marker := "  "
-	current := m.commander != nil && m.commander.CurrentModel(m.modelRole) == model
-	if current {
+	markerStyle := mutedStyle
+	if m.commander != nil && m.commander.CurrentModel(m.modelRole) == choice.Slug {
 		marker = "● "
+		markerStyle = lipgloss.NewStyle().Foreground(mint)
 	}
-	text := truncate(model, max(1, width-2))
-	padding := strings.Repeat(" ", max(0, width-2-lipgloss.Width(text)))
-	if !selected {
-		markerView := mutedStyle.Render(marker)
-		if current {
-			markerView = lipgloss.NewStyle().Foreground(mint).Render(marker)
+	if selected {
+		marker = "› "
+		markerStyle = lipgloss.NewStyle().Foreground(lavender).Bold(true)
+	}
+
+	detail := choice.Name
+	if detail == choice.Slug {
+		detail = ""
+	}
+	if choice.Price != "" {
+		if detail != "" {
+			detail += " · "
 		}
-		return markerView + inputTextStyle.Render(text) + padding
+		detail += choice.Price
 	}
-	markerStyle := selectedStyle
-	if current {
-		markerStyle = lipgloss.NewStyle().Foreground(mint).Background(lavender)
+
+	available := max(1, width-lipgloss.Width(marker))
+	slug := truncate(choice.Slug, available)
+	detailWidth := available - lipgloss.Width(slug) - 2
+	if detailWidth > 0 && detail != "" {
+		detail = truncate(detail, detailWidth)
+	} else {
+		detail = ""
 	}
-	return markerStyle.Render(marker) + selectedStyle.Render(text+padding)
+	accent := lavender
+	if m.modelRole == "work" {
+		accent = peach
+	}
+	slugStyle := lipgloss.NewStyle().Foreground(accent).Bold(selected)
+	row := markerStyle.Render(marker) + slugStyle.Render(slug)
+	if detail != "" {
+		row += mutedStyle.Faint(true).Render("  " + detail)
+	}
+	return row
 }
 
 func (m *Model) paletteRow(text string, selected bool, width int) string {
@@ -496,6 +527,30 @@ func indentLines(text, prefix string) string {
 }
 
 func (m *Model) renderTree(width, height int) string {
+	now := time.Now()
+	m.graphAnimating = false
+	lines := make([]string, 0, len(m.snapshot.Nodes)+len(m.pending))
+	for _, command := range m.pending {
+		if command.Kind != store.CommandSplice {
+			continue
+		}
+		row := len(lines)
+		frame := spinnerFrames[m.spinnerFrame%len(spinnerFrames)]
+		instruction := truncate(firstLine(command.Instruction), 30)
+		elapsed := "0s elapsed"
+		if !command.Time.IsZero() {
+			elapsed = formatElapsed(now.Sub(command.Time)) + " elapsed"
+		}
+		label := "planning…"
+		if instruction != "" {
+			label += " " + instruction
+		}
+		label += " · " + elapsed
+		prefix := lipgloss.NewStyle().Foreground(peach).Render(frame) + " "
+		lines = append(lines, prefix+inputTextStyle.Render(truncate(label, max(1, width-lipgloss.Width(prefix)))))
+		m.noteAnimatedGraphRow(row)
+	}
+
 	children := make(map[string][]store.Node, len(m.snapshot.Nodes))
 	for _, node := range m.snapshot.Nodes {
 		if node.ID == store.RootID {
@@ -504,7 +559,7 @@ func (m *Model) renderTree(width, height int) string {
 		children[node.Parent] = append(children[node.Parent], node)
 	}
 	roots := children[store.RootID]
-	if len(roots) == 0 {
+	if len(roots) == 0 && len(lines) == 0 {
 		empty := truncate("the graph is quiet — ask for something", max(1, width))
 		return lipgloss.Place(
 			max(1, width),
@@ -515,7 +570,6 @@ func (m *Model) renderTree(width, height int) string {
 		)
 	}
 
-	lines := make([]string, 0, len(m.snapshot.Nodes))
 	seen := make(map[string]bool, len(m.snapshot.Nodes))
 	var walk func([]store.Node, string)
 	walk = func(nodes []store.Node, ancestorGuide string) {
@@ -532,7 +586,8 @@ func (m *Model) renderTree(width, height int) string {
 				nextGuide = ancestorGuide + "   "
 			}
 
-			glyph, active := m.nodeGlyph(node)
+			row := len(lines)
+			glyph, active := m.nodeGlyphAt(node, now)
 			prefix := mutedStyle.Render(ancestorGuide+branch) + glyph + " "
 			brief := firstLine(node.Brief)
 			if brief == "" {
@@ -541,10 +596,13 @@ func (m *Model) renderTree(width, height int) string {
 			lines = append(lines, prefix+lipgloss.NewStyle().Foreground(ink).Render(
 				truncate(brief, max(1, width-lipgloss.Width(prefix))),
 			))
+			if active || m.completionFlashing(node, now) {
+				m.noteAnimatedGraphRow(row)
+			}
 
 			if active && !node.StartedAt.IsZero() {
 				elapsedPrefix := nextGuide + "   "
-				elapsed := formatElapsed(time.Since(node.StartedAt)) + " elapsed"
+				elapsed := formatElapsed(now.Sub(node.StartedAt)) + " elapsed"
 				lines = append(lines, mutedStyle.Render(elapsedPrefix+truncate(elapsed, max(1, width-lipgloss.Width(elapsedPrefix)))))
 			}
 			walk(children[node.ID], nextGuide)
@@ -559,12 +617,16 @@ func (m *Model) renderTree(width, height int) string {
 }
 
 func (m *Model) nodeGlyph(node store.Node) (string, bool) {
+	return m.nodeGlyphAt(node, time.Now())
+}
+
+func (m *Model) nodeGlyphAt(node store.Node, now time.Time) (string, bool) {
 	if node.FoldRoot {
 		return lipgloss.NewStyle().Foreground(lavender).Render("◆"), false
 	}
 	switch node.Status {
 	case store.Done:
-		return lipgloss.NewStyle().Foreground(mint).Render("●"), false
+		return lipgloss.NewStyle().Foreground(mint).Bold(m.completionFlashing(node, now)).Render("●"), false
 	case store.Claimed, store.Running:
 		frame := spinnerFrames[m.spinnerFrame%len(spinnerFrames)]
 		return lipgloss.NewStyle().Foreground(peach).Render("● " + frame), true
@@ -573,6 +635,47 @@ func (m *Model) nodeGlyph(node store.Node) (string, bool) {
 	default:
 		return lipgloss.NewStyle().Foreground(butter).Render("○"), false
 	}
+}
+
+func (m *Model) completionFlashing(node store.Node, now time.Time) bool {
+	return node.Status == store.Done && !node.FinishedAt.IsZero() &&
+		!now.Before(node.FinishedAt) && now.Sub(node.FinishedAt) < 2*time.Second
+}
+
+func (m *Model) noteAnimatedGraphRow(row int) {
+	if !m.horizontal && m.focus != focusGraph {
+		return
+	}
+	start := m.graph.YOffset
+	end := start + max(1, m.graph.Height)
+	if row >= start && row < end {
+		m.graphAnimating = true
+	}
+}
+
+func (m *Model) planningCount() int {
+	count := 0
+	for _, command := range m.pending {
+		if command.Kind == store.CommandSplice {
+			count++
+		}
+	}
+	return count
+}
+
+func humanizeTokens(tokens int) string {
+	switch {
+	case tokens >= 1_000_000:
+		return trimDecimal(float64(tokens)/1_000_000) + "M"
+	case tokens >= 1_000:
+		return trimDecimal(float64(tokens)/1_000) + "k"
+	default:
+		return fmt.Sprintf("%d", tokens)
+	}
+}
+
+func trimDecimal(value float64) string {
+	return strings.TrimSuffix(fmt.Sprintf("%.1f", value), ".0")
 }
 
 func relativeTime(at, now time.Time) string {

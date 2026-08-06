@@ -45,6 +45,9 @@ type paletteEntry struct {
 func (m *Model) paletteOpen() bool { return m.palette != paletteNone }
 
 func (m *Model) closePalette() {
+	if m.palette == paletteModel {
+		m.input.Reset()
+	}
 	m.palette = paletteNone
 	m.paletteSelected = 0
 	m.setSize(m.width, m.height)
@@ -74,18 +77,19 @@ func (m *Model) syncPalette() {
 func (m *Model) updatePaletteKey(key string) (tea.Cmd, bool) {
 	switch m.palette {
 	case paletteModel:
+		choices := m.filteredModelChoices()
 		switch key {
 		case "tab", "left", "right":
 			m.switchModelRole()
 			return nil, true
 		case "up":
-			m.cyclePalette(-1, len(m.models()))
+			m.cyclePalette(-1, len(choices))
 			return nil, true
 		case "down":
-			m.cyclePalette(1, len(m.models()))
+			m.cyclePalette(1, len(choices))
 			return nil, true
 		case "enter":
-			return m.applySelectedModel(m.models()), true
+			return m.applySelectedModel(choices), true
 		}
 	case paletteHelp:
 		if key == "enter" {
@@ -297,11 +301,11 @@ func (m *Model) applySelectedModelEntries(entries []paletteEntry) tea.Cmd {
 	return m.applyModel(role, entries[min(m.paletteSelected, len(entries)-1)].value)
 }
 
-func (m *Model) applySelectedModel(models []string) tea.Cmd {
-	if len(models) == 0 {
+func (m *Model) applySelectedModel(choices []ModelChoice) tea.Cmd {
+	if len(choices) == 0 {
 		return m.showStatus("model switching unavailable — no models configured")
 	}
-	return m.applyModel(m.modelRole, models[min(m.paletteSelected, len(models)-1)])
+	return m.applyModel(m.modelRole, choices[min(m.paletteSelected, len(choices)-1)].Slug)
 }
 
 func (m *Model) applyModel(role, slug string) tea.Cmd {
@@ -410,16 +414,29 @@ func (m *Model) openModelPicker(role string) tea.Cmd {
 	if m.commander == nil {
 		return m.showStatus("model switching unavailable — no Commander")
 	}
-	models := m.models()
-	if len(models) == 0 {
+	fallback := m.fallbackModelChoices()
+	if len(fallback) == 0 {
 		return m.showStatus("model switching unavailable — no models configured")
 	}
 	m.input.Reset()
 	m.modelRole = role
 	m.palette = paletteModel
-	m.paletteSelected = indexString(models, m.commander.CurrentModel(role))
+	if len(m.modelCatalog) == 0 {
+		m.modelCatalog = fallback
+	}
+	m.paletteSelected = indexModelChoice(m.modelCatalog, m.commander.CurrentModel(role))
+	if !m.catalogRequested {
+		m.catalogLoading = true
+	}
 	m.setSize(m.width, m.height)
-	return nil
+	if m.catalogRequested {
+		return nil
+	}
+	m.catalogRequested = true
+	commander := m.commander
+	return func() tea.Msg {
+		return catalogResultMsg{choices: commander.Catalog()}
+	}
 }
 
 func (m *Model) switchModelRole() {
@@ -428,10 +445,31 @@ func (m *Model) switchModelRole() {
 	} else {
 		m.modelRole = "talk"
 	}
-	models := m.models()
-	if m.commander != nil {
-		m.paletteSelected = indexString(models, m.commander.CurrentModel(m.modelRole))
+	choices := m.filteredModelChoices()
+	if m.commander != nil && strings.TrimSpace(m.input.Value()) == "" {
+		m.paletteSelected = indexModelChoice(choices, m.commander.CurrentModel(m.modelRole))
+	} else {
+		m.paletteSelected = min(m.paletteSelected, max(0, len(choices)-1))
 	}
+}
+
+func (m *Model) applyCatalog(choices []ModelChoice) {
+	m.catalogLoading = false
+	if normalized := normalizeModelChoices(choices); len(normalized) > 0 {
+		m.modelCatalog = normalized
+	}
+	if m.palette != paletteModel {
+		return
+	}
+	filtered := m.filteredModelChoices()
+	if strings.TrimSpace(m.input.Value()) == "" && m.commander != nil {
+		m.paletteSelected = indexModelChoice(filtered, m.commander.CurrentModel(m.modelRole))
+	} else if len(filtered) == 0 {
+		m.paletteSelected = 0
+	} else {
+		m.paletteSelected = min(m.paletteSelected, len(filtered)-1)
+	}
+	m.setSize(m.width, m.height)
 }
 
 func (m *Model) newSession() tea.Cmd {
@@ -471,16 +509,77 @@ func (m *Model) models() []string {
 	if m.commander == nil {
 		return nil
 	}
-	seen := make(map[string]bool)
-	models := make([]string, 0)
-	for _, model := range m.commander.Models() {
-		model = strings.TrimSpace(model)
-		if model != "" && !seen[model] {
-			seen[model] = true
-			models = append(models, model)
-		}
+	choices := m.modelCatalog
+	if len(choices) == 0 {
+		choices = m.fallbackModelChoices()
+	}
+	models := make([]string, 0, len(choices))
+	for _, choice := range choices {
+		models = append(models, choice.Slug)
 	}
 	return models
+}
+
+func (m *Model) fallbackModelChoices() []ModelChoice {
+	if m.commander == nil {
+		return nil
+	}
+	models := m.commander.Models()
+	choices := make([]ModelChoice, 0, len(models))
+	for _, model := range models {
+		choices = append(choices, ModelChoice{Slug: model})
+	}
+	return normalizeModelChoices(choices)
+}
+
+func (m *Model) filteredModelChoices() []ModelChoice {
+	query := strings.TrimSpace(m.input.Value())
+	type scoredChoice struct {
+		choice ModelChoice
+		score  int
+	}
+	scored := make([]scoredChoice, 0, len(m.modelCatalog))
+	for _, choice := range m.modelCatalog {
+		score, ok := modelChoiceScore(choice, query)
+		if ok {
+			scored = append(scored, scoredChoice{choice: choice, score: score})
+		}
+	}
+	sort.SliceStable(scored, func(i, j int) bool { return scored[i].score < scored[j].score })
+	choices := make([]ModelChoice, 0, len(scored))
+	for _, candidate := range scored {
+		choices = append(choices, candidate.choice)
+	}
+	return choices
+}
+
+func modelChoiceScore(choice ModelChoice, query string) (int, bool) {
+	if strings.TrimSpace(query) == "" {
+		return 0, true
+	}
+	best, matched := 0, false
+	for _, value := range []string{choice.Slug, choice.Name, choice.Slug + " " + choice.Name} {
+		if score, ok := fuzzyScore(value, query); ok && (!matched || score < best) {
+			best, matched = score, true
+		}
+	}
+	return best, matched
+}
+
+func normalizeModelChoices(choices []ModelChoice) []ModelChoice {
+	seen := make(map[string]bool, len(choices))
+	normalized := make([]ModelChoice, 0, len(choices))
+	for _, choice := range choices {
+		choice.Slug = strings.TrimSpace(choice.Slug)
+		choice.Name = strings.TrimSpace(choice.Name)
+		choice.Price = strings.TrimSpace(choice.Price)
+		if choice.Slug == "" || seen[choice.Slug] {
+			continue
+		}
+		seen[choice.Slug] = true
+		normalized = append(normalized, choice)
+	}
+	return normalized
 }
 
 func (m *Model) cancellableNodeIDs() []string {
@@ -515,6 +614,15 @@ func parseModelArgument(value string) (string, string) {
 func indexString(values []string, value string) int {
 	for index, candidate := range values {
 		if candidate == value {
+			return index
+		}
+	}
+	return 0
+}
+
+func indexModelChoice(choices []ModelChoice, slug string) int {
+	for index, choice := range choices {
+		if choice.Slug == slug {
 			return index
 		}
 	}
