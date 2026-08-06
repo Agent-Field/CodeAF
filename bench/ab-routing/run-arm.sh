@@ -75,6 +75,32 @@ RUN_TOKEN_BUDGET="${RUN_TOKEN_BUDGET:-2000000}"   # prompt+completion, whole run
 LEAF_TOKEN_BUDGET="${LEAF_TOKEN_BUDGET:-300000}"
 CONCURRENCY="${CONCURRENCY:-8}"
 
+# A results path that differs from an existing file only by case is refused
+# outright. This filesystem is case-insensitive: `results-armB.jsonl` and
+# `results-armb.jsonl` are one file, so a run whose JSONL disagrees in case with
+# what is already there will append to a file it is not naming and, worse,
+# `rm` of either name deletes both. That is exactly how the arm-B results were
+# destroyed once.
+guard_case() {
+  local target="$1" dir base
+  dir="$(dirname "$target")"
+  base="$(basename "$target")"
+  [ -d "$dir" ] || return 0
+  local existing
+  while IFS= read -r existing; do
+    [ -z "$existing" ] && continue
+    if [ "$existing" != "$base" ] && \
+       [ "$(printf '%s' "$existing" | tr '[:upper:]' '[:lower:]')" = \
+         "$(printf '%s' "$base" | tr '[:upper:]' '[:lower:]')" ]; then
+      echo "refusing to run: $dir already holds '$existing', which differs from" >&2
+      echo "'$base' only by case. On a case-insensitive filesystem these are one" >&2
+      echo "file. Pick one spelling and delete the other before continuing." >&2
+      exit 1
+    fi
+  done < <(ls -1 "$dir" 2>/dev/null)
+}
+guard_case "$JSONL"
+
 TIMEOUT_BIN="$(command -v timeout || command -v gtimeout || true)"
 [ -n "$TIMEOUT_BIN" ] || { echo "need timeout(1) — brew install coreutils" >&2; exit 1; }
 [ -n "${OPENROUTER_API_KEY:-}" ] || { echo "OPENROUTER_API_KEY is required" >&2; exit 1; }
@@ -84,6 +110,13 @@ if [ ! -x "$AFORGE_BIN" ]; then
   (cd "$ROOT" && make build) || exit 1
 fi
 
+# A token unique to this invocation, stamped onto every row. Two resumes once
+# overlapped on one shared ledger and the only way to tell afterwards was to
+# read the file order; with a token, rows written by different passes are
+# separable in the data, and a shared ledger with two tokens in it is visible
+# rather than inferred.
+RUN_TOKEN="${RUN_TOKEN:-$(date +%Y%m%d-%H%M%S)-$$}"
+
 mkdir -p "$RESULTS"
 SHARED_LEDGER="$RESULTS/ledger-shared"
 [ "$LEDGER_MODE" = "shared" ] && mkdir -p "$SHARED_LEDGER"
@@ -92,6 +125,7 @@ echo "arm:       $ARM ($ARM_LABEL)"
 echo "tasks:     $TASKS"
 echo "reps:      $REPS"
 echo "ledger:    $LEDGER_MODE"
+echo "run token: $RUN_TOKEN"
 echo "results:   $RESULTS"
 echo "jsonl:     $JSONL"
 echo
@@ -117,6 +151,14 @@ run_cell() {
   else
     ledger="$cell/ledger"
     mkdir -p "$ledger"
+  fi
+
+  echo "$RUN_TOKEN" >> "$ledger/.run-tokens"
+  local distinct_tokens
+  distinct_tokens=$(sort -u "$ledger/.run-tokens" 2>/dev/null | wc -l | tr -d ' ')
+  if [ "$LEDGER_MODE" = "shared" ] && [ "$distinct_tokens" -gt 1 ]; then
+    echo "note: this ledger has been written by $distinct_tokens distinct runs —" >&2
+    echo "      per-cell event attribution across them is approximate" >&2
   fi
 
   local goal
@@ -175,6 +217,7 @@ run_cell() {
     --plan-seconds "$plan_seconds" --run-seconds "$run_seconds" \
     --plan-exit "$plan_code" --run-exit "$run_code" \
     --ledger-mode "$LEDGER_MODE" --events-before "$events_before" \
+    --run-token "$RUN_TOKEN" \
     >> "$JSONL" 2>"$cell/collect.err"
 
   python3 "$HERE/lastrow.py" "$JSONL"
