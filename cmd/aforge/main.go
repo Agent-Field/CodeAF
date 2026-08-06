@@ -1,8 +1,9 @@
-// Command aforge builds and revises task graphs. It executes nothing: the
-// graph is the product.
+// Command aforge builds and revises task graphs, and runs graph-shaped or
+// one-shot agent work.
 //
 //	aforge plan "<goal>" [-o graph.json]
 //	aforge revise graph.json "<what happened>" [--done 1,2] [-o graph.json]
+//	aforge exec "<prompt>" [-w dir] [--json]
 //	aforge show graph.json
 package main
 
@@ -23,6 +24,9 @@ import (
 
 func main() {
 	if err := run(); err != nil {
+		if status, ok := err.(*exitError); ok {
+			os.Exit(status.code)
+		}
 		fmt.Fprintln(os.Stderr, "error:", err)
 		os.Exit(1)
 	}
@@ -39,8 +43,12 @@ func run() error {
 		return runRevise(os.Args[2:])
 	case "run":
 		return runExecute(os.Args[2:])
+	case "exec":
+		return runExec(os.Args[2:])
 	case "show":
 		return runShow(os.Args[2:])
+	case "version":
+		return runVersion()
 	case "-h", "--help", "help":
 		return usage()
 	default:
@@ -53,7 +61,9 @@ const usageText = `aforge — build and revise task graphs
   aforge plan "<goal>" [-o graph.json] [--json] [--brief] [--ensemble N]
   aforge revise <graph.json> "<what happened>" [--done 1,2,3] [-o graph.json]
   aforge run  <graph.json> [-w dir] [-j 8] [-o done.json]
+  aforge exec ["<prompt>"] [-w dir] [--system text] [-turns N] [-budget N] [--json] [-o file]
   aforge show <graph.json>
+  aforge version
 
 Environment:
   OPENROUTER_API_KEY   required
