@@ -7,8 +7,12 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
+	"io"
+	"math"
+	"net/http"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -77,10 +81,6 @@ func runChat(args []string) error {
 	if err := os.MkdirAll(workspaceRoot, 0o700); err != nil {
 		return fmt.Errorf("create chat workspace: %w", err)
 	}
-	workspace, err := exec.NewWorkspace(workspaceRoot)
-	if err != nil {
-		return err
-	}
 
 	compiler := head.NewCompiler(chatClient)
 	reconciler := resident.New(graph,
@@ -93,13 +93,25 @@ func runChat(args []string) error {
 				Goal:        brief.Goal,
 				Assumptions: brief.Assumptions,
 				Scale:       brief.Scale,
+				BuildsOn:    brief.BuildsOn,
 			}, nil
 		},
 		planSubtree(settings, taskClient),
-	)
+	).WithNarrator(narrateProgress(settings, chatClient))
 
-	linear := exec.NewLinear(taskClient, workspace, exec.NewWeb(), 0, 0, 0)
+	web := exec.NewWeb()
 	runner := resident.NewRunner(graph, func(ctx context.Context, node store.Node) (resident.ExecResult, error) {
+		// Each top-level job works in its own directory: one thread hosts
+		// many unrelated jobs, and continuity between them travels through
+		// the graph as digests and absolute paths, never through a shared
+		// folder they could trample.
+		jobDir := filepath.Join(workspaceRoot, jobIDOf(graph, node))
+		jobSpace, err := exec.NewWorkspace(jobDir)
+		if err != nil {
+			return resident.ExecResult{}, err
+		}
+		linear := exec.NewLinear(taskClient, jobSpace, web, 0, 0, 0)
+
 		inputs := make([]exec.Input, 0)
 		digests, err := graph.DependencyDigests(node.ID, store.MaxDigestBytes)
 		if err == nil {
@@ -123,7 +135,7 @@ func runChat(args []string) error {
 		if len(outcome.Artifacts) > 0 {
 			text += "\n\nFiles:"
 			for _, artifact := range outcome.Artifacts {
-				text += "\n" + filepath.Join(workspaceRoot, artifact)
+				text += "\n" + filepath.Join(jobDir, artifact)
 			}
 		}
 		return resident.ExecResult{
@@ -173,6 +185,14 @@ var fallbackChatModels = []string{
 	"google/gemma-3-12b-it",
 }
 
+const (
+	openRouterModelsURL = "https://openrouter.ai/api/v1/models"
+	modelCatalogTTL     = 24 * time.Hour
+	maxCatalogBytes     = 16 << 20
+)
+
+var modelCatalogHTTPClient = &http.Client{Timeout: 15 * time.Second}
+
 // chatCommander bridges surface commands to the two hot-swappable clients
 // and the durable command journal. Session state lives here so /new and a
 // subsequent /cancel always agree about which thread owns the request.
@@ -188,6 +208,9 @@ type chatCommander struct {
 	mu        sync.Mutex
 	prefs     chatPrefs
 	sessionID string
+
+	catalogOnce sync.Once
+	catalog     []tui.ModelChoice
 }
 
 func (c *chatCommander) Models() []string {
@@ -201,6 +224,35 @@ func (c *chatCommander) Models() []string {
 		models = dedupeModels(append(models, fallbackChatModels...))
 	}
 	return models
+}
+
+func (c *chatCommander) Catalog() []tui.ModelChoice {
+	c.catalogOnce.Do(func() {
+		cached, cachedOK := loadModelCatalog(c.prefsDir)
+		if cachedOK && time.Now().Before(cached.FetchedAt.Add(modelCatalogTTL)) {
+			c.catalog = cached.Models
+			return
+		}
+
+		models, err := fetchModelCatalog()
+		if err == nil && len(models) > 0 {
+			c.catalog = models
+			_ = saveModelCatalog(c.prefsDir, modelCatalogCache{
+				FetchedAt: time.Now(),
+				Models:    models,
+			})
+			return
+		}
+		if cachedOK {
+			c.catalog = cached.Models
+			return
+		}
+		c.catalog = make([]tui.ModelChoice, 0, len(c.Models()))
+		for _, model := range c.Models() {
+			c.catalog = append(c.catalog, tui.ModelChoice{Slug: model})
+		}
+	})
+	return append([]tui.ModelChoice(nil), c.catalog...)
 }
 
 func (c *chatCommander) CurrentModel(role string) string {
@@ -259,6 +311,115 @@ func (c *chatCommander) Cancel(nodeID string) error {
 }
 
 func (c *chatCommander) DatabasePath() string { return c.database }
+
+type modelCatalogCache struct {
+	FetchedAt time.Time         `json:"fetched_at"`
+	Models    []tui.ModelChoice `json:"models"`
+}
+
+type openRouterCatalogResponse struct {
+	Data []struct {
+		ID      string `json:"id"`
+		Name    string `json:"name"`
+		Pricing struct {
+			Prompt     string `json:"prompt"`
+			Completion string `json:"completion"`
+		} `json:"pricing"`
+	} `json:"data"`
+}
+
+func fetchModelCatalog() ([]tui.ModelChoice, error) {
+	request, err := http.NewRequest(http.MethodGet, openRouterModelsURL, nil)
+	if err != nil {
+		return nil, err
+	}
+	request.Header.Set("Accept", "application/json")
+	response, err := modelCatalogHTTPClient.Do(request)
+	if err != nil {
+		return nil, err
+	}
+	defer response.Body.Close()
+	if response.StatusCode < http.StatusOK || response.StatusCode >= http.StatusMultipleChoices {
+		_, _ = io.Copy(io.Discard, io.LimitReader(response.Body, 4<<10))
+		return nil, fmt.Errorf("OpenRouter model catalog: %s", response.Status)
+	}
+
+	var payload openRouterCatalogResponse
+	decoder := json.NewDecoder(io.LimitReader(response.Body, maxCatalogBytes))
+	if err := decoder.Decode(&payload); err != nil {
+		return nil, err
+	}
+	models := make([]tui.ModelChoice, 0, len(payload.Data))
+	seen := make(map[string]bool, len(payload.Data))
+	for _, item := range payload.Data {
+		slug := strings.TrimSpace(item.ID)
+		if slug == "" || seen[slug] {
+			continue
+		}
+		seen[slug] = true
+		models = append(models, tui.ModelChoice{
+			Slug:  slug,
+			Name:  strings.TrimSpace(item.Name),
+			Price: formatModelPrice(item.Pricing.Prompt, item.Pricing.Completion),
+		})
+	}
+	if len(models) == 0 {
+		return nil, fmt.Errorf("OpenRouter model catalog is empty")
+	}
+	return models, nil
+}
+
+func formatModelPrice(prompt, completion string) string {
+	promptPrice, promptErr := strconv.ParseFloat(strings.TrimSpace(prompt), 64)
+	completionPrice, completionErr := strconv.ParseFloat(strings.TrimSpace(completion), 64)
+	if promptErr != nil || completionErr != nil || promptPrice < 0 || completionPrice < 0 ||
+		math.IsNaN(promptPrice) || math.IsNaN(completionPrice) ||
+		math.IsInf(promptPrice, 0) || math.IsInf(completionPrice, 0) {
+		return ""
+	}
+	return fmt.Sprintf("$%s/M in · $%s/M out",
+		formatMillionPrice(promptPrice*1_000_000),
+		formatMillionPrice(completionPrice*1_000_000),
+	)
+}
+
+func formatMillionPrice(price float64) string {
+	formatted := strings.TrimRight(strings.TrimRight(strconv.FormatFloat(price, 'f', 6, 64), "0"), ".")
+	if formatted == "" {
+		return "0"
+	}
+	return formatted
+}
+
+func modelCatalogPath(dir string) string { return filepath.Join(dir, "models-catalog.json") }
+
+func loadModelCatalog(dir string) (modelCatalogCache, bool) {
+	var cached modelCatalogCache
+	raw, err := os.ReadFile(modelCatalogPath(dir))
+	if err != nil || json.Unmarshal(raw, &cached) != nil || cached.FetchedAt.IsZero() || len(cached.Models) == 0 {
+		return modelCatalogCache{}, false
+	}
+	models := cached.Models[:0]
+	seen := make(map[string]bool, len(cached.Models))
+	for _, model := range cached.Models {
+		model.Slug = strings.TrimSpace(model.Slug)
+		if model.Slug == "" || seen[model.Slug] {
+			continue
+		}
+		seen[model.Slug] = true
+		models = append(models, model)
+	}
+	cached.Models = models
+	return cached, len(cached.Models) > 0
+}
+
+func saveModelCatalog(dir string, cached modelCatalogCache) error {
+	raw, err := json.MarshalIndent(cached, "", "  ")
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(modelCatalogPath(dir), raw, 0o600)
+}
 
 func dedupeModels(candidates []string) []string {
 	seen := make(map[string]bool, len(candidates))
@@ -419,9 +580,12 @@ func planSubtree(settings config.Config, client *liveClient) resident.PlanFunc {
 		}
 		graph, err := plan.Build(settings.Context(ctx, compiled.Goal), client, compiled.Goal, plan.Options{
 			SpineSamples: settings.SpineSamples,
-			MaxDepth:     settings.MaxDepth,
-			NodeBudget:   settings.NodeBudget,
-			Briefs:       true,
+			// One level deeper than the one-shot default: chat projects are
+			// where visible fan-out is the product, and the compiler now
+			// names the parts for the planner to expand.
+			MaxDepth:   settings.MaxDepth + 1,
+			NodeBudget: settings.NodeBudget,
+			Briefs:     true,
 		})
 		if err != nil {
 			return store.Subtree{}, err
@@ -436,4 +600,60 @@ func subtreePrefix() (string, error) {
 		return "", fmt.Errorf("generate subtree id: %w", err)
 	}
 	return "t" + hex.EncodeToString(random[:]), nil
+}
+
+// narratorSystemPrompt keeps progress updates in the agent's own casual
+// voice. The reconciler decides when to speak; this decides only how.
+const narratorSystemPrompt = `You are aforge, giving the user one casual progress update on work happening in the background. One sentence, two at most. Plain speech in first person, no markdown, no lists, no internal jargon. Name the concrete things that just finished and what is in motion now; mention a duration only when it is notable. Do not repeat anything from your earlier updates, provided below. Never imply the whole job is finished — it is not.`
+
+// narrateProgress wires the reconciler's narration context to the talk model.
+func narrateProgress(settings config.Config, client *liveClient) resident.NarrateFunc {
+	return func(ctx context.Context, narration resident.Narration) (string, error) {
+		var input strings.Builder
+		fmt.Fprintf(&input, "The job: %s\n", narration.Goal)
+		if len(narration.Finished) > 0 {
+			input.WriteString("\nJust finished:\n")
+			for _, item := range narration.Finished {
+				input.WriteString("- " + item + "\n")
+			}
+		}
+		if len(narration.Running) > 0 {
+			input.WriteString("\nIn motion now:\n")
+			for _, item := range narration.Running {
+				input.WriteString("- " + item + "\n")
+			}
+		}
+		if narration.Queued > 0 {
+			fmt.Fprintf(&input, "\nQueued behind them: %d parts\n", narration.Queued)
+		}
+		if len(narration.Previous) > 0 {
+			input.WriteString("\nYour earlier updates (do not repeat):\n")
+			for _, line := range narration.Previous {
+				input.WriteString("- " + line + "\n")
+			}
+		}
+		response, err := client.CompleteWithMessages(settings.Context(ctx, "narrate"), []ai.Message{
+			{Role: "system", Content: []ai.ContentPart{{Type: "text", Text: narratorSystemPrompt}}},
+			{Role: "user", Content: []ai.ContentPart{{Type: "text", Text: input.String()}}},
+		}, ai.WithMaxTokens(150))
+		if err != nil || response == nil {
+			return "", err
+		}
+		return strings.TrimSpace(response.Text()), nil
+	}
+}
+
+// jobIDOf resolves the top-level job a node belongs to, which names its
+// workspace directory. A resolution failure falls back to the node itself:
+// an isolated directory is always safe, a shared one is not.
+func jobIDOf(graph *store.Store, node store.Node) string {
+	current := node
+	for current.Parent != "" && current.Parent != store.RootID {
+		parent, ok, err := graph.Node(current.Parent)
+		if err != nil || !ok {
+			return node.ID
+		}
+		current = parent
+	}
+	return current.ID
 }

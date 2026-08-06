@@ -17,11 +17,20 @@ import (
 )
 
 const (
-	pollInterval = 400 * time.Millisecond
-	pollLimit    = 200
-	railAtWidth  = 100
-	statusTTL    = 3 * time.Second
+	pollInterval      = 400 * time.Millisecond
+	animationInterval = 120 * time.Millisecond
+	pollLimit         = 200
+	railAtWidth       = 100
+	statusTTL         = 3 * time.Second
 )
+
+// ModelChoice is one model advertised by the live provider catalog. Price is
+// display-ready because providers own the units and parsing rules.
+type ModelChoice struct {
+	Slug  string `json:"slug"`
+	Name  string `json:"name,omitempty"`
+	Price string `json:"price,omitempty"`
+}
 
 // Backend is the small part of the durable store the terminal lens needs.
 // Keeping it local makes the Elm update loop straightforward to exercise with
@@ -30,6 +39,8 @@ type Backend interface {
 	Messages(sessionID string, afterSeq int64, limit int) ([]store.Message, error)
 	PostMessage(store.Message) (store.Message, error)
 	ActiveSnapshot() (store.Snapshot, error)
+	PendingCommands(limit int) ([]store.Command, error)
+	Usage() (store.TotalUsage, error)
 }
 
 // Commander owns the live operations that do not belong to the thread lens.
@@ -37,6 +48,7 @@ type Backend interface {
 // capabilities honestly when they are requested.
 type Commander interface {
 	Models() []string
+	Catalog() []ModelChoice
 	CurrentModel(role string) string
 	SetModel(role, slug string) error
 	NewSession() (string, error)
@@ -45,14 +57,24 @@ type Commander interface {
 
 var _ Backend = (*store.Store)(nil)
 
-type tickMsg time.Time
+type pollTickMsg time.Time
+
+type animationTickMsg time.Time
+
+type catalogResultMsg struct {
+	choices []ModelChoice
+}
 
 type pollResultMsg struct {
 	sessionID   string
 	messages    []store.Message
 	snapshot    store.Snapshot
+	pending     []store.Command
+	usage       store.TotalUsage
 	messagesErr error
 	snapshotErr error
+	pendingErr  error
+	usageErr    error
 }
 
 type postResultMsg struct {
@@ -71,6 +93,8 @@ type Model struct {
 
 	messages []store.Message
 	snapshot store.Snapshot
+	pending  []store.Command
+	usage    store.TotalUsage
 	lastSeq  int64
 
 	width  int
@@ -87,6 +111,8 @@ type Model struct {
 	autoScroll       bool
 	newMessages      int
 	spinnerFrame     int
+	animationPending bool
+	graphAnimating   bool
 	receiptsExpanded bool
 	err              error
 
@@ -94,6 +120,9 @@ type Model struct {
 	paletteSelected  int
 	paletteDismissed bool
 	modelRole        string
+	modelCatalog     []ModelChoice
+	catalogRequested bool
+	catalogLoading   bool
 	status           string
 	statusUntil      time.Time
 }
@@ -175,16 +204,27 @@ func (m *Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 	switch message := message.(type) {
 	case tea.WindowSizeMsg:
 		m.setSize(message.Width, message.Height)
-		return m, nil
+		return m, m.scheduleAnimation()
 
-	case tickMsg:
-		m.spinnerFrame = (m.spinnerFrame + 1) % len(spinnerFrames)
-		m.refreshGraph()
+	case pollTickMsg:
 		return m, m.poll()
 
 	case pollResultMsg:
 		m.applyPoll(message)
-		return m, nextTick()
+		return m, tea.Batch(nextPollTick(), m.scheduleAnimation())
+
+	case animationTickMsg:
+		m.animationPending = false
+		if !m.graphAnimating {
+			return m, nil
+		}
+		m.spinnerFrame = (m.spinnerFrame + 1) % len(spinnerFrames)
+		m.refreshGraph()
+		return m, m.scheduleAnimation()
+
+	case catalogResultMsg:
+		m.applyCatalog(message.choices)
+		return m, nil
 
 	case postResultMsg:
 		if message.err != nil {
@@ -196,12 +236,15 @@ func (m *Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 
 	case tea.KeyMsg:
 		if command, handled := m.updateKey(message); handled {
+			if command == nil {
+				return m, m.scheduleAnimation()
+			}
 			return m, command
 		}
 
 	case tea.MouseMsg:
 		if m.updateMouse(message) {
-			return m, nil
+			return m, m.scheduleAnimation()
 		}
 	}
 
@@ -221,7 +264,8 @@ func (m *Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 	var command tea.Cmd
 	if m.focus == focusGraph {
 		m.graph, command = m.graph.Update(message)
-		return m, command
+		m.refreshGraph()
+		return m, tea.Batch(command, m.scheduleAnimation())
 	}
 	m.chat, command = m.chat.Update(message)
 	m.syncChatScroll()
@@ -290,25 +334,51 @@ func (m *Model) poll() tea.Cmd {
 	return func() tea.Msg {
 		messages, messagesErr := backend.Messages(sessionID, afterSeq, pollLimit)
 		snapshot, snapshotErr := backend.ActiveSnapshot()
+		pending, pendingErr := backend.PendingCommands(pollLimit)
+		usage, usageErr := backend.Usage()
 		return pollResultMsg{
 			sessionID:   sessionID,
 			messages:    messages,
 			snapshot:    snapshot,
+			pending:     pending,
+			usage:       usage,
 			messagesErr: messagesErr,
 			snapshotErr: snapshotErr,
+			pendingErr:  pendingErr,
+			usageErr:    usageErr,
 		}
 	}
 }
 
-func nextTick() tea.Cmd {
+func nextPollTick() tea.Cmd {
 	return tea.Tick(pollInterval, func(at time.Time) tea.Msg {
-		return tickMsg(at)
+		return pollTickMsg(at)
 	})
+}
+
+func nextAnimationTick() tea.Cmd {
+	return tea.Tick(animationInterval, func(at time.Time) tea.Msg {
+		return animationTickMsg(at)
+	})
+}
+
+func (m *Model) scheduleAnimation() tea.Cmd {
+	if m.animationPending || !m.graphAnimating {
+		return nil
+	}
+	m.animationPending = true
+	return nextAnimationTick()
 }
 
 func (m *Model) applyPoll(result pollResultMsg) {
 	if result.snapshotErr == nil {
 		m.snapshot = result.snapshot
+	}
+	if result.pendingErr == nil {
+		m.pending = result.pending
+	}
+	if result.usageErr == nil {
+		m.usage = result.usage
 	}
 
 	added := 0
@@ -343,6 +413,12 @@ func (m *Model) applyPoll(result pollResultMsg) {
 	}
 	if result.snapshotErr != nil {
 		problems = append(problems, fmt.Errorf("read graph: %w", result.snapshotErr))
+	}
+	if result.pendingErr != nil {
+		problems = append(problems, fmt.Errorf("read pending commands: %w", result.pendingErr))
+	}
+	if result.usageErr != nil {
+		problems = append(problems, fmt.Errorf("read usage: %w", result.usageErr))
 	}
 	m.err = errors.Join(problems...)
 	m.refreshGraph()
@@ -432,6 +508,7 @@ func (m *Model) pageFocused(down bool) {
 		} else {
 			m.graph.PageUp()
 		}
+		m.refreshGraph()
 		return
 	}
 	if down {
@@ -472,6 +549,7 @@ func (m *Model) updateMouse(message tea.MouseMsg) bool {
 		} else {
 			m.graph.SetYOffset(m.graph.YOffset - 3)
 		}
+		m.refreshGraph()
 		return true
 	}
 	if down {

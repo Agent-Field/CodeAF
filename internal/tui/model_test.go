@@ -16,12 +16,15 @@ type fakeBackend struct {
 	mu       sync.Mutex
 	messages []store.Message
 	snapshot store.Snapshot
+	pending  []store.Command
+	usage    store.TotalUsage
 	posted   []store.Message
 	postErr  error
 }
 
 type fakeCommander struct {
 	models     []string
+	catalog    []ModelChoice
 	current    map[string]string
 	setRole    string
 	setModel   string
@@ -32,6 +35,8 @@ type fakeCommander struct {
 }
 
 func (f *fakeCommander) Models() []string { return append([]string(nil), f.models...) }
+
+func (f *fakeCommander) Catalog() []ModelChoice { return append([]ModelChoice(nil), f.catalog...) }
 
 func (f *fakeCommander) CurrentModel(role string) string { return f.current[role] }
 
@@ -90,6 +95,22 @@ func (f *fakeBackend) ActiveSnapshot() (store.Snapshot, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	return f.snapshot, nil
+}
+
+func (f *fakeBackend) PendingCommands(limit int) ([]store.Command, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	commands := append([]store.Command(nil), f.pending...)
+	if limit > 0 && len(commands) > limit {
+		commands = commands[:limit]
+	}
+	return commands, nil
+}
+
+func (f *fakeBackend) Usage() (store.TotalUsage, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.usage, nil
 }
 
 func TestMessageArrivalKeepsStickyBottomAndPreservesPinnedScroll(t *testing.T) {
@@ -303,6 +324,42 @@ func TestModelCompletionTargetsWorkRole(t *testing.T) {
 	}
 }
 
+func TestModelCatalogPickerFiltersAndAppliesCurrentRole(t *testing.T) {
+	commander := newFakeCommander()
+	commander.catalog = []ModelChoice{
+		{Slug: "openai/gpt-text", Name: "GPT Text", Price: "$1/M in · $2/M out"},
+		{Slug: "openai/gpt-vision", Name: "GPT Vision", Price: "$3/M in · $4/M out"},
+		{Slug: "anthropic/claude", Name: "Claude Sonnet", Price: "$5/M in · $6/M out"},
+	}
+	model := NewWithCommander(&fakeBackend{}, "test-session", commander)
+	command := model.executeSlash("/model work")
+	if command == nil {
+		t.Fatal("opening the model picker did not start the lazy catalog fetch")
+	}
+	if view := model.View(); !strings.Contains(view, "fetching full catalog…") {
+		t.Fatalf("picker does not show the fallback loading state:\n%s", view)
+	}
+
+	_, _ = model.Update(command())
+	typeIntoModel(model, "vision")
+	view := model.View()
+	for _, expected := range []string{"filter: vision", "openai/gpt-vision", "GPT Vision", "$3/M in · $4/M out"} {
+		if !strings.Contains(view, expected) {
+			t.Fatalf("filtered picker does not contain %q:\n%s", expected, view)
+		}
+	}
+	for _, excluded := range []string{"openai/gpt-text", "anthropic/claude", "fetching full catalog…"} {
+		if strings.Contains(view, excluded) {
+			t.Fatalf("filtered picker still contains %q:\n%s", excluded, view)
+		}
+	}
+
+	_, _ = model.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	if commander.setRole != "work" || commander.setModel != "openai/gpt-vision" {
+		t.Fatalf("SetModel = (%q, %q), want work openai/gpt-vision", commander.setRole, commander.setModel)
+	}
+}
+
 func TestCancelCompletionOnlyIncludesNonTerminalNodes(t *testing.T) {
 	backend := &fakeBackend{}
 	commander := newFakeCommander()
@@ -398,6 +455,73 @@ func TestNodeGlyphsAndTreeRendering(t *testing.T) {
 		if !strings.Contains(tree, expected) {
 			t.Fatalf("tree does not contain %q:\n%s", expected, tree)
 		}
+	}
+}
+
+func TestPendingSpliceRendersPlanningPlaceholderAndTally(t *testing.T) {
+	model := New(&fakeBackend{}, "test-session")
+	model.applyPoll(pollResultMsg{
+		snapshot: store.Snapshot{Nodes: []store.Node{{ID: store.RootID}}},
+		pending: []store.Command{{
+			Seq:         9,
+			Time:        time.Now().Add(-4 * time.Second),
+			Kind:        store.CommandSplice,
+			Instruction: "Investigate the graph scheduling delay in detail",
+		}},
+	})
+
+	tree := model.renderTree(80, 20)
+	for _, expected := range []string{"planning…", "Investigate the graph schedul", "elapsed"} {
+		if !strings.Contains(tree, expected) {
+			t.Fatalf("planning placeholder does not contain %q:\n%s", expected, tree)
+		}
+	}
+	if tally := model.renderTally(); !strings.Contains(tally, "1 planning") || !strings.Contains(tally, "0 done") {
+		t.Fatalf("planning tally is wrong: %s", tally)
+	}
+}
+
+func TestRunningSpinnerAdvancesOnlyOnAnimationTicks(t *testing.T) {
+	model := New(&fakeBackend{}, "test-session")
+	model.snapshot = store.Snapshot{Nodes: []store.Node{
+		{ID: store.RootID},
+		{ID: "running", Parent: store.RootID, Brief: "Active work", Status: store.Running, StartedAt: time.Now()},
+	}}
+	model.refreshGraph()
+	initial := model.spinnerFrame
+
+	_, _ = model.Update(pollTickMsg(time.Now()))
+	if model.spinnerFrame != initial {
+		t.Fatalf("data-poll tick advanced spinner from %d to %d", initial, model.spinnerFrame)
+	}
+	_, _ = model.Update(animationTickMsg(time.Now()))
+	first := model.spinnerFrame
+	firstGlyph, _ := model.nodeGlyph(model.snapshot.Nodes[1])
+	_, _ = model.Update(animationTickMsg(time.Now().Add(animationInterval)))
+	second := model.spinnerFrame
+	secondGlyph, _ := model.nodeGlyph(model.snapshot.Nodes[1])
+	if first == initial || second == first || firstGlyph == secondGlyph {
+		t.Fatalf("animation ticks did not advance spinner: frames %d, %d, %d; glyphs %q, %q",
+			initial, first, second, firstGlyph, secondGlyph)
+	}
+}
+
+func TestUsageSpendFormatsAndHidesAtZero(t *testing.T) {
+	model := New(&fakeBackend{}, "test-session")
+	model.snapshot = store.Snapshot{Nodes: []store.Node{
+		{ID: store.RootID},
+		{ID: "done-1", Status: store.Done},
+		{ID: "done-2", Status: store.Done},
+	}}
+	model.usage = store.TotalUsage{Nodes: 2, PromptTokens: 1_000, CompletionTokens: 234, Cost: 0.876}
+	if tally := model.renderTally(); !strings.Contains(tally, "2 done  ·  1.2k tok · $0.88") {
+		t.Fatalf("usage tally is wrong: %s", tally)
+	}
+
+	model.usage = store.TotalUsage{}
+	tally := model.renderTally()
+	if strings.Contains(tally, "tok") || strings.Contains(tally, "$") {
+		t.Fatalf("zero usage should hide spend entirely: %s", tally)
 	}
 }
 
@@ -553,6 +677,11 @@ func TestEscapeClearsBeforeQuitting(t *testing.T) {
 func newFakeCommander() *fakeCommander {
 	return &fakeCommander{
 		models: []string{"alpha/model-one", "beta/model-two", "gamma/model-three"},
+		catalog: []ModelChoice{
+			{Slug: "alpha/model-one"},
+			{Slug: "beta/model-two"},
+			{Slug: "gamma/model-three"},
+		},
 		current: map[string]string{
 			"talk": "alpha/model-one",
 			"work": "gamma/model-three",
