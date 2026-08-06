@@ -16,6 +16,7 @@ import (
 	"github.com/Agent-Field/aforge-v2/internal/exec"
 	"github.com/Agent-Field/aforge-v2/internal/plan"
 	"github.com/Agent-Field/aforge-v2/internal/profile"
+	"github.com/Agent-Field/aforge-v2/internal/resident"
 	"github.com/Agent-Field/aforge-v2/internal/router"
 )
 
@@ -67,6 +68,10 @@ func runExecute(args []string) error {
 	if err != nil {
 		return err
 	}
+	history := openDefaultHistory()
+	if history != nil {
+		defer history.Close()
+	}
 
 	fmt.Printf("goal:      %s\nworkspace: %s\n", graph.Goal, space.Root())
 	if len(settings.Panel.Models) > 0 {
@@ -90,7 +95,7 @@ func runExecute(args []string) error {
 			}
 		}
 		if *contracts {
-			usage, err := plan.Contracts(ctx, client, graph)
+			usage, err := plan.Contracts(ctx, client, graph, resident.ContractPlaybook(history))
 			graph.Usage.Calls += usage.Calls
 			graph.Usage.Cost += usage.Cost
 			if err != nil {
@@ -110,10 +115,6 @@ func runExecute(args []string) error {
 	deadline := 15 * time.Minute
 	if scaled := time.Duration(*maxTokens/50_000) * time.Minute; scaled > deadline {
 		deadline = scaled
-	}
-	history := openDefaultHistory()
-	if history != nil {
-		defer history.Close()
 	}
 	linear := exec.NewLinear(client, space, web, *maxTurns, *maxTokens, deadline).WithStore(history)
 	scheduler := exec.NewScheduler(exec.NewRegistry(linear), space, *concurrency)

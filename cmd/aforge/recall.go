@@ -11,7 +11,7 @@ const groundRecallLimit = 5
 
 // openDefaultHistory is read-optional: a one-shot command with no resident
 // store neither creates one nor changes a prompt. That keeps the benchmarked
-// headless path byte-identical until folded history actually exists.
+// headless path byte-identical until folded history or earned doctrine exists.
 func openDefaultHistory() *store.Store {
 	path := defaultChatDB()
 	if info, err := os.Stat(path); err != nil || !info.Mode().IsRegular() {
@@ -22,7 +22,8 @@ func openDefaultHistory() *store.Store {
 		return nil
 	}
 	hasFolds, err := history.HasFolds()
-	if err != nil || !hasFolds {
+	hasPlaybooks, playbookErr := history.HasActiveFactKind(store.FactPlaybook)
+	if err != nil || playbookErr != nil || (!hasFolds && !hasPlaybooks) {
 		_ = history.Close()
 		return nil
 	}

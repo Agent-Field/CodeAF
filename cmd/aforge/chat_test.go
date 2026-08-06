@@ -92,6 +92,50 @@ func TestParseLearnedFactsCarriesSkillCandidate(t *testing.T) {
 	}
 }
 
+func TestParseLearnedFactsAcceptsDistilledAndConsolidatedPlaybooks(t *testing.T) {
+	distilled := parseLearnedFacts(`{"facts":[{"scope":"tool:pdftotext","kind":"playbook","body":"Try pdftotext before OCR; the text route preserved columns in trial #42"}]}`, 5)
+	if len(distilled) != 1 || distilled[0].Kind != store.FactPlaybook ||
+		distilled[0].Scope != "tool:pdftotext" {
+		t.Fatalf("parsed distilled playbook = %+v", distilled)
+	}
+	consolidated := parseLearnedFacts(`{"facts":[{"scope":"repo:parser","kind":"playbook","body":"Run make check; it configures generated fixtures","sources":[17,11],"replaces":17}]}`, 8)
+	if len(consolidated) != 1 || consolidated[0].Kind != store.FactPlaybook ||
+		consolidated[0].Replaces != 17 || len(consolidated[0].Sources) != 2 {
+		t.Fatalf("parsed consolidated playbook = %+v", consolidated)
+	}
+	for name, prompt := range map[string]string{
+		"distiller": distillerSystemPrompt, "consolidator": consolidatorSystemPrompt,
+	} {
+		if !strings.Contains(prompt, "playbook") {
+			t.Errorf("%s prompt does not offer playbook output", name)
+		}
+	}
+}
+
+func TestConsolidatorRendersPlaybookScope(t *testing.T) {
+	graph, err := store.Open(filepath.Join(t.TempDir(), "graph.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer graph.Close()
+	fact, err := graph.RecordFact("", "repo:parser", store.FactPlaybook,
+		"Run make check; it configures generated fixtures")
+	if err != nil {
+		t.Fatal(err)
+	}
+	settings := config.Config{Model: "talk/model"}
+	capture := &gateCaptureClient{model: "talk/model"}
+	client := &liveClient{settings: settings, model: capture.model, client: capture}
+	if _, err := consolidateFacts(settings, client, graph)(context.Background(), fact.Scope, []store.Fact{fact}); err != nil {
+		t.Fatal(err)
+	}
+	user := capture.messages[1].Content[0].Text
+	want := fmt.Sprintf("#%d [repo:parser · playbook · ", fact.Seq)
+	if !strings.Contains(user, want) {
+		t.Fatalf("consolidator playbook input omitted scope: %q", user)
+	}
+}
+
 func TestConsolidatorSeesBadRidePatternAndCausationCaution(t *testing.T) {
 	graph, err := store.Open(filepath.Join(t.TempDir(), "graph.db"))
 	if err != nil {
