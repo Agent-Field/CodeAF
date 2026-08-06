@@ -45,6 +45,19 @@ func (s *Store) Splice(parent string, subtree Subtree, provenance Provenance) er
 	if terminal(parentStatus) || parentFolded {
 		return fmt.Errorf("splice parent %q is closed (%s): %w", parent, parentStatus, ErrInvalid)
 	}
+	if payload.Provenance.TrialOf > 0 {
+		var kind FactKind
+		var status string
+		if err := tx.QueryRow(`SELECT kind, status FROM facts WHERE seq = ?`, payload.Provenance.TrialOf).Scan(&kind, &status); err != nil {
+			if err == sql.ErrNoRows {
+				return fmt.Errorf("splice trial fact #%d: %w", payload.Provenance.TrialOf, ErrNotFound)
+			}
+			return fmt.Errorf("read trial fact #%d: %w", payload.Provenance.TrialOf, err)
+		}
+		if kind != FactUnsettled || status != FactActive {
+			return fmt.Errorf("splice trial fact #%d is %s/%s: %w", payload.Provenance.TrialOf, kind, status, ErrInvalid)
+		}
+	}
 
 	batch := make(map[string]struct{}, len(payload.Nodes))
 	for _, node := range payload.Nodes {
@@ -91,6 +104,9 @@ func normalizeSubtree(parent string, subtree Subtree, provenance Provenance) (sp
 	}
 	if strings.TrimSpace(provenance.Intent) == "" {
 		return splicedPayload{}, fmt.Errorf("splice: %w: empty verbatim intent", ErrInvalid)
+	}
+	if provenance.TrialOf < 0 {
+		return splicedPayload{}, fmt.Errorf("splice: %w: negative trial fact sequence", ErrInvalid)
 	}
 	if len(subtree.Nodes) == 0 {
 		return splicedPayload{}, fmt.Errorf("splice: %w: empty subtree", ErrInvalid)
@@ -239,11 +255,11 @@ func applySpliceView(tx *sql.Tx, payload splicedPayload, seq int64) error {
 		if _, err := tx.Exec(`
 			INSERT INTO nodes (
 			    id, parent_id, brief, title, grp, stage, status, origin, session_id,
-			    intent, created_seq, created_order, updated_seq
-			) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+			    intent, trial_of, created_seq, created_order, updated_seq
+			) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 			node.ID, parent, node.Brief, node.Title, node.Group, node.Stage, Pending,
 			payload.Provenance.Origin, nullIfEmpty(payload.Provenance.SessionID),
-			payload.Provenance.Intent, seq, orderByID[node.ID], seq); err != nil {
+			payload.Provenance.Intent, payload.Provenance.TrialOf, seq, orderByID[node.ID], seq); err != nil {
 			return fmt.Errorf("insert node %q: %w", node.ID, err)
 		}
 		if err := refreshGraphFTS(tx, node.ID); err != nil {

@@ -327,6 +327,34 @@ func TestConsolidationThreadsEvidenceAndMapsEachOriginal(t *testing.T) {
 	}
 }
 
+func TestConsolidationEmitsRetrievableStructuredUnsettledPair(t *testing.T) {
+	graph := openStore(t)
+	recordScopeFacts(t, graph, "user", consolidationThreshold+1)
+	reconciler := New(graph, nil, nil).WithConsolidator(
+		func(_ context.Context, scope string, facts []store.Fact) ([]Learned, error) {
+			midpoint := len(facts) / 2
+			pair := store.UnsettledPair{Approaches: []store.UnsettledApproach{
+				{Approach: "batch updates", Scope: "large mechanical changes", Evidence: factSeqs(facts[:midpoint])},
+				{Approach: "incremental updates", Scope: "small risky changes", Evidence: factSeqs(facts[midpoint:])},
+			}}
+			return []Learned{{
+				Scope: scope, Kind: store.FactUnsettled, Unsettled: &pair, Sources: factSeqs(facts),
+			}}, nil
+		})
+	if err := reconciler.Tick(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	active, err := graph.ActiveFacts("user", 10)
+	if err != nil || len(active) != 1 || active[0].Kind != store.FactUnsettled || active[0].Unsettled == nil {
+		t.Fatalf("consolidated unsettled fact = %+v err=%v", active, err)
+	}
+	digest := NotebookDigest(graph, "choose an update method", "apply the change", 5)
+	flag := fmt.Sprintf("%s%d", store.UnsettledFactFlag, active[0].Seq)
+	if !strings.Contains(digest, flag) || !strings.Contains(digest, "batch updates") || !strings.Contains(digest, "incremental updates") {
+		t.Fatalf("retrieved unsettled digest = %q", digest)
+	}
+}
+
 func TestMaintenanceFactSearchDoesNotCountUses(t *testing.T) {
 	graph := openStore(t)
 	recorded, err := graph.RecordFact("", "tool:git", store.FactLesson, "git worktrees isolate changes")
@@ -372,6 +400,221 @@ func TestRenderCompileContextRetrievesNotebookByCue(t *testing.T) {
 	}
 	if strings.Contains(got, "curl retries uploads twice") {
 		t.Fatalf("compile context included unrelated recent fact: %q", got)
+	}
+}
+
+func TestUnsettledRetrievalFlagsCompilerAndThreadsTrial(t *testing.T) {
+	graph := openStore(t)
+	first, err := graph.RecordFact("", "user", store.FactLesson,
+		"table-driven parsing worked for stable grammars")
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, err := graph.RecordFact("", "user", store.FactLesson,
+		"parser combinators worked for frequently changing grammars")
+	if err != nil {
+		t.Fatal(err)
+	}
+	pair := store.UnsettledPair{Approaches: []store.UnsettledApproach{
+		{Approach: "table-driven parsing", Scope: "stable grammars", Evidence: []int64{first.Seq}},
+		{Approach: "parser combinators", Scope: "frequently changing grammars", Evidence: []int64{second.Seq}},
+	}}
+	unsettled, err := graph.RecordUnsettledFact("", "user", pair)
+	if err != nil {
+		t.Fatal(err)
+	}
+	command, err := graph.RequestCommand(store.Command{
+		SessionID: "trial-session", Kind: store.CommandSplice, Instruction: "implement the parser",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	compile := func(_ context.Context, instruction, graphContext string) (Compiled, error) {
+		flag := fmt.Sprintf("%s%d", store.UnsettledFactFlag, unsettled.Seq)
+		for _, want := range []string{flag, "table-driven parsing", "parser combinators", "evidence"} {
+			if !strings.Contains(graphContext, want) {
+				return Compiled{}, fmt.Errorf("compiler context omitted %q:\n%s", want, graphContext)
+			}
+		}
+		return Compiled{
+			Goal:  "run a cheap comparison of table-driven parsing and parser combinators, then implement with the winner",
+			Scale: "project", TrialOf: unsettled.Seq,
+		}, nil
+	}
+	if err := New(graph, compile, nil).Tick(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	node, ok, err := graph.Node(fmt.Sprintf("task-%d", command.Seq))
+	if err != nil || !ok || node.Provenance.TrialOf != unsettled.Seq {
+		t.Fatalf("trial node = %+v ok=%t err=%v", node, ok, err)
+	}
+}
+
+func TestTrialLandingRendersEvidenceAndSupersedesWithWinner(t *testing.T) {
+	graph := openStore(t)
+	trial := spliceTrialFixture(t, graph, "winner")
+	var distilled string
+	reconciler := New(graph, nil, nil).WithDistiller(
+		func(_ context.Context, _ string, outcome string, failed bool) ([]Learned, error) {
+			distilled = outcome
+			if failed {
+				t.Fatal("successful trial was marked failed")
+			}
+			return []Learned{{
+				Scope: "domain:parsing", Kind: store.FactLesson,
+				Body:     "table-driven parsing wins for this grammar because its benchmark was faster",
+				Replaces: trial.Seq,
+			}}, nil
+		})
+	if err := reconciler.Tick(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	claim, won, err := graph.Claim("winner-job", "worker")
+	if err != nil || !won {
+		t.Fatalf("claim: won=%t err=%v", won, err)
+	}
+	if err := graph.Complete(claim, "table-driven parsing won the controlled benchmark"); err != nil {
+		t.Fatal(err)
+	}
+	if err := reconciler.Tick(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{
+		fmt.Sprintf("TRIAL VERDICT REQUIRED: this job tested unsettled fact #%d", trial.Seq),
+		"Approach 1: table-driven parsing",
+		"Approach 2: parser combinators",
+		"table-driven parsing worked for stable grammars",
+		"parser combinators worked for changing grammars",
+	} {
+		if !strings.Contains(distilled, want) {
+			t.Fatalf("distiller input omitted %q:\n%s", want, distilled)
+		}
+	}
+	assertTrialWinner(t, graph, trial.Seq, "winner-job")
+
+	if err := graph.Rebuild(); err != nil {
+		t.Fatal(err)
+	}
+	assertTrialWinner(t, graph, trial.Seq, "winner-job")
+}
+
+func TestTrialWithoutVerdictCarriesPairForwardOnce(t *testing.T) {
+	graph := openStore(t)
+	trial := spliceTrialFixture(t, graph, "inconclusive")
+	reconciler := New(graph, nil, nil).WithDistiller(
+		func(context.Context, string, string, bool) ([]Learned, error) {
+			return nil, nil
+		})
+	if err := reconciler.Tick(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	claim, won, err := graph.Claim("inconclusive-job", "worker")
+	if err != nil || !won {
+		t.Fatalf("claim: won=%t err=%v", won, err)
+	}
+	if err := graph.Complete(claim, "the measurements overlapped"); err != nil {
+		t.Fatal(err)
+	}
+	if err := reconciler.Tick(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if err := reconciler.Tick(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+
+	old, ok, err := graph.Fact(trial.Seq)
+	if err != nil || !ok || old.Status != store.FactSuperseded {
+		t.Fatalf("old pair = %+v ok=%t err=%v", old, ok, err)
+	}
+	active, err := graph.ActiveFacts("domain:parsing", 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var carried *store.Fact
+	for index := range active {
+		if active[index].Kind == store.FactUnsettled {
+			carried = &active[index]
+		}
+	}
+	if carried == nil || carried.Unsettled == nil || len(carried.Unsettled.Trials) != 1 {
+		t.Fatalf("carried unsettled pair = %+v", carried)
+	}
+	note := carried.Unsettled.Trials[0]
+	if note.NodeID != "inconclusive-job" || note.Outcome != store.TrialDidNotSettle {
+		t.Fatalf("trial note = %+v", note)
+	}
+	stats, err := graph.TrialStats()
+	if err != nil || stats.Fired != 1 || stats.Inconclusive != 1 || stats.Settled != 0 || stats.Pending != 0 {
+		t.Fatalf("trial stats = %+v err=%v", stats, err)
+	}
+	if len(stats.Outcomes) != 1 || stats.Outcomes[0].ReplacementSeq != carried.Seq || stats.Outcomes[0].Status != store.TrialInconclusive {
+		t.Fatalf("trial outcomes = %+v", stats.Outcomes)
+	}
+}
+
+func spliceTrialFixture(t *testing.T, graph *store.Store, prefix string) store.Fact {
+	t.Helper()
+	first, err := graph.RecordFact("", "domain:parsing", store.FactLesson,
+		"table-driven parsing worked for stable grammars")
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, err := graph.RecordFact("", "domain:parsing", store.FactLesson,
+		"parser combinators worked for changing grammars")
+	if err != nil {
+		t.Fatal(err)
+	}
+	trial, err := graph.RecordUnsettledFact("", "domain:parsing", store.UnsettledPair{
+		Approaches: []store.UnsettledApproach{
+			{Approach: "table-driven parsing", Scope: "stable grammars", Evidence: []int64{first.Seq}},
+			{Approach: "parser combinators", Scope: "changing grammars", Evidence: []int64{second.Seq}},
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := graph.Splice(store.RootID, store.Subtree{Nodes: []store.NodeSpec{{
+		ID: prefix + "-job", Brief: "compare both parsing approaches", Stage: 1,
+	}}}, store.Provenance{
+		Origin: store.OriginUser, SessionID: prefix + "-session",
+		Intent: "choose and apply a parsing approach", TrialOf: trial.Seq,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	return trial
+}
+
+func assertTrialWinner(t *testing.T, graph *store.Store, trialSeq int64, nodeID string) {
+	t.Helper()
+	node, ok, err := graph.Node(nodeID)
+	if err != nil || !ok || node.Provenance.TrialOf != trialSeq {
+		t.Fatalf("trial provenance = %+v ok=%t err=%v", node.Provenance, ok, err)
+	}
+	old, ok, err := graph.Fact(trialSeq)
+	if err != nil || !ok || old.Status != store.FactSuperseded {
+		t.Fatalf("old pair = %+v ok=%t err=%v", old, ok, err)
+	}
+	active, err := graph.ActiveFacts("domain:parsing", 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	winner := false
+	for _, fact := range active {
+		if fact.NodeID == nodeID && fact.Kind == store.FactLesson && strings.Contains(fact.Body, "table-driven parsing wins") {
+			winner = true
+		}
+	}
+	if !winner {
+		t.Fatalf("active facts omit trial winner: %+v", active)
+	}
+	stats, err := graph.TrialStats()
+	if err != nil || stats.Fired != 1 || stats.Settled != 1 || stats.Inconclusive != 0 || stats.Pending != 0 {
+		t.Fatalf("trial stats = %+v err=%v", stats, err)
+	}
+	if len(stats.Outcomes) != 1 || stats.Outcomes[0].NodeID != nodeID || stats.Outcomes[0].Status != store.TrialSettled ||
+		!strings.Contains(stats.Outcomes[0].Body, "table-driven parsing wins") {
+		t.Fatalf("trial outcomes = %+v", stats.Outcomes)
 	}
 }
 

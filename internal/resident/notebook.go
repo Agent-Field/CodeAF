@@ -2,6 +2,7 @@ package resident
 
 import (
 	"context"
+	"fmt"
 	"path"
 	"strings"
 	"time"
@@ -99,6 +100,15 @@ func NotebookDigest(graph *store.Store, brief, goal string, limit int) string {
 	var digest strings.Builder
 	digest.WriteString("notebook (lessons from earlier work; if your own experience in this task contradicts one, trust the experience and state the correction explicitly in your final message — that is how the notebook stays true):\n")
 	for _, fact := range facts {
+		if fact.Kind == store.FactUnsettled && fact.Unsettled != nil {
+			digest.WriteString("- ")
+			digest.WriteString(store.UnsettledFactFlag)
+			digest.WriteString(fmt.Sprintf("%d\n", fact.Seq))
+			digest.WriteString("  ")
+			digest.WriteString(store.FormatUnsettledPair(*fact.Unsettled))
+			digest.WriteByte('\n')
+			continue
+		}
 		digest.WriteString("- ")
 		digest.WriteString(fact.Body)
 		digest.WriteByte('\n')
@@ -122,13 +132,35 @@ func (r *Reconciler) consolidateNotebook(ctx context.Context) {
 	if err != nil {
 		return
 	}
+	pendingTrials := make(map[int64]bool)
+	if stats, err := r.store.TrialStats(); err == nil {
+		for _, outcome := range stats.Outcomes {
+			if outcome.Status == store.TrialPending {
+				pendingTrials[outcome.TrialOf] = true
+			}
+		}
+	}
 	byScope := make(map[string][]store.Fact)
+	blockedScopes := make(map[string]bool)
+	var scopeOrder []string
+	for _, fact := range facts {
+		if _, seen := byScope[fact.Scope]; !seen {
+			scopeOrder = append(scopeOrder, fact.Scope)
+		}
+		byScope[fact.Scope] = append(byScope[fact.Scope], fact)
+		if pendingTrials[fact.Seq] {
+			blockedScopes[fact.Scope] = true
+		}
+	}
 	worstScope := ""
 	worstCount := 0
-	for _, fact := range facts {
-		byScope[fact.Scope] = append(byScope[fact.Scope], fact)
-		if count := len(byScope[fact.Scope]); count > worstCount {
-			worstScope = fact.Scope
+	for _, scope := range scopeOrder {
+		if blockedScopes[scope] {
+			continue
+		}
+		scoped := byScope[scope]
+		if count := len(scoped); count > worstCount {
+			worstScope = scope
 			worstCount = count
 		}
 	}
@@ -160,6 +192,12 @@ func (r *Reconciler) consolidateNotebook(ctx context.Context) {
 	claimedSources := make(map[int64]bool, len(originals))
 	seenBodies := make(map[string]bool, len(rewritten))
 	for _, learned := range rewritten {
+		if learned.Kind == store.FactUnsettled {
+			if learned.Unsettled == nil || learned.Unsettled.Validate() != nil {
+				return
+			}
+			learned.Body = store.FormatUnsettledPair(*learned.Unsettled)
+		}
 		bodyKey := strings.ToLower(strings.TrimSpace(learned.Body))
 		if bodyKey == "" {
 			continue
@@ -203,8 +241,7 @@ func (r *Reconciler) consolidateNotebook(ctx context.Context) {
 
 	replacementFor := make(map[int64]int64, len(originals))
 	for _, rewrite := range planned {
-		fact, err := r.store.RecordFact(rewrite.nodeID, rewrite.learned.Scope,
-			rewrite.learned.Kind, clipFactBody(rewrite.learned.Body))
+		fact, err := r.recordLearnedFact(rewrite.nodeID, rewrite.learned)
 		if err != nil {
 			return
 		}

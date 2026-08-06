@@ -94,3 +94,18 @@ func TestSingleLeafProfileCarriesPolishedGateVerdict(t *testing.T) {
 		t.Fatalf("profile = %+v, want the polished worker and gate failure", measured)
 	}
 }
+
+func TestParseLearnedFactsKeepsStructuredUnsettledPair(t *testing.T) {
+	raw := `{"facts":[{"scope":"domain:parsing","kind":"unsettled","body":"ignored projection","unsettled":{"approaches":[{"approach":"table-driven","scope":"stable grammars","evidence":[11]},{"approach":"combinators","scope":"changing grammars","evidence":[17]}]},"sources":[11,17]}]}`
+	learned := parseLearnedFacts(raw, 5)
+	if len(learned) != 1 || learned[0].Kind != store.FactUnsettled || learned[0].Unsettled == nil {
+		t.Fatalf("parsed facts = %+v", learned)
+	}
+	pair := learned[0].Unsettled
+	if len(pair.Approaches) != 2 || pair.Approaches[0].Evidence[0] != 11 || pair.Approaches[1].Scope != "changing grammars" {
+		t.Fatalf("parsed unsettled pair = %+v", pair)
+	}
+	if learned[0].Body != store.FormatUnsettledPair(*pair) {
+		t.Fatalf("body = %q, want canonical projection %q", learned[0].Body, store.FormatUnsettledPair(*pair))
+	}
+}

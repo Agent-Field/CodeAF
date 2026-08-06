@@ -111,6 +111,7 @@ func runChat(args []string) error {
 				Goal:        brief.Goal,
 				Assumptions: brief.Assumptions,
 				Scale:       brief.Scale,
+				TrialOf:     brief.TrialOf,
 				BuildsOn:    brief.BuildsOn,
 				Question:    brief.Question,
 			}, nil
@@ -1375,7 +1376,7 @@ func jobIDOf(graph *store.Store, node store.Node) string {
 
 // distillerSystemPrompt writes the notebook. The bar is durability: a memory
 // must still matter after this job is forgotten.
-const distillerSystemPrompt = `You judge whether a finished job taught an assistant anything worth keeping in its scoped notebook. You receive the goal, the outcome, and whether the job FAILED. Return exactly one JSON object: {"facts":[{"scope":"...","kind":"preference|quirk|lesson|fact","body":"...","replaces":0}]}.
+const distillerSystemPrompt = `You judge whether a finished job taught an assistant anything worth keeping in its scoped notebook. You receive the goal, the outcome, and whether the job FAILED. Return exactly one JSON object: {"facts":[{"scope":"...","kind":"preference|quirk|lesson|fact|unsettled","body":"...","unsettled":{"approaches":[{"approach":"...","scope":"...","evidence":[123]},{"approach":"...","scope":"...","evidence":[456]}]},"replaces":0}]}.
 
 Judgment framework:
 - A memory qualifies only if it will matter after this job is forgotten.
@@ -1385,12 +1386,14 @@ Judgment framework:
 - When the direct route failed and a substitute route worked — a different source, tool, or method reached the same end — record the working route as a lesson in the narrowest scope it applies to. A proven detour is the most transferable thing a job can teach.
 - Beliefs must stay true as the world moves. When this job's evidence updates, contradicts, or outdates one of the standing numbered entries shown to you, write the corrected memory in full and set "replaces" to that entry's number — the old belief retires when the new one lands. Accumulating a contradiction beside the belief it contradicts is worse than either alone.
 - When the job compared approaches — deliberately, or by failing over from one route to another — the comparison's outcome is the memory: record the winner as the standing approach with what decided it, and point "replaces" at any entry that backed the loser. A settled experiment is worth more than either belief that preceded it.
+- When the outcome contains TRIAL VERDICT REQUIRED for unsettled fact #N, consume that pair explicitly. If the evidence settles it, emit the winning ordinary lesson or fact with "replaces":N. If it does not, emit kind "unsettled" with "replaces":N and the same two structured approaches and evidence sequences. Never omit the replacement merely because the result was inconclusive.
+- Include "unsettled" only for kind "unsettled"; omit it for every ordinary fact.
 - Each fact object may carry "replaces": <number of the standing entry it supersedes>; omit it otherwise.
 - Job status and transient results never qualify.
 - An empty list is the common correct answer.
 - Return at most five memories.`
 
-const consolidatorSystemPrompt = `You rewrite one scope's accumulated notebook lines into a smaller, sharper notebook. Return exactly one JSON object: {"facts":[{"scope":"...","kind":"preference|quirk|lesson|fact","body":"...","sources":[123],"replaces":0}]}.
+const consolidatorSystemPrompt = `You rewrite one scope's accumulated notebook lines into a smaller, sharper notebook. Return exactly one JSON object: {"facts":[{"scope":"...","kind":"preference|quirk|lesson|fact|unsettled","body":"...","unsettled":{"approaches":[{"approach":"...","scope":"...","evidence":[123]},{"approach":"...","scope":"...","evidence":[456]}]},"sources":[123,456],"replaces":0}]}.
 
 Merge duplicates and near-duplicates. Resolve contradictions in favour of the newest line. Keep every load-bearing specific, including paths, values, and names. Each output must stand alone, use exactly the target scope, and preserve the best fitting kind. Return at most eight lines.
 
@@ -1398,7 +1401,7 @@ Every input line is numbered with its durable notebook number. Each output must 
 
 Each line carries its age and how often retrieval has used it. Judge staleness by what the claim is about, not by the age alone: a preference or a filesystem quirk ages slowly, while a ranking, a price, a version, or a "current state" claim rots fast. Rewrite fast-rotting claims to name their time ("as of <when>, …"); a never-used old line about a moving target should survive only as compact, explicitly dated evidence when another input still makes it useful.
 
-A line may also carry the evidence it was distilled from: the job that taught it, in the words it was asked and what it actually delivered. Weigh lines by that evidence. Strip a claim its own evidence does not support back to only what the evidence establishes; when nothing else survives, merge that dated evidence into the closest output without preserving the unsupported claim. When two lines compete and their evidence cannot settle which is right, do not pick: keep both, rewritten as one explicitly competing pair ("X worked for A; Y worked for B — unsettled"), so a future job settles it on evidence instead of a coin flip here.`
+A line may also carry the evidence it was distilled from: the job that taught it, in the words it was asked and what it actually delivered. Weigh lines by that evidence. Strip a claim its own evidence does not support back to only what the evidence establishes; when nothing else survives, merge that dated evidence into the closest output without preserving the unsupported claim. When two lines compete and their evidence cannot settle which is right, do not pick. Emit one kind "unsettled" line with exactly two structured approaches. Each approach names the method, the scope where it worked, and the numbered input fact seqs supporting that side in evidence. For a newly formed pair those evidence seqs are numbered inputs and also appear in sources; when preserving an existing pair, carry its earlier evidence seqs forward. The body is a concise readable projection of the same pair. This structure, not an "— unsettled" prose suffix, is what makes a future job test it.`
 
 // reflectorSystemPrompt is the retrospective an effective employee runs on
 // their own work: not what any single job taught — the distiller owns that —
@@ -1566,11 +1569,12 @@ func parseLearnedFacts(raw string, limit int) []resident.Learned {
 	}
 	var parsed struct {
 		Facts []struct {
-			Scope    string         `json:"scope"`
-			Kind     store.FactKind `json:"kind"`
-			Body     string         `json:"body"`
-			Replaces int64          `json:"replaces"`
-			Sources  []int64        `json:"sources"`
+			Scope     string               `json:"scope"`
+			Kind      store.FactKind       `json:"kind"`
+			Body      string               `json:"body"`
+			Unsettled *store.UnsettledPair `json:"unsettled"`
+			Replaces  int64                `json:"replaces"`
+			Sources   []int64              `json:"sources"`
 		} `json:"facts"`
 	}
 	if err := json.NewDecoder(strings.NewReader(raw[start:])).Decode(&parsed); err != nil {
@@ -1580,11 +1584,19 @@ func parseLearnedFacts(raw string, limit int) []resident.Learned {
 	for _, fact := range parsed.Facts {
 		fact.Scope = strings.TrimSpace(fact.Scope)
 		fact.Body = strings.TrimSpace(fact.Body)
+		if fact.Kind == store.FactUnsettled {
+			if fact.Unsettled == nil || fact.Unsettled.Validate() != nil {
+				continue
+			}
+			fact.Body = store.FormatUnsettledPair(*fact.Unsettled)
+		} else if fact.Unsettled != nil {
+			continue
+		}
 		if fact.Scope == "" || fact.Body == "" || !validLearnedKind(fact.Kind) {
 			continue
 		}
 		learned = append(learned, resident.Learned{
-			Scope: fact.Scope, Kind: fact.Kind, Body: fact.Body,
+			Scope: fact.Scope, Kind: fact.Kind, Body: fact.Body, Unsettled: fact.Unsettled,
 			Replaces: fact.Replaces, Sources: fact.Sources,
 		})
 		if len(learned) == limit {
@@ -1596,7 +1608,7 @@ func parseLearnedFacts(raw string, limit int) []resident.Learned {
 
 func validLearnedKind(kind store.FactKind) bool {
 	switch kind {
-	case store.FactPreference, store.FactQuirk, store.FactLesson, store.FactPlain:
+	case store.FactPreference, store.FactQuirk, store.FactLesson, store.FactPlain, store.FactUnsettled:
 		return true
 	default:
 		return false
