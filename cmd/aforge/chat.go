@@ -94,7 +94,11 @@ func runChat(args []string) error {
 	compiler := head.NewCompiler(chatClient)
 	reconciler := resident.New(graph,
 		func(ctx context.Context, instruction, graphContext string) (resident.Compiled, error) {
-			brief, err := compiler.Compile(settings.Context(ctx, instruction), instruction, graphContext)
+			augmented := graphContext
+			if sk := selfKnowledge(settings); sk != "" {
+				augmented += "\n\nMeasured execution costs (this system's own measured history):\n" + sk
+			}
+			brief, err := compiler.Compile(settings.Context(ctx, instruction), instruction, augmented)
 			if err != nil {
 				return resident.Compiled{}, err
 			}
@@ -109,7 +113,7 @@ func runChat(args []string) error {
 		planSubtree(settings, taskClient, plans),
 	).WithNarrator(narrateProgress(settings, chatClient)).
 		WithDistiller(distillFacts(settings, chatClient, graph)).
-		WithConsolidator(consolidateFacts(settings, chatClient)).
+		WithConsolidator(consolidateFacts(settings, chatClient, graph)).
 		WithTitler(titleGoal(settings, chatClient)).
 		WithReflector(reflectAcrossJobs(settings, chatClient))
 
@@ -1233,6 +1237,7 @@ Judgment framework:
 - Judge like an after-action review: what was expected, what actually happened, and what explains the gap. The explanation is the memory; the events themselves are not.
 - When the direct route failed and a substitute route worked — a different source, tool, or method reached the same end — record the working route as a lesson in the narrowest scope it applies to. A proven detour is the most transferable thing a job can teach.
 - Beliefs must stay true as the world moves. When this job's evidence updates, contradicts, or outdates one of the standing numbered entries shown to you, write the corrected memory in full and set "replaces" to that entry's number — the old belief retires when the new one lands. Accumulating a contradiction beside the belief it contradicts is worse than either alone.
+- When the job compared approaches — deliberately, or by failing over from one route to another — the comparison's outcome is the memory: record the winner as the standing approach with what decided it, and point "replaces" at any entry that backed the loser. A settled experiment is worth more than either belief that preceded it.
 - Each fact object may carry "replaces": <number of the standing entry it supersedes>; omit it otherwise.
 - Job status and transient results never qualify.
 - An empty list is the common correct answer.
@@ -1242,7 +1247,9 @@ const consolidatorSystemPrompt = `You rewrite one scope's accumulated notebook l
 
 Merge duplicates and near-duplicates. Resolve contradictions in favour of the newest line. Keep every load-bearing specific, including paths, values, and names. Each output must stand alone, use exactly the target scope, and preserve the best fitting kind. Return at most eight lines.
 
-Each line carries its age and how often retrieval has used it. Judge staleness by what the claim is about, not by the age alone: a preference or a filesystem quirk ages slowly, while a ranking, a price, a version, or a "current state" claim rots fast. Rewrite fast-rotting claims to name their time ("as of <when>, …") or drop them when their moment has passed; a never-used old line about a moving target is the first candidate to go.`
+Each line carries its age and how often retrieval has used it. Judge staleness by what the claim is about, not by the age alone: a preference or a filesystem quirk ages slowly, while a ranking, a price, a version, or a "current state" claim rots fast. Rewrite fast-rotting claims to name their time ("as of <when>, …") or drop them when their moment has passed; a never-used old line about a moving target is the first candidate to go.
+
+A line may also carry the evidence it was distilled from: the job that taught it, in the words it was asked and what it actually delivered. Weigh lines by that evidence. A claim its own evidence does not support — broader than the one job it came from, or contradicted by what that job delivered — is the first to drop, ahead of anything merely old. When two lines compete and their evidence cannot settle which is right, do not pick: keep both, rewritten as one explicitly competing pair ("X worked for A; Y worked for B — unsettled"), so a future job settles it on evidence instead of a coin flip here.`
 
 // reflectorSystemPrompt is the retrospective an effective employee runs on
 // their own work: not what any single job taught — the distiller owns that —
@@ -1333,7 +1340,7 @@ func distillFacts(settings config.Config, client *liveClient, graph *store.Store
 
 // consolidateFacts sharpens a crowded scope without losing the specifics
 // that made its entries worth retaining.
-func consolidateFacts(settings config.Config, client *liveClient) resident.ConsolidateFunc {
+func consolidateFacts(settings config.Config, client *liveClient, graph *store.Store) resident.ConsolidateFunc {
 	return func(ctx context.Context, scope string, facts []store.Fact) ([]resident.Learned, error) {
 		ordered := append([]store.Fact(nil), facts...)
 		sort.SliceStable(ordered, func(i, j int) bool {
@@ -1345,6 +1352,31 @@ func consolidateFacts(settings config.Config, client *liveClient) resident.Conso
 		fmt.Fprintf(&input, "Target scope: %s\n\nNotebook lines, newest first:\n", scope)
 		for index, fact := range ordered {
 			fmt.Fprintf(&input, "%d. [%s · %s · used %d×] %s\n", index+1, fact.Kind, store.AgeLabel(fact.Time, now), fact.Uses, fact.Body)
+			// Belief audit: every fact names the job that taught it and that
+			// job is still in the graph, so a line can be weighed against the
+			// evidence it was distilled from rather than against its own
+			// confident wording. The root node is the thread itself and
+			// carries no single ask worth citing.
+			if fact.NodeID == "" || fact.NodeID == store.RootID {
+				continue
+			}
+			source, found, err := graph.Node(fact.NodeID)
+			if err != nil || !found {
+				continue
+			}
+			var evidence []string
+			if ask := clip(firstLine(strings.TrimSpace(source.Provenance.Intent)), 120); ask != "" {
+				evidence = append(evidence, "asked: "+ask)
+			}
+			// FoldDigest stands in for folded jobs, whose Summary is gone.
+			delivery := firstNonEmptyString(source.Summary, source.FoldDigest)
+			if delivered := clip(firstLine(strings.TrimSpace(delivery)), 160); delivered != "" {
+				evidence = append(evidence, "delivered: "+delivered)
+			}
+			if len(evidence) == 0 {
+				continue
+			}
+			fmt.Fprintf(&input, "   evidence — %s\n", strings.Join(evidence, " · "))
 		}
 		response, err := client.CompleteWithMessages(settings.Context(ctx, "consolidate"), []ai.Message{
 			{Role: "system", Content: []ai.ContentPart{{Type: "text", Text: consolidatorSystemPrompt}}},
