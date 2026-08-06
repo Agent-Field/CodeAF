@@ -1492,3 +1492,21 @@ func TestFrameHeightStaysExactAsDockAndInputGrow(t *testing.T) {
 		t.Fatalf("view after resize is %d rows, want 24", height)
 	}
 }
+
+// A group label announced for one sibling must not be left standing over a
+// later sibling once a whole subtree (for top-level rows: a whole other job)
+// has rendered in between.
+func TestRailGroupHeaderDoesNotBleedAcrossSiblingSubtrees(t *testing.T) {
+	snapshot := store.Snapshot{Nodes: []store.Node{
+		{ID: store.RootID},
+		{ID: "job-a", Parent: store.RootID, Title: "Job A", Group: "reflex", Status: store.Running, CreatedSeq: 1},
+		{ID: "job-b", Parent: store.RootID, Title: "Job B", Group: "reflex", Status: store.Running, CreatedSeq: 3},
+		{ID: "b-part", Parent: "job-b", Title: "B part", Status: store.Running, CreatedSeq: 4},
+	}}
+	model := New(&fakeBackend{snapshot: snapshot}, "test-session")
+	model.snapshot = snapshot
+	tree := model.renderTree(60, 0)
+	if headers := strings.Count(tree, "┄ reflex"); headers != 2 {
+		t.Fatalf("group headers = %d, want one per job (2):\n%s", headers, tree)
+	}
+}
