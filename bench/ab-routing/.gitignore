@@ -9,3 +9,7 @@ panel/catalog.json
 
 __pycache__/
 .pytest_cache/
+
+# Catalog caches the router writes beside each ledger: 170KB each, identical,
+# refetched on demand, and evidence about nothing the experiment measured.
+ledger-*/catalog.json

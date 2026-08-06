@@ -151,6 +151,9 @@ def main():
     # How many router events already existed before this cell ran, so the
     # append-only log can be sliced into the rows this cell is responsible for.
     ap.add_argument("--events-before", default="0")
+    # Stamped onto every row so that rows written by two overlapping passes are
+    # separable in the data rather than reconstructable only from file order.
+    ap.add_argument("--run-token", default="")
     args = ap.parse_args()
 
     graph = load_graph(os.path.join(args.cell, "done.json")) or \
@@ -164,6 +167,7 @@ def main():
         "wall_seconds": int(args.plan_seconds) + int(args.run_seconds),
         "plan_exit": int(args.plan_exit), "run_exit": int(args.run_exit),
         "cell": os.path.relpath(args.cell, os.path.dirname(os.path.abspath(__file__))),
+        "run_token": args.run_token,
     }
 
     usage = (graph or {}).get("usage") or {}

@@ -447,6 +447,56 @@ def check_t1():
               r.get("score") == 1.0 and r.get("package_root") == "src")
 
 
+def check_t4():
+    print("t4-pathmatch: grader")
+    reference = os.path.join(TASKS, "t4-pathmatch", "reference")
+    decoy = os.path.join(TASKS, "t4-pathmatch", "decoy")
+
+    r = run_grader("t4-pathmatch", reference)
+    check("t4 reference passes every group",
+          r.get("score") == 1.0 and r.get("success") is True,
+          json.dumps({k: v.get("first_failure") for k, v in r.get("groups", {}).items()
+                      if not v.get("ok")}))
+
+    with tempfile.TemporaryDirectory() as d:
+        r = run_grader("t4-pathmatch", d)
+        check("t4 empty workspace scores zero through the package gate",
+              r.get("score") == 0.0
+              and r.get("gates", {}).get("package_present") is False)
+
+    with tempfile.TemporaryDirectory() as d:
+        os.mkdir(os.path.join(d, "pathmatch"))
+        with open(os.path.join(d, "pathmatch", "__init__.py"), "w") as f:
+            f.write("class PatternError(ValueError):\n    pass\n"
+                    "def compile_pattern(p):\n    return None\n"
+                    "def matches(p, q):\n    return False\n"
+                    "def select(p, q):\n    return []\n")
+        r = run_grader("t4-pathmatch", d)
+        check("t4 a stub package scores near zero without erroring",
+              r.get("gates", {}).get("import") is True and r.get("score", 1.0) <= 0.25,
+              json.dumps(r)[:200])
+
+    # The load-bearing check for this task. A competent gitignore-shaped
+    # implementation must win every baseline group and lose every divergence
+    # group: at 12/12 the divergences would not diverge, and at 0/12 the task
+    # would be measuring something other than what it claims to.
+    r = run_grader("t4-pathmatch", decoy)
+    check("t4 the gitignore decoy wins all eight baseline groups",
+          r.get("baseline_passed") == 8,
+          f"baseline {r.get('baseline_passed')}/8")
+    check("t4 the gitignore decoy loses all four divergence groups",
+          r.get("divergence_passed") == 0,
+          f"divergence {r.get('divergence_passed')}/4 — a divergence the "
+          f"familiar implementation happens to satisfy separates nothing")
+    check("t4 the decoy passes both effort groups",
+          r.get("effort_passed") == 2,
+          f"effort {r.get('effort_passed')}/2 — these are about backtracking "
+          f"and compiling once, not about which semantics were chosen, so a "
+          f"competent implementation should get them either way")
+    check("t4 the decoy therefore scores 10/14, not 14/14 and not 0/14",
+          r.get("score") == round(10 / 14, 4), str(r.get("score")))
+
+
 def check_t3():
     print("t3-shiftplan: grader")
     reference = os.path.join(TASKS, "t3-shiftplan", "reference")
@@ -525,6 +575,8 @@ def main():
     check_t1()
     print()
     check_t3()
+    print()
+    check_t4()
     print(f"\n{CHECKS - len(FAILURES)}/{CHECKS} checks passed")
     if FAILURES:
         print(f"\n{len(FAILURES)} FAILURES — do not spend money until these are fixed:")
