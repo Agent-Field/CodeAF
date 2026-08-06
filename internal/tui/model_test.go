@@ -415,7 +415,8 @@ func TestCardsDockWhileActiveAndSettleAtBirth(t *testing.T) {
 	first := strings.Index(thread, "First ask")
 	landed := strings.Index(thread, "Settled work")
 	later := strings.Index(thread, "Later conversation")
-	if first < 0 || landed < first || later < landed || strings.Contains(thread, "Docked work") {
+	// Active work appears exactly once as the rail-closed shimmer, never as a settled card.
+	if first < 0 || landed < first || later < landed || strings.Count(thread, "Docked work") != 1 {
 		t.Fatalf("settled card did not land at birth while active card stayed docked:\n%s", thread)
 	}
 	dock := model.renderActivityBar()
@@ -701,10 +702,8 @@ func TestSlashPaletteOpensFiltersAndCycles(t *testing.T) {
 		t.Fatalf("palette = %v, want command palette", model.palette)
 	}
 	view := model.View()
-	for _, command := range []string{"「/model」", "「/session」", "「/quit」"} {
-		if !strings.Contains(view, command) {
-			t.Fatalf("command palette does not contain %q:\n%s", command, view)
-		}
+	if !strings.Contains(view, "/graph · /tasks · /node · /notebook · /help") || strings.Contains(view, "「/model」") {
+		t.Fatalf("bare slash did not render the one-line completion hint:\n%s", view)
 	}
 
 	_, _ = model.Update(tea.KeyMsg{Type: tea.KeyTab})
@@ -727,7 +726,7 @@ func TestHintsDescribeReceiptsGraphViewAndTwoVoices(t *testing.T) {
 	_ = model.executeSlash("/help")
 	view := model.View()
 	for _, expected := range []string{
-		"「/memory」", "you ask · aforge answers", "v toggles receipts", "^g opens the rail",
+		"「/notebook」", "you ask · aforge answers", "v toggles receipts", "alt+g toggles the rail",
 		"chips jump to the task", "enter to steer", "mouse",
 	} {
 		if !strings.Contains(view, expected) {
@@ -1052,18 +1051,14 @@ func TestCancelCompletionOnlyIncludesNonTerminalNodes(t *testing.T) {
 		}
 	}
 
-	_, command := model.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	_, _ = model.Update(tea.KeyMsg{Type: tea.KeyEnter})
 	if len(commander.cancelled) != 1 || commander.cancelled[0] != "active-node" {
 		t.Fatalf("cancelled nodes = %v", commander.cancelled)
 	}
-	if command == nil {
-		t.Fatal("cancel did not return the user-message post command")
-	}
-	_ = command()
 	backend.mu.Lock()
 	defer backend.mu.Unlock()
-	if len(backend.posted) != 1 || backend.posted[0].Body != "cancel active-node" {
-		t.Fatalf("posted messages = %#v", backend.posted)
+	if len(backend.posted) != 0 {
+		t.Fatalf("cancel leaked to the head: %#v", backend.posted)
 	}
 }
 
@@ -1242,7 +1237,7 @@ func TestGraphCollapsesToActivityBarAndTogglesOpen(t *testing.T) {
 		t.Fatalf("collapsed chat width = %d, want the full 72", model.chatWidth)
 	}
 	bar := model.renderActivityBar()
-	for _, want := range []string{"1 working", "1 queued", "^g tasks"} {
+	for _, want := range []string{"1 working", "1 queued", "alt+g tasks"} {
 		if !strings.Contains(bar, want) {
 			t.Fatalf("activity bar missing %q: %s", want, bar)
 		}
@@ -1251,9 +1246,9 @@ func TestGraphCollapsesToActivityBarAndTogglesOpen(t *testing.T) {
 		t.Fatalf("collapsed view should not render the task tree:\n%s", view)
 	}
 
-	_, _ = model.Update(tea.KeyMsg{Type: tea.KeyCtrlG})
+	_, _ = model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'g'}, Alt: true})
 	if !model.graphOpen || model.focus != focusGraph {
-		t.Fatalf("^g did not open tasks with focus: open=%v focus=%v", model.graphOpen, model.focus)
+		t.Fatalf("alt+g did not open tasks with focus: open=%v focus=%v", model.graphOpen, model.focus)
 	}
 	if view := model.View(); !strings.Contains(view, "Active work") || !strings.Contains(view, "tasks") {
 		t.Fatalf("open tasks pane should render the tree:\n%s", view)
@@ -1657,5 +1652,249 @@ func TestScrolledUpChatKeepsContentWhenACardSettlesAbove(t *testing.T) {
 	model.refreshChat()
 	if !model.chat.AtBottom() {
 		t.Fatal("pinned-to-bottom did not stay pinned through a refresh")
+	}
+}
+
+func TestGraphBindingRoutesAltGAndLeavesCtrlGAlone(t *testing.T) {
+	model := New(&fakeBackend{}, "bindings")
+	_, _ = model.Update(tea.KeyMsg{Type: tea.KeyCtrlG})
+	if model.graphOpen {
+		t.Fatal("ctrl+g still toggles the graph rail")
+	}
+
+	_, _ = model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'g'}, Alt: true})
+	if !model.graphOpen || model.focus != focusGraph {
+		t.Fatalf("alt+g did not route to the rail: open=%v focus=%v", model.graphOpen, model.focus)
+	}
+	if view := model.View(); !strings.Contains(view, "alt+g hide") || strings.Contains(view, "^g") {
+		t.Fatalf("binding hints are not sourced from alt+g:\n%s", view)
+	}
+	_ = model.View()
+	_, _ = model.Update(tea.MouseMsg{
+		X: model.graphBounds.x, Y: model.graphBounds.y,
+		Button: tea.MouseButtonLeft, Action: tea.MouseActionPress,
+	})
+	if model.graphOpen {
+		t.Fatal("clicking the rail header did not close it")
+	}
+}
+
+func TestSlashCommandsAreConsumedAndRouteLocally(t *testing.T) {
+	backend := &fakeBackend{}
+	commander := newFakeCommander()
+	commander.facts = []store.Fact{{Scope: "user", Kind: store.FactPreference, Body: "Keep it concise."}}
+	model := NewWithCommander(backend, "slash", commander)
+
+	model.input.SetValue("/not-a-command")
+	_, command := model.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	if command != nil || model.input.Value() != "" || !strings.Contains(model.status, "not a command") {
+		t.Fatalf("unknown slash command was not consumed quietly: command=%v input=%q status=%q",
+			command != nil, model.input.Value(), model.status)
+	}
+
+	model.input.SetValue("/graph")
+	_, _ = model.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	if !model.graphOpen {
+		t.Fatal("/graph did not toggle the rail")
+	}
+
+	model.cards = []jobCard{{ID: "job", RootID: "job", State: cardWorking, Title: "Active task"}}
+	model.input.SetValue("/tasks")
+	model.focus = focusInput
+	model.inputFocused = true
+	_, _ = model.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	if model.graphOpen || model.focus != focusCards {
+		t.Fatalf("/tasks did not focus the dock: graph=%v focus=%v", model.graphOpen, model.focus)
+	}
+
+	model.snapshot = store.Snapshot{Nodes: []store.Node{
+		{ID: store.RootID},
+		{ID: "node-alpha", Parent: store.RootID, Brief: "Alpha node", Status: store.Running},
+	}}
+	model.cardSnapshot = model.snapshot
+	model.focus = focusInput
+	model.inputFocused = true
+	model.selectedNodeID = "node-alpha"
+	model.input.SetValue("/node")
+	_, command = model.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	if model.nodeViewID != "node-alpha" || command == nil {
+		t.Fatalf("/node did not use the clicked selection: node=%q command=%v", model.nodeViewID, command != nil)
+	}
+	model.closeNodeView()
+
+	model.focus = focusInput
+	model.inputFocused = true
+	model.selectedNodeID = ""
+	model.input.SetValue("/node node-a")
+	_, command = model.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	if model.nodeViewID != "node-alpha" || command == nil {
+		t.Fatalf("/node prefix did not open the flight recorder: node=%q command=%v", model.nodeViewID, command != nil)
+	}
+
+	model.input.SetValue("/notebook")
+	_, _ = model.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	if model.palette != paletteMemory || !strings.Contains(model.renderPalette(), "Keep it concise") {
+		t.Fatalf("/notebook did not open the scrollable notebook pane:\n%s", model.renderPalette())
+	}
+
+	backend.mu.Lock()
+	defer backend.mu.Unlock()
+	if len(backend.posted) != 0 {
+		t.Fatalf("slash commands leaked %d messages to the head: %#v", len(backend.posted), backend.posted)
+	}
+}
+
+func TestShimmerLinesOnlyShowForRailClosedActiveJobs(t *testing.T) {
+	model := New(&fakeBackend{}, "shimmer")
+	model.messages = []store.Message{{Seq: 1, Role: store.RoleUser, Body: "Run these jobs"}}
+	for index := 0; index < 4; index++ {
+		model.cards = append(model.cards, jobCard{
+			ID: fmt.Sprintf("job-%d", index), State: cardWorking,
+			Title: fmt.Sprintf("Job %d", index), Latest: fmt.Sprintf("Narrating %d", index),
+		})
+	}
+
+	shimmer := model.renderShimmerLines(80)
+	for _, want := range []string{"Job 0", "Narrating 1", "Job 2", "1 more running"} {
+		if !strings.Contains(shimmer, want) {
+			t.Fatalf("closed-rail shimmer is missing %q:\n%s", want, shimmer)
+		}
+	}
+	if strings.Contains(shimmer, "Job 3") {
+		t.Fatalf("shimmer exceeded the three-job line budget:\n%s", shimmer)
+	}
+	thread := model.renderMessages()
+	if strings.Index(thread, "Job 0") < strings.Index(thread, "Run these jobs") {
+		t.Fatalf("shimmer did not render under the last thread message:\n%s", thread)
+	}
+
+	model.toggleGraph()
+	if got := model.renderShimmerLines(80); got != "" {
+		t.Fatalf("open rail duplicated the shimmer:\n%s", got)
+	}
+	model.toggleGraph()
+	model.cards = nil
+	if got := model.renderShimmerLines(80); got != "" {
+		t.Fatalf("idle thread rendered a shimmer:\n%s", got)
+	}
+}
+
+func TestRealProviderDeltasAccumulateAtTypewriterPace(t *testing.T) {
+	model := New(&fakeBackend{}, "real-stream")
+	model.applyStreamEvent(StreamEvent{Kind: StreamStarted})
+	model.applyStreamEvent(StreamEvent{Kind: StreamDelta, Delta: `{"reply":"This arrives`})
+	model.applyStreamEvent(StreamEvent{Kind: StreamDelta, Delta: ` in provider deltas.","command":null}`})
+	if model.streamTarget != "This arrives in provider deltas." || model.streamShown != "" {
+		t.Fatalf("real deltas were not buffered for pacing: target=%q shown=%q", model.streamTarget, model.streamShown)
+	}
+
+	_, _ = model.Update(animationTickMsg(time.Now()))
+	if model.streamShown == "" || model.streamShown == model.streamTarget ||
+		!strings.HasPrefix(model.streamTarget, model.streamShown) {
+		t.Fatalf("first real-delta tick did not grow a prefix: shown=%q target=%q", model.streamShown, model.streamTarget)
+	}
+	for index := 0; index < 20 && model.streamShown != model.streamTarget; index++ {
+		_, _ = model.Update(animationTickMsg(time.Now()))
+	}
+	if model.streamShown != model.streamTarget {
+		t.Fatalf("real stream never accumulated completely: shown=%q", model.streamShown)
+	}
+
+	model.applyPoll(pollResultMsg{messages: []store.Message{{
+		Seq: 1, SessionID: "real-stream", Role: store.RoleAgent, Body: model.streamTarget,
+	}}})
+	if model.streamMode != streamReal || model.streamSeq != 1 {
+		t.Fatalf("durable poll racing the terminal stream event lost the real preview: mode=%v seq=%d",
+			model.streamMode, model.streamSeq)
+	}
+	model.applyStreamEvent(StreamEvent{Kind: StreamFinished})
+	if model.streamMode != streamNone || !strings.Contains(model.renderMessages(), "This arrives in provider deltas.") {
+		t.Fatalf("durable real-stream landing did not replace the preview cleanly: mode=%v\n%s",
+			model.streamMode, model.renderMessages())
+	}
+
+	if partial, _ := partialJSONReply(`{"reply":"emoji \uD83D`); partial != "emoji " {
+		t.Fatalf("partial surrogate leaked a replacement rune: %q", partial)
+	}
+	if complete, _ := partialJSONReply(`{"reply":"emoji \uD83D\uDE80"}`); complete != "emoji 🚀" {
+		t.Fatalf("completed surrogate pair decoded as %q", complete)
+	}
+}
+
+func TestStreamStartAdoptsAnAlreadyPolledHeadReply(t *testing.T) {
+	message := store.Message{
+		Seq: 1, SessionID: "raced-stream", Role: store.RoleAgent, Body: "A reply that landed first.",
+	}
+	model := New(&fakeBackend{}, "raced-stream")
+	model.applyPoll(pollResultMsg{messages: []store.Message{message}})
+	if model.streamMode != streamSimulated || model.streamSeq != message.Seq {
+		t.Fatalf("early durable reply did not enter fallback pacing: mode=%v seq=%d", model.streamMode, model.streamSeq)
+	}
+
+	model.applyStreamEvent(StreamEvent{Kind: StreamStarted})
+	if model.streamMode != streamReal || model.streamSeq != message.Seq {
+		t.Fatalf("provider start did not adopt the landed reply: mode=%v seq=%d", model.streamMode, model.streamSeq)
+	}
+	model.applyStreamEvent(StreamEvent{Kind: StreamDelta, Delta: `{"reply":"A reply that landed first."}`})
+	model.applyStreamEvent(StreamEvent{Kind: StreamFinished})
+	for index := 0; index < 20 && model.streamMode != streamNone; index++ {
+		_, _ = model.Update(animationTickMsg(time.Now()))
+	}
+	if model.streamMode != streamNone || !strings.Contains(model.renderMessages(), message.Body) {
+		t.Fatalf("adopted provider stream did not settle cleanly: mode=%v\n%s",
+			model.streamMode, model.renderMessages())
+	}
+}
+
+func TestSimulatedStreamsQueueWithoutExposingLaterAnswer(t *testing.T) {
+	first := store.Message{Seq: 1, Role: store.RoleSystem, NodeID: "job-a", Body: "First answer lands."}
+	second := store.Message{Seq: 2, Role: store.RoleSystem, NodeID: "job-b", Body: "Second answer waits its turn."}
+	model := New(&fakeBackend{}, "queued-streams")
+	model.messages = []store.Message{first, second}
+	model.startSimulatedStream(first)
+	model.queueSimulatedStream(second)
+
+	if rendered := model.renderAnswer(second, 80); strings.Contains(rendered, second.Body) {
+		t.Fatalf("queued answer appeared before its reveal turn: %q", rendered)
+	}
+	for index := 0; index < 10 && model.streamSeq == first.Seq; index++ {
+		_, _ = model.Update(animationTickMsg(time.Now()))
+	}
+	if model.streamMode != streamSimulated || model.streamSeq != second.Seq || model.streamShown == second.Body {
+		t.Fatalf("second answer did not enter paced reveal: mode=%v seq=%d shown=%q",
+			model.streamMode, model.streamSeq, model.streamShown)
+	}
+	for index := 0; index < 20 && model.streamMode != streamNone; index++ {
+		_, _ = model.Update(animationTickMsg(time.Now()))
+	}
+	if model.streamMode != streamNone {
+		t.Fatalf("queued stream did not settle: mode=%v", model.streamMode)
+	}
+}
+
+func TestNonStreamingDeliverableUsesSimulatedTypewriter(t *testing.T) {
+	body := "A landed deliverable grows one token at a time in the thread."
+	snapshot := store.Snapshot{Nodes: []store.Node{
+		{ID: store.RootID},
+		{ID: "job", Parent: store.RootID, Status: store.Done, Summary: body, CreatedSeq: 1,
+			Provenance: store.Provenance{SessionID: "sim-stream", Intent: "deliver it"}},
+	}}
+	delivery := store.Message{Seq: 2, SessionID: "sim-stream", Role: store.RoleSystem, NodeID: "job", Body: body}
+	model := New(&fakeBackend{}, "sim-stream")
+	model.applyPoll(pollResultMsg{messages: []store.Message{delivery}, snapshot: snapshot, cardSnapshot: snapshot})
+	if model.streamMode != streamSimulated || model.streamShown == "" || model.streamShown == body {
+		t.Fatalf("landed deliverable did not enter simulated streaming: mode=%v shown=%q", model.streamMode, model.streamShown)
+	}
+	first := model.streamShown
+	_, _ = model.Update(animationTickMsg(time.Now()))
+	if len(model.streamShown) <= len(first) || !strings.HasPrefix(body, model.streamShown) {
+		t.Fatalf("simulated typewriter did not accumulate: before=%q after=%q", first, model.streamShown)
+	}
+	for index := 0; index < 30 && model.streamMode != streamNone; index++ {
+		_, _ = model.Update(animationTickMsg(time.Now()))
+	}
+	if model.streamMode != streamNone || !strings.Contains(model.renderMessages(), body) {
+		t.Fatalf("simulated stream did not settle to the full deliverable: mode=%v\n%s",
+			model.streamMode, model.renderMessages())
 	}
 }

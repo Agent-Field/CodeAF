@@ -186,6 +186,9 @@ func (m *Model) submitSteer() tea.Cmd {
 	if body == "" || m.nodeViewID == "" {
 		return nil
 	}
+	if strings.HasPrefix(body, "/") {
+		return m.executeSlash(body)
+	}
 	m.input.Reset()
 	m.err = nil
 	message := store.Message{
@@ -331,14 +334,14 @@ func (m *Model) renderNodeDetailsContent(width, maxLines int) string {
 
 // The activity feed's visual grammar, kept to five distinct voices so the eye
 // learns it once: a muted rule per turn, the model's own words behind ✳, tool
-// calls behind their glyph, results as faint arrows, and you in lavender.
+// calls behind their glyph, results as faint arrows, and you in powder.
 var (
 	feedTurnRule   = regexp.MustCompile(`^── turn (\d+)\s+finish=(\S*)\s+in=(\d+) out=(\d+)\s*(?:\[([^\]]*)\])?\s*──$`)
 	feedThought    = lipgloss.NewStyle().Foreground(powder)
 	feedToolGlyph  = lipgloss.NewStyle().Foreground(peach)
 	feedResult     = lipgloss.NewStyle().Foreground(muted).Faint(true)
 	feedError      = lipgloss.NewStyle().Foreground(rose)
-	feedYou        = lipgloss.NewStyle().Foreground(lavender).Bold(true)
+	feedYou        = lipgloss.NewStyle().Foreground(powder)
 	feedThoughtCap = 6
 )
 
@@ -502,15 +505,26 @@ func toolCallBlock(rest string, width int) feedBlock {
 	}
 	detail = strings.TrimSpace(detail)
 	lines := strings.Split(detail, "\n")
-	first := feedToolGlyph.Render(glyph) + inputTextStyle.Render(truncate(lines[0], max(1, width-lipgloss.Width(glyph)-2)))
+	first := feedToolGlyph.Render(glyph) + renderToolDetail(name, lines[0], max(1, width-lipgloss.Width(glyph)-2))
 	if len(lines) == 1 && lipgloss.Width(lines[0]) <= width-lipgloss.Width(glyph)-2 {
 		return feedBlock{brief: []string{first}}
 	}
-	full := []string{feedToolGlyph.Render(glyph) + inputTextStyle.Render(truncate(lines[0], max(1, width-4)))}
+	full := []string{feedToolGlyph.Render(glyph) + renderToolDetail(name, lines[0], max(1, width-4))}
 	for _, line := range lines[1:] {
 		full = append(full, "  "+mdCode.Render(truncate(strings.TrimRight(line, " "), max(1, width-2))))
 	}
 	return feedBlock{brief: []string{first + mutedStyle.Faint(true).Render(" ⋯")}, full: full}
+}
+
+func renderToolDetail(name, detail string, width int) string {
+	if (name == "write" || name == "edit") && strings.HasPrefix(detail, "/") {
+		return pathLink(detail, width)
+	}
+	detail = truncate(detail, width)
+	if name == "sh" || name == "write" || name == "edit" {
+		return mdCode.Render(detail)
+	}
+	return inputTextStyle.Render(detail)
 }
 
 // toolResultBlock compresses `1438B: content…` to a faint one-liner — enough
@@ -663,6 +677,10 @@ func (m *Model) updateMouseClick(x, y int) bool {
 	if m.activityBarBounds.contains(x, y) {
 		return m.clickCardDock(y - m.activityBarBounds.y)
 	}
+	if m.paletteCloseBounds.contains(x, y) {
+		m.closePalette()
+		return true
+	}
 	if m.inputBounds.contains(x, y) {
 		m.focus = focusInput
 		m.inputFocused = true
@@ -682,6 +700,10 @@ func (m *Model) updateMouseClick(x, y int) bool {
 		}
 		m.inputFocused = false
 		m.input.Blur()
+		return true
+	}
+	if m.graphToggleHit(x, y) {
+		m.toggleGraph()
 		return true
 	}
 	if m.graphBounds.contains(x, y) {
@@ -719,6 +741,14 @@ func (m *Model) clickCardDock(line int) bool {
 		m.focusCardDock()
 		return true
 	}
+	for _, row := range m.cardCloseRows {
+		if row.dock && row.line == line {
+			m.selectedCardID = row.cardID
+			m.cardExpanded[row.cardID] = false
+			m.setSize(m.width, m.height)
+			return true
+		}
+	}
 	for _, part := range m.cardPartRows {
 		if part.dock && part.line == line {
 			m.selectedCardID = part.cardID
@@ -748,6 +778,14 @@ func (m *Model) toggleChatMessageAt(x, y int) bool {
 	line := y - m.chatBounds.y + m.chat.YOffset
 	if line < 0 {
 		return false
+	}
+	for _, row := range m.cardCloseRows {
+		if !row.dock && row.line == line {
+			m.selectedCardID = row.cardID
+			m.cardExpanded[row.cardID] = false
+			m.setSize(m.width, m.height)
+			return true
+		}
 	}
 	for _, chip := range m.chatChipRows {
 		if line == chip.line {
