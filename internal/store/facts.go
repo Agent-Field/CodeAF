@@ -54,11 +54,14 @@ const (
 	FactLesson FactKind = "lesson"
 	// FactPlain is an entity and its stable attributes.
 	FactPlain FactKind = "fact"
+	// FactSkill is an execution-verified procedure offered to future work.
+	FactSkill FactKind = "skill"
 )
 
-// Fact statuses. Superseded facts stay in the table — the journal never
-// forgets — but retrieval returns active facts only.
+// Fact statuses. Candidates and superseded facts stay in the table — the
+// journal never forgets — but retrieval returns active facts only.
 const (
+	FactCandidate  = "candidate"
 	FactActive     = "active"
 	FactSuperseded = "superseded"
 )
@@ -73,6 +76,12 @@ type Fact struct {
 	Body   string
 	Status string
 
+	// Artifact points at a skill candidate's teaching directory, then at its
+	// installed directory after execution promotion. StatusNote records why a
+	// candidate or active skill was retired.
+	Artifact   string
+	StatusNote string
+
 	// Uses and LastUsed are retrieval telemetry for consolidation, not
 	// journaled truth: Rebuild resets them, deliberately.
 	Uses     int
@@ -85,9 +94,11 @@ CREATE TABLE IF NOT EXISTS facts (
     ts        TEXT NOT NULL,
     node_id   TEXT NOT NULL,
     scope     TEXT NOT NULL DEFAULT 'user',
-    kind      TEXT NOT NULL DEFAULT 'fact' CHECK (kind IN ('preference', 'quirk', 'lesson', 'fact')),
+    kind      TEXT NOT NULL DEFAULT 'fact' CHECK (kind IN ('preference', 'quirk', 'lesson', 'fact', 'skill')),
     body      TEXT NOT NULL,
-    status    TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'superseded')),
+    status    TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('candidate', 'active', 'superseded')),
+    artifact  TEXT NOT NULL DEFAULT '',
+    status_note TEXT NOT NULL DEFAULT '',
     uses      INTEGER NOT NULL DEFAULT 0,
     last_used TEXT NOT NULL DEFAULT ''
 );
@@ -96,21 +107,62 @@ CREATE VIRTUAL TABLE IF NOT EXISTS facts_fts USING fts5(body, scope);
 `
 
 type factPayload struct {
-	NodeID string   `json:"node_id"`
-	Scope  string   `json:"scope,omitempty"`
-	Kind   FactKind `json:"kind,omitempty"`
-	Body   string   `json:"body"`
+	NodeID   string   `json:"node_id"`
+	Scope    string   `json:"scope,omitempty"`
+	Kind     FactKind `json:"kind,omitempty"`
+	Body     string   `json:"body"`
+	Status   string   `json:"status,omitempty"`
+	Artifact string   `json:"artifact,omitempty"`
+}
+
+type factActivatedPayload struct {
+	FactSeq  int64  `json:"fact_seq"`
+	Artifact string `json:"artifact"`
 }
 
 type factSupersededPayload struct {
-	FactSeq int64 `json:"fact_seq"`
-	BySeq   int64 `json:"by_seq"`
+	FactSeq int64  `json:"fact_seq"`
+	BySeq   int64  `json:"by_seq"`
+	Reason  string `json:"reason,omitempty"`
 }
 
 // RecordFact appends one learned fact. An identical active fact in the same
 // scope is superseded rather than duplicated — write-time hygiene is what
 // keeps the notebook worth reading.
 func (s *Store) RecordFact(nodeID, scope string, kind FactKind, body string) (Fact, error) {
+	if kind == FactSkill {
+		return Fact{}, fmt.Errorf("record fact: %w: skills begin as candidates", ErrInvalid)
+	}
+	return s.recordFact(nodeID, scope, kind, body, FactActive, "", true)
+}
+
+// RecordSkillCandidate journals a procedure the distiller found in one job.
+// It is intentionally absent from retrieval until a later execution event
+// activates it.
+func (s *Store) RecordSkillCandidate(nodeID, scope, body, artifact string) (Fact, error) {
+	artifact = strings.TrimSpace(artifact)
+	if artifact == "" {
+		return Fact{}, fmt.Errorf("record skill candidate: %w: empty artifact", ErrInvalid)
+	}
+	return s.recordFact(nodeID, scope, FactSkill, body, FactCandidate, artifact, false)
+}
+
+// RewriteActiveSkill preserves an execution-verified artifact while notebook
+// consolidation rewrites its doc line. Naming the active source rather than an
+// arbitrary path keeps this maintenance API from manufacturing a capability.
+func (s *Store) RewriteActiveSkill(nodeID, scope, body string, sourceSeq int64) (Fact, error) {
+	sources, err := s.factsWhere(`seq = ? AND kind = ? AND status = ?`,
+		sourceSeq, FactSkill, FactActive)
+	if err != nil {
+		return Fact{}, fmt.Errorf("rewrite active skill: %w", err)
+	}
+	if len(sources) != 1 || strings.TrimSpace(sources[0].Artifact) == "" {
+		return Fact{}, fmt.Errorf("rewrite active skill: %w: source %d is not active", ErrInvalid, sourceSeq)
+	}
+	return s.recordFact(nodeID, scope, FactSkill, body, FactActive, sources[0].Artifact, true)
+}
+
+func (s *Store) recordFact(nodeID, scope string, kind FactKind, body, status, artifact string, deduplicate bool) (Fact, error) {
 	body = strings.TrimSpace(body)
 	if body == "" {
 		return Fact{}, fmt.Errorf("record fact: %w: empty fact", ErrInvalid)
@@ -118,9 +170,15 @@ func (s *Store) RecordFact(nodeID, scope string, kind FactKind, body string) (Fa
 	if len(body) > MaxFactBytes {
 		return Fact{}, fmt.Errorf("record fact: %w: fact is %d bytes (limit %d)", ErrInvalid, len(body), MaxFactBytes)
 	}
+	if kind == FactSkill && strings.ContainsAny(body, "\r\n") {
+		return Fact{}, fmt.Errorf("record skill: %w: doc must be one line", ErrInvalid)
+	}
 	scope = normalizeScope(scope)
 	if !validFactKind(kind) {
 		kind = FactPlain
+	}
+	if !validFactStatus(status) {
+		status = FactActive
 	}
 
 	tx, err := s.db.BeginTx(context.Background(), nil)
@@ -136,15 +194,17 @@ func (s *Store) RecordFact(nodeID, scope string, kind FactKind, body string) (Fa
 	}
 
 	var duplicate int64
-	err = tx.QueryRow(`
-		SELECT seq FROM facts
-		WHERE scope = ? AND status = ? AND lower(body) = lower(?)
-		LIMIT 1`, scope, FactActive, body).Scan(&duplicate)
-	if err != nil && err != sql.ErrNoRows {
-		return Fact{}, fmt.Errorf("record fact: %w", err)
+	if deduplicate {
+		err = tx.QueryRow(`
+			SELECT seq FROM facts
+			WHERE scope = ? AND status = ? AND lower(body) = lower(?)
+			LIMIT 1`, scope, FactActive, body).Scan(&duplicate)
+		if err != nil && err != sql.ErrNoRows {
+			return Fact{}, fmt.Errorf("record fact: %w", err)
+		}
 	}
 
-	payload := factPayload{NodeID: nodeID, Scope: scope, Kind: kind, Body: body}
+	payload := factPayload{NodeID: nodeID, Scope: scope, Kind: kind, Body: body, Status: status, Artifact: artifact}
 	seq, at, err := appendEvent(tx, nodeID, EventFactLearned, payload)
 	if err != nil {
 		return Fact{}, fmt.Errorf("record fact: %w", err)
@@ -164,19 +224,49 @@ func (s *Store) RecordFact(nodeID, scope string, kind FactKind, body string) (Fa
 	if err := tx.Commit(); err != nil {
 		return Fact{}, fmt.Errorf("record fact: %w", err)
 	}
-	return Fact{Seq: seq, Time: at, NodeID: nodeID, Scope: scope, Kind: kind, Body: body, Status: FactActive}, nil
+	return Fact{Seq: seq, Time: at, NodeID: nodeID, Scope: scope, Kind: kind, Body: body, Status: status, Artifact: artifact}, nil
+}
+
+// ActivateSkill journals the only transition that makes a candidate
+// retrievable. The caller has already copied and executed the artifact check.
+func (s *Store) ActivateSkill(factSeq int64, artifact string) error {
+	artifact = strings.TrimSpace(artifact)
+	if artifact == "" {
+		return fmt.Errorf("activate skill: %w: empty artifact", ErrInvalid)
+	}
+	tx, err := s.db.BeginTx(context.Background(), nil)
+	if err != nil {
+		return fmt.Errorf("activate skill: %w", err)
+	}
+	defer tx.Rollback()
+
+	payload := factActivatedPayload{FactSeq: factSeq, Artifact: artifact}
+	if _, _, err := appendEvent(tx, "", EventFactActivated, payload); err != nil {
+		return fmt.Errorf("activate skill: %w", err)
+	}
+	if err := applyFactActivation(tx, payload); err != nil {
+		return fmt.Errorf("activate skill: %w", err)
+	}
+	return tx.Commit()
 }
 
 // SupersedeFact retires one active fact in favour of another, journaled.
 // Consolidation uses it to rewrite a scope into fewer, better lines.
 func (s *Store) SupersedeFact(factSeq, bySeq int64) error {
+	return s.SupersedeFactWithReason(factSeq, bySeq, "")
+}
+
+// SupersedeFactWithReason records why a belief retired. Skill trial failures
+// use the reason as durable execution evidence even when there is no replacing
+// fact and bySeq is zero.
+func (s *Store) SupersedeFactWithReason(factSeq, bySeq int64, reason string) error {
 	tx, err := s.db.BeginTx(context.Background(), nil)
 	if err != nil {
 		return fmt.Errorf("supersede fact: %w", err)
 	}
 	defer tx.Rollback()
 
-	payload := factSupersededPayload{FactSeq: factSeq, BySeq: bySeq}
+	payload := factSupersededPayload{FactSeq: factSeq, BySeq: bySeq, Reason: strings.TrimSpace(reason)}
 	if _, _, err := appendEvent(tx, "", EventFactSuperseded, payload); err != nil {
 		return fmt.Errorf("supersede fact: %w", err)
 	}
@@ -184,6 +274,21 @@ func (s *Store) SupersedeFact(factSeq, bySeq int64) error {
 		return fmt.Errorf("supersede fact: %w", err)
 	}
 	return tx.Commit()
+}
+
+// SkillFacts lists skills in one status, newest first. Empty status includes
+// candidates, active skills, and retired entries for reconciliation.
+func (s *Store) SkillFacts(status string, limit int) ([]Fact, error) {
+	if limit <= 0 {
+		limit = 100
+	}
+	if status == "" {
+		return s.factsWhere(`kind = ? ORDER BY seq DESC LIMIT ?`, FactSkill, limit)
+	}
+	if !validFactStatus(status) {
+		return nil, fmt.Errorf("query skills: %w: invalid status %q", ErrInvalid, status)
+	}
+	return s.factsWhere(`kind = ? AND status = ? ORDER BY seq DESC LIMIT ?`, FactSkill, status, limit)
 }
 
 // FactQuery is one retrieval: ordered scope cues (most specific first) plus
@@ -238,7 +343,7 @@ func (s *Store) searchFacts(query FactQuery, countUses bool) ([]Fact, error) {
 
 	if terms := ftsQueryFrom(query.Terms); terms != "" && len(results) < query.Limit {
 		rows, err := s.db.Query(`
-			SELECT f.seq, f.ts, f.node_id, f.scope, f.kind, f.body, f.status, f.uses, f.last_used
+			SELECT f.seq, f.ts, f.node_id, f.scope, f.kind, f.body, f.status, f.artifact, f.status_note, f.uses, f.last_used
 			FROM facts_fts
 			JOIN facts AS f ON f.seq = facts_fts.rowid
 			WHERE facts_fts MATCH ? AND f.status = ?
@@ -293,7 +398,7 @@ func (s *Store) RecentFacts(limit int) ([]Fact, error) {
 
 func (s *Store) factsWhere(where string, args ...any) ([]Fact, error) {
 	rows, err := s.db.Query(`
-		SELECT seq, ts, node_id, scope, kind, body, status, uses, last_used
+		SELECT seq, ts, node_id, scope, kind, body, status, artifact, status_note, uses, last_used
 		FROM facts WHERE `+where, args...)
 	if err != nil {
 		return nil, fmt.Errorf("query facts: %w", err)
@@ -308,7 +413,7 @@ func scanFacts(rows *sql.Rows) ([]Fact, error) {
 		var fact Fact
 		var timestamp, lastUsed string
 		if err := rows.Scan(&fact.Seq, &timestamp, &fact.NodeID, &fact.Scope, &fact.Kind,
-			&fact.Body, &fact.Status, &fact.Uses, &lastUsed); err != nil {
+			&fact.Body, &fact.Status, &fact.Artifact, &fact.StatusNote, &fact.Uses, &lastUsed); err != nil {
 			return nil, fmt.Errorf("scan fact: %w", err)
 		}
 		at, err := parseTime(timestamp)
@@ -335,19 +440,54 @@ func applyFactView(tx *sql.Tx, payload factPayload, seq int64, at time.Time) err
 	if !validFactKind(kind) {
 		kind = FactPlain
 	}
+	status := payload.Status
+	if !validFactStatus(status) {
+		// fact_learned events predating skill candidacy have no status field.
+		status = FactActive
+	}
+
 	if _, err := tx.Exec(`
-		INSERT INTO facts (seq, ts, node_id, scope, kind, body) VALUES (?, ?, ?, ?, ?, ?)`,
-		seq, formatTime(at), payload.NodeID, scope, kind, payload.Body); err != nil {
+		INSERT INTO facts (seq, ts, node_id, scope, kind, body, status, artifact)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+		seq, formatTime(at), payload.NodeID, scope, kind, payload.Body, status, payload.Artifact); err != nil {
 		return err
+	}
+	if status != FactActive {
+		return nil
 	}
 	_, err := tx.Exec(`INSERT INTO facts_fts (rowid, body, scope) VALUES (?, ?, ?)`,
 		seq, payload.Body, scope)
 	return err
 }
 
+func applyFactActivation(tx *sql.Tx, payload factActivatedPayload) error {
+	result, err := tx.Exec(`
+		UPDATE facts SET status = ?, artifact = ?, status_note = ''
+		WHERE seq = ? AND kind = ? AND status = ?`,
+		FactActive, payload.Artifact, payload.FactSeq, FactSkill, FactCandidate)
+	if err != nil {
+		return err
+	}
+	changed, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if changed != 1 {
+		return fmt.Errorf("activation targets missing or settled skill %d", payload.FactSeq)
+	}
+	var body, scope string
+	if err := tx.QueryRow(`SELECT body, scope FROM facts WHERE seq = ?`, payload.FactSeq).Scan(&body, &scope); err != nil {
+		return err
+	}
+	_, err = tx.Exec(`INSERT INTO facts_fts (rowid, body, scope) VALUES (?, ?, ?)`,
+		payload.FactSeq, body, scope)
+	return err
+}
 func applyFactSupersession(tx *sql.Tx, payload factSupersededPayload) error {
-	result, err := tx.Exec(`UPDATE facts SET status = ? WHERE seq = ? AND status = ?`,
-		FactSuperseded, payload.FactSeq, FactActive)
+	result, err := tx.Exec(`
+		UPDATE facts SET status = ?, status_note = ?
+		WHERE seq = ? AND status <> ?`,
+		FactSuperseded, payload.Reason, payload.FactSeq, FactSuperseded)
 	if err != nil {
 		return err
 	}
@@ -391,13 +531,21 @@ func normalizeScope(scope string) string {
 
 func validFactKind(kind FactKind) bool {
 	switch kind {
-	case FactPreference, FactQuirk, FactLesson, FactPlain:
+	case FactPreference, FactQuirk, FactLesson, FactPlain, FactSkill:
 		return true
 	}
 	return false
 }
 
-// migrateFactsSchema upgrades a pre-scope facts table in place: drop the
+func validFactStatus(status string) bool {
+	switch status {
+	case FactCandidate, FactActive, FactSuperseded:
+		return true
+	}
+	return false
+}
+
+// migrateFactsSchema upgrades an older facts table in place: drop the
 // materialized view and index, recreate, and replay the journal's fact
 // events. The journal is the truth; the view is disposable.
 func migrateFactsSchema(db *sql.DB) error {
@@ -406,6 +554,8 @@ func migrateFactsSchema(db *sql.DB) error {
 		return err
 	}
 	hasScope := false
+	hasArtifact := false
+	hasStatusNote := false
 	for rows.Next() {
 		var cid int
 		var name, kind string
@@ -418,12 +568,22 @@ func migrateFactsSchema(db *sql.DB) error {
 		if name == "scope" {
 			hasScope = true
 		}
+		if name == "artifact" {
+			hasArtifact = true
+		}
+		if name == "status_note" {
+			hasStatusNote = true
+		}
 	}
 	rows.Close()
 	if err := rows.Err(); err != nil {
 		return err
 	}
-	if hasScope {
+	var createSQL string
+	if err := db.QueryRow(`SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'facts'`).Scan(&createSQL); err != nil {
+		return err
+	}
+	if hasScope && hasArtifact && hasStatusNote && strings.Contains(createSQL, "'skill'") && strings.Contains(createSQL, "'candidate'") {
 		return nil
 	}
 
@@ -446,7 +606,7 @@ func migrateFactsSchema(db *sql.DB) error {
 		return err
 	}
 	for _, event := range events {
-		if event.Kind != EventFactLearned && event.Kind != EventFactSuperseded {
+		if event.Kind != EventFactLearned && event.Kind != EventFactActivated && event.Kind != EventFactSuperseded {
 			continue
 		}
 		if err := replayEvent(tx, event); err != nil {

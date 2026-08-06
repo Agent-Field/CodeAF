@@ -75,6 +75,22 @@ func TestDeliveryGateSeesNotebookPreferencesAndNoPanelStaysBare(t *testing.T) {
 	}
 }
 
+func TestParseLearnedFactsCarriesSkillCandidate(t *testing.T) {
+	learned := parseLearnedFacts(`{"facts":[{"scope":"tool:git","kind":"skill","body":"git-audit checks a repository","skill":{"artifact":" /workspace/git-audit "}}]}`, 5)
+	if len(learned) != 1 || learned[0].Kind != store.FactSkill || learned[0].Skill == nil ||
+		learned[0].Skill.Artifact != "/workspace/git-audit" {
+		t.Fatalf("parsed skill candidate = %+v", learned)
+	}
+
+	malformed := parseLearnedFacts(`{"facts":[
+		{"scope":"tool:git","kind":"skill","body":"missing artifact"},
+		{"scope":"tool:git","kind":"lesson","body":"wrong kind","skill":{"artifact":"/tmp/x"}}
+	]}`, 5)
+	if len(malformed) != 1 || malformed[0].Kind != store.FactSkill || malformed[0].Skill != nil {
+		t.Fatalf("malformed candidate handling = %+v", malformed)
+	}
+}
+
 func TestSingleLeafProfileCarriesPolishedGateVerdict(t *testing.T) {
 	dir := t.TempDir()
 	settings := config.Config{Model: "configured/model", ProfileDir: dir}
