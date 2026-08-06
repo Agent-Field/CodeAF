@@ -1,0 +1,257 @@
+package head
+
+import (
+	"strconv"
+	"strings"
+	"unicode"
+
+	"github.com/Agent-Field/aforge-v2/internal/store"
+)
+
+func (h *Head) answerPendingQuestion(user store.Message) (bool, error) {
+	question, pending, err := h.store.PendingQuestion(user.SessionID, user.Seq)
+	if err != nil || !pending {
+		return false, err
+	}
+	option, selected := selectQuestionOption(user.Body, question.Options)
+	if selected {
+		return true, h.applyQuestionOption(user, question, option)
+	}
+
+	if charterID, ok := charterQuestionID(question.Options); ok {
+		if cadence := extractCadence(user.Body); cadence != "" {
+			return true, h.requestCharterCommand(user, store.CommandCharterCadence, charterID, cadence)
+		}
+		// Ratification keeps free text available to the conversational router;
+		// only an explicit choice or cadence phrase crosses a durable transition.
+		return false, nil
+	}
+	if question.CommandSeq == 0 {
+		return false, nil
+	}
+	return true, h.continueCompilerQuestion(user, question, strings.TrimSpace(user.Body))
+}
+
+func selectQuestionOption(reply string, options []store.QuestionOption) (store.QuestionOption, bool) {
+	normalized := strings.ToLower(strings.Trim(strings.TrimSpace(reply), " .,!?:;\t\n\r"))
+	if number, err := strconv.Atoi(normalized); err == nil && number > 0 && number <= len(options) {
+		return options[number-1], true
+	}
+	for _, option := range options {
+		if normalized == strings.ToLower(strings.TrimSpace(option.Label)) ||
+			(option.Value != "" && normalized == strings.ToLower(strings.TrimSpace(option.Value))) {
+			return option, true
+		}
+	}
+	for _, option := range options {
+		label := strings.ToLower(strings.TrimSpace(option.Label))
+		value := strings.ToLower(strings.TrimSpace(option.Value))
+		if affirmativeRailReply(normalized) &&
+			(strings.HasPrefix(label, "yes") || strings.Contains(value, ":ratify:")) {
+			return option, true
+		}
+		if negativeReply(normalized) &&
+			(strings.Contains(label, "not standing") || strings.Contains(value, ":once:")) {
+			return option, true
+		}
+	}
+	return store.QuestionOption{}, false
+}
+
+func negativeReply(reply string) bool {
+	switch reply {
+	case "n", "no", "no thanks", "decline", "not standing", "once", "just once":
+		return true
+	default:
+		return false
+	}
+}
+
+func charterQuestionID(options []store.QuestionOption) (string, bool) {
+	for _, option := range options {
+		parts := strings.Split(option.Value, ":")
+		if len(parts) >= 3 && parts[0] == "charter" && strings.TrimSpace(parts[2]) != "" {
+			return parts[2], true
+		}
+	}
+	return "", false
+}
+
+func (h *Head) applyQuestionOption(user store.Message, question store.Message, option store.QuestionOption) error {
+	parts := strings.Split(option.Value, ":")
+	if len(parts) >= 3 && parts[0] == "charter" {
+		id := parts[2]
+		switch parts[1] {
+		case "ratify":
+			return h.requestCharterCommand(user, store.CommandCharterRatify, id, option.Label)
+		case "pause":
+			return h.requestCharterCommand(user, store.CommandCharterPause, id, option.Label)
+		case "retire":
+			return h.requestCharterCommand(user, store.CommandCharterRetire, id, option.Label)
+		case "once":
+			return h.requestCharterCommand(user, store.CommandCharterOnce, id, option.Label)
+		case "cadence":
+			if len(parts) > 3 {
+				return h.requestCharterCommand(user, store.CommandCharterCadence, id,
+					strings.Join(parts[3:], ":"))
+			}
+			return h.askForCadence(user.SessionID, id)
+		}
+	}
+	answer := strings.TrimSpace(option.Label)
+	if answer == "" {
+		answer = strings.TrimSpace(option.Value)
+	}
+	return h.continueCompilerQuestion(user, question, answer)
+}
+
+func (h *Head) continueCompilerQuestion(user store.Message, question store.Message, answer string) error {
+	source, found, err := h.store.CommandBySeq(question.CommandSeq)
+	if err != nil {
+		return err
+	}
+	if !found || source.Kind != store.CommandSplice || strings.TrimSpace(answer) == "" {
+		return h.postAgent(user.SessionID, "Tell me which option you want, or answer in your own words.", 0)
+	}
+	instruction := source.Instruction + "\n\nAnswer to compiler question: " + answer
+	command, err := h.store.RequestCommand(store.Command{
+		SessionID: user.SessionID, Kind: store.CommandSplice, Instruction: instruction,
+	})
+	if err != nil {
+		return err
+	}
+	return h.postAgent(user.SessionID, "Got it — proceeding with that choice.", command.Seq)
+}
+
+func (h *Head) askForCadence(sessionID, charterID string) error {
+	return h.postQuestion(sessionID, "What cadence should I use?", 0, []store.QuestionOption{
+		{Label: "hourly", Value: "charter:cadence:" + charterID + ":hourly"},
+		{Label: "daily", Value: "charter:cadence:" + charterID + ":daily"},
+		{Label: "weekly", Value: "charter:cadence:" + charterID + ":weekly"},
+	})
+}
+
+func (h *Head) requestCharterCommand(user store.Message, kind store.CommandKind, id, instruction string) error {
+	command, err := h.store.RequestCommand(store.Command{
+		SessionID: user.SessionID, Kind: kind, Target: id, Instruction: instruction,
+	})
+	if err != nil {
+		return err
+	}
+	reply := "Updating that standing charter."
+	switch kind {
+	case store.CommandCharterRatify:
+		reply = "Standing it up."
+	case store.CommandCharterPause:
+		reply = "Pausing that charter."
+	case store.CommandCharterRetire:
+		reply = "Retiring that charter."
+	case store.CommandCharterOnce:
+		reply = "Keeping it one-time."
+	case store.CommandCharterCadence:
+		reply = "Changing that cadence."
+	}
+	return h.postAgent(user.SessionID, reply, command.Seq)
+}
+
+func (h *Head) postQuestion(sessionID, body string, commandSeq int64, options []store.QuestionOption) error {
+	_, err := h.store.PostMessage(store.Message{
+		SessionID: sessionID, Role: store.RoleAgent, Body: body,
+		CommandSeq: commandSeq, Options: options,
+	})
+	return err
+}
+
+func (h *Head) manageCharter(user store.Message) (bool, error) {
+	kind, reference, cadence, managing := charterManagement(user.Body)
+	if !managing {
+		return false, nil
+	}
+	matches, err := h.store.SearchActiveCharters(reference)
+	if err != nil {
+		return true, err
+	}
+	if len(matches) == 0 {
+		return true, h.postAgent(user.SessionID, "I couldn't match that to an active charter.", 0)
+	}
+	if len(matches) > 1 {
+		options := make([]store.QuestionOption, 0, len(matches))
+		for _, charter := range matches {
+			value := "charter:" + charterOptionAction(kind) + ":" + charter.ID
+			if kind == store.CommandCharterCadence {
+				value += ":" + cadence
+			}
+			options = append(options, store.QuestionOption{
+				Label: firstLine(charter.Spec.Invariant), Value: value,
+			})
+		}
+		return true, h.postQuestion(user.SessionID, "Which standing charter do you mean?", 0, options)
+	}
+	return true, h.requestCharterCommand(user, kind, matches[0].ID, managementInstruction(kind, cadence))
+}
+
+func charterManagement(message string) (store.CommandKind, string, string, bool) {
+	lower := strings.ToLower(strings.TrimSpace(message))
+	kind := store.CommandKind("")
+	cadence := ""
+	switch {
+	case strings.Contains(lower, "stop watching") || strings.Contains(lower, "stop monitoring") ||
+		strings.HasPrefix(lower, "retire "):
+		kind = store.CommandCharterRetire
+	case strings.HasPrefix(lower, "pause ") || strings.Contains(lower, " pause the "):
+		kind = store.CommandCharterPause
+	default:
+		cadence = extractCadence(message)
+		if cadence != "" && (strings.HasPrefix(lower, "make ") || strings.HasPrefix(lower, "change ") ||
+			strings.HasPrefix(lower, "set ")) {
+			kind = store.CommandCharterCadence
+		}
+	}
+	if kind == "" {
+		return "", "", "", false
+	}
+	if kind == store.CommandCharterCadence && cadence == "" {
+		return "", "", "", false
+	}
+	reference := charterReference(lower, cadence)
+	return kind, reference, cadence, true
+}
+
+func charterReference(message, cadence string) string {
+	if cadence != "" {
+		message = strings.ReplaceAll(message, strings.ToLower(cadence), " ")
+	}
+	stop := map[string]bool{
+		"please": true, "stop": true, "watching": true, "watch": true,
+		"monitoring": true, "monitor": true, "retire": true, "pause": true,
+		"make": true, "change": true, "set": true, "cadence": true,
+		"the": true, "it": true, "to": true,
+	}
+	var kept []string
+	for _, word := range strings.FieldsFunc(message, func(r rune) bool {
+		return !unicode.IsLetter(r) && !unicode.IsNumber(r)
+	}) {
+		if !stop[word] {
+			kept = append(kept, word)
+		}
+	}
+	return strings.Join(kept, " ")
+}
+
+func charterOptionAction(kind store.CommandKind) string {
+	switch kind {
+	case store.CommandCharterPause:
+		return "pause"
+	case store.CommandCharterRetire:
+		return "retire"
+	default:
+		return "cadence"
+	}
+}
+
+func managementInstruction(kind store.CommandKind, cadence string) string {
+	if kind == store.CommandCharterCadence {
+		return cadence
+	}
+	return string(kind)
+}

@@ -176,9 +176,19 @@ func (h *Head) poll(ctx context.Context, cursor int64) (int64, error) {
 }
 
 func (h *Head) answer(ctx context.Context, user store.Message) error {
+	if handled, err := h.answerPendingQuestion(user); err != nil {
+		return fmt.Errorf("serve head: answer selectable question: %w", err)
+	} else if handled {
+		return nil
+	}
 	if raised, err := h.raiseRailFromReply(user); err != nil {
 		return fmt.Errorf("serve head: raise daily rail: %w", err)
 	} else if raised {
+		return nil
+	}
+	if handled, err := h.manageCharter(user); err != nil {
+		return fmt.Errorf("serve head: manage charter: %w", err)
+	} else if handled {
 		return nil
 	}
 

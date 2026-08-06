@@ -2,6 +2,7 @@ package config
 
 import (
 	"context"
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"testing"
@@ -173,5 +174,38 @@ func TestDailyBudgetUSDDefaultOverrideAndUnlimited(t *testing.T) {
 				t.Fatalf("invalid daily budget %q was accepted", raw)
 			}
 		})
+	}
+}
+
+func TestDailyBudgetUSDPersistedConfigAndEnvironmentPrecedence(t *testing.T) {
+	dir := t.TempDir()
+	path := BudgetConfigPath(dir)
+	if err := os.WriteFile(path, []byte(`{"future_setting":"preserved"}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := WriteDailyBudgetUSD(dir, 35); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("AFORGE_DAILY_BUDGET", "")
+	got, err := DailyBudgetUSDAt(dir)
+	if err != nil || got != 35 {
+		t.Fatalf("persisted daily budget = %v err=%v", got, err)
+	}
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var values map[string]any
+	if err := json.Unmarshal(raw, &values); err != nil {
+		t.Fatal(err)
+	}
+	if values["future_setting"] != "preserved" || values["daily_budget_usd"] != float64(35) {
+		t.Fatalf("persisted config = %#v", values)
+	}
+
+	t.Setenv("AFORGE_DAILY_BUDGET", "42")
+	got, err = DailyBudgetUSDAt(dir)
+	if err != nil || got != 42 {
+		t.Fatalf("environment override = %v err=%v", got, err)
 	}
 }
