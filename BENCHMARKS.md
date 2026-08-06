@@ -209,8 +209,44 @@ that were graded, all of them budget stops from one task. `exec.leaf` is a singl
 global class, so that lesson was applied to every leaf of every other task.
 
 Six router defects and their evidence are in
-[`bench/ab-routing/REPORT.md`](bench/ab-routing/REPORT.md). The recommendation is
-not to ship the router in this configuration.
+[`bench/ab-routing/REPORT.md`](bench/ab-routing/REPORT.md). The recommendation
+after that arm was not to ship the router in that configuration.
+
+### Arm B2 — after the six defects were fixed
+
+The same suite plus a fourth task, against the fixed router. Full write-up in
+[`bench/ab-routing/REPORT-B2.md`](bench/ab-routing/REPORT-B2.md).
+
+| task | A success | B2 success | A scores | B2 scores |
+| ---- | --------- | ---------- | -------- | --------- |
+| t1-logstore | 0/3 | 0/3 | 0.667 x3 | 0.889, 0.667, 0.000 |
+| t2-synthesis | 3/3 | 2/3 | 1.000 x3 | 1.000, 0.875, 1.000 |
+| t3-shiftplan | 0/3 | **2/3** | 0.857, 0.571, 0.714 | 0.857, 1.000, 1.000 |
+| t4-pathmatch | 1/3 | **3/3** | 1.000, 0.929, 0.929 | 1.000 x3 |
+| **overall** | **4/12** | **7/12** | | |
+
+**Routing works now, on this suite, for +18% cost per cell** ($0.125 to $0.147).
+A fresh-ledger control sits at 5/12, so the gain is the routing rather than the
+ledger. Every panel member was exercised; `moonshotai/kimi-k2.6` was called 36
+times, all of them leaf escalations, all upward.
+
+**The collapse cannot be reproduced.** Replaying t2 against the preserved ledger
+that produced 0.000 in arm B now scores 1.000, twice. `aforge models` shows why:
+the poisoned rating still reads -0.98 and now carries "under the gate — ordering
+uses the prior until n=8".
+
+**Continual learning is inert rather than harmful.** The ledger reordered
+nothing across twelve cells: the gate that stops bad evidence driving the order
+also means eight graded observations never accumulate at this volume. Arm B's
+learning was measurable and harmful; B2's is neither, which is a strict
+improvement and is not the same as working.
+
+Two findings stand open. The escalation target accumulates no evidence about
+itself — every one of kimi's 36 attempts was an unverifiable leaf — so its
+position rests on an operator role hint alone. And t1 did not move: its leaves
+carry 2.2M prompt tokens and run out of budget, which a stronger model does not
+fix. That is an at-scale failure, not a capability one, and routing is the wrong
+instrument for it.
 
 ## 4. Caveats
 
