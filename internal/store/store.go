@@ -74,6 +74,12 @@ const (
 	EventNodeFailed     EventKind = "node_failed"
 	EventNodeReleased   EventKind = "node_released"
 	EventSubtreeFolded  EventKind = "subtree_folded"
+
+	// Thread events: the conversation and its asynchronous mutation requests
+	// live in the same journal as the graph they act on.
+	EventMessagePosted    EventKind = "message_posted"
+	EventCommandRequested EventKind = "command_requested"
+	EventCommandResolved  EventKind = "command_resolved"
 )
 
 var (
@@ -295,6 +301,9 @@ func Open(path string) (*Store, error) {
 	}
 	if _, err := db.Exec(schema); err != nil {
 		return closeOnError(fmt.Errorf("initialize store schema: %w", err))
+	}
+	if _, err := db.Exec(threadSchema); err != nil {
+		return closeOnError(fmt.Errorf("initialize thread schema: %w", err))
 	}
 
 	store := &Store{db: db}
