@@ -156,6 +156,83 @@ func TestMessageArrivalKeepsStickyBottomAndPreservesPinnedScroll(t *testing.T) {
 	}
 }
 
+func TestMessagesRenderAsYouAndAforge(t *testing.T) {
+	model := New(&fakeBackend{}, "test-session")
+	model.messages = []store.Message{
+		{Time: time.Now(), Role: store.RoleUser, Body: "Please investigate this."},
+		{Time: time.Now(), Role: store.RoleAgent, Body: "I am on it."},
+		{Time: time.Now(), Role: store.RoleSystem, NodeID: "answer-node", Body: "Here is the completed answer."},
+	}
+
+	rendered := model.renderMessages()
+	for _, expected := range []string{"you", "aforge", "Here is the completed answer."} {
+		if !strings.Contains(rendered, expected) {
+			t.Fatalf("messages do not contain %q:\n%s", expected, rendered)
+		}
+	}
+	for _, unwanted := range []string{"USER", "AGENT", "SYSTEM", "◇"} {
+		if strings.Contains(rendered, unwanted) {
+			t.Fatalf("messages contain retired role treatment %q:\n%s", unwanted, rendered)
+		}
+	}
+	if _, label := messagePresentation(model.messages[0]); label != "you" {
+		t.Fatalf("user label = %q, want you", label)
+	}
+	for _, message := range model.messages[1:] {
+		if _, label := messagePresentation(message); label != "aforge" {
+			t.Fatalf("aforge label = %q", label)
+		}
+	}
+}
+
+func TestReceiptsCollapseAndExpandTogether(t *testing.T) {
+	model := New(&fakeBackend{}, "test-session")
+	model.messages = []store.Message{
+		{Time: time.Now(), Role: store.RoleAgent, Body: "I have enough context to continue."},
+		{
+			Time:       time.Now(),
+			Role:       store.RoleSystem,
+			CommandSeq: 42,
+			Body:       "Read the compiled request.\nAssumed: the local branch is authoritative.\nAssumed: no schema changes.",
+		},
+		{
+			Time: time.Now(),
+			Role: store.RoleSystem,
+			Body: "Background sync complete.\nThis is secondary plumbing.",
+		},
+	}
+	model.refreshChat()
+
+	collapsed := model.renderMessages()
+	if !strings.Contains(collapsed, "· reading + 2 assumptions — v to expand") {
+		t.Fatalf("collapsed receipt summary is missing:\n%s", collapsed)
+	}
+	if strings.Contains(collapsed, "Read the compiled request.") {
+		t.Fatalf("collapsed receipt exposed its body:\n%s", collapsed)
+	}
+	if !strings.Contains(collapsed, "· Background sync complete. — v to expand") ||
+		strings.Contains(collapsed, "This is secondary plumbing.") {
+		t.Fatalf("rare system message did not collapse to its first line:\n%s", collapsed)
+	}
+	if count := strings.Count(collapsed, "aforge"); count != 1 {
+		t.Fatalf("receipt created another speaker block: found %d aforge labels\n%s", count, collapsed)
+	}
+
+	_, _ = model.Update(tea.KeyMsg{Type: tea.KeyTab})
+	_, _ = model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'v'}})
+	if !model.receiptsExpanded {
+		t.Fatal("v from chat focus did not expand receipts")
+	}
+	expanded := model.renderMessages()
+	for _, expected := range []string{
+		"Read the compiled request.", "Assumed: no schema changes.", "This is secondary plumbing.", "v to collapse",
+	} {
+		if !strings.Contains(expanded, expected) {
+			t.Fatalf("expanded receipt does not contain %q:\n%s", expected, expanded)
+		}
+	}
+}
+
 func TestSlashPaletteOpensFiltersAndCycles(t *testing.T) {
 	model := NewWithCommander(&fakeBackend{}, "test-session", newFakeCommander())
 	typeIntoModel(model, "/")
@@ -177,6 +254,21 @@ func TestSlashPaletteOpensFiltersAndCycles(t *testing.T) {
 	view = model.View()
 	if !strings.Contains(view, "「/model」") || strings.Contains(view, "「/session」") {
 		t.Fatalf("fuzzy command filtering is wrong:\n%s", view)
+	}
+}
+
+func TestHintsDescribeReceiptsGraphViewAndTwoVoices(t *testing.T) {
+	model := NewWithCommander(&fakeBackend{}, "test-session", newFakeCommander())
+	if view := model.View(); !strings.Contains(view, "v receipts") {
+		t.Fatalf("bottom hint does not mention receipt toggling:\n%s", view)
+	}
+
+	_ = model.executeSlash("/help")
+	view := model.View()
+	for _, expected := range []string{"you ask · aforge answers", "v toggles receipts", "tab focus / graph view"} {
+		if !strings.Contains(view, expected) {
+			t.Fatalf("help does not contain %q:\n%s", expected, view)
+		}
 	}
 }
 
@@ -337,14 +429,54 @@ func TestEnterPostsUserMessageAndClearsInput(t *testing.T) {
 	}
 }
 
-func TestNarrowTerminalsStackPanes(t *testing.T) {
+func TestNarrowTerminalsCollapseGraphToStripAndCycleFullPane(t *testing.T) {
 	model := New(&fakeBackend{}, "test-session")
+	model.snapshot = store.Snapshot{Nodes: []store.Node{
+		{ID: store.RootID},
+		{ID: "running", Parent: store.RootID, Brief: "Active work", Status: store.Running},
+		{ID: "waiting", Parent: store.RootID, Brief: "Queued work", Status: store.Pending},
+	}}
 	_, _ = model.Update(tea.WindowSizeMsg{Width: 72, Height: 30})
 	if model.horizontal {
-		t.Fatal("72-column terminal should stack panes")
+		t.Fatal("72-column terminal should collapse the graph rail")
 	}
 	if model.chatWidth != 72 || model.graphWidth != 72 {
-		t.Fatalf("stacked widths are chat=%d graph=%d, want 72", model.chatWidth, model.graphWidth)
+		t.Fatalf("full-pane widths are chat=%d graph=%d, want 72", model.chatWidth, model.graphWidth)
+	}
+	strip := model.renderGraphStrip()
+	if !strings.Contains(strip, "● 1 running · ○ 1 waiting — tab to view") {
+		t.Fatalf("narrow graph strip is wrong: %s", strip)
+	}
+	if view := model.View(); !strings.Contains(view, "CHAT") || strings.Contains(view, "GRAPH") {
+		t.Fatalf("narrow default view should show only chat:\n%s", view)
+	}
+
+	_, _ = model.Update(tea.KeyMsg{Type: tea.KeyTab})
+	_, _ = model.Update(tea.KeyMsg{Type: tea.KeyTab})
+	if view := model.View(); !strings.Contains(view, "GRAPH") || strings.Contains(view, "CHAT") {
+		t.Fatalf("graph focus should show the full-pane graph:\n%s", view)
+	}
+}
+
+func TestWideLayoutKeepsChatAtEightyPercentAndWrapsMessages(t *testing.T) {
+	model := New(&fakeBackend{}, "test-session")
+	model.setSize(120, 30)
+	if !model.horizontal {
+		t.Fatal("120-column terminal should show the graph rail")
+	}
+	available := model.width - 2
+	percentage := model.chatWidth * 100 / available
+	if percentage < 78 || percentage > 80 {
+		t.Fatalf("chat width = %d%% of available width, want 78-80%%", percentage)
+	}
+	model.messages = []store.Message{{
+		Time: time.Now(), Role: store.RoleAgent,
+		Body: strings.Repeat("a long answer should wrap cleanly inside the primary chat pane ", 8),
+	}}
+	for _, line := range strings.Split(model.renderMessages(), "\n") {
+		if width := lipgloss.Width(line); width > model.chat.Width {
+			t.Fatalf("wrapped message line is %d columns, viewport is %d:\n%s", width, model.chat.Width, line)
+		}
 	}
 }
 
