@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/Agent-Field/aforge-v2/internal/provider"
+	"github.com/Agent-Field/aforge-v2/internal/store"
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 )
 
@@ -88,9 +89,18 @@ type Linear struct {
 	client    Completer
 	workspace *Workspace
 	web       *Web
+	history   *store.Store
 	maxTurns  int
 	maxTokens int
 	deadline  time.Duration
+}
+
+// WithStore enables the optional persistent-memory pull tool. It mutates the
+// just-constructed loop for fluent wiring; callers that do not opt in retain
+// the original four-tool completion floor.
+func (l *Linear) WithStore(history *store.Store) *Linear {
+	l.history = history
+	return l
 }
 
 // Completer is the slice of the provider adapter this package needs.
@@ -144,7 +154,7 @@ func (l *Linear) Run(ctx context.Context, task Task) (*Outcome, error) {
 	deadline, _ := ctx.Deadline()
 	landingReserve := deadlineLandingReserve(time.Until(deadline))
 
-	tools := NewToolbox(l.workspace, task.NodeID, l.web)
+	tools := NewToolboxWithStore(l.workspace, task.NodeID, l.web, l.history)
 	definitions := tools.Definitions()
 	trace := newTracer(l.workspace, task.NodeID)
 	defer trace.close()

@@ -196,6 +196,49 @@ func TestRenderCompileContextRetrievesNotebookByCue(t *testing.T) {
 	}
 }
 
+func TestRenderCompileContextRecallsFoldBeyondActiveViewBudget(t *testing.T) {
+	graph := openStore(t)
+	if err := graph.Splice(store.RootID, store.Subtree{Nodes: []store.NodeSpec{{
+		ID: "old-celadon", Brief: "Repair the celadon parser", Stage: 1,
+	}}}, store.Provenance{Origin: store.OriginUser, Intent: "Repair the celadon parser"}); err != nil {
+		t.Fatal(err)
+	}
+	claim, won, err := graph.Claim("old-celadon", "worker")
+	if err != nil || !won {
+		t.Fatalf("claim old memory: won=%v err=%v", won, err)
+	}
+	if err := graph.Complete(claim, "The celadon parser requires the sentinel table"); err != nil {
+		t.Fatal(err)
+	}
+	if err := graph.Fold("old-celadon", "Keep the sentinel table explicit", []string{"/workspace/celadon/notes.md"}); err != nil {
+		t.Fatal(err)
+	}
+	for index := 0; index < 50; index++ {
+		id := fmt.Sprintf("recent-%02d", index)
+		intent := fmt.Sprintf("Recent unrelated request %02d %s", index, strings.Repeat("x", 180))
+		if err := graph.Splice(store.RootID, store.Subtree{Nodes: []store.NodeSpec{{
+			ID: id, Brief: intent, Stage: 1,
+		}}}, store.Provenance{Origin: store.OriginUser, Intent: intent}); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	snapshot, err := graph.ActiveSnapshot()
+	if err != nil {
+		t.Fatal(err)
+	}
+	activeOnly := renderGraphContext(snapshot)
+	if strings.Contains(activeOnly, "Keep the sentinel table explicit") {
+		t.Fatal("active graph unexpectedly contains the old fold digest fixture")
+	}
+	got := New(graph, nil, nil).renderCompileContext(snapshot, "Repair the celadon parser again")
+	for _, want := range []string{"Keep the sentinel table explicit", "/workspace/celadon/notes.md"} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("compile context omitted recalled %q:\n%s", want, got)
+		}
+	}
+}
+
 func recordScopeFacts(t *testing.T, graph *store.Store, scope string, count int) {
 	t.Helper()
 	for index := 0; index < count; index++ {

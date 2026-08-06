@@ -107,7 +107,11 @@ func runExecute(args []string) error {
 	if scaled := time.Duration(*maxTokens/50_000) * time.Minute; scaled > deadline {
 		deadline = scaled
 	}
-	linear := exec.NewLinear(client, space, web, *maxTurns, *maxTokens, deadline)
+	history := openDefaultHistory()
+	if history != nil {
+		defer history.Close()
+	}
+	linear := exec.NewLinear(client, space, web, *maxTurns, *maxTokens, deadline).WithStore(history)
 	scheduler := exec.NewScheduler(exec.NewRegistry(linear), space, *concurrency)
 	scheduler.Budget = *runBudget
 	// A failed leaf is only worth re-running when there is somewhere stronger to

@@ -246,6 +246,9 @@ func applySpliceView(tx *sql.Tx, payload splicedPayload, seq int64) error {
 			payload.Provenance.Intent, seq, orderByID[node.ID], seq); err != nil {
 			return fmt.Errorf("insert node %q: %w", node.ID, err)
 		}
+		if err := refreshGraphFTS(tx, node.ID); err != nil {
+			return fmt.Errorf("index node %q: %w", node.ID, err)
+		}
 	}
 	edgeOrder := 0
 	for _, node := range payload.Nodes {

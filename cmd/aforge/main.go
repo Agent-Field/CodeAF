@@ -133,7 +133,12 @@ func runPlan(args []string) error {
 			fmt.Printf("  %-8s %-22s %s\n", pass, detail, elapsed.Round(10*time.Millisecond))
 		}
 	}
+	history := openDefaultHistory()
+	if history != nil {
+		defer history.Close()
+	}
 	graph, err := plan.Build(ctx, client, goal, plan.Options{
+		Recall:       recallHits(history, goal, groundRecallLimit),
 		SpineSamples: settings.SpineSamples,
 		MaxDepth:     settings.MaxDepth,
 		NodeBudget:   settings.NodeBudget,
