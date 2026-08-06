@@ -101,6 +101,35 @@ becomes where you go when a card invites you deeper.
   Apple-like instead of Apple-themed: the polish is in the model, so every
   surface inherits it.
 
+## Decision 6 — Interaction polish: reachable, streaming, alive
+
+Settled after first use of the cards build:
+
+- **Keybinding**: the graph rail toggles on `alt+g` (option-G), not `ctrl+g`
+  — ctrl chords collide with terminal conventions (^G is BEL) and macOS
+  muscle memory. Every toggle also has a slash command and a click target.
+- **Slash commands**: the input line accepts `/graph` (toggle rail),
+  `/tasks` (dock focus), `/node <id|click>`, `/notebook`, `/help` — same
+  actions as the keys, discoverable by typing `/`. A slash line is consumed
+  by the TUI, never sent to the head.
+- **Mouse everywhere the eye goes**: the rail's edge/header is a click
+  toggle; dock cards click to expand; the split is already draggable; every
+  affordance that opens has a visible ⟨×⟩ or esc path back.
+- **Streaming, not appearing**: head replies and landed answers stream
+  token-wise into the thread (the provider already streams; the TUI buffers
+  — stop buffering, render deltas with the existing unroll pacing as the
+  floor). Nothing in the conversation should materialize fully formed.
+- **The rail closed is not blindness**: with the rail hidden, running work
+  speaks through an inline **shimmer line** under the last message — the
+  narrator's current line per active job, animated subtly (a slow gradient
+  sweep, matte not flashy), updating in place, collapsing into the settled
+  card when the job lands. The dock shows state; the shimmer shows *now*.
+- **Typographic hierarchy, audited**: one scale, four levels — conversation
+  body (primary ink), card titles (semibold), meta/receipts/cost (dim),
+  code/paths (mono, linked). Violet reserved exclusively for the question
+  state (the one thing that wants attention). No bold walls; emphasis is
+  spent like budget.
+
 ## What this costs and when
 
 Pure presentation layer over existing events: no schema change beyond
