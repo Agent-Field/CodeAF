@@ -115,7 +115,7 @@ func runChat(args []string) error {
 		WithDistiller(distillFacts(settings, chatClient, graph)).
 		WithConsolidator(consolidateFacts(settings, chatClient, graph)).
 		WithTitler(titleGoal(settings, chatClient)).
-		WithReflector(reflectAcrossJobs(settings, chatClient))
+		WithReflector(reflectAcrossJobs(settings, chatClient, graph))
 
 	web := exec.NewWeb()
 	runner := resident.NewRunner(graph, func(ctx context.Context, node store.Node) (resident.ExecResult, error) {
@@ -1228,7 +1228,7 @@ func jobIDOf(graph *store.Store, node store.Node) string {
 
 // distillerSystemPrompt writes the notebook. The bar is durability: a memory
 // must still matter after this job is forgotten.
-const distillerSystemPrompt = `You judge whether a finished job taught an assistant anything worth keeping in its scoped notebook. You receive the goal, the outcome, and whether the job FAILED. Return exactly one JSON object: {"facts":[{"scope":"...","kind":"preference|quirk|lesson|fact","body":"..."}]}.
+const distillerSystemPrompt = `You judge whether a finished job taught an assistant anything worth keeping in its scoped notebook. You receive the goal, the outcome, and whether the job FAILED. Return exactly one JSON object: {"facts":[{"scope":"...","kind":"preference|quirk|lesson|fact","body":"...","replaces":0}]}.
 
 Judgment framework:
 - A memory qualifies only if it will matter after this job is forgotten.
@@ -1243,13 +1243,15 @@ Judgment framework:
 - An empty list is the common correct answer.
 - Return at most five memories.`
 
-const consolidatorSystemPrompt = `You rewrite one scope's accumulated notebook lines into a smaller, sharper notebook. Return exactly one JSON object: {"facts":[{"scope":"...","kind":"preference|quirk|lesson|fact","body":"..."}]}.
+const consolidatorSystemPrompt = `You rewrite one scope's accumulated notebook lines into a smaller, sharper notebook. Return exactly one JSON object: {"facts":[{"scope":"...","kind":"preference|quirk|lesson|fact","body":"...","sources":[123],"replaces":0}]}.
 
 Merge duplicates and near-duplicates. Resolve contradictions in favour of the newest line. Keep every load-bearing specific, including paths, values, and names. Each output must stand alone, use exactly the target scope, and preserve the best fitting kind. Return at most eight lines.
 
-Each line carries its age and how often retrieval has used it. Judge staleness by what the claim is about, not by the age alone: a preference or a filesystem quirk ages slowly, while a ranking, a price, a version, or a "current state" claim rots fast. Rewrite fast-rotting claims to name their time ("as of <when>, …") or drop them when their moment has passed; a never-used old line about a moving target is the first candidate to go.
+Every input line is numbered with its durable notebook number. Each output must name in "sources" every input it derives from, strongest evidence first, and every input must be assigned to exactly one output. The sources are the evidence and supersession map, not citations to invent. When an output corrects a standing line, also set "replaces" to that input's number; omit it or use 0 otherwise.
 
-A line may also carry the evidence it was distilled from: the job that taught it, in the words it was asked and what it actually delivered. Weigh lines by that evidence. A claim its own evidence does not support — broader than the one job it came from, or contradicted by what that job delivered — is the first to drop, ahead of anything merely old. When two lines compete and their evidence cannot settle which is right, do not pick: keep both, rewritten as one explicitly competing pair ("X worked for A; Y worked for B — unsettled"), so a future job settles it on evidence instead of a coin flip here.`
+Each line carries its age and how often retrieval has used it. Judge staleness by what the claim is about, not by the age alone: a preference or a filesystem quirk ages slowly, while a ranking, a price, a version, or a "current state" claim rots fast. Rewrite fast-rotting claims to name their time ("as of <when>, …"); a never-used old line about a moving target should survive only as compact, explicitly dated evidence when another input still makes it useful.
+
+A line may also carry the evidence it was distilled from: the job that taught it, in the words it was asked and what it actually delivered. Weigh lines by that evidence. Strip a claim its own evidence does not support back to only what the evidence establishes; when nothing else survives, merge that dated evidence into the closest output without preserving the unsupported claim. When two lines compete and their evidence cannot settle which is right, do not pick: keep both, rewritten as one explicitly competing pair ("X worked for A; Y worked for B — unsettled"), so a future job settles it on evidence instead of a coin flip here.`
 
 // reflectorSystemPrompt is the retrospective an effective employee runs on
 // their own work: not what any single job taught — the distiller owns that —
@@ -1261,18 +1263,32 @@ Look only for what the SERIES shows and no single job could:
 - A correction that repeats — successive asks that rework the same aspect of earlier deliveries reveal a standard the user holds and the work keeps missing. Record the standard.
 - An approach that consistently worked, or consistently cost too much, across several jobs of the same shape. Record the pattern with what made it work or fail.
 
-The bar for a pattern is at least two independent occurrences; one job is an anecdote and the distiller already handled it. Scope user for who the user is and what they recurrently want; domain:<topic> for proven approaches. One sharp sentence each, at most four, and an empty list is the common correct answer.`
+The bar for a pattern is at least two independent occurrences; one job is an anecdote and the distiller already handled it. Scope user for who the user is and what they recurrently want; domain:<topic> for proven approaches. Do not restate a numbered standing notebook entry. When the series corrects or sharpens one, write the replacement in full and set "replaces" to its number. One sharp sentence each, at most four, and an empty list is the common correct answer.`
 
-func reflectAcrossJobs(settings config.Config, client *liveClient) resident.ReflectFunc {
+func reflectAcrossJobs(settings config.Config, client *liveClient, graph *store.Store) resident.ReflectFunc {
 	return func(ctx context.Context, jobs []resident.JobSketch) ([]resident.Learned, error) {
 		var input strings.Builder
 		input.WriteString("Recent jobs, newest first:\n")
+		var queryText strings.Builder
 		for index, job := range jobs {
 			title := job.Title
 			if title == "" {
 				title = firstLine(job.Ask)
 			}
-			fmt.Fprintf(&input, "\n%d. %s (%s)\nasked: %s\ndelivered: %s\n", index+1, title, job.Age, job.Ask, job.Outcome)
+			fmt.Fprintf(&input, "\n%d. %s (%s · %s)\nasked: %s\ndelivered: %s\n", index+1, title, job.Age, job.CostSummary(), job.Ask, job.Outcome)
+			queryText.WriteString(job.Ask)
+			queryText.WriteByte('\n')
+			queryText.WriteString(job.Outcome)
+			queryText.WriteByte('\n')
+		}
+		if related, err := graph.SearchFactsUncounted(store.FactQuery{
+			Cues: resident.ExtractCues(queryText.String()), Terms: queryText.String(), Limit: 10,
+		}); err == nil && len(related) > 0 {
+			input.WriteString("\nStanding notebook entries these patterns may update:\n")
+			now := time.Now()
+			for _, fact := range related {
+				fmt.Fprintf(&input, "#%d [%s · %s · %s] %s\n", fact.Seq, fact.Scope, fact.Kind, store.AgeLabel(fact.Time, now), fact.Body)
+			}
 		}
 		response, err := client.CompleteWithMessages(settings.Context(ctx, "reflect"), []ai.Message{
 			{Role: "system", Content: []ai.ContentPart{{Type: "text", Text: reflectorSystemPrompt}}},
@@ -1315,7 +1331,7 @@ func distillFacts(settings config.Config, client *liveClient, graph *store.Store
 		// Reconsolidation: the distiller sees the standing beliefs its new
 		// evidence might touch, numbered, so a memory that updates one can
 		// retire it instead of accumulating beside it.
-		if related, err := graph.SearchFacts(store.FactQuery{
+		if related, err := graph.SearchFactsUncounted(store.FactQuery{
 			Cues:  resident.ExtractCues(goal + "\n" + outcome),
 			Terms: goal,
 			Limit: 10,
@@ -1350,8 +1366,8 @@ func consolidateFacts(settings config.Config, client *liveClient, graph *store.S
 		var input strings.Builder
 		now := time.Now()
 		fmt.Fprintf(&input, "Target scope: %s\n\nNotebook lines, newest first:\n", scope)
-		for index, fact := range ordered {
-			fmt.Fprintf(&input, "%d. [%s · %s · used %d×] %s\n", index+1, fact.Kind, store.AgeLabel(fact.Time, now), fact.Uses, fact.Body)
+		for _, fact := range ordered {
+			fmt.Fprintf(&input, "#%d [%s · %s · used %d×] %s\n", fact.Seq, fact.Kind, store.AgeLabel(fact.Time, now), fact.Uses, fact.Body)
 			// Belief audit: every fact names the job that taught it and that
 			// job is still in the graph, so a line can be weighed against the
 			// evidence it was distilled from rather than against its own
@@ -1407,6 +1423,7 @@ func parseLearnedFacts(raw string, limit int) []resident.Learned {
 			Kind     store.FactKind `json:"kind"`
 			Body     string         `json:"body"`
 			Replaces int64          `json:"replaces"`
+			Sources  []int64        `json:"sources"`
 		} `json:"facts"`
 	}
 	if err := json.NewDecoder(strings.NewReader(raw[start:])).Decode(&parsed); err != nil {
@@ -1419,7 +1436,10 @@ func parseLearnedFacts(raw string, limit int) []resident.Learned {
 		if fact.Scope == "" || fact.Body == "" || !validLearnedKind(fact.Kind) {
 			continue
 		}
-		learned = append(learned, resident.Learned{Scope: fact.Scope, Kind: fact.Kind, Body: fact.Body, Replaces: fact.Replaces})
+		learned = append(learned, resident.Learned{
+			Scope: fact.Scope, Kind: fact.Kind, Body: fact.Body,
+			Replaces: fact.Replaces, Sources: fact.Sources,
+		})
 		if len(learned) == limit {
 			break
 		}

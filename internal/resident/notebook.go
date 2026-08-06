@@ -20,7 +20,7 @@ const (
 // knownToolWords is deliberately a list: adding a tool should not require
 // changing cue extraction's control flow.
 var knownToolWords = []string{
-	"sh", "web", "git", "curl", "python", "pytest", "go", "npm",
+	"sh", "write", "edit", "web", "git", "curl", "python", "pytest", "go", "npm",
 	"ffmpeg", "fal", "seedance",
 }
 
@@ -145,16 +145,72 @@ func (r *Reconciler) consolidateNotebook(ctx context.Context) {
 		rewritten = rewritten[:consolidationOutputLimit]
 	}
 
-	var replacementSeq int64
+	originalBySeq := make(map[int64]store.Fact, len(originals))
+	originalByBody := make(map[string]int64, len(originals))
+	for _, original := range originals {
+		originalBySeq[original.Seq] = original
+		originalByBody[strings.ToLower(strings.TrimSpace(original.Body))] = original.Seq
+	}
+	type plannedRewrite struct {
+		learned Learned
+		sources []int64
+		nodeID  string
+	}
+	planned := make([]plannedRewrite, 0, len(rewritten))
+	claimedSources := make(map[int64]bool, len(originals))
+	seenBodies := make(map[string]bool, len(rewritten))
 	for _, learned := range rewritten {
-		if strings.TrimSpace(learned.Body) == "" {
+		bodyKey := strings.ToLower(strings.TrimSpace(learned.Body))
+		if bodyKey == "" {
 			continue
 		}
-		fact, err := r.store.RecordFact("", learned.Scope, learned.Kind, clipFactBody(learned.Body))
+		if !strings.EqualFold(strings.TrimSpace(learned.Scope), worstScope) || seenBodies[bodyKey] {
+			return
+		}
+		seenBodies[bodyKey] = true
+		sourceSeqs := append([]int64(nil), learned.Sources...)
+		if learned.Replaces > 0 {
+			sourceSeqs = append(sourceSeqs, learned.Replaces)
+		}
+		sourceSeqs = uniqueFactSeqs(sourceSeqs)
+		if len(sourceSeqs) == 0 {
+			return
+		}
+		nodeID := ""
+		for _, sourceSeq := range sourceSeqs {
+			original, ok := originalBySeq[sourceSeq]
+			if !ok || claimedSources[sourceSeq] {
+				return
+			}
+			claimedSources[sourceSeq] = true
+			if nodeID == "" && original.NodeID != "" {
+				nodeID = original.NodeID
+			}
+		}
+		// RecordFact's ordinary duplicate hygiene may supersede an unchanged
+		// original while recording. Require that original to belong to this
+		// output so its automatic event remains the truthful mapping.
+		if duplicateSeq := originalByBody[bodyKey]; duplicateSeq != 0 && !containsFactSeq(sourceSeqs, duplicateSeq) {
+			return
+		}
+		planned = append(planned, plannedRewrite{learned: learned, sources: sourceSeqs, nodeID: nodeID})
+	}
+	// Mapping validation is all-or-nothing. A malformed model mapping must not
+	// add rewrites or leave a source attached to an invented replacement.
+	if len(planned) == 0 || len(claimedSources) != len(originals) {
+		return
+	}
+
+	replacementFor := make(map[int64]int64, len(originals))
+	for _, rewrite := range planned {
+		fact, err := r.store.RecordFact(rewrite.nodeID, rewrite.learned.Scope,
+			rewrite.learned.Kind, clipFactBody(rewrite.learned.Body))
 		if err != nil {
 			return
 		}
-		replacementSeq = fact.Seq
+		for _, sourceSeq := range rewrite.sources {
+			replacementFor[sourceSeq] = fact.Seq
+		}
 	}
 
 	active, err := r.store.ActiveFacts(worstScope, len(originals)+consolidationOutputLimit)
@@ -171,10 +227,36 @@ func (r *Reconciler) consolidateNotebook(ctx context.Context) {
 		if !stillActive[original.Seq] {
 			continue
 		}
+		replacementSeq, mapped := replacementFor[original.Seq]
+		if !mapped {
+			continue
+		}
 		if err := r.store.SupersedeFact(original.Seq, replacementSeq); err != nil {
 			return
 		}
 	}
+}
+
+func uniqueFactSeqs(seqs []int64) []int64 {
+	seen := make(map[int64]bool, len(seqs))
+	result := make([]int64, 0, len(seqs))
+	for _, seq := range seqs {
+		if seq <= 0 || seen[seq] {
+			continue
+		}
+		seen[seq] = true
+		result = append(result, seq)
+	}
+	return result
+}
+
+func containsFactSeq(seqs []int64, want int64) bool {
+	for _, seq := range seqs {
+		if seq == want {
+			return true
+		}
+	}
+	return false
 }
 
 func cuePath(field string) (string, bool) {

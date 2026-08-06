@@ -2,6 +2,7 @@ package resident
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"reflect"
 	"strings"
@@ -25,6 +26,15 @@ func TestExtractCuesOrdersAndDeduplicatesScopes(t *testing.T) {
 	}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("ExtractCues() = %#v, want %#v", got, want)
+	}
+}
+
+func TestExtractCuesIncludesEveryExecutorTool(t *testing.T) {
+	got := ExtractCues("Use sh, write, edit, and web to finish it.")
+	for _, want := range []string{"tool:sh", "tool:write", "tool:edit", "tool:web"} {
+		if !containsString(got, want) {
+			t.Errorf("ExtractCues() = %#v, missing %q", got, want)
+		}
 	}
 }
 
@@ -126,9 +136,10 @@ func TestConsolidationFiresOnlyAboveThresholdAndReplacesScope(t *testing.T) {
 				if scope != "repo:overgrown" || len(facts) != consolidationThreshold+1 {
 					t.Fatalf("consolidation input = scope %q facts %d", scope, len(facts))
 				}
+				midpoint := len(facts) / 2
 				return []Learned{
-					{Scope: scope, Kind: store.FactLesson, Body: "overgrown uses bounded retries"},
-					{Scope: scope, Kind: store.FactPlain, Body: "overgrown keeps a journal"},
+					{Scope: scope, Kind: store.FactLesson, Body: "overgrown uses bounded retries", Sources: factSeqs(facts[:midpoint])},
+					{Scope: scope, Kind: store.FactPlain, Body: "overgrown keeps a journal", Sources: factSeqs(facts[midpoint:])},
 				}, nil
 			})
 		if err := reconciler.Tick(context.Background()); err != nil {
@@ -171,6 +182,125 @@ func TestConsolidationFiresOnlyAboveThresholdAndReplacesScope(t *testing.T) {
 	})
 }
 
+func TestConsolidationThreadsEvidenceAndMapsEachOriginal(t *testing.T) {
+	graph := openStore(t)
+	for _, node := range []store.NodeSpec{
+		{ID: "evidence-a", Brief: "first source", Stage: 1},
+		{ID: "evidence-b", Brief: "second source", Stage: 1},
+	} {
+		if err := graph.Splice(store.RootID, store.Subtree{Nodes: []store.NodeSpec{node}},
+			store.Provenance{Origin: store.OriginUser, Intent: "collect evidence"}); err != nil {
+			t.Fatalf("splice evidence node %s: %v", node.ID, err)
+		}
+	}
+
+	const scope = "repo:evidence"
+	var originals []store.Fact
+	for index := 0; index < consolidationThreshold+1; index++ {
+		nodeID := "evidence-a"
+		if index%2 == 1 {
+			nodeID = "evidence-b"
+		}
+		fact, err := graph.RecordFact(nodeID, scope, store.FactPlain, fmt.Sprintf("evidence fact %02d", index))
+		if err != nil {
+			t.Fatalf("record evidence fact %d: %v", index, err)
+		}
+		originals = append(originals, fact)
+	}
+
+	wantReplacement := make(map[int64]string, len(originals))
+	reconciler := New(graph, nil, nil).WithConsolidator(
+		func(_ context.Context, gotScope string, facts []store.Fact) ([]Learned, error) {
+			if gotScope != scope {
+				t.Fatalf("scope = %q, want %q", gotScope, scope)
+			}
+			var sourcesA, sourcesB []int64
+			for _, fact := range facts {
+				if fact.NodeID == "evidence-a" {
+					sourcesA = append(sourcesA, fact.Seq)
+					wantReplacement[fact.Seq] = "consolidated A"
+				} else {
+					sourcesB = append(sourcesB, fact.Seq)
+					wantReplacement[fact.Seq] = "consolidated B"
+				}
+			}
+			// Exercise the singular correction mapping too: Replaces is
+			// honored as an additional source by consolidation.
+			replaces := sourcesB[len(sourcesB)-1]
+			sourcesB = sourcesB[:len(sourcesB)-1]
+			return []Learned{
+				{Scope: scope, Kind: store.FactLesson, Body: "consolidated A", Sources: sourcesA},
+				{Scope: scope, Kind: store.FactLesson, Body: "consolidated B", Sources: sourcesB, Replaces: replaces},
+			}, nil
+		})
+	if err := reconciler.Tick(context.Background()); err != nil {
+		t.Fatalf("consolidate: %v", err)
+	}
+
+	active, err := graph.ActiveFacts(scope, 10)
+	if err != nil || len(active) != 2 {
+		t.Fatalf("active consolidated facts = %+v err=%v", active, err)
+	}
+	replacementSeq := make(map[string]int64)
+	for _, fact := range active {
+		replacementSeq[fact.Body] = fact.Seq
+		wantNode := "evidence-a"
+		if fact.Body == "consolidated B" {
+			wantNode = "evidence-b"
+		}
+		if fact.NodeID != wantNode {
+			t.Errorf("%q NodeID = %q, want strongest source %q", fact.Body, fact.NodeID, wantNode)
+		}
+	}
+
+	gotMapping := make(map[int64]int64)
+	events, err := graph.Events(0, 0)
+	if err != nil {
+		t.Fatalf("events: %v", err)
+	}
+	for _, event := range events {
+		if event.Kind != store.EventFactSuperseded {
+			continue
+		}
+		var payload struct {
+			FactSeq int64 `json:"fact_seq"`
+			BySeq   int64 `json:"by_seq"`
+		}
+		if err := json.Unmarshal(event.Payload, &payload); err != nil {
+			t.Fatalf("decode supersession: %v", err)
+		}
+		gotMapping[payload.FactSeq] = payload.BySeq
+	}
+	for originalSeq, body := range wantReplacement {
+		if got, want := gotMapping[originalSeq], replacementSeq[body]; got != want {
+			t.Errorf("original #%d superseded by #%d, want its actual %q replacement #%d", originalSeq, got, body, want)
+		}
+	}
+}
+
+func TestMaintenanceFactSearchDoesNotCountUses(t *testing.T) {
+	graph := openStore(t)
+	recorded, err := graph.RecordFact("", "tool:git", store.FactLesson, "git worktrees isolate changes")
+	if err != nil {
+		t.Fatalf("record fact: %v", err)
+	}
+	query := store.FactQuery{Cues: []string{"tool:git"}, Limit: 5}
+	if found, err := graph.SearchFactsUncounted(query); err != nil || len(found) != 1 {
+		t.Fatalf("uncounted search = %+v err=%v", found, err)
+	}
+	active, err := graph.ActiveFacts("tool:git", 5)
+	if err != nil || len(active) != 1 || active[0].Seq != recorded.Seq || active[0].Uses != 0 || !active[0].LastUsed.IsZero() {
+		t.Fatalf("uncounted search contaminated telemetry: %+v err=%v", active, err)
+	}
+	if found, err := graph.SearchFacts(query); err != nil || len(found) != 1 {
+		t.Fatalf("counted search = %+v err=%v", found, err)
+	}
+	active, err = graph.ActiveFacts("tool:git", 5)
+	if err != nil || len(active) != 1 || active[0].Uses != 1 || active[0].LastUsed.IsZero() {
+		t.Fatalf("counted search did not update telemetry: %+v err=%v", active, err)
+	}
+}
+
 func TestRenderCompileContextRetrievesNotebookByCue(t *testing.T) {
 	graph := openStore(t)
 	if _, err := graph.RecordFact("", "file:internal/resident/notebook.go", store.FactQuirk,
@@ -204,4 +334,21 @@ func recordScopeFacts(t *testing.T, graph *store.Store, scope string, count int)
 			t.Fatalf("record fact %d: %v", index, err)
 		}
 	}
+}
+
+func factSeqs(facts []store.Fact) []int64 {
+	seqs := make([]int64, 0, len(facts))
+	for _, fact := range facts {
+		seqs = append(seqs, fact.Seq)
+	}
+	return seqs
+}
+
+func containsString(values []string, want string) bool {
+	for _, value := range values {
+		if value == want {
+			return true
+		}
+	}
+	return false
 }
