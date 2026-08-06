@@ -1,4 +1,4 @@
-// Package textinput provides the single-line Bubble Tea input used by aforge.
+// Package textinput provides the compact Bubble Tea input used by aforge.
 package textinput
 
 import (
@@ -19,12 +19,13 @@ type Cursor struct {
 	Style lipgloss.Style
 }
 
-// Model is a focused, horizontally scrolling, single-line input.
+// Model is a focused, soft-wrapping input with a bounded visible height.
 type Model struct {
 	Prompt           string
 	Placeholder      string
 	CharLimit        int
 	Width            int
+	MaxLines         int
 	PromptStyle      lipgloss.Style
 	TextStyle        lipgloss.Style
 	PlaceholderStyle lipgloss.Style
@@ -40,9 +41,18 @@ type Model struct {
 func New() Model {
 	return Model{
 		Prompt:           "> ",
+		MaxLines:         1,
 		PlaceholderStyle: lipgloss.NewStyle().Faint(true),
 		cursorVisible:    true,
 	}
+}
+
+// LineCount reports the number of rows View currently occupies.
+func (m Model) LineCount() int {
+	if len(m.value) == 0 {
+		return 1
+	}
+	return min(max(1, m.MaxLines), len(m.lineRanges()))
 }
 
 // Blink initializes or advances cursor blinking.
@@ -135,7 +145,8 @@ func (m Model) Update(message tea.Msg) (Model, tea.Cmd) {
 	return m, nil
 }
 
-// View renders the prompt, visible value, and cursor on one line.
+// View renders the prompt, soft-wrapped value, and cursor. Long values retain
+// the rows around the insertion point rather than scrolling horizontally.
 func (m Model) View() string {
 	prompt := m.PromptStyle.Render(m.Prompt)
 	available := max(1, m.Width)
@@ -152,20 +163,64 @@ func (m Model) View() string {
 		return prompt + m.PlaceholderStyle.Render(string(placeholder))
 	}
 
-	start := visibleStart(m.value, m.position, available)
-	visible := clipRunes(m.value[start:], available)
-	position := min(len(visible), m.position-start)
-	before := m.TextStyle.Render(string(visible[:position]))
-	after := ""
-	cursor := " "
-	if position < len(visible) {
-		cursor = string(visible[position])
-		after = m.TextStyle.Render(string(visible[position+1:]))
+	ranges := m.lineRanges()
+	cursorLine := len(ranges) - 1
+	for index, line := range ranges {
+		if m.position < line.end || m.position == line.end && line.end == len(m.value) {
+			cursorLine = index
+			break
+		}
 	}
-	if !m.focused || !m.cursorVisible {
-		return prompt + before + m.TextStyle.Render(cursor) + after
+	maxLines := max(1, m.MaxLines)
+	startLine := max(0, cursorLine-maxLines+1)
+	endLine := min(len(ranges), startLine+maxLines)
+	continuation := strings.Repeat(" ", lipgloss.Width(m.Prompt))
+
+	rows := make([]string, 0, endLine-startLine)
+	for index := startLine; index < endLine; index++ {
+		line := ranges[index]
+		linePrompt := continuation
+		if index == 0 {
+			linePrompt = prompt
+		}
+		if index != cursorLine {
+			rows = append(rows, linePrompt+m.TextStyle.Render(string(m.value[line.start:line.end])))
+			continue
+		}
+
+		position := min(max(line.start, m.position), line.end)
+		before := m.TextStyle.Render(string(m.value[line.start:position]))
+		cursor := " "
+		afterStart := position
+		if position < line.end {
+			cursor = string(m.value[position])
+			afterStart++
+		}
+		cursorView := m.TextStyle.Render(cursor)
+		if m.focused && m.cursorVisible {
+			cursorView = m.Cursor.Style.Reverse(true).Render(cursor)
+		}
+		rows = append(rows, linePrompt+before+cursorView+m.TextStyle.Render(string(m.value[afterStart:line.end])))
 	}
-	return prompt + before + m.Cursor.Style.Reverse(true).Render(cursor) + after
+	return strings.Join(rows, "\n")
+}
+
+type lineRange struct{ start, end int }
+
+func (m Model) lineRanges() []lineRange {
+	width := max(1, m.Width)
+	ranges := make([]lineRange, 0, 3)
+	start, used := 0, 0
+	for index, char := range m.value {
+		charWidth := lipgloss.Width(string(char))
+		if used > 0 && used+charWidth > width {
+			ranges = append(ranges, lineRange{start: start, end: index})
+			start, used = index, 0
+		}
+		used += charWidth
+	}
+	ranges = append(ranges, lineRange{start: start, end: len(m.value)})
+	return ranges
 }
 
 func (m *Model) insert(input []rune) {
@@ -210,14 +265,6 @@ func sanitize(value string) []rune {
 		return char
 	}, value)
 	return []rune(value)
-}
-
-func visibleStart(value []rune, position, width int) int {
-	start := 0
-	for start < position && lipgloss.Width(string(value[start:position])) >= width {
-		start++
-	}
-	return start
 }
 
 func clipRunes(value []rune, width int) []rune {
