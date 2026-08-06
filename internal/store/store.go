@@ -83,6 +83,9 @@ const (
 
 	// EventUsageRecorded is one executed node's spend.
 	EventUsageRecorded EventKind = "usage_recorded"
+
+	// EventFactLearned is one durable fact distilled from finished work.
+	EventFactLearned EventKind = "fact_learned"
 )
 
 var (
@@ -310,6 +313,9 @@ func Open(path string) (*Store, error) {
 	}
 	if _, err := db.Exec(usageSchema); err != nil {
 		return closeOnError(fmt.Errorf("initialize usage schema: %w", err))
+	}
+	if _, err := db.Exec(factsSchema); err != nil {
+		return closeOnError(fmt.Errorf("initialize facts schema: %w", err))
 	}
 
 	store := &Store{db: db}

@@ -94,10 +94,12 @@ func runChat(args []string) error {
 				Assumptions: brief.Assumptions,
 				Scale:       brief.Scale,
 				BuildsOn:    brief.BuildsOn,
+				Question:    brief.Question,
 			}, nil
 		},
 		planSubtree(settings, taskClient),
-	).WithNarrator(narrateProgress(settings, chatClient))
+	).WithNarrator(narrateProgress(settings, chatClient)).
+		WithDistiller(distillFacts(settings, chatClient))
 
 	web := exec.NewWeb()
 	runner := resident.NewRunner(graph, func(ctx context.Context, node store.Node) (resident.ExecResult, error) {
@@ -656,4 +658,40 @@ func jobIDOf(graph *store.Store, node store.Node) string {
 		current = parent
 	}
 	return current.ID
+}
+
+// distillerSystemPrompt writes the notebook. The bar is durability: a fact
+// must still matter after this job is forgotten.
+const distillerSystemPrompt = `You extract durable facts from a finished job for an assistant's notebook. Return exactly one JSON object: {"facts":["..."]}.
+
+A fact qualifies only if it will still matter after this job is forgotten: a preference the user expressed or implied, an environment fact (a path, a key's location, a tool that is or isn't available), or an entity and its stable attributes. One standalone line each, specific enough to act on later. Job status, transient results, and anything already obvious from the request itself do not qualify. An empty list is the common, correct answer. At most five.`
+
+// distillFacts wires the reconciler's notebook to the talk model.
+func distillFacts(settings config.Config, client *liveClient) resident.DistillFunc {
+	return func(ctx context.Context, goal, result string) ([]string, error) {
+		input := "The job asked (verbatim): " + goal + "\n\nWhat came back:\n" + result
+		response, err := client.CompleteWithMessages(settings.Context(ctx, "distill"), []ai.Message{
+			{Role: "system", Content: []ai.ContentPart{{Type: "text", Text: distillerSystemPrompt}}},
+			{Role: "user", Content: []ai.ContentPart{{Type: "text", Text: input}}},
+		}, ai.WithMaxTokens(300))
+		if err != nil || response == nil {
+			return nil, err
+		}
+		raw := strings.TrimSpace(response.Text())
+		raw = strings.TrimPrefix(raw, "```json")
+		raw = strings.TrimPrefix(raw, "```")
+		raw = strings.TrimSuffix(raw, "```")
+		start := strings.IndexByte(raw, '{')
+		end := strings.LastIndexByte(raw, '}')
+		if start < 0 || end <= start {
+			return nil, nil
+		}
+		var parsed struct {
+			Facts []string `json:"facts"`
+		}
+		if err := json.Unmarshal([]byte(raw[start:end+1]), &parsed); err != nil {
+			return nil, nil
+		}
+		return parsed.Facts, nil
+	}
 }
