@@ -543,6 +543,54 @@ func TestSkillFactStatusTransitionsSurviveRebuild(t *testing.T) {
 	}
 }
 
+func TestPlaybookFactsAndSupersessionSurviveRebuild(t *testing.T) {
+	graph := openTestStore(t, filepath.Join(t.TempDir(), "playbooks.db"))
+	first, err := graph.RecordFact("", "repo:parser", FactPlaybook,
+		"Run go test for parser changes")
+	if err != nil {
+		t.Fatal(err)
+	}
+	replacement, err := graph.ReplaceFact(first.Seq, "", "repo:parser", FactPlaybook,
+		"Run make check for parser changes; the wrapper configures generated fixtures")
+	if err != nil {
+		t.Fatal(err)
+	}
+	eventsBefore, err := graph.Events(0, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := graph.Rebuild(); err != nil {
+		t.Fatal(err)
+	}
+	retired, found, err := graph.FactBySeq(first.Seq)
+	if err != nil || !found || retired.Kind != FactPlaybook || retired.Status != FactSuperseded ||
+		retired.EvidenceSeq != replacement.Seq {
+		t.Fatalf("rebuilt retired playbook = %+v found=%t err=%v", retired, found, err)
+	}
+	active, found, err := graph.FactBySeq(replacement.Seq)
+	if err != nil || !found || active.Kind != FactPlaybook || active.Status != FactActive {
+		t.Fatalf("rebuilt active playbook = %+v found=%t err=%v", active, found, err)
+	}
+	hits, err := graph.SearchFacts(FactQuery{
+		Cues: []string{"repo:parser"}, Terms: "generated fixtures",
+		Kind: FactPlaybook, PreferUseful: true, Limit: 5,
+	})
+	if err != nil || len(hits) != 1 || hits[0].Seq != replacement.Seq {
+		t.Fatalf("rebuilt playbook retrieval = %+v err=%v", hits, err)
+	}
+	hasPlaybooks, err := graph.HasActiveFactKind(FactPlaybook)
+	if err != nil || !hasPlaybooks {
+		t.Fatalf("HasActiveFactKind(playbook) = %t, %v", hasPlaybooks, err)
+	}
+	eventsAfter, err := graph.Events(0, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(eventsAfter, eventsBefore) {
+		t.Fatal("rebuilding playbooks changed the event journal")
+	}
+}
+
 func openTestStore(t *testing.T, path string) *Store {
 	t.Helper()
 	store, err := Open(path)

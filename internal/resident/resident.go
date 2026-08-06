@@ -843,7 +843,7 @@ func (r *Reconciler) renderTrialForDistiller(fact store.Fact) string {
 			fmt.Fprintf(&rendered, "- %s: %s\n", trial.NodeID, trial.Outcome)
 		}
 	}
-	fmt.Fprintf(&rendered, "If this job settled the comparison, emit the winning standing lesson or fact with replaces:%d. If it did not settle the comparison, emit kind unsettled with replaces:%d; the store will carry the exact pair forward and note this run. Do not leave the verdict implicit.]",
+	fmt.Fprintf(&rendered, "If this job settled the comparison, emit the winning standing lesson, fact, or actionable playbook method with replaces:%d. If it did not settle the comparison, emit kind unsettled with replaces:%d; the store will carry the exact pair forward and note this run. Do not leave the verdict implicit.]",
 		fact.Seq, fact.Seq)
 	return rendered.String()
 }
