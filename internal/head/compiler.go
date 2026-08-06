@@ -26,7 +26,7 @@ Rules:
 - Never ask a question back and never leave a placeholder such as TBD, unknown, or ask user.
 - The user's words are the authority. Do not narrow or replace them with an inferred request.
 - End goal with a line beginning "Verbatim request:" followed by the user's instruction exactly as supplied.
-- Judge scale honestly. "lookup" is one fact fetched or computed in a single step. "task" is one coherent piece of work a single worker finishes end to end. "project" has multiple distinguishable parts — separate sources to cover, separate deliverable sections, verification distinct from production — where parallel workers genuinely pay off. When in doubt between task and project, choose task; planning overhead is only worth real parallelism.
+- Judge scale by the structure of the work, never by its topic. Ask two questions. First: does the job enumerate — does doing it mean repeating the same operation over a set of items, sources, or sections that do not depend on each other? Second: does it stratify — does it separate into stages with different working modes, such as gathering, verifying, and synthesizing, where intermediate outputs feed a final deliverable? If either answer is yes, the scale is "project": independent parts are parallel structure, and parallel structure is the point even when one worker could grind through serially. If both answers are no and the job still requires acting — producing, transforming, fetching-then-shaping — it is "task": one worker, one thread of attention, end to end. If the whole job is retrieving or computing a single thing, where the answer is itself the deliverable, it is "lookup".
 
 Be precise enough for downstream planning, but do not design the task graph yourself.`
 
