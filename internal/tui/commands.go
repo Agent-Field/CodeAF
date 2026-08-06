@@ -547,6 +547,13 @@ func (m *Model) newSession() tea.Cmd {
 	m.sessionID = sessionID
 	m.messages = nil
 	m.lastSeq = 0
+	m.cards = nil
+	m.commands = map[int64]store.Command{}
+	m.cardExpanded = map[string]bool{}
+	m.selectedCardID = ""
+	m.graphScopeID = ""
+	m.graphOpen = false
+	m.focus = focusInput
 	m.autoScroll = true
 	m.newMessages = 0
 	m.input.Reset()

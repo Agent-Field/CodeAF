@@ -167,6 +167,7 @@ func (r *Reconciler) speakProgress(ctx context.Context) error {
 			SessionID: state.sessionID,
 			Role:      store.RoleAgent,
 			Body:      boundMessage(line),
+			NodeID:    rootID,
 		}); err != nil {
 			return err
 		}
