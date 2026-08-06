@@ -110,7 +110,8 @@ func runChat(args []string) error {
 	).WithNarrator(narrateProgress(settings, chatClient)).
 		WithDistiller(distillFacts(settings, chatClient, graph)).
 		WithConsolidator(consolidateFacts(settings, chatClient)).
-		WithTitler(titleGoal(settings, chatClient))
+		WithTitler(titleGoal(settings, chatClient)).
+		WithReflector(reflectAcrossJobs(settings, chatClient))
 
 	web := exec.NewWeb()
 	runner := resident.NewRunner(graph, func(ctx context.Context, node store.Node) (resident.ExecResult, error) {
@@ -1242,6 +1243,40 @@ const consolidatorSystemPrompt = `You rewrite one scope's accumulated notebook l
 Merge duplicates and near-duplicates. Resolve contradictions in favour of the newest line. Keep every load-bearing specific, including paths, values, and names. Each output must stand alone, use exactly the target scope, and preserve the best fitting kind. Return at most eight lines.
 
 Each line carries its age and how often retrieval has used it. Judge staleness by what the claim is about, not by the age alone: a preference or a filesystem quirk ages slowly, while a ranking, a price, a version, or a "current state" claim rots fast. Rewrite fast-rotting claims to name their time ("as of <when>, …") or drop them when their moment has passed; a never-used old line about a moving target is the first candidate to go.`
+
+// reflectorSystemPrompt is the retrospective an effective employee runs on
+// their own work: not what any single job taught — the distiller owns that —
+// but what only the series reveals.
+const reflectorSystemPrompt = `You are an assistant's periodic retrospective over its recent jobs. You receive the jobs newest first: what was asked in the user's own words, what was delivered, and how long ago. Return exactly one JSON object: {"facts":[{"scope":"...","kind":"preference|lesson|fact","body":"...","replaces":0}]}.
+
+Look only for what the SERIES shows and no single job could:
+- A need that keeps recurring — the user comes back for the same kind of thing. Record who the user is and what they regularly want, so future work anticipates it.
+- A correction that repeats — successive asks that rework the same aspect of earlier deliveries reveal a standard the user holds and the work keeps missing. Record the standard.
+- An approach that consistently worked, or consistently cost too much, across several jobs of the same shape. Record the pattern with what made it work or fail.
+
+The bar for a pattern is at least two independent occurrences; one job is an anecdote and the distiller already handled it. Scope user for who the user is and what they recurrently want; domain:<topic> for proven approaches. One sharp sentence each, at most four, and an empty list is the common correct answer.`
+
+func reflectAcrossJobs(settings config.Config, client *liveClient) resident.ReflectFunc {
+	return func(ctx context.Context, jobs []resident.JobSketch) ([]resident.Learned, error) {
+		var input strings.Builder
+		input.WriteString("Recent jobs, newest first:\n")
+		for index, job := range jobs {
+			title := job.Title
+			if title == "" {
+				title = firstLine(job.Ask)
+			}
+			fmt.Fprintf(&input, "\n%d. %s (%s)\nasked: %s\ndelivered: %s\n", index+1, title, job.Age, job.Ask, job.Outcome)
+		}
+		response, err := client.CompleteWithMessages(settings.Context(ctx, "reflect"), []ai.Message{
+			{Role: "system", Content: []ai.ContentPart{{Type: "text", Text: reflectorSystemPrompt}}},
+			{Role: "user", Content: []ai.ContentPart{{Type: "text", Text: input.String()}}},
+		}, ai.WithMaxTokens(500))
+		if err != nil || response == nil {
+			return nil, err
+		}
+		return parseLearnedFacts(response.Text(), 4), nil
+	}
+}
 
 // distillFacts wires the reconciler's notebook to the talk model.
 // titleGoalPrompt earns its own call by what it is not: not a summary, not a
