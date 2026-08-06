@@ -117,7 +117,7 @@ func runChat(args []string) error {
 			}, nil
 		},
 		planSubtree(settings, taskClient, plans, graph),
-	).WithNarrator(narrateProgress(settings, chatClient)).
+	).WithNarrator(narrateProgress(settings, chatClient, graph)).
 		WithDistiller(distillFacts(settings, chatClient, graph)).
 		WithConsolidator(consolidateFacts(settings, chatClient, graph)).
 		WithTitler(titleGoal(settings, chatClient)).
@@ -198,7 +198,7 @@ func runChat(args []string) error {
 			NodeID: int(node.CreatedSeq),
 			Title:  firstLine(node.Brief),
 			Goal:   node.Provenance.Intent,
-			Brief:  node.Brief,
+			Brief:  residentDeliveryBrief(graph, node),
 			Inputs: inputs,
 			Steer:  steer,
 		}
@@ -446,6 +446,17 @@ func runChat(args []string) error {
 	cancel()
 	waitWithGrace(&background, 5*time.Second)
 	return err
+}
+
+// residentDeliveryBrief gives only the top-level deliverable owner the voice
+// contract. Planned synthesis and direct jobs share this path; child results
+// remain worker-to-worker material. A gate repair copies this same task, so its
+// one polish pass cannot drift to a different voice.
+func residentDeliveryBrief(graph *store.Store, node store.Node) string {
+	if node.Parent != store.RootID {
+		return node.Brief
+	}
+	return resident.VoicePrompt(graph, node.Brief, node.Provenance.Intent, node.Brief)
 }
 
 // chatPrefs persists the surface's model choices across launches. It lives
@@ -1424,7 +1435,7 @@ func subtreePrefix() (string, error) {
 const narratorSystemPrompt = `You are aforge, giving the user one casual progress update on work happening in the background. One sentence, two at most. Plain speech in first person, no markdown, no lists, no internal jargon. Name the concrete things that just finished and what is in motion now; mention a duration only when it is notable. Do not repeat anything from your earlier updates, provided below. Never imply the whole job is finished — it is not.`
 
 // narrateProgress wires the reconciler's narration context to the talk model.
-func narrateProgress(settings config.Config, client *liveClient) resident.NarrateFunc {
+func narrateProgress(settings config.Config, client *liveClient, graph *store.Store) resident.NarrateFunc {
 	return func(ctx context.Context, narration resident.Narration) (string, error) {
 		var input strings.Builder
 		fmt.Fprintf(&input, "The job: %s\n", narration.Goal)
@@ -1450,7 +1461,7 @@ func narrateProgress(settings config.Config, client *liveClient) resident.Narrat
 			}
 		}
 		response, err := client.CompleteWithMessages(settings.Context(ctx, "narrate"), []ai.Message{
-			{Role: "system", Content: []ai.ContentPart{{Type: "text", Text: narratorSystemPrompt}}},
+			{Role: "system", Content: []ai.ContentPart{{Type: "text", Text: resident.VoicePrompt(graph, narratorSystemPrompt, narration.Goal)}}},
 			{Role: "user", Content: []ai.ContentPart{{Type: "text", Text: input.String()}}},
 		}, ai.WithMaxTokens(150))
 		if err != nil || response == nil {
@@ -1483,6 +1494,7 @@ Judgment framework:
 - A memory qualifies only if it will matter after this job is forgotten.
 - Scope every memory to the narrowest thing it is about: file:<absolute path> for a file's quirk, repo:<dir> for a codebase-wide one, tool:<name> for a tool's behaviour, domain:<topic> for subject knowledge, user for preferences, or env for machine facts.
 - When the job FAILED, the single most valuable memory is the cause and its fix or workaround. Classify it as a quirk or lesson.
+- A correction about HOW something was communicated — its length, format, tone, or language — is a voice preference. Emit scope "user", kind "preference", and phrase the body as a direct instruction such as "keep answers short; no preamble", not as a report of this episode.
 - Judge like an after-action review: what was expected, what actually happened, and what explains the gap. The explanation is the memory; the events themselves are not.
 - When the direct route failed and a substitute route worked — a different source, tool, or method reached the same end — record the working route as a lesson in the narrowest scope it applies to. A proven detour is the most transferable thing a job can teach.
 - Emit kind "playbook" when the experience yields one method rule actionable while writing a future job's working contract: what to do, avoid, verify, or try instead. Its body is one self-contained strategy bullet and its scope must be repo:<dir>, tool:<name>, or domain:<topic>. Emit at most one playbook delta per job: add that bullet or supersede one numbered bullet, never rewrite a scope's playbook. A fact about the world that does not change how the work should be done is not a playbook bullet.
