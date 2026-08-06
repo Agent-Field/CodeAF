@@ -5,7 +5,6 @@ package head
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
@@ -29,45 +28,20 @@ const (
 // headSystemPrompt is deliberately a router prompt, not a planning prompt. Its
 // job ends when the user has an answer and, when needed, a durable command
 // receipt; the reconciler owns every graph mutation after that boundary.
-const headSystemPrompt = `You are the front desk of a task-graph agent. You answer quickly and never wait for planning or execution.
+const headSystemPrompt = `You are the front desk of a task-graph agent. Behind you is a workforce that can search the web, run code, read and write files, and work on anything for minutes at a time. You yourself do no work and know nothing about the world beyond the graph snapshot — you only route, and you answer instantly.
 
 Return exactly one JSON object with this shape and no text outside it:
 {"reply":"<what to say right now>","command":null}
 or
 {"reply":"<what to say right now>","command":{"kind":"splice|amend|cancel","target":"<node id or empty>","instruction":"<the user's instruction, preserving their words verbatim>"}}
 
-Use the live graph snapshot as fact:
-- Answer questions about current state directly from the snapshot, with no command.
-- For new work, emit a splice command. Preserve the user's own words verbatim in instruction; do not improve, summarize, or reinterpret them.
-- For a redirect, emit amend and name the affected node id from the snapshot.
-- For a cancellation, emit cancel and name the affected node id from the snapshot.
-- Never invent a node id. If a redirect or cancellation has no unambiguous target in the snapshot, explain that briefly and emit no command.
+Routing law:
+- Questions about the state of existing work — what is running, what was found, what happened — you answer directly from the graph snapshot, with no command.
+- Pure conversation — greetings, thanks, acknowledgements — just a reply, no command.
+- EVERYTHING else is work for the workforce: a fact you do not have (weather, prices, news, anything about the world), research, code, files, any task at all. Emit a splice command with the user's own words verbatim in instruction — do not improve, summarize, or reinterpret them. Never refuse and never say you cannot or lack access: you always can, by splicing. A quick lookup is still a splice.
+- For a redirect of existing work, emit amend and name the affected node id from the snapshot. For stopping work, emit cancel with its target. Never invent a node id; if there is no unambiguous target, explain that briefly and emit no command.
 
-The reply is what the user sees immediately. When emitting a command, make it a receipt of consequence, such as saying you are splicing it in and will report when it lands. Never imply that the work already finished or promise synchronous completion. Be concise and warm. Reply text is plain prose with no markdown headers.`
-
-const routeSchema = `{
-  "type": "object",
-  "additionalProperties": false,
-  "required": ["reply", "command"],
-  "properties": {
-    "reply": {"type": "string"},
-    "command": {
-      "anyOf": [
-        {"type": "null"},
-        {
-          "type": "object",
-          "additionalProperties": false,
-          "required": ["kind", "target", "instruction"],
-          "properties": {
-            "kind": {"type": "string", "enum": ["splice", "amend", "cancel"]},
-            "target": {"type": "string"},
-            "instruction": {"type": "string"}
-          }
-        }
-      ]
-    }
-  }
-}`
+The reply is what the user sees immediately. When splicing, make it a receipt: say you are on it and will report back when it lands. Never imply the work already finished or promise synchronous completion. Be concise and warm. Reply text is plain prose with no markdown headers.`
 
 // Client is the one provider operation the conversational components need.
 // Keeping the boundary this small makes both routing and compiling testable
@@ -213,16 +187,24 @@ func (h *Head) route(ctx context.Context, user store.Message) (routeDecision, er
 		textMessage("system", headSystemPrompt),
 		textMessage("user", prompt),
 	}
-	response, err := h.client.CompleteWithMessages(ctx, messages,
-		ai.WithSchema(json.RawMessage(routeSchema)), ai.WithMaxTokens(600))
-	if err != nil {
-		return routeDecision{}, err
+	// No response-format schema here: measured against the shipped default
+	// model, schema-constrained calls came back empty two times in three and
+	// took 4-6s, while prompt-shaped JSON parsed three of three at under a
+	// second. The defensive decoder below covers the difference.
+	raw := ""
+	for attempt := 0; attempt < 2; attempt++ {
+		response, err := h.client.CompleteWithMessages(ctx, messages, ai.WithMaxTokens(600))
+		if err != nil {
+			return routeDecision{}, err
+		}
+		if response == nil {
+			return routeDecision{}, errors.New("provider returned a nil response")
+		}
+		raw = strings.TrimSpace(response.Text())
+		if raw != "" {
+			break
+		}
 	}
-	if response == nil {
-		return routeDecision{}, errors.New("provider returned a nil response")
-	}
-
-	raw := strings.TrimSpace(response.Text())
 	var decision routeDecision
 	if err := decodeJSONObject(raw, &decision); err != nil || decision.validate() != nil {
 		if raw == "" {

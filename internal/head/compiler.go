@@ -2,7 +2,6 @@ package head
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
@@ -29,18 +28,6 @@ Rules:
 - End goal with a line beginning "Verbatim request:" followed by the user's instruction exactly as supplied.
 
 Be precise enough for downstream planning, but do not design the task graph yourself.`
-
-const briefSchema = `{
-  "type": "object",
-  "additionalProperties": false,
-  "required": ["goal", "deliverable", "budget", "assumptions"],
-  "properties": {
-    "goal": {"type": "string"},
-    "deliverable": {"type": "string"},
-    "budget": {"type": "string"},
-    "assumptions": {"type": "array", "items": {"type": "string"}}
-  }
-}`
 
 // Brief is the complete, assumption-bearing intent handed to planning. Budget
 // stays free text because the graph does not impose a money type on callers.
@@ -74,7 +61,7 @@ func (c *Compiler) Compile(ctx context.Context, instruction string, graphContext
 	response, err := c.client.CompleteWithMessages(ctx, []ai.Message{
 		textMessage("system", compilerSystemPrompt),
 		textMessage("user", user),
-	}, ai.WithSchema(json.RawMessage(briefSchema)), ai.WithMaxTokens(1000))
+	}, ai.WithMaxTokens(1000))
 	if err != nil {
 		return Brief{}, fmt.Errorf("compile intent: %w", err)
 	}
@@ -116,9 +103,10 @@ func validateBrief(brief Brief) error {
 
 func anchorGoal(goal, instruction string) string {
 	goal = strings.TrimSpace(goal)
-	anchor := "Verbatim request:\n" + instruction
-	if strings.HasSuffix(goal, anchor) {
+	// A compiler that followed the prompt already carries the anchor inline;
+	// appending a second copy would double the user's words in every receipt.
+	if strings.Contains(goal, "Verbatim request:") && strings.Contains(goal, instruction) {
 		return goal
 	}
-	return goal + "\n\n" + anchor
+	return goal + "\n\nVerbatim request:\n" + instruction
 }
