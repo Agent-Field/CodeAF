@@ -20,14 +20,15 @@ var (
 	muted    = lipgloss.AdaptiveColor{Light: "#686A78", Dark: "#6C7086"}
 	ink      = lipgloss.AdaptiveColor{Light: "#2E3038", Dark: "#E8E7EE"}
 
-	promptStyle      = lipgloss.NewStyle().Foreground(lavender).Bold(true)
+	promptStyle      = lipgloss.NewStyle().Foreground(powder).Bold(true)
 	inputTextStyle   = lipgloss.NewStyle().Foreground(ink)
 	placeholderStyle = lipgloss.NewStyle().Foreground(muted)
-	cursorStyle      = lipgloss.NewStyle().Foreground(lavender)
+	cursorStyle      = lipgloss.NewStyle().Foreground(powder)
 	mutedStyle       = lipgloss.NewStyle().Foreground(muted)
+	questionStyle    = lipgloss.NewStyle().Foreground(lavender)
 	selectedInk      = lipgloss.AdaptiveColor{Light: "#FFFFFF", Dark: "#24202E"}
 	selectionBand    = lipgloss.AdaptiveColor{Light: "#E8E7EE", Dark: "#343442"}
-	selectedStyle    = lipgloss.NewStyle().Foreground(selectedInk).Background(lavender)
+	selectedStyle    = lipgloss.NewStyle().Foreground(ink).Background(selectionBand)
 	pillStyle        = lipgloss.NewStyle().Foreground(selectedInk).Background(peach).Padding(0, 1)
 
 	spinnerFrames = []string{"⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"}
@@ -60,14 +61,14 @@ func (m *Model) View() string {
 	}
 	parts = append(parts, m.renderInput())
 	if !m.paletteOpen() {
-		hint := "/ commands · tab focus · ^g tasks · v receipts · ? help"
+		hint := "/ commands · tab focus · " + keyBindings.graph + " tasks · v receipts · ? help"
 		switch {
 		case m.focus == focusCards:
-			hint = "↑/↓ select card · enter details/graph · esc back · ^g all tasks"
+			hint = "↑/↓ select card · enter details/graph · esc back · " + keyBindings.graph + " all tasks"
 		case m.nodeViewID != "":
 			hint = "type to steer · enter send · c cancel · esc back"
 		case m.focus == focusGraph:
-			hint = "↑/↓ select · enter inspect · esc close · ^g hide"
+			hint = "↑/↓ select · enter inspect · esc close · " + keyBindings.graph + " hide"
 		}
 		parts = append(parts, mutedStyle.Faint(true).Render(truncate(hint, m.width)))
 	}
@@ -78,6 +79,8 @@ func (m *Model) trackPaneBounds() {
 	m.chatBounds = paneBounds{}
 	m.graphBounds = paneBounds{}
 	m.graphRowsBounds = paneBounds{}
+	m.graphToggleBounds = paneBounds{}
+	m.paletteCloseBounds = paneBounds{}
 	m.inputBounds = paneBounds{}
 	m.nodeBounds = paneBounds{}
 	m.nodeTraceBounds = paneBounds{}
@@ -100,6 +103,11 @@ func (m *Model) trackPaneBounds() {
 			x: m.graphBounds.x, y: m.graphBounds.y + 2,
 			width: m.graph.Width, height: m.graph.Height,
 		}
+		m.graphToggleBounds = paneBounds{x: m.graphBounds.x, y: m.graphBounds.y, width: m.graphBounds.width, height: 1}
+	}
+	paletteY := mainY + m.chatHeight + 1
+	if m.paletteHasClose() {
+		m.paletteCloseBounds = paneBounds{x: 0, y: paletteY, width: lipgloss.Width("⟨×⟩"), height: 1}
 	}
 
 	barY := mainY + m.chatHeight + 1 + m.paletteHeight()
@@ -112,14 +120,14 @@ func (m *Model) trackPaneBounds() {
 }
 
 func (m *Model) renderTopBar() string {
-	wordmark := lipgloss.NewStyle().Foreground(lavender).Bold(true).Render("aforge")
+	wordmark := lipgloss.NewStyle().Foreground(ink).Bold(true).Render("aforge")
 	models := "talk " + truncate(modelShort(m.currentModel("talk")), 18) +
 		" · work " + truncate(modelShort(m.currentModel("work")), 18)
 	left := wordmark + mutedStyle.Render(" · "+m.sessionID+" · "+models)
 
 	right := m.renderSpend()
 	if m.status != "" && time.Now().Before(m.statusUntil) {
-		right = lipgloss.NewStyle().Foreground(powder).Render(truncate(m.status, max(8, m.width/2)))
+		right = mutedStyle.Render(truncate(m.status, max(8, m.width/2)))
 	}
 	if m.err != nil {
 		right = lipgloss.NewStyle().Foreground(rose).Render(truncate(m.err.Error(), max(8, m.width/2)))
@@ -137,14 +145,13 @@ func (m *Model) renderTopBar() string {
 }
 
 // renderSpend is the one number that is always worth the top-right corner:
-// what this session has consumed. Tokens stay muted; dollars read in full ink.
+// what this session has consumed. Tokens and cost are quiet metadata.
 func (m *Model) renderSpend() string {
 	if m.usage.Nodes == 0 {
 		return ""
 	}
 	tokens := humanizeTokens(m.usage.PromptTokens + m.usage.CompletionTokens)
-	return mutedStyle.Render(tokens+" tok · ") +
-		lipgloss.NewStyle().Foreground(ink).Bold(true).Render(fmt.Sprintf("$%.2f", m.usage.Cost))
+	return mutedStyle.Render(tokens + " tok · " + fmt.Sprintf("$%.2f", m.usage.Cost))
 }
 
 // taskCounts sweeps the snapshot once for the activity bar and the rail
@@ -206,7 +213,7 @@ func (m *Model) renderLegacyActivityBar() string {
 	if bar == "" {
 		bar = mutedStyle.Faint(true).Render("no tasks in flight")
 	}
-	bar += mutedStyle.Faint(true).Render(" — ^g tasks")
+	bar += mutedStyle.Faint(true).Render(" — " + keyBindings.graph + " tasks")
 	return truncate(bar, m.width)
 }
 
@@ -231,19 +238,19 @@ func (m *Model) renderChatPane() string {
 // renderGraphPane is the task rail: a faint header naming it, then the tree.
 // The header brightens while the rail holds focus.
 func (m *Model) renderGraphPane() string {
-	title := mutedStyle.Faint(true).Render("tasks")
+	label := "tasks"
 	if m.graphScopeID != "" {
-		label := m.graphScopeID
+		label = m.graphScopeID
 		if node, ok := m.snapshotNode(m.graphScopeID); ok {
 			label = nodeLabel(node)
 		}
-		title = mutedStyle.Faint(true).Render("‹ card · " + label)
+		label = "‹ card · " + label
 	}
+	title := mutedStyle.Faint(true).Render(label)
 	if m.focus == focusGraph {
-		if m.graphScopeID == "" {
-			title = lipgloss.NewStyle().Foreground(lavender).Render("tasks")
-		}
+		title = lipgloss.NewStyle().Foreground(powder).Render(label)
 	}
+	title += mutedStyle.Faint(true).Render("  ⟨×⟩")
 	lines := append([]string{title, ""}, strings.Split(m.graph.View(), "\n")...)
 	for len(lines) < m.graphHeight {
 		lines = append(lines, "")
@@ -256,10 +263,17 @@ func (m *Model) renderGraphPane() string {
 
 // renderNodePane is one task's flight recorder, full-bleed: a header line,
 // a faint hairline, the brief, then the scrolling activity feed.
+func (m *Model) graphToggleHit(x, y int) bool {
+	if m.graphToggleBounds.contains(x, y) {
+		return true
+	}
+	return m.graphBounds.contains(x, y) && x == m.graphBounds.right()-1
+}
+
 func (m *Model) renderNodePane() string {
 	innerWidth := max(1, m.width-2)
 	now := time.Now()
-	back := lipgloss.NewStyle().Foreground(lavender).Render("‹ back")
+	back := lipgloss.NewStyle().Foreground(powder).Render("‹ back")
 	m.nodeBackBounds = paneBounds{x: m.nodeBounds.x, y: m.nodeBounds.y, width: lipgloss.Width(back), height: 1}
 	glyph, _ := m.nodeGlyphStyled(m.inspectedNode, now, false)
 	title := nodeLabel(m.inspectedNode)
@@ -323,7 +337,29 @@ func (m *Model) renderInput() string {
 
 func (m *Model) renderPalette() string {
 	innerWidth := max(1, m.width-2)
-	return strings.Join(m.paletteLines(innerWidth), "\n")
+	lines := m.paletteLines(innerWidth)
+	if m.paletteHasClose() {
+		header := truncate("⟨×⟩ esc · "+m.paletteTitle(), innerWidth)
+		lines = append([]string{mutedStyle.Faint(true).Render(header)}, lines...)
+	}
+	return strings.Join(lines, "\n")
+}
+
+func (m *Model) paletteHasClose() bool {
+	return m.palette == paletteModel || m.palette == paletteMemory || m.palette == paletteHelp
+}
+
+func (m *Model) paletteTitle() string {
+	switch m.palette {
+	case paletteModel:
+		return "models"
+	case paletteMemory:
+		return "notebook"
+	case paletteHelp:
+		return "help"
+	default:
+		return ""
+	}
 }
 
 func (m *Model) paletteHeight() int {
@@ -345,6 +381,10 @@ func (m *Model) paletteLines(width int) []string {
 				fmt.Sprintf("「/%s」 %s", entry.value, entry.description), index == m.paletteSelected, width,
 			))
 		}
+		if strings.TrimSpace(m.input.Value()) == "/" {
+			hint := truncate("/graph · /tasks · /node · /notebook · /help · type to filter", width)
+			return []string{mutedStyle.Faint(true).Render(hint)}
+		}
 		if len(lines) == 0 {
 			return []string{mutedStyle.Render("no matching command")}
 		}
@@ -364,7 +404,7 @@ func (m *Model) paletteLines(width int) []string {
 		}
 		lines = append(lines,
 			mutedStyle.Render(truncate("voice  you ask · aforge answers · v toggles receipts", width)),
-			mutedStyle.Render(truncate("tasks  ^g opens the rail · ↑/↓ select · enter inspect · esc closes", width)),
+			mutedStyle.Render(truncate("tasks  "+keyBindings.graph+" toggles the rail · ↑/↓ select · enter inspect · esc closes", width)),
 			mutedStyle.Render(truncate("cards  tab focuses dock · enter expands then opens its job · esc climbs back", width)),
 			mutedStyle.Render(truncate("chat   ↳ chips jump to the task an answer came from", width)),
 			mutedStyle.Render(truncate("node   type guidance + enter to steer · c cancels worker", width)),
@@ -414,7 +454,7 @@ func memoryFactRow(fact store.Fact, width int) string {
 	switch fact.Kind {
 	case store.FactPreference:
 		glyph = "◆"
-		style = lipgloss.NewStyle().Foreground(lavender)
+		style = lipgloss.NewStyle().Foreground(powder)
 	case store.FactQuirk:
 		glyph = "▲"
 		style = lipgloss.NewStyle().Foreground(peach)
@@ -448,9 +488,9 @@ func (m *Model) modelPickerLines(width int) []string {
 	talkView := mutedStyle.Render(talk)
 	workView := mutedStyle.Render(work)
 	if m.modelRole == "talk" {
-		talkView = lipgloss.NewStyle().Foreground(lavender).Bold(true).Render(talk)
+		talkView = lipgloss.NewStyle().Foreground(powder).Bold(true).Render(talk)
 	} else {
-		workView = lipgloss.NewStyle().Foreground(lavender).Bold(true).Render(work)
+		workView = lipgloss.NewStyle().Foreground(powder).Bold(true).Render(work)
 	}
 	lines := []string{
 		talkView + mutedStyle.Render("    ") + workView,
@@ -481,6 +521,9 @@ func (m *Model) paletteLineLimit() int {
 	// top bar + blank + main + blank + palette + input; the hint yields while
 	// the palette is open.
 	available := m.height - 3 - m.input.LineCount() - minimumMainHeight
+	if m.paletteHasClose() {
+		available--
+	}
 	return max(1, available)
 }
 
@@ -493,7 +536,7 @@ func (m *Model) modelChoiceRow(choice ModelChoice, selected bool, width int) str
 	}
 	if selected {
 		marker = "› "
-		markerStyle = lipgloss.NewStyle().Foreground(lavender).Bold(true)
+		markerStyle = lipgloss.NewStyle().Foreground(powder).Bold(true)
 	}
 
 	detail := choice.Name
@@ -515,7 +558,7 @@ func (m *Model) modelChoiceRow(choice ModelChoice, selected bool, width int) str
 	} else {
 		detail = ""
 	}
-	accent := lavender
+	accent := powder
 	if m.modelRole == "work" {
 		accent = peach
 	}
@@ -613,6 +656,13 @@ func (m *Model) renderMessages() string {
 		}
 	}
 	m.cardPartRows = kept
+	keptClose := m.cardCloseRows[:0]
+	for _, row := range m.cardCloseRows {
+		if row.dock {
+			keptClose = append(keptClose, row)
+		}
+	}
+	m.cardCloseRows = keptClose
 
 	items := make([]threadRenderItem, 0, len(m.messages)+len(m.cards))
 	for index, message := range m.messages {
@@ -631,17 +681,22 @@ func (m *Model) renderMessages() string {
 			order: card.BirthSeq, index: len(m.messages) + index, card: card, isCard: true,
 		})
 	}
+	if message, ok := m.streamingMessage(); ok {
+		items = append(items, threadRenderItem{
+			order: m.lastSeq + 1, index: len(m.messages) + len(m.cards), message: message,
+		})
+	}
 	sort.SliceStable(items, func(i, j int) bool {
 		if items[i].order == items[j].order {
 			return items[i].index < items[j].index
 		}
 		return items[i].order < items[j].order
 	})
-	if len(items) == 0 {
-		return mutedStyle.Render("No messages yet. Start with a thought or a task.")
-	}
 
-	blocks := make([]string, 0, len(items))
+	blocks := make([]string, 0, len(items)+1)
+	if len(items) == 0 {
+		blocks = append(blocks, mutedStyle.Render("No messages yet. Start with a thought or a task."))
+	}
 	line := 0
 	appendBlock := func(block string) {
 		blocks = append(blocks, block)
@@ -676,6 +731,10 @@ func (m *Model) renderMessages() string {
 			group.voice = voice
 		}
 		group.messages = append(group.messages, item.message)
+	}
+	if shimmer := m.renderShimmerLines(max(1, m.chat.Width-2)); shimmer != "" {
+		flushGroup()
+		appendBlock(shimmer)
 	}
 	flushGroup()
 	return strings.Join(blocks, "\n\n")
@@ -728,9 +787,8 @@ func (m *Model) renderMessageGroup(group messageGroup, atLine int) string {
 	header := lipgloss.NewStyle().Foreground(accent).Faint(true).Render(label)
 	header += mutedStyle.Faint(true).Render("  " + relativeTime(latest.Time, time.Now()))
 
-	// One voice: everything the agent side says — replies, narration, landed
-	// deliverables — reads in the same ink with the same markdown treatment.
-	// The only distinct color is yours.
+	// One voice: every conversational body reads in primary ink with the same
+	// markdown treatment. Headers and provenance remain quiet metadata.
 	line := atLine + 1
 	items := make([]string, 0, len(group.messages))
 	for _, message := range group.messages {
@@ -739,14 +797,14 @@ func (m *Model) renderMessageGroup(group messageGroup, atLine int) string {
 		case secondaryMessage(message):
 			item = m.renderReceipt(message, available)
 		case message.Role == store.RoleUser:
-			item = lipgloss.NewStyle().Foreground(powder).Render(wrapText(message.Body, available))
+			item = inputTextStyle.Render(wrapText(message.Body, available))
 		default:
 			item = m.renderAnswer(message, available)
 		}
 		// A task-anchored answer names its origin: a small clickable chip that
 		// jumps to that task's activity view.
 		if message.NodeID != "" && message.Role != store.RoleUser && !secondaryMessage(message) {
-			chip := lipgloss.NewStyle().Foreground(peach).Render(
+			chip := mutedStyle.Faint(true).Render(
 				"↳ " + truncate(m.nodeChipLabel(message.NodeID), 40))
 			m.chatChipRows = append(m.chatChipRows, chatChipRow{line: line, nodeID: message.NodeID})
 			item = chip + "\n" + item
@@ -776,17 +834,21 @@ func (m *Model) nodeChipLabel(nodeID string) string {
 
 // renderAnswer presents an agent-side message the way a person reads one:
 // markdown styled, file paths clickable, long answers led by their opening
-// with the rest one click away, and the newest arrival unrolling live.
+// with the rest one click away, and arrivals paced token by token.
 func (m *Model) renderAnswer(message store.Message, width int) string {
-	rendered := renderMarkdown(message.Body, width)
-	lines := strings.Split(rendered, "\n")
-	if message.Seq != 0 && message.Seq == m.revealSeq {
-		if m.revealShown < len(lines) {
-			return strings.Join(lines[:max(1, m.revealShown)], "\n") + "\n" +
-				lipgloss.NewStyle().Foreground(lavender).Render("▌")
-		}
-		m.revealSeq, m.revealShown = 0, 0
+	body := message.Body
+	streaming := message.Seq == 0 && m.streamMode == streamReal
+	if shown, ok := m.streamedBody(message); ok {
+		body, streaming = shown, true
 	}
+	rendered := renderMarkdown(body, width)
+	if streaming {
+		if rendered != "" {
+			rendered += "\n"
+		}
+		return rendered + lipgloss.NewStyle().Foreground(powder).Render("▌")
+	}
+	lines := strings.Split(rendered, "\n")
 	if len(lines) <= deliverableLead+4 || m.expandedMessages[message.Seq] {
 		return rendered
 	}
@@ -806,10 +868,13 @@ func (m *Model) renderReceipt(message store.Message, width int) string {
 }
 
 func messagePresentation(message store.Message) (lipgloss.AdaptiveColor, string) {
-	if message.Role == store.RoleUser {
-		return powder, "you"
+	if isQuestionMessage(message) {
+		return lavender, "aforge"
 	}
-	return lavender, "aforge"
+	if message.Role == store.RoleUser {
+		return muted, "you"
+	}
+	return muted, "aforge"
 }
 
 func messageVoice(message store.Message) string {
@@ -960,7 +1025,7 @@ func (m *Model) renderTree(width, height int) string {
 			selected := node.ID == m.selectedNodeID
 			marker := "  "
 			if selected {
-				marker = lipgloss.NewStyle().Foreground(lavender).Bold(true).Render("▸ ")
+				marker = lipgloss.NewStyle().Foreground(powder).Bold(true).Render("▸ ")
 			}
 			prefix := marker + mutedStyle.Render(ancestorGuide+branch) + glyph + " "
 			label := nodeLabel(node)
@@ -1080,7 +1145,7 @@ func (m *Model) nodeGlyphStyled(node store.Node, now time.Time, dimmed bool) (st
 		return color
 	}
 	if node.FoldRoot {
-		return lipgloss.NewStyle().Foreground(tint(lavender)).Render("◆"), false
+		return lipgloss.NewStyle().Foreground(tint(powder)).Render("◆"), false
 	}
 	switch node.Status {
 	case store.Done:

@@ -423,3 +423,50 @@ func TestParseEffortRejectsUnknownValues(t *testing.T) {
 		t.Fatal("ParseEffort accepted a value that would 400")
 	}
 }
+
+func TestObservedMessageCompletionStreamsAndReturnsAccumulatedResponse(t *testing.T) {
+	recorded := &capture{}
+	handler := http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		recorded.record(request)
+		writer.Header().Set("Content-Type", "text/event-stream")
+		_, _ = writer.Write([]byte("data: {\"id\":\"one\",\"model\":\"sim/model\",\"choices\":[{\"index\":0,\"delta\":{\"role\":\"assistant\",\"content\":\"{\\\"reply\\\":\\\"hello\"}}]}\n\n"))
+		_, _ = writer.Write([]byte("data: {\"id\":\"one\",\"model\":\"sim/model\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\" there\\\"}\"},\"finish_reason\":\"stop\"}]}\n\ndata: [DONE]\n\n"))
+	})
+
+	client, err := NewClient(Config{
+		APIKey: "k", BaseURL: "http://provider.test", Model: "sim/model", HTTPClient: handlerClient(handler),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var events []StreamEvent
+	ctx := WithStreamObserver(context.Background(), func(event StreamEvent) {
+		events = append(events, event)
+	})
+	response, err := client.CompleteWithMessages(ctx, userMessages("route this"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := response.Text(); got != `{"reply":"hello there"}` {
+		t.Fatalf("accumulated response = %q", got)
+	}
+	if len(events) != 4 {
+		t.Fatalf("stream events = %#v", events)
+	}
+	wantKinds := []StreamEventKind{StreamStarted, StreamDelta, StreamDelta, StreamFinished}
+	var deltas strings.Builder
+	for index, event := range events {
+		if event.Kind != wantKinds[index] {
+			t.Fatalf("event %d kind = %v, want %v", index, event.Kind, wantKinds[index])
+		}
+		if event.Kind == StreamDelta {
+			deltas.WriteString(event.Delta)
+		}
+	}
+	if deltas.String() != response.Text() {
+		t.Fatalf("observed deltas = %q, response = %q", deltas.String(), response.Text())
+	}
+	if stream, _ := recorded.body(0)["stream"].(bool); !stream {
+		t.Fatalf("observed completion did not use the streaming wire: %#v", recorded.body(0))
+	}
+}
