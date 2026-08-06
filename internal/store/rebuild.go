@@ -45,6 +45,12 @@ func (s *Store) Rebuild() error {
 	if _, err := tx.Exec(`DELETE FROM surprises`); err != nil {
 		return fmt.Errorf("rebuild surprises: %w", err)
 	}
+	if _, err := tx.Exec(`DELETE FROM charters_fts`); err != nil {
+		return fmt.Errorf("rebuild charter index: %w", err)
+	}
+	if _, err := tx.Exec(`DELETE FROM charters`); err != nil {
+		return fmt.Errorf("rebuild charters: %w", err)
+	}
 	if _, err := tx.Exec(`DELETE FROM scope_aliases`); err != nil {
 		return fmt.Errorf("rebuild scope aliases: %w", err)
 	}
@@ -56,9 +62,6 @@ func (s *Store) Rebuild() error {
 	}
 	if _, err := tx.Exec(`DELETE FROM retrospective_watermark`); err != nil {
 		return fmt.Errorf("rebuild retrospective watermark: %w", err)
-	}
-	if _, err := tx.Exec(`DELETE FROM charters`); err != nil {
-		return fmt.Errorf("rebuild charters: %w", err)
 	}
 	for _, event := range events {
 		if err := replayEvent(tx, event); err != nil {

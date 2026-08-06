@@ -7,7 +7,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"math"
 	"os"
 	"strconv"
 	"strings"
@@ -174,7 +173,7 @@ func Load() (Config, error) {
 		}
 		*knob.target = value
 	}
-	dailyBudget, err := DailyBudgetUSD()
+	dailyBudget, err := DailyBudgetUSDAt(config.ProfileDir)
 	if err != nil {
 		return Config{}, err
 	}
@@ -190,15 +189,7 @@ func Load() (Config, error) {
 // DailyBudgetUSD resolves the dollar rail without requiring a provider key.
 // Status-only commands use it even when they never construct a model client.
 func DailyBudgetUSD() (float64, error) {
-	raw := strings.TrimSpace(os.Getenv("AFORGE_DAILY_BUDGET"))
-	if raw == "" {
-		return DefaultDailyBudgetUSD, nil
-	}
-	value, err := strconv.ParseFloat(raw, 64)
-	if err != nil || value < 0 || math.IsNaN(value) || math.IsInf(value, 0) {
-		return 0, fmt.Errorf("AFORGE_DAILY_BUDGET: want a non-negative dollar amount, got %q", raw)
-	}
-	return value, nil
+	return DailyBudgetUSDAt(os.Getenv("AFORGE_PROFILE_DIR"))
 }
 
 // Context stamps the run's provider knobs onto ctx: the effort the operator
