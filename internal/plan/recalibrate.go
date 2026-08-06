@@ -67,8 +67,7 @@ func Recalibrate(ctx context.Context, client Completer, store *profile.Profile) 
 		"finished quickly": small, "finished in the middle of the range": middle, "ran out of budget": large,
 	} {
 		for _, record := range group {
-			fmt.Fprintf(&evidence, "- [%s] %s — %s (%d turns, %d sources, %dk tokens)\n",
-				label, record.Title, record.Summary, record.Turns, record.Sources, record.Tokens/1000)
+			appendCalibrationEvidence(&evidence, label, record)
 		}
 	}
 	if strings.TrimSpace(evidence.String()) == "" {
@@ -77,7 +76,7 @@ func Recalibrate(ctx context.Context, client Completer, store *profile.Profile) 
 
 	messages := []ai.Message{
 		systemMessage(recalibratePrompt),
-		userMessage("The ruler currently in force:\n\n" + Anchors),
+		userMessage("The ruler currently in force:\n\n" + Anchors()),
 		userMessage("Tasks this model actually ran:\n\n" + evidence.String()),
 	}
 	ctx = provider.WithCall(ctx, provider.ClassPlanRecalibrate)
@@ -98,4 +97,12 @@ func Recalibrate(ctx context.Context, client Completer, store *profile.Profile) 
 	}
 	provider.Report(ctx, provider.VerdictVerifiedSuccess)
 	return anchors, reason, usage, nil
+}
+
+func appendCalibrationEvidence(evidence *strings.Builder, label string, record profile.Record) {
+	fmt.Fprintf(evidence, "- [%s] %s — %s (%d turns", label, record.Title, record.Summary, record.Turns)
+	if record.HasSourceCount() {
+		fmt.Fprintf(evidence, ", %d sources", record.Sources)
+	}
+	fmt.Fprintf(evidence, ", %dk tokens)\n", record.Tokens/1000)
 }

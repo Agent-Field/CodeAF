@@ -73,6 +73,10 @@ func runChat(args []string) error {
 	if err != nil {
 		return err
 	}
+	// Planning is done by the working model, so its measured ruler must be in
+	// force before either the initial subtree planner or an overrun replan runs.
+	measured, _ := profile.Load(settings.ProfileDir, taskClient.Model(), "linear")
+	plan.UseAnchors(measured.Anchors)
 
 	graph, err := store.Open(path)
 	if err != nil {
@@ -95,7 +99,7 @@ func runChat(args []string) error {
 	reconciler := resident.New(graph,
 		func(ctx context.Context, instruction, graphContext string) (resident.Compiled, error) {
 			augmented := graphContext
-			if sk := selfKnowledge(settings); sk != "" {
+			if sk := selfKnowledge(settings, taskClient.Model()); sk != "" {
 				augmented += "\n\nMeasured execution costs (this system's own measured history):\n" + sk
 			}
 			brief, err := compiler.Compile(settings.Context(ctx, instruction), instruction, augmented)
@@ -128,12 +132,17 @@ func runChat(args []string) error {
 		if err != nil {
 			return resident.ExecResult{}, err
 		}
-		// The exact leaf configuration the headless scheduler uses: the same
-		// turn backstop, the same binding token budget, and a deadline that
-		// scales with that budget.
+		// A planned job keeps one executor for every leaf so its profile key names
+		// the model that actually produced all measured turns. A picker change
+		// applies to the next job rather than relabeling work already in flight.
+		planGraph, planNode, workingModel, workingClient := plans.lookup(node.ID)
+		if workingClient == nil {
+			workingModel, workingClient = taskClient.Snapshot()
+		}
+		// The exact leaf configuration the headless scheduler uses: the same turn
+		// backstop, binding token budget, and deadline scaled with that budget.
 		deadline := leafDeadline(chatLeafTokens)
-		linear := exec.NewLinear(taskClient, jobSpace, web, chatLeafTurns, chatLeafTokens, deadline)
-		planGraph, planNode := plans.lookup(node.ID)
+		linear := exec.NewLinear(workingClient, jobSpace, web, chatLeafTurns, chatLeafTokens, deadline)
 		shape := "atomic"
 		if planNode != nil {
 			shape = chatLeafShape(planNode)
@@ -191,7 +200,7 @@ func runChat(args []string) error {
 		// One job is one cache lineage, exactly as one headless run is: the
 		// affinity key rides every leaf of the job so a prefix cache warmed
 		// by one worker serves its siblings.
-		ctx = provider.WithCacheKey(ctx, provider.RunCacheKey(node.Provenance.Intent, taskClient.Model()))
+		ctx = provider.WithCacheKey(ctx, provider.RunCacheKey(node.Provenance.Intent, workingModel))
 		var outcome *exec.Outcome
 		var spent exec.Usage
 		for attempt := 0; attempt < attempts; attempt++ {
@@ -221,9 +230,20 @@ func runChat(args []string) error {
 		// headless run. Detached, because the ruler is telemetry and the
 		// user's result must not wait on it.
 		if landed := plans.takeIfRoot(node.ID); landed != nil {
-			go recordAndCalibrate(settings.Context(context.Background(), landed.Goal), taskClient, settings, landed)
+			sessionID := node.Provenance.SessionID
+			go func() {
+				report := recordAndCalibrate(settings.Context(context.Background(), landed.Goal), workingClient, settings, workingModel, landed)
+				if strings.TrimSpace(report) == "" {
+					return
+				}
+				_, _ = graph.PostMessage(store.Message{
+					SessionID: sessionID,
+					Role:      store.RoleSystem,
+					Body:      report,
+				})
+			}()
 		} else if planGraph == nil && node.Parent == store.RootID && outcome != nil {
-			go recordSingleLeaf(settings, node, outcome)
+			go recordSingleLeaf(settings, workingModel, node, outcome)
 		}
 		if err != nil {
 			return resident.ExecResult{}, err
@@ -431,6 +451,10 @@ func (c *chatCommander) SetModel(role, slug string) error {
 		if err := c.taskClient.SetModel(slug); err != nil {
 			return err
 		}
+		// A model switch changes the capability being sized; install that model's
+		// own ruler before the next planning call can observe the new client.
+		measured, _ := profile.Load(c.settings.ProfileDir, c.taskClient.Model(), "linear")
+		plan.UseAnchors(measured.Anchors)
 	default:
 		return fmt.Errorf("unknown model role %q", role)
 	}
@@ -675,9 +699,9 @@ func saveChatPrefs(dir string, prefs chatPrefs) error {
 	return os.WriteFile(prefsPath(dir), raw, 0o600)
 }
 
-// liveClient is a model-switchable completion client. Every consumer (head,
-// compiler, executor) holds this one handle; swapping the model behind it
-// takes effect on the next call without restarting any loop.
+// liveClient is a model-switchable completion client. Long-running leaves take
+// a snapshot so one measurement has one model; structuring consumers hold this
+// handle directly, so a swap takes effect on their next call.
 type liveClient struct {
 	settings config.Config
 	mu       sync.RWMutex
@@ -704,6 +728,14 @@ func (l *liveClient) Model() string {
 	l.mu.RLock()
 	defer l.mu.RUnlock()
 	return l.model
+}
+
+// Snapshot returns a model and client from the same instant, which keeps the
+// profile key and the executor it describes inseparable.
+func (l *liveClient) Snapshot() (string, router.Client) {
+	l.mu.RLock()
+	defer l.mu.RUnlock()
+	return l.model, l.client
 }
 
 // escalatable reports whether a failed leaf has somewhere stronger to go —
@@ -827,39 +859,41 @@ type jobPlans struct {
 // plannedJob pairs a retained graph with the store id of its sink node — the
 // landing that means "this graph's run is over, record it".
 type plannedJob struct {
-	graph *plan.Graph
-	root  string
+	graph  *plan.Graph
+	root   string
+	model  string
+	client router.Client
 }
 
-func (j *jobPlans) put(prefix string, graph *plan.Graph, root string) {
+func (j *jobPlans) put(prefix string, graph *plan.Graph, root, model string, client router.Client) {
 	j.mu.Lock()
 	defer j.mu.Unlock()
-	j.graphs[prefix] = plannedJob{graph: graph, root: root}
+	j.graphs[prefix] = plannedJob{graph: graph, root: root, model: model, client: client}
 }
 
 // lookup resolves a store node id ("<prefix>-n<planID>") back to its plan
 // node. Single-task jobs have no plan graph and resolve to nil.
-func (j *jobPlans) lookup(nodeID string) (*plan.Graph, *plan.Node) {
+func (j *jobPlans) lookup(nodeID string) (*plan.Graph, *plan.Node, string, router.Client) {
 	cut := strings.LastIndex(nodeID, "-n")
 	if cut < 0 {
-		return nil, nil
+		return nil, nil, "", nil
 	}
 	planID, err := strconv.Atoi(nodeID[cut+2:])
 	if err != nil {
-		return nil, nil
+		return nil, nil, "", nil
 	}
 	j.mu.Lock()
 	defer j.mu.Unlock()
 	entry, ok := j.graphs[nodeID[:cut]]
 	if !ok {
-		return nil, nil
+		return nil, nil, "", nil
 	}
 	for index := range entry.graph.Nodes {
 		if entry.graph.Nodes[index].ID == planID {
-			return entry.graph, &entry.graph.Nodes[index]
+			return entry.graph, &entry.graph.Nodes[index], entry.model, entry.client
 		}
 	}
-	return entry.graph, nil
+	return entry.graph, nil, entry.model, entry.client
 }
 
 // recordOutcome writes a leaf's measured ending onto its plan node — the same
@@ -1056,10 +1090,10 @@ func runLeafWithWatchdog(ctx context.Context, linear *exec.Linear, task exec.Tas
 	}
 }
 
-// recordSingleLeaf keeps single-task jobs contributing to the same ruler the
-// planner sizes with: one honest record, no recalibration call.
-func recordSingleLeaf(settings config.Config, node store.Node, outcome *exec.Outcome) {
-	measured, err := profile.Load(settings.ProfileDir, settings.Model, "linear")
+// recordSingleLeaf keeps direct-job costs available to compiler self-knowledge
+// without pretending an unplanned task was atomic ruler evidence.
+func recordSingleLeaf(settings config.Config, model string, node store.Node, outcome *exec.Outcome) {
+	measured, err := profile.Load(settings.ProfileDir, model, "linear")
 	if err != nil {
 		return
 	}
@@ -1070,7 +1104,7 @@ func recordSingleLeaf(settings config.Config, node store.Node, outcome *exec.Out
 	measured.Add(profile.Record{
 		Title:   title,
 		Summary: firstLine(node.Brief),
-		Size:    string(plan.SizeAtomic),
+		Size:    profile.BucketDirect,
 		Turns:   outcome.Turns,
 		Tokens:  outcome.Usage.PromptTokens + outcome.Usage.CompletionTokens,
 		Stop:    string(outcome.Stop),
@@ -1092,7 +1126,8 @@ func planSubtree(settings config.Config, client *liveClient, plans *jobPlans) re
 				Stage: 1,
 			}}}, nil
 		}
-		graph, err := plan.Build(settings.Context(ctx, compiled.Goal), client, compiled.Goal, plan.Options{
+		workingModel, workingClient := client.Snapshot()
+		graph, err := plan.Build(settings.Context(ctx, compiled.Goal), workingClient, compiled.Goal, plan.Options{
 			SpineSamples: settings.SpineSamples,
 			// One level deeper than the one-shot default: chat projects are
 			// where visible fan-out is the product, and the compiler now
@@ -1106,14 +1141,14 @@ func planSubtree(settings config.Config, client *liveClient, plans *jobPlans) re
 		}
 		// Per-leaf working contracts, exactly as a headless run writes them
 		// before dispatch. A contract failure costs specificity, not the job.
-		if _, err := plan.Contracts(ctx, client, graph); err != nil {
+		if _, err := plan.Contracts(ctx, workingClient, graph); err != nil {
 			fmt.Fprintf(os.Stderr, "note: could not write contracts: %v\n", err)
 		}
 		subtree, err := resident.SubtreeFromPlan(graph, prefix)
 		if err != nil {
 			return store.Subtree{}, err
 		}
-		plans.put(prefix, graph, subtreeSink(subtree))
+		plans.put(prefix, graph, subtreeSink(subtree), workingModel, workingClient)
 		return subtree, nil
 	}
 }
@@ -1136,7 +1171,8 @@ func subtreeSink(subtree store.Subtree) string {
 // out of budget deserves at least one fresh worker on the remainder.
 func replanRemainder(settings config.Config, client *liveClient, plans *jobPlans) resident.OverrunPlanFunc {
 	return func(ctx context.Context, goal, prefix string) (store.Subtree, error) {
-		graph, err := plan.Build(settings.Context(ctx, goal), client, goal, plan.Options{
+		workingModel, workingClient := client.Snapshot()
+		graph, err := plan.Build(settings.Context(ctx, goal), workingClient, goal, plan.Options{
 			SpineSamples: settings.SpineSamples,
 			MaxDepth:     settings.MaxDepth,
 			NodeBudget:   settings.NodeBudget,
@@ -1150,14 +1186,14 @@ func replanRemainder(settings config.Config, client *liveClient, plans *jobPlans
 				Stage: 1,
 			}}}, nil
 		}
-		if _, err := plan.Contracts(ctx, client, graph); err != nil {
+		if _, err := plan.Contracts(ctx, workingClient, graph); err != nil {
 			fmt.Fprintf(os.Stderr, "note: could not write repair contracts: %v\n", err)
 		}
 		subtree, err := resident.SubtreeFromPlan(graph, prefix)
 		if err != nil {
 			return store.Subtree{}, err
 		}
-		plans.put(prefix, graph, subtreeSink(subtree))
+		plans.put(prefix, graph, subtreeSink(subtree), workingModel, workingClient)
 		return subtree, nil
 	}
 }
