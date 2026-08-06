@@ -414,12 +414,12 @@ func (r *Router) rank(class provider.CallClass) []ranked {
 // ordering falls back to price, which is how a cold panel generates its own
 // evidence: the cheap models get tried, and what they get wrong escalates.
 func (r *Router) order(class provider.CallClass) []*rung {
-	return r.seat(r.rank(class))
+	return seat(r.rank(class))
 }
 
 // seat turns a ranking into a cascade: value decides who opens, ability decides
 // who finishes.
-func (r *Router) seat(scored []ranked) []*rung {
+func seat(scored []ranked) []*rung {
 	terminal := terminalOf(scored)
 
 	byValue := append([]ranked(nil), scored...)
@@ -497,7 +497,7 @@ func (r *Router) seat(scored []ranked) []*rung {
 // is the honest thing to offer: there is nowhere stronger to send it.
 func (r *Router) leafLadder(class provider.CallClass) []*rung {
 	scored := r.rank(class)
-	opener := r.seat(scored)[0]
+	opener := seat(scored)[0]
 	ladder := []*rung{opener}
 	if terminal := terminalOf(scored); terminal.rung != opener {
 		ladder = append(ladder, terminal.rung)
