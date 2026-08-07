@@ -153,8 +153,8 @@ const (
 
 var (
 	sweepBaseStyle = lipgloss.NewStyle().Foreground(muted)
-	sweepSoftStyle = lipgloss.NewStyle().Foreground(ink).Faint(true)
-	sweepCoreStyle = lipgloss.NewStyle().Foreground(ink)
+	sweepSoftStyle = inkStyle.Faint(true)
+	sweepCoreStyle = inkStyle
 )
 
 // sweepCenter returns the highlight's cell position at an animation frame.

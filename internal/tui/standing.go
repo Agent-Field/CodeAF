@@ -404,7 +404,7 @@ func (m *Model) renderStandingSection(width int) string {
 		row := len(lines)
 		marker := "  "
 		if m.focus == focusGraph && m.selectedNodeID == standingGraphRowID(charter.ID) {
-			marker = lipgloss.NewStyle().Foreground(powder).Bold(true).Render("▸ ")
+			marker = powderStyle.Bold(true).Render("▸ ")
 		}
 		line := fmt.Sprintf("⏱ %s · last fired %s · %d today",
 			charter.Name, standingAge(charter.LastFired, m.standingTime()), charter.Today)
@@ -417,7 +417,7 @@ func (m *Model) renderStandingSection(width int) string {
 		}
 		line = truncate(marker+body, width)
 		if m.focus == focusGraph && m.selectedNodeID == standingGraphRowID(charter.ID) {
-			line = lipgloss.NewStyle().Background(selectionBand).Width(width).Render(line)
+			line = bandStyle.Width(width).Render(line)
 		}
 		lines = append(lines, line)
 		m.standingRows = append(m.standingRows, standingRow{line: row, charterID: charter.ID})
@@ -569,8 +569,8 @@ func (m *Model) appendCharterRow(lines *[]string, width int, text string, row ch
 		if strings.HasPrefix(text, "▸ ") {
 			marker, body = "▸ ", strings.TrimPrefix(text, "▸ ")
 		}
-		view = lipgloss.NewStyle().Background(selectionBand).Width(width).Render(
-			prefix + lipgloss.NewStyle().Foreground(powder).Render(marker) + mutedStyle.Render(body),
+		view = bandStyle.Width(width).Render(
+			prefix + powderStyle.Render(marker) + mutedStyle.Render(body),
 		)
 	}
 	*lines = append(*lines, truncate(view, width))
