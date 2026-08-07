@@ -847,6 +847,7 @@ func questionIsStuck(card jobCard, now time.Time) bool {
 }
 
 func (m *Model) rebuildCards() {
+	m.invalidateDock()
 	previous := m.cards
 	next := deriveJobCards(m.sessionID, m.cardSnapshot, m.messages, m.pending, m.jobUsage, m.commands)
 	for _, old := range previous {
@@ -868,6 +869,7 @@ func (m *Model) rebuildCards() {
 		}
 	}
 	m.cards = next
+	m.noteShimmerActivity()
 	if m.selectedCardID != "" && m.cardByID(m.selectedCardID) == nil {
 		m.selectedCardID = ""
 	}
@@ -981,12 +983,33 @@ func (m *Model) attentionMessage(message store.Message) bool {
 		}()
 }
 
+// cardDockHeight measures the dock the layout is about to place. It measures
+// the rendered dock itself — the height of a card is not derivable from its
+// state — so the render is shared with the bar that draws it.
 func (m *Model) cardDockHeight() int {
-	content := m.renderActivityDock(false)
-	if content == "" {
-		return 0
+	_, height := m.activityDock()
+	return height
+}
+
+// activityDock renders the dock at most once per frame and once per relayout,
+// registering its click targets as it goes. Both callers — the bounds pass and
+// the bar — read the same string, so the rows they hit-test against are the
+// rows on screen.
+// invalidateDock drops the frame's dock render. Every caller is a point where
+// what the dock says may have changed.
+func (m *Model) invalidateDock() { m.dockValid = false }
+
+func (m *Model) activityDock() (string, int) {
+	if m.dockValid {
+		return m.dockContent, m.dockHeight
 	}
-	return lipgloss.Height(content)
+	content := m.renderActivityDock(true)
+	height := 0
+	if content != "" {
+		height = lipgloss.Height(content)
+	}
+	m.dockContent, m.dockHeight, m.dockValid = content, height, true
+	return content, height
 }
 
 func (m *Model) limitCardDock(content string) string {
