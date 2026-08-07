@@ -42,6 +42,7 @@ import (
 //	⟨×⟩ dismiss/close a surface
 //	↳  jump to the task an answer came from
 //	‹  go back one surface
+//	⌄  open a dropdown
 //
 // Hints stay dim and short, and appear only when glyph + noun cannot carry the
 // action alone; global keys live in the one footer line and are not repeated
@@ -112,6 +113,12 @@ func (m *Model) View() string {
 	if !m.paletteOpen() {
 		hint := "/ commands · tab focus · " + keyBindings.graph + " tasks · v receipts · ? help"
 		switch {
+		case m.voiceHint != "" && time.Now().Before(m.voiceHintUntil):
+			hint = m.voiceHint
+		case m.voiceState == voiceRecording:
+			hint = keyBindings.voice + " finish · esc discard · keep typing to preserve your draft"
+		case m.voiceState == voiceStarting || m.voiceState == voiceFinalizing:
+			hint = "voice working · esc discard"
 		case m.focus == focusCards:
 			hint = "↑/↓ select card · enter details/graph · esc back · " + keyBindings.graph + " all tasks"
 		case m.nodeViewID != "":
@@ -120,6 +127,8 @@ func (m *Model) View() string {
 			hint = "↑/↓ select · enter inspect · esc close · " + keyBindings.graph + " hide"
 		case m.focus == focusHeader:
 			hint = "←/→ choose header control · enter open · esc back"
+		case !m.voiceHintShown:
+			hint = "/ commands · tab focus · " + keyBindings.voice + " voice · " + keyBindings.graph + " tasks · v receipts · ? help"
 		}
 		parts = append(parts, mutedStyle.Faint(true).Render(truncate(hint, m.width)))
 	}
@@ -136,6 +145,7 @@ func (m *Model) trackPaneBounds() {
 	m.headerQuestionBounds = paneBounds{}
 	m.headerTalkBounds = paneBounds{}
 	m.headerWorkBounds = paneBounds{}
+	m.headerVoiceBounds = paneBounds{}
 	m.graphBounds = paneBounds{}
 	m.graphRowsBounds = paneBounds{}
 	m.standingRowsBounds = paneBounds{}
@@ -144,9 +154,12 @@ func (m *Model) trackPaneBounds() {
 	m.modelPickerBounds = paneBounds{}
 	m.modelTalkBounds = paneBounds{}
 	m.modelWorkBounds = paneBounds{}
+	m.modelVoiceBounds = paneBounds{}
 	m.modelPickerRows = m.modelPickerRows[:0]
 	m.inputBounds = paneBounds{}
 	m.textQuestionDismissBounds = paneBounds{}
+	m.micBounds = paneBounds{}
+	m.voiceCancelBounds = paneBounds{}
 	m.nodeBounds = paneBounds{}
 	m.nodeTraceBounds = paneBounds{}
 	m.activityBarBounds = paneBounds{}
@@ -199,7 +212,9 @@ func (m *Model) renderTopBar() string {
 	left := wordmark + mutedStyle.Faint(true).Render("  "+m.sessionID)
 	talk := m.renderHeaderModel("talk", 0)
 	work := m.renderHeaderModel("work", 1)
-	models := talk + mutedStyle.Faint(true).Render("  ·  ") + work
+	voiceControl := m.renderHeaderModel("voice", 2)
+	separator := mutedStyle.Faint(true).Render("  ·  ")
+	models := talk + separator + work + separator + voiceControl
 
 	rightMeta := m.renderSpend()
 	if m.status != "" && time.Now().Before(m.statusUntil) {
@@ -224,24 +239,28 @@ func (m *Model) renderTopBar() string {
 		left = wordmark
 		space = m.width - lipgloss.Width(left) - lipgloss.Width(right)
 	}
+	if space < 1 && rightMeta != "" {
+		// …and outlive the transient meta: status and spend are readable
+		// elsewhere, the three role controls are the only door to the picker.
+		right = models + "  " + button
+		space = m.width - lipgloss.Width(left) - lipgloss.Width(right)
+	}
 	if space < 1 {
 		// On a narrow terminal the task button remains the last header action.
 		right = button
 		space = m.width - lipgloss.Width(left) - lipgloss.Width(right)
-		m.headerTalkBounds = paneBounds{}
-		m.headerWorkBounds = paneBounds{}
 	}
 	if space < 1 {
-		m.headerTasksBounds = paneBounds{}
-		m.headerQuestionBounds = paneBounds{}
 		return truncate(left+" "+right, m.width)
 	}
 	rightX := lipgloss.Width(left) + space
 	if strings.Contains(right, "talk") {
 		m.headerTalkBounds = paneBounds{x: rightX, y: 0, width: lipgloss.Width(talk), height: 1}
-		m.headerWorkBounds = paneBounds{
-			x: rightX + lipgloss.Width(talk) + lipgloss.Width("  ·  "),
-			y: 0, width: lipgloss.Width(work), height: 1,
+		workX := rightX + lipgloss.Width(talk) + lipgloss.Width(separator)
+		m.headerWorkBounds = paneBounds{x: workX, y: 0, width: lipgloss.Width(work), height: 1}
+		m.headerVoiceBounds = paneBounds{
+			x: workX + lipgloss.Width(work) + lipgloss.Width(separator),
+			y: 0, width: lipgloss.Width(voiceControl), height: 1,
 		}
 	}
 	buttonWidth := lipgloss.Width(button)
@@ -272,7 +291,7 @@ func (m *Model) renderTasksButton() string {
 		dot = questionStyle.Bold(true).Render("●") + " "
 	}
 	style := mutedStyle.Faint(true)
-	if m.focus == focusHeader && m.headerFocusIndex == 2 {
+	if m.focus == focusHeader && m.headerFocusIndex == 3 {
 		style = lipgloss.NewStyle().Foreground(powder)
 	}
 	return style.Render("⟨tasks ") + dot + style.Render(disclosure+"⟩")
@@ -490,13 +509,52 @@ func (m *Model) renderNodePane() string {
 	return lipgloss.NewStyle().Width(m.width).Render(strings.Join(lines, "\n"))
 }
 
-// renderInput is a bare prompt line — the `›` is the whole affordance. A text
-// question adds one quiet context line without changing what enter submits.
+// renderInput keeps editable text owned by textinput while laying the pending
+// transcript beside it as non-editable, visibly provisional ink. The mic is
+// overlaid at the right edge after ANSI-aware clipping, so neither a long
+// draft nor a live transcript can widen the pane. A text question adds one
+// quiet context line above all of that without changing what enter submits —
+// the provisional transcript and the "answering:" line never share a row.
 func (m *Model) renderInput() string {
-	input := lipgloss.NewStyle().PaddingLeft(0).Width(m.width).Render(m.input.View())
+	input := m.input
+	if strings.TrimSpace(m.voicePending) != "" {
+		input.Placeholder = ""
+	}
+	lines := strings.Split(input.View(), "\n")
+	last := len(lines) - 1
+	if strings.TrimSpace(m.voicePending) != "" {
+		lines[last] += mutedStyle.Faint(true).Italic(true).Render(" " + m.voicePending)
+	}
+	control := m.voiceControl()
+	for index := range lines {
+		if index == last {
+			lines[index] = overlayRight(lines[index], control, m.width)
+		} else {
+			lines[index] = truncate(lines[index], m.width)
+		}
+	}
 	card := m.activeTextQuestion()
+	inputY := m.inputBounds.y
+	if card != nil {
+		inputY++ // the question context line owns the input surface's first row
+	}
+	controlWidth := lipgloss.Width(control)
+	controlX := max(0, m.width-controlWidth)
+	micWidth := lipgloss.Width(m.voiceMicGlyph())
+	m.micBounds = paneBounds{
+		x: controlX, y: inputY + last,
+		width: micWidth, height: 1,
+	}
+	if m.voiceState != voiceIdle {
+		cancelWidth := lipgloss.Width("⟨×⟩")
+		m.voiceCancelBounds = paneBounds{
+			x: m.width - cancelWidth, y: inputY + last,
+			width: cancelWidth, height: 1,
+		}
+	}
+	rendered := lipgloss.NewStyle().PaddingLeft(0).Width(m.width).Render(strings.Join(lines, "\n"))
 	if card == nil {
-		return input
+		return rendered
 	}
 	close := "⟨×⟩"
 	prefix := "answering: "
@@ -507,17 +565,21 @@ func (m *Model) renderInput() string {
 		x: lipgloss.Width(line) - lipgloss.Width(close), y: m.inputBounds.y,
 		width: lipgloss.Width(close), height: 1,
 	}
-	return line + "\n" + input
+	return line + "\n" + rendered
 }
 
 // overlayModelDropdown paints a small matte menu over the first rows beneath
-// the header. The frame keeps its exact height; the dropdown does not steal
-// conversation space or move the input while the user searches.
+// the header, anchored under whichever role control opened it. The frame keeps
+// its exact height; the dropdown does not steal conversation space or move the
+// input while the user searches.
 func (m *Model) overlayModelDropdown(frame string) string {
 	width := min(72, max(36, m.width*2/3))
 	x := m.headerTalkBounds.x
 	if m.modelRole == "work" && m.headerWorkBounds.width > 0 {
 		x = m.headerWorkBounds.x
+	}
+	if m.modelRole == "voice" && m.headerVoiceBounds.width > 0 {
+		x = m.headerVoiceBounds.x
 	}
 	if x == 0 && m.headerTalkBounds.width == 0 {
 		x = max(0, m.width-width)
@@ -536,10 +598,11 @@ func (m *Model) overlayModelDropdown(frame string) string {
 	m.paletteCloseBounds = paneBounds{x: x, y: y, width: width, height: 1}
 	m.modelTalkBounds = paneBounds{x: x + 1, y: y + 1, width: lipgloss.Width("◉ talk"), height: 1}
 	m.modelWorkBounds = paneBounds{x: x + 1 + lipgloss.Width("◉ talk    "), y: y + 1, width: lipgloss.Width("◉ work"), height: 1}
+	m.modelVoiceBounds = paneBounds{x: x + 1 + lipgloss.Width("◉ talk    ◉ work    "), y: y + 1, width: lipgloss.Width("◉ voice"), height: 1}
 
 	choiceLine := y + 1 + 2
 	prefixLines := 2
-	if m.catalogLoading {
+	if m.modelCatalogIsLoading(m.modelRole) {
 		choiceLine++
 		prefixLines++
 	}
@@ -651,6 +714,7 @@ func (m *Model) paletteLines(width int) []string {
 		// accelerators, never the only door in.
 		lines = append(lines,
 			mutedStyle.Render(truncate("voice  you ask · aforge answers · v toggles receipts (or click their ▸ line)", width)),
+			mutedStyle.Render(truncate("mic    "+keyBindings.voice+" starts/stops voice · click ◌ at the input edge · esc discards", width)),
 			mutedStyle.Render(truncate("tasks  "+keyBindings.graph+" toggles the rail · or click ⟨tasks ▸⟩ in the header · or /graph", width)),
 			mutedStyle.Render(truncate("rail   ↑/↓ select · enter inspect (or click a row twice) · esc closes", width)),
 			mutedStyle.Render(truncate("cards  tab or click the dock · enter expands then opens its job · esc climbs back", width)),
@@ -727,24 +791,29 @@ func (m *Model) completionLines(entries []paletteEntry, label string, width int)
 }
 
 func (m *Model) modelPickerLines(width int) []string {
-	talk, work := "○ talk", "○ work"
+	talk, work, voiceRole := "○ talk", "○ work", "○ voice"
 	if m.modelRole == "talk" {
 		talk = "◉ talk"
-	} else {
+	} else if m.modelRole == "work" {
 		work = "◉ work"
+	} else {
+		voiceRole = "◉ voice"
 	}
 	talkView := mutedStyle.Render(talk)
 	workView := mutedStyle.Render(work)
+	voiceView := mutedStyle.Render(voiceRole)
 	if m.modelRole == "talk" {
 		talkView = lipgloss.NewStyle().Foreground(powder).Bold(true).Render(talk)
-	} else {
+	} else if m.modelRole == "work" {
 		workView = lipgloss.NewStyle().Foreground(powder).Bold(true).Render(work)
+	} else {
+		voiceView = lipgloss.NewStyle().Foreground(mint).Bold(true).Render(voiceRole)
 	}
 	lines := []string{
-		talkView + mutedStyle.Render("    ") + workView,
+		talkView + mutedStyle.Render("    ") + workView + mutedStyle.Render("    ") + voiceView,
 		mutedStyle.Render("filter: ") + inputTextStyle.Render(m.input.Value()),
 	}
-	if m.catalogLoading {
+	if m.modelCatalogIsLoading(m.modelRole) {
 		lines = append(lines, mutedStyle.Render("fetching full catalog…"))
 	}
 
@@ -809,6 +878,8 @@ func (m *Model) modelChoiceRow(choice ModelChoice, selected bool, width int) str
 	accent := powder
 	if m.modelRole == "work" {
 		accent = peach
+	} else if m.modelRole == "voice" {
+		accent = mint
 	}
 	slugStyle := lipgloss.NewStyle().Foreground(accent).Bold(selected)
 	row := markerStyle.Render(marker) + slugStyle.Render(slug)

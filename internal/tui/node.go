@@ -735,6 +735,9 @@ func (m *Model) updateMouseClick(x, y int) (tea.Cmd, bool) {
 	if m.headerWorkBounds.contains(x, y) {
 		return m.openModelPicker("work"), true
 	}
+	if m.headerVoiceBounds.contains(x, y) {
+		return m.openModelPicker("voice"), true
+	}
 	if m.headerTasksBounds.contains(x, y) {
 		if m.nodeViewID != "" {
 			m.closeNodeView()
@@ -751,14 +754,13 @@ func (m *Model) updateMouseClick(x, y int) (tea.Cmd, bool) {
 			return nil, true
 		}
 		if m.modelTalkBounds.contains(x, y) {
-			m.modelRole = "talk"
-			m.paletteSelected = indexModelChoice(m.filteredModelChoices(), m.currentModel("talk"))
-			return nil, true
+			return m.selectModelRole("talk"), true
 		}
 		if m.modelWorkBounds.contains(x, y) {
-			m.modelRole = "work"
-			m.paletteSelected = indexModelChoice(m.filteredModelChoices(), m.currentModel("work"))
-			return nil, true
+			return m.selectModelRole("work"), true
+		}
+		if m.modelVoiceBounds.contains(x, y) {
+			return m.selectModelRole("voice"), true
 		}
 		for _, row := range m.modelPickerRows {
 			if !row.bounds.contains(x, y) {
@@ -780,6 +782,12 @@ func (m *Model) updateMouseClick(x, y int) (tea.Cmd, bool) {
 	if m.paletteCloseBounds.contains(x, y) {
 		m.closePalette()
 		return nil, true
+	}
+	if m.voiceCancelBounds.contains(x, y) {
+		return m.cancelVoice(), true
+	}
+	if m.micBounds.contains(x, y) {
+		return m.toggleVoice(), true
 	}
 	if m.inputBounds.contains(x, y) {
 		if m.textQuestionDismissBounds.contains(x, y) {
