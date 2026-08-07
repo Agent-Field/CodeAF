@@ -75,3 +75,19 @@ already running it says the new work is queued behind it.
 If something genuinely cannot be done as literally asked, you never get a bare
 "no": you get the nearest thing that *can* be done, offered as the default it
 will proceed with, or as a small numbered choice.
+
+## What the work found
+
+Ask what a job found, produced or concluded and you get the finding, not its
+status. "It completed" is not an answer to that question.
+
+Two mechanisms make that true. When your message clearly points at particular
+jobs, their full results ride into the answer alongside the one-line board — the
+summary whole, the files they wrote, what they spent, when they finished — in a
+budget of their own, so depth never crowds out breadth. And the front desk can
+read any single job's whole result on demand, including what each of its parts
+concluded, when it needs more than arrived with the question.
+
+Which jobs get opened is decided by how well your words match the work itself,
+never by a list of phrases. A greeting or a fresh request opens nothing, and a
+result you were shown a moment ago is not repeated back at you.
