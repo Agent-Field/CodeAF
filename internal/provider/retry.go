@@ -24,6 +24,9 @@ import (
 // breaking, retry accounting — belongs in a client rewrite, not here.
 const (
 	maxAttempts  = 3
+	// rateLimitAttempts is the patience for 429s specifically: the provider
+	// pacing us is not a fault, and Retry-After bounds each wait.
+	rateLimitAttempts = 6
 	baseBackoff  = 700 * time.Millisecond
 	maxErrorPeek = 8 << 10
 )
@@ -42,12 +45,21 @@ func (c *Client) send(ctx context.Context, request *ai.Request, body []byte, str
 	}
 	httpClient := *c.http
 	httpClient.Timeout = adaptiveCompletionTimeout(maxTokens, c.config.Timeout)
-	for attempt := 0; attempt < maxAttempts; attempt++ {
+	// providerWait is the provider's own comeback instruction from the last
+	// 429 (Retry-After); it outranks our computed backoff.
+	var providerWait time.Duration
+	// Rate limits get more patience than faults: they are the provider
+	// pacing us, not failing, and abandoning work over pacing is the one
+	// outcome the concurrency doctrine forbids.
+	for attempt := 0; attempt < rateLimitAttempts; attempt++ {
 		if attempt > 0 {
 			// Jittered, so several leaves that were rate-limited together do not
 			// all come back at the same instant and trigger it again.
 			delay := time.Duration(float64(baseBackoff) * float64(int(1)<<uint(attempt-1)))
 			delay += time.Duration(rand.Int63n(int64(delay / 2)))
+			if providerWait > delay {
+				delay = providerWait
+			}
 			select {
 			case <-ctx.Done():
 				return nil, ctx.Err()
@@ -59,29 +71,45 @@ func (c *Client) send(ctx context.Context, request *ai.Request, body []byte, str
 		if err != nil {
 			return nil, err
 		}
+		if err := sharedLimiter.acquire(ctx); err != nil {
+			return nil, err
+		}
 		response, err := httpClient.Do(httpRequest)
 		if err != nil {
+			sharedLimiter.release(false)
 			// A cancelled or expired parent is a decision, not a fault. Retrying
 			// it would burn the remaining deadline on calls that cannot land.
 			if ctx.Err() != nil {
 				return nil, fmt.Errorf("execute request: %w", err)
 			}
 			lastErr = fmt.Errorf("execute request: %w", err)
+			if attempt >= maxAttempts-1 {
+				break
+			}
 			continue
 		}
+		rateLimited := response.StatusCode == http.StatusTooManyRequests
+		sharedLimiter.release(rateLimited)
 		if !retryableStatus(response.StatusCode) {
 			return response, nil
+		}
+		if rateLimited {
+			providerWait = retryAfter(response)
 		}
 		// Drain a bounded prefix before closing so the connection can be reused
 		// and the eventual error still says what the provider complained about.
 		peek, _ := io.ReadAll(io.LimitReader(response.Body, maxErrorPeek))
 		response.Body.Close()
 		lastErr = apiError(response.StatusCode, peek)
+		// Non-rate-limit faults keep the original, shorter patience.
+		if !rateLimited && attempt >= maxAttempts-1 {
+			break
+		}
 	}
 	if lastErr == nil {
 		lastErr = errors.New("request failed")
 	}
-	return nil, fmt.Errorf("after %d attempts: %w", maxAttempts, lastErr)
+	return nil, fmt.Errorf("after %d attempts: %w", rateLimitAttempts, lastErr)
 }
 
 // retryableStatus separates "try again" from "this will never work". A 4xx other
