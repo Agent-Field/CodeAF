@@ -103,3 +103,71 @@ func TestSubtreeFromPlanCarriesContractIntoBrief(t *testing.T) {
 		t.Fatalf("brief lost content: %q", brief)
 	}
 }
+
+// The strategic-news-arbitrage bug: a downstream node's needs named three scan
+// CONTAINERS; expansion replaced them with leaves and admission silently
+// dropped the needs — so "connect the scans" ran first against an empty
+// workspace. A need on an expanded container must resolve to every admitted
+// node that expanded out of it.
+func TestNeedsOnExpandedContainersRewireToTheirLeaves(t *testing.T) {
+	graph := &plan.Graph{Nodes: []plan.Node{
+		{ID: 1, Stage: 1, Kind: plan.KindWork, Title: "Source Catalog", Brief: "catalog"},
+		// Two scan containers, both expanded into leaves.
+		{ID: 5, Stage: 2, Kind: plan.KindWork, Title: "Scan Macro", Brief: "expanded"},
+		{ID: 6, Stage: 2, Kind: plan.KindWork, Title: "Scan Companies", Brief: "expanded"},
+		{ID: 10, Stage: 2, Depth: 1, Parent: 5, Kind: plan.KindWork, Title: "Macro Outlooks", Brief: "macro"},
+		{ID: 11, Stage: 2, Depth: 1, Parent: 5, Kind: plan.KindWork, Title: "Tariffs", Brief: "tariffs"},
+		{ID: 12, Stage: 2, Depth: 1, Parent: 6, Kind: plan.KindWork, Title: "Earnings Scan", Brief: "earnings"},
+		// The consumer that was promised the scan outputs.
+		{ID: 8, Stage: 3, Kind: plan.KindWork, Title: "Connect Dots", Brief: "connect", Needs: []int{1, 5, 6}},
+		{ID: 9, Stage: 4, Kind: plan.KindSynthesis, Title: "Rank", Brief: "rank", Needs: []int{8}},
+	}}
+
+	subtree, err := SubtreeFromPlan(graph, "tarb")
+	if err != nil {
+		t.Fatalf("convert: %v", err)
+	}
+	var connect store.NodeSpec
+	for _, spec := range subtree.Nodes {
+		if spec.ID == "tarb-n8" {
+			connect = spec
+		}
+	}
+	if connect.ID == "" {
+		t.Fatalf("connect node missing: %+v", subtree.Nodes)
+	}
+	got := make(map[string]bool, len(connect.Needs))
+	for _, need := range connect.Needs {
+		got[need.NodeID] = true
+	}
+	for _, want := range []string{"tarb-n1", "tarb-n10", "tarb-n11", "tarb-n12"} {
+		if !got[want] {
+			t.Fatalf("connect must need %s, has %v", want, connect.Needs)
+		}
+	}
+	if len(connect.Needs) != 4 {
+		t.Fatalf("unexpected needs (duplicates or containers?): %v", connect.Needs)
+	}
+
+	// End to end: admitted into a real store, the connect node must not be
+	// ready while any scan leaf is unfinished.
+	s, err := store.Open(filepath.Join(t.TempDir(), "graph.db"))
+	if err != nil {
+		t.Fatalf("open store: %v", err)
+	}
+	defer s.Close()
+	if err := s.Splice(store.RootID, subtree, store.Provenance{
+		Origin: store.OriginUser, SessionID: "s1", Intent: "arbitrage playbook",
+	}); err != nil {
+		t.Fatalf("splice: %v", err)
+	}
+	ready, err := s.Ready(20)
+	if err != nil {
+		t.Fatalf("ready: %v", err)
+	}
+	for _, node := range ready {
+		if node.ID == "tarb-n8" || node.ID == "tarb" {
+			t.Fatalf("%s ready before its scan inputs settled: %+v", node.ID, ready)
+		}
+	}
+}
