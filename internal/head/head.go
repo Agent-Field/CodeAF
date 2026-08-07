@@ -254,11 +254,18 @@ func (h *Head) answer(ctx context.Context, user store.Message) error {
 	} else if handled {
 		return nil
 	}
-	// Last deterministic reading before the model gets a vote. Recognized
-	// durable language becomes a charter draft here; nothing that reaches this
-	// point can also be noted as a fact or answered as ordinary chat.
+	// Last deterministic readings before the model gets a vote. Recognized
+	// durable language becomes a charter draft here; standing runs before
+	// redirect so "whenever/every time" phrasing stays a rule even while work
+	// it happens to mention is in flight. Nothing that reaches this point can
+	// also be noted as a fact or answered as ordinary chat.
 	if handled, err := h.manageStanding(user); err != nil {
 		return fmt.Errorf("serve head: draft standing charter: %w", err)
+	} else if handled {
+		return nil
+	}
+	if handled, err := h.manageRedirect(user); err != nil {
+		return fmt.Errorf("serve head: manage redirection: %w", err)
 	} else if handled {
 		return nil
 	}

@@ -13,11 +13,11 @@ import (
 const (
 	// SurgerySpendGateUSD is recorded spend above which cancel/restart needs
 	// explicit consent.
-	SurgerySpendGateUSD = 0.25
+	SurgerySpendGateUSD = store.SurgerySpendGateUSD
 	// SurgeryRuntimeGate is live runtime above which cancellation needs consent.
-	SurgeryRuntimeGate = 5 * time.Minute
+	SurgeryRuntimeGate = store.SurgeryRuntimeGate
 	// SurgeryCascadeGateNodes gates every operation that affects a larger tree.
-	SurgeryCascadeGateNodes = 3
+	SurgeryCascadeGateNodes = store.SurgeryCascadeGateNodes
 )
 
 type surgeryIntent struct {

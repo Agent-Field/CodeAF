@@ -190,6 +190,11 @@ func runChat(args []string) error {
 		}).
 		WithNarrator(narrateProgress(settings, chatClient, graph)).
 		WithBriefComposer(composeMorningBrief(settings, chatClient)).
+		// Redirection is a chat-surface concern — a wake pass has no user
+		// whose words could revise a running job.
+		WithRedirector(func(ctx context.Context, job store.Node, message string) (resident.Redirection, error) {
+			return plans.reviseForUser(ctx, settings, taskClient, graph, job, message)
+		}).
 		WithStandingWatch(standingWatch).
 		WithStandingWatchKeyPersist(func() (bool, string, error) {
 			return config.EnsurePersistedAPIKey(settings.ProfileDir)
@@ -1810,6 +1815,56 @@ func (j *jobPlans) reviseAfter(ctx context.Context, settings config.Config, clie
 		NodeID:    node.ID,
 		Body:      body,
 	})
+}
+
+// reviseForUser is reviseAfter's twin for the other event source. It holds the
+// same registry lock for the same reason, and differs in exactly two places:
+// the event is the user speaking with authority, and it does not return early
+// when nothing is pending — the leaves already running still have to be told,
+// and that broadcast is the reconciler's next move.
+func (j *jobPlans) reviseForUser(ctx context.Context, settings config.Config, client *liveClient,
+	graph *store.Store, job store.Node, message string) (resident.Redirection, error) {
+	j.mu.Lock()
+	defer j.mu.Unlock()
+	entry, ok := j.graphs[job.ID]
+	if !ok {
+		return resident.Redirection{}, nil
+	}
+	operations, _, err := plan.Revise(settings.Context(ctx, entry.graph.Goal), client, entry.graph,
+		resident.UserRevisionEvent(message))
+	if err != nil {
+		return resident.Redirection{}, err
+	}
+
+	var revision resident.Redirection
+	editable := make([]plan.Operation, 0, len(operations))
+	for _, operation := range operations {
+		id := fmt.Sprintf("%s-n%d", job.ID, operation.Node)
+		if operation.Op == "remove" {
+			if node, found, err := graph.Node(id); err == nil && found &&
+				(node.Status == store.Running || node.Status == store.Claimed) {
+				revision.RunningRemovals = append(revision.RunningRemovals, id)
+				continue
+			}
+		}
+		editable = append(editable, operation)
+	}
+	_, notes := resident.ApplyRevision(graph, entry.graph, job.ID, entry.root, editable)
+	revision.Notes = notes
+	for _, operation := range editable {
+		if !operation.Applied {
+			continue
+		}
+		switch operation.Op {
+		case "add":
+			revision.Added++
+		case "remove":
+			revision.Dropped++
+		case "rewire", "retitle":
+			revision.Amended++
+		}
+	}
+	return revision, nil
 }
 
 func nodeDisplay(node store.Node) string {

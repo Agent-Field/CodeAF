@@ -267,6 +267,10 @@ const (
 	// QuestionCategoryServiceHygiene is the long-running nudge, which is an
 	// ordinary VOI-gated ask: if the user always keeps them, stop nagging.
 	QuestionCategoryServiceHygiene QuestionCategory = "service-hygiene"
+	// QuestionCategoryRedirectTarget is "did you mean the running job, or is
+	// this new work?" — reversible either way, so the meta loop is free to
+	// learn that the top-ranked job is simply always what was meant.
+	QuestionCategoryRedirectTarget QuestionCategory = "redirect-target"
 	QuestionCategoryGeneric        QuestionCategory = "generic"
 )
 
