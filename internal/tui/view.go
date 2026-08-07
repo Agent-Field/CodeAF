@@ -65,21 +65,35 @@ var (
 	muted    = lipgloss.AdaptiveColor{Light: "#686A78", Dark: "#6C7086"}
 	ink      = lipgloss.AdaptiveColor{Light: "#2E3038", Dark: "#E8E7EE"}
 
-	promptStyle      = lipgloss.NewStyle().Foreground(powder).Bold(true)
-	inputTextStyle   = lipgloss.NewStyle().Foreground(ink)
-	placeholderStyle = lipgloss.NewStyle().Foreground(muted)
-	cursorStyle      = lipgloss.NewStyle().Foreground(powder)
-	mutedStyle       = lipgloss.NewStyle().Foreground(muted)
-	questionStyle    = lipgloss.NewStyle().Foreground(lavender)
-	selectedInk      = lipgloss.AdaptiveColor{Light: "#FFFFFF", Dark: "#24202E"}
-	selectionBand    = lipgloss.AdaptiveColor{Light: "#E8E7EE", Dark: "#343442"}
-	selectedStyle    = lipgloss.NewStyle().Foreground(ink).Background(selectionBand)
+	// One style per ink, built once. A style carries its color in an interface,
+	// so building one inside a render heap-allocates per glyph, per row, per
+	// frame. Variants (bold, faint, a width) copy from these — a Style is a
+	// value, so a copy costs nothing and shares nothing.
+	inkStyle      = lipgloss.NewStyle().Foreground(ink)
+	powderStyle   = lipgloss.NewStyle().Foreground(powder)
+	peachStyle    = lipgloss.NewStyle().Foreground(peach)
+	mintStyle     = lipgloss.NewStyle().Foreground(mint)
+	butterStyle   = lipgloss.NewStyle().Foreground(butter)
+	roseStyle     = lipgloss.NewStyle().Foreground(rose)
+	lavenderStyle = lipgloss.NewStyle().Foreground(lavender)
+	mutedStyle    = lipgloss.NewStyle().Foreground(muted)
+
+	selectedInk   = lipgloss.AdaptiveColor{Light: "#FFFFFF", Dark: "#24202E"}
+	selectionBand = lipgloss.AdaptiveColor{Light: "#E8E7EE", Dark: "#343442"}
+	bandStyle     = lipgloss.NewStyle().Background(selectionBand)
+
+	promptStyle      = powderStyle.Bold(true)
+	inputTextStyle   = inkStyle
+	placeholderStyle = mutedStyle
+	cursorStyle      = powderStyle
+	questionStyle    = lavenderStyle
+	selectedStyle    = inkStyle.Background(selectionBand)
 	pillStyle        = lipgloss.NewStyle().Foreground(selectedInk).Background(peach).Padding(0, 1)
 
 	// The two conversational voices (level 1 and 2 above).
-	aforgeLabelStyle = lipgloss.NewStyle().Foreground(lavender)
-	youLabelStyle    = lipgloss.NewStyle().Foreground(muted).Faint(true)
-	youTextStyle     = lipgloss.NewStyle().Foreground(ink).Faint(true)
+	aforgeLabelStyle = lavenderStyle
+	youLabelStyle    = mutedStyle.Faint(true)
+	youTextStyle     = inkStyle.Faint(true)
 
 	spinnerFrames = []string{"⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"}
 )
@@ -243,7 +257,7 @@ func (m *Model) trackPaneBounds() {
 
 func (m *Model) renderTopBar() string {
 	m.headerStatusShown = false
-	wordmark := lipgloss.NewStyle().Foreground(ink).Bold(true).Render("aforge")
+	wordmark := inkStyle.Bold(true).Render("aforge")
 	thread := m.renderPlaceLabel("thread", placeThread, len(m.agentQuestions) > 0)
 	board := m.renderPlaceLabel("board", placeBoard, m.boardNeedsAttention())
 	self := m.renderPlaceLabel("self", placeSelf, m.selfNeedsAttention())
@@ -265,7 +279,7 @@ func (m *Model) renderTopBar() string {
 		rightMeta = mutedStyle.Render(truncate(m.status, max(8, m.width/2)))
 	}
 	if m.err != nil {
-		rightMeta = lipgloss.NewStyle().Foreground(rose).Render(truncate(m.err.Error(), max(8, m.width/2)))
+		rightMeta = roseStyle.Render(truncate(m.err.Error(), max(8, m.width/2)))
 	}
 	// The rail toggle is a real button: alt+g and /graph are accelerators, the
 	// click path is always visible. It follows the affordance grammar (▸ when
@@ -345,7 +359,7 @@ func (m *Model) renderTopBar() string {
 func (m *Model) renderPlaceLabel(name string, target place, attention bool) string {
 	style := mutedStyle.Faint(true)
 	if m.activePlace() == target {
-		style = lipgloss.NewStyle().Foreground(ink)
+		style = inkStyle
 	}
 	label := style.Render(name)
 	if attention {
@@ -357,7 +371,7 @@ func (m *Model) renderPlaceLabel(name string, target place, attention bool) stri
 func (m *Model) renderModelsButton() string {
 	style := mutedStyle.Faint(true)
 	if m.focus == focusHeader && m.headerFocusIndex == 0 {
-		style = lipgloss.NewStyle().Foreground(powder).Bold(true)
+		style = powderStyle.Bold(true)
 	}
 	return style.Render("models ⌄")
 }
@@ -373,7 +387,7 @@ func (m *Model) renderTasksButton() string {
 	}
 	style := mutedStyle.Faint(true)
 	if m.focus == focusHeader && m.headerFocusIndex == 1 {
-		style = lipgloss.NewStyle().Foreground(powder)
+		style = powderStyle
 	}
 	// The button keeps its name in every layout: the header's board label is
 	// the place, this is the alias that opens it, and a control that renames
@@ -384,7 +398,7 @@ func (m *Model) renderTasksButton() string {
 func (m *Model) renderHelpButton() string {
 	style := mutedStyle.Faint(true)
 	if (m.focus == focusHeader && m.headerFocusIndex == 2) || m.palette == paletteHelp {
-		style = lipgloss.NewStyle().Foreground(powder)
+		style = powderStyle
 	}
 	return style.Render("?")
 }
@@ -521,19 +535,19 @@ func (m *Model) renderLegacyActivityBar() string {
 	segments := make([]string, 0, 4)
 	if planning > 0 {
 		frame := spinnerFrames[m.spinnerFrame%len(spinnerFrames)]
-		segments = append(segments, lipgloss.NewStyle().Foreground(peach).Render(
+		segments = append(segments, peachStyle.Render(
 			fmt.Sprintf("%s planning", frame)))
 	}
 	if running > 0 {
 		frame := spinnerFrames[m.spinnerFrame%len(spinnerFrames)]
-		segments = append(segments, lipgloss.NewStyle().Foreground(peach).Render(
+		segments = append(segments, peachStyle.Render(
 			fmt.Sprintf("%s %d working", frame, running)))
 	}
 	if queued > 0 {
 		segments = append(segments, mutedStyle.Render(fmt.Sprintf("○ %d queued", queued)))
 	}
 	if failed > 0 {
-		segments = append(segments, lipgloss.NewStyle().Foreground(rose).Render(fmt.Sprintf("%d failed", failed)))
+		segments = append(segments, roseStyle.Render(fmt.Sprintf("%d failed", failed)))
 	}
 	bar := strings.Join(segments, mutedStyle.Render(" · "))
 	if bar == "" {
@@ -592,7 +606,7 @@ func (m *Model) renderGraphPane() string {
 	}
 	title := mutedStyle.Faint(true).Render(label)
 	if m.focus == focusGraph {
-		title = lipgloss.NewStyle().Foreground(powder).Render(label)
+		title = powderStyle.Render(label)
 	}
 	title += mutedStyle.Faint(true).Render("  ⟨×⟩")
 	lines := make([]string, 0, m.graphHeight)
@@ -631,7 +645,7 @@ func (m *Model) graphToggleHit(x, y int) bool {
 func (m *Model) renderNodePane() string {
 	innerWidth := max(1, m.width-2)
 	now := time.Now()
-	back := lipgloss.NewStyle().Foreground(powder).Render("‹ back")
+	back := powderStyle.Render("‹ back")
 	m.nodeBackBounds = paneBounds{x: m.nodeBounds.x, y: m.nodeBounds.y, width: lipgloss.Width(back), height: 1}
 	glyph, _ := m.nodeGlyphStyled(m.inspectedNode, now, false)
 	title := nodeLabelInSnapshot(m.inspectedNode, m.snapshot)
@@ -644,7 +658,7 @@ func (m *Model) renderNodePane() string {
 		timingWidth = lipgloss.Width("  ·  " + timing)
 	}
 	title = truncate(title, max(1, innerWidth-lipgloss.Width(glyph)-10-timingWidth))
-	header := back + "  " + glyph + " " + lipgloss.NewStyle().Foreground(ink).Bold(true).Render(title)
+	header := back + "  " + glyph + " " + inkStyle.Bold(true).Render(title)
 	if timing != "" {
 		header += mutedStyle.Render("  ·  " + timing)
 	}
@@ -806,7 +820,7 @@ func (m *Model) overlayModelPalette(frame string, x, y, width, innerWidth int) s
 	for index, slot := range modelSlots {
 		lines = append(lines, m.modelSlotLine(slot, index == m.modelSlotIndex, innerWidth))
 	}
-	panelStyle := lipgloss.NewStyle().Foreground(ink).Background(selectionBand).Padding(0, 1).Width(innerWidth)
+	panelStyle := inkStyle.Background(selectionBand).Padding(0, 1).Width(innerWidth)
 	for index := range lines {
 		lines[index] = panelStyle.Render(truncate(lines[index], innerWidth))
 	}
@@ -827,7 +841,7 @@ func (m *Model) modelSlotLine(slot string, selected bool, width int) string {
 	markerStyle := mutedStyle
 	if selected {
 		marker = "› "
-		markerStyle = lipgloss.NewStyle().Foreground(powder).Bold(true)
+		markerStyle = powderStyle.Bold(true)
 	}
 	slotLabel := slot
 	if slot == "boost" && m.modelFollowsWork() {
@@ -844,7 +858,7 @@ func (m *Model) modelSlotLine(slot string, selected bool, width int) string {
 func (m *Model) overlayModelPicker(frame string, x, y, width, innerWidth int) string {
 	body := m.modelPickerLines(innerWidth)
 	lines := append([]string{"⟨×⟩ esc · " + m.modelRole + " models"}, body...)
-	panelStyle := lipgloss.NewStyle().Foreground(ink).Background(selectionBand).Padding(0, 1).Width(innerWidth)
+	panelStyle := inkStyle.Background(selectionBand).Padding(0, 1).Width(innerWidth)
 	for index := range lines {
 		lines[index] = panelStyle.Render(truncate(lines[index], innerWidth))
 	}
@@ -1001,13 +1015,13 @@ func memoryFactRow(fact store.Fact, width int) string {
 	switch fact.Kind {
 	case store.FactPreference:
 		glyph = "◆"
-		style = lipgloss.NewStyle().Foreground(powder)
+		style = powderStyle
 	case store.FactQuirk:
 		glyph = "▲"
-		style = lipgloss.NewStyle().Foreground(peach)
+		style = peachStyle
 	case store.FactLesson:
 		glyph = "●"
-		style = lipgloss.NewStyle().Foreground(mint)
+		style = mintStyle
 	}
 	body := truncate(strings.TrimSpace(fact.Body), max(1, width-lipgloss.Width(glyph)-1))
 	return style.Render(glyph) + " " + inputTextStyle.Render(body)
@@ -1067,11 +1081,11 @@ func (m *Model) modelChoiceRow(choice ModelChoice, selected bool, width int) str
 	}
 	if current {
 		marker = "● "
-		markerStyle = lipgloss.NewStyle().Foreground(mint)
+		markerStyle = mintStyle
 	}
 	if selected {
 		marker = "› "
-		markerStyle = lipgloss.NewStyle().Foreground(powder).Bold(true)
+		markerStyle = powderStyle.Bold(true)
 	}
 
 	detail := choice.Name
@@ -1423,7 +1437,7 @@ func (m *Model) applyChatFocus(content string) string {
 	if line < 0 || line >= len(rows) {
 		return content
 	}
-	rows[line] = lipgloss.NewStyle().Background(selectionBand).
+	rows[line] = bandStyle.
 		Width(max(1, m.chat.Width)).Render(rows[line])
 	return strings.Join(rows, "\n")
 }
@@ -1712,7 +1726,7 @@ func (m *Model) renderAnswerFold(message store.Message, width int) (string, bool
 		if rendered != "" {
 			rendered += "\n"
 		}
-		return rendered + lipgloss.NewStyle().Foreground(powder).Render("▌"), false
+		return rendered + powderStyle.Render("▌"), false
 	}
 	lines := strings.Split(rendered, "\n")
 	if len(lines) <= deliverableLead+4 {
@@ -1856,7 +1870,7 @@ func (m *Model) renderTree(width, height int) string {
 			label += " " + instruction
 		}
 		label += " · " + elapsed
-		prefix := lipgloss.NewStyle().Foreground(peach).Render(frame) + " "
+		prefix := peachStyle.Render(frame) + " "
 		lines = append(lines, prefix+inputTextStyle.Render(truncate(label, max(1, width-lipgloss.Width(prefix)))))
 		m.noteAnimatedGraphRow(row)
 	}
@@ -1959,11 +1973,11 @@ func (m *Model) renderTree(width, height int) string {
 			selected := node.ID == m.selectedNodeID
 			marker := "  "
 			if selected {
-				marker = lipgloss.NewStyle().Foreground(powder).Bold(true).Render("▸ ")
+				marker = powderStyle.Bold(true).Render("▸ ")
 			}
 			prefix := marker + mutedStyle.Render(ancestorGuide+branch) + glyph + " "
 			label := nodeLabel(node, jobRoots[node.ID])
-			labelStyle := lipgloss.NewStyle().Foreground(ink)
+			labelStyle := inkStyle
 			if dimmed {
 				labelStyle = mutedStyle
 			}
@@ -1971,7 +1985,7 @@ func (m *Model) renderTree(width, height int) string {
 				truncate(label, max(1, width-lipgloss.Width(prefix))),
 			)
 			if selected {
-				line = lipgloss.NewStyle().Background(selectionBand).Width(width).Render(line)
+				line = bandStyle.Width(width).Render(line)
 			}
 			lines = append(lines, line)
 			m.graphRows = append(m.graphRows, graphRow{line: row, nodeID: node.ID})
@@ -2005,7 +2019,7 @@ func (m *Model) renderTree(width, height int) string {
 		selected := m.selectedNodeID == historyGraphRowID
 		marker := "  "
 		if selected {
-			marker = lipgloss.NewStyle().Foreground(lavender).Bold(true).Render("▸ ")
+			marker = lavenderStyle.Bold(true).Render("▸ ")
 		}
 		disclosure := "▸"
 		if m.historyExpanded {
@@ -2013,7 +2027,7 @@ func (m *Model) renderTree(width, height int) string {
 		}
 		line := marker + mutedStyle.Faint(true).Render(fmt.Sprintf("%s history (%d)", disclosure, historyCount))
 		if selected {
-			line = lipgloss.NewStyle().Background(selectionBand).Width(width).Render(line)
+			line = bandStyle.Width(width).Render(line)
 		}
 		lines = append(lines, line)
 		m.graphRows = append(m.graphRows, graphRow{line: row, nodeID: historyGraphRowID})
@@ -2337,11 +2351,11 @@ func (m *Model) nodeGlyphStyled(node store.Node, now time.Time, dimmed bool) (st
 		return lipgloss.NewStyle().Foreground(tint(mint)).Bold(m.completionFlashing(node, now)).Render("●"), false
 	case store.Claimed, store.Running:
 		frame := spinnerFrames[m.spinnerFrame%len(spinnerFrames)]
-		return lipgloss.NewStyle().Foreground(peach).Render("● " + frame), true
+		return peachStyle.Render("● " + frame), true
 	case store.Failed, store.Cancelled:
 		return lipgloss.NewStyle().Foreground(tint(rose)).Render("●"), false
 	default:
-		return lipgloss.NewStyle().Foreground(butter).Render("○"), false
+		return butterStyle.Render("○"), false
 	}
 }
 
@@ -2430,6 +2444,16 @@ func truncate(text string, width int) string {
 	if width <= 0 {
 		return ""
 	}
+	// One pass for the ordinary case: ansi.Truncate returns a line that already
+	// fits untouched, so measuring first pays for the same scan twice. Multiple
+	// lines still measure, because their width is the widest of them and
+	// truncation would run straight through the newline.
+	if strings.IndexByte(text, '\n') < 0 {
+		if width == 1 && lipgloss.Width(text) > 1 {
+			return "…"
+		}
+		return ansi.Truncate(text, width, "…")
+	}
 	if lipgloss.Width(text) <= width {
 		return text
 	}
@@ -2451,26 +2475,32 @@ func wrapText(text string, width int) string {
 			wrapped = append(wrapped, "")
 			continue
 		}
+		// The running width is carried, not re-measured: measuring line+word per
+		// word makes wrapping one paragraph quadratic in its length, and this is
+		// the hottest single function in the thread render.
 		line := ""
+		lineWidth := 0
 		for _, word := range words {
-			for lipgloss.Width(word) > width {
+			wordWidth := lipgloss.Width(word)
+			for wordWidth > width {
 				if line != "" {
 					wrapped = append(wrapped, line)
-					line = ""
+					line, lineWidth = "", 0
 				}
 				piece, rest := splitWidth(word, width)
 				wrapped = append(wrapped, piece)
 				word = rest
+				wordWidth = lipgloss.Width(word)
 			}
-			candidate := word
-			if line != "" {
-				candidate = line + " " + word
-			}
-			if lipgloss.Width(candidate) > width {
+			switch {
+			case line == "":
+				line, lineWidth = word, wordWidth
+			case lineWidth+1+wordWidth > width:
 				wrapped = append(wrapped, line)
-				line = word
-			} else {
-				line = candidate
+				line, lineWidth = word, wordWidth
+			default:
+				line += " " + word
+				lineWidth += 1 + wordWidth
 			}
 		}
 		if line != "" {

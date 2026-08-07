@@ -130,6 +130,13 @@ func (m *Model) syncPalette() {
 	default:
 		m.palette = paletteCommands
 	}
+	// Clamping a selection that is already at the top cannot move it, and
+	// asking how many entries there are means rebuilding the whole list — a
+	// fuzzy pass over every command, or every model in the catalog, per
+	// keystroke. Every path that retypes the draft resets the selection first.
+	if m.paletteSelected == 0 {
+		return
+	}
 	m.clampPaletteSelection()
 }
 

@@ -379,7 +379,7 @@ func (m *Model) renderNodeDetailsContent(width, maxLines int) string {
 			if failure == "" {
 				failure = string(m.inspectedNode.Status)
 			}
-			content += "\n" + lipgloss.NewStyle().Foreground(rose).Render(wrapText(failure, width))
+			content += "\n" + roseStyle.Render(wrapText(failure, width))
 		} else if summary := strings.TrimSpace(m.inspectedNode.Summary); summary != "" {
 			content += "\n" + inputTextStyle.Render(wrapText(summary, width))
 		}
@@ -399,12 +399,12 @@ func (m *Model) renderNodeDetailsContent(width, maxLines int) string {
 // a rose ✗ on the status position only; and you in powder behind ›.
 var (
 	feedTurnRule   = regexp.MustCompile(`^── turn (\d+)\s+finish=(\S*)\s+in=(\d+) out=(\d+)\s*(?:\[([^\]]*)\])?\s*──$`)
-	feedThought    = lipgloss.NewStyle().Foreground(powder)
-	feedToolName   = lipgloss.NewStyle().Foreground(peach).Bold(true)
+	feedThought    = powderStyle
+	feedToolName   = peachStyle.Bold(true)
 	feedResult     = lipgloss.NewStyle().Foreground(muted).Faint(true)
 	feedGutter     = lipgloss.NewStyle().Foreground(muted).Faint(true)
-	feedError      = lipgloss.NewStyle().Foreground(rose)
-	feedYou        = lipgloss.NewStyle().Foreground(powder)
+	feedError      = roseStyle
+	feedYou        = powderStyle
 	feedThoughtCap = 6
 	feedOutputCap  = 3
 )

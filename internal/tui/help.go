@@ -160,7 +160,7 @@ func (m *Model) overlayHelp(frame string) string {
 		title = overlayRight(title, "↑/↓ scroll", innerWidth)
 	}
 	lines := append([]string{title}, visible...)
-	panelStyle := lipgloss.NewStyle().Foreground(ink).Background(selectionBand).Padding(0, 1).Width(innerWidth)
+	panelStyle := inkStyle.Background(selectionBand).Padding(0, 1).Width(innerWidth)
 	for index := range lines {
 		lines[index] = panelStyle.Render(truncate(lines[index], innerWidth))
 	}
@@ -211,7 +211,7 @@ func (m *Model) helpContentLines(width int) []string {
 }
 
 func renderHelpCategory(category helpCategory, width int) []string {
-	lines := []string{lipgloss.NewStyle().Foreground(ink).Bold(true).Render(category.title)}
+	lines := []string{inkStyle.Bold(true).Render(category.title)}
 	keyWidth := 0
 	for _, row := range category.rows {
 		keyWidth = max(keyWidth, lipgloss.Width(row.key))
