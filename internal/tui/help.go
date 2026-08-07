@@ -28,8 +28,8 @@ func helpCategories() []helpCategory {
 		{title: "talking", rows: []helpRow{
 			{key: "enter", meaning: "send the draft or selected answer"},
 			{key: keyBindings.newline, meaning: "insert a newline without sending"},
-			{key: "ctrl+b/"+keyBindings.boost, meaning: "cycle boosted next answer · pinned · off; click the active footer too"},
-			{key: "ctrl+v/"+keyBindings.voice, meaning: "start or finish voice input; click the mic too; esc discards it"},
+			{key: "ctrl+b/" + keyBindings.boost, meaning: "cycle boosted next answer · pinned · off; click the active footer too"},
+			{key: "ctrl+v/" + keyBindings.voice, meaning: "start or finish voice input; click the mic too; esc discards it"},
 			{key: "v", meaning: "expand or collapse reading receipts outside the input"},
 			{key: "↑/↓ · 1–9", meaning: "with an empty draft, choose and send a pending answer"},
 			{key: "esc", meaning: "dismiss question, clear draft/attachments, then quit when input is empty"},
@@ -47,7 +47,7 @@ func helpCategories() []helpCategory {
 			{key: "pgup/pgdn · wheel", meaning: "scroll the pointed or focused surface"},
 			{key: "end", meaning: "return to now; in task activity, jump to the bottom"},
 			{key: "esc", meaning: "expanded item → zone → input → quit; modal overlays close first"},
-			{key: "ctrl+t/"+keyBindings.graph, meaning: "toggle the task rail"},
+			{key: "ctrl+t/" + keyBindings.graph, meaning: "toggle the task rail"},
 			{key: "[ / ]", meaning: "nudge the chat/task split while outside the input"},
 			{key: "c", meaning: "cancel the inspected worker when its steer input is empty"},
 			{key: "header", meaning: "thread · board · self · models ⌄ · tasks ▸/▾ · ? help"},
@@ -161,6 +161,15 @@ func helpBlank(width int) string {
 	return helpBandStyle.Render(strings.Repeat(" ", width))
 }
 
+// helpPanelRow lays one row of the panel by hand: a padding column, the line
+// clipped and filled to the panel's inner width, a padding column. Composing it
+// here rather than through a styled Width keeps lipgloss from word-wrapping an
+// over-wide line into stray fragments hanging off the left margin.
+func helpPanelRow(line string, innerWidth int) string {
+	line = truncate(line, innerWidth)
+	return helpBlank(1) + line + helpBlank(innerWidth-lipgloss.Width(line)) + helpBlank(1)
+}
+
 // overlayHelp shares the model palette's floating geometry and muted selection
 // band. At 100+ columns categories pair up; at 80 columns they become one calm,
 // stacked reading column without changing or hiding any content.
@@ -184,9 +193,8 @@ func (m *Model) overlayHelp(frame string) string {
 		title += helpBlank(gap) + helpKeyStyle.Render(hint)
 	}
 	lines := append([]string{title}, visible...)
-	panelStyle := helpBandStyle.Padding(0, 1).Width(width)
 	for index := range lines {
-		lines[index] = panelStyle.Render(truncate(lines[index], innerWidth))
+		lines[index] = helpPanelRow(lines[index], innerWidth)
 	}
 	panel := strings.Join(lines, "\n")
 	m.helpBounds = paneBounds{x: x, y: y, width: width, height: len(lines)}
