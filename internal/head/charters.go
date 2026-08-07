@@ -51,6 +51,14 @@ func (h *Head) answerAgentQuestion(user store.Message) (bool, error) {
 }
 
 func (h *Head) applyAgentQuestionOption(user store.Message, question store.AgentQuestion, option store.QuestionOption) error {
+	// Only the hygiene nudge acts from the durable queue. A leaf's promotion
+	// consent is read back by the waiting runner, not applied here.
+	if parts := strings.Split(option.Value, ":"); len(parts) == 3 && parts[0] == "service" &&
+		strings.HasPrefix(parts[1], "hygiene-") {
+		if handled, err := h.applyServiceOption(user, option); handled {
+			return err
+		}
+	}
 	parts := strings.Split(option.Value, ":")
 	if len(parts) >= 3 && parts[0] == "charter" {
 		id := parts[2]
@@ -171,6 +179,9 @@ func charterQuestionID(options []store.QuestionOption) (string, bool) {
 }
 
 func (h *Head) applyQuestionOption(user store.Message, question store.Message, option store.QuestionOption) error {
+	if handled, err := h.applyServiceOption(user, option); handled {
+		return err
+	}
 	if action, kind, target, instruction, ok := decodeSurgeryOption(option.Value); ok {
 		switch action {
 		case "select":

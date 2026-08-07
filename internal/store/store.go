@@ -164,6 +164,15 @@ const (
 	EventCharterFiringReviewed   EventKind = "charter_firing_reviewed"
 	EventCharterPromoted         EventKind = "charter_promoted"
 	EventCharterDemoted          EventKind = "charter_demoted"
+
+	// Service events are the durable ownership record for processes promoted
+	// out of a leaf's background-job registry.
+	EventServicePromoted  EventKind = "service_promoted"
+	EventServiceAdopted   EventKind = "service_adopted"
+	EventServiceStopped   EventKind = "service_stopped"
+	EventServiceFailed    EventKind = "service_failed"
+	EventServiceRestarted EventKind = "service_restarted"
+	EventServiceRested    EventKind = "service_rested"
 )
 
 var (
@@ -194,6 +203,10 @@ type Provenance struct {
 	// RetryOf links a freshly spliced retry to the failed/cancelled node it
 	// supersedes. The predecessor stays immutable and fully inspectable.
 	RetryOf string `json:"retry_of,omitempty"`
+	// ServiceIntent records the compiler's deterministic recognition that the
+	// user asked for a running thing. It is consent provenance, not a display
+	// hint, and therefore travels through the splice event and Rebuild.
+	ServiceIntent bool `json:"service_intent,omitempty"`
 }
 
 // Need is one incoming edge named by a node specification.
@@ -327,6 +340,7 @@ CREATE TABLE IF NOT EXISTS nodes (
     charter_id     TEXT NOT NULL DEFAULT '',
     trial_of       INTEGER NOT NULL DEFAULT 0 CHECK (trial_of >= 0),
 	retry_of       TEXT NOT NULL DEFAULT '',
+	service_intent INTEGER NOT NULL DEFAULT 0 CHECK (service_intent IN (0, 1)),
     attachments    JSON NOT NULL DEFAULT '[]' CHECK (json_valid(attachments)),
     created_seq    INTEGER NOT NULL REFERENCES events(seq),
     created_order  INTEGER NOT NULL CHECK (created_order >= 0),
@@ -444,6 +458,9 @@ func Open(path string) (*Store, error) {
 	}
 	if _, err := db.Exec(charterSchema); err != nil {
 		return closeOnError(fmt.Errorf("initialize charter schema: %w", err))
+	}
+	if _, err := db.Exec(serviceSchema); err != nil {
+		return closeOnError(fmt.Errorf("initialize service schema: %w", err))
 	}
 	if _, err := db.Exec(factsSchema); err != nil {
 		return closeOnError(fmt.Errorf("initialize facts schema: %w", err))

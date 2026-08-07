@@ -61,6 +61,12 @@ func (s *Store) Rebuild() error {
 	if _, err := tx.Exec(`DELETE FROM charters`); err != nil {
 		return fmt.Errorf("rebuild charters: %w", err)
 	}
+	if _, err := tx.Exec(`DELETE FROM services_fts`); err != nil {
+		return fmt.Errorf("rebuild service index: %w", err)
+	}
+	if _, err := tx.Exec(`DELETE FROM services`); err != nil {
+		return fmt.Errorf("rebuild services: %w", err)
+	}
 	if _, err := tx.Exec(`DELETE FROM scope_aliases`); err != nil {
 		return fmt.Errorf("rebuild scope aliases: %w", err)
 	}
@@ -144,6 +150,39 @@ func replayEvent(tx *sql.Tx, event Event) error {
 
 	case EventSpineRepaired:
 		return applySpineRepair(tx, event.Seq, event.Time)
+
+	case EventServicePromoted:
+		var payload servicePromotedPayload
+		if err := json.Unmarshal(event.Payload, &payload); err != nil {
+			return err
+		}
+		return applyServicePromoted(tx, payload, event.Seq)
+	case EventServiceAdopted:
+		var payload serviceAdoptedPayload
+		if err := json.Unmarshal(event.Payload, &payload); err != nil {
+			return err
+		}
+		return applyServiceAdoptedPayload(tx, event.NodeID, payload, event.Seq)
+	case EventServiceStopped:
+		return applyServiceStatus(tx, event.NodeID, ServiceStopped, event.Seq, 0)
+	case EventServiceFailed:
+		var payload serviceFailedPayload
+		if err := json.Unmarshal(event.Payload, &payload); err != nil {
+			return err
+		}
+		return applyServiceStatus(tx, event.NodeID, ServiceFailed, event.Seq, payload.RestartCount)
+	case EventServiceRestarted:
+		var payload serviceRestartedPayload
+		if err := json.Unmarshal(event.Payload, &payload); err != nil {
+			return err
+		}
+		return applyServiceRestarted(tx, event.NodeID, payload, event.Seq)
+	case EventServiceRested:
+		var payload serviceFailedPayload
+		if err := json.Unmarshal(event.Payload, &payload); err != nil {
+			return err
+		}
+		return applyServiceStatus(tx, event.NodeID, ServiceResting, event.Seq, payload.RestartCount)
 
 	case EventSubtreeSpliced:
 		var payload splicedPayload

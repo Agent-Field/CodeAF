@@ -34,13 +34,16 @@ type Input struct {
 
 // Task is one leaf, ready to run.
 type Task struct {
-	NodeID     int
-	Title      string
-	Goal       string // the whole plan's goal, for orientation
-	Brief      string // the self-contained instruction: what the job is
-	Contract   string // the working method: how this kind of job is done well
-	Inputs     []Input
-	OutputHint string // suggested artifact path when the deliverable is a file
+	NodeID int
+	// StoreNodeID is the durable provenance anchor used when a background job
+	// requests promotion. One-shot execution leaves it empty.
+	StoreNodeID string
+	Title       string
+	Goal        string // the whole plan's goal, for orientation
+	Brief       string // the self-contained instruction: what the job is
+	Contract    string // the working method: how this kind of job is done well
+	Inputs      []Input
+	OutputHint  string // suggested artifact path when the deliverable is a file
 	// ImagePaths are user-supplied inputs attached to the initial leaf turn.
 	ImagePaths []string
 	// Reflex constrains the general loop to one obvious micro-action and gives
@@ -89,6 +92,9 @@ type Outcome struct {
 	// Promote is the executor's explicit verdict that a reflex needs the normal
 	// compiled path. Text remains the useful partial discovered before stopping.
 	Promote bool
+	// ServiceRequests are live ownership leases requested through job.keep.
+	// The resident must adopt or stop every lease before settling the leaf.
+	ServiceRequests []ServiceRequest
 
 	// Verdict is the same ending seen from the other side. Stop is written for a
 	// person reading the run; Verdict is written for whatever learns from it, and

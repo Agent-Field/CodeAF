@@ -135,6 +135,9 @@ func runChat(args []string) error {
 				len(released)),
 		})
 	}
+	if err := resident.ReAdoptServices(graph, *sessionID, nil); err != nil {
+		return fmt.Errorf("re-adopt services: %w", err)
+	}
 
 	// plans retains each planned job's graph so execution can be the headless
 	// mechanism exactly: call shapes for the router, escalation verdicts, and
@@ -162,6 +165,7 @@ func runChat(args []string) error {
 				Question:        brief.Question,
 				QuestionOptions: brief.QuestionOptions,
 				Charter:         brief.Charter,
+				ServiceIntent:   brief.ServiceIntent,
 			}, nil
 		},
 		planSubtree(settings, taskClient, plans, graph),
@@ -271,13 +275,14 @@ func runChat(args []string) error {
 		}
 
 		task := exec.Task{
-			Reflex: isReflex,
-			NodeID: int(node.CreatedSeq),
-			Title:  firstLine(node.Brief),
-			Goal:   node.Provenance.Intent,
-			Brief:  residentDeliveryBrief(graph, node),
-			Inputs: inputs,
-			Steer:  steer,
+			Reflex:      isReflex,
+			NodeID:      int(node.CreatedSeq),
+			StoreNodeID: node.ID,
+			Title:       firstLine(node.Brief),
+			Goal:        node.Provenance.Intent,
+			Brief:       residentDeliveryBrief(graph, node),
+			Inputs:      inputs,
+			Steer:       steer,
 			Control: func() exec.ControlAction {
 				control, err := graph.Control(node.ID)
 				if err != nil {
@@ -333,6 +338,7 @@ func runChat(args []string) error {
 			return resident.ExecResult{
 				Summary: outcome.Text, PromptTokens: spent.PromptTokens,
 				CompletionTokens: spent.CompletionTokens, Cost: spent.Cost,
+				ServiceRequests: outcome.ServiceRequests,
 			}, nil
 		}
 		// Result-driven revision: each landed leaf is shown to the sentinel,
@@ -411,7 +417,7 @@ func runChat(args []string) error {
 		// who asked accept this as done? A named gap earns exactly one
 		// revision pass with the critique as input; then the result ships
 		// either way, because a gate that can loop is a gate that can stall.
-		if shouldGate(node, outcome, continuing) {
+		if len(outcome.ServiceRequests) == 0 && shouldGate(node, outcome, continuing) {
 			gate := judgeDeliverable(ctx, settings, taskClient, graph, node, text, workerModel)
 			if gate.Checked {
 				evidence := store.DeliveryGate{Pass: gate.Pass, Gap: gate.Gaps}
@@ -516,6 +522,7 @@ func runChat(args []string) error {
 			CompletionTokens: spent.CompletionTokens,
 			Cost:             spent.Cost,
 			Promote:          promoted,
+			ServiceRequests:  outcome.ServiceRequests,
 		}, nil
 	}, "chat-runner", 4).WithDailyBudgetUSD(settings.DailyBudgetUSD)
 

@@ -9,7 +9,15 @@ import (
 	"sync"
 	"time"
 
+	executor "github.com/Agent-Field/aforge-v2/internal/exec"
 	"github.com/Agent-Field/aforge-v2/internal/store"
+)
+
+const (
+	// ServiceConsentGrace is the bounded hold after a leaf asks to keep an
+	// otherwise unconsented process. Silence always lands on the stop default.
+	ServiceConsentGrace = 30 * time.Second
+	serviceConsentPoll  = 100 * time.Millisecond
 )
 
 // ExecResult is what one execution produced: the summary that flows to
@@ -21,7 +29,8 @@ type ExecResult struct {
 	Cost             float64
 	// Promote asks the runner to settle this reflex partial and enqueue the
 	// same verbatim instruction on the ordinary compiled path atomically.
-	Promote bool
+	Promote         bool
+	ServiceRequests []executor.ServiceRequest
 }
 
 // ExecuteFunc runs one claimed node to completion. The runner owns the claim
@@ -33,14 +42,15 @@ type ExecuteFunc func(ctx context.Context, node store.Node) (ExecResult, error)
 // one, claims make ownership a compare-and-swap, and a crashed runner leaves
 // nothing worse than claimed nodes another Release can recover.
 type Runner struct {
-	graph          *store.Store
-	execute        ExecuteFunc
-	owner          string
-	slots          chan struct{}
-	wg             sync.WaitGroup
-	dailyBudgetUSD float64
-	activeMu       sync.Mutex
-	activePractice map[string]context.CancelFunc
+	graph               *store.Store
+	execute             ExecuteFunc
+	owner               string
+	slots               chan struct{}
+	wg                  sync.WaitGroup
+	dailyBudgetUSD      float64
+	activeMu            sync.Mutex
+	activePractice      map[string]context.CancelFunc
+	serviceConsentGrace time.Duration
 }
 
 // NewRunner builds a runner executing at most workers nodes concurrently.
@@ -52,12 +62,22 @@ func NewRunner(graph *store.Store, execute ExecuteFunc, owner string, workers in
 		owner = "runner"
 	}
 	return &Runner{
-		graph:          graph,
-		execute:        execute,
-		owner:          owner,
-		slots:          make(chan struct{}, workers),
-		activePractice: make(map[string]context.CancelFunc),
+		graph:               graph,
+		execute:             execute,
+		owner:               owner,
+		slots:               make(chan struct{}, workers),
+		activePractice:      make(map[string]context.CancelFunc),
+		serviceConsentGrace: ServiceConsentGrace,
 	}
+}
+
+// WithServiceConsentGrace is primarily a deterministic test seam; production
+// uses the named bounded default above.
+func (r *Runner) WithServiceConsentGrace(grace time.Duration) *Runner {
+	if grace > 0 {
+		r.serviceConsentGrace = grace
+	}
+	return r
 }
 
 // WithDailyBudgetUSD installs the policy rail checked immediately before each
@@ -213,6 +233,7 @@ func (r *Runner) runOne(ctx context.Context, node store.Node) {
 	result, err := r.execute(ctx, node)
 	control, controlErr := r.graph.Control(node.ID)
 	if controlErr == nil && (control.CancelRequested || control.Held) {
+		stopServiceRequests(result.ServiceRequests)
 		// Spend precedes settlement even on a user-directed boundary. Release is
 		// the CAS transition that invalidates this worker's authority; a cancel
 		// then uses the ordinary pending cancellation event.
@@ -229,6 +250,7 @@ func (r *Runner) runOne(ctx context.Context, node store.Node) {
 		return
 	}
 	if err != nil {
+		stopServiceRequests(result.ServiceRequests)
 		if node.Group == store.PracticeGroup && errors.Is(ctx.Err(), context.Canceled) {
 			_ = r.graph.Release(claim)
 			return
@@ -236,6 +258,7 @@ func (r *Runner) runOne(ctx context.Context, node store.Node) {
 		_ = r.graph.Fail(claim, err.Error())
 		return
 	}
+	result.Summary = r.applyServiceRequests(ctx, node, result.Summary, result.ServiceRequests)
 	// Spend is recorded before completion settles: a refused completion is
 	// still money spent, and the journal should say so.
 	_ = r.graph.RecordUsage(store.NodeUsage{
@@ -265,6 +288,97 @@ func (r *Runner) runOne(ctx context.Context, node store.Node) {
 		// where a later tick can pick it up cleanly.
 		_ = r.graph.Release(claim)
 	}
+}
+
+func stopServiceRequests(requests []executor.ServiceRequest) {
+	for index := range requests {
+		requests[index].Stop()
+	}
+}
+
+func (r *Runner) applyServiceRequests(ctx context.Context, node store.Node, summary string, requests []executor.ServiceRequest) string {
+	for index := range requests {
+		request := &requests[index]
+		keep, autoRestart := node.Provenance.ServiceIntent, false
+		if !keep {
+			keep, autoRestart = r.awaitServiceConsent(ctx, node, request)
+		}
+		if !keep {
+			request.Stop()
+			summary = appendServiceReceipt(summary, request.Name+" stopped at task end")
+			continue
+		}
+		service := store.Service{
+			ID:   fmt.Sprintf("service-%d-%d", node.CreatedSeq, request.JobID),
+			Name: request.Name, Command: request.Command, Dir: request.Dir,
+			Health: request.Health, LogPath: request.LogPath, PID: request.PID,
+			StartedAt: request.StartedAt, Status: store.ServiceRunning,
+			AutoRestart: autoRestart,
+			Provenance:  store.ServiceProvenance{OriginJobID: request.JobID, LeafNodeID: node.ID},
+		}
+		if _, err := r.graph.PromoteService(service); err != nil {
+			request.Stop()
+			summary = appendServiceReceipt(summary, fmt.Sprintf("%s stopped at task end — %v", request.Name, err))
+			continue
+		}
+		request.Adopt()
+		receipt := fmt.Sprintf("%s keeps running", request.Name)
+		if suffix := request.Health.Suffix(); suffix != "" {
+			receipt += " · " + suffix
+		}
+		receipt += fmt.Sprintf(" — say 'stop the %s' to end it", request.Name)
+		summary = appendServiceReceipt(summary, receipt)
+	}
+	return summary
+}
+
+func appendServiceReceipt(summary, receipt string) string {
+	if strings.TrimSpace(summary) == "" {
+		return receipt
+	}
+	return strings.TrimSpace(summary) + "\n\n" + receipt
+}
+
+func (r *Runner) awaitServiceConsent(ctx context.Context, node store.Node, request *executor.ServiceRequest) (bool, bool) {
+	if strings.TrimSpace(node.Provenance.SessionID) == "" {
+		return false, false
+	}
+	allowFree := true
+	options := []store.QuestionOption{
+		{Label: "keep it running", Value: "service:keep:" + request.Name, Hint: "say ‘keep with auto-restart’ to opt in"},
+		{Label: "stop at task end", Value: "service:stop:" + request.Name},
+	}
+	prompt := store.QuestionMessageBody("Keep "+request.Name+" running after this task?", options,
+		store.QuestionConfig{Kind: store.QuestionConfirm, Default: "2", AllowFree: &allowFree})
+	question, err := r.graph.AskQuestion(store.AgentQuestion{
+		SessionID: node.Provenance.SessionID, Text: prompt, OriginNodeID: node.ID,
+		Urgency: store.QuestionBlocking, Options: options,
+		ExpiresAt: time.Now().Add(r.serviceConsentGrace),
+	})
+	if err != nil {
+		return false, false
+	}
+	if _, err := r.graph.SurfaceQuestion(question.Seq); err != nil {
+		return false, false
+	}
+	deadline := time.Now().Add(r.serviceConsentGrace)
+	for time.Now().Before(deadline) {
+		current, found, readErr := r.graph.AgentQuestionBySeq(question.Seq)
+		if readErr == nil && found && current.Status == store.QuestionAnswered {
+			answer := strings.ToLower(strings.TrimSpace(current.Resolution))
+			keep := strings.Contains(answer, "keep") && !strings.Contains(answer, "stop")
+			auto := keep && strings.Contains(answer, "auto")
+			return keep, auto
+		}
+		select {
+		case <-ctx.Done():
+			_ = r.graph.ResolveQuestion(question.Seq, store.QuestionExpired, "service promotion cancelled; default stop")
+			return false, false
+		case <-time.After(serviceConsentPoll):
+		}
+	}
+	_ = r.graph.ResolveQuestion(question.Seq, store.QuestionExpired, "service promotion grace elapsed; default stop")
+	return false, false
 }
 
 func (r *Runner) preemptPracticeForUserWork() error {
