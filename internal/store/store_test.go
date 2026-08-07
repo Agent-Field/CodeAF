@@ -620,3 +620,62 @@ func nodeIDs(nodes []Node) []string {
 	}
 	return ids
 }
+
+// The TUI treats this watermark as proof that nothing happened, so it must
+// move for every kind of write and stand still across a rebuild.
+func TestLatestEventSeqIsTheWatermarkEveryWriteMoves(t *testing.T) {
+	graph := openTestStore(t, filepath.Join(t.TempDir(), "graph.db"))
+
+	// A store is never truly empty: opening it writes the permanent spine.
+	spine, err := graph.LatestEventSeq()
+	if err != nil {
+		t.Fatalf("LatestEventSeq: %v", err)
+	}
+	if spine <= 0 {
+		t.Fatalf("a freshly opened store reports watermark %d, want the spine event", spine)
+	}
+	if again, err := graph.LatestEventSeq(); err != nil || again != spine {
+		t.Fatalf("LatestEventSeq is not stable: %d, %v", again, err)
+	}
+
+	if err := graph.Splice(RootID, Subtree{Nodes: []NodeSpec{
+		{ID: "leaf", Brief: "one leaf", Stage: 0},
+	}}, Provenance{Origin: OriginUser, SessionID: "watermark", Intent: "watch the seq"}); err != nil {
+		t.Fatalf("Splice: %v", err)
+	}
+	afterSplice, err := graph.LatestEventSeq()
+	if err != nil {
+		t.Fatalf("LatestEventSeq: %v", err)
+	}
+	if afterSplice <= spine {
+		t.Fatalf("splice left the watermark at %d (was %d)", afterSplice, spine)
+	}
+
+	// A projection outside the graph tables moves it too: that is what lets
+	// one watermark stand for every read the thread lens performs.
+	if _, err := graph.PostMessage(Message{
+		SessionID: "watermark", Role: RoleUser, Body: "hello",
+	}); err != nil {
+		t.Fatalf("PostMessage: %v", err)
+	}
+	afterMessage, err := graph.LatestEventSeq()
+	if err != nil {
+		t.Fatalf("LatestEventSeq: %v", err)
+	}
+	if afterMessage <= afterSplice {
+		t.Fatalf("message left the watermark at %d (was %d)", afterMessage, afterSplice)
+	}
+
+	// Rebuild replays the journal into the projections; the journal itself is
+	// append-only, so a rebuilt store is still the same watermark.
+	if err := graph.Rebuild(); err != nil {
+		t.Fatalf("Rebuild: %v", err)
+	}
+	afterRebuild, err := graph.LatestEventSeq()
+	if err != nil {
+		t.Fatalf("LatestEventSeq: %v", err)
+	}
+	if afterRebuild != afterMessage {
+		t.Fatalf("rebuild moved the watermark to %d (was %d)", afterRebuild, afterMessage)
+	}
+}

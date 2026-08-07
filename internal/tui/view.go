@@ -1462,7 +1462,7 @@ const deliverableLead = 14
 func (m *Model) renderMessageGroup(group messageGroup, atLine int) string {
 	latest := group.messages[len(group.messages)-1]
 	available := max(8, m.chat.Width-2)
-	header := speakerHeader(latest, time.Now())
+	header := speakerHeader(latest, m.standingTime())
 
 	// One voice: every conversational body reads in primary ink with the same
 	// markdown treatment. Headers and provenance remain quiet metadata.
