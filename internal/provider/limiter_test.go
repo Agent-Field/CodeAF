@@ -274,6 +274,55 @@ func TestAdaptiveLimiterWakesOneWaiterPerSlot(t *testing.T) {
 	}
 }
 
+// TestAdaptiveLimiterFaultUnderTheLockDoesNotWedgeAcquire injects a panic into
+// a real critical section and asserts the limiter is still usable after it.
+//
+// A nil waiter is the seam: releaseLocked closes the head of the queue, and
+// close(nil) panics with l.mu held. Since panics became absorbable rather than
+// fatal, a critical section that unlocked only on the success path would trade
+// one crash for a process-wide freeze — every provider call aforge makes passes
+// through this one lock, and a waiter it never wakes waits forever.
+func TestAdaptiveLimiterFaultUnderTheLockDoesNotWedgeAcquire(t *testing.T) {
+	l := newAdaptiveLimiter()
+	func() {
+		l.mu.Lock()
+		defer l.mu.Unlock()
+		l.capacity, l.inFlight, l.successes = 2, 1, 0
+		l.waiters = append(l.waiters, nil)
+	}()
+
+	recovered := func() (recovered any) {
+		defer func() { recovered = recover() }()
+		l.release(false)
+		return nil
+	}()
+	if recovered == nil {
+		t.Fatal("the poisoned waiter was meant to panic inside the critical section")
+	}
+
+	admitted := make(chan error, 1)
+	go func() { admitted <- l.acquire(context.Background()) }()
+	select {
+	case err := <-admitted:
+		if err != nil {
+			t.Fatalf("acquire after the fault: %v", err)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("acquire blocked after a panic under the limiter lock — the mutex was never given back")
+	}
+
+	// The slot the faulted release was handing over stayed counted, so the
+	// admitted caller is the second of two.
+	if inFlight, _, waiting := inspect(l); inFlight != 2 || waiting != 0 {
+		t.Fatalf("after the fault inFlight=%d waiting=%d, want 2 and 0", inFlight, waiting)
+	}
+	l.release(false)
+	l.release(false)
+	if inFlight, _, _ := inspect(l); inFlight != 0 {
+		t.Fatalf("release after the fault left inFlight=%d", inFlight)
+	}
+}
+
 func TestRetryAfterParsesSecondsAndDate(t *testing.T) {
 	response := &http.Response{Header: http.Header{}}
 	if retryAfter(response) != 0 {

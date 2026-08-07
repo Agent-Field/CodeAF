@@ -51,15 +51,10 @@ func newAdaptiveLimiter() *adaptiveLimiter {
 // negative — at which case `inFlight < capacity` is permanently true and
 // admission control silently stops admitting anything at all.
 func (l *adaptiveLimiter) acquire(ctx context.Context) error {
-	l.mu.Lock()
-	if l.inFlight < l.capacity {
-		l.inFlight++
-		l.mu.Unlock()
+	wait := l.enter()
+	if wait == nil {
 		return nil
 	}
-	wait := make(chan struct{})
-	l.waiters = append(l.waiters, wait)
-	l.mu.Unlock()
 	select {
 	case <-ctx.Done():
 		l.abandon(wait)
@@ -69,6 +64,22 @@ func (l *adaptiveLimiter) acquire(ctx context.Context) error {
 		// there is nothing to increment and nothing to re-check.
 		return nil
 	}
+}
+
+// enter is acquire's whole critical section, split off so the unlock is a defer
+// and the wait happens outside the lock. It either takes a free slot and
+// returns nil, or queues and returns the channel whoever frees the next slot
+// will close.
+func (l *adaptiveLimiter) enter() chan struct{} {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	if l.inFlight < l.capacity {
+		l.inFlight++
+		return nil
+	}
+	wait := make(chan struct{})
+	l.waiters = append(l.waiters, wait)
+	return wait
 }
 
 func (l *adaptiveLimiter) abandon(wait chan struct{}) {

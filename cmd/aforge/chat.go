@@ -1025,13 +1025,9 @@ func (c *chatCommander) CatalogFor(role string) []tui.ModelChoice {
 	if role == "talk" || role == "work" || role == "boost" {
 		return c.Catalog()
 	}
-	c.slotCatalogMu.Lock()
-	if choices, ok := c.slotCatalog[role]; ok {
-		result := append([]tui.ModelChoice(nil), choices...)
-		c.slotCatalogMu.Unlock()
-		return result
+	if cached, ok := c.cachedSlotCatalog(role); ok {
+		return cached
 	}
-	c.slotCatalogMu.Unlock()
 
 	choices := make([]tui.ModelChoice, 0)
 	for _, model := range config.ModelCandidates(c.models, role) {
@@ -1045,13 +1041,29 @@ func (c *chatCommander) CatalogFor(role string) []tui.ModelChoice {
 			choices = []tui.ModelChoice{{Slug: current}}
 		}
 	}
+	c.cacheSlotCatalog(role, choices)
+	return choices
+}
+
+// cachedSlotCatalog hands back a copy, never the stored slice: the picker is
+// free to sort what it is given.
+func (c *chatCommander) cachedSlotCatalog(role string) ([]tui.ModelChoice, bool) {
 	c.slotCatalogMu.Lock()
+	defer c.slotCatalogMu.Unlock()
+	choices, ok := c.slotCatalog[role]
+	if !ok {
+		return nil, false
+	}
+	return append([]tui.ModelChoice(nil), choices...), true
+}
+
+func (c *chatCommander) cacheSlotCatalog(role string, choices []tui.ModelChoice) {
+	c.slotCatalogMu.Lock()
+	defer c.slotCatalogMu.Unlock()
 	if c.slotCatalog == nil {
 		c.slotCatalog = make(map[string][]tui.ModelChoice)
 	}
 	c.slotCatalog[role] = append([]tui.ModelChoice(nil), choices...)
-	c.slotCatalogMu.Unlock()
-	return choices
 }
 
 func (c *chatCommander) CurrentModel(role string) string {
@@ -1064,10 +1076,7 @@ func (c *chatCommander) CurrentModel(role string) string {
 		defer c.mu.Unlock()
 		return c.prefs.TaskModel
 	case "boost":
-		c.mu.Lock()
-		boost := strings.TrimSpace(c.prefs.BoostModel)
-		c.mu.Unlock()
-		if boost != "" {
+		if boost := c.boostPreference(); boost != "" {
 			return boost
 		}
 		if c.taskClient != nil {
@@ -1101,6 +1110,14 @@ func (c *chatCommander) CurrentModel(role string) string {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	return c.prefs.ChatModel
+}
+
+// boostPreference is the boost slot's own critical section: empty means the
+// user never chose one and the work model stands in.
+func (c *chatCommander) boostPreference() string {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return strings.TrimSpace(c.prefs.BoostModel)
 }
 
 func (c *chatCommander) ImageInputSupport() (string, bool) {
@@ -1194,11 +1211,24 @@ func (c *chatCommander) SaveSplitPct(pct int) {
 	_ = saveChatPrefs(c.prefsDir, c.prefs)
 }
 
+// session and setSession are the whole of the session id's critical section.
+// Everything downstream — attaching, posting, cancelling — happens outside the
+// lock, because those are store calls and a store call must never hold it.
+func (c *chatCommander) session() string {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.sessionID
+}
+
+func (c *chatCommander) setSession(sessionID string) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.sessionID = sessionID
+}
+
 func (c *chatCommander) NewSession() (string, error) {
 	sessionID := newSessionID()
-	c.mu.Lock()
-	c.sessionID = sessionID
-	c.mu.Unlock()
+	c.setSession(sessionID)
 	if c.attachSession != nil {
 		if err := c.attachSession(sessionID); err != nil {
 			return "", err
@@ -1213,11 +1243,8 @@ func (c *chatCommander) NewSession() (string, error) {
 }
 
 func (c *chatCommander) Cancel(nodeID string) error {
-	c.mu.Lock()
-	sessionID := c.sessionID
-	c.mu.Unlock()
 	_, err := c.store.RequestCommand(store.Command{
-		SessionID:   sessionID,
+		SessionID:   c.session(),
 		Kind:        store.CommandCancel,
 		Target:      nodeID,
 		Instruction: "cancelled from the TUI",
@@ -1397,11 +1424,8 @@ func (c *chatCommander) RetractNotebook(seq int64) error {
 	if err := c.store.QuarantineFact(seq, 0, store.FactOriginUser); err != nil {
 		return err
 	}
-	c.mu.Lock()
-	sessionID := c.sessionID
-	c.mu.Unlock()
 	_, err = c.store.PostMessage(store.Message{
-		SessionID: sessionID,
+		SessionID: c.session(),
 		Role:      store.RoleSystem,
 		Body:      "· let go — " + firstLine(fact.Body),
 	})
@@ -1563,9 +1587,7 @@ func newLiveClient(settings config.Config, model string) (*liveClient, error) {
 }
 
 func (l *liveClient) CompleteWithMessages(ctx context.Context, messages []ai.Message, options ...ai.Option) (*ai.Response, error) {
-	l.mu.RLock()
-	client := l.client
-	l.mu.RUnlock()
+	_, client := l.Snapshot()
 	return client.CompleteWithMessages(ctx, messages, options...)
 }
 
@@ -1610,20 +1632,25 @@ func (l *liveClient) SetModel(model string) error {
 	if err != nil {
 		return err
 	}
+	closeReplaced(l.swap(model, client))
+	return nil
+}
+
+// swap installs the new pair and returns the client it displaced, which the
+// caller closes outside the lock — a client's Close flushes a ledger, and no
+// model read should wait behind that.
+func (l *liveClient) swap(model string, client router.Client) router.Client {
 	l.mu.Lock()
+	defer l.mu.Unlock()
 	previous := l.client
 	l.model, l.client = model, client
-	l.mu.Unlock()
-	closeReplaced(previous)
-	return nil
+	return previous
 }
 
 // Close releases the underlying router client so its ledger flushes and its
 // events handle is returned before the process exits.
 func (l *liveClient) Close() {
-	l.mu.RLock()
-	client := l.client
-	l.mu.RUnlock()
+	_, client := l.Snapshot()
 	closeReplaced(client)
 }
 
@@ -1790,6 +1817,15 @@ func (j *jobPlans) put(prefix string, graph *plan.Graph, root, model string, cli
 	j.graphs[prefix] = plannedJob{graph: graph, root: root, model: model, client: client}
 }
 
+// get reads one retained job without holding the registry across whatever the
+// caller decides to do with it.
+func (j *jobPlans) get(prefix string) (plannedJob, bool) {
+	j.mu.Lock()
+	defer j.mu.Unlock()
+	entry, ok := j.graphs[prefix]
+	return entry, ok
+}
+
 // lookup resolves a store node id back to its plan node. The job root uses the
 // bare prefix so planning messages can name it before admission; other nodes
 // retain "<prefix>-n<planID>".
@@ -1885,9 +1921,7 @@ func (j *jobPlans) reviseAfter(ctx context.Context, settings config.Config, clie
 		return
 	}
 	prefix := node.ID[:cut]
-	j.mu.Lock()
-	entry, ok := j.graphs[prefix]
-	j.mu.Unlock()
+	entry, ok := j.get(prefix)
 	if !ok || entry.root == node.ID {
 		return
 	}
