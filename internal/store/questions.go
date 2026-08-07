@@ -53,24 +53,53 @@ func (s *Store) PendingQuestion(sessionID string, beforeSeq int64) (Message, boo
 // numeric keys, so a selection replies "N" and selects options[N-1] in every
 // surface; the durable option rows on the message remain the continuation and
 // validation source.
-func QuestionMessageBody(prompt string, options []QuestionOption) string {
+type QuestionKind string
+
+const (
+	QuestionChoose  QuestionKind = "choose"
+	QuestionConfirm QuestionKind = "confirm"
+	QuestionText    QuestionKind = "text"
+)
+
+// QuestionConfig selects the structured component spelling. The zero value is
+// the existing choose question with free text enabled.
+type QuestionConfig struct {
+	Kind      QuestionKind
+	Default   string
+	AllowFree *bool
+}
+
+func QuestionMessageBody(prompt string, options []QuestionOption, configs ...QuestionConfig) string {
 	prompt = strings.TrimSpace(prompt)
-	if len(options) == 0 {
-		return prompt
+	config := QuestionConfig{Kind: QuestionChoose}
+	allowFree := true
+	if len(configs) > 0 {
+		config = configs[0]
+		if config.Kind == "" {
+			config.Kind = QuestionChoose
+		}
+		if config.AllowFree != nil {
+			allowFree = *config.AllowFree
+		}
+	}
+	if len(options) == 0 && config.Kind != QuestionText {
+		config.Kind = QuestionText
 	}
 	type payloadOption struct {
 		Key   string `json:"key"`
 		Label string `json:"label"`
+		Hint  string `json:"hint,omitempty"`
 	}
 	payload := struct {
-		Kind      string          `json:"kind"`
+		Kind      QuestionKind    `json:"kind"`
 		Prompt    string          `json:"prompt"`
 		Options   []payloadOption `json:"options"`
+		Default   string          `json:"default,omitempty"`
 		AllowFree bool            `json:"allowFree"`
-	}{Kind: "choose", Prompt: prompt, AllowFree: true}
+	}{Kind: config.Kind, Prompt: prompt, Default: config.Default, AllowFree: allowFree}
 	for index, option := range options {
 		payload.Options = append(payload.Options, payloadOption{
-			Key: strconv.Itoa(index + 1), Label: strings.TrimSpace(option.Label),
+			Key: strconv.Itoa(index + 1), Label: strings.TrimSpace(option.Label), Hint: strings.TrimSpace(option.Hint),
 		})
 	}
 	encoded, err := json.Marshal(payload)
@@ -91,6 +120,7 @@ func normalizeQuestionOptions(options []QuestionOption) ([]QuestionOption, error
 	for _, option := range options {
 		option.Label = strings.TrimSpace(option.Label)
 		option.Value = strings.TrimSpace(option.Value)
+		option.Hint = strings.TrimSpace(option.Hint)
 		if option.Label == "" {
 			return nil, fmt.Errorf("%w: empty question option", ErrInvalid)
 		}

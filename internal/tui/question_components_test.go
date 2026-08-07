@@ -349,3 +349,19 @@ func TestHeadEmittedQuestionBodyParsesIntoChooseComponent(t *testing.T) {
 		}
 	}
 }
+
+func TestAmbiguousSurgeryAskbackParsesIntoChooseComponent(t *testing.T) {
+	body := store.QuestionMessageBody("Which job do you mean?", []store.QuestionOption{
+		{Label: "English audio", Hint: "running · 14m", Value: "surgery:select:cancel:audio-en:x"},
+		{Label: "French audio", Hint: "pending · 2m", Value: "surgery:select:cancel:audio-fr:x"},
+	})
+	component, ok := readQuestionComponent(body)
+	if !ok || component.Kind != questionChoose || component.Prompt != "Which job do you mean?" ||
+		len(component.Options) != 2 {
+		t.Fatalf("surgery askback decoded as %#v ok=%t", component, ok)
+	}
+	if component.Options[0].Label != "English audio" || component.Options[0].Hint != "running · 14m" ||
+		component.Options[1].Label != "French audio" || component.Options[1].Hint != "pending · 2m" {
+		t.Fatalf("surgery options decoded as %#v", component.Options)
+	}
+}

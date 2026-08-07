@@ -54,7 +54,19 @@ type Task struct {
 	// without being killed. Nil (the default, and the whole one-shot path)
 	// costs nothing.
 	Steer func() []string
+	// Control is polled at the same between-turn boundary as Steer. It is
+	// deliberately cooperative: a model/tool turn already in flight lands,
+	// then the claim owner releases through the store CAS path.
+	Control func() ControlAction
 }
+
+type ControlAction string
+
+const (
+	ControlNone   ControlAction = ""
+	ControlPause  ControlAction = "pause"
+	ControlCancel ControlAction = "cancel"
+)
 
 // Outcome is what came back.
 //
@@ -88,12 +100,14 @@ type Outcome struct {
 type StopReason string
 
 const (
-	StopDone     StopReason = "done"     // the model stopped asking for tools
-	StopTurnCap  StopReason = "turn-cap" // ran out of iterations; a runaway backstop
-	StopBudget   StopReason = "budget"   // ran out of tokens; the leaf was too expensive
-	StopDeadline StopReason = "deadline" // ran out of wall clock
-	StopError    StopReason = "error"    // the provider failed in a way we could not absorb
-	StopPromote  StopReason = "promote"  // a reflex discovered that it is a job
+	StopDone      StopReason = "done"      // the model stopped asking for tools
+	StopTurnCap   StopReason = "turn-cap"  // ran out of iterations; a runaway backstop
+	StopBudget    StopReason = "budget"    // ran out of tokens; the leaf was too expensive
+	StopDeadline  StopReason = "deadline"  // ran out of wall clock
+	StopError     StopReason = "error"     // the provider failed in a way we could not absorb
+	StopPromote   StopReason = "promote"   // a reflex discovered that it is a job
+	StopPaused    StopReason = "paused"    // user hold observed between turns
+	StopCancelled StopReason = "cancelled" // user cancellation observed between turns
 
 	// StopEmpty is the runaway-reasoning circuit breaker: a turn that spent most
 	// of what the leaf had left and returned no visible text at all. It is
