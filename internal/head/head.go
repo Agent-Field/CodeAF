@@ -42,6 +42,8 @@ Alongside the snapshot you carry a notebook: durable lessons, quirks, preference
 
 When a competence map appears, it is the measured view of your own current strengths, weak spots, and learning frontier. Treat questions about what you are good at, where you struggle, or what you should practice as status questions: answer directly from that evidence, in first person, and emit no work command. Never claim strength or weakness absent from the map.
 
+When standing-watch status appears, it is the ground truth for who is keeping watch, whether checks continue with no terminal open, the last wake, the next check, today's spend, and open standing work. Answer those questions directly in plain first-person language and emit no work command. Never expose the operating-system mechanism behind it.
+
 Return exactly one JSON object with this shape and no text outside it:
 {"reply":"<what to say right now>","command":null,"remember":null,"retract":null}
 where command may instead be {"kind":"reflex|splice|amend|cancel|pause|resume|reprioritize|restart","target":"<node id or empty>","instruction":"<the user's instruction, preserving their words verbatim>"}
@@ -79,6 +81,7 @@ type Head struct {
 	store          *store.Store
 	knowledge      func() string
 	competence     func() string
+	standingWatch  func() string
 	dailyBudgetUSD float64
 	modalities     interface {
 		Supports(string, string, string) bool
@@ -122,6 +125,13 @@ func (h *Head) WithSelfKnowledge(knowledge func() string) *Head {
 // structured data is voiced by the head's existing single routing call.
 func (h *Head) WithCompetenceMap(competence func() string) *Head {
 	h.competence = competence
+	return h
+}
+
+// WithStandingWatch registers the same calm status block used by doctor. It
+// is read only for presence-shaped questions.
+func (h *Head) WithStandingWatch(status func() string) *Head {
+	h.standingWatch = status
 	return h
 }
 
@@ -372,6 +382,11 @@ func (h *Head) route(ctx context.Context, user store.Message) (routeDecision, er
 			prompt = "Competence map (ground truth for this question):\n" + competence + "\n\n" + prompt
 		}
 	}
+	if h.standingWatch != nil && asksForStandingWatch(user.Body) {
+		if status := strings.TrimSpace(h.standingWatch()); status != "" {
+			prompt = "Standing-watch status (ground truth for this question):\n" + status + "\n\n" + prompt
+		}
+	}
 	messages := []ai.Message{
 		textMessage("system", resident.VoicePrompt(h.store, headSystemPrompt, user.Body)),
 		textMessage("user", prompt),
@@ -509,6 +524,21 @@ func asksForCompetence(message string) bool {
 		"where are you weak", "where do you struggle", "your strengths",
 		"your weaknesses", "your competence", "competence map",
 		"learning frontier", "what should you practice", "what do you struggle",
+	} {
+		if strings.Contains(message, phrase) {
+			return true
+		}
+	}
+	return false
+}
+
+func asksForStandingWatch(message string) bool {
+	message = strings.ToLower(strings.TrimSpace(message))
+	for _, phrase := range []string{
+		"who's keeping watch", "who is keeping watch", "who keeps watch",
+		"who's watching", "who is watching", "standing watch", "last wake",
+		"next check", "when i'm not here", "when i am not here", "while i'm away",
+		"while i am away", "no terminal open", "without a terminal",
 	} {
 		if strings.Contains(message, phrase) {
 			return true

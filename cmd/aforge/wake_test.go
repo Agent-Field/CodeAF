@@ -91,6 +91,10 @@ func TestWakeCommandRunsOnePassAndExits(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	wake, wakeFound, err := graph.LastStandingWake()
+	if err != nil || !wakeFound || wake.IsZero() {
+		t.Fatalf("wake pass was not journaled: %s found=%t err=%v", wake, wakeFound, err)
+	}
 	nodes, err := graph.Nodes()
 	if err != nil {
 		t.Fatal(err)
@@ -217,21 +221,27 @@ func seedWakePracticeCandidate(t *testing.T, graph *store.Store, scope, intent s
 		if _, err := graph.RecordFact(rootID, scope, store.FactLesson, intent); err != nil {
 			t.Fatal(err)
 		}
-		for leaf := 1; leaf <= 3; leaf++ {
-			completeWakePracticeNode(t, graph, fmt.Sprintf("%s-leaf-%d", rootID, leaf))
+		// Improving residuals across the two jobs: the learning-progress
+		// allocator funds curiosity only where practice is paying off.
+		surprise := 2.0
+		if job == 2 {
+			surprise = 1.0
 		}
-		completeWakePracticeNode(t, graph, rootID)
+		for leaf := 1; leaf <= 3; leaf++ {
+			completeWakePracticeNode(t, graph, fmt.Sprintf("%s-leaf-%d", rootID, leaf), surprise)
+		}
+		completeWakePracticeNode(t, graph, rootID, surprise)
 	}
 }
 
-func completeWakePracticeNode(t *testing.T, graph *store.Store, id string) {
+func completeWakePracticeNode(t *testing.T, graph *store.Store, id string, surprise float64) {
 	t.Helper()
 	claim, won, err := graph.Claim(id, "wake-practice-history")
 	if err != nil || !won {
 		t.Fatalf("claim %s: won=%t err=%v", id, won, err)
 	}
 	if err := graph.RecordSurprise(store.NodeSurprise{
-		NodeID: id, ActualTokens: 200, ExpectedTokens: 100, Surprise: 1,
+		NodeID: id, ActualTokens: 200, ExpectedTokens: 100, Surprise: surprise,
 	}); err != nil {
 		t.Fatal(err)
 	}

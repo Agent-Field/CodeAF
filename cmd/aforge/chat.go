@@ -132,6 +132,10 @@ func runChat(args []string) error {
 		return err
 	}
 	defer graph.Close()
+	standingWatch, err := newStandingWatchManager(graph)
+	if err != nil {
+		return err
+	}
 
 	workspaceRoot := filepath.Join(filepath.Dir(path), "workspace")
 	if err := os.MkdirAll(workspaceRoot, 0o700); err != nil {
@@ -159,7 +163,11 @@ func runChat(args []string) error {
 	plans := &jobPlans{graphs: map[string]plannedJob{}}
 	reconciler := newResidentReconciler(settings, graph, chatClient, taskClient, plans).
 		WithNarrator(narrateProgress(settings, chatClient, graph)).
-		WithBriefComposer(composeMorningBrief(settings, chatClient))
+		WithBriefComposer(composeMorningBrief(settings, chatClient)).
+		WithStandingWatch(standingWatch).
+		WithStandingWatchKeyPersist(func() (bool, string, error) {
+			return config.EnsurePersistedAPIKey(settings.ProfileDir)
+		})
 	if err := reconciler.AttachSession(*sessionID); err != nil {
 		return err
 	}
@@ -542,6 +550,9 @@ func runChat(args []string) error {
 			WithImageInput(modelCatalog, settings.Model).
 			WithCompetenceMap(func() string {
 				return competenceGrounding(graph, settings.ProfileDir, taskClient.Model())
+			}).
+			WithStandingWatch(func() string {
+				return watchGrounding(path, graph, standingWatch, settings.DailyBudgetUSD)
 			}).
 			WithDailyBudgetUSD(settings.DailyBudgetUSD).
 			Serve(headContext)

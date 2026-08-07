@@ -156,7 +156,7 @@ type Config struct {
 // unconfigured.
 func Load() (Config, error) {
 	config := Config{
-		APIKey:            firstNonEmpty(os.Getenv("OPENROUTER_API_KEY"), os.Getenv("OPENAI_API_KEY")),
+		APIKey:            firstNonEmpty(os.Getenv("OPENROUTER_API_KEY"), os.Getenv("OPENAI_API_KEY"), PersistedAPIKey(os.Getenv("AFORGE_PROFILE_DIR"))),
 		BaseURL:           firstNonEmpty(os.Getenv("AFORGE_BASE_URL"), DefaultBaseURL),
 		Model:             firstNonEmpty(os.Getenv("AFORGE_MODEL"), DefaultModel),
 		VoiceModel:        firstNonEmpty(os.Getenv("AFORGE_VOICE_MODEL"), DefaultVoiceModel),

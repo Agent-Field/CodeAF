@@ -3,6 +3,7 @@ package resident
 import (
 	"context"
 	"fmt"
+	"log"
 	"strconv"
 	"strings"
 	"time"
@@ -33,6 +34,12 @@ func (r *Reconciler) applyCharterCommand(ctx context.Context, command store.Comm
 			Origin: store.OriginUser, SessionID: command.SessionID, Evidence: evidence,
 		}); err != nil {
 			return commandOutcome{}, err
+		}
+		// Ratification is already durable at this point. The standing-watch
+		// offer is an adjacent consequence gate: a failure to inspect or post it
+		// must not lie by marking the charter command rejected after activation.
+		if err := r.offerStandingWatch(command.SessionID, charter.ID); err != nil {
+			log.Printf("standing watch offer after charter %s: %v", charter.ID, err)
 		}
 		return commandOutcome{
 			status: store.CommandApplied, result: "charter ratified",
@@ -185,6 +192,116 @@ func (r *Reconciler) applyCharterCommand(ctx context.Context, command store.Comm
 		}, nil
 	}
 	return commandOutcome{}, fmt.Errorf("unsupported charter command %q", command.Kind)
+}
+
+func (r *Reconciler) offerStandingWatch(sessionID, charterID string) error {
+	if r.standingWatch == nil {
+		return nil
+	}
+	status, err := r.standingWatch.Status()
+	if err != nil {
+		return err
+	}
+	decision, err := r.store.StandingWatchDecisionState()
+	if err != nil {
+		return err
+	}
+	if decision == store.StandingWatchEnabled {
+		if !status.Installed {
+			return r.standingWatch.Install(context.Background())
+		}
+		return nil
+	}
+	if decision == store.StandingWatchOffered || decision == store.StandingWatchDeclined {
+		return nil
+	}
+	if status.Installed {
+		return nil
+	}
+	_, err = r.store.OfferStandingWatch(sessionID, charterID)
+	return err
+}
+
+func (r *Reconciler) reconcileStandingWatch(ctx context.Context) {
+	if r.standingWatch == nil || (!r.standingWatchCheck.IsZero() && r.now().Before(r.standingWatchCheck)) {
+		return
+	}
+	r.standingWatchCheck = r.now().Add(5 * time.Minute)
+	decision, err := r.store.StandingWatchDecisionState()
+	if err != nil || decision != store.StandingWatchEnabled {
+		if err != nil {
+			log.Printf("standing watch decision: %v", err)
+		}
+		return
+	}
+	status, err := r.standingWatch.Status()
+	if err != nil {
+		log.Printf("standing watch status: %v", err)
+		return
+	}
+	if status.Installed {
+		return
+	}
+	if r.standingWatchKeyPersist != nil {
+		if _, _, err := r.standingWatchKeyPersist(); err != nil {
+			log.Printf("standing watch key: %v", err)
+		}
+	}
+	if err := r.standingWatch.Install(ctx); err != nil {
+		log.Printf("standing watch repair: %v", err)
+	}
+}
+
+func (r *Reconciler) applyStandingWatchCommand(ctx context.Context, command store.Command) (commandOutcome, error) {
+	reason := strings.TrimSpace(command.Instruction)
+	if reason == "" {
+		reason = "answered in conversation"
+	}
+	switch command.Kind {
+	case store.CommandStandingWatchEnable:
+		if r.standingWatch == nil {
+			return commandOutcome{}, fmt.Errorf("standing watch is unavailable in this process")
+		}
+		// The choice is durable before touching the host. A process death or a
+		// transient host failure therefore becomes a repair on the next check,
+		// never a lost "yes".
+		if err := r.store.RecordStandingWatchDecision(store.StandingWatchEnabled, reason); err != nil {
+			return commandOutcome{}, err
+		}
+		// Timer-driven wakes run without the shell environment, so the key
+		// must survive on disk or every quiet check dies at startup.
+		var persisted bool
+		var keyPath string
+		if r.standingWatchKeyPersist != nil {
+			var keyErr error
+			persisted, keyPath, keyErr = r.standingWatchKeyPersist()
+			if keyErr != nil {
+				log.Printf("standing watch key: %v", keyErr)
+			}
+		}
+		if err := r.standingWatch.Install(ctx); err != nil {
+			log.Printf("standing watch install: %v", err)
+			return commandOutcome{}, fmt.Errorf("quiet background checks could not be enabled")
+		}
+		receipt := "I'll keep watch — a quiet check every few minutes, even with no terminal open."
+		if persisted {
+			receipt += " Your API key now lives in " + keyPath + ", readable only by you, so those checks can run."
+		}
+		return commandOutcome{
+			status: store.CommandApplied, result: "standing watch enabled",
+			receipt: receipt,
+		}, nil
+	case store.CommandStandingWatchDecline:
+		if err := r.store.RecordStandingWatchDecision(store.StandingWatchDeclined, reason); err != nil {
+			return commandOutcome{}, err
+		}
+		return commandOutcome{
+			status: store.CommandApplied, result: "standing watch declined",
+			receipt: "Okay — I'll watch only while you're around.",
+		}, nil
+	default:
+		return commandOutcome{}, fmt.Errorf("unsupported standing watch command %q", command.Kind)
+	}
 }
 
 func charterCommandWakeSeq(instruction string) (int64, error) {

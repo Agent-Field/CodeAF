@@ -1,0 +1,275 @@
+package main
+
+import (
+	"encoding/json"
+	"flag"
+	"fmt"
+	"io"
+	"os"
+	"path/filepath"
+	"strconv"
+	"strings"
+	"time"
+
+	"github.com/Agent-Field/aforge-v2/internal/config"
+	"github.com/Agent-Field/aforge-v2/internal/store"
+	"github.com/Agent-Field/aforge-v2/internal/watchdog"
+)
+
+type standingWatchStatus interface {
+	Status() (watchdog.Status, error)
+}
+
+type doctorSnapshot struct {
+	BrainPath        string
+	BrainSize        int64
+	BrainExists      bool
+	Resident         string
+	Watch            watchdog.Status
+	Spend            float64
+	Rail             float64
+	RailUnlimited    bool
+	ActiveCharters   int
+	PendingQuestions int
+	Now              time.Time
+}
+
+func runDoctor(args []string) error {
+	profileDir := strings.TrimSpace(os.Getenv("AFORGE_PROFILE_DIR"))
+	dailyBudget, err := config.DailyBudgetUSDAt(profileDir)
+	if err != nil {
+		return err
+	}
+	return runDoctorWith(args, os.Stdout, dailyBudget, nil)
+}
+
+func runDoctorWith(args []string, output io.Writer, dailyBudget float64, override standingWatchStatus) error {
+	flags := flag.NewFlagSet("doctor", flag.ContinueOnError)
+	flags.SetOutput(io.Discard)
+	database := flags.String("db", defaultChatDB(), "path to the durable graph database")
+	if err := flags.Parse(reorder(args, map[string]bool{"db": true})); err != nil {
+		return err
+	}
+	if flags.NArg() != 0 {
+		return fmt.Errorf("usage: aforge doctor [--db path]")
+	}
+	path, err := expandHome(strings.TrimSpace(*database))
+	if err != nil {
+		return err
+	}
+	path, err = filepath.Abs(path)
+	if err != nil {
+		return fmt.Errorf("resolve brain file: %w", err)
+	}
+
+	var graph *store.Store
+	if info, statErr := os.Stat(path); statErr == nil {
+		if !info.Mode().IsRegular() {
+			return fmt.Errorf("open brain file: %s is not a regular file", path)
+		}
+		graph, err = store.Open(path)
+		if err != nil {
+			return err
+		}
+		defer graph.Close()
+	} else if !os.IsNotExist(statErr) {
+		return fmt.Errorf("inspect brain file: %w", statErr)
+	}
+
+	watch := override
+	if watch == nil {
+		manager, managerErr := newStandingWatchManager(graph)
+		if managerErr != nil {
+			return managerErr
+		}
+		watch = manager
+	}
+	snapshot, err := collectDoctorSnapshot(path, graph, watch, dailyBudget, time.Now())
+	if err != nil {
+		return err
+	}
+	_, err = io.WriteString(output, formatDoctor(snapshot))
+	return err
+}
+
+func newStandingWatchManager(graph *store.Store) (*watchdog.Manager, error) {
+	var lastWake watchdog.LastWakeFunc
+	if graph != nil {
+		lastWake = graph.LastStandingWake
+	}
+	return watchdog.New(watchdog.Options{LastWake: lastWake})
+}
+
+func collectDoctorSnapshot(path string, graph *store.Store, watch standingWatchStatus, dailyBudget float64, now time.Time) (doctorSnapshot, error) {
+	snapshot := doctorSnapshot{
+		BrainPath: path, Resident: readResident(filepath.Join(filepath.Dir(path), "resident.lock")),
+		Rail: dailyBudget, RailUnlimited: dailyBudget <= 0, Now: now,
+	}
+	if info, err := os.Stat(path); err == nil {
+		snapshot.BrainExists, snapshot.BrainSize = true, info.Size()
+	} else if !os.IsNotExist(err) {
+		return doctorSnapshot{}, fmt.Errorf("inspect brain file: %w", err)
+	}
+	if watch != nil {
+		status, err := watch.Status()
+		if err != nil {
+			return doctorSnapshot{}, fmt.Errorf("standing watch status is unavailable")
+		}
+		snapshot.Watch = status
+	}
+	if graph == nil {
+		return snapshot, nil
+	}
+	rail, err := graph.DailyRailToday(dailyBudget)
+	if err != nil {
+		return doctorSnapshot{}, err
+	}
+	snapshot.Spend, snapshot.Rail, snapshot.RailUnlimited = rail.Spend, rail.Ceiling, rail.Unlimited
+	charters, err := graph.ActiveCharters()
+	if err != nil {
+		return doctorSnapshot{}, err
+	}
+	snapshot.ActiveCharters = len(charters)
+	questions, err := graph.UnresolvedQuestions(10000)
+	if err != nil {
+		return doctorSnapshot{}, err
+	}
+	snapshot.PendingQuestions = len(questions)
+	return snapshot, nil
+}
+
+func formatDoctor(snapshot doctorSnapshot) string {
+	brain := snapshot.BrainPath + " · not created"
+	if snapshot.BrainExists {
+		brain = snapshot.BrainPath + " · " + humanBytes(snapshot.BrainSize)
+	}
+	watch := "not installed"
+	if snapshot.Watch.Installed {
+		watch = "installed"
+	}
+	if snapshot.Watch.LastWake.IsZero() {
+		watch += " · last wake not yet"
+	} else {
+		watch += " · last wake " + relativePast(snapshot.Watch.LastWake, snapshot.Now)
+	}
+	if snapshot.Watch.Installed && !snapshot.Watch.NextDue.IsZero() {
+		watch += " · next check " + relativeFuture(snapshot.Watch.NextDue, snapshot.Now)
+	}
+	// An arranged watch whose checks stopped landing is the one failure the
+	// user cannot see from the outside, so doctor says it rather than reading
+	// healthy while nothing has woken for several cadences.
+	if snapshot.Watch.Installed && !snapshot.Watch.LastWake.IsZero() &&
+		snapshot.Now.Sub(snapshot.Watch.LastWake) > 3*watchdog.Interval {
+		watch += " · checks look stalled"
+	}
+	spend := fmt.Sprintf("$%.2f today · rail $%.2f", snapshot.Spend, snapshot.Rail)
+	if snapshot.RailUnlimited {
+		spend = fmt.Sprintf("$%.2f today · rail unlimited", snapshot.Spend)
+	}
+	standing := fmt.Sprintf("%d active %s · %d pending %s",
+		snapshot.ActiveCharters, pluralWord(snapshot.ActiveCharters, "charter"),
+		snapshot.PendingQuestions, pluralWord(snapshot.PendingQuestions, "question"))
+	return fmt.Sprintf("%-16s %s\n%-16s %s\n%-16s %s\n%-16s %s\n%-16s %s\n",
+		"brain", brain,
+		"resident", snapshot.Resident,
+		"standing watch", watch,
+		"spend", spend,
+		"standing", standing)
+}
+
+func watchGrounding(path string, graph *store.Store, watch standingWatchStatus, dailyBudget float64) string {
+	snapshot, err := collectDoctorSnapshot(path, graph, watch, dailyBudget, time.Now())
+	if err != nil {
+		return "standing watch status unavailable: " + err.Error()
+	}
+	return strings.TrimSpace(formatDoctor(snapshot))
+}
+
+func readResident(path string) string {
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		return "this terminal while open"
+	}
+	text := strings.TrimSpace(string(raw))
+	if text == "" {
+		return "this terminal while open"
+	}
+	var fields map[string]any
+	if json.Unmarshal(raw, &fields) == nil {
+		for _, key := range []string{"resident", "holder", "owner", "identity", "session_id", "surface"} {
+			if value := strings.TrimSpace(fmt.Sprint(fields[key])); value != "" && value != "<nil>" {
+				if pid := lockPID(fields["pid"]); pid != "" {
+					return value + " · pid " + pid
+				}
+				return value
+			}
+		}
+		if pid := lockPID(fields["pid"]); pid != "" {
+			return "aforge · pid " + pid
+		}
+	}
+	if line := firstLine(text); line != "" {
+		return clip(line, 120)
+	}
+	return "this terminal while open"
+}
+
+func lockPID(value any) string {
+	switch typed := value.(type) {
+	case float64:
+		if typed > 0 && typed == float64(int64(typed)) {
+			return strconv.FormatInt(int64(typed), 10)
+		}
+	case string:
+		if parsed, err := strconv.Atoi(strings.TrimSpace(typed)); err == nil && parsed > 0 {
+			return strconv.Itoa(parsed)
+		}
+	}
+	return ""
+}
+
+func humanBytes(size int64) string {
+	if size < 1024 {
+		return fmt.Sprintf("%d B", size)
+	}
+	units := []string{"KiB", "MiB", "GiB", "TiB"}
+	value := float64(size)
+	for _, unit := range units {
+		value /= 1024
+		if value < 1024 || unit == units[len(units)-1] {
+			if value >= 10 {
+				return fmt.Sprintf("%.0f %s", value, unit)
+			}
+			return fmt.Sprintf("%.1f %s", value, unit)
+		}
+	}
+	return fmt.Sprintf("%d B", size)
+}
+
+func relativePast(then, now time.Time) string {
+	if then.After(now) {
+		return "just now"
+	}
+	delta := now.Sub(then)
+	switch {
+	case delta < time.Minute:
+		return "just now"
+	case delta < time.Hour:
+		return fmt.Sprintf("%dm ago", int(delta/time.Minute))
+	case delta < 24*time.Hour:
+		return fmt.Sprintf("%dh ago", int(delta/time.Hour))
+	default:
+		return then.Local().Format("2006-01-02 15:04")
+	}
+}
+
+func relativeFuture(then, now time.Time) string {
+	if !then.After(now) {
+		return "now"
+	}
+	delta := then.Sub(now)
+	if delta < time.Minute {
+		return "in less than a minute"
+	}
+	return fmt.Sprintf("in %dm", int((delta+time.Minute-1)/time.Minute))
+}
