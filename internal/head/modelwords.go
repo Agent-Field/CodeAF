@@ -29,6 +29,50 @@ const (
 	MaxModelCandidates = 4
 )
 
+// CompilerAnswerPrefix marks the user's answer where the head splices it back
+// onto the instruction that raised the question. It is the rail's durable
+// record that an ask was already put to the user: every deterministic
+// recognizer reads the last answer as authoritative and none may raise that
+// question again, because a recognizer that re-reads the older words asks the
+// same question forever.
+const CompilerAnswerPrefix = "Answer to compiler question:"
+
+// SpliceCompilerAnswer is the one way an answer rejoins its instruction.
+func SpliceCompilerAnswer(instruction, answer string) string {
+	return instruction + "\n\n" + CompilerAnswerPrefix + " " + strings.TrimSpace(answer)
+}
+
+// LastCompilerAnswer returns the most recent answer spliced onto instruction.
+// Answers accumulate in order, so the last one is the live decision.
+func LastCompilerAnswer(instruction string) (string, bool) {
+	index := strings.LastIndex(instruction, CompilerAnswerPrefix)
+	if index < 0 {
+		return "", false
+	}
+	return strings.TrimSpace(instruction[index+len(CompilerAnswerPrefix):]), true
+}
+
+// answeredCompilerQuestions lists every answer this instruction already
+// carries, oldest first. The compiler declares them settled to the provider so
+// the reasoning half of the rail cannot re-ask them either.
+func answeredCompilerQuestions(instruction string) []string {
+	var answers []string
+	for remaining := instruction; ; {
+		index := strings.Index(remaining, CompilerAnswerPrefix)
+		if index < 0 {
+			return answers
+		}
+		remaining = remaining[index+len(CompilerAnswerPrefix):]
+		answer := remaining
+		if end := strings.Index(answer, "\n\n"+CompilerAnswerPrefix); end >= 0 {
+			answer = answer[:end]
+		}
+		if answer = strings.TrimSpace(answer); answer != "" {
+			answers = append(answers, answer)
+		}
+	}
+}
+
 var (
 	boostModelPattern = regexp.MustCompile(
 		`(?i)\b(?:with|use|using|on|run\s+(?:it\s+)?(?:with|on))\s+(?:the\s+)?(?:better|best|stronger|smarter|bigger|boost(?:ed)?)\s+model\b`)
@@ -39,6 +83,11 @@ var (
 		`(?i)\b(?:with|use|using|on)\s+(?:the\s+)?model\s+([a-z0-9][a-z0-9.+\-]*(?:/[a-z0-9.+\-]+)*)`)
 	bareNamePattern = regexp.MustCompile(
 		`(?i)\b(?:with|use|using|on)\s+(?:the\s+)?([a-z0-9][a-z0-9.+\-]*(?:/[a-z0-9.+\-]+)*)`)
+	// answerNamePattern reads a name out of a free-text answer, where the
+	// framing verb the sentence patterns need is usually absent: "kimi 3" and
+	// "moonshotai/kimi-k2" are both whole answers to "which kimi do you mean".
+	answerNamePattern = regexp.MustCompile(
+		`(?i)\b([a-z][a-z0-9.+\-]*(?:/[a-z0-9.+\-]+)*)\b`)
 	qualityWordPattern = regexp.MustCompile(
 		`(?i)\b(?:best|highest|top)\s+quality\b|\bhigh(?:est)?[\- ]fidelity\b|\bmake\s+it\s+(?:really\s+)?good\b|\bfinal\s+(?:deliverable|artifact|version|cut)\b|\bproduction[\- ]quality\b`)
 )
@@ -66,6 +115,10 @@ type ModelWords struct {
 	// Explicit means the ask said "model" beside the name, so an unresolvable
 	// name is worth one calm receipt line rather than silence.
 	Explicit bool
+	// Answered means these words were read out of the user's answer to a
+	// question this ask already asked. The choice is settled: whatever the
+	// catalog says, the job proceeds and nothing asks again.
+	Answered bool
 }
 
 // WorkModelChoice is the surface's answer about the model words in one ask.
@@ -82,8 +135,59 @@ type WorkModelChoice struct {
 // the surface's slots. Nil leaves every job on the default work model.
 type ModelResolver func(ModelWords) WorkModelChoice
 
-// RecognizeModelWords reads a task ask for the model the user asked for.
+// RecognizeModelWords reads a task ask for the model the user asked for. An
+// ask that already carries an answer is read answer-first: the answer is
+// younger than the words that raised the question, and reading those words
+// again is how the same question came back forever.
 func RecognizeModelWords(instruction string) (ModelWords, bool) {
+	answer, answered := LastCompilerAnswer(instruction)
+	if !answered {
+		return recognizeModelWords(instruction)
+	}
+	if words, ok := recognizeModelWords(answer); ok {
+		words.Answered = true
+		return words, true
+	}
+	if names := answerModelNames(answer); len(names) > 0 {
+		// The answer is the name by itself — an option value, or the user's own
+		// words. Saying it at all is saying "model", so it earns a receipt.
+		return ModelWords{Names: names, Explicit: true, Answered: true}, true
+	}
+	// The answer settled some other question. The original model words still
+	// stand, but they have had their one ask.
+	words, ok := recognizeModelWords(instruction)
+	words.Answered = true
+	return words, ok
+}
+
+// answerModelNames reads the candidate names out of a bare answer, in order.
+// Pure numbers are option keys, never models.
+func answerModelNames(answer string) []string {
+	var names []string
+	seen := make(map[string]bool)
+	for _, match := range answerNamePattern.FindAllStringSubmatch(answer, -1) {
+		name := strings.ToLower(strings.TrimSpace(match[1]))
+		if name == "" || bareModelStopWords[name] || answerFramingWords[name] || seen[name] {
+			continue
+		}
+		seen[name] = true
+		names = append(names, name)
+	}
+	return names
+}
+
+// answerFramingWords are the verbs an answer wraps its name in. They are not
+// model words in any catalog, and excluding them keeps a phrased answer such
+// as "use kimi" resolving on "kimi".
+var answerFramingWords = map[string]bool{
+	"use": true, "using": true, "with": true, "run": true, "please": true,
+	"go": true, "just": true, "prefer": true, "pick": true, "choose": true,
+	"want": true, "let": true, "s": true, "i": true, "d": true, "is": true,
+	"be": true, "of": true, "by": true, "at": true, "as": true, "we": true,
+	"you": true, "do": true, "mean": true, "meant": true, "option": true,
+}
+
+func recognizeModelWords(instruction string) (ModelWords, bool) {
 	trimmed := strings.TrimSpace(instruction)
 	if trimmed == "" {
 		return ModelWords{}, false
@@ -153,10 +257,26 @@ func modelChoiceOptions(candidates []string) []store.QuestionOption {
 	return options
 }
 
+// settleAnsweredAmbiguity closes a choice the user has already been asked
+// about. The candidates arrive best first, so the leading one takes the job;
+// the runner-up rides along only so the receipt can name the way back.
+func settleAnsweredAmbiguity(choice WorkModelChoice) WorkModelChoice {
+	if len(choice.Candidates) == 0 {
+		return choice
+	}
+	choice.Model = choice.Candidates[0]
+	return choice
+}
+
 // modelReceiptNote is the calm line about which model this job runs on. Empty
 // is the ordinary case: no model words, nothing to say.
 func modelReceiptNote(words ModelWords, choice WorkModelChoice) string {
 	if model := strings.TrimSpace(choice.Model); model != "" {
+		if len(choice.Candidates) > 1 {
+			// The answer still fit more than one model. Proceeding and naming
+			// the switch beats asking a question the user already answered.
+			return fmt.Sprintf("Went with %s — say %q to switch.", model, "use "+choice.Candidates[1])
+		}
 		return "Running on " + model + "."
 	}
 	if !words.Explicit {

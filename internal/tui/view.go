@@ -1487,6 +1487,7 @@ func (m *Model) renderMessageGroup(group messageGroup, atLine int) string {
 			}
 			item += artifacts
 		}
+		item = m.withThreadQuestionOptions(item, message, available)
 		// A task-anchored answer names its origin: a small clickable chip that
 		// jumps to that task's activity view.
 		if message.NodeID != "" && message.Role != store.RoleUser && !secondaryMessage(message) {
@@ -1523,6 +1524,62 @@ func (m *Model) renderMessageGroup(group messageGroup, atLine int) string {
 		content += "\n" + strings.Join(items, "\n\n")
 	}
 	return content
+}
+
+// threadQuestionIndent is the gutter the thread's option rows hang under. The
+// card gutter is a frame the thread does not have.
+const threadQuestionIndent = "  "
+
+// withThreadQuestionOptions keeps a still-open question's choices with the
+// message that asked it. The thread is the durable surface: the activity dock
+// collapses to a one-line summary as soon as work piles up, and the numbers
+// the input placeholder promises must exist somewhere that cannot fold away.
+// An answered question keeps its prompt and loses its choices — the record
+// stays, the affordance does not.
+func (m *Model) withThreadQuestionOptions(item string, message store.Message, width int) string {
+	if message.Role != store.RoleAgent {
+		return item
+	}
+	component, ok := readQuestionComponent(message.Body)
+	if !ok || len(component.Options) == 0 || m.questionAnswered(message) {
+		return item
+	}
+	// Selection state belongs to the card that owns the question, so the band
+	// the arrows move is the same band in both places.
+	selected := 0
+	if card := m.cardForMessage(message); card != nil && card.State == cardQuestion &&
+		len(card.Options) == len(component.Options) {
+		selected = m.questionOptionIndex(*card)
+	}
+	var rows []string
+	if component.Kind == questionConfirm {
+		line, _ := renderConfirmOptions(component, selected, width, threadQuestionIndent)
+		rows = []string{line}
+	} else {
+		rows = renderChooseOptions(component.Options, selected, width, threadQuestionIndent)
+	}
+	if item == "" {
+		return strings.Join(rows, "\n")
+	}
+	return item + "\n" + strings.Join(rows, "\n")
+}
+
+// questionAnswered reads the same no-intervening-user-turn rule the head
+// applies when it routes a reply: any later user turn consumes the question.
+func (m *Model) questionAnswered(question store.Message) bool {
+	if question.Seq == 0 {
+		return false
+	}
+	for index := len(m.messages) - 1; index >= 0; index-- {
+		message := m.messages[index]
+		if message.Seq <= question.Seq {
+			return false
+		}
+		if message.Role == store.RoleUser && message.NodeID == "" {
+			return true
+		}
+	}
+	return false
 }
 
 // nodeChipLabel is the short human name for a task referenced from chat: the
