@@ -17,15 +17,12 @@ import (
 const compilerSystemPrompt = `You are the intent compiler for an asynchronous task graph. Apply ASSUME-AND-DECLARE.
 
 Turn the user's verbatim instruction and the current graph context into a complete execution brief. Return exactly one JSON object with this shape and no text outside it:
-{"goal":"...","deliverable":"...","budget":"...","scale":"lookup|task|project","builds_on":["<job id>"],"assumptions":["..."],"question":"","question_options":[{"label":"...","value":"..."}],"trial_of":0}
+{"goal":"...","scale":"lookup|task|project","builds_on":["<job id>"],"assumptions":["..."],"question":"","question_options":[{"label":"...","value":"..."}],"trial_of":0}
 
 Rules:
 - State a clear goal that names the final deliverable, what success means, and the evidence standard that will prove it.
 - Write the goal as commander's intent: the end-state and why it matters, never one fixed method. Workers will hit obstacles no one can foresee; a goal that names the outcome lets them substitute means and still land it, while a goal that prescribes a method dies with that method.
 - No instruction compiles to impossible. When the ask looks blocked or out of reach, name what actually makes it hard — access, tooling, scale, uncertainty — and reshape around that by safe means: substitute an available source or route for an unavailable one, split the achievable core from the blocked remainder and name both in the goal, or reach the target by approximation first and refinement after. Every such reshaping is declared in assumptions like any other default.
-- Name that same concrete final deliverable separately in deliverable.
-- Give a sensible free-text budget, including a currency amount when cost is otherwise unspecified.
-- When measured execution costs appear in the context, ground the budget in them. A budget contradicted by the system's own measured history is a guess wearing numbers.
 - Fill every missing decision with a practical default: scope, audience, format, quality bar, evidence, timing, tools, and constraints whenever the user did not settle them.
 - List every default you supplied in assumptions, and write each one as a decision that changes what the workers will do. Two kinds qualify. One is an ambiguity you settled with a concrete choice — which branch, which base, which source, which format — stated as the choice itself rather than as the fact that a choice was made. The other is a commitment about method or evidence the work will be held to: what must be run, checked, reviewed or matched before the deliverable is handed over. Never restate the request; what the user already asked for is not something you decided. Never record a fact that alters nothing — if a line vanished and no worker would do anything differently, it was never a decision. Assumptions are revisable receipts, not hidden guesses, and they travel with the work as standing orders, so write each one as something a worker could follow or fail.
 - Fill gaps with defaults, with two exceptions that go in "question" (empty otherwise). First: a gap both high-consequence and hard to reverse — spending real money externally, deleting or overwriting something that exists, sending or publishing on the user's behalf, or a wrong guess that would waste most of the budget — asked as ONE crisp casual question stating your best-guess default so the user can simply say yes. Second: referent ambiguity — the instruction points at earlier work and MORE THAN ONE prior job plausibly matches. Guessing the referent wastes the whole job and reads as not listening; ask which one, listing the candidates as numbered options identified by the user's own words from each job. A single plausible match is not ambiguity. Never ask about reversible preferences, and never leave placeholders such as TBD or unknown.
@@ -35,19 +32,26 @@ Rules:
 - End goal with a line beginning "Verbatim request:" followed by the user's instruction exactly as supplied.
 - The graph context lists earlier jobs with their ids, what was asked, and their results. When the instruction continues, improves, or refers to earlier work, name those job ids in builds_on AND restate in the goal the concrete starting points from their results — file paths, names, findings — so the work never starts blind. When the instruction stands alone, builds_on is [].
 - A job still running is earlier work too. When this instruction concerns something a live job is changing right now — the same repository, the same document, the same deliverable — name that job in builds_on so this work follows it. Two jobs editing one thing at the same time do not merely duplicate effort; each is working against a state the other is moving, and the result belongs to neither.
+- When a live job in the context already covers what is being asked for — not adjacent to it, not a step towards it, but the same deliverable produced by the same work — the honest brief is the one that waits for it rather than a second copy of it. Say so in the goal: name that job, state that the work it is already doing is what was asked for, and shape this brief around what would still be missing when it lands. A duplicate is paid for twice and answers once.
 - When the graph context lists attached documents, name them in the goal as required inputs. They become workspace files for workers, which read them with read_document; do not assume the conversational model receives a file content part.
 - For project scale, make the parallel structure explicit in the goal: name the parts if they are known, or state that the first step enumerates them and each then proceeds independently. Downstream planning fans out exactly what the goal names; a vague goal collapses into needlessly serial work.
 - Judge scale by the structure of the work, never by its topic. Ask two questions. First: does the job enumerate — does doing it mean repeating the same operation over a set of items, sources, or sections that do not depend on each other? Second: does it stratify — does it separate into stages with different working modes, such as gathering, verifying, and synthesizing, where intermediate outputs feed a final deliverable? If either answer is yes, the scale is "project": independent parts are parallel structure, and parallel structure is the point even when one worker could grind through serially. If both answers are no and the job still requires acting — producing, transforming, fetching-then-shaping — it is "task": one worker, one thread of attention, end to end. If the whole job is retrieving or computing a single thing, where the answer is itself the deliverable, it is "lookup".
 
 Be precise enough for downstream planning, but do not design the task graph yourself.`
 
-// Brief is the complete, assumption-bearing intent handed to planning. Budget
-// stays free text because the graph does not impose a money type on callers.
+// Brief is the complete, assumption-bearing intent handed to planning.
+//
+// It carried a Deliverable and a Budget until this wave, and neither had a
+// reader anywhere in the tree: the goal already names the deliverable, planning
+// takes its money from measured history, and resident_build copies eleven fields
+// across and dropped exactly these two. What they did have was a validator that
+// hard-rejected an empty one with no retry, so an otherwise perfect request came
+// back as "I couldn't apply that request: compile request: empty budget" for a
+// field nothing would have consumed. A validated field with no consumer is a
+// pure failure source, so both are gone from the schema and from validation.
 type Brief struct {
 	Goal        string   `json:"goal"`
 	Assumptions []string `json:"assumptions"`
-	Deliverable string   `json:"deliverable"`
-	Budget      string   `json:"budget"`
 
 	// Scale is the compiler's honest judgement of shape: "lookup" (one fact,
 	// one step), "task" (one worker end to end), or "project" (parallel parts
@@ -293,12 +297,6 @@ func normalizeScale(scale string) string {
 func validateBrief(brief Brief) error {
 	if strings.TrimSpace(brief.Goal) == "" {
 		return errors.New("empty goal")
-	}
-	if strings.TrimSpace(brief.Deliverable) == "" {
-		return errors.New("empty deliverable")
-	}
-	if strings.TrimSpace(brief.Budget) == "" {
-		return errors.New("empty budget")
 	}
 	if brief.Assumptions == nil {
 		return errors.New("missing assumptions")
