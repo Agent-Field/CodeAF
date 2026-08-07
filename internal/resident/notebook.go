@@ -10,6 +10,7 @@ import (
 	"unicode"
 	"unicode/utf8"
 
+	"github.com/Agent-Field/aforge-v2/internal/guard"
 	"github.com/Agent-Field/aforge-v2/internal/plan"
 	"github.com/Agent-Field/aforge-v2/internal/store"
 )
@@ -168,12 +169,37 @@ func NotebookDigest(graph *store.Store, nodeID, brief, goal string, limit int) s
 
 // consolidateNotebook rewrites at most one overgrown scope. Maintenance is
 // best effort: model and store failures leave ordinary reconciliation alone.
+// consolidationDue answers the interval question from the journal, not from a
+// field. Consolidation retires and rewrites standing beliefs, so a memory-only
+// guard meant every restart bought another pass: five restarts in an hour was
+// five paid calls and five rounds of belief churn. The retrospective next door
+// already had the durable answer; this lane borrows its shape.
+func (r *Reconciler) consolidationDue(now time.Time) bool {
+	if !r.lastConsolidation.IsZero() {
+		return now.Sub(r.lastConsolidation) >= consolidationInterval
+	}
+	watermark, found, err := r.store.ResidentWatermarkFor(store.LaneConsolidation)
+	if err != nil {
+		return true
+	}
+	if !found {
+		return true
+	}
+	r.lastConsolidation = watermark.At
+	return now.Sub(watermark.At) >= consolidationInterval
+}
+
 func (r *Reconciler) consolidateNotebook(ctx context.Context) {
 	now := r.now()
-	if !r.lastConsolidation.IsZero() && now.Sub(r.lastConsolidation) < consolidationInterval {
+	if !r.consolidationDue(now) {
 		return
 	}
 	r.lastConsolidation = now
+	if _, err := r.store.MarkResidentWatermark(store.LaneConsolidation, 0); err != nil {
+		// The pass is best effort and so is its watermark: a failed write costs
+		// one duplicated consolidation after a restart, never the pass itself.
+		_ = guard.Note("resident/consolidation watermark", err)
+	}
 	_, _ = r.store.AgeFactsBounded(now)
 	if r.consolidate == nil {
 		return

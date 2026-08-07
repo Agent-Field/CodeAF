@@ -19,6 +19,13 @@ import (
 const (
 	residentLockName = "resident.lock"
 	maxPayloadBytes  = 16 << 10
+
+	// StuckAfter is how long a holder may go without stamping a completed pass
+	// before the role is considered abandoned. It is several resident poll
+	// intervals over, deliberately: a busy pass, a slow model call and a paused
+	// laptop all take longer than one interval, and taking the role away from a
+	// process that is merely working would be far worse than waiting.
+	StuckAfter = 5 * time.Minute
 )
 
 // Resident describes the process whose open file descriptor currently holds
@@ -29,6 +36,15 @@ type Resident struct {
 	Host       string    `json:"host"`
 	Surface    string    `json:"surface"`
 	AcquiredAt time.Time `json:"acquired_at"`
+	// LastTick is when the holder last finished a resident pass. Zero means the
+	// holder never said — an flock proves a process is alive, never that it is
+	// still doing the work — and silence is deliberately read as unknown rather
+	// than as dead, so a surface that does not stamp is never taken from.
+	LastTick time.Time `json:"last_tick,omitempty"`
+
+	// Stuck is derived at probe time and never serialized: the holder is alive,
+	// has stamped a pass at some point, and has not stamped one since.
+	Stuck bool `json:"-"`
 }
 
 // AcquireResident attempts to become the resident for the store directory.
@@ -57,6 +73,7 @@ func AcquireResident(dir, surface string) (release func() error, heldBy *Residen
 		if readErr != nil {
 			return nil, nil, fmt.Errorf("acquire resident: read holder: %w", readErr)
 		}
+		markStuck(holder, time.Now())
 		return nil, holder, nil
 	}
 
@@ -119,7 +136,52 @@ func ProbeResident(dir string) (*Resident, error) {
 	if err != nil {
 		return nil, fmt.Errorf("probe resident: read holder: %w", err)
 	}
+	markStuck(holder, time.Now())
 	return holder, nil
+}
+
+// NoteResidentTick stamps a completed resident pass onto the lock the calling
+// process holds. It is deliberately stateless and deliberately fussy about who
+// may write: only the holder stamps its own liveness, so a second process
+// cannot make a wedged resident look alive.
+func NoteResidentTick(dir string, at time.Time) error {
+	dir = strings.TrimSpace(dir)
+	if dir == "" {
+		return fmt.Errorf("note resident tick: empty store directory")
+	}
+	path := filepath.Join(dir, residentLockName)
+	file, err := os.OpenFile(path, os.O_RDWR, 0o600)
+	if errors.Is(err, os.ErrNotExist) {
+		return nil
+	}
+	if err != nil {
+		return fmt.Errorf("note resident tick: open lock: %w", err)
+	}
+	defer file.Close()
+
+	holder, err := readResident(file)
+	if err != nil {
+		return fmt.Errorf("note resident tick: read holder: %w", err)
+	}
+	if holder.PID != os.Getpid() {
+		return nil
+	}
+	holder.LastTick = at.UTC()
+	if err := writeResident(file, *holder); err != nil {
+		return fmt.Errorf("note resident tick: write holder: %w", err)
+	}
+	return nil
+}
+
+// markStuck decides whether a live holder has stopped serving. A holder that
+// has never stamped a pass is left alone: the flock is the only thing we know
+// about it, and treating "said nothing" as "died" would let a wake pass run
+// beside a perfectly healthy resident.
+func markStuck(holder *Resident, now time.Time) {
+	if holder == nil || holder.LastTick.IsZero() {
+		return
+	}
+	holder.Stuck = now.Sub(holder.LastTick) > StuckAfter
 }
 
 func lockBusy(err error) bool {

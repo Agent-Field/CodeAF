@@ -154,6 +154,12 @@ const (
 	// EventRetrospectiveCheckpointed records how much settled top-level work
 	// the periodic retrospective has already considered.
 	EventRetrospectiveCheckpointed EventKind = "retrospective_checkpointed"
+	// EventResidentWatermarked records how far one resident lane has already
+	// got. The settle lane's cursor used to live only in the reconciler's
+	// memory, which made every restart step over whatever landed while nothing
+	// was ticking; a lane watermark is the same durable answer the
+	// retrospective already had.
+	EventResidentWatermarked EventKind = "resident_watermarked"
 	// EventAssumedWithDefault records a VOI-gated skipped ask for later correction matching.
 	EventAssumedWithDefault EventKind = "assumed_with_default"
 	// EventParameterChanged is the sole bounded self-tuning mutation surface.
@@ -497,6 +503,9 @@ func Open(path string) (*Store, error) {
 	}
 	if _, err := db.Exec(retrospectiveSchema); err != nil {
 		return closeOnError(fmt.Errorf("initialize retrospective schema: %w", err))
+	}
+	if _, err := db.Exec(residentWatermarkSchema); err != nil {
+		return closeOnError(fmt.Errorf("initialize resident watermark schema: %w", err))
 	}
 	if _, err := db.Exec(metaParameterSchema); err != nil {
 		return closeOnError(fmt.Errorf("initialize meta parameter schema: %w", err))

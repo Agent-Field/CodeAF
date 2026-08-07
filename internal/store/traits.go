@@ -2,8 +2,10 @@ package store
 
 import (
 	"encoding/json"
+	"fmt"
 	"math"
 	"sort"
+	"strings"
 	"time"
 )
 
@@ -346,6 +348,86 @@ func (s *Store) SilenceConsentWait(base time.Duration) time.Duration {
 		return min(observed, 4*base)
 	}
 	return base
+}
+
+// MeasuredTraitBlock renders the measured traits as plain sentences, bounded by
+// maxBytes. It exists because promptEligible excludes FactTrait outright and
+// always will: a trait is a number about the user, and letting it into ordinary
+// cue retrieval would put behavioural statistics in front of a worker who asked
+// about a parser. This is the explicit carve-out — a caller that wants
+// self-knowledge asks for it by name, and gets a byte-capped block rather than
+// a retrieval.
+//
+// Without it, five second-order traits were re-measured on every retrospective
+// and reached no model at all except as the one derived policy line
+// CompilerAssumptionGuidance already emits.
+func (s *Store) MeasuredTraitBlock(maxBytes int) string {
+	if s == nil || maxBytes <= 0 {
+		return ""
+	}
+	var lines []string
+	add := func(line string) {
+		if strings.TrimSpace(line) != "" {
+			lines = append(lines, "- "+line)
+		}
+	}
+	if measurement, _, ok, err := s.Trait(TraitCorrectionStyle); err == nil && ok && measurement.N > 0 {
+		var value CorrectionStyleValue
+		if decodeTraitValue(measurement.Value, &value) && value.Style != "" {
+			add(fmt.Sprintf("corrects %s (%d observed, mean %.0fs to reply)",
+				value.Style, measurement.N, value.MeanLatencySeconds))
+		}
+	}
+	if measurement, _, ok, err := s.Trait(TraitDefaultAcceptance); err == nil && ok && measurement.N > 0 {
+		var value DefaultAcceptanceValue
+		if decodeTraitValue(measurement.Value, &value) && len(value) > 0 {
+			categories := make([]string, 0, len(value))
+			for category := range value {
+				categories = append(categories, string(category))
+			}
+			sort.Strings(categories)
+			parts := make([]string, 0, len(categories))
+			for _, category := range categories {
+				counted := value[QuestionCategory(category)]
+				parts = append(parts, fmt.Sprintf("%s %.0f%%", category, 100*counted.Rate))
+			}
+			add("takes the offered default: " + strings.Join(parts, ", "))
+		}
+	}
+	if measurement, _, ok, err := s.Trait(TraitProposalAppetite); err == nil && ok && measurement.N > 0 {
+		var value ProposalAppetiteValue
+		if decodeTraitValue(measurement.Value, &value) {
+			add(fmt.Sprintf("accepts %.0f%% of standing proposals (%d judged)",
+				100*value.Acceptance, measurement.N))
+		}
+	}
+	if measurement, _, ok, err := s.Trait(TraitSpecGranularity); err == nil && ok && measurement.N > 0 {
+		var value SpecGranularityValue
+		if decodeTraitValue(measurement.Value, &value) {
+			add(fmt.Sprintf("asks in about %d characters, and corrects %.0f%% of jobs afterwards",
+				value.MedianBriefBytes, 100*value.CorrectionDensity))
+		}
+	}
+	if measurement, _, ok, err := s.Trait(TraitExplorationTolerance); err == nil && ok && measurement.N > 0 {
+		var value ExplorationToleranceValue
+		if decodeTraitValue(measurement.Value, &value) {
+			add(fmt.Sprintf("tolerates exploratory work at %.2f of ordinary work", value.Tolerance))
+		}
+	}
+	if len(lines) == 0 {
+		return ""
+	}
+	block := "Measured about this user (journal-derived, not asserted):"
+	for _, line := range lines {
+		if len(block)+len(line)+1 > maxBytes {
+			break
+		}
+		block += "\n" + line
+	}
+	if !strings.Contains(block, "\n") {
+		return ""
+	}
+	return block
 }
 
 func decodeTraitValue(value any, target any) bool {

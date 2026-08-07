@@ -82,6 +82,9 @@ func (s *Store) Rebuild() error {
 	if _, err := tx.Exec(`DELETE FROM retrospective_watermark`); err != nil {
 		return fmt.Errorf("rebuild retrospective watermark: %w", err)
 	}
+	if _, err := tx.Exec(`DELETE FROM resident_watermarks`); err != nil {
+		return fmt.Errorf("rebuild resident watermarks: %w", err)
+	}
 	if _, err := tx.Exec(`DELETE FROM meta_parameters`); err != nil {
 		return fmt.Errorf("rebuild meta parameters: %w", err)
 	}
@@ -508,6 +511,13 @@ func replayEvent(tx *sql.Tx, event Event) error {
 			return err
 		}
 		return applyRetrospectiveCheckpoint(tx, payload, event.Seq, event.Time)
+
+	case EventResidentWatermarked:
+		var payload residentWatermarkPayload
+		if err := json.Unmarshal(event.Payload, &payload); err != nil {
+			return err
+		}
+		return applyResidentWatermark(tx, payload, event.Seq, event.Time)
 
 	case EventAssumedWithDefault:
 		var payload assumedWithDefaultPayload

@@ -328,3 +328,43 @@ func isLearningMomentBody(body string) bool {
 	return strings.HasPrefix(body, "· learned") || strings.HasPrefix(body, "⚒ forged:") ||
 		strings.HasPrefix(body, "⚖ settled:") || strings.HasPrefix(body, "· let go —")
 }
+
+// Overnight work learns things with nobody watching. Dropping the moment
+// outright — which is what wiping the map unconditionally did — meant the whole
+// `aforge wake` path taught the notebook and told the user nothing.
+func TestLearningMomentsWaitForSomebodyToReadThem(t *testing.T) {
+	graph := openStore(t)
+	settle, reconciler := learningJobFixture(t, graph, "away",
+		func(_ context.Context, _, _ string, _ bool) ([]Learned, error) {
+			return []Learned{{Scope: "repo:aforge", Kind: store.FactLesson,
+				Body: "overnight work still teaches something"}}, nil
+		})
+	if err := reconciler.SessionClosed("away", "tui"); err != nil {
+		t.Fatal(err)
+	}
+	settle()
+	if err := reconciler.Tick(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if moments := learningMessages(t, graph, "away"); len(moments) != 0 {
+		t.Fatalf("moment posted with no surface attached: %+v", moments)
+	}
+	// Nothing new happens; the user simply comes back.
+	if err := reconciler.SessionOpened(context.Background(), "away", "tui", time.Hour); err != nil {
+		t.Fatal(err)
+	}
+	if err := reconciler.Tick(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	moments := learningMessages(t, graph, "away")
+	if len(moments) != 1 || !strings.Contains(moments[0].Body, "overnight work still teaches something") {
+		t.Fatalf("held moment never arrived: %+v", moments)
+	}
+	// And it arrives exactly once.
+	if err := reconciler.Tick(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if moments := learningMessages(t, graph, "away"); len(moments) != 1 {
+		t.Fatalf("held moment arrived twice: %+v", moments)
+	}
+}

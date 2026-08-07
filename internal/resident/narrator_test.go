@@ -368,3 +368,65 @@ func TestNarratorOmitsDurationsUnderAMinute(t *testing.T) {
 		}
 	}
 }
+
+// The "do not repeat" list lived only in RAM, so a restart during a long job
+// made the next progress line repeat an update the user had already read. The
+// lines were durable all along — they were posted into the thread.
+func TestNarratorRecoversItsOwnSpeechAfterRestart(t *testing.T) {
+	s, err := store.Open(filepath.Join(t.TempDir(), "graph.db"))
+	if err != nil {
+		t.Fatalf("open store: %v", err)
+	}
+	defer s.Close()
+	spliceProject(t, s)
+
+	spoken := "City A is in — city B is close behind."
+	first := New(s, nil, nil).WithNarrator(
+		func(context.Context, Narration) (string, error) { return spoken, nil })
+	ctx := context.Background()
+	if err := first.Tick(ctx); err != nil {
+		t.Fatalf("initial tick: %v", err)
+	}
+	landNode(t, s, "part-a", "City A: 14C and raining")
+	if err := first.Tick(ctx); err != nil {
+		t.Fatalf("observe tick: %v", err)
+	}
+	for _, state := range first.progress {
+		state.lastPost = time.Now().Add(-2 * narrateDebounce)
+	}
+	if err := first.Tick(ctx); err != nil {
+		t.Fatalf("speak tick: %v", err)
+	}
+
+	var seen []Narration
+	restarted := New(s, nil, nil).WithNarrator(
+		func(_ context.Context, narration Narration) (string, error) {
+			seen = append(seen, narration)
+			return "City B is in too.", nil
+		})
+	if err := restarted.Tick(ctx); err != nil {
+		t.Fatalf("restart tick: %v", err)
+	}
+	landNode(t, s, "part-b", "City B: 21C and clear")
+	if err := restarted.Tick(ctx); err != nil {
+		t.Fatalf("observe after restart: %v", err)
+	}
+	for _, state := range restarted.progress {
+		state.lastPost = time.Now().Add(-2 * narrateDebounce)
+	}
+	if err := restarted.Tick(ctx); err != nil {
+		t.Fatalf("speak after restart: %v", err)
+	}
+	if len(seen) != 1 {
+		t.Fatalf("narrations after restart = %d", len(seen))
+	}
+	found := false
+	for _, previous := range seen[0].Previous {
+		if previous == spoken {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("restarted narrator forgot what it already said: %+v", seen[0].Previous)
+	}
+}

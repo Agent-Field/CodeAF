@@ -27,6 +27,10 @@ const (
 	// narratePreviousKept bounds how much of its own prior speech the
 	// narrator sees, enough to not repeat itself.
 	narratePreviousKept = 4
+	// narrateSpokenScan bounds the thread read that recovers that speech after
+	// a restart. A job's own message anchor is a short list; this is the
+	// ceiling, not the expectation.
+	narrateSpokenScan = 40
 )
 
 // Narration is everything the narrator may speak from, for one job.
@@ -90,10 +94,47 @@ func (r *Reconciler) ensureProgress(root store.Node) *subtreeProgress {
 	}
 	state, ok := r.progress[root.ID]
 	if !ok {
-		state = &subtreeProgress{sessionID: root.Provenance.SessionID, lastPost: time.Now()}
+		state = &subtreeProgress{
+			sessionID: root.Provenance.SessionID,
+			previous:  r.spokenLines(root.ID),
+			lastPost:  time.Now(),
+		}
 		r.progress[root.ID] = state
 	}
 	return state
+}
+
+// spokenLines recovers what this job has already been told. The "do not repeat"
+// list used to live only in memory, so a restart during a long job made the
+// next progress line repeat an update the user had already read — the only
+// record that it had been said was in RAM. The lines were durable all along:
+// they were posted into the thread anchored to this job's root, so the thread
+// is the record, and no new store is needed to keep one.
+func (r *Reconciler) spokenLines(rootID string) []string {
+	if r.store == nil {
+		return nil
+	}
+	messages, err := r.store.NodeMessages(rootID, 0, narrateSpokenScan)
+	if err != nil {
+		return nil
+	}
+	spoken := make([]string, 0, narratePreviousKept)
+	for _, message := range messages {
+		// Only the narrator's own voice counts. A surfaced question, an arrival
+		// brief and a replaceable compile-progress post are all agent messages
+		// on this node, and none of them is an update this job already gave.
+		if message.Role != store.RoleAgent || message.QuestionSeq != 0 ||
+			message.Brief != nil || message.Progress != nil {
+			continue
+		}
+		if line := strings.TrimSpace(message.Body); line != "" {
+			spoken = append(spoken, line)
+		}
+	}
+	if len(spoken) > narratePreviousKept {
+		spoken = spoken[len(spoken)-narratePreviousKept:]
+	}
+	return spoken
 }
 
 // speakProgress applies the firing rules and posts at most one line per job.
