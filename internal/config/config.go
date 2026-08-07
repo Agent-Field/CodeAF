@@ -88,6 +88,10 @@ const (
 	// resident store. Token slices shape leaves internally; dollars decide when
 	// new work needs the user's word. Zero disables the rail.
 	DefaultDailyBudgetUSD = 20.0
+
+	// DefaultBriefAfter keeps ordinary short breaks silent. A longer absence
+	// earns one folded arrival summary when background life actually happened.
+	DefaultBriefAfter = 4 * time.Hour
 )
 
 // Config is the resolved runtime configuration.
@@ -106,6 +110,7 @@ type Config struct {
 	MaxDepth       int
 	NodeBudget     int
 	DailyBudgetUSD float64
+	BriefAfter     time.Duration
 
 	// Panel is the set of models a run may route across, from AFORGE_MODELS. An
 	// empty panel is the default and is the kill switch: with no panel the
@@ -136,6 +141,7 @@ func Load() (Config, error) {
 		MaxDepth:       DefaultMaxDepth,
 		NodeBudget:     DefaultNodeBudget,
 		DailyBudgetUSD: DefaultDailyBudgetUSD,
+		BriefAfter:     DefaultBriefAfter,
 		ProfileDir:     os.Getenv("AFORGE_PROFILE_DIR"),
 	}
 	if config.APIKey == "" {
@@ -154,6 +160,13 @@ func Load() (Config, error) {
 			return Config{}, fmt.Errorf("AFORGE_EXEC_REASONING: unknown effort %q (off, low, medium, high)", raw)
 		}
 		config.ExecReasoning = effort
+	}
+	if raw := strings.TrimSpace(os.Getenv("AFORGE_BRIEF_AFTER")); raw != "" {
+		duration, err := time.ParseDuration(raw)
+		if err != nil || duration < 0 {
+			return Config{}, fmt.Errorf("AFORGE_BRIEF_AFTER: want a non-negative duration, got %q", raw)
+		}
+		config.BriefAfter = duration
 	}
 	for _, knob := range []struct {
 		name   string

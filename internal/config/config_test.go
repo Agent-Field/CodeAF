@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/Agent-Field/aforge-v2/internal/provider"
 	"github.com/Agent-Field/aforge-v2/internal/router"
@@ -19,11 +20,33 @@ func settings(t *testing.T) Config {
 	t.Setenv("AFORGE_BASE_URL", "http://127.0.0.1:1")
 	t.Setenv("AFORGE_PROFILE_DIR", t.TempDir())
 	t.Setenv("AFORGE_DAILY_BUDGET", "")
+	t.Setenv("AFORGE_BRIEF_AFTER", "")
 	config, err := Load()
 	if err != nil {
 		t.Fatal(err)
 	}
 	return config
+}
+
+func TestBriefAfterConfiguration(t *testing.T) {
+	config := settings(t)
+	if config.BriefAfter != 4*time.Hour {
+		t.Fatalf("default brief threshold = %s, want 4h", config.BriefAfter)
+	}
+
+	t.Setenv("AFORGE_BRIEF_AFTER", "90m")
+	config, err := Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if config.BriefAfter != 90*time.Minute {
+		t.Fatalf("configured brief threshold = %s, want 90m", config.BriefAfter)
+	}
+
+	t.Setenv("AFORGE_BRIEF_AFTER", "-1h")
+	if _, err := Load(); err == nil {
+		t.Fatal("negative AFORGE_BRIEF_AFTER was accepted")
+	}
 }
 
 // TestNoPanelIsTheKillSwitch is the promise the whole feature is gated on. With

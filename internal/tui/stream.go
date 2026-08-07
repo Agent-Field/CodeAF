@@ -121,7 +121,8 @@ func (m *Model) startSimulatedStream(message store.Message) {
 }
 
 func (m *Model) matchRealStream(message store.Message) bool {
-	if m.streamMode != streamReal || m.streamSeq != 0 || message.Role != store.RoleAgent || message.NodeID != "" {
+	if m.streamMode != streamReal || m.streamSeq != 0 || message.Role != store.RoleAgent ||
+		message.NodeID != "" || message.Brief != nil {
 		return false
 	}
 	landed := strings.TrimSpace(message.Body)
@@ -165,7 +166,7 @@ func (m *Model) normalizeLandedTarget() {
 }
 
 func (m *Model) shouldSimulateStream(message store.Message) bool {
-	if message.Role == store.RoleUser || message.Seq == 0 {
+	if message.Role == store.RoleUser || message.Seq == 0 || message.Brief != nil {
 		return false
 	}
 	if message.Role == store.RoleAgent && message.NodeID == "" {

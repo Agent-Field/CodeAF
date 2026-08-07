@@ -5,6 +5,7 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"flag"
 	"fmt"
 	"io"
@@ -134,6 +135,7 @@ func runChat(args []string) error {
 		},
 		planSubtree(settings, taskClient, plans, graph),
 	).WithNarrator(narrateProgress(settings, chatClient, graph)).
+		WithBriefComposer(composeMorningBrief(settings, chatClient)).
 		WithDistiller(distillFacts(settings, chatClient, graph)).
 		WithConsolidator(consolidateFacts(settings, chatClient, graph)).
 		WithTitler(titleGoal(settings, chatClient)).
@@ -142,6 +144,9 @@ func runChat(args []string) error {
 		WithTerritoryDigester(digestTerritory(settings, chatClient)).
 		WithWatchEngine(settings.DailyBudgetUSD, checkSentinel(settings, chatClient)).
 		WithOverrunPlanner(settings.DailyBudgetUSD, replanRemainder(settings, taskClient, plans, graph))
+	if err := reconciler.SessionOpened(context.Background(), *sessionID, "tui", settings.BriefAfter); err != nil {
+		fmt.Fprintf(os.Stderr, "note: could not prepare the arrival brief: %v\n", err)
+	}
 
 	web := exec.NewWeb()
 	runner := resident.NewRunner(graph, func(ctx context.Context, node store.Node) (resident.ExecResult, error) {
@@ -492,9 +497,10 @@ func runChat(args []string) error {
 		streamEvents:  streamEvents,
 	}
 	err = tui.RunWithCommander(graph, *sessionID, commander)
+	seenErr := reconciler.SessionClosed(*sessionID, "tui")
 	cancel()
 	waitWithGrace(&background, 5*time.Second)
-	return err
+	return errors.Join(err, seenErr)
 }
 
 // residentDeliveryBrief gives only the top-level deliverable owner the voice
@@ -1703,6 +1709,70 @@ func digestTerritory(settings config.Config, client *liveClient) resident.Territ
 }
 
 const sentinelSystemPrompt = `You are a cheap standing-watch sentinel. Decide only whether the supplied condition occurred or the invariant is threatened now. Answer exactly "yes — <one line>" or "no — <one line>". No markdown, no qualifications, no suggested work.`
+
+const morningBriefSystemPrompt = `You are the resident assistant writing one calm arrival fold after the person has been away. Return exactly one JSON object: {"headline":"While you were away: ...","items":[{"seq":123,"body":"..."}]}.
+
+The input is journal truth. Write one short, human sentence for headline: begin exactly "While you were away:" and summarize the shape of what changed, including a waiting question or failure before routine progress. No greeting, dashboard language, hype, or "nothing to report".
+
+Write exactly one slim item for every supplied event, in the same order, preserving its seq. Do not combine, omit, or invent events. Keep concrete names, results, questions, learned facts, and dollar amounts. Each item is one sentence fragment, at most 22 words. No markdown.`
+
+var morningBriefSchema = json.RawMessage(`{
+  "type": "object",
+  "properties": {
+    "headline": {"type": "string"},
+    "items": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "seq": {"type": "integer"},
+          "body": {"type": "string"}
+        },
+        "required": ["seq", "body"],
+        "additionalProperties": false
+      }
+    }
+  },
+  "required": ["headline", "items"],
+  "additionalProperties": false
+}`)
+
+// composeMorningBrief is one small, routable resident verdict. Session
+// surfaces never see this client; they only attach and render the message the
+// resident journals. The panel may verify the JSON schema exactly as it does
+// for other bounded planning verdicts.
+func composeMorningBrief(settings config.Config, client *liveClient) resident.BriefComposeFunc {
+	return func(ctx context.Context, activity resident.BriefActivity) (resident.BriefDraft, error) {
+		input, err := json.Marshal(activity)
+		if err != nil {
+			return resident.BriefDraft{}, err
+		}
+		briefCtx := provider.WithCall(settings.Context(ctx, "morning-brief"), provider.ClassPlanBrief)
+		options := []ai.Option{ai.WithMaxTokens(500)}
+		if client.routed() {
+			options = append(options, ai.WithSchema(morningBriefSchema))
+		}
+		response, err := client.CompleteWithMessages(briefCtx, []ai.Message{
+			{Role: "system", Content: []ai.ContentPart{{Type: "text", Text: morningBriefSystemPrompt}}},
+			{Role: "user", Content: []ai.ContentPart{{Type: "text", Text: string(input)}}},
+		}, options...)
+		if err != nil || response == nil {
+			provider.Report(briefCtx, provider.VerdictProviderFailure)
+			if err == nil {
+				err = fmt.Errorf("brief composer returned no response")
+			}
+			return resident.BriefDraft{}, err
+		}
+		object := jsonResponseObject(response.Text())
+		var draft resident.BriefDraft
+		if object == "" || json.Unmarshal([]byte(object), &draft) != nil || strings.TrimSpace(draft.Headline) == "" {
+			provider.Report(briefCtx, provider.VerdictFormatFailure)
+			return resident.BriefDraft{}, fmt.Errorf("brief composer returned malformed JSON")
+		}
+		provider.Report(briefCtx, provider.VerdictVerifiedSuccess)
+		return draft, nil
+	}
+}
 
 // checkSentinel reuses the resident talk client just like consolidation. The
 // store, not this parser, decides whether a yes may spend or fire.

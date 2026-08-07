@@ -177,7 +177,8 @@ type Model struct {
 	// expandedMessages holds the seqs of long chat deliverables opened in
 	// place; everything else shows its lead and a ⋯.
 	expandedMessages map[int64]bool
-
+	briefExpanded    map[int64]bool
+	selectedBriefSeq int64
 	// The provider stream is optional Commander input. Real head deltas and
 	// simulated landed answers share one paced renderer so neither path pops.
 	streamEvents       <-chan StreamEvent
@@ -324,6 +325,7 @@ func newModel(backend Backend, sessionID string, commander Commander) *Model {
 		modelRole:         "talk",
 		feedExpanded:      map[string]bool{},
 		expandedMessages:  map[int64]bool{},
+		briefExpanded:     map[int64]bool{},
 		jobUsage:          map[string]store.JobUsage{},
 		commands:          map[int64]store.Command{},
 		cardExpanded:      map[string]bool{},
@@ -556,6 +558,7 @@ func (m *Model) updateKey(message tea.KeyMsg) (tea.Cmd, bool) {
 		case m.graphVisible() && m.focus == focusGraph && m.closeCharterCard():
 		case m.focus == focusCards && m.collapseSelectedCard():
 		case m.focus == focusChat && m.collapseSelectedCard():
+		case m.focus == focusChat && m.collapseSelectedBrief():
 		case m.focus == focusCards:
 			m.dockExpanded = false
 			m.focus = focusInput

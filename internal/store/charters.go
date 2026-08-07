@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"math"
@@ -10,27 +11,6 @@ import (
 	"strings"
 	"time"
 	"unicode"
-)
-
-// CharterStatus is the durable lifecycle of standing intent. Draft is inert:
-// only ratification crosses the consequence gate into Active.
-type CharterStatus string
-
-const (
-	CharterDraft   CharterStatus = "draft"
-	CharterActive  CharterStatus = "active"
-	CharterPaused  CharterStatus = "paused"
-	CharterRetired CharterStatus = "retired"
-)
-
-// WatchKind names the small set of wake-up mechanisms settled by STANDING.md.
-type WatchKind string
-
-const (
-	WatchCron  WatchKind = "cron"
-	WatchFile  WatchKind = "file"
-	WatchGraph WatchKind = "graph"
-	WatchPoll  WatchKind = "poll"
 )
 
 // CharterWatch preserves the user's cadence words beside their executable
@@ -41,14 +21,6 @@ type CharterWatch struct {
 	Schedule string    `json:"schedule"`
 }
 
-// CharterRails bound every firing before a charter can be ratified.
-type CharterRails struct {
-	EstimatedCostUSD       float64 `json:"estimated_cost_usd"`
-	MaxPerDay              int     `json:"max_per_day"`
-	MaxPerDayJustification string  `json:"max_per_day_justification"`
-	Expiry                 string  `json:"expiry"`
-}
-
 // CharterSpec is the compiled, still-inert form of standing intent.
 type CharterSpec struct {
 	Invariant string       `json:"invariant"`
@@ -57,44 +29,6 @@ type CharterSpec struct {
 	Action    string       `json:"action"`
 	Rails     CharterRails `json:"rails"`
 }
-
-// Charter is the materialized standing-intent view rebuilt from its events.
-type Charter struct {
-	ID               string
-	SessionID        string
-	Status           CharterStatus
-	Spec             CharterSpec
-	SourceCommandSeq int64
-	CreatedSeq       int64
-	UpdatedSeq       int64
-	CreatedAt        time.Time
-}
-
-const charterSchema = `
-CREATE TABLE IF NOT EXISTS charters (
-    id                         TEXT PRIMARY KEY,
-    session_id                 TEXT NOT NULL DEFAULT '',
-    status                     TEXT NOT NULL CHECK (status IN ('draft', 'active', 'paused', 'retired')),
-    invariant                  TEXT NOT NULL,
-    watch_kind                 TEXT NOT NULL CHECK (watch_kind IN ('cron', 'file', 'graph', 'poll')),
-    cadence                    TEXT NOT NULL,
-    schedule                   TEXT NOT NULL,
-    sentinel                   TEXT NOT NULL,
-    action                     TEXT NOT NULL,
-    estimated_cost_usd         REAL NOT NULL CHECK (estimated_cost_usd >= 0),
-    max_per_day                INTEGER NOT NULL CHECK (max_per_day > 0),
-    max_per_day_justification  TEXT NOT NULL,
-    expiry                     TEXT NOT NULL,
-    source_command_seq         INTEGER NOT NULL DEFAULT 0,
-    created_seq                INTEGER NOT NULL REFERENCES events(seq),
-    updated_seq                INTEGER NOT NULL REFERENCES events(seq),
-    created_at                 TEXT NOT NULL
-);
-CREATE INDEX IF NOT EXISTS charters_status_created ON charters (status, created_seq);
-CREATE VIRTUAL TABLE IF NOT EXISTS charters_fts USING fts5(
-    charter_id UNINDEXED, invariant, tokenize='porter unicode61'
-);
-`
 
 type charterDraftedPayload struct {
 	ID               string      `json:"id"`
@@ -144,10 +78,11 @@ func (s *Store) DraftCharter(id, sessionID string, sourceCommandSeq int64, spec 
 	if err := tx.Commit(); err != nil {
 		return Charter{}, fmt.Errorf("draft charter: %w", err)
 	}
-	return Charter{
-		ID: id, SessionID: payload.SessionID, Status: CharterDraft, Spec: spec,
-		SourceCommandSeq: sourceCommandSeq, CreatedSeq: seq, UpdatedSeq: seq, CreatedAt: at,
-	}, nil
+	charter, found, err := s.CharterByID(id)
+	if err != nil || !found {
+		return Charter{}, fmt.Errorf("draft charter: read materialized charter: %w", err)
+	}
+	return charter, nil
 }
 
 // RatifyCharter is the only transition that arms a draft.
@@ -275,7 +210,7 @@ func (s *Store) Charters(statuses ...CharterStatus) ([]Charter, error) {
 		}
 		query += ` WHERE status IN (` + strings.Join(marks, ",") + `)`
 	}
-	query += ` ORDER BY created_seq DESC`
+	query += ` ORDER BY created_seq DESC, id`
 	rows, err := s.db.Query(query, args...)
 	if err != nil {
 		return nil, fmt.Errorf("list charters: %w", err)
@@ -335,32 +270,7 @@ func (s *Store) SearchActiveCharters(reference string) ([]Charter, error) {
 	return charters, nil
 }
 
-const charterSelect = `SELECT charters.id, charters.session_id, charters.status,
-    charters.invariant, charters.watch_kind, charters.cadence, charters.schedule,
-    charters.sentinel, charters.action, charters.estimated_cost_usd,
-    charters.max_per_day, charters.max_per_day_justification, charters.expiry,
-    charters.source_command_seq, charters.created_seq, charters.updated_seq,
-    charters.created_at FROM charters`
-
-type charterScanner interface {
-	Scan(dest ...any) error
-}
-
-func scanCharter(scanner charterScanner) (Charter, error) {
-	var charter Charter
-	var created string
-	err := scanner.Scan(&charter.ID, &charter.SessionID, &charter.Status,
-		&charter.Spec.Invariant, &charter.Spec.Watch.Kind, &charter.Spec.Watch.Cadence,
-		&charter.Spec.Watch.Schedule, &charter.Spec.Sentinel, &charter.Spec.Action,
-		&charter.Spec.Rails.EstimatedCostUSD, &charter.Spec.Rails.MaxPerDay,
-		&charter.Spec.Rails.MaxPerDayJustification, &charter.Spec.Rails.Expiry,
-		&charter.SourceCommandSeq, &charter.CreatedSeq, &charter.UpdatedSeq, &created)
-	if err != nil {
-		return Charter{}, err
-	}
-	charter.CreatedAt, err = parseTime(created)
-	return charter, err
-}
+const charterSelect = `SELECT charters.* FROM charters`
 
 func validateCharterSpec(spec CharterSpec) error {
 	if strings.TrimSpace(spec.Invariant) == "" || strings.TrimSpace(spec.Sentinel) == "" ||
@@ -385,17 +295,22 @@ func validateCharterSpec(spec CharterSpec) error {
 }
 
 func applyCharterDraft(tx *sql.Tx, payload charterDraftedPayload, seq int64, at time.Time) error {
+	watch := watchSpecFromLegacy(payload.Spec)
+	action := CharterAction{Template: payload.Spec.Action}
+	rails := railsFromLegacy(payload.Spec.Rails)
+	nextDue, _ := initialCharterDue(watch, at)
+	encodedWatch, _ := json.Marshal(watch)
+	encodedAction, _ := json.Marshal(action)
+	encodedRails, _ := json.Marshal(rails)
+	legacySpec, _ := json.Marshal(payload.Spec)
+	ratification, _ := json.Marshal(Ratification{})
 	_, err := tx.Exec(`INSERT INTO charters (
-        id, session_id, status, invariant, watch_kind, cadence, schedule,
-        sentinel, action, estimated_cost_usd, max_per_day,
-        max_per_day_justification, expiry, source_command_seq, created_seq,
-        updated_seq, created_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		payload.ID, payload.SessionID, CharterDraft, payload.Spec.Invariant,
-		payload.Spec.Watch.Kind, payload.Spec.Watch.Cadence, payload.Spec.Watch.Schedule,
-		payload.Spec.Sentinel, payload.Spec.Action, payload.Spec.Rails.EstimatedCostUSD,
-		payload.Spec.Rails.MaxPerDay, payload.Spec.Rails.MaxPerDayJustification,
-		payload.Spec.Rails.Expiry, payload.SourceCommandSeq, seq, seq, formatTime(at))
+		id, session_id, invariant, watch, sentinel_hint, action, rails, status, ratification,
+		proposal_shape, next_due, created_seq, updated_seq, legacy_spec, source_command_seq, created_at
+	) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, '', ?, ?, ?, ?, ?, ?)`,
+		payload.ID, payload.SessionID, payload.Spec.Invariant, string(encodedWatch), payload.Spec.Sentinel,
+		string(encodedAction), string(encodedRails), CharterDraft, string(ratification), nullTime(nextDue),
+		seq, seq, string(legacySpec), payload.SourceCommandSeq, formatTime(at))
 	if err != nil {
 		return err
 	}
@@ -405,8 +320,21 @@ func applyCharterDraft(tx *sql.Tx, payload charterDraftedPayload, seq int64, at 
 }
 
 func applyCharterTransition(tx *sql.Tx, id string, from, to CharterStatus, seq int64) error {
-	query := `UPDATE charters SET status = ?, updated_seq = ? WHERE id = ?`
-	args := []any{to, seq, id}
+	query := `UPDATE charters SET status = ?, updated_seq = ?`
+	args := []any{to, seq}
+	if to == CharterActive {
+		var sessionID string
+		if err := tx.QueryRow(`SELECT session_id FROM charters WHERE id=?`, id).Scan(&sessionID); err != nil {
+			return err
+		}
+		ratification, _ := json.Marshal(Ratification{
+			Origin: OriginUser, SessionID: sessionID, Evidence: "yes, stand this up",
+		})
+		query += `, ratification = ?`
+		args = append(args, string(ratification))
+	}
+	query += ` WHERE id = ?`
+	args = append(args, id)
 	if from != "" {
 		query += ` AND status = ?`
 		args = append(args, from)
@@ -426,8 +354,21 @@ func applyCharterTransition(tx *sql.Tx, id string, from, to CharterStatus, seq i
 }
 
 func applyCharterCadence(tx *sql.Tx, payload charterCadencePayload, seq int64) error {
-	result, err := tx.Exec(`UPDATE charters SET cadence = ?, schedule = ?, updated_seq = ?
-        WHERE id = ? AND status != ?`, payload.Cadence, payload.Schedule, seq, payload.ID, CharterRetired)
+	var encoded string
+	if err := tx.QueryRow(`SELECT legacy_spec FROM charters WHERE id=? AND status != ?`,
+		payload.ID, CharterRetired).Scan(&encoded); err != nil {
+		return err
+	}
+	var spec CharterSpec
+	if err := json.Unmarshal([]byte(encoded), &spec); err != nil {
+		return err
+	}
+	spec.Watch.Cadence = payload.Cadence
+	spec.Watch.Schedule = payload.Schedule
+	legacySpec, _ := json.Marshal(spec)
+	watch, _ := json.Marshal(watchSpecFromLegacy(spec))
+	result, err := tx.Exec(`UPDATE charters SET legacy_spec=?, watch=?, updated_seq=?
+		WHERE id=? AND status != ?`, string(legacySpec), string(watch), seq, payload.ID, CharterRetired)
 	if err != nil {
 		return err
 	}
@@ -439,6 +380,89 @@ func applyCharterCadence(tx *sql.Tx, payload charterCadencePayload, seq int64) e
 		return fmt.Errorf("%w: charter %q is missing or retired", ErrInvalid, payload.ID)
 	}
 	return nil
+}
+
+func watchSpecFromLegacy(spec CharterSpec) WatchSpec {
+	cadence := strings.ToLower(strings.TrimSpace(spec.Watch.Cadence))
+	interval := cadenceInterval(cadence)
+	switch spec.Watch.Kind {
+	case WatchCron:
+		schedule := CronSchedule{Kind: CronDaily, Hour: 9}
+		switch {
+		case strings.Contains(cadence, "weekday"):
+			schedule.Kind = CronWeekdays
+		case strings.Contains(cadence, "hour"):
+			schedule.Kind, schedule.Interval = CronEveryHours, max(1, interval)
+		case strings.Contains(cadence, "minute"):
+			schedule.Kind, schedule.Interval = CronEveryMinutes, max(1, interval)
+		case strings.Contains(cadence, "afternoon"):
+			schedule.Hour = 13
+		case strings.Contains(cadence, "evening"):
+			schedule.Hour = 18
+		}
+		return WatchSpec{Kind: WatchCron, Cron: &schedule}
+	case WatchFile:
+		glob := strings.TrimSpace(spec.Watch.Schedule)
+		if glob == "" || glob == "event" {
+			glob = "*"
+		}
+		return WatchSpec{Kind: WatchFile, File: &FileWatch{Glob: glob, Cadence: legacyCadence(interval)}}
+	case WatchGraph:
+		return WatchSpec{Kind: WatchGraph, Graph: &GraphWatch{
+			Predicate: GraphNodeSettled, Title: firstCharterLine(spec.Invariant), Cadence: legacyCadence(interval),
+		}}
+	default:
+		return WatchSpec{Kind: WatchPoll, Poll: &PollWatch{
+			Condition: spec.Sentinel, Cadence: legacyCadence(interval),
+		}}
+	}
+}
+
+func railsFromLegacy(legacy CharterRails) CharterRails {
+	rails := legacy
+	rails.PerFiringBudgetUSD = legacy.EstimatedCostUSD
+	if rails.PerFiringBudgetUSD <= 0 {
+		rails.PerFiringBudgetUSD = 0.01
+	}
+	rails.MaxFiringsPerDay = legacy.MaxPerDay
+	if rails.MaxFiringsPerDay <= 0 {
+		rails.MaxFiringsPerDay = 1
+	}
+	return rails
+}
+
+func legacySpecFromCharter(charter Charter) CharterSpec {
+	watch := CharterWatch{Kind: charter.Watch.Kind, Cadence: charter.Watch.String(), Schedule: charter.Watch.String()}
+	rails := charter.guardrails
+	if rails.EstimatedCostUSD == 0 {
+		rails.EstimatedCostUSD = rails.PerFiringBudgetUSD
+	}
+	if rails.MaxPerDay == 0 {
+		rails.MaxPerDay = rails.MaxFiringsPerDay
+	}
+	if rails.MaxPerDayJustification == "" {
+		rails.MaxPerDayJustification = "first-class charter guardrail"
+	}
+	if rails.Expiry == "" {
+		rails.Expiry = "never"
+	}
+	return CharterSpec{
+		Invariant: charter.Invariant, Watch: watch, Sentinel: charter.SentinelHint,
+		Action: charter.Action.Template, Rails: rails,
+	}
+}
+
+func cadenceInterval(cadence string) int {
+	for _, field := range strings.Fields(cadence) {
+		if value, err := strconv.Atoi(strings.Trim(field, ",.;:")); err == nil && value > 0 {
+			return value
+		}
+	}
+	return 2
+}
+
+func legacyCadence(interval int) time.Duration {
+	return time.Duration(max(1, interval)) * time.Minute
 }
 
 func requireCharter(tx *sql.Tx, id string) error {
