@@ -92,6 +92,13 @@ func runWakeWith(args []string, output io.Writer, build wakeBuilder) error {
 	if err != nil {
 		return err
 	}
+	if err := graph.RecordStandingWatchPass(store.StandingWatchPass{
+		Examined: pass.Examined, Woken: pass.Woken, Checked: pass.Checked,
+		Fired: pass.Fired, Proposed: pass.Proposed, No: pass.No, Errors: pass.Errors,
+		Quota: pass.Quota, Expired: pass.Expired, RailWaits: pass.RailWaits,
+	}); err != nil {
+		return err
+	}
 	_, err = fmt.Fprintf(output, "examined %d, checked %d, fired %d, no %d, errors %d, rail waits %d\n",
 		pass.Examined, pass.Checked, pass.Fired, pass.No, pass.Errors, pass.RailWaits)
 	return err

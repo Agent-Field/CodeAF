@@ -89,6 +89,10 @@ func TestWakeCommandRunsOnePassAndExits(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	wake, wakeFound, err := graph.LastStandingWake()
+	if err != nil || !wakeFound || wake.IsZero() {
+		t.Fatalf("wake pass was not journaled: %s found=%t err=%v", wake, wakeFound, err)
+	}
 	nodes, err := graph.Nodes()
 	if err != nil {
 		t.Fatal(err)

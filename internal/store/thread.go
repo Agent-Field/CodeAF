@@ -130,6 +130,11 @@ const (
 	CommandCharterAlways    CommandKind = "charter_always"
 	CommandCharterNever     CommandKind = "charter_never"
 	CommandCharterProbation CommandKind = "charter_probation"
+
+	// Standing-watch commands carry the one global unattended-presence
+	// decision. They deliberately have no graph-node or charter target.
+	CommandStandingWatchEnable  CommandKind = "standing_watch_enable"
+	CommandStandingWatchDecline CommandKind = "standing_watch_decline"
 )
 
 // CommandStatus is the lifecycle of a requested command. Commands are durable
@@ -535,7 +540,7 @@ func (s *Store) RequestCommand(command Command) (Command, error) {
 	if command.Reflex && (command.Kind != CommandSplice || strings.TrimSpace(command.Target) != "") {
 		return Command{}, fmt.Errorf("request command: %w: reflex must be an untargeted splice", ErrInvalid)
 	}
-	if command.Kind != CommandSplice && strings.TrimSpace(command.Target) == "" {
+	if command.Kind != CommandSplice && !isGlobalCommand(command.Kind) && strings.TrimSpace(command.Target) == "" {
 		return Command{}, fmt.Errorf("request command: %w: %s requires a target", ErrInvalid, command.Kind)
 	}
 
@@ -852,7 +857,8 @@ func validCommandKind(kind CommandKind) bool {
 	case CommandSplice, CommandAmend, CommandCancel, CommandPause, CommandResume,
 		CommandReprioritize, CommandRestart, CommandCharterRatify,
 		CommandCharterPause, CommandCharterRetire, CommandCharterCadence, CommandCharterOnce,
-		CommandCharterFire, CommandCharterDecline, CommandCharterAlways, CommandCharterNever, CommandCharterProbation:
+		CommandCharterFire, CommandCharterDecline, CommandCharterAlways, CommandCharterNever, CommandCharterProbation,
+		CommandStandingWatchEnable, CommandStandingWatchDecline:
 		return true
 	default:
 		return false
@@ -907,4 +913,8 @@ func isCharterCommand(kind CommandKind) bool {
 	default:
 		return false
 	}
+}
+
+func isGlobalCommand(kind CommandKind) bool {
+	return kind == CommandStandingWatchEnable || kind == CommandStandingWatchDecline
 }

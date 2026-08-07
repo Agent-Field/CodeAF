@@ -111,6 +111,37 @@ the charter cards (per-firing quotes) and the header's cost meter. Config
 file and `AFORGE_DAILY_BUDGET` remain for headless; the slash command is
 the conversational spelling of the same journaled events.
 
+## Decision 7 — Presence when no terminal is open, asked exactly once
+
+A standing goal that only fires while a window happens to be open is a
+promise the system cannot keep. So the first ratified charter — and only
+the first — earns one question in the resident's voice: "Should I keep
+watching this when you're not here? `▸ 1 yes, always · ▸ 2 only while I'm
+around`". Yes arranges a five-minute `aforge wake` for this user account
+and answers with a single line; no is remembered as a decline. Both
+answers are journal events, so the never-ask-twice gate survives
+restarts, rebuilds, and every later charter.
+
+The mechanism is deliberately invisible: the user never reads the words
+daemon, launchd, or systemd — only the consequence ("a quiet check every
+few minutes, even with no terminal open"). Three properties make it
+honest rather than decorative:
+
+- **The choice is durable before the host is touched.** "Yes" is written
+  first, then the timer is arranged. A crash or a host that refuses today
+  becomes a repair on the next resident check, never a lost yes.
+- **Status is derived, not asserted.** Installed means the definition file
+  on disk still matches byte-for-byte what this build would write; last
+  wake and next check come from journalled wake events plus the fixed
+  cadence. Nothing shells out to ask.
+- **Ratification never fails for the offer's sake.** The charter is
+  already active when the offer is attempted; a failure to post it is
+  logged, not surfaced as a rejected ratification.
+
+`aforge doctor` prints the same five rows this reasoning produces — brain,
+resident, standing watch, spend, standing work — and those rows are the
+grounding the head answers "who's keeping watch?" from.
+
 ## What this is not
 
 - Not a scheduler UI. No cron-syntax dialogs; cadence is stated in words

@@ -116,6 +116,10 @@ func runChat(args []string) error {
 		return err
 	}
 	defer graph.Close()
+	standingWatch, err := newStandingWatchManager(graph)
+	if err != nil {
+		return err
+	}
 
 	workspaceRoot := filepath.Join(filepath.Dir(path), "workspace")
 	if err := os.MkdirAll(workspaceRoot, 0o700); err != nil {
@@ -173,6 +177,7 @@ func runChat(args []string) error {
 		WithReflector(reflectAcrossJobs(settings, chatClient, graph)).
 		WithCharterProposals().
 		WithTerritoryDigester(digestTerritory(settings, chatClient)).
+		WithStandingWatch(standingWatch).
 		WithWatchEngine(settings.DailyBudgetUSD, checkSentinel(settings, chatClient)).
 		WithOverrunPlanner(settings.DailyBudgetUSD, replanRemainder(settings, taskClient, plans, graph)).
 		WithPracticeLoop(settings.PracticeBudgetUSD, settings.PracticeIdle)
@@ -554,6 +559,9 @@ func runChat(args []string) error {
 			WithImageInput(modelCatalog, settings.Model).
 			WithCompetenceMap(func() string {
 				return competenceGrounding(graph, settings.ProfileDir, taskClient.Model())
+			}).
+			WithStandingWatch(func() string {
+				return watchGrounding(path, graph, standingWatch, settings.DailyBudgetUSD)
 			}).
 			WithDailyBudgetUSD(settings.DailyBudgetUSD).
 			Serve(headContext)
