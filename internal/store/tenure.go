@@ -435,6 +435,18 @@ func (s *Store) AssessCharterFiring(nodeID string) (CharterFiringAssessment, boo
 		}
 		root = parent
 	}
+	// A job the ladder already recorded cannot change the ladder again, so the
+	// short-circuit RecordCharterFiringOutcome makes at review time belongs here
+	// too: an assessment nobody can act on should not be paid for.
+	var reviewed bool
+	if err := s.db.QueryRow(`SELECT EXISTS(
+		SELECT 1 FROM events WHERE node_id=? AND kind=? AND json_extract(payload, '$.job_id')=?)`,
+		node.Provenance.CharterID, EventCharterFiringReviewed, root.ID).Scan(&reviewed); err != nil {
+		return CharterFiringAssessment{}, false, err
+	}
+	if reviewed {
+		return CharterFiringAssessment{}, false, nil
+	}
 	var raw string
 	err = s.db.QueryRow(`SELECT payload FROM events WHERE node_id=? AND kind=?
 		AND json_extract(payload, '$.job_id')=? ORDER BY seq DESC LIMIT 1`,
@@ -466,7 +478,11 @@ func (s *Store) AssessCharterFiring(nodeID string) (CharterFiringAssessment, boo
 			assessment.CostUSD, charter.Rails().PerFiringBudgetUSD)
 		return assessment, true, nil
 	}
-	nodes, err := s.Nodes()
+	// The verdict only ever reads the fired subtree, so the children map is
+	// built from that subtree instead of the whole graph. Both the scoped query
+	// and Nodes order by admission, so the walk visits the same nodes in the
+	// same order.
+	nodes, err := s.SubtreeNodes(root.ID)
 	if err != nil {
 		return CharterFiringAssessment{}, false, err
 	}
@@ -477,6 +493,10 @@ func (s *Store) AssessCharterFiring(nodeID string) (CharterFiringAssessment, boo
 	subtree := []Node{root}
 	for index := 0; index < len(subtree); index++ {
 		subtree = append(subtree, children[subtree[index].ID]...)
+	}
+	gates, err := latestDeliveryGates(s.db, subtree)
+	if err != nil {
+		return CharterFiringAssessment{}, false, err
 	}
 	allTerminal := true
 	for _, candidate := range subtree {
@@ -497,9 +517,12 @@ func (s *Store) AssessCharterFiring(nodeID string) (CharterFiringAssessment, boo
 		default:
 			allTerminal = false
 		}
-		gate, ok, err := s.DeliveryGateFor(candidate.ID)
-		if err != nil {
-			return CharterFiringAssessment{}, false, err
+		raw, ok := gates[candidate.ID]
+		var gate DeliveryGate
+		if ok {
+			if err := json.Unmarshal([]byte(raw), &gate); err != nil {
+				return CharterFiringAssessment{}, false, fmt.Errorf("read delivery gate: %w", err)
+			}
 		}
 		if ok && !gate.Pass && !gate.PolishClosed {
 			assessment.Decided = true
@@ -512,6 +535,41 @@ func (s *Store) AssessCharterFiring(nodeID string) (CharterFiringAssessment, boo
 		assessment.Reason = "firing completed successfully within its rails"
 	}
 	return assessment, assessment.Decided, nil
+}
+
+// latestDeliveryGates answers DeliveryGateFor for a whole subtree in one query
+// instead of one per node. Payloads are returned undecoded so the caller keeps
+// decoding in walk order: a malformed gate on a node the walk never reaches
+// stays as invisible as it was before.
+func latestDeliveryGates(db *sql.DB, nodes []Node) (map[string]string, error) {
+	gates := make(map[string]string, len(nodes))
+	if len(nodes) == 0 {
+		return gates, nil
+	}
+	placeholders := make([]string, 0, len(nodes))
+	args := []any{EventDeliveryGate}
+	for _, node := range nodes {
+		placeholders = append(placeholders, "?")
+		args = append(args, node.ID)
+	}
+	rows, err := db.Query(`SELECT node_id, payload FROM events WHERE seq IN (
+		SELECT MAX(seq) FROM events WHERE kind = ? AND node_id IN (`+
+		strings.Join(placeholders, ", ")+`) GROUP BY node_id)`, args...)
+	if err != nil {
+		return nil, fmt.Errorf("read delivery gates: %w", err)
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var nodeID, payload string
+		if err := rows.Scan(&nodeID, &payload); err != nil {
+			return nil, fmt.Errorf("read delivery gates: %w", err)
+		}
+		gates[nodeID] = payload
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("read delivery gates: %w", err)
+	}
+	return gates, nil
 }
 
 func replayTenureEvent(tx *sql.Tx, event Event) error {

@@ -174,7 +174,7 @@ func (r *Reconciler) consolidateNotebook(ctx context.Context) {
 		return
 	}
 	r.lastConsolidation = now
-	_, _ = r.store.AgeFacts(now)
+	_, _ = r.store.AgeFactsBounded(now)
 	if r.consolidate == nil {
 		return
 	}
