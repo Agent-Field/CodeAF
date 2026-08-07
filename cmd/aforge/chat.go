@@ -918,6 +918,11 @@ func (c *chatCommander) NewSession() (string, error) {
 			return "", err
 		}
 	}
+	if c.store != nil {
+		if _, err := c.store.TouchSeen("tui", sessionID, store.SeenAttached); err != nil {
+			return "", err
+		}
+	}
 	return sessionID, nil
 }
 
@@ -994,7 +999,7 @@ func (c *chatCommander) Notebook(limit int) []store.Fact {
 	if c == nil || c.store == nil {
 		return nil
 	}
-	facts, err := c.store.ActiveFacts("", 100)
+	facts, err := c.store.Facts(limit)
 	if err != nil {
 		return nil
 	}
@@ -1002,6 +1007,93 @@ func (c *chatCommander) Notebook(limit int) []store.Fact {
 		facts = facts[:limit]
 	}
 	return facts
+}
+
+func (c *chatCommander) SearchNotebook(terms string, limit int) []store.Fact {
+	if c == nil || c.store == nil {
+		return nil
+	}
+	facts, err := c.store.SearchFactsUncounted(store.FactQuery{
+		Terms: strings.TrimSpace(terms), Limit: limit,
+	})
+	if err != nil {
+		return nil
+	}
+	return facts
+}
+
+func (c *chatCommander) NotebookEvidence(seq int64) []string {
+	if c == nil || c.store == nil || seq <= 0 {
+		return nil
+	}
+	target, found, err := c.store.FactBySeq(seq)
+	if err != nil || !found {
+		return nil
+	}
+	all, err := c.store.Facts(0)
+	if err != nil {
+		return nil
+	}
+	bySeq := make(map[int64]store.Fact, len(all))
+	for _, fact := range all {
+		bySeq[fact.Seq] = fact
+	}
+	evidence := make([]store.Fact, 0)
+	if target.NodeID != "" {
+		evidence = append(evidence, target)
+	}
+	for _, fact := range all {
+		if fact.EvidenceSeq == target.Seq {
+			evidence = append(evidence, fact)
+		}
+	}
+	if target.Unsettled != nil {
+		for _, approach := range target.Unsettled.Approaches {
+			for _, evidenceSeq := range approach.Evidence {
+				if fact, ok := bySeq[evidenceSeq]; ok {
+					evidence = append(evidence, fact)
+				}
+			}
+		}
+	}
+	seen := make(map[string]bool)
+	refs := make([]string, 0, len(evidence))
+	for _, fact := range evidence {
+		ref := strings.TrimSpace(fact.NodeID)
+		if ref == "" || ref == store.RootID {
+			ref = "#" + strconv.FormatInt(fact.Seq, 10)
+		}
+		if !seen[ref] {
+			seen[ref] = true
+			refs = append(refs, ref)
+		}
+	}
+	return refs
+}
+
+func (c *chatCommander) RetractNotebook(seq int64) error {
+	if c == nil || c.store == nil {
+		return fmt.Errorf("notebook store unavailable")
+	}
+	fact, found, err := c.store.FactBySeq(seq)
+	if err != nil {
+		return err
+	}
+	if !found || fact.Status != store.FactActive {
+		return fmt.Errorf("belief #%d is not active", seq)
+	}
+	if err := c.store.QuarantineFact(seq, 0, store.FactOriginUser); err != nil {
+		return err
+	}
+	c.mu.Lock()
+	sessionID := c.sessionID
+	c.mu.Unlock()
+	_, err = c.store.PostMessage(store.Message{
+		SessionID: sessionID,
+		Role:      store.RoleSystem,
+		Body:      "· let go — " + firstLine(fact.Body),
+	})
+	return err
 }
 
 func (c *chatCommander) DatabasePath() string { return c.database }

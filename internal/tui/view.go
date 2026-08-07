@@ -1063,6 +1063,9 @@ const (
 	chatExpandMessage chatExpandAction = iota
 	chatExpandReceipts
 	chatExpandBrief
+	chatExpandLearning
+	chatExpandNotebookFact
+	chatNotebookClose
 )
 
 // chatExpandRow is one explicit disclosure line in the thread. Keeping these
@@ -1092,6 +1095,7 @@ type threadRenderItem struct {
 func (m *Model) renderMessages() string {
 	m.chatMessageRows = m.chatMessageRows[:0]
 	m.chatExpandRows = m.chatExpandRows[:0]
+	m.notebookOptionRows = m.notebookOptionRows[:0]
 	m.chatChipRows = m.chatChipRows[:0]
 	m.chatCardRows = m.chatCardRows[:0]
 	kept := m.cardPartRows[:0]
@@ -1195,6 +1199,9 @@ func (m *Model) renderMessages() string {
 		appendBlock(shimmer)
 	}
 	flushGroup()
+	if notebook := m.renderNotebookSurface(max(8, m.chat.Width-2), line, true); notebook != "" {
+		appendBlock(notebook)
+	}
 	return m.applyChatFocus(strings.Join(blocks, "\n\n"))
 }
 
@@ -1220,6 +1227,9 @@ func (m *Model) chatFocusLines() []int {
 		if !row.dock {
 			seen[row.line] = true
 		}
+	}
+	for _, row := range m.notebookOptionRows {
+		seen[row.line] = true
 	}
 	lines := make([]int, 0, len(seen))
 	for line := range seen {
@@ -1329,9 +1339,15 @@ func (m *Model) renderMessageGroup(group messageGroup, atLine int) string {
 		items = append(items, item)
 		height := lipgloss.Height(item)
 		if receipt {
-			m.chatExpandRows = append(m.chatExpandRows, chatExpandRow{
-				line: line, action: chatExpandReceipts,
-			})
+			if _, details, quiet := quietSystemMessage(message.Body); quiet && len(details) > 0 {
+				m.chatExpandRows = append(m.chatExpandRows, chatExpandRow{
+					line: line, action: chatExpandLearning, seq: message.Seq,
+				})
+			} else if !quiet {
+				m.chatExpandRows = append(m.chatExpandRows, chatExpandRow{
+					line: line, action: chatExpandReceipts,
+				})
+			}
 		}
 		if foldedAnswer {
 			m.chatExpandRows = append(m.chatExpandRows, chatExpandRow{
@@ -1401,6 +1417,20 @@ func (m *Model) renderAnswerFold(message store.Message, width int) (string, bool
 }
 
 func (m *Model) renderReceipt(message store.Message, width int) string {
+	if headline, details, ok := quietSystemMessage(message.Body); ok {
+		if len(details) == 0 {
+			return mutedStyle.Faint(true).Render(truncate(headline, width))
+		}
+		if !m.learningExpanded[message.Seq] {
+			return mutedStyle.Faint(true).Render(truncate(headline+" ▸", width))
+		}
+		lines := []string{mutedStyle.Faint(true).Render(truncate(headline+" ▾", width))}
+		for _, detail := range details {
+			wrapped := wrapText(detail, max(1, width-2))
+			lines = append(lines, mutedStyle.Faint(true).Render(indentLines(wrapped, "  ")))
+		}
+		return strings.Join(lines, "\n")
+	}
 	summary := receiptSummary(message)
 	if !m.receiptsExpanded {
 		return mutedStyle.Render(truncate("▸ "+summary, width))
@@ -1408,6 +1438,25 @@ func (m *Model) renderReceipt(message store.Message, width int) string {
 	label := mutedStyle.Render(truncate("▾ "+summary, width))
 	body := wrapText(message.Body, max(1, width-2))
 	return label + "\n" + mutedStyle.Render(indentLines(body, "  "))
+}
+
+func quietSystemMessage(body string) (string, []string, bool) {
+	lines := strings.Split(strings.ReplaceAll(strings.TrimSpace(body), "\r\n", "\n"), "\n")
+	if len(lines) == 0 {
+		return "", nil, false
+	}
+	headline := strings.TrimSpace(lines[0])
+	if !strings.HasPrefix(headline, "· reflected — ") &&
+		!strings.HasPrefix(headline, "· let go — ") {
+		return "", nil, false
+	}
+	details := make([]string, 0, len(lines)-1)
+	for _, line := range lines[1:] {
+		if line = strings.TrimSpace(line); line != "" {
+			details = append(details, line)
+		}
+	}
+	return headline, details, true
 }
 
 func messagePresentation(message store.Message) (lipgloss.AdaptiveColor, string) {
