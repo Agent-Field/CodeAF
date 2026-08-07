@@ -1658,10 +1658,21 @@ func (m *Model) applyPoll(result pollResultMsg) {
 			if message.Seq != 0 && message.Seq <= m.lastSeq {
 				continue
 			}
-			m.messages = append(m.messages, message)
 			if message.Seq > m.lastSeq {
 				m.lastSeq = message.Seq
 			}
+			// A pure progress state line (no Latest content) is replaceable,
+			// not history: the newest one for a node supersedes its
+			// predecessor in place, so a compile narrates in one updating
+			// line instead of a barrage. Title-bearing posts are content and
+			// always keep their place.
+			if message.Progress != nil && message.Progress.Latest == "" {
+				if index := m.progressLineIndex(message.NodeID); index >= 0 {
+					m.messages[index] = message
+					continue
+				}
+			}
+			m.messages = append(m.messages, message)
 			accepted = append(accepted, message)
 		}
 	}
@@ -1759,6 +1770,18 @@ func (m *Model) applyPoll(result pollResultMsg) {
 		}
 	}
 	m.err = errors.Join(problems...)
+}
+
+// progressLineIndex finds the thread's current progress line for a node, so a
+// fresher one can take its place rather than stack beneath it.
+func (m *Model) progressLineIndex(nodeID string) int {
+	for index := len(m.messages) - 1; index >= 0; index-- {
+		if m.messages[index].Progress != nil && m.messages[index].Progress.Latest == "" &&
+			m.messages[index].NodeID == nodeID {
+			return index
+		}
+	}
+	return -1
 }
 
 func (m *Model) submit() tea.Cmd {
