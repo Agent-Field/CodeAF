@@ -249,3 +249,42 @@ func completeWakePracticeNode(t *testing.T, graph *store.Store, id string, surpr
 		t.Fatal(err)
 	}
 }
+
+// A resident whose loop died silently keeps its lease for as long as its
+// process lives, and every wake used to defer to it forever — so no standing
+// watch, charter or practice ever fired again while it printed "alive".
+func TestWakeRunsAnywayWhenTheHolderStoppedTicking(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "wake.db")
+	graph, err := store.Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := graph.Close(); err != nil {
+		t.Fatal(err)
+	}
+	release, heldBy, err := lease.AcquireResident(dir, "chat")
+	if err != nil || release == nil || heldBy != nil {
+		t.Fatalf("hold resident lease = release %v, held %+v, err %v", release != nil, heldBy, err)
+	}
+	defer release()
+	if err := lease.NoteResidentTick(dir, time.Now().Add(-2*lease.StuckAfter)); err != nil {
+		t.Fatal(err)
+	}
+
+	built := false
+	var output bytes.Buffer
+	err = runWakeWith([]string{"--db", path}, &output, func(graph *store.Store, _ string) (*resident.Reconciler, error) {
+		built = true
+		return resident.New(graph, nil, nil), nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !built {
+		t.Fatalf("wake deferred to a resident that had stopped ticking: %q", output.String())
+	}
+	if !strings.Contains(output.String(), "has not ticked since") {
+		t.Fatalf("wake took the role back silently: %q", output.String())
+	}
+}

@@ -6,12 +6,14 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"log"
 	"os"
 	"path/filepath"
 	"strings"
 	"time"
 
 	"github.com/Agent-Field/aforge-v2/internal/config"
+	"github.com/Agent-Field/aforge-v2/internal/craft"
 	"github.com/Agent-Field/aforge-v2/internal/lease"
 	"github.com/Agent-Field/aforge-v2/internal/plan"
 	"github.com/Agent-Field/aforge-v2/internal/profile"
@@ -54,7 +56,22 @@ func runWake(args []string) error {
 		plans := &jobPlans{graphs: map[string]plannedJob{}}
 		// A wake pass has no live boost slot to resolve model words against;
 		// jobs born here run on the configured work model.
-		return newResidentReconciler(settings, graph, chatClient, taskClient, planClient, plans, nil), nil
+		reconciler := newResidentReconciler(settings, graph, chatClient, taskClient, planClient, plans, nil)
+		// Craft is not a chat ornament. Without it an overnight charter plans
+		// from scratch a job that has a proven learned workflow, and any craft
+		// that overnight job would have taught is discarded before it can even
+		// be filed as a lesson — the forge returns early for want of a mind.
+		// The repository lives beside the graph it serves; a missing or broken
+		// one leaves craft dormant, exactly as it does in chat.
+		if craftRepo, craftErr := craft.Open(filepath.Join(filepath.Dir(path), "craft")); craftErr == nil {
+			reconciler = reconciler.
+				WithCraftRunner(resident.NewCraftRunner(graph, craftRepo, craftRepo.Dir())).
+				WithCraftMind(resident.NewCraftMind(craftRepo, craftRepo.Dir(),
+					fillCraftParams(settings, chatClient), repairCraft(settings, chatClient)))
+		} else {
+			log.Printf("note: craft repository unavailable: %v", craftErr)
+		}
+		return reconciler, nil
 	})
 }
 
@@ -81,7 +98,11 @@ func runWakeWith(args []string, output io.Writer, build wakeBuilder) error {
 	if err != nil {
 		return err
 	}
-	if holder != nil {
+	// A holder that is alive but has not completed a pass in several intervals
+	// is not serving the role, only occupying it. Deferring to it forever is how
+	// a resident whose loop died silently stopped every standing watch on the
+	// machine while still printing "alive" at anyone who asked.
+	if holder != nil && !holder.Stuck {
 		_, err = fmt.Fprintf(output, "resident alive (pid %d) — skipping wake\n", holder.PID)
 		return err
 	}
@@ -97,10 +118,21 @@ func runWakeWith(args []string, output io.Writer, build wakeBuilder) error {
 		return err
 	}
 	if releaseResident == nil {
-		_, err = fmt.Fprintf(output, "resident alive (pid %d) — skipping wake\n", heldBy.PID)
-		return err
+		if !heldBy.Stuck {
+			_, err = fmt.Fprintf(output, "resident alive (pid %d) — skipping wake\n", heldBy.PID)
+			return err
+		}
+		// The flock cannot be taken from a live process, so the pass runs
+		// without it. Two residents against one store is the risk this lease
+		// exists to prevent; a holder that has stopped ticking is not the
+		// second one, and saying so out loud is how an operator finds out.
+		if _, err := fmt.Fprintf(output, "resident (pid %d) has not ticked since %s — waking anyway\n",
+			heldBy.PID, heldBy.LastTick.Format(time.RFC3339)); err != nil {
+			return err
+		}
+	} else {
+		defer releaseResident()
 	}
-	defer releaseResident()
 
 	graph, err := store.Open(path)
 	if err != nil {
@@ -125,6 +157,12 @@ func runWakeWith(args []string, output io.Writer, build wakeBuilder) error {
 		}
 		tickErr := reconciler.Tick(ctx)
 		addWatchPass(&pass, reconciler.LastWatchPass())
+		if tickErr == nil {
+			// Stamping liveness is what makes the role reclaimable: a pass that
+			// completes says so on the lease, and a holder that stops saying it
+			// stops being deferred to.
+			_ = lease.NoteResidentTick(dir, time.Now())
+		}
 		if tickErr != nil {
 			if errors.Is(tickErr, context.DeadlineExceeded) || errors.Is(tickErr, context.Canceled) {
 				break

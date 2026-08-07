@@ -64,7 +64,17 @@ func splitCraftDrafts(facts []Learned) ([]Learned, []CraftCandidate) {
 // rather than announced — the user did not ask for a workflow, so a failed
 // attempt at one is the resident's own business to remember.
 func (r *Reconciler) forgeCraft(ctx context.Context, node store.Node, candidate CraftCandidate) {
-	if r == nil || r.craftMind == nil || r.craftMind.shelf == nil {
+	if r == nil || r.store == nil {
+		return
+	}
+	if r.craftMind == nil || r.craftMind.shelf == nil {
+		// A distiller that judged this job's shape worth keeping has just had
+		// that judgment thrown away because this process was assembled without
+		// a craft repository. The user was never promised a workflow, so this
+		// stays out of the thread — but it went out with no trace at all, which
+		// made a whole class of missing know-how invisible. The lesson is the
+		// trace.
+		r.recordCraftLesson(node, candidate.Name, "this process has no craft repository, so the workflow was dropped")
 		return
 	}
 	workflow, problem := parseCraftCandidate(candidate)

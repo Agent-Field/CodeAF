@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"path/filepath"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -164,8 +165,17 @@ func PlanAnchorFromContext(ctx context.Context) (PlanAnchor, bool) {
 }
 
 // Reconciler is the replaceable background half of the resident thread. The
-// store remains the source of truth; this type keeps only a restart-safe event
-// cursor and injected planning behavior in memory.
+// store remains the source of truth; this type keeps injected planning
+// behavior and a working copy of two durable cursors in memory.
+//
+// Those cursors are restart-safe because they are journaled, not because they
+// are cheap: the settle lane's place in the event stream and the consolidation
+// clock are both written as lane watermarks (store.LaneSettlement,
+// store.LaneConsolidation). They used to be plain fields primed on the first
+// tick of every process, which meant a job that landed while no reconciler was
+// running was never announced, never distilled and never folded, and every
+// restart bought another belief-rewriting consolidation pass. Anything else
+// held here is a per-tick working set, and losing it costs telemetry only.
 type Reconciler struct {
 	store           *store.Store
 	compile         CompileFunc
@@ -189,10 +199,16 @@ type Reconciler struct {
 	practiceBudget  float64
 	practiceIdle    time.Duration
 	services        *ServiceSupervisor
+	heartbeat       func(time.Time)
 
-	mu                      sync.Mutex
-	watcherInitialized      bool
-	lastEventSeq            int64
+	mu                 sync.Mutex
+	watcherInitialized bool
+	lastEventSeq       int64
+	// settlementMark is the cursor value already written to the journal. It
+	// exists so a pass that consumed nothing but its own watermark event does
+	// not write another one, which would otherwise make the lane a perpetual
+	// writer and defeat the quiet-tick gate.
+	settlementMark          int64
 	progress                map[string]*subtreeProgress
 	learningMoments         map[string]*pendingLearningMoment
 	lastConsolidation       time.Time
@@ -265,10 +281,46 @@ func (r *Reconciler) WithStandingWatchKeyPersist(persist func() (bool, string, e
 	return r
 }
 
+// residentTickFailures is how many consecutive failed passes end the loop.
+//
+// A pass fails for two very different reasons. Something transient — a provider
+// 429 inside a practice plan, a recycled PID the service supervisor cannot
+// signal, one sentinel whose model is briefly unreachable — or something
+// structural: a store that can no longer be read. Returning on the first error
+// treated them as the same thing, and the transient one is overwhelmingly the
+// common one. The resident then died in under a millisecond while its process
+// lived on holding the lease, so every later `aforge wake` reported it alive and
+// no standing watch, charter or practice ever fired again, silently, forever.
+//
+// Counting consecutive failures separates the two without anyone having to
+// enumerate a provider's error strings: a store that is genuinely gone fails
+// every pass, and a transient fault does not survive the next one.
+const residentTickFailures = 10
+
 // Serve polls until ctx is cancelled or the store can no longer be read or
 // written. Strategy failures reject their command and do not stop the loop.
 func (r *Reconciler) Serve(ctx context.Context) error {
-	if err := r.tickGuarded(ctx); err != nil {
+	failures := 0
+	pass := func() error {
+		err := r.tickGuarded(ctx)
+		if err == nil {
+			failures = 0
+			r.noteHeartbeat()
+			return nil
+		}
+		// Cancellation is the caller's decision, not a fault, and it is the one
+		// error that must end the loop on its first appearance.
+		if ctx.Err() != nil || errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+			return err
+		}
+		failures++
+		_ = guard.Note("resident/reconciler tick", err)
+		if failures >= residentTickFailures {
+			return fmt.Errorf("resident serve: %d consecutive failed passes: %w", failures, err)
+		}
+		return nil
+	}
+	if err := pass(); err != nil {
 		return err
 	}
 
@@ -279,10 +331,27 @@ func (r *Reconciler) Serve(ctx context.Context) error {
 		case <-ctx.Done():
 			return ctx.Err()
 		case <-ticker.C:
-			if err := r.tickGuarded(ctx); err != nil {
+			if err := pass(); err != nil {
 				return err
 			}
 		}
+	}
+}
+
+// WithHeartbeat installs the liveness stamp the resident lease reads. Holding
+// the role is a claim about doing the work, and the flock alone cannot tell a
+// serving process from a wedged one — so the loop says so on every pass it
+// completes, and a probe that finds the stamp stale may take the role back.
+// Nil (the default) leaves the lease saying nothing, which a probe reads as
+// unknown rather than as dead.
+func (r *Reconciler) WithHeartbeat(beat func(time.Time)) *Reconciler {
+	r.heartbeat = beat
+	return r
+}
+
+func (r *Reconciler) noteHeartbeat() {
+	if r.heartbeat != nil {
+		r.heartbeat(r.now())
 	}
 }
 
@@ -315,7 +384,10 @@ func (r *Reconciler) Tick(ctx context.Context) error {
 
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	r.learningMoments = make(map[string]*pendingLearningMoment)
+	// Learning moments are deliberately NOT reset here. A moment composed while
+	// no surface was attached used to be wiped at the top of the next tick,
+	// which is every moment the wake path ever produces; they are now held
+	// until somebody is there to read them and dropped only on delivery.
 	r.lastWatchPass = WatchPass{}
 
 	if r.store == nil {
@@ -668,7 +740,7 @@ func (r *Reconciler) splice(ctx context.Context, command store.Command) (command
 		return commandOutcome{}, err
 	}
 
-	compileContext := r.renderCompileContext(snapshot, command.Instruction)
+	compileContext := r.renderCompileContextFor(snapshot, command.Instruction, command.SessionID)
 	compileContext += attachedDocumentCompileContext(command.Attachments)
 	promotion, promoted, err := r.promotionSource(command)
 	if err != nil {
@@ -1111,20 +1183,58 @@ func descendants(nodes []store.Node, target string) ([]string, bool) {
 	return result, true
 }
 
+// initializeWatcher resumes the settle lane where the last reconciler left it.
+// The watermark is the whole point: announce, distill and fold are one-shot
+// reactions to settlement events and nothing re-derives them, so priming to the
+// journal's head — which is what this did before — silently discarded every job
+// that landed between one process ending and the next one starting. Only a
+// store that has never had a resident starts at the head, and it writes its
+// starting position immediately so the very next process inherits it.
 func (r *Reconciler) initializeWatcher() error {
 	if r.watcherInitialized {
+		return nil
+	}
+	watermark, found, err := r.store.ResidentWatermarkFor(store.LaneSettlement)
+	if err != nil {
+		return err
+	}
+	if found {
+		r.lastEventSeq = watermark.Cursor
+		r.settlementMark = watermark.Cursor
+		r.watcherInitialized = true
 		return nil
 	}
 	seq, err := r.store.LatestEventSeq()
 	if err != nil {
 		return err
 	}
+	if _, err := r.store.MarkResidentWatermark(store.LaneSettlement, seq); err != nil {
+		return err
+	}
 	r.lastEventSeq = seq
+	r.settlementMark = seq
 	r.watcherInitialized = true
 	return nil
 }
 
+// checkpointSettlementLocked records how far the settle pass got. It writes
+// only when the pass consumed something other than its own watermark events:
+// each write is itself an event, so an unconditional checkpoint would advance
+// the journal on every tick forever and no tick could ever be quiet again.
+func (r *Reconciler) checkpointSettlementLocked(consumedWork bool) error {
+	if !consumedWork || r.lastEventSeq <= r.settlementMark {
+		return nil
+	}
+	if _, err := r.store.MarkResidentWatermark(store.LaneSettlement, r.lastEventSeq); err != nil {
+		return err
+	}
+	r.settlementMark = r.lastEventSeq
+	return nil
+}
+
 func (r *Reconciler) announceTransitions(ctx context.Context) error {
+	consumedWork := false
+	defer func() { _ = r.checkpointSettlementLocked(consumedWork) }()
 	for {
 		events, err := r.store.Events(r.lastEventSeq, eventBatchSize)
 		if err != nil {
@@ -1145,31 +1255,41 @@ func (r *Reconciler) announceTransitions(ctx context.Context) error {
 			if err := ctx.Err(); err != nil {
 				return err
 			}
+			if event.Kind != store.EventResidentWatermarked {
+				consumedWork = true
+			}
 			switch event.Kind {
 			case store.EventNodeCompleted, store.EventNodeFailed:
 				node, ok, err := r.store.Node(event.NodeID)
 				if err != nil {
 					return err
 				}
+				continuing := false
 				if event.Kind == store.EventNodeCompleted && ok {
-					continuing, err := r.continuingNode(node)
+					continuing, err = r.continuingNode(node)
 					if err != nil {
 						return err
 					}
-					if continuing {
-						break
+				}
+				// An exhausted node is not an ending, so nothing is announced or
+				// narrated for it: the split receipt has already spoken and the
+				// work continues elsewhere. It is still a landing, though. Taking
+				// the whole lane away meant the most expensive jobs in the system
+				// — the ones that blew a budget — taught the notebook nothing and
+				// left their subtree open on the board forever, so the partial is
+				// distilled and the subtree folded exactly as any other landing's.
+				if !continuing {
+					if err := r.announceNode(event); err != nil {
+						return err
 					}
-				}
-				if err := r.announceNode(event); err != nil {
-					return err
-				}
-				r.recordForNarration(byID, event)
-				if ok {
-					r.recordCraftOutcome(node, event.Kind == store.EventNodeCompleted)
+					r.recordForNarration(byID, event)
+					if ok {
+						r.recordCraftOutcome(node, event.Kind == store.EventNodeCompleted)
+					}
 				}
 				practice := ok && node.Group == store.PracticeGroup &&
 					node.Provenance.Origin == store.OriginSelf
-				if ok && (node.Provenance.SessionID != "" || practice) {
+				if ok && (r.effectiveSessionID(node) != "" || practice) {
 					if event.Kind == store.EventNodeFailed {
 						r.distillJob(ctx, node, true)
 					} else if node.Parent == store.RootID && !r.reflexPromoted(node) {
@@ -1197,12 +1317,55 @@ func (r *Reconciler) announceTransitions(ctx context.Context) error {
 	}
 }
 
+// overrunSplitPrefix is the invariant head of the one shared split receipt,
+// cut out of that receipt with a probe count rather than copied by hand. A
+// hand-copied substring is a second statement of user-facing prose, and the day
+// the sentence is reworded the detection quietly stops matching anything.
+var overrunSplitPrefix = splitReceiptPrefix()
+
+func splitReceiptPrefix() string {
+	const probe = 987654321
+	sentence := OverrunContinuationMessage(probe)
+	cut := strings.Index(sentence, fmt.Sprint(probe))
+	if cut <= 0 {
+		return sentence
+	}
+	return "[" + strings.TrimRight(sentence[:cut], " ")
+}
+
 func (r *Reconciler) continuingNode(node store.Node) (bool, error) {
-	if strings.Contains(node.Summary, "[splitting the remaining work --") {
+	if strings.Contains(node.Summary, overrunSplitPrefix) {
 		return true, nil
 	}
 	return r.store.OverrunDeferred(node.ID)
 }
+
+// effectiveSessionID names the conversation a node's news belongs to. Work
+// spliced by a plan revision or an internal repair carries no session of its
+// own, and reading only the node's own provenance meant every one of those
+// failures was swallowed: announceNode returned before it could interrupt
+// anyone. The job root is the conversation; a child inherits it.
+func (r *Reconciler) effectiveSessionID(node store.Node) string {
+	if session := strings.TrimSpace(node.Provenance.SessionID); session != "" {
+		return session
+	}
+	for hops := 0; hops < maxSessionWalk && node.Parent != "" && node.Parent != store.RootID; hops++ {
+		parent, ok, err := r.store.Node(node.Parent)
+		if err != nil || !ok {
+			return ""
+		}
+		if session := strings.TrimSpace(parent.Provenance.SessionID); session != "" {
+			return session
+		}
+		node = parent
+	}
+	return ""
+}
+
+// maxSessionWalk bounds the ancestor walk. Graph depth is small by
+// construction; the bound is here so a cycle written by a future splice bug
+// costs a miss rather than the reconciler.
+const maxSessionWalk = 32
 
 func (r *Reconciler) announceNode(event store.Event) error {
 	node, ok, err := r.store.Node(event.NodeID)
@@ -1212,7 +1375,8 @@ func (r *Reconciler) announceNode(event store.Event) error {
 	if !ok {
 		return fmt.Errorf("event %d names missing node %q", event.Seq, event.NodeID)
 	}
-	if node.Provenance.SessionID == "" {
+	sessionID := r.effectiveSessionID(node)
+	if sessionID == "" {
 		return nil
 	}
 	if event.Kind == store.EventNodeCompleted && r.reflexPromoted(node) {
@@ -1244,7 +1408,7 @@ func (r *Reconciler) announceNode(event store.Event) error {
 	}
 
 	_, err = r.store.PostMessage(store.Message{
-		SessionID: node.Provenance.SessionID,
+		SessionID: sessionID,
 		Role:      store.RoleSystem,
 		Body:      boundMessage(body),
 		NodeID:    node.ID,
@@ -1252,7 +1416,7 @@ func (r *Reconciler) announceNode(event store.Event) error {
 	if err != nil {
 		return err
 	}
-	return r.surfaceNaturalQuestionLocked(node.Provenance.SessionID)
+	return r.surfaceNaturalQuestionLocked(sessionID)
 }
 
 func (r *Reconciler) reflexPromoted(node store.Node) bool {
@@ -1267,12 +1431,62 @@ func (r *Reconciler) reflexPromoted(node store.Node) bool {
 // needs the recent jobs' asks and results; it does not need the whole forest.
 const compileContextBytes = 6 << 10
 
+// compileGraphRank is the head's snapshot ordering, applied here for the same
+// reason it was applied there: the store returns creation order, so a
+// long-lived graph handed the compiler months of settled nodes before the job
+// running right now. Live work first, then queued, then the freshest history,
+// with packed folds last in line for the budget.
+func compileGraphRank(node store.Node) int {
+	switch {
+	case node.Status == store.Running || node.Status == store.Claimed:
+		return 0
+	case node.Status == store.Pending:
+		return 1
+	case node.FoldRoot:
+		return 3
+	default:
+		return 2
+	}
+}
+
+// nodeOutcome is what a node has to say for itself. A grown territory rewrites
+// only its fold digest, so preferring Summary over a live FoldDigest is how the
+// compiler kept quoting the three-job version of a map that now covers eleven.
+func nodeOutcome(node store.Node) string {
+	if node.FoldRoot {
+		if digest := strings.TrimSpace(node.FoldDigest); digest != "" {
+			return digest
+		}
+	}
+	if summary := strings.TrimSpace(node.Summary); summary != "" {
+		return summary
+	}
+	return strings.TrimSpace(node.FoldDigest)
+}
+
 func renderGraphContext(snapshot store.Snapshot) string {
 	var context strings.Builder
+
+	nodes := append([]store.Node(nil), snapshot.Nodes...)
+	sort.SliceStable(nodes, func(i, j int) bool {
+		ranked, other := compileGraphRank(nodes[i]), compileGraphRank(nodes[j])
+		if ranked != other {
+			return ranked < other
+		}
+		if ranked >= 2 {
+			return nodes[i].FinishedAt.After(nodes[j].FinishedAt)
+		}
+		return nodes[i].CreatedSeq > nodes[j].CreatedSeq
+	})
 
 	// Jobs first, newest first: "improve it" almost always reaches for the
 	// most recent thing, and a job's summary carries the artifact paths the
 	// next job starts from.
+	//
+	// Both halves spend one budget. They used to hold a limit each, so a busy
+	// graph could hand the compiler twice what the constant claims — and the
+	// compile context is where the notebook, the recall and the thread slice
+	// are already competing for room.
 	context.WriteString("jobs (newest first):\n")
 	for i := len(snapshot.Nodes) - 1; i >= 0; i-- {
 		node := snapshot.Nodes[i]
@@ -1283,13 +1497,13 @@ func renderGraphContext(snapshot store.Snapshot) string {
 		if intent := strings.TrimSpace(node.Provenance.Intent); intent != "" {
 			fmt.Fprintf(&context, "  asked: %s\n", clipLabel(firstLine(intent), 180))
 		}
-		if summary := strings.TrimSpace(node.Summary); summary != "" {
-			fmt.Fprintf(&context, "  result: %s\n", clipBlock(summary, 600))
+		if outcome := nodeOutcome(node); outcome != "" {
+			fmt.Fprintf(&context, "  result: %s\n", clipBlock(outcome, 600))
 		}
 	}
 
 	context.WriteString("\nnodes:\n")
-	for _, node := range snapshot.Nodes {
+	for _, node := range nodes {
 		if context.Len() > compileContextBytes {
 			break
 		}
@@ -1602,9 +1816,21 @@ func (r *Reconciler) recordLearnedFact(nodeID string, learned Learned) (store.Fa
 	return r.store.RecordFactFrom(store.FactWriterDistiller, nodeID, learned.Scope, learned.Kind, clipFactBody(learned.Body))
 }
 
-// renderCompileContext is the compiler's whole view: the notebook first —
-// durable facts the user should never have to repeat — then the graph.
+// renderCompileContext is the compiler's whole view for a caller with no
+// conversation behind it — a charter firing speaks its own template.
 func (r *Reconciler) renderCompileContext(snapshot store.Snapshot, instruction string) string {
+	return r.renderCompileContextFor(snapshot, instruction, "")
+}
+
+// renderCompileContextFor is the compiler's whole view: the notebook first —
+// durable facts the user should never have to repeat — then the measured
+// policy, then the graph, and last the conversation the instruction came out
+// of.
+//
+// The order is the cache's order. Everything above the thread is stable across
+// a session, so it is written once and re-read from the prefix; the thread
+// moves every turn and therefore goes last, where a change costs only itself.
+func (r *Reconciler) renderCompileContextFor(snapshot store.Snapshot, instruction, sessionID string) string {
 	var context strings.Builder
 	if notebook := NotebookDigest(r.store, "", "", instruction, 12); notebook != "" {
 		context.WriteString(notebook)
@@ -1621,8 +1847,78 @@ func (r *Reconciler) renderCompileContext(snapshot store.Snapshot, instruction s
 		context.WriteString(guidance)
 		context.WriteString("\n\n")
 	}
+	if traits := r.store.MeasuredTraitBlock(compileTraitBytes); traits != "" {
+		context.WriteString(traits)
+		context.WriteString("\n\n")
+	}
 	context.WriteString(renderGraphContext(snapshot))
+	if thread := r.recentThreadBlock(sessionID); thread != "" {
+		context.WriteString("\n\n")
+		context.WriteString(thread)
+	}
 	return context.String()
+}
+
+const (
+	// compileThreadBytes bounds the conversation slice. It is small on purpose:
+	// the instruction is the ask, and this is only enough of the turns around it
+	// to say what the ask's words point at.
+	compileThreadBytes = 1536
+	// compileThreadMessages bounds the read behind that cap.
+	compileThreadMessages = 12
+	// compileThreadLineBytes bounds any single turn, so one pasted wall of text
+	// cannot be the whole slice.
+	compileThreadLineBytes = 400
+	// compileTraitBytes bounds the measured-traits block.
+	compileTraitBytes = 320
+)
+
+// recentThreadBlock gives the compiler the conversation its instruction came
+// out of. The instruction stays verbatim — that law is not negotiable — but a
+// verbatim instruction is frequently not self-contained: "check my github
+// account and find it" is a complete sentence whose object lives entirely in
+// the turn before it. Without those turns the compiler could only ask what "it"
+// was, and the answer to that question replaced the real ask with a lookup.
+//
+// It is a slice for resolving references, not a second instruction, and it says
+// so where the model reads it.
+func (r *Reconciler) recentThreadBlock(sessionID string) string {
+	sessionID = strings.TrimSpace(sessionID)
+	if r.store == nil || sessionID == "" {
+		return ""
+	}
+	messages, err := r.store.Messages(sessionID, 0, 0)
+	if err != nil || len(messages) == 0 {
+		return ""
+	}
+	if len(messages) > compileThreadMessages {
+		messages = messages[len(messages)-compileThreadMessages:]
+	}
+	// Newest first into the budget, so the turn nearest the instruction is the
+	// one that always survives; the block itself reads oldest first.
+	lines := make([]string, 0, len(messages))
+	used := 0
+	for i := len(messages) - 1; i >= 0; i-- {
+		body := strings.TrimSpace(messages[i].Body)
+		if body == "" {
+			continue
+		}
+		line := string(messages[i].Role) + ": " +
+			strings.ReplaceAll(clipBlock(body, compileThreadLineBytes), "\n", "\n  ")
+		if used+len(line)+1 > compileThreadBytes {
+			break
+		}
+		used += len(line) + 1
+		lines = append(lines, line)
+	}
+	if len(lines) == 0 {
+		return ""
+	}
+	for left, right := 0, len(lines)-1; left < right; left, right = left+1, right-1 {
+		lines[left], lines[right] = lines[right], lines[left]
+	}
+	return "recent conversation in this session (oldest first) — use it only to resolve what the " +
+		"instruction's words refer to; the instruction itself is the ask:\n" + strings.Join(lines, "\n")
 }
 
 // foldJob compacts a landed job in the active view: the subtree collapses to

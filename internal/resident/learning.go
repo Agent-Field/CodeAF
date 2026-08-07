@@ -75,6 +75,14 @@ func (r *Reconciler) queueLearningMoment(nodeID string, item learningMomentItem)
 		pending = &pendingLearningMoment{nodeID: root, sessionID: sessionID}
 		r.learningMoments[root] = pending
 	}
+	// Moments now survive the tick that composed them, so a pass replayed after
+	// a panic — the settle cursor only advances past an event it finished — must
+	// not stack the same line twice on the way out.
+	for _, existing := range pending.items {
+		if existing.headline == item.headline {
+			return
+		}
+	}
 	pending.items = append(pending.items, item)
 }
 
@@ -108,6 +116,17 @@ func (r *Reconciler) surfaceAttached() bool {
 	return err == nil && found && seen.State == store.SeenAttached
 }
 
+// learningMomentsHeld bounds the carry. A machine that learns for a week with
+// nobody watching should arrive with news, not with a week of it; the journal
+// keeps every fact either way, and the arrival brief reads the journal.
+const learningMomentsHeld = 24
+
+// flushLearningMoments posts what the tick learned, and keeps what it could not
+// post. The map used to be wiped unconditionally, so a moment composed while no
+// surface happened to be attached was destroyed outright — the whole `aforge
+// wake` path, where overnight work learns things nobody is ever told about.
+// Holding the undelivered ones costs a bounded map and delivers them the moment
+// somebody is there to read them.
 func (r *Reconciler) flushLearningMoments() {
 	if len(r.learningMoments) == 0 {
 		return
@@ -117,9 +136,14 @@ func (r *Reconciler) flushLearningMoments() {
 		keys = append(keys, nodeID)
 	}
 	sort.Strings(keys)
+	attached := r.surfaceAttached()
 	for _, nodeID := range keys {
 		pending := r.learningMoments[nodeID]
-		if pending == nil || len(pending.items) == 0 || !r.surfaceAttached() {
+		if pending == nil || len(pending.items) == 0 {
+			delete(r.learningMoments, nodeID)
+			continue
+		}
+		if !attached {
 			continue
 		}
 		body := pending.items[0].headline
@@ -132,14 +156,27 @@ func (r *Reconciler) flushLearningMoments() {
 			}
 			body = detail.String()
 		}
-		_, _ = r.store.PostMessage(store.Message{
+		if _, err := r.store.PostMessage(store.Message{
 			SessionID: pending.sessionID,
 			Role:      store.RoleSystem,
 			Body:      boundMessage(body),
 			NodeID:    pending.nodeID,
-		})
+		}); err == nil {
+			delete(r.learningMoments, nodeID)
+		}
 	}
-	r.learningMoments = make(map[string]*pendingLearningMoment)
+	// Oldest first by job id is the only ordering available here, and it is the
+	// right one: the news a user has been waiting longest for is the news that
+	// has most likely already been superseded by the notebook itself.
+	for len(r.learningMoments) > learningMomentsHeld {
+		oldest := ""
+		for nodeID := range r.learningMoments {
+			if oldest == "" || nodeID < oldest {
+				oldest = nodeID
+			}
+		}
+		delete(r.learningMoments, oldest)
+	}
 }
 
 func (r *Reconciler) latestEventSeq() int64 {

@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/Agent-Field/aforge-v2/internal/store"
 )
@@ -292,14 +293,19 @@ func TestCompletionAnnouncementIsDeduplicatedAcrossRestart(t *testing.T) {
 	}
 }
 
-func TestDeferredResourceCompletionStaysInternal(t *testing.T) {
+func TestDeferredResourceCompletionStaysInternalButStillSettles(t *testing.T) {
 	graph := openStore(t)
 	if err := graph.Splice(store.RootID, store.Subtree{Nodes: []store.NodeSpec{{
 		ID: "deferred-partial", Brief: "finish all of it", Stage: 1,
 	}}}, store.Provenance{Origin: store.OriginUser, SessionID: "deferred-session", Intent: "finish all of it"}); err != nil {
 		t.Fatal(err)
 	}
-	reconciler := New(graph, nil, nil)
+	distilled := make([]string, 0, 1)
+	reconciler := New(graph, nil, nil).WithDistiller(
+		func(_ context.Context, goal, outcome string, failed bool) ([]Learned, error) {
+			distilled = append(distilled, outcome)
+			return nil, nil
+		})
 	if err := reconciler.Tick(context.Background()); err != nil {
 		t.Fatal(err)
 	}
@@ -322,9 +328,15 @@ func TestDeferredResourceCompletionStaysInternal(t *testing.T) {
 	if err != nil || len(messages) != 0 {
 		t.Fatalf("deferred partial announcements = %+v err=%v", messages, err)
 	}
+	// The split receipt owns the conversation, so nothing is announced — but the
+	// partial is the only record of the most expensive work the system does, so
+	// it is still distilled and its subtree is still folded.
+	if len(distilled) != 1 || !strings.Contains(distilled[0], "useful but unfinished") {
+		t.Fatalf("deferred partial distillations = %+v", distilled)
+	}
 	node, ok, err := graph.Node("deferred-partial")
-	if err != nil || !ok || node.Folded {
-		t.Fatalf("deferred partial was folded: node=%+v ok=%t err=%v", node, ok, err)
+	if err != nil || !ok || !node.Folded {
+		t.Fatalf("deferred partial was not folded: node=%+v ok=%t err=%v", node, ok, err)
 	}
 }
 
@@ -620,5 +632,165 @@ func TestSpliceTargetThatIsNoLongerLiveCostsOnlyTheContinuity(t *testing.T) {
 	}
 	if settled := commandBySeq(t, graph, command.Seq); settled.Status != store.CommandApplied {
 		t.Fatalf("settled command = %+v", settled)
+	}
+}
+
+// A completion journaled while no reconciler was ticking is the routine case,
+// not the exceptional one: every `aforge wake` builds a fresh reconciler, and
+// the settle lane used to prime past everything that landed since the last one.
+func TestSettlementResumesAcrossProcessBoundary(t *testing.T) {
+	graph := openStore(t)
+	if err := graph.Splice(store.RootID, store.Subtree{Nodes: []store.NodeSpec{
+		{ID: "overnight", Brief: "Survey the field", Stage: 1},
+	}}, store.Provenance{Origin: store.OriginUser, SessionID: "session-gap", Intent: "survey the field"}); err != nil {
+		t.Fatalf("splice fixture: %v", err)
+	}
+	first := New(graph, nil, nil)
+	if err := first.Tick(context.Background()); err != nil {
+		t.Fatalf("first tick: %v", err)
+	}
+
+	// The terminal closes here. Everything below happens with nothing ticking.
+	claim, won, err := graph.Claim("overnight", "worker")
+	if err != nil || !won {
+		t.Fatalf("claim: won=%v err=%v", won, err)
+	}
+	if err := graph.Complete(claim, "The field is surveyed."); err != nil {
+		t.Fatalf("complete: %v", err)
+	}
+
+	distilled := 0
+	restarted := New(graph, nil, nil).WithDistiller(
+		func(_ context.Context, _, _ string, _ bool) ([]Learned, error) {
+			distilled++
+			return nil, nil
+		})
+	if err := restarted.Tick(context.Background()); err != nil {
+		t.Fatalf("restarted tick: %v", err)
+	}
+
+	messages, err := graph.Messages("session-gap", 0, 0)
+	if err != nil {
+		t.Fatalf("messages: %v", err)
+	}
+	if len(messages) != 1 || messages[0].Body != "The field is surveyed." {
+		t.Fatalf("the gap was skipped: %+v", messages)
+	}
+	if distilled != 1 {
+		t.Fatalf("distillations across the gap = %d", distilled)
+	}
+	node, ok, err := graph.Node("overnight")
+	if err != nil || !ok || !node.Folded {
+		t.Fatalf("job across the gap was not folded: node=%+v ok=%t err=%v", node, ok, err)
+	}
+
+	// The lane must not become a perpetual writer. Its own watermark event is
+	// the last thing left to consume, and consuming that may not write another
+	// one — otherwise the journal grows on every idle tick forever and no tick
+	// can ever be quiet again.
+	for range 2 {
+		if err := restarted.Tick(context.Background()); err != nil {
+			t.Fatalf("drain tick: %v", err)
+		}
+	}
+	before, err := graph.LatestEventSeq()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for range 3 {
+		if err := restarted.Tick(context.Background()); err != nil {
+			t.Fatalf("idle tick: %v", err)
+		}
+	}
+	after, err := graph.LatestEventSeq()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if after != before {
+		t.Fatalf("idle ticks kept journaling: %d -> %d", before, after)
+	}
+}
+
+// Consolidation retires and rewrites standing beliefs. A memory-only interval
+// guard bought one more paid pass per restart.
+func TestConsolidationIntervalSurvivesProcessBoundary(t *testing.T) {
+	graph := openStore(t)
+	recordScopeFacts(t, graph, "repo:restart", consolidationThreshold+1)
+	passes := 0
+	consolidate := func(_ context.Context, _ string, _ []store.Fact, _ *ScopePair) (Consolidation, error) {
+		passes++
+		return Consolidation{}, nil
+	}
+	first := New(graph, nil, nil).WithConsolidator(consolidate)
+	first.consolidateNotebook(context.Background())
+	if passes != 1 {
+		t.Fatalf("first consolidation pass count = %d", passes)
+	}
+	restarted := New(graph, nil, nil).WithConsolidator(consolidate)
+	restarted.consolidateNotebook(context.Background())
+	if passes != 1 {
+		t.Fatalf("restart bought another consolidation: %d", passes)
+	}
+
+	// The window is a window, not a lock: once it elapses the pass runs again.
+	later := New(graph, nil, nil).WithConsolidator(consolidate)
+	later.now = func() time.Time { return time.Now().Add(consolidationInterval + time.Minute) }
+	later.consolidateNotebook(context.Background())
+	if passes != 2 {
+		t.Fatalf("elapsed interval did not consolidate: %d", passes)
+	}
+}
+
+// A node spliced by a revision carries no session of its own; its failure used
+// to be swallowed whole rather than interrupting the conversation that owns it.
+func TestSessionlessChildFailureReachesTheJobSession(t *testing.T) {
+	graph := openStore(t)
+	if err := graph.Splice(store.RootID, store.Subtree{Nodes: []store.NodeSpec{
+		{ID: "job", Brief: "Ship the thing", Stage: 1},
+	}}, store.Provenance{Origin: store.OriginUser, SessionID: "session-revision", Intent: "ship the thing"}); err != nil {
+		t.Fatalf("splice job: %v", err)
+	}
+	if err := graph.Splice("job", store.Subtree{Nodes: []store.NodeSpec{
+		{ID: "job-n9", Brief: "Check the deprecated API", Stage: 1},
+	}}, store.Provenance{Origin: store.OriginSelf, Intent: "revision: the API changed"}); err != nil {
+		t.Fatalf("splice revision node: %v", err)
+	}
+	reconciler := New(graph, nil, nil)
+	if err := reconciler.Tick(context.Background()); err != nil {
+		t.Fatalf("tick: %v", err)
+	}
+	claim, won, err := graph.Claim("job-n9", "worker")
+	if err != nil || !won {
+		t.Fatalf("claim: won=%v err=%v", won, err)
+	}
+	if err := graph.Fail(claim, "the endpoint is gone"); err != nil {
+		t.Fatalf("fail: %v", err)
+	}
+	if err := reconciler.Tick(context.Background()); err != nil {
+		t.Fatalf("announce tick: %v", err)
+	}
+	messages, err := graph.Messages("session-revision", 0, 0)
+	if err != nil {
+		t.Fatalf("messages: %v", err)
+	}
+	if len(messages) != 1 || !strings.Contains(messages[0].Body, "the endpoint is gone") {
+		t.Fatalf("revision failure did not interrupt: %+v", messages)
+	}
+}
+
+// A transient fault inside one pass must not end the loop and strand the lease.
+func TestServeSurvivesTransientTickFailures(t *testing.T) {
+	graph := openStore(t)
+	reconciler := New(graph, nil, nil)
+	failures := 0
+	reconciler.standingWatchKeyPersist = func() (bool, string, error) {
+		failures++
+		return false, "", errors.New("provider unavailable")
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 1500*time.Millisecond)
+	defer cancel()
+	err := reconciler.Serve(ctx)
+	if !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("serve ended on a transient fault: %v", err)
 	}
 }
