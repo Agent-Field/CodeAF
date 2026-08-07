@@ -27,6 +27,7 @@ type fakeBackend struct {
 type fakeCommander struct {
 	models          []string
 	catalog         []ModelChoice
+	catalogs        map[string][]ModelChoice
 	current         map[string]string
 	setRole         string
 	setModel        string
@@ -44,6 +45,13 @@ type fakeCommander struct {
 func (f *fakeCommander) Models() []string { return append([]string(nil), f.models...) }
 
 func (f *fakeCommander) Catalog() []ModelChoice { return append([]ModelChoice(nil), f.catalog...) }
+
+func (f *fakeCommander) CatalogFor(role string) []ModelChoice {
+	if choices, ok := f.catalogs[role]; ok {
+		return append([]ModelChoice(nil), choices...)
+	}
+	return f.Catalog()
+}
 
 func (f *fakeCommander) CurrentModel(role string) string { return f.current[role] }
 
@@ -1037,6 +1045,7 @@ func TestMemoryPanelScrolls(t *testing.T) {
 func TestModelCompletionAppliesAndShowsTransient(t *testing.T) {
 	commander := newFakeCommander()
 	model := NewWithCommander(&fakeBackend{}, "test-session", commander)
+	model.setSize(120, 30)
 	typeIntoModel(model, "/model beta")
 	if model.palette != paletteModelCompletion {
 		t.Fatalf("palette = %v, want model completion", model.palette)
@@ -1140,6 +1149,7 @@ func TestNewCommandSwitchesAndResetsSession(t *testing.T) {
 	commander := newFakeCommander()
 	commander.newSession = "fresh-session"
 	model := NewWithCommander(&fakeBackend{}, "old-session", commander)
+	model.setSize(120, 30)
 	model.messages = []store.Message{{Seq: 9, SessionID: "old-session", Body: "old"}}
 	model.lastSeq = 9
 	typeIntoModel(model, "/new")
@@ -1560,8 +1570,13 @@ func newFakeCommander() *fakeCommander {
 			{Slug: "gamma/model-three"},
 		},
 		current: map[string]string{
-			"talk": "alpha/model-one",
-			"work": "gamma/model-three",
+			"talk":   "alpha/model-one",
+			"work":   "gamma/model-three",
+			"voice":  "audio/asr",
+			"image":  "paint/image",
+			"speech": "voice/speech",
+			"music":  "song/music",
+			"video":  "motion/video",
 		},
 		database: "/tmp/aforge-test.db",
 	}
