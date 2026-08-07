@@ -41,6 +41,9 @@ type fakeCommander struct {
 	budgetArguments [][]string
 	budgetResult    string
 	standingResult  string
+	searchTerms     string
+	retracted       []int64
+	evidence        map[int64][]string
 	err             error
 }
 
@@ -84,6 +87,28 @@ func (f *fakeCommander) Notebook(limit int) []store.Fact {
 		facts = facts[:limit]
 	}
 	return facts
+}
+
+func (f *fakeCommander) SearchNotebook(terms string, limit int) []store.Fact {
+	f.searchTerms = terms
+	return f.Notebook(limit)
+}
+
+func (f *fakeCommander) NotebookEvidence(seq int64) []string {
+	return append([]string(nil), f.evidence[seq]...)
+}
+
+func (f *fakeCommander) RetractNotebook(seq int64) error {
+	if f.err != nil {
+		return f.err
+	}
+	f.retracted = append(f.retracted, seq)
+	for index := range f.facts {
+		if f.facts[index].Seq == seq {
+			f.facts[index].Status = store.FactQuarantined
+		}
+	}
+	return nil
 }
 
 func (f *fakeCommander) DatabasePath() string { return f.database }
@@ -1070,63 +1095,110 @@ func TestMemoryWithoutCommanderDegradesGracefully(t *testing.T) {
 	}
 }
 
-func TestMemoryPanelGroupsScopesRendersKindsAndCloses(t *testing.T) {
+func TestNotebookRendersInlineKindsExpandsAndRetracts(t *testing.T) {
 	commander := newFakeCommander()
 	commander.facts = []store.Fact{
-		{Scope: "file:/repo/main.go", Kind: store.FactQuirk, Body: "Generated section must stay last."},
-		{Scope: "user", Kind: store.FactPreference, Body: "Keep status updates compact."},
-		{Scope: "file:/repo/main.go", Kind: store.FactPlain, Body: "The entry point is runMain."},
-		{Scope: "repo:/repo", Kind: store.FactLesson, Body: "Run race tests after TUI changes."},
+		{Seq: 4, Scope: "file:/repo/main.go", Kind: store.FactQuirk, Body: "Generated section must stay last.", Status: store.FactActive},
+		{Seq: 3, Scope: "user", Kind: store.FactPreference, Body: "Keep status updates compact.", Status: store.FactActive},
+		{Seq: 2, Scope: "file:/repo/main.go", Kind: store.FactPlain, Body: "The entry point is runMain.", Status: store.FactCandidate},
+		{Seq: 1, Scope: "repo:/repo", Kind: store.FactSkill, Body: "Run race tests after TUI changes.", Status: store.FactQuarantined},
 	}
+	commander.evidence = map[int64][]string{4: {"job-one", "job-two"}}
 	model := NewWithCommander(&fakeBackend{}, "test-session", commander)
 	_ = model.executeSlash("/memory")
-	if model.palette != paletteMemory {
-		t.Fatalf("palette = %v, want memory", model.palette)
+	if !model.notebookOpen || model.palette != paletteNone || model.focus != focusChat {
+		t.Fatalf("notebook state open=%t palette=%v focus=%v", model.notebookOpen, model.palette, model.focus)
 	}
 	view := model.View()
 	for _, expected := range []string{
-		"file:/repo/main.go", "user", "repo:/repo",
-		"▲", "Generated section must stay last.",
-		"◆", "Keep status updates compact.",
+		"~", "Generated section must stay last.",
+		"~", "Keep status updates compact.",
 		"·", "The entry point is runMain.",
-		"●", "Run race tests after TUI changes.",
+		"candidate", "⚒", "Run race tests after TUI changes.", "✗",
 	} {
 		if !strings.Contains(view, expected) {
-			t.Fatalf("memory panel does not contain %q:\n%s", expected, view)
+			t.Fatalf("inline notebook does not contain %q:\n%s", expected, view)
 		}
 	}
-	if count := strings.Count(view, "file:/repo/main.go"); count != 1 {
-		t.Fatalf("file scope rendered %d times, want one group header:\n%s", count, view)
+	if strings.Contains(view, "file:/repo/main.go") {
+		t.Fatalf("collapsed notebook leaked scope detail:\n%s", view)
 	}
-	fileHeader := strings.Index(view, "file:/repo/main.go")
-	fileQuirk := strings.Index(view, "Generated section must stay last.")
-	fileFact := strings.Index(view, "The entry point is runMain.")
-	userHeader := strings.Index(view, "user")
-	if !(fileHeader < fileQuirk && fileQuirk < fileFact && fileFact < userHeader) {
-		t.Fatalf("memory facts are not grouped under their scope:\n%s", view)
+
+	_, _ = model.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	view = model.View()
+	for _, expected := range []string{"scope · file:/repo/main.go", "evidence · 2 · job-one · job-two", "Retract this belief?", "1 Keep", "2 Retract"} {
+		if !strings.Contains(view, expected) {
+			t.Fatalf("expanded notebook omitted %q:\n%s", expected, view)
+		}
+	}
+	_, _ = model.Update(tea.KeyMsg{Type: tea.KeyRight})
+	_, _ = model.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	if len(commander.retracted) != 1 || commander.retracted[0] != 4 || model.notebookFacts[0].Status != store.FactQuarantined {
+		t.Fatalf("retract route = %v fact=%+v", commander.retracted, model.notebookFacts[0])
 	}
 
 	_, command := model.Update(tea.KeyMsg{Type: tea.KeyEsc})
-	if command != nil || model.palette != paletteNone {
-		t.Fatal("escape should close the memory panel without quitting")
+	if command != nil || !model.notebookOpen || model.notebookExpandedSeq != 0 {
+		t.Fatal("first escape should collapse the expanded notebook belief")
+	}
+	_, command = model.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	if command != nil || model.notebookOpen {
+		t.Fatal("second escape should close the inline notebook without quitting")
 	}
 }
 
-func TestMemoryPanelScrolls(t *testing.T) {
+func TestNotebookSearchAndNumberSelection(t *testing.T) {
 	commander := newFakeCommander()
-	for index := range 14 {
+	for index := range 10 {
 		commander.facts = append(commander.facts, store.Fact{
-			Scope: "repo:/repo", Kind: store.FactPlain, Body: fmt.Sprintf("memory-%02d", index),
+			Seq: int64(index + 1), Scope: "repo:/repo", Kind: store.FactPlain,
+			Body: fmt.Sprintf("memory-%02d", index), Status: store.FactActive,
 		})
 	}
 	model := NewWithCommander(&fakeBackend{}, "test-session", commander)
-	model.setSize(72, 15)
-	_ = model.executeSlash("/memory")
-	before := strings.Join(model.paletteLines(68), "\n")
-	_, _ = model.Update(tea.KeyMsg{Type: tea.KeyPgDown})
-	after := strings.Join(model.paletteLines(68), "\n")
-	if model.paletteSelected == 0 || before == after || !strings.Contains(after, "memory-") {
-		t.Fatalf("page down did not scroll memory: offset %d\nbefore:\n%s\nafter:\n%s", model.paletteSelected, before, after)
+	_ = model.executeSlash("/notebook parser cache")
+	if commander.searchTerms != "parser cache" {
+		t.Fatalf("search terms = %q", commander.searchTerms)
+	}
+	_, _ = model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'7'}})
+	if model.notebookExpandedSeq != 7 || !strings.Contains(model.View(), "scope · repo:/repo") {
+		t.Fatalf("number selection did not expand fact 7:\n%s", model.View())
+	}
+}
+
+func TestNotebookRowsAndRetractOptionAreClickable(t *testing.T) {
+	commander := newFakeCommander()
+	commander.facts = []store.Fact{{
+		Seq: 9, Scope: "repo:/repo", Kind: store.FactLesson,
+		Body: "clickable notebook belief", Status: store.FactActive,
+	}}
+	model := NewWithCommander(&fakeBackend{}, "notebook-click", commander)
+	model.setSize(100, 30)
+	_ = model.executeSlash("/notebook")
+	_ = model.View()
+	var factLine int
+	for _, row := range model.chatExpandRows {
+		if row.action == chatExpandNotebookFact && row.seq == 9 {
+			factLine = row.line
+		}
+	}
+	_, _ = model.Update(tea.MouseMsg{
+		X:      model.chatBounds.x + 1,
+		Y:      model.chatBounds.y + factLine - model.chat.YOffset,
+		Button: tea.MouseButtonLeft, Action: tea.MouseActionPress,
+	})
+	if model.notebookExpandedSeq != 9 || len(model.notebookOptionRows) != 2 {
+		t.Fatalf("click did not expand notebook row: seq=%d options=%+v", model.notebookExpandedSeq, model.notebookOptionRows)
+	}
+	_ = model.View()
+	retract := model.notebookOptionRows[1]
+	_, _ = model.Update(tea.MouseMsg{
+		X:      model.chatBounds.x + retract.startX,
+		Y:      model.chatBounds.y + retract.line - model.chat.YOffset,
+		Button: tea.MouseButtonLeft, Action: tea.MouseActionPress,
+	})
+	if len(commander.retracted) != 1 || commander.retracted[0] != 9 {
+		t.Fatalf("click retract route = %v", commander.retracted)
 	}
 }
 
@@ -2065,12 +2137,12 @@ func TestSlashCommandsAreConsumedAndRouteLocally(t *testing.T) {
 
 	model.input.SetValue("/notebook")
 	_, _ = model.Update(tea.KeyMsg{Type: tea.KeyEnter})
-	if model.palette != paletteMemory || !strings.Contains(model.renderPalette(), "Keep it concise") {
-		t.Fatalf("/notebook did not open the scrollable notebook pane:\n%s", model.renderPalette())
+	if !model.notebookOpen || model.palette != paletteNone || !strings.Contains(model.renderMessages(), "Keep it concise") {
+		t.Fatalf("/notebook did not open inline in chat:\n%s", model.renderMessages())
 	}
 
 	commander.budgetResult = "default daily budget → $35"
-	model.closePalette()
+	model.closeNotebook()
 	model.input.SetValue("/budget default 35")
 	_, _ = model.Update(tea.KeyMsg{Type: tea.KeyEnter})
 	if len(commander.budgetArguments) != 1 || len(commander.budgetArguments[0]) != 2 ||
@@ -2090,6 +2162,77 @@ func TestSlashCommandsAreConsumedAndRouteLocally(t *testing.T) {
 	defer backend.mu.Unlock()
 	if len(backend.posted) != 0 {
 		t.Fatalf("slash commands leaked %d messages to the head: %#v", len(backend.posted), backend.posted)
+	}
+}
+
+func TestLearningMomentsRenderInsideOwningCardWithDisclosure(t *testing.T) {
+	finished := time.Now().Add(-time.Minute)
+	snapshot := store.Snapshot{Nodes: []store.Node{
+		{ID: store.RootID},
+		{ID: "learning-card", Parent: store.RootID, Title: "Learning card", Brief: "deliver",
+			Status: store.Done, FinishedAt: finished,
+			Provenance: store.Provenance{SessionID: "learning-card", Intent: "deliver and learn"}},
+	}}
+	messages := []store.Message{
+		{Seq: 10, Time: finished, SessionID: "learning-card", Role: store.RoleSystem,
+			NodeID: "learning-card", Body: "landed answer"},
+		{Seq: 13, Time: finished.Add(time.Second), SessionID: "learning-card", Role: store.RoleSystem,
+			NodeID: "learning-card", Body: "· learned 3 things ▸\n  · learned — first\n  ⚖ settled: second · 1 trial\n  · let go — third"},
+	}
+	cards := deriveJobCards("learning-card", snapshot, messages, nil, nil, nil)
+	if len(cards) != 1 || cards[0].Deliverable == nil || cards[0].Deliverable.Seq != 10 || len(cards[0].Learning) != 1 {
+		t.Fatalf("derived learning card = %+v", cards)
+	}
+	model := New(&fakeBackend{}, "learning-card")
+	collapsed := model.renderJobCard(cards[0], 90, false, 0, false, false)
+	if !strings.Contains(collapsed, "· learned 3 things ▸") || strings.Contains(collapsed, "· learned — first") {
+		t.Fatalf("collapsed learning moment =\n%s", collapsed)
+	}
+	expanded := model.renderJobCard(cards[0], 90, true, 0, false, false)
+	for _, want := range []string{"· learned 3 things ▾", "· learned — first", "⚖ settled: second · 1 trial", "· let go — third"} {
+		if !strings.Contains(expanded, want) {
+			t.Fatalf("expanded learning moment omitted %q:\n%s", want, expanded)
+		}
+	}
+}
+
+func TestTrialProvenanceRendersDimCardDetailLine(t *testing.T) {
+	snapshot := store.Snapshot{Nodes: []store.Node{
+		{ID: store.RootID},
+		{ID: "trial-root", Parent: store.RootID, Title: "Compare parsers", Brief: "compare parser approaches",
+			Status: store.Running, Provenance: store.Provenance{SessionID: "trials", Intent: "compare parsers", TrialOf: 42}},
+		{ID: "trial-leaf", Parent: "trial-root", Title: "Buffered parser", Brief: "buffer input before parsing and rendering",
+			Status: store.Running, Provenance: store.Provenance{SessionID: "trials", Intent: "compare parsers", TrialOf: 42}},
+	}}
+	cards := deriveJobCards("trials", snapshot, nil, nil, nil, nil)
+	if len(cards) != 1 {
+		t.Fatalf("trial cards = %+v", cards)
+	}
+	model := New(&fakeBackend{}, "trials")
+	rendered := model.renderJobCard(cards[0], 90, true, 0, false, false)
+	if !strings.Contains(rendered, "⚖ trial · testing buffer input before parsing and rendering") {
+		t.Fatalf("trial detail line missing:\n%s", rendered)
+	}
+}
+
+func TestRetrospectiveDigestDisclosureAndQuietSingleLine(t *testing.T) {
+	model := New(&fakeBackend{}, "reflection")
+	digest := store.Message{Seq: 7, Role: store.RoleSystem,
+		Body: "· reflected — 2 beliefs merged, 1 territory formed\n  · #3 sharper belief\n  ~ parser work"}
+	collapsed := model.renderReceipt(digest, 90)
+	if !strings.Contains(collapsed, "· reflected — 2 beliefs merged, 1 territory formed ▸") ||
+		strings.Contains(collapsed, "sharper belief") {
+		t.Fatalf("collapsed reflection digest = %q", collapsed)
+	}
+	model.learningExpanded[digest.Seq] = true
+	expanded := model.renderReceipt(digest, 90)
+	if !strings.Contains(expanded, "sharper belief") || !strings.Contains(expanded, "parser work") ||
+		!strings.Contains(expanded, "formed ▾") {
+		t.Fatalf("expanded reflection digest = %q", expanded)
+	}
+	quiet := model.renderReceipt(store.Message{Seq: 8, Role: store.RoleSystem, Body: "· let go — stale belief"}, 90)
+	if quiet != mutedStyle.Faint(true).Render("· let go — stale belief") {
+		t.Fatalf("quiet learning line = %q", quiet)
 	}
 }
 
