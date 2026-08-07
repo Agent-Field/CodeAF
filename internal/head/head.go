@@ -272,7 +272,7 @@ func (h *Head) answer(ctx context.Context, user store.Message) error {
 			store.FactOriginUser); err != nil {
 			decision.Reply = fmt.Sprintf("I couldn't retract notebook belief #%d.", retraction.Seq)
 		} else {
-			decision.Reply = fmt.Sprintf("Forgot #%d: %s", retraction.Seq, firstLine(fact.Body))
+			return h.postSystem(user.SessionID, "· let go — "+firstLine(fact.Body))
 		}
 	}
 
@@ -545,6 +545,18 @@ func (h *Head) recentThread(sessionID string, beforeSeq int64) ([]store.Message,
 
 func (h *Head) postAgent(sessionID, body string, commandSeq int64) error {
 	return h.postAgentModel(sessionID, body, commandSeq, "")
+}
+
+func (h *Head) postSystem(sessionID, body string) error {
+	_, err := h.store.PostMessage(store.Message{
+		SessionID: sessionID,
+		Role:      store.RoleSystem,
+		Body:      body,
+	})
+	if err != nil {
+		return fmt.Errorf("serve head: post system line: %w", err)
+	}
+	return nil
 }
 
 func (h *Head) postAgentModel(sessionID, body string, commandSeq int64, model string) error {

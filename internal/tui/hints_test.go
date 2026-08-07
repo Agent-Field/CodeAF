@@ -113,6 +113,53 @@ func TestIdleTipNeverAppearsDuringActiveWork(t *testing.T) {
 	}
 }
 
+// An open notebook is an active surface: no tip may appear underneath it, and
+// a keypress inside the notebook still dismisses the idle clock, so a tip only
+// returns after the notebook closes and the ordinary idle stretch passes.
+func TestIdleTipYieldsWhileNotebookIsOpen(t *testing.T) {
+	now := time.Date(2026, time.August, 6, 14, 0, 0, 0, time.Local)
+	commander := newFakeCommander()
+	commander.facts = []store.Fact{{
+		Seq: 1, Scope: "user", Kind: store.FactPreference,
+		Body: "Keep status updates compact.", Status: store.FactActive,
+	}}
+	model := NewWithCommander(&fakeBackend{}, "tips-notebook", commander)
+	model.standingNow = func() time.Time { return now }
+
+	// A tip is on screen, then the notebook opens over the idle surface.
+	model.tipActivityAt = now.Add(-tipIdleAfter)
+	if tip := model.idleTipLine(now); tip == "" {
+		t.Fatal("idle tip did not surface before the notebook opened")
+	}
+	_ = model.executeSlash("/notebook")
+	if !model.notebookOpen {
+		t.Fatal("slash command did not open the notebook")
+	}
+	now = now.Add(time.Hour)
+	model.tipActivityAt = now.Add(-time.Hour)
+	if tip := model.idleTipLine(now); tip != "" {
+		t.Fatalf("tip appeared while the notebook was open: %q", tip)
+	}
+
+	// A keypress inside the notebook restarts the idle clock like any other.
+	_, _ = model.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	if !model.tipActivityAt.Equal(now) || model.tipCurrent != -1 {
+		t.Fatalf("notebook keypress did not dismiss/reset the tip clock: at=%v current=%d",
+			model.tipActivityAt, model.tipCurrent)
+	}
+
+	// Closing the notebook restores tip eligibility after the idle stretch.
+	_, _ = model.Update(tea.KeyMsg{Type: tea.KeyEsc}) // collapse expanded belief
+	_, _ = model.Update(tea.KeyMsg{Type: tea.KeyEsc}) // close the notebook
+	if model.notebookOpen {
+		t.Fatal("escape did not close the notebook")
+	}
+	now = now.Add(tipSpacing + tipIdleAfter)
+	if tip := model.idleTipLine(now); tip == "" {
+		t.Fatal("tip did not return after the notebook closed and idle passed")
+	}
+}
+
 // The one footer line resolves by explicit priority: transient voice status →
 // active boost indicator → pending-question context → idle tip → focus-zone
 // help. When both boost and a tip are eligible, boost wins and the tip waits.

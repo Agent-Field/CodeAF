@@ -181,9 +181,10 @@ type Model struct {
 	chatFocusIndex int
 
 	// Question options remain selected while the ordinary input keeps focus.
-	questionSelection map[string]int
-	questionDismissed map[string]bool
-	cardOptionRows    []cardOptionRow
+	questionSelection  map[string]int
+	questionDismissed  map[string]bool
+	cardOptionRows     []cardOptionRow
+	notebookOptionRows []cardOptionRow
 
 	selectedNodeID   string
 	graphRows        []graphRow
@@ -209,6 +210,7 @@ type Model struct {
 	// expandedMessages holds the seqs of long chat deliverables opened in
 	// place; everything else shows its lead and a ⋯.
 	expandedMessages map[int64]bool
+	learningExpanded map[int64]bool
 	briefExpanded    map[int64]bool
 	selectedBriefSeq int64
 	// The provider stream is optional Commander input. Real head deltas and
@@ -260,6 +262,11 @@ type Model struct {
 	catalogRequested      bool
 	catalogLoading        bool
 	memoryFacts           []store.Fact
+	notebookOpen          bool
+	notebookQuery         string
+	notebookFacts         []store.Fact
+	notebookExpandedSeq   int64
+	notebookOption        int
 	status                string
 	statusUntil           time.Time
 	boost                 boostMode
@@ -411,6 +418,7 @@ func newModel(backend Backend, sessionID string, commander Commander) *Model {
 		modelRole:             "talk",
 		feedExpanded:          map[string]bool{},
 		expandedMessages:      map[int64]bool{},
+		learningExpanded:      map[int64]bool{},
 		briefExpanded:         map[int64]bool{},
 		jobUsage:              map[string]store.JobUsage{},
 		commands:              map[int64]store.Command{},
@@ -716,6 +724,9 @@ func (m *Model) updateKey(message tea.KeyMsg) (tea.Cmd, bool) {
 		case m.focus == focusCards && m.collapseSelectedCard():
 		case m.focus == focusChat && m.collapseSelectedCard():
 		case m.focus == focusChat && m.collapseSelectedBrief():
+		case m.notebookOpen && m.collapseNotebook():
+		case m.notebookOpen:
+			m.closeNotebook()
 		case m.focus == focusCards:
 			m.dockExpanded = false
 			m.focus = focusInput
@@ -763,6 +774,10 @@ func (m *Model) updateKey(message tea.KeyMsg) (tea.Cmd, bool) {
 		if command, handled := m.updatePaletteKey(key); handled {
 			return command, true
 		}
+	}
+	if m.notebookOpen && len(key) == 1 && key[0] >= '1' && key[0] <= '9' {
+		m.activateNotebookNumber(int(key[0] - '0'))
+		return nil, true
 	}
 	if m.focus == focusHeader {
 		switch key {
@@ -843,6 +858,17 @@ func (m *Model) updateKey(message tea.KeyMsg) (tea.Cmd, bool) {
 	// Thread-zone traversal: ↑/↓ walk the interactive lines, enter activates
 	// exactly what a click on the focused line would; pgup/pgdn and the wheel
 	// keep scrolling.
+	if m.notebookOpen && m.focus == focusChat && (key == "left" || key == "right") &&
+		m.notebookExpandedSeq != 0 {
+		if key == "left" {
+			m.notebookOption = 0
+		} else {
+			m.notebookOption = 1
+		}
+		m.refreshChat()
+		m.focusNotebookOptionRow()
+		return nil, true
+	}
 	if m.focus == focusChat && (key == "up" || key == "k" || key == "down" || key == "j") {
 		delta := -1
 		if key == "down" || key == "j" {
@@ -1158,6 +1184,9 @@ func (m *Model) submit() tea.Cmd {
 	}
 	if strings.HasPrefix(body, "/") {
 		return m.executeSlash(body)
+	}
+	if m.notebookOpen {
+		m.closeNotebook()
 	}
 	attachments := append([]string(nil), m.attachments...)
 	if len(attachments) > 0 {

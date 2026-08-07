@@ -173,6 +173,7 @@ type Reconciler struct {
 	watcherInitialized bool
 	lastEventSeq       int64
 	progress           map[string]*subtreeProgress
+	learningMoments    map[string]*pendingLearningMoment
 	lastConsolidation  time.Time
 	now                func() time.Time
 }
@@ -220,6 +221,7 @@ func (r *Reconciler) Tick(ctx context.Context) error {
 
 	r.mu.Lock()
 	defer r.mu.Unlock()
+	r.learningMoments = make(map[string]*pendingLearningMoment)
 
 	if r.store == nil {
 		return errors.New("resident tick: nil store")
@@ -273,9 +275,12 @@ func (r *Reconciler) Tick(ctx context.Context) error {
 	if err := r.speakProgress(ctx); err != nil {
 		return fmt.Errorf("resident tick: narrate progress: %w", err)
 	}
+	retrospectiveAfter := r.latestEventSeq()
 	r.consolidateNotebook(ctx)
 	r.reflectOnJobs(ctx)
 	r.promoteRecurringSkills(ctx)
+	r.flushLearningMoments()
+	r.postRetrospectiveDigest(retrospectiveAfter)
 	r.syncSkillBins()
 	if err := r.practiceOnceLocked(ctx); err != nil {
 		return fmt.Errorf("resident tick: practice loop: %w", err)
@@ -1039,8 +1044,15 @@ func (r *Reconciler) distillJob(ctx context.Context, node store.Node, failed boo
 			continue
 		}
 		if isTrial && fact.Replaces == trial.Seq {
-			if !trialConsumed && r.recordTrialVerdict(node, trial, fact) == nil {
-				trialConsumed = true
+			if !trialConsumed {
+				recorded, settled, err := r.recordTrialVerdict(node, trial, fact)
+				if err == nil {
+					trialConsumed = true
+					if settled {
+						r.queueLearningMoment(node.ID, settledTrialMoment(recorded,
+							len(trial.Unsettled.Trials)+1))
+					}
+				}
 			}
 			continue
 		}
@@ -1054,8 +1066,10 @@ func (r *Reconciler) distillJob(ctx context.Context, node store.Node, failed boo
 		}
 		if fact.Skill != nil {
 			if strings.TrimSpace(fact.Skill.Artifact) != "" {
-				_, _ = r.store.RecordSkillCandidate(node.ID, fact.Scope,
-					clipFactBody(fact.Body), fact.Skill.Artifact)
+				if recorded, err := r.store.RecordSkillCandidate(node.ID, fact.Scope,
+					clipFactBody(fact.Body), fact.Skill.Artifact); err == nil {
+					r.queueLearningMoment(node.ID, learnedFactMoment(recorded))
+				}
 			}
 			continue
 		}
@@ -1065,10 +1079,13 @@ func (r *Reconciler) distillJob(ctx context.Context, node store.Node, failed boo
 			continue
 		}
 		recorded, err := r.recordLearnedFact(node.ID, fact)
-		if err == nil && fact.Replaces > 0 {
-			// The distiller judged this memory to update a specific older
-			// belief: the old one retires in favour of the new, journaled.
-			_ = r.store.SupersedeFact(fact.Replaces, recorded.Seq)
+		if err == nil {
+			r.queueLearningMoment(node.ID, learnedFactMoment(recorded))
+			if fact.Replaces > 0 {
+				// The distiller judged this memory to update a specific older
+				// belief: the old one retires in favour of the new, journaled.
+				_ = r.store.SupersedeFact(fact.Replaces, recorded.Seq)
+			}
 		}
 	}
 	if isTrial && !trialConsumed {
@@ -1113,17 +1130,17 @@ func (r *Reconciler) renderTrialForDistiller(fact store.Fact) string {
 	return rendered.String()
 }
 
-func (r *Reconciler) recordTrialVerdict(node store.Node, trial store.Fact, verdict Learned) error {
+func (r *Reconciler) recordTrialVerdict(node store.Node, trial store.Fact, verdict Learned) (store.Fact, bool, error) {
 	if verdict.Kind == store.FactUnsettled {
 		pair := trial.Unsettled.WithInconclusiveTrial(node.ID)
-		_, err := r.store.ReplaceUnsettledFact(trial.Seq, node.ID, trial.Scope, pair)
-		return err
+		fact, err := r.store.ReplaceUnsettledFact(trial.Seq, node.ID, trial.Scope, pair)
+		return fact, false, err
 	}
 	if strings.TrimSpace(verdict.Body) == "" {
-		return fmt.Errorf("record trial verdict: empty winner")
+		return store.Fact{}, false, fmt.Errorf("record trial verdict: empty winner")
 	}
-	_, err := r.store.ReplaceFact(trial.Seq, node.ID, verdict.Scope, verdict.Kind, clipFactBody(verdict.Body))
-	return err
+	fact, err := r.store.ReplaceFact(trial.Seq, node.ID, verdict.Scope, verdict.Kind, clipFactBody(verdict.Body))
+	return fact, err == nil, err
 }
 
 func (r *Reconciler) recordInconclusiveTrial(node store.Node, trial store.Fact) {

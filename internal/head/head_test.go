@@ -264,6 +264,35 @@ func TestRenderNotebookUsesMessageScopeCues(t *testing.T) {
 	}
 }
 
+func TestHeadLearningQuestionCarriesSeededNotebookFact(t *testing.T) {
+	graph := openHeadStore(t)
+	fact, err := graph.RecordFact(store.RootID, "repo:aforge", store.FactLesson,
+		"card receipts stay anchored to the job that produced them")
+	if err != nil {
+		t.Fatal(err)
+	}
+	client := &fakeClient{responses: []string{
+		`{"reply":"I learned that card receipts stay with their originating job.","command":null,"remember":null,"retract":null}`,
+	}}
+	user, err := graph.PostMessage(store.Message{
+		SessionID: "learning-question", Role: store.RoleUser,
+		Body: "what have you learned about this repo?",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := New(client, graph).answer(context.Background(), user); err != nil {
+		t.Fatal(err)
+	}
+	if len(client.seen) != 2 {
+		t.Fatalf("head messages = %+v", client.seen)
+	}
+	prompt := client.seen[1].Content[0].Text
+	if !strings.Contains(prompt, fmt.Sprintf("#%d", fact.Seq)) || !strings.Contains(prompt, fact.Body) {
+		t.Fatalf("learning question omitted notebook grounding:\n%s", prompt)
+	}
+}
+
 func TestHeadRetractsNumberedNotebookBelief(t *testing.T) {
 	graphStore := openHeadStore(t)
 	fact, err := graphStore.RecordFact(store.RootID, "tool:git", store.FactQuirk,
@@ -281,11 +310,13 @@ func TestHeadRetractsNumberedNotebookBelief(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	stop := startServing(t, New(client, graphStore))
-	defer stop()
-	reply := waitForAgentReply(t, graphStore, "chat-retract", user.Seq)
-	if want := fmt.Sprintf("Forgot #%d: %s", fact.Seq, fact.Body); reply.Body != want {
-		t.Fatalf("retraction reply = %q, want %q", reply.Body, want)
+	if err := New(client, graphStore).answer(context.Background(), user); err != nil {
+		t.Fatal(err)
+	}
+	messages, err := graphStore.Messages("chat-retract", user.Seq, 0)
+	if err != nil || len(messages) != 1 || messages[0].Role != store.RoleSystem ||
+		messages[0].Body != "· let go — "+fact.Body {
+		t.Fatalf("retraction moment = %+v err=%v", messages, err)
 	}
 	quarantined, found, err := graphStore.FactBySeq(fact.Seq)
 	if err != nil || !found || quarantined.Status != store.FactQuarantined ||

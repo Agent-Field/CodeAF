@@ -974,12 +974,29 @@ func (m *Model) toggleChatMessageAt(x, y int) bool {
 	if line < 0 {
 		return false
 	}
+	contentX := x - m.chatBounds.x
+	for _, option := range m.notebookOptionRows {
+		if option.line != line || contentX < option.startX || contentX >= option.endX {
+			continue
+		}
+		m.notebookOption = option.optionIndex
+		m.activateSelectedNotebookOption()
+		m.refreshChat()
+		return true
+	}
 	return m.activateChatLine(line)
 }
 
 // activateChatLine is the one activation path for a thread content line —
 // clicks and keyboard traversal both land here, so enter always equals click.
 func (m *Model) activateChatLine(line int) bool {
+	for _, option := range m.notebookOptionRows {
+		if option.line == line {
+			m.activateSelectedNotebookOption()
+			m.refreshChat()
+			return true
+		}
+	}
 	for _, row := range m.cardCloseRows {
 		if !row.dock && row.line == line {
 			m.selectedCardID = row.cardID
@@ -1014,6 +1031,12 @@ func (m *Model) activateChatLine(line int) bool {
 			m.selectedCardID = ""
 			m.selectedBriefSeq = row.seq
 			m.briefExpanded[row.seq] = !m.briefExpanded[row.seq]
+		case chatExpandLearning:
+			m.learningExpanded[row.seq] = !m.learningExpanded[row.seq]
+		case chatExpandNotebookFact:
+			m.expandNotebookFact(row.seq)
+		case chatNotebookClose:
+			m.closeNotebook()
 		}
 		offset := m.chat.YOffset
 		m.refreshChat()
