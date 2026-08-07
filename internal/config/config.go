@@ -93,25 +93,33 @@ const (
 	// resident store. Token slices shape leaves internally; dollars decide when
 	// new work needs the user's word. Zero disables the rail.
 	DefaultDailyBudgetUSD = 20.0
+
+	// DefaultPracticeBudgetUSD is the daily carve-out reserved for self-origin
+	// curiosity work. The global rail remains an additional ceiling.
+	DefaultPracticeBudgetUSD = 2.0
+
+	DefaultPracticeIdle = 20 * time.Minute
 )
 
 // Config is the resolved runtime configuration.
 type Config struct {
-	APIKey         string
-	BaseURL        string
-	Model          string
-	VoiceModel     string
-	Temperature    float64
-	MaxTokens      int
-	Timeout        time.Duration
-	SiteURL        string
-	SiteName       string
-	Reasoning      provider.Effort
-	ExecReasoning  provider.Effort
-	SpineSamples   int
-	MaxDepth       int
-	NodeBudget     int
-	DailyBudgetUSD float64
+	APIKey            string
+	BaseURL           string
+	Model             string
+	VoiceModel        string
+	Temperature       float64
+	MaxTokens         int
+	Timeout           time.Duration
+	SiteURL           string
+	SiteName          string
+	Reasoning         provider.Effort
+	ExecReasoning     provider.Effort
+	SpineSamples      int
+	MaxDepth          int
+	NodeBudget        int
+	DailyBudgetUSD    float64
+	PracticeBudgetUSD float64
+	PracticeIdle      time.Duration
 
 	// Panel is the set of models a run may route across, from AFORGE_MODELS. An
 	// empty panel is the default and is the kill switch: with no panel the
@@ -128,22 +136,24 @@ type Config struct {
 // unconfigured.
 func Load() (Config, error) {
 	config := Config{
-		APIKey:         firstNonEmpty(os.Getenv("OPENROUTER_API_KEY"), os.Getenv("OPENAI_API_KEY")),
-		BaseURL:        firstNonEmpty(os.Getenv("AFORGE_BASE_URL"), DefaultBaseURL),
-		Model:          firstNonEmpty(os.Getenv("AFORGE_MODEL"), DefaultModel),
-		VoiceModel:     firstNonEmpty(os.Getenv("AFORGE_VOICE_MODEL"), DefaultVoiceModel),
-		Temperature:    DefaultTemperature,
-		MaxTokens:      DefaultMaxTokens,
-		Timeout:        DefaultTimeout,
-		SiteURL:        firstNonEmpty(os.Getenv("AFORGE_SITE_URL"), os.Getenv("AGENTFIELD_OPENROUTER_SITE_URL"), os.Getenv("OR_SITE_URL"), DefaultSiteURL),
-		SiteName:       firstNonEmpty(os.Getenv("AFORGE_SITE_NAME"), os.Getenv("AGENTFIELD_OPENROUTER_APP_NAME"), os.Getenv("OR_APP_NAME"), DefaultSiteName),
-		Reasoning:      DefaultReasoning,
-		ExecReasoning:  DefaultExecReasoning,
-		SpineSamples:   DefaultSpineSamples,
-		MaxDepth:       DefaultMaxDepth,
-		NodeBudget:     DefaultNodeBudget,
-		DailyBudgetUSD: DefaultDailyBudgetUSD,
-		ProfileDir:     os.Getenv("AFORGE_PROFILE_DIR"),
+		APIKey:            firstNonEmpty(os.Getenv("OPENROUTER_API_KEY"), os.Getenv("OPENAI_API_KEY")),
+		BaseURL:           firstNonEmpty(os.Getenv("AFORGE_BASE_URL"), DefaultBaseURL),
+		Model:             firstNonEmpty(os.Getenv("AFORGE_MODEL"), DefaultModel),
+		VoiceModel:        firstNonEmpty(os.Getenv("AFORGE_VOICE_MODEL"), DefaultVoiceModel),
+		Temperature:       DefaultTemperature,
+		MaxTokens:         DefaultMaxTokens,
+		Timeout:           DefaultTimeout,
+		SiteURL:           firstNonEmpty(os.Getenv("AFORGE_SITE_URL"), os.Getenv("AGENTFIELD_OPENROUTER_SITE_URL"), os.Getenv("OR_SITE_URL"), DefaultSiteURL),
+		SiteName:          firstNonEmpty(os.Getenv("AFORGE_SITE_NAME"), os.Getenv("AGENTFIELD_OPENROUTER_APP_NAME"), os.Getenv("OR_APP_NAME"), DefaultSiteName),
+		Reasoning:         DefaultReasoning,
+		ExecReasoning:     DefaultExecReasoning,
+		SpineSamples:      DefaultSpineSamples,
+		MaxDepth:          DefaultMaxDepth,
+		NodeBudget:        DefaultNodeBudget,
+		DailyBudgetUSD:    DefaultDailyBudgetUSD,
+		PracticeBudgetUSD: DefaultPracticeBudgetUSD,
+		PracticeIdle:      DefaultPracticeIdle,
+		ProfileDir:        os.Getenv("AFORGE_PROFILE_DIR"),
 	}
 	if config.APIKey == "" {
 		return Config{}, errors.New("OPENROUTER_API_KEY (or OPENAI_API_KEY) is required")
@@ -185,12 +195,34 @@ func Load() (Config, error) {
 		return Config{}, err
 	}
 	config.DailyBudgetUSD = dailyBudget
+	if raw := strings.TrimSpace(os.Getenv("AFORGE_PRACTICE_BUDGET")); raw != "" {
+		practiceBudget, err := validateDailyBudgetValue(raw, "AFORGE_PRACTICE_BUDGET")
+		if err != nil {
+			return Config{}, err
+		}
+		config.PracticeBudgetUSD = practiceBudget
+	}
+	if raw := strings.TrimSpace(os.Getenv("AFORGE_PRACTICE_IDLE")); raw != "" {
+		idle, err := time.ParseDuration(raw)
+		if err != nil || idle < 0 {
+			return Config{}, fmt.Errorf("AFORGE_PRACTICE_IDLE: want a non-negative duration, got %q", raw)
+		}
+		config.PracticeIdle = idle
+	}
 	panel, err := router.LoadPanel(os.Getenv("AFORGE_MODELS"))
 	if err != nil {
 		return Config{}, err
 	}
 	config.Panel = panel
 	return config, nil
+}
+
+func validateDailyBudgetValue(raw, source string) (float64, error) {
+	value, err := strconv.ParseFloat(strings.TrimSpace(raw), 64)
+	if err != nil {
+		return 0, fmt.Errorf("%s: want a non-negative dollar amount, got %q", source, raw)
+	}
+	return validateDailyBudget(value, source)
 }
 
 // DailyBudgetUSD resolves the dollar rail without requiring a provider key.

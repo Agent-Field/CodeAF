@@ -320,6 +320,7 @@ CREATE INDEX IF NOT EXISTS nodes_parent ON nodes (parent_id);
 CREATE INDEX IF NOT EXISTS nodes_ready ON nodes (status, folded, created_seq, created_order);
 CREATE INDEX IF NOT EXISTS edges_to_kind ON edges (to_id, kind);
 CREATE INDEX IF NOT EXISTS events_node_seq ON events (node_id, seq);
+CREATE INDEX IF NOT EXISTS events_kind_ts ON events (kind, ts);
 
 CREATE TRIGGER IF NOT EXISTS events_no_update
 BEFORE UPDATE ON events
