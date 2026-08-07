@@ -763,6 +763,16 @@ func (g *Graph) catalog() string {
 	return block.String()
 }
 
+// planBlock is the whole shared prefix of the passes that look at the entire
+// graph — bind, size and audit. It is one render because it is one string: the
+// three of them are deliberately given the identical premise, and rendering it
+// per pass spent the same bytes three times over for a block that is the same
+// every time. Whoever holds a render is responsible for knowing whether the
+// graph has moved underneath it; see the reuse in Build.
+func (g *Graph) planBlock() string {
+	return g.context() + "\nEvery node in the plan:\n" + g.catalog()
+}
+
 // stateBlock renders the graph for the reviser, which unlike every other call
 // has to know what has already happened and what it is therefore not allowed to
 // touch.

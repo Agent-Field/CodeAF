@@ -136,6 +136,7 @@ func (w *briefWriter) apply(graph *Graph) (Usage, error) {
 func Briefs(ctx context.Context, client Completer, graph *Graph) (Usage, error) {
 	writer := newBriefWriter(ctx, client, true)
 	shared := graph.context() + "\nThe full plan:\n" + graph.briefCatalog()
+	owner, label := graph.deliverableOwner()
 	for _, id := range graph.Leaves() {
 		node := graph.Node(id)
 		if node == nil || strings.TrimSpace(node.Brief) != "" {
@@ -147,7 +148,7 @@ func Briefs(ctx context.Context, client Completer, graph *Graph) (Usage, error) 
 				inputs = append(inputs, fmt.Sprintf("%q (%s)", source.Title, source.Summary))
 			}
 		}
-		writer.launch(shared, *node, inputs, graph.deliverableLine(node.ID))
+		writer.launch(shared, *node, inputs, deliverableLineFor(owner, label, node.ID))
 	}
 	return writer.apply(graph)
 }
@@ -158,6 +159,15 @@ func Briefs(ctx context.Context, client Completer, graph *Graph) (Usage, error) 
 // names the deliverable and reads as an instruction to build it.
 func (g *Graph) deliverableLine(nodeID int) string {
 	owner, label := g.deliverableOwner()
+	return deliverableLineFor(owner, label, nodeID)
+}
+
+// deliverableLineFor is that line written from an ownership answer that has
+// already been worked out. Working it out means finding the sinks, which walks
+// every node's needs, and the answer is one fact about the whole graph rather
+// than a fact about the node — so a caller writing a line for every node in a
+// round resolves it once and spends the walk once instead of per node.
+func deliverableLineFor(owner int, label string, nodeID int) string {
 	if owner == nodeID {
 		return "This node owns the final deliverable the goal asks for: it is the only " +
 			"one that produces it, and the other results arrive here as inputs.\n"
