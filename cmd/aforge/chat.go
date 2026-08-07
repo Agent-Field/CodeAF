@@ -23,6 +23,7 @@ import (
 	"github.com/Agent-Field/aforge-v2/internal/config"
 	"github.com/Agent-Field/aforge-v2/internal/exec"
 	"github.com/Agent-Field/aforge-v2/internal/head"
+	"github.com/Agent-Field/aforge-v2/internal/lease"
 	"github.com/Agent-Field/aforge-v2/internal/plan"
 	"github.com/Agent-Field/aforge-v2/internal/profile"
 	"github.com/Agent-Field/aforge-v2/internal/provider"
@@ -59,6 +60,20 @@ func runChat(args []string) error {
 	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 		return fmt.Errorf("create chat database directory: %w", err)
 	}
+	releaseResident, heldBy, err := lease.AcquireResident(filepath.Dir(path), "chat")
+	if err != nil {
+		return err
+	}
+	if releaseResident == nil {
+		host := strings.TrimSpace(heldBy.Host)
+		if host == "" {
+			host = "unknown host"
+		}
+		fmt.Fprintf(os.Stderr, "another aforge is resident (pid %d on %s); attaching as a visitor\n",
+			heldBy.PID, host)
+		return runChatVisitor(path, *sessionID)
+	}
+	defer releaseResident()
 
 	settings, err := config.Load()
 	if err != nil {
@@ -123,9 +138,9 @@ func runChat(args []string) error {
 		return fmt.Errorf("create chat workspace: %w", err)
 	}
 
-	// Any claim alive at open belongs to a previous chat process — the store
-	// has one resident writer, so a closed terminal mid-run leaves leaves
-	// stranded as "running" forever. Release them back to pending before the
+	// The lease proves that no live resident can still own a claim in this DB.
+	// A closed terminal mid-run can otherwise leave leaves stranded as
+	// "running" forever. Release them back to pending before the
 	// reconciler starts, and say so once: recovered work resumes rather than
 	// haunting the rail.
 	if released, err := graph.ReleaseOrphans(); err == nil && len(released) > 0 {
@@ -142,41 +157,9 @@ func runChat(args []string) error {
 	// the profile records that calibrate the planner's ruler all read from the
 	// same plan nodes the scheduler would have read.
 	plans := &jobPlans{graphs: map[string]plannedJob{}}
-
-	compiler := head.NewCompiler(chatClient)
-	reconciler := resident.New(graph,
-		func(ctx context.Context, instruction, graphContext string) (resident.Compiled, error) {
-			augmented := graphContext
-			if sk := selfKnowledge(settings, taskClient.Model()); sk != "" {
-				augmented += "\n\nMeasured execution costs (this system's own measured history):\n" + sk
-			}
-			brief, err := compiler.Compile(settings.Context(ctx, instruction), instruction, augmented)
-			if err != nil {
-				return resident.Compiled{}, err
-			}
-			return resident.Compiled{
-				Goal:            brief.Goal,
-				Assumptions:     brief.Assumptions,
-				Scale:           brief.Scale,
-				TrialOf:         brief.TrialOf,
-				BuildsOn:        brief.BuildsOn,
-				Question:        brief.Question,
-				QuestionOptions: brief.QuestionOptions,
-				Charter:         brief.Charter,
-			}, nil
-		},
-		planSubtree(settings, taskClient, plans, graph),
-	).WithNarrator(narrateProgress(settings, chatClient, graph)).
-		WithBriefComposer(composeMorningBrief(settings, chatClient)).
-		WithDistiller(distillFacts(settings, chatClient, graph)).
-		WithConsolidator(consolidateFacts(settings, chatClient, graph)).
-		WithTitler(titleGoal(settings, chatClient)).
-		WithReflector(reflectAcrossJobs(settings, chatClient, graph)).
-		WithCharterProposals().
-		WithTerritoryDigester(digestTerritory(settings, chatClient)).
-		WithWatchEngine(settings.DailyBudgetUSD, checkSentinel(settings, chatClient)).
-		WithOverrunPlanner(settings.DailyBudgetUSD, replanRemainder(settings, taskClient, plans, graph)).
-		WithPracticeLoop(settings.PracticeBudgetUSD, settings.PracticeIdle)
+	reconciler := newResidentReconciler(settings, graph, chatClient, taskClient, plans).
+		WithNarrator(narrateProgress(settings, chatClient, graph)).
+		WithBriefComposer(composeMorningBrief(settings, chatClient))
 	if err := reconciler.AttachSession(*sessionID); err != nil {
 		return err
 	}
@@ -608,6 +591,47 @@ func runChat(args []string) error {
 	return errors.Join(err, seenErr)
 }
 
+// runChatVisitor is a pure surface over the durable store. The elected
+// resident's head will route its user messages and the command journal will be
+// reconciled there; this process tails the thread and never starts a head,
+// reconciler, or worker runner of its own.
+func runChatVisitor(path, sessionID string) error {
+	graph, err := store.Open(path)
+	if err != nil {
+		return err
+	}
+	defer graph.Close()
+
+	surface := resident.New(graph, nil, nil)
+	if err := surface.AttachSession(sessionID); err != nil {
+		return err
+	}
+	if err := surface.SessionOpened(context.Background(), sessionID, "tui", 0); err != nil {
+		return err
+	}
+	commander := newVisitorCommander(path, sessionID, graph, surface.AttachSession)
+	err = tui.RunWithCommander(graph, sessionID, commander)
+	seenErr := surface.SessionClosed(sessionID, "tui")
+	return errors.Join(err, seenErr)
+}
+
+// newVisitorCommander builds the commander a visitor drives. It deliberately
+// carries no model clients and no live catalog: a visitor owns no head, so
+// every capability that would speak to a provider must degrade to the recorded
+// preference rather than reach for a client that does not exist here.
+func newVisitorCommander(path, sessionID string, graph *store.Store,
+	attachSession func(string) error) *chatCommander {
+	return &chatCommander{
+		database:      path,
+		prefsDir:      filepath.Dir(path),
+		workspaceRoot: filepath.Join(filepath.Dir(path), "workspace"),
+		store:         graph,
+		prefs:         loadChatPrefs(filepath.Dir(path)),
+		sessionID:     sessionID,
+		attachSession: attachSession,
+	}
+}
+
 // residentDeliveryBrief gives only the top-level deliverable owner the voice
 // contract. Planned synthesis and direct jobs share this path; child results
 // remain worker-to-worker material. A gate repair copies this same task, so its
@@ -812,7 +836,12 @@ func (c *chatCommander) CatalogFor(role string) []tui.ModelChoice {
 func (c *chatCommander) CurrentModel(role string) string {
 	switch role {
 	case "work":
-		return c.taskClient.Model()
+		if c.taskClient != nil {
+			return c.taskClient.Model()
+		}
+		c.mu.Lock()
+		defer c.mu.Unlock()
+		return c.prefs.TaskModel
 	case "boost":
 		c.mu.Lock()
 		boost := strings.TrimSpace(c.prefs.BoostModel)
@@ -845,7 +874,12 @@ func (c *chatCommander) CurrentModel(role string) string {
 		defer c.mu.Unlock()
 		return firstNonEmptyString(c.prefs.VideoModel, c.settings.ResolveVideoModel(c.models))
 	}
-	return c.chatClient.Model()
+	if c.chatClient != nil {
+		return c.chatClient.Model()
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.prefs.ChatModel
 }
 
 func (c *chatCommander) ImageInputSupport() (string, bool) {
@@ -869,10 +903,16 @@ func (c *chatCommander) ModelFollows(role string) bool {
 func (c *chatCommander) SetModel(role, slug string) error {
 	switch role {
 	case "talk":
+		if c.chatClient == nil {
+			return fmt.Errorf("talk model switching is unavailable in visitor mode")
+		}
 		if err := c.chatClient.SetModel(slug); err != nil {
 			return err
 		}
 	case "work":
+		if c.taskClient == nil {
+			return fmt.Errorf("work model switching is unavailable in visitor mode")
+		}
 		if err := c.taskClient.SetModel(slug); err != nil {
 			return err
 		}
