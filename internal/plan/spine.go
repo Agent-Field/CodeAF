@@ -9,6 +9,7 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/Agent-Field/aforge-v2/internal/guard"
 	"github.com/Agent-Field/aforge-v2/internal/provider"
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 )
@@ -118,13 +119,33 @@ func spineWithProgress(ctx context.Context, client Completer, goal string, sampl
 		group.Add(1)
 		go func(index int) {
 			defer group.Done()
+			// One faulted sample is one fewer candidate, which is the shape the
+			// selection below already handles: it chooses among what came back
+			// and reports the failures with the rest. A sample that already
+			// landed keeps its slot — the only thing after it is the progress
+			// tick, and a caller's callback must not cost a good spine.
+			landed := false
+			defer func() {
+				if recovered := recover(); recovered != nil {
+					fault := guard.Note(fmt.Sprintf("plan/spine sample %d", index+1), recovered)
+					if !landed {
+						results[index] = result{err: fault}
+					}
+				}
+			}()
 			stages, usage, err := spineOnce(ctx, client, goal)
 			results[index] = result{stages: stages, usage: usage, err: err}
+			landed = true
 			if progress != nil && samples > 1 {
-				progressMutex.Lock()
-				completed++
-				emitProgress(progress, "spine", fmt.Sprintf("sample %d/%d", completed, samples), "")
-				progressMutex.Unlock()
+				// The unlock is deferred because emitProgress runs the caller's
+				// callback: a fault inside it would otherwise leave this mutex
+				// held and every other sample parked on it forever.
+				func() {
+					progressMutex.Lock()
+					defer progressMutex.Unlock()
+					completed++
+					emitProgress(progress, "spine", fmt.Sprintf("sample %d/%d", completed, samples), "")
+				}()
 			}
 		}(index)
 	}

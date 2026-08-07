@@ -171,8 +171,14 @@ func TestDeliveryGateSeesNotebookPreferencesAndNoPanelStaysBare(t *testing.T) {
 	if !strings.Contains(body, "the user always wants benchmark evidence named explicitly") {
 		t.Fatalf("gate input omitted the standing user preference: %q", body)
 	}
-	if marker := strings.Index(body, "Standing preferences and relevant lessons:\n"); marker < 0 || len(body[marker:]) > gateNotebookBytes+len("Standing preferences and relevant lessons:\n") {
-		t.Fatalf("gate notebook block is absent or over its bound: %d bytes", len(body[marker:]))
+	// The digest block runs from its heading to the request that follows it —
+	// it stopped being the tail of the prompt when the standing blocks moved
+	// ahead of the job, so its bound is measured against its own end.
+	const digestHeading = "Standing preferences and relevant lessons:\n"
+	marker := strings.Index(body, digestHeading)
+	end := strings.Index(body, "Verbatim request:\n")
+	if marker < 0 || end <= marker || len(body[marker:end]) > gateNotebookBytes+len(digestHeading)+len("\n\n") {
+		t.Fatalf("gate notebook block is absent or over its bound: marker=%d end=%d", marker, end)
 	}
 	// Settled taste is not one lesson among eight — it is what an acceptable
 	// answer looks like, so it is read before the digest and cannot be crowded
@@ -857,5 +863,92 @@ func TestReviseForUserWithoutARetainedPlanChangesNothing(t *testing.T) {
 	if revision.Added != 0 || revision.Dropped != 0 || revision.Amended != 0 ||
 		len(revision.Notes) != 0 || len(revision.RunningRemovals) != 0 {
 		t.Fatalf("revision = %+v", revision)
+	}
+}
+
+// The gate waved through a deliverable that described itself. "The deliverable
+// is written and verified against the actual repo source" became the node's
+// summary, and the summary is the one source every later surface reads, so the
+// verdict the user asked for existed nowhere they or the head could reach. The
+// contract is expressed as a value rather than a phrase list, because the next
+// way to report work instead of doing it is always a phrasing nobody wrote
+// down; what is pinned here is that the value is stated and that the gate is
+// still a gate.
+func TestTheGateHoldsTheAnswerFirstContractWithoutBecomingACritic(t *testing.T) {
+	for _, required := range []string{
+		"What you are handed IS the deliverable",
+		"has described the deliverable in place of being it",
+		"A pointer to where the answer lives is not the answer",
+	} {
+		if !strings.Contains(judgeDeliverablePrompt, required) {
+			t.Fatalf("the gate no longer states the answer-first contract: %q missing", required)
+		}
+	}
+	// The character of the gate is law: its default is pass, and the new clause
+	// must not turn it into the critic that always finds something.
+	for _, required := range []string{
+		"Default to PASS",
+		"The gate exists for real gaps, not polish",
+		"This is still one absence and not a second style test",
+	} {
+		if !strings.Contains(judgeDeliverablePrompt, required) {
+			t.Fatalf("the gate lost its default-pass character: %q missing", required)
+		}
+	}
+	// No phrase list anywhere: the gate must never be taught to match on the
+	// sentences one worker happened to write.
+	for _, forbidden := range []string{
+		"deliverable is written and verified", "if the text contains", "phrases such as",
+	} {
+		if strings.Contains(strings.ToLower(judgeDeliverablePrompt), strings.ToLower(forbidden)) {
+			t.Fatalf("the gate grew a cue list: %q", forbidden)
+		}
+	}
+}
+
+// A named gap is what buys the one revision pass, and the revision is told the
+// thing the first attempt demonstrably did not hear.
+func TestNamedGapEarnsARevisionThatIsToldWhereTheAnswerGoes(t *testing.T) {
+	graph, err := store.Open(filepath.Join(t.TempDir(), "graph.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer graph.Close()
+	node := store.Node{
+		ID: "task-6979", Parent: store.RootID, Brief: "judge whether the plan is valid",
+		Provenance: store.Provenance{Intent: "see if their architecture plan is valid"},
+	}
+	settings := config.Config{Model: "worker/model"}
+
+	const gap = "the verdict itself: the text says the assessment is complete but never says whether the plan is valid"
+	failing := &gateCaptureClient{model: "worker/model",
+		response: `{"pass":false,"gaps":"` + gap + `"}`}
+	judgment := judgeDeliverable(context.Background(), settings,
+		&liveClient{settings: settings, model: failing.model, client: failing}, graph, node,
+		"The deliverable is written and verified against the actual repo source.", "worker/model")
+	if !judgment.Checked || judgment.Pass || judgment.Gaps != gap {
+		t.Fatalf("a meta-only deliverable did not draw a checked gap: %+v", judgment)
+	}
+
+	// Substance passes, and passing is the default: the gate must not have
+	// become a second opinion on every finished job.
+	passing := &gateCaptureClient{model: "worker/model"}
+	settled := judgeDeliverable(context.Background(), settings,
+		&liveClient{settings: settings, model: passing.model, client: passing}, graph, node,
+		"The plan is valid: the plugin boundary it assumes already exists and the migration is reversible.",
+		"worker/model")
+	if !settled.Checked || !settled.Pass {
+		t.Fatalf("a deliverable carrying its answer did not pass: %+v", settled)
+	}
+
+	// The revision pass is handed the previous attempt plus the contract that
+	// attempt broke, so a second round cannot close the gap inside a file and
+	// report that it did so.
+	for _, required := range []string{
+		"final message is the deliverable", "never in place of it",
+	} {
+		if !strings.Contains(gateRevisionContract, required) {
+			t.Fatalf("the revision contract no longer says where the answer goes: %q missing", required)
+		}
 	}
 }

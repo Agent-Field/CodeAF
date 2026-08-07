@@ -12,6 +12,7 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"github.com/Agent-Field/aforge-v2/internal/guard"
 	"github.com/Agent-Field/aforge-v2/internal/store"
 	"github.com/Agent-Field/aforge-v2/internal/watchdog"
 )
@@ -267,7 +268,7 @@ func (r *Reconciler) WithStandingWatchKeyPersist(persist func() (bool, string, e
 // Serve polls until ctx is cancelled or the store can no longer be read or
 // written. Strategy failures reject their command and do not stop the loop.
 func (r *Reconciler) Serve(ctx context.Context) error {
-	if err := r.Tick(ctx); err != nil {
+	if err := r.tickGuarded(ctx); err != nil {
 		return err
 	}
 
@@ -278,11 +279,25 @@ func (r *Reconciler) Serve(ctx context.Context) error {
 		case <-ctx.Done():
 			return ctx.Err()
 		case <-ticker.C:
-			if err := r.Tick(ctx); err != nil {
+			if err := r.tickGuarded(ctx); err != nil {
 				return err
 			}
 		}
 	}
+}
+
+// tickGuarded absorbs a panicking pass. The store is the truth and the lock is
+// released by the unwind, so the next tick re-reads the same queue and does the
+// work this one dropped; a fault in one command must not end the loop that
+// applies every later one.
+func (r *Reconciler) tickGuarded(ctx context.Context) (err error) {
+	defer func() {
+		if recovered := recover(); recovered != nil {
+			_ = guard.Note("resident/reconciler tick", recovered)
+			err = nil
+		}
+	}()
+	return r.Tick(ctx)
 }
 
 // Tick drains the current command queue and announces newly settled nodes.

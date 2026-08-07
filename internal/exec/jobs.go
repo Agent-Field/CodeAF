@@ -15,6 +15,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/Agent-Field/aforge-v2/internal/guard"
 	"github.com/Agent-Field/aforge-v2/internal/store"
 )
 
@@ -76,6 +77,7 @@ type backgroundJob struct {
 	keepHealth       store.ServiceHealth
 	promoted         bool
 	waited           bool
+	settled          bool
 }
 
 // jobRegistry belongs to exactly one Toolbox, hence one leaf. Its jobs stay in
@@ -175,18 +177,26 @@ func (t *Toolbox) startBackground(ctx context.Context, command string, args map[
 	}
 	r.jobs[id] = job
 	job.timeout = time.AfterFunc(duration, func() {
-		r.mutex.Lock()
-		if job.state != jobRunning || job.keepRequested {
-			r.mutex.Unlock()
-			return
+		defer guard.Recover("exec/job timeout")
+		if r.markTimedOut(job) {
+			job.cancel()
 		}
-		job.timedOut = true
-		r.mutex.Unlock()
-		job.cancel()
 	})
 	r.workspace.Record(r.nodeID, full)
 	go r.wait(job)
 	return Result{Content: fmt.Sprintf("job %d started · log %s", id, filepath.ToSlash(relative))}
+}
+
+// markTimedOut flags a still-running job as expired and reports whether the
+// cancel is this timer's to fire. A keep already granted outranks the deadline.
+func (r *jobRegistry) markTimedOut(job *backgroundJob) bool {
+	r.mutex.Lock()
+	defer r.mutex.Unlock()
+	if job.state != jobRunning || job.keepRequested {
+		return false
+	}
+	job.timedOut = true
+	return true
 }
 
 func backgroundDuration(ctx context.Context, args map[string]any) (time.Duration, error) {
@@ -213,16 +223,20 @@ func backgroundDuration(ctx context.Context, args map[string]any) (time.Duration
 }
 
 // wait is the sole goroutine that calls cmd.Wait and writes a terminal state.
+// A fault here would leave every waiter on job.done blocked forever, so the
+// terminal state is published from a defer that runs on the fault path too.
 func (r *jobRegistry) wait(job *backgroundJob) {
+	defer func() {
+		if recovered := recover(); recovered != nil {
+			_ = guard.Note("exec/job wait", recovered)
+			r.settleFaulted(job)
+		}
+	}()
 	_ = job.cmd.Wait()
 	// A shell can exit after detaching a child into its process group. File
 	// output means Wait rightly does not block on that child, so the sole waiter
 	// also cleans the remaining group before publishing the terminal state.
-	r.mutex.Lock()
-	job.waited = true
-	persistent := job.keepRequested || job.promoted
-	r.mutex.Unlock()
-	if !persistent {
+	if !r.markWaited(job) {
 		terminateDetachedGroup(job.cmd.Process.Pid)
 	}
 	job.cancel()
@@ -244,6 +258,33 @@ func (r *jobRegistry) wait(job *backgroundJob) {
 			job.exitCode = job.cmd.ProcessState.ExitCode()
 		}
 	}
+	job.settled = true
+	close(job.done)
+}
+
+// markWaited records that cmd.Wait returned, and reports whether the job is
+// persistent — a keep or a promotion means its group is meant to outlive the
+// leaf and must not be swept.
+func (r *jobRegistry) markWaited(job *backgroundJob) bool {
+	r.mutex.Lock()
+	defer r.mutex.Unlock()
+	job.waited = true
+	return job.keepRequested || job.promoted
+}
+
+// settleFaulted publishes a terminal state for a job whose waiter faulted.
+// Killed is the honest reading: nobody can say what the process did, and every
+// waiter is owed an answer rather than a silent forever.
+func (r *jobRegistry) settleFaulted(job *backgroundJob) {
+	r.mutex.Lock()
+	defer r.mutex.Unlock()
+	if job.settled {
+		return
+	}
+	job.settled = true
+	job.waited = true
+	job.finished = time.Now()
+	job.state = jobKilled
 	close(job.done)
 }
 
@@ -359,61 +400,62 @@ func (r *jobRegistry) serviceRequests(leafNodeID string) []ServiceRequest {
 // reaping the shell when it eventually exits; leaf teardown can no longer see
 // or kill it.
 func (request *ServiceRequest) Adopt() {
-	if request == nil {
+	if request == nil || !request.settle() {
 		return
 	}
-	request.mutex.Lock()
-	if request.settled {
-		request.mutex.Unlock()
-		return
-	}
-	request.settled = true
-	request.mutex.Unlock()
-	r := request.registry
-	r.mutex.Lock()
-	request.job.promoted = true
-	delete(r.jobs, request.JobID)
-	r.mutex.Unlock()
+	request.registry.promote(request.job, request.JobID)
 }
 
 // Stop returns a declined or expired request to the ordinary teardown rule.
 func (request *ServiceRequest) Stop() {
-	if request == nil {
+	if request == nil || !request.settle() {
 		return
 	}
+	if pid, done, running := request.registry.releaseKeep(request.job); running {
+		terminateProcessGroup(pid, done)
+	}
+}
+
+// settle takes the request's one-shot resolution and reports whether this
+// caller is the one that got it. Adopt and Stop can race — a resident deciding
+// while the lease expires — and only the winner acts on the job.
+func (request *ServiceRequest) settle() bool {
 	request.mutex.Lock()
+	defer request.mutex.Unlock()
 	if request.settled {
-		request.mutex.Unlock()
-		return
+		return false
 	}
 	request.settled = true
-	request.mutex.Unlock()
-	r := request.registry
+	return true
+}
+
+// promote is Adopt's critical section: the job leaves the registry, and the
+// flag keeps a concurrent sweep from claiming it on the way out.
+func (r *jobRegistry) promote(job *backgroundJob, id int) {
 	r.mutex.Lock()
-	job := request.job
-	if job.state != jobRunning {
-		job.keepRequested = false
-		r.mutex.Unlock()
-		return
-	}
+	defer r.mutex.Unlock()
+	job.promoted = true
+	delete(r.jobs, id)
+}
+
+// releaseKeep drops the keep and, when the shell is still running, records the
+// stop and hands back what terminating its group needs.
+func (r *jobRegistry) releaseKeep(job *backgroundJob) (pid int, done <-chan struct{}, running bool) {
+	r.mutex.Lock()
+	defer r.mutex.Unlock()
 	job.keepRequested = false
+	if job.state != jobRunning {
+		return 0, nil, false
+	}
 	job.stopRequested = true
-	done := job.done
-	pid := job.cmd.Process.Pid
-	r.mutex.Unlock()
-	terminateProcessGroup(pid, done)
+	return job.cmd.Process.Pid, job.done, true
 }
 
 func (r *jobRegistry) waitFor(id int, duration time.Duration) error {
-	r.mutex.Lock()
-	job := r.jobs[id]
-	if job == nil {
-		r.mutex.Unlock()
-		return fmt.Errorf("no background job %d", id)
+	done, running, err := r.waitHandle(id)
+	if err != nil {
+		return err
 	}
-	done := job.done
-	running := job.state == jobRunning
-	r.mutex.Unlock()
 	if !running {
 		return nil
 	}
@@ -426,24 +468,44 @@ func (r *jobRegistry) waitFor(id int, duration time.Duration) error {
 	return nil
 }
 
-func (r *jobRegistry) kill(id int) error {
+// waitHandle takes a job's done channel and its liveness from the same instant,
+// so a waiter cannot decide to block on a state that has already moved on.
+func (r *jobRegistry) waitHandle(id int) (done <-chan struct{}, running bool, err error) {
 	r.mutex.Lock()
+	defer r.mutex.Unlock()
 	job := r.jobs[id]
 	if job == nil {
-		r.mutex.Unlock()
-		return fmt.Errorf("no background job %d", id)
+		return nil, false, fmt.Errorf("no background job %d", id)
 	}
-	if job.state != jobRunning {
-		r.mutex.Unlock()
+	return job.done, job.state == jobRunning, nil
+}
+
+func (r *jobRegistry) kill(id int) error {
+	pid, done, running, err := r.markStopped(id)
+	if err != nil {
+		return err
+	}
+	if !running {
 		return nil
 	}
-	job.stopRequested = true
-	done := job.done
-	pid := job.cmd.Process.Pid
-	r.mutex.Unlock()
-
 	terminateProcessGroup(pid, done)
 	return nil
+}
+
+// markStopped records the stop request and hands back what terminating the
+// group needs. running is false when the job has already landed.
+func (r *jobRegistry) markStopped(id int) (pid int, done <-chan struct{}, running bool, err error) {
+	r.mutex.Lock()
+	defer r.mutex.Unlock()
+	job := r.jobs[id]
+	if job == nil {
+		return 0, nil, false, fmt.Errorf("no background job %d", id)
+	}
+	if job.state != jobRunning {
+		return 0, nil, false, nil
+	}
+	job.stopRequested = true
+	return job.cmd.Process.Pid, job.done, true, nil
 }
 
 func terminateProcessGroup(pid int, done <-chan struct{}) {
@@ -646,32 +708,60 @@ func compactJobLine(line string) string {
 	}
 	head := maxJobLineBytes * 2 / 3
 	tail := maxJobLineBytes - head - len("...")
-	return line[:head] + "..." + line[len(line)-tail:]
+	return wholeRunesHead(line[:head]) + "..." + wholeRunesTail(line[len(line)-tail:])
 }
 
 // close terminates and reaps every process that still survives the leaf. It is
 // idempotent because normal landing and scheduler abandonment can race.
 func (r *jobRegistry) close() int {
-	r.mutex.Lock()
-	if r.closed {
-		done := r.closeDone
-		r.mutex.Unlock()
+	jobs, done, first := r.claimSweep()
+	if !first {
 		<-done
-		r.mutex.Lock()
-		count := r.closedCount
-		r.mutex.Unlock()
-		return count
+		return r.sweptCount()
+	}
+	reap(jobs)
+	r.publishSweep(len(jobs))
+	return len(jobs)
+}
+
+// claimSweep takes the one-shot right to run the sweep. The winner gets the
+// jobs to terminate; every later caller gets the channel to wait on instead.
+func (r *jobRegistry) claimSweep() (jobs []*backgroundJob, done chan struct{}, first bool) {
+	r.mutex.Lock()
+	defer r.mutex.Unlock()
+	if r.closed {
+		return nil, r.closeDone, false
 	}
 	r.closed = true
-	jobs := make([]*backgroundJob, 0, len(r.jobs))
+	jobs = make([]*backgroundJob, 0, len(r.jobs))
 	for _, job := range r.jobs {
 		if job.state == jobRunning && !job.keepRequested && !job.promoted {
 			job.stopRequested = true
 			jobs = append(jobs, job)
 		}
 	}
-	r.mutex.Unlock()
+	return jobs, r.closeDone, true
+}
 
+// publishSweep records what the sweep terminated and releases everyone waiting.
+func (r *jobRegistry) publishSweep(count int) {
+	r.mutex.Lock()
+	defer r.mutex.Unlock()
+	r.closedCount = count
+	close(r.closeDone)
+}
+
+// sweptCount reads what the sweep recorded, for the callers that only waited.
+func (r *jobRegistry) sweptCount() int {
+	r.mutex.Lock()
+	defer r.mutex.Unlock()
+	return r.closedCount
+}
+
+// reap signals the whole set, then waits on it. Anything still alive when the
+// grace expires is killed outright and reaped, so close never returns leaving a
+// survivor unaccounted for.
+func reap(jobs []*backgroundJob) {
 	for _, job := range jobs {
 		_ = syscall.Kill(-job.cmd.Process.Pid, syscall.SIGTERM)
 	}
@@ -690,7 +780,7 @@ func (r *jobRegistry) close() int {
 			for _, survivor := range jobs {
 				<-survivor.done
 			}
-			goto closed
+			return
 		}
 	}
 	if !deadline.Stop() {
@@ -699,13 +789,6 @@ func (r *jobRegistry) close() int {
 		default:
 		}
 	}
-
-closed:
-	r.mutex.Lock()
-	r.closedCount = len(jobs)
-	close(r.closeDone)
-	r.mutex.Unlock()
-	return len(jobs)
 }
 
 // Close is used by leaf teardown and tests. Log files and final registry state
@@ -733,13 +816,18 @@ func (c *leafControl) attach(tools *Toolbox) {
 	if c == nil {
 		return
 	}
-	c.mutex.Lock()
-	c.tools = tools
-	abandoned := c.abandoned
-	c.mutex.Unlock()
-	if abandoned {
+	if c.adopt(tools) {
 		tools.Close()
 	}
+}
+
+// adopt installs the toolbox and reports whether abandonment already won the
+// race, in which case the caller closes what it has just attached.
+func (c *leafControl) adopt(tools *Toolbox) bool {
+	c.mutex.Lock()
+	defer c.mutex.Unlock()
+	c.tools = tools
+	return c.abandoned
 }
 
 func (c *leafControl) detach(tools *Toolbox, terminated int) {
@@ -747,44 +835,61 @@ func (c *leafControl) detach(tools *Toolbox, terminated int) {
 		return
 	}
 	c.mutex.Lock()
+	defer c.mutex.Unlock()
 	if c.tools == tools {
 		c.tools = nil
 	}
 	if terminated > c.terminated {
 		c.terminated = terminated
 	}
-	c.mutex.Unlock()
 }
 
 func (c *leafControl) terminate() int {
 	if c == nil {
 		return 0
 	}
-	c.mutex.Lock()
-	c.abandoned = true
-	tools := c.tools
-	terminated := c.terminated
-	c.mutex.Unlock()
+	tools, terminated := c.abandon()
 	if tools == nil {
 		return terminated
 	}
 	terminated = tools.ForceClose()
+	c.recordTerminated(terminated)
+	return terminated
+}
+
+// abandon marks the leaf abandoned and hands back the toolbox to close if one
+// has attached, together with what an earlier detach already counted.
+func (c *leafControl) abandon() (*Toolbox, int) {
 	c.mutex.Lock()
+	defer c.mutex.Unlock()
+	c.abandoned = true
+	return c.tools, c.terminated
+}
+
+// recordTerminated keeps the high-water mark: a later, emptier close of the
+// same leaf must not erase what an earlier one counted.
+func (c *leafControl) recordTerminated(terminated int) {
+	c.mutex.Lock()
+	defer c.mutex.Unlock()
 	if terminated > c.terminated {
 		c.terminated = terminated
 	}
-	c.mutex.Unlock()
-	return terminated
 }
 
 // ForceClose is the scheduler-abandonment path. A wedged leaf cannot leave a
 // keep request behind without a resident available to decide it.
 func (t *Toolbox) ForceClose() int {
-	t.jobs.mutex.Lock()
-	for _, job := range t.jobs.jobs {
+	t.jobs.dropKeeps()
+	return t.jobs.close()
+}
+
+// dropKeeps clears every keep and promotion so the sweep that follows claims
+// the whole registry.
+func (r *jobRegistry) dropKeeps() {
+	r.mutex.Lock()
+	defer r.mutex.Unlock()
+	for _, job := range r.jobs {
 		job.keepRequested = false
 		job.promoted = false
 	}
-	t.jobs.mutex.Unlock()
-	return t.jobs.close()
 }

@@ -42,7 +42,14 @@ var (
 )
 
 func buildTransports() {
-	shared = http.DefaultTransport.(*http.Transport).Clone()
+	// The standard library's default is an *http.Transport, but this is a
+	// process-global another package could have replaced, and a failed
+	// assertion inside a sync.Once would take the whole binary with it.
+	base, ok := http.DefaultTransport.(*http.Transport)
+	if !ok {
+		base = &http.Transport{}
+	}
+	shared = base.Clone()
 	// The default is two idle connections per host, and the limiter's ceiling is
 	// sixty-four. Every request past the second was therefore closing its
 	// connection on completion and paying a fresh handshake on the next one —

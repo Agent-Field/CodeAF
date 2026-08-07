@@ -3,6 +3,8 @@ package plan
 import (
 	"context"
 	"reflect"
+	"strings"
+	"sync"
 	"testing"
 
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
@@ -49,23 +51,82 @@ func TestContractsNoPlaybookPromptIsByteIdentical(t *testing.T) {
 	}
 }
 
-func TestContractsAppendsEarnedMethodNotesAfterDoctrine(t *testing.T) {
+func TestContractsAppendsEarnedMethodNotesToTargetMessage(t *testing.T) {
 	graph := contractFixture()
 	client := &contractCaptureClient{}
+	const notes = "- [repo:internal/parser] Run make check; direct go test misses generated fixtures."
 	_, err := Contracts(context.Background(), client, graph, func(node Node) string {
 		if node.ID != graph.Nodes[0].ID {
 			t.Fatalf("playbook lookup node = %d, want %d", node.ID, graph.Nodes[0].ID)
 		}
-		return "- [repo:internal/parser] Run make check; direct go test misses generated fixtures."
+		return notes
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	wantSystem := contractPrompt + "\n\nEarned method notes for this territory:\n" +
-		"- [repo:internal/parser] Run make check; direct go test misses generated fixtures."
-	if got := textOf(client.messages[0]); got != wantSystem {
-		t.Fatalf("contract doctrine = %q, want %q", got, wantSystem)
+	if got := textOf(client.messages[0]); got != contractPrompt {
+		t.Fatalf("playbook leaked into the doctrine: %q", got)
 	}
+	wantTarget := "The job: Parser checks — Repair parser validation\n" +
+		"It is expected to touch: internal/parser/check.go; Makefile\n" +
+		"The instruction the agent will receive:\nUpdate internal/parser/check.go and run make check.\n\n" +
+		"Earned method notes for this territory:\n" + notes + "\n\n" +
+		"Write the working method for this kind of job."
+	if got := textOf(client.messages[2]); got != wantTarget {
+		t.Fatalf("earned notes are not at the tail of the target message:\ngot:  %q\nwant: %q", got, wantTarget)
+	}
+}
+
+// The whole point of moving the playbook: every leaf in one fan-out shares the
+// system message and the shared-context message byte for byte, whatever its own
+// earned notes say, so N-1 of the concurrent calls land on a warm prefix.
+func TestContractsSharePrefixAcrossTargets(t *testing.T) {
+	graph := contractFixture()
+	graph.Add(Node{
+		Title:   "Fixture regeneration",
+		Summary: "Regenerate the parser fixtures",
+		Sources: []string{"internal/parser/testdata"},
+		Brief:   "Regenerate the golden fixtures.",
+	})
+	client := &contractFanoutClient{}
+	if _, err := Contracts(context.Background(), client, graph, func(node Node) string {
+		return "- notes for node " + strings.Repeat("x", node.ID)
+	}); err != nil {
+		t.Fatal(err)
+	}
+	calls := client.snapshot()
+	if len(calls) != 2 {
+		t.Fatalf("contract calls = %d, want 2", len(calls))
+	}
+	for _, call := range calls[1:] {
+		if textOf(call[0]) != textOf(calls[0][0]) {
+			t.Fatalf("system message differs across targets:\n%q\n%q", textOf(call[0]), textOf(calls[0][0]))
+		}
+		if textOf(call[1]) != textOf(calls[0][1]) {
+			t.Fatalf("shared context differs across targets:\n%q\n%q", textOf(call[1]), textOf(calls[0][1]))
+		}
+		if textOf(call[2]) == textOf(calls[0][2]) {
+			t.Fatal("two different leaves produced the same target message")
+		}
+	}
+}
+
+type contractFanoutClient struct {
+	mutex sync.Mutex
+	calls [][]ai.Message
+}
+
+func (c *contractFanoutClient) CompleteWithMessages(_ context.Context, messages []ai.Message, _ ...ai.Option) (*ai.Response, error) {
+	c.mutex.Lock()
+	defer c.mutex.Unlock()
+	c.calls = append(c.calls, append([]ai.Message(nil), messages...))
+	return response(`{"contract":"Run the focused checks and verify the integrated result."}`), nil
+}
+
+func (c *contractFanoutClient) snapshot() [][]ai.Message {
+	c.mutex.Lock()
+	defer c.mutex.Unlock()
+	return append([][]ai.Message(nil), c.calls...)
 }
 
 func contractFixture() *Graph {

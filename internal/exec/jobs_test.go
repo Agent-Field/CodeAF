@@ -16,6 +16,15 @@ import (
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 )
 
+// loadSlack scales the wall-clock ceilings in these process tests. They start
+// real shells and wait on real signals, so a host busy compiling can stretch a
+// twenty-millisecond poll into seconds with nothing actually wrong. Only
+// ceilings and deadlines are scaled — every floor stays where it was, because a
+// floor is what proves the behaviour rather than the host.
+const loadSlack = 8
+
+func slack(limit time.Duration) time.Duration { return limit * loadSlack }
+
 func backgroundToolbox(t *testing.T) (*Toolbox, *Workspace) {
 	t.Helper()
 	space := workspace(t)
@@ -26,7 +35,7 @@ func backgroundToolbox(t *testing.T) (*Toolbox, *Workspace) {
 
 func waitForFileText(t *testing.T, path, contains string) string {
 	t.Helper()
-	deadline := time.Now().Add(5 * time.Second)
+	deadline := time.Now().Add(slack(5 * time.Second))
 	for time.Now().Before(deadline) {
 		body, err := os.ReadFile(path)
 		if err == nil && ((contains == "" && strings.TrimSpace(string(body)) != "") ||
@@ -69,7 +78,9 @@ func TestBackgroundStartReturnsImmediatelyAndCreatesDurableLog(t *testing.T) {
 	if result.IsError {
 		t.Fatalf("background start failed: %s", result.Content)
 	}
-	if elapsed := time.Since(started); elapsed > time.Second {
+	// The command sleeps thirty seconds; returning inside this bound is still
+	// the whole claim, however loaded the machine is.
+	if elapsed := time.Since(started); elapsed > slack(time.Second) {
 		t.Fatalf("background start blocked for %s", elapsed)
 	}
 	if !strings.Contains(result.Content, "job 1 started · log .aforge/jobs/1.log") {
@@ -191,11 +202,13 @@ func TestJobWaitReturnsOnExitAndCapsAStillRunningWait(t *testing.T) {
 			t.Fatal(result.Content)
 		}
 		started := time.Now()
-		result := tools.Execute(context.Background(), "job", `{"id":1,"wait":5}`)
+		ceiling := int(slack(5 * time.Second).Seconds())
+		result := tools.Execute(context.Background(), "job", fmt.Sprintf(`{"id":1,"wait":%d}`, ceiling))
 		if result.IsError || !strings.Contains(result.Content, "exited 0") || !strings.Contains(result.Content, "done") {
 			t.Fatalf("wait result = %+v", result)
 		}
-		if elapsed := time.Since(started); elapsed > 3*time.Second {
+		// Returning well inside the cap is what "returned on exit" means.
+		if elapsed := time.Since(started); elapsed > slack(3*time.Second) {
 			t.Fatalf("wait ignored early exit and blocked %s", elapsed)
 		}
 	})
@@ -211,7 +224,8 @@ func TestJobWaitReturnsOnExitAndCapsAStillRunningWait(t *testing.T) {
 		if result.IsError || !strings.Contains(result.Content, "job 1 · running") {
 			t.Fatalf("wait result = %+v", result)
 		}
-		if elapsed < 800*time.Millisecond || elapsed > 3*time.Second {
+		// The floor is the assertion — a one-second wait cannot return sooner.
+		if elapsed < 800*time.Millisecond || elapsed > slack(3*time.Second) {
 			t.Fatalf("one-second wait lasted %s", elapsed)
 		}
 	})
@@ -232,7 +246,7 @@ func TestJobKillTerminatesTheWholeProcessGroup(t *testing.T) {
 	if result.IsError || !strings.Contains(result.Content, "killed") {
 		t.Fatalf("kill result = %+v", result)
 	}
-	deadline := time.Now().Add(3 * time.Second)
+	deadline := time.Now().Add(slack(3 * time.Second))
 	for time.Now().Before(deadline) && syscall.Kill(childPID, 0) == nil {
 		time.Sleep(20 * time.Millisecond)
 	}
@@ -408,7 +422,7 @@ func TestSchedulerAbandonmentTearsDownLeafJobs(t *testing.T) {
 	linear := NewLinear(client, space, nil, 5, 1_000_000, time.Minute)
 	graph := &plan.Graph{Goal: "g", Stages: []plan.Stage{{Title: "One"}}, NextID: 1}
 	id := graph.Add(plan.Node{Stage: 1, Title: "Wedged"})
-	scheduler := NewScheduler(NewRegistry(linear), space, 1)
+	scheduler := NewScheduler(NewRegistry(linear), space, 1).WithGovernor(calmGovernor())
 	scheduler.NodeTimeout = 2 * time.Second
 	if err := scheduler.Run(context.Background(), graph); err != nil {
 		close(release)

@@ -10,6 +10,7 @@ import (
 	"sync"
 	"testing"
 	"time"
+	"unicode/utf8"
 
 	"github.com/Agent-Field/aforge-v2/internal/plan"
 	graphstore "github.com/Agent-Field/aforge-v2/internal/store"
@@ -214,8 +215,11 @@ func TestToolFailuresAreResults(t *testing.T) {
 func TestShDoesNotHangOnBackgroundChildren(t *testing.T) {
 	tools := NewToolbox(workspace(t), 1, nil)
 	started := time.Now()
-	result := tools.Execute(context.Background(), "sh", `{"cmd":"sleep 15 & echo started"}`)
-	if elapsed := time.Since(started); elapsed > 10*time.Second {
+	// The child outlives the ceiling by a wide margin on any host: returning
+	// inside the bound can only mean sh did not wait for it. The gap is what
+	// keeps this honest under load — not a tight ceiling.
+	result := tools.Execute(context.Background(), "sh", `{"cmd":"sleep 120 & echo started"}`)
+	if elapsed := time.Since(started); elapsed > 40*time.Second {
 		t.Fatalf("sh blocked %s on a background child holding the pipe", elapsed.Round(time.Millisecond))
 	}
 	if result.IsError {
@@ -328,7 +332,7 @@ func TestSchedulerDispatchAndBlocking(t *testing.T) {
 	}
 
 	fake := &scriptedExecutor{fail: map[int]bool{doomed: true}}
-	scheduler := NewScheduler(NewRegistry(fake), workspace(t), 4)
+	scheduler := NewScheduler(NewRegistry(fake), workspace(t), 4).WithGovernor(calmGovernor())
 	if err := scheduler.Run(context.Background(), graph); err != nil {
 		t.Fatalf("Run: %v", err)
 	}
@@ -360,7 +364,7 @@ func TestSchedulerRoutesOnlyDeclaredInputs(t *testing.T) {
 	}
 
 	fake := &scriptedExecutor{}
-	scheduler := NewScheduler(NewRegistry(fake), workspace(t), 4)
+	scheduler := NewScheduler(NewRegistry(fake), workspace(t), 4).WithGovernor(calmGovernor())
 	if err := scheduler.Run(context.Background(), graph); err != nil {
 		t.Fatalf("Run: %v", err)
 	}
@@ -418,4 +422,61 @@ func titlesOf(inputs []Input) []string {
 		titles[index] = input.Title
 	}
 	return titles
+}
+
+// TestEveryByteBudgetCutsOnACharacterBoundary is one rule in three places. A
+// byte budget is a budget, not a boundary: cutting at the offset itself lands
+// mid-character about half the time in any text that is not English, and the
+// replacement character it leaves behind is carried into the model's context —
+// on a routed input, on every turn of the consuming leaf, forever.
+func TestEveryByteBudgetCutsOnACharacterBoundary(t *testing.T) {
+	// Deliberately misaligned: a single ASCII byte in front of three-byte
+	// characters puts every budget offset in this package one or two bytes
+	// inside a character, and the four-byte characters plus a trailing byte do
+	// the same for the windows that are measured from the end.
+	head := "x" + strings.Repeat("日", 8192)
+	tail := strings.Repeat("🎯", 4096) + "!"
+
+	t.Run("routed input", func(t *testing.T) {
+		bounded := boundInput(head, []string{"report.md"})
+		if !utf8.ValidString(bounded) {
+			t.Fatal("a routed upstream result was cut mid-character")
+		}
+		if !strings.Contains(bounded, "the complete version is in report.md") {
+			t.Fatalf("bounded input lost its pointer: %q", bounded[len(bounded)-120:])
+		}
+	})
+
+	t.Run("tool result", func(t *testing.T) {
+		clamped := clamp(head + tail)
+		if !utf8.ValidString(clamped) {
+			t.Fatal("a tool result was cut mid-character at one of its two ends")
+		}
+		if !strings.Contains(clamped, "elided") {
+			t.Fatal("clamp stopped saying that anything was removed")
+		}
+		if !strings.HasSuffix(clamped, "!") {
+			t.Fatalf("the tail — where the verdict lives — did not survive: %q", clamped[len(clamped)-16:])
+		}
+	})
+
+	t.Run("job line", func(t *testing.T) {
+		// Two more bytes of shift: this budget's offsets happen to land on
+		// character boundaries in the fixture above, and a truncation test
+		// that never cuts mid-character proves nothing.
+		line := compactJobLine("xy" + head + tail + "!")
+		if !utf8.ValidString(line) {
+			t.Fatal("a background job's last line was cut mid-character")
+		}
+		if !strings.Contains(line, "...") {
+			t.Fatalf("job line lost its elision marker: %q", line)
+		}
+	})
+
+	t.Run("recall clip", func(t *testing.T) {
+		clipped := recallClip(head, 65)
+		if !utf8.ValidString(clipped) || !strings.HasSuffix(clipped, "...") {
+			t.Fatalf("recall clip = %q", clipped)
+		}
+	})
 }

@@ -24,6 +24,7 @@ import (
 	"github.com/Agent-Field/aforge-v2/internal/config"
 	"github.com/Agent-Field/aforge-v2/internal/craft"
 	"github.com/Agent-Field/aforge-v2/internal/exec"
+	"github.com/Agent-Field/aforge-v2/internal/guard"
 	"github.com/Agent-Field/aforge-v2/internal/head"
 	"github.com/Agent-Field/aforge-v2/internal/lease"
 	"github.com/Agent-Field/aforge-v2/internal/plan"
@@ -447,26 +448,26 @@ func runChat(args []string) error {
 				// spliced work) has no plan surprises to record.
 				if cut := strings.LastIndex(node.ID, "-n"); cut >= 0 {
 					prefix := node.ID[:cut]
-					go func() {
+					guard.Go("chat/recalibrate", func() {
 						_, records := recordAndCalibrateDetailed(settings.Context(context.Background(), landed.Goal), planClient, settings, workingModel, landed)
 						recordPlanSurprises(graph, prefix, records)
-					}()
+					})
 				}
 			} else if planGraph == nil && node.Parent == store.RootID && outcome != nil {
 				if isReflex {
-					go func() {
+					guard.Go("chat/record-reflex", func() {
 						record, ok := recordReflex(settings, workerModel, node, outcome, false)
 						if ok {
 							recordProfileSurprise(graph, node.ID, record)
 						}
-					}()
+					})
 				} else {
-					go func() {
+					guard.Go("chat/record-single-leaf", func() {
 						record, ok := recordSingleLeaf(settings, workerModel, node, outcome)
 						if ok {
 							recordProfileSurprise(graph, node.ID, record)
 						}
-					}()
+					})
 				}
 			}
 			return resident.ExecResult{}, err
@@ -523,7 +524,8 @@ func runChat(args []string) error {
 					revision := task
 					revision.Inputs = append(append([]exec.Input{}, inputs...), exec.Input{
 						Result: "A reviewer compared the previous attempt against the original request and found gaps that must be closed:\n" + gate.Gaps +
-							"\n\nThe previous attempt (build on it, fix the gaps, do not start over):\n" + text,
+							"\n\nThe previous attempt (build on it, fix the gaps, do not start over):\n" + text +
+							"\n\n" + gateRevisionContract,
 					})
 					retryCtx := provider.WithCallShape(settings.ExecContext(ctx), provider.ClassExecLeaf, 1, shape)
 					polished, polishErr := runLeafWithWatchdog(retryCtx, linear, revision, deadline+2*time.Minute)
@@ -588,7 +590,7 @@ func runChat(args []string) error {
 			// planned subtree and must not slice blind.
 			if cut := strings.LastIndex(node.ID, "-n"); cut >= 0 {
 				prefix := node.ID[:cut]
-				go func() {
+				guard.Go("chat/recalibrate", func() {
 					report, records := recordAndCalibrateDetailed(settings.Context(context.Background(), landed.Goal), planClient, settings, workingModel, landed)
 					recordPlanSurprises(graph, prefix, records)
 					if strings.TrimSpace(report) == "" {
@@ -600,23 +602,23 @@ func runChat(args []string) error {
 						NodeID:    node.ID,
 						Body:      report,
 					})
-				}()
+				})
 			}
 		} else if planGraph == nil && node.Parent == store.RootID {
 			if isReflex {
-				go func() {
+				guard.Go("chat/record-reflex", func() {
 					record, ok := recordReflex(settings, workerModel, node, outcome, promoted)
 					if ok {
 						recordProfileSurprise(graph, node.ID, record)
 					}
-				}()
+				})
 			} else {
-				go func() {
+				guard.Go("chat/record-single-leaf", func() {
 					record, ok := recordSingleLeaf(settings, workerModel, node, outcome)
 					if ok {
 						recordProfileSurprise(graph, node.ID, record)
 					}
-				}()
+				})
 			}
 		}
 		return resident.ExecResult{
@@ -642,6 +644,9 @@ func runChat(args []string) error {
 	// head's whole token cap deliberating and returns empty text — measured as
 	// 600/600 completion tokens of thought and zero answer on the default model.
 	go func() {
+		// Registered first so it absorbs last: the channel close and the wait
+		// group both settle on the unwind before the fault is recorded.
+		defer guard.Recover("chat/head")
 		defer background.Done()
 		defer close(streamEvents)
 		headContext := provider.WithStreamObserver(settings.Context(ctx, "head"), func(event provider.StreamEvent) {
@@ -674,8 +679,8 @@ func runChat(args []string) error {
 			WithDailyBudgetUSD(settings.DailyBudgetUSD).
 			Serve(headContext)
 	}()
-	go func() { defer background.Done(); _ = reconciler.Serve(ctx) }()
-	go func() { defer background.Done(); _ = runner.Serve(ctx) }()
+	go func() { defer guard.Recover("chat/reconciler"); defer background.Done(); _ = reconciler.Serve(ctx) }()
+	go func() { defer guard.Recover("chat/runner"); defer background.Done(); _ = runner.Serve(ctx) }()
 
 	commander = &chatCommander{
 		settings:      settings,
@@ -716,6 +721,7 @@ func runChat(args []string) error {
 	if deliverBrief != nil {
 		background.Add(1)
 		go func() {
+			defer guard.Recover("chat/arrival-brief")
 			defer background.Done()
 			if err := deliverBrief(ctx); err != nil {
 				log.Printf("note: could not deliver the arrival brief: %v", err)
@@ -1041,13 +1047,9 @@ func (c *chatCommander) CatalogFor(role string) []tui.ModelChoice {
 	if role == "talk" || role == "work" || role == "plan" || role == "boost" {
 		return c.Catalog()
 	}
-	c.slotCatalogMu.Lock()
-	if choices, ok := c.slotCatalog[role]; ok {
-		result := append([]tui.ModelChoice(nil), choices...)
-		c.slotCatalogMu.Unlock()
-		return result
+	if cached, ok := c.cachedSlotCatalog(role); ok {
+		return cached
 	}
-	c.slotCatalogMu.Unlock()
 
 	choices := make([]tui.ModelChoice, 0)
 	for _, model := range config.ModelCandidates(c.models, role) {
@@ -1061,13 +1063,29 @@ func (c *chatCommander) CatalogFor(role string) []tui.ModelChoice {
 			choices = []tui.ModelChoice{{Slug: current}}
 		}
 	}
+	c.cacheSlotCatalog(role, choices)
+	return choices
+}
+
+// cachedSlotCatalog hands back a copy, never the stored slice: the picker is
+// free to sort what it is given.
+func (c *chatCommander) cachedSlotCatalog(role string) ([]tui.ModelChoice, bool) {
 	c.slotCatalogMu.Lock()
+	defer c.slotCatalogMu.Unlock()
+	choices, ok := c.slotCatalog[role]
+	if !ok {
+		return nil, false
+	}
+	return append([]tui.ModelChoice(nil), choices...), true
+}
+
+func (c *chatCommander) cacheSlotCatalog(role string, choices []tui.ModelChoice) {
+	c.slotCatalogMu.Lock()
+	defer c.slotCatalogMu.Unlock()
 	if c.slotCatalog == nil {
 		c.slotCatalog = make(map[string][]tui.ModelChoice)
 	}
 	c.slotCatalog[role] = append([]tui.ModelChoice(nil), choices...)
-	c.slotCatalogMu.Unlock()
-	return choices
 }
 
 func (c *chatCommander) CurrentModel(role string) string {
@@ -1087,10 +1105,7 @@ func (c *chatCommander) CurrentModel(role string) string {
 		defer c.mu.Unlock()
 		return c.prefs.PlanModel
 	case "boost":
-		c.mu.Lock()
-		boost := strings.TrimSpace(c.prefs.BoostModel)
-		c.mu.Unlock()
-		if boost != "" {
+		if boost := c.boostPreference(); boost != "" {
 			return boost
 		}
 		if c.taskClient != nil {
@@ -1124,6 +1139,14 @@ func (c *chatCommander) CurrentModel(role string) string {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	return c.prefs.ChatModel
+}
+
+// boostPreference is the boost slot's own critical section: empty means the
+// user never chose one and the work model stands in.
+func (c *chatCommander) boostPreference() string {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return strings.TrimSpace(c.prefs.BoostModel)
 }
 
 func (c *chatCommander) ImageInputSupport() (string, bool) {
@@ -1249,11 +1272,24 @@ func (c *chatCommander) SaveSplitPct(pct int) {
 	_ = saveChatPrefs(c.prefsDir, c.prefs)
 }
 
+// session and setSession are the whole of the session id's critical section.
+// Everything downstream — attaching, posting, cancelling — happens outside the
+// lock, because those are store calls and a store call must never hold it.
+func (c *chatCommander) session() string {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.sessionID
+}
+
+func (c *chatCommander) setSession(sessionID string) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.sessionID = sessionID
+}
+
 func (c *chatCommander) NewSession() (string, error) {
 	sessionID := newSessionID()
-	c.mu.Lock()
-	c.sessionID = sessionID
-	c.mu.Unlock()
+	c.setSession(sessionID)
 	if c.attachSession != nil {
 		if err := c.attachSession(sessionID); err != nil {
 			return "", err
@@ -1268,11 +1304,8 @@ func (c *chatCommander) NewSession() (string, error) {
 }
 
 func (c *chatCommander) Cancel(nodeID string) error {
-	c.mu.Lock()
-	sessionID := c.sessionID
-	c.mu.Unlock()
 	_, err := c.store.RequestCommand(store.Command{
-		SessionID:   sessionID,
+		SessionID:   c.session(),
 		Kind:        store.CommandCancel,
 		Target:      nodeID,
 		Instruction: "cancelled from the TUI",
@@ -1452,11 +1485,8 @@ func (c *chatCommander) RetractNotebook(seq int64) error {
 	if err := c.store.QuarantineFact(seq, 0, store.FactOriginUser); err != nil {
 		return err
 	}
-	c.mu.Lock()
-	sessionID := c.sessionID
-	c.mu.Unlock()
 	_, err = c.store.PostMessage(store.Message{
-		SessionID: sessionID,
+		SessionID: c.session(),
 		Role:      store.RoleSystem,
 		Body:      "· let go — " + firstLine(fact.Body),
 	})
@@ -1618,9 +1648,7 @@ func newLiveClient(settings config.Config, model string) (*liveClient, error) {
 }
 
 func (l *liveClient) CompleteWithMessages(ctx context.Context, messages []ai.Message, options ...ai.Option) (*ai.Response, error) {
-	l.mu.RLock()
-	client := l.client
-	l.mu.RUnlock()
+	_, client := l.Snapshot()
 	return client.CompleteWithMessages(ctx, messages, options...)
 }
 
@@ -1665,20 +1693,25 @@ func (l *liveClient) SetModel(model string) error {
 	if err != nil {
 		return err
 	}
+	closeReplaced(l.swap(model, client))
+	return nil
+}
+
+// swap installs the new pair and returns the client it displaced, which the
+// caller closes outside the lock — a client's Close flushes a ledger, and no
+// model read should wait behind that.
+func (l *liveClient) swap(model string, client router.Client) router.Client {
 	l.mu.Lock()
+	defer l.mu.Unlock()
 	previous := l.client
 	l.model, l.client = model, client
-	l.mu.Unlock()
-	closeReplaced(previous)
-	return nil
+	return previous
 }
 
 // Close releases the underlying router client so its ledger flushes and its
 // events handle is returned before the process exits.
 func (l *liveClient) Close() {
-	l.mu.RLock()
-	client := l.client
-	l.mu.RUnlock()
+	_, client := l.Snapshot()
 	closeReplaced(client)
 }
 
@@ -1707,7 +1740,7 @@ func closeReplaced(client router.Client) {
 
 func waitWithGrace(group *sync.WaitGroup, grace time.Duration) {
 	done := make(chan struct{})
-	go func() { group.Wait(); close(done) }()
+	guard.Go("chat/background-wait", func() { group.Wait(); close(done) })
 	select {
 	case <-done:
 	case <-time.After(grace):
@@ -1845,6 +1878,15 @@ func (j *jobPlans) put(prefix string, graph *plan.Graph, root, model string, cli
 	j.graphs[prefix] = plannedJob{graph: graph, root: root, model: model, client: client}
 }
 
+// get reads one retained job without holding the registry across whatever the
+// caller decides to do with it.
+func (j *jobPlans) get(prefix string) (plannedJob, bool) {
+	j.mu.Lock()
+	defer j.mu.Unlock()
+	entry, ok := j.graphs[prefix]
+	return entry, ok
+}
+
 // lookup resolves a store node id back to its plan node. The job root uses the
 // bare prefix so planning messages can name it before admission; other nodes
 // retain "<prefix>-n<planID>".
@@ -1940,9 +1982,7 @@ func (j *jobPlans) reviseAfter(ctx context.Context, settings config.Config, clie
 		return
 	}
 	prefix := node.ID[:cut]
-	j.mu.Lock()
-	entry, ok := j.graphs[prefix]
-	j.mu.Unlock()
+	entry, ok := j.get(prefix)
 	if !ok || entry.root == node.ID {
 		return
 	}
@@ -2060,6 +2100,17 @@ func nodeDisplay(node store.Node) string {
 // fail must name the specific element of the request that is absent. The
 // failure mode being prevented is the gate that always finds something —
 // polish loops that spend the user's money on taste.
+//
+// The middle paragraph was added after a live failure the gate waved through. A
+// worker asked to judge an architecture plan wrote its judgement into a file and
+// ended with "the deliverable is written and verified against the actual repo
+// source" — true, complete, and containing no verdict. That text became the
+// node's summary, and the summary is the single source every later surface
+// reads, so the answer existed nowhere the user or the head could reach it. The
+// paragraph is stated as a value rather than a list of giveaway phrases,
+// because the next way to describe work instead of doing it is always a phrasing
+// nobody wrote down: the question is whether the substance is present, not
+// whether some sentence pattern is.
 const judgeDeliverablePrompt = `You are the final gate before a finished piece of work is handed to the person who asked for it. You receive their verbatim request, the compiled goal, and the deliverable as produced.
 
 Judge exactly one question: would the person who asked accept this as done? Default to PASS. The gate exists for real gaps, not polish — wording, style, and things they never asked for are not gaps.
@@ -2067,6 +2118,8 @@ Judge exactly one question: would the person who asked accept this as done? Defa
 FAIL only when you can name a specific element of the request that is absent, unanswered, or unsupported by evidence the goal promised. Quote or name the missing element concretely enough that a worker could close the gap from your words alone.
 
 Working decisions declared in the goal are part of what was promised. A commitment about method or evidence — what would be run, checked or reviewed before the work was handed over — is a gap when nothing in the deliverable shows it happened.
+
+One absence counts exactly like every other and is the one most easily waved through: the substance itself. What you are handed IS the deliverable — it is the whole of what the person will read, and nothing beside it will be opened for them. So text that reports on the work rather than carrying it — that the work is finished, that a file now holds the answer, that the analysis was checked and is consistent — has described the deliverable in place of being it, and the element of the request that is absent is the answer: the verdict that was asked for, the findings, the numbers, the recommendation. Name that as the gap. A pointer to where the answer lives is not the answer however true the pointer is; naming the file is right beside the substance and never instead of it. This is still one absence and not a second style test: text that gives the answer in its own plain words passes whatever shape it takes.
 
 Return exactly one JSON object, nothing else: {"pass": true} or {"pass": false, "gaps": "<the named gaps>"}`
 
@@ -2079,6 +2132,16 @@ var judgeDeliverableSchema = json.RawMessage(`{
   "required": ["pass"],
   "additionalProperties": false
 }`)
+
+// gateRevisionContract closes every revision, not only the ones whose named gap
+// was a missing answer. The revision's own final message replaces the first
+// attempt as the node's summary, and a second pass that closes a real gap inside
+// a file and then reports that it did so has moved the original failure one
+// round along rather than fixing it. The worker was told this once already in
+// its own contract; a revision is the moment it demonstrably was not heard.
+const gateRevisionContract = "Your final message is the deliverable and the only thing the person will read. " +
+	"Put the substance in it — the verdict, the findings, the numbers they asked for — " +
+	"and name the files beside that substance, never in place of it."
 
 type deliverableJudgment struct {
 	Pass    bool
@@ -2093,17 +2156,26 @@ const gateNotebookBytes = 1 << 10
 // nor manufactures verified evidence for the profile.
 func judgeDeliverable(ctx context.Context, settings config.Config, client *liveClient, graph *store.Store, node store.Node, deliverable, workerModel string) deliverableJudgment {
 	ask := node.Provenance.Intent
-	body := "Verbatim request:\n" + ask + "\n\nCompiled goal:\n" + node.Brief + "\n\nDeliverable as produced:\n" + deliverable
-	// Settled taste leads the notebook block. A rule the user corrected their
-	// way to three times is not one lesson among eight — it is the shape of an
-	// acceptable answer, so it is read before anything else and cannot be
-	// crowded out by the digest's byte budget.
+	// The standing half of the gate comes first and the job in front of it last,
+	// which is both the reading order and the billing order. Settled taste is
+	// the same text for every job in a session, so leading with it makes it the
+	// one block the endpoint can hand back warm; the digest is retrieved per
+	// node but identical across a node's repair passes, so it extends that warm
+	// stretch through a revision. The request, the goal and the deliverable move
+	// with every call and can invalidate nothing but themselves down here.
+	//
+	// Settled taste still leads the notebook material for the older reason: a
+	// rule the user corrected their way to three times is not one lesson among
+	// eight — it is the shape of an acceptable answer, and cannot be crowded out
+	// by the digest's byte budget.
+	var body string
 	if taste := resident.TasteBlock(graph); taste != "" {
-		body += "\n\nSettled taste — hold to these:\n" + taste
+		body += "Settled taste — hold to these:\n" + taste + "\n\n"
 	}
 	if digest := resident.NotebookDigest(graph, node.ID, node.Brief, ask, 8); digest != "" {
-		body += "\n\nStanding preferences and relevant lessons:\n" + clipUTF8Bytes(digest, gateNotebookBytes)
+		body += "Standing preferences and relevant lessons:\n" + clipUTF8Bytes(digest, gateNotebookBytes) + "\n\n"
 	}
+	body += "Verbatim request:\n" + ask + "\n\nCompiled goal:\n" + node.Brief + "\n\nDeliverable as produced:\n" + deliverable
 	judgeCtx := settings.Context(router.WithAvoidModel(ctx, workerModel), "gate")
 	judgeCtx = provider.WithCall(judgeCtx, provider.ClassPlanAudit)
 	options := []ai.Option{ai.WithMaxTokens(400)}
@@ -2159,7 +2231,7 @@ func runLeafWithWatchdog(ctx context.Context, linear *exec.Linear, task exec.Tas
 	go func() {
 		defer func() {
 			if recovered := recover(); recovered != nil {
-				done <- landing{nil, fmt.Errorf("executor panicked: %v", recovered)}
+				done <- landing{nil, guard.Note("chat/leaf executor", recovered)}
 			}
 		}()
 		outcome, err := linear.Run(ctx, task)
@@ -2291,7 +2363,11 @@ func planSubtree(settings config.Config, planClient, workClient *liveClient, pla
 		}
 		// Per-leaf working contracts, exactly as a headless run writes them
 		// before dispatch. A contract failure costs specificity, not the job.
-		if _, err := plan.Contracts(ctx, structuring, graph, resident.ContractPlaybook(history), progress); err != nil {
+		// The same run context the spine and briefs were built with: the contract
+		// pass is the widest fan-out in the lineage, and without the run's cache
+		// key its N concurrent calls scatter across providers and each writes the
+		// shared prefix cold. It also carries the operator's reasoning setting.
+		if _, err := plan.Contracts(settings.Context(ctx, compiled.Goal), structuring, graph, resident.ContractPlaybook(history), progress); err != nil {
 			log.Printf("note: could not write contracts: %v", err)
 		}
 		subtree, err := resident.SubtreeFromPlan(graph, prefix)
@@ -2341,7 +2417,7 @@ func replanRemainder(settings config.Config, planClient, workClient *liveClient,
 				Stage: 1,
 			}}}, nil
 		}
-		if _, err := plan.Contracts(ctx, structuring, graph, resident.ContractPlaybook(history), progress); err != nil {
+		if _, err := plan.Contracts(settings.Context(ctx, goal), structuring, graph, resident.ContractPlaybook(history), progress); err != nil {
 			log.Printf("note: could not write repair contracts: %v", err)
 		}
 		subtree, err := resident.SubtreeFromPlan(graph, prefix)
@@ -2369,7 +2445,19 @@ const narratorSystemPrompt = `You are aforge, giving the user one casual progres
 func narrateProgress(settings config.Config, client *liveClient, graph *store.Store) resident.NarrateFunc {
 	return func(ctx context.Context, narration resident.Narration) (string, error) {
 		var input strings.Builder
+		// The job and the updates already spoken are the only append-only parts
+		// of a narration: across the heartbeats of one job the goal never moves
+		// and each new update is added to the end of a list whose earlier lines
+		// are fixed. They lead, so successive narrations of the same job share
+		// everything up to the new update. What is running and what just
+		// finished are rewritten every time by definition, and sit below.
 		fmt.Fprintf(&input, "The job: %s\n", narration.Goal)
+		if len(narration.Previous) > 0 {
+			input.WriteString("\nYour earlier updates (do not repeat):\n")
+			for _, line := range narration.Previous {
+				input.WriteString("- " + line + "\n")
+			}
+		}
 		if len(narration.Finished) > 0 {
 			input.WriteString("\nJust finished:\n")
 			for _, item := range narration.Finished {
@@ -2384,12 +2472,6 @@ func narrateProgress(settings config.Config, client *liveClient, graph *store.St
 		}
 		if narration.Queued > 0 {
 			fmt.Fprintf(&input, "\nQueued behind them: %d parts\n", narration.Queued)
-		}
-		if len(narration.Previous) > 0 {
-			input.WriteString("\nYour earlier updates (do not repeat):\n")
-			for _, line := range narration.Previous {
-				input.WriteString("- " + line + "\n")
-			}
 		}
 		response, err := client.CompleteWithMessages(settings.Context(ctx, "narrate"), []ai.Message{
 			{Role: "system", Content: []ai.ContentPart{{Type: "text", Text: resident.VoicePrompt(graph, narratorSystemPrompt, narration.Goal)}}},

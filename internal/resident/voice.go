@@ -1,6 +1,7 @@
 package resident
 
 import (
+	"sort"
 	"strings"
 	"unicode"
 	"unicode/utf8"
@@ -52,14 +53,24 @@ func VoiceSection(graph *store.Store, contextCues ...string) string {
 		return ""
 	}
 
-	preferences := make([]string, 0, len(facts))
+	matched := make([]store.Fact, 0, len(facts))
 	for _, fact := range facts {
 		if fact.Scope == "user" && isVoicePreference(fact.Body) {
-			preferences = append(preferences, strings.TrimSpace(fact.Body))
+			matched = append(matched, fact)
 		}
 	}
-	if len(preferences) == 0 {
+	if len(matched) == 0 {
 		return ""
+	}
+	// Retrieval order is relevance order, which reshuffles the whole list when
+	// the corpus shifts and rewrites this section for no gain. Oldest first is
+	// the only order under which a newly learned preference APPENDS: the lines
+	// above it keep their bytes, and a prompt that opens with this section keeps
+	// its cached prefix instead of paying for the whole thing again.
+	sort.SliceStable(matched, func(i, j int) bool { return matched[i].Seq < matched[j].Seq })
+	preferences := make([]string, 0, len(matched))
+	for _, fact := range matched {
+		preferences = append(preferences, strings.TrimSpace(fact.Body))
 	}
 
 	var section strings.Builder

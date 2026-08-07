@@ -99,9 +99,13 @@ func TestGreetingProducesTodaysContextExactly(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := "Live graph snapshot:\n" + renderGraph(snapshot) +
+	// The order is stable-first: thread, then the snapshot and the notebook that
+	// move with every message, then the message. It changed once, deliberately,
+	// when the router was reshaped for prefix caching; the blocks and their
+	// bytes did not.
+	want := "Recent thread before this message:\n(no earlier messages in this session)" +
+		"\n\nLive graph snapshot:\n" + renderGraph(snapshot) +
 		"\n\nNotebook (durable memory across jobs and conversations):\n" + renderNotebook(graph, greeting) +
-		"\n\nRecent thread before this message:\n(no earlier messages in this session)" +
 		"\n\nCurrent user message (verbatim):\n" + greeting
 	if prompt != want {
 		t.Fatalf("greeting context drifted from today's:\ngot:\n%s\n\nwant:\n%s", prompt, want)
@@ -225,5 +229,101 @@ func TestResultToolReadsTheWholeFindingAndRecordsNothing(t *testing.T) {
 	}
 	if _, failed := run.result(map[string]any{"id": store.RootID}); !failed {
 		t.Fatal("the spine answered a result read")
+	}
+}
+
+// TestFilesLineNamesWhatTheResultDoesNot pins the order of cap and filter. The
+// files line exists for the paths the rendered result does not already show, so
+// capping the collected set before dropping the visible ones spends the cap on
+// exactly the paths that needed no second mention — and a job whose first six
+// paths are all quoted in its result prints no files line at all, losing the
+// seventh, which was the only one worth printing.
+func TestFilesLineNamesWhatTheResultDoesNot(t *testing.T) {
+	visible := make([]string, 0, deepFileCap)
+	for index := 0; index < deepFileCap; index++ {
+		visible = append(visible, fmt.Sprintf("/tmp/aforge/seen/%02d.md", index))
+	}
+	hidden := "/tmp/aforge/cut/late.md"
+	node := store.Node{
+		ID:      "wide",
+		Summary: strings.Join(visible, "\n") + "\n" + hidden,
+	}
+	body := strings.Join(visible, "\n")
+
+	files := unnamedFiles(node, body)
+	if len(files) != 1 || files[0] != hidden {
+		t.Fatalf("files line = %v, want only the path the result never shows (%s)", files, hidden)
+	}
+	if len(unnamedFiles(node, "")) != deepFileCap {
+		t.Errorf("with nothing visible the line holds %d paths, want the %d cap",
+			len(unnamedFiles(node, "")), deepFileCap)
+	}
+}
+
+// TestDedupProbeMeasuresBeforeItTrims pins the order of floor and trim. The
+// floor asks whether the result's first line is substantial enough to match on;
+// measuring it after the truncation ellipsis has been trimmed off let a line
+// just over the floor fall under it and decline a dedup that was real, sending
+// the same paragraph into the prompt twice.
+func TestDedupProbeMeasuresBeforeItTrims(t *testing.T) {
+	// One byte over the floor, ending in the ellipsis the trim removes.
+	result := strings.Repeat("a", deepDedupFloorBytes-len("…")+1) + "…"
+	if len(result) <= deepDedupFloorBytes {
+		t.Fatalf("probe fixture is %d bytes, must sit above the %d floor", len(result), deepDedupFloorBytes)
+	}
+	if !deepAlreadyInThread("agent: "+result, result) {
+		t.Error("a first line above the floor was refused a dedup because the trim shortened it")
+	}
+	short := strings.Repeat("b", deepDedupFloorBytes-1)
+	if deepAlreadyInThread("agent: "+short, short) {
+		t.Error("a first line under the floor deduped on too little evidence")
+	}
+}
+
+// TestTruncationMarkersFitTheirBudget counts the marker against the ceiling it
+// announces. Written after the check rather than reserved before it, it put the
+// block over the very budget the check exists to hold.
+func TestTruncationMarkersFitTheirBudget(t *testing.T) {
+	// Uniform 64-byte lines tile the 4KB budget exactly, so the last line that
+	// fits leaves no slack at all and the marker has to have been reserved.
+	const line = 64
+	body := strings.Repeat("m", line-len("user: \n"))
+	messages := make([]store.Message, 0, 2*maxThreadContextBytes/line)
+	for index := 0; index < cap(messages); index++ {
+		messages = append(messages, store.Message{Role: store.RoleUser, Body: body})
+	}
+	thread := renderThread(messages)
+	if !strings.Contains(thread, strings.TrimSpace(threadTruncatedMark)) {
+		t.Fatalf("the thread never truncated, so the marker is untested:\n%s", thread)
+	}
+	if len(thread) > maxThreadContextBytes {
+		t.Errorf("thread = %d bytes with its marker, over the %d budget", len(thread), maxThreadContextBytes)
+	}
+
+	// The board's rows are the store's to shape, so the budget is checked across
+	// a spread of row widths: whatever the last row that fits leaves behind, the
+	// marker has to fit inside it.
+	for width := 56; width <= 72; width++ {
+		graph := openHeadStore(t)
+		prefix := len("- board-00 | " + string(store.Pending) + " | \n")
+		if width <= prefix {
+			t.Fatalf("row width %d leaves no room for a brief", width)
+		}
+		brief := strings.Repeat("b", width-prefix)
+		for index := 0; index < 2*maxGraphContextBytes/width; index++ {
+			spliceSurgeryJob(t, graph, fmt.Sprintf("board-%02d", index), "", brief)
+		}
+		snapshot, err := graph.ActiveSnapshot()
+		if err != nil {
+			t.Fatal(err)
+		}
+		board := renderGraph(snapshot)
+		if !strings.Contains(board, strings.TrimSpace(snapshotTruncatedMark)) {
+			t.Fatalf("width %d: the board never truncated, so the marker is untested", width)
+		}
+		if len(board) > maxGraphContextBytes {
+			t.Errorf("width %d: board = %d bytes with its marker, over the %d budget",
+				width, len(board), maxGraphContextBytes)
+		}
 	}
 }

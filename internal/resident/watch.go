@@ -157,7 +157,13 @@ func (r *Reconciler) watchOnceLocked(ctx context.Context) (WatchPass, error) {
 func (r *Reconciler) watchOccurred(charter store.Charter, now time.Time, state *store.CharterWatchState) (bool, string, error) {
 	switch charter.Watch.Kind {
 	case store.WatchCron:
-		return true, "scheduled occurrence at " + charter.NextDue.Format(time.RFC3339), nil
+		// The hour, not the second. A cron wake is judged on whether the moment
+		// arrived, and the exact second could not be read for anything and could
+		// not be reused for anything. The sentence says "in the hour beginning"
+		// rather than "at" because a coarser number must not become a wrong one:
+		// a five-minute cron now repeats the same true line twelve times instead
+		// of writing twelve strings nothing can share.
+		return true, "scheduled occurrence in the hour beginning " + charter.NextDue.Truncate(time.Hour).Format(time.RFC3339), nil
 	case store.WatchPoll:
 		return true, charter.Watch.Poll.Condition, nil
 	case store.WatchFile:
@@ -196,8 +202,14 @@ func fileWatchFingerprint(pattern string) (string, string, error) {
 			}
 			return "", "", err
 		}
+		// The fingerprint keeps nanoseconds — it is the change detector and must
+		// notice a write a millisecond apart. The evidence line does not: it is
+		// read by a model asked whether the condition occurred, never how many
+		// nanoseconds ago, and a nanosecond stamp is a string no two checks can
+		// ever share. Rounded to the minute it says the same true thing and says
+		// it in the same bytes.
 		fmt.Fprintf(hash, "%s\x00%d\x00%d\n", path, info.ModTime().UnixNano(), info.Size())
-		changed = append(changed, fmt.Sprintf("%s mtime %s", path, info.ModTime().Format(time.RFC3339Nano)))
+		changed = append(changed, fmt.Sprintf("%s mtime %s", path, info.ModTime().Truncate(time.Minute).Format(time.RFC3339)))
 	}
 	if len(matches) == 0 {
 		hash.Write([]byte("missing\n"))
