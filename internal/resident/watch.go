@@ -23,6 +23,18 @@ type SentinelPrompt struct {
 	SentinelHint string
 	Watch        store.WatchSpec
 	Evidence     string
+	// Previous is what this sentinel decided at its last few wakes and what
+	// became of each decision, newest first. For a poll charter the evidence is
+	// the constant condition string, so without this the call is byte-identical
+	// every wake — a firing the user has already declined is judged the same
+	// way again an hour later, and again, forever.
+	Previous []string
+	// Voice is the learned speech contract, assembled here rather than at the
+	// surface because the notebook belongs to the resident. The sentinel's line
+	// is read by the user, so it is subject to the same learned preferences as
+	// anything else that speaks; an empty notebook leaves it empty and the
+	// prompt byte-identical.
+	Voice string
 }
 
 // SentinelVerdict is deliberately tiny: yes/no plus the one-line reason the
@@ -275,10 +287,58 @@ func (r *Reconciler) graphWatchOccurred(charter store.Charter, now time.Time, st
 	return false, "", nil
 }
 
+// sentinelMemory is how many past judgments a sentinel is shown, and
+// sentinelMemoryBytes is what the whole block may cost. Both are small on
+// purpose: this is the cheapest call in the system and the point of showing it
+// its own history is to stop a loop, not to hand it a transcript.
+const (
+	sentinelMemory      = 4
+	sentinelMemoryBytes = 512
+)
+
+// previousJudgments renders what this sentinel last decided, newest first. A
+// read failure yields nothing rather than failing the wake: the memory makes
+// the judgment better, and no judgment at all is worse than a forgetful one.
+func (r *Reconciler) previousJudgments(charterID string) []string {
+	if r.store == nil {
+		return nil
+	}
+	judgments, err := r.store.RecentSentinelJudgments(charterID, sentinelMemory)
+	if err != nil || len(judgments) == 0 {
+		return nil
+	}
+	lines := make([]string, 0, len(judgments))
+	remaining := sentinelMemoryBytes
+	for _, judgment := range judgments {
+		answer := "no"
+		if judgment.Yes {
+			answer = "yes"
+		}
+		line := answer
+		if reason := strings.TrimSpace(judgment.Line); reason != "" {
+			line += " — " + reason
+		}
+		if judgment.Error != "" {
+			line += " (the judgment itself failed: " + judgment.Error + ")"
+		}
+		if judgment.Outcome != "" {
+			line += "; " + judgment.Outcome
+		}
+		if len(line) > remaining {
+			break
+		}
+		remaining -= len(line)
+		lines = append(lines, line)
+	}
+	return lines
+}
+
 func (r *Reconciler) checkCharterSentinel(ctx context.Context, charter store.Charter, evidence string, pass *WatchPass) {
 	verdict, err := r.sentinel(ctx, SentinelPrompt{
 		CharterID: charter.ID, Invariant: charter.Invariant, SentinelHint: charter.SentinelHint,
 		Watch: charter.Watch, Evidence: evidence,
+		Previous: r.previousJudgments(charter.ID),
+		Voice:    VoiceSection(r.store, charter.Invariant, charter.SentinelHint),
 	})
 	check := store.SentinelCheck{WakeSeq: charter.WakeSeq, Yes: verdict.Yes, Line: verdict.Line}
 	if err != nil {

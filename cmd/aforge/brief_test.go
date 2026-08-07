@@ -60,7 +60,7 @@ func TestMorningBriefUsesOnePanelRoutedCompletion(t *testing.T) {
 
 	settings := config.Config{Model: "small/brief", Reasoning: provider.EffortOff}
 	client := &liveClient{settings: settings, model: "small/brief", client: panel}
-	draft, err := composeMorningBrief(settings, client)(context.Background(), resident.BriefActivity{
+	draft, err := composeMorningBrief(settings, client, nil)(context.Background(), resident.BriefActivity{
 		Events: []resident.BriefEvent{{
 			Seq: 7, Kind: store.BriefDone, Text: "Release report landed.", Ref: "report",
 		}},

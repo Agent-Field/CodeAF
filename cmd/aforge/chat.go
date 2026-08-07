@@ -231,7 +231,7 @@ func runChat(args []string) error {
 			})
 		}).
 		WithNarrator(narrateProgress(settings, chatClient, graph)).
-		WithBriefComposer(composeMorningBrief(settings, chatClient)).
+		WithBriefComposer(composeMorningBrief(settings, chatClient, graph)).
 		// Redirection is a chat-surface concern — a wake pass has no user
 		// whose words could revise a running job.
 		WithRedirector(func(ctx context.Context, job store.Node, message string,
@@ -2912,7 +2912,7 @@ Begin with the exact job count. State what the series learned, then where its du
 // digestTerritory is the territory mechanism's only model call. Membership
 // and the display noun have already been chosen deterministically.
 func digestTerritory(settings config.Config, client *liveClient) resident.TerritoryDigestFunc {
-	return func(ctx context.Context, title string, jobs []resident.TerritoryDigestJob) (string, error) {
+	return func(ctx context.Context, title string, jobs []resident.TerritoryDigestJob, voice string) (string, error) {
 		var input strings.Builder
 		fmt.Fprintf(&input, "Territory: %s\nJobs: %d\n", title, len(jobs))
 		for _, job := range jobs {
@@ -2923,7 +2923,7 @@ func digestTerritory(settings config.Config, client *liveClient) resident.Territ
 			}
 		}
 		response, err := client.CompleteWithMessages(settings.Context(ctx, "reflect"), []ai.Message{
-			{Role: "system", Content: []ai.ContentPart{{Type: "text", Text: territoryDigestSystemPrompt}}},
+			{Role: "system", Content: []ai.ContentPart{{Type: "text", Text: territoryDigestSystemPrompt + voice}}},
 			{Role: "user", Content: []ai.ContentPart{{Type: "text", Text: input.String()}}},
 		}, ai.WithMaxTokens(300))
 		if err != nil || response == nil {
@@ -2966,7 +2966,7 @@ var morningBriefSchema = json.RawMessage(`{
 // surfaces never see this client; they only attach and render the message the
 // resident journals. The panel may verify the JSON schema exactly as it does
 // for other bounded planning verdicts.
-func composeMorningBrief(settings config.Config, client *liveClient) resident.BriefComposeFunc {
+func composeMorningBrief(settings config.Config, client *liveClient, graph *store.Store) resident.BriefComposeFunc {
 	return func(ctx context.Context, activity resident.BriefActivity) (resident.BriefDraft, error) {
 		input, err := json.Marshal(activity)
 		if err != nil {
@@ -2977,8 +2977,13 @@ func composeMorningBrief(settings config.Config, client *liveClient) resident.Br
 		if client.routed() {
 			options = append(options, ai.WithSchema(morningBriefSchema))
 		}
+		// The first thing a person reads after being away is not the place to
+		// disobey what they taught the assistant yesterday. "Stop opening with a
+		// preamble" was learned, obeyed in ordinary replies, and then broken by
+		// the one message they were guaranteed to read.
 		response, err := client.CompleteWithMessages(briefCtx, []ai.Message{
-			{Role: "system", Content: []ai.ContentPart{{Type: "text", Text: morningBriefSystemPrompt}}},
+			{Role: "system", Content: []ai.ContentPart{{Type: "text",
+				Text: resident.VoicePrompt(graph, morningBriefSystemPrompt)}}},
 			{Role: "user", Content: []ai.ContentPart{{Type: "text", Text: string(input)}}},
 		}, options...)
 		if err != nil || response == nil {
@@ -3005,8 +3010,19 @@ func checkSentinel(settings config.Config, client *liveClient) resident.Sentinel
 	return func(ctx context.Context, prompt resident.SentinelPrompt) (resident.SentinelVerdict, error) {
 		input := fmt.Sprintf("Invariant (verbatim):\n%s\n\nSentinel hint:\n%s\n\nWake evidence:\n%s",
 			prompt.Invariant, prompt.SentinelHint, prompt.Evidence)
+		// The charter's own history, last: it is the only part of this prompt
+		// that moves between wakes, and for a poll charter it is the only part
+		// that moves at all. Without it the same judgment was made against the
+		// same bytes an hour later, however the last one turned out.
+		if len(prompt.Previous) > 0 {
+			input += "\n\nYour last judgments on this same charter, newest first, and how each turned out:\n"
+			for _, line := range prompt.Previous {
+				input += "- " + line + "\n"
+			}
+		}
+		system := sentinelSystemPrompt + prompt.Voice
 		response, err := client.CompleteWithMessages(settings.Context(ctx, "sentinel"), []ai.Message{
-			{Role: "system", Content: []ai.ContentPart{{Type: "text", Text: sentinelSystemPrompt}}},
+			{Role: "system", Content: []ai.ContentPart{{Type: "text", Text: system}}},
 			{Role: "user", Content: []ai.ContentPart{{Type: "text", Text: input}}},
 		}, ai.WithMaxTokens(60))
 		if err != nil {

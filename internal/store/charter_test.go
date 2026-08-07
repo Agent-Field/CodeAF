@@ -3,6 +3,7 @@ package store
 import (
 	"path/filepath"
 	"reflect"
+	"strings"
 	"testing"
 	"time"
 )
@@ -223,4 +224,67 @@ func mustTestCharter(t *testing.T, id string, status CharterStatus, rails Charte
 		t.Fatal(err)
 	}
 	return charter
+}
+
+// The sentinel wrote down its reasoning at every wake and never saw a word of
+// it again: Line and Error had no reader anywhere in the tree. For a poll
+// charter the wake evidence is the constant condition string, so the judgment
+// call was byte-identical every time — a firing the user has already declined
+// is judged the same way an hour later, and again, forever.
+func TestRecentSentinelJudgmentsCarryWhatBecameOfEachOne(t *testing.T) {
+	graph := openTestStore(t, filepath.Join(t.TempDir(), "sentinel-memory.db"))
+	expires := time.Now().Add(24 * time.Hour)
+	charter, err := NewCharter("watch-repeats", "Tell me when the build breaks",
+		WatchSpec{Kind: WatchPoll, Poll: &PollWatch{Condition: "the build is red", Cadence: time.Minute}},
+		"red build", CharterAction{Template: "look at the build"},
+		CharterRails{PerFiringBudgetUSD: 1, MaxFiringsPerDay: 8, ExpiresAt: &expires},
+		CharterActive, Ratification{Origin: OriginUser, Evidence: "ratified"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := graph.CreateCharter(charter); err != nil {
+		t.Fatal(err)
+	}
+	judge := func(yes bool, line string) int64 {
+		t.Helper()
+		wakeSeq, err := graph.BeginCharterWake(charter.ID, time.Now(), "the build is red",
+			CharterWatchState{NextDue: time.Now().Add(time.Minute)})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := graph.RecordSentinelCheck(charter.ID, SentinelCheck{
+			WakeSeq: wakeSeq, Yes: yes, Line: line,
+		}); err != nil {
+			t.Fatal(err)
+		}
+		return wakeSeq
+	}
+
+	judge(false, "the build has been green for an hour")
+	// A new charter is on probation, so a yes asks before it fires — and this
+	// is the refusal the next wake has to know about.
+	wakeSeq := judge(true, "three jobs failed on main")
+	if err := graph.DeclineCharterFiring(charter.ID, wakeSeq, "already looked at it", false); err != nil {
+		t.Fatal(err)
+	}
+
+	judgments, err := graph.RecentSentinelJudgments(charter.ID, 4)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(judgments) != 2 {
+		t.Fatalf("judgments = %+v, want both wakes newest first", judgments)
+	}
+	if !judgments[0].Yes || judgments[0].Line != "three jobs failed on main" {
+		t.Fatalf("newest judgment = %+v", judgments[0])
+	}
+	if !strings.Contains(judgments[0].Outcome, "declined") {
+		t.Fatalf("outcome = %q; the sentinel cannot see that its last firing was refused", judgments[0].Outcome)
+	}
+	if judgments[1].Yes || judgments[1].Line != "the build has been green for an hour" {
+		t.Fatalf("older judgment = %+v", judgments[1])
+	}
+	if judgments[1].Outcome != "" {
+		t.Fatalf("a no was reported as having an outcome: %q", judgments[1].Outcome)
+	}
 }

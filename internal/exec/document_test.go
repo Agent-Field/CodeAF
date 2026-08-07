@@ -249,8 +249,11 @@ func TestReadDocumentAutoStopsAtTheLocalTextLayer(t *testing.T) {
 	if _, ok := space.Locate("report.extracted.md"); !ok {
 		t.Fatal("extracted cache was not written beside the source")
 	}
-	if artifacts := space.Artifacts(11); len(artifacts) != 1 || artifacts[0] != "report.extracted.md" {
-		t.Fatalf("artifacts = %v", artifacts)
+	// The cache is a real file and the bookkeeping knows about it, but it is
+	// the harness's own text dump of the user's PDF — not something the job
+	// wrote, and not something to name back as one of its deliverables.
+	if artifacts := space.Artifacts(11); len(artifacts) != 0 {
+		t.Fatalf("artifacts = %v, want the extraction cache held out of the job's own output", artifacts)
 	}
 }
 
