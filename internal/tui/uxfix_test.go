@@ -2,6 +2,7 @@ package tui
 
 import (
 	"fmt"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -119,7 +120,7 @@ func TestPlanProgressMutatesTheCardAndNeverTheStream(t *testing.T) {
 			t.Fatalf("plan progress stacked into the thread:\n%s", thread)
 		}
 	}
-	if count := strings.Count(thread, "spine: sample 2/3"); count > 1 {
+	if count := strings.Count(thread, "exploring approaches · 2 of 3"); count > 1 {
 		t.Fatalf("current planning line rendered %d times, want at most the shimmer:\n%s", count, thread)
 	}
 	if model.newMessages != 0 {
@@ -129,14 +130,14 @@ func TestPlanProgressMutatesTheCardAndNeverTheStream(t *testing.T) {
 	if card == nil || card.State != cardCompiling {
 		t.Fatalf("compiling card missing: %#v", model.cards)
 	}
-	if card.Latest != "spine: sample 2/3" || len(card.Narration) != 3 {
+	if card.Latest != "exploring approaches · 2 of 3" || len(card.Narration) != 0 {
 		t.Fatalf("card did not carry progress as live status: latest=%q narration=%v", card.Latest, card.Narration)
 	}
 	if dock := model.renderActivityBar(); !strings.Contains(dock, "compiling") ||
-		!strings.Contains(dock, "spine: sample 2/3") {
+		!strings.Contains(dock, "exploring approaches 2 of 3") {
 		t.Fatalf("compiling card does not show the live planning line: %s", dock)
 	}
-	if shimmer := model.renderShimmerLines(90); !strings.Contains(shimmer, "spine: sample 2/3") {
+	if shimmer := model.renderShimmerLines(90); !strings.Contains(shimmer, "exploring approaches · 2 of 3") {
 		t.Fatalf("hidden-rail shimmer does not carry the current line:\n%s", shimmer)
 	}
 
@@ -180,6 +181,94 @@ func TestPlanProgressMutatesTheCardAndNeverTheStream(t *testing.T) {
 		if strings.Contains(thread, hidden) {
 			t.Fatalf("settled thread still shows planning lines:\n%s", thread)
 		}
+	}
+}
+
+func TestCompilingCardMaterializesThreeLatestTitlesInPlace(t *testing.T) {
+	model := New(&fakeBackend{}, "cards")
+	model.setSize(100, 28)
+	command := store.Command{
+		Seq: 44, SessionID: "cards", Kind: store.CommandSplice,
+		Instruction: "materialize the plan", Status: store.CommandPending, Time: time.Now(),
+	}
+	titles := []string{"Read source material", "Compare approaches", "Write recommendation", "Check citations"}
+	messages := make([]store.Message, 0, len(titles))
+	for index, title := range titles {
+		messages = append(messages, store.Message{
+			Seq: int64(45 + index), SessionID: "cards", Role: store.RoleSystem,
+			NodeID: "task-44", CommandSeq: 44, Time: time.Now(),
+			Body: fmt.Sprintf("writing the plan · %d of 4", index+1),
+			Progress: &store.MessageProgress{
+				Phase: "writing the plan", Done: index + 1, Total: 4, Latest: title,
+			},
+		})
+	}
+	model.applyPoll(progressPoll(command, true, messages))
+	card := model.cardByID("command:44")
+	if card == nil {
+		t.Fatal("compiling card missing")
+	}
+	want := titles[1:]
+	if !reflect.DeepEqual(card.StepTitles, want) {
+		t.Fatalf("materialized titles = %#v, want %#v", card.StepTitles, want)
+	}
+	if len(model.cards) != 1 {
+		t.Fatalf("progress created %d cards instead of updating one in place", len(model.cards))
+	}
+	dock := ansi.Strip(model.renderActivityBar())
+	if !strings.Contains(dock, "writing the plan · 4 of 4") {
+		t.Fatalf("compiling card missing its primary count line:\n%s", dock)
+	}
+	if strings.Contains(dock, titles[0]) {
+		t.Fatalf("oldest title did not roll away:\n%s", dock)
+	}
+	for _, title := range want {
+		if !strings.Contains(dock, title) {
+			t.Fatalf("materialized card missing %q:\n%s", title, dock)
+		}
+	}
+	if thread := ansi.Strip(model.renderMessages()); strings.Contains(thread, titles[0]) || len(model.cards) != 1 {
+		t.Fatalf("progress grew a thread stack:\n%s", thread)
+	}
+}
+
+func TestCompilingCardNeverRendersInternalPlannerVocabulary(t *testing.T) {
+	model := New(&fakeBackend{}, "guard")
+	model.setSize(100, 24)
+	command := store.Command{
+		Seq: 51, SessionID: "guard", Kind: store.CommandSplice,
+		Instruction: "guard the card", Status: store.CommandPending, Time: time.Now(),
+	}
+	internal := []string{
+		"grounding: settling what to look at",
+		"spine: sample 1/3",
+		"fan-out: 11 nodes",
+		"ensemble: deciding whether to split",
+	}
+	messages := make([]store.Message, 0, len(internal))
+	for index, body := range internal {
+		messages = append(messages, store.Message{
+			Seq: int64(52 + index), SessionID: "guard", Role: store.RoleSystem,
+			NodeID: "task-51", CommandSeq: 51, Body: body, Time: time.Now(),
+		})
+	}
+	model.applyPoll(progressPoll(command, true, messages))
+	rendered := strings.ToLower(ansi.Strip(model.renderActivityBar() + "\n" + model.renderMessages()))
+	for _, forbidden := range []string{"spine", "fan-out", "ensemble", "grounding"} {
+		if strings.Contains(rendered, forbidden) {
+			t.Fatalf("internal word %q reached the rendered card:\n%s", forbidden, rendered)
+		}
+	}
+}
+
+func TestCompilingCardHeaderRendersUserCount(t *testing.T) {
+	now := time.Date(2026, time.August, 6, 14, 0, 0, 0, time.Local)
+	card := jobCard{
+		State: cardCompiling, CompilePhase: "setting working standards",
+		CompileDone: 3, CompileTotal: 18, StartedAt: now.Add(-time.Minute - 7*time.Second),
+	}
+	if got, want := (&Model{}).cardMeta(card, now), "compiling · setting standards 3 of 18 · 1m 07s"; got != want {
+		t.Fatalf("compile header = %q, want %q", got, want)
 	}
 }
 

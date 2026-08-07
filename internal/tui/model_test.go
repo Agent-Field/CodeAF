@@ -2003,7 +2003,7 @@ func TestGraphBindingRoutesAltGAndLeavesCtrlGAlone(t *testing.T) {
 	}
 	_ = model.View()
 	_, _ = model.Update(tea.MouseMsg{
-		X: model.graphBounds.x, Y: model.graphBounds.y,
+		X: model.graphToggleBounds.x, Y: model.graphToggleBounds.y,
 		Button: tea.MouseButtonLeft, Action: tea.MouseActionPress,
 	})
 	if model.graphOpen {

@@ -38,7 +38,7 @@ func (m *Model) renderShimmerLines(width int) string {
 	for index := 0; index < shown; index++ {
 		card := cards[index]
 		current := card.Latest
-		if len(card.Narration) > 0 {
+		if card.State != cardCompiling && len(card.Narration) > 0 {
 			current = card.Narration[len(card.Narration)-1]
 		}
 		current = strings.TrimSpace(current)

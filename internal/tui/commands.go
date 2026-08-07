@@ -478,6 +478,7 @@ func (m *Model) executeSlash(body string) tea.Cmd {
 		m.input.Reset()
 		return m.openTasksDock()
 	case "/budget":
+		m.budgetUsed = true
 		handler, ok := m.commander.(interface {
 			Budget(arguments []string) (string, error)
 		})

@@ -97,7 +97,7 @@ func Contracts(ctx context.Context, client Completer, graph *Graph, playbook Con
 	total := len(graph.Leaves())
 	base := total - len(targets)
 	if progress != nil {
-		progress("contracts", fmt.Sprintf("%d/%d", base, total))
+		emitProgress(progress, "contracts", fmt.Sprintf("%d/%d", base, total), "")
 	}
 	completed := 0
 	for _, node := range targets {
@@ -114,7 +114,11 @@ func Contracts(ctx context.Context, client Completer, graph *Graph, playbook Con
 			results = append(results, result{id: node.ID, contract: contract, usage: usage, err: err})
 			completed++
 			if progress != nil {
-				progress("contracts", fmt.Sprintf("%d/%d", base+completed, total))
+				latest := ""
+				if err == nil {
+					latest = nodeProgressTitle(node)
+				}
+				emitProgress(progress, "contracts", fmt.Sprintf("%d/%d", base+completed, total), latest)
 			}
 		}(node)
 	}

@@ -170,6 +170,18 @@ type Message struct {
 	Options []QuestionOption
 	// Brief is non-nil only for the resident's folded arrival summary.
 	Brief *Brief
+	// Progress is non-nil only for a replaceable compile-progress post. The
+	// body remains a readable journal line; these fields let surfaces present
+	// the current phase and real generated titles without parsing prose.
+	Progress *MessageProgress
+}
+
+// MessageProgress is the durable, user-facing shape of compile progress.
+type MessageProgress struct {
+	Phase  string `json:"phase"`
+	Done   int    `json:"done"`
+	Total  int    `json:"total"`
+	Latest string `json:"latest"`
 }
 
 // Command is one materialized mutation request.
@@ -202,8 +214,9 @@ CREATE TABLE IF NOT EXISTS messages (
     node_id     TEXT NOT NULL DEFAULT '',
     command_seq INTEGER NOT NULL DEFAULT 0,
     question_seq INTEGER NOT NULL DEFAULT 0,
-    options     JSON NOT NULL DEFAULT '[]' CHECK (json_valid(options)),
-    brief       JSON NOT NULL DEFAULT 'null' CHECK (json_valid(brief))
+	options     JSON NOT NULL DEFAULT '[]' CHECK (json_valid(options)),
+	brief       JSON NOT NULL DEFAULT 'null' CHECK (json_valid(brief)),
+	progress    JSON NOT NULL DEFAULT 'null' CHECK (json_valid(progress))
 );
 CREATE INDEX IF NOT EXISTS messages_session_seq ON messages (session_id, seq);
 
@@ -234,6 +247,7 @@ type messagePayload struct {
 	QuestionSeq int64            `json:"question_seq,omitempty"`
 	Options     []QuestionOption `json:"options,omitempty"`
 	Brief       *Brief           `json:"brief,omitempty"`
+	Progress    *MessageProgress `json:"progress,omitempty"`
 }
 
 type seenPayload struct {
@@ -281,6 +295,13 @@ func (s *Store) PostMessage(message Message) (Message, error) {
 	if brief != nil && message.Role != RoleAgent {
 		return Message{}, fmt.Errorf("post message: %w: a brief must use the agent role", ErrInvalid)
 	}
+	progress, err := normalizeMessageProgress(message.Progress)
+	if err != nil {
+		return Message{}, fmt.Errorf("post message: %w", err)
+	}
+	if progress != nil && message.Role != RoleSystem {
+		return Message{}, fmt.Errorf("post message: %w: progress must use the system role", ErrInvalid)
+	}
 
 	tx, err := s.db.BeginTx(context.Background(), nil)
 	if err != nil {
@@ -306,6 +327,7 @@ func (s *Store) PostMessage(message Message) (Message, error) {
 		QuestionSeq: message.QuestionSeq,
 		Options:     options,
 		Brief:       brief,
+		Progress:    progress,
 	}
 	seq, at, err := appendEvent(tx, message.NodeID, EventMessagePosted, payload)
 	if err != nil {
@@ -322,6 +344,7 @@ func (s *Store) PostMessage(message Message) (Message, error) {
 	message.Model = payload.Model
 	message.Options = options
 	message.Brief = brief
+	message.Progress = progress
 	return message, nil
 }
 
@@ -411,7 +434,7 @@ func (s *Store) Messages(sessionID string, afterSeq int64, limit int) ([]Message
 	}
 	args = append(args, limit)
 	rows, err := s.db.Query(`
-		SELECT seq, ts, session_id, role, body, attachments, model, node_id, command_seq, question_seq, options, brief
+		SELECT seq, ts, session_id, role, body, attachments, model, node_id, command_seq, question_seq, options, brief, progress
 		FROM messages WHERE `+where+` ORDER BY seq LIMIT ?`, args...)
 	if err != nil {
 		return nil, fmt.Errorf("list messages: %w", err)
@@ -421,15 +444,18 @@ func (s *Store) Messages(sessionID string, afterSeq int64, limit int) ([]Message
 	messages := make([]Message, 0)
 	for rows.Next() {
 		var message Message
-		var timestamp, attachments, options, brief string
+		var timestamp, attachments, options, brief, progress string
 		if err := rows.Scan(&message.Seq, &timestamp, &message.SessionID,
-			&message.Role, &message.Body, &attachments, &message.Model, &message.NodeID, &message.CommandSeq, &message.QuestionSeq, &options, &brief); err != nil {
+			&message.Role, &message.Body, &attachments, &message.Model, &message.NodeID, &message.CommandSeq, &message.QuestionSeq, &options, &brief, &progress); err != nil {
 			return nil, fmt.Errorf("list messages: %w", err)
 		}
 		if err := decodeQuestionOptions(options, &message.Options); err != nil {
 			return nil, fmt.Errorf("list messages: %w", err)
 		}
 		if err := decodeBrief(brief, &message.Brief); err != nil {
+			return nil, fmt.Errorf("list messages: %w", err)
+		}
+		if err := decodeMessageProgress(progress, &message.Progress); err != nil {
 			return nil, fmt.Errorf("list messages: %w", err)
 		}
 		at, err := parseTime(timestamp)
@@ -456,7 +482,7 @@ func (s *Store) NodeMessages(nodeID string, afterSeq int64, limit int) ([]Messag
 		limit = 200
 	}
 	rows, err := s.db.Query(`
-		SELECT seq, ts, session_id, role, body, attachments, model, node_id, command_seq, question_seq, options, brief
+		SELECT seq, ts, session_id, role, body, attachments, model, node_id, command_seq, question_seq, options, brief, progress
 		FROM messages WHERE node_id = ? AND seq > ? ORDER BY seq LIMIT ?`,
 		nodeID, afterSeq, limit)
 	if err != nil {
@@ -466,15 +492,18 @@ func (s *Store) NodeMessages(nodeID string, afterSeq int64, limit int) ([]Messag
 	messages := make([]Message, 0)
 	for rows.Next() {
 		var message Message
-		var timestamp, attachments, options, brief string
+		var timestamp, attachments, options, brief, progress string
 		if err := rows.Scan(&message.Seq, &timestamp, &message.SessionID,
-			&message.Role, &message.Body, &attachments, &message.Model, &message.NodeID, &message.CommandSeq, &message.QuestionSeq, &options, &brief); err != nil {
+			&message.Role, &message.Body, &attachments, &message.Model, &message.NodeID, &message.CommandSeq, &message.QuestionSeq, &options, &brief, &progress); err != nil {
 			return nil, fmt.Errorf("node messages: %w", err)
 		}
 		if err := decodeQuestionOptions(options, &message.Options); err != nil {
 			return nil, fmt.Errorf("node messages: %w", err)
 		}
 		if err := decodeBrief(brief, &message.Brief); err != nil {
+			return nil, fmt.Errorf("node messages: %w", err)
+		}
+		if err := decodeMessageProgress(progress, &message.Progress); err != nil {
 			return nil, fmt.Errorf("node messages: %w", err)
 		}
 		at, err := parseTime(timestamp)
@@ -677,12 +706,47 @@ func applyMessageView(tx *sql.Tx, payload messagePayload, seq int64, at time.Tim
 	if err != nil {
 		return err
 	}
+	progress, err := json.Marshal(payload.Progress)
+	if err != nil {
+		return err
+	}
 	_, err = tx.Exec(`
-		INSERT INTO messages (seq, ts, session_id, role, body, attachments, model, node_id, command_seq, question_seq, options, brief)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		INSERT INTO messages (seq, ts, session_id, role, body, attachments, model, node_id, command_seq, question_seq, options, brief, progress)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		seq, formatTime(at), payload.SessionID, payload.Role, payload.Body,
-		string(attachments), payload.Model, payload.NodeID, payload.CommandSeq, payload.QuestionSeq, string(options), string(brief))
+		string(attachments), payload.Model, payload.NodeID, payload.CommandSeq, payload.QuestionSeq, string(options), string(brief), string(progress))
 	return err
+}
+
+func normalizeMessageProgress(progress *MessageProgress) (*MessageProgress, error) {
+	if progress == nil {
+		return nil, nil
+	}
+	normalized := *progress
+	normalized.Phase = strings.TrimSpace(normalized.Phase)
+	normalized.Latest = strings.TrimSpace(normalized.Latest)
+	if normalized.Phase == "" || normalized.Done < 0 || normalized.Total < 0 ||
+		normalized.Done > normalized.Total || (normalized.Total == 0 && normalized.Done != 0) {
+		return nil, fmt.Errorf("%w: invalid message progress", ErrInvalid)
+	}
+	return &normalized, nil
+}
+
+func decodeMessageProgress(encoded string, target **MessageProgress) error {
+	if encoded == "" || encoded == "null" {
+		*target = nil
+		return nil
+	}
+	var progress MessageProgress
+	if err := json.Unmarshal([]byte(encoded), &progress); err != nil {
+		return fmt.Errorf("decode progress: %w", err)
+	}
+	normalized, err := normalizeMessageProgress(&progress)
+	if err != nil {
+		return fmt.Errorf("decode progress: %w", err)
+	}
+	*target = normalized
+	return nil
 }
 
 func normalizeBrief(brief *Brief) (*Brief, error) {

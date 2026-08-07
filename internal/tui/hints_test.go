@@ -1,0 +1,216 @@
+package tui
+
+import (
+	"strings"
+	"testing"
+	"time"
+
+	"github.com/Agent-Field/aforge-v2/internal/store"
+	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/x/ansi"
+)
+
+func tipTestModel(now *time.Time) *Model {
+	model := New(&fakeBackend{}, "tips")
+	model.standingNow = func() time.Time { return *now }
+	return model
+}
+
+func TestIdleTipTimingDismissalNoRepeatAndSpacing(t *testing.T) {
+	now := time.Date(2026, time.August, 6, 14, 0, 0, 0, time.Local)
+	model := tipTestModel(&now)
+	if tip := model.idleTipLine(now); tip != "" {
+		t.Fatalf("tip appeared before the idle clock started: %q", tip)
+	}
+	now = now.Add(tipIdleAfter - time.Second)
+	if tip := model.idleTipLine(now); tip != "" {
+		t.Fatalf("tip appeared before 20s idle: %q", tip)
+	}
+	now = now.Add(time.Second)
+	first := model.idleTipLine(now)
+	if first != curatedTips[0].text {
+		t.Fatalf("first tip = %q, want %q", first, curatedTips[0].text)
+	}
+
+	// A key that does not create a draft still dismisses immediately.
+	_, _ = model.Update(tea.KeyMsg{Type: tea.KeyTab})
+	if tip := model.idleTipLine(now); tip != "" {
+		t.Fatalf("keypress did not dismiss tip: %q", tip)
+	}
+	now = now.Add(tipIdleAfter)
+	if tip := model.idleTipLine(now); tip != "" {
+		t.Fatalf("tip ignored 60s spacing after keypress: %q", tip)
+	}
+	now = now.Add(tipSpacing - tipIdleAfter)
+	second := model.idleTipLine(now)
+	if second == "" || second == first {
+		t.Fatalf("tip rotation repeated or stayed empty: first=%q second=%q", first, second)
+	}
+	if !model.tipSeen[0] || !model.tipSeen[1] {
+		t.Fatalf("session no-repeat ledger = %#v", model.tipSeen)
+	}
+}
+
+func TestIdleTipRotatesOnlyAfterSixtySeconds(t *testing.T) {
+	now := time.Date(2026, time.August, 6, 14, 0, 0, 0, time.Local)
+	model := tipTestModel(&now)
+	model.tipActivityAt = now.Add(-tipIdleAfter)
+	first := model.idleTipLine(now)
+	now = now.Add(tipSpacing - time.Second)
+	if got := model.idleTipLine(now); got != first {
+		t.Fatalf("tip rotated at 59s: got %q, want %q", got, first)
+	}
+	now = now.Add(time.Second)
+	if got := model.idleTipLine(now); got == "" || got == first {
+		t.Fatalf("tip did not rotate at 60s: first=%q got=%q", first, got)
+	}
+}
+
+func TestIdleTipSuppressesFeaturesAlreadyUsedThisSession(t *testing.T) {
+	now := time.Date(2026, time.August, 6, 14, 0, 0, 0, time.Local)
+	model := tipTestModel(&now)
+	_ = model.toggleVoice()
+	model.tipActivityAt = now.Add(-tipIdleAfter)
+	if got := model.idleTipLine(now); got != curatedTips[1].text {
+		t.Fatalf("voice-used suppression chose %q, want %q", got, curatedTips[1].text)
+	}
+
+	now = now.Add(time.Hour)
+	model = tipTestModel(&now)
+	_ = model.toggleVoice()
+	model.snapshot = store.Snapshot{Nodes: []store.Node{
+		{ID: store.RootID},
+		{ID: "learned", Parent: store.RootID, Group: charterGroupMarker},
+	}}
+	model.cardSnapshot = model.snapshot
+	model.tipActivityAt = now.Add(-tipIdleAfter)
+	if got := model.idleTipLine(now); got != curatedTips[2].text {
+		t.Fatalf("standing-used suppression chose %q, want %q", got, curatedTips[2].text)
+	}
+
+	now = now.Add(time.Hour)
+	model = tipTestModel(&now)
+	_ = model.toggleVoice()
+	model.snapshot = store.Snapshot{Nodes: []store.Node{
+		{ID: store.RootID},
+		{ID: "learned", Parent: store.RootID, Group: charterGroupMarker},
+	}}
+	model.cardSnapshot = model.snapshot
+	_ = model.executeSlash("/budget")
+	model.tipActivityAt = now.Add(-tipIdleAfter)
+	if got := model.idleTipLine(now); got != curatedTips[3].text {
+		t.Fatalf("budget-used suppression chose %q, want %q", got, curatedTips[3].text)
+	}
+}
+
+func TestIdleTipNeverAppearsDuringActiveWork(t *testing.T) {
+	now := time.Date(2026, time.August, 6, 14, 0, 0, 0, time.Local)
+	model := tipTestModel(&now)
+	model.tipActivityAt = now.Add(-time.Hour)
+	model.pending = []store.Command{{Kind: store.CommandSplice, Instruction: "active compile"}}
+	if got := model.idleTipLine(now); got != "" {
+		t.Fatalf("tip appeared during active work: %q", got)
+	}
+}
+
+// The one footer line resolves by explicit priority: transient voice status →
+// active boost indicator → pending-question context → idle tip → focus-zone
+// help. When both boost and a tip are eligible, boost wins and the tip waits.
+func TestFooterPriorityBoostOutranksIdleTipAndAltBDismisses(t *testing.T) {
+	now := time.Date(2026, time.August, 6, 14, 0, 0, 0, time.Local)
+	model := tipTestModel(&now)
+	model.setSize(100, 30)
+
+	// An idle tip is on screen.
+	model.tipActivityAt = now.Add(-tipIdleAfter)
+	view := ansi.Strip(model.View())
+	if !strings.Contains(view, curatedTips[0].text) {
+		t.Fatalf("idle tip did not surface:\n%s", view)
+	}
+
+	// alt+b both cycles boost AND dismisses the visible tip in one press.
+	pressBoost(model)
+	if model.boost != boostArmed || model.tipCurrent != -1 {
+		t.Fatalf("alt+b left boost=%v tipCurrent=%d, want armed and dismissed", model.boost, model.tipCurrent)
+	}
+
+	// Long idle makes a tip eligible again, but it may not displace an armed
+	// boost: the footer keeps the boost indicator, clickable, and the tip waits.
+	now = now.Add(time.Hour)
+	view = ansi.Strip(model.View())
+	if !strings.Contains(view, "boost") || !strings.Contains(view, "next message") {
+		t.Fatalf("armed boost indicator missing from footer:\n%s", view)
+	}
+	if model.boostBounds.width == 0 {
+		t.Fatal("boost indicator lost its click target while a tip was eligible")
+	}
+	for _, tip := range curatedTips {
+		if strings.Contains(view, tip.text) {
+			t.Fatalf("tip %q displaced the armed boost indicator:\n%s", tip.text, view)
+		}
+	}
+
+	// Transient voice status is the one thing that outranks boost, and only
+	// for its moment: the borrowed row is not a boost click target.
+	model.voiceHint = "voice caught that"
+	model.voiceHintUntil = time.Now().Add(time.Minute)
+	view = ansi.Strip(model.View())
+	if !strings.Contains(view, "voice caught that") {
+		t.Fatalf("transient voice status did not outrank boost:\n%s", view)
+	}
+	if model.boostBounds.width != 0 {
+		t.Fatal("hidden boost indicator kept a stale click target under voice status")
+	}
+	model.voiceHint = ""
+	model.voiceHintUntil = time.Time{}
+
+	// A pending question outranks the tip even after boost cycles off.
+	pressBoost(model) // pinned
+	pressBoost(model) // off
+	if model.boost != boostOff {
+		t.Fatalf("boost cycle ended at %v, want off", model.boost)
+	}
+	model.cards = []jobCard{{ID: "q1", State: cardQuestion, QuestionKind: questionText, Question: "Which region?"}}
+	now = now.Add(time.Hour)
+	view = ansi.Strip(model.View())
+	if !strings.Contains(view, "press a question's number") {
+		t.Fatalf("pending-question context missing from footer:\n%s", view)
+	}
+	model.cards = nil
+
+	// With boost off, no voice status, and no question, the waiting tip
+	// finally lands after the ordinary idle stretch.
+	now = now.Add(time.Hour)
+	view = ansi.Strip(model.View())
+	if !strings.Contains(view, curatedTips[1].text) {
+		t.Fatalf("waiting tip did not resume after boost turned off:\n%s", view)
+	}
+}
+
+func TestContextHelpLineFollowsFocusZone(t *testing.T) {
+	model := New(&fakeBackend{}, "help")
+	tests := []struct {
+		name  string
+		focus paneFocus
+		want  []string
+	}{
+		{"input", focusInput, []string{"alt+v voice", "v receipts"}},
+		{"rail", focusGraph, []string{"enter inspect", "alt+g hide"}},
+		{"card", focusCards, []string{"enter details", "alt+g tasks"}},
+		{"header", focusHeader, []string{"enter models/tasks", "esc back"}},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			model.focus = test.focus
+			line := model.contextHelpLine()
+			for _, want := range test.want {
+				if !strings.Contains(line, want) {
+					t.Fatalf("%s help missing %q: %q", test.name, want, line)
+				}
+			}
+			if items := strings.Count(line, " · ") + 1; items > 4 {
+				t.Fatalf("%s help has %d items: %q", test.name, items, line)
+			}
+		})
+	}
+}
