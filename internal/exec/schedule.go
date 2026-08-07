@@ -7,6 +7,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/Agent-Field/aforge-v2/internal/guard"
 	"github.com/Agent-Field/aforge-v2/internal/plan"
 	"github.com/Agent-Field/aforge-v2/internal/provider"
 )
@@ -257,6 +258,9 @@ type leafFlight struct {
 func (s *Scheduler) work(ctx context.Context, id int, task Task, attempt int, shape string, done chan<- completion) {
 	defer func() {
 		if recovered := recover(); recovered != nil {
+			// The wording the scheduler already reports is kept; what is new is
+			// that the stack now reaches the log instead of nowhere.
+			_ = guard.Note("exec/scheduler leaf", recovered)
 			failure := fmt.Sprintf("executor panicked: %v", recovered)
 			if terminated := task.control.terminate(); terminated > 0 {
 				failure += fmt.Sprintf("; %d background jobs terminated at leaf end", terminated)

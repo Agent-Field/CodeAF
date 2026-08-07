@@ -15,6 +15,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/Agent-Field/aforge-v2/internal/guard"
 	"github.com/Agent-Field/aforge-v2/internal/store"
 )
 
@@ -76,6 +77,7 @@ type backgroundJob struct {
 	keepHealth       store.ServiceHealth
 	promoted         bool
 	waited           bool
+	settled          bool
 }
 
 // jobRegistry belongs to exactly one Toolbox, hence one leaf. Its jobs stay in
@@ -175,6 +177,7 @@ func (t *Toolbox) startBackground(ctx context.Context, command string, args map[
 	}
 	r.jobs[id] = job
 	job.timeout = time.AfterFunc(duration, func() {
+		defer guard.Recover("exec/job timeout")
 		r.mutex.Lock()
 		if job.state != jobRunning || job.keepRequested {
 			r.mutex.Unlock()
@@ -213,7 +216,15 @@ func backgroundDuration(ctx context.Context, args map[string]any) (time.Duration
 }
 
 // wait is the sole goroutine that calls cmd.Wait and writes a terminal state.
+// A fault here would leave every waiter on job.done blocked forever, so the
+// terminal state is published from a defer that runs on the fault path too.
 func (r *jobRegistry) wait(job *backgroundJob) {
+	defer func() {
+		if recovered := recover(); recovered != nil {
+			_ = guard.Note("exec/job wait", recovered)
+			r.settleFaulted(job)
+		}
+	}()
 	_ = job.cmd.Wait()
 	// A shell can exit after detaching a child into its process group. File
 	// output means Wait rightly does not block on that child, so the sole waiter
@@ -244,6 +255,23 @@ func (r *jobRegistry) wait(job *backgroundJob) {
 			job.exitCode = job.cmd.ProcessState.ExitCode()
 		}
 	}
+	job.settled = true
+	close(job.done)
+}
+
+// settleFaulted publishes a terminal state for a job whose waiter faulted.
+// Killed is the honest reading: nobody can say what the process did, and every
+// waiter is owed an answer rather than a silent forever.
+func (r *jobRegistry) settleFaulted(job *backgroundJob) {
+	r.mutex.Lock()
+	defer r.mutex.Unlock()
+	if job.settled {
+		return
+	}
+	job.settled = true
+	job.waited = true
+	job.finished = time.Now()
+	job.state = jobKilled
 	close(job.done)
 }
 

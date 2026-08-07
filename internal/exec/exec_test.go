@@ -214,8 +214,11 @@ func TestToolFailuresAreResults(t *testing.T) {
 func TestShDoesNotHangOnBackgroundChildren(t *testing.T) {
 	tools := NewToolbox(workspace(t), 1, nil)
 	started := time.Now()
-	result := tools.Execute(context.Background(), "sh", `{"cmd":"sleep 15 & echo started"}`)
-	if elapsed := time.Since(started); elapsed > 10*time.Second {
+	// The child outlives the ceiling by a wide margin on any host: returning
+	// inside the bound can only mean sh did not wait for it. The gap is what
+	// keeps this honest under load — not a tight ceiling.
+	result := tools.Execute(context.Background(), "sh", `{"cmd":"sleep 120 & echo started"}`)
+	if elapsed := time.Since(started); elapsed > 40*time.Second {
 		t.Fatalf("sh blocked %s on a background child holding the pipe", elapsed.Round(time.Millisecond))
 	}
 	if result.IsError {

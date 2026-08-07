@@ -10,6 +10,7 @@ import (
 	"time"
 
 	executor "github.com/Agent-Field/aforge-v2/internal/exec"
+	"github.com/Agent-Field/aforge-v2/internal/guard"
 	"github.com/Agent-Field/aforge-v2/internal/store"
 )
 
@@ -19,6 +20,11 @@ const (
 	ServiceConsentGrace = 30 * time.Second
 	serviceConsentPoll  = 100 * time.Millisecond
 )
+
+// faultNotice is what the thread says when a leaf hit a panic. It names the
+// consequence and the receipt, and nothing else: a stack trace belongs in the
+// log, not in the user's reading.
+const faultNotice = "this task hit an internal fault — recorded to the log; the rest of the board is unaffected"
 
 // ExecResult is what one execution produced: the summary that flows to
 // dependents, and what producing it cost.
@@ -116,11 +122,24 @@ func (r *Runner) Serve(ctx context.Context) error {
 			r.wg.Wait()
 			return ctx.Err()
 		case <-ticker.C:
-			if _, err := r.Tick(ctx); err != nil {
+			if _, err := r.tickGuarded(ctx); err != nil {
 				return err
 			}
 		}
 	}
+}
+
+// tickGuarded keeps the drain loop alive across a panicking pass. A fault in
+// one tick is recorded and dropped; the next tick reads the same durable graph
+// and dispatches whatever is still ready.
+func (r *Runner) tickGuarded(ctx context.Context) (dispatched int, err error) {
+	defer func() {
+		if recovered := recover(); recovered != nil {
+			_ = guard.Note("resident/runner tick", recovered)
+			dispatched, err = 0, nil
+		}
+	}()
+	return r.Tick(ctx)
 }
 
 // Tick claims as many ready nodes as free slots allow and dispatches them.
@@ -137,47 +156,94 @@ func (r *Runner) Tick(ctx context.Context) (int, error) {
 		default:
 			return dispatched, nil
 		}
-		// This is the one gate on new leaves — every claim in the process comes
-		// through here. A refusal delays nothing that is already running and
-		// touches no user-origin surgery or answer: those never claim. The next
-		// tick asks again, so a saturated machine simply admits more slowly.
-		if !r.governor.Admit(len(r.slots) - 1) {
-			<-r.slots
-			return dispatched, nil
-		}
-		node, ok, err := r.claimNext()
+		spawned, err := r.dispatchOne(ctx)
 		if err != nil {
-			<-r.slots
 			return dispatched, err
 		}
-		if !ok {
-			<-r.slots
+		if !spawned {
 			return dispatched, nil
 		}
 		dispatched++
-		runCtx := ctx
-		var cancel context.CancelFunc
-		if node.Group == store.PracticeGroup {
-			runCtx, cancel = context.WithCancel(ctx)
-			r.activeMu.Lock()
-			r.activePractice[node.ID] = cancel
-			r.activeMu.Unlock()
-		}
-		r.wg.Add(1)
-		go func(node store.Node, runCtx context.Context, cancel context.CancelFunc) {
-			defer r.wg.Done()
-			defer func() { <-r.slots }()
-			if cancel != nil {
-				defer cancel()
-				defer func() {
-					r.activeMu.Lock()
-					delete(r.activePractice, node.ID)
-					r.activeMu.Unlock()
-				}()
-			}
-			r.runOne(runCtx, node)
-		}(node, runCtx, cancel)
 	}
+}
+
+// dispatchOne owns the slot the caller just took: every path that does not
+// hand it to a worker gives it back, including the fault path. A panic between
+// taking a slot and spawning would otherwise starve the runner one worker at a
+// time, which is exactly the kind of slow death a crash at least announces.
+func (r *Runner) dispatchOne(ctx context.Context) (spawned bool, err error) {
+	held := true
+	release := func() {
+		if held {
+			held = false
+			<-r.slots
+		}
+	}
+	// The claim is taken here and handed to the worker at the end. A fault in
+	// between owns both: the slot goes back, and the node goes back to pending
+	// where the next tick can claim it cleanly.
+	var claimed store.Claim
+	defer func() {
+		if recovered := recover(); recovered != nil {
+			release()
+			if claimed.ID != "" {
+				_ = r.graph.Release(claimed)
+			}
+			_ = guard.Note("resident/runner dispatch", recovered)
+			spawned, err = false, nil
+		}
+	}()
+
+	// This is the one gate on new leaves — every claim in the process comes
+	// through here. A refusal delays nothing that is already running and
+	// touches no user-origin surgery or answer: those never claim. The next
+	// tick asks again, so a saturated machine simply admits more slowly.
+	if !r.governor.Admit(len(r.slots) - 1) {
+		release()
+		return false, nil
+	}
+	node, ok, claimErr := r.claimNext()
+	if claimErr != nil {
+		release()
+		return false, claimErr
+	}
+	if !ok {
+		release()
+		return false, nil
+	}
+	claimed = store.Claim{ID: node.ID, Owner: node.Owner, Token: node.ClaimToken}
+	runCtx := ctx
+	var cancel context.CancelFunc
+	if node.Group == store.PracticeGroup {
+		runCtx, cancel = context.WithCancel(ctx)
+		// Deferred because a fault under this lock would otherwise leave it
+		// held forever — trading a crash for a deadlock is not a rescue.
+		func() {
+			r.activeMu.Lock()
+			defer r.activeMu.Unlock()
+			r.activePractice[node.ID] = cancel
+		}()
+	}
+	r.wg.Add(1)
+	held = false            // the worker's own defer returns the slot now
+	claimed = store.Claim{} // and the worker's own landing settles the claim
+	go func(node store.Node, runCtx context.Context, cancel context.CancelFunc) {
+		// runOne settles the node on its own fault; this is the outer belt, for
+		// a fault in the settling itself. Registered first so it absorbs last.
+		defer guard.Recover("resident/runner worker " + node.ID)
+		defer r.wg.Done()
+		defer func() { <-r.slots }()
+		if cancel != nil {
+			defer cancel()
+			defer func() {
+				r.activeMu.Lock()
+				defer r.activeMu.Unlock()
+				delete(r.activePractice, node.ID)
+			}()
+		}
+		r.runOne(runCtx, node)
+	}(node, runCtx, cancel)
+	return true, nil
 }
 
 // Wait blocks until every dispatched node has landed. Tests use it to make
@@ -261,9 +327,32 @@ func (r *Runner) claimNext() (store.Node, bool, error) {
 	return store.Node{}, false, nil
 }
 
+// executeGuarded turns a panicking execution into an ordinary failed outcome.
+// The leaf is the blast radius: it lands failed with the fault as its error,
+// the claim settles through the same path any other failure takes, and the
+// runner keeps draining.
+func (r *Runner) executeGuarded(ctx context.Context, node store.Node) (result ExecResult, err error) {
+	defer func() {
+		if recovered := recover(); recovered != nil {
+			result, err = ExecResult{}, guard.Note("resident/runner leaf "+node.ID, recovered)
+		}
+	}()
+	return r.execute(ctx, node)
+}
+
 func (r *Runner) runOne(ctx context.Context, node store.Node) {
 	claim := store.Claim{ID: node.ID, Owner: node.Owner, Token: node.ClaimToken}
-	result, err := r.execute(ctx, node)
+	// Settling beats stranding. A fault in the landing steps below — service
+	// promotion, the craft sentinel, the completion itself — must not leave a
+	// claimed node no later tick will ever pick up.
+	defer func() {
+		if recovered := recover(); recovered != nil {
+			fault := guard.Note("resident/runner landing "+node.ID, recovered)
+			_ = r.graph.Fail(claim, fault.Error())
+			r.noteFault(node)
+		}
+	}()
+	result, err := r.executeGuarded(ctx, node)
 	control, controlErr := r.graph.Control(node.ID)
 	if controlErr == nil && (control.CancelRequested || control.Held) {
 		stopServiceRequests(result.ServiceRequests)
@@ -289,6 +378,9 @@ func (r *Runner) runOne(ctx context.Context, node store.Node) {
 			return
 		}
 		_ = r.graph.Fail(claim, err.Error())
+		if guard.IsFault(err) {
+			r.noteFault(node)
+		}
 		return
 	}
 	result.Summary = r.applyServiceRequests(ctx, node, result.Summary, result.ServiceRequests)
@@ -329,6 +421,21 @@ func (r *Runner) runOne(ctx context.Context, node store.Node) {
 		// where a later tick can pick it up cleanly.
 		_ = r.graph.Release(claim)
 	}
+}
+
+// noteFault journals the one quiet line a fault earns in the thread. It is
+// best-effort: a fault is already being recorded to the log, and failing to
+// say so must not raise a second one.
+func (r *Runner) noteFault(node store.Node) {
+	if r.graph == nil {
+		return
+	}
+	_, _ = r.graph.PostMessage(store.Message{
+		SessionID: node.Provenance.SessionID,
+		Role:      store.RoleSystem,
+		NodeID:    node.ID,
+		Body:      faultNotice,
+	})
 }
 
 func stopServiceRequests(requests []executor.ServiceRequest) {

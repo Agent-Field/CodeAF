@@ -13,6 +13,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/Agent-Field/aforge-v2/internal/guard"
 )
 
 // Web is search and page fetching, the one capability a shell does not already
@@ -180,6 +182,14 @@ func (w *Web) Fetch(ctx context.Context, urls []string) string {
 		group.Add(1)
 		go func(index int, url string) {
 			defer group.Done()
+			// A dead link already reports in place; a fault in the fetch does the
+			// same, so one bad page never takes the leaf — or the surface — down.
+			defer func() {
+				if recovered := recover(); recovered != nil {
+					_ = guard.Note("exec/web fetch", recovered)
+					results[index] = fmt.Sprintf("--- %s\ncould not fetch: internal fault, recorded to the log", url)
+				}
+			}()
 			text, err := w.fetchOne(ctx, url)
 			if err != nil {
 				results[index] = fmt.Sprintf("--- %s\ncould not fetch: %v", url, err)

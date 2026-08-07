@@ -15,6 +15,7 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"github.com/Agent-Field/aforge-v2/internal/guard"
 	"github.com/Agent-Field/aforge-v2/internal/store"
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 )
@@ -232,7 +233,16 @@ func reflexPromotion(calls []ai.ToolCall) (string, bool) {
 // Execute dispatches one call. An unknown name is answered with the valid list
 // rather than refused, because a model that guessed a tool name can recover
 // from being told the real ones and cannot recover from a dead loop.
-func (t *Toolbox) Execute(ctx context.Context, name string, arguments string) Result {
+func (t *Toolbox) Execute(ctx context.Context, name string, arguments string) (outcome Result) {
+	// A tool that panics is one bad call, not a dead worker. The model reads
+	// the fault the way it reads any other tool error and picks another move;
+	// the stack goes to the log, where it is useful.
+	defer func() {
+		if recovered := recover(); recovered != nil {
+			_ = guard.Note("exec/tool "+name, recovered)
+			outcome = errorf("internal fault in this tool call — recorded to the log: %v. Try a different approach.", recovered)
+		}
+	}()
 	var args map[string]any
 	if strings.TrimSpace(arguments) != "" {
 		if err := json.Unmarshal([]byte(arguments), &args); err != nil {

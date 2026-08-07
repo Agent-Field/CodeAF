@@ -9,6 +9,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/Agent-Field/aforge-v2/internal/guard"
 	"github.com/Agent-Field/aforge-v2/internal/provider"
 	"github.com/Agent-Field/aforge-v2/internal/store"
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
@@ -414,6 +415,14 @@ func (l *Linear) Run(ctx context.Context, task Task) (returned *Outcome, runErr 
 			group.Add(1)
 			go func(index int, call ai.ToolCall) {
 				defer group.Done()
+				// Execute answers a fault with an error result of its own; this is
+				// the belt for anything that could fault outside it.
+				defer func() {
+					if recovered := recover(); recovered != nil {
+						_ = guard.Note("exec/linear tool "+call.Function.Name, recovered)
+						results[index] = errorf("internal fault in this tool call — recorded to the log. Try a different approach.")
+					}
+				}()
 				results[index] = tools.Execute(ctx, call.Function.Name, call.Function.Arguments)
 			}(index, call)
 		}

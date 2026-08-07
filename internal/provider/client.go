@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Agent-Field/aforge-v2/internal/guard"
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 )
 
@@ -291,6 +292,16 @@ func (c *Client) StreamComplete(ctx context.Context, prompt string, options ...a
 	go func() {
 		defer close(chunks)
 		defer close(errs)
+		// The consumer is ranging over two channels it did not spawn. A fault
+		// here must reach it as an error, not as a dead process.
+		defer func() {
+			if recovered := recover(); recovered != nil {
+				select {
+				case errs <- guard.Note("provider/stream", recovered):
+				default:
+				}
+			}
+		}()
 
 		messages := []ai.Message{{Role: "user", Content: []ai.ContentPart{{Type: "text", Text: prompt}}}}
 		request, err := c.newRequest(messages, append(append([]ai.Option(nil), options...), ai.WithStream()))
