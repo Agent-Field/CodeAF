@@ -52,6 +52,7 @@ type Runner struct {
 	activePractice      map[string]context.CancelFunc
 	serviceConsentGrace time.Duration
 	governor            *executor.Governor
+	craft               *CraftRunner
 }
 
 // NewRunner builds a runner executing at most workers nodes concurrently.
@@ -86,6 +87,14 @@ func (r *Runner) WithServiceConsentGrace(grace time.Duration) *Runner {
 	if grace > 0 {
 		r.serviceConsentGrace = grace
 	}
+	return r
+}
+
+// WithCraftRunner installs the craft sentinel. Nil (the default) leaves every
+// leaf ordinary; craft provenance is what selects a node into it, so a runner
+// with one installed behaves identically on work that is not a craft run.
+func (r *Runner) WithCraftRunner(craft *CraftRunner) *Runner {
+	r.craft = craft
 	return r
 }
 
@@ -283,6 +292,14 @@ func (r *Runner) runOne(ctx context.Context, node store.Node) {
 		return
 	}
 	result.Summary = r.applyServiceRequests(ctx, node, result.Summary, result.ServiceRequests)
+	// The craft sentinel reads this result before the node closes. Splicing
+	// while the landed leaf is still open keeps its job root open too, so no
+	// consumer can start against a plan that is one splice out of date. A
+	// failure here costs the splice, never the result: the resident's sweep
+	// re-derives the same move from the store on its next tick.
+	if r.craft != nil {
+		_, _ = r.craft.Settle(node, result.Summary)
+	}
 	// Spend is recorded before completion settles: a refused completion is
 	// still money spent, and the journal should say so.
 	_ = r.graph.RecordUsage(store.NodeUsage{
