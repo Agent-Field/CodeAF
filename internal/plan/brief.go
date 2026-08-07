@@ -93,9 +93,13 @@ type briefWriter struct {
 	errs      []error
 	launched  int
 	completed int
-	base      int
-	total     int
-	reporting bool
+	// completions holds titles in actual completion order until the final leaf
+	// total is known. apply replays them with honest counts instead of dropping
+	// fast background work from the materializing plan.
+	completions []string
+	base        int
+	total       int
+	reporting   bool
 }
 
 func newBriefWriter(ctx context.Context, client Completer, enabled bool, progress Progress) *briefWriter {
@@ -126,7 +130,17 @@ func (w *briefWriter) launch(shared string, node Node, inputs []string, delivera
 		}
 		w.completed++
 		if w.reporting && w.progress != nil {
-			w.progress("briefs", fmt.Sprintf("%d/%d", w.base+w.completed, w.total))
+			latest := ""
+			if err == nil {
+				latest = nodeProgressTitle(node)
+			}
+			emitProgress(w.progress, "briefs", fmt.Sprintf("%d/%d", w.base+w.completed, w.total), latest)
+		} else {
+			latest := ""
+			if err == nil {
+				latest = nodeProgressTitle(node)
+			}
+			w.completions = append(w.completions, latest)
 		}
 	}()
 }
@@ -139,8 +153,14 @@ func (w *briefWriter) apply(graph *Graph) (Usage, error) {
 		w.total = len(graph.Leaves())
 		w.base = w.total - w.launched
 		if w.progress != nil {
-			w.progress("briefs", fmt.Sprintf("%d/%d", w.base+w.completed, w.total))
+			if len(w.completions) == 0 {
+				emitProgress(w.progress, "briefs", fmt.Sprintf("%d/%d", w.base, w.total), "")
+			}
+			for index, latest := range w.completions {
+				emitProgress(w.progress, "briefs", fmt.Sprintf("%d/%d", w.base+index+1, w.total), latest)
+			}
 		}
+		w.completions = nil
 		w.mutex.Unlock()
 	}
 	w.group.Wait()

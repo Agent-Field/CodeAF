@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Agent-Field/aforge-v2/internal/plan"
 	"github.com/Agent-Field/aforge-v2/internal/resident"
 	"github.com/Agent-Field/aforge-v2/internal/store"
 )
@@ -29,7 +30,7 @@ func TestChatPlanProgressPostsAgainstProvisionalJobAnchor(t *testing.T) {
 	progress := chatPlanProgress(history, resident.PlanAnchor{
 		NodeID: nodeID, SessionID: command.SessionID, CommandSeq: command.Seq,
 	})
-	progress("grounding", "settling what to look at")
+	progress(plan.ProgressUpdate{Phase: "reading the request"})
 
 	messages, err := history.Messages(command.SessionID, 0, 0)
 	if err != nil {
@@ -37,7 +38,8 @@ func TestChatPlanProgressPostsAgainstProvisionalJobAnchor(t *testing.T) {
 	}
 	if len(messages) != 1 || messages[0].Role != store.RoleSystem ||
 		messages[0].NodeID != nodeID || messages[0].CommandSeq != command.Seq ||
-		messages[0].Body != "grounding: settling what to look at" {
+		messages[0].Body != "reading the request" || messages[0].Progress == nil ||
+		messages[0].Progress.Phase != "reading the request" {
 		t.Fatalf("planning message = %+v", messages)
 	}
 
@@ -75,15 +77,15 @@ func TestChatPlanProgressThrottlesAndCoalescesLeafCounts(t *testing.T) {
 		anchor:   resident.PlanAnchor{NodeID: "job", SessionID: "s1"},
 		interval: planCountThrottle,
 		now:      func() time.Time { return now },
-		last:     map[string]time.Time{}, pending: map[string]string{}, timers: map[string]*time.Timer{},
+		last:     map[string]time.Time{}, pending: map[string]plan.ProgressUpdate{}, timers: map[string]*time.Timer{},
 	}
-	poster.report("briefs", "1/5")
-	poster.report("briefs", "2/5")
-	poster.report("briefs", "3/5")
+	poster.report(plan.ProgressUpdate{Phase: "writing the plan", Done: 1, Total: 5})
+	poster.report(plan.ProgressUpdate{Phase: "writing the plan", Done: 2, Total: 5})
+	poster.report(plan.ProgressUpdate{Phase: "writing the plan", Done: 3, Total: 5})
 	now = now.Add(planCountThrottle)
-	poster.report("briefs", "4/5")
+	poster.report(plan.ProgressUpdate{Phase: "writing the plan", Done: 4, Total: 5})
 	// Final counts bypass the interval so a fast last completion is never lost.
-	poster.report("briefs", "5/5")
+	poster.report(plan.ProgressUpdate{Phase: "writing the plan", Done: 5, Total: 5})
 
 	messages, err := history.NodeMessages("job", 0, 0)
 	if err != nil {
@@ -93,20 +95,59 @@ func TestChatPlanProgressThrottlesAndCoalescesLeafCounts(t *testing.T) {
 	for _, message := range messages {
 		bodies = append(bodies, message.Body)
 	}
-	want := []string{"briefs 1/5", "briefs 4/5", "briefs 5/5"}
+	want := []string{
+		"writing the plan · 1 of 5",
+		"writing the plan · 4 of 5",
+		"writing the plan · 5 of 5",
+	}
 	if !reflect.DeepEqual(bodies, want) {
 		t.Fatalf("throttled progress = %#v, want %#v", bodies, want)
+	}
+}
+
+func TestChatPlanProgressNeverCoalescesGeneratedTitles(t *testing.T) {
+	history, err := store.Open(filepath.Join(t.TempDir(), "graph.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer history.Close()
+	if err := history.Splice(store.RootID, store.Subtree{Nodes: []store.NodeSpec{{
+		ID: "job", Brief: "do the work", Stage: 1,
+	}}}, store.Provenance{Origin: store.OriginUser, SessionID: "s1", Intent: "do the work"}); err != nil {
+		t.Fatal(err)
+	}
+	poster := &planProgressPoster{
+		history: history, anchor: resident.PlanAnchor{NodeID: "job", SessionID: "s1"},
+		interval: time.Hour, now: time.Now, last: map[string]time.Time{},
+		pending: map[string]plan.ProgressUpdate{}, timers: map[string]*time.Timer{},
+	}
+	for index, title := range []string{"First step", "Second step", "Third step"} {
+		poster.report(plan.ProgressUpdate{
+			Phase: "writing the plan", Done: index + 1, Total: 4, Latest: title,
+		})
+	}
+	messages, err := history.NodeMessages("job", 0, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(messages) != 3 {
+		t.Fatalf("generated-title updates were coalesced: %+v", messages)
+	}
+	for index, message := range messages {
+		if message.Progress == nil || message.Progress.Latest == "" || message.Progress.Done != index+1 {
+			t.Fatalf("structured progress %d = %+v", index, message)
+		}
 	}
 }
 
 func TestHeadlessPlanProgressWritesStderrLines(t *testing.T) {
 	var stderr bytes.Buffer
 	progress := headlessPlanProgress(&stderr)
-	progress("grounding", "settling what to look at")
-	progress("sizing", "12 nodes — 3 to split")
-	progress("briefs", "5/12")
+	progress(plan.ProgressUpdate{Phase: "reading the request"})
+	progress(plan.ProgressUpdate{Phase: "choosing the shape"})
+	progress(plan.ProgressUpdate{Phase: "writing the plan", Done: 5, Total: 12})
 
-	const want = "grounding: settling what to look at\nsizing 12 nodes — 3 to split\nbriefs 5/12\n"
+	const want = "reading the request\nchoosing the shape\nwriting the plan · 5 of 12\n"
 	if stderr.String() != want {
 		t.Fatalf("stderr progress = %q, want %q", stderr.String(), want)
 	}

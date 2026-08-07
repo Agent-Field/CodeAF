@@ -36,6 +36,15 @@ func migrateThreadSchema(db *sql.DB) error {
 			return err
 		}
 	}
+	hasProgress, err := tableHasColumn(db, "messages", "progress")
+	if err != nil {
+		return err
+	}
+	if !hasProgress {
+		if _, err := db.Exec(`ALTER TABLE messages ADD COLUMN progress JSON NOT NULL DEFAULT 'null' CHECK (json_valid(progress))`); err != nil {
+			return err
+		}
+	}
 
 	hasReflex, err := tableHasColumn(db, "commands", "reflex")
 	if err != nil {

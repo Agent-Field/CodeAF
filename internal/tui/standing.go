@@ -339,6 +339,10 @@ func (m *Model) standingSectionHeight() int {
 	}
 	count := len(m.standingCharters())
 	if count == 0 {
+		if !m.hasStandingHistory() {
+			// Header + the one teaching line + the separating blank.
+			return 3
+		}
 		return 0
 	}
 	// header + one row per charter + the separating blank before tasks.
@@ -354,6 +358,13 @@ func (m *Model) renderStandingSection(width int) string {
 	m.standingRows = m.standingRows[:0]
 	charters := m.standingCharters()
 	if len(charters) == 0 {
+		if !m.hasStandingHistory() {
+			return strings.Join([]string{
+				mutedStyle.Faint(true).Render("standing"),
+				mutedStyle.Faint(true).Render(truncate("⏱ say \"whenever…\" or \"remind me…\" to stand something up", width)),
+				"",
+			}, "\n")
+		}
 		return ""
 	}
 	lines := []string{mutedStyle.Faint(true).Render("standing")}
@@ -381,6 +392,23 @@ func (m *Model) renderStandingSection(width int) string {
 	}
 	lines = append(lines, "")
 	return strings.Join(lines, "\n")
+}
+
+// hasStandingHistory is deliberately broader than the visible charter list:
+// a retired charter still means the teaching hint has done its job once.
+func (m *Model) hasStandingHistory() bool {
+	if lister, ok := m.backend.(charterLister); ok {
+		charters, err := lister.Charters()
+		if err == nil {
+			return len(charters) > 0
+		}
+	}
+	for _, node := range m.standingSnapshot().Nodes {
+		if node.Parent == store.RootID && node.Group == charterGroupMarker {
+			return true
+		}
+	}
+	return false
 }
 
 func standingAge(at, now time.Time) string {

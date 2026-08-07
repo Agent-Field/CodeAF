@@ -9,11 +9,21 @@ import (
 	"github.com/Agent-Field/aforge-v2/internal/store"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/charmbracelet/x/ansi"
 )
 
 type standingActionBackend struct {
 	*fakeBackend
 	requested []store.Command
+}
+
+type charterHistoryBackend struct {
+	*fakeBackend
+	charters []store.Charter
+}
+
+func (b *charterHistoryBackend) Charters() ([]store.Charter, error) {
+	return append([]store.Charter(nil), b.charters...), nil
 }
 
 func (b *standingActionBackend) RequestCommand(command store.Command) (store.Command, error) {
@@ -129,8 +139,26 @@ func TestStandingSectionPresenceContentAndClick(t *testing.T) {
 	empty := standingModel(&fakeBackend{}, now, store.Snapshot{Nodes: []store.Node{{ID: store.RootID}}})
 	empty.setSize(90, 30)
 	empty.toggleGraph()
-	if section := empty.renderStandingSection(80); section != "" {
-		t.Fatalf("zero charters rendered standing chrome: %q", section)
+	wantTeaching := "standing\n⏱ say \"whenever…\" or \"remind me…\" to stand something up\n"
+	if section := ansi.Strip(empty.renderStandingSection(80)); section != wantTeaching {
+		t.Fatalf("zero-charter teaching section = %q, want %q", section, wantTeaching)
+	}
+	if height := empty.standingSectionHeight(); height != 3 {
+		t.Fatalf("zero-charter standing height = %d, want 3", height)
+	}
+
+	retiredBackend := &charterHistoryBackend{
+		fakeBackend: &fakeBackend{},
+		charters:    []store.Charter{{ID: "retired", Status: store.CharterRetired}},
+	}
+	retired := standingModel(retiredBackend, now, store.Snapshot{Nodes: []store.Node{{ID: store.RootID}}})
+	retired.setSize(90, 30)
+	retired.toggleGraph()
+	if section := ansi.Strip(retired.renderStandingSection(80)); section != "" {
+		t.Fatalf("learned standing hint returned for retired history: %q", section)
+	}
+	if height := retired.standingSectionHeight(); height != 0 {
+		t.Fatalf("retired charter kept empty-state space: %d", height)
 	}
 }
 

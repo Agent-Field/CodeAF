@@ -112,7 +112,7 @@ func (m *Model) View() string {
 	}
 	parts = append(parts, m.renderInput())
 	if !m.paletteOpen() {
-		hint := "/ commands · tab focus · " + keyBindings.graph + " tasks · v receipts · ? help"
+		hint := m.contextHelpLine()
 		switch {
 		case m.voiceHint != "" && time.Now().Before(m.voiceHintUntil):
 			hint = m.voiceHint
@@ -120,18 +120,10 @@ func (m *Model) View() string {
 			hint = keyBindings.voice + " finish · esc discard · keep typing to preserve your draft"
 		case m.voiceState == voiceStarting || m.voiceState == voiceFinalizing:
 			hint = "voice working · esc discard"
-		case m.focus == focusCards:
-			hint = "↑/↓ select card · enter details/graph · esc back · " + keyBindings.graph + " all tasks"
-		case m.focus == focusQuestions:
-			hint = "↑/↓ select question · enter ask inline · esc back"
-		case m.nodeViewID != "":
-			hint = "type to steer · enter send · c cancel · esc back"
-		case m.focus == focusGraph:
-			hint = "↑/↓ select · enter inspect · esc close · " + keyBindings.graph + " hide"
-		case m.focus == focusHeader:
-			hint = "←/→ choose header control · enter open · esc back"
-		case !m.voiceHintShown:
-			hint = "/ commands · tab focus · " + keyBindings.voice + " voice · " + keyBindings.graph + " tasks · v receipts · ? help"
+		default:
+			if tip := m.idleTipLine(m.standingTime()); tip != "" {
+				hint = tip
+			}
 		}
 		parts = append(parts, mutedStyle.Faint(true).Render(truncate(hint, m.width)))
 	}

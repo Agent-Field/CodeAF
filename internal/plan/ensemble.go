@@ -500,7 +500,7 @@ func ensembleHook(ctx context.Context, client Completer, graph *Graph, options O
 	if options.Ensemble == EnsembleNever {
 		return nil, false, nil
 	}
-	progress("ensemble", "deciding whether independent passes beat splitting the work")
+	emitProgress(progress, "ensemble", "deciding whether independent passes beat splitting the work", "")
 	forced := options.Ensemble >= 2
 
 	panel, usage, err := DecidePanel(ctx, client, graph.Goal, graph.Stages)
@@ -521,7 +521,7 @@ func ensembleHook(ctx context.Context, client Completer, graph *Graph, options O
 		report("ensemble", time.Since(start), "decompose: "+clipReason(panel.Reason, 40))
 		return nil, false, nil
 	}
-	progress("ensemble", "drawing independent passes over the same material")
+	emitProgress(progress, "ensemble", "drawing independent passes over the same material", "")
 
 	panelists := DefaultPanelists
 	if forced {
@@ -536,8 +536,14 @@ func ensembleHook(ctx context.Context, client Completer, graph *Graph, options O
 	if len(graph.Leaves()) > panelists {
 		detail = "setup + " + detail
 	}
-	progress("ensemble", fmt.Sprintf("%d independent passes and a merge", panelists))
-	progress("briefs", fmt.Sprintf("%d/%d", len(graph.Leaves()), len(graph.Leaves())))
+	emitProgress(progress, "ensemble", fmt.Sprintf("%d independent passes and a merge", panelists), "")
+	latest := ""
+	if leaves := graph.Leaves(); len(leaves) > 0 {
+		if node := graph.Node(leaves[len(leaves)-1]); node != nil {
+			latest = nodeProgressTitle(*node)
+		}
+	}
+	emitProgress(progress, "briefs", fmt.Sprintf("%d/%d", len(graph.Leaves()), len(graph.Leaves())), latest)
 	report("ensemble", time.Since(start), detail)
 
 	// The panelists — or the setup, when there is one — are dispatchable the
