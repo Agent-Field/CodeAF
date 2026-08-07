@@ -14,8 +14,12 @@ import (
 // by chat after this returns; wake deliberately has no session-open or arrival
 // brief side effects.
 func newResidentReconciler(settings config.Config, graph *store.Store,
-	chatClient, taskClient *liveClient, plans *jobPlans) *resident.Reconciler {
+	chatClient, taskClient *liveClient, plans *jobPlans,
+	resolveModel func(head.ModelWords) head.WorkModelChoice) *resident.Reconciler {
 	compiler := head.NewCompiler(chatClient)
+	if resolveModel != nil {
+		compiler = compiler.WithModelResolver(resolveModel)
+	}
 	return resident.New(graph,
 		func(ctx context.Context, instruction, graphContext string) (resident.Compiled, error) {
 			augmented := graphContext
@@ -36,6 +40,8 @@ func newResidentReconciler(settings config.Config, graph *store.Store,
 				QuestionOptions: brief.QuestionOptions,
 				Charter:         brief.Charter,
 				ServiceIntent:   brief.ServiceIntent,
+				WorkModel:       brief.WorkModel,
+				ModelNote:       brief.ModelNote,
 			}, nil
 		},
 		planSubtree(settings, taskClient, plans, graph),

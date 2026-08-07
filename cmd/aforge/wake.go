@@ -46,7 +46,9 @@ func runWake(args []string) error {
 		measured, _ := profile.Load(settings.ProfileDir, taskClient.Model(), "linear")
 		plan.UseAnchors(measured.Anchors)
 		plans := &jobPlans{graphs: map[string]plannedJob{}}
-		return newResidentReconciler(settings, graph, chatClient, taskClient, plans), nil
+		// A wake pass has no live boost slot to resolve model words against;
+		// jobs born here run on the configured work model.
+		return newResidentReconciler(settings, graph, chatClient, taskClient, plans, nil), nil
 	})
 }
 
