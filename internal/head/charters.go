@@ -16,16 +16,28 @@ func (h *Head) answerAgentQuestion(user store.Message) (bool, error) {
 	if err != nil || !found {
 		return false, err
 	}
+	if question.Status == store.QuestionAnswered || question.Status == store.QuestionExpired {
+		return true, nil
+	}
 	answer := strings.TrimSpace(user.Body)
 	if option, selected := selectQuestionOption(user.Body, question.Options); selected {
 		answer = strings.TrimSpace(option.Label)
 		if answer == "" {
 			answer = strings.TrimSpace(option.Value)
 		}
+		if handled, err := h.answerCharterFiringQuestion(user, question.Seq, option); handled {
+			return true, err
+		}
 		if err := h.store.ResolveQuestion(question.Seq, store.QuestionAnswered, answer, user.Seq); err != nil {
 			return true, err
 		}
 		return true, h.applyAgentQuestionOption(user, question, option)
+	}
+	if standingWatchQuestion(question.Options) {
+		// Unattended presence is decided once and never asked again, so only an
+		// explicit choice may cross it. Free text stays ordinary conversation
+		// rather than silently spending the single question.
+		return false, nil
 	}
 	if charterID, ok := charterQuestionID(question.Options); ok {
 		if cadence := extractCadence(user.Body); cadence != "" {
@@ -68,6 +80,14 @@ func (h *Head) applyAgentQuestionOption(user store.Message, question store.Agent
 		}
 	}
 	parts := strings.Split(option.Value, ":")
+	if len(parts) == 2 && parts[0] == "standing-watch" {
+		switch parts[1] {
+		case "enable":
+			return h.requestStandingWatchCommand(user, store.CommandStandingWatchEnable, option.Label)
+		case "decline":
+			return h.requestStandingWatchCommand(user, store.CommandStandingWatchDecline, option.Label)
+		}
+	}
 	if len(parts) >= 3 && parts[0] == "charter" {
 		id := parts[2]
 		switch parts[1] {
@@ -122,6 +142,11 @@ func (h *Head) answerPendingQuestion(user store.Message) (bool, error) {
 	}
 	option, selected := selectQuestionOption(user.Body, question.Options)
 	if selected {
+		if question.QuestionSeq != 0 {
+			if handled, err := h.answerCharterFiringQuestion(user, question.QuestionSeq, option); handled {
+				return true, err
+			}
+		}
 		return true, h.applyQuestionOption(user, question, option)
 	}
 
@@ -160,6 +185,7 @@ func selectQuestionOption(reply string, options []store.QuestionOption) (store.Q
 		if negativeReply(normalized) &&
 			(strings.Contains(label, "not standing") || strings.Contains(value, ":once:") ||
 				strings.Contains(value, ":decline:") ||
+				strings.HasPrefix(label, "only while") || value == "standing-watch:decline" ||
 				strings.HasPrefix(label, "keep ") || strings.Contains(value, "surgery:keep:")) {
 			return option, true
 		}
@@ -174,6 +200,15 @@ func negativeReply(reply string) bool {
 	default:
 		return false
 	}
+}
+
+func standingWatchQuestion(options []store.QuestionOption) bool {
+	for _, option := range options {
+		if strings.HasPrefix(strings.TrimSpace(option.Value), "standing-watch:") {
+			return true
+		}
+	}
+	return false
 }
 
 func charterQuestionID(options []store.QuestionOption) (string, bool) {
@@ -201,6 +236,14 @@ func (h *Head) applyQuestionOption(user store.Message, question store.Message, o
 		}
 	}
 	parts := strings.Split(option.Value, ":")
+	if len(parts) == 2 && parts[0] == "standing-watch" {
+		switch parts[1] {
+		case "enable":
+			return h.requestStandingWatchCommand(user, store.CommandStandingWatchEnable, option.Label)
+		case "decline":
+			return h.requestStandingWatchCommand(user, store.CommandStandingWatchDecline, option.Label)
+		}
+	}
 	if len(parts) >= 3 && parts[0] == "charter" {
 		id := parts[2]
 		switch parts[1] {
@@ -249,6 +292,13 @@ func (h *Head) applyQuestionOption(user store.Message, question store.Message, o
 	return h.continueCompilerQuestion(user, question, answer)
 }
 
+func (h *Head) requestStandingWatchCommand(user store.Message, kind store.CommandKind, instruction string) error {
+	_, err := h.store.RequestCommand(store.Command{
+		SessionID: user.SessionID, Kind: kind, Instruction: instruction,
+	})
+	return err
+}
+
 func (h *Head) continueCompilerQuestion(user store.Message, question store.Message, answer string) error {
 	source, found, err := h.store.CommandBySeq(question.CommandSeq)
 	if err != nil {
@@ -282,8 +332,51 @@ func (h *Head) requestCharterCommand(user store.Message, kind store.CommandKind,
 	if err != nil {
 		return err
 	}
+	return h.acknowledgeCharterCommand(user, command)
+}
+
+func (h *Head) answerCharterFiringQuestion(user store.Message, questionSeq int64, option store.QuestionOption) (bool, error) {
+	kind, id, instruction, ok := charterFiringCommand(option)
+	if !ok {
+		return false, nil
+	}
+	resolution := strings.TrimSpace(option.Label)
+	if resolution == "" {
+		resolution = strings.TrimSpace(option.Value)
+	}
+	command, requested, err := h.store.ResolveQuestionWithCommand(questionSeq, resolution, user.Seq, store.Command{
+		SessionID: user.SessionID, Kind: kind, Target: id, Instruction: instruction,
+	})
+	if err != nil || !requested {
+		return true, err
+	}
+	return true, h.acknowledgeCharterCommand(user, command)
+}
+
+func charterFiringCommand(option store.QuestionOption) (store.CommandKind, string, string, bool) {
+	parts := strings.Split(option.Value, ":")
+	if len(parts) != 4 || parts[0] != "charter" || strings.TrimSpace(parts[2]) == "" || strings.TrimSpace(parts[3]) == "" {
+		return "", "", "", false
+	}
+	var kind store.CommandKind
+	switch parts[1] {
+	case "fire":
+		kind = store.CommandCharterFire
+	case "decline":
+		kind = store.CommandCharterDecline
+	case "always":
+		kind = store.CommandCharterAlways
+	case "never":
+		kind = store.CommandCharterNever
+	default:
+		return "", "", "", false
+	}
+	return kind, parts[2], "wake:" + parts[3], true
+}
+
+func (h *Head) acknowledgeCharterCommand(user store.Message, command store.Command) error {
 	reply := "Updating that standing charter."
-	switch kind {
+	switch command.Kind {
 	case store.CommandCharterRatify:
 		reply = "Standing it up."
 	case store.CommandCharterPause:

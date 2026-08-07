@@ -244,7 +244,7 @@ func (s *Store) PendingQuestions(sessionID string, limit int) ([]AgentQuestion, 
 	where := `status = ?`
 	args := []any{QuestionPending}
 	if sessionID != "" {
-		where += ` AND session_id = ?`
+		where += ` AND (session_id = ? OR session_id = '')`
 		args = append(args, sessionID)
 	}
 	return s.queryAgentQuestions(where+` ORDER BY seq LIMIT ?`, append(args, questionLimit(limit)))
@@ -272,6 +272,16 @@ func (s *Store) AgentQuestionBySeq(seq int64) (AgentQuestion, bool, error) {
 // SurfaceQuestion moves one pending question into its thread. The message and
 // status transition are separate journal events committed atomically.
 func (s *Store) SurfaceQuestion(seq int64) (Message, error) {
+	return s.surfaceQuestion(seq, "")
+}
+
+// SurfaceQuestionForSession surfaces a neutral queued question into the live
+// session that chose it. Session-bound questions keep their original session.
+func (s *Store) SurfaceQuestionForSession(seq int64, sessionID string) (Message, error) {
+	return s.surfaceQuestion(seq, strings.TrimSpace(sessionID))
+}
+
+func (s *Store) surfaceQuestion(seq int64, neutralSessionID string) (Message, error) {
 	tx, err := s.db.BeginTx(context.Background(), nil)
 	if err != nil {
 		return Message{}, fmt.Errorf("surface question: %w", err)
@@ -288,8 +298,12 @@ func (s *Store) SurfaceQuestion(seq int64) (Message, error) {
 	if question.Status != QuestionPending {
 		return Message{}, fmt.Errorf("surface question: %w: question %d is already %s", ErrInvalid, seq, question.Status)
 	}
+	messageSessionID := question.SessionID
+	if messageSessionID == "" {
+		messageSessionID = neutralSessionID
+	}
 	payload := messagePayload{
-		SessionID: question.SessionID, Role: RoleAgent, Body: question.Text,
+		SessionID: messageSessionID, Role: RoleAgent, Body: question.Text,
 		NodeID: question.OriginNodeID, CommandSeq: question.OriginCommandSeq,
 		QuestionSeq: question.Seq, Options: question.Options,
 	}
@@ -312,7 +326,7 @@ func (s *Store) SurfaceQuestion(seq int64) (Message, error) {
 		return Message{}, fmt.Errorf("surface question: %w", err)
 	}
 	return Message{
-		Seq: messageSeq, Time: messageAt, SessionID: question.SessionID,
+		Seq: messageSeq, Time: messageAt, SessionID: messageSessionID,
 		Role: RoleAgent, Body: question.Text, NodeID: question.OriginNodeID,
 		CommandSeq: question.OriginCommandSeq, QuestionSeq: question.Seq,
 		Options: append([]QuestionOption(nil), question.Options...),
@@ -320,8 +334,9 @@ func (s *Store) SurfaceQuestion(seq int64) (Message, error) {
 }
 
 // ResolveQuestion terminally settles a question exactly once. Answered
-// questions must have been surfaced; expiry may retire either a pending or
-// asked question. messageSeq optionally points at the user reply.
+// questions must have been surfaced or already linked to an agent message;
+// expiry may retire either a pending or asked question. messageSeq optionally
+// points at the user reply.
 func (s *Store) ResolveQuestion(seq int64, status AgentQuestionStatus, resolution string, messageSeq ...int64) error {
 	if status != QuestionAnswered && status != QuestionExpired {
 		return fmt.Errorf("resolve question: %w: status %q is not a resolution", ErrInvalid, status)
@@ -353,26 +368,15 @@ func (s *Store) ResolveQuestion(seq int64, status AgentQuestionStatus, resolutio
 	if question.Status != QuestionPending && question.Status != QuestionAsked {
 		return fmt.Errorf("resolve question: %w: question %d is already %s", ErrInvalid, seq, question.Status)
 	}
-	if status == QuestionAnswered && question.Status != QuestionAsked {
-		return fmt.Errorf("resolve question: %w: question %d has not been asked", ErrInvalid, seq)
-	}
-	if status == QuestionAnswered && answerSeq != 0 {
-		var sessionID string
-		var role Role
-		if err := tx.QueryRow(`SELECT session_id, role FROM messages WHERE seq = ?`, answerSeq).Scan(&sessionID, &role); err != nil {
-			if errors.Is(err, sql.ErrNoRows) {
-				return fmt.Errorf("resolve question: %w: answer message %d", ErrNotFound, answerSeq)
-			}
+	if status == QuestionAnswered {
+		if err := validateQuestionAnswerTx(tx, question, answerSeq); err != nil {
 			return fmt.Errorf("resolve question: %w", err)
-		}
-		if role != RoleUser || sessionID != question.SessionID {
-			return fmt.Errorf("resolve question: %w: answer message does not belong to the question session", ErrInvalid)
 		}
 	}
 	payload := agentQuestionResolvedPayload{
 		QuestionSeq: seq, Status: status, Resolution: resolution, MessageSeq: answerSeq,
 	}
-	eventSeq, at, err := appendEvent(tx, question.OriginNodeID, EventAgentQuestionResolved, payload)
+	eventSeq, at, err := appendEvent(tx, agentQuestionAnchor(question), EventAgentQuestionResolved, payload)
 	if err != nil {
 		return fmt.Errorf("resolve question: %w", err)
 	}
@@ -385,6 +389,83 @@ func (s *Store) ResolveQuestion(seq int64, status AgentQuestionStatus, resolutio
 	return nil
 }
 
+// ResolveQuestionWithCommand atomically settles one selectable question and
+// enqueues its continuation command. The conditional no-op update takes the
+// SQLite write lock before reading the question, so racing message and dock
+// answers serialize: exactly one transaction journals both events and later
+// answers observe an already-settled question without creating another
+// command.
+func (s *Store) ResolveQuestionWithCommand(seq int64, resolution string, answerSeq int64, command Command) (Command, bool, error) {
+	resolution = bounded(strings.TrimSpace(resolution), MaxDigestBytes)
+	if resolution == "" {
+		return Command{}, false, fmt.Errorf("resolve question with command: %w: empty resolution", ErrInvalid)
+	}
+	if answerSeq < 0 {
+		return Command{}, false, fmt.Errorf("resolve question with command: %w: invalid answer message", ErrInvalid)
+	}
+	if err := validateCommandRequest(command); err != nil {
+		return Command{}, false, fmt.Errorf("resolve question with command: %w", err)
+	}
+
+	tx, err := s.db.BeginTx(context.Background(), nil)
+	if err != nil {
+		return Command{}, false, fmt.Errorf("resolve question with command: %w", err)
+	}
+	defer tx.Rollback()
+
+	result, err := tx.Exec(`UPDATE agent_questions SET updated_seq = updated_seq
+		WHERE seq = ? AND status IN (?, ?)`, seq, QuestionPending, QuestionAsked)
+	if err != nil {
+		return Command{}, false, fmt.Errorf("resolve question with command: %w", err)
+	}
+	changed, err := result.RowsAffected()
+	if err != nil {
+		return Command{}, false, fmt.Errorf("resolve question with command: %w", err)
+	}
+	if changed == 0 {
+		var status AgentQuestionStatus
+		if err := tx.QueryRow(`SELECT status FROM agent_questions WHERE seq = ?`, seq).Scan(&status); err != nil {
+			if errors.Is(err, sql.ErrNoRows) {
+				return Command{}, false, fmt.Errorf("resolve question with command: %w: no question at seq %d", ErrNotFound, seq)
+			}
+			return Command{}, false, fmt.Errorf("resolve question with command: %w", err)
+		}
+		if status == QuestionAnswered {
+			return Command{}, false, nil
+		}
+		return Command{}, false, fmt.Errorf("resolve question with command: %w: question %d is already %s", ErrInvalid, seq, status)
+	}
+
+	question, found, err := queryAgentQuestionTx(tx, seq)
+	if err != nil {
+		return Command{}, false, fmt.Errorf("resolve question with command: %w", err)
+	}
+	if !found {
+		return Command{}, false, fmt.Errorf("resolve question with command: %w: no question at seq %d", ErrNotFound, seq)
+	}
+	if err := validateQuestionAnswerTx(tx, question, answerSeq); err != nil {
+		return Command{}, false, fmt.Errorf("resolve question with command: %w", err)
+	}
+	payload := agentQuestionResolvedPayload{
+		QuestionSeq: seq, Status: QuestionAnswered, Resolution: resolution, MessageSeq: answerSeq,
+	}
+	eventSeq, at, err := appendEvent(tx, agentQuestionAnchor(question), EventAgentQuestionResolved, payload)
+	if err != nil {
+		return Command{}, false, fmt.Errorf("resolve question with command: %w", err)
+	}
+	if err := applyAgentQuestionResolution(tx, payload, eventSeq, at); err != nil {
+		return Command{}, false, fmt.Errorf("resolve question with command: %w", err)
+	}
+	command, err = requestCommandTx(tx, command)
+	if err != nil {
+		return Command{}, false, fmt.Errorf("resolve question with command: %w", err)
+	}
+	if err := tx.Commit(); err != nil {
+		return Command{}, false, fmt.Errorf("resolve question with command: %w", err)
+	}
+	return command, true, nil
+}
+
 // QuestionForAnswer matches an explicit reference first, otherwise the most
 // recent surfaced question with no intervening user turn.
 func (s *Store) QuestionForAnswer(sessionID string, beforeSeq, referenceSeq int64) (AgentQuestion, bool, error) {
@@ -392,23 +473,64 @@ func (s *Store) QuestionForAnswer(sessionID string, beforeSeq, referenceSeq int6
 		return AgentQuestion{}, false, nil
 	}
 	if referenceSeq != 0 {
-		questions, err := s.queryAgentQuestions(`seq = ? AND session_id = ? AND status = ? AND asked_message_seq < ?`,
-			[]any{referenceSeq, sessionID, QuestionAsked, beforeSeq})
+		questions, err := s.queryAgentQuestions(`seq = ? AND (session_id = ? OR session_id = '')
+			AND seq < ? AND EXISTS (
+				SELECT 1 FROM messages m WHERE m.question_seq = agent_questions.seq
+				AND m.role = ? AND m.seq < ?
+			)`, []any{referenceSeq, sessionID, beforeSeq, RoleAgent, beforeSeq})
 		if err != nil || len(questions) == 0 {
 			return AgentQuestion{}, false, err
 		}
 		return questions[0], true, nil
 	}
-	questions, err := s.queryAgentQuestions(`session_id = ? AND status = ? AND asked_message_seq < ?
+	questions, err := s.queryAgentQuestions(`(session_id = ? OR session_id = '') AND status = ? AND asked_message_seq < ?
 		AND NOT EXISTS (
-			SELECT 1 FROM messages u WHERE u.session_id = agent_questions.session_id
+			SELECT 1 FROM messages u WHERE u.session_id = ?
 			AND u.role = ? AND u.seq > agent_questions.asked_message_seq AND u.seq < ?
 		) ORDER BY asked_message_seq DESC LIMIT 1`,
-		[]any{sessionID, QuestionAsked, beforeSeq, RoleUser, beforeSeq})
+		[]any{sessionID, QuestionAsked, beforeSeq, sessionID, RoleUser, beforeSeq})
 	if err != nil || len(questions) == 0 {
 		return AgentQuestion{}, false, err
 	}
 	return questions[0], true, nil
+}
+
+func validateQuestionAnswerTx(tx *sql.Tx, question AgentQuestion, answerSeq int64) error {
+	if question.Status == QuestionPending {
+		var linked bool
+		if err := tx.QueryRow(`SELECT EXISTS(
+			SELECT 1 FROM messages WHERE question_seq = ? AND role = ?
+		)`, question.Seq, RoleAgent).Scan(&linked); err != nil {
+			return err
+		}
+		if !linked {
+			return fmt.Errorf("%w: question %d has not been asked", ErrInvalid, question.Seq)
+		}
+	} else if question.Status != QuestionAsked {
+		return fmt.Errorf("%w: question %d is already %s", ErrInvalid, question.Seq, question.Status)
+	}
+	if answerSeq == 0 {
+		return nil
+	}
+	var sessionID string
+	var role Role
+	if err := tx.QueryRow(`SELECT session_id, role FROM messages WHERE seq = ?`, answerSeq).Scan(&sessionID, &role); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return fmt.Errorf("%w: answer message %d", ErrNotFound, answerSeq)
+		}
+		return err
+	}
+	if role != RoleUser || (question.SessionID != "" && sessionID != question.SessionID) {
+		return fmt.Errorf("%w: answer message does not belong to the question session", ErrInvalid)
+	}
+	return nil
+}
+
+func agentQuestionAnchor(question AgentQuestion) string {
+	if question.OriginNodeID != "" {
+		return question.OriginNodeID
+	}
+	return question.OriginCharterID
 }
 
 func applyAgentQuestionView(tx *sql.Tx, payload agentQuestionPayload, seq int64, at time.Time) error {

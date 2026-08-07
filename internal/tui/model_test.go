@@ -21,6 +21,9 @@ type fakeBackend struct {
 	commands          []store.Command
 	usage             store.TotalUsage
 	jobUsage          map[string]store.JobUsage
+	selfSpend         float64
+	selfReceipts      []store.SelfReceipt
+	facts             map[int64]store.Fact
 	posted            []store.Message
 	agentQuestions    []store.AgentQuestion
 	surfacedQuestions []int64
@@ -237,6 +240,31 @@ func (f *fakeBackend) Usage() (store.TotalUsage, error) {
 	return f.usage, nil
 }
 
+func (f *fakeBackend) SelfSpendToday() (float64, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.selfSpend, nil
+}
+
+func (f *fakeBackend) SelfReceipts(since time.Time) ([]store.SelfReceipt, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	var receipts []store.SelfReceipt
+	for _, receipt := range f.selfReceipts {
+		if since.IsZero() || !receipt.Time.Before(since) {
+			receipts = append(receipts, receipt)
+		}
+	}
+	return receipts, nil
+}
+
+func (f *fakeBackend) FactBySeq(seq int64) (store.Fact, bool, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	fact, found := f.facts[seq]
+	return fact, found, nil
+}
+
 func (f *fakeBackend) TopLevelJobUsage() (map[string]store.JobUsage, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -252,7 +280,7 @@ func (f *fakeBackend) PendingQuestions(sessionID string, limit int) ([]store.Age
 	defer f.mu.Unlock()
 	var questions []store.AgentQuestion
 	for _, question := range f.agentQuestions {
-		if question.SessionID == sessionID && question.Status == store.QuestionPending {
+		if (question.SessionID == sessionID || question.SessionID == "") && question.Status == store.QuestionPending {
 			questions = append(questions, question)
 			if limit > 0 && len(questions) == limit {
 				break
@@ -262,15 +290,19 @@ func (f *fakeBackend) PendingQuestions(sessionID string, limit int) ([]store.Age
 	return questions, nil
 }
 
-func (f *fakeBackend) SurfaceQuestion(seq int64) (store.Message, error) {
+func (f *fakeBackend) SurfaceQuestionForSession(seq int64, sessionID string) (store.Message, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	for index, question := range f.agentQuestions {
 		if question.Seq != seq || question.Status != store.QuestionPending {
 			continue
 		}
+		messageSessionID := question.SessionID
+		if messageSessionID == "" {
+			messageSessionID = sessionID
+		}
 		message := store.Message{
-			Seq: int64(len(f.messages) + 1), Time: time.Now(), SessionID: question.SessionID,
+			Seq: int64(len(f.messages) + 1), Time: time.Now(), SessionID: messageSessionID,
 			Role: store.RoleAgent, Body: question.Text, NodeID: question.OriginNodeID,
 			CommandSeq: question.OriginCommandSeq, QuestionSeq: question.Seq, Options: question.Options,
 		}
@@ -330,6 +362,42 @@ func TestAgentQuestionDockExpandsAndSurfacesWithoutInterruptingTyping(t *testing
 	_, _ = model.Update(post())
 	if got := backend.posted[len(backend.posted)-1]; got.QuestionSeq != 11 || got.Body != "Keep it." {
 		t.Fatalf("referenced answer = %+v", got)
+	}
+}
+
+func TestQuestionDockShowsNeutralCharterProposalAndSurfacesItIntoTheLiveSession(t *testing.T) {
+	backend := &fakeBackend{agentQuestions: []store.AgentQuestion{{
+		Seq: 20, Text: "Update the release notes?", Urgency: store.QuestionNextNaturalMoment,
+		Status: store.QuestionPending, OriginCharterID: "release-notes",
+		Options: []store.QuestionOption{
+			{Label: "yes", Value: "charter:fire:release-notes:7"},
+			{Label: "not now", Value: "charter:decline:release-notes:7"},
+		},
+	}}}
+	model := New(backend, "live-session")
+	model.applyPoll(model.poll()().(pollResultMsg))
+	if len(model.agentQuestions) != 1 {
+		t.Fatalf("neutral proposal missing from dock: %+v", model.agentQuestions)
+	}
+	if dock := model.renderActivityBar(); !strings.Contains(dock, "?") {
+		t.Fatalf("question dock = %q", dock)
+	}
+	_, _ = model.Update(tea.KeyMsg{Type: tea.KeyTab})
+	_, _ = model.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	_, surface := model.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	if surface == nil {
+		t.Fatal("selecting the neutral proposal did not return a surface command")
+	}
+	_, _ = model.Update(surface())
+	if len(backend.surfacedQuestions) != 1 || backend.surfacedQuestions[0] != 20 {
+		t.Fatalf("surfaced questions = %v", backend.surfacedQuestions)
+	}
+	surfaced := backend.messages[len(backend.messages)-1]
+	if surfaced.SessionID != "live-session" || surfaced.QuestionSeq != 20 {
+		t.Fatalf("surfaced proposal = %+v", surfaced)
+	}
+	if model.answeringQuestionSeq != 20 {
+		t.Fatalf("neutral proposal is not answerable inline: question=%d", model.answeringQuestionSeq)
 	}
 }
 

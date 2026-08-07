@@ -38,6 +38,7 @@ func helpCategories() []helpCategory {
 			{key: "editing", meaning: "←/→ · home/end · ctrl+a/e/b/f · ctrl+u/k/w · delete"},
 		}},
 		{title: "moving around", rows: []helpRow{
+			{key: keyBindings.thread + " / " + keyBindings.board + " / " + keyBindings.self, meaning: "open thread / board / self"},
 			{key: "tab", meaning: "cycle input, questions/tasks, thread, rail, and header zones"},
 			{key: "?", meaning: "open this guide only when the current draft is empty"},
 			{key: "ctrl+c", meaning: "quit immediately"},
@@ -49,7 +50,7 @@ func helpCategories() []helpCategory {
 			{key: "ctrl+t/"+keyBindings.graph, meaning: "toggle the task rail"},
 			{key: "[ / ]", meaning: "nudge the chat/task split while outside the input"},
 			{key: "c", meaning: "cancel the inspected worker when its steer input is empty"},
-			{key: "header", meaning: "models ⌄ · tasks ▸/▾ · pending ● · ? help"},
+			{key: "header", meaning: "thread · board · self · models ⌄ · tasks ▸/▾ · ? help"},
 			{key: "mouse", meaning: "click focus/select/open; drag the pane divider"},
 			{key: "/", meaning: "type to filter commands; tab/↑/↓ choose; enter accepts"},
 		}},

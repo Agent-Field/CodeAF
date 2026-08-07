@@ -17,21 +17,25 @@ func (s *Store) PendingQuestion(sessionID string, beforeSeq int64) (Message, boo
 		return Message{}, false, nil
 	}
 	row := s.db.QueryRow(`
-		SELECT q.seq, q.ts, q.session_id, q.role, q.body, q.node_id, q.command_seq, q.options
+		SELECT q.seq, q.ts, q.session_id, q.role, q.body, q.node_id, q.command_seq, q.question_seq, q.options
 		FROM messages q
-		WHERE q.session_id = ? AND q.role = ? AND q.seq < ?
+		WHERE (q.session_id = ? OR q.session_id = '') AND q.role = ? AND q.seq < ?
 		  AND json_array_length(q.options) > 0
-		  AND q.question_seq = 0
+		  AND (q.question_seq = 0 OR EXISTS (
+		      SELECT 1 FROM agent_questions aq
+		      WHERE aq.seq = q.question_seq AND aq.status IN (?, ?)
+		  ))
 		  AND NOT EXISTS (
 		      SELECT 1 FROM messages u
-		      WHERE u.session_id = q.session_id AND u.role = ?
+		      WHERE u.session_id = ? AND u.role = ?
 		        AND u.seq > q.seq AND u.seq < ?
 		  )
-		ORDER BY q.seq DESC LIMIT 1`, sessionID, RoleAgent, beforeSeq, RoleUser, beforeSeq)
+		ORDER BY q.seq DESC LIMIT 1`, sessionID, RoleAgent, beforeSeq,
+		QuestionPending, QuestionAsked, sessionID, RoleUser, beforeSeq)
 	var message Message
 	var timestamp, options string
 	if err := row.Scan(&message.Seq, &timestamp, &message.SessionID, &message.Role,
-		&message.Body, &message.NodeID, &message.CommandSeq, &options); err != nil {
+		&message.Body, &message.NodeID, &message.CommandSeq, &message.QuestionSeq, &options); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return Message{}, false, nil
 		}

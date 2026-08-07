@@ -123,6 +123,19 @@ history when available), and rails, with `▸ 1 yes · ▸ 2 change cadence ·
 **Tip seed**: "Remind me Friday at 3" or "watch this folder" just works —
 you'll approve the standing cost once, then it's furniture.
 
+### It keeps watch when you're not here
+**What**: The first time a charter is ratified, and only then, one
+question is asked in the resident's voice: "Should I keep watching this
+when you're not here? `▸ 1 yes, always · ▸ 2 only while I'm around`".
+Yes arranges a quiet five-minute check that keeps running with no
+terminal open, and answers with a single line. Either answer is durable
+and the question is never asked twice — not after a restart, not on the
+next charter.
+**Where**: chat, immediately after the first ratification.
+**Tip seed**: Say "yes, always" once and your standing goals keep firing
+with every window closed; say "only while I'm around" and they wait for
+you — either way you're asked exactly once.
+
 ### The standing rail — felt, not seen
 **What**: One dim line per charter above tasks (`⏱ pr-watch · last fired
 2h · 3 today`), breathing only while a sentinel evaluates or a firing
@@ -306,6 +319,28 @@ runs and they earn tenure; one bad run and they're back to asking.
 
 ## 7. The surface
 
+### Three places: thread · board · self
+**What**: The header's left side is the whole map — thread (the conversation,
+home), board (live jobs, the graph, standing goals — the old tasks rail
+promoted), self (the employee's file: today's receipts, the competence map,
+newest beliefs, and each standing goal's tenure grade). Attention dots light
+per place from that place's own sources; esc always walks home to thread.
+**Where**: click the words, or alt+1 / alt+2 / alt+3 (alt+g and ⟨tasks⟩ still
+open the board); `/self`.
+**Tip seed**: Wondering what it's learned or earned lately? alt+3 opens its
+file — receipts, competence, beliefs, and tenure, one calm column.
+
+### The presence line — you can hear it working
+**What**: One dim line in the rail (and dock hint) while the resident works on
+itself: "practicing: goreleaser edge cases · $0.31 on myself today", with a
+brief "learned: …" clause when a round pays off. Silence when idle. Self-work
+never masquerades as your job cards, and the header spend meter carries a
+"· N¢ self" suffix whenever it spent on itself today.
+**Where**: automatic; the rail and the header meter.
+**Tip seed**: The dim line under the rail is the sound of it studying — and
+every cent it spends on itself shows up labelled "self" in the meter.
+
+
 ### Living job cards
 **What**: Work lives as cards with four states (compiling, working,
 question, settled); active cards dock above the input, settle at their
@@ -348,10 +383,20 @@ rails, no chat needed.
 
 ### `aforge wake`
 **What**: One watch pass over due charters — evaluate sentinels, fire
-what's due, exit. Lets cron or launchd drive standing goals without a
-resident process.
-**Tip seed**: No terminal open? A crontab line running aforge wake keeps
-your standing goals firing.
+what's due, journal the pass, exit. This is the command the standing
+watch runs for you every five minutes; running it by hand is the same
+pass, now.
+**Tip seed**: aforge wake runs one standing pass right now instead of
+waiting for the next check.
+
+### `aforge doctor`
+**What**: Five calm rows and nothing else: the brain file and its size,
+who is resident right now, whether the standing watch is on with its last
+wake and next check, today's spend against the rail, and how many goals
+are active with how many questions pending. The same rows ground the
+answer when you ask "who's keeping watch?" in chat.
+**Tip seed**: aforge doctor answers "is it actually running, and what has
+it cost me today?" in five lines.
 
 ### `aforge competence` / `aforge why self`
 **What**: The self-knowledge pair from the CLI: measured per-scope

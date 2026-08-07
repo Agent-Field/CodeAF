@@ -13,6 +13,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/Agent-Field/aforge-v2/internal/store"
+	"github.com/Agent-Field/aforge-v2/internal/watchdog"
 )
 
 const (
@@ -165,6 +166,7 @@ type Reconciler struct {
 	overrunPlan     OverrunPlanFunc
 	sentinel        SentinelFunc
 	composeBrief    BriefComposeFunc
+	standingWatch   StandingWatch
 	proposeCharters bool
 	dailyBudgetUSD  float64
 	practiceEnabled bool
@@ -172,13 +174,23 @@ type Reconciler struct {
 	practiceIdle    time.Duration
 	services        *ServiceSupervisor
 
-	mu                 sync.Mutex
-	watcherInitialized bool
-	lastEventSeq       int64
-	progress           map[string]*subtreeProgress
-	learningMoments    map[string]*pendingLearningMoment
-	lastConsolidation  time.Time
-	now                func() time.Time
+	mu                      sync.Mutex
+	watcherInitialized      bool
+	lastEventSeq            int64
+	progress                map[string]*subtreeProgress
+	learningMoments         map[string]*pendingLearningMoment
+	lastConsolidation       time.Time
+	lastWatchPass           WatchPass
+	standingWatchCheck      time.Time
+	standingWatchKeyPersist func() (bool, string, error)
+	now                     func() time.Time
+}
+
+// StandingWatch is the small consequence-facing seam the resident needs.
+// watchdog.Manager implements it; tests inject an in-memory recorder.
+type StandingWatch interface {
+	Install(ctx context.Context) error
+	Status() (watchdog.Status, error)
 }
 
 // New constructs a reconciler. A nil compiler preserves the instruction
@@ -199,6 +211,22 @@ func (r *Reconciler) WithServiceRuntime(runtime ServiceRuntime) *Reconciler {
 		r.services = NewServiceSupervisor(r.store)
 	}
 	r.services.WithRuntime(runtime)
+	return r
+}
+
+// WithStandingWatch enables the one-time unattended-presence offer after the
+// first charter ratification. Nil preserves embedding paths with no host timer.
+func (r *Reconciler) WithStandingWatch(standing StandingWatch) *Reconciler {
+	r.standingWatch = standing
+	return r
+}
+
+// WithStandingWatchKeyPersist supplies the credential step that runs before a
+// watch install: timer-driven wakes see no shell environment, so the key must
+// survive on disk for them. Kept as an injected hook so nothing in this
+// package ever writes to the real home during tests; nil skips persistence.
+func (r *Reconciler) WithStandingWatchKeyPersist(persist func() (bool, string, error)) *Reconciler {
+	r.standingWatchKeyPersist = persist
 	return r
 }
 
@@ -234,6 +262,7 @@ func (r *Reconciler) Tick(ctx context.Context) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	r.learningMoments = make(map[string]*pendingLearningMoment)
+	r.lastWatchPass = WatchPass{}
 
 	if r.store == nil {
 		return errors.New("resident tick: nil store")
@@ -241,6 +270,7 @@ func (r *Reconciler) Tick(ctx context.Context) error {
 	if err := r.initializeWatcher(); err != nil {
 		return fmt.Errorf("resident tick: initialize watcher: %w", err)
 	}
+	r.reconcileStandingWatch(ctx)
 	if err := r.expireQuestionsLocked(); err != nil {
 		return fmt.Errorf("resident tick: expire questions: %w", err)
 	}
@@ -276,7 +306,9 @@ func (r *Reconciler) Tick(ctx context.Context) error {
 			return fmt.Errorf("resident tick: resume deferred overruns: %w", err)
 		}
 	}
-	if _, err := r.watchOnceLocked(ctx); err != nil {
+	watchPass, err := r.watchOnceLocked(ctx)
+	r.lastWatchPass = watchPass
+	if err != nil {
 		return fmt.Errorf("resident tick: standing watches: %w", err)
 	}
 	if err := r.reconcileCharterOutcomes(); err != nil {
@@ -303,6 +335,15 @@ func (r *Reconciler) Tick(ctx context.Context) error {
 		return fmt.Errorf("resident tick: practice loop: %w", err)
 	}
 	return nil
+}
+
+// LastWatchPass returns the standing-watch decisions made by the latest Tick.
+// It is an ephemeral operation report for bounded callers such as `aforge
+// wake`; all resulting state transitions remain journaled in the store.
+func (r *Reconciler) LastWatchPass() WatchPass {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.lastWatchPass
 }
 
 type commandOutcome struct {
@@ -393,6 +434,8 @@ func (r *Reconciler) applyCommand(ctx context.Context, command store.Command) (c
 		store.CommandCharterCadence, store.CommandCharterOnce, store.CommandCharterFire,
 		store.CommandCharterDecline, store.CommandCharterAlways, store.CommandCharterNever, store.CommandCharterProbation:
 		return r.applyCharterCommand(ctx, command)
+	case store.CommandStandingWatchEnable, store.CommandStandingWatchDecline:
+		return r.applyStandingWatchCommand(ctx, command)
 	case store.CommandAmend:
 		return r.amend(command)
 	default:

@@ -3,12 +3,14 @@ package main
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/Agent-Field/aforge-v2/internal/config"
+	"github.com/Agent-Field/aforge-v2/internal/lease"
 	"github.com/Agent-Field/aforge-v2/internal/resident"
 	"github.com/Agent-Field/aforge-v2/internal/store"
 )
@@ -89,6 +91,10 @@ func TestWakeCommandRunsOnePassAndExits(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	wake, wakeFound, err := graph.LastStandingWake()
+	if err != nil || !wakeFound || wake.IsZero() {
+		t.Fatalf("wake pass was not journaled: %s found=%t err=%v", wake, wakeFound, err)
+	}
 	nodes, err := graph.Nodes()
 	if err != nil {
 		t.Fatal(err)
@@ -116,5 +122,130 @@ func TestWakeCommandRunsOnePassAndExits(t *testing.T) {
 	}
 	if calls != 1 || !strings.Contains(output.String(), "examined 0") {
 		t.Fatalf("second one-pass output = %q calls=%d", output.String(), calls)
+	}
+}
+
+func TestWakeFastExitsWhenResidentLeaseHeld(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "wake.db")
+	graph, err := store.Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := graph.Close(); err != nil {
+		t.Fatal(err)
+	}
+	release, heldBy, err := lease.AcquireResident(dir, "chat")
+	if err != nil || release == nil || heldBy != nil {
+		t.Fatalf("hold resident lease = release %v, held %+v, err %v", release != nil, heldBy, err)
+	}
+	defer release()
+
+	built := false
+	started := time.Now()
+	var output bytes.Buffer
+	err = runWakeWith([]string{"--db", path}, &output, func(*store.Store, string) (*resident.Reconciler, error) {
+		built = true
+		return nil, nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if built {
+		t.Fatal("wake built a reconciler while another resident was alive")
+	}
+	if elapsed := time.Since(started); elapsed >= time.Second {
+		t.Fatalf("fast exit took %s", elapsed)
+	}
+	if !strings.Contains(output.String(), "resident alive (pid ") || !strings.Contains(output.String(), "— skipping wake") {
+		t.Fatalf("fast-exit output = %q", output.String())
+	}
+}
+
+func TestWakeFullPassFiresDuePracticeCandidate(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "practice-wake.db")
+	graph, err := store.Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	seedWakePracticeCandidate(t, graph, "repo:/work/parser", "build parser and run go test")
+	if err := graph.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	var output bytes.Buffer
+	builder := func(graph *store.Store, _ string) (*resident.Reconciler, error) {
+		return resident.New(graph, nil, nil).WithPracticeLoop(2, 0), nil
+	}
+	if err := runWakeWith([]string{"--db", path}, &output, builder); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(output.String(), "practice 1") {
+		t.Fatalf("wake summary = %q", output.String())
+	}
+
+	graph, err = store.Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer graph.Close()
+	nodes, err := graph.Nodes()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, node := range nodes {
+		if node.Group == store.PracticeGroup && node.Status == store.Pending &&
+			node.Provenance.Origin == store.OriginSelf {
+			return
+		}
+	}
+	t.Fatalf("wake did not admit a pending self-origin practice node: %+v", nodes)
+}
+
+func seedWakePracticeCandidate(t *testing.T, graph *store.Store, scope, intent string) {
+	t.Helper()
+	for job := 1; job <= 2; job++ {
+		rootID := fmt.Sprintf("wake-history-%d", job)
+		nodes := []store.NodeSpec{{ID: rootID, Brief: intent, Stage: 2}}
+		for leaf := 1; leaf <= 3; leaf++ {
+			nodes = append(nodes, store.NodeSpec{
+				ID: fmt.Sprintf("%s-leaf-%d", rootID, leaf), Parent: rootID,
+				Brief: intent, Stage: 1,
+			})
+		}
+		if err := graph.Splice(store.RootID, store.Subtree{Nodes: nodes}, store.Provenance{
+			Origin: store.OriginUser, SessionID: "wake-practice", Intent: intent,
+		}); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := graph.RecordFact(rootID, scope, store.FactLesson, intent); err != nil {
+			t.Fatal(err)
+		}
+		// Improving residuals across the two jobs: the learning-progress
+		// allocator funds curiosity only where practice is paying off.
+		surprise := 2.0
+		if job == 2 {
+			surprise = 1.0
+		}
+		for leaf := 1; leaf <= 3; leaf++ {
+			completeWakePracticeNode(t, graph, fmt.Sprintf("%s-leaf-%d", rootID, leaf), surprise)
+		}
+		completeWakePracticeNode(t, graph, rootID, surprise)
+	}
+}
+
+func completeWakePracticeNode(t *testing.T, graph *store.Store, id string, surprise float64) {
+	t.Helper()
+	claim, won, err := graph.Claim(id, "wake-practice-history")
+	if err != nil || !won {
+		t.Fatalf("claim %s: won=%t err=%v", id, won, err)
+	}
+	if err := graph.RecordSurprise(store.NodeSurprise{
+		NodeID: id, ActualTokens: 200, ExpectedTokens: 100, Surprise: surprise,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := graph.Complete(claim, "go test passed"); err != nil {
+		t.Fatal(err)
 	}
 }

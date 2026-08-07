@@ -64,6 +64,15 @@ type Backend interface {
 	TopLevelJobUsage() (map[string]store.JobUsage, error)
 }
 
+// selfActivityReader is the resident-life slice of the store. It stays an
+// optional backend capability so lightweight TUI embedders do not have to
+// implement the resident, while the real store supplies every value.
+type selfActivityReader interface {
+	SelfSpendToday() (float64, error)
+	SelfReceipts(time.Time) ([]store.SelfReceipt, error)
+	FactBySeq(int64) (store.Fact, bool, error)
+}
+
 // Commander owns the live operations that do not belong to the thread lens.
 // A nil Commander keeps ordinary chat fully functional and reports command
 // capabilities honestly when they are requested.
@@ -99,6 +108,9 @@ type pollResultMsg struct {
 	jobUsage          map[string]store.JobUsage
 	commands          []store.Command
 	agentQuestions    []store.AgentQuestion
+	selfSpendToday    float64
+	selfReceipts      []store.SelfReceipt
+	selfLearning      string
 	messagesErr       error
 	snapshotErr       error
 	cardSnapshotErr   error
@@ -107,6 +119,18 @@ type pollResultMsg struct {
 	jobUsageErr       error
 	commandsErr       error
 	agentQuestionsErr error
+	selfCharters      []store.Charter
+	chartersRead      bool
+	selfChartersErr   error
+
+	selfDataRead      bool
+	selfSpend         float64
+	selfCompetence    store.CompetenceMap
+	selfFacts         []store.Fact
+	selfReceiptsErr   error
+	selfSpendErr      error
+	selfCompetenceErr error
+	selfFactsErr      error
 
 	nodeID          string
 	node            store.Node
@@ -141,6 +165,7 @@ type Model struct {
 	input textinput.Model
 	chat  viewport.Model
 	graph viewport.Model
+	self  viewport.Model
 
 	nodeTrace viewport.Model
 
@@ -152,8 +177,24 @@ type Model struct {
 	jobUsage             map[string]store.JobUsage
 	commands             map[int64]store.Command
 	agentQuestions       []store.AgentQuestion
+	selfSpendToday       float64
+	selfReceiptSeq       int64
+	selfReceiptAt        time.Time
+	selfLearning         string
 	lastSeq              int64
 	answeringQuestionSeq int64
+
+	// Self is a read-only employee file assembled by the ordinary store poll.
+	// Its four sections share one viewport and one keyboard selection.
+	selfOpen       bool
+	selfReceipts   []store.SelfReceipt
+	selfSpend      float64
+	selfCompetence store.CompetenceMap
+	selfFacts      []store.Fact
+	selfCharters   []store.Charter
+	selfExpanded   int
+	selfSelection  int
+	selfRows       []selfRow
 
 	cards           []jobCard
 	cardExpanded    map[string]bool
@@ -284,6 +325,7 @@ type Model struct {
 	historyGeneration     int
 	status                string
 	statusUntil           time.Time
+	headerStatusShown     bool
 	boost                 boostMode
 
 	voiceRecorder         voice.Recorder
@@ -325,6 +367,9 @@ type Model struct {
 
 	chatBounds                paneBounds
 	headerTasksBounds         paneBounds
+	headerThreadBounds        paneBounds
+	headerBoardBounds         paneBounds
+	headerSelfBounds          paneBounds
 	headerQuestionBounds      paneBounds
 	headerModelsBounds        paneBounds
 	headerHelpBounds          paneBounds
@@ -334,6 +379,7 @@ type Model struct {
 	standingRowsBounds        paneBounds
 	serviceRowsBounds         paneBounds
 	graphToggleBounds         paneBounds
+	selfBounds                paneBounds
 	inputBounds               paneBounds
 	boostBounds               paneBounds
 	micBounds                 paneBounds
@@ -375,6 +421,7 @@ const (
 	focusChat
 	focusCards
 	focusGraph
+	focusSelf
 	focusHeader
 )
 
@@ -430,6 +477,7 @@ func newModel(backend Backend, sessionID string, commander Commander) *Model {
 		input:                 input,
 		chat:                  viewport.New(1, 1),
 		graph:                 viewport.New(1, 1),
+		self:                  viewport.New(1, 1),
 		nodeTrace:             viewport.New(1, 1),
 		inputFocused:          true,
 		focus:                 focusInput,
@@ -453,6 +501,7 @@ func newModel(backend Backend, sessionID string, commander Commander) *Model {
 		voiceChunkText:        map[int]string{},
 		tipCurrent:            -1,
 		tipSeen:               map[int]bool{},
+		selfExpanded:          -1,
 	}
 	if services, ok := commander.(voiceServices); ok {
 		m.voiceRecorder = services.VoiceRecorder()
@@ -552,6 +601,7 @@ func (m *Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		m.spinnerFrame = (m.spinnerFrame + 1) % len(spinnerFrames)
 		m.refreshChat()
 		m.refreshGraph()
+		m.refreshSelf()
 		return m, m.scheduleAnimation()
 
 	case catalogResultMsg:
@@ -682,6 +732,10 @@ func (m *Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		m.refreshGraph()
 		return m, tea.Batch(command, m.scheduleAnimation())
 	}
+	if m.focus == focusSelf {
+		m.self, command = m.self.Update(message)
+		return m, command
+	}
 	m.chat, command = m.chat.Update(message)
 	m.syncChatScroll()
 	return m, command
@@ -696,6 +750,14 @@ func (m *Model) updateKey(message tea.KeyMsg) (tea.Cmd, bool) {
 		m.input.Value() == "" && len(m.attachments) > 0 {
 		m.removeAttachment(len(m.attachments) - 1)
 		return nil, true
+	}
+	switch key {
+	case keyBindings.thread:
+		return m.selectPlace(placeThread), true
+	case keyBindings.board:
+		return m.selectPlace(placeBoard), true
+	case keyBindings.self:
+		return m.selectPlace(placeSelf), true
 	}
 	// Every option-chord has a control synonym: on macOS, Option only reaches
 	// the program as alt+<key> when the terminal is configured to send it as
@@ -800,6 +862,12 @@ func (m *Model) updateKey(message tea.KeyMsg) (tea.Cmd, bool) {
 			m.palette = paletteNone
 			m.paletteDismissed = true
 			m.setSize(m.width, m.height)
+		case m.selfVisible() && m.selfExpanded >= 0:
+			m.selfSelection = m.selfExpanded
+			m.selfExpanded = -1
+			m.refreshSelf()
+		case m.selfVisible():
+			return m.selectPlace(placeThread), true
 		case m.graphVisible() && m.focus == focusGraph && m.closeScopedGraph():
 		case m.graphVisible() && m.focus == focusGraph && m.closeCharterCard():
 		case m.graphVisible() && m.focus == focusGraph && m.closeServiceCard():
@@ -841,6 +909,8 @@ func (m *Model) updateKey(message tea.KeyMsg) (tea.Cmd, bool) {
 			m.attachments = nil
 			m.paletteDismissed = false
 			m.setSize(m.width, m.height)
+		case m.graphVisible():
+			return m.selectPlace(placeThread), true
 		default:
 			return tea.Quit, true
 		}
@@ -877,6 +947,19 @@ func (m *Model) updateKey(message tea.KeyMsg) (tea.Cmd, bool) {
 				return nil, true
 			}
 			return m.surfaceSelectedAgentQuestion(), true
+		}
+	}
+	if m.focus == focusSelf {
+		switch key {
+		case "up", "k":
+			m.moveSelfSelection(-1)
+			return nil, true
+		case "down", "j":
+			m.moveSelfSelection(1)
+			return nil, true
+		case "enter":
+			m.activateSelfSelection()
+			return nil, true
 		}
 	}
 	// Numbered question options are a layer over the normal live input. An
@@ -1050,6 +1133,14 @@ func (m *Model) poll() tea.Cmd {
 	nodeID := m.nodeViewID
 	nodeAfterSeq := m.nodeLastSeq
 	commander := m.commander
+	selfReceiptSeq := m.selfReceiptSeq
+	selfReceiptSince := m.selfReceiptAt
+	if selfReceiptSince.IsZero() {
+		now := m.standingTime()
+		selfReceiptSince = time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
+	}
+	readSelf := m.selfVisible()
+	selfNow := m.standingTime()
 	return func() tea.Msg {
 		messages, messagesErr := backend.Messages(sessionID, afterSeq, pollLimit)
 		snapshot, snapshotErr := backend.ActiveSnapshot()
@@ -1063,6 +1154,21 @@ func (m *Model) poll() tea.Cmd {
 			PendingQuestions(string, int) ([]store.AgentQuestion, error)
 		}); ok {
 			agentQuestions, agentQuestionsErr = reader.PendingQuestions(sessionID, pollLimit)
+		}
+		var selfSpendToday float64
+		var selfReceipts []store.SelfReceipt
+		var selfLearning string
+		var selfSpendErr, selfReceiptsErr error
+		if reader, ok := backend.(selfActivityReader); ok {
+			selfSpendToday, selfSpendErr = reader.SelfSpendToday()
+			selfReceipts, selfReceiptsErr = reader.SelfReceipts(selfReceiptSince)
+			if selfReceiptsErr == nil && len(selfReceipts) > 0 {
+				newest := selfReceipts[len(selfReceipts)-1]
+				if newest.Seq > selfReceiptSeq && selfReceiptHasLearning(newest) &&
+					selfReceiptIsPractice(newest, cardSnapshot, snapshot) {
+					selfLearning, selfReceiptsErr = selfReceiptLearningClause(reader, newest)
+				}
+			}
 		}
 		result := pollResultMsg{
 			sessionID:         sessionID,
@@ -1080,6 +1186,27 @@ func (m *Model) poll() tea.Cmd {
 			jobUsageErr:       jobUsageErr,
 			agentQuestions:    agentQuestions,
 			agentQuestionsErr: agentQuestionsErr,
+			selfSpendToday:    selfSpendToday,
+			selfReceipts:      selfReceipts,
+			selfLearning:      selfLearning,
+			selfSpendErr:      selfSpendErr,
+			selfReceiptsErr:   selfReceiptsErr,
+		}
+		// Charters are read every cycle because the self place-dot must be
+		// able to light while the user is somewhere else. The rest of the
+		// employee file is read only while the file is open.
+		if reader, ok := backend.(selfCharterLister); ok {
+			result.chartersRead = true
+			result.selfCharters, result.selfChartersErr = reader.Charters()
+		}
+		if reader, ok := backend.(selfDataReader); ok && readSelf {
+			result.selfDataRead = true
+			result.selfReceipts, result.selfReceiptsErr = reader.SelfReceipts(startOfLocalDay(selfNow))
+			result.selfSpend, result.selfSpendErr = reader.SelfSpendToday()
+			result.selfCompetence, result.selfCompetenceErr = reader.CompetenceMap(
+				store.CompetenceOptions{Now: selfNow},
+			)
+			result.selfFacts, result.selfFactsErr = reader.RecentFacts(selfBeliefLimit)
 		}
 		seenCommands := make(map[int64]bool)
 		for _, message := range messages {
@@ -1104,6 +1231,59 @@ func (m *Model) poll() tea.Cmd {
 		}
 		return result
 	}
+}
+
+func selfReceiptHasLearning(receipt store.SelfReceipt) bool {
+	return len(receipt.FactIDs) > 0 || len(receipt.SkillIDs) > 0 ||
+		(receipt.SurpriseDelta != nil && *receipt.SurpriseDelta > 0)
+}
+
+func selfReceiptIsPractice(receipt store.SelfReceipt, snapshots ...store.Snapshot) bool {
+	for _, snapshot := range snapshots {
+		for _, node := range snapshot.Nodes {
+			if node.ID == receipt.NodeID {
+				return node.Group == store.PracticeGroup
+			}
+		}
+	}
+	return false
+}
+
+func selfReceiptLearningClause(reader selfActivityReader, receipt store.SelfReceipt) (string, error) {
+	ids := make([]int64, 0, len(receipt.FactIDs)+len(receipt.SkillIDs))
+	ids = append(ids, receipt.FactIDs...)
+	ids = append(ids, receipt.SkillIDs...)
+	for _, seq := range ids {
+		fact, found, err := reader.FactBySeq(seq)
+		if err != nil {
+			return "", err
+		}
+		if found {
+			if clause := oneSentence(firstLine(fact.Body)); clause != "" {
+				return clause, nil
+			}
+		}
+	}
+
+	scope := strings.TrimSpace(receipt.Scope)
+	if scope == "" {
+		scope = strings.TrimSpace(receipt.Origin)
+	}
+	if receipt.SurpriseDelta != nil && *receipt.SurpriseDelta > 0 {
+		clause := fmt.Sprintf("surprise fell %.0f%%", 100**receipt.SurpriseDelta)
+		if scope != "" {
+			clause += " in " + scope
+		}
+		return clause, nil
+	}
+	kind := "a fact"
+	if len(receipt.FactIDs) == 0 && len(receipt.SkillIDs) > 0 {
+		kind = "a skill"
+	}
+	if scope == "" {
+		return "captured " + kind, nil
+	}
+	return "captured " + kind + " in " + scope, nil
 }
 
 func nextPollTick() tea.Cmd {
@@ -1139,6 +1319,28 @@ func (m *Model) applyPoll(result pollResultMsg) {
 	if result.usageErr == nil {
 		m.usage = result.usage
 	}
+	if result.selfSpendErr == nil {
+		m.selfSpendToday = result.selfSpendToday
+	}
+	if result.selfReceiptsErr == nil {
+		// A learned line lives for exactly the poll on which its receipt first
+		// appears. Re-observing the same newest receipt clears it back to the
+		// default silence.
+		m.selfLearning = ""
+		if len(result.selfReceipts) > 0 {
+			newest := result.selfReceipts[len(result.selfReceipts)-1]
+			if newest.Seq > m.selfReceiptSeq && result.selfLearning != "" &&
+				selfReceiptIsPractice(newest, result.cardSnapshot, result.snapshot) {
+				m.selfLearning = result.selfLearning
+			}
+			if newest.Seq > m.selfReceiptSeq {
+				m.selfReceiptSeq = newest.Seq
+			}
+			if newest.Time.After(m.selfReceiptAt) {
+				m.selfReceiptAt = newest.Time
+			}
+		}
+	}
 	if result.jobUsageErr == nil && result.jobUsage != nil {
 		m.jobUsage = result.jobUsage
 	}
@@ -1160,6 +1362,23 @@ func (m *Model) applyPoll(result pollResultMsg) {
 			_ = m.input.Focus()
 		}
 		m.questionDockSelection = max(0, min(m.questionDockSelection, len(m.agentQuestions)-1))
+	}
+	if result.chartersRead && result.selfChartersErr == nil {
+		m.selfCharters = append(m.selfCharters[:0], result.selfCharters...)
+	}
+	if result.selfDataRead {
+		if result.selfReceiptsErr == nil && result.selfReceipts != nil {
+			m.selfReceipts = append(m.selfReceipts[:0], result.selfReceipts...)
+		}
+		if result.selfSpendErr == nil {
+			m.selfSpend = result.selfSpend
+		}
+		if result.selfCompetenceErr == nil {
+			m.selfCompetence = result.selfCompetence
+		}
+		if result.selfFactsErr == nil && result.selfFacts != nil {
+			m.selfFacts = append(m.selfFacts[:0], result.selfFacts...)
+		}
 	}
 	if result.nodeID != "" && result.nodeID == m.nodeViewID {
 		if result.nodeErr == nil && result.nodeFound {
@@ -1252,6 +1471,23 @@ func (m *Model) applyPoll(result pollResultMsg) {
 	}
 	if result.agentQuestionsErr != nil {
 		problems = append(problems, fmt.Errorf("read agent questions: %w", result.agentQuestionsErr))
+	}
+	if result.selfSpendErr != nil {
+		problems = append(problems, fmt.Errorf("read self spend: %w", result.selfSpendErr))
+	}
+	if result.selfReceiptsErr != nil {
+		problems = append(problems, fmt.Errorf("read self receipts: %w", result.selfReceiptsErr))
+	}
+	if result.chartersRead && result.selfChartersErr != nil {
+		problems = append(problems, fmt.Errorf("read self standing: %w", result.selfChartersErr))
+	}
+	if result.selfDataRead {
+		if result.selfCompetenceErr != nil {
+			problems = append(problems, fmt.Errorf("read competence: %w", result.selfCompetenceErr))
+		}
+		if result.selfFactsErr != nil {
+			problems = append(problems, fmt.Errorf("read beliefs: %w", result.selfFactsErr))
+		}
 	}
 	if result.nodeID != "" && result.nodeID == m.nodeViewID {
 		if result.nodeErr != nil {
@@ -1383,7 +1619,9 @@ func (m *Model) toggleFocus() tea.Cmd {
 		order = append(order, focusCards)
 	}
 	order = append(order, focusChat)
-	if m.graphVisible() {
+	if m.selfVisible() {
+		order = []paneFocus{focusInput, focusSelf, focusHeader}
+	} else if m.graphVisible() {
 		if m.horizontal {
 			order = []paneFocus{focusInput, focusChat, focusGraph, focusHeader}
 		} else {
@@ -1403,6 +1641,9 @@ func (m *Model) toggleFocus() tea.Cmd {
 	m.inputFocused = m.focus == focusInput
 	if m.focus == focusGraph {
 		m.ensureGraphSelection()
+	}
+	if m.focus == focusSelf {
+		m.ensureSelfSelectionVisible()
 	}
 	if m.focus == focusCards {
 		m.ensureCardSelection()
@@ -1427,28 +1668,15 @@ func (m *Model) toggleFocus() tea.Cmd {
 	return nil
 }
 
-// toggleGraph opens or closes the task rail. Opening moves focus into it so
-// the arrows work immediately; closing hands focus back to the input.
+// toggleGraph is the ⟨tasks⟩/alt+g alias for the board place. From the board
+// it returns home to the thread; from anywhere else — including Self — it
+// opens the board, focus and all, so the arrows work immediately.
 func (m *Model) toggleGraph() {
-	m.graphOpen = !m.graphOpen
-	m.graphScopeID = ""
-	m.charterCardID = ""
-	m.charterFocusIndex = 0
-	m.serviceCardID = ""
-	m.serviceFocusIndex = 0
-	m.palette = paletteNone
-	m.paletteDismissed = false
-	if m.graphOpen {
-		m.focus = focusGraph
-		m.inputFocused = false
-		m.input.Blur()
-		m.ensureGraphSelection()
-	} else {
-		m.focus = focusInput
-		m.inputFocused = true
-		_ = m.input.Focus()
+	if m.graphOpen && !m.selfOpen {
+		_ = m.selectPlace(placeThread)
+		return
 	}
-	m.setSize(m.width, m.height)
+	_ = m.selectPlace(placeBoard)
 }
 
 // graphVisible reports whether the task rail (or full task pane, when the
@@ -1458,7 +1686,7 @@ func (m *Model) graphVisible() bool { return m.graphOpen && m.nodeViewID == "" }
 // activityBarVisible reports whether the active-card dock sits above the
 // input. Its quiet fallback still opens the rail for graph-only stores.
 func (m *Model) activityBarVisible() bool {
-	return !m.graphVisible() && m.nodeViewID == "" && !m.paletteOpen()
+	return !m.selfVisible() && !m.graphVisible() && m.nodeViewID == "" && !m.paletteOpen()
 }
 
 func (m *Model) setSize(width, height int) {
@@ -1503,11 +1731,14 @@ func (m *Model) setSize(width, height int) {
 	m.chat.Width = max(1, m.chatWidth-2) // breathing room on the right
 	m.chat.Height = max(1, m.chatHeight)
 	m.graph.Width = max(1, m.graphWidth-2)
-	// Header + blank + the exact static standing-section budget.
-	m.graph.Height = max(1, m.graphHeight-2-m.standingSectionHeight()-m.servicesSectionHeight())
+	// Header + blank + the exact static standing, services, and presence budget.
+	m.graph.Height = max(1, m.graphHeight-2-m.standingSectionHeight()-m.servicesSectionHeight()-m.residentPresenceHeight())
+	m.self.Width = max(1, m.width-2)
+	m.self.Height = max(1, mainHeight)
 	m.sizeNodeViewports()
 	m.refreshChat()
 	m.refreshGraph()
+	m.refreshSelf()
 	if m.autoScroll {
 		m.chat.GotoBottom()
 	}
@@ -1557,6 +1788,14 @@ func (m *Model) pageFocused(down bool) {
 			m.graph.PageUp()
 		}
 		m.refreshGraph()
+		return
+	}
+	if m.focus == focusSelf {
+		if down {
+			m.self.PageDown()
+		} else {
+			m.self.PageUp()
+		}
 		return
 	}
 	if down {
@@ -1651,6 +1890,14 @@ func (m *Model) updateMouse(message tea.MouseMsg) (tea.Cmd, bool) {
 	}
 	if m.nodeViewID != "" {
 		return nil, m.scrollNodeAt(event.X, event.Y, down)
+	}
+	if m.selfBounds.contains(event.X, event.Y) {
+		if down {
+			m.self.SetYOffset(m.self.YOffset + 3)
+		} else {
+			m.self.SetYOffset(m.self.YOffset - 3)
+		}
+		return nil, true
 	}
 	if m.graphBounds.contains(event.X, event.Y) {
 		if down {
