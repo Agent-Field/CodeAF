@@ -256,12 +256,47 @@ func (g *Graph) AddNeed(id, need int) error {
 	if contains(node.Needs, need) {
 		return nil
 	}
-	node.Needs = mergeNeeds(node.Needs, []int{need})
-	if g.hasCycle() {
-		node.Needs = without(node.Needs, need)
+	// Only the new edge can close a cycle, and it closes one exactly when the
+	// node being depended on can already reach the node depending on it. So the
+	// question is asked of those two nodes rather than of the whole graph: this
+	// runs a hundred and fifty times during a build, and each run was sweeping
+	// every node and allocating a fresh mark table to re-establish what it had
+	// established on the previous call. It rests on the graph being acyclic
+	// beforehand, which generation guarantees, every edit here preserves, and
+	// Load checks for anything that arrives from a file.
+	if g.reaches(need, id) {
 		return fmt.Errorf("edge %d → %d would create a cycle", need, id)
 	}
+	node.Needs = mergeNeeds(node.Needs, []int{need})
 	return nil
+}
+
+// reaches reports whether one node can arrive at another by following
+// dependencies. It walks only what is actually reachable from the start, which
+// in a plan is a handful of nodes rather than the graph.
+func (g *Graph) reaches(from, target int) bool {
+	seen := map[int]bool{}
+	var walk func(id int) bool
+	walk = func(id int) bool {
+		if id == target {
+			return true
+		}
+		if seen[id] {
+			return false
+		}
+		seen[id] = true
+		node := g.Node(id)
+		if node == nil {
+			return false
+		}
+		for _, need := range node.Needs {
+			if walk(need) {
+				return true
+			}
+		}
+		return false
+	}
+	return walk(from)
 }
 
 // setNeeds replaces a node's dependency list wholesale during generation.
@@ -299,9 +334,12 @@ func (g *Graph) setNeeds(id int, needs []int) {
 	}
 }
 
-// hasCycle is only needed on the revision path. Generation cannot produce a
-// cycle — edges may point only at earlier stages — but an edit can, so every
-// mutation that adds an edge is checked.
+// hasCycle answers the question of the whole graph, and it is the entry check
+// rather than the per-edge one. Generation cannot produce a cycle — edges may
+// point only at earlier stages — and AddNeed refuses any edit that would close
+// one, so the invariant holds for as long as a graph stays in memory. A graph
+// read back off disk has had none of that applied to it, so Load pays for one
+// full sweep to establish the premise the cheap per-edge check then relies on.
 func (g *Graph) hasCycle() bool {
 	const (
 		unvisited = 0
@@ -773,6 +811,16 @@ func (g *Graph) catalog() string {
 	return block.String()
 }
 
+// planBlock is the whole shared prefix of the passes that look at the entire
+// graph — bind, size and audit. It is one render because it is one string: the
+// three of them are deliberately given the identical premise, and rendering it
+// per pass spent the same bytes three times over for a block that is the same
+// every time. Whoever holds a render is responsible for knowing whether the
+// graph has moved underneath it; see the reuse in Build.
+func (g *Graph) planBlock() string {
+	return g.context() + "\nEvery node in the plan:\n" + g.catalog()
+}
+
 // stateBlock renders the graph for the reviser, which unlike every other call
 // has to know what has already happened and what it is therefore not allowed to
 // touch.
@@ -829,6 +877,13 @@ func Load(data []byte) (*Graph, error) {
 	}
 	if len(graph.Nodes) == 0 {
 		return nil, errors.New("load graph: no nodes")
+	}
+	// Nothing that produced this file can be trusted to have been us. A cyclic
+	// graph is not merely wrong, it is unschedulable — every node in the loop
+	// waits forever on another one — and every pass downstream of here assumes
+	// it is acyclic, so it is refused at the door rather than diagnosed later.
+	if graph.hasCycle() {
+		return nil, errors.New("load graph: needs form a dependency cycle")
 	}
 	return &graph, nil
 }

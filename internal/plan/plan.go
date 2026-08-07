@@ -224,19 +224,26 @@ func Build(ctx context.Context, client Completer, goal string, options Options) 
 	// Only their calls overlap: each pass gathers concurrently and is applied
 	// serially afterwards, because one pass writing node fields while the other
 	// copies nodes to render its prompts is a data race.
+	//
+	// They are also given one render of the catalog block rather than one each.
+	// It is the same ~8 KB of goal, premise and node list for both, it is what
+	// the prefix cache keys on, and rendering it twice concurrently produced two
+	// identical strings.
+	shared := graph.planBlock()
 	var bindResults []bindResult
 	var sizeResults []sizeResult
 	var passes sync.WaitGroup
 	passes.Add(2)
 	go func() {
 		defer passes.Done()
-		bindResults = bindGather(ctx, client, graph)
+		bindResults = bindGather(ctx, client, graph, shared)
 	}()
 	go func() {
 		defer passes.Done()
-		sizeResults = sizeGather(ctx, client, graph)
+		sizeResults = sizeGather(ctx, client, graph, shared)
 	}()
 	passes.Wait()
+	rendered := len(graph.Nodes)
 	bindUsage, bindErr := bindApply(graph, bindResults)
 	sizeUsage, sizeErr := sizeApply(graph, sizeResults)
 	graph.Usage.merge(bindUsage)
@@ -262,7 +269,16 @@ func Build(ctx context.Context, client Completer, goal string, options Options) 
 		return node.Stage == 1 && !pending[node.ID]
 	})
 
-	added, auditUsage, auditErr := Audit(ctx, client, graph)
+	// Audit gets the same render again, but only when it still describes the
+	// graph. Nothing since it was taken writes anything the catalog shows —
+	// setNeeds and sizeApply touch needs, sizes and parts, none of which are
+	// rendered — except folding a duplicate away, which removes a node. So the
+	// node count is the whole test, and a fold means audit pays for its own.
+	auditShared := shared
+	if len(graph.Nodes) != rendered {
+		auditShared = graph.planBlock()
+	}
+	added, auditUsage, auditErr := auditWith(ctx, client, graph, auditShared)
 	graph.Usage.merge(auditUsage)
 	emitProgress(progress, "audit", fmt.Sprintf("%s restored", plural(added, "link")), "")
 	report("audit", time.Since(start), fmt.Sprintf("%s recovered", plural(added, "edge")))
@@ -338,10 +354,15 @@ func Build(ctx context.Context, client Completer, goal string, options Options) 
 func announce(graph *Graph, options Options, settled map[int]bool, briefs *briefWriter, start time.Time, ready func(*Node) bool) {
 	// The catalog is snapshotted per call rather than per node. It is the frozen
 	// shared prefix for every brief launched in this round, and re-rendering it
-	// for each one would cost the cache hit that makes the round cheap.
-	var shared string
+	// for each one would cost the cache hit that makes the round cheap. Who owns
+	// the deliverable is snapshotted with it and for the same reason: it is one
+	// question about the graph, the graph does not move inside this loop, and
+	// asking it per node walked every node's needs once per node.
+	var shared, label string
+	var owner int
 	if briefs.enabled {
 		shared = graph.context() + "\nThe full plan:\n" + graph.briefCatalog()
+		owner, label = graph.deliverableOwner()
 	}
 	elapsed := time.Since(start)
 	for index := range graph.Nodes {
@@ -357,7 +378,7 @@ func announce(graph *Graph, options Options, settled map[int]bool, briefs *brief
 				inputs = append(inputs, fmt.Sprintf("%q (%s)", source.Title, source.Summary))
 			}
 		}
-		briefs.launch(shared, *node, inputs, graph.deliverableLine(node.ID))
+		briefs.launch(shared, *node, inputs, deliverableLineFor(owner, label, node.ID))
 		if len(node.Needs) == 0 && options.OnReady != nil {
 			options.OnReady(*node, elapsed)
 		}
