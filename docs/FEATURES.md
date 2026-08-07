@@ -319,6 +319,28 @@ runs and they earn tenure; one bad run and they're back to asking.
 
 ## 7. The surface
 
+### Three places: thread · board · self
+**What**: The header's left side is the whole map — thread (the conversation,
+home), board (live jobs, the graph, standing goals — the old tasks rail
+promoted), self (the employee's file: today's receipts, the competence map,
+newest beliefs, and each standing goal's tenure grade). Attention dots light
+per place from that place's own sources; esc always walks home to thread.
+**Where**: click the words, or alt+1 / alt+2 / alt+3 (alt+g and ⟨tasks⟩ still
+open the board); `/self`.
+**Tip seed**: Wondering what it's learned or earned lately? alt+3 opens its
+file — receipts, competence, beliefs, and tenure, one calm column.
+
+### The presence line — you can hear it working
+**What**: One dim line in the rail (and dock hint) while the resident works on
+itself: "practicing: goreleaser edge cases · $0.31 on myself today", with a
+brief "learned: …" clause when a round pays off. Silence when idle. Self-work
+never masquerades as your job cards, and the header spend meter carries a
+"· N¢ self" suffix whenever it spent on itself today.
+**Where**: automatic; the rail and the header meter.
+**Tip seed**: The dim line under the rail is the sound of it studying — and
+every cent it spends on itself shows up labelled "self" in the meter.
+
+
 ### Living job cards
 **What**: Work lives as cards with four states (compiling, working,
 question, settled); active cards dock above the input, settle at their
