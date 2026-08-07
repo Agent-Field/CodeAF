@@ -178,6 +178,21 @@ func (l *Linear) Run(ctx context.Context, task Task) (returned *Outcome, runErr 
 	tools := newToolboxWithMedia(l.workspace, task.NodeID, l.web, l.history, l.media)
 	task.control.attach(tools)
 	defer func() {
+		if returned != nil && runErr == nil {
+			requests := tools.ServiceRequests(task.StoreNodeID)
+			if task.StoreNodeID == "" {
+				for index := range requests {
+					requests[index].Stop()
+				}
+				if len(requests) > 0 {
+					returned.Text = strings.TrimSpace(returned.Text) + "\n\nservice promotion is available only in resident chat; requested jobs stopped at leaf end"
+				}
+			} else {
+				returned.ServiceRequests = requests
+			}
+		} else {
+			tools.ForceClose()
+		}
 		terminated := tools.Close()
 		if returned != nil && terminated > 0 {
 			note := fmt.Sprintf("%d background jobs terminated at leaf end", terminated)

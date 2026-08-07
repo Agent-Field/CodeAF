@@ -119,12 +119,17 @@ func (r *Reconciler) reflectOnJobs(ctx context.Context) {
 	_, _ = r.store.ProjectTraits(now)
 	_ = r.metaRetrospect()
 	r.maintainTerritories(ctx, now)
-	if r.proposeCharters {
-		runs, _ := r.store.RetrospectiveRuns()
-		cadence := r.store.ProposalCadenceRuns()
-		if cadence <= 1 || runs%cadence == 0 {
-			r.proposeRecurringCharter(jobs)
-		}
+	// Both unprompted proposals ride the one learned cadence: a charter to
+	// ratify and a long-running service to question are the same kind of
+	// interruption, so a user who declines them is nudged less about both.
+	runs, _ := r.store.RetrospectiveRuns()
+	cadence := r.store.ProposalCadenceRuns()
+	onCadence := cadence <= 1 || runs%cadence == 0
+	if r.proposeCharters && onCadence {
+		r.proposeRecurringCharter(jobs)
+	}
+	if onCadence {
+		r.proposeServiceHygiene(now)
 	}
 
 	learned, err := r.reflect(ctx, jobs)

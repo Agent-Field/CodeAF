@@ -260,7 +260,14 @@ const (
 	QuestionCategoryCompileAssumption   QuestionCategory = "compile-assumption"
 	QuestionCategoryRailRaise           QuestionCategory = "rail-raise"
 	QuestionCategoryCharterCadence      QuestionCategory = "charter-cadence"
-	QuestionCategoryGeneric             QuestionCategory = "generic"
+	// QuestionCategoryServiceConsent is the promotion boundary: keeping a
+	// process alive past its task is consent-bearing, so it is measured like
+	// every other ask but never gated away.
+	QuestionCategoryServiceConsent QuestionCategory = "service-consent"
+	// QuestionCategoryServiceHygiene is the long-running nudge, which is an
+	// ordinary VOI-gated ask: if the user always keeps them, stop nagging.
+	QuestionCategoryServiceHygiene QuestionCategory = "service-hygiene"
+	QuestionCategoryGeneric        QuestionCategory = "generic"
 )
 
 // CategoryStats is the journal-derived acceptance and regret projection.
@@ -420,7 +427,8 @@ func (s *Store) ShouldAsk(category QuestionCategory) (bool, CategoryStats, error
 	if err != nil {
 		return true, stat, err
 	}
-	if category == QuestionCategoryCharterRatification || category == QuestionCategoryRailRaise {
+	if category == QuestionCategoryCharterRatification || category == QuestionCategoryRailRaise ||
+		category == QuestionCategoryServiceConsent {
 		return true, stat, nil
 	}
 	if stat.N < VOIMinSamples {

@@ -82,6 +82,48 @@ func TestBackgroundStartReturnsImmediatelyAndCreatesDurableLog(t *testing.T) {
 	}
 }
 
+func TestKeepTransfersOwnershipAndLeafTeardownCountsOnlyKilledJobs(t *testing.T) {
+	tools, _ := backgroundToolbox(t)
+	for index := 0; index < 2; index++ {
+		result := tools.Execute(context.Background(), "sh", `{"cmd":"sleep 30","bg":true}`)
+		if result.IsError {
+			t.Fatalf("start job %d: %s", index+1, result.Content)
+		}
+	}
+	kept := tools.Execute(context.Background(), "job", `{"id":1,"keep":{"name":"dev-server","health":"port:5173"}}`)
+	if kept.IsError || !strings.Contains(kept.Content, "promotion requested") {
+		t.Fatalf("keep result = %+v", kept)
+	}
+	requests := tools.ServiceRequests("leaf-1")
+	if len(requests) != 1 || requests[0].Name != "dev-server" || requests[0].LeafNodeID != "leaf-1" {
+		t.Fatalf("service requests = %+v", requests)
+	}
+	if killed := tools.Close(); killed != 1 {
+		t.Fatalf("leaf teardown killed %d jobs, want only the unpromoted job", killed)
+	}
+	if err := syscall.Kill(requests[0].PID, 0); err != nil {
+		t.Fatalf("requested service did not survive leaf teardown: %v", err)
+	}
+	requests[0].Stop()
+	if err := syscall.Kill(requests[0].PID, 0); err == nil {
+		t.Fatal("declined service process still alive")
+	}
+}
+
+func TestJobGuidanceNamesKeepAndForbidsNohup(t *testing.T) {
+	tools, _ := backgroundToolbox(t)
+	definitions := tools.Definitions()
+	var description string
+	for _, definition := range definitions {
+		if definition.Function.Name == "job" {
+			description = definition.Function.Description
+		}
+	}
+	if !strings.Contains(description, "use keep — never nohup") {
+		t.Fatalf("job guidance = %q", description)
+	}
+}
+
 func TestBackgroundStartFailureIsImmediateError(t *testing.T) {
 	tools, _ := backgroundToolbox(t)
 	if result := tools.Execute(context.Background(), "sh", `{"cmd":"","bg":true}`); !result.IsError {

@@ -55,6 +55,7 @@ type Compiled struct {
 	// a separate ratification command.
 	QuestionOptions []store.QuestionOption
 	Charter         *store.CharterSpec
+	ServiceIntent   bool
 }
 
 // SkillCandidate names the artifact directory a job proved useful. It remains
@@ -169,6 +170,7 @@ type Reconciler struct {
 	practiceEnabled bool
 	practiceBudget  float64
 	practiceIdle    time.Duration
+	services        *ServiceSupervisor
 
 	mu                 sync.Mutex
 	watcherInitialized bool
@@ -188,7 +190,16 @@ func New(graph *store.Store, compile CompileFunc, plan PlanFunc) *Reconciler {
 			return Compiled{Goal: instruction}, nil
 		}
 	}
-	return &Reconciler{store: graph, compile: compile, plan: plan, now: time.Now}
+	return &Reconciler{store: graph, compile: compile, plan: plan, now: time.Now,
+		services: NewServiceSupervisor(graph)}
+}
+
+func (r *Reconciler) WithServiceRuntime(runtime ServiceRuntime) *Reconciler {
+	if r.services == nil {
+		r.services = NewServiceSupervisor(r.store)
+	}
+	r.services.WithRuntime(runtime)
+	return r
 }
 
 // Serve polls until ctx is cancelled or the store can no longer be read or
@@ -252,6 +263,11 @@ func (r *Reconciler) Tick(ctx context.Context) error {
 		}
 		if len(commands) < commandBatchSize {
 			break
+		}
+	}
+	if r.services != nil {
+		if err := r.services.Tick(ctx); err != nil {
+			return fmt.Errorf("resident tick: services: %w", err)
 		}
 	}
 
@@ -371,6 +387,8 @@ func (r *Reconciler) applyCommand(ctx context.Context, command store.Command) (c
 		return r.reprioritize(command)
 	case store.CommandRestart:
 		return r.restart(command)
+	case store.CommandServiceStop, store.CommandServiceRestart, store.CommandServiceAutoRestart:
+		return r.applyServiceCommand(command)
 	case store.CommandCharterRatify, store.CommandCharterPause, store.CommandCharterRetire,
 		store.CommandCharterCadence, store.CommandCharterOnce, store.CommandCharterFire,
 		store.CommandCharterDecline, store.CommandCharterAlways, store.CommandCharterNever, store.CommandCharterProbation:
@@ -525,11 +543,12 @@ func (r *Reconciler) splice(ctx context.Context, command store.Command) (command
 	r.titleSubtree(ctx, &subtree, compiled)
 
 	provenance := store.Provenance{
-		Origin:      store.OriginUser,
-		SessionID:   command.SessionID,
-		Intent:      command.Instruction,
-		TrialOf:     compiled.TrialOf,
-		Attachments: append([]string(nil), command.Attachments...),
+		Origin:        store.OriginUser,
+		SessionID:     command.SessionID,
+		Intent:        command.Instruction,
+		TrialOf:       compiled.TrialOf,
+		ServiceIntent: compiled.ServiceIntent,
+		Attachments:   append([]string(nil), command.Attachments...),
 	}
 	if err := r.store.Splice(store.RootID, subtree, provenance); err != nil {
 		if r.plan != nil || !r.defaultSpliceExists(command, compiled) {
