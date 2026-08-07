@@ -36,6 +36,31 @@ A pending question sits above the input. With an empty draft, `1`–`9` or the
 arrow keys choose an option and enter sends it. You can always type a free-text
 answer instead of picking. `esc` dismisses it.
 
+## Settings
+
+Everything you can tune lives in one sheet. Open it with `/settings`, the
+`⚙` in the header, or `alt+,` — a bare `,` works too whenever the
+cursor is not in the input. It is a single column of grouped rows: **models**
+(all eight slots), **money & limits** (the daily budget, the practice
+carve-out, the quiet period before practice), **rhythm** (how long an absence
+earns an arrival brief, how many clean firings earn a charter tenure),
+**learning** (how much practice follows measured demand rather than curiosity,
+and whether aforge may propose new skills), **documents & vision** (the reading
+rung and the model that looks at images), and **appearance** (the chat/rail
+split).
+
+`↑/↓` or `j/k` move, enter changes the focused row, `esc` closes an open editor
+and then the sheet. Only the focused row explains itself, so the page never
+becomes a wall. A model row opens the same capability-filtered picker the
+models door opens. Nothing is posted to the thread when you change something —
+the row showing its new value is the receipt.
+
+Anything pinned in your environment stays pinned: that row reads dim, says
+`pinned by AFORGE_…`, and refuses to be edited rather than writing a value the
+shell would keep overriding. The footer lists the operator plumbing that is
+set — base URL, profile directory, panel, reasoning — read-only, because those
+are the machine's settings, not yours.
+
 ## Keys worth knowing
 
 | key | what it does |
@@ -45,6 +70,7 @@ answer instead of picking. `esc` dismisses it.
 | `ctrl+v` / `alt+v` | voice input |
 | `ctrl+t` / `alt+g` | toggle the task rail |
 | `alt+1` / `alt+2` / `alt+3` | thread / board / self |
+| `alt+,` / `,` | open the settings sheet |
 | `v` | expand or collapse reading receipts |
 | `?` | this guide's surface-level twin, when the draft is empty |
 | `esc` | back out one layer at a time, then quit |
@@ -55,7 +81,7 @@ answer instead of picking. `esc` dismisses it.
 Type `/` and filter. The full set:
 
 `/graph` `/self` `/tasks` `/node` `/notebook` `/history` `/budget` `/standing`
-`/help` `/model` `/memory` `/session` `/new` `/cancel` `/quit`
+`/settings` `/help` `/model` `/memory` `/session` `/new` `/cancel` `/quit`
 
 `?` opens the same catalogue as a scrollable overlay, generated from that same
 list, so the two can never disagree.

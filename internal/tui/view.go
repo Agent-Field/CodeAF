@@ -122,7 +122,8 @@ func (m *Model) View() string {
 	}
 
 	parts := []string{top, "", main, ""}
-	if m.paletteOpen() && m.palette != paletteModels && m.palette != paletteModel && m.palette != paletteHelp {
+	if m.paletteOpen() && m.palette != paletteModels && m.palette != paletteModel &&
+		m.palette != paletteHelp && m.palette != paletteSettings {
 		parts = append(parts, m.renderPalette())
 	}
 	if m.activityBarVisible() {
@@ -169,6 +170,8 @@ func (m *Model) View() string {
 		frame = m.overlayModels(frame)
 	} else if m.palette == paletteHelp {
 		frame = m.overlayHelp(frame)
+	} else if m.palette == paletteSettings {
+		frame = m.overlaySettings(frame)
 	}
 	return frame
 }
@@ -190,9 +193,12 @@ func (m *Model) trackPaneBounds() {
 	m.selfBounds = paneBounds{}
 	m.paletteCloseBounds = paneBounds{}
 	m.helpBounds = paneBounds{}
+	m.settingsBounds = paneBounds{}
+	m.headerSettingsBounds = paneBounds{}
 	m.modelPickerBounds = paneBounds{}
 	m.modelSlotRows = m.modelSlotRows[:0]
 	m.modelPickerRows = m.modelPickerRows[:0]
+	m.settingsRowHits = m.settingsRowHits[:0]
 	m.inputBounds = paneBounds{}
 	m.boostBounds = paneBounds{}
 	m.textQuestionDismissBounds = paneBounds{}
@@ -272,6 +278,7 @@ func (m *Model) renderTopBar() string {
 		" · work " + truncate(modelShort(m.currentModel("work")), 18))
 	compactGlance := mutedStyle.Faint(true).Render(talkGlance)
 	models := m.renderModelsButton()
+	settings := m.renderSettingsButton()
 
 	rightMeta := m.renderSpend()
 	statusActive := m.status != "" && time.Now().Before(m.statusUntil)
@@ -290,16 +297,20 @@ func (m *Model) renderTopBar() string {
 	// The header yields in one fixed order as the frame narrows: the model
 	// glance shortens to talk-only, then ambient status leaves (the footer
 	// line picks it up), then the glance goes entirely — it is context the
-	// model door already owns — and only in the last resort do the places
-	// collapse to the wordmark. The model door, the rail button, and ? never
-	// yield: they are the header's irreplaceable actions.
-	shownGlance, shownMeta := glance, rightMeta
+	// model door already owns — then the settings gear, which /settings and
+	// alt+, still reach, and only in the last resort do the places collapse to
+	// the wordmark. The model door, the rail button, and ? never yield: they
+	// are the header's irreplaceable actions.
+	shownGlance, shownMeta, shownSettings := glance, rightMeta, settings
 	compose := func() string {
 		right := ""
 		if shownGlance != "" {
 			right = shownGlance + "  "
 		}
 		right += models
+		if shownSettings != "" {
+			right += "  " + shownSettings
+		}
 		if shownMeta != "" {
 			right += "  " + shownMeta
 		}
@@ -308,6 +319,7 @@ func (m *Model) renderTopBar() string {
 	yields := []func(){
 		func() { shownMeta = "" },
 		func() { shownGlance = "" },
+		func() { shownSettings = "" },
 		func() { left, showPlaces = wordmark, false },
 	}
 	if m.width >= railAtWidth {
@@ -337,6 +349,12 @@ func (m *Model) renderTopBar() string {
 		modelsOffset = lipgloss.Width(shownGlance) + 2
 	}
 	m.headerModelsBounds = paneBounds{x: rightX + modelsOffset, y: 0, width: lipgloss.Width(models), height: 1}
+	if shownSettings != "" {
+		m.headerSettingsBounds = paneBounds{
+			x: m.headerModelsBounds.right() + 2, y: 0,
+			width: lipgloss.Width(shownSettings), height: 1,
+		}
+	}
 	if showPlaces {
 		x := lipgloss.Width(wordmark) + 3
 		m.headerThreadBounds = paneBounds{x: x, y: 0, width: lipgloss.Width(thread), height: 1}
@@ -376,6 +394,17 @@ func (m *Model) renderModelsButton() string {
 	return style.Render("models ⌄")
 }
 
+// The settings door is one glyph, like ? beside it: the header's two doors
+// onto whole overlays are the two things it can afford to spell in symbols.
+// It reads in the same quiet ink as the models door and brightens under focus.
+func (m *Model) renderSettingsButton() string {
+	style := mutedStyle.Faint(true)
+	if (m.focus == focusHeader && m.headerFocusIndex == 1) || m.palette == paletteSettings {
+		style = lipgloss.NewStyle().Foreground(powder)
+	}
+	return style.Render("⚙")
+}
+
 func (m *Model) renderTasksButton() string {
 	disclosure := "▸"
 	if m.graphVisible() {
@@ -386,7 +415,7 @@ func (m *Model) renderTasksButton() string {
 		dot = questionStyle.Bold(true).Render("●") + " "
 	}
 	style := mutedStyle.Faint(true)
-	if m.focus == focusHeader && m.headerFocusIndex == 1 {
+	if m.focus == focusHeader && m.headerFocusIndex == 2 {
 		style = powderStyle
 	}
 	// The button keeps its name in every layout: the header's board label is
@@ -397,7 +426,7 @@ func (m *Model) renderTasksButton() string {
 
 func (m *Model) renderHelpButton() string {
 	style := mutedStyle.Faint(true)
-	if (m.focus == focusHeader && m.headerFocusIndex == 2) || m.palette == paletteHelp {
+	if (m.focus == focusHeader && m.headerFocusIndex == 3) || m.palette == paletteHelp {
 		style = powderStyle
 	}
 	return style.Render("?")
@@ -942,7 +971,8 @@ func (m *Model) paletteHeight() int {
 }
 
 func (m *Model) layoutPaletteHeight() int {
-	if m.palette == paletteModels || m.palette == paletteModel || m.palette == paletteHelp {
+	if m.palette == paletteModels || m.palette == paletteModel ||
+		m.palette == paletteHelp || m.palette == paletteSettings {
 		return 0
 	}
 	return m.paletteHeight()

@@ -481,7 +481,7 @@ func TestHeaderQuestionDotFocusesPendingCard(t *testing.T) {
 		t.Fatalf("header dot focused (%v, %q), want question card", model.focus, model.selectedCardID)
 	}
 	model.focus = focusHeader
-	model.headerFocusIndex = 1
+	model.headerFocusIndex = 2
 	model.selectedCardID = "work"
 	_, _ = model.Update(tea.KeyMsg{Type: tea.KeyEnter})
 	if model.focus != focusCards || model.selectedCardID != "question" {
