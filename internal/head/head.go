@@ -172,10 +172,25 @@ func (h *Head) Serve(ctx context.Context) error {
 	ticker := time.NewTicker(pollInterval)
 	defer ticker.Stop()
 
+	// Every thread message is journalled, so an unmoved journal watermark is
+	// proof that no message arrived — the same quiet path the lens already
+	// takes. The watermark is read before the poll and only recorded after it
+	// succeeds: anything committed while the poll was reading sits above the
+	// recorded mark, so the next tick reads again rather than sleeping through
+	// it. The cost of that ordering is one redundant poll after each burst,
+	// which is what the head does all day anyway.
+	quiet := int64(-1)
 	for {
-		cursor, err = h.poll(ctx, cursor)
-		if err != nil {
-			return err
+		watermark, watermarkErr := h.store.LatestEventSeq()
+		if watermarkErr != nil || watermark != quiet {
+			cursor, err = h.poll(ctx, cursor)
+			if err != nil {
+				return err
+			}
+			quiet = -1
+			if watermarkErr == nil {
+				quiet = watermark
+			}
 		}
 		select {
 		case <-ctx.Done():
@@ -185,24 +200,7 @@ func (h *Head) Serve(ctx context.Context) error {
 	}
 }
 
-func (h *Head) initialCursor() (int64, error) {
-	var scanned, lastNonUser int64
-	for {
-		messages, err := h.store.Messages("", scanned, messagePageSize)
-		if err != nil {
-			return 0, err
-		}
-		if len(messages) == 0 {
-			return lastNonUser, nil
-		}
-		for _, message := range messages {
-			scanned = message.Seq
-			if message.Role != store.RoleUser {
-				lastNonUser = message.Seq
-			}
-		}
-	}
-}
+func (h *Head) initialCursor() (int64, error) { return h.store.LastNonUserMessageSeq() }
 
 func (h *Head) poll(ctx context.Context, cursor int64) (int64, error) {
 	for {
