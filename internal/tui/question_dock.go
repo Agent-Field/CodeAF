@@ -135,8 +135,11 @@ func (m *Model) surfaceSelectedAgentQuestion() tea.Cmd {
 	}
 	index := max(0, min(m.questionDockSelection, len(m.agentQuestions)-1))
 	question := m.agentQuestions[index]
+	// Neutral questions — a charter's firing proposal belongs to no session —
+	// surface into whichever session is reading the dock right now.
+	sessionID := m.sessionID
 	backend, ok := m.backend.(interface {
-		SurfaceQuestion(int64) (store.Message, error)
+		SurfaceQuestionForSession(int64, string) (store.Message, error)
 	})
 	if !ok {
 		return func() tea.Msg {
@@ -145,7 +148,7 @@ func (m *Model) surfaceSelectedAgentQuestion() tea.Cmd {
 		}
 	}
 	return func() tea.Msg {
-		message, err := backend.SurfaceQuestion(question.Seq)
+		message, err := backend.SurfaceQuestionForSession(question.Seq, sessionID)
 		return questionSurfaceResultMsg{questionSeq: question.Seq, message: message, err: err}
 	}
 }
