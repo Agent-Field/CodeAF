@@ -306,13 +306,45 @@ func (m *Model) standingTime() time.Time {
 func (m *Model) standingCharters() []standingCharter {
 	reader := m.standingReader
 	if reader == nil {
-		if lister, ok := m.backend.(charterLister); ok {
-			reader = storeStandingReader{list: lister}
+		if _, ok := m.backend.(charterLister); ok {
+			reader = storeStandingReader{list: modelCharterLister{model: m}}
 		} else {
 			reader = snapshotStandingReader{}
 		}
 	}
 	return reader.Charters(m.standingSnapshot(), m.jobUsage, m.standingTime())
+}
+
+// modelCharterLister is the poll-scoped read in front of the charter table.
+// The rail's height, its rows, the breathing check, the pane title, and the
+// self file all ask for charters while composing one frame; the store answers
+// once per poll and the projection above runs live against the snapshot.
+type modelCharterLister struct {
+	model *Model
+}
+
+func (l modelCharterLister) Charters() ([]store.Charter, error) {
+	return l.model.charterRecords()
+}
+
+func (m *Model) charterRecords() ([]store.Charter, error) {
+	if m.railChartersValid {
+		return m.railCharters, m.railChartersErr
+	}
+	lister, ok := m.backend.(charterLister)
+	if !ok {
+		return nil, nil
+	}
+	m.railCharters, m.railChartersErr = lister.Charters()
+	m.railChartersValid = true
+	return m.railCharters, m.railChartersErr
+}
+
+// invalidateRailCaches drops the poll-scoped rail reads. Every caller is a
+// point where the store may have moved underneath them.
+func (m *Model) invalidateRailCaches() {
+	m.railServicesValid = false
+	m.railChartersValid = false
 }
 
 func (m *Model) standingCharter(charterID string) (standingCharter, bool) {
@@ -397,8 +429,8 @@ func (m *Model) renderStandingSection(width int) string {
 // hasStandingHistory is deliberately broader than the visible charter list:
 // a retired charter still means the teaching hint has done its job once.
 func (m *Model) hasStandingHistory() bool {
-	if lister, ok := m.backend.(charterLister); ok {
-		charters, err := lister.Charters()
+	if _, ok := m.backend.(charterLister); ok {
+		charters, err := m.charterRecords()
 		if err == nil {
 			return len(charters) > 0
 		}

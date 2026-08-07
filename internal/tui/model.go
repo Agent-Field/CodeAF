@@ -217,14 +217,30 @@ type Model struct {
 
 	// journalSeq is the store's event watermark as of the last full read, and
 	// the only thing an idle poll looks at. pollForce covers what the journal
-	// cannot see: the first read, a node trace tailing a file outside the log,
-	// and any key or click that may have changed which surface is displayed.
+	// cannot see: the first read and any key or click that may have changed
+	// which surface is displayed. A node view is deliberately not in that set:
+	// its trace is a file, read on every cycle regardless, while everything it
+	// reads from SQL is journal-backed like the rest.
 	journalSeq    int64
 	journalPrimed bool
 	pollForce     bool
 	lastChangeAt  time.Time
 	lastActionAt  time.Time
 	lastRepaintAt time.Time
+
+	// The rail's two store-backed sections are read once per poll, not once
+	// per accessor: six render and layout sites ask for them, so an uncached
+	// read put six synchronous SQLite queries on the UI goroutine per frame —
+	// around three hundred a second during a stream. Both tables are written
+	// in the same transaction as the journal row the poll watermark already
+	// gates, so the poll is exactly the right refresh point. Only the read is
+	// cached: the presentation projection still runs against the live
+	// snapshot, so nothing the graph knows can go stale behind it.
+	railServices      []store.Service
+	railServicesValid bool
+	railCharters      []store.Charter
+	railChartersErr   error
+	railChartersValid bool
 
 	// Self is a read-only employee file assembled by the ordinary store poll.
 	// Its four sections share one viewport and one keyboard selection.
@@ -1198,10 +1214,8 @@ func (m *Model) poll() tea.Cmd {
 	}
 	readSelf := m.selfVisible()
 	selfNow := m.standingTime()
-	// The node pane's trace is tailed from the executor's file, not the
-	// journal, so an open node view always reads in full.
 	journal, _ := backend.(journalReader)
-	force := m.pollForce || !m.journalPrimed || nodeID != ""
+	force := m.pollForce || !m.journalPrimed
 	knownSeq := m.journalSeq
 	return func() tea.Msg {
 		var journalSeq int64
@@ -1211,9 +1225,19 @@ func (m *Model) poll() tea.Cmd {
 			if err == nil {
 				journalSeq, journalRead = seq, true
 				if !force && seq == knownSeq {
-					return pollResultMsg{
+					// The node pane's trace is tailed from the executor's file,
+					// not the journal, so it is read even on a quiet cycle. Its
+					// SQL — the node row and its messages — is journal-backed
+					// like everything else, so the watermark still speaks for it
+					// and the quiet path stays quiet with a node view open.
+					quiet := pollResultMsg{
 						quiet: true, journalSeq: seq, journalRead: true, sessionID: sessionID,
 					}
+					if nodeID != "" && commander != nil {
+						quiet.nodeID = nodeID
+						quiet.nodeTrace = commander.NodeTrace(nodeID, nodeTraceMaxBytes)
+					}
+					return quiet
 				}
 			}
 		}
@@ -1412,11 +1436,19 @@ func (m *Model) scheduleAnimation() tea.Cmd {
 // answered by re-rendering from state already in hand, never by reading again.
 func (m *Model) applyQuietPoll(result pollResultMsg) {
 	m.journalSeq = result.journalSeq
+	// The one read a quiet cycle still makes: the open node's trace is a file
+	// the executor appends to outside the journal, so the watermark cannot
+	// speak for it. It re-renders only when the text actually moved.
+	if result.nodeID != "" && result.nodeID == m.nodeViewID && result.nodeTrace != m.nodeTraceText {
+		m.nodeTraceText = result.nodeTrace
+		m.refreshNodeView(false)
+	}
 	now := m.standingTime()
 	if now.Sub(m.lastRepaintAt) < quietRepaintInterval {
 		return
 	}
 	m.lastRepaintAt = now
+	m.invalidateRailCaches()
 	m.rebuildCards()
 	m.setSize(m.width, m.height)
 }
@@ -1428,6 +1460,7 @@ func (m *Model) applyPoll(result pollResultMsg) {
 	}
 	m.pollForce = false
 	m.lastRepaintAt = m.standingTime()
+	m.invalidateRailCaches()
 	if result.journalRead {
 		if result.journalSeq != m.journalSeq || !m.journalPrimed {
 			m.lastChangeAt = m.standingTime()

@@ -220,19 +220,38 @@ func TestQuietPollRepaintsTheClockWithoutRebuildingOrReading(t *testing.T) {
 	}
 }
 
-func TestOpenNodeViewAlwaysReadsInFull(t *testing.T) {
+// An open node view reads exactly the one thing the watermark cannot speak
+// for — the executor's trace file — and nothing else. Its SQL is journal-
+// backed like every other pane, so the quiet path stays quiet underneath it.
+func TestOpenNodeViewReadsOnlyTheTraceOnAQuietCycle(t *testing.T) {
 	now := time.Date(2026, 8, 6, 9, 0, 0, 0, time.UTC)
 	backend := newCountingBackend(&fakeBackend{
 		snapshot: store.Snapshot{Nodes: []store.Node{{ID: "job", Brief: "one job", Status: store.Running}}},
 	})
-	model := quietModel(t, backend, &now)
+	commander := &fakeCommander{trace: "step one\n", current: map[string]string{}}
+	model := NewWithCommander(backend, "quiet", commander)
+	model.standingNow = func() time.Time { return now }
+	model.setSize(100, 30)
 	model.applyPoll(model.poll()().(pollResultMsg))
 
-	// The node pane tails the executor's trace file, which the journal
-	// watermark says nothing about.
 	model.nodeViewID = "job"
-	if result := model.poll()().(pollResultMsg); result.quiet {
-		t.Fatal("an open node view was answered with a quiet poll")
+	model.pollForce = false
+	reads := backend.heavyReads()
+	result := model.poll()().(pollResultMsg)
+	if !result.quiet {
+		t.Fatal("an open node view defeated the quiet poll")
+	}
+	if backend.heavyReads() != reads {
+		t.Fatalf("a quiet cycle with a node view open performed %d heavy reads", backend.heavyReads()-reads)
+	}
+	if result.nodeTrace != "step one\n" || result.nodeID != "job" {
+		t.Fatalf("the quiet cycle did not tail the trace file: %#v", result)
+	}
+
+	commander.trace = "step one\nstep two\n"
+	model.applyPoll(model.poll()().(pollResultMsg))
+	if model.nodeTraceText != "step one\nstep two\n" {
+		t.Fatalf("a quiet cycle did not deliver the grown trace: %q", model.nodeTraceText)
 	}
 }
 

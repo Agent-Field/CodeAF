@@ -22,6 +22,8 @@ type serviceLister interface {
 	ActiveServices() ([]store.Service, error)
 }
 
+var _ serviceLister = (*store.Store)(nil)
+
 type serviceRow struct {
 	line      int
 	serviceID string
@@ -47,7 +49,14 @@ func serviceIDFromGraphRow(id string) (string, bool) {
 	return strings.TrimPrefix(id, serviceGraphRowPrefix), true
 }
 
+// activeServices answers from the poll-scoped cache. Four layout and render
+// sites ask per frame; the store is read once per poll behind them.
 func (m *Model) activeServices() []store.Service {
+	if m.railServicesValid {
+		return m.railServices
+	}
+	m.railServicesValid = true
+	m.railServices = nil
 	lister, ok := m.backend.(serviceLister)
 	if !ok {
 		return nil
@@ -56,6 +65,7 @@ func (m *Model) activeServices() []store.Service {
 	if err != nil {
 		return nil
 	}
+	m.railServices = services
 	return services
 }
 
