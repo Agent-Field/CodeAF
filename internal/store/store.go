@@ -148,6 +148,11 @@ const (
 	EventCharterFiringBlocked    EventKind = "charter_firing_blocked"
 	EventCharterFiringDeferred   EventKind = "charter_firing_deferred"
 	EventCharterProposalDeclined EventKind = "charter_proposal_declined"
+	EventCharterFiringProposed   EventKind = "charter_firing_proposed"
+	EventCharterFiringDeclined   EventKind = "charter_firing_declined"
+	EventCharterFiringReviewed   EventKind = "charter_firing_reviewed"
+	EventCharterPromoted         EventKind = "charter_promoted"
+	EventCharterDemoted          EventKind = "charter_demoted"
 )
 
 var (
@@ -403,8 +408,9 @@ func Open(path string) (*Store, error) {
 	if _, err := db.Exec(surpriseSchema); err != nil {
 		return closeOnError(fmt.Errorf("initialize surprise schema: %w", err))
 	}
-	if _, err := db.Exec(charterSchema); err != nil {
-		return closeOnError(fmt.Errorf("initialize charter schema: %w", err))
+	rebuildCharters, err := prepareCharterSchema(db)
+	if err != nil {
+		return closeOnError(fmt.Errorf("initialize or migrate charter schema: %w", err))
 	}
 	if _, err := db.Exec(factsSchema); err != nil {
 		return closeOnError(fmt.Errorf("initialize facts schema: %w", err))
@@ -414,9 +420,6 @@ func Open(path string) (*Store, error) {
 	}
 	if _, err := db.Exec(retrospectiveSchema); err != nil {
 		return closeOnError(fmt.Errorf("initialize retrospective schema: %w", err))
-	}
-	if _, err := db.Exec(charterSchema); err != nil {
-		return closeOnError(fmt.Errorf("initialize charter schema: %w", err))
 	}
 	if err := migrateFactsSchema(db); err != nil {
 		return closeOnError(fmt.Errorf("migrate facts schema: %w", err))
@@ -435,6 +438,11 @@ func Open(path string) (*Store, error) {
 	store := &Store{db: db, blobs: blobs}
 	if err := store.ensureSpine(); err != nil {
 		return closeOnError(err)
+	}
+	if rebuildCharters {
+		if err := store.Rebuild(); err != nil {
+			return closeOnError(fmt.Errorf("rebuild migrated charters: %w", err))
+		}
 	}
 	return store, nil
 }

@@ -1,13 +1,15 @@
 package resident
 
 import (
+	"context"
 	"fmt"
+	"strconv"
 	"strings"
 
 	"github.com/Agent-Field/aforge-v2/internal/store"
 )
 
-func (r *Reconciler) applyCharterCommand(command store.Command) (commandOutcome, error) {
+func (r *Reconciler) applyCharterCommand(ctx context.Context, command store.Command) (commandOutcome, error) {
 	charter, found, err := r.store.CharterByID(command.Target)
 	if err != nil {
 		return commandOutcome{}, err
@@ -15,10 +17,10 @@ func (r *Reconciler) applyCharterCommand(command store.Command) (commandOutcome,
 	if !found {
 		return commandOutcome{}, fmt.Errorf("charter %q no longer exists", command.Target)
 	}
-	label := clipLabel(firstLine(charter.Spec.Invariant), 100)
+	label := clipLabel(firstLine(charter.Invariant), 100)
 	switch command.Kind {
 	case store.CommandCharterRatify:
-		if err := r.store.RatifyCharter(charter.ID); err != nil {
+		if err := r.store.RatifyCharterWithEvidence(charter.ID, command.Instruction); err != nil {
 			return commandOutcome{}, err
 		}
 		return commandOutcome{
@@ -68,6 +70,88 @@ func (r *Reconciler) applyCharterCommand(command store.Command) (commandOutcome,
 			receipt: fmt.Sprintf("Cadence changed: %s → %s.", label, cadence),
 		}, nil
 
+	case store.CommandCharterFire:
+		wakeSeq, err := charterCommandWakeSeq(command.Instruction)
+		if err != nil {
+			return commandOutcome{}, err
+		}
+		if fired, err := r.store.CharterWakeFired(charter.ID, wakeSeq); err != nil {
+			return commandOutcome{}, err
+		} else if fired {
+			return commandOutcome{status: store.CommandApplied, result: "probation firing already admitted"}, nil
+		}
+		if charter.Autonomy != store.CharterProbation || !charter.WakePending || charter.WakeSeq != wakeSeq {
+			return commandOutcome{}, fmt.Errorf("probation firing approval is stale")
+		}
+		disposition, jobID, err := r.admitCharterFiring(ctx, charter, true)
+		if err != nil {
+			return commandOutcome{}, err
+		}
+		return charterFireCommandOutcome(disposition, jobID, label), nil
+
+	case store.CommandCharterDecline:
+		wakeSeq, err := charterCommandWakeSeq(command.Instruction)
+		if err != nil {
+			return commandOutcome{}, err
+		}
+		if !charter.WakePending && charter.Autonomy == store.CharterProbation {
+			return commandOutcome{status: store.CommandApplied, result: "probation firing already declined"}, nil
+		}
+		if err := r.store.DeclineCharterFiring(charter.ID, wakeSeq, "user declined this probation firing", false); err != nil {
+			return commandOutcome{}, err
+		}
+		return commandOutcome{status: store.CommandApplied, result: "probation firing declined; charter remains active",
+			receipt: "Skipped this firing; I'll ask again next time: " + label + "."}, nil
+
+	case store.CommandCharterAlways:
+		wakeSeq, err := charterCommandWakeSeq(command.Instruction)
+		if err != nil {
+			return commandOutcome{}, err
+		}
+		if fired, err := r.store.CharterWakeFired(charter.ID, wakeSeq); err != nil {
+			return commandOutcome{}, err
+		} else if fired {
+			return commandOutcome{status: store.CommandApplied, result: "charter already promoted and firing admitted"}, nil
+		}
+		if !charter.WakePending || charter.WakeSeq != wakeSeq {
+			return commandOutcome{}, fmt.Errorf("always-allow approval is stale")
+		}
+		if err := r.store.PromoteCharter(charter.ID, "user chose always allow on probation proposal", true); err != nil {
+			return commandOutcome{}, err
+		}
+		charter, _, err = r.store.Charter(charter.ID)
+		if err != nil {
+			return commandOutcome{}, err
+		}
+		disposition, jobID, err := r.admitCharterFiring(ctx, charter, false)
+		if err != nil {
+			return commandOutcome{}, err
+		}
+		outcome := charterFireCommandOutcome(disposition, jobID, label)
+		outcome.result = "charter promoted by user override; " + outcome.result
+		return outcome, nil
+
+	case store.CommandCharterNever:
+		wakeSeq, err := charterCommandWakeSeq(command.Instruction)
+		if err != nil {
+			return commandOutcome{}, err
+		}
+		if !charter.WakePending && charter.Status == store.CharterPaused {
+			return commandOutcome{status: store.CommandApplied, result: "probation firing declined and charter already paused"}, nil
+		}
+		if err := r.store.DeclineCharterFiring(charter.ID, wakeSeq, "user chose never on probation proposal", true); err != nil {
+			return commandOutcome{}, err
+		}
+		return commandOutcome{status: store.CommandApplied, result: "probation firing declined; charter paused",
+			receipt: "Paused after your ‘never’: " + label + "."}, nil
+
+	case store.CommandCharterProbation:
+		if err := r.store.ReturnCharterToProbation(charter.ID, "user said back to asking"); err != nil {
+			return commandOutcome{}, err
+		}
+		return commandOutcome{status: store.CommandApplied, result: "charter returned to probation",
+			receipt: "Back to asking: " + label + "."}, nil
+
 	case store.CommandCharterOnce:
 		if err := r.store.RetireCharter(charter.ID); err != nil {
 			return commandOutcome{}, err
@@ -88,6 +172,33 @@ func (r *Reconciler) applyCharterCommand(command store.Command) (commandOutcome,
 		}, nil
 	}
 	return commandOutcome{}, fmt.Errorf("unsupported charter command %q", command.Kind)
+}
+
+func charterCommandWakeSeq(instruction string) (int64, error) {
+	raw := strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(instruction), "wake:"))
+	wakeSeq, err := strconv.ParseInt(raw, 10, 64)
+	if err != nil || wakeSeq <= 0 {
+		return 0, fmt.Errorf("invalid charter wake approval %q", instruction)
+	}
+	return wakeSeq, nil
+}
+
+func charterFireCommandOutcome(disposition store.FireDisposition, jobID, label string) commandOutcome {
+	switch disposition {
+	case store.FireAdmitted:
+		return commandOutcome{status: store.CommandApplied, result: "approved firing admitted as " + jobID,
+			receipt: "Approved — doing this now: " + label + "."}
+	case store.FireRailWait:
+		return commandOutcome{status: store.CommandApplied, result: "approved firing waiting at daily dollar rail"}
+	case store.FireQuota:
+		return commandOutcome{status: store.CommandApplied, result: "approved firing blocked by charter quota",
+			receipt: "That firing hit its daily charter limit: " + label + "."}
+	case store.FireExpired:
+		return commandOutcome{status: store.CommandApplied, result: "approved firing expired",
+			receipt: "That charter expired before it could fire: " + label + "."}
+	default:
+		return commandOutcome{status: store.CommandRejected, result: "unknown charter firing disposition " + string(disposition)}
+	}
 }
 
 func charterRatificationQuestion(charter store.Charter) (string, []store.QuestionOption) {

@@ -52,11 +52,16 @@ const (
 
 	// Charter commands are requested through the same durable reconciler queue
 	// as graph mutations. Their target names a charter rather than a node.
-	CommandCharterRatify  CommandKind = "charter_ratify"
-	CommandCharterPause   CommandKind = "charter_pause"
-	CommandCharterRetire  CommandKind = "charter_retire"
-	CommandCharterCadence CommandKind = "charter_cadence"
-	CommandCharterOnce    CommandKind = "charter_once"
+	CommandCharterRatify    CommandKind = "charter_ratify"
+	CommandCharterPause     CommandKind = "charter_pause"
+	CommandCharterRetire    CommandKind = "charter_retire"
+	CommandCharterCadence   CommandKind = "charter_cadence"
+	CommandCharterOnce      CommandKind = "charter_once"
+	CommandCharterFire      CommandKind = "charter_fire"
+	CommandCharterDecline   CommandKind = "charter_decline"
+	CommandCharterAlways    CommandKind = "charter_always"
+	CommandCharterNever     CommandKind = "charter_never"
+	CommandCharterProbation CommandKind = "charter_probation"
 )
 
 // CommandStatus is the lifecycle of a requested command. Commands are durable
@@ -534,7 +539,8 @@ func validRole(role Role) bool {
 func validCommandKind(kind CommandKind) bool {
 	switch kind {
 	case CommandSplice, CommandAmend, CommandCancel, CommandCharterRatify,
-		CommandCharterPause, CommandCharterRetire, CommandCharterCadence, CommandCharterOnce:
+		CommandCharterPause, CommandCharterRetire, CommandCharterCadence, CommandCharterOnce,
+		CommandCharterFire, CommandCharterDecline, CommandCharterAlways, CommandCharterNever, CommandCharterProbation:
 		return true
 	default:
 		return false
@@ -544,7 +550,8 @@ func validCommandKind(kind CommandKind) bool {
 func isCharterCommand(kind CommandKind) bool {
 	switch kind {
 	case CommandCharterRatify, CommandCharterPause, CommandCharterRetire,
-		CommandCharterCadence, CommandCharterOnce:
+		CommandCharterCadence, CommandCharterOnce, CommandCharterFire,
+		CommandCharterDecline, CommandCharterAlways, CommandCharterNever, CommandCharterProbation:
 		return true
 	default:
 		return false
