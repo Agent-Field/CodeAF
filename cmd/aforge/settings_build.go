@@ -19,9 +19,7 @@ func (c *chatCommander) Settings() *config.Settings {
 	if c == nil {
 		return nil
 	}
-	c.mu.Lock()
-	profileDir := c.settings.ProfileDir
-	c.mu.Unlock()
+	profileDir := c.profileDir()
 
 	// A knob whose only reader is the environment — the standing watch's
 	// tenure count — needs its persisted choice back in the environment before
@@ -46,14 +44,24 @@ func (c *chatCommander) settingApplied(key string) {
 	if key != config.KeyDailyBudget {
 		return
 	}
-	c.mu.Lock()
-	profileDir := c.settings.ProfileDir
-	c.mu.Unlock()
-	amount, err := config.DailyBudgetUSDAt(profileDir)
+	amount, err := config.DailyBudgetUSDAt(c.profileDir())
 	if err != nil {
 		return
 	}
+	c.setDailyBudgetUSD(amount)
+}
+
+// profileDir and setDailyBudgetUSD are the two critical sections the settings
+// snapshot has: everything else on it is fixed at construction. The disk read
+// between them is deliberately outside both.
+func (c *chatCommander) profileDir() string {
 	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.settings.ProfileDir
+}
+
+func (c *chatCommander) setDailyBudgetUSD(amount float64) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
 	c.settings.DailyBudgetUSD = amount
-	c.mu.Unlock()
 }

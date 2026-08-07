@@ -13,10 +13,7 @@ func (c *chatCommander) Budget(arguments []string) (string, error) {
 	if c == nil || c.store == nil {
 		return "", fmt.Errorf("budget store unavailable")
 	}
-	c.mu.Lock()
-	base := c.settings.DailyBudgetUSD
-	profileDir := c.settings.ProfileDir
-	c.mu.Unlock()
+	base, profileDir := c.dailyRailSettings()
 
 	if len(arguments) == 0 {
 		rail, err := c.store.DailyRailToday(base)
@@ -37,9 +34,7 @@ func (c *chatCommander) Budget(arguments []string) (string, error) {
 		if err := config.WriteDailyBudgetUSD(profileDir, amount); err != nil {
 			return "", err
 		}
-		c.mu.Lock()
-		c.settings.DailyBudgetUSD = amount
-		c.mu.Unlock()
+		c.setDailyBudgetUSD(amount)
 		return "default daily budget → $" + formatBudgetUSD(amount), nil
 	}
 	if len(arguments) == 2 && arguments[0] == "unlimited" && arguments[1] == "today" {
@@ -72,6 +67,14 @@ func (c *chatCommander) Budget(arguments []string) (string, error) {
 		return "today's budget → $" + formatBudgetUSD(ceiling) + " · resets midnight", nil
 	}
 	return "", fmt.Errorf("usage: /budget [amount | default amount | unlimited today]")
+}
+
+// dailyRailSettings reads the ceiling and the directory it is persisted in from
+// one instant, so a concurrent /budget default cannot leave them disagreeing.
+func (c *chatCommander) dailyRailSettings() (base float64, profileDir string) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.settings.DailyBudgetUSD, c.settings.ProfileDir
 }
 
 func (c *chatCommander) Standing() (string, error) {
