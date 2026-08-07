@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/Agent-Field/aforge-v2/internal/provider"
 	"github.com/Agent-Field/aforge-v2/internal/router"
@@ -24,6 +25,37 @@ func settings(t *testing.T) Config {
 		t.Fatal(err)
 	}
 	return config
+}
+
+func TestPracticeBudgetAndIdleDefaultsAndOverrides(t *testing.T) {
+	t.Setenv("AFORGE_PRACTICE_BUDGET", "")
+	t.Setenv("AFORGE_PRACTICE_IDLE", "")
+	got := settings(t)
+	if got.PracticeBudgetUSD != DefaultPracticeBudgetUSD || got.PracticeIdle != DefaultPracticeIdle {
+		t.Fatalf("practice defaults = $%v/%s", got.PracticeBudgetUSD, got.PracticeIdle)
+	}
+
+	t.Setenv("OPENROUTER_API_KEY", "test-key")
+	t.Setenv("AFORGE_PROFILE_DIR", t.TempDir())
+	t.Setenv("AFORGE_PRACTICE_BUDGET", "3.5")
+	t.Setenv("AFORGE_PRACTICE_IDLE", "45m")
+	got, err := Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.PracticeBudgetUSD != 3.5 || got.PracticeIdle != 45*time.Minute {
+		t.Fatalf("practice overrides = $%v/%s", got.PracticeBudgetUSD, got.PracticeIdle)
+	}
+
+	for _, test := range []struct{ budget, idle string }{
+		{budget: "-1"}, {budget: "NaN"}, {idle: "-1m"}, {idle: "later"},
+	} {
+		t.Setenv("AFORGE_PRACTICE_BUDGET", test.budget)
+		t.Setenv("AFORGE_PRACTICE_IDLE", test.idle)
+		if _, err := Load(); err == nil {
+			t.Fatalf("invalid practice settings budget=%q idle=%q were accepted", test.budget, test.idle)
+		}
+	}
 }
 
 // TestNoPanelIsTheKillSwitch is the promise the whole feature is gated on. With
