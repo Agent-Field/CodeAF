@@ -264,18 +264,7 @@ func (r *Reconciler) raiseClaimOrder(target, reason string) (bool, error) {
 }
 
 func (r *Reconciler) pendingSiblings(node store.Node) (int, error) {
-	nodes, err := r.store.Nodes()
-	if err != nil {
-		return 0, err
-	}
-	queued := 0
-	for _, candidate := range nodes {
-		if candidate.ID != node.ID && candidate.Parent == node.Parent &&
-			candidate.Status == store.Pending {
-			queued++
-		}
-	}
-	return queued, nil
+	return r.store.PendingSiblingCount(node.ID, node.Parent)
 }
 
 // expediteReceipt says what impatience actually bought. Every clause is
