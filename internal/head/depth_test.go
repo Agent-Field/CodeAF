@@ -99,9 +99,13 @@ func TestGreetingProducesTodaysContextExactly(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := "Live graph snapshot:\n" + renderGraph(snapshot) +
+	// The order is stable-first: thread, then the snapshot and the notebook that
+	// move with every message, then the message. It changed once, deliberately,
+	// when the router was reshaped for prefix caching; the blocks and their
+	// bytes did not.
+	want := "Recent thread before this message:\n(no earlier messages in this session)" +
+		"\n\nLive graph snapshot:\n" + renderGraph(snapshot) +
 		"\n\nNotebook (durable memory across jobs and conversations):\n" + renderNotebook(graph, greeting) +
-		"\n\nRecent thread before this message:\n(no earlier messages in this session)" +
 		"\n\nCurrent user message (verbatim):\n" + greeting
 	if prompt != want {
 		t.Fatalf("greeting context drifted from today's:\ngot:\n%s\n\nwant:\n%s", prompt, want)

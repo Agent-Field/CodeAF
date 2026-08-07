@@ -51,6 +51,30 @@ var recalibrateSchema = json.RawMessage(`{
   "additionalProperties": false
 }`)
 
+// calibrationEvidence renders the three measured bands in one fixed order.
+//
+// It was a range over a map literal, which handed Go's randomized iteration
+// order straight into a prompt: the same evidence produced a different document
+// on every run, so the pass was not reproducible and its text could never match
+// a cached prefix. Small to large is the ruler's own order and the order the
+// prompt's own instructions read in.
+func calibrationEvidence(small, middle, large []profile.Record) string {
+	var evidence strings.Builder
+	for _, band := range []struct {
+		label   string
+		records []profile.Record
+	}{
+		{"finished quickly", small},
+		{"finished in the middle of the range", middle},
+		{"ran out of budget", large},
+	} {
+		for _, record := range band.records {
+			appendCalibrationEvidence(&evidence, band.label, record)
+		}
+	}
+	return evidence.String()
+}
+
 // Recalibrate rewrites the ruler from measured work, returning the new anchors
 // and whether anything changed. It is a no-op unless the profile both has enough
 // evidence and disagrees with the ruler in force.
@@ -62,22 +86,15 @@ func Recalibrate(ctx context.Context, client Completer, store *profile.Profile) 
 	}
 
 	small, middle, large := store.Evidence(3)
-	var evidence strings.Builder
-	for label, group := range map[string][]profile.Record{
-		"finished quickly": small, "finished in the middle of the range": middle, "ran out of budget": large,
-	} {
-		for _, record := range group {
-			appendCalibrationEvidence(&evidence, label, record)
-		}
-	}
-	if strings.TrimSpace(evidence.String()) == "" {
+	evidence := calibrationEvidence(small, middle, large)
+	if strings.TrimSpace(evidence) == "" {
 		return "", "no usable evidence", usage, nil
 	}
 
 	messages := []ai.Message{
 		systemMessage(recalibratePrompt),
 		userMessage("The ruler currently in force:\n\n" + Anchors()),
-		userMessage("Tasks this model actually ran:\n\n" + evidence.String()),
+		userMessage("Tasks this model actually ran:\n\n" + evidence),
 	}
 	ctx = provider.WithCall(ctx, provider.ClassPlanRecalibrate)
 	var decoded struct {

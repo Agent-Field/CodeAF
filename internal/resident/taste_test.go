@@ -288,18 +288,16 @@ func answerTaste(t *testing.T, graph *store.Store, sessionID, scope, label strin
 }
 
 // TestTasteBlockSkipsTheRuleItCannotFitAndKeepsGoing pins how the gate's block
-// spends its budget. The rules arrive newest first, so stopping at the first
-// one too long to fit let one verbose rule hide every older rule behind it —
-// and the older rules are the longest-settled ones, the very rules the gate
-// exists to be held to. A line that does not fit is skipped, not final.
+// spends its budget. The block renders oldest-first, and stopping at the first
+// line too long to fit would let one verbose rule hide every rule behind it. A
+// line that does not fit is skipped, not final: the rules after it still land,
+// whatever their age.
 func TestTasteBlockSkipsTheRuleItCannotFitAndKeepsGoing(t *testing.T) {
 	graph := openStore(t)
-	// Oldest first, so that promoting them in this order leaves the block
-	// reading them back newest first: roomy, then one that cannot fit beside
-	// it, then the short settled rule that still can.
 	settled := "always give the numbers before the narrative"
-	verbose := "explain the reasoning " + strings.Repeat("in full ", 46)
-	roomy := "name the file " + strings.Repeat("and its path ", 30)
+	// Larger than the whole budget, so it can never fit in any position.
+	verbose := "explain the reasoning " + strings.Repeat("in full ", 70)
+	roomy := "name the file and its path beside the answer"
 	for _, rule := range []struct{ subject, body string }{
 		{"reports", settled},
 		{"prose", verbose},
@@ -326,8 +324,11 @@ func TestTasteBlockSkipsTheRuleItCannotFitAndKeepsGoing(t *testing.T) {
 	if !strings.Contains(block, settled) {
 		t.Errorf("the settled rule was starved by the one that could not fit:\n%q", block)
 	}
-	if strings.Contains(block, verbose) {
+	if strings.Contains(block, "explain the reasoning") {
 		t.Errorf("a rule that did not fit was written anyway:\n%q", block)
+	}
+	if !strings.Contains(block, roomy) {
+		t.Errorf("the rule after the skipped one never landed — the skip did not keep going:\n%q", block)
 	}
 	if len(block) > tasteBlockBytes {
 		t.Errorf("taste block = %d bytes, over its %d budget", len(block), tasteBlockBytes)
@@ -342,3 +343,38 @@ func tasteRulesByStatus(t *testing.T, graph *store.Store, status string) []store
 	}
 	return rules
 }
+
+
+// Settled taste leads the gate's prompt, so the order it renders in decides
+// whether the gate can ever be handed a warm prefix. Newest-first meant every
+// newly settled rule PREPENDED and rewrote the block from its first byte;
+// oldest-first makes a new rule an append.
+func TestTasteBlockAppendsNewlySettledRules(t *testing.T) {
+	graph := openStore(t)
+	settle := func(subject, body string) {
+		t.Helper()
+		candidate, err := graph.RecordTasteCandidate("", subject, body)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := graph.PromoteTasteRule(candidate.Seq); err != nil {
+			t.Fatal(err)
+		}
+	}
+	settle("user", "keep written comparisons under a page")
+	settle("user", "name the files a job wrote beside the answer")
+	before := TasteBlock(graph)
+	if !strings.HasPrefix(before, "- keep written comparisons under a page") {
+		t.Fatalf("taste block is not oldest-first:\n%s", before)
+	}
+
+	settle("user", "put the number in the first sentence of a report")
+	after := TasteBlock(graph)
+	if after == before {
+		t.Fatal("the newly settled rule never reached the gate's block")
+	}
+	if !strings.HasPrefix(after, before) {
+		t.Fatalf("a newly settled rule rewrote the block instead of appending:\nbefore:\n%s\n\nafter:\n%s", before, after)
+	}
+}
+

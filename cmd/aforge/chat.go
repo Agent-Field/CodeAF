@@ -2094,17 +2094,26 @@ const gateNotebookBytes = 1 << 10
 // nor manufactures verified evidence for the profile.
 func judgeDeliverable(ctx context.Context, settings config.Config, client *liveClient, graph *store.Store, node store.Node, deliverable, workerModel string) deliverableJudgment {
 	ask := node.Provenance.Intent
-	body := "Verbatim request:\n" + ask + "\n\nCompiled goal:\n" + node.Brief + "\n\nDeliverable as produced:\n" + deliverable
-	// Settled taste leads the notebook block. A rule the user corrected their
-	// way to three times is not one lesson among eight — it is the shape of an
-	// acceptable answer, so it is read before anything else and cannot be
-	// crowded out by the digest's byte budget.
+	// The standing half of the gate comes first and the job in front of it last,
+	// which is both the reading order and the billing order. Settled taste is
+	// the same text for every job in a session, so leading with it makes it the
+	// one block the endpoint can hand back warm; the digest is retrieved per
+	// node but identical across a node's repair passes, so it extends that warm
+	// stretch through a revision. The request, the goal and the deliverable move
+	// with every call and can invalidate nothing but themselves down here.
+	//
+	// Settled taste still leads the notebook material for the older reason: a
+	// rule the user corrected their way to three times is not one lesson among
+	// eight — it is the shape of an acceptable answer, and cannot be crowded out
+	// by the digest's byte budget.
+	var body string
 	if taste := resident.TasteBlock(graph); taste != "" {
-		body += "\n\nSettled taste — hold to these:\n" + taste
+		body += "Settled taste — hold to these:\n" + taste + "\n\n"
 	}
 	if digest := resident.NotebookDigest(graph, node.ID, node.Brief, ask, 8); digest != "" {
-		body += "\n\nStanding preferences and relevant lessons:\n" + clipUTF8Bytes(digest, gateNotebookBytes)
+		body += "Standing preferences and relevant lessons:\n" + clipUTF8Bytes(digest, gateNotebookBytes) + "\n\n"
 	}
+	body += "Verbatim request:\n" + ask + "\n\nCompiled goal:\n" + node.Brief + "\n\nDeliverable as produced:\n" + deliverable
 	judgeCtx := settings.Context(router.WithAvoidModel(ctx, workerModel), "gate")
 	judgeCtx = provider.WithCall(judgeCtx, provider.ClassPlanAudit)
 	options := []ai.Option{ai.WithMaxTokens(400)}
@@ -2288,7 +2297,11 @@ func planSubtree(settings config.Config, client *liveClient, plans *jobPlans, hi
 		}
 		// Per-leaf working contracts, exactly as a headless run writes them
 		// before dispatch. A contract failure costs specificity, not the job.
-		if _, err := plan.Contracts(ctx, workingClient, graph, resident.ContractPlaybook(history), progress); err != nil {
+		// The same run context the spine and briefs were built with: the contract
+		// pass is the widest fan-out in the lineage, and without the run's cache
+		// key its N concurrent calls scatter across providers and each writes the
+		// shared prefix cold. It also carries the operator's reasoning setting.
+		if _, err := plan.Contracts(settings.Context(ctx, compiled.Goal), workingClient, graph, resident.ContractPlaybook(history), progress); err != nil {
 			log.Printf("note: could not write contracts: %v", err)
 		}
 		subtree, err := resident.SubtreeFromPlan(graph, prefix)
@@ -2337,7 +2350,7 @@ func replanRemainder(settings config.Config, client *liveClient, plans *jobPlans
 				Stage: 1,
 			}}}, nil
 		}
-		if _, err := plan.Contracts(ctx, workingClient, graph, resident.ContractPlaybook(history), progress); err != nil {
+		if _, err := plan.Contracts(settings.Context(ctx, goal), workingClient, graph, resident.ContractPlaybook(history), progress); err != nil {
 			log.Printf("note: could not write repair contracts: %v", err)
 		}
 		subtree, err := resident.SubtreeFromPlan(graph, prefix)
@@ -2365,7 +2378,19 @@ const narratorSystemPrompt = `You are aforge, giving the user one casual progres
 func narrateProgress(settings config.Config, client *liveClient, graph *store.Store) resident.NarrateFunc {
 	return func(ctx context.Context, narration resident.Narration) (string, error) {
 		var input strings.Builder
+		// The job and the updates already spoken are the only append-only parts
+		// of a narration: across the heartbeats of one job the goal never moves
+		// and each new update is added to the end of a list whose earlier lines
+		// are fixed. They lead, so successive narrations of the same job share
+		// everything up to the new update. What is running and what just
+		// finished are rewritten every time by definition, and sit below.
 		fmt.Fprintf(&input, "The job: %s\n", narration.Goal)
+		if len(narration.Previous) > 0 {
+			input.WriteString("\nYour earlier updates (do not repeat):\n")
+			for _, line := range narration.Previous {
+				input.WriteString("- " + line + "\n")
+			}
+		}
 		if len(narration.Finished) > 0 {
 			input.WriteString("\nJust finished:\n")
 			for _, item := range narration.Finished {
@@ -2380,12 +2405,6 @@ func narrateProgress(settings config.Config, client *liveClient, graph *store.St
 		}
 		if narration.Queued > 0 {
 			fmt.Fprintf(&input, "\nQueued behind them: %d parts\n", narration.Queued)
-		}
-		if len(narration.Previous) > 0 {
-			input.WriteString("\nYour earlier updates (do not repeat):\n")
-			for _, line := range narration.Previous {
-				input.WriteString("- " + line + "\n")
-			}
 		}
 		response, err := client.CompleteWithMessages(settings.Context(ctx, "narrate"), []ai.Message{
 			{Role: "system", Content: []ai.ContentPart{{Type: "text", Text: resident.VoicePrompt(graph, narratorSystemPrompt, narration.Goal)}}},

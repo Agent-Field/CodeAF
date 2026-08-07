@@ -161,6 +161,16 @@ func TasteBlock(graph *store.Store) string {
 	if err != nil || len(rules) == 0 {
 		return ""
 	}
+	// The store answers newest-first because that is how a shelf's current line
+	// is picked; the block is rendered oldest-first because that is how it stays
+	// still. Under newest-first a rule settled this morning PREPENDED, moving
+	// every line below it and the 512-byte cut with them, so the gate's prompt
+	// was a new string from its first byte. Oldest-first makes a new rule an
+	// append. It also changes which rules survive the cap — the oldest win —
+	// and that is the more faithful reading of settled taste: a rule the user
+	// corrected their way to long ago and never revoked is the durable one.
+	rules = append([]store.Fact(nil), rules...)
+	sort.SliceStable(rules, func(i, j int) bool { return rules[i].Seq < rules[j].Seq })
 	var block strings.Builder
 	for _, rule := range rules {
 		line := "- " + firstLine(rule.Body) + "\n"
