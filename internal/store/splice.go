@@ -61,26 +61,39 @@ func (s *Store) Splice(parent string, subtree Subtree, provenance Provenance) er
 	}
 
 	batch := make(map[string]struct{}, len(payload.Nodes))
+	admitted := make([]string, 0, len(payload.Nodes))
 	for _, node := range payload.Nodes {
 		batch[node.ID] = struct{}{}
-		var exists int
-		if err := tx.QueryRow(`SELECT COUNT(*) FROM nodes WHERE id = ?`, node.ID).Scan(&exists); err != nil {
-			return fmt.Errorf("check node %q: %w", node.ID, err)
-		}
-		if exists != 0 {
+		admitted = append(admitted, node.ID)
+	}
+	present, err := existingNodeIDs(tx, admitted)
+	if err != nil {
+		return fmt.Errorf("check nodes: %w", err)
+	}
+	for _, node := range payload.Nodes {
+		if present[node.ID] {
 			return fmt.Errorf("splice node %q already exists: %w", node.ID, ErrInvalid)
 		}
+	}
+	var needed []string
+	for _, node := range payload.Nodes {
+		for _, need := range node.Needs {
+			if _, inside := batch[need.NodeID]; inside {
+				continue
+			}
+			needed = append(needed, need.NodeID)
+		}
+	}
+	dependencies, err := existingNodeIDs(tx, needed)
+	if err != nil {
+		return fmt.Errorf("check dependencies: %w", err)
 	}
 	for _, node := range payload.Nodes {
 		for _, need := range node.Needs {
 			if _, inside := batch[need.NodeID]; inside {
 				continue
 			}
-			var exists int
-			if err := tx.QueryRow(`SELECT COUNT(*) FROM nodes WHERE id = ?`, need.NodeID).Scan(&exists); err != nil {
-				return fmt.Errorf("check dependency %q: %w", need.NodeID, err)
-			}
-			if exists == 0 {
+			if !dependencies[need.NodeID] {
 				return fmt.Errorf("node %q needs unknown node %q: %w", node.ID, need.NodeID, ErrInvalid)
 			}
 		}
@@ -97,6 +110,42 @@ func (s *Store) Splice(parent string, subtree Subtree, provenance Provenance) er
 		return fmt.Errorf("splice: %w", err)
 	}
 	return nil
+}
+
+// existingNodeIDs answers admission's membership question once per batch. The
+// per-node COUNT(*) it replaces ran inside the write transaction, so every
+// extra round trip was held against every other writer.
+func existingNodeIDs(tx *sql.Tx, ids []string) (map[string]bool, error) {
+	present := make(map[string]bool, len(ids))
+	const chunk = 500
+	for start := 0; start < len(ids); start += chunk {
+		end := min(start+chunk, len(ids))
+		placeholders := make([]string, 0, end-start)
+		args := make([]any, 0, end-start)
+		for _, id := range ids[start:end] {
+			placeholders = append(placeholders, "?")
+			args = append(args, id)
+		}
+		rows, err := tx.Query(`SELECT id FROM nodes WHERE id IN (`+
+			strings.Join(placeholders, ", ")+`)`, args...)
+		if err != nil {
+			return nil, err
+		}
+		for rows.Next() {
+			var id string
+			if err := rows.Scan(&id); err != nil {
+				rows.Close()
+				return nil, err
+			}
+			present[id] = true
+		}
+		err = rows.Err()
+		rows.Close()
+		if err != nil {
+			return nil, err
+		}
+	}
+	return present, nil
 }
 
 func normalizeSubtree(parent string, subtree Subtree, provenance Provenance) (splicedPayload, error) {

@@ -208,7 +208,7 @@ func (r *Reconciler) offerStandingWatch(sessionID, charterID string) error {
 	}
 	if decision == store.StandingWatchEnabled {
 		if !status.Installed {
-			return r.standingWatch.Install(context.Background())
+			return r.installStandingWatch(context.Background())
 		}
 		return nil
 	}
@@ -222,8 +222,31 @@ func (r *Reconciler) offerStandingWatch(sessionID, charterID string) error {
 	return err
 }
 
+// standingWatchInstallTimeout bounds one host install. launchctl and systemctl
+// can block indefinitely on a wedged daemon, and this call reaches a subprocess
+// on the host, so an unbounded wait would be an unbounded stall.
+const standingWatchInstallTimeout = 5 * time.Second
+
+// installStandingWatch is the only path that reaches the host. Every caller
+// goes through it so no install can outlive its timeout.
+func (r *Reconciler) installStandingWatch(ctx context.Context) error {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	installCtx, cancel := context.WithTimeout(ctx, standingWatchInstallTimeout)
+	defer cancel()
+	return r.standingWatch.Install(installCtx)
+}
+
+// reconcileStandingWatch repairs a missing host timer. It runs outside the
+// reconciler mutex — the install shells out to launchctl or systemctl, and a
+// slow host must never hold the lock every other resident path waits on. Its
+// own mutex keeps two overlapping Ticks from repairing at once.
 func (r *Reconciler) reconcileStandingWatch(ctx context.Context) {
-	if r.standingWatch == nil || (!r.standingWatchCheck.IsZero() && r.now().Before(r.standingWatchCheck)) {
+	r.standingMu.Lock()
+	defer r.standingMu.Unlock()
+	if r.store == nil || r.standingWatch == nil ||
+		(!r.standingWatchCheck.IsZero() && r.now().Before(r.standingWatchCheck)) {
 		return
 	}
 	r.standingWatchCheck = r.now().Add(5 * time.Minute)
@@ -247,7 +270,7 @@ func (r *Reconciler) reconcileStandingWatch(ctx context.Context) {
 			log.Printf("standing watch key: %v", err)
 		}
 	}
-	if err := r.standingWatch.Install(ctx); err != nil {
+	if err := r.installStandingWatch(ctx); err != nil {
 		log.Printf("standing watch repair: %v", err)
 	}
 }
@@ -279,7 +302,7 @@ func (r *Reconciler) applyStandingWatchCommand(ctx context.Context, command stor
 				log.Printf("standing watch key: %v", keyErr)
 			}
 		}
-		if err := r.standingWatch.Install(ctx); err != nil {
+		if err := r.installStandingWatch(ctx); err != nil {
 			log.Printf("standing watch install: %v", err)
 			return commandOutcome{}, fmt.Errorf("quiet background checks could not be enabled")
 		}

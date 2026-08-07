@@ -7,7 +7,6 @@ import (
 	"errors"
 	"fmt"
 	"math"
-	"sort"
 	"strings"
 	"time"
 	"unicode"
@@ -23,8 +22,8 @@ const (
 	CharterDraft    CharterStatus = "draft"
 	CharterProposed CharterStatus = "proposed"
 	CharterActive   CharterStatus = "active"
-	CharterPaused  CharterStatus = "paused"
-	CharterRetired CharterStatus = "retired"
+	CharterPaused   CharterStatus = "paused"
+	CharterRetired  CharterStatus = "retired"
 )
 
 // CharterAutonomy is the earned right to turn a checked wake into work
@@ -786,12 +785,8 @@ func (s *Store) Charters(statuses ...CharterStatus) ([]Charter, error) {
 		}
 		result = filtered
 	}
-	sort.SliceStable(result, func(i, j int) bool {
-		if result[i].CreatedSeq != result[j].CreatedSeq {
-			return result[i].CreatedSeq < result[j].CreatedSeq
-		}
-		return result[i].ID < result[j].ID
-	})
+	// The ORDER BY above is already (created_seq, id); re-sorting the decoded
+	// rows only repeats work SQLite has done.
 	return result, nil
 }
 
@@ -1273,13 +1268,16 @@ func (s *Store) RetireExpiredCharter(id string, now time.Time) (bool, error) {
 // RetireExpiredCharters applies expiry even while a charter is paused or still
 // proposed; expiry is a standing-spend boundary, not a scheduling state.
 func (s *Store) RetireExpiredCharters(now time.Time) (int, error) {
-	charters, err := s.Charters()
+	expiries, err := s.charterExpiries()
 	if err != nil {
 		return 0, err
 	}
 	retired := 0
-	for _, charter := range charters {
-		changed, err := s.RetireExpiredCharter(charter.ID, now)
+	for _, expiry := range expiries {
+		if now.Before(expiry.At) {
+			continue
+		}
+		changed, err := s.RetireExpiredCharter(expiry.ID, now)
 		if err != nil {
 			return retired, err
 		}
@@ -1288,6 +1286,87 @@ func (s *Store) RetireExpiredCharters(now time.Time) (int, error) {
 		}
 	}
 	return retired, nil
+}
+
+// CharterClockDeadline reports the earliest instant at which the passage of
+// time alone could change charter state: a reserved wake still pending, a
+// scheduled next_due arriving, or an expiry rail falling due. The second result
+// is false when no charter is waiting on the clock at all, which is the normal
+// answer for a store with no standing work.
+func (s *Store) CharterClockDeadline(now time.Time) (time.Time, bool, error) {
+	var immediate bool
+	if err := s.db.QueryRow(`SELECT EXISTS(SELECT 1 FROM charters
+		WHERE status = ? AND (wake_pending = 1 OR next_due IS NULL))`, CharterActive).Scan(&immediate); err != nil {
+		return time.Time{}, false, fmt.Errorf("charter clock deadline: %w", err)
+	}
+	if immediate {
+		return now, true, nil
+	}
+	deadline := time.Time{}
+	// next_due is written by formatTime, so it is UTC and its text order is its
+	// time order; MIN can safely stay in SQL.
+	var scheduled sql.NullString
+	if err := s.db.QueryRow(`SELECT MIN(next_due) FROM charters
+		WHERE status = ? AND next_due IS NOT NULL`, CharterActive).Scan(&scheduled); err != nil {
+		return time.Time{}, false, fmt.Errorf("charter clock deadline: %w", err)
+	}
+	if scheduled.Valid {
+		at, err := parseTime(scheduled.String)
+		if err != nil {
+			return time.Time{}, false, fmt.Errorf("charter clock deadline: %w", err)
+		}
+		deadline = at
+	}
+	expiries, err := s.charterExpiries()
+	if err != nil {
+		return time.Time{}, false, err
+	}
+	for _, expiry := range expiries {
+		if deadline.IsZero() || expiry.At.Before(deadline) {
+			deadline = expiry.At
+		}
+	}
+	return deadline, !deadline.IsZero(), nil
+}
+
+// charterExpiry is one live expiry rail, named rather than decoded: the whole
+// charter row costs five JSON decodes and the expiry question needs one field.
+type charterExpiry struct {
+	ID string
+	At time.Time
+}
+
+// charterExpiries reads every live expiry rail. Comparison stays in Go because
+// an expiry rail is written by encoding/json in whatever zone the user named it
+// in, so the stored strings are not ordered by their text the way the
+// UTC-normalized columns are.
+func (s *Store) charterExpiries() ([]charterExpiry, error) {
+	rows, err := s.db.Query(`SELECT id, json_extract(rails, '$.expires_at') FROM charters
+		WHERE status <> ? AND json_extract(rails, '$.expires_at') IS NOT NULL
+		ORDER BY created_seq, id`, CharterRetired)
+	if err != nil {
+		return nil, fmt.Errorf("list expiring charters: %w", err)
+	}
+	defer rows.Close()
+	var expiries []charterExpiry
+	for rows.Next() {
+		var id, at string
+		if err := rows.Scan(&id, &at); err != nil {
+			return nil, fmt.Errorf("list expiring charters: %w", err)
+		}
+		expires, err := parseTime(at)
+		if err != nil {
+			return nil, fmt.Errorf("parse charter %q expiry: %w", id, err)
+		}
+		if expires.IsZero() {
+			continue
+		}
+		expiries = append(expiries, charterExpiry{ID: id, At: expires})
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("list expiring charters: %w", err)
+	}
+	return expiries, nil
 }
 
 // FiringsToday counts admitted actions, not sentinel checks or blocked wakes.
@@ -1495,12 +1574,16 @@ func (s *Store) fireCharter(id string, wakeSeq int64, subtree Subtree, provenanc
 			return "", err
 		}
 		payload.JobID = normalized.Root
+		admitted := make([]string, 0, len(normalized.Nodes))
 		for _, node := range normalized.Nodes {
-			var exists int
-			if err := tx.QueryRow(`SELECT COUNT(*) FROM nodes WHERE id=?`, node.ID).Scan(&exists); err != nil {
-				return "", err
-			}
-			if exists != 0 {
+			admitted = append(admitted, node.ID)
+		}
+		present, err := existingNodeIDs(tx, admitted)
+		if err != nil {
+			return "", err
+		}
+		for _, node := range normalized.Nodes {
+			if present[node.ID] {
 				return "", fmt.Errorf("fire charter: %w: node %q exists", ErrInvalid, node.ID)
 			}
 		}
