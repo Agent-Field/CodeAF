@@ -748,44 +748,14 @@ func runChat(args []string) error {
 			WithDailyBudgetUSD(settings.DailyBudgetUSD).
 			Serve(headContext)
 	}()
-	// Serve absorbs transient tick errors itself and returns only for a
-	// cancelled context, an unreadable store, or sustained failure. A return
-	// that isn't the context is therefore news, and a resident that quietly
-	// stays dead while the TUI keeps drawing is the exact silence the lease
-	// heartbeat exists to expose — so the loop is restarted with backoff, and
-	// only a run of rapid deaths gives up, loudly.
-	go func() {
-		defer guard.Recover("chat/reconciler")
+	guard.Go("chat/reconciler", func() {
 		defer background.Done()
-		rapidDeaths := 0
-		for {
-			started := time.Now()
-			err := reconciler.Serve(ctx)
-			if ctx.Err() != nil {
-				return
-			}
-			if time.Since(started) < time.Minute {
-				rapidDeaths++
-			} else {
-				rapidDeaths = 0
-			}
-			log.Printf("resident loop ended: %v — restarting", err)
-			if rapidDeaths >= 5 {
-				log.Printf("resident loop died %d times in quick succession — giving up; standing work is paused until relaunch", rapidDeaths)
-				_, _ = graph.PostMessage(store.Message{
-					SessionID: *sessionID,
-					Role:      store.RoleSystem,
-					Body:      "the background loop that runs jobs and watches has stopped after repeated failures — restart aforge to resume it",
-				})
-				return
-			}
-			select {
-			case <-ctx.Done():
-				return
-			case <-time.After(5 * time.Second):
-			}
-		}
-	}()
+		superviseResident(ctx, reconciler.Serve, residentRestartBackoff, residentHealthyRun, func(body string) {
+			_, _ = graph.PostMessage(store.Message{
+				SessionID: *sessionID, Role: store.RoleSystem, Body: body,
+			})
+		})
+	})
 	go func() { defer guard.Recover("chat/runner"); defer background.Done(); _ = runner.Serve(ctx) }()
 
 	commander = &chatCommander{
@@ -2416,6 +2386,73 @@ var errNoRetainedPlan = errors.New("its plan is not in hand, so the remaining st
 // sense the graph means, however much it looks like one to strings.HasPrefix.
 func isJobNode(id, prefix string) bool {
 	return id == prefix || strings.HasPrefix(id, prefix+"-n")
+}
+
+// The resident is the half of the surface that keeps working while nobody is
+// typing: it announces settled work, distills the notebook, fires charters, and
+// resumes deferred overruns. Its loop used to be launched as `_ = Serve(ctx)` —
+// the error thrown away, the goroutine gone, and no one told. A single
+// transient failure inside one pass therefore ended the resident silently for
+// the lifetime of the terminal, while the lease went on saying the role was
+// taken, so `aforge wake` stepped aside for a process that had stopped serving
+// hours ago. Standing watches, charters and practice simply never fired again.
+//
+// So the loop gets a supervisor. Restarting is the right default because the
+// store is the truth and Serve holds nothing across a pass — a fresh call
+// re-reads the same queue and carries on. What is not acceptable is a tight
+// spin: a loop that cannot get through one pass will not be fixed by being run
+// a thousand times, and it would bury the reason under its own log.
+const (
+	// residentRestartBackoff is the pause before a restart, and it is also what
+	// distinguishes a transient failure from a broken one: a resident that dies
+	// faster than this is dying on something structural.
+	residentRestartBackoff = 5 * time.Second
+	// residentRestartLimit is how many rapid deaths are absorbed before the
+	// supervisor stops and says so. Deaths spaced further apart than
+	// residentHealthyRun are forgiven, so a resident that runs for an hour
+	// between hiccups is never given up on.
+	residentRestartLimit = 5
+	residentHealthyRun   = 5 * time.Minute
+)
+
+// superviseResident runs serve until the context ends, restarting it after a
+// bounded number of rapid failures. announce is how the user finds out; it is
+// called exactly once, when the supervisor gives up, because the whole failure
+// this replaces is one of silence. The two durations are arguments rather than
+// the constants they are called with so a test can prove the give-up and the
+// forgiveness without spending ten minutes of wall clock proving them.
+func superviseResident(ctx context.Context, serve func(context.Context) error,
+	backoff, healthyRun time.Duration, announce func(string)) {
+	consecutive := 0
+	for {
+		started := time.Now()
+		err := serve(ctx)
+		if ctx.Err() != nil {
+			// The ordinary shutdown: the surface is closing and Serve returned
+			// the cancellation it was given. Nothing to say.
+			return
+		}
+		if time.Since(started) >= healthyRun {
+			consecutive = 0
+		}
+		consecutive++
+		log.Printf("resident loop stopped after %s (%d in a row): %v",
+			time.Since(started).Round(time.Second), consecutive, err)
+		if consecutive >= residentRestartLimit {
+			log.Printf("resident loop abandoned after %d restarts; background work has stopped", consecutive)
+			if announce != nil {
+				announce("my background half has stopped and I could not restart it — " +
+					"standing watches, charters and follow-up work are paused until aforge is restarted. " +
+					"The reason is in the log: " + firstLine(fmt.Sprint(err)))
+			}
+			return
+		}
+		select {
+		case <-ctx.Done():
+			return
+		case <-time.After(backoff):
+		}
+	}
 }
 
 // isSingleLeafJob asks the durable graph whether this job really was one leaf.
