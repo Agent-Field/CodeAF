@@ -254,13 +254,29 @@ func DecidePanel(ctx context.Context, client Completer, goal string, stages []St
 // The second half is the boundary that keeps a single deliverable owner. N
 // agents each writing the final report produces N reports and no answer; the
 // panelists produce findings, the synthesis produces the deliverable.
+//
+// The charge used to say that nothing left out would be recovered later, and
+// then met a standing instruction to keep the final message short — a straight
+// contradiction the panelist could only resolve by disobeying one of them.
+// Neither side was wrong about what it wanted: the panel is bought for
+// completeness, and a long message is re-billed on every turn of everything
+// downstream. What was missing was the resolution the leaf contract already
+// makes for ordinary work — the split runs between the answer and its working,
+// not between the answer and a pointer to it — so the charge now makes the same
+// split explicitly. The enumeration is complete in the file; the findings
+// themselves are in the message; the merge receives both.
 const panelistCharge = `Work only from the material itself and your own reading of it. Report everything
 you find, including anything that looks minor, borderline, or too obvious to be
-worth writing down — nothing you leave out will be recovered later, and being
-complete matters more here than being brief. Give the evidence for each finding:
-the file and line, the quote, the number, the step that reproduces it.
+worth writing down — being complete matters more here than being brief, and a
+finding you drop is gone for good.
 
-Deliver the findings themselves, as a plain list, each one standing on its own.
+Completeness is about the findings, not about where each one is written down.
+Write the full enumeration to a file, with the evidence for every finding — the
+file and line, the quote, the number, the step that reproduces it — and say in
+your reply where that file is. Your reply itself carries the findings: each one
+named plainly enough that someone reading only the reply knows what you found
+and how serious it is, with the evidence in the file behind it.
+
 Do not write %s, do not rank them down to a shortlist, and do not stop early
 because you have found enough.`
 

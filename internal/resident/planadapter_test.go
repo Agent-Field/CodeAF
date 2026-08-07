@@ -89,7 +89,13 @@ func TestSubtreeFromPlanDropsExpandedContainers(t *testing.T) {
 	}
 }
 
-func TestSubtreeFromPlanCarriesContractIntoBrief(t *testing.T) {
+// The brief says what the job is; the contract says how that kind of job is
+// done well, and it belongs in the executor's system message beside the
+// harness's own invariants — where a headless run has always put it. Folded
+// onto the brief instead, it arrived as user text below everything that changes
+// between leaves, and the store's own record of the request carried a paragraph
+// no person asked for.
+func TestSubtreeFromPlanLeavesTheContractOutOfTheBrief(t *testing.T) {
 	graph := &plan.Graph{Nodes: []plan.Node{
 		{ID: 1, Stage: 1, Kind: plan.KindWork, Title: "Task",
 			Brief: "do the thing", Contract: "verify by running it"},
@@ -99,8 +105,11 @@ func TestSubtreeFromPlanCarriesContractIntoBrief(t *testing.T) {
 		t.Fatalf("convert: %v", err)
 	}
 	brief := subtree.Nodes[0].Brief
-	if !strings.Contains(brief, "do the thing") || !strings.Contains(brief, "verify by running it") {
-		t.Fatalf("brief lost content: %q", brief)
+	if !strings.Contains(brief, "do the thing") {
+		t.Fatalf("brief lost the instruction: %q", brief)
+	}
+	if strings.Contains(brief, "verify by running it") {
+		t.Fatalf("brief still folds in the working method: %q", brief)
 	}
 }
 

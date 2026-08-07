@@ -7,6 +7,7 @@ package resident
 import (
 	"fmt"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/Agent-Field/aforge-v2/internal/plan"
 	"github.com/Agent-Field/aforge-v2/internal/store"
@@ -127,20 +128,50 @@ func ApplyRevision(graph *store.Store, planGraph *plan.Graph, prefix, jobRoot st
 }
 
 // RevisionEvent phrases what just happened for the sentinel: which node
-// landed, how, and what it reported. Bounded — the sentinel judges whether a
-// result contradicts the plan, not the result's full content.
-func RevisionEvent(node store.Node, summary string, failed bool) string {
+// landed, how, what it reported, and what it left on disk. Bounded — the
+// sentinel judges whether a result contradicts the plan, not the result's full
+// content.
+//
+// The failure arrives as its own words rather than as a boolean. "FAILED" tells
+// the sentinel that the plan's next steps have nothing to consume; "FAILED: the
+// API returns 410 Gone for every v2 endpoint" tells it which assumption died,
+// and that is the entire question it was convened to answer. The artifact list
+// is here for the same reason it is in OverrunGoal: a leaf that says "wrote the
+// notes to api-notes.md" has reported its whole finding in a filename, and a
+// sentinel that cannot see the file at least learns one exists.
+func RevisionEvent(node store.Node, summary string, artifacts []string, failure string) string {
 	label := strings.TrimSpace(node.Title)
 	if label == "" {
 		label = firstLine(node.Brief)
 	}
 	ending := "finished"
-	if failed {
-		ending = "FAILED"
+	if failure = strings.TrimSpace(failure); failure != "" {
+		ending = "FAILED: " + clipEventBytes(firstLine(failure), revisionFailureBytes)
 	}
-	summary = strings.TrimSpace(summary)
-	if len(summary) > 1200 {
-		summary = summary[:1200] + "…"
+	event := fmt.Sprintf("Node %q %s. Its result:\n%s", label, ending,
+		clipEventBytes(strings.TrimSpace(summary), revisionResultBytes))
+	if len(artifacts) > 0 {
+		event += "\n\nFiles it left in the workspace:\n" + strings.Join(artifacts, "\n")
 	}
-	return fmt.Sprintf("Node %q %s. Its result:\n%s", label, ending, summary)
+	return event
+}
+
+const (
+	revisionResultBytes  = 1200
+	revisionFailureBytes = 300
+)
+
+// clipEventBytes bounds prompt-bound text at a rune boundary. A byte cut
+// through a character produces a replacement glyph that rides the whole
+// sentinel prompt, which is the one place in this file where the exact text is
+// what is being reasoned about.
+func clipEventBytes(body string, limit int) string {
+	if limit <= 0 || len(body) <= limit {
+		return body
+	}
+	cut := limit
+	for cut > 0 && !utf8.RuneStart(body[cut]) {
+		cut--
+	}
+	return strings.TrimSpace(body[:cut]) + "…"
 }

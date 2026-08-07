@@ -404,9 +404,38 @@ func (s *Store) Ready(limit int) ([]Node, error) {
 		`priority DESC, created_seq, created_order, id`)
 }
 
+// DependencyInput is one settled hard dependency as its consumer receives it:
+// who produced it, the bounded digest of what it said, and the files it left
+// behind.
+//
+// Artifacts are a separate field rather than the tail of the digest because
+// they are the one part that must survive the byte bound. A producer writes its
+// file list at the end of its summary, which is exactly where the bound bites
+// first, and a consumer that loses the paths loses its only route to the full
+// detail — it is then holding a 200-word pointer to work it cannot open.
+type DependencyInput struct {
+	NodeID    string
+	Digest    string
+	Artifacts []string
+}
+
 // DependencyDigests is the bounded context handed from settled hard
 // dependencies to a downstream node. Failures are named instead of omitted.
 func (s *Store) DependencyDigests(id string, maxBytes int) ([]string, error) {
+	inputs, err := s.DependencyInputs(id, maxBytes)
+	if err != nil {
+		return nil, err
+	}
+	digests := make([]string, 0, len(inputs))
+	for _, input := range inputs {
+		digests = append(digests, input.Digest)
+	}
+	return digests, nil
+}
+
+// DependencyInputs is DependencyDigests with the producer and its files kept
+// separate instead of flattened into one line.
+func (s *Store) DependencyInputs(id string, maxBytes int) ([]DependencyInput, error) {
 	if maxBytes <= 0 {
 		return nil, nil
 	}
@@ -421,7 +450,7 @@ func (s *Store) DependencyDigests(id string, maxBytes int) ([]string, error) {
 	}
 	defer rows.Close()
 	remaining := maxBytes
-	digests := make([]string, 0)
+	inputs := make([]DependencyInput, 0)
 	for rows.Next() {
 		var dependencyID, summary, failure string
 		var status Status
@@ -433,13 +462,43 @@ func (s *Store) DependencyDigests(id string, maxBytes int) ([]string, error) {
 			continue
 		}
 		line = bounded(line, remaining)
-		digests = append(digests, line)
+		inputs = append(inputs, DependencyInput{
+			NodeID: dependencyID, Digest: line, Artifacts: summaryPaths(summary),
+		})
 		remaining -= len(line)
 	}
 	if err := rows.Err(); err != nil {
 		return nil, fmt.Errorf("read dependencies for %q: %w", id, err)
 	}
-	return digests, nil
+	return inputs, nil
+}
+
+// summaryPathCap bounds how many paths one dependency may contribute. The list
+// rides in a downstream prompt, so it is a context budget rather than a
+// correctness limit.
+const summaryPathCap = 8
+
+// summaryPaths recovers the files a settled node wrote from the only durable
+// record there is of them: its own summary. Artifacts are not a column — the
+// executor's path→node map lives in the worker's memory and dies with it — so
+// the producer writes them into the text it hands on, and this reads them back
+// out. Absolute paths only: a bare word can be anything, and a wrong path
+// offered as a file to open is worse than no file at all.
+func summaryPaths(summary string) []string {
+	var paths []string
+	seen := make(map[string]bool)
+	for _, field := range strings.Fields(summary) {
+		path := strings.Trim(field, `"'(),;:.`)
+		if !strings.HasPrefix(path, "/") || len(path) < 2 || seen[path] {
+			continue
+		}
+		seen[path] = true
+		paths = append(paths, path)
+		if len(paths) == summaryPathCap {
+			break
+		}
+	}
+	return paths
 }
 
 func dependencyDigest(id string, status Status, summary, failure string) string {

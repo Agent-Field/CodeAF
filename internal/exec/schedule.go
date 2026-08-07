@@ -476,9 +476,20 @@ func (s *Scheduler) taskFor(graph *plan.Graph, node *plan.Node) Task {
 		}
 		task.Inputs = append(task.Inputs, Input{
 			Title:     source.Title,
-			Summary:   source.Summary,
 			Result:    boundInput(source.Result, source.Artifacts),
 			Artifacts: source.Artifacts,
+		})
+	}
+	// A node put back to pending for escalation still carries what its last
+	// attempt produced — the scheduler wrote it there and is about to overwrite
+	// it. Handing it back is the difference between buying a stronger model and
+	// buying a stronger model plus a second run of the work already done.
+	if previous := strings.TrimSpace(node.Result); previous != "" {
+		task.Inputs = append(task.Inputs, Input{
+			Title: "your own earlier attempt at this same task",
+			Result: "An earlier attempt on a weaker model ended as " + string(node.Verdict) +
+				". What it had when it stopped:\n" + boundInput(previous, node.Artifacts),
+			Artifacts: node.Artifacts,
 		})
 	}
 	return task

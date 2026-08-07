@@ -25,9 +25,17 @@ import (
 // exactly the results of the nodes it declared and nothing else, so the edges
 // that were argued over during planning are the same edges that decide what an
 // agent can see.
+// Title names the producer. It is not decoration: the block these are rendered
+// into is headed "results from earlier work, which you already have and must
+// not gather again", and an untitled entry reads as an anonymous claim about
+// what has already been done.
+//
+// There was once a Summary field here as well, written by the scheduler and
+// read by nothing. It is gone rather than rendered: a field that describes an
+// input but never reaches the agent is a claim about what the agent knows that
+// is simply untrue.
 type Input struct {
 	Title     string
-	Summary   string
 	Result    string
 	Artifacts []string
 }
@@ -88,6 +96,17 @@ type Outcome struct {
 	Decayed   int // observations faded to stubs, a measure of how much context was reclaimed
 	Usage     Usage
 	Stop      StopReason
+	// Exhausted is what ran out, when something did. It is separate from Stop
+	// because the two answer different questions and the common case makes them
+	// disagree: a leaf whose budget runs out is told to land, it lands, and it
+	// ends StopDone — truthfully, because it did stop asking for tools. Reading
+	// that as an ordinary finish was how the whole continuation subsystem came
+	// to be dead on its designed path, and how a truncated partial posted as a
+	// finished deliverable. Stop stays the honest answer to "how did the loop
+	// end"; Exhausted answers "was it still working when it was told to stop",
+	// which is what continuation and rating both actually need. Empty means
+	// nothing ran out.
+	Exhausted StopReason
 	Elapsed   time.Duration
 	// Promote is the executor's explicit verdict that a reflex needs the normal
 	// compiled path. Text remains the useful partial discovered before stopping.
@@ -177,6 +196,16 @@ func (r *Registry) For(skill string) Executor {
 		return executor
 	}
 	return r.fallback
+}
+
+// Overran reports that the leaf still had work in hand when its resources ran
+// out — the condition the continuation subsystem exists for. It reads both
+// fields because a leaf can arrive here two ways: cut off outright (Stop), or
+// told to land and complying (Exhausted). Only the resource endings count; a
+// deadline is a fact about the clock rather than about work left undone, and a
+// user pause or cancel is a decision rather than an overrun.
+func (o *Outcome) Overran() bool {
+	return o.Stop == StopBudget || o.Stop == StopTurnCap || o.Exhausted == StopBudget
 }
 
 func (o *Outcome) String() string {
