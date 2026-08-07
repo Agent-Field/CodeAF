@@ -541,7 +541,29 @@ func singularScopeToken(token string) string {
 	}
 }
 
+// normalizedTokenSimilarity is the shelf-name scorer: two scope names mean one
+// thing when their tokens agree. The containment shortcut belongs to that job
+// and only to that job — "repo:parser" inside "repo:parser-tests" is a genuine
+// alias candidate — so it is opt-in per call rather than the default.
 func normalizedTokenSimilarity(first, second []string) int {
+	return tokenSimilarity(first, second, true)
+}
+
+// sentenceTokenSimilarity scores two whole sentences. Containment cannot be a
+// shortcut here: applied to sentences it made "shorter" score 801 against every
+// correction that happened to contain the word "shorter", so one bogus match
+// birthed a candidate rule and three of them held the delivery gate to a
+// preference the user had stated once, about unrelated work. Two sentences are
+// the same correction only when they agree in both directions.
+// The caller's floor is the whole bar, which is why no second one is baked in
+// here: the shelf-name scorer's built-in 0.6 gate meant every non-zero score it
+// could ever return was already 60 or more, so TasteSimilarityFloor's stated
+// value of 50 could not discriminate anything and the documented bar was inert.
+func sentenceTokenSimilarity(first, second []string) int {
+	return tokenSimilarity(first, second, false)
+}
+
+func tokenSimilarity(first, second []string, shelfNames bool) int {
 	if len(first) == 0 || len(second) == 0 {
 		return 0
 	}
@@ -558,10 +580,13 @@ func normalizedTokenSimilarity(first, second []string) int {
 	if overlap == len(first) && overlap == len(second) {
 		return 1000 + overlap
 	}
+	union := len(first) + len(second) - overlap
+	if !shelfNames {
+		return overlap * 100 / union
+	}
 	if overlap == min(len(first), len(second)) {
 		return 800 + overlap
 	}
-	union := len(first) + len(second) - overlap
 	if overlap*5 >= union*3 {
 		return overlap * 100 / union
 	}

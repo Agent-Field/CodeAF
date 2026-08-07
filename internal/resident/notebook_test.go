@@ -68,20 +68,17 @@ func TestScopeAliasCandidateDetectionNormalizesTokens(t *testing.T) {
 	}
 }
 
-func TestContractPlaybookRetrievalOrdersBoundsAndCountsUses(t *testing.T) {
+// The contract playbook reaches for what has been proven, not for what has
+// merely been shown. Proof is journal-native — a fact injected into real work
+// whose job then landed — so it survives Rebuild and the facts migration, which
+// is exactly what the retrieval counter it replaced did not.
+func TestContractPlaybookRanksProvenBulletsAheadOfNewOnes(t *testing.T) {
 	graph := openStore(t)
 	const scope = "repo:internal/parser"
-	popularBody := "Run make check before delivery; direct go test misses generated parser fixtures. " + strings.Repeat("p", 220)
-	popular, err := graph.RecordFact("", scope, store.FactPlaybook, popularBody)
+	provenBody := "Run make check before delivery; direct go test misses generated parser fixtures. " + strings.Repeat("p", 220)
+	proven, err := graph.RecordFact("", scope, store.FactPlaybook, provenBody)
 	if err != nil {
 		t.Fatal(err)
-	}
-	for range 2 {
-		if _, err := graph.SearchFacts(store.FactQuery{
-			Cues: []string{scope}, Kind: store.FactPlaybook, Limit: 1,
-		}); err != nil {
-			t.Fatal(err)
-		}
 	}
 	middleBody := "Keep the generated parser fixture list synchronized with the grammar. " + strings.Repeat("m", 220)
 	middle, err := graph.RecordFact("", scope, store.FactPlaybook, middleBody)
@@ -98,15 +95,36 @@ func TestContractPlaybookRetrievalOrdersBoundsAndCountsUses(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	// The oldest bullet rode two jobs that landed; the newest rode one that
+	// failed its gate, which is evidence against it rather than for it.
+	for _, id := range []string{"ride-one", "ride-two", "ride-bad"} {
+		if err := graph.Splice(store.RootID, store.Subtree{Nodes: []store.NodeSpec{{
+			ID: id, Brief: "parser work", Stage: 1,
+		}}}, store.Provenance{Origin: store.OriginUser, Intent: "parser work"}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, id := range []string{"ride-one", "ride-two"} {
+		if err := graph.RecordFactInjection(id, []int64{proven.Seq}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := graph.RecordFactInjection("ride-bad", []int64{newest.Seq}); err != nil {
+		t.Fatal(err)
+	}
+	if err := graph.RecordDeliveryGate("ride-bad", store.DeliveryGate{Gap: "missed the fixtures"}); err != nil {
+		t.Fatal(err)
+	}
+
 	notes := ContractPlaybook(graph)(plan.Node{
 		Title: "Parser repair", Summary: "Repair parser validation",
 		Sources: []string{"internal/parser/check.go"},
 		Brief:   "Update internal/parser/check.go and use go tooling.",
 	})
-	popularAt := strings.Index(notes, popularBody)
+	provenAt := strings.Index(notes, provenBody)
 	newestAt := strings.Index(notes, newestBody)
-	if popularAt < 0 || newestAt < 0 || popularAt > newestAt {
-		t.Fatalf("playbook ordering = %q, want popular then newest", notes)
+	if provenAt < 0 || newestAt < 0 || provenAt > newestAt {
+		t.Fatalf("playbook ordering = %q, want proven then newest", notes)
 	}
 	if strings.Contains(notes, middleBody) {
 		t.Fatalf("bounded playbook included the lower-ranked overflow bullet: %q", notes)
@@ -115,6 +133,8 @@ func TestContractPlaybookRetrievalOrdersBoundsAndCountsUses(t *testing.T) {
 		t.Fatalf("contract playbook = %d bytes, want at most %d", got, contractPlaybookBytes)
 	}
 
+	// The retrieval counter still moves — it is consolidation's telemetry — but
+	// nothing ranks on it any more, and it does not survive a rebuild.
 	active, err := graph.ActiveFacts(scope, 10)
 	if err != nil {
 		t.Fatal(err)
@@ -123,8 +143,20 @@ func TestContractPlaybookRetrievalOrdersBoundsAndCountsUses(t *testing.T) {
 	for _, fact := range active {
 		uses[fact.Seq] = fact.Uses
 	}
-	if uses[popular.Seq] != 3 || uses[newest.Seq] != 1 || uses[middle.Seq] != 0 {
-		t.Fatalf("contract playbook uses = popular:%d newest:%d middle:%d", uses[popular.Seq], uses[newest.Seq], uses[middle.Seq])
+	if uses[proven.Seq] == 0 || uses[middle.Seq] != 0 {
+		t.Fatalf("retrieval telemetry = proven:%d middle:%d", uses[proven.Seq], uses[middle.Seq])
+	}
+	if err := graph.Rebuild(); err != nil {
+		t.Fatal(err)
+	}
+	rebuilt := ContractPlaybook(graph)(plan.Node{
+		Title: "Parser repair", Summary: "Repair parser validation",
+		Sources: []string{"internal/parser/check.go"},
+		Brief:   "Update internal/parser/check.go and use go tooling.",
+	})
+	if provenAt, newestAt := strings.Index(rebuilt, provenBody), strings.Index(rebuilt, newestBody); provenAt < 0 ||
+		newestAt < 0 || provenAt > newestAt {
+		t.Fatalf("playbook ordering did not survive rebuild: %q", rebuilt)
 	}
 }
 

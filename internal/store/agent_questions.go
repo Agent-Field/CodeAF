@@ -123,6 +123,14 @@ type agentQuestionPayload struct {
 type agentQuestionSurfacedPayload struct {
 	QuestionSeq int64 `json:"question_seq"`
 	MessageSeq  int64 `json:"message_seq"`
+	// SessionID re-homes a question in the conversation that can now answer it.
+	// Empty — every event written before this existed, and every ordinary
+	// surfacing — leaves the question where it was. It is set only when an
+	// unanswered blocking question is carried into a live session because the
+	// one that asked it is gone: the answer lookup is session-filtered, so
+	// re-posting the words without moving the question would show the user a
+	// question their reply could not reach.
+	SessionID string `json:"session_id,omitempty"`
 }
 
 type agentQuestionResolvedPayload struct {
@@ -298,7 +306,28 @@ func (s *Store) SurfaceQuestionForSession(seq int64, sessionID string) (Message,
 	return s.surfaceQuestion(seq, strings.TrimSpace(sessionID))
 }
 
+// ResurfaceQuestion carries an unanswered question into a live session and
+// re-posts it there. It is the recovery path for a blocking question whose
+// original session is gone: the request behind it was never dropped by anyone's
+// decision, it simply stopped being visible, and a question nobody can see is a
+// request that was silently abandoned.
+//
+// Unlike SurfaceQuestion this moves the question's own session, because
+// QuestionForAnswer is session-filtered — showing the words without moving the
+// question would render a prompt the user's reply could not reach.
+func (s *Store) ResurfaceQuestion(seq int64, sessionID string) (Message, error) {
+	sessionID = strings.TrimSpace(sessionID)
+	if sessionID == "" {
+		return Message{}, fmt.Errorf("resurface question: %w: empty session", ErrInvalid)
+	}
+	return s.surfaceQuestionInto(seq, sessionID, true)
+}
+
 func (s *Store) surfaceQuestion(seq int64, neutralSessionID string) (Message, error) {
+	return s.surfaceQuestionInto(seq, neutralSessionID, false)
+}
+
+func (s *Store) surfaceQuestionInto(seq int64, neutralSessionID string, rehome bool) (Message, error) {
 	tx, err := s.db.BeginTx(context.Background(), nil)
 	if err != nil {
 		return Message{}, fmt.Errorf("surface question: %w", err)
@@ -312,11 +341,11 @@ func (s *Store) surfaceQuestion(seq int64, neutralSessionID string) (Message, er
 	if !found {
 		return Message{}, fmt.Errorf("surface question: %w: no question at seq %d", ErrNotFound, seq)
 	}
-	if question.Status != QuestionPending {
+	if question.Status != QuestionPending && !(rehome && question.Status == QuestionAsked) {
 		return Message{}, fmt.Errorf("surface question: %w: question %d is already %s", ErrInvalid, seq, question.Status)
 	}
 	messageSessionID := question.SessionID
-	if messageSessionID == "" {
+	if messageSessionID == "" || rehome {
 		messageSessionID = neutralSessionID
 	}
 	payload := messagePayload{
@@ -332,6 +361,9 @@ func (s *Store) surfaceQuestion(seq int64, neutralSessionID string) (Message, er
 		return Message{}, fmt.Errorf("surface question: %w", err)
 	}
 	surfaced := agentQuestionSurfacedPayload{QuestionSeq: seq, MessageSeq: messageSeq}
+	if rehome {
+		surfaced.SessionID = messageSessionID
+	}
 	eventSeq, at, err := appendEvent(tx, question.OriginNodeID, EventAgentQuestionSurfaced, surfaced)
 	if err != nil {
 		return Message{}, fmt.Errorf("surface question: %w", err)
@@ -567,6 +599,17 @@ func applyAgentQuestionView(tx *sql.Tx, payload agentQuestionPayload, seq int64,
 }
 
 func applyAgentQuestionSurfaced(tx *sql.Tx, payload agentQuestionSurfacedPayload, eventSeq int64, at time.Time) error {
+	if session := strings.TrimSpace(payload.SessionID); session != "" {
+		result, err := tx.Exec(`UPDATE agent_questions SET status = ?, asked_at = ?,
+			asked_message_seq = ?, session_id = ?, updated_seq = ?
+			WHERE seq = ? AND status IN (?, ?)`,
+			QuestionAsked, formatTime(at), payload.MessageSeq, session, eventSeq,
+			payload.QuestionSeq, QuestionPending, QuestionAsked)
+		if err != nil {
+			return err
+		}
+		return requireOneQuestionChange(result, "resurface", payload.QuestionSeq)
+	}
 	result, err := tx.Exec(`UPDATE agent_questions SET status = ?, asked_at = ?,
 		asked_message_seq = ?, updated_seq = ? WHERE seq = ? AND status = ?`,
 		QuestionAsked, formatTime(at), payload.MessageSeq, eventSeq, payload.QuestionSeq, QuestionPending)

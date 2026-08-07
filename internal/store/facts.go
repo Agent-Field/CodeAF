@@ -261,7 +261,10 @@ type Fact struct {
 	StatusNote string
 
 	// Uses and LastUsed are retrieval telemetry for consolidation, not
-	// journaled truth: Rebuild resets them, deliberately.
+	// journaled truth: Rebuild resets them, deliberately, and so does the facts
+	// migration. Nothing ranks on them — a value the journal cannot rebuild may
+	// inform a human reading the table, never a retrieval deciding what a model
+	// sees. FactOutcomes answers "has this been useful" from the journal.
 	Uses     int
 	LastUsed time.Time
 	// Confidence is the current shrunk survival rate for Kind x Channel.
@@ -507,12 +510,6 @@ func (s *Store) ReplaceFactFrom(writer FactWriter, factSeq int64, nodeID, scope 
 	return s.recordFact(writer, nodeID, scope, kind, body, nil, factSeq, FactActive, "", true)
 }
 
-// ReplaceUnsettledFact carries an unresolved pair forward and consumes its
-// prior fact sequence atomically.
-func (s *Store) ReplaceUnsettledFact(factSeq int64, nodeID, scope string, pair UnsettledPair) (Fact, error) {
-	return s.ReplaceUnsettledFactFrom(FactWriterOther, factSeq, nodeID, scope, pair)
-}
-
 // ReplaceUnsettledFactFrom carries a pair forward on writer's channel.
 func (s *Store) ReplaceUnsettledFactFrom(writer FactWriter, factSeq int64, nodeID, scope string, pair UnsettledPair) (Fact, error) {
 	if factSeq <= 0 {
@@ -538,13 +535,6 @@ func (s *Store) RecordSkillCandidateFrom(writer FactWriter, nodeID, scope, body,
 		return Fact{}, fmt.Errorf("record skill candidate: %w: empty artifact", ErrInvalid)
 	}
 	return s.recordFact(writer, nodeID, scope, FactSkill, body, nil, 0, FactCandidate, artifact, false)
-}
-
-// RewriteActiveSkill preserves an execution-verified artifact while notebook
-// consolidation rewrites its doc line. Naming the active source rather than an
-// arbitrary path keeps this maintenance API from manufacturing a capability.
-func (s *Store) RewriteActiveSkill(nodeID, scope, body string, sourceSeq int64) (Fact, error) {
-	return s.RewriteActiveSkillFrom(FactWriterOther, nodeID, scope, body, sourceSeq)
 }
 
 // RewriteActiveSkillFrom rewrites an active skill on writer's channel.
@@ -1105,6 +1095,37 @@ func (s *Store) NeighbouringCorrections(body string, excludeSeq, limit int64) ([
 	return neighbours, nil
 }
 
+// RecordTasteCorrectionOnce files a free-text taste answer where corrections
+// already live: on the shelf's subject, as an ordinary preference line, which
+// is exactly what the aggregation pass reads. It is idempotent because the
+// answer is durable and the pass that reads it runs every tick — recording the
+// same sentence again would supersede its own copy forever, and a notebook that
+// churns is a notebook nobody can trust.
+//
+// recorded is false when the line is already on that shelf.
+func (s *Store) RecordTasteCorrectionOnce(nodeID, subject, body string) (Fact, bool, error) {
+	body = strings.TrimSpace(body)
+	subject = normalizeScope(subject)
+	if body == "" || subject == "" || strings.HasPrefix(subject, TasteScopePrefix) {
+		return Fact{}, false, fmt.Errorf("record taste correction: %w: subject and body are required", ErrInvalid)
+	}
+	existing, err := s.factsWhere(`scope = ? AND kind = ? AND status = ? AND lower(body) = lower(?) LIMIT 1`,
+		subject, FactPreference, FactActive, body)
+	if err != nil {
+		return Fact{}, false, fmt.Errorf("record taste correction: %w", err)
+	}
+	if len(existing) > 0 {
+		return existing[0], false, nil
+	}
+	// The stated channel, because that is what this is: the user's own sentence
+	// about what they wanted, typed rather than inferred from a delivery.
+	fact, err := s.RecordFactFrom(FactWriterHead, nodeID, subject, FactPreference, body)
+	if err != nil {
+		return Fact{}, false, err
+	}
+	return fact, true, nil
+}
+
 // CorrectionFacts lists the ordinary preference lines taste aggregates over —
 // what the distiller wrote down when the user corrected something — newest
 // first, with the taste shelves left out.
@@ -1139,8 +1160,10 @@ type FactQuery struct {
 	Terms string
 	// Kind restricts retrieval to one fact kind. Empty includes every kind.
 	Kind FactKind
-	// PreferUseful orders most-used matches first and newest matches next.
-	// Scope cue order remains the primary match signal when this is false.
+	// PreferUseful orders proven matches first and newest matches next: a fact
+	// that has ridden into real work and come back without a failed gate
+	// outranks one that has not. Scope cue order remains the primary match
+	// signal when this is false.
 	PreferUseful bool
 	// MaxBytes bounds the returned scope-and-body bullet lines. Zero is
 	// unbounded; the small per-line allowance covers "- [scope] body\n".
@@ -1171,10 +1194,9 @@ func (s *Store) searchFacts(query FactQuery, countUses bool) ([]Fact, error) {
 	}
 	seen := make(map[int64]bool)
 	results := make([]Fact, 0, query.Limit)
-	order := "seq DESC"
-	if query.PreferUseful {
-		order = "uses DESC, seq DESC"
-	}
+	// The ordering that matters is applied in Go, against journal-derived
+	// evidence, once the candidates are known. SQL orders by recency alone.
+	const order = "seq DESC"
 
 	// Channel survival is one projection of the whole journal. Every candidate
 	// asks it the same question, so this retrieval derives it at most once and
@@ -1253,10 +1275,32 @@ func (s *Store) searchFacts(query FactQuery, countUses bool) ([]Fact, error) {
 		}
 		// An FTS syntax error from hostile terms is a miss, not a failure.
 	}
-	if query.PreferUseful {
+	if query.PreferUseful && len(results) > 1 {
+		// Proven, not popular. This used to rank on facts.uses — a counter
+		// incremented by retrieval itself, outside the journal, with a bare
+		// UPDATE that no event could replay. That made a ranking input the one
+		// materialized value the journal could not rebuild (the facts migration
+		// drops the table and replays only fact-family events, so it silently
+		// reverted to newest-first in production), and it made the ranking a
+		// feedback loop: retrieved, therefore ranked higher, therefore retrieved.
+		//
+		// FactOutcomes is the same question asked of the journal, and it asks it
+		// better: Rides counts injections into real work, Bad counts the ones
+		// whose job then failed its delivery gate. uses and last_used stay
+		// exactly what their own comment always claimed — telemetry for
+		// consolidation, nothing ranks on them.
+		outcomes, err := s.FactOutcomes()
+		if err != nil {
+			return nil, err
+		}
+		proven := func(fact Fact) int {
+			outcome := outcomes[fact.Seq]
+			return outcome.Rides - outcome.Bad
+		}
 		sort.SliceStable(results, func(i, j int) bool {
-			if results[i].Uses != results[j].Uses {
-				return results[i].Uses > results[j].Uses
+			left, right := proven(results[i]), proven(results[j])
+			if left != right {
+				return left > right
 			}
 			return results[i].Seq > results[j].Seq
 		})

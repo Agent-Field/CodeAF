@@ -152,44 +152,6 @@ func (s *Store) Questions(status string, limit int) ([]Fact, error) {
 		FactQuestion, status, limit)
 }
 
-// SetQuestionStatus records a non-practice lifecycle transition, chiefly an
-// operator retirement or a deterministic resolution. Practice rounds use the
-// start/completion events below so their evidence and status move atomically.
-func (s *Store) SetQuestionStatus(questionSeq int64, status, reason string) error {
-	if questionSeq <= 0 || !validFactStatusForKind(FactQuestion, status) {
-		return fmt.Errorf("set question status: %w: invalid question or status", ErrInvalid)
-	}
-	tx, err := s.db.BeginTx(context.Background(), nil)
-	if err != nil {
-		return fmt.Errorf("set question status: %w", err)
-	}
-	defer tx.Rollback()
-	var current string
-	if err := tx.QueryRow(`SELECT status FROM facts WHERE seq=? AND kind=?`,
-		questionSeq, FactQuestion).Scan(&current); err != nil {
-		if err == sql.ErrNoRows {
-			return fmt.Errorf("set question status: %w: question %d", ErrNotFound, questionSeq)
-		}
-		return fmt.Errorf("set question status: %w", err)
-	}
-	if !validQuestionTransition(current, status) {
-		return fmt.Errorf("set question status: %w: %s to %s", ErrInvalid, current, status)
-	}
-	payload := questionStatusPayload{QuestionSeq: questionSeq, Status: status,
-		Reason: strings.TrimSpace(reason)}
-	seq, _, err := appendEvent(tx, "", EventQuestionStatusChanged, payload)
-	if err != nil {
-		return fmt.Errorf("set question status: %w", err)
-	}
-	if err := applyQuestionStatus(tx, payload, seq); err != nil {
-		return fmt.Errorf("set question status: %w", err)
-	}
-	if err := tx.Commit(); err != nil {
-		return fmt.Errorf("set question status: %w", err)
-	}
-	return nil
-}
-
 func validQuestionTransition(from, to string) bool {
 	if from == to || from == QuestionResolved || from == QuestionRetired {
 		return false

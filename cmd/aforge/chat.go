@@ -573,7 +573,7 @@ func runChat(args []string) error {
 			// The gate judges the request. Taste is the other half and is never
 			// allowed to be a gate: an unproven rule rides one quiet question
 			// with the delivery, which lands either way.
-			_, _, _ = resident.AnnotateDelivery(graph, node)
+			_, _, _ = resident.AnnotateDelivery(graph, node, text)
 		}
 		outcome.Text = text
 		outcome.Usage = spent
