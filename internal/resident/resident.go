@@ -171,14 +171,15 @@ type Reconciler struct {
 	practiceBudget  float64
 	practiceIdle    time.Duration
 
-	mu                 sync.Mutex
-	watcherInitialized bool
-	lastEventSeq       int64
-	progress           map[string]*subtreeProgress
-	learningMoments    map[string]*pendingLearningMoment
-	lastConsolidation  time.Time
-	standingWatchCheck time.Time
-	now                func() time.Time
+	mu                      sync.Mutex
+	watcherInitialized      bool
+	lastEventSeq            int64
+	progress                map[string]*subtreeProgress
+	learningMoments         map[string]*pendingLearningMoment
+	lastConsolidation       time.Time
+	standingWatchCheck      time.Time
+	standingWatchKeyPersist func() (bool, string, error)
+	now                     func() time.Time
 }
 
 // StandingWatch is the small consequence-facing seam the resident needs.
@@ -204,6 +205,15 @@ func New(graph *store.Store, compile CompileFunc, plan PlanFunc) *Reconciler {
 // first charter ratification. Nil preserves embedding paths with no host timer.
 func (r *Reconciler) WithStandingWatch(standing StandingWatch) *Reconciler {
 	r.standingWatch = standing
+	return r
+}
+
+// WithStandingWatchKeyPersist supplies the credential step that runs before a
+// watch install: timer-driven wakes see no shell environment, so the key must
+// survive on disk for them. Kept as an injected hook so nothing in this
+// package ever writes to the real home during tests; nil skips persistence.
+func (r *Reconciler) WithStandingWatchKeyPersist(persist func() (bool, string, error)) *Reconciler {
+	r.standingWatchKeyPersist = persist
 	return r
 }
 

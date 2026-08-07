@@ -242,6 +242,11 @@ func (r *Reconciler) reconcileStandingWatch(ctx context.Context) {
 	if status.Installed {
 		return
 	}
+	if r.standingWatchKeyPersist != nil {
+		if _, _, err := r.standingWatchKeyPersist(); err != nil {
+			log.Printf("standing watch key: %v", err)
+		}
+	}
 	if err := r.standingWatch.Install(ctx); err != nil {
 		log.Printf("standing watch repair: %v", err)
 	}
@@ -263,13 +268,28 @@ func (r *Reconciler) applyStandingWatchCommand(ctx context.Context, command stor
 		if err := r.store.RecordStandingWatchDecision(store.StandingWatchEnabled, reason); err != nil {
 			return commandOutcome{}, err
 		}
+		// Timer-driven wakes run without the shell environment, so the key
+		// must survive on disk or every quiet check dies at startup.
+		var persisted bool
+		var keyPath string
+		if r.standingWatchKeyPersist != nil {
+			var keyErr error
+			persisted, keyPath, keyErr = r.standingWatchKeyPersist()
+			if keyErr != nil {
+				log.Printf("standing watch key: %v", keyErr)
+			}
+		}
 		if err := r.standingWatch.Install(ctx); err != nil {
 			log.Printf("standing watch install: %v", err)
 			return commandOutcome{}, fmt.Errorf("quiet background checks could not be enabled")
 		}
+		receipt := "I'll keep watch — a quiet check every few minutes, even with no terminal open."
+		if persisted {
+			receipt += " Your API key now lives in " + keyPath + ", readable only by you, so those checks can run."
+		}
 		return commandOutcome{
 			status: store.CommandApplied, result: "standing watch enabled",
-			receipt: "I'll keep watch — a quiet check every few minutes, even with no terminal open.",
+			receipt: receipt,
 		}, nil
 	case store.CommandStandingWatchDecline:
 		if err := r.store.RecordStandingWatchDecision(store.StandingWatchDeclined, reason); err != nil {
