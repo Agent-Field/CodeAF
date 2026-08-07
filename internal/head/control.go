@@ -4,6 +4,7 @@ import (
 	"context"
 	"strings"
 
+	"github.com/Agent-Field/aforge-v2/internal/manual"
 	"github.com/Agent-Field/aforge-v2/internal/store"
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 )
@@ -16,7 +17,7 @@ import (
 // finance one", "hold the scans until the research lands" — where the intent is
 // obvious to a person and unreachable by any cue list. Those get the toolbelt.
 
-const controlSystemPrompt = `You are the front desk of a task-graph agent, and this message is about work that is already underway. The board below is your only reality: every row is one job the user asked for, live, with what it is doing and what it has cost. You have no other staff, no hidden status system, and no memory of ids that are not on a board you have read.
+const controlSystemPrompt = `You are the front desk of a task-graph agent, and this message is about work that is already underway, about aforge itself, or both. The board below is your only reality about the work: every row is one job the user asked for, live, with what it is doing and what it has cost. You have no other staff, no hidden status system, and no memory of ids that are not on a board you have read.
 
 The tools are your only hands.
 - board reads the live work. Reads are always safe and always allowed. Read before you act whenever the target set is not already plain from the board you were given.
@@ -24,16 +25,18 @@ The tools are your only hands.
 - steer tells the workers running a job something right now, without changing what the job is.
 - revise hands the user's own words to a job so its remaining plan is edited to match them. Use it when what the work is FOR has changed.
 - expedite makes a job arrive sooner. It never queues anything new.
+- manual reads aforge's own account of itself.
 
 Law you do not get to bend:
 - Never invent an id. Every id you pass came from a board row you have seen in this conversation.
 - A question about state — what is running, how far along, what it cost — is answered from a board read and nothing else. Reading is not acting, and a status question earns no verb.
+- A question about aforge itself — what you can do, how one of your mechanisms works, why you behaved the way you did — is answered by reading the manual and quoting its substance in your own plain words. Never invent an answer about your own machinery, never soften or embellish what the manual says, and if the manual does not cover it, say plainly that you do not know rather than guessing.
 - needs_confirmation is the consent gate working, not a failure. Nothing changed, the user is being asked, and their answer settles it. Never say the change happened.
 - A tool error is information. A wrong id or a verb the status does not allow tells you exactly what to fix; fix it and try once more.
 - Say only what the tool results showed you. Counts, the names of the work, and "I've asked you to confirm" are the whole vocabulary of a receipt. Never promise a result no tool reported, never imply work has finished, and never say you will hurry something unless expedite said so.
-- If this turns out not to be about the work on the board — a new request, a question about the world, ordinary conversation — call no tools and reply with exactly NOT_EXISTING_WORK.
+- If this turns out to be neither about the work on the board nor about aforge itself — a new request, a question about the world, ordinary conversation — call no tools and reply with exactly NOT_EXISTING_WORK.
 
-When you are done, stop calling tools and write one or two plain sentences for the user: what happened, in their terms. No markdown, no ids, no machinery — the words node, board, tool and snapshot belong backstage.`
+When you are done, stop calling tools and write plainly for the user, in their terms. A receipt for a change is one or two sentences. An answer from the manual may run a short paragraph, and should give them the concrete numbers and phrasings the manual gives you. No markdown, no ids, no machinery — the words node, board, tool and snapshot belong backstage.`
 
 const (
 	// controlToolCallCap is how many tools one message may spend. Four is read,
@@ -71,23 +74,37 @@ var controlVerbs = map[string]bool{
 // work, and it never becomes a dead end: anything it cannot honestly settle
 // falls through to the ordinary router exactly as before.
 func (h *Head) manageControl(ctx context.Context, user store.Message) (bool, error) {
-	applies, err := h.controlLoopApplies(user.Body)
-	if err != nil || !applies {
+	work, err := h.controlLoopApplies(user.Body)
+	if err != nil {
 		return false, err
+	}
+	// The two arms are independent. Work needs live jobs to be about; a
+	// self-question needs nothing at all, because the manual is in the binary.
+	self := selfQuestionCued(user.Body)
+	if !work && !self {
+		return false, nil
 	}
 	client, err := h.clientFor(user)
 	if err != nil {
 		return false, nil
 	}
 	rows, err := h.boardRows("", "", "")
-	if err != nil || len(rows) == 0 {
+	if err != nil {
+		return false, nil
+	}
+	if !self && len(rows) == 0 {
 		return false, nil
 	}
 
+	board := "(nothing of the user's is live right now)"
+	if len(rows) > 0 {
+		board = renderBoard(rows)
+	}
 	run := &beltRun{head: h, user: user}
 	messages := []ai.Message{
 		textMessage("system", controlSystemPrompt),
-		textMessage("user", "Board (the user's live work):\n"+renderBoard(rows)+
+		textMessage("user", "Board (the user's live work):\n"+board+
+			"\n\nManual pages available: "+strings.Join(manual.Pages(), ", ")+
 			"\n\nCurrent user message (verbatim):\n"+strings.TrimSpace(user.Body)),
 	}
 	definitions := beltDefinitions()
@@ -192,4 +209,95 @@ func controlVerbPresent(message string) bool {
 		}
 	}
 	return false
+}
+
+// The second arm. Everything above is about work; this is about aforge. A
+// person learning what their employee can do asks in the same register they ask
+// for work in — "can you look at images?", "what happens overnight?" — and the
+// only reliable difference is that one points at aforge and the other points at
+// a deliverable. So the trigger reads shape rather than topic: a question, aimed
+// at aforge or at something the manual is titled after, and not carrying a verb
+// that means "go do this". A false negative costs nothing but today's routing,
+// which is why every clause here is a reason NOT to open.
+
+// selfQuestionPhrases are self-questions said in full, in the idiom
+// asksForCompetence and asksForStandingWatch already use. They skip the shape
+// test because they are already unambiguous.
+var selfQuestionPhrases = []string{
+	"what can you do", "what do you do", "what are you", "who are you",
+	"how do you work", "how does aforge work", "what is aforge",
+	"what happens when i'm gone", "what happens when i am gone",
+	"while i'm gone", "while i am gone", "what happens overnight",
+	"what happens every day", "what do you do all day",
+	"explain yourself", "tell me about yourself",
+}
+
+// selfQuestionLeads mark a sentence as a question even without a question mark,
+// which is how most people type one.
+var selfQuestionLeads = map[string]bool{
+	"how": true, "what": true, "whats": true, "why": true, "when": true,
+	"where": true, "which": true, "who": true, "can": true, "could": true,
+	"does": true, "do": true, "did": true, "is": true, "are": true,
+	"explain": true, "tell": true,
+}
+
+// selfReferenceWords are the ways a person names their employee.
+var selfReferenceWords = map[string]bool{
+	"you": true, "your": true, "yours": true, "yourself": true, "aforge": true,
+}
+
+// selfQuestionVetoes are the verbs that mean the sentence is an assignment,
+// however question-shaped it is. "can you build me a parser" is work, and work
+// takes the ordinary route.
+var selfQuestionVetoes = map[string]bool{
+	"build": true, "write": true, "create": true, "draft": true, "fix": true,
+	"implement": true, "add": true, "generate": true, "summarize": true,
+	"summarise": true, "research": true, "find": true, "search": true,
+	"download": true, "install": true, "send": true, "email": true,
+	"deploy": true, "refactor": true, "translate": true, "buy": true,
+	"publish": true, "compile": true, "analyze": true, "analyse": true,
+	"review": true, "check": true, "look": true, "read": true, "scrape": true,
+}
+
+// selfQuestionPhrased is the unambiguous half, and the only half any earlier
+// recognizer is allowed to consult. "what happens every day while I'm gone"
+// carries durable-sounding words without being an instruction, and standing
+// intent has to decline it before the loop ever gets a turn.
+func selfQuestionPhrased(lower string) bool {
+	for _, phrase := range selfQuestionPhrases {
+		if strings.Contains(lower, phrase) {
+			return true
+		}
+	}
+	return false
+}
+
+// selfQuestionCued is the trigger. It opens the loop with the manual in reach
+// even when nothing at all is live.
+func selfQuestionCued(message string) bool {
+	lower := strings.ToLower(strings.TrimSpace(message))
+	if lower == "" {
+		return false
+	}
+	if selfQuestionPhrased(lower) {
+		return true
+	}
+	words := surgeryWords(lower)
+	shaped := strings.Contains(lower, "?")
+	referenced := false
+	for _, word := range words {
+		if selfQuestionVetoes[word] {
+			return false
+		}
+		if selfQuestionLeads[word] {
+			shaped = true
+		}
+		if selfReferenceWords[word] {
+			referenced = true
+		}
+	}
+	if !shaped {
+		return false
+	}
+	return referenced || manual.Cued(lower)
 }

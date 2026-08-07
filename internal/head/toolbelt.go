@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Agent-Field/aforge-v2/internal/manual"
 	"github.com/Agent-Field/aforge-v2/internal/resident"
 	"github.com/Agent-Field/aforge-v2/internal/store"
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
@@ -32,6 +33,12 @@ const (
 	beltToolSteer    = "steer"
 	beltToolRevise   = "revise"
 	beltToolExpedite = "expedite"
+	// beltToolManual is the belt's only read that is not about the graph. It
+	// rides here rather than in a loop of its own because the two questions
+	// arrive in the same sentence often enough — "why did you cancel that?" is
+	// about the board and about aforge at once — and a second loop would have
+	// to guess which one to open.
+	beltToolManual = "manual"
 
 	// beltConfirmAction and beltKeepAction ride the existing surgery option
 	// codec, so a belt confirmation replays through exactly the durable
@@ -49,6 +56,10 @@ const (
 	// subtrees into single ids, so a legitimate set is small; a longer list is
 	// a model enumerating leaves it should have named by their root.
 	beltControlIDCap = 32
+	// beltManualSections is how much of the manual one read returns. The belt
+	// allows four calls in total, so a read that hands back a whole chapter
+	// spends the message's budget on prose the answer will not use.
+	beltManualSections = 4
 )
 
 // beltTool and beltProp mirror the leaf toolbox's definition idiom. They are
@@ -94,6 +105,10 @@ func beltDefinitions() []ai.ToolDefinition {
 		beltTool(beltToolExpedite, "Make a job arrive sooner: it moves up the claim order and its unstarted tail is trimmed to the shortest path to the deliverable. It never adds work. Use it for impatience, never for a change of goal.", map[string]any{
 			"job": beltProp("string", "job id from a board read"),
 		}, "job"),
+		beltTool(beltToolManual, "Read aforge's own manual: what it can do, how one of its mechanisms works, why it behaved the way it did. Always safe. Search with q, or read a whole topic with page. This is the only place answers about aforge itself may come from.", map[string]any{
+			"q":    beltProp("string", "the question, in the user's own words"),
+			"page": beltProp("string", "one page name to read whole, from a page list you have seen"),
+		}),
 	}
 }
 
@@ -136,6 +151,8 @@ func (run *beltRun) execute(name, arguments string) (string, bool) {
 		return run.revise(args)
 	case beltToolExpedite:
 		return run.expedite(args)
+	case beltToolManual:
+		return run.manual(args)
 	}
 	return fmt.Sprintf("there is no tool named %q", name), true
 }
@@ -247,6 +264,30 @@ func (run *beltRun) expedite(args map[string]any) (string, bool) {
 	}
 	run.record(seq, "Pushing "+surgeryTargetLabel(job)+" to the front and trimming what it has not started.")
 	return surgeryTargetLabel(job) + " moves up the claim order and its unstarted tail is trimmed", false
+}
+
+// manual is a read like board is a read: it never records, so a message that
+// only asked what aforge is journals no command and the reply carries no
+// command seq. The answer is grounded or it is not given.
+func (run *beltRun) manual(args map[string]any) (string, bool) {
+	if name := beltString(args, "page"); name != "" {
+		text, found := manual.Page(name)
+		if !found {
+			return "there is no manual page named " + name + " — the pages are: " +
+				strings.Join(manual.Pages(), ", "), true
+		}
+		return text, false
+	}
+	query := beltString(args, "q")
+	if query == "" {
+		query = strings.TrimSpace(run.user.Body)
+	}
+	sections := manual.Search(query, beltManualSections)
+	if len(sections) == 0 {
+		return "the manual has nothing on that. Its pages are: " +
+			strings.Join(manual.Pages(), ", "), false
+	}
+	return manual.Render(sections), false
 }
 
 // record is the only way the run learns it acted. The command seq is the last
