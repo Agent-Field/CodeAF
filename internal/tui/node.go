@@ -743,7 +743,7 @@ func (m *Model) updateMouseClick(x, y int) (tea.Cmd, bool) {
 		return nil, true
 	}
 	if m.activityBarBounds.contains(x, y) {
-		return m.clickCardDock(x-m.activityBarBounds.x, y-m.activityBarBounds.y)
+		return m.clickActivityDock(x-m.activityBarBounds.x, y-m.activityBarBounds.y)
 	}
 	if m.palette == paletteModel {
 		if m.paletteCloseBounds.contains(x, y) {

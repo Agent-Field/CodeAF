@@ -142,6 +142,9 @@ func runChat(args []string) error {
 		WithTerritoryDigester(digestTerritory(settings, chatClient)).
 		WithWatchEngine(settings.DailyBudgetUSD, checkSentinel(settings, chatClient)).
 		WithOverrunPlanner(settings.DailyBudgetUSD, replanRemainder(settings, taskClient, plans, graph))
+	if err := reconciler.AttachSession(*sessionID); err != nil {
+		return err
+	}
 
 	web := exec.NewWeb()
 	runner := resident.NewRunner(graph, func(ctx context.Context, node store.Node) (resident.ExecResult, error) {
@@ -490,6 +493,7 @@ func runChat(args []string) error {
 		prefs:         prefs,
 		sessionID:     *sessionID,
 		streamEvents:  streamEvents,
+		attachSession: reconciler.AttachSession,
 	}
 	err = tui.RunWithCommander(graph, *sessionID, commander)
 	cancel()
@@ -548,10 +552,11 @@ type chatCommander struct {
 	taskClient *liveClient
 	store      *store.Store
 
-	mu           sync.Mutex
-	prefs        chatPrefs
-	sessionID    string
-	streamEvents <-chan tui.StreamEvent
+	mu            sync.Mutex
+	prefs         chatPrefs
+	sessionID     string
+	streamEvents  <-chan tui.StreamEvent
+	attachSession func(string) error
 
 	catalogOnce sync.Once
 	catalog     []tui.ModelChoice
@@ -659,6 +664,11 @@ func (c *chatCommander) NewSession() (string, error) {
 	c.mu.Lock()
 	c.sessionID = sessionID
 	c.mu.Unlock()
+	if c.attachSession != nil {
+		if err := c.attachSession(sessionID); err != nil {
+			return "", err
+		}
+	}
 	return sessionID, nil
 }
 

@@ -65,6 +65,43 @@ func TestHeadPostsReply(t *testing.T) {
 	}
 }
 
+func TestHeadResolvesReferencedAgentQuestionWithoutRoutingNewWork(t *testing.T) {
+	graph := openHeadStore(t)
+	question, err := graph.AskQuestion(store.AgentQuestion{
+		SessionID: "agent-question", Text: "Which tone should I use?", Urgency: store.QuestionWhenever,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := graph.SurfaceQuestion(question.Seq); err != nil {
+		t.Fatal(err)
+	}
+	user, err := graph.PostMessage(store.Message{
+		SessionID: "agent-question", Role: store.RoleUser, Body: "Keep it concise.",
+		QuestionSeq: question.Seq,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	client := &fakeClient{}
+	if err := New(client, graph).answer(context.Background(), user); err != nil {
+		t.Fatal(err)
+	}
+	if calls := client.callCount(); calls != 0 {
+		t.Fatalf("answer was routed as new work: provider calls=%d", calls)
+	}
+	resolved, found, err := graph.AgentQuestionBySeq(question.Seq)
+	if err != nil || !found || resolved.Status != store.QuestionAnswered ||
+		resolved.Resolution != user.Body || resolved.AnswerMessageSeq != user.Seq {
+		t.Fatalf("resolved question = %+v found=%t err=%v", resolved, found, err)
+	}
+	messages, err := graph.Messages("agent-question", user.Seq, 0)
+	if err != nil || len(messages) != 1 || messages[0].Role != store.RoleAgent ||
+		!strings.Contains(messages[0].Body, "use that") {
+		t.Fatalf("answer acknowledgement = %+v err=%v", messages, err)
+	}
+}
+
 func TestHeadRequestsSpliceAndLinksReply(t *testing.T) {
 	graphStore := openHeadStore(t)
 	client := &fakeClient{responses: []string{
