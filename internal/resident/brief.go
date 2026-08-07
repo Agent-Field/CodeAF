@@ -35,6 +35,7 @@ type BriefActivity struct {
 	CharterFired  int          `json:"charter_fired"`
 	FactsLearned  int          `json:"facts_learned"`
 	SkillsLearned int          `json:"skills_learned"`
+	CraftsForged  int          `json:"crafts_forged"`
 	CostUSD       float64      `json:"cost_usd"`
 }
 
@@ -292,6 +293,13 @@ func (r *Reconciler) briefActivity(previous store.Seen, throughSeq int64) (Brief
 			spentSeq = event.Seq
 		}
 	}
+	// Know-how forged while the user was away is the one brief row the journal
+	// cannot supply: a craft version lives in the craft repository, and its
+	// history is that repository's own.
+	for _, forged := range r.craftForgedSince(previous.Time) {
+		activity.CraftsForged++
+		activity.Events = append(activity.Events, forged)
+	}
 	if activity.CostUSD > 0 {
 		activity.Events = append(activity.Events, BriefEvent{
 			Seq: spentSeq, Kind: store.BriefSpend,
@@ -384,6 +392,10 @@ func defaultBriefHeadline(activity BriefActivity) string {
 	}
 	if learned := activity.FactsLearned + activity.SkillsLearned; learned > 0 {
 		parts = append(parts, fmt.Sprintf("%d learned", learned))
+	}
+	if activity.CraftsForged > 0 {
+		parts = append(parts, fmt.Sprintf("%d %s forged", activity.CraftsForged,
+			plural(activity.CraftsForged, "craft", "crafts")))
 	}
 	if activity.CharterFired > 0 {
 		parts = append(parts, fmt.Sprintf("%d %s fired", activity.CharterFired,

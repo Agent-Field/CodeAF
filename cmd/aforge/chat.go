@@ -193,8 +193,11 @@ func runChat(args []string) error {
 	// The craft repository lives beside the graph it serves. Without git or
 	// with a broken repo, craft is dormant — never a startup failure.
 	var craftRunner *resident.CraftRunner
+	var craftShelf resident.CraftShelf
+	craftDir := ""
 	if craftRepo, craftErr := craft.Open(filepath.Join(filepath.Dir(*database), "craft")); craftErr == nil {
 		craftRunner = resident.NewCraftRunner(graph, craftRepo, craftRepo.Dir())
+		craftShelf, craftDir = craftRepo, craftRepo.Dir()
 	} else {
 		log.Printf("note: craft repository unavailable: %v", craftErr)
 	}
@@ -225,6 +228,12 @@ func runChat(args []string) error {
 		})
 	if craftRunner != nil {
 		reconciler = reconciler.WithCraftRunner(craftRunner)
+	}
+	// Recognition and forging ride the resident's own talk client, like every
+	// other small verdict it makes about itself.
+	if craftShelf != nil {
+		reconciler = reconciler.WithCraftMind(resident.NewCraftMind(craftShelf, craftDir,
+			fillCraftParams(settings, chatClient), repairCraft(settings, chatClient)))
 	}
 	if err := reconciler.AttachSession(*sessionID); err != nil {
 		return err
@@ -2349,7 +2358,18 @@ Judgment framework:
 - Each fact object may carry "replaces": <number of the standing entry it supersedes>; omit it otherwise.
 - Job status and transient results never qualify.
 - An empty list is the common correct answer.
-- Return at most five memories.`
+- Return at most five memories.
+- Make one last judgment about the job's SHAPE rather than about anything it taught: when the way this work was carried out could recur — several steps that fed each other, a deliverable at the end, the kind of request that comes back with different particulars — also emit one "craft": a reusable workflow file whose params are exactly the particulars that would change next time. Judge the shape alone. A single-step answer, a one-off investigation, and work whose steps were improvised for this situation only are not crafts, and most jobs have none. When the input says this job already ran a craft AND that craft's own shape is what went wrong, emit the corrected file under the SAME name; otherwise leave the craft out entirely.
+
+The craft's yaml is a whole workflow file, and these are all of its fields:
+name: lowercase-slug, matching the craft's name
+description: one line saying what it is for, in the words a person would ask for it in
+params: a list of {name, description, required: true} or {name, description, default: value}; a brief writes a param as {{name}}
+steps: a list of {id: lowercase-slug, brief: what this one worker does, needs: [earlier-step-id], model: talk|work|boost, skill: executable-name, for_each: {source: earlier-step-id, fan: 4}, verify: {script: verifiers/name.sh, until_pass: {revise: [step-id], max_rounds: 2}}}
+limits: {cost_usd: 2.5, minutes: 30}
+A step has a brief or a verify, never both; a for_each step's brief writes {{item}} for the one item it handles. Everything but name and steps may be left out.
+
+Example: {"facts":[],"craft":{"name":"release-notes","yaml":"name: release-notes\ndescription: turn a range of commits into user-facing release notes\nparams:\n  - name: since\n    description: the tag or date to start from\n    required: true\nsteps:\n  - id: collect\n    brief: Collect the commits since {{since}} and group them by area.\n  - id: write\n    brief: Write the release notes from the grouped commits.\n    needs: [collect]\n"}}`
 
 const consolidatorSystemPrompt = `You rewrite one scope's accumulated notebook lines into a smaller, sharper notebook. Return exactly one JSON object: {"facts":[{"scope":"...","kind":"preference|quirk|lesson|fact|unsettled|skill|playbook","body":"...","unsettled":{"approaches":[{"approach":"...","scope":"...","evidence":[123]},{"approach":"...","scope":"...","evidence":[456]}]},"sources":[123,456],"replaces":0},{"quarantines":[456]}],"scope_alias":{"merge":true,"canonical":"domain:example"}}.
 
@@ -2584,15 +2604,156 @@ func distillFacts(settings config.Config, client *liveClient, graph *store.Store
 			}
 			input += "\n\nStanding notebook entries this job's evidence may touch:\n" + standing.String()
 		}
+		// The same call may now carry a whole workflow file, which is worth
+		// several times what five one-line memories are: the ceiling is what
+		// keeps a craft from being truncated into an invalid file.
 		response, err := client.CompleteWithMessages(settings.Context(ctx, "distill"), []ai.Message{
 			{Role: "system", Content: []ai.ContentPart{{Type: "text", Text: distillerSystemPrompt}}},
 			{Role: "user", Content: []ai.ContentPart{{Type: "text", Text: input}}},
-		}, ai.WithMaxTokens(500))
+		}, ai.WithMaxTokens(1500))
 		if err != nil || response == nil {
 			return nil, err
 		}
-		return parseLearnedFacts(response.Text(), 5), nil
+		facts := parseLearnedFacts(response.Text(), 5)
+		if draft := parseCraftDraft(response.Text()); draft != nil {
+			facts = append(facts, resident.Learned{Craft: draft})
+		}
+		return facts, nil
 	}
+}
+
+// parseCraftDraft reads the one workflow file a distillation may carry beside
+// its memories. Nothing is validated here: whether the file is a workflow is
+// the craft parser's judgment, and its errors are the repair round's input.
+func parseCraftDraft(raw string) *resident.CraftCandidate {
+	object := jsonResponseObject(raw)
+	if object == "" {
+		return nil
+	}
+	var parsed struct {
+		Craft *struct {
+			Name string `json:"name"`
+			YAML string `json:"yaml"`
+		} `json:"craft"`
+	}
+	if err := json.NewDecoder(strings.NewReader(object)).Decode(&parsed); err != nil || parsed.Craft == nil {
+		return nil
+	}
+	body := strings.TrimSpace(parsed.Craft.YAML)
+	if body == "" {
+		return nil
+	}
+	return &resident.CraftCandidate{Name: strings.TrimSpace(parsed.Craft.Name), YAML: body}
+}
+
+const craftRepairSystemPrompt = `You wrote a workflow file for an assistant's craft repository and the parser refused it. You receive the file exactly as you wrote it and the parser's own words. Return ONLY the corrected YAML file: no JSON, no prose, no code fence, nothing before or after it.
+
+Fix exactly what the errors name and change nothing else. Each error names the step or field it is about and often what was meant instead. A field the errors call unknown is not a field this file has — remove it or use the one the error suggests. If an error says a step has neither a brief nor a verify, give it the one it was meant to have.`
+
+// repairCraft is the one retry a refused candidate gets. The craft parser's
+// errors were written to be read together and fixed in one edit; this hands
+// them back to the only reader that can.
+func repairCraft(settings config.Config, client *liveClient) resident.CraftRepairFunc {
+	return func(ctx context.Context, candidate resident.CraftCandidate, problem string) (resident.CraftCandidate, error) {
+		input := fmt.Sprintf("The file:\n%s\n\nWhat the parser said:\n%s", candidate.YAML, problem)
+		response, err := client.CompleteWithMessages(settings.Context(ctx, "craft-repair"), []ai.Message{
+			{Role: "system", Content: []ai.ContentPart{{Type: "text", Text: craftRepairSystemPrompt}}},
+			{Role: "user", Content: []ai.ContentPart{{Type: "text", Text: input}}},
+		}, ai.WithMaxTokens(1500))
+		if err != nil || response == nil {
+			if err == nil {
+				err = fmt.Errorf("craft repair returned no response")
+			}
+			return resident.CraftCandidate{}, err
+		}
+		return resident.CraftCandidate{Name: candidate.Name, YAML: yamlResponseBody(response.Text())}, nil
+	}
+}
+
+// yamlResponseBody strips the fence a model puts around a file even when it
+// was told not to. Everything else is left exactly as written: leading
+// whitespace is structure in YAML.
+func yamlResponseBody(raw string) string {
+	body := strings.TrimSpace(raw)
+	if !strings.HasPrefix(body, "```") {
+		return body
+	}
+	if _, rest, found := strings.Cut(body, "\n"); found {
+		body = rest
+	}
+	if cut := strings.LastIndex(body, "```"); cut >= 0 {
+		body = body[:cut]
+	}
+	return strings.TrimSpace(body)
+}
+
+const craftParamsSystemPrompt = `You read the values one stored workflow needs out of the request that matched it. You receive the request in the user's own words and the values the workflow declares, each with what it is for.
+
+Return exactly one JSON object mapping each value you can actually read from the request to its value, phrased as the user phrased it: {"topic":"the Q3 numbers"}. Leave out anything the request does not say. A guessed value is worse than a missing one: a missing one makes the assistant plan the work from scratch, and a guessed one makes it do the wrong work confidently.`
+
+// fillCraftParams reads a matched workflow's declared holes out of the
+// request. It is the second half of a decisive match — a craft whose required
+// values are not in the words the user used is not what they asked for.
+func fillCraftParams(settings config.Config, client *liveClient) resident.CraftParamFiller {
+	return func(ctx context.Context, instruction string, workflow *craft.Workflow) (map[string]string, error) {
+		var wanted strings.Builder
+		properties := make(map[string]any, len(workflow.Params))
+		for _, param := range workflow.Params {
+			fmt.Fprintf(&wanted, "- %s", param.Name)
+			if description := strings.TrimSpace(param.Description); description != "" {
+				fmt.Fprintf(&wanted, ": %s", description)
+			}
+			if param.Required {
+				wanted.WriteString(" (required)")
+			}
+			wanted.WriteString("\n")
+			properties[param.Name] = map[string]any{"type": "string"}
+		}
+		input := fmt.Sprintf("Request:\n%s\n\nWorkflow: %s — %s\n\nValues it needs:\n%s",
+			instruction, workflow.Name, workflow.Description, wanted.String())
+		options := []ai.Option{ai.WithMaxTokens(300)}
+		// The schema is built per workflow because the values are: a fixed one
+		// would either name nothing or name another craft's holes.
+		if client.routed() {
+			if schema, err := json.Marshal(map[string]any{
+				"type": "object", "properties": properties, "additionalProperties": false,
+			}); err == nil {
+				options = append(options, ai.WithSchema(json.RawMessage(schema)))
+			}
+		}
+		response, err := client.CompleteWithMessages(settings.Context(ctx, "craft-params"), []ai.Message{
+			{Role: "system", Content: []ai.ContentPart{{Type: "text", Text: craftParamsSystemPrompt}}},
+			{Role: "user", Content: []ai.ContentPart{{Type: "text", Text: input}}},
+		}, options...)
+		if err != nil || response == nil {
+			if err == nil {
+				err = fmt.Errorf("craft params returned no response")
+			}
+			return nil, err
+		}
+		return parseCraftParams(response.Text()), nil
+	}
+}
+
+func parseCraftParams(raw string) map[string]string {
+	object := jsonResponseObject(raw)
+	if object == "" {
+		return nil
+	}
+	var parsed map[string]any
+	if err := json.NewDecoder(strings.NewReader(object)).Decode(&parsed); err != nil {
+		return nil
+	}
+	values := make(map[string]string, len(parsed))
+	for key, value := range parsed {
+		switch typed := value.(type) {
+		case string:
+			values[key] = strings.TrimSpace(typed)
+		case float64, bool:
+			values[key] = fmt.Sprint(typed)
+		}
+	}
+	return values
 }
 
 // consolidateFacts sharpens a crowded scope without losing the specifics
