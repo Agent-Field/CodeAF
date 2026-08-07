@@ -160,6 +160,7 @@ func (m *Model) trackPaneBounds() {
 	m.graphBounds = paneBounds{}
 	m.graphRowsBounds = paneBounds{}
 	m.standingRowsBounds = paneBounds{}
+	m.serviceRowsBounds = paneBounds{}
 	m.graphToggleBounds = paneBounds{}
 	m.paletteCloseBounds = paneBounds{}
 	m.helpBounds = paneBounds{}
@@ -189,18 +190,25 @@ func (m *Model) trackPaneBounds() {
 	}
 	if m.graphBounds.width > 0 {
 		standingHeight := m.standingSectionHeight()
+		servicesHeight := m.servicesSectionHeight()
 		if standingHeight > 0 {
 			m.standingRowsBounds = paneBounds{
 				x: m.graphBounds.x, y: m.graphBounds.y + 1,
 				width: m.graph.Width, height: standingHeight - 2,
 			}
 		}
+		if servicesHeight > 0 {
+			m.serviceRowsBounds = paneBounds{
+				x: m.graphBounds.x, y: m.graphBounds.y + standingHeight + 1,
+				width: m.graph.Width, height: servicesHeight - 2,
+			}
+		}
 		m.graphRowsBounds = paneBounds{
-			x: m.graphBounds.x, y: m.graphBounds.y + standingHeight + 2,
+			x: m.graphBounds.x, y: m.graphBounds.y + standingHeight + servicesHeight + 2,
 			width: m.graph.Width, height: m.graph.Height,
 		}
 		m.graphToggleBounds = paneBounds{
-			x: m.graphBounds.x, y: m.graphBounds.y + standingHeight,
+			x: m.graphBounds.x, y: m.graphBounds.y + standingHeight + servicesHeight,
 			width: m.graphBounds.width, height: 1,
 		}
 	}
@@ -435,6 +443,8 @@ func (m *Model) renderGraphPane() string {
 		label = "‹ card · " + label
 	} else if charter, ok := m.standingCharter(m.charterCardID); ok {
 		label = "‹ card · " + charter.Name
+	} else if service, ok := m.activeService(m.serviceCardID); ok {
+		label = "‹ service · " + service.Name
 	}
 	title := mutedStyle.Faint(true).Render(label)
 	if m.focus == focusGraph {
@@ -442,8 +452,11 @@ func (m *Model) renderGraphPane() string {
 	}
 	title += mutedStyle.Faint(true).Render("  ⟨×⟩")
 	lines := make([]string, 0, m.graphHeight)
-	if m.graphScopeID == "" && m.charterCardID == "" {
+	if m.graphScopeID == "" && m.charterCardID == "" && m.serviceCardID == "" {
 		if section := m.renderStandingSection(max(1, m.graphWidth)); section != "" {
+			lines = append(lines, strings.Split(section, "\n")...)
+		}
+		if section := m.renderServicesSection(max(1, m.graphWidth)); section != "" {
 			lines = append(lines, strings.Split(section, "\n")...)
 		}
 	}

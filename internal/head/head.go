@@ -229,6 +229,11 @@ func (h *Head) answer(ctx context.Context, user store.Message) error {
 	} else if raised {
 		return nil
 	}
+	if handled, err := h.manageService(user); err != nil {
+		return fmt.Errorf("serve head: manage service: %w", err)
+	} else if handled {
+		return nil
+	}
 	if handled, err := h.manageCharter(user); err != nil {
 		return fmt.Errorf("serve head: manage charter: %w", err)
 	} else if handled {
@@ -349,6 +354,9 @@ func (h *Head) route(ctx context.Context, user store.Message) (routeDecision, er
 	}
 
 	graphContext := renderGraph(snapshot)
+	if services := renderServices(h.store); services != "" {
+		graphContext += "\n" + services
+	}
 	if h.dailyRailSet {
 		if rail, railErr := h.store.DailyRailToday(h.dailyBudgetUSD); railErr == nil {
 			line := fmt.Sprintf("today's spend: $%.2f of $%.2f daily rail", rail.Spend, rail.Ceiling)
@@ -711,6 +719,9 @@ func (decision *routeDecision) enforceConsequences() {
 // only irreversible effect families; everything about how small or obvious an
 // action is remains a learned model judgment.
 func consequenceGated(instruction string) bool {
+	if RecognizesServiceIntent(instruction) {
+		return true
+	}
 	lower := strings.ToLower(instruction)
 	words := strings.FieldsFunc(lower, func(r rune) bool {
 		return !unicode.IsLetter(r) && !unicode.IsNumber(r)

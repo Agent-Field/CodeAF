@@ -1818,6 +1818,7 @@ func (m *Model) focusPendingQuestion() bool {
 		m.graphOpen = false
 		m.graphScopeID = ""
 		m.charterCardID = ""
+		m.serviceCardID = ""
 	}
 	m.selectedCardID = card.ID
 	if m.activeCardCount() > dockOverflowLimit {

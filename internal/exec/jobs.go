@@ -25,6 +25,7 @@ const (
 	maxJobWaitSeconds        = 120
 	jobTerminateGrace        = 2 * time.Second
 	maxJobLineBytes          = 240
+	maxServiceNameBytes      = 80
 )
 
 type jobState uint8
@@ -46,12 +47,21 @@ type backgroundJob struct {
 	started  time.Time
 	finished time.Time
 	done     chan struct{}
+	command  string
+	dir      string
+	timeout  *time.Timer
 
 	state            jobState
 	exitCode         int
 	readOffset       int64
 	terminalReported bool
 	stopRequested    bool
+	timedOut         bool
+	keepRequested    bool
+	keepName         string
+	keepHealth       store.ServiceHealth
+	promoted         bool
+	waited           bool
 }
 
 // jobRegistry belongs to exactly one Toolbox, hence one leaf. Its jobs stay in
@@ -114,15 +124,12 @@ func (t *Toolbox) startBackground(ctx context.Context, command string, args map[
 		return errorf("could not create background log %s: %v", relative, err)
 	}
 
-	jobCtx, cancel := context.WithTimeout(context.Background(), duration)
+	jobCtx, cancel := context.WithCancel(context.Background())
 	cmd := exec.CommandContext(jobCtx, "bash", "-lc", command)
-	cmd.Dir = r.workspace.Root()
+	configureDetachedCommand(cmd, r.workspace.Root(), logFile)
 	if environment != nil {
 		cmd.Env = environment
 	}
-	cmd.Stdout = logFile
-	cmd.Stderr = logFile
-	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 	cmd.Cancel = func() error {
 		if cmd.Process == nil {
 			return os.ErrProcessDone
@@ -139,12 +146,27 @@ func (t *Toolbox) startBackground(ctx context.Context, command string, args map[
 	// copy immediately; cmd.Wait does not need it and the child writes directly.
 	_ = logFile.Close()
 
+	started := time.Now()
+	if identity, identityErr := ProcessStartTime(cmd.Process.Pid); identityErr == nil {
+		started = identity
+	}
 	job := &backgroundJob{
 		id: id, cmd: cmd, ctx: jobCtx, cancel: cancel,
-		logPath: relative, fullPath: full, started: time.Now(),
+		logPath: relative, fullPath: full, started: started,
+		command: command, dir: r.workspace.Root(),
 		done: make(chan struct{}), state: jobRunning,
 	}
 	r.jobs[id] = job
+	job.timeout = time.AfterFunc(duration, func() {
+		r.mutex.Lock()
+		if job.state != jobRunning || job.keepRequested {
+			r.mutex.Unlock()
+			return
+		}
+		job.timedOut = true
+		r.mutex.Unlock()
+		job.cancel()
+	})
 	r.workspace.Record(r.nodeID, full)
 	go r.wait(job)
 	return Result{Content: fmt.Sprintf("job %d started · log %s", id, filepath.ToSlash(relative))}
@@ -179,8 +201,17 @@ func (r *jobRegistry) wait(job *backgroundJob) {
 	// A shell can exit after detaching a child into its process group. File
 	// output means Wait rightly does not block on that child, so the sole waiter
 	// also cleans the remaining group before publishing the terminal state.
-	terminateDetachedGroup(job.cmd.Process.Pid)
+	r.mutex.Lock()
+	job.waited = true
+	persistent := job.keepRequested || job.promoted
+	r.mutex.Unlock()
+	if !persistent {
+		terminateDetachedGroup(job.cmd.Process.Pid)
+	}
 	job.cancel()
+	if job.timeout != nil {
+		job.timeout.Stop()
+	}
 
 	r.mutex.Lock()
 	defer r.mutex.Unlock()
@@ -188,7 +219,7 @@ func (r *jobRegistry) wait(job *backgroundJob) {
 	switch {
 	case job.stopRequested:
 		job.state = jobKilled
-	case errors.Is(job.ctx.Err(), context.DeadlineExceeded):
+	case job.timedOut:
 		job.state = jobTimedOut
 	default:
 		job.state = jobExited
@@ -205,6 +236,21 @@ func (t *Toolbox) job(args map[string]any) Result {
 	if id == 0 {
 		return Result{Content: t.jobs.list()}
 	}
+	if raw, ok := args["keep"]; ok {
+		keep, ok := raw.(map[string]any)
+		if !ok {
+			return errorf("keep must be an object with name and health")
+		}
+		name := strings.TrimSpace(stringArg(keep, "name"))
+		health, err := store.ParseServiceHealth(stringArg(keep, "health"))
+		if err != nil {
+			return errorf("could not request service promotion: %v", err)
+		}
+		if err := t.jobs.requestKeep(id, name, health); err != nil {
+			return errorf("could not request service promotion: %v", err)
+		}
+		return Result{Content: fmt.Sprintf("job %d promotion requested · %s · %s", id, name, health.Suffix())}
+	}
 	if boolArg(args, "kill") {
 		if err := t.jobs.kill(id); err != nil {
 			return errorf("%v", err)
@@ -218,6 +264,127 @@ func (t *Toolbox) job(args map[string]any) Result {
 		}
 	}
 	return t.jobs.read(id)
+}
+
+// ServiceRequest is a live hand-off from a leaf registry to the resident. Its
+// metadata is immutable; Adopt and Stop are idempotent terminal decisions.
+type ServiceRequest struct {
+	JobID      int
+	Name       string
+	Command    string
+	Dir        string
+	Health     store.ServiceHealth
+	LogPath    string
+	PID        int
+	StartedAt  time.Time
+	LeafNodeID string
+
+	registry *jobRegistry
+	job      *backgroundJob
+	mutex    sync.Mutex
+	settled  bool
+}
+
+func (r *jobRegistry) requestKeep(id int, name string, health store.ServiceHealth) error {
+	if name == "" {
+		return errors.New("service name is required")
+	}
+	if len(name) > maxServiceNameBytes || strings.ContainsAny(name, "\r\n\t") {
+		return errors.New("service name must be one short line")
+	}
+	r.mutex.Lock()
+	defer r.mutex.Unlock()
+	job := r.jobs[id]
+	if job == nil {
+		return fmt.Errorf("no background job %d", id)
+	}
+	if job.state != jobRunning || job.waited {
+		return fmt.Errorf("background job %d is no longer running", id)
+	}
+	if job.keepRequested {
+		if job.keepName == name && job.keepHealth == health {
+			return nil
+		}
+		return fmt.Errorf("background job %d already requested promotion as %q", id, job.keepName)
+	}
+	job.keepRequested = true
+	job.keepName = name
+	job.keepHealth = health
+	if job.timeout != nil {
+		job.timeout.Stop()
+	}
+	return nil
+}
+
+func (r *jobRegistry) serviceRequests(leafNodeID string) []ServiceRequest {
+	r.mutex.Lock()
+	defer r.mutex.Unlock()
+	ids := make([]int, 0, len(r.jobs))
+	for id, job := range r.jobs {
+		if job.keepRequested && job.state == jobRunning {
+			ids = append(ids, id)
+		}
+	}
+	sort.Ints(ids)
+	requests := make([]ServiceRequest, 0, len(ids))
+	for _, id := range ids {
+		job := r.jobs[id]
+		requests = append(requests, ServiceRequest{
+			JobID: id, Name: job.keepName, Command: job.command, Dir: job.dir,
+			Health: job.keepHealth, LogPath: job.fullPath, PID: job.cmd.Process.Pid,
+			StartedAt: job.started, LeafNodeID: leafNodeID, registry: r, job: job,
+		})
+	}
+	return requests
+}
+
+// Adopt removes the process from the leaf registry. The existing waiter keeps
+// reaping the shell when it eventually exits; leaf teardown can no longer see
+// or kill it.
+func (request *ServiceRequest) Adopt() {
+	if request == nil {
+		return
+	}
+	request.mutex.Lock()
+	if request.settled {
+		request.mutex.Unlock()
+		return
+	}
+	request.settled = true
+	request.mutex.Unlock()
+	r := request.registry
+	r.mutex.Lock()
+	request.job.promoted = true
+	delete(r.jobs, request.JobID)
+	r.mutex.Unlock()
+}
+
+// Stop returns a declined or expired request to the ordinary teardown rule.
+func (request *ServiceRequest) Stop() {
+	if request == nil {
+		return
+	}
+	request.mutex.Lock()
+	if request.settled {
+		request.mutex.Unlock()
+		return
+	}
+	request.settled = true
+	request.mutex.Unlock()
+	r := request.registry
+	r.mutex.Lock()
+	job := request.job
+	if job.state != jobRunning {
+		job.keepRequested = false
+		r.mutex.Unlock()
+		return
+	}
+	job.keepRequested = false
+	job.stopRequested = true
+	done := job.done
+	pid := job.cmd.Process.Pid
+	r.mutex.Unlock()
+	terminateProcessGroup(pid, done)
 }
 
 func (r *jobRegistry) waitFor(id int, duration time.Duration) error {
@@ -481,7 +648,7 @@ func (r *jobRegistry) close() int {
 	r.closed = true
 	jobs := make([]*backgroundJob, 0, len(r.jobs))
 	for _, job := range r.jobs {
-		if job.state == jobRunning {
+		if job.state == jobRunning && !job.keepRequested && !job.promoted {
 			job.stopRequested = true
 			jobs = append(jobs, job)
 		}
@@ -528,6 +695,11 @@ closed:
 // remain; only surviving process groups are terminated.
 func (t *Toolbox) Close() int {
 	return t.jobs.close()
+}
+
+// ServiceRequests snapshots live promotion leases before leaf teardown.
+func (t *Toolbox) ServiceRequests(leafNodeID string) []ServiceRequest {
+	return t.jobs.serviceRequests(leafNodeID)
 }
 
 // leafControl is the narrow bridge from the scheduler watchdog to a leaf's
@@ -579,11 +751,23 @@ func (c *leafControl) terminate() int {
 	if tools == nil {
 		return terminated
 	}
-	terminated = tools.Close()
+	terminated = tools.ForceClose()
 	c.mutex.Lock()
 	if terminated > c.terminated {
 		c.terminated = terminated
 	}
 	c.mutex.Unlock()
 	return terminated
+}
+
+// ForceClose is the scheduler-abandonment path. A wedged leaf cannot leave a
+// keep request behind without a resident available to decide it.
+func (t *Toolbox) ForceClose() int {
+	t.jobs.mutex.Lock()
+	for _, job := range t.jobs.jobs {
+		job.keepRequested = false
+		job.promoted = false
+	}
+	t.jobs.mutex.Unlock()
+	return t.jobs.close()
 }

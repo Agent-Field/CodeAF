@@ -120,6 +120,7 @@ func (r *Reconciler) reflectOnJobs(ctx context.Context) {
 	if r.proposeCharters {
 		r.proposeRecurringCharter(jobs)
 	}
+	r.proposeServiceHygiene(now)
 
 	learned, err := r.reflect(ctx, jobs)
 	if err != nil {

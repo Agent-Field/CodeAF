@@ -35,8 +35,11 @@ func (b paneBounds) right() int  { return b.x + b.width }
 func (b paneBounds) bottom() int { return b.y + b.height }
 
 func (m *Model) railSelectionIDs() []string {
-	ids := make([]string, 0, len(m.graphRows)+len(m.standingRows))
-	if m.graphScopeID == "" && m.charterCardID == "" {
+	ids := make([]string, 0, len(m.graphRows)+len(m.standingRows)+len(m.serviceRows))
+	if m.graphScopeID == "" && m.charterCardID == "" && m.serviceCardID == "" {
+		for _, service := range m.activeServices() {
+			ids = append(ids, serviceGraphRowID(service.ID))
+		}
 		for _, charter := range m.standingCharters() {
 			ids = append(ids, standingGraphRowID(charter.ID))
 		}
@@ -48,6 +51,12 @@ func (m *Model) railSelectionIDs() []string {
 }
 
 func (m *Model) ensureGraphSelection() {
+	if m.serviceCardID != "" {
+		if len(m.serviceCardRows) == 0 {
+			m.refreshGraph()
+		}
+		return
+	}
 	if m.charterCardID != "" && m.graphScopeID == "" {
 		m.ensureCharterSelection()
 		return
@@ -108,6 +117,10 @@ func (m *Model) ensureGraphSelectionVisible() {
 		m.graph.SetYOffset(0)
 		return
 	}
+	if _, ok := serviceIDFromGraphRow(m.selectedNodeID); ok {
+		m.graph.SetYOffset(0)
+		return
+	}
 	for _, row := range m.graphRows {
 		if row.nodeID != m.selectedNodeID {
 			continue
@@ -136,6 +149,10 @@ func (m *Model) openSelectedNode() tea.Cmd {
 	}
 	if charterID, ok := charterIDFromGraphRow(m.selectedNodeID); ok {
 		m.openStandingCharter(charterID)
+		return nil
+	}
+	if serviceID, ok := serviceIDFromGraphRow(m.selectedNodeID); ok {
+		m.openServiceCard(serviceID)
 		return nil
 	}
 	if m.selectedNodeID == historyGraphRowID {
@@ -859,7 +876,7 @@ func (m *Model) updateMouseClick(x, y int) (tea.Cmd, bool) {
 		return nil, true
 	}
 	if m.graphToggleHit(x, y) {
-		if !m.closeScopedGraph() && !m.closeCharterCard() {
+		if !m.closeScopedGraph() && !m.closeCharterCard() && !m.closeServiceCard() {
 			m.toggleGraph()
 		}
 		return nil, true
@@ -878,10 +895,26 @@ func (m *Model) updateMouseClick(x, y int) (tea.Cmd, bool) {
 				}
 			}
 		}
+		if m.serviceRowsBounds.contains(x, y) {
+			line := y - m.graphBounds.y
+			for _, row := range m.serviceRows {
+				if row.line+m.standingSectionHeight() == line {
+					m.selectedNodeID = serviceGraphRowID(row.serviceID)
+					m.openServiceCard(row.serviceID)
+					return nil, true
+				}
+			}
+		}
 		if m.graphRowsBounds.contains(x, y) {
 			line := y - m.graphRowsBounds.y + m.graph.YOffset
 			if m.charterCardID != "" && m.graphScopeID == "" {
 				if command, ok := m.activateCharterLine(line); ok {
+					return command, true
+				}
+				return nil, true
+			}
+			if m.serviceCardID != "" {
+				if command, ok := m.activateServiceLine(line); ok {
 					return command, true
 				}
 				return nil, true

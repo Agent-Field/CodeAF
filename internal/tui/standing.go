@@ -334,7 +334,7 @@ func charterIDFromGraphRow(rowID string) (string, bool) {
 }
 
 func (m *Model) standingSectionHeight() int {
-	if !m.graphVisible() || m.graphScopeID != "" || m.charterCardID != "" {
+	if !m.graphVisible() || m.graphScopeID != "" || m.charterCardID != "" || m.serviceCardID != "" {
 		return 0
 	}
 	count := len(m.standingCharters())
@@ -432,7 +432,7 @@ func standingAge(at, now time.Time) string {
 }
 
 func (m *Model) standingBreathing() bool {
-	if !m.graphVisible() || m.graphScopeID != "" || m.charterCardID != "" {
+	if !m.graphVisible() || m.graphScopeID != "" || m.charterCardID != "" || m.serviceCardID != "" {
 		return false
 	}
 	for _, charter := range m.standingCharters() {

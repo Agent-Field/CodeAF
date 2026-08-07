@@ -130,6 +130,10 @@ const (
 	CommandCharterAlways    CommandKind = "charter_always"
 	CommandCharterNever     CommandKind = "charter_never"
 	CommandCharterProbation CommandKind = "charter_probation"
+
+	CommandServiceStop        CommandKind = "service_stop"
+	CommandServiceRestart     CommandKind = "service_restart"
+	CommandServiceAutoRestart CommandKind = "service_auto_restart"
 )
 
 // CommandStatus is the lifecycle of a requested command. Commands are durable
@@ -550,6 +554,17 @@ func (s *Store) RequestCommand(command Command) (Command, error) {
 			if err := requireCharter(tx, command.Target); err != nil {
 				return Command{}, fmt.Errorf("request command: %w", err)
 			}
+		} else if isServiceCommand(command.Kind) {
+			var status ServiceStatus
+			if err := tx.QueryRow(`SELECT status FROM services WHERE id=?`, command.Target).Scan(&status); err != nil {
+				if errors.Is(err, sql.ErrNoRows) {
+					return Command{}, fmt.Errorf("request command: %w: service %q", ErrNotFound, command.Target)
+				}
+				return Command{}, fmt.Errorf("request command: %w", err)
+			}
+			if status == ServiceStopped && command.Kind != CommandServiceRestart {
+				return Command{}, fmt.Errorf("request command: %w: service %q is stopped", ErrInvalid, command.Target)
+			}
 		} else {
 			if err := requireNode(tx, command.Target); err != nil {
 				return Command{}, fmt.Errorf("request command: %w", err)
@@ -852,7 +867,17 @@ func validCommandKind(kind CommandKind) bool {
 	case CommandSplice, CommandAmend, CommandCancel, CommandPause, CommandResume,
 		CommandReprioritize, CommandRestart, CommandCharterRatify,
 		CommandCharterPause, CommandCharterRetire, CommandCharterCadence, CommandCharterOnce,
-		CommandCharterFire, CommandCharterDecline, CommandCharterAlways, CommandCharterNever, CommandCharterProbation:
+		CommandCharterFire, CommandCharterDecline, CommandCharterAlways, CommandCharterNever, CommandCharterProbation,
+		CommandServiceStop, CommandServiceRestart, CommandServiceAutoRestart:
+		return true
+	default:
+		return false
+	}
+}
+
+func isServiceCommand(kind CommandKind) bool {
+	switch kind {
+	case CommandServiceStop, CommandServiceRestart, CommandServiceAutoRestart:
 		return true
 	default:
 		return false
