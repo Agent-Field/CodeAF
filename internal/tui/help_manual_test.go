@@ -24,7 +24,7 @@ func TestManualExplainsEverySurfaceTheRegistriesOffer(t *testing.T) {
 	}
 	for _, chord := range []string{
 		keyBindings.graph, keyBindings.thread, keyBindings.board, keyBindings.self,
-		keyBindings.voice, keyBindings.boost, keyBindings.newline,
+		keyBindings.voice, keyBindings.boost, keyBindings.newline, keyBindings.settings,
 	} {
 		if !manual.Mentions(chord) {
 			t.Fatalf("no manual page mentions the %s chord", chord)
