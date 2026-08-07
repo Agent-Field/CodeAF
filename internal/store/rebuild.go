@@ -37,6 +37,9 @@ func (s *Store) Rebuild() error {
 	if _, err := tx.Exec(`DELETE FROM messages`); err != nil {
 		return fmt.Errorf("rebuild messages: %w", err)
 	}
+	if _, err := tx.Exec(`DELETE FROM agent_questions`); err != nil {
+		return fmt.Errorf("rebuild agent questions: %w", err)
+	}
 	if _, err := tx.Exec(`DELETE FROM commands`); err != nil {
 		return fmt.Errorf("rebuild commands: %w", err)
 	}
@@ -45,9 +48,6 @@ func (s *Store) Rebuild() error {
 	}
 	if _, err := tx.Exec(`DELETE FROM surprises`); err != nil {
 		return fmt.Errorf("rebuild surprises: %w", err)
-	}
-	if _, err := tx.Exec(`DELETE FROM charters_fts`); err != nil {
-		return fmt.Errorf("rebuild charter index: %w", err)
 	}
 	if _, err := tx.Exec(`DELETE FROM charters`); err != nil {
 		return fmt.Errorf("rebuild charters: %w", err)
@@ -275,6 +275,27 @@ func replayEvent(tx *sql.Tx, event Event) error {
 			return fmt.Errorf("invalid seen watermark")
 		}
 		return nil
+
+	case EventAgentQuestionQueued:
+		var payload agentQuestionPayload
+		if err := json.Unmarshal(event.Payload, &payload); err != nil {
+			return err
+		}
+		return applyAgentQuestionView(tx, payload, event.Seq, event.Time)
+
+	case EventAgentQuestionSurfaced:
+		var payload agentQuestionSurfacedPayload
+		if err := json.Unmarshal(event.Payload, &payload); err != nil {
+			return err
+		}
+		return applyAgentQuestionSurfaced(tx, payload, event.Seq, event.Time)
+
+	case EventAgentQuestionResolved:
+		var payload agentQuestionResolvedPayload
+		if err := json.Unmarshal(event.Payload, &payload); err != nil {
+			return err
+		}
+		return applyAgentQuestionResolution(tx, payload, event.Seq, event.Time)
 
 	case EventUsageRecorded:
 		var payload NodeUsage

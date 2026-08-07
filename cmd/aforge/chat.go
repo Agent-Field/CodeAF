@@ -149,6 +149,9 @@ func runChat(args []string) error {
 		WithWatchEngine(settings.DailyBudgetUSD, checkSentinel(settings, chatClient)).
 		WithOverrunPlanner(settings.DailyBudgetUSD, replanRemainder(settings, taskClient, plans, graph)).
 		WithPracticeLoop(settings.PracticeBudgetUSD, settings.PracticeIdle)
+	if err := reconciler.AttachSession(*sessionID); err != nil {
+		return err
+	}
 	if err := reconciler.SessionOpened(context.Background(), *sessionID, "tui", settings.BriefAfter); err != nil {
 		fmt.Fprintf(os.Stderr, "note: could not prepare the arrival brief: %v\n", err)
 	}
@@ -501,6 +504,7 @@ func runChat(args []string) error {
 		sessionID:     *sessionID,
 		streamEvents:  streamEvents,
 		voiceRecorder: voice.NewSystemRecorder(),
+		attachSession: reconciler.AttachSession,
 	}
 	commander.voiceTranscriber, err = voice.NewClient(voice.ClientConfig{
 		APIKey: settings.APIKey, BaseURL: settings.BaseURL, Timeout: settings.Timeout,
@@ -574,6 +578,7 @@ type chatCommander struct {
 	streamEvents     <-chan tui.StreamEvent
 	voiceRecorder    voice.Recorder
 	voiceTranscriber voice.Transcriber
+	attachSession    func(string) error
 
 	catalogOnce      sync.Once
 	catalog          []tui.ModelChoice
@@ -729,6 +734,11 @@ func (c *chatCommander) NewSession() (string, error) {
 	c.mu.Lock()
 	c.sessionID = sessionID
 	c.mu.Unlock()
+	if c.attachSession != nil {
+		if err := c.attachSession(sessionID); err != nil {
+			return "", err
+		}
+	}
 	return sessionID, nil
 }
 

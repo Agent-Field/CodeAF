@@ -8,6 +8,97 @@ import (
 	"github.com/Agent-Field/aforge-v2/internal/store"
 )
 
+// answerAgentQuestion routes replies to the durable reverse-direction queue.
+// An explicit QuestionSeq wins; otherwise the store applies the same
+// no-intervening-user-turn recency rule as ordinary conversational askbacks.
+func (h *Head) answerAgentQuestion(user store.Message) (bool, error) {
+	question, found, err := h.store.QuestionForAnswer(user.SessionID, user.Seq, user.QuestionSeq)
+	if err != nil || !found {
+		return false, err
+	}
+	answer := strings.TrimSpace(user.Body)
+	if option, selected := selectQuestionOption(user.Body, question.Options); selected {
+		answer = strings.TrimSpace(option.Label)
+		if answer == "" {
+			answer = strings.TrimSpace(option.Value)
+		}
+		if err := h.store.ResolveQuestion(question.Seq, store.QuestionAnswered, answer, user.Seq); err != nil {
+			return true, err
+		}
+		return true, h.applyAgentQuestionOption(user, question, option)
+	}
+	if charterID, ok := charterQuestionID(question.Options); ok {
+		if cadence := extractCadence(user.Body); cadence != "" {
+			if err := h.store.ResolveQuestion(question.Seq, store.QuestionAnswered, cadence, user.Seq); err != nil {
+				return true, err
+			}
+			return true, h.requestCharterCommand(user, store.CommandCharterCadence, charterID, cadence)
+		}
+		// Preserve the existing charter behavior: unrelated free text remains
+		// ordinary conversation rather than accidentally ratifying spend.
+		return false, nil
+	}
+	if answer == "" {
+		return true, h.postAgent(user.SessionID, "Tell me what you want me to use for that question.", 0)
+	}
+	if err := h.store.ResolveQuestion(question.Seq, store.QuestionAnswered, answer, user.Seq); err != nil {
+		return true, err
+	}
+	if question.OriginCommandSeq != 0 {
+		return true, h.continueAgentCompilerQuestion(user, question, answer)
+	}
+	return true, h.postAgent(user.SessionID, "Got it — I’ll use that.", 0)
+}
+
+func (h *Head) applyAgentQuestionOption(user store.Message, question store.AgentQuestion, option store.QuestionOption) error {
+	parts := strings.Split(option.Value, ":")
+	if len(parts) >= 3 && parts[0] == "charter" {
+		id := parts[2]
+		switch parts[1] {
+		case "ratify":
+			return h.requestCharterCommand(user, store.CommandCharterRatify, id, option.Label)
+		case "pause":
+			return h.requestCharterCommand(user, store.CommandCharterPause, id, option.Label)
+		case "retire":
+			return h.requestCharterCommand(user, store.CommandCharterRetire, id, option.Label)
+		case "once":
+			return h.requestCharterCommand(user, store.CommandCharterOnce, id, option.Label)
+		case "cadence":
+			if len(parts) > 3 {
+				return h.requestCharterCommand(user, store.CommandCharterCadence, id,
+					strings.Join(parts[3:], ":"))
+			}
+			return h.askForCadence(user.SessionID, id)
+		}
+	}
+	answer := strings.TrimSpace(option.Label)
+	if answer == "" {
+		answer = strings.TrimSpace(option.Value)
+	}
+	if question.OriginCommandSeq != 0 {
+		return h.continueAgentCompilerQuestion(user, question, answer)
+	}
+	return h.postAgent(user.SessionID, "Got it — I’ll use that.", 0)
+}
+
+func (h *Head) continueAgentCompilerQuestion(user store.Message, question store.AgentQuestion, answer string) error {
+	source, found, err := h.store.CommandBySeq(question.OriginCommandSeq)
+	if err != nil {
+		return err
+	}
+	if !found || source.Kind != store.CommandSplice || strings.TrimSpace(answer) == "" {
+		return h.postAgent(user.SessionID, "Tell me which option you want, or answer in your own words.", 0)
+	}
+	instruction := source.Instruction + "\n\nAnswer to compiler question: " + answer
+	command, err := h.store.RequestCommand(store.Command{
+		SessionID: user.SessionID, Kind: store.CommandSplice, Instruction: instruction,
+	})
+	if err != nil {
+		return err
+	}
+	return h.postAgent(user.SessionID, "Got it — proceeding with that choice.", command.Seq)
+}
+
 func (h *Head) answerPendingQuestion(user store.Message) (bool, error) {
 	question, pending, err := h.store.PendingQuestion(user.SessionID, user.Seq)
 	if err != nil || !pending {
