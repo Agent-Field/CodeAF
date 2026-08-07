@@ -37,14 +37,16 @@ func TestMediaSlotsUseEnvironmentAndRuntimeCatalogOrder(t *testing.T) {
 	t.Setenv("AFORGE_SPEECH_MODEL", "user/speech")
 	t.Setenv("AFORGE_MUSIC_MODEL", "user/music")
 	t.Setenv("AFORGE_VIDEO_MODEL", "user/video")
+	t.Setenv("AFORGE_VISION_MODEL", "user/vision")
 	configured := settings(t)
 	if configured.ImageModel != "user/image" || configured.SpeechModel != "user/speech" ||
-		configured.MusicModel != "user/music" || configured.VideoModel != "user/video" {
-		t.Fatalf("media slots = %q %q %q %q", configured.ImageModel, configured.SpeechModel,
-			configured.MusicModel, configured.VideoModel)
+		configured.MusicModel != "user/music" || configured.VideoModel != "user/video" || configured.VisionModel != "user/vision" {
+		t.Fatalf("media slots = %q %q %q %q %q", configured.ImageModel, configured.SpeechModel,
+			configured.MusicModel, configured.VideoModel, configured.VisionModel)
 	}
 	if configured.ResolveImageModel(nil) != "user/image" || configured.ResolveSpeechModel(nil) != "user/speech" ||
-		configured.ResolveMusicModel(nil) != "user/music" || configured.ResolveVideoModel(nil) != "user/video" {
+		configured.ResolveMusicModel(nil) != "user/music" || configured.ResolveVideoModel(nil) != "user/video" ||
+		configured.ResolveVisionModel(nil, "talk/model", "work/model") != "user/vision" {
 		t.Fatal("explicit media slots were made catalog-dependent")
 	}
 
@@ -52,6 +54,7 @@ func TestMediaSlotsUseEnvironmentAndRuntimeCatalogOrder(t *testing.T) {
 	t.Setenv("AFORGE_SPEECH_MODEL", "")
 	t.Setenv("AFORGE_MUSIC_MODEL", "")
 	t.Setenv("AFORGE_VIDEO_MODEL", "")
+	t.Setenv("AFORGE_VISION_MODEL", "")
 	resolved := settings(t)
 	// Use the package's offline defaults to exercise the verified preference
 	// slugs without exposing catalog construction internals.
@@ -69,6 +72,46 @@ func TestMediaSlotsUseEnvironmentAndRuntimeCatalogOrder(t *testing.T) {
 	}
 	if got := resolved.ResolveVideoModel(models); got != preferredVideoModel {
 		t.Fatalf("resolved video = %q", got)
+	}
+}
+
+func TestVisionModelResolutionOrder(t *testing.T) {
+	t.Setenv("AFORGE_VISION_MODEL", "operator/vision")
+	explicit := settings(t)
+	if got := explicit.ResolveVisionModel(nil, "talk/vision", "work/vision"); got != "operator/vision" {
+		t.Fatalf("explicit vision = %q", got)
+	}
+
+	t.Setenv("AFORGE_VISION_MODEL", "")
+	configured := settings(t)
+	models := runtimeCatalog(t, `
+		{"id":"first/vision","architecture":{"input_modalities":["text","image"],"output_modalities":["text"]}},
+		{"id":"talk/vision","architecture":{"input_modalities":["text","image"],"output_modalities":["text"]}},
+		{"id":"work/vision","architecture":{"input_modalities":["text","image"],"output_modalities":["text"]}},
+		{"id":"qwen/qwen3.5-vl-32b-instruct","architecture":{"input_modalities":["text","image"],"output_modalities":["text"]}},
+		{"id":"text/only","architecture":{"input_modalities":["text"],"output_modalities":["text"]}}`)
+	if got := configured.ResolveVisionModel(models, "talk/vision", "work/vision"); got != "talk/vision" {
+		t.Fatalf("vision talk preference = %q", got)
+	}
+	if got := configured.ResolveVisionModel(models, "text/only", "work/vision"); got != "work/vision" {
+		t.Fatalf("vision work preference = %q", got)
+	}
+	if got := configured.ResolveVisionModel(models, "text/only", "missing/work"); got != preferredVisionModel {
+		t.Fatalf("vision advertised preference = %q", got)
+	}
+
+	firstOnly := runtimeCatalog(t, `
+		{"id":"first/vision","architecture":{"input_modalities":["image"],"output_modalities":["text"]}},
+		{"id":"second/vision","architecture":{"input_modalities":["image"],"output_modalities":["text"]}}`)
+	if got := configured.ResolveVisionModel(firstOnly, "text/only", "missing/work"); got != "first/vision" {
+		t.Fatalf("vision catalog fallback = %q", got)
+	}
+	noVision := runtimeCatalog(t, `{"id":"text/only","architecture":{"input_modalities":["text"],"output_modalities":["text"]}}`)
+	if got := configured.ResolveVisionModel(noVision, "text/only", "missing/work"); got != "" {
+		t.Fatalf("vision unavailable catalog = %q, want no proxy", got)
+	}
+	if got := configured.ResolveVisionModel(nil, "talk/vision", "work/vision"); got != "" {
+		t.Fatalf("vision absent catalog = %q, want no proxy", got)
 	}
 }
 

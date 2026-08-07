@@ -73,6 +73,10 @@ func runExecute(args []string) error {
 	if err != nil {
 		return err
 	}
+	visionClient, err := settings.VisionClient()
+	if err != nil {
+		return err
+	}
 
 	root := *workspace
 	if root == "" {
@@ -157,9 +161,10 @@ func runExecute(args []string) error {
 		deadline = scaled
 	}
 	mediaTools := &exec.MediaTools{
-		Provider: mediaClient, Catalog: modelCatalog, WorkingModel: settings.Model,
+		Provider: mediaClient, Catalog: modelCatalog, VisionClient: visionClient, WorkingModel: settings.Model,
 		ImageModel: settings.ResolveImageModel(modelCatalog), SpeechModel: settings.ResolveSpeechModel(modelCatalog),
 		MusicModel: settings.ResolveMusicModel(modelCatalog), VideoModel: settings.ResolveVideoModel(modelCatalog),
+		VisionModel: settings.ResolveVisionModel(modelCatalog, settings.Model, settings.Model),
 	}
 	if video, ok := modelCatalog.Model(mediaTools.VideoModel); ok {
 		mediaTools.VideoPrice = video.RequestPrice

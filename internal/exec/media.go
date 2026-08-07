@@ -14,7 +14,10 @@ import (
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 )
 
-const maxImageInputBytes = 10 << 20
+const (
+	maxImageInputBytes   = 10 << 20
+	defaultImageQuestion = "Describe this image precisely: subject, composition, any text verbatim, and anything that looks wrong or malformed."
+)
 
 type MediaProvider interface {
 	GenerateImage(context.Context, provider.ImageRequest) (*provider.ImageResponse, error)
@@ -37,6 +40,10 @@ type MediaTools struct {
 	SpeechModel string
 	MusicModel  string
 	VideoModel  string
+	VisionModel string
+	// VisionClient is a direct completion client. The selected VisionModel is
+	// applied per request so capability resolution can stay live at leaf start.
+	VisionClient Completer
 	// VideoPrice is the catalog's fixed per-request price when advertised.
 	// Zero means the catalog had no trustworthy estimate; the rail still runs.
 	VideoPrice   float64
@@ -277,8 +284,13 @@ func (t *Toolbox) viewImage(ctx context.Context, args map[string]any) Result {
 	if call := provider.CallFrom(ctx); call != nil && strings.TrimSpace(call.Model()) != "" {
 		model = call.Model()
 	}
-	if !t.media.Catalog.Supports(model, "input", "image") {
-		return errorf("%s can't see images — continue with file metadata or use a vision model", model)
+	workingModelSees := t.media.Catalog.Supports(model, "input", "image")
+	visionModel := strings.TrimSpace(t.media.VisionModel)
+	if !workingModelSees && visionModel == "" {
+		return errorf("%s can't see images — continue with file metadata or use a vision model; no vision model available", model)
+	}
+	if !workingModelSees && t.media.VisionClient == nil {
+		return errorf("image inspection is not configured")
 	}
 	path := strings.TrimSpace(stringArg(args, "path"))
 	if path == "" {
@@ -288,13 +300,55 @@ func (t *Toolbox) viewImage(ctx context.Context, args map[string]any) Result {
 	if refusal != "" {
 		return errorf("%s", refusal)
 	}
-	return Result{
-		Content: "⌾ " + filepath.ToSlash(path) + "\nImage loaded for the next turn.",
-		Followup: []ai.ContentPart{
-			{Type: "text", Text: "Image from " + filepath.ToSlash(path) + ":"},
+	targetedQuestion := strings.TrimSpace(stringArg(args, "question"))
+	if workingModelSees {
+		label := "Image from " + filepath.ToSlash(path) + ":"
+		if targetedQuestion != "" {
+			label += "\nQuestion: " + targetedQuestion
+		}
+		return Result{
+			Content: "⌾ " + filepath.ToSlash(path) + "\nImage loaded for the next turn.",
+			Followup: []ai.ContentPart{
+				{Type: "text", Text: label},
+				{Type: "image_url", ImageURL: &ai.ImageURLData{URL: dataURL}},
+			},
+		}
+	}
+	question := targetedQuestion
+	if question == "" {
+		question = defaultImageQuestion
+	}
+	if t.media.BeforeSpend != nil {
+		if err := t.media.BeforeSpend(ctx, 0); err != nil {
+			return errorf("image inspection paused at the daily budget — approve it in chat to continue")
+		}
+	}
+	response, err := t.media.VisionClient.CompleteWithMessages(ctx, []ai.Message{{
+		Role: "user",
+		Content: []ai.ContentPart{
+			{Type: "text", Text: question},
 			{Type: "image_url", ImageURL: &ai.ImageURLData{URL: dataURL}},
 		},
+	}}, ai.WithModel(visionModel))
+	if err != nil || response == nil {
+		return errorf("image inspection failed — try another question or vision model")
 	}
+	answer := strings.TrimSpace(response.Text())
+	if answer == "" {
+		return errorf("image inspection failed — the vision model returned no description")
+	}
+	return Result{
+		Content: "seen by " + visionModelShort(visionModel) + ": " + answer,
+		Usage:   mediaUsage(response.Usage),
+	}
+}
+
+func visionModelShort(model string) string {
+	model = strings.TrimPrefix(strings.TrimSpace(model), "~")
+	if index := strings.LastIndex(model, "/"); index >= 0 && index+1 < len(model) {
+		model = model[index+1:]
+	}
+	return model
 }
 
 func (t *Toolbox) workspaceImageDataURL(path string) (string, string) {
