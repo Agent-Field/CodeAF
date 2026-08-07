@@ -6,6 +6,7 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/Agent-Field/aforge-v2/internal/guard"
 	"github.com/Agent-Field/aforge-v2/internal/provider"
 )
 
@@ -72,6 +73,14 @@ func ExpandLevel(ctx context.Context, client Completer, graph *Graph, options Op
 		group.Add(1)
 		go func(index, nodeID int) {
 			defer group.Done()
+			// A faulted expansion is a node that did not split. Nothing is
+			// spliced, the level reports the failure, and the node runs whole —
+			// which is what a failed sub-plan already means here.
+			defer func() {
+				if recovered := recover(); recovered != nil {
+					results[index] = expansion{nodeID: nodeID, err: guard.Note(fmt.Sprintf("plan/expand node %d", nodeID), recovered)}
+				}
+			}()
 			results[index] = expandOne(ctx, client, graph, nodeID, options)
 		}(index, nodeID)
 	}
