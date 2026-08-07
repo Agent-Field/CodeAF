@@ -176,6 +176,7 @@ type Reconciler struct {
 	sentinel        SentinelFunc
 	composeBrief    BriefComposeFunc
 	standingWatch   StandingWatch
+	craft           *CraftRunner
 	proposeCharters bool
 	dailyBudgetUSD  float64
 	practiceEnabled bool
@@ -230,6 +231,15 @@ func (r *Reconciler) WithServiceRuntime(runtime ServiceRuntime) *Reconciler {
 		r.services = NewServiceSupervisor(r.store)
 	}
 	r.services.WithRuntime(runtime)
+	return r
+}
+
+// WithCraftRunner installs the craft sentinel's resume half. The runner
+// advances a craft run as each of its nodes lands; this sweep re-derives the
+// same moves from the store alone, which is what makes a run that died between
+// a completion and its splice pick up exactly where it stopped.
+func (r *Reconciler) WithCraftRunner(craft *CraftRunner) *Reconciler {
+	r.craft = craft
 	return r
 }
 
@@ -334,6 +344,11 @@ func (r *Reconciler) Tick(ctx context.Context) error {
 	if r.overrunPlan != nil {
 		if _, err := ResumeDeferredOverruns(ctx, r.store, r.dailyBudgetUSD, r.overrunPlan); err != nil {
 			return fmt.Errorf("resident tick: resume deferred overruns: %w", err)
+		}
+	}
+	if r.craft != nil {
+		if _, err := r.craft.Sweep(ctx); err != nil {
+			return fmt.Errorf("resident tick: advance craft runs: %w", err)
 		}
 	}
 	watchPass, err := r.watchOnceLocked(ctx)
