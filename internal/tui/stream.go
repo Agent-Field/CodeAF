@@ -34,6 +34,14 @@ type streamSource interface {
 
 type streamClosedMsg struct{}
 
+// streamBatchMsg carries every event a single wake found already queued. The
+// reveal is paced by the animation tick, so draining the channel in one wake
+// is invisible on screen and costs one goroutine round trip instead of one per
+// token.
+type streamBatchMsg struct {
+	events []StreamEvent
+}
+
 type streamMode int
 
 const (
@@ -53,7 +61,34 @@ func waitForStream(events <-chan StreamEvent) tea.Cmd {
 		if !ok {
 			return streamClosedMsg{}
 		}
-		return event
+		// Everything already queued belongs to this wake. Adjacent deltas merge
+		// into one event so the reply is decoded once per wake rather than once
+		// per token; a boundary event keeps its own place in the order. A close
+		// seen mid-drain is answered by the next wait, which finds the channel
+		// closed immediately.
+		batch := []StreamEvent{event}
+		draining := true
+		for draining {
+			select {
+			case next, open := <-events:
+				if !open {
+					draining = false
+					break
+				}
+				last := &batch[len(batch)-1]
+				if next.Kind == StreamDelta && last.Kind == StreamDelta {
+					last.Delta += next.Delta
+					continue
+				}
+				batch = append(batch, next)
+			default:
+				draining = false
+			}
+		}
+		if len(batch) == 1 {
+			return batch[0]
+		}
+		return streamBatchMsg{events: batch}
 	}
 }
 
@@ -74,7 +109,7 @@ func (m *Model) applyStreamEvent(event StreamEvent) {
 			}
 		}
 		m.streamMode = streamReal
-		m.streamRaw = ""
+		m.streamRaw.Reset()
 		m.streamTarget = ""
 		m.streamShown = ""
 		m.streamSeq = landedSeq
@@ -83,10 +118,14 @@ func (m *Model) applyStreamEvent(event StreamEvent) {
 		if m.streamMode != streamReal {
 			return
 		}
-		m.streamRaw += event.Delta
-		if reply, found := partialJSONReply(m.streamRaw); found {
+		m.streamRaw.WriteString(event.Delta)
+		if reply, found := partialJSONReply(m.streamRaw.String()); found {
 			m.streamTarget = reply
 		}
+		// A delta moves only the target. What the thread draws is streamShown,
+		// which advances on the animation tick, so re-rendering here would
+		// produce the identical frame — at 50 tok/s, a third of a core of it.
+		return
 	case StreamFinished:
 		if m.streamMode == streamReal {
 			m.streamProviderDone = true
@@ -113,7 +152,7 @@ func (m *Model) queueSimulatedStream(message store.Message) {
 
 func (m *Model) startSimulatedStream(message store.Message) {
 	m.streamMode = streamSimulated
-	m.streamRaw = ""
+	m.streamRaw.Reset()
 	m.streamTarget = message.Body
 	m.streamShown = typewriterAdvance("", message.Body, 1)
 	m.streamSeq = message.Seq
@@ -160,7 +199,7 @@ func (m *Model) normalizeLandedTarget() {
 	// than the head's reply object. Its durable text takes the simulated lane so
 	// even a raced, malformed router response never appears fully formed.
 	m.streamMode = streamSimulated
-	m.streamRaw = ""
+	m.streamRaw.Reset()
 	m.streamTarget = message.Body
 	m.streamShown = typewriterAdvance("", message.Body, 1)
 }
@@ -207,7 +246,7 @@ func (m *Model) finishStream() {
 
 func (m *Model) clearStream() {
 	m.streamMode = streamNone
-	m.streamRaw = ""
+	m.streamRaw.Reset()
 	m.streamTarget = ""
 	m.streamShown = ""
 	m.streamSeq = 0

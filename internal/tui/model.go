@@ -303,9 +303,12 @@ type Model struct {
 	selectedBriefSeq int64
 	// The provider stream is optional Commander input. Real head deltas and
 	// simulated landed answers share one paced renderer so neither path pops.
-	streamEvents       <-chan StreamEvent
-	streamMode         streamMode
-	streamRaw          string
+	streamEvents <-chan StreamEvent
+	streamMode   streamMode
+	// streamRaw accumulates the provider's raw structured response. It is a
+	// builder, not a string: a token-by-token `+=` re-allocates the whole reply
+	// per token, which is quadratic over a long answer.
+	streamRaw          strings.Builder
 	streamTarget       string
 	streamShown        string
 	streamSeq          int64
@@ -621,6 +624,13 @@ func (m *Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 	case StreamEvent:
 		m.lastActionAt = m.standingTime()
 		m.applyStreamEvent(message)
+		return m, tea.Batch(waitForStream(m.streamEvents), m.scheduleAnimation())
+
+	case streamBatchMsg:
+		m.lastActionAt = m.standingTime()
+		for _, event := range message.events {
+			m.applyStreamEvent(event)
+		}
 		return m, tea.Batch(waitForStream(m.streamEvents), m.scheduleAnimation())
 
 	case streamClosedMsg:
