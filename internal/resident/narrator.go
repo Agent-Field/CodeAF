@@ -132,8 +132,15 @@ func (r *Reconciler) speakProgress(ctx context.Context) error {
 			switch node.Status {
 			case store.Running, store.Claimed:
 				label := clipLabel(firstLine(node.Brief), 60)
-				if !node.StartedAt.IsZero() {
-					label += fmt.Sprintf(" (%s in)", time.Since(node.StartedAt).Round(time.Second))
+				// Whole minutes, and nothing at all under one. A second-resolution
+				// clock made this label a different string on every heartbeat, so
+				// the running block — and everything the model had already been
+				// told below it — was re-billed each time for a number the prompt
+				// itself says to mention only when it is notable. Under a minute
+				// is never notable; after that the minute is the unit a person
+				// would say out loud.
+				if elapsed := time.Since(node.StartedAt); !node.StartedAt.IsZero() && elapsed >= time.Minute {
+					label += fmt.Sprintf(" (%dm in)", int(elapsed.Minutes()))
 				}
 				running = append(running, label)
 			case store.Pending:

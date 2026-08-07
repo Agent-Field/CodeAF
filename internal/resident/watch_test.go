@@ -480,3 +480,29 @@ func residentGraphCharter(t *testing.T, id string, watch store.GraphWatch) store
 	}
 	return charter
 }
+
+// Wake evidence is read by a model asked whether a condition occurred, never
+// how many nanoseconds ago. A nanosecond stamp is a string no two checks can
+// share; the minute says the same true thing in reusable bytes, and the
+// fingerprint that actually detects the change keeps its full resolution.
+func TestFileWatchEvidenceIsRoundedToTheMinute(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "watched.txt")
+	if err := os.WriteFile(path, []byte("before"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	fingerprint, detail, err := fileWatchFingerprint(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if fingerprint == "" || !strings.Contains(detail, "mtime ") {
+		t.Fatalf("fingerprint=%q detail=%q", fingerprint, detail)
+	}
+	stamp := detail[strings.Index(detail, "mtime ")+len("mtime "):]
+	parsed, err := time.Parse(time.RFC3339, stamp)
+	if err != nil {
+		t.Fatalf("evidence stamp %q is not a plain RFC3339 time: %v", stamp, err)
+	}
+	if parsed.Second() != 0 || parsed.Nanosecond() != 0 {
+		t.Fatalf("evidence stamp %q carries sub-minute precision", stamp)
+	}
+}
