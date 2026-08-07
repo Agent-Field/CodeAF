@@ -635,8 +635,26 @@ func appendEvent(tx *sql.Tx, nodeID string, kind EventKind, payload any) (int64,
 	return seq, at, nil
 }
 
+// journalTime is RFC 3339 with a fixed-width nanosecond field. The width is
+// the whole point: timestamps are compared as text by every day-boundary query
+// in this package, and RFC3339Nano drops trailing zeros — so an event landing
+// exactly on a second spells itself "...T07:00:00Z" while its neighbour a
+// millisecond later spells itself "...T07:00:00.001Z". Byte-wise '.' sorts
+// before 'Z', which puts the later event before the earlier one and hands a
+// one-second window of every day to the wrong side of local midnight.
+const journalTime = "2006-01-02T15:04:05.000000000Z07:00"
+
+// formatTime is the sole writer of every timestamp column in the store.
+//
+// Rows journaled before the width was fixed remain readable and remain
+// correctly attributed: parseTime's layout accepts any number of fractional
+// digits, and the only comparisons that cross the two spellings are against a
+// whole-second bound. There an old row written exactly on the bound spells
+// "...:00Z" and sorts after the new bound's "...:00.000000000Z" — which is the
+// right answer at both ends, because the start bound is inclusive of that
+// instant either way and the end bound excludes it either way.
 func formatTime(value time.Time) string {
-	return value.UTC().Format(time.RFC3339Nano)
+	return value.UTC().Format(journalTime)
 }
 
 func parseTime(value string) (time.Time, error) {

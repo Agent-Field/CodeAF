@@ -63,10 +63,17 @@ type RailAdjustment struct {
 
 // DailyRail is today's policy state. Base zero is unlimited; Raised remains
 // visible as journal history but cannot make an unlimited rail more unlimited.
+//
+// Spend is everything the rail is deciding against, which is not always what
+// the journal has seen: Pending is the part of it that has not been recorded —
+// in-process cost a headless run will journal at exit, or the catalog price of
+// a generation that has not happened yet. The split exists so a question can
+// say which is which, because the two are consented to by different arithmetic.
 type DailyRail struct {
 	Base      float64
 	Raised    float64
 	Spend     float64
+	Pending   float64
 	Ceiling   float64
 	Unlimited bool
 	Reached   bool
@@ -212,15 +219,50 @@ func (s *Store) DailyRailToday(base float64) (DailyRail, error) {
 // aggregate before exit.
 func (rail DailyRail) WithAdditionalSpend(amount float64) DailyRail {
 	rail.Spend += amount
+	rail.Pending += amount
+	rail.Reached = !rail.Unlimited && rail.Spend >= rail.Ceiling
+	return rail
+}
+
+// journaled is this rail as the journal alone describes it: the same day, the
+// same ceiling, minus whatever has not been recorded yet.
+func (rail DailyRail) journaled() DailyRail {
+	rail.Spend = math.Max(0, rail.Spend-rail.Pending)
+	rail.Pending = 0
 	rail.Reached = !rail.Unlimited && rail.Spend >= rail.Ceiling
 	return rail
 }
 
 // Question renders the one user-visible policy stop. Resource units stay
 // backstage; only today's spend, ceiling, and exact effect of consent appear.
+//
+// This is the wording for a caller that consents on the very rail it was
+// shown — the headless prompt, which raises RaiseAmount() of this same figure
+// the moment the operator says yes. There the pending part is money already
+// spent in this process and merely not yet journaled, so folding it into the
+// total is the honest thing to say.
 func (rail DailyRail) Question() string {
 	return fmt.Sprintf("%s$%.2f spent of $%.2f. Say the word and I'll continue (raises today's rail by $%.2f).",
 		DailyRailQuestionPrefix, rail.Spend, rail.Ceiling, rail.RaiseAmount())
+}
+
+// postedQuestion is the wording of the durable question the pause writes into
+// the thread, and it is deliberately a different sentence.
+//
+// Consent to that one arrives later and from somewhere else: the head reads the
+// rail back from journaled spend alone and raises that. A question worded from
+// a total the journal has never seen would promise a number consent cannot
+// deliver — "$34.00 spent … raises by $34.00" answered by a $20.00 raise. So
+// the posted wording quotes what the journal knows, states the raise consent
+// will actually make, and names the pending item separately as the reason the
+// work stopped here rather than folding it into the total.
+func (rail DailyRail) postedQuestion() string {
+	journaled := rail.journaled()
+	if rail.Pending <= 0 {
+		return journaled.Question()
+	}
+	return fmt.Sprintf("%s$%.2f spent of $%.2f, and the next step costs $%.2f. Say the word and I'll continue (raises today's rail by $%.2f).",
+		DailyRailQuestionPrefix, journaled.Spend, journaled.Ceiling, rail.Pending, journaled.RaiseAmount())
 }
 
 // RaiseDailyRail journals consent to extend today's ceiling.
@@ -309,15 +351,26 @@ func (s *Store) PauseDailyRailWithAdditionalSpend(base float64, sessionID string
 // pauseDailyRailTx is shared by ordinary claims and charter preflight. A
 // charter may mark rail.Reached from projected per-firing spend before the
 // recorded spend itself reaches the ceiling.
+//
+// The suppression is one question per session per raise, not one question in
+// total. Global suppression reads as thrift and behaves as silence: with a TUI
+// and a `serve` browser both working, whichever session reached the rail first
+// got the only question, and the other session's work stopped dead with nothing
+// in its thread to explain it and no sentence it could say to consent — the
+// head's interception is session-scoped, so a "yes" typed there fell through to
+// the ordinary router. Every session that hits the rail is asked in its own
+// thread; the raise that any one of them consents to is journaled globally, so
+// it lifts the ceiling for all of them at once and makes the other questions
+// moot rather than requiring an answer each.
 func pauseDailyRailTx(tx *sql.Tx, rail DailyRail, sessionID string, now time.Time) (bool, error) {
-	questionSeq, raiseSeq, err := latestRailMarkers(tx, now, "")
+	questionSeq, raiseSeq, err := latestRailMarkers(tx, now, sessionID)
 	if err != nil {
 		return false, err
 	}
 	if questionSeq > raiseSeq {
 		return false, nil
 	}
-	payload := messagePayload{SessionID: sessionID, Role: RoleAgent, Body: rail.Question()}
+	payload := messagePayload{SessionID: sessionID, Role: RoleAgent, Body: rail.postedQuestion()}
 	seq, at, err := appendEvent(tx, "", EventMessagePosted, payload)
 	if err != nil {
 		return false, err
@@ -331,6 +384,12 @@ func pauseDailyRailTx(tx *sql.Tx, rail DailyRail, sessionID string, now time.Tim
 // PendingDailyRailApproval reports whether this session's most recent rail
 // question still awaits a raise. The head uses it to intercept a plain "yes"
 // without spending a model call or inventing a graph command.
+//
+// It stays session-scoped on purpose. Falling back to another session's
+// question would let a bare "yes" meant for something else entirely raise the
+// day's ceiling; the pause is what guarantees this session was asked in the
+// first place, and a raise by any session clears the rail for everyone, which
+// turns an unanswered question into a moot one rather than a stuck one.
 func (s *Store) PendingDailyRailApproval(base float64, sessionID string) (DailyRail, bool, error) {
 	now := time.Now()
 	rail, err := dailyRailAt(s.db, base, now)
@@ -379,6 +438,11 @@ func dailyRailAt(query rowQuerier, base float64, now time.Time) (DailyRail, erro
 	return rail, nil
 }
 
+// latestRailMarkers pairs the newest rail question with the newest raise, both
+// inside today. An empty sessionID asks about the whole day rather than one
+// thread: a caller with no session cannot be addressed, so the conservative
+// reading — any question anywhere counts as having asked — is the right one for
+// it, and no session-addressed lookup is answered by it.
 func latestRailMarkers(query rowQuerier, now time.Time, sessionID string) (questionSeq, raiseSeq int64, err error) {
 	start, end := localDayBounds(now)
 	if err = query.QueryRow(`

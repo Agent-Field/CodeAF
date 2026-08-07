@@ -708,7 +708,7 @@ func compactJobLine(line string) string {
 	}
 	head := maxJobLineBytes * 2 / 3
 	tail := maxJobLineBytes - head - len("...")
-	return line[:head] + "..." + line[len(line)-tail:]
+	return wholeRunesHead(line[:head]) + "..." + wholeRunesTail(line[len(line)-tail:])
 }
 
 // close terminates and reaps every process that still survives the leaf. It is

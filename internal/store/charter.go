@@ -1517,9 +1517,32 @@ func (s *Store) fireCharter(id string, wakeSeq int64, subtree Subtree, provenanc
 			formatTime(start), formatTime(end)).Scan(&practiceSpend); err != nil {
 			return "", err
 		}
+		// Admission has to reserve, not merely observe. Journaled spend arrives
+		// long after admission — a firing costs nothing measurable until its
+		// leaves land — so a carve-out read from the usage table alone lets
+		// every firing of the day in before any of them has recorded a cent,
+		// and the ceiling only ever bites the day after it was breached. Each
+		// firing already admitted today therefore holds its own charter's
+		// per-firing budget against the group's ceiling.
+		//
+		// The two are combined by taking the larger rather than the sum: a
+		// firing that has already journaled more than it reserved is counted at
+		// what it truly cost, and one that has journaled less is still counted
+		// at what it was allowed to cost, without any firing being charged
+		// twice.
+		var reserved float64
+		if err := tx.QueryRow(`SELECT COALESCE(SUM(CAST(
+			json_extract(charters.rails, '$.per_firing_budget_usd') AS REAL)), 0)
+			FROM events JOIN charters ON charters.id=events.node_id
+			WHERE events.kind=? AND events.ts>=? AND events.ts<? AND charters.proposal_shape=?`,
+			EventCharterFired, formatTime(start), formatTime(end),
+			PracticeCharterShape).Scan(&reserved); err != nil {
+			return "", err
+		}
+		committed := math.Max(practiceSpend, reserved)
 		practiceCeiling := charter.guardrails.PerFiringBudgetUSD *
 			float64(charter.guardrails.MaxFiringsPerDay)
-		if practiceSpend+charter.guardrails.PerFiringBudgetUSD > practiceCeiling {
+		if committed+charter.guardrails.PerFiringBudgetUSD > practiceCeiling {
 			payload := charterFiringPayload{WakeSeq: wakeSeq, Reason: "practice_daily_dollar_rail"}
 			seq, _, err := appendEvent(tx, id, EventCharterFiringBlocked, payload)
 			if err != nil {
