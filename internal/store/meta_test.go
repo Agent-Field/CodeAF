@@ -290,3 +290,45 @@ func TestParameterRegistryOneNotchRailsAndRebuild(t *testing.T) {
 		t.Fatalf("ceiling=%v", got)
 	}
 }
+
+// Traits are measured on every retrospective and are structurally barred from
+// ordinary retrieval, which is right — a number about the user has no business
+// in front of a worker who asked about a parser. Without an explicit way to ask
+// for them by name, though, a whole learning loop terminated in a table nobody
+// read.
+func TestMeasuredTraitBlockIsTheCarveOutForBarredTraits(t *testing.T) {
+	graph := metaStore(t)
+	now := time.Now()
+	if _, err := graph.RecordTrait(TraitCorrectionStyle, TraitMeasurement{
+		Value: CorrectionStyleValue{Style: "immediate", MeanLatencySeconds: 42}, N: 9, Updated: now,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := graph.RecordTrait(TraitProposalAppetite, TraitMeasurement{
+		Value: ProposalAppetiteValue{Acceptance: 0.75}, N: 4, Updated: now,
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	// Ordinary retrieval still cannot see them, and must not start to.
+	facts, err := graph.SearchFacts(FactQuery{Cues: []string{"trait:correction-style"}, Limit: 5})
+	if err != nil || len(facts) != 0 {
+		t.Fatalf("traits leaked into ordinary retrieval: %+v err=%v", facts, err)
+	}
+
+	block := graph.MeasuredTraitBlock(320)
+	for _, want := range []string{"corrects immediate", "accepts 75% of standing proposals"} {
+		if !strings.Contains(block, want) {
+			t.Fatalf("trait block omitted %q:\n%s", want, block)
+		}
+	}
+	if len(block) > 320 {
+		t.Fatalf("trait block is %d bytes: %s", len(block), block)
+	}
+	if tight := graph.MeasuredTraitBlock(40); tight != "" {
+		t.Fatalf("trait block ignored a budget it cannot fit: %q", tight)
+	}
+	if empty := metaStore(t).MeasuredTraitBlock(320); empty != "" {
+		t.Fatalf("unmeasured store rendered a trait block: %q", empty)
+	}
+}
