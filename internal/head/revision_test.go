@@ -2,10 +2,13 @@ package head
 
 import (
 	"context"
+	"fmt"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/Agent-Field/aforge-v2/internal/store"
+	"github.com/Agent-Field/agentfield/sdk/go/ai"
 )
 
 // A cue alone is conversation and an anchor alone is a topic; only both
@@ -36,7 +39,8 @@ func TestRedirectRecognitionNeedsCueAnchorAndLiveWork(t *testing.T) {
 			if test.jobs {
 				spliceSurgeryJob(t, graph, "api-client", "v1 API client", "write a client for the v1 API")
 			}
-			intent, fires, err := New(&fakeClient{}, graph).recognizeRedirect(test.message)
+			intent, fires, err := New(&fakeClient{}, graph).recognizeRedirect(
+				store.Message{SessionID: "recognize", Role: store.RoleUser, Body: test.message})
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -173,5 +177,173 @@ func TestRedirectQuestionCanStartTheWordsAsNewWork(t *testing.T) {
 	if err != nil || len(commands) != 1 || commands[0].Kind != store.CommandSplice ||
 		commands[0].Instruction != "also include an intro chime in that job" {
 		t.Fatalf("new-work answer = %+v err=%v", commands, err)
+	}
+}
+
+// The message that cost a running job a racing duplicate, verbatim. Every cue
+// list declined it and every score was zero — "review the changes" borrows no
+// word from a job about middleware — while the one signal that mattered was
+// sitting in plain sight: that job had just spoken.
+const adjacentReviewAsk = "make sure you review the changes and check for bugs or security vul introduced as well"
+
+// seedSpeakingJob is the shape of the failure: one job of the user's, running,
+// whose own progress line is the last thing said before the user types.
+func seedSpeakingJob(t *testing.T, graph *store.Store, session string) {
+	t.Helper()
+	spliceSurgeryJob(t, graph, "middleware", "Request logging middleware",
+		"add gin logger middleware to server.go and commit and push it")
+	startNode(t, graph, "middleware")
+	if _, err := graph.PostMessage(store.Message{
+		SessionID: session, Role: store.RoleAgent, NodeID: "middleware",
+		Body: "Wired the logger into server.go — writing the middleware tests now.",
+	}); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// End to end over the live failure: the belt opens on adjacency alone, reads
+// the board, and revises the running job. Nothing new races it.
+func TestWorkRaisedBesideARunningJobRevisesItRatherThanRacingIt(t *testing.T) {
+	graph := openHeadStore(t)
+	session := "adjacent"
+	seedSpeakingJob(t, graph, session)
+	client := &beltClient{turns: []beltTurn{
+		{calls: []ai.ToolCall{beltCall("c1", beltToolBoard, map[string]any{})}},
+		{calls: []ai.ToolCall{beltCall("c2", beltToolRevise, map[string]any{
+			"job": "middleware", "words": adjacentReviewAsk})}},
+		{text: "Adding the review before it commits."},
+	}}
+	user := postUser(t, graph, session, adjacentReviewAsk)
+	if err := New(client, graph).answer(context.Background(), user); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, tooled := client.counts(); tooled == 0 {
+		t.Fatal("the belt never opened: no tooled call was made")
+	}
+	if opening := client.openingPrompt(); !strings.Contains(opening, "Board (the user's live work):") ||
+		!strings.Contains(opening, "middleware") {
+		t.Fatalf("the loop opened without the board: %q", opening)
+	}
+	commands, err := graph.PendingCommands(10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(commands) != 1 || commands[0].Kind != store.CommandRedirect ||
+		commands[0].Target != "middleware" || commands[0].Instruction != adjacentReviewAsk {
+		t.Fatalf("adjacent work did not steer the running job: %+v", commands)
+	}
+	for _, command := range commands {
+		if command.Kind == store.CommandSplice {
+			t.Fatalf("a second job was spliced beside the running one: %+v", command)
+		}
+	}
+}
+
+// When the belt honestly finds this is separate work, it still may not race:
+// the splice carries the job it arrived beside, and continuity turns that into
+// a wait rather than a parallel edit of the same thing.
+func TestNewWorkBesideARunningJobIsSplicedBehindIt(t *testing.T) {
+	graph := openHeadStore(t)
+	session := "adjacent-new"
+	seedSpeakingJob(t, graph, session)
+	client := &beltClient{
+		turns: []beltTurn{{text: controlNotWorkSentinel}},
+		plain: []string{`{"reply":"On it — it follows the work already underway.",` +
+			`"command":{"kind":"splice","target":"","instruction":"` + adjacentReviewAsk + `"}}`},
+	}
+	user := postUser(t, graph, session, adjacentReviewAsk)
+	if err := New(client, graph).answer(context.Background(), user); err != nil {
+		t.Fatal(err)
+	}
+	commands, err := graph.PendingCommands(10)
+	if err != nil || len(commands) != 1 || commands[0].Kind != store.CommandSplice {
+		t.Fatalf("router fallback = %+v err=%v", commands, err)
+	}
+	if commands[0].Target != "middleware" {
+		t.Fatalf("spliced work did not name the job it arrived beside: %+v", commands[0])
+	}
+}
+
+// Adjacency is a claim about the current breath of a conversation, so it is
+// bounded twice — by how long ago the job spoke, and by how much has been said
+// since. Past either bound, position proves nothing.
+func TestAdjacencyIsBoundedByQuietAndByTheThreadWindow(t *testing.T) {
+	graph := openHeadStore(t)
+	session := "stale"
+	seedSpeakingJob(t, graph, session)
+	conversational := New(&beltClient{}, graph)
+	active, err := conversational.activeUserJobs()
+	if err != nil || len(active) != 1 {
+		t.Fatalf("active = %+v err=%v", active, err)
+	}
+
+	fresh := postUser(t, graph, session, adjacentReviewAsk)
+	if _, adjoins, err := conversational.adjacencyTarget(fresh, active); err != nil || !adjoins {
+		t.Fatalf("a line said a moment ago is not adjacent: adjoins=%t err=%v", adjoins, err)
+	}
+	late := fresh
+	late.Time = fresh.Time.Add(AdjacencyQuiet + time.Minute)
+	if _, adjoins, err := conversational.adjacencyTarget(late, active); err != nil || adjoins {
+		t.Fatalf("a line older than the quiet window still anchored: adjoins=%t err=%v", adjoins, err)
+	}
+
+	for index := 0; index < AdjacencyMessageWindow; index++ {
+		if _, err := graph.PostMessage(store.Message{
+			SessionID: session, Role: store.RoleAgent,
+			Body: fmt.Sprintf("unrelated line %d", index),
+		}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	buried := postUser(t, graph, session, adjacentReviewAsk)
+	if _, adjoins, err := conversational.adjacencyTarget(buried, active); err != nil || adjoins {
+		t.Fatalf("a line pushed out of the window still anchored: adjoins=%t err=%v", adjoins, err)
+	}
+	applies, err := conversational.controlLoopApplies(buried)
+	if err != nil || applies {
+		t.Fatalf("the belt opened on a job that stopped speaking: applies=%t err=%v", applies, err)
+	}
+}
+
+// Adjacency is a candidate, never a veto. When the user's own words name one
+// job and the conversation points at another, both readings are good and the
+// one structured question this path is allowed settles it — with the words
+// leading, because they are the more deliberate signal.
+func TestDecisiveWordsBeatAdjacencyByAskingRatherThanBySilence(t *testing.T) {
+	graph := openHeadStore(t)
+	session := "disagree"
+	spliceSurgeryJob(t, graph, "api-client", "v1 API client", "write a client for the v1 API")
+	spliceSurgeryJob(t, graph, "audio", "English audio", "produce the English audio")
+	startNode(t, graph, "audio")
+	if _, err := graph.PostMessage(store.Message{
+		SessionID: session, Role: store.RoleAgent, NodeID: "audio",
+		Body: "Half the takes are rendered.",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	conversational := New(&fakeClient{}, graph)
+	user := postUser(t, graph, session, "actually the API client should speak v2")
+	intent, fires, err := conversational.recognizeRedirect(user)
+	if err != nil || !fires {
+		t.Fatalf("fires=%t err=%v", fires, err)
+	}
+	if intent.Certain {
+		t.Fatalf("a disagreement was settled silently: %+v", intent)
+	}
+	if len(intent.Candidates) != 2 || intent.Candidates[0].Node.ID != "api-client" ||
+		intent.Candidates[1].Node.ID != "audio" {
+		t.Fatalf("candidates = %+v, want the named job first and the adjacent one beside it", intent.Candidates)
+	}
+
+	if err := conversational.answer(context.Background(), user); err != nil {
+		t.Fatal(err)
+	}
+	if commands, _ := graph.PendingCommands(10); len(commands) != 0 {
+		t.Fatalf("a disagreement edited a plan: %+v", commands)
+	}
+	questions, err := graph.UnresolvedQuestions(10)
+	if err != nil || len(questions) != 1 || questions[0].Category != store.QuestionCategoryRedirectTarget {
+		t.Fatalf("questions = %+v err=%v", questions, err)
 	}
 }
