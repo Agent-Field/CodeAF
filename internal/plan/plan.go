@@ -103,11 +103,6 @@ func (u *Usage) merge(other Usage) {
 // phrased for the person waiting on the work.
 type Report func(pass string, elapsed time.Duration, detail string)
 
-// Progress reports human-readable movement through planning. Stage and detail
-// are kept separate so a terminal, journal, or API can render them in its own
-// voice without having to parse a formatted log line.
-type Progress func(stage, detail string)
-
 // Options configures a build.
 type Options struct {
 	// Recall is folded history relevant to this goal. Empty preserves the
@@ -168,7 +163,7 @@ func Build(ctx context.Context, client Completer, goal string, options Options) 
 	progress := serialProgress(options.Progress)
 	start := time.Now()
 	graph := &Graph{Goal: goal, NextID: 1}
-	progress("grounding", "settling what to look at")
+	emitProgress(progress, "grounding", "settling what to look at", "")
 
 	// Grounding and the spine both need only the goal, so they run together and
 	// the grounding is free. It has to finish before the fan-out, though, and
@@ -196,8 +191,8 @@ func Build(ctx context.Context, client Completer, goal string, options Options) 
 	graph.Stages = choice.Stages
 	graph.Usage.merge(spineUsage)
 	graph.Usage.merge(groundUsage)
-	progress("grounded", groundedSummary(graph.Settled))
-	progress("spine", plural(len(choice.Stages), "stage"))
+	emitProgress(progress, "grounded", groundedSummary(graph.Settled), "")
+	emitProgress(progress, "spine", plural(len(choice.Stages), "stage"), "")
 	report("ground", time.Since(start), fmt.Sprintf("%s settled, %s open",
 		plural(len(graph.Settled), "point"), plural(len(graph.Open), "question")))
 	report("spine", time.Since(start), fmt.Sprintf("%s %s", plural(len(choice.Stages), "stage"), spreadLabel(choice)))
@@ -220,8 +215,8 @@ func Build(ctx context.Context, client Completer, goal string, options Options) 
 	}
 	for _, node := range nodes {
 		graph.Add(node)
+		emitProgress(progress, "fan-out", plural(len(graph.Nodes), "node"), nodeProgressTitle(node))
 	}
-	progress("fan-out", plural(len(graph.Nodes), "node"))
 	report("fan-out", time.Since(start), plural(len(graph.Nodes), "node"))
 
 	// Binding and sizing read the same thing — the node catalog — and neither
@@ -246,8 +241,8 @@ func Build(ctx context.Context, client Completer, goal string, options Options) 
 	sizeUsage, sizeErr := sizeApply(graph, sizeResults)
 	graph.Usage.merge(bindUsage)
 	graph.Usage.merge(sizeUsage)
-	progress("sizing", fmt.Sprintf("%s — %s to split",
-		plural(len(graph.Nodes), "node"), countLabel(len(selectForExpansion(graph, options)))))
+	emitProgress(progress, "sizing", fmt.Sprintf("%s — %s to split",
+		plural(len(graph.Nodes), "node"), countLabel(len(selectForExpansion(graph, options)))), "")
 	report("bind+size", time.Since(start), fmt.Sprintf("%s, %s", plural(graph.Edges(), "edge"), sizeSummary(graph)))
 
 	// Stage 1 is settled already. Binding has run over it — the only edge it can
@@ -269,7 +264,7 @@ func Build(ctx context.Context, client Completer, goal string, options Options) 
 
 	added, auditUsage, auditErr := Audit(ctx, client, graph)
 	graph.Usage.merge(auditUsage)
-	progress("audit", fmt.Sprintf("%s restored", plural(added, "link")))
+	emitProgress(progress, "audit", fmt.Sprintf("%s restored", plural(added, "link")), "")
 	report("audit", time.Since(start), fmt.Sprintf("%s recovered", plural(added, "edge")))
 
 	// Bind under-connects by design and audit only asks whether a node is
@@ -298,11 +293,11 @@ func Build(ctx context.Context, client Completer, goal string, options Options) 
 			auditErr = errors.Join(auditErr, expandErr)
 		}
 		if spliced == 0 {
-			progress("expand", "nothing else needs splitting")
+			emitProgress(progress, "expand", "nothing else needs splitting", "")
 			break
 		}
-		progress("expand", fmt.Sprintf("%s split — %s total",
-			plural(spliced, "node"), plural(len(graph.Nodes), "node")))
+		emitProgress(progress, "expand", fmt.Sprintf("%s split — %s total",
+			plural(spliced, "node"), plural(len(graph.Nodes), "node")), "")
 		report("expand", time.Since(start), fmt.Sprintf("%s split, %s total",
 			plural(spliced, "node"), plural(len(graph.Nodes), "node")))
 
@@ -321,6 +316,7 @@ func Build(ctx context.Context, client Completer, goal string, options Options) 
 	}
 
 	graph.Prune()
+	emitProgress(progress, "steps", fmt.Sprintf("%d", len(graph.Nodes)), "")
 	graph.addSynthesis()
 
 	// Everything that was still moving has now stopped.
@@ -395,13 +391,13 @@ func sizeSummary(graph *Graph) string {
 // order their completion numbers were assigned.
 func serialProgress(callback Progress) Progress {
 	if callback == nil {
-		return func(string, string) {}
+		return func(ProgressUpdate) {}
 	}
 	var mutex sync.Mutex
-	return func(stage, detail string) {
+	return func(update ProgressUpdate) {
 		mutex.Lock()
 		defer mutex.Unlock()
-		callback(stage, detail)
+		callback(update)
 	}
 }
 

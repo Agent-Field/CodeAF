@@ -43,6 +43,10 @@ type jobCard struct {
 	Reading      string
 	Receipt      string
 	Latest       string
+	CompilePhase string
+	CompileDone  int
+	CompileTotal int
+	StepTitles   []string
 	QuestionKind questionKind
 	Question     string
 	Options      []questionOption
@@ -266,10 +270,7 @@ func deriveJobCards(
 				// Plan-progress posts are anchored to the job node and stamped
 				// with their command. They are card state — the current line and
 				// the running summary — never stream blocks.
-				if line := firstLine(message.Body); line != "" {
-					card.Narration = append(card.Narration, line)
-					card.Latest = line
-				}
+				card.applyCompileProgress(message)
 			case message.Role != store.RoleUser:
 				fallbackLatest = firstLine(message.Body)
 			}
@@ -347,10 +348,7 @@ func deriveJobCards(
 				// Node-anchored plan progress: the compiling card's live status,
 				// replacing in place tick by tick, accumulated for the expanded
 				// running summary — never a thread block.
-				if line := firstLine(message.Body); line != "" {
-					card.Narration = append(card.Narration, line)
-					card.Latest = line
-				}
+				card.applyCompileProgress(message)
 			case message.Role == store.RoleSystem:
 				card.Receipt = strings.TrimSpace(message.Body)
 			}
@@ -409,6 +407,82 @@ func deriveJobCards(
 		return cards[i].BirthSeq < cards[j].BirthSeq
 	})
 	return cards
+}
+
+func (card *jobCard) applyCompileProgress(message store.Message) {
+	progress := message.Progress
+	if progress == nil {
+		legacy := legacyCompileProgress(message.Body)
+		progress = &legacy
+	}
+	card.CompilePhase = strings.TrimSpace(progress.Phase)
+	card.CompileDone = progress.Done
+	card.CompileTotal = progress.Total
+	card.Latest = compileProgressLine(*progress)
+	if latest := firstLine(progress.Latest); latest != "" {
+		card.StepTitles = appendRecentStepTitle(card.StepTitles, latest)
+	}
+}
+
+func compileProgressLine(progress store.MessageProgress) string {
+	line := strings.TrimSpace(progress.Phase)
+	if line == "" {
+		line = "working out the plan"
+	}
+	if progress.Total > 0 {
+		line += fmt.Sprintf(" · %d of %d", progress.Done, progress.Total)
+	}
+	return line
+}
+
+func appendRecentStepTitle(titles []string, title string) []string {
+	title = strings.TrimSpace(title)
+	if title == "" {
+		return titles
+	}
+	if len(titles) > 0 && titles[len(titles)-1] == title {
+		return titles
+	}
+	titles = append(titles, title)
+	if len(titles) > 3 {
+		titles = append([]string(nil), titles[len(titles)-3:]...)
+	}
+	return titles
+}
+
+// legacyCompileProgress keeps existing journals safe at the same presentation
+// boundary. Old implementation vocabulary is translated, never replayed.
+func legacyCompileProgress(body string) store.MessageProgress {
+	line := strings.TrimSpace(firstLine(body))
+	progress := store.MessageProgress{Phase: "working out the plan"}
+	var done, total int
+	switch {
+	case strings.HasPrefix(line, "grounding:"), strings.HasPrefix(line, "grounded:"):
+		progress.Phase = "reading the request"
+	case strings.HasPrefix(line, "spine: sample "):
+		progress.Phase = "exploring approaches"
+		_, _ = fmt.Sscanf(strings.TrimPrefix(line, "spine: "), "sample %d/%d", &done, &total)
+		if done >= 0 && total > 0 && done <= total {
+			progress.Done, progress.Total = done, total
+		}
+	case strings.HasPrefix(line, "spine:"), strings.HasPrefix(line, "fan-out:"),
+		strings.HasPrefix(line, "ensemble:"), strings.HasPrefix(line, "sizing "),
+		strings.HasPrefix(line, "audit:"), strings.HasPrefix(line, "expand:"):
+		progress.Phase = "choosing the shape"
+	case strings.HasPrefix(line, "briefs "):
+		progress.Phase = "writing the plan"
+		_, _ = fmt.Sscanf(strings.TrimPrefix(line, "briefs "), "%d/%d", &done, &total)
+		if done >= 0 && total > 0 && done <= total {
+			progress.Done, progress.Total = done, total
+		}
+	case strings.HasPrefix(line, "contracts "):
+		progress.Phase = "setting working standards"
+		_, _ = fmt.Sscanf(strings.TrimPrefix(line, "contracts "), "%d/%d", &done, &total)
+		if done >= 0 && total > 0 && done <= total {
+			progress.Done, progress.Total = done, total
+		}
+	}
+	return progress
 }
 
 // matchingCommandSeq pairs a job root with the command that asked for it.
@@ -995,7 +1069,7 @@ func (m *Model) renderCardDock(track bool) string {
 
 func (m *Model) renderJobCard(card jobCard, width int, expanded bool, atLine int, dock, track bool) string {
 	width = max(12, width)
-	if dock && !expanded && !(card.State == cardQuestion && card.QuestionKind != questionText) {
+	if dock && !expanded && card.State != cardCompiling && !(card.State == cardQuestion && card.QuestionKind != questionText) {
 		return m.renderCompactCard(card, width)
 	}
 
@@ -1022,6 +1096,12 @@ func (m *Model) renderJobCard(card jobCard, width int, expanded bool, atLine int
 			lines = append(lines, mutedStyle.Faint(true).Render("│ ")+style.Render(line))
 		}
 	}
+	if card.State == cardCompiling {
+		addText(card.Latest, mutedStyle)
+		for _, title := range card.StepTitles {
+			addText("· "+title, mutedStyle.Faint(true))
+		}
+	}
 
 	if expanded {
 		if card.Ask != "" {
@@ -1036,7 +1116,7 @@ func (m *Model) renderJobCard(card jobCard, width int, expanded bool, atLine int
 		for _, assumption := range cardAssumptions(card.Receipt) {
 			addText(assumption, mutedStyle)
 		}
-		if len(card.Narration) > 0 {
+		if card.State != cardCompiling && len(card.Narration) > 0 {
 			lines = append(lines, mutedStyle.Faint(true).Render("│   running summary"))
 			for _, narration := range card.Narration {
 				addText("· "+narration, inputTextStyle)
@@ -1419,8 +1499,18 @@ func (m *Model) cardMeta(card jobCard, now time.Time) string {
 	parts := make([]string, 0, 4)
 	if card.State == cardCompiling {
 		parts = append(parts, "compiling")
-		// The live planning line replaces in place, tick by tick.
+		// The live planning line replaces in place, tick by tick. The header
+		// uses the compact label; the card body retains the fuller vocabulary.
+		phase := card.CompilePhase
+		if phase == "setting working standards" {
+			phase = "setting standards"
+		}
+		if phase != "" && card.CompileTotal > 0 {
+			phase += fmt.Sprintf(" %d of %d", card.CompileDone, card.CompileTotal)
+		}
 		switch {
+		case phase != "":
+			parts = append(parts, phase)
 		case card.Latest != "":
 			parts = append(parts, card.Latest)
 		case card.Reading != "":

@@ -112,31 +112,32 @@ func (m *Model) View() string {
 	}
 	parts = append(parts, m.renderInput())
 	if !m.paletteOpen() {
-		hint := "/ commands · tab focus · " + keyBindings.graph + " tasks · v receipts · ? help"
+		// One footer line, one explicit priority: transient voice status →
+		// active boost indicator → pending-question context → idle tip →
+		// focus-zone help. Voice status is short-lived so boost only yields
+		// momentarily; tips are idle-only and can never displace an armed or
+		// pinned boost.
+		hint := m.contextHelpLine()
+		boostShown := false
 		switch {
-		case m.boost != boostOff:
-			hint = m.boostLabel()
 		case m.voiceHint != "" && time.Now().Before(m.voiceHintUntil):
 			hint = m.voiceHint
 		case m.voiceState == voiceRecording:
 			hint = keyBindings.voice + " finish · esc discard · keep typing to preserve your draft"
 		case m.voiceState == voiceStarting || m.voiceState == voiceFinalizing:
 			hint = "voice working · esc discard"
-		case m.focus == focusCards:
-			hint = "↑/↓ select card · enter details/graph · esc back · " + keyBindings.graph + " all tasks"
-		case m.focus == focusQuestions:
-			hint = "↑/↓ select question · enter ask inline · esc back"
-		case m.nodeViewID != "":
-			hint = "type to steer · enter send · c cancel · esc back"
-		case m.focus == focusGraph:
-			hint = "↑/↓ select · enter inspect · esc close · " + keyBindings.graph + " hide"
-		case m.focus == focusHeader:
-			hint = "←/→ choose header control · enter open · esc back"
-		case !m.voiceHintShown:
-			hint = "/ commands · tab focus · " + keyBindings.voice + " voice · " + keyBindings.graph + " tasks · v receipts · ? help"
+		case m.boost != boostOff:
+			hint = m.boostLabel()
+			boostShown = true
+		case m.hasPendingQuestion() && m.focus != focusQuestions:
+			hint = "press a question's number — or type your own answer"
+		default:
+			if tip := m.idleTipLine(m.standingTime()); tip != "" {
+				hint = tip
+			}
 		}
 		renderedHint := mutedStyle.Faint(true).Render(truncate(hint, m.width))
-		if m.boost != boostOff {
+		if boostShown {
 			m.boostBounds = paneBounds{x: 0, y: m.inputBounds.bottom(), width: lipgloss.Width(renderedHint), height: 1}
 		}
 		parts = append(parts, renderedHint)

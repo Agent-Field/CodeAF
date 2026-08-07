@@ -17,18 +17,19 @@ const planCountThrottle = 2 * time.Second
 // particular, JSON written by -o or --json never acquires status lines.
 func headlessPlanProgress(writer io.Writer) plan.Progress {
 	var mutex sync.Mutex
-	return func(stage, detail string) {
+	return func(update plan.ProgressUpdate) {
 		mutex.Lock()
 		defer mutex.Unlock()
-		fmt.Fprintln(writer, planProgressLine(stage, detail))
+		fmt.Fprintln(writer, planProgressLine(update))
 	}
 }
 
-func planProgressLine(stage, detail string) string {
-	if _, _, ok := leafCount(stage, detail); ok || stage == "sizing" {
-		return stage + " " + detail
+func planProgressLine(update plan.ProgressUpdate) string {
+	line := update.Phase
+	if update.Total > 0 {
+		line += fmt.Sprintf(" · %d of %d", update.Done, update.Total)
 	}
-	return stage + ": " + detail
+	return line
 }
 
 type planProgressPoster struct {
@@ -39,7 +40,7 @@ type planProgressPoster struct {
 
 	mutex   sync.Mutex
 	last    map[string]time.Time
-	pending map[string]string
+	pending map[string]plan.ProgressUpdate
 	timers  map[string]*time.Timer
 }
 
@@ -49,52 +50,61 @@ func chatPlanProgress(history *store.Store, anchor resident.PlanAnchor) plan.Pro
 	}
 	poster := &planProgressPoster{
 		history: history, anchor: anchor, interval: planCountThrottle, now: time.Now,
-		last: map[string]time.Time{}, pending: map[string]string{}, timers: map[string]*time.Timer{},
+		last: map[string]time.Time{}, pending: map[string]plan.ProgressUpdate{}, timers: map[string]*time.Timer{},
 	}
 	return poster.report
 }
 
-func (p *planProgressPoster) report(stage, detail string) {
-	line := planProgressLine(stage, detail)
-	done, total, count := leafCount(stage, detail)
+func (p *planProgressPoster) report(update plan.ProgressUpdate) {
+	phase := update.Phase
+	count := update.Total > 0
 
 	p.mutex.Lock()
 	defer p.mutex.Unlock()
+	// Real generated content is never coalesced away: the card needs each title
+	// in order to materialize its honest three-line table of contents.
 	if !count {
-		p.post(line)
+		p.post(update)
+		return
+	}
+	if update.Latest != "" {
+		p.stopTimer(phase)
+		delete(p.pending, phase)
+		p.last[phase] = p.now()
+		p.post(update)
 		return
 	}
 
 	now := p.now()
-	last := p.last[stage]
-	final := done == total
+	last := p.last[phase]
+	final := update.Done == update.Total
 	if final || last.IsZero() || now.Sub(last) >= p.interval {
-		p.stopTimer(stage)
-		delete(p.pending, stage)
-		p.last[stage] = now
-		p.post(line)
+		p.stopTimer(phase)
+		delete(p.pending, phase)
+		p.last[phase] = now
+		p.post(update)
 		return
 	}
 
-	p.pending[stage] = line
-	if p.timers[stage] == nil {
+	p.pending[phase] = update
+	if p.timers[phase] == nil {
 		wait := p.interval - now.Sub(last)
-		p.timers[stage] = time.AfterFunc(wait, func() { p.flushCount(stage) })
+		p.timers[phase] = time.AfterFunc(wait, func() { p.flushCount(phase) })
 	}
 }
 
-func (p *planProgressPoster) flushCount(stage string) {
+func (p *planProgressPoster) flushCount(phase string) {
 	p.mutex.Lock()
 	defer p.mutex.Unlock()
-	line := p.pending[stage]
-	if line == "" {
-		p.stopTimer(stage)
+	update, ok := p.pending[phase]
+	if !ok {
+		p.stopTimer(phase)
 		return
 	}
-	delete(p.pending, stage)
-	delete(p.timers, stage)
-	p.last[stage] = p.now()
-	p.post(line)
+	delete(p.pending, phase)
+	delete(p.timers, phase)
+	p.last[phase] = p.now()
+	p.post(update)
 }
 
 func (p *planProgressPoster) stopTimer(stage string) {
@@ -104,24 +114,15 @@ func (p *planProgressPoster) stopTimer(stage string) {
 	}
 }
 
-func (p *planProgressPoster) post(body string) {
+func (p *planProgressPoster) post(update plan.ProgressUpdate) {
 	_, _ = p.history.PostMessage(store.Message{
 		SessionID:  p.anchor.SessionID,
 		Role:       store.RoleSystem,
-		Body:       body,
+		Body:       planProgressLine(update),
 		NodeID:     p.anchor.NodeID,
 		CommandSeq: p.anchor.CommandSeq,
+		Progress: &store.MessageProgress{
+			Phase: update.Phase, Done: update.Done, Total: update.Total, Latest: update.Latest,
+		},
 	})
-}
-
-func leafCount(stage, detail string) (int, int, bool) {
-	if stage != "briefs" && stage != "contracts" {
-		return 0, 0, false
-	}
-	var done, total int
-	if _, err := fmt.Sscanf(detail, "%d/%d", &done, &total); err != nil ||
-		done < 0 || total < 0 || done > total {
-		return 0, 0, false
-	}
-	return done, total, true
 }

@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"reflect"
-	"strings"
 	"testing"
 
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
@@ -30,12 +29,12 @@ func (c *progressPassClient) CompleteWithMessages(ctx context.Context, messages 
 }
 
 func TestBuildProgressSequence(t *testing.T) {
-	var got []string
+	var got []ProgressUpdate
 	graph, err := Build(context.Background(), &progressPassClient{},
 		"compare three cities and write the result", Options{
 			Ensemble: EnsembleNever, SpineSamples: 3, MaxDepth: 1, Briefs: true,
-			Progress: func(stage, detail string) {
-				got = append(got, stage+": "+detail)
+			Progress: func(update ProgressUpdate) {
+				got = append(got, update)
 			},
 		})
 	if err != nil {
@@ -45,31 +44,64 @@ func TestBuildProgressSequence(t *testing.T) {
 		t.Fatal("Build returned a nil graph")
 	}
 
-	var boundaries, briefCounts []string
+	var phases []string
+	var finalBrief ProgressUpdate
 	for _, event := range got {
-		if strings.HasPrefix(event, "briefs: ") {
-			briefCounts = append(briefCounts, event)
-			continue
+		phases = append(phases, event.Phase)
+		if event.Phase == "writing the plan" {
+			finalBrief = event
 		}
-		boundaries = append(boundaries, event)
 	}
-	wantBoundaries := []string{
-		"grounding: settling what to look at",
-		"spine: sample 1/3",
-		"spine: sample 2/3",
-		"spine: sample 3/3",
-		"grounded: 3 cities settled",
-		"spine: 2 stages",
-		"fan-out: 3 nodes",
-		"sizing: 3 nodes — 0 nodes to split",
-		"audit: 0 links restored",
-		"expand: nothing else needs splitting",
+	for _, want := range []string{
+		"reading the request", "exploring approaches", "choosing the shape",
+		"breaking it into steps — 3", "writing the plan",
+	} {
+		if !containsString(phases, want) {
+			t.Fatalf("progress phases = %#v, missing %q", phases, want)
+		}
 	}
-	if !reflect.DeepEqual(boundaries, wantBoundaries) {
-		t.Fatalf("progress boundaries = %#v\nwant %#v", boundaries, wantBoundaries)
+	if finalBrief.Done != 3 || finalBrief.Total != 3 || finalBrief.Latest == "" {
+		t.Fatalf("final plan-writing progress = %#v, want 3 of 3 with a real title", finalBrief)
 	}
-	if len(briefCounts) == 0 || briefCounts[len(briefCounts)-1] != "briefs: 3/3" {
-		t.Fatalf("brief progress = %#v, want a final 3/3", briefCounts)
+}
+
+func containsString(values []string, wanted string) bool {
+	for _, value := range values {
+		if value == wanted {
+			return true
+		}
+	}
+	return false
+}
+
+func TestUserProgressVocabularyMapsEveryPlannerStage(t *testing.T) {
+	tests := []struct {
+		stage  string
+		detail string
+		phase  string
+		done   int
+		total  int
+	}{
+		{"grounding", "settling what to look at", "reading the request", 0, 0},
+		{"grounded", "3 cities settled", "reading the request", 0, 0},
+		{"spine", "sample 2/3", "exploring approaches", 2, 3},
+		{"spine", "3 stages", "choosing the shape", 0, 0},
+		{"ensemble", "deciding", "choosing the shape", 0, 0},
+		{"fan-out", "11 nodes", "choosing the shape", 0, 0},
+		{"sizing", "11 nodes — 3 to split", "choosing the shape", 0, 0},
+		{"audit", "0 links restored", "choosing the shape", 0, 0},
+		{"expand", "3 nodes split", "choosing the shape", 0, 0},
+		{"steps", "21", "breaking it into steps — 21", 0, 0},
+		{"briefs", "12/18", "writing the plan", 12, 18},
+		{"contracts", "3/18", "setting working standards", 3, 18},
+	}
+	for _, test := range tests {
+		t.Run(test.stage+"/"+test.detail, func(t *testing.T) {
+			got := userProgress(test.stage, test.detail, "A real title")
+			if got.Phase != test.phase || got.Done != test.done || got.Total != test.total || got.Latest != "A real title" {
+				t.Fatalf("userProgress(%q, %q) = %#v", test.stage, test.detail, got)
+			}
+		})
 	}
 }
 
@@ -81,7 +113,7 @@ func TestBuildNilProgressIsByteIdentical(t *testing.T) {
 		t.Fatalf("Build without progress: %v", err)
 	}
 	var calls int
-	options.Progress = func(string, string) { calls++ }
+	options.Progress = func(ProgressUpdate) { calls++ }
 	with, err := Build(context.Background(), &passClient{},
 		"review the pull request and deliver REVIEW.md", options)
 	if err != nil {
@@ -111,15 +143,26 @@ func TestContractsReportParallelCompletionsInOrder(t *testing.T) {
 	client := &stubClient{reply: func(string, string) string {
 		return "{\"contract\":\"Check the evidence and return the finding.\"}"
 	}}
-	var got []string
-	_, err := Contracts(context.Background(), client, graph, nil, func(stage, detail string) {
-		got = append(got, stage+" "+detail)
+	var got []ProgressUpdate
+	_, err := Contracts(context.Background(), client, graph, nil, func(update ProgressUpdate) {
+		got = append(got, update)
 	})
 	if err != nil {
 		t.Fatalf("Contracts: %v", err)
 	}
-	want := []string{"contracts 0/3", "contracts 1/3", "contracts 2/3", "contracts 3/3"}
-	if !reflect.DeepEqual(got, want) {
-		t.Fatalf("contract progress = %#v, want %#v", got, want)
+	var counts []int
+	for _, update := range got {
+		if update.Phase != "setting working standards" || update.Total != 3 {
+			t.Fatalf("contract progress = %#v", got)
+		}
+		counts = append(counts, update.Done)
+	}
+	if want := []int{0, 1, 2, 3}; !reflect.DeepEqual(counts, want) {
+		t.Fatalf("contract counts = %#v, want %#v", counts, want)
+	}
+	for _, update := range got[1:] {
+		if update.Latest == "" {
+			t.Fatalf("contract completion omitted its node title: %#v", got)
+		}
 	}
 }
