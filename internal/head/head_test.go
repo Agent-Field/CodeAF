@@ -1144,3 +1144,52 @@ func activateHeadCharter(t *testing.T, graph *store.Store, id, invariant string)
 	charter.Status = store.CharterActive
 	return charter
 }
+
+// A document is not something the talk model can see. It must stay off the
+// wire as a content part and still reach the command, because the whole point
+// is that a worker reads it from the workspace with read_document.
+func TestHeadKeepsDocumentAttachmentOffTheModelAndOnTheCommand(t *testing.T) {
+	graph := openHeadStore(t)
+	path := filepath.Join(t.TempDir(), "filing.pdf")
+	if err := os.WriteFile(path, []byte("%PDF-1.7 filing"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	client := &fakeClient{responses: []string{
+		`{"reply":"I’ll read it.","command":{"kind":"splice","target":"","instruction":"summarise the filing"}}`,
+	}}
+	user, err := graph.PostMessage(store.Message{
+		SessionID: "docs", Role: store.RoleUser, Body: "summarise the filing", Attachments: []string{path},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	head := New(client, graph).WithImageInput(headModalities(true), "vision/model")
+	if err := head.answer(context.Background(), user); err != nil {
+		t.Fatal(err)
+	}
+	for _, part := range client.seen[1].Content {
+		if part.Type != "text" {
+			t.Fatalf("document rode as a %q content part: %+v", part.Type, client.seen[1].Content)
+		}
+	}
+	commands, err := graph.PendingCommands(10)
+	if err != nil || len(commands) != 1 || len(commands[0].Attachments) != 1 || commands[0].Attachments[0] != path {
+		t.Fatalf("commands = %+v err=%v", commands, err)
+	}
+}
+
+func TestCompilerIsToldHowAttachedDocumentsReachWorkers(t *testing.T) {
+	client := &fakeClient{responses: []string{
+		`{"goal":"Summarise the filing.","deliverable":"a summary","budget":"$0.40","assumptions":[]}`,
+	}}
+	if _, err := NewCompiler(client).Compile(context.Background(), "summarise the filing",
+		"Attached documents (workspace inputs):\n- q3 filing.pdf"); err != nil {
+		t.Fatalf("compile: %v", err)
+	}
+	system := client.seen[0].Content[0].Text
+	for _, want := range []string{"attached documents", "read_document", "workspace files"} {
+		if !strings.Contains(system, want) {
+			t.Fatalf("compiler prompt omitted %q", want)
+		}
+	}
+}
