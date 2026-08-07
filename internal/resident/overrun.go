@@ -105,9 +105,10 @@ func replanOverrun(ctx context.Context, graph *store.Store, node store.Node, par
 		parent = store.RootID
 	}
 	provenance := store.Provenance{
-		Origin:    store.OriginSelf,
-		SessionID: node.Provenance.SessionID,
-		Intent:    node.Provenance.Intent,
+		Origin:      store.OriginSelf,
+		SessionID:   node.Provenance.SessionID,
+		Intent:      node.Provenance.Intent,
+		Attachments: append([]string(nil), node.Provenance.Attachments...),
 	}
 	if err := graph.Splice(parent, subtree, provenance); err != nil {
 		return 0, "", fmt.Errorf("replan overrun %s: %w", node.ID, err)

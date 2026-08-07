@@ -2,6 +2,7 @@ package tui
 
 import (
 	"fmt"
+	"path/filepath"
 	"sort"
 	"strings"
 	"time"
@@ -15,17 +16,17 @@ import (
 // ── The design system ────────────────────────────────────────────────────────
 //
 // Voice hierarchy (four typographic levels, one accent, no new colors):
-//   1. aforge speaks: the speaker label in lavender — the single conversational
-//      accent — with its body in primary ink, markdown-rendered. The answer is
-//      the product; it gets the brightest ink.
-//   2. you speak: the label dim (muted, faint) and the body in softened ink
-//      (ink, faint). The reader knows their own words; they recede slightly so
-//      the answers carry the page.
-//   3. machine status is ambient: cards, shimmer, receipts, timestamps, and
-//      meta all live in muted ink. Status never borrows the conversational
-//      accent — attention stays budgeted.
-//   4. structure is faint: frames (╭ │ ╰), rules, gutters, and hints render
-//      muted+faint. They shape the page without competing with words.
+//  1. aforge speaks: the speaker label in lavender — the single conversational
+//     accent — with its body in primary ink, markdown-rendered. The answer is
+//     the product; it gets the brightest ink.
+//  2. you speak: the label dim (muted, faint) and the body in softened ink
+//     (ink, faint). The reader knows their own words; they recede slightly so
+//     the answers carry the page.
+//  3. machine status is ambient: cards, shimmer, receipts, timestamps, and
+//     meta all live in muted ink. Status never borrows the conversational
+//     accent — attention stays budgeted.
+//  4. structure is faint: frames (╭ │ ╰), rules, gutters, and hints render
+//     muted+faint. They shape the page without competing with words.
 //
 // Node-view tool blocks share the same system: a call line is its kind glyph +
 // tool name in the working accent (peach, semibold) followed by the command in
@@ -34,13 +35,15 @@ import (
 //
 // Affordance grammar (terminals have no hover, so every clickable element
 // declares its action at rest, in muted ink, never the accent):
-//   ▸  expandable — click or enter opens it (also the focus/selection marker,
-//      which renders in powder so target and affordance stay distinguishable)
-//   ▾  expanded — click or enter collapses it
-//   ⋯  truncated content — click reveals the rest
-//   ⟨×⟩ dismiss/close a surface
-//   ↳  jump to the task an answer came from
-//   ‹  go back one surface
+//
+//	▸  expandable — click or enter opens it (also the focus/selection marker,
+//	   which renders in powder so target and affordance stay distinguishable)
+//	▾  expanded — click or enter collapses it
+//	⋯  truncated content — click reveals the rest
+//	⟨×⟩ dismiss/close a surface
+//	↳  jump to the task an answer came from
+//	‹  go back one surface
+//
 // Hints stay dim and short, and appear only when glyph + noun cannot carry the
 // action alone; global keys live in the one footer line and are not repeated
 // per element. Plain "…" marks static overflow that is not clickable.
@@ -164,7 +167,7 @@ func (m *Model) trackPaneBounds() {
 		m.activityBarBounds = paneBounds{x: 0, y: barY, width: m.width, height: height}
 		barY += height
 	}
-	m.inputBounds = paneBounds{x: 0, y: barY, width: m.width, height: m.input.LineCount()}
+	m.inputBounds = paneBounds{x: 0, y: barY, width: m.width, height: m.inputBlockHeight()}
 }
 
 func (m *Model) renderTopBar() string {
@@ -416,7 +419,24 @@ func (m *Model) renderNodePane() string {
 
 // renderInput is a bare prompt line — the `›` is the whole affordance.
 func (m *Model) renderInput() string {
-	return lipgloss.NewStyle().PaddingLeft(0).Width(m.width).Render(m.input.View())
+	m.attachmentBounds = m.attachmentBounds[:0]
+	lines := make([]string, 0, len(m.attachments)+2)
+	for index, path := range m.attachments {
+		prefix := "⌾ " + truncate(filepath.Base(path), max(1, m.width-lipgloss.Width("⌾  ⟨×⟩"))) + " "
+		line := mutedStyle.Faint(true).Render(prefix + "⟨×⟩")
+		lines = append(lines, line)
+		m.attachmentBounds = append(m.attachmentBounds, paneBounds{
+			x: lipgloss.Width(prefix), y: m.inputBounds.y + index, width: lipgloss.Width("⟨×⟩"), height: 1,
+		})
+	}
+	if len(m.attachments) > 0 {
+		if model, supported := m.imageInputSupport(); !supported {
+			hint := truncate(model+" can't see images — try a vision model", m.width)
+			lines = append(lines, mutedStyle.Faint(true).Render(hint))
+		}
+	}
+	lines = append(lines, m.input.View())
+	return lipgloss.NewStyle().PaddingLeft(0).Width(m.width).Render(strings.Join(lines, "\n"))
 }
 
 func (m *Model) renderPalette() string {
@@ -607,7 +627,7 @@ func (m *Model) paletteLineLimit() int {
 	const minimumMainHeight = 3
 	// top bar + blank + main + blank + palette + input; the hint yields while
 	// the palette is open.
-	available := m.height - 3 - m.input.LineCount() - minimumMainHeight
+	available := m.height - 3 - m.inputBlockHeight() - minimumMainHeight
 	if m.paletteHasClose() {
 		available--
 	}
@@ -958,6 +978,12 @@ func (m *Model) renderMessageGroup(group messageGroup, atLine int) string {
 			item = youTextStyle.Render(wrapText(message.Body, available))
 		default:
 			item, foldedAnswer = m.renderAnswerFold(message, available)
+		}
+		if artifacts := m.renderMediaArtifacts(message, available); artifacts != "" {
+			if item != "" {
+				item += "\n"
+			}
+			item += artifacts
 		}
 		// A task-anchored answer names its origin: a small clickable chip that
 		// jumps to that task's activity view.

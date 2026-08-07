@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/Agent-Field/aforge-v2/internal/catalog"
 	"github.com/Agent-Field/aforge-v2/internal/provider"
 	"github.com/Agent-Field/aforge-v2/internal/router"
 )
@@ -23,6 +24,33 @@ func settings(t *testing.T) Config {
 		t.Fatal(err)
 	}
 	return config
+}
+
+func TestMediaSlotsUseEnvironmentAndRuntimeCatalogOrder(t *testing.T) {
+	t.Setenv("AFORGE_IMAGE_MODEL", "user/image")
+	t.Setenv("AFORGE_SPEECH_MODEL", "user/speech")
+	configured := settings(t)
+	if configured.ImageModel != "user/image" || configured.SpeechModel != "user/speech" {
+		t.Fatalf("media slots = %q %q", configured.ImageModel, configured.SpeechModel)
+	}
+	if configured.ResolveImageModel(nil) != "user/image" || configured.ResolveSpeechModel(nil) != "user/speech" {
+		t.Fatal("explicit media slots were made catalog-dependent")
+	}
+
+	t.Setenv("AFORGE_IMAGE_MODEL", "")
+	t.Setenv("AFORGE_SPEECH_MODEL", "")
+	resolved := settings(t)
+	// Use the package's offline defaults to exercise the verified preference
+	// slugs without exposing catalog construction internals.
+	models := catalog.Load(context.Background(), catalog.Options{
+		BaseURL: "://offline", Dir: t.TempDir(),
+	})
+	if got := resolved.ResolveImageModel(models); got != preferredImageModel {
+		t.Fatalf("resolved image = %q", got)
+	}
+	if got := resolved.ResolveSpeechModel(models); got != preferredSpeechModel {
+		t.Fatalf("resolved speech = %q", got)
+	}
 }
 
 // TestNoPanelIsTheKillSwitch is the promise the whole feature is gated on. With

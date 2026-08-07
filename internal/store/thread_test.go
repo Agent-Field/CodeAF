@@ -60,6 +60,38 @@ func TestPostAndTailMessages(t *testing.T) {
 	}
 }
 
+func TestImageAttachmentsSurviveMessageCommandProvenanceAndRebuild(t *testing.T) {
+	s := openThreadStore(t)
+	attachments := []string{"/tmp/one.png", "/tmp/two.webp"}
+	posted, err := s.PostMessage(Message{SessionID: "media", Role: RoleUser, Body: "inspect these", Attachments: attachments})
+	if err != nil {
+		t.Fatal(err)
+	}
+	messages, err := s.Messages("media", 0, 0)
+	if err != nil || len(messages) != 1 || strings.Join(messages[0].Attachments, ",") != strings.Join(attachments, ",") {
+		t.Fatalf("message attachments = %+v err=%v", messages, err)
+	}
+	command, err := s.RequestCommand(Command{SessionID: "media", Kind: CommandSplice, Instruction: posted.Body, Attachments: posted.Attachments})
+	if err != nil {
+		t.Fatal(err)
+	}
+	read, ok, err := s.CommandBySeq(command.Seq)
+	if err != nil || !ok || strings.Join(read.Attachments, ",") != strings.Join(attachments, ",") {
+		t.Fatalf("command attachments = %+v ok=%t err=%v", read.Attachments, ok, err)
+	}
+	if err := s.Splice(RootID, Subtree{Nodes: []NodeSpec{{ID: "media-task", Brief: "inspect", Stage: 1}}},
+		Provenance{Origin: OriginUser, SessionID: "media", Intent: posted.Body, Attachments: attachments}); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.Rebuild(); err != nil {
+		t.Fatal(err)
+	}
+	node, ok, err := s.Node("media-task")
+	if err != nil || !ok || strings.Join(node.Provenance.Attachments, ",") != strings.Join(attachments, ",") {
+		t.Fatalf("rebuilt node attachments = %+v ok=%t err=%v", node.Provenance.Attachments, ok, err)
+	}
+}
+
 func TestPostMessageValidation(t *testing.T) {
 	s := openThreadStore(t)
 

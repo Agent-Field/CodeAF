@@ -138,6 +138,7 @@ func (m *Model) openNodeByID(nodeID string) tea.Cmd {
 	}
 	m.returnFocus = m.focus
 	m.chatDraft = m.input.Value()
+	m.chatAttachments = append([]string(nil), m.attachments...)
 	m.nodeViewID = node.ID
 	m.inspectedNode = node
 	m.nodeMessages = nil
@@ -165,7 +166,9 @@ func (m *Model) closeNodeView() {
 	m.input.Reset()
 	m.input.Placeholder = "Ask the graph…"
 	m.input.SetValue(m.chatDraft)
+	m.attachments = append([]string(nil), m.chatAttachments...)
 	m.chatDraft = ""
+	m.chatAttachments = nil
 	m.focus = m.returnFocus
 	m.inputFocused = m.focus == focusInput
 	if m.inputFocused {
@@ -385,6 +388,11 @@ type feedRow struct {
 // open on click.
 func (m *Model) renderActivityFeed(width int) string {
 	blocks := parseFeedBlocks(m.nodeTraceText, m.nodeMessages, width)
+	if artifacts := m.renderMediaArtifacts(store.Message{
+		NodeID: m.nodeViewID, Body: strings.ReplaceAll(m.nodeTraceText, "⏎", " "),
+	}, width); artifacts != "" {
+		blocks = append(blocks, feedBlock{brief: strings.Split(artifacts, "\n")})
+	}
 	m.feedRows = m.feedRows[:0]
 	m.feedBlocks = blocks
 	m.feedKeys = feedBlockKeys(blocks)
@@ -504,7 +512,7 @@ func thoughtBlock(raw string, width int) feedBlock {
 func toolCallBlock(rest string, width int) feedBlock {
 	name, args, _ := strings.Cut(rest, " ")
 	glyph, detail := "⚙", ""
-	salient := map[string]string{"sh": "cmd", "write": "path", "edit": "path", "web": "q"}[name]
+	salient := map[string]string{"sh": "cmd", "write": "path", "edit": "path", "web": "q", "generate_image": "prompt", "speak": "text", "view_image": "path"}[name]
 	if salient != "" {
 		switch name {
 		case "sh":
@@ -513,6 +521,10 @@ func toolCallBlock(rest string, width int) feedBlock {
 			glyph = "✎"
 		case "web":
 			glyph = "⌕"
+		case "generate_image", "view_image":
+			glyph = "⌾"
+		case "speak":
+			glyph = "♪"
 		}
 		if value, ok := extractStringField(args, salient); ok {
 			detail = value
@@ -540,7 +552,7 @@ func toolCallBlock(rest string, width int) feedBlock {
 }
 
 func renderToolDetail(name, detail string, width int) string {
-	if (name == "write" || name == "edit") && strings.HasPrefix(detail, "/") {
+	if (name == "write" || name == "edit" || name == "view_image") && strings.HasPrefix(detail, "/") {
 		return pathLink(detail, width)
 	}
 	return inputTextStyle.Render(truncate(detail, width))
@@ -711,6 +723,12 @@ func (m *Model) updateMouseClick(x, y int) bool {
 	if m.paletteCloseBounds.contains(x, y) {
 		m.closePalette()
 		return true
+	}
+	for index, bounds := range m.attachmentBounds {
+		if bounds.contains(x, y) {
+			m.removeAttachment(index)
+			return true
+		}
 	}
 	if m.inputBounds.contains(x, y) {
 		m.focus = focusInput

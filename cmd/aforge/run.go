@@ -11,9 +11,11 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 
+	"github.com/Agent-Field/aforge-v2/internal/catalog"
 	"github.com/Agent-Field/aforge-v2/internal/config"
 	"github.com/Agent-Field/aforge-v2/internal/exec"
 	"github.com/Agent-Field/aforge-v2/internal/plan"
@@ -64,6 +66,13 @@ func runExecute(args []string) error {
 	}
 	defer closeRouter(client)
 	ctx := settings.Context(context.Background(), graph.Goal)
+	modelCatalog := catalog.Load(ctx, catalog.Options{
+		BaseURL: settings.BaseURL, APIKey: settings.APIKey, Dir: settings.ProfileDir,
+	})
+	mediaClient, err := settings.MediaClient()
+	if err != nil {
+		return err
+	}
 
 	root := *workspace
 	if root == "" {
@@ -147,12 +156,20 @@ func runExecute(args []string) error {
 	if scaled := time.Duration(*maxTokens/50_000) * time.Minute; scaled > deadline {
 		deadline = scaled
 	}
-	linear := exec.NewLinear(client, space, web, *maxTurns, *maxTokens, deadline).WithStore(history)
+	mediaTools := &exec.MediaTools{
+		Provider: mediaClient, Catalog: modelCatalog, WorkingModel: settings.Model,
+		ImageModel: settings.ResolveImageModel(modelCatalog), SpeechModel: settings.ResolveSpeechModel(modelCatalog),
+	}
+	linear := exec.NewLinear(client, space, web, *maxTurns, *maxTokens, deadline).
+		WithStore(history).WithMedia(mediaTools)
 	scheduler := exec.NewScheduler(exec.NewRegistry(linear), space, *concurrency)
 	scheduler.Budget = *runBudget
 	preauthorized := spendPreauthorized(*yesSpend, os.Getenv)
 	interactive := stdinIsTerminal(os.Stdin)
+	var spendGate sync.Mutex
 	scheduler.BeforeLaunch = func(context.Context) error {
+		spendGate.Lock()
+		defer spendGate.Unlock()
 		rail, err := railStore.DailyRailToday(settings.DailyBudgetUSD)
 		if err != nil {
 			return err
@@ -176,6 +193,7 @@ func runExecute(args []string) error {
 		}
 		return railStore.RaiseDailyRail(rail.RaiseAmount(), origin)
 	}
+	mediaTools.BeforeSpend = scheduler.BeforeLaunch
 	// A failed leaf is only worth re-running when there is somewhere stronger to
 	// run it, so the panel decides rather than the scheduler assuming. One
 	// escalation, not a ladder: the router lab's cascade averaged 1.35 calls a
