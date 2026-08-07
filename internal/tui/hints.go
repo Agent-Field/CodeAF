@@ -119,6 +119,8 @@ func (m *Model) contextHelpLine() string {
 		return "type to steer · enter send · c cancel · esc back"
 	case m.focus == focusGraph:
 		return "↑/↓ select · enter inspect · esc close · " + keyBindings.graph + " hide"
+	case m.focus == focusSelf:
+		return "↑/↓ select · enter expand · esc home · tab focus"
 	case m.focus == focusHeader:
 		return "←/→ choose · enter models/tasks/help · esc back · tab focus"
 	case m.focus == focusChat:

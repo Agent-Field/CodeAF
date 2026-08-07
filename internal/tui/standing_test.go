@@ -106,7 +106,10 @@ func TestStandingSectionPresenceContentAndClick(t *testing.T) {
 			t.Fatalf("standing rail is missing %q:\n%s", want, view)
 		}
 	}
-	if strings.Index(view, "standing") > strings.Index(view, "tasks") {
+	// Ordering is asserted below the top bar: the header carries its own
+	// place labels and the ⟨tasks⟩ alias, neither of which is the rail.
+	_, body, _ := strings.Cut(view, "\n")
+	if strings.Index(body, "standing") > strings.Index(body, "tasks") {
 		t.Fatalf("standing section did not render above tasks:\n%s", view)
 	}
 	if strings.Contains(view, "pr-watch-watch") {

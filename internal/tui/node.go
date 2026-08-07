@@ -754,6 +754,15 @@ func (m *Model) updateMouseClick(x, y int) (tea.Cmd, bool) {
 		m.toggleBoost()
 		return nil, true
 	}
+	if m.headerThreadBounds.contains(x, y) {
+		return m.selectPlace(placeThread), true
+	}
+	if m.headerBoardBounds.contains(x, y) {
+		return m.selectPlace(placeBoard), true
+	}
+	if m.headerSelfBounds.contains(x, y) {
+		return m.selectPlace(placeSelf), true
+	}
 	if m.headerQuestionBounds.contains(x, y) {
 		m.focusPendingQuestion()
 		return nil, true
@@ -857,6 +866,9 @@ func (m *Model) updateMouseClick(x, y int) (tea.Cmd, bool) {
 		m.inputFocused = false
 		m.input.Blur()
 		return nil, true
+	}
+	if m.selfVisible() && m.selfBounds.contains(x, y) {
+		return nil, m.activateSelfAt(x, y)
 	}
 	if m.graphToggleHit(x, y) {
 		if !m.closeScopedGraph() && !m.closeCharterCard() {
