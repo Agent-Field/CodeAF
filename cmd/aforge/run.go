@@ -170,6 +170,9 @@ func runExecute(args []string) error {
 		ImageModel: settings.ResolveImageModel(modelCatalog), SpeechModel: settings.ResolveSpeechModel(modelCatalog),
 		MusicModel: settings.ResolveMusicModel(modelCatalog), VideoModel: settings.ResolveVideoModel(modelCatalog),
 		VisionModel: settings.ResolveVisionModel(modelCatalog, settings.Model, settings.Model),
+		ResolveModel: func(modality, word string) (string, error) {
+			return config.ResolveMediaModel(modelCatalog, modality, word)
+		},
 	}
 	if video, ok := modelCatalog.Model(mediaTools.VideoModel); ok {
 		mediaTools.VideoPrice = video.RequestPrice

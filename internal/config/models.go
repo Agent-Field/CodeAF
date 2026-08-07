@@ -1,0 +1,180 @@
+package config
+
+import (
+	"fmt"
+	"sort"
+	"strings"
+
+	"github.com/Agent-Field/aforge-v2/internal/catalog"
+)
+
+// This file is the naming half of the model palette's candidacy seam. Slots
+// answer "which models may occupy this role"; the functions here answer "which
+// of them did the user mean" when they said gemini, opus, or best.
+
+const (
+	// BestModelWord is the one spelling that means "the strongest advertised
+	// model for this modality", resolved from the catalog at call time.
+	BestModelWord = "best"
+
+	// Match tiers, best first. The score inside a tier is a length penalty, so
+	// the shortest, most canonical slug leads.
+	matchExact  = 0
+	matchPrefix = 1
+	matchInside = 2
+)
+
+// bestMediaPreferences documents the quality order per modality: strongest
+// advertised model first. "best" walks the list and takes the first the
+// catalog actually advertises. When none of them is advertised it falls back
+// to the most expensive advertised model of that modality, because price is
+// the only quality signal a catalog row carries.
+var bestMediaPreferences = map[string][]string{
+	"image":  {"google/gemini-3-pro-image", "openai/gpt-image-1.5", preferredImageModel},
+	"speech": {fallbackSpeechModel, preferredSpeechModel},
+	"music":  {"google/lyria-3", preferredMusicModel},
+	"video":  {"google/veo-3.5", preferredVideoModel},
+}
+
+type scoredModel struct {
+	id    string
+	tier  int
+	score int
+}
+
+// ModelMatches returns the models in slot that word could mean, best first and
+// at most limit of them. Exactly one result is an unambiguous resolution; more
+// than one means the word was genuinely ambiguous and the caller should ask.
+// Scoring is contains-and-prefix on purpose: subsequence fuzziness is fine for
+// a palette a human is watching, and far too loose for a word lifted out of a
+// sentence.
+func ModelMatches(models *catalog.Catalog, slot, word string, limit int) []string {
+	word = strings.ToLower(strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(word), "~")))
+	if models == nil || word == "" || limit <= 0 {
+		return nil
+	}
+	scored := make([]scoredModel, 0, 8)
+	for _, candidate := range ModelCandidates(models, slot) {
+		if tier, score, ok := modelWordScore(candidate, word); ok {
+			scored = append(scored, scoredModel{id: candidate.ID, tier: tier, score: score})
+		}
+	}
+	if len(scored) == 0 {
+		return nil
+	}
+	sort.SliceStable(scored, func(i, j int) bool {
+		if scored[i].tier != scored[j].tier {
+			return scored[i].tier < scored[j].tier
+		}
+		if scored[i].score != scored[j].score {
+			return scored[i].score < scored[j].score
+		}
+		return scored[i].id < scored[j].id
+	})
+	best := make([]string, 0, limit)
+	for _, candidate := range scored {
+		if candidate.tier != scored[0].tier || len(best) == limit {
+			break
+		}
+		best = append(best, candidate.id)
+	}
+	// An exact hit is never ambiguous, whatever else shares its tier.
+	if scored[0].tier == matchExact {
+		return best[:1]
+	}
+	return best
+}
+
+func modelWordScore(model catalog.Model, word string) (int, int, bool) {
+	id := strings.ToLower(strings.TrimPrefix(strings.TrimSpace(model.ID), "~"))
+	base := id
+	if index := strings.LastIndex(id, "/"); index >= 0 {
+		base = id[index+1:]
+	}
+	switch {
+	case id == word || base == word:
+		return matchExact, 0, true
+	case strings.HasPrefix(base, word):
+		return matchPrefix, len(base) - len(word), true
+	case strings.Contains(id, word):
+		return matchInside, strings.Index(id, word) + len(id) - len(word), true
+	default:
+		return 0, 0, false
+	}
+}
+
+// BestMediaModel resolves the documented preference order for one modality
+// against what the catalog advertises right now.
+func BestMediaModel(models *catalog.Catalog, modality string) string {
+	modality = strings.ToLower(strings.TrimSpace(modality))
+	candidates := ModelCandidates(models, modality)
+	if len(candidates) == 0 {
+		return ""
+	}
+	for _, preferred := range bestMediaPreferences[modality] {
+		for _, candidate := range candidates {
+			if candidate.ID == preferred {
+				return candidate.ID
+			}
+		}
+	}
+	best, price := candidates[0].ID, modelPrice(candidates[0])
+	for _, candidate := range candidates[1:] {
+		if candidatePrice := modelPrice(candidate); candidatePrice > price {
+			best, price = candidate.ID, candidatePrice
+		}
+	}
+	return best
+}
+
+func modelPrice(model catalog.Model) float64 {
+	price := model.RequestPrice
+	if model.CompletionPrice > price {
+		price = model.CompletionPrice
+	}
+	if model.PromptPrice > price {
+		price = model.PromptPrice
+	}
+	return price
+}
+
+// ResolveMediaModel reads one media tool's model argument. An empty word means
+// the caller keeps its slot default. "best" resolves the preference order. Any
+// other word is resolved inside the modality, and a name that belongs to a
+// different modality is refused by naming what it actually makes.
+func ResolveMediaModel(models *catalog.Catalog, modality, word string) (string, error) {
+	modality = strings.ToLower(strings.TrimSpace(modality))
+	word = strings.TrimSpace(word)
+	if word == "" {
+		return "", nil
+	}
+	if strings.EqualFold(word, BestModelWord) {
+		if best := BestMediaModel(models, modality); best != "" {
+			return best, nil
+		}
+		return "", fmt.Errorf("no %s model is advertised right now", modality)
+	}
+	if matches := ModelMatches(models, modality, word, 1); len(matches) > 0 {
+		return matches[0], nil
+	}
+	if other, elsewhere, ok := modelInAnotherModality(models, modality, word); ok {
+		return "", fmt.Errorf("%s makes %s, not %s", other, elsewhere, modality)
+	}
+	return "", fmt.Errorf("no %s model matches %q", modality, word)
+}
+
+// mediaModalities is the search order for a wrong-modality refusal. It is only
+// used to explain a mistake, never to substitute a model.
+var mediaModalities = []string{"image", "speech", "music", "video", "voice"}
+
+func modelInAnotherModality(models *catalog.Catalog, modality, word string) (string, string, bool) {
+	for _, other := range mediaModalities {
+		if other == modality {
+			continue
+		}
+		if matches := ModelMatches(models, other, word, 1); len(matches) > 0 {
+			return matches[0], other, true
+		}
+	}
+	return "", "", false
+}

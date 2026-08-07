@@ -363,13 +363,22 @@ func TestTickReturnsCancelledContextWithoutTouchingCommand(t *testing.T) {
 func TestCompileReceiptKeepsLegacyBytes(t *testing.T) {
 	got := compileReceipt("  Benchmark the parser  ", []string{
 		"main is the baseline", "", "keep observable output",
-	})
+	}, "")
 	const want = "Here's my reading: Benchmark the parser\n" +
 		"Assumed: main is the baseline\n" +
 		"Assumed: keep observable output\n" +
 		"Correct me anytime — redirects are cheap."
 	if got != want {
 		t.Fatalf("compile receipt changed:\n got %q\nwant %q", got, want)
+	}
+	// A model the user named is one extra line, in their terms, between the
+	// assumptions and the invitation to redirect.
+	withModel := compileReceipt("Benchmark the parser", nil, "Running on google/gemini-3-pro.")
+	const wantModel = "Here's my reading: Benchmark the parser\n" +
+		"Running on google/gemini-3-pro.\n" +
+		"Correct me anytime — redirects are cheap."
+	if withModel != wantModel {
+		t.Fatalf("model receipt = %q, want %q", withModel, wantModel)
 	}
 }
 
@@ -430,5 +439,56 @@ func TestPlainCommandsCarryNoDocumentPreamble(t *testing.T) {
 	}
 	if got := anchorAttachedDocuments("Ship the parser", nil); got != "Ship the parser" {
 		t.Fatalf("unattached goal changed: %q", got)
+	}
+}
+
+// The model a user named for a job has to reach the leaves, and the only
+// carrier that survives planning, scheduling, and a rebuilt view is the node's
+// own provenance. The receipt says so in their terms in the same breath.
+func TestRequestedWorkModelRidesProvenanceAndTheCompileReceipt(t *testing.T) {
+	graph := openStore(t)
+	command, err := graph.RequestCommand(store.Command{
+		SessionID: "session-model", Kind: store.CommandSplice,
+		Instruction: "benchmark the parser with the gemini model",
+	})
+	if err != nil {
+		t.Fatalf("request command: %v", err)
+	}
+	compile := func(context.Context, string, string) (Compiled, error) {
+		return Compiled{
+			Goal: "Benchmark the parser.", Scale: "task",
+			WorkModel: "google/gemini-3-pro", ModelNote: "Running on google/gemini-3-pro.",
+		}, nil
+	}
+	plan := func(_ context.Context, compiled Compiled) (store.Subtree, error) {
+		return store.Subtree{Nodes: []store.NodeSpec{
+			{ID: "bench", Brief: compiled.Goal, Stage: 1},
+			{ID: "bench-leaf", Parent: "bench", Brief: "run it", Stage: 2},
+		}}, nil
+	}
+	if err := New(graph, compile, plan).Tick(context.Background()); err != nil {
+		t.Fatalf("tick: %v", err)
+	}
+	for _, id := range []string{"bench", "bench-leaf"} {
+		node, found, err := graph.Node(id)
+		if err != nil || !found {
+			t.Fatalf("read %s: found=%t err=%v", id, found, err)
+		}
+		if node.Provenance.WorkModel != "google/gemini-3-pro" {
+			t.Fatalf("%s provenance = %+v", id, node.Provenance)
+		}
+	}
+	messages, err := graph.Messages("session-model", 0, 0)
+	if err != nil {
+		t.Fatalf("read thread: %v", err)
+	}
+	receipt := ""
+	for _, message := range messages {
+		if message.CommandSeq == command.Seq && message.Role == store.RoleSystem {
+			receipt = message.Body
+		}
+	}
+	if !strings.Contains(receipt, "Running on google/gemini-3-pro.") {
+		t.Fatalf("compile receipt = %q", receipt)
 	}
 }

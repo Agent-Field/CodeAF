@@ -10,7 +10,7 @@ import (
 
 const nodeColumns = `
 	id, parent_id, brief, title, grp, stage, status, owner, claim_token, attempt,
-	summary, error, held, cancel_requested, priority, origin, session_id, intent, charter_id, trial_of, retry_of, service_intent, attachments, created_seq, created_order, updated_seq,
+	summary, error, held, cancel_requested, priority, origin, session_id, intent, charter_id, trial_of, retry_of, service_intent, work_model, attachments, created_seq, created_order, updated_seq,
     started_at, finished_at, folded, fold_root, fold_digest, fold_pointers`
 
 // migrateNodesSchema adds provenance and display columns introduced after the
@@ -47,8 +47,9 @@ func migrateNodesSchema(db *sql.DB) error {
 		"cancel_requested": `INTEGER NOT NULL DEFAULT 0 CHECK (cancel_requested IN (0, 1))`,
 		"priority":         `INTEGER NOT NULL DEFAULT 0`,
 		"service_intent":   `INTEGER NOT NULL DEFAULT 0 CHECK (service_intent IN (0, 1))`,
+		"work_model":       `TEXT NOT NULL DEFAULT ''`,
 	}
-	for _, column := range []string{"title", "grp", "charter_id", "trial_of", "attachments", "retry_of", "held", "cancel_requested", "priority", "service_intent"} {
+	for _, column := range []string{"title", "grp", "charter_id", "trial_of", "attachments", "retry_of", "held", "cancel_requested", "priority", "service_intent", "work_model"} {
 		if existing[column] {
 			continue
 		}
@@ -137,7 +138,7 @@ func scanNode(scanner rowScanner) (Node, error) {
 		&node.Owner, &node.ClaimToken, &node.Attempt, &node.Summary, &node.Error,
 		&node.Held, &node.CancelRequested, &node.Priority,
 		&node.Provenance.Origin, &session, &node.Provenance.Intent, &node.Provenance.CharterID, &node.Provenance.TrialOf, &node.Provenance.RetryOf, &node.Provenance.ServiceIntent,
-		&attachments,
+		&node.Provenance.WorkModel, &attachments,
 		&node.CreatedSeq, &node.CreatedOrder, &node.UpdatedSeq, &started, &finished,
 		&node.Folded, &node.FoldRoot, &node.FoldDigest, &pointers,
 	); err != nil {

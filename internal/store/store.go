@@ -219,6 +219,11 @@ type Provenance struct {
 	// user asked for a running thing. It is consent provenance, not a display
 	// hint, and therefore travels through the splice event and Rebuild.
 	ServiceIntent bool `json:"service_intent,omitempty"`
+	// WorkModel is the model the user named for this job in their own words
+	// ("with the better model", "use gemini"). Empty means the surface's
+	// current work model serves, as always. It is provenance rather than
+	// configuration: the leaf that ran is inseparable from the model asked for.
+	WorkModel string `json:"work_model,omitempty"`
 }
 
 // Need is one incoming edge named by a node specification.
@@ -353,6 +358,7 @@ CREATE TABLE IF NOT EXISTS nodes (
     trial_of       INTEGER NOT NULL DEFAULT 0 CHECK (trial_of >= 0),
 	retry_of       TEXT NOT NULL DEFAULT '',
 	service_intent INTEGER NOT NULL DEFAULT 0 CHECK (service_intent IN (0, 1)),
+	work_model     TEXT NOT NULL DEFAULT '',
     attachments    JSON NOT NULL DEFAULT '[]' CHECK (json_valid(attachments)),
     created_seq    INTEGER NOT NULL REFERENCES events(seq),
     created_order  INTEGER NOT NULL CHECK (created_order >= 0),
