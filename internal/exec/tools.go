@@ -432,11 +432,39 @@ func recallClip(value string, limit int) string {
 	if len(value) <= limit {
 		return value
 	}
-	cut := limit - len("...")
-	for cut > 0 && !utf8.ValidString(value[:cut]) {
-		cut--
+	return wholeRunesHead(value[:limit-len("...")]) + "..."
+}
+
+// wholeRunesHead and wholeRunesTail are the two halves of the same rule: a
+// window cut at an arbitrary byte offset lands mid-character about half the
+// time in any non-English text, and the replacement character it leaves behind
+// rides every turn of the leaf that reads it. Every byte budget in this package
+// is a budget, not a boundary, so both trim back to the nearest whole
+// character rather than refusing to cut.
+func wholeRunesHead(window string) string {
+	// A head window can only close on an incomplete sequence, which is exactly
+	// what DecodeLastRuneInString reports as a one-byte error. A genuine U+FFFD
+	// in the text decodes at its true width and is left alone.
+	for attempt := 0; attempt < utf8.UTFMax && len(window) > 0; attempt++ {
+		if char, size := utf8.DecodeLastRuneInString(window); char != utf8.RuneError || size > 1 {
+			break
+		}
+		window = window[:len(window)-1]
 	}
-	return value[:cut] + "..."
+	return window
+}
+
+func wholeRunesTail(window string) string {
+	// A tail window can only open on a continuation byte, and a character is at
+	// most UTFMax bytes long, so at most UTFMax-1 of them can precede the first
+	// whole one.
+	for attempt := 0; attempt < utf8.UTFMax && len(window) > 0; attempt++ {
+		if window[0]&0xC0 != 0x80 {
+			break
+		}
+		window = window[1:]
+	}
+	return window
 }
 
 // spill moves a large result out of context and leaves a pointer to it. Errors
@@ -661,11 +689,11 @@ func clamp(text string) string {
 	if len(text) <= maxToolResultBytes {
 		return text
 	}
-	head := maxToolResultBytes * 2 / 3
-	tail := maxToolResultBytes - head
-	return text[:head] +
-		fmt.Sprintf("\n\n... [%d bytes elided] ...\n\n", len(text)-maxToolResultBytes) +
-		text[len(text)-tail:]
+	head := wholeRunesHead(text[:maxToolResultBytes*2/3])
+	tail := wholeRunesTail(text[len(text)-(maxToolResultBytes-maxToolResultBytes*2/3):])
+	return head +
+		fmt.Sprintf("\n\n... [%d bytes elided] ...\n\n", len(text)-len(head)-len(tail)) +
+		tail
 }
 
 func define(name, description string, properties map[string]any, required ...string) ai.ToolDefinition {

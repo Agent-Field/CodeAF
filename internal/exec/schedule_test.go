@@ -59,7 +59,7 @@ func TestCancelledRunLandsWithOutcomesAndStopReason(t *testing.T) {
 	}
 
 	fake := &blockingExecutor{fast: map[int]bool{finished: true}, started: make(chan int, 1)}
-	scheduler := NewScheduler(NewRegistry(fake), workspace(t), 4)
+	scheduler := NewScheduler(NewRegistry(fake), workspace(t), 4).WithGovernor(calmGovernor())
 
 	ctx, cancel := context.WithCancel(context.Background())
 	go func() {
@@ -108,7 +108,7 @@ func TestGlobalBudgetStopsLaunchingAndLands(t *testing.T) {
 	}
 
 	fake := &blockingExecutor{fast: map[int]bool{ids[0]: true, ids[1]: true, ids[2]: true, ids[3]: true}}
-	scheduler := NewScheduler(NewRegistry(fake), workspace(t), 1)
+	scheduler := NewScheduler(NewRegistry(fake), workspace(t), 1).WithGovernor(calmGovernor())
 	scheduler.Budget = 150 // two nodes at 110 tokens each cross it
 
 	err := scheduler.Run(context.Background(), graph)
@@ -178,7 +178,7 @@ func TestBeforeLaunchStopsClaimsAndLandsInflightWork(t *testing.T) {
 	second := graph.Add(plan.Node{Stage: 1, Title: "Second"})
 	third := graph.Add(plan.Node{Stage: 1, Title: "Third"})
 	fake := &landingExecutor{first: first, second: second, secondStarted: make(chan struct{}), releaseSecond: make(chan struct{})}
-	scheduler := NewScheduler(NewRegistry(fake), workspace(t), 2)
+	scheduler := NewScheduler(NewRegistry(fake), workspace(t), 2).WithGovernor(calmGovernor())
 	stop := errors.New("daily rail pause")
 	checks := 0
 	scheduler.BeforeLaunch = func(context.Context) error {
@@ -218,7 +218,7 @@ func TestWatchdogAbandonsWedgedExecutor(t *testing.T) {
 	release := make(chan struct{})
 	defer close(release)
 	fake := &wedgedExecutor{healthy: healthy, release: release}
-	scheduler := NewScheduler(NewRegistry(fake), workspace(t), 4)
+	scheduler := NewScheduler(NewRegistry(fake), workspace(t), 4).WithGovernor(calmGovernor())
 	scheduler.NodeTimeout = 100 * time.Millisecond
 
 	finished := make(chan error, 1)
@@ -267,7 +267,7 @@ func TestExecutorPanicIsARecordedFailure(t *testing.T) {
 	graph := &plan.Graph{Goal: "g", Stages: []plan.Stage{{Title: "One"}}, NextID: 1}
 	doomed := graph.Add(plan.Node{Stage: 1, Title: "Doomed"})
 
-	scheduler := NewScheduler(NewRegistry(panickyExecutor{}), workspace(t), 1)
+	scheduler := NewScheduler(NewRegistry(panickyExecutor{}), workspace(t), 1).WithGovernor(calmGovernor())
 	if err := scheduler.Run(context.Background(), graph); err != nil {
 		t.Fatalf("Run: %v", err)
 	}
@@ -324,5 +324,109 @@ func TestLeafShapeSeparatesTheKindsOfLeaf(t *testing.T) {
 	// router.MinGraded has learned nothing at all — expensively.
 	if len(buckets) != 3 {
 		t.Fatalf("leaves fall into %d buckets, want three", len(buckets))
+	}
+}
+
+// countingExecutor records how many leaves the scheduler had running at once,
+// and can hold every leaf until a barrier of them has arrived.
+type countingExecutor struct {
+	mutex   sync.Mutex
+	running int
+	peak    int
+	arrived chan struct{}
+	release chan struct{}
+}
+
+func (c *countingExecutor) Skill() string { return "linear" }
+
+func (c *countingExecutor) Run(ctx context.Context, task Task) (*Outcome, error) {
+	c.mutex.Lock()
+	c.running++
+	if c.running > c.peak {
+		c.peak = c.running
+	}
+	c.mutex.Unlock()
+	if c.arrived != nil {
+		c.arrived <- struct{}{}
+		select {
+		case <-c.release:
+		case <-ctx.Done():
+		}
+	}
+	c.mutex.Lock()
+	c.running--
+	c.mutex.Unlock()
+	return &Outcome{Text: "done", Turns: 1, Stop: StopDone, Usage: Usage{Calls: 1}}, nil
+}
+
+// TestSchedulerAsksTheHostBeforeLaunching is the headless half of the admission
+// doctrine. The governor's comment claims it covers "chat's runner, a headless
+// runner, and anything else claiming leaves in this process", but the scheduler
+// gated only on its own concurrency number and the dollar rail — so `aforge run
+// --concurrency 8` launched eight leaves onto a machine already at ten times
+// its cores, and the gate the resident honours was invisible here.
+func TestSchedulerAsksTheHostBeforeLaunching(t *testing.T) {
+	build := func() (*plan.Graph, *countingExecutor) {
+		graph := &plan.Graph{Goal: "g", Stages: []plan.Stage{{Title: "One"}}, NextID: 1}
+		for _, title := range []string{"A", "B", "C"} {
+			graph.Add(plan.Node{Stage: 1, Title: title})
+		}
+		return graph, &countingExecutor{}
+	}
+
+	// A saturated machine: the first leaf always gets through — someone else's
+	// load must never leave aforge running nothing — and the second one does
+	// not, however much concurrency the panel was given.
+	graph, fake := build()
+	fake.arrived = make(chan struct{}, 3)
+	fake.release = make(chan struct{})
+	scheduler := NewScheduler(NewRegistry(fake), workspace(t), 4).WithGovernor(saturatedGovernor())
+	stopped := make(chan error, 1)
+	go func() { stopped <- scheduler.Run(context.Background(), graph) }()
+	select {
+	case <-fake.arrived:
+	case <-time.After(10 * time.Second):
+		t.Fatal("the starvation guard failed: no leaf launched at all")
+	}
+	select {
+	case <-fake.arrived:
+		t.Fatal("a second leaf launched onto a machine ten times over its ceiling")
+	case <-time.After(250 * time.Millisecond):
+	}
+	close(fake.release)
+	if err := <-stopped; err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	for _, node := range graph.Nodes {
+		if node.State != plan.StateDone {
+			t.Fatalf("node %d = %s, want done — back-pressure must delay work, not drop it", node.ID, node.State)
+		}
+	}
+	fake.mutex.Lock()
+	peak := fake.peak
+	fake.mutex.Unlock()
+	if peak != 1 {
+		t.Fatalf("peak concurrency under saturation = %d, want 1", peak)
+	}
+
+	// The same graph on a calm machine launches all three together. A gate that
+	// refused here would be a hold, and a hold is exactly what the governor is
+	// designed never to be.
+	calm, barrier := build()
+	barrier.arrived = make(chan struct{}, 3)
+	barrier.release = make(chan struct{})
+	calmScheduler := NewScheduler(NewRegistry(barrier), workspace(t), 4).WithGovernor(calmGovernor())
+	finished := make(chan error, 1)
+	go func() { finished <- calmScheduler.Run(context.Background(), calm) }()
+	for launched := 0; launched < 3; launched++ {
+		select {
+		case <-barrier.arrived:
+		case <-time.After(10 * time.Second):
+			t.Fatalf("only %d of 3 leaves launched on a calm machine", launched)
+		}
+	}
+	close(barrier.release)
+	if err := <-finished; err != nil {
+		t.Fatalf("Run: %v", err)
 	}
 }

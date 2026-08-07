@@ -422,7 +422,7 @@ func TestSchedulerAbandonmentTearsDownLeafJobs(t *testing.T) {
 	linear := NewLinear(client, space, nil, 5, 1_000_000, time.Minute)
 	graph := &plan.Graph{Goal: "g", Stages: []plan.Stage{{Title: "One"}}, NextID: 1}
 	id := graph.Add(plan.Node{Stage: 1, Title: "Wedged"})
-	scheduler := NewScheduler(NewRegistry(linear), space, 1)
+	scheduler := NewScheduler(NewRegistry(linear), space, 1).WithGovernor(calmGovernor())
 	scheduler.NodeTimeout = 2 * time.Second
 	if err := scheduler.Run(context.Background(), graph); err != nil {
 		close(release)

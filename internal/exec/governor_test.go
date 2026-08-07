@@ -16,6 +16,18 @@ func testGovernor(load *float64, ok *bool, now *time.Time) *Governor {
 	)
 }
 
+// calmGovernor and saturatedGovernor are the two host readings the scheduler
+// tests need. Every scheduler test installs one of them: the process-wide gate
+// reads the real machine, so a suite that left it in place would pass or hang
+// depending on what else happened to be running while it ran.
+func calmGovernor() *Governor {
+	return NewGovernorFrom(func() (float64, bool) { return GovernorLoadResume / 2, true })
+}
+
+func saturatedGovernor() *Governor {
+	return NewGovernorFrom(func() (float64, bool) { return GovernorLoadCeiling * 10, true })
+}
+
 func TestGovernorAdmitsUnderTheCeilingAndHoldsOverIt(t *testing.T) {
 	load, ok := 0.4, true
 	now := time.Date(2026, 8, 6, 9, 0, 0, 0, time.UTC)
