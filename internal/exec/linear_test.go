@@ -286,3 +286,21 @@ func TestReflexExecutorPromotesWithUsefulPartial(t *testing.T) {
 		t.Fatalf("reflex contract did not reach executor: %+v", client.seen)
 	}
 }
+
+// The leaf's contract and the delivery gate must not pull in opposite
+// directions. The worker is told to keep its final message short and put the
+// long version in a file — which is precisely the pressure that produced a
+// pointer where an answer belonged — so the paragraph has to name the split it
+// means: the answer against its working, never the answer against a pointer to
+// the answer.
+func TestTheFinalMessageContractSplitsAnswerFromWorkingNotFromPointer(t *testing.T) {
+	for _, required := range []string{
+		"is the deliverable itself",
+		"never end with a statement that the work is done",
+		"The split is between the answer\nand its working, never between the answer and a pointer to the answer",
+	} {
+		if !strings.Contains(systemPrompt, required) {
+			t.Fatalf("the leaf contract no longer resolves the pointer pressure: %q missing", required)
+		}
+	}
+}

@@ -80,12 +80,19 @@ Your final message — the one where you call no tools — is the deliverable it
 not a report about it. Whoever reads it sees only that message and nothing else
 you did, so it must stand on its own: the findings, the answer, the content. If
 you wrote files, say which and what is in them. Never end with a summary of your
-process.
+process, and never end with a statement that the work is done, that the file is
+written, or that the result is consistent and verified — those are things about
+the work, and the person asked for the work. If they asked a question, the
+answer is in this message; if they asked for a judgement, the verdict is in this
+message, in so many words.
 
 Keep that final message under about 300 words. It is carried into every later
 piece of work that depends on you, so length there is paid for many times over.
 Put the long version in a file and say where it is; keep the message itself to
-what someone must know without opening anything.`
+what someone must know without opening anything. The split is between the answer
+and its working, never between the answer and a pointer to the answer: the
+conclusion, the numbers that carry it and the verdict stay in the message, and
+the file holds the evidence, the detail and the reasoning behind them.`
 
 const reflexSystemPrompt = `
 

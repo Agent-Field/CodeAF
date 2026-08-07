@@ -20,8 +20,9 @@ import (
 // one" in a way no cue list anticipated. So this file stops constraining the
 // utterance space and constrains the action space instead. The model is handed
 // typed tools over the graph and nothing else — it can read the board, one
-// job's whole result, and aforge's own manual, and it can ask for one of five
-// verbs against ids it read there. Every rule that
+// job's whole result, a file that job actually wrote, and aforge's own manual;
+// it can ask for one of five verbs against ids it read there; and it can write
+// one durable line into the notebook. Every rule that
 // makes a change safe lives inside the tools: the store's own legality table,
 // the class path's unit rule, the surgery gates, the ordinary journalled
 // commands, the same structured confirm question. A model that misreads the
@@ -46,6 +47,19 @@ const (
 	// knows which row the user meant. Both exist because the guess is free and
 	// the decision is right.
 	beltToolResult = "result"
+	// beltToolRead finishes what result starts. result returns what a job said
+	// about itself and the paths it wrote; when what was asked for is inside one
+	// of those documents, result hands back a pointer and the loop used to stop
+	// there — offering to fetch a file it had no way to open. artifact.go holds
+	// the boundary this reads through.
+	beltToolRead = "read"
+	// beltToolNote is the belt's only write that never touches the graph. The
+	// loop could change work and answer questions and had nowhere at all to put
+	// a durable instruction about its own behaviour, so "always answer from the
+	// result" was replied to warmly and recorded nowhere, and the next session
+	// failed identically. It writes through the same fact machinery the router's
+	// remember already uses: one fact_learned event, the same notebook.
+	beltToolNote = "note"
 
 	// beltConfirmAction and beltKeepAction ride the existing surgery option
 	// codec, so a belt confirmation replays through exactly the durable
@@ -72,6 +86,10 @@ const (
 	// on this exact job — and it stays in the manual read's league because both
 	// are one message's whole grounding.
 	beltResultBytes = 4 << 10
+	// beltNoteBytes bounds one notebook line. A durable preference that will not
+	// fit in a sentence is not one preference, and the notebook is read into
+	// every later prompt under a budget of its own.
+	beltNoteBytes = 400
 )
 
 // beltTool and beltProp mirror the leaf toolbox's definition idiom. They are
@@ -124,6 +142,15 @@ func beltDefinitions() []ai.ToolDefinition {
 		beltTool(beltToolResult, "Read what one job actually produced: its findings in full, the files it wrote, what it spent, and how its parts ended. Always safe. Read it whenever the user asks what work found, produced, concluded or decided — the board only says how a job ended, and how it ended is not what it found.", map[string]any{
 			"id": beltProp("string", "one id from a board read"),
 		}, "id"),
+		beltTool(beltToolRead, "Open a file a job wrote and read what is inside it. Always safe. Use it the moment the answer to the question is in a document and what the job recorded only names that document — a result that says where the answer is has not given you the answer, and this is how you go and get it. Never offer to fetch something you can fetch with this call right now. Only files a job actually recorded can be opened.", map[string]any{
+			"job":  beltProp("string", "the job that wrote it, id from a board or result read"),
+			"file": beltProp("string", "the path or filename, as that job recorded it; omit it when the job wrote only one file"),
+		}, "job"),
+		beltTool(beltToolNote, "Write one durable thing the user has just told you into the notebook: how they want answers given, a correction to how something was done for them, a lasting fact about them or their setup. The test is whether it will still matter after this conversation is forgotten — task details and one-off instructions fail it. Call it before you tell them it is noted, because this call is the only thing that makes that true.", map[string]any{
+			"body":  beltProp("string", "one sharp sentence, in the user's own terms"),
+			"scope": beltProp("string", `what it is about: "user" for a personal preference, otherwise tool:<name>, repo:<path>, file:<path>, or domain:<topic>`),
+			"kind":  beltProp("string", `"preference" for how they want things done, "fact" for something that is simply true`),
+		}, "body"),
 	}
 }
 
@@ -170,6 +197,10 @@ func (run *beltRun) execute(name, arguments string) (string, bool) {
 		return run.manual(args)
 	case beltToolResult:
 		return run.result(args)
+	case beltToolRead:
+		return run.read(args)
+	case beltToolNote:
+		return run.note(args)
 	}
 	return fmt.Sprintf("there is no tool named %q", name), true
 }
@@ -308,22 +339,89 @@ func (run *beltRun) manual(args map[string]any) (string, bool) {
 }
 
 // result is a read like board and manual are reads: it records nothing, so a
-// message that only asked what a job found journals no command. It deliberately
-// does not go through beltJob — that resolver refuses settled work because the
-// verbs cannot touch it, and settled work is precisely what has findings.
+// message that only asked what a job found journals no command.
 func (run *beltRun) result(args map[string]any) (string, bool) {
-	id := beltString(args, "id")
-	if id == "" {
-		return "id must name one job from a board read", true
-	}
-	node, found, err := run.head.store.Node(id)
+	node, err := run.head.beltRecordedJob(beltString(args, "id"), "id")
 	if err != nil {
-		return "that job could not be read: " + err.Error(), true
-	}
-	if !found || node.ID == store.RootID || !beltAddressable(node) {
-		return fmt.Sprintf("there is no work of the user's with id %q — read the board again", id), true
+		return err.Error(), true
 	}
 	return run.head.renderResult(node), false
+}
+
+// read is the third read, and the only one whose subject is outside the graph.
+// It records nothing and journals nothing for the same reason board, manual and
+// result do not: asking what a document says changed nothing. What it may open
+// is decided entirely in artifact.go, which is where the security boundary and
+// its reasons are written down.
+func (run *beltRun) read(args map[string]any) (string, bool) {
+	node, err := run.head.beltRecordedJob(beltString(args, "job"), "job")
+	if err != nil {
+		return err.Error(), true
+	}
+	rendered, err := run.head.readArtifact(node, beltString(args, "file"))
+	if err != nil {
+		return err.Error(), true
+	}
+	return rendered, false
+}
+
+// note is durable feedback landing where durable feedback goes. It records
+// through the head's own fact writer, so the line it writes is indistinguishable
+// from one the router's remember wrote and is read back by the same notebook
+// render on every later message. Nothing new is stored and no event kind is
+// invented; the gap was never the machinery, it was that this loop had no hands
+// for it and answered "from now on" with nothing behind the words.
+func (run *beltRun) note(args map[string]any) (string, bool) {
+	body := truncateBytes(beltString(args, "body"), beltNoteBytes)
+	if body == "" {
+		return "body must say the durable thing in one sentence", true
+	}
+	scope := strings.ToLower(beltString(args, "scope"))
+	if scope == "" {
+		scope = "user"
+	}
+	kind := store.FactKind(strings.ToLower(beltString(args, "kind")))
+	switch kind {
+	case store.FactPreference, store.FactQuirk, store.FactLesson, store.FactPlain:
+	default:
+		kind = store.FactPreference
+	}
+	fact, err := run.head.store.RecordFactFrom(store.FactWriterHead, store.RootID, scope, kind, body)
+	if err != nil {
+		return "that could not be written down: " + err.Error(), true
+	}
+	// The receipt is the record, which is the point: a note that failed to
+	// journal produces a tool error, and the loop can then only say so.
+	//
+	// It records the receipt without claiming the message, which is what
+	// separates this from every other write on the belt. "Always answer from the
+	// result, and rerun the scans" is one durable preference and one piece of
+	// work; a note that marked the run as acted would let the loop answer with
+	// the receipt and swallow the rest. The fact is journalled either way, the
+	// store deduplicates it, and the sentinel stays free to hand the sentence
+	// back to the router.
+	run.did = append(run.did, "Noted — "+firstLine(fact.Body))
+	return fmt.Sprintf("written into the notebook as #%d under %s; it is in front of you on every later message",
+		fact.Seq, fact.Scope), false
+}
+
+// beltRecordedJob resolves an id for the two reads that are allowed to name work
+// that has already finished. It deliberately does not go through beltJob: that
+// resolver refuses settled work because the verbs cannot touch it, and settled
+// work is precisely what has findings and files.
+func (h *Head) beltRecordedJob(id, field string) (store.Node, error) {
+	id = strings.TrimSpace(id)
+	if id == "" {
+		return store.Node{}, fmt.Errorf("%s must name one job from a board read", field)
+	}
+	node, found, err := h.store.Node(id)
+	if err != nil {
+		return store.Node{}, fmt.Errorf("that job could not be read: %w", err)
+	}
+	if !found || node.ID == store.RootID || !beltAddressable(node) {
+		return store.Node{}, fmt.Errorf("there is no work of the user's with id %q — read the board again", id)
+	}
+	return node, nil
 }
 
 // renderResult is one job's whole account of itself. The finding comes first

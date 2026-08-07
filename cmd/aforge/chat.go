@@ -511,7 +511,8 @@ func runChat(args []string) error {
 					revision := task
 					revision.Inputs = append(append([]exec.Input{}, inputs...), exec.Input{
 						Result: "A reviewer compared the previous attempt against the original request and found gaps that must be closed:\n" + gate.Gaps +
-							"\n\nThe previous attempt (build on it, fix the gaps, do not start over):\n" + text,
+							"\n\nThe previous attempt (build on it, fix the gaps, do not start over):\n" + text +
+							"\n\n" + gateRevisionContract,
 					})
 					retryCtx := provider.WithCallShape(settings.ExecContext(ctx), provider.ClassExecLeaf, 1, shape)
 					polished, polishErr := runLeafWithWatchdog(retryCtx, linear, revision, deadline+2*time.Minute)
@@ -2039,11 +2040,24 @@ func nodeDisplay(node store.Node) string {
 // fail must name the specific element of the request that is absent. The
 // failure mode being prevented is the gate that always finds something —
 // polish loops that spend the user's money on taste.
+//
+// The middle paragraph was added after a live failure the gate waved through. A
+// worker asked to judge an architecture plan wrote its judgement into a file and
+// ended with "the deliverable is written and verified against the actual repo
+// source" — true, complete, and containing no verdict. That text became the
+// node's summary, and the summary is the single source every later surface
+// reads, so the answer existed nowhere the user or the head could reach it. The
+// paragraph is stated as a value rather than a list of giveaway phrases,
+// because the next way to describe work instead of doing it is always a phrasing
+// nobody wrote down: the question is whether the substance is present, not
+// whether some sentence pattern is.
 const judgeDeliverablePrompt = `You are the final gate before a finished piece of work is handed to the person who asked for it. You receive their verbatim request, the compiled goal, and the deliverable as produced.
 
 Judge exactly one question: would the person who asked accept this as done? Default to PASS. The gate exists for real gaps, not polish — wording, style, and things they never asked for are not gaps.
 
 FAIL only when you can name a specific element of the request that is absent, unanswered, or unsupported by evidence the goal promised. Quote or name the missing element concretely enough that a worker could close the gap from your words alone.
+
+One absence counts exactly like every other and is the one most easily waved through: the substance itself. What you are handed IS the deliverable — it is the whole of what the person will read, and nothing beside it will be opened for them. So text that reports on the work rather than carrying it — that the work is finished, that a file now holds the answer, that the analysis was checked and is consistent — has described the deliverable in place of being it, and the element of the request that is absent is the answer: the verdict that was asked for, the findings, the numbers, the recommendation. Name that as the gap. A pointer to where the answer lives is not the answer however true the pointer is; naming the file is right beside the substance and never instead of it. This is still one absence and not a second style test: text that gives the answer in its own plain words passes whatever shape it takes.
 
 Return exactly one JSON object, nothing else: {"pass": true} or {"pass": false, "gaps": "<the named gaps>"}`
 
@@ -2056,6 +2070,16 @@ var judgeDeliverableSchema = json.RawMessage(`{
   "required": ["pass"],
   "additionalProperties": false
 }`)
+
+// gateRevisionContract closes every revision, not only the ones whose named gap
+// was a missing answer. The revision's own final message replaces the first
+// attempt as the node's summary, and a second pass that closes a real gap inside
+// a file and then reports that it did so has moved the original failure one
+// round along rather than fixing it. The worker was told this once already in
+// its own contract; a revision is the moment it demonstrably was not heard.
+const gateRevisionContract = "Your final message is the deliverable and the only thing the person will read. " +
+	"Put the substance in it — the verdict, the findings, the numbers they asked for — " +
+	"and name the files beside that substance, never in place of it."
 
 type deliverableJudgment struct {
 	Pass    bool
