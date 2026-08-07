@@ -100,6 +100,7 @@ const (
 	fallbackSpeechModel  = "openai/gpt-4o-mini-tts"
 	preferredMusicModel  = "google/lyria-3-clip-preview"
 	preferredVideoModel  = "bytedance/seedance-1-5-pro"
+	preferredVisionModel = "qwen/qwen3.5-vl-32b-instruct"
 
 	// DefaultPracticeBudgetUSD is the daily carve-out reserved for self-origin
 	// curiosity work. The global rail remains an additional ceiling.
@@ -118,12 +119,13 @@ type Config struct {
 	BaseURL    string
 	Model      string
 	VoiceModel string
-	// Generation model fields are capability slots. Empty means resolve at use
+	// Media model fields are capability slots. Empty means resolve at use
 	// from the live catalog, rather than trusting a floating default slug.
 	ImageModel        string
 	SpeechModel       string
 	MusicModel        string
 	VideoModel        string
+	VisionModel       string
 	Temperature       float64
 	MaxTokens         int
 	Timeout           time.Duration
@@ -162,6 +164,7 @@ func Load() (Config, error) {
 		SpeechModel:       strings.TrimSpace(os.Getenv("AFORGE_SPEECH_MODEL")),
 		MusicModel:        strings.TrimSpace(os.Getenv("AFORGE_MUSIC_MODEL")),
 		VideoModel:        strings.TrimSpace(os.Getenv("AFORGE_VIDEO_MODEL")),
+		VisionModel:       strings.TrimSpace(os.Getenv("AFORGE_VISION_MODEL")),
 		Temperature:       DefaultTemperature,
 		MaxTokens:         DefaultMaxTokens,
 		Timeout:           DefaultTimeout,
@@ -335,6 +338,31 @@ func (c Config) ResolveVideoModel(models *catalog.Catalog) string {
 	return resolveOutputModel(models, "video", preferredVideoModel)
 }
 
+// ResolveVisionModel applies the inspection-proxy order at the moment a leaf
+// starts: an explicit environment slot, the live talk and work choices when
+// each advertises image input, Qwen VL when advertised, then the first model
+// with image input. Unlike generation slots, an unadvertised default is never
+// invented: no result means view_image can preserve its calm refusal.
+func (c Config) ResolveVisionModel(models *catalog.Catalog, talkModel, workModel string) string {
+	if configured := strings.TrimSpace(c.VisionModel); configured != "" {
+		return configured
+	}
+	if models == nil {
+		return ""
+	}
+	for _, candidate := range []string{talkModel, workModel, preferredVisionModel} {
+		candidate = strings.TrimSpace(candidate)
+		if candidate != "" && models.Supports(candidate, "input", "image") {
+			return candidate
+		}
+	}
+	candidates := models.ModelsWithInput("image")
+	if len(candidates) > 0 {
+		return candidates[0].ID
+	}
+	return ""
+}
+
 func recognizableTTS(model catalog.Model) bool {
 	for _, output := range model.OutputModalities {
 		if strings.EqualFold(strings.TrimSpace(output), "speech") {
@@ -375,7 +403,6 @@ func validateDailyBudgetValue(raw, source string) (float64, error) {
 	}
 	return validateDailyBudget(value, source)
 }
-
 
 // DailyBudgetUSD resolves the dollar rail without requiring a provider key.
 // Status-only commands use it even when they never construct a model client.
@@ -430,6 +457,14 @@ func (c Config) ClientFor(model string) (router.Client, error) {
 // bearer key, base URL, attribution, timeout, and transport configuration.
 func (c Config) MediaClient() (*provider.MediaClient, error) {
 	return provider.NewMediaClient(c.providerConfig(c.Model))
+}
+
+// VisionClient is deliberately direct rather than panel-routed. view_image
+// resolves one capability-qualified model and overrides this client's default
+// per call; routing it again could substitute a text-only model and would make
+// the proxy attribution dishonest.
+func (c Config) VisionClient() (*provider.Client, error) {
+	return provider.NewClient(c.providerConfig(c.Model))
 }
 
 func (c Config) providerConfig(model string) provider.Config {

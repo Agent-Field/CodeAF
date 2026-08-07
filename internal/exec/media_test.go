@@ -3,7 +3,11 @@ package exec
 import (
 	"context"
 	"encoding/base64"
+	"encoding/json"
 	"errors"
+	"fmt"
+	"io"
+	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
@@ -12,6 +16,51 @@ import (
 	"github.com/Agent-Field/aforge-v2/internal/provider"
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 )
+
+type execRoundTripFunc func(*http.Request) (*http.Response, error)
+
+func (fn execRoundTripFunc) RoundTrip(request *http.Request) (*http.Response, error) {
+	return fn(request)
+}
+
+type visionWireCapture struct {
+	calls    int
+	bodies   []map[string]any
+	status   int
+	response string
+}
+
+func (c *visionWireCapture) client(t *testing.T) *provider.Client {
+	t.Helper()
+	httpClient := &http.Client{Transport: execRoundTripFunc(func(request *http.Request) (*http.Response, error) {
+		payload, _ := io.ReadAll(request.Body)
+		var body map[string]any
+		if err := json.Unmarshal(payload, &body); err != nil {
+			t.Errorf("decode vision request: %v", err)
+		}
+		c.calls++
+		c.bodies = append(c.bodies, body)
+		status := c.status
+		if status == 0 {
+			status = http.StatusOK
+		}
+		response := c.response
+		if response == "" {
+			response = `{"model":"vendor/vision-model","choices":[{"index":0,"finish_reason":"stop","message":{"role":"assistant","content":"AgentField is centered in a blue card."}}],"usage":{"prompt_tokens":19,"completion_tokens":8,"cost":0.125}}`
+		}
+		return &http.Response{
+			StatusCode: status, Status: http.StatusText(status), Header: make(http.Header),
+			Body: io.NopCloser(strings.NewReader(response)), Request: request,
+		}, nil
+	})}
+	client, err := provider.NewClient(provider.Config{
+		APIKey: "test-key", BaseURL: "https://provider.example/v1", Model: "base/model", HTTPClient: httpClient,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return client
+}
 
 type fakeMediaProvider struct {
 	imageCalls     int
@@ -112,6 +161,15 @@ func TestMediaToolsAreRegisteredAndHonorTheSpendGate(t *testing.T) {
 	for name, found := range want {
 		if !found {
 			t.Errorf("%s was not registered", name)
+		}
+	}
+	for _, definition := range definitions {
+		if definition.Function.Name != "view_image" {
+			continue
+		}
+		encoded, _ := json.Marshal(definition)
+		if !strings.Contains(definition.Function.Description, "vision model looks") || !strings.Contains(string(encoded), `"question"`) {
+			t.Fatalf("view_image definition = %s", encoded)
 		}
 	}
 	tools.media.BeforeSpend = func(context.Context, float64) error { return errors.New("rail") }
@@ -233,7 +291,7 @@ func TestSpeakWritesMP3AndOnlySuccessfulCallRecordsUsage(t *testing.T) {
 	}
 }
 
-func TestViewImageCapabilityGateBothWays(t *testing.T) {
+func TestViewImageNativePathIsUnchangedAndCarriesTargetedQuestion(t *testing.T) {
 	fake := &fakeMediaProvider{}
 	modalities := fakeModalities{"vision/model:input:image": true}
 	tools, space := mediaToolbox(t, fake, modalities)
@@ -242,19 +300,164 @@ func TestViewImageCapabilityGateBothWays(t *testing.T) {
 	}
 	loaded := tools.Execute(context.Background(), "view_image", `{"path":"look.png"}`)
 	if loaded.IsError || len(loaded.Followup) != 2 || loaded.Followup[1].ImageURL == nil ||
-		!strings.HasPrefix(loaded.Followup[1].ImageURL.URL, "data:image/png;base64,") {
+		!strings.HasPrefix(loaded.Followup[1].ImageURL.URL, "data:image/png;base64,") ||
+		loaded.Content != "⌾ look.png\nImage loaded for the next turn." || loaded.Followup[0].Text != "Image from look.png:" ||
+		loaded.Usage != (Usage{}) {
 		t.Fatalf("loaded = %+v", loaded)
+	}
+	targeted := tools.Execute(context.Background(), "view_image", `{"path":"look.png","question":"Does the text read exactly AgentField?"}`)
+	if targeted.IsError || !strings.Contains(targeted.Followup[0].Text, "Question: Does the text read exactly AgentField?") {
+		t.Fatalf("targeted native view = %+v", targeted)
 	}
 
 	tools.media.WorkingModel = "text/model"
 	refused := tools.Execute(context.Background(), "view_image", `{"path":"look.png"}`)
-	if !refused.IsError || !strings.Contains(refused.Content, "text/model can't see images") || len(refused.Followup) != 0 {
+	if !refused.IsError || refused.Content != "text/model can't see images — continue with file metadata or use a vision model; no vision model available" || len(refused.Followup) != 0 {
 		t.Fatalf("refused = %+v", refused)
 	}
 	tools.media.WorkingModel = "vision/model"
 	unsupported := tools.Execute(context.Background(), "view_image", `{"path":"look.svg"}`)
 	if !unsupported.IsError || !strings.Contains(unsupported.Content, "only png, jpeg, webp, and gif") {
 		t.Fatalf("unsupported image = %+v", unsupported)
+	}
+}
+
+func TestViewImageProxySendsBase64QuestionAndReturnsAttributedUsage(t *testing.T) {
+	wire := &visionWireCapture{}
+	tools, space := mediaToolbox(t, &fakeMediaProvider{}, fakeModalities{})
+	tools.media.WorkingModel = "text/model"
+	tools.media.VisionModel = "vendor/vision-model"
+	tools.media.VisionClient = wire.client(t)
+	if err := os.WriteFile(filepath.Join(space.Root(), "look.png"), []byte("pixels"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	gateBeforeCall := false
+	tools.media.BeforeSpend = func(_ context.Context, amount float64) error {
+		gateBeforeCall = wire.calls == 0 && amount == 0
+		return nil
+	}
+	result := tools.Execute(context.Background(), "view_image", `{"path":"look.png","question":"Does the text read exactly AgentField?"}`)
+	if result.IsError || result.Content != "seen by vision-model: AgentField is centered in a blue card." ||
+		result.Usage.Calls != 1 || result.Usage.PromptTokens != 19 || result.Usage.CompletionTokens != 8 || result.Usage.Cost != 0.125 {
+		t.Fatalf("proxy result = %+v", result)
+	}
+	if wire.calls != 1 || !gateBeforeCall || len(wire.bodies) != 1 {
+		t.Fatalf("proxy calls=%d gate_before=%t", wire.calls, gateBeforeCall)
+	}
+	body := wire.bodies[0]
+	if body["model"] != "vendor/vision-model" {
+		t.Fatalf("proxy model = %#v", body["model"])
+	}
+	messages, _ := body["messages"].([]any)
+	if len(messages) != 1 {
+		t.Fatalf("proxy messages = %#v", body["messages"])
+	}
+	message, _ := messages[0].(map[string]any)
+	parts, _ := message["content"].([]any)
+	if len(parts) != 2 {
+		t.Fatalf("proxy content = %#v", message["content"])
+	}
+	textPart, _ := parts[0].(map[string]any)
+	imagePart, _ := parts[1].(map[string]any)
+	imageURL, _ := imagePart["image_url"].(map[string]any)
+	if textPart["type"] != "text" || textPart["text"] != "Does the text read exactly AgentField?" ||
+		imagePart["type"] != "image_url" || !strings.HasPrefix(fmt.Sprint(imageURL["url"]), "data:image/png;base64,") {
+		t.Fatalf("proxy content parts = %#v", parts)
+	}
+}
+
+func TestViewImageProxyUsesDefaultQuestion(t *testing.T) {
+	wire := &visionWireCapture{}
+	tools, space := mediaToolbox(t, &fakeMediaProvider{}, fakeModalities{})
+	tools.media.WorkingModel = "text/model"
+	tools.media.VisionModel = "vendor/vision-model"
+	tools.media.VisionClient = wire.client(t)
+	if err := os.WriteFile(filepath.Join(space.Root(), "look.jpg"), []byte("pixels"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	result := tools.Execute(context.Background(), "view_image", `{"path":"look.jpg"}`)
+	if result.IsError || wire.calls != 1 {
+		t.Fatalf("default proxy result = %+v calls=%d", result, wire.calls)
+	}
+	messages, _ := wire.bodies[0]["messages"].([]any)
+	message, _ := messages[0].(map[string]any)
+	parts, _ := message["content"].([]any)
+	textPart, _ := parts[0].(map[string]any)
+	if textPart["text"] != defaultImageQuestion {
+		t.Fatalf("default question = %#v", textPart["text"])
+	}
+}
+
+func TestViewImageProxySpendGateAndFailureRecordNoUsage(t *testing.T) {
+	for _, test := range []struct {
+		name string
+		gate bool
+	}{
+		{name: "gate", gate: true},
+		{name: "provider failure"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			wire := &visionWireCapture{}
+			if !test.gate {
+				wire.status = http.StatusBadRequest
+				wire.response = `{"error":{"message":"upstream failed"}}`
+			}
+			tools, space := mediaToolbox(t, &fakeMediaProvider{}, fakeModalities{})
+			tools.media.WorkingModel = "text/model"
+			tools.media.VisionModel = "vendor/vision-model"
+			tools.media.VisionClient = wire.client(t)
+			if err := os.WriteFile(filepath.Join(space.Root(), "look.webp"), []byte("pixels"), 0o644); err != nil {
+				t.Fatal(err)
+			}
+			if test.gate {
+				tools.media.BeforeSpend = func(context.Context, float64) error { return errors.New("rail") }
+			}
+			result := tools.Execute(context.Background(), "view_image", `{"path":"look.webp"}`)
+			if !result.IsError || result.Usage != (Usage{}) {
+				t.Fatalf("failed proxy = %+v", result)
+			}
+			wantCalls := 1
+			if test.gate {
+				wantCalls = 0
+				if !strings.Contains(result.Content, "paused at the daily budget") {
+					t.Fatalf("gated proxy = %+v", result)
+				}
+			}
+			if wire.calls != wantCalls {
+				t.Fatalf("provider calls = %d, want %d", wire.calls, wantCalls)
+			}
+		})
+	}
+}
+
+func TestViewImageProxyRailsRefuseBeforeSpendOrCompletion(t *testing.T) {
+	wire := &visionWireCapture{}
+	tools, space := mediaToolbox(t, &fakeMediaProvider{}, fakeModalities{})
+	tools.media.WorkingModel = "text/model"
+	tools.media.VisionModel = "vendor/vision-model"
+	tools.media.VisionClient = wire.client(t)
+	spendCalls := 0
+	tools.media.BeforeSpend = func(context.Context, float64) error { spendCalls++; return nil }
+	if err := os.WriteFile(filepath.Join(space.Root(), "look.svg"), []byte("<svg/>"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	oversized := filepath.Join(space.Root(), "huge.png")
+	file, err := os.Create(oversized)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := file.Truncate(maxImageInputBytes + 1); err != nil {
+		file.Close()
+		t.Fatal(err)
+	}
+	if err := file.Close(); err != nil {
+		t.Fatal(err)
+	}
+	wrong := tools.Execute(context.Background(), "view_image", `{"path":"look.svg"}`)
+	huge := tools.Execute(context.Background(), "view_image", `{"path":"huge.png"}`)
+	if !wrong.IsError || !strings.Contains(wrong.Content, "only png, jpeg, webp, and gif") ||
+		!huge.IsError || !strings.Contains(huge.Content, "over the 10 MB image limit") || wire.calls != 0 || spendCalls != 0 {
+		t.Fatalf("wrong=%+v huge=%+v provider_calls=%d spend_calls=%d", wrong, huge, wire.calls, spendCalls)
 	}
 }
 
