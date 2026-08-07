@@ -54,6 +54,10 @@ type Task struct {
 	// without being killed. Nil (the default, and the whole one-shot path)
 	// costs nothing.
 	Steer func() []string
+
+	// control is installed by the scheduler so its watchdog can tear down a
+	// Toolbox even when the executor goroutine itself is abandoned.
+	control *leafControl
 }
 
 // Outcome is what came back.
