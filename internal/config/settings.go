@@ -43,13 +43,17 @@ const (
 	CategoryRhythm     = "rhythm"
 	CategoryLearning   = "learning"
 	CategoryDocuments  = "documents & vision"
+	// CategorySharing groups what aforge puts of itself into work that leaves
+	// the machine under the user's name. None of the other groups is about the
+	// outside world, so attribution gets its own rather than hiding in one.
+	CategorySharing    = "sharing"
 	CategoryAppearance = "appearance"
 )
 
 // SettingCategories is the render order of the sheet.
 var SettingCategories = []string{
 	CategoryModels, CategoryMoney, CategoryRhythm,
-	CategoryLearning, CategoryDocuments, CategoryAppearance,
+	CategoryLearning, CategoryDocuments, CategorySharing, CategoryAppearance,
 }
 
 // Persisted keys are also the json field names in the profile's config.json.
@@ -64,6 +68,7 @@ const (
 	KeyProposeSkills  = "propose_new_skills"
 	KeyDocumentEngine = "document_engine"
 	KeyVisionModel    = "vision_model"
+	KeyAttribution    = "attribution"
 	KeySplitPct       = "split_pct"
 )
 
@@ -109,6 +114,11 @@ const (
 	// should learn. Same contract as the share above: persisted now, read by
 	// the loops that follow.
 	DefaultProposeSkills = true
+
+	// DefaultAttribution signs by default, because the signature is provenance:
+	// work the user did not type should be readable as such by whoever reads
+	// the history later. One row turns it off.
+	DefaultAttribution = true
 
 	// The divider clamps so neither pane can be set into uselessness. The TUI
 	// reads these so the drag, the [ ] nudge, and the sheet agree.
@@ -368,6 +378,14 @@ func (s *Settings) build() []Setting {
 			read:  func() string { return VisionModelAt(dir) },
 			write: func(raw string) error { return writeText(dir, KeyVisionModel, raw) },
 		},
+		Setting{
+			Key: KeyAttribution, Category: CategorySharing, Kind: SettingBool,
+			Label: "attribution", Env: "AFORGE_ATTRIBUTION",
+			Hint: "signs commits and PRs aforge writes for you — one trailer, one footer line. " +
+				"A change lands on the next job.",
+			read:  func() string { return formatBool(AttributionAt(dir)) },
+			write: func(raw string) error { return writeBool(dir, KeyAttribution, raw) },
+		},
 		s.splitRow(),
 	)
 	return rows
@@ -562,6 +580,22 @@ func ProposeSkillsAt(profileDir string) bool {
 		return value
 	}
 	return DefaultProposeSkills
+}
+
+// AttributionAt resolves whether aforge signs the git work it does for the
+// user. A malformed pin reads as the default rather than refusing a launch over
+// a signature.
+func AttributionAt(profileDir string) bool {
+	if raw := strings.TrimSpace(os.Getenv("AFORGE_ATTRIBUTION")); raw != "" {
+		if value, err := parseBool(raw); err == nil {
+			return value
+		}
+		return DefaultAttribution
+	}
+	if value, ok := persistedBool(profileDir, KeyAttribution); ok {
+		return value
+	}
+	return DefaultAttribution
 }
 
 // DocumentEngineAt resolves the document-reading rung.

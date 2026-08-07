@@ -178,7 +178,7 @@ func runExecute(args []string) error {
 		mediaTools.VideoPrice = video.RequestPrice
 	}
 	linear := exec.NewLinear(client, space, web, *maxTurns, *maxTokens, deadline).
-		WithStore(history).WithMedia(mediaTools)
+		WithStore(history).WithMedia(mediaTools).WithAttribution(settings.Attribution)
 	scheduler := exec.NewScheduler(exec.NewRegistry(linear), space, *concurrency)
 	scheduler.Budget = *runBudget
 	preauthorized := spendPreauthorized(*yesSpend, os.Getenv)

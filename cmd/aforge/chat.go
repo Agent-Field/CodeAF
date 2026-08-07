@@ -311,7 +311,8 @@ func runChat(args []string) error {
 			return nil
 		}
 		linear := exec.NewLinear(workingClient, jobSpace, web, turns, tokens, deadline).
-			WithStore(graph).WithMedia(&leafMedia)
+			WithStore(graph).WithMedia(&leafMedia).
+			WithAttribution(config.AttributionAt(settings.ProfileDir))
 		shape := "atomic"
 		if isReflex {
 			shape = "reflex"
