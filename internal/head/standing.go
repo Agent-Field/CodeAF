@@ -271,10 +271,26 @@ func normalizeQuestionOptions(options []store.QuestionOption) []store.QuestionOp
 	return normalized
 }
 
+// reminderAction lifts the thing to be said out of "remind me to X".
+//
+// The separator is the FIRST " to " after the cue, not the last one. Taking the
+// last one is a plausible-looking mistake that quietly destroys the reminder:
+// "remind me to submit the report to finance" split on the trailing " to " and
+// promised to say "finance". The word after "remind me" begins the message and
+// everything from there is the message, including any further "to" inside it.
 func reminderAction(instruction string) string {
 	lower := strings.ToLower(instruction)
-	if separator := strings.LastIndex(lower, " to "); separator >= 0 {
-		message := strings.TrimSpace(instruction[separator+4:])
+	cue := -1
+	for _, phrase := range []string{"remind me", "notify me", "alert me"} {
+		if index := strings.Index(lower, phrase); index >= 0 && (cue < 0 || index < cue) {
+			cue = index + len(phrase)
+		}
+	}
+	if cue < 0 {
+		cue = 0
+	}
+	if separator := strings.Index(lower[cue:], " to "); separator >= 0 {
+		message := strings.TrimSpace(instruction[cue+separator+len(" to "):])
 		if message != "" {
 			return "Say: " + message
 		}
