@@ -390,7 +390,16 @@ func (t *Toolbox) viewImage(ctx context.Context, args map[string]any) Result {
 		},
 	}}, ai.WithModel(visionModel))
 	if err != nil || response == nil {
-		return errorf("image inspection failed — try another question or vision model")
+		// The cause reaches the worker verbatim: "try another model" is only
+		// actionable advice when the refusal names what went wrong.
+		cause := "the vision model returned nothing"
+		if err != nil {
+			cause = err.Error()
+		}
+		if len(cause) > 200 {
+			cause = cause[:200] + "…"
+		}
+		return errorf("image inspection failed via %s: %s", visionModelShort(visionModel), cause)
 	}
 	answer := strings.TrimSpace(response.Text())
 	if answer == "" {
