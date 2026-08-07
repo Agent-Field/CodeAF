@@ -174,8 +174,9 @@ func (t *Toolbox) Definitions() []ai.ToolDefinition {
 				"text":  prop("string", "text to speak"),
 				"voice": prop("string", "optional voice, default alloy"),
 			}, "text"),
-			define("view_image", "Load a workspace image into the next model turn so you can inspect it.", map[string]any{
-				"path": prop("string", "workspace-relative image path"),
+			define("view_image", "Look at a workspace image. If the current model cannot see, a vision model looks and reports back — pass question for a targeted check.", map[string]any{
+				"path":     prop("string", "workspace-relative image path"),
+				"question": prop("string", "optional targeted question about the image"),
 			}, "path"),
 		)
 	}
