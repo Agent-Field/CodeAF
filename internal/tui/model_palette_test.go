@@ -42,9 +42,9 @@ func TestModelPaletteSlotNavigationNumbersAndFocusOrder(t *testing.T) {
 	if model.modelSlotIndex != 0 {
 		t.Fatalf("up selected slot %d, want talk=0", model.modelSlotIndex)
 	}
-	_, _ = model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'8'}})
+	_, _ = model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'9'}})
 	if model.palette != paletteModel || model.modelRole != "boost" {
-		t.Fatalf("8 opened palette=%v role=%q, want boost picker", model.palette, model.modelRole)
+		t.Fatalf("9 opened palette=%v role=%q, want boost picker", model.palette, model.modelRole)
 	}
 	_ = model.View()
 	_, _ = model.updateMouseClick(model.paletteCloseBounds.x, model.paletteCloseBounds.y)

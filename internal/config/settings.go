@@ -69,7 +69,7 @@ const (
 
 // ModelSettingSlots is the palette's slot order, kept identical so the sheet
 // and the models door read the same list in the same sequence.
-var ModelSettingSlots = []string{"talk", "work", "voice", "image", "speech", "music", "video", "boost"}
+var ModelSettingSlots = []string{"talk", "work", "plan", "voice", "image", "speech", "music", "video", "boost"}
 
 // DocumentEngines are the four rungs AFORGE_DOC_ENGINE accepts.
 var DocumentEngines = []string{"auto", "local", "free", "ocr"}
@@ -457,6 +457,8 @@ func modelSlotEnvDefault(slot string) (string, bool) {
 	switch slot {
 	case "talk", "work":
 		return "AFORGE_MODEL", true
+	case "plan":
+		return "AFORGE_PLAN_MODEL", true
 	case "voice":
 		return "AFORGE_VOICE_MODEL", true
 	case "image":
@@ -478,6 +480,8 @@ func modelSlotHint(slot string) string {
 		return "the model that answers you here. It changes on your next message."
 	case "work":
 		return "the model that does the work. It changes on the next job."
+	case "plan":
+		return "the model that plans and reviews the work. Empty follows the work model."
 	case "boost":
 		return "the heavier model ctrl+b reaches for. Empty follows the work model."
 	case "voice":

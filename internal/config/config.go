@@ -119,9 +119,14 @@ const (
 
 // Config is the resolved runtime configuration.
 type Config struct {
-	APIKey     string
-	BaseURL    string
-	Model      string
+	APIKey  string
+	BaseURL string
+	Model   string
+	// PlanModel is the model that structures work — the task graph, replans,
+	// contracts, the delivery gate. Empty means the work model plans too, which
+	// is the default and the kill switch: with no plan slot configured exactly
+	// one client exists and nothing about the single-model path changes.
+	PlanModel  string
 	VoiceModel string
 	// Media model fields are capability slots. Empty means resolve at use
 	// from the live catalog, rather than trusting a floating default slug.
@@ -170,6 +175,7 @@ func Load() (Config, error) {
 		APIKey:            firstNonEmpty(os.Getenv("OPENROUTER_API_KEY"), os.Getenv("OPENAI_API_KEY"), PersistedAPIKey(os.Getenv("AFORGE_PROFILE_DIR"))),
 		BaseURL:           firstNonEmpty(os.Getenv("AFORGE_BASE_URL"), DefaultBaseURL),
 		Model:             firstNonEmpty(os.Getenv("AFORGE_MODEL"), DefaultModel),
+		PlanModel:         strings.TrimSpace(os.Getenv("AFORGE_PLAN_MODEL")),
 		VoiceModel:        firstNonEmpty(os.Getenv("AFORGE_VOICE_MODEL"), DefaultVoiceModel),
 		ImageModel:        strings.TrimSpace(os.Getenv("AFORGE_IMAGE_MODEL")),
 		SpeechModel:       strings.TrimSpace(os.Getenv("AFORGE_SPEECH_MODEL")),
@@ -448,6 +454,18 @@ func (c Config) Client() (router.Client, error) {
 		return provider.NewClient(c.providerConfig(c.Model))
 	}
 	return router.New(c.Panel, c.providerConfig(c.Model), c.ProfileDir)
+}
+
+// PlanModelResolved is the model planning-class calls run on: the plan slot
+// when the operator set one, otherwise the work model.
+func (c Config) PlanModelResolved() string {
+	return firstNonEmpty(c.PlanModel, c.Model)
+}
+
+// PlanSplit reports whether planning runs on a different model than the work.
+func (c Config) PlanSplit() bool {
+	resolved := c.PlanModelResolved()
+	return resolved != "" && resolved != c.Model
 }
 
 // ClientFor builds a client for an explicitly chosen model. With no panel it is

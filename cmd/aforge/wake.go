@@ -43,12 +43,18 @@ func runWake(args []string) error {
 		if err != nil {
 			return nil, err
 		}
+		// Same resolution as the chat surface: an explicit plan choice splits
+		// structuring from execution, empty follows the work model.
+		planClient, err := newLiveClient(settings, firstNonEmptyString(prefs.PlanModel, settings.PlanModel, taskClient.Model()))
+		if err != nil {
+			return nil, err
+		}
 		measured, _ := profile.Load(settings.ProfileDir, taskClient.Model(), "linear")
 		plan.UseAnchors(measured.Anchors)
 		plans := &jobPlans{graphs: map[string]plannedJob{}}
 		// A wake pass has no live boost slot to resolve model words against;
 		// jobs born here run on the configured work model.
-		return newResidentReconciler(settings, graph, chatClient, taskClient, plans, nil), nil
+		return newResidentReconciler(settings, graph, chatClient, taskClient, planClient, plans, nil), nil
 	})
 }
 

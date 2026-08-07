@@ -36,7 +36,9 @@ func runExecute(args []string) error {
 	runBudget := flags.Int("run-budget", 0, "global token budget for the whole run; once passed, nothing new launches and in-flight leaves land (0 = per-leaf budgets only)")
 	contracts := flags.Bool("contracts", true, "write a per-leaf working method before executing")
 	yesSpend := flags.Bool("yes-spend", false, "preauthorize raising today's dollar rail when reached")
-	if err := flags.Parse(reorder(args, map[string]bool{"w": true, "o": true, "j": true, "turns": true, "budget": true, "run-budget": true})); err != nil {
+	model := flags.String("model", "", "work model for this run (default AFORGE_MODEL)")
+	planModel := flags.String("plan-model", "", "model for briefs, contracts, and recalibration, when different from the work model (default AFORGE_PLAN_MODEL)")
+	if err := flags.Parse(reorder(args, map[string]bool{"w": true, "o": true, "j": true, "turns": true, "budget": true, "run-budget": true, "model": true, "plan-model": true})); err != nil {
 		return err
 	}
 	rest := flags.Args()
@@ -56,8 +58,11 @@ func runExecute(args []string) error {
 	if err != nil {
 		return err
 	}
+	applyModelFlags(&settings, *model, *planModel)
 	// A graph may be loaded from disk and expanded again after an overrun, so
 	// run installs the measured ruler before any planning-capable work starts.
+	// The ruler stays keyed to the work model even when a different model
+	// plans: the anchors measure the executor.
 	measured, _ := profile.Load(settings.ProfileDir, settings.Model, "linear")
 	plan.UseAnchors(measured.Anchors)
 	client, err := settings.Client()
@@ -65,6 +70,13 @@ func runExecute(args []string) error {
 		return err
 	}
 	defer closeRouter(client)
+	// Planning-class calls — briefs, contracts, recalibration — run on the
+	// plan slot; unsplit, this is exactly the work client.
+	planner, closePlanner, err := planningClient(settings, client)
+	if err != nil {
+		return err
+	}
+	defer closePlanner()
 	ctx := settings.Context(context.Background(), graph.Goal)
 	modelCatalog := catalog.Load(ctx, catalog.Options{
 		BaseURL: settings.BaseURL, APIKey: settings.APIKey, Dir: settings.ProfileDir,
@@ -102,6 +114,9 @@ func runExecute(args []string) error {
 	defer railStore.Close()
 
 	fmt.Printf("goal:      %s\nworkspace: %s\n", graph.Goal, space.Root())
+	if settings.PlanSplit() {
+		fmt.Printf("models:    %s plans, %s works\n", settings.PlanModelResolved(), settings.Model)
+	}
 	if len(settings.Panel.Models) > 0 {
 		fmt.Printf("panel:     %s\n", strings.Join(panelSlugs(settings.Panel), ", "))
 	}
@@ -117,7 +132,7 @@ func runExecute(args []string) error {
 		start := time.Now()
 		progress := headlessPlanProgress(os.Stderr)
 		if missingBriefs(graph) > 0 {
-			usage, err := plan.Briefs(ctx, client, graph, progress)
+			usage, err := plan.Briefs(ctx, planner, graph, progress)
 			graph.Usage.Calls += usage.Calls
 			graph.Usage.Cost += usage.Cost
 			preparedUsage.Calls += usage.Calls
@@ -130,7 +145,7 @@ func runExecute(args []string) error {
 			}
 		}
 		if *contracts {
-			usage, err := plan.Contracts(ctx, client, graph, resident.ContractPlaybook(history), progress)
+			usage, err := plan.Contracts(ctx, planner, graph, resident.ContractPlaybook(history), progress)
 			graph.Usage.Calls += usage.Calls
 			graph.Usage.Cost += usage.Cost
 			preparedUsage.Calls += usage.Calls
@@ -273,7 +288,7 @@ func runExecute(args []string) error {
 	graph.Usage.CachedTokens += runUsage.CachedTokens
 	graph.Usage.Cost += runUsage.Cost
 	clock.sample()
-	if report := recordAndCalibrate(ctx, client, settings, settings.Model, graph); report != "" {
+	if report := recordAndCalibrate(ctx, planner, settings, settings.Model, graph); report != "" {
 		fmt.Printf("\n%s\n", report)
 	}
 	renderRunSummary(graph, space, runUsage, time.Since(start), clock, summaryErr)

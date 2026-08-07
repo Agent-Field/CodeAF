@@ -13,8 +13,13 @@ import (
 // interactive chat owner and a bounded wake pass. Surface concerns are added
 // by chat after this returns; wake deliberately has no session-open or arrival
 // brief side effects.
+// The three clients divide by the kind of call: chatClient talks (compiling,
+// distilling, titling, narrating — the resident's own small verdicts),
+// planClient structures (the task graph, replans, contracts, the delivery
+// gate), and taskClient executes leaves. By default plan follows work, so the
+// split is dormant until a plan model is chosen.
 func newResidentReconciler(settings config.Config, graph *store.Store,
-	chatClient, taskClient *liveClient, plans *jobPlans,
+	chatClient, taskClient, planClient *liveClient, plans *jobPlans,
 	resolveModel func(head.ModelWords) head.WorkModelChoice) *resident.Reconciler {
 	compiler := head.NewCompiler(chatClient)
 	if resolveModel != nil {
@@ -44,7 +49,7 @@ func newResidentReconciler(settings config.Config, graph *store.Store,
 				ModelNote:       brief.ModelNote,
 			}, nil
 		},
-		planSubtree(settings, taskClient, plans, graph),
+		planSubtree(settings, planClient, taskClient, plans, graph),
 	).
 		WithDistiller(distillFacts(settings, chatClient, graph)).
 		WithConsolidator(consolidateFacts(settings, chatClient, graph)).
@@ -53,6 +58,6 @@ func newResidentReconciler(settings config.Config, graph *store.Store,
 		WithCharterProposals().
 		WithTerritoryDigester(digestTerritory(settings, chatClient)).
 		WithWatchEngine(settings.DailyBudgetUSD, checkSentinel(settings, chatClient)).
-		WithOverrunPlanner(settings.DailyBudgetUSD, replanRemainder(settings, taskClient, plans, graph)).
+		WithOverrunPlanner(settings.DailyBudgetUSD, replanRemainder(settings, planClient, taskClient, plans, graph)).
 		WithPracticeLoop(settings.PracticeBudgetUSD, settings.PracticeIdle)
 }
