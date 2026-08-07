@@ -62,40 +62,66 @@ func (r *Reconciler) WithBriefComposer(compose BriefComposeFunc) *Reconciler {
 // SessionOpened journals an attach edge, then posts at most one folded arrival
 // message for qualifying activity since the previous seen watermark.
 func (r *Reconciler) SessionOpened(ctx context.Context, sessionID, surface string, after time.Duration) error {
+	deliver, err := r.SessionOpening(sessionID, surface, after)
+	if err != nil {
+		return err
+	}
+	if deliver == nil {
+		return nil
+	}
+	return deliver(ctx)
+}
+
+// SessionOpening is SessionOpened split at its one slow seam, for a surface
+// that must not make the user watch it.
+//
+// The half that runs here is the half whose ordering matters: reading the
+// previous seen watermark and journalling the attach edge, both cheap. The
+// half it hands back is the expensive one — a journal gather, a model
+// round-trip, and the post — and it is already bounded by the window this call
+// fixed, so running it later cannot widen or move what the brief covers. The
+// thread is the delivery channel either way; a brief that arrives a moment
+// after the surface does arrives in exactly the same place.
+//
+// Nil means there is nothing to say and nothing to wait for.
+func (r *Reconciler) SessionOpening(sessionID, surface string, after time.Duration) (func(context.Context) error, error) {
 	if r.store == nil {
-		return fmt.Errorf("open resident session: nil store")
+		return nil, fmt.Errorf("open resident session: nil store")
 	}
 	if after < 0 {
-		return fmt.Errorf("open resident session: %w: negative brief threshold", store.ErrInvalid)
+		return nil, fmt.Errorf("open resident session: %w: negative brief threshold", store.ErrInvalid)
 	}
 	previous, found, err := r.store.LastSeen()
 	if err != nil {
-		return fmt.Errorf("open resident session: %w", err)
+		return nil, fmt.Errorf("open resident session: %w", err)
 	}
 	attached, err := r.store.TouchSeen(surface, sessionID, store.SeenAttached)
 	if err != nil {
-		return fmt.Errorf("open resident session: %w", err)
+		return nil, fmt.Errorf("open resident session: %w", err)
 	}
 	if !found || attached.Time.Sub(previous.Time) < after || r.composeBrief == nil {
+		return nil, nil
+	}
+	throughSeq := attached.Seq - 1
+	return func(ctx context.Context) error {
+		activity, err := r.briefActivity(previous, throughSeq)
+		if err != nil {
+			return fmt.Errorf("open resident session: gather brief: %w", err)
+		}
+		if len(activity.Events) == 0 {
+			return nil
+		}
+		draft, err := r.composeBrief(ctx, activity)
+		if err != nil {
+			return fmt.Errorf("open resident session: compose brief: %w", err)
+		}
+		message := materializeBrief(previous.Seq, throughSeq, activity, draft)
+		message.SessionID = sessionID
+		if _, err := r.store.PostMessage(message); err != nil {
+			return fmt.Errorf("open resident session: post brief: %w", err)
+		}
 		return nil
-	}
-	activity, err := r.briefActivity(previous, attached.Seq-1)
-	if err != nil {
-		return fmt.Errorf("open resident session: gather brief: %w", err)
-	}
-	if len(activity.Events) == 0 {
-		return nil
-	}
-	draft, err := r.composeBrief(ctx, activity)
-	if err != nil {
-		return fmt.Errorf("open resident session: compose brief: %w", err)
-	}
-	message := materializeBrief(previous.Seq, attached.Seq-1, activity, draft)
-	message.SessionID = sessionID
-	if _, err := r.store.PostMessage(message); err != nil {
-		return fmt.Errorf("open resident session: post brief: %w", err)
-	}
-	return nil
+	}, nil
 }
 
 // SessionClosed journals the user's attention leaving this surface.
@@ -112,24 +138,29 @@ func (r *Reconciler) SessionClosed(sessionID, surface string) error {
 
 func (r *Reconciler) briefActivity(previous store.Seen, throughSeq int64) (BriefActivity, error) {
 	activity := BriefActivity{Since: previous.Time}
-	events, err := r.store.Events(previous.Seq, 0)
+	// The window is known before the read, so it belongs in the query rather
+	// than in a break at the top of the loop: the journal is append-only and
+	// the tail past the watermark grows forever.
+	events, err := r.store.EventsThrough(previous.Seq, throughSeq)
 	if err != nil {
 		return activity, err
 	}
-	nodes, err := r.store.Snapshot()
+	// Only nodes are read from here, never edges, and only to recognise a job
+	// root. Folding collapses a landed job onto its own root, which stays in
+	// the active view as that fold's outermost representative — so the compact
+	// view answers this question with the same rows as the full one, without
+	// deserializing folded history or joining the whole edge table.
+	nodes, err := r.store.ActiveNodes()
 	if err != nil {
 		return activity, err
 	}
-	byID := make(map[string]store.Node, len(nodes.Nodes))
-	for _, node := range nodes.Nodes {
+	byID := make(map[string]store.Node, len(nodes))
+	for _, node := range nodes {
 		byID[node.ID] = node
 	}
 	newSkills := make(map[int64]bool)
 	var spentSeq int64
 	for _, event := range events {
-		if event.Seq > throughSeq {
-			break
-		}
 		switch event.Kind {
 		case store.EventNodeCompleted, store.EventNodeFailed, store.EventNodeCancelled:
 			node, ok := byID[event.NodeID]

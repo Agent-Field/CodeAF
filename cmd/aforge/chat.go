@@ -86,13 +86,14 @@ func runChat(args []string) error {
 	if strings.TrimSpace(prefs.VoiceModel) == "" {
 		prefs.VoiceModel = settings.VoiceModel
 	}
-	modelCatalog := catalog.Load(context.Background(), catalog.Options{
+	// Discovery starts here and is waited for nowhere on this path. On a cold
+	// cache it is a network round-trip, and every question it answers belongs
+	// to a tool the user has not been able to reach yet — the surface has not
+	// been drawn. Asking it in front of the first frame buys nothing and can
+	// cost fifteen seconds of dead terminal.
+	modelCatalog := catalog.LoadLazy(context.Background(), catalog.Options{
 		BaseURL: settings.BaseURL, APIKey: settings.APIKey, Dir: settings.ProfileDir,
 	})
-	prefs.ImageModel = firstNonEmptyString(prefs.ImageModel, settings.ResolveImageModel(modelCatalog))
-	prefs.SpeechModel = firstNonEmptyString(prefs.SpeechModel, settings.ResolveSpeechModel(modelCatalog))
-	prefs.MusicModel = firstNonEmptyString(prefs.MusicModel, settings.ResolveMusicModel(modelCatalog))
-	prefs.VideoModel = firstNonEmptyString(prefs.VideoModel, settings.ResolveVideoModel(modelCatalog))
 	mediaClient, err := settings.MediaClient()
 	if err != nil {
 		return err
@@ -112,17 +113,27 @@ func runChat(args []string) error {
 		DocumentClient: documentClient, DocumentEngine: settings.DocumentEngine,
 		ImageModel: prefs.ImageModel, SpeechModel: prefs.SpeechModel,
 		MusicModel: prefs.MusicModel, VideoModel: prefs.VideoModel,
-		VisionModel: settings.ResolveVisionModel(modelCatalog, talkModel, workModel),
 		// "best" and a named model are resolved at call time, so the strongest
 		// advertised model is whatever the catalog says now, not at startup.
 		ResolveModel: func(modality, word string) (string, error) {
 			return config.ResolveMediaModel(modelCatalog, modality, word)
 		},
 	}
-	if video, ok := modelCatalog.Model(baseMedia.VideoModel); ok {
-		baseMedia.VideoPrice = video.RequestPrice
-	}
+	// The slot defaults the catalog owns are filled the first time a leaf asks
+	// for them, which is the first time they can possibly matter. Everything
+	// here is the same resolution in the same order as before; only the moment
+	// moves, from in front of the first frame to behind it.
 	mediaModels := &chatMediaModels{tools: baseMedia}
+	mediaModels.fill = func(tools *exec.MediaTools) {
+		tools.ImageModel = firstNonEmptyString(tools.ImageModel, settings.ResolveImageModel(modelCatalog))
+		tools.SpeechModel = firstNonEmptyString(tools.SpeechModel, settings.ResolveSpeechModel(modelCatalog))
+		tools.MusicModel = firstNonEmptyString(tools.MusicModel, settings.ResolveMusicModel(modelCatalog))
+		tools.VideoModel = firstNonEmptyString(tools.VideoModel, settings.ResolveVideoModel(modelCatalog))
+		tools.VisionModel = settings.ResolveVisionModel(modelCatalog, talkModel, workModel)
+		if video, ok := modelCatalog.Model(tools.VideoModel); ok {
+			tools.VideoPrice = video.RequestPrice
+		}
+	}
 
 	chatClient, err := newLiveClient(settings, talkModel)
 	if err != nil {
@@ -203,8 +214,15 @@ func runChat(args []string) error {
 	if err := reconciler.AttachSession(*sessionID); err != nil {
 		return err
 	}
-	if err := reconciler.SessionOpened(context.Background(), *sessionID, "tui", settings.BriefAfter); err != nil {
-		log.Printf("note: could not prepare the arrival brief: %v", err)
+	// The attach edge is journalled now, because its ordering is what fixes the
+	// brief's window. Composing that brief is a model round-trip over a journal
+	// gather, and it used to run here, in front of the first frame — the user
+	// waited on the network to be told what happened while they were away. The
+	// thread is the delivery channel, so the composition rides behind the
+	// surface and the brief lands in the same place a moment later.
+	deliverBrief, briefErr := reconciler.SessionOpening(*sessionID, "tui", settings.BriefAfter)
+	if briefErr != nil {
+		log.Printf("note: could not prepare the arrival brief: %v", briefErr)
 	}
 
 	web := exec.NewWeb()
@@ -642,6 +660,15 @@ func runChat(args []string) error {
 			_ = logFile.Close()
 		}()
 	}
+	if deliverBrief != nil {
+		background.Add(1)
+		go func() {
+			defer background.Done()
+			if err := deliverBrief(ctx); err != nil {
+				log.Printf("note: could not deliver the arrival brief: %v", err)
+			}
+		}()
+	}
 	err = tui.RunWithCommander(graph, *sessionID, commander)
 	seenErr := reconciler.SessionClosed(*sessionID, "tui")
 	cancel()
@@ -801,6 +828,12 @@ var fallbackChatModels = []string{
 // Each leaf takes one value snapshot, preserving the same "next job/leaf"
 // boundary used by the hot-swappable work model.
 type chatMediaModels struct {
+	// fill supplies the slot defaults that have to be asked of the model
+	// catalog. It runs at most once, on the first read, so a cold catalog is
+	// paid for by the first leaf that needs a media model rather than by the
+	// user waiting for the surface to appear.
+	once  sync.Once
+	fill  func(*exec.MediaTools)
 	mu    sync.RWMutex
 	tools exec.MediaTools
 }
@@ -809,15 +842,30 @@ func (m *chatMediaModels) Snapshot() exec.MediaTools {
 	if m == nil {
 		return exec.MediaTools{}
 	}
+	m.resolve()
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 	return m.tools
+}
+
+func (m *chatMediaModels) resolve() {
+	m.once.Do(func() {
+		if m.fill == nil {
+			return
+		}
+		m.mu.Lock()
+		defer m.mu.Unlock()
+		m.fill(&m.tools)
+	})
 }
 
 func (m *chatMediaModels) Set(role, slug string, models *catalog.Catalog) {
 	if m == nil {
 		return
 	}
+	// A user's choice must land on top of the discovered defaults, never
+	// underneath a fill that has not run yet.
+	m.resolve()
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	switch role {

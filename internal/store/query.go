@@ -286,6 +286,44 @@ func (s *Store) LatestEventSeq() (int64, error) {
 	return seq, nil
 }
 
+// EventsThrough returns journal entries in the window (afterSeq, throughSeq],
+// oldest first. It is the bounded form of Events, for a reader that already
+// knows the watermark its work ends at: carrying the rest of the journal into
+// memory only to discard it is a cost that grows with tenure forever.
+//
+// A throughSeq at or below afterSeq is an empty window, not an error.
+func (s *Store) EventsThrough(afterSeq, throughSeq int64) ([]Event, error) {
+	result := make([]Event, 0)
+	if throughSeq <= afterSeq {
+		return result, nil
+	}
+	rows, err := s.db.Query(`
+		SELECT seq, ts, node_id, kind, payload
+		FROM events WHERE seq > ? AND seq <= ? ORDER BY seq`, afterSeq, throughSeq)
+	if err != nil {
+		return nil, fmt.Errorf("read events: %w", err)
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var event Event
+		var timestamp, payload string
+		if err := rows.Scan(&event.Seq, &timestamp, &event.NodeID, &event.Kind, &payload); err != nil {
+			return nil, fmt.Errorf("read events: %w", err)
+		}
+		parsed, err := parseTime(timestamp)
+		if err != nil {
+			return nil, fmt.Errorf("parse event %d time: %w", event.Seq, err)
+		}
+		event.Time = parsed
+		event.Payload = json.RawMessage(payload)
+		result = append(result, event)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("read events: %w", err)
+	}
+	return result, nil
+}
+
 // Ready returns pending active nodes whose hard dependencies have all settled.
 // Failed and cancelled dependencies are terminal by design; their digest is
 // available through DependencyDigests.

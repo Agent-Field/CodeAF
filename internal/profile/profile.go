@@ -127,8 +127,36 @@ const MinSamples = 8
 // bar forever. Ten is still an honest 1000% miss while bounding bad telemetry.
 const maxSurprise = 10.0
 
+// decoded is one parse of one profile file, held against the identity the file
+// had when it was read.
+type decoded struct {
+	// model and skill are held because the file names them too, and decoding
+	// lets the file's spelling win over the caller's arguments.
+	model    string
+	skill    string
+	anchors  string
+	records  []Record
+	modified time.Time
+	size     int64
+}
+
+// decodes memoizes parses by path, because the same file is read far more often
+// than it is written: once on the launch path, again per planning call, and
+// again by each grounding view that reports what the ruler is made of. The file
+// runs to tens of kilobytes, and re-parsing it to answer the same question is
+// work nobody asked for.
+//
+// A remembered parse is trusted only while the file's modification time and
+// size both match what they were when it was taken, so a Save from this process
+// or an edit from another one is picked up on the next read.
+var decodes sync.Map // path -> decoded
+
 // Load reads the profile for a model and skill, returning an empty one when
 // there is nothing recorded yet.
+//
+// The result is always a fresh value owning its own records: callers Add to a
+// profile and Save it, so a remembered parse must never become shared mutable
+// state.
 func Load(dir, model, skill string) (*Profile, error) {
 	if strings.TrimSpace(dir) == "" {
 		home, err := os.UserHomeDir()
@@ -140,8 +168,27 @@ func Load(dir, model, skill string) (*Profile, error) {
 	path := filepath.Join(dir, fmt.Sprintf("profile-%s-%s.json", slug(model), slug(skill)))
 	profile := &Profile{Model: model, Skill: skill, path: path}
 
+	before, statErr := os.Stat(path)
+	if errors.Is(statErr, os.ErrNotExist) {
+		decodes.Delete(path)
+		return profile, nil
+	}
+	if statErr == nil {
+		if remembered, ok := decodes.Load(path); ok {
+			if hit := remembered.(decoded); hit.size == before.Size() && hit.modified.Equal(before.ModTime()) {
+				profile.Model = hit.model
+				profile.Skill = hit.skill
+				profile.Anchors = hit.anchors
+				profile.Records = append([]Record(nil), hit.records...)
+				profile.modifiedAt = hit.modified.UTC()
+				return profile, nil
+			}
+		}
+	}
+
 	data, err := os.ReadFile(path)
 	if errors.Is(err, os.ErrNotExist) {
+		decodes.Delete(path)
 		return profile, nil
 	}
 	if err != nil {
@@ -150,11 +197,25 @@ func Load(dir, model, skill string) (*Profile, error) {
 	if err := json.Unmarshal(data, profile); err != nil {
 		// A corrupt profile is not worth failing a run over; it is a cache of
 		// observations, and the built-in prior is a safe place to restart from.
+		decodes.Delete(path)
 		return &Profile{Model: model, Skill: skill, path: path}, nil
 	}
 	profile.path = path
-	if info, err := os.Stat(path); err == nil {
-		profile.modifiedAt = info.ModTime().UTC()
+	after, err := os.Stat(path)
+	if err != nil {
+		return profile, nil
+	}
+	profile.modifiedAt = after.ModTime().UTC()
+	// Only remember a parse of a file that did not move under the read.
+	if statErr == nil && after.Size() == before.Size() && after.ModTime().Equal(before.ModTime()) {
+		decodes.Store(path, decoded{
+			model:    profile.Model,
+			skill:    profile.Skill,
+			anchors:  profile.Anchors,
+			records:  append([]Record(nil), profile.Records...),
+			modified: after.ModTime(),
+			size:     after.Size(),
+		})
 	}
 	return profile, nil
 }

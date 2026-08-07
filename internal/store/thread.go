@@ -492,6 +492,21 @@ func (s *Store) Messages(sessionID string, afterSeq int64, limit int) ([]Message
 	return messages, nil
 }
 
+// LastNonUserMessageSeq returns the sequence of the newest message the user did
+// not write, or zero when the thread has only ever heard from them.
+//
+// It answers the head's resume question — where does the trailing run of
+// unanswered user messages begin — without reading the thread. Tailing pages
+// the whole history to keep one number, and that history only grows.
+func (s *Store) LastNonUserMessageSeq() (int64, error) {
+	var seq int64
+	if err := s.db.QueryRow(
+		`SELECT COALESCE(MAX(seq), 0) FROM messages WHERE role <> ?`, string(RoleUser)).Scan(&seq); err != nil {
+		return 0, fmt.Errorf("read last non-user message sequence: %w", err)
+	}
+	return seq, nil
+}
+
 // NodeMessages returns the messages anchored to one node after a journal
 // sequence, oldest first — a running worker's steering mailbox, and a node
 // view's conversation trail.
