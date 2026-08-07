@@ -715,3 +715,34 @@ func TestStageDocumentAttachmentsRefusesOversizedAndVanishedFiles(t *testing.T) 
 		t.Fatal("staging into a nil workspace succeeded")
 	}
 }
+
+// A job the planner never expanded into a graph — a plain task, or one whose
+// process restarted — has no remaining plan to revise. The redirection is
+// still real: it reports nothing changed and leaves the broadcast to the
+// reconciler rather than failing the command.
+func TestReviseForUserWithoutARetainedPlanChangesNothing(t *testing.T) {
+	graph, err := store.Open(filepath.Join(t.TempDir(), "graph.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer graph.Close()
+	if err := graph.Splice(store.RootID, store.Subtree{Nodes: []store.NodeSpec{
+		{ID: "task-1", Brief: "write a client for the v1 API", Stage: 1},
+	}}, store.Provenance{Origin: store.OriginUser, Intent: "write a client for the v1 API"}); err != nil {
+		t.Fatal(err)
+	}
+	job, _, err := graph.Node("task-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	plans := &jobPlans{graphs: map[string]plannedJob{}}
+	revision, err := plans.reviseForUser(context.Background(), config.Config{}, nil, graph, job,
+		"no, use the v2 API not v1")
+	if err != nil {
+		t.Fatalf("revise without a retained plan: %v", err)
+	}
+	if revision.Added != 0 || revision.Dropped != 0 || revision.Amended != 0 ||
+		len(revision.Notes) != 0 || len(revision.RunningRemovals) != 0 {
+		t.Fatalf("revision = %+v", revision)
+	}
+}
