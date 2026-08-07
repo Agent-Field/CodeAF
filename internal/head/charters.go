@@ -16,11 +16,17 @@ func (h *Head) answerAgentQuestion(user store.Message) (bool, error) {
 	if err != nil || !found {
 		return false, err
 	}
+	if question.Status == store.QuestionAnswered || question.Status == store.QuestionExpired {
+		return true, nil
+	}
 	answer := strings.TrimSpace(user.Body)
 	if option, selected := selectQuestionOption(user.Body, question.Options); selected {
 		answer = strings.TrimSpace(option.Label)
 		if answer == "" {
 			answer = strings.TrimSpace(option.Value)
+		}
+		if handled, err := h.answerCharterFiringQuestion(user, question.Seq, option); handled {
+			return true, err
 		}
 		if err := h.store.ResolveQuestion(question.Seq, store.QuestionAnswered, answer, user.Seq); err != nil {
 			return true, err
@@ -128,6 +134,11 @@ func (h *Head) answerPendingQuestion(user store.Message) (bool, error) {
 	}
 	option, selected := selectQuestionOption(user.Body, question.Options)
 	if selected {
+		if question.QuestionSeq != 0 {
+			if handled, err := h.answerCharterFiringQuestion(user, question.QuestionSeq, option); handled {
+				return true, err
+			}
+		}
 		return true, h.applyQuestionOption(user, question, option)
 	}
 
@@ -310,8 +321,51 @@ func (h *Head) requestCharterCommand(user store.Message, kind store.CommandKind,
 	if err != nil {
 		return err
 	}
+	return h.acknowledgeCharterCommand(user, command)
+}
+
+func (h *Head) answerCharterFiringQuestion(user store.Message, questionSeq int64, option store.QuestionOption) (bool, error) {
+	kind, id, instruction, ok := charterFiringCommand(option)
+	if !ok {
+		return false, nil
+	}
+	resolution := strings.TrimSpace(option.Label)
+	if resolution == "" {
+		resolution = strings.TrimSpace(option.Value)
+	}
+	command, requested, err := h.store.ResolveQuestionWithCommand(questionSeq, resolution, user.Seq, store.Command{
+		SessionID: user.SessionID, Kind: kind, Target: id, Instruction: instruction,
+	})
+	if err != nil || !requested {
+		return true, err
+	}
+	return true, h.acknowledgeCharterCommand(user, command)
+}
+
+func charterFiringCommand(option store.QuestionOption) (store.CommandKind, string, string, bool) {
+	parts := strings.Split(option.Value, ":")
+	if len(parts) != 4 || parts[0] != "charter" || strings.TrimSpace(parts[2]) == "" || strings.TrimSpace(parts[3]) == "" {
+		return "", "", "", false
+	}
+	var kind store.CommandKind
+	switch parts[1] {
+	case "fire":
+		kind = store.CommandCharterFire
+	case "decline":
+		kind = store.CommandCharterDecline
+	case "always":
+		kind = store.CommandCharterAlways
+	case "never":
+		kind = store.CommandCharterNever
+	default:
+		return "", "", "", false
+	}
+	return kind, parts[2], "wake:" + parts[3], true
+}
+
+func (h *Head) acknowledgeCharterCommand(user store.Message, command store.Command) error {
 	reply := "Updating that standing charter."
-	switch kind {
+	switch command.Kind {
 	case store.CommandCharterRatify:
 		reply = "Standing it up."
 	case store.CommandCharterPause:

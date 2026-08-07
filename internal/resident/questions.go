@@ -33,7 +33,7 @@ func (r *Reconciler) askQuestionLocked(question store.AgentQuestion) (store.Agen
 		return store.AgentQuestion{}, err
 	}
 	if queued.Urgency == store.QuestionBlocking {
-		if _, err := r.store.SurfaceQuestion(queued.Seq); err != nil {
+		if _, err := r.store.SurfaceQuestionForSession(queued.Seq, question.SessionID); err != nil {
 			return store.AgentQuestion{}, err
 		}
 		queued.Status = store.QuestionAsked
@@ -71,7 +71,7 @@ func (r *Reconciler) surfaceNaturalQuestionLocked(sessionID string) error {
 		if question.Urgency != store.QuestionNextNaturalMoment {
 			continue
 		}
-		_, err := r.store.SurfaceQuestion(question.Seq)
+		_, err := r.store.SurfaceQuestionForSession(question.Seq, sessionID)
 		return err // hard cap: exactly one candidate per natural moment
 	}
 	return nil
@@ -86,7 +86,7 @@ func (r *Reconciler) surfaceBlockingQuestionsLocked(sessionID string) error {
 		if question.Urgency != store.QuestionBlocking {
 			continue
 		}
-		if _, err := r.store.SurfaceQuestion(question.Seq); err != nil {
+		if _, err := r.store.SurfaceQuestionForSession(question.Seq, sessionID); err != nil {
 			return err
 		}
 	}

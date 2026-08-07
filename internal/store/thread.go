@@ -531,17 +531,8 @@ func (s *Store) NodeMessages(nodeID string, afterSeq int64, limit int) ([]Messag
 // immediately. The reconciler picks it up via PendingCommands and settles it
 // with ResolveCommand; the requester never blocks on the mutation itself.
 func (s *Store) RequestCommand(command Command) (Command, error) {
-	if !validCommandKind(command.Kind) {
-		return Command{}, fmt.Errorf("request command: %w: unknown kind %q", ErrInvalid, command.Kind)
-	}
-	if strings.TrimSpace(command.Instruction) == "" {
-		return Command{}, fmt.Errorf("request command: %w: empty instruction", ErrInvalid)
-	}
-	if command.Reflex && (command.Kind != CommandSplice || strings.TrimSpace(command.Target) != "") {
-		return Command{}, fmt.Errorf("request command: %w: reflex must be an untargeted splice", ErrInvalid)
-	}
-	if command.Kind != CommandSplice && !isGlobalCommand(command.Kind) && strings.TrimSpace(command.Target) == "" {
-		return Command{}, fmt.Errorf("request command: %w: %s requires a target", ErrInvalid, command.Kind)
+	if err := validateCommandRequest(command); err != nil {
+		return Command{}, fmt.Errorf("request command: %w", err)
 	}
 
 	tx, err := s.db.BeginTx(context.Background(), nil)
@@ -550,17 +541,47 @@ func (s *Store) RequestCommand(command Command) (Command, error) {
 	}
 	defer tx.Rollback()
 
+	command, err = requestCommandTx(tx, command)
+	if err != nil {
+		return Command{}, fmt.Errorf("request command: %w", err)
+	}
+	if err := tx.Commit(); err != nil {
+		return Command{}, fmt.Errorf("request command: %w", err)
+	}
+	return command, nil
+}
+
+func validateCommandRequest(command Command) error {
+	if !validCommandKind(command.Kind) {
+		return fmt.Errorf("%w: unknown kind %q", ErrInvalid, command.Kind)
+	}
+	if strings.TrimSpace(command.Instruction) == "" {
+		return fmt.Errorf("%w: empty instruction", ErrInvalid)
+	}
+	if command.Reflex && (command.Kind != CommandSplice || strings.TrimSpace(command.Target) != "") {
+		return fmt.Errorf("%w: reflex must be an untargeted splice", ErrInvalid)
+	}
+	if command.Kind != CommandSplice && !isGlobalCommand(command.Kind) && strings.TrimSpace(command.Target) == "" {
+		return fmt.Errorf("%w: %s requires a target", ErrInvalid, command.Kind)
+	}
+	return nil
+}
+
+// requestCommandTx appends and materializes one already-validated command in
+// the caller's transaction. Keeping this primitive shared lets a question
+// resolution and its continuation command commit as one journaled decision.
+func requestCommandTx(tx *sql.Tx, command Command) (Command, error) {
 	if command.Target != "" {
 		if isCharterCommand(command.Kind) {
 			if err := requireCharter(tx, command.Target); err != nil {
-				return Command{}, fmt.Errorf("request command: %w", err)
+				return Command{}, err
 			}
 		} else {
 			if err := requireNode(tx, command.Target); err != nil {
-				return Command{}, fmt.Errorf("request command: %w", err)
+				return Command{}, err
 			}
 			if err := validateNodeCommand(tx, command.Kind, command.Target); err != nil {
-				return Command{}, fmt.Errorf("request command: %w", err)
+				return Command{}, err
 			}
 		}
 	}
@@ -574,13 +595,10 @@ func (s *Store) RequestCommand(command Command) (Command, error) {
 	}
 	seq, at, err := appendEvent(tx, command.Target, EventCommandRequested, payload)
 	if err != nil {
-		return Command{}, fmt.Errorf("request command: %w", err)
+		return Command{}, err
 	}
 	if err := applyCommandView(tx, payload, seq, at); err != nil {
-		return Command{}, fmt.Errorf("request command: %w", err)
-	}
-	if err := tx.Commit(); err != nil {
-		return Command{}, fmt.Errorf("request command: %w", err)
+		return Command{}, err
 	}
 	command.Seq = seq
 	command.Time = at

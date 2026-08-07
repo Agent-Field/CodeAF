@@ -9,6 +9,111 @@ import (
 	"time"
 )
 
+func TestProbationProposalQueuesLinkedNeutralQuestionAtomically(t *testing.T) {
+	t.Run("commit", func(t *testing.T) {
+		graph := openTestStore(t, filepath.Join(t.TempDir(), "proposal-question.db"))
+		charter := mustTestCharter(t, "proposal-question", CharterActive, CharterRails{
+			PerFiringBudgetUSD: 0.20, MaxFiringsPerDay: 2,
+		})
+		if err := graph.CreateCharter(charter); err != nil {
+			t.Fatal(err)
+		}
+		wakeSeq := beginCheckedTestWake(t, graph, charter.ID)
+		if posted, err := graph.ProposeCharterFiring(charter.ID, wakeSeq, charter.Action.Template); err != nil || !posted {
+			t.Fatalf("proposal posted=%t err=%v", posted, err)
+		}
+
+		messages, err := graph.Messages("", 0, 0)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var proposal Message
+		for _, message := range messages {
+			if message.NodeID == charter.ID && len(message.Options) == 4 {
+				proposal = message
+				break
+			}
+		}
+		if proposal.Seq == 0 || proposal.SessionID != "" || proposal.QuestionSeq == 0 {
+			t.Fatalf("proposal message = %+v", proposal)
+		}
+		questions, err := graph.PendingQuestions("live-session", 0)
+		if err != nil || len(questions) != 1 {
+			t.Fatalf("pending questions = %+v err=%v", questions, err)
+		}
+		question := questions[0]
+		if question.Seq != proposal.QuestionSeq || question.SessionID != "" ||
+			question.OriginCharterID != charter.ID || question.Urgency != QuestionNextNaturalMoment ||
+			question.Status != QuestionPending || len(question.Options) != 4 {
+			t.Fatalf("linked question = %+v", question)
+		}
+		before, err := graph.Events(0, 0)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if posted, err := graph.ProposeCharterFiring(charter.ID, wakeSeq, charter.Action.Template); err != nil || posted {
+			t.Fatalf("duplicate proposal posted=%t err=%v", posted, err)
+		}
+		after, err := graph.Events(0, 0)
+		if err != nil || len(after) != len(before) {
+			t.Fatalf("duplicate changed journal: before=%d after=%d err=%v", len(before), len(after), err)
+		}
+
+		if err := graph.Rebuild(); err != nil {
+			t.Fatal(err)
+		}
+		rebuilt, found, err := graph.AgentQuestionBySeq(question.Seq)
+		if err != nil || !found || rebuilt.Status != QuestionPending || rebuilt.OriginCharterID != charter.ID {
+			t.Fatalf("rebuilt question = %+v found=%t err=%v", rebuilt, found, err)
+		}
+		rebuiltMessages, err := graph.Messages("", 0, 0)
+		if err != nil {
+			t.Fatal(err)
+		}
+		linked := false
+		for _, message := range rebuiltMessages {
+			linked = linked || message.Seq == proposal.Seq && message.QuestionSeq == question.Seq
+		}
+		if !linked {
+			t.Fatalf("rebuilt proposal lost question link: %+v", rebuiltMessages)
+		}
+	})
+
+	t.Run("rollback", func(t *testing.T) {
+		graph := openTestStore(t, filepath.Join(t.TempDir(), "proposal-rollback.db"))
+		charter := mustTestCharter(t, "proposal-rollback", CharterActive, CharterRails{
+			PerFiringBudgetUSD: 0.20, MaxFiringsPerDay: 2,
+		})
+		if err := graph.CreateCharter(charter); err != nil {
+			t.Fatal(err)
+		}
+		wakeSeq := beginCheckedTestWake(t, graph, charter.ID)
+		beforeProposal, err := graph.LatestEventSeq()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := graph.db.Exec(`CREATE TRIGGER fail_proposal_message
+			BEFORE INSERT ON messages WHEN NEW.node_id = 'proposal-rollback'
+			BEGIN SELECT RAISE(ABORT, 'injected proposal failure'); END`); err != nil {
+			t.Fatal(err)
+		}
+		if posted, err := graph.ProposeCharterFiring(charter.ID, wakeSeq, charter.Action.Template); err == nil || posted {
+			t.Fatalf("failed proposal posted=%t err=%v", posted, err)
+		}
+		questions, err := graph.PendingQuestions("live-session", 0)
+		if err != nil || len(questions) != 0 {
+			t.Fatalf("rolled-back questions = %+v err=%v", questions, err)
+		}
+		events, err := graph.Events(beforeProposal, 0)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(events) != 0 {
+			t.Fatalf("partial proposal events survived rollback: %+v", events)
+		}
+	})
+}
+
 func TestCharterEarnsTenureOnlyFromJournaledApprovedGreenFirings(t *testing.T) {
 	graph := openTestStore(t, filepath.Join(t.TempDir(), "tenure.db"))
 	charter := mustTestCharter(t, "earned-tenure", CharterActive, CharterRails{

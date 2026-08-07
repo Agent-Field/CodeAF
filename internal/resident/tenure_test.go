@@ -51,7 +51,7 @@ func TestProbationProposalDoesNotSpliceUntilPendingApprovalAndPromotesAfterGreen
 	if !stored.WakePending || !stored.SentinelYes || stored.Autonomy != store.CharterProbation {
 		t.Fatalf("proposal wake = %+v", stored)
 	}
-	messages, err := graph.Messages("charter-session", 0, 0)
+	messages, err := graph.Messages("", 0, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
