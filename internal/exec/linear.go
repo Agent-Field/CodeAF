@@ -592,14 +592,26 @@ func (l *Linear) complete(ctx context.Context, messages []ai.Message, definition
 		if attempt == nodeCallAttempts-1 {
 			break
 		}
-		delay := nodeCallBackoff * time.Duration(1<<attempt)
-		select {
-		case <-ctx.Done():
-			return nil, ctx.Err()
-		case <-time.After(delay):
+		if err := backoffWait(ctx, nodeCallBackoff*time.Duration(1<<attempt)); err != nil {
+			return nil, err
 		}
 	}
 	return nil, fmt.Errorf("after %d node call attempts: %w", nodeCallAttempts, lastErr)
+}
+
+// backoffWait is the retry pause, with its timer stopped on the way out. A
+// time.After inside a select leaves the timer armed for the whole delay when
+// the other case wins, and the other case here is cancellation — which is
+// exactly when the run is trying to let go of things.
+func backoffWait(ctx context.Context, delay time.Duration) error {
+	timer := time.NewTimer(delay)
+	defer timer.Stop()
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-timer.C:
+		return nil
+	}
 }
 
 // brief assembles what the agent sees. The order matters: the goal orients it,

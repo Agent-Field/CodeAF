@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/Agent-Field/aforge-v2/internal/provider"
 )
@@ -310,4 +311,137 @@ func TestBudgetStopsStillCountTowardsTheGate(t *testing.T) {
 	if _, count := ledger.Rating("a/one", provider.ClassExecLeaf, 0); count != MinGraded {
 		t.Fatalf("count = %d after %d budget stops, want every one counted", count, MinGraded)
 	}
+}
+
+// holdLock takes the ledger's lock file the way another aforge process would,
+// so a flush has to wait out its retries.
+func holdLock(t *testing.T, dir string) string {
+	t.Helper()
+	lock := filepath.Join(dir, "router-ledger.json.lock")
+	if err := os.WriteFile(lock, nil, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { os.Remove(lock) })
+	return lock
+}
+
+// The contention this fixes. flush takes a file lock with retries, re-reads,
+// re-parses, re-encodes and renames — on the order of a second when another
+// process holds the lock — and it used to do all of that with the mutex that
+// ranking reads through held. Routing one call reads the ledger once per rung,
+// so every rung of every call queued behind the disk.
+func TestAFlushBlockedOnTheFileLockDoesNotBlockRanking(t *testing.T) {
+	dir := t.TempDir()
+	ledger, err := LoadLedger(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	holdLock(t, dir)
+
+	flushed := make(chan struct{})
+	go func() {
+		defer close(flushed)
+		ledger.Observe("a/one", provider.ClassPlanSpine, 0, provider.VerdictVerifiedSuccess)
+	}()
+
+	// The observation is in memory before the file work starts, so the reading
+	// side both sees it and is not made to wait for it.
+	deadline := time.Now().Add(2 * time.Second)
+	for {
+		started := time.Now()
+		_, count := ledger.Rating("a/one", provider.ClassPlanSpine, 0)
+		if elapsed := time.Since(started); elapsed > 250*time.Millisecond {
+			t.Fatalf("a rating read waited %s on a flush", elapsed)
+		}
+		if count == 1 {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("the observation never reached the map")
+		}
+		time.Sleep(time.Millisecond)
+	}
+
+	// Reads keep working for as long as the flush is stuck.
+	for range 20 {
+		started := time.Now()
+		ledger.Read(provider.ClassPlanSpine, []Query{{Slug: "a/one"}, {Slug: "b/two"}})
+		if elapsed := time.Since(started); elapsed > 250*time.Millisecond {
+			t.Fatalf("a panel read waited %s on a flush", elapsed)
+		}
+	}
+	<-flushed
+
+	// And the evidence is not lost by the flush that could not land: it is
+	// queued, and the next successful flush carries it to the file.
+	os.Remove(filepath.Join(dir, "router-ledger.json.lock"))
+	if err := ledger.Save(); err != nil {
+		t.Fatal(err)
+	}
+	reloaded, err := LoadLedger(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, count := reloaded.Rating("a/one", provider.ClassPlanSpine, 0); count != 1 {
+		t.Fatalf("a flush that lost its lock lost the observation: count = %d", count)
+	}
+}
+
+// Read is what ranking uses, and every rung in one ordering has to come from
+// one instant — including the alias indirection, which used to be a second
+// acquisition per rung.
+func TestReadRatesAWholePanelThroughItsAliases(t *testing.T) {
+	ledger, err := LoadLedger(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	ledger.Alias("~vendor/model-latest", "vendor/model-0731")
+	for range MinGraded {
+		ledger.Observe("vendor/model-0731", provider.ClassPlanSpine, 0, provider.VerdictVerifiedSuccess)
+	}
+	readings := ledger.Read(provider.ClassPlanSpine, []Query{
+		{Slug: "~vendor/model-latest"},
+		{Slug: "unmeasured/model", Prior: 1.5},
+	})
+	if readings[0].Count != MinGraded || readings[0].Rating <= 0 {
+		t.Fatalf("aliased reading = %+v, want the snapshot's record", readings[0])
+	}
+	if readings[1].Count != 0 || readings[1].Rating != 1.5 {
+		t.Fatalf("unmeasured reading = %+v, want the cold-start prior", readings[1])
+	}
+}
+
+// A closed ledger stops waiting. Verdicts are reported by whichever goroutine
+// settled them, which may be after the run has begun shutting down, and a late
+// observation must not hold the process open for a lock another process has.
+func TestAClosedLedgerAbandonsTheLockWait(t *testing.T) {
+	dir := t.TempDir()
+	ledger, err := LoadLedger(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := ledger.Close(); err != nil {
+		t.Fatal(err)
+	}
+	holdLock(t, dir)
+
+	settled := make(chan time.Duration, 1)
+	go func() {
+		started := time.Now()
+		ledger.Observe("late/model", provider.ClassPlanSpine, 0, provider.VerdictVerifiedSuccess)
+		settled <- time.Since(started)
+	}()
+	select {
+	case elapsed := <-settled:
+		// The full retry ladder is forty waits of 25ms; a closed ledger takes
+		// none of them.
+		if elapsed > 300*time.Millisecond {
+			t.Fatalf("a late observation waited %s on a closed ledger", elapsed)
+		}
+	case <-time.After(3 * time.Second):
+		t.Fatal("a late observation blocked a closed ledger")
+	}
+	// Closing twice is what a replaced router and an exiting process both do,
+	// and it must not panic on an already-closed channel.
+	_ = ledger.Close()
 }

@@ -32,14 +32,30 @@ type Entry struct {
 
 // Ledger is what the harness has learned about its panel, across runs and
 // across processes.
+//
+// Two locks, and the split is the point. mutex guards the maps and is held for
+// map operations only — reads take it shared, because Rating, Resolve, Entries
+// and Aliases only look. flushing serialises the file work: a lock file with
+// retries, a re-read, a re-parse, a re-encode and a rename, which is on the
+// order of a second and used to happen with the ranking mutex held. Routing a
+// single call reads the ledger once per rung, so every one of those reads was
+// queued behind whatever observation happened to be writing to disk.
 type Ledger struct {
 	path string
 
-	mutex   sync.Mutex
+	mutex   sync.RWMutex
 	entries map[string]Entry
 	aliases map[string]string
 	pending []observation
 	unsaved bool
+
+	flushing sync.Mutex
+
+	// closed makes the file-lock wait abandonable. A run on its way out must
+	// not sit through a second of 25ms retries for a lock another process is
+	// holding, and a lock wait is the one place this code sleeps.
+	closeOnce sync.Once
+	closed    chan struct{}
 }
 
 // observation is one graded outcome waiting to reach the file. It is kept
@@ -113,7 +129,8 @@ func LoadLedger(dir string) (*Ledger, error) {
 	if err != nil {
 		return nil, err
 	}
-	ledger := &Ledger{path: path, entries: map[string]Entry{}, aliases: map[string]string{}}
+	ledger := &Ledger{path: path, entries: map[string]Entry{}, aliases: map[string]string{},
+		closed: make(chan struct{})}
 	data, err := os.ReadFile(path)
 	if errors.Is(err, os.ErrNotExist) {
 		return ledger, nil
@@ -129,13 +146,53 @@ func LoadLedger(dir string) (*Ledger, error) {
 // used only when nothing is known, which is what makes a new model start
 // somewhere sensible instead of at the bottom.
 func (l *Ledger) Rating(model string, class provider.CallClass, prior float64) (float64, int) {
-	l.mutex.Lock()
-	defer l.mutex.Unlock()
+	l.mutex.RLock()
+	defer l.mutex.RUnlock()
+	return l.ratingLocked(model, class, prior)
+}
+
+func (l *Ledger) ratingLocked(model string, class provider.CallClass, prior float64) (float64, int) {
 	entry, known := l.entries[key(model, class)]
 	if !known {
 		return prior, 0
 	}
 	return entry.Rating, entry.Count
+}
+
+// Reading is one panel member's standing at one kind of call: the rating and
+// the graded evidence behind it, read through the alias map.
+type Reading struct {
+	Rating float64
+	Count  int
+}
+
+// Query is one member to read: the configured slug, and the cold-start prior
+// to answer with when nothing is known about it.
+type Query struct {
+	Slug  string
+	Prior float64
+}
+
+// Read rates a whole panel in one acquisition.
+//
+// Ranking used to take the lock twice per rung — resolve the alias, then read
+// the rating — which is twenty acquisitions for a five-model panel on every
+// ordering, and an ordering happens several times per routed call. Each of them
+// could land behind a flush. One snapshot per call is both cheaper and more
+// honest: every rung in an ordering is now read from the same instant.
+func (l *Ledger) Read(class provider.CallClass, queries []Query) []Reading {
+	l.mutex.RLock()
+	defer l.mutex.RUnlock()
+	readings := make([]Reading, len(queries))
+	for index, query := range queries {
+		model := query.Slug
+		if resolved, known := l.aliases[model]; known {
+			model = resolved
+		}
+		rating, count := l.ratingLocked(model, class, query.Prior)
+		readings[index] = Reading{Rating: rating, Count: count}
+	}
+	return readings
 }
 
 // Observe folds one outcome in, and only the outcomes that are evidence: a
@@ -148,13 +205,15 @@ func (l *Ledger) Observe(model string, class provider.CallClass, prior float64, 
 	}
 	weight := verdict.Weight()
 	l.mutex.Lock()
-	defer l.mutex.Unlock()
 	l.entries[key(model, class)] = update(l.entryOr(model, class, prior), positive, weight)
 	l.pending = append(l.pending, observation{model: model, class: class, prior: prior, positive: positive, weight: weight})
 	l.unsaved = true
+	l.mutex.Unlock()
 	// Flushed as it goes rather than at the end of the run: a run that is
 	// interrupted has still learned what it learned, and the cost is one locked
-	// read-modify-write of a small file after a call that took seconds.
+	// read-modify-write of a small file after a call that took seconds. That
+	// cost is paid outside the map lock — what a ranking call needs is the
+	// number, and the number is already in memory.
 	_ = l.flush()
 }
 
@@ -166,12 +225,13 @@ func (l *Ledger) Alias(slug, resolved string) {
 		return
 	}
 	l.mutex.Lock()
-	defer l.mutex.Unlock()
 	if l.aliases[slug] == resolved {
+		l.mutex.Unlock()
 		return
 	}
 	l.aliases[slug] = resolved
 	l.unsaved = true
+	l.mutex.Unlock()
 	_ = l.flush()
 }
 
@@ -179,8 +239,8 @@ func (l *Ledger) Alias(slug, resolved string) {
 // are read through it so that selection and recording agree about which model
 // they are talking about.
 func (l *Ledger) Resolve(slug string) string {
-	l.mutex.Lock()
-	defer l.mutex.Unlock()
+	l.mutex.RLock()
+	defer l.mutex.RUnlock()
 	if resolved, known := l.aliases[slug]; known {
 		return resolved
 	}
@@ -190,8 +250,8 @@ func (l *Ledger) Resolve(slug string) string {
 // Entries returns everything known, ordered for reading: strongest first within
 // a class, classes alphabetically.
 func (l *Ledger) Entries() []Entry {
-	l.mutex.Lock()
-	defer l.mutex.Unlock()
+	l.mutex.RLock()
+	defer l.mutex.RUnlock()
 	entries := make([]Entry, 0, len(l.entries))
 	for _, entry := range l.entries {
 		entries = append(entries, entry)
@@ -210,8 +270,8 @@ func (l *Ledger) Entries() []Entry {
 
 // Aliases returns the floating-slug to snapshot map, for reporting.
 func (l *Ledger) Aliases() map[string]string {
-	l.mutex.Lock()
-	defer l.mutex.Unlock()
+	l.mutex.RLock()
+	defer l.mutex.RUnlock()
 	copied := make(map[string]string, len(l.aliases))
 	for slug, resolved := range l.aliases {
 		copied[slug] = resolved
@@ -223,13 +283,23 @@ func (l *Ledger) Aliases() map[string]string {
 // path flushes as it goes, so this is only ever picking up after a file lock
 // that was busy at the time.
 func (l *Ledger) Save() error {
-	l.mutex.Lock()
-	defer l.mutex.Unlock()
 	return l.flush()
 }
 
-// flush merges this process's queued observations into the file. The caller
-// holds the mutex.
+// Close saves and then stops waiting for anything. An observation still trying
+// to reach the file after this abandons its lock wait rather than holding the
+// process open for it.
+func (l *Ledger) Close() error {
+	err := l.Save()
+	l.closeOnce.Do(func() {
+		if l.closed != nil {
+			close(l.closed)
+		}
+	})
+	return err
+}
+
+// flush merges this process's queued observations into the file.
 //
 // The merge is the point. Several aforge processes may be running at once, each
 // doing read-modify-write on the same small file, and a plain write would let
@@ -237,13 +307,61 @@ func (l *Ledger) Save() error {
 // under an exclusive lock, the queued observations are replayed onto whatever is
 // there *now*, and the result becomes both the file and this process's own view
 // — which is also how a long run picks up what a concurrent run has learned.
+//
+// None of that happens under the map lock. The queue is taken out under it, the
+// file work runs holding only flushing, and the result is folded back in under
+// it — so a routed call reading a rating waits for a map operation, never for a
+// lock file, a re-parse and a rename. What that costs is a window in which an
+// observation can arrive mid-flush, and the fold below is where it is paid: the
+// file's merged view comes back first, then whatever queued while it was in the
+// air is replayed on top, so no observation is ever both unflushed and unseen.
 func (l *Ledger) flush() error {
+	l.flushing.Lock()
+	defer l.flushing.Unlock()
+
+	l.mutex.Lock()
 	if !l.unsaved {
+		l.mutex.Unlock()
 		return nil
 	}
-	unlock, err := lockFile(l.path)
+	pending := append([]observation(nil), l.pending...)
+	aliases := make(map[string]string, len(l.aliases))
+	for slug, resolved := range l.aliases {
+		aliases[slug] = resolved
+	}
+	l.pending, l.unsaved = nil, false
+	l.mutex.Unlock()
+
+	merged, err := l.write(pending, aliases)
 	if err != nil {
+		// A flush blocked by another process costs a moment rather than the
+		// evidence: the queue goes back, ahead of anything observed since.
+		l.mutex.Lock()
+		l.pending = append(pending, l.pending...)
+		l.unsaved = true
+		l.mutex.Unlock()
 		return err
+	}
+
+	l.mutex.Lock()
+	defer l.mutex.Unlock()
+	for _, item := range l.pending {
+		merged.entries[key(item.model, item.class)] = update(
+			merged.entryOr(item.model, item.class, item.prior), item.positive, item.weight)
+	}
+	for slug, resolved := range l.aliases {
+		merged.aliases[slug] = resolved
+	}
+	l.entries, l.aliases = merged.entries, merged.aliases
+	return nil
+}
+
+// write is the file half of a flush: everything that touches the disk, and
+// nothing that touches the live maps.
+func (l *Ledger) write(pending []observation, aliases map[string]string) (*Ledger, error) {
+	unlock, err := l.lockFile()
+	if err != nil {
+		return nil, err
 	}
 	defer unlock()
 
@@ -251,23 +369,22 @@ func (l *Ledger) flush() error {
 	if data, err := os.ReadFile(l.path); err == nil {
 		merged.adopt(decodeLedger(data))
 	}
-	for slug, resolved := range l.aliases {
+	for slug, resolved := range aliases {
 		merged.aliases[slug] = resolved
 	}
-	for _, item := range l.pending {
+	for _, item := range pending {
 		merged.entries[key(item.model, item.class)] = update(
 			merged.entryOr(item.model, item.class, item.prior), item.positive, item.weight)
 	}
 
 	encoded, err := json.MarshalIndent(merged.file(), "", "  ")
 	if err != nil {
-		return err
+		return nil, err
 	}
 	if err := replaceFile(l.path, encoded); err != nil {
-		return err
+		return nil, err
 	}
-	l.entries, l.aliases, l.pending, l.unsaved = merged.entries, merged.aliases, nil, false
-	return nil
+	return merged, nil
 }
 
 func (l *Ledger) entryOr(model string, class provider.CallClass, prior float64) Entry {
@@ -366,24 +483,47 @@ func key(model string, class provider.CallClass) string {
 // and a lock older than the takeover window is assumed to belong to a process
 // that died holding it — the alternative is that one crash disables learning
 // permanently.
-func lockFile(path string) (func(), error) {
+func (l *Ledger) lockFile() (func(), error) {
 	const (
 		attempts = 40
 		interval = 25 * time.Millisecond
 		stale    = 30 * time.Second
 	)
-	lock := path + ".lock"
+	lock := l.path + ".lock"
 	for attempt := 0; attempt < attempts; attempt++ {
 		file, err := os.OpenFile(lock, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o644)
 		if err == nil {
 			file.Close()
 			return func() { os.Remove(lock) }, nil
 		}
+		// A lock older than the takeover window belongs to a process that died
+		// holding it. Removing it earns an immediate retry — but only when the
+		// removal actually succeeded, because a `continue` on a failed takeover
+		// is a tight spin that burns all forty attempts in microseconds and
+		// reports contention that was never waited out.
 		if info, statErr := os.Stat(lock); statErr == nil && time.Since(info.ModTime()) > stale {
-			os.Remove(lock)
-			continue
+			if removeErr := os.Remove(lock); removeErr == nil {
+				continue
+			}
 		}
-		time.Sleep(interval)
+		if err := l.pause(interval); err != nil {
+			return nil, err
+		}
 	}
 	return nil, fmt.Errorf("router ledger: %s is locked by another process", lock)
+}
+
+// pause is the lock retry wait, and it is abandonable. A closed ledger stops
+// waiting: the alternative is a shutdown that sits through a second of retries
+// for a file another process is holding, to save evidence the next run would
+// re-derive anyway.
+func (l *Ledger) pause(interval time.Duration) error {
+	timer := time.NewTimer(interval)
+	defer timer.Stop()
+	select {
+	case <-l.closed:
+		return errors.New("router ledger: closed while waiting for the lock")
+	case <-timer.C:
+		return nil
+	}
 }
