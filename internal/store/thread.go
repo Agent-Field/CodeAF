@@ -115,6 +115,11 @@ const (
 	// flight: Target names its root, Instruction is what they said, verbatim.
 	// The remaining plan is revised against it and the running leaves are told.
 	CommandRedirect CommandKind = "redirect"
+	// CommandExpedite is redirection's impatient sibling: Target names a live
+	// job's root and the user wants it sooner, not different. It is a separate
+	// kind rather than a flag on redirect so replay stays a switch on the verb
+	// and no command row grows a column.
+	CommandExpedite CommandKind = "expedite"
 	// CommandPause/Resume operate on a journal-derived scheduler hold rather
 	// than inventing a presentation-only node status.
 	CommandPause        CommandKind = "pause"
@@ -891,7 +896,7 @@ func validRole(role Role) bool {
 
 func validCommandKind(kind CommandKind) bool {
 	switch kind {
-	case CommandSplice, CommandAmend, CommandCancel, CommandRedirect, CommandPause, CommandResume,
+	case CommandSplice, CommandAmend, CommandCancel, CommandRedirect, CommandExpedite, CommandPause, CommandResume,
 		CommandReprioritize, CommandRestart, CommandCharterRatify,
 		CommandCharterPause, CommandCharterRetire, CommandCharterCadence, CommandCharterOnce,
 		CommandCharterFire, CommandCharterDecline, CommandCharterAlways, CommandCharterNever, CommandCharterProbation,
@@ -931,7 +936,7 @@ func validateNodeCommand(tx *sql.Tx, kind CommandKind, target string) error {
 		return fmt.Errorf("%s target %q is not executable work: %w", kind, target, ErrInvalid)
 	}
 	switch kind {
-	case CommandCancel, CommandPause, CommandAmend, CommandRedirect:
+	case CommandCancel, CommandPause, CommandAmend, CommandRedirect, CommandExpedite:
 		if status != Pending && status != Claimed && status != Running {
 			return fmt.Errorf("%s target %q is %s: %w", kind, target, status, ErrInvalid)
 		}

@@ -820,7 +820,7 @@ func TestReviseForUserWithoutARetainedPlanChangesNothing(t *testing.T) {
 	}
 	plans := &jobPlans{graphs: map[string]plannedJob{}}
 	revision, err := plans.reviseForUser(context.Background(), config.Config{}, nil, graph, job,
-		"no, use the v2 API not v1")
+		"no, use the v2 API not v1", resident.RevisionRedirect)
 	if err != nil {
 		t.Fatalf("revise without a retained plan: %v", err)
 	}

@@ -41,6 +41,13 @@ func (h *Head) manageRedirect(user store.Message) (bool, error) {
 	if err != nil || !redirecting {
 		return false, err
 	}
+	if intent.Cue == urgencyCue {
+		// Urgency is the one class that never asks. The question would spend
+		// the wait it is meant to shorten, and everything expedite does is
+		// reversible, so the best-ranked live job takes the pressure and the
+		// receipt names it.
+		return true, h.requestRevision(user, store.CommandExpedite, intent.Candidates[0].Node.ID, user.Body)
+	}
 	if intent.Certain {
 		return true, h.requestRedirect(user, intent.Candidates[0].Node.ID, user.Body)
 	}
@@ -129,11 +136,18 @@ func (h *Head) rankRedirectTargets(message string, active []store.SurgeryTarget)
 }
 
 func (h *Head) requestRedirect(user store.Message, target, message string) error {
+	return h.requestRevision(user, store.CommandRedirect, target, message)
+}
+
+// requestRevision journals one mid-flight revision. Both verbs carry the user's
+// words verbatim and differ only in what the reconciler does with them: change
+// the work, or hurry it.
+func (h *Head) requestRevision(user store.Message, kind store.CommandKind, target, message string) error {
 	// No acknowledgement on success, on purpose. The only honest receipt is
 	// the one that knows what actually changed in the plan and who was told,
 	// and that is written a moment later by the reconciler that did it.
 	if _, err := h.store.RequestCommand(store.Command{
-		SessionID: user.SessionID, Kind: store.CommandRedirect,
+		SessionID: user.SessionID, Kind: kind,
 		Target: target, Instruction: strings.TrimSpace(message),
 	}); err != nil {
 		return h.postAgent(user.SessionID, commandErrorReply, 0)
@@ -214,9 +228,13 @@ func clipTargets(targets []store.SurgeryTarget) []store.SurgeryTarget {
 	return targets
 }
 
-// redirectCue names the four ways a person changes work already underway. They
+// redirectCue names the five ways a person changes work already underway. They
 // are phrases rather than keywords: "also" beginning a sentence is a scope
 // addition, "also" in the middle of one is usually just prose.
+//
+// Urgency is tested last so the four content classes keep their meaning: a
+// sentence that both cuts scope and presses for speed is a scope cut, and the
+// redirect path already tells the running workers.
 func redirectCue(message string) (string, bool) {
 	lower := strings.ToLower(strings.TrimSpace(message))
 	hasPrefix := func(prefixes ...string) bool {
@@ -238,7 +256,8 @@ func redirectCue(message string) (string, bool) {
 	switch {
 	case hasPrefix("actually ", "no, ", "no — ", "no - ", "wait,", "wait —", "wait -", "wait, ", "wait ",
 		"correction", "i meant ", "sorry, "),
-		contains("that's wrong", "thats wrong", "that is wrong", "i meant ", "not what i meant"):
+		contains("that's wrong", "thats wrong", "that is wrong", "i meant ", "not what i meant"),
+		impatientCorrection(lower):
 		return "correction", true
 	case hasPrefix("also ", "and also ", "include ", "plus "),
 		contains("while you're at it", "while you are at it", "while youre at it",
@@ -252,6 +271,8 @@ func redirectCue(message string) (string, bool) {
 	case hasPrefix("instead ", "change of plan", "focus on "),
 		contains(" instead", "change of plan", "rather than"):
 		return "redirect", true
+	case urgencyCued(lower):
+		return urgencyCue, true
 	default:
 		return "", false
 	}
@@ -266,6 +287,9 @@ func refersToLiveWork(message string, active int) bool {
 		"the job", "that job", "this job", "the task", "that task", "this task",
 		"the current run", "the run", "the current job", "what you're doing",
 		"what you are doing", "what youre doing", "the work you", "that work",
+		// Shared history is deixis too: "the problem we started" names live
+		// work as surely as "that job" does, without borrowing any of its words.
+		"we started", "we began", "you started", "we were doing", "already started",
 	} {
 		if strings.Contains(lower, phrase) {
 			return true
@@ -302,6 +326,14 @@ func redirectReference(message string) string {
 		"work": true, "run": true, "doing": true, "use": true, "using": true,
 		"make": true, "let": true, "s": true, "wrong": true, "cover": true, "as": true,
 		"well": true, "please": true, "just": true, "now": true, "longer": true,
+		// Impatience vocabulary. It says when, never what, so it must not be
+		// allowed to score against a job that happens to be about speed.
+		"fast": true, "faster": true, "quickly": true, "quicker": true,
+		"hurry": true, "asap": true, "immediately": true, "urgent": true,
+		"urgently": true, "sooner": true, "right": true, "away": true,
+		"give": true, "me": true, "my": true, "want": true, "answer": true,
+		"result": true, "results": true, "finish": true, "complete": true,
+		"started": true, "began": true,
 	}
 	var kept []string
 	for _, word := range strings.FieldsFunc(strings.ToLower(message), func(r rune) bool {
