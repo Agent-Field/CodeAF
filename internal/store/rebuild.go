@@ -442,7 +442,8 @@ func replayEvent(tx *sql.Tx, event Event) error {
 	case EventCharterCreated, EventCharterRevised, EventCharterStatusChanged,
 		EventCharterWatchAdvanced, EventCharterWoken, EventSentinelChecked,
 		EventCharterFired, EventCharterFiringBlocked, EventCharterFiringDeferred,
-		EventCharterProposalDeclined:
+		EventCharterProposalDeclined, EventCharterFiringProposed, EventCharterFiringDeclined,
+		EventCharterFiringReviewed, EventCharterPromoted, EventCharterDemoted:
 		return replayCharterEvent(tx, event)
 
 	default:
