@@ -46,9 +46,22 @@ func (h *Head) manageSurgery(user store.Message) (bool, error) {
 		return false, nil
 	}
 	intent.Instruction = strings.TrimSpace(user.Body)
+	if class, isClass := classSelector(user.Body); isClass {
+		return true, h.resolveClassSurgery(user, intent.Kind, intent.Instruction, class, "", false)
+	}
 	matches, err := h.surgeryMatches(intent)
 	if err != nil {
 		return true, err
+	}
+	if mentionsClass(user.Body) && !surgeryMatchIsDecisive(matches) {
+		// The message named a status class but did not resolve as one, and the
+		// content path has nothing confident to show for it. Both halves of the
+		// live failure live here — one weak match acted on silently, and a flat
+		// "I couldn't find any" said over a board full of work — so this asks
+		// with the live work in hand instead.
+		if asked, err := h.askSurgeryTarget(user, intent, matches); asked || err != nil {
+			return true, err
+		}
 	}
 	if len(matches) == 0 {
 		what := strings.TrimSpace(intent.Reference)
@@ -59,27 +72,73 @@ func (h *Head) manageSurgery(user store.Message) (bool, error) {
 			fmt.Sprintf("I couldn't find any current work matching %q.", what), 0)
 	}
 	if len(matches) > 1 {
-		options := make([]store.QuestionOption, 0, len(matches))
-		for _, match := range matches {
-			options = append(options, store.QuestionOption{
-				Label: surgeryTargetLabel(match.Node),
-				Hint:  surgeryTargetHint(match),
-				Value: encodeSurgeryOption("select", intent.Kind, match.Node.ID, intent.Instruction),
-			})
-		}
-		return true, h.postQuestion(user.SessionID, "Which job do you mean?", 0, options)
+		return true, h.postSurgeryChoice(user, intent, matches)
 	}
 	return true, h.resolveSurgery(user, intent.Kind, matches[0].Node.ID, intent.Instruction, false)
 }
 
-func (h *Head) surgeryMatches(intent surgeryIntent) ([]store.SurgeryTarget, error) {
-	var allowed []store.Status
-	switch intent.Kind {
-	case store.CommandRestart:
-		allowed = []store.Status{store.Failed, store.Cancelled}
-	default:
-		allowed = []store.Status{store.Pending, store.Claimed, store.Running}
+// surgeryMatchIsDecisive reports that the content path can be trusted on its
+// own. More than one match already ends in the ordinary numbered question, so
+// only the lone match has to earn its silence: it must clear the same anchor
+// floor redirection uses before a sentence counts as being about a job.
+func surgeryMatchIsDecisive(matches []store.SurgeryTarget) bool {
+	if len(matches) > 1 {
+		return true
 	}
+	return len(matches) == 1 && matches[0].Score >= ClassFallbackFloor
+}
+
+// askSurgeryTarget widens a doubtful reading into the ordinary numbered choice
+// over live work. The doubtful match leads, since it is still the best guess —
+// it just may not act on its own. A quiet graph has nothing to offer, so it
+// reports no question and the caller says so plainly instead.
+func (h *Head) askSurgeryTarget(user store.Message, intent surgeryIntent, matches []store.SurgeryTarget) (bool, error) {
+	live, err := h.surgeryMatches(surgeryIntent{Kind: intent.Kind, IncludeLeaves: intent.IncludeLeaves})
+	if err != nil {
+		return false, err
+	}
+	candidates := append([]store.SurgeryTarget(nil), matches...)
+	for _, target := range live {
+		duplicate := false
+		for _, candidate := range candidates {
+			if candidate.Node.ID == target.Node.ID {
+				duplicate = true
+				break
+			}
+		}
+		if !duplicate {
+			candidates = append(candidates, target)
+		}
+	}
+	if len(candidates) == 0 {
+		return false, nil
+	}
+	return true, h.postSurgeryChoice(user, intent, candidates)
+}
+
+func (h *Head) postSurgeryChoice(user store.Message, intent surgeryIntent, matches []store.SurgeryTarget) error {
+	options := make([]store.QuestionOption, 0, len(matches))
+	for _, match := range matches {
+		options = append(options, store.QuestionOption{
+			Label: surgeryTargetLabel(match.Node),
+			Hint:  surgeryTargetHint(match),
+			Value: encodeSurgeryOption("select", intent.Kind, match.Node.ID, intent.Instruction),
+		})
+	}
+	return h.postQuestion(user.SessionID, "Which job do you mean?", 0, options)
+}
+
+// surgeryAllowedStatuses is the one table saying which statuses each verb may
+// legally touch. Both the content path and the class path read it.
+func surgeryAllowedStatuses(kind store.CommandKind) []store.Status {
+	if kind == store.CommandRestart {
+		return []store.Status{store.Failed, store.Cancelled}
+	}
+	return []store.Status{store.Pending, store.Claimed, store.Running}
+}
+
+func (h *Head) surgeryMatches(intent surgeryIntent) ([]store.SurgeryTarget, error) {
+	allowed := surgeryAllowedStatuses(intent.Kind)
 	matches, err := h.store.SearchSurgeryTargets(intent.Reference, intent.IncludeLeaves, allowed...)
 	if err != nil {
 		return nil, err
@@ -355,16 +414,27 @@ func surgeryReference(message string) string {
 		"step": true, "leaf": true, "part": true, "it": true, "that": true,
 		"this": true, "while": true, "i": true, "think": true, "failed": true,
 		"running": true, "pending": true, "to": true, "now": true, "then": true,
+		"queued": true, "waiting": true, "ones": true,
 	}
 	var kept []string
-	for _, word := range strings.FieldsFunc(message, func(r rune) bool {
-		return !unicode.IsLetter(r) && !unicode.IsNumber(r)
-	}) {
-		if !stop[word] {
-			kept = append(kept, word)
+	for _, word := range surgeryWords(message) {
+		// Class vocabulary names a set, never content. Left in, a status word
+		// scores against whichever brief happens to share it and answers a
+		// question about the board with an unrelated node.
+		if stop[word] || classVocabulary[word] != "" {
+			continue
 		}
+		kept = append(kept, word)
 	}
 	return strings.Join(kept, " ")
+}
+
+// surgeryWords is the single tokenization every reference reader shares, so the
+// stop-list and the class vocabulary always see the same words.
+func surgeryWords(message string) []string {
+	return strings.FieldsFunc(message, func(r rune) bool {
+		return !unicode.IsLetter(r) && !unicode.IsNumber(r)
+	})
 }
 
 func pluralWord(count int, singular, plural string) string {
