@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"strings"
 )
 
 // Rebuild discards and reconstructs both materialized views solely by replaying
@@ -261,6 +262,19 @@ func replayEvent(tx *sql.Tx, event Event) error {
 			return err
 		}
 		return applyCommandResolution(tx, payload, event.Seq)
+
+	case EventSeenTouched:
+		// Seen watermarks are journal-native. Rebuild validates their payload;
+		// LastSeen reads the newest event directly.
+		var payload seenPayload
+		if err := json.Unmarshal(event.Payload, &payload); err != nil {
+			return err
+		}
+		if strings.TrimSpace(payload.Surface) == "" ||
+			(payload.State != SeenAttached && payload.State != SeenDetached) {
+			return fmt.Errorf("invalid seen watermark")
+		}
+		return nil
 
 	case EventUsageRecorded:
 		var payload NodeUsage

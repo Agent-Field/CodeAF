@@ -86,6 +86,7 @@ const (
 	EventMessagePosted    EventKind = "message_posted"
 	EventCommandRequested EventKind = "command_requested"
 	EventCommandResolved  EventKind = "command_resolved"
+	EventSeenTouched      EventKind = "seen_touched"
 
 	// Usage and surprise are journaled separately because a planned leaf's
 	// prediction becomes known when the complete plan lands, after its spend.

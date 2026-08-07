@@ -162,6 +162,7 @@ type Reconciler struct {
 	digestTerritory TerritoryDigestFunc
 	overrunPlan     OverrunPlanFunc
 	sentinel        SentinelFunc
+	composeBrief    BriefComposeFunc
 	proposeCharters bool
 	dailyBudgetUSD  float64
 	practiceEnabled bool
