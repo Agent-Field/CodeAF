@@ -295,7 +295,7 @@ func ModelCandidates(models *catalog.Catalog, slot string) []catalog.Model {
 		return nil
 	}
 	switch strings.ToLower(strings.TrimSpace(slot)) {
-	case "talk", "work":
+	case "talk", "work", "boost":
 		candidates := models.ModelsWithInput("text")
 		filtered := make([]catalog.Model, 0, len(candidates))
 		for _, candidate := range candidates {

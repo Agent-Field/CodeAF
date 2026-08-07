@@ -75,6 +75,7 @@ type Client interface {
 // routing call, one reply, and at most one asynchronous command.
 type Head struct {
 	client         Client
+	messageClient  func(store.Message) (Client, error)
 	store          *store.Store
 	knowledge      func() string
 	competence     func() string
@@ -99,6 +100,14 @@ func (h *Head) WithImageInput(modalities interface {
 // New returns a conversational head backed by graphStore.
 func New(client Client, graphStore *store.Store) *Head {
 	return &Head{client: client, store: graphStore}
+}
+
+// WithMessageClient selects a conversational client for one durable user
+// message. Messages without an override continue through the Head's ordinary
+// client; the callback is the single seam used by heavier chat lanes.
+func (h *Head) WithMessageClient(selectClient func(store.Message) (Client, error)) *Head {
+	h.messageClient = selectClient
+	return h
 }
 
 // WithSelfKnowledge supplies measured execution history to the routing call.
@@ -283,7 +292,7 @@ func (h *Head) answer(ctx context.Context, user store.Message) error {
 		}
 		commandSeq = command.Seq
 	}
-	return h.postAgent(user.SessionID, decision.Reply, commandSeq)
+	return h.postAgentModel(user.SessionID, decision.Reply, commandSeq, decision.model)
 }
 
 func (h *Head) raiseRailFromReply(user store.Message) (bool, error) {
@@ -318,6 +327,10 @@ func affirmativeRailReply(body string) bool {
 }
 
 func (h *Head) route(ctx context.Context, user store.Message) (routeDecision, error) {
+	client, err := h.clientFor(user)
+	if err != nil {
+		return routeDecision{}, err
+	}
 	snapshot, err := h.store.ActiveSnapshot()
 	if err != nil {
 		return routeDecision{}, fmt.Errorf("read active graph: %w", err)
@@ -355,7 +368,7 @@ func (h *Head) route(ctx context.Context, user store.Message) (routeDecision, er
 		textMessage("system", resident.VoicePrompt(h.store, headSystemPrompt, user.Body)),
 		textMessage("user", prompt),
 	}
-	if h.supportsImages() && len(user.Attachments) > 0 {
+	if h.supportsImages(client) && len(user.Attachments) > 0 {
 		parts := messages[1].Content
 		for _, path := range user.Attachments {
 			if part, ok := imageContentPart(path); ok {
@@ -369,8 +382,9 @@ func (h *Head) route(ctx context.Context, user store.Message) (routeDecision, er
 	// took 4-6s, while prompt-shaped JSON parsed three of three at under a
 	// second. The defensive decoder below covers the difference.
 	raw := ""
+	servedModel := ""
 	for attempt := 0; attempt < 2; attempt++ {
-		response, err := h.client.CompleteWithMessages(ctx, messages, ai.WithMaxTokens(600))
+		response, err := client.CompleteWithMessages(ctx, messages, ai.WithMaxTokens(600))
 		if err != nil {
 			// One transient failure should not surface as "try again" — the
 			// user already tried. Retry once; only a repeat offense escapes.
@@ -387,17 +401,19 @@ func (h *Head) route(ctx context.Context, user store.Message) (routeDecision, er
 		if response == nil {
 			return routeDecision{}, errors.New("provider returned a nil response")
 		}
+		servedModel = strings.TrimSpace(response.Model)
 		raw = strings.TrimSpace(response.Text())
 		if raw != "" {
 			break
 		}
 	}
+	attribution := replyModel(user, client, servedModel)
 	var decision routeDecision
 	if err := decodeJSONObject(raw, &decision); err != nil {
 		if raw == "" {
 			return routeDecision{}, errors.New("provider returned an empty response")
 		}
-		return routeDecision{Reply: raw}, nil
+		return routeDecision{Reply: raw, model: attribution}, nil
 	}
 	if decision.Command != nil && decision.Command.Kind == routeReflexKind {
 		decision.Command.Instruction = user.Body
@@ -407,18 +423,50 @@ func (h *Head) route(ctx context.Context, user store.Message) (routeDecision, er
 		if raw == "" {
 			return routeDecision{}, errors.New("provider returned an empty response")
 		}
-		return routeDecision{Reply: raw}, nil
+		return routeDecision{Reply: raw, model: attribution}, nil
 	}
 	decision.Reply = strings.TrimSpace(decision.Reply)
+	decision.model = attribution
 	return decision, nil
 }
 
-func (h *Head) supportsImages() bool {
+func (h *Head) clientFor(user store.Message) (Client, error) {
+	if h.messageClient == nil || strings.TrimSpace(user.Model) == "" {
+		return h.client, nil
+	}
+	client, err := h.messageClient(user)
+	if err != nil {
+		return nil, err
+	}
+	if client == nil {
+		return nil, errors.New("message client selector returned nil")
+	}
+	return client, nil
+}
+
+func replyModel(user store.Message, client Client, resolved string) string {
+	// Ordinary talk replies remain byte-for-byte unannotated. Only a durable
+	// per-message request earns reply attribution in the thread.
+	if strings.TrimSpace(user.Model) == "" {
+		return ""
+	}
+	if resolved = strings.TrimSpace(resolved); resolved != "" {
+		return resolved
+	}
+	if modeled, ok := client.(interface{ Model() string }); ok {
+		if model := strings.TrimSpace(modeled.Model()); model != "" {
+			return model
+		}
+	}
+	return strings.TrimSpace(user.Model)
+}
+
+func (h *Head) supportsImages(client Client) bool {
 	if h == nil || h.modalities == nil {
 		return false
 	}
 	model := h.defaultModel
-	if current, ok := h.client.(interface{ Model() string }); ok {
+	if current, ok := client.(interface{ Model() string }); ok {
 		model = current.Model()
 	}
 	return h.modalities.Supports(model, "input", "image")
@@ -488,11 +536,16 @@ func (h *Head) recentThread(sessionID string, beforeSeq int64) ([]store.Message,
 }
 
 func (h *Head) postAgent(sessionID, body string, commandSeq int64) error {
+	return h.postAgentModel(sessionID, body, commandSeq, "")
+}
+
+func (h *Head) postAgentModel(sessionID, body string, commandSeq int64, model string) error {
 	_, err := h.store.PostMessage(store.Message{
 		SessionID:  sessionID,
 		Role:       store.RoleAgent,
 		Body:       body,
 		CommandSeq: commandSeq,
+		Model:      strings.TrimSpace(model),
 	})
 	if err != nil {
 		return fmt.Errorf("serve head: post reply: %w", err)
@@ -549,6 +602,7 @@ type routeDecision struct {
 	Command  *routeCommand    `json:"command"`
 	Remember *routeMemory     `json:"remember"`
 	Retract  *routeRetraction `json:"retract"`
+	model    string
 }
 
 // routeMemory is a durable fact the user just stated, captured into the

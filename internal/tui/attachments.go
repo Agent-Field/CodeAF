@@ -10,8 +10,19 @@ type imageInputSupporter interface {
 	ImageInputSupport() (model string, supported bool)
 }
 
+type roleImageInputSupporter interface {
+	ImageInputSupportFor(role string) (model string, supported bool)
+}
+
 func (m *Model) imageInputSupport() (string, bool) {
-	model := m.currentModel("talk")
+	role := "talk"
+	if m.boost != boostOff {
+		role = "boost"
+	}
+	model := m.currentModel(role)
+	if support, ok := m.commander.(roleImageInputSupporter); ok {
+		return support.ImageInputSupportFor(role)
+	}
 	if support, ok := m.commander.(imageInputSupporter); ok {
 		return support.ImageInputSupport()
 	}
