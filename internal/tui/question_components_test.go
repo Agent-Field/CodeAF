@@ -27,6 +27,235 @@ func structuredQuestionCard(t *testing.T, body string, at time.Time) jobCard {
 	return requireCard(t, cards, fmt.Sprintf("command:%d", command.Seq))
 }
 
+func answerFlowCard(id string, birth int64, kind questionKind, defaultOption string) jobCard {
+	return jobCard{
+		ID: id, State: cardQuestion, QuestionKind: kind, Question: "Choose for " + id,
+		BirthSeq: birth, Default: defaultOption, Options: []questionOption{
+			{Number: 1, Key: id + "-one", Label: "one", Reply: id + "-reply-one"},
+			{Number: 2, Key: id + "-two", Label: "two", Reply: id + "-reply-two"},
+		},
+	}
+}
+
+func requireQuestionPost(t *testing.T, model *Model, backend *fakeBackend, key tea.KeyMsg) store.Message {
+	t.Helper()
+	_, command := model.Update(key)
+	if command == nil {
+		t.Fatal("answer key did not return a post command")
+	}
+	_, _ = model.Update(command())
+	backend.mu.Lock()
+	defer backend.mu.Unlock()
+	if len(backend.posted) != 1 {
+		t.Fatalf("posted messages = %#v, want exactly one", backend.posted)
+	}
+	return backend.posted[0]
+}
+
+func TestQuestionDigitAnswersWithoutNavigationFromEveryFocusZone(t *testing.T) {
+	for _, test := range []struct {
+		name     string
+		focus    paneFocus
+		nodeView bool
+	}{
+		{name: "input", focus: focusInput},
+		{name: "thread", focus: focusChat},
+		{name: "rail", focus: focusGraph},
+		{name: "worker activity", focus: focusInput, nodeView: true},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			backend := &fakeBackend{}
+			model := New(backend, "zero-navigation")
+			model.cards = []jobCard{answerFlowCard("question", 1, questionChoose, "")}
+			model.focus = test.focus
+			model.inputFocused = test.focus == focusInput
+			if model.inputFocused {
+				_ = model.input.Focus()
+			} else {
+				model.input.Blur()
+			}
+			if test.focus == focusGraph {
+				model.graphOpen = true
+			}
+			if test.nodeView {
+				model.nodeViewID = "worker"
+			}
+			model.setSize(110, 30)
+
+			posted := requireQuestionPost(t, model, backend,
+				tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'2'}})
+			if posted.Role != store.RoleUser || posted.Body != "question-reply-two" {
+				t.Fatalf("posted answer = %+v", posted)
+			}
+			if model.questionSelection["question"] != 1 {
+				t.Fatalf("acted question selection = %d, want second option flash", model.questionSelection["question"])
+			}
+		})
+	}
+}
+
+// This is the reported journey that the old routing broke: once the visible
+// question and the keyboard focus lived in different zones, a bare digit was
+// offered only to the rail viewport and never reached the option card.
+func TestRegressionVisibleQuestionAcceptsFirstOptionWhileRailHasFocus(t *testing.T) {
+	backend := &fakeBackend{}
+	model := New(backend, "reported-journey")
+	model.cards = []jobCard{answerFlowCard("fresh", 1, questionChoose, "")}
+	model.toggleGraph()
+	if model.focus != focusGraph || model.inputFocused {
+		t.Fatalf("precondition focus=%v inputFocused=%t", model.focus, model.inputFocused)
+	}
+	posted := requireQuestionPost(t, model, backend,
+		tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'1'}})
+	if posted.Body != "fresh-reply-one" {
+		t.Fatalf("first option posted %q", posted.Body)
+	}
+}
+
+func TestQuestionDigitTargetsNewestUnlessPendingCardIsFocused(t *testing.T) {
+	oldQuestion := answerFlowCard("old", 1, questionChoose, "")
+	newQuestion := answerFlowCard("new", 2, questionChoose, "")
+
+	newestBackend := &fakeBackend{}
+	newestModel := New(newestBackend, "newest-question")
+	newestModel.cards = []jobCard{oldQuestion, newQuestion}
+	posted := requireQuestionPost(t, newestModel, newestBackend,
+		tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'2'}})
+	if posted.Body != "new-reply-two" || newestModel.questionSelection["new"] != 1 {
+		t.Fatalf("unfocused target posted=%q selections=%v", posted.Body, newestModel.questionSelection)
+	}
+
+	focusedBackend := &fakeBackend{}
+	focusedModel := New(focusedBackend, "focused-question")
+	focusedModel.cards = []jobCard{oldQuestion, newQuestion}
+	focusedModel.focus = focusCards
+	focusedModel.inputFocused = false
+	focusedModel.input.Blur()
+	focusedModel.selectedCardID = "old"
+	posted = requireQuestionPost(t, focusedModel, focusedBackend,
+		tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'2'}})
+	if posted.Body != "old-reply-two" || focusedModel.questionSelection["old"] != 1 {
+		t.Fatalf("focused target posted=%q selections=%v", posted.Body, focusedModel.questionSelection)
+	}
+}
+
+func TestQuestionDigitWithDraftContentKeepsTyping(t *testing.T) {
+	backend := &fakeBackend{}
+	model := New(backend, "draft-digit")
+	model.cards = []jobCard{answerFlowCard("question", 1, questionChoose, "")}
+	model.input.SetValue("draft")
+	_, command := model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'1'}})
+	if command != nil || model.input.Value() != "draft1" {
+		t.Fatalf("digit with draft command=%v value=%q", command, model.input.Value())
+	}
+	if len(backend.posted) != 0 {
+		t.Fatalf("digit with draft posted %#v", backend.posted)
+	}
+}
+
+func TestQuestionExactNumberDraftResolvesLocallyButOtherDraftsStayFreeText(t *testing.T) {
+	localBackend := &fakeBackend{}
+	localModel := New(localBackend, "local-number")
+	localModel.cards = []jobCard{answerFlowCard("question", 1, questionChoose, "")}
+	localModel.input.SetValue("2")
+	posted := requireQuestionPost(t, localModel, localBackend, tea.KeyMsg{Type: tea.KeyEnter})
+	if posted.Body != "question-reply-two" || posted.Body == "2" || localModel.input.Value() != "" {
+		t.Fatalf("exact-number post=%+v input=%q", posted, localModel.input.Value())
+	}
+
+	freeBackend := &fakeBackend{}
+	freeModel := New(freeBackend, "free-text")
+	freeModel.cards = []jobCard{answerFlowCard("question", 1, questionChoose, "")}
+	freeModel.input.SetValue("2 but change the title")
+	posted = requireQuestionPost(t, freeModel, freeBackend, tea.KeyMsg{Type: tea.KeyEnter})
+	if posted.Body != "2 but change the title" {
+		t.Fatalf("non-matching draft posted %q", posted.Body)
+	}
+}
+
+func TestConfirmEnterAcceptsMarkedDefaultFromEveryFocusZone(t *testing.T) {
+	for _, test := range []struct {
+		name  string
+		focus paneFocus
+	}{
+		{name: "input", focus: focusInput},
+		{name: "thread", focus: focusChat},
+		{name: "rail", focus: focusGraph},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			backend := &fakeBackend{}
+			model := New(backend, "confirm-default")
+			model.cards = []jobCard{answerFlowCard("confirm", 1, questionConfirm, "confirm-two")}
+			model.focus = test.focus
+			model.inputFocused = test.focus == focusInput
+			if !model.inputFocused {
+				model.input.Blur()
+			}
+			if test.focus == focusGraph {
+				model.graphOpen = true
+			}
+			posted := requireQuestionPost(t, model, backend, tea.KeyMsg{Type: tea.KeyEnter})
+			if posted.Body != "confirm-reply-two" || model.questionSelection["confirm"] != 1 {
+				t.Fatalf("default post=%q selections=%v", posted.Body, model.questionSelection)
+			}
+		})
+	}
+}
+
+func TestPendingOptionQuestionSwapsInputPlaceholderInAndOut(t *testing.T) {
+	model := New(&fakeBackend{}, "question-placeholder")
+	model.cards = []jobCard{answerFlowCard("question", 1, questionChoose, "")}
+	withQuestion := ansi.Strip(model.renderInput())
+	if !strings.Contains(withQuestion, "1–2 to answer · or type your own") ||
+		strings.Contains(withQuestion, "Ask the graph…") {
+		t.Fatalf("pending-question input = %q", withQuestion)
+	}
+
+	model.cards[0].State = cardSettled
+	withoutQuestion := ansi.Strip(model.renderInput())
+	baseline := ansi.Strip(New(&fakeBackend{}, "question-placeholder-baseline").renderInput())
+	if !strings.Contains(withoutQuestion, "Ask the graph…") ||
+		strings.Contains(withoutQuestion, "to answer · or type your own") || withoutQuestion != baseline {
+		t.Fatalf("resolved-question input = %q, baseline %q", withoutQuestion, baseline)
+	}
+}
+
+func TestQuestionShortcutsDoNotCaptureInsideHelpOrPalette(t *testing.T) {
+	t.Run("help", func(t *testing.T) {
+		backend := &fakeBackend{}
+		model := New(backend, "question-help-modal")
+		model.cards = []jobCard{answerFlowCard("question", 1, questionChoose, "")}
+		model.openHelp()
+		_, command := model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'1'}})
+		if command != nil || len(backend.posted) != 0 || len(model.questionSelection) != 0 {
+			t.Fatalf("help digit command=%v posts=%v selections=%v", command, backend.posted, model.questionSelection)
+		}
+	})
+
+	t.Run("palette", func(t *testing.T) {
+		backend := &fakeBackend{}
+		model := NewWithCommander(backend, "question-palette-modal", newFakeCommander())
+		model.cards = []jobCard{answerFlowCard("question", 1, questionChoose, "")}
+		_ = model.openModelsPalette()
+		_, _ = model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'1'}})
+		if len(backend.posted) != 0 || len(model.questionSelection) != 0 || model.palette != paletteModel {
+			t.Fatalf("palette digit posts=%v selections=%v palette=%v", backend.posted, model.questionSelection, model.palette)
+		}
+	})
+}
+
+func TestResolvedQuestionReleasesDigitToInput(t *testing.T) {
+	backend := &fakeBackend{}
+	model := New(backend, "resolved-question")
+	resolved := answerFlowCard("resolved", 1, questionChoose, "")
+	resolved.State = cardSettled
+	model.cards = []jobCard{resolved}
+	_, command := model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'1'}})
+	if command != nil || model.input.Value() != "1" || len(backend.posted) != 0 {
+		t.Fatalf("resolved digit command=%v input=%q posts=%v", command, model.input.Value(), backend.posted)
+	}
+}
+
 func TestStructuredChooseQuestionRendersHintsAndHandlesKeysAndClicks(t *testing.T) {
 	now := time.Now()
 	card := structuredQuestionCard(t, "metadata follows\n```json\n"+
