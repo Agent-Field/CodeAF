@@ -679,3 +679,50 @@ func TestLatestEventSeqIsTheWatermarkEveryWriteMoves(t *testing.T) {
 		t.Fatalf("rebuild moved the watermark to %d (was %d)", afterRebuild, afterMessage)
 	}
 }
+
+// A producer keeps its answer in the message and its working in a file — that
+// is the leaf contract — and the split only works if the consumer is told
+// where the file is. Artifacts are not a column: the executor's path→node map
+// lives in the worker's memory and dies with it, so the paths are recovered
+// from the one durable record of them, the producer's own summary. They come
+// back beside the digest rather than inside it because the file list sits at
+// the end of a summary, which is exactly where the byte bound bites first.
+func TestDependencyInputsKeepTheProducersFilesOutOfTheByteBound(t *testing.T) {
+	graph := openTestStore(t, filepath.Join(t.TempDir(), "deps.db"))
+	if err := graph.Splice(RootID, Subtree{Nodes: []NodeSpec{
+		{ID: "merge", Brief: "merge the findings", Stage: 2,
+			Needs: []Need{{NodeID: "panelist", Kind: FeedsInto}}},
+		{ID: "panelist", Parent: "merge", Brief: "read the diff", Stage: 1},
+	}}, Provenance{Origin: OriginUser, Intent: "review the branch"}); err != nil {
+		t.Fatal(err)
+	}
+	claim := mustClaim(t, graph, "panelist", "worker")
+	summary := "Found four defects, the worst a use-after-free in parser.c.\n\nFiles:\n" +
+		"/workspace/job/01-panelist-findings.md\n/workspace/job/evidence.txt"
+	if err := graph.Complete(claim, summary); err != nil {
+		t.Fatal(err)
+	}
+
+	inputs, err := graph.DependencyInputs("merge", 40)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(inputs) != 1 {
+		t.Fatalf("inputs = %+v, want the one settled dependency", inputs)
+	}
+	if inputs[0].NodeID != "panelist" {
+		t.Fatalf("producer = %q; the consumer is told this is prior work it must not redo", inputs[0].NodeID)
+	}
+	if len(inputs[0].Digest) > 40 {
+		t.Fatalf("digest = %q, over the byte bound", inputs[0].Digest)
+	}
+	want := []string{"/workspace/job/01-panelist-findings.md", "/workspace/job/evidence.txt"}
+	if !reflect.DeepEqual(inputs[0].Artifacts, want) {
+		t.Fatalf("artifacts = %v, want %v — the bound clipped the file list out of the digest", inputs[0].Artifacts, want)
+	}
+	// The older shape is unchanged for everyone still reading it.
+	digests, err := graph.DependencyDigests("merge", 40)
+	if err != nil || len(digests) != 1 || digests[0] != inputs[0].Digest {
+		t.Fatalf("digests = %v err=%v", digests, err)
+	}
+}
