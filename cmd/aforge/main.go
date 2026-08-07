@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"runtime/debug"
 	"strconv"
 	"strings"
 	"time"
@@ -22,6 +23,15 @@ import (
 )
 
 func main() {
+	// The default heap target collects several times before the surface is even
+	// drawn, and none of those collections free anything worth the pause: the
+	// launch path allocates a graph snapshot, a catalog, and a thread, and then
+	// keeps them. Trading a few megabytes of resident memory for those cycles
+	// is the right side of that bargain for an interactive tool. An explicit
+	// GOGC still decides — this is a default, not a policy.
+	if os.Getenv("GOGC") == "" {
+		debug.SetGCPercent(400)
+	}
 	if err := run(); err != nil {
 		fmt.Fprintln(os.Stderr, "error:", err)
 		os.Exit(1)
