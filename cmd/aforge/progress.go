@@ -42,6 +42,10 @@ type planProgressPoster struct {
 	last    map[string]time.Time
 	pending map[string]plan.ProgressUpdate
 	timers  map[string]*time.Timer
+	// posted remembers the last line each phase produced: a planning pass that
+	// re-announces the same state (retries, re-polls) must not repeat itself
+	// into the thread.
+	posted map[string]string
 }
 
 func chatPlanProgress(history *store.Store, anchor resident.PlanAnchor) plan.Progress {
@@ -51,6 +55,7 @@ func chatPlanProgress(history *store.Store, anchor resident.PlanAnchor) plan.Pro
 	poster := &planProgressPoster{
 		history: history, anchor: anchor, interval: planCountThrottle, now: time.Now,
 		last: map[string]time.Time{}, pending: map[string]plan.ProgressUpdate{}, timers: map[string]*time.Timer{},
+		posted: map[string]string{},
 	}
 	return poster.report
 }
@@ -115,6 +120,14 @@ func (p *planProgressPoster) stopTimer(stage string) {
 }
 
 func (p *planProgressPoster) post(update plan.ProgressUpdate) {
+	line := planProgressLine(update)
+	if update.Latest == "" && p.posted[update.Phase] == line {
+		return
+	}
+	if p.posted == nil {
+		p.posted = map[string]string{}
+	}
+	p.posted[update.Phase] = line
 	_, _ = p.history.PostMessage(store.Message{
 		SessionID:  p.anchor.SessionID,
 		Role:       store.RoleSystem,
