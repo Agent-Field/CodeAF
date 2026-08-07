@@ -274,6 +274,15 @@ type Model struct {
 	voiceContext          context.Context
 	voiceCancel           context.CancelFunc
 
+	// Idle tips are session-local and share standingNow, the TUI's existing
+	// injected time seam, so timing behavior stays deterministic in tests.
+	tipActivityAt  time.Time
+	tipLastShownAt time.Time
+	tipCurrent     int
+	tipSeen        map[int]bool
+	voiceUsed      bool
+	budgetUsed     bool
+
 	// splitPct is the chat pane's share of the width in percent; zero means
 	// the default. draggingSplit is true while the divider is held.
 	splitPct      int
@@ -400,6 +409,8 @@ func newModel(backend Backend, sessionID string, commander Commander) *Model {
 		mediaCatalogLoading:   map[string]bool{},
 		dockSummaryLine:       -1,
 		voiceChunkText:        map[int]string{},
+		tipCurrent:            -1,
+		tipSeen:               map[int]bool{},
 	}
 	if services, ok := commander.(voiceServices); ok {
 		m.voiceRecorder = services.VoiceRecorder()
@@ -577,6 +588,7 @@ func (m *Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case tea.KeyMsg:
+		m.noteKeypress()
 		if command, handled := m.updateKey(message); handled {
 			if command == nil {
 				return m, m.scheduleAnimation()

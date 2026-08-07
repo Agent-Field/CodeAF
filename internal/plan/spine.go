@@ -123,7 +123,7 @@ func spineWithProgress(ctx context.Context, client Completer, goal string, sampl
 			if progress != nil && samples > 1 {
 				progressMutex.Lock()
 				completed++
-				progress("spine", fmt.Sprintf("sample %d/%d", completed, samples))
+				emitProgress(progress, "spine", fmt.Sprintf("sample %d/%d", completed, samples), "")
 				progressMutex.Unlock()
 			}
 		}(index)

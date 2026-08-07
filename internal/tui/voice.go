@@ -57,6 +57,7 @@ type voiceStoppedMsg struct{}
 type voiceUsageRecordedMsg struct{}
 
 func (m *Model) toggleVoice() tea.Cmd {
+	m.voiceUsed = true
 	switch m.voiceState {
 	case voiceIdle:
 		return m.startVoice()
