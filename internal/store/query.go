@@ -57,6 +57,11 @@ func migrateNodesSchema(db *sql.DB) error {
 			return err
 		}
 	}
+	// charter_id is a migration column, so its index cannot live in the base
+	// schema: a store created before the column existed would fail to open.
+	if _, err := db.Exec(`CREATE INDEX IF NOT EXISTS nodes_charter ON nodes (origin, charter_id)`); err != nil {
+		return err
+	}
 	return nil
 }
 
@@ -77,6 +82,45 @@ func (s *Store) Node(id string) (Node, bool, error) {
 // order.
 func (s *Store) Nodes() ([]Node, error) {
 	return s.queryNodes(``, nil)
+}
+
+// CharterFiredNodes returns only the nodes a charter firing admitted, in the
+// same stable admission order as Nodes. The reconciler asks this question twice
+// a second and the answer is almost always empty, so the filter belongs in SQL
+// rather than in a full-table decode the caller throws away.
+func (s *Store) CharterFiredNodes() ([]Node, error) {
+	return s.queryNodes(`WHERE origin = ? AND charter_id != ''`, []any{OriginTrigger})
+}
+
+// SubtreeNodes returns root and every descendant in the same stable admission
+// order as Nodes, without loading the rest of the graph.
+func (s *Store) SubtreeNodes(root string) ([]Node, error) {
+	rows, err := s.db.Query(`
+		WITH RECURSIVE descendants(id) AS (
+		    SELECT id FROM nodes WHERE id = ?
+		    UNION ALL
+		    SELECT child.id FROM nodes AS child
+		    JOIN descendants ON child.parent_id = descendants.id
+		)
+		SELECT `+nodeColumns+` FROM nodes
+		WHERE id IN (SELECT id FROM descendants)
+		ORDER BY created_seq, created_order, id`, root)
+	if err != nil {
+		return nil, fmt.Errorf("read subtree %q: %w", root, err)
+	}
+	defer rows.Close()
+	result := make([]Node, 0)
+	for rows.Next() {
+		node, err := scanNode(rows)
+		if err != nil {
+			return nil, fmt.Errorf("read subtree %q: %w", root, err)
+		}
+		result = append(result, node)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("read subtree %q: %w", root, err)
+	}
+	return result, nil
 }
 
 // ActiveNodes returns the live graph plus the outermost compact representative
