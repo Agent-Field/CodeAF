@@ -178,6 +178,9 @@ func runChat(args []string) error {
 		WithCharterProposals().
 		WithTerritoryDigester(digestTerritory(settings, chatClient)).
 		WithStandingWatch(standingWatch).
+		WithStandingWatchKeyPersist(func() (bool, string, error) {
+			return config.EnsurePersistedAPIKey(settings.ProfileDir)
+		}).
 		WithWatchEngine(settings.DailyBudgetUSD, checkSentinel(settings, chatClient)).
 		WithOverrunPlanner(settings.DailyBudgetUSD, replanRemainder(settings, taskClient, plans, graph)).
 		WithPracticeLoop(settings.PracticeBudgetUSD, settings.PracticeIdle)
