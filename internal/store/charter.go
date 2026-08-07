@@ -15,6 +15,9 @@ import (
 type CharterStatus string
 
 const (
+	// CharterDraft is the legacy conversational name for an inert standing
+	// proposal. New standing-engine records use CharterProposed.
+	CharterDraft    CharterStatus = "draft"
 	CharterProposed CharterStatus = "proposed"
 	CharterActive   CharterStatus = "active"
 	CharterPaused   CharterStatus = "paused"
@@ -141,6 +144,13 @@ type CharterRails struct {
 	PerFiringBudgetUSD float64    `json:"per_firing_budget_usd"`
 	MaxFiringsPerDay   int        `json:"max_firings_per_day"`
 	ExpiresAt          *time.Time `json:"expires_at,omitempty"`
+
+	// Legacy conversational charter fields remain projected for the head while
+	// its records are migrated to the structured standing engine.
+	EstimatedCostUSD       float64 `json:"estimated_cost_usd,omitempty"`
+	MaxPerDay              int     `json:"max_per_day,omitempty"`
+	MaxPerDayJustification string  `json:"max_per_day_justification,omitempty"`
+	Expiry                 string  `json:"expiry,omitempty"`
 }
 
 // Ratification records who accepted the standing-spend consequence.
@@ -175,6 +185,13 @@ type Charter struct {
 	GraphTriggered  bool
 	CreatedSeq      int64
 	UpdatedSeq      int64
+
+	// Legacy conversational projection. Structured charters leave these zero;
+	// legacy readers use Spec while the standing engine uses the fields above.
+	SessionID        string
+	Spec             CharterSpec
+	SourceCommandSeq int64
+	CreatedAt        time.Time
 
 	guardrails CharterRails
 }
@@ -361,6 +378,7 @@ type charterRecord struct {
 type charterStatusPayload struct {
 	Status       CharterStatus `json:"status"`
 	Ratification Ratification  `json:"ratification"`
+	Reason       string        `json:"reason,omitempty"`
 }
 
 // CharterWatchState is the restart-safe observation cursor carried by both a
@@ -524,7 +542,7 @@ func nullTime(value time.Time) any {
 // Charter returns one materialized charter.
 func (s *Store) Charter(id string) (Charter, bool, error) {
 	row := s.db.QueryRow(`SELECT `+charterColumns+` FROM charters WHERE id = ?`, id)
-	charter, err := scanCharter(row)
+	charter, err := scanStructuredCharter(row)
 	if errors.Is(err, sql.ErrNoRows) {
 		return Charter{}, false, nil
 	}
@@ -539,7 +557,7 @@ const charterColumns = `
     proposal_shape, last_wake, next_due, wake_seq, wake_pending, sentinel_yes, wake_evidence,
     file_fingerprint, graph_cursor, graph_day, graph_triggered, created_seq, updated_seq`
 
-func scanCharter(scanner rowScanner) (Charter, error) {
+func scanStructuredCharter(scanner rowScanner) (Charter, error) {
 	var c Charter
 	var watch, action, rails, ratification string
 	var lastWake, nextDue sql.NullString
@@ -577,16 +595,28 @@ func scanCharter(scanner rowScanner) (Charter, error) {
 	return c, nil
 }
 
-// Charters lists first-class standing objects in creation order.
-func (s *Store) Charters() ([]Charter, error) {
-	rows, err := s.db.Query(`SELECT ` + charterColumns + ` FROM charters ORDER BY created_seq, id`)
+// structuredCharters lists first-class standing-engine objects in creation
+// order. Charters merges this projection with legacy conversational drafts.
+func (s *Store) structuredCharters(statuses ...CharterStatus) ([]Charter, error) {
+	statement := `SELECT ` + charterColumns + ` FROM charters`
+	args := make([]any, 0, len(statuses))
+	if len(statuses) > 0 {
+		marks := make([]string, 0, len(statuses))
+		for _, status := range statuses {
+			marks = append(marks, "?")
+			args = append(args, status)
+		}
+		statement += ` WHERE status IN (` + strings.Join(marks, ",") + `)`
+	}
+	statement += ` ORDER BY created_seq, id`
+	rows, err := s.db.Query(statement, args...)
 	if err != nil {
 		return nil, fmt.Errorf("list charters: %w", err)
 	}
 	defer rows.Close()
 	var result []Charter
 	for rows.Next() {
-		charter, err := scanCharter(rows)
+		charter, err := scanStructuredCharter(rows)
 		if err != nil {
 			return nil, fmt.Errorf("list charters: %w", err)
 		}
@@ -817,7 +847,7 @@ func (s *Store) DueCharters(now time.Time, limit int) ([]Charter, error) {
 	defer rows.Close()
 	var result []Charter
 	for rows.Next() {
-		c, err := scanCharter(rows)
+		c, err := scanStructuredCharter(rows)
 		if err != nil {
 			return nil, err
 		}
@@ -963,7 +993,7 @@ func (s *Store) RetireExpiredCharter(id string, now time.Time) (bool, error) {
 // RetireExpiredCharters applies expiry even while a charter is paused or still
 // proposed; expiry is a standing-spend boundary, not a scheduling state.
 func (s *Store) RetireExpiredCharters(now time.Time) (int, error) {
-	charters, err := s.Charters()
+	charters, err := s.structuredCharters()
 	if err != nil {
 		return 0, err
 	}
@@ -1131,7 +1161,7 @@ func (s *Store) FireCharter(id string, wakeSeq int64, subtree Subtree, provenanc
 }
 
 func charterInTx(tx *sql.Tx, id string) (Charter, error) {
-	return scanCharter(tx.QueryRow(`SELECT `+charterColumns+` FROM charters WHERE id=?`, id))
+	return scanStructuredCharter(tx.QueryRow(`SELECT `+charterColumns+` FROM charters WHERE id=?`, id))
 }
 
 func clearCharterWake(tx *sql.Tx, id string, seq int64) error {

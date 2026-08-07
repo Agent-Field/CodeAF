@@ -91,6 +91,12 @@ const (
 	// prediction becomes known when the complete plan lands, after its spend.
 	EventUsageRecorded    EventKind = "usage_recorded"
 	EventSurpriseRecorded EventKind = "surprise_recorded"
+	// EventSelfReceipt is the cost-and-learning receipt produced when one
+	// self-originated splice settles.
+	EventSelfReceipt EventKind = "self_receipt"
+	// EventSelfInquiryRetired records the deterministic two-strike policy
+	// decision that stops an inquiry line which is not earning learning rent.
+	EventSelfInquiryRetired EventKind = "self_inquiry_retired"
 
 	// EventRailRaised records the user's decision to extend today's dollar
 	// ceiling. The journal is the policy record; no process-local flag resumes
@@ -166,8 +172,8 @@ type Provenance struct {
 	Origin    Origin `json:"origin"`
 	SessionID string `json:"session_id,omitempty"`
 	Intent    string `json:"intent"`
-	// CharterID points trigger-born work back to the standing responsibility
-	// whose firing admitted it. It is empty for user and self work.
+	// CharterID points work back to the standing responsibility whose firing or
+	// self-maintenance inquiry admitted it. It is empty for ordinary user work.
 	CharterID string `json:"charter_id,omitempty"`
 	// TrialOf is the fact sequence of the unsettled pair this subtree tests.
 	// Zero means the splice is ordinary work.
@@ -403,8 +409,14 @@ func Open(path string) (*Store, error) {
 	if _, err := db.Exec(surpriseSchema); err != nil {
 		return closeOnError(fmt.Errorf("initialize surprise schema: %w", err))
 	}
+	if _, err := db.Exec(selfReceiptSchema); err != nil {
+		return closeOnError(fmt.Errorf("initialize self receipt schema: %w", err))
+	}
 	if _, err := db.Exec(charterSchema); err != nil {
 		return closeOnError(fmt.Errorf("initialize charter schema: %w", err))
+	}
+	if _, err := db.Exec(legacyCharterSchema); err != nil {
+		return closeOnError(fmt.Errorf("initialize legacy charter schema: %w", err))
 	}
 	if _, err := db.Exec(factsSchema); err != nil {
 		return closeOnError(fmt.Errorf("initialize facts schema: %w", err))
@@ -414,9 +426,6 @@ func Open(path string) (*Store, error) {
 	}
 	if _, err := db.Exec(retrospectiveSchema); err != nil {
 		return closeOnError(fmt.Errorf("initialize retrospective schema: %w", err))
-	}
-	if _, err := db.Exec(charterSchema); err != nil {
-		return closeOnError(fmt.Errorf("initialize charter schema: %w", err))
 	}
 	if err := migrateFactsSchema(db); err != nil {
 		return closeOnError(fmt.Errorf("migrate facts schema: %w", err))
