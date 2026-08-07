@@ -139,11 +139,14 @@ func runChat(args []string) error {
 	if err != nil {
 		return err
 	}
+	defer chatClient.Close()
 	taskClient, err := newLiveClient(settings, workModel)
 	if err != nil {
 		return err
 	}
+	defer taskClient.Close()
 	boostClients := &messageClientPool{settings: settings, clients: make(map[string]*liveClient)}
+	defer boostClients.Close()
 	// Planning is done by the working model, so its measured ruler must be in
 	// force before either the initial subtree planner or an overrun replan runs.
 	measured, _ := profile.Load(settings.ProfileDir, taskClient.Model(), "linear")
@@ -1572,6 +1575,24 @@ func (l *liveClient) SetModel(model string) error {
 	l.mu.Unlock()
 	closeReplaced(previous)
 	return nil
+}
+
+// Close releases the underlying router client so its ledger flushes and its
+// events handle is returned before the process exits.
+func (l *liveClient) Close() {
+	l.mu.RLock()
+	client := l.client
+	l.mu.RUnlock()
+	closeReplaced(client)
+}
+
+// Close releases every pinned per-model client the pool has handed out.
+func (p *messageClientPool) Close() {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	for _, client := range p.clients {
+		client.Close()
+	}
 }
 
 // closeReplaced releases a client that has just been swapped out.
