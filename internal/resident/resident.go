@@ -190,9 +190,19 @@ type Reconciler struct {
 	learningMoments         map[string]*pendingLearningMoment
 	lastConsolidation       time.Time
 	lastWatchPass           WatchPass
-	standingWatchCheck      time.Time
 	standingWatchKeyPersist func() (bool, string, error)
 	now                     func() time.Time
+
+	// The host repair runs outside mu on purpose, so it keeps its own lock.
+	standingMu         sync.Mutex
+	standingWatchCheck time.Time
+
+	// gate is the change-detection state that lets an idle tick return
+	// without re-deriving a graph nothing has touched.
+	gatePrimed     bool
+	gateEventSeq   int64
+	gateDeadline   time.Time
+	gateClockLimit time.Time
 }
 
 // StandingWatch is the small consequence-facing seam the resident needs.
@@ -268,6 +278,11 @@ func (r *Reconciler) Tick(ctx context.Context) error {
 		return err
 	}
 
+	// The host timer repair shells out to launchctl or systemctl. It is
+	// deliberately reconciled before the lock so a wedged daemon cannot stop
+	// the resident from ticking at all.
+	r.reconcileStandingWatch(ctx)
+
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	r.learningMoments = make(map[string]*pendingLearningMoment)
@@ -276,10 +291,16 @@ func (r *Reconciler) Tick(ctx context.Context) error {
 	if r.store == nil {
 		return errors.New("resident tick: nil store")
 	}
+	quiet, err := r.quietTickLocked()
+	if err != nil {
+		return fmt.Errorf("resident tick: change gate: %w", err)
+	}
+	if quiet {
+		return nil
+	}
 	if err := r.initializeWatcher(); err != nil {
 		return fmt.Errorf("resident tick: initialize watcher: %w", err)
 	}
-	r.reconcileStandingWatch(ctx)
 	if err := r.expireQuestionsLocked(); err != nil {
 		return fmt.Errorf("resident tick: expire questions: %w", err)
 	}
@@ -343,7 +364,117 @@ func (r *Reconciler) Tick(ctx context.Context) error {
 	if err := r.practiceOnceLocked(ctx); err != nil {
 		return fmt.Errorf("resident tick: practice loop: %w", err)
 	}
+	if err := r.primeQuietGateLocked(); err != nil {
+		return fmt.Errorf("resident tick: change gate: %w", err)
+	}
 	return nil
+}
+
+// quietTickCeiling is the longest the change gate may hold a tick back. Every
+// deadline the gate knows about is named in gateDeadline; this is the standing
+// guarantee for the ones it cannot name — a day boundary crossing, an idle
+// threshold elapsing — so no clock-driven path can ever run more than one
+// ceiling late, however quiet the store gets.
+const quietTickCeiling = 30 * time.Second
+
+// quietTickLocked reports whether this tick can be skipped whole: nothing has
+// been journaled since the last full pass, nothing is waiting on the clock, and
+// the ceiling has not elapsed. Every derivation a tick performs would then read
+// exactly the state it read last time and write exactly nothing.
+func (r *Reconciler) quietTickLocked() (bool, error) {
+	if !r.gatePrimed {
+		return false, nil
+	}
+	// Unspoken progress is a debounce held in memory, not in the journal, so it
+	// comes due without anything being written.
+	if len(r.progress) > 0 {
+		r.gatePrimed = false
+		return false, nil
+	}
+	seq, err := r.store.LatestEventSeq()
+	if err != nil {
+		return false, err
+	}
+	now := r.now()
+	quiet := seq == r.gateEventSeq && now.Before(r.gateClockLimit) &&
+		(r.gateDeadline.IsZero() || now.Before(r.gateDeadline))
+	if !quiet {
+		// A tick that does real work must re-derive the gate from the state it
+		// leaves behind, never from the state it found.
+		r.gatePrimed = false
+	}
+	return quiet, nil
+}
+
+// primeQuietGateLocked records what a completed tick leaves behind. The
+// deadlines are derived only once the journal has stood still across two
+// passes, so an active store pays a single watermark read per tick.
+func (r *Reconciler) primeQuietGateLocked() error {
+	seq, err := r.store.LatestEventSeq()
+	if err != nil {
+		return err
+	}
+	if seq != r.gateEventSeq {
+		r.gateEventSeq = seq
+		r.gatePrimed = false
+		return nil
+	}
+	deadline, err := r.nextClockDeadlineLocked()
+	if err != nil {
+		return err
+	}
+	r.gateDeadline = deadline
+	r.gateClockLimit = r.now().Add(quietTickCeiling)
+	r.gatePrimed = true
+	return nil
+}
+
+// nextClockDeadlineLocked is the earliest moment at which the passage of time
+// alone gives a tick something to do. A zero time means nothing is waiting.
+func (r *Reconciler) nextClockDeadlineLocked() (time.Time, error) {
+	now := r.now()
+	deadline := time.Time{}
+	earlier := func(at time.Time) {
+		if at.IsZero() {
+			return
+		}
+		if deadline.IsZero() || at.Before(deadline) {
+			deadline = at
+		}
+	}
+
+	charterDue, _, err := r.store.CharterClockDeadline(now)
+	if err != nil {
+		return time.Time{}, err
+	}
+	earlier(charterDue)
+
+	// A supervised process can die without writing anything, so its health
+	// check is a clock deadline the journal never announces.
+	services, err := r.store.ActiveServices()
+	if err != nil {
+		return time.Time{}, err
+	}
+	if len(services) > 0 {
+		earlier(now)
+	}
+
+	// The same window expireQuestionsLocked reads, so the gate cannot miss an
+	// expiry the tick itself would have applied.
+	questions, err := r.store.UnresolvedQuestions(200)
+	if err != nil {
+		return time.Time{}, err
+	}
+	for _, question := range questions {
+		earlier(question.ExpiresAt)
+	}
+
+	if !r.lastConsolidation.IsZero() {
+		earlier(r.lastConsolidation.Add(consolidationInterval))
+	} else {
+		earlier(now)
+	}
+	return deadline, nil
 }
 
 // LastWatchPass returns the standing-watch decisions made by the latest Tick.
@@ -851,13 +982,11 @@ func (r *Reconciler) initializeWatcher() error {
 	if r.watcherInitialized {
 		return nil
 	}
-	events, err := r.store.Events(0, 0)
+	seq, err := r.store.LatestEventSeq()
 	if err != nil {
 		return err
 	}
-	if len(events) != 0 {
-		r.lastEventSeq = events[len(events)-1].Seq
-	}
+	r.lastEventSeq = seq
 	r.watcherInitialized = true
 	return nil
 }
