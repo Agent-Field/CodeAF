@@ -635,6 +635,9 @@ func TestCardsDockWhileActiveAndSettleAtBirth(t *testing.T) {
 	if first < 0 || landed < first || later < landed || strings.Count(thread, "Docked work") != 1 {
 		t.Fatalf("settled card did not land at birth while active card stayed docked:\n%s", thread)
 	}
+	// The dock is rendered once per frame, so a test that edits the cards in
+	// place asks for the next frame rather than the last one over again.
+	model.invalidateDock()
 	dock := model.renderActivityBar()
 	if !strings.Contains(dock, "Docked work") || strings.Contains(dock, "Settled work") {
 		t.Fatalf("dock placement is wrong: %s", dock)
@@ -646,10 +649,12 @@ func TestCardsDockWhileActiveAndSettleAtBirth(t *testing.T) {
 		})
 	}
 	model.focus = focusInput
+	model.invalidateDock()
 	if collapsed := model.renderActivityBar(); !strings.Contains(collapsed, "4 running") {
 		t.Fatalf("four-card dock did not collapse: %s", collapsed)
 	}
 	model.focusCardDock()
+	model.invalidateDock()
 	if expanded := model.renderActivityBar(); !strings.Contains(expanded, "Extra 2") {
 		t.Fatalf("focused dock did not expand:\n%s", expanded)
 	}

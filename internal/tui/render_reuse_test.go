@@ -3,11 +3,15 @@ package tui
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
+	"unicode/utf8"
 
 	"github.com/Agent-Field/aforge-v2/internal/store"
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
+	"github.com/charmbracelet/x/ansi"
 )
 
 // countingResolver counts one workspace lookup per rendered answer body, which
@@ -45,6 +49,65 @@ func countingResolverModel(t *testing.T) (*Model, *countingResolver) {
 	model.applyPoll(model.poll()().(pollResultMsg))
 	_ = model.View()
 	return model, commander
+}
+
+// The sweep groups adjacent cells that share an ink into one render. The band
+// it paints is unchanged: same text, same three inks, same positions.
+func TestMatteSweepRunsPaintTheSameBand(t *testing.T) {
+	text := "◐ compiling the plan · reading the repository"
+	for frame := range 14 {
+		model := &Model{shimmerFrame: frame}
+		swept := model.matteSweep(text)
+		if got := ansi.Strip(swept); got != text {
+			t.Fatalf("frame %d changed the line: %q", frame, got)
+		}
+		center := sweepCenter(frame, utf8.RuneCountInString(text))
+		var perRune strings.Builder
+		for index, char := range []rune(text) {
+			switch sweepBand(index - center) {
+			case 2:
+				perRune.WriteString(sweepCoreStyle.Render(string(char)))
+			case 1:
+				perRune.WriteString(sweepSoftStyle.Render(string(char)))
+			default:
+				perRune.WriteString(sweepBaseStyle.Render(string(char)))
+			}
+		}
+		if lipgloss.Width(swept) != lipgloss.Width(perRune.String()) {
+			t.Fatalf("frame %d changed the rendered width", frame)
+		}
+	}
+}
+
+// cardWorking is the default state, cleared only by a settled subtree. A job
+// that has said nothing for ten minutes keeps its line on screen and stops
+// asking for a repaint every 120ms.
+func TestWedgedWorkStopsBreathing(t *testing.T) {
+	now := time.Date(2026, time.August, 6, 14, 0, 0, 0, time.Local)
+	model := New(&fakeBackend{}, "wedged")
+	model.standingNow = func() time.Time { return now }
+	model.cards = []jobCard{{
+		ID: "job", RootID: "job", State: cardWorking, Title: "Long job", Latest: "still working",
+	}}
+	model.noteShimmerActivity()
+	if !model.shimmerAnimating() {
+		t.Fatal("fresh work did not breathe")
+	}
+
+	now = now.Add(shimmerStaleAfter + time.Minute)
+	if model.shimmerAnimating() {
+		t.Fatal("a status line that has not moved in ten minutes still breathes")
+	}
+	if !strings.Contains(ansi.Strip(model.renderShimmerLines(80)), "Long job") {
+		t.Fatal("a stale job lost its line instead of only its sweep")
+	}
+
+	// News restarts it.
+	model.cards[0].Latest = "found the failing test"
+	model.noteShimmerActivity()
+	if !model.shimmerAnimating() {
+		t.Fatal("a moved status line did not resume breathing")
+	}
 }
 
 // A character in the draft changes the draft. It does not change the thread,

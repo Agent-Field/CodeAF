@@ -271,6 +271,13 @@ type Model struct {
 	serviceRows       []serviceRow
 	serviceCardRows   []serviceCardRow
 
+	// The dock is measured before it is placed and drawn after, and the layout
+	// measures it again on every relayout. It is rendered once per frame and
+	// held here with its height; the frame and the relayout each drop it.
+	dockContent string
+	dockHeight  int
+	dockValid   bool
+
 	// dockExpanded holds the overflow dock open without card focus; the
 	// dockSummaryLine is the rendered ▸/▾ summary row, -1 when absent.
 	dockExpanded          bool
@@ -352,6 +359,12 @@ type Model struct {
 	animationPending bool
 	graphAnimating   bool
 	shimmerFrame     int
+	// shimmerSeen dates each live card's status line so a wedged worker stops
+	// breathing; sweepCache holds this frame's swept lines, which every line on
+	// screen shares a phase with.
+	shimmerSeen      map[string]shimmerStamp
+	sweepFrame       int
+	sweepCache       map[string]string
 	receiptsExpanded bool
 	historyExpanded  bool
 	err              error
@@ -665,7 +678,7 @@ func (m *Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		m.shimmerFrame++
 		m.sampleVoiceLevel()
-		animating := m.graphAnimating || m.streamAnimating() || m.shimmerVisible() || m.voiceAnimating()
+		animating := m.graphAnimating || m.streamAnimating() || m.shimmerAnimating() || m.voiceAnimating()
 		if animating {
 			m.spinnerFrame = (m.spinnerFrame + 1) % len(spinnerFrames)
 		}
@@ -1452,7 +1465,7 @@ func nextAnimationTick() tea.Cmd {
 }
 
 func (m *Model) scheduleAnimation() tea.Cmd {
-	if m.animationPending || (!m.graphAnimating && !m.streamAnimating() && !m.shimmerVisible() && !m.voiceAnimating()) {
+	if m.animationPending || (!m.graphAnimating && !m.streamAnimating() && !m.shimmerAnimating() && !m.voiceAnimating()) {
 		return nil
 	}
 	m.animationPending = true
@@ -1884,6 +1897,7 @@ func (m *Model) activityBarVisible() bool {
 }
 
 func (m *Model) setSize(width, height int) {
+	m.invalidateDock()
 	m.width = max(20, width)
 	m.height = max(8, height)
 	m.horizontal = m.width >= railAtWidth

@@ -86,6 +86,9 @@ var (
 // View composes the complete frame once, avoiding terminal-clearing redraws.
 // The frame is open text — hierarchy comes from ink and whitespace, not boxes.
 func (m *Model) View() string {
+	// One frame, one dock. Bounds tracking and the bar itself both need it, and
+	// rendering it twice to throw one away is a card render per frame.
+	m.invalidateDock()
 	m.trackPaneBounds()
 	top := m.renderTopBar()
 
@@ -504,7 +507,8 @@ func (m *Model) liveWorkCount() int {
 // renderActivityBar hosts the active-card dock. The legacy aggregate remains
 // its quiet empty-state and covers graph-only stores without thread provenance.
 func (m *Model) renderActivityBar() string {
-	return m.renderActivityDock(true)
+	content, _ := m.activityDock()
+	return content
 }
 
 // renderLegacyActivityBar is the graph-only fallback: a spinner when work
