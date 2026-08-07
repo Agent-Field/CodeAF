@@ -46,8 +46,9 @@ carve-out, the quiet period before practice), **rhythm** (how long an absence
 earns an arrival brief, how many clean firings earn a charter tenure),
 **learning** (how much practice follows measured demand rather than curiosity,
 and whether aforge may propose new skills), **documents & vision** (the reading
-rung and the model that looks at images), and **appearance** (the chat/rail
-split).
+rung and the model that looks at images), **sharing** (attribution — whether
+aforge signs the commits and pull requests it writes for you), and
+**appearance** (the chat/rail split).
 
 `↑/↓` or `j/k` move, enter changes the focused row, `esc` closes an open editor
 and then the sheet. Only the focused row explains itself, so the page never
