@@ -147,8 +147,14 @@ func TestDeliveryGateSeesNotebookPreferencesAndNoPanelStaysBare(t *testing.T) {
 	settings := config.Config{Model: "worker/model"}
 	capture := &gateCaptureClient{model: "worker/model"}
 	client := &liveClient{settings: settings, model: capture.model, client: capture}
+	// The job's own working decisions ride the brief the resident anchored them
+	// onto, which is what the gate is handed as the compiled goal. An assumption
+	// that never leaves the receipt is a promise nobody is held to.
+	const securityDecision = "review the diff for security regressions before pushing"
 	node := store.Node{
-		ID: "job", Brief: "compare the approaches with evidence",
+		ID: "job",
+		Brief: "compare the approaches with evidence\n\n" +
+			resident.WorkingDecisionsHeader + "\n- " + securityDecision,
 		Provenance: store.Provenance{Intent: "recommend an approach", SessionID: "s1"},
 	}
 	judgment := judgeDeliverable(context.Background(), settings, client, graph, node, "approach A wins", "worker/model")
@@ -177,6 +183,12 @@ func TestDeliveryGateSeesNotebookPreferencesAndNoPanelStaysBare(t *testing.T) {
 	}
 	if notebook := strings.Index(body, "Standing preferences and relevant lessons:\n"); taste > notebook {
 		t.Fatalf("settled taste ranked after the notebook digest: taste=%d notebook=%d", taste, notebook)
+	}
+	if !strings.Contains(body, resident.WorkingDecisionsHeader) || !strings.Contains(body, securityDecision) {
+		t.Fatalf("gate input omitted the job's working decisions: %q", body)
+	}
+	if !strings.Contains(judgeDeliverablePrompt, "Working decisions declared in the goal are part of what was promised") {
+		t.Fatal("the gate prompt does not hold the deliverable to the decisions it is shown")
 	}
 }
 

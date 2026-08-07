@@ -36,7 +36,8 @@ func TestUrgencyNeedsBothTheCueAndTheAnchor(t *testing.T) {
 				spliceSurgeryJob(t, graph, "finance", "finance research",
 					"research the finance question the user asked about")
 			}
-			intent, fires, err := New(&fakeClient{}, graph).recognizeRedirect(test.message)
+			intent, fires, err := New(&fakeClient{}, graph).recognizeRedirect(
+				store.Message{SessionID: "urgency", Role: store.RoleUser, Body: test.message})
 			if err != nil {
 				t.Fatal(err)
 			}

@@ -1193,3 +1193,67 @@ func TestCompilerIsToldHowAttachedDocumentsReachWorkers(t *testing.T) {
 		}
 	}
 }
+
+// The receipts that motivated the rewrite, from a real run of "give me a PR in
+// draft for issue 557": the compiler declared "The PR will be in draft state" —
+// the request said back — and "The user has write access" — a fact no worker
+// acts on. Neither changes anything anyone does, and assumptions now travel
+// with the work, so a line that changes nothing is a line nobody can honor.
+func TestCompilerIsToldAssumptionsAreDecisionsTheWorkIsHeldTo(t *testing.T) {
+	client := &fakeClient{responses: []string{
+		`{"goal":"Open a draft pull request that closes issue 557.","deliverable":"a draft pull request",` +
+			`"budget":"$0.60","assumptions":["Branch issue-557-fix off main and open the PR against main",` +
+			`"Run the test suite and review the diff for security regressions before opening the PR"]}`,
+	}}
+	brief, err := NewCompiler(client).Compile(context.Background(),
+		"give me a PR in draft for issue 557", "root is running")
+	if err != nil {
+		t.Fatalf("compile: %v", err)
+	}
+	if len(brief.Assumptions) != 2 {
+		t.Fatalf("assumptions = %+v", brief.Assumptions)
+	}
+	system := client.seen[0].Content[0].Text
+	for _, want := range []string{
+		"a decision that changes what the workers will do",
+		"an ambiguity you settled with a concrete choice",
+		"a commitment about method or evidence the work will be held to",
+		"Never restate the request",
+		"if a line vanished and no worker would do anything differently, it was never a decision",
+		"they travel with the work as standing orders",
+	} {
+		if !strings.Contains(system, want) {
+			t.Fatalf("compiler prompt omitted %q", want)
+		}
+	}
+}
+
+// One value, said once in each register: work about something already in flight
+// amends it, and work that genuinely is separate follows it rather than racing
+// it. The router says it in amend-and-splice terms, the belt in revise-and-steer
+// terms, and the compiler in the only term that becomes an edge.
+func TestEveryReadingIsToldNotToRaceWorkAlreadyUnderway(t *testing.T) {
+	for name, pinned := range map[string]struct {
+		prompt  string
+		phrases []string
+	}{
+		"router": {headSystemPrompt, []string{
+			"is an amendment of that work before it is a new job",
+			"it still belongs behind that job rather than beside it",
+		}},
+		"belt": {controlSystemPrompt, []string{
+			"is a change to that work before it is a second job",
+			"people answer the thing just said to them without naming it",
+		}},
+		"compiler": {compilerSystemPrompt, []string{
+			"A job still running is earlier work too",
+			"name that job in builds_on so this work follows it",
+		}},
+	} {
+		for _, phrase := range pinned.phrases {
+			if !strings.Contains(pinned.prompt, phrase) {
+				t.Errorf("%s prompt omitted %q", name, phrase)
+			}
+		}
+	}
+}

@@ -1998,6 +1998,8 @@ Judge exactly one question: would the person who asked accept this as done? Defa
 
 FAIL only when you can name a specific element of the request that is absent, unanswered, or unsupported by evidence the goal promised. Quote or name the missing element concretely enough that a worker could close the gap from your words alone.
 
+Working decisions declared in the goal are part of what was promised. A commitment about method or evidence — what would be run, checked or reviewed before the work was handed over — is a gap when nothing in the deliverable shows it happened.
+
 Return exactly one JSON object, nothing else: {"pass": true} or {"pass": false, "gaps": "<the named gaps>"}`
 
 var judgeDeliverableSchema = json.RawMessage(`{

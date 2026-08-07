@@ -30,6 +30,9 @@ type beltClient struct {
 	plain  []string
 	calls  int
 	tooled int
+	// opening is the first tooled prompt: what the loop was actually given to
+	// reason over, which is the only proof the belt opened with the board.
+	opening string
 }
 
 func (client *beltClient) CompleteWithMessages(_ context.Context, messages []ai.Message,
@@ -43,6 +46,9 @@ func (client *beltClient) CompleteWithMessages(_ context.Context, messages []ai.
 	}
 	if len(request.Tools) > 0 {
 		client.tooled++
+		if client.opening == "" && len(messages) > 1 && len(messages[1].Content) > 0 {
+			client.opening = messages[1].Content[0].Text
+		}
 		if len(client.turns) == 0 {
 			return nil, errors.New("no scripted belt turn left")
 		}
@@ -64,6 +70,12 @@ func (client *beltClient) counts() (calls int, tooled int) {
 	client.mutex.Lock()
 	defer client.mutex.Unlock()
 	return client.calls, client.tooled
+}
+
+func (client *beltClient) openingPrompt() string {
+	client.mutex.Lock()
+	defer client.mutex.Unlock()
+	return client.opening
 }
 
 func beltCall(id, name string, args map[string]any) ai.ToolCall {
@@ -484,7 +496,8 @@ func TestControlTriggerPredicate(t *testing.T) {
 			if test.jobs {
 				seedExceptBoard(t, graph)
 			}
-			applies, err := New(&beltClient{}, graph).controlLoopApplies(test.message)
+			applies, err := New(&beltClient{}, graph).controlLoopApplies(
+				store.Message{SessionID: "trigger", Role: store.RoleUser, Body: test.message})
 			if err != nil {
 				t.Fatal(err)
 			}
