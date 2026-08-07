@@ -113,41 +113,52 @@ func (s *Store) ChannelSurvivalStats() ([]ChannelSurvival, error) {
 	return stats, nil
 }
 
-func (s *Store) credibilityFor(kind FactKind, channel FactChannel) (float64, error) {
-	stats, err := s.ChannelSurvivalStats()
-	if err != nil {
-		return 0, err
-	}
-	global := 1.0
+// channelCredibility is one batch's projection of the survival scan. Retrieval
+// asks the same kind/channel question once per candidate fact; projecting the
+// stats once and answering from the map keeps a full-journal scan off the
+// per-fact path without changing a single verdict.
+type channelCredibility struct {
+	global float64
+	byPair map[string]float64
+}
+
+func newChannelCredibility(stats []ChannelSurvival) channelCredibility {
+	credibility := channelCredibility{global: 1.0, byPair: make(map[string]float64, len(stats))}
 	if len(stats) > 0 {
-		global = stats[0].Global
+		credibility.global = stats[0].Global
 	}
 	for _, stat := range stats {
-		if stat.Kind == kind && stat.Channel == channel {
-			return stat.Credibility, nil
-		}
+		credibility.byPair[string(stat.Kind)+"\x00"+string(stat.Channel)] = stat.Credibility
 	}
-	return global, nil
+	return credibility
+}
+
+func (c channelCredibility) rate(kind FactKind, channel FactChannel) float64 {
+	if value, ok := c.byPair[string(kind)+"\x00"+string(channel)]; ok {
+		return value
+	}
+	return c.global
+}
+
+func (s *Store) channelCredibility() (channelCredibility, error) {
+	stats, err := s.ChannelSurvivalStats()
+	if err != nil {
+		return channelCredibility{}, err
+	}
+	return newChannelCredibility(stats), nil
 }
 
 func (s *Store) applyFactCredibility(facts []Fact) {
-	stats, err := s.ChannelSurvivalStats()
+	credibility, err := s.channelCredibility()
 	if err != nil {
 		return
 	}
-	global := 1.0
-	if len(stats) > 0 {
-		global = stats[0].Global
-	}
-	lookup := make(map[string]float64, len(stats))
-	for _, stat := range stats {
-		lookup[string(stat.Kind)+"\x00"+string(stat.Channel)] = stat.Credibility
-	}
+	applyCredibility(facts, credibility)
+}
+
+func applyCredibility(facts []Fact, credibility channelCredibility) {
 	for index := range facts {
-		facts[index].Confidence = global
-		if value, ok := lookup[string(facts[index].Kind)+"\x00"+string(facts[index].Channel)]; ok {
-			facts[index].Confidence = value
-		}
+		facts[index].Confidence = credibility.rate(facts[index].Kind, facts[index].Channel)
 	}
 }
 
@@ -168,9 +179,21 @@ func (s *Store) PromptEligible(fact Fact) (bool, error) {
 	if fact.Kind == FactQuestion || fact.Kind == FactTrait || fact.Status != FactActive {
 		return false, nil
 	}
-	credibility, err := s.credibilityFor(fact.Kind, fact.Channel)
-	if err != nil || credibility >= LowCredibilityThreshold {
-		return err == nil, err
+	credibility, err := s.channelCredibility()
+	if err != nil {
+		return false, err
+	}
+	return s.promptEligible(fact, credibility)
+}
+
+// promptEligible is the same gate with the channel projection already made once
+// for the whole retrieval batch.
+func (s *Store) promptEligible(fact Fact, credibility channelCredibility) (bool, error) {
+	if fact.Kind == FactQuestion || fact.Kind == FactTrait || fact.Status != FactActive {
+		return false, nil
+	}
+	if credibility.rate(fact.Kind, fact.Channel) >= LowCredibilityThreshold {
+		return true, nil
 	}
 	var restored int
 	if err := s.db.QueryRow(`SELECT COUNT(*) FROM events WHERE kind=? AND CAST(json_extract(payload, '$.fact_seq') AS INTEGER)=?`,
@@ -190,7 +213,7 @@ func (s *Store) PromptEligible(fact Fact) (bool, error) {
 		}
 	}
 	var occurrences int
-	err = s.db.QueryRow(`SELECT COUNT(*) FROM facts
+	err := s.db.QueryRow(`SELECT COUNT(*) FROM facts
 		WHERE kind=? AND channel=? AND scope=? AND lower(body)=lower(?) AND seq<=?`,
 		fact.Kind, fact.Channel, fact.Scope, fact.Body, fact.Seq).Scan(&occurrences)
 	if err != nil {
@@ -363,26 +386,26 @@ func (s *Store) meanCategoryReworkCost(category QuestionCategory) float64 {
 	if rows.Close() != nil {
 		return 0
 	}
-	usage, err := s.TopLevelJobUsage()
-	if err != nil {
-		return 0
-	}
-	nodes, err := s.Nodes()
-	if err != nil {
-		return 0
-	}
+	// Job spend is only consulted once a wrong default actually points at a job,
+	// so the spend rollup is derived on the first attribution rather than on
+	// every gate check that has nothing to attribute.
+	var usage map[string]JobUsage
+	usageLoaded := false
 	var costs []float64
 	appendNextCost := func(session string, afterSeq int64) {
-		bestSeq := int64(math.MaxInt64)
-		bestID := ""
-		for _, node := range nodes {
-			if node.Parent == RootID && node.Provenance.Origin == OriginUser &&
-				node.Provenance.SessionID == session && node.CreatedSeq > afterSeq && node.CreatedSeq < bestSeq {
-				bestSeq, bestID = node.CreatedSeq, node.ID
-			}
+		id, found, err := s.nextUserJobAfter(session, afterSeq)
+		if err != nil || !found {
+			return
 		}
-		if bestID != "" && usage[bestID].Cost > 0 {
-			costs = append(costs, usage[bestID].Cost)
+		if !usageLoaded {
+			loaded, err := s.TopLevelJobUsage()
+			if err != nil {
+				return
+			}
+			usage, usageLoaded = loaded, true
+		}
+		if usage[id].Cost > 0 {
+			costs = append(costs, usage[id].Cost)
 		}
 	}
 	for _, row := range resolved {
@@ -395,24 +418,19 @@ func (s *Store) meanCategoryReworkCost(category QuestionCategory) float64 {
 	}
 	// A skipped ask becomes a measurable wrong default when the next user turn
 	// in that session differs, and the following user job carries actual spend.
-	events, _ := s.Events(0, 0)
-	messages, _ := s.Messages("", 0, 100000)
-	for _, event := range events {
-		if event.Kind != EventAssumedWithDefault {
+	// Both lookups are indexed: skipped asks are a rare journal kind, and the
+	// answering turn is one row, not a scan of the whole thread.
+	assumptions, err := s.assumedWithDefaults(category)
+	if err != nil {
+		assumptions = nil
+	}
+	for _, assumption := range assumptions {
+		turn, found, err := s.nextUserMessageAfter(assumption.SessionID, assumption.Seq)
+		if err != nil || !found {
 			continue
 		}
-		var assumption assumedWithDefaultPayload
-		if json.Unmarshal(event.Payload, &assumption) != nil || assumption.Category != category {
-			continue
-		}
-		for _, message := range messages {
-			if message.Seq <= event.Seq || message.SessionID != assumption.SessionID || message.Role != RoleUser {
-				continue
-			}
-			if !questionAnswerMatchesDefault(message.Body, assumption.Default, nil) {
-				appendNextCost(message.SessionID, message.Seq)
-			}
-			break
+		if !questionAnswerMatchesDefault(turn.Body, assumption.Default, nil) {
+			appendNextCost(assumption.SessionID, turn.Seq)
 		}
 	}
 	if len(costs) == 0 {
@@ -446,6 +464,97 @@ type assumedWithDefaultPayload struct {
 	Default   string           `json:"default"`
 	SessionID string           `json:"session_id,omitempty"`
 	Question  string           `json:"question,omitempty"`
+}
+
+// journaledAssumption is one skipped ask with the journal coordinates the
+// correction match needs.
+type journaledAssumption struct {
+	assumedWithDefaultPayload
+	Seq  int64
+	Time time.Time
+}
+
+// assumedWithDefaults reads the skipped asks straight out of the journal by
+// kind. An empty category takes every one of them. Skipped asks are rare, so
+// the kind index answers this without touching the rest of the journal.
+func (s *Store) assumedWithDefaults(category QuestionCategory) ([]journaledAssumption, error) {
+	rows, err := s.db.Query(`SELECT seq, ts, payload FROM events WHERE kind = ? ORDER BY seq`,
+		EventAssumedWithDefault)
+	if err != nil {
+		return nil, fmt.Errorf("read assumed defaults: %w", err)
+	}
+	defer rows.Close()
+	var assumptions []journaledAssumption
+	for rows.Next() {
+		var assumption journaledAssumption
+		var timestamp, payload string
+		if err := rows.Scan(&assumption.Seq, &timestamp, &payload); err != nil {
+			return nil, fmt.Errorf("read assumed defaults: %w", err)
+		}
+		if json.Unmarshal([]byte(payload), &assumption.assumedWithDefaultPayload) != nil {
+			continue
+		}
+		if category != "" && assumption.Category != category {
+			continue
+		}
+		at, err := parseTime(timestamp)
+		if err != nil {
+			return nil, fmt.Errorf("parse assumed default %d time: %w", assumption.Seq, err)
+		}
+		assumption.Time = at
+		assumptions = append(assumptions, assumption)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("read assumed defaults: %w", err)
+	}
+	return assumptions, nil
+}
+
+// userTurn is the one answering message a skipped ask is measured against.
+type userTurn struct {
+	Seq  int64
+	Time time.Time
+	Body string
+}
+
+// nextUserMessageAfter returns the first user turn in one session after seq.
+// The session/seq index makes this the single row it always was, instead of a
+// scan of the whole thread per journal event.
+func (s *Store) nextUserMessageAfter(session string, afterSeq int64) (userTurn, bool, error) {
+	var turn userTurn
+	var timestamp string
+	err := s.db.QueryRow(`SELECT seq, ts, body FROM messages
+		WHERE session_id = ? AND role = ? AND seq > ? ORDER BY seq LIMIT 1`,
+		session, RoleUser, afterSeq).Scan(&turn.Seq, &timestamp, &turn.Body)
+	if errors.Is(err, sql.ErrNoRows) {
+		return userTurn{}, false, nil
+	}
+	if err != nil {
+		return userTurn{}, false, fmt.Errorf("read next user turn: %w", err)
+	}
+	at, err := parseTime(timestamp)
+	if err != nil {
+		return userTurn{}, false, fmt.Errorf("parse user turn %d time: %w", turn.Seq, err)
+	}
+	turn.Time = at
+	return turn, true, nil
+}
+
+// nextUserJobAfter returns the next top-level user job admitted in one session
+// after seq — the job whose spend attributes the rework a wrong default caused.
+func (s *Store) nextUserJobAfter(session string, afterSeq int64) (string, bool, error) {
+	var id string
+	err := s.db.QueryRow(`SELECT id FROM nodes
+		WHERE parent_id = ? AND origin = ? AND COALESCE(session_id, '') = ? AND created_seq > ?
+		ORDER BY created_seq, created_order, id LIMIT 1`,
+		RootID, OriginUser, session, afterSeq).Scan(&id)
+	if errors.Is(err, sql.ErrNoRows) {
+		return "", false, nil
+	}
+	if err != nil {
+		return "", false, fmt.Errorf("read next user job: %w", err)
+	}
+	return id, true, nil
 }
 
 // RecordAssumedWithDefault journals every skipped ask for later correction matching.
@@ -580,6 +689,11 @@ CREATE TABLE IF NOT EXISTS meta_parameters (
     event_seq  INTEGER NOT NULL REFERENCES events(seq),
     evidence   JSON NOT NULL CHECK (json_valid(evidence))
 );
+
+-- The ask gate and the trait projections read one rare journal kind in journal
+-- order. Without this the journal is walked in full on every gate check, which
+-- gets slower for the rest of the resident's life.
+CREATE INDEX IF NOT EXISTS events_kind_seq ON events (kind, seq);
 `
 
 // Tunable names the registry entry that is the only meta-learning mutation surface.

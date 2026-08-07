@@ -36,6 +36,14 @@ func migrateThreadSchema(db *sql.DB) error {
 			return err
 		}
 	}
+	// Answering a durable question checks, inside the write lock, that the
+	// question was actually asked. The index lives here rather than beside the
+	// table because question_seq itself arrives by migration.
+	if _, err := db.Exec(`CREATE INDEX IF NOT EXISTS messages_question_seq
+		ON messages (question_seq, role, seq)`); err != nil {
+		return err
+	}
+
 	hasModel, err := tableHasColumn(db, "messages", "model")
 	if err != nil {
 		return err

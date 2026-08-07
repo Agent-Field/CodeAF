@@ -48,7 +48,13 @@ func (s *Store) TerritoryJobs() ([]TerritoryJob, error) {
 	if err != nil {
 		return nil, err
 	}
+	return s.territoryJobs(nodes, edges)
+}
 
+// territoryJobs is the same projection over a graph the caller already holds.
+// Callers that need both the jobs and the nodes they came from read the view
+// once instead of twice.
+func (s *Store) territoryJobs(nodes []Node, edges []Edge) ([]TerritoryJob, error) {
 	territories := make(map[string]bool)
 	for _, node := range nodes {
 		if node.Group == TerritoryGroup {

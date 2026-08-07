@@ -288,6 +288,9 @@ CREATE TABLE IF NOT EXISTS facts (
     last_used TEXT NOT NULL DEFAULT ''
 );
 CREATE INDEX IF NOT EXISTS facts_scope ON facts (scope, status);
+-- Territory scoping asks for active facts by node, which the scope-leading
+-- index above cannot serve.
+CREATE INDEX IF NOT EXISTS facts_status_node ON facts (status, node_id);
 CREATE VIRTUAL TABLE IF NOT EXISTS facts_fts USING fts5(body, scope);
 
 CREATE TABLE IF NOT EXISTS question_practices (
@@ -303,6 +306,17 @@ CREATE TABLE IF NOT EXISTS question_practices (
 );
 CREATE INDEX IF NOT EXISTS question_practices_question
     ON question_practices (question_seq, start_seq);
+`
+
+// factsIndexSchema covers columns that arrive by migration, so it is created
+// once migrateFactsSchema has settled the table's shape rather than beside the
+// table definition, where an older database would not yet have the columns.
+// The prompt-eligibility bar counts prior occurrences of the same body, case
+// folded; indexing the folded expression keeps that count off a full scan of
+// the notebook without changing what it compares.
+const factsIndexSchema = `
+CREATE INDEX IF NOT EXISTS facts_occurrence
+    ON facts (kind, channel, scope, lower(body), seq);
 `
 
 const scopeAliasesSchema = `
@@ -971,6 +985,23 @@ func (s *Store) searchFacts(query FactQuery, countUses bool) ([]Fact, error) {
 		order = "uses DESC, seq DESC"
 	}
 
+	// Channel survival is one projection of the whole journal. Every candidate
+	// asks it the same question, so this retrieval derives it at most once and
+	// only when there is something to weigh.
+	var credibility channelCredibility
+	credibilityLoaded := false
+	loadCredibility := func() (channelCredibility, error) {
+		if credibilityLoaded {
+			return credibility, nil
+		}
+		loaded, err := s.channelCredibility()
+		if err != nil {
+			return channelCredibility{}, err
+		}
+		credibility, credibilityLoaded = loaded, true
+		return credibility, nil
+	}
+
 	for _, cue := range query.Cues {
 		if len(results) >= query.Limit {
 			break
@@ -1019,7 +1050,9 @@ func (s *Store) searchFacts(query FactQuery, countUses bool) ([]Fact, error) {
 			if scanErr != nil {
 				return nil, scanErr
 			}
-			s.applyFactCredibility(facts)
+			if loaded, credibilityErr := loadCredibility(); credibilityErr == nil {
+				applyCredibility(facts, loaded)
+			}
 			for _, fact := range facts {
 				if !seen[fact.Seq] && len(results) < query.Limit {
 					seen[fact.Seq] = true
@@ -1037,17 +1070,23 @@ func (s *Store) searchFacts(query FactQuery, countUses bool) ([]Fact, error) {
 			return results[i].Seq > results[j].Seq
 		})
 	}
-	eligible := results[:0]
-	for _, fact := range results {
-		ok, eligibilityErr := s.PromptEligible(fact)
-		if eligibilityErr != nil {
-			return nil, eligibilityErr
+	if len(results) > 0 {
+		loaded, credibilityErr := loadCredibility()
+		if credibilityErr != nil {
+			return nil, credibilityErr
 		}
-		if ok {
-			eligible = append(eligible, fact)
+		eligible := results[:0]
+		for _, fact := range results {
+			ok, eligibilityErr := s.promptEligible(fact, loaded)
+			if eligibilityErr != nil {
+				return nil, eligibilityErr
+			}
+			if ok {
+				eligible = append(eligible, fact)
+			}
 		}
+		results = eligible
 	}
-	results = eligible
 	if query.MaxBytes > 0 {
 		bounded := make([]Fact, 0, len(results))
 		used := 0
@@ -1623,7 +1662,8 @@ func migrateFactsSchema(db *sql.DB) error {
 		strings.Contains(createSQL, "'question'") && strings.Contains(createSQL, "'trait'") && strings.Contains(createSQL, "'practicing'") &&
 		strings.Contains(createSQL, "'candidate'") &&
 		strings.Contains(createSQL, "'quarantined'") {
-		return nil
+		_, err := db.Exec(factsIndexSchema)
+		return err
 	}
 
 	tx, err := db.BeginTx(context.Background(), nil)
@@ -1662,6 +1702,9 @@ func migrateFactsSchema(db *sql.DB) error {
 		if err := replayEvent(tx, event); err != nil {
 			return err
 		}
+	}
+	if _, err := tx.Exec(factsIndexSchema); err != nil {
+		return err
 	}
 	return tx.Commit()
 }
