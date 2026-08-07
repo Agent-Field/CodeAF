@@ -1315,9 +1315,25 @@ func (m *Model) appendQuestionComponent(
 func (m *Model) appendChooseQuestion(
 	lines *[]string, card jobCard, width, atLine int, dock, track bool,
 ) {
-	selected := m.questionOptionIndex(card)
-	for index, option := range card.Options {
-		prefix := mutedStyle.Faint(true).Render("│   ")
+	rendered := renderChooseOptions(card.Options, m.questionOptionIndex(card), width,
+		mutedStyle.Faint(true).Render("│   "))
+	for index, line := range rendered {
+		*lines = append(*lines, line)
+		if track {
+			m.cardOptionRows = append(m.cardOptionRows, cardOptionRow{
+				line: atLine + len(*lines) - 1, startX: 0, endX: width, cardID: card.ID,
+				optionIndex: index, dock: dock,
+			})
+		}
+	}
+}
+
+// renderChooseOptions is the shared numbered-option block: one row per choice,
+// the selected one banded. The job card and the thread's own question message
+// both render from it, so a choice reads identically wherever it appears.
+func renderChooseOptions(options []questionOption, selected, width int, prefix string) []string {
+	lines := make([]string, 0, len(options))
+	for index, option := range options {
 		markerStyle := mutedStyle
 		if index == selected {
 			markerStyle = lipgloss.NewStyle().Foreground(powder).Bold(true)
@@ -1335,14 +1351,9 @@ func (m *Model) appendChooseQuestion(
 		if index == selected {
 			line = lipgloss.NewStyle().Background(selectionBand).Width(width).Render(line)
 		}
-		*lines = append(*lines, truncate(line, width))
-		if track {
-			m.cardOptionRows = append(m.cardOptionRows, cardOptionRow{
-				line: atLine + len(*lines) - 1, startX: 0, endX: width, cardID: card.ID,
-				optionIndex: index, dock: dock,
-			})
-		}
+		lines = append(lines, truncate(line, width))
 	}
+	return lines
 }
 
 func (m *Model) appendConfirmQuestion(

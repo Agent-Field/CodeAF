@@ -113,14 +113,25 @@ func (h *Head) applyAgentQuestionOption(user store.Message, question store.Agent
 			return h.askForCadence(user.SessionID, id)
 		}
 	}
-	answer := strings.TrimSpace(option.Label)
-	if answer == "" {
-		answer = strings.TrimSpace(option.Value)
-	}
+	answer := compilerAnswerFromOption(option)
 	if question.OriginCommandSeq != 0 {
 		return h.continueAgentCompilerQuestion(user, question, answer)
 	}
 	return h.postAgent(user.SessionID, "Got it — I’ll use that.", 0)
+}
+
+// compilerAnswerFromOption is the exact words a chosen option sends back to
+// the compiler. A value the label merely wraps — "moonshotai/kimi-k2" inside
+// "use moonshotai/kimi-k2" — is the precise form and wins, so resolution is
+// exact rather than re-parsed out of a sentence. Anywhere else the value is an
+// internal code and the label is the answer a person would have typed.
+func compilerAnswerFromOption(option store.QuestionOption) string {
+	label := strings.TrimSpace(option.Label)
+	value := strings.TrimSpace(option.Value)
+	if value != "" && (label == "" || strings.Contains(strings.ToLower(label), strings.ToLower(value))) {
+		return value
+	}
+	return label
 }
 
 func (h *Head) continueAgentCompilerQuestion(user store.Message, question store.AgentQuestion, answer string) error {
@@ -131,7 +142,7 @@ func (h *Head) continueAgentCompilerQuestion(user store.Message, question store.
 	if !found || source.Kind != store.CommandSplice || strings.TrimSpace(answer) == "" {
 		return h.postAgent(user.SessionID, "Tell me which option you want, or answer in your own words.", 0)
 	}
-	instruction := source.Instruction + "\n\nAnswer to compiler question: " + answer
+	instruction := SpliceCompilerAnswer(source.Instruction, answer)
 	command, err := h.store.RequestCommand(store.Command{
 		SessionID: user.SessionID, Kind: store.CommandSplice, Instruction: instruction,
 	})
@@ -297,11 +308,7 @@ func (h *Head) applyQuestionOption(user store.Message, question store.Message, o
 			return h.requestCharterCommand(user, store.CommandCharterProbation, id, "back to asking")
 		}
 	}
-	answer := strings.TrimSpace(option.Label)
-	if answer == "" {
-		answer = strings.TrimSpace(option.Value)
-	}
-	return h.continueCompilerQuestion(user, question, answer)
+	return h.continueCompilerQuestion(user, question, compilerAnswerFromOption(option))
 }
 
 func (h *Head) requestStandingWatchCommand(user store.Message, kind store.CommandKind, instruction string) error {
@@ -319,7 +326,7 @@ func (h *Head) continueCompilerQuestion(user store.Message, question store.Messa
 	if !found || source.Kind != store.CommandSplice || strings.TrimSpace(answer) == "" {
 		return h.postAgent(user.SessionID, "Tell me which option you want, or answer in your own words.", 0)
 	}
-	instruction := source.Instruction + "\n\nAnswer to compiler question: " + answer
+	instruction := SpliceCompilerAnswer(source.Instruction, answer)
 	command, err := h.store.RequestCommand(store.Command{
 		SessionID: user.SessionID, Kind: store.CommandSplice, Instruction: instruction,
 	})

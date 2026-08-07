@@ -4,6 +4,9 @@ import (
 	"context"
 	"strings"
 	"testing"
+
+	"github.com/Agent-Field/aforge-v2/internal/resident"
+	"github.com/Agent-Field/aforge-v2/internal/store"
 )
 
 func TestModelWordRecognitionTable(t *testing.T) {
@@ -195,5 +198,213 @@ func TestQualityWordsReachTheBriefAsOneSentence(t *testing.T) {
 	}
 	if strings.Contains(routine.Goal, "model:") {
 		t.Fatalf("routine goal carries a quality sentence: %q", routine.Goal)
+	}
+}
+
+// seededModelResolver is the surface's catalog reading reduced to what this
+// rail depends on: an exact slug is never ambiguous, and any other word
+// returns every model it could mean, best first.
+func seededModelResolver(models ...string) ModelResolver {
+	return func(words ModelWords) WorkModelChoice {
+		for _, name := range words.Names {
+			var partial []string
+			for _, model := range models {
+				base := model[strings.LastIndex(model, "/")+1:]
+				switch {
+				case model == name || base == name:
+					return WorkModelChoice{Model: model, Requested: name}
+				case strings.Contains(model, name):
+					partial = append(partial, model)
+				}
+			}
+			if len(partial) == 1 {
+				return WorkModelChoice{Model: partial[0], Requested: name}
+			}
+			if len(partial) > 1 {
+				return WorkModelChoice{Candidates: partial, Requested: name}
+			}
+		}
+		requested := ""
+		if len(words.Names) > 0 {
+			requested = words.Names[0]
+		}
+		return WorkModelChoice{Requested: requested}
+	}
+}
+
+const kimiAsk = "okay use kimi 3 model to look at our aforge and ideate various " +
+	"=featrures we can build on top of it after underdtand the philosophy dont buikd anything yet"
+
+func kimiCompiler(t *testing.T) *Compiler {
+	t.Helper()
+	client := &fakeClient{responses: []string{
+		`{"goal":"Study aforge and ideate features.","deliverable":"an idea list","budget":"$0.40","assumptions":["Read the repo first"]}`,
+	}}
+	return NewCompiler(client).WithModelResolver(seededModelResolver(
+		"moonshotai/kimi-k2", "moonshotai/kimi-k2-thinking", "google/gemini-3-pro"))
+}
+
+func TestAmbiguousModelWordAsksOnceThenEveryAnswerSettlesIt(t *testing.T) {
+	asked, err := kimiCompiler(t).Compile(context.Background(), kimiAsk, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if asked.Question != "Which kimi do you mean?" || len(asked.QuestionOptions) != 2 {
+		t.Fatalf("first compile = %+v", asked)
+	}
+	if asked.QuestionOptions[0].Value != "moonshotai/kimi-k2" ||
+		asked.QuestionOptions[1].Value != "moonshotai/kimi-k2-thinking" {
+		t.Fatalf("options do not carry exact slugs: %+v", asked.QuestionOptions)
+	}
+
+	for _, test := range []struct {
+		name   string
+		answer string
+		model  string
+		note   string
+	}{
+		{
+			name: "option value", answer: asked.QuestionOptions[1].Value,
+			model: "moonshotai/kimi-k2-thinking", note: "Running on moonshotai/kimi-k2-thinking.",
+		},
+		{
+			name: "option label", answer: asked.QuestionOptions[0].Label,
+			model: "moonshotai/kimi-k2", note: "Running on moonshotai/kimi-k2.",
+		},
+		{
+			// Free text that still fits both models proceeds on the best one
+			// rather than asking the settled question a second time.
+			name: "free text", answer: "kimi 3", model: "moonshotai/kimi-k2",
+			note: `Went with moonshotai/kimi-k2 — say "use moonshotai/kimi-k2-thinking" to switch.`,
+		},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			brief, err := kimiCompiler(t).Compile(context.Background(),
+				SpliceCompilerAnswer(kimiAsk, test.answer), "")
+			if err != nil {
+				t.Fatal(err)
+			}
+			if brief.Question != "" {
+				t.Fatalf("an answered question was asked again: %q", brief.Question)
+			}
+			if brief.WorkModel != test.model || brief.ModelNote != test.note {
+				t.Fatalf("answer %q pinned %q with note %q", test.answer, brief.WorkModel, brief.ModelNote)
+			}
+		})
+	}
+}
+
+func TestStackedAnswersNeverReopenTheModelQuestion(t *testing.T) {
+	// The transcript that started this: every answer re-spliced the original
+	// words, and the original words asked again. The last answer is the live
+	// one and the ask is spent whatever it says.
+	instruction := SpliceCompilerAnswer(SpliceCompilerAnswer(kimiAsk, "kimi 3"), "1")
+	brief, err := kimiCompiler(t).Compile(context.Background(), instruction, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if brief.Question != "" {
+		t.Fatalf("stacked answers asked again: %q", brief.Question)
+	}
+	if brief.WorkModel != "moonshotai/kimi-k2" {
+		t.Fatalf("stacked answers pinned %q", brief.WorkModel)
+	}
+	if answers := answeredCompilerQuestions(instruction); len(answers) != 2 ||
+		answers[0] != "kimi 3" || answers[1] != "1" {
+		t.Fatalf("answers read back as %v", answers)
+	}
+}
+
+func TestCompilerAnswerFromOptionPrefersTheExactValueOnlyWhenTheLabelWrapsIt(t *testing.T) {
+	for _, test := range []struct {
+		option store.QuestionOption
+		want   string
+	}{
+		{option: store.QuestionOption{Label: "use moonshotai/kimi-k2", Value: "moonshotai/kimi-k2"},
+			want: "moonshotai/kimi-k2"},
+		// A value that is an internal code leaves the human label alone.
+		{option: store.QuestionOption{Label: "London", Value: "uk"}, want: "London"},
+		{option: store.QuestionOption{Label: "yes, stand this up", Value: "ratify"}, want: "yes, stand this up"},
+		{option: store.QuestionOption{Value: "moonshotai/kimi-k2"}, want: "moonshotai/kimi-k2"},
+	} {
+		if got := compilerAnswerFromOption(test.option); got != test.want {
+			t.Fatalf("answer for %+v = %q, want %q", test.option, got, test.want)
+		}
+	}
+}
+
+// TestModelChoiceRoundTripsThroughTheRealAnswerRailExactlyOnce walks the
+// transcript that started this: the ask, the choose question, the user's "1",
+// and the work. The rail must journal one question and then get on with it.
+func TestModelChoiceRoundTripsThroughTheRealAnswerRailExactlyOnce(t *testing.T) {
+	graph := openHeadStore(t)
+	client := &fakeClient{responses: []string{
+		`{"goal":"Study aforge and ideate features.","deliverable":"an idea list","budget":"$0.40","assumptions":["Read the repo first"]}`,
+	}}
+	compiler := NewCompiler(client).WithModelResolver(seededModelResolver(
+		"moonshotai/kimi-k2", "moonshotai/kimi-k2-thinking", "google/gemini-3-pro"))
+	reconciler := resident.New(graph,
+		func(ctx context.Context, instruction, graphContext string) (resident.Compiled, error) {
+			brief, err := compiler.Compile(ctx, instruction, graphContext)
+			if err != nil {
+				return resident.Compiled{}, err
+			}
+			return resident.Compiled{
+				Goal: brief.Goal, Assumptions: brief.Assumptions, Question: brief.Question,
+				QuestionOptions: brief.QuestionOptions, WorkModel: brief.WorkModel,
+				ModelNote: brief.ModelNote,
+			}, nil
+		}, nil)
+
+	original, err := graph.RequestCommand(store.Command{
+		SessionID: "kimi", Kind: store.CommandSplice, Instruction: kimiAsk,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := reconciler.Tick(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	question := waitForAgentReply(t, graph, "kimi", original.Seq)
+	if len(question.Options) != 2 || question.Options[0].Value != "moonshotai/kimi-k2" {
+		t.Fatalf("question options = %+v", question.Options)
+	}
+
+	user, err := graph.PostMessage(store.Message{SessionID: "kimi", Role: store.RoleUser, Body: "1"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := New(&fakeClient{}, graph).answer(context.Background(), user); err != nil {
+		t.Fatal(err)
+	}
+	if err := reconciler.Tick(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+
+	messages, err := graph.Messages("kimi", 0, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	questions := 0
+	for _, message := range messages {
+		if message.Role == store.RoleAgent && len(message.Options) > 0 {
+			questions++
+		}
+	}
+	if questions != 1 {
+		t.Fatalf("the rail asked %d times:\n%+v", questions, messages)
+	}
+	nodes, err := graph.Nodes()
+	if err != nil {
+		t.Fatal(err)
+	}
+	pinned := ""
+	for _, node := range nodes {
+		if node.Parent == store.RootID && node.Provenance.WorkModel != "" {
+			pinned = node.Provenance.WorkModel
+		}
+	}
+	if pinned != "moonshotai/kimi-k2" {
+		t.Fatalf("the answered choice did not reach the work: %q", pinned)
 	}
 }
