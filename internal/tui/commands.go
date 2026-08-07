@@ -24,9 +24,13 @@ const (
 	paletteSettings
 )
 
-var modelSlots = []string{"talk", "work", "voice", "image", "speech", "music", "video", "boost"}
+var modelSlots = []string{"talk", "work", "plan", "voice", "image", "speech", "music", "video", "boost"}
 
 const followWorkModel = "follow work"
+
+// slotFollowsWork names the slots whose empty value means "inherit the work
+// model live": boost for the heavier lane, plan for the structuring lane.
+func slotFollowsWork(role string) bool { return role == "boost" || role == "plan" }
 
 type commandSpec struct {
 	name        string
@@ -160,7 +164,7 @@ func (m *Model) updatePaletteKey(key string) (tea.Cmd, bool) {
 			return nil, true
 		case key == "enter":
 			return m.openModelPicker(modelSlots[m.modelSlotIndex]), true
-		case len(key) == 1 && key[0] >= '1' && key[0] <= '8':
+		case len(key) == 1 && key[0] >= '1' && int(key[0]-'0') <= len(modelSlots):
 			m.modelSlotIndex = int(key[0] - '1')
 			return m.openModelPicker(modelSlots[m.modelSlotIndex]), true
 		}
@@ -448,7 +452,7 @@ func (m *Model) applyModel(role, slug string) tea.Cmd {
 	}
 	previous := m.currentModel(role)
 	display := slug
-	if role == "boost" && slug == followWorkModel {
+	if slotFollowsWork(role) && slug == followWorkModel {
 		slug = ""
 		display = followWorkModel
 	}
@@ -948,7 +952,7 @@ func (m *Model) modelsForRole(role string) []string {
 		choices = m.fallbackModelChoices(role)
 	}
 	models := make([]string, 0, len(choices)+1)
-	if role == "boost" {
+	if slotFollowsWork(role) {
 		models = append(models, followWorkModel)
 	}
 	for _, choice := range choices {
@@ -961,7 +965,7 @@ func (m *Model) fallbackModelChoices(role string) []ModelChoice {
 	if m.commander == nil {
 		return normalizeModelChoices(m.modelCatalogForRole(role))
 	}
-	if role != "talk" && role != "work" && role != "boost" {
+	if role != "talk" && role != "work" && role != "plan" && role != "boost" {
 		current := strings.TrimSpace(m.commander.CurrentModel(role))
 		if current == "" {
 			return nil
@@ -1019,7 +1023,7 @@ type searchableModelList struct {
 func (m *Model) modelPickerSeam() searchableModelList {
 	role := m.modelRole
 	choices := m.modelCatalogForRole(role)
-	if role == "boost" {
+	if slotFollowsWork(role) {
 		choices = append([]ModelChoice{{Slug: followWorkModel, Name: "use work model"}}, choices...)
 	}
 	return searchableModelList{

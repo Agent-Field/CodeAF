@@ -843,7 +843,7 @@ func (m *Model) overlayModels(frame string) string {
 func (m *Model) overlayModelPalette(frame string, x, y, width, innerWidth int) string {
 	title := "⟨×⟩ models"
 	if m.width >= 100 {
-		title = overlayRight(title, "↑/↓ choose · enter open · 1–8 jump", innerWidth)
+		title = overlayRight(title, "↑/↓ choose · enter open · 1–9 jump", innerWidth)
 	}
 	lines := []string{title}
 	for index, slot := range modelSlots {
@@ -873,7 +873,7 @@ func (m *Model) modelSlotLine(slot string, selected bool, width int) string {
 		markerStyle = powderStyle.Bold(true)
 	}
 	slotLabel := slot
-	if slot == "boost" && m.modelFollowsWork() {
+	if m.slotFollowsWorkNow(slot) {
 		slotLabel += " (work)"
 	}
 	slotColumn := 13
@@ -1106,8 +1106,8 @@ func (m *Model) modelChoiceRow(choice ModelChoice, selected bool, width int) str
 	marker := "  "
 	markerStyle := mutedStyle
 	current := m.currentModel(m.modelRole) == choice.Slug
-	if m.modelRole == "boost" && choice.Slug == followWorkModel {
-		current = m.modelFollowsWork()
+	if slotFollowsWork(m.modelRole) && choice.Slug == followWorkModel {
+		current = m.slotFollowsWorkNow(m.modelRole)
 	}
 	if current {
 		marker = "● "
@@ -1176,23 +1176,32 @@ func (m *Model) currentModel(role string) string {
 		return "–"
 	}
 	current := m.commander.CurrentModel(role)
-	if role == "boost" && strings.TrimSpace(current) == "" {
+	if slotFollowsWork(role) && strings.TrimSpace(current) == "" {
 		return m.currentModel("work")
 	}
 	return current
 }
 
 func (m *Model) modelFollowsWork() bool {
-	if model := strings.TrimSpace(m.optimisticModels["boost"]); model != "" {
+	return m.slotFollowsWorkNow("boost")
+}
+
+// slotFollowsWorkNow reports whether a follow-capable slot is currently
+// inheriting the work model rather than holding its own choice.
+func (m *Model) slotFollowsWorkNow(slot string) bool {
+	if !slotFollowsWork(slot) {
+		return false
+	}
+	if model := strings.TrimSpace(m.optimisticModels[slot]); model != "" {
 		return false
 	}
 	if m.commander == nil {
 		return true
 	}
 	if follower, ok := m.commander.(interface{ ModelFollows(string) bool }); ok {
-		return follower.ModelFollows("boost")
+		return follower.ModelFollows(slot)
 	}
-	return strings.TrimSpace(m.commander.CurrentModel("boost")) == ""
+	return strings.TrimSpace(m.commander.CurrentModel(slot)) == ""
 }
 
 func (m *Model) boostLabel() string {

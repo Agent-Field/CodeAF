@@ -99,8 +99,8 @@ intro jingle").
 clip — media generation is a tool every job already has.
 
 ### Model slots — the right model per modality
-**What**: Standing slots: talk, work, voice (transcription), image,
-speech, music, video. Defaults resolve against a live catalog
+**What**: Standing slots: talk, work, plan, voice (transcription), image,
+speech, music, video, boost. Defaults resolve against a live catalog
 (krea-2-medium-turbo images, kokoro-82m speech, qwen3-asr-flash
 transcription, lyria-3-clip music, seedance-1-5-pro video) and degrade
 gracefully if a slug disappears. Each slot's picker only lists models
@@ -109,6 +109,21 @@ that can actually do that job.
 dropdown; env overrides (`AFORGE_IMAGE_MODEL`, …) for headless.
 **Tip seed**: Click a model name in the header to change it — the list is
 pre-filtered to models capable of that slot's job, so you can't pick wrong.
+
+### Plan/work split — a strong model plans, a cheap model executes
+**What**: Two roles inside every task: the *plan* model structures (task
+graph, replans after a landed result, per-leaf contracts, ruler
+recalibration, the delivery gate) and the *work* model executes the
+leaves. The plan slot is empty by default and follows the work model
+live — one model does both until you split them. A change lands on the
+very next planning call; the sizing ruler stays keyed to the work model,
+because it measures the executor.
+**Where**: chat: `plan` row in the model palette / settings sheet
+(pick "follow work" to rejoin). Headless: `AFORGE_PLAN_MODEL`, or per
+run `aforge plan|revise|run --model <work> --plan-model <plan>`.
+**Tip seed**: Put a frontier model on `plan` and a flash-tier model on
+`work` — the graph, the replans, and the gate get the judgment while the
+leaves stay cheap.
 
 ## 3. Standing goals — it acts without being asked
 

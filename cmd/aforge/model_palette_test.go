@@ -36,6 +36,7 @@ func TestModelPaletteCatalogFiltersEveryCapabilitySlot(t *testing.T) {
 	want := map[string][]string{
 		"talk":   {"chat/text", "chat/text-two", "chat/text-three", "chat/text-four"},
 		"work":   {"chat/text", "chat/text-two", "chat/text-three", "chat/text-four"},
+		"plan":   {"chat/text", "chat/text-two", "chat/text-three", "chat/text-four"},
 		"boost":  {"chat/text", "chat/text-two", "chat/text-three", "chat/text-four"},
 		"voice":  {"audio/asr"},
 		"image":  {"paint/image"},
@@ -77,6 +78,44 @@ func TestBoostPreferenceFollowsWorkPersistsOverrideAndCanBeCleared(t *testing.T)
 	work.mu.Unlock()
 	if !commander.ModelFollows("boost") || commander.CurrentModel("boost") != "work/two" || loadChatPrefs(directory).BoostModel != "" {
 		t.Fatalf("cleared boost prefs = %+v model=%q", loadChatPrefs(directory), commander.CurrentModel("boost"))
+	}
+}
+
+func TestPlanPreferenceFollowsWorkPersistsOverrideAndCanBeCleared(t *testing.T) {
+	directory := t.TempDir()
+	testSettings := config.Config{APIKey: "test-key", BaseURL: "https://example.invalid/api/v1"}
+	work := &liveClient{model: "work/one", settings: testSettings}
+	planner := &liveClient{model: "work/one", settings: testSettings}
+	commander := &chatCommander{prefsDir: directory, taskClient: work, planClient: planner, settings: testSettings}
+	if !commander.ModelFollows("plan") || commander.CurrentModel("plan") != "work/one" {
+		t.Fatalf("default plan follows=%t model=%q", commander.ModelFollows("plan"), commander.CurrentModel("plan"))
+	}
+	if err := commander.SetModel("plan", "anthropic/claude-opus-5"); err != nil {
+		t.Fatal(err)
+	}
+	if commander.ModelFollows("plan") || commander.CurrentModel("plan") != "anthropic/claude-opus-5" ||
+		loadChatPrefs(directory).PlanModel != "anthropic/claude-opus-5" {
+		t.Fatalf("explicit plan prefs = %+v model=%q", loadChatPrefs(directory), commander.CurrentModel("plan"))
+	}
+	// A work switch must not move an explicitly chosen plan model.
+	if err := commander.SetModel("work", "work/two"); err != nil {
+		t.Fatal(err)
+	}
+	if commander.CurrentModel("plan") != "anthropic/claude-opus-5" {
+		t.Fatalf("work switch moved explicit plan model to %q", commander.CurrentModel("plan"))
+	}
+	if err := commander.SetModel("plan", ""); err != nil {
+		t.Fatal(err)
+	}
+	if !commander.ModelFollows("plan") || commander.CurrentModel("plan") != "work/two" || loadChatPrefs(directory).PlanModel != "" {
+		t.Fatalf("cleared plan prefs = %+v model=%q", loadChatPrefs(directory), commander.CurrentModel("plan"))
+	}
+	// Following again: a work switch carries the plan slot with it, live.
+	if err := commander.SetModel("work", "work/three"); err != nil {
+		t.Fatal(err)
+	}
+	if commander.CurrentModel("plan") != "work/three" {
+		t.Fatalf("following plan slot stayed on %q after work moved", commander.CurrentModel("plan"))
 	}
 }
 

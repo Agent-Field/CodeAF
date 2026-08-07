@@ -20,6 +20,7 @@ import (
 	"github.com/Agent-Field/aforge-v2/internal/config"
 	"github.com/Agent-Field/aforge-v2/internal/plan"
 	"github.com/Agent-Field/aforge-v2/internal/profile"
+	"github.com/Agent-Field/aforge-v2/internal/router"
 )
 
 func main() {
@@ -80,9 +81,9 @@ const usageText = `aforge — build and revise task graphs
 
   aforge                 open the chat surface over the durable graph
   aforge chat [--db path] [--session id]
-  aforge plan "<goal>" [-o graph.json] [--json] [--brief] [--ensemble N]
-  aforge revise <graph.json> "<what happened>" [--done 1,2,3] [-o graph.json]
-  aforge run  <graph.json> [-w dir] [-j 8] [-o done.json] [--yes-spend]
+  aforge plan "<goal>" [-o graph.json] [--json] [--brief] [--ensemble N] [--model slug] [--plan-model slug]
+  aforge revise <graph.json> "<what happened>" [--done 1,2,3] [-o graph.json] [--model slug] [--plan-model slug]
+  aforge run  <graph.json> [-w dir] [-j 8] [-o done.json] [--yes-spend] [--model slug] [--plan-model slug]
   aforge show <graph.json>
   aforge models
   aforge notebook [--db path]
@@ -97,6 +98,10 @@ const usageText = `aforge — build and revise task graphs
 Environment:
   OPENROUTER_API_KEY   required
   AFORGE_MODEL         default ` + config.DefaultModel + `
+  AFORGE_PLAN_MODEL    unset: the work model plans too. Set it to run planning,
+                       replans, contracts, and the delivery gate on a stronger
+                       model while a smaller one executes the leaves; --model
+                       and --plan-model do the same per run.
   AFORGE_MODELS        unset: one model, exactly as above. Set it to a panel and
                        calls cascade — cheapest model first, escalating when a
                        verifier catches a failure. Either a comma-separated list
@@ -138,7 +143,9 @@ func runPlan(args []string) error {
 	asJSON := flags.Bool("json", false, "print the graph as JSON instead of a table")
 	briefs := flags.Bool("brief", false, "write a self-contained instruction for every leaf")
 	ensemble := flags.Int("ensemble", plan.EnsembleAuto, "0 decide from the goal, -1 never, N>=2 force N independent passes and merge them")
-	if err := flags.Parse(reorder(args, map[string]bool{"o": true, "ensemble": true})); err != nil {
+	model := flags.String("model", "", "work model for this run (default AFORGE_MODEL)")
+	planModel := flags.String("plan-model", "", "model that plans, when different from the work model (default AFORGE_PLAN_MODEL)")
+	if err := flags.Parse(reorder(args, map[string]bool{"o": true, "ensemble": true, "model": true, "plan-model": true})); err != nil {
 		return err
 	}
 	goal, err := readText(flags.Args())
@@ -150,11 +157,17 @@ func runPlan(args []string) error {
 	if err != nil {
 		return err
 	}
-	client, err := settings.Client()
+	applyModelFlags(&settings, *model, *planModel)
+	workClient, err := settings.Client()
 	if err != nil {
 		return err
 	}
-	defer closeRouter(client)
+	defer closeRouter(workClient)
+	client, closePlanner, err := planningClient(settings, workClient)
+	if err != nil {
+		return err
+	}
+	defer closePlanner()
 	ctx := settings.Context(context.Background(), goal)
 
 	// The ruler in force comes from measured work when there is any; the
@@ -163,7 +176,10 @@ func runPlan(args []string) error {
 	plan.UseAnchors(store.Anchors)
 
 	if !*asJSON {
-		fmt.Printf("goal:   %s\nmodel:  %s (reasoning: %s)\n", goal, settings.Model, settings.Reasoning)
+		fmt.Printf("goal:   %s\nmodel:  %s (reasoning: %s)\n", goal, settings.PlanModelResolved(), settings.Reasoning)
+		if settings.PlanSplit() {
+			fmt.Printf("sized for: %s (the work model this ruler measures)\n", settings.Model)
+		}
 		if spread := store.Measure(); spread.Samples > 0 {
 			calibrated := "built-in"
 			if strings.TrimSpace(store.Anchors) != "" {
@@ -212,7 +228,9 @@ func runRevise(args []string) error {
 	output := flags.String("o", "", "write the revised graph as JSON to this file")
 	asJSON := flags.Bool("json", false, "print the graph as JSON instead of a table")
 	done := flags.String("done", "", "mark these node ids finished before revising")
-	if err := flags.Parse(reorder(args, map[string]bool{"o": true, "done": true})); err != nil {
+	model := flags.String("model", "", "work model for this run (default AFORGE_MODEL)")
+	planModel := flags.String("plan-model", "", "model that revises the plan, when different from the work model (default AFORGE_PLAN_MODEL)")
+	if err := flags.Parse(reorder(args, map[string]bool{"o": true, "done": true, "model": true, "plan-model": true})); err != nil {
 		return err
 	}
 	rest := flags.Args()
@@ -241,11 +259,17 @@ func runRevise(args []string) error {
 	if err != nil {
 		return err
 	}
-	client, err := settings.Client()
+	applyModelFlags(&settings, *model, *planModel)
+	workClient, err := settings.Client()
 	if err != nil {
 		return err
 	}
-	defer closeRouter(client)
+	defer closeRouter(workClient)
+	client, closePlanner, err := planningClient(settings, workClient)
+	if err != nil {
+		return err
+	}
+	defer closePlanner()
 	ctx := settings.Context(context.Background(), graph.Goal)
 
 	if !*asJSON {
@@ -342,6 +366,33 @@ func reorder(args []string, valueFlags map[string]bool) []string {
 		}
 	}
 	return append(flags, positional...)
+}
+
+// applyModelFlags lets a headless invocation split the two roles per run:
+// --model moves the work (and, unsplit, everything), --plan-model moves only
+// the model that structures. Flags outrank the environment for this run.
+func applyModelFlags(settings *config.Config, model, planModel string) {
+	if trimmed := strings.TrimSpace(model); trimmed != "" {
+		settings.Model = trimmed
+	}
+	if trimmed := strings.TrimSpace(planModel); trimmed != "" {
+		settings.PlanModel = trimmed
+	}
+}
+
+// planningClient returns the client planning-class calls run on. With no plan
+// split it is exactly the work client — nothing new is built, and the cleanup
+// is a no-op — so the single-model path is byte-identical to before the slot
+// existed.
+func planningClient(settings config.Config, workClient router.Client) (router.Client, func(), error) {
+	if !settings.PlanSplit() {
+		return workClient, func() {}, nil
+	}
+	client, err := settings.ClientFor(settings.PlanModelResolved())
+	if err != nil {
+		return nil, nil, err
+	}
+	return client, func() { closeRouter(client) }, nil
 }
 
 func parseIDs(raw string) []int {

@@ -56,10 +56,11 @@ func helpCategories() []helpCategory {
 			{key: "/", meaning: "type to filter commands; tab/↑/↓ choose; enter accepts"},
 		}},
 		{title: "models", rows: []helpRow{
-			{key: "models ⌄", meaning: "open all eight model slots from the header"},
-			{key: "1–8", meaning: "jump to a slot inside the models palette"},
+			{key: "models ⌄", meaning: "open all nine model slots from the header"},
+			{key: "1–9", meaning: "jump to a slot inside the models palette"},
 			{key: "↑/↓ · enter", meaning: "choose a slot or a model; type to filter the picker"},
 			{key: "/model", meaning: "open the palette, or use /model [slot] [model]"},
+			{key: "plan slot", meaning: "the model that plans and reviews jobs; empty follows the work model"},
 		}},
 		{title: "asking for work", rows: []helpRow{
 			{key: "task", meaning: "“Draft the launch note and save it as launch.md.”"},

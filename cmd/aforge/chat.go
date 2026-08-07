@@ -146,10 +146,22 @@ func runChat(args []string) error {
 		return err
 	}
 	defer taskClient.Close()
+	// The plan slot structures work — the task graph, replans, contracts, the
+	// delivery gate. Empty follows the work model live, so by default this is
+	// the same model behind a second hot-swappable handle; a picked plan model
+	// or AFORGE_PLAN_MODEL splits structuring from execution, and a /model
+	// change lands on the very next planning call.
+	planModel := firstNonEmptyString(prefs.PlanModel, settings.PlanModel, workModel)
+	planClient, err := newLiveClient(settings, planModel)
+	if err != nil {
+		return err
+	}
+	defer planClient.Close()
 	boostClients := &messageClientPool{settings: settings, clients: make(map[string]*liveClient)}
 	defer boostClients.Close()
-	// Planning is done by the working model, so its measured ruler must be in
-	// force before either the initial subtree planner or an overrun replan runs.
+	// The ruler stays keyed to the work model even when a different model
+	// plans: the anchors measure how the executor spends turns, and the plan
+	// model only reads them to size work for that executor.
 	measured, _ := profile.Load(settings.ProfileDir, taskClient.Model(), "linear")
 	plan.UseAnchors(measured.Anchors)
 
@@ -205,7 +217,7 @@ func runChat(args []string) error {
 	// the resolver reads it through this handle so a later /model change is
 	// what the next job's model words resolve against.
 	var commander *chatCommander
-	reconciler := newResidentReconciler(settings, graph, chatClient, taskClient, plans,
+	reconciler := newResidentReconciler(settings, graph, chatClient, taskClient, planClient, plans,
 		func(words head.ModelWords) head.WorkModelChoice {
 			return resolveWorkModelWords(words, modelCatalog, func() string {
 				if commander != nil {
@@ -220,7 +232,7 @@ func runChat(args []string) error {
 		// whose words could revise a running job.
 		WithRedirector(func(ctx context.Context, job store.Node, message string,
 			flavor resident.RevisionFlavor) (resident.Redirection, error) {
-			return plans.reviseForUser(ctx, settings, taskClient, graph, job, message, flavor)
+			return plans.reviseForUser(ctx, settings, planClient, graph, job, message, flavor)
 		}).
 		WithStandingWatch(standingWatch).
 		WithStandingWatchKeyPersist(func() (bool, string, error) {
@@ -424,7 +436,7 @@ func runChat(args []string) error {
 		// contradicts a specific assumption in a specific node. Its default
 		// is no change; the store refuses everything else.
 		if !isReflex && planGraph != nil && outcome != nil {
-			plans.reviseAfter(ctx, settings, taskClient, graph, node, planGraph, outcome.Text, err != nil, workerModel)
+			plans.reviseAfter(ctx, settings, planClient, graph, node, planGraph, outcome.Text, err != nil, workerModel)
 		}
 		if err != nil {
 			// Preserve failed-attempt evidence even though no delivery reaches the
@@ -435,7 +447,7 @@ func runChat(args []string) error {
 				if cut := strings.LastIndex(node.ID, "-n"); cut >= 0 {
 					prefix := node.ID[:cut]
 					go func() {
-						_, records := recordAndCalibrateDetailed(settings.Context(context.Background(), landed.Goal), workingClient, settings, workingModel, landed)
+						_, records := recordAndCalibrateDetailed(settings.Context(context.Background(), landed.Goal), planClient, settings, workingModel, landed)
 						recordPlanSurprises(graph, prefix, records)
 					}()
 				}
@@ -474,7 +486,7 @@ func runChat(args []string) error {
 		// and still lands with the evidence from the failing leaf.
 		if !isReflex && (outcome.Stop == exec.StopBudget || outcome.Stop == exec.StopTurnCap) {
 			spliced, _, replanErr := resident.ReplanOverrun(ctx, graph, node, outcome.Text, absolute,
-				settings.DailyBudgetUSD, replanRemainder(settings, taskClient, plans, graph))
+				settings.DailyBudgetUSD, replanRemainder(settings, planClient, taskClient, plans, graph))
 			if replanErr == nil && spliced > 0 {
 				continuing = true
 				text += "\n\n[" + continuationMessage(spliced) + "]"
@@ -500,7 +512,7 @@ func runChat(args []string) error {
 		// revision pass with the critique as input; then the result ships
 		// either way, because a gate that can loop is a gate that can stall.
 		if len(outcome.ServiceRequests) == 0 && shouldGate(node, outcome, continuing) {
-			gate := judgeDeliverable(ctx, settings, taskClient, graph, node, text, workerModel)
+			gate := judgeDeliverable(ctx, settings, planClient, graph, node, text, workerModel)
 			if gate.Checked {
 				evidence := store.DeliveryGate{Pass: gate.Pass, Gap: gate.Gaps}
 				if gate.Pass {
@@ -533,7 +545,7 @@ func runChat(args []string) error {
 						if len(absolute) > 0 {
 							text += "\n\nFiles:\n" + strings.Join(absolute, "\n")
 						}
-						closed := judgeDeliverable(ctx, settings, taskClient, graph, node, text, polishModel)
+						closed := judgeDeliverable(ctx, settings, planClient, graph, node, text, polishModel)
 						evidence.PolishClosed = closed.Checked && closed.Pass
 						outcome.Verdict = provider.VerdictSemanticFailure
 						if evidence.PolishClosed {
@@ -576,7 +588,7 @@ func runChat(args []string) error {
 			if cut := strings.LastIndex(node.ID, "-n"); cut >= 0 {
 				prefix := node.ID[:cut]
 				go func() {
-					report, records := recordAndCalibrateDetailed(settings.Context(context.Background(), landed.Goal), workingClient, settings, workingModel, landed)
+					report, records := recordAndCalibrateDetailed(settings.Context(context.Background(), landed.Goal), planClient, settings, workingModel, landed)
 					recordPlanSurprises(graph, prefix, records)
 					if strings.TrimSpace(report) == "" {
 						return
@@ -671,6 +683,7 @@ func runChat(args []string) error {
 		workspaceRoot: workspaceRoot,
 		chatClient:    chatClient,
 		taskClient:    taskClient,
+		planClient:    planClient,
 		store:         graph,
 		prefs:         prefs,
 		sessionID:     *sessionID,
@@ -842,8 +855,11 @@ func withDocumentAttachmentBrief(brief string, paths []string) string {
 // beside the graph database so the whole resident state moves as one
 // directory.
 type chatPrefs struct {
-	ChatModel   string `json:"chat_model,omitempty"`
-	TaskModel   string `json:"task_model,omitempty"`
+	ChatModel string `json:"chat_model,omitempty"`
+	TaskModel string `json:"task_model,omitempty"`
+	// PlanModel empty means the plan slot follows the work model live —
+	// the same contract as an empty boost slot.
+	PlanModel   string `json:"plan_model,omitempty"`
 	BoostModel  string `json:"boost_model,omitempty"`
 	VoiceModel  string `json:"voice_model,omitempty"`
 	ImageModel  string `json:"image_model,omitempty"`
@@ -934,6 +950,7 @@ type chatCommander struct {
 
 	chatClient *liveClient
 	taskClient *liveClient
+	planClient *liveClient
 	store      *store.Store
 
 	mu               sync.Mutex
@@ -976,6 +993,9 @@ func (c *chatCommander) Models() []string {
 	if c.taskClient != nil {
 		candidates = append(candidates, c.taskClient.Model())
 	}
+	if c.planClient != nil {
+		candidates = append(candidates, c.planClient.Model())
+	}
 	if boost := strings.TrimSpace(c.CurrentModel("boost")); boost != "" {
 		candidates = append(candidates, boost)
 	}
@@ -1017,7 +1037,7 @@ func (c *chatCommander) Catalog() []tui.ModelChoice {
 // filtering lives in config.ModelCandidates so music discovery uses the exact
 // same recognizable-TTS exclusion as runtime resolution.
 func (c *chatCommander) CatalogFor(role string) []tui.ModelChoice {
-	if role == "talk" || role == "work" || role == "boost" {
+	if role == "talk" || role == "work" || role == "plan" || role == "boost" {
 		return c.Catalog()
 	}
 	c.slotCatalogMu.Lock()
@@ -1058,6 +1078,13 @@ func (c *chatCommander) CurrentModel(role string) string {
 		c.mu.Lock()
 		defer c.mu.Unlock()
 		return c.prefs.TaskModel
+	case "plan":
+		if c.planClient != nil {
+			return c.planClient.Model()
+		}
+		c.mu.Lock()
+		defer c.mu.Unlock()
+		return c.prefs.PlanModel
 	case "boost":
 		c.mu.Lock()
 		boost := strings.TrimSpace(c.prefs.BoostModel)
@@ -1108,12 +1135,17 @@ func (c *chatCommander) ImageInputSupportFor(role string) (string, bool) {
 }
 
 func (c *chatCommander) ModelFollows(role string) bool {
-	if role != "boost" {
-		return false
-	}
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	return strings.TrimSpace(c.prefs.BoostModel) == ""
+	switch role {
+	case "boost":
+		return strings.TrimSpace(c.prefs.BoostModel) == ""
+	case "plan":
+		// An environment pin is an explicit choice too: the slot only follows
+		// the work model when neither the prefs nor AFORGE_PLAN_MODEL name one.
+		return strings.TrimSpace(c.prefs.PlanModel) == "" && strings.TrimSpace(c.settings.PlanModel) == ""
+	}
+	return false
 }
 
 func (c *chatCommander) SetModel(role, slug string) error {
@@ -1136,6 +1168,26 @@ func (c *chatCommander) SetModel(role, slug string) error {
 		// own ruler before the next planning call can observe the new client.
 		measured, _ := profile.Load(c.settings.ProfileDir, c.taskClient.Model(), "linear")
 		plan.UseAnchors(measured.Anchors)
+		// A following plan slot moves with the work model, live — the next
+		// planning call sees the new model without the user touching the slot.
+		if c.planClient != nil && c.ModelFollows("plan") {
+			if err := c.planClient.SetModel(c.taskClient.Model()); err != nil {
+				return err
+			}
+		}
+	case "plan":
+		if c.planClient == nil {
+			return fmt.Errorf("plan model switching is unavailable in visitor mode")
+		}
+		// Empty is meaningful for plan, like boost: it resumes following the
+		// work model live.
+		target := strings.TrimSpace(slug)
+		if target == "" && c.taskClient != nil {
+			target = c.taskClient.Model()
+		}
+		if err := c.planClient.SetModel(target); err != nil {
+			return err
+		}
 	case "boost":
 		// Empty is meaningful for boost: it restores live inheritance from work.
 	case "voice", "image", "speech", "music", "video":
@@ -1152,6 +1204,13 @@ func (c *chatCommander) SetModel(role, slug string) error {
 		c.prefs.ChatModel = c.chatClient.Model()
 	} else if role == "work" {
 		c.prefs.TaskModel = c.taskClient.Model()
+	} else if role == "plan" {
+		c.prefs.PlanModel = strings.TrimSpace(slug)
+		// The user cleared the slot by hand: their choice to follow the work
+		// model outranks the environment seed for the rest of this session.
+		if c.prefs.PlanModel == "" {
+			c.settings.PlanModel = ""
+		}
 	} else if role == "boost" {
 		c.prefs.BoostModel = strings.TrimSpace(slug)
 	} else if role == "voice" {
@@ -2189,7 +2248,7 @@ func recordProfileSurprise(graph *store.Store, nodeID string, record profile.Rec
 	})
 }
 
-func planSubtree(settings config.Config, client *liveClient, plans *jobPlans, history *store.Store) resident.PlanFunc {
+func planSubtree(settings config.Config, planClient, workClient *liveClient, plans *jobPlans, history *store.Store) resident.PlanFunc {
 	return func(ctx context.Context, compiled resident.Compiled) (store.Subtree, error) {
 		anchor, anchored := resident.PlanAnchorFromContext(ctx)
 		prefix := anchor.NodeID
@@ -2207,9 +2266,13 @@ func planSubtree(settings config.Config, client *liveClient, plans *jobPlans, hi
 				Stage: 1,
 			}}}, nil
 		}
-		workingModel, workingClient := client.Snapshot()
+		// Structuring runs on the plan slot; the retained snapshot is the work
+		// slot, because that is who the leaves run on and whose model the
+		// profile key must name.
+		workingModel, workingClient := workClient.Snapshot()
+		_, structuring := planClient.Snapshot()
 		progress := chatPlanProgress(history, anchor)
-		graph, err := plan.Build(settings.Context(ctx, compiled.Goal), workingClient, compiled.Goal, plan.Options{
+		graph, err := plan.Build(settings.Context(ctx, compiled.Goal), structuring, compiled.Goal, plan.Options{
 			Recall:       recallHits(history, compiled.Goal, groundRecallLimit),
 			SpineSamples: settings.SpineSamples,
 			// One level deeper than the one-shot default: chat projects are
@@ -2225,7 +2288,7 @@ func planSubtree(settings config.Config, client *liveClient, plans *jobPlans, hi
 		}
 		// Per-leaf working contracts, exactly as a headless run writes them
 		// before dispatch. A contract failure costs specificity, not the job.
-		if _, err := plan.Contracts(ctx, workingClient, graph, resident.ContractPlaybook(history), progress); err != nil {
+		if _, err := plan.Contracts(ctx, structuring, graph, resident.ContractPlaybook(history), progress); err != nil {
 			log.Printf("note: could not write contracts: %v", err)
 		}
 		subtree, err := resident.SubtreeFromPlan(graph, prefix)
@@ -2253,12 +2316,13 @@ func subtreeSink(subtree store.Subtree) string {
 // for call shapes and profile records — scoped to what the partial left
 // undone. Falls back to one continuation node rather than failing: a leaf
 // out of budget deserves at least one fresh worker on the remainder.
-func replanRemainder(settings config.Config, client *liveClient, plans *jobPlans, history *store.Store) resident.OverrunPlanFunc {
+func replanRemainder(settings config.Config, planClient, workClient *liveClient, plans *jobPlans, history *store.Store) resident.OverrunPlanFunc {
 	return func(ctx context.Context, goal, prefix string) (store.Subtree, error) {
-		workingModel, workingClient := client.Snapshot()
+		workingModel, workingClient := workClient.Snapshot()
+		_, structuring := planClient.Snapshot()
 		anchor, _ := resident.PlanAnchorFromContext(ctx)
 		progress := chatPlanProgress(history, anchor)
-		graph, err := plan.Build(settings.Context(ctx, goal), workingClient, goal, plan.Options{
+		graph, err := plan.Build(settings.Context(ctx, goal), structuring, goal, plan.Options{
 			Recall:       recallHits(history, goal, groundRecallLimit),
 			SpineSamples: settings.SpineSamples,
 			MaxDepth:     settings.MaxDepth,
@@ -2274,7 +2338,7 @@ func replanRemainder(settings config.Config, client *liveClient, plans *jobPlans
 				Stage: 1,
 			}}}, nil
 		}
-		if _, err := plan.Contracts(ctx, workingClient, graph, resident.ContractPlaybook(history), progress); err != nil {
+		if _, err := plan.Contracts(ctx, structuring, graph, resident.ContractPlaybook(history), progress); err != nil {
 			log.Printf("note: could not write repair contracts: %v", err)
 		}
 		subtree, err := resident.SubtreeFromPlan(graph, prefix)

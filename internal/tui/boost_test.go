@@ -127,12 +127,12 @@ func TestBoostPaletteFollowWorkOverrideAndReturn(t *testing.T) {
 	model := NewWithCommander(&fakeBackend{}, "boost-palette", commander)
 	_ = model.openModelsPalette()
 	view := ansi.Strip(model.View())
-	if len(modelSlots) != 8 || len(model.modelSlotRows) != 8 || !strings.Contains(view, "boost (work)") || !strings.Contains(view, "model-three") {
+	if len(modelSlots) != 9 || len(model.modelSlotRows) != 9 || !strings.Contains(view, "boost (work)") || !strings.Contains(view, "model-three") {
 		t.Fatalf("default boost palette rows=%d slots=%d:\n%s", len(model.modelSlotRows), len(modelSlots), view)
 	}
-	_, fetch := model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'8'}})
+	_, fetch := model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'9'}})
 	if model.palette != paletteModel || model.modelRole != "boost" || fetch == nil {
-		t.Fatalf("8 opened palette=%v role=%q fetch=%v", model.palette, model.modelRole, fetch)
+		t.Fatalf("9 opened palette=%v role=%q fetch=%v", model.palette, model.modelRole, fetch)
 	}
 	_, _ = model.Update(fetch())
 	choices := model.filteredModelChoices()
@@ -151,7 +151,7 @@ func TestBoostPaletteFollowWorkOverrideAndReturn(t *testing.T) {
 
 	_ = model.openModelsPalette()
 	_ = model.View()
-	boostRow := model.modelSlotRows[7]
+	boostRow := model.modelSlotRows[8]
 	_, _ = model.updateMouseClick(boostRow.bounds.x+1, boostRow.bounds.y)
 	_ = model.View()
 	if len(model.modelPickerRows) == 0 || model.modelPickerRows[0].index != 0 {
