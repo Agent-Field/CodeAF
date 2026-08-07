@@ -430,11 +430,15 @@ func runChat(args []string) error {
 			// Preserve failed-attempt evidence even though no delivery reaches the
 			// gate. This is the pre-existing profile path, kept on the early return.
 			if landed := plans.takeIfRoot(node.ID); landed != nil {
-				prefix := node.ID[:strings.LastIndex(node.ID, "-n")]
-				go func() {
-					_, records := recordAndCalibrateDetailed(settings.Context(context.Background(), landed.Goal), workingClient, settings, workingModel, landed)
-					recordPlanSurprises(graph, prefix, records)
-				}()
+				// A root without the planner's "-n" id shape (single-leaf jobs,
+				// spliced work) has no plan surprises to record.
+				if cut := strings.LastIndex(node.ID, "-n"); cut >= 0 {
+					prefix := node.ID[:cut]
+					go func() {
+						_, records := recordAndCalibrateDetailed(settings.Context(context.Background(), landed.Goal), workingClient, settings, workingModel, landed)
+						recordPlanSurprises(graph, prefix, records)
+					}()
+				}
 			} else if planGraph == nil && node.Parent == store.RootID && outcome != nil {
 				if isReflex {
 					go func() {
@@ -567,20 +571,24 @@ func runChat(args []string) error {
 			// owns; detached, because the ruler is telemetry and the user's
 			// result must not wait on it.
 			sessionID := node.Provenance.SessionID
-			prefix := node.ID[:strings.LastIndex(node.ID, "-n")]
-			go func() {
-				report, records := recordAndCalibrateDetailed(settings.Context(context.Background(), landed.Goal), workingClient, settings, workingModel, landed)
-				recordPlanSurprises(graph, prefix, records)
-				if strings.TrimSpace(report) == "" {
-					return
-				}
-				_, _ = graph.PostMessage(store.Message{
-					SessionID: sessionID,
-					Role:      store.RoleSystem,
-					NodeID:    node.ID,
-					Body:      report,
-				})
-			}()
+			// Same guard as the failure path: an id without "-n" is not a
+			// planned subtree and must not slice blind.
+			if cut := strings.LastIndex(node.ID, "-n"); cut >= 0 {
+				prefix := node.ID[:cut]
+				go func() {
+					report, records := recordAndCalibrateDetailed(settings.Context(context.Background(), landed.Goal), workingClient, settings, workingModel, landed)
+					recordPlanSurprises(graph, prefix, records)
+					if strings.TrimSpace(report) == "" {
+						return
+					}
+					_, _ = graph.PostMessage(store.Message{
+						SessionID: sessionID,
+						Role:      store.RoleSystem,
+						NodeID:    node.ID,
+						Body:      report,
+					})
+				}()
+			}
 		} else if planGraph == nil && node.Parent == store.RootID {
 			if isReflex {
 				go func() {
