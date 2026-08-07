@@ -92,6 +92,12 @@ func (h *Head) manageStanding(user store.Message) (bool, error) {
 	if !RecognizesStandingIntent(instruction) {
 		return false, nil
 	}
+	// "What happens every day while I'm gone?" carries the cadence words and
+	// none of the intent. A question about aforge is never a rule for aforge,
+	// so it goes on to the loop that can actually answer it.
+	if selfQuestionPhrased(strings.ToLower(instruction)) {
+		return false, nil
+	}
 	// The same untargeted splice the routing model would have emitted. The
 	// reconciler compiles it, and the compiler's temporal path turns it into a
 	// CharterSpec plus the ratification card.

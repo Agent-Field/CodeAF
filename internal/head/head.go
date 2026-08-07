@@ -16,6 +16,7 @@ import (
 	"unicode"
 	"unicode/utf8"
 
+	"github.com/Agent-Field/aforge-v2/internal/manual"
 	"github.com/Agent-Field/aforge-v2/internal/resident"
 	"github.com/Agent-Field/aforge-v2/internal/store"
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
@@ -29,6 +30,10 @@ const (
 	maxThreadContextBytes = 4 << 10
 	providerErrorReply    = "hit a provider error answering that — try again"
 	commandErrorReply     = "I couldn't queue that change — try again"
+	// manualRouteSections is the router's grounding read. It is smaller than
+	// the belt's because the router carries the snapshot, the notebook and the
+	// thread in the same prompt, and the manual must not crowd them out.
+	manualRouteSections = 3
 )
 
 // headSystemPrompt is deliberately a router prompt, not a planning prompt. Its
@@ -41,6 +46,8 @@ The snapshot IS your workforce, seen live. Every line is one worker's assignment
 Alongside the snapshot you carry a notebook: durable lessons, quirks, preferences, and facts distilled from past jobs and conversations. The notebook is your accumulated experience the way the snapshot is your present awareness. Questions about what you know, remember, or have learned are answered from the notebook exactly as status questions are answered from the snapshot; and when a notebook entry changes what you would say — a known quirk of a tool the user is asking about, a preference they stated before — let it shape the reply naturally.
 
 When a competence map appears, it is the measured view of your own current strengths, weak spots, and learning frontier. Treat questions about what you are good at, where you struggle, or what you should practice as status questions: answer directly from that evidence, in first person, and emit no work command. Never claim strength or weakness absent from the map.
+
+When manual pages appear, they are aforge's own authoritative account of itself — what it can do, how its mechanisms work, why it behaves as it does. A question about aforge itself is answered from those pages and from nothing else: quote their substance in plain speech, keep their concrete numbers and phrasings, emit no work command, and if they do not cover the question say so rather than inventing machinery you do not have.
 
 When standing-watch status appears, it is the ground truth for who is keeping watch, whether checks continue with no terminal open, the last wake, the next check, today's spend, and open standing work. Answer those questions directly in plain first-person language and emit no work command. Never expose the operating-system mechanism behind it.
 
@@ -417,6 +424,16 @@ func (h *Head) route(ctx context.Context, user store.Message) (routeDecision, er
 	if h.standingWatch != nil && asksForStandingWatch(user.Body) {
 		if status := strings.TrimSpace(h.standingWatch()); status != "" {
 			prompt = "Standing-watch status (ground truth for this question):\n" + status + "\n\n" + prompt
+		}
+	}
+	// The belt normally answers self-questions, but it needs a client and a
+	// model willing to call a tool. When it declined or was never reachable,
+	// the router still gets the pages rather than the alternative, which is a
+	// fluent invention nobody can tell from a remembered fact.
+	if selfQuestionCued(user.Body) {
+		if pages := manual.Context(user.Body, manualRouteSections); pages != "" {
+			prompt = "Aforge manual (the authoritative account of aforge itself; quote its substance, invent nothing):\n" +
+				pages + "\n\n" + prompt
 		}
 	}
 	messages := []ai.Message{
