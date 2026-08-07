@@ -138,31 +138,23 @@ func (s *Store) measureCorrectionStyle() (CorrectionStyleValue, int, error) {
 	if err := rows.Close(); err != nil {
 		return CorrectionStyleValue{}, 0, err
 	}
-	events, err := s.Events(0, 0)
+	// A skipped ask is measured against the one user turn that answered it, so
+	// both sides are indexed lookups rather than a walk of journal x thread.
+	assumptions, err := s.assumedWithDefaults("")
 	if err != nil {
 		return CorrectionStyleValue{}, 0, err
 	}
-	messages, err := s.Messages("", 0, 100000)
-	if err != nil {
-		return CorrectionStyleValue{}, 0, err
-	}
-	for _, event := range events {
-		if event.Kind != EventAssumedWithDefault {
+	for _, assumption := range assumptions {
+		turn, found, err := s.nextUserMessageAfter(assumption.SessionID, assumption.Seq)
+		if err != nil {
+			return CorrectionStyleValue{}, 0, err
+		}
+		if !found {
 			continue
 		}
-		var assumption assumedWithDefaultPayload
-		if json.Unmarshal(event.Payload, &assumption) != nil {
-			continue
-		}
-		for _, message := range messages {
-			if message.Seq <= event.Seq || message.Role != RoleUser || message.SessionID != assumption.SessionID {
-				continue
-			}
-			if !questionAnswerMatchesDefault(message.Body, assumption.Default, nil) {
-				total += message.Time.Sub(event.Time)
-				n++
-			}
-			break
+		if !questionAnswerMatchesDefault(turn.Body, assumption.Default, nil) {
+			total += turn.Time.Sub(assumption.Time)
+			n++
 		}
 	}
 	value := CorrectionStyleValue{Style: "batched"}
@@ -176,35 +168,56 @@ func (s *Store) measureCorrectionStyle() (CorrectionStyleValue, int, error) {
 	return value, n, nil
 }
 
+// measureDefaultAcceptance counts every answered durable question once. The
+// acceptance rate is the only thing this trait reads, so asking the gate for
+// full per-category statistics — each of which re-derives rework cost — would
+// pay for arithmetic the measurement then discards.
 func (s *Store) measureDefaultAcceptance() (DefaultAcceptanceValue, int, error) {
-	rows, err := s.db.Query(`SELECT DISTINCT category FROM agent_questions WHERE status=? AND default_answer<>''`, QuestionAnswered)
+	rows, err := s.db.Query(`SELECT category, default_answer, resolution, options
+		FROM agent_questions WHERE status=? AND default_answer<>''`, QuestionAnswered)
 	if err != nil {
 		return nil, 0, err
 	}
-	var categories []QuestionCategory
+	type tally struct{ n, accepted int }
+	tallies := make(map[QuestionCategory]*tally)
 	for rows.Next() {
 		var category QuestionCategory
-		if err := rows.Scan(&category); err != nil {
+		var offered, resolution, encoded string
+		if err := rows.Scan(&category, &offered, &resolution, &encoded); err != nil {
 			rows.Close()
 			return nil, 0, err
 		}
-		categories = append(categories, category)
+		var options []QuestionOption
+		_ = json.Unmarshal([]byte(encoded), &options)
+		counted := tallies[category]
+		if counted == nil {
+			counted = &tally{}
+			tallies[category] = counted
+		}
+		counted.n++
+		if questionAnswerMatchesDefault(resolution, offered, options) {
+			counted.accepted++
+		}
+	}
+	if err := rows.Err(); err != nil {
+		rows.Close()
+		return nil, 0, err
 	}
 	if err := rows.Close(); err != nil {
 		return nil, 0, err
 	}
 	value := DefaultAcceptanceValue{}
 	total := 0
-	for _, category := range categories {
-		stat, err := s.QuestionCategoryStats(category)
-		if err != nil {
-			return nil, 0, err
+	for category, counted := range tallies {
+		rate := 0.0
+		if counted.n > 0 {
+			rate = float64(counted.accepted) / float64(counted.n)
 		}
 		value[category] = struct {
 			Rate float64 `json:"rate"`
 			N    int     `json:"n"`
-		}{stat.AcceptanceRate, stat.N}
-		total += stat.N
+		}{rate, counted.n}
+		total += counted.n
 	}
 	return value, total, nil
 }
