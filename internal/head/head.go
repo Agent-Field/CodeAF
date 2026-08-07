@@ -269,6 +269,15 @@ func (h *Head) answer(ctx context.Context, user store.Message) error {
 	} else if handled {
 		return nil
 	}
+	// Everything above is a cue vocabulary, and cue vocabularies end. The
+	// control loop is where the novel phrasing goes: the model composes typed
+	// tools over the graph, every rule lives inside them, and anything it
+	// cannot honestly settle falls through to the router below.
+	if handled, err := h.manageControl(ctx, user); err != nil {
+		return fmt.Errorf("serve head: manage graph control: %w", err)
+	} else if handled {
+		return nil
+	}
 
 	decision, err := h.route(ctx, user)
 	if err != nil {
