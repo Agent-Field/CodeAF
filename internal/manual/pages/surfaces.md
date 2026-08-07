@@ -6,9 +6,47 @@ Aforge has three, and only three, top-level places. Switch with the header, or:
 
 - **thread** — `alt+1` — the conversation, receipts, and results
 - **board** — `alt+2` — live jobs and running services
-- **self** — `alt+3` — the employee file: today, competence, beliefs, standing
+- **self** — `alt+3` — everything aforge does when you are not asking
 
 `‹` and `esc` walk back out of whatever is layered on top.
+
+## Self
+
+Self opens as one calm list, the way a settings app does. The top line is
+today — what it cost, what it learned, how long it practised — and under it one
+row per thing aforge does on its own. Each row says how many there are and, in
+its own words, what they are:
+
+| row | what it holds |
+| --- | --- |
+| **Crafts** | job-shapes it learned — versioned, measured, reusable |
+| **Competence** | where it is strong and where it is at its frontier, measured |
+| **Beliefs** | the notebook: what it holds true about you and this machine |
+| **Skills** | procedures it forged and verified; they ride every worker's PATH |
+| **Watches** | standing goals checking on their own schedule |
+| **Services** | processes it keeps alive for you |
+| **Practice** | what it did with idle time, and what that taught it |
+| **Dials** | how it balances demand against curiosity — read-only, edit in `⚙` |
+
+A row with nothing in it still explains itself, so you learn what would go
+there before anything does.
+
+`↑/↓` or `j/k` move, enter (or a click) drills in, `esc` walks back out one
+rung at a time — filter, then item, then list, then the place. Inside a
+drill-in the letters belong to the filter: **type to search**. Every list shows
+a window rather than everything — `214 · showing 20` — with `show 20 more`
+under it, and anything older than a week folds behind `N older · type to
+search` so a brain that has been running for months still opens instantly.
+
+Opening a craft shows its steps, the bounds a run will obey, and its version
+history — the same commits `git log` shows in the craft directory. Opening a
+watch or a service hands you to its card on the board, which is the one place
+that can act on them.
+
+**Practice** groups repeated attempts at the same goal into one row —
+`the goal, clipped · ×6 · $0.67 · nothing yet` — with the count and the cost in
+their own aligned columns. Open a row to see the whole goal and every attempt
+behind it: when it ran, what it cost, and what it came back with.
 
 ## The task rail and drilling into a worker
 

@@ -159,10 +159,15 @@ type pollResultMsg struct {
 	selfSpend         float64
 	selfCompetence    store.CompetenceMap
 	selfFacts         []store.Fact
+	selfSkills        []store.Fact
+	selfCrafts        []CraftSummary
+	selfCraftsRead    bool
 	selfReceiptsErr   error
 	selfSpendErr      error
 	selfCompetenceErr error
 	selfFactsErr      error
+	selfSkillsErr     error
+	selfCraftsErr     error
 
 	nodeID          string
 	node            store.Node
@@ -243,17 +248,28 @@ type Model struct {
 	railChartersErr   error
 	railChartersValid bool
 
-	// Self is a read-only employee file assembled by the ordinary store poll.
-	// Its four sections share one viewport and one keyboard selection.
-	selfOpen       bool
-	selfReceipts   []store.SelfReceipt
-	selfSpend      float64
-	selfCompetence store.CompetenceMap
-	selfFacts      []store.Fact
-	selfCharters   []store.Charter
-	selfExpanded   int
-	selfSelection  int
-	selfRows       []selfRow
+	// Self is a read-only employee file assembled by the ordinary store poll:
+	// a root list of what aforge does unattended, and one drill-in at a time
+	// behind it. Every list is windowed and filterable, so the place opens
+	// just as fast on a six-month-old brain as on an empty one.
+	selfOpen        bool
+	selfReceipts    []store.SelfReceipt
+	selfSpend       float64
+	selfCompetence  store.CompetenceMap
+	selfFacts       []store.Fact
+	selfSkills      []store.Fact
+	selfCrafts      []CraftSummary
+	selfBeliefHits  []store.Fact
+	selfCharters    []store.Charter
+	selfRoute       selfRoute
+	selfCraftName   string
+	selfCraftDetail CraftDetail
+	selfPracticeKey string
+	selfQuery       string
+	selfShown       int
+	selfShowOlder   bool
+	selfSelection   int
+	selfRows        []selfRow
 
 	cards           []jobCard
 	cardExpanded    map[string]bool
@@ -601,7 +617,7 @@ func newModel(backend Backend, sessionID string, commander Commander) *Model {
 		voiceChunkText:        map[int]string{},
 		tipCurrent:            -1,
 		tipSeen:               map[int]bool{},
-		selfExpanded:          -1,
+		selfShown:             selfWindow,
 	}
 	if services, ok := commander.(voiceServices); ok {
 		m.voiceRecorder = services.VoiceRecorder()
@@ -909,6 +925,17 @@ func (m *Model) updateKey(message tea.KeyMsg) (tea.Cmd, bool) {
 	case keyBindings.self:
 		return m.selectPlace(placeSelf), true
 	}
+	// A Self drill-in is a filter with a list under it. While one is open the
+	// letters belong to that filter rather than to the global chords, the same
+	// way an open settings editor claims them — otherwise a list that has been
+	// growing for six months could only be reached by scrolling. The root list
+	// takes no query, so it keeps falling through to the ordinary ladder.
+	if m.palette == paletteNone && m.selfVisible() && m.focus == focusSelf &&
+		m.selfRoute != selfRouteRoot && key != "esc" {
+		if command, handled := m.updateSelfKey(message); handled {
+			return command, true
+		}
+	}
 	// Every option-chord has a control synonym: on macOS, Option only reaches
 	// the program as alt+<key> when the terminal is configured to send it as
 	// Meta (Terminal.app "Use Option as Meta key", iTerm2 "Left Option: Esc+");
@@ -1017,10 +1044,7 @@ func (m *Model) updateKey(message tea.KeyMsg) (tea.Cmd, bool) {
 			m.palette = paletteNone
 			m.paletteDismissed = true
 			m.setSize(m.width, m.height)
-		case m.selfVisible() && m.selfExpanded >= 0:
-			m.selfSelection = m.selfExpanded
-			m.selfExpanded = -1
-			m.refreshSelf()
+		case m.selfVisible() && m.selfBack():
 		case m.selfVisible():
 			return m.selectPlace(placeThread), true
 		case m.graphVisible() && m.focus == focusGraph && m.closeScopedGraph():
@@ -1105,16 +1129,8 @@ func (m *Model) updateKey(message tea.KeyMsg) (tea.Cmd, bool) {
 		}
 	}
 	if m.focus == focusSelf {
-		switch key {
-		case "up", "k":
-			m.moveSelfSelection(-1)
-			return nil, true
-		case "down", "j":
-			m.moveSelfSelection(1)
-			return nil, true
-		case "enter":
-			m.activateSelfSelection()
-			return nil, true
+		if command, handled := m.updateSelfKey(message); handled {
+			return command, true
 		}
 	}
 	// Numbered question options are a layer over the normal live input. An
@@ -1386,12 +1402,20 @@ func (m *Model) poll() tea.Cmd {
 		}
 		if reader, ok := backend.(selfDataReader); ok && readSelf {
 			result.selfDataRead = true
-			result.selfReceipts, result.selfReceiptsErr = reader.SelfReceipts(startOfLocalDay(selfNow))
+			// Practice folds by the week, so the receipt read reaches back one
+			// fold rather than to midnight: the day's totals are a projection
+			// of the same rows.
+			result.selfReceipts, result.selfReceiptsErr = reader.SelfReceipts(selfNow.Add(-selfReceiptReach))
 			result.selfSpend, result.selfSpendErr = reader.SelfSpendToday()
 			result.selfCompetence, result.selfCompetenceErr = reader.CompetenceMap(
 				store.CompetenceOptions{Now: selfNow},
 			)
-			result.selfFacts, result.selfFactsErr = reader.RecentFacts(selfBeliefLimit)
+			result.selfFacts, result.selfFactsErr = reader.RecentFacts(selfBeliefScan)
+			result.selfSkills, result.selfSkillsErr = reader.SkillFacts("", selfSkillScan)
+		}
+		if shelf, ok := commander.(craftShelfReader); ok && readSelf {
+			result.selfCraftsRead = true
+			result.selfCrafts, result.selfCraftsErr = shelf.Crafts()
 		}
 		seenCommands := make(map[int64]bool)
 		for _, message := range messages {
@@ -1638,6 +1662,12 @@ func (m *Model) applyPoll(result pollResultMsg) {
 		if result.selfFactsErr == nil && result.selfFacts != nil {
 			m.selfFacts = append(m.selfFacts[:0], result.selfFacts...)
 		}
+		if result.selfSkillsErr == nil && result.selfSkills != nil {
+			m.selfSkills = append(m.selfSkills[:0], result.selfSkills...)
+		}
+	}
+	if result.selfCraftsRead && result.selfCraftsErr == nil {
+		m.selfCrafts = append(m.selfCrafts[:0], result.selfCrafts...)
 	}
 	if result.nodeID != "" && result.nodeID == m.nodeViewID {
 		if result.nodeErr == nil && result.nodeFound {
@@ -1758,6 +1788,12 @@ func (m *Model) applyPoll(result pollResultMsg) {
 		if result.selfFactsErr != nil {
 			problems = append(problems, fmt.Errorf("read beliefs: %w", result.selfFactsErr))
 		}
+		if result.selfSkillsErr != nil {
+			problems = append(problems, fmt.Errorf("read skills: %w", result.selfSkillsErr))
+		}
+	}
+	if result.selfCraftsRead && result.selfCraftsErr != nil {
+		problems = append(problems, fmt.Errorf("read crafts: %w", result.selfCraftsErr))
 	}
 	if result.nodeID != "" && result.nodeID == m.nodeViewID {
 		if result.nodeErr != nil {

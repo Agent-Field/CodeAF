@@ -897,7 +897,7 @@ func (m *Model) updateMouseClick(x, y int) (tea.Cmd, bool) {
 		return nil, true
 	}
 	if m.selfVisible() && m.selfBounds.contains(x, y) {
-		return nil, m.activateSelfAt(x, y)
+		return m.activateSelfAt(x, y)
 	}
 	if m.graphToggleHit(x, y) {
 		if !m.closeScopedGraph() && !m.closeCharterCard() && !m.closeServiceCard() {
