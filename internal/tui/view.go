@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 	"unicode"
@@ -1249,6 +1250,10 @@ type threadRenderItem struct {
 }
 
 func (m *Model) renderMessages() string {
+	if m.blockWidth != m.chat.Width || m.blockGen != m.threadGen {
+		m.blockWidth, m.blockGen = m.chat.Width, m.threadGen
+		clear(m.blockCache)
+	}
 	m.chatMessageRows = m.chatMessageRows[:0]
 	m.chatExpandRows = m.chatExpandRows[:0]
 	m.notebookOptionRows = m.notebookOptionRows[:0]
@@ -1463,14 +1468,97 @@ func messageGap(previous, next store.Message) time.Duration {
 // first — and the full detail is one click away.
 const deliverableLead = 14
 
+// threadBlock is one rendered message group together with the interactive
+// rows it registers, held relative to the block's own first line. A settled
+// message never changes, so the same bytes and the same rows can be replayed
+// wherever the block lands in the thread.
+type threadBlock struct {
+	content  string
+	chips    []chatChipRow
+	expands  []chatExpandRow
+	messages []chatMessageRow
+}
+
 func (m *Model) renderMessageGroup(group messageGroup, atLine int) string {
+	key, cacheable := m.threadBlockKey(group)
+	if cacheable {
+		if block, found := m.blockCache[key]; found {
+			m.replayThreadBlock(block, atLine)
+			return block.content
+		}
+	}
+	block := m.buildMessageGroup(group)
+	if cacheable {
+		if m.blockCache == nil {
+			m.blockCache = make(map[string]threadBlock, 64)
+		}
+		m.blockCache[key] = block
+	}
+	m.replayThreadBlock(block, atLine)
+	return block.content
+}
+
+// threadBlockKey names everything a settled group's block depends on that can
+// move while the thread stands still: which messages it holds, which of them
+// are open, and the one clock-derived string in it. A group the key cannot
+// speak for — a message still arriving, a question whose choices move under
+// the reader — is not cached at all.
+func (m *Model) threadBlockKey(group messageGroup) (string, bool) {
+	var key strings.Builder
+	key.Grow(16 * len(group.messages))
+	for _, message := range group.messages {
+		if message.Seq == 0 {
+			return "", false
+		}
+		if _, streaming := m.streamedBody(message); streaming {
+			return "", false
+		}
+		if component, ok := readQuestionComponent(message.Body); ok && len(component.Options) > 0 {
+			return "", false
+		}
+		key.WriteString(strconv.FormatInt(message.Seq, 10))
+		if m.expandedMessages[message.Seq] {
+			key.WriteByte('o')
+		}
+		if m.learningExpanded[message.Seq] {
+			key.WriteByte('l')
+		}
+		key.WriteByte(',')
+	}
+	if m.receiptsExpanded {
+		key.WriteByte('r')
+	}
+	latest := group.messages[len(group.messages)-1]
+	key.WriteString(relativeTime(latest.Time, m.standingTime()))
+	return key.String(), true
+}
+
+// replayThreadBlock lands a block's rows at the position it was drawn.
+func (m *Model) replayThreadBlock(block threadBlock, atLine int) {
+	for _, row := range block.chips {
+		row.line += atLine
+		m.chatChipRows = append(m.chatChipRows, row)
+	}
+	for _, row := range block.expands {
+		row.line += atLine
+		m.chatExpandRows = append(m.chatExpandRows, row)
+	}
+	for _, row := range block.messages {
+		row.start += atLine
+		row.end += atLine
+		m.chatMessageRows = append(m.chatMessageRows, row)
+	}
+}
+
+func (m *Model) buildMessageGroup(group messageGroup) threadBlock {
+	block := threadBlock{}
 	latest := group.messages[len(group.messages)-1]
 	available := max(8, m.chat.Width-2)
 	header := speakerHeader(latest, m.standingTime())
 
 	// One voice: every conversational body reads in primary ink with the same
 	// markdown treatment. Headers and provenance remain quiet metadata.
-	line := atLine + 1
+	line := 1
 	items := make([]string, 0, len(group.messages))
 	for _, message := range group.messages {
 		var item string
@@ -1497,37 +1585,37 @@ func (m *Model) renderMessageGroup(group messageGroup, atLine int) string {
 		if message.NodeID != "" && message.Role != store.RoleUser && !secondaryMessage(message) {
 			chip := mutedStyle.Faint(true).Render(
 				"↳ " + truncate(m.nodeChipLabel(message.NodeID), max(6, min(40, available-2))))
-			m.chatChipRows = append(m.chatChipRows, chatChipRow{line: line, nodeID: message.NodeID})
+			block.chips = append(block.chips, chatChipRow{line: line, nodeID: message.NodeID})
 			item = chip + "\n" + item
 		}
 		items = append(items, item)
 		height := lipgloss.Height(item)
 		if receipt {
 			if _, details, quiet := quietSystemMessage(message.Body); quiet && len(details) > 0 {
-				m.chatExpandRows = append(m.chatExpandRows, chatExpandRow{
+				block.expands = append(block.expands, chatExpandRow{
 					line: line, action: chatExpandLearning, seq: message.Seq,
 				})
 			} else if !quiet {
-				m.chatExpandRows = append(m.chatExpandRows, chatExpandRow{
+				block.expands = append(block.expands, chatExpandRow{
 					line: line, action: chatExpandReceipts,
 				})
 			}
 		}
 		if foldedAnswer {
-			m.chatExpandRows = append(m.chatExpandRows, chatExpandRow{
+			block.expands = append(block.expands, chatExpandRow{
 				line: line + height - 1, action: chatExpandMessage, seq: message.Seq,
 			})
 		}
 		if message.Seq != 0 {
-			m.chatMessageRows = append(m.chatMessageRows, chatMessageRow{start: line, end: line + height - 1, seq: message.Seq})
+			block.messages = append(block.messages, chatMessageRow{start: line, end: line + height - 1, seq: message.Seq})
 		}
 		line += height + 1
 	}
-	content := header
+	block.content = header
 	if len(items) > 0 {
-		content += "\n" + strings.Join(items, "\n\n")
+		block.content += "\n" + strings.Join(items, "\n\n")
 	}
-	return content
+	return block
 }
 
 // threadQuestionIndent is the gutter the thread's option rows hang under. The

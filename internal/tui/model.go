@@ -473,6 +473,17 @@ type Model struct {
 	cardPartRows              []cardPartRow
 	cardCloseRows             []cardCloseRow
 
+	// blockCache holds already-rendered settled message groups. A settled
+	// message is immutable and the thread is re-rendered many times between
+	// two of them — every animation tick, every relayout — so the whole
+	// conversation was being rebuilt to draw one moving tail. The cache is
+	// dropped whole when the pane's width changes or the journal moves, which
+	// is the only way the parts of a block outside its key can change.
+	blockCache map[string]threadBlock
+	blockWidth int
+	blockGen   uint64
+	threadGen  uint64
+
 	// chatMessageRows maps rendered chat lines to the message seq they
 	// belong to, so clicking a collapsed deliverable opens it in place.
 	chatMessageRows []chatMessageRow
@@ -1503,6 +1514,11 @@ func (m *Model) applyPoll(result pollResultMsg) {
 	m.pollForce = false
 	m.lastRepaintAt = m.standingTime()
 	m.invalidateRailCaches()
+	// A moved journal is the one thing that can change a settled message's
+	// rendering from outside the message itself: the node it names, the files
+	// it links, the turn that answers its question. So it retires the thread's
+	// rendered blocks, and nothing else has to.
+	m.threadGen++
 	if result.journalRead {
 		if result.journalSeq != m.journalSeq || !m.journalPrimed {
 			m.lastChangeAt = m.standingTime()
