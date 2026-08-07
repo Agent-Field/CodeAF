@@ -469,3 +469,101 @@ func TestMediaSlugDerivesReadableBoundedNames(t *testing.T) {
 		t.Fatalf("long slug = %q (%d)", got, len(got))
 	}
 }
+
+// The model argument has exactly three spellings — absent, "best", and a name
+// — and every one of them still crosses the same rail and records the same
+// usage. The resolved model is named in the artifact receipt, because "which
+// model made this" is the first question about a file you keep.
+func TestMediaModelArgumentReadsAllThreeSpellingsAndKeepsTheRail(t *testing.T) {
+	audio := func() *fakeMediaProvider {
+		cost := 0.09
+		return &fakeMediaProvider{
+			imageResponse:  &provider.ImageResponse{Data: []provider.GeneratedImage{{Base64: base64.StdEncoding.EncodeToString([]byte("png")), MediaType: "image/png"}}},
+			speechResponse: &provider.SpeechResponse{Audio: []byte("sound"), Usage: &ai.Usage{Cost: &cost}},
+			videoResponse:  &provider.VideoResponse{Video: []byte("video"), Usage: &ai.Usage{Cost: &cost}},
+		}
+	}
+	for _, test := range []struct {
+		name      string
+		tool      string
+		arguments string
+		modality  string
+		word      string
+		want      string
+	}{
+		{name: "image slot default", tool: "generate_image", arguments: `{"prompt":"harbor"}`, want: "paint/model"},
+		{name: "image best", tool: "generate_image", arguments: `{"prompt":"harbor","model":"best"}`,
+			modality: "image", word: "best", want: "studio/grand"},
+		{name: "image name", tool: "generate_image", arguments: `{"prompt":"harbor","model":"krea"}`,
+			modality: "image", word: "krea", want: "studio/grand"},
+		{name: "speech best", tool: "speak", arguments: `{"text":"a calm morning","model":"best"}`,
+			modality: "speech", word: "best", want: "studio/grand"},
+		{name: "music name", tool: "generate_music", arguments: `{"prompt":"glass bells","model":"lyria"}`,
+			modality: "music", word: "lyria", want: "studio/grand"},
+		{name: "video best", tool: "generate_video", arguments: `{"prompt":"lanterns","model":"best"}`,
+			modality: "video", word: "best", want: "studio/grand"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			fake := audio()
+			tools, _ := mediaToolbox(t, fake, fakeModalities{})
+			var sawModality, sawWord string
+			tools.media.ResolveModel = func(modality, word string) (string, error) {
+				sawModality, sawWord = modality, word
+				return "studio/grand", nil
+			}
+			gated := 0
+			tools.media.BeforeSpend = func(context.Context, float64) error { gated++; return nil }
+			result := tools.Execute(context.Background(), test.tool, test.arguments)
+			if result.IsError {
+				t.Fatal(result.Content)
+			}
+			if sawModality != test.modality || sawWord != test.word {
+				t.Fatalf("resolver saw (%q, %q), want (%q, %q)", sawModality, sawWord, test.modality, test.word)
+			}
+			served := fake.imageRequest.Model
+			switch test.tool {
+			case "speak", "generate_music":
+				served = fake.speechRequest.Model
+			case "generate_video":
+				served = fake.videoRequest.Model
+			}
+			if served != test.want {
+				t.Fatalf("served model = %q, want %q", served, test.want)
+			}
+			if !strings.Contains(result.Content, test.want) {
+				t.Fatalf("artifact receipt = %q, want the resolved model named", result.Content)
+			}
+			if gated != 1 || result.Usage.Calls != 1 {
+				t.Fatalf("rail crossings = %d usage = %+v", gated, result.Usage)
+			}
+		})
+	}
+}
+
+func TestMediaWrongModalityNameIsRefusedCalmlyAndCostsNothing(t *testing.T) {
+	fake := &fakeMediaProvider{}
+	tools, _ := mediaToolbox(t, fake, fakeModalities{})
+	tools.media.ResolveModel = func(modality, word string) (string, error) {
+		return "", fmt.Errorf("hexgrad/kokoro-82m makes speech, not %s", modality)
+	}
+	spent := 0
+	tools.media.BeforeSpend = func(context.Context, float64) error { spent++; return nil }
+	result := tools.Execute(context.Background(), "generate_image", `{"prompt":"harbor","model":"kokoro"}`)
+	if !result.IsError || !strings.Contains(result.Content, "makes speech, not image") {
+		t.Fatalf("refusal = %+v", result)
+	}
+	if fake.imageCalls != 0 || spent != 0 || result.Usage != (Usage{}) {
+		t.Fatalf("refusal cost something: calls=%d gate=%d usage=%+v", fake.imageCalls, spent, result.Usage)
+	}
+}
+
+func TestMediaModelArgumentIsInertWithoutACatalog(t *testing.T) {
+	fake := &fakeMediaProvider{imageResponse: &provider.ImageResponse{
+		Data: []provider.GeneratedImage{{Base64: base64.StdEncoding.EncodeToString([]byte("png")), MediaType: "image/png"}},
+	}}
+	tools, _ := mediaToolbox(t, fake, fakeModalities{})
+	result := tools.Execute(context.Background(), "generate_image", `{"prompt":"harbor","model":"best"}`)
+	if result.IsError || fake.imageRequest.Model != "paint/model" {
+		t.Fatalf("embedder without a catalog = %+v request=%+v", result, fake.imageRequest)
+	}
+}

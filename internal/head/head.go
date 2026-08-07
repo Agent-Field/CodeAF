@@ -244,6 +244,14 @@ func (h *Head) answer(ctx context.Context, user store.Message) error {
 	} else if handled {
 		return nil
 	}
+	// Last deterministic reading before the model gets a vote. Recognized
+	// durable language becomes a charter draft here; nothing that reaches this
+	// point can also be noted as a fact or answered as ordinary chat.
+	if handled, err := h.manageStanding(user); err != nil {
+		return fmt.Errorf("serve head: draft standing charter: %w", err)
+	} else if handled {
+		return nil
+	}
 
 	decision, err := h.route(ctx, user)
 	if err != nil {

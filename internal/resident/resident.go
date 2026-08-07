@@ -56,6 +56,14 @@ type Compiled struct {
 	QuestionOptions []store.QuestionOption
 	Charter         *store.CharterSpec
 	ServiceIntent   bool
+
+	// WorkModel is the model the user named for this job in their own words.
+	// It rides the splice as provenance, so the leaves that run it are pinned
+	// to what was asked for rather than to whatever the slot holds later.
+	WorkModel string
+
+	// ModelNote is the one calm receipt line about that choice.
+	ModelNote string
 }
 
 // SkillCandidate names the artifact directory a job proved useful. It remains
@@ -548,6 +556,7 @@ func (r *Reconciler) splice(ctx context.Context, command store.Command) (command
 		Intent:        command.Instruction,
 		TrialOf:       compiled.TrialOf,
 		ServiceIntent: compiled.ServiceIntent,
+		WorkModel:     strings.TrimSpace(compiled.WorkModel),
 		Attachments:   append([]string(nil), command.Attachments...),
 	}
 	if err := r.store.Splice(store.RootID, subtree, provenance); err != nil {
@@ -556,7 +565,7 @@ func (r *Reconciler) splice(ctx context.Context, command store.Command) (command
 		}
 	}
 
-	receipt := compileReceipt(compiled.Goal, compiled.Assumptions)
+	receipt := compileReceipt(compiled.Goal, compiled.Assumptions, compiled.ModelNote)
 	if promoted {
 		receipt = reflexPromotionLine
 	}
@@ -982,13 +991,16 @@ func clipBlock(block string, limit int) string {
 	return strings.TrimSpace(block[:cut]) + "…"
 }
 
-func compileReceipt(goal string, assumptions []string) string {
+func compileReceipt(goal string, assumptions []string, modelNote string) string {
 	var receipt strings.Builder
 	fmt.Fprintf(&receipt, "Here's my reading: %s", strings.TrimSpace(goal))
 	for _, assumption := range assumptions {
 		if assumption = strings.TrimSpace(assumption); assumption != "" {
 			fmt.Fprintf(&receipt, "\nAssumed: %s", assumption)
 		}
+	}
+	if modelNote = strings.TrimSpace(modelNote); modelNote != "" {
+		fmt.Fprintf(&receipt, "\n%s", modelNote)
 	}
 	receipt.WriteString("\nCorrect me anytime — redirects are cheap.")
 	return receipt.String()
