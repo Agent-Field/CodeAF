@@ -26,6 +26,22 @@ const (
 	railAtWidth       = 100
 	statusTTL         = 3 * time.Second
 	nodeTraceMaxBytes = 64 << 10
+	// pollIdleInterval is the cadence a quiet store falls back to. The graph is
+	// permanent, so every snapshot read costs more as history grows; a store
+	// nobody is writing has nothing to report, and two seconds is still well
+	// inside the delay a person reads as immediate.
+	pollIdleInterval = 2 * time.Second
+	// pollQuietAfter is how long the journal must sit unchanged before the tick
+	// decays. It outlasts the gap between a send and the head's first event, so
+	// an ordinary turn never drops out of the hot cadence mid-answer.
+	pollQuietAfter = 10 * time.Second
+	// pollActiveAfter keeps the hot cadence for a moment after the user acts:
+	// they just asked for something and its first event is imminent.
+	pollActiveAfter = 3 * time.Second
+	// quietRepaintInterval refreshes the cached panes from state already in
+	// hand, with no store read at all. Relative timestamps are minute-grained,
+	// so that is exactly how often "now" can go stale while nothing happens.
+	quietRepaintInterval = time.Minute
 )
 
 type boostMode uint8
@@ -64,6 +80,15 @@ type Backend interface {
 	TopLevelJobUsage() (map[string]store.JobUsage, error)
 }
 
+// journalReader is the cheapest possible proof that nothing happened. Every
+// projection this lens reads — thread, graph, commands, usage, questions,
+// charters, receipts — is written in the same transaction as an events row, so
+// an unchanged watermark means an unchanged answer for all of them. It stays
+// an optional capability: a backend without it is simply always read in full.
+type journalReader interface {
+	LatestEventSeq() (int64, error)
+}
+
 // selfActivityReader is the resident-life slice of the store. It stays an
 // optional backend capability so lightweight TUI embedders do not have to
 // implement the resident, while the real store supplies every value.
@@ -99,6 +124,12 @@ type catalogResultMsg struct {
 }
 
 type pollResultMsg struct {
+	// quiet says the journal watermark had not moved, so no other field was
+	// read and none carries meaning. It is the whole point of the poll: the
+	// answer "nothing changed" costs one indexed row instead of ten scans.
+	quiet             bool
+	journalSeq        int64
+	journalRead       bool
 	sessionID         string
 	messages          []store.Message
 	snapshot          store.Snapshot
@@ -183,6 +214,17 @@ type Model struct {
 	selfLearning         string
 	lastSeq              int64
 	answeringQuestionSeq int64
+
+	// journalSeq is the store's event watermark as of the last full read, and
+	// the only thing an idle poll looks at. pollForce covers what the journal
+	// cannot see: the first read, a node trace tailing a file outside the log,
+	// and any key or click that may have changed which surface is displayed.
+	journalSeq    int64
+	journalPrimed bool
+	pollForce     bool
+	lastChangeAt  time.Time
+	lastActionAt  time.Time
+	lastRepaintAt time.Time
 
 	// Self is a read-only employee file assembled by the ordinary store poll.
 	// Its four sections share one viewport and one keyboard selection.
@@ -574,9 +616,10 @@ func (m *Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 
 	case pollResultMsg:
 		m.applyPoll(message)
-		return m, tea.Batch(nextPollTick(), m.scheduleAnimation())
+		return m, tea.Batch(m.nextPollTick(), m.scheduleAnimation())
 
 	case StreamEvent:
+		m.lastActionAt = m.standingTime()
 		m.applyStreamEvent(message)
 		return m, tea.Batch(waitForStream(m.streamEvents), m.scheduleAnimation())
 
@@ -695,6 +738,7 @@ func (m *Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 
 	case tea.KeyMsg:
 		m.noteKeypress()
+		m.noteActivity()
 		if command, handled := m.updateKey(message); handled {
 			if command == nil {
 				return m, m.scheduleAnimation()
@@ -703,6 +747,7 @@ func (m *Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		}
 
 	case tea.MouseMsg:
+		m.noteActivity()
 		if command, handled := m.updateMouse(message); handled {
 			return m, tea.Batch(command, m.scheduleAnimation())
 		}
@@ -1141,7 +1186,25 @@ func (m *Model) poll() tea.Cmd {
 	}
 	readSelf := m.selfVisible()
 	selfNow := m.standingTime()
+	// The node pane's trace is tailed from the executor's file, not the
+	// journal, so an open node view always reads in full.
+	journal, _ := backend.(journalReader)
+	force := m.pollForce || !m.journalPrimed || nodeID != ""
+	knownSeq := m.journalSeq
 	return func() tea.Msg {
+		var journalSeq int64
+		var journalRead bool
+		if journal != nil {
+			seq, err := journal.LatestEventSeq()
+			if err == nil {
+				journalSeq, journalRead = seq, true
+				if !force && seq == knownSeq {
+					return pollResultMsg{
+						quiet: true, journalSeq: seq, journalRead: true, sessionID: sessionID,
+					}
+				}
+			}
+		}
 		messages, messagesErr := backend.Messages(sessionID, afterSeq, pollLimit)
 		snapshot, snapshotErr := backend.ActiveSnapshot()
 		cardSnapshot, cardSnapshotErr := backend.Snapshot()
@@ -1171,6 +1234,8 @@ func (m *Model) poll() tea.Cmd {
 			}
 		}
 		result := pollResultMsg{
+			journalSeq:        journalSeq,
+			journalRead:       journalRead,
 			sessionID:         sessionID,
 			messages:          messages,
 			snapshot:          snapshot,
@@ -1286,10 +1351,33 @@ func selfReceiptLearningClause(reader selfActivityReader, receipt store.SelfRece
 	return "captured " + kind + " in " + scope, nil
 }
 
-func nextPollTick() tea.Cmd {
-	return tea.Tick(pollInterval, func(at time.Time) tea.Msg {
+// pollCadence is hot whenever there is a reason to expect a change soon and
+// idle only after a stretch in which nothing did. Every snap-back condition is
+// a fact already on the model, so the cadence never needs its own bookkeeping.
+func (m *Model) pollCadence() time.Duration {
+	if !m.journalPrimed || m.pollForce || m.streamMode != streamNone || m.liveWorkCount() > 0 {
+		return pollInterval
+	}
+	now := m.standingTime()
+	if now.Sub(m.lastActionAt) < pollActiveAfter || now.Sub(m.lastChangeAt) < pollQuietAfter {
+		return pollInterval
+	}
+	return pollIdleInterval
+}
+
+func (m *Model) nextPollTick() tea.Cmd {
+	return tea.Tick(m.pollCadence(), func(at time.Time) tea.Msg {
 		return pollTickMsg(at)
 	})
+}
+
+// noteActivity snaps the cadence back to hot and buys exactly one full read.
+// A key or a click can open a place whose data the journal watermark cannot
+// speak for — the employee file, a node view — so the next poll must not be
+// allowed to answer it with "nothing changed".
+func (m *Model) noteActivity() {
+	m.pollForce = true
+	m.lastActionAt = m.standingTime()
 }
 
 func nextAnimationTick() tea.Cmd {
@@ -1306,7 +1394,39 @@ func (m *Model) scheduleAnimation() tea.Cmd {
 	return nextAnimationTick()
 }
 
+// applyQuietPoll is the whole no-op path: the journal did not move, so every
+// cached pane is still correct and nothing is rebuilt. The one exception is
+// the clock — relative timestamps live inside cached content — and that is
+// answered by re-rendering from state already in hand, never by reading again.
+func (m *Model) applyQuietPoll(result pollResultMsg) {
+	m.journalSeq = result.journalSeq
+	now := m.standingTime()
+	if now.Sub(m.lastRepaintAt) < quietRepaintInterval {
+		return
+	}
+	m.lastRepaintAt = now
+	m.rebuildCards()
+	m.setSize(m.width, m.height)
+}
+
 func (m *Model) applyPoll(result pollResultMsg) {
+	if result.quiet {
+		m.applyQuietPoll(result)
+		return
+	}
+	m.pollForce = false
+	m.lastRepaintAt = m.standingTime()
+	if result.journalRead {
+		if result.journalSeq != m.journalSeq || !m.journalPrimed {
+			m.lastChangeAt = m.standingTime()
+		}
+		m.journalSeq = result.journalSeq
+		m.journalPrimed = true
+	} else {
+		// A backend with no watermark can never be proven quiet, so it keeps
+		// the original cadence and the original unconditional read.
+		m.lastChangeAt = m.standingTime()
+	}
 	if result.snapshotErr == nil {
 		m.snapshot = result.snapshot
 	}
