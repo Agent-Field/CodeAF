@@ -114,6 +114,26 @@ type recallCandidate struct {
 	updatedSeq      int64
 	ftsRank         int
 	scopeHits       int
+	// pointersRaw is the stored fold pointer array. Scoring reads eight times
+	// more candidates than it returns, so the decode waits until a candidate
+	// either has to be matched against scope cues or has survived the ranking.
+	pointersRaw     string
+	pointersDecoded bool
+}
+
+func (c *recallCandidate) decodePointers() error {
+	if c.pointersDecoded {
+		return nil
+	}
+	c.pointersDecoded = true
+	if c.pointersRaw == "" || c.pointersRaw == "[]" {
+		c.Pointers = []string{}
+		return nil
+	}
+	if err := json.Unmarshal([]byte(c.pointersRaw), &c.Pointers); err != nil {
+		return fmt.Errorf("decode recall pointers for %q: %w", c.NodeID, err)
+	}
+	return nil
 }
 
 // HasFolds reports whether recall can change a headless run. Callers use it as
@@ -195,6 +215,9 @@ func (s *Store) Recall(terms string, scopeCues []string, limit int) ([]RecallHit
 			return nil, err
 		}
 		for _, candidate := range candidates {
+			if err := candidate.decodePointers(); err != nil {
+				return nil, err
+			}
 			hits := recallScopeHits(candidate, cues)
 			if hits == 0 {
 				continue
@@ -251,6 +274,9 @@ func (s *Store) Recall(terms string, scopeCues []string, limit int) ([]RecallHit
 	}
 	hits := make([]RecallHit, len(candidates))
 	for index, candidate := range candidates {
+		if err := candidate.decodePointers(); err != nil {
+			return nil, err
+		}
 		hits[index] = candidate.RecallHit
 	}
 	return hits, nil
@@ -290,14 +316,11 @@ func (s *Store) addTerritoryParents(byID map[string]*recallCandidate) error {
 	}
 	defer rows.Close()
 	for rows.Next() {
-		var memberID, pointers, timestamp string
+		var memberID, timestamp string
 		var parent recallCandidate
 		if err := rows.Scan(&memberID, &parent.NodeID, &parent.Intent, &parent.Digest,
-			&pointers, &timestamp, &parent.updatedSeq); err != nil {
+			&parent.pointersRaw, &timestamp, &parent.updatedSeq); err != nil {
 			return fmt.Errorf("scan recall territory: %w", err)
-		}
-		if err := json.Unmarshal([]byte(pointers), &parent.Pointers); err != nil {
-			return fmt.Errorf("decode recall pointers for %q: %w", parent.NodeID, err)
 		}
 		parent.at, err = parseTime(timestamp)
 		if err != nil {
@@ -334,13 +357,10 @@ func scanRecallCandidates(rows *sql.Rows) ([]*recallCandidate, error) {
 	candidates := make([]*recallCandidate, 0)
 	for rows.Next() {
 		var candidate recallCandidate
-		var pointers, timestamp string
+		var timestamp string
 		if err := rows.Scan(&candidate.NodeID, &candidate.Intent, &candidate.Digest,
-			&pointers, &timestamp, &candidate.updatedSeq); err != nil {
+			&candidate.pointersRaw, &timestamp, &candidate.updatedSeq); err != nil {
 			return nil, fmt.Errorf("scan recall hit: %w", err)
-		}
-		if err := json.Unmarshal([]byte(pointers), &candidate.Pointers); err != nil {
-			return nil, fmt.Errorf("decode recall pointers for %q: %w", candidate.NodeID, err)
 		}
 		at, err := parseTime(timestamp)
 		if err != nil {
@@ -376,13 +396,20 @@ func normalizeRecallCues(cues []string) []string {
 	return result
 }
 
+// recallScopeHits counts the cues one candidate answers. Case folding belongs
+// to the candidate, not to the pair, so each pointer is folded once instead of
+// once per cue.
 func recallScopeHits(candidate *recallCandidate, cues []string) int {
 	hits := 0
 	intent := strings.ToLower(candidate.Intent)
+	pointers := make([]string, len(candidate.Pointers))
+	for index, pointer := range candidate.Pointers {
+		pointers[index] = strings.ToLower(pointer)
+	}
 	for _, cue := range cues {
 		matched := strings.Contains(intent, cue)
-		for _, pointer := range candidate.Pointers {
-			if strings.Contains(strings.ToLower(pointer), cue) {
+		for _, pointer := range pointers {
+			if strings.Contains(pointer, cue) {
 				matched = true
 				break
 			}

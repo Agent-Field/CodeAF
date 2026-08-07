@@ -163,13 +163,27 @@ func scanNode(scanner rowScanner) (Node, error) {
 			return Node{}, fmt.Errorf("parse node %q finish time: %w", node.ID, err)
 		}
 	}
-	if err := json.Unmarshal([]byte(pointers), &node.FoldPointers); err != nil {
+	// Most nodes carry neither pointers nor attachments, and the empty array is
+	// the stored default. Recognizing it costs a comparison and saves a JSON
+	// decode on every row of every whole-graph read.
+	if node.FoldPointers, err = decodeStringArray(pointers); err != nil {
 		return Node{}, fmt.Errorf("decode node %q fold pointers: %w", node.ID, err)
 	}
-	if err := json.Unmarshal([]byte(attachments), &node.Provenance.Attachments); err != nil {
+	if node.Provenance.Attachments, err = decodeStringArray(attachments); err != nil {
 		return Node{}, fmt.Errorf("decode node %q attachments: %w", node.ID, err)
 	}
 	return node, nil
+}
+
+func decodeStringArray(encoded string) ([]string, error) {
+	if encoded == "" || encoded == "[]" {
+		return []string{}, nil
+	}
+	var values []string
+	if err := json.Unmarshal([]byte(encoded), &values); err != nil {
+		return nil, err
+	}
+	return values, nil
 }
 
 // Edges returns every materialized edge, including folded history.
