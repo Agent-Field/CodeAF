@@ -582,6 +582,25 @@ func TestHeadEmittedQuestionBodyParsesIntoChooseComponent(t *testing.T) {
 	if !ok || component.Kind != questionChoose || component.Prompt != "Stand this charter up?" {
 		t.Fatalf("emitted question decoded as %#v ok=%t", component, ok)
 	}
+	// Categorized bodies (the meta-loop's durable question categories) carry
+	// an extra "category" field and a default; the tolerant reader must parse
+	// them into the same component shape, default preserved.
+	allowFree := true
+	body = store.QuestionMessageBody("Stand this charter up?", []store.QuestionOption{
+		{Label: "yes, stand this up", Value: "charter:ratify:charter-7"},
+		{Label: "change the cadence", Value: "charter:cadence:charter-7"},
+		{Label: "once, not standing", Value: "charter:once:charter-7"},
+	}, store.QuestionConfig{
+		Kind: store.QuestionChoose, Category: store.QuestionCategorySurgeryConfirm,
+		Default: "2", AllowFree: &allowFree,
+	})
+	component, ok = readQuestionComponent(body)
+	if !ok || component.Default != "2" {
+		t.Fatalf("categorized question decoded as %#v ok=%t", component, ok)
+	}
+	if !ok || component.Kind != questionChoose || component.Prompt != "Stand this charter up?" {
+		t.Fatalf("emitted question decoded as %#v ok=%t", component, ok)
+	}
 	if len(component.Options) != 3 || !component.AllowFree {
 		t.Fatalf("emitted options decoded as %#v", component.Options)
 	}

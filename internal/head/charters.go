@@ -51,6 +51,14 @@ func (h *Head) answerAgentQuestion(user store.Message) (bool, error) {
 }
 
 func (h *Head) applyAgentQuestionOption(user store.Message, question store.AgentQuestion, option store.QuestionOption) error {
+	if action, kind, target, instruction, ok := decodeSurgeryOption(option.Value); ok {
+		switch action {
+		case "apply":
+			return h.resolveSurgery(user, kind, target, instruction, true)
+		case "keep":
+			return h.postAgent(user.SessionID, "Keeping it as-is.", 0)
+		}
+	}
 	parts := strings.Split(option.Value, ":")
 	if len(parts) >= 3 && parts[0] == "charter" {
 		id := parts[2]

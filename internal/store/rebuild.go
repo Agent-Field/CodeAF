@@ -76,6 +76,9 @@ func (s *Store) Rebuild() error {
 	if _, err := tx.Exec(`DELETE FROM retrospective_watermark`); err != nil {
 		return fmt.Errorf("rebuild retrospective watermark: %w", err)
 	}
+	if _, err := tx.Exec(`DELETE FROM meta_parameters`); err != nil {
+		return fmt.Errorf("rebuild meta parameters: %w", err)
+	}
 	for _, event := range events {
 		if err := replayEvent(tx, event); err != nil {
 			return fmt.Errorf("replay event %d (%s): %w", event.Seq, event.Kind, err)
@@ -460,6 +463,23 @@ func replayEvent(tx *sql.Tx, event Event) error {
 			return err
 		}
 		return applyRetrospectiveCheckpoint(tx, payload, event.Seq, event.Time)
+
+	case EventAssumedWithDefault:
+		var payload assumedWithDefaultPayload
+		if err := json.Unmarshal(event.Payload, &payload); err != nil {
+			return err
+		}
+		if payload.Category == "" || strings.TrimSpace(payload.Default) == "" {
+			return fmt.Errorf("invalid assumed-with-default event")
+		}
+		return nil
+
+	case EventParameterChanged:
+		var payload ParameterChange
+		if err := json.Unmarshal(event.Payload, &payload); err != nil {
+			return err
+		}
+		return applyParameterChange(tx, payload, event.Seq)
 
 	case EventCharterCreated, EventCharterRevised, EventCharterStatusChanged,
 		EventCharterWatchAdvanced, EventCharterWoken, EventSentinelChecked,

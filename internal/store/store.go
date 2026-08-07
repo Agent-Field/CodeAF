@@ -146,6 +146,10 @@ const (
 	// EventRetrospectiveCheckpointed records how much settled top-level work
 	// the periodic retrospective has already considered.
 	EventRetrospectiveCheckpointed EventKind = "retrospective_checkpointed"
+	// EventAssumedWithDefault records a VOI-gated skipped ask for later correction matching.
+	EventAssumedWithDefault EventKind = "assumed_with_default"
+	// EventParameterChanged is the sole bounded self-tuning mutation surface.
+	EventParameterChanged EventKind = "parameter_changed"
 
 	// Charter events keep standing intent and every watch decision in the same
 	// append-only policy record as the work a firing creates.
@@ -433,6 +437,9 @@ func Open(path string) (*Store, error) {
 	if _, err := db.Exec(agentQuestionSchema); err != nil {
 		return closeOnError(fmt.Errorf("initialize agent question schema: %w", err))
 	}
+	if err := migrateAgentQuestionSchema(db); err != nil {
+		return closeOnError(fmt.Errorf("migrate agent question schema: %w", err))
+	}
 	if _, err := db.Exec(usageSchema); err != nil {
 		return closeOnError(fmt.Errorf("initialize usage schema: %w", err))
 	}
@@ -453,6 +460,9 @@ func Open(path string) (*Store, error) {
 	}
 	if _, err := db.Exec(retrospectiveSchema); err != nil {
 		return closeOnError(fmt.Errorf("initialize retrospective schema: %w", err))
+	}
+	if _, err := db.Exec(metaParameterSchema); err != nil {
+		return closeOnError(fmt.Errorf("initialize meta parameter schema: %w", err))
 	}
 	if err := migrateFactsSchema(db); err != nil {
 		return closeOnError(fmt.Errorf("migrate facts schema: %w", err))

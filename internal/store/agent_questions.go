@@ -46,6 +46,8 @@ type AgentQuestion struct {
 	Urgency          QuestionUrgency
 	Status           AgentQuestionStatus
 	Options          []QuestionOption
+	Category         QuestionCategory
+	DefaultAnswer    string
 	CreatedAt        time.Time
 	AskedAt          time.Time
 	ResolvedAt       time.Time
@@ -66,7 +68,9 @@ CREATE TABLE IF NOT EXISTS agent_questions (
     origin_command_seq  INTEGER NOT NULL DEFAULT 0,
     urgency             TEXT NOT NULL CHECK (urgency IN ('blocking', 'next-natural-moment', 'whenever')),
     status              TEXT NOT NULL CHECK (status IN ('pending', 'asked', 'answered', 'expired')),
-    options             JSON NOT NULL DEFAULT '[]' CHECK (json_valid(options)),
+	options             JSON NOT NULL DEFAULT '[]' CHECK (json_valid(options)),
+	category            TEXT NOT NULL DEFAULT 'generic',
+	default_answer      TEXT NOT NULL DEFAULT '',
     created_at          TEXT NOT NULL,
     asked_at            TEXT,
     resolved_at         TEXT,
@@ -82,6 +86,27 @@ CREATE INDEX IF NOT EXISTS agent_questions_status_seq
     ON agent_questions (status, seq);
 `
 
+func migrateAgentQuestionSchema(db *sql.DB) error {
+	for _, column := range []struct {
+		name string
+		ddl  string
+	}{
+		{"category", `ALTER TABLE agent_questions ADD COLUMN category TEXT NOT NULL DEFAULT 'generic'`},
+		{"default_answer", `ALTER TABLE agent_questions ADD COLUMN default_answer TEXT NOT NULL DEFAULT ''`},
+	} {
+		found, err := tableHasColumn(db, "agent_questions", column.name)
+		if err != nil {
+			return err
+		}
+		if !found {
+			if _, err := db.Exec(column.ddl); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
 type agentQuestionPayload struct {
 	SessionID        string           `json:"session_id"`
 	Text             string           `json:"text"`
@@ -90,6 +115,8 @@ type agentQuestionPayload struct {
 	OriginCommandSeq int64            `json:"origin_command_seq,omitempty"`
 	Urgency          QuestionUrgency  `json:"urgency"`
 	Options          []QuestionOption `json:"options,omitempty"`
+	Category         QuestionCategory `json:"category,omitempty"`
+	DefaultAnswer    string           `json:"default,omitempty"`
 	ExpiresAt        time.Time        `json:"expires_at,omitempty"`
 }
 
@@ -112,6 +139,10 @@ func (s *Store) AskQuestion(question AgentQuestion) (AgentQuestion, error) {
 	question.SessionID = strings.TrimSpace(question.SessionID)
 	question.OriginNodeID = strings.TrimSpace(question.OriginNodeID)
 	question.OriginCharterID = strings.TrimSpace(question.OriginCharterID)
+	question.DefaultAnswer = strings.TrimSpace(question.DefaultAnswer)
+	if question.Category == "" {
+		question.Category = QuestionCategoryGeneric
+	}
 	if question.Text == "" {
 		return AgentQuestion{}, fmt.Errorf("ask question: %w: empty text", ErrInvalid)
 	}
@@ -181,6 +212,7 @@ func (s *Store) AskQuestion(question AgentQuestion) (AgentQuestion, error) {
 		OriginNodeID: question.OriginNodeID, OriginCharterID: question.OriginCharterID,
 		OriginCommandSeq: question.OriginCommandSeq, Urgency: question.Urgency,
 		Options: options, ExpiresAt: question.ExpiresAt,
+		Category: question.Category, DefaultAnswer: question.DefaultAnswer,
 	}
 	anchor := question.OriginNodeID
 	if anchor == "" {
@@ -199,6 +231,8 @@ func (s *Store) AskQuestion(question AgentQuestion) (AgentQuestion, error) {
 	question.Seq = seq
 	question.Status = QuestionPending
 	question.Options = options
+	question.Category = payload.Category
+	question.DefaultAnswer = payload.DefaultAnswer
 	question.CreatedAt = at
 	question.UpdatedSeq = seq
 	return question, nil
@@ -384,10 +418,11 @@ func applyAgentQuestionView(tx *sql.Tx, payload agentQuestionPayload, seq int64,
 	}
 	_, err = tx.Exec(`INSERT INTO agent_questions (
 		seq, session_id, text, origin_node_id, origin_charter_id, origin_command_seq,
-		urgency, status, options, created_at, expires_at, updated_seq
-	) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		urgency, status, options, category, default_answer, created_at, expires_at, updated_seq
+	) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		seq, payload.SessionID, payload.Text, payload.OriginNodeID, payload.OriginCharterID,
-		payload.OriginCommandSeq, payload.Urgency, QuestionPending, options, formatTime(at),
+		payload.OriginCommandSeq, payload.Urgency, QuestionPending, options,
+		defaultQuestionCategory(payload.Category), strings.TrimSpace(payload.DefaultAnswer), formatTime(at),
 		nullableQuestionTime(payload.ExpiresAt), seq)
 	return err
 }
@@ -427,7 +462,7 @@ func requireOneQuestionChange(result sql.Result, action string, seq int64) error
 
 func (s *Store) queryAgentQuestions(where string, args []any) ([]AgentQuestion, error) {
 	rows, err := s.db.Query(`SELECT seq, session_id, text, origin_node_id, origin_charter_id,
-		origin_command_seq, urgency, status, options, created_at, asked_at, resolved_at,
+		origin_command_seq, urgency, status, options, category, default_answer, created_at, asked_at, resolved_at,
 		expires_at, resolution, asked_message_seq, answer_message_seq, updated_seq
 		FROM agent_questions WHERE `+where, args...)
 	if err != nil {
@@ -456,7 +491,7 @@ func scanAgentQuestion(scanner questionScanner) (AgentQuestion, error) {
 	var asked, resolved, expires sql.NullString
 	if err := scanner.Scan(&question.Seq, &question.SessionID, &question.Text,
 		&question.OriginNodeID, &question.OriginCharterID, &question.OriginCommandSeq,
-		&question.Urgency, &question.Status, &options, &created, &asked, &resolved,
+		&question.Urgency, &question.Status, &options, &question.Category, &question.DefaultAnswer, &created, &asked, &resolved,
 		&expires, &question.Resolution, &question.AskedMessageSeq,
 		&question.AnswerMessageSeq, &question.UpdatedSeq); err != nil {
 		return AgentQuestion{}, err
@@ -482,7 +517,7 @@ func scanAgentQuestion(scanner questionScanner) (AgentQuestion, error) {
 
 func queryAgentQuestionTx(tx *sql.Tx, seq int64) (AgentQuestion, bool, error) {
 	row := tx.QueryRow(`SELECT seq, session_id, text, origin_node_id, origin_charter_id,
-		origin_command_seq, urgency, status, options, created_at, asked_at, resolved_at,
+		origin_command_seq, urgency, status, options, category, default_answer, created_at, asked_at, resolved_at,
 		expires_at, resolution, asked_message_seq, answer_message_seq, updated_seq
 		FROM agent_questions WHERE seq = ?`, seq)
 	question, err := scanAgentQuestion(row)
@@ -490,6 +525,13 @@ func queryAgentQuestionTx(tx *sql.Tx, seq int64) (AgentQuestion, bool, error) {
 		return AgentQuestion{}, false, nil
 	}
 	return question, err == nil, err
+}
+
+func defaultQuestionCategory(category QuestionCategory) QuestionCategory {
+	if category == "" {
+		return QuestionCategoryGeneric
+	}
+	return category
 }
 
 func validQuestionUrgency(urgency QuestionUrgency) bool {
