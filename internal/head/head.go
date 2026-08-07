@@ -28,6 +28,12 @@ const (
 	recentMessageLimit    = 10
 	maxGraphContextBytes  = 4 << 10
 	maxThreadContextBytes = 4 << 10
+	// The truncation markers are part of what gets sent, so they are part of
+	// what the budget covers. Written after the check, they put the block over
+	// its ceiling in exactly the case the ceiling exists for; reserving their
+	// bytes up front makes the budget the real bound it claims to be.
+	snapshotTruncatedMark = "(snapshot truncated)\n"
+	threadTruncatedMark   = "(thread context truncated)\n"
 	providerErrorReply    = "hit a provider error answering that — try again"
 	commandErrorReply     = "I couldn't queue that change — try again"
 	// manualRouteSections is the router's grounding read. It is smaller than
@@ -894,8 +900,8 @@ func renderGraph(snapshot store.Snapshot) string {
 			line += " | result: " + result
 		}
 		line += "\n"
-		if rendered.Len()+len(line) > maxGraphContextBytes {
-			rendered.WriteString("(snapshot truncated)\n")
+		if rendered.Len()+len(line) > maxGraphContextBytes-len(snapshotTruncatedMark) {
+			rendered.WriteString(snapshotTruncatedMark)
 			break
 		}
 		rendered.WriteString(line)
@@ -912,8 +918,8 @@ func renderThread(messages []store.Message) string {
 		body := truncateBytes(strings.TrimSpace(message.Body), 600)
 		body = strings.ReplaceAll(body, "\n", "\n  ")
 		line := fmt.Sprintf("%s: %s\n", message.Role, body)
-		if rendered.Len()+len(line) > maxThreadContextBytes {
-			rendered.WriteString("(thread context truncated)\n")
+		if rendered.Len()+len(line) > maxThreadContextBytes-len(threadTruncatedMark) {
+			rendered.WriteString(threadTruncatedMark)
 			break
 		}
 		rendered.WriteString(line)

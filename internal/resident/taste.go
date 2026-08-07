@@ -164,8 +164,14 @@ func TasteBlock(graph *store.Store) string {
 	var block strings.Builder
 	for _, rule := range rules {
 		line := "- " + firstLine(rule.Body) + "\n"
+		// One long rule must not end the block. Breaking here let a single
+		// verbose rule swallow the budget for every shorter rule behind it —
+		// which, in the order these arrive, meant the gate silently stopped
+		// being held to rules it had genuinely earned. Skipping the line that
+		// does not fit and carrying on spends the budget on as many rules as it
+		// can hold.
 		if block.Len()+len(line) > tasteBlockBytes {
-			break
+			continue
 		}
 		block.WriteString(line)
 	}

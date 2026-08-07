@@ -286,3 +286,59 @@ func answerTaste(t *testing.T, graph *store.Store, sessionID, scope, label strin
 		t.Fatal(err)
 	}
 }
+
+// TestTasteBlockSkipsTheRuleItCannotFitAndKeepsGoing pins how the gate's block
+// spends its budget. The rules arrive newest first, so stopping at the first
+// one too long to fit let one verbose rule hide every older rule behind it —
+// and the older rules are the longest-settled ones, the very rules the gate
+// exists to be held to. A line that does not fit is skipped, not final.
+func TestTasteBlockSkipsTheRuleItCannotFitAndKeepsGoing(t *testing.T) {
+	graph := openStore(t)
+	// Oldest first, so that promoting them in this order leaves the block
+	// reading them back newest first: roomy, then one that cannot fit beside
+	// it, then the short settled rule that still can.
+	settled := "always give the numbers before the narrative"
+	verbose := "explain the reasoning " + strings.Repeat("in full ", 46)
+	roomy := "name the file " + strings.Repeat("and its path ", 30)
+	for _, rule := range []struct{ subject, body string }{
+		{"reports", settled},
+		{"prose", verbose},
+		{"paths", roomy},
+	} {
+		if _, err := graph.RecordTasteCandidate("", rule.subject, rule.body); err != nil {
+			t.Fatalf("record %s: %v", rule.subject, err)
+		}
+	}
+	candidates := tasteRulesByStatus(t, graph, store.FactCandidate)
+	for index := len(candidates) - 1; index >= 0; index-- {
+		if _, err := graph.PromoteTasteRule(candidates[index].Seq); err != nil {
+			t.Fatalf("promote %s: %v", candidates[index].Scope, err)
+		}
+	}
+
+	rules := tasteRulesByStatus(t, graph, store.FactActive)
+	if len(rules) != 3 || !strings.HasPrefix(rules[0].Body, "name the file") ||
+		!strings.HasPrefix(rules[1].Body, "explain the reasoning") {
+		t.Fatalf("fixture wrong: want roomy, verbose, settled newest first, got %+v", rules)
+	}
+
+	block := TasteBlock(graph)
+	if !strings.Contains(block, settled) {
+		t.Errorf("the settled rule was starved by the one that could not fit:\n%q", block)
+	}
+	if strings.Contains(block, verbose) {
+		t.Errorf("a rule that did not fit was written anyway:\n%q", block)
+	}
+	if len(block) > tasteBlockBytes {
+		t.Errorf("taste block = %d bytes, over its %d budget", len(block), tasteBlockBytes)
+	}
+}
+
+func tasteRulesByStatus(t *testing.T, graph *store.Store, status string) []store.Fact {
+	t.Helper()
+	rules, err := graph.TasteRules(status)
+	if err != nil {
+		t.Fatalf("taste rules (%s): %v", status, err)
+	}
+	return rules
+}
