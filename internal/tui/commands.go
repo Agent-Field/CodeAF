@@ -31,18 +31,23 @@ type commandSpec struct {
 	name        string
 	description string
 	takesArg    bool
+	handler     slashHandler
 }
+
+type slashHandler func(*Model, []string) tea.Cmd
 
 // keyBindings is the single source for routed chords and every help label
 // that names them. Bubble Tea reports option-G as the literal "alt+g".
 var keyBindings = struct {
-	graph string
-	voice string
-	boost string
+	graph   string
+	voice   string
+	boost   string
+	newline string
 }{
-	graph: "alt+g",
-	voice: "alt+v",
-	boost: "alt+b",
+	graph:   "alt+g",
+	voice:   "alt+v",
+	boost:   "alt+b",
+	newline: "ctrl+j",
 }
 
 var slashCommands = []commandSpec{
@@ -50,15 +55,29 @@ var slashCommands = []commandSpec{
 	{name: "tasks", description: "focus and expand the active-task dock"},
 	{name: "node", description: "open a node by id prefix or current selection", takesArg: true},
 	{name: "notebook", description: "browse the scoped notebook"},
-	{name: "budget", description: "show or change today's dollar rail"},
+	{name: "history", description: "find settled work in permanent graph memory", takesArg: true},
+	{name: "budget", description: "show or change today's dollar rail", takesArg: true},
 	{name: "standing", description: "list active standing charters"},
-	{name: "help", description: "show commands and keyboard shortcuts"},
+	{name: "help", description: "show the complete keyboard and command guide"},
 	{name: "model", description: "choose any model slot", takesArg: true},
 	{name: "memory", description: "alias for /notebook"},
 	{name: "session", description: "show the current session and database"},
 	{name: "new", description: "start a fresh chat session"},
 	{name: "cancel", description: "cancel a non-terminal graph node", takesArg: true},
 	{name: "quit", description: "exit aforge cleanly"},
+}
+
+func init() {
+	handlers := map[string]slashHandler{
+		"graph": (*Model).slashGraph, "tasks": (*Model).slashTasks, "node": (*Model).slashNode,
+		"notebook": (*Model).slashNotebook, "history": (*Model).slashHistory, "budget": (*Model).slashBudget,
+		"standing": (*Model).slashStanding, "help": (*Model).slashHelp, "model": (*Model).slashModel,
+		"memory": (*Model).slashNotebook, "session": (*Model).slashSession, "new": (*Model).slashNew,
+		"cancel": (*Model).slashCancel, "quit": (*Model).slashQuit,
+	}
+	for index := range slashCommands {
+		slashCommands[index].handler = handlers[slashCommands[index].name]
+	}
 }
 
 type paletteEntry struct {
@@ -162,11 +181,26 @@ func (m *Model) updatePaletteKey(key string) (tea.Cmd, bool) {
 			return nil, true
 		}
 	case paletteHelp:
-		if key == "enter" {
-			m.closePalette()
+		switch key {
+		case "up", "k":
+			m.scrollHelp(-1)
 			return nil, true
-		}
-		if key == "tab" || key == "up" || key == "down" {
+		case "down", "j":
+			m.scrollHelp(1)
+			return nil, true
+		case "pgup":
+			m.scrollHelp(-m.helpLineLimit())
+			return nil, true
+		case "pgdown":
+			m.scrollHelp(m.helpLineLimit())
+			return nil, true
+		case "home":
+			m.paletteSelected = 0
+			return nil, true
+		case "end":
+			m.paletteSelected = m.helpMaxOffset()
+			return nil, true
+		case "tab", "enter", "left", "right":
 			return nil, true
 		}
 	case paletteCommands:
@@ -463,111 +497,137 @@ func (m *Model) executeSlash(body string) tea.Cmd {
 	if len(fields) == 0 {
 		return nil
 	}
-	switch fields[0] {
-	case "/":
+	if fields[0] == "/" {
 		m.input.Reset()
-		return m.showStatus("/graph · /tasks · /budget · /standing · /notebook · /help")
-	case "/graph":
-		m.input.Reset()
-		if m.nodeViewID != "" {
-			m.closeNodeView()
+		names := make([]string, 0, len(slashCommands))
+		for _, command := range slashCommands {
+			names = append(names, "/"+command.name)
 		}
-		m.toggleGraph()
-		return nil
-	case "/tasks":
-		m.input.Reset()
-		return m.openTasksDock()
-	case "/budget":
-		handler, ok := m.commander.(interface {
-			Budget(arguments []string) (string, error)
-		})
-		if !ok {
-			m.input.Reset()
-			return m.showStatus("budget unavailable — no Commander")
-		}
-		result, err := handler.Budget(fields[1:])
-		m.input.Reset()
-		if err != nil {
-			return m.showStatus("could not change budget: " + err.Error())
-		}
-		return m.showStatus(result)
-	case "/standing":
-		handler, ok := m.commander.(interface {
-			Standing() (string, error)
-		})
-		if !ok {
-			m.input.Reset()
-			return m.showStatus("standing unavailable — no Commander")
-		}
-		result, err := handler.Standing()
-		m.input.Reset()
-		if err != nil {
-			return m.showStatus("could not list standing charters: " + err.Error())
-		}
-		return m.showStatus(result)
-	case "/node":
-		prefix := ""
-		if len(fields) > 1 {
-			prefix = fields[1]
-		}
-		return m.openNodePrefix(prefix)
-	case "/notebook", "/memory":
-		return m.openMemory()
-	case "/model":
-		role := "talk"
-		arguments := fields[1:]
-		if len(arguments) == 0 {
-			return m.openModelsPalette()
-		}
-		if len(arguments) == 1 && arguments[0] == "boost" {
-			m.input.Reset()
-			m.toggleBoost()
-			return nil
-		}
-		if len(arguments) > 0 && isModelSlot(arguments[0]) {
-			role = arguments[0]
-			arguments = arguments[1:]
-		}
-		if len(arguments) == 0 {
-			return m.openModelPicker(role)
-		}
-		entries := filterEntries(m.modelsForRole(role), strings.Join(arguments, " "))
-		if len(entries) == 0 {
-			return m.showStatus("no matching model")
-		}
-		return m.applyModel(role, entries[0].value)
-	case "/session":
-		detail := "session " + m.sessionID
-		if source, ok := m.commander.(interface{ DatabasePath() string }); ok && source.DatabasePath() != "" {
-			detail += " · " + source.DatabasePath()
-		} else {
-			detail += " · database unavailable"
-		}
-		m.input.Reset()
-		return m.showStatus(detail)
-	case "/new":
-		return m.newSession()
-	case "/cancel":
-		if len(fields) < 2 {
-			m.input.SetValue("/cancel ")
-			m.palette = paletteCancelCompletion
-			m.setSize(m.width, m.height)
-			return nil
-		}
-		return m.cancelNode(fields[1])
-	case "/help":
-		m.input.Reset()
-		m.palette = paletteHelp
-		m.paletteSelected = 0
-		m.setSize(m.width, m.height)
-		return nil
-	case "/quit":
-		return tea.Quit
-	default:
+		return m.showStatus(strings.Join(names, " · "))
+	}
+	name := strings.TrimPrefix(fields[0], "/")
+	command := commandByName(name)
+	if command.handler == nil {
 		m.input.Reset()
 		return m.showStatus(fields[0] + " is not a command · /help lists them")
 	}
+	return command.handler(m, fields[1:])
 }
+
+func (m *Model) slashGraph(_ []string) tea.Cmd {
+	m.input.Reset()
+	if m.nodeViewID != "" {
+		m.closeNodeView()
+	}
+	m.toggleGraph()
+	return nil
+}
+
+func (m *Model) slashTasks(_ []string) tea.Cmd {
+	m.input.Reset()
+	return m.openTasksDock()
+}
+
+func (m *Model) slashBudget(arguments []string) tea.Cmd {
+	handler, ok := m.commander.(interface {
+		Budget(arguments []string) (string, error)
+	})
+	if !ok {
+		m.input.Reset()
+		return m.showStatus("budget unavailable — no Commander")
+	}
+	result, err := handler.Budget(arguments)
+	m.input.Reset()
+	if err != nil {
+		return m.showStatus("could not change budget: " + err.Error())
+	}
+	return m.showStatus(result)
+}
+
+func (m *Model) slashStanding(_ []string) tea.Cmd {
+	handler, ok := m.commander.(interface {
+		Standing() (string, error)
+	})
+	if !ok {
+		m.input.Reset()
+		return m.showStatus("standing unavailable — no Commander")
+	}
+	result, err := handler.Standing()
+	m.input.Reset()
+	if err != nil {
+		return m.showStatus("could not list standing charters: " + err.Error())
+	}
+	return m.showStatus(result)
+}
+
+func (m *Model) slashNode(arguments []string) tea.Cmd {
+	prefix := ""
+	if len(arguments) > 0 {
+		prefix = arguments[0]
+	}
+	return m.openNodePrefix(prefix)
+}
+
+func (m *Model) slashNotebook(_ []string) tea.Cmd { return m.openMemory() }
+
+func (m *Model) slashHistory(arguments []string) tea.Cmd {
+	return m.openRecallHistory(strings.Join(arguments, " "))
+}
+
+func (m *Model) slashModel(arguments []string) tea.Cmd {
+	role := "talk"
+	if len(arguments) == 0 {
+		return m.openModelsPalette()
+	}
+	if len(arguments) == 1 && arguments[0] == "boost" {
+		m.input.Reset()
+		m.toggleBoost()
+		return nil
+	}
+	if len(arguments) > 0 && isModelSlot(arguments[0]) {
+		role = arguments[0]
+		arguments = arguments[1:]
+	}
+	if len(arguments) == 0 {
+		return m.openModelPicker(role)
+	}
+	entries := filterEntries(m.modelsForRole(role), strings.Join(arguments, " "))
+	if len(entries) == 0 {
+		return m.showStatus("no matching model")
+	}
+	return m.applyModel(role, entries[0].value)
+}
+
+func (m *Model) slashSession(_ []string) tea.Cmd {
+	detail := "session " + m.sessionID
+	if source, ok := m.commander.(interface{ DatabasePath() string }); ok && source.DatabasePath() != "" {
+		detail += " · " + source.DatabasePath()
+	} else {
+		detail += " · database unavailable"
+	}
+	m.input.Reset()
+	return m.showStatus(detail)
+}
+
+func (m *Model) slashNew(_ []string) tea.Cmd { return m.newSession() }
+
+func (m *Model) slashCancel(arguments []string) tea.Cmd {
+	if len(arguments) == 0 {
+		m.input.SetValue("/cancel ")
+		m.palette = paletteCancelCompletion
+		m.setSize(m.width, m.height)
+		return nil
+	}
+	return m.cancelNode(arguments[0])
+}
+
+func (m *Model) slashHelp(_ []string) tea.Cmd {
+	m.input.Reset()
+	m.openHelp()
+	return nil
+}
+
+func (m *Model) slashQuit(_ []string) tea.Cmd { return tea.Quit }
 
 func (m *Model) openTasksDock() tea.Cmd {
 	if m.nodeViewID != "" {
@@ -778,6 +838,13 @@ func (m *Model) newSession() tea.Cmd {
 	m.questionDismissed = map[string]bool{}
 	m.agentQuestions = nil
 	m.answeringQuestionSeq = 0
+	m.historyEntries = nil
+	m.historyTerms = ""
+	m.historyVisible = false
+	m.historyLoading = false
+	m.historyErr = nil
+	m.historySelection = 0
+	m.historyOpen = -1
 	m.questionDockExpanded = false
 	m.questionDockSelection = 0
 	m.questionDockRows = nil
@@ -848,7 +915,7 @@ func (m *Model) activateHeaderFocus() tea.Cmd {
 	switch m.headerFocusIndex {
 	case 0:
 		return m.openModelsPalette()
-	default:
+	case 1:
 		if m.hasPendingQuestion() {
 			m.focusPendingQuestion()
 			return nil
@@ -857,6 +924,9 @@ func (m *Model) activateHeaderFocus() tea.Cmd {
 			m.closeNodeView()
 		}
 		m.toggleGraph()
+		return nil
+	default:
+		m.openHelp()
 		return nil
 	}
 }

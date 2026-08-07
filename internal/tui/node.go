@@ -739,6 +739,17 @@ func (m *Model) scrollNodeAt(x, y int, down bool) bool {
 }
 
 func (m *Model) updateMouseClick(x, y int) (tea.Cmd, bool) {
+	if m.palette == paletteHelp {
+		switch {
+		case m.paletteCloseBounds.contains(x, y), m.headerHelpBounds.contains(x, y):
+			m.closeHelp()
+		case m.helpBounds.contains(x, y):
+			// The help body is inert reading space; the wheel scrolls it.
+		default:
+			m.closeHelp()
+		}
+		return nil, true
+	}
 	if m.boostBounds.contains(x, y) {
 		m.toggleBoost()
 		return nil, true
@@ -749,6 +760,10 @@ func (m *Model) updateMouseClick(x, y int) (tea.Cmd, bool) {
 	}
 	if m.headerModelsBounds.contains(x, y) {
 		return m.openModelsPalette(), true
+	}
+	if m.headerHelpBounds.contains(x, y) {
+		m.openHelp()
+		return nil, true
 	}
 	if m.headerTasksBounds.contains(x, y) {
 		if m.nodeViewID != "" {
@@ -980,6 +995,11 @@ func (m *Model) toggleChatMessageAt(x, y int) bool {
 // activateChatLine is the one activation path for a thread content line —
 // clicks and keyboard traversal both land here, so enter always equals click.
 func (m *Model) activateChatLine(line int) bool {
+	for _, row := range m.historyRows {
+		if row.line == line {
+			return m.activateHistory(row.index)
+		}
+	}
 	for _, row := range m.cardCloseRows {
 		if !row.dock && row.line == line {
 			m.selectedCardID = row.cardID

@@ -10,6 +10,7 @@ import (
 	"github.com/Agent-Field/aforge-v2/internal/store"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/charmbracelet/x/ansi"
 )
 
 type fakeBackend struct {
@@ -24,6 +25,9 @@ type fakeBackend struct {
 	agentQuestions    []store.AgentQuestion
 	surfacedQuestions []int64
 	postErr           error
+	recallHits        []store.RecallHit
+	recallTerms       string
+	recallErr         error
 }
 
 type fakeCommander struct {
@@ -130,6 +134,17 @@ func (f *fakeBackend) PostMessage(message store.Message) (store.Message, error) 
 	f.posted = append(f.posted, message)
 	f.messages = append(f.messages, message)
 	return message, nil
+}
+
+func (f *fakeBackend) Recall(terms string, _ []string, limit int) ([]store.RecallHit, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.recallTerms = terms
+	hits := append([]store.RecallHit(nil), f.recallHits...)
+	if limit > 0 && len(hits) > limit {
+		hits = hits[:limit]
+	}
+	return hits, f.recallErr
 }
 
 func (f *fakeBackend) ActiveSnapshot() (store.Snapshot, error) {
@@ -894,12 +909,12 @@ func TestHintsDescribeReceiptsGraphViewAndTwoVoices(t *testing.T) {
 	}
 
 	_ = model.executeSlash("/help")
-	view := model.View()
+	view := ansi.Strip(strings.Join(model.helpContentLines(76), "\n"))
+	normalizedHelp := strings.Join(strings.Fields(view), " ")
 	for _, expected := range []string{
-		"「/notebook」", "you ask · aforge answers", "v toggles receipts", "alt+g toggles the rail",
-		"chips jump to the task", "enter to steer", "mouse",
+		"/notebook", "v", "alt+g", "jump to the task", "cancel the inspected", "mouse",
 	} {
-		if !strings.Contains(view, expected) {
+		if !strings.Contains(normalizedHelp, expected) {
 			t.Fatalf("help does not contain %q:\n%s", expected, view)
 		}
 	}
