@@ -273,6 +273,17 @@ func (s *Store) Events(afterSeq int64, limit int) ([]Event, error) {
 	return result, nil
 }
 
+// LatestEventSeq returns the current journal watermark without walking the
+// journal. It is useful for projections that report only transitions written
+// by one bounded operation.
+func (s *Store) LatestEventSeq() (int64, error) {
+	var seq int64
+	if err := s.db.QueryRow(`SELECT COALESCE(MAX(seq), 0) FROM events`).Scan(&seq); err != nil {
+		return 0, fmt.Errorf("read latest event sequence: %w", err)
+	}
+	return seq, nil
+}
+
 // Ready returns pending active nodes whose hard dependencies have all settled.
 // Failed and cancelled dependencies are terminal by design; their digest is
 // available through DependencyDigests.

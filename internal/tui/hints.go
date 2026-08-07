@@ -84,9 +84,12 @@ func (m *Model) idleTipLine(now time.Time) string {
 }
 
 func (m *Model) tipSurfaceIdle() bool {
+	// An open notebook is an active surface: the user is reading beliefs, so
+	// the footer stays quiet rather than pitching features underneath it.
 	return strings.TrimSpace(m.input.Value()) == "" && len(m.attachments) == 0 &&
 		!m.hasPendingQuestion() && m.streamMode == streamNone && len(m.streamQueue) == 0 &&
-		m.voiceState == voiceIdle && m.liveWorkCount() == 0 && m.activeCardCount() == 0
+		m.voiceState == voiceIdle && m.liveWorkCount() == 0 && m.activeCardCount() == 0 &&
+		!m.notebookOpen
 }
 
 func (m *Model) tipSuppressed(feature tipFeature) bool {

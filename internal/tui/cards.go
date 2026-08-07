@@ -63,16 +63,24 @@ type jobCard struct {
 	Usage        store.JobUsage
 	Messages     []store.Message
 	Narration    []string
+	Learning     []cardLearningMoment
 	Parts        []cardPart
 	Deliverable  *store.Message
 	Failed       bool
 }
 
 type cardPart struct {
-	NodeID string
-	Title  string
-	Status store.Status
-	Result string
+	NodeID  string
+	Title   string
+	Brief   string
+	Status  store.Status
+	Result  string
+	TrialOf int64
+}
+
+type cardLearningMoment struct {
+	Headline string
+	Details  []string
 }
 
 // cardRow and cardPartRow map rendered lines back to the disclosure ladder.
@@ -112,6 +120,11 @@ type cardOptionRow struct {
 	cardID      string
 	optionIndex int
 	dock        bool
+}
+
+type confirmOptionSpan struct {
+	startX int
+	endX   int
 }
 
 type questionComponent struct {
@@ -238,10 +251,12 @@ func deriveJobCards(
 				result = strings.TrimSpace(node.Error)
 			}
 			card.Parts = append(card.Parts, cardPart{
-				NodeID: node.ID,
-				Title:  nodeLabel(node, root),
-				Status: node.Status,
-				Result: firstLine(result),
+				NodeID:  node.ID,
+				Title:   nodeLabel(node, root),
+				Brief:   strings.TrimSpace(node.Brief),
+				Status:  node.Status,
+				Result:  firstLine(result),
+				TrialOf: node.Provenance.TrialOf,
 			})
 		}
 		card.Total = max(len(nodes), card.Usage.NodeCount)
@@ -269,8 +284,20 @@ func deriveJobCards(
 			case message.Role == store.RoleSystem && message.CommandSeq != 0:
 				// Plan-progress posts are anchored to the job node and stamped
 				// with their command. They are card state — the current line and
-				// the running summary — never stream blocks.
+				// the running summary — never stream blocks. Learning moments
+				// keep their identity even when command-stamped: they render as
+				// moments, never as progress lines.
+				if moment, ok := readLearningMoment(message.Body); ok {
+					card.Learning = append(card.Learning, moment)
+					continue
+				}
 				card.applyCompileProgress(message)
+			case message.Role == store.RoleSystem:
+				if moment, ok := readLearningMoment(message.Body); ok {
+					card.Learning = append(card.Learning, moment)
+					continue
+				}
+				fallbackLatest = firstLine(message.Body)
 			case message.Role != store.RoleUser:
 				fallbackLatest = firstLine(message.Body)
 			}
@@ -525,6 +552,7 @@ func cardDeliverable(root store.Node, messages []store.Message) *store.Message {
 		for index := range messages {
 			message := &messages[index]
 			if message.NodeID == root.ID && message.Role == store.RoleSystem &&
+				!isLearningMoment(message.Body) &&
 				(message.Time.IsZero() || !message.Time.Before(root.FinishedAt)) {
 				return message
 			}
@@ -533,7 +561,7 @@ func cardDeliverable(root store.Node, messages []store.Message) *store.Message {
 	if root.FinishedAt.IsZero() {
 		for index := len(messages) - 1; index >= 0; index-- {
 			message := &messages[index]
-			if message.NodeID == root.ID && message.Role == store.RoleSystem {
+			if message.NodeID == root.ID && message.Role == store.RoleSystem && !isLearningMoment(message.Body) {
 				return message
 			}
 		}
@@ -551,6 +579,33 @@ func cardDeliverable(root store.Node, messages []store.Message) *store.Message {
 		Body:      body,
 		NodeID:    root.ID,
 	}
+}
+
+func readLearningMoment(body string) (cardLearningMoment, bool) {
+	lines := strings.Split(strings.ReplaceAll(strings.TrimSpace(body), "\r\n", "\n"), "\n")
+	if len(lines) == 0 {
+		return cardLearningMoment{}, false
+	}
+	headline := strings.TrimSpace(lines[0])
+	if !strings.HasPrefix(headline, "· learned — ") &&
+		!strings.HasPrefix(headline, "· learned ") &&
+		!strings.HasPrefix(headline, "⚒ forged: ") &&
+		!strings.HasPrefix(headline, "⚖ settled: ") &&
+		!strings.HasPrefix(headline, "· let go — ") {
+		return cardLearningMoment{}, false
+	}
+	moment := cardLearningMoment{Headline: headline}
+	for _, line := range lines[1:] {
+		if line = strings.TrimSpace(line); line != "" {
+			moment.Details = append(moment.Details, line)
+		}
+	}
+	return moment, true
+}
+
+func isLearningMoment(body string) bool {
+	_, ok := readLearningMoment(body)
+	return ok
 }
 
 func isQuestionMessage(message store.Message) bool {
@@ -1147,6 +1202,14 @@ func (m *Model) renderJobCard(card jobCard, width int, expanded bool, atLine int
 						line: atLine + len(lines) - 1, cardID: card.ID, nodeID: part.NodeID, dock: dock,
 					})
 				}
+				if part.TrialOf > 0 {
+					approach := firstWords(part.Brief, 8)
+					if approach == "" {
+						approach = firstWords(part.Title, 8)
+					}
+					line := mutedStyle.Faint(true).Render("│     ⚖ trial · testing " + approach)
+					lines = append(lines, truncate(line, width))
+				}
 			}
 		}
 		if card.Usage.PromptTokens+card.Usage.CompletionTokens > 0 {
@@ -1182,6 +1245,20 @@ func (m *Model) renderJobCard(card jobCard, width int, expanded bool, atLine int
 			}
 		}
 	}
+	for _, moment := range card.Learning {
+		headline := moment.Headline
+		if expanded && len(moment.Details) > 0 {
+			headline = strings.TrimSuffix(headline, "▸") + "▾"
+		}
+		lines = append(lines, truncate(mutedStyle.Faint(true).Render("│ "+headline), width))
+		if expanded {
+			for _, detail := range moment.Details {
+				for _, line := range strings.Split(wrapText(detail, max(1, width-4)), "\n") {
+					lines = append(lines, truncate(mutedStyle.Faint(true).Render("│   "+line), width))
+				}
+			}
+		}
+	}
 
 	hint := "▸ details"
 	if expanded {
@@ -1197,6 +1274,14 @@ func (m *Model) renderJobCard(card jobCard, width int, expanded bool, atLine int
 		})
 	}
 	return strings.Join(lines, "\n")
+}
+
+func firstWords(value string, limit int) string {
+	words := strings.Fields(firstLine(value))
+	if len(words) > limit {
+		words = words[:limit]
+	}
+	return strings.Join(words, " ")
 }
 
 func (m *Model) appendQuestionComponent(
@@ -1249,11 +1334,27 @@ func (m *Model) appendConfirmQuestion(
 	if len(card.Options) == 0 {
 		return
 	}
-	selected := m.questionOptionIndex(card)
 	prefix := mutedStyle.Faint(true).Render("│   ")
+	component := questionComponent{Kind: questionConfirm, Options: card.Options, Default: card.Default}
+	line, spans := renderConfirmOptions(component, m.questionOptionIndex(card), width, prefix)
+	for index, span := range spans {
+		if track {
+			m.cardOptionRows = append(m.cardOptionRows, cardOptionRow{
+				line: atLine + len(*lines), startX: span.startX, endX: span.endX,
+				cardID: card.ID, optionIndex: index, dock: dock,
+			})
+		}
+	}
+	*lines = append(*lines, line)
+}
+
+// renderConfirmOptions is the shared option-question primitive used by job
+// askbacks and the inline notebook's reversible retract choice.
+func renderConfirmOptions(component questionComponent, selected, width int, prefix string) (string, []confirmOptionSpan) {
 	line := prefix
 	x := lipgloss.Width(prefix)
-	for index, option := range card.Options {
+	spans := make([]confirmOptionSpan, 0, len(component.Options))
+	for index, option := range component.Options {
 		if index > 0 {
 			separator := mutedStyle.Faint(true).Render(" · ")
 			line += separator
@@ -1267,14 +1368,9 @@ func (m *Model) appendConfirmQuestion(
 		startX := x
 		line += segment
 		x += lipgloss.Width(segment)
-		if track {
-			m.cardOptionRows = append(m.cardOptionRows, cardOptionRow{
-				line: atLine + len(*lines), startX: startX, endX: x,
-				cardID: card.ID, optionIndex: index, dock: dock,
-			})
-		}
+		spans = append(spans, confirmOptionSpan{startX: startX, endX: x})
 	}
-	*lines = append(*lines, truncate(line, width))
+	return truncate(line, width), spans
 }
 
 func (m *Model) questionOptionIndex(card jobCard) int {

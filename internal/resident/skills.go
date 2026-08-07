@@ -90,6 +90,7 @@ func (r *Reconciler) promoteRecurringSkills(ctx context.Context) {
 		if err := r.store.ActivateSkill(selected.Seq, installed); err != nil {
 			continue
 		}
+		r.queueLearningMoment(selected.NodeID, forgedSkillMoment(filepath.Base(installed)))
 		reason := fmt.Sprintf("matched independent jobs and promoted as skill #%d", selected.Seq)
 		for _, candidate := range group.facts {
 			if candidate.Seq != selected.Seq {

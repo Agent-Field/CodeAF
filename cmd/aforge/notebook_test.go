@@ -133,6 +133,54 @@ func TestNotebookDisplaysCanonicalScopesAndAliases(t *testing.T) {
 	}
 }
 
+func TestChatNotebookSearchEvidenceAndRetractMoment(t *testing.T) {
+	commander, graph := openBudgetCommander(t, 20)
+	commander.sessionID = "notebook-chat"
+	if err := graph.Splice(store.RootID, store.Subtree{Nodes: []store.NodeSpec{{
+		ID: "notebook-source", Brief: "learn the parser", Stage: 1,
+	}}}, store.Provenance{Origin: store.OriginUser, SessionID: "notebook-chat", Intent: "learn the parser"}); err != nil {
+		t.Fatal(err)
+	}
+	fact, err := graph.RecordFact("notebook-source", "repo:parser", store.FactLesson,
+		"buffer parser reads before rendering")
+	if err != nil {
+		t.Fatal(err)
+	}
+	found := commander.SearchNotebook("buffer parser", 10)
+	if len(found) != 1 || found[0].Seq != fact.Seq {
+		t.Fatalf("notebook search = %+v", found)
+	}
+	if refs := commander.NotebookEvidence(fact.Seq); len(refs) != 1 || refs[0] != "notebook-source" {
+		t.Fatalf("notebook evidence = %v", refs)
+	}
+	if err := commander.RetractNotebook(fact.Seq); err != nil {
+		t.Fatal(err)
+	}
+	retracted, ok, err := graph.FactBySeq(fact.Seq)
+	if err != nil || !ok || retracted.Status != store.FactQuarantined ||
+		retracted.StatusOrigin != store.FactOriginUser {
+		t.Fatalf("retracted fact = %+v ok=%t err=%v", retracted, ok, err)
+	}
+	messages, err := graph.Messages("notebook-chat", 0, 0)
+	if err != nil || len(messages) != 1 || messages[0].Role != store.RoleSystem ||
+		messages[0].Body != "· let go — buffer parser reads before rendering" {
+		t.Fatalf("retract moment = %+v err=%v", messages, err)
+	}
+}
+
+func TestChatNewSessionAdvancesAttachedWatermark(t *testing.T) {
+	commander, graph := openBudgetCommander(t, 20)
+	commander.attachSession = func(string) error { return nil }
+	sessionID, err := commander.NewSession()
+	if err != nil {
+		t.Fatal(err)
+	}
+	seen, found, err := graph.LastSeen()
+	if err != nil || !found || seen.State != store.SeenAttached || seen.SessionID != sessionID {
+		t.Fatalf("new-session seen = %+v found=%t err=%v", seen, found, err)
+	}
+}
+
 func normalizedNotebookLine(rendered string, seq int64) string {
 	prefix := fmt.Sprintf("#%d ", seq)
 	for _, line := range strings.Split(rendered, "\n") {

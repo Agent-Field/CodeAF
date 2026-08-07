@@ -513,7 +513,7 @@ func (m *Model) executeSlash(body string) tea.Cmd {
 		}
 		return m.openNodePrefix(prefix)
 	case "/notebook", "/memory":
-		return m.openMemory()
+		return m.openMemory(strings.Join(fields[1:], " "))
 	case "/model":
 		role := "talk"
 		arguments := fields[1:]
@@ -629,15 +629,29 @@ func (m *Model) openNodePrefix(prefix string) tea.Cmd {
 	}
 }
 
-func (m *Model) openMemory() tea.Cmd {
+func (m *Model) openMemory(query string) tea.Cmd {
 	if m.commander == nil {
 		return m.showStatus("memory unavailable — no Commander")
 	}
 	m.input.Reset()
-	m.memoryFacts = m.commander.Notebook(100)
-	m.palette = paletteMemory
-	m.paletteSelected = 0
+	query = strings.TrimSpace(query)
+	facts := m.commander.Notebook(10)
+	if search, ok := m.commander.(interface {
+		SearchNotebook(string, int) []store.Fact
+	}); ok && query != "" {
+		facts = search.SearchNotebook(query, 10)
+	}
+	m.notebookOpen = true
+	m.notebookQuery = query
+	m.notebookFacts = append([]store.Fact(nil), facts...)
+	m.notebookExpandedSeq = 0
+	m.notebookOption = 0
+	m.palette = paletteNone
+	m.focus = focusChat
+	m.inputFocused = false
+	m.input.Blur()
 	m.setSize(m.width, m.height)
+	m.focusFirstNotebookRow()
 	return nil
 }
 
