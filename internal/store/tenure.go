@@ -92,8 +92,21 @@ func (s *Store) ProposeCharterFiring(id string, wakeSeq int64, intent string) (b
 		{Label: "always allow", Value: "charter:always:" + id + ":" + strconv.FormatInt(wakeSeq, 10)},
 		{Label: "never", Value: "charter:never:" + id + ":" + strconv.FormatInt(wakeSeq, 10)},
 	}
-	message := messagePayload{SessionID: charter.SessionID, Role: RoleAgent, Body: bounded(body, MaxMessageBytes),
-		NodeID: id, Options: options}
+	question := agentQuestionPayload{
+		Text: body, OriginCharterID: id, Urgency: QuestionNextNaturalMoment, Options: options,
+	}
+	questionSeq, questionAt, err := appendEvent(tx, id, EventAgentQuestionQueued, question)
+	if err != nil {
+		return false, err
+	}
+	if err := applyAgentQuestionView(tx, question, questionSeq, questionAt); err != nil {
+		return false, err
+	}
+	// Firing proposals belong to the charter rather than the session that
+	// happened to create it. The linked question is likewise neutral and the
+	// read paths make neutral work available to whichever live session answers.
+	message := messagePayload{Role: RoleAgent, Body: bounded(body, MaxMessageBytes),
+		NodeID: id, QuestionSeq: questionSeq, Options: options}
 	seq, at, err := appendEvent(tx, id, EventMessagePosted, message)
 	if err != nil {
 		return false, err
