@@ -356,6 +356,7 @@ func (r *Reconciler) reflex(command store.Command) (commandOutcome, error) {
 	}}}
 	provenance := store.Provenance{
 		Origin: store.OriginUser, SessionID: command.SessionID, Intent: command.Instruction,
+		Attachments: append([]string(nil), command.Attachments...),
 	}
 	if err := r.store.Splice(store.RootID, subtree, provenance); err != nil {
 		node, ok, readErr := r.store.Node(id)
@@ -457,10 +458,11 @@ func (r *Reconciler) splice(ctx context.Context, command store.Command) (command
 	r.titleSubtree(ctx, &subtree, compiled)
 
 	provenance := store.Provenance{
-		Origin:    store.OriginUser,
-		SessionID: command.SessionID,
-		Intent:    command.Instruction,
-		TrialOf:   compiled.TrialOf,
+		Origin:      store.OriginUser,
+		SessionID:   command.SessionID,
+		Intent:      command.Instruction,
+		TrialOf:     compiled.TrialOf,
+		Attachments: append([]string(nil), command.Attachments...),
 	}
 	if err := r.store.Splice(store.RootID, subtree, provenance); err != nil {
 		if r.plan != nil || !r.defaultSpliceExists(command, compiled) {

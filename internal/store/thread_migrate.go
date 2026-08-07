@@ -5,8 +5,9 @@ import (
 	"strings"
 )
 
-// migrateThreadSchema keeps selectable questions and charter commands usable
-// when an existing resident database is opened by the standing-aware build.
+// migrateThreadSchema keeps selectable questions, charter commands, and durable
+// media attachments usable when an existing resident database is opened by the
+// standing-aware, multimodal build.
 func migrateThreadSchema(db *sql.DB) error {
 	hasOptions, err := tableHasColumn(db, "messages", "options")
 	if err != nil {
@@ -28,6 +29,13 @@ func migrateThreadSchema(db *sql.DB) error {
 		}
 	}
 
+	if err := addJSONColumn(db, "messages", "attachments"); err != nil {
+		return err
+	}
+	if err := addJSONColumn(db, "commands", "attachments"); err != nil {
+		return err
+	}
+
 	var definition string
 	if err := db.QueryRow(`SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'commands'`).Scan(&definition); err != nil {
 		return err
@@ -35,6 +43,8 @@ func migrateThreadSchema(db *sql.DB) error {
 	if !strings.Contains(definition, "kind IN") {
 		return nil
 	}
+	// The rebuild lifts the legacy kind CHECK so charter commands replay. The
+	// attachments column was added above, so it must survive the copy.
 	_, err = db.Exec(`
 		ALTER TABLE commands RENAME TO commands_legacy;
 		CREATE TABLE commands (
@@ -45,15 +55,28 @@ func migrateThreadSchema(db *sql.DB) error {
 		    reflex      INTEGER NOT NULL DEFAULT 0 CHECK (reflex IN (0, 1)),
 		    target      TEXT NOT NULL DEFAULT '',
 		    instruction TEXT NOT NULL,
+		    attachments JSON NOT NULL DEFAULT '[]' CHECK (json_valid(attachments)),
 		    status      TEXT NOT NULL CHECK (status IN ('pending', 'applied', 'rejected')),
 		    result      TEXT NOT NULL DEFAULT '',
 		    updated_seq INTEGER NOT NULL
 		);
 		INSERT INTO commands SELECT seq, ts, session_id, kind, reflex, target,
-		    instruction, status, result, updated_seq FROM commands_legacy;
+		    instruction, attachments, status, result, updated_seq FROM commands_legacy;
 		DROP TABLE commands_legacy;
 		CREATE INDEX commands_status_seq ON commands (status, seq);
 	`)
+	return err
+}
+
+func addJSONColumn(db *sql.DB, table, column string) error {
+	found, err := tableHasColumn(db, table, column)
+	if err != nil {
+		return err
+	}
+	if found {
+		return nil
+	}
+	_, err = db.Exec(`ALTER TABLE ` + table + ` ADD COLUMN ` + column + ` JSON NOT NULL DEFAULT '[]' CHECK (json_valid(` + column + `))`)
 	return err
 }
 

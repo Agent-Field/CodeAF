@@ -5,8 +5,11 @@ package head
 
 import (
 	"context"
+	"encoding/base64"
 	"errors"
 	"fmt"
+	"os"
+	"path/filepath"
 	"sort"
 	"strings"
 	"time"
@@ -73,7 +76,21 @@ type Head struct {
 	store          *store.Store
 	knowledge      func() string
 	dailyBudgetUSD float64
-	dailyRailSet   bool
+	modalities     interface {
+		Supports(string, string, string) bool
+	}
+	defaultModel string
+	dailyRailSet bool
+}
+
+// WithImageInput lets the routing head receive durable chat attachments as
+// OpenAI-style image parts when its current talk model advertises vision.
+func (h *Head) WithImageInput(modalities interface {
+	Supports(string, string, string) bool
+}, defaultModel string) *Head {
+	h.modalities = modalities
+	h.defaultModel = defaultModel
+	return h
 }
 
 // New returns a conversational head backed by graphStore.
@@ -243,6 +260,7 @@ func (h *Head) answer(ctx context.Context, user store.Message) error {
 			Reflex:      reflex,
 			Target:      decision.Command.Target,
 			Instruction: decision.Command.Instruction,
+			Attachments: append([]string(nil), user.Attachments...),
 		})
 		if requestErr != nil {
 			return h.postAgent(user.SessionID, commandErrorReply, 0)
@@ -316,6 +334,15 @@ func (h *Head) route(ctx context.Context, user store.Message) (routeDecision, er
 		textMessage("system", resident.VoicePrompt(h.store, headSystemPrompt, user.Body)),
 		textMessage("user", prompt),
 	}
+	if h.supportsImages() && len(user.Attachments) > 0 {
+		parts := messages[1].Content
+		for _, path := range user.Attachments {
+			if part, ok := imageContentPart(path); ok {
+				parts = append(parts, part)
+			}
+		}
+		messages[1].Content = parts
+	}
 	// No response-format schema here: measured against the shipped default
 	// model, schema-constrained calls came back empty two times in three and
 	// took 4-6s, while prompt-shaped JSON parsed three of three at under a
@@ -363,6 +390,39 @@ func (h *Head) route(ctx context.Context, user store.Message) (routeDecision, er
 	}
 	decision.Reply = strings.TrimSpace(decision.Reply)
 	return decision, nil
+}
+
+func (h *Head) supportsImages() bool {
+	if h == nil || h.modalities == nil {
+		return false
+	}
+	model := h.defaultModel
+	if current, ok := h.client.(interface{ Model() string }); ok {
+		model = current.Model()
+	}
+	return h.modalities.Supports(model, "input", "image")
+}
+
+func imageContentPart(path string) (ai.ContentPart, bool) {
+	ext := strings.ToLower(filepath.Ext(path))
+	mediaType := map[string]string{".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".webp": "image/webp", ".gif": "image/gif"}[ext]
+	if mediaType == "" {
+		return ai.ContentPart{}, false
+	}
+	info, err := os.Stat(path)
+	if err != nil || info.IsDir() || info.Size() > 10<<20 {
+		return ai.ContentPart{}, false
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return ai.ContentPart{}, false
+	}
+	if len(data) > 10<<20 {
+		return ai.ContentPart{}, false
+	}
+	return ai.ContentPart{Type: "image_url", ImageURL: &ai.ImageURLData{
+		URL: "data:" + mediaType + ";base64," + base64.StdEncoding.EncodeToString(data),
+	}}, true
 }
 
 func (h *Head) recentThread(sessionID string, beforeSeq int64) ([]store.Message, error) {

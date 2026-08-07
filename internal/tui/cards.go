@@ -1513,8 +1513,16 @@ func (m *Model) dismissTextQuestion() bool {
 	return true
 }
 
+// inputSurfaceHeight is the whole input block: the text input itself, the
+// attachment chip rows (plus a warning line when the talk model cannot see
+// images), and the inline text-question line when one is active.
 func (m *Model) inputSurfaceHeight() int {
-	height := m.input.LineCount()
+	height := m.input.LineCount() + len(m.attachments)
+	if len(m.attachments) > 0 {
+		if _, supported := m.imageInputSupport(); !supported {
+			height++
+		}
+	}
 	if m.activeTextQuestion() != nil {
 		height++
 	}

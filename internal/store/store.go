@@ -161,6 +161,9 @@ type Provenance struct {
 	// CharterID points trigger-born work back to the standing responsibility
 	// whose firing admitted it. It is empty for user and self work.
 	CharterID string `json:"charter_id,omitempty"`
+	// Attachments are user-supplied image paths kept separate from visible
+	// intent text so every leaf can receive them as multimodal content.
+	Attachments []string `json:"attachments,omitempty"`
 	// TrialOf is the fact sequence of the unsettled pair this subtree tests.
 	// Zero means the splice is ordinary work.
 	TrialOf int64 `json:"trial_of,omitempty"`
@@ -291,6 +294,7 @@ CREATE TABLE IF NOT EXISTS nodes (
     intent         TEXT NOT NULL,
     charter_id     TEXT NOT NULL DEFAULT '',
     trial_of       INTEGER NOT NULL DEFAULT 0 CHECK (trial_of >= 0),
+    attachments    JSON NOT NULL DEFAULT '[]' CHECK (json_valid(attachments)),
     created_seq    INTEGER NOT NULL REFERENCES events(seq),
     created_order  INTEGER NOT NULL CHECK (created_order >= 0),
     updated_seq    INTEGER NOT NULL REFERENCES events(seq),

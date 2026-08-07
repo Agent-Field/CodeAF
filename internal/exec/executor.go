@@ -41,6 +41,8 @@ type Task struct {
 	Contract   string // the working method: how this kind of job is done well
 	Inputs     []Input
 	OutputHint string // suggested artifact path when the deliverable is a file
+	// ImagePaths are user-supplied inputs attached to the initial leaf turn.
+	ImagePaths []string
 	// Reflex constrains the general loop to one obvious micro-action and gives
 	// it an explicit promotion verdict when the assignment is larger than it
 	// first appeared.

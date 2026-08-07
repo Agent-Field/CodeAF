@@ -2,6 +2,7 @@ package tui
 
 import (
 	"fmt"
+	"path/filepath"
 	"sort"
 	"strings"
 	"time"
@@ -538,6 +539,26 @@ func (m *Model) renderInput() string {
 	if card != nil {
 		inputY++ // the question context line owns the input surface's first row
 	}
+	// Attachment chips sit between the question line and the editable input,
+	// each with its own dismiss target; an extra hint row warns when the talk
+	// model cannot see images.
+	m.attachmentBounds = m.attachmentBounds[:0]
+	chipLines := make([]string, 0, len(m.attachments)+1)
+	for index, path := range m.attachments {
+		prefix := "⌾ " + truncate(filepath.Base(path), max(1, m.width-lipgloss.Width("⌾  ⟨×⟩"))) + " "
+		line := mutedStyle.Faint(true).Render(prefix + "⟨×⟩")
+		chipLines = append(chipLines, line)
+		m.attachmentBounds = append(m.attachmentBounds, paneBounds{
+			x: lipgloss.Width(prefix), y: inputY + index, width: lipgloss.Width("⟨×⟩"), height: 1,
+		})
+	}
+	if len(m.attachments) > 0 {
+		if model, supported := m.imageInputSupport(); !supported {
+			hint := truncate(model+" can't see images — try a vision model", m.width)
+			chipLines = append(chipLines, mutedStyle.Faint(true).Render(hint))
+		}
+	}
+	inputY += len(chipLines)
 	controlWidth := lipgloss.Width(control)
 	controlX := max(0, m.width-controlWidth)
 	micWidth := lipgloss.Width(m.voiceMicGlyph())
@@ -552,7 +573,8 @@ func (m *Model) renderInput() string {
 			width: cancelWidth, height: 1,
 		}
 	}
-	rendered := lipgloss.NewStyle().PaddingLeft(0).Width(m.width).Render(strings.Join(lines, "\n"))
+	rendered := lipgloss.NewStyle().PaddingLeft(0).Width(m.width).Render(
+		strings.Join(append(chipLines, lines...), "\n"))
 	if card == nil {
 		return rendered
 	}
@@ -1200,6 +1222,12 @@ func (m *Model) renderMessageGroup(group messageGroup, atLine int) string {
 			item = youTextStyle.Render(wrapText(message.Body, available))
 		default:
 			item, foldedAnswer = m.renderAnswerFold(message, available)
+		}
+		if artifacts := m.renderMediaArtifacts(message, available); artifacts != "" {
+			if item != "" {
+				item += "\n"
+			}
+			item += artifacts
 		}
 		// A task-anchored answer names its origin: a small clickable chip that
 		// jumps to that task's activity view.
