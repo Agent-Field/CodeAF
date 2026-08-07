@@ -7,6 +7,7 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/Agent-Field/aforge-v2/internal/guard"
 	"github.com/Agent-Field/aforge-v2/internal/provider"
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 )
@@ -168,6 +169,14 @@ func bindGather(ctx context.Context, client Completer, graph *Graph, shared stri
 		group.Add(1)
 		go func(stage int) {
 			defer group.Done()
+			// asked stays true: the stage was called, and a fault is how that
+			// call ended. It reaches bindApply as a failure, which leaves the
+			// stage unbound rather than silently claiming it had no edges.
+			defer func() {
+				if recovered := recover(); recovered != nil {
+					results[stage-1] = bindResult{asked: true, err: guard.Note(fmt.Sprintf("plan/bind stage %d", stage), recovered)}
+				}
+			}()
 			reply, usage, err := bindStage(ctx, client, shared, graph, stage)
 			results[stage-1] = bindResult{asked: true, reply: reply, usage: usage, err: err}
 		}(stage)

@@ -36,6 +36,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/Agent-Field/aforge-v2/internal/guard"
 	"github.com/Agent-Field/aforge-v2/internal/provider"
 	"github.com/Agent-Field/aforge-v2/internal/store"
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
@@ -176,10 +177,24 @@ func Build(ctx context.Context, client Completer, goal string, options Options) 
 	opening.Add(2)
 	go func() {
 		defer opening.Done()
+		// Both openers carry their fault out in the error the caller below
+		// already reads: a faulted spine fails the build, as a failed one does,
+		// and a faulted grounding is joined into the returned error while the
+		// plan carries on without it.
+		defer func() {
+			if recovered := recover(); recovered != nil {
+				choice, spineErr = nil, guard.Note("plan/build spine", recovered)
+			}
+		}()
 		choice, spineUsage, spineErr = spineWithProgress(ctx, client, goal, options.SpineSamples, progress)
 	}()
 	go func() {
 		defer opening.Done()
+		defer func() {
+			if recovered := recover(); recovered != nil {
+				groundErr = guard.Note("plan/build ground", recovered)
+			}
+		}()
 		grounding, usage, err := GroundWith(ctx, client, goal, options.Recall)
 		groundUsage.Add(usage)
 		graph.Settled, graph.Open, graph.Evidence, groundErr = grounding.Settled, grounding.Open, grounding.Evidence, err
@@ -236,10 +251,24 @@ func Build(ctx context.Context, client Completer, goal string, options Options) 
 	passes.Add(2)
 	go func() {
 		defer passes.Done()
+		// A pass that faults before it returns leaves nothing behind, and
+		// nothing is indistinguishable from "no stage was worth asking". So the
+		// fault is appended as one failed result: the apply step below reads it
+		// as a failure and the error reaches the caller.
+		defer func() {
+			if recovered := recover(); recovered != nil {
+				bindResults = append(bindResults, bindResult{asked: true, err: guard.Note("plan/build bind", recovered)})
+			}
+		}()
 		bindResults = bindGather(ctx, client, graph, shared)
 	}()
 	go func() {
 		defer passes.Done()
+		defer func() {
+			if recovered := recover(); recovered != nil {
+				sizeResults = append(sizeResults, sizeResult{err: guard.Note("plan/build size", recovered)})
+			}
+		}()
 		sizeResults = sizeGather(ctx, client, graph, shared)
 	}()
 	passes.Wait()

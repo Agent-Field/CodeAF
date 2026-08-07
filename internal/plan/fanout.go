@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"sync"
 
+	"github.com/Agent-Field/aforge-v2/internal/guard"
 	"github.com/Agent-Field/aforge-v2/internal/provider"
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 )
@@ -126,6 +127,14 @@ func FanOut(ctx context.Context, client Completer, premise string, stages []Stag
 		group.Add(1)
 		go func(index int, stage Stage) {
 			defer group.Done()
+			// A faulting stage fills its own slot before Done runs, so the
+			// collector below reads a failed stage rather than an empty one and
+			// the other stages still land.
+			defer func() {
+				if recovered := recover(); recovered != nil {
+					results[index] = stageResult{err: guard.Note(fmt.Sprintf("plan/fanout stage %d", index+1), recovered)}
+				}
+			}()
 			nodes, usage, err := fanOutStage(ctx, client, shared, index+1, stage)
 			results[index] = stageResult{nodes: nodes, usage: usage, err: err}
 		}(index, stage)
