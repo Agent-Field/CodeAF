@@ -157,6 +157,11 @@ type Config struct {
 	PracticeDemandPct int
 	ProposeSkills     bool
 
+	// Attribution admits the standing attribution law into a worker's contract:
+	// the trailer on commits it authors, the footer on pull requests and issues
+	// it opens. Off is the law's absence, not an instruction to hide.
+	Attribution bool
+
 	// Panel is the set of models a run may route across, from AFORGE_MODELS. An
 	// empty panel is the default and is the kill switch: with no panel the
 	// harness builds the same single adapter it always did and no routing code
@@ -212,6 +217,7 @@ func Load() (Config, error) {
 	config.VisionModel = VisionModelAt(config.ProfileDir)
 	config.PracticeDemandPct = PracticeDemandPctAt(config.ProfileDir)
 	config.ProposeSkills = ProposeSkillsAt(config.ProfileDir)
+	config.Attribution = AttributionAt(config.ProfileDir)
 	if config.PracticeIdle, err = PracticeIdleAt(config.ProfileDir); err != nil {
 		return Config{}, err
 	}

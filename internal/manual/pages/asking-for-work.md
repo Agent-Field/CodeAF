@@ -66,6 +66,23 @@ inputs the workers can actually open.
   your daily rail before it spends. Repeat reads of the same file are cached
   next to it, so you pay at most once.
 
+## Attribution: how aforge signs git work
+
+When a worker makes git commits for you, it adds one trailer at the end of the
+commit message — `Co-Authored-By: aforge` — and nothing in the subject or the
+body. When it opens a pull request or an issue, it ends the body with an
+em-dash line and one sentence: *Drafted with agentfield ai · reviewed and owned
+by the author*, linking to `agentfield.ai/github`.
+
+That is the whole of it. It is provenance, not a byline: never inside a code
+file, never in a commit subject, never in your README, and never in a
+deliverable like a deck or a report. A repository that forbids AI trailers wins
+— its CONTRIBUTING or policy is honoured and the worker tells you it left the
+signature out.
+
+Turn it off in the settings sheet under **sharing**, or pin it from your shell
+with `AFORGE_ATTRIBUTION`. Off means the worker is never told to sign at all.
+
 ## What the reply promises
 
 A receipt says the work is queued and that you will be told when it lands. It

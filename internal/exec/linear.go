@@ -86,6 +86,59 @@ piece of work that depends on you, so length there is paid for many times over.
 Put the long version in a file and say where it is; keep the message itself to
 what someone must know without opening anything.`
 
+// The attribution law. It is provenance — who did the typing — rather than
+// advertising, so it lives in exactly two places a reader already looks for
+// provenance: the trailer block of a commit, and the last line of a pull
+// request or issue body. Everywhere else it is noise on the user's own work,
+// which is why the paragraph names the places it must never appear.
+//
+// The strings are constants because the exact bytes are the feature: a trailer
+// with a different address does not attribute, and a footer with a dropped utm
+// parameter cannot be counted. Tests pin them so a prompt edit cannot quietly
+// reword one.
+
+// AttributionTrailer is the commit trailer, and the only place aforge may sign
+// a commit it wrote for the user.
+const AttributionTrailer = "Co-Authored-By: aforge <agentfield-bot@users.noreply.github.com>"
+
+// AttributionSeparator is the em-dash line that opens the body footer.
+const AttributionSeparator = "—"
+
+// AttributionPullFooter is the one footer line on a pull request aforge opens.
+const AttributionPullFooter = "Drafted with [agentfield ai](https://agentfield.ai/github?utm_source=github&utm_medium=pull_request&utm_campaign=drafted_with) · reviewed and owned by the author"
+
+// AttributionIssueFooter is the same line for an issue; only the medium differs.
+const AttributionIssueFooter = "Drafted with [agentfield ai](https://agentfield.ai/github?utm_source=github&utm_medium=issue&utm_campaign=drafted_with) · reviewed and owned by the author"
+
+// attributionPrompt is unconditional once the setting is on: the instruction
+// carries its own condition, so no task-type detection has to guess whether a
+// job will touch git.
+const attributionPrompt = `
+
+When you create git commits on the user's behalf, add this trailer at the end of
+the commit message, in the trailer block after a blank line, and put nothing
+about aforge in the subject or the body:
+
+` + AttributionTrailer + `
+
+When you open pull requests or issues, end the body with an em-dash separator
+line and then one sentence — that is the whole footer, nothing else:
+
+` + AttributionSeparator + `
+` + AttributionPullFooter + `
+
+On an issue the same line reads ` + "`utm_medium=issue`" + ` instead:
+
+` + AttributionSeparator + `
+` + AttributionIssueFooter + `
+
+That is the entire extent of it. It never goes inside a code file, never in a
+commit subject line, never in a README or any other document you write for the
+user, and never in a deliverable such as a deck, a report, or a note. If the
+repository says otherwise — a CONTRIBUTING file or a stated policy that forbids
+AI trailers or generated-by lines — the repository wins: leave both out and say
+so in your deliverable.`
+
 const reflexSystemPrompt = `
 
 This assignment is a reflex: one obvious, reversible action with a deliberately
@@ -107,6 +160,8 @@ type Linear struct {
 	maxTurns  int
 	maxTokens int
 	deadline  time.Duration
+	// attribution carries the user's settings row into the standing contract.
+	attribution bool
 }
 
 // WithStore enables the optional persistent-memory pull tool. It mutates the
@@ -121,6 +176,14 @@ func (l *Linear) WithStore(history *store.Store) *Linear {
 // It is executor configuration, so reflex micro-leaves inherit it unchanged.
 func (l *Linear) WithMedia(media *MediaTools) *Linear {
 	l.media = media
+	return l
+}
+
+// WithAttribution admits the attribution law into the standing contract. Off is
+// the absence of the paragraph rather than a paragraph saying not to: a worker
+// told nothing about attribution does not attribute.
+func (l *Linear) WithAttribution(on bool) *Linear {
+	l.attribution = on
 	return l
 }
 
@@ -167,6 +230,25 @@ func NewLinear(client Completer, workspace *Workspace, web *Web, maxTurns, maxTo
 
 func (l *Linear) Skill() string { return "linear" }
 
+// system is the leaf's standing contract: the harness's invariants, then the
+// laws the user has switched on, then the narrowing for this assignment, then
+// the contract the planner wrote for this particular kind of job. Together they
+// are what a specialised harness would have hand-written for this domain —
+// generated instead, which is what keeps the loop generic.
+func (l *Linear) system(task Task) string {
+	system := systemPrompt
+	if l.attribution {
+		system += attributionPrompt
+	}
+	if task.Reflex {
+		system += reflexSystemPrompt
+	}
+	if contract := strings.TrimSpace(task.Contract); contract != "" {
+		system += "\n\nHow this particular kind of job is done well:\n" + contract
+	}
+	return system
+}
+
 // Run executes one task.
 func (l *Linear) Run(ctx context.Context, task Task) (returned *Outcome, runErr error) {
 	started := time.Now()
@@ -211,16 +293,8 @@ func (l *Linear) Run(ctx context.Context, task Task) (returned *Outcome, runErr 
 	}
 	trace := newTracer(l.workspace, task.NodeID)
 	defer trace.close()
-	// The system prompt is the harness's invariants; the contract, when the
-	// planner wrote one, is the working method for this particular kind of job.
-	// Together they are what a specialised harness would have hand-written for
-	// this domain — generated instead, which is what keeps the loop generic.
-	system := systemPrompt
-	if task.Reflex {
-		system += reflexSystemPrompt
-	}
+	system := l.system(task)
 	if contract := strings.TrimSpace(task.Contract); contract != "" {
-		system += "\n\nHow this particular kind of job is done well:\n" + contract
 		trace.note("contract:\n" + contract)
 	}
 	userContent := text(l.brief(task))

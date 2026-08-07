@@ -239,7 +239,7 @@ func TestLoadReadsPersistedSettings(t *testing.T) {
 	for key, raw := range map[string]string{
 		KeyPracticeBudget: "6", KeyPracticeIdle: "5m", KeyBriefAfter: "30m",
 		KeyDemandShare: "25", KeyProposeSkills: "off", KeyDocumentEngine: "free",
-		KeyVisionModel: "seer/vision",
+		KeyVisionModel: "seer/vision", KeyAttribution: "off",
 	} {
 		row, _ := rows.Row(key)
 		if err := row.Apply(raw); err != nil {
@@ -251,7 +251,7 @@ func TestLoadReadsPersistedSettings(t *testing.T) {
 	t.Setenv("AFORGE_PROFILE_DIR", dir)
 	for _, name := range []string{
 		"AFORGE_PRACTICE_BUDGET", "AFORGE_PRACTICE_IDLE", "AFORGE_BRIEF_AFTER",
-		"AFORGE_DOC_ENGINE", "AFORGE_VISION_MODEL",
+		"AFORGE_DOC_ENGINE", "AFORGE_VISION_MODEL", "AFORGE_ATTRIBUTION",
 	} {
 		t.Setenv(name, "")
 	}
@@ -266,6 +266,9 @@ func TestLoadReadsPersistedSettings(t *testing.T) {
 	}
 	if loaded.PracticeDemandPct != 25 || loaded.ProposeSkills {
 		t.Fatalf("learning dial = %d%% propose=%v", loaded.PracticeDemandPct, loaded.ProposeSkills)
+	}
+	if loaded.Attribution {
+		t.Fatal("attribution switched off in the sheet did not reach Load")
 	}
 
 	// The environment still wins over everything written here.
@@ -327,6 +330,54 @@ func TestTenurePersistsAndReachesTheProcessEnvironment(t *testing.T) {
 	InstallPersistedEnv(dir)
 	if got := os.Getenv("AFORGE_TENURE_AFTER"); got != "2" {
 		t.Fatalf("a set environment was overwritten: %q", got)
+	}
+}
+
+// Attribution is on until someone says otherwise, and the row is the only way
+// to say otherwise short of the shell — which still wins.
+func TestAttributionDefaultsOnPersistsAndHonorsItsEnvironmentPin(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("AFORGE_ATTRIBUTION", "")
+	rows := registry(t, dir)
+	row, ok := rows.Row(KeyAttribution)
+	if !ok {
+		t.Fatal("attribution is not registered")
+	}
+	if row.Category != CategorySharing || row.Kind != SettingBool || row.Label != "attribution" {
+		t.Fatalf("attribution row = %+v", row)
+	}
+	if row.Value() != "on" || !AttributionAt(dir) {
+		t.Fatalf("attribution does not default on: %q", row.Value())
+	}
+	if err := row.Apply("off"); err != nil {
+		t.Fatal(err)
+	}
+	if AttributionAt(dir) {
+		t.Fatal("off did not persist")
+	}
+	reread, _ := registry(t, dir).Row(KeyAttribution)
+	if reread.Value() != "off" {
+		t.Fatalf("the reread row lost the persisted choice: %q", reread.Value())
+	}
+
+	t.Setenv("AFORGE_ATTRIBUTION", "on")
+	if !AttributionAt(dir) {
+		t.Fatal("the environment lost to the persisted file")
+	}
+	pinned, _ := registry(t, dir).Row(KeyAttribution)
+	name, isPinned := pinned.PinnedBy()
+	if !isPinned || name != "AFORGE_ATTRIBUTION" {
+		t.Fatalf("attribution did not report its pin: %q", name)
+	}
+	if err := pinned.Apply("off"); err == nil || !strings.Contains(err.Error(), name) {
+		t.Fatalf("a pinned attribution accepted an edit: %v", err)
+	}
+
+	// A hand-typed pin that means nothing reads as the default rather than
+	// stopping a launch over a signature.
+	t.Setenv("AFORGE_ATTRIBUTION", "sure")
+	if !AttributionAt(dir) {
+		t.Fatal("a malformed pin did not fall back to the default")
 	}
 }
 
