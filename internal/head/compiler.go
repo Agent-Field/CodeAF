@@ -122,17 +122,24 @@ func (c *Compiler) Compile(ctx context.Context, instruction string, graphContext
 	if wanted && c.resolveModel != nil {
 		choice = c.resolveModel(words)
 		if len(choice.Candidates) > 1 {
-			// A model word that could mean several models is referent
-			// ambiguity like any other: one choose question, no work spliced.
-			return Brief{
-				Question:        modelChoiceQuestion(choice.Requested),
-				QuestionOptions: modelChoiceOptions(choice.Candidates),
-				ServiceIntent:   serviceIntent,
-			}, nil
+			if !words.Answered {
+				// A model word that could mean several models is referent
+				// ambiguity like any other: one choose question, no work spliced.
+				return Brief{
+					Question:        modelChoiceQuestion(choice.Requested),
+					QuestionOptions: modelChoiceOptions(choice.Candidates),
+					ServiceIntent:   serviceIntent,
+				}, nil
+			}
+			// This question was already asked and answered. Asking it again is
+			// a loop the user cannot leave, so the best candidate takes the job
+			// and the receipt carries the way to switch.
+			choice = settleAnsweredAmbiguity(choice)
 		}
 	}
 	user := "Current graph context:\n" + graphContext +
-		"\n\nUser instruction (verbatim; preserve exactly):\n" + instruction
+		"\n\nUser instruction (verbatim; preserve exactly):\n" + instruction +
+		settledQuestionBrief(instruction)
 	response, err := c.client.CompleteWithMessages(ctx, []ai.Message{
 		textMessage("system", compilerSystemPrompt),
 		textMessage("user", user),
@@ -170,6 +177,22 @@ func (c *Compiler) Compile(ctx context.Context, instruction string, graphContext
 		brief.ModelNote = modelReceiptNote(words, choice)
 	}
 	return brief, nil
+}
+
+// settledQuestionBrief declares the answers this ask already carries. The
+// deterministic recognizers are gated structurally; this is the same law for
+// the reasoning half of the rail, which would otherwise be free to put a
+// settled question back to the user.
+func settledQuestionBrief(instruction string) string {
+	answers := answeredCompilerQuestions(instruction)
+	if len(answers) == 0 {
+		return ""
+	}
+	settled := "\n\nAlready answered by the user — these are settled, never ask them again:"
+	for _, answer := range answers {
+		settled += "\n- " + answer
+	}
+	return settled
 }
 
 // RecognizesServiceIntent marks asks whose requested end-state is a running

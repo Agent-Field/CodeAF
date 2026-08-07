@@ -1009,14 +1009,16 @@ func (m *Model) updateKey(message tea.KeyMsg) (tea.Cmd, bool) {
 	}
 	// Numbered question options are a layer over the normal live input. An
 	// empty input enables shortcuts; once text exists, every key and enter
-	// continue through the ordinary free-text path.
+	// continue through the ordinary free-text path. The vim letters stay out
+	// of it: while the input has focus a letter is the first character of an
+	// answer, and "kimi 3" must arrive whole.
 	if m.inputFocused && m.input.Value() == "" {
 		if card := m.questionCardWithOptions(); card != nil {
 			switch {
-			case key == "up" || key == "k":
+			case key == "up":
 				m.moveQuestionSelection(card.ID, -1)
 				return nil, true
-			case key == "down" || key == "j":
+			case key == "down":
 				m.moveQuestionSelection(card.ID, 1)
 				return nil, true
 			case key == "enter":

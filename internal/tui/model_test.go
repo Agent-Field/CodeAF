@@ -2522,3 +2522,97 @@ func TestNonStreamingDeliverableUsesSimulatedTypewriter(t *testing.T) {
 			model.streamMode, model.renderMessages())
 	}
 }
+
+// modelChoiceThread seeds the transcript that started this: an ask whose model
+// word fits two catalog models, and the compiler's one choose question.
+func modelChoiceThread(t *testing.T) (*fakeBackend, *Model) {
+	t.Helper()
+	options := []store.QuestionOption{
+		{Label: "use moonshotai/kimi-k2", Value: "moonshotai/kimi-k2"},
+		{Label: "use moonshotai/kimi-k2-thinking", Value: "moonshotai/kimi-k2-thinking"},
+	}
+	backend := &fakeBackend{
+		messages: []store.Message{
+			{Seq: 1, SessionID: "kimi", Role: store.RoleUser, Body: "use kimi 3 model to look at our aforge"},
+			{Seq: 2, SessionID: "kimi", Role: store.RoleAgent, CommandSeq: 7, QuestionSeq: 9,
+				Options: options,
+				Body: store.QuestionMessageBody("Which kimi do you mean?", options,
+					store.QuestionConfig{Category: store.QuestionCategoryCompileAssumption})},
+		},
+		commands: []store.Command{{
+			Seq: 7, SessionID: "kimi", Kind: store.CommandSplice, Status: store.CommandRejected,
+			Instruction: "use kimi 3 model to look at our aforge",
+		}},
+	}
+	model := New(backend, "kimi")
+	model.setSize(100, 40)
+	model.applyPoll(model.poll()().(pollResultMsg))
+	// The arrival animation is not what is under test; land it.
+	model.clearStream()
+	model.streamQueue = nil
+	return backend, model
+}
+
+func TestPendingCompilerQuestionShowsItsNumbersInTheThread(t *testing.T) {
+	_, model := modelChoiceThread(t)
+	thread := ansi.Strip(model.renderMessages())
+	for _, want := range []string{"1 use moonshotai/kimi-k2", "2 use moonshotai/kimi-k2-thinking"} {
+		if !strings.Contains(thread, want) {
+			t.Fatalf("thread is missing %q:\n%s", want, thread)
+		}
+	}
+
+	// A later user turn consumes the question: the transcript keeps the words
+	// and drops the affordance.
+	model.messages = append(model.messages, store.Message{
+		Seq: 3, SessionID: "kimi", Role: store.RoleUser, Body: "1",
+	})
+	answered := ansi.Strip(model.renderMessages())
+	if strings.Contains(answered, "1 use moonshotai/kimi-k2") {
+		t.Fatalf("an answered question kept its options:\n%s", answered)
+	}
+	if !strings.Contains(answered, "Which kimi do you mean?") {
+		t.Fatalf("an answered question lost its words:\n%s", answered)
+	}
+}
+
+func TestPendingQuestionKeepsEveryLetterOfATypedAnswer(t *testing.T) {
+	backend, model := modelChoiceThread(t)
+	// "kimi" leads with the vim key that used to move the option selection, so
+	// the first keystroke was eaten and the answer arrived as "imi 3".
+	for _, character := range "kimi 3" {
+		_, _ = model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{character}})
+	}
+	if model.input.Value() != "kimi 3" {
+		t.Fatalf("typed answer = %q", model.input.Value())
+	}
+	if len(backend.posted) != 0 {
+		t.Fatalf("typing answered the question: %#v", backend.posted)
+	}
+
+	// A digit inside the draft is ordinary text, and the arrows still steer.
+	_, _ = model.Update(tea.KeyMsg{Type: tea.KeyDown})
+	if model.input.Value() != "kimi 3" || model.questionSelection[model.cards[0].ID] != 0 {
+		t.Fatalf("a draft lost its keys: input=%q selection=%v",
+			model.input.Value(), model.questionSelection)
+	}
+}
+
+func TestPendingQuestionStillAnswersByNumberFromAnEmptyInput(t *testing.T) {
+	backend, model := modelChoiceThread(t)
+	_, command := model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'2'}})
+	if command == nil {
+		t.Fatal("the digit shortcut stopped answering")
+	}
+	_, _ = model.Update(command())
+	if len(backend.posted) != 1 || backend.posted[0].Body != "2" {
+		t.Fatalf("digit answer = %#v", backend.posted)
+	}
+
+	// Arrow keys keep steering the selection from an empty input.
+	_, model = modelChoiceThread(t)
+	_, _ = model.Update(tea.KeyMsg{Type: tea.KeyDown})
+	if model.questionSelection[model.cards[0].ID] != 1 {
+		t.Fatalf("arrow selection = %v", model.questionSelection)
+	}
+}
