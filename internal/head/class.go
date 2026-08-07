@@ -205,20 +205,13 @@ func (h *Head) classSet(class classIntent, scopeRoot string, statuses []store.St
 		return classSet{}, err
 	}
 	byID := make(map[string]store.Node, len(nodes))
-	children := make(map[string][]string, len(nodes))
 	for _, node := range nodes {
 		byID[node.ID] = node
-	}
-	for _, node := range nodes {
-		if _, ok := byID[node.Parent]; ok {
-			children[node.Parent] = append(children[node.Parent], node.ID)
-		}
 	}
 	wanted := make(map[store.Status]bool, len(statuses))
 	for _, status := range statuses {
 		wanted[status] = true
 	}
-	matched := make([]store.Node, 0, len(nodes))
 	matchedID := make(map[string]bool, len(nodes))
 	for _, node := range nodes {
 		if node.ID == store.RootID || node.Folded || !wanted[node.Status] {
@@ -234,8 +227,31 @@ func (h *Head) classSet(class classIntent, scopeRoot string, statuses []store.St
 		if scopeRoot != "" && !classWithinScope(byID, node, scopeRoot) {
 			continue
 		}
-		matched = append(matched, node)
 		matchedID[node.ID] = true
+	}
+	return classUnits(nodes, matchedID), nil
+}
+
+// classUnits is the unit rule itself, over any matched set. It is separated
+// from the class filter because the toolbelt arrives at its set from explicit
+// ids rather than from a status word, and the rule that makes a set safe to act
+// on must be the same one either way.
+func classUnits(nodes []store.Node, matchedID map[string]bool) classSet {
+	byID := make(map[string]store.Node, len(nodes))
+	for _, node := range nodes {
+		byID[node.ID] = node
+	}
+	children := make(map[string][]string, len(nodes))
+	for _, node := range nodes {
+		if _, ok := byID[node.Parent]; ok {
+			children[node.Parent] = append(children[node.Parent], node.ID)
+		}
+	}
+	matched := make([]store.Node, 0, len(matchedID))
+	for _, node := range nodes {
+		if matchedID[node.ID] {
+			matched = append(matched, node)
+		}
 	}
 	whole := make(map[string]bool, len(matched))
 	for _, node := range matched {
@@ -258,7 +274,7 @@ func (h *Head) classSet(class classIntent, scopeRoot string, statuses []store.St
 		}
 	}
 	set.Jobs = len(jobs)
-	return set, nil
+	return set
 }
 
 // classWholeSubtree reports that nothing open below this node falls outside the
@@ -423,17 +439,25 @@ func (h *Head) askClassConfirm(user store.Message, kind store.CommandKind, instr
 	if scopeRoot == "" {
 		scopeRoot = classNoScope
 	}
-	allowFree := false
-	options := []store.QuestionOption{
-		{Label: fmt.Sprintf("yes, %s all %d", verb, set.Affected),
+	return h.askSurgerySetConfirm(user, prompt, set,
+		store.QuestionOption{Label: fmt.Sprintf("yes, %s all %d", verb, set.Affected),
 			Value: encodeSurgeryOption("class", kind, scopeRoot, instruction)},
-		{Label: classKeepLabel(kind, class),
-			Value: encodeSurgeryOption("classkeep", kind, scopeRoot, instruction)},
-	}
+		store.QuestionOption{Label: classKeepLabel(kind, class),
+			Value: encodeSurgeryOption("classkeep", kind, scopeRoot, instruction)})
+}
+
+// askSurgerySetConfirm posts the one blocking question a set is allowed. Every
+// set path shares it — the class path and the toolbelt differ only in how they
+// arrived at the set, never in how consent is asked for or how a muted question
+// falls back to keeping things as they are.
+func (h *Head) askSurgerySetConfirm(user store.Message, prompt string, set classSet,
+	yes, keep store.QuestionOption) error {
+	allowFree := false
+	options := []store.QuestionOption{yes, keep}
 	if ask, _, err := h.store.ShouldAsk(store.QuestionCategorySurgeryConfirm); err == nil && !ask {
 		if err := h.store.RecordAssumedWithDefault(store.QuestionCategorySurgeryConfirm, "2",
 			user.SessionID, prompt); err == nil {
-			return h.postAgent(user.SessionID, "Assuming the default: "+classKeepLabel(kind, class)+".", 0)
+			return h.postAgent(user.SessionID, "Assuming the default: "+keep.Label+".", 0)
 		}
 	}
 	body := store.QuestionMessageBody(prompt, options, store.QuestionConfig{
@@ -459,9 +483,26 @@ func (h *Head) askClassConfirm(user store.Message, kind store.CommandKind, instr
 // out instead of poisoning a batch.
 func (h *Head) commitClassSurgery(user store.Message, kind store.CommandKind, instruction string,
 	class classIntent, set classSet) error {
-	labels := make([]string, 0, len(set.Units))
+	labels, first := h.journalUnits(user, kind, instruction, set.Units)
+	if len(labels) == 0 {
+		return h.postAgent(user.SessionID, commandErrorReply, 0)
+	}
+	if len(labels) < len(set.Units) {
+		set.Affected = len(labels)
+		set.Jobs = 0
+	}
+	return h.postAgent(user.SessionID, classReceipt(kind, class, set, labels), first)
+}
+
+// journalUnits is the one commit path every set shares: one ordinary command
+// per unit, and the first seq so the reply can be tied to durable work. A unit
+// that settled since the set was read simply fails validation and drops out
+// instead of poisoning the rest.
+func (h *Head) journalUnits(user store.Message, kind store.CommandKind, instruction string,
+	units []store.Node) ([]string, int64) {
+	labels := make([]string, 0, len(units))
 	var first int64
-	for _, node := range set.Units {
+	for _, node := range units {
 		command, err := h.store.RequestCommand(store.Command{
 			SessionID: user.SessionID, Kind: kind, Target: node.ID, Instruction: instruction,
 		})
@@ -473,14 +514,7 @@ func (h *Head) commitClassSurgery(user store.Message, kind store.CommandKind, in
 		}
 		labels = append(labels, surgeryTargetLabel(node))
 	}
-	if len(labels) == 0 {
-		return h.postAgent(user.SessionID, commandErrorReply, 0)
-	}
-	if len(labels) < len(set.Units) {
-		set.Affected = len(labels)
-		set.Jobs = 0
-	}
-	return h.postAgent(user.SessionID, classReceipt(kind, class, set, labels), first)
+	return labels, first
 }
 
 // applyClassOption settles every answer the class path can produce.
@@ -488,6 +522,11 @@ func (h *Head) commitClassSurgery(user store.Message, kind store.CommandKind, in
 // of ids: the set the user agreed to is the set as it stands when they agree.
 func (h *Head) applyClassOption(user store.Message, action string, kind store.CommandKind,
 	target, instruction string) (bool, error) {
+	// The toolbelt's confirmations ride the same codec and the same two dispatch
+	// sites; they carry ids where a class answer carries a scope root.
+	if handled, err := h.applyBeltOption(user, action, kind, target, instruction); handled {
+		return true, err
+	}
 	class, ok := classSelector(instruction)
 	if !ok {
 		return false, nil

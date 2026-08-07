@@ -145,23 +145,27 @@ func (h *Head) surgeryMatches(intent surgeryIntent) ([]store.SurgeryTarget, erro
 	}
 	filtered := matches[:0]
 	for _, match := range matches {
-		switch intent.Kind {
-		case store.CommandResume:
-			if !match.Node.Held {
-				continue
-			}
-		case store.CommandPause:
-			if match.Node.Held {
-				continue
-			}
-		case store.CommandReprioritize:
-			if match.Node.Status != store.Pending {
-				continue
-			}
+		if !surgeryEligible(match.Node, intent.Kind) {
+			continue
 		}
 		filtered = append(filtered, match)
 	}
 	return filtered, nil
+}
+
+// surgeryEligible is the per-node half of the allowed-status table: the hold
+// and priority state a verb needs beyond a legal status. It is separate so the
+// toolbelt reads the same rule before naming a target the store would refuse.
+func surgeryEligible(node store.Node, kind store.CommandKind) bool {
+	switch kind {
+	case store.CommandResume:
+		return node.Held
+	case store.CommandPause:
+		return !node.Held
+	case store.CommandReprioritize:
+		return node.Status == store.Pending
+	}
+	return true
 }
 
 func (h *Head) resolveSurgery(user store.Message, kind store.CommandKind, target, instruction string, confirmed bool) error {

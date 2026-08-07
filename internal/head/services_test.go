@@ -182,7 +182,14 @@ func TestShutdownRecognitionDoesNotSwallowSingleServiceStops(t *testing.T) {
 			t.Fatalf("did not recognize shutdown: %q", phrase)
 		}
 	}
-	for _, phrase := range []string{"stop the dev server", "restart it", "stop the api preview service"} {
+	for _, phrase := range []string{
+		"stop the dev server", "restart it", "stop the api preview service",
+		// An exception is not a total: read as one, "kill everything except the
+		// finance one" stops the very job the user asked to spare. A set with a
+		// hole in it belongs to the toolbelt.
+		"kill everything except the finance one", "stop everything apart from the scans",
+		"shut everything down but keep the dev server",
+	} {
 		if recognizesShutdownAll(phrase) {
 			t.Fatalf("false shutdown recognition: %q", phrase)
 		}

@@ -146,13 +146,24 @@ func (h *Head) requestRevision(user store.Message, kind store.CommandKind, targe
 	// No acknowledgement on success, on purpose. The only honest receipt is
 	// the one that knows what actually changed in the plan and who was told,
 	// and that is written a moment later by the reconciler that did it.
-	if _, err := h.store.RequestCommand(store.Command{
-		SessionID: user.SessionID, Kind: kind,
-		Target: target, Instruction: strings.TrimSpace(message),
-	}); err != nil {
+	if _, err := h.journalRevision(user, kind, target, message); err != nil {
 		return h.postAgent(user.SessionID, commandErrorReply, 0)
 	}
 	return nil
+}
+
+// journalRevision is requestRevision's returning half. The toolbelt needs the
+// seq to tie its reply to durable work, and the failure to report back to the
+// model rather than to the user.
+func (h *Head) journalRevision(user store.Message, kind store.CommandKind, target, message string) (int64, error) {
+	command, err := h.store.RequestCommand(store.Command{
+		SessionID: user.SessionID, Kind: kind,
+		Target: target, Instruction: strings.TrimSpace(message),
+	})
+	if err != nil {
+		return 0, err
+	}
+	return command.Seq, nil
 }
 
 // askRedirectTarget is the single structured question this path is allowed:

@@ -77,8 +77,21 @@ func (h *Head) manageService(user store.Message) (bool, error) {
 // recognizesShutdownAll is terse on purpose: only unmistakably total phrasings
 // take the whole-workspace path, so "stop the dev server" still means one
 // service and nothing else is swept up with it.
+//
+// A sentence that carries an exception is not total, however it opens. "kill
+// everything except the finance one" contains "kill everything" and means
+// almost the opposite of it; read as total it stops the one job the user asked
+// to spare. Naming a set with a hole in it is the toolbelt's work, so the
+// exception hands the message on rather than being answered here.
 func recognizesShutdownAll(message string) bool {
 	lower := strings.ToLower(strings.TrimSpace(message))
+	for _, exception := range []string{
+		" except", " apart from", " other than", " besides ", " but the ", " but keep",
+	} {
+		if strings.Contains(lower, exception) {
+			return false
+		}
+	}
 	for _, phrase := range []string{
 		"shut it all down", "shut everything down", "shut down everything",
 		"stop everything", "stop it all", "stop all services", "stop all the services",
