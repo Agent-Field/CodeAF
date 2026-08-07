@@ -36,6 +36,7 @@ func TestModelPaletteCatalogFiltersEveryCapabilitySlot(t *testing.T) {
 	want := map[string][]string{
 		"talk":   {"chat/text", "chat/text-two", "chat/text-three", "chat/text-four"},
 		"work":   {"chat/text", "chat/text-two", "chat/text-three", "chat/text-four"},
+		"boost":  {"chat/text", "chat/text-two", "chat/text-three", "chat/text-four"},
 		"voice":  {"audio/asr"},
 		"image":  {"paint/image"},
 		"speech": {"voice/tts", "sound/general"},
@@ -51,6 +52,31 @@ func TestModelPaletteCatalogFiltersEveryCapabilitySlot(t *testing.T) {
 		if !reflect.DeepEqual(got, expected) {
 			t.Fatalf("%s catalog = %v, want %v", slot, got, expected)
 		}
+	}
+}
+
+func TestBoostPreferenceFollowsWorkPersistsOverrideAndCanBeCleared(t *testing.T) {
+	directory := t.TempDir()
+	work := &liveClient{model: "work/one"}
+	commander := &chatCommander{prefsDir: directory, taskClient: work}
+	if !commander.ModelFollows("boost") || commander.CurrentModel("boost") != "work/one" {
+		t.Fatalf("default boost follows=%t model=%q", commander.ModelFollows("boost"), commander.CurrentModel("boost"))
+	}
+	if err := commander.SetModel("boost", "anthropic/claude-opus-5"); err != nil {
+		t.Fatal(err)
+	}
+	if commander.ModelFollows("boost") || commander.CurrentModel("boost") != "anthropic/claude-opus-5" ||
+		loadChatPrefs(directory).BoostModel != "anthropic/claude-opus-5" {
+		t.Fatalf("explicit boost prefs = %+v model=%q", loadChatPrefs(directory), commander.CurrentModel("boost"))
+	}
+	if err := commander.SetModel("boost", ""); err != nil {
+		t.Fatal(err)
+	}
+	work.mu.Lock()
+	work.model = "work/two"
+	work.mu.Unlock()
+	if !commander.ModelFollows("boost") || commander.CurrentModel("boost") != "work/two" || loadChatPrefs(directory).BoostModel != "" {
+		t.Fatalf("cleared boost prefs = %+v model=%q", loadChatPrefs(directory), commander.CurrentModel("boost"))
 	}
 }
 

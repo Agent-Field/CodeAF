@@ -739,6 +739,10 @@ func (m *Model) scrollNodeAt(x, y int, down bool) bool {
 }
 
 func (m *Model) updateMouseClick(x, y int) (tea.Cmd, bool) {
+	if m.boostBounds.contains(x, y) {
+		m.toggleBoost()
+		return nil, true
+	}
 	if m.headerQuestionBounds.contains(x, y) {
 		m.focusPendingQuestion()
 		return nil, true
