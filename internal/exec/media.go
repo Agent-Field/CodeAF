@@ -59,6 +59,43 @@ type MediaTools struct {
 	VideoPrice   float64
 	WorkingModel string
 	BeforeSpend  func(context.Context, float64) error
+
+	// ResolveModel reads a media tool's optional model argument against the
+	// live catalog: "best" for the modality's strongest advertised model, or a
+	// name to resolve inside that modality. The returned error is already
+	// user-facing prose. Nil means the slot default is the only choice, which
+	// is what an embedder without a catalog gets.
+	ResolveModel func(modality, word string) (string, error)
+}
+
+// Media modality names. They are the same words the model palette's candidacy
+// slots use, so one vocabulary serves discovery, the picker, and these tools.
+const (
+	modalityImage  = "image"
+	modalitySpeech = "speech"
+	modalityMusic  = "music"
+	modalityVideo  = "video"
+)
+
+// mediaModel applies the tool's optional model argument over the slot default.
+// Absent means the slot default, unchanged. Anything else is resolved at call
+// time, so "best" tracks the catalog rather than a slug frozen at startup.
+func (t *Toolbox) mediaModel(modality, slotDefault string, args map[string]any) (string, string) {
+	word := strings.TrimSpace(stringArg(args, "model"))
+	if word == "" {
+		return strings.TrimSpace(slotDefault), ""
+	}
+	if t.media == nil || t.media.ResolveModel == nil {
+		return strings.TrimSpace(slotDefault), ""
+	}
+	resolved, err := t.media.ResolveModel(modality, word)
+	if err != nil {
+		return "", err.Error()
+	}
+	if strings.TrimSpace(resolved) == "" {
+		return strings.TrimSpace(slotDefault), ""
+	}
+	return strings.TrimSpace(resolved), ""
 }
 
 func (t *Toolbox) generateImage(ctx context.Context, args map[string]any) Result {
@@ -73,7 +110,10 @@ func (t *Toolbox) generateImage(ctx context.Context, args map[string]any) Result
 	if n < 1 || n > 10 {
 		return errorf("generate_image n must be between 1 and 10")
 	}
-	model := strings.TrimSpace(t.media.ImageModel)
+	model, refused := t.mediaModel(modalityImage, t.media.ImageModel, args)
+	if refused != "" {
+		return errorf("%s", refused)
+	}
 	if model == "" {
 		return errorf("no image-generation model is available")
 	}
@@ -133,7 +173,7 @@ func (t *Toolbox) generateImage(ctx context.Context, args map[string]any) Result
 	for _, path := range paths {
 		lines = append(lines, "⌾ "+filepath.ToSlash(path))
 	}
-	lines = append(lines, fmt.Sprintf("Generated %d image(s) for %s.", len(paths), oneLine(prompt, 100)))
+	lines = append(lines, fmt.Sprintf("Generated %d image(s) for %s on %s.", len(paths), oneLine(prompt, 100), model))
 	return Result{Content: strings.Join(lines, "\n"), Usage: mediaUsage(response.Usage)}
 }
 
@@ -145,7 +185,10 @@ func (t *Toolbox) speak(ctx context.Context, args map[string]any) Result {
 	if body == "" {
 		return errorf("speak needs text")
 	}
-	model := strings.TrimSpace(t.media.SpeechModel)
+	model, refused := t.mediaModel(modalitySpeech, t.media.SpeechModel, args)
+	if refused != "" {
+		return errorf("%s", refused)
+	}
 	if model == "" {
 		return errorf("no speech model is available")
 	}
@@ -170,7 +213,7 @@ func (t *Toolbox) speak(ctx context.Context, args map[string]any) Result {
 	}
 	t.workspace.Record(t.nodeID, full)
 	return Result{
-		Content: "♪ " + filepath.ToSlash(relative) + "\nSynthesized speech for " + oneLine(body, 100) + ".",
+		Content: "♪ " + filepath.ToSlash(relative) + "\nSynthesized speech for " + oneLine(body, 100) + " on " + model + ".",
 		Usage:   mediaUsage(response.Usage),
 	}
 }
@@ -190,7 +233,10 @@ func (t *Toolbox) generateMusic(ctx context.Context, args map[string]any) Result
 	if format != "mp3" {
 		return errorf("generate_music format must be mp3")
 	}
-	model := strings.TrimSpace(t.media.MusicModel)
+	model, refused := t.mediaModel(modalityMusic, t.media.MusicModel, args)
+	if refused != "" {
+		return errorf("%s", refused)
+	}
 	if model == "" {
 		return errorf("no music-generation model is available")
 	}
@@ -211,7 +257,7 @@ func (t *Toolbox) generateMusic(ctx context.Context, args map[string]any) Result
 	}
 	t.workspace.Record(t.nodeID, full)
 	return Result{
-		Content: "♪ " + filepath.ToSlash(relative) + "\nGenerated music for " + oneLine(prompt, 100) + ".",
+		Content: "♪ " + filepath.ToSlash(relative) + "\nGenerated music for " + oneLine(prompt, 100) + " on " + model + ".",
 		Usage:   mediaUsage(response.Usage),
 	}
 }
@@ -228,7 +274,10 @@ func (t *Toolbox) generateVideo(ctx context.Context, args map[string]any) Result
 	if duration < 0 {
 		return errorf("generate_video duration must be a positive number of seconds")
 	}
-	model := strings.TrimSpace(t.media.VideoModel)
+	model, refused := t.mediaModel(modalityVideo, t.media.VideoModel, args)
+	if refused != "" {
+		return errorf("%s", refused)
+	}
 	if model == "" {
 		return errorf("no video-generation model is available")
 	}
@@ -281,7 +330,7 @@ func (t *Toolbox) generateVideo(ctx context.Context, args map[string]any) Result
 	}
 	t.workspace.Record(t.nodeID, full)
 	return Result{
-		Content: "▶ " + filepath.ToSlash(relative) + "\nGenerated video for " + oneLine(prompt, 100) + ".",
+		Content: "▶ " + filepath.ToSlash(relative) + "\nGenerated video for " + oneLine(prompt, 100) + " on " + model + ".",
 		Usage:   mediaUsage(response.Usage),
 	}
 }

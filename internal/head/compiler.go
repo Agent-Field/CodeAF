@@ -76,17 +76,34 @@ type Brief struct {
 	// ServiceIntent is deterministic consent provenance; the provider never
 	// gets to infer whether a process may outlive its leaf.
 	ServiceIntent bool `json:"service_intent,omitempty"`
+
+	// WorkModel is the model the user named for this job in their own words.
+	// Empty is the ordinary case: the surface's current work model serves.
+	WorkModel string `json:"work_model,omitempty"`
+
+	// ModelNote is the one calm receipt line about that choice — which model
+	// runs the job, or why the name they used did not land.
+	ModelNote string `json:"model_note,omitempty"`
 }
 
 // Compiler converts verbatim user intent into a planning brief without asking
 // the user to resolve unspecified details first.
 type Compiler struct {
-	client Client
+	client       Client
+	resolveModel ModelResolver
 }
 
 // NewCompiler returns an intent compiler backed by client.
 func NewCompiler(client Client) *Compiler {
 	return &Compiler{client: client}
+}
+
+// WithModelResolver installs the surface's catalog-backed reading of model
+// words. Without it the compiler still recognizes them and still says nothing
+// wrong: every job simply runs on the default work model.
+func (c *Compiler) WithModelResolver(resolve ModelResolver) *Compiler {
+	c.resolveModel = resolve
+	return c
 }
 
 // Compile applies assume-and-declare once. The exact instruction is appended
@@ -100,6 +117,20 @@ func (c *Compiler) Compile(ctx context.Context, instruction string, graphContext
 		return c.compileStanding(ctx, instruction, graphContext)
 	}
 	serviceIntent := RecognizesServiceIntent(instruction)
+	words, wanted := RecognizeModelWords(instruction)
+	var choice WorkModelChoice
+	if wanted && c.resolveModel != nil {
+		choice = c.resolveModel(words)
+		if len(choice.Candidates) > 1 {
+			// A model word that could mean several models is referent
+			// ambiguity like any other: one choose question, no work spliced.
+			return Brief{
+				Question:        modelChoiceQuestion(choice.Requested),
+				QuestionOptions: modelChoiceOptions(choice.Candidates),
+				ServiceIntent:   serviceIntent,
+			}, nil
+		}
+	}
 	user := "Current graph context:\n" + graphContext +
 		"\n\nUser instruction (verbatim; preserve exactly):\n" + instruction
 	response, err := c.client.CompleteWithMessages(ctx, []ai.Message{
@@ -129,11 +160,15 @@ func (c *Compiler) Compile(ctx context.Context, instruction string, graphContext
 	if err := validateBrief(brief); err != nil {
 		return Brief{}, fmt.Errorf("compile intent: %w", err)
 	}
-	brief.Goal = anchorGoal(brief.Goal, instruction)
+	brief.Goal = anchorQualityWords(anchorGoal(brief.Goal, instruction), instruction)
 	brief.Scale = normalizeScale(brief.Scale)
 	brief.BuildsOn = normalizeBuildsOn(brief.BuildsOn)
 	brief.TrialOf = normalizeTrialOf(graphContext, brief.TrialOf)
 	brief.ServiceIntent = serviceIntent
+	brief.WorkModel = strings.TrimSpace(choice.Model)
+	if wanted {
+		brief.ModelNote = modelReceiptNote(words, choice)
+	}
 	return brief, nil
 }
 

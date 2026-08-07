@@ -114,6 +114,11 @@ func newToolboxWithMedia(workspace *Workspace, nodeID int, web *Web, history *st
 	return &Toolbox{workspace: workspace, nodeID: nodeID, web: web, history: history, media: media, jobs: newJobRegistry(workspace, nodeID)}
 }
 
+// mediaModelArgDescription teaches the model argument in one breath: the slot
+// default is right for routine work, and "best" is for the times quality is
+// the point. It is resent every turn, so it stays one sentence.
+const mediaModelArgDescription = `optional model: omit for the default, "best" when the user asked for quality or this is the final deliverable, or a model name`
+
 // Definitions are what the model sees. Descriptions are terse because they are
 // resent every turn, but each one states the thing an agent gets wrong without
 // being told.
@@ -161,22 +166,26 @@ func (t *Toolbox) Definitions() []ai.ToolDefinition {
 				"prompt":          prop("string", "what to generate"),
 				"n":               prop("integer", "number of images, default 1, maximum 10"),
 				"size":            prop("string", "optional image size or aspect ratio"),
+				"model":           prop("string", mediaModelArgDescription),
 				"reference_paths": map[string]any{"type": "array", "items": map[string]any{"type": "string"}, "description": "workspace image paths to use as references"},
 			}, "prompt"),
 			define("generate_music", "Generate a music clip as an MP3 in the workspace media directory.", map[string]any{
 				"prompt": prop("string", "music prompt or lyrics"),
 				"format": prop("string", "optional output format; mp3 is currently supported"),
+				"model":  prop("string", mediaModelArgDescription),
 			}, "prompt"),
 			define("generate_video", "Generate a video into the workspace media directory. This call waits for the asynchronous provider job to finish, for up to ten minutes. The first two reference_paths become first/last frames; any remaining images are style references.", map[string]any{
 				"prompt":          prop("string", "what to generate"),
 				"duration":        prop("integer", "optional duration in seconds"),
 				"resolution":      prop("string", "optional resolution such as 480p, 720p, or 1080p"),
 				"aspect_ratio":    prop("string", "optional aspect ratio such as 16:9"),
+				"model":           prop("string", mediaModelArgDescription),
 				"reference_paths": map[string]any{"type": "array", "items": map[string]any{"type": "string"}, "description": "workspace image paths for first/last frames and style guidance"},
 			}, "prompt"),
 			define("speak", "Synthesize speech as an MP3 in the workspace media directory.", map[string]any{
 				"text":  prop("string", "text to speak"),
 				"voice": prop("string", "optional voice, default alloy"),
+				"model": prop("string", mediaModelArgDescription),
 			}, "text"),
 			define("view_image", "Look at a workspace image. If the current model cannot see, a vision model looks and reports back — pass question for a targeted check.", map[string]any{
 				"path":     prop("string", "workspace-relative image path"),

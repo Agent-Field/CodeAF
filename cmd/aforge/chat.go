@@ -98,6 +98,11 @@ func runChat(args []string) error {
 		ImageModel: prefs.ImageModel, SpeechModel: prefs.SpeechModel,
 		MusicModel: prefs.MusicModel, VideoModel: prefs.VideoModel,
 		VisionModel: settings.ResolveVisionModel(modelCatalog, talkModel, workModel),
+		// "best" and a named model are resolved at call time, so the strongest
+		// advertised model is whatever the catalog says now, not at startup.
+		ResolveModel: func(modality, word string) (string, error) {
+			return config.ResolveMediaModel(modelCatalog, modality, word)
+		},
 	}
 	if video, ok := modelCatalog.Model(baseMedia.VideoModel); ok {
 		baseMedia.VideoPrice = video.RequestPrice
@@ -152,7 +157,18 @@ func runChat(args []string) error {
 	// same plan nodes the scheduler would have read.
 	plans := &jobPlans{graphs: map[string]plannedJob{}}
 
-	compiler := head.NewCompiler(chatClient)
+	// The commander owns the live boost slot, and it is built further down;
+	// the resolver reads it through this handle so a later /model change is
+	// what the next job's model words resolve against.
+	var commander *chatCommander
+	compiler := head.NewCompiler(chatClient).WithModelResolver(func(words head.ModelWords) head.WorkModelChoice {
+		return resolveWorkModelWords(words, modelCatalog, func() string {
+			if commander != nil {
+				return commander.CurrentModel(head.ModelSlotBoost)
+			}
+			return taskClient.Model()
+		})
+	})
 	reconciler := resident.New(graph,
 		func(ctx context.Context, instruction, graphContext string) (resident.Compiled, error) {
 			augmented := graphContext
@@ -173,6 +189,8 @@ func runChat(args []string) error {
 				QuestionOptions: brief.QuestionOptions,
 				Charter:         brief.Charter,
 				ServiceIntent:   brief.ServiceIntent,
+				WorkModel:       brief.WorkModel,
+				ModelNote:       brief.ModelNote,
 			}, nil
 		},
 		planSubtree(settings, taskClient, plans, graph),
@@ -220,6 +238,14 @@ func runChat(args []string) error {
 		planGraph, planNode, workingModel, workingClient := plans.lookup(node.ID)
 		if workingClient == nil {
 			workingModel, workingClient = taskClient.Snapshot()
+		}
+		// A model the user named for this job outranks both, and only for this
+		// job: the request rides the node's provenance, so every leaf under it
+		// is served by that model however the work slot moves afterwards.
+		escalatable := taskClient.escalatable()
+		if pinned, ok := pinnedWorkClient(boostClients, node); ok {
+			workingModel, workingClient = pinned.Snapshot()
+			escalatable = pinned.escalatable()
 		}
 		// Ordinary leaves retain the byte-identical headless envelope. Reflexes use
 		// the deliberately tiny rung budget and a seconds-scale watchdog.
@@ -319,7 +345,7 @@ func runChat(args []string) error {
 		// than a silent hang, and a leaf whose verdict says a stronger model
 		// might fix it gets exactly one escalation when a panel offers one.
 		attempts := 1
-		if !isReflex && taskClient.escalatable() {
+		if !isReflex && escalatable {
 			attempts = 2
 		}
 		// One job is one cache lineage, exactly as one headless run is: the
@@ -583,7 +609,7 @@ func runChat(args []string) error {
 	go func() { defer background.Done(); _ = reconciler.Serve(ctx) }()
 	go func() { defer background.Done(); _ = runner.Serve(ctx) }()
 
-	commander := &chatCommander{
+	commander = &chatCommander{
 		settings:      settings,
 		database:      path,
 		prefsDir:      filepath.Dir(path),
@@ -1313,6 +1339,16 @@ func (p *messageClientPool) ForMessage(message store.Message) (head.Client, erro
 	if model == "" {
 		return nil, errors.New("boost message has no model")
 	}
+	return p.ForModel(model)
+}
+
+// ForModel is the same pinning seam seen from the graph side: one client per
+// exact model slug, shared by every leaf that asked for it.
+func (p *messageClientPool) ForModel(model string) (*liveClient, error) {
+	model = strings.TrimSpace(model)
+	if model == "" {
+		return nil, errors.New("no model named")
+	}
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	if client := p.clients[model]; client != nil {
@@ -1327,6 +1363,48 @@ func (p *messageClientPool) ForMessage(message store.Message) (head.Client, erro
 	}
 	p.clients[model] = client
 	return client, nil
+}
+
+// pinnedWorkClient honors the model a job's own words asked for. An
+// unreachable slug degrades silently to the ordinary work client: the job
+// still runs, which is the whole point of a preference.
+func pinnedWorkClient(pool *messageClientPool, node store.Node) (*liveClient, bool) {
+	model := strings.TrimSpace(node.Provenance.WorkModel)
+	if pool == nil || model == "" {
+		return nil, false
+	}
+	client, err := pool.ForModel(model)
+	if err != nil || client == nil {
+		return nil, false
+	}
+	return client, true
+}
+
+// resolveWorkModelWords is the surface's answer to the model words the
+// compiler recognized: the boost slot for a slot word, catalog resolution
+// inside the chat-capable candidacy filter for a name.
+func resolveWorkModelWords(words head.ModelWords, models *catalog.Catalog, boost func() string) head.WorkModelChoice {
+	if words.Boost {
+		model := ""
+		if boost != nil {
+			model = strings.TrimSpace(boost())
+		}
+		return head.WorkModelChoice{Model: model, Requested: "the boost model"}
+	}
+	for _, name := range words.Names {
+		matches := config.ModelMatches(models, head.ModelSlotWork, name, head.MaxModelCandidates)
+		if len(matches) == 1 {
+			return head.WorkModelChoice{Model: matches[0], Requested: name}
+		}
+		if len(matches) > 1 {
+			return head.WorkModelChoice{Candidates: matches, Requested: name}
+		}
+	}
+	requested := ""
+	if len(words.Names) > 0 {
+		requested = words.Names[0]
+	}
+	return head.WorkModelChoice{Requested: requested}
 }
 
 func newLiveClient(settings config.Config, model string) (*liveClient, error) {
