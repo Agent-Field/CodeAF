@@ -15,6 +15,34 @@ const (
 	maxObservationBudget = 256 << 10
 )
 
+// decayLowWaterPercent is where a firing decay pass stops, as a percentage of
+// the budget it fired at.
+//
+// Trimming to exactly the budget every turn looks frugal and is the most
+// expensive thing the loop does. Every call rides a prefix cache: the provider
+// bills the cached rate for the longest prefix that is byte-identical to the
+// previous call and full price for everything after the first changed byte.
+// Stubbing one old result rewrites a message near the front of the transcript,
+// so the whole tail behind it — every assistant turn, every surviving result —
+// is re-billed cold. In steady state the leaf adds N bytes of output per turn
+// and must retire N bytes, so a trim-to-budget pass fires on *every* turn and
+// the transcript is never cached past the fade line.
+//
+// Hysteresis converts that into one rewrite per K turns. On crossing the budget
+// the pass retires in a single batch down to this mark, leaving headroom equal
+// to the remaining quarter of the budget; the next several turns fit inside it
+// and touch nothing, so their prefixes are byte-identical and hit warm. One
+// batch of stubs every K turns costs one invalidation where per-turn trimming
+// costs K.
+//
+// The price is window size: on average the transcript carries less raw output
+// than a trim-to-budget pass would leave. Three quarters halves the rewrite
+// rate while giving up an eighth of the average window — half would quarter it
+// but cut the window enough to start costing re-reads, which is the same waste
+// wearing different clothes. Nothing is lost either way: every stub still
+// points at the spill file holding its bytes.
+const decayLowWaterPercent = 75
+
 // spillFunc preserves a decaying observation's full body in the workspace and
 // returns the workspace-relative path it went to. ok=false means the bytes
 // could not be written and the caller must not claim a path.
@@ -38,6 +66,10 @@ type spillFunc func(toolCallID, body string) (path string, ok bool)
 // results all survive, while one huge one retires early — which is the right
 // trade, because the huge one is what costs.
 //
+// Fading happens in batches, not continuously. See decayLowWaterPercent: a pass
+// that fires clears down to the low-water mark so that most turns can leave the
+// transcript untouched, because an untouched transcript is a cached one.
+//
 // A tool message is only ever shortened, never removed. Its ToolCallID pairs
 // with the assistant turn that requested it, and an unpaired tool_call is a
 // hard provider error rather than a degraded prompt.
@@ -56,13 +88,77 @@ func newDecayer(labels map[string]string, spill spillFunc) *decayer {
 	return &decayer{labels: labels, spill: spill, spilled: map[string]string{}}
 }
 
-// decay walks the transcript newest-first and stubs whatever raw tool output
-// no longer fits the budget. It returns how many results were newly stubbed.
+// decay stubs raw tool output once the live window outgrows the budget, and
+// does nothing at all until then. It returns how many results were newly
+// stubbed.
+//
+// The check is the cheap half and the point of the whole design: most turns
+// answer "still under budget" by summing lengths, mutate nothing, and leave the
+// prompt prefix byte-identical to the previous turn. When the window does cross
+// the line, one pass retires in bulk to the low-water mark rather than shaving
+// off exactly the overflow, buying several quiet turns before the next rewrite.
 func (d *decayer) decay(messages []ai.Message, budget int) int {
+	if liveObservationBytes(messages) <= budget {
+		return 0
+	}
+	return d.retire(messages, budget, decayLowWater(budget))
+}
+
+// decayLowWater is where a firing pass stops. It is always at or below the
+// budget, so the post-decay invariant the loop depends on — raw live bytes
+// never exceed the budget once decay has run — holds unchanged.
+func decayLowWater(budget int) int {
+	mark := budget * decayLowWaterPercent / 100
+	if mark < 0 {
+		mark = 0
+	}
+	return mark
+}
+
+// liveObservationBytes is the raw cost of the transcript's tool output as it
+// currently stands: already-stubbed results count as their stub, because that
+// is what the provider is actually billed for.
+func liveObservationBytes(messages []ai.Message) int {
+	total := 0
+	for _, message := range messages {
+		if message.Role != "tool" {
+			continue
+		}
+		for _, part := range message.Content {
+			total += len(part.Text)
+		}
+	}
+	return total
+}
+
+// retire walks the transcript newest-first and stubs whatever raw tool output
+// no longer fits, oldest results going first. Selection is unchanged from the
+// trim-to-budget pass it replaces — keep while it fits, stub when it does not —
+// only the level it fills to is lower.
+//
+// The most recent turn's results are the exception, and they are measured
+// against the full budget rather than the low-water mark. Decay runs *before* a
+// turn, so those bytes are the raw material the model has not read yet; the
+// low-water mark governs how deep into history the batch reaches, never whether
+// the current turn gets to see its own output. Everything from the last
+// assistant message backwards is history and fades to the mark.
+func (d *decayer) retire(messages []ai.Message, budget, lowWater int) int {
 	spent, decayed := 0, 0
+	// fresh is true while the walk is still inside the results of the newest
+	// assistant turn; the transcript is append-only, so crossing an assistant
+	// message is exactly the boundary between this turn and history.
+	fresh := true
 	for index := len(messages) - 1; index >= 0; index-- {
+		if messages[index].Role == "assistant" {
+			fresh = false
+			continue
+		}
 		if messages[index].Role != "tool" {
 			continue
+		}
+		limit := lowWater
+		if fresh {
+			limit = budget
 		}
 		body := contentOf(messages[index])
 		id := messages[index].ToolCallID
@@ -77,7 +173,7 @@ func (d *decayer) decay(messages []ai.Message, budget int) int {
 			spent += len(body)
 			continue
 		}
-		if spent+len(body) <= budget {
+		if spent+len(body) <= limit {
 			spent += len(body)
 			continue
 		}

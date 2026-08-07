@@ -158,7 +158,6 @@ func (r *Reconciler) speakProgress(ctx context.Context) error {
 		// A narrator error or empty line skips this update; lastPost still
 		// advances so a persistent failure cannot hammer the model.
 		state.lastPost = time.Now()
-		state.finished = nil
 		if err != nil || strings.TrimSpace(line) == "" {
 			continue
 		}
@@ -171,6 +170,12 @@ func (r *Reconciler) speakProgress(ctx context.Context) error {
 		}); err != nil {
 			return err
 		}
+		// The milestones are spent only once they have actually been spoken.
+		// Clearing them alongside lastPost lost them to every transient
+		// failure: the call that erred was the only place those finishes were
+		// written down, so a single bad response silently deleted the news the
+		// next update existed to deliver.
+		state.finished = nil
 		state.previous = append(state.previous, line)
 		if len(state.previous) > narratePreviousKept {
 			state.previous = state.previous[len(state.previous)-narratePreviousKept:]
