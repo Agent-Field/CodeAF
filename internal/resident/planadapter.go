@@ -91,6 +91,35 @@ func SubtreeFromPlan(graph *plan.Graph, prefix string) (store.Subtree, error) {
 		}
 		return fmt.Sprintf("%s-n%d", prefix, planID)
 	}
+
+	// A need may point at a container that was expanded away. Dropping it
+	// dropped the dependency itself: a "connect the scans" node ran first,
+	// against an empty workspace, because its needs named the three scan
+	// containers and none of their fourteen leaves. A container's meaning is
+	// "done when its descendants are done", so a need on one resolves to every
+	// admitted node that expanded out of it.
+	childrenOf := make(map[int][]int, len(graph.Nodes))
+	for _, node := range graph.Nodes {
+		if node.Parent != 0 {
+			childrenOf[node.Parent] = append(childrenOf[node.Parent], node.ID)
+		}
+	}
+	var resolveNeed func(planID int, seen map[int]bool) []int
+	resolveNeed = func(planID int, seen map[int]bool) []int {
+		if seen[planID] {
+			return nil
+		}
+		seen[planID] = true
+		if included[planID] {
+			return []int{planID}
+		}
+		var resolved []int
+		for _, child := range childrenOf[planID] {
+			resolved = append(resolved, resolveNeed(child, seen)...)
+		}
+		return resolved
+	}
+
 	specs := make([]store.NodeSpec, 0, len(admitted))
 	for _, node := range admitted {
 		spec := store.NodeSpec{
@@ -103,11 +132,15 @@ func SubtreeFromPlan(graph *plan.Graph, prefix string) (store.Subtree, error) {
 		if node.ID != rootID {
 			spec.Parent = id(rootID)
 		}
+		needed := make(map[int]bool)
 		for _, need := range node.Needs {
-			if !included[need] {
-				continue
+			for _, target := range resolveNeed(need, map[int]bool{node.ID: true}) {
+				if target == node.ID || needed[target] {
+					continue
+				}
+				needed[target] = true
+				spec.Needs = append(spec.Needs, store.Need{NodeID: id(target), Kind: store.FeedsInto})
 			}
-			spec.Needs = append(spec.Needs, store.Need{NodeID: id(need), Kind: store.FeedsInto})
 		}
 		specs = append(specs, spec)
 	}
