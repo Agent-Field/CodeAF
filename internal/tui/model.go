@@ -119,8 +119,18 @@ type pollResultMsg struct {
 	jobUsageErr       error
 	commandsErr       error
 	agentQuestionsErr error
-	selfSpendErr      error
+	selfCharters      []store.Charter
+	chartersRead      bool
+	selfChartersErr   error
+
+	selfDataRead      bool
+	selfSpend         float64
+	selfCompetence    store.CompetenceMap
+	selfFacts         []store.Fact
 	selfReceiptsErr   error
+	selfSpendErr      error
+	selfCompetenceErr error
+	selfFactsErr      error
 
 	nodeID          string
 	node            store.Node
@@ -155,6 +165,7 @@ type Model struct {
 	input textinput.Model
 	chat  viewport.Model
 	graph viewport.Model
+	self  viewport.Model
 
 	nodeTrace viewport.Model
 
@@ -172,6 +183,18 @@ type Model struct {
 	selfLearning         string
 	lastSeq              int64
 	answeringQuestionSeq int64
+
+	// Self is a read-only employee file assembled by the ordinary store poll.
+	// Its four sections share one viewport and one keyboard selection.
+	selfOpen       bool
+	selfReceipts   []store.SelfReceipt
+	selfSpend      float64
+	selfCompetence store.CompetenceMap
+	selfFacts      []store.Fact
+	selfCharters   []store.Charter
+	selfExpanded   int
+	selfSelection  int
+	selfRows       []selfRow
 
 	cards           []jobCard
 	cardExpanded    map[string]bool
@@ -298,6 +321,7 @@ type Model struct {
 	historyGeneration     int
 	status                string
 	statusUntil           time.Time
+	headerStatusShown     bool
 	boost                 boostMode
 
 	voiceRecorder         voice.Recorder
@@ -339,6 +363,9 @@ type Model struct {
 
 	chatBounds                paneBounds
 	headerTasksBounds         paneBounds
+	headerThreadBounds        paneBounds
+	headerBoardBounds         paneBounds
+	headerSelfBounds          paneBounds
 	headerQuestionBounds      paneBounds
 	headerModelsBounds        paneBounds
 	headerHelpBounds          paneBounds
@@ -347,6 +374,7 @@ type Model struct {
 	graphRowsBounds           paneBounds
 	standingRowsBounds        paneBounds
 	graphToggleBounds         paneBounds
+	selfBounds                paneBounds
 	inputBounds               paneBounds
 	boostBounds               paneBounds
 	micBounds                 paneBounds
@@ -388,6 +416,7 @@ const (
 	focusChat
 	focusCards
 	focusGraph
+	focusSelf
 	focusHeader
 )
 
@@ -443,6 +472,7 @@ func newModel(backend Backend, sessionID string, commander Commander) *Model {
 		input:                 input,
 		chat:                  viewport.New(1, 1),
 		graph:                 viewport.New(1, 1),
+		self:                  viewport.New(1, 1),
 		nodeTrace:             viewport.New(1, 1),
 		inputFocused:          true,
 		focus:                 focusInput,
@@ -466,6 +496,7 @@ func newModel(backend Backend, sessionID string, commander Commander) *Model {
 		voiceChunkText:        map[int]string{},
 		tipCurrent:            -1,
 		tipSeen:               map[int]bool{},
+		selfExpanded:          -1,
 	}
 	if services, ok := commander.(voiceServices); ok {
 		m.voiceRecorder = services.VoiceRecorder()
@@ -565,6 +596,7 @@ func (m *Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		m.spinnerFrame = (m.spinnerFrame + 1) % len(spinnerFrames)
 		m.refreshChat()
 		m.refreshGraph()
+		m.refreshSelf()
 		return m, m.scheduleAnimation()
 
 	case catalogResultMsg:
@@ -685,6 +717,10 @@ func (m *Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		m.refreshGraph()
 		return m, tea.Batch(command, m.scheduleAnimation())
 	}
+	if m.focus == focusSelf {
+		m.self, command = m.self.Update(message)
+		return m, command
+	}
 	m.chat, command = m.chat.Update(message)
 	m.syncChatScroll()
 	return m, command
@@ -699,6 +735,14 @@ func (m *Model) updateKey(message tea.KeyMsg) (tea.Cmd, bool) {
 		m.input.Value() == "" && len(m.attachments) > 0 {
 		m.removeAttachment(len(m.attachments) - 1)
 		return nil, true
+	}
+	switch key {
+	case keyBindings.thread:
+		return m.selectPlace(placeThread), true
+	case keyBindings.board:
+		return m.selectPlace(placeBoard), true
+	case keyBindings.self:
+		return m.selectPlace(placeSelf), true
 	}
 	// Every option-chord has a control synonym: on macOS, Option only reaches
 	// the program as alt+<key> when the terminal is configured to send it as
@@ -803,6 +847,12 @@ func (m *Model) updateKey(message tea.KeyMsg) (tea.Cmd, bool) {
 			m.palette = paletteNone
 			m.paletteDismissed = true
 			m.setSize(m.width, m.height)
+		case m.selfVisible() && m.selfExpanded >= 0:
+			m.selfSelection = m.selfExpanded
+			m.selfExpanded = -1
+			m.refreshSelf()
+		case m.selfVisible():
+			return m.selectPlace(placeThread), true
 		case m.graphVisible() && m.focus == focusGraph && m.closeScopedGraph():
 		case m.graphVisible() && m.focus == focusGraph && m.closeCharterCard():
 		case m.focus == focusCards && m.collapseSelectedCard():
@@ -843,6 +893,8 @@ func (m *Model) updateKey(message tea.KeyMsg) (tea.Cmd, bool) {
 			m.attachments = nil
 			m.paletteDismissed = false
 			m.setSize(m.width, m.height)
+		case m.graphVisible():
+			return m.selectPlace(placeThread), true
 		default:
 			return tea.Quit, true
 		}
@@ -879,6 +931,19 @@ func (m *Model) updateKey(message tea.KeyMsg) (tea.Cmd, bool) {
 				return nil, true
 			}
 			return m.surfaceSelectedAgentQuestion(), true
+		}
+	}
+	if m.focus == focusSelf {
+		switch key {
+		case "up", "k":
+			m.moveSelfSelection(-1)
+			return nil, true
+		case "down", "j":
+			m.moveSelfSelection(1)
+			return nil, true
+		case "enter":
+			m.activateSelfSelection()
+			return nil, true
 		}
 	}
 	// Numbered question options are a layer over the normal live input. An
@@ -1046,6 +1111,8 @@ func (m *Model) poll() tea.Cmd {
 		now := m.standingTime()
 		selfReceiptSince = time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
 	}
+	readSelf := m.selfVisible()
+	selfNow := m.standingTime()
 	return func() tea.Msg {
 		messages, messagesErr := backend.Messages(sessionID, afterSeq, pollLimit)
 		snapshot, snapshotErr := backend.ActiveSnapshot()
@@ -1096,6 +1163,22 @@ func (m *Model) poll() tea.Cmd {
 			selfLearning:      selfLearning,
 			selfSpendErr:      selfSpendErr,
 			selfReceiptsErr:   selfReceiptsErr,
+		}
+		// Charters are read every cycle because the self place-dot must be
+		// able to light while the user is somewhere else. The rest of the
+		// employee file is read only while the file is open.
+		if reader, ok := backend.(selfCharterLister); ok {
+			result.chartersRead = true
+			result.selfCharters, result.selfChartersErr = reader.Charters()
+		}
+		if reader, ok := backend.(selfDataReader); ok && readSelf {
+			result.selfDataRead = true
+			result.selfReceipts, result.selfReceiptsErr = reader.SelfReceipts(startOfLocalDay(selfNow))
+			result.selfSpend, result.selfSpendErr = reader.SelfSpendToday()
+			result.selfCompetence, result.selfCompetenceErr = reader.CompetenceMap(
+				store.CompetenceOptions{Now: selfNow},
+			)
+			result.selfFacts, result.selfFactsErr = reader.RecentFacts(selfBeliefLimit)
 		}
 		seenCommands := make(map[int64]bool)
 		for _, message := range messages {
@@ -1252,6 +1335,23 @@ func (m *Model) applyPoll(result pollResultMsg) {
 		}
 		m.questionDockSelection = max(0, min(m.questionDockSelection, len(m.agentQuestions)-1))
 	}
+	if result.chartersRead && result.selfChartersErr == nil {
+		m.selfCharters = append(m.selfCharters[:0], result.selfCharters...)
+	}
+	if result.selfDataRead {
+		if result.selfReceiptsErr == nil && result.selfReceipts != nil {
+			m.selfReceipts = append(m.selfReceipts[:0], result.selfReceipts...)
+		}
+		if result.selfSpendErr == nil {
+			m.selfSpend = result.selfSpend
+		}
+		if result.selfCompetenceErr == nil {
+			m.selfCompetence = result.selfCompetence
+		}
+		if result.selfFactsErr == nil && result.selfFacts != nil {
+			m.selfFacts = append(m.selfFacts[:0], result.selfFacts...)
+		}
+	}
 	if result.nodeID != "" && result.nodeID == m.nodeViewID {
 		if result.nodeErr == nil && result.nodeFound {
 			m.inspectedNode = result.node
@@ -1349,6 +1449,17 @@ func (m *Model) applyPoll(result pollResultMsg) {
 	}
 	if result.selfReceiptsErr != nil {
 		problems = append(problems, fmt.Errorf("read self receipts: %w", result.selfReceiptsErr))
+	}
+	if result.chartersRead && result.selfChartersErr != nil {
+		problems = append(problems, fmt.Errorf("read self standing: %w", result.selfChartersErr))
+	}
+	if result.selfDataRead {
+		if result.selfCompetenceErr != nil {
+			problems = append(problems, fmt.Errorf("read competence: %w", result.selfCompetenceErr))
+		}
+		if result.selfFactsErr != nil {
+			problems = append(problems, fmt.Errorf("read beliefs: %w", result.selfFactsErr))
+		}
 	}
 	if result.nodeID != "" && result.nodeID == m.nodeViewID {
 		if result.nodeErr != nil {
@@ -1455,7 +1566,9 @@ func (m *Model) toggleFocus() tea.Cmd {
 		order = append(order, focusCards)
 	}
 	order = append(order, focusChat)
-	if m.graphVisible() {
+	if m.selfVisible() {
+		order = []paneFocus{focusInput, focusSelf, focusHeader}
+	} else if m.graphVisible() {
 		if m.horizontal {
 			order = []paneFocus{focusInput, focusChat, focusGraph, focusHeader}
 		} else {
@@ -1475,6 +1588,9 @@ func (m *Model) toggleFocus() tea.Cmd {
 	m.inputFocused = m.focus == focusInput
 	if m.focus == focusGraph {
 		m.ensureGraphSelection()
+	}
+	if m.focus == focusSelf {
+		m.ensureSelfSelectionVisible()
 	}
 	if m.focus == focusCards {
 		m.ensureCardSelection()
@@ -1499,26 +1615,15 @@ func (m *Model) toggleFocus() tea.Cmd {
 	return nil
 }
 
-// toggleGraph opens or closes the task rail. Opening moves focus into it so
-// the arrows work immediately; closing hands focus back to the input.
+// toggleGraph is the ⟨tasks⟩/alt+g alias for the board place. From the board
+// it returns home to the thread; from anywhere else — including Self — it
+// opens the board, focus and all, so the arrows work immediately.
 func (m *Model) toggleGraph() {
-	m.graphOpen = !m.graphOpen
-	m.graphScopeID = ""
-	m.charterCardID = ""
-	m.charterFocusIndex = 0
-	m.palette = paletteNone
-	m.paletteDismissed = false
-	if m.graphOpen {
-		m.focus = focusGraph
-		m.inputFocused = false
-		m.input.Blur()
-		m.ensureGraphSelection()
-	} else {
-		m.focus = focusInput
-		m.inputFocused = true
-		_ = m.input.Focus()
+	if m.graphOpen && !m.selfOpen {
+		_ = m.selectPlace(placeThread)
+		return
 	}
-	m.setSize(m.width, m.height)
+	_ = m.selectPlace(placeBoard)
 }
 
 // graphVisible reports whether the task rail (or full task pane, when the
@@ -1528,7 +1633,7 @@ func (m *Model) graphVisible() bool { return m.graphOpen && m.nodeViewID == "" }
 // activityBarVisible reports whether the active-card dock sits above the
 // input. Its quiet fallback still opens the rail for graph-only stores.
 func (m *Model) activityBarVisible() bool {
-	return !m.graphVisible() && m.nodeViewID == "" && !m.paletteOpen()
+	return !m.selfVisible() && !m.graphVisible() && m.nodeViewID == "" && !m.paletteOpen()
 }
 
 func (m *Model) setSize(width, height int) {
@@ -1575,9 +1680,12 @@ func (m *Model) setSize(width, height int) {
 	m.graph.Width = max(1, m.graphWidth-2)
 	// Header + blank + the exact static standing and presence budget.
 	m.graph.Height = max(1, m.graphHeight-2-m.standingSectionHeight()-m.residentPresenceHeight())
+	m.self.Width = max(1, m.width-2)
+	m.self.Height = max(1, mainHeight)
 	m.sizeNodeViewports()
 	m.refreshChat()
 	m.refreshGraph()
+	m.refreshSelf()
 	if m.autoScroll {
 		m.chat.GotoBottom()
 	}
@@ -1621,6 +1729,14 @@ func (m *Model) pageFocused(down bool) {
 			m.graph.PageUp()
 		}
 		m.refreshGraph()
+		return
+	}
+	if m.focus == focusSelf {
+		if down {
+			m.self.PageDown()
+		} else {
+			m.self.PageUp()
+		}
 		return
 	}
 	if down {
@@ -1715,6 +1831,14 @@ func (m *Model) updateMouse(message tea.MouseMsg) (tea.Cmd, bool) {
 	}
 	if m.nodeViewID != "" {
 		return nil, m.scrollNodeAt(event.X, event.Y, down)
+	}
+	if m.selfBounds.contains(event.X, event.Y) {
+		if down {
+			m.self.SetYOffset(m.self.YOffset + 3)
+		} else {
+			m.self.SetYOffset(m.self.YOffset - 3)
+		}
+		return nil, true
 	}
 	if m.graphBounds.contains(event.X, event.Y) {
 		if down {

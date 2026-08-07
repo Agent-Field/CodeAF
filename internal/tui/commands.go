@@ -40,11 +40,17 @@ type slashHandler func(*Model, []string) tea.Cmd
 // that names them. Bubble Tea reports option-G as the literal "alt+g".
 var keyBindings = struct {
 	graph   string
+	thread  string
+	board   string
+	self    string
 	voice   string
 	boost   string
 	newline string
 }{
 	graph:   "alt+g",
+	thread:  "alt+1",
+	board:   "alt+2",
+	self:    "alt+3",
 	voice:   "alt+v",
 	boost:   "alt+b",
 	newline: "ctrl+j",
@@ -52,6 +58,7 @@ var keyBindings = struct {
 
 var slashCommands = []commandSpec{
 	{name: "graph", description: "toggle the task rail"},
+	{name: "self", description: "open the employee file"},
 	{name: "tasks", description: "focus and expand the active-task dock"},
 	{name: "node", description: "open a node by id prefix or current selection", takesArg: true},
 	{name: "notebook", description: "browse or search the scoped notebook"},
@@ -69,7 +76,8 @@ var slashCommands = []commandSpec{
 
 func init() {
 	handlers := map[string]slashHandler{
-		"graph": (*Model).slashGraph, "tasks": (*Model).slashTasks, "node": (*Model).slashNode,
+		"graph": (*Model).slashGraph, "self": (*Model).slashSelf,
+		"tasks": (*Model).slashTasks, "node": (*Model).slashNode,
 		"notebook": (*Model).slashNotebook, "history": (*Model).slashHistory, "budget": (*Model).slashBudget,
 		"standing": (*Model).slashStanding, "help": (*Model).slashHelp, "model": (*Model).slashModel,
 		"memory": (*Model).slashNotebook, "session": (*Model).slashSession, "new": (*Model).slashNew,
@@ -523,6 +531,11 @@ func (m *Model) slashGraph(_ []string) tea.Cmd {
 	return nil
 }
 
+func (m *Model) slashSelf(_ []string) tea.Cmd {
+	m.input.Reset()
+	return m.selectPlace(placeSelf)
+}
+
 func (m *Model) slashTasks(_ []string) tea.Cmd {
 	m.input.Reset()
 	return m.openTasksDock()
@@ -872,6 +885,9 @@ func (m *Model) newSession() tea.Cmd {
 	m.standingRows = nil
 	m.charterRows = nil
 	m.graphOpen = false
+	m.selfOpen = false
+	m.selfExpanded = -1
+	m.selfSelection = 0
 	m.focus = focusInput
 	m.autoScroll = true
 	m.newMessages = 0
