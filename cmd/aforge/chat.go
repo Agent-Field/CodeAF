@@ -9,6 +9,7 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"log"
 	"os"
 	"path/filepath"
 	"sort"
@@ -180,7 +181,7 @@ func runChat(args []string) error {
 		return err
 	}
 	if err := reconciler.SessionOpened(context.Background(), *sessionID, "tui", settings.BriefAfter); err != nil {
-		fmt.Fprintf(os.Stderr, "note: could not prepare the arrival brief: %v\n", err)
+		log.Printf("note: could not prepare the arrival brief: %v", err)
 	}
 
 	web := exec.NewWeb()
@@ -587,6 +588,18 @@ func runChat(args []string) error {
 	})
 	if err != nil {
 		return err
+	}
+	// While bubbletea owns the terminal, anything written to stderr or the
+	// standard logger tears straight through the alt screen as a raw row (a
+	// contract failure once printed itself across both panes). Everything the
+	// runtime logs goes to a file for the TUI's lifetime instead.
+	if logFile, logErr := os.OpenFile(filepath.Join(filepath.Dir(defaultChatDB()), "chat.log"),
+		os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o644); logErr == nil {
+		log.SetOutput(logFile)
+		defer func() {
+			log.SetOutput(os.Stderr)
+			_ = logFile.Close()
+		}()
 	}
 	err = tui.RunWithCommander(graph, *sessionID, commander)
 	seenErr := reconciler.SessionClosed(*sessionID, "tui")
@@ -1814,7 +1827,7 @@ func planSubtree(settings config.Config, client *liveClient, plans *jobPlans, hi
 		// Per-leaf working contracts, exactly as a headless run writes them
 		// before dispatch. A contract failure costs specificity, not the job.
 		if _, err := plan.Contracts(ctx, workingClient, graph, resident.ContractPlaybook(history), progress); err != nil {
-			fmt.Fprintf(os.Stderr, "note: could not write contracts: %v\n", err)
+			log.Printf("note: could not write contracts: %v", err)
 		}
 		subtree, err := resident.SubtreeFromPlan(graph, prefix)
 		if err != nil {
@@ -1863,7 +1876,7 @@ func replanRemainder(settings config.Config, client *liveClient, plans *jobPlans
 			}}}, nil
 		}
 		if _, err := plan.Contracts(ctx, workingClient, graph, resident.ContractPlaybook(history), progress); err != nil {
-			fmt.Fprintf(os.Stderr, "note: could not write repair contracts: %v\n", err)
+			log.Printf("note: could not write repair contracts: %v", err)
 		}
 		subtree, err := resident.SubtreeFromPlan(graph, prefix)
 		if err != nil {

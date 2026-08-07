@@ -465,11 +465,46 @@ func structured(ctx context.Context, client Completer, messages []ai.Message, sc
 		provider.Report(ctx, provider.VerdictProviderFailure)
 		return nil, err
 	}
+	// A reasoning model can burn its entire completion budget thinking and
+	// return no text at all: finish_reason=length with an empty body (seen in
+	// the wild at completion_tokens=32768). One retry with a doubled budget is
+	// the difference between a contract and a dead node; a second empty answer
+	// is the model's problem, not the budget's.
+	if strings.TrimSpace(response.Text()) == "" && finishedForLength(response) {
+		retry, retryErr := client.CompleteWithMessages(ctx, messages,
+			ai.WithSchema(schema), ai.WithMaxTokens(retryTokenBudget(response)))
+		if retryErr == nil {
+			response = retry
+		}
+	}
 	if err := decodeJSON(response.Text(), into); err != nil {
 		provider.Report(ctx, provider.VerdictFormatFailure)
 		return response, annotate(err, response)
 	}
 	return response, nil
+}
+
+func finishedForLength(response *ai.Response) bool {
+	return response != nil && len(response.Choices) > 0 &&
+		response.Choices[0].FinishReason == "length"
+}
+
+// retryTokenBudget doubles what the truncated attempt actually spent, bounded
+// so one pathological node cannot demand an absurd completion.
+func retryTokenBudget(response *ai.Response) int {
+	const ceiling = 96_000
+	spent := 0
+	if response != nil && response.Usage != nil {
+		spent = response.Usage.CompletionTokens
+	}
+	budget := spent * 2
+	if budget < 16_000 {
+		budget = 16_000
+	}
+	if budget > ceiling {
+		budget = ceiling
+	}
+	return budget
 }
 
 // decodeJSON reads a structured reply. The fence stripping is defensive: strict
