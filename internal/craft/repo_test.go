@@ -346,3 +346,79 @@ func TestConcurrentSavesAreSerialized(t *testing.T) {
 		}
 	}
 }
+
+// A run re-reads its workflow by name@commit on every advance and refuses to
+// continue when that reference moved. The working tree is what Load actually
+// reads, so an uncommitted edit has to move the reference too — otherwise the
+// guard watches HEAD while the run executes something else.
+func TestLoadNamesAnUncommittedEditAsItsOwnVersion(t *testing.T) {
+	repo := openRepo(t)
+	w := parseValid(t, presentationYAML)
+	commit, err := repo.Save(w, "first draft\n\ndistilled from job 41")
+	if err != nil {
+		t.Fatalf("save: %v", err)
+	}
+	clean, err := repo.Load("presentation")
+	if err != nil {
+		t.Fatalf("load: %v", err)
+	}
+	if clean.Commit != commit {
+		t.Fatalf("a committed workflow loaded at %q, want %q", clean.Commit, commit)
+	}
+
+	path := filepath.Join(repo.Dir(), WorkflowDir, "presentation.yaml")
+	edited := strings.Replace(presentationYAML, "fan: 6", "fan: 24", 1)
+	if err := os.WriteFile(path, []byte(edited), 0o644); err != nil {
+		t.Fatalf("edit: %v", err)
+	}
+	dirty, err := repo.Load("presentation")
+	if err != nil {
+		t.Fatalf("load after an edit: %v", err)
+	}
+	if dirty.Commit == commit || !strings.HasPrefix(dirty.Commit, commit+"+dirty-") {
+		t.Fatalf("an edited workflow loaded at %q", dirty.Commit)
+	}
+	if dirty.Steps[1].ForEach.Fan != MaxFanCap {
+		t.Fatalf("the working tree's own bytes were not what loaded: fan=%d", dirty.Steps[1].ForEach.Fan)
+	}
+	// A second, different edit is a second version: the version has to change
+	// whenever the file does, or one guard reading covers two files.
+	again := strings.Replace(edited, "fan: 24", "fan: 12", 1)
+	if err := os.WriteFile(path, []byte(again), 0o644); err != nil {
+		t.Fatalf("edit again: %v", err)
+	}
+	second, err := repo.Load("presentation")
+	if err != nil {
+		t.Fatalf("load after a second edit: %v", err)
+	}
+	if second.Commit == dirty.Commit {
+		t.Fatalf("two different edits share the version %q", second.Commit)
+	}
+
+	// And committing it settles back to an ordinary version.
+	if _, err := repo.commitIfChanged("presentation: widen the fan", WorkflowDir+"/presentation.yaml"); err != nil {
+		t.Fatalf("commit: %v", err)
+	}
+	settled, err := repo.Load("presentation")
+	if err != nil {
+		t.Fatalf("load after commit: %v", err)
+	}
+	if strings.Contains(settled.Commit, "+dirty-") || settled.Commit == commit {
+		t.Fatalf("a committed edit loaded at %q", settled.Commit)
+	}
+}
+
+// A workflow that was never committed has no version at all, and a run whose
+// provenance names a bare name is a run with the moved-mid-flight guard turned
+// off. Refusing is the only honest reading.
+func TestLoadRefusesAWorkflowThatWasNeverCommitted(t *testing.T) {
+	repo := openRepo(t)
+	path := filepath.Join(repo.Dir(), WorkflowDir, "presentation.yaml")
+	if err := os.WriteFile(path, []byte(presentationYAML), 0o644); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+	_, err := repo.Load("presentation")
+	if err == nil || !strings.Contains(err.Error(), "never been committed") {
+		t.Fatalf("an uncommitted workflow loaded: %v", err)
+	}
+}

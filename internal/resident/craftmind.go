@@ -17,6 +17,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log"
 	"strings"
 	"unicode"
 
@@ -271,9 +272,16 @@ func (r *Reconciler) recordCraftOutcome(node store.Node, settled bool) {
 		} else {
 			record.Against++
 		}
-		_, _ = r.store.RecordTrait(CraftSurvivalKey(key), store.TraitMeasurement{
+		if _, err := r.store.RecordTrait(CraftSurvivalKey(key), store.TraitMeasurement{
 			Value: record, N: record.For + record.Against, Updated: r.now(),
-		})
+		}); err != nil {
+			// A dropped write here is not cosmetic: the bare-name record is what
+			// says this craft has ever settled anything, so losing the first one
+			// leaves a working workflow permanently a draft nobody may reach for.
+			// There is nothing to retry against a store that refused, but the
+			// loss belongs in the log rather than nowhere.
+			log.Printf("craft survival %s: %v", key, err)
+		}
 	}
 }
 

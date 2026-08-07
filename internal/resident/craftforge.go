@@ -11,6 +11,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log"
 	"strings"
 	"time"
 
@@ -123,8 +124,13 @@ func (r *Reconciler) recordCraftLesson(node store.Node, name, problem string) {
 	}
 	body := fmt.Sprintf("tried to forge the %s craft from this job and the file was invalid: %s",
 		name, firstLine(problem))
-	_, _ = r.store.RecordFactFrom(store.FactWriterDistiller, node.ID,
-		CraftSurvivalKey(name), store.FactLesson, clipFactBody(body))
+	if _, err := r.store.RecordFactFrom(store.FactWriterDistiller, node.ID,
+		CraftSurvivalKey(name), store.FactLesson, clipFactBody(body)); err != nil {
+		// The lesson is the only trace a failed forge leaves — the user was
+		// never told, by design. A write that vanished silently means the next
+		// forge repeats the same mistake with nothing to learn from.
+		log.Printf("craft forge lesson %s: %v", name, err)
+	}
 }
 
 // craftRefinementReason says what a new version answers. A craft is refined

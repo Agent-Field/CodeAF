@@ -417,3 +417,61 @@ steps:
 		t.Fatalf("near-miss key reported as %v", err)
 	}
 }
+
+// One id law. A step id becomes a node id by being slugged, and the compiler
+// refuses any step whose id does not survive that unchanged — so a file this
+// package accepts must be a file that compiles, or the distiller forges a
+// workflow, commits it, announces it, and it fails forever with nobody
+// watching.
+func TestStepIDLawIsTheCompilersLaw(t *testing.T) {
+	for _, probe := range []struct {
+		id    string
+		valid bool
+	}{
+		{"outline", true},
+		{"first-draft", true},
+		{"step2", true},
+		{"step_one", false},
+		{"first--draft", false},
+		{"draft-", false},
+		{"-draft", false},
+		{"Draft", false},
+		{"first draft", false},
+		{"", false},
+		{strings.Repeat("a", MaxIDBytes), true},
+		{strings.Repeat("a", MaxIDBytes+1), false},
+	} {
+		if ValidStepID(probe.id) != probe.valid {
+			t.Errorf("ValidStepID(%q) = %t", probe.id, !probe.valid)
+		}
+		w := &Workflow{Name: "deck", Steps: []Step{{ID: probe.id, Brief: "work"}}}
+		refused := false
+		for _, problem := range w.Validate() {
+			// An empty id is refused a sentence earlier, by the law that every
+			// step is named at all.
+			if strings.Contains(problem.Error(), "it becomes a node id") ||
+				strings.Contains(problem.Error(), "id is empty") {
+				refused = true
+			}
+		}
+		if refused == probe.valid {
+			t.Errorf("Validate refused=%t for step id %q", refused, probe.id)
+		}
+	}
+}
+
+// The refusal is written for the model that will fix it: what the law is, and
+// the id it probably meant.
+func TestAnUnderscoredStepIDIsRefusedWithTheIDItMeant(t *testing.T) {
+	w, err := Parse([]byte("name: deck\nsteps:\n  - id: step_one\n    brief: a\n"))
+	if err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+	problems := w.Validate()
+	if len(problems) == 0 {
+		t.Fatalf("a step id the compiler always refuses validated")
+	}
+	if !strings.Contains(problems[0].Error(), "did you mean step-one?") {
+		t.Fatalf("the refusal does not say what to write: %v", problems[0])
+	}
+}
