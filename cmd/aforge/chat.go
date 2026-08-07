@@ -184,6 +184,10 @@ func runChat(args []string) error {
 	}
 
 	web := exec.NewWeb()
+	// chatWorkerCeiling is not a concurrency policy — the provider's adaptive
+	// rate limiter is the real throttle. This is a local sanity bound on
+	// goroutines/file handles, far above any realistic graph width.
+	const chatWorkerCeiling = 32
 	runner := resident.NewRunner(graph, func(ctx context.Context, node store.Node) (resident.ExecResult, error) {
 		isReflex := node.Group == resident.ReflexGroup
 		// Each top-level job works in its own directory: one thread hosts
@@ -517,7 +521,7 @@ func runChat(args []string) error {
 			Cost:             spent.Cost,
 			Promote:          promoted,
 		}, nil
-	}, "chat-runner", 4).WithDailyBudgetUSD(settings.DailyBudgetUSD)
+	}, "chat-runner", chatWorkerCeiling).WithDailyBudgetUSD(settings.DailyBudgetUSD)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
