@@ -54,6 +54,17 @@ const (
 	// there — offering to fetch a file it had no way to open. artifact.go holds
 	// the boundary this reads through.
 	beltToolRead = "read"
+	// beltToolCompetence, beltToolStanding and beltToolSpending are the three
+	// reads that are about the employee rather than the work. Each was already
+	// measured, journalled and rendered somewhere else — the competence map for
+	// the router, the watch status for doctor, self-spend for the rail — and
+	// each reached a conversation through a hardcoded list of substrings or not
+	// at all. They are tools for the reason everything else here is a tool: the
+	// question "am I asking too much of you lately?" matches no list anybody
+	// will ever finish writing, and a model holding the read can recognise it.
+	beltToolCompetence = "competence"
+	beltToolStanding   = "standing"
+	beltToolSpending   = "spending"
 	// beltToolNote is the belt's only write that never touches the graph. The
 	// loop could change work and answer questions and had nowhere at all to put
 	// a durable instruction about its own behaviour, so "always answer from the
@@ -91,6 +102,15 @@ const (
 	// fit in a sentence is not one preference, and the notebook is read into
 	// every later prompt under a budget of its own.
 	beltNoteBytes = 400
+	// beltGroundingBytes bounds each of the three self-reads. They are rendered
+	// elsewhere for surfaces with a whole pane to spend; here one read is one
+	// answer's grounding and shares a message with the board, so it stays in the
+	// manual read's league rather than the pane's.
+	beltGroundingBytes = 2 << 10
+	// beltSelfReceiptCap is how many recent self-work receipts one spending read
+	// names. Past a handful this is a ledger, and the totals above it already
+	// say what the ledger would.
+	beltSelfReceiptCap = 5
 )
 
 // beltTool and beltProp mirror the leaf toolbox's definition idiom. They are
@@ -116,7 +136,7 @@ func beltProp(kind, description string) map[string]any {
 // verbs differ in whether the plan changes or only the people working it.
 func beltDefinitions() []ai.ToolDefinition {
 	return []ai.ToolDefinition{
-		beltTool(beltToolBoard, "Read the live work. Always safe, always allowed, and the only place ids come from. Call it with no arguments for everything live; narrow with status, or with q when the user named the work in their own words.", map[string]any{
+		beltTool(beltToolBoard, "Read the work. Always safe, always allowed, and the only place ids come from. Call it with no arguments for everything live; narrow with status, or with q when the user named the work in their own words — a read aimed with q or id also reaches jobs that have already finished, which is where findings live.", map[string]any{
 			"status": beltProp("string", `"running", "queued", "failed", or "all"`),
 			"q":      beltProp("string", "free text naming the work, matched against titles and briefs"),
 			"id":     beltProp("string", "one id from an earlier board read"),
@@ -147,6 +167,9 @@ func beltDefinitions() []ai.ToolDefinition {
 			"job":  beltProp("string", "the job that wrote it, id from a board or result read"),
 			"file": beltProp("string", "the path or filename, as that job recorded it; omit it when the job wrote only one file"),
 		}, "job"),
+		beltTool(beltToolCompetence, "Read the measured view of your own current strengths, weak spots and learning frontier, derived from how your work has actually gone. Always safe. Read it before answering anything about what you are good at, where you struggle, whether you are improving, or whether the user is asking too much of you — this is the only evidence for those answers, and a self-assessment given without it is invention.", map[string]any{}),
+		beltTool(beltToolStanding, "Read what you are keeping watch over: whether checks continue with no terminal open, the last wake, the next check, and every standing charter with what it watches for and how often. Always safe. Read it for any question about what you are watching, what runs while the user is away, or what happens overnight.", map[string]any{}),
+		beltTool(beltToolSpending, "Read what has been spent: today's total against the daily rail, and separately what your own upkeep — practice, learning, self-maintenance — has cost and what it bought. Always safe. Read it whenever the question is about money in general rather than one job's cost.", map[string]any{}),
 		beltTool(beltToolNote, "Write one durable thing the user has just told you into the notebook: how they want answers given, a correction to how something was done for them, a lasting fact about them or their setup. The test is whether it will still matter after this conversation is forgotten — task details and one-off instructions fail it. Call it before you tell them it is noted, because this call is the only thing that makes that true.", map[string]any{
 			"body":  beltProp("string", "one sharp sentence, in the user's own terms"),
 			"scope": beltProp("string", `what it is about: "user" for a personal preference, otherwise tool:<name>, repo:<path>, file:<path>, or domain:<topic>`),
@@ -200,6 +223,12 @@ func (run *beltRun) execute(name, arguments string) (string, bool) {
 		return run.result(args)
 	case beltToolRead:
 		return run.read(args)
+	case beltToolCompetence:
+		return run.competence()
+	case beltToolStanding:
+		return run.standing()
+	case beltToolSpending:
+		return run.spending()
 	case beltToolNote:
 		return run.note(args)
 	}
@@ -207,7 +236,8 @@ func (run *beltRun) execute(name, arguments string) (string, bool) {
 }
 
 func (run *beltRun) board(args map[string]any) (string, bool) {
-	rows, err := run.head.boardRows(beltString(args, "q"), beltString(args, "status"), beltString(args, "id"))
+	rows, err := run.head.boardRows(run.user.SessionID,
+		beltString(args, "q"), beltString(args, "status"), beltString(args, "id"))
 	if err != nil {
 		return err.Error(), true
 	}
@@ -366,6 +396,91 @@ func (run *beltRun) read(args map[string]any) (string, bool) {
 	return rendered, false
 }
 
+// competence, standing and spending are the employee's account of itself, and
+// they are reads in the same sense board and manual are: nothing is journalled,
+// nothing acts, and a message that only asked how the work has been going
+// carries no command seq. Each returns the honest empty answer rather than an
+// error when the surface never registered it — a chat that has no competence
+// measurement is a fact about the chat, and one the model can say out loud.
+func (run *beltRun) competence() (string, bool) {
+	if run.head == nil || run.head.competence == nil {
+		return "no competence measurement is available on this surface.", false
+	}
+	measured := strings.TrimSpace(run.head.competence())
+	if measured == "" {
+		return "nothing has been measured yet — not enough work has settled to say where you are strong or weak.", false
+	}
+	return truncateBytes(measured, beltGroundingBytes), false
+}
+
+func (run *beltRun) standing() (string, bool) {
+	if run.head == nil || run.head.standingWatch == nil {
+		return "standing-watch status is not available on this surface.", false
+	}
+	status := strings.TrimSpace(run.head.standingWatch())
+	if status == "" {
+		return "nothing is on watch and no standing check is arranged.", false
+	}
+	return truncateBytes(status, beltGroundingBytes), false
+}
+
+// spending answers the money question the head could not answer at all. The
+// daily rail was its only cost signal above one job, so "what have you been
+// spending on yourself?" had no reachable ground truth while the prompt forbade
+// saying so — the two halves of an invented number. Self-work has its own
+// receipts, one per settled OriginSelf splice, each carrying what it cost and
+// whether it learned anything; those are the answer, and the day's total is the
+// context for it.
+func (run *beltRun) spending() (string, bool) {
+	if run.head == nil || run.head.store == nil {
+		return "spending is not available on this surface.", false
+	}
+	var rendered strings.Builder
+	if run.head.dailyRailSet {
+		if rail, err := run.head.store.DailyRailToday(run.head.dailyBudgetUSD); err == nil {
+			if rail.Unlimited {
+				fmt.Fprintf(&rendered, "today: $%.2f spent; daily rail unlimited\n", rail.Spend)
+			} else {
+				fmt.Fprintf(&rendered, "today: $%.2f spent of a $%.2f daily rail\n", rail.Spend, rail.Ceiling)
+			}
+		}
+	}
+	self, err := run.head.store.SelfSpendToday()
+	if err != nil {
+		return "that could not be read: " + err.Error(), true
+	}
+	fmt.Fprintf(&rendered, "your own upkeep today: $%.2f\n", self)
+	if lines := run.head.selfWorkLines(); len(lines) > 0 {
+		rendered.WriteString("what that upkeep bought, most recent last:\n" +
+			strings.Join(lines, "\n") + "\n")
+	}
+	return truncateBytes(strings.TrimSpace(rendered.String()), beltGroundingBytes), false
+}
+
+// selfWorkLines renders the last few self-work receipts one line each: what the
+// inquiry was about, what it cost, and whether anything came of it. "Learned
+// nothing" is kept rather than hidden, because a run of them is the honest
+// answer to whether the upkeep is worth its money.
+func (h *Head) selfWorkLines() []string {
+	receipts, err := h.store.SelfReceipts(time.Time{})
+	if err != nil || len(receipts) == 0 {
+		return nil
+	}
+	if len(receipts) > beltSelfReceiptCap {
+		receipts = receipts[len(receipts)-beltSelfReceiptCap:]
+	}
+	lines := make([]string, 0, len(receipts))
+	for _, receipt := range receipts {
+		learned := fmt.Sprintf("%d learned", len(receipt.FactIDs)+len(receipt.SkillIDs))
+		if receipt.Nothing {
+			learned = "learned nothing"
+		}
+		lines = append(lines, fmt.Sprintf("- %s | $%.2f | %s",
+			firstLine(receipt.Origin), receipt.Cost, learned))
+	}
+	return lines
+}
+
 // note is durable feedback landing where durable feedback goes. It records
 // through the head's own fact writer, so the line it writes is indistinguishable
 // from one the router's remember wrote and is read back by the same notebook
@@ -458,6 +573,12 @@ func (h *Head) renderResult(node store.Node) string {
 // resultChildren gives each direct child the board's one line. BoardRowCap
 // bounds it for the board's own reason: past a dozen rows this is a log rather
 // than a list of parts, and the parent's own result already summarises it.
+//
+// Folded children are included, and the filter that skipped them was backwards.
+// Folding is what happens to a job once it is thoroughly over; "what did each
+// part conclude" is a question about exactly those parts, and answering it with
+// nothing because the work was tidied away is the same status-instead-of-
+// substance failure this whole read exists to end.
 func (h *Head) resultChildren(id string) []string {
 	nodes, err := h.store.ActiveNodes()
 	if err != nil {
@@ -465,7 +586,7 @@ func (h *Head) resultChildren(id string) []string {
 	}
 	lines := make([]string, 0, BoardRowCap)
 	for _, node := range nodes {
-		if node.Parent != id || node.Folded {
+		if node.Parent != id {
 			continue
 		}
 		line := fmt.Sprintf("- %s | %s | %s", node.ID, node.Status, surgeryTargetLabel(node))
@@ -673,18 +794,34 @@ func beltVerbKind(verb string) (store.CommandKind, bool) {
 // boardRow is one line of live work: what it is, how it is going, and what it
 // has cost. Nothing else fits in a row that is resent on every turn.
 type boardRow struct {
-	node    store.Node
-	age     string
-	running int
-	queued  int
-	failed  int
-	cost    float64
+	node store.Node
+	age  string
+	// elsewhere marks a job the user started in a different window. The board is
+	// cross-session and the thread is not, so without it one conversation can
+	// cancel another's work and neither can say where the job came from.
+	elsewhere bool
+	running   int
+	queued    int
+	failed    int
+	cost      float64
 }
 
 // boardRows is the belt's whole read side. It is the ordinary surgery search
 // over job roots, annotated with the counts and spend a person would want
-// before deciding anything, and narrowed to the user's own work.
-func (h *Head) boardRows(query, status, id string) ([]boardRow, error) {
+// before deciding anything, and narrowed by beltAddressable and nothing else.
+//
+// It used to require Origin == OriginUser on top of that membrane, and the extra
+// conjunct was a bug with a transcript: a charter-fired job carries
+// OriginTrigger, which passes the router's snapshot and passes the deep slice
+// and failed only here — so the head described the job, the user said "stop that
+// job", and the belt answered that no such work of the user's exists. Trigger
+// work IS the user's; it came from a charter they ratified. One membrane now,
+// and beltAddressable is the one, because it is the documented one and it is
+// what still keeps the resident's own practice and internals off the board.
+//
+// sessionID is the conversation asking. It marks rather than filters: the board
+// is global on purpose, and the row says which window a job came from.
+func (h *Head) boardRows(sessionID, query, status, id string) ([]boardRow, error) {
 	class := classAll
 	if word := strings.ToLower(strings.TrimSpace(status)); word != "" {
 		named, ok := classVocabulary[word]
@@ -734,13 +871,22 @@ func (h *Head) boardRows(query, status, id string) ([]boardRow, error) {
 		candidates = boardEnumeration(nodes, byID)
 	}
 
+	// A read the caller aimed — by id, or by the words the user used for the
+	// work — reaches settled jobs too. The unqueried board is about what is
+	// moving; a named read is almost always about what a job came back with,
+	// and findings only exist once a job is over. Refusing them here is what
+	// made the belt's result tool unreachable for precisely the questions it
+	// was written to answer.
+	targeted := strings.TrimSpace(id) != "" || strings.TrimSpace(query) != ""
+
 	now := time.Now()
 	rows := make([]boardRow, 0, len(candidates))
 	for _, candidate := range candidates {
-		if candidate.Node.Provenance.Origin != store.OriginUser || !beltAddressable(candidate.Node) {
+		if !beltAddressable(candidate.Node) {
 			continue
 		}
-		row := boardRow{node: candidate.Node, age: candidate.Age}
+		row := boardRow{node: candidate.Node, age: candidate.Age,
+			elsewhere: crossSession(candidate.Node, sessionID)}
 		for _, member := range beltSubtree(byID, children, candidate.Node.ID) {
 			switch byID[member].Status {
 			case store.Running, store.Claimed:
@@ -754,7 +900,7 @@ func (h *Head) boardRows(query, status, id string) ([]boardRow, error) {
 		if impact, err := h.store.Impact(candidate.Node.ID, now); err == nil {
 			row.cost = impact.Cost
 		}
-		if !boardRowMatches(row, class) {
+		if !boardRowMatches(row, class) && !(targeted && class == classAll) {
 			continue
 		}
 		rows = append(rows, row)
@@ -839,6 +985,9 @@ func renderBoard(rows []boardRow) string {
 		line += fmt.Sprintf(" | $%.2f", math.Round(row.cost*10)/10)
 		if age := strings.TrimSpace(row.age); age != "" {
 			line += " | " + age
+		}
+		if row.elsewhere {
+			line += crossSessionMark
 		}
 		lines = append(lines, line)
 	}

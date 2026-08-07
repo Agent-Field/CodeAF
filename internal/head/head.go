@@ -8,9 +8,11 @@ import (
 	"encoding/base64"
 	"errors"
 	"fmt"
+	"math"
 	"os"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 	"unicode"
@@ -50,11 +52,11 @@ The snapshot IS your workforce, seen live. Every line is one worker's assignment
 
 Alongside the snapshot you carry a notebook: durable lessons, quirks, preferences, and facts distilled from past jobs and conversations. The notebook is your accumulated experience the way the snapshot is your present awareness. Questions about what you know, remember, or have learned are answered from the notebook exactly as status questions are answered from the snapshot; and when a notebook entry changes what you would say — a known quirk of a tool the user is asking about, a preference they stated before — let it shape the reply naturally.
 
-When a competence map appears, it is the measured view of your own current strengths, weak spots, and learning frontier. Treat questions about what you are good at, where you struggle, or what you should practice as status questions: answer directly from that evidence, in first person, and emit no work command. Never claim strength or weakness absent from the map.
+Your measured competence, what you are keeping watch over, and what you have spent on your own upkeep are all recorded, and none of them are in front of you here — they are read by the tools that answer those questions, which run before you do. So a question about what you are good at, where you struggle, what you are watching, or what you have been spending on yourself is not one you answer from memory: say what the snapshot and the notebook actually show, in first person, and emit no work command. Never state a strength, a weakness, a watch schedule, or a figure you have not been shown; an invented self-assessment is the one answer worse than a thin one.
 
 When manual pages appear, they are aforge's own authoritative account of itself — what it can do, how its mechanisms work, why it behaves as it does. A question about aforge itself is answered from those pages and from nothing else: quote their substance in plain speech, keep their concrete numbers and phrasings, emit no work command, and if they do not cover the question say so rather than inventing machinery you do not have.
 
-When standing-watch status appears, it is the ground truth for who is keeping watch, whether checks continue with no terminal open, the last wake, the next check, today's spend, and open standing work. Answer those questions directly in plain first-person language and emit no work command. Never expose the operating-system mechanism behind it.
+A snapshot line ending in "elsewhere" is work the user started in another window of their own — a second terminal, the browser. It is still theirs and still yours to speak about; say where it came from rather than answering as though this conversation began it, because the receipt for a change to it lands in the window that started it, not in this one.
 
 Return exactly one JSON object with this shape and no text outside it:
 {"reply":"<what to say right now>","command":null,"remember":null,"retract":null}
@@ -82,7 +84,7 @@ Sometimes the snapshot is followed by the full findings of the jobs this message
 
 The reply contract. Your first sentence is the answer itself — the finding, the number, the verdict — never a preamble, never the question said back, never a promise to go and look. When work has settled, say what it concluded and name the files it wrote; how it ended is a trailing clause, and "it completed" on its own is never an answer to what happened. Give an answer structure only when it earns its place: a few short markdown bullets when the answer has genuinely separate parts, and plain conversational prose for everything else — greetings, thanks and one-line answers take no formatting at all. Never a wall of text, and no markdown headers ever: cut every sentence that would not change what the user does next.
 
-The reply is what the user sees immediately. When splicing, make it a receipt: say you are on it and will report back when it lands. Never imply the work already finished or promise synchronous completion. The receipt states what the command actually does and nothing more: new work is queued and starts when the workforce reaches it, so if something is already running, say the new work is queued behind it. You have no way to make existing work go faster from here, so never say you will speed it up, push it through, prioritize it, or have it by any particular time. Be concise and warm. Speak entirely in the user's terms — what each piece of work is about and how it is going. Your internals stay backstage: the permanent spine or root is plumbing rather than an assignment and is never worth mentioning, and words like node, splice, snapshot, or raw ids belong to the machinery, not the conversation.`
+The reply is what the user sees immediately. When splicing, make it a receipt: say you are on it and will report back when it lands. Never imply the work already finished or promise synchronous completion. The receipt states what the command actually does and nothing more: new work is queued and starts when the workforce reaches it, so if something is already running, say the new work is queued behind it. Existing work can be moved up the queue, and reprioritize is exactly and only that: the job you name is claimed before its pending siblings. It does not add workers, shorten the work, or change what the job does, so the honest receipt is that it goes next — never a completion time, never "faster", and never a claim that you are pushing something through unless reprioritize is the command in this same object. Be concise and warm. Speak entirely in the user's terms — what each piece of work is about and how it is going. Your internals stay backstage: the permanent spine or root is plumbing rather than an assignment and is never worth mentioning, and words like node, splice, snapshot, or raw ids belong to the machinery, not the conversation.`
 
 // Client is the one provider operation the conversational components need.
 // Keeping the boundary this small makes both routing and compiling testable
@@ -370,7 +372,7 @@ func (h *Head) raiseRailFromReply(user store.Message) (bool, error) {
 	if err != nil || !pending {
 		return false, err
 	}
-	amount := rail.RaiseAmount()
+	amount := h.railRaiseCovering(user, rail)
 	if err := h.store.RaiseDailyRail(amount, "head:"+user.SessionID); err != nil {
 		return false, err
 	}
@@ -380,6 +382,88 @@ func (h *Head) raiseRailFromReply(user store.Message) (bool, error) {
 	}
 	reply := fmt.Sprintf("Daily rail raised by $%.2f to $%.2f -- continuing.", amount, updated.Ceiling)
 	return true, h.postAgent(user.SessionID, reply, 0)
+}
+
+// railRaiseCovering is consent delivering what the question promised.
+//
+// The rail question the store posts is worded from journaled spend, and when the
+// thing that stopped the work has not been journaled yet — a catalog-priced
+// generation, an in-process headless total — it names that cost separately:
+// "$19.00 spent of $20.00, and the next step costs $15.00. Say the word and I'll
+// continue." The head then recomputed the raise from journaled spend alone, so
+// consent bought one budget unit, the ceiling landed under the step the sentence
+// had just quoted, and the work stopped again at the same place with the user
+// having already said yes. "I'll continue" has to be true; the raise therefore
+// clears the item the question named as well as the spend it named.
+//
+// The pending figure is recovered from the durable question itself because that
+// is where the store wrote it — the rail read the head is handed reports only
+// what the journal has seen. The clean version of this lives on the store side,
+// which owns both the wording and the arithmetic; here the parse fails closed,
+// so a reworded question simply returns today's raise rather than a wrong one.
+func (h *Head) railRaiseCovering(user store.Message, rail store.DailyRail) float64 {
+	amount := rail.RaiseAmount()
+	pending := h.pendingRailStep(user)
+	if pending <= 0 {
+		return amount
+	}
+	// One cent of headroom above the quoted step, so the very item the user
+	// consented to does not re-trip the rail on the boundary.
+	shortfall := rail.Spend + pending + 0.01 - (rail.Ceiling + amount)
+	if shortfall <= 0 {
+		return amount
+	}
+	return amount + math.Ceil(shortfall*100)/100
+}
+
+// railStepPrefix is the store's own wording for the not-yet-journaled item, and
+// it is matched rather than reconstructed so that a change to that sentence
+// makes this return zero — today's behaviour — instead of a wrong number.
+const railStepPrefix = ", and the next step costs $"
+
+// pendingRailStep reads the cost the pending rail question quoted. It looks in
+// the same thread window the router reads, which is where the question the user
+// is answering necessarily sits.
+func (h *Head) pendingRailStep(user store.Message) float64 {
+	recent, err := h.recentThread(user.SessionID, user.Seq)
+	if err != nil {
+		return 0
+	}
+	for index := len(recent) - 1; index >= 0; index-- {
+		message := recent[index]
+		if message.Role != store.RoleAgent ||
+			!strings.HasPrefix(message.Body, store.DailyRailQuestionPrefix) {
+			continue
+		}
+		start := strings.Index(message.Body, railStepPrefix)
+		if start < 0 {
+			return 0
+		}
+		// The figure is followed immediately by the sentence's own full stop, so
+		// the first decimal point belongs to the number and a second one ends
+		// it. A trailing point is punctuation either way.
+		digits := message.Body[start+len(railStepPrefix):]
+		end, point := 0, false
+		for end < len(digits) {
+			character := digits[end]
+			if character >= '0' && character <= '9' {
+				end++
+				continue
+			}
+			if character == '.' && !point {
+				point = true
+				end++
+				continue
+			}
+			break
+		}
+		cost, parseErr := strconv.ParseFloat(strings.TrimSuffix(digits[:end], "."), 64)
+		if parseErr != nil || cost <= 0 || math.IsNaN(cost) || math.IsInf(cost, 0) {
+			return 0
+		}
+		return cost
+	}
+	return 0
 }
 
 func affirmativeRailReply(body string) bool {
@@ -407,15 +491,22 @@ func (h *Head) route(ctx context.Context, user store.Message) (routeDecision, er
 		return routeDecision{}, fmt.Errorf("read recent thread: %w", err)
 	}
 
-	graphContext := renderGraph(snapshot)
+	threadContext := renderThread(recent)
+	// Depth is bought in its own budget and only for the jobs this message is
+	// about. A message about nothing on the graph adds nothing at all, so the
+	// ordinary prompt is unchanged to the byte.
+	//
+	// It is computed before the board rather than after it, and that ordering is
+	// the whole of the dedup: the board is the floor and must never starve, so
+	// it still gets its own bytes and its line for every job, but it now knows
+	// which of those jobs the block below is about to quote in full and drops
+	// only the clause it would have said twice.
+	deep, opened := h.renderDeep(user.Body, threadContext)
+	graphContext := renderGraph(snapshot, user.SessionID, threadContext, opened)
 	if services := renderServices(h.store); services != "" {
 		graphContext += "\n" + services
 	}
-	threadContext := renderThread(recent)
-	// Depth is bought after the board is whole, in its own budget, and only for
-	// the jobs this message is about. A message about nothing on the graph adds
-	// nothing at all, so the ordinary prompt is unchanged to the byte.
-	if deep := h.renderDeep(user.Body, threadContext); deep != "" {
+	if deep != "" {
 		graphContext += "\n\n" + deep
 	}
 
@@ -439,17 +530,7 @@ func (h *Head) route(ctx context.Context, user store.Message) (routeDecision, er
 	}
 	body.WriteString("Recent thread before this message:\n" + threadContext)
 	body.WriteString("\n\nLive graph snapshot:\n" + graphContext)
-	body.WriteString("\n\nNotebook (durable memory across jobs and conversations):\n" + renderNotebook(h.store, user.Body))
-	if h.competence != nil && asksForCompetence(user.Body) {
-		if competence := strings.TrimSpace(h.competence()); competence != "" {
-			body.WriteString("\n\nCompetence map (ground truth for this question):\n" + competence)
-		}
-	}
-	if h.standingWatch != nil && asksForStandingWatch(user.Body) {
-		if status := strings.TrimSpace(h.standingWatch()); status != "" {
-			body.WriteString("\n\nStanding-watch status (ground truth for this question):\n" + status)
-		}
-	}
+	body.WriteString("\n\nNotebook (durable memory across jobs and conversations):\n" + renderNotebook(h.store, user.Body, threadContext))
 	// The belt normally answers self-questions, but it needs a client and a
 	// model willing to call a tool. When it declined or was never reachable,
 	// the router still gets the pages rather than the alternative, which is a
@@ -608,35 +689,15 @@ func imageContentPart(path string) (ai.ContentPart, bool) {
 	}}, true
 }
 
-func asksForCompetence(message string) bool {
-	message = strings.ToLower(strings.TrimSpace(message))
-	for _, phrase := range []string{
-		"what are you good at", "what are you bad at", "where are you strong",
-		"where are you weak", "where do you struggle", "your strengths",
-		"your weaknesses", "your competence", "competence map",
-		"learning frontier", "what should you practice", "what do you struggle",
-	} {
-		if strings.Contains(message, phrase) {
-			return true
-		}
-	}
-	return false
-}
-
-func asksForStandingWatch(message string) bool {
-	message = strings.ToLower(strings.TrimSpace(message))
-	for _, phrase := range []string{
-		"who's keeping watch", "who is keeping watch", "who keeps watch",
-		"who's watching", "who is watching", "standing watch", "last wake",
-		"next check", "when i'm not here", "when i am not here", "while i'm away",
-		"while i am away", "no terminal open", "without a terminal",
-	} {
-		if strings.Contains(message, phrase) {
-			return true
-		}
-	}
-	return false
-}
+// Two phrase lists used to stand here — twelve substrings deciding whether the
+// measured competence map reached the prompt, fourteen deciding the same for
+// standing-watch status. They are gone, and nothing replaced them at this seam.
+// "Am I asking too much of you lately?" matched neither, so the head answered a
+// question about its own measured performance out of the notebook and invented a
+// self-assessment the map beside it contradicted — the exact failure the prompt
+// forbids, arriving through the door the gate left open. Both are belt reads
+// now: the law lives in the tool description, the model decides when a question
+// needs the evidence, and the next phrasing nobody wrote down still lands.
 
 // The thread window moves in big steps rather than sliding. A one-message slide
 // meant the oldest rendered message changed on every single turn, and the oldest
@@ -718,7 +779,14 @@ const notebookContextBytes = 2000
 // renderNotebook blends the two free retrieval layers — BM25 relevance to
 // this message, then recency — into a bounded, age-annotated view. The age
 // on every line is deliberate: a claim's freshness is part of its evidence.
-func renderNotebook(graphStore *store.Store, message string) string {
+//
+// thread is the rendered thread window sitting above this block in the same
+// prompt, and a fact whose body is already visible there is suppressed. The head
+// manufactures that collision itself: a preference captured mid-turn from the
+// user's own sentence comes back one message later as a numbered notebook line
+// beside the sentence it was taken from, so the model is shown its own capture
+// as independent standing evidence for the thing it captured.
+func renderNotebook(graphStore *store.Store, message, thread string) string {
 	if graphStore == nil {
 		return "(no notebook)"
 	}
@@ -736,6 +804,12 @@ func renderNotebook(graphStore *store.Store, message string) string {
 				continue
 			}
 			seen[fact.Seq] = true
+			// The same probe the deep slice dedups with, pointed at a different
+			// pair — floor and all, so a two-word belief cannot match the thread
+			// by accident and vanish from the memory the model reads.
+			if deepAlreadyInThread(thread, fact.Body) {
+				continue
+			}
 			line := fmt.Sprintf("- #%d [%s · %s · %s] %s", fact.Seq, fact.Scope,
 				fact.Kind, store.AgeLabel(fact.Time, now), fact.Body)
 			if total+len(line) > notebookContextBytes {
@@ -892,7 +966,38 @@ func consequenceGated(instruction string) bool {
 	return false
 }
 
-func renderGraph(snapshot store.Snapshot) string {
+// crossSessionMark is #41's whole surface. The board is global and the thread is
+// not: with a terminal and a browser both open, one conversation can amend or
+// cancel work the other started and neither could say where it came from. The
+// answer is not to hide the row — the snapshot IS the workforce, and a board that
+// omits a job is the one reality the head must never be handed — but to say
+// whose window it came from, in one word, on the line that was already there.
+const crossSessionMark = " | elsewhere"
+
+// crossSession reports whether a node was started from a different conversation
+// than the one asking. Work with no session at all — the resident's own, a
+// charter's firing — is nobody's window and is never marked.
+func crossSession(node store.Node, sessionID string) bool {
+	origin := strings.TrimSpace(node.Provenance.SessionID)
+	return origin != "" && sessionID != "" && origin != sessionID
+}
+
+// renderGraph is the board: one line per job, breadth over depth.
+//
+// It sits behind beltAddressable, the same ownership membrane the belt and the
+// deep slice sit behind, and that agreement is the fix for a live failure. Three
+// rules over one table meant a charter-fired job passed the router's snapshot,
+// passed the deep slice, and failed the control loop's board — so the head
+// described the job in one sentence and answered "there is no work of the user's
+// with that id" to "stop it" in the next. One membrane, and the membrane is the
+// documented one: OriginTrigger work is the user's, because it came from a
+// charter they ratified.
+//
+// thread and opened are what the rest of the prompt has already said. A result
+// line the user can read in the thread above, or one the deep slice is about to
+// quote in full below, is the same finding stated twice in one prompt — which
+// costs budget and reads to the model as corroboration.
+func renderGraph(snapshot store.Snapshot, sessionID, thread string, opened map[string]bool) string {
 	if len(snapshot.Nodes) == 0 {
 		return "(no active nodes)"
 	}
@@ -902,7 +1007,15 @@ func renderGraph(snapshot store.Snapshot) string {
 	// which is how the head answered "I don't see anything labeled webgpu"
 	// about a subtree the rail was rendering 49 minutes into its run. The
 	// one thing the snapshot must never truncate away is what is happening.
-	nodes := append([]store.Node(nil), snapshot.Nodes...)
+	nodes := make([]store.Node, 0, len(snapshot.Nodes))
+	for _, node := range snapshot.Nodes {
+		if beltAddressable(node) {
+			nodes = append(nodes, node)
+		}
+	}
+	if len(nodes) == 0 {
+		return "(no active nodes)"
+	}
 	rank := func(node store.Node) int {
 		switch {
 		case node.Status == store.Running || node.Status == store.Claimed:
@@ -934,13 +1047,20 @@ func renderGraph(snapshot store.Snapshot) string {
 		}
 		// A settled node's first result line is what "what did you find?"
 		// gets answered from; without it the head can only recite statuses.
-		result := firstLine(node.Summary)
-		if result == "" {
-			result = firstLine(node.FoldDigest)
+		// Unless it is already in this prompt, in which case the second copy
+		// teaches nothing: the deep slice below is about to quote this job in
+		// full, or announceNode already posted the same summary into the thread
+		// above and renderThread has rendered it.
+		result := firstLine(nodeResult(node))
+		if opened[node.ID] || deepAlreadyInThread(thread, result) {
+			result = ""
 		}
 		line := fmt.Sprintf("- %s | %s | %s", node.ID, node.Status, brief)
 		if result != "" {
 			line += " | result: " + result
+		}
+		if crossSession(node, sessionID) {
+			line += crossSessionMark
 		}
 		line += "\n"
 		if rendered.Len()+len(line) > maxGraphContextBytes-len(snapshotTruncatedMark) {

@@ -424,7 +424,7 @@ func TestBoardReturnsCompactRowsAndRespectsItsCap(t *testing.T) {
 		spliceSurgeryJob(t, graph, id, "Report "+id, "write report "+id)
 	}
 	head := New(&beltClient{}, graph)
-	rows, err := head.boardRows("", "", "")
+	rows, err := head.boardRows("", "", "", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -455,7 +455,7 @@ func TestBoardShowsOnlyTheUsersOwnLiveWork(t *testing.T) {
 		spec("practice", "", "Practice question", "practice a question"))
 	completeNode(t, graph, "finance")
 	head := New(&beltClient{}, graph)
-	rows, err := head.boardRows("", "", "")
+	rows, err := head.boardRows("", "", "", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -469,11 +469,11 @@ func TestBoardShowsOnlyTheUsersOwnLiveWork(t *testing.T) {
 	if containsTarget(ids, "finance") {
 		t.Fatalf("board showed settled work as live: %v", ids)
 	}
-	running, err := head.boardRows("", "running", "")
+	running, err := head.boardRows("", "", "running", "")
 	if err != nil || len(running) != 0 {
 		t.Fatalf("running board = %+v err=%v, want nothing running", running, err)
 	}
-	if _, err := head.boardRows("", "sideways", ""); err == nil {
+	if _, err := head.boardRows("", "", "sideways", ""); err == nil {
 		t.Fatal("board accepted a status word it does not know")
 	}
 }
