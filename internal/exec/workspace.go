@@ -29,6 +29,7 @@ type Workspace struct {
 
 	mutex     sync.Mutex
 	artifacts map[int]map[string]bool
+	jobID     int
 }
 
 func NewWorkspace(root string) (*Workspace, error) {
@@ -142,6 +143,16 @@ func (w *Workspace) Record(nodeID int, path string) {
 		w.artifacts[nodeID] = map[string]bool{}
 	}
 	w.artifacts[nodeID][relative] = true
+}
+
+// nextJobID gives every background process in the shared workspace a distinct
+// log name. Registries remain per-leaf, but concurrent leaves must not append
+// unrelated output to the same .aforge/jobs/N.log file.
+func (w *Workspace) nextJobID() int {
+	w.mutex.Lock()
+	defer w.mutex.Unlock()
+	w.jobID++
+	return w.jobID
 }
 
 // Artifacts lists what a node wrote, in stable order.

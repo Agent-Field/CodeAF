@@ -19,7 +19,7 @@ import (
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 )
 
-// The base tool set is four tools, and the count is the design. Pull-only
+// The base tool set is five tools, and the count is the design. Pull-only
 // recall and configured media capabilities are appended at the leaf boundary.
 //
 // Every definition is re-sent on every turn, and every result stays in context
@@ -29,6 +29,8 @@ import (
 //	sh     one definition buys read, list, search, find, move, curl, and
 //	       everything nobody has thought of yet. The shell already composes, so
 //	       batching needs no schema help.
+//	job    keeps long-lived shell work from blocking the linear loop while
+//	       preserving shell composition for logs and readiness monitors.
 //	write  because content must not pass through a shell. Emitting a document
 //	       through a heredoc means quoting prose, which corrupts it and burns
 //	       tokens on escaping.
@@ -69,6 +71,9 @@ const (
 type Result struct {
 	Content string
 	IsError bool
+	// reportedJobs prevents a status-bearing result from being memoised and
+	// replayed later as if its transient background state were still current.
+	reportedJobs bool
 	// Followup carries multimodal content that must reach the next model turn.
 	// The ordinary text result is still emitted first so tool-call pairing
 	// remains valid on every OpenAI-compatible backend.
@@ -87,6 +92,7 @@ type Toolbox struct {
 	web       *Web
 	history   *store.Store
 	media     *MediaTools
+	jobs      *jobRegistry
 	// spills is atomic because a turn's tool calls execute concurrently, and
 	// two large results spilling at once must not race the counter into the
 	// same file name.
@@ -94,18 +100,18 @@ type Toolbox struct {
 }
 
 func NewToolbox(workspace *Workspace, nodeID int, web *Web) *Toolbox {
-	return &Toolbox{workspace: workspace, nodeID: nodeID, web: web}
+	return &Toolbox{workspace: workspace, nodeID: nodeID, web: web, jobs: newJobRegistry(workspace, nodeID)}
 }
 
 // NewToolboxWithStore adds persistent recall to the generic toolbox. A nil
 // store deliberately collapses to NewToolbox so one-shot leaves retain the
-// original four-definition prompt.
+// base-definition prompt.
 func NewToolboxWithStore(workspace *Workspace, nodeID int, web *Web, history *store.Store) *Toolbox {
-	return &Toolbox{workspace: workspace, nodeID: nodeID, web: web, history: history}
+	return &Toolbox{workspace: workspace, nodeID: nodeID, web: web, history: history, jobs: newJobRegistry(workspace, nodeID)}
 }
 
 func newToolboxWithMedia(workspace *Workspace, nodeID int, web *Web, history *store.Store, media *MediaTools) *Toolbox {
-	return &Toolbox{workspace: workspace, nodeID: nodeID, web: web, history: history, media: media}
+	return &Toolbox{workspace: workspace, nodeID: nodeID, web: web, history: history, media: media, jobs: newJobRegistry(workspace, nodeID)}
 }
 
 // Definitions are what the model sees. Descriptions are terse because they are
@@ -113,10 +119,16 @@ func newToolboxWithMedia(workspace *Workspace, nodeID int, web *Web, history *st
 // being told.
 func (t *Toolbox) Definitions() []ai.ToolDefinition {
 	definitions := []ai.ToolDefinition{
-		define("sh", "Run a shell command in the workspace. Use it to read, list, search, and inspect. cmd is one command string (chain with && and pipes), or an array of commands run in order, stopping at the first failure. For INDEPENDENT commands, prefer separate sh calls in the same turn — they run at the same time.", map[string]any{
+		define("sh", "Run a shell command in the workspace. Use it to read, list, search, and inspect. cmd is one command string (chain with && and pipes), or an array of commands run in order, stopping at the first failure. For INDEPENDENT commands, prefer separate sh calls in the same turn — they run at the same time. For servers, builds over a minute, or watch loops, set bg:true and use the job tool — do not block on them.", map[string]any{
 			"cmd": prop("string", "shell command, or an array of commands run serially"),
-			"t":   prop("integer", "timeout seconds, default 60"),
+			"t":   prop("integer", "timeout seconds; default 60, or 900 with bg"),
+			"bg":  prop("boolean", "start as a background job"),
 		}, "cmd"),
+		define("job", "Check or wait on background jobs. Prefer one wait over repeated checks. Compose monitors from bg shell loops (e.g. bg: until curl -s :8080/health; do sleep 1; done — then wait on it). Kill servers when done testing; anything still running dies with the leaf.", map[string]any{
+			"id":   prop("integer", "job id; omit to list jobs"),
+			"wait": prop("integer", "seconds to wait for exit, maximum 120"),
+			"kill": prop("boolean", "terminate the job process group"),
+		}),
 		define("write", "Write a file with exact content. Use this for any deliverable prose; never emit documents through sh.", map[string]any{
 			"path": prop("string", "workspace-relative path"),
 			"text": prop("string", "full file content"),
@@ -201,13 +213,15 @@ func (t *Toolbox) Execute(ctx context.Context, name string, arguments string) Re
 	var args map[string]any
 	if strings.TrimSpace(arguments) != "" {
 		if err := json.Unmarshal([]byte(arguments), &args); err != nil {
-			return errorf("arguments were not valid JSON: %v", err)
+			return t.finishResult(errorf("arguments were not valid JSON: %v", err))
 		}
 	}
 	var result Result
 	switch name {
 	case "sh":
 		result = t.sh(ctx, args)
+	case "job":
+		result = t.job(args)
 	case "write":
 		result = t.write(args)
 	case "edit":
@@ -227,16 +241,27 @@ func (t *Toolbox) Execute(ctx context.Context, name string, arguments string) Re
 	case "view_image":
 		result = t.viewImage(ctx, args)
 	default:
-		available := "sh, write, edit, web"
+		available := "sh, job, write, edit, web"
 		if t.history != nil {
 			available += ", recall"
 		}
 		if t.media != nil && t.media.Provider != nil {
 			available += ", generate_image, generate_music, generate_video, speak, view_image"
 		}
-		return errorf("no tool named %q. Available: %s", name, available)
+		result = errorf("no tool named %q. Available: %s", name, available)
 	}
-	return t.spill(result)
+	return t.finishResult(result)
+}
+
+// finishResult is the single turn boundary for every tool, including optional
+// recall and media tools. With no jobs it returns spill's value untouched.
+func (t *Toolbox) finishResult(result Result) Result {
+	result = t.spill(result)
+	if report := t.jobs.report(); report != "" {
+		result.Content = clamp(result.Content + "\n\n" + report)
+		result.reportedJobs = true
+	}
+	return result
 }
 
 type recallToolFact struct {
@@ -451,6 +476,9 @@ func (t *Toolbox) sh(ctx context.Context, args map[string]any) Result {
 	if command == "" {
 		return errorf("sh needs cmd")
 	}
+	if boolArg(args, "bg") {
+		return t.startBackground(ctx, command, args)
+	}
 	seconds := intArg(args, "t", 60)
 	if seconds <= 0 || seconds > maxCommandSeconds {
 		seconds = maxCommandSeconds
@@ -621,6 +649,11 @@ func stringArg(args map[string]any, key string) string {
 		return value
 	}
 	return ""
+}
+
+func boolArg(args map[string]any, key string) bool {
+	value, _ := args[key].(bool)
+	return value
 }
 
 func replaceEnv(environment []string, key, value string) []string {

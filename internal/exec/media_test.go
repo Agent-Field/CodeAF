@@ -100,8 +100,8 @@ func TestMediaToolsAreRegisteredAndHonorTheSpendGate(t *testing.T) {
 	}}
 	tools, _ := mediaToolbox(t, fake, fakeModalities{})
 	definitions := tools.Definitions()
-	if len(definitions) != 9 {
-		t.Fatalf("definitions = %d, want four base + five media", len(definitions))
+	if len(definitions) != 10 {
+		t.Fatalf("definitions = %d, want five base + five media", len(definitions))
 	}
 	want := map[string]bool{"generate_image": false, "generate_music": false, "generate_video": false, "speak": false, "view_image": false}
 	for _, definition := range definitions {
