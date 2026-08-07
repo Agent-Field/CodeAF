@@ -189,6 +189,7 @@ func (m *Model) trackPaneBounds() {
 	}
 	if m.graphBounds.width > 0 {
 		standingHeight := m.standingSectionHeight()
+		presenceHeight := m.residentPresenceHeight()
 		if standingHeight > 0 {
 			m.standingRowsBounds = paneBounds{
 				x: m.graphBounds.x, y: m.graphBounds.y + 1,
@@ -196,11 +197,11 @@ func (m *Model) trackPaneBounds() {
 			}
 		}
 		m.graphRowsBounds = paneBounds{
-			x: m.graphBounds.x, y: m.graphBounds.y + standingHeight + 2,
+			x: m.graphBounds.x, y: m.graphBounds.y + standingHeight + presenceHeight + 2,
 			width: m.graph.Width, height: m.graph.Height,
 		}
 		m.graphToggleBounds = paneBounds{
-			x: m.graphBounds.x, y: m.graphBounds.y + standingHeight,
+			x: m.graphBounds.x, y: m.graphBounds.y + standingHeight + presenceHeight,
 			width: m.graphBounds.width, height: 1,
 		}
 	}
@@ -317,14 +318,92 @@ func (m *Model) renderHelpButton() string {
 	return style.Render("?")
 }
 
-// renderSpend is the one number that is always worth the top-right corner:
-// what this session has consumed. Tokens and cost are quiet metadata.
+// renderSpend keeps session usage and today's self-spend together in the
+// top-right corner. Tokens and cost are quiet metadata.
 func (m *Model) renderSpend() string {
-	if m.usage.Nodes == 0 {
+	parts := make([]string, 0, 2)
+	if m.usage.Nodes > 0 {
+		tokens := humanizeTokens(m.usage.PromptTokens + m.usage.CompletionTokens)
+		parts = append(parts, tokens+" tok · "+fmt.Sprintf("$%.2f", m.usage.Cost))
+	}
+	if m.selfSpendToday > 0 {
+		parts = append(parts, formatCardCost(m.selfSpendToday)+" self")
+	}
+	if len(parts) == 0 {
 		return ""
 	}
-	tokens := humanizeTokens(m.usage.PromptTokens + m.usage.CompletionTokens)
-	return mutedStyle.Render(tokens + " tok · " + fmt.Sprintf("$%.2f", m.usage.Cost))
+	return mutedStyle.Render(strings.Join(parts, " · "))
+}
+
+// residentPresenceText is the sole projection of self-directed life. Active
+// practice takes precedence over the one-poll learning afterglow; otherwise
+// silence is the state.
+func (m *Model) residentPresenceText() string {
+	if root, ok := activePracticeRoot(m.snapshot); ok {
+		return fmt.Sprintf("practicing: %s · $%.2f on myself today",
+			practiceScope(root), m.selfSpendToday)
+	}
+	if clause := strings.TrimSpace(m.selfLearning); clause != "" {
+		return "learned: " + clause
+	}
+	return ""
+}
+
+func activePracticeRoot(snapshot store.Snapshot) (store.Node, bool) {
+	var newest store.Node
+	found := false
+	for _, node := range snapshot.Nodes {
+		if node.Parent != store.RootID || node.Group != store.PracticeGroup || nodeSettled(node) {
+			continue
+		}
+		if !found || node.CreatedSeq > newest.CreatedSeq {
+			newest, found = node, true
+		}
+	}
+	return newest, found
+}
+
+func practiceScope(node store.Node) string {
+	title := strings.TrimSpace(node.Title)
+	const prefix = "practice "
+	if len(title) >= len(prefix) && strings.EqualFold(title[:len(prefix)], prefix) {
+		if scope := strings.TrimSpace(title[len(prefix):]); scope != "" {
+			return scope
+		}
+	}
+	line := firstLine(node.Brief)
+	lower := strings.ToLower(line)
+	if strings.HasPrefix(lower, "practice question #") {
+		if at := strings.Index(lower, " in "); at >= 0 {
+			tail := line[at+len(" in "):]
+			if colon := strings.IndexByte(tail, ':'); colon > 0 {
+				return strings.TrimSpace(tail[:colon])
+			}
+		}
+	}
+	if title != "" {
+		return title
+	}
+	if label := nodeLabel(node); label != "" {
+		return label
+	}
+	return node.ID
+}
+
+func (m *Model) renderResidentPresence(width int) string {
+	text := m.residentPresenceText()
+	if text == "" {
+		return ""
+	}
+	return mutedStyle.Faint(true).Render(truncate(text, max(1, width)))
+}
+
+func (m *Model) residentPresenceHeight() int {
+	if !m.graphVisible() || m.graphScopeID != "" || m.charterCardID != "" ||
+		m.residentPresenceText() == "" {
+		return 0
+	}
+	return 1
 }
 
 // taskCounts sweeps the snapshot once for the activity bar and the rail
@@ -332,7 +411,8 @@ func (m *Model) renderSpend() string {
 func (m *Model) taskCounts() (running, queued, failed int) {
 	definitions := charterDefinitionIDs(m.snapshot)
 	for _, node := range m.snapshot.Nodes {
-		if node.ID == store.RootID || definitions[node.ID] {
+		if node.ID == store.RootID || definitions[node.ID] ||
+			node.Provenance.Origin == store.OriginSelf {
 			continue
 		}
 		switch node.Status {
@@ -445,6 +525,9 @@ func (m *Model) renderGraphPane() string {
 	if m.graphScopeID == "" && m.charterCardID == "" {
 		if section := m.renderStandingSection(max(1, m.graphWidth)); section != "" {
 			lines = append(lines, strings.Split(section, "\n")...)
+		}
+		if presence := m.renderResidentPresence(max(1, m.graphWidth)); presence != "" {
+			lines = append(lines, presence)
 		}
 	}
 	lines = append(lines, title, "")
