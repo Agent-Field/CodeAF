@@ -179,9 +179,14 @@ func (r *Router) Rungs() int { return len(r.rungs) }
 // Ledger exposes what has been learned, for reporting.
 func (r *Router) Ledger() *Ledger { return r.ledger }
 
-// Close flushes what the run learned.
+// Close flushes what the run learned and releases the diary.
+//
+// A Router owns a file handle and a queue of observations the run has already
+// paid for, so a router that is replaced — a model switched mid-session — has
+// to be closed rather than dropped. Close is idempotent: a second call saves
+// nothing new and closes nothing twice.
 func (r *Router) Close() error {
-	return errors.Join(r.ledger.Save(), r.events.Close())
+	return errors.Join(r.ledger.Close(), r.events.Close())
 }
 
 // CompleteWithMessages routes one call.
@@ -431,13 +436,22 @@ func shaped(class provider.CallClass, shape string) provider.CallClass {
 // against a hundred and three unverified successes that correctly moved nothing,
 // were enough to reorder the panel for every leaf of every other task and
 // collapse two of them from working to zero.
+// The whole panel is read in one acquisition rather than two per rung. Every
+// rung in an ordering is then rated as of the same instant, which is what an
+// ordering is supposed to mean, and a routed call stops taking the ledger's
+// lock twenty times over.
 func (r *Router) rank(class provider.CallClass) []ranked {
-	scored := make([]ranked, 0, len(r.rungs))
+	queries := make([]Query, 0, len(r.rungs))
 	for _, item := range r.rungs {
-		prior := coldStart(item.spec.Role)
-		rating, count := r.ledger.Rating(r.ledger.Resolve(item.spec.Slug), class, prior)
+		queries = append(queries, Query{Slug: item.spec.Slug, Prior: coldStart(item.spec.Role)})
+	}
+	readings := r.ledger.Read(class, queries)
+
+	scored := make([]ranked, 0, len(r.rungs))
+	for index, item := range r.rungs {
+		rating, count := readings[index].Rating, readings[index].Count
 		if count < MinGraded {
-			rating = prior
+			rating = queries[index].Prior
 		}
 		scored = append(scored, ranked{rung: item, rating: rating, count: count,
 			score: Ability(rating) / item.price})

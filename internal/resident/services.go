@@ -31,6 +31,14 @@ const (
 	serviceHygienePerPass = 1
 )
 
+// serviceHealthClient is one client for every URL health probe in the process.
+// A client built per check carries its own connection pool, so nothing is ever
+// reused: every probe of every service on every tick paid a fresh handshake,
+// and a supervisor that ticks forever is the last place to be rebuilding a
+// transport. The per-request deadline is the context's, not the client's, so
+// one shared client still bounds each probe individually.
+var serviceHealthClient = &http.Client{Timeout: serviceHealthTimeout}
+
 // ServiceRuntime is the fakeable platform membrane for health, process
 // identity, detached restart, and group stop.
 type ServiceRuntime interface {
@@ -84,7 +92,7 @@ func (*platformServiceRuntime) Healthy(ctx context.Context, service store.Servic
 		if err != nil {
 			return err
 		}
-		response, err := (&http.Client{Timeout: serviceHealthTimeout}).Do(request)
+		response, err := serviceHealthClient.Do(request)
 		if err != nil {
 			return err
 		}
