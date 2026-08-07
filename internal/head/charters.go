@@ -51,7 +51,8 @@ func selectQuestionOption(reply string, options []store.QuestionOption) (store.Q
 			return option, true
 		}
 		if negativeReply(normalized) &&
-			(strings.Contains(label, "not standing") || strings.Contains(value, ":once:")) {
+			(strings.Contains(label, "not standing") || strings.Contains(value, ":once:") ||
+				strings.HasPrefix(label, "keep ") || strings.Contains(value, "surgery:keep:")) {
 			return option, true
 		}
 	}
@@ -78,6 +79,16 @@ func charterQuestionID(options []store.QuestionOption) (string, bool) {
 }
 
 func (h *Head) applyQuestionOption(user store.Message, question store.Message, option store.QuestionOption) error {
+	if action, kind, target, instruction, ok := decodeSurgeryOption(option.Value); ok {
+		switch action {
+		case "select":
+			return h.resolveSurgery(user, kind, target, instruction, false)
+		case "apply":
+			return h.resolveSurgery(user, kind, target, instruction, true)
+		case "keep":
+			return h.postAgent(user.SessionID, "Keeping it as-is.", 0)
+		}
+	}
 	parts := strings.Split(option.Value, ":")
 	if len(parts) >= 3 && parts[0] == "charter" {
 		id := parts[2]
@@ -176,6 +187,11 @@ func (h *Head) manageCharter(user store.Message) (bool, error) {
 		return true, err
 	}
 	if len(matches) == 0 {
+		// "pause" is shared vocabulary. If it names no standing charter, let
+		// ordinary node surgery try the live graph before claiming a miss.
+		if kind == store.CommandCharterPause {
+			return false, nil
+		}
 		return true, h.postAgent(user.SessionID, "I couldn't match that to an active charter.", 0)
 	}
 	if len(matches) > 1 {

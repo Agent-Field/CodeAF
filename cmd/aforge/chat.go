@@ -248,13 +248,26 @@ func runChat(args []string) error {
 		}
 
 		task := exec.Task{
-			Reflex:     isReflex,
-			NodeID:     int(node.CreatedSeq),
-			Title:      firstLine(node.Brief),
-			Goal:       node.Provenance.Intent,
-			Brief:      residentDeliveryBrief(graph, node),
-			Inputs:     inputs,
-			Steer:      steer,
+			Reflex: isReflex,
+			NodeID: int(node.CreatedSeq),
+			Title:  firstLine(node.Brief),
+			Goal:   node.Provenance.Intent,
+			Brief:  residentDeliveryBrief(graph, node),
+			Inputs: inputs,
+			Steer:  steer,
+			Control: func() exec.ControlAction {
+				control, err := graph.Control(node.ID)
+				if err != nil {
+					return exec.ControlNone
+				}
+				if control.CancelRequested {
+					return exec.ControlCancel
+				}
+				if control.Held {
+					return exec.ControlPause
+				}
+				return exec.ControlNone
+			},
 			ImagePaths: append([]string(nil), node.Provenance.Attachments...),
 		}
 		// The scheduler's quality loop, inline: each attempt is one routable
@@ -292,6 +305,12 @@ func runChat(args []string) error {
 		}
 		if planNode != nil {
 			plans.recordOutcome(planNode, outcome, err)
+		}
+		if err == nil && outcome != nil && (outcome.Stop == exec.StopPaused || outcome.Stop == exec.StopCancelled) {
+			return resident.ExecResult{
+				Summary: outcome.Text, PromptTokens: spent.PromptTokens,
+				CompletionTokens: spent.CompletionTokens, Cost: spent.Cost,
+			}, nil
 		}
 		// Result-driven revision: each landed leaf is shown to the sentinel,
 		// which edits the job's unstarted remainder only when this result

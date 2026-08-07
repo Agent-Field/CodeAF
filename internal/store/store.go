@@ -80,6 +80,14 @@ const (
 	EventNodeAmended    EventKind = "node_amended"
 	EventNodeReparented EventKind = "node_reparented"
 	EventNodeCancelled  EventKind = "node_cancelled"
+	// Surgery controls are separate from the public status enum. Holds keep a
+	// pending node visibly pending while making it unschedulable; cancel
+	// requests let the live claim owner release cooperatively at a turn
+	// boundary before the ordinary cancelled transition lands.
+	EventNodeCancelRequested EventKind = "node_cancel_requested"
+	EventNodeHeld            EventKind = "node_held"
+	EventNodeResumed         EventKind = "node_resumed"
+	EventNodePriorityChanged EventKind = "node_priority_changed"
 
 	// Thread events: the conversation and its asynchronous mutation requests
 	// live in the same journal as the graph they act on.
@@ -167,6 +175,9 @@ type Provenance struct {
 	// TrialOf is the fact sequence of the unsettled pair this subtree tests.
 	// Zero means the splice is ordinary work.
 	TrialOf int64 `json:"trial_of,omitempty"`
+	// RetryOf links a freshly spliced retry to the failed/cancelled node it
+	// supersedes. The predecessor stays immutable and fully inspectable.
+	RetryOf string `json:"retry_of,omitempty"`
 }
 
 // Need is one incoming edge named by a node specification.
@@ -213,6 +224,11 @@ type Node struct {
 	Attempt    uint64
 	Summary    string
 	Error      string
+	// Held and CancelRequested are journal-derived scheduling controls. They
+	// intentionally do not add presentation-only statuses to the graph.
+	Held            bool
+	CancelRequested bool
+	Priority        int
 
 	Provenance   Provenance
 	CreatedSeq   int64
@@ -294,6 +310,7 @@ CREATE TABLE IF NOT EXISTS nodes (
     intent         TEXT NOT NULL,
     charter_id     TEXT NOT NULL DEFAULT '',
     trial_of       INTEGER NOT NULL DEFAULT 0 CHECK (trial_of >= 0),
+	retry_of       TEXT NOT NULL DEFAULT '',
     attachments    JSON NOT NULL DEFAULT '[]' CHECK (json_valid(attachments)),
     created_seq    INTEGER NOT NULL REFERENCES events(seq),
     created_order  INTEGER NOT NULL CHECK (created_order >= 0),
@@ -306,6 +323,9 @@ CREATE TABLE IF NOT EXISTS nodes (
     fold_pointers  JSON NOT NULL DEFAULT '[]' CHECK (json_valid(fold_pointers)),
     title          TEXT NOT NULL DEFAULT '',
     grp            TEXT NOT NULL DEFAULT '',
+	held           INTEGER NOT NULL DEFAULT 0 CHECK (held IN (0, 1)),
+	cancel_requested INTEGER NOT NULL DEFAULT 0 CHECK (cancel_requested IN (0, 1)),
+	priority       INTEGER NOT NULL DEFAULT 0,
     CHECK (fold_root = 0 OR folded = 1)
 );
 

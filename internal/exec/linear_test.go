@@ -93,6 +93,20 @@ func TestTaskImageInputAndViewImageReachTheNextModelTurn(t *testing.T) {
 	}
 }
 
+func TestLinearObservesCooperativeCancelAtTurnBoundary(t *testing.T) {
+	client := &scriptedCompleter{}
+	linear := NewLinear(client, workspace(t), nil, 10, 1_000_000, time.Minute)
+	outcome, err := linear.Run(context.Background(), Task{
+		NodeID: 1, Brief: "work", Control: func() ControlAction { return ControlCancel },
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if outcome.Stop != StopCancelled || len(client.seen) != 0 {
+		t.Fatalf("outcome=%+v model calls=%d", outcome, len(client.seen))
+	}
+}
+
 func TestCallFailureRetriesAndCompletes(t *testing.T) {
 	client := &scriptedCompleter{errors: []error{
 		fmt.Errorf("first timeout"),

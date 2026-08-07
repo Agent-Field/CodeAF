@@ -310,6 +310,7 @@ func (r *Reconciler) reconcileCommand(ctx context.Context, command store.Command
 		SessionID:  command.SessionID,
 		Role:       role,
 		Body:       boundMessage(body),
+		NodeID:     commandReceiptNode(command),
 		CommandSeq: command.Seq,
 		Options:    outcome.options,
 	})
@@ -325,16 +326,19 @@ func (r *Reconciler) applyCommand(ctx context.Context, command store.Command) (c
 		return r.splice(ctx, command)
 	case store.CommandCancel:
 		return r.cancel(ctx, command)
+	case store.CommandPause:
+		return r.pause(command)
+	case store.CommandResume:
+		return r.resume(command)
+	case store.CommandReprioritize:
+		return r.reprioritize(command)
+	case store.CommandRestart:
+		return r.restart(command)
 	case store.CommandCharterRatify, store.CommandCharterPause, store.CommandCharterRetire,
 		store.CommandCharterCadence, store.CommandCharterOnce:
 		return r.applyCharterCommand(command)
 	case store.CommandAmend:
-		const reason = "amend is not implemented yet; cancel and re-ask, or splice an addition"
-		return commandOutcome{
-			status:  store.CommandRejected,
-			result:  reason,
-			receipt: reason,
-		}, nil
+		return r.amend(command)
 	default:
 		reason := fmt.Sprintf("command kind %q is not supported", command.Kind)
 		return commandOutcome{
@@ -568,59 +572,69 @@ func (r *Reconciler) cancel(ctx context.Context, command store.Command) (command
 		return commandOutcome{}, fmt.Errorf("target %q no longer exists", command.Target)
 	}
 
-	owner := fmt.Sprintf("resident-cancel-%d", command.Seq)
-	cancelled := 0
-	for {
-		progress := false
-		for _, id := range targets {
-			if err := ctx.Err(); err != nil {
-				return commandOutcome{}, err
-			}
-			node, found, err := r.store.Node(id)
-			if err != nil {
-				return commandOutcome{}, err
-			}
-			if !found || terminal(node.Status) {
-				continue
-			}
-			claim, won, err := r.store.Claim(id, owner)
-			if err != nil {
-				return commandOutcome{}, err
-			}
-			if !won {
-				continue
-			}
-			if err := r.store.Fail(claim, "cancelled by resident request"); err != nil {
-				if errors.Is(err, store.ErrClaimLost) {
-					continue
-				}
-				return commandOutcome{}, err
-			}
-			cancelled++
-			progress = true
-		}
-		if !progress {
-			break
-		}
+	impact, err := r.store.Impact(command.Target, time.Now())
+	if err != nil {
+		return commandOutcome{}, err
 	}
-
-	inFlight := 0
+	cancelled, requested := 0, 0
 	for _, id := range targets {
+		if err := ctx.Err(); err != nil {
+			return commandOutcome{}, err
+		}
 		node, found, err := r.store.Node(id)
 		if err != nil {
 			return commandOutcome{}, err
 		}
-		if found && !terminal(node.Status) {
-			inFlight++
+		if !found || terminal(node.Status) {
+			continue
+		}
+		switch node.Status {
+		case store.Pending:
+			if err := r.store.CancelPending(id, "cancelled by user"); err != nil {
+				return commandOutcome{}, err
+			}
+			cancelled++
+		case store.Claimed, store.Running:
+			if err := r.store.RequestNodeCancel(id, "cancelled by user"); err != nil {
+				return commandOutcome{}, err
+			}
+			requested++
 		}
 	}
-	result := fmt.Sprintf("cancelled %d %s, %d in flight left to land",
-		cancelled, plural(cancelled, "node", "nodes"), inFlight)
+	result := fmt.Sprintf("cancelled %d; requested cooperative cancellation for %d", cancelled, requested)
+	receipt := fmt.Sprintf("cancelled — %d %s cancelled", cancelled, plural(cancelled, "leaf", "leaves"))
+	if requested > 0 {
+		receipt = fmt.Sprintf("cancellation requested — %d running %s will release at the next boundary",
+			requested, plural(requested, "leaf", "leaves"))
+		if cancelled > 0 {
+			receipt += fmt.Sprintf(", %d pending cancelled", cancelled)
+		}
+	}
+	if impact.Cost > 0 {
+		receipt += fmt.Sprintf(", $%.2f spent stays spent", impact.Cost)
+	}
 	return commandOutcome{
 		status:  store.CommandApplied,
 		result:  result,
-		receipt: "I " + result + ".",
+		receipt: receipt,
 	}, nil
+}
+
+func commandReceiptNode(command store.Command) string {
+	if isNodeSurgeryCommand(command.Kind) {
+		return command.Target
+	}
+	return ""
+}
+
+func isNodeSurgeryCommand(kind store.CommandKind) bool {
+	switch kind {
+	case store.CommandCancel, store.CommandPause, store.CommandResume, store.CommandAmend,
+		store.CommandReprioritize, store.CommandRestart:
+		return true
+	default:
+		return false
+	}
 }
 
 func descendants(nodes []store.Node, target string) ([]string, bool) {

@@ -171,6 +171,23 @@ func (r *Runner) claimNext() (store.Node, bool, error) {
 func (r *Runner) runOne(ctx context.Context, node store.Node) {
 	claim := store.Claim{ID: node.ID, Owner: node.Owner, Token: node.ClaimToken}
 	result, err := r.execute(ctx, node)
+	control, controlErr := r.graph.Control(node.ID)
+	if controlErr == nil && (control.CancelRequested || control.Held) {
+		// Spend precedes settlement even on a user-directed boundary. Release is
+		// the CAS transition that invalidates this worker's authority; a cancel
+		// then uses the ordinary pending cancellation event.
+		_ = r.graph.RecordUsage(store.NodeUsage{
+			NodeID: node.ID, PromptTokens: result.PromptTokens,
+			CompletionTokens: result.CompletionTokens, Cost: result.Cost,
+		})
+		if releaseErr := r.graph.Release(claim); releaseErr != nil {
+			return
+		}
+		if control.CancelRequested {
+			_ = r.graph.CancelPending(node.ID, "cancelled by user")
+		}
+		return
+	}
 	if err != nil {
 		_ = r.graph.Fail(claim, err.Error())
 		return
