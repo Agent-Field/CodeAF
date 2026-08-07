@@ -152,7 +152,7 @@ func TestHelpOverlayCategoriesAt80And120Columns(t *testing.T) {
 			indices := make([]int, 0, 8)
 			for _, category := range helpCategories() {
 				for index, line := range lines {
-					if ansi.Strip(line) == category.title {
+					if strings.TrimRight(ansi.Strip(line), " ") == category.title {
 						indices = append(indices, index)
 						break
 					}

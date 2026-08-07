@@ -22,6 +22,7 @@ import (
 
 	"github.com/Agent-Field/aforge-v2/internal/catalog"
 	"github.com/Agent-Field/aforge-v2/internal/config"
+	"github.com/Agent-Field/aforge-v2/internal/craft"
 	"github.com/Agent-Field/aforge-v2/internal/exec"
 	"github.com/Agent-Field/aforge-v2/internal/head"
 	"github.com/Agent-Field/aforge-v2/internal/lease"
@@ -189,6 +190,14 @@ func runChat(args []string) error {
 	// the profile records that calibrate the planner's ruler all read from the
 	// same plan nodes the scheduler would have read.
 	plans := &jobPlans{graphs: map[string]plannedJob{}}
+	// The craft repository lives beside the graph it serves. Without git or
+	// with a broken repo, craft is dormant — never a startup failure.
+	var craftRunner *resident.CraftRunner
+	if craftRepo, craftErr := craft.Open(filepath.Join(filepath.Dir(*database), "craft")); craftErr == nil {
+		craftRunner = resident.NewCraftRunner(graph, craftRepo, craftRepo.Dir())
+	} else {
+		log.Printf("note: craft repository unavailable: %v", craftErr)
+	}
 	// The commander owns the live boost slot, and it is built further down;
 	// the resolver reads it through this handle so a later /model change is
 	// what the next job's model words resolve against.
@@ -214,6 +223,9 @@ func runChat(args []string) error {
 		WithStandingWatchKeyPersist(func() (bool, string, error) {
 			return config.EnsurePersistedAPIKey(settings.ProfileDir)
 		})
+	if craftRunner != nil {
+		reconciler = reconciler.WithCraftRunner(craftRunner)
+	}
 	if err := reconciler.AttachSession(*sessionID); err != nil {
 		return err
 	}
@@ -582,6 +594,9 @@ func runChat(args []string) error {
 			ServiceRequests:  outcome.ServiceRequests,
 		}, nil
 	}, "chat-runner", chatWorkerCeiling).WithDailyBudgetUSD(settings.DailyBudgetUSD)
+	if craftRunner != nil {
+		runner = runner.WithCraftRunner(craftRunner)
+	}
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
