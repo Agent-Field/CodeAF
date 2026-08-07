@@ -91,6 +91,10 @@ type Learned struct {
 	// Skill is set only when this memory names a reusable artifact produced by
 	// the job. Its fact enters the notebook as a non-retrievable candidate.
 	Skill *SkillCandidate
+	// Craft is set only when the job's SHAPE looked reusable. It is not a
+	// memory at all — it rides here because one distiller call judges both,
+	// and it is split off before the notebook ever sees it.
+	Craft *CraftCandidate
 	// Quarantines names source facts rejected by a repeated bad-outcome pattern.
 	// It is honored only by consolidation.
 	Quarantines []int64
@@ -177,6 +181,7 @@ type Reconciler struct {
 	composeBrief    BriefComposeFunc
 	standingWatch   StandingWatch
 	craft           *CraftRunner
+	craftMind       *CraftMind
 	proposeCharters bool
 	dailyBudgetUSD  float64
 	practiceEnabled bool
@@ -722,7 +727,13 @@ func (r *Reconciler) splice(ctx context.Context, command store.Command) (command
 	}
 
 	var subtree store.Subtree
-	if r.plan == nil {
+	// Learned know-how is asked for before anything is planned: a request the
+	// shelf answers decisively compiles to that workflow's subtree, and every
+	// other request plans exactly as it always did.
+	use, usingCraft := r.craftCompile(ctx, command)
+	if usingCraft {
+		subtree = use.subtree
+	} else if r.plan == nil {
 		subtree = store.Subtree{Nodes: []store.NodeSpec{{
 			ID:    fmt.Sprintf("task-%d", command.Seq),
 			Brief: compiled.Goal,
@@ -752,6 +763,7 @@ func (r *Reconciler) splice(ctx context.Context, command store.Command) (command
 		ServiceIntent: compiled.ServiceIntent,
 		WorkModel:     strings.TrimSpace(compiled.WorkModel),
 		Attachments:   append([]string(nil), command.Attachments...),
+		Craft:         use.reference,
 	}
 	if err := r.store.Splice(store.RootID, subtree, provenance); err != nil {
 		if r.plan != nil || !r.defaultSpliceExists(command, compiled) {
@@ -760,6 +772,9 @@ func (r *Reconciler) splice(ctx context.Context, command store.Command) (command
 	}
 
 	receipt := compileReceipt(compiled.Goal, compiled.Assumptions, compiled.ModelNote)
+	if usingCraft {
+		receipt = use.receipt
+	}
 	if promoted {
 		receipt = reflexPromotionLine
 	}
@@ -1046,6 +1061,9 @@ func (r *Reconciler) announceTransitions(ctx context.Context) error {
 					return err
 				}
 				r.recordForNarration(byID, event)
+				if ok {
+					r.recordCraftOutcome(node, event.Kind == store.EventNodeCompleted)
+				}
 				practice := ok && node.Group == store.PracticeGroup &&
 					node.Provenance.Origin == store.OriginSelf
 				if ok && (node.Provenance.SessionID != "" || practice) {
@@ -1057,6 +1075,13 @@ func (r *Reconciler) announceTransitions(ctx context.Context) error {
 					if node.Parent == store.RootID {
 						r.foldJob(node)
 					}
+				}
+			case store.EventNodeCancelled:
+				// A cancelled craft run counts against its version the way a
+				// failure does: the user stopped it, which is the strongest
+				// thing anyone can say about know-how that was supposed to fit.
+				if node, ok, err := r.store.Node(event.NodeID); err == nil && ok {
+					r.recordCraftOutcome(node, false)
 				}
 			case store.EventNodeStarted:
 				r.recordForNarration(byID, event)
@@ -1333,12 +1358,19 @@ func (r *Reconciler) distillJob(ctx context.Context, node store.Node, failed boo
 	if isTrial {
 		outcome += "\n\n" + r.renderTrialForDistiller(trial)
 	}
+	if note := r.craftDistillerNote(node); note != "" {
+		outcome += "\n\n" + note
+	}
 	facts, err := r.distill(ctx, node.Provenance.Intent, outcome, failed)
 	if err != nil {
 		if isTrial {
 			r.recordInconclusiveTrial(node, trial)
 		}
 		return
+	}
+	facts, drafts := splitCraftDrafts(facts)
+	for _, draft := range drafts {
+		r.forgeCraft(ctx, node, draft)
 	}
 	if len(facts) > distillLimit {
 		facts = facts[:distillLimit]
