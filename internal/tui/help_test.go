@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"regexp"
 	"strings"
 	"testing"
 
@@ -8,6 +9,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/x/ansi"
+	"github.com/muesli/termenv"
 )
 
 func TestQuestionMarkOpensHelpOnlyForEmptyDraft(t *testing.T) {
@@ -167,6 +169,75 @@ func TestHelpOverlayCategoriesAt80And120Columns(t *testing.T) {
 				}
 			}
 		}
+	}
+}
+
+// The panel reserves one column of padding on each side, so a content line
+// wider than the panel minus two is word-wrapped by lipgloss into stray
+// fragments hanging off the left margin. Every fragment must also carry the
+// panel background: lipgloss closes a styled run with a full reset, so an
+// unpainted run falls back to the terminal background and the modal reads as
+// mottled bands rather than one calm surface.
+func TestHelpPanelLinesFitTheirColumnAndStayPainted(t *testing.T) {
+	previous := lipgloss.ColorProfile()
+	lipgloss.SetColorProfile(termenv.TrueColor)
+	defer lipgloss.SetColorProfile(previous)
+
+	for _, width := range []int{60, 80, 100, 120, 160} {
+		model := New(&fakeBackend{}, "help-paint")
+		_, _ = model.Update(tea.WindowSizeMsg{Width: width, Height: 60})
+		model.openHelp()
+
+		content := max(1, model.helpOverlayWidth()-2)
+		for index, line := range model.helpContentLines(content) {
+			if got := lipgloss.Width(line); got > content {
+				t.Fatalf("width %d content line %d is %d cells, panel holds %d: %q",
+					width, index, got, content, ansi.Strip(line))
+			}
+			row := helpPanelRow(line, content)
+			if strings.Contains(row, "\n") || lipgloss.Width(row) != content+2 {
+				t.Fatalf("width %d content line %d laid out as %d cells over %d rows",
+					width, index, lipgloss.Width(row), strings.Count(row, "\n")+1)
+			}
+		}
+
+		view := model.View()
+		for index, line := range strings.Split(view, "\n") {
+			if index < model.helpBounds.y || index >= model.helpBounds.y+model.helpBounds.height {
+				continue
+			}
+			panel := ansi.Cut(line, model.helpBounds.x, model.helpBounds.x+model.helpBounds.width)
+			if bare := unpaintedCells(panel); bare > 0 {
+				t.Fatalf("width %d row %d left %d cells unpainted: %q",
+					width, index, bare, ansi.Strip(panel))
+			}
+		}
+	}
+}
+
+var sgrSequence = regexp.MustCompile("\x1b\\[[0-9;]*m")
+
+// unpaintedCells counts the visible cells rendered while no background is set.
+func unpaintedCells(line string) int {
+	painted, bare, rest := false, 0, line
+	for {
+		found := sgrSequence.FindStringIndex(rest)
+		if found == nil {
+			if !painted {
+				bare += len([]rune(rest))
+			}
+			return bare
+		}
+		if !painted {
+			bare += len([]rune(rest[:found[0]]))
+		}
+		switch code := rest[found[0]:found[1]]; {
+		case strings.Contains(code, "48;"):
+			painted = true
+		case code == "\x1b[0m":
+			painted = false
+		}
+		rest = rest[found[1]:]
 	}
 }
 
