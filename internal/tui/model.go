@@ -613,6 +613,10 @@ func RunWithCommander(backend Backend, sessionID string, commander Commander) er
 		NewWithCommander(backend, sessionID, commander),
 		tea.WithAltScreen(),
 		tea.WithMouseCellMotion(),
+		// The renderer defaults to 60 wakeups a second forever. Nothing here
+		// moves faster than the 120ms animation cadence, and half the rate
+		// leaves the timer coalescing that keeps a laptop cool.
+		tea.WithFPS(30),
 	).Run()
 	return err
 }
@@ -655,22 +659,38 @@ func (m *Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 
 	case animationTickMsg:
 		m.animationPending = false
-		if m.streamMode != streamNone {
+		streaming := m.streamMode != streamNone
+		if streaming {
 			m.advanceStream()
-			m.refreshChat()
-			if m.autoScroll {
-				m.chat.GotoBottom()
-			}
 		}
 		m.shimmerFrame++
 		m.sampleVoiceLevel()
-		if !m.graphAnimating && !m.streamAnimating() && !m.shimmerVisible() && !m.voiceAnimating() {
+		animating := m.graphAnimating || m.streamAnimating() || m.shimmerVisible() || m.voiceAnimating()
+		if animating {
+			m.spinnerFrame = (m.spinnerFrame + 1) % len(spinnerFrames)
+		}
+		// One refresh, not two: no frame is drawn between them, so the thread
+		// was rendered twice per tick for one visible result.
+		if streaming || animating {
+			m.refreshChat()
+			if streaming && m.autoScroll {
+				m.chat.GotoBottom()
+			}
+		}
+		if !animating {
 			return m, nil
 		}
-		m.spinnerFrame = (m.spinnerFrame + 1) % len(spinnerFrames)
-		m.refreshChat()
-		m.refreshGraph()
-		m.refreshSelf()
+		// Only the panes that can reach the screen are rebuilt. The rail's
+		// animation bookkeeping still runs with the tree off screen: that is
+		// what keeps the collapsed rail's spinner turning.
+		if m.graphContentVisible() {
+			m.refreshGraph()
+		} else {
+			m.noteGraphAnimation()
+		}
+		if m.selfVisible() {
+			m.refreshSelf()
+		}
 		return m, m.scheduleAnimation()
 
 	case catalogResultMsg:
@@ -781,6 +801,13 @@ func (m *Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 
 	if m.inputFocused {
 		before := m.input.Value()
+		// Typing can only move two heights: the draft's own wrapped rows and the
+		// palette below it. Everything else the relayout recomputes — the whole
+		// thread, the whole rail, the whole employee file — is identical to what
+		// is already on screen, so a character costs a relayout only when the
+		// frame it lives in actually changed shape.
+		inputHeight := m.inputSurfaceHeight()
+		paletteHeight := m.layoutPaletteHeight()
 		var command tea.Cmd
 		m.input, command = m.input.Update(message)
 		if m.input.Value() != before && m.nodeViewID == "" {
@@ -788,7 +815,9 @@ func (m *Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 			m.paletteSelected = 0
 			m.paletteDismissed = false
 			m.syncPalette()
-			m.setSize(m.width, m.height)
+			if m.inputSurfaceHeight() != inputHeight || m.layoutPaletteHeight() != paletteHeight {
+				m.setSize(m.width, m.height)
+			}
 		}
 		return m, command
 	}
@@ -1910,6 +1939,40 @@ func (m *Model) setSize(width, height int) {
 }
 
 func (m *Model) refreshGraph() {
+	m.refreshGraphContent()
+	m.noteGraphAnimation()
+}
+
+// graphContentVisible reports whether anything the rail viewport holds can
+// reach the screen. When nothing can, the animation tick keeps the bookkeeping
+// and skips building a tree no one will read.
+func (m *Model) graphContentVisible() bool {
+	return m.graphVisible() || m.nodeViewID != "" || m.serviceCardID != "" || m.charterCardID != ""
+}
+
+// noteGraphAnimation decides whether anything on screen still moves. It is the
+// half of the refresh the collapsed rail still needs: its spinner lives in the
+// activity bar, not in the tree.
+func (m *Model) noteGraphAnimation() {
+	if !m.graphContentVisible() {
+		m.graphAnimating = false
+	}
+	if m.standingBreathing() {
+		m.graphAnimating = true
+	}
+	// The collapsed rail still shows a spinner in the activity bar, so live
+	// work keeps the animation ticking even with the tree off screen.
+	if !m.graphVisible() && m.nodeViewID == "" && m.liveWorkCount() > 0 {
+		m.graphAnimating = true
+	}
+	if m.nodeViewID != "" &&
+		(m.inspectedNode.Status == store.Claimed || m.inspectedNode.Status == store.Running ||
+			m.completionFlashing(m.inspectedNode, time.Now())) {
+		m.graphAnimating = true
+	}
+}
+
+func (m *Model) refreshGraphContent() {
 	offset := m.graph.YOffset
 	if m.serviceCardID != "" {
 		m.graphRows = nil
@@ -1926,19 +1989,6 @@ func (m *Model) refreshGraph() {
 		m.graph.SetContent(m.renderTree(max(1, m.graph.Width), 0))
 	}
 	m.graph.SetYOffset(offset)
-	if m.standingBreathing() {
-		m.graphAnimating = true
-	}
-	// The collapsed rail still shows a spinner in the activity bar, so live
-	// work keeps the animation ticking even with the tree off screen.
-	if !m.graphVisible() && m.nodeViewID == "" && m.liveWorkCount() > 0 {
-		m.graphAnimating = true
-	}
-	if m.nodeViewID != "" &&
-		(m.inspectedNode.Status == store.Claimed || m.inspectedNode.Status == store.Running ||
-			m.completionFlashing(m.inspectedNode, time.Now())) {
-		m.graphAnimating = true
-	}
 }
 
 func (m *Model) pageFocused(down bool) {
