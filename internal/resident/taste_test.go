@@ -294,10 +294,13 @@ func answerTaste(t *testing.T, graph *store.Store, sessionID, scope, label strin
 // whatever their age.
 func TestTasteBlockSkipsTheRuleItCannotFitAndKeepsGoing(t *testing.T) {
 	graph := openStore(t)
-	settled := "always give the numbers before the narrative"
-	// Larger than the whole budget, so it can never fit in any position.
-	verbose := "explain the reasoning " + strings.Repeat("in full ", 70)
-	roomy := "name the file and its path beside the answer"
+	// The store caps a single fact under the block budget, so no rule is
+	// unfittable on its own — the skip has to come from position: the settled
+	// rule spends enough of the budget that the verbose one cannot join it,
+	// and the newest rule is small enough to land after the skip.
+	settled := "always give the numbers before the narrative " + strings.Repeat("with units ", 14)
+	verbose := "explain the reasoning " + strings.Repeat("in full ", 46)
+	roomy := "name the file " + strings.Repeat("and its path ", 18)
 	for _, rule := range []struct{ subject, body string }{
 		{"reports", settled},
 		{"prose", verbose},
@@ -321,13 +324,13 @@ func TestTasteBlockSkipsTheRuleItCannotFitAndKeepsGoing(t *testing.T) {
 	}
 
 	block := TasteBlock(graph)
-	if !strings.Contains(block, settled) {
+	if !strings.Contains(block, "always give the numbers") {
 		t.Errorf("the settled rule was starved by the one that could not fit:\n%q", block)
 	}
 	if strings.Contains(block, "explain the reasoning") {
 		t.Errorf("a rule that did not fit was written anyway:\n%q", block)
 	}
-	if !strings.Contains(block, roomy) {
+	if !strings.Contains(block, "name the file") {
 		t.Errorf("the rule after the skipped one never landed — the skip did not keep going:\n%q", block)
 	}
 	if len(block) > tasteBlockBytes {
@@ -343,7 +346,6 @@ func tasteRulesByStatus(t *testing.T, graph *store.Store, status string) []store
 	}
 	return rules
 }
-
 
 // Settled taste leads the gate's prompt, so the order it renders in decides
 // whether the gate can ever be handed a warm prefix. Newest-first meant every
@@ -377,4 +379,3 @@ func TestTasteBlockAppendsNewlySettledRules(t *testing.T) {
 		t.Fatalf("a newly settled rule rewrote the block instead of appending:\nbefore:\n%s\n\nafter:\n%s", before, after)
 	}
 }
-
