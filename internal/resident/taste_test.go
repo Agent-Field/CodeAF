@@ -2,6 +2,7 @@ package resident
 
 import (
 	"context"
+	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -55,7 +56,7 @@ func TestCandidateTasteRuleAnnotatesTheDeliveryItRidesOn(t *testing.T) {
 	bornTasteCandidate(t, graph, reconciler, "taste-ask", "ask")
 
 	node := deliveringNode(t, graph, "taste-ask", "ask-delivery")
-	question, asked, err := AnnotateDelivery(graph, node)
+	question, asked, err := AnnotateDelivery(graph, node, "the report, in prose")
 	if err != nil || !asked {
 		t.Fatalf("annotate delivery asked=%t err=%v", asked, err)
 	}
@@ -102,7 +103,7 @@ func TestCandidateTasteRuleAnnotatesTheDeliveryItRidesOn(t *testing.T) {
 	}
 
 	// A shelf already being asked about is left alone on the next delivery.
-	if _, asked, err := AnnotateDelivery(graph, deliveringNode(t, graph, "taste-ask", "ask-again")); asked || err != nil {
+	if _, asked, err := AnnotateDelivery(graph, deliveringNode(t, graph, "taste-ask", "ask-again"), "the report, in prose"); asked || err != nil {
 		t.Fatalf("second annotation asked=%t err=%v, want the shelf left alone", asked, err)
 	}
 }
@@ -181,7 +182,7 @@ func TestTasteAnnotationExpiresOnItsOwnWindow(t *testing.T) {
 	reconciler := tasteReconciler(t, graph, "taste-expiry")
 	bornTasteCandidate(t, graph, reconciler, "taste-expiry", "expiry")
 
-	question, asked, err := AnnotateDelivery(graph, deliveringNode(t, graph, "taste-expiry", "expiry-delivery"))
+	question, asked, err := AnnotateDelivery(graph, deliveringNode(t, graph, "taste-expiry", "expiry-delivery"), "the report, in prose")
 	if err != nil || !asked {
 		t.Fatalf("annotate delivery asked=%t err=%v", asked, err)
 	}
@@ -377,5 +378,147 @@ func TestTasteBlockAppendsNewlySettledRules(t *testing.T) {
 	}
 	if !strings.HasPrefix(after, before) {
 		t.Fatalf("a newly settled rule rewrote the block instead of appending:\nbefore:\n%s\n\nafter:\n%s", before, after)
+	}
+}
+
+// The ask allows free text on purpose — "keep it this way, or 'shorter, no
+// headings'?" invites the third answer — and typing it used to match no option,
+// record nothing, and bring the identical question back after the next
+// delivery.
+func TestFreeTextTasteAnswerBecomesACorrectionInsteadOfNothing(t *testing.T) {
+	graph := openStore(t)
+	reconciler := tasteReconciler(t, graph, "taste-free")
+	rule := bornTasteCandidate(t, graph, reconciler, "taste-free", "free")
+	subject, ok := store.TasteSubject(rule.Scope)
+	if !ok {
+		t.Fatalf("shelf %q has no subject", rule.Scope)
+	}
+
+	const typed = "shorter, and no headings at all"
+	answerTaste(t, graph, "taste-free", rule.Scope, typed)
+
+	answers, err := graph.TasteAnswers()
+	if err != nil {
+		t.Fatal(err)
+	}
+	free := 0
+	for _, answer := range answers {
+		if answer.Free == typed && answer.Scope == rule.Scope && answer.Answer == "" {
+			free++
+		}
+	}
+	if free != 1 {
+		t.Fatalf("free-text answer was discarded: %+v", answers)
+	}
+	// It is neither a yes nor a no about the rule it was provoked by.
+	standing, err := TasteStandingOf(graph, rule)
+	if err != nil || standing.Against != 0 {
+		t.Fatalf("typed answer counted against the shelf: %+v err=%v", standing, err)
+	}
+
+	if err := reconciler.Tick(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	corrections, err := graph.CorrectionFacts(50)
+	if err != nil {
+		t.Fatal(err)
+	}
+	filed := 0
+	for _, correction := range corrections {
+		if correction.Body == typed && correction.Scope == subject {
+			filed++
+		}
+	}
+	if filed != 1 {
+		t.Fatalf("typed answer never reached the correction shelf %q: %+v", subject, corrections)
+	}
+	// The pass runs every tick and the answer is durable; filing it twice would
+	// supersede its own copy forever and churn the notebook.
+	if err := reconciler.Tick(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	corrections, err = graph.CorrectionFacts(50)
+	if err != nil {
+		t.Fatal(err)
+	}
+	filed = 0
+	for _, correction := range corrections {
+		if correction.Body == typed {
+			filed++
+		}
+	}
+	if filed != 1 {
+		t.Fatalf("typed answer was filed again on the next tick: %+v", corrections)
+	}
+}
+
+// A one-word correction used to score 801 against every correction that
+// happened to contain the word, so a single bogus match birthed a candidate
+// rule the gate could then be held to.
+func TestSentenceSimilarityRefusesTheContainmentShortcut(t *testing.T) {
+	short := tasteTokens("shorter")
+	long := tasteTokens("make the incident postmortem shorter")
+	if score := sentenceTokenSimilarity(short, long); score >= TasteSimilarityFloor {
+		t.Fatalf("a one-word correction matched an unrelated sentence at %d", score)
+	}
+	if score := sentenceTokenSimilarity(long, short); score >= TasteSimilarityFloor {
+		t.Fatalf("similarity is not symmetric: %d", score)
+	}
+	// Two genuine statements of the same correction still meet.
+	first := tasteTokens(tasteFirstCorrection)
+	second := tasteTokens(tasteSecondCorrection)
+	if score := sentenceTokenSimilarity(first, second); score < TasteSimilarityFloor {
+		t.Fatalf("the same correction said twice scored %d", score)
+	}
+	// The containment shortcut is kept for shelf names, which is what it was
+	// written for: repo:parser inside repo:parser-tests is an alias candidate.
+	if score := normalizedTokenSimilarity([]string{"parser"}, []string{"parser", "test"}); score < 800 {
+		t.Fatalf("shelf-name containment scored %d", score)
+	}
+	// And the documented floor now decides something: every non-zero score used
+	// to be at least 60 whatever the constant said.
+	if score := sentenceTokenSimilarity(
+		tasteTokens("keep the report short"),
+		tasteTokens("keep the report short and plain")); score < TasteSimilarityFloor {
+		t.Fatalf("a near-identical pair scored %d", score)
+	}
+}
+
+// The one quiet question a delivery may carry has to be chosen against the
+// delivery. The node is not completed at that moment, so its summary is empty
+// and the request was all there was — which is how the shelf's evidence filled
+// up with answers to mismatched questions.
+func TestDeliveryAnnotationChoosesAgainstWhatWasDelivered(t *testing.T) {
+	graph := openStore(t)
+	reconciler := tasteReconciler(t, graph, "taste-seen")
+	for index, correction := range []string{
+		"the user wants curl invocations kept to one line",
+		"the user wants curl invocations written on one line",
+	} {
+		id := fmt.Sprintf("seen-%d", index)
+		deliveringNode(t, graph, "taste-seen", id)
+		completeNode(t, graph, id, "delivered "+id)
+		if _, err := graph.RecordFactFrom(store.FactWriterDistiller, id, "tool:curl",
+			store.FactPreference, correction); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := reconciler.Tick(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	rules, err := graph.TasteRules(store.FactCandidate)
+	if err != nil || len(rules) != 1 {
+		t.Fatalf("born candidate = %+v err=%v", rules, err)
+	}
+
+	// The request ("write me the report") says nothing about the shelf's
+	// subject. Only the delivery does.
+	node := deliveringNode(t, graph, "taste-seen", "seen-delivery")
+	if _, asked, err := AnnotateDelivery(graph, node, "here is the draft"); asked || err != nil {
+		t.Fatalf("annotation fired without a relevant delivery: asked=%t err=%v", asked, err)
+	}
+	seen := deliveringNode(t, graph, "taste-seen", "seen-delivery-two")
+	if _, asked, err := AnnotateDelivery(graph, seen, "fetched it with curl and wrote it up"); !asked || err != nil {
+		t.Fatalf("annotation missed the delivery it rides: asked=%t err=%v", asked, err)
 	}
 }

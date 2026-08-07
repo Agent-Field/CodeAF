@@ -794,3 +794,82 @@ func TestServeSurvivesTransientTickFailures(t *testing.T) {
 		t.Fatalf("serve ended on a transient fault: %v", err)
 	}
 }
+
+// The strongest correction signal in the system is what the user says while the
+// work is still running. It reached the notebook as a boolean at best.
+func TestDistillerSeesTheMidRunRedirect(t *testing.T) {
+	graph := openStore(t)
+	if err := graph.Splice(store.RootID, store.Subtree{Nodes: []store.NodeSpec{
+		{ID: "table-job", Brief: "Summarise the numbers", Stage: 1},
+	}}, store.Provenance{Origin: store.OriginUser, SessionID: "redirect", Intent: "summarise the numbers"}); err != nil {
+		t.Fatalf("splice: %v", err)
+	}
+	var outcomes []string
+	reconciler := New(graph, nil, nil).WithDistiller(
+		func(_ context.Context, _, outcome string, _ bool) ([]Learned, error) {
+			outcomes = append(outcomes, outcome)
+			return nil, nil
+		})
+	if err := reconciler.Tick(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := graph.RequestCommand(store.Command{
+		SessionID: "redirect", Kind: store.CommandRedirect, Target: "table-job",
+		Instruction: "no — a table, not prose",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	claim, won, err := graph.Claim("table-job", "worker")
+	if err != nil || !won {
+		t.Fatalf("claim: won=%t err=%v", won, err)
+	}
+	if err := graph.Complete(claim, "Here is the table."); err != nil {
+		t.Fatal(err)
+	}
+	if err := reconciler.Tick(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if len(outcomes) != 1 || !strings.Contains(outcomes[0], "no — a table, not prose") {
+		t.Fatalf("distiller never saw the redirect: %+v", outcomes)
+	}
+	if !strings.Contains(outcomes[0], "Record the standard, not the episode.") {
+		t.Fatalf("redirect block lost its charge: %q", outcomes[0])
+	}
+}
+
+// task-14 is not the owner of task-142's edges. A bare prefix match wrote
+// another job's history into this one's distillation as durable evidence.
+func TestContinuitySourcesRespectTheJobNamespace(t *testing.T) {
+	graph := openStore(t)
+	for _, id := range []string{"task-9", "task-14", "task-142"} {
+		if err := graph.Splice(store.RootID, store.Subtree{Nodes: []store.NodeSpec{{
+			ID: id, Brief: "work " + id, Stage: 1,
+		}}}, store.Provenance{Origin: store.OriginUser, SessionID: "namespace", Intent: "asked for " + id}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	claim, won, err := graph.Claim("task-9", "worker")
+	if err != nil || !won {
+		t.Fatalf("claim: won=%t err=%v", won, err)
+	}
+	if err := graph.Complete(claim, "delivered task-9"); err != nil {
+		t.Fatal(err)
+	}
+	if err := graph.AddEdge("task-9", "task-142", store.FeedsInto); err != nil {
+		t.Fatal(err)
+	}
+	neighbour, found, err := graph.Node("task-14")
+	if err != nil || !found {
+		t.Fatalf("node task-14 found=%t err=%v", found, err)
+	}
+	if sources := New(graph, nil, nil).continuitySources(neighbour); sources != "" {
+		t.Fatalf("task-14 claimed task-142's continuity: %q", sources)
+	}
+	continuation, found, err := graph.Node("task-142")
+	if err != nil || !found {
+		t.Fatalf("node task-142 found=%t err=%v", found, err)
+	}
+	if sources := New(graph, nil, nil).continuitySources(continuation); !strings.Contains(sources, "asked for task-9") {
+		t.Fatalf("real continuity was lost: %q", sources)
+	}
+}

@@ -680,6 +680,21 @@ func (s *Store) HasCommandTarget(target string, kind CommandKind) (bool, error) 
 	return found, nil
 }
 
+// TargetedCommands returns what was aimed at one node, oldest first.
+// HasCommandTarget answers whether it happened; this answers what was said,
+// which is what a redirect's own words are — the strongest correction signal in
+// the system, and one that survived downstream only as a boolean.
+func (s *Store) TargetedCommands(target string, kind CommandKind, limit int) ([]Command, error) {
+	target = strings.TrimSpace(target)
+	if target == "" {
+		return nil, nil
+	}
+	if limit <= 0 {
+		limit = 50
+	}
+	return s.queryCommands(`target = ? AND kind = ? ORDER BY seq LIMIT ?`, []any{target, kind, limit})
+}
+
 // ResolveCommand settles a pending command exactly once. Status must be
 // CommandApplied or CommandRejected; result says what actually happened and
 // belongs in the system message reported back to the thread.

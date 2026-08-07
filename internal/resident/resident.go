@@ -625,13 +625,23 @@ func (r *Reconciler) reconcileCommand(ctx context.Context, command store.Command
 		text := store.QuestionMessageBody(outcome.receipt, outcome.options, store.QuestionConfig{
 			Category: outcome.category, Default: outcome.defaultAnswer,
 		})
-		_, err := r.askQuestionLocked(store.AgentQuestion{
+		ask := store.AgentQuestion{
 			SessionID: command.SessionID, Text: boundMessage(text),
 			OriginCharterID:  questionCharterOrigin(outcome.options),
 			OriginCommandSeq: command.Seq, Urgency: store.QuestionBlocking,
 			Options: outcome.options, Category: outcome.category,
 			DefaultAnswer: outcome.defaultAnswer,
-		})
+		}
+		if outcome.category == store.QuestionCategoryCompileAssumption {
+			// A compile askback has no node and no charter behind it, so no
+			// origin can ever retire it and it hung forever — outliving the
+			// request it was asked about, and outliving the session that could
+			// answer it. Its own relevance window is the only thing that can
+			// end it, and ending loudly is the point: a request that lapsed is
+			// news, a request that vanished is a betrayal.
+			ask.ExpiresAt = r.now().Add(compileAskWindow)
+		}
+		_, err := r.askQuestionLocked(ask)
 		return err
 	}
 	if strings.TrimSpace(outcome.receipt) == "" {
@@ -1627,7 +1637,7 @@ func (r *Reconciler) continuitySources(node store.Node) string {
 	seen := make(map[string]bool)
 	var out strings.Builder
 	for _, edge := range edges {
-		if !strings.HasPrefix(edge.To, prefix) || strings.HasPrefix(edge.From, prefix) || seen[edge.From] {
+		if !inJobNamespace(edge.To, prefix) || inJobNamespace(edge.From, prefix) || seen[edge.From] {
 			continue
 		}
 		seen[edge.From] = true
@@ -1644,6 +1654,59 @@ func (r *Reconciler) continuitySources(node store.Node) string {
 	}
 	return out.String()
 }
+
+// inJobNamespace is the dash-delimited namespace test the store's own prefix
+// reads use. A bare HasPrefix made task-14 the owner of task-142's edges, so a
+// distilled fact could claim "asked: <task-9's intent> → delivered:" about a
+// job it had never touched — and that claim went into the notebook as durable
+// evidence of the user's standard.
+func inJobNamespace(id, prefix string) bool {
+	return id == prefix || strings.HasPrefix(id, prefix+"-")
+}
+
+// redirectBlock renders what the user said while this job was already running.
+// It is the strongest correction signal the system ever sees — the standard
+// stated against work in progress — and until it arrived here it survived
+// downstream only as a boolean. The shape deliberately matches the gate
+// evidence block below it: same brackets, same instruction to distill the
+// transferable standard rather than the episode.
+func (r *Reconciler) redirectBlock(node store.Node) string {
+	commands, err := r.store.TargetedCommands(node.ID, store.CommandRedirect, redirectDistillScan)
+	if err != nil || len(commands) == 0 {
+		return ""
+	}
+	var block strings.Builder
+	used := 0
+	for _, command := range commands {
+		words := strings.TrimSpace(command.Instruction)
+		if words == "" {
+			continue
+		}
+		line := "- " + clipBlock(words, redirectDistillLineBytes) + "\n"
+		if used+len(line) > redirectDistillBytes {
+			break
+		}
+		used += len(line)
+		block.WriteString(line)
+	}
+	if block.Len() == 0 {
+		return ""
+	}
+	return "[The user redirected this job while it was running, in their own words:\n" +
+		block.String() +
+		"The run adapted and delivered anyway, so the gap between what it was doing and what they " +
+		"asked for mid-flight is the user's standard stated out loud. Record the standard, not the episode.]"
+}
+
+const (
+	// redirectDistillBytes bounds the mid-run correction block.
+	redirectDistillBytes = 600
+	// redirectDistillLineBytes bounds one redirect, so a pasted specification
+	// cannot be the whole block.
+	redirectDistillLineBytes = 300
+	// redirectDistillScan bounds the read behind it.
+	redirectDistillScan = 8
+)
 
 func (r *Reconciler) distillJob(ctx context.Context, node store.Node, failed bool) {
 	if r.distill == nil {
@@ -1662,6 +1725,10 @@ func (r *Reconciler) distillJob(ctx context.Context, node store.Node, failed boo
 		revealedGap = true
 		outcome += "\n\n[This job continued or revised earlier delivered work:\n" + prior +
 			"When the new instruction reworks an earlier delivery, the difference between them is evidence of the user's real standard — record the standard, not the episode.]"
+	}
+	if redirect := r.redirectBlock(node); redirect != "" {
+		revealedGap = true
+		outcome += "\n\n" + redirect
 	}
 	if gate, ok, err := r.store.DeliveryGateFor(node.ID); err == nil && ok && !gate.Pass {
 		revealedGap = true

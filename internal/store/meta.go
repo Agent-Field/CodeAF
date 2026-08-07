@@ -340,9 +340,19 @@ func DecodeTasteOption(value string) (answer, scope string, ok bool) {
 // own sequence, which is how a refusal is told from a refusal that predates the
 // standing it would undo.
 type TasteAnswer struct {
-	Seq    int64
-	Scope  string
+	Seq   int64
+	Scope string
+	// Answer is one of the offered verdicts, or empty when the user typed
+	// something instead of choosing. Both go on the same shelf.
 	Answer string
+	// Free is the user's own words when they answered a taste question with a
+	// sentence rather than an option. The ask deliberately allows free text —
+	// "keep it this way, or 'shorter, no headings'?" invites exactly this — and
+	// discarding it meant a user who answered in their own words was ignored
+	// and asked the same question again after the next delivery. A sentence is
+	// not a verdict on the rule; it is a fresh correction, so it counts neither
+	// for nor against and is filed where corrections are aggregated.
+	Free string
 }
 
 // TasteAnswers reads every settled verdict, oldest first, from the one rare
@@ -357,19 +367,31 @@ func (s *Store) TasteAnswers() ([]TasteAnswer, error) {
 	}
 	answers := make([]TasteAnswer, 0, len(questions))
 	for _, question := range questions {
-		resolution := strings.ToLower(strings.TrimSpace(question.Resolution))
+		verbatim := strings.TrimSpace(question.Resolution)
+		resolution := strings.ToLower(verbatim)
+		matched := false
+		shelf := ""
 		for index, option := range question.Options {
+			answer, scope, ok := DecodeTasteOption(option.Value)
+			if !ok {
+				continue
+			}
+			// Every option on one taste question names the same shelf, so the
+			// first decodable one identifies it even when nothing matches.
+			if shelf == "" {
+				shelf = scope
+			}
 			if resolution != strings.ToLower(strings.TrimSpace(option.Label)) &&
 				resolution != strings.ToLower(strings.TrimSpace(option.Value)) &&
 				resolution != fmt.Sprint(index+1) {
 				continue
 			}
-			answer, scope, ok := DecodeTasteOption(option.Value)
-			if !ok {
-				break
-			}
 			answers = append(answers, TasteAnswer{Seq: question.Seq, Scope: scope, Answer: answer})
+			matched = true
 			break
+		}
+		if !matched && shelf != "" && verbatim != "" {
+			answers = append(answers, TasteAnswer{Seq: question.Seq, Scope: shelf, Free: verbatim})
 		}
 	}
 	return answers, nil

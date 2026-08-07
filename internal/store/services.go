@@ -354,10 +354,6 @@ func (s *Store) Service(id string) (Service, bool, error) {
 	return service, true, nil
 }
 
-func (s *Store) Services() ([]Service, error) {
-	return s.queryServices(`ORDER BY created_seq, id`, nil)
-}
-
 func (s *Store) ActiveServices() ([]Service, error) {
 	return s.queryServices(`WHERE status != ? ORDER BY name COLLATE NOCASE, created_seq`, []any{ServiceStopped})
 }

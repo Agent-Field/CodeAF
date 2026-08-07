@@ -28,10 +28,14 @@ const (
 	// exception; twice is the rule being wrong about them.
 	TasteDemotionKeeps = 2
 	// TasteSimilarityFloor is the overlap score below which two corrections are
-	// not the same correction. It is the pass mark of the same scorer that
-	// decides whether two scope names mean one thing; below it a pair shares
-	// only the grammar every preference line is written in.
-	TasteSimilarityFloor = 50
+	// not the same correction: they must share more of their vocabulary than
+	// they differ by, in both directions. Below it a pair shares only the
+	// grammar every preference line is written in.
+	//
+	// The bar is stated here and nowhere else. It used to be doubled by a gate
+	// inside the scorer that made every score it could return either zero or at
+	// least 60, so the number written here decided nothing at all.
+	TasteSimilarityFloor = 60
 	// TasteNeutralPrior is what a rule with no verdicts is worth. Nobody has
 	// agreed or refused yet, so the shrinkage pulls it toward a coin flip.
 	TasteNeutralPrior = 0.5
@@ -49,6 +53,10 @@ const (
 	// tasteBlockBytes bounds the settled-taste block the delivery gate reads,
 	// which sits ahead of the notebook digest and must not crowd it out.
 	tasteBlockBytes = 512
+	// tasteDeliveryCueBytes bounds how much of a deliverable is read for cues.
+	// Cue extraction walks fields; a 40-page report would be walked in full for
+	// a question that only needs to know what the delivery is about.
+	tasteDeliveryCueBytes = 4 << 10
 )
 
 // tasteKeepLabel is the calm default: the delivery was right as it was.
@@ -95,6 +103,12 @@ func TasteStandingOf(graph *store.Store, rule store.Fact) (TasteStanding, error)
 		if answer.Scope != rule.Scope {
 			continue
 		}
+		if answer.Free != "" {
+			// A sentence is a fresh correction, not a verdict on this rule.
+			// Counting it against the shelf would demote a rule for the crime
+			// of provoking the user into saying what they actually want.
+			continue
+		}
 		if answer.Answer == store.TasteAnswerMeant {
 			standing.For++
 			continue
@@ -124,7 +138,7 @@ func similarCorrections(graph *store.Store, body string, excludeSeq int64) ([]st
 	anchor := tasteTokens(body)
 	similar := make([]store.Fact, 0, len(neighbours))
 	for _, neighbour := range neighbours {
-		if normalizedTokenSimilarity(anchor, tasteTokens(neighbour.Body)) >= TasteSimilarityFloor {
+		if sentenceTokenSimilarity(anchor, tasteTokens(neighbour.Body)) >= TasteSimilarityFloor {
 			similar = append(similar, neighbour)
 		}
 	}
@@ -192,12 +206,19 @@ func TasteBlock(graph *store.Store) string {
 // deliverable and reports whether it asked. The delivery never waits on it: the
 // question is queued for the next natural moment, which is the very message the
 // deliverable is announced in, and it expires on its own if nobody answers.
-func AnnotateDelivery(graph *store.Store, node store.Node) (store.AgentQuestion, bool, error) {
+//
+// delivered is the text about to be handed over. It has to be passed in
+// because the node is not completed yet at this moment, so node.Summary is
+// still empty — and choosing which preference to ask about from the request
+// alone meant the one quiet question a delivery may carry was regularly asked
+// about the wrong thing, polluting the shelf's evidence with answers to
+// mismatched questions.
+func AnnotateDelivery(graph *store.Store, node store.Node, delivered string) (store.AgentQuestion, bool, error) {
 	sessionID := strings.TrimSpace(node.Provenance.SessionID)
 	if graph == nil || sessionID == "" {
 		return store.AgentQuestion{}, false, nil
 	}
-	rule, found, err := relevantTasteCandidate(graph, node)
+	rule, found, err := relevantTasteCandidate(graph, node, delivered)
 	if err != nil || !found {
 		return store.AgentQuestion{}, false, err
 	}
@@ -239,7 +260,7 @@ func AnnotateDelivery(graph *store.Store, node store.Node) (store.AgentQuestion,
 // relevantTasteCandidate picks the one unproven rule this delivery could be
 // evidence for, by scope — the notebook's own primary retrieval signal. A shelf
 // with a question already in flight is left alone.
-func relevantTasteCandidate(graph *store.Store, node store.Node) (store.Fact, bool, error) {
+func relevantTasteCandidate(graph *store.Store, node store.Node, delivered string) (store.Fact, bool, error) {
 	rules, err := graph.TasteRules(store.FactCandidate)
 	if err != nil || len(rules) == 0 {
 		return store.Fact{}, false, err
@@ -249,7 +270,10 @@ func relevantTasteCandidate(graph *store.Store, node store.Node) (store.Fact, bo
 		return store.Fact{}, false, err
 	}
 	cues := make(map[string]bool)
-	for _, cue := range ExtractCues(strings.TrimSpace(node.Provenance.Intent) + "\n" +
+	// The delivery leads: taste is a judgment about what was handed over, and
+	// the request is only there to say what it was handed over for.
+	for _, cue := range ExtractCues(clipBlock(strings.TrimSpace(delivered), tasteDeliveryCueBytes) + "\n" +
+		strings.TrimSpace(node.Provenance.Intent) + "\n" +
 		strings.TrimSpace(node.Brief) + "\n" + strings.TrimSpace(node.Summary)) {
 		cues[strings.ToLower(cue)] = true
 	}
@@ -290,8 +314,34 @@ func (r *Reconciler) settleTasteLocked() {
 	if r == nil || r.store == nil {
 		return
 	}
+	r.fileFreeTasteAnswers()
 	r.birthTasteCandidate()
 	r.restandTasteRules()
+}
+
+// fileFreeTasteAnswers turns a typed answer into evidence. The ask offers two
+// options and allows free text, so "keep it this way — or 'shorter, no
+// headings'?" invites the user to write the third answer; that sentence was
+// then matched against no option, recorded nowhere, and the identical question
+// came back after the next delivery. A correction on the shelf's own subject is
+// where it belongs: the birth loop already turns repeated corrections into
+// rules, so answering in your own words feeds exactly the machinery that
+// answering with a button does.
+func (r *Reconciler) fileFreeTasteAnswers() {
+	answers, err := r.store.TasteAnswers()
+	if err != nil {
+		return
+	}
+	for _, answer := range answers {
+		if strings.TrimSpace(answer.Free) == "" {
+			continue
+		}
+		subject, ok := store.TasteSubject(answer.Scope)
+		if !ok {
+			continue
+		}
+		_, _, _ = r.store.RecordTasteCorrectionOnce("", subject, clipFactBody(answer.Free))
+	}
 }
 
 // birthTasteCandidate opens at most one shelf per pass. Two corrections of the
@@ -331,7 +381,7 @@ func (r *Reconciler) birthTasteCandidate() {
 func coveredByTasteRule(rules []store.Fact, correction store.Fact) bool {
 	tokens := tasteTokens(correction.Body)
 	for _, rule := range rules {
-		if normalizedTokenSimilarity(tasteTokens(rule.Body), tokens) >= TasteSimilarityFloor {
+		if sentenceTokenSimilarity(tasteTokens(rule.Body), tokens) >= TasteSimilarityFloor {
 			return true
 		}
 	}
