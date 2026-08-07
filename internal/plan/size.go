@@ -168,17 +168,16 @@ type sizeResult struct {
 // pass reads the same graph, so no write may happen until the builder runs
 // sizeApply serially.
 func SizeNodes(ctx context.Context, client Completer, graph *Graph) (Usage, error) {
-	return sizeApply(graph, sizeGather(ctx, client, graph))
+	return sizeApply(graph, sizeGather(ctx, client, graph, graph.planBlock()))
 }
 
-// sizeGather renders the catalog and runs every stage's call. It never writes
-// to the graph.
-func sizeGather(ctx context.Context, client Completer, graph *Graph) []sizeResult {
+// sizeGather runs every stage's call against a catalog block the caller has
+// already rendered. It never writes to the graph.
+func sizeGather(ctx context.Context, client Completer, graph *Graph, shared string) []sizeResult {
 	stages := len(graph.Stages)
 	if stages == 0 {
 		stages = 1
 	}
-	shared := graph.context() + "\nEvery node in the plan:\n" + graph.catalog()
 
 	results := make([]sizeResult, stages)
 	var group sync.WaitGroup

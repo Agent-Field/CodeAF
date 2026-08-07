@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 	"sync"
 
 	"github.com/Agent-Field/aforge-v2/internal/provider"
@@ -148,16 +149,15 @@ type bindResult struct {
 // bindApply, which the builder runs serially — the sizing pass copies nodes
 // while binding is in flight, and interleaved writes were a data race.
 func Bind(ctx context.Context, client Completer, graph *Graph) (Usage, error) {
-	return bindApply(graph, bindGather(ctx, client, graph))
+	return bindApply(graph, bindGather(ctx, client, graph, graph.planBlock()))
 }
 
-// bindGather renders the catalog and runs every stage's call. It never writes
-// to the graph.
-func bindGather(ctx context.Context, client Completer, graph *Graph) []bindResult {
+// bindGather runs every stage's call against a catalog block the caller has
+// already rendered. It never writes to the graph.
+func bindGather(ctx context.Context, client Completer, graph *Graph, shared string) []bindResult {
 	if len(graph.Stages) == 0 || len(graph.Nodes) < 2 {
 		return nil
 	}
-	shared := graph.context() + "\nEvery node in the plan:\n" + graph.catalog()
 
 	results := make([]bindResult, len(graph.Stages))
 	var group sync.WaitGroup
@@ -228,16 +228,16 @@ func worthBinding(graph *Graph, stage int) bool {
 
 func bindStage(ctx context.Context, client Completer, shared string, graph *Graph, stage int) (bindReply, *ai.Usage, error) {
 	ctx = provider.WithCall(ctx, provider.ClassPlanBind)
-	var targets string
+	var targets strings.Builder
 	for _, node := range graph.Nodes {
 		if node.Stage == stage {
-			targets += fmt.Sprintf("%d. %s — %s\n", node.ID, node.Title, node.Summary)
+			fmt.Fprintf(&targets, "%d. %s — %s\n", node.ID, node.Title, node.Summary)
 		}
 	}
 	messages := []ai.Message{
 		systemMessage(bindPrompt),
 		userMessage(shared),
-		userMessage(fmt.Sprintf("For each of these stage %d nodes, list what it must wait for:\n%s", stage, targets)),
+		userMessage(fmt.Sprintf("For each of these stage %d nodes, list what it must wait for:\n%s", stage, targets.String())),
 	}
 	var reply bindReply
 	response, err := structured(ctx, client, messages, bindSchema, &reply)

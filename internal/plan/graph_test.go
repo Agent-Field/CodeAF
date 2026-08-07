@@ -1,6 +1,277 @@
 package plan
 
-import "testing"
+import (
+	"fmt"
+	"math/rand"
+	"strings"
+	"testing"
+)
+
+// chain builds a graph of n nodes in one stage, wired a → b → c … so that the
+// last node transitively depends on the first. It returns the ids in order.
+func chain(t *testing.T, graph *Graph, titles ...string) []int {
+	t.Helper()
+	var ids []int
+	for index, title := range titles {
+		id := graph.Add(Node{Stage: 1, Title: title})
+		if index > 0 {
+			if err := graph.AddNeed(id, ids[index-1]); err != nil {
+				t.Fatalf("AddNeed %s: %v", title, err)
+			}
+		}
+		ids = append(ids, id)
+	}
+	return ids
+}
+
+// TestAddNeedRefusesSelfReference is the shortest cycle there is.
+func TestAddNeedRefusesSelfReference(t *testing.T) {
+	graph := &Graph{Goal: "goal", NextID: 1}
+	only := graph.Add(Node{Stage: 1, Title: "Only"})
+	if err := graph.AddNeed(only, only); err == nil {
+		t.Fatal("a node was allowed to depend on itself")
+	}
+	if got := graph.Node(only).Needs; len(got) != 0 {
+		t.Errorf("refused edge left needs %v behind", got)
+	}
+	if graph.hasCycle() {
+		t.Error("the refusal left a cycle in the graph")
+	}
+}
+
+// TestAddNeedRefusesLongCycle walks the closing edge all the way around a
+// five-node chain, which is the case a one-step check would miss.
+func TestAddNeedRefusesLongCycle(t *testing.T) {
+	graph := &Graph{Goal: "goal", NextID: 1}
+	ids := chain(t, graph, "A", "B", "C", "D", "E")
+	first, last := ids[0], ids[len(ids)-1]
+
+	if err := graph.AddNeed(first, last); err == nil {
+		t.Fatal("the edge closing a five-node cycle was accepted")
+	}
+	if got := graph.Node(first).Needs; len(got) != 0 {
+		t.Errorf("refused edge left needs %v behind on the head of the chain", got)
+	}
+	if graph.hasCycle() {
+		t.Error("the refusal left a cycle in the graph")
+	}
+	// The chain itself must be untouched by the refusal.
+	for index := 1; index < len(ids); index++ {
+		got := graph.Node(ids[index]).Needs
+		if len(got) != 1 || got[0] != ids[index-1] {
+			t.Errorf("node %d needs %v, want [%d]", ids[index], got, ids[index-1])
+		}
+	}
+}
+
+// TestAddNeedAllowsDiamond is the shape a cycle check must not mistake for one:
+// two paths reconverging is reconvergence, not a loop, and a check that gave up
+// on seeing a node twice would refuse the whole pattern.
+func TestAddNeedAllowsDiamond(t *testing.T) {
+	graph := &Graph{Goal: "goal", NextID: 1}
+	top := graph.Add(Node{Stage: 1, Title: "Top"})
+	left := graph.Add(Node{Stage: 1, Title: "Left"})
+	right := graph.Add(Node{Stage: 1, Title: "Right"})
+	bottom := graph.Add(Node{Stage: 1, Title: "Bottom"})
+	for _, edge := range [][2]int{{left, top}, {right, top}, {bottom, left}, {bottom, right}} {
+		if err := graph.AddNeed(edge[0], edge[1]); err != nil {
+			t.Fatalf("AddNeed %d → %d: %v", edge[1], edge[0], err)
+		}
+	}
+	// The shortcut across the diamond is redundant but perfectly legal.
+	if err := graph.AddNeed(bottom, top); err != nil {
+		t.Errorf("the shortcut edge across a diamond was refused: %v", err)
+	}
+	// The same edge reversed closes the loop and must not be.
+	if err := graph.AddNeed(top, bottom); err == nil {
+		t.Error("the edge closing the diamond into a loop was accepted")
+	}
+	if graph.hasCycle() {
+		t.Error("the diamond was reported as a cycle")
+	}
+}
+
+// TestAddNeedAcrossDisconnectedComponents pins that an edge is judged by what
+// it can reach, not by what else the graph happens to contain. Two independent
+// chains may be joined in either direction.
+func TestAddNeedAcrossDisconnectedComponents(t *testing.T) {
+	graph := &Graph{Goal: "goal", NextID: 1}
+	left := chain(t, graph, "L1", "L2", "L3")
+	right := chain(t, graph, "R1", "R2", "R3")
+
+	if err := graph.AddNeed(right[0], left[2]); err != nil {
+		t.Fatalf("joining two disconnected chains was refused: %v", err)
+	}
+	// Reaching back the other way is now a cycle, and only now.
+	if err := graph.AddNeed(left[0], right[2]); err == nil {
+		t.Error("the edge closing the joined chains into a loop was accepted")
+	}
+	if graph.hasCycle() {
+		t.Error("joining two disconnected chains produced a cycle")
+	}
+	// A third component stays untouched and stays joinable.
+	lone := graph.Add(Node{Stage: 1, Title: "Lone"})
+	if err := graph.AddNeed(lone, right[2]); err != nil {
+		t.Errorf("a fresh node could not depend on an existing chain: %v", err)
+	}
+	if err := graph.AddNeed(left[0], lone); err == nil {
+		t.Error("an edge back through the fresh node closed a loop and was accepted")
+	}
+}
+
+// TestAddNeedIsIdempotent keeps the repeat case out of the cycle check: an edge
+// that already exists is not a new edge and is not a cycle.
+func TestAddNeedIsIdempotent(t *testing.T) {
+	graph := &Graph{Goal: "goal", NextID: 1}
+	ids := chain(t, graph, "A", "B")
+	if err := graph.AddNeed(ids[1], ids[0]); err != nil {
+		t.Fatalf("re-adding an existing edge: %v", err)
+	}
+	if got := graph.Node(ids[1]).Needs; len(got) != 1 {
+		t.Errorf("re-adding an existing edge duplicated it: %v", got)
+	}
+}
+
+// TestAddNeedMatchesWholeGraphCheck is the equivalence proof behind the
+// targeted probe. AddNeed used to answer by adding the edge, sweeping the whole
+// graph for any cycle anywhere, and rolling back; it now asks only whether the
+// two nodes were already connected the other way. On a graph that is acyclic to
+// begin with — which is the only kind that exists here — the two answers must
+// agree on every edge, so this proposes several thousand random edges and
+// checks that they do, edge by edge, keeping the graph acyclic throughout.
+func TestAddNeedMatchesWholeGraphCheck(t *testing.T) {
+	random := rand.New(rand.NewSource(7))
+	for trial := 0; trial < 200; trial++ {
+		const size = 12
+		graph := &Graph{Goal: "goal", NextID: 1}
+		var ids []int
+		for index := 0; index < size; index++ {
+			ids = append(ids, graph.Add(Node{Stage: 1, Title: fmt.Sprintf("N%d", index)}))
+		}
+		for step := 0; step < 60; step++ {
+			from, to := ids[random.Intn(size)], ids[random.Intn(size)]
+			node := graph.Node(from)
+
+			// What the whole-graph sweep would have answered.
+			var swept bool
+			if from != to && !contains(node.Needs, to) {
+				restore := append([]int(nil), node.Needs...)
+				node.Needs = mergeNeeds(node.Needs, []int{to})
+				swept = graph.hasCycle()
+				node.Needs = restore
+			}
+
+			err := graph.AddNeed(from, to)
+			if from == to {
+				if err == nil {
+					t.Fatalf("trial %d step %d: self-edge on %d accepted", trial, step, from)
+				}
+				continue
+			}
+			if (err != nil) != swept {
+				t.Fatalf("trial %d step %d: edge %d → %d probe says err=%v, whole-graph sweep says cycle=%v",
+					trial, step, to, from, err, swept)
+			}
+			if graph.hasCycle() {
+				t.Fatalf("trial %d step %d: edge %d → %d left a cycle behind", trial, step, to, from)
+			}
+		}
+	}
+}
+
+// TestLoadRejectsCycles is what lets AddNeed stop scanning the whole graph. A
+// generated graph cannot contain a cycle and every edit is checked, so the only
+// way one can arrive is through a file, and that is where it is caught.
+func TestLoadRejectsCycles(t *testing.T) {
+	cases := []struct {
+		name  string
+		blob  string
+		wants string
+	}{
+		{
+			name: "self loop",
+			blob: `{"goal":"g","next_id":2,"stages":[{"title":"One"}],
+				"nodes":[{"id":1,"stage":1,"title":"A","needs":[1],"state":"pending","kind":"work"}]}`,
+			wants: "cycle",
+		},
+		{
+			name: "two node cycle",
+			blob: `{"goal":"g","next_id":3,"stages":[{"title":"One"}],
+				"nodes":[{"id":1,"stage":1,"title":"A","needs":[2],"state":"pending","kind":"work"},
+				         {"id":2,"stage":1,"title":"B","needs":[1],"state":"pending","kind":"work"}]}`,
+			wants: "cycle",
+		},
+		{
+			name: "long cycle",
+			blob: `{"goal":"g","next_id":5,"stages":[{"title":"One"}],
+				"nodes":[{"id":1,"stage":1,"title":"A","needs":[4],"state":"pending","kind":"work"},
+				         {"id":2,"stage":1,"title":"B","needs":[1],"state":"pending","kind":"work"},
+				         {"id":3,"stage":1,"title":"C","needs":[2],"state":"pending","kind":"work"},
+				         {"id":4,"stage":1,"title":"D","needs":[3],"state":"pending","kind":"work"}]}`,
+			wants: "cycle",
+		},
+		{
+			name: "diamond is not a cycle",
+			blob: `{"goal":"g","next_id":5,"stages":[{"title":"One"}],
+				"nodes":[{"id":1,"stage":1,"title":"Top","needs":[],"state":"pending","kind":"work"},
+				         {"id":2,"stage":1,"title":"Left","needs":[1],"state":"pending","kind":"work"},
+				         {"id":3,"stage":1,"title":"Right","needs":[1],"state":"pending","kind":"work"},
+				         {"id":4,"stage":1,"title":"Bottom","needs":[1,2,3],"state":"pending","kind":"work"}]}`,
+		},
+		{
+			name: "disconnected components are not a cycle",
+			blob: `{"goal":"g","next_id":5,"stages":[{"title":"One"}],
+				"nodes":[{"id":1,"stage":1,"title":"L1","needs":[],"state":"pending","kind":"work"},
+				         {"id":2,"stage":1,"title":"L2","needs":[1],"state":"pending","kind":"work"},
+				         {"id":3,"stage":1,"title":"R1","needs":[],"state":"pending","kind":"work"},
+				         {"id":4,"stage":1,"title":"R2","needs":[3],"state":"pending","kind":"work"}]}`,
+		},
+	}
+	for _, test := range cases {
+		t.Run(test.name, func(t *testing.T) {
+			graph, err := Load([]byte(test.blob))
+			if test.wants == "" {
+				if err != nil {
+					t.Fatalf("Load: %v", err)
+				}
+				if graph.hasCycle() {
+					t.Error("an acyclic graph was reported as cyclic")
+				}
+				return
+			}
+			if err == nil {
+				t.Fatal("a cyclic graph loaded without complaint")
+			}
+			if !strings.Contains(err.Error(), test.wants) {
+				t.Errorf("error %q does not mention %q", err, test.wants)
+			}
+		})
+	}
+}
+
+// TestLoadRoundTripsAPlannedGraph keeps the new check from rejecting anything
+// the planner actually produces.
+func TestLoadRoundTripsAPlannedGraph(t *testing.T) {
+	graph := &Graph{Goal: "goal", NextID: 1, Stages: []Stage{{Title: "One"}, {Title: "Two"}}}
+	ids := chain(t, graph, "A", "B", "C")
+	late := graph.Add(Node{Stage: 2, Title: "Late"})
+	for _, need := range ids {
+		if err := graph.AddNeed(late, need); err != nil {
+			t.Fatalf("AddNeed: %v", err)
+		}
+	}
+	blob, err := graph.JSON()
+	if err != nil {
+		t.Fatalf("JSON: %v", err)
+	}
+	loaded, err := Load(blob)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if len(loaded.Nodes) != len(graph.Nodes) {
+		t.Errorf("loaded %d nodes, want %d", len(loaded.Nodes), len(graph.Nodes))
+	}
+}
 
 // TestSpliceMarksParentExpanded guards a bug that cost a whole subtree.
 //
