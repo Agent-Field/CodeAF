@@ -71,18 +71,23 @@ func runChat(args []string) error {
 	modelCatalog := catalog.Load(context.Background(), catalog.Options{
 		BaseURL: settings.BaseURL, APIKey: settings.APIKey, Dir: settings.ProfileDir,
 	})
+	prefs.ImageModel = firstNonEmptyString(prefs.ImageModel, settings.ResolveImageModel(modelCatalog))
+	prefs.SpeechModel = firstNonEmptyString(prefs.SpeechModel, settings.ResolveSpeechModel(modelCatalog))
+	prefs.MusicModel = firstNonEmptyString(prefs.MusicModel, settings.ResolveMusicModel(modelCatalog))
+	prefs.VideoModel = firstNonEmptyString(prefs.VideoModel, settings.ResolveVideoModel(modelCatalog))
 	mediaClient, err := settings.MediaClient()
 	if err != nil {
 		return err
 	}
 	baseMedia := exec.MediaTools{
 		Provider: mediaClient, Catalog: modelCatalog,
-		ImageModel: settings.ResolveImageModel(modelCatalog), SpeechModel: settings.ResolveSpeechModel(modelCatalog),
-		MusicModel: settings.ResolveMusicModel(modelCatalog), VideoModel: settings.ResolveVideoModel(modelCatalog),
+		ImageModel: prefs.ImageModel, SpeechModel: prefs.SpeechModel,
+		MusicModel: prefs.MusicModel, VideoModel: prefs.VideoModel,
 	}
 	if video, ok := modelCatalog.Model(baseMedia.VideoModel); ok {
 		baseMedia.VideoPrice = video.RequestPrice
 	}
+	mediaModels := &chatMediaModels{tools: baseMedia}
 
 	chatClient, err := newLiveClient(settings, firstNonEmptyString(prefs.ChatModel, settings.Model))
 	if err != nil {
@@ -190,7 +195,7 @@ func runChat(args []string) error {
 			deadline = reflexDeadline
 			watchdog = deadline + 15*time.Second
 		}
-		leafMedia := baseMedia
+		leafMedia := mediaModels.Snapshot()
 		leafMedia.WorkingModel = workingModel
 		leafMedia.BeforeSpend = func(_ context.Context, additional float64) error {
 			if settings.DailyBudgetUSD <= 0 {
@@ -528,6 +533,7 @@ func runChat(args []string) error {
 		streamEvents:  streamEvents,
 		voiceRecorder: voice.NewSystemRecorder(),
 		models:        modelCatalog,
+		mediaModels:   mediaModels,
 	}
 	commander.voiceTranscriber, err = voice.NewClient(voice.ClientConfig{
 		APIKey: settings.APIKey, BaseURL: settings.BaseURL, Timeout: settings.Timeout,
@@ -557,9 +563,13 @@ func residentDeliveryBrief(graph *store.Store, node store.Node) string {
 // beside the graph database so the whole resident state moves as one
 // directory.
 type chatPrefs struct {
-	ChatModel  string `json:"chat_model,omitempty"`
-	TaskModel  string `json:"task_model,omitempty"`
-	VoiceModel string `json:"voice_model,omitempty"`
+	ChatModel   string `json:"chat_model,omitempty"`
+	TaskModel   string `json:"task_model,omitempty"`
+	VoiceModel  string `json:"voice_model,omitempty"`
+	ImageModel  string `json:"image_model,omitempty"`
+	SpeechModel string `json:"speech_model,omitempty"`
+	MusicModel  string `json:"music_model,omitempty"`
+	VideoModel  string `json:"video_model,omitempty"`
 
 	// SplitPct is the chat pane's share of the terminal width in percent,
 	// set by dragging the divider (or [ and ]) in the TUI.
@@ -571,6 +581,45 @@ var fallbackChatModels = []string{
 	"moonshotai/kimi-k2.6",
 	"qwen/qwen3-30b-a3b",
 	"google/gemma-3-12b-it",
+}
+
+// chatMediaModels is the resolved media configuration seen by new leaves.
+// Each leaf takes one value snapshot, preserving the same "next job/leaf"
+// boundary used by the hot-swappable work model.
+type chatMediaModels struct {
+	mu    sync.RWMutex
+	tools exec.MediaTools
+}
+
+func (m *chatMediaModels) Snapshot() exec.MediaTools {
+	if m == nil {
+		return exec.MediaTools{}
+	}
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	return m.tools
+}
+
+func (m *chatMediaModels) Set(role, slug string, models *catalog.Catalog) {
+	if m == nil {
+		return
+	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	switch role {
+	case "image":
+		m.tools.ImageModel = slug
+	case "speech":
+		m.tools.SpeechModel = slug
+	case "music":
+		m.tools.MusicModel = slug
+	case "video":
+		m.tools.VideoModel = slug
+		m.tools.VideoPrice = 0
+		if model, ok := models.Model(slug); ok {
+			m.tools.VideoPrice = model.RequestPrice
+		}
+	}
 }
 
 // chatCommander bridges surface commands to the two hot-swappable clients
@@ -593,11 +642,12 @@ type chatCommander struct {
 	voiceRecorder    voice.Recorder
 	voiceTranscriber voice.Transcriber
 
-	catalogOnce      sync.Once
-	catalogChoices   []tui.ModelChoice
-	voiceCatalogOnce sync.Once
-	voiceCatalog     []tui.ModelChoice
-	models           *catalog.Catalog
+	catalogOnce    sync.Once
+	catalogChoices []tui.ModelChoice
+	slotCatalogMu  sync.Mutex
+	slotCatalog    map[string][]tui.ModelChoice
+	models         *catalog.Catalog
+	mediaModels    *chatMediaModels
 }
 
 func (c *chatCommander) StreamEvents() <-chan tui.StreamEvent { return c.streamEvents }
@@ -617,7 +667,13 @@ func (c *chatCommander) Models() []string {
 	for _, spec := range c.settings.Panel.Models {
 		candidates = append(candidates, spec.Slug)
 	}
-	candidates = append(candidates, c.settings.Model, c.chatClient.Model(), c.taskClient.Model())
+	candidates = append(candidates, c.settings.Model)
+	if c.chatClient != nil {
+		candidates = append(candidates, c.chatClient.Model())
+	}
+	if c.taskClient != nil {
+		candidates = append(candidates, c.taskClient.Model())
+	}
 	models := dedupeModels(candidates)
 	if len(models) < 4 {
 		models = dedupeModels(append(models, fallbackChatModels...))
@@ -628,7 +684,7 @@ func (c *chatCommander) Models() []string {
 func (c *chatCommander) Catalog() []tui.ModelChoice {
 	c.catalogOnce.Do(func() {
 		if c.models != nil {
-			for _, model := range c.models.ModelsWithInput("text") {
+			for _, model := range config.ModelCandidates(c.models, "talk") {
 				c.catalogChoices = append(c.catalogChoices, tui.ModelChoice{
 					Slug: model.ID, Name: model.Name,
 					Price: formatModelPrice(model.PromptPrice, model.CompletionPrice),
@@ -652,30 +708,40 @@ func (c *chatCommander) Catalog() []tui.ModelChoice {
 	return append([]tui.ModelChoice(nil), c.catalogChoices...)
 }
 
-// CatalogFor keys the picker's model list by header role. The voice role lists
-// transcription-capable models straight from the shared catalog seam — the
-// same 24h cache and offline fallback every other modality uses — so no
-// separate voice catalog cache exists anymore. The seam is ready for
-// image/speech/music/video roles the same way: ask the catalog by output
-// modality.
+// CatalogFor keys the shared searchable picker by palette slot. Capability
+// filtering lives in config.ModelCandidates so music discovery uses the exact
+// same recognizable-TTS exclusion as runtime resolution.
 func (c *chatCommander) CatalogFor(role string) []tui.ModelChoice {
-	if role != "voice" {
+	if role == "talk" || role == "work" {
 		return c.Catalog()
 	}
-	c.voiceCatalogOnce.Do(func() {
-		if c.models != nil {
-			for _, model := range c.models.ModelsWithOutput("transcription") {
-				c.voiceCatalog = append(c.voiceCatalog, tui.ModelChoice{
-					Slug: model.ID, Name: model.Name,
-					Price: formatModelPrice(model.PromptPrice, model.CompletionPrice),
-				})
-			}
+	c.slotCatalogMu.Lock()
+	if choices, ok := c.slotCatalog[role]; ok {
+		result := append([]tui.ModelChoice(nil), choices...)
+		c.slotCatalogMu.Unlock()
+		return result
+	}
+	c.slotCatalogMu.Unlock()
+
+	choices := make([]tui.ModelChoice, 0)
+	for _, model := range config.ModelCandidates(c.models, role) {
+		choices = append(choices, tui.ModelChoice{
+			Slug: model.ID, Name: model.Name,
+			Price: formatModelPrice(model.PromptPrice, model.CompletionPrice),
+		})
+	}
+	if len(choices) == 0 {
+		if current := strings.TrimSpace(c.CurrentModel(role)); current != "" {
+			choices = []tui.ModelChoice{{Slug: current}}
 		}
-		if len(c.voiceCatalog) == 0 {
-			c.voiceCatalog = []tui.ModelChoice{{Slug: c.CurrentModel("voice")}}
-		}
-	})
-	return append([]tui.ModelChoice(nil), c.voiceCatalog...)
+	}
+	c.slotCatalogMu.Lock()
+	if c.slotCatalog == nil {
+		c.slotCatalog = make(map[string][]tui.ModelChoice)
+	}
+	c.slotCatalog[role] = append([]tui.ModelChoice(nil), choices...)
+	c.slotCatalogMu.Unlock()
+	return choices
 }
 
 func (c *chatCommander) CurrentModel(role string) string {
@@ -686,6 +752,22 @@ func (c *chatCommander) CurrentModel(role string) string {
 		c.mu.Lock()
 		defer c.mu.Unlock()
 		return firstNonEmptyString(c.prefs.VoiceModel, c.settings.VoiceModel)
+	case "image":
+		c.mu.Lock()
+		defer c.mu.Unlock()
+		return firstNonEmptyString(c.prefs.ImageModel, c.settings.ResolveImageModel(c.models))
+	case "speech":
+		c.mu.Lock()
+		defer c.mu.Unlock()
+		return firstNonEmptyString(c.prefs.SpeechModel, c.settings.ResolveSpeechModel(c.models))
+	case "music":
+		c.mu.Lock()
+		defer c.mu.Unlock()
+		return firstNonEmptyString(c.prefs.MusicModel, c.settings.ResolveMusicModel(c.models))
+	case "video":
+		c.mu.Lock()
+		defer c.mu.Unlock()
+		return firstNonEmptyString(c.prefs.VideoModel, c.settings.ResolveVideoModel(c.models))
 	}
 	return c.chatClient.Model()
 }
@@ -709,9 +791,9 @@ func (c *chatCommander) SetModel(role, slug string) error {
 		// own ruler before the next planning call can observe the new client.
 		measured, _ := profile.Load(c.settings.ProfileDir, c.taskClient.Model(), "linear")
 		plan.UseAnchors(measured.Anchors)
-	case "voice":
+	case "voice", "image", "speech", "music", "video":
 		if strings.TrimSpace(slug) == "" {
-			return fmt.Errorf("voice model cannot be empty")
+			return fmt.Errorf("%s model cannot be empty", role)
 		}
 	default:
 		return fmt.Errorf("unknown model role %q", role)
@@ -723,11 +805,22 @@ func (c *chatCommander) SetModel(role, slug string) error {
 		c.prefs.ChatModel = c.chatClient.Model()
 	} else if role == "work" {
 		c.prefs.TaskModel = c.taskClient.Model()
-	} else {
+	} else if role == "voice" {
 		c.prefs.VoiceModel = strings.TrimSpace(slug)
+	} else if role == "image" {
+		c.prefs.ImageModel = strings.TrimSpace(slug)
+	} else if role == "speech" {
+		c.prefs.SpeechModel = strings.TrimSpace(slug)
+	} else if role == "music" {
+		c.prefs.MusicModel = strings.TrimSpace(slug)
+	} else if role == "video" {
+		c.prefs.VideoModel = strings.TrimSpace(slug)
 	}
 	if err := saveChatPrefs(c.prefsDir, c.prefs); err != nil {
 		return fmt.Errorf("save chat model preference: %w", err)
+	}
+	if role == "image" || role == "speech" || role == "music" || role == "video" {
+		c.mediaModels.Set(role, strings.TrimSpace(slug), c.models)
 	}
 	return nil
 }

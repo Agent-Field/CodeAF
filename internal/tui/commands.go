@@ -17,10 +17,13 @@ const (
 	paletteCommands
 	paletteModelCompletion
 	paletteCancelCompletion
+	paletteModels
 	paletteModel
 	paletteMemory
 	paletteHelp
 )
+
+var modelSlots = []string{"talk", "work", "voice", "image", "speech", "music", "video"}
 
 type commandSpec struct {
 	name        string
@@ -46,7 +49,7 @@ var slashCommands = []commandSpec{
 	{name: "budget", description: "show or change today's dollar rail"},
 	{name: "standing", description: "list active standing charters"},
 	{name: "help", description: "show commands and keyboard shortcuts"},
-	{name: "model", description: "choose the talk, work, or voice model", takesArg: true},
+	{name: "model", description: "choose any model slot", takesArg: true},
 	{name: "memory", description: "alias for /notebook"},
 	{name: "session", description: "show the current session and database"},
 	{name: "new", description: "start a fresh chat session"},
@@ -79,7 +82,7 @@ func (m *Model) closePalette() {
 }
 
 func (m *Model) syncPalette() {
-	if m.palette == paletteModel || m.palette == paletteMemory || m.palette == paletteHelp {
+	if m.palette == paletteModels || m.palette == paletteModel || m.palette == paletteMemory || m.palette == paletteHelp {
 		return
 	}
 	value := m.input.Value()
@@ -101,11 +104,27 @@ func (m *Model) syncPalette() {
 
 func (m *Model) updatePaletteKey(key string) (tea.Cmd, bool) {
 	switch m.palette {
+	case paletteModels:
+		switch {
+		case key == "tab" || key == "left" || key == "right":
+			return nil, true
+		case key == "up" || key == "k":
+			m.modelSlotIndex = (m.modelSlotIndex + len(modelSlots) - 1) % len(modelSlots)
+			return nil, true
+		case key == "down" || key == "j":
+			m.modelSlotIndex = (m.modelSlotIndex + 1) % len(modelSlots)
+			return nil, true
+		case key == "enter":
+			return m.openModelPicker(modelSlots[m.modelSlotIndex]), true
+		case len(key) == 1 && key[0] >= '1' && key[0] <= '7':
+			m.modelSlotIndex = int(key[0] - '1')
+			return m.openModelPicker(modelSlots[m.modelSlotIndex]), true
+		}
 	case paletteModel:
 		choices := m.filteredModelChoices()
 		switch key {
 		case "tab", "left", "right":
-			return m.switchModelRole(), true
+			return nil, true
 		case "up":
 			m.cyclePalette(-1, len(choices))
 			return nil, true
@@ -173,6 +192,9 @@ func (m *Model) updatePaletteKey(key string) (tea.Cmd, bool) {
 		case "enter":
 			role, partial := parseModelArgument(m.input.Value())
 			if partial == "" {
+				if len(strings.Fields(m.input.Value())) == 1 {
+					return m.openModelsPalette(), true
+				}
 				return m.openModelPicker(role), true
 			}
 			return m.applySelectedModelEntries(entries), true
@@ -357,7 +379,7 @@ func (m *Model) applySelectedModel(choices []ModelChoice) tea.Cmd {
 }
 
 func (m *Model) applyModel(role, slug string) tea.Cmd {
-	if role != "talk" && role != "work" && role != "voice" {
+	if !isModelSlot(role) {
 		return m.showStatus(fmt.Sprintf("unknown model role %q", role))
 	}
 	previous := m.currentModel(role)
@@ -369,6 +391,9 @@ func (m *Model) applyModel(role, slug string) tea.Cmd {
 		m.input.Reset()
 		m.paletteDismissed = false
 		return m.showStatus(fmt.Sprintf("%s model → %s", role, slug))
+	}
+	if role != "talk" && role != "work" && role != "voice" {
+		return m.showStatus(fmt.Sprintf("%s model switching unavailable — no Commander", role))
 	}
 	requester, ok := m.backend.(commandRequester)
 	if !ok {
@@ -477,7 +502,10 @@ func (m *Model) executeSlash(body string) tea.Cmd {
 	case "/model":
 		role := "talk"
 		arguments := fields[1:]
-		if len(arguments) > 0 && (arguments[0] == "talk" || arguments[0] == "work" || arguments[0] == "voice") {
+		if len(arguments) == 0 {
+			return m.openModelsPalette()
+		}
+		if len(arguments) > 0 && isModelSlot(arguments[0]) {
 			role = arguments[0]
 			arguments = arguments[1:]
 		}
@@ -615,7 +643,7 @@ func (m *Model) memoryLineCount() int {
 }
 
 func (m *Model) openModelPicker(role string) tea.Cmd {
-	if role != "talk" && role != "work" && role != "voice" {
+	if !isModelSlot(role) {
 		role = "talk"
 	}
 	fallback := m.fallbackModelChoices(role)
@@ -653,44 +681,28 @@ func (m *Model) openModelPicker(role string) tea.Cmd {
 	}
 }
 
-func (m *Model) switchModelRole() tea.Cmd {
-	role := "talk"
-	switch m.modelRole {
-	case "talk":
-		role = "work"
-	case "work":
-		role = "voice"
-	}
-	return m.selectModelRole(role)
+func (m *Model) openModelsPalette() tea.Cmd {
+	m.input.Reset()
+	m.palette = paletteModels
+	m.modelSlotIndex = max(0, min(len(modelSlots)-1, m.modelSlotIndex))
+	m.focus = focusHeader
+	m.headerFocusIndex = 0
+	m.inputFocused = false
+	m.input.Blur()
+	m.setSize(m.width, m.height)
+	return nil
 }
 
-func (m *Model) selectModelRole(role string) tea.Cmd {
-	if role != "talk" && role != "work" && role != "voice" {
-		return nil
-	}
-	m.modelRole = role
-	if len(m.modelCatalogForRole(m.modelRole)) == 0 {
-		m.setModelCatalogForRole(m.modelRole, m.fallbackModelChoices(m.modelRole))
-	}
-	choices := m.filteredModelChoices()
-	if strings.TrimSpace(m.input.Value()) == "" {
-		m.paletteSelected = indexModelChoice(choices, m.currentModel(m.modelRole))
-	} else {
-		m.paletteSelected = min(m.paletteSelected, max(0, len(choices)-1))
-	}
-	if m.modelCatalogWasRequested(m.modelRole) || m.commander == nil {
-		return nil
-	}
-	m.setModelCatalogRequested(role)
-	m.setModelCatalogLoading(role, true)
-	commander := m.commander
-	return func() tea.Msg {
-		choices := commander.Catalog()
-		if cataloger, ok := commander.(interface{ CatalogFor(string) []ModelChoice }); ok {
-			choices = cataloger.CatalogFor(role)
-		}
-		return catalogResultMsg{role: role, choices: choices}
-	}
+func (m *Model) returnToModelsPalette() {
+	m.input.Reset()
+	m.palette = paletteModels
+	m.modelSlotIndex = indexModelSlot(m.modelRole)
+	m.paletteSelected = 0
+	m.focus = focusHeader
+	m.headerFocusIndex = 0
+	m.inputFocused = false
+	m.input.Blur()
+	m.setSize(m.width, m.height)
 }
 
 func (m *Model) applyCatalog(role string, choices []ModelChoice) {
@@ -782,8 +794,8 @@ func (m *Model) fallbackModelChoices(role string) []ModelChoice {
 	if m.commander == nil {
 		return normalizeModelChoices(m.modelCatalogForRole(role))
 	}
-	if role == "voice" {
-		current := strings.TrimSpace(m.commander.CurrentModel("voice"))
+	if role != "talk" && role != "work" {
+		current := strings.TrimSpace(m.commander.CurrentModel(role))
 		if current == "" {
 			return nil
 		}
@@ -800,11 +812,7 @@ func (m *Model) fallbackModelChoices(role string) []ModelChoice {
 func (m *Model) activateHeaderFocus() tea.Cmd {
 	switch m.headerFocusIndex {
 	case 0:
-		return m.openModelPicker("talk")
-	case 1:
-		return m.openModelPicker("work")
-	case 2:
-		return m.openModelPicker("voice")
+		return m.openModelsPalette()
 	default:
 		if m.hasPendingQuestion() {
 			m.focusPendingQuestion()
@@ -866,12 +874,19 @@ func (m *Model) modelCatalogForRole(role string) []ModelChoice {
 	if role == "voice" {
 		return m.voiceModelCatalog
 	}
+	if role != "talk" && role != "work" {
+		return m.mediaModelCatalogs[role]
+	}
 	return m.modelCatalog
 }
 
 func (m *Model) setModelCatalogForRole(role string, choices []ModelChoice) {
 	if role == "voice" {
 		m.voiceModelCatalog = choices
+		return
+	}
+	if role != "talk" && role != "work" {
+		m.mediaModelCatalogs[role] = choices
 		return
 	}
 	m.modelCatalog = choices
@@ -881,12 +896,19 @@ func (m *Model) modelCatalogWasRequested(role string) bool {
 	if role == "voice" {
 		return m.voiceCatalogRequested
 	}
+	if role != "talk" && role != "work" {
+		return m.mediaCatalogRequested[role]
+	}
 	return m.catalogRequested
 }
 
 func (m *Model) setModelCatalogRequested(role string) {
 	if role == "voice" {
 		m.voiceCatalogRequested = true
+		return
+	}
+	if role != "talk" && role != "work" {
+		m.mediaCatalogRequested[role] = true
 		return
 	}
 	m.catalogRequested = true
@@ -896,12 +918,19 @@ func (m *Model) modelCatalogIsLoading(role string) bool {
 	if role == "voice" {
 		return m.voiceCatalogLoading
 	}
+	if role != "talk" && role != "work" {
+		return m.mediaCatalogLoading[role]
+	}
 	return m.catalogLoading
 }
 
 func (m *Model) setModelCatalogLoading(role string, loading bool) {
 	if role == "voice" {
 		m.voiceCatalogLoading = loading
+		return
+	}
+	if role != "talk" && role != "work" {
+		m.mediaCatalogLoading[role] = loading
 		return
 	}
 	m.catalogLoading = loading
@@ -951,7 +980,7 @@ func parseModelArgument(value string) (string, string) {
 	_, arguments, _ := strings.Cut(value, " ")
 	arguments = strings.TrimSpace(arguments)
 	role := "talk"
-	for _, candidate := range []string{"talk", "work", "voice"} {
+	for _, candidate := range modelSlots {
 		if arguments == candidate {
 			return candidate, ""
 		}
@@ -962,6 +991,17 @@ func parseModelArgument(value string) (string, string) {
 		}
 	}
 	return role, arguments
+}
+
+func isModelSlot(role string) bool { return indexModelSlot(role) >= 0 }
+
+func indexModelSlot(role string) int {
+	for index, candidate := range modelSlots {
+		if candidate == role {
+			return index
+		}
+	}
+	return -1
 }
 
 func indexString(values []string, value string) int {
