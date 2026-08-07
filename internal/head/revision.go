@@ -20,10 +20,11 @@ const (
 	// handful of choices is not a question, it is a list.
 	RedirectCandidateLimit = 4
 	// AdjacencyMessageWindow is how far back the thread is read for the job
-	// that spoke last. It is the router's own recent-thread window, because a
-	// line the model still carries into its prompt is a line the user can still
-	// be answering, and anything further back is history rather than context.
-	AdjacencyMessageWindow = recentMessageLimit
+	// that spoke last. It is the floor of the router's own thread window — the
+	// count the prompt is guaranteed to still carry whatever the big-step
+	// truncation has done — because a line the model still carries is a line
+	// the user can still be answering, and anything further back is history.
+	AdjacencyMessageWindow = threadWindowKeep
 	// AdjacencyQuiet is how long a job's own line stays the thing being
 	// answered. A running job speaks on a two-minute heartbeat, so two of them
 	// is the span in which nothing newer has been said; past that the thread
