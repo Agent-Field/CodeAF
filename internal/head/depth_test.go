@@ -103,14 +103,15 @@ func TestGreetingProducesTodaysContextExactly(t *testing.T) {
 	// move with every message, then the message. It changed once, deliberately,
 	// when the router was reshaped for prefix caching; the blocks and their
 	// bytes did not.
-	want := "Recent thread before this message:\n(no earlier messages in this session)" +
-		"\n\nLive graph snapshot:\n" + renderGraph(snapshot) +
-		"\n\nNotebook (durable memory across jobs and conversations):\n" + renderNotebook(graph, greeting) +
+	thread := "(no earlier messages in this session)"
+	want := "Recent thread before this message:\n" + thread +
+		"\n\nLive graph snapshot:\n" + renderGraph(snapshot, "greeting", thread, nil) +
+		"\n\nNotebook (durable memory across jobs and conversations):\n" + renderNotebook(graph, greeting, thread) +
 		"\n\nCurrent user message (verbatim):\n" + greeting
 	if prompt != want {
 		t.Fatalf("greeting context drifted from today's:\ngot:\n%s\n\nwant:\n%s", prompt, want)
 	}
-	if deep := New(nil, graph).renderDeep(greeting, ""); deep != "" {
+	if deep, _ := New(nil, graph).renderDeep(greeting, ""); deep != "" {
 		t.Fatalf("a greeting bought depth: %q", deep)
 	}
 }
@@ -125,7 +126,7 @@ func TestNewWorkRequestBuysNoDepth(t *testing.T) {
 		"thanks!",
 		"hey",
 	} {
-		if deep := head.renderDeep(message, ""); deep != "" {
+		if deep, _ := head.renderDeep(message, ""); deep != "" {
 			t.Fatalf("%q bought depth it did not earn:\n%s", message, deep)
 		}
 	}
@@ -139,11 +140,11 @@ func TestResultAlreadyInTheThreadGetsNoDeepSlice(t *testing.T) {
 	head := New(nil, graph)
 	message := "what happened with the finance thing"
 
-	if deep := head.renderDeep(message, "(no earlier messages in this session)"); deep == "" {
+	if deep, _ := head.renderDeep(message, "(no earlier messages in this session)"); deep == "" {
 		t.Fatal("the finance question earned no depth at all")
 	}
 	thread := "agent: " + financeFinding
-	if deep := head.renderDeep(message, thread); deep != "" {
+	if deep, _ := head.renderDeep(message, thread); deep != "" {
 		t.Fatalf("a result already in the thread was sent twice:\n%s", deep)
 	}
 }
@@ -172,10 +173,10 @@ func TestBreadthAndDepthKeepTheirOwnBudgets(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if skeleton := renderGraph(snapshot); len(skeleton) > maxGraphContextBytes {
+	if skeleton := renderGraph(snapshot, "", "", nil); len(skeleton) > maxGraphContextBytes {
 		t.Fatalf("board skeleton = %d bytes, over its %d budget", len(skeleton), maxGraphContextBytes)
 	}
-	deep := New(nil, graph).renderDeep("what did the ledger reconciliation conclude", "")
+	deep, _ := New(nil, graph).renderDeep("what did the ledger reconciliation conclude", "")
 	if deep == "" {
 		t.Fatal("a question about settled work earned no depth")
 	}
@@ -317,7 +318,7 @@ func TestTruncationMarkersFitTheirBudget(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		board := renderGraph(snapshot)
+		board := renderGraph(snapshot, "", "", nil)
 		if !strings.Contains(board, strings.TrimSpace(snapshotTruncatedMark)) {
 			t.Fatalf("width %d: the board never truncated, so the marker is untested", width)
 		}

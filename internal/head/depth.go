@@ -55,9 +55,15 @@ const (
 //
 // thread is the already-rendered recent thread. A result the model can read
 // there is not worth spending depth on twice.
-func (h *Head) renderDeep(message, thread string) string {
+//
+// The opened set comes back with the block because the board is written after
+// this runs and has to know what it no longer needs to say. The id line stays
+// in both places on purpose — that duplication is the board's identity, argued
+// for at renderDeepSlice — but a job whose whole finding is about to be quoted
+// in full has no use for the same finding's first line one screen above it.
+func (h *Head) renderDeep(message, thread string) (string, map[string]bool) {
 	if h == nil || h.store == nil {
-		return ""
+		return "", nil
 	}
 	// The reference is what the message is about with its steering vocabulary
 	// stripped, which is exactly what redirection needs to know too. Matching on
@@ -65,15 +71,16 @@ func (h *Head) renderDeep(message, thread string) string {
 	// that merely share English with it.
 	reference := redirectReference(message)
 	if reference == "" {
-		return ""
+		return "", nil
 	}
 	// No status filter: what a job found is most interesting once it is over,
 	// and the board already covers what is still moving.
 	targets, err := h.store.SearchSurgeryTargets(reference, false)
 	if err != nil || len(targets) == 0 {
-		return ""
+		return "", nil
 	}
 	now := time.Now()
+	openedIDs := make(map[string]bool, deepSliceLimit)
 	var rendered strings.Builder
 	// The header is written first and counted, so maxDeepContextBytes bounds
 	// everything this function can add to the prompt rather than most of it.
@@ -99,12 +106,13 @@ func (h *Head) renderDeep(message, thread string) string {
 			break
 		}
 		rendered.WriteString(block)
+		openedIDs[target.Node.ID] = true
 		opened++
 	}
 	if opened == 0 {
-		return ""
+		return "", nil
 	}
-	return strings.TrimSpace(rendered.String())
+	return strings.TrimSpace(rendered.String()), openedIDs
 }
 
 // deepContextHeader says what the block is for in the router's own register.
@@ -157,8 +165,19 @@ func unnamedFiles(node store.Node, body string) []string {
 // nodeResult is what a node has to say for itself, in the order the head should
 // prefer it: the summary it settled with, the digest its fold kept, and failing
 // both the error that ended it — a failure is still a finding.
+//
+// A fold root inverts the first two, and the reason is that only one of them is
+// maintained. Forming a territory writes the digest into summary as well, so the
+// two agree at birth; growing one from three jobs to eleven rewrites only the
+// digest, and summary keeps quoting the three-job map forever. Whenever a node
+// carries a fold, the fold is the current account of it and the summary is the
+// account it had when the fold began.
 func nodeResult(node store.Node) string {
-	for _, candidate := range []string{node.Summary, node.FoldDigest, node.Error} {
+	candidates := []string{node.Summary, node.FoldDigest, node.Error}
+	if node.FoldRoot {
+		candidates = []string{node.FoldDigest, node.Summary, node.Error}
+	}
+	for _, candidate := range candidates {
 		if trimmed := strings.TrimSpace(candidate); trimmed != "" {
 			return trimmed
 		}
