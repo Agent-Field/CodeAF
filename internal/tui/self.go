@@ -192,12 +192,12 @@ func (m *Model) renderSelfContent(width int) string {
 		selected := m.focus == focusSelf && len(m.selfRows) == m.selfSelection
 		style := mutedStyle.Faint(true)
 		if selected {
-			style = lipgloss.NewStyle().Foreground(powder).Bold(true)
+			style = powderStyle.Bold(true)
 		}
 		m.selfRows = append(m.selfRows, selfRow{line: len(lines), section: section, header: true})
 		line := truncate(style.Render(disclosure+" ")+inputTextStyle.Render(name), width)
 		if selected {
-			line = lipgloss.NewStyle().Background(selectionBand).Width(width).Render(line)
+			line = bandStyle.Width(width).Render(line)
 		}
 		lines = append(lines, line)
 		if !expanded {
@@ -221,12 +221,12 @@ func (m *Model) appendSelfRow(lines *[]string, section selfSection, body string,
 	selected := m.focus == focusSelf && len(m.selfRows) == m.selfSelection
 	marker := mutedStyle.Faint(true).Render("  ")
 	if selected {
-		marker = lipgloss.NewStyle().Foreground(powder).Bold(true).Render("▸ ")
+		marker = powderStyle.Bold(true).Render("▸ ")
 	}
 	m.selfRows = append(m.selfRows, selfRow{line: len(*lines), section: section})
 	line := truncate(marker+body, width)
 	if selected {
-		line = lipgloss.NewStyle().Background(selectionBand).Width(width).Render(line)
+		line = bandStyle.Width(width).Render(line)
 	}
 	*lines = append(*lines, line)
 }
@@ -248,7 +248,7 @@ func (m *Model) appendSelfToday(lines *[]string, width int) {
 			if node.Group == store.PracticeGroup {
 				kind = "practice"
 			}
-			glyph := lipgloss.NewStyle().Foreground(peach).Render(spinnerFrames[m.spinnerFrame%len(spinnerFrames)])
+			glyph := peachStyle.Render(spinnerFrames[m.spinnerFrame%len(spinnerFrames)])
 			label := nodeLabelInSnapshot(node, m.snapshot)
 			body := glyph + " " + inputTextStyle.Render(label) + mutedStyle.Faint(true).Render(" · "+kind)
 			m.appendSelfRow(lines, selfToday, body, width)
@@ -297,7 +297,7 @@ func (m *Model) appendSelfCompetence(lines *[]string, width int) {
 			glyphStyle := mutedStyle.Faint(true)
 			glyph := "·"
 			if class == store.CompetenceFrontier {
-				glyphStyle = lipgloss.NewStyle().Foreground(peach)
+				glyphStyle = peachStyle
 				glyph = "◆"
 			}
 			name := strings.TrimPrefix(scope.Scope, "profile:")

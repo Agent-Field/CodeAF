@@ -847,6 +847,7 @@ func questionIsStuck(card jobCard, now time.Time) bool {
 }
 
 func (m *Model) rebuildCards() {
+	m.invalidateDock()
 	previous := m.cards
 	next := deriveJobCards(m.sessionID, m.cardSnapshot, m.messages, m.pending, m.jobUsage, m.commands)
 	for _, old := range previous {
@@ -868,6 +869,7 @@ func (m *Model) rebuildCards() {
 		}
 	}
 	m.cards = next
+	m.noteShimmerActivity()
 	if m.selectedCardID != "" && m.cardByID(m.selectedCardID) == nil {
 		m.selectedCardID = ""
 	}
@@ -981,12 +983,33 @@ func (m *Model) attentionMessage(message store.Message) bool {
 		}()
 }
 
+// cardDockHeight measures the dock the layout is about to place. It measures
+// the rendered dock itself — the height of a card is not derivable from its
+// state — so the render is shared with the bar that draws it.
 func (m *Model) cardDockHeight() int {
-	content := m.renderActivityDock(false)
-	if content == "" {
-		return 0
+	_, height := m.activityDock()
+	return height
+}
+
+// activityDock renders the dock at most once per frame and once per relayout,
+// registering its click targets as it goes. Both callers — the bounds pass and
+// the bar — read the same string, so the rows they hit-test against are the
+// rows on screen.
+// invalidateDock drops the frame's dock render. Every caller is a point where
+// what the dock says may have changed.
+func (m *Model) invalidateDock() { m.dockValid = false }
+
+func (m *Model) activityDock() (string, int) {
+	if m.dockValid {
+		return m.dockContent, m.dockHeight
 	}
-	return lipgloss.Height(content)
+	content := m.renderActivityDock(true)
+	height := 0
+	if content != "" {
+		height = lipgloss.Height(content)
+	}
+	m.dockContent, m.dockHeight, m.dockValid = content, height, true
+	return content, height
 }
 
 func (m *Model) limitCardDock(content string) string {
@@ -1075,7 +1098,7 @@ func (m *Model) renderCardDock(track bool) string {
 		if questionIsStuck(active[0], m.standingTime()) {
 			chip := m.renderCompactCard(active[0], m.width)
 			summary := mutedStyle.Render("▸ ") +
-				lipgloss.NewStyle().Foreground(peach).Render(dockSummaryText(running, waiting))
+				peachStyle.Render(dockSummaryText(running, waiting))
 			if track {
 				m.cardDockRows = append(m.cardDockRows, cardRow{
 					start: 0, end: 0, cardID: active[0].ID, dock: true,
@@ -1088,7 +1111,7 @@ func (m *Model) renderCardDock(track bool) string {
 			m.dockSummaryLine = 0
 		}
 		line := mutedStyle.Render("▸ ") +
-			lipgloss.NewStyle().Foreground(peach).Render(dockSummaryText(running, waiting))
+			peachStyle.Render(dockSummaryText(running, waiting))
 		return truncate(line, m.width)
 	}
 
@@ -1101,7 +1124,7 @@ func (m *Model) renderCardDock(track bool) string {
 			m.dockSummaryLine = 0
 		}
 		header := mutedStyle.Render("▾ ") +
-			lipgloss.NewStyle().Foreground(peach).Render(dockSummaryText(running, waiting))
+			peachStyle.Render(dockSummaryText(running, waiting))
 		lines = append(lines, truncate(header, m.width))
 		atLine = 1
 	}
@@ -1134,7 +1157,7 @@ func (m *Model) renderJobCard(card jobCard, width int, expanded bool, atLine int
 	glyph := m.cardGlyph(card)
 	meta := m.cardMeta(card, time.Now())
 	titleWidth := max(1, width-lipgloss.Width(glyph)-lipgloss.Width(meta)-7)
-	titleStyle := lipgloss.NewStyle().Foreground(ink).Bold(true)
+	titleStyle := inkStyle.Bold(true)
 	if dock && questionIsStuck(card, m.standingTime()) {
 		glyph = questionStyle.Bold(true).Render("?")
 		titleStyle = questionStyle.Bold(true)
@@ -1200,7 +1223,7 @@ func (m *Model) renderJobCard(card jobCard, width int, expanded bool, atLine int
 				if card.State == cardSettled {
 					result = m.linkWorkspaceReferences(part.NodeID, result)
 				}
-				line := "│   " + glyph + " " + lipgloss.NewStyle().Foreground(ink).Bold(true).Render(part.Title) +
+				line := "│   " + glyph + " " + inkStyle.Bold(true).Render(part.Title) +
 					mutedStyle.Render(" — "+result)
 				lines = append(lines, truncate(line, width))
 				if track {
@@ -1336,7 +1359,7 @@ func renderChooseOptions(options []questionOption, selected, width int, prefix s
 	for index, option := range options {
 		markerStyle := mutedStyle
 		if index == selected {
-			markerStyle = lipgloss.NewStyle().Foreground(powder).Bold(true)
+			markerStyle = powderStyle.Bold(true)
 		}
 		text := strconv.Itoa(option.Number) + " " + option.Label
 		available := max(1, width-lipgloss.Width(prefix)-2)
@@ -1349,7 +1372,7 @@ func renderChooseOptions(options []questionOption, selected, width int, prefix s
 		}
 		line := prefix + markerStyle.Render("▸ ") + label
 		if index == selected {
-			line = lipgloss.NewStyle().Background(selectionBand).Width(width).Render(line)
+			line = bandStyle.Width(width).Render(line)
 		}
 		lines = append(lines, truncate(line, width))
 	}
@@ -1390,7 +1413,7 @@ func renderConfirmOptions(component questionComponent, selected, width int, pref
 		}
 		markerStyle := mutedStyle
 		if index == selected {
-			markerStyle = lipgloss.NewStyle().Foreground(powder).Bold(true)
+			markerStyle = powderStyle.Bold(true)
 		}
 		segment := markerStyle.Render("▸ ") + questionStyle.Render(strconv.Itoa(option.Number)+" "+option.Label)
 		startX := x
@@ -1554,9 +1577,9 @@ func (m *Model) renderCompactCard(card jobCard, width int) string {
 	}
 	marker := ""
 	if m.focus == focusCards && m.selectedCardID == card.ID {
-		marker = lipgloss.NewStyle().Foreground(powder).Render("▸ ")
+		marker = powderStyle.Render("▸ ")
 	}
-	titleStyle := lipgloss.NewStyle().Foreground(ink).Bold(true)
+	titleStyle := inkStyle.Bold(true)
 	if questionIsStuck(card, m.standingTime()) {
 		glyph = questionStyle.Bold(true).Render("?")
 		titleStyle = questionStyle.Bold(true)
@@ -1606,17 +1629,17 @@ func (m *Model) renderBrief(message store.Message, width, atLine int, track bool
 func briefItemGlyph(kind store.BriefItemKind) string {
 	switch kind {
 	case store.BriefDone:
-		return lipgloss.NewStyle().Foreground(mint).Render("✓")
+		return mintStyle.Render("✓")
 	case store.BriefFailure:
-		return lipgloss.NewStyle().Foreground(rose).Render("✗")
+		return roseStyle.Render("✗")
 	case store.BriefCancelled:
 		return mutedStyle.Render("–")
 	case store.BriefQuestion:
 		return questionStyle.Render("?")
 	case store.BriefCharter:
-		return lipgloss.NewStyle().Foreground(peach).Render("↻")
+		return peachStyle.Render("↻")
 	case store.BriefSkill:
-		return lipgloss.NewStyle().Foreground(powder).Render("◇")
+		return powderStyle.Render("◇")
 	case store.BriefSpend:
 		return mutedStyle.Render("$")
 	default:
@@ -1650,17 +1673,17 @@ func (m *Model) collapseSelectedBrief() bool {
 func (m *Model) cardGlyph(card jobCard) string {
 	switch card.State {
 	case cardCompiling:
-		return lipgloss.NewStyle().Foreground(butter).Render("◌")
+		return butterStyle.Render("◌")
 	case cardQuestion:
 		return questionStyle.Render("⚑")
 	case cardSettled:
 		if card.Failed {
-			return lipgloss.NewStyle().Foreground(rose).Render("✗")
+			return roseStyle.Render("✗")
 		}
-		return lipgloss.NewStyle().Foreground(mint).Render("✓")
+		return mintStyle.Render("✓")
 	default:
 		frame := spinnerFrames[m.spinnerFrame%len(spinnerFrames)]
-		return lipgloss.NewStyle().Foreground(peach).Render(frame)
+		return peachStyle.Render(frame)
 	}
 }
 
@@ -1724,11 +1747,11 @@ func cardAssumptions(receipt string) []string {
 func cardPartGlyph(status store.Status) string {
 	switch status {
 	case store.Done:
-		return lipgloss.NewStyle().Foreground(mint).Render("✓")
+		return mintStyle.Render("✓")
 	case store.Failed, store.Cancelled:
-		return lipgloss.NewStyle().Foreground(rose).Render("✗")
+		return roseStyle.Render("✗")
 	case store.Running, store.Claimed:
-		return lipgloss.NewStyle().Foreground(peach).Render("◐")
+		return peachStyle.Render("◐")
 	default:
 		return mutedStyle.Render("○")
 	}

@@ -217,14 +217,30 @@ type Model struct {
 
 	// journalSeq is the store's event watermark as of the last full read, and
 	// the only thing an idle poll looks at. pollForce covers what the journal
-	// cannot see: the first read, a node trace tailing a file outside the log,
-	// and any key or click that may have changed which surface is displayed.
+	// cannot see: the first read and any key or click that may have changed
+	// which surface is displayed. A node view is deliberately not in that set:
+	// its trace is a file, read on every cycle regardless, while everything it
+	// reads from SQL is journal-backed like the rest.
 	journalSeq    int64
 	journalPrimed bool
 	pollForce     bool
 	lastChangeAt  time.Time
 	lastActionAt  time.Time
 	lastRepaintAt time.Time
+
+	// The rail's two store-backed sections are read once per poll, not once
+	// per accessor: six render and layout sites ask for them, so an uncached
+	// read put six synchronous SQLite queries on the UI goroutine per frame —
+	// around three hundred a second during a stream. Both tables are written
+	// in the same transaction as the journal row the poll watermark already
+	// gates, so the poll is exactly the right refresh point. Only the read is
+	// cached: the presentation projection still runs against the live
+	// snapshot, so nothing the graph knows can go stale behind it.
+	railServices      []store.Service
+	railServicesValid bool
+	railCharters      []store.Charter
+	railChartersErr   error
+	railChartersValid bool
 
 	// Self is a read-only employee file assembled by the ordinary store poll.
 	// Its four sections share one viewport and one keyboard selection.
@@ -254,6 +270,13 @@ type Model struct {
 	serviceFocusIndex int
 	serviceRows       []serviceRow
 	serviceCardRows   []serviceCardRow
+
+	// The dock is measured before it is placed and drawn after, and the layout
+	// measures it again on every relayout. It is rendered once per frame and
+	// held here with its height; the frame and the relayout each drop it.
+	dockContent string
+	dockHeight  int
+	dockValid   bool
 
 	// dockExpanded holds the overflow dock open without card focus; the
 	// dockSummaryLine is the rendered ▸/▾ summary row, -1 when absent.
@@ -303,9 +326,12 @@ type Model struct {
 	selectedBriefSeq int64
 	// The provider stream is optional Commander input. Real head deltas and
 	// simulated landed answers share one paced renderer so neither path pops.
-	streamEvents       <-chan StreamEvent
-	streamMode         streamMode
-	streamRaw          string
+	streamEvents <-chan StreamEvent
+	streamMode   streamMode
+	// streamRaw accumulates the provider's raw structured response. It is a
+	// builder, not a string: a token-by-token `+=` re-allocates the whole reply
+	// per token, which is quadratic over a long answer.
+	streamRaw          strings.Builder
 	streamTarget       string
 	streamShown        string
 	streamSeq          int64
@@ -333,6 +359,12 @@ type Model struct {
 	animationPending bool
 	graphAnimating   bool
 	shimmerFrame     int
+	// shimmerSeen dates each live card's status line so a wedged worker stops
+	// breathing; sweepCache holds this frame's swept lines, which every line on
+	// screen shares a phase with.
+	shimmerSeen      map[string]shimmerStamp
+	sweepFrame       int
+	sweepCache       map[string]string
 	receiptsExpanded bool
 	historyExpanded  bool
 	err              error
@@ -440,6 +472,17 @@ type Model struct {
 	chatCardRows              []cardRow
 	cardPartRows              []cardPartRow
 	cardCloseRows             []cardCloseRow
+
+	// blockCache holds already-rendered settled message groups. A settled
+	// message is immutable and the thread is re-rendered many times between
+	// two of them — every animation tick, every relayout — so the whole
+	// conversation was being rebuilt to draw one moving tail. The cache is
+	// dropped whole when the pane's width changes or the journal moves, which
+	// is the only way the parts of a block outside its key can change.
+	blockCache map[string]threadBlock
+	blockWidth int
+	blockGen   uint64
+	threadGen  uint64
 
 	// chatMessageRows maps rendered chat lines to the message seq they
 	// belong to, so clicking a collapsed deliverable opens it in place.
@@ -594,6 +637,10 @@ func RunWithCommander(backend Backend, sessionID string, commander Commander) er
 		NewWithCommander(backend, sessionID, commander),
 		tea.WithAltScreen(),
 		tea.WithMouseCellMotion(),
+		// The renderer defaults to 60 wakeups a second forever. Nothing here
+		// moves faster than the 120ms animation cadence, and half the rate
+		// leaves the timer coalescing that keeps a laptop cool.
+		tea.WithFPS(30),
 	).Run()
 	return err
 }
@@ -623,28 +670,51 @@ func (m *Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		m.applyStreamEvent(message)
 		return m, tea.Batch(waitForStream(m.streamEvents), m.scheduleAnimation())
 
+	case streamBatchMsg:
+		m.lastActionAt = m.standingTime()
+		for _, event := range message.events {
+			m.applyStreamEvent(event)
+		}
+		return m, tea.Batch(waitForStream(m.streamEvents), m.scheduleAnimation())
+
 	case streamClosedMsg:
 		m.streamEvents = nil
 		return m, nil
 
 	case animationTickMsg:
 		m.animationPending = false
-		if m.streamMode != streamNone {
+		streaming := m.streamMode != streamNone
+		if streaming {
 			m.advanceStream()
-			m.refreshChat()
-			if m.autoScroll {
-				m.chat.GotoBottom()
-			}
 		}
 		m.shimmerFrame++
 		m.sampleVoiceLevel()
-		if !m.graphAnimating && !m.streamAnimating() && !m.shimmerVisible() && !m.voiceAnimating() {
+		animating := m.graphAnimating || m.streamAnimating() || m.shimmerAnimating() || m.voiceAnimating()
+		if animating {
+			m.spinnerFrame = (m.spinnerFrame + 1) % len(spinnerFrames)
+		}
+		// One refresh, not two: no frame is drawn between them, so the thread
+		// was rendered twice per tick for one visible result.
+		if streaming || animating {
+			m.refreshChat()
+			if streaming && m.autoScroll {
+				m.chat.GotoBottom()
+			}
+		}
+		if !animating {
 			return m, nil
 		}
-		m.spinnerFrame = (m.spinnerFrame + 1) % len(spinnerFrames)
-		m.refreshChat()
-		m.refreshGraph()
-		m.refreshSelf()
+		// Only the panes that can reach the screen are rebuilt. The rail's
+		// animation bookkeeping still runs with the tree off screen: that is
+		// what keeps the collapsed rail's spinner turning.
+		if m.graphContentVisible() {
+			m.refreshGraph()
+		} else {
+			m.noteGraphAnimation()
+		}
+		if m.selfVisible() {
+			m.refreshSelf()
+		}
 		return m, m.scheduleAnimation()
 
 	case catalogResultMsg:
@@ -755,6 +825,13 @@ func (m *Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 
 	if m.inputFocused {
 		before := m.input.Value()
+		// Typing can only move two heights: the draft's own wrapped rows and the
+		// palette below it. Everything else the relayout recomputes — the whole
+		// thread, the whole rail, the whole employee file — is identical to what
+		// is already on screen, so a character costs a relayout only when the
+		// frame it lives in actually changed shape.
+		inputHeight := m.inputSurfaceHeight()
+		paletteHeight := m.layoutPaletteHeight()
 		var command tea.Cmd
 		m.input, command = m.input.Update(message)
 		if m.input.Value() != before && m.nodeViewID == "" {
@@ -762,7 +839,9 @@ func (m *Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 			m.paletteSelected = 0
 			m.paletteDismissed = false
 			m.syncPalette()
-			m.setSize(m.width, m.height)
+			if m.inputSurfaceHeight() != inputHeight || m.layoutPaletteHeight() != paletteHeight {
+				m.setSize(m.width, m.height)
+			}
 		}
 		return m, command
 	}
@@ -1188,10 +1267,8 @@ func (m *Model) poll() tea.Cmd {
 	}
 	readSelf := m.selfVisible()
 	selfNow := m.standingTime()
-	// The node pane's trace is tailed from the executor's file, not the
-	// journal, so an open node view always reads in full.
 	journal, _ := backend.(journalReader)
-	force := m.pollForce || !m.journalPrimed || nodeID != ""
+	force := m.pollForce || !m.journalPrimed
 	knownSeq := m.journalSeq
 	return func() tea.Msg {
 		var journalSeq int64
@@ -1201,9 +1278,19 @@ func (m *Model) poll() tea.Cmd {
 			if err == nil {
 				journalSeq, journalRead = seq, true
 				if !force && seq == knownSeq {
-					return pollResultMsg{
+					// The node pane's trace is tailed from the executor's file,
+					// not the journal, so it is read even on a quiet cycle. Its
+					// SQL — the node row and its messages — is journal-backed
+					// like everything else, so the watermark still speaks for it
+					// and the quiet path stays quiet with a node view open.
+					quiet := pollResultMsg{
 						quiet: true, journalSeq: seq, journalRead: true, sessionID: sessionID,
 					}
+					if nodeID != "" && commander != nil {
+						quiet.nodeID = nodeID
+						quiet.nodeTrace = commander.NodeTrace(nodeID, nodeTraceMaxBytes)
+					}
+					return quiet
 				}
 			}
 		}
@@ -1389,7 +1476,7 @@ func nextAnimationTick() tea.Cmd {
 }
 
 func (m *Model) scheduleAnimation() tea.Cmd {
-	if m.animationPending || (!m.graphAnimating && !m.streamAnimating() && !m.shimmerVisible() && !m.voiceAnimating()) {
+	if m.animationPending || (!m.graphAnimating && !m.streamAnimating() && !m.shimmerAnimating() && !m.voiceAnimating()) {
 		return nil
 	}
 	m.animationPending = true
@@ -1402,11 +1489,24 @@ func (m *Model) scheduleAnimation() tea.Cmd {
 // answered by re-rendering from state already in hand, never by reading again.
 func (m *Model) applyQuietPoll(result pollResultMsg) {
 	m.journalSeq = result.journalSeq
+	// The one read a quiet cycle still makes: the open node's trace is a file
+	// the executor appends to outside the journal, so the watermark cannot
+	// speak for it. It re-renders only when the text actually moved.
+	if result.nodeID != "" && result.nodeID == m.nodeViewID && result.nodeTrace != m.nodeTraceText {
+		m.nodeTraceText = result.nodeTrace
+		m.refreshNodeView(false)
+	}
 	now := m.standingTime()
 	if now.Sub(m.lastRepaintAt) < quietRepaintInterval {
 		return
 	}
 	m.lastRepaintAt = now
+	m.invalidateRailCaches()
+	// The minute repaint is the clock's own frame: it re-renders everything
+	// from state already in hand. Retiring the rendered blocks with it keeps
+	// the cache one thread wide, instead of one entry per timestamp a long
+	// idle stretch walks through.
+	m.threadGen++
 	m.rebuildCards()
 	m.setSize(m.width, m.height)
 }
@@ -1418,6 +1518,12 @@ func (m *Model) applyPoll(result pollResultMsg) {
 	}
 	m.pollForce = false
 	m.lastRepaintAt = m.standingTime()
+	m.invalidateRailCaches()
+	// A moved journal is the one thing that can change a settled message's
+	// rendering from outside the message itself: the node it names, the files
+	// it links, the turn that answers its question. So it retires the thread's
+	// rendered blocks, and nothing else has to.
+	m.threadGen++
 	if result.journalRead {
 		if result.journalSeq != m.journalSeq || !m.journalPrimed {
 			m.lastChangeAt = m.standingTime()
@@ -1812,6 +1918,7 @@ func (m *Model) activityBarVisible() bool {
 }
 
 func (m *Model) setSize(width, height int) {
+	m.invalidateDock()
 	m.width = max(20, width)
 	m.height = max(8, height)
 	m.horizontal = m.width >= railAtWidth
@@ -1867,6 +1974,40 @@ func (m *Model) setSize(width, height int) {
 }
 
 func (m *Model) refreshGraph() {
+	m.refreshGraphContent()
+	m.noteGraphAnimation()
+}
+
+// graphContentVisible reports whether anything the rail viewport holds can
+// reach the screen. When nothing can, the animation tick keeps the bookkeeping
+// and skips building a tree no one will read.
+func (m *Model) graphContentVisible() bool {
+	return m.graphVisible() || m.nodeViewID != "" || m.serviceCardID != "" || m.charterCardID != ""
+}
+
+// noteGraphAnimation decides whether anything on screen still moves. It is the
+// half of the refresh the collapsed rail still needs: its spinner lives in the
+// activity bar, not in the tree.
+func (m *Model) noteGraphAnimation() {
+	if !m.graphContentVisible() {
+		m.graphAnimating = false
+	}
+	if m.standingBreathing() {
+		m.graphAnimating = true
+	}
+	// The collapsed rail still shows a spinner in the activity bar, so live
+	// work keeps the animation ticking even with the tree off screen.
+	if !m.graphVisible() && m.nodeViewID == "" && m.liveWorkCount() > 0 {
+		m.graphAnimating = true
+	}
+	if m.nodeViewID != "" &&
+		(m.inspectedNode.Status == store.Claimed || m.inspectedNode.Status == store.Running ||
+			m.completionFlashing(m.inspectedNode, time.Now())) {
+		m.graphAnimating = true
+	}
+}
+
+func (m *Model) refreshGraphContent() {
 	offset := m.graph.YOffset
 	if m.serviceCardID != "" {
 		m.graphRows = nil
@@ -1883,19 +2024,6 @@ func (m *Model) refreshGraph() {
 		m.graph.SetContent(m.renderTree(max(1, m.graph.Width), 0))
 	}
 	m.graph.SetYOffset(offset)
-	if m.standingBreathing() {
-		m.graphAnimating = true
-	}
-	// The collapsed rail still shows a spinner in the activity bar, so live
-	// work keeps the animation ticking even with the tree off screen.
-	if !m.graphVisible() && m.nodeViewID == "" && m.liveWorkCount() > 0 {
-		m.graphAnimating = true
-	}
-	if m.nodeViewID != "" &&
-		(m.inspectedNode.Status == store.Claimed || m.inspectedNode.Status == store.Running ||
-			m.completionFlashing(m.inspectedNode, time.Now())) {
-		m.graphAnimating = true
-	}
 }
 
 func (m *Model) pageFocused(down bool) {

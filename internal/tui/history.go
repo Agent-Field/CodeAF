@@ -167,7 +167,7 @@ func (m *Model) renderRecallHistory(width, atLine int, track bool) string {
 		return strings.Join(append(lines, mutedStyle.Render("searching permanent graph memory…")), "\n")
 	}
 	if m.historyErr != nil {
-		return strings.Join(append(lines, lipgloss.NewStyle().Foreground(rose).Render(
+		return strings.Join(append(lines, roseStyle.Render(
 			truncate(m.historyErr.Error(), width))), "\n")
 	}
 	if len(m.historyEntries) == 0 {
@@ -211,11 +211,11 @@ func (m *Model) renderRecallHistory(width, atLine int, track bool) string {
 func historyStatusGlyph(status store.Status) string {
 	switch status {
 	case store.Done:
-		return lipgloss.NewStyle().Foreground(mint).Render("✓")
+		return mintStyle.Render("✓")
 	case store.Failed, store.Cancelled:
-		return lipgloss.NewStyle().Foreground(rose).Render("✗")
+		return roseStyle.Render("✗")
 	case store.Running, store.Claimed:
-		return lipgloss.NewStyle().Foreground(peach).Render("◐")
+		return peachStyle.Render("◐")
 	case store.Pending:
 		return mutedStyle.Render("○")
 	default:
