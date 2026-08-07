@@ -98,6 +98,7 @@ func runChat(args []string) error {
 	if err != nil {
 		return err
 	}
+	boostClients := &messageClientPool{settings: settings, clients: make(map[string]*liveClient)}
 	// Planning is done by the working model, so its measured ruler must be in
 	// force before either the initial subtree planner or an overrun replan runs.
 	measured, _ := profile.Load(settings.ProfileDir, taskClient.Model(), "linear")
@@ -540,6 +541,7 @@ func runChat(args []string) error {
 			}
 		})
 		_ = head.New(chatClient, graph).
+			WithMessageClient(boostClients.ForMessage).
 			WithSelfKnowledge(func() string { return selfKnowledge(settings, taskClient.Model()) }).
 			WithImageInput(modelCatalog, settings.Model).
 			WithCompetenceMap(func() string {
@@ -598,6 +600,7 @@ func residentDeliveryBrief(graph *store.Store, node store.Node) string {
 type chatPrefs struct {
 	ChatModel   string `json:"chat_model,omitempty"`
 	TaskModel   string `json:"task_model,omitempty"`
+	BoostModel  string `json:"boost_model,omitempty"`
 	VoiceModel  string `json:"voice_model,omitempty"`
 	ImageModel  string `json:"image_model,omitempty"`
 	SpeechModel string `json:"speech_model,omitempty"`
@@ -708,6 +711,9 @@ func (c *chatCommander) Models() []string {
 	if c.taskClient != nil {
 		candidates = append(candidates, c.taskClient.Model())
 	}
+	if boost := strings.TrimSpace(c.CurrentModel("boost")); boost != "" {
+		candidates = append(candidates, boost)
+	}
 	models := dedupeModels(candidates)
 	if len(models) < 4 {
 		models = dedupeModels(append(models, fallbackChatModels...))
@@ -746,7 +752,7 @@ func (c *chatCommander) Catalog() []tui.ModelChoice {
 // filtering lives in config.ModelCandidates so music discovery uses the exact
 // same recognizable-TTS exclusion as runtime resolution.
 func (c *chatCommander) CatalogFor(role string) []tui.ModelChoice {
-	if role == "talk" || role == "work" {
+	if role == "talk" || role == "work" || role == "boost" {
 		return c.Catalog()
 	}
 	c.slotCatalogMu.Lock()
@@ -782,6 +788,17 @@ func (c *chatCommander) CurrentModel(role string) string {
 	switch role {
 	case "work":
 		return c.taskClient.Model()
+	case "boost":
+		c.mu.Lock()
+		boost := strings.TrimSpace(c.prefs.BoostModel)
+		c.mu.Unlock()
+		if boost != "" {
+			return boost
+		}
+		if c.taskClient != nil {
+			return c.taskClient.Model()
+		}
+		return ""
 	case "voice":
 		c.mu.Lock()
 		defer c.mu.Unlock()
@@ -807,8 +824,21 @@ func (c *chatCommander) CurrentModel(role string) string {
 }
 
 func (c *chatCommander) ImageInputSupport() (string, bool) {
-	model := c.chatClient.Model()
+	return c.ImageInputSupportFor("talk")
+}
+
+func (c *chatCommander) ImageInputSupportFor(role string) (string, bool) {
+	model := c.CurrentModel(role)
 	return model, c.models != nil && c.models.Supports(model, "input", "image")
+}
+
+func (c *chatCommander) ModelFollows(role string) bool {
+	if role != "boost" {
+		return false
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return strings.TrimSpace(c.prefs.BoostModel) == ""
 }
 
 func (c *chatCommander) SetModel(role, slug string) error {
@@ -825,6 +855,8 @@ func (c *chatCommander) SetModel(role, slug string) error {
 		// own ruler before the next planning call can observe the new client.
 		measured, _ := profile.Load(c.settings.ProfileDir, c.taskClient.Model(), "linear")
 		plan.UseAnchors(measured.Anchors)
+	case "boost":
+		// Empty is meaningful for boost: it restores live inheritance from work.
 	case "voice", "image", "speech", "music", "video":
 		if strings.TrimSpace(slug) == "" {
 			return fmt.Errorf("%s model cannot be empty", role)
@@ -839,6 +871,8 @@ func (c *chatCommander) SetModel(role, slug string) error {
 		c.prefs.ChatModel = c.chatClient.Model()
 	} else if role == "work" {
 		c.prefs.TaskModel = c.taskClient.Model()
+	} else if role == "boost" {
+		c.prefs.BoostModel = strings.TrimSpace(slug)
 	} else if role == "voice" {
 		c.prefs.VoiceModel = strings.TrimSpace(slug)
 	} else if role == "image" {
@@ -1032,6 +1066,36 @@ type liveClient struct {
 	mu       sync.RWMutex
 	model    string
 	client   router.Client
+}
+
+// messageClientPool keeps per-message chat overrides pinned to the exact model
+// recorded on the durable user message. A later work-model change therefore
+// cannot race an armed submission that the head has not tailed yet.
+type messageClientPool struct {
+	settings config.Config
+	mu       sync.Mutex
+	clients  map[string]*liveClient
+}
+
+func (p *messageClientPool) ForMessage(message store.Message) (head.Client, error) {
+	model := strings.TrimSpace(message.Model)
+	if model == "" {
+		return nil, errors.New("boost message has no model")
+	}
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if client := p.clients[model]; client != nil {
+		return client, nil
+	}
+	client, err := newLiveClient(p.settings, model)
+	if err != nil {
+		return nil, err
+	}
+	if p.clients == nil {
+		p.clients = make(map[string]*liveClient)
+	}
+	p.clients[model] = client
+	return client, nil
 }
 
 func newLiveClient(settings config.Config, model string) (*liveClient, error) {

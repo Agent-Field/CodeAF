@@ -57,6 +57,7 @@ func TestHeadRoutesImagePartAndPreservesAttachmentOnCommand(t *testing.T) {
 
 type fakeClient struct {
 	mutex     sync.Mutex
+	model     string
 	responses []string
 	calls     int
 	seen      []ai.Message
@@ -72,8 +73,12 @@ func (client *fakeClient) CompleteWithMessages(_ context.Context, messages []ai.
 	}
 	text := client.responses[0]
 	client.responses = client.responses[1:]
-	return textResponse(text), nil
+	response := textResponse(text)
+	response.Model = client.model
+	return response, nil
 }
+
+func (client *fakeClient) Model() string { return client.model }
 
 func (client *fakeClient) callCount() int {
 	client.mutex.Lock()
@@ -101,6 +106,55 @@ func TestHeadPostsReply(t *testing.T) {
 	}
 	if calls := client.callCount(); calls != 1 {
 		t.Fatalf("provider calls = %d, want 1", calls)
+	}
+}
+
+func TestHeadUsesPerMessageClientAndPersistsResolvedReplyModel(t *testing.T) {
+	graph := openHeadStore(t)
+	talk := &fakeClient{model: "cheap/talk", responses: []string{
+		`{"reply":"ordinary answer","command":null}`,
+	}}
+	boost := &fakeClient{model: "anthropic/claude-opus-5-2026-08-01", responses: []string{
+		`{"reply":"boosted answer","command":null}`,
+	}}
+	var selected []string
+	conversationalHead := New(talk, graph).WithMessageClient(func(message store.Message) (Client, error) {
+		selected = append(selected, message.Model)
+		return boost, nil
+	})
+
+	ordinary, err := graph.PostMessage(store.Message{SessionID: "client-override", Role: store.RoleUser, Body: "easy"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := conversationalHead.answer(context.Background(), ordinary); err != nil {
+		t.Fatal(err)
+	}
+	boosted, err := graph.PostMessage(store.Message{
+		SessionID: "client-override", Role: store.RoleUser, Body: "hard", Model: "anthropic/claude-opus-5",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := conversationalHead.answer(context.Background(), boosted); err != nil {
+		t.Fatal(err)
+	}
+
+	if talk.callCount() != 1 || boost.callCount() != 1 || len(selected) != 1 || selected[0] != boosted.Model {
+		t.Fatalf("client calls talk=%d boost=%d selected=%v", talk.callCount(), boost.callCount(), selected)
+	}
+	messages, err := graph.Messages("client-override", ordinary.Seq, 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var replies []store.Message
+	for _, message := range messages {
+		if message.Role == store.RoleAgent {
+			replies = append(replies, message)
+		}
+	}
+	if len(replies) != 2 || replies[0].Model != "" || replies[1].Model != boost.model {
+		t.Fatalf("reply attribution = %+v", replies)
 	}
 }
 
