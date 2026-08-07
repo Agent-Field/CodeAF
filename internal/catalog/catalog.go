@@ -13,6 +13,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -50,15 +51,43 @@ type Options struct {
 	Now        func() time.Time
 }
 
-// Catalog is immutable after Load and therefore safe to share among the head,
-// executor leaves, and the terminal lens.
+// Catalog is immutable once resolved and therefore safe to share among the
+// head, executor leaves, and the terminal lens. A lazily loaded catalog holds
+// the fetch as a future instead: the value is handed out immediately and the
+// first capability question waits, if anything still has to wait at all.
 type Catalog struct {
+	ready   *rows
+	resolve func() *rows
+}
+
+// rows is one resolved catalog: the cleaned model list every listing walks,
+// beside the index every single-model question is answered from. Building the
+// index once turns each Supports call from a scan of the whole catalog into a
+// lookup, which matters because the palette asks it per candidate.
+type rows struct {
 	models []Model
+	byID   map[string]Model
 }
 
 // Load fetches at most once. A fresh cache avoids I/O; a failed fetch degrades
 // to a stale cache, then to a very small set of known modality defaults.
 func Load(ctx context.Context, options Options) *Catalog {
+	return &Catalog{ready: load(ctx, options)}
+}
+
+// LoadLazy starts the same discovery immediately but never makes the caller
+// wait for it. On a cold cache the fetch is a network round-trip with a
+// fifteen-second ceiling, and a launch path that awaits it holds the first
+// frame behind a dead terminal. Nothing a catalog answers can be asked before
+// the surface is up, so the goroutine warms the value while the caller carries
+// on, and only a question that genuinely arrives first ever blocks.
+func LoadLazy(ctx context.Context, options Options) *Catalog {
+	resolve := sync.OnceValue(func() *rows { return load(ctx, options) })
+	go resolve()
+	return &Catalog{resolve: resolve}
+}
+
+func load(ctx context.Context, options Options) *rows {
 	now := time.Now
 	if options.Now != nil {
 		now = options.Now
@@ -66,7 +95,7 @@ func Load(ctx context.Context, options Options) *Catalog {
 	path := cachePath(options.Dir)
 	cached, cachedOK := readCache(path)
 	if cachedOK && now().Before(cached.FetchedAt.Add(TTL)) {
-		return newCatalog(cached.Models)
+		return newRows(cached.Models)
 	}
 
 	models, err := fetch(ctx, options)
@@ -74,12 +103,26 @@ func Load(ctx context.Context, options Options) *Catalog {
 		if path != "" {
 			_ = writeCache(path, cache{FetchedAt: now().UTC(), Models: models})
 		}
-		return newCatalog(models)
+		return newRows(models)
 	}
 	if cachedOK {
-		return newCatalog(cached.Models)
+		return newRows(cached.Models)
 	}
-	return newCatalog(hardcodedFallbacks())
+	return newRows(hardcodedFallbacks())
+}
+
+// rows resolves the catalog, waiting on the future when Load was lazy.
+func (c *Catalog) rows() *rows {
+	if c == nil {
+		return nil
+	}
+	if c.ready != nil {
+		return c.ready
+	}
+	if c.resolve != nil {
+		return c.resolve()
+	}
+	return nil
 }
 
 // ModelsWithInput returns a stable copy of models advertising modality.
@@ -95,49 +138,47 @@ func (c *Catalog) ModelsWithOutput(modality string) []Model {
 // Model returns one catalog row by slug. The returned slices do not alias the
 // immutable catalog, so callers may safely retain or amend the result.
 func (c *Catalog) Model(modelID string) (Model, bool) {
-	if c == nil {
+	resolved := c.rows()
+	if resolved == nil {
 		return Model{}, false
 	}
-	modelID = normalizeID(modelID)
-	for _, model := range c.models {
-		if normalizeID(model.ID) == modelID {
-			return cloneModel(model), true
-		}
+	model, ok := resolved.byID[normalizeID(modelID)]
+	if !ok {
+		return Model{}, false
 	}
-	return Model{}, false
+	return cloneModel(model), true
 }
 
 // Supports answers whether modelID advertises modality in direction. Unknown
 // models and directions calmly return false.
 func (c *Catalog) Supports(modelID, direction, modality string) bool {
-	if c == nil {
+	resolved := c.rows()
+	if resolved == nil {
 		return false
 	}
-	modelID = normalizeID(modelID)
-	for _, model := range c.models {
-		if normalizeID(model.ID) != modelID {
-			continue
-		}
-		var values []string
-		switch strings.ToLower(strings.TrimSpace(direction)) {
-		case "input":
-			values = model.InputModalities
-		case "output":
-			values = model.OutputModalities
-		default:
-			return false
-		}
-		return hasModality(values, modality)
+	model, ok := resolved.byID[normalizeID(modelID)]
+	if !ok {
+		return false
 	}
-	return false
+	var values []string
+	switch strings.ToLower(strings.TrimSpace(direction)) {
+	case "input":
+		values = model.InputModalities
+	case "output":
+		values = model.OutputModalities
+	default:
+		return false
+	}
+	return hasModality(values, modality)
 }
 
 func (c *Catalog) modelsWith(direction, modality string) []Model {
-	if c == nil {
+	resolved := c.rows()
+	if resolved == nil {
 		return nil
 	}
 	models := make([]Model, 0)
-	for _, model := range c.models {
+	for _, model := range resolved.models {
 		var values []string
 		if direction == "input" {
 			values = model.InputModalities
@@ -223,6 +264,8 @@ func fetch(ctx context.Context, options Options) ([]Model, error) {
 			InputModalities: cleanModalities(item.Architecture.Input), OutputModalities: cleanModalities(item.Architecture.Output),
 		})
 	}
+	// The one cleaning pass for the fetched path; what is cached and what is
+	// indexed are the same cleaned rows.
 	models = cleanModels(models)
 	if len(models) == 0 {
 		return nil, &statusError{status: "empty catalog"}
@@ -234,7 +277,23 @@ type statusError struct{ status string }
 
 func (e *statusError) Error() string { return "model catalog: " + e.status }
 
-func newCatalog(models []Model) *Catalog { return &Catalog{models: cleanModels(models)} }
+// newRows indexes an already-cleaned model list. Every path into it — the
+// fetch, the cache read, the built-in fallbacks — has cleaned its own rows, so
+// cleaning runs exactly once per catalog rather than once per hand-off.
+//
+// The index keeps the first row for each normalized id, which is what a scan
+// from the top of the list would have found: cleaning dedupes on the literal
+// id, so a slug and its "~" variant can both survive it.
+func newRows(models []Model) *rows {
+	byID := make(map[string]Model, len(models))
+	for _, model := range models {
+		id := normalizeID(model.ID)
+		if _, seen := byID[id]; !seen {
+			byID[id] = model
+		}
+	}
+	return &rows{models: models, byID: byID}
+}
 
 func cleanModels(models []Model) []Model {
 	seen := make(map[string]bool, len(models))
@@ -306,6 +365,8 @@ func readCache(path string) (cache, bool) {
 	if json.Unmarshal(raw, &cached) != nil || cached.FetchedAt.IsZero() {
 		return cache{}, false
 	}
+	// The one cleaning pass for the cached path — an older cache may predate a
+	// vocabulary change, so its rows are normalized here and nowhere else.
 	cached.Models = cleanModels(cached.Models)
 	return cached, len(cached.Models) > 0
 }
@@ -337,6 +398,8 @@ func writeCache(path string, cached cache) error {
 	return os.Rename(name, path)
 }
 
+// hardcodedFallbacks is written already cleaned — unique ids, lowercase
+// modalities — so it satisfies newRows without a cleaning pass of its own.
 func hardcodedFallbacks() []Model {
 	return []Model{
 		{ID: "krea/krea-2-medium-turbo", InputModalities: []string{"text", "image"}, OutputModalities: []string{"image"}},
