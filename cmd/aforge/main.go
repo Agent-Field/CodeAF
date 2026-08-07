@@ -51,6 +51,8 @@ func run() error {
 		return runNotebook(os.Args[2:])
 	case "wake":
 		return runWake(os.Args[2:])
+	case "why":
+		return runWhy(os.Args[2:])
 	case "-h", "--help", "help":
 		return usage()
 	default:
@@ -70,6 +72,7 @@ const usageText = `aforge — build and revise task graphs
   aforge notebook [--db path]
   aforge notebook retract|restore <seq> [--db path]
   aforge wake [--db path]       run one standing-watch pass and exit
+  aforge why self [--db path]   show today's self-spend receipts
 
 Environment:
   OPENROUTER_API_KEY   required
