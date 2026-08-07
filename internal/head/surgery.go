@@ -126,13 +126,25 @@ func (h *Head) resolveSurgery(user store.Message, kind store.CommandKind, target
 			{Label: "yes, " + verb + " it", Value: encodeSurgeryOption("apply", kind, target, instruction)},
 			{Label: surgeryKeepLabel(kind), Value: encodeSurgeryOption("keep", kind, target, instruction)},
 		}
-		_, err := h.store.PostMessage(store.Message{
-			SessionID: user.SessionID, Role: store.RoleAgent, NodeID: target,
-			Body: store.QuestionMessageBody(prompt, options, store.QuestionConfig{
-				Kind: store.QuestionConfirm, Default: "2", AllowFree: &allowFree,
-			}),
-			Options: options,
+		ask, _, gateErr := h.store.ShouldAsk(store.QuestionCategorySurgeryConfirm)
+		if gateErr == nil && !ask {
+			if err := h.store.RecordAssumedWithDefault(store.QuestionCategorySurgeryConfirm, "2", user.SessionID, prompt); err == nil {
+				return h.postAgent(user.SessionID, "Assuming the default: "+surgeryKeepLabel(kind)+".", 0)
+			}
+		}
+		body := store.QuestionMessageBody(prompt, options, store.QuestionConfig{
+			Kind: store.QuestionConfirm, Category: store.QuestionCategorySurgeryConfirm,
+			Default: "2", AllowFree: &allowFree,
 		})
+		question, err := h.store.AskQuestion(store.AgentQuestion{
+			SessionID: user.SessionID, Text: body, OriginNodeID: target,
+			Urgency: store.QuestionBlocking, Category: store.QuestionCategorySurgeryConfirm,
+			DefaultAnswer: "2", Options: options,
+		})
+		if err != nil {
+			return err
+		}
+		_, err = h.store.SurfaceQuestion(question.Seq)
 		return err
 	}
 	command, err := h.store.RequestCommand(store.Command{

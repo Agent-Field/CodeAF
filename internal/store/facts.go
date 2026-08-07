@@ -67,6 +67,9 @@ const (
 	// questions have their own open/practicing/resolved/retired lifecycle and
 	// never enter retrieval as standing knowledge.
 	FactQuestion FactKind = "question"
+	// FactTrait is a measured second-order user fact. Its scope is trait:<name>
+	// and its body is a structured TraitMeasurement payload.
+	FactTrait FactKind = "trait"
 )
 
 // UnsettledApproach is one side of a competing pair. Scope describes where
@@ -199,6 +202,40 @@ const (
 	FactOriginSupersession FactChangeOrigin = "supersession"
 )
 
+// FactChannel records how a belief entered the notebook.
+type FactChannel string
+
+const (
+	FactChannelStated    FactChannel = "stated"
+	FactChannelInferred  FactChannel = "inferred"
+	FactChannelDistilled FactChannel = "distilled"
+	FactChannelTrial     FactChannel = "trial"
+)
+
+// FactWriter names the bounded write seams from which channels are derived.
+type FactWriter string
+
+const (
+	FactWriterOther     FactWriter = "other"
+	FactWriterHead      FactWriter = "head"
+	FactWriterDistiller FactWriter = "distiller"
+	FactWriterTrial     FactWriter = "trial"
+)
+
+// ChannelForWriter derives a fact's channel at its write boundary.
+func ChannelForWriter(writer FactWriter) FactChannel {
+	switch writer {
+	case FactWriterHead:
+		return FactChannelStated
+	case FactWriterDistiller:
+		return FactChannelDistilled
+	case FactWriterTrial:
+		return FactChannelTrial
+	default:
+		return FactChannelInferred
+	}
+}
+
 // Fact is one materialized notebook entry.
 type Fact struct {
 	Seq          int64
@@ -206,6 +243,7 @@ type Fact struct {
 	NodeID       string // the node whose work taught this
 	Scope        string // what it is about: user, env, tool:x, repo:/p, file:/p/f, domain:x
 	Kind         FactKind
+	Channel      FactChannel
 	Body         string
 	Status       string
 	StatusSeq    int64
@@ -226,6 +264,8 @@ type Fact struct {
 	// journaled truth: Rebuild resets them, deliberately.
 	Uses     int
 	LastUsed time.Time
+	// Confidence is the current shrunk survival rate for Kind x Channel.
+	Confidence float64
 }
 
 const factsSchema = `
@@ -234,7 +274,8 @@ CREATE TABLE IF NOT EXISTS facts (
     ts        TEXT NOT NULL,
     node_id   TEXT NOT NULL,
     scope     TEXT NOT NULL DEFAULT 'user',
-    kind      TEXT NOT NULL DEFAULT 'fact' CHECK (kind IN ('preference', 'quirk', 'lesson', 'fact', 'unsettled', 'skill', 'playbook', 'question')),
+    kind      TEXT NOT NULL DEFAULT 'fact' CHECK (kind IN ('preference', 'quirk', 'lesson', 'fact', 'unsettled', 'skill', 'playbook', 'question', 'trait')),
+    channel   TEXT NOT NULL DEFAULT 'inferred' CHECK (channel IN ('stated', 'inferred', 'distilled', 'trial')),
     body      TEXT NOT NULL,
     unsettled JSON NOT NULL DEFAULT 'null' CHECK (json_valid(unsettled)),
     status    TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('candidate', 'active', 'superseded', 'quarantined', 'open', 'practicing', 'resolved', 'retired')),
@@ -278,6 +319,7 @@ type factPayload struct {
 	NodeID    string         `json:"node_id"`
 	Scope     string         `json:"scope,omitempty"`
 	Kind      FactKind       `json:"kind,omitempty"`
+	Channel   FactChannel    `json:"channel,omitempty"`
 	Body      string         `json:"body"`
 	Unsettled *UnsettledPair `json:"unsettled,omitempty"`
 	Status    string         `json:"status,omitempty"`
@@ -391,6 +433,11 @@ func (s *Store) ScopeAliases() ([]ScopeAlias, error) {
 // in the same scope is superseded rather than duplicated — write-time hygiene
 // is what keeps the notebook worth reading.
 func (s *Store) RecordFact(nodeID, scope string, kind FactKind, body string) (Fact, error) {
+	return s.RecordFactFrom(FactWriterOther, nodeID, scope, kind, body)
+}
+
+// RecordFactFrom derives and persists the observation channel from writer.
+func (s *Store) RecordFactFrom(writer FactWriter, nodeID, scope string, kind FactKind, body string) (Fact, error) {
 	if kind == FactUnsettled {
 		return Fact{}, fmt.Errorf("record fact: %w: unsettled fact requires a structured pair", ErrInvalid)
 	}
@@ -400,21 +447,34 @@ func (s *Store) RecordFact(nodeID, scope string, kind FactKind, body string) (Fa
 	if kind == FactQuestion {
 		return Fact{}, fmt.Errorf("record fact: %w: questions require the question lifecycle", ErrInvalid)
 	}
-	return s.recordFact(nodeID, scope, kind, body, nil, 0, FactActive, "", true)
+	if kind == FactTrait {
+		return Fact{}, fmt.Errorf("record fact: %w: traits require the measured trait lifecycle", ErrInvalid)
+	}
+	return s.recordFact(writer, nodeID, scope, kind, body, nil, 0, FactActive, "", true)
 }
 
 // RecordUnsettledFact appends one structured competing pair. Its Body is
 // derived from the pair so the searchable prose cannot disagree with code.
 func (s *Store) RecordUnsettledFact(nodeID, scope string, pair UnsettledPair) (Fact, error) {
+	return s.RecordUnsettledFactFrom(FactWriterOther, nodeID, scope, pair)
+}
+
+// RecordUnsettledFactFrom records a structured pair on writer's channel.
+func (s *Store) RecordUnsettledFactFrom(writer FactWriter, nodeID, scope string, pair UnsettledPair) (Fact, error) {
 	if err := pair.Validate(); err != nil {
 		return Fact{}, fmt.Errorf("record unsettled fact: %w: %v", ErrInvalid, err)
 	}
-	return s.recordFact(nodeID, scope, FactUnsettled, FormatUnsettledPair(pair), &pair, 0, FactActive, "", true)
+	return s.recordFact(writer, nodeID, scope, FactUnsettled, FormatUnsettledPair(pair), &pair, 0, FactActive, "", true)
 }
 
 // ReplaceFact records a new ordinary fact and supersedes factSeq in the same
 // transaction. A failed replacement leaves neither event behind.
 func (s *Store) ReplaceFact(factSeq int64, nodeID, scope string, kind FactKind, body string) (Fact, error) {
+	return s.ReplaceFactFrom(FactWriterOther, factSeq, nodeID, scope, kind, body)
+}
+
+// ReplaceFactFrom records a replacement on writer's derived channel.
+func (s *Store) ReplaceFactFrom(writer FactWriter, factSeq int64, nodeID, scope string, kind FactKind, body string) (Fact, error) {
 	if factSeq <= 0 {
 		return Fact{}, fmt.Errorf("replace fact: %w: invalid replaced sequence %d", ErrInvalid, factSeq)
 	}
@@ -427,36 +487,54 @@ func (s *Store) ReplaceFact(factSeq int64, nodeID, scope string, kind FactKind, 
 	if kind == FactQuestion {
 		return Fact{}, fmt.Errorf("replace fact: %w: questions require the question lifecycle", ErrInvalid)
 	}
-	return s.recordFact(nodeID, scope, kind, body, nil, factSeq, FactActive, "", true)
+	if kind == FactTrait {
+		return Fact{}, fmt.Errorf("replace fact: %w: traits require the measured trait lifecycle", ErrInvalid)
+	}
+	return s.recordFact(writer, nodeID, scope, kind, body, nil, factSeq, FactActive, "", true)
 }
 
 // ReplaceUnsettledFact carries an unresolved pair forward and consumes its
 // prior fact sequence atomically.
 func (s *Store) ReplaceUnsettledFact(factSeq int64, nodeID, scope string, pair UnsettledPair) (Fact, error) {
+	return s.ReplaceUnsettledFactFrom(FactWriterOther, factSeq, nodeID, scope, pair)
+}
+
+// ReplaceUnsettledFactFrom carries a pair forward on writer's channel.
+func (s *Store) ReplaceUnsettledFactFrom(writer FactWriter, factSeq int64, nodeID, scope string, pair UnsettledPair) (Fact, error) {
 	if factSeq <= 0 {
 		return Fact{}, fmt.Errorf("replace unsettled fact: %w: invalid replaced sequence %d", ErrInvalid, factSeq)
 	}
 	if err := pair.Validate(); err != nil {
 		return Fact{}, fmt.Errorf("replace unsettled fact: %w: %v", ErrInvalid, err)
 	}
-	return s.recordFact(nodeID, scope, FactUnsettled, FormatUnsettledPair(pair), &pair, factSeq, FactActive, "", true)
+	return s.recordFact(writer, nodeID, scope, FactUnsettled, FormatUnsettledPair(pair), &pair, factSeq, FactActive, "", true)
 }
 
 // RecordSkillCandidate journals a procedure the distiller found in one job.
 // It is intentionally absent from retrieval until a later execution event
 // activates it.
 func (s *Store) RecordSkillCandidate(nodeID, scope, body, artifact string) (Fact, error) {
+	return s.RecordSkillCandidateFrom(FactWriterOther, nodeID, scope, body, artifact)
+}
+
+// RecordSkillCandidateFrom records a candidate on writer's channel.
+func (s *Store) RecordSkillCandidateFrom(writer FactWriter, nodeID, scope, body, artifact string) (Fact, error) {
 	artifact = strings.TrimSpace(artifact)
 	if artifact == "" {
 		return Fact{}, fmt.Errorf("record skill candidate: %w: empty artifact", ErrInvalid)
 	}
-	return s.recordFact(nodeID, scope, FactSkill, body, nil, 0, FactCandidate, artifact, false)
+	return s.recordFact(writer, nodeID, scope, FactSkill, body, nil, 0, FactCandidate, artifact, false)
 }
 
 // RewriteActiveSkill preserves an execution-verified artifact while notebook
 // consolidation rewrites its doc line. Naming the active source rather than an
 // arbitrary path keeps this maintenance API from manufacturing a capability.
 func (s *Store) RewriteActiveSkill(nodeID, scope, body string, sourceSeq int64) (Fact, error) {
+	return s.RewriteActiveSkillFrom(FactWriterOther, nodeID, scope, body, sourceSeq)
+}
+
+// RewriteActiveSkillFrom rewrites an active skill on writer's channel.
+func (s *Store) RewriteActiveSkillFrom(writer FactWriter, nodeID, scope, body string, sourceSeq int64) (Fact, error) {
 	sources, err := s.factsWhere(`seq = ? AND kind = ? AND status = ?`,
 		sourceSeq, FactSkill, FactActive)
 	if err != nil {
@@ -465,10 +543,10 @@ func (s *Store) RewriteActiveSkill(nodeID, scope, body string, sourceSeq int64) 
 	if len(sources) != 1 || strings.TrimSpace(sources[0].Artifact) == "" {
 		return Fact{}, fmt.Errorf("rewrite active skill: %w: source %d is not active", ErrInvalid, sourceSeq)
 	}
-	return s.recordFact(nodeID, scope, FactSkill, body, nil, 0, FactActive, sources[0].Artifact, true)
+	return s.recordFact(writer, nodeID, scope, FactSkill, body, nil, 0, FactActive, sources[0].Artifact, true)
 }
 
-func (s *Store) recordFact(nodeID, scope string, kind FactKind, body string, unsettled *UnsettledPair, replaces int64, status, artifact string, deduplicate bool) (Fact, error) {
+func (s *Store) recordFact(writer FactWriter, nodeID, scope string, kind FactKind, body string, unsettled *UnsettledPair, replaces int64, status, artifact string, deduplicate bool) (Fact, error) {
 	body = strings.TrimSpace(body)
 	if body == "" {
 		return Fact{}, fmt.Errorf("record fact: %w: empty fact", ErrInvalid)
@@ -539,7 +617,8 @@ func (s *Store) recordFact(nodeID, scope string, kind FactKind, body string, uns
 		}
 	}
 
-	payload := factPayload{NodeID: nodeID, Scope: scope, Kind: kind, Body: body,
+	channel := ChannelForWriter(writer)
+	payload := factPayload{NodeID: nodeID, Scope: scope, Kind: kind, Channel: channel, Body: body,
 		Unsettled: unsettled, Status: status, Artifact: artifact}
 	seq, at, err := appendEvent(tx, nodeID, EventFactLearned, payload)
 	if err != nil {
@@ -568,7 +647,7 @@ func (s *Store) recordFact(nodeID, scope string, kind FactKind, body string, uns
 	if err := tx.Commit(); err != nil {
 		return Fact{}, fmt.Errorf("record fact: %w", err)
 	}
-	return Fact{Seq: seq, Time: at, NodeID: nodeID, Scope: scope, Kind: kind, Body: body,
+	return Fact{Seq: seq, Time: at, NodeID: nodeID, Scope: scope, Kind: kind, Channel: channel, Body: body,
 		Status: status, StatusSeq: seq, Unsettled: unsettled, Artifact: artifact}, nil
 }
 
@@ -929,7 +1008,7 @@ func (s *Store) searchFacts(query FactQuery, countUses bool) ([]Fact, error) {
 		}
 		args = append(args, query.Limit)
 		rows, err := s.db.Query(`
-			SELECT f.seq, f.ts, f.node_id, f.scope, f.kind, f.body, f.unsettled, f.status, f.artifact, f.status_note,
+			SELECT f.seq, f.ts, f.node_id, f.scope, f.kind, f.channel, f.body, f.unsettled, f.status, f.artifact, f.status_note,
 			       f.status_seq, f.evidence_seq, f.status_origin, f.uses, f.last_used
 			FROM facts_fts
 			JOIN facts AS f ON f.seq = facts_fts.rowid
@@ -940,6 +1019,7 @@ func (s *Store) searchFacts(query FactQuery, countUses bool) ([]Fact, error) {
 			if scanErr != nil {
 				return nil, scanErr
 			}
+			s.applyFactCredibility(facts)
 			for _, fact := range facts {
 				if !seen[fact.Seq] && len(results) < query.Limit {
 					seen[fact.Seq] = true
@@ -957,6 +1037,17 @@ func (s *Store) searchFacts(query FactQuery, countUses bool) ([]Fact, error) {
 			return results[i].Seq > results[j].Seq
 		})
 	}
+	eligible := results[:0]
+	for _, fact := range results {
+		ok, eligibilityErr := s.PromptEligible(fact)
+		if eligibilityErr != nil {
+			return nil, eligibilityErr
+		}
+		if ok {
+			eligible = append(eligible, fact)
+		}
+	}
+	results = eligible
 	if query.MaxBytes > 0 {
 		bounded := make([]Fact, 0, len(results))
 		used := 0
@@ -1036,13 +1127,17 @@ func (s *Store) Fact(seq int64) (Fact, bool, error) {
 
 func (s *Store) factsWhere(where string, args ...any) ([]Fact, error) {
 	rows, err := s.db.Query(`
-		SELECT seq, ts, node_id, scope, kind, body, unsettled, status, artifact, status_note,
+		SELECT seq, ts, node_id, scope, kind, channel, body, unsettled, status, artifact, status_note,
 		       status_seq, evidence_seq, status_origin, uses, last_used
 		FROM facts WHERE `+where, args...)
 	if err != nil {
 		return nil, fmt.Errorf("query facts: %w", err)
 	}
-	return scanFacts(rows)
+	facts, err := scanFacts(rows)
+	if err == nil {
+		s.applyFactCredibility(facts)
+	}
+	return facts, err
 }
 
 func scanFacts(rows *sql.Rows) ([]Fact, error) {
@@ -1051,7 +1146,7 @@ func scanFacts(rows *sql.Rows) ([]Fact, error) {
 	for rows.Next() {
 		var fact Fact
 		var timestamp, unsettled, lastUsed string
-		if err := rows.Scan(&fact.Seq, &timestamp, &fact.NodeID, &fact.Scope, &fact.Kind,
+		if err := rows.Scan(&fact.Seq, &timestamp, &fact.NodeID, &fact.Scope, &fact.Kind, &fact.Channel,
 			&fact.Body, &unsettled, &fact.Status, &fact.Artifact, &fact.StatusNote,
 			&fact.StatusSeq, &fact.EvidenceSeq, &fact.StatusOrigin, &fact.Uses, &lastUsed); err != nil {
 			return nil, fmt.Errorf("scan fact: %w", err)
@@ -1117,10 +1212,15 @@ func applyFactView(tx *sql.Tx, payload factPayload, seq int64, at time.Time) err
 		}
 	}
 
+	channel := payload.Channel
+	if !validFactChannel(channel) {
+		// Events from before channel attribution are best-effort inferred.
+		channel = FactChannelInferred
+	}
 	if _, err := tx.Exec(`
-		INSERT INTO facts (seq, ts, node_id, scope, kind, body, unsettled, status, artifact, status_seq)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		seq, formatTime(at), payload.NodeID, scope, kind, payload.Body, string(encoded), status, payload.Artifact, seq); err != nil {
+		INSERT INTO facts (seq, ts, node_id, scope, kind, channel, body, unsettled, status, artifact, status_seq)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		seq, formatTime(at), payload.NodeID, scope, kind, channel, payload.Body, string(encoded), status, payload.Artifact, seq); err != nil {
 		return err
 	}
 	if status != FactActive {
@@ -1411,10 +1511,19 @@ func normalizeScope(scope string) string {
 
 func validFactKind(kind FactKind) bool {
 	switch kind {
-	case FactPreference, FactQuirk, FactLesson, FactPlain, FactUnsettled, FactSkill, FactPlaybook, FactQuestion:
+	case FactPreference, FactQuirk, FactLesson, FactPlain, FactUnsettled, FactSkill, FactPlaybook, FactQuestion, FactTrait:
 		return true
 	}
 	return false
+}
+
+func validFactChannel(channel FactChannel) bool {
+	switch channel {
+	case FactChannelStated, FactChannelInferred, FactChannelDistilled, FactChannelTrial:
+		return true
+	default:
+		return false
+	}
 }
 
 func validPlaybookScope(scope string) bool {
@@ -1468,7 +1577,7 @@ func migrateFactsSchema(db *sql.DB) error {
 	if err != nil {
 		return err
 	}
-	hasScope, hasUnsettled, hasArtifact, hasStatusNote := false, false, false, false
+	hasScope, hasUnsettled, hasArtifact, hasStatusNote, hasChannel := false, false, false, false, false
 	hasStatusSeq, hasEvidenceSeq, hasStatusOrigin := false, false, false
 	for rows.Next() {
 		var cid int
@@ -1494,6 +1603,8 @@ func migrateFactsSchema(db *sql.DB) error {
 			hasEvidenceSeq = true
 		case "status_origin":
 			hasStatusOrigin = true
+		case "channel":
+			hasChannel = true
 		}
 	}
 	if err := rows.Err(); err != nil {
@@ -1506,10 +1617,10 @@ func migrateFactsSchema(db *sql.DB) error {
 		return err
 	}
 	if hasScope && hasUnsettled && hasArtifact && hasStatusNote &&
-		hasStatusSeq && hasEvidenceSeq && hasStatusOrigin &&
+		hasStatusSeq && hasEvidenceSeq && hasStatusOrigin && hasChannel &&
 		strings.Contains(createSQL, "'unsettled'") &&
 		strings.Contains(createSQL, "'skill'") && strings.Contains(createSQL, "'playbook'") &&
-		strings.Contains(createSQL, "'question'") && strings.Contains(createSQL, "'practicing'") &&
+		strings.Contains(createSQL, "'question'") && strings.Contains(createSQL, "'trait'") && strings.Contains(createSQL, "'practicing'") &&
 		strings.Contains(createSQL, "'candidate'") &&
 		strings.Contains(createSQL, "'quarantined'") {
 		return nil

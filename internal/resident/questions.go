@@ -22,6 +22,12 @@ func (r *Reconciler) AskQuestion(question store.AgentQuestion) (store.AgentQuest
 }
 
 func (r *Reconciler) askQuestionLocked(question store.AgentQuestion) (store.AgentQuestion, error) {
+	if question.DefaultAnswer != "" && !question.ExpiresAt.IsZero() {
+		now := r.now()
+		if base := question.ExpiresAt.Sub(now); base > 0 {
+			question.ExpiresAt = now.Add(r.store.SilenceConsentWait(base))
+		}
+	}
 	queued, err := r.store.AskQuestion(question)
 	if err != nil {
 		return store.AgentQuestion{}, err

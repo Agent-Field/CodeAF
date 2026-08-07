@@ -160,6 +160,7 @@ func (r *Reconciler) postRetrospectiveDigest(afterSeq int64) {
 	replacements := make(map[int64]bool)
 	categories := make(map[string]*retrospectiveCategory)
 	details := make([]string, 0)
+	var tuning string
 	addCategory := func(key string, seq int64, count int, label func(int) string) {
 		if count <= 0 {
 			return
@@ -180,9 +181,14 @@ func (r *Reconciler) postRetrospectiveDigest(afterSeq int64) {
 
 	for _, event := range events {
 		switch event.Kind {
+		case store.EventParameterChanged:
+			var change store.ParameterChange
+			if tuning == "" && json.Unmarshal(event.Payload, &change) == nil {
+				tuning = strings.TrimSpace(change.Phrase)
+			}
 		case store.EventFactLearned:
 			fact, ok, readErr := r.store.FactBySeq(event.Seq)
-			if readErr == nil && ok {
+			if readErr == nil && ok && fact.Kind != store.FactTrait {
 				learned[fact.Seq] = fact
 				learnedOrder = append(learnedOrder, fact.Seq)
 			}
@@ -272,7 +278,7 @@ func (r *Reconciler) postRetrospectiveDigest(afterSeq int64) {
 		})
 		addDetail("· #" + fmt.Sprint(fact.Seq) + " " + firstLine(fact.Body))
 	}
-	if len(categories) == 0 {
+	if len(categories) == 0 && tuning == "" {
 		return
 	}
 
@@ -287,6 +293,9 @@ func (r *Reconciler) postRetrospectiveDigest(afterSeq int64) {
 	parts := make([]string, 0, len(ordered))
 	for _, category := range ordered {
 		parts = append(parts, category.label(category.count))
+	}
+	if tuning != "" {
+		parts = append(parts, tuning)
 	}
 	body := "· reflected — " + strings.Join(parts, ", ")
 	for _, detail := range details {

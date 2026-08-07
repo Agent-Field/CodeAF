@@ -228,6 +228,10 @@ func residentTestStore(t *testing.T, name string) *store.Store {
 func seedScopedSurprise(t *testing.T, graph *store.Store, scope, intent string) {
 	t.Helper()
 	for job := 1; job <= 2; job++ {
+		surprise := 1.0
+		if job == 2 {
+			surprise = 0.6
+		}
 		rootID := fmt.Sprintf("history-%d", job)
 		nodes := []store.NodeSpec{{ID: rootID, Brief: intent, Stage: 2}}
 		for leaf := 1; leaf <= 3; leaf++ {
@@ -244,20 +248,20 @@ func seedScopedSurprise(t *testing.T, graph *store.Store, scope, intent string) 
 		}
 		for leaf := 1; leaf <= 3; leaf++ {
 			id := fmt.Sprintf("%s-leaf-%d", rootID, leaf)
-			completeResidentNode(t, graph, id)
+			completeResidentNode(t, graph, id, surprise)
 		}
-		completeResidentNode(t, graph, rootID)
+		completeResidentNode(t, graph, rootID, surprise)
 	}
 }
 
-func completeResidentNode(t *testing.T, graph *store.Store, id string) {
+func completeResidentNode(t *testing.T, graph *store.Store, id string, surprise float64) {
 	t.Helper()
 	claim, won, err := graph.Claim(id, "practice-history")
 	if err != nil || !won {
 		t.Fatalf("claim %s: won=%t err=%v", id, won, err)
 	}
 	if err := graph.RecordSurprise(store.NodeSurprise{NodeID: id,
-		ActualTokens: 200, ExpectedTokens: 100, Surprise: 1}); err != nil {
+		ActualTokens: int(100 * (1 + surprise)), ExpectedTokens: 100, Surprise: surprise}); err != nil {
 		t.Fatal(err)
 	}
 	if err := graph.Complete(claim, "go test passed"); err != nil {
