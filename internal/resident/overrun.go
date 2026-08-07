@@ -195,16 +195,7 @@ func OverrunContinuationMessage(pieces int) string {
 }
 
 func overrunPrefixExists(graph *store.Store, prefix string) (bool, error) {
-	nodes, err := graph.Nodes()
-	if err != nil {
-		return false, err
-	}
-	for _, node := range nodes {
-		if node.ID == prefix || strings.HasPrefix(node.ID, prefix+"-") {
-			return true, nil
-		}
-	}
-	return false, nil
+	return graph.NodeIDExistsWithPrefix(prefix)
 }
 
 func nextOverrunPrefix(graph *store.Store, nodeID string) (string, error) {
@@ -212,13 +203,15 @@ func nextOverrunPrefix(graph *store.Store, nodeID string) (string, error) {
 	if marked, _, ok := splitOverrunID(nodeID); ok {
 		base = marked
 	}
-	nodes, err := graph.Nodes()
+	// Only ids inside this node's own split namespace can carry its rounds, and
+	// that namespace is an id-index range rather than a reason to read the graph.
+	candidates, err := graph.NodeIDsWithPrefix(base + overrunMarker)
 	if err != nil {
 		return "", err
 	}
 	maxRound := 0
-	for _, candidate := range nodes {
-		candidateBase, round, ok := splitOverrunID(candidate.ID)
+	for _, candidate := range candidates {
+		candidateBase, round, ok := splitOverrunID(candidate)
 		if ok && candidateBase == base && round > maxRound {
 			maxRound = round
 		}
