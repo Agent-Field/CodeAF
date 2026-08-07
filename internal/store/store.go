@@ -83,14 +83,24 @@ const (
 
 	// Thread events: the conversation and its asynchronous mutation requests
 	// live in the same journal as the graph they act on.
-	EventMessagePosted    EventKind = "message_posted"
-	EventCommandRequested EventKind = "command_requested"
-	EventCommandResolved  EventKind = "command_resolved"
+	EventMessagePosted         EventKind = "message_posted"
+	EventCommandRequested      EventKind = "command_requested"
+	EventCommandResolved       EventKind = "command_resolved"
+	EventSeenTouched           EventKind = "seen_touched"
+	EventAgentQuestionQueued   EventKind = "agent_question_queued"
+	EventAgentQuestionSurfaced EventKind = "agent_question_surfaced"
+	EventAgentQuestionResolved EventKind = "agent_question_resolved"
 
 	// Usage and surprise are journaled separately because a planned leaf's
 	// prediction becomes known when the complete plan lands, after its spend.
 	EventUsageRecorded    EventKind = "usage_recorded"
 	EventSurpriseRecorded EventKind = "surprise_recorded"
+	// EventSelfReceipt is the cost-and-learning receipt produced when one
+	// self-originated splice settles.
+	EventSelfReceipt EventKind = "self_receipt"
+	// EventSelfInquiryRetired records the deterministic two-strike policy
+	// decision that stops an inquiry line which is not earning learning rent.
+	EventSelfInquiryRetired EventKind = "self_inquiry_retired"
 
 	// EventRailRaised records the user's decision to extend today's dollar
 	// ceiling. The journal is the policy record; no process-local flag resumes
@@ -140,6 +150,11 @@ const (
 	EventCharterFiringBlocked    EventKind = "charter_firing_blocked"
 	EventCharterFiringDeferred   EventKind = "charter_firing_deferred"
 	EventCharterProposalDeclined EventKind = "charter_proposal_declined"
+	EventCharterFiringProposed   EventKind = "charter_firing_proposed"
+	EventCharterFiringDeclined   EventKind = "charter_firing_declined"
+	EventCharterFiringReviewed   EventKind = "charter_firing_reviewed"
+	EventCharterPromoted         EventKind = "charter_promoted"
+	EventCharterDemoted          EventKind = "charter_demoted"
 )
 
 var (
@@ -158,8 +173,8 @@ type Provenance struct {
 	Origin    Origin `json:"origin"`
 	SessionID string `json:"session_id,omitempty"`
 	Intent    string `json:"intent"`
-	// CharterID points trigger-born work back to the standing responsibility
-	// whose firing admitted it. It is empty for user and self work.
+	// CharterID points work back to the standing responsibility whose firing or
+	// self-maintenance inquiry admitted it. It is empty for ordinary user work.
 	CharterID string `json:"charter_id,omitempty"`
 	// Attachments are user-supplied image paths kept separate from visible
 	// intent text so every leaf can receive them as multimodal content.
@@ -324,6 +339,7 @@ CREATE INDEX IF NOT EXISTS nodes_parent ON nodes (parent_id);
 CREATE INDEX IF NOT EXISTS nodes_ready ON nodes (status, folded, created_seq, created_order);
 CREATE INDEX IF NOT EXISTS edges_to_kind ON edges (to_id, kind);
 CREATE INDEX IF NOT EXISTS events_node_seq ON events (node_id, seq);
+CREATE INDEX IF NOT EXISTS events_kind_ts ON events (kind, ts);
 
 CREATE TRIGGER IF NOT EXISTS events_no_update
 BEFORE UPDATE ON events
@@ -393,11 +409,17 @@ func Open(path string) (*Store, error) {
 	if err := migrateThreadSchema(db); err != nil {
 		return closeOnError(fmt.Errorf("migrate thread schema: %w", err))
 	}
+	if _, err := db.Exec(agentQuestionSchema); err != nil {
+		return closeOnError(fmt.Errorf("initialize agent question schema: %w", err))
+	}
 	if _, err := db.Exec(usageSchema); err != nil {
 		return closeOnError(fmt.Errorf("initialize usage schema: %w", err))
 	}
 	if _, err := db.Exec(surpriseSchema); err != nil {
 		return closeOnError(fmt.Errorf("initialize surprise schema: %w", err))
+	}
+	if _, err := db.Exec(selfReceiptSchema); err != nil {
+		return closeOnError(fmt.Errorf("initialize self receipt schema: %w", err))
 	}
 	if _, err := db.Exec(charterSchema); err != nil {
 		return closeOnError(fmt.Errorf("initialize charter schema: %w", err))

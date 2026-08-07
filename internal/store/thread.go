@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math"
 	"strings"
 	"time"
 )
@@ -37,6 +38,66 @@ type QuestionOption struct {
 	Value string `json:"value,omitempty"`
 }
 
+// BriefItemKind says what one slim row in an arrival brief represents.
+// The body remains resident-written prose; the kind gives every lens a stable
+// glyph and lets it summarize the fold without parsing that prose.
+type BriefItemKind string
+
+const (
+	BriefDone      BriefItemKind = "done"
+	BriefFailure   BriefItemKind = "failure"
+	BriefCancelled BriefItemKind = "cancelled"
+	BriefQuestion  BriefItemKind = "question"
+	BriefCharter   BriefItemKind = "charter"
+	BriefFact      BriefItemKind = "fact"
+	BriefSkill     BriefItemKind = "skill"
+	BriefSpend     BriefItemKind = "spend"
+)
+
+// BriefItem is one composed row in a morning-brief fold. Ref is optional
+// durable provenance (a node id, charter id, or fact sequence).
+type BriefItem struct {
+	Kind BriefItemKind `json:"kind"`
+	Body string        `json:"body"`
+	Ref  string        `json:"ref,omitempty"`
+}
+
+// Brief marks one agent message as an arrival fold. Counts and cost are
+// deterministic journal facts; Items and the containing message Body are the
+// resident's composed voice. SinceSeq and ThroughSeq make the interval auditable.
+type Brief struct {
+	SinceSeq      int64       `json:"since_seq"`
+	ThroughSeq    int64       `json:"through_seq"`
+	Done          int         `json:"done,omitempty"`
+	Failed        int         `json:"failed,omitempty"`
+	Cancelled     int         `json:"cancelled,omitempty"`
+	Questions     int         `json:"questions,omitempty"`
+	CharterFired  int         `json:"charter_fired,omitempty"`
+	FactsLearned  int         `json:"facts_learned,omitempty"`
+	SkillsLearned int         `json:"skills_learned,omitempty"`
+	CostUSD       float64     `json:"cost_usd,omitempty"`
+	Items         []BriefItem `json:"items"`
+}
+
+// SeenState is one edge of a human-facing session. Both edges are journaled:
+// a clean detach is the precise watermark, while a lone attach still gives a
+// useful conservative watermark after a crash.
+type SeenState string
+
+const (
+	SeenAttached SeenState = "attached"
+	SeenDetached SeenState = "detached"
+)
+
+// Seen is one journaled observation that a user-facing lens was present.
+type Seen struct {
+	Seq       int64
+	Time      time.Time
+	Surface   string
+	SessionID string
+	State     SeenState
+}
+
 // CommandKind names an asynchronous graph mutation requested from the thread.
 type CommandKind string
 
@@ -52,11 +113,16 @@ const (
 
 	// Charter commands are requested through the same durable reconciler queue
 	// as graph mutations. Their target names a charter rather than a node.
-	CommandCharterRatify  CommandKind = "charter_ratify"
-	CommandCharterPause   CommandKind = "charter_pause"
-	CommandCharterRetire  CommandKind = "charter_retire"
-	CommandCharterCadence CommandKind = "charter_cadence"
-	CommandCharterOnce    CommandKind = "charter_once"
+	CommandCharterRatify    CommandKind = "charter_ratify"
+	CommandCharterPause     CommandKind = "charter_pause"
+	CommandCharterRetire    CommandKind = "charter_retire"
+	CommandCharterCadence   CommandKind = "charter_cadence"
+	CommandCharterOnce      CommandKind = "charter_once"
+	CommandCharterFire      CommandKind = "charter_fire"
+	CommandCharterDecline   CommandKind = "charter_decline"
+	CommandCharterAlways    CommandKind = "charter_always"
+	CommandCharterNever     CommandKind = "charter_never"
+	CommandCharterProbation CommandKind = "charter_probation"
 )
 
 // CommandStatus is the lifecycle of a requested command. Commands are durable
@@ -84,9 +150,15 @@ type Message struct {
 	// CommandSeq optionally links the message to the command it acknowledges
 	// or reports on.
 	CommandSeq int64
+	// QuestionSeq links an agent ask or the user's answer to the durable
+	// agent-question lifecycle it belongs to. It is separate from Options:
+	// free-text questions need the same unambiguous answer routing.
+	QuestionSeq int64
 	// Options is the ordered set of selectable answers for an askback.
 	// Nil means the question accepts free text only.
 	Options []QuestionOption
+	// Brief is non-nil only for the resident's folded arrival summary.
+	Brief *Brief
 }
 
 // Command is one materialized mutation request.
@@ -117,7 +189,9 @@ CREATE TABLE IF NOT EXISTS messages (
 	attachments JSON NOT NULL DEFAULT '[]' CHECK (json_valid(attachments)),
     node_id     TEXT NOT NULL DEFAULT '',
     command_seq INTEGER NOT NULL DEFAULT 0,
-    options     JSON NOT NULL DEFAULT '[]' CHECK (json_valid(options))
+    question_seq INTEGER NOT NULL DEFAULT 0,
+    options     JSON NOT NULL DEFAULT '[]' CHECK (json_valid(options)),
+    brief       JSON NOT NULL DEFAULT 'null' CHECK (json_valid(brief))
 );
 CREATE INDEX IF NOT EXISTS messages_session_seq ON messages (session_id, seq);
 
@@ -144,7 +218,15 @@ type messagePayload struct {
 	Attachments []string         `json:"attachments,omitempty"`
 	NodeID      string           `json:"node_id,omitempty"`
 	CommandSeq  int64            `json:"command_seq,omitempty"`
+	QuestionSeq int64            `json:"question_seq,omitempty"`
 	Options     []QuestionOption `json:"options,omitempty"`
+	Brief       *Brief           `json:"brief,omitempty"`
+}
+
+type seenPayload struct {
+	Surface   string    `json:"surface"`
+	SessionID string    `json:"session_id,omitempty"`
+	State     SeenState `json:"state"`
 }
 
 type commandPayload struct {
@@ -179,6 +261,13 @@ func (s *Store) PostMessage(message Message) (Message, error) {
 	if err != nil {
 		return Message{}, fmt.Errorf("post message: %w", err)
 	}
+	brief, err := normalizeBrief(message.Brief)
+	if err != nil {
+		return Message{}, fmt.Errorf("post message: %w", err)
+	}
+	if brief != nil && message.Role != RoleAgent {
+		return Message{}, fmt.Errorf("post message: %w: a brief must use the agent role", ErrInvalid)
+	}
 
 	tx, err := s.db.BeginTx(context.Background(), nil)
 	if err != nil {
@@ -200,7 +289,9 @@ func (s *Store) PostMessage(message Message) (Message, error) {
 		Attachments: append([]string(nil), message.Attachments...),
 		NodeID:      message.NodeID,
 		CommandSeq:  message.CommandSeq,
+		QuestionSeq: message.QuestionSeq,
 		Options:     options,
+		Brief:       brief,
 	}
 	seq, at, err := appendEvent(tx, message.NodeID, EventMessagePosted, payload)
 	if err != nil {
@@ -215,7 +306,61 @@ func (s *Store) PostMessage(message Message) (Message, error) {
 	message.Seq = seq
 	message.Time = at
 	message.Options = options
+	message.Brief = brief
 	return message, nil
+}
+
+// LastSeen returns the newest attach or detach watermark across user-facing
+// lenses. A resident database represents one person's attention stream, so a
+// TUI close followed by a web open is one continuous seen history.
+func (s *Store) LastSeen() (Seen, bool, error) {
+	row := s.db.QueryRow(`
+		SELECT seq, ts, payload FROM events
+		WHERE kind = ? ORDER BY seq DESC LIMIT 1`, EventSeenTouched)
+	var seen Seen
+	var timestamp, encoded string
+	if err := row.Scan(&seen.Seq, &timestamp, &encoded); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return Seen{}, false, nil
+		}
+		return Seen{}, false, fmt.Errorf("last seen: %w", err)
+	}
+	var payload seenPayload
+	if err := json.Unmarshal([]byte(encoded), &payload); err != nil {
+		return Seen{}, false, fmt.Errorf("last seen: decode event %d: %w", seen.Seq, err)
+	}
+	at, err := parseTime(timestamp)
+	if err != nil {
+		return Seen{}, false, fmt.Errorf("last seen: parse time: %w", err)
+	}
+	seen.Time = at
+	seen.Surface = payload.Surface
+	seen.SessionID = payload.SessionID
+	seen.State = payload.State
+	return seen, true, nil
+}
+
+// TouchSeen appends one attach/detach edge and returns its journal watermark.
+func (s *Store) TouchSeen(surface, sessionID string, state SeenState) (Seen, error) {
+	surface = strings.TrimSpace(surface)
+	sessionID = strings.TrimSpace(sessionID)
+	if surface == "" || (state != SeenAttached && state != SeenDetached) {
+		return Seen{}, fmt.Errorf("touch seen: %w: surface and valid state are required", ErrInvalid)
+	}
+	payload := seenPayload{Surface: surface, SessionID: sessionID, State: state}
+	tx, err := s.db.BeginTx(context.Background(), nil)
+	if err != nil {
+		return Seen{}, fmt.Errorf("touch seen: %w", err)
+	}
+	defer tx.Rollback()
+	seq, at, err := appendEvent(tx, "", EventSeenTouched, payload)
+	if err != nil {
+		return Seen{}, fmt.Errorf("touch seen: %w", err)
+	}
+	if err := tx.Commit(); err != nil {
+		return Seen{}, fmt.Errorf("touch seen: %w", err)
+	}
+	return Seen{Seq: seq, Time: at, Surface: surface, SessionID: sessionID, State: state}, nil
 }
 
 // pendingMessageAnchor permits planning narration to name the root that a
@@ -251,7 +396,7 @@ func (s *Store) Messages(sessionID string, afterSeq int64, limit int) ([]Message
 	}
 	args = append(args, limit)
 	rows, err := s.db.Query(`
-		SELECT seq, ts, session_id, role, body, attachments, node_id, command_seq, options
+		SELECT seq, ts, session_id, role, body, attachments, node_id, command_seq, question_seq, options, brief
 		FROM messages WHERE `+where+` ORDER BY seq LIMIT ?`, args...)
 	if err != nil {
 		return nil, fmt.Errorf("list messages: %w", err)
@@ -261,12 +406,15 @@ func (s *Store) Messages(sessionID string, afterSeq int64, limit int) ([]Message
 	messages := make([]Message, 0)
 	for rows.Next() {
 		var message Message
-		var timestamp, attachments, options string
+		var timestamp, attachments, options, brief string
 		if err := rows.Scan(&message.Seq, &timestamp, &message.SessionID,
-			&message.Role, &message.Body, &attachments, &message.NodeID, &message.CommandSeq, &options); err != nil {
+			&message.Role, &message.Body, &attachments, &message.NodeID, &message.CommandSeq, &message.QuestionSeq, &options, &brief); err != nil {
 			return nil, fmt.Errorf("list messages: %w", err)
 		}
 		if err := decodeQuestionOptions(options, &message.Options); err != nil {
+			return nil, fmt.Errorf("list messages: %w", err)
+		}
+		if err := decodeBrief(brief, &message.Brief); err != nil {
 			return nil, fmt.Errorf("list messages: %w", err)
 		}
 		at, err := parseTime(timestamp)
@@ -293,7 +441,7 @@ func (s *Store) NodeMessages(nodeID string, afterSeq int64, limit int) ([]Messag
 		limit = 200
 	}
 	rows, err := s.db.Query(`
-		SELECT seq, ts, session_id, role, body, attachments, node_id, command_seq, options
+		SELECT seq, ts, session_id, role, body, attachments, node_id, command_seq, question_seq, options, brief
 		FROM messages WHERE node_id = ? AND seq > ? ORDER BY seq LIMIT ?`,
 		nodeID, afterSeq, limit)
 	if err != nil {
@@ -303,12 +451,15 @@ func (s *Store) NodeMessages(nodeID string, afterSeq int64, limit int) ([]Messag
 	messages := make([]Message, 0)
 	for rows.Next() {
 		var message Message
-		var timestamp, attachments, options string
+		var timestamp, attachments, options, brief string
 		if err := rows.Scan(&message.Seq, &timestamp, &message.SessionID,
-			&message.Role, &message.Body, &attachments, &message.NodeID, &message.CommandSeq, &options); err != nil {
+			&message.Role, &message.Body, &attachments, &message.NodeID, &message.CommandSeq, &message.QuestionSeq, &options, &brief); err != nil {
 			return nil, fmt.Errorf("node messages: %w", err)
 		}
 		if err := decodeQuestionOptions(options, &message.Options); err != nil {
+			return nil, fmt.Errorf("node messages: %w", err)
+		}
+		if err := decodeBrief(brief, &message.Brief); err != nil {
 			return nil, fmt.Errorf("node messages: %w", err)
 		}
 		at, err := parseTime(timestamp)
@@ -502,12 +653,68 @@ func applyMessageView(tx *sql.Tx, payload messagePayload, seq int64, at time.Tim
 	if err != nil {
 		return err
 	}
+	brief, err := json.Marshal(payload.Brief)
+	if err != nil {
+		return err
+	}
 	_, err = tx.Exec(`
-		INSERT INTO messages (seq, ts, session_id, role, body, attachments, node_id, command_seq, options)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		INSERT INTO messages (seq, ts, session_id, role, body, attachments, node_id, command_seq, question_seq, options, brief)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		seq, formatTime(at), payload.SessionID, payload.Role, payload.Body,
-		string(attachments), payload.NodeID, payload.CommandSeq, string(options))
+		string(attachments), payload.NodeID, payload.CommandSeq, payload.QuestionSeq, string(options), string(brief))
 	return err
+}
+
+func normalizeBrief(brief *Brief) (*Brief, error) {
+	if brief == nil {
+		return nil, nil
+	}
+	if brief.SinceSeq < 0 || brief.ThroughSeq < brief.SinceSeq ||
+		brief.Done < 0 || brief.Failed < 0 || brief.Cancelled < 0 || brief.Questions < 0 || brief.CharterFired < 0 ||
+		brief.FactsLearned < 0 || brief.SkillsLearned < 0 || brief.CostUSD < 0 ||
+		math.IsNaN(brief.CostUSD) || math.IsInf(brief.CostUSD, 0) {
+		return nil, fmt.Errorf("%w: invalid brief totals", ErrInvalid)
+	}
+	if len(brief.Items) == 0 {
+		return nil, fmt.Errorf("%w: brief has no items", ErrInvalid)
+	}
+	normalized := *brief
+	normalized.Items = make([]BriefItem, 0, len(brief.Items))
+	for _, item := range brief.Items {
+		item.Body = strings.TrimSpace(item.Body)
+		item.Ref = strings.TrimSpace(item.Ref)
+		if item.Body == "" || !validBriefItemKind(item.Kind) {
+			return nil, fmt.Errorf("%w: invalid brief item", ErrInvalid)
+		}
+		normalized.Items = append(normalized.Items, item)
+	}
+	return &normalized, nil
+}
+
+func decodeBrief(raw string, target **Brief) error {
+	if strings.TrimSpace(raw) == "" || strings.TrimSpace(raw) == "null" {
+		*target = nil
+		return nil
+	}
+	var brief Brief
+	if err := json.Unmarshal([]byte(raw), &brief); err != nil {
+		return err
+	}
+	normalized, err := normalizeBrief(&brief)
+	if err != nil {
+		return err
+	}
+	*target = normalized
+	return nil
+}
+
+func validBriefItemKind(kind BriefItemKind) bool {
+	switch kind {
+	case BriefDone, BriefFailure, BriefCancelled, BriefQuestion, BriefCharter, BriefFact, BriefSkill, BriefSpend:
+		return true
+	default:
+		return false
+	}
 }
 
 func applyCommandView(tx *sql.Tx, payload commandPayload, seq int64, at time.Time) error {
@@ -559,7 +766,8 @@ func validRole(role Role) bool {
 func validCommandKind(kind CommandKind) bool {
 	switch kind {
 	case CommandSplice, CommandAmend, CommandCancel, CommandCharterRatify,
-		CommandCharterPause, CommandCharterRetire, CommandCharterCadence, CommandCharterOnce:
+		CommandCharterPause, CommandCharterRetire, CommandCharterCadence, CommandCharterOnce,
+		CommandCharterFire, CommandCharterDecline, CommandCharterAlways, CommandCharterNever, CommandCharterProbation:
 		return true
 	default:
 		return false
@@ -569,7 +777,8 @@ func validCommandKind(kind CommandKind) bool {
 func isCharterCommand(kind CommandKind) bool {
 	switch kind {
 	case CommandCharterRatify, CommandCharterPause, CommandCharterRetire,
-		CommandCharterCadence, CommandCharterOnce:
+		CommandCharterCadence, CommandCharterOnce, CommandCharterFire,
+		CommandCharterDecline, CommandCharterAlways, CommandCharterNever, CommandCharterProbation:
 		return true
 	default:
 		return false

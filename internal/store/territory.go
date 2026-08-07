@@ -58,7 +58,7 @@ func (s *Store) TerritoryJobs() ([]TerritoryJob, error) {
 	jobs := make([]TerritoryJob, 0)
 	jobIndex := make(map[string]int)
 	for _, node := range nodes {
-		if !node.FoldRoot || node.Group == TerritoryGroup {
+		if !node.FoldRoot || node.Group == TerritoryGroup || node.Group == PracticeGroup {
 			continue
 		}
 		if node.Parent != RootID && !territories[node.Parent] {
@@ -271,6 +271,9 @@ func (s *Store) FormTerritory(id, title, digest string, pointers, members []stri
 	}
 	if err := applyFoldView(tx, id, fold.Digest, encodedPointers, foldSeq); err != nil {
 		return fmt.Errorf("form territory: materialize fold: %w", err)
+	}
+	if err := recordSelfReceipt(tx, id); err != nil {
+		return fmt.Errorf("form territory: receipt: %w", err)
 	}
 	if err := tx.Commit(); err != nil {
 		return fmt.Errorf("form territory: %w", err)

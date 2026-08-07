@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -40,6 +41,7 @@ type WatchPass struct {
 	Woken     int
 	Checked   int
 	Fired     int
+	Proposed  int
 	No        int
 	Errors    int
 	Quota     int
@@ -87,6 +89,9 @@ func (r *Reconciler) watchOnceLocked(ctx context.Context) (WatchPass, error) {
 	for _, charter := range charters {
 		if err := ctx.Err(); err != nil {
 			return pass, err
+		}
+		if store.IsPracticeCharter(charter) {
+			continue
 		}
 		pass.Examined++
 		retired, err := r.store.RetireExpiredCharter(charter.ID, now)
@@ -287,46 +292,23 @@ func (r *Reconciler) checkCharterSentinel(ctx context.Context, charter store.Cha
 }
 
 func (r *Reconciler) finishCharterFiring(ctx context.Context, charter store.Charter, pass *WatchPass) {
-	intent := strings.TrimSpace(charter.Action.Template)
-	var subtree store.Subtree
-	if !charter.Action.SayOnly {
-		snapshot, err := r.store.ActiveSnapshot()
-		if err != nil {
-			log.Printf("charter %s ground: %v", charter.ID, err)
-			pass.Errors++
-			return
-		}
-		compiled, err := r.compile(ctx, charter.Action.Template, r.renderCompileContext(snapshot, charter.Action.Template))
-		if err != nil {
-			log.Printf("charter %s ground: %v", charter.ID, err)
-			pass.Errors++
-			return
-		}
-		if strings.TrimSpace(compiled.Goal) == "" || strings.TrimSpace(compiled.Question) != "" {
-			log.Printf("charter %s ground: action needs clarification", charter.ID)
-			pass.Errors++
-			return
-		}
-		intent = compiled.Goal
-		prefix := firingPrefix(charter.ID, charter.WakeSeq)
-		if r.plan == nil {
-			subtree = store.Subtree{Nodes: []store.NodeSpec{{ID: prefix, Brief: intent, Stage: 1}}}
-		} else {
-			planCtx := withPlanAnchor(ctx, PlanAnchor{NodeID: prefix, SessionID: charter.Ratification.SessionID})
-			subtree, err = r.plan(planCtx, compiled)
+	approved := false
+	if charter.Autonomy == store.CharterProbation {
+		approved, _ = r.store.CharterFiringApproved(charter.ID, charter.WakeSeq)
+		if !approved {
+			posted, err := r.store.ProposeCharterFiring(charter.ID, charter.WakeSeq, charter.Action.Template)
 			if err != nil {
-				log.Printf("charter %s plan: %v", charter.ID, err)
+				log.Printf("charter %s propose firing: %v", charter.ID, err)
 				pass.Errors++
 				return
 			}
+			if posted {
+				pass.Proposed++
+			}
+			return
 		}
-		r.titleSubtree(ctx, &subtree, compiled)
 	}
-	provenance := store.Provenance{
-		Origin: store.OriginTrigger, SessionID: charter.Ratification.SessionID,
-		Intent: intent, CharterID: charter.ID,
-	}
-	disposition, err := r.store.FireCharter(charter.ID, charter.WakeSeq, subtree, provenance, r.dailyBudgetUSD, r.now())
+	disposition, _, err := r.admitCharterFiring(ctx, charter, approved)
 	if err != nil {
 		log.Printf("charter %s fire: %v", charter.ID, err)
 		pass.Errors++
@@ -344,6 +326,70 @@ func (r *Reconciler) finishCharterFiring(ctx context.Context, charter store.Char
 	}
 }
 
+func (r *Reconciler) admitCharterFiring(ctx context.Context, charter store.Charter, approved bool) (store.FireDisposition, string, error) {
+	intent := strings.TrimSpace(charter.Action.Template)
+	var subtree store.Subtree
+	jobID := "say:" + charter.ID + ":" + fmt.Sprint(charter.WakeSeq)
+	sessionID := charter.SessionID
+	if sessionID == "" {
+		sessionID = charter.Ratification.SessionID
+	}
+	if !charter.Action.SayOnly {
+		snapshot, err := r.store.ActiveSnapshot()
+		if err != nil {
+			return "", "", fmt.Errorf("ground: %w", err)
+		}
+		compiled, err := r.compile(ctx, charter.Action.Template, r.renderCompileContext(snapshot, charter.Action.Template))
+		if err != nil {
+			return "", "", fmt.Errorf("ground: %w", err)
+		}
+		if strings.TrimSpace(compiled.Goal) == "" || strings.TrimSpace(compiled.Question) != "" {
+			return "", "", fmt.Errorf("ground: action needs clarification")
+		}
+		intent = compiled.Goal
+		prefix := firingPrefix(charter.ID, charter.WakeSeq)
+		if r.plan == nil {
+			subtree = store.Subtree{Nodes: []store.NodeSpec{{ID: prefix, Brief: intent, Stage: 1}}}
+		} else {
+			planCtx := withPlanAnchor(ctx, PlanAnchor{NodeID: prefix, SessionID: sessionID})
+			subtree, err = r.plan(planCtx, compiled)
+			if err != nil {
+				return "", "", fmt.Errorf("plan: %w", err)
+			}
+		}
+		r.titleSubtree(ctx, &subtree, compiled)
+		jobID = subtreeRootID(subtree)
+	}
+	provenance := store.Provenance{Origin: store.OriginTrigger, SessionID: sessionID,
+		Intent: intent, CharterID: charter.ID}
+	var disposition store.FireDisposition
+	var err error
+	if approved {
+		disposition, err = r.store.FireApprovedCharter(charter.ID, charter.WakeSeq, subtree, provenance, r.dailyBudgetUSD, r.now())
+	} else {
+		disposition, err = r.store.FireCharter(charter.ID, charter.WakeSeq, subtree, provenance, r.dailyBudgetUSD, r.now())
+	}
+	if err != nil {
+		return "", "", err
+	}
+	if disposition == store.FireAdmitted && charter.Action.SayOnly {
+		_, err = r.store.RecordCharterFiringOutcome(store.CharterFiringAssessment{
+			CharterID: charter.ID, WakeSeq: charter.WakeSeq, JobID: jobID, Decided: true,
+			Success: true, Reason: "approved reminder delivered within its rails",
+		}, tenureAfter())
+	}
+	return disposition, jobID, err
+}
+
+func subtreeRootID(subtree store.Subtree) string {
+	for _, node := range subtree.Nodes {
+		if node.Parent == "" {
+			return node.ID
+		}
+	}
+	return ""
+}
+
 func firingPrefix(charterID string, wakeSeq int64) string {
 	var clean strings.Builder
 	for _, char := range strings.ToLower(charterID) {
@@ -354,4 +400,17 @@ func firingPrefix(charterID string, wakeSeq int64) string {
 		}
 	}
 	return fmt.Sprintf("firing-%s-%d", strings.Trim(clean.String(), "-"), wakeSeq)
+}
+
+func tenureAfter() int {
+	const fallback = 3
+	raw := strings.TrimSpace(os.Getenv("AFORGE_TENURE_AFTER"))
+	if raw == "" {
+		return fallback
+	}
+	value, err := strconv.Atoi(raw)
+	if err != nil || value <= 0 {
+		return fallback
+	}
+	return value
 }

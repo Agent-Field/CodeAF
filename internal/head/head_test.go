@@ -104,6 +104,43 @@ func TestHeadPostsReply(t *testing.T) {
 	}
 }
 
+func TestHeadResolvesReferencedAgentQuestionWithoutRoutingNewWork(t *testing.T) {
+	graph := openHeadStore(t)
+	question, err := graph.AskQuestion(store.AgentQuestion{
+		SessionID: "agent-question", Text: "Which tone should I use?", Urgency: store.QuestionWhenever,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := graph.SurfaceQuestion(question.Seq); err != nil {
+		t.Fatal(err)
+	}
+	user, err := graph.PostMessage(store.Message{
+		SessionID: "agent-question", Role: store.RoleUser, Body: "Keep it concise.",
+		QuestionSeq: question.Seq,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	client := &fakeClient{}
+	if err := New(client, graph).answer(context.Background(), user); err != nil {
+		t.Fatal(err)
+	}
+	if calls := client.callCount(); calls != 0 {
+		t.Fatalf("answer was routed as new work: provider calls=%d", calls)
+	}
+	resolved, found, err := graph.AgentQuestionBySeq(question.Seq)
+	if err != nil || !found || resolved.Status != store.QuestionAnswered ||
+		resolved.Resolution != user.Body || resolved.AnswerMessageSeq != user.Seq {
+		t.Fatalf("resolved question = %+v found=%t err=%v", resolved, found, err)
+	}
+	messages, err := graph.Messages("agent-question", user.Seq, 0)
+	if err != nil || len(messages) != 1 || messages[0].Role != store.RoleAgent ||
+		!strings.Contains(messages[0].Body, "use that") {
+		t.Fatalf("answer acknowledgement = %+v err=%v", messages, err)
+	}
+}
+
 func TestHeadRequestsSpliceAndLinksReply(t *testing.T) {
 	graphStore := openHeadStore(t)
 	client := &fakeClient{responses: []string{
@@ -458,6 +495,48 @@ func TestHeadReceivesMeasuredReflexPrior(t *testing.T) {
 		!strings.Contains(client.seen[1].Content[0].Text, "Measured execution history") ||
 		!strings.Contains(client.seen[1].Content[0].Text, "promoted=10.0%") {
 		t.Fatalf("measured reflex prior did not reach head: %+v", client.seen)
+	}
+}
+
+func TestHeadGroundsCompetenceQuestionInExistingSingleCall(t *testing.T) {
+	graphStore := openHeadStore(t)
+	client := &fakeClient{responses: []string{
+		`{"reply":"I'm strongest at Go parser work, with eight clean runs.","command":null}`,
+	}}
+	user := store.Message{SessionID: "competence", Body: "what are you good at now?"}
+	groundCalls := 0
+	decision, err := New(client, graphStore).
+		WithCompetenceMap(func() string {
+			groundCalls++
+			return `- {"scope":"tool:go","class":"strong","samples":8,"failure_rate":0}`
+		}).
+		route(context.Background(), user)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if decision.Command != nil || groundCalls != 1 || client.callCount() != 1 {
+		t.Fatalf("competence route = %+v, ground calls %d, provider calls %d", decision, groundCalls, client.callCount())
+	}
+	if len(client.seen) != 2 || !strings.Contains(client.seen[1].Content[0].Text, "Competence map (ground truth") ||
+		!strings.Contains(client.seen[1].Content[0].Text, `"scope":"tool:go"`) {
+		t.Fatalf("competence evidence did not reach head: %+v", client.seen)
+	}
+}
+
+func TestHeadDoesNotReadCompetenceMapForUnrelatedMessage(t *testing.T) {
+	graphStore := openHeadStore(t)
+	client := &fakeClient{responses: []string{
+		`{"reply":"Hello.","command":null}`,
+	}}
+	called := false
+	_, err := New(client, graphStore).
+		WithCompetenceMap(func() string { called = true; return "unexpected" }).
+		route(context.Background(), store.Message{Body: "hello"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if called {
+		t.Fatal("unrelated message read competence map")
 	}
 }
 

@@ -59,6 +59,9 @@ func TestWakeCommandRunsOnePassAndExits(t *testing.T) {
 	if err := graph.CreateCharter(charter); err != nil {
 		t.Fatal(err)
 	}
+	if err := graph.PromoteCharter(charter.ID, "test fixture exercises tenured wake behavior", false); err != nil {
+		t.Fatal(err)
+	}
 	if err := graph.Close(); err != nil {
 		t.Fatal(err)
 	}

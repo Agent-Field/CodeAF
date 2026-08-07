@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"strings"
 )
 
 // Rebuild discards and reconstructs both materialized views solely by replaying
@@ -36,6 +37,9 @@ func (s *Store) Rebuild() error {
 	if _, err := tx.Exec(`DELETE FROM messages`); err != nil {
 		return fmt.Errorf("rebuild messages: %w", err)
 	}
+	if _, err := tx.Exec(`DELETE FROM agent_questions`); err != nil {
+		return fmt.Errorf("rebuild agent questions: %w", err)
+	}
 	if _, err := tx.Exec(`DELETE FROM commands`); err != nil {
 		return fmt.Errorf("rebuild commands: %w", err)
 	}
@@ -45,6 +49,12 @@ func (s *Store) Rebuild() error {
 	if _, err := tx.Exec(`DELETE FROM surprises`); err != nil {
 		return fmt.Errorf("rebuild surprises: %w", err)
 	}
+	if _, err := tx.Exec(`DELETE FROM self_inquiry_lines`); err != nil {
+		return fmt.Errorf("rebuild self inquiry lines: %w", err)
+	}
+	if _, err := tx.Exec(`DELETE FROM self_receipts`); err != nil {
+		return fmt.Errorf("rebuild self receipts: %w", err)
+	}
 	if _, err := tx.Exec(`DELETE FROM charters_fts`); err != nil {
 		return fmt.Errorf("rebuild charter index: %w", err)
 	}
@@ -53,6 +63,9 @@ func (s *Store) Rebuild() error {
 	}
 	if _, err := tx.Exec(`DELETE FROM scope_aliases`); err != nil {
 		return fmt.Errorf("rebuild scope aliases: %w", err)
+	}
+	if _, err := tx.Exec(`DELETE FROM question_practices`); err != nil {
+		return fmt.Errorf("rebuild question practices: %w", err)
 	}
 	if _, err := tx.Exec(`DELETE FROM facts`); err != nil {
 		return fmt.Errorf("rebuild facts: %w", err)
@@ -259,6 +272,40 @@ func replayEvent(tx *sql.Tx, event Event) error {
 		}
 		return applyCommandResolution(tx, payload, event.Seq)
 
+	case EventSeenTouched:
+		// Seen watermarks are journal-native. Rebuild validates their payload;
+		// LastSeen reads the newest event directly.
+		var payload seenPayload
+		if err := json.Unmarshal(event.Payload, &payload); err != nil {
+			return err
+		}
+		if strings.TrimSpace(payload.Surface) == "" ||
+			(payload.State != SeenAttached && payload.State != SeenDetached) {
+			return fmt.Errorf("invalid seen watermark")
+		}
+		return nil
+
+	case EventAgentQuestionQueued:
+		var payload agentQuestionPayload
+		if err := json.Unmarshal(event.Payload, &payload); err != nil {
+			return err
+		}
+		return applyAgentQuestionView(tx, payload, event.Seq, event.Time)
+
+	case EventAgentQuestionSurfaced:
+		var payload agentQuestionSurfacedPayload
+		if err := json.Unmarshal(event.Payload, &payload); err != nil {
+			return err
+		}
+		return applyAgentQuestionSurfaced(tx, payload, event.Seq, event.Time)
+
+	case EventAgentQuestionResolved:
+		var payload agentQuestionResolvedPayload
+		if err := json.Unmarshal(event.Payload, &payload); err != nil {
+			return err
+		}
+		return applyAgentQuestionResolution(tx, payload, event.Seq, event.Time)
+
 	case EventUsageRecorded:
 		var payload NodeUsage
 		if err := json.Unmarshal(event.Payload, &payload); err != nil {
@@ -272,6 +319,20 @@ func replayEvent(tx *sql.Tx, event Event) error {
 			return err
 		}
 		return applySurpriseView(tx, payload, event.Seq, event.Time)
+
+	case EventSelfReceipt:
+		var payload SelfReceipt
+		if err := json.Unmarshal(event.Payload, &payload); err != nil {
+			return err
+		}
+		return applySelfReceiptView(tx, payload, event.Seq, event.Time)
+
+	case EventSelfInquiryRetired:
+		var payload SelfInquiryRetirement
+		if err := json.Unmarshal(event.Payload, &payload); err != nil {
+			return err
+		}
+		return applySelfInquiryRetirement(tx, payload, event.Seq)
 
 	case EventRailRaised:
 		// Rail raises have no materialized view: their event timestamps define
@@ -343,6 +404,27 @@ func replayEvent(tx *sql.Tx, event Event) error {
 		}
 		return applyFactRestore(tx, payload, event.Seq)
 
+	case EventQuestionStatusChanged:
+		var payload questionStatusPayload
+		if err := json.Unmarshal(event.Payload, &payload); err != nil {
+			return err
+		}
+		return applyQuestionStatus(tx, payload, event.Seq)
+
+	case EventQuestionPracticeStarted:
+		var payload QuestionPracticeStarted
+		if err := json.Unmarshal(event.Payload, &payload); err != nil {
+			return err
+		}
+		return applyQuestionPracticeStarted(tx, payload, event.Seq)
+
+	case EventQuestionPracticeCompleted:
+		var payload questionPracticeCompleted
+		if err := json.Unmarshal(event.Payload, &payload); err != nil {
+			return err
+		}
+		return applyQuestionPracticeCompleted(tx, payload, event.Seq)
+
 	case EventScopeAliased:
 		var payload scopeAliasedPayload
 		if err := json.Unmarshal(event.Payload, &payload); err != nil {
@@ -360,7 +442,8 @@ func replayEvent(tx *sql.Tx, event Event) error {
 	case EventCharterCreated, EventCharterRevised, EventCharterStatusChanged,
 		EventCharterWatchAdvanced, EventCharterWoken, EventSentinelChecked,
 		EventCharterFired, EventCharterFiringBlocked, EventCharterFiringDeferred,
-		EventCharterProposalDeclined:
+		EventCharterProposalDeclined, EventCharterFiringProposed, EventCharterFiringDeclined,
+		EventCharterFiringReviewed, EventCharterPromoted, EventCharterDemoted:
 		return replayCharterEvent(tx, event)
 
 	default:

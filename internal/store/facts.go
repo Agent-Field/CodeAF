@@ -63,6 +63,10 @@ const (
 	FactSkill FactKind = "skill"
 	// FactPlaybook is one scoped strategy bullet earned from earlier work.
 	FactPlaybook FactKind = "playbook"
+	// FactQuestion is a durable knowledge gap. Unlike ordinary notebook facts,
+	// questions have their own open/practicing/resolved/retired lifecycle and
+	// never enter retrieval as standing knowledge.
+	FactQuestion FactKind = "question"
 )
 
 // UnsettledApproach is one side of a competing pair. Scope describes where
@@ -178,6 +182,11 @@ const (
 	FactActive      = "active"
 	FactSuperseded  = "superseded"
 	FactQuarantined = "quarantined"
+
+	QuestionOpen       = "open"
+	QuestionPracticing = "practicing"
+	QuestionResolved   = "resolved"
+	QuestionRetired    = "retired"
 )
 
 // FactChangeOrigin names who changed a fact's retrieval status.
@@ -225,10 +234,10 @@ CREATE TABLE IF NOT EXISTS facts (
     ts        TEXT NOT NULL,
     node_id   TEXT NOT NULL,
     scope     TEXT NOT NULL DEFAULT 'user',
-    kind      TEXT NOT NULL DEFAULT 'fact' CHECK (kind IN ('preference', 'quirk', 'lesson', 'fact', 'unsettled', 'skill', 'playbook')),
+    kind      TEXT NOT NULL DEFAULT 'fact' CHECK (kind IN ('preference', 'quirk', 'lesson', 'fact', 'unsettled', 'skill', 'playbook', 'question')),
     body      TEXT NOT NULL,
     unsettled JSON NOT NULL DEFAULT 'null' CHECK (json_valid(unsettled)),
-    status    TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('candidate', 'active', 'superseded', 'quarantined')),
+    status    TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('candidate', 'active', 'superseded', 'quarantined', 'open', 'practicing', 'resolved', 'retired')),
     artifact  TEXT NOT NULL DEFAULT '',
     status_note TEXT NOT NULL DEFAULT '',
     status_seq INTEGER NOT NULL DEFAULT 0,
@@ -239,6 +248,20 @@ CREATE TABLE IF NOT EXISTS facts (
 );
 CREATE INDEX IF NOT EXISTS facts_scope ON facts (scope, status);
 CREATE VIRTUAL TABLE IF NOT EXISTS facts_fts USING fts5(body, scope);
+
+CREATE TABLE IF NOT EXISTS question_practices (
+    start_seq          INTEGER PRIMARY KEY REFERENCES events(seq),
+    question_seq       INTEGER NOT NULL REFERENCES facts(seq),
+    job_id             TEXT NOT NULL UNIQUE,
+    baseline_surprise  REAL NOT NULL,
+    expected_tokens    INTEGER NOT NULL DEFAULT 0,
+    result_surprise    REAL,
+    reduced            INTEGER CHECK (reduced IS NULL OR reduced IN (0, 1)),
+    completion_seq     INTEGER REFERENCES events(seq),
+    reason             TEXT NOT NULL DEFAULT ''
+);
+CREATE INDEX IF NOT EXISTS question_practices_question
+    ON question_practices (question_seq, start_seq);
 `
 
 const scopeAliasesSchema = `
@@ -374,6 +397,9 @@ func (s *Store) RecordFact(nodeID, scope string, kind FactKind, body string) (Fa
 	if kind == FactSkill {
 		return Fact{}, fmt.Errorf("record fact: %w: skills begin as candidates", ErrInvalid)
 	}
+	if kind == FactQuestion {
+		return Fact{}, fmt.Errorf("record fact: %w: questions require the question lifecycle", ErrInvalid)
+	}
 	return s.recordFact(nodeID, scope, kind, body, nil, 0, FactActive, "", true)
 }
 
@@ -397,6 +423,9 @@ func (s *Store) ReplaceFact(factSeq int64, nodeID, scope string, kind FactKind, 
 	}
 	if kind == FactSkill {
 		return Fact{}, fmt.Errorf("replace fact: %w: skills begin as candidates", ErrInvalid)
+	}
+	if kind == FactQuestion {
+		return Fact{}, fmt.Errorf("replace fact: %w: questions require the question lifecycle", ErrInvalid)
 	}
 	return s.recordFact(nodeID, scope, kind, body, nil, factSeq, FactActive, "", true)
 }
@@ -462,6 +491,9 @@ func (s *Store) recordFact(nodeID, scope string, kind FactKind, body string, uns
 			return Fact{}, fmt.Errorf("record playbook: %w: scope %q is not repo, tool, or domain", ErrInvalid, scope)
 		}
 	}
+	if kind == FactQuestion && strings.ContainsAny(body, "\r\n") {
+		return Fact{}, fmt.Errorf("record question: %w: gap must be one line", ErrInvalid)
+	}
 	if kind == FactUnsettled {
 		if unsettled == nil {
 			return Fact{}, fmt.Errorf("record fact: %w: unsettled fact requires a structured pair", ErrInvalid)
@@ -469,8 +501,8 @@ func (s *Store) recordFact(nodeID, scope string, kind FactKind, body string, uns
 	} else if unsettled != nil {
 		return Fact{}, fmt.Errorf("record fact: %w: only unsettled facts carry a pair", ErrInvalid)
 	}
-	if !validFactStatus(status) {
-		status = FactActive
+	if !validFactStatusForKind(kind, status) {
+		status = defaultFactStatus(kind)
 	}
 
 	tx, err := s.db.BeginTx(context.Background(), nil)
@@ -1074,11 +1106,11 @@ func applyFactView(tx *sql.Tx, payload factPayload, seq int64, at time.Time) err
 		return err
 	}
 	status := payload.Status
-	if !validFactStatus(status) {
+	if !validFactStatusForKind(kind, status) {
 		// fact_learned events predating skill candidacy have no status field.
-		status = FactActive
+		status = defaultFactStatus(kind)
 	}
-	if status == FactActive {
+	if status == FactActive || kind == FactQuestion && (status == QuestionOpen || status == QuestionPracticing) {
 		scope, err = resolveScope(tx, scope)
 		if err != nil {
 			return err
@@ -1379,7 +1411,7 @@ func normalizeScope(scope string) string {
 
 func validFactKind(kind FactKind) bool {
 	switch kind {
-	case FactPreference, FactQuirk, FactLesson, FactPlain, FactUnsettled, FactSkill, FactPlaybook:
+	case FactPreference, FactQuirk, FactLesson, FactPlain, FactUnsettled, FactSkill, FactPlaybook, FactQuestion:
 		return true
 	}
 	return false
@@ -1396,10 +1428,27 @@ func validPlaybookScope(scope string) bool {
 
 func validFactStatus(status string) bool {
 	switch status {
-	case FactCandidate, FactActive, FactSuperseded, FactQuarantined:
+	case FactCandidate, FactActive, FactSuperseded, FactQuarantined,
+		QuestionOpen, QuestionPracticing, QuestionResolved, QuestionRetired:
 		return true
 	}
 	return false
+}
+
+func validFactStatusForKind(kind FactKind, status string) bool {
+	if kind == FactQuestion {
+		return status == QuestionOpen || status == QuestionPracticing ||
+			status == QuestionResolved || status == QuestionRetired
+	}
+	return status == FactCandidate || status == FactActive ||
+		status == FactSuperseded || status == FactQuarantined
+}
+
+func defaultFactStatus(kind FactKind) string {
+	if kind == FactQuestion {
+		return QuestionOpen
+	}
+	return FactActive
 }
 
 func validFactChangeOrigin(origin FactChangeOrigin) bool {
@@ -1460,6 +1509,7 @@ func migrateFactsSchema(db *sql.DB) error {
 		hasStatusSeq && hasEvidenceSeq && hasStatusOrigin &&
 		strings.Contains(createSQL, "'unsettled'") &&
 		strings.Contains(createSQL, "'skill'") && strings.Contains(createSQL, "'playbook'") &&
+		strings.Contains(createSQL, "'question'") && strings.Contains(createSQL, "'practicing'") &&
 		strings.Contains(createSQL, "'candidate'") &&
 		strings.Contains(createSQL, "'quarantined'") {
 		return nil
@@ -1470,6 +1520,9 @@ func migrateFactsSchema(db *sql.DB) error {
 		return err
 	}
 	defer tx.Rollback()
+	if _, err := tx.Exec(`DROP TABLE IF EXISTS question_practices`); err != nil {
+		return err
+	}
 	if _, err := tx.Exec(`DROP TABLE IF EXISTS facts`); err != nil {
 		return err
 	}
@@ -1490,7 +1543,8 @@ func migrateFactsSchema(db *sql.DB) error {
 		switch event.Kind {
 		case EventFactLearned, EventFactActivated, EventFactSuperseded,
 			EventFactInjected, EventFactQuarantined, EventFactRestored,
-			EventScopeAliased:
+			EventScopeAliased, EventQuestionStatusChanged,
+			EventQuestionPracticeStarted, EventQuestionPracticeCompleted:
 		default:
 			continue
 		}

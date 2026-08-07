@@ -233,7 +233,78 @@ per-model self-knowledge — attending first to whatever surprised it.
 **Tip seed**: Old jobs get packed into territories — the rail stays calm
 at any history size, and nothing is deleted, only folded.
 
-## 6. The surface
+## 6. The curious employee — self-directed life on rails
+
+### The practice loop — it studies its own weaknesses
+**What**: Real work leaves behind *questions* (gaps revealed by failures,
+corrections, and scopes where its predictions stay wrong past enough
+samples). When you're away and nothing user-origin is in flight, a
+practice charter with its own small dollar carve-out picks the highest
+value question — relevance × execution-verifiability × measured learning
+progress — and splices an `origin: self` practice job. Results feed the
+surprise ledger and the skill forge, never your thread. Questions whose
+scope shows no surprise reduction after two rounds retire automatically.
+**Where**: automatic when idle; `AFORGE_PRACTICE_BUDGET` (default $2/day,
+0 disables), `AFORGE_PRACTICE_IDLE` (default 20m).
+**Tip seed**: The quiet hours aren't idle — aforge practices what it got
+wrong last week, on its own budget, and stops when practice stops paying.
+
+### The morning brief — arrival, folded
+**What**: Open chat after a real absence and the first thing in the
+thread is one collapsed card: "While you were away — N things done, a
+question, $X." Enter unfolds slim rows (done, failed, fired charters,
+facts learned, spend), each anchored to durable provenance. Short breaks
+stay silent; nothing happened means nothing appears.
+**Where**: automatic on session open; `AFORGE_BRIEF_AFTER` (default 4h,
+0 = always).
+**Tip seed**: You don't owe the scrollback anything — the arrival fold is
+the complete account of what happened while you were gone.
+
+### The question queue — it saves its questions for the 1:1
+**What**: Non-blocking questions accumulate instead of interrupting: a
+dock row with a `?` glyph, count-collapsed, surfaced at most one per
+natural moment (arrival, after a delivery). Answering happens inline in
+chat; questions whose originating job settled another way expire with a
+journaled reason.
+**Where**: the dock; answers route through normal chat.
+**Tip seed**: aforge is probably holding questions for you — the `?` row
+in the dock is its saved-up 1:1 list, never a popup.
+
+### Curiosity receipts — self-spend must pay learning rent
+**What**: Every dollar spent on itself (practice, retrospectives, folds)
+produces a journaled receipt: what it tried, what it cost, what was
+learned (facts, skills, surprise delta) — or explicitly "nothing." Two
+consecutive nothing-receipts on an inquiry line auto-retire it and pause
+its charter, with the reason journaled as self-origin evidence.
+**Where**: `aforge why self` prints today's receipts; surfaces read
+`SelfSpendToday` as one number.
+**Tip seed**: Ask `aforge why self` — every cent it spent on itself comes
+with a receipt saying what it learned, and freeloading inquiries fire
+themselves.
+
+### The competence map — grounded self-knowledge
+**What**: From the surprise ledger, failure rates, installed skills, and
+territories, every scope is classified strong / frontier (the 25–75%
+learnable band) / weak / stale. The head answers "what are you good at?"
+from this evidence, and the frontier list is exactly what the practice
+loop targets.
+**Where**: `aforge competence` for the calm rows; in chat, just ask.
+**Tip seed**: "What are you actually good at now?" gets a measured answer
+— strong scopes, the learning frontier, and where it still struggles.
+
+### Probation → tenure — autonomy is earned, not granted
+**What**: Every new charter starts on probation: a firing produces a
+proposal ("I would have done X now — approve?") instead of work. Three
+consecutive approved, green firings promote it — one line in the thread,
+"I'll handle this on my own now" — and it fires autonomously. A failure,
+budget breach, or rejected output demotes it back; two demotions pause it.
+"Always allow" promotes immediately; "never" declines and pauses.
+**Where**: automatic on all charters; `AFORGE_TENURE_AFTER` tunes the
+threshold.
+**Tip seed**: New standing goals ask before acting — approve a few good
+runs and they earn tenure; one bad run and they're back to asking.
+
+## 7. The surface
 
 ### Living job cards
 **What**: Work lives as cards with four states (compiling, working,
@@ -266,7 +337,7 @@ and the head's snapshot always shows live work first.
 **Tip seed**: Killing the terminal never strands a task — reopen and it
 resumes where it left off, saying so once.
 
-## 7. Headless — the same power, scripted
+## 8. Headless — the same power, scripted
 
 ### `aforge plan` / `aforge run`
 **What**: The benchmarked, byte-stable CLI path: compile a goal to a
@@ -282,6 +353,13 @@ resident process.
 **Tip seed**: No terminal open? A crontab line running aforge wake keeps
 your standing goals firing.
 
+### `aforge competence` / `aforge why self`
+**What**: The self-knowledge pair from the CLI: measured per-scope
+competence (strong / frontier / weak / stale), and today's self-spend
+receipts with what each attempt learned.
+**Tip seed**: Two commands answer "is it actually getting better?" —
+aforge competence for the map, aforge why self for the receipts.
+
 ### `aforge notebook`
 **What**: Inspect, search, and retract beliefs from the CLI.
 **Tip seed**: aforge notebook shows what it believes — and what evidence
@@ -289,9 +367,10 @@ each belief stands on.
 
 ### Environment
 **What**: `AFORGE_DAILY_BUDGET`, `AFORGE_PREAUTHORIZE_SPEND`/`--yes-spend`,
-`AFORGE_VOICE_MODEL`, `AFORGE_IMAGE_MODEL`, `AFORGE_SPEECH_MODEL`,
-`AFORGE_MUSIC_MODEL`, `AFORGE_VIDEO_MODEL`, profile dir config at
-`~/.aforge/config.json`.
+`AFORGE_PRACTICE_BUDGET`, `AFORGE_PRACTICE_IDLE`, `AFORGE_BRIEF_AFTER`,
+`AFORGE_TENURE_AFTER`, `AFORGE_VOICE_MODEL`, `AFORGE_IMAGE_MODEL`,
+`AFORGE_SPEECH_MODEL`, `AFORGE_MUSIC_MODEL`, `AFORGE_VIDEO_MODEL`,
+profile dir config at `~/.aforge/config.json`.
 
 ---
 

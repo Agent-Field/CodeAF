@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/Agent-Field/aforge-v2/internal/catalog"
 	"github.com/Agent-Field/aforge-v2/internal/provider"
@@ -23,6 +24,7 @@ func settings(t *testing.T) Config {
 	t.Setenv("AFORGE_BASE_URL", "http://127.0.0.1:1")
 	t.Setenv("AFORGE_PROFILE_DIR", t.TempDir())
 	t.Setenv("AFORGE_DAILY_BUDGET", "")
+	t.Setenv("AFORGE_BRIEF_AFTER", "")
 	config, err := Load()
 	if err != nil {
 		t.Fatal(err)
@@ -146,6 +148,58 @@ func TestMusicAndVideoPreferenceOrders(t *testing.T) {
 	}
 	if got := configured.ResolveMusicModel(runtimeCatalog(t, ``)); got != preferredMusicModel {
 		t.Fatalf("music built-in fallback = %q", got)
+	}
+}
+
+func TestPracticeBudgetAndIdleDefaultsAndOverrides(t *testing.T) {
+	t.Setenv("AFORGE_PRACTICE_BUDGET", "")
+	t.Setenv("AFORGE_PRACTICE_IDLE", "")
+	got := settings(t)
+	if got.PracticeBudgetUSD != DefaultPracticeBudgetUSD || got.PracticeIdle != DefaultPracticeIdle {
+		t.Fatalf("practice defaults = $%v/%s", got.PracticeBudgetUSD, got.PracticeIdle)
+	}
+
+	t.Setenv("OPENROUTER_API_KEY", "test-key")
+	t.Setenv("AFORGE_PROFILE_DIR", t.TempDir())
+	t.Setenv("AFORGE_PRACTICE_BUDGET", "3.5")
+	t.Setenv("AFORGE_PRACTICE_IDLE", "45m")
+	got, err := Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.PracticeBudgetUSD != 3.5 || got.PracticeIdle != 45*time.Minute {
+		t.Fatalf("practice overrides = $%v/%s", got.PracticeBudgetUSD, got.PracticeIdle)
+	}
+
+	for _, test := range []struct{ budget, idle string }{
+		{budget: "-1"}, {budget: "NaN"}, {idle: "-1m"}, {idle: "later"},
+	} {
+		t.Setenv("AFORGE_PRACTICE_BUDGET", test.budget)
+		t.Setenv("AFORGE_PRACTICE_IDLE", test.idle)
+		if _, err := Load(); err == nil {
+			t.Fatalf("invalid practice settings budget=%q idle=%q were accepted", test.budget, test.idle)
+		}
+	}
+}
+
+func TestBriefAfterConfiguration(t *testing.T) {
+	config := settings(t)
+	if config.BriefAfter != 4*time.Hour {
+		t.Fatalf("default brief threshold = %s, want 4h", config.BriefAfter)
+	}
+
+	t.Setenv("AFORGE_BRIEF_AFTER", "90m")
+	config, err := Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if config.BriefAfter != 90*time.Minute {
+		t.Fatalf("configured brief threshold = %s, want 90m", config.BriefAfter)
+	}
+
+	t.Setenv("AFORGE_BRIEF_AFTER", "-1h")
+	if _, err := Load(); err == nil {
+		t.Fatal("negative AFORGE_BRIEF_AFTER was accepted")
 	}
 }
 

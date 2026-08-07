@@ -286,6 +286,11 @@ func TestUnlimitedTodayRailAdmitsCharterFirings(t *testing.T) {
 	if err := graph.CreateCharter(charter); err != nil {
 		t.Fatal(err)
 	}
+	// The rail is what this test exercises; tenure the charter so the autonomy
+	// gate does not intercept the firing first.
+	if err := graph.PromoteCharter(charter.ID, "test tenure", true); err != nil {
+		t.Fatal(err)
+	}
 	now := time.Now()
 	wakeSeq, err := graph.BeginCharterWake(charter.ID, now, "poll due", CharterWatchState{
 		NextDue: now.Add(time.Hour),

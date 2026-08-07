@@ -122,6 +122,8 @@ func (m *Model) View() string {
 			hint = "voice working · esc discard"
 		case m.focus == focusCards:
 			hint = "↑/↓ select card · enter details/graph · esc back · " + keyBindings.graph + " all tasks"
+		case m.focus == focusQuestions:
+			hint = "↑/↓ select question · enter ask inline · esc back"
 		case m.nodeViewID != "":
 			hint = "type to steer · enter send · c cancel · esc back"
 		case m.focus == focusGraph:
@@ -328,7 +330,7 @@ func (m *Model) liveWorkCount() int {
 // renderActivityBar hosts the active-card dock. The legacy aggregate remains
 // its quiet empty-state and covers graph-only stores without thread provenance.
 func (m *Model) renderActivityBar() string {
-	return m.renderCardDock(true)
+	return m.renderActivityDock(true)
 }
 
 // renderLegacyActivityBar is the graph-only fallback: a spinner when work
@@ -1012,6 +1014,7 @@ type chatExpandAction uint8
 const (
 	chatExpandMessage chatExpandAction = iota
 	chatExpandReceipts
+	chatExpandBrief
 )
 
 // chatExpandRow is one explicit disclosure line in the thread. Keeping these
@@ -1122,6 +1125,11 @@ func (m *Model) renderMessages() string {
 				start: line, end: line + lipgloss.Height(block) - 1, cardID: item.card.ID,
 			})
 			appendBlock(block)
+			continue
+		}
+		if item.message.Brief != nil {
+			flushGroup()
+			appendBlock(m.renderBrief(item.message, max(8, m.chat.Width-2), line, true))
 			continue
 		}
 		voice := messageVoice(item.message)

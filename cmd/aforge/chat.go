@@ -5,6 +5,7 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"flag"
 	"fmt"
 	"io"
@@ -157,6 +158,7 @@ func runChat(args []string) error {
 		},
 		planSubtree(settings, taskClient, plans, graph),
 	).WithNarrator(narrateProgress(settings, chatClient, graph)).
+		WithBriefComposer(composeMorningBrief(settings, chatClient)).
 		WithDistiller(distillFacts(settings, chatClient, graph)).
 		WithConsolidator(consolidateFacts(settings, chatClient, graph)).
 		WithTitler(titleGoal(settings, chatClient)).
@@ -164,7 +166,14 @@ func runChat(args []string) error {
 		WithCharterProposals().
 		WithTerritoryDigester(digestTerritory(settings, chatClient)).
 		WithWatchEngine(settings.DailyBudgetUSD, checkSentinel(settings, chatClient)).
-		WithOverrunPlanner(settings.DailyBudgetUSD, replanRemainder(settings, taskClient, plans, graph))
+		WithOverrunPlanner(settings.DailyBudgetUSD, replanRemainder(settings, taskClient, plans, graph)).
+		WithPracticeLoop(settings.PracticeBudgetUSD, settings.PracticeIdle)
+	if err := reconciler.AttachSession(*sessionID); err != nil {
+		return err
+	}
+	if err := reconciler.SessionOpened(context.Background(), *sessionID, "tui", settings.BriefAfter); err != nil {
+		fmt.Fprintf(os.Stderr, "note: could not prepare the arrival brief: %v\n", err)
+	}
 
 	web := exec.NewWeb()
 	runner := resident.NewRunner(graph, func(ctx context.Context, node store.Node) (resident.ExecResult, error) {
@@ -514,6 +523,9 @@ func runChat(args []string) error {
 		_ = head.New(chatClient, graph).
 			WithSelfKnowledge(func() string { return selfKnowledge(settings, taskClient.Model()) }).
 			WithImageInput(modelCatalog, settings.Model).
+			WithCompetenceMap(func() string {
+				return competenceGrounding(graph, settings.ProfileDir, taskClient.Model())
+			}).
 			WithDailyBudgetUSD(settings.DailyBudgetUSD).
 			Serve(headContext)
 	}()
@@ -534,6 +546,7 @@ func runChat(args []string) error {
 		voiceRecorder: voice.NewSystemRecorder(),
 		models:        modelCatalog,
 		mediaModels:   mediaModels,
+		attachSession: reconciler.AttachSession,
 	}
 	commander.voiceTranscriber, err = voice.NewClient(voice.ClientConfig{
 		APIKey: settings.APIKey, BaseURL: settings.BaseURL, Timeout: settings.Timeout,
@@ -543,9 +556,10 @@ func runChat(args []string) error {
 		return err
 	}
 	err = tui.RunWithCommander(graph, *sessionID, commander)
+	seenErr := reconciler.SessionClosed(*sessionID, "tui")
 	cancel()
 	waitWithGrace(&background, 5*time.Second)
-	return err
+	return errors.Join(err, seenErr)
 }
 
 // residentDeliveryBrief gives only the top-level deliverable owner the voice
@@ -641,6 +655,7 @@ type chatCommander struct {
 	streamEvents     <-chan tui.StreamEvent
 	voiceRecorder    voice.Recorder
 	voiceTranscriber voice.Transcriber
+	attachSession    func(string) error
 
 	catalogOnce    sync.Once
 	catalogChoices []tui.ModelChoice
@@ -845,6 +860,11 @@ func (c *chatCommander) NewSession() (string, error) {
 	c.mu.Lock()
 	c.sessionID = sessionID
 	c.mu.Unlock()
+	if c.attachSession != nil {
+		if err := c.attachSession(sessionID); err != nil {
+			return "", err
+		}
+	}
 	return sessionID, nil
 }
 
@@ -1707,12 +1727,13 @@ func jobIDOf(graph *store.Store, node store.Node) string {
 
 // distillerSystemPrompt writes the notebook. The bar is durability: a memory
 // must still matter after this job is forgotten.
-const distillerSystemPrompt = `You judge whether a finished job taught an assistant anything worth keeping in its scoped notebook. You receive the goal, the outcome, and whether the job FAILED. Return exactly one JSON object: {"facts":[{"scope":"...","kind":"preference|quirk|lesson|fact|unsettled|skill|playbook","body":"...","unsettled":{"approaches":[{"approach":"...","scope":"...","evidence":[123]},{"approach":"...","scope":"...","evidence":[456]}]},"replaces":0,"skill":{"artifact":"/absolute/path/to/artifact-directory"}}]}.
+const distillerSystemPrompt = `You judge whether a finished job taught an assistant anything worth keeping in its scoped notebook. You receive the goal, the outcome, and whether the job FAILED. Return exactly one JSON object: {"facts":[{"scope":"...","kind":"preference|quirk|lesson|fact|unsettled|skill|playbook|question","body":"...","unsettled":{"approaches":[{"approach":"...","scope":"...","evidence":[123]},{"approach":"...","scope":"...","evidence":[456]}]},"replaces":0,"skill":{"artifact":"/absolute/path/to/artifact-directory"}}]}.
 
 Judgment framework:
 - A memory qualifies only if it will matter after this job is forgotten.
 - Scope every memory to the narrowest thing it is about: file:<absolute path> for a file's quirk, repo:<dir> for a codebase-wide one, tool:<name> for a tool's behaviour, domain:<topic> for subject knowledge, user for preferences, or env for machine facts.
 - When the job FAILED, the single most valuable memory is the cause and its fix or workaround. Classify it as a quirk or lesson.
+- When a FAILED job or a correction/revision of earlier delivered work exposes something the assistant did not know, emit one kind "question" knowledge gap in the narrowest scope. Phrase it as "I didn't know X" and name what execution could verify. Do not emit a question for ordinary successful work, communication preferences, or a gap the outcome already resolved.
 - A correction about HOW something was communicated — its length, format, tone, or language — is a voice preference. Emit scope "user", kind "preference", and phrase the body as a direct instruction such as "keep answers short; no preamble", not as a report of this episode.
 - Judge like an after-action review: what was expected, what actually happened, and what explains the gap. The explanation is the memory; the events themselves are not.
 - When the direct route failed and a substitute route worked — a different source, tool, or method reached the same end — record the working route as a lesson in the narrowest scope it applies to. A proven detour is the most transferable thing a job can teach.
@@ -1822,6 +1843,70 @@ func digestTerritory(settings config.Config, client *liveClient) resident.Territ
 }
 
 const sentinelSystemPrompt = `You are a cheap standing-watch sentinel. Decide only whether the supplied condition occurred or the invariant is threatened now. Answer exactly "yes — <one line>" or "no — <one line>". No markdown, no qualifications, no suggested work.`
+
+const morningBriefSystemPrompt = `You are the resident assistant writing one calm arrival fold after the person has been away. Return exactly one JSON object: {"headline":"While you were away: ...","items":[{"seq":123,"body":"..."}]}.
+
+The input is journal truth. Write one short, human sentence for headline: begin exactly "While you were away:" and summarize the shape of what changed, including a waiting question or failure before routine progress. No greeting, dashboard language, hype, or "nothing to report".
+
+Write exactly one slim item for every supplied event, in the same order, preserving its seq. Do not combine, omit, or invent events. Keep concrete names, results, questions, learned facts, and dollar amounts. Each item is one sentence fragment, at most 22 words. No markdown.`
+
+var morningBriefSchema = json.RawMessage(`{
+  "type": "object",
+  "properties": {
+    "headline": {"type": "string"},
+    "items": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "seq": {"type": "integer"},
+          "body": {"type": "string"}
+        },
+        "required": ["seq", "body"],
+        "additionalProperties": false
+      }
+    }
+  },
+  "required": ["headline", "items"],
+  "additionalProperties": false
+}`)
+
+// composeMorningBrief is one small, routable resident verdict. Session
+// surfaces never see this client; they only attach and render the message the
+// resident journals. The panel may verify the JSON schema exactly as it does
+// for other bounded planning verdicts.
+func composeMorningBrief(settings config.Config, client *liveClient) resident.BriefComposeFunc {
+	return func(ctx context.Context, activity resident.BriefActivity) (resident.BriefDraft, error) {
+		input, err := json.Marshal(activity)
+		if err != nil {
+			return resident.BriefDraft{}, err
+		}
+		briefCtx := provider.WithCall(settings.Context(ctx, "morning-brief"), provider.ClassPlanBrief)
+		options := []ai.Option{ai.WithMaxTokens(500)}
+		if client.routed() {
+			options = append(options, ai.WithSchema(morningBriefSchema))
+		}
+		response, err := client.CompleteWithMessages(briefCtx, []ai.Message{
+			{Role: "system", Content: []ai.ContentPart{{Type: "text", Text: morningBriefSystemPrompt}}},
+			{Role: "user", Content: []ai.ContentPart{{Type: "text", Text: string(input)}}},
+		}, options...)
+		if err != nil || response == nil {
+			provider.Report(briefCtx, provider.VerdictProviderFailure)
+			if err == nil {
+				err = fmt.Errorf("brief composer returned no response")
+			}
+			return resident.BriefDraft{}, err
+		}
+		object := jsonResponseObject(response.Text())
+		var draft resident.BriefDraft
+		if object == "" || json.Unmarshal([]byte(object), &draft) != nil || strings.TrimSpace(draft.Headline) == "" {
+			provider.Report(briefCtx, provider.VerdictFormatFailure)
+			return resident.BriefDraft{}, fmt.Errorf("brief composer returned malformed JSON")
+		}
+		provider.Report(briefCtx, provider.VerdictVerifiedSuccess)
+		return draft, nil
+	}
+}
 
 // checkSentinel reuses the resident talk client just like consolidation. The
 // store, not this parser, decides whether a yes may spend or fire.
@@ -2072,7 +2157,7 @@ func jsonResponseObject(raw string) string {
 
 func validLearnedKind(kind store.FactKind) bool {
 	switch kind {
-	case store.FactPreference, store.FactQuirk, store.FactLesson, store.FactPlain, store.FactUnsettled, store.FactSkill, store.FactPlaybook:
+	case store.FactPreference, store.FactQuirk, store.FactLesson, store.FactPlain, store.FactUnsettled, store.FactSkill, store.FactPlaybook, store.FactQuestion:
 		return true
 	default:
 		return false

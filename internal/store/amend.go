@@ -83,6 +83,9 @@ func (s *Store) CancelPending(id, reason string) error {
 	if err := applyNodeCancelledView(tx, id, reason, seq, formatTime(at)); err != nil {
 		return fmt.Errorf("cancel node: %w", err)
 	}
+	if err := recordSelfReceipt(tx, id); err != nil {
+		return fmt.Errorf("receipt for cancellation %q: %w", id, err)
+	}
 	if err := tx.Commit(); err != nil {
 		return fmt.Errorf("cancel node: %w", err)
 	}

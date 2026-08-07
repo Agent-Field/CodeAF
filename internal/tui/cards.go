@@ -850,7 +850,7 @@ func (m *Model) attentionMessage(message store.Message) bool {
 }
 
 func (m *Model) cardDockHeight() int {
-	content := m.renderCardDock(false)
+	content := m.renderActivityDock(false)
 	if content == "" {
 		return 0
 	}
@@ -1319,6 +1319,83 @@ func (m *Model) renderCompactCard(card jobCard, width int) string {
 	// The compact card is clickable (it expands); the grammar glyph rides the
 	// end of the line and survives truncation.
 	return truncate(line, max(1, width-2)) + mutedStyle.Faint(true).Render(" ▸")
+}
+
+// renderBrief keeps the arrival ritual to one sentence until the reader asks
+// for it. The expanded form is deliberately only a stack of slim rows: this is
+// orientation, not another dashboard or a second job graph.
+func (m *Model) renderBrief(message store.Message, width, atLine int, track bool) string {
+	if message.Brief == nil {
+		return ""
+	}
+	width = max(8, width)
+	expanded := m.briefExpanded[message.Seq]
+	marker := "▸ "
+	if expanded {
+		marker = "▾ "
+	}
+	headline := oneSentence(message.Body)
+	line := mutedStyle.Render(marker) + aforgeLabelStyle.Render(truncate(headline, max(1, width-2)))
+	lines := []string{truncate(line, width)}
+	if track {
+		m.chatExpandRows = append(m.chatExpandRows, chatExpandRow{
+			line: atLine, action: chatExpandBrief, seq: message.Seq,
+		})
+	}
+	if !expanded {
+		return lines[0]
+	}
+	for _, item := range message.Brief.Items {
+		prefix := mutedStyle.Faint(true).Render("  " + briefItemGlyph(item.Kind) + " ")
+		available := max(1, width-lipgloss.Width(prefix))
+		body := inputTextStyle.Render(truncate(oneSentence(item.Body), available))
+		lines = append(lines, truncate(prefix+body, width))
+	}
+	return strings.Join(lines, "\n")
+}
+
+func briefItemGlyph(kind store.BriefItemKind) string {
+	switch kind {
+	case store.BriefDone:
+		return lipgloss.NewStyle().Foreground(mint).Render("✓")
+	case store.BriefFailure:
+		return lipgloss.NewStyle().Foreground(rose).Render("✗")
+	case store.BriefCancelled:
+		return mutedStyle.Render("–")
+	case store.BriefQuestion:
+		return questionStyle.Render("?")
+	case store.BriefCharter:
+		return lipgloss.NewStyle().Foreground(peach).Render("↻")
+	case store.BriefSkill:
+		return lipgloss.NewStyle().Foreground(powder).Render("◇")
+	case store.BriefSpend:
+		return mutedStyle.Render("$")
+	default:
+		return mutedStyle.Render("·")
+	}
+}
+
+func oneSentence(value string) string {
+	value = strings.Join(strings.Fields(value), " ")
+	for index, r := range value {
+		if r != '.' && r != '?' && r != '!' {
+			continue
+		}
+		next := index + 1
+		if next == len(value) || (next < len(value) && value[next] == ' ') {
+			return strings.TrimSpace(value[:next])
+		}
+	}
+	return value
+}
+
+func (m *Model) collapseSelectedBrief() bool {
+	if m.selectedBriefSeq == 0 || !m.briefExpanded[m.selectedBriefSeq] {
+		return false
+	}
+	m.briefExpanded[m.selectedBriefSeq] = false
+	m.refreshChat()
+	return true
 }
 
 func (m *Model) cardGlyph(card jobCard) string {

@@ -3,6 +3,7 @@ package store
 import (
 	"errors"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 )
@@ -106,6 +107,67 @@ func TestImageAttachmentsSurviveMessageCommandProvenanceAndRebuild(t *testing.T)
 	}
 	if len(rebuilt[0].Options) != 2 || rebuilt[0].Options[0].Label != "keep both" || rebuilt[0].Options[1].Value != "swap" {
 		t.Fatalf("rebuilt message options = %+v", rebuilt[0].Options)
+	}
+}
+
+func TestSeenWatermarkIsJournaledAndSurvivesRebuild(t *testing.T) {
+	s := openThreadStore(t)
+	if _, found, err := s.LastSeen(); err != nil || found {
+		t.Fatalf("empty last seen: found=%t err=%v", found, err)
+	}
+	attached, err := s.TouchSeen("tui", "session-a", SeenAttached)
+	if err != nil {
+		t.Fatal(err)
+	}
+	detached, err := s.TouchSeen("tui", "session-a", SeenDetached)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if detached.Seq <= attached.Seq || detached.Time.Before(attached.Time) {
+		t.Fatalf("watermarks out of order: attached=%+v detached=%+v", attached, detached)
+	}
+	last, found, err := s.LastSeen()
+	if err != nil || !found || last.Seq != detached.Seq || last.State != SeenDetached ||
+		last.Surface != "tui" || last.SessionID != "session-a" {
+		t.Fatalf("last seen = %+v found=%t err=%v", last, found, err)
+	}
+	if err := s.Rebuild(); err != nil {
+		t.Fatal(err)
+	}
+	rebuilt, found, err := s.LastSeen()
+	if err != nil || !found || rebuilt != last {
+		t.Fatalf("rebuilt last seen = %+v, want %+v (found=%t err=%v)", rebuilt, last, found, err)
+	}
+}
+
+func TestBriefMessageRoundTripsAndRebuilds(t *testing.T) {
+	s := openThreadStore(t)
+	want := &Brief{
+		SinceSeq: 1, ThroughSeq: 7, Done: 1, Questions: 1, CostUSD: 1.4,
+		Items: []BriefItem{
+			{Kind: BriefDone, Body: "The report landed.", Ref: "report"},
+			{Kind: BriefQuestion, Body: "The deploy needs a region."},
+			{Kind: BriefSpend, Body: "$1.40 spent."},
+		},
+	}
+	posted, err := s.PostMessage(Message{
+		SessionID: "arrival", Role: RoleAgent,
+		Body: "While you were away: the report landed, and one choice is waiting.", Brief: want,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	read, err := s.Messages("arrival", 0, 0)
+	if err != nil || len(read) != 1 || !reflect.DeepEqual(read[0].Brief, want) {
+		t.Fatalf("brief read = %+v err=%v", read, err)
+	}
+	if err := s.Rebuild(); err != nil {
+		t.Fatal(err)
+	}
+	rebuilt, err := s.Messages("arrival", 0, 0)
+	if err != nil || len(rebuilt) != 1 || rebuilt[0].Seq != posted.Seq ||
+		!reflect.DeepEqual(rebuilt[0].Brief, want) {
+		t.Fatalf("brief after rebuild = %+v err=%v", rebuilt, err)
 	}
 }
 
