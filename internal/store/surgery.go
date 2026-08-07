@@ -328,6 +328,24 @@ func (s *Store) Impact(id string, now time.Time) (SurgeryImpact, error) {
 // SearchSurgeryTargets mirrors charter reference resolution with a small
 // in-memory BM25 index over the current snapshot. Title and brief dominate;
 // verbatim intent and landed summary still make ordinary user wording work.
+//
+// A statusless search — the read, as opposed to the verb — also reaches fold
+// roots, and that is a correction. Every folded node was excluded here, which is
+// right for a fold's members and wrong for its root: folding is what happens to
+// a job once it is thoroughly over, and a job that is over is exactly the one a
+// person asks about the next day. The transcript was a settled, distilled and
+// folded architecture review, asked about in a fresh session, answered with
+// "nothing in the current graph or notebook matches" — honestly, because the
+// search could not see it. A fold root durably carries the digest and the
+// pointers to what it wrote; its members are represented by it and stay hidden,
+// because the root speaks for them.
+//
+// The eligibility is deliberately tied to the absence of a status filter rather
+// than tested at each call site. Every caller that intends to act supplies the
+// statuses its verb may legally touch, and no verb may touch settled work; every
+// caller that intends to read supplies none. So the same argument that already
+// separates reading from acting decides this, and no folded node can be reached
+// by a verb through a route that did not exist before.
 func (s *Store) SearchSurgeryTargets(reference string, includeLeaves bool, allowed ...Status) ([]SurgeryTarget, error) {
 	nodes, err := s.ActiveNodes()
 	if err != nil {
@@ -341,10 +359,14 @@ func (s *Store) SearchSurgeryTargets(reference string, includeLeaves bool, allow
 	for _, node := range nodes {
 		byID[node.ID] = node
 	}
+	readOnly := len(allowedSet) == 0
 	eligible := make([]Node, 0, len(nodes))
 	for _, node := range nodes {
-		if node.ID == RootID || node.Group == TerritoryGroup || node.Group == "charter" || node.Folded ||
+		if node.ID == RootID || node.Group == TerritoryGroup || node.Group == "charter" ||
 			(len(allowedSet) > 0 && !allowedSet[node.Status]) {
+			continue
+		}
+		if node.Folded && !(readOnly && node.FoldRoot) {
 			continue
 		}
 		if !includeLeaves && !isSurgeryJobRoot(node, byID) {

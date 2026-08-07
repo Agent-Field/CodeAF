@@ -28,6 +28,9 @@ The tools are your only hands.
 - manual reads aforge's own account of itself.
 - result reads what one job actually produced: its findings in full, the files it wrote, and what each of its parts concluded.
 - read opens one of those files and gives you what is inside it.
+- competence reads the measured account of your own strengths, weak spots and learning frontier.
+- standing reads what you are keeping watch over: the checks, the last wake, the next one, and every standing charter with what it watches for.
+- spending reads what has been spent — today against the daily rail, and separately what your own upkeep cost and what it bought.
 - note writes one durable thing the user has told you into the notebook, where later conversations will find it.
 
 Alongside the board you carry that notebook: durable preferences, corrections and lessons kept across every conversation. It is what you have been told before, and it shapes how you answer here — not only what the workforce is asked to do.
@@ -39,6 +42,8 @@ Law you do not get to bend:
 - A result that says where the answer is has not given you the answer. When what a job recorded is thin and names a file, read that file and answer from what is in it. Anything you can fetch in this turn you fetch in this turn: never offer to go and look, never say you could pull something out if they want it, never end on an offer instead of an answer.
 - The user telling you how they want you to behave from now on is durable, exactly as a preference about the work is. Note it, then say it is noted. Never promise a lasting change you have not written down and never claim a capability you are not using: "from now on" with nothing behind it is a promise that dies with this conversation, and the next one repeats the same mistake.
 - A question about aforge itself — what you can do, how one of your mechanisms works, why you behaved the way you did — is answered by reading the manual and quoting its substance in your own plain words. Never invent an answer about your own machinery, never soften or embellish what the manual says, and if the manual does not cover it, say plainly that you do not know rather than guessing.
+- A question about YOU rather than about aforge — how your work has been going, what you are good at, whether you are improving, whether the user is asking too much of you, what you are watching for them, what any of it has cost — is answered by reading competence, standing or spending first. These are measurements, not impressions: state what they show, never a strength, a weakness, a schedule or a figure they did not, and when one of them is thin say that it is thin.
+- A row ending in "elsewhere" is the user's own work, started in another window of theirs. You may read it and change it exactly as you may any other row; say which window it came from rather than answering as though this conversation started it, because the receipt for a change lands where the job began.
 - Work the user raises while something is running, or moments after that job reported in the thread, is a change to that work before it is a second job. Read the board and revise or steer the job it concerns; that a sentence borrows none of the job's words means nothing, because people answer the thing just said to them without naming it. Only when the ask is genuinely about something else is it new work, and then it is not yours to queue.
 - needs_confirmation is the consent gate working, not a failure. Nothing changed, the user is being asked, and their answer settles it. Never say the change happened.
 - A tool error is information. A wrong id or a verb the status does not allow tells you exactly what to fix; fix it and try once more.
@@ -99,11 +104,15 @@ func (h *Head) manageControl(ctx context.Context, user store.Message) (bool, err
 	if err != nil {
 		return false, nil
 	}
-	rows, err := h.boardRows("", "", "")
+	rows, err := h.boardRows(user.SessionID, "", "", "")
 	if err != nil {
 		return false, nil
 	}
-	if !self && len(rows) == 0 {
+	// An empty board no longer closes the loop, because the loop's most valuable
+	// reads are about work that is over. What decides is whether anything at all
+	// is addressable — the model can find a settled job with one aimed board read
+	// even when nothing is moving.
+	if !self && len(rows) == 0 && !work {
 		return false, nil
 	}
 
@@ -120,7 +129,10 @@ func (h *Head) manageControl(ctx context.Context, user store.Message) (bool, err
 	messages := []ai.Message{
 		textMessage("system", controlSystemPrompt),
 		textMessage("user", "Board (the user's live work):\n"+board+
-			"\n\nNotebook (durable memory across jobs and conversations):\n"+renderNotebook(h.store, user.Body)+
+			// No thread to dedup against: this loop carries the board and the
+			// notebook and not the conversation, so every belief it is shown is
+			// the only copy of itself in the prompt.
+			"\n\nNotebook (durable memory across jobs and conversations):\n"+renderNotebook(h.store, user.Body, "")+
 			"\n\nManual pages available: "+strings.Join(manual.Pages(), ", ")+
 			"\n\nCurrent user message (verbatim):\n"+strings.TrimSpace(user.Body)),
 	}
@@ -190,44 +202,89 @@ func (h *Head) manageControl(ctx context.Context, user store.Message) (bool, err
 }
 
 // controlLoopApplies is the trigger, and it is meant to be broad and cheap. It
-// asks two questions only: is there live work of the user's at all, and does
-// this sentence plausibly point at it — by carrying a control verb anywhere, by
-// pointing deictically, by scoring against a live job's own words at
-// redirection's anchor floor, or by arriving right after that job spoke.
-// Everything finer is the model's job, behind the tools, where a misreading
-// costs a question rather than an action.
+// asks whether this sentence plausibly points at work the belt can reach — by
+// carrying a control verb anywhere while something is live, by pointing
+// deictically, by scoring against a job's own words at redirection's anchor
+// floor, or by arriving right after that job spoke. Everything finer is the
+// model's job, behind the tools, where a misreading costs a question rather
+// than an action.
 //
 // Adjacency alone opens the loop, and that is the point. The sentence that cost
 // a running job a racing duplicate — "make sure you review the changes" typed
 // seconds after that job posted its progress — carries no verb, no pronoun and
 // no shared word, so every lexical arm declined it while a person reading the
 // thread would not have hesitated for a moment.
+//
+// Live work is no longer the precondition for the whole trigger, and that was
+// the bug. The belt's result and read tools exist for settled work — the belt's
+// own comment says so, "settled work is precisely what has findings" — and they
+// lived behind a gate that asked whether anything was still running. Overnight
+// jobs land, the terminal is quiet, "what did the market analysis conclude?"
+// found no live jobs, the loop declined, and the router answered a question
+// about substance from a 1200-byte slice of a summary while the reader that
+// would have opened the job in full sat one arm away. So the relevance arm now
+// ranks against every addressable job rather than only live ones: the same
+// search, the same floor, no status filter — which is exactly the read the deep
+// slice already performs on this sentence, and exactly no new vocabulary.
 func (h *Head) controlLoopApplies(user store.Message) (bool, error) {
 	message := strings.TrimSpace(user.Body)
 	if message == "" {
 		return false, nil
 	}
 	active, err := h.activeUserJobs()
-	if err != nil || len(active) == 0 {
-		return false, err
-	}
-	if controlVerbPresent(message) || refersToLiveWork(message, len(active)) {
-		return true, nil
-	}
-	ranked, err := h.rankRedirectTargets(message, active)
 	if err != nil {
 		return false, err
 	}
-	for _, target := range ranked {
-		if target.Score >= RedirectAnchorScore {
+	if len(active) > 0 {
+		if controlVerbPresent(message) || refersToLiveWork(message, len(active)) {
 			return true, nil
 		}
+	}
+	anchored, err := h.anchorsOnAnyJob(message, active)
+	if err != nil || anchored {
+		return anchored, err
+	}
+	if len(active) == 0 {
+		return false, nil
 	}
 	_, adjoins, err := h.adjacencyTarget(user, active)
 	if err != nil {
 		return false, err
 	}
 	return adjoins, nil
+}
+
+// anchorsOnAnyJob is the relevance arm, over live work and settled work alike.
+// The live half keeps its narrower ranking — a redirect is only ever aimed at
+// something still moving — and the settled half is the whole point of the read
+// tools, so both are asked and either one opens the loop.
+func (h *Head) anchorsOnAnyJob(message string, active []store.SurgeryTarget) (bool, error) {
+	if len(active) > 0 {
+		ranked, err := h.rankRedirectTargets(message, active)
+		if err != nil {
+			return false, err
+		}
+		for _, target := range ranked {
+			if target.Score >= RedirectAnchorScore {
+				return true, nil
+			}
+		}
+	}
+	reference := redirectReference(message)
+	if reference == "" {
+		return false, nil
+	}
+	targets, err := h.store.SearchSurgeryTargets(reference, false)
+	if err != nil {
+		return false, err
+	}
+	for _, target := range targets {
+		if target.Score >= RedirectAnchorScore && beltAddressable(target.Node) &&
+			target.Node.ID != store.RootID {
+			return true, nil
+		}
+	}
+	return false, nil
 }
 
 func controlVerbPresent(message string) bool {
