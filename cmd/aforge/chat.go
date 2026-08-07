@@ -245,6 +245,12 @@ func runChat(args []string) error {
 	if craftRunner != nil {
 		reconciler = reconciler.WithCraftRunner(craftRunner)
 	}
+	// The lease's flock proves the process exists; the heartbeat proves it is
+	// doing the work. Without this stamp a wedged TUI holds the resident role
+	// while every wake pass defers to it, and the standing watches go blind.
+	reconciler = reconciler.WithHeartbeat(func(at time.Time) {
+		_ = lease.NoteResidentTick(filepath.Dir(path), at)
+	})
 	// Recognition and forging ride the resident's own talk client, like every
 	// other small verdict it makes about itself.
 	if craftShelf != nil {
@@ -742,7 +748,44 @@ func runChat(args []string) error {
 			WithDailyBudgetUSD(settings.DailyBudgetUSD).
 			Serve(headContext)
 	}()
-	go func() { defer guard.Recover("chat/reconciler"); defer background.Done(); _ = reconciler.Serve(ctx) }()
+	// Serve absorbs transient tick errors itself and returns only for a
+	// cancelled context, an unreadable store, or sustained failure. A return
+	// that isn't the context is therefore news, and a resident that quietly
+	// stays dead while the TUI keeps drawing is the exact silence the lease
+	// heartbeat exists to expose — so the loop is restarted with backoff, and
+	// only a run of rapid deaths gives up, loudly.
+	go func() {
+		defer guard.Recover("chat/reconciler")
+		defer background.Done()
+		rapidDeaths := 0
+		for {
+			started := time.Now()
+			err := reconciler.Serve(ctx)
+			if ctx.Err() != nil {
+				return
+			}
+			if time.Since(started) < time.Minute {
+				rapidDeaths++
+			} else {
+				rapidDeaths = 0
+			}
+			log.Printf("resident loop ended: %v — restarting", err)
+			if rapidDeaths >= 5 {
+				log.Printf("resident loop died %d times in quick succession — giving up; standing work is paused until relaunch", rapidDeaths)
+				_, _ = graph.PostMessage(store.Message{
+					SessionID: *sessionID,
+					Role:      store.RoleSystem,
+					Body:      "the background loop that runs jobs and watches has stopped after repeated failures — restart aforge to resume it",
+				})
+				return
+			}
+			select {
+			case <-ctx.Done():
+				return
+			case <-time.After(5 * time.Second):
+			}
+		}
+	}()
 	go func() { defer guard.Recover("chat/runner"); defer background.Done(); _ = runner.Serve(ctx) }()
 
 	commander = &chatCommander{

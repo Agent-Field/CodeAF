@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"github.com/Agent-Field/aforge-v2/internal/manual"
+	"github.com/Agent-Field/aforge-v2/internal/resident"
 	"github.com/Agent-Field/aforge-v2/internal/store"
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 )
@@ -126,8 +127,12 @@ func (h *Head) manageControl(ctx context.Context, user store.Message) (bool, err
 	// board is this loop's floor and is written first, so memory can crowd out
 	// nothing, and a loop that could act on the graph while being blind to what
 	// the user had already told it was the other half of the same failure.
+	// The loop speaks to the user exactly as the router does, so it carries
+	// the same learned voice — an arm that can cancel work but never heard
+	// "stop opening with a preamble" was the one surface still talking past
+	// the notebook.
 	messages := []ai.Message{
-		textMessage("system", controlSystemPrompt),
+		textMessage("system", resident.VoicePrompt(h.store, controlSystemPrompt)),
 		textMessage("user", "Board (the user's live work):\n"+board+
 			// No thread to dedup against: this loop carries the board and the
 			// notebook and not the conversation, so every belief it is shown is

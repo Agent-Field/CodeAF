@@ -52,9 +52,19 @@ func ApplyRevision(graph *store.Store, planGraph *plan.Graph, prefix, jobRoot st
 					spec.Needs = append(spec.Needs, store.Need{NodeID: id(need), Kind: store.FeedsInto})
 				}
 			}
+			// The job's session rides along so a failure of this node can
+			// interrupt the person whose work it revises — a session-less
+			// child is one whose bad news nobody hears (overrun.go carries
+			// it for the same reason). The announce path also walks to the
+			// root, but provenance should not need rescuing to be read.
+			session := ""
+			if root, ok, err := graph.Node(jobRoot); err == nil && ok {
+				session = root.Provenance.SessionID
+			}
 			err := graph.Splice(jobRoot, store.Subtree{Nodes: []store.NodeSpec{spec}}, store.Provenance{
-				Origin: store.OriginSelf,
-				Intent: "revision: " + operation.Reason,
+				Origin:    store.OriginSelf,
+				SessionID: session,
+				Intent:    "revision: " + operation.Reason,
 			})
 			if err != nil {
 				notes = append(notes, fmt.Sprintf("add %s: %v", spec.ID, err))

@@ -38,11 +38,11 @@ const (
 // Category names are the calm, plain-language groups the surface renders in
 // this order.
 const (
-	CategoryModels     = "models"
-	CategoryMoney      = "money & limits"
-	CategoryRhythm     = "rhythm"
-	CategoryLearning   = "learning"
-	CategoryDocuments  = "documents & vision"
+	CategoryModels    = "models"
+	CategoryMoney     = "money & limits"
+	CategoryRhythm    = "rhythm"
+	CategoryLearning  = "learning"
+	CategoryDocuments = "documents & vision"
 	// CategorySharing groups what aforge puts of itself into work that leaves
 	// the machine under the user's name. None of the other groups is about the
 	// outside world, so attribution gets its own rather than hiding in one.
