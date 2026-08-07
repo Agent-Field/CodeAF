@@ -33,7 +33,13 @@ type TerritoryDigestJob struct {
 
 // TerritoryDigestFunc writes the one model-authored map for a territory.
 // Clustering, naming, membership, and hierarchy are all deterministic Go.
-type TerritoryDigestFunc func(ctx context.Context, title string, jobs []TerritoryDigestJob) (string, error)
+//
+// The voice contract arrives as an argument rather than being fetched by the
+// writer, because the notebook belongs to the resident and this is the only
+// surface that speaks without a store handle of its own. Empty on an empty
+// notebook, which keeps the prompt byte-identical to what it was before any
+// preference was learned.
+type TerritoryDigestFunc func(ctx context.Context, title string, jobs []TerritoryDigestJob, voice string) (string, error)
 
 // WithTerritoryDigester enables territory maintenance during a retrospective.
 // It is separate from WithReflector so non-chat and headless paths stay inert.
@@ -99,7 +105,8 @@ func (r *Reconciler) maintainTerritories(ctx context.Context, now time.Time) boo
 			grown := append(append([]store.TerritoryJob(nil), members...), candidate)
 			sortTerritoryJobs(grown)
 			digestJobs := territoryDigestJobs(grown)
-			digest, err := r.digestTerritory(ctx, territoryDisplayTitle(territory), digestJobs)
+			digest, err := r.digestTerritory(ctx, territoryDisplayTitle(territory), digestJobs,
+				VoiceSection(r.store, territoryDisplayTitle(territory)))
 			if err != nil || strings.TrimSpace(digest) == "" {
 				return false
 			}
@@ -118,7 +125,7 @@ func (r *Reconciler) maintainTerritories(ctx context.Context, now time.Time) boo
 		}
 		title := territoryTitle(cluster)
 		digestJobs := territoryDigestJobs(cluster)
-		digest, err := r.digestTerritory(ctx, title, digestJobs)
+		digest, err := r.digestTerritory(ctx, title, digestJobs, VoiceSection(r.store, title))
 		if err != nil || strings.TrimSpace(digest) == "" {
 			return false
 		}

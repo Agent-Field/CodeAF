@@ -116,7 +116,7 @@ func (t *Toolbox) readDocument(ctx context.Context, args map[string]any) Result 
 	sourceHash := hex.EncodeToString(hashBytes[:])
 	cachePath := extractedDocumentCachePath(full)
 	if cached, ok := readDocumentCache(cachePath, sourceHash, pages.raw); ok {
-		t.workspace.Record(t.nodeID, cachePath)
+		t.workspace.RecordInternal(t.nodeID, cachePath)
 		return Result{Content: clamp(cached)}
 	}
 
@@ -316,7 +316,7 @@ func (t *Toolbox) cacheDocumentResult(cachePath, sourceHash, pages, parserHash, 
 	if err := writeDocumentCache(cachePath, sourceHash, pages, parserHash, text); err != nil {
 		return errorf("could not cache extracted document text")
 	}
-	t.workspace.Record(t.nodeID, cachePath)
+	t.workspace.RecordInternal(t.nodeID, cachePath)
 	return Result{Content: clamp(text), Usage: usage}
 }
 

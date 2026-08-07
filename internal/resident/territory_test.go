@@ -45,7 +45,7 @@ func TestTerritoryFormationRequiresFourOldJobsAndTakesOneActionPerReflection(t *
 		WithReflector(func(_ context.Context, _ []JobSketch) ([]Learned, error) {
 			return nil, nil
 		}).
-		WithTerritoryDigester(func(_ context.Context, _ string, jobs []TerritoryDigestJob) (string, error) {
+		WithTerritoryDigester(func(_ context.Context, _ string, jobs []TerritoryDigestJob, _ string) (string, error) {
 			digestCalls = append(digestCalls, append([]TerritoryDigestJob(nil), jobs...))
 			return fmt.Sprintf("%d jobs packed", len(jobs)), nil
 		})
@@ -105,7 +105,7 @@ func TestTerritoryGrowthAddsOneMatchingSettledJobAndRefreshesDigest(t *testing.T
 		WithReflector(func(_ context.Context, _ []JobSketch) ([]Learned, error) {
 			return nil, nil
 		}).
-		WithTerritoryDigester(func(_ context.Context, _ string, jobs []TerritoryDigestJob) (string, error) {
+		WithTerritoryDigester(func(_ context.Context, _ string, jobs []TerritoryDigestJob, _ string) (string, error) {
 			digestCalls = append(digestCalls, append([]TerritoryDigestJob(nil), jobs...))
 			return fmt.Sprintf("digest for %d jobs", len(jobs)), nil
 		})

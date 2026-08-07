@@ -147,13 +147,16 @@ func SubtreeFromPlan(graph *plan.Graph, prefix string) (store.Subtree, error) {
 	return store.Subtree{Nodes: specs}, nil
 }
 
+// nodeBrief is what the job is, and only that. The working method used to be
+// folded on here as a trailing paragraph, which delivered it — but into the
+// user message, below everything that changes between leaves. It belongs in the
+// system message beside the harness's own invariants, so the executor now reads
+// it off the plan node directly (exec.Task.Contract) and the store's brief is
+// left as the instruction a person would recognise.
 func nodeBrief(node plan.Node) string {
 	brief := strings.TrimSpace(node.Brief)
 	if brief == "" {
 		brief = strings.TrimSpace(node.Title + "\n" + node.Summary)
-	}
-	if contract := strings.TrimSpace(node.Contract); contract != "" {
-		brief += "\n\nWorking method:\n" + contract
 	}
 	return brief
 }

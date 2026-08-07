@@ -258,8 +258,14 @@ func TestPanelistBriefsAreIndependent(t *testing.T) {
 			t.Errorf("panelist brief references %q; panelists must not know about each other", other)
 		}
 	}
-	// The charge that makes a lone reader behave like a whole panel.
-	for _, phrase := range []string{"Report everything", "nothing you leave out will be recovered later"} {
+	// The charge that makes a lone reader behave like a whole panel — and the
+	// clause that keeps it from colliding with the leaf's own 300-word cap. The
+	// charge once said nothing left out would be recovered later, which the leaf
+	// contract flatly contradicts; both wanted the same thing, and the split
+	// between the answer and its working is where they agree.
+	for _, phrase := range []string{"Report everything", "a\nfinding you drop is gone for good",
+		"Completeness is about the findings, not about where each one is written down",
+		"Write the full enumeration to a file"} {
 		if !strings.Contains(panelists[0].Brief, phrase) {
 			t.Errorf("panelist brief is missing %q:\n%s", phrase, panelists[0].Brief)
 		}

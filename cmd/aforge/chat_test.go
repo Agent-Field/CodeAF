@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -835,11 +836,14 @@ func TestVisitorCommanderServesTheSurfaceWithoutClients(t *testing.T) {
 	}
 }
 
-// A job the planner never expanded into a graph — a plain task, or one whose
-// process restarted — has no remaining plan to revise. The redirection is
-// still real: it reports nothing changed and leaves the broadcast to the
-// reconciler rather than failing the command.
-func TestReviseForUserWithoutARetainedPlanChangesNothing(t *testing.T) {
+// A job whose plan is not in hand cannot be revised, and saying so is the whole
+// point. An empty Redirection with a nil error is byte-for-byte what "the
+// sentinel read the plan and found nothing to change" looks like to the caller,
+// so the user was handed that receipt — "nothing in the remaining plan needed
+// to change" — while every pending leaf went on building the version they had
+// just asked to replace. The error is what routes the caller to its honest
+// branch instead.
+func TestReviseForUserWithoutARetainedPlanSaysSo(t *testing.T) {
 	graph, err := store.Open(filepath.Join(t.TempDir(), "graph.db"))
 	if err != nil {
 		t.Fatal(err)
@@ -857,12 +861,40 @@ func TestReviseForUserWithoutARetainedPlanChangesNothing(t *testing.T) {
 	plans := &jobPlans{graphs: map[string]plannedJob{}}
 	revision, err := plans.reviseForUser(context.Background(), config.Config{}, nil, graph, job,
 		"no, use the v2 API not v1", resident.RevisionRedirect)
-	if err != nil {
-		t.Fatalf("revise without a retained plan: %v", err)
+	if !errors.Is(err, errNoRetainedPlan) {
+		t.Fatalf("revise without a retained plan returned %v; the caller cannot tell this from a no-op", err)
 	}
 	if revision.Added != 0 || revision.Dropped != 0 || revision.Amended != 0 ||
 		len(revision.Notes) != 0 || len(revision.RunningRemovals) != 0 {
 		t.Fatalf("revision = %+v", revision)
+	}
+	// The reconciler's own receipt has to reach its "I could not revise" arm.
+	reconciler := resident.New(graph, nil, nil).WithRedirector(
+		func(context.Context, store.Node, string, resident.RevisionFlavor) (resident.Redirection, error) {
+			return resident.Redirection{}, errNoRetainedPlan
+		})
+	if _, err := graph.RequestCommand(store.Command{
+		SessionID: "s1", Kind: store.CommandRedirect, Target: "task-1",
+		Instruction: "no, use the v2 API not v1",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := reconciler.Tick(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	messages, err := graph.Messages("s1", 0, 50)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var receipts string
+	for _, message := range messages {
+		receipts += message.Body + "\n"
+	}
+	if strings.Contains(receipts, "nothing in the remaining plan needed to change") {
+		t.Fatalf("the receipt claims the plan was examined:\n%s", receipts)
+	}
+	if !strings.Contains(receipts, "could not revise the remaining plan") {
+		t.Fatalf("the receipt never says the plan could not be read:\n%s", receipts)
 	}
 }
 

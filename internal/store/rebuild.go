@@ -529,6 +529,21 @@ func replayEvent(tx *sql.Tx, event Event) error {
 		}
 		return nil
 
+	case EventPlanGraph:
+		// A journaled plan has no materialized view on purpose — it is read by
+		// node id, the newest event is the answer, and the event itself remains
+		// the source of truth on rebuild. Validating the payload rather than
+		// falling through to the silent default is what keeps that a stated
+		// boundary instead of an accident nobody would notice.
+		var payload PlanGraph
+		if err := json.Unmarshal(event.Payload, &payload); err != nil {
+			return err
+		}
+		if len(payload.Graph) == 0 {
+			return fmt.Errorf("invalid plan-graph event")
+		}
+		return nil
+
 	case EventParameterChanged:
 		var payload ParameterChange
 		if err := json.Unmarshal(event.Payload, &payload); err != nil {

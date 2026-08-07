@@ -202,7 +202,10 @@ func runChat(args []string) error {
 	// mechanism exactly: call shapes for the router, escalation verdicts, and
 	// the profile records that calibrate the planner's ruler all read from the
 	// same plan nodes the scheduler would have read.
-	plans := &jobPlans{graphs: map[string]plannedJob{}}
+	// They also outlive this process: a job that was planned in the session you
+	// closed last night is still running this morning, and its remaining plan
+	// is still editable.
+	plans := newJobPlans(graph)
 	// The craft repository lives beside the graph it serves. Without git or
 	// with a broken repo, craft is dormant — never a startup failure.
 	var craftRunner *resident.CraftRunner
@@ -228,7 +231,7 @@ func runChat(args []string) error {
 			})
 		}).
 		WithNarrator(narrateProgress(settings, chatClient, graph)).
-		WithBriefComposer(composeMorningBrief(settings, chatClient)).
+		WithBriefComposer(composeMorningBrief(settings, chatClient, graph)).
 		// Redirection is a chat-surface concern — a wake pass has no user
 		// whose words could revise a running job.
 		WithRedirector(func(ctx context.Context, job store.Node, message string,
@@ -285,8 +288,13 @@ func runChat(args []string) error {
 		// A planned job keeps one executor for every leaf so its profile key names
 		// the model that actually produced all measured turns. A picker change
 		// applies to the next job rather than relabeling work already in flight.
-		planGraph, planNode, workingModel, workingClient := plans.lookup(node.ID)
+		planPrefix, planGraph, planNode, workingModel, workingClient := plans.lookup(node.ID)
 		if workingClient == nil {
+			// A job rehydrated from the journal after a restart carries its
+			// structure but no live client, and its leaves genuinely do run on
+			// the current work model — so the profile key must name that one
+			// rather than the model that planned the job in a process that is
+			// no longer here.
 			workingModel, workingClient = taskClient.Snapshot()
 		}
 		// A model the user named for this job outranks both, and only for this
@@ -337,14 +345,28 @@ func runChat(args []string) error {
 			plans.markRunning(planNode)
 		}
 
+		// Every input is named. Untitled, they render as `=== from "" ===`
+		// under a header that says the results are prior work the leaf already
+		// has and must not gather again — so a standing lesson reading "check X
+		// before Y" arrived as a claim that X had been checked. The notebook is
+		// not a prior result and says so; a dependency says whose it is.
 		inputs := make([]exec.Input, 0)
 		if digest := resident.NotebookDigest(graph, node.ID, node.Brief, node.Provenance.Intent, 8); digest != "" {
-			inputs = append(inputs, exec.Input{Result: digest})
+			inputs = append(inputs, exec.Input{Title: notebookInputTitle, Result: digest})
 		}
-		digests, err := graph.DependencyDigests(node.ID, store.MaxDigestBytes)
+		dependencies, err := graph.DependencyInputs(node.ID, store.MaxDigestBytes)
 		if err == nil {
-			for _, digest := range digests {
-				inputs = append(inputs, exec.Input{Result: digest})
+			for _, dependency := range dependencies {
+				// The files are what make the 300-word cap survivable: a
+				// producer keeps its answer in the message and its working in a
+				// file, and its consumer can only honour that split if it is
+				// told where the file is. Without this the pointer was written
+				// and never delivered.
+				inputs = append(inputs, exec.Input{
+					Title:     dependency.NodeID,
+					Result:    dependency.Digest,
+					Artifacts: dependency.Artifacts,
+				})
 			}
 		}
 		// The steering mailbox: user messages anchored to this node land in
@@ -366,6 +388,16 @@ func runChat(args []string) error {
 			return lines
 		}
 
+		// The contract is the working method and belongs in the system message
+		// beside the harness's own invariants, where a headless run already
+		// puts it: together they are what a specialised harness for this domain
+		// would have been hand-written to say, and they are the frozen prefix
+		// every turn of the leaf is billed against. Folded into the brief it
+		// still arrived, but as user text below the churn.
+		leafTitle := firstLine(node.Brief)
+		if title := strings.TrimSpace(node.Title); title != "" {
+			leafTitle = title
+		}
 		task := exec.Task{
 			Reflex:      isReflex,
 			NodeID:      int(node.CreatedSeq),
@@ -373,6 +405,8 @@ func runChat(args []string) error {
 			Title:       firstLine(node.Brief),
 			Goal:        node.Provenance.Intent,
 			Brief:       withDocumentAttachmentBrief(residentDeliveryBrief(graph, node), documentPaths),
+			Contract:    planNodeContract(planNode),
+			OutputHint:  exec.SuggestPath(int(node.CreatedSeq), leafTitle),
 			Inputs:      inputs,
 			Steer:       steer,
 			Control: func() exec.ControlAction {
@@ -408,6 +442,17 @@ func runChat(args []string) error {
 		spentTurns := 0
 		workerModel := taskClient.Model()
 		for attempt := 0; attempt < attempts; attempt++ {
+			// An escalation that repeats the task verbatim buys a stronger model
+			// and then pays it to rediscover everything the first attempt found —
+			// including files sitting in the shared workspace it is about to
+			// write again. The gate's revision pass has always been sighted this
+			// way; the escalation was the one retry that was not.
+			if attempt > 0 && outcome != nil {
+				attempted := task
+				attempted.Inputs = append(append([]exec.Input{}, inputs...),
+					previousAttemptInput(outcome, jobDir))
+				task = attempted
+			}
 			runCtx := provider.WithCallShape(settings.ExecContext(ctx), provider.ClassExecLeaf, attempt, shape)
 			outcome, err = runLeafWithWatchdog(runCtx, linear, task, watchdog)
 			if model := provider.CallFrom(runCtx).Model(); model != "" {
@@ -433,27 +478,40 @@ func runChat(args []string) error {
 				ServiceRequests: outcome.ServiceRequests,
 			}, nil
 		}
+		// The workspace-relative paths become absolute once, here, because three
+		// readers need the same list: the summary the user opens files from, the
+		// revision sentinel, and the overrun replan. It used to be built below
+		// the sentinel's call, which is why the sentinel was the one reader told
+		// nothing about the file a leaf had just written.
+		absolute := make([]string, 0)
+		if outcome != nil {
+			for _, artifact := range outcome.Artifacts {
+				absolute = append(absolute, filepath.Join(jobDir, artifact))
+			}
+		}
 		// Result-driven revision: each landed leaf is shown to the sentinel,
 		// which edits the job's unstarted remainder only when this result
 		// contradicts a specific assumption in a specific node. Its default
-		// is no change; the store refuses everything else.
+		// is no change; the store refuses everything else. A failure goes in as
+		// its own words: "it failed" says the next steps have nothing to
+		// consume, while the reason says which assumption died.
 		if !isReflex && planGraph != nil && outcome != nil {
-			plans.reviseAfter(ctx, settings, planClient, graph, node, planGraph, outcome.Text, err != nil, workerModel)
+			failure := ""
+			if err != nil {
+				failure = err.Error()
+			}
+			plans.reviseAfter(ctx, settings, planClient, graph, node, planPrefix, planGraph,
+				outcome.Text, absolute, failure, workerModel)
 		}
 		if err != nil {
 			// Preserve failed-attempt evidence even though no delivery reaches the
 			// gate. This is the pre-existing profile path, kept on the early return.
-			if landed := plans.takeIfRoot(node.ID); landed != nil {
-				// A root without the planner's "-n" id shape (single-leaf jobs,
-				// spliced work) has no plan surprises to record.
-				if cut := strings.LastIndex(node.ID, "-n"); cut >= 0 {
-					prefix := node.ID[:cut]
-					guard.Go("chat/recalibrate", func() {
-						_, records := recordAndCalibrateDetailed(settings.Context(context.Background(), landed.Goal), planClient, settings, workingModel, landed)
-						recordPlanSurprises(graph, prefix, records)
-					})
-				}
-			} else if planGraph == nil && node.Parent == store.RootID && outcome != nil {
+			if landed, prefix := plans.takeIfRoot(node.ID); landed != nil {
+				guard.Go("chat/recalibrate", func() {
+					_, records := recordAndCalibrateDetailed(settings.Context(context.Background(), landed.Goal), planClient, settings, workingModel, landed)
+					recordPlanSurprises(graph, prefix, records)
+				})
+			} else if node.Parent == store.RootID && outcome != nil && isSingleLeafJob(graph, node) {
 				if isReflex {
 					guard.Go("chat/record-reflex", func() {
 						record, ok := recordReflex(settings, workerModel, node, outcome, false)
@@ -470,15 +528,20 @@ func runChat(args []string) error {
 					})
 				}
 			}
-			return resident.ExecResult{}, err
+			// The error says the leaf produced nothing; it says nothing about
+			// what producing nothing cost. Escalation has usually run the whole
+			// task twice by the time we arrive here, so this is the most
+			// expensive kind of result there is — and returning a bare zero
+			// value is what made real spend journal as $0.00 on the daily rail.
+			return resident.ExecResult{
+				PromptTokens:     spent.PromptTokens,
+				CompletionTokens: spent.CompletionTokens,
+				Cost:             spent.Cost,
+			}, err
 		}
+		// The user's next act is opening the file, so the summary carries where
+		// it actually lives; the absolute paths were resolved above.
 		text := outcome.Text
-		// Artifact paths come back workspace-relative; the user's next act is
-		// opening the file, so the summary carries where it actually lives.
-		absolute := make([]string, 0, len(outcome.Artifacts))
-		for _, artifact := range outcome.Artifacts {
-			absolute = append(absolute, filepath.Join(jobDir, artifact))
-		}
 		if len(absolute) > 0 {
 			text += "\n\nFiles:\n" + strings.Join(absolute, "\n")
 		}
@@ -486,7 +549,7 @@ func runChat(args []string) error {
 		// Resource exhaustion is invisible: it grows the graph and the final
 		// assembled deliverable reaches the gate. Semantic failure stays honest
 		// and still lands with the evidence from the failing leaf.
-		if !isReflex && (outcome.Stop == exec.StopBudget || outcome.Stop == exec.StopTurnCap) {
+		if !isReflex && outcome.Overran() {
 			spliced, _, replanErr := resident.ReplanOverrun(ctx, graph, node, outcome.Text, absolute,
 				settings.DailyBudgetUSD, replanRemainder(settings, planClient, taskClient, plans, graph))
 			if replanErr == nil && spliced > 0 {
@@ -523,6 +586,8 @@ func runChat(args []string) error {
 				if !gate.Pass {
 					revision := task
 					revision.Inputs = append(append([]exec.Input{}, inputs...), exec.Input{
+						Title:     "a review of your own first draft",
+						Artifacts: append([]string(nil), absolute...),
 						Result: "A reviewer compared the previous attempt against the original request and found gaps that must be closed:\n" + gate.Gaps +
 							"\n\nThe previous attempt (build on it, fix the gaps, do not start over):\n" + text +
 							"\n\n" + gateRevisionContract,
@@ -581,30 +646,28 @@ func runChat(args []string) error {
 		if planNode != nil {
 			plans.recordOutcome(planNode, outcome, nil)
 		}
-		if landed := plans.takeIfRoot(node.ID); landed != nil {
+		if landed, prefix := plans.takeIfRoot(node.ID); landed != nil {
 			// The recalibration report reaches the thread, not a stdout the TUI
 			// owns; detached, because the ruler is telemetry and the user's
-			// result must not wait on it.
+			// result must not wait on it. The namespace comes from the registry
+			// rather than from slicing the id: this root's own id IS the prefix,
+			// so the old "-n" search never matched and recalibration for a
+			// planned chat job simply never ran.
 			sessionID := node.Provenance.SessionID
-			// Same guard as the failure path: an id without "-n" is not a
-			// planned subtree and must not slice blind.
-			if cut := strings.LastIndex(node.ID, "-n"); cut >= 0 {
-				prefix := node.ID[:cut]
-				guard.Go("chat/recalibrate", func() {
-					report, records := recordAndCalibrateDetailed(settings.Context(context.Background(), landed.Goal), planClient, settings, workingModel, landed)
-					recordPlanSurprises(graph, prefix, records)
-					if strings.TrimSpace(report) == "" {
-						return
-					}
-					_, _ = graph.PostMessage(store.Message{
-						SessionID: sessionID,
-						Role:      store.RoleSystem,
-						NodeID:    node.ID,
-						Body:      report,
-					})
+			guard.Go("chat/recalibrate", func() {
+				report, records := recordAndCalibrateDetailed(settings.Context(context.Background(), landed.Goal), planClient, settings, workingModel, landed)
+				recordPlanSurprises(graph, prefix, records)
+				if strings.TrimSpace(report) == "" {
+					return
+				}
+				_, _ = graph.PostMessage(store.Message{
+					SessionID: sessionID,
+					Role:      store.RoleSystem,
+					NodeID:    node.ID,
+					Body:      report,
 				})
-			}
-		} else if planGraph == nil && node.Parent == store.RootID {
+			})
+		} else if node.Parent == store.RootID && isSingleLeafJob(graph, node) {
 			if isReflex {
 				guard.Go("chat/record-reflex", func() {
 					record, ok := recordReflex(settings, workerModel, node, outcome, promoted)
@@ -780,6 +843,44 @@ func newVisitorCommander(path, sessionID string, graph *store.Store,
 // contract. Planned synthesis and direct jobs share this path; child results
 // remain worker-to-worker material. A gate repair copies this same task, so its
 // one polish pass cannot drift to a different voice.
+// notebookInputTitle names the digest for what it is. The leaf's input header
+// calls everything below it prior work it already has; the notebook is standing
+// memory instead, and the only thing that separates the two in the rendering is
+// this name.
+const notebookInputTitle = "your notebook — standing preferences and lessons, not results"
+
+// planNodeContract reads the working method off the plan node when this leaf
+// belongs to a planned job. A single-leaf job, a splice and a reflex have no
+// contract, and inventing a generic one would only dilute the system message
+// they do have.
+func planNodeContract(node *plan.Node) string {
+	if node == nil {
+		return ""
+	}
+	return strings.TrimSpace(node.Contract)
+}
+
+// previousAttemptInput hands the escalated attempt what the first one actually
+// produced. It is deliberately shaped like the gate's revision input: the text,
+// then the paths, then the instruction not to start over — because the failure
+// mode is not that the strong model works badly, it is that it works from
+// scratch.
+func previousAttemptInput(outcome *exec.Outcome, jobDir string) exec.Input {
+	body := strings.TrimSpace(outcome.Text)
+	if body == "" {
+		body = "It produced no usable text before it stopped."
+	}
+	absolute := make([]string, 0, len(outcome.Artifacts))
+	for _, artifact := range outcome.Artifacts {
+		absolute = append(absolute, filepath.Join(jobDir, artifact))
+	}
+	return exec.Input{
+		Title:     "your own earlier attempt at this same task",
+		Result:    "An earlier attempt on a weaker model ended as " + string(outcome.Verdict) + ". What it had when it stopped:\n" + body,
+		Artifacts: absolute,
+	}
+}
+
 func residentDeliveryBrief(graph *store.Store, node store.Node) string {
 	if node.Parent != store.RootID {
 		return node.Brief
@@ -1840,7 +1941,7 @@ func shouldGate(node store.Node, outcome *exec.Outcome, continuing bool) bool {
 
 func shouldPromoteReflex(node store.Node, outcome *exec.Outcome) bool {
 	return node.Group == resident.ReflexGroup && outcome != nil &&
-		(outcome.Promote || outcome.Stop == exec.StopBudget || outcome.Stop == exec.StopTurnCap)
+		(outcome.Promote || outcome.Overran())
 }
 
 // leafDeadline scales the hang backstop with the granted budget, as the
@@ -1856,11 +1957,147 @@ func leafDeadline(budget int) time.Duration {
 // jobPlans retains each planned job's graph for the lifetime of its run, so
 // per-leaf execution reads the same plan facts the headless scheduler reads:
 // kind and size for the call shape, and the measured outcome fields that
-// become profile records. Best-effort by design — a restart forgets in-flight
-// graphs and costs only telemetry, never work.
+// become profile records.
+//
+// This map was once defended as best-effort — "a restart forgets in-flight
+// graphs and costs only telemetry, never work." That stopped being true when
+// result-driven revision started reading the same map: editing a job's
+// unstarted remainder is work, and a redirect that finds no graph used to
+// answer with a receipt claiming the plan had been examined. So the graph is
+// journaled on the job root at plan time and rehydrated on a lookup miss.
+//
+// The rehydrated copy is deliberately half-derived. Structure comes from the
+// journal because a plan is a document that was written once; state comes from
+// the durable graph because that is where what has happened is actually
+// recorded, and a rehydrated plan that thought every node was still pending
+// would hand the sentinel a licence to edit work already running.
 type jobPlans struct {
 	mu     sync.Mutex
 	graphs map[string]plannedJob
+	// journal persists a job's structure, and hydrate reads it back. Both are
+	// nil on surfaces with no store to write to — `aforge wake` builds a
+	// registry for one bounded pass and never outlives it — and a nil pair
+	// leaves the registry exactly the memory-only map it used to be.
+	journal func(prefix string, entry plannedJob)
+	hydrate func(prefix string) (plannedJob, bool)
+}
+
+// newJobPlans builds the registry over a durable store, so a plan survives the
+// process that made it. A registry built with the bare literal instead — the
+// one bounded `wake` pass does — behaves exactly as it always has.
+func newJobPlans(graph *store.Store) *jobPlans {
+	plans := &jobPlans{graphs: map[string]plannedJob{}}
+	if graph == nil {
+		return plans
+	}
+	plans.journal = func(prefix string, entry plannedJob) {
+		if entry.graph == nil {
+			return
+		}
+		encoded, err := entry.graph.JSON()
+		if err != nil {
+			return
+		}
+		// Best-effort in the honest sense: losing this costs the ability to
+		// revise the job's remainder after a restart, which is exactly what it
+		// cost before the journal existed. It must never cost the plan itself.
+		if err := graph.RecordPlanGraph(prefix, store.PlanGraph{
+			Root: entry.root, Model: entry.model, Graph: encoded,
+		}); err != nil {
+			log.Printf("note: could not journal the plan for %s: %v", prefix, err)
+		}
+	}
+	plans.hydrate = func(prefix string) (plannedJob, bool) {
+		journaled, found, err := graph.PlanGraphFor(prefix)
+		if err != nil || !found {
+			return plannedJob{}, false
+		}
+		restored, err := plan.Load(journaled.Graph)
+		if err != nil {
+			log.Printf("note: journaled plan for %s could not be read: %v", prefix, err)
+			return plannedJob{}, false
+		}
+		// The journal holds the plan as a document; the durable graph holds
+		// what has since happened to it. Taking state from the store is not
+		// belt-and-braces — a rehydrated plan that believed every node was
+		// still pending would hand the sentinel a licence to rewrite work
+		// already running, and the frozen rule is the one rule the whole
+		// revision subsystem rests on.
+		syncPlanState(graph, prefix, journaled.Root, restored)
+		// No client: the leaves of a rehydrated job run on whatever work model
+		// is current, and the caller's own fallback is what names it.
+		return plannedJob{graph: restored, root: journaled.Root, model: journaled.Model}, true
+	}
+	return plans
+}
+
+// syncPlanState re-derives each plan node's state from the durable graph. It is
+// deliberately one read of the job's subtree rather than one read per node: the
+// whole point of rehydrating lazily is that it happens on a leaf's critical
+// path, and a twenty-node job would otherwise pay twenty round-trips for it.
+func syncPlanState(graph *store.Store, prefix, root string, restored *plan.Graph) {
+	nodes, err := graph.SubtreeNodes(root)
+	if err != nil {
+		return
+	}
+	byID := make(map[string]store.Node, len(nodes))
+	for _, node := range nodes {
+		byID[node.ID] = node
+	}
+	for index := range restored.Nodes {
+		node := &restored.Nodes[index]
+		id := fmt.Sprintf("%s-n%d", prefix, node.ID)
+		stored, ok := byID[id]
+		if !ok {
+			// The sink is minted under the bare prefix, and a container node
+			// the adapter dropped has no store node at all. Neither is evidence
+			// that anything has happened to it.
+			if stored, ok = byID[prefix]; !ok || stored.ID != root {
+				continue
+			}
+		}
+		node.State = planStateOf(stored.Status)
+		if summary := strings.TrimSpace(stored.Summary); summary != "" {
+			node.Result = summary
+		}
+		if failure := strings.TrimSpace(stored.Error); failure != "" {
+			node.Failure = failure
+		}
+	}
+}
+
+// planStateOf maps a durable status onto the plan's own vocabulary. Cancelled
+// lands on failed because the plan has no word for "deliberately dropped" and
+// the property that matters downstream is the same either way: it produced
+// nothing, and it is not editable.
+func planStateOf(status store.Status) plan.State {
+	switch status {
+	case store.Done:
+		return plan.StateDone
+	case store.Failed, store.Cancelled:
+		return plan.StateFailed
+	case store.Claimed, store.Running:
+		return plan.StateRunning
+	default:
+		return plan.StatePending
+	}
+}
+
+// entry reads one retained job, rehydrating from the journal on a miss and
+// caching what it finds. Callers hold the registry lock.
+func (j *jobPlans) entry(prefix string) (plannedJob, bool) {
+	if found, ok := j.graphs[prefix]; ok {
+		return found, true
+	}
+	if j.hydrate == nil || prefix == "" {
+		return plannedJob{}, false
+	}
+	restored, ok := j.hydrate(prefix)
+	if !ok {
+		return plannedJob{}, false
+	}
+	j.graphs[prefix] = restored
+	return restored, true
 }
 
 // plannedJob pairs a retained graph with the store id of its sink node — the
@@ -1875,7 +2112,11 @@ type plannedJob struct {
 func (j *jobPlans) put(prefix string, graph *plan.Graph, root, model string, client router.Client) {
 	j.mu.Lock()
 	defer j.mu.Unlock()
-	j.graphs[prefix] = plannedJob{graph: graph, root: root, model: model, client: client}
+	entry := plannedJob{graph: graph, root: root, model: model, client: client}
+	j.graphs[prefix] = entry
+	if j.journal != nil {
+		j.journal(prefix, entry)
+	}
 }
 
 // get reads one retained job without holding the registry across whatever the
@@ -1883,42 +2124,49 @@ func (j *jobPlans) put(prefix string, graph *plan.Graph, root, model string, cli
 func (j *jobPlans) get(prefix string) (plannedJob, bool) {
 	j.mu.Lock()
 	defer j.mu.Unlock()
-	entry, ok := j.graphs[prefix]
-	return entry, ok
+	return j.entry(prefix)
 }
 
 // lookup resolves a store node id back to its plan node. The job root uses the
 // bare prefix so planning messages can name it before admission; other nodes
 // retain "<prefix>-n<planID>".
-func (j *jobPlans) lookup(nodeID string) (*plan.Graph, *plan.Node, string, router.Client) {
+//
+// The prefix comes back with the graph because it is the graph's own key, and
+// every caller that re-derived it from the id instead got it wrong somewhere:
+// a planned root has no "-n" in it at all, and an overrun repair root has one
+// that belongs to the job it repairs rather than to itself. Returning the key
+// makes the namespace a fact the registry states rather than a string every
+// caller re-parses.
+func (j *jobPlans) lookup(nodeID string) (string, *plan.Graph, *plan.Node, string, router.Client) {
 	j.mu.Lock()
 	defer j.mu.Unlock()
 
-	if entry, ok := j.graphs[nodeID]; ok {
+	if entry, ok := j.entry(nodeID); ok {
 		if len(entry.graph.Nodes) == 0 {
-			return entry.graph, nil, entry.model, entry.client
+			return nodeID, entry.graph, nil, entry.model, entry.client
 		}
-		return entry.graph, &entry.graph.Nodes[len(entry.graph.Nodes)-1], entry.model, entry.client
+		return nodeID, entry.graph, &entry.graph.Nodes[len(entry.graph.Nodes)-1], entry.model, entry.client
 	}
 
 	cut := strings.LastIndex(nodeID, "-n")
 	if cut < 0 {
-		return nil, nil, "", nil
+		return "", nil, nil, "", nil
 	}
 	planID, err := strconv.Atoi(nodeID[cut+2:])
 	if err != nil {
-		return nil, nil, "", nil
+		return "", nil, nil, "", nil
 	}
-	entry, ok := j.graphs[nodeID[:cut]]
+	prefix := nodeID[:cut]
+	entry, ok := j.entry(prefix)
 	if !ok {
-		return nil, nil, "", nil
+		return "", nil, nil, "", nil
 	}
 	for index := range entry.graph.Nodes {
 		if entry.graph.Nodes[index].ID == planID {
-			return entry.graph, &entry.graph.Nodes[index], entry.model, entry.client
+			return prefix, entry.graph, &entry.graph.Nodes[index], entry.model, entry.client
 		}
 	}
-	return entry.graph, nil, entry.model, entry.client
+	return prefix, entry.graph, nil, entry.model, entry.client
 }
 
 // recordOutcome writes a leaf's measured ending onto its plan node — the same
@@ -1945,24 +2193,32 @@ func (j *jobPlans) recordOutcome(node *plan.Node, outcome *exec.Outcome, err err
 // takeIfRoot removes and returns a job's graph when the landed node is that
 // graph's sink — the moment its leaves become profile evidence. Any other
 // node returns nil and the graph stays for the leaves still to land.
-func (j *jobPlans) takeIfRoot(nodeID string) *plan.Graph {
+//
+// It returns the registry key alongside the graph. The key is the id namespace
+// every node of that job was minted under, and it is the one thing the caller
+// must not guess: a recalibration that slices the root id looking for "-n"
+// finds nothing on a planned root, so it silently recorded no surprises at
+// all — and on an overrun repair root it found the wrong one and wrote this
+// job's surprises onto a sibling leaf of another.
+func (j *jobPlans) takeIfRoot(nodeID string) (*plan.Graph, string) {
 	j.mu.Lock()
 	defer j.mu.Unlock()
-	if entry, ok := j.graphs[nodeID]; ok && entry.root == nodeID {
+	if entry, ok := j.entry(nodeID); ok && entry.root == nodeID {
 		delete(j.graphs, nodeID)
-		return entry.graph
+		return entry.graph, nodeID
 	}
 
 	cut := strings.LastIndex(nodeID, "-n")
 	if cut < 0 {
-		return nil
+		return nil, ""
 	}
-	entry, ok := j.graphs[nodeID[:cut]]
+	prefix := nodeID[:cut]
+	entry, ok := j.entry(prefix)
 	if !ok || entry.root != nodeID {
-		return nil
+		return nil, ""
 	}
-	delete(j.graphs, nodeID[:cut])
-	return entry.graph
+	delete(j.graphs, prefix)
+	return entry.graph, prefix
 }
 
 func (j *jobPlans) markRunning(node *plan.Node) {
@@ -1976,12 +2232,10 @@ func (j *jobPlans) markRunning(node *plan.Node) {
 // whole pass holds the registry lock — the sentinel must see a consistent
 // graph, and its call is a short structuring call — and it skips entirely
 // when the job has no unstarted work left to edit.
-func (j *jobPlans) reviseAfter(ctx context.Context, settings config.Config, client *liveClient, graph *store.Store, node store.Node, planGraph *plan.Graph, summary string, failed bool, workerModel string) {
-	cut := strings.LastIndex(node.ID, "-n")
-	if cut < 0 {
+func (j *jobPlans) reviseAfter(ctx context.Context, settings config.Config, client *liveClient, graph *store.Store, node store.Node, prefix string, planGraph *plan.Graph, summary string, artifacts []string, failure string, workerModel string) {
+	if prefix == "" {
 		return
 	}
-	prefix := node.ID[:cut]
 	entry, ok := j.get(prefix)
 	if !ok || entry.root == node.ID {
 		return
@@ -1992,7 +2246,10 @@ func (j *jobPlans) reviseAfter(ctx context.Context, settings config.Config, clie
 	}
 	pending := 0
 	for _, sibling := range active {
-		if sibling.Status == store.Pending && strings.HasPrefix(sibling.ID, prefix) && sibling.ID != entry.root {
+		// The separator is not cosmetic: without it "task-14" claims every
+		// pending node of "task-142", and the job pays for a full sentinel pass
+		// — held under the registry lock — over another job's remainder.
+		if sibling.Status == store.Pending && isJobNode(sibling.ID, prefix) && sibling.ID != entry.root {
 			pending++
 		}
 	}
@@ -2004,11 +2261,18 @@ func (j *jobPlans) reviseAfter(ctx context.Context, settings config.Config, clie
 	defer j.mu.Unlock()
 	judgeCtx := router.WithAvoidModel(ctx, workerModel)
 	operations, _, err := plan.Revise(settings.Context(judgeCtx, planGraph.Goal), client, planGraph,
-		resident.RevisionEvent(node, summary, failed))
+		resident.RevisionEvent(node, summary, artifacts, failure))
 	if err != nil || len(operations) == 0 {
 		return
 	}
 	applied, notes := resident.ApplyRevision(graph, planGraph, prefix, entry.root, operations)
+	if applied > 0 && j.journal != nil {
+		// The journaled structure is now behind the graph in memory. Re-writing
+		// it here rather than on every landing is the whole economy of the
+		// arrangement: a revision is rare and changes the document, a landing is
+		// constant and changes only what the store already records.
+		j.journal(prefix, entry)
+	}
 	if len(notes) > 0 {
 		_, _ = graph.PostMessage(store.Message{
 			SessionID: node.Provenance.SessionID,
@@ -2048,9 +2312,15 @@ func (j *jobPlans) reviseForUser(ctx context.Context, settings config.Config, cl
 	flavor resident.RevisionFlavor) (resident.Redirection, error) {
 	j.mu.Lock()
 	defer j.mu.Unlock()
-	entry, ok := j.graphs[job.ID]
+	entry, ok := j.entry(job.ID)
 	if !ok {
-		return resident.Redirection{}, nil
+		// Silence here was a lie with a receipt attached. An empty Redirection
+		// and a nil error are indistinguishable from "the sentinel read the
+		// plan and found nothing to change", so the user was told exactly that
+		// while every pending leaf went on building the version they had just
+		// asked to replace. The caller already owns an honest branch for a
+		// revision that could not happen; this is how it reaches it.
+		return resident.Redirection{}, errNoRetainedPlan
 	}
 	operations, _, err := plan.Revise(settings.Context(ctx, entry.graph.Goal), client, entry.graph,
 		resident.UserRevisionEvent(message, flavor))
@@ -2071,7 +2341,7 @@ func (j *jobPlans) reviseForUser(ctx context.Context, settings config.Config, cl
 		}
 		editable = append(editable, operation)
 	}
-	_, notes := resident.ApplyRevision(graph, entry.graph, job.ID, entry.root, editable)
+	applied, notes := resident.ApplyRevision(graph, entry.graph, job.ID, entry.root, editable)
 	revision.Notes = notes
 	for _, operation := range editable {
 		if !operation.Applied {
@@ -2086,7 +2356,39 @@ func (j *jobPlans) reviseForUser(ctx context.Context, settings config.Config, cl
 			revision.Amended++
 		}
 	}
+	if applied > 0 && j.journal != nil {
+		j.journal(job.ID, entry)
+	}
 	return revision, nil
+}
+
+// errNoRetainedPlan says that this job's plan is not in hand — not that it
+// needed no changes. The distinction is the whole of the redirect receipt's
+// honesty, so it is a sentinel value rather than a formatted string.
+var errNoRetainedPlan = errors.New("its plan is not in hand, so the remaining steps could not be re-read")
+
+// isJobNode reports whether a store id belongs to the job minted under prefix.
+// The separator is the entire content of the test: ids are minted as
+// "<prefix>-n<planID>", so "task-14" is not a prefix of "task-142-n1" in any
+// sense the graph means, however much it looks like one to strings.HasPrefix.
+func isJobNode(id, prefix string) bool {
+	return id == prefix || strings.HasPrefix(id, prefix+"-n")
+}
+
+// isSingleLeafJob asks the durable graph whether this job really was one leaf.
+//
+// The question used to be answered by "no plan graph is in hand", which is a
+// fact about this process rather than about the job: after a restart a landed
+// twelve-node project answered yes, and went into the durable profile as one
+// direct leaf — biasing the planner's own ruler towards never decomposing
+// anything. The store knows the shape whoever is asking; an error fails closed,
+// because a measurement we cannot justify is worse than one we skip.
+func isSingleLeafJob(graph *store.Store, node store.Node) bool {
+	nodes, err := graph.SubtreeNodes(node.ID)
+	if err != nil {
+		return false
+	}
+	return len(nodes) <= 1
 }
 
 func nodeDisplay(node store.Node) string {
@@ -2612,7 +2914,7 @@ Begin with the exact job count. State what the series learned, then where its du
 // digestTerritory is the territory mechanism's only model call. Membership
 // and the display noun have already been chosen deterministically.
 func digestTerritory(settings config.Config, client *liveClient) resident.TerritoryDigestFunc {
-	return func(ctx context.Context, title string, jobs []resident.TerritoryDigestJob) (string, error) {
+	return func(ctx context.Context, title string, jobs []resident.TerritoryDigestJob, voice string) (string, error) {
 		var input strings.Builder
 		fmt.Fprintf(&input, "Territory: %s\nJobs: %d\n", title, len(jobs))
 		for _, job := range jobs {
@@ -2623,7 +2925,7 @@ func digestTerritory(settings config.Config, client *liveClient) resident.Territ
 			}
 		}
 		response, err := client.CompleteWithMessages(settings.Context(ctx, "reflect"), []ai.Message{
-			{Role: "system", Content: []ai.ContentPart{{Type: "text", Text: territoryDigestSystemPrompt}}},
+			{Role: "system", Content: []ai.ContentPart{{Type: "text", Text: territoryDigestSystemPrompt + voice}}},
 			{Role: "user", Content: []ai.ContentPart{{Type: "text", Text: input.String()}}},
 		}, ai.WithMaxTokens(300))
 		if err != nil || response == nil {
@@ -2666,7 +2968,7 @@ var morningBriefSchema = json.RawMessage(`{
 // surfaces never see this client; they only attach and render the message the
 // resident journals. The panel may verify the JSON schema exactly as it does
 // for other bounded planning verdicts.
-func composeMorningBrief(settings config.Config, client *liveClient) resident.BriefComposeFunc {
+func composeMorningBrief(settings config.Config, client *liveClient, graph *store.Store) resident.BriefComposeFunc {
 	return func(ctx context.Context, activity resident.BriefActivity) (resident.BriefDraft, error) {
 		input, err := json.Marshal(activity)
 		if err != nil {
@@ -2677,8 +2979,13 @@ func composeMorningBrief(settings config.Config, client *liveClient) resident.Br
 		if client.routed() {
 			options = append(options, ai.WithSchema(morningBriefSchema))
 		}
+		// The first thing a person reads after being away is not the place to
+		// disobey what they taught the assistant yesterday. "Stop opening with a
+		// preamble" was learned, obeyed in ordinary replies, and then broken by
+		// the one message they were guaranteed to read.
 		response, err := client.CompleteWithMessages(briefCtx, []ai.Message{
-			{Role: "system", Content: []ai.ContentPart{{Type: "text", Text: morningBriefSystemPrompt}}},
+			{Role: "system", Content: []ai.ContentPart{{Type: "text",
+				Text: resident.VoicePrompt(graph, morningBriefSystemPrompt)}}},
 			{Role: "user", Content: []ai.ContentPart{{Type: "text", Text: string(input)}}},
 		}, options...)
 		if err != nil || response == nil {
@@ -2705,8 +3012,19 @@ func checkSentinel(settings config.Config, client *liveClient) resident.Sentinel
 	return func(ctx context.Context, prompt resident.SentinelPrompt) (resident.SentinelVerdict, error) {
 		input := fmt.Sprintf("Invariant (verbatim):\n%s\n\nSentinel hint:\n%s\n\nWake evidence:\n%s",
 			prompt.Invariant, prompt.SentinelHint, prompt.Evidence)
+		// The charter's own history, last: it is the only part of this prompt
+		// that moves between wakes, and for a poll charter it is the only part
+		// that moves at all. Without it the same judgment was made against the
+		// same bytes an hour later, however the last one turned out.
+		if len(prompt.Previous) > 0 {
+			input += "\n\nYour last judgments on this same charter, newest first, and how each turned out:\n"
+			for _, line := range prompt.Previous {
+				input += "- " + line + "\n"
+			}
+		}
+		system := sentinelSystemPrompt + prompt.Voice
 		response, err := client.CompleteWithMessages(settings.Context(ctx, "sentinel"), []ai.Message{
-			{Role: "system", Content: []ai.ContentPart{{Type: "text", Text: sentinelSystemPrompt}}},
+			{Role: "system", Content: []ai.ContentPart{{Type: "text", Text: system}}},
 			{Role: "user", Content: []ai.ContentPart{{Type: "text", Text: input}}},
 		}, ai.WithMaxTokens(60))
 		if err != nil {

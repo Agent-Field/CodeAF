@@ -365,6 +365,11 @@ func (l *Linear) Run(ctx context.Context, task Task) (returned *Outcome, runErr 
 		if landing == 0 && time.Until(deadline) <= landingReserve {
 			landing = landingTurns
 			landingStop = StopDeadline
+			// Recorded the moment the landing is ordered rather than when it
+			// fails. The landing usually succeeds — that is what it is for — and
+			// on that path Stop stays StopDone, so this is the only record that
+			// the leaf was still working when the clock took it.
+			outcome.Exhausted = StopDeadline
 			trace.note("deadline close — landing reserve started")
 			messages = append(messages, ai.Message{Role: "user", Content: text(
 				"The wall-clock deadline for this task is close. Use the remaining time only to " +
@@ -567,6 +572,9 @@ func (l *Linear) Run(ctx context.Context, task Task) (returned *Outcome, runErr 
 		if spent(outcome) >= l.maxTokens && landing == 0 {
 			landing = landingTurns
 			landingStop = StopBudget
+			// Same reason as the deadline reserve above: the budget is spent
+			// here, whether or not the landing later has to be cut short.
+			outcome.Exhausted = StopBudget
 			trace.note("budget exhausted — landing reserve granted")
 			messages = append(messages, ai.Message{Role: "user", Content: text(
 				"The budget for this task is spent. You have a few final tool calls to land the " +
@@ -657,6 +665,14 @@ func verdictFor(outcome *Outcome) provider.Verdict {
 		return provider.VerdictEmptyResponse
 	case StopError, StopDeadline:
 		return provider.VerdictProviderFailure
+	}
+	// A landing the leaf was ordered into is not the ending it chose. Stop says
+	// it finished cleanly, which is true — it complied with the order — but the
+	// work was not finished when the order came, and that is precisely what a
+	// rating measures. Only the budget grades: a deadline is a fact about the
+	// clock rather than about ability, exactly as the StopDeadline arm above.
+	if outcome.Exhausted == StopBudget {
+		return provider.VerdictBudgetStop
 	}
 	if strings.TrimSpace(outcome.Text) == "" {
 		return provider.VerdictEmptyResponse

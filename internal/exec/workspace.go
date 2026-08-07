@@ -131,8 +131,20 @@ func (w *Workspace) Size(path string) (int64, bool) {
 	return info.Size(), true
 }
 
-// Record notes that a node produced a file.
-func (w *Workspace) Record(nodeID int, path string) {
+// Record notes that a node produced a file the person who asked for the work
+// would call a deliverable.
+func (w *Workspace) Record(nodeID int, path string) { w.record(nodeID, path, true) }
+
+// RecordInternal notes a file the harness wrote for its own purposes — a
+// background job's log, an extracted-document cache. They are real files in the
+// workspace and the bookkeeping should know about them, but they are not the
+// job's output: named to the user as "the files that job wrote", a process log
+// and a PDF text dump stand beside the actual report as if they were peers.
+// The .obs spill directory already solves this by never calling Record at all;
+// these two cases need the record and only want it out of the answer.
+func (w *Workspace) RecordInternal(nodeID int, path string) { w.record(nodeID, path, false) }
+
+func (w *Workspace) record(nodeID int, path string, deliverable bool) {
 	relative, err := filepath.Rel(w.root, path)
 	if err != nil || strings.HasPrefix(relative, "..") {
 		return
@@ -142,7 +154,9 @@ func (w *Workspace) Record(nodeID int, path string) {
 	if w.artifacts[nodeID] == nil {
 		w.artifacts[nodeID] = map[string]bool{}
 	}
-	w.artifacts[nodeID][relative] = true
+	// A path recorded both ways is a deliverable: the harness happening to
+	// touch a file the agent wrote does not demote it.
+	w.artifacts[nodeID][relative] = w.artifacts[nodeID][relative] || deliverable
 }
 
 // nextJobID gives every background process in the shared workspace a distinct
@@ -155,13 +169,18 @@ func (w *Workspace) nextJobID() int {
 	return w.jobID
 }
 
-// Artifacts lists what a node wrote, in stable order.
+// Artifacts lists what a node wrote for the person who asked, in stable order.
+// The harness's own records are held back: they flow into Outcome.Artifacts,
+// from there into the head's files line and into every downstream leaf's
+// "(files: …)" pointer, and none of those is a place to name a log.
 func (w *Workspace) Artifacts(nodeID int) []string {
 	w.mutex.Lock()
 	defer w.mutex.Unlock()
 	paths := make([]string, 0, len(w.artifacts[nodeID]))
-	for path := range w.artifacts[nodeID] {
-		paths = append(paths, path)
+	for path, deliverable := range w.artifacts[nodeID] {
+		if deliverable {
+			paths = append(paths, path)
+		}
 	}
 	sort.Strings(paths)
 	return paths

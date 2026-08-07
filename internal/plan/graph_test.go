@@ -1,10 +1,14 @@
 package plan
 
 import (
+	"context"
 	"fmt"
 	"math/rand"
 	"strings"
 	"testing"
+	"unicode/utf8"
+
+	"github.com/Agent-Field/agentfield/sdk/go/ai"
 )
 
 // chain builds a graph of n nodes in one stage, wired a → b → c … so that the
@@ -511,4 +515,80 @@ func TestWavesIgnoreStages(t *testing.T) {
 	if !contains(waves[1], dependent) {
 		t.Errorf("dependent node not in wave 1: %v", waves)
 	}
+}
+
+// The reviser is asked to find where a result contradicts a specific assumption
+// in a specific unstarted node, and it was the only plan pass in the system that
+// saw neither: no assumptions, because it never called graph.context(), and no
+// results, because stateBlock rendered a title and a state and stopped there.
+// A leaf that discovered the API was deprecated and wrote the finding to a file
+// reached it as one sentence about a filename.
+func TestTheReviserSeesTheAssumptionsAndWhatTheWorkFound(t *testing.T) {
+	client := &reviseCaptureClient{}
+	graph := &Graph{
+		Goal:     "ship the client",
+		Settled:  []string{"the client targets the v2 API"},
+		Open:     []string{"whether pagination is cursor-based"},
+		Evidence: "one working end-to-end call",
+		NextID:   4,
+		Nodes: []Node{
+			{ID: 1, Stage: 1, Kind: KindWork, Title: "Survey the API", Summary: "read the docs",
+				State: StateDone, Result: "every v2 endpoint answers 410 Gone; v1 is the only live surface",
+				Artifacts: []string{"01-survey.md"}},
+			{ID: 2, Stage: 2, Kind: KindWork, Title: "Write the client", Summary: "against v2",
+				Needs: []int{1}, State: StatePending},
+			{ID: 3, Stage: 2, Kind: KindWork, Title: "Probe auth", Summary: "check tokens",
+				State: StateFailed, Failure: "the auth host refused every connection"},
+		},
+	}
+	if _, _, err := Revise(context.Background(), client, graph, "Node \"Survey the API\" finished."); err != nil {
+		t.Fatal(err)
+	}
+	captured := client.seen
+	for _, want := range []string{
+		"the client targets the v2 API",          // settled
+		"whether pagination is cursor-based",     // open
+		"one working end-to-end call",            // evidence
+		"410 Gone",                               // what a landed node produced
+		"01-survey.md",                           // and what it left behind
+		"the auth host refused every connection", // and why a node failed
+	} {
+		if !strings.Contains(captured, want) {
+			t.Errorf("the reviser was never shown %q:\n%s", want, captured)
+		}
+	}
+}
+
+// The block rides a structuring call whose whole value is that it is short. A
+// plan with thirty landed leaves must not turn one revision into a transcript
+// replay, and a byte cut through a character would ride the entire prompt.
+func TestTheStateBlockStaysWithinItsBudgetAndOnRuneBoundaries(t *testing.T) {
+	graph := &Graph{Goal: "large", NextID: 40}
+	for id := 1; id <= 30; id++ {
+		graph.Nodes = append(graph.Nodes, Node{
+			ID: id, Stage: 1, Kind: KindWork, Title: "Leaf", Summary: "work",
+			State: StateDone, Result: strings.Repeat("é", 2000),
+		})
+	}
+	block := graph.stateBlock()
+	if !utf8.ValidString(block) {
+		t.Fatal("the state block cut a character in half")
+	}
+	// One line per node, plus at most the results budget on top of it.
+	if len(block) > 30*200+stateResultsBytes+stateResultBytes {
+		t.Fatalf("state block is %d bytes; the reviser's prompt is not a transcript", len(block))
+	}
+}
+
+// reviseCaptureClient keeps every user message rather than the last, because
+// the reviser sends the plan and the event as two of them.
+type reviseCaptureClient struct{ seen string }
+
+func (c *reviseCaptureClient) CompleteWithMessages(_ context.Context, messages []ai.Message, _ ...ai.Option) (*ai.Response, error) {
+	for _, message := range messages {
+		if message.Role != "system" {
+			c.seen += textOf(message) + "\n"
+		}
+	}
+	return response(`{"operations":[]}`), nil
 }
