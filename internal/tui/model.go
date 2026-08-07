@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Agent-Field/aforge-v2/internal/config"
 	"github.com/Agent-Field/aforge-v2/internal/store"
 	"github.com/Agent-Field/aforge-v2/internal/voice"
 	"github.com/charmbracelet/bubbles/textinput"
@@ -389,6 +390,16 @@ type Model struct {
 	notebookOption        int
 	helpReturnFocus       paneFocus
 	helpReturnInput       bool
+	settingsRegistry      *config.Settings
+	settingsGroups        []config.SettingGroup
+	settingsIndex         int
+	settingsOffset        int
+	settingsEditing       bool
+	settingsEditor        textinput.Model
+	settingsError         string
+	settingsReturnFocus   paneFocus
+	settingsReturnInput   bool
+	modelPickerReturn     paletteKind
 	historyEntries        []historyEntry
 	historyTerms          string
 	historyVisible        bool
@@ -463,6 +474,9 @@ type Model struct {
 	nodeBackBounds            paneBounds
 	paletteCloseBounds        paneBounds
 	helpBounds                paneBounds
+	settingsBounds            paneBounds
+	headerSettingsBounds      paneBounds
+	settingsRowHits           []settingsRowBounds
 	modelPickerBounds         paneBounds
 	modelSlotRows             []modelSlotRow
 	modelPickerRows           []modelPickerRow
@@ -560,6 +574,7 @@ func newModel(backend Backend, sessionID string, commander Commander) *Model {
 		sessionID:             sessionID,
 		commander:             commander,
 		input:                 input,
+		settingsEditor:        newSettingsEditor(),
 		chat:                  viewport.New(1, 1),
 		graph:                 viewport.New(1, 1),
 		self:                  viewport.New(1, 1),
@@ -598,6 +613,9 @@ func newModel(backend Backend, sessionID string, commander Commander) *Model {
 	if saved, ok := commander.(splitStore); ok {
 		m.splitPct = clampSplitPct(saved.SplitPct())
 	}
+	if source, ok := commander.(settingsSource); ok {
+		m.settingsRegistry = source.Settings()
+	}
 	m.setSize(100, 30)
 	return m
 }
@@ -610,11 +628,13 @@ type splitStore interface {
 	SaveSplitPct(pct int)
 }
 
-// The divider clamps so neither pane can be dragged into uselessness.
+// The divider clamps so neither pane can be dragged into uselessness. The band
+// lives in the settings registry so the drag, the [ ] nudge, and the settings
+// row cannot drift apart.
 const (
-	defaultSplitPct = 80
-	minSplitPct     = 25
-	maxSplitPct     = 85
+	defaultSplitPct = config.DefaultSplitPct
+	minSplitPct     = config.MinSplitPct
+	maxSplitPct     = config.MaxSplitPct
 )
 
 func clampSplitPct(pct int) int {
@@ -875,6 +895,12 @@ func (m *Model) updateKey(message tea.KeyMsg) (tea.Cmd, bool) {
 		m.removeAttachment(len(m.attachments) - 1)
 		return nil, true
 	}
+	// The settings sheet is modal above every chord but quit: while an inline
+	// editor is open, ctrl+v is a paste the terminal delivers as runes, not a
+	// microphone, and a letter is a letter.
+	if m.palette == paletteSettings {
+		return m.updateSettingsKey(message)
+	}
 	switch key {
 	case keyBindings.thread:
 		return m.selectPlace(placeThread), true
@@ -920,6 +946,11 @@ func (m *Model) updateKey(message tea.KeyMsg) (tea.Cmd, bool) {
 	if key == "?" && m.input.Value() == "" {
 		m.openHelp()
 		return nil, true
+	}
+	// The settings door: the option chord anywhere, and the bare comma only
+	// outside the input, where a letter is a command rather than a character.
+	if key == keyBindings.settings || (key == "," && !m.inputFocused && m.nodeViewID == "") {
+		return m.openSettings(), true
 	}
 	if m.paletteOpen() {
 		if command, handled := m.updatePaletteKey(key); handled {
@@ -1047,10 +1078,10 @@ func (m *Model) updateKey(message tea.KeyMsg) (tea.Cmd, bool) {
 	if m.focus == focusHeader {
 		switch key {
 		case "left", "up", "k":
-			m.headerFocusIndex = (m.headerFocusIndex + 2) % 3
+			m.headerFocusIndex = (m.headerFocusIndex + headerDoors - 1) % headerDoors
 			return nil, true
 		case "right", "down", "j":
-			m.headerFocusIndex = (m.headerFocusIndex + 1) % 3
+			m.headerFocusIndex = (m.headerFocusIndex + 1) % headerDoors
 			return nil, true
 		case "enter":
 			return m.activateHeaderFocus(), true
@@ -2136,6 +2167,14 @@ func (m *Model) updateMouse(message tea.MouseMsg) (tea.Cmd, bool) {
 			delta = 3
 		}
 		m.scrollHelp(delta)
+		return nil, true
+	}
+	if m.palette == paletteSettings && m.settingsBounds.contains(event.X, event.Y) {
+		delta := -3
+		if down {
+			delta = 3
+		}
+		m.scrollSettings(delta)
 		return nil, true
 	}
 	if m.nodeViewID != "" {

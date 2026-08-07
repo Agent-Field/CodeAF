@@ -146,6 +146,12 @@ type Config struct {
 	PracticeIdle      time.Duration
 	BriefAfter        time.Duration
 
+	// PracticeDemandPct and ProposeSkills are the learning dial. They are
+	// persisted settings with no environment pin: the surface writes them now
+	// so the preference already exists for the practice loops that read it.
+	PracticeDemandPct int
+	ProposeSkills     bool
+
 	// Panel is the set of models a run may route across, from AFORGE_MODELS. An
 	// empty panel is the default and is the kill switch: with no panel the
 	// harness builds the same single adapter it always did and no routing code
@@ -169,8 +175,6 @@ func Load() (Config, error) {
 		SpeechModel:       strings.TrimSpace(os.Getenv("AFORGE_SPEECH_MODEL")),
 		MusicModel:        strings.TrimSpace(os.Getenv("AFORGE_MUSIC_MODEL")),
 		VideoModel:        strings.TrimSpace(os.Getenv("AFORGE_VIDEO_MODEL")),
-		VisionModel:       strings.TrimSpace(os.Getenv("AFORGE_VISION_MODEL")),
-		DocumentEngine:    firstNonEmpty(os.Getenv("AFORGE_DOC_ENGINE"), DefaultDocumentEngine),
 		Temperature:       DefaultTemperature,
 		MaxTokens:         DefaultMaxTokens,
 		Timeout:           DefaultTimeout,
@@ -190,10 +194,29 @@ func Load() (Config, error) {
 	if config.APIKey == "" {
 		return Config{}, errors.New("OPENROUTER_API_KEY (or OPENAI_API_KEY) is required")
 	}
-	switch config.DocumentEngine = strings.ToLower(strings.TrimSpace(config.DocumentEngine)); config.DocumentEngine {
-	case "auto", "local", "free", "ocr":
-	default:
-		return Config{}, fmt.Errorf("AFORGE_DOC_ENGINE: unknown engine %q (auto, local, free, ocr)", config.DocumentEngine)
+	// Every user-tunable knob below resolves through the settings registry's
+	// one order — environment, then the profile's config.json, then the
+	// default — so a value changed in the settings sheet is read back here on
+	// the next launch without a second lookup path.
+	engine, err := DocumentEngineAt(config.ProfileDir)
+	if err != nil {
+		return Config{}, err
+	}
+	config.DocumentEngine = engine
+	config.VisionModel = VisionModelAt(config.ProfileDir)
+	config.PracticeDemandPct = PracticeDemandPctAt(config.ProfileDir)
+	config.ProposeSkills = ProposeSkillsAt(config.ProfileDir)
+	if config.PracticeIdle, err = PracticeIdleAt(config.ProfileDir); err != nil {
+		return Config{}, err
+	}
+	if config.BriefAfter, err = BriefAfterAt(config.ProfileDir); err != nil {
+		return Config{}, err
+	}
+	if config.PracticeBudgetUSD, err = PracticeBudgetUSDAt(config.ProfileDir); err != nil {
+		return Config{}, err
+	}
+	if config.DailyBudgetUSD, err = DailyBudgetUSDAt(config.ProfileDir); err != nil {
+		return Config{}, err
 	}
 	if raw := strings.TrimSpace(os.Getenv("AFORGE_REASONING")); raw != "" {
 		effort, ok := provider.ParseEffort(raw)
@@ -208,13 +231,6 @@ func Load() (Config, error) {
 			return Config{}, fmt.Errorf("AFORGE_EXEC_REASONING: unknown effort %q (off, low, medium, high)", raw)
 		}
 		config.ExecReasoning = effort
-	}
-	if raw := strings.TrimSpace(os.Getenv("AFORGE_BRIEF_AFTER")); raw != "" {
-		duration, err := time.ParseDuration(raw)
-		if err != nil || duration < 0 {
-			return Config{}, fmt.Errorf("AFORGE_BRIEF_AFTER: want a non-negative duration, got %q", raw)
-		}
-		config.BriefAfter = duration
 	}
 	for _, knob := range []struct {
 		name   string
@@ -233,25 +249,6 @@ func Load() (Config, error) {
 			return Config{}, fmt.Errorf("%s: want a non-negative integer, got %q", knob.name, raw)
 		}
 		*knob.target = value
-	}
-	dailyBudget, err := DailyBudgetUSDAt(config.ProfileDir)
-	if err != nil {
-		return Config{}, err
-	}
-	config.DailyBudgetUSD = dailyBudget
-	if raw := strings.TrimSpace(os.Getenv("AFORGE_PRACTICE_BUDGET")); raw != "" {
-		practiceBudget, err := validateDailyBudgetValue(raw, "AFORGE_PRACTICE_BUDGET")
-		if err != nil {
-			return Config{}, err
-		}
-		config.PracticeBudgetUSD = practiceBudget
-	}
-	if raw := strings.TrimSpace(os.Getenv("AFORGE_PRACTICE_IDLE")); raw != "" {
-		idle, err := time.ParseDuration(raw)
-		if err != nil || idle < 0 {
-			return Config{}, fmt.Errorf("AFORGE_PRACTICE_IDLE: want a non-negative duration, got %q", raw)
-		}
-		config.PracticeIdle = idle
 	}
 	panel, err := router.LoadPanel(os.Getenv("AFORGE_MODELS"))
 	if err != nil {

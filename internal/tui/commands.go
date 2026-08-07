@@ -21,6 +21,7 @@ const (
 	paletteModel
 	paletteMemory
 	paletteHelp
+	paletteSettings
 )
 
 var modelSlots = []string{"talk", "work", "voice", "image", "speech", "music", "video", "boost"}
@@ -39,21 +40,23 @@ type slashHandler func(*Model, []string) tea.Cmd
 // keyBindings is the single source for routed chords and every help label
 // that names them. Bubble Tea reports option-G as the literal "alt+g".
 var keyBindings = struct {
-	graph   string
-	thread  string
-	board   string
-	self    string
-	voice   string
-	boost   string
-	newline string
+	graph    string
+	thread   string
+	board    string
+	self     string
+	voice    string
+	boost    string
+	newline  string
+	settings string
 }{
-	graph:   "alt+g",
-	thread:  "alt+1",
-	board:   "alt+2",
-	self:    "alt+3",
-	voice:   "alt+v",
-	boost:   "alt+b",
-	newline: "ctrl+j",
+	graph:    "alt+g",
+	thread:   "alt+1",
+	board:    "alt+2",
+	self:     "alt+3",
+	voice:    "alt+v",
+	boost:    "alt+b",
+	newline:  "ctrl+j",
+	settings: "alt+,",
 }
 
 var slashCommands = []commandSpec{
@@ -65,6 +68,7 @@ var slashCommands = []commandSpec{
 	{name: "history", description: "find settled work in permanent graph memory", takesArg: true},
 	{name: "budget", description: "show or change today's dollar rail", takesArg: true},
 	{name: "standing", description: "list active standing charters"},
+	{name: "settings", description: "open every setting in one place"},
 	{name: "help", description: "show the complete keyboard and command guide"},
 	{name: "model", description: "choose any model slot", takesArg: true},
 	{name: "memory", description: "alias for /notebook"},
@@ -80,7 +84,8 @@ func init() {
 		"tasks": (*Model).slashTasks, "node": (*Model).slashNode,
 		"notebook": (*Model).slashNotebook, "history": (*Model).slashHistory, "budget": (*Model).slashBudget,
 		"standing": (*Model).slashStanding, "help": (*Model).slashHelp, "model": (*Model).slashModel,
-		"memory": (*Model).slashNotebook, "session": (*Model).slashSession, "new": (*Model).slashNew,
+		"settings": (*Model).slashSettings, "memory": (*Model).slashNotebook,
+		"session": (*Model).slashSession, "new": (*Model).slashNew,
 		"cancel": (*Model).slashCancel, "quit": (*Model).slashQuit,
 	}
 	for index := range slashCommands {
@@ -113,7 +118,8 @@ func (m *Model) closePalette() {
 }
 
 func (m *Model) syncPalette() {
-	if m.palette == paletteModels || m.palette == paletteModel || m.palette == paletteMemory || m.palette == paletteHelp {
+	if m.palette == paletteModels || m.palette == paletteModel || m.palette == paletteMemory ||
+		m.palette == paletteHelp || m.palette == paletteSettings {
 		return
 	}
 	value := m.input.Value()
@@ -453,7 +459,12 @@ func (m *Model) applyModel(role, slug string) tea.Cmd {
 		delete(m.optimisticModels, role)
 		m.input.Reset()
 		m.paletteDismissed = false
-		return m.showStatus(fmt.Sprintf("%s model → %s", role, display))
+		command := m.showStatus(fmt.Sprintf("%s model → %s", role, display))
+		if m.modelPickerReturn == paletteSettings {
+			m.modelPickerReturn = paletteNone
+			m.restoreSettings()
+		}
+		return command
 	}
 	if role != "talk" && role != "work" && role != "voice" {
 		return m.showStatus(fmt.Sprintf("%s model switching unavailable — no Commander", role))
@@ -644,6 +655,8 @@ func (m *Model) slashCancel(arguments []string) tea.Cmd {
 	return m.cancelNode(arguments[0])
 }
 
+func (m *Model) slashSettings(_ []string) tea.Cmd { return m.openSettings() }
+
 func (m *Model) slashHelp(_ []string) tea.Cmd {
 	m.input.Reset()
 	m.openHelp()
@@ -762,6 +775,11 @@ func (m *Model) openModelPicker(role string) tea.Cmd {
 	if !isModelSlot(role) {
 		role = "talk"
 	}
+	// Only a row in the open settings sheet claims the picker's way back; every
+	// other door returns to the models palette as it always has.
+	if m.palette != paletteSettings {
+		m.modelPickerReturn = paletteNone
+	}
 	fallback := m.fallbackModelChoices(role)
 	if len(fallback) == 0 {
 		fallback = normalizeModelChoices(m.modelCatalogForRole(role))
@@ -813,7 +831,14 @@ func (m *Model) openModelsPalette() tea.Cmd {
 	return nil
 }
 
+// returnToModelsPalette climbs back to whichever door opened the picker: the
+// models palette by default, the settings sheet when a settings row opened it.
 func (m *Model) returnToModelsPalette() {
+	if m.modelPickerReturn == paletteSettings {
+		m.modelPickerReturn = paletteNone
+		m.restoreSettings()
+		return
+	}
 	m.input.Reset()
 	m.palette = paletteModels
 	m.modelSlotIndex = indexModelSlot(m.modelRole)
@@ -951,11 +976,17 @@ func (m *Model) fallbackModelChoices(role string) []ModelChoice {
 	return normalizeModelChoices(choices)
 }
 
+// headerDoors is the count of focusable header actions, left to right:
+// models ⌄ · settings · ⟨tasks⟩ · ?
+const headerDoors = 4
+
 func (m *Model) activateHeaderFocus() tea.Cmd {
 	switch m.headerFocusIndex {
 	case 0:
 		return m.openModelsPalette()
 	case 1:
+		return m.openSettings()
+	case 2:
 		if m.hasPendingQuestion() {
 			m.focusPendingQuestion()
 			return nil

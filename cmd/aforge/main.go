@@ -120,7 +120,12 @@ Environment:
   AFORGE_PRACTICE_IDLE  20m  quiet period before self-practice
   AFORGE_BRIEF_AFTER   4h  minimum absence before an arrival brief (0 = always)
   AFORGE_PREAUTHORIZE_SPEND  1 raises the rail without a headless stdin prompt
-  AFORGE_PROFILE_DIR   where measured behaviour is kept (default ~/.aforge)`
+  AFORGE_PROFILE_DIR   where measured behaviour is kept (default ~/.aforge)
+
+  The user-facing knobs above — budgets, rhythm, the document rung, the vision
+  and media slots — are also the ` + "`/settings`" + ` sheet in the chat, which persists
+  them to the profile's config.json. A variable set here always wins, and that
+  row reads read-only in the sheet rather than fighting your shell.`
 
 func usage() error {
 	fmt.Println(usageText)

@@ -769,6 +769,16 @@ func (m *Model) updateMouseClick(x, y int) (tea.Cmd, bool) {
 		}
 		return nil, true
 	}
+	if m.palette == paletteSettings {
+		if m.headerSettingsBounds.contains(x, y) {
+			m.closeSettings()
+			return nil, true
+		}
+		return m.clickSettings(x, y)
+	}
+	if m.headerSettingsBounds.contains(x, y) {
+		return m.openSettings(), true
+	}
 	if m.boostBounds.contains(x, y) {
 		m.toggleBoost()
 		return nil, true
