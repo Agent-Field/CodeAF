@@ -9,8 +9,12 @@ import (
 	"sync"
 	"testing"
 
+	executor "github.com/Agent-Field/aforge-v2/internal/exec"
 	"github.com/Agent-Field/aforge-v2/internal/store"
 )
+
+// governorCalmLoad is any reading below the resume edge: a machine with room.
+const governorCalmLoad = executor.GovernorLoadResume / 2
 
 func openRunnerStore(t *testing.T) *store.Store {
 	t.Helper()
@@ -423,4 +427,69 @@ func TestFailedReflexStillDistills(t *testing.T) {
 	if gotGoal != ask || gotOutcome != "status file was unreadable" || !gotFailed {
 		t.Fatalf("distill input = goal %q outcome %q failed=%t", gotGoal, gotOutcome, gotFailed)
 	}
+}
+
+func spliceTwoIndependentLeaves(t *testing.T, s *store.Store) {
+	t.Helper()
+	err := s.Splice(store.RootID, store.Subtree{Nodes: []store.NodeSpec{
+		{ID: "goal", Brief: "the deliverable", Stage: 0},
+		{ID: "one", Parent: "goal", Brief: "first leaf", Stage: 1},
+		{ID: "two", Parent: "goal", Brief: "second leaf", Stage: 1},
+	}}, store.Provenance{Origin: store.OriginUser, SessionID: "s1", Intent: "two leaves, no order"})
+	if err != nil {
+		t.Fatalf("splice leaves: %v", err)
+	}
+}
+
+func governedRunner(t *testing.T, s *store.Store, load float64, release <-chan struct{}) *Runner {
+	t.Helper()
+	return NewRunner(s, func(ctx context.Context, node store.Node) (ExecResult, error) {
+		<-release
+		return ExecResult{Summary: "did " + node.Brief}, nil
+	}, "governed", 2).WithGovernor(executor.NewGovernorFrom(func() (float64, bool) {
+		return load, true
+	}))
+}
+
+func TestSaturatedHostDelaysTheSecondClaimButNeverTheFirst(t *testing.T) {
+	s := openRunnerStore(t)
+	spliceTwoIndependentLeaves(t, s)
+	release := make(chan struct{})
+	runner := governedRunner(t, s, executor.GovernorLoadCeiling+1, release)
+
+	// The starvation guard always lets one leaf through: the user asked for
+	// work, and someone else's load must not leave aforge running nothing.
+	dispatched, err := runner.Tick(context.Background())
+	if err != nil {
+		t.Fatalf("first tick: %v", err)
+	}
+	if dispatched != 1 {
+		t.Fatalf("saturated host dispatched %d leaves, want exactly the guaranteed one", dispatched)
+	}
+	// With that one in flight the gate holds, and holds on every later tick —
+	// it delays the claim, it never cancels or fails anything.
+	for range 3 {
+		if dispatched, err := runner.Tick(context.Background()); err != nil || dispatched != 0 {
+			t.Fatalf("saturated tick dispatched %d (err %v), want 0", dispatched, err)
+		}
+	}
+	close(release)
+	runner.Wait()
+}
+
+func TestCalmHostClaimsUpToTheWorkerSlots(t *testing.T) {
+	s := openRunnerStore(t)
+	spliceTwoIndependentLeaves(t, s)
+	release := make(chan struct{})
+	runner := governedRunner(t, s, governorCalmLoad, release)
+
+	dispatched, err := runner.Tick(context.Background())
+	if err != nil {
+		t.Fatalf("tick: %v", err)
+	}
+	if dispatched != 2 {
+		t.Fatalf("calm host dispatched %d leaves, want both slots filled", dispatched)
+	}
+	close(release)
+	runner.Wait()
 }
