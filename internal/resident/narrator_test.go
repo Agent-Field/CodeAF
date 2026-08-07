@@ -242,3 +242,51 @@ func TestLandedJobsFoldOutOfTheActiveView(t *testing.T) {
 		}
 	}
 }
+
+// A second-resolution clock made the running block a different string on every
+// heartbeat, for a number the narrator prompt itself says to mention only when
+// it is notable. Under a minute there is nothing notable to say.
+func TestNarratorOmitsDurationsUnderAMinute(t *testing.T) {
+	s, err := store.Open(filepath.Join(t.TempDir(), "graph.db"))
+	if err != nil {
+		t.Fatalf("open store: %v", err)
+	}
+	defer s.Close()
+	spliceProject(t, s)
+
+	var seen []Narration
+	reconciler := New(s, nil, nil).WithNarrator(
+		func(_ context.Context, narration Narration) (string, error) {
+			seen = append(seen, narration)
+			return "still going", nil
+		})
+
+	ctx := context.Background()
+	if err := reconciler.Tick(ctx); err != nil {
+		t.Fatalf("initial tick: %v", err)
+	}
+	claim, won, err := s.Claim("part-a", "worker")
+	if err != nil || !won {
+		t.Fatalf("claim part-a: won=%v err=%v", won, err)
+	}
+	if err := s.Start(claim); err != nil {
+		t.Fatalf("start part-a: %v", err)
+	}
+	// The start event is what arms the heartbeat, so it has to be observed
+	// before the state exists to age.
+	if err := reconciler.Tick(ctx); err != nil {
+		t.Fatalf("tick after start: %v", err)
+	}
+	reconciler.progress["goal"].lastPost = time.Now().Add(-2 * narrateHeartbeat)
+	if err := reconciler.Tick(ctx); err != nil {
+		t.Fatalf("tick after heartbeat: %v", err)
+	}
+	if len(seen) != 1 || len(seen[0].Running) == 0 {
+		t.Fatalf("expected one narration with running work: %+v", seen)
+	}
+	for _, label := range seen[0].Running {
+		if strings.Contains(label, " in)") {
+			t.Fatalf("a job seconds old carried a duration clause: %q", label)
+		}
+	}
+}

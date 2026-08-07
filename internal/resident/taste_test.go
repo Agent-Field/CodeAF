@@ -286,3 +286,36 @@ func answerTaste(t *testing.T, graph *store.Store, sessionID, scope, label strin
 		t.Fatal(err)
 	}
 }
+
+// Settled taste leads the gate's prompt, so the order it renders in decides
+// whether the gate can ever be handed a warm prefix. Newest-first meant every
+// newly settled rule PREPENDED and rewrote the block from its first byte;
+// oldest-first makes a new rule an append.
+func TestTasteBlockAppendsNewlySettledRules(t *testing.T) {
+	graph := openStore(t)
+	settle := func(subject, body string) {
+		t.Helper()
+		candidate, err := graph.RecordTasteCandidate("", subject, body)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := graph.PromoteTasteRule(candidate.Seq); err != nil {
+			t.Fatal(err)
+		}
+	}
+	settle("user", "keep written comparisons under a page")
+	settle("user", "name the files a job wrote beside the answer")
+	before := TasteBlock(graph)
+	if !strings.HasPrefix(before, "- keep written comparisons under a page") {
+		t.Fatalf("taste block is not oldest-first:\n%s", before)
+	}
+
+	settle("user", "put the number in the first sentence of a report")
+	after := TasteBlock(graph)
+	if after == before {
+		t.Fatal("the newly settled rule never reached the gate's block")
+	}
+	if !strings.HasPrefix(after, before) {
+		t.Fatalf("a newly settled rule rewrote the block instead of appending:\nbefore:\n%s\n\nafter:\n%s", before, after)
+	}
+}

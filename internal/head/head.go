@@ -25,9 +25,8 @@ import (
 const (
 	pollInterval          = 400 * time.Millisecond
 	messagePageSize       = 200
-	recentMessageLimit    = 10
 	maxGraphContextBytes  = 4 << 10
-	maxThreadContextBytes = 4 << 10
+	maxThreadContextBytes = 8 << 10
 	providerErrorReply    = "hit a provider error answering that — try again"
 	commandErrorReply     = "I couldn't queue that change — try again"
 	// manualRouteSections is the router's grounding read. It is smaller than
@@ -401,15 +400,6 @@ func (h *Head) route(ctx context.Context, user store.Message) (routeDecision, er
 	if services := renderServices(h.store); services != "" {
 		graphContext += "\n" + services
 	}
-	if h.dailyRailSet {
-		if rail, railErr := h.store.DailyRailToday(h.dailyBudgetUSD); railErr == nil {
-			line := fmt.Sprintf("today's spend: $%.2f of $%.2f daily rail", rail.Spend, rail.Ceiling)
-			if rail.Unlimited {
-				line = fmt.Sprintf("today's spend: $%.2f; daily rail unlimited", rail.Spend)
-			}
-			graphContext = line + "\n" + graphContext
-		}
-	}
 	threadContext := renderThread(recent)
 	// Depth is bought after the board is whole, in its own budget, and only for
 	// the jobs this message is about. A message about nothing on the graph adds
@@ -417,23 +407,36 @@ func (h *Head) route(ctx context.Context, user store.Message) (routeDecision, er
 	if deep := h.renderDeep(user.Body, threadContext); deep != "" {
 		graphContext += "\n\n" + deep
 	}
-	prompt := "Live graph snapshot:\n" + graphContext +
-		"\n\nNotebook (durable memory across jobs and conversations):\n" + renderNotebook(h.store, user.Body) +
-		"\n\nRecent thread before this message:\n" + threadContext +
-		"\n\nCurrent user message (verbatim):\n" + user.Body
+
+	// The one user message is assembled stable-first, and the reason is money.
+	// Every endpoint we ride caches by prefix: the bytes before the earliest
+	// change are billed at a tenth, everything from that byte onward at full
+	// price. So the order is a cost decision, not a rhetorical one. Measured
+	// self-knowledge moves with completed jobs and the thread now moves in big
+	// steps, so both sit at the front where they can be reused message after
+	// message. Below them is the volatile floor: the snapshot ticks with every
+	// status, the notebook is retrieved against this message's words, the
+	// question-cued blocks appear and vanish with the question, and the spend
+	// line moves with every cent — each of them, wherever it sits, invalidates
+	// everything after it, so they are gathered together at the bottom where
+	// there is nothing left to invalidate but the message itself.
+	var body strings.Builder
 	if h.knowledge != nil {
 		if measured := strings.TrimSpace(h.knowledge()); measured != "" {
-			prompt = "Measured execution history (evidence for routing priors):\n" + measured + "\n\n" + prompt
+			body.WriteString("Measured execution history (evidence for routing priors):\n" + measured + "\n\n")
 		}
 	}
+	body.WriteString("Recent thread before this message:\n" + threadContext)
+	body.WriteString("\n\nLive graph snapshot:\n" + graphContext)
+	body.WriteString("\n\nNotebook (durable memory across jobs and conversations):\n" + renderNotebook(h.store, user.Body))
 	if h.competence != nil && asksForCompetence(user.Body) {
 		if competence := strings.TrimSpace(h.competence()); competence != "" {
-			prompt = "Competence map (ground truth for this question):\n" + competence + "\n\n" + prompt
+			body.WriteString("\n\nCompetence map (ground truth for this question):\n" + competence)
 		}
 	}
 	if h.standingWatch != nil && asksForStandingWatch(user.Body) {
 		if status := strings.TrimSpace(h.standingWatch()); status != "" {
-			prompt = "Standing-watch status (ground truth for this question):\n" + status + "\n\n" + prompt
+			body.WriteString("\n\nStanding-watch status (ground truth for this question):\n" + status)
 		}
 	}
 	// The belt normally answers self-questions, but it needs a client and a
@@ -442,12 +445,30 @@ func (h *Head) route(ctx context.Context, user store.Message) (routeDecision, er
 	// fluent invention nobody can tell from a remembered fact.
 	if selfQuestionCued(user.Body) {
 		if pages := manual.Context(user.Body, manualRouteSections); pages != "" {
-			prompt = "Aforge manual (the authoritative account of aforge itself; quote its substance, invent nothing):\n" +
-				pages + "\n\n" + prompt
+			body.WriteString("\n\nAforge manual (the authoritative account of aforge itself; quote its substance, invent nothing):\n" + pages)
 		}
 	}
+	// The spend line is the fastest-moving fact in the prompt, so it is the last
+	// thing before the message. It is never dropped: the daily-rail approval
+	// flow reads the user's "yes" against it, and the system prompt promises it
+	// as the ground truth for what today has cost.
+	if h.dailyRailSet {
+		if rail, railErr := h.store.DailyRailToday(h.dailyBudgetUSD); railErr == nil {
+			line := fmt.Sprintf("today's spend: $%.2f of $%.2f daily rail", rail.Spend, rail.Ceiling)
+			if rail.Unlimited {
+				line = fmt.Sprintf("today's spend: $%.2f; daily rail unlimited", rail.Spend)
+			}
+			body.WriteString("\n\n" + line)
+		}
+	}
+	body.WriteString("\n\nCurrent user message (verbatim):\n" + user.Body)
+	prompt := body.String()
 	messages := []ai.Message{
-		textMessage("system", resident.VoicePrompt(h.store, headSystemPrompt, user.Body)),
+		// No retrieval cue from the message: voice preferences are standing user
+		// style, not query-relevant, and cueing them on the current message made
+		// the system prompt a different string every turn — the one place in the
+		// whole call that could have been identical from message to message.
+		textMessage("system", resident.VoicePrompt(h.store, headSystemPrompt)),
 		textMessage("user", prompt),
 	}
 	if h.supportsImages(client) && len(user.Attachments) > 0 {
@@ -606,8 +627,24 @@ func asksForStandingWatch(message string) bool {
 	return false
 }
 
+// The thread window moves in big steps rather than sliding. A one-message slide
+// meant the oldest rendered message changed on every single turn, and the oldest
+// message sits near the front of the router's prompt: everything after it was
+// re-billed at full price each time the user said anything. So the window fills
+// to threadWindowMax and, on overflowing, drops back to threadWindowKeep in one
+// cut. The front then holds still for another ten messages or so, and each of
+// those messages appends to a prefix the endpoint already has.
+//
+// maxThreadContextBytes doubled alongside the window, which leaves the
+// allowance per message exactly where the sliding window had it: the block is
+// still bounded, and nothing about it grows message over message.
+const (
+	threadWindowMax  = 20
+	threadWindowKeep = 10
+)
+
 func (h *Head) recentThread(sessionID string, beforeSeq int64) ([]store.Message, error) {
-	recent := make([]store.Message, 0, recentMessageLimit)
+	recent := make([]store.Message, 0, threadWindowMax+1)
 	var cursor int64
 	for {
 		messages, err := h.store.Messages(sessionID, cursor, messagePageSize)
@@ -622,11 +659,12 @@ func (h *Head) recentThread(sessionID string, beforeSeq int64) ([]store.Message,
 			if message.Seq >= beforeSeq {
 				return recent, nil
 			}
-			if len(recent) == recentMessageLimit {
-				copy(recent, recent[1:])
-				recent[len(recent)-1] = message
-			} else {
-				recent = append(recent, message)
+			recent = append(recent, message)
+			// The cut is a fold over the whole session, so the window is a pure
+			// function of how many messages precede this one — the same session
+			// read twice renders the same bytes.
+			if len(recent) > threadWindowMax {
+				recent = append(recent[:0], recent[len(recent)-threadWindowKeep:]...)
 			}
 		}
 	}

@@ -4,6 +4,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"math"
 	"sort"
 	"strings"
 	"time"
@@ -827,7 +828,15 @@ func renderBoard(rows []boardRow) string {
 		if row.failed > 0 {
 			line += fmt.Sprintf(", %d failed", row.failed)
 		}
-		line += fmt.Sprintf(" | $%.2f", row.cost)
+		// Dimes, not cents, and only here. Within one control loop the board is
+		// written once and the transcript is append-only, so the damage was at
+		// the seam between messages: a single cent ticking on a single live job
+		// rewrote the board, and the board is the first thing in the prompt. A
+		// dime is the resolution a person actually decides on — nobody cancels a
+		// job over three cents — and it holds the same string for a while. The
+		// exact figure stays exact everywhere it is read as a number: the TUI,
+		// the receipts, the store.
+		line += fmt.Sprintf(" | $%.2f", math.Round(row.cost*10)/10)
 		if age := strings.TrimSpace(row.age); age != "" {
 			line += " | " + age
 		}
