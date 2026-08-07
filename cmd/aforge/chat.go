@@ -586,6 +586,8 @@ func runChat(args []string) error {
 				if !gate.Pass {
 					revision := task
 					revision.Inputs = append(append([]exec.Input{}, inputs...), exec.Input{
+						Title:     "a review of your own first draft",
+						Artifacts: append([]string(nil), absolute...),
 						Result: "A reviewer compared the previous attempt against the original request and found gaps that must be closed:\n" + gate.Gaps +
 							"\n\nThe previous attempt (build on it, fix the gaps, do not start over):\n" + text +
 							"\n\n" + gateRevisionContract,

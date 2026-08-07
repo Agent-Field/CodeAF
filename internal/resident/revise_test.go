@@ -4,6 +4,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"unicode/utf8"
 
 	"github.com/Agent-Field/aforge-v2/internal/plan"
 	"github.com/Agent-Field/aforge-v2/internal/store"
@@ -97,5 +98,34 @@ func TestApplyRevisionMirrorsSentinelEditsOntoTheStore(t *testing.T) {
 	})
 	if applied != 0 || len(notes) < 2 || !strings.Contains(strings.Join(notes, "\n"), "node 1 is running") {
 		t.Fatalf("started node was edited: applied=%d notes=%v", applied, notes)
+	}
+}
+
+// The sentinel used to be told a failure happened and nothing about it. "It
+// FAILED" says the plan's next steps have nothing to consume; the reason says
+// which assumption died, and that is the entire question it was convened to
+// answer.
+func TestRevisionEventCarriesTheFailureReasonAndTheFiles(t *testing.T) {
+	node := store.Node{ID: "task-1-n2", Title: "Survey the API", Brief: "read the docs"}
+	event := RevisionEvent(node, "wrote the notes to api-notes.md",
+		[]string{"/workspace/job/api-notes.md"}, "every v2 endpoint answers 410 Gone")
+	for _, want := range []string{"Survey the API", "FAILED", "410 Gone",
+		"/workspace/job/api-notes.md", "wrote the notes to api-notes.md"} {
+		if !strings.Contains(event, want) {
+			t.Errorf("event is missing %q:\n%s", want, event)
+		}
+	}
+	// A successful landing says so, and says nothing about a failure.
+	settled := RevisionEvent(node, "the notes are written", nil, "")
+	if !strings.Contains(settled, "finished") || strings.Contains(settled, "FAILED") {
+		t.Fatalf("settled event = %q", settled)
+	}
+	// Prompt-bound, and never cut through a character.
+	long := RevisionEvent(node, strings.Repeat("é", 4000), nil, strings.Repeat("ü", 900))
+	if !utf8.ValidString(long) {
+		t.Fatal("the event cut a character in half")
+	}
+	if len(long) > revisionResultBytes+revisionFailureBytes+512 {
+		t.Fatalf("event is %d bytes; it is meant to be bounded", len(long))
 	}
 }
