@@ -27,6 +27,12 @@ func (h *Head) answerAgentQuestion(user store.Message) (bool, error) {
 		}
 		return true, h.applyAgentQuestionOption(user, question, option)
 	}
+	if standingWatchQuestion(question.Options) {
+		// Unattended presence is decided once and never asked again, so only an
+		// explicit choice may cross it. Free text stays ordinary conversation
+		// rather than silently spending the single question.
+		return false, nil
+	}
 	if charterID, ok := charterQuestionID(question.Options); ok {
 		if cadence := extractCadence(user.Body); cadence != "" {
 			if err := h.store.ResolveQuestion(question.Seq, store.QuestionAnswered, cadence, user.Seq); err != nil {
@@ -52,6 +58,14 @@ func (h *Head) answerAgentQuestion(user store.Message) (bool, error) {
 
 func (h *Head) applyAgentQuestionOption(user store.Message, question store.AgentQuestion, option store.QuestionOption) error {
 	parts := strings.Split(option.Value, ":")
+	if len(parts) == 2 && parts[0] == "standing-watch" {
+		switch parts[1] {
+		case "enable":
+			return h.requestStandingWatchCommand(user, store.CommandStandingWatchEnable, option.Label)
+		case "decline":
+			return h.requestStandingWatchCommand(user, store.CommandStandingWatchDecline, option.Label)
+		}
+	}
 	if len(parts) >= 3 && parts[0] == "charter" {
 		id := parts[2]
 		switch parts[1] {
@@ -144,6 +158,7 @@ func selectQuestionOption(reply string, options []store.QuestionOption) (store.Q
 		if negativeReply(normalized) &&
 			(strings.Contains(label, "not standing") || strings.Contains(value, ":once:") ||
 				strings.Contains(value, ":decline:") ||
+				strings.HasPrefix(label, "only while") || value == "standing-watch:decline" ||
 				strings.HasPrefix(label, "keep ") || strings.Contains(value, "surgery:keep:")) {
 			return option, true
 		}
@@ -158,6 +173,15 @@ func negativeReply(reply string) bool {
 	default:
 		return false
 	}
+}
+
+func standingWatchQuestion(options []store.QuestionOption) bool {
+	for _, option := range options {
+		if strings.HasPrefix(strings.TrimSpace(option.Value), "standing-watch:") {
+			return true
+		}
+	}
+	return false
 }
 
 func charterQuestionID(options []store.QuestionOption) (string, bool) {
@@ -182,6 +206,14 @@ func (h *Head) applyQuestionOption(user store.Message, question store.Message, o
 		}
 	}
 	parts := strings.Split(option.Value, ":")
+	if len(parts) == 2 && parts[0] == "standing-watch" {
+		switch parts[1] {
+		case "enable":
+			return h.requestStandingWatchCommand(user, store.CommandStandingWatchEnable, option.Label)
+		case "decline":
+			return h.requestStandingWatchCommand(user, store.CommandStandingWatchDecline, option.Label)
+		}
+	}
 	if len(parts) >= 3 && parts[0] == "charter" {
 		id := parts[2]
 		switch parts[1] {
@@ -228,6 +260,13 @@ func (h *Head) applyQuestionOption(user store.Message, question store.Message, o
 		answer = strings.TrimSpace(option.Value)
 	}
 	return h.continueCompilerQuestion(user, question, answer)
+}
+
+func (h *Head) requestStandingWatchCommand(user store.Message, kind store.CommandKind, instruction string) error {
+	_, err := h.store.RequestCommand(store.Command{
+		SessionID: user.SessionID, Kind: kind, Instruction: instruction,
+	})
+	return err
 }
 
 func (h *Head) continueCompilerQuestion(user store.Message, question store.Message, answer string) error {

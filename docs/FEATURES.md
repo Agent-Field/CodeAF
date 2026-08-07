@@ -123,6 +123,19 @@ history when available), and rails, with `▸ 1 yes · ▸ 2 change cadence ·
 **Tip seed**: "Remind me Friday at 3" or "watch this folder" just works —
 you'll approve the standing cost once, then it's furniture.
 
+### It keeps watch when you're not here
+**What**: The first time a charter is ratified, and only then, one
+question is asked in the resident's voice: "Should I keep watching this
+when you're not here? `▸ 1 yes, always · ▸ 2 only while I'm around`".
+Yes arranges a quiet five-minute check that keeps running with no
+terminal open, and answers with a single line. Either answer is durable
+and the question is never asked twice — not after a restart, not on the
+next charter.
+**Where**: chat, immediately after the first ratification.
+**Tip seed**: Say "yes, always" once and your standing goals keep firing
+with every window closed; say "only while I'm around" and they wait for
+you — either way you're asked exactly once.
+
 ### The standing rail — felt, not seen
 **What**: One dim line per charter above tasks (`⏱ pr-watch · last fired
 2h · 3 today`), breathing only while a sentinel evaluates or a firing
@@ -348,10 +361,20 @@ rails, no chat needed.
 
 ### `aforge wake`
 **What**: One watch pass over due charters — evaluate sentinels, fire
-what's due, exit. Lets cron or launchd drive standing goals without a
-resident process.
-**Tip seed**: No terminal open? A crontab line running aforge wake keeps
-your standing goals firing.
+what's due, journal the pass, exit. This is the command the standing
+watch runs for you every five minutes; running it by hand is the same
+pass, now.
+**Tip seed**: aforge wake runs one standing pass right now instead of
+waiting for the next check.
+
+### `aforge doctor`
+**What**: Five calm rows and nothing else: the brain file and its size,
+who is resident right now, whether the standing watch is on with its last
+wake and next check, today's spend against the rail, and how many goals
+are active with how many questions pending. The same rows ground the
+answer when you ask "who's keeping watch?" in chat.
+**Tip seed**: aforge doctor answers "is it actually running, and what has
+it cost me today?" in five lines.
 
 ### `aforge competence` / `aforge why self`
 **What**: The self-knowledge pair from the CLI: measured per-scope

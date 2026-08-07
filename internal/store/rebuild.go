@@ -328,6 +328,12 @@ func replayEvent(tx *sql.Tx, event Event) error {
 		}
 		return applyAgentQuestionResolution(tx, payload, event.Seq, event.Time)
 
+	case EventStandingWatchOffered, EventStandingWatchEnabled,
+		EventStandingWatchDeclined, EventStandingWatchPass:
+		// Standing-watch state is journal-native. Validate it on replay; status
+		// and the never-ask-twice gate read event order directly.
+		return decodeStandingWatchEvent(event.Kind, event.Payload)
+
 	case EventUsageRecorded:
 		var payload NodeUsage
 		if err := json.Unmarshal(event.Payload, &payload); err != nil {

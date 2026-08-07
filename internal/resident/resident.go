@@ -12,6 +12,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/Agent-Field/aforge-v2/internal/store"
+	"github.com/Agent-Field/aforge-v2/internal/watchdog"
 )
 
 const (
@@ -163,6 +164,7 @@ type Reconciler struct {
 	overrunPlan     OverrunPlanFunc
 	sentinel        SentinelFunc
 	composeBrief    BriefComposeFunc
+	standingWatch   StandingWatch
 	proposeCharters bool
 	dailyBudgetUSD  float64
 	practiceEnabled bool
@@ -175,7 +177,15 @@ type Reconciler struct {
 	progress           map[string]*subtreeProgress
 	learningMoments    map[string]*pendingLearningMoment
 	lastConsolidation  time.Time
+	standingWatchCheck time.Time
 	now                func() time.Time
+}
+
+// StandingWatch is the small consequence-facing seam the resident needs.
+// watchdog.Manager implements it; tests inject an in-memory recorder.
+type StandingWatch interface {
+	Install(ctx context.Context) error
+	Status() (watchdog.Status, error)
 }
 
 // New constructs a reconciler. A nil compiler preserves the instruction
@@ -188,6 +198,13 @@ func New(graph *store.Store, compile CompileFunc, plan PlanFunc) *Reconciler {
 		}
 	}
 	return &Reconciler{store: graph, compile: compile, plan: plan, now: time.Now}
+}
+
+// WithStandingWatch enables the one-time unattended-presence offer after the
+// first charter ratification. Nil preserves embedding paths with no host timer.
+func (r *Reconciler) WithStandingWatch(standing StandingWatch) *Reconciler {
+	r.standingWatch = standing
+	return r
 }
 
 // Serve polls until ctx is cancelled or the store can no longer be read or
@@ -229,6 +246,7 @@ func (r *Reconciler) Tick(ctx context.Context) error {
 	if err := r.initializeWatcher(); err != nil {
 		return fmt.Errorf("resident tick: initialize watcher: %w", err)
 	}
+	r.reconcileStandingWatch(ctx)
 	if err := r.expireQuestionsLocked(); err != nil {
 		return fmt.Errorf("resident tick: expire questions: %w", err)
 	}
@@ -368,6 +386,8 @@ func (r *Reconciler) applyCommand(ctx context.Context, command store.Command) (c
 		store.CommandCharterCadence, store.CommandCharterOnce, store.CommandCharterFire,
 		store.CommandCharterDecline, store.CommandCharterAlways, store.CommandCharterNever, store.CommandCharterProbation:
 		return r.applyCharterCommand(ctx, command)
+	case store.CommandStandingWatchEnable, store.CommandStandingWatchDecline:
+		return r.applyStandingWatchCommand(ctx, command)
 	case store.CommandAmend:
 		return r.amend(command)
 	default:
