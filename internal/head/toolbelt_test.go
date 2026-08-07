@@ -30,6 +30,10 @@ type beltClient struct {
 	plain  []string
 	calls  int
 	tooled int
+	// seen is every message of the last completion. The loop's grounding is the
+	// only thing it can honestly answer from, so assertions about what it knows
+	// are assertions about this.
+	seen []ai.Message
 }
 
 func (client *beltClient) CompleteWithMessages(_ context.Context, messages []ai.Message,
@@ -37,6 +41,7 @@ func (client *beltClient) CompleteWithMessages(_ context.Context, messages []ai.
 	client.mutex.Lock()
 	defer client.mutex.Unlock()
 	client.calls++
+	client.seen = append([]ai.Message(nil), messages...)
 	request := ai.Request{Messages: messages}
 	for _, option := range options {
 		_ = option(&request)
