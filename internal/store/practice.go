@@ -25,6 +25,15 @@ const (
 	EventQuestionPracticeCompleted EventKind = "question_practice_completed"
 )
 
+const (
+	// LearningProgressWindow is the recent/prior residual window per scope.
+	LearningProgressWindow = 4
+	// LearningProgressHorizon is the sample count after which zero progress receives no curiosity budget.
+	LearningProgressHorizon = 2 * LearningProgressWindow
+	// LearningProgressEpsilon is the cold-start allocation floor for unexplored scopes.
+	LearningProgressEpsilon = 0.05
+)
+
 type questionStatusPayload struct {
 	QuestionSeq int64  `json:"question_seq"`
 	Status      string `json:"status"`
@@ -67,13 +76,38 @@ type QuestionPractice struct {
 // scope. Surprise is averaged over the newest requested sample window while
 // relevance counts all settled user jobs and territories carrying the scope.
 type ScopeSurprise struct {
-	Scope           string
-	Samples         int
-	SettledJobs     int
-	Territories     int
-	AverageSurprise float64
-	ExpectedTokens  int
-	Evidence        string
+	Scope            string
+	Samples          int
+	SettledJobs      int
+	Territories      int
+	AverageSurprise  float64
+	ExpectedTokens   int
+	Evidence         string
+	RecentSurprise   float64
+	PriorSurprise    float64
+	LearningProgress float64
+	ColdStart        bool
+	Allocation       float64
+}
+
+// AllocateLearningProgress normalizes only positive improvement plus a cold-start floor.
+func AllocateLearningProgress(metrics []ScopeSurprise) []ScopeSurprise {
+	allocated := append([]ScopeSurprise(nil), metrics...)
+	total := 0.0
+	for index := range allocated {
+		weight := math.Max(0, allocated[index].LearningProgress)
+		if allocated[index].ColdStart {
+			weight = math.Max(weight, LearningProgressEpsilon)
+		}
+		allocated[index].Allocation = weight
+		total += weight
+	}
+	if total > 0 {
+		for index := range allocated {
+			allocated[index].Allocation /= total
+		}
+	}
+	return allocated
 }
 
 // RecordQuestion journals one open knowledge gap. A scope has at most one
@@ -99,7 +133,7 @@ func (s *Store) RecordQuestion(nodeID, scope, body string) (Fact, error) {
 	if len(existing) > 0 {
 		return existing[0], nil
 	}
-	return s.recordFact(nodeID, resolved, FactQuestion, body, nil, 0, QuestionOpen, "", false)
+	return s.recordFact(FactWriterOther, nodeID, resolved, FactQuestion, body, nil, 0, QuestionOpen, "", false)
 }
 
 // Questions lists knowledge gaps in newest-first order. Empty status includes
@@ -477,19 +511,39 @@ func (s *Store) ScopeSurprises(minSamples int) ([]ScopeSurprise, error) {
 		sort.SliceStable(bucket.samples, func(i, j int) bool {
 			return bucket.samples[i].seq > bucket.samples[j].seq
 		})
-		latest := bucket.samples[:minSamples]
+		window := min(len(bucket.samples), max(minSamples, LearningProgressHorizon))
+		latest := bucket.samples[:window]
 		var surprise float64
 		var expected int
-		for _, current := range latest {
+		recentCount := min(len(latest), LearningProgressWindow)
+		var recent, prior float64
+		for index, current := range latest {
 			surprise += current.surprise
 			expected += current.expected
+			if index < recentCount {
+				recent += current.surprise
+			} else if index < recentCount+LearningProgressWindow {
+				prior += current.surprise
+			}
+		}
+		recent /= float64(max(recentCount, 1))
+		priorCount := min(max(len(latest)-recentCount, 0), LearningProgressWindow)
+		if priorCount > 0 {
+			prior /= float64(priorCount)
+		}
+		progress := 0.0
+		if priorCount == LearningProgressWindow {
+			progress = prior - recent
 		}
 		metrics = append(metrics, ScopeSurprise{
 			Scope: scope, Samples: len(latest), SettledJobs: len(bucket.jobs),
 			Territories: len(bucket.territories), AverageSurprise: surprise / float64(len(latest)),
 			ExpectedTokens: expected / len(latest), Evidence: strings.Join(bucket.evidence, " "),
+			RecentSurprise: recent, PriorSurprise: prior, LearningProgress: progress,
+			ColdStart: len(latest) < LearningProgressHorizon,
 		})
 	}
+	metrics = AllocateLearningProgress(metrics)
 	sort.Slice(metrics, func(i, j int) bool { return metrics[i].Scope < metrics[j].Scope })
 	return metrics, nil
 }

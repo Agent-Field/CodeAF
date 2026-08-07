@@ -116,9 +116,15 @@ func (r *Reconciler) reflectOnJobs(ctx context.Context) {
 	if _, err := r.store.CheckpointRetrospective(settledJobs); err != nil {
 		return
 	}
+	_, _ = r.store.ProjectTraits(now)
+	_ = r.metaRetrospect()
 	r.maintainTerritories(ctx, now)
 	if r.proposeCharters {
-		r.proposeRecurringCharter(jobs)
+		runs, _ := r.store.RetrospectiveRuns()
+		cadence := r.store.ProposalCadenceRuns()
+		if cadence <= 1 || runs%cadence == 0 {
+			r.proposeRecurringCharter(jobs)
+		}
 	}
 
 	learned, err := r.reflect(ctx, jobs)
@@ -135,7 +141,7 @@ func (r *Reconciler) reflectOnJobs(ctx context.Context) {
 		if strings.TrimSpace(fact.Body) == "" {
 			continue
 		}
-		recorded, err := r.store.RecordFact(store.RootID, fact.Scope, fact.Kind, clipFactBody(fact.Body))
+		recorded, err := r.store.RecordFactFrom(store.FactWriterDistiller, store.RootID, fact.Scope, fact.Kind, clipFactBody(fact.Body))
 		if err == nil && fact.Replaces > 0 {
 			_ = r.store.SupersedeFact(fact.Replaces, recorded.Seq)
 		}

@@ -16,7 +16,7 @@ import (
 
 const (
 	consolidationInterval          = time.Minute
-	consolidationThreshold         = 12
+	consolidationThreshold         = 12 // registry default retained for deterministic fixtures
 	playbookConsolidationThreshold = 8
 	consolidationScanLimit         = 10_000
 	consolidationOutputLimit       = 8
@@ -169,14 +169,15 @@ func NotebookDigest(graph *store.Store, nodeID, brief, goal string, limit int) s
 // consolidateNotebook rewrites at most one overgrown scope. Maintenance is
 // best effort: model and store failures leave ordinary reconciliation alone.
 func (r *Reconciler) consolidateNotebook(ctx context.Context) {
-	if r.consolidate == nil {
-		return
-	}
 	now := r.now()
 	if !r.lastConsolidation.IsZero() && now.Sub(r.lastConsolidation) < consolidationInterval {
 		return
 	}
 	r.lastConsolidation = now
+	_, _ = r.store.AgeFacts(now)
+	if r.consolidate == nil {
+		return
+	}
 
 	facts, err := r.store.ActiveFacts("", consolidationScanLimit)
 	if err != nil {
@@ -213,7 +214,7 @@ func (r *Reconciler) consolidateNotebook(ctx context.Context) {
 			continue
 		}
 		scoped := byScope[scope]
-		if len(scoped) <= consolidationThreshold &&
+		if len(scoped) <= int(r.store.Parameter(store.ParameterConsolidationThreshold)) &&
 			playbooksByScope[scope] <= playbookConsolidationThreshold {
 			continue
 		}
@@ -354,7 +355,7 @@ func (r *Reconciler) consolidateNotebook(ctx context.Context) {
 		var fact store.Fact
 		var err error
 		if rewrite.learned.Kind == store.FactSkill {
-			fact, err = r.store.RewriteActiveSkill(rewrite.nodeID, rewrite.learned.Scope, clipFactBody(rewrite.learned.Body), rewrite.skillSource)
+			fact, err = r.store.RewriteActiveSkillFrom(store.FactWriterDistiller, rewrite.nodeID, rewrite.learned.Scope, clipFactBody(rewrite.learned.Body), rewrite.skillSource)
 		} else {
 			fact, err = r.recordLearnedFact(rewrite.nodeID, rewrite.learned)
 		}

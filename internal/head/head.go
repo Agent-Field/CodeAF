@@ -260,7 +260,7 @@ func (h *Head) answer(ctx context.Context, user store.Message) error {
 			default:
 				kind = store.FactPreference
 			}
-			_, _ = h.store.RecordFact(store.RootID, scope, kind, body)
+			_, _ = h.store.RecordFactFrom(store.FactWriterHead, store.RootID, scope, kind, body)
 		}
 	}
 
@@ -590,6 +590,10 @@ func renderNotebook(graphStore *store.Store, message string) string {
 	var lines []string
 	add := func(facts []store.Fact) {
 		for _, fact := range facts {
+			eligible, err := graphStore.PromptEligible(fact)
+			if err != nil || !eligible {
+				continue
+			}
 			if seen[fact.Seq] {
 				continue
 			}

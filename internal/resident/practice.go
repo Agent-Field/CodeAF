@@ -209,7 +209,7 @@ func (r *Reconciler) practiceCandidates() ([]practiceCandidate, error) {
 	if err != nil {
 		return nil, err
 	}
-	metrics, err := r.store.ScopeSurprises(profile.MinSamples)
+	metrics, err := r.store.ScopeSurprises(1)
 	if err != nil {
 		return nil, err
 	}
@@ -220,7 +220,7 @@ func (r *Reconciler) practiceCandidates() ([]practiceCandidate, error) {
 	candidates := make([]practiceCandidate, 0, len(questions))
 	for _, question := range questions {
 		metric, ok := byScope[question.Scope]
-		if !ok || metric.AverageSurprise < practiceSurpriseThreshold ||
+		if !ok || metric.AverageSurprise < practiceSurpriseThreshold || metric.Allocation <= 0 ||
 			!executionVerifiedScope(question.Scope, metric.Evidence) {
 			continue
 		}
@@ -235,7 +235,7 @@ func (r *Reconciler) practiceCandidates() ([]practiceCandidate, error) {
 			}
 		}
 		relevance := float64(metric.SettledJobs + metric.Territories)
-		learningProgress := 1 / (1 + 0.25*float64(noReduction))
+		learningProgress := metric.Allocation / (1 + 0.25*float64(noReduction))
 		score := relevance * learningProgress
 		if score <= practiceScoreThreshold {
 			continue

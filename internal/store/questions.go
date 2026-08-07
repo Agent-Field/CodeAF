@@ -67,6 +67,7 @@ const (
 type QuestionConfig struct {
 	Kind      QuestionKind
 	Default   string
+	Category  QuestionCategory
 	AllowFree *bool
 }
 
@@ -92,12 +93,14 @@ func QuestionMessageBody(prompt string, options []QuestionOption, configs ...Que
 		Hint  string `json:"hint,omitempty"`
 	}
 	payload := struct {
-		Kind      QuestionKind    `json:"kind"`
-		Prompt    string          `json:"prompt"`
-		Options   []payloadOption `json:"options"`
-		Default   string          `json:"default,omitempty"`
-		AllowFree bool            `json:"allowFree"`
-	}{Kind: config.Kind, Prompt: prompt, Default: config.Default, AllowFree: allowFree}
+		Kind      QuestionKind     `json:"kind"`
+		Prompt    string           `json:"prompt"`
+		Options   []payloadOption  `json:"options"`
+		Default   string           `json:"default,omitempty"`
+		Category  QuestionCategory `json:"category,omitempty"`
+		AllowFree bool             `json:"allowFree"`
+	}{Kind: config.Kind, Prompt: prompt, Default: config.Default,
+		Category: config.Category, AllowFree: allowFree}
 	for index, option := range options {
 		payload.Options = append(payload.Options, payloadOption{
 			Key: strconv.Itoa(index + 1), Label: strings.TrimSpace(option.Label), Hint: strings.TrimSpace(option.Hint),
