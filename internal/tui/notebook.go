@@ -147,7 +147,7 @@ func notebookKindGlyph(kind store.FactKind) string {
 func notebookFactStyle(fact store.Fact) lipgloss.Style {
 	switch fact.Status {
 	case store.FactQuarantined:
-		return lipgloss.NewStyle().Foreground(rose).Strikethrough(true)
+		return roseStyle.Strikethrough(true)
 	case store.FactCandidate, store.FactSuperseded:
 		return mutedStyle.Faint(true)
 	default:

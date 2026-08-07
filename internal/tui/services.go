@@ -8,7 +8,6 @@ import (
 
 	"github.com/Agent-Field/aforge-v2/internal/store"
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/x/ansi"
 )
 
@@ -21,6 +20,8 @@ const (
 type serviceLister interface {
 	ActiveServices() ([]store.Service, error)
 }
+
+var _ serviceLister = (*store.Store)(nil)
 
 type serviceRow struct {
 	line      int
@@ -47,7 +48,14 @@ func serviceIDFromGraphRow(id string) (string, bool) {
 	return strings.TrimPrefix(id, serviceGraphRowPrefix), true
 }
 
+// activeServices answers from the poll-scoped cache. Four layout and render
+// sites ask per frame; the store is read once per poll behind them.
 func (m *Model) activeServices() []store.Service {
+	if m.railServicesValid {
+		return m.railServices
+	}
+	m.railServicesValid = true
+	m.railServices = nil
 	lister, ok := m.backend.(serviceLister)
 	if !ok {
 		return nil
@@ -56,6 +64,7 @@ func (m *Model) activeServices() []store.Service {
 	if err != nil {
 		return nil
 	}
+	m.railServices = services
 	return services
 }
 
@@ -91,7 +100,7 @@ func (m *Model) renderServicesSection(width int) string {
 		selected := m.focus == focusGraph && m.selectedNodeID == serviceGraphRowID(service.ID)
 		marker := mutedStyle.Faint(true).Render("▸ ")
 		if selected {
-			marker = lipgloss.NewStyle().Foreground(powder).Bold(true).Render("▸ ")
+			marker = powderStyle.Bold(true).Render("▸ ")
 		}
 		state := "up " + serviceAge(service.StartedAt, m.standingTime())
 		if service.Status != store.ServiceRunning {
@@ -100,7 +109,7 @@ func (m *Model) renderServicesSection(width int) string {
 		body := mutedStyle.Faint(true).Render(fmt.Sprintf("%s · %s · %s", service.Name, state, service.Health.Suffix()))
 		line := truncate(marker+body, width)
 		if selected {
-			line = lipgloss.NewStyle().Background(selectionBand).Width(width).Render(line)
+			line = bandStyle.Width(width).Render(line)
 		}
 		lines = append(lines, line)
 		m.serviceRows = append(m.serviceRows, serviceRow{line: row, serviceID: service.ID})
@@ -151,7 +160,7 @@ func (m *Model) renderServiceCardBody(width int) string {
 		selected := m.focus == focusGraph && len(m.serviceCardRows) == m.serviceFocusIndex
 		line := mutedStyle.Faint(true).Render("│   ▸ ") + mutedStyle.Render(action)
 		if selected {
-			line = lipgloss.NewStyle().Background(selectionBand).Width(width).Render(line)
+			line = bandStyle.Width(width).Render(line)
 		}
 		lines = append(lines, truncate(line, width))
 		m.serviceCardRows = append(m.serviceCardRows, row)

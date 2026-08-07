@@ -17,10 +17,10 @@ import (
 // passes through as plain wrapped text, so a half-formed document degrades
 // to exactly what was written.
 var (
-	mdCode    = lipgloss.NewStyle().Foreground(butter)
-	mdHeading = lipgloss.NewStyle().Foreground(ink).Bold(true)
+	mdCode    = butterStyle
+	mdHeading = inkStyle.Bold(true)
 	mdQuote   = lipgloss.NewStyle().Foreground(muted)
-	mdBold    = lipgloss.NewStyle().Foreground(ink).Bold(true)
+	mdBold    = inkStyle.Bold(true)
 )
 
 func renderMarkdown(text string, width int) string {
@@ -102,7 +102,7 @@ func artifactLink(target, display, glyph string, width int) string {
 	}
 	room := max(1, width-lipgloss.Width(prefix))
 	display = truncate(display, room)
-	styled := lipgloss.NewStyle().Foreground(powder).Underline(true).Render(display)
+	styled := powderStyle.Underline(true).Render(display)
 	return mutedStyle.Render(prefix) + osc8FileLink(target, styled)
 }
 
