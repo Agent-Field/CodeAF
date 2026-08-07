@@ -141,6 +141,26 @@ func (m *Model) scrollHelp(delta int) {
 	m.paletteSelected = max(0, min(m.helpMaxOffset(), m.paletteSelected+delta))
 }
 
+// Every fragment inside the modal is painted on the panel background. lipgloss
+// closes each styled run with a full reset, so a fragment left unpainted — a
+// separator space, a padded column, a foreground-only word — falls back to the
+// terminal background and the panel reads as mottled bands.
+var (
+	helpBandStyle    = lipgloss.NewStyle().Foreground(ink).Background(selectionBand)
+	helpTitleStyle   = lipgloss.NewStyle().Foreground(ink).Bold(true).Background(selectionBand)
+	helpKeyStyle     = lipgloss.NewStyle().Foreground(muted).Background(selectionBand)
+	helpMeaningStyle = lipgloss.NewStyle().Foreground(ink).Background(selectionBand)
+)
+
+// helpBlank is a run of painted spaces, used wherever a column has no content
+// on this row.
+func helpBlank(width int) string {
+	if width <= 0 {
+		return ""
+	}
+	return helpBandStyle.Render(strings.Repeat(" ", width))
+}
+
 // overlayHelp shares the model palette's floating geometry and muted selection
 // band. At 100+ columns categories pair up; at 80 columns they become one calm,
 // stacked reading column without changing or hiding any content.
@@ -148,6 +168,8 @@ func (m *Model) overlayHelp(frame string) string {
 	width := m.helpOverlayWidth()
 	x := max(0, m.width-width-2)
 	y := 1
+	// The panel is `width` columns wide including one column of padding on each
+	// side, so its content — and every line generated for it — is width-2.
 	innerWidth := max(1, width-2)
 	all := m.helpContentLines(innerWidth)
 	limit := m.helpLineLimit()
@@ -155,12 +177,14 @@ func (m *Model) overlayHelp(frame string) string {
 	end := min(len(all), m.paletteSelected+limit)
 	visible := all[m.paletteSelected:end]
 
-	title := "⟨×⟩ help"
+	title := helpTitleStyle.Render("⟨×⟩ help")
 	if len(all) > limit {
-		title = overlayRight(title, "↑/↓ scroll", innerWidth)
+		hint := "↑/↓ scroll"
+		gap := max(1, innerWidth-lipgloss.Width("⟨×⟩ help")-lipgloss.Width(hint))
+		title += helpBlank(gap) + helpKeyStyle.Render(hint)
 	}
 	lines := append([]string{title}, visible...)
-	panelStyle := lipgloss.NewStyle().Foreground(ink).Background(selectionBand).Padding(0, 1).Width(innerWidth)
+	panelStyle := helpBandStyle.Padding(0, 1).Width(width)
 	for index := range lines {
 		lines[index] = panelStyle.Render(truncate(lines[index], innerWidth))
 	}
@@ -173,35 +197,37 @@ func (m *Model) overlayHelp(frame string) string {
 func (m *Model) helpContentLines(width int) []string {
 	categories := helpCategories()
 	if m.width < 100 {
+		keyWidth := helpKeyWidth(categories, width)
 		lines := make([]string, 0)
 		for index, category := range categories {
 			if index > 0 {
 				lines = append(lines, "")
 			}
-			lines = append(lines, renderHelpCategory(category, width)...)
+			lines = append(lines, renderHelpCategory(category, keyWidth, width)...)
 		}
 		return lines
 	}
 
 	gap := 2
 	columnWidth := max(18, (width-gap)/2)
+	keyWidth := helpKeyWidth(categories, columnWidth)
 	lines := make([]string, 0)
 	for index := 0; index < len(categories); index += 2 {
-		left := renderHelpCategory(categories[index], columnWidth)
+		left := renderHelpCategory(categories[index], keyWidth, columnWidth)
 		right := []string(nil)
 		if index+1 < len(categories) {
-			right = renderHelpCategory(categories[index+1], columnWidth)
+			right = renderHelpCategory(categories[index+1], keyWidth, columnWidth)
 		}
 		height := max(len(left), len(right))
 		for row := 0; row < height; row++ {
-			leftLine, rightLine := "", ""
+			leftLine, rightLine := helpBlank(columnWidth), ""
 			if row < len(left) {
 				leftLine = left[row]
 			}
 			if row < len(right) {
 				rightLine = right[row]
 			}
-			lines = append(lines, padANSI(leftLine, columnWidth)+strings.Repeat(" ", gap)+rightLine)
+			lines = append(lines, leftLine+helpBlank(gap)+rightLine)
 		}
 		if index+2 < len(categories) {
 			lines = append(lines, "")
@@ -210,13 +236,20 @@ func (m *Model) helpContentLines(width int) []string {
 	return lines
 }
 
-func renderHelpCategory(category helpCategory, width int) []string {
-	lines := []string{lipgloss.NewStyle().Foreground(ink).Bold(true).Render(category.title)}
-	keyWidth := 0
-	for _, row := range category.rows {
-		keyWidth = max(keyWidth, lipgloss.Width(row.key))
+// helpKeyWidth is measured once across every category so the key column lines
+// up down the whole modal instead of stepping in and out per category.
+func helpKeyWidth(categories []helpCategory, width int) int {
+	widest := 0
+	for _, category := range categories {
+		for _, row := range category.rows {
+			widest = max(widest, lipgloss.Width(row.key))
+		}
 	}
-	keyWidth = min(keyWidth, max(8, width/3))
+	return max(1, min(widest, max(8, width/3)))
+}
+
+func renderHelpCategory(category helpCategory, keyWidth, width int) []string {
+	lines := []string{helpTitleStyle.Render(padANSI(category.title, width))}
 	meaningWidth := max(8, width-keyWidth-2)
 	for _, row := range category.rows {
 		wrapped := strings.Split(wrapText(row.meaning, meaningWidth), "\n")
@@ -228,8 +261,8 @@ func renderHelpCategory(category helpCategory, width int) []string {
 			if index == 0 {
 				key = truncate(row.key, keyWidth)
 			}
-			lines = append(lines,
-				mutedStyle.Render(padANSI(key, keyWidth))+"  "+inputTextStyle.Render(meaning))
+			lines = append(lines, helpKeyStyle.Render(padANSI(key, keyWidth))+
+				helpMeaningStyle.Render("  "+padANSI(meaning, meaningWidth)))
 		}
 	}
 	return lines
