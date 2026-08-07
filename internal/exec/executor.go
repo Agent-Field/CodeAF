@@ -58,6 +58,10 @@ type Task struct {
 	// deliberately cooperative: a model/tool turn already in flight lands,
 	// then the claim owner releases through the store CAS path.
 	Control func() ControlAction
+
+	// control is installed by the scheduler so its watchdog can tear down a
+	// Toolbox even when the executor goroutine itself is abandoned.
+	control *leafControl
 }
 
 type ControlAction string

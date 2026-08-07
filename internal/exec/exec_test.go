@@ -26,8 +26,8 @@ func workspace(t *testing.T) *Workspace {
 
 func TestRecallToolIsStoreGatedAndBounded(t *testing.T) {
 	plain := NewToolbox(workspace(t), 1, nil)
-	if definitions := plain.Definitions(); len(definitions) != 4 {
-		t.Fatalf("plain toolbox definitions = %d, want original four", len(definitions))
+	if definitions := plain.Definitions(); len(definitions) != 5 || definitions[1].Function.Name != "job" {
+		t.Fatalf("plain toolbox definitions = %+v, want five universal tools including job", definitions)
 	}
 	if result := plain.Execute(context.Background(), "recall", `{"terms":"parser"}`); !result.IsError || !strings.Contains(result.Content, "without an attached store") {
 		t.Fatalf("plain recall result = %+v, want unavailable", result)
@@ -65,9 +65,9 @@ func TestRecallToolIsStoreGatedAndBounded(t *testing.T) {
 
 	tools := NewToolboxWithStore(workspace(t), 2, nil, history)
 	definitions := tools.Definitions()
-	if len(definitions) != 5 || definitions[4].Function.Name != "recall" ||
-		!strings.Contains(definitions[4].Function.Description, "map") ||
-		!strings.Contains(definitions[4].Function.Description, "territory") {
+	if len(definitions) != 6 || definitions[5].Function.Name != "recall" ||
+		!strings.Contains(definitions[5].Function.Description, "map") ||
+		!strings.Contains(definitions[5].Function.Description, "territory") {
 		t.Fatalf("store toolbox definitions = %+v", definitions)
 	}
 	result := tools.Execute(context.Background(), "recall",
@@ -188,7 +188,7 @@ func TestToolFailuresAreResults(t *testing.T) {
 	ctx := context.Background()
 
 	cases := []struct{ name, tool, args, want string }{
-		{"unknown tool", "nope", `{}`, "sh, write, edit, web"},
+		{"unknown tool", "nope", `{}`, "sh, job, write, edit, web"},
 		{"bad json", "sh", `{oops`, "valid JSON"},
 		{"missing file", "edit", `{"path":"none.md","old":"x","new":"y"}`, "could not read"},
 		{"failing command", "sh", `{"cmd":"exit 3"}`, "exit"},
