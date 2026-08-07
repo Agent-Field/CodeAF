@@ -277,8 +277,11 @@ func (s *Store) Events(afterSeq int64, limit int) ([]Event, error) {
 // Failed and cancelled dependencies are terminal by design; their digest is
 // available through DependencyDigests.
 func (s *Store) Ready(limit int) ([]Node, error) {
+	// The spine root and organizational furniture are never ready work, no
+	// matter what status a repair or migration leaves them in.
 	where := `
 		WHERE status = ? AND folded = 0 AND held = 0 AND cancel_requested = 0
+		  AND id != ? AND grp NOT IN (?)
 		  AND NOT EXISTS (
 		      SELECT 1
 		      FROM edges AS edge
@@ -287,7 +290,7 @@ func (s *Store) Ready(limit int) ([]Node, error) {
 		        AND edge.kind IN (?, ?)
 		        AND dependency.status NOT IN (?, ?, ?)
 		  )`
-	return s.queryNodesLimitOrdered(where, []any{Pending, FeedsInto, Blocks, Done, Failed, Cancelled}, limit,
+	return s.queryNodesLimitOrdered(where, []any{Pending, RootID, TerritoryGroup, FeedsInto, Blocks, Done, Failed, Cancelled}, limit,
 		`priority DESC, created_seq, created_order, id`)
 }
 

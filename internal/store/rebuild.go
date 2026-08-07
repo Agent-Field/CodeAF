@@ -142,6 +142,9 @@ func replayEvent(tx *sql.Tx, event Event) error {
 		}
 		return refreshGraphFTS(tx, payload.ID)
 
+	case EventSpineRepaired:
+		return applySpineRepair(tx, event.Seq, event.Time)
+
 	case EventSubtreeSpliced:
 		var payload splicedPayload
 		if err := json.Unmarshal(event.Payload, &payload); err != nil {
