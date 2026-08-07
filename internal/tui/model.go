@@ -7,6 +7,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strconv"
 	"strings"
 	"time"
 
@@ -714,6 +715,29 @@ func (m *Model) updateKey(message tea.KeyMsg) (tea.Cmd, bool) {
 		m.openHelp()
 		return nil, true
 	}
+	if m.paletteOpen() {
+		if command, handled := m.updatePaletteKey(key); handled {
+			return command, true
+		}
+	}
+	// A visible option question owns bare answer keys across focus zones. The
+	// modal palettes stay above this layer, and any existing draft keeps the
+	// digit on the ordinary text-entry path.
+	if m.palette == paletteNone && m.input.Value() == "" {
+		if card := m.questionCardWithOptions(); card != nil {
+			switch {
+			case len(key) == 1 && key[0] >= '1' && key[0] <= '9':
+				if command, ok := m.submitQuestionOptionNumber(card.ID, int(key[0]-'0')); ok {
+					return command, true
+				}
+			case key == "enter" && card.QuestionKind == questionConfirm:
+				if index, ok := markedDefaultQuestionOption(*card); ok {
+					m.questionSelection[card.ID] = index
+					return m.submitQuestionOption(card.ID, index), true
+				}
+			}
+		}
+	}
 	if m.nodeViewID != "" {
 		switch {
 		case key == "esc":
@@ -800,11 +824,6 @@ func (m *Model) updateKey(message tea.KeyMsg) (tea.Cmd, bool) {
 			return tea.Quit, true
 		}
 		return nil, true
-	}
-	if m.paletteOpen() {
-		if command, handled := m.updatePaletteKey(key); handled {
-			return command, true
-		}
 	}
 	if m.notebookOpen && len(key) == 1 && key[0] >= '1' && key[0] <= '9' {
 		m.activateNotebookNumber(int(key[0] - '0'))
@@ -1218,6 +1237,18 @@ func (m *Model) submit() tea.Cmd {
 	body := strings.TrimSpace(m.input.Value())
 	if body == "" && len(m.attachments) == 0 {
 		return nil
+	}
+	// Enter on an exact option number takes the same local selection path as a
+	// bare digit. Attachments make the turn richer than a numeric-only answer,
+	// so they deliberately retain ordinary message semantics.
+	if len(m.attachments) == 0 {
+		if number, err := strconv.Atoi(body); err == nil && number > 0 && strconv.Itoa(number) == body {
+			if card := m.questionCardWithOptions(); card != nil {
+				if command, ok := m.submitQuestionOptionNumber(card.ID, number); ok {
+					return command
+				}
+			}
+		}
 	}
 	if strings.HasPrefix(body, "/") {
 		return m.executeSlash(body)

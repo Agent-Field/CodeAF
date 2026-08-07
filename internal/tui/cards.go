@@ -1404,27 +1404,72 @@ func (m *Model) questionOptionIndex(card jobCard) int {
 }
 
 func defaultQuestionOption(card jobCard) int {
-	wanted := strings.TrimSpace(card.Default)
-	for index, option := range card.Options {
-		if strings.EqualFold(option.Key, wanted) || strings.EqualFold(option.Label, wanted) ||
-			strconv.Itoa(option.Number) == wanted {
-			return index
-		}
+	if index, ok := markedDefaultQuestionOption(card); ok {
+		return index
 	}
 	return 0
 }
 
-func (m *Model) questionCardWithOptions() *jobCard {
-	if card := m.selectedQuestionCardWithOptions(); card != nil {
-		return card
+func markedDefaultQuestionOption(card jobCard) (int, bool) {
+	wanted := strings.TrimSpace(card.Default)
+	if wanted == "" {
+		return 0, false
 	}
-	for index := len(m.cards) - 1; index >= 0; index-- {
-		card := &m.cards[index]
-		if card.State == cardQuestion && len(card.Options) > 0 {
+	for index, option := range card.Options {
+		if strings.EqualFold(option.Key, wanted) || strings.EqualFold(option.Label, wanted) ||
+			strconv.Itoa(option.Number) == wanted {
+			return index, true
+		}
+	}
+	return 0, false
+}
+
+// answerTargetQuestionCard resolves the zero-navigation answer target before
+// considering its kind. A focused pending card wins; otherwise one pending
+// card is unambiguous, and multiple pending cards resolve to the newest
+// derived card. Keeping text questions in this choice prevents an older option
+// card from stealing digits while a newer free-text question is the active ask.
+func (m *Model) answerTargetQuestionCard() *jobCard {
+	if m.focus == focusCards {
+		if card := m.cardByID(m.selectedCardID); card != nil && card.State == cardQuestion {
 			return card
 		}
 	}
-	return nil
+	var newest *jobCard
+	newestIndex := -1
+	for index := range m.cards {
+		card := &m.cards[index]
+		if card.State != cardQuestion {
+			continue
+		}
+		if questionCardIsNewer(card, index, newest, newestIndex) {
+			newest = card
+			newestIndex = index
+		}
+	}
+	return newest
+}
+
+func questionCardIsNewer(candidate *jobCard, candidateIndex int, current *jobCard, currentIndex int) bool {
+	if current == nil {
+		return true
+	}
+	if !candidate.QuestionAt.IsZero() && !current.QuestionAt.IsZero() &&
+		!candidate.QuestionAt.Equal(current.QuestionAt) {
+		return candidate.QuestionAt.After(current.QuestionAt)
+	}
+	if candidate.BirthSeq != current.BirthSeq {
+		return candidate.BirthSeq > current.BirthSeq
+	}
+	return candidateIndex > currentIndex
+}
+
+func (m *Model) questionCardWithOptions() *jobCard {
+	card := m.answerTargetQuestionCard()
+	if card == nil || len(card.Options) == 0 {
+		return nil
+	}
+	return card
 }
 
 func (m *Model) selectedQuestionCardWithOptions() *jobCard {

@@ -537,6 +537,11 @@ func (m *Model) renderNodePane() string {
 // the provisional transcript and the "answering:" line never share a row.
 func (m *Model) renderInput() string {
 	input := m.input
+	if input.Value() == "" {
+		if card := m.questionCardWithOptions(); card != nil {
+			input.Placeholder = fmt.Sprintf("1–%d to answer · or type your own", len(card.Options))
+		}
+	}
 	if m.boost != boostOff {
 		input.Prompt = "» "
 	}
