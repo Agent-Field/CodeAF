@@ -23,8 +23,18 @@ const (
 	CharterDraft    CharterStatus = "draft"
 	CharterProposed CharterStatus = "proposed"
 	CharterActive   CharterStatus = "active"
-	CharterPaused   CharterStatus = "paused"
-	CharterRetired  CharterStatus = "retired"
+	CharterPaused  CharterStatus = "paused"
+	CharterRetired CharterStatus = "retired"
+)
+
+// CharterAutonomy is the earned right to turn a checked wake into work
+// without asking again. It is deliberately independent of CharterStatus:
+// status says whether a charter is armed; autonomy says how it may fire.
+type CharterAutonomy string
+
+const (
+	CharterProbation CharterAutonomy = "probation"
+	CharterTenured   CharterAutonomy = "tenured"
 )
 
 // WatchKind names the deterministic mechanism that wakes a sentinel.
@@ -182,8 +192,18 @@ type Charter struct {
 	SentinelHint  string
 	Action        CharterAction
 	Status        CharterStatus
+	Autonomy      CharterAutonomy
+	GreenFirings  int
+	Demotions     int
 	Ratification  Ratification
 	ProposalShape string
+
+	// Spec and the adjacent fields are the head's lossless ratification card.
+	// The structured engine fields above remain the executable source of truth.
+	SessionID        string
+	Spec             CharterSpec
+	SourceCommandSeq int64
+	CreatedAt        time.Time
 
 	LastWake        time.Time
 	NextDue         time.Time
@@ -199,14 +219,6 @@ type Charter struct {
 	UpdatedSeq      int64
 
 	guardrails CharterRails
-
-	// Legacy draft-facing projection. The M3 engine leaves these zero-valued;
-	// DraftCharter and the standing UI populate them from the separate draft
-	// view.
-	SessionID        string
-	Spec             CharterSpec
-	SourceCommandSeq int64
-	CreatedAt        time.Time
 }
 
 // Rails returns the immutable bounds carried by a charter.
@@ -230,6 +242,7 @@ func NewCharter(id, invariant string, watch WatchSpec, sentinelHint string,
 	if action.Template == "" {
 		return Charter{}, fmt.Errorf("new charter: %w: action template is required", ErrInvalid)
 	}
+	rails = normalizeCharterRails(rails)
 	if err := validateRails(rails); err != nil {
 		return Charter{}, fmt.Errorf("new charter: %w", err)
 	}
@@ -241,7 +254,8 @@ func NewCharter(id, invariant string, watch WatchSpec, sentinelHint string,
 	}
 	return Charter{
 		ID: id, Invariant: invariant, Watch: watch, SentinelHint: strings.TrimSpace(sentinelHint),
-		Action: action, Status: status, Ratification: ratification, guardrails: rails,
+		Action: action, Status: status, Autonomy: CharterProbation,
+		Ratification: ratification, SessionID: ratification.SessionID, guardrails: rails,
 	}, nil
 }
 
@@ -260,6 +274,29 @@ func validateRails(rails CharterRails) error {
 		return fmt.Errorf("%w: positive daily firing limit is required", ErrInvalid)
 	}
 	return nil
+}
+
+func normalizeCharterRails(rails CharterRails) CharterRails {
+	if rails.PerFiringBudgetUSD <= 0 {
+		rails.PerFiringBudgetUSD = rails.EstimatedCostUSD
+	}
+	if rails.EstimatedCostUSD <= 0 {
+		rails.EstimatedCostUSD = rails.PerFiringBudgetUSD
+	}
+	if rails.MaxFiringsPerDay <= 0 {
+		rails.MaxFiringsPerDay = rails.MaxPerDay
+	}
+	if rails.MaxPerDay <= 0 {
+		rails.MaxPerDay = rails.MaxFiringsPerDay
+	}
+	if rails.Expiry == "" {
+		if rails.ExpiresAt == nil {
+			rails.Expiry = "never"
+		} else {
+			rails.Expiry = rails.ExpiresAt.Format(time.RFC3339)
+		}
+	}
+	return rails
 }
 
 func validateWatch(watch WatchSpec) error {
@@ -339,6 +376,10 @@ func validCharterStatus(status CharterStatus) bool {
 	return status == CharterProposed || status == CharterActive || status == CharterPaused || status == CharterRetired
 }
 
+func validCharterAutonomy(autonomy CharterAutonomy) bool {
+	return autonomy == CharterProbation || autonomy == CharterTenured
+}
+
 func validRatification(r Ratification) bool {
 	return validOrigin(r.Origin) && strings.TrimSpace(r.Evidence) != ""
 }
@@ -352,7 +393,13 @@ CREATE TABLE IF NOT EXISTS charters (
     action            JSON NOT NULL CHECK (json_valid(action)),
     rails             JSON NOT NULL CHECK (json_valid(rails)),
     status            TEXT NOT NULL CHECK (status IN ('proposed', 'active', 'paused', 'retired')),
+	autonomy          TEXT NOT NULL DEFAULT 'probation' CHECK (autonomy IN ('probation', 'tenured')),
+	green_firings     INTEGER NOT NULL DEFAULT 0 CHECK (green_firings >= 0),
+	demotions         INTEGER NOT NULL DEFAULT 0 CHECK (demotions >= 0),
     ratification      JSON NOT NULL CHECK (json_valid(ratification)),
+	session_id        TEXT NOT NULL DEFAULT '',
+	spec              JSON NOT NULL DEFAULT '{}' CHECK (json_valid(spec)),
+	source_command_seq INTEGER NOT NULL DEFAULT 0,
     proposal_shape    TEXT NOT NULL DEFAULT '',
     last_wake         TEXT,
     next_due          TEXT,
@@ -365,7 +412,8 @@ CREATE TABLE IF NOT EXISTS charters (
     graph_day         TEXT NOT NULL DEFAULT '',
     graph_triggered   INTEGER NOT NULL DEFAULT 0 CHECK (graph_triggered IN (0, 1)),
     created_seq       INTEGER NOT NULL REFERENCES events(seq),
-    updated_seq       INTEGER NOT NULL REFERENCES events(seq)
+    updated_seq       INTEGER NOT NULL REFERENCES events(seq),
+	created_at        TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS charters_due ON charters (status, next_due, created_seq);
 CREATE VIRTUAL TABLE IF NOT EXISTS charters_fts USING fts5(
@@ -374,30 +422,38 @@ CREATE VIRTUAL TABLE IF NOT EXISTS charters_fts USING fts5(
 `
 
 type charterRecord struct {
-	ID              string        `json:"id"`
-	Invariant       string        `json:"invariant"`
-	Watch           WatchSpec     `json:"watch"`
-	SentinelHint    string        `json:"sentinel_hint,omitempty"`
-	Action          CharterAction `json:"action"`
-	Rails           CharterRails  `json:"rails"`
-	Status          CharterStatus `json:"status"`
-	Ratification    Ratification  `json:"ratification"`
-	ProposalShape   string        `json:"proposal_shape,omitempty"`
-	LastWake        time.Time     `json:"last_wake,omitempty"`
-	NextDue         time.Time     `json:"next_due,omitempty"`
-	WakeSeq         int64         `json:"wake_seq,omitempty"`
-	WakePending     bool          `json:"wake_pending,omitempty"`
-	SentinelYes     bool          `json:"sentinel_yes,omitempty"`
-	WakeEvidence    string        `json:"wake_evidence,omitempty"`
-	FileFingerprint string        `json:"file_fingerprint,omitempty"`
-	GraphCursor     int64         `json:"graph_cursor,omitempty"`
-	GraphDay        string        `json:"graph_day,omitempty"`
-	GraphTriggered  bool          `json:"graph_triggered,omitempty"`
+	ID               string          `json:"id"`
+	Invariant        string          `json:"invariant"`
+	Watch            WatchSpec       `json:"watch"`
+	SentinelHint     string          `json:"sentinel_hint,omitempty"`
+	Action           CharterAction   `json:"action"`
+	Rails            CharterRails    `json:"rails"`
+	Status           CharterStatus   `json:"status"`
+	Autonomy         CharterAutonomy `json:"autonomy,omitempty"`
+	GreenFirings     int             `json:"green_firings,omitempty"`
+	Demotions        int             `json:"demotions,omitempty"`
+	Ratification     Ratification    `json:"ratification"`
+	SessionID        string          `json:"session_id,omitempty"`
+	Spec             CharterSpec     `json:"spec,omitempty"`
+	SourceCommandSeq int64           `json:"source_command_seq,omitempty"`
+	ProposalShape    string          `json:"proposal_shape,omitempty"`
+	LastWake         time.Time       `json:"last_wake,omitempty"`
+	NextDue          time.Time       `json:"next_due,omitempty"`
+	WakeSeq          int64           `json:"wake_seq,omitempty"`
+	WakePending      bool            `json:"wake_pending,omitempty"`
+	SentinelYes      bool            `json:"sentinel_yes,omitempty"`
+	WakeEvidence     string          `json:"wake_evidence,omitempty"`
+	FileFingerprint  string          `json:"file_fingerprint,omitempty"`
+	GraphCursor      int64           `json:"graph_cursor,omitempty"`
+	GraphDay         string          `json:"graph_day,omitempty"`
+	GraphTriggered   bool            `json:"graph_triggered,omitempty"`
+	CreatedAt        time.Time       `json:"created_at,omitempty"`
 }
 
 type charterStatusPayload struct {
 	Status       CharterStatus `json:"status"`
 	Ratification Ratification  `json:"ratification"`
+	Reason       string        `json:"reason"`
 }
 
 // CharterWatchState is the restart-safe observation cursor carried by both a
@@ -425,10 +481,11 @@ type SentinelCheck struct {
 }
 
 type charterFiringPayload struct {
-	WakeSeq int64  `json:"wake_seq"`
-	JobID   string `json:"job_id,omitempty"`
-	SayOnly bool   `json:"say_only,omitempty"`
-	Reason  string `json:"reason,omitempty"`
+	WakeSeq           int64  `json:"wake_seq"`
+	JobID             string `json:"job_id,omitempty"`
+	SayOnly           bool   `json:"say_only,omitempty"`
+	ProbationApproved bool   `json:"probation_approved,omitempty"`
+	Reason            string `json:"reason,omitempty"`
 }
 
 type charterDeclinedPayload struct {
@@ -441,7 +498,11 @@ func (s *Store) CreateCharter(charter Charter) error {
 	if err := validateConstructedCharter(charter); err != nil {
 		return err
 	}
+	// Admission is the safety boundary: even a manually assembled value cannot
+	// smuggle tenure or prior evidence into a newly created capability.
+	charter.Autonomy, charter.GreenFirings, charter.Demotions = CharterProbation, 0, 0
 	now := time.Now()
+	charter.CreatedAt = now
 	next, err := initialCharterDue(charter.Watch, now)
 	if err != nil {
 		return fmt.Errorf("create charter: %w", err)
@@ -492,36 +553,74 @@ func initialCharterDue(watch WatchSpec, now time.Time) (time.Time, error) {
 }
 
 func charterToRecord(c Charter) charterRecord {
+	autonomy := c.Autonomy
+	if !validCharterAutonomy(autonomy) {
+		autonomy = CharterProbation
+	}
+	sessionID := strings.TrimSpace(c.SessionID)
+	if sessionID == "" {
+		sessionID = c.Ratification.SessionID
+	}
+	spec := c.Spec
+	if strings.TrimSpace(spec.Invariant) == "" {
+		spec = charterSpecFromCanonical(c)
+	}
 	return charterRecord{
 		ID: c.ID, Invariant: c.Invariant, Watch: c.Watch, SentinelHint: c.SentinelHint,
-		Action: c.Action, Rails: c.guardrails, Status: c.Status, Ratification: c.Ratification,
-		ProposalShape: c.ProposalShape, LastWake: c.LastWake, NextDue: c.NextDue,
+		Action: c.Action, Rails: normalizeCharterRails(c.guardrails), Status: c.Status,
+		Autonomy: autonomy, GreenFirings: c.GreenFirings, Demotions: c.Demotions,
+		Ratification: c.Ratification, SessionID: sessionID, Spec: spec,
+		SourceCommandSeq: c.SourceCommandSeq,
+		ProposalShape:    c.ProposalShape, LastWake: c.LastWake, NextDue: c.NextDue,
 		WakeSeq: c.WakeSeq, WakePending: c.WakePending, SentinelYes: c.SentinelYes,
 		WakeEvidence:    c.WakeEvidence,
 		FileFingerprint: c.FileFingerprint, GraphCursor: c.GraphCursor, GraphDay: c.GraphDay,
-		GraphTriggered: c.GraphTriggered,
+		GraphTriggered: c.GraphTriggered, CreatedAt: c.CreatedAt,
 	}
 }
 
 func applyCharterCreated(tx *sql.Tx, payload charterRecord, seq int64, at time.Time) error {
+	if payload.Status == "draft" {
+		payload.Status = CharterProposed
+	}
+	if !validCharterAutonomy(payload.Autonomy) {
+		payload.Autonomy = CharterProbation
+	}
+	payload.Rails = normalizeCharterRails(payload.Rails)
+	if payload.CreatedAt.IsZero() {
+		payload.CreatedAt = at
+	}
+	if payload.SessionID == "" {
+		payload.SessionID = payload.Ratification.SessionID
+	}
+	if strings.TrimSpace(payload.Spec.Invariant) == "" {
+		payload.Spec = charterSpecFromRecord(payload)
+	}
 	watch, _ := json.Marshal(payload.Watch)
 	action, _ := json.Marshal(payload.Action)
 	encodedRails, _ := json.Marshal(payload.Rails)
 	ratification, _ := json.Marshal(payload.Ratification)
+	spec, _ := json.Marshal(payload.Spec)
 	graphCursor := payload.GraphCursor
 	if payload.Watch.Kind == WatchGraph && graphCursor == 0 {
 		graphCursor = seq
 	}
 	if _, err := tx.Exec(`
 		INSERT INTO charters (
-		    id, invariant, watch, sentinel_hint, action, rails, status, ratification,
+		    id, invariant, watch, sentinel_hint, action, rails, status, autonomy,
+		    green_firings, demotions, ratification, session_id, spec, source_command_seq,
 		    proposal_shape, last_wake, next_due, wake_seq, wake_pending, sentinel_yes, wake_evidence,
-		    file_fingerprint, graph_cursor, graph_day, graph_triggered, created_seq, updated_seq
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		    file_fingerprint, graph_cursor, graph_day, graph_triggered, created_seq, updated_seq, created_at
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		payload.ID, payload.Invariant, string(watch), payload.SentinelHint, string(action), string(encodedRails),
-		payload.Status, string(ratification), payload.ProposalShape, nullTime(payload.LastWake),
+		payload.Status, payload.Autonomy, payload.GreenFirings, payload.Demotions, string(ratification),
+		payload.SessionID, string(spec), payload.SourceCommandSeq, payload.ProposalShape, nullTime(payload.LastWake),
 		nullTime(payload.NextDue), payload.WakeSeq, payload.WakePending, payload.SentinelYes, payload.WakeEvidence,
-		payload.FileFingerprint, graphCursor, payload.GraphDay, payload.GraphTriggered, seq, seq); err != nil {
+		payload.FileFingerprint, graphCursor, payload.GraphDay, payload.GraphTriggered, seq, seq,
+		formatTime(payload.CreatedAt)); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(`INSERT INTO charters_fts (charter_id, invariant) VALUES (?, ?)`, payload.ID, payload.Invariant); err != nil {
 		return err
 	}
 	origin := payload.Ratification.Origin
@@ -536,7 +635,7 @@ func applyCharterCreated(tx *sql.Tx, payload charterRecord, seq int64, at time.T
 		    intent, created_seq, created_order, updated_seq, finished_at, folded, fold_root, fold_digest
 		) VALUES (?, ?, ?, ?, ?, 0, ?, ?, ?, ?, ?, ?, 0, ?, ?, 1, 1, ?)`,
 		payload.ID, RootID, brief, title, CharterGroup, Done, brief, origin,
-		nullIfEmpty(payload.Ratification.SessionID), payload.Invariant, seq, seq, formatTime(at), brief)
+		nullIfEmpty(payload.SessionID), payload.Invariant, seq, seq, formatTime(at), brief)
 	if err != nil {
 		return err
 	}
@@ -585,9 +684,10 @@ func (s *Store) Charter(id string) (Charter, bool, error) {
 }
 
 const charterColumns = `
-    id, invariant, watch, sentinel_hint, action, rails, status, ratification,
+    id, invariant, watch, sentinel_hint, action, rails, status, autonomy,
+    green_firings, demotions, ratification, session_id, spec, source_command_seq,
     proposal_shape, last_wake, next_due, wake_seq, wake_pending, sentinel_yes, wake_evidence,
-    file_fingerprint, graph_cursor, graph_day, graph_triggered, created_seq, updated_seq`
+    file_fingerprint, graph_cursor, graph_day, graph_triggered, created_seq, updated_seq, created_at`
 
 // qualifiedCharterColumns prefixes every charter column for queries that join
 // tables sharing column names, such as the invariant FTS index.
@@ -601,13 +701,20 @@ func qualifiedCharterColumns(table string) string {
 
 func scanCharter(scanner rowScanner) (Charter, error) {
 	var c Charter
-	var watch, action, rails, ratification string
+	var watch, action, rails, ratification, spec, createdAt string
 	var lastWake, nextDue sql.NullString
 	if err := scanner.Scan(&c.ID, &c.Invariant, &watch, &c.SentinelHint, &action, &rails,
-		&c.Status, &ratification, &c.ProposalShape, &lastWake, &nextDue, &c.WakeSeq,
+		&c.Status, &c.Autonomy, &c.GreenFirings, &c.Demotions, &ratification,
+		&c.SessionID, &spec, &c.SourceCommandSeq, &c.ProposalShape, &lastWake, &nextDue, &c.WakeSeq,
 		&c.WakePending, &c.SentinelYes, &c.WakeEvidence, &c.FileFingerprint, &c.GraphCursor, &c.GraphDay,
-		&c.GraphTriggered, &c.CreatedSeq, &c.UpdatedSeq); err != nil {
+		&c.GraphTriggered, &c.CreatedSeq, &c.UpdatedSeq, &createdAt); err != nil {
 		return Charter{}, err
+	}
+	if c.Status == "draft" {
+		c.Status = CharterProposed
+	}
+	if !validCharterAutonomy(c.Autonomy) {
+		c.Autonomy = CharterProbation
 	}
 	if err := json.Unmarshal([]byte(watch), &c.Watch); err != nil {
 		return Charter{}, err
@@ -618,10 +725,18 @@ func scanCharter(scanner rowScanner) (Charter, error) {
 	if err := json.Unmarshal([]byte(rails), &c.guardrails); err != nil {
 		return Charter{}, err
 	}
+	c.guardrails = normalizeCharterRails(c.guardrails)
 	if err := json.Unmarshal([]byte(ratification), &c.Ratification); err != nil {
 		return Charter{}, err
 	}
+	if err := json.Unmarshal([]byte(spec), &c.Spec); err != nil {
+		return Charter{}, err
+	}
 	var err error
+	c.CreatedAt, err = parseTime(createdAt)
+	if err != nil {
+		return Charter{}, err
+	}
 	if lastWake.Valid {
 		c.LastWake, err = parseTime(lastWake.String)
 		if err != nil {
@@ -633,6 +748,9 @@ func scanCharter(scanner rowScanner) (Charter, error) {
 		if err != nil {
 			return Charter{}, err
 		}
+	}
+	if strings.TrimSpace(c.Spec.Invariant) == "" {
+		c.Spec = charterSpecFromCanonical(c)
 	}
 	return c, nil
 }
@@ -780,8 +898,15 @@ func (s *Store) ReviseCharter(id, invariant string, watch WatchSpec, sentinelHin
 	if err != nil {
 		return fmt.Errorf("revise charter: %w", err)
 	}
+	validated.Autonomy = current.Autonomy
+	validated.GreenFirings = current.GreenFirings
+	validated.Demotions = current.Demotions
+	validated.SessionID = current.SessionID
+	validated.SourceCommandSeq = current.SourceCommandSeq
+	validated.CreatedAt = current.CreatedAt
 	validated.ProposalShape = current.ProposalShape
 	validated.LastWake = current.LastWake
+	validated.Spec = charterSpecFromCanonical(validated)
 	validated.NextDue, err = initialCharterDue(watch, time.Now())
 	if err != nil {
 		return fmt.Errorf("revise charter: %w", err)
@@ -809,14 +934,15 @@ func applyCharterRevision(tx *sql.Tx, payload charterRecord, seq int64) error {
 	watch, _ := json.Marshal(payload.Watch)
 	action, _ := json.Marshal(payload.Action)
 	rails, _ := json.Marshal(payload.Rails)
+	spec, _ := json.Marshal(payload.Spec)
 	graphCursor := payload.GraphCursor
 	if payload.Watch.Kind == WatchGraph && graphCursor == 0 {
 		graphCursor = seq
 	}
-	result, err := tx.Exec(`UPDATE charters SET invariant=?, watch=?, sentinel_hint=?, action=?, rails=?,
+	result, err := tx.Exec(`UPDATE charters SET invariant=?, watch=?, sentinel_hint=?, action=?, rails=?, spec=?,
 		next_due=?, wake_seq=?, wake_pending=?, sentinel_yes=?, wake_evidence=?, file_fingerprint=?, graph_cursor=?,
 		graph_day=?, graph_triggered=?, updated_seq=? WHERE id=?`,
-		payload.Invariant, string(watch), payload.SentinelHint, string(action), string(rails),
+		payload.Invariant, string(watch), payload.SentinelHint, string(action), string(rails), string(spec),
 		nullTime(payload.NextDue), payload.WakeSeq, payload.WakePending, payload.SentinelYes,
 		payload.WakeEvidence, payload.FileFingerprint, graphCursor, payload.GraphDay, payload.GraphTriggered, seq, payload.ID)
 	if err != nil {
@@ -826,6 +952,12 @@ func applyCharterRevision(tx *sql.Tx, payload charterRecord, seq int64) error {
 		return fmt.Errorf("charter %q is missing", payload.ID)
 	}
 	brief := bounded("Charter: "+payload.Invariant, MaxDigestBytes)
+	if _, err := tx.Exec(`DELETE FROM charters_fts WHERE charter_id=?`, payload.ID); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(`INSERT INTO charters_fts (charter_id, invariant) VALUES (?, ?)`, payload.ID, payload.Invariant); err != nil {
+		return err
+	}
 	if _, err := tx.Exec(`UPDATE nodes SET brief=?, title=?, summary=?, fold_digest=?, updated_seq=? WHERE id=?`,
 		brief, firstCharterLine(payload.Invariant), brief, brief, seq, payload.ID); err != nil {
 		return err
@@ -839,6 +971,12 @@ func applyCharterRevision(tx *sql.Tx, payload charterRecord, seq int64) error {
 // SetCharterStatus journals pause, activation, and retirement. Activation is
 // the one transition that requires fresh explicit ratification provenance.
 func (s *Store) SetCharterStatus(id string, status CharterStatus, ratification Ratification) error {
+	return s.SetCharterStatusWithReason(id, status, ratification, "status changed to "+string(status))
+}
+
+// SetCharterStatusWithReason is the policy-bearing form used by conversational
+// management and automatic pauses. The reason is part of the journal event.
+func (s *Store) SetCharterStatusWithReason(id string, status CharterStatus, ratification Ratification, reason string) error {
 	current, found, err := s.Charter(id)
 	if err != nil {
 		return err
@@ -856,7 +994,11 @@ func (s *Store) SetCharterStatus(id string, status CharterStatus, ratification R
 	} else {
 		ratification = current.Ratification
 	}
-	payload := charterStatusPayload{Status: status, Ratification: ratification}
+	reason = strings.TrimSpace(reason)
+	if reason == "" {
+		return fmt.Errorf("set charter status: %w: transition reason is required", ErrInvalid)
+	}
+	payload := charterStatusPayload{Status: status, Ratification: ratification, Reason: bounded(reason, MaxDigestBytes)}
 	tx, err := s.db.BeginTx(context.Background(), nil)
 	if err != nil {
 		return fmt.Errorf("set charter status: %w", err)
@@ -893,11 +1035,13 @@ func validCharterTransition(from, to CharterStatus) bool {
 
 func applyCharterStatus(tx *sql.Tx, id string, payload charterStatusPayload, seq int64) error {
 	ratification, _ := json.Marshal(payload.Ratification)
-	clearWake := payload.Status == CharterRetired
+	clearWake := payload.Status != CharterActive
 	result, err := tx.Exec(`UPDATE charters SET status=?, ratification=?,
+		session_id=CASE WHEN ? THEN ? ELSE session_id END,
 		wake_pending=CASE WHEN ? THEN 0 ELSE wake_pending END,
 		sentinel_yes=CASE WHEN ? THEN 0 ELSE sentinel_yes END, updated_seq=? WHERE id=?`,
-		payload.Status, string(ratification), clearWake, clearWake, seq, id)
+		payload.Status, string(ratification), payload.Status == CharterActive,
+		payload.Ratification.SessionID, clearWake, clearWake, seq, id)
 	if err != nil {
 		return err
 	}
@@ -1170,7 +1314,14 @@ const (
 // attention message. Daily-rail waits leave sentinel_yes pending for retry.
 func (s *Store) FireCharter(id string, wakeSeq int64, subtree Subtree, provenance Provenance,
 	dailyBudgetUSD float64, now time.Time) (FireDisposition, error) {
-	return s.fireCharter(id, wakeSeq, subtree, provenance, dailyBudgetUSD, now, nil)
+	return s.fireCharter(id, wakeSeq, subtree, provenance, dailyBudgetUSD, now, nil, false)
+}
+
+// FireApprovedCharter follows the same journaled admission path after a user
+// approves one probation proposal. It is the only probation bypass.
+func (s *Store) FireApprovedCharter(id string, wakeSeq int64, subtree Subtree, provenance Provenance,
+	dailyBudgetUSD float64, now time.Time) (FireDisposition, error) {
+	return s.fireCharter(id, wakeSeq, subtree, provenance, dailyBudgetUSD, now, nil, true)
 }
 
 type practiceAdmission struct {
@@ -1196,11 +1347,14 @@ func (s *Store) FirePracticeCharter(id string, wakeSeq int64, subtree Subtree,
 	provenance := Provenance{Origin: OriginSelf, Intent: intent}
 	practice := &practiceAdmission{QuestionSeq: questionSeq,
 		BaselineSurprise: baselineSurprise, ExpectedTokens: expectedTokens}
-	return s.fireCharter(id, wakeSeq, subtree, provenance, dailyBudgetUSD, now, practice)
+	// A practice charter is self-tenured by construction: its rails and idle
+	// gate are the approval boundary.
+	return s.fireCharter(id, wakeSeq, subtree, provenance, dailyBudgetUSD, now, practice, true)
 }
 
+// fireCharter atomically admits work after the autonomy boundary is satisfied.
 func (s *Store) fireCharter(id string, wakeSeq int64, subtree Subtree, provenance Provenance,
-	dailyBudgetUSD float64, now time.Time, practice *practiceAdmission) (FireDisposition, error) {
+	dailyBudgetUSD float64, now time.Time, practice *practiceAdmission, probationApproved bool) (FireDisposition, error) {
 	tx, err := s.db.BeginTx(context.Background(), nil)
 	if err != nil {
 		return "", err
@@ -1223,8 +1377,24 @@ func (s *Store) fireCharter(id string, wakeSeq int64, subtree Subtree, provenanc
 		provenance.SessionID = ""
 		provenance.CharterID = ""
 	}
+	if charter.Autonomy != CharterTenured && !probationApproved {
+		return "", fmt.Errorf("fire charter: %w: probation firing requires approval", ErrInvalid)
+	}
+	if probationApproved && practice == nil {
+		instruction := "wake:" + fmt.Sprint(wakeSeq)
+		var authorized bool
+		if err := tx.QueryRow(`SELECT EXISTS(SELECT 1 FROM commands
+			WHERE target=? AND kind=? AND instruction=? AND status IN (?, ?))`,
+			id, CommandCharterFire, instruction, CommandPending, CommandApplied).Scan(&authorized); err != nil {
+			return "", err
+		}
+		if !authorized {
+			return "", fmt.Errorf("fire charter: %w: probation wake has no journaled approval command", ErrInvalid)
+		}
+	}
 	if expires := charter.guardrails.ExpiresAt; expires != nil && !now.Before(*expires) {
-		payload := charterStatusPayload{Status: CharterRetired, Ratification: charter.Ratification}
+		payload := charterStatusPayload{Status: CharterRetired, Ratification: charter.Ratification,
+			Reason: "charter expired before firing"}
 		seq, _, err := appendEvent(tx, id, EventCharterStatusChanged, payload)
 		if err != nil {
 			return "", err
@@ -1317,7 +1487,8 @@ func (s *Store) fireCharter(id string, wakeSeq int64, subtree Subtree, provenanc
 		return FireRailWait, nil
 	}
 
-	payload := charterFiringPayload{WakeSeq: wakeSeq, SayOnly: charter.Action.SayOnly}
+	payload := charterFiringPayload{WakeSeq: wakeSeq, SayOnly: charter.Action.SayOnly,
+		ProbationApproved: probationApproved}
 	if !charter.Action.SayOnly {
 		normalized, err := normalizeSubtree(RootID, subtree, provenance)
 		if err != nil {
@@ -1360,6 +1531,7 @@ func (s *Store) fireCharter(id string, wakeSeq int64, subtree Subtree, provenanc
 			}
 		}
 	} else {
+		payload.JobID = "say:" + charter.ID + ":" + fmt.Sprint(wakeSeq)
 		fireSeq, _, err := appendEvent(tx, id, EventCharterFired, payload)
 		if err != nil {
 			return "", err
@@ -1460,6 +1632,9 @@ func replayCharterEvent(tx *sql.Tx, event Event) error {
 		}
 		return applyCharterStatus(tx, event.NodeID,
 			charterStatusPayload{Status: CharterRetired, Ratification: charter.Ratification}, event.Seq)
+	case EventCharterFiringProposed, EventCharterFiringDeclined, EventCharterFiringReviewed,
+		EventCharterPromoted, EventCharterDemoted:
+		return replayTenureEvent(tx, event)
 	default:
 		return nil
 	}

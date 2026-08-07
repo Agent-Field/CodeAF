@@ -20,6 +20,7 @@ func TestWatchRestartResumesReservedWakeWithoutDoubleFireOrSkip(t *testing.T) {
 	if err := graph.CreateCharter(charter); err != nil {
 		t.Fatal(err)
 	}
+	promoteCharterForWatchTest(t, graph, charter.ID)
 	stored, _, _ := graph.Charter(charter.ID)
 	wakeAt := stored.NextDue.Add(time.Second)
 	wakeSeq, err := graph.BeginCharterWake(charter.ID, wakeAt, "poll occurrence", store.CharterWatchState{
@@ -139,6 +140,7 @@ func TestCharterRailsEnforceQuotaExpiryAndDailyPause(t *testing.T) {
 		if err := graph.CreateCharter(charter); err != nil {
 			t.Fatal(err)
 		}
+		promoteCharterForWatchTest(t, graph, charter.ID)
 		calls := 0
 		reconciler := New(graph, nil, nil).WithWatchEngine(0,
 			func(_ context.Context, _ SentinelPrompt) (SentinelVerdict, error) {
@@ -207,6 +209,7 @@ func TestCharterRailsEnforceQuotaExpiryAndDailyPause(t *testing.T) {
 		if err := graph.CreateCharter(charter); err != nil {
 			t.Fatal(err)
 		}
+		promoteCharterForWatchTest(t, graph, charter.ID)
 		stored, _, _ := graph.Charter(charter.ID)
 		calls := 0
 		sentinel := func(_ context.Context, _ SentinelPrompt) (SentinelVerdict, error) {
@@ -252,6 +255,7 @@ func TestSayOnlyCharterPostsAttentionWithoutJob(t *testing.T) {
 	if err := graph.CreateCharter(charter); err != nil {
 		t.Fatal(err)
 	}
+	promoteCharterForWatchTest(t, graph, charter.ID)
 	stored, _, _ := graph.Charter(charter.ID)
 	reconciler := New(graph, nil, nil).WithWatchEngine(0,
 		func(_ context.Context, _ SentinelPrompt) (SentinelVerdict, error) {
@@ -277,6 +281,13 @@ func TestSayOnlyCharterPostsAttentionWithoutJob(t *testing.T) {
 	}
 	if len(messages) != 1 || messages[0].Role != store.RoleAgent || messages[0].Body != charter.Action.Template {
 		t.Fatalf("attention messages = %+v", messages)
+	}
+}
+
+func promoteCharterForWatchTest(t *testing.T, graph *store.Store, id string) {
+	t.Helper()
+	if err := graph.PromoteCharter(id, "test fixture exercises tenured watch behavior", false); err != nil {
+		t.Fatal(err)
 	}
 }
 

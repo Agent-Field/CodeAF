@@ -150,6 +150,11 @@ const (
 	EventCharterFiringBlocked    EventKind = "charter_firing_blocked"
 	EventCharterFiringDeferred   EventKind = "charter_firing_deferred"
 	EventCharterProposalDeclined EventKind = "charter_proposal_declined"
+	EventCharterFiringProposed   EventKind = "charter_firing_proposed"
+	EventCharterFiringDeclined   EventKind = "charter_firing_declined"
+	EventCharterFiringReviewed   EventKind = "charter_firing_reviewed"
+	EventCharterPromoted         EventKind = "charter_promoted"
+	EventCharterDemoted          EventKind = "charter_demoted"
 )
 
 var (

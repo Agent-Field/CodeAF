@@ -260,6 +260,9 @@ func (r *Reconciler) Tick(ctx context.Context) error {
 	if _, err := r.watchOnceLocked(ctx); err != nil {
 		return fmt.Errorf("resident tick: standing watches: %w", err)
 	}
+	if err := r.reconcileCharterOutcomes(); err != nil {
+		return fmt.Errorf("resident tick: charter outcomes: %w", err)
+	}
 
 	if err := ctx.Err(); err != nil {
 		return err
@@ -348,8 +351,9 @@ func (r *Reconciler) applyCommand(ctx context.Context, command store.Command) (c
 	case store.CommandCancel:
 		return r.cancel(ctx, command)
 	case store.CommandCharterRatify, store.CommandCharterPause, store.CommandCharterRetire,
-		store.CommandCharterCadence, store.CommandCharterOnce:
-		return r.applyCharterCommand(command)
+		store.CommandCharterCadence, store.CommandCharterOnce, store.CommandCharterFire,
+		store.CommandCharterDecline, store.CommandCharterAlways, store.CommandCharterNever, store.CommandCharterProbation:
+		return r.applyCharterCommand(ctx, command)
 	case store.CommandAmend:
 		const reason = "amend is not implemented yet; cancel and re-ask, or splice an addition"
 		return commandOutcome{

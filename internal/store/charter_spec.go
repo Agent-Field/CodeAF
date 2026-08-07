@@ -370,3 +370,40 @@ func spendThresholdHint(text string) (float64, bool) {
 	}
 	return value, true
 }
+
+// charterSpecFromCanonical projects the executable charter back into the
+// head's ratification-card spelling for surfaces that read a spec.
+func charterSpecFromCanonical(charter Charter) CharterSpec {
+	rails := charter.guardrails
+	spec := CharterSpecRails{
+		EstimatedCostUSD:       rails.EstimatedCostUSD,
+		MaxPerDay:              rails.MaxPerDay,
+		MaxPerDayJustification: rails.MaxPerDayJustification,
+		Expiry:                 rails.Expiry,
+	}
+	if spec.EstimatedCostUSD == 0 {
+		spec.EstimatedCostUSD = rails.PerFiringBudgetUSD
+	}
+	if spec.MaxPerDay == 0 {
+		spec.MaxPerDay = rails.MaxFiringsPerDay
+	}
+	if spec.Expiry == "" && rails.ExpiresAt != nil {
+		spec.Expiry = rails.ExpiresAt.Local().Format("2006-01-02 15:04")
+	}
+	return CharterSpec{
+		Invariant: charter.Invariant,
+		Watch: CharterWatch{Kind: charter.Watch.Kind, Cadence: charter.Watch.Cadence,
+			Schedule: charter.Watch.String(), Spec: charter.Watch},
+		Sentinel: charter.SentinelHint,
+		Action:   charter.Action.Template,
+		SayOnly:  charter.Action.SayOnly,
+		Rails:    spec,
+	}
+}
+
+func charterSpecFromRecord(record charterRecord) CharterSpec {
+	return charterSpecFromCanonical(Charter{
+		Invariant: record.Invariant, Watch: record.Watch, SentinelHint: record.SentinelHint,
+		Action: record.Action, guardrails: record.Rails,
+	})
+}
