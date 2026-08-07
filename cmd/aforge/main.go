@@ -89,6 +89,7 @@ Environment:
   AFORGE_DAILY_BUDGET  20.0  daily dollar rail (0 = unlimited)
   AFORGE_PRACTICE_BUDGET  2.0  daily self-practice carve-out (0 = disabled)
   AFORGE_PRACTICE_IDLE  20m  quiet period before self-practice
+  AFORGE_BRIEF_AFTER   4h  minimum absence before an arrival brief (0 = always)
   AFORGE_PREAUTHORIZE_SPEND  1 raises the rail without a headless stdin prompt
   AFORGE_PROFILE_DIR   where measured behaviour is kept (default ~/.aforge)`
 
