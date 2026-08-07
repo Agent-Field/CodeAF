@@ -21,6 +21,9 @@ type fakeBackend struct {
 	commands          []store.Command
 	usage             store.TotalUsage
 	jobUsage          map[string]store.JobUsage
+	selfSpend         float64
+	selfReceipts      []store.SelfReceipt
+	facts             map[int64]store.Fact
 	posted            []store.Message
 	agentQuestions    []store.AgentQuestion
 	surfacedQuestions []int64
@@ -235,6 +238,31 @@ func (f *fakeBackend) Usage() (store.TotalUsage, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	return f.usage, nil
+}
+
+func (f *fakeBackend) SelfSpendToday() (float64, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.selfSpend, nil
+}
+
+func (f *fakeBackend) SelfReceipts(since time.Time) ([]store.SelfReceipt, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	var receipts []store.SelfReceipt
+	for _, receipt := range f.selfReceipts {
+		if since.IsZero() || !receipt.Time.Before(since) {
+			receipts = append(receipts, receipt)
+		}
+	}
+	return receipts, nil
+}
+
+func (f *fakeBackend) FactBySeq(seq int64) (store.Fact, bool, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	fact, found := f.facts[seq]
+	return fact, found, nil
 }
 
 func (f *fakeBackend) TopLevelJobUsage() (map[string]store.JobUsage, error) {
