@@ -40,6 +40,21 @@ func forgedSkillMoment(name string) learningMomentItem {
 	return learningMomentItem{headline: "⚒ forged: " + name + " — proved twice, now available"}
 }
 
+// forgedCraftMoment is the skill line's sibling for know-how that is a shape
+// rather than an executable. A forged craft has never run, so it promises the
+// next time rather than this one.
+func forgedCraftMoment(name string, refined bool) learningMomentItem {
+	name = strings.TrimSpace(name)
+	if name == "" {
+		name = "learned"
+	}
+	verb := "forged"
+	if refined {
+		verb = "refined"
+	}
+	return learningMomentItem{headline: "⚒ " + verb + ": the " + name + " craft — it'll be used next time"}
+}
+
 func letGoMoment(body string) learningMomentItem {
 	return learningMomentItem{headline: "· let go — " + firstLine(body)}
 }
