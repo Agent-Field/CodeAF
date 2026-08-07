@@ -1,6 +1,7 @@
 package voice
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -24,6 +25,37 @@ func NewSystemRecorder() Recorder {
 	return unavailableRecorder{}
 }
 
+const (
+	// recorderInterruptGrace is how long the capture tool has to finish on the
+	// interrupt that is its ordinary ending, and recorderKillGrace how long the
+	// kill after it has to land. Neither wait is unbounded, because the caller
+	// of Stop is a keystroke away from a user.
+	recorderInterruptGrace = 3 * time.Second
+	recorderKillGrace      = 2 * time.Second
+	// recorderWaitDelay bounds exec's own wait on the child's pipes after the
+	// process is gone, so a leaked grandchild holding stdout cannot hold Wait.
+	recorderWaitDelay = time.Second
+)
+
+// errCaptureStillRunning is what a bounded wait reports: the child has not
+// reported its exit status yet. It is only user-facing when no audio was
+// captured at all, since a recording that has audio does not need the tool's
+// exit status to be a recording.
+var errCaptureStillRunning = errors.New("microphone capture did not exit")
+
+// waitFor takes the exit status if it is there within the grace, and says so
+// rather than blocking if it is not.
+func waitFor(done <-chan error, grace time.Duration) error {
+	timer := time.NewTimer(grace)
+	defer timer.Stop()
+	select {
+	case err := <-done:
+		return err
+	case <-timer.C:
+		return errCaptureStillRunning
+	}
+}
+
 type unavailableRecorder struct{}
 
 func (unavailableRecorder) Start() error { return errors.New("no microphone capture backend") }
@@ -33,12 +65,33 @@ func (unavailableRecorder) Stop() ([]byte, error) {
 func (unavailableRecorder) Level() float64       { return 0 }
 func (unavailableRecorder) Chunks() <-chan Chunk { return nil }
 
+// How a recording ends, and why every step of it is a channel.
+//
+// The capture tool is a child process writing PCM into a pipe, read by one
+// goroutine that also hands voice-activity chunks to whoever is listening. Stop
+// has to reach all of that: interrupt the child, let the reader see EOF, collect
+// the exit status, and hand back the WAV. Each of those had a way to hang.
+//
+// The reader parked on an unconditional send the moment the consumer stopped
+// draining — a TUI that closed the panel, a partial transcription that stopped
+// caring — and a goroutine parked on a channel send cannot be freed by killing
+// the process it is reading from. command.Wait was then never reached, the child
+// became a zombie, done was never written, and Stop blocked on it forever. So
+// the chunk send is now conditional: it takes the quit channel and it takes a
+// default, because a live partial is worth dropping and a wedged microphone is
+// not. Nothing is lost from the recording itself, which accumulates in pcm.
+//
+// quit is closed first thing in finishStop, before the interrupt, so a reader
+// already parked is freed before anything waits on it. The wait for the exit
+// status is bounded twice over — interrupt, then kill, then give up — and the
+// context on the command is the backstop for both.
 type commandRecorder struct {
 	path string
 	args []string
 
 	mu       sync.RWMutex
 	cmd      *exec.Cmd
+	cancel   context.CancelFunc
 	pcm      []byte
 	level    float64
 	chunks   chan Chunk
@@ -46,14 +99,27 @@ type commandRecorder struct {
 	vad      *VAD
 	next     int
 	overflow bool
-	stopOnce sync.Once
+	// stopOnce is a pointer, replaced per recording rather than reset in
+	// place. Assigning a fresh sync.Once over the old one wrote the field under
+	// the lock while Stop called Do on it without — a race the detector sees
+	// and a correctness bug the moment two Stops overlap a Start.
+	stopOnce *sync.Once
 	stopped  chan struct{}
+	quit     chan struct{}
 	stopWAV  []byte
 	stopErr  error
+
+	// The two graces are fields so a test can assert that Stop is bounded
+	// without waiting out the real ones.
+	interruptGrace time.Duration
+	killGrace      time.Duration
 }
 
 func newCommandRecorder(path string, args []string) *commandRecorder {
-	return &commandRecorder{path: path, args: append([]string(nil), args...)}
+	return &commandRecorder{
+		path: path, args: append([]string(nil), args...),
+		interruptGrace: recorderInterruptGrace, killGrace: recorderKillGrace,
+	}
 }
 
 func (r *commandRecorder) Start() error {
@@ -62,16 +128,24 @@ func (r *commandRecorder) Start() error {
 	if r.cmd != nil {
 		return errors.New("microphone is already recording")
 	}
-	command := exec.Command(r.path, r.args...)
+	// CommandContext so that abandoning the recorder abandons the child: the
+	// interrupt in finishStop is the polite path, and this is the one that
+	// holds when the tool ignores it or the process outlives its pipe.
+	ctx, cancel := context.WithCancel(context.Background())
+	command := exec.CommandContext(ctx, r.path, r.args...)
+	command.WaitDelay = recorderWaitDelay
 	output, err := command.StdoutPipe()
 	if err != nil {
+		cancel()
 		return fmt.Errorf("open microphone capture: %w", err)
 	}
 	command.Stderr = io.Discard
 	if err := command.Start(); err != nil {
+		cancel()
 		return fmt.Errorf("start microphone capture: %w", err)
 	}
 	r.cmd = command
+	r.cancel = cancel
 	r.pcm = nil
 	r.level = 0
 	r.chunks = make(chan Chunk, 16)
@@ -79,20 +153,21 @@ func (r *commandRecorder) Start() error {
 	r.vad = NewVAD()
 	r.next = 0
 	r.overflow = false
-	r.stopOnce = sync.Once{}
+	r.stopOnce = &sync.Once{}
 	r.stopped = make(chan struct{})
+	r.quit = make(chan struct{})
 	r.stopWAV = nil
 	r.stopErr = nil
-	go r.read(command, output, r.done, r.chunks)
+	go r.read(command, output, r.done, r.chunks, r.quit)
 	return nil
 }
 
-func (r *commandRecorder) read(command *exec.Cmd, output io.Reader, done chan<- error, chunks chan<- Chunk) {
+func (r *commandRecorder) read(command *exec.Cmd, output io.Reader, done chan<- error, chunks chan<- Chunk, quit <-chan struct{}) {
 	buffer := make([]byte, frameBytes*5)
 	for {
 		count, readErr := output.Read(buffer)
 		if count > 0 {
-			r.acceptPCM(buffer[:count], chunks)
+			r.acceptPCM(buffer[:count], chunks, quit)
 		}
 		if readErr != nil {
 			waitErr := command.Wait()
@@ -106,7 +181,7 @@ func (r *commandRecorder) read(command *exec.Cmd, output io.Reader, done chan<- 
 	}
 }
 
-func (r *commandRecorder) acceptPCM(pcm []byte, chunks chan<- Chunk) {
+func (r *commandRecorder) acceptPCM(pcm []byte, chunks chan<- Chunk, quit <-chan struct{}) {
 	r.mu.Lock()
 	if len(r.pcm)+len(pcm)+44 > MaxAudioBytes {
 		r.overflow = true
@@ -127,41 +202,63 @@ func (r *commandRecorder) acceptPCM(pcm []byte, chunks chan<- Chunk) {
 	}
 	r.mu.Unlock()
 	for _, chunk := range ready {
-		chunks <- chunk
+		select {
+		case chunks <- chunk:
+		case <-quit:
+			// Stopping. The recording is already in pcm; the live partials are
+			// what is being abandoned, and abandoning them is the point.
+			return
+		default:
+			// Nobody is draining. A dropped partial costs one live caption; a
+			// parked reader costs the child process, the exit status, and Stop.
+		}
 	}
 }
 
 func (r *commandRecorder) Stop() ([]byte, error) {
 	r.mu.RLock()
-	command, done, stopped := r.cmd, r.done, r.stopped
+	command, done, stopped, quit, cancel, once := r.cmd, r.done, r.stopped, r.quit, r.cancel, r.stopOnce
 	r.mu.RUnlock()
-	if stopped == nil {
+	if stopped == nil || once == nil {
 		return nil, errors.New("microphone is not recording")
 	}
-	r.stopOnce.Do(func() { r.finishStop(command, done, stopped) })
+	once.Do(func() { r.finishStop(command, done, stopped, quit, cancel) })
 	<-stopped
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 	return append([]byte(nil), r.stopWAV...), r.stopErr
 }
 
-func (r *commandRecorder) finishStop(command *exec.Cmd, done <-chan error, stopped chan struct{}) {
+func (r *commandRecorder) finishStop(command *exec.Cmd, done <-chan error, stopped, quit chan struct{}, cancel context.CancelFunc) {
+	// First, before anything is asked to wait: free a reader parked on a chunk
+	// send, or it will never reach command.Wait and done will never be written.
+	if quit != nil {
+		close(quit)
+	}
 	if command != nil && command.Process != nil {
 		_ = command.Process.Signal(os.Interrupt)
 	}
-	var waitErr error
-	select {
-	case waitErr = <-done:
-	case <-time.After(3 * time.Second):
+	waitErr := waitFor(done, r.interruptGrace)
+	if errors.Is(waitErr, errCaptureStillRunning) {
 		if command != nil && command.Process != nil {
 			_ = command.Process.Kill()
 		}
-		waitErr = <-done
+		if cancel != nil {
+			cancel()
+		}
+		// Bounded a second time. A kill the child cannot receive — a process
+		// stuck in an uninterruptible driver call is the ordinary way a capture
+		// backend does this — must not cost the caller its own goroutine.
+		waitErr = waitFor(done, r.killGrace)
+	}
+	if cancel != nil {
+		cancel()
 	}
 	r.mu.Lock()
 	pcm := append([]byte(nil), r.pcm...)
 	overflow := r.overflow
 	r.cmd = nil
+	r.cancel = nil
 	r.level = 0
 	defer r.mu.Unlock()
 	defer close(stopped)

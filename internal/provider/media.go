@@ -123,7 +123,7 @@ func NewMediaClient(config Config) (*MediaClient, error) {
 	}
 	client := config.HTTPClient
 	if client == nil {
-		client = &http.Client{Timeout: config.Timeout}
+		client = &http.Client{Transport: SharedTransport(), Timeout: config.Timeout}
 	}
 	return &MediaClient{
 		config: config, http: client, videoNow: time.Now, videoWait: waitContext,
