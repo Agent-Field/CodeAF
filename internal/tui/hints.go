@@ -84,12 +84,13 @@ func (m *Model) idleTipLine(now time.Time) string {
 }
 
 func (m *Model) tipSurfaceIdle() bool {
-	// An open notebook is an active surface: the user is reading beliefs, so
-	// the footer stays quiet rather than pitching features underneath it.
+	// An open notebook, the help overlay, or /history results are active
+	// surfaces: the user is reading, so the footer stays quiet rather than
+	// pitching features underneath them.
 	return strings.TrimSpace(m.input.Value()) == "" && len(m.attachments) == 0 &&
 		!m.hasPendingQuestion() && m.streamMode == streamNone && len(m.streamQueue) == 0 &&
 		m.voiceState == voiceIdle && m.liveWorkCount() == 0 && m.activeCardCount() == 0 &&
-		!m.notebookOpen
+		!m.notebookOpen && !m.historyVisible && m.palette != paletteHelp
 }
 
 func (m *Model) tipSuppressed(feature tipFeature) bool {
@@ -119,7 +120,7 @@ func (m *Model) contextHelpLine() string {
 	case m.focus == focusGraph:
 		return "↑/↓ select · enter inspect · esc close · " + keyBindings.graph + " hide"
 	case m.focus == focusHeader:
-		return "←/→ choose · enter models/tasks · esc back · tab focus"
+		return "←/→ choose · enter models/tasks/help · esc back · tab focus"
 	case m.focus == focusChat:
 		return "↑/↓ select · enter open · esc back · tab focus"
 	default:

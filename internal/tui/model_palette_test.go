@@ -19,8 +19,12 @@ func TestModelPaletteSlotNavigationNumbersAndFocusOrder(t *testing.T) {
 		t.Fatalf("right focused header index %d, want tasks=1", model.headerFocusIndex)
 	}
 	_, _ = model.Update(tea.KeyMsg{Type: tea.KeyRight})
+	if model.headerFocusIndex != 2 {
+		t.Fatalf("right focused header index %d, want help=2", model.headerFocusIndex)
+	}
+	_, _ = model.Update(tea.KeyMsg{Type: tea.KeyRight})
 	if model.headerFocusIndex != 0 {
-		t.Fatalf("right wrapped to header index %d, want models=0", model.headerFocusIndex)
+		t.Fatalf("third right wrapped to header index %d, want models=0", model.headerFocusIndex)
 	}
 	_, _ = model.Update(tea.KeyMsg{Type: tea.KeyEnter})
 	if model.palette != paletteModels || model.modelSlotIndex != 0 {

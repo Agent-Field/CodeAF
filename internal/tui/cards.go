@@ -1194,6 +1194,9 @@ func (m *Model) renderJobCard(card jobCard, width int, expanded bool, atLine int
 				if result == "" {
 					result = string(part.Status)
 				}
+				if card.State == cardSettled {
+					result = m.linkWorkspaceReferences(part.NodeID, result)
+				}
 				line := "│   " + glyph + " " + lipgloss.NewStyle().Foreground(ink).Bold(true).Render(part.Title) +
 					mutedStyle.Render(" — "+result)
 				lines = append(lines, truncate(line, width))
@@ -1225,7 +1228,7 @@ func (m *Model) renderJobCard(card jobCard, width int, expanded bool, atLine int
 
 	if card.State == cardSettled && card.Deliverable != nil {
 		if expanded && card.Outcome != "" {
-			addText("outcome · "+card.Outcome, mutedStyle)
+			addText("outcome · "+m.linkWorkspaceReferences(card.RootID, card.Outcome), mutedStyle)
 		}
 		rendered, foldedAnswer := m.renderAnswerFold(*card.Deliverable, max(1, width-4))
 		bodyStart := atLine + len(lines)
@@ -1267,11 +1270,22 @@ func (m *Model) renderJobCard(card jobCard, width int, expanded bool, atLine int
 			hint = "⟨×⟩ close · ▸ job graph"
 		}
 	}
-	lines = append(lines, mutedStyle.Faint(true).Render("╰─ "+hint))
+	workspace := ""
+	if expanded && card.State == cardSettled && card.RootID != "" {
+		workspace = m.workspaceDirectoryLink(card.RootID)
+	}
+	footerPrefix := "╰─ "
+	if workspace != "" {
+		footerPrefix = "│  "
+	}
+	lines = append(lines, mutedStyle.Faint(true).Render(footerPrefix+hint))
 	if track && expanded {
 		m.cardCloseRows = append(m.cardCloseRows, cardCloseRow{
 			line: atLine + len(lines) - 1, cardID: card.ID, dock: dock,
 		})
+	}
+	if workspace != "" {
+		lines = append(lines, mutedStyle.Faint(true).Render("╰─ ")+workspace)
 	}
 	return strings.Join(lines, "\n")
 }
@@ -1632,7 +1646,7 @@ func (m *Model) cardMeta(card jobCard, now time.Time) string {
 		parts = append(parts, card.Latest)
 	}
 	if card.State == cardSettled && card.Outcome != "" {
-		parts = append(parts, card.Outcome)
+		parts = append(parts, m.linkWorkspaceReferences(card.RootID, card.Outcome))
 	}
 	return strings.Join(parts, " · ")
 }

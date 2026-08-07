@@ -980,13 +980,23 @@ func (c *chatCommander) NodeTrace(nodeID string, maxBytes int) string {
 }
 
 func (c *chatCommander) ResolveMediaPath(nodeID, relative string) (string, bool) {
-	if c == nil || c.store == nil || strings.TrimSpace(relative) == "" {
-		return "", false
-	}
 	if filepath.IsAbs(relative) {
 		if info, err := os.Stat(relative); err == nil && !info.IsDir() {
 			return relative, true
 		}
+		return "", false
+	}
+	return c.ResolveWorkspacePath(nodeID, relative)
+}
+
+// ResolveWorkspacePath is the shared safety boundary for every deliverable
+// link. A node resolves to its top-level job directory; relative traversal may
+// not escape that directory, and only existing files become links.
+func (c *chatCommander) ResolveWorkspacePath(nodeID, relative string) (string, bool) {
+	if c == nil || c.store == nil || c.workspaceRoot == "" || nodeID == "" || strings.TrimSpace(relative) == "" {
+		return "", false
+	}
+	if filepath.IsAbs(relative) {
 		return "", false
 	}
 	node, ok, err := c.store.Node(nodeID)
@@ -1001,6 +1011,22 @@ func (c *chatCommander) ResolveMediaPath(nodeID, relative string) (string, bool)
 	}
 	info, err := os.Stat(target)
 	return target, err == nil && !info.IsDir()
+}
+
+// WorkspacePath resolves the directory itself for the settled-card and
+// history affordances. The directory must already exist; rendering never
+// creates workspaces or guesses at a missing job.
+func (c *chatCommander) WorkspacePath(nodeID string) (string, bool) {
+	if c == nil || c.store == nil || c.workspaceRoot == "" || nodeID == "" {
+		return "", false
+	}
+	node, ok, err := c.store.Node(nodeID)
+	if err != nil || !ok {
+		return "", false
+	}
+	target := filepath.Join(c.workspaceRoot, jobIDOf(c.store, node))
+	info, err := os.Stat(target)
+	return target, err == nil && info.IsDir()
 }
 
 func (c *chatCommander) Notebook(limit int) []store.Fact {
@@ -1899,6 +1925,12 @@ func narrateProgress(settings config.Config, client *liveClient, graph *store.St
 func jobIDOf(graph *store.Store, node store.Node) string {
 	current := node
 	for current.Parent != "" && current.Parent != store.RootID {
+		// A settled job keeps naming its original workspace after the store
+		// reparents that fold beneath an organizational territory. Descendants
+		// of the fold stop here on their next pass as well.
+		if current.FoldRoot && !store.IsOrganizationalGroup(current.Group) {
+			return current.ID
+		}
 		parent, ok, err := graph.Node(current.Parent)
 		if err != nil || !ok {
 			return node.ID

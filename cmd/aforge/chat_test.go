@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -22,6 +23,84 @@ type gateCaptureClient struct {
 	class        provider.CallClass
 	responseMode bool
 	response     string
+}
+
+func TestChatCommanderResolvesJobWorkspaceFilesAndDirectory(t *testing.T) {
+	root := t.TempDir()
+	graph, err := store.Open(filepath.Join(root, "graph.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer graph.Close()
+	if err := graph.Splice(store.RootID, store.Subtree{Nodes: []store.NodeSpec{
+		{ID: "job", Brief: "produce the artifact", Stage: 0},
+		{ID: "leaf", Parent: "job", Brief: "write it", Stage: 1},
+	}}, store.Provenance{Origin: store.OriginUser, Intent: "produce the artifact"}); err != nil {
+		t.Fatal(err)
+	}
+	workspaceRoot := filepath.Join(root, "workspace")
+	jobDir := filepath.Join(workspaceRoot, "job")
+	if err := os.MkdirAll(jobDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	deliverable := filepath.Join(jobDir, "deliverable.md")
+	if err := os.WriteFile(deliverable, []byte("done"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	commander := &chatCommander{store: graph, workspaceRoot: workspaceRoot}
+	if target, ok := commander.ResolveWorkspacePath("leaf", "deliverable.md"); !ok || target != deliverable {
+		t.Fatalf("workspace file = (%q, %v), want (%q, true)", target, ok, deliverable)
+	}
+	if _, ok := commander.ResolveWorkspacePath("leaf", "missing.md"); ok {
+		t.Fatal("nonexistent workspace file resolved")
+	}
+	if _, ok := commander.ResolveWorkspacePath("leaf", "../outside.md"); ok {
+		t.Fatal("workspace traversal escaped the job directory")
+	}
+	if target, ok := commander.WorkspacePath("leaf"); !ok || target != jobDir {
+		t.Fatalf("workspace directory = (%q, %v), want (%q, true)", target, ok, jobDir)
+	}
+}
+
+func TestChatCommanderKeepsFoldedJobWorkspaceAfterTerritoryReparent(t *testing.T) {
+	root := t.TempDir()
+	graph, err := store.Open(filepath.Join(root, "graph.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer graph.Close()
+	if err := graph.Splice(store.RootID, store.Subtree{Nodes: []store.NodeSpec{
+		{ID: "job", Brief: "produce the artifact", Stage: 0},
+	}}, store.Provenance{Origin: store.OriginUser, Intent: "produce the artifact"}); err != nil {
+		t.Fatal(err)
+	}
+	claim, won, err := graph.Claim("job", "worker")
+	if err != nil || !won {
+		t.Fatalf("claim job: won=%t err=%v", won, err)
+	}
+	if err := graph.Complete(claim, "artifact delivered"); err != nil {
+		t.Fatal(err)
+	}
+	workspaceRoot := filepath.Join(root, "workspace")
+	jobDir := filepath.Join(workspaceRoot, "job")
+	if err := os.MkdirAll(jobDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	pointer := filepath.Join(jobDir, "deliverable.md")
+	if err := os.WriteFile(pointer, []byte("done"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := graph.Fold("job", "artifact delivered", []string{pointer}); err != nil {
+		t.Fatal(err)
+	}
+	if err := graph.FormTerritory("territory", "Artifacts", "related artifact work", nil, []string{"job"}); err != nil {
+		t.Fatal(err)
+	}
+
+	commander := &chatCommander{store: graph, workspaceRoot: workspaceRoot}
+	if target, ok := commander.WorkspacePath("job"); !ok || target != jobDir {
+		t.Fatalf("reparented workspace = (%q, %v), want (%q, true)", target, ok, jobDir)
+	}
 }
 
 func (c *gateCaptureClient) CompleteWithMessages(ctx context.Context, messages []ai.Message, options ...ai.Option) (*ai.Response, error) {

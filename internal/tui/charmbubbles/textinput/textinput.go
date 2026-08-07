@@ -136,6 +136,8 @@ func (m Model) Update(message tea.Msg) (Model, tea.Cmd) {
 		m.value = m.value[:m.position]
 	case "ctrl+w", "alt+backspace":
 		m.deleteWordBackward()
+	case "ctrl+j":
+		m.insert([]rune{'\n'})
 	case "enter", "tab", "esc", "ctrl+c", "pgup", "pgdown", "ctrl+v":
 		// The parent model owns application keys. Clipboard commands are left
 		// to Bubble Tea's terminal paste events, which arrive as runes.
@@ -212,6 +214,11 @@ func (m Model) lineRanges() []lineRange {
 	ranges := make([]lineRange, 0, 3)
 	start, used := 0, 0
 	for index, char := range m.value {
+		if char == '\n' {
+			ranges = append(ranges, lineRange{start: start, end: index})
+			start, used = index+1, 0
+			continue
+		}
 		charWidth := lipgloss.Width(string(char))
 		if used > 0 && used+charWidth > width {
 			ranges = append(ranges, lineRange{start: start, end: index})
@@ -255,11 +262,12 @@ func (m *Model) deleteWordBackward() {
 }
 
 func sanitize(value string) []rune {
+	value = strings.ReplaceAll(strings.ReplaceAll(value, "\r\n", "\n"), "\r", "\n")
 	value = strings.Map(func(char rune) rune {
-		if char == '\n' || char == '\r' || char == '\t' {
+		if char == '\t' {
 			return ' '
 		}
-		if unicode.IsControl(char) {
+		if unicode.IsControl(char) && char != '\n' {
 			return -1
 		}
 		return char
