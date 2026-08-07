@@ -542,6 +542,10 @@ func runChat(args []string) error {
 				}
 				_ = graph.RecordDeliveryGate(node.ID, evidence)
 			}
+			// The gate judges the request. Taste is the other half and is never
+			// allowed to be a gate: an unproven rule rides one quiet question
+			// with the delivery, which lands either way.
+			_, _, _ = resident.AnnotateDelivery(graph, node)
 		}
 		outcome.Text = text
 		outcome.Usage = spent
@@ -2011,6 +2015,13 @@ const gateNotebookBytes = 1 << 10
 func judgeDeliverable(ctx context.Context, settings config.Config, client *liveClient, graph *store.Store, node store.Node, deliverable, workerModel string) deliverableJudgment {
 	ask := node.Provenance.Intent
 	body := "Verbatim request:\n" + ask + "\n\nCompiled goal:\n" + node.Brief + "\n\nDeliverable as produced:\n" + deliverable
+	// Settled taste leads the notebook block. A rule the user corrected their
+	// way to three times is not one lesson among eight — it is the shape of an
+	// acceptable answer, so it is read before anything else and cannot be
+	// crowded out by the digest's byte budget.
+	if taste := resident.TasteBlock(graph); taste != "" {
+		body += "\n\nSettled taste — hold to these:\n" + taste
+	}
 	if digest := resident.NotebookDigest(graph, node.ID, node.Brief, ask, 8); digest != "" {
 		body += "\n\nStanding preferences and relevant lessons:\n" + clipUTF8Bytes(digest, gateNotebookBytes)
 	}

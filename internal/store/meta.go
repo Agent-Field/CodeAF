@@ -294,8 +294,86 @@ const (
 	// this new work?" — reversible either way, so the meta loop is free to
 	// learn that the top-ranked job is simply always what was meant.
 	QuestionCategoryRedirectTarget QuestionCategory = "redirect-target"
-	QuestionCategoryGeneric        QuestionCategory = "generic"
+	// QuestionCategoryTaste is "or keep it the way I just did it?" — the one
+	// question a delivery is allowed to carry. It is reversible and never holds
+	// anything up, so the meta loop is free to learn that this user simply keeps
+	// what they are given, and stop asking.
+	QuestionCategoryTaste   QuestionCategory = "taste"
+	QuestionCategoryGeneric QuestionCategory = "generic"
 )
+
+const (
+	// tasteOptionKind namespaces the durable option values taste answers carry.
+	tasteOptionKind = "taste"
+	// TasteAnswerKeep is the calm default: the delivery was right as it was.
+	TasteAnswerKeep = "keep"
+	// TasteAnswerMeant is the user agreeing that the rule is what they meant.
+	TasteAnswerMeant = "meant"
+)
+
+// TasteOptionValue encodes one answer to a taste annotation. The shelf rather
+// than the fact sequence is named, because standing a rule up records a new
+// line and an answer must outlive that.
+func TasteOptionValue(answer, scope string) string {
+	return strings.Join([]string{tasteOptionKind, answer, scope}, ":")
+}
+
+// DecodeTasteOption reverses TasteOptionValue. A value from any other family
+// decodes as not-ok rather than as an error.
+func DecodeTasteOption(value string) (answer, scope string, ok bool) {
+	parts := strings.SplitN(value, ":", 3)
+	if len(parts) != 3 || parts[0] != tasteOptionKind {
+		return "", "", false
+	}
+	switch parts[1] {
+	case TasteAnswerKeep, TasteAnswerMeant:
+	default:
+		return "", "", false
+	}
+	if _, isTaste := TasteSubject(parts[2]); !isTaste {
+		return "", "", false
+	}
+	return parts[1], normalizeScope(parts[2]), true
+}
+
+// TasteAnswer is one settled verdict on a taste shelf. Seq is the question's
+// own sequence, which is how a refusal is told from a refusal that predates the
+// standing it would undo.
+type TasteAnswer struct {
+	Seq    int64
+	Scope  string
+	Answer string
+}
+
+// TasteAnswers reads every settled verdict, oldest first, from the one rare
+// category taste writes — the same read shape the skipped-ask projection uses,
+// decoded in Go. The stored resolution is the label the user chose, so the
+// option that label names is what carries the shelf.
+func (s *Store) TasteAnswers() ([]TasteAnswer, error) {
+	questions, err := s.queryAgentQuestions(`category = ? AND status = ? ORDER BY seq`,
+		[]any{QuestionCategoryTaste, QuestionAnswered})
+	if err != nil {
+		return nil, err
+	}
+	answers := make([]TasteAnswer, 0, len(questions))
+	for _, question := range questions {
+		resolution := strings.ToLower(strings.TrimSpace(question.Resolution))
+		for index, option := range question.Options {
+			if resolution != strings.ToLower(strings.TrimSpace(option.Label)) &&
+				resolution != strings.ToLower(strings.TrimSpace(option.Value)) &&
+				resolution != fmt.Sprint(index+1) {
+				continue
+			}
+			answer, scope, ok := DecodeTasteOption(option.Value)
+			if !ok {
+				break
+			}
+			answers = append(answers, TasteAnswer{Seq: question.Seq, Scope: scope, Answer: answer})
+			break
+		}
+	}
+	return answers, nil
+}
 
 // CategoryStats is the journal-derived acceptance and regret projection.
 type CategoryStats struct {

@@ -135,6 +135,14 @@ func TestDeliveryGateSeesNotebookPreferencesAndNoPanelStaysBare(t *testing.T) {
 		"the user always wants benchmark evidence named explicitly"); err != nil {
 		t.Fatal(err)
 	}
+	const settledTaste = "the user wants written comparisons kept under a page"
+	candidate, err := graph.RecordTasteCandidate("", "user", settledTaste)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := graph.PromoteTasteRule(candidate.Seq); err != nil {
+		t.Fatal(err)
+	}
 
 	settings := config.Config{Model: "worker/model"}
 	capture := &gateCaptureClient{model: "worker/model"}
@@ -159,6 +167,16 @@ func TestDeliveryGateSeesNotebookPreferencesAndNoPanelStaysBare(t *testing.T) {
 	}
 	if marker := strings.Index(body, "Standing preferences and relevant lessons:\n"); marker < 0 || len(body[marker:]) > gateNotebookBytes+len("Standing preferences and relevant lessons:\n") {
 		t.Fatalf("gate notebook block is absent or over its bound: %d bytes", len(body[marker:]))
+	}
+	// Settled taste is not one lesson among eight — it is what an acceptable
+	// answer looks like, so it is read before the digest and cannot be crowded
+	// out by the digest's byte budget.
+	taste := strings.Index(body, "Settled taste — hold to these:\n")
+	if taste < 0 || !strings.Contains(body[taste:], settledTaste) {
+		t.Fatalf("gate input omitted the settled taste rule: %q", body)
+	}
+	if notebook := strings.Index(body, "Standing preferences and relevant lessons:\n"); taste > notebook {
+		t.Fatalf("settled taste ranked after the notebook digest: taste=%d notebook=%d", taste, notebook)
 	}
 }
 
@@ -829,4 +847,3 @@ func TestReviseForUserWithoutARetainedPlanChangesNothing(t *testing.T) {
 		t.Fatalf("revision = %+v", revision)
 	}
 }
-
