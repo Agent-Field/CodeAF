@@ -8,6 +8,7 @@ import (
 	"sync"
 	"sync/atomic"
 
+	"github.com/Agent-Field/aforge-v2/internal/guard"
 	"github.com/Agent-Field/aforge-v2/internal/provider"
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 )
@@ -185,6 +186,14 @@ func sizeGather(ctx context.Context, client Completer, graph *Graph, shared stri
 		group.Add(1)
 		go func(stage int) {
 			defer group.Done()
+			// A faulted stage lands as a failed one, and sizeApply's default —
+			// unjudged work nodes are atomic — carries its nodes the rest of
+			// the way, exactly as it does for a stage the model skipped.
+			defer func() {
+				if recovered := recover(); recovered != nil {
+					results[stage-1] = sizeResult{err: guard.Note(fmt.Sprintf("plan/size stage %d", stage), recovered)}
+				}
+			}()
 			verdicts, usage, err := sizeStage(ctx, client, shared, graph, stage)
 			results[stage-1] = sizeResult{verdicts: verdicts, usage: usage, err: err}
 		}(stage)

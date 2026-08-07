@@ -7,6 +7,7 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/Agent-Field/aforge-v2/internal/guard"
 	"github.com/Agent-Field/aforge-v2/internal/provider"
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 )
@@ -104,6 +105,17 @@ func Contracts(ctx context.Context, client Completer, graph *Graph, playbook Con
 		group.Add(1)
 		go func(node Node) {
 			defer group.Done()
+			// The results slice is appended to, so a faulting node has to add
+			// its own failed entry or it would simply vanish from the pass.
+			// A contract that fails degrades to the generic loop; so does this.
+			defer func() {
+				if recovered := recover(); recovered != nil {
+					fault := guard.Note(fmt.Sprintf("plan/contract node %d", node.ID), recovered)
+					mutex.Lock()
+					defer mutex.Unlock()
+					results = append(results, result{id: node.ID, err: fault})
+				}
+			}()
 			notes := ""
 			if playbook != nil {
 				notes = playbook(node)

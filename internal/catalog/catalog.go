@@ -15,6 +15,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/Agent-Field/aforge-v2/internal/guard"
 )
 
 const (
@@ -72,7 +74,22 @@ type rows struct {
 // Load fetches at most once. A fresh cache avoids I/O; a failed fetch degrades
 // to a stale cache, then to a very small set of known modality defaults.
 func Load(ctx context.Context, options Options) *Catalog {
-	return &Catalog{ready: load(ctx, options)}
+	return &Catalog{ready: loadOrFallback(ctx, options)}
+}
+
+// loadOrFallback is the only way a catalog is resolved, because a fault in
+// discovery must degrade the way a failed fetch does — to the known defaults —
+// rather than escape. Inside a sync.OnceValue it would escape twice over: once
+// on the warming goroutine, and again on whichever caller first asked a
+// capability question, since the future replays the panic to every reader.
+func loadOrFallback(ctx context.Context, options Options) (resolved *rows) {
+	defer func() {
+		if recovered := recover(); recovered != nil {
+			_ = guard.Note("catalog/load", recovered)
+			resolved = newRows(hardcodedFallbacks())
+		}
+	}()
+	return load(ctx, options)
 }
 
 // LoadLazy starts the same discovery immediately but never makes the caller
@@ -82,8 +99,8 @@ func Load(ctx context.Context, options Options) *Catalog {
 // the surface is up, so the goroutine warms the value while the caller carries
 // on, and only a question that genuinely arrives first ever blocks.
 func LoadLazy(ctx context.Context, options Options) *Catalog {
-	resolve := sync.OnceValue(func() *rows { return load(ctx, options) })
-	go resolve()
+	resolve := sync.OnceValue(func() *rows { return loadOrFallback(ctx, options) })
+	guard.Go("catalog/warm", func() { resolve() })
 	return &Catalog{resolve: resolve}
 }
 

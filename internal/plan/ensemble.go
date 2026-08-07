@@ -8,6 +8,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/Agent-Field/aforge-v2/internal/guard"
 	"github.com/Agent-Field/aforge-v2/internal/provider"
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 )
@@ -452,6 +453,18 @@ func writePanelBriefs(ctx context.Context, client Completer, graph *Graph, panel
 		"This node produces its own result and hands it over.\n"
 	write := func(node Node, inputs []string, into *string) {
 		defer group.Done()
+		// The guard lives in here rather than at the two spawns because this is
+		// where the completion contract is: Done in a defer, and a fault
+		// recorded as a failure that leaves its brief empty — the same state a
+		// failed call leaves, which the writes below already skip over.
+		defer func() {
+			if recovered := recover(); recovered != nil {
+				fault := guard.Note("plan/ensemble brief "+node.Title, recovered)
+				mutex.Lock()
+				defer mutex.Unlock()
+				failures = append(failures, fault)
+			}
+		}()
 		brief, callUsage, err := writeBrief(ctx, client, shared, node, inputs, deliverable)
 		mutex.Lock()
 		defer mutex.Unlock()

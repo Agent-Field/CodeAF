@@ -6,6 +6,7 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/Agent-Field/aforge-v2/internal/guard"
 	"github.com/Agent-Field/aforge-v2/internal/provider"
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 )
@@ -119,6 +120,18 @@ func (w *briefWriter) launch(shared string, node Node, inputs []string, delivera
 	w.group.Add(1)
 	go func() {
 		defer w.group.Done()
+		// apply waits on this group and reads what it left behind, so a fault
+		// has to record itself the way a failed call does: an error in errs and
+		// no brief for the node, which leaves the leaf to the generic loop.
+		defer func() {
+			if recovered := recover(); recovered != nil {
+				fault := guard.Note(fmt.Sprintf("plan/brief node %d", node.ID), recovered)
+				w.mutex.Lock()
+				defer w.mutex.Unlock()
+				w.errs = append(w.errs, fault)
+				w.completed++
+			}
+		}()
 		brief, usage, err := writeBrief(w.ctx, w.client, shared, node, inputs, deliverable)
 		w.mutex.Lock()
 		defer w.mutex.Unlock()
