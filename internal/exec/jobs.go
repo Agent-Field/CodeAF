@@ -182,7 +182,7 @@ func (t *Toolbox) startBackground(ctx context.Context, command string, args map[
 			job.cancel()
 		}
 	})
-	r.workspace.Record(r.nodeID, full)
+	r.workspace.RecordInternal(r.nodeID, full)
 	go r.wait(job)
 	return Result{Content: fmt.Sprintf("job %d started · log %s", id, filepath.ToSlash(relative))}
 }

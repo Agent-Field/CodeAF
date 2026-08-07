@@ -1236,6 +1236,80 @@ func (s *Store) RecordSentinelCheck(id string, check SentinelCheck) error {
 	return tx.Commit()
 }
 
+// SentinelJudgment is one past wake judgment together with what became of it.
+// Line and Error had no reader anywhere: the sentinel wrote down its reasoning
+// every wake and never saw a word of it again.
+type SentinelJudgment struct {
+	Yes  bool
+	Line string
+	// Outcome is what happened after the judgment — the firing it caused, or
+	// the user's refusal of that firing. Empty means nothing followed, which is
+	// itself worth reading: a yes that led nowhere.
+	Outcome string
+	Error   string
+}
+
+// RecentSentinelJudgments returns a charter's last judgments, newest first.
+//
+// A poll charter's evidence is the constant condition string, so the sentinel's
+// input is byte-identical every wake — which means a firing the user has
+// already declined will be judged the same way, forever, by a call that has no
+// way of knowing it ever happened before. This is that memory: one bounded
+// read of the charter's own journal, shaped like DeliveryGateFor, with no new
+// table and no new event behind it.
+//
+// The outcome is paired in the same pass rather than queried per judgment. The
+// journal is ordered, so walking backwards means every firing or refusal is
+// seen before the check that produced it.
+func (s *Store) RecentSentinelJudgments(id string, limit int) ([]SentinelJudgment, error) {
+	if limit <= 0 {
+		return nil, nil
+	}
+	// Three kinds per judgment at the very most, so this window cannot run out
+	// of checks before it has found `limit` of them.
+	rows, err := s.db.Query(`
+		SELECT kind, payload FROM events
+		WHERE node_id = ? AND kind IN (?, ?, ?)
+		ORDER BY seq DESC LIMIT ?`,
+		id, EventSentinelChecked, EventCharterFired, EventCharterFiringDeclined, limit*3)
+	if err != nil {
+		return nil, fmt.Errorf("read sentinel judgments: %w", err)
+	}
+	defer rows.Close()
+	judgments := make([]SentinelJudgment, 0, limit)
+	outcome := ""
+	for rows.Next() {
+		var kind EventKind
+		var payload string
+		if err := rows.Scan(&kind, &payload); err != nil {
+			return nil, fmt.Errorf("read sentinel judgments: %w", err)
+		}
+		switch kind {
+		case EventCharterFired:
+			outcome = "it fired"
+			continue
+		case EventCharterFiringDeclined:
+			outcome = "it fired and the user declined the work"
+			continue
+		}
+		var check SentinelCheck
+		if err := json.Unmarshal([]byte(payload), &check); err != nil {
+			return nil, fmt.Errorf("read sentinel judgments: %w", err)
+		}
+		judgments = append(judgments, SentinelJudgment{
+			Yes: check.Yes, Line: check.Line, Error: check.Error, Outcome: outcome,
+		})
+		outcome = ""
+		if len(judgments) == limit {
+			break
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("read sentinel judgments: %w", err)
+	}
+	return judgments, nil
+}
+
 func applySentinelCheck(tx *sql.Tx, id string, check SentinelCheck, seq int64) error {
 	pending, yes := false, false
 	if check.Yes && check.Error == "" {
