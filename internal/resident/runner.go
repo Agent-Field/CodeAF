@@ -51,6 +51,7 @@ type Runner struct {
 	activeMu            sync.Mutex
 	activePractice      map[string]context.CancelFunc
 	serviceConsentGrace time.Duration
+	governor            *executor.Governor
 }
 
 // NewRunner builds a runner executing at most workers nodes concurrently.
@@ -68,7 +69,15 @@ func NewRunner(graph *store.Store, execute ExecuteFunc, owner string, workers in
 		slots:               make(chan struct{}, workers),
 		activePractice:      make(map[string]context.CancelFunc),
 		serviceConsentGrace: ServiceConsentGrace,
+		governor:            executor.HostGovernor(),
 	}
+}
+
+// WithGovernor replaces the shared host gate. Production uses the process-wide
+// one so every runner in this process reads the same machine.
+func (r *Runner) WithGovernor(governor *executor.Governor) *Runner {
+	r.governor = governor
+	return r
 }
 
 // WithServiceConsentGrace is primarily a deterministic test seam; production
@@ -117,6 +126,14 @@ func (r *Runner) Tick(ctx context.Context) (int, error) {
 		select {
 		case r.slots <- struct{}{}:
 		default:
+			return dispatched, nil
+		}
+		// This is the one gate on new leaves — every claim in the process comes
+		// through here. A refusal delays nothing that is already running and
+		// touches no user-origin surgery or answer: those never claim. The next
+		// tick asks again, so a saturated machine simply admits more slowly.
+		if !r.governor.Admit(len(r.slots) - 1) {
+			<-r.slots
 			return dispatched, nil
 		}
 		node, ok, err := r.claimNext()

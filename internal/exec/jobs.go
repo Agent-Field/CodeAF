@@ -26,7 +26,21 @@ const (
 	jobTerminateGrace        = 2 * time.Second
 	maxJobLineBytes          = 240
 	maxServiceNameBytes      = 80
+	// backgroundJobNice is the scheduling priority a detached job's whole
+	// process group runs at. +10 yields the interactive machine without
+	// starving the job: it still gets every slice nothing else wants, which is
+	// when a long scan or build should be running anyway. Foreground sh keeps
+	// normal priority — it is on the leaf's critical path.
+	backgroundJobNice = 10
 )
+
+// setProcessGroupPriority renices a detached process group. It is a variable
+// so the spawn path can be exercised where a sandbox forbids the syscall, and
+// the error is dropped because not every environment permits renicing at all —
+// failing to yield is never a reason to fail the job.
+var setProcessGroupPriority = func(pgid, priority int) {
+	_ = syscall.Setpriority(syscall.PRIO_PGRP, pgid, priority)
+}
 
 type jobState uint8
 
@@ -145,6 +159,9 @@ func (t *Toolbox) startBackground(ctx context.Context, command string, args map[
 	// Start duplicated the descriptor into the child. The parent closes its
 	// copy immediately; cmd.Wait does not need it and the child writes directly.
 	_ = logFile.Close()
+	// configureDetachedCommand gave the child its own session, so its pid is
+	// its process group id and everything it spawns inherits the yield.
+	setProcessGroupPriority(cmd.Process.Pid, backgroundJobNice)
 
 	started := time.Now()
 	if identity, identityErr := ProcessStartTime(cmd.Process.Pid); identityErr == nil {
