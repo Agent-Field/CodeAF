@@ -135,11 +135,20 @@ func (h *Head) renderDeepSlice(node store.Node, result string, now time.Time) st
 // unnamedFiles is the files line's whole reason to exist: a path the rendered
 // result already shows is not worth a second mention, but a path the truncation
 // cut off or the prose buried is the only way back to the work itself.
+// The cap belongs after the filter, not before it. Taking the first six paths
+// and then dropping the ones already visible spent the budget on exactly the
+// paths that needed no second mention, and a job whose first six paths were all
+// quoted in the rendered result printed no files line at all — losing the
+// seventh path, which was the only one this line existed to save.
 func unnamedFiles(node store.Node, body string) []string {
 	files := make([]string, 0, deepFileCap)
-	for _, file := range resultFiles(node) {
-		if !strings.Contains(body, file) {
-			files = append(files, file)
+	for _, file := range collectResultFiles(node, 0) {
+		if strings.Contains(body, file) {
+			continue
+		}
+		files = append(files, file)
+		if len(files) == deepFileCap {
+			break
 		}
 	}
 	return files
@@ -162,10 +171,16 @@ func nodeResult(node store.Node) string {
 // a different job could have used.
 func deepAlreadyInThread(thread, result string) bool {
 	probe := truncateBytes(firstLine(result), deepDedupProbeBytes)
-	probe = strings.TrimSuffix(probe, "…")
+	// The floor asks whether the result's own first line is substantial enough
+	// to match on, so it has to be measured before the truncation's ellipsis is
+	// trimmed off. Measuring after meant a first line of 24 to 26 bytes that
+	// happened to end in "…" lost three bytes to the trim, fell under the floor,
+	// and declined a dedup that was real — the same paragraph rendered twice in
+	// one prompt.
 	if len(probe) < deepDedupFloorBytes {
 		return false
 	}
+	probe = strings.TrimSuffix(probe, "…")
 	return strings.Contains(thread, probe)
 }
 
@@ -173,6 +188,13 @@ func deepAlreadyInThread(thread, result string) bool {
 // durably; everything else has them only where the worker wrote them down,
 // which is its own summary — inline or on a line of its own.
 func resultFiles(node store.Node) []string {
+	return collectResultFiles(node, deepFileCap)
+}
+
+// collectResultFiles is resultFiles with the cap as an argument; limit <= 0
+// collects them all. A caller that filters the set before showing it has to
+// cap what survives the filter, so it needs the whole set first.
+func collectResultFiles(node store.Node, limit int) []string {
 	files := make([]string, 0, deepFileCap)
 	seen := make(map[string]bool, deepFileCap)
 	add := func(path string) {
@@ -181,7 +203,7 @@ func resultFiles(node store.Node) []string {
 			!strings.HasPrefix(path, "cas://") {
 			return
 		}
-		if len(path) < 2 || seen[path] || len(files) == deepFileCap {
+		if len(path) < 2 || seen[path] || (limit > 0 && len(files) == limit) {
 			return
 		}
 		seen[path] = true
