@@ -124,10 +124,14 @@ func (t *Toolbox) Definitions() []ai.ToolDefinition {
 			"t":   prop("integer", "timeout seconds; default 60, or 900 with bg"),
 			"bg":  prop("boolean", "start as a background job"),
 		}, "cmd"),
-		define("job", "Check or wait on background jobs. Prefer one wait over repeated checks. Compose monitors from bg shell loops (e.g. bg: until curl -s :8080/health; do sleep 1; done — then wait on it). Kill servers when done testing; anything still running dies with the leaf.", map[string]any{
+		define("job", "Check or wait on background jobs. Prefer one wait over repeated checks. Compose monitors from bg shell loops (e.g. bg: until curl -s :8080/health; do sleep 1; done — then wait on it). Kill servers when done testing; anything still running dies with the leaf. To keep a server running after the task, use keep — never nohup.", map[string]any{
 			"id":   prop("integer", "job id; omit to list jobs"),
 			"wait": prop("integer", "seconds to wait for exit, maximum 120"),
 			"kill": prop("boolean", "terminate the job process group"),
+			"keep": map[string]any{"type": "object", "description": "request promotion to a user-owned service", "properties": map[string]any{
+				"name":   prop("string", "short service name"),
+				"health": prop("string", "port:5173, url:http://..., or cmd:..."),
+			}, "required": []string{"name", "health"}},
 		}),
 		define("write", "Write a file with exact content. Use this for any deliverable prose; never emit documents through sh.", map[string]any{
 			"path": prop("string", "workspace-relative path"),

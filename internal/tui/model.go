@@ -167,6 +167,10 @@ type Model struct {
 	charterFocusIndex int
 	standingRows      []standingRow
 	charterRows       []charterCardRow
+	serviceCardID     string
+	serviceFocusIndex int
+	serviceRows       []serviceRow
+	serviceCardRows   []serviceCardRow
 
 	// dockExpanded holds the overflow dock open without card focus; the
 	// dockSummaryLine is the rendered ▸/▾ summary row, -1 when absent.
@@ -328,6 +332,7 @@ type Model struct {
 	graphBounds               paneBounds
 	graphRowsBounds           paneBounds
 	standingRowsBounds        paneBounds
+	serviceRowsBounds         paneBounds
 	graphToggleBounds         paneBounds
 	inputBounds               paneBounds
 	boostBounds               paneBounds
@@ -609,6 +614,16 @@ func (m *Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		m.statusUntil = time.Now().Add(statusTTL)
 		return m, nil
 
+	case serviceCommandResultMsg:
+		if message.err != nil {
+			m.err = fmt.Errorf("%s service: %w", message.action, message.err)
+			return m, nil
+		}
+		m.err = nil
+		m.status = message.action + " requested → " + message.name
+		m.statusUntil = time.Now().Add(statusTTL)
+		return m, nil
+
 	case modelCommandResultMsg:
 		if message.err != nil {
 			if message.previous == "" || message.previous == "–" {
@@ -787,6 +802,7 @@ func (m *Model) updateKey(message tea.KeyMsg) (tea.Cmd, bool) {
 			m.setSize(m.width, m.height)
 		case m.graphVisible() && m.focus == focusGraph && m.closeScopedGraph():
 		case m.graphVisible() && m.focus == focusGraph && m.closeCharterCard():
+		case m.graphVisible() && m.focus == focusGraph && m.closeServiceCard():
 		case m.focus == focusCards && m.collapseSelectedCard():
 		case m.focus == focusChat && m.collapseSelectedCard():
 		case m.focus == focusChat && m.collapseSelectedBrief():
@@ -971,6 +987,18 @@ func (m *Model) updateKey(message tea.KeyMsg) (tea.Cmd, bool) {
 		}
 		m.moveCharterSelection(delta)
 		return nil, true
+	}
+	if m.focus == focusGraph && m.serviceCardID != "" &&
+		(key == "up" || key == "k" || key == "down" || key == "j") {
+		delta := -1
+		if key == "down" || key == "j" {
+			delta = 1
+		}
+		m.moveServiceSelection(delta)
+		return nil, true
+	}
+	if key == "enter" && m.focus == focusGraph && m.serviceCardID != "" {
+		return m.activateServiceSelection(), true
 	}
 	if key == "enter" && m.focus == focusGraph && m.charterCardID != "" && m.graphScopeID == "" {
 		return m.activateCharterSelection(), true
@@ -1406,6 +1434,8 @@ func (m *Model) toggleGraph() {
 	m.graphScopeID = ""
 	m.charterCardID = ""
 	m.charterFocusIndex = 0
+	m.serviceCardID = ""
+	m.serviceFocusIndex = 0
 	m.palette = paletteNone
 	m.paletteDismissed = false
 	if m.graphOpen {
@@ -1474,7 +1504,7 @@ func (m *Model) setSize(width, height int) {
 	m.chat.Height = max(1, m.chatHeight)
 	m.graph.Width = max(1, m.graphWidth-2)
 	// Header + blank + the exact static standing-section budget.
-	m.graph.Height = max(1, m.graphHeight-2-m.standingSectionHeight())
+	m.graph.Height = max(1, m.graphHeight-2-m.standingSectionHeight()-m.servicesSectionHeight())
 	m.sizeNodeViewports()
 	m.refreshChat()
 	m.refreshGraph()
@@ -1485,7 +1515,13 @@ func (m *Model) setSize(width, height int) {
 
 func (m *Model) refreshGraph() {
 	offset := m.graph.YOffset
-	if m.charterCardID != "" && m.graphScopeID == "" {
+	if m.serviceCardID != "" {
+		m.graphRows = nil
+		m.standingRows = nil
+		m.serviceRows = nil
+		m.graphAnimating = false
+		m.graph.SetContent(m.renderServiceCardBody(max(1, m.graph.Width)))
+	} else if m.charterCardID != "" && m.graphScopeID == "" {
 		m.graphRows = nil
 		m.standingRows = nil
 		m.graphAnimating = false

@@ -73,6 +73,9 @@ type Brief struct {
 	// only by the temporal compiler; both omit cleanly for ordinary work.
 	QuestionOptions []store.QuestionOption `json:"question_options,omitempty"`
 	Charter         *store.CharterSpec     `json:"charter,omitempty"`
+	// ServiceIntent is deterministic consent provenance; the provider never
+	// gets to infer whether a process may outlive its leaf.
+	ServiceIntent bool `json:"service_intent,omitempty"`
 }
 
 // Compiler converts verbatim user intent into a planning brief without asking
@@ -96,6 +99,7 @@ func (c *Compiler) Compile(ctx context.Context, instruction string, graphContext
 	if RecognizesStandingIntent(instruction) {
 		return c.compileStanding(ctx, instruction, graphContext)
 	}
+	serviceIntent := RecognizesServiceIntent(instruction)
 	user := "Current graph context:\n" + graphContext +
 		"\n\nUser instruction (verbatim; preserve exactly):\n" + instruction
 	response, err := c.client.CompleteWithMessages(ctx, []ai.Message{
@@ -118,6 +122,7 @@ func (c *Compiler) Compile(ctx context.Context, instruction string, graphContext
 		// best, and validating them would reject the ask itself.
 		brief.Question = question
 		brief.QuestionOptions = normalizeQuestionOptions(brief.QuestionOptions)
+		brief.ServiceIntent = serviceIntent
 		return brief, nil
 	}
 	brief.QuestionOptions = nil
@@ -128,7 +133,30 @@ func (c *Compiler) Compile(ctx context.Context, instruction string, graphContext
 	brief.Scale = normalizeScale(brief.Scale)
 	brief.BuildsOn = normalizeBuildsOn(brief.BuildsOn)
 	brief.TrialOf = normalizeTrialOf(graphContext, brief.TrialOf)
+	brief.ServiceIntent = serviceIntent
 	return brief, nil
+}
+
+// RecognizesServiceIntent marks asks whose requested end-state is a running
+// thing the user can continue to open or use. Ordinary "run tests" work is
+// deliberately excluded.
+func RecognizesServiceIntent(instruction string) bool {
+	lower := strings.ToLower(strings.TrimSpace(instruction))
+	if strings.HasPrefix(lower, "serve ") || strings.Contains(lower, " please serve ") {
+		return true
+	}
+	for _, phrase := range []string{
+		"keep it running", "keep this running", "keep the server running",
+		"so i can open it", "so i can see it", "run the app", "serve the app",
+		"start the app", "launch the app", "start the server", "start dev server",
+		"start the dev server", "start vite", "start preview", "run the server",
+		"run the site", "serve locally", "run locally",
+	} {
+		if strings.Contains(lower, phrase) {
+			return true
+		}
+	}
+	return false
 }
 
 func normalizeTrialOf(graphContext string, selected int64) int64 {
