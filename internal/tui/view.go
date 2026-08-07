@@ -114,6 +114,8 @@ func (m *Model) View() string {
 	if !m.paletteOpen() {
 		hint := "/ commands · tab focus · " + keyBindings.graph + " tasks · v receipts · ? help"
 		switch {
+		case m.boost != boostOff:
+			hint = m.boostLabel()
 		case m.voiceHint != "" && time.Now().Before(m.voiceHintUntil):
 			hint = m.voiceHint
 		case m.voiceState == voiceRecording:
@@ -133,7 +135,11 @@ func (m *Model) View() string {
 		case !m.voiceHintShown:
 			hint = "/ commands · tab focus · " + keyBindings.voice + " voice · " + keyBindings.graph + " tasks · v receipts · ? help"
 		}
-		parts = append(parts, mutedStyle.Faint(true).Render(truncate(hint, m.width)))
+		renderedHint := mutedStyle.Faint(true).Render(truncate(hint, m.width))
+		if m.boost != boostOff {
+			m.boostBounds = paneBounds{x: 0, y: m.inputBounds.bottom(), width: lipgloss.Width(renderedHint), height: 1}
+		}
+		parts = append(parts, renderedHint)
 	}
 	frame := lipgloss.JoinVertical(lipgloss.Left, parts...)
 	if m.palette == paletteModels || m.palette == paletteModel {
@@ -156,6 +162,7 @@ func (m *Model) trackPaneBounds() {
 	m.modelSlotRows = m.modelSlotRows[:0]
 	m.modelPickerRows = m.modelPickerRows[:0]
 	m.inputBounds = paneBounds{}
+	m.boostBounds = paneBounds{}
 	m.textQuestionDismissBounds = paneBounds{}
 	m.micBounds = paneBounds{}
 	m.voiceCancelBounds = paneBounds{}
@@ -209,7 +216,11 @@ func (m *Model) trackPaneBounds() {
 func (m *Model) renderTopBar() string {
 	wordmark := lipgloss.NewStyle().Foreground(ink).Bold(true).Render("aforge")
 	left := wordmark + mutedStyle.Faint(true).Render("  "+m.sessionID)
-	glance := mutedStyle.Faint(true).Render("talk " + truncate(modelShort(m.currentModel("talk")), 18) +
+	talkGlance := "talk " + truncate(modelShort(m.currentModel("talk")), 18)
+	if m.boost == boostPinned {
+		talkGlance = "talk » " + truncate(modelShort(m.currentModel("boost")), 18)
+	}
+	glance := mutedStyle.Faint(true).Render(talkGlance +
 		" · work " + truncate(modelShort(m.currentModel("work")), 18))
 	models := m.renderModelsButton()
 
@@ -510,6 +521,9 @@ func (m *Model) renderNodePane() string {
 // the provisional transcript and the "answering:" line never share a row.
 func (m *Model) renderInput() string {
 	input := m.input
+	if m.boost != boostOff {
+		input.Prompt = "» "
+	}
 	if strings.TrimSpace(m.voicePending) != "" {
 		input.Placeholder = ""
 	}
@@ -583,7 +597,7 @@ func (m *Model) renderInput() string {
 }
 
 // overlayModels paints both rungs of the unified model control over the first
-// rows beneath the header. Moving from the seven-slot palette into the reused
+// rows beneath the header. Moving from the eight-slot palette into the reused
 // searchable picker replaces the panel in place, so the conversation never
 // jumps while the operator drills down.
 func (m *Model) overlayModels(frame string) string {
@@ -604,7 +618,7 @@ func (m *Model) overlayModels(frame string) string {
 func (m *Model) overlayModelPalette(frame string, x, y, width, innerWidth int) string {
 	title := "⟨×⟩ models"
 	if m.width >= 100 {
-		title = overlayRight(title, "↑/↓ choose · enter open · 1–7 jump", innerWidth)
+		title = overlayRight(title, "↑/↓ choose · enter open · 1–8 jump", innerWidth)
 	}
 	lines := []string{title}
 	for index, slot := range modelSlots {
@@ -633,10 +647,14 @@ func (m *Model) modelSlotLine(slot string, selected bool, width int) string {
 		marker = "› "
 		markerStyle = lipgloss.NewStyle().Foreground(powder).Bold(true)
 	}
-	slotColumn := 8
+	slotLabel := slot
+	if slot == "boost" && m.modelFollowsWork() {
+		slotLabel += " (work)"
+	}
+	slotColumn := 13
 	modelWidth := max(1, width-lipgloss.Width(marker)-slotColumn-lipgloss.Width("  ⌄"))
 	model := truncate(modelShort(m.currentModel(slot)), modelWidth)
-	row := markerStyle.Render(marker) + mutedStyle.Faint(true).Render(padANSI(slot, slotColumn)) +
+	row := markerStyle.Render(marker) + mutedStyle.Faint(true).Render(padANSI(slotLabel, slotColumn)) +
 		inputTextStyle.Render(padANSI(model, modelWidth)) + mutedStyle.Render("  ⌄")
 	return truncate(row, width)
 }
@@ -775,6 +793,7 @@ func (m *Model) paletteLines(width int) []string {
 			mutedStyle.Render(truncate("voice  you ask · aforge answers · v toggles receipts (or click their ▸ line)", width)),
 			mutedStyle.Render(truncate("mic    "+keyBindings.voice+" starts/stops voice · click ◌ at the input edge · esc discards", width)),
 			mutedStyle.Render(truncate("tasks  "+keyBindings.graph+" toggles the rail · or click ⟨tasks ▸⟩ in the header · or /graph", width)),
+			mutedStyle.Render(truncate("boost "+keyBindings.boost+" cycles next/pinned/off · click its active footer label · /model boost", width)),
 			mutedStyle.Render(truncate("rail   ↑/↓ select · enter inspect (or click a row twice) · esc closes", width)),
 			mutedStyle.Render(truncate("cards  tab or click the dock · enter expands then opens its job · esc climbs back", width)),
 			mutedStyle.Render(truncate("chat   ↳ chips jump to the task · tab focuses the thread · ↑/↓ walk lines · enter = click", width)),
@@ -885,7 +904,11 @@ func (m *Model) paletteLineLimit() int {
 func (m *Model) modelChoiceRow(choice ModelChoice, selected bool, width int) string {
 	marker := "  "
 	markerStyle := mutedStyle
-	if m.currentModel(m.modelRole) == choice.Slug {
+	current := m.currentModel(m.modelRole) == choice.Slug
+	if m.modelRole == "boost" && choice.Slug == followWorkModel {
+		current = m.modelFollowsWork()
+	}
+	if current {
 		marker = "● "
 		markerStyle = lipgloss.NewStyle().Foreground(mint)
 	}
@@ -951,7 +974,32 @@ func (m *Model) currentModel(role string) string {
 	if m.commander == nil {
 		return "–"
 	}
-	return m.commander.CurrentModel(role)
+	current := m.commander.CurrentModel(role)
+	if role == "boost" && strings.TrimSpace(current) == "" {
+		return m.currentModel("work")
+	}
+	return current
+}
+
+func (m *Model) modelFollowsWork() bool {
+	if model := strings.TrimSpace(m.optimisticModels["boost"]); model != "" {
+		return false
+	}
+	if m.commander == nil {
+		return true
+	}
+	if follower, ok := m.commander.(interface{ ModelFollows(string) bool }); ok {
+		return follower.ModelFollows("boost")
+	}
+	return strings.TrimSpace(m.commander.CurrentModel("boost")) == ""
+}
+
+func (m *Model) boostLabel() string {
+	state := "next message"
+	if m.boost == boostPinned {
+		state = "pinned"
+	}
+	return "boost " + modelShort(m.currentModel("boost")) + " · " + state
 }
 
 func modelShort(model string) string {
@@ -1378,11 +1426,18 @@ func speakerHeader(message store.Message, now time.Time) string {
 	if label == "you" {
 		style = youLabelStyle
 	}
-	return style.Render(label) + mutedStyle.Faint(true).Render("  "+relativeTime(message.Time, now))
+	metadata := "  " + relativeTime(message.Time, now)
+	if label != "you" && strings.TrimSpace(message.Model) != "" {
+		metadata += " · " + modelShort(message.Model)
+	}
+	return style.Render(label) + mutedStyle.Faint(true).Render(metadata)
 }
 
 func messageVoice(message store.Message) string {
 	_, label := messagePresentation(message)
+	if label != "you" && strings.TrimSpace(message.Model) != "" {
+		return label + "\x00" + message.Model
+	}
 	return label
 }
 

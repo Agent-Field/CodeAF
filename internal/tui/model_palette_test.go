@@ -34,9 +34,9 @@ func TestModelPaletteSlotNavigationNumbersAndFocusOrder(t *testing.T) {
 	if model.modelSlotIndex != 0 {
 		t.Fatalf("up selected slot %d, want talk=0", model.modelSlotIndex)
 	}
-	_, _ = model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'7'}})
-	if model.palette != paletteModel || model.modelRole != "video" {
-		t.Fatalf("7 opened palette=%v role=%q, want video picker", model.palette, model.modelRole)
+	_, _ = model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'8'}})
+	if model.palette != paletteModel || model.modelRole != "boost" {
+		t.Fatalf("8 opened palette=%v role=%q, want boost picker", model.palette, model.modelRole)
 	}
 	_ = model.View()
 	_, _ = model.updateMouseClick(model.paletteCloseBounds.x, model.paletteCloseBounds.y)
@@ -119,7 +119,7 @@ func TestModelPaletteResponsivePanelAndHeaderWidthLadder(t *testing.T) {
 		if strings.Contains(view, "↑/↓ choose") != test.wantWideHint {
 			t.Fatalf("width %d wide hint mismatch:\n%s", test.width, view)
 		}
-		for _, expected := range []string{"talk", "work", "voice", "image", "speech", "music", "video", "qwen3-asr-flash"} {
+		for _, expected := range []string{"talk", "work", "voice", "image", "speech", "music", "video", "boost", "qwen3-asr-flash"} {
 			if !strings.Contains(view, expected) {
 				t.Fatalf("width %d palette missing %q:\n%s", test.width, expected, view)
 			}

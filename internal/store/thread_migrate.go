@@ -5,9 +5,9 @@ import (
 	"strings"
 )
 
-// migrateThreadSchema keeps selectable questions, charter commands, and durable
-// media attachments usable when an existing resident database is opened by the
-// standing-aware, multimodal build.
+// migrateThreadSchema keeps selectable questions, charter commands, durable
+// media attachments, and reply-model attribution usable when an existing
+// resident database is opened by a newer build.
 func migrateThreadSchema(db *sql.DB) error {
 	hasOptions, err := tableHasColumn(db, "messages", "options")
 	if err != nil {
@@ -33,6 +33,15 @@ func migrateThreadSchema(db *sql.DB) error {
 	}
 	if !hasQuestionSeq {
 		if _, err := db.Exec(`ALTER TABLE messages ADD COLUMN question_seq INTEGER NOT NULL DEFAULT 0`); err != nil {
+			return err
+		}
+	}
+	hasModel, err := tableHasColumn(db, "messages", "model")
+	if err != nil {
+		return err
+	}
+	if !hasModel {
+		if _, err := db.Exec(`ALTER TABLE messages ADD COLUMN model TEXT NOT NULL DEFAULT ''`); err != nil {
 			return err
 		}
 	}

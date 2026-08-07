@@ -272,7 +272,7 @@ func TestHeaderModelPaletteOpensPickerFiltersClicksAndEscapesByRung(t *testing.T
 	_ = model.View()
 	fetch, _ := model.updateMouseClick(model.headerModelsBounds.x, model.headerModelsBounds.y)
 	_ = model.View()
-	if model.palette != paletteModels || fetch != nil || len(model.modelSlotRows) != 7 {
+	if model.palette != paletteModels || fetch != nil || len(model.modelSlotRows) != 8 {
 		t.Fatalf("models header control opened palette=%v fetch=%v rows=%d", model.palette, fetch, len(model.modelSlotRows))
 	}
 	work := model.modelSlotRows[1]

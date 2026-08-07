@@ -27,6 +27,18 @@ const (
 	nodeTraceMaxBytes = 64 << 10
 )
 
+type boostMode uint8
+
+const (
+	boostOff boostMode = iota
+	boostArmed
+	boostPinned
+)
+
+func (mode boostMode) next() boostMode {
+	return (mode + 1) % 3
+}
+
 // ModelChoice is one model advertised by the live provider catalog. Price is
 // display-ready because providers own the units and parsing rules.
 type ModelChoice struct {
@@ -250,6 +262,7 @@ type Model struct {
 	memoryFacts           []store.Fact
 	status                string
 	statusUntil           time.Time
+	boost                 boostMode
 
 	voiceRecorder         voice.Recorder
 	voiceTranscriber      voice.Transcriber
@@ -289,6 +302,7 @@ type Model struct {
 	standingRowsBounds        paneBounds
 	graphToggleBounds         paneBounds
 	inputBounds               paneBounds
+	boostBounds               paneBounds
 	micBounds                 paneBounds
 	voiceCancelBounds         paneBounds
 	nodeBounds                paneBounds
@@ -638,6 +652,10 @@ func (m *Model) updateKey(message tea.KeyMsg) (tea.Cmd, bool) {
 	}
 	if key == keyBindings.voice {
 		return m.toggleVoice(), true
+	}
+	if key == keyBindings.boost {
+		m.toggleBoost()
+		return nil, true
 	}
 	if m.nodeViewID != "" {
 		switch {
@@ -1152,11 +1170,26 @@ func (m *Model) postUserMessage(body string, attachments ...string) tea.Cmd {
 	}
 	m.err = nil
 	backend := m.backend
+	messageModel := ""
+	if m.boost != boostOff {
+		messageModel = strings.TrimSpace(m.currentModel("boost"))
+		if messageModel == "–" {
+			messageModel = ""
+		}
+		if m.boost == boostArmed {
+			// The one-shot is consumed by submission, not by a successful post or
+			// reply. A failed provider call must never leave an expensive surprise
+			// armed for the following message.
+			m.boost = boostOff
+			m.setSize(m.width, m.height)
+		}
+	}
 	message := store.Message{
 		SessionID:   m.sessionID,
 		Role:        store.RoleUser,
 		Body:        body,
 		Attachments: attachments,
+		Model:       messageModel,
 		QuestionSeq: m.answeringQuestionSeq,
 	}
 	m.answeringQuestionSeq = 0
@@ -1164,6 +1197,11 @@ func (m *Model) postUserMessage(body string, attachments ...string) tea.Cmd {
 		posted, err := backend.PostMessage(message)
 		return postResultMsg{message: posted, questionSeq: message.QuestionSeq, err: err}
 	}
+}
+
+func (m *Model) toggleBoost() {
+	m.boost = m.boost.next()
+	m.setSize(m.width, m.height)
 }
 
 // toggleFocus cycles the zones actually on screen, in the documented order:

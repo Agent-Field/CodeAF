@@ -144,6 +144,10 @@ type Message struct {
 	Role        Role
 	Body        string
 	Attachments []string
+	// Model is chat-lane metadata. On a user message it requests the model for
+	// that one conversational turn; on an agent message it records the model
+	// that actually produced the reply. Empty preserves the ordinary talk lane.
+	Model string
 	// NodeID optionally anchors the message to a graph node (a fold
 	// announcement, an ask, a completion report).
 	NodeID string
@@ -187,6 +191,7 @@ CREATE TABLE IF NOT EXISTS messages (
     role        TEXT NOT NULL CHECK (role IN ('user', 'agent', 'system')),
 	body        TEXT NOT NULL,
 	attachments JSON NOT NULL DEFAULT '[]' CHECK (json_valid(attachments)),
+    model       TEXT NOT NULL DEFAULT '',
     node_id     TEXT NOT NULL DEFAULT '',
     command_seq INTEGER NOT NULL DEFAULT 0,
     question_seq INTEGER NOT NULL DEFAULT 0,
@@ -216,6 +221,7 @@ type messagePayload struct {
 	Role        Role             `json:"role"`
 	Body        string           `json:"body"`
 	Attachments []string         `json:"attachments,omitempty"`
+	Model       string           `json:"model,omitempty"`
 	NodeID      string           `json:"node_id,omitempty"`
 	CommandSeq  int64            `json:"command_seq,omitempty"`
 	QuestionSeq int64            `json:"question_seq,omitempty"`
@@ -287,6 +293,7 @@ func (s *Store) PostMessage(message Message) (Message, error) {
 		Role:        message.Role,
 		Body:        message.Body,
 		Attachments: append([]string(nil), message.Attachments...),
+		Model:       strings.TrimSpace(message.Model),
 		NodeID:      message.NodeID,
 		CommandSeq:  message.CommandSeq,
 		QuestionSeq: message.QuestionSeq,
@@ -305,6 +312,7 @@ func (s *Store) PostMessage(message Message) (Message, error) {
 	}
 	message.Seq = seq
 	message.Time = at
+	message.Model = payload.Model
 	message.Options = options
 	message.Brief = brief
 	return message, nil
@@ -396,7 +404,7 @@ func (s *Store) Messages(sessionID string, afterSeq int64, limit int) ([]Message
 	}
 	args = append(args, limit)
 	rows, err := s.db.Query(`
-		SELECT seq, ts, session_id, role, body, attachments, node_id, command_seq, question_seq, options, brief
+		SELECT seq, ts, session_id, role, body, attachments, model, node_id, command_seq, question_seq, options, brief
 		FROM messages WHERE `+where+` ORDER BY seq LIMIT ?`, args...)
 	if err != nil {
 		return nil, fmt.Errorf("list messages: %w", err)
@@ -408,7 +416,7 @@ func (s *Store) Messages(sessionID string, afterSeq int64, limit int) ([]Message
 		var message Message
 		var timestamp, attachments, options, brief string
 		if err := rows.Scan(&message.Seq, &timestamp, &message.SessionID,
-			&message.Role, &message.Body, &attachments, &message.NodeID, &message.CommandSeq, &message.QuestionSeq, &options, &brief); err != nil {
+			&message.Role, &message.Body, &attachments, &message.Model, &message.NodeID, &message.CommandSeq, &message.QuestionSeq, &options, &brief); err != nil {
 			return nil, fmt.Errorf("list messages: %w", err)
 		}
 		if err := decodeQuestionOptions(options, &message.Options); err != nil {
@@ -441,7 +449,7 @@ func (s *Store) NodeMessages(nodeID string, afterSeq int64, limit int) ([]Messag
 		limit = 200
 	}
 	rows, err := s.db.Query(`
-		SELECT seq, ts, session_id, role, body, attachments, node_id, command_seq, question_seq, options, brief
+		SELECT seq, ts, session_id, role, body, attachments, model, node_id, command_seq, question_seq, options, brief
 		FROM messages WHERE node_id = ? AND seq > ? ORDER BY seq LIMIT ?`,
 		nodeID, afterSeq, limit)
 	if err != nil {
@@ -453,7 +461,7 @@ func (s *Store) NodeMessages(nodeID string, afterSeq int64, limit int) ([]Messag
 		var message Message
 		var timestamp, attachments, options, brief string
 		if err := rows.Scan(&message.Seq, &timestamp, &message.SessionID,
-			&message.Role, &message.Body, &attachments, &message.NodeID, &message.CommandSeq, &message.QuestionSeq, &options, &brief); err != nil {
+			&message.Role, &message.Body, &attachments, &message.Model, &message.NodeID, &message.CommandSeq, &message.QuestionSeq, &options, &brief); err != nil {
 			return nil, fmt.Errorf("node messages: %w", err)
 		}
 		if err := decodeQuestionOptions(options, &message.Options); err != nil {
@@ -658,10 +666,10 @@ func applyMessageView(tx *sql.Tx, payload messagePayload, seq int64, at time.Tim
 		return err
 	}
 	_, err = tx.Exec(`
-		INSERT INTO messages (seq, ts, session_id, role, body, attachments, node_id, command_seq, question_seq, options, brief)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		INSERT INTO messages (seq, ts, session_id, role, body, attachments, model, node_id, command_seq, question_seq, options, brief)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		seq, formatTime(at), payload.SessionID, payload.Role, payload.Body,
-		string(attachments), payload.NodeID, payload.CommandSeq, payload.QuestionSeq, string(options), string(brief))
+		string(attachments), payload.Model, payload.NodeID, payload.CommandSeq, payload.QuestionSeq, string(options), string(brief))
 	return err
 }
 

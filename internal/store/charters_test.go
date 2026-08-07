@@ -250,6 +250,9 @@ func TestLegacyThreadSchemaMigratesForOptionsAndCharterCommands(t *testing.T) {
 	if found, err := tableHasColumn(reopened.db, "messages", "attachments"); err != nil || !found {
 		t.Fatalf("message attachments migration: found=%t err=%v", found, err)
 	}
+	if found, err := tableHasColumn(reopened.db, "messages", "model"); err != nil || !found {
+		t.Fatalf("message model migration: found=%t err=%v", found, err)
+	}
 	if found, err := tableHasColumn(reopened.db, "commands", "attachments"); err != nil || !found {
 		t.Fatalf("command attachments migration: found=%t err=%v", found, err)
 	}
