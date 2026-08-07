@@ -3,6 +3,7 @@ package head
 import (
 	"fmt"
 	"strings"
+	"time"
 	"unicode"
 
 	"github.com/Agent-Field/aforge-v2/internal/store"
@@ -18,6 +19,19 @@ const (
 	// RedirectCandidateLimit bounds the disambiguation question. More than a
 	// handful of choices is not a question, it is a list.
 	RedirectCandidateLimit = 4
+	// AdjacencyMessageWindow is how far back the thread is read for the job
+	// that spoke last. It is the router's own recent-thread window, because a
+	// line the model still carries into its prompt is a line the user can still
+	// be answering, and anything further back is history rather than context.
+	AdjacencyMessageWindow = recentMessageLimit
+	// AdjacencyQuiet is how long a job's own line stays the thing being
+	// answered. A running job speaks on a two-minute heartbeat, so two of them
+	// is the span in which nothing newer has been said; past that the thread
+	// has moved on and mere position proves nothing about what the user means.
+	AdjacencyQuiet = 4 * time.Minute
+	// adjacencyAncestorDepth bounds the walk from the node that spoke up to the
+	// live job it belongs to. A job is a root and its parts, so this is slack.
+	adjacencyAncestorDepth = 8
 )
 
 // redirectIntent is one recognized mid-flight redirection: which cue class
@@ -37,7 +51,7 @@ type redirectIntent struct {
 // It runs after surgery on purpose. "cancel", "pause", and their neighbours
 // are surgery's vocabulary and stay surgery's, unchanged.
 func (h *Head) manageRedirect(user store.Message) (bool, error) {
-	intent, redirecting, err := h.recognizeRedirect(user.Body)
+	intent, redirecting, err := h.recognizeRedirect(user)
 	if err != nil || !redirecting {
 		return false, err
 	}
@@ -57,8 +71,15 @@ func (h *Head) manageRedirect(user store.Message) (bool, error) {
 // recognizeRedirect requires two independent signals before it fires: a cue
 // that the sentence corrects, adds, cuts, or redirects, and an anchor tying it
 // to work that is actually live. Either alone is ordinary conversation.
-func (h *Head) recognizeRedirect(message string) (redirectIntent, bool, error) {
-	message = strings.TrimSpace(message)
+//
+// The anchor has two arms. Vocabulary is the older one and it is not enough:
+// "make sure you review the changes" shares no word with a job whose brief says
+// middleware, and means that job entirely, because that job spoke a moment ago.
+// So adjacency reads position in the conversation instead, and rides in as a
+// candidate with a strong prior — strong enough to anchor a sentence no word
+// anchors, never strong enough to overrule a job the user's own words name.
+func (h *Head) recognizeRedirect(user store.Message) (redirectIntent, bool, error) {
+	message := strings.TrimSpace(user.Body)
 	cue, cued := redirectCue(message)
 	if !cued {
 		return redirectIntent{}, false, nil
@@ -77,11 +98,27 @@ func (h *Head) recognizeRedirect(message string) (redirectIntent, bool, error) {
 			anchored = append(anchored, target)
 		}
 	}
+	adjacent, adjoins, err := h.adjacencyTarget(user, active)
+	if err != nil {
+		return redirectIntent{}, false, err
+	}
 	switch {
-	case len(anchored) == 1:
+	case len(anchored) == 1 && (!adjoins || anchored[0].Node.ID == adjacent.Node.ID):
 		return redirectIntent{Cue: cue, Candidates: anchored, Certain: true}, true, nil
+	case len(anchored) == 1:
+		// The words name one job and the conversation points at another, and
+		// both readings are as good as this path ever gets. Choosing either
+		// silently edits a plan the user may not have meant, so the words go
+		// first — they are the more deliberate signal — and the question settles
+		// it.
+		return redirectIntent{Cue: cue, Candidates: []store.SurgeryTarget{anchored[0], adjacent}}, true, nil
 	case len(anchored) > 1:
-		return redirectIntent{Cue: cue, Candidates: clipTargets(anchored)}, true, nil
+		return redirectIntent{Cue: cue, Candidates: clipTargets(promoteTarget(anchored, adjacent, adjoins))}, true, nil
+	case adjoins:
+		// No shared vocabulary at all, and the job the user is replying to said
+		// something a moment ago. That is the whole signal, and it is the one a
+		// person would use.
+		return redirectIntent{Cue: cue, Candidates: []store.SurgeryTarget{adjacent}, Certain: true}, true, nil
 	case !refersToLiveWork(message, len(active)):
 		return redirectIntent{}, false, nil
 	case len(active) == 1:
@@ -95,6 +132,102 @@ func (h *Head) recognizeRedirect(message string) (redirectIntent, bool, error) {
 		}
 		return redirectIntent{Cue: cue, Candidates: clipTargets(candidates)}, true, nil
 	}
+}
+
+// adjacencyTarget is the anchor's discourse arm: the live job of the user's own
+// whose message — progress, narration, a delivery, a question — is the last
+// thing said before this one. It is bounded twice, by how far the thread window
+// reaches and by how long a line stays fresh, because position only means
+// anything while the line is still what the conversation is about.
+func (h *Head) adjacencyTarget(user store.Message, active []store.SurgeryTarget) (store.SurgeryTarget, bool, error) {
+	if h == nil || h.store == nil || len(active) == 0 {
+		return store.SurgeryTarget{}, false, nil
+	}
+	live := make(map[string]store.SurgeryTarget, len(active))
+	for _, target := range active {
+		live[target.Node.ID] = target
+	}
+	recent, err := h.recentThread(user.SessionID, user.Seq)
+	if err != nil {
+		return store.SurgeryTarget{}, false, err
+	}
+	if len(recent) > AdjacencyMessageWindow {
+		recent = recent[len(recent)-AdjacencyMessageWindow:]
+	}
+	spoken := user.Time
+	if spoken.IsZero() {
+		spoken = time.Now()
+	}
+	for index := len(recent) - 1; index >= 0; index-- {
+		message := recent[index]
+		if message.Role == store.RoleUser || strings.TrimSpace(message.NodeID) == "" {
+			continue
+		}
+		if !message.Time.IsZero() && spoken.Sub(message.Time) > AdjacencyQuiet {
+			// The window closed, and the thread is in order, so everything
+			// before this is older still. Nothing here is adjacent to anything.
+			return store.SurgeryTarget{}, false, nil
+		}
+		if target, ok := h.adjacencyOwner(message.NodeID, live); ok {
+			return target, true, nil
+		}
+	}
+	return store.SurgeryTarget{}, false, nil
+}
+
+// adjacencyOwner walks the node that spoke up to the live job it belongs to. A
+// part of a job speaking is the job speaking; the user answers the work, not
+// the step.
+func (h *Head) adjacencyOwner(nodeID string, live map[string]store.SurgeryTarget) (store.SurgeryTarget, bool) {
+	for depth := 0; depth < adjacencyAncestorDepth; depth++ {
+		nodeID = strings.TrimSpace(nodeID)
+		if nodeID == "" || nodeID == store.RootID {
+			return store.SurgeryTarget{}, false
+		}
+		if target, ok := live[nodeID]; ok {
+			return target, true
+		}
+		node, found, err := h.store.Node(nodeID)
+		if err != nil || !found {
+			return store.SurgeryTarget{}, false
+		}
+		nodeID = node.Parent
+	}
+	return store.SurgeryTarget{}, false
+}
+
+// spliceContinuity is the last thing the adjacency reading is good for. Every
+// layer above it declined, so this genuinely is new work — but new work typed
+// while a job was mid-sentence is work about that job often enough that running
+// the two side by side is never the safer guess. Target on a splice already
+// means "the prior work this one continues", which is how a promoted reflex
+// hands its partial forward; a job that has not finished yet is the same claim.
+func (h *Head) spliceContinuity(user store.Message) string {
+	active, err := h.activeUserJobs()
+	if err != nil || len(active) == 0 {
+		return ""
+	}
+	adjacent, adjoins, err := h.adjacencyTarget(user, active)
+	if err != nil || !adjoins {
+		return ""
+	}
+	return adjacent.Node.ID
+}
+
+// promoteTarget puts the adjacent job at the head of a candidate list it is
+// already part of. The question is the same question; the strong prior only
+// decides which option is offered as the default.
+func promoteTarget(candidates []store.SurgeryTarget, adjacent store.SurgeryTarget, adjoins bool) []store.SurgeryTarget {
+	if !adjoins {
+		return candidates
+	}
+	promoted := []store.SurgeryTarget{adjacent}
+	for _, candidate := range candidates {
+		if candidate.Node.ID != adjacent.Node.ID {
+			promoted = append(promoted, candidate)
+		}
+	}
+	return promoted
 }
 
 // activeUserJobs is the whole precondition for this path: the user's own work,

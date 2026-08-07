@@ -33,6 +33,7 @@ Law you do not get to bend:
 - A question about state — what is running, how far along, what it cost — is answered from a board read and nothing else. Reading is not acting, and a status question earns no verb.
 - When the user asks what work found, produced, concluded or decided, read result on that job before you answer. The board says how a job ended; only result says what it came back with, and "it completed" is not an answer to what it found.
 - A question about aforge itself — what you can do, how one of your mechanisms works, why you behaved the way you did — is answered by reading the manual and quoting its substance in your own plain words. Never invent an answer about your own machinery, never soften or embellish what the manual says, and if the manual does not cover it, say plainly that you do not know rather than guessing.
+- Work the user raises while something is running, or moments after that job reported in the thread, is a change to that work before it is a second job. Read the board and revise or steer the job it concerns; that a sentence borrows none of the job's words means nothing, because people answer the thing just said to them without naming it. Only when the ask is genuinely about something else is it new work, and then it is not yours to queue.
 - needs_confirmation is the consent gate working, not a failure. Nothing changed, the user is being asked, and their answer settles it. Never say the change happened.
 - A tool error is information. A wrong id or a verb the status does not allow tells you exactly what to fix; fix it and try once more.
 - Say only what the tool results showed you. Counts, the names of the work, and "I've asked you to confirm" are the whole vocabulary of a receipt. Never promise a result no tool reported, never imply work has finished, and never say you will hurry something unless expedite said so.
@@ -78,7 +79,7 @@ var controlVerbs = map[string]bool{
 // work, and it never becomes a dead end: anything it cannot honestly settle
 // falls through to the ordinary router exactly as before.
 func (h *Head) manageControl(ctx context.Context, user store.Message) (bool, error) {
-	work, err := h.controlLoopApplies(user.Body)
+	work, err := h.controlLoopApplies(user)
 	if err != nil {
 		return false, err
 	}
@@ -179,11 +180,18 @@ func (h *Head) manageControl(ctx context.Context, user store.Message) (bool, err
 // controlLoopApplies is the trigger, and it is meant to be broad and cheap. It
 // asks two questions only: is there live work of the user's at all, and does
 // this sentence plausibly point at it — by carrying a control verb anywhere, by
-// pointing deictically, or by scoring against a live job's own words at
-// redirection's anchor floor. Everything finer is the model's job, behind the
-// tools, where a misreading costs a question rather than an action.
-func (h *Head) controlLoopApplies(message string) (bool, error) {
-	message = strings.TrimSpace(message)
+// pointing deictically, by scoring against a live job's own words at
+// redirection's anchor floor, or by arriving right after that job spoke.
+// Everything finer is the model's job, behind the tools, where a misreading
+// costs a question rather than an action.
+//
+// Adjacency alone opens the loop, and that is the point. The sentence that cost
+// a running job a racing duplicate — "make sure you review the changes" typed
+// seconds after that job posted its progress — carries no verb, no pronoun and
+// no shared word, so every lexical arm declined it while a person reading the
+// thread would not have hesitated for a moment.
+func (h *Head) controlLoopApplies(user store.Message) (bool, error) {
+	message := strings.TrimSpace(user.Body)
 	if message == "" {
 		return false, nil
 	}
@@ -203,7 +211,11 @@ func (h *Head) controlLoopApplies(message string) (bool, error) {
 			return true, nil
 		}
 	}
-	return false, nil
+	_, adjoins, err := h.adjacencyTarget(user, active)
+	if err != nil {
+		return false, err
+	}
+	return adjoins, nil
 }
 
 func controlVerbPresent(message string) bool {

@@ -66,6 +66,7 @@ Routing law:
 - A reflex is not a synonym for lookup. A quick lookup may be a reflex when it is one reversible retrieval; research, multi-part work, uncertain action sequences, and anything likely to need several independent steps use splice.
 - Never refuse and never say you cannot or lack access: you always can, by routing work. A normal splice receives the same verbatim instruction.
 - For a redirect of existing work, emit amend and name the affected node id from the snapshot. For stopping work, emit cancel with its target. Never invent a node id; if there is no unambiguous target, explain that briefly and emit no command.
+- Work that concerns something running right now, or something a job reported in the thread a moment ago, is an amendment of that work before it is a new job. Prefer amend on the job the snapshot shows, and do not require the user to borrow that job's vocabulary — people answer what was just said to them without naming it. When the ask genuinely is separate work about a running job, it still belongs behind that job rather than beside it: say plainly that it follows the work already underway. Two jobs changing the same thing at the same time is the one outcome nothing downstream can repair.
 - When the message refers back to earlier work ("it", "the report", "the podcast") and MORE THAN ONE thing in the snapshot plausibly matches, never pick for the user. Reply with one short question listing the candidates as numbered options (1. ..., 2. ...), each identified by what the user would recognise — their own words from that job — and emit no command. Their next message chooses. A single plausible match is not ambiguity; proceed.
 - When the user states something durable — a preference about how they like things done, a correction to how something was done for them, a lasting fact about themselves or their environment — capture it in remember as one sharp sentence, alongside whatever reply and command the message otherwise earns. Judge durability by one test: will this still matter after the current conversation is forgotten? Scope it to the narrowest thing it is about: user for personal preferences, tool:<name>, repo:<path>, file:<path>, or domain:<topic> for the rest. Task parameters and one-off details fail the test; remember stays null on almost every message.
 - When the user rejects a notebook belief ("forget that", "that's wrong"), set retract to the exact #seq shown beside that belief and leave remember null. Retract only a clearly identified notebook line; if more than one line could be meant, ask one numbered question and leave retract null. Never invent a sequence number. Retraction is reversible, so confirm it plainly without turning it into new work.
@@ -335,11 +336,15 @@ func (h *Head) answer(ctx context.Context, user store.Message) error {
 		if !reflex && isSurgeryCommand(kind) {
 			return h.resolveSurgery(user, kind, decision.Command.Target, decision.Command.Instruction, false)
 		}
+		target := decision.Command.Target
+		if kind == store.CommandSplice && !reflex && strings.TrimSpace(target) == "" {
+			target = h.spliceContinuity(user)
+		}
 		command, requestErr := h.store.RequestCommand(store.Command{
 			SessionID:   user.SessionID,
 			Kind:        kind,
 			Reflex:      reflex,
-			Target:      decision.Command.Target,
+			Target:      target,
 			Instruction: decision.Command.Instruction,
 			Attachments: append([]string(nil), user.Attachments...),
 		})
