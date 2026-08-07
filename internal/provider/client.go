@@ -42,9 +42,16 @@ type Config struct {
 type Client struct {
 	config Config
 	http   *http.Client
+	// stream is the same client with the total deadline removed. A streamed
+	// answer is bounded by silence, not by duration — see send.
+	stream *http.Client
 	// base is the pinned AgentField client, retained for the surfaces Aforge
 	// does not drive itself. It never sees a request the adapter has shaped.
 	base *ai.Client
+	// wait is the retry backoff, seamed exactly like the media client's video
+	// poll: production sleeps, tests record what would have been slept and
+	// return, so how long a retry waits is assertable without waiting.
+	wait func(context.Context, time.Duration) error
 }
 
 // NewClient builds the adapter. It performs no network request.
@@ -74,11 +81,12 @@ func NewClient(config Config) (*Client, error) {
 	if err != nil {
 		return nil, err
 	}
-	httpClient := config.HTTPClient
+	httpClient, streamClient := config.HTTPClient, config.HTTPClient
 	if httpClient == nil {
-		httpClient = &http.Client{Timeout: config.Timeout}
+		httpClient = &http.Client{Transport: SharedTransport(), Timeout: config.Timeout}
+		streamClient = &http.Client{Transport: streamTransport()}
 	}
-	return &Client{config: config, http: httpClient, base: base}, nil
+	return &Client{config: config, http: httpClient, stream: streamClient, base: base, wait: waitContext}, nil
 }
 
 // Model reports the adapter's default model slug.
@@ -102,6 +110,13 @@ func (c *Client) ExecuteToolCallLoop(
 ) (*ai.Response, *ai.ToolCallTrace, error) {
 	return c.base.ExecuteToolCallLoop(ctx, messages, tools, config, call, options...)
 }
+
+// maxResponseBytes bounds what one completion may be believed to be. A
+// completion is text and a cap this far above any real answer changes nothing
+// about a working provider; what it removes is the unbounded case, where a
+// misrouted endpoint streaming something else entirely is read into memory in
+// full before anyone looks at it.
+const maxResponseBytes = 64 << 20
 
 type callKnobs struct {
 	cacheKey string
@@ -153,7 +168,7 @@ func (c *Client) CompleteWithMessages(ctx context.Context, messages []ai.Message
 	}
 	defer httpResponse.Body.Close()
 
-	payload, err := io.ReadAll(httpResponse.Body)
+	payload, err := io.ReadAll(io.LimitReader(httpResponse.Body, maxResponseBytes))
 	if err != nil {
 		return nil, fmt.Errorf("read response: %w", err)
 	}
@@ -191,7 +206,7 @@ func (c *Client) completeWithMessagesStreaming(
 	}
 	defer httpResponse.Body.Close()
 	if httpResponse.StatusCode >= 400 {
-		payload, _ := io.ReadAll(httpResponse.Body)
+		payload, _ := io.ReadAll(io.LimitReader(httpResponse.Body, maxErrorPeek))
 		return nil, apiError(httpResponse.StatusCode, payload)
 	}
 
@@ -206,6 +221,20 @@ func (c *Client) completeWithMessagesStreaming(
 	response := &ai.Response{Model: request.Model}
 	var content strings.Builder
 	finishReason := ""
+	// The decoder is the SDK's, and its accumulation is quadratic in the length
+	// of a single SSE message: every Decode copies the whole undelivered buffer
+	// to a string and back. Ordinary token deltas are small enough that this
+	// never shows, but one multi-megabyte message — a reasoning block delivered
+	// whole — is re-copied once per 8 KB read. It is not ours to fix here and
+	// forking the SDK for it would cost more than it saves; the note is so the
+	// next person measuring a slow stream looks in the right module.
+	//
+	// What *is* ours is the loop below, and it is deliberately trivial: the
+	// observer is called synchronously and in order, so it must not work. The
+	// one live observer (chat's head stream) does nothing but translate the
+	// event and hand it to a buffered channel with a ctx escape, which is the
+	// contract to keep — anything heavier would be paid per token, in the read
+	// loop, against the connection's idle watchdog.
 	decoder := ai.NewSSEDecoder(httpResponse.Body)
 	for {
 		chunk, decodeErr := decoder.Decode()
@@ -284,7 +313,7 @@ func (c *Client) StreamComplete(ctx context.Context, prompt string, options ...a
 		}
 		defer httpResponse.Body.Close()
 		if httpResponse.StatusCode >= 400 {
-			payload, _ := io.ReadAll(httpResponse.Body)
+			payload, _ := io.ReadAll(io.LimitReader(httpResponse.Body, maxErrorPeek))
 			errs <- apiError(httpResponse.StatusCode, payload)
 			return
 		}

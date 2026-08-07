@@ -43,23 +43,31 @@ func newAdaptiveLimiter() *adaptiveLimiter {
 }
 
 // acquire blocks until a slot is free or the context ends.
+//
+// A woken waiter has *been handed* a slot rather than invited to race for one.
+// The distinction is the whole of the accounting: while a wake was only an
+// invitation, a waiter that was signalled and then cancelled could not tell
+// whether it held a slot, and returning one it never had drove inFlight
+// negative — at which case `inFlight < capacity` is permanently true and
+// admission control silently stops admitting anything at all.
 func (l *adaptiveLimiter) acquire(ctx context.Context) error {
-	for {
-		l.mu.Lock()
-		if l.inFlight < l.capacity {
-			l.inFlight++
-			l.mu.Unlock()
-			return nil
-		}
-		wait := make(chan struct{})
-		l.waiters = append(l.waiters, wait)
+	l.mu.Lock()
+	if l.inFlight < l.capacity {
+		l.inFlight++
 		l.mu.Unlock()
-		select {
-		case <-ctx.Done():
-			l.abandon(wait)
-			return ctx.Err()
-		case <-wait:
-		}
+		return nil
+	}
+	wait := make(chan struct{})
+	l.waiters = append(l.waiters, wait)
+	l.mu.Unlock()
+	select {
+	case <-ctx.Done():
+		l.abandon(wait)
+		return ctx.Err()
+	case <-wait:
+		// The releasing goroutine kept the slot counted on our behalf, so
+		// there is nothing to increment and nothing to re-check.
+		return nil
 	}
 }
 
@@ -68,11 +76,14 @@ func (l *adaptiveLimiter) abandon(wait chan struct{}) {
 	defer l.mu.Unlock()
 	for i, w := range l.waiters {
 		if w == wait {
+			// Still queued: no slot was ever handed over, so there is nothing
+			// to give back.
 			l.waiters = append(l.waiters[:i], l.waiters[i+1:]...)
 			return
 		}
 	}
-	// Already signalled: the slot we were handed goes back to the pool.
+	// Off the queue means a concurrent release handed us its slot before the
+	// cancellation landed. That slot is real and now unused, so it goes back.
 	l.releaseLocked()
 }
 
@@ -98,16 +109,42 @@ func (l *adaptiveLimiter) release(rateLimited bool) {
 		}
 	}
 	l.releaseLocked()
+	l.wakeLocked()
 }
 
-func (l *adaptiveLimiter) releaseLocked() {
-	l.inFlight--
+// wakeLocked admits waiters into slots that are free because the ceiling moved
+// rather than because a request finished. Growth adds a slot nobody holds, and
+// unlike the release handoff this loop's body does change what it tests: each
+// admission counts a slot, so it stops when the new ceiling is full.
+func (l *adaptiveLimiter) wakeLocked() {
 	for len(l.waiters) > 0 && l.inFlight < l.capacity {
 		wait := l.waiters[0]
 		l.waiters = l.waiters[1:]
+		l.inFlight++
 		close(wait)
-		// The awakened waiter re-checks under the lock; reserve nothing here.
 	}
+}
+
+// releaseLocked returns one slot: to the head of the queue if anyone is
+// waiting for it, otherwise to the pool.
+//
+// Exactly one waiter is woken because exactly one slot came free. The loop that
+// used to be here re-tested a condition the loop body could not change — the
+// woken waiter had not run yet, so inFlight was still below capacity — and so
+// woke every waiter on the queue for a single freed slot, at which point all of
+// them raced back to the lock and all but one queued again.
+//
+// When inFlight is above capacity the slot is not handed on: a 429 has just
+// halved the ceiling and the excess has to drain before anybody new is let in.
+func (l *adaptiveLimiter) releaseLocked() {
+	if len(l.waiters) > 0 && l.inFlight <= l.capacity {
+		wait := l.waiters[0]
+		l.waiters = l.waiters[1:]
+		close(wait)
+		// The slot stays counted: it moved to the waiter, it did not free up.
+		return
+	}
+	l.inFlight--
 }
 
 // retryAfter reads the provider's own instruction for when to come back:

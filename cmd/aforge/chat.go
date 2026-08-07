@@ -1567,10 +1567,25 @@ func (l *liveClient) SetModel(model string) error {
 		return err
 	}
 	l.mu.Lock()
-	l.model = model
-	l.client = client
+	previous := l.client
+	l.model, l.client = model, client
 	l.mu.Unlock()
+	closeReplaced(previous)
 	return nil
+}
+
+// closeReplaced releases a client that has just been swapped out.
+//
+// A router is not a value: it owns the append handle on router-events.jsonl and
+// a queue of graded observations the run has already paid for. Every model
+// switch used to drop one on the floor, which leaks the handle for the life of
+// the process and loses whatever had not reached the ledger file yet. Closing
+// is best-effort and idempotent; a plain adapter has nothing to close and is
+// left alone.
+func closeReplaced(client router.Client) {
+	if closer, ok := client.(io.Closer); ok {
+		_ = closer.Close()
+	}
 }
 
 func waitWithGrace(group *sync.WaitGroup, grace time.Duration) {
