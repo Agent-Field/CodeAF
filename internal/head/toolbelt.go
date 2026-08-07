@@ -19,8 +19,9 @@ import (
 // has no end: a person can always phrase "kill everything except the finance
 // one" in a way no cue list anticipated. So this file stops constraining the
 // utterance space and constrains the action space instead. The model is handed
-// five typed tools over the graph and nothing else — it can read the board, and
-// it can ask for one of five verbs against ids it read there. Every rule that
+// typed tools over the graph and nothing else — it can read the board, one
+// job's whole result, and aforge's own manual, and it can ask for one of five
+// verbs against ids it read there. Every rule that
 // makes a change safe lives inside the tools: the store's own legality table,
 // the class path's unit rule, the surgery gates, the ordinary journalled
 // commands, the same structured confirm question. A model that misreads the
@@ -39,6 +40,12 @@ const (
 	// about the board and about aforge at once — and a second loop would have
 	// to guess which one to open.
 	beltToolManual = "manual"
+	// beltToolResult is the belt's answer to the same failure the deep slices
+	// answer from the other side. Precomputed depth guesses which jobs a message
+	// is about; this lets the model decide, after it has read the board and
+	// knows which row the user meant. Both exist because the guess is free and
+	// the decision is right.
+	beltToolResult = "result"
 
 	// beltConfirmAction and beltKeepAction ride the existing surgery option
 	// codec, so a belt confirmation replays through exactly the durable
@@ -60,6 +67,11 @@ const (
 	// allows four calls in total, so a read that hands back a whole chapter
 	// spends the message's budget on prose the answer will not use.
 	beltManualSections = 4
+	// beltResultBytes bounds one result read. It is larger than a deep slice
+	// because this read was chosen rather than guessed — the model spent a call
+	// on this exact job — and it stays in the manual read's league because both
+	// are one message's whole grounding.
+	beltResultBytes = 4 << 10
 )
 
 // beltTool and beltProp mirror the leaf toolbox's definition idiom. They are
@@ -109,6 +121,9 @@ func beltDefinitions() []ai.ToolDefinition {
 			"q":    beltProp("string", "the question, in the user's own words"),
 			"page": beltProp("string", "one page name to read whole, from a page list you have seen"),
 		}),
+		beltTool(beltToolResult, "Read what one job actually produced: its findings in full, the files it wrote, what it spent, and how its parts ended. Always safe. Read it whenever the user asks what work found, produced, concluded or decided — the board only says how a job ended, and how it ended is not what it found.", map[string]any{
+			"id": beltProp("string", "one id from a board read"),
+		}, "id"),
 	}
 }
 
@@ -153,6 +168,8 @@ func (run *beltRun) execute(name, arguments string) (string, bool) {
 		return run.expedite(args)
 	case beltToolManual:
 		return run.manual(args)
+	case beltToolResult:
+		return run.result(args)
 	}
 	return fmt.Sprintf("there is no tool named %q", name), true
 }
@@ -288,6 +305,80 @@ func (run *beltRun) manual(args map[string]any) (string, bool) {
 			strings.Join(manual.Pages(), ", "), false
 	}
 	return manual.Render(sections), false
+}
+
+// result is a read like board and manual are reads: it records nothing, so a
+// message that only asked what a job found journals no command. It deliberately
+// does not go through beltJob — that resolver refuses settled work because the
+// verbs cannot touch it, and settled work is precisely what has findings.
+func (run *beltRun) result(args map[string]any) (string, bool) {
+	id := beltString(args, "id")
+	if id == "" {
+		return "id must name one job from a board read", true
+	}
+	node, found, err := run.head.store.Node(id)
+	if err != nil {
+		return "that job could not be read: " + err.Error(), true
+	}
+	if !found || node.ID == store.RootID || !beltAddressable(node) {
+		return fmt.Sprintf("there is no work of the user's with id %q — read the board again", id), true
+	}
+	return run.head.renderResult(node), false
+}
+
+// renderResult is one job's whole account of itself. The finding comes first
+// because it is the answer; status and spend trail it because they are context
+// for the answer, and the children are there so "what did each part conclude"
+// is one read rather than five.
+func (h *Head) renderResult(node store.Node) string {
+	now := time.Now()
+	var rendered strings.Builder
+	fmt.Fprintf(&rendered, "%s | %s | %s", node.ID, node.Status, surgeryTargetLabel(node))
+	if impact, err := h.store.Impact(node.ID, now); err == nil && impact.Cost > 0 {
+		fmt.Fprintf(&rendered, " | $%.2f", impact.Cost)
+	}
+	if age := store.AgeLabel(node.FinishedAt, now); age != "" {
+		rendered.WriteString(" | finished " + age)
+	}
+	rendered.WriteString("\n")
+	body := truncateBytes(nodeResult(node), beltResultBytes)
+	if body != "" {
+		rendered.WriteString("result:\n" + body + "\n")
+	} else {
+		rendered.WriteString("result: nothing recorded yet — this job has not settled.\n")
+	}
+	if files := unnamedFiles(node, body); len(files) > 0 {
+		rendered.WriteString("files: " + strings.Join(files, ", ") + "\n")
+	}
+	if children := h.resultChildren(node.ID); len(children) > 0 {
+		rendered.WriteString("its parts:\n" + strings.Join(children, "\n") + "\n")
+	}
+	return strings.TrimSpace(rendered.String())
+}
+
+// resultChildren gives each direct child the board's one line. BoardRowCap
+// bounds it for the board's own reason: past a dozen rows this is a log rather
+// than a list of parts, and the parent's own result already summarises it.
+func (h *Head) resultChildren(id string) []string {
+	nodes, err := h.store.ActiveNodes()
+	if err != nil {
+		return nil
+	}
+	lines := make([]string, 0, BoardRowCap)
+	for _, node := range nodes {
+		if node.Parent != id || node.Folded {
+			continue
+		}
+		line := fmt.Sprintf("- %s | %s | %s", node.ID, node.Status, surgeryTargetLabel(node))
+		if summary := firstLine(nodeResult(node)); summary != "" {
+			line += " | " + summary
+		}
+		lines = append(lines, line)
+		if len(lines) == BoardRowCap {
+			break
+		}
+	}
+	return lines
 }
 
 // record is the only way the run learns it acted. The command seq is the last
