@@ -165,8 +165,14 @@ func TestDeliveryGateSeesNotebookPreferencesAndNoPanelStaysBare(t *testing.T) {
 	if !strings.Contains(body, "the user always wants benchmark evidence named explicitly") {
 		t.Fatalf("gate input omitted the standing user preference: %q", body)
 	}
-	if marker := strings.Index(body, "Standing preferences and relevant lessons:\n"); marker < 0 || len(body[marker:]) > gateNotebookBytes+len("Standing preferences and relevant lessons:\n") {
-		t.Fatalf("gate notebook block is absent or over its bound: %d bytes", len(body[marker:]))
+	// The digest block runs from its heading to the request that follows it —
+	// it stopped being the tail of the prompt when the standing blocks moved
+	// ahead of the job, so its bound is measured against its own end.
+	const digestHeading = "Standing preferences and relevant lessons:\n"
+	marker := strings.Index(body, digestHeading)
+	end := strings.Index(body, "Verbatim request:\n")
+	if marker < 0 || end <= marker || len(body[marker:end]) > gateNotebookBytes+len(digestHeading)+len("\n\n") {
+		t.Fatalf("gate notebook block is absent or over its bound: marker=%d end=%d", marker, end)
 	}
 	// Settled taste is not one lesson among eight — it is what an acceptable
 	// answer looks like, so it is read before the digest and cannot be crowded
