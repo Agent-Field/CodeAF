@@ -283,9 +283,9 @@ func TestContextHelpLineFollowsFocusZone(t *testing.T) {
 		focus paneFocus
 		want  []string
 	}{
-		{"input", focusInput, []string{"alt+v voice", "v receipts"}},
-		{"rail", focusGraph, []string{"enter inspect", "alt+g hide"}},
-		{"card", focusCards, []string{"enter details", "alt+g tasks"}},
+		{"input", focusInput, []string{"ctrl+v voice", "v receipts"}},
+		{"rail", focusGraph, []string{"enter inspect", "ctrl+t hide"}},
+		{"card", focusCards, []string{"enter details", "ctrl+t tasks"}},
 		{"header", focusHeader, []string{"enter models/tasks", "esc back"}},
 	}
 	for _, test := range tests {

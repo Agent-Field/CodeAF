@@ -1622,7 +1622,7 @@ func TestGraphCollapsesToActivityBarAndTogglesOpen(t *testing.T) {
 		t.Fatalf("collapsed chat width = %d, want the full 72", model.chatWidth)
 	}
 	bar := model.renderActivityBar()
-	for _, want := range []string{"1 working", "1 queued", "alt+g tasks"} {
+	for _, want := range []string{"1 working", "1 queued", "ctrl+t tasks"} {
 		if !strings.Contains(bar, want) {
 			t.Fatalf("activity bar missing %q: %s", want, bar)
 		}
@@ -2080,13 +2080,23 @@ func TestGraphBindingRoutesAltGAndLeavesCtrlGAlone(t *testing.T) {
 	if model.graphOpen {
 		t.Fatal("ctrl+g still toggles the graph rail")
 	}
+	// ctrl+t is the control synonym: Option only reaches the program as alt+g
+	// when the terminal sends Meta, which macOS terminals do not by default.
+	_, _ = model.Update(tea.KeyMsg{Type: tea.KeyCtrlT})
+	if !model.graphOpen {
+		t.Fatal("ctrl+t did not toggle the graph rail")
+	}
+	_, _ = model.Update(tea.KeyMsg{Type: tea.KeyCtrlT})
+	if model.graphOpen {
+		t.Fatal("ctrl+t did not toggle the rail back closed")
+	}
 
 	_, _ = model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'g'}, Alt: true})
 	if !model.graphOpen || model.focus != focusGraph {
 		t.Fatalf("alt+g did not route to the rail: open=%v focus=%v", model.graphOpen, model.focus)
 	}
-	if view := model.View(); !strings.Contains(view, "alt+g hide") || strings.Contains(view, "^g") {
-		t.Fatalf("binding hints are not sourced from alt+g:\n%s", view)
+	if view := model.View(); !strings.Contains(view, "ctrl+t hide") || strings.Contains(view, "^g") {
+		t.Fatalf("binding hints do not teach the ctrl synonym:\n%s", view)
 	}
 	_ = model.View()
 	_, _ = model.Update(tea.MouseMsg{
