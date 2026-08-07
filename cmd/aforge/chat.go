@@ -192,8 +192,9 @@ func runChat(args []string) error {
 		WithBriefComposer(composeMorningBrief(settings, chatClient)).
 		// Redirection is a chat-surface concern — a wake pass has no user
 		// whose words could revise a running job.
-		WithRedirector(func(ctx context.Context, job store.Node, message string) (resident.Redirection, error) {
-			return plans.reviseForUser(ctx, settings, taskClient, graph, job, message)
+		WithRedirector(func(ctx context.Context, job store.Node, message string,
+			flavor resident.RevisionFlavor) (resident.Redirection, error) {
+			return plans.reviseForUser(ctx, settings, taskClient, graph, job, message, flavor)
 		}).
 		WithStandingWatch(standingWatch).
 		WithStandingWatchKeyPersist(func() (bool, string, error) {
@@ -1823,7 +1824,8 @@ func (j *jobPlans) reviseAfter(ctx context.Context, settings config.Config, clie
 // when nothing is pending — the leaves already running still have to be told,
 // and that broadcast is the reconciler's next move.
 func (j *jobPlans) reviseForUser(ctx context.Context, settings config.Config, client *liveClient,
-	graph *store.Store, job store.Node, message string) (resident.Redirection, error) {
+	graph *store.Store, job store.Node, message string,
+	flavor resident.RevisionFlavor) (resident.Redirection, error) {
 	j.mu.Lock()
 	defer j.mu.Unlock()
 	entry, ok := j.graphs[job.ID]
@@ -1831,7 +1833,7 @@ func (j *jobPlans) reviseForUser(ctx context.Context, settings config.Config, cl
 		return resident.Redirection{}, nil
 	}
 	operations, _, err := plan.Revise(settings.Context(ctx, entry.graph.Goal), client, entry.graph,
-		resident.UserRevisionEvent(message))
+		resident.UserRevisionEvent(message, flavor))
 	if err != nil {
 		return resident.Redirection{}, err
 	}

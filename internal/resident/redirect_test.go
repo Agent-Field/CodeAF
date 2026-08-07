@@ -17,9 +17,9 @@ func TestUserRedirectRevisesInformsAndReceiptsOnce(t *testing.T) {
 	startRedirectLeaf(t, graph, "api-n1")
 
 	reconciler := New(graph, nil, nil).WithRedirector(
-		func(_ context.Context, job store.Node, message string) (Redirection, error) {
-			if job.ID != "api" || message != "no, use the v2 API not v1" {
-				t.Fatalf("redirector saw job=%s message=%q", job.ID, message)
+		func(_ context.Context, job store.Node, message string, flavor RevisionFlavor) (Redirection, error) {
+			if job.ID != "api" || message != "no, use the v2 API not v1" || flavor != RevisionRedirect {
+				t.Fatalf("redirector saw job=%s message=%q flavor=%s", job.ID, message, flavor)
 			}
 			return Redirection{Added: 1, Amended: 2, Notes: []string{"remove api-n7: node 7 does not exist"}}, nil
 		})
@@ -90,7 +90,7 @@ func TestRedirectRemovalOfRunningWorkHonoursTheConsequenceGate(t *testing.T) {
 				t.Fatal(err)
 			}
 			reconciler := New(graph, nil, nil).WithRedirector(
-				func(context.Context, store.Node, string) (Redirection, error) {
+				func(context.Context, store.Node, string, RevisionFlavor) (Redirection, error) {
 					return Redirection{RunningRemovals: []string{"api-n1"}}, nil
 				})
 			command, err := graph.RequestCommand(store.Command{
@@ -157,11 +157,108 @@ func TestBroadcastRedirectionReachesEveryRunningLeaf(t *testing.T) {
 }
 
 func TestUserRevisionEventSpeaksWithTheOwnersAuthority(t *testing.T) {
-	event := UserRevisionEvent("  drop the docs part  ")
+	event := UserRevisionEvent("  drop the docs part  ", RevisionRedirect)
 	if !strings.Contains(event, "drop the docs part") ||
 		!strings.Contains(event, "owner of the work") ||
 		!strings.Contains(event, "never re-add work they cut") {
 		t.Fatalf("user revision event = %q", event)
+	}
+}
+
+// Impatience must buy something real: claim order ahead of the queue, the
+// words in every worker's transcript, and a shorter tail. Nothing here compiles.
+func TestExpediteMovesInformsAndTrims(t *testing.T) {
+	graph := openStore(t)
+	spliceRedirectJob(t, graph)
+	// A second queued job, so "moved it to the front" has a front to move to.
+	if err := graph.Splice(store.RootID, store.Subtree{Nodes: []store.NodeSpec{
+		{ID: "docs", Title: "the docs", Brief: "write the docs", Stage: 2},
+	}}, store.Provenance{Origin: store.OriginUser, SessionID: "hurry", Intent: "write the docs"}); err != nil {
+		t.Fatal(err)
+	}
+	startRedirectLeaf(t, graph, "api-n1")
+
+	reconciler := New(graph, nil, nil).WithRedirector(
+		func(_ context.Context, job store.Node, message string, flavor RevisionFlavor) (Redirection, error) {
+			if job.ID != "api" || flavor != RevisionExpedite || message != urgencyRevisionInstruction {
+				t.Fatalf("redirector saw job=%s flavor=%s message=%q", job.ID, flavor, message)
+			}
+			return Redirection{Dropped: 1}, nil
+		})
+	command, err := graph.RequestCommand(store.Command{
+		SessionID: "hurry", Kind: store.CommandExpedite, Target: "api",
+		Instruction: "please complete the dinance research fast and give me result immediatly",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := reconciler.Tick(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+
+	job, _, err := graph.Node("api")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if job.Priority <= 0 {
+		t.Fatalf("expedited job priority = %d", job.Priority)
+	}
+	if lines := steerMailbox(t, graph, "api-n1"); len(lines) != 1 ||
+		lines[0] != redirectSteerPrefix+urgencySteerLine {
+		t.Fatalf("steering mailbox = %+v", lines)
+	}
+	if lines := steerMailbox(t, graph, "api-n2"); len(lines) != 0 {
+		t.Fatalf("a pending leaf was told mid-turn: %+v", lines)
+	}
+	receipt := commandReceipt(t, graph, "hurry", command.Seq)
+	if receipt.NodeID != "api" || !strings.Contains(receipt.Body,
+		"understood — v1 API client: moved it to the front of the queue, "+
+			"told its 1 running worker to cut to the essentials, dropped 1 remaining step") {
+		t.Fatalf("expedite receipt = %+v", receipt)
+	}
+	if commands, err := graph.PendingCommands(10); err != nil || len(commands) != 0 {
+		t.Fatalf("expedite queued more work: %+v err=%v", commands, err)
+	}
+}
+
+// Urgency with nothing to spend it on says exactly that. A promise of speed
+// with no mechanism behind it is the failure this path exists to end.
+func TestExpediteWithNothingToAccelerateSaysSo(t *testing.T) {
+	graph := openStore(t)
+	spliceRedirectJob(t, graph)
+	for _, id := range []string{"api-n1", "api-n2"} {
+		if err := graph.CancelPending(id, "settled before the user asked"); err != nil {
+			t.Fatal(err)
+		}
+	}
+	reconciler := New(graph, nil, nil).WithRedirector(
+		func(context.Context, store.Node, string, RevisionFlavor) (Redirection, error) {
+			t.Fatal("a job with no unstarted tail should not spend a model call")
+			return Redirection{}, nil
+		})
+	command, err := graph.RequestCommand(store.Command{
+		SessionID: "nothing", Kind: store.CommandExpedite, Target: "api",
+		Instruction: "hurry up with that job",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := reconciler.Tick(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	receipt := commandReceipt(t, graph, "nothing", command.Seq)
+	if !strings.Contains(receipt.Body, "there is nothing here left to accelerate") ||
+		strings.Contains(receipt.Body, "still to run") {
+		t.Fatalf("nothing-to-accelerate receipt = %+v", receipt)
+	}
+}
+
+func TestUrgencyRevisionEventLicensesTheTrimAndNothingElse(t *testing.T) {
+	event := UserRevisionEvent(urgencyRevisionInstruction, RevisionExpedite)
+	if !strings.Contains(event, "out of patience") ||
+		!strings.Contains(event, "shortest path to the core deliverable") ||
+		!strings.Contains(event, "Never add work") {
+		t.Fatalf("urgency revision event = %q", event)
 	}
 }
 
@@ -213,7 +310,7 @@ func TestRedirectStillInformsWorkersWhenTheRevisionFails(t *testing.T) {
 	spliceRedirectJob(t, graph)
 	startRedirectLeaf(t, graph, "api-n1")
 	reconciler := New(graph, nil, nil).WithRedirector(
-		func(context.Context, store.Node, string) (Redirection, error) {
+		func(context.Context, store.Node, string, RevisionFlavor) (Redirection, error) {
 			return Redirection{}, errors.New("provider unavailable")
 		})
 	command, err := graph.RequestCommand(store.Command{

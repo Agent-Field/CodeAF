@@ -23,6 +23,30 @@ const redirectSteerPrefix = "redirection from the user: "
 // redirectCutReason is journaled on every node the user's words removed.
 const redirectCutReason = "revision: the user cut this work"
 
+// urgencySteerLine is what a worker mid-turn hears when the user is out of
+// patience. It promises nothing on anyone's behalf — it names the trade and
+// leaves the judgment where the work is.
+const urgencySteerLine = "the user wants results now — prefer the direct path, " +
+	"cut nice-to-haves, and deliver the strongest answer you can from what you already have."
+
+// urgencyRevisionInstruction is the same pressure said to the sentinel, which
+// is the only party allowed to decide that a remaining step is not needed.
+const urgencyRevisionInstruction = "the user wants the result as soon as possible; " +
+	"drop or fold any remaining step that is not strictly needed for the core deliverable"
+
+// urgencyPriorityReason is journaled with the claim-order change.
+const urgencyPriorityReason = "expedite: the user asked for this sooner"
+
+// RevisionFlavor is why the user spoke: to change what the work is, or to
+// change how long they are willing to wait for it. Both reach the same sentinel
+// by the same path; only the event they carry differs.
+type RevisionFlavor string
+
+const (
+	RevisionRedirect RevisionFlavor = "redirect"
+	RevisionExpedite RevisionFlavor = "expedite"
+)
+
 // Redirection is what one user-driven revision pass actually did, in the terms
 // the receipt speaks: counts, the store's refusals, and the running leaves the
 // sentinel wanted gone — which the store will not simply delete.
@@ -41,7 +65,7 @@ type Redirection struct {
 // words. It is injected rather than built here because the live plan graph
 // belongs to the process that planned it; the reconciler owns everything that
 // follows — the cancels, the broadcast, and the receipt.
-type RedirectFunc func(ctx context.Context, job store.Node, message string) (Redirection, error)
+type RedirectFunc func(ctx context.Context, job store.Node, message string, flavor RevisionFlavor) (Redirection, error)
 
 // WithRedirector registers the plan-revision half of user-driven redirection.
 // Without it the words still reach every running worker as steering.
@@ -50,14 +74,22 @@ func (r *Reconciler) WithRedirector(redirect RedirectFunc) *Reconciler {
 	return r
 }
 
-// UserRevisionEvent phrases a redirection for the sentinel. The landed-result
+// UserRevisionEvent phrases a revision for the sentinel. The landed-result
 // event describes something that happened; this one describes someone who
 // decides — the sentinel's standing default of "no change" is overridden by
-// the owner of the work, not by evidence.
-func UserRevisionEvent(message string) string {
+// the owner of the work, not by evidence. Under urgency the authority is the
+// same and only the licence changes: the remaining plan may lose its tail.
+func UserRevisionEvent(message string, flavor RevisionFlavor) string {
 	message = strings.TrimSpace(message)
 	if len(message) > 1200 {
 		message = message[:1200] + "…"
+	}
+	if flavor == RevisionExpedite {
+		return "The user is out of patience with this job. What they want:\n" + message +
+			"\n\nThis is the owner of the work speaking, and they are spending the deliverable's " +
+			"completeness to buy time. Cut the remaining plan to the shortest path to the core " +
+			"deliverable: drop or fold every unstarted step that is not strictly needed for it. " +
+			"Never add work, and never touch a step that has already started."
 	}
 	return "The user has redirected this job. Their words, verbatim:\n" + message +
 		"\n\nThis is the owner of the work speaking, with authority over what it is for. " +
@@ -80,7 +112,7 @@ func (r *Reconciler) redirectJob(ctx context.Context, command store.Command) (co
 		// The plan pass is the fallible half of this — it is a model call. Its
 		// failure must not swallow the reliable half: the words still reach
 		// everyone who is mid-turn, and the receipt says which part happened.
-		edited, revisionErr := r.redirect(ctx, job, command.Instruction)
+		edited, revisionErr := r.redirect(ctx, job, command.Instruction, RevisionRedirect)
 		if revisionErr != nil {
 			revised = false
 			revision.Notes = append(revision.Notes, "the remaining plan could not be revised: "+revisionErr.Error())
@@ -108,6 +140,186 @@ func (r *Reconciler) redirectJob(ctx context.Context, command store.Command) (co
 			job.ID, revision.Added, revision.Dropped, revision.Amended, informed),
 		receipt: redirectReceipt(job, revision, informed, revised),
 	}, nil
+}
+
+// expediteJob applies one CommandExpedite. It is redirectJob with the same
+// three moves aimed at time instead of content: claim order, the workers
+// mid-turn, and the unstarted tail. It compiles nothing — the entire point is
+// that the queue must get shorter, never longer.
+func (r *Reconciler) expediteJob(ctx context.Context, command store.Command) (commandOutcome, error) {
+	job, found, err := r.store.Node(command.Target)
+	if err != nil {
+		return commandOutcome{}, err
+	}
+	if !found {
+		return commandOutcome{}, fmt.Errorf("target %q no longer exists", command.Target)
+	}
+	moved, err := r.raiseClaimOrder(job.ID, urgencyPriorityReason)
+	if err != nil {
+		return commandOutcome{}, err
+	}
+	unstarted, open, err := r.jobTail(job.ID)
+	if err != nil {
+		return commandOutcome{}, err
+	}
+	revision, revised := Redirection{}, false
+	// A tail is the only thing a trim can take. With nothing unstarted the
+	// model call would be spend with no outcome available to it.
+	if r.redirect != nil && unstarted > 0 {
+		revised = true
+		edited, revisionErr := r.redirect(ctx, job, urgencyRevisionInstruction, RevisionExpedite)
+		if revisionErr != nil {
+			revised = false
+			revision.Notes = append(revision.Notes, "the remaining plan could not be trimmed: "+revisionErr.Error())
+		} else {
+			revision = edited
+		}
+	}
+	// Urgency never throws away work already in motion — that would be paying
+	// for speed with the very minutes the user is waiting on — so a removal the
+	// sentinel aimed at a running leaf degrades to the same consented cut.
+	cancelled, gated, err := r.cutRunningWork(revision.RunningRemovals)
+	if err != nil {
+		return commandOutcome{}, err
+	}
+	revision.Dropped += len(cancelled)
+	informed, err := BroadcastRedirection(r.store, job.ID, command.SessionID, urgencySteerLine)
+	if err != nil {
+		return commandOutcome{}, err
+	}
+	for _, node := range gated {
+		if err := r.askBeforeCutting(command, node); err != nil {
+			return commandOutcome{}, err
+		}
+	}
+	remaining := open - revision.Dropped
+	if remaining < 0 {
+		remaining = 0
+	}
+	return commandOutcome{
+		status: store.CommandApplied,
+		result: fmt.Sprintf("expedited %s: moved=%t, %d dropped, %d amended, %d added, %d informed",
+			job.ID, moved, revision.Dropped, revision.Amended, revision.Added, informed),
+		receipt: expediteReceipt(job, moved, revision, informed, remaining, revised),
+	}, nil
+}
+
+// jobTail counts what is left of a job below its root: the steps not yet
+// started, which a trim may take, and every open step, which the receipt owes
+// the user as the honest remainder.
+func (r *Reconciler) jobTail(jobRoot string) (unstarted, open int, err error) {
+	nodes, err := r.store.Nodes()
+	if err != nil {
+		return 0, 0, err
+	}
+	ids, ok := descendants(nodes, jobRoot)
+	if !ok {
+		return 0, 0, fmt.Errorf("target %q no longer exists", jobRoot)
+	}
+	byID := make(map[string]store.Node, len(nodes))
+	for _, node := range nodes {
+		byID[node.ID] = node
+	}
+	for _, id := range ids {
+		node, present := byID[id]
+		if id == jobRoot || !present || terminal(node.Status) {
+			continue
+		}
+		open++
+		if node.Status == store.Pending {
+			unstarted++
+		}
+	}
+	return unstarted, open, nil
+}
+
+// raiseClaimOrder is the whole of reprioritization at the store: one pending
+// node moved ahead of its pending siblings, dependencies untouched. Work that
+// already started has no claim order left to change, and work with nothing
+// queued beside it is already first — both say no rather than claim a move
+// the receipt would then have to overstate.
+func (r *Reconciler) raiseClaimOrder(target, reason string) (bool, error) {
+	node, found, err := r.store.Node(target)
+	if err != nil || !found {
+		return false, err
+	}
+	if node.Status != store.Pending {
+		return false, nil
+	}
+	queued, err := r.pendingSiblings(node)
+	if err != nil || queued == 0 {
+		return false, err
+	}
+	priority, err := r.store.NextSiblingPriority(target)
+	if err != nil {
+		return false, err
+	}
+	if priority <= node.Priority {
+		return false, nil
+	}
+	if err := r.store.SetNodePriority(target, priority, reason); err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
+func (r *Reconciler) pendingSiblings(node store.Node) (int, error) {
+	nodes, err := r.store.Nodes()
+	if err != nil {
+		return 0, err
+	}
+	queued := 0
+	for _, candidate := range nodes {
+		if candidate.ID != node.ID && candidate.Parent == node.Parent &&
+			candidate.Status == store.Pending {
+			queued++
+		}
+	}
+	return queued, nil
+}
+
+// expediteReceipt says what impatience actually bought. Every clause is
+// something that happened; when nothing did, it says that and what remains,
+// because a promise of speed with no mechanism behind it is the failure this
+// path exists to end.
+func expediteReceipt(job store.Node, moved bool, revision Redirection, informed, remaining int, revised bool) string {
+	did := make([]string, 0, 4)
+	if moved {
+		did = append(did, "moved it to the front of the queue")
+	}
+	if informed > 0 {
+		did = append(did, fmt.Sprintf("told its %d running %s to cut to the essentials",
+			informed, plural(informed, "worker", "workers")))
+	}
+	if revision.Dropped > 0 {
+		did = append(did, fmt.Sprintf("dropped %d remaining %s",
+			revision.Dropped, plural(revision.Dropped, "step", "steps")))
+	}
+	if revision.Amended > 0 {
+		did = append(did, fmt.Sprintf("folded %d %s down",
+			revision.Amended, plural(revision.Amended, "step", "steps")))
+	}
+	// The urgency event forbids additions. If one happens anyway the receipt
+	// still says so — the user is owed the queue as it actually is.
+	if revision.Added > 0 {
+		did = append(did, fmt.Sprintf("added %d %s", revision.Added, plural(revision.Added, "step", "steps")))
+	}
+	receipt := "understood — " + surgeryLabel(job) + ": "
+	switch {
+	case len(did) > 0:
+		receipt += strings.Join(did, ", ")
+	case revised:
+		receipt += "nothing left in the plan could be dropped, and nobody is mid-turn to press"
+	default:
+		receipt += "there is nothing here left to accelerate"
+	}
+	if remaining > 0 {
+		receipt += fmt.Sprintf("; %d %s still to run", remaining, plural(remaining, "step", "steps"))
+	}
+	for _, note := range revision.Notes {
+		receipt += "\n· " + clipLabel(firstLine(note), 160)
+	}
+	return receipt
 }
 
 // BroadcastRedirection posts the user's words into every running leaf of the

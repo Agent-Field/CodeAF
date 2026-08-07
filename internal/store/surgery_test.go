@@ -202,6 +202,44 @@ func TestRedirectCommandRoundTripsThroughRebuild(t *testing.T) {
 	}
 }
 
+// Impatience is journaled as its own verb, so replay stays a switch on the
+// kind and a rebuilt graph still knows the user asked for this one sooner.
+func TestExpediteCommandRoundTripsThroughRebuild(t *testing.T) {
+	graph := openThreadStore(t)
+	if err := graph.Splice(RootID, Subtree{Nodes: []NodeSpec{
+		{ID: "finance", Brief: "research the finance question", Stage: 1},
+	}}, Provenance{Origin: OriginUser, SessionID: "hurry", Intent: "research the finance question"}); err != nil {
+		t.Fatal(err)
+	}
+	instruction := "please complete the dinance research fast and give me result immediatly"
+	command, err := graph.RequestCommand(Command{
+		SessionID: "hurry", Kind: CommandExpedite, Target: "finance", Instruction: instruction,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := graph.ResolveCommand(command.Seq, CommandApplied, "expedited finance: moved=true"); err != nil {
+		t.Fatal(err)
+	}
+	if err := graph.Rebuild(); err != nil {
+		t.Fatal(err)
+	}
+	rebuilt, found, err := graph.CommandBySeq(command.Seq)
+	if err != nil || !found || rebuilt.Kind != CommandExpedite || rebuilt.Target != "finance" ||
+		rebuilt.Status != CommandApplied || rebuilt.Instruction != instruction ||
+		rebuilt.Result != "expedited finance: moved=true" {
+		t.Fatalf("rebuilt expedite command = %+v found=%t err=%v", rebuilt, found, err)
+	}
+	if err := graph.CancelPending("finance", "done here"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := graph.RequestCommand(Command{
+		SessionID: "hurry", Kind: CommandExpedite, Target: "finance", Instruction: "too late",
+	}); !errors.Is(err, ErrInvalid) {
+		t.Fatalf("expedite onto settled work error = %v", err)
+	}
+}
+
 func nodeListed(nodes []Node, id string) bool { return indexOfNode(nodes, id) >= 0 }
 
 func indexOfNode(nodes []Node, id string) int {
