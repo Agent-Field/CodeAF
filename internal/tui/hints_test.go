@@ -160,6 +160,48 @@ func TestIdleTipYieldsWhileNotebookIsOpen(t *testing.T) {
 	}
 }
 
+// The help overlay and /history results are active reading surfaces from the
+// same family as the notebook: no tip may surface while either is up, and '?'
+// on an empty draft opens help even when a tip is currently visible.
+func TestIdleTipYieldsWhileHelpOverlayOrHistoryIsActive(t *testing.T) {
+	now := time.Date(2026, time.August, 6, 14, 0, 0, 0, time.Local)
+	model := tipTestModel(&now)
+
+	// A tip is on screen; '?' still opens help and the tip yields.
+	model.tipActivityAt = now.Add(-tipIdleAfter)
+	if tip := model.idleTipLine(now); tip == "" {
+		t.Fatal("idle tip did not surface before help opened")
+	}
+	_, _ = model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'?'}})
+	if model.palette != paletteHelp {
+		t.Fatal("? on an empty draft did not open help over a visible tip")
+	}
+	if model.tipCurrent != -1 {
+		t.Fatalf("opening help did not dismiss the tip: current=%d", model.tipCurrent)
+	}
+	model.tipActivityAt = now.Add(-time.Hour)
+	if tip := model.idleTipLine(now); tip != "" {
+		t.Fatalf("tip appeared under the help overlay: %q", tip)
+	}
+	_, _ = model.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	if model.palette == paletteHelp {
+		t.Fatal("escape did not close the help overlay")
+	}
+
+	// /history results hold the thread; the footer stays quiet beneath them.
+	model.historyVisible = true
+	model.tipActivityAt = now.Add(-time.Hour)
+	if tip := model.idleTipLine(now); tip != "" {
+		t.Fatalf("tip appeared while /history results were active: %q", tip)
+	}
+	model.historyVisible = false
+	now = now.Add(tipSpacing + tipIdleAfter)
+	model.tipActivityAt = now.Add(-tipIdleAfter)
+	if tip := model.idleTipLine(now); tip == "" {
+		t.Fatal("tip did not return after help and history closed")
+	}
+}
+
 // The one footer line resolves by explicit priority: transient voice status →
 // active boost indicator → pending-question context → idle tip → focus-zone
 // help. When both boost and a tip are eligible, boost wins and the tip waits.
