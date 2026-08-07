@@ -102,7 +102,7 @@ func (m *Model) View() string {
 	}
 
 	parts := []string{top, "", main, ""}
-	if m.paletteOpen() && m.palette != paletteModels && m.palette != paletteModel {
+	if m.paletteOpen() && m.palette != paletteModels && m.palette != paletteModel && m.palette != paletteHelp {
 		parts = append(parts, m.renderPalette())
 	}
 	if m.activityBarVisible() {
@@ -144,6 +144,8 @@ func (m *Model) View() string {
 	frame := lipgloss.JoinVertical(lipgloss.Left, parts...)
 	if m.palette == paletteModels || m.palette == paletteModel {
 		frame = m.overlayModels(frame)
+	} else if m.palette == paletteHelp {
+		frame = m.overlayHelp(frame)
 	}
 	return frame
 }
@@ -153,11 +155,13 @@ func (m *Model) trackPaneBounds() {
 	m.headerTasksBounds = paneBounds{}
 	m.headerQuestionBounds = paneBounds{}
 	m.headerModelsBounds = paneBounds{}
+	m.headerHelpBounds = paneBounds{}
 	m.graphBounds = paneBounds{}
 	m.graphRowsBounds = paneBounds{}
 	m.standingRowsBounds = paneBounds{}
 	m.graphToggleBounds = paneBounds{}
 	m.paletteCloseBounds = paneBounds{}
+	m.helpBounds = paneBounds{}
 	m.modelPickerBounds = paneBounds{}
 	m.modelSlotRows = m.modelSlotRows[:0]
 	m.modelPickerRows = m.modelPickerRows[:0]
@@ -235,23 +239,24 @@ func (m *Model) renderTopBar() string {
 	// click path is always visible. It follows the affordance grammar (▸ when
 	// the rail would open, ▾ while it is on screen).
 	button := m.renderTasksButton()
+	help := m.renderHelpButton()
 	showGlance := true
 	right := glance + "  " + models
 	if rightMeta != "" {
 		right += "  " + rightMeta
 	}
-	right += "  " + button
+	right += "  " + button + "  " + help
 
 	space := m.width - lipgloss.Width(left) - lipgloss.Width(right)
 	if space < 1 && rightMeta != "" {
 		// Ambient status yields first; the unified model door is the
 		// irreplaceable action.
-		right = glance + "  " + models + "  " + button
+		right = glance + "  " + models + "  " + button + "  " + help
 		space = m.width - lipgloss.Width(left) - lipgloss.Width(right)
 	}
 	if space < 1 {
 		// The glance is useful context, not another control; it yields second.
-		right = models + "  " + button
+		right = models + "  " + button + "  " + help
 		showGlance = false
 		space = m.width - lipgloss.Width(left) - lipgloss.Width(right)
 	}
@@ -269,7 +274,9 @@ func (m *Model) renderTopBar() string {
 	}
 	m.headerModelsBounds = paneBounds{x: rightX + modelsOffset, y: 0, width: lipgloss.Width(models), height: 1}
 	buttonWidth := lipgloss.Width(button)
-	m.headerTasksBounds = paneBounds{x: m.width - buttonWidth, y: 0, width: buttonWidth, height: 1}
+	helpWidth := lipgloss.Width(help)
+	m.headerHelpBounds = paneBounds{x: m.width - helpWidth, y: 0, width: helpWidth, height: 1}
+	m.headerTasksBounds = paneBounds{x: m.headerHelpBounds.x - 2 - buttonWidth, y: 0, width: buttonWidth, height: 1}
 	if m.hasPendingQuestion() {
 		offset := lipgloss.Width("⟨tasks ")
 		m.headerQuestionBounds = paneBounds{x: m.headerTasksBounds.x + offset, y: 0, width: 1, height: 1}
@@ -299,6 +306,14 @@ func (m *Model) renderTasksButton() string {
 		style = lipgloss.NewStyle().Foreground(powder)
 	}
 	return style.Render("⟨tasks ") + dot + style.Render(disclosure+"⟩")
+}
+
+func (m *Model) renderHelpButton() string {
+	style := mutedStyle.Faint(true)
+	if (m.focus == focusHeader && m.headerFocusIndex == 2) || m.palette == paletteHelp {
+		style = lipgloss.NewStyle().Foreground(powder)
+	}
+	return style.Render("?")
 }
 
 // renderSpend is the one number that is always worth the top-right corner:
@@ -722,7 +737,7 @@ func (m *Model) renderPalette() string {
 }
 
 func (m *Model) paletteHasClose() bool {
-	return m.palette == paletteModels || m.palette == paletteModel || m.palette == paletteMemory || m.palette == paletteHelp
+	return m.palette == paletteModels || m.palette == paletteModel || m.palette == paletteMemory
 }
 
 func (m *Model) paletteTitle() string {
@@ -733,8 +748,6 @@ func (m *Model) paletteTitle() string {
 		return m.modelRole + " models"
 	case paletteMemory:
 		return "notebook"
-	case paletteHelp:
-		return "help"
 	default:
 		return ""
 	}
@@ -748,7 +761,7 @@ func (m *Model) paletteHeight() int {
 }
 
 func (m *Model) layoutPaletteHeight() int {
-	if m.palette == paletteModels || m.palette == paletteModel {
+	if m.palette == paletteModels || m.palette == paletteModel || m.palette == paletteHelp {
 		return 0
 	}
 	return m.paletteHeight()
@@ -782,29 +795,6 @@ func (m *Model) paletteLines(width int) []string {
 		return m.modelPickerLines(width)
 	case paletteMemory:
 		return m.memoryPanelLines(width)
-	case paletteHelp:
-		lines := make([]string, 0, len(slashCommands)+5)
-		for _, command := range slashCommands {
-			lines = append(lines, truncate(fmt.Sprintf("「/%s」 %s", command.name, command.description), width))
-		}
-		// Every action lists its key and its click path: chords are
-		// accelerators, never the only door in.
-		lines = append(lines,
-			mutedStyle.Render(truncate("voice  you ask · aforge answers · v toggles receipts (or click their ▸ line)", width)),
-			mutedStyle.Render(truncate("mic    "+keyBindings.voice+" starts/stops voice · click ◌ at the input edge · esc discards", width)),
-			mutedStyle.Render(truncate("tasks  "+keyBindings.graph+" toggles the rail · or click ⟨tasks ▸⟩ in the header · or /graph", width)),
-			mutedStyle.Render(truncate("boost "+keyBindings.boost+" cycles next/pinned/off · click its active footer label · /model boost", width)),
-			mutedStyle.Render(truncate("rail   ↑/↓ select · enter inspect (or click a row twice) · esc closes", width)),
-			mutedStyle.Render(truncate("cards  tab or click the dock · enter expands then opens its job · esc climbs back", width)),
-			mutedStyle.Render(truncate("chat   ↳ chips jump to the task · tab focuses the thread · ↑/↓ walk lines · enter = click", width)),
-			mutedStyle.Render(truncate("node   type guidance + enter to steer · c cancels worker · ‹ back or esc returns", width)),
-			mutedStyle.Render(truncate("mouse  click focus/select/open · wheel scrolls pointed pane", width)),
-			mutedStyle.Render(truncate("menus  tab/↑/↓ choose · enter accept · esc close · ctrl+c quit", width)),
-		)
-		if limit := m.paletteLineLimit(); len(lines) > limit {
-			lines = lines[:limit]
-		}
-		return lines
 	default:
 		return nil
 	}
@@ -1093,6 +1083,7 @@ func (m *Model) renderMessages() string {
 	m.chatMessageRows = m.chatMessageRows[:0]
 	m.chatExpandRows = m.chatExpandRows[:0]
 	m.chatChipRows = m.chatChipRows[:0]
+	m.historyRows = m.historyRows[:0]
 	m.chatCardRows = m.chatCardRows[:0]
 	kept := m.cardPartRows[:0]
 	for _, row := range m.cardPartRows {
@@ -1195,6 +1186,9 @@ func (m *Model) renderMessages() string {
 		appendBlock(shimmer)
 	}
 	flushGroup()
+	if m.historyVisible {
+		appendBlock(m.renderRecallHistory(max(8, m.chat.Width-2), line, true))
+	}
 	return m.applyChatFocus(strings.Join(blocks, "\n\n"))
 }
 
@@ -1220,6 +1214,9 @@ func (m *Model) chatFocusLines() []int {
 		if !row.dock {
 			seen[row.line] = true
 		}
+	}
+	for _, row := range m.historyRows {
+		seen[row.line] = true
 	}
 	lines := make([]int, 0, len(seen))
 	for line := range seen {
@@ -1379,6 +1376,9 @@ func (m *Model) renderAnswerFold(message store.Message, width int) (string, bool
 	streaming := message.Seq == 0 && m.streamMode == streamReal
 	if shown, ok := m.streamedBody(message); ok {
 		body, streaming = shown, true
+	}
+	if message.Role != store.RoleUser {
+		body = m.linkWorkspaceReferences(message.NodeID, body)
 	}
 	rendered := renderMarkdown(body, width)
 	if streaming {

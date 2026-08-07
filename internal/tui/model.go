@@ -260,6 +260,16 @@ type Model struct {
 	catalogRequested      bool
 	catalogLoading        bool
 	memoryFacts           []store.Fact
+	helpReturnFocus       paneFocus
+	helpReturnInput       bool
+	historyEntries        []historyEntry
+	historyTerms          string
+	historyVisible        bool
+	historyLoading        bool
+	historyErr            error
+	historySelection      int
+	historyOpen           int
+	historyGeneration     int
 	status                string
 	statusUntil           time.Time
 	boost                 boostMode
@@ -296,6 +306,7 @@ type Model struct {
 	headerTasksBounds         paneBounds
 	headerQuestionBounds      paneBounds
 	headerModelsBounds        paneBounds
+	headerHelpBounds          paneBounds
 	headerFocusIndex          int
 	graphBounds               paneBounds
 	graphRowsBounds           paneBounds
@@ -309,6 +320,7 @@ type Model struct {
 	nodeTraceBounds           paneBounds
 	nodeBackBounds            paneBounds
 	paletteCloseBounds        paneBounds
+	helpBounds                paneBounds
 	modelPickerBounds         paneBounds
 	modelSlotRows             []modelSlotRow
 	modelPickerRows           []modelPickerRow
@@ -330,6 +342,7 @@ type Model struct {
 	// chatChipRows maps rendered provenance-chip lines to the task they
 	// point at, so clicking `↳ title` opens that task's activity view.
 	chatChipRows []chatChipRow
+	historyRows  []historyRow
 }
 
 type paneFocus int
@@ -413,6 +426,7 @@ func newModel(backend Backend, sessionID string, commander Commander) *Model {
 		mediaCatalogRequested: map[string]bool{},
 		mediaCatalogLoading:   map[string]bool{},
 		dockSummaryLine:       -1,
+		historyOpen:           -1,
 		voiceChunkText:        map[int]string{},
 	}
 	if services, ok := commander.(voiceServices); ok {
@@ -590,6 +604,10 @@ func (m *Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		m.statusUntil = time.Now().Add(statusTTL)
 		return m, nil
 
+	case historyResultMsg:
+		m.applyHistoryResult(message)
+		return m, nil
+
 	case tea.KeyMsg:
 		if command, handled := m.updateKey(message); handled {
 			if command == nil {
@@ -657,6 +675,25 @@ func (m *Model) updateKey(message tea.KeyMsg) (tea.Cmd, bool) {
 		m.toggleBoost()
 		return nil, true
 	}
+	if m.palette == paletteHelp {
+		if key == "esc" {
+			m.closeHelp()
+			return nil, true
+		}
+		if command, handled := m.updatePaletteKey(key); handled {
+			return command, true
+		}
+		// Help is modal reading space. Unrecognized keys must not edit or
+		// operate the surface beneath it.
+		return nil, true
+	}
+	// Help is global only while the draft is empty. This must precede the node
+	// activity branch so an empty steer input gets the same help door; once any
+	// draft exists the rune falls through to the text input unchanged.
+	if key == "?" && m.input.Value() == "" {
+		m.openHelp()
+		return nil, true
+	}
 	if m.nodeViewID != "" {
 		switch {
 		case key == "esc":
@@ -693,7 +730,7 @@ func (m *Model) updateKey(message tea.KeyMsg) (tea.Cmd, bool) {
 			m.focus = focusHeader
 			m.headerFocusIndex = 0
 			m.setSize(m.width, m.height)
-		case m.palette == paletteMemory || m.palette == paletteHelp:
+		case m.palette == paletteMemory:
 			m.closePalette()
 		case m.paletteOpen():
 			m.palette = paletteNone
@@ -741,12 +778,6 @@ func (m *Model) updateKey(message tea.KeyMsg) (tea.Cmd, bool) {
 		}
 		return nil, true
 	}
-	if key == "?" && m.input.Value() == "" {
-		m.palette = paletteHelp
-		m.paletteSelected = 0
-		m.setSize(m.width, m.height)
-		return nil, true
-	}
 	if m.paletteOpen() {
 		if command, handled := m.updatePaletteKey(key); handled {
 			return command, true
@@ -755,10 +786,10 @@ func (m *Model) updateKey(message tea.KeyMsg) (tea.Cmd, bool) {
 	if m.focus == focusHeader {
 		switch key {
 		case "left", "up", "k":
-			m.headerFocusIndex = (m.headerFocusIndex + 1) % 2
+			m.headerFocusIndex = (m.headerFocusIndex + 2) % 3
 			return nil, true
 		case "right", "down", "j":
-			m.headerFocusIndex = (m.headerFocusIndex + 1) % 2
+			m.headerFocusIndex = (m.headerFocusIndex + 1) % 3
 			return nil, true
 		case "enter":
 			return m.activateHeaderFocus(), true
@@ -824,6 +855,12 @@ func (m *Model) updateKey(message tea.KeyMsg) (tea.Cmd, bool) {
 		}
 		m.moveCardSelection(delta)
 		return nil, true
+	}
+	if m.focus == focusChat && m.historyVisible && len(key) == 1 && key[0] >= '1' && key[0] <= '8' {
+		index := int(key[0] - '1')
+		if index < len(m.historyEntries) {
+			return nil, m.activateHistory(index)
+		}
 	}
 	if key == "enter" && m.focus == focusCards {
 		return m.advanceCard(m.selectedCardID, focusCards), true
@@ -1249,7 +1286,7 @@ func (m *Model) toggleFocus() tea.Cmd {
 		m.chatFocusIndex = 1 << 30
 	}
 	if m.focus == focusHeader {
-		m.headerFocusIndex = max(0, min(1, m.headerFocusIndex))
+		m.headerFocusIndex = max(0, min(2, m.headerFocusIndex))
 	}
 	if m.inputFocused {
 		m.setSize(m.width, m.height)
@@ -1418,6 +1455,7 @@ func (m *Model) moveChatFocus(delta int) {
 	m.chatFocusIndex = max(0, min(len(targets)-1, m.chatFocusIndex+delta))
 	m.refreshChat()
 	line := targets[m.chatFocusIndex]
+	m.syncHistorySelection(line)
 	if line < m.chat.YOffset {
 		m.chat.SetYOffset(line)
 	} else if line >= m.chat.YOffset+max(1, m.chat.Height) {
@@ -1465,6 +1503,14 @@ func (m *Model) updateMouse(message tea.MouseMsg) (tea.Cmd, bool) {
 		return nil, false
 	}
 	down := event.Button == tea.MouseButtonWheelDown
+	if m.palette == paletteHelp && m.helpBounds.contains(event.X, event.Y) {
+		delta := -3
+		if down {
+			delta = 3
+		}
+		m.scrollHelp(delta)
+		return nil, true
+	}
 	if m.nodeViewID != "" {
 		return nil, m.scrollNodeAt(event.X, event.Y, down)
 	}

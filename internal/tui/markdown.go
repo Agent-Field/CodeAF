@@ -3,6 +3,8 @@ package tui
 import (
 	"net/url"
 	"path/filepath"
+	"regexp"
+	"sort"
 	"strings"
 
 	"github.com/Agent-Field/aforge-v2/internal/store"
@@ -101,12 +103,48 @@ func artifactLink(target, display, glyph string, width int) string {
 	room := max(1, width-lipgloss.Width(prefix))
 	display = truncate(display, room)
 	styled := lipgloss.NewStyle().Foreground(powder).Underline(true).Render(display)
+	return mutedStyle.Render(prefix) + osc8FileLink(target, styled)
+}
+
+func osc8FileLink(target, display string) string {
 	link := (&url.URL{Scheme: "file", Path: target}).String()
-	return mutedStyle.Render(prefix) + "\x1b]8;;" + link + "\x1b\\" + styled + "\x1b]8;;\x1b\\"
+	return "\x1b]8;;" + link + "\x1b\\" + display + "\x1b]8;;\x1b\\"
+}
+
+type workspacePathResolver interface {
+	ResolveWorkspacePath(nodeID, relative string) (string, bool)
+}
+
+type workspaceDirectoryResolver interface {
+	WorkspacePath(nodeID string) (string, bool)
 }
 
 type mediaPathResolver interface {
 	ResolveMediaPath(nodeID, relative string) (string, bool)
+}
+
+func (m *Model) resolveWorkspacePath(nodeID, relative string) (string, bool) {
+	if resolver, ok := m.commander.(workspacePathResolver); ok {
+		return resolver.ResolveWorkspacePath(nodeID, relative)
+	}
+	// Compatibility for embedders written against the original media-only
+	// seam. The production commander implements the generalized interface.
+	if resolver, ok := m.commander.(mediaPathResolver); ok {
+		return resolver.ResolveMediaPath(nodeID, relative)
+	}
+	return "", false
+}
+
+func (m *Model) workspaceDirectoryLink(nodeID string) string {
+	resolver, ok := m.commander.(workspaceDirectoryResolver)
+	if !ok {
+		return ""
+	}
+	target, found := resolver.WorkspacePath(nodeID)
+	if !found {
+		return ""
+	}
+	return osc8FileLink(target, mutedStyle.Faint(true).Render("▸ workspace"))
 }
 
 func (m *Model) renderMediaArtifacts(message store.Message, width int) string {
@@ -126,12 +164,8 @@ func (m *Model) renderMediaArtifacts(message store.Message, width int) string {
 		}
 		target := path
 		if !filepath.IsAbs(target) {
-			resolver, ok := m.commander.(mediaPathResolver)
-			if !ok {
-				continue
-			}
 			var found bool
-			target, found = resolver.ResolveMediaPath(message.NodeID, path)
+			target, found = m.resolveWorkspacePath(message.NodeID, path)
 			if !found {
 				continue
 			}
@@ -139,6 +173,86 @@ func (m *Model) renderMediaArtifacts(message store.Message, width int) string {
 		lines = append(lines, artifactLink(target, filepath.ToSlash(path), glyph, width))
 	}
 	return strings.Join(lines, "\n")
+}
+
+var workspaceToken = regexp.MustCompile(`\S+`)
+
+type workspaceReferenceSpan struct {
+	start int
+	end   int
+}
+
+// linkWorkspaceReferences turns only existing workspace-relative files into
+// inline OSC 8 links. Escape sequences wrap the original bytes, so punctuation,
+// markdown, and visible text remain byte-for-byte recognizable after ANSI is
+// stripped. The resolver enforces both containment and existence.
+func (m *Model) linkWorkspaceReferences(nodeID, body string) string {
+	if nodeID == "" || body == "" {
+		return body
+	}
+	spans := workspaceReferenceSpans(body)
+	if len(spans) == 0 {
+		return body
+	}
+	var linked strings.Builder
+	linked.Grow(len(body))
+	previous := 0
+	for _, span := range spans {
+		if span.start < previous {
+			continue
+		}
+		candidate := body[span.start:span.end]
+		if candidate == "" || filepath.IsAbs(candidate) || strings.Contains(candidate, "://") {
+			continue
+		}
+		target, found := m.resolveWorkspacePath(nodeID, filepath.Clean(candidate))
+		if !found {
+			continue
+		}
+		linked.WriteString(body[previous:span.start])
+		linked.WriteString(osc8FileLink(target, candidate))
+		previous = span.end
+	}
+	if previous == 0 {
+		return body
+	}
+	linked.WriteString(body[previous:])
+	return linked.String()
+}
+
+func workspaceReferenceSpans(body string) []workspaceReferenceSpan {
+	spans := make([]workspaceReferenceSpan, 0)
+	// A quoted or inline-code path may contain spaces. Try the complete visible
+	// span first; existence checking keeps ordinary quoted prose untouched.
+	for start := 0; start < len(body); start++ {
+		quote := body[start]
+		if quote != '\'' && quote != '"' && quote != '`' {
+			continue
+		}
+		if end := strings.IndexByte(body[start+1:], quote); end >= 0 {
+			end += start + 1
+			if end > start+1 && !strings.ContainsAny(body[start+1:end], "\r\n") {
+				spans = append(spans, workspaceReferenceSpan{start: start + 1, end: end})
+			}
+			start = end
+		}
+	}
+	for _, match := range workspaceToken.FindAllStringIndex(body, -1) {
+		start, end := match[0], match[1]
+		token := body[start:end]
+		leading := len(token) - len(strings.TrimLeft(token, "\"'`()[]{}<>*"))
+		trimmed := strings.TrimRight(token[leading:], "\"'`()[]{}<>,.!?:;*")
+		if len(trimmed) > 0 {
+			spans = append(spans, workspaceReferenceSpan{start: start + leading, end: start + leading + len(trimmed)})
+		}
+	}
+	sort.SliceStable(spans, func(i, j int) bool {
+		if spans[i].start != spans[j].start {
+			return spans[i].start < spans[j].start
+		}
+		return spans[i].end > spans[j].end
+	})
+	return spans
 }
 
 func mediaReferences(body string) []string {
