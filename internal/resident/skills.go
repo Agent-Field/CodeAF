@@ -57,8 +57,9 @@ func (r *Reconciler) promoteRecurringSkills(ctx context.Context) {
 		group.jobs[jobID] = true
 	}
 	keys := make([]string, 0, len(groups))
+	promotionOccurrences := int(r.store.Parameter(store.ParameterSkillPromotionOccurrences))
 	for key, group := range groups {
-		if len(group.jobs) >= 2 {
+		if len(group.jobs) >= promotionOccurrences {
 			keys = append(keys, key)
 		}
 	}

@@ -44,7 +44,16 @@ func (m *Model) renderNotebookSurface(width, atLine int, track bool) string {
 		glyph := notebookKindGlyph(fact.Kind)
 		age := store.AgeLabel(fact.Time, time.Now())
 		status := notebookStatusMark(fact.Status)
-		meta := age
+		meta := ""
+		if fact.Channel != "" {
+			meta = store.CredibilityWord(fact.Confidence)
+		}
+		if age != "" {
+			if meta != "" {
+				meta += " · "
+			}
+			meta += age
+		}
 		if status != "" {
 			if meta != "" {
 				meta += " · "

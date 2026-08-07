@@ -296,7 +296,9 @@ type commandOutcome struct {
 	// collapsed system receipt — a question must be heard, not filed.
 	asAgent bool
 	// options travels with any agent question as structured payload.
-	options []store.QuestionOption
+	options       []store.QuestionOption
+	category      store.QuestionCategory
+	defaultAnswer string
 }
 
 func (r *Reconciler) reconcileCommand(ctx context.Context, command store.Command) error {
@@ -314,11 +316,15 @@ func (r *Reconciler) reconcileCommand(ctx context.Context, command store.Command
 		return err
 	}
 	if outcome.asAgent {
+		text := store.QuestionMessageBody(outcome.receipt, outcome.options, store.QuestionConfig{
+			Category: outcome.category, Default: outcome.defaultAnswer,
+		})
 		_, err := r.askQuestionLocked(store.AgentQuestion{
-			SessionID: command.SessionID, Text: boundMessage(outcome.receipt),
+			SessionID: command.SessionID, Text: boundMessage(text),
 			OriginCharterID:  questionCharterOrigin(outcome.options),
 			OriginCommandSeq: command.Seq, Urgency: store.QuestionBlocking,
-			Options: outcome.options,
+			Options: outcome.options, Category: outcome.category,
+			DefaultAnswer: outcome.defaultAnswer,
 		})
 		return err
 	}
@@ -447,7 +453,28 @@ func (r *Reconciler) splice(ctx context.Context, command store.Command) (command
 		return commandOutcome{
 			status: store.CommandRejected, result: "drafted charter pending ratification",
 			receipt: question, asAgent: true, options: options,
+			category:      store.QuestionCategoryCharterRatification,
+			defaultAnswer: "1",
 		}, nil
+	}
+
+	if question := strings.TrimSpace(compiled.Question); question != "" {
+		defaultAnswer := defaultQuestionAnswer(compiled.QuestionOptions)
+		ask, _, gateErr := r.store.ShouldAsk(store.QuestionCategoryCompileAssumption)
+		if gateErr == nil && !ask && defaultAnswer != "" {
+			assumedContext := compileContext + "\n\nEmpirical ask policy: assume and declare this answered default:\n" +
+				question + "\nDefault answer: " + defaultAnswer
+			if assumed, compileErr := r.compile(ctx, command.Instruction, assumedContext); compileErr == nil &&
+				strings.TrimSpace(assumed.Question) == "" {
+				if err := r.store.RecordAssumedWithDefault(store.QuestionCategoryCompileAssumption,
+					defaultAnswer, command.SessionID, question); err == nil {
+					compiled = assumed
+					compiled.Assumptions = append([]string{
+						fmt.Sprintf("%s — defaulted to %s", question, defaultAnswer),
+					}, compiled.Assumptions...)
+				}
+			}
+		}
 	}
 
 	if question := strings.TrimSpace(compiled.Question); question != "" {
@@ -455,11 +482,13 @@ func (r *Reconciler) splice(ctx context.Context, command store.Command) (command
 		// and stop; the reply arrives as an ordinary next message and the
 		// head routes it with this exchange in context.
 		return commandOutcome{
-			status:  store.CommandRejected,
-			result:  "asked the user: " + clipLabel(question, 200),
-			receipt: question,
-			asAgent: true,
-			options: compiled.QuestionOptions,
+			status:        store.CommandRejected,
+			result:        "asked the user: " + clipLabel(question, 200),
+			receipt:       question,
+			asAgent:       true,
+			options:       compiled.QuestionOptions,
+			category:      store.QuestionCategoryCompileAssumption,
+			defaultAnswer: defaultQuestionAnswer(compiled.QuestionOptions),
 		}, nil
 	}
 	if strings.TrimSpace(compiled.Goal) == "" {
@@ -514,6 +543,16 @@ func (r *Reconciler) splice(ctx context.Context, command store.Command) (command
 		result:  fmt.Sprintf("spliced %d nodes", len(subtree.Nodes)),
 		receipt: receipt,
 	}, nil
+}
+
+func defaultQuestionAnswer(options []store.QuestionOption) string {
+	if len(options) == 0 {
+		return "yes"
+	}
+	if value := strings.TrimSpace(options[0].Value); value != "" {
+		return value
+	}
+	return strings.TrimSpace(options[0].Label)
 }
 
 func (r *Reconciler) promotionSource(command store.Command) (store.Node, bool, error) {
@@ -1066,7 +1105,7 @@ func (r *Reconciler) distillJob(ctx context.Context, node store.Node, failed boo
 		}
 		if fact.Skill != nil {
 			if strings.TrimSpace(fact.Skill.Artifact) != "" {
-				if recorded, err := r.store.RecordSkillCandidate(node.ID, fact.Scope,
+				if recorded, err := r.store.RecordSkillCandidateFrom(store.FactWriterDistiller, node.ID, fact.Scope,
 					clipFactBody(fact.Body), fact.Skill.Artifact); err == nil {
 					r.queueLearningMoment(node.ID, learnedFactMoment(recorded))
 				}
@@ -1133,19 +1172,19 @@ func (r *Reconciler) renderTrialForDistiller(fact store.Fact) string {
 func (r *Reconciler) recordTrialVerdict(node store.Node, trial store.Fact, verdict Learned) (store.Fact, bool, error) {
 	if verdict.Kind == store.FactUnsettled {
 		pair := trial.Unsettled.WithInconclusiveTrial(node.ID)
-		fact, err := r.store.ReplaceUnsettledFact(trial.Seq, node.ID, trial.Scope, pair)
+		fact, err := r.store.ReplaceUnsettledFactFrom(store.FactWriterTrial, trial.Seq, node.ID, trial.Scope, pair)
 		return fact, false, err
 	}
 	if strings.TrimSpace(verdict.Body) == "" {
 		return store.Fact{}, false, fmt.Errorf("record trial verdict: empty winner")
 	}
-	fact, err := r.store.ReplaceFact(trial.Seq, node.ID, verdict.Scope, verdict.Kind, clipFactBody(verdict.Body))
+	fact, err := r.store.ReplaceFactFrom(store.FactWriterTrial, trial.Seq, node.ID, verdict.Scope, verdict.Kind, clipFactBody(verdict.Body))
 	return fact, err == nil, err
 }
 
 func (r *Reconciler) recordInconclusiveTrial(node store.Node, trial store.Fact) {
 	pair := trial.Unsettled.WithInconclusiveTrial(node.ID)
-	_, _ = r.store.ReplaceUnsettledFact(trial.Seq, node.ID, trial.Scope, pair)
+	_, _ = r.store.ReplaceUnsettledFactFrom(store.FactWriterTrial, trial.Seq, node.ID, trial.Scope, pair)
 }
 
 func (r *Reconciler) recordLearnedFact(nodeID string, learned Learned) (store.Fact, error) {
@@ -1156,9 +1195,9 @@ func (r *Reconciler) recordLearnedFact(nodeID string, learned Learned) (store.Fa
 		if learned.Unsettled == nil {
 			return store.Fact{}, fmt.Errorf("record learned fact: unsettled fact has no pair")
 		}
-		return r.store.RecordUnsettledFact(nodeID, learned.Scope, *learned.Unsettled)
+		return r.store.RecordUnsettledFactFrom(store.FactWriterDistiller, nodeID, learned.Scope, *learned.Unsettled)
 	}
-	return r.store.RecordFact(nodeID, learned.Scope, learned.Kind, clipFactBody(learned.Body))
+	return r.store.RecordFactFrom(store.FactWriterDistiller, nodeID, learned.Scope, learned.Kind, clipFactBody(learned.Body))
 }
 
 // renderCompileContext is the compiler's whole view: the notebook first —
@@ -1174,6 +1213,11 @@ func (r *Reconciler) renderCompileContext(snapshot store.Snapshot, instruction s
 			context.WriteString(recalled)
 			context.WriteString("\n\n")
 		}
+	}
+	if guidance := r.store.CompilerAssumptionGuidance(); guidance != "" {
+		context.WriteString("Measured assumption policy: ")
+		context.WriteString(guidance)
+		context.WriteString("\n\n")
 	}
 	context.WriteString(renderGraphContext(snapshot))
 	return context.String()
