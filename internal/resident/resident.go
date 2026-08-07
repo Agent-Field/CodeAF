@@ -164,6 +164,9 @@ type Reconciler struct {
 	sentinel        SentinelFunc
 	proposeCharters bool
 	dailyBudgetUSD  float64
+	practiceEnabled bool
+	practiceBudget  float64
+	practiceIdle    time.Duration
 
 	mu                 sync.Mutex
 	watcherInitialized bool
@@ -264,6 +267,9 @@ func (r *Reconciler) Tick(ctx context.Context) error {
 	r.reflectOnJobs(ctx)
 	r.promoteRecurringSkills(ctx)
 	r.syncSkillBins()
+	if err := r.practiceOnceLocked(ctx); err != nil {
+		return fmt.Errorf("resident tick: practice loop: %w", err)
+	}
 	return nil
 }
 
@@ -696,7 +702,9 @@ func (r *Reconciler) announceTransitions(ctx context.Context) error {
 					return err
 				}
 				r.recordForNarration(byID, event)
-				if ok && node.Provenance.SessionID != "" {
+				practice := ok && node.Group == store.PracticeGroup &&
+					node.Provenance.Origin == store.OriginSelf
+				if ok && (node.Provenance.SessionID != "" || practice) {
 					if event.Kind == store.EventNodeFailed {
 						r.distillJob(ctx, node, true)
 					} else if node.Parent == store.RootID && !r.reflexPromoted(node) {
@@ -951,6 +959,7 @@ func (r *Reconciler) distillJob(ctx context.Context, node store.Node, failed boo
 	}
 	trial, isTrial := r.trialFact(node)
 	outcome := node.Summary
+	revealedGap := failed
 	if failed {
 		outcome = node.Error
 	}
@@ -958,10 +967,12 @@ func (r *Reconciler) distillJob(ctx context.Context, node store.Node, failed boo
 	// preference signal there is: the gap between what was delivered then and
 	// what was asked now is the user's actual standard, stated in actions.
 	if prior := r.continuitySources(node); prior != "" {
+		revealedGap = true
 		outcome += "\n\n[This job continued or revised earlier delivered work:\n" + prior +
 			"When the new instruction reworks an earlier delivery, the difference between them is evidence of the user's real standard — record the standard, not the episode.]"
 	}
 	if gate, ok, err := r.store.DeliveryGateFor(node.ID); err == nil && ok && !gate.Pass {
+		revealedGap = true
 		ending := "The one polish pass did not close it."
 		if gate.PolishClosed {
 			ending = "The one polish pass closed it."
@@ -984,6 +995,10 @@ func (r *Reconciler) distillJob(ctx context.Context, node store.Node, failed boo
 	}
 	trialConsumed := false
 	for _, fact := range facts {
+		if fact.Kind == store.FactQuestion &&
+			(node.Provenance.Origin != store.OriginUser || !revealedGap) {
+			continue
+		}
 		if isTrial && fact.Replaces == trial.Seq {
 			if !trialConsumed && r.recordTrialVerdict(node, trial, fact) == nil {
 				trialConsumed = true
@@ -1078,6 +1093,9 @@ func (r *Reconciler) recordInconclusiveTrial(node store.Node, trial store.Fact) 
 }
 
 func (r *Reconciler) recordLearnedFact(nodeID string, learned Learned) (store.Fact, error) {
+	if learned.Kind == store.FactQuestion {
+		return r.store.RecordQuestion(nodeID, learned.Scope, clipFactBody(learned.Body))
+	}
 	if learned.Kind == store.FactUnsettled {
 		if learned.Unsettled == nil {
 			return store.Fact{}, fmt.Errorf("record learned fact: unsettled fact has no pair")

@@ -2,7 +2,9 @@ package resident
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -37,6 +39,8 @@ type Runner struct {
 	slots          chan struct{}
 	wg             sync.WaitGroup
 	dailyBudgetUSD float64
+	activeMu       sync.Mutex
+	activePractice map[string]context.CancelFunc
 }
 
 // NewRunner builds a runner executing at most workers nodes concurrently.
@@ -48,10 +52,11 @@ func NewRunner(graph *store.Store, execute ExecuteFunc, owner string, workers in
 		owner = "runner"
 	}
 	return &Runner{
-		graph:   graph,
-		execute: execute,
-		owner:   owner,
-		slots:   make(chan struct{}, workers),
+		graph:          graph,
+		execute:        execute,
+		owner:          owner,
+		slots:          make(chan struct{}, workers),
+		activePractice: make(map[string]context.CancelFunc),
 	}
 }
 
@@ -84,6 +89,9 @@ func (r *Runner) Serve(ctx context.Context) error {
 // It returns how many nodes were dispatched; store errors stop the runner,
 // execution errors do not — they land on the node as a recorded failure.
 func (r *Runner) Tick(ctx context.Context) (int, error) {
+	if err := r.preemptPracticeForUserWork(); err != nil {
+		return 0, err
+	}
 	dispatched := 0
 	for {
 		select {
@@ -101,12 +109,28 @@ func (r *Runner) Tick(ctx context.Context) (int, error) {
 			return dispatched, nil
 		}
 		dispatched++
+		runCtx := ctx
+		var cancel context.CancelFunc
+		if node.Group == store.PracticeGroup {
+			runCtx, cancel = context.WithCancel(ctx)
+			r.activeMu.Lock()
+			r.activePractice[node.ID] = cancel
+			r.activeMu.Unlock()
+		}
 		r.wg.Add(1)
-		go func(node store.Node) {
+		go func(node store.Node, runCtx context.Context, cancel context.CancelFunc) {
 			defer r.wg.Done()
 			defer func() { <-r.slots }()
-			r.runOne(ctx, node)
-		}(node)
+			if cancel != nil {
+				defer cancel()
+				defer func() {
+					r.activeMu.Lock()
+					delete(r.activePractice, node.ID)
+					r.activeMu.Unlock()
+				}()
+			}
+			r.runOne(runCtx, node)
+		}(node, runCtx, cancel)
 	}
 }
 
@@ -124,18 +148,29 @@ func (r *Runner) claimNext() (store.Node, bool, error) {
 	if len(deferred) > 0 {
 		return store.Node{}, false, nil
 	}
-	ready, err := r.graph.Ready(8)
+	ready, err := r.graph.Ready(0)
 	if err != nil {
 		return store.Node{}, false, fmt.Errorf("list ready nodes: %w", err)
 	}
 	if len(ready) == 0 {
 		return store.Node{}, false, nil
 	}
+	idle, err := r.graph.UserIdle(time.Now(), 0)
+	if err != nil {
+		return store.Node{}, false, fmt.Errorf("check user work: %w", err)
+	}
+	userInFlight := !idle
+	sort.SliceStable(ready, func(i, j int) bool {
+		return runnerPriority(ready[i]) < runnerPriority(ready[j])
+	})
 	open, err := openChildren(r.graph)
 	if err != nil {
 		return store.Node{}, false, err
 	}
 	for _, node := range ready {
+		if userInFlight && node.Provenance.Origin != store.OriginUser {
+			continue
+		}
 		// A goal node lands after its children: it may be ready by its edges
 		// while its subtree is still working, and the store would refuse its
 		// completion anyway. Skip it until the children are terminal.
@@ -143,7 +178,12 @@ func (r *Runner) claimNext() (store.Node, bool, error) {
 			continue
 		}
 		if r.dailyBudgetUSD > 0 {
-			rail, _, err := r.graph.PauseDailyRail(r.dailyBudgetUSD, node.Provenance.SessionID)
+			var rail store.DailyRail
+			if node.Group == store.PracticeGroup || node.Provenance.SessionID == "" {
+				rail, err = r.graph.DailyRailToday(r.dailyBudgetUSD)
+			} else {
+				rail, _, err = r.graph.PauseDailyRail(r.dailyBudgetUSD, node.Provenance.SessionID)
+			}
 			if err != nil {
 				return store.Node{}, false, err
 			}
@@ -172,6 +212,10 @@ func (r *Runner) runOne(ctx context.Context, node store.Node) {
 	claim := store.Claim{ID: node.ID, Owner: node.Owner, Token: node.ClaimToken}
 	result, err := r.execute(ctx, node)
 	if err != nil {
+		if node.Group == store.PracticeGroup && errors.Is(ctx.Err(), context.Canceled) {
+			_ = r.graph.Release(claim)
+			return
+		}
 		_ = r.graph.Fail(claim, err.Error())
 		return
 	}
@@ -202,6 +246,35 @@ func (r *Runner) runOne(ctx context.Context, node store.Node) {
 		// must not strand the node mid-flight; release returns it to pending
 		// where a later tick can pick it up cleanly.
 		_ = r.graph.Release(claim)
+	}
+}
+
+func (r *Runner) preemptPracticeForUserWork() error {
+	idle, err := r.graph.UserIdle(time.Now(), 0)
+	if err != nil {
+		return fmt.Errorf("check practice preemption: %w", err)
+	}
+	if idle {
+		return nil
+	}
+	r.activeMu.Lock()
+	defer r.activeMu.Unlock()
+	for _, cancel := range r.activePractice {
+		cancel()
+	}
+	return nil
+}
+
+func runnerPriority(node store.Node) int {
+	switch {
+	case node.Provenance.Origin == store.OriginUser:
+		return 0
+	case node.Provenance.Origin == store.OriginTrigger:
+		return 1
+	case node.Group == store.PracticeGroup:
+		return 3
+	default:
+		return 2
 	}
 }
 

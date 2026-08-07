@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"sort"
 	"strings"
 	"time"
 	"unicode"
@@ -16,6 +17,10 @@ import (
 type CharterStatus string
 
 const (
+	// CharterDraft is the older compiler-facing inert standing draft. It shares
+	// the public lifecycle type with the M3 engine while remaining in its own
+	// materialized view.
+	CharterDraft    CharterStatus = "draft"
 	CharterProposed CharterStatus = "proposed"
 	CharterActive   CharterStatus = "active"
 	CharterPaused   CharterStatus = "paused"
@@ -151,6 +156,13 @@ type CharterRails struct {
 	PerFiringBudgetUSD float64    `json:"per_firing_budget_usd"`
 	MaxFiringsPerDay   int        `json:"max_firings_per_day"`
 	ExpiresAt          *time.Time `json:"expires_at,omitempty"`
+
+	// Compiler-facing standing drafts predate the M3 execution rails. These
+	// fields preserve that public contract; NewCharter uses the fields above.
+	EstimatedCostUSD       float64 `json:"estimated_cost_usd,omitempty"`
+	MaxPerDay              int     `json:"max_per_day,omitempty"`
+	MaxPerDayJustification string  `json:"max_per_day_justification,omitempty"`
+	Expiry                 string  `json:"expiry,omitempty"`
 }
 
 // Ratification records who accepted the standing-spend consequence.
@@ -187,6 +199,14 @@ type Charter struct {
 	UpdatedSeq      int64
 
 	guardrails CharterRails
+
+	// Legacy draft-facing projection. The M3 engine leaves these zero-valued;
+	// DraftCharter and the standing UI populate them from the separate draft
+	// view.
+	SessionID        string
+	Spec             CharterSpec
+	SourceCommandSeq int64
+	CreatedAt        time.Time
 }
 
 // Rails returns the immutable bounds carried by a charter.
@@ -618,7 +638,7 @@ func scanCharter(scanner rowScanner) (Charter, error) {
 }
 
 // Charters lists first-class standing objects in creation order.
-func (s *Store) Charters() ([]Charter, error) {
+func (s *Store) Charters(statuses ...CharterStatus) ([]Charter, error) {
 	rows, err := s.db.Query(`SELECT ` + charterColumns + ` FROM charters ORDER BY created_seq, id`)
 	if err != nil {
 		return nil, fmt.Errorf("list charters: %w", err)
@@ -635,6 +655,25 @@ func (s *Store) Charters() ([]Charter, error) {
 	if err := rows.Err(); err != nil {
 		return nil, fmt.Errorf("list charters: %w", err)
 	}
+	if len(statuses) > 0 {
+		wanted := make(map[CharterStatus]bool, len(statuses))
+		for _, status := range statuses {
+			wanted[status] = true
+		}
+		filtered := result[:0]
+		for _, charter := range result {
+			if wanted[charter.Status] {
+				filtered = append(filtered, charter)
+			}
+		}
+		result = filtered
+	}
+	sort.SliceStable(result, func(i, j int) bool {
+		if result[i].CreatedSeq != result[j].CreatedSeq {
+			return result[i].CreatedSeq < result[j].CreatedSeq
+		}
+		return result[i].ID < result[j].ID
+	})
 	return result, nil
 }
 
@@ -1131,6 +1170,37 @@ const (
 // attention message. Daily-rail waits leave sentinel_yes pending for retry.
 func (s *Store) FireCharter(id string, wakeSeq int64, subtree Subtree, provenance Provenance,
 	dailyBudgetUSD float64, now time.Time) (FireDisposition, error) {
+	return s.fireCharter(id, wakeSeq, subtree, provenance, dailyBudgetUSD, now, nil)
+}
+
+type practiceAdmission struct {
+	QuestionSeq      int64
+	BaselineSurprise float64
+	ExpectedTokens   int
+}
+
+// FirePracticeCharter is the self-origin variant of FireCharter. It preserves
+// the same wake, expiry, firing-cap, and global-rail admission, adds the
+// practice charter's own daily dollar carve-out, and atomically marks the
+// selected question practicing after the subtree splice lands.
+func (s *Store) FirePracticeCharter(id string, wakeSeq int64, subtree Subtree,
+	questionSeq int64, baselineSurprise float64, expectedTokens int,
+	dailyBudgetUSD float64, now time.Time) (FireDisposition, error) {
+	intent := "practice knowledge gap"
+	for _, node := range subtree.Nodes {
+		if strings.TrimSpace(node.Parent) == "" && strings.TrimSpace(node.Brief) != "" {
+			intent = node.Brief
+			break
+		}
+	}
+	provenance := Provenance{Origin: OriginSelf, Intent: intent}
+	practice := &practiceAdmission{QuestionSeq: questionSeq,
+		BaselineSurprise: baselineSurprise, ExpectedTokens: expectedTokens}
+	return s.fireCharter(id, wakeSeq, subtree, provenance, dailyBudgetUSD, now, practice)
+}
+
+func (s *Store) fireCharter(id string, wakeSeq int64, subtree Subtree, provenance Provenance,
+	dailyBudgetUSD float64, now time.Time, practice *practiceAdmission) (FireDisposition, error) {
 	tx, err := s.db.BeginTx(context.Background(), nil)
 	if err != nil {
 		return "", err
@@ -1142,6 +1212,16 @@ func (s *Store) FireCharter(id string, wakeSeq int64, subtree Subtree, provenanc
 	}
 	if !charter.WakePending || !charter.SentinelYes || charter.WakeSeq != wakeSeq {
 		return "", fmt.Errorf("fire charter: %w: no checked yes wake", ErrInvalid)
+	}
+	if practice != nil {
+		if !IsPracticeCharter(charter) || charter.Action.SayOnly || practice.QuestionSeq <= 0 ||
+			practice.BaselineSurprise <= 0 || math.IsNaN(practice.BaselineSurprise) ||
+			math.IsInf(practice.BaselineSurprise, 0) || practice.ExpectedTokens < 0 {
+			return "", fmt.Errorf("fire practice charter: %w: invalid practice admission", ErrInvalid)
+		}
+		provenance.Origin = OriginSelf
+		provenance.SessionID = ""
+		provenance.CharterID = ""
 	}
 	if expires := charter.guardrails.ExpiresAt; expires != nil && !now.Before(*expires) {
 		payload := charterStatusPayload{Status: CharterRetired, Ratification: charter.Ratification}
@@ -1180,6 +1260,31 @@ func (s *Store) FireCharter(id string, wakeSeq int64, subtree Subtree, provenanc
 		}
 		return FireQuota, nil
 	}
+	if practice != nil {
+		var practiceSpend float64
+		if err := tx.QueryRow(`SELECT COALESCE(SUM(usage.cost), 0)
+			FROM usage JOIN nodes ON nodes.id=usage.node_id
+			WHERE nodes.grp=? AND usage.ts>=? AND usage.ts<?`, PracticeGroup,
+			formatTime(start), formatTime(end)).Scan(&practiceSpend); err != nil {
+			return "", err
+		}
+		practiceCeiling := charter.guardrails.PerFiringBudgetUSD *
+			float64(charter.guardrails.MaxFiringsPerDay)
+		if practiceSpend+charter.guardrails.PerFiringBudgetUSD > practiceCeiling {
+			payload := charterFiringPayload{WakeSeq: wakeSeq, Reason: "practice_daily_dollar_rail"}
+			seq, _, err := appendEvent(tx, id, EventCharterFiringBlocked, payload)
+			if err != nil {
+				return "", err
+			}
+			if err := clearCharterWake(tx, id, seq); err != nil {
+				return "", err
+			}
+			if err := tx.Commit(); err != nil {
+				return "", err
+			}
+			return FireQuota, nil
+		}
+	}
 	rail, err := dailyRailAt(tx, dailyBudgetUSD, now)
 	if err != nil {
 		return "", err
@@ -1187,9 +1292,18 @@ func (s *Store) FireCharter(id string, wakeSeq int64, subtree Subtree, provenanc
 	projectedCrossing := !rail.Unlimited && rail.Spend+charter.guardrails.PerFiringBudgetUSD > rail.Ceiling
 	if projectedCrossing {
 		rail.Reached = true
-		posted, err := pauseDailyRailTx(tx, rail, charter.Ratification.SessionID, now)
-		if err != nil {
-			return "", err
+		posted := false
+		if practice == nil {
+			posted, err = pauseDailyRailTx(tx, rail, charter.Ratification.SessionID, now)
+			if err != nil {
+				return "", err
+			}
+		} else {
+			if err := tx.QueryRow(`SELECT NOT EXISTS(SELECT 1 FROM events
+				WHERE node_id=? AND kind=? AND json_extract(payload, '$.wake_seq')=?)`,
+				id, EventCharterFiringDeferred, wakeSeq).Scan(&posted); err != nil {
+				return "", err
+			}
 		}
 		if posted {
 			if _, _, err := appendEvent(tx, id, EventCharterFiringDeferred,
@@ -1232,6 +1346,18 @@ func (s *Store) FireCharter(id string, wakeSeq int64, subtree Subtree, provenanc
 		}
 		if err := applySpliceView(tx, normalized, spliceSeq); err != nil {
 			return "", err
+		}
+		if practice != nil {
+			started := QuestionPracticeStarted{QuestionSeq: practice.QuestionSeq,
+				JobID: normalized.Root, BaselineSurprise: practice.BaselineSurprise,
+				ExpectedTokens: practice.ExpectedTokens}
+			practiceSeq, _, err := appendEvent(tx, normalized.Root, EventQuestionPracticeStarted, started)
+			if err != nil {
+				return "", err
+			}
+			if err := applyQuestionPracticeStarted(tx, started, practiceSeq); err != nil {
+				return "", err
+			}
 		}
 	} else {
 		fireSeq, _, err := appendEvent(tx, id, EventCharterFired, payload)

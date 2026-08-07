@@ -54,6 +54,9 @@ func (s *Store) Rebuild() error {
 	if _, err := tx.Exec(`DELETE FROM scope_aliases`); err != nil {
 		return fmt.Errorf("rebuild scope aliases: %w", err)
 	}
+	if _, err := tx.Exec(`DELETE FROM question_practices`); err != nil {
+		return fmt.Errorf("rebuild question practices: %w", err)
+	}
 	if _, err := tx.Exec(`DELETE FROM facts`); err != nil {
 		return fmt.Errorf("rebuild facts: %w", err)
 	}
@@ -342,6 +345,27 @@ func replayEvent(tx *sql.Tx, event Event) error {
 			return fmt.Errorf("invalid fact restoration origin %q", payload.Origin)
 		}
 		return applyFactRestore(tx, payload, event.Seq)
+
+	case EventQuestionStatusChanged:
+		var payload questionStatusPayload
+		if err := json.Unmarshal(event.Payload, &payload); err != nil {
+			return err
+		}
+		return applyQuestionStatus(tx, payload, event.Seq)
+
+	case EventQuestionPracticeStarted:
+		var payload QuestionPracticeStarted
+		if err := json.Unmarshal(event.Payload, &payload); err != nil {
+			return err
+		}
+		return applyQuestionPracticeStarted(tx, payload, event.Seq)
+
+	case EventQuestionPracticeCompleted:
+		var payload questionPracticeCompleted
+		if err := json.Unmarshal(event.Payload, &payload); err != nil {
+			return err
+		}
+		return applyQuestionPracticeCompleted(tx, payload, event.Seq)
 
 	case EventScopeAliased:
 		var payload scopeAliasedPayload
