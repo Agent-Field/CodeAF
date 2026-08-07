@@ -41,6 +41,10 @@ type redirectIntent struct {
 	Cue        string
 	Candidates []store.SurgeryTarget
 	Certain    bool
+	// Floorless marks a question assembled without a single candidate clearing
+	// the anchor floor. Nothing about the ranking is evidence in that case, so
+	// the question must actually be asked rather than quietly assumed away.
+	Floorless bool
 }
 
 // manageRedirect reads the user's message as a revision event for work already
@@ -127,11 +131,14 @@ func (h *Head) recognizeRedirect(user store.Message) (redirectIntent, bool, erro
 		// they could mean, and asking would be theatre.
 		return redirectIntent{Cue: cue, Candidates: active, Certain: true}, true, nil
 	default:
-		candidates := ranked
-		if len(candidates) == 0 {
-			candidates = active
-		}
-		return redirectIntent{Cue: cue, Candidates: clipTargets(candidates)}, true, nil
+		// Nothing cleared the floor. The ranked list is therefore not a shortlist
+		// of what the user might have meant — it is the set of jobs whose briefs
+		// happen to share a word with the sentence, which is the coincidence the
+		// floor exists to reject. Offering only those hid the user's actual work
+		// behind a 0.05 match, and the assume-the-default path below could pick
+		// that match without ever showing it. So the offer is the user's live
+		// jobs, and this question is one they answer themselves.
+		return redirectIntent{Cue: cue, Candidates: clipTargets(active), Floorless: true}, true, nil
 	}
 }
 
@@ -319,7 +326,11 @@ func (h *Head) askRedirectTarget(user store.Message, intent redirectIntent) erro
 	})
 	prompt := fmt.Sprintf("Apply that to %s, or start it as new work?",
 		surgeryTargetLabel(intent.Candidates[0].Node))
-	if ask, _, err := h.store.ShouldAsk(store.QuestionCategoryRedirectTarget); err == nil && !ask {
+	// The assume-the-default shortcut is for a question whose default is
+	// evidence. When nothing cleared the anchor floor there is no evidence to
+	// default to, and steering a plan on the first row of an arbitrary list is
+	// precisely the wrong edit made silently.
+	if ask, _, err := h.store.ShouldAsk(store.QuestionCategoryRedirectTarget); err == nil && !ask && !intent.Floorless {
 		if err := h.store.RecordAssumedWithDefault(store.QuestionCategoryRedirectTarget, "1",
 			user.SessionID, prompt); err == nil {
 			return h.requestRedirect(user, intent.Candidates[0].Node.ID, message)
