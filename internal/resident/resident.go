@@ -12,6 +12,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/Agent-Field/aforge-v2/internal/store"
+	"github.com/Agent-Field/aforge-v2/internal/watchdog"
 )
 
 const (
@@ -163,20 +164,30 @@ type Reconciler struct {
 	overrunPlan     OverrunPlanFunc
 	sentinel        SentinelFunc
 	composeBrief    BriefComposeFunc
+	standingWatch   StandingWatch
 	proposeCharters bool
 	dailyBudgetUSD  float64
 	practiceEnabled bool
 	practiceBudget  float64
 	practiceIdle    time.Duration
 
-	mu                 sync.Mutex
-	watcherInitialized bool
-	lastEventSeq       int64
-	progress           map[string]*subtreeProgress
-	learningMoments    map[string]*pendingLearningMoment
-	lastConsolidation  time.Time
-	lastWatchPass      WatchPass
-	now                func() time.Time
+	mu                      sync.Mutex
+	watcherInitialized      bool
+	lastEventSeq            int64
+	progress                map[string]*subtreeProgress
+	learningMoments         map[string]*pendingLearningMoment
+	lastConsolidation       time.Time
+	lastWatchPass           WatchPass
+	standingWatchCheck      time.Time
+	standingWatchKeyPersist func() (bool, string, error)
+	now                     func() time.Time
+}
+
+// StandingWatch is the small consequence-facing seam the resident needs.
+// watchdog.Manager implements it; tests inject an in-memory recorder.
+type StandingWatch interface {
+	Install(ctx context.Context) error
+	Status() (watchdog.Status, error)
 }
 
 // New constructs a reconciler. A nil compiler preserves the instruction
@@ -189,6 +200,22 @@ func New(graph *store.Store, compile CompileFunc, plan PlanFunc) *Reconciler {
 		}
 	}
 	return &Reconciler{store: graph, compile: compile, plan: plan, now: time.Now}
+}
+
+// WithStandingWatch enables the one-time unattended-presence offer after the
+// first charter ratification. Nil preserves embedding paths with no host timer.
+func (r *Reconciler) WithStandingWatch(standing StandingWatch) *Reconciler {
+	r.standingWatch = standing
+	return r
+}
+
+// WithStandingWatchKeyPersist supplies the credential step that runs before a
+// watch install: timer-driven wakes see no shell environment, so the key must
+// survive on disk for them. Kept as an injected hook so nothing in this
+// package ever writes to the real home during tests; nil skips persistence.
+func (r *Reconciler) WithStandingWatchKeyPersist(persist func() (bool, string, error)) *Reconciler {
+	r.standingWatchKeyPersist = persist
+	return r
 }
 
 // Serve polls until ctx is cancelled or the store can no longer be read or
@@ -231,6 +258,7 @@ func (r *Reconciler) Tick(ctx context.Context) error {
 	if err := r.initializeWatcher(); err != nil {
 		return fmt.Errorf("resident tick: initialize watcher: %w", err)
 	}
+	r.reconcileStandingWatch(ctx)
 	if err := r.expireQuestionsLocked(); err != nil {
 		return fmt.Errorf("resident tick: expire questions: %w", err)
 	}
@@ -387,6 +415,8 @@ func (r *Reconciler) applyCommand(ctx context.Context, command store.Command) (c
 		store.CommandCharterCadence, store.CommandCharterOnce, store.CommandCharterFire,
 		store.CommandCharterDecline, store.CommandCharterAlways, store.CommandCharterNever, store.CommandCharterProbation:
 		return r.applyCharterCommand(ctx, command)
+	case store.CommandStandingWatchEnable, store.CommandStandingWatchDecline:
+		return r.applyStandingWatchCommand(ctx, command)
 	case store.CommandAmend:
 		return r.amend(command)
 	default:
