@@ -682,17 +682,22 @@ func (m *Model) updateKey(message tea.KeyMsg) (tea.Cmd, bool) {
 		m.removeAttachment(len(m.attachments) - 1)
 		return nil, true
 	}
-	if key == keyBindings.graph {
+	// Every option-chord has a control synonym: on macOS, Option only reaches
+	// the program as alt+<key> when the terminal is configured to send it as
+	// Meta (Terminal.app "Use Option as Meta key", iTerm2 "Left Option: Esc+");
+	// out of the box it types a glyph (∫, √, ©) and the binding silently never
+	// fires. Ctrl arrives everywhere.
+	if key == keyBindings.graph || key == "ctrl+t" {
 		if m.nodeViewID != "" {
 			m.closeNodeView()
 		}
 		m.toggleGraph()
 		return nil, true
 	}
-	if key == keyBindings.voice {
+	if key == keyBindings.voice || key == "ctrl+v" {
 		return m.toggleVoice(), true
 	}
-	if key == keyBindings.boost {
+	if key == keyBindings.boost || key == "ctrl+b" {
 		m.toggleBoost()
 		return nil, true
 	}

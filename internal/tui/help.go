@@ -28,8 +28,8 @@ func helpCategories() []helpCategory {
 		{title: "talking", rows: []helpRow{
 			{key: "enter", meaning: "send the draft or selected answer"},
 			{key: keyBindings.newline, meaning: "insert a newline without sending"},
-			{key: keyBindings.boost, meaning: "cycle boosted next answer · pinned · off; click the active footer too"},
-			{key: keyBindings.voice, meaning: "start or finish voice input; click the mic too; esc discards it"},
+			{key: "ctrl+b/"+keyBindings.boost, meaning: "cycle boosted next answer · pinned · off; click the active footer too"},
+			{key: "ctrl+v/"+keyBindings.voice, meaning: "start or finish voice input; click the mic too; esc discards it"},
 			{key: "v", meaning: "expand or collapse reading receipts outside the input"},
 			{key: "↑/↓ · 1–9", meaning: "with an empty draft, choose and send a pending answer"},
 			{key: "esc", meaning: "dismiss question, clear draft/attachments, then quit when input is empty"},
@@ -46,7 +46,7 @@ func helpCategories() []helpCategory {
 			{key: "pgup/pgdn · wheel", meaning: "scroll the pointed or focused surface"},
 			{key: "end", meaning: "return to now; in task activity, jump to the bottom"},
 			{key: "esc", meaning: "expanded item → zone → input → quit; modal overlays close first"},
-			{key: keyBindings.graph, meaning: "toggle the task rail"},
+			{key: "ctrl+t/"+keyBindings.graph, meaning: "toggle the task rail"},
 			{key: "[ / ]", meaning: "nudge the chat/task split while outside the input"},
 			{key: "c", meaning: "cancel the inspected worker when its steer input is empty"},
 			{key: "header", meaning: "models ⌄ · tasks ▸/▾ · pending ● · ? help"},
@@ -63,7 +63,7 @@ func helpCategories() []helpCategory {
 			{key: "task", meaning: "“Draft the launch note and save it as launch.md.”"},
 			{key: "standing", meaning: "“Whenever the report changes, summarize it.” · “Remind me every Friday.”"},
 			{key: "surgery", meaning: "“Cancel/pause/restart that job.” · “Do the API audit first.”"},
-			{key: "boost once", meaning: "press alt+b once, then ask the one question that needs a heavier model"},
+			{key: "boost once", meaning: "press ctrl+b (or alt+b) once, then ask the one question that needs a heavier model"},
 		}},
 		{title: "money", rows: []helpRow{
 			{key: "/budget", meaning: "show today's spend and ceiling"},

@@ -123,7 +123,7 @@ func (m *Model) View() string {
 		case m.voiceHint != "" && time.Now().Before(m.voiceHintUntil):
 			hint = m.voiceHint
 		case m.voiceState == voiceRecording:
-			hint = keyBindings.voice + " finish · esc discard · keep typing to preserve your draft"
+			hint = "ctrl+v finish · esc discard · keep typing to preserve your draft"
 		case m.voiceState == voiceStarting || m.voiceState == voiceFinalizing:
 			hint = "voice working · esc discard"
 		case m.boost != boostOff:
@@ -388,7 +388,7 @@ func (m *Model) renderLegacyActivityBar() string {
 		// Nothing in flight: no dock at all — a quiet screen owes no chrome.
 		return ""
 	}
-	bar += mutedStyle.Faint(true).Render(" — " + keyBindings.graph + " tasks")
+	bar += mutedStyle.Faint(true).Render(" — ctrl+t tasks")
 	return truncate(bar, m.width)
 }
 

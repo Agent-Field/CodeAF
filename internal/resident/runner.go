@@ -168,7 +168,14 @@ func (r *Runner) claimNext() (store.Node, bool, error) {
 		return store.Node{}, false, err
 	}
 	for _, node := range ready {
-		if userInFlight && node.Provenance.Origin != store.OriginUser {
+		// Yield to user work only for BACKGROUND self work (practice, or
+		// sessionless self splices). A self-origin node carrying a session is
+		// the user's own job continuing — the resident spliced its synthesis
+		// stages — and deferring it deadlocked the graph: the user job could
+		// never finish because its own children were classified as background.
+		background := node.Group == store.PracticeGroup ||
+			(node.Provenance.Origin != store.OriginUser && node.Provenance.SessionID == "")
+		if userInFlight && background && node.Provenance.Origin != store.OriginUser {
 			continue
 		}
 		// A goal node lands after its children: it may be ready by its edges

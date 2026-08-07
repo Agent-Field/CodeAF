@@ -28,7 +28,7 @@ type curatedTip struct {
 // predictable, free, session-local, and leaves personalization to the future
 // journal-aware pipeline described in that document.
 var curatedTips = []curatedTip{
-	{text: "alt+v talks — your typed draft is never lost", feature: tipVoice},
+	{text: "ctrl+v (or alt+v) talks — your typed draft is never lost", feature: tipVoice},
 	{text: "say \"remind me Friday at 3\" — standing goals ask before they act", feature: tipStandingStart},
 	{text: "nothing dies at the daily dollar rail — /budget shows or raises it", feature: tipBudget},
 	{text: "redirect running work by talking about it — no task id needed"},
@@ -112,18 +112,18 @@ func (m *Model) tipSuppressed(feature tipFeature) bool {
 func (m *Model) contextHelpLine() string {
 	switch {
 	case m.focus == focusCards:
-		return "↑/↓ select · enter details · esc back · " + keyBindings.graph + " tasks"
+		return "↑/↓ select · enter details · esc back · ctrl+t tasks"
 	case m.focus == focusQuestions:
 		return "↑/↓ select · enter ask inline · esc back · tab focus"
 	case m.nodeViewID != "":
 		return "type to steer · enter send · c cancel · esc back"
 	case m.focus == focusGraph:
-		return "↑/↓ select · enter inspect · esc close · " + keyBindings.graph + " hide"
+		return "↑/↓ select · enter inspect · esc close · ctrl+t hide"
 	case m.focus == focusHeader:
 		return "←/→ choose · enter models/tasks/help · esc back · tab focus"
 	case m.focus == focusChat:
 		return "↑/↓ select · enter open · esc back · tab focus"
 	default:
-		return "/ commands · " + keyBindings.voice + " voice · v receipts · ? help"
+		return "/ commands · ctrl+v voice · v receipts · ? help"
 	}
 }
