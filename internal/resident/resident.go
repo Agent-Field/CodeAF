@@ -378,6 +378,7 @@ func (r *Reconciler) Tick(ctx context.Context) error {
 	r.consolidateNotebook(ctx)
 	r.reflectOnJobs(ctx)
 	r.promoteRecurringSkills(ctx)
+	r.settleTasteLocked()
 	r.flushLearningMoments()
 	r.postRetrospectiveDigest(retrospectiveAfter)
 	r.syncSkillBins()

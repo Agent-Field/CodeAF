@@ -925,6 +925,197 @@ func (s *Store) FactOutcomes() (map[int64]FactOutcome, error) {
 	return outcomes, nil
 }
 
+// Taste is a lifecycle laid over ordinary preference facts, not a new kind of
+// thing: a rule the user keeps correcting toward, kept on a shelf of its own so
+// its identity survives every promotion and demotion. The shelf is the
+// identity — standing a rule up records a new active line over the same scope
+// and supersedes the old one, exactly as consolidation rewrites a belief — so
+// taste earned a lifecycle without a new table, event, or status.
+const (
+	// TasteScopePrefix keeps taste rules off the shelves ordinary cue retrieval
+	// walks, so a rule still under trial cannot reach a worker as settled fact.
+	TasteScopePrefix = "taste:"
+	// TasteRepeatCorrections is the birth bar: one correction is an instruction,
+	// two of the same shape are a pattern worth naming.
+	TasteRepeatCorrections = 2
+	// tasteSlugBytes bounds the shelf name derived from a rule's own words.
+	tasteSlugBytes = 64
+)
+
+// TasteScope names the shelf one rule owns: what it is about, then a slug of
+// the rule's own words, so the same rule always lands on the same shelf. An
+// unusable rule returns the empty string rather than a shelf nothing can find.
+func TasteScope(subject, body string) string {
+	slug := normalizeTraitName(body)
+	if len(slug) > tasteSlugBytes {
+		slug = slug[:tasteSlugBytes]
+		if cut := strings.LastIndexByte(slug, '-'); cut > 0 {
+			slug = slug[:cut]
+		}
+	}
+	slug = strings.Trim(slug, "-")
+	if slug == "" {
+		return ""
+	}
+	return TasteScopePrefix + normalizeScope(subject) + ":" + slug
+}
+
+// TasteSubject reverses TasteScope's subject half. The slug carries no colon,
+// so the last one separates a subject that may itself be scoped — repo:/p.
+func TasteSubject(scope string) (string, bool) {
+	scope = normalizeScope(scope)
+	if !strings.HasPrefix(scope, TasteScopePrefix) {
+		return "", false
+	}
+	rest := strings.TrimPrefix(scope, TasteScopePrefix)
+	cut := strings.LastIndexByte(rest, ':')
+	if cut <= 0 || cut == len(rest)-1 {
+		return "", false
+	}
+	return rest[:cut], true
+}
+
+// TasteRules returns the current line on every taste shelf, newest first. An
+// empty status returns each shelf whatever its standing; a shelf's superseded
+// history stays in the journal and out of this answer.
+func (s *Store) TasteRules(status string) ([]Fact, error) {
+	if status != "" && status != FactCandidate && status != FactActive {
+		return nil, fmt.Errorf("query taste rules: %w: invalid status %q", ErrInvalid, status)
+	}
+	facts, err := s.factsWhere(`kind = ? AND scope LIKE ? AND status IN (?, ?) ORDER BY seq DESC`,
+		FactPreference, TasteScopePrefix+"%", FactCandidate, FactActive)
+	if err != nil {
+		return nil, err
+	}
+	seen := make(map[string]bool, len(facts))
+	rules := make([]Fact, 0, len(facts))
+	for _, fact := range facts {
+		if seen[fact.Scope] {
+			continue
+		}
+		seen[fact.Scope] = true
+		if status != "" && fact.Status != status {
+			continue
+		}
+		rules = append(rules, fact)
+	}
+	return rules, nil
+}
+
+// RecordTasteCandidate opens one shelf with the correction that named it. A
+// shelf may be opened once; every later standing is a re-record over the same
+// scope, which is what makes the shelf the rule's durable identity.
+func (s *Store) RecordTasteCandidate(nodeID, subject, body string) (Fact, error) {
+	scope := TasteScope(subject, body)
+	if scope == "" {
+		return Fact{}, fmt.Errorf("record taste candidate: %w: rule has no words", ErrInvalid)
+	}
+	existing, err := s.factsWhere(`scope = ? LIMIT 1`, scope)
+	if err != nil {
+		return Fact{}, err
+	}
+	if len(existing) > 0 {
+		return Fact{}, fmt.Errorf("record taste candidate: %w: shelf %q is already open", ErrInvalid, scope)
+	}
+	return s.recordFact(FactWriterDistiller, nodeID, scope, FactPreference, body, nil, 0, FactCandidate, "", false)
+}
+
+// PromoteTasteRule stands one candidate up as a rule the gate is held to.
+func (s *Store) PromoteTasteRule(seq int64) (Fact, error) {
+	return s.restandTasteRule(seq, FactActive)
+}
+
+// DemoteTasteRule returns one active rule to candidacy after the user has said
+// twice that the delivery was right as it was.
+func (s *Store) DemoteTasteRule(seq int64) (Fact, error) {
+	return s.restandTasteRule(seq, FactCandidate)
+}
+
+func (s *Store) restandTasteRule(seq int64, status string) (Fact, error) {
+	facts, err := s.factsWhere(`seq = ?`, seq)
+	if err != nil {
+		return Fact{}, err
+	}
+	if len(facts) == 0 {
+		return Fact{}, fmt.Errorf("restand taste rule: %w: no fact at seq %d", ErrNotFound, seq)
+	}
+	rule := facts[0]
+	if _, ok := TasteSubject(rule.Scope); !ok || rule.Kind != FactPreference {
+		return Fact{}, fmt.Errorf("restand taste rule: %w: fact %d is not a taste rule", ErrInvalid, seq)
+	}
+	if rule.Status == status {
+		return Fact{}, fmt.Errorf("restand taste rule: %w: rule %d is already %s", ErrInvalid, seq, status)
+	}
+	if rule.Status != FactCandidate && rule.Status != FactActive {
+		return Fact{}, fmt.Errorf("restand taste rule: %w: rule %d is %s", ErrInvalid, seq, rule.Status)
+	}
+	return s.recordFact(FactWriterDistiller, rule.NodeID, rule.Scope, FactPreference, rule.Body,
+		nil, seq, status, "", false)
+}
+
+// NeighbouringCorrections ranks the corrections already in the notebook
+// against one of their own, best first, on the same FTS5/BM25 index every other
+// retrieval uses. It narrows, it does not decide: on a young notebook every
+// taste word is in most of the lines, BM25's idf collapses, and the ranking
+// carries no signal at all — so the caller still has to judge each neighbour.
+// Taste shelves are excluded, because a rule may not be evidence for itself.
+func (s *Store) NeighbouringCorrections(body string, excludeSeq, limit int64) ([]Fact, error) {
+	terms := ftsQueryFrom(body)
+	if terms == "" {
+		return nil, nil
+	}
+	if limit <= 0 {
+		limit = 12
+	}
+	rows, err := s.db.Query(`
+		SELECT facts_fts.rowid
+		FROM facts_fts JOIN facts AS f ON f.seq = facts_fts.rowid
+		WHERE facts_fts MATCH ? AND f.status = ? AND f.kind = ?
+		  AND f.seq <> ? AND f.scope NOT LIKE ?
+		ORDER BY bm25(facts_fts) LIMIT ?`,
+		terms, FactActive, FactPreference, excludeSeq, TasteScopePrefix+"%", limit)
+	if err != nil {
+		// An FTS syntax error from a hostile body is a miss, not a failure.
+		return nil, nil
+	}
+	seqs := make([]int64, 0, limit)
+	for rows.Next() {
+		var seq int64
+		if err := rows.Scan(&seq); err != nil {
+			rows.Close()
+			return nil, fmt.Errorf("neighbouring corrections: %w", err)
+		}
+		seqs = append(seqs, seq)
+	}
+	if err := rows.Err(); err != nil {
+		rows.Close()
+		return nil, fmt.Errorf("neighbouring corrections: %w", err)
+	}
+	rows.Close()
+	neighbours := make([]Fact, 0, len(seqs))
+	for _, seq := range seqs {
+		fact, found, err := s.FactBySeq(seq)
+		if err != nil {
+			return nil, err
+		}
+		if found {
+			neighbours = append(neighbours, fact)
+		}
+	}
+	return neighbours, nil
+}
+
+// CorrectionFacts lists the ordinary preference lines taste aggregates over —
+// what the distiller wrote down when the user corrected something — newest
+// first, with the taste shelves left out.
+func (s *Store) CorrectionFacts(limit int) ([]Fact, error) {
+	if limit <= 0 {
+		limit = 50
+	}
+	return s.factsWhere(`kind = ? AND status = ? AND scope NOT LIKE ? ORDER BY seq DESC LIMIT ?`,
+		FactPreference, FactActive, TasteScopePrefix+"%", limit)
+}
+
 func normalizedFactSeqs(seqs []int64) []int64 {
 	seen := make(map[int64]bool, len(seqs))
 	normalized := make([]int64, 0, len(seqs))
