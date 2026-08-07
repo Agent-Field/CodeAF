@@ -63,9 +63,6 @@ func (s *Store) Rebuild() error {
 	if _, err := tx.Exec(`DELETE FROM retrospective_watermark`); err != nil {
 		return fmt.Errorf("rebuild retrospective watermark: %w", err)
 	}
-	if _, err := tx.Exec(`DELETE FROM charters`); err != nil {
-		return fmt.Errorf("rebuild charters: %w", err)
-	}
 	for _, event := range events {
 		if err := replayEvent(tx, event); err != nil {
 			return fmt.Errorf("replay event %d (%s): %w", event.Seq, event.Kind, err)
@@ -294,21 +291,21 @@ func replayEvent(tx *sql.Tx, event Event) error {
 		if err := json.Unmarshal(event.Payload, &payload); err != nil {
 			return err
 		}
-		return applyCharterTransition(tx, payload.ID, CharterDraft, CharterActive, event.Seq)
+		return applyCharterTransition(tx, payload, CharterDraft, CharterActive, event.Seq)
 
 	case EventCharterPaused:
 		var payload charterTransitionPayload
 		if err := json.Unmarshal(event.Payload, &payload); err != nil {
 			return err
 		}
-		return applyCharterTransition(tx, payload.ID, CharterActive, CharterPaused, event.Seq)
+		return applyCharterTransition(tx, payload, CharterActive, CharterPaused, event.Seq)
 
 	case EventCharterRetired:
 		var payload charterTransitionPayload
 		if err := json.Unmarshal(event.Payload, &payload); err != nil {
 			return err
 		}
-		return applyCharterTransition(tx, payload.ID, "", CharterRetired, event.Seq)
+		return applyCharterTransition(tx, payload, "", CharterRetired, event.Seq)
 
 	case EventCharterCadenceEdited:
 		var payload charterCadencePayload
@@ -398,7 +395,8 @@ func replayEvent(tx *sql.Tx, event Event) error {
 	case EventCharterCreated, EventCharterRevised, EventCharterStatusChanged,
 		EventCharterWatchAdvanced, EventCharterWoken, EventSentinelChecked,
 		EventCharterFired, EventCharterFiringBlocked, EventCharterFiringDeferred,
-		EventCharterProposalDeclined:
+		EventCharterProposalDeclined, EventCharterFiringProposed, EventCharterFiringDeclined,
+		EventCharterFiringReviewed, EventCharterPromoted, EventCharterDemoted:
 		return replayCharterEvent(tx, event)
 
 	default:

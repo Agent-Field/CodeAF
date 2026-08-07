@@ -85,7 +85,24 @@ proposal is a notebook fact and is not re-proposed). This is 3.6's
 "standing goals become learned" landing through the only legitimate gate:
 the user's explicit yes.
 
-## Decision 5 — Spend is visible and settable where you talk
+## Decision 5 — Autonomy is earned after ratification
+
+Ratifying a charter authorizes the standing responsibility, not unattended
+execution on day one. Every new charter begins on **probation**. When its
+sentinel says yes, the thread shows what it would do and offers four durable
+choices: approve this firing, not now, always allow, or never. Approval admits work
+through the ordinary command queue and firing journal; the proposal itself
+never compiles, plans, or splices work.
+
+Three consecutive approved firings must independently finish green and within
+the charter's per-firing rail before the charter becomes **tenured**. The
+threshold is configurable with `AFORGE_TENURE_AFTER`. Always allow is an
+explicit journaled override. A failed or cancelled subtree, a rejected output,
+or a per-firing budget breach returns a tenured charter to probation; a second
+failure demotion pauses it. “Back to asking” is the conversational, non-failure
+reversion to probation.
+
+## Decision 6 — Spend is visible and settable where you talk
 
 `/budget` shows today: `spent $3.40 of $20 · resets midnight` and sets:
 `/budget 50` (today's ceiling — a journaled raise), `/budget default 35`

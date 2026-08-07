@@ -1,3 +1,6 @@
+//go:build legacy_charter_head
+
+// Kept only as merge provenance; charter_head.go integrates this surface.
 package store
 
 import (
