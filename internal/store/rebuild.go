@@ -49,6 +49,15 @@ func (s *Store) Rebuild() error {
 	if _, err := tx.Exec(`DELETE FROM surprises`); err != nil {
 		return fmt.Errorf("rebuild surprises: %w", err)
 	}
+	if _, err := tx.Exec(`DELETE FROM self_inquiry_lines`); err != nil {
+		return fmt.Errorf("rebuild self inquiry lines: %w", err)
+	}
+	if _, err := tx.Exec(`DELETE FROM self_receipts`); err != nil {
+		return fmt.Errorf("rebuild self receipts: %w", err)
+	}
+	if _, err := tx.Exec(`DELETE FROM charters_fts`); err != nil {
+		return fmt.Errorf("rebuild charter index: %w", err)
+	}
 	if _, err := tx.Exec(`DELETE FROM charters`); err != nil {
 		return fmt.Errorf("rebuild charters: %w", err)
 	}
@@ -310,6 +319,20 @@ func replayEvent(tx *sql.Tx, event Event) error {
 			return err
 		}
 		return applySurpriseView(tx, payload, event.Seq, event.Time)
+
+	case EventSelfReceipt:
+		var payload SelfReceipt
+		if err := json.Unmarshal(event.Payload, &payload); err != nil {
+			return err
+		}
+		return applySelfReceiptView(tx, payload, event.Seq, event.Time)
+
+	case EventSelfInquiryRetired:
+		var payload SelfInquiryRetirement
+		if err := json.Unmarshal(event.Payload, &payload); err != nil {
+			return err
+		}
+		return applySelfInquiryRetirement(tx, payload, event.Seq)
 
 	case EventRailRaised:
 		// Rail raises have no materialized view: their event timestamps define
