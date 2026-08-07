@@ -19,7 +19,8 @@ import (
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 )
 
-// The tool set is four tools, and the count is the design.
+// The base tool set is four tools, and the count is the design. Pull-only
+// recall and configured media capabilities are appended at the leaf boundary.
 //
 // Every definition is re-sent on every turn, and every result stays in context
 // for every turn after it arrives, so the question is not "what would be
@@ -68,6 +69,11 @@ const (
 type Result struct {
 	Content string
 	IsError bool
+	// Followup carries multimodal content that must reach the next model turn.
+	// The ordinary text result is still emitted first so tool-call pairing
+	// remains valid on every OpenAI-compatible backend.
+	Followup []ai.ContentPart
+	Usage    Usage
 }
 
 func errorf(format string, args ...any) Result {
@@ -80,6 +86,7 @@ type Toolbox struct {
 	nodeID    int
 	web       *Web
 	history   *store.Store
+	media     *MediaTools
 	// spills is atomic because a turn's tool calls execute concurrently, and
 	// two large results spilling at once must not race the counter into the
 	// same file name.
@@ -95,6 +102,10 @@ func NewToolbox(workspace *Workspace, nodeID int, web *Web) *Toolbox {
 // original four-definition prompt.
 func NewToolboxWithStore(workspace *Workspace, nodeID int, web *Web, history *store.Store) *Toolbox {
 	return &Toolbox{workspace: workspace, nodeID: nodeID, web: web, history: history}
+}
+
+func newToolboxWithMedia(workspace *Workspace, nodeID int, web *Web, history *store.Store, media *MediaTools) *Toolbox {
+	return &Toolbox{workspace: workspace, nodeID: nodeID, web: web, history: history, media: media}
 }
 
 // Definitions are what the model sees. Descriptions are terse because they are
@@ -127,6 +138,23 @@ func (t *Toolbox) Definitions() []ai.ToolDefinition {
 			"scope_cues": map[string]any{"type": "array", "items": map[string]any{"type": "string"}, "description": "optional workspace or file paths"},
 			"limit":      prop("integer", "maximum fold and notebook hits, default 5, maximum 10"),
 		}, "terms"))
+	}
+	if t.media != nil && t.media.Provider != nil {
+		definitions = append(definitions,
+			define("generate_image", "Generate one or more images into the workspace media directory. reference_paths may name existing workspace images for image-to-image work.", map[string]any{
+				"prompt":          prop("string", "what to generate"),
+				"n":               prop("integer", "number of images, default 1, maximum 10"),
+				"size":            prop("string", "optional image size or aspect ratio"),
+				"reference_paths": map[string]any{"type": "array", "items": map[string]any{"type": "string"}, "description": "workspace image paths to use as references"},
+			}, "prompt"),
+			define("speak", "Synthesize speech as an MP3 in the workspace media directory.", map[string]any{
+				"text":  prop("string", "text to speak"),
+				"voice": prop("string", "optional voice, default alloy"),
+			}, "text"),
+			define("view_image", "Load a workspace image into the next model turn so you can inspect it.", map[string]any{
+				"path": prop("string", "workspace-relative image path"),
+			}, "path"),
+		)
 	}
 	return definitions
 }
@@ -177,10 +205,19 @@ func (t *Toolbox) Execute(ctx context.Context, name string, arguments string) Re
 		result = t.webCall(ctx, args)
 	case "recall":
 		result = t.recall(args)
+	case "generate_image":
+		result = t.generateImage(ctx, args)
+	case "speak":
+		result = t.speak(ctx, args)
+	case "view_image":
+		result = t.viewImage(ctx, args)
 	default:
 		available := "sh, write, edit, web"
 		if t.history != nil {
 			available += ", recall"
+		}
+		if t.media != nil && t.media.Provider != nil {
+			available += ", generate_image, speak, view_image"
 		}
 		return errorf("no tool named %q. Available: %s", name, available)
 	}

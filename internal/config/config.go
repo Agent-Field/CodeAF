@@ -13,6 +13,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Agent-Field/aforge-v2/internal/catalog"
 	"github.com/Agent-Field/aforge-v2/internal/provider"
 	"github.com/Agent-Field/aforge-v2/internal/router"
 )
@@ -89,13 +90,21 @@ const (
 	// resident store. Token slices shape leaves internally; dollars decide when
 	// new work needs the user's word. Zero disables the rail.
 	DefaultDailyBudgetUSD = 20.0
+
+	preferredImageModel  = "google/gemini-3-pro-image"
+	preferredSpeechModel = "openai/gpt-4o-mini-tts"
+	legacySpeechModel    = "openai/tts-1"
 )
 
 // Config is the resolved runtime configuration.
 type Config struct {
-	APIKey         string
-	BaseURL        string
-	Model          string
+	APIKey  string
+	BaseURL string
+	Model   string
+	// ImageModel and SpeechModel are capability slots. Empty means resolve at
+	// use from the live catalog, rather than trusting a floating default slug.
+	ImageModel     string
+	SpeechModel    string
 	Temperature    float64
 	MaxTokens      int
 	Timeout        time.Duration
@@ -126,6 +135,8 @@ func Load() (Config, error) {
 		APIKey:         firstNonEmpty(os.Getenv("OPENROUTER_API_KEY"), os.Getenv("OPENAI_API_KEY")),
 		BaseURL:        firstNonEmpty(os.Getenv("AFORGE_BASE_URL"), DefaultBaseURL),
 		Model:          firstNonEmpty(os.Getenv("AFORGE_MODEL"), DefaultModel),
+		ImageModel:     strings.TrimSpace(os.Getenv("AFORGE_IMAGE_MODEL")),
+		SpeechModel:    strings.TrimSpace(os.Getenv("AFORGE_SPEECH_MODEL")),
 		Temperature:    DefaultTemperature,
 		MaxTokens:      DefaultMaxTokens,
 		Timeout:        DefaultTimeout,
@@ -187,6 +198,44 @@ func Load() (Config, error) {
 	return config, nil
 }
 
+// ResolveImageModel applies the runtime preference order: an explicit slot,
+// Gemini 3 Pro Image only when advertised, then the catalog's first image
+// output model. Catalog's offline fallbacks make the last resort usable while
+// keeping the ordinary path free of unverified defaults.
+func (c Config) ResolveImageModel(models *catalog.Catalog) string {
+	if configured := strings.TrimSpace(c.ImageModel); configured != "" {
+		return configured
+	}
+	return resolveOutputModel(models, "image", preferredImageModel)
+}
+
+// ResolveSpeechModel prefers the current OpenAI mini TTS slug, then the
+// legacy tts-1 slug when advertised, then the first speech-output model.
+func (c Config) ResolveSpeechModel(models *catalog.Catalog) string {
+	if configured := strings.TrimSpace(c.SpeechModel); configured != "" {
+		return configured
+	}
+	return resolveOutputModel(models, "speech", preferredSpeechModel, legacySpeechModel)
+}
+
+func resolveOutputModel(models *catalog.Catalog, modality string, preferences ...string) string {
+	if models == nil {
+		return ""
+	}
+	candidates := models.ModelsWithOutput(modality)
+	for _, preferred := range preferences {
+		for _, candidate := range candidates {
+			if candidate.ID == preferred {
+				return candidate.ID
+			}
+		}
+	}
+	if len(candidates) > 0 {
+		return candidates[0].ID
+	}
+	return ""
+}
+
 // DailyBudgetUSD resolves the dollar rail without requiring a provider key.
 // Status-only commands use it even when they never construct a model client.
 func DailyBudgetUSD() (float64, error) {
@@ -242,6 +291,12 @@ func (c Config) ClientFor(model string) (router.Client, error) {
 		return router.NewPinned(c.Panel, c.providerConfig(model), c.ProfileDir, model)
 	}
 	return provider.NewClient(c.providerConfig(model))
+}
+
+// MediaClient builds the non-chat OpenRouter endpoint client with the same
+// bearer key, base URL, attribution, timeout, and transport configuration.
+func (c Config) MediaClient() (*provider.MediaClient, error) {
+	return provider.NewMediaClient(c.providerConfig(c.Model))
 }
 
 func (c Config) providerConfig(model string) provider.Config {

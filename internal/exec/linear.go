@@ -101,6 +101,7 @@ type Linear struct {
 	workspace *Workspace
 	web       *Web
 	history   *store.Store
+	media     *MediaTools
 	maxTurns  int
 	maxTokens int
 	deadline  time.Duration
@@ -111,6 +112,13 @@ type Linear struct {
 // the original four-tool completion floor.
 func (l *Linear) WithStore(history *store.Store) *Linear {
 	l.history = history
+	return l
+}
+
+// WithMedia installs graph-level image, speech, and image-inspection tools.
+// It is executor configuration, so reflex micro-leaves inherit it unchanged.
+func (l *Linear) WithMedia(media *MediaTools) *Linear {
+	l.media = media
 	return l
 }
 
@@ -165,7 +173,7 @@ func (l *Linear) Run(ctx context.Context, task Task) (*Outcome, error) {
 	deadline, _ := ctx.Deadline()
 	landingReserve := deadlineLandingReserve(time.Until(deadline))
 
-	tools := NewToolboxWithStore(l.workspace, task.NodeID, l.web, l.history)
+	tools := newToolboxWithMedia(l.workspace, task.NodeID, l.web, l.history, l.media)
 	definitions := tools.Definitions()
 	if task.Reflex {
 		definitions = append(definitions, reflexPromotionDefinition())
@@ -184,9 +192,17 @@ func (l *Linear) Run(ctx context.Context, task Task) (*Outcome, error) {
 		system += "\n\nHow this particular kind of job is done well:\n" + contract
 		trace.note("contract:\n" + contract)
 	}
+	userContent := text(l.brief(task))
+	workingModel := ""
+	if l.media != nil {
+		workingModel = l.media.WorkingModel
+	}
+	if l.media != nil && l.media.Catalog != nil && l.media.Catalog.Supports(workingModel, "input", "image") {
+		userContent = append(userContent, imageParts(task.ImagePaths)...)
+	}
 	messages := []ai.Message{
 		{Role: "system", Content: text(system)},
-		{Role: "user", Content: text(l.brief(task))},
+		{Role: "user", Content: userContent},
 	}
 
 	outcome := &Outcome{Stop: StopDone}
@@ -346,7 +362,7 @@ func (l *Linear) Run(ctx context.Context, task Task) (*Outcome, error) {
 		for index, call := range calls {
 			outcome.ToolCalls++
 			key := fingerprint(call)
-			if previous, repeated := seen[key]; repeated {
+			if previous, repeated := seen[key]; repeated && call.Function.Name != "view_image" {
 				results[index] = Result{Content: previous + "\n\n(identical call already made; this is the same result. If you were re-checking, nothing has changed — move on to the next step)"}
 				continue
 			}
@@ -359,6 +375,9 @@ func (l *Linear) Run(ctx context.Context, task Task) (*Outcome, error) {
 			}(index, call)
 		}
 		group.Wait()
+		for index := range results {
+			outcome.Usage.merge(results[index].Usage)
+		}
 
 		// The cache is filled here, on this goroutine, and never inside the
 		// workers. Writing a shared map from several tool goroutines at once is
@@ -375,7 +394,7 @@ func (l *Linear) Run(ctx context.Context, task Task) (*Outcome, error) {
 		// sh is included because a shell command can change anything.
 		for index, call := range calls {
 			name := call.Function.Name
-			if !results[index].IsError && (name == "write" || name == "edit" || name == "sh") {
+			if !results[index].IsError && (name == "write" || name == "edit" || name == "sh" || name == "generate_image" || name == "speak") {
 				clear(seen)
 				break
 			}
@@ -393,6 +412,12 @@ func (l *Linear) Run(ctx context.Context, task Task) (*Outcome, error) {
 				ToolCallID: call.ID,
 				Content:    text(body),
 			})
+		}
+		for _, result := range results {
+			if len(result.Followup) == 0 || result.IsError {
+				continue
+			}
+			messages = append(messages, ai.Message{Role: "user", Content: result.Followup})
 		}
 
 		// The budget ends work in two stages, and the staging is what protects

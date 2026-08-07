@@ -145,6 +145,9 @@ type Provenance struct {
 	Origin    Origin `json:"origin"`
 	SessionID string `json:"session_id,omitempty"`
 	Intent    string `json:"intent"`
+	// Attachments are user-supplied image paths kept separate from visible
+	// intent text so every leaf can receive them as multimodal content.
+	Attachments []string `json:"attachments,omitempty"`
 	// TrialOf is the fact sequence of the unsettled pair this subtree tests.
 	// Zero means the splice is ordinary work.
 	TrialOf int64 `json:"trial_of,omitempty"`
@@ -273,7 +276,8 @@ CREATE TABLE IF NOT EXISTS nodes (
     origin         TEXT NOT NULL CHECK (origin IN ('user', 'trigger', 'self')),
     session_id     TEXT,
     intent         TEXT NOT NULL,
-    trial_of       INTEGER NOT NULL DEFAULT 0 CHECK (trial_of >= 0),
+	trial_of       INTEGER NOT NULL DEFAULT 0 CHECK (trial_of >= 0),
+	attachments    JSON NOT NULL DEFAULT '[]' CHECK (json_valid(attachments)),
     created_seq    INTEGER NOT NULL REFERENCES events(seq),
     created_order  INTEGER NOT NULL CHECK (created_order >= 0),
     updated_seq    INTEGER NOT NULL REFERENCES events(seq),

@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
@@ -56,11 +57,12 @@ const (
 // Message is one materialized thread entry. Seq is the journal sequence, so
 // message order is total and shared with every other event in the store.
 type Message struct {
-	Seq       int64
-	Time      time.Time
-	SessionID string
-	Role      Role
-	Body      string
+	Seq         int64
+	Time        time.Time
+	SessionID   string
+	Role        Role
+	Body        string
+	Attachments []string
 	// NodeID optionally anchors the message to a graph node (a fold
 	// announcement, an ask, a completion report).
 	NodeID string
@@ -81,6 +83,7 @@ type Command struct {
 	Reflex      bool
 	Target      string
 	Instruction string
+	Attachments []string
 	Status      CommandStatus
 	Result      string
 	UpdatedSeq  int64
@@ -92,7 +95,8 @@ CREATE TABLE IF NOT EXISTS messages (
     ts          TEXT NOT NULL,
     session_id  TEXT NOT NULL DEFAULT '',
     role        TEXT NOT NULL CHECK (role IN ('user', 'agent', 'system')),
-    body        TEXT NOT NULL,
+	body        TEXT NOT NULL,
+	attachments JSON NOT NULL DEFAULT '[]' CHECK (json_valid(attachments)),
     node_id     TEXT NOT NULL DEFAULT '',
     command_seq INTEGER NOT NULL DEFAULT 0
 );
@@ -105,7 +109,8 @@ CREATE TABLE IF NOT EXISTS commands (
     kind        TEXT NOT NULL CHECK (kind IN ('splice', 'amend', 'cancel')),
     reflex      INTEGER NOT NULL DEFAULT 0 CHECK (reflex IN (0, 1)),
     target      TEXT NOT NULL DEFAULT '',
-    instruction TEXT NOT NULL,
+	instruction TEXT NOT NULL,
+	attachments JSON NOT NULL DEFAULT '[]' CHECK (json_valid(attachments)),
     status      TEXT NOT NULL CHECK (status IN ('pending', 'applied', 'rejected')),
     result      TEXT NOT NULL DEFAULT '',
     updated_seq INTEGER NOT NULL
@@ -114,11 +119,12 @@ CREATE INDEX IF NOT EXISTS commands_status_seq ON commands (status, seq);
 `
 
 type messagePayload struct {
-	SessionID  string `json:"session_id,omitempty"`
-	Role       Role   `json:"role"`
-	Body       string `json:"body"`
-	NodeID     string `json:"node_id,omitempty"`
-	CommandSeq int64  `json:"command_seq,omitempty"`
+	SessionID   string   `json:"session_id,omitempty"`
+	Role        Role     `json:"role"`
+	Body        string   `json:"body"`
+	Attachments []string `json:"attachments,omitempty"`
+	NodeID      string   `json:"node_id,omitempty"`
+	CommandSeq  int64    `json:"command_seq,omitempty"`
 }
 
 type commandPayload struct {
@@ -127,6 +133,7 @@ type commandPayload struct {
 	Reflex      bool        `json:"reflex,omitempty"`
 	Target      string      `json:"target,omitempty"`
 	Instruction string      `json:"instruction"`
+	Attachments []string    `json:"attachments,omitempty"`
 }
 
 type commandResolvedPayload struct {
@@ -163,11 +170,12 @@ func (s *Store) PostMessage(message Message) (Message, error) {
 		}
 	}
 	payload := messagePayload{
-		SessionID:  message.SessionID,
-		Role:       message.Role,
-		Body:       message.Body,
-		NodeID:     message.NodeID,
-		CommandSeq: message.CommandSeq,
+		SessionID:   message.SessionID,
+		Role:        message.Role,
+		Body:        message.Body,
+		Attachments: append([]string(nil), message.Attachments...),
+		NodeID:      message.NodeID,
+		CommandSeq:  message.CommandSeq,
 	}
 	seq, at, err := appendEvent(tx, message.NodeID, EventMessagePosted, payload)
 	if err != nil {
@@ -217,7 +225,7 @@ func (s *Store) Messages(sessionID string, afterSeq int64, limit int) ([]Message
 	}
 	args = append(args, limit)
 	rows, err := s.db.Query(`
-		SELECT seq, ts, session_id, role, body, node_id, command_seq
+		SELECT seq, ts, session_id, role, body, attachments, node_id, command_seq
 		FROM messages WHERE `+where+` ORDER BY seq LIMIT ?`, args...)
 	if err != nil {
 		return nil, fmt.Errorf("list messages: %w", err)
@@ -227,9 +235,9 @@ func (s *Store) Messages(sessionID string, afterSeq int64, limit int) ([]Message
 	messages := make([]Message, 0)
 	for rows.Next() {
 		var message Message
-		var timestamp string
+		var timestamp, attachments string
 		if err := rows.Scan(&message.Seq, &timestamp, &message.SessionID,
-			&message.Role, &message.Body, &message.NodeID, &message.CommandSeq); err != nil {
+			&message.Role, &message.Body, &attachments, &message.NodeID, &message.CommandSeq); err != nil {
 			return nil, fmt.Errorf("list messages: %w", err)
 		}
 		at, err := parseTime(timestamp)
@@ -237,6 +245,9 @@ func (s *Store) Messages(sessionID string, afterSeq int64, limit int) ([]Message
 			return nil, fmt.Errorf("list messages: parse time: %w", err)
 		}
 		message.Time = at
+		if err := json.Unmarshal([]byte(attachments), &message.Attachments); err != nil {
+			return nil, fmt.Errorf("list messages: decode attachments: %w", err)
+		}
 		messages = append(messages, message)
 	}
 	if err := rows.Err(); err != nil {
@@ -253,7 +264,7 @@ func (s *Store) NodeMessages(nodeID string, afterSeq int64, limit int) ([]Messag
 		limit = 200
 	}
 	rows, err := s.db.Query(`
-		SELECT seq, ts, session_id, role, body, node_id, command_seq
+		SELECT seq, ts, session_id, role, body, attachments, node_id, command_seq
 		FROM messages WHERE node_id = ? AND seq > ? ORDER BY seq LIMIT ?`,
 		nodeID, afterSeq, limit)
 	if err != nil {
@@ -263,9 +274,9 @@ func (s *Store) NodeMessages(nodeID string, afterSeq int64, limit int) ([]Messag
 	messages := make([]Message, 0)
 	for rows.Next() {
 		var message Message
-		var timestamp string
+		var timestamp, attachments string
 		if err := rows.Scan(&message.Seq, &timestamp, &message.SessionID,
-			&message.Role, &message.Body, &message.NodeID, &message.CommandSeq); err != nil {
+			&message.Role, &message.Body, &attachments, &message.NodeID, &message.CommandSeq); err != nil {
 			return nil, fmt.Errorf("node messages: %w", err)
 		}
 		at, err := parseTime(timestamp)
@@ -273,6 +284,9 @@ func (s *Store) NodeMessages(nodeID string, afterSeq int64, limit int) ([]Messag
 			return nil, fmt.Errorf("node messages: parse time: %w", err)
 		}
 		message.Time = at
+		if err := json.Unmarshal([]byte(attachments), &message.Attachments); err != nil {
+			return nil, fmt.Errorf("node messages: decode attachments: %w", err)
+		}
 		messages = append(messages, message)
 	}
 	if err := rows.Err(); err != nil {
@@ -315,6 +329,7 @@ func (s *Store) RequestCommand(command Command) (Command, error) {
 		Reflex:      command.Reflex,
 		Target:      command.Target,
 		Instruction: command.Instruction,
+		Attachments: append([]string(nil), command.Attachments...),
 	}
 	seq, at, err := appendEvent(tx, command.Target, EventCommandRequested, payload)
 	if err != nil {
@@ -408,7 +423,7 @@ func (s *Store) ResolveCommand(seq int64, status CommandStatus, result string) e
 
 func (s *Store) queryCommands(where string, args []any) ([]Command, error) {
 	rows, err := s.db.Query(`
-		SELECT seq, ts, session_id, kind, reflex, target, instruction, status, result, updated_seq
+		SELECT seq, ts, session_id, kind, reflex, target, instruction, attachments, status, result, updated_seq
 		FROM commands WHERE `+where, args...)
 	if err != nil {
 		return nil, fmt.Errorf("list commands: %w", err)
@@ -419,9 +434,9 @@ func (s *Store) queryCommands(where string, args []any) ([]Command, error) {
 	for rows.Next() {
 		var command Command
 		var reflex int
-		var timestamp string
+		var timestamp, attachments string
 		if err := rows.Scan(&command.Seq, &timestamp, &command.SessionID, &command.Kind,
-			&reflex, &command.Target, &command.Instruction, &command.Status, &command.Result,
+			&reflex, &command.Target, &command.Instruction, &attachments, &command.Status, &command.Result,
 			&command.UpdatedSeq); err != nil {
 			return nil, fmt.Errorf("list commands: %w", err)
 		}
@@ -430,6 +445,9 @@ func (s *Store) queryCommands(where string, args []any) ([]Command, error) {
 			return nil, fmt.Errorf("list commands: parse time: %w", err)
 		}
 		command.Reflex = reflex != 0
+		if err := json.Unmarshal([]byte(attachments), &command.Attachments); err != nil {
+			return nil, fmt.Errorf("list commands: decode attachments: %w", err)
+		}
 		command.Time = at
 		commands = append(commands, command)
 	}
@@ -440,20 +458,28 @@ func (s *Store) queryCommands(where string, args []any) ([]Command, error) {
 }
 
 func applyMessageView(tx *sql.Tx, payload messagePayload, seq int64, at time.Time) error {
-	_, err := tx.Exec(`
-		INSERT INTO messages (seq, ts, session_id, role, body, node_id, command_seq)
-		VALUES (?, ?, ?, ?, ?, ?, ?)`,
+	attachments, err := json.Marshal(payload.Attachments)
+	if err != nil {
+		return err
+	}
+	_, err = tx.Exec(`
+		INSERT INTO messages (seq, ts, session_id, role, body, attachments, node_id, command_seq)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
 		seq, formatTime(at), payload.SessionID, payload.Role, payload.Body,
-		payload.NodeID, payload.CommandSeq)
+		string(attachments), payload.NodeID, payload.CommandSeq)
 	return err
 }
 
 func applyCommandView(tx *sql.Tx, payload commandPayload, seq int64, at time.Time) error {
-	_, err := tx.Exec(`
-		INSERT INTO commands (seq, ts, session_id, kind, reflex, target, instruction, status, result, updated_seq)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, '', ?)`,
+	attachments, err := json.Marshal(payload.Attachments)
+	if err != nil {
+		return err
+	}
+	_, err = tx.Exec(`
+		INSERT INTO commands (seq, ts, session_id, kind, reflex, target, instruction, attachments, status, result, updated_seq)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, '', ?)`,
 		seq, formatTime(at), payload.SessionID, payload.Kind, payload.Reflex, payload.Target,
-		payload.Instruction, CommandPending, seq)
+		payload.Instruction, string(attachments), CommandPending, seq)
 	return err
 }
 
@@ -461,6 +487,12 @@ func applyCommandView(tx *sql.Tx, payload commandPayload, seq int64, at time.Tim
 // reflex routing was added. The event payload defaults to false, so adding the
 // materialized column is the whole migration.
 func migrateThreadSchema(db *sql.DB) error {
+	if err := addJSONColumn(db, "messages", "attachments"); err != nil {
+		return err
+	}
+	if err := addJSONColumn(db, "commands", "attachments"); err != nil {
+		return err
+	}
 	rows, err := db.Query(`PRAGMA table_info(commands)`)
 	if err != nil {
 		return err
@@ -485,6 +517,32 @@ func migrateThreadSchema(db *sql.DB) error {
 		return nil
 	}
 	_, err = db.Exec(`ALTER TABLE commands ADD COLUMN reflex INTEGER NOT NULL DEFAULT 0 CHECK (reflex IN (0, 1))`)
+	return err
+}
+
+func addJSONColumn(db *sql.DB, table, column string) error {
+	rows, err := db.Query(`PRAGMA table_info(` + table + `)`)
+	if err != nil {
+		return err
+	}
+	found := false
+	for rows.Next() {
+		var cid, notNull, primaryKey int
+		var name, columnType string
+		var defaultValue any
+		if err := rows.Scan(&cid, &name, &columnType, &notNull, &defaultValue, &primaryKey); err != nil {
+			rows.Close()
+			return err
+		}
+		found = found || name == column
+	}
+	if err := rows.Close(); err != nil {
+		return err
+	}
+	if found {
+		return nil
+	}
+	_, err = db.Exec(`ALTER TABLE ` + table + ` ADD COLUMN ` + column + ` JSON NOT NULL DEFAULT '[]' CHECK (json_valid(` + column + `))`)
 	return err
 }
 

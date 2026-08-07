@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/Agent-Field/aforge-v2/internal/plan"
@@ -22,6 +23,7 @@ type Scheduler struct {
 	workspace   *Workspace
 	concurrency int
 	usage       Usage
+	usageMutex  sync.RWMutex
 
 	// Budget bounds the whole run's token spend, in prompt+completion tokens.
 	// Zero means unbounded — each leaf still has its own budget. When the
@@ -85,9 +87,25 @@ func NewScheduler(registry *Registry, workspace *Workspace, concurrency int) *Sc
 }
 
 // Usage is the total cost of the run, summed as outcomes are applied. It is
-// accumulated on the scheduler's own goroutine along with everything else that
-// touches the graph, so no worker ever writes it.
-func (s *Scheduler) Usage() Usage { return s.usage }
+// written on the scheduler goroutine. Media spend gates may read it from a
+// worker immediately before generation, so the small value is copied under a
+// read lock.
+func (s *Scheduler) Usage() Usage {
+	s.usageMutex.RLock()
+	defer s.usageMutex.RUnlock()
+	return s.usage
+}
+
+func (s *Scheduler) spentTokens() int {
+	usage := s.Usage()
+	return usage.PromptTokens + usage.CompletionTokens
+}
+
+func (s *Scheduler) addUsage(usage Usage) {
+	s.usageMutex.Lock()
+	defer s.usageMutex.Unlock()
+	s.usage.merge(usage)
+}
 
 // Run executes every runnable node in the graph and records results onto it.
 //
@@ -124,9 +142,9 @@ func (s *Scheduler) Run(ctx context.Context, graph *plan.Graph) error {
 		// become ready.
 		s.propagateBlocked(graph)
 
-		if stop == "" && s.Budget > 0 && s.usage.PromptTokens+s.usage.CompletionTokens >= s.Budget {
+		if stop == "" && s.Budget > 0 && s.spentTokens() >= s.Budget {
 			stop = fmt.Sprintf("global budget exhausted: %d of %d tokens spent",
-				s.usage.PromptTokens+s.usage.CompletionTokens, s.Budget)
+				s.spentTokens(), s.Budget)
 		}
 		if stop == "" {
 			for _, id := range s.ready(graph) {
@@ -450,12 +468,12 @@ func (s *Scheduler) apply(graph *plan.Graph, nodeID int, outcome *Outcome, err e
 	// has been decided; only the spend is real and must not be lost.
 	if node.State != plan.StateRunning {
 		if outcome != nil {
-			s.usage.merge(outcome.Usage)
+			s.addUsage(outcome.Usage)
 		}
 		return
 	}
 	if outcome != nil {
-		s.usage.merge(outcome.Usage)
+		s.addUsage(outcome.Usage)
 		node.Turns = outcome.Turns
 		node.Tokens = outcome.Usage.PromptTokens + outcome.Usage.CompletionTokens
 		node.Cost = outcome.Usage.Cost

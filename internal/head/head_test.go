@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -14,6 +15,44 @@ import (
 	"github.com/Agent-Field/aforge-v2/internal/store"
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 )
+
+type headModalities bool
+
+func (supported headModalities) Supports(_, direction, modality string) bool {
+	return bool(supported) && direction == "input" && modality == "image"
+}
+
+func TestHeadRoutesImagePartAndPreservesAttachmentOnCommand(t *testing.T) {
+	graph := openHeadStore(t)
+	path := filepath.Join(t.TempDir(), "diagram.png")
+	if err := os.WriteFile(path, []byte("pixels"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	client := &fakeClient{responses: []string{
+		`{"reply":"I’ll inspect that.","command":{"kind":"splice","target":"","instruction":"inspect the diagram"}}`,
+	}}
+	user, err := graph.PostMessage(store.Message{
+		SessionID: "vision", Role: store.RoleUser, Body: "inspect the diagram", Attachments: []string{path},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	head := New(client, graph).WithImageInput(headModalities(true), "vision/model")
+	if err := head.answer(context.Background(), user); err != nil {
+		t.Fatal(err)
+	}
+	seenImage := false
+	for _, part := range client.seen[1].Content {
+		seenImage = seenImage || part.Type == "image_url" && part.ImageURL != nil && strings.HasPrefix(part.ImageURL.URL, "data:image/png;base64,")
+	}
+	if !seenImage {
+		t.Fatalf("head messages omitted image part: %+v", client.seen)
+	}
+	commands, err := graph.PendingCommands(10)
+	if err != nil || len(commands) != 1 || len(commands[0].Attachments) != 1 || commands[0].Attachments[0] != path {
+		t.Fatalf("commands = %+v err=%v", commands, err)
+	}
+}
 
 type fakeClient struct {
 	mutex     sync.Mutex

@@ -193,6 +193,7 @@ func (r *Runner) runOne(ctx context.Context, node store.Node) {
 			SessionID: node.Provenance.SessionID,
 			Kind:      store.CommandSplice, Target: node.ID,
 			Instruction: node.Provenance.Intent,
+			Attachments: append([]string(nil), node.Provenance.Attachments...),
 		})
 	} else {
 		settleErr = r.graph.Complete(claim, summary)
