@@ -244,6 +244,11 @@ func (h *Head) answer(ctx context.Context, user store.Message) error {
 	} else if handled {
 		return nil
 	}
+	if handled, err := h.manageRedirect(user); err != nil {
+		return fmt.Errorf("serve head: manage redirection: %w", err)
+	} else if handled {
+		return nil
+	}
 
 	decision, err := h.route(ctx, user)
 	if err != nil {

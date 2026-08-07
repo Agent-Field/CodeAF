@@ -111,6 +111,10 @@ const (
 	CommandAmend CommandKind = "amend"
 	// CommandCancel withdraws work: Target names the subtree root to cancel.
 	CommandCancel CommandKind = "cancel"
+	// CommandRedirect carries the user's own words into a job already in
+	// flight: Target names its root, Instruction is what they said, verbatim.
+	// The remaining plan is revised against it and the running leaves are told.
+	CommandRedirect CommandKind = "redirect"
 	// CommandPause/Resume operate on a journal-derived scheduler hold rather
 	// than inventing a presentation-only node status.
 	CommandPause        CommandKind = "pause"
@@ -864,7 +868,7 @@ func validRole(role Role) bool {
 
 func validCommandKind(kind CommandKind) bool {
 	switch kind {
-	case CommandSplice, CommandAmend, CommandCancel, CommandPause, CommandResume,
+	case CommandSplice, CommandAmend, CommandCancel, CommandRedirect, CommandPause, CommandResume,
 		CommandReprioritize, CommandRestart, CommandCharterRatify,
 		CommandCharterPause, CommandCharterRetire, CommandCharterCadence, CommandCharterOnce,
 		CommandCharterFire, CommandCharterDecline, CommandCharterAlways, CommandCharterNever, CommandCharterProbation,
@@ -903,7 +907,7 @@ func validateNodeCommand(tx *sql.Tx, kind CommandKind, target string) error {
 		return fmt.Errorf("%s target %q is not executable work: %w", kind, target, ErrInvalid)
 	}
 	switch kind {
-	case CommandCancel, CommandPause, CommandAmend:
+	case CommandCancel, CommandPause, CommandAmend, CommandRedirect:
 		if status != Pending && status != Claimed && status != Running {
 			return fmt.Errorf("%s target %q is %s: %w", kind, target, status, ErrInvalid)
 		}

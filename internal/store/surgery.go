@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"database/sql"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -11,6 +12,18 @@ import (
 	"strings"
 	"time"
 	"unicode"
+)
+
+const (
+	// SurgerySpendGateUSD is recorded spend above which cancel/restart needs
+	// explicit consent. It lives here rather than with the conversational head
+	// because the same loss threshold now guards a second path: revision that
+	// would throw away a leaf already running.
+	SurgerySpendGateUSD = 0.25
+	// SurgeryRuntimeGate is live runtime above which cancellation needs consent.
+	SurgeryRuntimeGate = 5 * time.Minute
+	// SurgeryCascadeGateNodes gates every operation that affects a larger tree.
+	SurgeryCascadeGateNodes = 3
 )
 
 // NodeControl is the scheduler-visible part of conversational surgery.
@@ -420,6 +433,34 @@ func (s *Store) SearchSurgeryTargets(reference string, includeLeaves bool, allow
 		}
 	}
 	return results, nil
+}
+
+// RedirectOptionValue encodes one answer to a redirection askback. Both ends
+// of the option are somewhere else — the head asks which job the user meant,
+// the reconciler asks whether a running leaf may be thrown away — so the shape
+// belongs with the durable option rather than with either speaker.
+func RedirectOptionValue(action, target, message string) string {
+	return strings.Join([]string{"redirect", action, target,
+		base64.RawURLEncoding.EncodeToString([]byte(message))}, ":")
+}
+
+// DecodeRedirectOption reverses RedirectOptionValue. A value from any other
+// family decodes as not-ok rather than as an error.
+func DecodeRedirectOption(value string) (action, target, message string, ok bool) {
+	parts := strings.SplitN(value, ":", 4)
+	if len(parts) != 4 || parts[0] != "redirect" {
+		return "", "", "", false
+	}
+	switch parts[1] {
+	case "apply", "new", "cancel", "keep":
+	default:
+		return "", "", "", false
+	}
+	decoded, err := base64.RawURLEncoding.DecodeString(parts[3])
+	if err != nil {
+		return "", "", "", false
+	}
+	return parts[1], parts[2], string(decoded), true
 }
 
 func isSurgeryJobRoot(node Node, byID map[string]Node) bool {
