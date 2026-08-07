@@ -86,6 +86,7 @@ const (
 	EventMessagePosted    EventKind = "message_posted"
 	EventCommandRequested EventKind = "command_requested"
 	EventCommandResolved  EventKind = "command_resolved"
+	EventSeenTouched      EventKind = "seen_touched"
 
 	// Usage and surprise are journaled separately because a planned leaf's
 	// prediction becomes known when the complete plan lands, after its spend.
@@ -403,7 +404,7 @@ func Open(path string) (*Store, error) {
 	if _, err := db.Exec(surpriseSchema); err != nil {
 		return closeOnError(fmt.Errorf("initialize surprise schema: %w", err))
 	}
-	if _, err := db.Exec(charterSchema); err != nil {
+	if err := migrateCharterSchema(db); err != nil {
 		return closeOnError(fmt.Errorf("initialize charter schema: %w", err))
 	}
 	if _, err := db.Exec(factsSchema); err != nil {
@@ -414,9 +415,6 @@ func Open(path string) (*Store, error) {
 	}
 	if _, err := db.Exec(retrospectiveSchema); err != nil {
 		return closeOnError(fmt.Errorf("initialize retrospective schema: %w", err))
-	}
-	if _, err := db.Exec(charterSchema); err != nil {
-		return closeOnError(fmt.Errorf("initialize charter schema: %w", err))
 	}
 	if err := migrateFactsSchema(db); err != nil {
 		return closeOnError(fmt.Errorf("migrate facts schema: %w", err))

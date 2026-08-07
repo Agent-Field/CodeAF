@@ -1,11 +1,82 @@
 package store
 
 import (
+	"database/sql"
 	"encoding/json"
 	"path/filepath"
 	"reflect"
 	"testing"
 )
+
+func TestLegacyCharterSchemaMigratesFromJournal(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "legacy-charters.db")
+	graph := openTestStore(t, path)
+	spec := CharterSpec{
+		Invariant: "Whenever a backend PR opens, review it.",
+		Watch: CharterWatch{
+			Kind: WatchCron, Cadence: "every morning", Schedule: "0 9 * * *",
+		},
+		Sentinel: "Is there a new backend PR?",
+		Action:   "Review the new backend PR.",
+		Rails: CharterRails{
+			EstimatedCostUSD: 0.08, MaxPerDay: 10,
+			MaxPerDayJustification: "caps the default worst day at about $0.80",
+			Expiry:                 "never",
+		},
+	}
+	created, err := graph.DraftCharter("charter-legacy", "session-1", 0, spec)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := graph.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	db, err := sql.Open("sqlite", path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = db.Exec(`
+		DROP TABLE charters_fts;
+		DROP INDEX charters_due;
+		DROP TABLE charters;
+		CREATE TABLE charters (
+			id TEXT PRIMARY KEY,
+			session_id TEXT NOT NULL DEFAULT '',
+			status TEXT NOT NULL CHECK (status IN ('draft', 'active', 'paused', 'retired')),
+			invariant TEXT NOT NULL,
+			watch_kind TEXT NOT NULL,
+			cadence TEXT NOT NULL,
+			schedule TEXT NOT NULL,
+			sentinel TEXT NOT NULL,
+			action TEXT NOT NULL,
+			estimated_cost_usd REAL NOT NULL,
+			max_per_day INTEGER NOT NULL,
+			max_per_day_justification TEXT NOT NULL,
+			expiry TEXT NOT NULL,
+			source_command_seq INTEGER NOT NULL DEFAULT 0,
+			created_seq INTEGER NOT NULL REFERENCES events(seq),
+			updated_seq INTEGER NOT NULL REFERENCES events(seq),
+			created_at TEXT NOT NULL
+		);
+	`)
+	if closeErr := db.Close(); err != nil || closeErr != nil {
+		t.Fatalf("install legacy schema: exec=%v close=%v", err, closeErr)
+	}
+
+	graph, err = Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer graph.Close()
+	migrated, found, err := graph.CharterByID(created.ID)
+	if err != nil || !found {
+		t.Fatalf("migrated charter found=%t err=%v", found, err)
+	}
+	if migrated.Status != CharterDraft || !reflect.DeepEqual(migrated.Spec, spec) {
+		t.Fatalf("migrated charter = %+v", migrated)
+	}
+}
 
 func TestCharterLifecycleIsJournaledAndRebuildable(t *testing.T) {
 	graph := openTestStore(t, filepath.Join(t.TempDir(), "charters.db"))

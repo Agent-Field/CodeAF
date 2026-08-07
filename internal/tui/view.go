@@ -886,6 +886,7 @@ type chatExpandAction uint8
 const (
 	chatExpandMessage chatExpandAction = iota
 	chatExpandReceipts
+	chatExpandBrief
 )
 
 // chatExpandRow is one explicit disclosure line in the thread. Keeping these
@@ -996,6 +997,11 @@ func (m *Model) renderMessages() string {
 				start: line, end: line + lipgloss.Height(block) - 1, cardID: item.card.ID,
 			})
 			appendBlock(block)
+			continue
+		}
+		if item.message.Brief != nil {
+			flushGroup()
+			appendBlock(m.renderBrief(item.message, max(8, m.chat.Width-2), line, true))
 			continue
 		}
 		voice := messageVoice(item.message)

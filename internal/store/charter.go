@@ -15,6 +15,7 @@ import (
 type CharterStatus string
 
 const (
+	CharterDraft    CharterStatus = "draft"
 	CharterProposed CharterStatus = "proposed"
 	CharterActive   CharterStatus = "active"
 	CharterPaused   CharterStatus = "paused"
@@ -141,6 +142,13 @@ type CharterRails struct {
 	PerFiringBudgetUSD float64    `json:"per_firing_budget_usd"`
 	MaxFiringsPerDay   int        `json:"max_firings_per_day"`
 	ExpiresAt          *time.Time `json:"expires_at,omitempty"`
+
+	// Legacy conversational charter fields remain in the same journaled object
+	// while the standing-head API is bridged onto the first-class watch engine.
+	EstimatedCostUSD       float64 `json:"estimated_cost_usd,omitempty"`
+	MaxPerDay              int     `json:"max_per_day,omitempty"`
+	MaxPerDayJustification string  `json:"max_per_day_justification,omitempty"`
+	Expiry                 string  `json:"expiry,omitempty"`
 }
 
 // Ratification records who accepted the standing-spend consequence.
@@ -176,6 +184,12 @@ type Charter struct {
 	CreatedSeq      int64
 	UpdatedSeq      int64
 
+	// Compatibility projection for the conversational standing-intent API.
+	SessionID        string
+	Spec             CharterSpec
+	SourceCommandSeq int64
+	CreatedAt        time.Time
+
 	guardrails CharterRails
 }
 
@@ -203,7 +217,7 @@ func NewCharter(id, invariant string, watch WatchSpec, sentinelHint string,
 	if err := validateRails(rails); err != nil {
 		return Charter{}, fmt.Errorf("new charter: %w", err)
 	}
-	if !validCharterStatus(status) || status == CharterRetired {
+	if !validCharterStatus(status) || status == CharterDraft || status == CharterRetired {
 		return Charter{}, fmt.Errorf("new charter: %w: invalid initial status %q", ErrInvalid, status)
 	}
 	if status != CharterProposed && !validRatification(ratification) {
@@ -302,7 +316,8 @@ func validateCron(schedule CronSchedule) error {
 }
 
 func validCharterStatus(status CharterStatus) bool {
-	return status == CharterProposed || status == CharterActive || status == CharterPaused || status == CharterRetired
+	return status == CharterDraft || status == CharterProposed || status == CharterActive ||
+		status == CharterPaused || status == CharterRetired
 }
 
 func validRatification(r Ratification) bool {
@@ -312,12 +327,13 @@ func validRatification(r Ratification) bool {
 const charterSchema = `
 CREATE TABLE IF NOT EXISTS charters (
     id               TEXT PRIMARY KEY,
+	 session_id       TEXT NOT NULL DEFAULT '',
     invariant        TEXT NOT NULL,
     watch             JSON NOT NULL CHECK (json_valid(watch)),
     sentinel_hint     TEXT NOT NULL DEFAULT '',
     action            JSON NOT NULL CHECK (json_valid(action)),
     rails             JSON NOT NULL CHECK (json_valid(rails)),
-    status            TEXT NOT NULL CHECK (status IN ('proposed', 'active', 'paused', 'retired')),
+	 status            TEXT NOT NULL CHECK (status IN ('draft', 'proposed', 'active', 'paused', 'retired')),
     ratification      JSON NOT NULL CHECK (json_valid(ratification)),
     proposal_shape    TEXT NOT NULL DEFAULT '',
     last_wake         TEXT,
@@ -331,9 +347,15 @@ CREATE TABLE IF NOT EXISTS charters (
     graph_day         TEXT NOT NULL DEFAULT '',
     graph_triggered   INTEGER NOT NULL DEFAULT 0 CHECK (graph_triggered IN (0, 1)),
     created_seq       INTEGER NOT NULL REFERENCES events(seq),
-    updated_seq       INTEGER NOT NULL REFERENCES events(seq)
+	 updated_seq       INTEGER NOT NULL REFERENCES events(seq),
+	 legacy_spec      JSON NOT NULL DEFAULT 'null' CHECK (json_valid(legacy_spec)),
+	 source_command_seq INTEGER NOT NULL DEFAULT 0,
+	 created_at       TEXT NOT NULL DEFAULT ''
 );
 CREATE INDEX IF NOT EXISTS charters_due ON charters (status, next_due, created_seq);
+CREATE VIRTUAL TABLE IF NOT EXISTS charters_fts USING fts5(
+	charter_id UNINDEXED, invariant, tokenize='porter unicode61'
+);
 `
 
 type charterRecord struct {
@@ -467,24 +489,7 @@ func charterToRecord(c Charter) charterRecord {
 }
 
 func applyCharterCreated(tx *sql.Tx, payload charterRecord, seq int64, at time.Time) error {
-	watch, _ := json.Marshal(payload.Watch)
-	action, _ := json.Marshal(payload.Action)
-	encodedRails, _ := json.Marshal(payload.Rails)
-	ratification, _ := json.Marshal(payload.Ratification)
-	graphCursor := payload.GraphCursor
-	if payload.Watch.Kind == WatchGraph && graphCursor == 0 {
-		graphCursor = seq
-	}
-	if _, err := tx.Exec(`
-		INSERT INTO charters (
-		    id, invariant, watch, sentinel_hint, action, rails, status, ratification,
-		    proposal_shape, last_wake, next_due, wake_seq, wake_pending, sentinel_yes, wake_evidence,
-		    file_fingerprint, graph_cursor, graph_day, graph_triggered, created_seq, updated_seq
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		payload.ID, payload.Invariant, string(watch), payload.SentinelHint, string(action), string(encodedRails),
-		payload.Status, string(ratification), payload.ProposalShape, nullTime(payload.LastWake),
-		nullTime(payload.NextDue), payload.WakeSeq, payload.WakePending, payload.SentinelYes, payload.WakeEvidence,
-		payload.FileFingerprint, graphCursor, payload.GraphDay, payload.GraphTriggered, seq, seq); err != nil {
+	if err := applyCharterCreatedView(tx, payload, seq, at); err != nil {
 		return err
 	}
 	origin := payload.Ratification.Origin
@@ -504,6 +509,34 @@ func applyCharterCreated(tx *sql.Tx, payload charterRecord, seq int64, at time.T
 		return err
 	}
 	return refreshGraphFTS(tx, payload.ID)
+}
+
+func applyCharterCreatedView(tx *sql.Tx, payload charterRecord, seq int64, at time.Time) error {
+	watch, _ := json.Marshal(payload.Watch)
+	action, _ := json.Marshal(payload.Action)
+	encodedRails, _ := json.Marshal(payload.Rails)
+	ratification, _ := json.Marshal(payload.Ratification)
+	graphCursor := payload.GraphCursor
+	if payload.Watch.Kind == WatchGraph && graphCursor == 0 {
+		graphCursor = seq
+	}
+	if _, err := tx.Exec(`
+		INSERT INTO charters (
+		    id, session_id, invariant, watch, sentinel_hint, action, rails, status, ratification,
+		    proposal_shape, last_wake, next_due, wake_seq, wake_pending, sentinel_yes, wake_evidence,
+		    file_fingerprint, graph_cursor, graph_day, graph_triggered, created_seq, updated_seq, created_at
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		payload.ID, payload.Ratification.SessionID, payload.Invariant, string(watch), payload.SentinelHint, string(action), string(encodedRails),
+		payload.Status, string(ratification), payload.ProposalShape, nullTime(payload.LastWake),
+		nullTime(payload.NextDue), payload.WakeSeq, payload.WakePending, payload.SentinelYes, payload.WakeEvidence,
+		payload.FileFingerprint, graphCursor, payload.GraphDay, payload.GraphTriggered, seq, seq, formatTime(at)); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(`INSERT INTO charters_fts (charter_id, invariant) VALUES (?, ?)`,
+		payload.ID, payload.Invariant); err != nil {
+		return err
+	}
+	return nil
 }
 
 func firstCharterLine(value string) string {
@@ -535,18 +568,19 @@ func (s *Store) Charter(id string) (Charter, bool, error) {
 }
 
 const charterColumns = `
-    id, invariant, watch, sentinel_hint, action, rails, status, ratification,
+	 id, session_id, invariant, watch, sentinel_hint, action, rails, status, ratification,
     proposal_shape, last_wake, next_due, wake_seq, wake_pending, sentinel_yes, wake_evidence,
-    file_fingerprint, graph_cursor, graph_day, graph_triggered, created_seq, updated_seq`
+	 file_fingerprint, graph_cursor, graph_day, graph_triggered, created_seq, updated_seq,
+	 legacy_spec, source_command_seq, created_at`
 
 func scanCharter(scanner rowScanner) (Charter, error) {
 	var c Charter
-	var watch, action, rails, ratification string
+	var watch, action, rails, ratification, legacySpec, createdAt string
 	var lastWake, nextDue sql.NullString
-	if err := scanner.Scan(&c.ID, &c.Invariant, &watch, &c.SentinelHint, &action, &rails,
+	if err := scanner.Scan(&c.ID, &c.SessionID, &c.Invariant, &watch, &c.SentinelHint, &action, &rails,
 		&c.Status, &ratification, &c.ProposalShape, &lastWake, &nextDue, &c.WakeSeq,
 		&c.WakePending, &c.SentinelYes, &c.WakeEvidence, &c.FileFingerprint, &c.GraphCursor, &c.GraphDay,
-		&c.GraphTriggered, &c.CreatedSeq, &c.UpdatedSeq); err != nil {
+		&c.GraphTriggered, &c.CreatedSeq, &c.UpdatedSeq, &legacySpec, &c.SourceCommandSeq, &createdAt); err != nil {
 		return Charter{}, err
 	}
 	if err := json.Unmarshal([]byte(watch), &c.Watch); err != nil {
@@ -561,7 +595,20 @@ func scanCharter(scanner rowScanner) (Charter, error) {
 	if err := json.Unmarshal([]byte(ratification), &c.Ratification); err != nil {
 		return Charter{}, err
 	}
+	if strings.TrimSpace(legacySpec) != "" && strings.TrimSpace(legacySpec) != "null" {
+		if err := json.Unmarshal([]byte(legacySpec), &c.Spec); err != nil {
+			return Charter{}, err
+		}
+	} else {
+		c.Spec = legacySpecFromCharter(c)
+	}
 	var err error
+	if createdAt != "" {
+		c.CreatedAt, err = parseTime(createdAt)
+		if err != nil {
+			return Charter{}, err
+		}
+	}
 	if lastWake.Valid {
 		c.LastWake, err = parseTime(lastWake.String)
 		if err != nil {
@@ -577,8 +624,8 @@ func scanCharter(scanner rowScanner) (Charter, error) {
 	return c, nil
 }
 
-// Charters lists first-class standing objects in creation order.
-func (s *Store) Charters() ([]Charter, error) {
+// allCharters lists first-class standing objects in creation order.
+func (s *Store) allCharters() ([]Charter, error) {
 	rows, err := s.db.Query(`SELECT ` + charterColumns + ` FROM charters ORDER BY created_seq, id`)
 	if err != nil {
 		return nil, fmt.Errorf("list charters: %w", err)
@@ -665,6 +712,13 @@ func applyCharterRevision(tx *sql.Tx, payload charterRecord, seq int64) error {
 	brief := bounded("Charter: "+payload.Invariant, MaxDigestBytes)
 	if _, err := tx.Exec(`UPDATE nodes SET brief=?, title=?, summary=?, fold_digest=?, updated_seq=? WHERE id=?`,
 		brief, firstCharterLine(payload.Invariant), brief, brief, seq, payload.ID); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(`DELETE FROM charters_fts WHERE charter_id=?`, payload.ID); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(`INSERT INTO charters_fts (charter_id, invariant) VALUES (?, ?)`,
+		payload.ID, payload.Invariant); err != nil {
 		return err
 	}
 	return refreshGraphFTS(tx, payload.ID)

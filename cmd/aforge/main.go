@@ -87,6 +87,7 @@ Environment:
   AFORGE_MAX_DEPTH     2   how many levels of decomposition
   AFORGE_NODE_BUDGET   60  hard ceiling on total nodes
   AFORGE_DAILY_BUDGET  20.0  daily dollar rail (0 = unlimited)
+  AFORGE_BRIEF_AFTER   4h  minimum absence before an arrival brief (0 = always)
   AFORGE_PREAUTHORIZE_SPEND  1 raises the rail without a headless stdin prompt
   AFORGE_PROFILE_DIR   where measured behaviour is kept (default ~/.aforge)`
 

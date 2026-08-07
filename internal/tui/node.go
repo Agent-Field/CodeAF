@@ -973,6 +973,10 @@ func (m *Model) activateChatLine(line int) bool {
 			m.receiptsExpanded = !m.receiptsExpanded
 		case chatExpandMessage:
 			m.expandedMessages[row.seq] = !m.expandedMessages[row.seq]
+		case chatExpandBrief:
+			m.selectedCardID = ""
+			m.selectedBriefSeq = row.seq
+			m.briefExpanded[row.seq] = !m.briefExpanded[row.seq]
 		}
 		offset := m.chat.YOffset
 		m.refreshChat()
