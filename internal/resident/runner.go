@@ -384,13 +384,25 @@ func (r *Runner) runOne(ctx context.Context, node store.Node) {
 		return
 	}
 	result.Summary = r.applyServiceRequests(ctx, node, result.Summary, result.ServiceRequests)
+	// The summary is settled on before anything reads it. The sentinel reads
+	// this result now and the sweep reads the completed node's summary later,
+	// and those two have to be the same words: a substitution made after the
+	// sentinel had already looked is how a fan-out reports "no items" live and
+	// then unrolls a phantom one on the next tick.
+	summary := result.Summary
+	if strings.TrimSpace(summary) == "" {
+		summary = "finished with no summary"
+	}
 	// The craft sentinel reads this result before the node closes. Splicing
 	// while the landed leaf is still open keeps its job root open too, so no
 	// consumer can start against a plan that is one splice out of date. A
 	// failure here costs the splice, never the result: the resident's sweep
-	// re-derives the same move from the store on its next tick.
+	// re-derives the same move from the store on its next tick. What this leaf
+	// spent rides along because it is not journaled yet — the money gate is
+	// deciding whether to open work on the strength of the very landing that
+	// paid for it.
 	if r.craft != nil {
-		_, _ = r.craft.Settle(node, result.Summary)
+		_, _ = r.craft.Settle(node, summary, result.Cost)
 	}
 	// Spend is recorded before completion settles: a refused completion is
 	// still money spent, and the journal should say so.
@@ -400,10 +412,6 @@ func (r *Runner) runOne(ctx context.Context, node store.Node) {
 		CompletionTokens: result.CompletionTokens,
 		Cost:             result.Cost,
 	})
-	summary := result.Summary
-	if strings.TrimSpace(summary) == "" {
-		summary = "finished with no summary"
-	}
 	var settleErr error
 	if result.Promote && node.Group == ReflexGroup {
 		_, settleErr = r.graph.CompleteAndRequestFollowup(claim, summary, store.Command{

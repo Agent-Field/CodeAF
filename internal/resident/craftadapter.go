@@ -204,9 +204,13 @@ func craftStepIndex(workflow *craft.Workflow) (map[string]craft.Step, error) {
 	steps := make(map[string]craft.Step, len(workflow.Steps))
 	for _, step := range workflow.Steps {
 		id := strings.TrimSpace(step.ID)
-		if id == "" || craftSlug(id) != strings.ToLower(id) {
-			return nil, fmt.Errorf("compile craft %q: %w: step id %q is not a plain slug",
-				workflow.Name, store.ErrInvalid, step.ID)
+		// One id law, asked here in the same words the validator refuses a file
+		// in. Anything this rejects the parser has already rejected at save
+		// time; the check stays because CompileCraftAs is reachable with a
+		// Workflow that never passed through a file.
+		if !craft.ValidStepID(id) {
+			return nil, fmt.Errorf("compile craft %q: %w: step id %q is not a plain slug — %q would be",
+				workflow.Name, store.ErrInvalid, step.ID, craft.Slug(id))
 		}
 		if _, duplicate := steps[id]; duplicate {
 			return nil, fmt.Errorf("compile craft %q: %w: step %q is duplicated",
@@ -266,30 +270,16 @@ func craftStages(workflow *craft.Workflow, steps map[string]craft.Step) (map[str
 	return stages, nil
 }
 
-// craftParams fills the declared holes: the caller's values first, then the
-// file's own defaults, and a missing required param stops the run before it
-// costs anything.
+// craftParams fills the declared holes. The filling itself is the workflow's
+// own law — Fill — rather than a second copy of it here: recognition runs a
+// request through Fill before it ever reaches this compiler, and a param that
+// is optional with no default resolves to the empty string there while a second
+// implementation would leave the key absent and turn an optional param into an
+// unresolved reference. Two entry points, one law.
 func craftParams(workflow *craft.Workflow, params map[string]string) (map[string]string, error) {
-	filled := make(map[string]string, len(params)+len(workflow.Params))
-	for name, value := range params {
-		filled[strings.TrimSpace(name)] = value
-	}
-	for _, param := range workflow.Params {
-		name := strings.TrimSpace(param.Name)
-		if name == "" {
-			continue
-		}
-		if strings.TrimSpace(filled[name]) != "" {
-			continue
-		}
-		if strings.TrimSpace(param.Default) != "" {
-			filled[name] = param.Default
-			continue
-		}
-		if param.Required {
-			return nil, fmt.Errorf("compile craft %q: %w: required parameter %q was not given",
-				workflow.Name, store.ErrInvalid, name)
-		}
+	filled, err := workflow.Fill(params)
+	if err != nil {
+		return nil, fmt.Errorf("compile craft %q: %w: %s", workflow.Name, store.ErrInvalid, err)
 	}
 	return filled, nil
 }
@@ -510,60 +500,79 @@ func craftNodeID(prefix, step string) string {
 }
 
 func craftGenerationID(prefix, step, kind string, index int) string {
-	return fmt.Sprintf("%s%s%s%d", craftNodeID(prefix, step), craftIDMark, kind, index)
+	return craftChildID(craftNodeID(prefix, step), kind, index)
+}
+
+// craftChildID extends any craft node id with one more generation. Items are
+// minted from the node that LISTED them rather than from the compiled step, so
+// a repaired fan-out's items sit under the repair copy that produced them
+// instead of colliding with the previous round's. For a first-generation
+// fan-out the two readings are the same string, which is what keeps every id
+// already on a live graph byte-for-byte what it was.
+func craftChildID(nodeID, kind string, index int) string {
+	return fmt.Sprintf("%s%s%s%d", nodeID, craftIDMark, kind, index)
 }
 
 // craftNodeParts reads a craft node id back into its run prefix, step id, and
 // runtime generation. A generation of zero is the compiled node itself.
+//
+// It fails closed, the way an id parser that decides what a landed node MEANT
+// has to: a generation nobody mints — an unknown kind letter, a zero or
+// leading-zero index, a number too long to be an index — is not a craft node
+// this sentinel understands, and treating it as one routes a stranger's node
+// into a fan-out or a repair round.
 func craftNodeParts(id string) (prefix, step, kind string, index int, ok bool) {
 	parts := strings.Split(id, craftIDMark)
 	switch len(parts) {
 	case 2:
 		return parts[0], parts[1], "", 0, parts[0] != "" && parts[1] != ""
 	case 3:
-		generation := parts[2]
-		if len(generation) < 2 {
+		if parts[0] == "" || parts[1] == "" {
 			return "", "", "", 0, false
 		}
-		number := 0
-		for _, digit := range generation[1:] {
-			if digit < '0' || digit > '9' {
-				return "", "", "", 0, false
-			}
-			number = number*10 + int(digit-'0')
+		kind, index, ok := craftGenerationParts(parts[2])
+		if !ok {
+			return "", "", "", 0, false
 		}
-		return parts[0], parts[1], generation[:1], number, parts[0] != "" && parts[1] != ""
+		return parts[0], parts[1], kind, index, true
 	default:
 		return "", "", "", 0, false
 	}
 }
 
-// craftSlug reduces a name to what a node id may hold: lowercase
-// alphanumerics and single hyphens, and never the id separator.
+// craftGenerationDigits bounds an index. A fan cap and a round cap are both
+// single digits today; four leaves room for every ceiling this package could
+// grow without letting an id carry a number that overflows on the way in.
+const craftGenerationDigits = 4
+
+func craftGenerationParts(generation string) (kind string, index int, ok bool) {
+	if len(generation) < 2 || len(generation) > 1+craftGenerationDigits {
+		return "", 0, false
+	}
+	switch generation[:1] {
+	case craftItemGeneration, craftRoundGeneration:
+	default:
+		return "", 0, false
+	}
+	digits := generation[1:]
+	if digits[0] == '0' {
+		return "", 0, false
+	}
+	number := 0
+	for _, digit := range digits {
+		if digit < '0' || digit > '9' {
+			return "", 0, false
+		}
+		number = number*10 + int(digit-'0')
+	}
+	return generation[:1], number, true
+}
+
+// craftSlug reduces a name to what a node id may hold. The law itself lives in
+// the craft package, because the validator that refuses a file at save time and
+// the compiler that mints node ids from it have to be the same law.
 func craftSlug(name string) string {
-	name = strings.ToLower(strings.TrimSpace(name))
-	var slug strings.Builder
-	dash := false
-	for _, char := range name {
-		switch {
-		case char >= 'a' && char <= 'z', char >= '0' && char <= '9':
-			slug.WriteRune(char)
-			dash = false
-		default:
-			if slug.Len() > 0 && !dash {
-				slug.WriteByte('-')
-				dash = true
-			}
-		}
-		if slug.Len() >= 48 {
-			break
-		}
-	}
-	result := strings.Trim(slug.String(), "-")
-	if result == "" {
-		return "step"
-	}
-	return result
+	return craft.Slug(name)
 }
 
 // craftPrefix derives a reproducible id namespace from what the run is: the
