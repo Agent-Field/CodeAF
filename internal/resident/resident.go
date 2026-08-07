@@ -162,8 +162,12 @@ type Reconciler struct {
 	digestTerritory TerritoryDigestFunc
 	overrunPlan     OverrunPlanFunc
 	sentinel        SentinelFunc
+	composeBrief    BriefComposeFunc
 	proposeCharters bool
 	dailyBudgetUSD  float64
+	practiceEnabled bool
+	practiceBudget  float64
+	practiceIdle    time.Duration
 
 	mu                 sync.Mutex
 	watcherInitialized bool
@@ -223,6 +227,12 @@ func (r *Reconciler) Tick(ctx context.Context) error {
 	if err := r.initializeWatcher(); err != nil {
 		return fmt.Errorf("resident tick: initialize watcher: %w", err)
 	}
+	if err := r.expireQuestionsLocked(); err != nil {
+		return fmt.Errorf("resident tick: expire questions: %w", err)
+	}
+	if err := r.surfaceBlockingQuestionsLocked(""); err != nil {
+		return fmt.Errorf("resident tick: surface blocking questions: %w", err)
+	}
 
 	for {
 		commands, err := r.store.PendingCommands(commandBatchSize)
@@ -250,6 +260,9 @@ func (r *Reconciler) Tick(ctx context.Context) error {
 	if _, err := r.watchOnceLocked(ctx); err != nil {
 		return fmt.Errorf("resident tick: standing watches: %w", err)
 	}
+	if err := r.reconcileCharterOutcomes(); err != nil {
+		return fmt.Errorf("resident tick: charter outcomes: %w", err)
+	}
 
 	if err := ctx.Err(); err != nil {
 		return err
@@ -264,6 +277,9 @@ func (r *Reconciler) Tick(ctx context.Context) error {
 	r.reflectOnJobs(ctx)
 	r.promoteRecurringSkills(ctx)
 	r.syncSkillBins()
+	if err := r.practiceOnceLocked(ctx); err != nil {
+		return fmt.Errorf("resident tick: practice loop: %w", err)
+	}
 	return nil
 }
 
@@ -290,6 +306,15 @@ func (r *Reconciler) reconcileCommand(ctx context.Context, command store.Command
 	}
 
 	if err := r.store.ResolveCommand(command.Seq, outcome.status, outcome.result); err != nil {
+		return err
+	}
+	if outcome.asAgent {
+		_, err := r.askQuestionLocked(store.AgentQuestion{
+			SessionID: command.SessionID, Text: boundMessage(outcome.receipt),
+			OriginCharterID:  questionCharterOrigin(outcome.options),
+			OriginCommandSeq: command.Seq, Urgency: store.QuestionBlocking,
+			Options: outcome.options,
+		})
 		return err
 	}
 	if strings.TrimSpace(outcome.receipt) == "" {
@@ -326,8 +351,9 @@ func (r *Reconciler) applyCommand(ctx context.Context, command store.Command) (c
 	case store.CommandCancel:
 		return r.cancel(ctx, command)
 	case store.CommandCharterRatify, store.CommandCharterPause, store.CommandCharterRetire,
-		store.CommandCharterCadence, store.CommandCharterOnce:
-		return r.applyCharterCommand(command)
+		store.CommandCharterCadence, store.CommandCharterOnce, store.CommandCharterFire,
+		store.CommandCharterDecline, store.CommandCharterAlways, store.CommandCharterNever, store.CommandCharterProbation:
+		return r.applyCharterCommand(ctx, command)
 	case store.CommandAmend:
 		const reason = "amend is not implemented yet; cancel and re-ask, or splice an addition"
 		return commandOutcome{
@@ -698,7 +724,9 @@ func (r *Reconciler) announceTransitions(ctx context.Context) error {
 					return err
 				}
 				r.recordForNarration(byID, event)
-				if ok && node.Provenance.SessionID != "" {
+				practice := ok && node.Group == store.PracticeGroup &&
+					node.Provenance.Origin == store.OriginSelf
+				if ok && (node.Provenance.SessionID != "" || practice) {
 					if event.Kind == store.EventNodeFailed {
 						r.distillJob(ctx, node, true)
 					} else if node.Parent == store.RootID && !r.reflexPromoted(node) {
@@ -771,7 +799,10 @@ func (r *Reconciler) announceNode(event store.Event) error {
 		Body:      boundMessage(body),
 		NodeID:    node.ID,
 	})
-	return err
+	if err != nil {
+		return err
+	}
+	return r.surfaceNaturalQuestionLocked(node.Provenance.SessionID)
 }
 
 func (r *Reconciler) reflexPromoted(node store.Node) bool {
@@ -953,6 +984,7 @@ func (r *Reconciler) distillJob(ctx context.Context, node store.Node, failed boo
 	}
 	trial, isTrial := r.trialFact(node)
 	outcome := node.Summary
+	revealedGap := failed
 	if failed {
 		outcome = node.Error
 	}
@@ -960,10 +992,12 @@ func (r *Reconciler) distillJob(ctx context.Context, node store.Node, failed boo
 	// preference signal there is: the gap between what was delivered then and
 	// what was asked now is the user's actual standard, stated in actions.
 	if prior := r.continuitySources(node); prior != "" {
+		revealedGap = true
 		outcome += "\n\n[This job continued or revised earlier delivered work:\n" + prior +
 			"When the new instruction reworks an earlier delivery, the difference between them is evidence of the user's real standard — record the standard, not the episode.]"
 	}
 	if gate, ok, err := r.store.DeliveryGateFor(node.ID); err == nil && ok && !gate.Pass {
+		revealedGap = true
 		ending := "The one polish pass did not close it."
 		if gate.PolishClosed {
 			ending = "The one polish pass closed it."
@@ -986,6 +1020,10 @@ func (r *Reconciler) distillJob(ctx context.Context, node store.Node, failed boo
 	}
 	trialConsumed := false
 	for _, fact := range facts {
+		if fact.Kind == store.FactQuestion &&
+			(node.Provenance.Origin != store.OriginUser || !revealedGap) {
+			continue
+		}
 		if isTrial && fact.Replaces == trial.Seq {
 			if !trialConsumed && r.recordTrialVerdict(node, trial, fact) == nil {
 				trialConsumed = true
@@ -1080,6 +1118,9 @@ func (r *Reconciler) recordInconclusiveTrial(node store.Node, trial store.Fact) 
 }
 
 func (r *Reconciler) recordLearnedFact(nodeID string, learned Learned) (store.Fact, error) {
+	if learned.Kind == store.FactQuestion {
+		return r.store.RecordQuestion(nodeID, learned.Scope, clipFactBody(learned.Body))
+	}
 	if learned.Kind == store.FactUnsettled {
 		if learned.Unsettled == nil {
 			return store.Fact{}, fmt.Errorf("record learned fact: unsettled fact has no pair")

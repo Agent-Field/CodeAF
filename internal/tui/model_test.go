@@ -13,15 +13,17 @@ import (
 )
 
 type fakeBackend struct {
-	mu       sync.Mutex
-	messages []store.Message
-	snapshot store.Snapshot
-	pending  []store.Command
-	commands []store.Command
-	usage    store.TotalUsage
-	jobUsage map[string]store.JobUsage
-	posted   []store.Message
-	postErr  error
+	mu                sync.Mutex
+	messages          []store.Message
+	snapshot          store.Snapshot
+	pending           []store.Command
+	commands          []store.Command
+	usage             store.TotalUsage
+	jobUsage          map[string]store.JobUsage
+	posted            []store.Message
+	agentQuestions    []store.AgentQuestion
+	surfacedQuestions []int64
+	postErr           error
 }
 
 type fakeCommander struct {
@@ -203,6 +205,92 @@ func (f *fakeBackend) TopLevelJobUsage() (map[string]store.JobUsage, error) {
 		result[jobID] = usage
 	}
 	return result, nil
+}
+
+func (f *fakeBackend) PendingQuestions(sessionID string, limit int) ([]store.AgentQuestion, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	var questions []store.AgentQuestion
+	for _, question := range f.agentQuestions {
+		if question.SessionID == sessionID && question.Status == store.QuestionPending {
+			questions = append(questions, question)
+			if limit > 0 && len(questions) == limit {
+				break
+			}
+		}
+	}
+	return questions, nil
+}
+
+func (f *fakeBackend) SurfaceQuestion(seq int64) (store.Message, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	for index, question := range f.agentQuestions {
+		if question.Seq != seq || question.Status != store.QuestionPending {
+			continue
+		}
+		message := store.Message{
+			Seq: int64(len(f.messages) + 1), Time: time.Now(), SessionID: question.SessionID,
+			Role: store.RoleAgent, Body: question.Text, NodeID: question.OriginNodeID,
+			CommandSeq: question.OriginCommandSeq, QuestionSeq: question.Seq, Options: question.Options,
+		}
+		f.agentQuestions[index].Status = store.QuestionAsked
+		f.surfacedQuestions = append(f.surfacedQuestions, seq)
+		f.messages = append(f.messages, message)
+		return message, nil
+	}
+	return store.Message{}, store.ErrNotFound
+}
+
+func TestAgentQuestionDockExpandsAndSurfacesWithoutInterruptingTyping(t *testing.T) {
+	backend := &fakeBackend{agentQuestions: []store.AgentQuestion{
+		{Seq: 10, SessionID: "dock-questions", Text: "Use a table or bullets?", Urgency: store.QuestionWhenever, Status: store.QuestionPending},
+		{Seq: 11, SessionID: "dock-questions", Text: "Keep the appendix?", Urgency: store.QuestionNextNaturalMoment, Status: store.QuestionPending},
+	}}
+	model := New(backend, "dock-questions")
+	model.input.SetValue("draft answer in progress")
+	model.applyPoll(model.poll()().(pollResultMsg))
+	if !model.inputFocused || model.input.Value() != "draft answer in progress" {
+		t.Fatalf("question poll interrupted typing: focused=%t value=%q", model.inputFocused, model.input.Value())
+	}
+	collapsed := model.renderActivityBar()
+	if !strings.Contains(collapsed, "?") || !strings.Contains(collapsed, "2 questions waiting") ||
+		strings.Contains(collapsed, "Use a table") {
+		t.Fatalf("collapsed question dock = %q", collapsed)
+	}
+
+	_, _ = model.Update(tea.KeyMsg{Type: tea.KeyTab})
+	if model.focus != focusQuestions || model.input.Value() != "draft answer in progress" {
+		t.Fatalf("question focus lost draft: focus=%v value=%q", model.focus, model.input.Value())
+	}
+	_, _ = model.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	expanded := model.renderActivityBar()
+	if !model.questionDockExpanded || !strings.Contains(expanded, "Use a table or bullets?") ||
+		!strings.Contains(expanded, "Keep the appendix?") {
+		t.Fatalf("expanded question dock = %q", expanded)
+	}
+	_, _ = model.Update(tea.KeyMsg{Type: tea.KeyDown})
+	_, surface := model.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	if surface == nil {
+		t.Fatal("selecting a queued question did not return a surface command")
+	}
+	_, _ = model.Update(surface())
+	if len(backend.surfacedQuestions) != 1 || backend.surfacedQuestions[0] != 11 {
+		t.Fatalf("surfaced questions = %v", backend.surfacedQuestions)
+	}
+	if !model.inputFocused || model.input.Value() != "draft answer in progress" || model.answeringQuestionSeq != 11 {
+		t.Fatalf("inline answer state: focused=%t value=%q question=%d",
+			model.inputFocused, model.input.Value(), model.answeringQuestionSeq)
+	}
+	model.input.SetValue("Keep it.")
+	_, post := model.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	if post == nil {
+		t.Fatal("inline answer did not post")
+	}
+	_, _ = model.Update(post())
+	if got := backend.posted[len(backend.posted)-1]; got.QuestionSeq != 11 || got.Body != "Keep it." {
+		t.Fatalf("referenced answer = %+v", got)
+	}
 }
 
 func TestCardsDeriveFromSeededStore(t *testing.T) {

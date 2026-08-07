@@ -179,6 +179,9 @@ func (s *Store) Complete(claim Claim, summary string) error {
 	if err := refreshGraphFTS(tx, claim.ID); err != nil {
 		return fmt.Errorf("index completion %q: %w", claim.ID, err)
 	}
+	if err := recordSelfReceipt(tx, claim.ID); err != nil {
+		return fmt.Errorf("receipt for completion %q: %w", claim.ID, err)
+	}
 	if err := tx.Commit(); err != nil {
 		return fmt.Errorf("complete %q: %w", claim.ID, err)
 	}
@@ -238,6 +241,9 @@ func (s *Store) CompleteAndRequestFollowup(claim Claim, summary string, command 
 	if err := refreshGraphFTS(tx, claim.ID); err != nil {
 		return Command{}, fmt.Errorf("index completion %q with follow-up: %w", claim.ID, err)
 	}
+	if err := recordSelfReceipt(tx, claim.ID); err != nil {
+		return Command{}, fmt.Errorf("receipt for completion %q with follow-up: %w", claim.ID, err)
+	}
 
 	payload := commandPayload{
 		SessionID: command.SessionID, Kind: command.Kind, Target: command.Target,
@@ -288,6 +294,9 @@ func (s *Store) Fail(claim Claim, message string) error {
 	}
 	if _, err := tx.Exec(`UPDATE nodes SET finished_at = ?, updated_seq = ? WHERE id = ?`, formatTime(at), seq, claim.ID); err != nil {
 		return fmt.Errorf("materialize failure %q: %w", claim.ID, err)
+	}
+	if err := recordSelfReceipt(tx, claim.ID); err != nil {
+		return fmt.Errorf("receipt for failure %q: %w", claim.ID, err)
 	}
 	if err := tx.Commit(); err != nil {
 		return fmt.Errorf("fail %q: %w", claim.ID, err)

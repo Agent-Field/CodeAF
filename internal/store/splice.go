@@ -109,8 +109,8 @@ func normalizeSubtree(parent string, subtree Subtree, provenance Provenance) (sp
 	if provenance.TrialOf < 0 {
 		return splicedPayload{}, fmt.Errorf("splice: %w: negative trial fact sequence", ErrInvalid)
 	}
-	if provenance.Origin != OriginTrigger && strings.TrimSpace(provenance.CharterID) != "" {
-		return splicedPayload{}, fmt.Errorf("splice: %w: charter pointer requires trigger origin", ErrInvalid)
+	if provenance.Origin == OriginUser && strings.TrimSpace(provenance.CharterID) != "" {
+		return splicedPayload{}, fmt.Errorf("splice: %w: charter pointer requires trigger or self origin", ErrInvalid)
 	}
 	if len(subtree.Nodes) == 0 {
 		return splicedPayload{}, fmt.Errorf("splice: %w: empty subtree", ErrInvalid)

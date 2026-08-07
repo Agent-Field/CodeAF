@@ -33,6 +33,15 @@ the card, never breaking the conversation's flow. (The narrator's existing
 doctrine — milestone-driven, debounced, failures interrupt — is exactly
 this; the card is where its lines now land.)
 
+Questions the agent can save do not spend that interruption budget. They are
+journaled with their origin and urgency, and pending non-blocking questions
+sit in a slim `?` dock row. A blocking question still speaks immediately;
+one `next-natural-moment` question may follow a session attach or settled
+delivery; a `whenever` question speaks only when the user selects it. Opening
+the dock is inline disclosure, never a modal, and never steals the active
+input. Answers reference and resolve the journaled question so later memory
+and distillation can consume the exchange.
+
 **Rejected:** per-message job tags in the stream (colored glyph prefixes).
 Attribution by decoration still leaves N interleaved monologues; the reader
 does the grouping in their head. Cards do the grouping in the interface.

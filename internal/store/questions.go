@@ -21,6 +21,7 @@ func (s *Store) PendingQuestion(sessionID string, beforeSeq int64) (Message, boo
 		FROM messages q
 		WHERE q.session_id = ? AND q.role = ? AND q.seq < ?
 		  AND json_array_length(q.options) > 0
+		  AND q.question_seq = 0
 		  AND NOT EXISTS (
 		      SELECT 1 FROM messages u
 		      WHERE u.session_id = q.session_id AND u.role = ?

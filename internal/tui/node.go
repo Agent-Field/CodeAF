@@ -754,7 +754,7 @@ func (m *Model) updateMouseClick(x, y int) (tea.Cmd, bool) {
 		return nil, true
 	}
 	if m.activityBarBounds.contains(x, y) {
-		return m.clickCardDock(x-m.activityBarBounds.x, y-m.activityBarBounds.y)
+		return m.clickActivityDock(x-m.activityBarBounds.x, y-m.activityBarBounds.y)
 	}
 	if m.palette == paletteModels {
 		if m.paletteCloseBounds.contains(x, y) {
@@ -1006,6 +1006,10 @@ func (m *Model) activateChatLine(line int) bool {
 			m.receiptsExpanded = !m.receiptsExpanded
 		case chatExpandMessage:
 			m.expandedMessages[row.seq] = !m.expandedMessages[row.seq]
+		case chatExpandBrief:
+			m.selectedCardID = ""
+			m.selectedBriefSeq = row.seq
+			m.briefExpanded[row.seq] = !m.briefExpanded[row.seq]
 		}
 		offset := m.chat.YOffset
 		m.refreshChat()

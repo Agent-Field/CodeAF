@@ -49,8 +49,12 @@ func run() error {
 		return runModels(os.Args[2:])
 	case "notebook":
 		return runNotebook(os.Args[2:])
+	case "competence":
+		return runCompetence(os.Args[2:])
 	case "wake":
 		return runWake(os.Args[2:])
+	case "why":
+		return runWhy(os.Args[2:])
 	case "-h", "--help", "help":
 		return usage()
 	default:
@@ -69,7 +73,9 @@ const usageText = `aforge — build and revise task graphs
   aforge models
   aforge notebook [--db path]
   aforge notebook retract|restore <seq> [--db path]
+  aforge competence [--db path] [--model slug]
   aforge wake [--db path]       run one standing-watch pass and exit
+  aforge why self [--db path]   show today's self-spend receipts
 
 Environment:
   OPENROUTER_API_KEY   required
@@ -91,6 +97,9 @@ Environment:
   AFORGE_SPEECH_MODEL         speech-synthesis model (catalog-resolved by default)
   AFORGE_MUSIC_MODEL          music-generation model (catalog-resolved by default)
   AFORGE_VIDEO_MODEL          video-generation model (catalog-resolved by default)
+  AFORGE_PRACTICE_BUDGET  2.0  daily self-practice carve-out (0 = disabled)
+  AFORGE_PRACTICE_IDLE  20m  quiet period before self-practice
+  AFORGE_BRIEF_AFTER   4h  minimum absence before an arrival brief (0 = always)
   AFORGE_PREAUTHORIZE_SPEND  1 raises the rail without a headless stdin prompt
   AFORGE_PROFILE_DIR   where measured behaviour is kept (default ~/.aforge)`
 

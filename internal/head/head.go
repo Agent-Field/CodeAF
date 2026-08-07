@@ -40,6 +40,8 @@ The snapshot IS your workforce, seen live. Every line is one worker's assignment
 
 Alongside the snapshot you carry a notebook: durable lessons, quirks, preferences, and facts distilled from past jobs and conversations. The notebook is your accumulated experience the way the snapshot is your present awareness. Questions about what you know, remember, or have learned are answered from the notebook exactly as status questions are answered from the snapshot; and when a notebook entry changes what you would say — a known quirk of a tool the user is asking about, a preference they stated before — let it shape the reply naturally.
 
+When a competence map appears, it is the measured view of your own current strengths, weak spots, and learning frontier. Treat questions about what you are good at, where you struggle, or what you should practice as status questions: answer directly from that evidence, in first person, and emit no work command. Never claim strength or weakness absent from the map.
+
 Return exactly one JSON object with this shape and no text outside it:
 {"reply":"<what to say right now>","command":null,"remember":null,"retract":null}
 where command may instead be {"kind":"reflex|splice|amend|cancel","target":"<node id or empty>","instruction":"<the user's instruction, preserving their words verbatim>"}
@@ -75,6 +77,7 @@ type Head struct {
 	client         Client
 	store          *store.Store
 	knowledge      func() string
+	competence     func() string
 	dailyBudgetUSD float64
 	modalities     interface {
 		Supports(string, string, string) bool
@@ -102,6 +105,14 @@ func New(client Client, graphStore *store.Store) *Head {
 // Nil and empty values preserve the original prompt exactly.
 func (h *Head) WithSelfKnowledge(knowledge func() string) *Head {
 	h.knowledge = knowledge
+	return h
+}
+
+// WithCompetenceMap registers the derived capability view with the head's
+// grounding path. It is read only for competence-shaped questions, and its
+// structured data is voiced by the head's existing single routing call.
+func (h *Head) WithCompetenceMap(competence func() string) *Head {
+	h.competence = competence
 	return h
 }
 
@@ -194,6 +205,11 @@ func (h *Head) poll(ctx context.Context, cursor int64) (int64, error) {
 }
 
 func (h *Head) answer(ctx context.Context, user store.Message) error {
+	if handled, err := h.answerAgentQuestion(user); err != nil {
+		return fmt.Errorf("serve head: answer agent question: %w", err)
+	} else if handled {
+		return nil
+	}
 	if handled, err := h.answerPendingQuestion(user); err != nil {
 		return fmt.Errorf("serve head: answer selectable question: %w", err)
 	} else if handled {
@@ -330,6 +346,11 @@ func (h *Head) route(ctx context.Context, user store.Message) (routeDecision, er
 			prompt = "Measured execution history (evidence for routing priors):\n" + measured + "\n\n" + prompt
 		}
 	}
+	if h.competence != nil && asksForCompetence(user.Body) {
+		if competence := strings.TrimSpace(h.competence()); competence != "" {
+			prompt = "Competence map (ground truth for this question):\n" + competence + "\n\n" + prompt
+		}
+	}
 	messages := []ai.Message{
 		textMessage("system", resident.VoicePrompt(h.store, headSystemPrompt, user.Body)),
 		textMessage("user", prompt),
@@ -423,6 +444,21 @@ func imageContentPart(path string) (ai.ContentPart, bool) {
 	return ai.ContentPart{Type: "image_url", ImageURL: &ai.ImageURLData{
 		URL: "data:" + mediaType + ";base64," + base64.StdEncoding.EncodeToString(data),
 	}}, true
+}
+
+func asksForCompetence(message string) bool {
+	message = strings.ToLower(strings.TrimSpace(message))
+	for _, phrase := range []string{
+		"what are you good at", "what are you bad at", "where are you strong",
+		"where are you weak", "where do you struggle", "your strengths",
+		"your weaknesses", "your competence", "competence map",
+		"learning frontier", "what should you practice", "what do you struggle",
+	} {
+		if strings.Contains(message, phrase) {
+			return true
+		}
+	}
+	return false
 }
 
 func (h *Head) recentThread(sessionID string, beforeSeq int64) ([]store.Message, error) {

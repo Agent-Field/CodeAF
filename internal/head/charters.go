@@ -8,6 +8,97 @@ import (
 	"github.com/Agent-Field/aforge-v2/internal/store"
 )
 
+// answerAgentQuestion routes replies to the durable reverse-direction queue.
+// An explicit QuestionSeq wins; otherwise the store applies the same
+// no-intervening-user-turn recency rule as ordinary conversational askbacks.
+func (h *Head) answerAgentQuestion(user store.Message) (bool, error) {
+	question, found, err := h.store.QuestionForAnswer(user.SessionID, user.Seq, user.QuestionSeq)
+	if err != nil || !found {
+		return false, err
+	}
+	answer := strings.TrimSpace(user.Body)
+	if option, selected := selectQuestionOption(user.Body, question.Options); selected {
+		answer = strings.TrimSpace(option.Label)
+		if answer == "" {
+			answer = strings.TrimSpace(option.Value)
+		}
+		if err := h.store.ResolveQuestion(question.Seq, store.QuestionAnswered, answer, user.Seq); err != nil {
+			return true, err
+		}
+		return true, h.applyAgentQuestionOption(user, question, option)
+	}
+	if charterID, ok := charterQuestionID(question.Options); ok {
+		if cadence := extractCadence(user.Body); cadence != "" {
+			if err := h.store.ResolveQuestion(question.Seq, store.QuestionAnswered, cadence, user.Seq); err != nil {
+				return true, err
+			}
+			return true, h.requestCharterCommand(user, store.CommandCharterCadence, charterID, cadence)
+		}
+		// Preserve the existing charter behavior: unrelated free text remains
+		// ordinary conversation rather than accidentally ratifying spend.
+		return false, nil
+	}
+	if answer == "" {
+		return true, h.postAgent(user.SessionID, "Tell me what you want me to use for that question.", 0)
+	}
+	if err := h.store.ResolveQuestion(question.Seq, store.QuestionAnswered, answer, user.Seq); err != nil {
+		return true, err
+	}
+	if question.OriginCommandSeq != 0 {
+		return true, h.continueAgentCompilerQuestion(user, question, answer)
+	}
+	return true, h.postAgent(user.SessionID, "Got it — I’ll use that.", 0)
+}
+
+func (h *Head) applyAgentQuestionOption(user store.Message, question store.AgentQuestion, option store.QuestionOption) error {
+	parts := strings.Split(option.Value, ":")
+	if len(parts) >= 3 && parts[0] == "charter" {
+		id := parts[2]
+		switch parts[1] {
+		case "ratify":
+			return h.requestCharterCommand(user, store.CommandCharterRatify, id, option.Label)
+		case "pause":
+			return h.requestCharterCommand(user, store.CommandCharterPause, id, option.Label)
+		case "retire":
+			return h.requestCharterCommand(user, store.CommandCharterRetire, id, option.Label)
+		case "once":
+			return h.requestCharterCommand(user, store.CommandCharterOnce, id, option.Label)
+		case "cadence":
+			if len(parts) > 3 {
+				return h.requestCharterCommand(user, store.CommandCharterCadence, id,
+					strings.Join(parts[3:], ":"))
+			}
+			return h.askForCadence(user.SessionID, id)
+		}
+	}
+	answer := strings.TrimSpace(option.Label)
+	if answer == "" {
+		answer = strings.TrimSpace(option.Value)
+	}
+	if question.OriginCommandSeq != 0 {
+		return h.continueAgentCompilerQuestion(user, question, answer)
+	}
+	return h.postAgent(user.SessionID, "Got it — I’ll use that.", 0)
+}
+
+func (h *Head) continueAgentCompilerQuestion(user store.Message, question store.AgentQuestion, answer string) error {
+	source, found, err := h.store.CommandBySeq(question.OriginCommandSeq)
+	if err != nil {
+		return err
+	}
+	if !found || source.Kind != store.CommandSplice || strings.TrimSpace(answer) == "" {
+		return h.postAgent(user.SessionID, "Tell me which option you want, or answer in your own words.", 0)
+	}
+	instruction := source.Instruction + "\n\nAnswer to compiler question: " + answer
+	command, err := h.store.RequestCommand(store.Command{
+		SessionID: user.SessionID, Kind: store.CommandSplice, Instruction: instruction,
+	})
+	if err != nil {
+		return err
+	}
+	return h.postAgent(user.SessionID, "Got it — proceeding with that choice.", command.Seq)
+}
+
 func (h *Head) answerPendingQuestion(user store.Message) (bool, error) {
 	question, pending, err := h.store.PendingQuestion(user.SessionID, user.Seq)
 	if err != nil || !pending {
@@ -47,11 +138,11 @@ func selectQuestionOption(reply string, options []store.QuestionOption) (store.Q
 		label := strings.ToLower(strings.TrimSpace(option.Label))
 		value := strings.ToLower(strings.TrimSpace(option.Value))
 		if affirmativeRailReply(normalized) &&
-			(strings.HasPrefix(label, "yes") || strings.Contains(value, ":ratify:")) {
+			(strings.HasPrefix(label, "yes") || strings.Contains(value, ":ratify:") || strings.Contains(value, ":fire:")) {
 			return option, true
 		}
 		if negativeReply(normalized) &&
-			(strings.Contains(label, "not standing") || strings.Contains(value, ":once:")) {
+			(strings.Contains(label, "not standing") || strings.Contains(value, ":once:") || strings.Contains(value, ":decline:")) {
 			return option, true
 		}
 	}
@@ -60,7 +151,7 @@ func selectQuestionOption(reply string, options []store.QuestionOption) (store.Q
 
 func negativeReply(reply string) bool {
 	switch reply {
-	case "n", "no", "no thanks", "decline", "not standing", "once", "just once":
+	case "n", "no", "no thanks", "decline", "never", "not standing", "once", "just once":
 		return true
 	default:
 		return false
@@ -96,6 +187,28 @@ func (h *Head) applyQuestionOption(user store.Message, question store.Message, o
 					strings.Join(parts[3:], ":"))
 			}
 			return h.askForCadence(user.SessionID, id)
+		case "fire":
+			if len(parts) < 4 {
+				return h.postAgent(user.SessionID, "That firing approval is stale.", 0)
+			}
+			return h.requestCharterCommand(user, store.CommandCharterFire, id, "wake:"+parts[3])
+		case "decline":
+			if len(parts) < 4 {
+				return h.postAgent(user.SessionID, "That firing proposal is stale.", 0)
+			}
+			return h.requestCharterCommand(user, store.CommandCharterDecline, id, "wake:"+parts[3])
+		case "always":
+			if len(parts) < 4 {
+				return h.postAgent(user.SessionID, "That firing approval is stale.", 0)
+			}
+			return h.requestCharterCommand(user, store.CommandCharterAlways, id, "wake:"+parts[3])
+		case "never":
+			if len(parts) < 4 {
+				return h.postAgent(user.SessionID, "That firing approval is stale.", 0)
+			}
+			return h.requestCharterCommand(user, store.CommandCharterNever, id, "wake:"+parts[3])
+		case "probation":
+			return h.requestCharterCommand(user, store.CommandCharterProbation, id, "back to asking")
 		}
 	}
 	answer := strings.TrimSpace(option.Label)
@@ -150,6 +263,16 @@ func (h *Head) requestCharterCommand(user store.Message, kind store.CommandKind,
 		reply = "Keeping it one-time."
 	case store.CommandCharterCadence:
 		reply = "Changing that cadence."
+	case store.CommandCharterFire:
+		reply = "Approved for this time."
+	case store.CommandCharterDecline:
+		reply = "Okay — I won’t do this firing. I’ll ask again next time."
+	case store.CommandCharterAlways:
+		reply = "I’ll take this one and handle future firings on my own."
+	case store.CommandCharterNever:
+		reply = "I won’t do that, and I’m pausing the charter."
+	case store.CommandCharterProbation:
+		reply = "I’ll ask before firing again."
 	}
 	return h.postAgent(user.SessionID, reply, command.Seq)
 }
@@ -199,6 +322,8 @@ func charterManagement(message string) (store.CommandKind, string, string, bool)
 	kind := store.CommandKind("")
 	cadence := ""
 	switch {
+	case strings.Contains(lower, "back to asking"):
+		kind = store.CommandCharterProbation
 	case strings.Contains(lower, "stop watching") || strings.Contains(lower, "stop monitoring") ||
 		strings.HasPrefix(lower, "retire "):
 		kind = store.CommandCharterRetire
@@ -229,7 +354,7 @@ func charterReference(message, cadence string) string {
 		"please": true, "stop": true, "watching": true, "watch": true,
 		"monitoring": true, "monitor": true, "retire": true, "pause": true,
 		"make": true, "change": true, "set": true, "cadence": true,
-		"the": true, "it": true, "to": true,
+		"back": true, "asking": true, "the": true, "it": true, "to": true,
 	}
 	var kept []string
 	for _, word := range strings.FieldsFunc(message, func(r rune) bool {
@@ -248,6 +373,8 @@ func charterOptionAction(kind store.CommandKind) string {
 		return "pause"
 	case store.CommandCharterRetire:
 		return "retire"
+	case store.CommandCharterProbation:
+		return "probation"
 	default:
 		return "cadence"
 	}

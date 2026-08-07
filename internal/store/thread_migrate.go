@@ -18,6 +18,24 @@ func migrateThreadSchema(db *sql.DB) error {
 			return err
 		}
 	}
+	hasBrief, err := tableHasColumn(db, "messages", "brief")
+	if err != nil {
+		return err
+	}
+	if !hasBrief {
+		if _, err := db.Exec(`ALTER TABLE messages ADD COLUMN brief JSON NOT NULL DEFAULT 'null' CHECK (json_valid(brief))`); err != nil {
+			return err
+		}
+	}
+	hasQuestionSeq, err := tableHasColumn(db, "messages", "question_seq")
+	if err != nil {
+		return err
+	}
+	if !hasQuestionSeq {
+		if _, err := db.Exec(`ALTER TABLE messages ADD COLUMN question_seq INTEGER NOT NULL DEFAULT 0`); err != nil {
+			return err
+		}
+	}
 
 	hasReflex, err := tableHasColumn(db, "commands", "reflex")
 	if err != nil {
