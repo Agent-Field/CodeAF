@@ -257,6 +257,23 @@ func (s *Store) UnresolvedQuestions(limit int) ([]AgentQuestion, error) {
 		[]any{QuestionPending, QuestionAsked, questionLimit(limit)})
 }
 
+// QuestionsForNode returns every question one node has asked, newest first,
+// whatever became of each. UnresolvedQuestions answers "what is outstanding",
+// which is a live queue; this answers "what has this node already asked and
+// what was said back", which is a durable record. A stop that must be put to
+// the user exactly once — and that means something different once they have
+// answered it — can only be built on the second: a question drops out of the
+// unresolved set the moment it is answered, and a marker that disappears when
+// the answer arrives is a question that gets asked forever.
+func (s *Store) QuestionsForNode(nodeID string, limit int) ([]AgentQuestion, error) {
+	nodeID = strings.TrimSpace(nodeID)
+	if nodeID == "" {
+		return nil, nil
+	}
+	return s.queryAgentQuestions(`origin_node_id = ? ORDER BY seq DESC LIMIT ?`,
+		[]any{nodeID, questionLimit(limit)})
+}
+
 // AgentQuestionBySeq returns one materialized question.
 func (s *Store) AgentQuestionBySeq(seq int64) (AgentQuestion, bool, error) {
 	questions, err := s.queryAgentQuestions(`seq = ?`, []any{seq})

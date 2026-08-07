@@ -2,6 +2,7 @@ package resident
 
 import (
 	"context"
+	"fmt"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -40,15 +41,27 @@ func startCraftRun(t *testing.T, graph *store.Store, workflow *craft.Workflow) (
 // while the node is still open, then the node completes.
 func settleCraftNode(t *testing.T, graph *store.Store, runner *CraftRunner, id, result string) CraftAdvance {
 	t.Helper()
+	return settleCraftNodeSpending(t, graph, runner, id, result, 0)
+}
+
+// settleCraftNodeSpending lands one node that cost something the usage table
+// does not know about yet — the exact shape of a landing leaf.
+func settleCraftNodeSpending(t *testing.T, graph *store.Store, runner *CraftRunner, id, result string, landing float64) CraftAdvance {
+	t.Helper()
 	node, ok, err := graph.Node(id)
 	if err != nil || !ok {
 		t.Fatalf("read %s: found=%t err=%v", id, ok, err)
 	}
-	advance, err := runner.Settle(node, result)
+	advance, err := runner.Settle(node, result, landing)
 	if err != nil {
 		t.Fatalf("settle %s: %v", id, err)
 	}
 	completeCraftNode(t, graph, id, result)
+	if landing > 0 {
+		if err := graph.RecordUsage(store.NodeUsage{NodeID: id, Cost: landing}); err != nil {
+			t.Fatalf("record usage for %s: %v", id, err)
+		}
+	}
 	return advance
 }
 
@@ -279,7 +292,7 @@ func TestCraftWallClockBoundStopsOpeningWork(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := runner.Settle(node, craftResearchResult); err != nil {
+	if _, err := runner.Settle(node, craftResearchResult, 0); err != nil {
 		t.Fatal(err)
 	}
 	if said := strings.Count(craftMessages(t, graph), receipt); said != 1 {
@@ -376,7 +389,7 @@ func TestCraftThatMovedMidRunRefusesToAdvance(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := runner.Settle(node, craftResearchResult); err == nil ||
+	if _, err := runner.Settle(node, craftResearchResult, 0); err == nil ||
 		!strings.Contains(err.Error(), "moved to") {
 		t.Fatalf("a moved craft advanced anyway: %v", err)
 	}
@@ -463,5 +476,351 @@ func TestReconcilerTickSweepsCraftRuns(t *testing.T) {
 	}
 	if id := craftGenerationID(run.Prefix, "sections", craftItemGeneration, 1); !craftNodeExists(t, graph, id) {
 		t.Fatalf("a resident tick did not advance the craft run")
+	}
+}
+
+// craftBudgetQuestions is one run's own money record: every stop it has posted,
+// whatever became of each.
+func craftBudgetQuestions(t *testing.T, graph *store.Store, prefix string) []store.AgentQuestion {
+	t.Helper()
+	questions, err := graph.QuestionsForNode(prefix, 50)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var mine []store.AgentQuestion
+	for _, question := range questions {
+		if strings.Contains(question.Text, craftBudgetQuestionPrefix) {
+			mine = append(mine, question)
+		}
+	}
+	return mine
+}
+
+// crowdTheBoard fills the question queue with other people's unanswered
+// business — more of it than any window over the whole board would show at
+// once. A run's own money record has to be findable through a busy day, not
+// merely through a quiet one.
+func crowdTheBoard(t *testing.T, graph *store.Store, count int) {
+	t.Helper()
+	for index := 0; index < count; index++ {
+		if _, err := graph.AskQuestion(store.AgentQuestion{
+			SessionID: "craft", Text: fmt.Sprintf("unrelated question %d", index+1),
+			Urgency: store.QuestionWhenever,
+		}); err != nil {
+			t.Fatal(err)
+		}
+	}
+}
+
+// craftAtItsBound lands a run's opening step and takes it to the money bound,
+// leaving the fan-out planner's result on the graph and the stop in the thread.
+func craftAtItsBound(t *testing.T, graph *store.Store) (*CraftRunner, CraftRun, store.AgentQuestion) {
+	t.Helper()
+	runner, run := startCraftRun(t, graph, presentationCraft())
+	settleCraftNodeSpending(t, graph, runner, run.Prefix+"~research", "the list is above", 1.75)
+	if advance := settleCraftNode(t, graph, runner, run.Prefix+"~sections", craftResearchResult); advance.Stopped != "cost" {
+		t.Fatalf("the run did not stop at its bound: %+v", advance)
+	}
+	asked := craftBudgetQuestions(t, graph, run.Prefix)
+	if len(asked) != 1 {
+		t.Fatalf("the money stop was asked %d times", len(asked))
+	}
+	return runner, run, asked[0]
+}
+
+// Consent has to mean something. The question survives being answered — it is
+// the durable record of both halves — so the stop is put once, "keep going"
+// buys the run another bound's worth, and the sweep that re-derives the same
+// landed node resumes instead of asking again.
+func TestCraftBudgetStopIsAskedOnceAndKeepGoingResumesTheRun(t *testing.T) {
+	graph := openStore(t)
+	// Two hundred other unanswered questions were already on the board when the
+	// run reached its bound: the record of having asked is this run's own, and
+	// it cannot be something a busy day pages out of view.
+	crowdTheBoard(t, graph, 205)
+	runner, run, question := craftAtItsBound(t, graph)
+	for pass := 0; pass < 2; pass++ {
+		if _, err := runner.Sweep(context.Background()); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if asked := craftBudgetQuestions(t, graph, run.Prefix); len(asked) != 1 {
+		t.Fatalf("an unanswered stop was asked %d times", len(asked))
+	}
+
+	// Exactly what the head writes down when the user picks the first option.
+	if err := graph.ResolveQuestion(question.Seq, store.QuestionAnswered, craftContinueOption+run.Prefix); err != nil {
+		t.Fatalf("answer: %v", err)
+	}
+	spliced, err := runner.Sweep(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if spliced != 3 {
+		t.Fatalf("consent bought %d items, want the three the list named", spliced)
+	}
+	for index := 1; index <= 3; index++ {
+		if id := craftGenerationID(run.Prefix, "sections", craftItemGeneration, index); !craftNodeExists(t, graph, id) {
+			t.Fatalf("item %s never opened after the user said keep going", id)
+		}
+	}
+	// And it never asks that question again: the run has headroom, and the
+	// record of having asked does not evaporate because it was answered.
+	for pass := 0; pass < 3; pass++ {
+		if _, err := runner.Sweep(context.Background()); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if asked := craftBudgetQuestions(t, graph, run.Prefix); len(asked) != 1 {
+		t.Fatalf("the money stop was asked %d times across four sweeps", len(asked))
+	}
+}
+
+// The other answer closes the run: nothing that has not started will start, and
+// the root is left open to deliver what did land.
+func TestCraftBudgetStopAnsweredWithStopClosesTheRun(t *testing.T) {
+	graph := openStore(t)
+	runner, run, question := craftAtItsBound(t, graph)
+	if err := graph.ResolveQuestion(question.Seq, store.QuestionAnswered, craftStopOption+run.Prefix); err != nil {
+		t.Fatalf("answer: %v", err)
+	}
+	if _, err := runner.Sweep(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if id := craftGenerationID(run.Prefix, "sections", craftItemGeneration, 1); craftNodeExists(t, graph, id) {
+		t.Fatalf("a closed run opened %s", id)
+	}
+	for _, id := range []string{run.Prefix + "~assemble", run.Prefix + "~check"} {
+		node, ok, err := graph.Node(id)
+		if err != nil || !ok {
+			t.Fatalf("read %s: found=%t err=%v", id, ok, err)
+		}
+		if node.Status != store.Cancelled {
+			t.Fatalf("%s is %s, want cancelled so the root can deliver", id, node.Status)
+		}
+	}
+	root, ok, err := graph.Node(run.Prefix)
+	if err != nil || !ok {
+		t.Fatalf("read the root: found=%t err=%v", ok, err)
+	}
+	if root.Status != store.Pending {
+		t.Fatalf("the run's root is %s — nothing is left to deliver what landed", root.Status)
+	}
+	if thread := craftMessages(t, graph); !strings.Contains(thread,
+		"presentation craft — stopping here as you asked; delivering what already landed") {
+		t.Fatalf("no honest stop receipt:\n%s", thread)
+	}
+	// A closed run stays closed, and says so once.
+	if _, err := runner.Sweep(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if asked := craftBudgetQuestions(t, graph, run.Prefix); len(asked) != 1 {
+		t.Fatalf("a closed run asked again: %d questions", len(asked))
+	}
+}
+
+// The gate has to see the spend of the leaf whose landing triggered it. That
+// leaf is the fan-out planner, and its own cost is the one thing the usage
+// table does not have yet at the moment the run decides whether to open a
+// couple of dozen more leaves.
+func TestCraftMoneyGateSeesTheLandingLeafsOwnSpend(t *testing.T) {
+	graph := openStore(t)
+	workflow := presentationCraft()
+	runner, run := startCraftRun(t, graph, workflow)
+	settleCraftNodeSpending(t, graph, runner, run.Prefix+"~research", "the list is above", 0.80)
+
+	before := len(craftNodeIDs(t, graph, run.Prefix))
+	advance := settleCraftNodeSpending(t, graph, runner, run.Prefix+"~sections", craftResearchResult, 0.80)
+	if advance.Unrolled != 0 || advance.Stopped != "cost" {
+		t.Fatalf("the gate read the table alone: %+v", advance)
+	}
+	if after := len(craftNodeIDs(t, graph, run.Prefix)); after != before {
+		t.Fatalf("work opened past the bound: %d nodes then %d", before, after)
+	}
+	if asked := craftBudgetQuestions(t, graph, run.Prefix); len(asked) != 1 ||
+		!strings.Contains(asked[0].Text, "$1.60 of its $1.50 bound") {
+		t.Fatalf("the stop does not quote the spend it decided on: %+v", asked)
+	}
+}
+
+// A repair copy of a for_each step is still a for_each step. Its items are
+// minted from the node that listed them, so a second round's work sits under
+// its own repair instead of colliding with the first round's.
+func TestARepairedForEachStepUnrollsLikeTheOriginal(t *testing.T) {
+	graph := openStore(t)
+	workflow := presentationCraft()
+	// A legal file: the check depends on the fan-out step, so it may revise it.
+	workflow.Steps[3].Verify.UntilPass.Revise = []string{"sections"}
+	runner, run := startCraftRun(t, graph, workflow)
+	landCraftUpToCheck(t, graph, runner, run)
+
+	if advance := settleCraftNode(t, graph, runner, run.Prefix+"~check",
+		"VERDICT: fail\nthe slides do not cover what the research found"); advance.Round != 2 {
+		t.Fatalf("the failed check bought no round: %+v", advance)
+	}
+	repair := craftGenerationID(run.Prefix, "sections", craftRoundGeneration, 2)
+	advance := settleCraftNode(t, graph, runner, repair, craftResearchResult)
+	if advance.Unrolled != 3 {
+		t.Fatalf("a repaired fan-out landed a list and unrolled %d of it", advance.Unrolled)
+	}
+	for index := 1; index <= 3; index++ {
+		item := craftChildID(repair, craftItemGeneration, index)
+		if !craftNodeExists(t, graph, item) {
+			t.Fatalf("the repaired round never opened %s", item)
+		}
+		if first := craftGenerationID(run.Prefix, "sections", craftItemGeneration, index); item == first {
+			t.Fatalf("the repair's items collided with round one's: %s", item)
+		}
+	}
+	// The new check waits on the work the repair actually produced.
+	recheck := craftGenerationID(run.Prefix, "check", craftRoundGeneration, 2)
+	if deps := craftDependencies(t, graph, recheck); !deps[craftChildID(repair, craftItemGeneration, 1)] {
+		t.Fatalf("the new check does not wait on the repaired items: %+v", deps)
+	}
+}
+
+// A worker that ignored the format named no items. Reading its apology as a
+// list is how a run spends a real model call on a leaf titled "finished with no
+// summary" — so the marker is required, and Settle and the sweep are handed the
+// same words so they cannot reach different conclusions about it.
+func TestAFanOutWorkerThatNamedNoItemsUnrollsNothing(t *testing.T) {
+	graph := openStore(t)
+	workflow := presentationCraft()
+	craftRunner, run := startCraftRun(t, graph, workflow)
+	runner := NewRunner(graph, func(_ context.Context, node store.Node) (ExecResult, error) {
+		if node.ID == run.Prefix+"~sections" {
+			// It said nothing at all: the runner substitutes a summary.
+			return ExecResult{}, nil
+		}
+		return ExecResult{Summary: "the list is above"}, nil
+	}, "craft-runner", 1).WithCraftRunner(craftRunner)
+	for pass := 0; pass < 2; pass++ {
+		if _, err := runner.Tick(context.Background()); err != nil {
+			t.Fatalf("tick %d: %v", pass, err)
+		}
+		runner.Wait()
+	}
+
+	node, ok, err := graph.Node(run.Prefix + "~sections")
+	if err != nil || !ok {
+		t.Fatalf("read the fan-out: found=%t err=%v", ok, err)
+	}
+	if node.Summary != "finished with no summary" {
+		t.Fatalf("the fan-out landed with %q", node.Summary)
+	}
+	// The live reading and the resumed one agree, because they read the same
+	// words.
+	if _, err := craftRunner.Sweep(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if id := craftGenerationID(run.Prefix, "sections", craftItemGeneration, 1); craftNodeExists(t, graph, id) {
+		t.Fatalf("a phantom item %s was unrolled from an empty list", id)
+	}
+	if thread := craftMessages(t, graph); !strings.Contains(thread,
+		`the "sections" step named no items to fan out over`) {
+		t.Fatalf("no honest reason in the thread:\n%s", thread)
+	}
+}
+
+// The verdict marker is read case-insensitively over the verifier's own bytes.
+// Folding case is not length-preserving in every language a check may print in,
+// and an offset taken in a folded copy points somewhere else in the original —
+// which reads a failed check as no verdict and ships unverified work.
+func TestCraftVerdictSurvivesACaseFoldThatMovesBytes(t *testing.T) {
+	for _, probe := range []struct {
+		result string
+		pass   bool
+		known  bool
+	}{
+		{"VERDICT: pass", true, true},
+		{"verdict: fail\nthe deck has no notes", false, true},
+		{"Sonuç bulunamadı ısı VERDICT: fail", false, true},
+		{"ﬁnal ﬀ VERDICT: pass", true, true},
+		{"looks broadly fine to me", false, false},
+		{"", false, false},
+	} {
+		pass, known := craftVerdict(probe.result)
+		if pass != probe.pass || known != probe.known {
+			t.Errorf("craftVerdict(%q) = (%t, %t), want (%t, %t)",
+				probe.result, pass, known, probe.pass, probe.known)
+		}
+	}
+}
+
+// The id parser decides what a landed node MEANT. A generation nobody mints is
+// not a craft node this sentinel understands, and routing one into a fan-out or
+// a repair round on the strength of a lenient read is how a stranger's node
+// spends a run's money.
+func TestCraftNodePartsFailsClosed(t *testing.T) {
+	for _, probe := range []struct {
+		id   string
+		want bool
+	}{
+		{"craft-deck-1~sections", true},
+		{"craft-deck-1~sections~i1", true},
+		{"craft-deck-1~sections~r12", true},
+		{"craft-deck-1~sections~r0", false},
+		{"craft-deck-1~sections~r007", false},
+		{"craft-deck-1~sections~x3", false},
+		{"craft-deck-1~sections~2", false},
+		{"craft-deck-1~sections~r", false},
+		{"craft-deck-1~sections~r99999999999999999999", false},
+		{"~sections~r2", false},
+		{"craft-deck-1~~r2", false},
+		{"craft-deck-1~sections~r2~i1", false},
+		{"task-14-n2", false},
+	} {
+		if _, _, _, _, ok := craftNodeParts(probe.id); ok != probe.want {
+			t.Errorf("craftNodeParts(%q) ok = %t, want %t", probe.id, ok, probe.want)
+		}
+	}
+}
+
+// A round may only promise the new check dependencies it actually plants. A
+// step whose node is gone — surgery took it mid-run — cannot be repaired, and
+// naming it anyway makes Splice refuse the check for needing an unknown node,
+// which the sweep would then re-derive identically forever.
+func TestARoundNeverPromisesARepairItCannotPlant(t *testing.T) {
+	graph := openStore(t)
+	workflow := presentationCraft()
+	provenance := store.Provenance{
+		Origin: store.OriginUser, SessionID: "craft", Intent: "run the presentation craft",
+		Craft: CraftRef(workflow),
+	}
+	// The run as surgery left it: the check is still there, the step its round
+	// would revise is not.
+	const prefix = "craft-presentation-9"
+	if err := graph.Splice(store.RootID, store.Subtree{Nodes: []store.NodeSpec{
+		{ID: prefix, Brief: "deliver the deck", Title: "presentation"},
+		{ID: prefix + "~check", Parent: prefix, Brief: "check the deck", Title: "check"},
+	}}, provenance); err != nil {
+		t.Fatal(err)
+	}
+	runner := NewCraftRunner(graph, &fakeCraftRepo{workflow: workflow}, "/home/craft")
+	node, ok, err := graph.Node(prefix + "~check")
+	if err != nil || !ok {
+		t.Fatalf("read the check: found=%t err=%v", ok, err)
+	}
+	advance, err := runner.Settle(node, "VERDICT: fail\nnothing to build on", 0)
+	if err != nil {
+		t.Fatalf("settle: %v", err)
+	}
+	if advance.Stopped != "nothing to revise" || advance.Spliced != 0 {
+		t.Fatalf("advance = %+v", advance)
+	}
+	if craftNodeExists(t, graph, craftGenerationID(prefix, "check", craftRoundGeneration, 2)) {
+		t.Fatalf("a check was spliced whose repair was never planted")
+	}
+}
+
+// The receipt names the version a run is actually on. A file nobody saved is
+// its own version, and saying so is the same honesty the mid-run guard is.
+func TestTheReceiptSaysWhenARunIsOnAnUnsavedFile(t *testing.T) {
+	graph := openStore(t)
+	workflow := presentationCraft()
+	workflow.Commit = "abc1234def5678+dirty-1a2b3c4d"
+	_, run := startCraftRun(t, graph, workflow)
+	if !strings.Contains(run.Receipt, "v abc1234+dirty") {
+		t.Fatalf("compile receipt = %q", run.Receipt)
 	}
 }

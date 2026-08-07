@@ -11,6 +11,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"regexp"
 	"strings"
 	"time"
 
@@ -28,10 +29,25 @@ type CraftSource interface {
 }
 
 const (
-	// craftBudgetQuestionPrefix marks the one consent stop a craft run may
-	// post, exactly as the daily rail's own prefix marks its. It is stable
-	// because the journaled message is also the never-ask-twice marker.
+	// craftBudgetQuestionPrefix marks the consent stop a craft run posts,
+	// exactly as the daily rail's own prefix marks its. It is stable because the
+	// journaled question is also the durable record of what was asked.
 	craftBudgetQuestionPrefix = "Craft budget reached -- "
+	// craftContinueOption and craftStopOption are the two things a person may
+	// say to that stop, in the wire form the head resolves the question with.
+	// The run reads the answer back off the question row rather than being
+	// handed it: the row is durable, it survives being answered, and it is the
+	// same record that proves the question was asked at all. A question the user
+	// already answered is not a question, and a run whose consent evaporated
+	// when the answer landed would ask forever and never continue.
+	craftContinueOption = "craft:continue:"
+	craftStopOption     = "craft:stop:"
+	// craftBudgetQuestionScan bounds the consent read. One run's money stops are
+	// a handful by construction — each one costs a whole bound's worth of spend
+	// to reach — and the read is newest-first, so a scan that ran out would
+	// under-count consent and ask again rather than spend on consent it never
+	// got.
+	craftBudgetQuestionScan = 20
 	// craftSweepLimit bounds one resume sweep. A craft run is routine work of a
 	// couple of dozen leaves; anything past this is not a sweep, it is a
 	// migration, and it should not run inside a tick.
@@ -136,11 +152,22 @@ func craftCompileReceipt(workflow *craft.Workflow) string {
 	return fmt.Sprintf("%s — %d %s", receipt, steps, plural(steps, "step", "steps"))
 }
 
+// craftShortCommit is a version as a person reads it. An uncommitted edit
+// carries its content hash so the guard can tell two edits apart; the receipt
+// keeps the word and drops the hash, because what the reader needs to know is
+// that this run is on a file nobody saved, not which unsaved file it is.
 func craftShortCommit(commit string) string {
-	if len(commit) > 7 {
-		return commit[:7]
+	commit = strings.TrimSpace(commit)
+	short, marked, dirty := strings.Cut(commit, "+")
+	if len(short) > 7 {
+		short = short[:7]
 	}
-	return commit
+	if dirty {
+		if word, _, _ := strings.Cut(marked, "-"); word != "" {
+			return short + "+" + word
+		}
+	}
+	return short
 }
 
 func craftIntent(workflow *craft.Workflow, params map[string]string) string {
@@ -183,7 +210,14 @@ func (c *CraftRunner) nextPrefix(workflow *craft.Workflow) (string, error) {
 // splicing while the landed node is still open keeps the job's root open too,
 // so nothing downstream can start on a plan that is one splice out of date.
 // Best effort by construction — the sweep re-derives anything this missed.
-func (c *CraftRunner) Settle(node store.Node, result string) (CraftAdvance, error) {
+//
+// landing is what this leaf just spent and has not journaled yet. It is the
+// same idiom the daily rail's WithAdditionalSpend is, and it is load-bearing
+// here: the leaf whose landing opens a fan-out is precisely the leaf whose cost
+// the usage table does not have yet, so a money gate that read the table alone
+// would be exactly one leaf behind at the one moment it decides whether to open
+// two dozen more.
+func (c *CraftRunner) Settle(node store.Node, result string, landing float64) (CraftAdvance, error) {
 	if c == nil || c.graph == nil || c.source == nil {
 		return CraftAdvance{}, nil
 	}
@@ -194,7 +228,7 @@ func (c *CraftRunner) Settle(node store.Node, result string) (CraftAdvance, erro
 	if err != nil {
 		return CraftAdvance{}, err
 	}
-	return c.advance(node, result, workflow)
+	return c.advance(node, result, workflow, landing)
 }
 
 // Sweep re-derives every craft run's next move from the store alone. It is the
@@ -225,7 +259,9 @@ func (c *CraftRunner) Sweep(ctx context.Context) (int, error) {
 		if err != nil {
 			continue
 		}
-		result, err := c.advance(node, node.Summary, workflow)
+		// Nothing is in flight here: every node this pass reads has already
+		// journaled whatever it spent, so the gate needs no additional spend.
+		result, err := c.advance(node, node.Summary, workflow, 0)
 		if err != nil {
 			continue
 		}
@@ -269,7 +305,7 @@ func (c *CraftRunner) load(reference string, cache map[string]*craft.Workflow) (
 
 // advance is the whole sentinel: what kind of node landed, whether the run is
 // still allowed to open work, and the one splice that follows.
-func (c *CraftRunner) advance(node store.Node, result string, workflow *craft.Workflow) (CraftAdvance, error) {
+func (c *CraftRunner) advance(node store.Node, result string, workflow *craft.Workflow, landing float64) (CraftAdvance, error) {
 	prefix, stepID, generation, index, ok := craftNodeParts(node.ID)
 	if !ok {
 		return CraftAdvance{}, nil
@@ -286,14 +322,18 @@ func (c *CraftRunner) advance(node store.Node, result string, workflow *craft.Wo
 		return CraftAdvance{}, nil
 	}
 	switch {
-	case step.ForEach != nil && generation == "":
-		return c.unroll(prefix, node, step, workflow, result)
+	// A repair copy of a fan-out step is still a fan-out step. The generation
+	// says which attempt this is, never what kind of work it is — and a repair
+	// that listed its items again and had nobody unroll them is a round that
+	// re-listed instead of redoing the work.
+	case step.ForEach != nil && (generation == "" || generation == craftRoundGeneration):
+		return c.unroll(prefix, node, step, workflow, result, landing)
 	case step.Verify != nil && (generation == "" || generation == craftRoundGeneration):
 		round := 1
 		if generation == craftRoundGeneration {
 			round = index
 		}
-		return c.round(prefix, node, step, workflow, result, round)
+		return c.round(prefix, node, step, workflow, result, round, landing)
 	default:
 		return CraftAdvance{}, nil
 	}
@@ -302,19 +342,25 @@ func (c *CraftRunner) advance(node store.Node, result string, workflow *craft.Wo
 // unroll turns one landed list into real siblings. Everything that was waiting
 // on the fan-out step now waits on every item of it — the same rewiring a
 // planned container's needs get when the container expands into leaves.
-func (c *CraftRunner) unroll(prefix string, node store.Node, step craft.Step, workflow *craft.Workflow, result string) (CraftAdvance, error) {
+func (c *CraftRunner) unroll(prefix string, node store.Node, step craft.Step, workflow *craft.Workflow, result string, landing float64) (CraftAdvance, error) {
 	items := craftListItems(result, craftFanCap(step.ForEach))
 	if len(items) == 0 {
-		return CraftAdvance{Stopped: "no items"}, nil
+		advance := CraftAdvance{Stopped: "no items",
+			Receipt: fmt.Sprintf("the %q step named no items to fan out over — taking it no further",
+				strings.TrimSpace(step.ID))}
+		c.post(node, advance.Receipt)
+		return advance, nil
 	}
-	// The ids are a function of the landed list, so a run that died halfway
-	// through its own unroll comes back to exactly the same batch and admits
-	// only what is missing from it.
+	// The ids are a function of the landed list AND of the node that listed it,
+	// so a run that died halfway through its own unroll comes back to exactly
+	// the same batch and admits only what is missing from it — and a repair
+	// round's items sit under the repair rather than on top of the previous
+	// round's.
 	ids := make([]string, len(items))
 	missing := make([]bool, len(items))
 	pending := 0
 	for index := range items {
-		ids[index] = craftGenerationID(prefix, step.ID, craftItemGeneration, index+1)
+		ids[index] = craftChildID(node.ID, craftItemGeneration, index+1)
 		exists, err := c.exists(ids[index])
 		if err != nil {
 			return CraftAdvance{}, err
@@ -332,7 +378,7 @@ func (c *CraftRunner) unroll(prefix string, node store.Node, step craft.Step, wo
 		// Nothing left to admit, but the rewiring may be what did not finish.
 		return CraftAdvance{}, c.attachSources(dependents, ids)
 	}
-	if stop, err := c.checkLimits(prefix, node, workflow); err != nil || stop != "" {
+	if stop, err := c.checkLimits(prefix, node, workflow, landing); err != nil || stop != "" {
 		return CraftAdvance{Stopped: stop}, err
 	}
 
@@ -387,7 +433,7 @@ func (c *CraftRunner) unroll(prefix string, node store.Node, step craft.Step, wo
 // one. Rounds are bounded by the file, and the bound is enforced from the
 // graph itself: the attempt number is in the node id, so it survives every
 // crash and every rebuild without a counter anywhere in this process.
-func (c *CraftRunner) round(prefix string, node store.Node, step craft.Step, workflow *craft.Workflow, result string, round int) (CraftAdvance, error) {
+func (c *CraftRunner) round(prefix string, node store.Node, step craft.Step, workflow *craft.Workflow, result string, round int, landing float64) (CraftAdvance, error) {
 	pass, known := craftVerdict(result)
 	if !known {
 		advance := CraftAdvance{Stopped: "no verdict",
@@ -410,7 +456,7 @@ func (c *CraftRunner) round(prefix string, node store.Node, step craft.Step, wor
 	if exists, err := c.exists(verifyID); err != nil || exists {
 		return CraftAdvance{}, err
 	}
-	if stop, err := c.checkLimits(prefix, node, workflow); err != nil || stop != "" {
+	if stop, err := c.checkLimits(prefix, node, workflow, landing); err != nil || stop != "" {
 		return CraftAdvance{Stopped: stop}, err
 	}
 
@@ -440,16 +486,21 @@ func (c *CraftRunner) round(prefix string, node store.Node, step craft.Step, wor
 			continue
 		}
 		id := craftGenerationID(prefix, target.ID, craftRoundGeneration, next)
-		repaired = append(repaired, store.Need{NodeID: id, Kind: store.FeedsInto})
 		exists, err := c.exists(id)
 		if err != nil {
 			return CraftAdvance{Spliced: spliced}, err
 		}
 		if exists {
+			repaired = append(repaired, store.Need{NodeID: id, Kind: store.FeedsInto})
 			continue
 		}
 		// The repair re-issues the step's own compiled brief — the filled one
-		// the first attempt was given — with the verifier's words attached.
+		// the first attempt was given — with the verifier's words attached. A
+		// step whose node is gone (surgery removed it mid-run) cannot be
+		// repaired, and the new check must not be promised a dependency this
+		// round is never going to plant: Splice would refuse the check for
+		// needing an unknown node, and the sweep would re-derive that same
+		// refusal on every tick forever.
 		original, ok, err := c.graph.Node(craftNodeID(prefix, target.ID))
 		if err != nil {
 			return CraftAdvance{Spliced: spliced}, err
@@ -457,6 +508,7 @@ func (c *CraftRunner) round(prefix string, node store.Node, step craft.Step, wor
 		if !ok {
 			continue
 		}
+		repaired = append(repaired, store.Need{NodeID: id, Kind: store.FeedsInto})
 		brief := original.Brief
 		spec := store.NodeSpec{
 			ID:    id,
@@ -532,14 +584,19 @@ func craftReviseSteps(step craft.Step) []string {
 }
 
 // craftNeedNodes resolves one step reference to every node that actually
-// carries its result: the compiled node, plus the item leaves a fan-out
-// unrolled it into.
+// carries its result: the compiled node, plus every generation of it the run
+// has minted since — the item leaves a fan-out unrolled into, the repair copies
+// a round re-issued, and the items those repairs unrolled in their turn. All of
+// them are that step's work, and a repair handed only the first generation
+// would build on results the run has already replaced. The id mark is what
+// makes the test exact: it cannot occur inside a step id, so a sibling step
+// whose name merely starts the same way never matches.
 func craftNeedNodes(live []store.Node, prefix, need string) []string {
 	base := craftNodeID(prefix, need)
-	items := base + craftIDMark + craftItemGeneration
+	generations := base + craftIDMark
 	sources := []string{base}
 	for _, node := range live {
-		if strings.HasPrefix(node.ID, items) {
+		if strings.HasPrefix(node.ID, generations) {
 			sources = append(sources, node.ID)
 		}
 	}
@@ -603,20 +660,35 @@ func (c *CraftRunner) attachSources(dependents, sources []string) error {
 	return nil
 }
 
-// checkLimits is the one gate before any runtime splice. Money first, because
-// spending past a bound needs a person; then the clock, which needs nobody —
-// it simply stops opening work and says so. Returns the reason nothing may be
-// opened, or empty when the run may continue.
-func (c *CraftRunner) checkLimits(prefix string, node store.Node, workflow *craft.Workflow) (string, error) {
+// checkLimits is the one gate before any runtime splice. What the person
+// already said comes first, because a run they closed must not open work no
+// matter what the numbers say; then money, because spending past a bound needs
+// a person; then the clock, which needs nobody — it simply stops opening work
+// and says so. Returns the reason nothing may be opened, or empty when the run
+// may continue.
+func (c *CraftRunner) checkLimits(prefix string, node store.Node, workflow *craft.Workflow, landing float64) (string, error) {
+	consent, err := c.budgetConsent(prefix)
+	if err != nil {
+		return "", err
+	}
+	if consent.stopped {
+		if err := c.closeRun(prefix, node, workflow); err != nil {
+			return "", err
+		}
+		return "stopped by you", nil
+	}
 	now := c.now()
 	impact, err := c.graph.Impact(prefix, now)
 	if err != nil {
 		return "", err
 	}
-	ceiling := craftCostCeiling(workflow.Limits)
-	if impact.Cost >= ceiling {
-		if err := c.askForBudget(prefix, node, workflow, impact.Cost, ceiling); err != nil {
-			return "", err
+	spend := impact.Cost + landing
+	ceiling := craftCeiling(workflow.Limits, consent.grants)
+	if spend >= ceiling {
+		if !consent.asked {
+			if err := c.askForBudget(prefix, node, workflow, spend, ceiling); err != nil {
+				return "", err
+			}
 		}
 		return "cost", nil
 	}
@@ -649,20 +721,117 @@ func (c *CraftRunner) startedAt(prefix string) (time.Time, error) {
 	return events[0].Time, nil
 }
 
-// askForBudget posts the same pause-and-ask the daily rail posts: today's
-// spend against the bound, what continuing costs, and two choices. It asks at
-// most once per run, because a stop the user already answered is not a
-// question, and a question nobody answered is not improved by repetition.
-func (c *CraftRunner) askForBudget(prefix string, node store.Node, workflow *craft.Workflow, spend, ceiling float64) error {
-	asked, err := c.budgetAlreadyAsked(prefix)
-	if err != nil || asked {
+// craftConsent is everything the person has already said about one run's
+// money, read off the run's own question rows.
+type craftConsent struct {
+	// grants is how many times they said keep going; each one buys one more of
+	// the craft's own bound.
+	grants int
+	// asked is a money stop that has been put to them and has not bought
+	// headroom — still waiting, or answered with something that was not a
+	// choice. Either way, asking it again is repetition, not a question.
+	asked bool
+	// stopped is the run they closed.
+	stopped bool
+}
+
+// budgetConsent reads the run's money stops back off the graph. It is the
+// durable half of asking at most once: the questions survive being answered,
+// so the record of "this was already asked" cannot evaporate the moment the
+// user answers it — which is what turned a single stop into a stutter that
+// re-asked on every sweep and bought nothing when it was answered.
+func (c *CraftRunner) budgetConsent(prefix string) (craftConsent, error) {
+	questions, err := c.graph.QuestionsForNode(prefix, craftBudgetQuestionScan)
+	if err != nil {
+		return craftConsent{}, err
+	}
+	var consent craftConsent
+	for _, question := range questions {
+		if !strings.Contains(question.Text, craftBudgetQuestionPrefix) {
+			continue
+		}
+		answered, keepGoing, ok := craftBudgetAnswer(question.Resolution)
+		switch {
+		case question.Status != store.QuestionAnswered || !ok || answered != prefix:
+			consent.asked = true
+		case keepGoing:
+			consent.grants++
+		default:
+			consent.stopped = true
+		}
+	}
+	return consent, nil
+}
+
+// craftBudgetAnswer decodes one answer to a craft's money stop, fail-closed in
+// the way every option decoder in this system is: the value the question
+// offered is the whole vocabulary, and anything else — free text, another
+// run's prefix, a truncated marker — is not consent.
+func craftBudgetAnswer(resolution string) (prefix string, keepGoing bool, ok bool) {
+	resolution = strings.TrimSpace(resolution)
+	switch {
+	case strings.HasPrefix(resolution, craftContinueOption):
+		prefix, keepGoing = strings.TrimSpace(strings.TrimPrefix(resolution, craftContinueOption)), true
+	case strings.HasPrefix(resolution, craftStopOption):
+		prefix, keepGoing = strings.TrimSpace(strings.TrimPrefix(resolution, craftStopOption)), false
+	default:
+		return "", false, false
+	}
+	return prefix, keepGoing, prefix != ""
+}
+
+// craftCeiling is the run's bound after consent: the craft's own bound, plus
+// one more of it for every time the person said keep going. One bound per yes
+// is the daily rail's shape too — consent is for continuing, not for removing
+// the bound, and a run that blows through the extra bound is a second decision
+// worth a second question.
+func craftCeiling(limits craft.Limits, grants int) float64 {
+	if grants < 0 {
+		grants = 0
+	}
+	return craftCostCeiling(limits) * float64(1+grants)
+}
+
+// closeRun is what "deliver what landed" means on a graph. Nothing that has not
+// started will start; the run's root — the one node that owes the person an
+// answer — is left open to assemble whatever did land. A cancelled dependency
+// is terminal, so the root becomes ready rather than waiting forever on work
+// nobody is going to do.
+func (c *CraftRunner) closeRun(prefix string, node store.Node, workflow *craft.Workflow) error {
+	nodes, err := c.graph.ActiveNodes()
+	if err != nil {
 		return err
 	}
-	prompt := fmt.Sprintf("%sthe %s craft has spent $%.2f of its $%.2f bound. Say the word and I'll keep going; otherwise it delivers what has already landed.",
-		craftBudgetQuestionPrefix, strings.TrimSpace(workflow.Name), spend, ceiling)
+	member := prefix + craftIDMark
+	for _, candidate := range nodes {
+		if candidate.Status != store.Pending || !strings.HasPrefix(candidate.ID, member) {
+			continue
+		}
+		if err := c.graph.CancelPending(candidate.ID, "you asked the craft to stop and deliver what landed"); err != nil {
+			// A leaf that started while this was being decided keeps running:
+			// it built its transcript from what it had, and taking the work
+			// away mid-turn buys nothing the next boundary does not.
+			if errors.Is(err, store.ErrInvalid) || errors.Is(err, store.ErrNotFound) {
+				continue
+			}
+			return err
+		}
+	}
+	c.post(node, fmt.Sprintf("%s craft — stopping here as you asked; delivering what already landed",
+		strings.TrimSpace(workflow.Name)))
+	return nil
+}
+
+// askForBudget posts the same pause-and-ask the daily rail posts: the run's
+// spend against its bound, what continuing buys, and two choices. Whether it
+// may be asked at all is budgetConsent's judgment, not this function's.
+func (c *CraftRunner) askForBudget(prefix string, node store.Node, workflow *craft.Workflow, spend, ceiling float64) error {
+	prompt := fmt.Sprintf("%sthe %s craft has spent $%.2f of its $%.2f bound. Say the word and I'll keep going with another $%.2f; otherwise it delivers what has already landed.",
+		craftBudgetQuestionPrefix, strings.TrimSpace(workflow.Name), spend, ceiling,
+		craftCostCeiling(workflow.Limits))
 	options := []store.QuestionOption{
-		{Label: "keep going", Value: "craft:continue:" + prefix},
-		{Label: "deliver what landed", Value: "craft:stop:" + prefix},
+		{Label: "keep going", Value: craftContinueOption + prefix},
+		{Label: "deliver what landed", Value: craftStopOption + prefix},
 	}
 	allowFree := true
 	question, err := c.graph.AskQuestion(store.AgentQuestion{
@@ -679,19 +848,6 @@ func (c *CraftRunner) askForBudget(prefix string, node store.Node, workflow *cra
 	}
 	_, err = c.graph.SurfaceQuestion(question.Seq)
 	return err
-}
-
-func (c *CraftRunner) budgetAlreadyAsked(prefix string) (bool, error) {
-	questions, err := c.graph.UnresolvedQuestions(200)
-	if err != nil {
-		return false, err
-	}
-	for _, question := range questions {
-		if question.OriginNodeID == prefix && strings.Contains(question.Text, craftBudgetQuestionPrefix) {
-			return true, nil
-		}
-	}
-	return false, nil
 }
 
 func (c *CraftRunner) provenance(node store.Node, workflow *craft.Workflow) store.Provenance {
@@ -736,16 +892,21 @@ func (c *CraftRunner) post(node store.Node, body string) {
 	})
 }
 
-// craftListItems reads a fan-out planner's result. The marker wins when it is
-// present; without it every non-empty line counts, which is the forgiving
-// reading a worker that ignored the format deserves.
+// craftListItems reads a fan-out planner's result. The marker is required, the
+// way the verdict marker is: without it there is no way to tell a list from a
+// paragraph, and the forgiving reading — every non-empty line is an item —
+// turns a worker that said nothing into a batch of leaves titled after its
+// apology, each one a real model call against the run's money.
 func craftListItems(result string, fan int) []string {
 	lines := strings.Split(result, "\n")
-	start := 0
+	start := -1
 	for index, line := range lines {
 		if strings.EqualFold(strings.TrimSpace(line), craftItemsMarker) {
 			start = index + 1
 		}
+	}
+	if start < 0 {
+		return nil
 	}
 	items := make([]string, 0, fan)
 	for _, line := range lines[start:] {
@@ -777,6 +938,14 @@ func craftListItem(line string) string {
 	return strings.TrimSpace(line)
 }
 
+// craftVerdictLine finds the marker in a line of the verifier's own output.
+// The case-insensitive match runs over the ORIGINAL bytes rather than over a
+// folded copy: upper-casing is not length-preserving in every language a
+// verifier may print in — Turkish ı becomes I and loses a byte, ﬁ becomes FI
+// and gains one — so an offset found in the copy indexes somewhere else in the
+// line, and the verdict a check actually gave is read as no verdict at all.
+var craftVerdictLine = regexp.MustCompile(`(?i)` + regexp.QuoteMeta(craftVerdictMarker))
+
 // craftVerdict reads a check's answer. The marker is required: a round costs
 // money, and guessing at a verdict is how a run either loops forever or ships
 // something nobody checked.
@@ -786,12 +955,11 @@ func craftVerdict(result string) (pass bool, known bool) {
 		if line == "" {
 			continue
 		}
-		upper := strings.ToUpper(line)
-		index := strings.Index(upper, craftVerdictMarker)
-		if index < 0 {
+		found := craftVerdictLine.FindStringIndex(line)
+		if found == nil {
 			continue
 		}
-		verdict := strings.ToLower(strings.TrimSpace(line[index+len(craftVerdictMarker):]))
+		verdict := strings.ToLower(strings.TrimSpace(line[found[1]:]))
 		switch {
 		case strings.HasPrefix(verdict, craftVerdictPass):
 			return true, true
