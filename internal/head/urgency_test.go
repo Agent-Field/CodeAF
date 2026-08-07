@@ -139,14 +139,33 @@ func TestSpeedAsARequirementStillCompilesAsNewWork(t *testing.T) {
 
 // The ack that promised acceleration had no mechanism behind it. The router's
 // receipt may only describe what the command it emits actually does.
+//
+// Which used to be enforced by denying the capability outright — "you have no
+// way to make existing work go faster from here" — while the belt's expedite
+// tool sitting one arm away made work go faster, and the manual said so. The
+// same sentence got opposite answers depending on which arm caught it. So the
+// denial is gone and the constraint stayed: the mechanism is named, exactly what
+// it does is named, and promising a time is still forbidden.
 func TestSpliceReceiptIsForbiddenFromPromisingAcceleration(t *testing.T) {
 	for _, phrase := range []string{
 		"queued and starts when the workforce reaches it",
 		"queued behind it",
-		"never say you will speed it up",
+		"never a completion time",
+		// What the router may claim is bounded by what its own command does.
+		// reprioritize raises claim order and nothing else; trimming the
+		// unstarted tail is the belt's expedite, and saying otherwise here would
+		// be the same dishonesty from the generous side.
+		"claimed before its pending siblings",
 	} {
 		if !strings.Contains(headSystemPrompt, phrase) {
 			t.Fatalf("the router prompt no longer constrains the splice receipt: %q", phrase)
 		}
+	}
+	if strings.Contains(headSystemPrompt, "no way to make existing work go faster") {
+		t.Error("the router still denies a capability the belt exercises")
+	}
+	// Both prompts tell one story about it, which is the whole of the fix.
+	if !strings.Contains(controlSystemPrompt, "expedite makes a job arrive sooner") {
+		t.Error("the control prompt lost the capability the router now defers to")
 	}
 }
