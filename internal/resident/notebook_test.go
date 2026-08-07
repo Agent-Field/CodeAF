@@ -1047,3 +1047,135 @@ func containsString(values []string, want string) bool {
 	}
 	return false
 }
+
+// The instruction stays verbatim; that law is not negotiable. But a verbatim
+// instruction is frequently not self-contained — "check my github account and
+// find it" is a whole sentence whose object lives entirely in the turn before
+// it — and without those turns the compiler could only ask what "it" meant.
+func TestCompileContextCarriesTheConversationTheInstructionCameFrom(t *testing.T) {
+	graph := openStore(t)
+	for _, message := range []store.Message{
+		{SessionID: "deixis", Role: store.RoleUser,
+			Body: "there's a github issue on aforge-v2 with a contributor's implementation plan"},
+		{SessionID: "deixis", Role: store.RoleAgent,
+			Body: "I'll find the issue with the contributor's plan and review it."},
+		{SessionID: "elsewhere", Role: store.RoleUser, Body: "unrelated other window"},
+	} {
+		if _, err := graph.PostMessage(message); err != nil {
+			t.Fatal(err)
+		}
+	}
+	snapshot, err := graph.ActiveSnapshot()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	got := New(graph, nil, nil).renderCompileContextFor(snapshot,
+		"check my github account and find it", "deixis")
+	for _, want := range []string{
+		"recent conversation in this session",
+		"contributor's implementation plan",
+		"find the issue with the contributor's plan",
+	} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("compile context omitted %q:\n%s", want, got)
+		}
+	}
+	if strings.Contains(got, "unrelated other window") {
+		t.Fatalf("compile context leaked another session's thread:\n%s", got)
+	}
+	// The thread is volatile, so it goes last: everything above it is stable
+	// across a session and must stay cacheable as a prefix.
+	if strings.Index(got, "recent conversation in this session") < strings.Index(got, "jobs (newest first)") {
+		t.Fatalf("thread slice was not written into the volatile suffix:\n%s", got)
+	}
+	// A caller with no conversation behind it — a charter firing speaks its own
+	// template — gets exactly what it always got.
+	if quiet := New(graph, nil, nil).renderCompileContext(snapshot, "check the deploy"); strings.Contains(
+		quiet, "recent conversation in this session") {
+		t.Fatalf("sessionless compile grew a thread block:\n%s", quiet)
+	}
+}
+
+func TestCompileContextBudgetsTheThreadSlice(t *testing.T) {
+	graph := openStore(t)
+	for index := range 40 {
+		if _, err := graph.PostMessage(store.Message{
+			SessionID: "wordy", Role: store.RoleUser,
+			Body: fmt.Sprintf("turn %02d %s", index, strings.Repeat("y", 900)),
+		}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	snapshot, err := graph.ActiveSnapshot()
+	if err != nil {
+		t.Fatal(err)
+	}
+	block := New(graph, nil, nil).recentThreadBlock("wordy")
+	if len(block) > compileThreadBytes+256 {
+		t.Fatalf("thread slice is %d bytes", len(block))
+	}
+	// The turn nearest the instruction is the one that always survives.
+	if !strings.Contains(block, "turn 39") {
+		t.Fatalf("thread slice dropped the newest turn:\n%s", block)
+	}
+	if got := New(graph, nil, nil).renderCompileContextFor(snapshot, "carry on", "wordy"); !strings.Contains(
+		got, "turn 39") {
+		t.Fatalf("compile context dropped the newest turn:\n%s", got)
+	}
+}
+
+// The store returns creation order, so a long-lived graph handed the compiler
+// months of settled nodes before the job running right now — and a grown
+// territory rewrites only its fold digest, so the compiler kept quoting the
+// three-job version of a map that now covers eleven.
+func TestCompileGraphRanksLiveWorkFirstAndPrefersTheFoldDigest(t *testing.T) {
+	graph := openStore(t)
+	if err := graph.Splice(store.RootID, store.Subtree{Nodes: []store.NodeSpec{{
+		ID: "ancient", Brief: "an old settled job", Stage: 1,
+	}}}, store.Provenance{Origin: store.OriginUser, Intent: "old work"}); err != nil {
+		t.Fatal(err)
+	}
+	claim, won, err := graph.Claim("ancient", "worker")
+	if err != nil || !won {
+		t.Fatalf("claim: won=%t err=%v", won, err)
+	}
+	if err := graph.Complete(claim, "the three-job version"); err != nil {
+		t.Fatal(err)
+	}
+	if err := graph.Fold("ancient", "the eleven-job version", nil); err != nil {
+		t.Fatal(err)
+	}
+	for index := range 60 {
+		id := fmt.Sprintf("filler-%02d", index)
+		if err := graph.Splice(store.RootID, store.Subtree{Nodes: []store.NodeSpec{{
+			ID: id, Brief: strings.Repeat("z", 200), Stage: 1,
+		}}}, store.Provenance{Origin: store.OriginUser, Intent: "filler"}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := graph.Splice(store.RootID, store.Subtree{Nodes: []store.NodeSpec{{
+		ID: "live-webgpu-scan", Brief: "scan the webgpu backend", Stage: 1,
+	}}}, store.Provenance{Origin: store.OriginUser, Intent: "scan webgpu"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, won, err := graph.Claim("live-webgpu-scan", "worker"); err != nil || !won {
+		t.Fatalf("claim live: won=%t err=%v", won, err)
+	}
+
+	snapshot, err := graph.ActiveSnapshot()
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := renderGraphContext(snapshot)
+	if !strings.Contains(got, "live-webgpu-scan") {
+		t.Fatalf("running work was truncated out of the compile context:\n%s", got)
+	}
+	if !strings.Contains(got, "the eleven-job version") || strings.Contains(got, "the three-job version") {
+		t.Fatalf("compile context quoted the stale summary over the live fold digest:\n%s", got)
+	}
+	// Both halves spend one budget; they used to hold a limit each.
+	if len(got) > compileContextBytes+1024 {
+		t.Fatalf("compile graph context is %d bytes against a %d budget", len(got), compileContextBytes)
+	}
+}
