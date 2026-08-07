@@ -137,8 +137,10 @@ func TestCompileCraftRequiresItsOwnVersionInProvenance(t *testing.T) {
 // its brief and nobody would find out until the deliverable landed.
 func TestCompileCraftRefusesAnUnfilledReference(t *testing.T) {
 	workflow := presentationCraft()
+	// The refusal is the workflow's own — the compiler fills through Fill
+	// rather than keeping a second copy of the filling law.
 	_, err := CompileCraftAs("run-1", "", workflow, nil, craftTestProvenance(workflow))
-	if err == nil || !strings.Contains(err.Error(), `required parameter "topic"`) {
+	if err == nil || !strings.Contains(err.Error(), "missing required param: topic") {
 		t.Fatalf("missing required parameter compiled: %v", err)
 	}
 
@@ -205,5 +207,61 @@ func TestCraftNodeIDsParseBackToStepAndGeneration(t *testing.T) {
 	}
 	if _, _, _, _, ok := craftNodeParts("task-12-n4"); ok {
 		t.Fatalf("an ordinary planned id parsed as craft")
+	}
+}
+
+// An optional param with no default is a hole the file said may stay empty.
+// Both entry points into a compile — recognition and a run by name — have to
+// read that the same way, or the same workflow runs from a matched request and
+// refuses when it is asked for outright.
+func TestAnOptionalParamWithNoDefaultCompilesFromEitherEntryPoint(t *testing.T) {
+	workflow := &craft.Workflow{
+		Name: "note", Commit: "abc1234",
+		Params: []craft.Param{{Name: "topic", Required: true}, {Name: "aside"}},
+		Steps:  []craft.Step{{ID: "write", Brief: "Write about {{topic}}. Aside: {{aside}}"}},
+		Limits: craft.Limits{CostUSD: 1, WallClock: time.Minute},
+	}
+	graph := openStore(t)
+	runner := NewCraftRunner(graph, &fakeCraftRepo{workflow: workflow}, "/home/craft")
+	run, err := runner.RunCraft("note", map[string]string{"topic": "the outage"}, "craft", "")
+	if err != nil {
+		t.Fatalf("run by name: %v", err)
+	}
+	node, ok, err := graph.Node(run.Prefix + "~write")
+	if err != nil || !ok {
+		t.Fatalf("read the step: found=%t err=%v", ok, err)
+	}
+	if strings.Contains(node.Brief, "{{aside}}") {
+		t.Fatalf("an unfilled optional param reached the brief:\n%s", node.Brief)
+	}
+
+	filled, err := workflow.Fill(map[string]string{"topic": "the outage"})
+	if err != nil {
+		t.Fatalf("fill: %v", err)
+	}
+	if _, err := CompileCraftAs("run-1", "", workflow, filled, store.Provenance{
+		Origin: store.OriginUser, Intent: "write it", Craft: CraftRef(workflow),
+	}); err != nil {
+		t.Fatalf("the recognized path compiled differently: %v", err)
+	}
+}
+
+// One id law, asserted as one law: a file the validator accepts is a file that
+// compiles, and a file it refuses is one that never could. Anything else and a
+// forged craft announces itself, saves, and fails forever with nobody watching.
+func TestValidatedStepIDsAreExactlyTheOnesThatCompile(t *testing.T) {
+	for _, id := range []string{"outline", "first-draft", "step2", "step_one", "first--draft", "draft-", "Draft"} {
+		workflow := &craft.Workflow{
+			Name: "one-step", Commit: "abc1234",
+			Steps:  []craft.Step{{ID: id, Brief: "do the thing"}},
+			Limits: craft.Limits{CostUSD: 1, WallClock: time.Minute},
+		}
+		validated := len(workflow.Validate()) == 0
+		_, err := CompileCraftAs("run-1", "", workflow, nil, store.Provenance{
+			Origin: store.OriginUser, Intent: "run it", Craft: CraftRef(workflow),
+		})
+		if compiled := err == nil; compiled != validated {
+			t.Errorf("step id %q: validated=%t compiled=%t (%v)", id, validated, compiled, err)
+		}
 	}
 }

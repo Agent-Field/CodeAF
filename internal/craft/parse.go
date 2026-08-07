@@ -35,10 +35,56 @@ const SuggestDistance = 2
 // {{ topic }} and neither is a mistake worth an error.
 var paramPattern = regexp.MustCompile(`\{\{\s*([A-Za-z_][A-Za-z0-9_]*)\s*\}\}`)
 
-// namePattern governs workflow names and step ids. A workflow name becomes a
-// path segment and a step id becomes a node name, so both are held to a slug
-// that cannot escape a directory or confuse a diff.
+// namePattern governs workflow names. A workflow name becomes a path segment,
+// so it is held to a slug that cannot escape a directory or confuse a diff.
+// Step ids answer to a stricter law — see Slug.
 var namePattern = regexp.MustCompile(`^[a-z0-9][a-z0-9_-]*$`)
+
+// MaxIDBytes is how long a step id may be once slugged. Node ids are read by
+// people in the rail and parsed back apart by the sentinel; past this length
+// they stop being either.
+const MaxIDBytes = 48
+
+// Slug is the id law, and it lives here because it has to be the same law
+// twice. The compiler mints a node id from a step id by lowercasing it,
+// collapsing every run of anything else into a single dash, and cutting it at
+// MaxIDBytes — and it refuses any step whose id does not survive that trip
+// unchanged. Validate has to refuse exactly the files the compiler refuses, or
+// a workflow saves, commits, announces itself, and then fails to compile
+// forever with nobody watching.
+func Slug(name string) string {
+	name = strings.ToLower(strings.TrimSpace(name))
+	var slug strings.Builder
+	dash := false
+	for _, char := range name {
+		switch {
+		case char >= 'a' && char <= 'z', char >= '0' && char <= '9':
+			slug.WriteRune(char)
+			dash = false
+		default:
+			if slug.Len() > 0 && !dash {
+				slug.WriteByte('-')
+				dash = true
+			}
+		}
+		if slug.Len() >= MaxIDBytes {
+			break
+		}
+	}
+	result := strings.Trim(slug.String(), "-")
+	if result == "" {
+		// An id that reduces to nothing still has to be addressable; naming it
+		// plainly is better than minting an empty node id nobody can reach.
+		return "step"
+	}
+	return result
+}
+
+// ValidStepID reports whether an id is already its own slug, which is exactly
+// what the compiler demands of it.
+func ValidStepID(id string) bool {
+	return id != "" && Slug(id) == id
+}
 
 // paramNamePattern governs param names, which have to be writable inside
 // {{...}} without ambiguity.
@@ -263,8 +309,9 @@ func (w *Workflow) Validate() []error {
 		case step.ID == "":
 			found = append(found, fmt.Errorf("step %d: id is empty — every step is named by the steps that need it", i+1))
 			continue
-		case !namePattern.MatchString(step.ID):
-			found = append(found, fmt.Errorf("step %q: id must be lowercase letters, digits, dash or underscore", step.ID))
+		case !ValidStepID(step.ID):
+			found = append(found, fmt.Errorf("step %q: id must be lowercase letters and digits joined by single dashes, at most %d characters — it becomes a node id — did you mean %s?",
+				step.ID, MaxIDBytes, Slug(step.ID)))
 			continue
 		case ids[step.ID]:
 			found = append(found, fmt.Errorf("step %s: duplicate id — a step id is how the others name it, so it has to be unique", step.ID))

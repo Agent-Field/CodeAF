@@ -1257,3 +1257,114 @@ func TestEveryReadingIsToldNotToRaceWorkAlreadyUnderway(t *testing.T) {
 		}
 	}
 }
+
+// A craft's money stop is answered by writing the choice down where the run
+// itself will read it. The run owns the decision — it is the only thing that
+// knows what it has spent — so the head's whole job is to record the option
+// verbatim and say something true, never the bare "got it" that used to
+// acknowledge a decision nothing acted on.
+func TestHeadRecordsCraftBudgetConsentWhereTheRunWillReadIt(t *testing.T) {
+	for _, probe := range []struct {
+		reply string
+		value string
+		want  string
+	}{
+		{"1", "craft:continue:craft-presentation-1", "Keeping it going."},
+		{"2", "craft:stop:craft-presentation-1", "Okay — it'll deliver what already landed."},
+		{"yes", "craft:continue:craft-presentation-1", "Keeping it going."},
+	} {
+		graph := openHeadStore(t)
+		options := []store.QuestionOption{
+			{Label: "keep going", Value: "craft:continue:craft-presentation-1"},
+			{Label: "deliver what landed", Value: "craft:stop:craft-presentation-1"},
+		}
+		question, err := graph.AskQuestion(store.AgentQuestion{
+			SessionID: "craft-money", Urgency: store.QuestionBlocking, Options: options,
+			Text: "Craft budget reached -- the presentation craft has spent $1.75 of its $1.50 bound.",
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := graph.SurfaceQuestion(question.Seq); err != nil {
+			t.Fatal(err)
+		}
+		user, err := graph.PostMessage(store.Message{
+			SessionID: "craft-money", Role: store.RoleUser, Body: probe.reply, QuestionSeq: question.Seq,
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		client := &fakeClient{}
+		if err := New(client, graph).answer(context.Background(), user); err != nil {
+			t.Fatal(err)
+		}
+		if calls := client.callCount(); calls != 0 {
+			t.Fatalf("%q was routed to a model: calls=%d", probe.reply, calls)
+		}
+		resolved, found, err := graph.AgentQuestionBySeq(question.Seq)
+		if err != nil || !found {
+			t.Fatalf("read the question: found=%t err=%v", found, err)
+		}
+		if resolved.Status != store.QuestionAnswered || resolved.Resolution != probe.value {
+			t.Fatalf("%q resolved as %q (%s)", probe.reply, resolved.Resolution, resolved.Status)
+		}
+		messages, err := graph.Messages("craft-money", user.Seq, 0)
+		if err != nil || len(messages) != 1 || messages[0].Body != probe.want {
+			t.Fatalf("%q acknowledgement = %+v err=%v", probe.reply, messages, err)
+		}
+	}
+}
+
+// An answer continues the ask it answers, and what the user attached to that
+// ask is part of it. A continuation that drops the files is a job that never
+// sees the PDF the question was about.
+func TestAnsweringACompilerQuestionCarriesTheOriginalAttachments(t *testing.T) {
+	for _, durable := range []bool{true, false} {
+		graph := openHeadStore(t)
+		source, err := graph.RequestCommand(store.Command{
+			SessionID: "attached", Kind: store.CommandSplice,
+			Instruction: "summarize this", Attachments: []string{"/tmp/report.pdf"},
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if durable {
+			question, err := graph.AskQuestion(store.AgentQuestion{
+				SessionID: "attached", Text: "How long should the summary be?",
+				Urgency: store.QuestionWhenever, OriginCommandSeq: source.Seq,
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if _, err := graph.SurfaceQuestion(question.Seq); err != nil {
+				t.Fatal(err)
+			}
+		} else if _, err := graph.PostMessage(store.Message{
+			SessionID: "attached", Role: store.RoleAgent, Body: "How long should the summary be?",
+			CommandSeq: source.Seq,
+			Options:    []store.QuestionOption{{Label: "a page"}, {Label: "a paragraph"}},
+		}); err != nil {
+			t.Fatal(err)
+		}
+		user, err := graph.PostMessage(store.Message{
+			SessionID: "attached", Role: store.RoleUser, Body: "a paragraph",
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := New(&fakeClient{}, graph).answer(context.Background(), user); err != nil {
+			t.Fatal(err)
+		}
+		commands, err := graph.PendingCommands(0)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(commands) != 2 {
+			t.Fatalf("durable=%t: pending commands = %+v", durable, commands)
+		}
+		continuation := commands[1]
+		if len(continuation.Attachments) != 1 || continuation.Attachments[0] != "/tmp/report.pdf" {
+			t.Fatalf("durable=%t: the continuation lost the attachment: %+v", durable, continuation)
+		}
+	}
+}

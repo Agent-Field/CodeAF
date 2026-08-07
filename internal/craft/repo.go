@@ -2,6 +2,8 @@ package craft
 
 import (
 	"bytes"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"os"
@@ -176,9 +178,19 @@ func (r *Repo) Save(w *Workflow, message string) (string, error) {
 	return r.commitIfChanged(subjected(w.Name, message), path)
 }
 
-// Load reads a workflow at the working tree's version and stamps the commit it
-// came from, so anything measured about the run can be attributed to a version
-// rather than to a name.
+// Load reads a workflow at the working tree's version and stamps the version
+// it came from, so anything measured about the run can be attributed to a
+// version rather than to a name.
+//
+// The working tree is not the same thing as HEAD, and the difference is
+// load-bearing: a run re-reads its workflow by name@commit on every advance and
+// refuses to continue when that reference has moved. Stamping HEAD's hash onto
+// edited bytes would make an uncommitted edit invisible to that guard — the
+// same run, silently finishing on a file nobody committed. A dirty path
+// therefore carries its own content into the version, so editing under a live
+// run moves the reference and the guard fires; and a workflow that was never
+// committed has no version at all, which is a refusal rather than a bare name
+// with the guard switched off.
 func (r *Repo) Load(name string) (*Workflow, error) {
 	path, err := workflowPath(name)
 	if err != nil {
@@ -200,7 +212,26 @@ func (r *Repo) Load(name string) (*Workflow, error) {
 		return nil, err
 	}
 	w.Commit = strings.TrimSpace(commit)
+	if w.Commit == "" {
+		return nil, fmt.Errorf("craft load %s: this workflow has never been committed — save it before running it, so the run can name the version it ran", name)
+	}
+	dirty, err := r.pending([]string{path})
+	if err != nil {
+		return nil, err
+	}
+	if dirty {
+		w.Commit = dirtyVersion(w.Commit, data)
+	}
 	return w, nil
+}
+
+// dirtyVersion names an uncommitted edit as its own version: the commit it
+// departs from, and enough of the content's hash to tell two edits apart. It
+// reads as what it is everywhere a version is shown, and it changes the moment
+// the file does.
+func dirtyVersion(commit string, data []byte) string {
+	sum := sha256.Sum256(data)
+	return commit + "+dirty-" + hex.EncodeToString(sum[:])[:8]
 }
 
 // LoadAt reads a workflow as of one commit. This is how a survival record is

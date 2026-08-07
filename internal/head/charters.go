@@ -8,6 +8,17 @@ import (
 	"github.com/Agent-Field/aforge-v2/internal/store"
 )
 
+// craftContinueOption and craftStopOption are the two answers a craft run's
+// money stop offers. The words are written here as well as where the question
+// is minted because they are a wire form between two halves of the system, the
+// same way every other option value in this file is — and because a decoder
+// that imported its own encoder would only be able to read questions this
+// binary happened to write.
+const (
+	craftContinueOption = "craft:continue:"
+	craftStopOption     = "craft:stop:"
+)
+
 // answerAgentQuestion routes replies to the durable reverse-direction queue.
 // An explicit QuestionSeq wins; otherwise the store applies the same
 // no-intervening-user-turn recency rule as ordinary conversational askbacks.
@@ -26,6 +37,9 @@ func (h *Head) answerAgentQuestion(user store.Message) (bool, error) {
 			answer = strings.TrimSpace(option.Value)
 		}
 		if handled, err := h.answerCharterFiringQuestion(user, question.Seq, option); handled {
+			return true, err
+		}
+		if handled, err := h.answerCraftBudgetQuestion(user, question.Seq, option); handled {
 			return true, err
 		}
 		if err := h.store.ResolveQuestion(question.Seq, store.QuestionAnswered, answer, user.Seq); err != nil {
@@ -145,6 +159,10 @@ func (h *Head) continueAgentCompilerQuestion(user store.Message, question store.
 	instruction := SpliceCompilerAnswer(source.Instruction, answer)
 	command, err := h.store.RequestCommand(store.Command{
 		SessionID: user.SessionID, Kind: store.CommandSplice, Instruction: instruction,
+		// The answer continues the original ask, and what the user attached to
+		// it is part of that ask. Dropping the files here is how a question
+		// about a PDF turns into a job that never sees it.
+		Attachments: append([]string(nil), source.Attachments...),
 	})
 	if err != nil {
 		return err
@@ -196,12 +214,13 @@ func selectQuestionOption(reply string, options []store.QuestionOption) (store.Q
 		label := strings.ToLower(strings.TrimSpace(option.Label))
 		value := strings.ToLower(strings.TrimSpace(option.Value))
 		if affirmativeRailReply(normalized) &&
-			(strings.HasPrefix(label, "yes") || strings.Contains(value, ":ratify:") || strings.Contains(value, ":fire:")) {
+			(strings.HasPrefix(label, "yes") || strings.Contains(value, ":ratify:") ||
+				strings.Contains(value, ":fire:") || strings.HasPrefix(value, craftContinueOption)) {
 			return option, true
 		}
 		if negativeReply(normalized) &&
 			(strings.Contains(label, "not standing") || strings.Contains(value, ":once:") ||
-				strings.Contains(value, ":decline:") ||
+				strings.Contains(value, ":decline:") || strings.HasPrefix(value, craftStopOption) ||
 				strings.HasPrefix(label, "only while") || value == "standing-watch:decline" ||
 				strings.HasPrefix(label, "keep ") || strings.Contains(value, "surgery:keep:")) {
 			return option, true
@@ -329,6 +348,9 @@ func (h *Head) continueCompilerQuestion(user store.Message, question store.Messa
 	instruction := SpliceCompilerAnswer(source.Instruction, answer)
 	command, err := h.store.RequestCommand(store.Command{
 		SessionID: user.SessionID, Kind: store.CommandSplice, Instruction: instruction,
+		// Same law on the conversational path: the continuation is the same ask
+		// carrying the same files.
+		Attachments: append([]string(nil), source.Attachments...),
 	})
 	if err != nil {
 		return err
@@ -370,6 +392,48 @@ func (h *Head) answerCharterFiringQuestion(user store.Message, questionSeq int64
 		return true, err
 	}
 	return true, h.acknowledgeCharterCommand(user, command)
+}
+
+// answerCraftBudgetQuestion settles a craft run's money stop. The run itself
+// applies the decision — it is the only thing that knows what it has spent and
+// what it still has to do — so the whole job here is to write the choice down
+// in a form the run can read without guessing: the option's own value becomes
+// the question's durable resolution, and the run polls it exactly as a waiting
+// leaf polls for service consent. Without this branch the answer fell through
+// to "Got it — I'll use that", which acknowledged a decision nothing acted on.
+func (h *Head) answerCraftBudgetQuestion(user store.Message, questionSeq int64, option store.QuestionOption) (bool, error) {
+	value, keepGoing, ok := decodeCraftBudgetOption(option.Value)
+	if !ok {
+		return false, nil
+	}
+	if err := h.store.ResolveQuestion(questionSeq, store.QuestionAnswered, value, user.Seq); err != nil {
+		return true, err
+	}
+	reply := "Okay — it'll deliver what already landed."
+	if keepGoing {
+		reply = "Keeping it going."
+	}
+	return true, h.postAgent(user.SessionID, reply, 0)
+}
+
+// decodeCraftBudgetOption reads one craft money answer, fail-closed like every
+// other option decoder here: the run's own id namespace has to be there, or
+// this is not a craft consent and must not be treated as one.
+func decodeCraftBudgetOption(value string) (resolution string, keepGoing bool, ok bool) {
+	value = strings.TrimSpace(value)
+	var prefix string
+	switch {
+	case strings.HasPrefix(value, craftContinueOption):
+		prefix, keepGoing = strings.TrimPrefix(value, craftContinueOption), true
+	case strings.HasPrefix(value, craftStopOption):
+		prefix, keepGoing = strings.TrimPrefix(value, craftStopOption), false
+	default:
+		return "", false, false
+	}
+	if strings.TrimSpace(prefix) == "" {
+		return "", false, false
+	}
+	return value, keepGoing, true
 }
 
 func charterFiringCommand(option store.QuestionOption) (store.CommandKind, string, string, bool) {
