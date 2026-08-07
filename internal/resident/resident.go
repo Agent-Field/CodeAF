@@ -172,6 +172,7 @@ type Reconciler struct {
 	reflect         ReflectFunc
 	digestTerritory TerritoryDigestFunc
 	overrunPlan     OverrunPlanFunc
+	redirect        RedirectFunc
 	sentinel        SentinelFunc
 	composeBrief    BriefComposeFunc
 	standingWatch   StandingWatch
@@ -428,6 +429,8 @@ func (r *Reconciler) applyCommand(ctx context.Context, command store.Command) (c
 		return r.splice(ctx, command)
 	case store.CommandCancel:
 		return r.cancel(ctx, command)
+	case store.CommandRedirect:
+		return r.redirectJob(ctx, command)
 	case store.CommandPause:
 		return r.pause(command)
 	case store.CommandResume:
@@ -815,7 +818,7 @@ func commandReceiptNode(command store.Command) string {
 func isNodeSurgeryCommand(kind store.CommandKind) bool {
 	switch kind {
 	case store.CommandCancel, store.CommandPause, store.CommandResume, store.CommandAmend,
-		store.CommandReprioritize, store.CommandRestart:
+		store.CommandReprioritize, store.CommandRestart, store.CommandRedirect:
 		return true
 	default:
 		return false

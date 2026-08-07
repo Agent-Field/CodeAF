@@ -165,6 +165,43 @@ func TestSurgeryCommandValidationProtectsFutureEmitters(t *testing.T) {
 	}
 }
 
+// The user's words are as durable as any other command: request, resolution,
+// and the verbatim instruction all survive a replay from the journal alone.
+func TestRedirectCommandRoundTripsThroughRebuild(t *testing.T) {
+	graph := openThreadStore(t)
+	if err := graph.Splice(RootID, Subtree{Nodes: []NodeSpec{{ID: "api", Brief: "write a v1 client", Stage: 1}}},
+		Provenance{Origin: OriginUser, SessionID: "redirect", Intent: "write a v1 client"}); err != nil {
+		t.Fatal(err)
+	}
+	command, err := graph.RequestCommand(Command{
+		SessionID: "redirect", Kind: CommandRedirect, Target: "api",
+		Instruction: "no, use the v2 API not v1",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := graph.ResolveCommand(command.Seq, CommandApplied, "redirected api: 1 added"); err != nil {
+		t.Fatal(err)
+	}
+	if err := graph.Rebuild(); err != nil {
+		t.Fatal(err)
+	}
+	rebuilt, found, err := graph.CommandBySeq(command.Seq)
+	if err != nil || !found || rebuilt.Kind != CommandRedirect || rebuilt.Target != "api" ||
+		rebuilt.Status != CommandApplied || rebuilt.Instruction != "no, use the v2 API not v1" ||
+		rebuilt.Result != "redirected api: 1 added" {
+		t.Fatalf("rebuilt redirect command = %+v found=%t err=%v", rebuilt, found, err)
+	}
+	if err := graph.CancelPending("api", "done here"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := graph.RequestCommand(Command{
+		SessionID: "redirect", Kind: CommandRedirect, Target: "api", Instruction: "too late",
+	}); !errors.Is(err, ErrInvalid) {
+		t.Fatalf("redirect onto settled work error = %v", err)
+	}
+}
+
 func nodeListed(nodes []Node, id string) bool { return indexOfNode(nodes, id) >= 0 }
 
 func indexOfNode(nodes []Node, id string) int {
