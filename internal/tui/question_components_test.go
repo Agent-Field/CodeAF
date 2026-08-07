@@ -325,3 +325,27 @@ func TestModelPickerFallsBackToCommandRequestAndOptimisticHeader(t *testing.T) {
 		t.Fatalf("fallback request = %#v", request)
 	}
 }
+
+func TestHeadEmittedQuestionBodyParsesIntoChooseComponent(t *testing.T) {
+	// The head and resident emit selectable questions through
+	// store.QuestionMessageBody; the TUI's tolerant reader must accept that
+	// exact spelling, keys aligned so a plain "N" reply selects options[N-1].
+	body := store.QuestionMessageBody("Stand this charter up?", []store.QuestionOption{
+		{Label: "yes, stand this up", Value: "charter:ratify:charter-7"},
+		{Label: "change the cadence", Value: "charter:cadence:charter-7"},
+		{Label: "once, not standing", Value: "charter:once:charter-7"},
+	})
+	component, ok := readQuestionComponent(body)
+	if !ok || component.Kind != questionChoose || component.Prompt != "Stand this charter up?" {
+		t.Fatalf("emitted question decoded as %#v ok=%t", component, ok)
+	}
+	if len(component.Options) != 3 || !component.AllowFree {
+		t.Fatalf("emitted options decoded as %#v", component.Options)
+	}
+	for index, want := range []string{"yes, stand this up", "change the cadence", "once, not standing"} {
+		option := component.Options[index]
+		if option.Label != want || option.Key != fmt.Sprint(index+1) || option.Reply != option.Key {
+			t.Fatalf("option %d decoded as %#v, want label %q keyed %d", index, option, want, index+1)
+		}
+	}
+}

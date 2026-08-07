@@ -75,7 +75,7 @@ func TestStandingSlashListsOnlyActiveCharters(t *testing.T) {
 			Kind: store.WatchCron, Cadence: "every morning", Schedule: "0 9 * * *",
 		},
 		Sentinel: "Is the digest due?", Action: "Send the release digest.",
-		Rails: store.CharterRails{
+		Rails: store.CharterSpecRails{
 			EstimatedCostUSD: 0.05, MaxPerDay: 1,
 			MaxPerDayJustification: "one scheduled delivery", Expiry: "never",
 		},
@@ -86,7 +86,9 @@ func TestStandingSlashListsOnlyActiveCharters(t *testing.T) {
 	if _, err := graph.DraftCharter("release-digest", "standing", 0, spec); err != nil {
 		t.Fatal(err)
 	}
-	if err := graph.RatifyCharter("release-digest"); err != nil {
+	if err := graph.SetCharterStatus("release-digest", store.CharterActive, store.Ratification{
+		Origin: store.OriginUser, SessionID: "standing", Evidence: "yes, stand this up",
+	}); err != nil {
 		t.Fatal(err)
 	}
 	got, err := commander.Standing()

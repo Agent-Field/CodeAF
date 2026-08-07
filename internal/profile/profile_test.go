@@ -220,6 +220,19 @@ func TestSurpriseJSONIsBackwardCompatible(t *testing.T) {
 	}
 }
 
+func TestAddTimestampsNewRecordsAndSnapshotsAreIndependent(t *testing.T) {
+	measured := &Profile{}
+	added := measured.Add(Record{Title: "observed", Size: "atomic"})
+	if len(added) != 1 || added[0].Time.IsZero() {
+		t.Fatalf("Add timestamp = %+v, want a non-zero observation time", added)
+	}
+	records, _ := measured.RecordsSnapshot()
+	records[0].Title = "changed"
+	if measured.Records[0].Title != "observed" {
+		t.Fatal("RecordsSnapshot aliased the live profile")
+	}
+}
+
 func repeatedRecords(count, turns int, verdict provider.Verdict) []Record {
 	records := make([]Record, count)
 	for index := range records {

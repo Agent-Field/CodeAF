@@ -5,10 +5,11 @@ import (
 	"path/filepath"
 	"reflect"
 	"testing"
+	"time"
 )
 
-func TestCharterLifecycleIsJournaledAndRebuildable(t *testing.T) {
-	graph := openTestStore(t, filepath.Join(t.TempDir(), "charters.db"))
+func TestCharterSpecDissolvesIntoCanonicalLifecycle(t *testing.T) {
+	graph := openTestStore(t, filepath.Join(t.TempDir(), "charter-spec.db"))
 	spec := CharterSpec{
 		Invariant: "Whenever a backend PR opens, review it.",
 		Watch: CharterWatch{
@@ -16,7 +17,7 @@ func TestCharterLifecycleIsJournaledAndRebuildable(t *testing.T) {
 		},
 		Sentinel: "Is there a new backend PR?",
 		Action:   "Review the new backend PR.",
-		Rails: CharterRails{
+		Rails: CharterSpecRails{
 			EstimatedCostUSD: 0.08, MaxPerDay: 10,
 			MaxPerDayJustification: "caps the default worst day at about $0.80",
 			Expiry:                 "never",
@@ -26,33 +27,59 @@ func TestCharterLifecycleIsJournaledAndRebuildable(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if charter.Status != CharterDraft {
-		t.Fatalf("draft status = %q, want %q", charter.Status, CharterDraft)
+	if charter.Status != CharterProposed {
+		t.Fatalf("draft status = %q, want %q", charter.Status, CharterProposed)
+	}
+	if charter.Watch.Kind != WatchCron || charter.Watch.Cron == nil ||
+		charter.Watch.Cron.Kind != CronDaily || charter.Watch.Cron.Hour != 9 ||
+		charter.Watch.Cadence != "every morning" {
+		t.Fatalf("cadence words did not compile to a typed schedule: %+v", charter.Watch)
+	}
+	if rails := charter.Rails(); rails.PerFiringBudgetUSD != 0.08 || rails.MaxFiringsPerDay != 10 ||
+		rails.ExpiresAt != nil {
+		t.Fatalf("spec rails did not dissolve: %+v", charter.Rails())
+	}
+	again, err := graph.DraftCharter("backend-prs", "standing", 17, spec)
+	if err != nil || again.CreatedSeq != charter.CreatedSeq {
+		t.Fatalf("retried draft did not converge: %+v err=%v", again, err)
 	}
 	active, err := graph.ActiveCharters()
 	if err != nil || len(active) != 0 {
 		t.Fatalf("draft silently armed: active=%+v err=%v", active, err)
 	}
-	if err := graph.RatifyCharter(charter.ID); err != nil {
+	if err := graph.SetCharterStatus(charter.ID, CharterActive, Ratification{
+		Origin: OriginUser, SessionID: "standing", Evidence: "yes, stand this up",
+	}); err != nil {
 		t.Fatal(err)
 	}
 	matches, err := graph.SearchActiveCharters("backend reviews")
 	if err != nil || len(matches) != 1 || matches[0].ID != charter.ID {
 		t.Fatalf("BM25 matches = %+v err=%v", matches, err)
 	}
-	if err := graph.EditCharterCadence(charter.ID, "hourly", "0 * * * *"); err != nil {
+	armed := matches[0]
+	if err := graph.ReviseCharter(charter.ID, armed.Invariant,
+		RetimeWatch(armed.Watch, "hourly", time.Now()), armed.SentinelHint,
+		armed.Action, armed.Rails()); err != nil {
 		t.Fatal(err)
 	}
-	before, found, err := graph.CharterByID(charter.ID)
+	before, found, err := graph.Charter(charter.ID)
 	if err != nil || !found {
 		t.Fatalf("charter before rebuild = %+v found=%t err=%v", before, found, err)
+	}
+	if before.Watch.Cron == nil || before.Watch.Cron.Kind != CronEveryHours ||
+		before.Watch.Cron.Interval != 1 || before.Watch.Cadence != "hourly" {
+		t.Fatalf("cadence edit did not produce a typed hourly schedule: %+v", before.Watch)
 	}
 	if err := graph.Rebuild(); err != nil {
 		t.Fatal(err)
 	}
-	after, found, err := graph.CharterByID(charter.ID)
+	after, found, err := graph.Charter(charter.ID)
 	if err != nil || !found || !reflect.DeepEqual(after, before) {
 		t.Fatalf("charter after rebuild = %+v, want %+v found=%t err=%v", after, before, found, err)
+	}
+	matches, err = graph.SearchActiveCharters("backend reviews")
+	if err != nil || len(matches) != 1 || matches[0].ID != charter.ID {
+		t.Fatalf("BM25 matches after rebuild = %+v err=%v", matches, err)
 	}
 
 	events, err := graph.Events(0, 0)
@@ -62,13 +89,51 @@ func TestCharterLifecycleIsJournaledAndRebuildable(t *testing.T) {
 	var lifecycle []EventKind
 	for _, event := range events {
 		switch event.Kind {
-		case EventCharterDrafted, EventCharterRatified, EventCharterCadenceEdited:
+		case EventCharterCreated, EventCharterStatusChanged, EventCharterRevised:
 			lifecycle = append(lifecycle, event.Kind)
 		}
 	}
-	wantEvents := []EventKind{EventCharterDrafted, EventCharterRatified, EventCharterCadenceEdited}
+	wantEvents := []EventKind{EventCharterCreated, EventCharterStatusChanged, EventCharterRevised}
 	if !reflect.DeepEqual(lifecycle, wantEvents) {
 		t.Fatalf("charter lifecycle events = %v, want %v", lifecycle, wantEvents)
+	}
+}
+
+func TestReminderSpecCompilesToAtScheduleWithExpiry(t *testing.T) {
+	graph := openTestStore(t, filepath.Join(t.TempDir(), "reminder-spec.db"))
+	charter, err := graph.DraftCharter("call-mom", "chat", 3, CharterSpec{
+		Invariant: "Remind me tomorrow at 9 to call Mom.",
+		Watch:     CharterWatch{Kind: WatchCron, Cadence: "tomorrow at 9"},
+		Sentinel:  "Is it time for the reminder?",
+		Action:    "Say: call Mom.",
+		SayOnly:   true,
+		Rails: CharterSpecRails{
+			EstimatedCostUSD: 0.02, MaxPerDay: 1,
+			MaxPerDayJustification: "one firing matches the reminder's once expiry",
+			Expiry:                 "once",
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if charter.Watch.Cron == nil || charter.Watch.Cron.Kind != CronAt {
+		t.Fatalf("reminder watch = %+v, want a cron at-schedule", charter.Watch)
+	}
+	at := charter.Watch.Cron.At
+	tomorrow := time.Now().AddDate(0, 0, 1)
+	if at.Hour() != 9 || at.Minute() != 0 || at.Day() != tomorrow.Day() {
+		t.Fatalf("reminder instant = %v, want tomorrow 09:00", at)
+	}
+	rails := charter.Rails()
+	if rails.ExpiresAt == nil || !rails.ExpiresAt.After(at) || rails.MaxFiringsPerDay != 1 {
+		t.Fatalf("reminder rails = %+v, want expiry after one firing", rails)
+	}
+	if !charter.Action.SayOnly || charter.Action.Template != "call Mom." {
+		t.Fatalf("reminder action = %+v, want say-only template", charter.Action)
+	}
+	next, err := NextCronDue(*charter.Watch.Cron, at)
+	if err != nil || !next.After(rails.ExpiresAt.Add(24*time.Hour)) {
+		t.Fatalf("post-firing due = %v err=%v, want parked beyond expiry", next, err)
 	}
 }
 
@@ -186,7 +251,7 @@ func TestLegacyThreadSchemaMigratesForOptionsAndCharterCommands(t *testing.T) {
 		Invariant: "Every day verify the backup.",
 		Watch:     CharterWatch{Kind: WatchCron, Cadence: "every day", Schedule: "0 9 * * *"},
 		Sentinel:  "Is today's backup verified?", Action: "Verify the backup.",
-		Rails: CharterRails{EstimatedCostUSD: 0.02, MaxPerDay: 1,
+		Rails: CharterSpecRails{EstimatedCostUSD: 0.02, MaxPerDay: 1,
 			MaxPerDayJustification: "one daily check", Expiry: "never"},
 	})
 	if err != nil {
@@ -197,5 +262,45 @@ func TestLegacyThreadSchemaMigratesForOptionsAndCharterCommands(t *testing.T) {
 		Instruction: "yes, stand this up",
 	}); err != nil {
 		t.Fatalf("charter command after migration: %v", err)
+	}
+}
+
+func TestUnlimitedTodayRailAdmitsCharterFirings(t *testing.T) {
+	graph := openTestStore(t, filepath.Join(t.TempDir(), "unlimited-firings.db"))
+	charter := mustTestCharter(t, "charter-unlimited", CharterActive, CharterRails{
+		PerFiringBudgetUSD: 5, MaxFiringsPerDay: 3,
+	})
+	if err := graph.CreateCharter(charter); err != nil {
+		t.Fatal(err)
+	}
+	now := time.Now()
+	wakeSeq, err := graph.BeginCharterWake(charter.ID, now, "poll due", CharterWatchState{
+		NextDue: now.Add(time.Hour),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := graph.RecordSentinelCheck(charter.ID, SentinelCheck{
+		WakeSeq: wakeSeq, Yes: true, Line: "condition occurred",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	subtree := Subtree{Nodes: []NodeSpec{{ID: "firing-unlimited-1", Brief: "Update docs", Stage: 1}}}
+	provenance := Provenance{Origin: OriginTrigger, SessionID: "charter-session",
+		Intent: "Update docs", CharterID: charter.ID}
+
+	// A $1 daily rail cannot admit a $5 firing…
+	disposition, err := graph.FireCharter(charter.ID, wakeSeq, subtree, provenance, 1, now)
+	if err != nil || disposition != FireRailWait {
+		t.Fatalf("firing under a tiny rail = %q err=%v, want %q", disposition, err, FireRailWait)
+	}
+	// …until the user raises today to unlimited; then projected spend never
+	// defers a firing for the rest of the day.
+	if err := graph.RaiseDailyRailUnlimited("slash:/budget unlimited today"); err != nil {
+		t.Fatal(err)
+	}
+	disposition, err = graph.FireCharter(charter.ID, wakeSeq, subtree, provenance, 1, now)
+	if err != nil || disposition != FireAdmitted {
+		t.Fatalf("firing under an unlimited rail = %q err=%v, want %q", disposition, err, FireAdmitted)
 	}
 }

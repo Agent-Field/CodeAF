@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strconv"
 	"strings"
 )
 
@@ -44,6 +45,39 @@ func (s *Store) PendingQuestion(sessionID string, beforeSeq int64) (Message, boo
 	}
 	message.Time = at
 	return message, true, nil
+}
+
+// QuestionMessageBody renders a selectable askback the way every surface can
+// read it: the prompt in plain text for transcripts, followed by the
+// structured JSON payload the TUI's question components parse. Options carry
+// numeric keys, so a selection replies "N" and selects options[N-1] in every
+// surface; the durable option rows on the message remain the continuation and
+// validation source.
+func QuestionMessageBody(prompt string, options []QuestionOption) string {
+	prompt = strings.TrimSpace(prompt)
+	if len(options) == 0 {
+		return prompt
+	}
+	type payloadOption struct {
+		Key   string `json:"key"`
+		Label string `json:"label"`
+	}
+	payload := struct {
+		Kind      string          `json:"kind"`
+		Prompt    string          `json:"prompt"`
+		Options   []payloadOption `json:"options"`
+		AllowFree bool            `json:"allowFree"`
+	}{Kind: "choose", Prompt: prompt, AllowFree: true}
+	for index, option := range options {
+		payload.Options = append(payload.Options, payloadOption{
+			Key: strconv.Itoa(index + 1), Label: strings.TrimSpace(option.Label),
+		})
+	}
+	encoded, err := json.Marshal(payload)
+	if err != nil {
+		return prompt
+	}
+	return prompt + "\n\n```\n" + string(encoded) + "\n```"
 }
 
 func normalizeQuestionOptions(options []QuestionOption) ([]QuestionOption, error) {
