@@ -44,7 +44,7 @@ When a competence map appears, it is the measured view of your own current stren
 
 Return exactly one JSON object with this shape and no text outside it:
 {"reply":"<what to say right now>","command":null,"remember":null,"retract":null}
-where command may instead be {"kind":"reflex|splice|amend|cancel","target":"<node id or empty>","instruction":"<the user's instruction, preserving their words verbatim>"}
+where command may instead be {"kind":"reflex|splice|amend|cancel|pause|resume|reprioritize|restart","target":"<node id or empty>","instruction":"<the user's instruction, preserving their words verbatim>"}
 and remember may instead be {"scope":"<scope>","kind":"preference|fact","body":"<one sharp sentence>"}
 and retract may instead be {"seq":123}, naming exactly one numbered notebook line.
 
@@ -225,6 +225,11 @@ func (h *Head) answer(ctx context.Context, user store.Message) error {
 	} else if handled {
 		return nil
 	}
+	if handled, err := h.manageSurgery(user); err != nil {
+		return fmt.Errorf("serve head: manage node surgery: %w", err)
+	} else if handled {
+		return nil
+	}
 
 	decision, err := h.route(ctx, user)
 	if err != nil {
@@ -269,6 +274,9 @@ func (h *Head) answer(ctx context.Context, user store.Message) error {
 			// Validation normally catches this. Keeping the guard at the store
 			// membrane prevents a future decoder change from emitting bad work.
 			return h.postAgent(user.SessionID, commandErrorReply, 0)
+		}
+		if !reflex && isSurgeryCommand(kind) {
+			return h.resolveSurgery(user, kind, decision.Command.Target, decision.Command.Instruction, false)
 		}
 		command, requestErr := h.store.RequestCommand(store.Command{
 			SessionID:   user.SessionID,
@@ -613,6 +621,14 @@ func commandKind(kind string) (store.CommandKind, bool, bool) {
 		return store.CommandAmend, false, true
 	case string(store.CommandCancel):
 		return store.CommandCancel, false, true
+	case string(store.CommandPause):
+		return store.CommandPause, false, true
+	case string(store.CommandResume):
+		return store.CommandResume, false, true
+	case string(store.CommandReprioritize):
+		return store.CommandReprioritize, false, true
+	case string(store.CommandRestart):
+		return store.CommandRestart, false, true
 	default:
 		return "", false, false
 	}

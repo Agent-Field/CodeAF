@@ -1,0 +1,186 @@
+package store
+
+import (
+	"errors"
+	"strings"
+	"testing"
+)
+
+func TestSurgeryEventsTransitionsAndRebuildRoundTrip(t *testing.T) {
+	graph := openThreadStore(t)
+	if err := graph.Splice(RootID, Subtree{Nodes: []NodeSpec{
+		{ID: "job", Brief: "ship the release", Title: "Release", Stage: 2},
+		{ID: "readme", Parent: "job", Brief: "update README", Title: "README", Stage: 1},
+		{ID: "tests", Parent: "job", Brief: "run tests", Title: "Tests", Stage: 1},
+	}}, Provenance{Origin: OriginUser, SessionID: "surgery", Intent: "ship the release"}); err != nil {
+		t.Fatal(err)
+	}
+
+	active, err := graph.AttachAmendment("readme", "surgery", "also update the changelog")
+	if err != nil || active {
+		t.Fatalf("pending amendment active=%t err=%v", active, err)
+	}
+	readme, _, _ := graph.Node("readme")
+	if !strings.Contains(readme.Brief, "Amendment: also update the changelog") {
+		t.Fatalf("amended brief = %q", readme.Brief)
+	}
+
+	if err := graph.SetNodeHold("readme", true, "pause while I think"); err != nil {
+		t.Fatal(err)
+	}
+	held, _, _ := graph.Node("readme")
+	if held.Status != Pending || !held.Held {
+		t.Fatalf("held node = %+v", held)
+	}
+	ready, err := graph.Ready(20)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if nodeListed(ready, "readme") {
+		t.Fatalf("held node remained ready: %+v", ready)
+	}
+	if err := graph.SetNodeHold("readme", false, "resume"); err != nil {
+		t.Fatal(err)
+	}
+
+	priority, err := graph.NextSiblingPriority("tests")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := graph.SetNodePriority("tests", priority, "tests first"); err != nil {
+		t.Fatal(err)
+	}
+	ready, err = graph.Ready(20)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if indexOfNode(ready, "tests") >= indexOfNode(ready, "readme") {
+		t.Fatalf("priority order = %+v", ready)
+	}
+
+	claim, won, err := graph.Claim("readme", "worker")
+	if err != nil || !won {
+		t.Fatalf("claim readme won=%t err=%v", won, err)
+	}
+	if err := graph.Start(claim); err != nil {
+		t.Fatal(err)
+	}
+	active, err = graph.AttachAmendment("readme", "surgery", "mention upgrade notes")
+	if err != nil || !active {
+		t.Fatalf("running amendment active=%t err=%v", active, err)
+	}
+	messages, err := graph.NodeMessages("readme", 0, 20)
+	if err != nil || len(messages) != 1 || messages[0].Role != RoleUser || messages[0].Body != "mention upgrade notes" {
+		t.Fatalf("steering messages = %+v err=%v", messages, err)
+	}
+	if err := graph.RequestNodeCancel("readme", "cancelled by user"); err != nil {
+		t.Fatal(err)
+	}
+	control, err := graph.Control("readme")
+	if err != nil || !control.CancelRequested {
+		t.Fatalf("control = %+v err=%v", control, err)
+	}
+
+	if err := graph.Rebuild(); err != nil {
+		t.Fatal(err)
+	}
+	rebuilt, found, err := graph.Node("readme")
+	if err != nil || !found || rebuilt.Status != Running || !rebuilt.CancelRequested || rebuilt.Held ||
+		rebuilt.Priority != 0 || !strings.Contains(rebuilt.Brief, "mention upgrade notes") {
+		t.Fatalf("rebuilt readme = %+v found=%t err=%v", rebuilt, found, err)
+	}
+	rebuiltTests, _, _ := graph.Node("tests")
+	if rebuiltTests.Priority != priority {
+		t.Fatalf("rebuilt priority = %d, want %d", rebuiltTests.Priority, priority)
+	}
+	if err := graph.Release(claim); err != nil {
+		t.Fatal(err)
+	}
+	if err := graph.CancelPending("readme", "cancelled by user"); err != nil {
+		t.Fatal(err)
+	}
+	cancelled, _, _ := graph.Node("readme")
+	if cancelled.Status != Cancelled || cancelled.Owner != "" || cancelled.CancelRequested {
+		t.Fatalf("cooperatively cancelled node = %+v", cancelled)
+	}
+	if err := graph.Rebuild(); err != nil {
+		t.Fatal(err)
+	}
+	cancelled, _, _ = graph.Node("readme")
+	if cancelled.Status != Cancelled || cancelled.Owner != "" || cancelled.CancelRequested {
+		t.Fatalf("rebuilt cancellation = %+v", cancelled)
+	}
+
+	events, err := graph.Events(0, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, kind := range []EventKind{EventNodeAmended, EventNodeHeld, EventNodeResumed,
+		EventNodePriorityChanged, EventNodeCancelRequested, EventNodeReleased, EventNodeCancelled} {
+		if !eventKindListed(events, kind) {
+			t.Errorf("journal omitted %s", kind)
+		}
+	}
+}
+
+func TestSurgeryCommandValidationProtectsFutureEmitters(t *testing.T) {
+	graph := openThreadStore(t)
+	if err := graph.Splice(RootID, Subtree{Nodes: []NodeSpec{{ID: "work", Brief: "work", Stage: 1}}},
+		Provenance{Origin: OriginUser, Intent: "work"}); err != nil {
+		t.Fatal(err)
+	}
+	for _, command := range []Command{
+		{Kind: CommandResume, Target: "work", Instruction: "resume"},
+		{Kind: CommandRestart, Target: "work", Instruction: "retry"},
+	} {
+		if _, err := graph.RequestCommand(command); !errors.Is(err, ErrInvalid) {
+			t.Fatalf("invalid command %+v error = %v", command, err)
+		}
+	}
+	if err := graph.SetNodeHold("work", true, "pause"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := graph.RequestCommand(Command{Kind: CommandResume, Target: "work", Instruction: "resume"}); err != nil {
+		t.Fatalf("valid resume: %v", err)
+	}
+	if _, err := graph.RequestCommand(Command{Kind: CommandPause, Target: "work", Instruction: "pause"}); err != nil {
+		t.Fatalf("valid pause: %v", err)
+	}
+	claim, won, err := graph.Claim("work", "worker")
+	if err != nil || won {
+		t.Fatalf("held direct claim won=%t err=%v", won, err)
+	}
+	if err := graph.SetNodeHold("work", false, "resume"); err != nil {
+		t.Fatal(err)
+	}
+	claim, won, err = graph.Claim("work", "worker")
+	if err != nil || !won {
+		t.Fatalf("claim after resume won=%t err=%v", won, err)
+	}
+	if err := graph.Start(claim); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := graph.RequestCommand(Command{Kind: CommandReprioritize, Target: "work", Instruction: "first"}); !errors.Is(err, ErrInvalid) {
+		t.Fatalf("reprioritize running error = %v", err)
+	}
+}
+
+func nodeListed(nodes []Node, id string) bool { return indexOfNode(nodes, id) >= 0 }
+
+func indexOfNode(nodes []Node, id string) int {
+	for index, node := range nodes {
+		if node.ID == id {
+			return index
+		}
+	}
+	return -1
+}
+
+func eventKindListed(events []Event, kind EventKind) bool {
+	for _, event := range events {
+		if event.Kind == kind {
+			return true
+		}
+	}
+	return false
+}

@@ -36,6 +36,7 @@ const (
 type QuestionOption struct {
 	Label string `json:"label"`
 	Value string `json:"value,omitempty"`
+	Hint  string `json:"hint,omitempty"`
 }
 
 // BriefItemKind says what one slim row in an arrival brief represents.
@@ -110,6 +111,12 @@ const (
 	CommandAmend CommandKind = "amend"
 	// CommandCancel withdraws work: Target names the subtree root to cancel.
 	CommandCancel CommandKind = "cancel"
+	// CommandPause/Resume operate on a journal-derived scheduler hold rather
+	// than inventing a presentation-only node status.
+	CommandPause        CommandKind = "pause"
+	CommandResume       CommandKind = "resume"
+	CommandReprioritize CommandKind = "reprioritize"
+	CommandRestart      CommandKind = "restart"
 
 	// Charter commands are requested through the same durable reconciler queue
 	// as graph mutations. Their target names a charter rather than a node.
@@ -506,8 +513,13 @@ func (s *Store) RequestCommand(command Command) (Command, error) {
 			if err := requireCharter(tx, command.Target); err != nil {
 				return Command{}, fmt.Errorf("request command: %w", err)
 			}
-		} else if err := requireNode(tx, command.Target); err != nil {
-			return Command{}, fmt.Errorf("request command: %w", err)
+		} else {
+			if err := requireNode(tx, command.Target); err != nil {
+				return Command{}, fmt.Errorf("request command: %w", err)
+			}
+			if err := validateNodeCommand(tx, command.Kind, command.Target); err != nil {
+				return Command{}, fmt.Errorf("request command: %w", err)
+			}
 		}
 	}
 	payload := commandPayload{
@@ -765,13 +777,53 @@ func validRole(role Role) bool {
 
 func validCommandKind(kind CommandKind) bool {
 	switch kind {
-	case CommandSplice, CommandAmend, CommandCancel, CommandCharterRatify,
+	case CommandSplice, CommandAmend, CommandCancel, CommandPause, CommandResume,
+		CommandReprioritize, CommandRestart, CommandCharterRatify,
 		CommandCharterPause, CommandCharterRetire, CommandCharterCadence, CommandCharterOnce,
 		CommandCharterFire, CommandCharterDecline, CommandCharterAlways, CommandCharterNever, CommandCharterProbation:
 		return true
 	default:
 		return false
 	}
+}
+
+func validateNodeCommand(tx *sql.Tx, kind CommandKind, target string) error {
+	if kind == CommandSplice {
+		return nil
+	}
+	if target == RootID {
+		return fmt.Errorf("%s cannot target the permanent spine: %w", kind, ErrInvalid)
+	}
+	var status Status
+	var held bool
+	var folded bool
+	var group string
+	if err := tx.QueryRow(`SELECT status, held, folded, grp FROM nodes WHERE id = ?`, target).
+		Scan(&status, &held, &folded, &group); err != nil {
+		return err
+	}
+	if folded || group == TerritoryGroup || group == "charter" {
+		return fmt.Errorf("%s target %q is not executable work: %w", kind, target, ErrInvalid)
+	}
+	switch kind {
+	case CommandCancel, CommandPause, CommandAmend:
+		if status != Pending && status != Claimed && status != Running {
+			return fmt.Errorf("%s target %q is %s: %w", kind, target, status, ErrInvalid)
+		}
+	case CommandResume:
+		if !held || (status != Pending && status != Claimed && status != Running) {
+			return fmt.Errorf("resume target %q is not paused: %w", target, ErrInvalid)
+		}
+	case CommandReprioritize:
+		if status != Pending {
+			return fmt.Errorf("reprioritize target %q is %s: %w", target, status, ErrInvalid)
+		}
+	case CommandRestart:
+		if status != Failed && status != Cancelled {
+			return fmt.Errorf("restart target %q is %s: %w", target, status, ErrInvalid)
+		}
+	}
+	return nil
 }
 
 func isCharterCommand(kind CommandKind) bool {

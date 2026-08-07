@@ -10,7 +10,7 @@ import (
 
 const nodeColumns = `
 	id, parent_id, brief, title, grp, stage, status, owner, claim_token, attempt,
-	summary, error, origin, session_id, intent, charter_id, trial_of, attachments, created_seq, created_order, updated_seq,
+	summary, error, held, cancel_requested, priority, origin, session_id, intent, charter_id, trial_of, retry_of, attachments, created_seq, created_order, updated_seq,
     started_at, finished_at, folded, fold_root, fold_digest, fold_pointers`
 
 // migrateNodesSchema adds provenance and display columns introduced after the
@@ -37,13 +37,17 @@ func migrateNodesSchema(db *sql.DB) error {
 		return err
 	}
 	columns := map[string]string{
-		"title":       `TEXT NOT NULL DEFAULT ''`,
-		"grp":         `TEXT NOT NULL DEFAULT ''`,
-		"charter_id":  `TEXT NOT NULL DEFAULT ''`,
-		"trial_of":    `INTEGER NOT NULL DEFAULT 0 CHECK (trial_of >= 0)`,
-		"attachments": `JSON NOT NULL DEFAULT '[]' CHECK (json_valid(attachments))`,
+		"title":            `TEXT NOT NULL DEFAULT ''`,
+		"grp":              `TEXT NOT NULL DEFAULT ''`,
+		"charter_id":       `TEXT NOT NULL DEFAULT ''`,
+		"trial_of":         `INTEGER NOT NULL DEFAULT 0 CHECK (trial_of >= 0)`,
+		"attachments":      `JSON NOT NULL DEFAULT '[]' CHECK (json_valid(attachments))`,
+		"retry_of":         `TEXT NOT NULL DEFAULT ''`,
+		"held":             `INTEGER NOT NULL DEFAULT 0 CHECK (held IN (0, 1))`,
+		"cancel_requested": `INTEGER NOT NULL DEFAULT 0 CHECK (cancel_requested IN (0, 1))`,
+		"priority":         `INTEGER NOT NULL DEFAULT 0`,
 	}
-	for _, column := range []string{"title", "grp", "charter_id", "trial_of", "attachments"} {
+	for _, column := range []string{"title", "grp", "charter_id", "trial_of", "attachments", "retry_of", "held", "cancel_requested", "priority"} {
 		if existing[column] {
 			continue
 		}
@@ -91,7 +95,11 @@ func (s *Store) queryNodes(where string, args []any) ([]Node, error) {
 }
 
 func (s *Store) queryNodesLimit(where string, args []any, limit int) ([]Node, error) {
-	statement := `SELECT ` + nodeColumns + ` FROM nodes ` + where + ` ORDER BY created_seq, created_order, id`
+	return s.queryNodesLimitOrdered(where, args, limit, `created_seq, created_order, id`)
+}
+
+func (s *Store) queryNodesLimitOrdered(where string, args []any, limit int, order string) ([]Node, error) {
+	statement := `SELECT ` + nodeColumns + ` FROM nodes ` + where + ` ORDER BY ` + order
 	if limit > 0 {
 		statement += ` LIMIT ?`
 		args = append(args, limit)
@@ -126,7 +134,8 @@ func scanNode(scanner rowScanner) (Node, error) {
 	if err := scanner.Scan(
 		&node.ID, &parent, &node.Brief, &node.Title, &node.Group, &node.Stage, &node.Status,
 		&node.Owner, &node.ClaimToken, &node.Attempt, &node.Summary, &node.Error,
-		&node.Provenance.Origin, &session, &node.Provenance.Intent, &node.Provenance.CharterID, &node.Provenance.TrialOf,
+		&node.Held, &node.CancelRequested, &node.Priority,
+		&node.Provenance.Origin, &session, &node.Provenance.Intent, &node.Provenance.CharterID, &node.Provenance.TrialOf, &node.Provenance.RetryOf,
 		&attachments,
 		&node.CreatedSeq, &node.CreatedOrder, &node.UpdatedSeq, &started, &finished,
 		&node.Folded, &node.FoldRoot, &node.FoldDigest, &pointers,
@@ -269,7 +278,7 @@ func (s *Store) Events(afterSeq int64, limit int) ([]Event, error) {
 // available through DependencyDigests.
 func (s *Store) Ready(limit int) ([]Node, error) {
 	where := `
-		WHERE status = ? AND folded = 0
+		WHERE status = ? AND folded = 0 AND held = 0 AND cancel_requested = 0
 		  AND NOT EXISTS (
 		      SELECT 1
 		      FROM edges AS edge
@@ -278,7 +287,8 @@ func (s *Store) Ready(limit int) ([]Node, error) {
 		        AND edge.kind IN (?, ?)
 		        AND dependency.status NOT IN (?, ?, ?)
 		  )`
-	return s.queryNodesLimit(where, []any{Pending, FeedsInto, Blocks, Done, Failed, Cancelled}, limit)
+	return s.queryNodesLimitOrdered(where, []any{Pending, FeedsInto, Blocks, Done, Failed, Cancelled}, limit,
+		`priority DESC, created_seq, created_order, id`)
 }
 
 // DependencyDigests is the bounded context handed from settled hard
