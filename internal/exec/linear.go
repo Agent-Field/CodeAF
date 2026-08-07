@@ -68,6 +68,8 @@ turns up, exercising the work the way its eventual user would reach it, not
 only in isolation. Done means shown to work, not believed to. Once a check
 passes, stop; re-running what already passed buys nothing.
 
+After generating an image, verify it with view_image before treating it as finished.
+
 Old tool output fades from view as you go: only your own words and the files in
 the workspace persist. When a result matters beyond the next step, state the
 part that matters in your reply or put it in a file, rather than planning to

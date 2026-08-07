@@ -80,21 +80,28 @@ func runChat(args []string) error {
 	if err != nil {
 		return err
 	}
+	visionClient, err := settings.VisionClient()
+	if err != nil {
+		return err
+	}
+	talkModel := firstNonEmptyString(prefs.ChatModel, settings.Model)
+	workModel := firstNonEmptyString(prefs.TaskModel, settings.Model)
 	baseMedia := exec.MediaTools{
-		Provider: mediaClient, Catalog: modelCatalog,
+		Provider: mediaClient, Catalog: modelCatalog, VisionClient: visionClient,
 		ImageModel: prefs.ImageModel, SpeechModel: prefs.SpeechModel,
 		MusicModel: prefs.MusicModel, VideoModel: prefs.VideoModel,
+		VisionModel: settings.ResolveVisionModel(modelCatalog, talkModel, workModel),
 	}
 	if video, ok := modelCatalog.Model(baseMedia.VideoModel); ok {
 		baseMedia.VideoPrice = video.RequestPrice
 	}
 	mediaModels := &chatMediaModels{tools: baseMedia}
 
-	chatClient, err := newLiveClient(settings, firstNonEmptyString(prefs.ChatModel, settings.Model))
+	chatClient, err := newLiveClient(settings, talkModel)
 	if err != nil {
 		return err
 	}
-	taskClient, err := newLiveClient(settings, firstNonEmptyString(prefs.TaskModel, settings.Model))
+	taskClient, err := newLiveClient(settings, workModel)
 	if err != nil {
 		return err
 	}
@@ -207,6 +214,7 @@ func runChat(args []string) error {
 		}
 		leafMedia := mediaModels.Snapshot()
 		leafMedia.WorkingModel = workingModel
+		leafMedia.VisionModel = settings.ResolveVisionModel(modelCatalog, chatClient.Model(), workingModel)
 		leafMedia.BeforeSpend = func(_ context.Context, additional float64) error {
 			if settings.DailyBudgetUSD <= 0 {
 				return nil
