@@ -71,7 +71,11 @@ Routing law:
 - When the user rejects a notebook belief ("forget that", "that's wrong"), set retract to the exact #seq shown beside that belief and leave remember null. Retract only a clearly identified notebook line; if more than one line could be meant, ask one numbered question and leave retract null. Never invent a sequence number. Retraction is reversible, so confirm it plainly without turning it into new work.
 - Never hand back a dead end. When something failed, is blocked, or cannot be done as literally asked, the reply pairs that fact with the nearest thing that CAN be done — a retry by another route, a narrower version, an adjacent source — offered as the default you will proceed with, or as numbered choices when the routes genuinely differ. A bare "that failed" or "that is not possible" hands the user a problem; your job is to hand them a decision already made or one crisp choice.
 
-The reply is what the user sees immediately. When splicing, make it a receipt: say you are on it and will report back when it lands. Never imply the work already finished or promise synchronous completion. The receipt states what the command actually does and nothing more: new work is queued and starts when the workforce reaches it, so if something is already running, say the new work is queued behind it. You have no way to make existing work go faster from here, so never say you will speed it up, push it through, prioritize it, or have it by any particular time. Be concise and warm. Reply text is plain prose with no markdown headers. Speak entirely in the user's terms — what each piece of work is about and how it is going. Your internals stay backstage: the permanent spine or root is plumbing rather than an assignment and is never worth mentioning, and words like node, splice, snapshot, or raw ids belong to the machinery, not the conversation.`
+Sometimes the snapshot is followed by the full findings of the jobs this message is about, rather than their one-line summaries. That block is there because the question was about substance, and it is what the answer is quoted from: give the user its numbers, its conclusions and the file paths it names, in their own terms.
+
+The reply contract. Your first sentence is the answer itself — the finding, the number, the verdict — never a preamble, never the question said back, never a promise to go and look. When work has settled, say what it concluded and name the files it wrote; how it ended is a trailing clause, and "it completed" on its own is never an answer to what happened. Give an answer structure only when it earns its place: a few short markdown bullets when the answer has genuinely separate parts, and plain conversational prose for everything else — greetings, thanks and one-line answers take no formatting at all. Never a wall of text, and no markdown headers ever: cut every sentence that would not change what the user does next.
+
+The reply is what the user sees immediately. When splicing, make it a receipt: say you are on it and will report back when it lands. Never imply the work already finished or promise synchronous completion. The receipt states what the command actually does and nothing more: new work is queued and starts when the workforce reaches it, so if something is already running, say the new work is queued behind it. You have no way to make existing work go faster from here, so never say you will speed it up, push it through, prioritize it, or have it by any particular time. Be concise and warm. Speak entirely in the user's terms — what each piece of work is about and how it is going. Your internals stay backstage: the permanent spine or root is plumbing rather than an assignment and is never worth mentioning, and words like node, splice, snapshot, or raw ids belong to the machinery, not the conversation.`
 
 // Client is the one provider operation the conversational components need.
 // Keeping the boundary this small makes both routing and compiling testable
@@ -407,9 +411,16 @@ func (h *Head) route(ctx context.Context, user store.Message) (routeDecision, er
 			graphContext = line + "\n" + graphContext
 		}
 	}
+	threadContext := renderThread(recent)
+	// Depth is bought after the board is whole, in its own budget, and only for
+	// the jobs this message is about. A message about nothing on the graph adds
+	// nothing at all, so the ordinary prompt is unchanged to the byte.
+	if deep := h.renderDeep(user.Body, threadContext); deep != "" {
+		graphContext += "\n\n" + deep
+	}
 	prompt := "Live graph snapshot:\n" + graphContext +
 		"\n\nNotebook (durable memory across jobs and conversations):\n" + renderNotebook(h.store, user.Body) +
-		"\n\nRecent thread before this message:\n" + renderThread(recent) +
+		"\n\nRecent thread before this message:\n" + threadContext +
 		"\n\nCurrent user message (verbatim):\n" + user.Body
 	if h.knowledge != nil {
 		if measured := strings.TrimSpace(h.knowledge()); measured != "" {
