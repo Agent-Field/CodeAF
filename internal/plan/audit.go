@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 	"sync"
 
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
@@ -73,10 +74,15 @@ type auditCheck struct {
 // back the edges whose absence would strand a node. It returns how many it
 // recovered, which is the honest measure of how far bind undershot.
 func Audit(ctx context.Context, client Completer, graph *Graph) (int, Usage, error) {
+	return auditWith(ctx, client, graph, graph.planBlock())
+}
+
+// auditWith is Audit against a catalog block the caller has already rendered.
+// The caller owns the guarantee that the block still describes this graph.
+func auditWith(ctx context.Context, client Completer, graph *Graph, shared string) (int, Usage, error) {
 	if len(graph.Stages) < 2 {
 		return 0, Usage{}, nil
 	}
-	shared := graph.context() + "\nEvery node in the plan:\n" + graph.catalog()
 
 	type result struct {
 		checks []auditCheck
@@ -126,7 +132,7 @@ func Audit(ctx context.Context, client Completer, graph *Graph) (int, Usage, err
 }
 
 func auditStage(ctx context.Context, client Completer, shared string, graph *Graph, stage int) ([]auditCheck, *ai.Usage, error) {
-	var targets string
+	var targets strings.Builder
 	for _, node := range graph.Nodes {
 		if node.Stage != stage {
 			continue
@@ -135,12 +141,12 @@ func auditStage(ctx context.Context, client Completer, shared string, graph *Gra
 		if len(node.Needs) > 0 {
 			inputs = "the outputs of " + joinInts(node.Needs)
 		}
-		targets += fmt.Sprintf("%d. %s — %s\n   currently receives: %s\n", node.ID, node.Title, node.Summary, inputs)
+		fmt.Fprintf(&targets, "%d. %s — %s\n   currently receives: %s\n", node.ID, node.Title, node.Summary, inputs)
 	}
 	messages := []ai.Message{
 		systemMessage(auditPrompt),
 		userMessage(shared),
-		userMessage(fmt.Sprintf("Check each of these stage %d nodes:\n%s", stage, targets)),
+		userMessage(fmt.Sprintf("Check each of these stage %d nodes:\n%s", stage, targets.String())),
 	}
 	response, err := client.CompleteWithMessages(ctx, messages, ai.WithSchema(auditSchema))
 	if err != nil {
