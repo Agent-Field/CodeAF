@@ -671,6 +671,12 @@ func (r *Reconciler) splice(ctx context.Context, command store.Command) (command
 	compiled.Goal = anchorAttachedDocuments(compiled.Goal, command.Attachments)
 	if promoted {
 		compiled.BuildsOn = append([]string{promotion.ID}, compiled.BuildsOn...)
+	} else if unfinished := r.unfinishedSource(command); unfinished != "" {
+		// The head read this ask as arriving beside work still in flight. New
+		// work it is, then, but not work that runs alongside: continuity is the
+		// difference between a second job that inherits a result and two jobs
+		// changing one thing at once, and only the second is unrepairable.
+		compiled.BuildsOn = prependBuildsOn(unfinished, compiled.BuildsOn)
 	}
 	if compiled.Charter != nil {
 		id := fmt.Sprintf("charter-%d", command.Seq)
@@ -745,7 +751,13 @@ func (r *Reconciler) splice(ctx context.Context, command store.Command) (command
 			NodeID:    fmt.Sprintf("task-%d", command.Seq),
 			SessionID: command.SessionID, CommandSeq: command.Seq,
 		})
-		subtree, err = r.plan(planCtx, compiled)
+		// The planner sees the decisions, not just the goal. An assumption that
+		// only ever reached a receipt was a promise nobody was assigned: "review
+		// the diff for security regressions before pushing" has to become a step
+		// or a leaf's law, and which of the two it becomes is the planner's call.
+		planned := compiled
+		planned.Goal = anchorWorkingDecisions(compiled.Goal, compiled.Assumptions)
+		subtree, err = r.plan(planCtx, planned)
 		if err != nil {
 			return commandOutcome{}, fmt.Errorf("plan request: %w", err)
 		}
@@ -753,6 +765,7 @@ func (r *Reconciler) splice(ctx context.Context, command store.Command) (command
 	if err := ctx.Err(); err != nil {
 		return commandOutcome{}, err
 	}
+	subtree = anchorSubtreeWorkingDecisions(subtree, compiled.Assumptions)
 	subtree = r.wireContinuity(subtree, compiled.BuildsOn)
 	r.titleSubtree(ctx, &subtree, compiled)
 
@@ -825,6 +838,54 @@ func attachedDocumentCompileContext(attachments []string) string {
 		"\nWorkers read these with read_document; they are not ordinary chat-model content parts."
 }
 
+// WorkingDecisionsHeader names the block wherever it is rendered. Assumptions
+// were only ever a receipt: the compiler declared "run the test suite before
+// opening the PR" and nothing downstream was ever told. A decision the work is
+// not held to is not a decision, so the same list travels with the goal, into
+// the leaves, and on to the gate that judges what came back.
+const WorkingDecisionsHeader = "Working decisions, already made — honor them:"
+
+// anchorWorkingDecisions appends the declared decisions to a goal, in the idiom
+// attached documents already use: deterministic sentences a provider cannot
+// drop, added after the model has had its say.
+func anchorWorkingDecisions(goal string, assumptions []string) string {
+	decisions := workingDecisions(assumptions)
+	if decisions == "" || strings.Contains(goal, WorkingDecisionsHeader) {
+		return goal
+	}
+	return strings.TrimSpace(goal) + "\n\n" + decisions
+}
+
+// anchorSubtreeWorkingDecisions puts the decisions on the deliverable owner —
+// the one node with no parent inside the subtree. That node writes the answer
+// the user reads and is the node the delivery gate judges, so the standard it
+// is held to has to be durable on it rather than left in a prompt.
+func anchorSubtreeWorkingDecisions(subtree store.Subtree, assumptions []string) store.Subtree {
+	if workingDecisions(assumptions) == "" {
+		return subtree
+	}
+	for index, spec := range subtree.Nodes {
+		if strings.TrimSpace(spec.Parent) == "" {
+			subtree.Nodes[index].Brief = anchorWorkingDecisions(spec.Brief, assumptions)
+			break
+		}
+	}
+	return subtree
+}
+
+func workingDecisions(assumptions []string) string {
+	kept := make([]string, 0, len(assumptions))
+	for _, assumption := range assumptions {
+		if assumption = strings.TrimSpace(assumption); assumption != "" {
+			kept = append(kept, assumption)
+		}
+	}
+	if len(kept) == 0 {
+		return ""
+	}
+	return WorkingDecisionsHeader + "\n- " + strings.Join(kept, "\n- ")
+}
+
 // anchorAttachedDocuments makes the compiler's brief reliable even when a
 // provider overlooks the attachment context. Planning therefore cannot erase
 // the inputs before the leaf receives its exact staged workspace paths.
@@ -835,6 +896,32 @@ func anchorAttachedDocuments(goal string, attachments []string) string {
 	}
 	return strings.TrimSpace(goal) + "\n\nAttached documents:\n- " + strings.Join(names, "\n- ") +
 		"\nUse the workspace copies through read_document when their contents are needed."
+}
+
+// unfinishedSource reads the other meaning Target carries on a splice: not a
+// settled reflex to reuse, but a job still open that this ask arrived beside.
+// An id that names nothing, or names work already over, costs the continuity
+// rather than the splice — the same forgiveness wireContinuity gives.
+func (r *Reconciler) unfinishedSource(command store.Command) string {
+	target := strings.TrimSpace(command.Target)
+	if target == "" {
+		return ""
+	}
+	node, ok, err := r.store.Node(target)
+	if err != nil || !ok || node.Group == ReflexGroup || terminal(node.Status) {
+		return ""
+	}
+	return node.ID
+}
+
+func prependBuildsOn(first string, rest []string) []string {
+	buildsOn := []string{first}
+	for _, id := range rest {
+		if strings.TrimSpace(id) != first {
+			buildsOn = append(buildsOn, id)
+		}
+	}
+	return buildsOn
 }
 
 func (r *Reconciler) promotionSource(command store.Command) (store.Node, bool, error) {

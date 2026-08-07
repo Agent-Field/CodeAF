@@ -46,14 +46,25 @@ func TestTickAppliesSpliceAndPostsCompiledReceipt(t *testing.T) {
 			anchor.CommandSeq != command.Seq {
 			return store.Subtree{}, fmt.Errorf("plan anchor = %+v ok=%t", anchor, ok)
 		}
-		if compiled.Goal != "Benchmark the parser and preserve observable output" {
+		if !strings.HasPrefix(compiled.Goal, "Benchmark the parser and preserve observable output") {
 			return store.Subtree{}, fmt.Errorf("goal = %q", compiled.Goal)
+		}
+		// The decisions the compiler already made reach the planner, which is
+		// the only place a promise can still become a step someone runs.
+		for _, decision := range []string{
+			WorkingDecisionsHeader,
+			"- main is the comparison baseline",
+			"- the existing benchmark harness is sufficient",
+		} {
+			if !strings.Contains(compiled.Goal, decision) {
+				return store.Subtree{}, fmt.Errorf("planned goal omitted %q: %q", decision, compiled.Goal)
+			}
 		}
 		if compiled.Scale != "project" {
 			return store.Subtree{}, fmt.Errorf("scale = %q, want project", compiled.Scale)
 		}
 		return store.Subtree{Nodes: []store.NodeSpec{
-			{ID: "benchmark", Brief: compiled.Goal, Stage: 1},
+			{ID: "benchmark", Brief: "Run the benchmark", Stage: 1},
 			{ID: "compare", Parent: "benchmark", Brief: "Compare results", Stage: 2,
 				Needs: []store.Need{{NodeID: "benchmark", Kind: store.FeedsInto}}},
 		}}, nil
@@ -78,6 +89,20 @@ func TestTickAppliesSpliceAndPostsCompiledReceipt(t *testing.T) {
 		if node.Provenance.SessionID != "session-splice" || node.Provenance.Origin != store.OriginUser {
 			t.Fatalf("node %q provenance = %+v", id, node.Provenance)
 		}
+	}
+
+	// The deliverable owner carries the decisions durably: it writes the answer
+	// the user reads, and it is the node the delivery gate holds to them.
+	owner, _, err := graph.Node("benchmark")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(owner.Brief, WorkingDecisionsHeader) ||
+		!strings.Contains(owner.Brief, "- main is the comparison baseline") {
+		t.Fatalf("deliverable owner brief omitted the working decisions: %q", owner.Brief)
+	}
+	if part, _, err := graph.Node("compare"); err != nil || strings.Contains(part.Brief, WorkingDecisionsHeader) {
+		t.Fatalf("an inner part was handed the decisions block: %q err=%v", part.Brief, err)
 	}
 
 	receipt := commandReceipt(t, graph, "session-splice", command.Seq)
@@ -490,5 +515,110 @@ func TestRequestedWorkModelRidesProvenanceAndTheCompileReceipt(t *testing.T) {
 	}
 	if !strings.Contains(receipt, "Running on google/gemini-3-pro.") {
 		t.Fatalf("compile receipt = %q", receipt)
+	}
+}
+
+// The other half of the adjacency reading, and the half that has to be real:
+// when the head decides an ask that arrived beside a live job is genuinely new
+// work, the splice names that job and the new work waits behind it. A label
+// would not have prevented the failure — two jobs editing one repository at
+// once is the outcome nothing downstream can repair — so this asserts the wait.
+func TestSpliceNamingALiveJobWaitsBehindItRatherThanRacingIt(t *testing.T) {
+	graph := openStore(t)
+	if err := graph.Splice(store.RootID, store.Subtree{Nodes: []store.NodeSpec{
+		{ID: "middleware", Brief: "add the gin logger middleware and push it", Stage: 1},
+	}}, store.Provenance{
+		Origin: store.OriginUser, SessionID: "s1", Intent: "add request logging middleware",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	claim, ok, err := graph.Claim("middleware", "tester")
+	if err != nil || !ok {
+		t.Fatalf("claim middleware: ok=%t err=%v", ok, err)
+	}
+	if err := graph.Start(claim); err != nil {
+		t.Fatal(err)
+	}
+
+	command, err := graph.RequestCommand(store.Command{
+		SessionID: "s1", Kind: store.CommandSplice, Target: "middleware",
+		Instruction: "make sure you review the changes and check for bugs",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	newID := fmt.Sprintf("task-%d", command.Seq)
+	compile := func(context.Context, string, string) (Compiled, error) {
+		return Compiled{Goal: "Review the diff for regressions", Scale: "task"}, nil
+	}
+	plan := func(_ context.Context, compiled Compiled) (store.Subtree, error) {
+		if len(compiled.BuildsOn) != 1 || compiled.BuildsOn[0] != "middleware" {
+			return store.Subtree{}, fmt.Errorf("builds_on = %v, want the live job it arrived beside", compiled.BuildsOn)
+		}
+		return store.Subtree{Nodes: []store.NodeSpec{{ID: newID, Brief: compiled.Goal, Stage: 1}}}, nil
+	}
+	if err := New(graph, compile, plan).Tick(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if settled := commandBySeq(t, graph, command.Seq); settled.Status != store.CommandApplied {
+		t.Fatalf("settled command = %+v", settled)
+	}
+
+	ready, err := graph.Ready(10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, node := range ready {
+		if node.ID == newID {
+			t.Fatalf("the new job is claimable while the job it continues is still running: %+v", ready)
+		}
+	}
+	if _, claimable, err := graph.Claim(newID, "tester"); err != nil || claimable {
+		t.Fatalf("the new job was claimable: claimable=%t err=%v", claimable, err)
+	}
+}
+
+// A target that is over is not work to wait for. Continuity is a claim about
+// something still moving; waiting on a finished job would only cost the splice
+// the moment it was made.
+func TestSpliceTargetThatIsNoLongerLiveCostsOnlyTheContinuity(t *testing.T) {
+	graph := openStore(t)
+	if err := graph.Splice(store.RootID, store.Subtree{Nodes: []store.NodeSpec{
+		{ID: "settled", Brief: "the job that already finished", Stage: 1},
+	}}, store.Provenance{Origin: store.OriginUser, SessionID: "s1", Intent: "finish it"}); err != nil {
+		t.Fatal(err)
+	}
+	claim, ok, err := graph.Claim("settled", "tester")
+	if err != nil || !ok {
+		t.Fatalf("claim settled: ok=%t err=%v", ok, err)
+	}
+	if err := graph.Start(claim); err != nil {
+		t.Fatal(err)
+	}
+	if err := graph.Complete(claim, "done"); err != nil {
+		t.Fatal(err)
+	}
+	command, err := graph.RequestCommand(store.Command{
+		SessionID: "s1", Kind: store.CommandSplice, Target: "settled",
+		Instruction: "write the summary",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	compile := func(context.Context, string, string) (Compiled, error) {
+		return Compiled{Goal: "Write the summary", Scale: "task"}, nil
+	}
+	plan := func(_ context.Context, compiled Compiled) (store.Subtree, error) {
+		if len(compiled.BuildsOn) != 0 {
+			return store.Subtree{}, fmt.Errorf("builds_on = %v, want none", compiled.BuildsOn)
+		}
+		return store.Subtree{Nodes: []store.NodeSpec{
+			{ID: fmt.Sprintf("task-%d", command.Seq), Brief: compiled.Goal, Stage: 1}}}, nil
+	}
+	if err := New(graph, compile, plan).Tick(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if settled := commandBySeq(t, graph, command.Seq); settled.Status != store.CommandApplied {
+		t.Fatalf("settled command = %+v", settled)
 	}
 }
