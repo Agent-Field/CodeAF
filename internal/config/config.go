@@ -238,20 +238,55 @@ func (c Config) ResolveMusicModel(models *catalog.Catalog) string {
 	if configured := strings.TrimSpace(c.MusicModel); configured != "" {
 		return configured
 	}
-	if models != nil {
-		candidates := models.ModelsWithOutput("music")
-		for _, candidate := range candidates {
-			if candidate.ID == preferredMusicModel {
-				return candidate.ID
-			}
-		}
-		for _, candidate := range candidates {
-			if !recognizableTTS(candidate) {
-				return candidate.ID
-			}
+	candidates := ModelCandidates(models, "music")
+	for _, candidate := range candidates {
+		if candidate.ID == preferredMusicModel {
+			return candidate.ID
 		}
 	}
+	if len(candidates) > 0 {
+		return candidates[0].ID
+	}
 	return preferredMusicModel
+}
+
+// ModelCandidates is the shared capability gate for every slot in the model
+// palette. Keeping music's TTS exclusion here makes discovery and runtime
+// resolution agree about what can occupy that slot.
+func ModelCandidates(models *catalog.Catalog, slot string) []catalog.Model {
+	if models == nil {
+		return nil
+	}
+	switch strings.ToLower(strings.TrimSpace(slot)) {
+	case "talk", "work":
+		candidates := models.ModelsWithInput("text")
+		filtered := make([]catalog.Model, 0, len(candidates))
+		for _, candidate := range candidates {
+			if models.Supports(candidate.ID, "output", "text") {
+				filtered = append(filtered, candidate)
+			}
+		}
+		return filtered
+	case "voice":
+		return models.ModelsWithOutput("transcription")
+	case "image":
+		return models.ModelsWithOutput("image")
+	case "speech":
+		return models.ModelsWithOutput("speech")
+	case "music":
+		candidates := models.ModelsWithOutput("music")
+		filtered := make([]catalog.Model, 0, len(candidates))
+		for _, candidate := range candidates {
+			if !recognizableTTS(candidate) {
+				filtered = append(filtered, candidate)
+			}
+		}
+		return filtered
+	case "video":
+		return models.ModelsWithOutput("video")
+	default:
+		return nil
+	}
 }
 
 // ResolveVideoModel prefers Seedance when advertised, then the catalog's

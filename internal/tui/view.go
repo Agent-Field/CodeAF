@@ -102,7 +102,7 @@ func (m *Model) View() string {
 	}
 
 	parts := []string{top, "", main, ""}
-	if m.paletteOpen() && m.palette != paletteModel {
+	if m.paletteOpen() && m.palette != paletteModels && m.palette != paletteModel {
 		parts = append(parts, m.renderPalette())
 	}
 	if m.activityBarVisible() {
@@ -134,8 +134,8 @@ func (m *Model) View() string {
 		parts = append(parts, mutedStyle.Faint(true).Render(truncate(hint, m.width)))
 	}
 	frame := lipgloss.JoinVertical(lipgloss.Left, parts...)
-	if m.palette == paletteModel {
-		frame = m.overlayModelDropdown(frame)
+	if m.palette == paletteModels || m.palette == paletteModel {
+		frame = m.overlayModels(frame)
 	}
 	return frame
 }
@@ -144,18 +144,14 @@ func (m *Model) trackPaneBounds() {
 	m.chatBounds = paneBounds{}
 	m.headerTasksBounds = paneBounds{}
 	m.headerQuestionBounds = paneBounds{}
-	m.headerTalkBounds = paneBounds{}
-	m.headerWorkBounds = paneBounds{}
-	m.headerVoiceBounds = paneBounds{}
+	m.headerModelsBounds = paneBounds{}
 	m.graphBounds = paneBounds{}
 	m.graphRowsBounds = paneBounds{}
 	m.standingRowsBounds = paneBounds{}
 	m.graphToggleBounds = paneBounds{}
 	m.paletteCloseBounds = paneBounds{}
 	m.modelPickerBounds = paneBounds{}
-	m.modelTalkBounds = paneBounds{}
-	m.modelWorkBounds = paneBounds{}
-	m.modelVoiceBounds = paneBounds{}
+	m.modelSlotRows = m.modelSlotRows[:0]
 	m.modelPickerRows = m.modelPickerRows[:0]
 	m.inputBounds = paneBounds{}
 	m.textQuestionDismissBounds = paneBounds{}
@@ -211,11 +207,9 @@ func (m *Model) trackPaneBounds() {
 func (m *Model) renderTopBar() string {
 	wordmark := lipgloss.NewStyle().Foreground(ink).Bold(true).Render("aforge")
 	left := wordmark + mutedStyle.Faint(true).Render("  "+m.sessionID)
-	talk := m.renderHeaderModel("talk", 0)
-	work := m.renderHeaderModel("work", 1)
-	voiceControl := m.renderHeaderModel("voice", 2)
-	separator := mutedStyle.Faint(true).Render("  ·  ")
-	models := talk + separator + work + separator + voiceControl
+	glance := mutedStyle.Faint(true).Render("talk " + truncate(modelShort(m.currentModel("talk")), 18) +
+		" · work " + truncate(modelShort(m.currentModel("work")), 18))
+	models := m.renderModelsButton()
 
 	rightMeta := m.renderSpend()
 	if m.status != "" && time.Now().Before(m.statusUntil) {
@@ -228,42 +222,39 @@ func (m *Model) renderTopBar() string {
 	// click path is always visible. It follows the affordance grammar (▸ when
 	// the rail would open, ▾ while it is on screen).
 	button := m.renderTasksButton()
-	right := models
+	showGlance := true
+	right := glance + "  " + models
 	if rightMeta != "" {
 		right += "  " + rightMeta
 	}
 	right += "  " + button
 
 	space := m.width - lipgloss.Width(left) - lipgloss.Width(right)
-	if space < 1 {
-		// The controls outlive the session label when width runs out.
-		left = wordmark
-		space = m.width - lipgloss.Width(left) - lipgloss.Width(right)
-	}
 	if space < 1 && rightMeta != "" {
-		// …and outlive the transient meta: status and spend are readable
-		// elsewhere, the three role controls are the only door to the picker.
-		right = models + "  " + button
+		// Ambient status yields first; the unified model door is the
+		// irreplaceable action.
+		right = glance + "  " + models + "  " + button
 		space = m.width - lipgloss.Width(left) - lipgloss.Width(right)
 	}
 	if space < 1 {
-		// On a narrow terminal the task button remains the last header action.
-		right = button
+		// The glance is useful context, not another control; it yields second.
+		right = models + "  " + button
+		showGlance = false
+		space = m.width - lipgloss.Width(left) - lipgloss.Width(right)
+	}
+	if space < 1 {
+		left = wordmark
 		space = m.width - lipgloss.Width(left) - lipgloss.Width(right)
 	}
 	if space < 1 {
 		return truncate(left+" "+right, m.width)
 	}
 	rightX := lipgloss.Width(left) + space
-	if strings.Contains(right, "talk") {
-		m.headerTalkBounds = paneBounds{x: rightX, y: 0, width: lipgloss.Width(talk), height: 1}
-		workX := rightX + lipgloss.Width(talk) + lipgloss.Width(separator)
-		m.headerWorkBounds = paneBounds{x: workX, y: 0, width: lipgloss.Width(work), height: 1}
-		m.headerVoiceBounds = paneBounds{
-			x: workX + lipgloss.Width(work) + lipgloss.Width(separator),
-			y: 0, width: lipgloss.Width(voiceControl), height: 1,
-		}
+	modelsOffset := 0
+	if showGlance {
+		modelsOffset = lipgloss.Width(glance) + 2
 	}
+	m.headerModelsBounds = paneBounds{x: rightX + modelsOffset, y: 0, width: lipgloss.Width(models), height: 1}
 	buttonWidth := lipgloss.Width(button)
 	m.headerTasksBounds = paneBounds{x: m.width - buttonWidth, y: 0, width: buttonWidth, height: 1}
 	if m.hasPendingQuestion() {
@@ -273,13 +264,12 @@ func (m *Model) renderTopBar() string {
 	return left + strings.Repeat(" ", space) + right
 }
 
-func (m *Model) renderHeaderModel(role string, focusIndex int) string {
-	label := mutedStyle.Faint(true).Render(role + " ⌄ ")
-	valueStyle := inputTextStyle
-	if m.focus == focusHeader && m.headerFocusIndex == focusIndex {
-		valueStyle = lipgloss.NewStyle().Foreground(powder).Bold(true)
+func (m *Model) renderModelsButton() string {
+	style := mutedStyle.Faint(true)
+	if m.focus == focusHeader && m.headerFocusIndex == 0 {
+		style = lipgloss.NewStyle().Foreground(powder).Bold(true)
 	}
-	return label + valueStyle.Render(truncate(modelShort(m.currentModel(role)), 18))
+	return style.Render("models ⌄")
 }
 
 func (m *Model) renderTasksButton() string {
@@ -292,7 +282,7 @@ func (m *Model) renderTasksButton() string {
 		dot = questionStyle.Bold(true).Render("●") + " "
 	}
 	style := mutedStyle.Faint(true)
-	if m.focus == focusHeader && m.headerFocusIndex == 3 {
+	if m.focus == focusHeader && m.headerFocusIndex == 1 {
 		style = lipgloss.NewStyle().Foreground(powder)
 	}
 	return style.Render("⟨tasks ") + dot + style.Render(disclosure+"⟩")
@@ -590,40 +580,78 @@ func (m *Model) renderInput() string {
 	return line + "\n" + rendered
 }
 
-// overlayModelDropdown paints a small matte menu over the first rows beneath
-// the header, anchored under whichever role control opened it. The frame keeps
-// its exact height; the dropdown does not steal conversation space or move the
-// input while the user searches.
-func (m *Model) overlayModelDropdown(frame string) string {
+// overlayModels paints both rungs of the unified model control over the first
+// rows beneath the header. Moving from the seven-slot palette into the reused
+// searchable picker replaces the panel in place, so the conversation never
+// jumps while the operator drills down.
+func (m *Model) overlayModels(frame string) string {
 	width := min(72, max(36, m.width*2/3))
-	x := m.headerTalkBounds.x
-	if m.modelRole == "work" && m.headerWorkBounds.width > 0 {
-		x = m.headerWorkBounds.x
-	}
-	if m.modelRole == "voice" && m.headerVoiceBounds.width > 0 {
-		x = m.headerVoiceBounds.x
-	}
-	if x == 0 && m.headerTalkBounds.width == 0 {
+	x := m.headerModelsBounds.x
+	if x == 0 && m.headerModelsBounds.width == 0 {
 		x = max(0, m.width-width)
 	}
 	x = max(0, min(x, m.width-width))
 	y := 1
 	innerWidth := max(1, width-2)
-	body := m.modelPickerLines(innerWidth)
-	lines := append([]string{"⟨×⟩ esc · models"}, body...)
-	panelStyle := lipgloss.NewStyle().Foreground(ink).Background(selectionBand).Padding(0, 1).Width(width)
+	if m.palette == paletteModels {
+		return m.overlayModelPalette(frame, x, y, width, innerWidth)
+	}
+	return m.overlayModelPicker(frame, x, y, width, innerWidth)
+}
+
+func (m *Model) overlayModelPalette(frame string, x, y, width, innerWidth int) string {
+	title := "⟨×⟩ models"
+	if m.width >= 100 {
+		title = overlayRight(title, "↑/↓ choose · enter open · 1–7 jump", innerWidth)
+	}
+	lines := []string{title}
+	for index, slot := range modelSlots {
+		lines = append(lines, m.modelSlotLine(slot, index == m.modelSlotIndex, innerWidth))
+	}
+	panelStyle := lipgloss.NewStyle().Foreground(ink).Background(selectionBand).Padding(0, 1).Width(innerWidth)
 	for index := range lines {
 		lines[index] = panelStyle.Render(truncate(lines[index], innerWidth))
 	}
 	panel := strings.Join(lines, "\n")
 	m.modelPickerBounds = paneBounds{x: x, y: y, width: width, height: len(lines)}
-	m.paletteCloseBounds = paneBounds{x: x, y: y, width: width, height: 1}
-	m.modelTalkBounds = paneBounds{x: x + 1, y: y + 1, width: lipgloss.Width("◉ talk"), height: 1}
-	m.modelWorkBounds = paneBounds{x: x + 1 + lipgloss.Width("◉ talk    "), y: y + 1, width: lipgloss.Width("◉ work"), height: 1}
-	m.modelVoiceBounds = paneBounds{x: x + 1 + lipgloss.Width("◉ talk    ◉ work    "), y: y + 1, width: lipgloss.Width("◉ voice"), height: 1}
+	m.paletteCloseBounds = paneBounds{x: x + 1, y: y, width: lipgloss.Width("⟨×⟩"), height: 1}
+	for index := range modelSlots {
+		m.modelSlotRows = append(m.modelSlotRows, modelSlotRow{
+			bounds: paneBounds{x: x, y: y + 1 + index, width: width, height: 1},
+			index:  index,
+		})
+	}
+	return overlayBlock(frame, panel, x, y, m.width)
+}
 
-	choiceLine := y + 1 + 2
-	prefixLines := 2
+func (m *Model) modelSlotLine(slot string, selected bool, width int) string {
+	marker := "  "
+	markerStyle := mutedStyle
+	if selected {
+		marker = "› "
+		markerStyle = lipgloss.NewStyle().Foreground(powder).Bold(true)
+	}
+	slotColumn := 8
+	modelWidth := max(1, width-lipgloss.Width(marker)-slotColumn-lipgloss.Width("  ⌄"))
+	model := truncate(modelShort(m.currentModel(slot)), modelWidth)
+	row := markerStyle.Render(marker) + mutedStyle.Faint(true).Render(padANSI(slot, slotColumn)) +
+		inputTextStyle.Render(padANSI(model, modelWidth)) + mutedStyle.Render("  ⌄")
+	return truncate(row, width)
+}
+
+func (m *Model) overlayModelPicker(frame string, x, y, width, innerWidth int) string {
+	body := m.modelPickerLines(innerWidth)
+	lines := append([]string{"⟨×⟩ esc · " + m.modelRole + " models"}, body...)
+	panelStyle := lipgloss.NewStyle().Foreground(ink).Background(selectionBand).Padding(0, 1).Width(innerWidth)
+	for index := range lines {
+		lines[index] = panelStyle.Render(truncate(lines[index], innerWidth))
+	}
+	panel := strings.Join(lines, "\n")
+	m.modelPickerBounds = paneBounds{x: x, y: y, width: width, height: len(lines)}
+	m.paletteCloseBounds = paneBounds{x: x + 1, y: y, width: lipgloss.Width("⟨×⟩"), height: 1}
+
+	choiceLine := y + 2
+	prefixLines := 1
 	if m.modelCatalogIsLoading(m.modelRole) {
 		choiceLine++
 		prefixLines++
@@ -638,6 +666,11 @@ func (m *Model) overlayModelDropdown(frame string) string {
 		})
 	}
 	return overlayBlock(frame, panel, x, y, m.width)
+}
+
+func padANSI(value string, width int) string {
+	value = truncate(value, width)
+	return value + strings.Repeat(" ", max(0, width-lipgloss.Width(value)))
 }
 
 func overlayBlock(base, overlay string, x, y, width int) string {
@@ -669,13 +702,15 @@ func (m *Model) renderPalette() string {
 }
 
 func (m *Model) paletteHasClose() bool {
-	return m.palette == paletteModel || m.palette == paletteMemory || m.palette == paletteHelp
+	return m.palette == paletteModels || m.palette == paletteModel || m.palette == paletteMemory || m.palette == paletteHelp
 }
 
 func (m *Model) paletteTitle() string {
 	switch m.palette {
-	case paletteModel:
+	case paletteModels:
 		return "models"
+	case paletteModel:
+		return m.modelRole + " models"
 	case paletteMemory:
 		return "notebook"
 	case paletteHelp:
@@ -693,7 +728,7 @@ func (m *Model) paletteHeight() int {
 }
 
 func (m *Model) layoutPaletteHeight() int {
-	if m.palette == paletteModel {
+	if m.palette == paletteModels || m.palette == paletteModel {
 		return 0
 	}
 	return m.paletteHeight()
@@ -813,28 +848,7 @@ func (m *Model) completionLines(entries []paletteEntry, label string, width int)
 }
 
 func (m *Model) modelPickerLines(width int) []string {
-	talk, work, voiceRole := "○ talk", "○ work", "○ voice"
-	if m.modelRole == "talk" {
-		talk = "◉ talk"
-	} else if m.modelRole == "work" {
-		work = "◉ work"
-	} else {
-		voiceRole = "◉ voice"
-	}
-	talkView := mutedStyle.Render(talk)
-	workView := mutedStyle.Render(work)
-	voiceView := mutedStyle.Render(voiceRole)
-	if m.modelRole == "talk" {
-		talkView = lipgloss.NewStyle().Foreground(powder).Bold(true).Render(talk)
-	} else if m.modelRole == "work" {
-		workView = lipgloss.NewStyle().Foreground(powder).Bold(true).Render(work)
-	} else {
-		voiceView = lipgloss.NewStyle().Foreground(mint).Bold(true).Render(voiceRole)
-	}
-	lines := []string{
-		talkView + mutedStyle.Render("    ") + workView + mutedStyle.Render("    ") + voiceView,
-		mutedStyle.Render("filter: ") + inputTextStyle.Render(m.input.Value()),
-	}
+	lines := []string{mutedStyle.Render("filter: ") + inputTextStyle.Render(m.input.Value())}
 	if m.modelCatalogIsLoading(m.modelRole) {
 		lines = append(lines, mutedStyle.Render("fetching full catalog…"))
 	}
@@ -900,7 +914,7 @@ func (m *Model) modelChoiceRow(choice ModelChoice, selected bool, width int) str
 	accent := powder
 	if m.modelRole == "work" {
 		accent = peach
-	} else if m.modelRole == "voice" {
+	} else if m.modelRole == "voice" || m.modelRole == "speech" || m.modelRole == "music" {
 		accent = mint
 	}
 	slugStyle := lipgloss.NewStyle().Foreground(accent).Bold(selected)
@@ -944,9 +958,28 @@ func modelShort(model string) string {
 		return "–"
 	}
 	if index := strings.LastIndex(model, "/"); index >= 0 && index+1 < len(model) {
-		return model[index+1:]
+		model = model[index+1:]
+	}
+	model = strings.TrimPrefix(model, "~")
+	model = strings.TrimSuffix(model, ":free")
+	parts := strings.Split(model, "-")
+	if len(parts) >= 4 && len(parts[len(parts)-3]) == 4 && len(parts[len(parts)-2]) == 2 && len(parts[len(parts)-1]) == 2 &&
+		allDigits(parts[len(parts)-3]) && allDigits(parts[len(parts)-2]) && allDigits(parts[len(parts)-1]) {
+		model = strings.Join(parts[:len(parts)-3], "-")
 	}
 	return model
+}
+
+func allDigits(value string) bool {
+	if value == "" {
+		return false
+	}
+	for _, r := range value {
+		if r < '0' || r > '9' {
+			return false
+		}
+	}
+	return true
 }
 
 func (m *Model) newMessageLabel() string {
