@@ -120,8 +120,9 @@ func (s *Scheduler) Run(ctx context.Context, graph *plan.Graph) error {
 	// and exit, even after the scheduler has stopped listening for it — an
 	// abandoned worker blocked on an unbuffered send would leak forever.
 	done := make(chan completion, len(graph.Nodes))
-	// When a node started, keyed by id. Doubles as the in-flight set.
-	inFlight := map[int]time.Time{}
+	// When a node started, keyed by id. Doubles as the in-flight set and keeps
+	// the cancellation/teardown handles needed by watchdog abandonment.
+	inFlight := map[int]leafFlight{}
 	// How many times each node has already been given up on. It is also the
 	// attempt number the leaf runs under, which is how a router is told to climb
 	// without the scheduler knowing what it is climbing.
@@ -161,8 +162,11 @@ func (s *Scheduler) Run(ctx context.Context, graph *plan.Graph) error {
 				node.State = plan.StateRunning
 				s.emit(Event{NodeID: id, Title: node.Title, State: plan.StateRunning, Elapsed: time.Since(started)})
 				task := s.taskFor(graph, node)
-				inFlight[id] = time.Now()
-				go s.work(ctx, id, task, retries[id], leafShape(node), done)
+				leafCtx, cancel := context.WithCancel(ctx)
+				control := &leafControl{}
+				task.control = control
+				inFlight[id] = leafFlight{started: time.Now(), cancel: cancel, control: control}
+				go s.work(leafCtx, id, task, retries[id], leafShape(node), done)
 			}
 		}
 
@@ -181,6 +185,13 @@ func (s *Scheduler) Run(ctx context.Context, graph *plan.Graph) error {
 
 		select {
 		case finished := <-done:
+			flight, active := inFlight[finished.nodeID]
+			if !active {
+				// A watchdog-abandoned executor may eventually return. Its late
+				// completion must not overwrite the recorded abandonment.
+				continue
+			}
+			flight.cancel()
 			delete(inFlight, finished.nodeID)
 			lastProgress = time.Now()
 			s.apply(graph, finished.nodeID, finished.outcome, finished.err, started, retries)
@@ -197,11 +208,16 @@ func (s *Scheduler) Run(ctx context.Context, graph *plan.Graph) error {
 			return s.finish(graph, stop, stopCause)
 		case <-ticker.C:
 			now := time.Now()
-			for id, since := range inFlight {
-				if s.NodeTimeout > 0 && now.Sub(since) > s.NodeTimeout {
+			for id, flight := range inFlight {
+				if s.NodeTimeout > 0 && now.Sub(flight.started) > s.NodeTimeout {
 					node := graph.Node(id)
+					flight.cancel()
+					terminated := flight.control.terminate()
 					node.State = plan.StateFailed
 					node.Failure = fmt.Sprintf("executor did not return within %s; abandoned", s.NodeTimeout.Round(time.Second))
+					if terminated > 0 {
+						node.Failure += fmt.Sprintf("; %d background jobs terminated at leaf end", terminated)
+					}
 					s.emit(Event{NodeID: id, Title: node.Title, State: plan.StateFailed, Detail: node.Failure, Elapsed: time.Since(started)})
 					delete(inFlight, id)
 				}
@@ -211,10 +227,10 @@ func (s *Scheduler) Run(ctx context.Context, graph *plan.Graph) error {
 			// long, so a frozen log reads as waiting rather than as death.
 			if len(inFlight) > 0 && now.Sub(lastProgress) >= stallAfter {
 				lastProgress = now
-				for id, since := range inFlight {
+				for id, flight := range inFlight {
 					node := graph.Node(id)
 					s.emit(Event{NodeID: id, Title: node.Title, State: plan.StateRunning,
-						Detail:  fmt.Sprintf("still in flight after %s — the run is waiting, not dead", now.Sub(since).Round(time.Second)),
+						Detail:  fmt.Sprintf("still in flight after %s — the run is waiting, not dead", now.Sub(flight.started).Round(time.Second)),
 						Elapsed: time.Since(started)})
 				}
 			}
@@ -229,13 +245,23 @@ type completion struct {
 	err     error
 }
 
+type leafFlight struct {
+	started time.Time
+	cancel  context.CancelFunc
+	control *leafControl
+}
+
 // work runs one node and always reports back, even when the executor panics —
 // a panic that unwinds a worker silently would strand the scheduler waiting on
 // a completion that can never come.
 func (s *Scheduler) work(ctx context.Context, id int, task Task, attempt int, shape string, done chan<- completion) {
 	defer func() {
 		if recovered := recover(); recovered != nil {
-			done <- completion{nodeID: id, err: fmt.Errorf("executor panicked: %v", recovered)}
+			failure := fmt.Sprintf("executor panicked: %v", recovered)
+			if terminated := task.control.terminate(); terminated > 0 {
+				failure += fmt.Sprintf("; %d background jobs terminated at leaf end", terminated)
+			}
+			done <- completion{nodeID: id, err: fmt.Errorf("%s", failure)}
 		}
 	}()
 	// One leaf is one routable unit, opened here rather than inside the loop.
@@ -290,22 +316,32 @@ func LeafShape(node *plan.Node) string { return leafShape(node) }
 // contexts are already cancelled, so each executor's own landing procedure is
 // what runs here; the grace period only bounds a worker that is wedged past
 // even that.
-func (s *Scheduler) drain(graph *plan.Graph, done <-chan completion, inFlight map[int]time.Time, started time.Time) {
+func (s *Scheduler) drain(graph *plan.Graph, done <-chan completion, inFlight map[int]leafFlight, started time.Time) {
 	grace := time.NewTimer(drainGrace)
 	defer grace.Stop()
 	for len(inFlight) > 0 {
 		select {
 		case finished := <-done:
+			flight, active := inFlight[finished.nodeID]
+			if !active {
+				continue
+			}
+			flight.cancel()
 			delete(inFlight, finished.nodeID)
 			// No retries while draining: the run has already been told to stop,
 			// and putting a node back to pending here would leave it pending
 			// forever with nothing left to launch it.
 			s.apply(graph, finished.nodeID, finished.outcome, finished.err, started, nil)
 		case <-grace.C:
-			for id := range inFlight {
+			for id, flight := range inFlight {
 				node := graph.Node(id)
+				flight.cancel()
+				terminated := flight.control.terminate()
 				node.State = plan.StateFailed
 				node.Failure = fmt.Sprintf("in flight when the run stopped and did not land within %s", drainGrace)
+				if terminated > 0 {
+					node.Failure += fmt.Sprintf("; %d background jobs terminated at leaf end", terminated)
+				}
 				s.emit(Event{NodeID: id, Title: node.Title, State: plan.StateFailed, Detail: node.Failure, Elapsed: time.Since(started)})
 				delete(inFlight, id)
 			}

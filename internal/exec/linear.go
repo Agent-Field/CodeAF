@@ -109,7 +109,7 @@ type Linear struct {
 
 // WithStore enables the optional persistent-memory pull tool. It mutates the
 // just-constructed loop for fluent wiring; callers that do not opt in retain
-// the original four-tool completion floor.
+// the base-tool completion floor.
 func (l *Linear) WithStore(history *store.Store) *Linear {
 	l.history = history
 	return l
@@ -166,7 +166,7 @@ func NewLinear(client Completer, workspace *Workspace, web *Web, maxTurns, maxTo
 func (l *Linear) Skill() string { return "linear" }
 
 // Run executes one task.
-func (l *Linear) Run(ctx context.Context, task Task) (*Outcome, error) {
+func (l *Linear) Run(ctx context.Context, task Task) (returned *Outcome, runErr error) {
 	started := time.Now()
 	ctx, cancel := context.WithTimeout(ctx, l.deadline)
 	defer cancel()
@@ -174,6 +174,20 @@ func (l *Linear) Run(ctx context.Context, task Task) (*Outcome, error) {
 	landingReserve := deadlineLandingReserve(time.Until(deadline))
 
 	tools := newToolboxWithMedia(l.workspace, task.NodeID, l.web, l.history, l.media)
+	task.control.attach(tools)
+	defer func() {
+		terminated := tools.Close()
+		if returned != nil && terminated > 0 {
+			note := fmt.Sprintf("%d background jobs terminated at leaf end", terminated)
+			if strings.TrimSpace(returned.Text) == "" {
+				returned.Text = note
+			} else {
+				returned.Text = strings.TrimSpace(returned.Text) + "\n\n" + note
+			}
+			returned.Artifacts = l.workspace.Artifacts(task.NodeID)
+		}
+		task.control.detach(tools, terminated)
+	}()
 	definitions := tools.Definitions()
 	if task.Reflex {
 		definitions = append(definitions, reflexPromotionDefinition())
@@ -363,7 +377,7 @@ func (l *Linear) Run(ctx context.Context, task Task) (*Outcome, error) {
 			outcome.ToolCalls++
 			key := fingerprint(call)
 			if previous, repeated := seen[key]; repeated && call.Function.Name != "view_image" {
-				results[index] = Result{Content: previous + "\n\n(identical call already made; this is the same result. If you were re-checking, nothing has changed — move on to the next step)"}
+				results[index] = tools.finishResult(Result{Content: previous + "\n\n(identical call already made; this is the same result. If you were re-checking, nothing has changed — move on to the next step)"})
 				continue
 			}
 			keys[index] = key
@@ -384,7 +398,7 @@ func (l *Linear) Run(ctx context.Context, task Task) (*Outcome, error) {
 		// a hard panic in Go, and it would only ever fire on the turns where the
 		// model asked for several tools — the exact case this loop exists for.
 		for index, key := range keys {
-			if key != "" && !results[index].IsError {
+			if key != "" && !results[index].IsError && !results[index].reportedJobs {
 				seen[key] = results[index].Content
 			}
 		}
