@@ -12,6 +12,17 @@ import (
 	"github.com/charmbracelet/lipgloss"
 )
 
+// Self is one calm column, the way a settings app is: a root list of what
+// aforge does when nobody is watching, each row saying in its own voice what
+// it is, and enter drilling into the list behind it. Nothing is hidden and
+// nothing is a dashboard — a row is a count, a sentence, and a way in.
+//
+// Every list here is windowed and filterable rather than complete. After six
+// months the belief notebook is thousands of lines and the receipt log is
+// longer; a surface that loads all of it is a surface that stops opening. The
+// window plus the count plus the filter is the honest shape: it says how much
+// there is, shows the part that matters now, and takes a query for the rest.
+
 type place uint8
 
 const (
@@ -20,32 +31,137 @@ const (
 	placeSelf
 )
 
-type selfSection uint8
+type selfRoute uint8
 
 const (
-	selfToday selfSection = iota
-	selfCompetenceSection
-	selfBeliefs
-	selfStanding
+	selfRouteRoot selfRoute = iota
+	selfRouteCrafts
+	selfRouteCompetence
+	selfRouteBeliefs
+	selfRouteSkills
+	selfRouteWatches
+	selfRouteServices
+	selfRoutePractice
+	selfRouteDials
 )
-
-var selfSectionNames = []string{"today", "competence", "beliefs", "standing"}
 
 const (
 	// selfTenureAfter mirrors the store's default promotion ladder: three
 	// consecutive green firings turn probation into tenure.
 	selfTenureAfter = 3
-	// selfReceiptCap is how many of today's receipts the file shows before it
-	// admits the rest with a single "…N more"; selfBeliefLimit is the matching
-	// budget for the newest notebook facts. The file is a glance, not a log.
-	selfReceiptCap  = 10
-	selfBeliefLimit = 10
+	// selfWindow is how many rows a drill-in shows before it says how many
+	// more there are; selfWindowStep is what one "show more" adds. Twenty is
+	// about a screen: enough to read without scrolling into a wall.
+	selfWindow     = 20
+	selfWindowStep = 20
+	// selfBeliefScan bounds the belief read itself. The count line says
+	// "500+" past it rather than pretending to have counted a notebook that
+	// has been filling for months.
+	selfBeliefScan = 500
+	// selfSkillScan is the matching bound for forged skills. Skills are rarer
+	// than beliefs by construction — a procedure has to work twice — so a
+	// smaller ceiling still shows every one anybody has.
+	selfSkillScan = 200
+	// selfFoldAge is where a list stops being "now" and becomes history: a
+	// week of receipts and beliefs reads as this week's work, and everything
+	// older folds behind one line until it is asked for or searched.
+	selfFoldAge = 7 * 24 * time.Hour
+	// selfReceiptReach is how far back the practice log is read: a month, so
+	// the week fold has a genuine "older" behind it without the read growing
+	// with the life of the brain. Today's totals are a projection of the same
+	// rows rather than a second query.
+	selfReceiptReach = 30 * 24 * time.Hour
+	// selfDetailTitleWords is how many words of a long goal name its detail
+	// view. Enough to recognize, short enough that the header stays a header.
+	selfDetailTitleWords = 5
+	// selfLabelWidth is the root list's title column. selfNarrowWidth is
+	// where two columns stop fitting and the explainer moves to its own line
+	// rather than being truncated into nonsense.
+	selfLabelWidth  = 17
+	selfNarrowWidth = 62
+)
+
+// selfSection is one root row. The explainer is not decoration: it is the only
+// place a user learns what aforge was doing while they were away, so it lives
+// beside the title rather than at the render site, and the empty hint teaches
+// the same thing when there is nothing to count yet.
+type selfSection struct {
+	route   selfRoute
+	title   string
+	explain string
+	empty   string
+}
+
+var selfSections = []selfSection{
+	{
+		route: selfRouteCrafts, title: "Crafts",
+		explain: "job-shapes I've learned — versioned, measured, reusable",
+		empty:   "none yet; I forge one when a job's shape looks reusable",
+	},
+	{
+		route: selfRouteCompetence, title: "Competence",
+		explain: "where I'm strong and where I'm at my frontier — measured, not guessed",
+		empty:   "nothing measured yet; a scope needs runs behind it before I'll claim anything",
+	},
+	{
+		route: selfRouteBeliefs, title: "Beliefs",
+		explain: "what I hold true about you and this machine — corrections welcome",
+		empty:   "nothing yet; I write one down when work teaches me something durable",
+	},
+	{
+		route: selfRouteSkills, title: "Skills",
+		explain: "tools I forged and verified; they ride every worker's PATH",
+		empty:   "none yet; a procedure has to run and pass twice before I keep it",
+	},
+	{
+		route: selfRouteWatches, title: "Watches",
+		explain: "standing goals checking on their own schedule",
+		empty:   "none yet; say \"whenever…\" or \"remind me…\" and I'll stand one up",
+	},
+	{
+		route: selfRouteServices, title: "Services",
+		explain: "processes I keep alive for you",
+		empty:   "none running; I start one when work needs something to stay up",
+	},
+	{
+		route: selfRoutePractice, title: "Practice",
+		explain: "what I did with idle time, and what it taught me",
+		empty:   "nothing yet; I practice in the quiet, inside the carve-out you set",
+	},
+	{
+		route: selfRouteDials, title: "Dials",
+		explain: "how I balance demand against curiosity, and what I may propose",
+		empty:   "",
+	},
+}
+
+func selfSectionFor(route selfRoute) selfSection {
+	for _, section := range selfSections {
+		if section.route == route {
+			return section
+		}
+	}
+	return selfSection{route: selfRouteRoot, title: "self"}
+}
+
+type selfRowAction uint8
+
+const (
+	selfRowInert selfRowAction = iota
+	selfRowOpenSection
+	selfRowOpenCraft
+	selfRowOpenPractice
+	selfRowOpenCharter
+	selfRowOpenService
+	selfRowShowMore
+	selfRowUnfold
 )
 
 type selfRow struct {
-	line    int
-	section selfSection
-	header  bool
+	line   int
+	action selfRowAction
+	route  selfRoute
+	key    string
 }
 
 // selfCharterLister matches the store's variadic status filter exactly. The
@@ -55,7 +171,7 @@ type selfCharterLister interface {
 }
 
 // selfDataReader is the whole read surface the employee file needs. Binding it
-// as one interface — rather than five anonymous assertions — makes the
+// as one interface — rather than six anonymous assertions — makes the
 // compile-time assertion below the guarantee that the real store still answers
 // every question Self asks.
 type selfDataReader interface {
@@ -63,6 +179,7 @@ type selfDataReader interface {
 	SelfSpendToday() (float64, error)
 	CompetenceMap(...store.CompetenceOptions) (store.CompetenceMap, error)
 	RecentFacts(limit int) ([]store.Fact, error)
+	SkillFacts(status string, limit int) ([]store.Fact, error)
 }
 
 var (
@@ -178,52 +295,23 @@ func (m *Model) refreshSelf() {
 
 func (m *Model) renderSelfContent(width int) string {
 	m.selfRows = m.selfRows[:0]
-	lines := make([]string, 0, 32)
-	for index, name := range selfSectionNames {
-		if index > 0 {
-			lines = append(lines, "")
-		}
-		section := selfSection(index)
-		expanded := m.selfExpanded == index
-		disclosure := "▸"
-		if expanded {
-			disclosure = "▾"
-		}
-		selected := m.focus == focusSelf && len(m.selfRows) == m.selfSelection
-		style := mutedStyle.Faint(true)
-		if selected {
-			style = powderStyle.Bold(true)
-		}
-		m.selfRows = append(m.selfRows, selfRow{line: len(lines), section: section, header: true})
-		line := truncate(style.Render(disclosure+" ")+inputTextStyle.Render(name), width)
-		if selected {
-			line = bandStyle.Width(width).Render(line)
-		}
-		lines = append(lines, line)
-		if !expanded {
-			continue
-		}
-		switch section {
-		case selfToday:
-			m.appendSelfToday(&lines, width)
-		case selfCompetenceSection:
-			m.appendSelfCompetence(&lines, width)
-		case selfBeliefs:
-			m.appendSelfBeliefs(&lines, width)
-		case selfStanding:
-			m.appendSelfStanding(&lines, width)
-		}
+	if m.selfRoute == selfRouteRoot {
+		return m.renderSelfRoot(width)
 	}
-	return strings.Join(lines, "\n")
+	return m.renderSelfDrill(width)
 }
 
-func (m *Model) appendSelfRow(lines *[]string, section selfSection, body string, width int) {
+// appendSelfRow lays one selectable row. Selection is a band and a marker,
+// the same grammar the rail and the settings sheet use, so the hand never has
+// to learn a second one.
+func (m *Model) appendSelfRow(lines *[]string, width int, body string, row selfRow) {
 	selected := m.focus == focusSelf && len(m.selfRows) == m.selfSelection
 	marker := mutedStyle.Faint(true).Render("  ")
 	if selected {
 		marker = powderStyle.Bold(true).Render("▸ ")
 	}
-	m.selfRows = append(m.selfRows, selfRow{line: len(*lines), section: section})
+	row.line = len(*lines)
+	m.selfRows = append(m.selfRows, row)
 	line := truncate(marker+body, width)
 	if selected {
 		line = bandStyle.Width(width).Render(line)
@@ -231,148 +319,235 @@ func (m *Model) appendSelfRow(lines *[]string, section selfSection, body string,
 	*lines = append(*lines, line)
 }
 
-func (m *Model) appendSelfToday(lines *[]string, width int) {
-	live := make([]store.Node, 0)
-	for _, node := range m.snapshot.Nodes {
-		if node.ID != store.RootID && node.Provenance.Origin == store.OriginSelf &&
-			(node.Status == store.Claimed || node.Status == store.Running) {
-			live = append(live, node)
-		}
-	}
-	sort.SliceStable(live, func(i, j int) bool { return live[i].CreatedSeq < live[j].CreatedSeq })
-	if len(live) == 0 {
-		m.appendSelfRow(lines, selfToday, mutedStyle.Faint(true).Render("presence · quiet"), width)
-	} else {
-		for _, node := range live {
-			kind := "self work"
-			if node.Group == store.PracticeGroup {
-				kind = "practice"
-			}
-			glyph := peachStyle.Render(spinnerFrames[m.spinnerFrame%len(spinnerFrames)])
-			label := nodeLabelInSnapshot(node, m.snapshot)
-			body := glyph + " " + inputTextStyle.Render(label) + mutedStyle.Faint(true).Render(" · "+kind)
-			m.appendSelfRow(lines, selfToday, body, width)
-		}
-	}
-	m.appendSelfRow(lines, selfToday,
-		mutedStyle.Faint(true).Render("self-spend today · ")+inputTextStyle.Render(formatSelfDollars(m.selfSpend)), width)
-
-	if len(m.selfReceipts) == 0 {
-		m.appendSelfRow(lines, selfToday, mutedStyle.Faint(true).Render("no receipts today"), width)
-		return
-	}
-	*lines = append(*lines, mutedStyle.Faint(true).Render(truncate("  TRIED   COST   LEARNED", width)))
-	shown := min(selfReceiptCap, len(m.selfReceipts))
-	for index := 0; index < shown; index++ {
-		receipt := m.selfReceipts[len(m.selfReceipts)-1-index]
-		tried := oneLineSelfReceipt(receipt.Origin)
-		if tried == "" {
-			tried = oneLineSelfReceipt(receipt.Scope)
-		}
-		body := inputTextStyle.Render(tried) + mutedStyle.Faint(true).Render("   "+formatSelfDollars(receipt.Cost)+"   ") +
-			inputTextStyle.Render(selfReceiptLearning(receipt))
-		m.appendSelfRow(lines, selfToday, body, width)
-	}
-	if more := len(m.selfReceipts) - shown; more > 0 {
-		m.appendSelfRow(lines, selfToday, mutedStyle.Faint(true).Render(fmt.Sprintf("…%d more", more)), width)
-	}
+func appendSelfPlain(lines *[]string, width int, body string) {
+	*lines = append(*lines, truncate(body, width))
 }
 
-func (m *Model) appendSelfCompetence(lines *[]string, width int) {
-	classes := []store.CompetenceClass{store.CompetenceStrong, store.CompetenceFrontier, store.CompetenceWeak}
-	wrote := false
-	for _, class := range classes {
-		rows := make([]store.ScopeCompetence, 0)
-		for _, scope := range m.selfCompetence.Scopes {
-			if scope.Class == class {
-				rows = append(rows, scope)
-			}
-		}
-		if len(rows) == 0 {
+// selfTodayLine is the one line that is always true: what today cost, what it
+// taught, and how much of it was practice. It sits above every route so
+// walking into a drill-in never loses the day.
+func (m *Model) selfTodayLine(width int) string {
+	parts := []string{"today: " + formatSelfDollars(m.selfSpend)}
+	if learned := m.selfLearnedToday(); learned > 0 {
+		parts = append(parts, fmt.Sprintf("%d learned", learned))
+	}
+	if practiced := m.selfPracticedToday(); practiced > 0 {
+		parts = append(parts, "practiced "+shortDuration(practiced))
+	}
+	summary := mutedStyle.Faint(true).Render("· " + strings.Join(parts, " · "))
+	return overlayRight(inputTextStyle.Render("self"), summary, width)
+}
+
+// selfLearnedToday counts distinct beliefs and skills named by today's
+// receipts. A receipt may name the same fact twice; the user is being told how
+// much aforge learned, not how many rows were written.
+func (m *Model) selfLearnedToday() int {
+	start := startOfLocalDay(m.standingTime())
+	seen := make(map[int64]bool)
+	for _, receipt := range m.selfReceipts {
+		if !receipt.Time.IsZero() && receipt.Time.Before(start) {
 			continue
 		}
-		wrote = true
-		*lines = append(*lines, mutedStyle.Faint(true).Render("  "+string(class)))
-		for _, scope := range rows {
-			glyphStyle := mutedStyle.Faint(true)
-			glyph := "·"
-			if class == store.CompetenceFrontier {
-				glyphStyle = peachStyle
-				glyph = "◆"
-			}
-			name := strings.TrimPrefix(scope.Scope, "profile:")
-			if scope.Kind == store.CompetenceProfile {
-				name += " work"
-			}
-			number := fmt.Sprintf("%d%% failed", int(scope.FailureRate*100+0.5))
-			if scope.Samples == 0 {
-				number = "0 runs"
-			}
-			body := glyphStyle.Render(glyph) + " " + inputTextStyle.Render(name) +
-				mutedStyle.Faint(true).Render(" · "+number)
-			m.appendSelfRow(lines, selfCompetenceSection, body, width)
+		for _, id := range receipt.FactIDs {
+			seen[id] = true
+		}
+		for _, id := range receipt.SkillIDs {
+			seen[id] = true
 		}
 	}
-	if !wrote {
-		m.appendSelfRow(lines, selfCompetenceSection, mutedStyle.Faint(true).Render("no measured scopes yet"), width)
+	return len(seen)
+}
+
+// selfPracticedToday sums the practice roots that started today, counting a
+// live one up to now. Practice is the only self-directed work with a clock the
+// user did not start, so the day's total is the honest report of it.
+func (m *Model) selfPracticedToday() time.Duration {
+	now := m.standingTime()
+	start := startOfLocalDay(now)
+	total := time.Duration(0)
+	for _, node := range m.practiceRoots() {
+		began := node.StartedAt
+		if began.IsZero() || began.Before(start) {
+			continue
+		}
+		ended := node.FinishedAt
+		if ended.IsZero() {
+			ended = now
+		}
+		if ended.After(began) {
+			total += ended.Sub(began)
+		}
+	}
+	return total
+}
+
+func (m *Model) practiceRoots() []store.Node {
+	roots := make([]store.Node, 0, 4)
+	seen := make(map[string]bool)
+	for _, snapshot := range []store.Snapshot{m.cardSnapshot, m.snapshot} {
+		for _, node := range snapshot.Nodes {
+			if node.Parent != store.RootID || node.Group != store.PracticeGroup || seen[node.ID] {
+				continue
+			}
+			seen[node.ID] = true
+			roots = append(roots, node)
+		}
+	}
+	sort.SliceStable(roots, func(i, j int) bool { return roots[i].CreatedSeq > roots[j].CreatedSeq })
+	return roots
+}
+
+func shortDuration(value time.Duration) string {
+	switch {
+	case value < time.Minute:
+		return fmt.Sprintf("%ds", int(value/time.Second))
+	case value < time.Hour:
+		return fmt.Sprintf("%dm", int(value/time.Minute))
+	default:
+		return fmt.Sprintf("%dh%02dm", int(value/time.Hour), int(value%time.Hour/time.Minute))
 	}
 }
 
-func (m *Model) appendSelfBeliefs(lines *[]string, width int) {
-	if len(m.selfFacts) == 0 {
-		m.appendSelfRow(lines, selfBeliefs, mutedStyle.Faint(true).Render("notebook is empty"), width)
-		return
+func (m *Model) renderSelfRoot(width int) string {
+	lines := []string{m.selfTodayLine(width), ""}
+	narrow := width < selfNarrowWidth
+	for _, section := range selfSections {
+		count, counted := m.selfSectionCount(section.route)
+		title := section.title
+		if counted {
+			title += " (" + strconv.Itoa(count) + ")"
+		}
+		explain := section.explain
+		if counted && count == 0 && section.empty != "" {
+			explain = section.empty
+		}
+		row := selfRow{action: selfRowOpenSection, route: section.route}
+		if narrow {
+			// A truncated explainer teaches nothing, so the narrow frame gives
+			// the sentence its own lines rather than its first half.
+			m.appendSelfRow(&lines, width, inputTextStyle.Render(title), row)
+			for _, wrapped := range strings.Split(wrapText(explain, max(8, width-6)), "\n") {
+				appendSelfPlain(&lines, width, mutedStyle.Faint(true).Render("      "+wrapped))
+			}
+			continue
+		}
+		body := inputTextStyle.Render(padANSI(truncate(title, selfLabelWidth-1), selfLabelWidth)) +
+			mutedStyle.Faint(true).Render(explain)
+		m.appendSelfRow(&lines, width, body, row)
 	}
-	for _, fact := range m.selfFacts {
-		m.appendSelfRow(lines, selfBeliefs, memoryFactRow(fact, max(1, width-2)), width)
-	}
+	lines = append(lines, "")
+	appendSelfPlain(&lines, width, mutedStyle.Faint(true).Render("  enter opens · esc goes back"))
+	return strings.Join(lines, "\n")
 }
 
-// appendSelfStanding reads tenure from the store's first-class charters — the
-// only place autonomy lives — and takes last-fired and today's count from the
-// same projection the rail renders, so the two places can never disagree about
-// when a charter last woke.
-func (m *Model) appendSelfStanding(lines *[]string, width int) {
-	fired := make(map[string]standingCharter)
-	for _, charter := range m.standingCharters() {
-		fired[charter.ID] = charter
+// selfSectionCount reports a row's count, and whether the row has one at all.
+// Practice and Dials are states rather than collections: a number in front of
+// them would be a number about nothing.
+func (m *Model) selfSectionCount(route selfRoute) (int, bool) {
+	switch route {
+	case selfRouteCrafts:
+		return len(m.selfCrafts), true
+	case selfRouteCompetence:
+		return len(m.selfCompetence.Scopes), true
+	case selfRouteBeliefs:
+		return len(m.selfFacts), true
+	case selfRouteSkills:
+		return len(m.selfSkills), true
+	case selfRouteWatches:
+		return len(m.selfLiveCharters()), true
+	case selfRouteServices:
+		return len(m.activeServices()), true
 	}
-	count := 0
+	return 0, false
+}
+
+func (m *Model) selfLiveCharters() []store.Charter {
+	live := make([]store.Charter, 0, len(m.selfCharters))
 	for _, charter := range m.selfCharters {
 		if charter.Status == store.CharterRetired {
 			continue
 		}
-		count++
-		grade := "tenured"
-		if charter.Autonomy != store.CharterTenured {
-			grade = fmt.Sprintf("probation %d/%d",
-				min(selfTenureAfter, max(0, charter.GreenFirings)), selfTenureAfter)
-		}
-		history := fired[charter.ID]
-		last := "never"
-		if !history.LastFired.IsZero() {
-			last = history.LastFired.Local().Format("Jan 2 15:04")
-		}
-		name := charterShortName(charter.Invariant, charter.ID)
-		body := inputTextStyle.Render(name) + mutedStyle.Faint(true).Render(
-			fmt.Sprintf(" · %s · last %s · %d today", grade, last, history.Today))
-		m.appendSelfRow(lines, selfStanding, body, width)
+		live = append(live, charter)
 	}
-	if count == 0 {
-		m.appendSelfRow(lines, selfStanding, mutedStyle.Faint(true).Render("no standing charters"), width)
-	}
+	return live
 }
 
-func (m *Model) renderSelfPane() string {
-	lines := strings.Split(m.self.View(), "\n")
-	for len(lines) < m.chatHeight {
-		lines = append(lines, "")
+// Navigation. The root list is a list of places; a drill-in is a list of
+// things; a craft is one thing. esc walks that ladder back out, and only when
+// it is fully out does it hand the key on to the place ladder.
+
+func (m *Model) openSelfRoute(route selfRoute) {
+	m.selfRoute = route
+	m.selfQuery = ""
+	m.selfCraftName = ""
+	m.selfCraftDetail = CraftDetail{}
+	m.selfPracticeKey = ""
+	m.selfShowOlder = false
+	m.selfShown = selfWindow
+	m.selfSelection = 0
+	m.self.SetYOffset(0)
+	if route == selfRouteBeliefs {
+		m.loadSelfBeliefs()
 	}
-	if len(lines) > m.chatHeight {
-		lines = lines[:m.chatHeight]
+	m.refreshSelf()
+}
+
+// selfBack pops exactly one rung — a filter, then a craft, then a drill-in —
+// and reports whether it had one to pop. The esc ladder in updateKey asks it
+// before it considers leaving the place.
+func (m *Model) selfBack() bool {
+	switch {
+	case m.selfQuery != "":
+		m.selfQuery = ""
+		if m.selfRoute == selfRouteBeliefs {
+			m.loadSelfBeliefs()
+		}
+		m.selfSelection = 0
+		m.refreshSelf()
+		return true
+	case m.selfCraftName != "":
+		name := m.selfCraftName
+		m.selfCraftName = ""
+		m.selfCraftDetail = CraftDetail{}
+		m.selfSelection = m.selfCraftIndex(name)
+		m.refreshSelf()
+		m.ensureSelfSelectionVisible()
+		return true
+	case m.selfPracticeKey != "":
+		m.selfPracticeKey = ""
+		m.selfSelection = 0
+		m.refreshSelf()
+		m.ensureSelfSelectionVisible()
+		return true
+	case m.selfRoute != selfRouteRoot:
+		route := m.selfRoute
+		m.selfRoute = selfRouteRoot
+		m.selfShowOlder = false
+		m.selfShown = selfWindow
+		m.selfSelection = selfRootIndex(route)
+		m.self.SetYOffset(0)
+		m.refreshSelf()
+		return true
 	}
-	clampLines(lines, m.width)
-	return lipgloss.NewStyle().Width(m.width).Render(strings.Join(lines, "\n"))
+	return false
+}
+
+func selfRootIndex(route selfRoute) int {
+	for index, section := range selfSections {
+		if section.route == route {
+			return index
+		}
+	}
+	return 0
+}
+
+func (m *Model) selfCraftIndex(name string) int {
+	for index, entry := range m.selfCrafts {
+		if entry.Name == name {
+			return index
+		}
+	}
+	return 0
 }
 
 func (m *Model) moveSelfSelection(delta int) {
@@ -384,22 +559,126 @@ func (m *Model) moveSelfSelection(delta int) {
 	m.ensureSelfSelectionVisible()
 }
 
-func (m *Model) activateSelfSelection() {
+func (m *Model) activateSelfSelection() tea.Cmd {
 	if m.selfSelection < 0 || m.selfSelection >= len(m.selfRows) {
-		return
+		return nil
 	}
-	row := m.selfRows[m.selfSelection]
-	if !row.header {
-		return
+	return m.activateSelfRow(m.selfRows[m.selfSelection])
+}
+
+func (m *Model) activateSelfRow(row selfRow) tea.Cmd {
+	switch row.action {
+	case selfRowOpenSection:
+		m.openSelfRoute(row.route)
+	case selfRowOpenCraft:
+		m.openSelfCraft(row.key)
+	case selfRowOpenPractice:
+		m.openSelfPractice(row.key)
+	case selfRowShowMore:
+		m.selfShown += selfWindowStep
+		m.refreshSelf()
+	case selfRowUnfold:
+		m.selfShowOlder = true
+		m.refreshSelf()
+	case selfRowOpenCharter:
+		// A charter's card, its firing history, and its actions already live
+		// on the board. Self says which watches exist and takes the user to
+		// the one surface that can act on them rather than growing a second.
+		command := m.selectPlace(placeBoard)
+		m.openStandingCharter(row.key)
+		return command
+	case selfRowOpenService:
+		command := m.selectPlace(placeBoard)
+		m.openServiceCard(row.key)
+		return command
 	}
-	section := int(row.section)
-	if m.selfExpanded == section {
-		m.selfExpanded = -1
-	} else {
-		m.selfExpanded = section
+	return nil
+}
+
+// updateSelfKey is the whole keyboard of the place. The root list takes j/k
+// because there is nothing to type into it; a drill-in gives the letters back
+// to the filter, because a list that has grown for six months is reached by
+// typing, not by scrolling.
+func (m *Model) updateSelfKey(message tea.KeyMsg) (tea.Cmd, bool) {
+	key := message.String()
+	switch key {
+	case "up":
+		m.moveSelfSelection(-1)
+		return nil, true
+	case "down":
+		m.moveSelfSelection(1)
+		return nil, true
+	case "enter":
+		return m.activateSelfSelection(), true
+	case "home":
+		m.selfSelection = 0
+		m.refreshSelf()
+		m.ensureSelfSelectionVisible()
+		return nil, true
+	case "end":
+		m.selfSelection = max(0, len(m.selfRows)-1)
+		m.refreshSelf()
+		m.ensureSelfSelectionVisible()
+		return nil, true
+	}
+	if m.selfRoute == selfRouteRoot {
+		switch key {
+		case "k":
+			m.moveSelfSelection(-1)
+			return nil, true
+		case "j":
+			m.moveSelfSelection(1)
+			return nil, true
+		case " ":
+			return m.activateSelfSelection(), true
+		}
+		return nil, false
+	}
+	if !m.selfFilterable() {
+		return nil, false
+	}
+	switch {
+	case key == "backspace" || key == "ctrl+h":
+		if m.selfQuery == "" {
+			return nil, true
+		}
+		runes := []rune(m.selfQuery)
+		m.setSelfQuery(string(runes[:len(runes)-1]))
+		return nil, true
+	case key == "ctrl+u":
+		m.setSelfQuery("")
+		return nil, true
+	case message.Type == tea.KeyRunes && !message.Alt && len(message.Runes) > 0:
+		m.setSelfQuery(m.selfQuery + string(message.Runes))
+		return nil, true
+	}
+	return nil, false
+}
+
+// selfFilterable says which drill-ins take a query. A craft's steps and the
+// dials are short by construction; typing into them would be a prompt with
+// nothing to answer.
+func (m *Model) selfFilterable() bool {
+	if m.selfCraftName != "" || m.selfPracticeKey != "" {
+		return false
+	}
+	switch m.selfRoute {
+	case selfRouteCrafts, selfRouteCompetence, selfRouteBeliefs,
+		selfRouteSkills, selfRouteWatches, selfRouteServices, selfRoutePractice:
+		return true
+	}
+	return false
+}
+
+func (m *Model) setSelfQuery(query string) {
+	m.selfQuery = query
+	m.selfShown = selfWindow
+	m.selfSelection = 0
+	if m.selfRoute == selfRouteBeliefs {
+		m.loadSelfBeliefs()
 	}
 	m.refreshSelf()
-	m.ensureSelfSelectionVisible()
+	m.self.SetYOffset(0)
 }
 
 func (m *Model) ensureSelfSelectionVisible() {
@@ -414,9 +693,9 @@ func (m *Model) ensureSelfSelectionVisible() {
 	}
 }
 
-func (m *Model) activateSelfAt(x, y int) bool {
+func (m *Model) activateSelfAt(x, y int) (tea.Cmd, bool) {
 	if !m.selfBounds.contains(x, y) {
-		return false
+		return nil, false
 	}
 	line := y - m.selfBounds.y + m.self.YOffset
 	for index, row := range m.selfRows {
@@ -427,14 +706,22 @@ func (m *Model) activateSelfAt(x, y int) bool {
 		m.inputFocused = false
 		m.input.Blur()
 		m.selfSelection = index
-		if row.header {
-			m.activateSelfSelection()
-		} else {
-			m.refreshSelf()
-		}
-		return true
+		m.refreshSelf()
+		return m.activateSelfRow(row), true
 	}
-	return true
+	return nil, true
+}
+
+func (m *Model) renderSelfPane() string {
+	lines := strings.Split(m.self.View(), "\n")
+	for len(lines) < m.chatHeight {
+		lines = append(lines, "")
+	}
+	if len(lines) > m.chatHeight {
+		lines = lines[:m.chatHeight]
+	}
+	clampLines(lines, m.width)
+	return lipgloss.NewStyle().Width(m.width).Render(strings.Join(lines, "\n"))
 }
 
 func formatSelfDollars(cost float64) string {

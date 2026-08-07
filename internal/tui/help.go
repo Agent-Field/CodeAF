@@ -55,6 +55,14 @@ func helpCategories() []helpCategory {
 			{key: "mouse", meaning: "click focus/select/open; drag the pane divider"},
 			{key: "/", meaning: "type to filter commands; tab/↑/↓ choose; enter accepts"},
 		}},
+		{title: "self", rows: []helpRow{
+			{key: keyBindings.self, meaning: "open the list of what aforge does unattended"},
+			{key: "enter · click", meaning: "drill into crafts, beliefs, skills, watches, services, practice, dials"},
+			{key: "type", meaning: "inside a drill-in, the letters filter the list"},
+			{key: "show N more", meaning: "widen the window; older than a week folds until asked for"},
+			{key: "practice rows", meaning: "repeated attempts at one goal group into one row; open it for each attempt"},
+			{key: "esc", meaning: "filter → item → list → back to the thread"},
+		}},
 		{title: "models", rows: []helpRow{
 			{key: "models ⌄", meaning: "open all nine model slots from the header"},
 			{key: "1–9", meaning: "jump to a slot inside the models palette"},

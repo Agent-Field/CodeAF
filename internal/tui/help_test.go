@@ -138,7 +138,8 @@ func TestHelpOverlayCategoriesAt80And120Columns(t *testing.T) {
 		view := model.View()
 		plain := ansi.Strip(view)
 		for _, category := range []string{
-			"talking", "moving around", "models", "asking for work", "money", "memory", "slash commands", "glyphs",
+			"talking", "moving around", "self", "models", "asking for work",
+			"money", "memory", "slash commands", "glyphs",
 		} {
 			if !strings.Contains(plain, category) {
 				t.Fatalf("width %d missing category %q:\n%s", width, category, plain)
@@ -160,7 +161,7 @@ func TestHelpOverlayCategoriesAt80And120Columns(t *testing.T) {
 					}
 				}
 			}
-			if len(indices) != 8 {
+			if len(indices) != len(helpCategories()) {
 				t.Fatalf("80-column help did not stack all categories: %v", indices)
 			}
 			for index := 1; index < len(indices); index++ {

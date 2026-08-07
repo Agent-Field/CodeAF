@@ -16,7 +16,21 @@ type selfSeedBackend struct {
 	selfSpend  float64
 	competence store.CompetenceMap
 	facts      []store.Fact
+	skills     []store.Fact
 	charters   []store.Charter
+	services   []store.Service
+}
+
+func (b *selfSeedBackend) SkillFacts(status string, limit int) ([]store.Fact, error) {
+	skills := append([]store.Fact(nil), b.skills...)
+	if limit > 0 && len(skills) > limit {
+		skills = skills[:limit]
+	}
+	return skills, nil
+}
+
+func (b *selfSeedBackend) ActiveServices() ([]store.Service, error) {
+	return append([]store.Service(nil), b.services...), nil
 }
 
 func (b *selfSeedBackend) SelfReceipts(time.Time) ([]store.SelfReceipt, error) {
@@ -58,8 +72,17 @@ func seededSelfBackend(now time.Time) *selfSeedBackend {
 	return &selfSeedBackend{
 		fakeBackend: &fakeBackend{snapshot: snapshot},
 		receipts: []store.SelfReceipt{{
-			Seq: 9, Origin: "compare parser recovery", Scope: "repo:/parser", Cost: 0.43,
+			Seq: 9, Time: now.Add(-time.Hour), NodeID: "practice-live",
+			Origin: "compare parser recovery", Scope: "repo:/parser", Cost: 0.43,
 			FactIDs: []int64{21}, SurpriseDelta: &delta,
+		}},
+		skills: []store.Fact{{
+			Seq: 30, Time: now.Add(-2 * time.Hour), Kind: store.FactSkill, Status: store.FactActive,
+			Body: "csvsplit — split a csv by column", Artifact: "skills/csvsplit",
+		}},
+		services: []store.Service{{
+			ID: "svc-1", Name: "docs preview", Status: store.ServiceRunning,
+			StartedAt: now.Add(-90 * time.Minute),
 		}},
 		selfSpend: 0.43,
 		competence: store.CompetenceMap{Scopes: []store.ScopeCompetence{
@@ -151,56 +174,17 @@ func TestAltNumberKeysSwitchPlaces(t *testing.T) {
 	}
 }
 
-func TestSelfPlaceRendersFourSeededSections(t *testing.T) {
-	now := time.Date(2026, time.August, 6, 14, 0, 0, 0, time.Local)
-	model := New(seededSelfBackend(now), "self")
-	model.standingNow = func() time.Time { return now }
-	model.setSize(100, 34)
-	poll := model.selectPlace(placeSelf)
-	if poll == nil {
-		t.Fatal("opening Self should request its data in the ordinary poll")
-	}
-	model.applyPoll(poll().(pollResultMsg))
-
-	collapsed := ansi.Strip(model.View())
-	for _, section := range []string{"▸ today", "▸ competence", "▸ beliefs", "▸ standing"} {
-		if !strings.Contains(collapsed, section) {
-			t.Fatalf("collapsed Self file is missing %q:\n%s", section, collapsed)
-		}
-	}
-
-	checks := []struct {
-		section int
-		want    []string
-	}{
-		{section: int(selfToday), want: []string{"Parser practice", "practice", "self-spend today · $0.43", "TRIED", "compare parser recovery", "surprise down 25%"}},
-		{section: int(selfCompetenceSection), want: []string{"strong", "repo:/strong · 10% failed", "frontier", "repo:/frontier · 50% failed", "weak", "repo:/weak · 80% failed"}},
-		{section: int(selfBeliefs), want: []string{"Retry malformed records one at a time."}},
-		{section: int(selfStanding), want: []string{"Keep parser recovery healthy", "probation 2/3", "last Aug 6 12:00", "1 today"}},
-	}
-	for _, check := range checks {
-		model.selfExpanded = check.section
-		model.selfSelection = check.section
-		model.refreshSelf()
-		view := ansi.Strip(model.View())
-		for _, want := range check.want {
-			if !strings.Contains(view, want) {
-				t.Fatalf("Self section %d is missing %q:\n%s", check.section, want, view)
-			}
-		}
-	}
-}
-
-func TestSelfEscLadderCollapsesThenReturnsHomeToThread(t *testing.T) {
+func TestSelfEscLadderWalksBackOutThenReturnsHomeToThread(t *testing.T) {
 	model := New(&fakeBackend{}, "self")
 	_, _ = model.Update(altPlaceKey('3'))
 	_, _ = model.Update(tea.KeyMsg{Type: tea.KeyEnter})
-	if !model.selfOpen || model.selfExpanded != int(selfToday) {
-		t.Fatalf("enter did not expand Self today: open=%t expanded=%d", model.selfOpen, model.selfExpanded)
+	if !model.selfOpen || model.selfRoute != selfRouteCrafts {
+		t.Fatalf("enter did not drill into the first Self row: open=%t route=%d", model.selfOpen, model.selfRoute)
 	}
 	_, quit := model.Update(tea.KeyMsg{Type: tea.KeyEsc})
-	if quit != nil || !model.selfOpen || model.selfExpanded != -1 {
-		t.Fatalf("first esc should only collapse: quit=%v open=%t expanded=%d", quit, model.selfOpen, model.selfExpanded)
+	if quit != nil || !model.selfOpen || model.selfRoute != selfRouteRoot {
+		t.Fatalf("first esc should only leave the drill-in: quit=%v open=%t route=%d",
+			quit, model.selfOpen, model.selfRoute)
 	}
 	_, quit = model.Update(tea.KeyMsg{Type: tea.KeyEsc})
 	if quit != nil || model.activePlace() != placeThread || model.selfOpen || model.focus != focusInput {

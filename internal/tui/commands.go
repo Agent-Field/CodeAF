@@ -922,7 +922,12 @@ func (m *Model) newSession() tea.Cmd {
 	m.charterRows = nil
 	m.graphOpen = false
 	m.selfOpen = false
-	m.selfExpanded = -1
+	m.selfRoute = selfRouteRoot
+	m.selfCraftName = ""
+	m.selfPracticeKey = ""
+	m.selfQuery = ""
+	m.selfShown = selfWindow
+	m.selfShowOlder = false
 	m.selfSelection = 0
 	m.focus = focusInput
 	m.autoScroll = true

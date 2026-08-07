@@ -41,34 +41,8 @@ func (m *Model) renderNotebookSurface(width, atLine int, track bool) string {
 			disclosure = "▾"
 		}
 		prefix := mutedStyle.Faint(true).Render(disclosure + " " + strconv.Itoa(index+1) + " ")
-		glyph := notebookKindGlyph(fact.Kind)
 		age := store.AgeLabel(fact.Time, time.Now())
-		status := notebookStatusMark(fact.Status)
-		meta := ""
-		if fact.Channel != "" {
-			meta = store.CredibilityWord(fact.Confidence)
-		}
-		if age != "" {
-			if meta != "" {
-				meta += " · "
-			}
-			meta += age
-		}
-		if status != "" {
-			if meta != "" {
-				meta += " · "
-			}
-			meta += status
-		}
-		available := max(1, width-lipgloss.Width(prefix)-lipgloss.Width(glyph)-1)
-		if meta != "" {
-			available = max(1, available-lipgloss.Width(meta)-3)
-		}
-		body := notebookFactStyle(fact).Render(truncate(firstLine(fact.Body), available))
-		row := prefix + glyph + " " + body
-		if meta != "" {
-			row += mutedStyle.Faint(true).Render(" · " + meta)
-		}
+		row := prefix + notebookFactLine(fact, time.Now(), max(1, width-lipgloss.Width(prefix)))
 		lines = append(lines, truncate(row, width))
 		if track {
 			m.chatExpandRows = append(m.chatExpandRows, chatExpandRow{
@@ -119,6 +93,42 @@ func (m *Model) renderNotebookSurface(width, atLine int, track bool) string {
 		})
 	}
 	return strings.Join(lines, "\n")
+}
+
+// notebookFactLine is one belief drawn the way the notebook draws it: kind
+// glyph, body, then credibility, age, and status. The Self place's belief
+// drill-in renders through this same function rather than growing a second
+// opinion about how a belief reads.
+func notebookFactLine(fact store.Fact, now time.Time, width int) string {
+	glyph := notebookKindGlyph(fact.Kind)
+	meta := notebookFactMeta(fact, now)
+	available := max(1, width-lipgloss.Width(glyph)-1)
+	if meta != "" {
+		available = max(1, available-lipgloss.Width(meta)-3)
+	}
+	line := glyph + " " + notebookFactStyle(fact).Render(truncate(firstLine(fact.Body), available))
+	if meta != "" {
+		line += mutedStyle.Faint(true).Render(" · " + meta)
+	}
+	return line
+}
+
+// notebookFactMeta is the trailing clause: where the belief came from, how old
+// it is, and whether it still stands. Age is the aging the store already
+// carries on the row, so no surface has to recompute activation to know what
+// has gone quiet.
+func notebookFactMeta(fact store.Fact, now time.Time) string {
+	parts := make([]string, 0, 3)
+	if fact.Channel != "" {
+		parts = append(parts, store.CredibilityWord(fact.Confidence))
+	}
+	if age := store.AgeLabel(fact.Time, now); age != "" {
+		parts = append(parts, age)
+	}
+	if status := notebookStatusMark(fact.Status); status != "" {
+		parts = append(parts, status)
+	}
+	return strings.Join(parts, " · ")
 }
 
 func notebookRetractQuestion() questionComponent {
