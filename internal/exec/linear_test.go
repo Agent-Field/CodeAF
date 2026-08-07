@@ -54,6 +54,45 @@ func call(id, name, arguments string) ai.ToolCall {
 	return ai.ToolCall{ID: id, Type: "function", Function: ai.ToolCallFunction{Name: name, Arguments: arguments}}
 }
 
+func TestTaskImageInputAndViewImageReachTheNextModelTurn(t *testing.T) {
+	space := workspace(t)
+	path := filepath.Join(space.Root(), "input.png")
+	if err := os.WriteFile(path, []byte("pixels"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	client := &scriptedCompleter{turns: [][]ai.ToolCall{{
+		call("view", "view_image", `{"path":"input.png"}`),
+	}}}
+	media := &MediaTools{
+		Provider: &fakeMediaProvider{}, Catalog: fakeModalities{"vision/model:input:image": true},
+		WorkingModel: "vision/model",
+	}
+	linear := NewLinear(client, space, nil, 10, 1_000_000, time.Minute).WithMedia(media)
+	if _, err := linear.Run(context.Background(), Task{NodeID: 1, Brief: "inspect", ImagePaths: []string{path}}); err != nil {
+		t.Fatal(err)
+	}
+	if len(client.seen) < 2 {
+		t.Fatalf("model calls = %d", len(client.seen))
+	}
+	countImages := func(messages []ai.Message) int {
+		count := 0
+		for _, message := range messages {
+			for _, part := range message.Content {
+				if part.Type == "image_url" && part.ImageURL != nil {
+					count++
+				}
+			}
+		}
+		return count
+	}
+	if countImages(client.seen[0]) != 1 {
+		t.Fatalf("initial task turn images = %d", countImages(client.seen[0]))
+	}
+	if countImages(client.seen[1]) != 2 {
+		t.Fatalf("next turn images = %d, want initial + view_image follow-up", countImages(client.seen[1]))
+	}
+}
+
 func TestCallFailureRetriesAndCompletes(t *testing.T) {
 	client := &scriptedCompleter{errors: []error{
 		fmt.Errorf("first timeout"),

@@ -269,6 +269,16 @@ func (s *Store) RaiseDailyRailUnlimited(origin string) error {
 // rail it atomically posts at most one agent question since the latest raise;
 // callers simply stop claiming and try again on their next tick.
 func (s *Store) PauseDailyRail(base float64, sessionID string) (DailyRail, bool, error) {
+	return s.PauseDailyRailWithAdditionalSpend(base, sessionID, 0)
+}
+
+// PauseDailyRailWithAdditionalSpend applies the same durable gate while also
+// considering a known cost that has not happened yet. Generation tools use it
+// for catalog-priced jobs; zero retains the ordinary pre-call gate path.
+func (s *Store) PauseDailyRailWithAdditionalSpend(base float64, sessionID string, additional float64) (DailyRail, bool, error) {
+	if additional < 0 || math.IsNaN(additional) || math.IsInf(additional, 0) {
+		return DailyRail{}, false, fmt.Errorf("pause daily rail: %w: invalid additional spend", ErrInvalid)
+	}
 	tx, err := s.db.BeginTx(context.Background(), nil)
 	if err != nil {
 		return DailyRail{}, false, fmt.Errorf("pause daily rail: %w", err)
@@ -279,6 +289,7 @@ func (s *Store) PauseDailyRail(base float64, sessionID string) (DailyRail, bool,
 	if err != nil {
 		return DailyRail{}, false, fmt.Errorf("pause daily rail: %w", err)
 	}
+	rail = rail.WithAdditionalSpend(additional)
 	if !rail.Reached {
 		return rail, false, nil
 	}

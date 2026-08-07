@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"fmt"
 	"sort"
 	"strings"
@@ -247,6 +248,10 @@ func applySpliceView(tx *sql.Tx, payload splicedPayload, seq int64) error {
 		return err
 	}
 	orderByID := make(map[string]int, len(payload.Nodes))
+	attachments, err := json.Marshal(payload.Provenance.Attachments)
+	if err != nil {
+		return err
+	}
 	for index, node := range payload.Nodes {
 		orderByID[node.ID] = index + 1
 	}
@@ -258,12 +263,12 @@ func applySpliceView(tx *sql.Tx, payload splicedPayload, seq int64) error {
 		if _, err := tx.Exec(`
 			INSERT INTO nodes (
 			    id, parent_id, brief, title, grp, stage, status, origin, session_id,
-			    intent, charter_id, trial_of, created_seq, created_order, updated_seq
-			) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+			    intent, charter_id, trial_of, attachments, created_seq, created_order, updated_seq
+			) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 			node.ID, parent, node.Brief, node.Title, node.Group, node.Stage, Pending,
 			payload.Provenance.Origin, nullIfEmpty(payload.Provenance.SessionID),
 			payload.Provenance.Intent, payload.Provenance.CharterID, payload.Provenance.TrialOf,
-			seq, orderByID[node.ID], seq); err != nil {
+			string(attachments), seq, orderByID[node.ID], seq); err != nil {
 			return fmt.Errorf("insert node %q: %w", node.ID, err)
 		}
 		if err := refreshGraphFTS(tx, node.ID); err != nil {

@@ -241,7 +241,7 @@ func (s *Store) CompleteAndRequestFollowup(claim Claim, summary string, command 
 
 	payload := commandPayload{
 		SessionID: command.SessionID, Kind: command.Kind, Target: command.Target,
-		Instruction: command.Instruction,
+		Instruction: command.Instruction, Attachments: append([]string(nil), command.Attachments...),
 	}
 	commandSeq, commandAt, err := appendEvent(tx, command.Target, EventCommandRequested, payload)
 	if err != nil {

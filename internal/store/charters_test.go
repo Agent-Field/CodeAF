@@ -247,6 +247,19 @@ func TestLegacyThreadSchemaMigratesForOptionsAndCharterCommands(t *testing.T) {
 	if found, err := tableHasColumn(reopened.db, "messages", "options"); err != nil || !found {
 		t.Fatalf("message options migration: found=%t err=%v", found, err)
 	}
+	if found, err := tableHasColumn(reopened.db, "messages", "attachments"); err != nil || !found {
+		t.Fatalf("message attachments migration: found=%t err=%v", found, err)
+	}
+	if found, err := tableHasColumn(reopened.db, "commands", "attachments"); err != nil || !found {
+		t.Fatalf("command attachments migration: found=%t err=%v", found, err)
+	}
+	if _, err := reopened.PostMessage(Message{
+		SessionID: "legacy", Role: RoleAgent, Body: "which one?",
+		Attachments: []string{"/tmp/render.png"},
+		Options:     []QuestionOption{{Label: "this"}, {Label: "that"}},
+	}); err != nil {
+		t.Fatalf("post options+attachments message after migration: %v", err)
+	}
 	charter, err := reopened.DraftCharter("legacy-charter", "legacy", 0, CharterSpec{
 		Invariant: "Every day verify the backup.",
 		Watch:     CharterWatch{Kind: WatchCron, Cadence: "every day", Schedule: "0 9 * * *"},

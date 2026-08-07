@@ -159,15 +159,18 @@ type Model struct {
 	questionDismissed map[string]bool
 	cardOptionRows    []cardOptionRow
 
-	selectedNodeID string
-	graphRows      []graphRow
-	nodeViewID     string
-	inspectedNode  store.Node
-	nodeMessages   []store.Message
-	nodeLastSeq    int64
-	nodeTraceText  string
-	chatDraft      string
-	returnFocus    paneFocus
+	selectedNodeID   string
+	graphRows        []graphRow
+	nodeViewID       string
+	inspectedNode    store.Node
+	nodeMessages     []store.Message
+	nodeLastSeq      int64
+	nodeTraceText    string
+	chatDraft        string
+	chatAttachments  []string
+	returnFocus      paneFocus
+	attachments      []string
+	attachmentBounds []paneBounds
 
 	feedRows   []feedRow
 	feedBlocks []feedBlock
@@ -550,6 +553,7 @@ func (m *Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		var command tea.Cmd
 		m.input, command = m.input.Update(message)
 		if m.input.Value() != before && m.nodeViewID == "" {
+			m.captureImageAttachments()
 			m.paletteSelected = 0
 			m.paletteDismissed = false
 			m.syncPalette()
@@ -577,6 +581,11 @@ func (m *Model) updateKey(message tea.KeyMsg) (tea.Cmd, bool) {
 	key := message.String()
 	if key == "ctrl+c" {
 		return tea.Quit, true
+	}
+	if m.nodeViewID == "" && m.inputFocused && (key == "backspace" || key == "ctrl+h") &&
+		m.input.Value() == "" && len(m.attachments) > 0 {
+		m.removeAttachment(len(m.attachments) - 1)
+		return nil, true
 	}
 	if key == keyBindings.graph {
 		if m.nodeViewID != "" {
@@ -645,8 +654,9 @@ func (m *Model) updateKey(message tea.KeyMsg) (tea.Cmd, bool) {
 			_ = m.input.Focus()
 			m.setSize(m.width, m.height)
 		case m.focus == focusInput && m.dismissTextQuestion():
-		case m.input.Value() != "":
+		case m.input.Value() != "" || len(m.attachments) > 0:
 			m.input.Reset()
+			m.attachments = nil
 			m.paletteDismissed = false
 			m.setSize(m.width, m.height)
 		default:
@@ -1011,17 +1021,29 @@ func (m *Model) applyPoll(result pollResultMsg) {
 
 func (m *Model) submit() tea.Cmd {
 	body := strings.TrimSpace(m.input.Value())
-	if body == "" {
+	if body == "" && len(m.attachments) == 0 {
 		return nil
 	}
 	if strings.HasPrefix(body, "/") {
 		return m.executeSlash(body)
 	}
+	attachments := append([]string(nil), m.attachments...)
+	if len(attachments) > 0 {
+		model, supported := m.imageInputSupport()
+		if !supported {
+			body = strings.TrimSpace(strings.Join(append([]string{body}, attachments...), " "))
+			attachments = nil
+			_ = model
+		} else if body == "" {
+			body = "Image attached."
+		}
+	}
 	m.input.Reset()
-	return m.postUserMessage(body)
+	m.attachments = nil
+	return m.postUserMessage(body, attachments...)
 }
 
-func (m *Model) postUserMessage(body string) tea.Cmd {
+func (m *Model) postUserMessage(body string, attachments ...string) tea.Cmd {
 	body = strings.TrimSpace(body)
 	if body == "" {
 		return nil
@@ -1029,9 +1051,10 @@ func (m *Model) postUserMessage(body string) tea.Cmd {
 	m.err = nil
 	backend := m.backend
 	message := store.Message{
-		SessionID: m.sessionID,
-		Role:      store.RoleUser,
-		Body:      body,
+		SessionID:   m.sessionID,
+		Role:        store.RoleUser,
+		Body:        body,
+		Attachments: attachments,
 	}
 	return func() tea.Msg {
 		posted, err := backend.PostMessage(message)

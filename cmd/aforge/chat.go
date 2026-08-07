@@ -8,8 +8,6 @@ import (
 	"flag"
 	"fmt"
 	"io"
-	"math"
-	"net/http"
 	"os"
 	"path/filepath"
 	"sort"
@@ -19,6 +17,7 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"github.com/Agent-Field/aforge-v2/internal/catalog"
 	"github.com/Agent-Field/aforge-v2/internal/config"
 	"github.com/Agent-Field/aforge-v2/internal/exec"
 	"github.com/Agent-Field/aforge-v2/internal/head"
@@ -68,6 +67,21 @@ func runChat(args []string) error {
 	prefs := loadChatPrefs(filepath.Dir(path))
 	if strings.TrimSpace(prefs.VoiceModel) == "" {
 		prefs.VoiceModel = settings.VoiceModel
+	}
+	modelCatalog := catalog.Load(context.Background(), catalog.Options{
+		BaseURL: settings.BaseURL, APIKey: settings.APIKey, Dir: settings.ProfileDir,
+	})
+	mediaClient, err := settings.MediaClient()
+	if err != nil {
+		return err
+	}
+	baseMedia := exec.MediaTools{
+		Provider: mediaClient, Catalog: modelCatalog,
+		ImageModel: settings.ResolveImageModel(modelCatalog), SpeechModel: settings.ResolveSpeechModel(modelCatalog),
+		MusicModel: settings.ResolveMusicModel(modelCatalog), VideoModel: settings.ResolveVideoModel(modelCatalog),
+	}
+	if video, ok := modelCatalog.Model(baseMedia.VideoModel); ok {
+		baseMedia.VideoPrice = video.RequestPrice
 	}
 
 	chatClient, err := newLiveClient(settings, firstNonEmptyString(prefs.ChatModel, settings.Model))
@@ -176,7 +190,23 @@ func runChat(args []string) error {
 			deadline = reflexDeadline
 			watchdog = deadline + 15*time.Second
 		}
-		linear := exec.NewLinear(workingClient, jobSpace, web, turns, tokens, deadline).WithStore(graph)
+		leafMedia := baseMedia
+		leafMedia.WorkingModel = workingModel
+		leafMedia.BeforeSpend = func(_ context.Context, additional float64) error {
+			if settings.DailyBudgetUSD <= 0 {
+				return nil
+			}
+			rail, _, gateErr := graph.PauseDailyRailWithAdditionalSpend(settings.DailyBudgetUSD, node.Provenance.SessionID, additional)
+			if gateErr != nil {
+				return gateErr
+			}
+			if rail.Reached {
+				return fmt.Errorf("daily budget reached")
+			}
+			return nil
+		}
+		linear := exec.NewLinear(workingClient, jobSpace, web, turns, tokens, deadline).
+			WithStore(graph).WithMedia(&leafMedia)
 		shape := "atomic"
 		if isReflex {
 			shape = "reflex"
@@ -218,13 +248,14 @@ func runChat(args []string) error {
 		}
 
 		task := exec.Task{
-			Reflex: isReflex,
-			NodeID: int(node.CreatedSeq),
-			Title:  firstLine(node.Brief),
-			Goal:   node.Provenance.Intent,
-			Brief:  residentDeliveryBrief(graph, node),
-			Inputs: inputs,
-			Steer:  steer,
+			Reflex:     isReflex,
+			NodeID:     int(node.CreatedSeq),
+			Title:      firstLine(node.Brief),
+			Goal:       node.Provenance.Intent,
+			Brief:      residentDeliveryBrief(graph, node),
+			Inputs:     inputs,
+			Steer:      steer,
+			ImagePaths: append([]string(nil), node.Provenance.Attachments...),
 		}
 		// The scheduler's quality loop, inline: each attempt is one routable
 		// unit carrying its call shape, a watchdog sits above the leaf's own
@@ -477,6 +508,7 @@ func runChat(args []string) error {
 		})
 		_ = head.New(chatClient, graph).
 			WithSelfKnowledge(func() string { return selfKnowledge(settings, taskClient.Model()) }).
+			WithImageInput(modelCatalog, settings.Model).
 			WithDailyBudgetUSD(settings.DailyBudgetUSD).
 			Serve(headContext)
 	}()
@@ -495,6 +527,7 @@ func runChat(args []string) error {
 		sessionID:     *sessionID,
 		streamEvents:  streamEvents,
 		voiceRecorder: voice.NewSystemRecorder(),
+		models:        modelCatalog,
 	}
 	commander.voiceTranscriber, err = voice.NewClient(voice.ClientConfig{
 		APIKey: settings.APIKey, BaseURL: settings.BaseURL, Timeout: settings.Timeout,
@@ -540,14 +573,6 @@ var fallbackChatModels = []string{
 	"google/gemma-3-12b-it",
 }
 
-const (
-	openRouterModelsURL = "https://openrouter.ai/api/v1/models"
-	modelCatalogTTL     = 24 * time.Hour
-	maxCatalogBytes     = 16 << 20
-)
-
-var modelCatalogHTTPClient = &http.Client{Timeout: 15 * time.Second}
-
 // chatCommander bridges surface commands to the two hot-swappable clients
 // and the durable command journal. Session state lives here so /new and a
 // subsequent /cancel always agree about which thread owns the request.
@@ -569,9 +594,10 @@ type chatCommander struct {
 	voiceTranscriber voice.Transcriber
 
 	catalogOnce      sync.Once
-	catalog          []tui.ModelChoice
+	catalogChoices   []tui.ModelChoice
 	voiceCatalogOnce sync.Once
 	voiceCatalog     []tui.ModelChoice
+	models           *catalog.Catalog
 }
 
 func (c *chatCommander) StreamEvents() <-chan tui.StreamEvent { return c.streamEvents }
@@ -601,54 +627,53 @@ func (c *chatCommander) Models() []string {
 
 func (c *chatCommander) Catalog() []tui.ModelChoice {
 	c.catalogOnce.Do(func() {
-		cached, cachedOK := loadModelCatalog(c.prefsDir)
-		if cachedOK && time.Now().Before(cached.FetchedAt.Add(modelCatalogTTL)) {
-			c.catalog = cached.Models
-			return
+		if c.models != nil {
+			for _, model := range c.models.ModelsWithInput("text") {
+				c.catalogChoices = append(c.catalogChoices, tui.ModelChoice{
+					Slug: model.ID, Name: model.Name,
+					Price: formatModelPrice(model.PromptPrice, model.CompletionPrice),
+				})
+			}
 		}
-
-		models, err := fetchModelCatalog()
-		if err == nil && len(models) > 0 {
-			c.catalog = models
-			_ = saveModelCatalog(c.prefsDir, modelCatalogCache{
-				FetchedAt: time.Now(),
-				Models:    models,
-			})
-			return
-		}
-		if cachedOK {
-			c.catalog = cached.Models
-			return
-		}
-		c.catalog = make([]tui.ModelChoice, 0, len(c.Models()))
-		for _, model := range c.Models() {
-			c.catalog = append(c.catalog, tui.ModelChoice{Slug: model})
+		if len(c.catalogChoices) < 4 {
+			seen := make(map[string]bool, len(c.catalogChoices))
+			for _, choice := range c.catalogChoices {
+				seen[choice.Slug] = true
+			}
+			for _, model := range c.Models() {
+				if seen[model] {
+					continue
+				}
+				c.catalogChoices = append(c.catalogChoices, tui.ModelChoice{Slug: model})
+				seen[model] = true
+			}
 		}
 	})
-	return append([]tui.ModelChoice(nil), c.catalog...)
+	return append([]tui.ModelChoice(nil), c.catalogChoices...)
 }
 
+// CatalogFor keys the picker's model list by header role. The voice role lists
+// transcription-capable models straight from the shared catalog seam — the
+// same 24h cache and offline fallback every other modality uses — so no
+// separate voice catalog cache exists anymore. The seam is ready for
+// image/speech/music/video roles the same way: ask the catalog by output
+// modality.
 func (c *chatCommander) CatalogFor(role string) []tui.ModelChoice {
 	if role != "voice" {
 		return c.Catalog()
 	}
 	c.voiceCatalogOnce.Do(func() {
-		cached, cachedOK := loadVoiceModelCatalog(c.prefsDir)
-		if cachedOK && time.Now().Before(cached.FetchedAt.Add(modelCatalogTTL)) {
-			c.voiceCatalog = cached.Models
-			return
+		if c.models != nil {
+			for _, model := range c.models.ModelsWithOutput("transcription") {
+				c.voiceCatalog = append(c.voiceCatalog, tui.ModelChoice{
+					Slug: model.ID, Name: model.Name,
+					Price: formatModelPrice(model.PromptPrice, model.CompletionPrice),
+				})
+			}
 		}
-		models, err := fetchVoiceModelCatalog()
-		if err == nil && len(models) > 0 {
-			c.voiceCatalog = models
-			_ = saveVoiceModelCatalog(c.prefsDir, modelCatalogCache{FetchedAt: time.Now(), Models: models})
-			return
+		if len(c.voiceCatalog) == 0 {
+			c.voiceCatalog = []tui.ModelChoice{{Slug: c.CurrentModel("voice")}}
 		}
-		if cachedOK {
-			c.voiceCatalog = cached.Models
-			return
-		}
-		c.voiceCatalog = []tui.ModelChoice{{Slug: c.CurrentModel("voice")}}
 	})
 	return append([]tui.ModelChoice(nil), c.voiceCatalog...)
 }
@@ -663,6 +688,11 @@ func (c *chatCommander) CurrentModel(role string) string {
 		return firstNonEmptyString(c.prefs.VoiceModel, c.settings.VoiceModel)
 	}
 	return c.chatClient.Model()
+}
+
+func (c *chatCommander) ImageInputSupport() (string, bool) {
+	model := c.chatClient.Model()
+	return model, c.models != nil && c.models.Supports(model, "input", "image")
 }
 
 func (c *chatCommander) SetModel(role, slug string) error {
@@ -770,6 +800,30 @@ func (c *chatCommander) NodeTrace(nodeID string, maxBytes int) string {
 	return string(data)
 }
 
+func (c *chatCommander) ResolveMediaPath(nodeID, relative string) (string, bool) {
+	if c == nil || c.store == nil || strings.TrimSpace(relative) == "" {
+		return "", false
+	}
+	if filepath.IsAbs(relative) {
+		if info, err := os.Stat(relative); err == nil && !info.IsDir() {
+			return relative, true
+		}
+		return "", false
+	}
+	node, ok, err := c.store.Node(nodeID)
+	if err != nil || !ok {
+		return "", false
+	}
+	root := filepath.Join(c.workspaceRoot, jobIDOf(c.store, node))
+	target := filepath.Join(root, filepath.Clean(relative))
+	inside, err := filepath.Rel(root, target)
+	if err != nil || inside == ".." || strings.HasPrefix(inside, ".."+string(os.PathSeparator)) {
+		return "", false
+	}
+	info, err := os.Stat(target)
+	return target, err == nil && !info.IsDir()
+}
+
 func (c *chatCommander) Notebook(limit int) []store.Fact {
 	if c == nil || c.store == nil {
 		return nil
@@ -786,95 +840,8 @@ func (c *chatCommander) Notebook(limit int) []store.Fact {
 
 func (c *chatCommander) DatabasePath() string { return c.database }
 
-type modelCatalogCache struct {
-	FetchedAt time.Time         `json:"fetched_at"`
-	Models    []tui.ModelChoice `json:"models"`
-}
-
-type openRouterCatalogResponse struct {
-	Data []struct {
-		ID           string `json:"id"`
-		Name         string `json:"name"`
-		Architecture struct {
-			OutputModalities []string `json:"output_modalities"`
-		} `json:"architecture"`
-		Pricing struct {
-			Prompt     string `json:"prompt"`
-			Completion string `json:"completion"`
-		} `json:"pricing"`
-	} `json:"data"`
-}
-
-func fetchModelCatalog() ([]tui.ModelChoice, error) {
-	return fetchModelCatalogFiltered(false)
-}
-
-func fetchVoiceModelCatalog() ([]tui.ModelChoice, error) {
-	return fetchModelCatalogFiltered(true)
-}
-
-func fetchModelCatalogFiltered(transcriptionOnly bool) ([]tui.ModelChoice, error) {
-	request, err := http.NewRequest(http.MethodGet, openRouterModelsURL, nil)
-	if err != nil {
-		return nil, err
-	}
-	request.Header.Set("Accept", "application/json")
-	response, err := modelCatalogHTTPClient.Do(request)
-	if err != nil {
-		return nil, err
-	}
-	defer response.Body.Close()
-	if response.StatusCode < http.StatusOK || response.StatusCode >= http.StatusMultipleChoices {
-		_, _ = io.Copy(io.Discard, io.LimitReader(response.Body, 4<<10))
-		return nil, fmt.Errorf("OpenRouter model catalog: %s", response.Status)
-	}
-
-	var payload openRouterCatalogResponse
-	decoder := json.NewDecoder(io.LimitReader(response.Body, maxCatalogBytes))
-	if err := decoder.Decode(&payload); err != nil {
-		return nil, err
-	}
-	models := make([]tui.ModelChoice, 0, len(payload.Data))
-	seen := make(map[string]bool, len(payload.Data))
-	for _, item := range payload.Data {
-		if transcriptionOnly && !containsFold(item.Architecture.OutputModalities, "transcription") {
-			continue
-		}
-		slug := strings.TrimSpace(item.ID)
-		if slug == "" || seen[slug] {
-			continue
-		}
-		seen[slug] = true
-		models = append(models, tui.ModelChoice{
-			Slug:  slug,
-			Name:  strings.TrimSpace(item.Name),
-			Price: formatModelPrice(item.Pricing.Prompt, item.Pricing.Completion),
-		})
-	}
-	if len(models) == 0 {
-		if transcriptionOnly {
-			return nil, fmt.Errorf("OpenRouter transcription model catalog is empty")
-		}
-		return nil, fmt.Errorf("OpenRouter model catalog is empty")
-	}
-	return models, nil
-}
-
-func containsFold(values []string, wanted string) bool {
-	for _, value := range values {
-		if strings.EqualFold(strings.TrimSpace(value), wanted) {
-			return true
-		}
-	}
-	return false
-}
-
-func formatModelPrice(prompt, completion string) string {
-	promptPrice, promptErr := strconv.ParseFloat(strings.TrimSpace(prompt), 64)
-	completionPrice, completionErr := strconv.ParseFloat(strings.TrimSpace(completion), 64)
-	if promptErr != nil || completionErr != nil || promptPrice < 0 || completionPrice < 0 ||
-		math.IsNaN(promptPrice) || math.IsNaN(completionPrice) ||
-		math.IsInf(promptPrice, 0) || math.IsInf(completionPrice, 0) {
+func formatModelPrice(promptPrice, completionPrice float64) string {
+	if promptPrice < 0 || completionPrice < 0 || promptPrice == 0 && completionPrice == 0 {
 		return ""
 	}
 	return fmt.Sprintf("$%s/M in · $%s/M out",
@@ -889,54 +856,6 @@ func formatMillionPrice(price float64) string {
 		return "0"
 	}
 	return formatted
-}
-
-func modelCatalogPath(dir string) string { return filepath.Join(dir, "models-catalog.json") }
-
-func voiceModelCatalogPath(dir string) string { return filepath.Join(dir, "voice-models-catalog.json") }
-
-func loadModelCatalog(dir string) (modelCatalogCache, bool) {
-	return loadModelCatalogPath(modelCatalogPath(dir))
-}
-
-func loadVoiceModelCatalog(dir string) (modelCatalogCache, bool) {
-	return loadModelCatalogPath(voiceModelCatalogPath(dir))
-}
-
-func loadModelCatalogPath(path string) (modelCatalogCache, bool) {
-	var cached modelCatalogCache
-	raw, err := os.ReadFile(path)
-	if err != nil || json.Unmarshal(raw, &cached) != nil || cached.FetchedAt.IsZero() || len(cached.Models) == 0 {
-		return modelCatalogCache{}, false
-	}
-	models := cached.Models[:0]
-	seen := make(map[string]bool, len(cached.Models))
-	for _, model := range cached.Models {
-		model.Slug = strings.TrimSpace(model.Slug)
-		if model.Slug == "" || seen[model.Slug] {
-			continue
-		}
-		seen[model.Slug] = true
-		models = append(models, model)
-	}
-	cached.Models = models
-	return cached, len(cached.Models) > 0
-}
-
-func saveModelCatalog(dir string, cached modelCatalogCache) error {
-	return saveModelCatalogPath(modelCatalogPath(dir), cached)
-}
-
-func saveVoiceModelCatalog(dir string, cached modelCatalogCache) error {
-	return saveModelCatalogPath(voiceModelCatalogPath(dir), cached)
-}
-
-func saveModelCatalogPath(path string, cached modelCatalogCache) error {
-	raw, err := json.MarshalIndent(cached, "", "  ")
-	if err != nil {
-		return err
-	}
-	return os.WriteFile(path, raw, 0o600)
 }
 
 func dedupeModels(candidates []string) []string {

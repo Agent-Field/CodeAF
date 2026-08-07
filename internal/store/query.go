@@ -10,7 +10,7 @@ import (
 
 const nodeColumns = `
 	id, parent_id, brief, title, grp, stage, status, owner, claim_token, attempt,
-	summary, error, origin, session_id, intent, charter_id, trial_of, created_seq, created_order, updated_seq,
+	summary, error, origin, session_id, intent, charter_id, trial_of, attachments, created_seq, created_order, updated_seq,
     started_at, finished_at, folded, fold_root, fold_digest, fold_pointers`
 
 // migrateNodesSchema adds provenance and display columns introduced after the
@@ -37,12 +37,13 @@ func migrateNodesSchema(db *sql.DB) error {
 		return err
 	}
 	columns := map[string]string{
-		"title":      `TEXT NOT NULL DEFAULT ''`,
-		"grp":        `TEXT NOT NULL DEFAULT ''`,
-		"charter_id": `TEXT NOT NULL DEFAULT ''`,
-		"trial_of":   `INTEGER NOT NULL DEFAULT 0 CHECK (trial_of >= 0)`,
+		"title":       `TEXT NOT NULL DEFAULT ''`,
+		"grp":         `TEXT NOT NULL DEFAULT ''`,
+		"charter_id":  `TEXT NOT NULL DEFAULT ''`,
+		"trial_of":    `INTEGER NOT NULL DEFAULT 0 CHECK (trial_of >= 0)`,
+		"attachments": `JSON NOT NULL DEFAULT '[]' CHECK (json_valid(attachments))`,
 	}
-	for _, column := range []string{"title", "grp", "charter_id", "trial_of"} {
+	for _, column := range []string{"title", "grp", "charter_id", "trial_of", "attachments"} {
 		if existing[column] {
 			continue
 		}
@@ -121,11 +122,12 @@ type rowScanner interface {
 func scanNode(scanner rowScanner) (Node, error) {
 	var node Node
 	var parent, session, started, finished sql.NullString
-	var pointers string
+	var pointers, attachments string
 	if err := scanner.Scan(
 		&node.ID, &parent, &node.Brief, &node.Title, &node.Group, &node.Stage, &node.Status,
 		&node.Owner, &node.ClaimToken, &node.Attempt, &node.Summary, &node.Error,
 		&node.Provenance.Origin, &session, &node.Provenance.Intent, &node.Provenance.CharterID, &node.Provenance.TrialOf,
+		&attachments,
 		&node.CreatedSeq, &node.CreatedOrder, &node.UpdatedSeq, &started, &finished,
 		&node.Folded, &node.FoldRoot, &node.FoldDigest, &pointers,
 	); err != nil {
@@ -152,6 +154,9 @@ func scanNode(scanner rowScanner) (Node, error) {
 	}
 	if err := json.Unmarshal([]byte(pointers), &node.FoldPointers); err != nil {
 		return Node{}, fmt.Errorf("decode node %q fold pointers: %w", node.ID, err)
+	}
+	if err := json.Unmarshal([]byte(attachments), &node.Provenance.Attachments); err != nil {
+		return Node{}, fmt.Errorf("decode node %q attachments: %w", node.ID, err)
 	}
 	return node, nil
 }
