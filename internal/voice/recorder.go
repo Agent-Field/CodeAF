@@ -9,6 +9,8 @@ import (
 	"os/exec"
 	"sync"
 	"time"
+
+	"github.com/Agent-Field/aforge-v2/internal/guard"
 )
 
 // SystemRecorder uses the first quiet command-line capture backend installed
@@ -163,6 +165,25 @@ func (r *commandRecorder) Start() error {
 }
 
 func (r *commandRecorder) read(command *exec.Cmd, output io.Reader, done chan<- error, chunks chan<- Chunk, quit <-chan struct{}) {
+	// However this goroutine leaves, it owes the recording its ending: Stop
+	// waits on done, and a live-caption consumer ranges over chunks until it
+	// closes. A fault that skipped either would trade a crash for a wedged
+	// panel, so it delivers both — as the failure it is.
+	ended := false
+	end := func(err error) {
+		if ended {
+			return
+		}
+		ended = true
+		done <- err
+		close(chunks)
+	}
+	defer func() {
+		if recovered := recover(); recovered != nil {
+			end(guard.Note("voice/recorder read", recovered))
+		}
+	}()
+
 	buffer := make([]byte, frameBytes*5)
 	for {
 		count, readErr := output.Read(buffer)
@@ -174,8 +195,7 @@ func (r *commandRecorder) read(command *exec.Cmd, output io.Reader, done chan<- 
 			if !errors.Is(readErr, io.EOF) && waitErr == nil {
 				waitErr = readErr
 			}
-			done <- waitErr
-			close(chunks)
+			end(waitErr)
 			return
 		}
 	}

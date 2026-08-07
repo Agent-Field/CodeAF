@@ -15,10 +15,13 @@ import (
 // fault the user would watch happen.
 var guardedPackages = []string{
 	"cmd/aforge",
+	"internal/catalog",
 	"internal/exec",
+	"internal/plan",
 	"internal/provider",
 	"internal/resident",
 	"internal/store",
+	"internal/voice",
 }
 
 // spawnAllowlist names the spawn sites that carry their guard somewhere the
@@ -27,6 +30,9 @@ var guardedPackages = []string{
 var spawnAllowlist = map[string]string{
 	"internal/exec/jobs.go:go r.wait(job)":                                                       "wait recovers and settles the job's terminal state itself",
 	"internal/exec/schedule.go:go s.work(leafCtx, id, task, retries[id], leafShape(node), done)": "work recovers and reports the fault as the leaf's completion",
+	"internal/plan/ensemble.go:go write(pass, inputs, &passBrief)":                               "write recovers into the failures slot it shares with the setup brief",
+	"internal/plan/ensemble.go:go write(setup, nil, &setupBrief)":                                "write recovers into the failures slot it shares with the pass brief",
+	"internal/voice/recorder.go:go r.read(command, output, r.done, r.chunks, r.quit)":            "read recovers and still writes done and closes chunks, which Stop and the caption consumer wait on",
 }
 
 // spawn matches a goroutine launch at the start of a statement.

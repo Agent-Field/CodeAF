@@ -7,6 +7,7 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/Agent-Field/aforge-v2/internal/guard"
 	"github.com/Agent-Field/aforge-v2/internal/provider"
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 )
@@ -96,6 +97,13 @@ func auditWith(ctx context.Context, client Completer, graph *Graph, shared strin
 		group.Add(1)
 		go func(stage int) {
 			defer group.Done()
+			// The fault fills the stage's slot on the way out: an audit that
+			// faults recovers no edges, which is what a failed one already does.
+			defer func() {
+				if recovered := recover(); recovered != nil {
+					results[stage-1] = result{err: guard.Note(fmt.Sprintf("plan/audit stage %d", stage), recovered)}
+				}
+			}()
 			checks, usage, err := auditStage(ctx, client, shared, graph, stage)
 			results[stage-1] = result{checks: checks, usage: usage, err: err}
 		}(stage)
