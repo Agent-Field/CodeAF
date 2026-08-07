@@ -121,6 +121,8 @@ func (m *Model) View() string {
 			hint = "voice working · esc discard"
 		case m.focus == focusCards:
 			hint = "↑/↓ select card · enter details/graph · esc back · " + keyBindings.graph + " all tasks"
+		case m.focus == focusQuestions:
+			hint = "↑/↓ select question · enter ask inline · esc back"
 		case m.nodeViewID != "":
 			hint = "type to steer · enter send · c cancel · esc back"
 		case m.focus == focusGraph:
@@ -337,7 +339,7 @@ func (m *Model) liveWorkCount() int {
 // renderActivityBar hosts the active-card dock. The legacy aggregate remains
 // its quiet empty-state and covers graph-only stores without thread provenance.
 func (m *Model) renderActivityBar() string {
-	return m.renderCardDock(true)
+	return m.renderActivityDock(true)
 }
 
 // renderLegacyActivityBar is the graph-only fallback: a spinner when work

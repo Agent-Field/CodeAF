@@ -850,7 +850,7 @@ func (m *Model) attentionMessage(message store.Message) bool {
 }
 
 func (m *Model) cardDockHeight() int {
-	content := m.renderCardDock(false)
+	content := m.renderActivityDock(false)
 	if content == "" {
 		return 0
 	}

@@ -77,21 +77,23 @@ type catalogResultMsg struct {
 }
 
 type pollResultMsg struct {
-	sessionID       string
-	messages        []store.Message
-	snapshot        store.Snapshot
-	cardSnapshot    store.Snapshot
-	pending         []store.Command
-	usage           store.TotalUsage
-	jobUsage        map[string]store.JobUsage
-	commands        []store.Command
-	messagesErr     error
-	snapshotErr     error
-	cardSnapshotErr error
-	pendingErr      error
-	usageErr        error
-	jobUsageErr     error
-	commandsErr     error
+	sessionID         string
+	messages          []store.Message
+	snapshot          store.Snapshot
+	cardSnapshot      store.Snapshot
+	pending           []store.Command
+	usage             store.TotalUsage
+	jobUsage          map[string]store.JobUsage
+	commands          []store.Command
+	agentQuestions    []store.AgentQuestion
+	messagesErr       error
+	snapshotErr       error
+	cardSnapshotErr   error
+	pendingErr        error
+	usageErr          error
+	jobUsageErr       error
+	commandsErr       error
+	agentQuestionsErr error
 
 	nodeID          string
 	node            store.Node
@@ -103,9 +105,16 @@ type pollResultMsg struct {
 }
 
 type postResultMsg struct {
-	message store.Message
-	nodeID  string
-	err     error
+	message     store.Message
+	nodeID      string
+	questionSeq int64
+	err         error
+}
+
+type questionSurfaceResultMsg struct {
+	questionSeq int64
+	message     store.Message
+	err         error
 }
 
 // Model is the Bubble Tea model for an aforge chat session.
@@ -122,14 +131,16 @@ type Model struct {
 
 	nodeTrace viewport.Model
 
-	messages     []store.Message
-	snapshot     store.Snapshot
-	cardSnapshot store.Snapshot
-	pending      []store.Command
-	usage        store.TotalUsage
-	jobUsage     map[string]store.JobUsage
-	commands     map[int64]store.Command
-	lastSeq      int64
+	messages             []store.Message
+	snapshot             store.Snapshot
+	cardSnapshot         store.Snapshot
+	pending              []store.Command
+	usage                store.TotalUsage
+	jobUsage             map[string]store.JobUsage
+	commands             map[int64]store.Command
+	agentQuestions       []store.AgentQuestion
+	lastSeq              int64
+	answeringQuestionSeq int64
 
 	cards           []jobCard
 	cardExpanded    map[string]bool
@@ -146,8 +157,11 @@ type Model struct {
 
 	// dockExpanded holds the overflow dock open without card focus; the
 	// dockSummaryLine is the rendered ▸/▾ summary row, -1 when absent.
-	dockExpanded    bool
-	dockSummaryLine int
+	dockExpanded          bool
+	dockSummaryLine       int
+	questionDockExpanded  bool
+	questionDockSelection int
+	questionDockRows      []questionDockRow
 
 	// chatFocusIndex walks the thread zone's interactive lines (folds,
 	// receipts, chips, cards) under keyboard traversal; enter activates
@@ -305,6 +319,7 @@ type paneFocus int
 
 const (
 	focusInput paneFocus = iota
+	focusQuestions
 	focusChat
 	focusCards
 	focusGraph
@@ -499,6 +514,9 @@ func (m *Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 
 	case postResultMsg:
 		if message.err != nil {
+			if message.questionSeq != 0 {
+				m.answeringQuestionSeq = message.questionSeq
+			}
 			m.err = fmt.Errorf("send message: %w", message.err)
 			return m, nil
 		}
@@ -507,6 +525,20 @@ func (m *Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		m.err = nil
 		return m, nil
+
+	case questionSurfaceResultMsg:
+		if message.err != nil {
+			m.err = fmt.Errorf("surface question: %w", message.err)
+			return m, nil
+		}
+		m.answeringQuestionSeq = message.questionSeq
+		m.agentQuestions = removeAgentQuestion(m.agentQuestions, message.questionSeq)
+		m.questionDockExpanded = false
+		m.focus = focusInput
+		m.inputFocused = true
+		_ = m.input.Focus()
+		m.setSize(m.width, m.height)
+		return m, m.poll()
 
 	case charterCommandResultMsg:
 		if message.err != nil {
@@ -635,6 +667,14 @@ func (m *Model) updateKey(message tea.KeyMsg) (tea.Cmd, bool) {
 			m.inputFocused = true
 			_ = m.input.Focus()
 			m.setSize(m.width, m.height)
+		case m.focus == focusQuestions && m.questionDockExpanded:
+			m.questionDockExpanded = false
+			m.setSize(m.width, m.height)
+		case m.focus == focusQuestions:
+			m.focus = focusInput
+			m.inputFocused = true
+			_ = m.input.Focus()
+			m.setSize(m.width, m.height)
 		case m.focus == focusChat:
 			m.focus = focusInput
 			m.inputFocused = true
@@ -678,6 +718,23 @@ func (m *Model) updateKey(message tea.KeyMsg) (tea.Cmd, bool) {
 			return nil, true
 		case "enter":
 			return m.activateHeaderFocus(), true
+		}
+	}
+	if m.focus == focusQuestions {
+		switch key {
+		case "up", "k":
+			m.moveAgentQuestionSelection(-1)
+			return nil, true
+		case "down", "j":
+			m.moveAgentQuestionSelection(1)
+			return nil, true
+		case "enter":
+			if !m.questionDockExpanded {
+				m.questionDockExpanded = true
+				m.setSize(m.width, m.height)
+				return nil, true
+			}
+			return m.surfaceSelectedAgentQuestion(), true
 		}
 	}
 	// Numbered question options are a layer over the normal live input. An
@@ -829,20 +886,29 @@ func (m *Model) poll() tea.Cmd {
 		pending, pendingErr := backend.PendingCommands(pollLimit)
 		usage, usageErr := backend.Usage()
 		jobUsage, jobUsageErr := backend.TopLevelJobUsage()
+		var agentQuestions []store.AgentQuestion
+		var agentQuestionsErr error
+		if reader, ok := backend.(interface {
+			PendingQuestions(string, int) ([]store.AgentQuestion, error)
+		}); ok {
+			agentQuestions, agentQuestionsErr = reader.PendingQuestions(sessionID, pollLimit)
+		}
 		result := pollResultMsg{
-			sessionID:       sessionID,
-			messages:        messages,
-			snapshot:        snapshot,
-			cardSnapshot:    cardSnapshot,
-			pending:         pending,
-			usage:           usage,
-			jobUsage:        jobUsage,
-			messagesErr:     messagesErr,
-			snapshotErr:     snapshotErr,
-			cardSnapshotErr: cardSnapshotErr,
-			pendingErr:      pendingErr,
-			usageErr:        usageErr,
-			jobUsageErr:     jobUsageErr,
+			sessionID:         sessionID,
+			messages:          messages,
+			snapshot:          snapshot,
+			cardSnapshot:      cardSnapshot,
+			pending:           pending,
+			usage:             usage,
+			jobUsage:          jobUsage,
+			messagesErr:       messagesErr,
+			snapshotErr:       snapshotErr,
+			cardSnapshotErr:   cardSnapshotErr,
+			pendingErr:        pendingErr,
+			usageErr:          usageErr,
+			jobUsageErr:       jobUsageErr,
+			agentQuestions:    agentQuestions,
+			agentQuestionsErr: agentQuestionsErr,
 		}
 		seenCommands := make(map[int64]bool)
 		for _, message := range messages {
@@ -909,6 +975,20 @@ func (m *Model) applyPoll(result pollResultMsg) {
 		for _, command := range result.commands {
 			m.commands[command.Seq] = command
 		}
+	}
+	if result.agentQuestionsErr == nil {
+		m.agentQuestions = m.agentQuestions[:0]
+		for _, question := range result.agentQuestions {
+			if question.Urgency != store.QuestionBlocking && question.Status == store.QuestionPending {
+				m.agentQuestions = append(m.agentQuestions, question)
+			}
+		}
+		if len(m.agentQuestions) == 0 && m.focus == focusQuestions {
+			m.focus = focusInput
+			m.inputFocused = true
+			_ = m.input.Focus()
+		}
+		m.questionDockSelection = max(0, min(m.questionDockSelection, len(m.agentQuestions)-1))
 	}
 	if result.nodeID != "" && result.nodeID == m.nodeViewID {
 		if result.nodeErr == nil && result.nodeFound {
@@ -999,6 +1079,9 @@ func (m *Model) applyPoll(result pollResultMsg) {
 	if result.commandsErr != nil {
 		problems = append(problems, fmt.Errorf("read card commands: %w", result.commandsErr))
 	}
+	if result.agentQuestionsErr != nil {
+		problems = append(problems, fmt.Errorf("read agent questions: %w", result.agentQuestionsErr))
+	}
 	if result.nodeID != "" && result.nodeID == m.nodeViewID {
 		if result.nodeErr != nil {
 			problems = append(problems, fmt.Errorf("read node: %w", result.nodeErr))
@@ -1032,13 +1115,15 @@ func (m *Model) postUserMessage(body string) tea.Cmd {
 	m.err = nil
 	backend := m.backend
 	message := store.Message{
-		SessionID: m.sessionID,
-		Role:      store.RoleUser,
-		Body:      body,
+		SessionID:   m.sessionID,
+		Role:        store.RoleUser,
+		Body:        body,
+		QuestionSeq: m.answeringQuestionSeq,
 	}
+	m.answeringQuestionSeq = 0
 	return func() tea.Msg {
 		posted, err := backend.PostMessage(message)
-		return postResultMsg{message: posted, err: err}
+		return postResultMsg{message: posted, questionSeq: message.QuestionSeq, err: err}
 	}
 }
 
@@ -1047,6 +1132,9 @@ func (m *Model) postUserMessage(body string) tea.Cmd {
 // whole main area, so the thread zone yields to it).
 func (m *Model) toggleFocus() tea.Cmd {
 	order := []paneFocus{focusInput}
+	if m.activityBarVisible() && len(m.agentQuestions) > 0 {
+		order = append(order, focusQuestions)
+	}
 	if m.activityBarVisible() && m.activeCardCount() > 0 {
 		order = append(order, focusCards)
 	}
@@ -1074,6 +1162,9 @@ func (m *Model) toggleFocus() tea.Cmd {
 	}
 	if m.focus == focusCards {
 		m.ensureCardSelection()
+	}
+	if m.focus == focusQuestions {
+		m.questionDockSelection = max(0, min(m.questionDockSelection, len(m.agentQuestions)-1))
 	}
 	if m.focus == focusChat {
 		// Enter the thread at its newest interactive line — context lives at
