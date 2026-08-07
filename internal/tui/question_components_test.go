@@ -252,7 +252,7 @@ func TestHeaderQuestionDotFocusesPendingCard(t *testing.T) {
 		t.Fatalf("header dot focused (%v, %q), want question card", model.focus, model.selectedCardID)
 	}
 	model.focus = focusHeader
-	model.headerFocusIndex = 3
+	model.headerFocusIndex = 1
 	model.selectedCardID = "work"
 	_, _ = model.Update(tea.KeyMsg{Type: tea.KeyEnter})
 	if model.focus != focusCards || model.selectedCardID != "question" {
@@ -260,7 +260,7 @@ func TestHeaderQuestionDotFocusesPendingCard(t *testing.T) {
 	}
 }
 
-func TestHeaderModelDropdownOpensFiltersClicksSelectAndEscCloses(t *testing.T) {
+func TestHeaderModelPaletteOpensPickerFiltersClicksAndEscapesByRung(t *testing.T) {
 	commander := newFakeCommander()
 	commander.catalog = []ModelChoice{
 		{Slug: "openai/gpt-text", Name: "GPT Text"},
@@ -270,9 +270,15 @@ func TestHeaderModelDropdownOpensFiltersClicksSelectAndEscCloses(t *testing.T) {
 	model := NewWithCommander(&fakeBackend{}, "models", commander)
 	model.setSize(100, 30)
 	_ = model.View()
-	fetch, _ := model.updateMouseClick(model.headerWorkBounds.x, model.headerWorkBounds.y)
+	fetch, _ := model.updateMouseClick(model.headerModelsBounds.x, model.headerModelsBounds.y)
+	_ = model.View()
+	if model.palette != paletteModels || fetch != nil || len(model.modelSlotRows) != 7 {
+		t.Fatalf("models header control opened palette=%v fetch=%v rows=%d", model.palette, fetch, len(model.modelSlotRows))
+	}
+	work := model.modelSlotRows[1]
+	fetch, _ = model.updateMouseClick(work.bounds.x+1, work.bounds.y)
 	if model.palette != paletteModel || model.modelRole != "work" || fetch == nil {
-		t.Fatalf("work header control opened palette=%v role=%q fetch=%v", model.palette, model.modelRole, fetch)
+		t.Fatalf("work palette row opened palette=%v role=%q fetch=%v", model.palette, model.modelRole, fetch)
 	}
 	_, _ = model.Update(fetch())
 	typeIntoModel(model, "vision")
@@ -297,10 +303,18 @@ func TestHeaderModelDropdownOpensFiltersClicksSelectAndEscCloses(t *testing.T) {
 	}
 
 	_ = model.View()
-	_, _ = model.updateMouseClick(model.headerTalkBounds.x, model.headerTalkBounds.y)
+	_, _ = model.updateMouseClick(model.headerModelsBounds.x, model.headerModelsBounds.y)
+	_, _ = model.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	if model.palette != paletteModel {
+		t.Fatalf("enter on selected palette row did not open picker: %v", model.palette)
+	}
 	_, quit := model.Update(tea.KeyMsg{Type: tea.KeyEsc})
-	if quit != nil || model.palette != paletteNone {
-		t.Fatal("esc did not close the header model dropdown without quitting")
+	if quit != nil || model.palette != paletteModels {
+		t.Fatal("first esc did not return from picker to palette")
+	}
+	_, quit = model.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	if quit != nil || model.palette != paletteNone || model.focus != focusHeader {
+		t.Fatal("second esc did not return from palette to header")
 	}
 }
 

@@ -220,17 +220,21 @@ type Model struct {
 	historyExpanded  bool
 	err              error
 
-	palette          paletteKind
-	paletteSelected  int
-	paletteDismissed bool
-	modelRole        string
-	modelCatalog     []ModelChoice
-	optimisticModels map[string]string
-	catalogRequested bool
-	catalogLoading   bool
-	memoryFacts      []store.Fact
-	status           string
-	statusUntil      time.Time
+	palette               paletteKind
+	paletteSelected       int
+	paletteDismissed      bool
+	modelRole             string
+	modelSlotIndex        int
+	modelCatalog          []ModelChoice
+	mediaModelCatalogs    map[string][]ModelChoice
+	mediaCatalogRequested map[string]bool
+	mediaCatalogLoading   map[string]bool
+	optimisticModels      map[string]string
+	catalogRequested      bool
+	catalogLoading        bool
+	memoryFacts           []store.Fact
+	status                string
+	statusUntil           time.Time
 
 	voiceRecorder         voice.Recorder
 	voiceTranscriber      voice.Transcriber
@@ -263,9 +267,7 @@ type Model struct {
 	chatBounds                paneBounds
 	headerTasksBounds         paneBounds
 	headerQuestionBounds      paneBounds
-	headerTalkBounds          paneBounds
-	headerWorkBounds          paneBounds
-	headerVoiceBounds         paneBounds
+	headerModelsBounds        paneBounds
 	headerFocusIndex          int
 	graphBounds               paneBounds
 	graphRowsBounds           paneBounds
@@ -279,9 +281,7 @@ type Model struct {
 	nodeBackBounds            paneBounds
 	paletteCloseBounds        paneBounds
 	modelPickerBounds         paneBounds
-	modelTalkBounds           paneBounds
-	modelWorkBounds           paneBounds
-	modelVoiceBounds          paneBounds
+	modelSlotRows             []modelSlotRow
 	modelPickerRows           []modelPickerRow
 	activityBarBounds         paneBounds
 	textQuestionDismissBounds paneBounds
@@ -314,6 +314,11 @@ const (
 )
 
 type modelPickerRow struct {
+	bounds paneBounds
+	index  int
+}
+
+type modelSlotRow struct {
 	bounds paneBounds
 	index  int
 }
@@ -354,27 +359,30 @@ func newModel(backend Backend, sessionID string, commander Commander) *Model {
 	_ = input.Focus()
 
 	m := &Model{
-		backend:           backend,
-		sessionID:         sessionID,
-		commander:         commander,
-		input:             input,
-		chat:              viewport.New(1, 1),
-		graph:             viewport.New(1, 1),
-		nodeTrace:         viewport.New(1, 1),
-		inputFocused:      true,
-		focus:             focusInput,
-		autoScroll:        true,
-		modelRole:         "talk",
-		feedExpanded:      map[string]bool{},
-		expandedMessages:  map[int64]bool{},
-		jobUsage:          map[string]store.JobUsage{},
-		commands:          map[int64]store.Command{},
-		cardExpanded:      map[string]bool{},
-		questionSelection: map[string]int{},
-		questionDismissed: map[string]bool{},
-		optimisticModels:  map[string]string{},
-		dockSummaryLine:   -1,
-		voiceChunkText:    map[int]string{},
+		backend:               backend,
+		sessionID:             sessionID,
+		commander:             commander,
+		input:                 input,
+		chat:                  viewport.New(1, 1),
+		graph:                 viewport.New(1, 1),
+		nodeTrace:             viewport.New(1, 1),
+		inputFocused:          true,
+		focus:                 focusInput,
+		autoScroll:            true,
+		modelRole:             "talk",
+		feedExpanded:          map[string]bool{},
+		expandedMessages:      map[int64]bool{},
+		jobUsage:              map[string]store.JobUsage{},
+		commands:              map[int64]store.Command{},
+		cardExpanded:          map[string]bool{},
+		questionSelection:     map[string]int{},
+		questionDismissed:     map[string]bool{},
+		optimisticModels:      map[string]string{},
+		mediaModelCatalogs:    map[string][]ModelChoice{},
+		mediaCatalogRequested: map[string]bool{},
+		mediaCatalogLoading:   map[string]bool{},
+		dockSummaryLine:       -1,
+		voiceChunkText:        map[int]string{},
 	}
 	if services, ok := commander.(voiceServices); ok {
 		m.voiceRecorder = services.VoiceRecorder()
@@ -625,7 +633,15 @@ func (m *Model) updateKey(message tea.KeyMsg) (tea.Cmd, bool) {
 		// The back-out ladder (see the design-system comment in view.go):
 		// expanded element → collapsed element → zone → input → quit.
 		switch {
-		case m.palette == paletteModel || m.palette == paletteMemory || m.palette == paletteHelp:
+		case m.palette == paletteModel:
+			m.returnToModelsPalette()
+		case m.palette == paletteModels:
+			m.palette = paletteNone
+			m.paletteSelected = 0
+			m.focus = focusHeader
+			m.headerFocusIndex = 0
+			m.setSize(m.width, m.height)
+		case m.palette == paletteMemory || m.palette == paletteHelp:
 			m.closePalette()
 		case m.paletteOpen():
 			m.palette = paletteNone
@@ -678,10 +694,10 @@ func (m *Model) updateKey(message tea.KeyMsg) (tea.Cmd, bool) {
 	if m.focus == focusHeader {
 		switch key {
 		case "left", "up", "k":
-			m.headerFocusIndex = (m.headerFocusIndex + 3) % 4
+			m.headerFocusIndex = (m.headerFocusIndex + 1) % 2
 			return nil, true
 		case "right", "down", "j":
-			m.headerFocusIndex = (m.headerFocusIndex + 1) % 4
+			m.headerFocusIndex = (m.headerFocusIndex + 1) % 2
 			return nil, true
 		case "enter":
 			return m.activateHeaderFocus(), true
@@ -1101,7 +1117,7 @@ func (m *Model) toggleFocus() tea.Cmd {
 		m.chatFocusIndex = 1 << 30
 	}
 	if m.focus == focusHeader {
-		m.headerFocusIndex = max(0, min(3, m.headerFocusIndex))
+		m.headerFocusIndex = max(0, min(1, m.headerFocusIndex))
 	}
 	if m.inputFocused {
 		m.setSize(m.width, m.height)

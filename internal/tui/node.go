@@ -743,14 +743,8 @@ func (m *Model) updateMouseClick(x, y int) (tea.Cmd, bool) {
 		m.focusPendingQuestion()
 		return nil, true
 	}
-	if m.headerTalkBounds.contains(x, y) {
-		return m.openModelPicker("talk"), true
-	}
-	if m.headerWorkBounds.contains(x, y) {
-		return m.openModelPicker("work"), true
-	}
-	if m.headerVoiceBounds.contains(x, y) {
-		return m.openModelPicker("voice"), true
+	if m.headerModelsBounds.contains(x, y) {
+		return m.openModelsPalette(), true
 	}
 	if m.headerTasksBounds.contains(x, y) {
 		if m.nodeViewID != "" {
@@ -762,19 +756,30 @@ func (m *Model) updateMouseClick(x, y int) (tea.Cmd, bool) {
 	if m.activityBarBounds.contains(x, y) {
 		return m.clickCardDock(x-m.activityBarBounds.x, y-m.activityBarBounds.y)
 	}
-	if m.palette == paletteModel {
+	if m.palette == paletteModels {
 		if m.paletteCloseBounds.contains(x, y) {
 			m.closePalette()
+			m.focus = focusHeader
+			m.headerFocusIndex = 0
 			return nil, true
 		}
-		if m.modelTalkBounds.contains(x, y) {
-			return m.selectModelRole("talk"), true
+		for _, row := range m.modelSlotRows {
+			if row.bounds.contains(x, y) {
+				m.modelSlotIndex = row.index
+				return m.openModelPicker(modelSlots[row.index]), true
+			}
 		}
-		if m.modelWorkBounds.contains(x, y) {
-			return m.selectModelRole("work"), true
+		if m.modelPickerBounds.contains(x, y) {
+			m.focus = focusHeader
+			m.inputFocused = false
+			m.input.Blur()
+			return nil, true
 		}
-		if m.modelVoiceBounds.contains(x, y) {
-			return m.selectModelRole("voice"), true
+	}
+	if m.palette == paletteModel {
+		if m.paletteCloseBounds.contains(x, y) {
+			m.returnToModelsPalette()
+			return nil, true
 		}
 		for _, row := range m.modelPickerRows {
 			if !row.bounds.contains(x, y) {
