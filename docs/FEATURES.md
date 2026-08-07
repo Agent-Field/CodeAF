@@ -419,6 +419,23 @@ profile dir config at `~/.aforge/config.json`.
 
 ---
 
+## The runtime source of truth is `internal/manual`, not this file
+
+This catalog is a design document: it is on disk, it is written to
+persuade, and it goes stale the moment a build lands. What aforge
+actually *says* about itself at runtime comes from `internal/manual` — a
+small set of user-voice markdown pages embedded in the binary, searched
+by the `manual` tool on the head's tool belt and injected into the
+router's grounding context when a self-question is recognized. Those
+pages are the authority: where they and this file disagree, they win, and
+completeness tests in `internal/head` and `internal/tui` fail the build
+when a slash command, a model slot, a key chord, a belt tool, or a
+command kind lands without a page mentioning it. Add a feature, add its
+paragraph there; update this entry afterwards if you like, but never
+instead.
+
+---
+
 ## Using this document for hints
 
 The intended pipeline: `(this file + user's recent usage signals) → one
