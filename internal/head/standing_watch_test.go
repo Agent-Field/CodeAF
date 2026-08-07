@@ -2,6 +2,7 @@ package head
 
 import (
 	"context"
+	"os"
 	"strings"
 	"testing"
 	"time"
@@ -98,32 +99,86 @@ func TestUnrelatedReplyNeverSpendsTheSingleStandingWatchQuestion(t *testing.T) {
 	}
 }
 
-func TestStandingWatchGroundingIsUsedOnlyForPresenceQuestions(t *testing.T) {
-	if !asksForStandingWatch("who's keeping watch?") || !asksForStandingWatch("does this run with no terminal open?") {
-		t.Fatal("presence question was not recognized")
+// TestStandingWatchIsABeltReadNotAPhraseList is the values assertion for the
+// deletion. Two substring gates decided whether the measured competence map and
+// the standing-watch status reached the prompt at all — twelve phrases and
+// fourteen — and neither list contained "am I asking too much of you lately?"
+// or any of the thousand other ways a person asks it. The law lives in the tool
+// description now; the gates must stay gone rather than come back one phrase at
+// a time, so this test asserts about the package rather than about a sentence.
+func TestStandingWatchIsABeltReadNotAPhraseList(t *testing.T) {
+	source := readHeadSource(t, "head.go")
+	for _, gate := range []string{"asksForCompetence", "asksForStandingWatch"} {
+		if strings.Contains(source, "func "+gate) {
+			t.Errorf("%s is back: presence is a substring match again", gate)
+		}
 	}
-	if asksForStandingWatch("watch this file for changes") {
-		t.Fatal("new work request was mistaken for a status question")
+	// And what replaced them is reachable: both reads are on the belt the loop
+	// is handed, described well enough that the model knows when to spend a call.
+	named := map[string]bool{}
+	for _, definition := range beltDefinitions() {
+		named[definition.Function.Name] = true
+		if definition.Function.Name == beltToolCompetence || definition.Function.Name == beltToolStanding {
+			if len(definition.Function.Description) < 80 {
+				t.Errorf("%s has no description worth reading", definition.Function.Name)
+			}
+		}
+	}
+	for _, tool := range []string{beltToolCompetence, beltToolStanding, beltToolSpending} {
+		if !named[tool] {
+			t.Errorf("the %s read never reached the belt", tool)
+		}
 	}
 }
 
-func TestStandingWatchGroundingReachesRoutingPrompt(t *testing.T) {
+// The reads themselves: what the surface registered is what the model is handed,
+// byte-capped, and a surface that registered nothing says so rather than erroring.
+func TestSelfReadsReturnTheirGroundTruthAndRecordNothing(t *testing.T) {
 	graph := openHeadStore(t)
-	user, err := graph.PostMessage(store.Message{
-		SessionID: "watch-grounding", Role: store.RoleUser, Body: "who's keeping watch?",
-	})
+	head := New(nil, graph).
+		WithCompetenceMap(func() string {
+			return `- {"scope":"tool:go","class":"strong","samples":8,"failure_rate":0}`
+		}).
+		WithStandingWatch(func() string {
+			return "standing watch   installed · last wake 2m ago · next check in 3m\n" +
+				"active charters (id · cadence · what it watches for):\n" +
+				"charter-1 · every weekday at 9 · keep the release notes current"
+		}).
+		WithDailyBudgetUSD(20)
+	run := &beltRun{head: head, user: store.Message{SessionID: "self", Body: "how are you doing lately?"}}
+
+	competence, failed := run.competence()
+	if failed || !strings.Contains(competence, `"scope":"tool:go"`) {
+		t.Fatalf("competence read failed=%t: %s", failed, competence)
+	}
+	standing, failed := run.standing()
+	if failed || !strings.Contains(standing, "next check in 3m") ||
+		!strings.Contains(standing, "keep the release notes current") {
+		t.Fatalf("standing read failed=%t: %s", failed, standing)
+	}
+	spending, failed := run.spending()
+	if failed || !strings.Contains(spending, "daily rail") ||
+		!strings.Contains(spending, "your own upkeep today: $0.00") {
+		t.Fatalf("spending read failed=%t: %s", failed, spending)
+	}
+	if run.acted {
+		t.Fatal("reading the employee's own account recorded an action")
+	}
+
+	bare := &beltRun{head: New(nil, graph), user: run.user}
+	if answer, failed := bare.competence(); failed || strings.Contains(answer, "error") {
+		t.Fatalf("an unregistered competence map errored instead of answering: %s", answer)
+	}
+	if answer, failed := bare.standing(); failed || strings.Contains(answer, "error") {
+		t.Fatalf("an unregistered watch status errored instead of answering: %s", answer)
+	}
+}
+
+func readHeadSource(t *testing.T, name string) string {
+	t.Helper()
+	raw, err := os.ReadFile(name)
 	if err != nil {
-		t.Fatal(err)
+		t.Fatalf("read %s: %v", name, err)
 	}
-	client := &fakeClient{responses: []string{`{"reply":"I am, with the next quiet check in three minutes.","command":null}`}}
-	if err := New(client, graph).WithStandingWatch(func() string {
-		return "standing watch   installed · last wake 2m ago · next check in 3m"
-	}).answer(context.Background(), user); err != nil {
-		t.Fatal(err)
-	}
-	if len(client.seen) != 2 ||
-		!strings.Contains(client.seen[1].Content[0].Text, "Standing-watch status (ground truth") ||
-		!strings.Contains(client.seen[1].Content[0].Text, "next check in 3m") {
-		t.Fatalf("standing-watch evidence did not reach head: %+v", client.seen)
-	}
+	return string(raw)
 }

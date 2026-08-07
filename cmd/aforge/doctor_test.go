@@ -127,3 +127,70 @@ func TestDoctorDoesNotCreateMissingBrainAndDegradesResidentCalmly(t *testing.T) 
 		}
 	}
 }
+
+// TestWatchGroundingNamesEachCharterRatherThanCountingThem is #35. The head's
+// standing block said "3 active charters" and stopped there: doctor called
+// ActiveCharters and kept only len(charters), so "what are you watching for me?"
+// could be answered with a number and nothing a person would recognise as an
+// answer — while the rail beside the conversation listed all three in full.
+func TestWatchGroundingNamesEachCharterRatherThanCountingThem(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "graph.db")
+	graph, err := store.Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer graph.Close()
+	charter, err := store.NewCharter("release-notes", "Keep the release notes current.", store.WatchSpec{
+		Kind: store.WatchPoll, Poll: &store.PollWatch{Condition: "look for releases", Cadence: time.Hour},
+	}, "Did a release land?", store.CharterAction{Template: "Update release notes"},
+		store.CharterRails{PerFiringBudgetUSD: 0.1, MaxFiringsPerDay: 3}, store.CharterActive,
+		store.Ratification{Origin: store.OriginUser, SessionID: "doctor", Evidence: "yes"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	charter.Watch.Cadence = "every hour"
+	if err := graph.CreateCharter(charter); err != nil {
+		t.Fatal(err)
+	}
+
+	now := time.Now()
+	grounding := watchGrounding(path, graph, fakeDoctorWatch{status: watchdog.Status{
+		Installed: true, LastWake: now.Add(-2 * time.Minute), NextDue: now.Add(3 * time.Minute),
+	}}, 20)
+	for _, want := range []string{
+		// The calm status block is unchanged...
+		"next check in 3m", "1 active charter",
+		// ...and beside it, what the watch is actually for.
+		"release-notes", "every hour", "Keep the release notes current.",
+	} {
+		if !strings.Contains(grounding, want) {
+			t.Fatalf("standing grounding missing %q:\n%s", want, grounding)
+		}
+	}
+	// The /standing slash command renders the same line, because two renderings
+	// of one thing eventually disagree about it.
+	lines, err := standingCharterLines(graph, 0)
+	if err != nil || len(lines) != 1 || !strings.Contains(grounding, lines[0]) {
+		t.Fatalf("grounding and /standing disagree: lines=%v err=%v\n%s", lines, err, grounding)
+	}
+}
+
+// A graph with no charters at all adds nothing, so the block a quiet install
+// sends is byte-for-byte what it always sent.
+func TestWatchGroundingWithNoChartersIsUnchanged(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "graph.db")
+	graph, err := store.Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer graph.Close()
+	watch := fakeDoctorWatch{status: watchdog.Status{Installed: true}}
+	grounding := watchGrounding(path, graph, watch, 20)
+	snapshot, err := collectDoctorSnapshot(path, graph, watch, 20, time.Now())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if grounding != strings.TrimSpace(formatDoctor(snapshot)) {
+		t.Fatalf("a charterless install gained bytes:\n%s", grounding)
+	}
+}

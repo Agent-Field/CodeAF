@@ -257,7 +257,7 @@ func TestRenderNotebookUsesMessageScopeCues(t *testing.T) {
 	if err != nil {
 		t.Fatalf("record fact: %v", err)
 	}
-	rendered := renderNotebook(graphStore, "Please inspect internal/resident/notebook.go")
+	rendered := renderNotebook(graphStore, "Please inspect internal/resident/notebook.go", "")
 	if !strings.Contains(rendered, fmt.Sprintf("#%d [", fact.Seq)) ||
 		!strings.Contains(rendered, "scope-only memory with unrelated vocabulary") {
 		t.Fatalf("scope-exact notebook fact did not reach head: %q", rendered)
@@ -323,7 +323,7 @@ func TestHeadRetractsNumberedNotebookBelief(t *testing.T) {
 		quarantined.EvidenceSeq != user.Seq || quarantined.StatusOrigin != store.FactOriginUser {
 		t.Fatalf("retracted fact = %+v found=%t err=%v", quarantined, found, err)
 	}
-	if rendered := renderNotebook(graphStore, "git worktrees"); strings.Contains(rendered, fact.Body) {
+	if rendered := renderNotebook(graphStore, "git worktrees", ""); strings.Contains(rendered, fact.Body) {
 		t.Fatalf("quarantined fact reached head retrieval: %q", rendered)
 	}
 	if err := graphStore.Rebuild(); err != nil {
@@ -346,11 +346,31 @@ func TestCompilerParsesAssumptions(t *testing.T) {
 	if err != nil {
 		t.Fatalf("compile: %v", err)
 	}
-	if brief.Deliverable != "prototype plus test report" || brief.Budget != "$0.40" {
-		t.Fatalf("brief fields wrong: %+v", brief)
-	}
 	if len(brief.Assumptions) != 2 || brief.Assumptions[0] != "Use the current branch" {
 		t.Fatalf("assumptions wrong: %+v", brief.Assumptions)
+	}
+}
+
+// TestCompileSurvivesAMissingDeliverableAndBudget pins the removal of two
+// schema-required, validation-enforced fields that nothing read. An empty one
+// used to return "compile request: empty budget" with no retry, so a perfectly
+// good request was rejected for a value no consumer would ever have looked at.
+// The fields are gone; a provider that still emits them is simply ignored.
+func TestCompileSurvivesAMissingDeliverableAndBudget(t *testing.T) {
+	client := &fakeClient{responses: []string{
+		`{"goal":"Close the quarter's books.","assumptions":["Use the Q3 ledger"]}`,
+	}}
+	brief, err := NewCompiler(client).Compile(context.Background(), "close the books", "root is running")
+	if err != nil {
+		t.Fatalf("a brief with no deliverable and no budget was rejected: %v", err)
+	}
+	if !strings.HasPrefix(brief.Goal, "Close the quarter's books.") {
+		t.Fatalf("goal wrong: %q", brief.Goal)
+	}
+	for _, gone := range []string{`"deliverable"`, `"budget"`} {
+		if strings.Contains(compilerSystemPrompt, gone) {
+			t.Errorf("the compiler still asks for %s, a field nothing reads", gone)
+		}
 	}
 }
 
@@ -583,45 +603,34 @@ func TestHeadReceivesMeasuredReflexPrior(t *testing.T) {
 	}
 }
 
-func TestHeadGroundsCompetenceQuestionInExistingSingleCall(t *testing.T) {
+// The router no longer carries the competence map at all — it is a belt read —
+// and what it must not do is invent one in its absence. The prompt is the whole
+// enforcement, so the prompt is what is pinned: it never promises the block, and
+// it forbids stating a measurement it has not been shown.
+func TestRouterNeitherCarriesNorInventsAMeasuredSelfAssessment(t *testing.T) {
 	graphStore := openHeadStore(t)
 	client := &fakeClient{responses: []string{
 		`{"reply":"I'm strongest at Go parser work, with eight clean runs.","command":null}`,
 	}}
 	user := store.Message{SessionID: "competence", Body: "what are you good at now?"}
-	groundCalls := 0
-	decision, err := New(client, graphStore).
-		WithCompetenceMap(func() string {
-			groundCalls++
-			return `- {"scope":"tool:go","class":"strong","samples":8,"failure_rate":0}`
-		}).
-		route(context.Background(), user)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if decision.Command != nil || groundCalls != 1 || client.callCount() != 1 {
-		t.Fatalf("competence route = %+v, ground calls %d, provider calls %d", decision, groundCalls, client.callCount())
-	}
-	if len(client.seen) != 2 || !strings.Contains(client.seen[1].Content[0].Text, "Competence map (ground truth") ||
-		!strings.Contains(client.seen[1].Content[0].Text, `"scope":"tool:go"`) {
-		t.Fatalf("competence evidence did not reach head: %+v", client.seen)
-	}
-}
-
-func TestHeadDoesNotReadCompetenceMapForUnrelatedMessage(t *testing.T) {
-	graphStore := openHeadStore(t)
-	client := &fakeClient{responses: []string{
-		`{"reply":"Hello.","command":null}`,
-	}}
 	called := false
-	_, err := New(client, graphStore).
+	if _, err := New(client, graphStore).
 		WithCompetenceMap(func() string { called = true; return "unexpected" }).
-		route(context.Background(), store.Message{Body: "hello"})
-	if err != nil {
+		route(context.Background(), user); err != nil {
 		t.Fatal(err)
 	}
 	if called {
-		t.Fatal("unrelated message read competence map")
+		t.Fatal("the router still pulls the competence map behind a phrase gate")
+	}
+	if strings.Contains(client.seen[1].Content[0].Text, "Competence map (ground truth") {
+		t.Fatalf("the competence block is still injected: %s", client.seen[1].Content[0].Text)
+	}
+	if strings.Contains(headSystemPrompt, "When a competence map appears") ||
+		strings.Contains(headSystemPrompt, "When standing-watch status appears") {
+		t.Error("the router prompt still promises blocks it is never handed")
+	}
+	if !strings.Contains(headSystemPrompt, "Never state a strength, a weakness, a watch schedule, or a figure you have not been shown") {
+		t.Error("the router prompt lost the rule against inventing a self-assessment")
 	}
 }
 
@@ -891,7 +900,7 @@ func TestCompilerEpisodicOutputByteIdentity(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	const want = `{"goal":"Produce the requested summary.\n\nVerbatim request:\nSummarize this file.","assumptions":["Use the current file"],"deliverable":"summary","budget":"$0.10","scale":"task","builds_on":[],"question":"","trial_of":0}`
+	const want = `{"goal":"Produce the requested summary.\n\nVerbatim request:\nSummarize this file.","assumptions":["Use the current file"],"scale":"task","builds_on":[],"question":"","trial_of":0}`
 	if string(encoded) != want {
 		t.Fatalf("episodic compile bytes changed:\n got %s\nwant %s", encoded, want)
 	}

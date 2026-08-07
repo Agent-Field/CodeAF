@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/Agent-Field/aforge-v2/internal/config"
+	"github.com/Agent-Field/aforge-v2/internal/store"
 )
 
 func (c *chatCommander) Budget(arguments []string) (string, error) {
@@ -81,12 +82,37 @@ func (c *chatCommander) Standing() (string, error) {
 	if c == nil || c.store == nil {
 		return "", fmt.Errorf("standing store unavailable")
 	}
-	charters, err := c.store.ActiveCharters()
+	lines, err := standingCharterLines(c.store, 0)
 	if err != nil {
 		return "", err
 	}
-	if len(charters) == 0 {
+	if len(lines) == 0 {
 		return "no active charters", nil
+	}
+	return strings.Join(lines, "\n"), nil
+}
+
+// standingCharterLines is what every active charter watches for and how often,
+// one line each. /standing is one caller; the head's standing read is the other,
+// and it is the reason this is a free function rather than a method.
+//
+// The head used to receive this as an integer. doctor counted the charters and
+// kept only len(charters), so "what are you watching for me?" could be answered
+// with "three standing items" and nothing about what any of the three watched
+// for — while the rail beside the conversation listed all three in full. The
+// count was never the interesting part of a watch.
+//
+// limit <= 0 renders them all; a bounded caller passes what it can afford.
+func standingCharterLines(graph *store.Store, limit int) ([]string, error) {
+	if graph == nil {
+		return nil, nil
+	}
+	charters, err := graph.ActiveCharters()
+	if err != nil {
+		return nil, err
+	}
+	if limit > 0 && len(charters) > limit {
+		charters = charters[:limit]
 	}
 	lines := make([]string, 0, len(charters))
 	for _, charter := range charters {
@@ -97,7 +123,7 @@ func (c *chatCommander) Standing() (string, error) {
 		lines = append(lines, fmt.Sprintf("%s · %s · %s", charter.ID,
 			cadence, strings.Join(strings.Fields(charter.Invariant), " ")))
 	}
-	return strings.Join(lines, "\n"), nil
+	return lines, nil
 }
 
 func parseBudgetUSD(raw string) (float64, error) {
