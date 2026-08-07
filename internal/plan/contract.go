@@ -7,6 +7,7 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/Agent-Field/aforge-v2/internal/guard"
 	"github.com/Agent-Field/aforge-v2/internal/provider"
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 )
@@ -104,6 +105,17 @@ func Contracts(ctx context.Context, client Completer, graph *Graph, playbook Con
 		group.Add(1)
 		go func(node Node) {
 			defer group.Done()
+			// The results slice is appended to, so a faulting node has to add
+			// its own failed entry or it would simply vanish from the pass.
+			// A contract that fails degrades to the generic loop; so does this.
+			defer func() {
+				if recovered := recover(); recovered != nil {
+					fault := guard.Note(fmt.Sprintf("plan/contract node %d", node.ID), recovered)
+					mutex.Lock()
+					defer mutex.Unlock()
+					results = append(results, result{id: node.ID, err: fault})
+				}
+			}()
 			notes := ""
 			if playbook != nil {
 				notes = playbook(node)
@@ -150,14 +162,21 @@ func writeContract(ctx context.Context, client Completer, shared string, node No
 	if brief := strings.TrimSpace(node.Brief); brief != "" {
 		fmt.Fprintf(&target, "The instruction the agent will receive:\n%s\n", brief)
 	}
+	// The earned notes are per-leaf, retrieved for this node's territory, so
+	// they belong here and nowhere earlier. Every leaf in a project is written
+	// concurrently against the same doctrine and the same shared context; if the
+	// notes rode in the system message, the first byte of the very first message
+	// would differ per leaf and each of the N calls would write its own prefix
+	// cold. Kept at the tail of the only per-node message, the whole 3-message
+	// head — system doctrine plus shared context — is byte-identical across the
+	// fan-out, and N-1 of the calls land on a warm prefix.
+	if playbook = strings.TrimSpace(playbook); playbook != "" {
+		target.WriteString("\nEarned method notes for this territory:\n" + playbook + "\n")
+	}
 	target.WriteString("\nWrite the working method for this kind of job.")
 
-	doctrine := contractPrompt
-	if playbook = strings.TrimSpace(playbook); playbook != "" {
-		doctrine += "\n\nEarned method notes for this territory:\n" + playbook
-	}
 	messages := []ai.Message{
-		systemMessage(doctrine),
+		systemMessage(contractPrompt),
 		userMessage(shared),
 		userMessage(target.String()),
 	}

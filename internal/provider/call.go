@@ -135,13 +135,20 @@ func Report(ctx context.Context, verdict Verdict) {
 	if call == nil {
 		return
 	}
-	call.mutex.Lock()
-	observer, fire := call.observer, !call.reported
-	call.reported = true
-	call.mutex.Unlock()
+	observer, fire := call.claimReport()
 	if fire && observer != nil {
 		observer(verdict)
 	}
+}
+
+// claimReport takes the first-verdict-wins flag and the observer together, so
+// the observer runs after the lock is given back rather than under it.
+func (c *Call) claimReport() (func(Verdict), bool) {
+	c.mutex.Lock()
+	defer c.mutex.Unlock()
+	observer, fire := c.observer, !c.reported
+	c.reported = true
+	return observer, fire
 }
 
 // Class reports what kind of call this is.

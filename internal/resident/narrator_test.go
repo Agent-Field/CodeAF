@@ -242,3 +242,129 @@ func TestLandedJobsFoldOutOfTheActiveView(t *testing.T) {
 		}
 	}
 }
+
+// TestNarratorKeepsMilestonesThroughAFailedPost pins where the milestones are
+// spent. A finish is noticed once, on the tick that sees the status change, and
+// the narrator's own state is the only place it is written down. Clearing that
+// state alongside the backoff clock meant one provider hiccup deleted the news
+// the next update existed to deliver — permanently, because nothing re-notices
+// a job that landed two ticks ago.
+func TestNarratorKeepsMilestonesThroughAFailedPost(t *testing.T) {
+	s, err := store.Open(filepath.Join(t.TempDir(), "graph.db"))
+	if err != nil {
+		t.Fatalf("open store: %v", err)
+	}
+	defer s.Close()
+	spliceProject(t, s)
+
+	var seen []Narration
+	failing := true
+	reconciler := New(s, nil, nil).WithNarrator(
+		func(_ context.Context, narration Narration) (string, error) {
+			seen = append(seen, narration)
+			if failing {
+				return "", fmt.Errorf("provider hiccup")
+			}
+			return "City A is in — city B is close behind.", nil
+		})
+
+	ctx := context.Background()
+	if err := reconciler.Tick(ctx); err != nil {
+		t.Fatalf("initial tick: %v", err)
+	}
+	landNode(t, s, "part-a", "City A: 21C and clear")
+	if err := reconciler.Tick(ctx); err != nil {
+		t.Fatalf("tick after the landing: %v", err)
+	}
+
+	reconciler.progress["goal"].lastPost = time.Now().Add(-2 * narrateDebounce)
+	if err := reconciler.Tick(ctx); err != nil {
+		t.Fatalf("tick into the failing narrator: %v", err)
+	}
+	if len(seen) != 1 {
+		t.Fatalf("narrator calls = %d, want the one that failed", len(seen))
+	}
+
+	failing = false
+	reconciler.progress["goal"].lastPost = time.Now().Add(-2 * narrateDebounce)
+	if err := reconciler.Tick(ctx); err != nil {
+		t.Fatalf("tick after the failure: %v", err)
+	}
+	if len(seen) != 2 {
+		t.Fatalf("narrator calls = %d, want a retry after the failure", len(seen))
+	}
+	if len(seen[1].Finished) != 1 || !strings.Contains(seen[1].Finished[0], "City A: 21C and clear") {
+		t.Fatalf("the retry lost the milestone the failed call was carrying: %+v", seen[1])
+	}
+
+	messages, err := s.Messages("s1", 0, 0)
+	if err != nil {
+		t.Fatalf("messages: %v", err)
+	}
+	var posted int
+	for _, message := range messages {
+		if message.Role == store.RoleAgent {
+			posted++
+		}
+	}
+	if posted != 1 {
+		t.Fatalf("agent messages = %d, want the single successful narration", posted)
+	}
+
+	// Spoken is spent: the milestone must not be told a second time.
+	reconciler.progress["goal"].lastPost = time.Now().Add(-2 * narrateDebounce)
+	if err := reconciler.Tick(ctx); err != nil {
+		t.Fatalf("tick after the successful post: %v", err)
+	}
+	if len(seen) != 2 {
+		t.Fatalf("narrator spoke again with nothing new: %+v", seen[2:])
+	}
+}
+
+// A second-resolution clock made the running block a different string on every
+// heartbeat, for a number the narrator prompt itself says to mention only when
+// it is notable. Under a minute there is nothing notable to say.
+func TestNarratorOmitsDurationsUnderAMinute(t *testing.T) {
+	s, err := store.Open(filepath.Join(t.TempDir(), "graph.db"))
+	if err != nil {
+		t.Fatalf("open store: %v", err)
+	}
+	defer s.Close()
+	spliceProject(t, s)
+
+	var seen []Narration
+	reconciler := New(s, nil, nil).WithNarrator(
+		func(_ context.Context, narration Narration) (string, error) {
+			seen = append(seen, narration)
+			return "still going", nil
+		})
+
+	ctx := context.Background()
+	if err := reconciler.Tick(ctx); err != nil {
+		t.Fatalf("initial tick: %v", err)
+	}
+	claim, won, err := s.Claim("part-a", "worker")
+	if err != nil || !won {
+		t.Fatalf("claim part-a: won=%v err=%v", won, err)
+	}
+	if err := s.Start(claim); err != nil {
+		t.Fatalf("start part-a: %v", err)
+	}
+	// The start event is what arms the heartbeat, so it has to be observed
+	// before the state exists to age.
+	if err := reconciler.Tick(ctx); err != nil {
+		t.Fatalf("tick after start: %v", err)
+	}
+	reconciler.progress["goal"].lastPost = time.Now().Add(-2 * narrateHeartbeat)
+	if err := reconciler.Tick(ctx); err != nil {
+		t.Fatalf("tick after heartbeat: %v", err)
+	}
+	if len(seen) != 1 || len(seen[0].Running) == 0 {
+		t.Fatalf("expected one narration with running work: %+v", seen)
+	}
+	for _, label := range seen[0].Running {
+		if strings.Contains(label, " in)") {
+			t.Fatalf("a job seconds old carried a duration clause: %q", label)
+		}
+	}
+}

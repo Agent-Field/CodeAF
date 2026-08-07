@@ -9,6 +9,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/Agent-Field/aforge-v2/internal/guard"
 	"github.com/Agent-Field/aforge-v2/internal/provider"
 	"github.com/Agent-Field/aforge-v2/internal/store"
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
@@ -79,12 +80,19 @@ Your final message — the one where you call no tools — is the deliverable it
 not a report about it. Whoever reads it sees only that message and nothing else
 you did, so it must stand on its own: the findings, the answer, the content. If
 you wrote files, say which and what is in them. Never end with a summary of your
-process.
+process, and never end with a statement that the work is done, that the file is
+written, or that the result is consistent and verified — those are things about
+the work, and the person asked for the work. If they asked a question, the
+answer is in this message; if they asked for a judgement, the verdict is in this
+message, in so many words.
 
 Keep that final message under about 300 words. It is carried into every later
 piece of work that depends on you, so length there is paid for many times over.
 Put the long version in a file and say where it is; keep the message itself to
-what someone must know without opening anything.`
+what someone must know without opening anything. The split is between the answer
+and its working, never between the answer and a pointer to the answer: the
+conclusion, the numbers that carry it and the verdict stay in the message, and
+the file holds the evidence, the detail and the reasoning behind them.`
 
 // The attribution law. It is provenance — who did the typing — rather than
 // advertising, so it lives in exactly two places a reader already looks for
@@ -375,6 +383,10 @@ func (l *Linear) Run(ctx context.Context, task Task) (returned *Outcome, runErr 
 					"Guidance from the user, mid-task — adjust course without discarding sound work already done:\n" + guidance)})
 			}
 		}
+		// Called every turn, but mutating on few of them: decay only fires once
+		// the window crosses the budget, and then clears to a low-water mark so
+		// the turns that follow can resend a byte-identical prefix and be billed
+		// at the cached rate.
 		outcome.Decayed += fade.decay(messages, obsBudget)
 		// What the leaf had left before this turn, so the circuit breaker below
 		// can weigh what the turn cost against what remained rather than against
@@ -488,6 +500,14 @@ func (l *Linear) Run(ctx context.Context, task Task) (returned *Outcome, runErr 
 			group.Add(1)
 			go func(index int, call ai.ToolCall) {
 				defer group.Done()
+				// Execute answers a fault with an error result of its own; this is
+				// the belt for anything that could fault outside it.
+				defer func() {
+					if recovered := recover(); recovered != nil {
+						_ = guard.Note("exec/linear tool "+call.Function.Name, recovered)
+						results[index] = errorf("internal fault in this tool call — recorded to the log. Try a different approach.")
+					}
+				}()
 				results[index] = tools.Execute(ctx, call.Function.Name, call.Function.Arguments)
 			}(index, call)
 		}

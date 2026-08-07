@@ -7,6 +7,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/Agent-Field/aforge-v2/internal/guard"
 	"github.com/Agent-Field/aforge-v2/internal/plan"
 	"github.com/Agent-Field/aforge-v2/internal/provider"
 )
@@ -22,6 +23,7 @@ type Scheduler struct {
 	registry    *Registry
 	workspace   *Workspace
 	concurrency int
+	governor    *Governor
 	usage       Usage
 	usageMutex  sync.RWMutex
 
@@ -83,7 +85,16 @@ func NewScheduler(registry *Registry, workspace *Workspace, concurrency int) *Sc
 	if concurrency <= 0 {
 		concurrency = 8
 	}
-	return &Scheduler{registry: registry, workspace: workspace, concurrency: concurrency}
+	return &Scheduler{registry: registry, workspace: workspace, concurrency: concurrency,
+		governor: HostGovernor()}
+}
+
+// WithGovernor replaces the shared host gate. Production uses the process-wide
+// one so a headless run and a resident runner in the same process read the same
+// machine rather than each discovering its own number.
+func (s *Scheduler) WithGovernor(governor *Governor) *Scheduler {
+	s.governor = governor
+	return s
 }
 
 // Usage is the total cost of the run, summed as outcomes are applied. It is
@@ -150,6 +161,19 @@ func (s *Scheduler) Run(ctx context.Context, graph *plan.Graph) error {
 		if stop == "" {
 			for _, id := range s.ready(graph) {
 				if len(inFlight) >= s.concurrency {
+					break
+				}
+				// The host-load gate, which the concurrency ceiling cannot
+				// stand in for: workers are network-bound and park on sockets,
+				// but a leaf's shell can pin every core, and `--concurrency 8`
+				// on a machine already at 10.0 load makes eight leaves that all
+				// run slower rather than eight leaves that run. A refusal is
+				// not a hold — nothing in flight is delayed and nothing is
+				// cancelled; the loop simply stops launching and the next tick
+				// asks the machine again. With nothing in flight the governor
+				// always admits, so back-pressure can never leave the run
+				// doing nothing at all.
+				if !s.governor.Admit(len(inFlight)) {
 					break
 				}
 				if s.BeforeLaunch != nil {
@@ -257,6 +281,9 @@ type leafFlight struct {
 func (s *Scheduler) work(ctx context.Context, id int, task Task, attempt int, shape string, done chan<- completion) {
 	defer func() {
 		if recovered := recover(); recovered != nil {
+			// The wording the scheduler already reports is kept; what is new is
+			// that the stack now reaches the log instead of nowhere.
+			_ = guard.Note("exec/scheduler leaf", recovered)
 			failure := fmt.Sprintf("executor panicked: %v", recovered)
 			if terminated := task.control.terminate(); terminated > 0 {
 				failure += fmt.Sprintf("; %d background jobs terminated at leaf end", terminated)
@@ -474,9 +501,10 @@ func boundInput(result string, artifacts []string) string {
 	if len(artifacts) > 0 {
 		pointer = strings.Join(artifacts, ", ")
 	}
-	return result[:maxInputBytes] + fmt.Sprintf(
+	kept := wholeRunesHead(result[:maxInputBytes])
+	return kept + fmt.Sprintf(
 		"\n\n... [truncated at %d of %d bytes — the complete version is in %s]",
-		maxInputBytes, len(result), pointer)
+		len(kept), len(result), pointer)
 }
 
 // fallbackBrief covers nodes the planner never wrote an instruction for.

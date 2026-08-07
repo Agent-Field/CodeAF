@@ -132,8 +132,15 @@ func (r *Reconciler) speakProgress(ctx context.Context) error {
 			switch node.Status {
 			case store.Running, store.Claimed:
 				label := clipLabel(firstLine(node.Brief), 60)
-				if !node.StartedAt.IsZero() {
-					label += fmt.Sprintf(" (%s in)", time.Since(node.StartedAt).Round(time.Second))
+				// Whole minutes, and nothing at all under one. A second-resolution
+				// clock made this label a different string on every heartbeat, so
+				// the running block — and everything the model had already been
+				// told below it — was re-billed each time for a number the prompt
+				// itself says to mention only when it is notable. Under a minute
+				// is never notable; after that the minute is the unit a person
+				// would say out loud.
+				if elapsed := time.Since(node.StartedAt); !node.StartedAt.IsZero() && elapsed >= time.Minute {
+					label += fmt.Sprintf(" (%dm in)", int(elapsed.Minutes()))
 				}
 				running = append(running, label)
 			case store.Pending:
@@ -158,7 +165,6 @@ func (r *Reconciler) speakProgress(ctx context.Context) error {
 		// A narrator error or empty line skips this update; lastPost still
 		// advances so a persistent failure cannot hammer the model.
 		state.lastPost = time.Now()
-		state.finished = nil
 		if err != nil || strings.TrimSpace(line) == "" {
 			continue
 		}
@@ -171,6 +177,12 @@ func (r *Reconciler) speakProgress(ctx context.Context) error {
 		}); err != nil {
 			return err
 		}
+		// The milestones are spent only once they have actually been spoken.
+		// Clearing them alongside lastPost lost them to every transient
+		// failure: the call that erred was the only place those finishes were
+		// written down, so a single bad response silently deleted the news the
+		// next update existed to deliver.
+		state.finished = nil
 		state.previous = append(state.previous, line)
 		if len(state.previous) > narratePreviousKept {
 			state.previous = state.previous[len(state.previous)-narratePreviousKept:]
