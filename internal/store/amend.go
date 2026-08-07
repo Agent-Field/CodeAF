@@ -169,7 +169,8 @@ func applyNodeReparentedView(tx *sql.Tx, id, parent string, seq int64) error {
 }
 
 func applyNodeCancelledView(tx *sql.Tx, id, reason string, seq int64, finishedAt string) error {
-	_, err := tx.Exec(`UPDATE nodes SET status = ?, error = ?, updated_seq = ?, finished_at = ? WHERE id = ?`,
+	_, err := tx.Exec(`UPDATE nodes SET status = ?, error = ?, held = 0, cancel_requested = 0,
+		owner = '', updated_seq = ?, finished_at = ? WHERE id = ?`,
 		Cancelled, reason, seq, finishedAt, id)
 	return err
 }

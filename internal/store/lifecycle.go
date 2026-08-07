@@ -66,6 +66,8 @@ func (s *Store) Claim(id, owner string) (Claim, bool, error) {
 		WHERE id = ?
 		  AND status = ?
 		  AND folded = 0
+		  AND held = 0
+		  AND cancel_requested = 0
 		  AND claim_token = ?
 		  AND NOT EXISTS (
 		      SELECT 1
@@ -353,29 +355,36 @@ func (s *Store) Release(claim Claim) error {
 // worker (a race at the margin) keeps its claim by failing our stale CAS.
 func (s *Store) ReleaseOrphans() ([]string, error) {
 	rows, err := s.db.Query(
-		`SELECT id, owner, claim_token FROM nodes WHERE status IN (?, ?)`,
+		`SELECT id, owner, claim_token, cancel_requested FROM nodes WHERE status IN (?, ?)`,
 		Claimed, Running)
 	if err != nil {
 		return nil, fmt.Errorf("release orphans: %w", err)
 	}
-	claims := make([]Claim, 0, 4)
+	type orphan struct {
+		claim  Claim
+		cancel bool
+	}
+	claims := make([]orphan, 0, 4)
 	for rows.Next() {
-		var claim Claim
-		if err := rows.Scan(&claim.ID, &claim.Owner, &claim.Token); err != nil {
+		var item orphan
+		if err := rows.Scan(&item.claim.ID, &item.claim.Owner, &item.claim.Token, &item.cancel); err != nil {
 			rows.Close()
 			return nil, fmt.Errorf("release orphans: %w", err)
 		}
-		claims = append(claims, claim)
+		claims = append(claims, item)
 	}
 	if err := rows.Close(); err != nil {
 		return nil, fmt.Errorf("release orphans: %w", err)
 	}
 	released := make([]string, 0, len(claims))
-	for _, claim := range claims {
-		if err := s.Release(claim); err != nil {
+	for _, item := range claims {
+		if err := s.Release(item.claim); err != nil {
 			continue
 		}
-		released = append(released, claim.ID)
+		if item.cancel {
+			_ = s.CancelPending(item.claim.ID, "cancelled by user")
+		}
+		released = append(released, item.claim.ID)
 	}
 	return released, nil
 }

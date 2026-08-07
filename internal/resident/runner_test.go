@@ -106,6 +106,63 @@ func TestRunnerRecordsExecutionFailure(t *testing.T) {
 	}
 }
 
+func TestRunnerCooperativeCancelReleasesClaimBeforeCancelling(t *testing.T) {
+	s := openRunnerStore(t)
+	if err := s.Splice(store.RootID, store.Subtree{Nodes: []store.NodeSpec{
+		{ID: "cancel-live", Brief: "long running work", Stage: 1},
+	}}, store.Provenance{Origin: store.OriginUser, Intent: "long running work"}); err != nil {
+		t.Fatal(err)
+	}
+	started := make(chan struct{})
+	finishTurn := make(chan struct{})
+	runner := NewRunner(s, func(context.Context, store.Node) (ExecResult, error) {
+		close(started)
+		<-finishTurn
+		return ExecResult{Summary: "partial", PromptTokens: 20, CompletionTokens: 5, Cost: 0.10}, nil
+	}, "cancel-runner", 1)
+	if _, err := runner.Tick(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	<-started
+	node, found, err := s.Node("cancel-live")
+	if err != nil || !found || node.Status != store.Running {
+		t.Fatalf("running node = %+v found=%t err=%v", node, found, err)
+	}
+	oldClaim := store.Claim{ID: node.ID, Owner: node.Owner, Token: node.ClaimToken}
+	if err := s.RequestNodeCancel(node.ID, "cancelled by user"); err != nil {
+		t.Fatal(err)
+	}
+	close(finishTurn)
+	runner.Wait()
+
+	node, found, err = s.Node("cancel-live")
+	if err != nil || !found || node.Status != store.Cancelled || node.Owner != "" || node.CancelRequested {
+		t.Fatalf("cancelled node = %+v found=%t err=%v", node, found, err)
+	}
+	if err := s.Complete(oldClaim, "stale completion"); !errors.Is(err, store.ErrClaimLost) {
+		t.Fatalf("old claim completion error = %v, want ErrClaimLost", err)
+	}
+	events, err := s.Events(0, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	released, cancelled := -1, -1
+	for index, event := range events {
+		if event.NodeID != "cancel-live" {
+			continue
+		}
+		if event.Kind == store.EventNodeReleased {
+			released = index
+		}
+		if event.Kind == store.EventNodeCancelled {
+			cancelled = index
+		}
+	}
+	if released < 0 || cancelled < 0 || released >= cancelled {
+		t.Fatalf("release/cancel event order = %d/%d", released, cancelled)
+	}
+}
+
 func TestRunnerRespectsWorkerSlots(t *testing.T) {
 	s := openRunnerStore(t)
 	err := s.Splice(store.RootID, store.Subtree{Nodes: []store.NodeSpec{

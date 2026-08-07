@@ -237,6 +237,18 @@ func (l *Linear) Run(ctx context.Context, task Task) (*Outcome, error) {
 	}
 
 	for turn := 0; turn < l.maxTurns; turn++ {
+		if task.Control != nil {
+			switch task.Control() {
+			case ControlCancel:
+				outcome.Stop = StopCancelled
+				trace.note("cancel requested — stopping at turn boundary")
+				return l.land(ctx, task, outcome, started), nil
+			case ControlPause:
+				outcome.Stop = StopPaused
+				trace.note("pause requested — holding at turn boundary")
+				return l.land(ctx, task, outcome, started), nil
+			}
+		}
 		if landing == 0 && time.Until(deadline) <= landingReserve {
 			landing = landingTurns
 			landingStop = StopDeadline
@@ -512,6 +524,9 @@ func verdictFor(outcome *Outcome) provider.Verdict {
 	case StopTurnCap:
 		return provider.VerdictTurnCap
 	case StopPromote:
+		return provider.VerdictUnverifiedSuccess
+	case StopPaused, StopCancelled:
+		// User-directed stops say nothing about model capability.
 		return provider.VerdictUnverifiedSuccess
 	case StopEmpty:
 		return provider.VerdictEmptyResponse

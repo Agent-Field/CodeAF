@@ -251,6 +251,25 @@ func replayEvent(tx *sql.Tx, event Event) error {
 		}
 		return applyNodeCancelledView(tx, event.NodeID, payload.Reason, event.Seq, formatTime(event.Time))
 
+	case EventNodeCancelRequested:
+		if err := decodeNodeControlPayload(event.Payload); err != nil {
+			return err
+		}
+		return applyNodeCancelRequestedView(tx, event.NodeID, event.Seq)
+
+	case EventNodeHeld, EventNodeResumed:
+		if err := decodeNodeControlPayload(event.Payload); err != nil {
+			return err
+		}
+		return applyNodeHoldView(tx, event.NodeID, event.Kind == EventNodeHeld, event.Seq)
+
+	case EventNodePriorityChanged:
+		var payload nodePriorityPayload
+		if err := json.Unmarshal(event.Payload, &payload); err != nil {
+			return err
+		}
+		return applyNodePriorityView(tx, event.NodeID, payload.Priority, event.Seq)
+
 	case EventMessagePosted:
 		var payload messagePayload
 		if err := json.Unmarshal(event.Payload, &payload); err != nil {

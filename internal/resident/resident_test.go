@@ -130,7 +130,7 @@ func TestTickUsesDefaultCompilerAndPlanner(t *testing.T) {
 	}
 }
 
-func TestTickCancelsClaimableSubtreeAndReportsCounts(t *testing.T) {
+func TestTickCancelsPendingSubtreeAndReportsCounts(t *testing.T) {
 	graph := openStore(t)
 	if err := graph.Splice(store.RootID, store.Subtree{Nodes: []store.NodeSpec{
 		{ID: "cancel-root", Brief: "Cancel this run", Stage: 1},
@@ -139,6 +139,9 @@ func TestTickCancelsClaimableSubtreeAndReportsCounts(t *testing.T) {
 			Needs: []store.Need{{NodeID: "fetch", Kind: store.Blocks}}},
 	}}, store.Provenance{Origin: store.OriginUser, SessionID: "session-cancel", Intent: "prepare a report"}); err != nil {
 		t.Fatalf("splice fixture: %v", err)
+	}
+	if err := graph.RecordUsage(store.NodeUsage{NodeID: "fetch", Cost: 0.85}); err != nil {
+		t.Fatal(err)
 	}
 	command, err := graph.RequestCommand(store.Command{
 		SessionID:   "session-cancel",
@@ -159,22 +162,23 @@ func TestTickCancelsClaimableSubtreeAndReportsCounts(t *testing.T) {
 		if err != nil || !ok {
 			t.Fatalf("node %q: ok=%v err=%v", id, ok, err)
 		}
-		if node.Status != store.Failed || node.Error != "cancelled by resident request" {
+		if node.Status != store.Cancelled || node.Error != "cancelled by user" {
 			t.Errorf("cancelled node %q = status %s error %q", id, node.Status, node.Error)
 		}
 	}
 	settled := commandBySeq(t, graph, command.Seq)
-	const result = "cancelled 3 nodes, 0 in flight left to land"
+	const result = "cancelled 3; requested cooperative cancellation for 0"
 	if settled.Status != store.CommandApplied || settled.Result != result {
 		t.Fatalf("settled cancel = %+v", settled)
 	}
 	receipt := commandReceipt(t, graph, command.SessionID, command.Seq)
-	if !strings.Contains(receipt.Body, result) {
+	if !strings.Contains(receipt.Body, "cancelled — 3 leaves cancelled") ||
+		!strings.Contains(receipt.Body, "$0.85 spent stays spent") || receipt.NodeID != "cancel-root" {
 		t.Fatalf("cancel receipt = %q", receipt.Body)
 	}
 }
 
-func TestTickRejectsAmendAndPostsHonestReason(t *testing.T) {
+func TestTickAmendsPendingNodeAndPostsHonestReceipt(t *testing.T) {
 	graph := openStore(t)
 	if err := graph.Splice(store.RootID, store.Subtree{Nodes: []store.NodeSpec{
 		{ID: "existing", Brief: "Existing work", Stage: 1},
@@ -195,14 +199,17 @@ func TestTickRejectsAmendAndPostsHonestReason(t *testing.T) {
 		t.Fatalf("tick: %v", err)
 	}
 
-	const reason = "amend is not implemented yet; cancel and re-ask, or splice an addition"
 	settled := commandBySeq(t, graph, command.Seq)
-	if settled.Status != store.CommandRejected || settled.Result != reason {
+	if settled.Status != store.CommandApplied || settled.Result != "amendment attached" {
 		t.Fatalf("settled amend = %+v", settled)
 	}
 	receipt := commandReceipt(t, graph, command.SessionID, command.Seq)
-	if receipt.Body != reason {
-		t.Fatalf("amend receipt = %q, want %q", receipt.Body, reason)
+	if !strings.Contains(receipt.Body, "amended — Existing work") || strings.Contains(receipt.Body, "next turn") {
+		t.Fatalf("amend receipt = %q", receipt.Body)
+	}
+	node, found, err := graph.Node("existing")
+	if err != nil || !found || !strings.Contains(node.Brief, "Amendment: change the output format") {
+		t.Fatalf("amended node = %+v found=%t err=%v", node, found, err)
 	}
 }
 
