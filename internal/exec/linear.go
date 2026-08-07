@@ -309,6 +309,10 @@ func (l *Linear) Run(ctx context.Context, task Task) (returned *Outcome, runErr 
 					"Guidance from the user, mid-task — adjust course without discarding sound work already done:\n" + guidance)})
 			}
 		}
+		// Called every turn, but mutating on few of them: decay only fires once
+		// the window crosses the budget, and then clears to a low-water mark so
+		// the turns that follow can resend a byte-identical prefix and be billed
+		// at the cached rate.
 		outcome.Decayed += fade.decay(messages, obsBudget)
 		// What the leaf had left before this turn, so the circuit breaker below
 		// can weigh what the turn cost against what remained rather than against
