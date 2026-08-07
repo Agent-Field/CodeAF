@@ -24,6 +24,7 @@ import (
 	"github.com/Agent-Field/aforge-v2/internal/config"
 	"github.com/Agent-Field/aforge-v2/internal/craft"
 	"github.com/Agent-Field/aforge-v2/internal/exec"
+	"github.com/Agent-Field/aforge-v2/internal/guard"
 	"github.com/Agent-Field/aforge-v2/internal/head"
 	"github.com/Agent-Field/aforge-v2/internal/lease"
 	"github.com/Agent-Field/aforge-v2/internal/plan"
@@ -434,26 +435,26 @@ func runChat(args []string) error {
 				// spliced work) has no plan surprises to record.
 				if cut := strings.LastIndex(node.ID, "-n"); cut >= 0 {
 					prefix := node.ID[:cut]
-					go func() {
+					guard.Go("chat/recalibrate", func() {
 						_, records := recordAndCalibrateDetailed(settings.Context(context.Background(), landed.Goal), workingClient, settings, workingModel, landed)
 						recordPlanSurprises(graph, prefix, records)
-					}()
+					})
 				}
 			} else if planGraph == nil && node.Parent == store.RootID && outcome != nil {
 				if isReflex {
-					go func() {
+					guard.Go("chat/record-reflex", func() {
 						record, ok := recordReflex(settings, workerModel, node, outcome, false)
 						if ok {
 							recordProfileSurprise(graph, node.ID, record)
 						}
-					}()
+					})
 				} else {
-					go func() {
+					guard.Go("chat/record-single-leaf", func() {
 						record, ok := recordSingleLeaf(settings, workerModel, node, outcome)
 						if ok {
 							recordProfileSurprise(graph, node.ID, record)
 						}
-					}()
+					})
 				}
 			}
 			return resident.ExecResult{}, err
@@ -575,7 +576,7 @@ func runChat(args []string) error {
 			// planned subtree and must not slice blind.
 			if cut := strings.LastIndex(node.ID, "-n"); cut >= 0 {
 				prefix := node.ID[:cut]
-				go func() {
+				guard.Go("chat/recalibrate", func() {
 					report, records := recordAndCalibrateDetailed(settings.Context(context.Background(), landed.Goal), workingClient, settings, workingModel, landed)
 					recordPlanSurprises(graph, prefix, records)
 					if strings.TrimSpace(report) == "" {
@@ -587,23 +588,23 @@ func runChat(args []string) error {
 						NodeID:    node.ID,
 						Body:      report,
 					})
-				}()
+				})
 			}
 		} else if planGraph == nil && node.Parent == store.RootID {
 			if isReflex {
-				go func() {
+				guard.Go("chat/record-reflex", func() {
 					record, ok := recordReflex(settings, workerModel, node, outcome, promoted)
 					if ok {
 						recordProfileSurprise(graph, node.ID, record)
 					}
-				}()
+				})
 			} else {
-				go func() {
+				guard.Go("chat/record-single-leaf", func() {
 					record, ok := recordSingleLeaf(settings, workerModel, node, outcome)
 					if ok {
 						recordProfileSurprise(graph, node.ID, record)
 					}
-				}()
+				})
 			}
 		}
 		return resident.ExecResult{
@@ -629,6 +630,9 @@ func runChat(args []string) error {
 	// head's whole token cap deliberating and returns empty text — measured as
 	// 600/600 completion tokens of thought and zero answer on the default model.
 	go func() {
+		// Registered first so it absorbs last: the channel close and the wait
+		// group both settle on the unwind before the fault is recorded.
+		defer guard.Recover("chat/head")
 		defer background.Done()
 		defer close(streamEvents)
 		headContext := provider.WithStreamObserver(settings.Context(ctx, "head"), func(event provider.StreamEvent) {
@@ -661,8 +665,8 @@ func runChat(args []string) error {
 			WithDailyBudgetUSD(settings.DailyBudgetUSD).
 			Serve(headContext)
 	}()
-	go func() { defer background.Done(); _ = reconciler.Serve(ctx) }()
-	go func() { defer background.Done(); _ = runner.Serve(ctx) }()
+	go func() { defer guard.Recover("chat/reconciler"); defer background.Done(); _ = reconciler.Serve(ctx) }()
+	go func() { defer guard.Recover("chat/runner"); defer background.Done(); _ = runner.Serve(ctx) }()
 
 	commander = &chatCommander{
 		settings:      settings,
@@ -702,6 +706,7 @@ func runChat(args []string) error {
 	if deliverBrief != nil {
 		background.Add(1)
 		go func() {
+			defer guard.Recover("chat/arrival-brief")
 			defer background.Done()
 			if err := deliverBrief(ctx); err != nil {
 				log.Printf("note: could not deliver the arrival brief: %v", err)
@@ -1647,7 +1652,7 @@ func closeReplaced(client router.Client) {
 
 func waitWithGrace(group *sync.WaitGroup, grace time.Duration) {
 	done := make(chan struct{})
-	go func() { group.Wait(); close(done) }()
+	guard.Go("chat/background-wait", func() { group.Wait(); close(done) })
 	select {
 	case <-done:
 	case <-time.After(grace):
@@ -2097,7 +2102,7 @@ func runLeafWithWatchdog(ctx context.Context, linear *exec.Linear, task exec.Tas
 	go func() {
 		defer func() {
 			if recovered := recover(); recovered != nil {
-				done <- landing{nil, fmt.Errorf("executor panicked: %v", recovered)}
+				done <- landing{nil, guard.Note("chat/leaf executor", recovered)}
 			}
 		}()
 		outcome, err := linear.Run(ctx, task)

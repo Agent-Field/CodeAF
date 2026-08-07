@@ -6,6 +6,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/Agent-Field/aforge-v2/internal/guard"
 	"github.com/Agent-Field/aforge-v2/internal/plan"
 	"github.com/Agent-Field/aforge-v2/internal/resident"
 	"github.com/Agent-Field/aforge-v2/internal/store"
@@ -66,6 +67,7 @@ func (p *planProgressPoster) report(update plan.ProgressUpdate) {
 
 	p.mutex.Lock()
 	defer p.mutex.Unlock()
+	p.ensureMaps()
 	// Real generated content is never coalesced away: the card needs each title
 	// in order to materialize its honest three-line table of contents.
 	if !count {
@@ -94,13 +96,17 @@ func (p *planProgressPoster) report(update plan.ProgressUpdate) {
 	p.pending[phase] = update
 	if p.timers[phase] == nil {
 		wait := p.interval - now.Sub(last)
-		p.timers[phase] = time.AfterFunc(wait, func() { p.flushCount(phase) })
+		p.timers[phase] = time.AfterFunc(wait, func() {
+			defer guard.Recover("chat/plan-progress flush")
+			p.flushCount(phase)
+		})
 	}
 }
 
 func (p *planProgressPoster) flushCount(phase string) {
 	p.mutex.Lock()
 	defer p.mutex.Unlock()
+	p.ensureMaps()
 	update, ok := p.pending[phase]
 	if !ok {
 		p.stopTimer(phase)
@@ -112,6 +118,25 @@ func (p *planProgressPoster) flushCount(phase string) {
 	p.post(update)
 }
 
+// ensureMaps makes the zero poster work. Every field here is bookkeeping the
+// constructor fills, and a caller that builds the struct directly — as the
+// tests do — would otherwise write to a nil map and take the process down.
+// Callers hold the mutex.
+func (p *planProgressPoster) ensureMaps() {
+	if p.last == nil {
+		p.last = map[string]time.Time{}
+	}
+	if p.pending == nil {
+		p.pending = map[string]plan.ProgressUpdate{}
+	}
+	if p.timers == nil {
+		p.timers = map[string]*time.Timer{}
+	}
+	if p.posted == nil {
+		p.posted = map[string]string{}
+	}
+}
+
 func (p *planProgressPoster) stopTimer(stage string) {
 	if timer := p.timers[stage]; timer != nil {
 		timer.Stop()
@@ -121,11 +146,9 @@ func (p *planProgressPoster) stopTimer(stage string) {
 
 func (p *planProgressPoster) post(update plan.ProgressUpdate) {
 	line := planProgressLine(update)
+	p.ensureMaps()
 	if update.Latest == "" && p.posted[update.Phase] == line {
 		return
-	}
-	if p.posted == nil {
-		p.posted = map[string]string{}
 	}
 	p.posted[update.Phase] = line
 	_, _ = p.history.PostMessage(store.Message{

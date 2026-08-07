@@ -8,6 +8,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"flag"
 	"fmt"
 	"io"
@@ -16,6 +17,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	tea "github.com/charmbracelet/bubbletea"
 
 	"github.com/Agent-Field/aforge-v2/internal/config"
 	"github.com/Agent-Field/aforge-v2/internal/plan"
@@ -32,9 +35,31 @@ func main() {
 	if os.Getenv("GOGC") == "" {
 		debug.SetGCPercent(400)
 	}
-	if err := run(); err != nil {
+	os.Exit(execute())
+}
+
+// execute is the last line of defense. Everything below it absorbs its own
+// faults; if one still reaches here the process must die, and it dies saying
+// one calm sentence over a restored terminal instead of spilling a goroutine
+// dump across the screen the user was working in.
+func execute() (code int) {
+	defer func() {
+		if recovered := recover(); recovered != nil {
+			code = reportFault(os.Stderr, fmt.Sprint(recovered), debug.Stack())
+		}
+	}()
+	err := run()
+	switch {
+	case err == nil:
+		return 0
+	case errors.Is(err, tea.ErrProgramPanic):
+		// bubbletea catches panics in its own loop and restores the terminal
+		// before handing this back — so the screen is already the user's again
+		// and the only thing missing is the sentence.
+		return reportFault(os.Stderr, err.Error(), nil)
+	default:
 		fmt.Fprintln(os.Stderr, "error:", err)
-		os.Exit(1)
+		return 1
 	}
 }
 
