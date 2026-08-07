@@ -506,3 +506,47 @@ func TestFileWatchEvidenceIsRoundedToTheMinute(t *testing.T) {
 		t.Fatalf("evidence stamp %q carries sub-minute precision", stamp)
 	}
 }
+
+// A poll charter's wake evidence is the constant condition string, so without
+// a memory the sentinel is asked the identical question every hour and gives
+// the identical answer — including after the firing it caused was declined.
+func TestTheSentinelIsShownWhatItLastDecidedAndHowItTurnedOut(t *testing.T) {
+	graph := openStore(t)
+	charter := residentTestCharter(t, "repeat-watch", store.CharterRails{
+		PerFiringBudgetUSD: 0.1, MaxFiringsPerDay: 5,
+	}, false)
+	if err := graph.CreateCharter(charter); err != nil {
+		t.Fatal(err)
+	}
+	promoteCharterForWatchTest(t, graph, charter.ID)
+
+	var prompts []SentinelPrompt
+	sentinel := func(_ context.Context, prompt SentinelPrompt) (SentinelVerdict, error) {
+		prompts = append(prompts, prompt)
+		return SentinelVerdict{Yes: false, Line: "nothing has changed since the last look"}, nil
+	}
+	reconciler := New(graph, nil, nil).WithWatchEngine(0, sentinel)
+	for pass := 1; pass <= 2; pass++ {
+		stored, _, _ := graph.Charter(charter.ID)
+		at := stored.NextDue.Add(time.Second)
+		reconciler.now = func() time.Time { return at }
+		if _, err := reconciler.WatchOnce(context.Background()); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if len(prompts) != 2 {
+		t.Fatalf("the sentinel ran %d times, want two wakes", len(prompts))
+	}
+	if len(prompts[0].Previous) != 0 {
+		t.Fatalf("the first wake was shown a history it does not have: %v", prompts[0].Previous)
+	}
+	if len(prompts[1].Previous) != 1 {
+		t.Fatalf("second wake previous = %v, want the first judgment", prompts[1].Previous)
+	}
+	if !strings.Contains(prompts[1].Previous[0], "nothing has changed since the last look") {
+		t.Fatalf("the sentinel was not shown its own reasoning: %q", prompts[1].Previous[0])
+	}
+	if !strings.HasPrefix(prompts[1].Previous[0], "no") {
+		t.Fatalf("the sentinel was not shown which way it went: %q", prompts[1].Previous[0])
+	}
+}

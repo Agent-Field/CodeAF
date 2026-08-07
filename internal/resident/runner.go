@@ -296,6 +296,30 @@ func (r *Runner) claimNext() (store.Node, bool, error) {
 		if open[node.ID] {
 			continue
 		}
+		// Admission reserves the per-firing budget; nothing until now spent it.
+		// A firing admitted at $0.50 could run six leaves and journal $3, and
+		// the only thing that ever noticed was the next day's admission
+		// arithmetic. The rail belongs where every other one already is — in
+		// front of the claim — because that is the last moment at which not
+		// starting a leaf is free.
+		if node.Group == store.PracticeGroup {
+			overspent, err := r.practiceFiringOverspent(node)
+			if err != nil {
+				return store.Node{}, false, err
+			}
+			if overspent {
+				// Stopping the firing means landing it, not wedging it: a
+				// pending leaf nobody will ever claim would keep its root open
+				// forever. Cancelling one node per pass is deliberate — each is
+				// journaled with its own reason, and the root settles as soon as
+				// the last child is terminal. A refused cancel is a race with
+				// another writer, not a reason to take the whole runner down.
+				if err := r.graph.CancelPending(node.ID, practiceBudgetStop); err != nil {
+					_ = guard.Note("resident/runner practice rail "+node.ID, err)
+				}
+				continue
+			}
+		}
 		if r.dailyBudgetUSD > 0 {
 			var rail store.DailyRail
 			if node.Group == store.PracticeGroup || node.Provenance.SessionID == "" {
@@ -359,10 +383,7 @@ func (r *Runner) runOne(ctx context.Context, node store.Node) {
 		// Spend precedes settlement even on a user-directed boundary. Release is
 		// the CAS transition that invalidates this worker's authority; a cancel
 		// then uses the ordinary pending cancellation event.
-		_ = r.graph.RecordUsage(store.NodeUsage{
-			NodeID: node.ID, PromptTokens: result.PromptTokens,
-			CompletionTokens: result.CompletionTokens, Cost: result.Cost,
-		})
+		r.recordSpend(node, result)
 		if releaseErr := r.graph.Release(claim); releaseErr != nil {
 			return
 		}
@@ -373,6 +394,15 @@ func (r *Runner) runOne(ctx context.Context, node store.Node) {
 	}
 	if err != nil {
 		stopServiceRequests(result.ServiceRequests)
+		// A failed leaf spent exactly as much as a successful one, and often
+		// more: escalation runs the work twice before it gives up. The daily
+		// rail is summed from this table and nowhere else, so an unrecorded
+		// failure is money the rail cannot see and the user is never told
+		// about — which is how a day of failures reads as a day of $0.00.
+		// Recorded before the settlement for the same reason the success path
+		// records before Complete: the spend is true whatever the store then
+		// decides about the node.
+		r.recordSpend(node, result)
 		if node.Group == store.PracticeGroup && errors.Is(ctx.Err(), context.Canceled) {
 			_ = r.graph.Release(claim)
 			return
@@ -406,12 +436,7 @@ func (r *Runner) runOne(ctx context.Context, node store.Node) {
 	}
 	// Spend is recorded before completion settles: a refused completion is
 	// still money spent, and the journal should say so.
-	_ = r.graph.RecordUsage(store.NodeUsage{
-		NodeID:           node.ID,
-		PromptTokens:     result.PromptTokens,
-		CompletionTokens: result.CompletionTokens,
-		Cost:             result.Cost,
-	})
+	r.recordSpend(node, result)
 	var settleErr error
 	if result.Promote && node.Group == ReflexGroup {
 		_, settleErr = r.graph.CompleteAndRequestFollowup(claim, summary, store.Command{
@@ -429,6 +454,86 @@ func (r *Runner) runOne(ctx context.Context, node store.Node) {
 		// where a later tick can pick it up cleanly.
 		_ = r.graph.Release(claim)
 	}
+}
+
+// practiceBudgetStop is the reason journaled onto every leaf a firing does not
+// get to run. It names the bound rather than the accident, because the node's
+// own record is the only place anyone will later look to ask why the practice
+// job is short.
+const practiceBudgetStop = "practice firing reached its per-firing budget"
+
+// practiceFiringOverspent asks whether this firing has already journaled more
+// than the charter reserved for it. It reads the whole firing rather than the
+// leaf, because the budget is the firing's: six cheap leaves overrun a bound
+// no single one of them comes near.
+//
+// An unbounded or uncharterable node is never refused. A missing charter, a
+// zero rail and an unresolvable root all mean the same thing here — no bound is
+// in force — and inventing one from a default would stop work nobody agreed to
+// stop.
+func (r *Runner) practiceFiringOverspent(node store.Node) (bool, error) {
+	charterID := strings.TrimSpace(node.Provenance.CharterID)
+	if charterID == "" {
+		return false, nil
+	}
+	charter, found, err := r.graph.Charter(charterID)
+	if err != nil || !found {
+		return false, err
+	}
+	budget := charter.Rails().PerFiringBudgetUSD
+	if budget <= 0 {
+		return false, nil
+	}
+	root, err := r.firingRoot(node)
+	if err != nil || root == "" {
+		return false, err
+	}
+	impact, err := r.graph.Impact(root, time.Now())
+	if err != nil {
+		return false, err
+	}
+	return impact.Cost >= budget, nil
+}
+
+// firingRoot walks a practice leaf back to the job the firing admitted. The
+// walk stops at the spine because that is what "one firing" means in the store:
+// fireCharter splices one subtree whose root hangs directly off it.
+func (r *Runner) firingRoot(node store.Node) (string, error) {
+	current := node
+	for depth := 0; depth < maxFiringDepth; depth++ {
+		if current.Parent == "" || current.Parent == store.RootID {
+			return current.ID, nil
+		}
+		parent, found, err := r.graph.Node(current.Parent)
+		if err != nil || !found {
+			return "", err
+		}
+		current = parent
+	}
+	return "", nil
+}
+
+// maxFiringDepth bounds the walk above. A cycle cannot occur through parent
+// links the store enforces, so this is a belt against a corrupted view rather
+// than an expected depth.
+const maxFiringDepth = 32
+
+// recordSpend journals what one execution cost, on every way out of runOne.
+// It is one function rather than three call sites because the three endings —
+// settled, refused, failed — differ in what happens to the node and not at all
+// in what was paid, and the one that was missing is the one that pays most.
+// A zero row is skipped: nothing was spent, and an empty row would only make
+// the journal longer.
+func (r *Runner) recordSpend(node store.Node, result ExecResult) {
+	if result.PromptTokens == 0 && result.CompletionTokens == 0 && result.Cost == 0 {
+		return
+	}
+	_ = r.graph.RecordUsage(store.NodeUsage{
+		NodeID:           node.ID,
+		PromptTokens:     result.PromptTokens,
+		CompletionTokens: result.CompletionTokens,
+		Cost:             result.Cost,
+	})
 }
 
 // noteFault journals the one quiet line a fault earns in the thread. It is

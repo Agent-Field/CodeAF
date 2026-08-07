@@ -8,6 +8,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	executor "github.com/Agent-Field/aforge-v2/internal/exec"
 	"github.com/Agent-Field/aforge-v2/internal/store"
@@ -492,4 +493,138 @@ func TestCalmHostClaimsUpToTheWorkerSlots(t *testing.T) {
 	}
 	close(release)
 	runner.Wait()
+}
+
+// The daily rail is summed from the usage table and from nowhere else, so a
+// leaf whose spend never reaches that table is money the user is never told
+// about. The failure branch was the one that never wrote it — and it is the
+// branch that pays most, because escalation has usually run the whole task
+// twice before it gives up.
+func TestAFailedLeafsSpendReachesTheDailyRail(t *testing.T) {
+	s := openRunnerStore(t)
+	if err := s.Splice(store.RootID, store.Subtree{Nodes: []store.NodeSpec{
+		{ID: "doomed", Brief: "an expensive way to fail", Stage: 1},
+	}}, store.Provenance{Origin: store.OriginUser, SessionID: "s1", Intent: "an expensive way to fail"}); err != nil {
+		t.Fatal(err)
+	}
+	runner := NewRunner(s, func(context.Context, store.Node) (ExecResult, error) {
+		return ExecResult{
+			PromptTokens: 900_000, CompletionTokens: 40_000, Cost: 12.50,
+		}, errors.New("both attempts came back empty")
+	}, "rail-runner", 1)
+	if _, err := runner.Tick(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	runner.Wait()
+
+	node, found, err := s.Node("doomed")
+	if err != nil || !found || node.Status != store.Failed {
+		t.Fatalf("node = %+v found=%t err=%v", node, found, err)
+	}
+	rail, err := s.DailyRailToday(20)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rail.Spend < 12.49 || rail.Spend > 12.51 {
+		t.Fatalf("daily rail spend = $%.2f, want the $12.50 the failure actually cost", rail.Spend)
+	}
+	impact, err := s.Impact("doomed", time.Now())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if impact.Cost < 12.49 {
+		t.Fatalf("the node's own impact = $%.2f; surgery consent would quote a free job", impact.Cost)
+	}
+}
+
+// A firing's per-firing budget is reserved at admission, which is what stops
+// tomorrow's firings. Nothing stopped this one: six leaves under a $0.50
+// reservation could journal $3 and run to the end, and the ceiling only ever
+// bit the day after it was breached.
+func TestAPracticeFiringThatOutrunsItsReservationStops(t *testing.T) {
+	s := openRunnerStore(t)
+	expires := time.Now().Add(time.Hour)
+	charter, err := store.NewCharter("practice-rail", "Practice measured gaps",
+		store.WatchSpec{Kind: store.WatchPoll, Poll: &store.PollWatch{Condition: "idle", Cadence: time.Minute}},
+		"idle and executable", store.CharterAction{Template: "practice"},
+		store.CharterRails{PerFiringBudgetUSD: 0.50, MaxFiringsPerDay: 2, ExpiresAt: &expires},
+		store.CharterActive, store.Ratification{Origin: store.OriginSelf, Evidence: "test policy"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := s.CreateCharter(charter.WithProposalShape(store.PracticeCharterShape)); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.Splice(store.RootID, store.Subtree{Nodes: []store.NodeSpec{
+		{ID: "firing", Brief: "practice the gap", Stage: 1, Group: store.PracticeGroup},
+		{ID: "firing-n1", Parent: "firing", Brief: "the next leaf", Stage: 1, Group: store.PracticeGroup},
+	}}, store.Provenance{Origin: store.OriginSelf, Intent: "practice", CharterID: charter.ID}); err != nil {
+		t.Fatal(err)
+	}
+	// What the firing has already journaled, well past its half-dollar bound.
+	if err := s.RecordUsage(store.NodeUsage{NodeID: "firing", Cost: 2.90}); err != nil {
+		t.Fatal(err)
+	}
+
+	claimed := 0
+	runner := NewRunner(s, func(context.Context, store.Node) (ExecResult, error) {
+		claimed++
+		return ExecResult{Summary: "more spend", Cost: 0.60}, nil
+	}, "practice-runner", 1)
+	if _, err := runner.Tick(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	runner.Wait()
+	if claimed != 0 {
+		t.Fatalf("the runner claimed %d leaves of a firing already over its budget", claimed)
+	}
+	leaf, found, err := s.Node("firing-n1")
+	if err != nil || !found {
+		t.Fatalf("leaf found=%t err=%v", found, err)
+	}
+	if leaf.Status != store.Cancelled {
+		t.Fatalf("leaf status = %s, want cancelled — a pending leaf nobody may claim keeps its root open forever", leaf.Status)
+	}
+	if !strings.Contains(leaf.Error, "per-firing budget") {
+		t.Fatalf("leaf reason = %q, want the bound named on the node's own record", leaf.Error)
+	}
+}
+
+// The same firing under its bound is untouched: the rail must stop overspending
+// and nothing else.
+func TestAPracticeFiringInsideItsReservationRunsNormally(t *testing.T) {
+	s := openRunnerStore(t)
+	expires := time.Now().Add(time.Hour)
+	charter, err := store.NewCharter("practice-ok", "Practice measured gaps",
+		store.WatchSpec{Kind: store.WatchPoll, Poll: &store.PollWatch{Condition: "idle", Cadence: time.Minute}},
+		"idle and executable", store.CharterAction{Template: "practice"},
+		store.CharterRails{PerFiringBudgetUSD: 5, MaxFiringsPerDay: 2, ExpiresAt: &expires},
+		store.CharterActive, store.Ratification{Origin: store.OriginSelf, Evidence: "test policy"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := s.CreateCharter(charter.WithProposalShape(store.PracticeCharterShape)); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.Splice(store.RootID, store.Subtree{Nodes: []store.NodeSpec{
+		{ID: "firing2", Brief: "practice the gap", Stage: 1, Group: store.PracticeGroup},
+		{ID: "firing2-n1", Parent: "firing2", Brief: "the next leaf", Stage: 1, Group: store.PracticeGroup},
+	}}, store.Provenance{Origin: store.OriginSelf, Intent: "practice", CharterID: charter.ID}); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.RecordUsage(store.NodeUsage{NodeID: "firing2", Cost: 0.10}); err != nil {
+		t.Fatal(err)
+	}
+	claimed := 0
+	runner := NewRunner(s, func(context.Context, store.Node) (ExecResult, error) {
+		claimed++
+		return ExecResult{Summary: "landed", Cost: 0.05}, nil
+	}, "practice-runner", 1)
+	if _, err := runner.Tick(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	runner.Wait()
+	if claimed != 1 {
+		t.Fatalf("claimed %d leaves, want the one that was well inside its budget", claimed)
+	}
 }

@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Agent-Field/aforge-v2/internal/plan"
 	"github.com/Agent-Field/aforge-v2/internal/provider"
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 )
@@ -302,5 +303,132 @@ func TestTheFinalMessageContractSplitsAnswerFromWorkingNotFromPointer(t *testing
 		if !strings.Contains(systemPrompt, required) {
 			t.Fatalf("the leaf contract no longer resolves the pointer pressure: %q missing", required)
 		}
+	}
+}
+
+// The landing the budget orders is the case that matters, and it is the one the
+// loop used to record as an ordinary finish.
+//
+// Exhaustion grants a reserve and tells the leaf to land; the leaf complies —
+// that is what the instruction is for — and the next turn calls no tools, which
+// is StopDone by every honest reading. Reading only Stop, the whole continuation
+// subsystem was therefore dead on its designed path: a truncated partial posted
+// as a finished deliverable, no re-decomposition ever ran, and the router's
+// ledger recorded a success. Exhausted is what the two readings needed to be
+// told apart.
+func TestABudgetLandingThatCompliesStillReportsWhatRanOut(t *testing.T) {
+	space := workspace(t)
+	// One tool call, then nothing. Turn 0 spends the whole (one-token) budget
+	// and is granted the reserve; turn 1 is the compliant final message.
+	client := &scriptedCompleter{turns: [][]ai.ToolCall{{
+		call("c0", "write", `{"path":"partial.md","text":"half of it"}`),
+	}}}
+	linear := NewLinear(client, space, nil, 50, 1, time.Minute)
+	outcome, err := linear.Run(context.Background(), Task{NodeID: 3, Brief: "work"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if outcome.Stop != StopDone {
+		t.Fatalf("stop = %s, want done — the leaf did comply with the landing order", outcome.Stop)
+	}
+	if outcome.Exhausted != StopBudget {
+		t.Fatalf("exhausted = %q, want budget — nothing else records that the leaf was still working", outcome.Exhausted)
+	}
+	if !outcome.Overran() {
+		t.Fatal("Overran() is false, so re-decomposition never runs for a leaf that ran out of budget")
+	}
+	if outcome.Verdict != provider.VerdictBudgetStop {
+		t.Fatalf("verdict = %s, want a budget stop so the leaf can escalate", outcome.Verdict)
+	}
+	if !outcome.Verdict.Escalates() {
+		t.Fatal("a budget-blown leaf graded as a success; nothing will retry it on a stronger model")
+	}
+}
+
+// A leaf that finishes inside its budget must be unchanged by all of the above:
+// nothing ran out, so nothing is recorded, and the ending grades as it always
+// did. This is the guard on the other side of the same fix — assigning the stop
+// reason directly would have made every successful landing an escalating
+// failure.
+func TestAnOrdinaryFinishRecordsNothingExhausted(t *testing.T) {
+	client := &scriptedCompleter{}
+	linear := NewLinear(client, workspace(t), nil, 50, 150_000, time.Minute)
+	outcome, err := linear.Run(context.Background(), Task{NodeID: 4, Brief: "work"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if outcome.Stop != StopDone || outcome.Exhausted != "" || outcome.Overran() {
+		t.Fatalf("outcome = stop %s, exhausted %q, overran %t", outcome.Stop, outcome.Exhausted, outcome.Overran())
+	}
+	if outcome.Verdict != provider.VerdictUnverifiedSuccess {
+		t.Fatalf("verdict = %s, want the unchanged unverified success", outcome.Verdict)
+	}
+}
+
+// An escalation that repeats the task verbatim buys a stronger model and pays
+// it to rediscover what the first attempt already found — including the files
+// sitting in the workspace it is about to write again.
+func TestAnEscalatedAttemptIsShownWhatTheFirstOneProduced(t *testing.T) {
+	graph := &plan.Graph{Goal: "ship it", Nodes: []plan.Node{{
+		ID: 1, Stage: 1, Kind: plan.KindWork, Title: "Investigate", Brief: "look into it",
+		State: plan.StatePending, Verdict: provider.VerdictBudgetStop,
+		Result: "the v2 endpoints are all 410 Gone", Artifacts: []string{"01-investigate.md"},
+	}}}
+	scheduler := &Scheduler{}
+	task := scheduler.taskFor(graph, &graph.Nodes[0])
+	if len(task.Inputs) != 1 {
+		t.Fatalf("inputs = %+v, want the previous attempt carried into the retry", task.Inputs)
+	}
+	previous := task.Inputs[0]
+	if !strings.Contains(previous.Result, "410 Gone") {
+		t.Fatalf("the retry was not shown what the first attempt found: %q", previous.Result)
+	}
+	if len(previous.Artifacts) != 1 || previous.Artifacts[0] != "01-investigate.md" {
+		t.Fatalf("the retry was not shown the file already written: %+v", previous.Artifacts)
+	}
+	if strings.TrimSpace(previous.Title) == "" {
+		t.Fatal("the previous attempt arrived untitled, under a header saying it is work already done")
+	}
+}
+
+// Inputs arrive under a header calling them work the leaf already has and must
+// not gather again. Untitled they rendered as `=== from "" ===`, so a standing
+// notebook lesson reading "check X before Y" arrived as an anonymous claim that
+// X had been checked — and the artifact pointer, which is what makes the
+// 300-word cap survivable, never fired at all on the resident path because the
+// artifact list was never populated.
+func TestTheBriefNamesEachInputAndRoutesToItsFiles(t *testing.T) {
+	client := &scriptedCompleter{}
+	linear := NewLinear(client, workspace(t), nil, 4, 150_000, time.Minute)
+	if _, err := linear.Run(context.Background(), Task{
+		NodeID: 5, Goal: "merge the findings", Brief: "merge them",
+		Contract: "read every result in full before writing",
+		Inputs: []Input{
+			{Title: "your notebook", Result: "check the changelog before the source"},
+			{Title: "task-1-n2", Result: "four defects, worst first",
+				Artifacts: []string{"/workspace/job/findings.md"}},
+		},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if len(client.seen) == 0 {
+		t.Fatal("no call was made")
+	}
+	first := client.seen[0]
+	system, user := first[0].Content[0].Text, first[1].Content[0].Text
+	if strings.Contains(user, `=== from "" ===`) {
+		t.Fatalf("an input arrived unattributed:\n%s", user)
+	}
+	for _, want := range []string{`=== from "your notebook" ===`, `=== from "task-1-n2" ===`,
+		"/workspace/job/findings.md"} {
+		if !strings.Contains(user, want) {
+			t.Fatalf("brief is missing %q:\n%s", want, user)
+		}
+	}
+	// The working method belongs beside the harness's own invariants, in the
+	// frozen prefix every turn is billed against — not in the user message
+	// below everything that changes between leaves.
+	if !strings.Contains(system, "read every result in full before writing") {
+		t.Fatalf("the working method never reached the system message:\n%s", system)
 	}
 }

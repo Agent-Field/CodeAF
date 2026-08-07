@@ -106,9 +106,16 @@ type Operation struct {
 // will legally accept.
 func Revise(ctx context.Context, client Completer, graph *Graph, event string) ([]Operation, Usage, error) {
 	var usage Usage
+	// The sentinel is asked to find where a result contradicts a specific
+	// assumption in a specific unstarted node, and it was the only plan pass in
+	// the system that never saw the assumptions. Every other pass gets
+	// graph.context() — what is settled for this goal, what the work itself has
+	// to decide, what evidence the goal warrants — and it is exactly the list a
+	// contradiction has to be found against. It leads with the goal already, so
+	// nothing is lost by replacing the bare goal line with it.
 	messages := []ai.Message{
 		systemMessage(revisePrompt),
-		userMessage("Goal:\n" + graph.Goal + "\n\nThe plan as it stands:\n" + graph.stateBlock()),
+		userMessage(graph.context() + "\nThe plan as it stands:\n" + graph.stateBlock()),
 		userMessage("What has happened:\n" + event),
 	}
 	ctx = provider.WithCall(ctx, provider.ClassPlanRevise)

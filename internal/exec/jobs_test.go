@@ -88,8 +88,14 @@ func TestBackgroundStartReturnsImmediatelyAndCreatesDurableLog(t *testing.T) {
 	}
 	logPath := filepath.Join(space.Root(), ".aforge", "jobs", "1.log")
 	waitForFileText(t, logPath, "ready")
-	if artifacts := space.Artifacts(1); len(artifacts) != 1 || artifacts[0] != ".aforge/jobs/1.log" {
-		t.Fatalf("artifacts = %v, want durable job log", artifacts)
+	// The log is durable and locatable; it is not a deliverable. Named to the
+	// user among "the files that job wrote", a process log stands beside the
+	// actual report as though it were a peer.
+	if _, ok := space.Locate(".aforge/jobs/1.log"); !ok {
+		t.Fatal("the durable job log was not written")
+	}
+	if artifacts := space.Artifacts(1); len(artifacts) != 0 {
+		t.Fatalf("artifacts = %v, want the job log held out of the job's own output", artifacts)
 	}
 }
 
@@ -385,8 +391,11 @@ func TestLeafEndTerminatesSurvivorsAndNotesCount(t *testing.T) {
 	if err := syscall.Kill(pid, 0); err == nil {
 		t.Fatalf("process %d survived leaf end", pid)
 	}
-	if artifacts := outcome.Artifacts; len(artifacts) != 1 || artifacts[0] != ".aforge/jobs/1.log" {
-		t.Fatalf("leaf artifacts = %v, want retained job log", artifacts)
+	if _, ok := space.Locate(".aforge/jobs/1.log"); !ok {
+		t.Fatal("the job log was not retained past leaf end")
+	}
+	if artifacts := outcome.Artifacts; len(artifacts) != 0 {
+		t.Fatalf("leaf artifacts = %v, want the job log held out of the job's own output", artifacts)
 	}
 }
 

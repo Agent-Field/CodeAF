@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/Agent-Field/aforge-v2/internal/provider"
 )
@@ -826,6 +827,7 @@ func (g *Graph) planBlock() string {
 // touch.
 func (g *Graph) stateBlock() string {
 	var block strings.Builder
+	budget := stateResultsBytes
 	children := map[int][]int{}
 	for _, node := range g.Nodes {
 		if node.Parent != 0 {
@@ -854,8 +856,77 @@ func (g *Graph) stateBlock() string {
 		fmt.Fprintf(&block, "  %d.%s %s — %s (%s, inputs: %s, %s)%s\n",
 			node.ID, strings.Repeat("  ", node.Depth), node.Title, node.Summary,
 			role, inputs, node.State, lock)
+		// What a settled node actually produced, which is the only thing a
+		// contradiction can be found in. Without it the sentinel was asked to
+		// judge whether a result contradicts an assumption while seeing neither:
+		// the plan as designed, and one node's title with a state beside it.
+		// Bounded per node and per block, because this is a structuring call
+		// whose whole value is that it is short — a plan with thirty landed
+		// leaves must not turn one revision into a full transcript replay.
+		if written := writeStateResult(&block, node, budget); written > 0 {
+			budget -= written
+		}
 	}
 	return block.String()
+}
+
+// stateResultBytes is what one settled node may contribute of its own result,
+// and stateResultsBytes is what all of them may contribute together. The first
+// keeps a single verbose leaf from crowding out its siblings; the second keeps
+// a large graph from crowding out the plan.
+const (
+	stateResultBytes  = 600
+	stateResultsBytes = 4 << 10
+)
+
+// writeStateResult renders one settled node's outcome and reports what it
+// spent. A failure is rendered in preference to a result because a failure is
+// the sharper signal: it says the plan's next steps may have nothing to consume.
+func writeStateResult(block *strings.Builder, node Node, budget int) int {
+	if budget <= 0 {
+		return 0
+	}
+	body := strings.TrimSpace(node.Failure)
+	label := "failed"
+	if body == "" {
+		body = strings.TrimSpace(node.Result)
+		label = "produced"
+	}
+	if body == "" && len(node.Artifacts) == 0 {
+		return 0
+	}
+	room := budget
+	if room > stateResultBytes {
+		room = stateResultBytes
+	}
+	line := fmt.Sprintf("      %s: %s", label, firstParagraph(clipRunes(body, room)))
+	if len(node.Artifacts) > 0 {
+		line += "\n      files: " + strings.Join(node.Artifacts, ", ")
+	}
+	line += "\n"
+	block.WriteString(line)
+	return len(line)
+}
+
+// clipRunes cuts to a byte ceiling without splitting a character. Every
+// truncation in this tree backs off to a rune boundary; a mangled character
+// here would ride the sentinel's whole prompt.
+func clipRunes(body string, limit int) string {
+	if len(body) <= limit {
+		return body
+	}
+	cut := limit
+	for cut > 0 && !utf8.RuneStart(body[cut]) {
+		cut--
+	}
+	return strings.TrimSpace(body[:cut]) + "…"
+}
+
+// firstParagraph keeps the render one node per block by folding newlines. The
+// state block's shape is one indented line per node, and a result that brings
+// its own line breaks would read as several unnumbered nodes.
+func firstParagraph(body string) string {
+	return strings.Join(strings.Fields(body), " ")
 }
 
 // MarshalJSON is provided through a plain method so a graph round-trips to disk
