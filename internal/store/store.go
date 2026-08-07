@@ -68,6 +68,7 @@ type EventKind string
 
 const (
 	EventSpineCreated   EventKind = "spine_created"
+	EventSpineRepaired  EventKind = "spine_repaired"
 	EventSubtreeSpliced EventKind = "subtree_spliced"
 	EventNodeClaimed    EventKind = "node_claimed"
 	EventNodeStarted    EventKind = "node_started"
@@ -527,11 +528,46 @@ func (s *Store) ensureSpine() error {
 		if roots != 1 || spine != 1 {
 			return fmt.Errorf("validate spine: materialized view has %d roots (%d permanent); run Rebuild", roots, spine)
 		}
+		// Self-healing: the root is Running by construction, forever. A store
+		// where it is anything else was corrupted (a release made it pending,
+		// a runner then "completed" it — every splice fails on a closed root).
+		// Repair through the journal so Rebuild reproduces the healed state.
+		var status Status
+		if err := tx.QueryRow(`SELECT status FROM nodes WHERE id = ?`, RootID).Scan(&status); err != nil {
+			return fmt.Errorf("validate spine: %w", err)
+		}
+		if status != Running {
+			seq, at, err := appendEvent(tx, RootID, EventSpineRepaired,
+				spineRepairPayload{Was: status})
+			if err != nil {
+				return fmt.Errorf("repair spine: %w", err)
+			}
+			if err := applySpineRepair(tx, seq, at); err != nil {
+				return fmt.Errorf("repair spine: %w", err)
+			}
+		}
 	}
 	if err := tx.Commit(); err != nil {
 		return fmt.Errorf("initialize spine: %w", err)
 	}
 	return nil
+}
+
+type spineRepairPayload struct {
+	Was Status `json:"was"`
+}
+
+// applySpineRepair restores the root's structural state: Running, unowned,
+// unheld, never folded, never cancel-requested. Shared by open-time repair
+// and Rebuild replay so both produce the identical healed view.
+func applySpineRepair(tx *sql.Tx, seq int64, at time.Time) error {
+	_, err := tx.Exec(`
+		UPDATE nodes
+		SET status = ?, owner = '', held = 0, cancel_requested = 0, folded = 0,
+		    error = '', updated_seq = ?, started_at = ?, finished_at = NULL
+		WHERE id = ?`,
+		Running, seq, formatTime(at), RootID)
+	return err
 }
 
 func appendEvent(tx *sql.Tx, nodeID string, kind EventKind, payload any) (int64, time.Time, error) {

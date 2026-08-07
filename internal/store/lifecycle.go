@@ -42,6 +42,12 @@ func (s *Store) Claim(id, owner string) (Claim, bool, error) {
 	if id == "" || owner == "" {
 		return Claim{}, false, fmt.Errorf("claim: %w: id and owner are required", ErrInvalid)
 	}
+	if id == RootID {
+		// Last line of defense: whatever status the spine is in, it is never
+		// claimable work. A pending root (a repair in progress, a historical
+		// corruption) must wait for self-healing, not be run as a task.
+		return Claim{}, false, nil
+	}
 
 	var observed uint64
 	if err := s.db.QueryRow(`SELECT claim_token FROM nodes WHERE id = ?`, id).Scan(&observed); err != nil {
@@ -310,6 +316,13 @@ func (s *Store) Fail(claim Claim, message string) error {
 // again. The extra increment is what makes the released Claim stale before a
 // replacement worker even arrives.
 func (s *Store) Release(claim Claim) error {
+	if claim.ID == RootID {
+		// The spine root's Running status is structural — it is the permanent
+		// trunk every job splices under, not a claim any worker holds.
+		// Releasing it once made it pending, a runner claimed it, "completed"
+		// it, and every later splice failed on a closed root.
+		return fmt.Errorf("release %q: %w: the permanent spine is not a claim", claim.ID, ErrInvalid)
+	}
 	if claim.Token >= math.MaxInt64 {
 		return fmt.Errorf("release %q: token exhausted", claim.ID)
 	}
@@ -354,9 +367,13 @@ func (s *Store) Release(claim Claim) error {
 // owner and token, so the journal tells the truth and a genuinely live
 // worker (a race at the margin) keeps its claim by failing our stale CAS.
 func (s *Store) ReleaseOrphans() ([]string, error) {
+	// The spine root is permanently Running by construction and organizational
+	// furniture is never worked — neither is an orphan, and releasing the root
+	// here once let a runner claim and close the trunk itself.
 	rows, err := s.db.Query(
-		`SELECT id, owner, claim_token, cancel_requested FROM nodes WHERE status IN (?, ?)`,
-		Claimed, Running)
+		`SELECT id, owner, claim_token, cancel_requested FROM nodes
+		 WHERE status IN (?, ?) AND id != ? AND grp NOT IN (?)`,
+		Claimed, Running, RootID, TerritoryGroup)
 	if err != nil {
 		return nil, fmt.Errorf("release orphans: %w", err)
 	}
