@@ -58,7 +58,7 @@ func (s *Store) TerritoryJobs() ([]TerritoryJob, error) {
 	jobs := make([]TerritoryJob, 0)
 	jobIndex := make(map[string]int)
 	for _, node := range nodes {
-		if !node.FoldRoot || node.Group == TerritoryGroup {
+		if !node.FoldRoot || node.Group == TerritoryGroup || node.Group == PracticeGroup {
 			continue
 		}
 		if node.Parent != RootID && !territories[node.Parent] {

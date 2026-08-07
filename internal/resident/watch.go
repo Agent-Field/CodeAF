@@ -88,6 +88,9 @@ func (r *Reconciler) watchOnceLocked(ctx context.Context) (WatchPass, error) {
 		if err := ctx.Err(); err != nil {
 			return pass, err
 		}
+		if store.IsPracticeCharter(charter) {
+			continue
+		}
 		pass.Examined++
 		retired, err := r.store.RetireExpiredCharter(charter.ID, now)
 		if err != nil {

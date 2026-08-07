@@ -328,6 +328,7 @@ CREATE INDEX IF NOT EXISTS nodes_parent ON nodes (parent_id);
 CREATE INDEX IF NOT EXISTS nodes_ready ON nodes (status, folded, created_seq, created_order);
 CREATE INDEX IF NOT EXISTS edges_to_kind ON edges (to_id, kind);
 CREATE INDEX IF NOT EXISTS events_node_seq ON events (node_id, seq);
+CREATE INDEX IF NOT EXISTS events_kind_ts ON events (kind, ts);
 
 CREATE TRIGGER IF NOT EXISTS events_no_update
 BEFORE UPDATE ON events
@@ -403,8 +404,14 @@ func Open(path string) (*Store, error) {
 	if _, err := db.Exec(surpriseSchema); err != nil {
 		return closeOnError(fmt.Errorf("initialize surprise schema: %w", err))
 	}
+	if err := migrateLegacyCharterSchema(db); err != nil {
+		return closeOnError(fmt.Errorf("migrate legacy charter schema: %w", err))
+	}
 	if _, err := db.Exec(charterSchema); err != nil {
 		return closeOnError(fmt.Errorf("initialize charter schema: %w", err))
+	}
+	if _, err := db.Exec(legacyCharterSchema); err != nil {
+		return closeOnError(fmt.Errorf("initialize legacy charter schema: %w", err))
 	}
 	if _, err := db.Exec(factsSchema); err != nil {
 		return closeOnError(fmt.Errorf("initialize facts schema: %w", err))
@@ -414,9 +421,6 @@ func Open(path string) (*Store, error) {
 	}
 	if _, err := db.Exec(retrospectiveSchema); err != nil {
 		return closeOnError(fmt.Errorf("initialize retrospective schema: %w", err))
-	}
-	if _, err := db.Exec(charterSchema); err != nil {
-		return closeOnError(fmt.Errorf("initialize charter schema: %w", err))
 	}
 	if err := migrateFactsSchema(db); err != nil {
 		return closeOnError(fmt.Errorf("migrate facts schema: %w", err))

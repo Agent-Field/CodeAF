@@ -12,41 +12,12 @@ import (
 	"unicode"
 )
 
-// CharterStatus is the durable lifecycle of standing intent. Draft is inert:
-// only ratification crosses the consequence gate into Active.
-type CharterStatus string
-
-const (
-	CharterDraft   CharterStatus = "draft"
-	CharterActive  CharterStatus = "active"
-	CharterPaused  CharterStatus = "paused"
-	CharterRetired CharterStatus = "retired"
-)
-
-// WatchKind names the small set of wake-up mechanisms settled by STANDING.md.
-type WatchKind string
-
-const (
-	WatchCron  WatchKind = "cron"
-	WatchFile  WatchKind = "file"
-	WatchGraph WatchKind = "graph"
-	WatchPoll  WatchKind = "poll"
-)
-
 // CharterWatch preserves the user's cadence words beside their executable
 // schedule. Surfaces speak Cadence; the standing engine consumes Schedule.
 type CharterWatch struct {
 	Kind     WatchKind `json:"kind"`
 	Cadence  string    `json:"cadence"`
 	Schedule string    `json:"schedule"`
-}
-
-// CharterRails bound every firing before a charter can be ratified.
-type CharterRails struct {
-	EstimatedCostUSD       float64 `json:"estimated_cost_usd"`
-	MaxPerDay              int     `json:"max_per_day"`
-	MaxPerDayJustification string  `json:"max_per_day_justification"`
-	Expiry                 string  `json:"expiry"`
 }
 
 // CharterSpec is the compiled, still-inert form of standing intent.
@@ -58,20 +29,8 @@ type CharterSpec struct {
 	Rails     CharterRails `json:"rails"`
 }
 
-// Charter is the materialized standing-intent view rebuilt from its events.
-type Charter struct {
-	ID               string
-	SessionID        string
-	Status           CharterStatus
-	Spec             CharterSpec
-	SourceCommandSeq int64
-	CreatedSeq       int64
-	UpdatedSeq       int64
-	CreatedAt        time.Time
-}
-
-const charterSchema = `
-CREATE TABLE IF NOT EXISTS charters (
+const legacyCharterSchema = `
+CREATE TABLE IF NOT EXISTS legacy_charters (
     id                         TEXT PRIMARY KEY,
     session_id                 TEXT NOT NULL DEFAULT '',
     status                     TEXT NOT NULL CHECK (status IN ('draft', 'active', 'paused', 'retired')),
@@ -90,11 +49,57 @@ CREATE TABLE IF NOT EXISTS charters (
     updated_seq                INTEGER NOT NULL REFERENCES events(seq),
     created_at                 TEXT NOT NULL
 );
-CREATE INDEX IF NOT EXISTS charters_status_created ON charters (status, created_seq);
-CREATE VIRTUAL TABLE IF NOT EXISTS charters_fts USING fts5(
+CREATE INDEX IF NOT EXISTS legacy_charters_status_created ON legacy_charters (status, created_seq);
+CREATE VIRTUAL TABLE IF NOT EXISTS legacy_charters_fts USING fts5(
     charter_id UNINDEXED, invariant, tokenize='porter unicode61'
 );
 `
+
+// migrateLegacyCharterSchema moves the pre-M3 standing-draft projection out
+// of the charters table before the standing engine creates its own projection
+// under that name. The event journal remains the source of truth; this only
+// preserves the existing materialized view across an in-place upgrade.
+func migrateLegacyCharterSchema(db *sql.DB) error {
+	var definition string
+	err := db.QueryRow(`SELECT sql FROM sqlite_master WHERE type='table' AND name='charters'`).Scan(&definition)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	if !strings.Contains(strings.ToLower(definition), "watch_kind") {
+		return nil
+	}
+	var legacyExists int
+	if err := db.QueryRow(`SELECT COUNT(*) FROM sqlite_master
+		WHERE type='table' AND name='legacy_charters'`).Scan(&legacyExists); err != nil {
+		return err
+	}
+	if legacyExists != 0 {
+		return fmt.Errorf("both legacy charter projections exist")
+	}
+	tx, err := db.BeginTx(context.Background(), nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	if _, err := tx.Exec(`DROP TABLE IF EXISTS charters_fts`); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(`ALTER TABLE charters RENAME TO legacy_charters`); err != nil {
+		return err
+	}
+	if err := tx.Commit(); err != nil {
+		return err
+	}
+	if _, err := db.Exec(legacyCharterSchema); err != nil {
+		return err
+	}
+	_, err = db.Exec(`INSERT INTO legacy_charters_fts (charter_id, invariant)
+		SELECT id, invariant FROM legacy_charters`)
+	return err
+}
 
 type charterDraftedPayload struct {
 	ID               string      `json:"id"`
@@ -172,7 +177,7 @@ func (s *Store) RetireCharter(id string) error {
 	}
 	defer tx.Rollback()
 	var status CharterStatus
-	if err := tx.QueryRow(`SELECT status FROM charters WHERE id = ?`, id).Scan(&status); err != nil {
+	if err := tx.QueryRow(`SELECT status FROM legacy_charters WHERE id = ?`, id).Scan(&status); err != nil {
 		return fmt.Errorf("retire charter: %w", charterLookupError(err, id))
 	}
 	if status == CharterRetired {
@@ -230,7 +235,7 @@ func (s *Store) EditCharterCadence(id, cadence, schedule string) error {
 	}
 	defer tx.Rollback()
 	var status CharterStatus
-	if err := tx.QueryRow(`SELECT status FROM charters WHERE id = ?`, id).Scan(&status); err != nil {
+	if err := tx.QueryRow(`SELECT status FROM legacy_charters WHERE id = ?`, id).Scan(&status); err != nil {
 		return fmt.Errorf("edit charter cadence: %w", charterLookupError(err, id))
 	}
 	if status == CharterRetired {
@@ -252,8 +257,8 @@ func (s *Store) EditCharterCadence(id, cadence, schedule string) error {
 
 // CharterByID returns one charter from the materialized view.
 func (s *Store) CharterByID(id string) (Charter, bool, error) {
-	row := s.db.QueryRow(charterSelect+` WHERE id = ?`, strings.TrimSpace(id))
-	charter, err := scanCharter(row)
+	row := s.db.QueryRow(legacyCharterSelect+` WHERE id = ?`, strings.TrimSpace(id))
+	charter, err := scanLegacyCharter(row)
 	if errors.Is(err, sql.ErrNoRows) {
 		return Charter{}, false, nil
 	}
@@ -264,8 +269,8 @@ func (s *Store) CharterByID(id string) (Charter, bool, error) {
 }
 
 // Charters returns charters newest first. With no statuses it returns all.
-func (s *Store) Charters(statuses ...CharterStatus) ([]Charter, error) {
-	query := charterSelect
+func (s *Store) legacyCharters(statuses ...CharterStatus) ([]Charter, error) {
+	query := legacyCharterSelect
 	args := make([]any, 0, len(statuses))
 	if len(statuses) > 0 {
 		marks := make([]string, 0, len(statuses))
@@ -283,7 +288,7 @@ func (s *Store) Charters(statuses ...CharterStatus) ([]Charter, error) {
 	defer rows.Close()
 	var charters []Charter
 	for rows.Next() {
-		charter, err := scanCharter(rows)
+		charter, err := scanLegacyCharter(rows)
 		if err != nil {
 			return nil, fmt.Errorf("list charters: %w", err)
 		}
@@ -297,7 +302,7 @@ func (s *Store) Charters(statuses ...CharterStatus) ([]Charter, error) {
 
 // ActiveCharters is the plain standing list used by conversation and /standing.
 func (s *Store) ActiveCharters() ([]Charter, error) {
-	return s.Charters(CharterActive)
+	return s.legacyCharters(CharterActive)
 }
 
 // SearchActiveCharters uses SQLite's BM25 rank over invariant text. An
@@ -312,10 +317,10 @@ func (s *Store) SearchActiveCharters(reference string) ([]Charter, error) {
 	for _, term := range terms {
 		quoted = append(quoted, `"`+strings.ReplaceAll(term, `"`, `""`)+`"`)
 	}
-	rows, err := s.db.Query(charterSelect+`
-        JOIN charters_fts ON charters_fts.charter_id = charters.id
-        WHERE charters.status = ? AND charters_fts MATCH ?
-        ORDER BY bm25(charters_fts), charters.created_seq DESC`,
+	rows, err := s.db.Query(legacyCharterSelect+`
+		JOIN legacy_charters_fts ON legacy_charters_fts.charter_id = legacy_charters.id
+		WHERE legacy_charters.status = ? AND legacy_charters_fts MATCH ?
+		ORDER BY bm25(legacy_charters_fts), legacy_charters.created_seq DESC`,
 		CharterActive, strings.Join(quoted, " OR "))
 	if err != nil {
 		return nil, fmt.Errorf("search active charters: %w", err)
@@ -323,7 +328,7 @@ func (s *Store) SearchActiveCharters(reference string) ([]Charter, error) {
 	defer rows.Close()
 	var charters []Charter
 	for rows.Next() {
-		charter, err := scanCharter(rows)
+		charter, err := scanLegacyCharter(rows)
 		if err != nil {
 			return nil, fmt.Errorf("search active charters: %w", err)
 		}
@@ -335,18 +340,18 @@ func (s *Store) SearchActiveCharters(reference string) ([]Charter, error) {
 	return charters, nil
 }
 
-const charterSelect = `SELECT charters.id, charters.session_id, charters.status,
-    charters.invariant, charters.watch_kind, charters.cadence, charters.schedule,
-    charters.sentinel, charters.action, charters.estimated_cost_usd,
-    charters.max_per_day, charters.max_per_day_justification, charters.expiry,
-    charters.source_command_seq, charters.created_seq, charters.updated_seq,
-    charters.created_at FROM charters`
+const legacyCharterSelect = `SELECT legacy_charters.id, legacy_charters.session_id, legacy_charters.status,
+    legacy_charters.invariant, legacy_charters.watch_kind, legacy_charters.cadence, legacy_charters.schedule,
+    legacy_charters.sentinel, legacy_charters.action, legacy_charters.estimated_cost_usd,
+    legacy_charters.max_per_day, legacy_charters.max_per_day_justification, legacy_charters.expiry,
+    legacy_charters.source_command_seq, legacy_charters.created_seq, legacy_charters.updated_seq,
+    legacy_charters.created_at FROM legacy_charters`
 
 type charterScanner interface {
 	Scan(dest ...any) error
 }
 
-func scanCharter(scanner charterScanner) (Charter, error) {
+func scanLegacyCharter(scanner charterScanner) (Charter, error) {
 	var charter Charter
 	var created string
 	err := scanner.Scan(&charter.ID, &charter.SessionID, &charter.Status,
@@ -385,7 +390,7 @@ func validateCharterSpec(spec CharterSpec) error {
 }
 
 func applyCharterDraft(tx *sql.Tx, payload charterDraftedPayload, seq int64, at time.Time) error {
-	_, err := tx.Exec(`INSERT INTO charters (
+	_, err := tx.Exec(`INSERT INTO legacy_charters (
         id, session_id, status, invariant, watch_kind, cadence, schedule,
         sentinel, action, estimated_cost_usd, max_per_day,
         max_per_day_justification, expiry, source_command_seq, created_seq,
@@ -399,13 +404,13 @@ func applyCharterDraft(tx *sql.Tx, payload charterDraftedPayload, seq int64, at 
 	if err != nil {
 		return err
 	}
-	_, err = tx.Exec(`INSERT INTO charters_fts (charter_id, invariant) VALUES (?, ?)`,
+	_, err = tx.Exec(`INSERT INTO legacy_charters_fts (charter_id, invariant) VALUES (?, ?)`,
 		payload.ID, payload.Spec.Invariant)
 	return err
 }
 
 func applyCharterTransition(tx *sql.Tx, id string, from, to CharterStatus, seq int64) error {
-	query := `UPDATE charters SET status = ?, updated_seq = ? WHERE id = ?`
+	query := `UPDATE legacy_charters SET status = ?, updated_seq = ? WHERE id = ?`
 	args := []any{to, seq, id}
 	if from != "" {
 		query += ` AND status = ?`
@@ -426,7 +431,7 @@ func applyCharterTransition(tx *sql.Tx, id string, from, to CharterStatus, seq i
 }
 
 func applyCharterCadence(tx *sql.Tx, payload charterCadencePayload, seq int64) error {
-	result, err := tx.Exec(`UPDATE charters SET cadence = ?, schedule = ?, updated_seq = ?
+	result, err := tx.Exec(`UPDATE legacy_charters SET cadence = ?, schedule = ?, updated_seq = ?
         WHERE id = ? AND status != ?`, payload.Cadence, payload.Schedule, seq, payload.ID, CharterRetired)
 	if err != nil {
 		return err
@@ -443,7 +448,7 @@ func applyCharterCadence(tx *sql.Tx, payload charterCadencePayload, seq int64) e
 
 func requireCharter(tx *sql.Tx, id string) error {
 	var count int
-	if err := tx.QueryRow(`SELECT COUNT(*) FROM charters WHERE id = ?`, id).Scan(&count); err != nil {
+	if err := tx.QueryRow(`SELECT COUNT(*) FROM legacy_charters WHERE id = ?`, id).Scan(&count); err != nil {
 		return err
 	}
 	if count == 0 {
