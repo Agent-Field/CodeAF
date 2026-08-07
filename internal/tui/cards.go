@@ -215,7 +215,10 @@ func deriveJobCards(
 		// freshly settled card — the user saw a "finished task" they never
 		// requested, wearing another job's digest. Organizational nodes
 		// belong to the rail; cards are conversation.
-		if root.Group == store.TerritoryGroup || root.Group == charterGroupMarker {
+		// Practice and every other self-origin root are resident life, not
+		// user-requested work; their only TUI projection is ambient presence.
+		if root.Group == store.TerritoryGroup || root.Group == charterGroupMarker ||
+			root.Group == store.PracticeGroup || root.Provenance.Origin == store.OriginSelf {
 			continue
 		}
 		nodes := nodesByRoot[root.ID]

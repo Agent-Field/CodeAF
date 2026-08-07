@@ -64,6 +64,15 @@ type Backend interface {
 	TopLevelJobUsage() (map[string]store.JobUsage, error)
 }
 
+// selfActivityReader is the resident-life slice of the store. It stays an
+// optional backend capability so lightweight TUI embedders do not have to
+// implement the resident, while the real store supplies every value.
+type selfActivityReader interface {
+	SelfSpendToday() (float64, error)
+	SelfReceipts(time.Time) ([]store.SelfReceipt, error)
+	FactBySeq(int64) (store.Fact, bool, error)
+}
+
 // Commander owns the live operations that do not belong to the thread lens.
 // A nil Commander keeps ordinary chat fully functional and reports command
 // capabilities honestly when they are requested.
@@ -99,6 +108,9 @@ type pollResultMsg struct {
 	jobUsage          map[string]store.JobUsage
 	commands          []store.Command
 	agentQuestions    []store.AgentQuestion
+	selfSpendToday    float64
+	selfReceipts      []store.SelfReceipt
+	selfLearning      string
 	messagesErr       error
 	snapshotErr       error
 	cardSnapshotErr   error
@@ -107,6 +119,8 @@ type pollResultMsg struct {
 	jobUsageErr       error
 	commandsErr       error
 	agentQuestionsErr error
+	selfSpendErr      error
+	selfReceiptsErr   error
 
 	nodeID          string
 	node            store.Node
@@ -152,6 +166,10 @@ type Model struct {
 	jobUsage             map[string]store.JobUsage
 	commands             map[int64]store.Command
 	agentQuestions       []store.AgentQuestion
+	selfSpendToday       float64
+	selfReceiptSeq       int64
+	selfReceiptAt        time.Time
+	selfLearning         string
 	lastSeq              int64
 	answeringQuestionSeq int64
 
@@ -1022,6 +1040,12 @@ func (m *Model) poll() tea.Cmd {
 	nodeID := m.nodeViewID
 	nodeAfterSeq := m.nodeLastSeq
 	commander := m.commander
+	selfReceiptSeq := m.selfReceiptSeq
+	selfReceiptSince := m.selfReceiptAt
+	if selfReceiptSince.IsZero() {
+		now := m.standingTime()
+		selfReceiptSince = time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
+	}
 	return func() tea.Msg {
 		messages, messagesErr := backend.Messages(sessionID, afterSeq, pollLimit)
 		snapshot, snapshotErr := backend.ActiveSnapshot()
@@ -1035,6 +1059,21 @@ func (m *Model) poll() tea.Cmd {
 			PendingQuestions(string, int) ([]store.AgentQuestion, error)
 		}); ok {
 			agentQuestions, agentQuestionsErr = reader.PendingQuestions(sessionID, pollLimit)
+		}
+		var selfSpendToday float64
+		var selfReceipts []store.SelfReceipt
+		var selfLearning string
+		var selfSpendErr, selfReceiptsErr error
+		if reader, ok := backend.(selfActivityReader); ok {
+			selfSpendToday, selfSpendErr = reader.SelfSpendToday()
+			selfReceipts, selfReceiptsErr = reader.SelfReceipts(selfReceiptSince)
+			if selfReceiptsErr == nil && len(selfReceipts) > 0 {
+				newest := selfReceipts[len(selfReceipts)-1]
+				if newest.Seq > selfReceiptSeq && selfReceiptHasLearning(newest) &&
+					selfReceiptIsPractice(newest, cardSnapshot, snapshot) {
+					selfLearning, selfReceiptsErr = selfReceiptLearningClause(reader, newest)
+				}
+			}
 		}
 		result := pollResultMsg{
 			sessionID:         sessionID,
@@ -1052,6 +1091,11 @@ func (m *Model) poll() tea.Cmd {
 			jobUsageErr:       jobUsageErr,
 			agentQuestions:    agentQuestions,
 			agentQuestionsErr: agentQuestionsErr,
+			selfSpendToday:    selfSpendToday,
+			selfReceipts:      selfReceipts,
+			selfLearning:      selfLearning,
+			selfSpendErr:      selfSpendErr,
+			selfReceiptsErr:   selfReceiptsErr,
 		}
 		seenCommands := make(map[int64]bool)
 		for _, message := range messages {
@@ -1076,6 +1120,59 @@ func (m *Model) poll() tea.Cmd {
 		}
 		return result
 	}
+}
+
+func selfReceiptHasLearning(receipt store.SelfReceipt) bool {
+	return len(receipt.FactIDs) > 0 || len(receipt.SkillIDs) > 0 ||
+		(receipt.SurpriseDelta != nil && *receipt.SurpriseDelta > 0)
+}
+
+func selfReceiptIsPractice(receipt store.SelfReceipt, snapshots ...store.Snapshot) bool {
+	for _, snapshot := range snapshots {
+		for _, node := range snapshot.Nodes {
+			if node.ID == receipt.NodeID {
+				return node.Group == store.PracticeGroup
+			}
+		}
+	}
+	return false
+}
+
+func selfReceiptLearningClause(reader selfActivityReader, receipt store.SelfReceipt) (string, error) {
+	ids := make([]int64, 0, len(receipt.FactIDs)+len(receipt.SkillIDs))
+	ids = append(ids, receipt.FactIDs...)
+	ids = append(ids, receipt.SkillIDs...)
+	for _, seq := range ids {
+		fact, found, err := reader.FactBySeq(seq)
+		if err != nil {
+			return "", err
+		}
+		if found {
+			if clause := oneSentence(firstLine(fact.Body)); clause != "" {
+				return clause, nil
+			}
+		}
+	}
+
+	scope := strings.TrimSpace(receipt.Scope)
+	if scope == "" {
+		scope = strings.TrimSpace(receipt.Origin)
+	}
+	if receipt.SurpriseDelta != nil && *receipt.SurpriseDelta > 0 {
+		clause := fmt.Sprintf("surprise fell %.0f%%", 100**receipt.SurpriseDelta)
+		if scope != "" {
+			clause += " in " + scope
+		}
+		return clause, nil
+	}
+	kind := "a fact"
+	if len(receipt.FactIDs) == 0 && len(receipt.SkillIDs) > 0 {
+		kind = "a skill"
+	}
+	if scope == "" {
+		return "captured " + kind, nil
+	}
+	return "captured " + kind + " in " + scope, nil
 }
 
 func nextPollTick() tea.Cmd {
@@ -1110,6 +1207,28 @@ func (m *Model) applyPoll(result pollResultMsg) {
 	}
 	if result.usageErr == nil {
 		m.usage = result.usage
+	}
+	if result.selfSpendErr == nil {
+		m.selfSpendToday = result.selfSpendToday
+	}
+	if result.selfReceiptsErr == nil {
+		// A learned line lives for exactly the poll on which its receipt first
+		// appears. Re-observing the same newest receipt clears it back to the
+		// default silence.
+		m.selfLearning = ""
+		if len(result.selfReceipts) > 0 {
+			newest := result.selfReceipts[len(result.selfReceipts)-1]
+			if newest.Seq > m.selfReceiptSeq && result.selfLearning != "" &&
+				selfReceiptIsPractice(newest, result.cardSnapshot, result.snapshot) {
+				m.selfLearning = result.selfLearning
+			}
+			if newest.Seq > m.selfReceiptSeq {
+				m.selfReceiptSeq = newest.Seq
+			}
+			if newest.Time.After(m.selfReceiptAt) {
+				m.selfReceiptAt = newest.Time
+			}
+		}
 	}
 	if result.jobUsageErr == nil && result.jobUsage != nil {
 		m.jobUsage = result.jobUsage
@@ -1224,6 +1343,12 @@ func (m *Model) applyPoll(result pollResultMsg) {
 	}
 	if result.agentQuestionsErr != nil {
 		problems = append(problems, fmt.Errorf("read agent questions: %w", result.agentQuestionsErr))
+	}
+	if result.selfSpendErr != nil {
+		problems = append(problems, fmt.Errorf("read self spend: %w", result.selfSpendErr))
+	}
+	if result.selfReceiptsErr != nil {
+		problems = append(problems, fmt.Errorf("read self receipts: %w", result.selfReceiptsErr))
 	}
 	if result.nodeID != "" && result.nodeID == m.nodeViewID {
 		if result.nodeErr != nil {
@@ -1448,8 +1573,8 @@ func (m *Model) setSize(width, height int) {
 	m.chat.Width = max(1, m.chatWidth-2) // breathing room on the right
 	m.chat.Height = max(1, m.chatHeight)
 	m.graph.Width = max(1, m.graphWidth-2)
-	// Header + blank + the exact static standing-section budget.
-	m.graph.Height = max(1, m.graphHeight-2-m.standingSectionHeight())
+	// Header + blank + the exact static standing and presence budget.
+	m.graph.Height = max(1, m.graphHeight-2-m.standingSectionHeight()-m.residentPresenceHeight())
 	m.sizeNodeViewports()
 	m.refreshChat()
 	m.refreshGraph()
