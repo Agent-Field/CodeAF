@@ -77,6 +77,10 @@ func runExecute(args []string) error {
 	if err != nil {
 		return err
 	}
+	documentClient, err := settings.DocumentClient()
+	if err != nil {
+		return err
+	}
 
 	root := *workspace
 	if root == "" {
@@ -162,6 +166,7 @@ func runExecute(args []string) error {
 	}
 	mediaTools := &exec.MediaTools{
 		Provider: mediaClient, Catalog: modelCatalog, VisionClient: visionClient, WorkingModel: settings.Model,
+		DocumentClient: documentClient, DocumentEngine: settings.DocumentEngine,
 		ImageModel: settings.ResolveImageModel(modelCatalog), SpeechModel: settings.ResolveSpeechModel(modelCatalog),
 		MusicModel: settings.ResolveMusicModel(modelCatalog), VideoModel: settings.ResolveVideoModel(modelCatalog),
 		VisionModel: settings.ResolveVisionModel(modelCatalog, settings.Model, settings.Model),

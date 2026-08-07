@@ -440,3 +440,36 @@ func TestDailyBudgetUSDPersistedConfigAndEnvironmentPrecedence(t *testing.T) {
 		t.Fatalf("environment override = %v err=%v", got, err)
 	}
 }
+
+// Pinning a rung is a cost decision, so an unreadable value must stop the
+// process rather than quietly walk the whole ladder the user opted out of.
+func TestDocumentEngineDefaultsToAutoAndRefusesUnknownRungs(t *testing.T) {
+	if DefaultDocumentEngine != "auto" {
+		t.Fatalf("default rung = %q, want the full ladder", DefaultDocumentEngine)
+	}
+	if got := settings(t).DocumentEngine; got != DefaultDocumentEngine {
+		t.Fatalf("default document engine = %q", got)
+	}
+	for raw, want := range map[string]string{"local": "local", " Free ": "free", "OCR": "ocr", "auto": "auto"} {
+		t.Setenv("AFORGE_DOC_ENGINE", raw)
+		if got := settings(t).DocumentEngine; got != want {
+			t.Fatalf("AFORGE_DOC_ENGINE=%q resolved to %q, want %q", raw, got, want)
+		}
+	}
+
+	t.Setenv("AFORGE_DOC_ENGINE", "tesseract")
+	t.Setenv("OPENROUTER_API_KEY", "test-key")
+	t.Setenv("AFORGE_BASE_URL", "http://127.0.0.1:1")
+	t.Setenv("AFORGE_PROFILE_DIR", t.TempDir())
+	if _, err := Load(); err == nil || !strings.Contains(err.Error(), "AFORGE_DOC_ENGINE") {
+		t.Fatalf("unknown engine error = %v", err)
+	}
+}
+
+func TestDocumentClientIsDirectLikeTheVisionProxy(t *testing.T) {
+	configured := settings(t)
+	client, err := configured.DocumentClient()
+	if err != nil || client == nil {
+		t.Fatalf("document client = %v err=%v", client, err)
+	}
+}

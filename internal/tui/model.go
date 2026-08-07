@@ -1263,13 +1263,38 @@ func (m *Model) submit() tea.Cmd {
 	}
 	attachments := append([]string(nil), m.attachments...)
 	if len(attachments) > 0 {
-		model, supported := m.imageInputSupport()
-		if !supported {
-			body = strings.TrimSpace(strings.Join(append([]string{body}, attachments...), " "))
-			attachments = nil
-			_ = model
-		} else if body == "" {
-			body = "Image attached."
+		_, imagesSupported := m.imageInputSupport()
+		kept := make([]string, 0, len(attachments))
+		fallbackImages := make([]string, 0)
+		documents, images := 0, 0
+		for _, path := range attachments {
+			if isImageExtension(path) {
+				images++
+				if imagesSupported {
+					kept = append(kept, path)
+				} else {
+					fallbackImages = append(fallbackImages, path)
+				}
+				continue
+			}
+			if isDocumentAttachment(path) {
+				documents++
+				kept = append(kept, path)
+			}
+		}
+		if len(fallbackImages) > 0 {
+			body = strings.TrimSpace(strings.Join(append([]string{body}, fallbackImages...), " "))
+		}
+		attachments = kept
+		if body == "" {
+			switch {
+			case documents > 0 && images > 0:
+				body = "Attachments added."
+			case documents > 0:
+				body = "Document attached."
+			default:
+				body = "Image attached."
+			}
 		}
 	}
 	m.input.Reset()

@@ -272,6 +272,8 @@ func mediaGlyph(path string) (string, bool) {
 	switch strings.ToLower(filepath.Ext(path)) {
 	case ".png", ".jpg", ".jpeg", ".webp", ".gif":
 		return "⌾", true
+	case ".pdf":
+		return "▤", true
 	case ".mp3", ".wav", ".m4a", ".ogg", ".flac":
 		return "♪", true
 	case ".mp4", ".mov", ".m4v", ".webm":

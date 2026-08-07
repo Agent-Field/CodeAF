@@ -39,6 +39,10 @@ const (
 	DefaultSiteURL  = "https://agentfield.ai"
 	DefaultSiteName = "AgentField AI"
 
+	// DefaultDocumentEngine walks the deliberate local -> free -> rail-gated
+	// OCR ladder. The other accepted values pin one rung and never fall through.
+	DefaultDocumentEngine = "auto"
+
 	DefaultTemperature = 0.2
 
 	// DefaultMaxTokens has to cover reasoning tokens, not just the visible
@@ -126,6 +130,7 @@ type Config struct {
 	MusicModel        string
 	VideoModel        string
 	VisionModel       string
+	DocumentEngine    string
 	Temperature       float64
 	MaxTokens         int
 	Timeout           time.Duration
@@ -165,6 +170,7 @@ func Load() (Config, error) {
 		MusicModel:        strings.TrimSpace(os.Getenv("AFORGE_MUSIC_MODEL")),
 		VideoModel:        strings.TrimSpace(os.Getenv("AFORGE_VIDEO_MODEL")),
 		VisionModel:       strings.TrimSpace(os.Getenv("AFORGE_VISION_MODEL")),
+		DocumentEngine:    firstNonEmpty(os.Getenv("AFORGE_DOC_ENGINE"), DefaultDocumentEngine),
 		Temperature:       DefaultTemperature,
 		MaxTokens:         DefaultMaxTokens,
 		Timeout:           DefaultTimeout,
@@ -183,6 +189,11 @@ func Load() (Config, error) {
 	}
 	if config.APIKey == "" {
 		return Config{}, errors.New("OPENROUTER_API_KEY (or OPENAI_API_KEY) is required")
+	}
+	switch config.DocumentEngine = strings.ToLower(strings.TrimSpace(config.DocumentEngine)); config.DocumentEngine {
+	case "auto", "local", "free", "ocr":
+	default:
+		return Config{}, fmt.Errorf("AFORGE_DOC_ENGINE: unknown engine %q (auto, local, free, ocr)", config.DocumentEngine)
 	}
 	if raw := strings.TrimSpace(os.Getenv("AFORGE_REASONING")); raw != "" {
 		effort, ok := provider.ParseEffort(raw)
@@ -464,6 +475,13 @@ func (c Config) MediaClient() (*provider.MediaClient, error) {
 // per call; routing it again could substitute a text-only model and would make
 // the proxy attribution dishonest.
 func (c Config) VisionClient() (*provider.Client, error) {
+	return provider.NewClient(c.providerConfig(c.Model))
+}
+
+// DocumentClient is direct for the same reason as VisionClient: read_document
+// selects an explicit parser engine and model at the leaf boundary, and a
+// second router substitution would make both capability and cost opaque.
+func (c Config) DocumentClient() (*provider.Client, error) {
 	return provider.NewClient(c.providerConfig(c.Model))
 }
 

@@ -539,7 +539,7 @@ func thoughtBlock(raw string, width int) feedBlock {
 func toolCallBlock(rest string, width int) feedBlock {
 	name, args, _ := strings.Cut(rest, " ")
 	glyph, detail := "⚙", ""
-	salient := map[string]string{"sh": "cmd", "write": "path", "edit": "path", "web": "q", "generate_image": "prompt", "generate_music": "prompt", "generate_video": "prompt", "speak": "text", "view_image": "path"}[name]
+	salient := map[string]string{"sh": "cmd", "write": "path", "edit": "path", "web": "q", "generate_image": "prompt", "generate_music": "prompt", "generate_video": "prompt", "speak": "text", "view_image": "path", "read_document": "path"}[name]
 	if salient != "" {
 		switch name {
 		case "sh":
@@ -554,6 +554,8 @@ func toolCallBlock(rest string, width int) feedBlock {
 			glyph = "♪"
 		case "generate_video":
 			glyph = "▶"
+		case "read_document":
+			glyph = "▤"
 		}
 		if value, ok := extractStringField(args, salient); ok {
 			detail = value
@@ -581,7 +583,7 @@ func toolCallBlock(rest string, width int) feedBlock {
 }
 
 func renderToolDetail(name, detail string, width int) string {
-	if (name == "write" || name == "edit" || name == "view_image") && strings.HasPrefix(detail, "/") {
+	if (name == "write" || name == "edit" || name == "view_image" || name == "read_document") && strings.HasPrefix(detail, "/") {
 		return pathLink(detail, width)
 	}
 	return inputTextStyle.Render(truncate(detail, width))

@@ -118,6 +118,128 @@ func TestNonVisionAttachmentShowsHintAndFallsBackToPlainPath(t *testing.T) {
 	}
 }
 
+// A dragged PDF is an attachment the way an image is, but it never becomes a
+// model content part: it is staged as a workspace input for compiled work, so
+// a text-only talk model is not a reason to degrade it back into the draft.
+func TestDocumentAttachmentBecomesADocChipAndSurvivesATextOnlyModel(t *testing.T) {
+	backend := &fakeBackend{}
+	commander := &attachmentCommander{
+		fakeCommander: &fakeCommander{current: map[string]string{"talk": "text/model"}},
+		model:         "text/model", supported: false,
+	}
+	model := NewWithCommander(backend, "docs", commander)
+	path := imageFixture(t, "quarterly filing.pdf")
+	model.input.SetValue("summarise \"" + path + "\"")
+	model.captureImageAttachments()
+	if model.input.Value() != "summarise" || len(model.attachments) != 1 || model.attachments[0] != path {
+		t.Fatalf("draft=%q attachments=%v", model.input.Value(), model.attachments)
+	}
+	rendered := ansi.Strip(model.renderInput())
+	if !strings.Contains(rendered, "▤ quarterly filing.pdf ⟨×⟩") {
+		t.Fatalf("document chip missing: %q", rendered)
+	}
+	if strings.Contains(rendered, "can't see images") {
+		t.Fatalf("a document chip raised the vision hint: %q", rendered)
+	}
+
+	_, command := model.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	if command == nil {
+		t.Fatal("document attachment did not submit")
+	}
+	_ = command()
+	backend.mu.Lock()
+	defer backend.mu.Unlock()
+	posted := backend.posted[len(backend.posted)-1]
+	if posted.Body != "summarise" || len(posted.Attachments) != 1 || posted.Attachments[0] != path {
+		t.Fatalf("posted = %+v", posted)
+	}
+}
+
+func TestMixedAttachmentsSplitDocumentsFromUnsupportedImages(t *testing.T) {
+	backend := &fakeBackend{}
+	commander := &attachmentCommander{
+		fakeCommander: &fakeCommander{current: map[string]string{"talk": "text/model"}},
+		model:         "text/model", supported: false,
+	}
+	model := NewWithCommander(backend, "docs", commander)
+	document := imageFixture(t, "brief.pdf")
+	image := imageFixture(t, "chart.png")
+	model.input.SetValue(document + " " + image)
+	model.captureImageAttachments()
+	if len(model.attachments) != 2 {
+		t.Fatalf("attachments = %v", model.attachments)
+	}
+	rendered := ansi.Strip(model.renderInput())
+	if !strings.Contains(rendered, "▤ brief.pdf") || !strings.Contains(rendered, "⌾ chart.png") ||
+		!strings.Contains(rendered, "text/model can't see images") {
+		t.Fatalf("mixed chips = %q", rendered)
+	}
+
+	_, command := model.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	if command == nil {
+		t.Fatal("mixed attachments did not submit")
+	}
+	_ = command()
+	backend.mu.Lock()
+	defer backend.mu.Unlock()
+	posted := backend.posted[len(backend.posted)-1]
+	// The image falls back to a plain path the model can at least name; the
+	// document stays an attachment so the workspace copy is made.
+	if len(posted.Attachments) != 1 || posted.Attachments[0] != document {
+		t.Fatalf("posted attachments = %v", posted.Attachments)
+	}
+	if !strings.Contains(posted.Body, image) || strings.Contains(posted.Body, document) {
+		t.Fatalf("posted body = %q", posted.Body)
+	}
+}
+
+func TestDocumentOnlySendGetsItsOwnPlaceholderBody(t *testing.T) {
+	backend := &fakeBackend{}
+	commander := &attachmentCommander{
+		fakeCommander: &fakeCommander{current: map[string]string{"talk": "vision/model"}},
+		model:         "vision/model", supported: true,
+	}
+	model := NewWithCommander(backend, "docs", commander)
+	model.input.SetValue(imageFixture(t, "solo.pdf"))
+	model.captureImageAttachments()
+	_, command := model.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	if command == nil {
+		t.Fatal("document-only draft did not submit")
+	}
+	_ = command()
+	backend.mu.Lock()
+	posted := backend.posted[len(backend.posted)-1]
+	backend.mu.Unlock()
+	if posted.Body != "Document attached." {
+		t.Fatalf("document-only body = %q", posted.Body)
+	}
+
+	model.input.SetValue(imageFixture(t, "pair.pdf") + " " + imageFixture(t, "pair.png"))
+	model.captureImageAttachments()
+	_, command = model.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	if command == nil {
+		t.Fatal("mixed-only draft did not submit")
+	}
+	_ = command()
+	backend.mu.Lock()
+	defer backend.mu.Unlock()
+	posted = backend.posted[len(backend.posted)-1]
+	if posted.Body != "Attachments added." || len(posted.Attachments) != 2 {
+		t.Fatalf("mixed-only posted = %+v", posted)
+	}
+}
+
+func TestUnsupportedDragsStayInTheDraft(t *testing.T) {
+	spreadsheet := imageFixture(t, "numbers.xlsx")
+	draft := "read " + spreadsheet
+	if cleaned, paths := detectImageAttachments(draft); cleaned != draft || len(paths) != 0 {
+		t.Fatalf("cleaned=%q paths=%v", cleaned, paths)
+	}
+	if attachmentGlyph("/tmp/a.pdf") != "▤" || attachmentGlyph("/tmp/a.png") != "⌾" {
+		t.Fatal("attachment glyphs do not separate documents from images")
+	}
+}
+
 func TestMediaArtifactLinksAreGlyphPrefixedAndWidthSafe(t *testing.T) {
 	path := imageFixture(t, strings.Repeat("long-name-", 8)+"result.png")
 	model := New(&fakeBackend{}, "media")
