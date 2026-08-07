@@ -422,6 +422,48 @@ func TestHeadReceivesMeasuredReflexPrior(t *testing.T) {
 	}
 }
 
+func TestHeadGroundsCompetenceQuestionInExistingSingleCall(t *testing.T) {
+	graphStore := openHeadStore(t)
+	client := &fakeClient{responses: []string{
+		`{"reply":"I'm strongest at Go parser work, with eight clean runs.","command":null}`,
+	}}
+	user := store.Message{SessionID: "competence", Body: "what are you good at now?"}
+	groundCalls := 0
+	decision, err := New(client, graphStore).
+		WithCompetenceMap(func() string {
+			groundCalls++
+			return `- {"scope":"tool:go","class":"strong","samples":8,"failure_rate":0}`
+		}).
+		route(context.Background(), user)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if decision.Command != nil || groundCalls != 1 || client.callCount() != 1 {
+		t.Fatalf("competence route = %+v, ground calls %d, provider calls %d", decision, groundCalls, client.callCount())
+	}
+	if len(client.seen) != 2 || !strings.Contains(client.seen[1].Content[0].Text, "Competence map (ground truth") ||
+		!strings.Contains(client.seen[1].Content[0].Text, `"scope":"tool:go"`) {
+		t.Fatalf("competence evidence did not reach head: %+v", client.seen)
+	}
+}
+
+func TestHeadDoesNotReadCompetenceMapForUnrelatedMessage(t *testing.T) {
+	graphStore := openHeadStore(t)
+	client := &fakeClient{responses: []string{
+		`{"reply":"Hello.","command":null}`,
+	}}
+	called := false
+	_, err := New(client, graphStore).
+		WithCompetenceMap(func() string { called = true; return "unexpected" }).
+		route(context.Background(), store.Message{Body: "hello"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if called {
+		t.Fatal("unrelated message read competence map")
+	}
+}
+
 func TestHeadVoicePromptPreservesEmptyBytesAndRendersPreference(t *testing.T) {
 	t.Run("empty notebook", func(t *testing.T) {
 		graphStore := openHeadStore(t)
@@ -605,27 +647,38 @@ func TestStandingRecognitionTable(t *testing.T) {
 
 func TestCompilerBuildsStandingCharterDraftFields(t *testing.T) {
 	tests := []struct {
-		name         string
-		instruction  string
-		context      string
-		wantKind     store.WatchKind
-		wantCadence  string
-		wantSchedule string
-		wantExpiry   string
-		wantMax      int
-		wantCost     float64
+		name        string
+		instruction string
+		context     string
+		wantKind    store.WatchKind
+		wantCadence string
+		wantCron    func(t *testing.T, schedule store.CronSchedule)
+		wantExpiry  string
+		wantMax     int
+		wantCost    float64
 	}{
 		{
 			name: "measured recurring invariant", instruction: "Every morning review new PRs.",
 			context: "reflex: avg cost=$0.07", wantKind: store.WatchCron,
-			wantCadence: "Every morning", wantSchedule: "0 9 * * *",
+			wantCadence: "Every morning",
+			wantCron: func(t *testing.T, schedule store.CronSchedule) {
+				if schedule.Kind != store.CronDaily || schedule.Hour != 9 || schedule.Minute != 0 {
+					t.Fatalf("morning cadence compiled to %+v, want daily 09:00", schedule)
+				}
+			},
 			wantExpiry: "never", wantMax: 10, wantCost: 0.07,
 		},
 		{
 			name: "reminder degenerate charter", instruction: "Remind me tomorrow at 9 to call Mom.",
 			wantKind: store.WatchCron, wantCadence: "tomorrow at 9",
-			wantSchedule: "at:tomorrowT09:00", wantExpiry: "once", wantMax: 1,
-			wantCost: 0.15,
+			wantCron: func(t *testing.T, schedule store.CronSchedule) {
+				tomorrow := time.Now().AddDate(0, 0, 1)
+				if schedule.Kind != store.CronAt || schedule.At.Hour() != 9 ||
+					schedule.At.Minute() != 0 || schedule.At.Day() != tomorrow.Day() {
+					t.Fatalf("reminder cadence compiled to %+v, want at tomorrow 09:00", schedule)
+				}
+			},
+			wantExpiry: "once", wantMax: 1, wantCost: 0.15,
 		},
 	}
 	for _, test := range tests {
@@ -642,9 +695,13 @@ func TestCompilerBuildsStandingCharterDraftFields(t *testing.T) {
 			}
 			charter := brief.Charter
 			if charter.Invariant != test.instruction || charter.Watch.Kind != test.wantKind ||
-				charter.Watch.Cadence != test.wantCadence || charter.Watch.Schedule != test.wantSchedule {
+				charter.Watch.Cadence != test.wantCadence {
 				t.Fatalf("charter watch/invariant = %+v", charter)
 			}
+			if charter.Watch.Spec.Kind != store.WatchCron || charter.Watch.Spec.Cron == nil {
+				t.Fatalf("cadence words did not compile to a typed cron spec: %+v", charter.Watch.Spec)
+			}
+			test.wantCron(t, *charter.Watch.Spec.Cron)
 			if charter.Rails.Expiry != test.wantExpiry || charter.Rails.MaxPerDay != test.wantMax ||
 				charter.Rails.EstimatedCostUSD != test.wantCost ||
 				strings.TrimSpace(charter.Rails.MaxPerDayJustification) == "" {
@@ -653,6 +710,9 @@ func TestCompilerBuildsStandingCharterDraftFields(t *testing.T) {
 			if charter.Sentinel == "" || charter.Action == "" ||
 				(test.name == "reminder degenerate charter" && charter.Action != "Say: call Mom.") {
 				t.Fatalf("charter judgment/action missing: %+v", charter)
+			}
+			if reminder := test.name == "reminder degenerate charter"; charter.SayOnly != reminder {
+				t.Fatalf("say-only = %t, want %t", charter.SayOnly, reminder)
 			}
 		})
 	}
@@ -749,6 +809,21 @@ func TestRatificationOptionRoundTrip(t *testing.T) {
 			if err != nil || len(charters) != 1 || charters[0].Status != test.wantStatus {
 				t.Fatalf("charters = %+v err=%v", charters, err)
 			}
+			if test.wantStatus == store.CharterActive {
+				// The point of the whole seam: a recognized then ratified ask
+				// lands in the one canonical table the watch engine reads.
+				due, err := graph.DueCharters(time.Now().Add(time.Minute), 10)
+				if err != nil {
+					t.Fatal(err)
+				}
+				visible := false
+				for _, charter := range due {
+					visible = visible || charter.ID == charters[0].ID
+				}
+				if !visible {
+					t.Fatalf("ratified charter is invisible to the watch engine: due=%+v", due)
+				}
+			}
 			if test.wantOnce {
 				nodes, err := graph.Nodes()
 				if err != nil {
@@ -756,7 +831,7 @@ func TestRatificationOptionRoundTrip(t *testing.T) {
 				}
 				found := false
 				for _, node := range nodes {
-					found = found || (node.Parent == store.RootID && node.Provenance.Intent == charters[0].Spec.Invariant)
+					found = found || (node.Parent == store.RootID && node.Provenance.Intent == charters[0].Invariant)
 				}
 				if !found {
 					t.Fatal("declining standing did not splice the requested action once")
@@ -834,12 +909,18 @@ func TestConversationalCharterManagement(t *testing.T) {
 			if err := resident.New(graph, nil, nil).Tick(context.Background()); err != nil {
 				t.Fatal(err)
 			}
-			updated, found, err := graph.CharterByID(charter.ID)
+			updated, found, err := graph.Charter(charter.ID)
 			if err != nil || !found || updated.Status != test.wantStatus {
 				t.Fatalf("updated charter = %+v found=%t err=%v", updated, found, err)
 			}
-			if test.wantCadence != "" && updated.Spec.Watch.Cadence != test.wantCadence {
-				t.Fatalf("cadence = %q, want %q", updated.Spec.Watch.Cadence, test.wantCadence)
+			if test.wantCadence != "" {
+				if updated.Watch.Cadence != test.wantCadence {
+					t.Fatalf("cadence = %q, want %q", updated.Watch.Cadence, test.wantCadence)
+				}
+				if updated.Watch.Cron == nil || updated.Watch.Cron.Kind != store.CronEveryHours ||
+					updated.Watch.Cron.Interval != 1 {
+					t.Fatalf("cadence edit did not produce a typed hourly schedule: %+v", updated.Watch)
+				}
 			}
 			messages, err := graph.Messages("manage", user.Seq, 0)
 			if err != nil || len(messages) < 2 || messages[len(messages)-1].Role != store.RoleSystem ||
@@ -864,8 +945,13 @@ func TestAmbiguousCharterManagementProducesOptions(t *testing.T) {
 		t.Fatal(err)
 	}
 	reply := waitForAgentReply(t, graph, "ambiguous-charter", user.Seq)
-	if reply.Body != "Which standing charter do you mean?" || len(reply.Options) != 2 {
+	if !strings.HasPrefix(reply.Body, "Which standing charter do you mean?") || len(reply.Options) != 2 {
 		t.Fatalf("ambiguous reply = %+v", reply)
+	}
+	// The body carries the structured payload the TUI's question components
+	// read, beside the durable option rows.
+	if !strings.Contains(reply.Body, `"kind":"choose"`) {
+		t.Fatalf("ambiguous reply lacks the structured question payload: %q", reply.Body)
 	}
 	pending, err := graph.PendingCommands(0)
 	if err != nil || len(pending) != 0 {
@@ -881,7 +967,7 @@ func activateHeadCharter(t *testing.T, graph *store.Store, id, invariant string)
 			Kind: store.WatchCron, Cadence: "every morning", Schedule: "0 9 * * *",
 		},
 		Sentinel: "Is a delivery due?", Action: "Send the digest.",
-		Rails: store.CharterRails{
+		Rails: store.CharterSpecRails{
 			EstimatedCostUSD: 0.05, MaxPerDay: 1,
 			MaxPerDayJustification: "one scheduled delivery", Expiry: "never",
 		},
@@ -889,7 +975,9 @@ func activateHeadCharter(t *testing.T, graph *store.Store, id, invariant string)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := graph.RatifyCharter(id); err != nil {
+	if err := graph.SetCharterStatus(id, store.CharterActive, store.Ratification{
+		Origin: store.OriginUser, SessionID: "manage", Evidence: "yes, stand this up",
+	}); err != nil {
 		t.Fatal(err)
 	}
 	charter.Status = store.CharterActive

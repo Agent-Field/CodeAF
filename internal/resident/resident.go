@@ -299,10 +299,17 @@ func (r *Reconciler) reconcileCommand(ctx context.Context, command store.Command
 	if outcome.asAgent {
 		role = store.RoleAgent
 	}
+	body := outcome.receipt
+	if len(outcome.options) > 0 {
+		// Selectable receipts carry the structured payload the TUI's question
+		// components read; the durable option rows remain the continuation
+		// and validation source.
+		body = store.QuestionMessageBody(outcome.receipt, outcome.options)
+	}
 	_, err = r.store.PostMessage(store.Message{
 		SessionID:  command.SessionID,
 		Role:       role,
-		Body:       boundMessage(outcome.receipt),
+		Body:       boundMessage(body),
 		CommandSeq: command.Seq,
 		Options:    outcome.options,
 	})
@@ -400,7 +407,7 @@ func (r *Reconciler) splice(ctx context.Context, command store.Command) (command
 		if err != nil {
 			return commandOutcome{}, fmt.Errorf("draft charter: %w", err)
 		}
-		question, options := charterRatificationQuestion(charter)
+		question, options := charterRatificationQuestion(charter, compiled.Charter.Rails.MaxPerDayJustification)
 		return commandOutcome{
 			status: store.CommandRejected, result: "drafted charter pending ratification",
 			receipt: question, asAgent: true, options: options,

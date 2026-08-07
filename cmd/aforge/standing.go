@@ -87,8 +87,12 @@ func (c *chatCommander) Standing() (string, error) {
 	}
 	lines := make([]string, 0, len(charters))
 	for _, charter := range charters {
+		cadence := strings.TrimSpace(charter.Watch.Cadence)
+		if cadence == "" {
+			cadence = charter.Watch.String()
+		}
 		lines = append(lines, fmt.Sprintf("%s · %s · %s", charter.ID,
-			charter.Spec.Watch.Cadence, strings.Join(strings.Fields(charter.Spec.Invariant), " ")))
+			cadence, strings.Join(strings.Fields(charter.Invariant), " ")))
 	}
 	return strings.Join(lines, "\n"), nil
 }

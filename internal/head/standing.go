@@ -8,6 +8,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/Agent-Field/aforge-v2/internal/store"
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
@@ -105,6 +106,7 @@ func normalizeCharterSpec(spec store.CharterSpec, instruction, graphContext stri
 	spec.Invariant = instruction
 	spec.Watch = standingWatch(instruction, spec.Watch)
 	reminder := isReminder(instruction)
+	spec.SayOnly = reminder
 	if strings.TrimSpace(spec.Sentinel) == "" {
 		spec.Sentinel = "Decide whether the standing condition occurred or the invariant is threatened."
 	}
@@ -143,6 +145,11 @@ func normalizeCharterSpec(spec store.CharterSpec, instruction, graphContext stri
 	return spec
 }
 
+// standingWatch keeps the head's human-language reading — which watch family
+// the words imply and the cadence words themselves — and compiles it straight
+// into the engine's typed WatchSpec. The compiler's schedule string survives
+// only as a structured hint (a file glob, a threshold sketch); it is never
+// executed.
 func standingWatch(instruction string, proposed store.CharterWatch) store.CharterWatch {
 	lower := strings.ToLower(instruction)
 	cadence := extractCadence(instruction)
@@ -171,14 +178,14 @@ func standingWatch(instruction string, proposed store.CharterWatch) store.Charte
 			cadence = "about every 15 minutes"
 		}
 	}
-	schedule := store.ScheduleForCadence(cadence)
-	if kind == store.WatchFile || kind == store.WatchGraph {
-		schedule = "event"
-		if strings.TrimSpace(proposed.Schedule) != "" {
-			schedule = strings.TrimSpace(proposed.Schedule)
-		}
-	}
-	return store.CharterWatch{Kind: kind, Cadence: cadence, Schedule: schedule}
+	hint := strings.TrimSpace(proposed.Schedule)
+	watch := store.CharterWatch{Kind: kind, Cadence: cadence, Schedule: hint}
+	watch.Spec = store.CadenceWatchSpec(kind, cadence, hint, instruction, time.Now())
+	watch.Spec.Cadence = cadence
+	// The typed derivation degrades underdetermined file and graph watches to
+	// a poll; the spec records what will actually run.
+	watch.Kind = watch.Spec.Kind
+	return watch
 }
 
 func extractCadence(instruction string) string {

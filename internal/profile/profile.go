@@ -22,6 +22,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/Agent-Field/aforge-v2/internal/provider"
 )
@@ -30,7 +31,10 @@ import (
 type Record struct {
 	Title   string `json:"title"`
 	Summary string `json:"summary"`
-	Sources int    `json:"sources"`
+	// Time is when this observation landed. Older profiles omit it; readers
+	// may use the profile file's modification time as a coarse fallback.
+	Time    time.Time `json:"time,omitempty"`
+	Sources int       `json:"sources"`
 	// SourcesKnown distinguishes an observed zero from old and direct records
 	// whose omitted source count decoded to zero.
 	SourcesKnown bool    `json:"sources_known,omitempty"`
@@ -102,8 +106,11 @@ type Profile struct {
 	Anchors string   `json:"anchors,omitempty"` // empty means the built-in prior
 	Records []Record `json:"records"`
 
-	path  string
-	mutex sync.Mutex
+	path string
+	// modifiedAt is the coarse timestamp available to features reading an old
+	// profile whose individual records predate Record.Time.
+	modifiedAt time.Time
+	mutex      sync.Mutex
 }
 
 // maxRecords bounds the file. Old measurements describe a ruler that has since
@@ -146,6 +153,9 @@ func Load(dir, model, skill string) (*Profile, error) {
 		return &Profile{Model: model, Skill: skill, path: path}, nil
 	}
 	profile.path = path
+	if info, err := os.Stat(path); err == nil {
+		profile.modifiedAt = info.ModTime().UTC()
+	}
 	return profile, nil
 }
 
@@ -159,6 +169,9 @@ func (p *Profile) Add(records ...Record) []Record {
 	for _, record := range records {
 		if strings.TrimSpace(record.Title) == "" {
 			continue
+		}
+		if record.Time.IsZero() {
+			record.Time = time.Now().UTC()
 		}
 		record.ExpectedTurns = nil
 		record.ExpectedTokens = nil
@@ -229,7 +242,27 @@ func (p *Profile) Save() error {
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(p.path, data, 0o644)
+	if err := os.WriteFile(p.path, data, 0o644); err != nil {
+		return err
+	}
+	if info, err := os.Stat(p.path); err == nil {
+		p.modifiedAt = info.ModTime().UTC()
+	} else {
+		p.modifiedAt = time.Now().UTC()
+	}
+	return nil
+}
+
+// RecordsSnapshot returns a stable copy of the measurements and the profile
+// file's last modification time. Derived views use the latter only for legacy
+// records written before per-record timestamps existed.
+func (p *Profile) RecordsSnapshot() ([]Record, time.Time) {
+	if p == nil {
+		return nil, time.Time{}
+	}
+	p.mutex.Lock()
+	defer p.mutex.Unlock()
+	return append([]Record(nil), p.Records...), p.modifiedAt
 }
 
 // Spread is what the profile knows, and it deliberately reports range rather

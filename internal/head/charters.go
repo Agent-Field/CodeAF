@@ -154,9 +154,13 @@ func (h *Head) requestCharterCommand(user store.Message, kind store.CommandKind,
 	return h.postAgent(user.SessionID, reply, command.Seq)
 }
 
+// postQuestion carries the same choices twice on purpose: durable option rows
+// for continuation and validation, and the structured JSON payload inside the
+// body that the TUI's question components render.
 func (h *Head) postQuestion(sessionID, body string, commandSeq int64, options []store.QuestionOption) error {
 	_, err := h.store.PostMessage(store.Message{
-		SessionID: sessionID, Role: store.RoleAgent, Body: body,
+		SessionID: sessionID, Role: store.RoleAgent,
+		Body:       store.QuestionMessageBody(body, options),
 		CommandSeq: commandSeq, Options: options,
 	})
 	return err
@@ -182,7 +186,7 @@ func (h *Head) manageCharter(user store.Message) (bool, error) {
 				value += ":" + cadence
 			}
 			options = append(options, store.QuestionOption{
-				Label: firstLine(charter.Spec.Invariant), Value: value,
+				Label: firstLine(charter.Invariant), Value: value,
 			})
 		}
 		return true, h.postQuestion(user.SessionID, "Which standing charter do you mean?", 0, options)

@@ -63,9 +63,6 @@ func (s *Store) Rebuild() error {
 	if _, err := tx.Exec(`DELETE FROM retrospective_watermark`); err != nil {
 		return fmt.Errorf("rebuild retrospective watermark: %w", err)
 	}
-	if _, err := tx.Exec(`DELETE FROM charters`); err != nil {
-		return fmt.Errorf("rebuild charters: %w", err)
-	}
 	for _, event := range events {
 		if err := replayEvent(tx, event); err != nil {
 			return fmt.Errorf("replay event %d (%s): %w", event.Seq, event.Kind, err)
@@ -281,41 +278,6 @@ func replayEvent(tx *sql.Tx, event Event) error {
 		// "today", so replay only validates the policy record.
 		var payload RailAdjustment
 		return json.Unmarshal(event.Payload, &payload)
-
-	case EventCharterDrafted:
-		var payload charterDraftedPayload
-		if err := json.Unmarshal(event.Payload, &payload); err != nil {
-			return err
-		}
-		return applyCharterDraft(tx, payload, event.Seq, event.Time)
-
-	case EventCharterRatified:
-		var payload charterTransitionPayload
-		if err := json.Unmarshal(event.Payload, &payload); err != nil {
-			return err
-		}
-		return applyCharterTransition(tx, payload.ID, CharterDraft, CharterActive, event.Seq)
-
-	case EventCharterPaused:
-		var payload charterTransitionPayload
-		if err := json.Unmarshal(event.Payload, &payload); err != nil {
-			return err
-		}
-		return applyCharterTransition(tx, payload.ID, CharterActive, CharterPaused, event.Seq)
-
-	case EventCharterRetired:
-		var payload charterTransitionPayload
-		if err := json.Unmarshal(event.Payload, &payload); err != nil {
-			return err
-		}
-		return applyCharterTransition(tx, payload.ID, "", CharterRetired, event.Seq)
-
-	case EventCharterCadenceEdited:
-		var payload charterCadencePayload
-		if err := json.Unmarshal(event.Payload, &payload); err != nil {
-			return err
-		}
-		return applyCharterCadence(tx, payload, event.Seq)
 
 	case EventOverrunDeferred:
 		var payload DeferredOverrun

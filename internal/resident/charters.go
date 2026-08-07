@@ -3,22 +3,33 @@ package resident
 import (
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/Agent-Field/aforge-v2/internal/store"
 )
 
+// applyCharterCommand maps conversational charter management onto the
+// canonical charter lifecycle: ratify is SetCharterStatus(active) carrying the
+// user's own words as evidence, pause and retire are status transitions, and
+// a cadence edit is ReviseCharter with a freshly derived typed watch.
 func (r *Reconciler) applyCharterCommand(command store.Command) (commandOutcome, error) {
-	charter, found, err := r.store.CharterByID(command.Target)
+	charter, found, err := r.store.Charter(command.Target)
 	if err != nil {
 		return commandOutcome{}, err
 	}
 	if !found {
 		return commandOutcome{}, fmt.Errorf("charter %q no longer exists", command.Target)
 	}
-	label := clipLabel(firstLine(charter.Spec.Invariant), 100)
+	label := clipLabel(firstLine(charter.Invariant), 100)
 	switch command.Kind {
 	case store.CommandCharterRatify:
-		if err := r.store.RatifyCharter(charter.ID); err != nil {
+		evidence := strings.TrimSpace(command.Instruction)
+		if evidence == "" {
+			evidence = "ratified in conversation"
+		}
+		if err := r.store.SetCharterStatus(charter.ID, store.CharterActive, store.Ratification{
+			Origin: store.OriginUser, SessionID: command.SessionID, Evidence: evidence,
+		}); err != nil {
 			return commandOutcome{}, err
 		}
 		return commandOutcome{
@@ -27,7 +38,7 @@ func (r *Reconciler) applyCharterCommand(command store.Command) (commandOutcome,
 		}, nil
 
 	case store.CommandCharterPause:
-		if err := r.store.PauseCharter(charter.ID); err != nil {
+		if err := r.store.SetCharterStatus(charter.ID, store.CharterPaused, store.Ratification{}); err != nil {
 			return commandOutcome{}, err
 		}
 		return commandOutcome{
@@ -36,7 +47,7 @@ func (r *Reconciler) applyCharterCommand(command store.Command) (commandOutcome,
 		}, nil
 
 	case store.CommandCharterRetire:
-		if err := r.store.RetireCharter(charter.ID); err != nil {
+		if err := r.store.SetCharterStatus(charter.ID, store.CharterRetired, store.Ratification{}); err != nil {
 			return commandOutcome{}, err
 		}
 		return commandOutcome{
@@ -49,15 +60,17 @@ func (r *Reconciler) applyCharterCommand(command store.Command) (commandOutcome,
 		if cadence == "" {
 			return commandOutcome{}, fmt.Errorf("charter cadence is empty")
 		}
-		if err := r.store.EditCharterCadence(charter.ID, cadence, store.ScheduleForCadence(cadence)); err != nil {
+		watch := store.RetimeWatch(charter.Watch, cadence, time.Now())
+		if err := r.store.ReviseCharter(charter.ID, charter.Invariant, watch,
+			charter.SentinelHint, charter.Action, charter.Rails()); err != nil {
 			return commandOutcome{}, err
 		}
-		updated, _, err := r.store.CharterByID(charter.ID)
+		updated, _, err := r.store.Charter(charter.ID)
 		if err != nil {
 			return commandOutcome{}, err
 		}
-		if updated.Status == store.CharterDraft {
-			question, options := charterRatificationQuestion(updated)
+		if updated.Status == store.CharterProposed {
+			question, options := charterRatificationQuestion(updated, "")
 			return commandOutcome{
 				status: store.CommandApplied, result: "draft charter cadence edited",
 				receipt: question, asAgent: true, options: options,
@@ -69,15 +82,15 @@ func (r *Reconciler) applyCharterCommand(command store.Command) (commandOutcome,
 		}, nil
 
 	case store.CommandCharterOnce:
-		if err := r.store.RetireCharter(charter.ID); err != nil {
+		if err := r.store.SetCharterStatus(charter.ID, store.CharterRetired, store.Ratification{}); err != nil {
 			return commandOutcome{}, err
 		}
 		id := fmt.Sprintf("task-%d", command.Seq)
 		subtree := store.Subtree{Nodes: []store.NodeSpec{{
-			ID: id, Brief: charter.Spec.Action, Title: clipLabel(label, 48), Stage: 1,
+			ID: id, Brief: charter.Action.Template, Title: clipLabel(label, 48), Stage: 1,
 		}}}
 		provenance := store.Provenance{
-			Origin: store.OriginUser, SessionID: command.SessionID, Intent: charter.Spec.Invariant,
+			Origin: store.OriginUser, SessionID: command.SessionID, Intent: charter.Invariant,
 		}
 		if err := r.store.Splice(store.RootID, subtree, provenance); err != nil {
 			return commandOutcome{}, err
@@ -90,14 +103,28 @@ func (r *Reconciler) applyCharterCommand(command store.Command) (commandOutcome,
 	return commandOutcome{}, fmt.Errorf("unsupported charter command %q", command.Kind)
 }
 
-func charterRatificationQuestion(charter store.Charter) (string, []store.QuestionOption) {
-	spec := charter.Spec
-	question := fmt.Sprintf(
-		"%s\nfires: %s (%s:%s)\ncosts: ~$%.2f/firing, ≤%d/day — %s\nexpires: %s\nWhat should I do?",
-		spec.Invariant, spec.Watch.Cadence, spec.Watch.Kind, spec.Watch.Schedule,
-		spec.Rails.EstimatedCostUSD, spec.Rails.MaxPerDay,
-		spec.Rails.MaxPerDayJustification, spec.Rails.Expiry,
-	)
+// charterRatificationQuestion reads the canonical charter: the cadence words
+// the user said, the executable schedule they compiled into, and the rails
+// that bound every firing. justification is the compiler's cap reasoning; it
+// travels with the initial draft only.
+func charterRatificationQuestion(charter store.Charter, justification string) (string, []store.QuestionOption) {
+	rails := charter.Rails()
+	fires := strings.TrimSpace(charter.Watch.Cadence)
+	if fires == "" {
+		fires = charter.Watch.String()
+	} else {
+		fires += " (" + charter.Watch.String() + ")"
+	}
+	costs := fmt.Sprintf("~$%.2f/firing, ≤%d/day", rails.PerFiringBudgetUSD, rails.MaxFiringsPerDay)
+	if justification = strings.TrimSpace(justification); justification != "" {
+		costs += " — " + justification
+	}
+	expires := "never"
+	if rails.ExpiresAt != nil {
+		expires = rails.ExpiresAt.Local().Format("2006-01-02 15:04")
+	}
+	question := fmt.Sprintf("%s\nfires: %s\ncosts: %s\nexpires: %s\nWhat should I do?",
+		charter.Invariant, fires, costs, expires)
 	options := []store.QuestionOption{
 		{Label: "yes, stand this up", Value: "charter:ratify:" + charter.ID},
 		{Label: "change the cadence", Value: "charter:cadence:" + charter.ID},

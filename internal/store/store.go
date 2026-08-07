@@ -97,14 +97,6 @@ const (
 	// work.
 	EventRailRaised EventKind = "rail_raised"
 
-	// Charter events are the durable lifecycle of standing intent. A draft is
-	// inert until a separate ratification event makes it active.
-	EventCharterDrafted       EventKind = "charter_drafted"
-	EventCharterRatified      EventKind = "charter_ratified"
-	EventCharterPaused        EventKind = "charter_paused"
-	EventCharterRetired       EventKind = "charter_retired"
-	EventCharterCadenceEdited EventKind = "charter_cadence_edited"
-
 	// Overrun deferrals preserve a landed partial whose repair could not be
 	// admitted at the rail. Resumption is a separate event so a rebuild can
 	// recover exactly the continuations that still need to be spliced.
@@ -414,9 +406,6 @@ func Open(path string) (*Store, error) {
 	}
 	if _, err := db.Exec(retrospectiveSchema); err != nil {
 		return closeOnError(fmt.Errorf("initialize retrospective schema: %w", err))
-	}
-	if _, err := db.Exec(charterSchema); err != nil {
-		return closeOnError(fmt.Errorf("initialize charter schema: %w", err))
 	}
 	if err := migrateFactsSchema(db); err != nil {
 		return closeOnError(fmt.Errorf("migrate facts schema: %w", err))
