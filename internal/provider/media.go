@@ -4,16 +4,28 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 )
 
-const maxMediaResponseBytes = 128 << 20
+const (
+	maxMediaResponseBytes = 128 << 20
+	maxVideoResponseBytes = 512 << 20
+
+	defaultVideoPollInitial = 5 * time.Second
+	defaultVideoPollMaximum = 20 * time.Second
+	defaultVideoTimeout     = 10 * time.Minute
+)
+
+var ErrVideoTimeout = errors.New("video generation timed out")
 
 // ImageRequest is OpenRouter's non-streaming image generation request.
 type ImageRequest struct {
@@ -39,7 +51,7 @@ type ImageResponse struct {
 type SpeechRequest struct {
 	Model          string `json:"model"`
 	Input          string `json:"input"`
-	Voice          string `json:"voice"`
+	Voice          string `json:"voice,omitempty"`
 	ResponseFormat string `json:"response_format"`
 }
 
@@ -48,11 +60,58 @@ type SpeechResponse struct {
 	Usage *ai.Usage
 }
 
-// MediaClient owns the two non-chat OpenRouter endpoints while sharing the
+// VideoImageReference is the OpenRouter image-ref envelope shared by first /
+// last frames and style references. FrameType is omitted for style refs.
+type VideoImageReference struct {
+	Type      string        `json:"type"`
+	ImageURL  VideoImageURL `json:"image_url"`
+	FrameType string        `json:"frame_type,omitempty"`
+}
+
+type VideoImageURL struct {
+	URL string `json:"url"`
+}
+
+type VideoRequest struct {
+	Model           string                `json:"model"`
+	Prompt          string                `json:"prompt"`
+	Duration        int                   `json:"duration,omitempty"`
+	Resolution      string                `json:"resolution,omitempty"`
+	AspectRatio     string                `json:"aspect_ratio,omitempty"`
+	FrameImages     []VideoImageReference `json:"frame_images,omitempty"`
+	InputReferences []VideoImageReference `json:"input_references,omitempty"`
+	GenerateAudio   *bool                 `json:"generate_audio,omitempty"`
+	Seed            *int                  `json:"seed,omitempty"`
+}
+
+type VideoResponse struct {
+	Video []byte
+	Usage *ai.Usage
+}
+
+type videoJob struct {
+	ID           string          `json:"id"`
+	PollingURL   string          `json:"polling_url"`
+	Status       string          `json:"status"`
+	UnsignedURLs []string        `json:"unsigned_urls"`
+	Usage        *ai.Usage       `json:"usage,omitempty"`
+	Error        json.RawMessage `json:"error,omitempty"`
+}
+
+// MediaClient owns the non-chat OpenRouter endpoints while sharing the
 // adapter's bearer key, attribution headers, timeout, and in-memory test seam.
 type MediaClient struct {
 	config Config
 	http   *http.Client
+
+	// Video generation is synchronous to callers but asynchronous on the wire.
+	// These seams keep the production backoff honest while tests advance a fake
+	// clock and never perform a real sleep.
+	videoNow         func() time.Time
+	videoWait        func(context.Context, time.Duration) error
+	videoPollInitial time.Duration
+	videoPollMaximum time.Duration
+	videoTimeout     time.Duration
 }
 
 func NewMediaClient(config Config) (*MediaClient, error) {
@@ -66,7 +125,11 @@ func NewMediaClient(config Config) (*MediaClient, error) {
 	if client == nil {
 		client = &http.Client{Timeout: config.Timeout}
 	}
-	return &MediaClient{config: config, http: client}, nil
+	return &MediaClient{
+		config: config, http: client, videoNow: time.Now, videoWait: waitContext,
+		videoPollInitial: defaultVideoPollInitial, videoPollMaximum: defaultVideoPollMaximum,
+		videoTimeout: defaultVideoTimeout,
+	}, nil
 }
 
 func (c *MediaClient) GenerateImage(ctx context.Context, request ImageRequest) (*ImageResponse, error) {
@@ -107,6 +170,113 @@ func (c *MediaClient) Speak(ctx context.Context, request SpeechRequest) (*Speech
 	return &SpeechResponse{Audio: payload, Usage: usageFromHeaders(response.Header)}, nil
 }
 
+// GenerateVideo submits one asynchronous OpenRouter job, waits through its
+// pending/in-progress states, and downloads the first completed artifact. The
+// method is deliberately synchronous: a leaf tool does not return a path until
+// that path names a complete local video.
+func (c *MediaClient) GenerateVideo(ctx context.Context, request VideoRequest) (*VideoResponse, error) {
+	videoCtx, cancel := context.WithTimeout(ctx, c.videoTimeout)
+	defer cancel()
+	response, err := c.generateVideo(videoCtx, request)
+	if errors.Is(videoCtx.Err(), context.DeadlineExceeded) {
+		return nil, fmt.Errorf("%w after %s", ErrVideoTimeout, c.videoTimeout)
+	}
+	return response, err
+}
+
+func (c *MediaClient) generateVideo(ctx context.Context, request VideoRequest) (*VideoResponse, error) {
+	var job videoJob
+	if _, err := c.postJSON(ctx, "/videos", request, &job); err != nil {
+		return nil, err
+	}
+	if strings.TrimSpace(job.ID) == "" {
+		return nil, fmt.Errorf("video submission returned no job id")
+	}
+	if strings.EqualFold(strings.TrimSpace(job.Status), "completed") {
+		return c.downloadVideo(ctx, job)
+	}
+
+	pollingURL := strings.TrimSpace(job.PollingURL)
+	if pollingURL == "" {
+		pollingURL = c.mediaEndpoint("/videos/" + url.PathEscape(job.ID))
+	} else {
+		var err error
+		pollingURL, err = c.resolveEndpoint(pollingURL)
+		if err != nil {
+			return nil, fmt.Errorf("resolve video polling URL: %w", err)
+		}
+	}
+
+	started := c.videoNow()
+	deadline := started.Add(c.videoTimeout)
+	delay := c.videoPollInitial
+	for {
+		now := c.videoNow()
+		if !now.Before(deadline) {
+			return nil, fmt.Errorf("%w after %s", ErrVideoTimeout, c.videoTimeout)
+		}
+		if remaining := deadline.Sub(now); delay > remaining {
+			delay = remaining
+		}
+		if err := c.videoWait(ctx, delay); err != nil {
+			if errors.Is(err, context.DeadlineExceeded) {
+				return nil, fmt.Errorf("%w after %s", ErrVideoTimeout, c.videoTimeout)
+			}
+			return nil, fmt.Errorf("wait for video job: %w", err)
+		}
+		if !c.videoNow().Before(deadline) {
+			return nil, fmt.Errorf("%w after %s", ErrVideoTimeout, c.videoTimeout)
+		}
+
+		if err := c.getJSON(ctx, pollingURL, &job); err != nil {
+			return nil, err
+		}
+		switch strings.ToLower(strings.TrimSpace(job.Status)) {
+		case "pending", "in_progress":
+			if delay < c.videoPollMaximum {
+				delay *= 2
+				if delay > c.videoPollMaximum {
+					delay = c.videoPollMaximum
+				}
+			}
+		case "completed":
+			return c.downloadVideo(ctx, job)
+		case "failed", "cancelled", "expired":
+			return nil, fmt.Errorf("video job %s: %s", job.Status, videoErrorDetail(job.Error))
+		default:
+			return nil, fmt.Errorf("video job returned unknown status %q", job.Status)
+		}
+	}
+}
+
+func (c *MediaClient) downloadVideo(ctx context.Context, job videoJob) (*VideoResponse, error) {
+	if len(job.UnsignedURLs) == 0 || strings.TrimSpace(job.UnsignedURLs[0]) == "" {
+		return nil, fmt.Errorf("completed video job returned no download URL")
+	}
+	endpoint, err := c.resolveEndpoint(job.UnsignedURLs[0])
+	if err != nil {
+		return nil, fmt.Errorf("resolve video download URL: %w", err)
+	}
+	// The URL is explicitly unsigned and may point at provider object storage;
+	// never forward the OpenRouter bearer credential to that host.
+	response, err := c.doEndpoint(ctx, http.MethodGet, endpoint, nil, false)
+	if err != nil {
+		return nil, err
+	}
+	defer response.Body.Close()
+	payload, err := io.ReadAll(io.LimitReader(response.Body, maxVideoResponseBytes))
+	if err != nil {
+		return nil, fmt.Errorf("read video response: %w", err)
+	}
+	if response.StatusCode < http.StatusOK || response.StatusCode >= http.StatusMultipleChoices {
+		return nil, apiError(response.StatusCode, payload)
+	}
+	if len(payload) == 0 {
+		return nil, fmt.Errorf("video download was empty")
+	}
+	return &VideoResponse{Video: payload, Usage: job.Usage}, nil
+}
+
 func (c *MediaClient) postJSON(ctx context.Context, path string, request any, target any) (http.Header, error) {
 	body, err := json.Marshal(request)
 	if err != nil {
@@ -130,26 +300,114 @@ func (c *MediaClient) postJSON(ctx context.Context, path string, request any, ta
 	return response.Header.Clone(), nil
 }
 
+func (c *MediaClient) getJSON(ctx context.Context, endpoint string, target any) error {
+	response, err := c.doEndpoint(ctx, http.MethodGet, endpoint, nil, true)
+	if err != nil {
+		return err
+	}
+	defer response.Body.Close()
+	payload, err := io.ReadAll(io.LimitReader(response.Body, maxMediaResponseBytes))
+	if err != nil {
+		return fmt.Errorf("read media response: %w", err)
+	}
+	if response.StatusCode < http.StatusOK || response.StatusCode >= http.StatusMultipleChoices {
+		return apiError(response.StatusCode, payload)
+	}
+	if err := json.Unmarshal(payload, target); err != nil {
+		return fmt.Errorf("decode media response: %w", err)
+	}
+	return nil
+}
+
 func (c *MediaClient) do(ctx context.Context, path string, body []byte) (*http.Response, error) {
-	endpoint := strings.TrimSuffix(strings.TrimSpace(c.config.BaseURL), "/") + path
-	request, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, bytes.NewReader(body))
+	return c.doEndpoint(ctx, http.MethodPost, c.mediaEndpoint(path), body, true)
+}
+
+func (c *MediaClient) doEndpoint(ctx context.Context, method, endpoint string, body []byte, authenticated bool) (*http.Response, error) {
+	request, err := http.NewRequestWithContext(ctx, method, endpoint, bytes.NewReader(body))
 	if err != nil {
 		return nil, fmt.Errorf("create media request: %w", err)
 	}
-	request.Header.Set("Content-Type", "application/json")
-	request.Header.Set("Authorization", "Bearer "+c.config.APIKey)
-	if c.config.SiteURL != "" {
-		request.Header.Set("HTTP-Referer", c.config.SiteURL)
+	if len(body) > 0 {
+		request.Header.Set("Content-Type", "application/json")
 	}
-	if c.config.SiteName != "" {
-		request.Header.Set("X-OpenRouter-Title", c.config.SiteName)
-		request.Header.Set("X-Title", c.config.SiteName)
+	if authenticated {
+		request.Header.Set("Authorization", "Bearer "+c.config.APIKey)
+		if c.config.SiteURL != "" {
+			request.Header.Set("HTTP-Referer", c.config.SiteURL)
+		}
+		if c.config.SiteName != "" {
+			request.Header.Set("X-OpenRouter-Title", c.config.SiteName)
+			request.Header.Set("X-Title", c.config.SiteName)
+		}
 	}
 	response, err := c.http.Do(request)
 	if err != nil {
 		return nil, fmt.Errorf("execute media request: %w", err)
 	}
 	return response, nil
+}
+
+func (c *MediaClient) mediaEndpoint(path string) string {
+	return strings.TrimSuffix(strings.TrimSpace(c.config.BaseURL), "/") + path
+}
+
+func (c *MediaClient) resolveEndpoint(raw string) (string, error) {
+	raw = strings.TrimSpace(raw)
+	reference, err := url.Parse(raw)
+	if err != nil {
+		return "", err
+	}
+	if reference.IsAbs() {
+		return reference.String(), nil
+	}
+	base, err := url.Parse(strings.TrimSuffix(strings.TrimSpace(c.config.BaseURL), "/") + "/")
+	if err != nil {
+		return "", err
+	}
+	if strings.HasPrefix(raw, "/") {
+		base.Path = "/"
+	}
+	return base.ResolveReference(reference).String(), nil
+}
+
+func waitContext(ctx context.Context, delay time.Duration) error {
+	timer := time.NewTimer(delay)
+	defer timer.Stop()
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-timer.C:
+		return nil
+	}
+}
+
+func videoErrorDetail(raw json.RawMessage) string {
+	if len(raw) == 0 || string(raw) == "null" {
+		return "the provider did not include an error detail"
+	}
+	var message string
+	if json.Unmarshal(raw, &message) == nil && strings.TrimSpace(message) != "" {
+		return strings.Join(strings.Fields(message), " ")
+	}
+	var object struct {
+		Message string `json:"message"`
+		Detail  string `json:"detail"`
+		Code    string `json:"code"`
+	}
+	if json.Unmarshal(raw, &object) == nil {
+		detail := strings.TrimSpace(object.Message)
+		if detail == "" {
+			detail = strings.TrimSpace(object.Detail)
+		}
+		if detail != "" && object.Code != "" {
+			detail = object.Code + ": " + detail
+		}
+		if detail != "" {
+			return strings.Join(strings.Fields(detail), " ")
+		}
+	}
+	return strings.Join(strings.Fields(string(raw)), " ")
 }
 
 // OpenRouter's image response carries usage in JSON. Its raw speech response

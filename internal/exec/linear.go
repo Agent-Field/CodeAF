@@ -115,7 +115,7 @@ func (l *Linear) WithStore(history *store.Store) *Linear {
 	return l
 }
 
-// WithMedia installs graph-level image, speech, and image-inspection tools.
+// WithMedia installs graph-level image, music, video, speech, and image-inspection tools.
 // It is executor configuration, so reflex micro-leaves inherit it unchanged.
 func (l *Linear) WithMedia(media *MediaTools) *Linear {
 	l.media = media
@@ -394,7 +394,7 @@ func (l *Linear) Run(ctx context.Context, task Task) (*Outcome, error) {
 		// sh is included because a shell command can change anything.
 		for index, call := range calls {
 			name := call.Function.Name
-			if !results[index].IsError && (name == "write" || name == "edit" || name == "sh" || name == "generate_image" || name == "speak") {
+			if !results[index].IsError && (name == "write" || name == "edit" || name == "sh" || name == "generate_image" || name == "generate_music" || name == "generate_video" || name == "speak") {
 				clear(seen)
 				break
 			}

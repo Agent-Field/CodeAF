@@ -14,22 +14,36 @@ import (
 )
 
 type fakeMediaProvider struct {
+	imageCalls     int
+	speechCalls    int
+	videoCalls     int
 	imageRequest   provider.ImageRequest
 	speechRequest  provider.SpeechRequest
+	videoRequest   provider.VideoRequest
 	imageResponse  *provider.ImageResponse
 	speechResponse *provider.SpeechResponse
+	videoResponse  *provider.VideoResponse
 	imageErr       error
 	speechErr      error
+	videoErr       error
 }
 
 func (f *fakeMediaProvider) GenerateImage(_ context.Context, request provider.ImageRequest) (*provider.ImageResponse, error) {
+	f.imageCalls++
 	f.imageRequest = request
 	return f.imageResponse, f.imageErr
 }
 
 func (f *fakeMediaProvider) Speak(_ context.Context, request provider.SpeechRequest) (*provider.SpeechResponse, error) {
+	f.speechCalls++
 	f.speechRequest = request
 	return f.speechResponse, f.speechErr
+}
+
+func (f *fakeMediaProvider) GenerateVideo(_ context.Context, request provider.VideoRequest) (*provider.VideoResponse, error) {
+	f.videoCalls++
+	f.videoRequest = request
+	return f.videoResponse, f.videoErr
 }
 
 type fakeModalities map[string]bool
@@ -43,7 +57,8 @@ func mediaToolbox(t *testing.T, provider MediaProvider, modalities ModalityCatal
 	space := workspace(t)
 	tools := newToolboxWithMedia(space, 7, nil, nil, &MediaTools{
 		Provider: provider, Catalog: modalities, ImageModel: "paint/model",
-		SpeechModel: "voice/model", WorkingModel: "vision/model",
+		SpeechModel: "voice/model", MusicModel: "music/model", VideoModel: "motion/model",
+		VideoPrice: 0.5, WorkingModel: "vision/model",
 	})
 	return tools, space
 }
@@ -85,10 +100,10 @@ func TestMediaToolsAreRegisteredAndHonorTheSpendGate(t *testing.T) {
 	}}
 	tools, _ := mediaToolbox(t, fake, fakeModalities{})
 	definitions := tools.Definitions()
-	if len(definitions) != 7 {
-		t.Fatalf("definitions = %d, want four base + three media", len(definitions))
+	if len(definitions) != 9 {
+		t.Fatalf("definitions = %d, want four base + five media", len(definitions))
 	}
-	want := map[string]bool{"generate_image": false, "speak": false, "view_image": false}
+	want := map[string]bool{"generate_image": false, "generate_music": false, "generate_video": false, "speak": false, "view_image": false}
 	for _, definition := range definitions {
 		if _, ok := want[definition.Function.Name]; ok {
 			want[definition.Function.Name] = true
@@ -99,10 +114,87 @@ func TestMediaToolsAreRegisteredAndHonorTheSpendGate(t *testing.T) {
 			t.Errorf("%s was not registered", name)
 		}
 	}
-	tools.media.BeforeSpend = func(context.Context) error { return errors.New("rail") }
+	tools.media.BeforeSpend = func(context.Context, float64) error { return errors.New("rail") }
 	result := tools.Execute(context.Background(), "generate_image", `{"prompt":"harbor"}`)
 	if !result.IsError || !strings.Contains(result.Content, "paused at the daily budget") || result.Usage != (Usage{}) {
 		t.Fatalf("gated result = %+v", result)
+	}
+	music := tools.Execute(context.Background(), "generate_music", `{"prompt":"harbor song"}`)
+	video := tools.Execute(context.Background(), "generate_video", `{"prompt":"harbor motion"}`)
+	if !music.IsError || !video.IsError || fake.imageCalls != 0 || fake.speechCalls != 0 || fake.videoCalls != 0 {
+		t.Fatalf("generation escaped gate: image=%d speech=%d video=%d music=%+v video_result=%+v",
+			fake.imageCalls, fake.speechCalls, fake.videoCalls, music, video)
+	}
+}
+
+func TestGenerateMusicWritesMP3WithoutVoiceAndRecordsHeaderUsage(t *testing.T) {
+	cost := 0.04
+	fake := &fakeMediaProvider{speechResponse: &provider.SpeechResponse{Audio: []byte("music"), Usage: &ai.Usage{Cost: &cost}}}
+	tools, space := mediaToolbox(t, fake, fakeModalities{})
+	result := tools.Execute(context.Background(), "generate_music", `{"prompt":"Glass Bells at Dawn","format":"mp3"}`)
+	if result.IsError || result.Usage.Calls != 1 || result.Usage.Cost != cost {
+		t.Fatalf("music result = %+v", result)
+	}
+	if fake.speechRequest.Model != "music/model" || fake.speechRequest.Voice != "" || fake.speechRequest.ResponseFormat != "mp3" {
+		t.Fatalf("music request = %+v", fake.speechRequest)
+	}
+	if _, ok := space.Locate(filepath.Join("media", "glass-bells-at-dawn.mp3")); !ok {
+		t.Fatal("music file was not written")
+	}
+
+	fake.speechResponse = nil
+	fake.speechErr = errors.New("provider detail")
+	failed := tools.Execute(context.Background(), "generate_music", `{"prompt":"failure"}`)
+	if !failed.IsError || failed.Usage != (Usage{}) || !strings.Contains(failed.Content, "music generation failed") || strings.Contains(failed.Content, "provider detail") {
+		t.Fatalf("failed music = %+v", failed)
+	}
+}
+
+func TestGenerateVideoMapsReferencesWritesMP4AndGatesKnownPrice(t *testing.T) {
+	cost := 1.25
+	fake := &fakeMediaProvider{videoResponse: &provider.VideoResponse{Video: []byte("video"), Usage: &ai.Usage{Cost: &cost}}}
+	tools, space := mediaToolbox(t, fake, fakeModalities{})
+	for _, name := range []string{"first.png", "last.jpg", "style.webp", "palette.gif"} {
+		if err := os.WriteFile(filepath.Join(space.Root(), name), []byte(name), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	var estimated float64
+	tools.media.BeforeSpend = func(_ context.Context, amount float64) error { estimated = amount; return nil }
+	result := tools.Execute(context.Background(), "generate_video", `{
+		"prompt":"Lanterns Across the Harbor","duration":8,"resolution":"720p","aspect_ratio":"16:9",
+		"reference_paths":["first.png","last.jpg","style.webp","palette.gif"]}`)
+	if result.IsError || result.Usage.Calls != 1 || result.Usage.Cost != cost || estimated != 0.5 {
+		t.Fatalf("video result = %+v estimate=%v", result, estimated)
+	}
+	request := fake.videoRequest
+	if request.Duration != 8 || request.Resolution != "720p" || request.AspectRatio != "16:9" ||
+		len(request.FrameImages) != 2 || len(request.InputReferences) != 2 ||
+		request.FrameImages[0].FrameType != "first_frame" || request.FrameImages[1].FrameType != "last_frame" ||
+		request.InputReferences[0].FrameType != "" {
+		t.Fatalf("video request = %+v", request)
+	}
+	if !strings.HasPrefix(request.FrameImages[0].ImageURL.URL, "data:image/png;base64,") ||
+		!strings.HasPrefix(request.FrameImages[1].ImageURL.URL, "data:image/jpeg;base64,") {
+		t.Fatalf("video refs = %+v", request.FrameImages)
+	}
+	if _, ok := space.Locate(filepath.Join("media", "lanterns-across-the-harbor.mp4")); !ok {
+		t.Fatal("video file was not written")
+	}
+}
+
+func TestGenerateVideoFailureAndTimeoutAreCalmAndCostNothing(t *testing.T) {
+	fake := &fakeMediaProvider{videoErr: errors.New("video job failed: policy refused this prompt")}
+	tools, _ := mediaToolbox(t, fake, fakeModalities{})
+	failed := tools.Execute(context.Background(), "generate_video", `{"prompt":"failure"}`)
+	if !failed.IsError || failed.Usage != (Usage{}) || !strings.Contains(failed.Content, "policy refused this prompt") || strings.Contains(failed.Content, "\n") {
+		t.Fatalf("failed video = %+v", failed)
+	}
+
+	fake.videoErr = provider.ErrVideoTimeout
+	timedOut := tools.Execute(context.Background(), "generate_video", `{"prompt":"slow"}`)
+	if !timedOut.IsError || timedOut.Usage != (Usage{}) || !strings.Contains(timedOut.Content, "timed out") || strings.Contains(timedOut.Content, "\n") {
+		t.Fatalf("timed-out video = %+v", timedOut)
 	}
 }
 

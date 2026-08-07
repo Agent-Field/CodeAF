@@ -3,6 +3,7 @@ package store
 import (
 	"encoding/json"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 )
@@ -194,5 +195,23 @@ func TestPauseDailyRailPostsOneQuestionPerRaise(t *testing.T) {
 	messages, err = graph.Messages("rail-session", 0, 0)
 	if err != nil || len(messages) != 2 {
 		t.Fatalf("questions after raise = %d err=%v, want 2", len(messages), err)
+	}
+}
+
+func TestPauseDailyRailIncludesKnownUpcomingSpend(t *testing.T) {
+	graph := openTestStore(t, filepath.Join(t.TempDir(), "estimated-pause.db"))
+	if err := graph.RecordUsage(NodeUsage{NodeID: RootID, Cost: 0.80}); err != nil {
+		t.Fatal(err)
+	}
+	rail, posted, err := graph.PauseDailyRailWithAdditionalSpend(1, "rail-session", 0.30)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !posted || !rail.Reached || rail.Spend < 1.099 || rail.Spend > 1.101 {
+		t.Fatalf("estimated rail = %+v posted=%t", rail, posted)
+	}
+	messages, err := graph.Messages("rail-session", 0, 0)
+	if err != nil || len(messages) != 1 || !strings.Contains(messages[0].Body, "$1.10 spent of $1.00") {
+		t.Fatalf("estimated rail message = %+v err=%v", messages, err)
 	}
 }

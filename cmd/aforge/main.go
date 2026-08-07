@@ -86,6 +86,8 @@ Environment:
   AFORGE_DAILY_BUDGET  20.0  daily dollar rail (0 = unlimited)
   AFORGE_IMAGE_MODEL          image-generation model (catalog-resolved by default)
   AFORGE_SPEECH_MODEL         speech-synthesis model (catalog-resolved by default)
+  AFORGE_MUSIC_MODEL          music-generation model (catalog-resolved by default)
+  AFORGE_VIDEO_MODEL          video-generation model (catalog-resolved by default)
   AFORGE_PREAUTHORIZE_SPEND  1 raises the rail without a headless stdin prompt
   AFORGE_PROFILE_DIR   where measured behaviour is kept (default ~/.aforge)`
 

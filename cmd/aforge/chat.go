@@ -74,6 +74,10 @@ func runChat(args []string) error {
 	baseMedia := exec.MediaTools{
 		Provider: mediaClient, Catalog: modelCatalog,
 		ImageModel: settings.ResolveImageModel(modelCatalog), SpeechModel: settings.ResolveSpeechModel(modelCatalog),
+		MusicModel: settings.ResolveMusicModel(modelCatalog), VideoModel: settings.ResolveVideoModel(modelCatalog),
+	}
+	if video, ok := modelCatalog.Model(baseMedia.VideoModel); ok {
+		baseMedia.VideoPrice = video.RequestPrice
 	}
 
 	chatClient, err := newLiveClient(settings, firstNonEmptyString(prefs.ChatModel, settings.Model))
@@ -180,11 +184,11 @@ func runChat(args []string) error {
 		}
 		leafMedia := baseMedia
 		leafMedia.WorkingModel = workingModel
-		leafMedia.BeforeSpend = func(context.Context) error {
+		leafMedia.BeforeSpend = func(_ context.Context, additional float64) error {
 			if settings.DailyBudgetUSD <= 0 {
 				return nil
 			}
-			rail, _, gateErr := graph.PauseDailyRail(settings.DailyBudgetUSD, node.Provenance.SessionID)
+			rail, _, gateErr := graph.PauseDailyRailWithAdditionalSpend(settings.DailyBudgetUSD, node.Provenance.SessionID, additional)
 			if gateErr != nil {
 				return gateErr
 			}
