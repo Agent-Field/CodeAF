@@ -15,6 +15,7 @@ import (
 type CharterStatus string
 
 const (
+	CharterDraft    CharterStatus = "draft"
 	CharterProposed CharterStatus = "proposed"
 	CharterActive   CharterStatus = "active"
 	CharterPaused   CharterStatus = "paused"
@@ -141,6 +142,14 @@ type CharterRails struct {
 	PerFiringBudgetUSD float64    `json:"per_firing_budget_usd"`
 	MaxFiringsPerDay   int        `json:"max_firings_per_day"`
 	ExpiresAt          *time.Time `json:"expires_at,omitempty"`
+
+	// Compatibility fields preserve the conversational charter compiler's
+	// quoted rails while the standing engine consumes the normalized fields
+	// above. DraftCharter fills both representations.
+	EstimatedCostUSD       float64 `json:"estimated_cost_usd,omitempty"`
+	MaxPerDay              int     `json:"max_per_day,omitempty"`
+	MaxPerDayJustification string  `json:"max_per_day_justification,omitempty"`
+	Expiry                 string  `json:"expiry,omitempty"`
 }
 
 // Ratification records who accepted the standing-spend consequence.
@@ -175,6 +184,14 @@ type Charter struct {
 	GraphTriggered  bool
 	CreatedSeq      int64
 	UpdatedSeq      int64
+
+	// Thread-facing compatibility projection. The first-class fields above
+	// remain authoritative; these are populated on reads for the conversational
+	// charter flow that predates the structured standing engine.
+	SessionID        string
+	Spec             CharterSpec
+	SourceCommandSeq int64
+	CreatedAt        time.Time
 
 	guardrails CharterRails
 }
@@ -302,7 +319,7 @@ func validateCron(schedule CronSchedule) error {
 }
 
 func validCharterStatus(status CharterStatus) bool {
-	return status == CharterProposed || status == CharterActive || status == CharterPaused || status == CharterRetired
+	return status == CharterDraft || status == CharterProposed || status == CharterActive || status == CharterPaused || status == CharterRetired
 }
 
 func validRatification(r Ratification) bool {
@@ -317,7 +334,7 @@ CREATE TABLE IF NOT EXISTS charters (
     sentinel_hint     TEXT NOT NULL DEFAULT '',
     action            JSON NOT NULL CHECK (json_valid(action)),
     rails             JSON NOT NULL CHECK (json_valid(rails)),
-    status            TEXT NOT NULL CHECK (status IN ('proposed', 'active', 'paused', 'retired')),
+    status            TEXT NOT NULL CHECK (status IN ('draft', 'proposed', 'active', 'paused', 'retired')),
     ratification      JSON NOT NULL CHECK (json_valid(ratification)),
     proposal_shape    TEXT NOT NULL DEFAULT '',
     last_wake         TEXT,
@@ -574,6 +591,7 @@ func scanCharter(scanner rowScanner) (Charter, error) {
 			return Charter{}, err
 		}
 	}
+	populateThreadCharter(&c)
 	return c, nil
 }
 
@@ -714,6 +732,8 @@ func validCharterTransition(from, to CharterStatus) bool {
 		return false
 	}
 	switch from {
+	case CharterDraft:
+		return to == CharterActive || to == CharterRetired
 	case CharterProposed:
 		return to == CharterActive || to == CharterRetired
 	case CharterActive:

@@ -700,6 +700,11 @@ func (m *Model) newSession() tea.Cmd {
 	m.cardExpanded = map[string]bool{}
 	m.questionSelection = map[string]int{}
 	m.questionDismissed = map[string]bool{}
+	m.agentQuestions = nil
+	m.answeringQuestionSeq = 0
+	m.questionDockExpanded = false
+	m.questionDockSelection = 0
+	m.questionDockRows = nil
 	m.selectedCardID = ""
 	m.graphScopeID = ""
 	m.charterCardID = ""

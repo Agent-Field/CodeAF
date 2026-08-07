@@ -223,6 +223,12 @@ func (r *Reconciler) Tick(ctx context.Context) error {
 	if err := r.initializeWatcher(); err != nil {
 		return fmt.Errorf("resident tick: initialize watcher: %w", err)
 	}
+	if err := r.expireQuestionsLocked(); err != nil {
+		return fmt.Errorf("resident tick: expire questions: %w", err)
+	}
+	if err := r.surfaceBlockingQuestionsLocked(""); err != nil {
+		return fmt.Errorf("resident tick: surface blocking questions: %w", err)
+	}
 
 	for {
 		commands, err := r.store.PendingCommands(commandBatchSize)
@@ -292,16 +298,21 @@ func (r *Reconciler) reconcileCommand(ctx context.Context, command store.Command
 	if err := r.store.ResolveCommand(command.Seq, outcome.status, outcome.result); err != nil {
 		return err
 	}
+	if outcome.asAgent {
+		_, err := r.askQuestionLocked(store.AgentQuestion{
+			SessionID: command.SessionID, Text: boundMessage(outcome.receipt),
+			OriginCharterID:  questionCharterOrigin(outcome.options),
+			OriginCommandSeq: command.Seq, Urgency: store.QuestionBlocking,
+			Options: outcome.options,
+		})
+		return err
+	}
 	if strings.TrimSpace(outcome.receipt) == "" {
 		return nil
 	}
-	role := store.RoleSystem
-	if outcome.asAgent {
-		role = store.RoleAgent
-	}
 	_, err = r.store.PostMessage(store.Message{
 		SessionID:  command.SessionID,
-		Role:       role,
+		Role:       store.RoleSystem,
 		Body:       boundMessage(outcome.receipt),
 		CommandSeq: command.Seq,
 		Options:    outcome.options,
@@ -762,7 +773,10 @@ func (r *Reconciler) announceNode(event store.Event) error {
 		Body:      boundMessage(body),
 		NodeID:    node.ID,
 	})
-	return err
+	if err != nil {
+		return err
+	}
+	return r.surfaceNaturalQuestionLocked(node.Provenance.SessionID)
 }
 
 func (r *Reconciler) reflexPromoted(node store.Node) bool {

@@ -83,9 +83,12 @@ const (
 
 	// Thread events: the conversation and its asynchronous mutation requests
 	// live in the same journal as the graph they act on.
-	EventMessagePosted    EventKind = "message_posted"
-	EventCommandRequested EventKind = "command_requested"
-	EventCommandResolved  EventKind = "command_resolved"
+	EventMessagePosted         EventKind = "message_posted"
+	EventCommandRequested      EventKind = "command_requested"
+	EventCommandResolved       EventKind = "command_resolved"
+	EventAgentQuestionQueued   EventKind = "agent_question_queued"
+	EventAgentQuestionSurfaced EventKind = "agent_question_surfaced"
+	EventAgentQuestionResolved EventKind = "agent_question_resolved"
 
 	// Usage and surprise are journaled separately because a planned leaf's
 	// prediction becomes known when the complete plan lands, after its spend.
@@ -396,6 +399,9 @@ func Open(path string) (*Store, error) {
 	}
 	if err := migrateThreadSchema(db); err != nil {
 		return closeOnError(fmt.Errorf("migrate thread schema: %w", err))
+	}
+	if _, err := db.Exec(agentQuestionSchema); err != nil {
+		return closeOnError(fmt.Errorf("initialize agent question schema: %w", err))
 	}
 	if _, err := db.Exec(usageSchema); err != nil {
 		return closeOnError(fmt.Errorf("initialize usage schema: %w", err))

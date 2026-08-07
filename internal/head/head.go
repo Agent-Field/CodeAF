@@ -177,6 +177,11 @@ func (h *Head) poll(ctx context.Context, cursor int64) (int64, error) {
 }
 
 func (h *Head) answer(ctx context.Context, user store.Message) error {
+	if handled, err := h.answerAgentQuestion(user); err != nil {
+		return fmt.Errorf("serve head: answer agent question: %w", err)
+	} else if handled {
+		return nil
+	}
 	if handled, err := h.answerPendingQuestion(user); err != nil {
 		return fmt.Errorf("serve head: answer selectable question: %w", err)
 	} else if handled {
