@@ -126,6 +126,13 @@ type CompetenceOptions struct {
 	Now        time.Time
 }
 
+// competenceKey identifies one accumulator without building a string per
+// lookup: the pair is the identity, so the pair is the key.
+type competenceKey struct {
+	kind  ScopeKind
+	scope string
+}
+
 type competenceAccumulator struct {
 	scope       string
 	kind        ScopeKind
@@ -164,10 +171,10 @@ func (s *Store) CompetenceMap(options ...CompetenceOptions) (CompetenceMap, erro
 		now = time.Now().UTC()
 	}
 
-	accumulators := make(map[string]*competenceAccumulator)
+	accumulators := make(map[competenceKey]*competenceAccumulator)
 	accumulator := func(scope string, kind ScopeKind) *competenceAccumulator {
 		scope = strings.TrimSpace(scope)
-		key := string(kind) + "\x00" + scope
+		key := competenceKey{kind: kind, scope: scope}
 		if existing := accumulators[key]; existing != nil {
 			return existing
 		}
@@ -199,13 +206,19 @@ func (s *Store) CompetenceMap(options ...CompetenceOptions) (CompetenceMap, erro
 
 func (s *Store) addTerritoryCompetence(
 	accumulator func(string, ScopeKind) *competenceAccumulator,
-	accumulators map[string]*competenceAccumulator,
+	accumulators map[competenceKey]*competenceAccumulator,
 ) error {
+	// One graph load answers both questions here: territory membership and the
+	// per-node terminal outcome. Loading it twice is the same view read twice.
 	nodes, err := s.Nodes()
 	if err != nil {
 		return fmt.Errorf("competence map nodes: %w", err)
 	}
-	jobs, err := s.TerritoryJobs()
+	edges, err := s.Edges()
+	if err != nil {
+		return fmt.Errorf("competence map edges: %w", err)
+	}
+	jobs, err := s.territoryJobs(nodes, edges)
 	if err != nil {
 		return fmt.Errorf("competence map territories: %w", err)
 	}
@@ -236,8 +249,16 @@ func (s *Store) addTerritoryCompetence(
 		}
 	}
 
+	// Only the last gate per node decides the outcome, so only the last gate per
+	// node is read: the older ones were being decoded and thrown away.
 	latestGate := make(map[string]DeliveryGate)
-	rows, err := s.db.Query(`SELECT node_id, payload FROM events WHERE kind = ? ORDER BY seq`, EventDeliveryGate)
+	rows, err := s.db.Query(`
+		SELECT event.node_id, event.payload
+		FROM events AS event
+		JOIN (
+			SELECT node_id, MAX(seq) AS seq FROM events WHERE kind = ? GROUP BY node_id
+		) AS latest ON latest.node_id = event.node_id AND latest.seq = event.seq`,
+		EventDeliveryGate)
 	if err != nil {
 		return fmt.Errorf("competence map gates: %w", err)
 	}
@@ -317,12 +338,15 @@ func (s *Store) addTerritoryCompetence(
 		return fmt.Errorf("competence map surprise: %w", err)
 	}
 
-	facts, err := s.Facts(0)
+	// Only active skills with an artifact are installed capability; asking the
+	// notebook for those is one indexed read instead of the whole notebook.
+	facts, err := s.factsWhere(`kind = ? AND status = ? AND artifact <> '' ORDER BY seq DESC`,
+		FactSkill, FactActive)
 	if err != nil {
 		return fmt.Errorf("competence map skills: %w", err)
 	}
 	for _, fact := range facts {
-		if fact.Kind != FactSkill || fact.Status != FactActive || strings.TrimSpace(fact.Artifact) == "" {
+		if strings.TrimSpace(fact.Artifact) == "" {
 			continue
 		}
 		matched := false
