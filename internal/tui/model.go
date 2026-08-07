@@ -1502,6 +1502,11 @@ func (m *Model) applyQuietPoll(result pollResultMsg) {
 	}
 	m.lastRepaintAt = now
 	m.invalidateRailCaches()
+	// The minute repaint is the clock's own frame: it re-renders everything
+	// from state already in hand. Retiring the rendered blocks with it keeps
+	// the cache one thread wide, instead of one entry per timestamp a long
+	// idle stretch walks through.
+	m.threadGen++
 	m.rebuildCards()
 	m.setSize(m.width, m.height)
 }
