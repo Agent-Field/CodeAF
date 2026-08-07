@@ -321,7 +321,6 @@ func TestNarratorKeepsMilestonesThroughAFailedPost(t *testing.T) {
 	}
 }
 
-
 // A second-resolution clock made the running block a different string on every
 // heartbeat, for a number the narrator prompt itself says to mention only when
 // it is notable. Under a minute there is nothing notable to say.
