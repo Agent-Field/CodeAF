@@ -14,6 +14,7 @@ import (
 	"github.com/Agent-Field/aforge-v2/internal/provider"
 	"github.com/Agent-Field/aforge-v2/internal/resident"
 	"github.com/Agent-Field/aforge-v2/internal/store"
+	"github.com/Agent-Field/aforge-v2/internal/tui"
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 )
 
@@ -713,5 +714,87 @@ func TestStageDocumentAttachmentsRefusesOversizedAndVanishedFiles(t *testing.T) 
 	}
 	if _, err := stageDocumentAttachments(nil, []string{oversized}); err == nil {
 		t.Fatal("staging into a nil workspace succeeded")
+	}
+}
+
+// A visitor holds no provider clients. Every Commander capability the TUI can
+// reach must still answer honestly instead of dereferencing a client that this
+// process never built, and the ones that would need a head must refuse in
+// words rather than panic.
+func TestVisitorCommanderServesTheSurfaceWithoutClients(t *testing.T) {
+	root := t.TempDir()
+	path := filepath.Join(root, "graph.db")
+	graph, err := store.Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer graph.Close()
+	if err := saveChatPrefs(root, chatPrefs{ChatModel: "talk/remembered", TaskModel: "work/remembered"}); err != nil {
+		t.Fatal(err)
+	}
+
+	attached := ""
+	commander := newVisitorCommander(path, "visitor-session", graph, func(id string) error {
+		attached = id
+		return nil
+	})
+	var _ tui.Commander = commander
+
+	if got := commander.CurrentModel("talk"); got != "talk/remembered" {
+		t.Fatalf("visitor talk model = %q, want the recorded preference", got)
+	}
+	if got := commander.CurrentModel("work"); got != "work/remembered" {
+		t.Fatalf("visitor work model = %q, want the recorded preference", got)
+	}
+	for _, role := range []string{"talk", "work", "boost", "voice", "image", "speech", "music", "video"} {
+		commander.CurrentModel(role)
+		commander.CatalogFor(role)
+		commander.ImageInputSupportFor(role)
+		commander.ModelFollows(role)
+	}
+	if len(commander.Models()) == 0 || len(commander.Catalog()) == 0 {
+		t.Fatal("visitor offered no models to pick from")
+	}
+	for _, role := range []string{"talk", "work"} {
+		if err := commander.SetModel(role, "some/other"); err == nil {
+			t.Fatalf("visitor was allowed to switch the %s model", role)
+		}
+	}
+	if commander.StreamEvents() != nil {
+		t.Fatal("visitor exposed a stream it does not produce")
+	}
+	commander.Notebook(5)
+	commander.SearchNotebook("anything", 5)
+	commander.NodeTrace("missing", 128)
+	commander.SplitPct()
+	if commander.DatabasePath() != path {
+		t.Fatalf("visitor database path = %q", commander.DatabasePath())
+	}
+
+	// A visitor's session is real: it may open a new one, and its messages and
+	// cancellations reach the elected resident through the journal.
+	session, err := commander.NewSession()
+	if err != nil || session == "" || attached != session {
+		t.Fatalf("visitor new session = %q, attached %q, err %v", session, attached, err)
+	}
+	if _, err := graph.PostMessage(store.Message{
+		SessionID: session, Role: store.RoleUser, Body: "visitor asks",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := graph.Splice(store.RootID, store.Subtree{
+		Nodes: []store.NodeSpec{{ID: "visitor-job", Brief: "visitor asks", Stage: 1}},
+	}, store.Provenance{Origin: store.OriginUser, SessionID: session, Intent: "visitor asks"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := commander.Cancel("visitor-job"); err != nil {
+		t.Fatal(err)
+	}
+	pending, err := graph.PendingCommands(10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(pending) != 1 || pending[0].Kind != store.CommandCancel || pending[0].SessionID != session {
+		t.Fatalf("visitor cancel did not reach the journal: %+v", pending)
 	}
 }

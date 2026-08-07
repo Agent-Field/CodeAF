@@ -100,6 +100,14 @@ const (
 	EventAgentQuestionSurfaced EventKind = "agent_question_surfaced"
 	EventAgentQuestionResolved EventKind = "agent_question_resolved"
 
+	// Standing-watch policy is global to this brain file. Offered is the
+	// durable never-ask-twice gate; enabled and declined are the user's final
+	// decision; pass is one completed headless wake observation.
+	EventStandingWatchOffered  EventKind = "standing_watch_offered"
+	EventStandingWatchEnabled  EventKind = "standing_watch_enabled"
+	EventStandingWatchDeclined EventKind = "standing_watch_declined"
+	EventStandingWatchPass     EventKind = "standing_watch_pass"
+
 	// Usage and surprise are journaled separately because a planned leaf's
 	// prediction becomes known when the complete plan lands, after its spend.
 	EventUsageRecorded    EventKind = "usage_recorded"

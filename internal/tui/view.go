@@ -93,6 +93,8 @@ func (m *Model) View() string {
 	switch {
 	case m.nodeViewID != "":
 		main = m.renderNodePane()
+	case m.selfVisible():
+		main = m.renderSelfPane()
 	case m.graphVisible() && m.horizontal:
 		main = lipgloss.JoinHorizontal(lipgloss.Top, m.renderChatPane(), "  ", m.renderGraphPane())
 	case m.graphVisible():
@@ -113,10 +115,10 @@ func (m *Model) View() string {
 	parts = append(parts, m.renderInput())
 	if !m.paletteOpen() {
 		// One footer line, one explicit priority: transient voice status →
-		// active boost indicator → pending-question context → idle tip →
-		// focus-zone help. Voice status is short-lived so boost only yields
-		// momentarily; tips are idle-only and can never displace an armed or
-		// pinned boost.
+		// ambient status the top bar could not fit → active boost indicator →
+		// pending-question context → idle tip → focus-zone help. Both status
+		// lines are short-lived so boost only yields momentarily; tips are
+		// idle-only and can never displace an armed or pinned boost.
 		hint := m.contextHelpLine()
 		boostShown := false
 		switch {
@@ -126,6 +128,8 @@ func (m *Model) View() string {
 			hint = "ctrl+v finish · esc discard · keep typing to preserve your draft"
 		case m.voiceState == voiceStarting || m.voiceState == voiceFinalizing:
 			hint = "voice working · esc discard"
+		case m.status != "" && time.Now().Before(m.statusUntil) && !m.headerStatusShown:
+			hint = m.status
 		case m.boost != boostOff:
 			hint = m.boostLabel()
 			boostShown = true
@@ -154,6 +158,9 @@ func (m *Model) View() string {
 func (m *Model) trackPaneBounds() {
 	m.chatBounds = paneBounds{}
 	m.headerTasksBounds = paneBounds{}
+	m.headerThreadBounds = paneBounds{}
+	m.headerBoardBounds = paneBounds{}
+	m.headerSelfBounds = paneBounds{}
 	m.headerQuestionBounds = paneBounds{}
 	m.headerModelsBounds = paneBounds{}
 	m.headerHelpBounds = paneBounds{}
@@ -162,6 +169,7 @@ func (m *Model) trackPaneBounds() {
 	m.standingRowsBounds = paneBounds{}
 	m.serviceRowsBounds = paneBounds{}
 	m.graphToggleBounds = paneBounds{}
+	m.selfBounds = paneBounds{}
 	m.paletteCloseBounds = paneBounds{}
 	m.helpBounds = paneBounds{}
 	m.modelPickerBounds = paneBounds{}
@@ -180,6 +188,8 @@ func (m *Model) trackPaneBounds() {
 	switch {
 	case m.nodeViewID != "":
 		m.nodeBounds = paneBounds{x: 0, y: mainY, width: m.width, height: m.chatHeight}
+	case m.selfVisible():
+		m.selfBounds = paneBounds{x: 0, y: mainY, width: m.width, height: m.chatHeight}
 	case m.graphVisible() && m.horizontal:
 		m.chatBounds = paneBounds{x: 0, y: mainY, width: m.chatWidth, height: m.chatHeight}
 		m.graphBounds = paneBounds{x: m.chatWidth + 2, y: mainY, width: m.graphWidth, height: m.graphHeight}
@@ -191,6 +201,7 @@ func (m *Model) trackPaneBounds() {
 	if m.graphBounds.width > 0 {
 		standingHeight := m.standingSectionHeight()
 		servicesHeight := m.servicesSectionHeight()
+		presenceHeight := m.residentPresenceHeight()
 		if standingHeight > 0 {
 			m.standingRowsBounds = paneBounds{
 				x: m.graphBounds.x, y: m.graphBounds.y + 1,
@@ -204,11 +215,11 @@ func (m *Model) trackPaneBounds() {
 			}
 		}
 		m.graphRowsBounds = paneBounds{
-			x: m.graphBounds.x, y: m.graphBounds.y + standingHeight + servicesHeight + 2,
+			x: m.graphBounds.x, y: m.graphBounds.y + standingHeight + servicesHeight + presenceHeight + 2,
 			width: m.graph.Width, height: m.graph.Height,
 		}
 		m.graphToggleBounds = paneBounds{
-			x: m.graphBounds.x, y: m.graphBounds.y + standingHeight + servicesHeight,
+			x: m.graphBounds.x, y: m.graphBounds.y + standingHeight + servicesHeight + presenceHeight,
 			width: m.graphBounds.width, height: 1,
 		}
 	}
@@ -227,18 +238,26 @@ func (m *Model) trackPaneBounds() {
 }
 
 func (m *Model) renderTopBar() string {
+	m.headerStatusShown = false
 	wordmark := lipgloss.NewStyle().Foreground(ink).Bold(true).Render("aforge")
-	left := wordmark + mutedStyle.Faint(true).Render("  "+m.sessionID)
+	thread := m.renderPlaceLabel("thread", placeThread, len(m.agentQuestions) > 0)
+	board := m.renderPlaceLabel("board", placeBoard, m.boardNeedsAttention())
+	self := m.renderPlaceLabel("self", placeSelf, m.selfNeedsAttention())
+	separator := mutedStyle.Faint(true).Render(" · ")
+	left := wordmark + "   " + thread + separator + board + separator + self
+	showPlaces := true
 	talkGlance := "talk " + truncate(modelShort(m.currentModel("talk")), 18)
 	if m.boost == boostPinned {
 		talkGlance = "talk » " + truncate(modelShort(m.currentModel("boost")), 18)
 	}
 	glance := mutedStyle.Faint(true).Render(talkGlance +
 		" · work " + truncate(modelShort(m.currentModel("work")), 18))
+	compactGlance := mutedStyle.Faint(true).Render(talkGlance)
 	models := m.renderModelsButton()
 
 	rightMeta := m.renderSpend()
-	if m.status != "" && time.Now().Before(m.statusUntil) {
+	statusActive := m.status != "" && time.Now().Before(m.statusUntil)
+	if statusActive {
 		rightMeta = mutedStyle.Render(truncate(m.status, max(8, m.width/2)))
 	}
 	if m.err != nil {
@@ -249,39 +268,65 @@ func (m *Model) renderTopBar() string {
 	// the rail would open, ▾ while it is on screen).
 	button := m.renderTasksButton()
 	help := m.renderHelpButton()
-	showGlance := true
-	right := glance + "  " + models
-	if rightMeta != "" {
-		right += "  " + rightMeta
-	}
-	right += "  " + button + "  " + help
 
+	// The header yields in one fixed order as the frame narrows: the model
+	// glance shortens to talk-only, then ambient status leaves (the footer
+	// line picks it up), then the glance goes entirely — it is context the
+	// model door already owns — and only in the last resort do the places
+	// collapse to the wordmark. The model door, the rail button, and ? never
+	// yield: they are the header's irreplaceable actions.
+	shownGlance, shownMeta := glance, rightMeta
+	compose := func() string {
+		right := ""
+		if shownGlance != "" {
+			right = shownGlance + "  "
+		}
+		right += models
+		if shownMeta != "" {
+			right += "  " + shownMeta
+		}
+		return right + "  " + button + "  " + help
+	}
+	yields := []func(){
+		func() { shownMeta = "" },
+		func() { shownGlance = "" },
+		func() { left, showPlaces = wordmark, false },
+	}
+	if m.width >= railAtWidth {
+		// Only a frame wide enough for the side rail shortens the glance
+		// before giving anything up. Narrower than that it goes whole: a
+		// truncated model name beside the door that opens it is not worth
+		// the columns the places need.
+		yields = append([]func(){func() { shownGlance = compactGlance }}, yields...)
+	}
+	right := compose()
 	space := m.width - lipgloss.Width(left) - lipgloss.Width(right)
-	if space < 1 && rightMeta != "" {
-		// Ambient status yields first; the unified model door is the
-		// irreplaceable action.
-		right = glance + "  " + models + "  " + button + "  " + help
-		space = m.width - lipgloss.Width(left) - lipgloss.Width(right)
-	}
-	if space < 1 {
-		// The glance is useful context, not another control; it yields second.
-		right = models + "  " + button + "  " + help
-		showGlance = false
-		space = m.width - lipgloss.Width(left) - lipgloss.Width(right)
-	}
-	if space < 1 {
-		left = wordmark
+	for _, yield := range yields {
+		if space >= 1 {
+			break
+		}
+		yield()
+		right = compose()
 		space = m.width - lipgloss.Width(left) - lipgloss.Width(right)
 	}
 	if space < 1 {
 		return truncate(left+" "+right, m.width)
 	}
+	m.headerStatusShown = statusActive && shownMeta != ""
 	rightX := lipgloss.Width(left) + space
 	modelsOffset := 0
-	if showGlance {
-		modelsOffset = lipgloss.Width(glance) + 2
+	if shownGlance != "" {
+		modelsOffset = lipgloss.Width(shownGlance) + 2
 	}
 	m.headerModelsBounds = paneBounds{x: rightX + modelsOffset, y: 0, width: lipgloss.Width(models), height: 1}
+	if showPlaces {
+		x := lipgloss.Width(wordmark) + 3
+		m.headerThreadBounds = paneBounds{x: x, y: 0, width: lipgloss.Width(thread), height: 1}
+		x += lipgloss.Width(thread) + lipgloss.Width(separator)
+		m.headerBoardBounds = paneBounds{x: x, y: 0, width: lipgloss.Width(board), height: 1}
+		x += lipgloss.Width(board) + lipgloss.Width(separator)
+		m.headerSelfBounds = paneBounds{x: x, y: 0, width: lipgloss.Width(self), height: 1}
+	}
 	buttonWidth := lipgloss.Width(button)
 	helpWidth := lipgloss.Width(help)
 	m.headerHelpBounds = paneBounds{x: m.width - helpWidth, y: 0, width: helpWidth, height: 1}
@@ -291,6 +336,18 @@ func (m *Model) renderTopBar() string {
 		m.headerQuestionBounds = paneBounds{x: m.headerTasksBounds.x + offset, y: 0, width: 1, height: 1}
 	}
 	return left + strings.Repeat(" ", space) + right
+}
+
+func (m *Model) renderPlaceLabel(name string, target place, attention bool) string {
+	style := mutedStyle.Faint(true)
+	if m.activePlace() == target {
+		style = lipgloss.NewStyle().Foreground(ink)
+	}
+	label := style.Render(name)
+	if attention {
+		label += " " + questionStyle.Bold(true).Render("●")
+	}
+	return label
 }
 
 func (m *Model) renderModelsButton() string {
@@ -314,6 +371,9 @@ func (m *Model) renderTasksButton() string {
 	if m.focus == focusHeader && m.headerFocusIndex == 1 {
 		style = lipgloss.NewStyle().Foreground(powder)
 	}
+	// The button keeps its name in every layout: the header's board label is
+	// the place, this is the alias that opens it, and a control that renames
+	// itself under the cursor is one the hand stops trusting.
 	return style.Render("⟨tasks ") + dot + style.Render(disclosure+"⟩")
 }
 
@@ -325,14 +385,92 @@ func (m *Model) renderHelpButton() string {
 	return style.Render("?")
 }
 
-// renderSpend is the one number that is always worth the top-right corner:
-// what this session has consumed. Tokens and cost are quiet metadata.
+// renderSpend keeps session usage and today's self-spend together in the
+// top-right corner. Tokens and cost are quiet metadata.
 func (m *Model) renderSpend() string {
-	if m.usage.Nodes == 0 {
+	parts := make([]string, 0, 2)
+	if m.usage.Nodes > 0 {
+		tokens := humanizeTokens(m.usage.PromptTokens + m.usage.CompletionTokens)
+		parts = append(parts, tokens+" tok · "+fmt.Sprintf("$%.2f", m.usage.Cost))
+	}
+	if m.selfSpendToday > 0 {
+		parts = append(parts, formatCardCost(m.selfSpendToday)+" self")
+	}
+	if len(parts) == 0 {
 		return ""
 	}
-	tokens := humanizeTokens(m.usage.PromptTokens + m.usage.CompletionTokens)
-	return mutedStyle.Render(tokens + " tok · " + fmt.Sprintf("$%.2f", m.usage.Cost))
+	return mutedStyle.Render(strings.Join(parts, " · "))
+}
+
+// residentPresenceText is the sole projection of self-directed life. Active
+// practice takes precedence over the one-poll learning afterglow; otherwise
+// silence is the state.
+func (m *Model) residentPresenceText() string {
+	if root, ok := activePracticeRoot(m.snapshot); ok {
+		return fmt.Sprintf("practicing: %s · $%.2f on myself today",
+			practiceScope(root), m.selfSpendToday)
+	}
+	if clause := strings.TrimSpace(m.selfLearning); clause != "" {
+		return "learned: " + clause
+	}
+	return ""
+}
+
+func activePracticeRoot(snapshot store.Snapshot) (store.Node, bool) {
+	var newest store.Node
+	found := false
+	for _, node := range snapshot.Nodes {
+		if node.Parent != store.RootID || node.Group != store.PracticeGroup || nodeSettled(node) {
+			continue
+		}
+		if !found || node.CreatedSeq > newest.CreatedSeq {
+			newest, found = node, true
+		}
+	}
+	return newest, found
+}
+
+func practiceScope(node store.Node) string {
+	title := strings.TrimSpace(node.Title)
+	const prefix = "practice "
+	if len(title) >= len(prefix) && strings.EqualFold(title[:len(prefix)], prefix) {
+		if scope := strings.TrimSpace(title[len(prefix):]); scope != "" {
+			return scope
+		}
+	}
+	line := firstLine(node.Brief)
+	lower := strings.ToLower(line)
+	if strings.HasPrefix(lower, "practice question #") {
+		if at := strings.Index(lower, " in "); at >= 0 {
+			tail := line[at+len(" in "):]
+			if colon := strings.IndexByte(tail, ':'); colon > 0 {
+				return strings.TrimSpace(tail[:colon])
+			}
+		}
+	}
+	if title != "" {
+		return title
+	}
+	if label := nodeLabel(node); label != "" {
+		return label
+	}
+	return node.ID
+}
+
+func (m *Model) renderResidentPresence(width int) string {
+	text := m.residentPresenceText()
+	if text == "" {
+		return ""
+	}
+	return mutedStyle.Faint(true).Render(truncate(text, max(1, width)))
+}
+
+func (m *Model) residentPresenceHeight() int {
+	if !m.graphVisible() || m.graphScopeID != "" || m.charterCardID != "" ||
+		m.residentPresenceText() == "" {
+		return 0
+	}
+	return 1
 }
 
 // taskCounts sweeps the snapshot once for the activity bar and the rail
@@ -340,7 +478,8 @@ func (m *Model) renderSpend() string {
 func (m *Model) taskCounts() (running, queued, failed int) {
 	definitions := charterDefinitionIDs(m.snapshot)
 	for _, node := range m.snapshot.Nodes {
-		if node.ID == store.RootID || definitions[node.ID] {
+		if node.ID == store.RootID || definitions[node.ID] ||
+			node.Provenance.Origin == store.OriginSelf {
 			continue
 		}
 		switch node.Status {
@@ -458,6 +597,9 @@ func (m *Model) renderGraphPane() string {
 		}
 		if section := m.renderServicesSection(max(1, m.graphWidth)); section != "" {
 			lines = append(lines, strings.Split(section, "\n")...)
+		}
+		if presence := m.renderResidentPresence(max(1, m.graphWidth)); presence != "" {
+			lines = append(lines, presence)
 		}
 	}
 	lines = append(lines, title, "")

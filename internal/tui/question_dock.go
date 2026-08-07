@@ -17,17 +17,37 @@ type questionDockRow struct {
 func (m *Model) renderActivityDock(track bool) string {
 	questions := m.renderAgentQuestionDock(track)
 	cards := m.renderCardDock(track)
-	if questions == "" {
-		return cards
+	var combined string
+	switch {
+	case questions == "":
+		combined = cards
+	case cards == "":
+		combined = questions
+	default:
+		combined = questions + "\n" + cards
 	}
-	if cards == "" {
-		return questions
-	}
-	combined := questions + "\n" + cards
 	if m.questionDockExpanded {
-		return m.clampCardDock(combined, max(4, m.height*2/5))
+		combined = m.clampCardDock(combined, max(4, m.height*2/5))
 	}
-	return combined
+	return m.withDockPresence(combined)
+}
+
+func (m *Model) withDockPresence(content string) string {
+	if m.graphVisible() || m.nodeViewID != "" {
+		return content
+	}
+	text := m.residentPresenceText()
+	if text == "" {
+		return content
+	}
+	presence := mutedStyle.Faint(true).Render(text)
+	if content == "" {
+		return truncate(presence, m.width)
+	}
+	lines := strings.Split(content, "\n")
+	last := len(lines) - 1
+	lines[last] = truncate(lines[last]+mutedStyle.Faint(true).Render(" · ")+presence, m.width)
+	return strings.Join(lines, "\n")
 }
 
 func (m *Model) questionDockHeight() int {
@@ -135,8 +155,11 @@ func (m *Model) surfaceSelectedAgentQuestion() tea.Cmd {
 	}
 	index := max(0, min(m.questionDockSelection, len(m.agentQuestions)-1))
 	question := m.agentQuestions[index]
+	// Neutral questions — a charter's firing proposal belongs to no session —
+	// surface into whichever session is reading the dock right now.
+	sessionID := m.sessionID
 	backend, ok := m.backend.(interface {
-		SurfaceQuestion(int64) (store.Message, error)
+		SurfaceQuestionForSession(int64, string) (store.Message, error)
 	})
 	if !ok {
 		return func() tea.Msg {
@@ -145,7 +168,7 @@ func (m *Model) surfaceSelectedAgentQuestion() tea.Cmd {
 		}
 	}
 	return func() tea.Msg {
-		message, err := backend.SurfaceQuestion(question.Seq)
+		message, err := backend.SurfaceQuestionForSession(question.Seq, sessionID)
 		return questionSurfaceResultMsg{questionSeq: question.Seq, message: message, err: err}
 	}
 }

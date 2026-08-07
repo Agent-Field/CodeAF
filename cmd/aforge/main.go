@@ -55,6 +55,8 @@ func run() error {
 		return runServices(os.Args[2:])
 	case "wake":
 		return runWake(os.Args[2:])
+	case "doctor":
+		return runDoctor(os.Args[2:])
 	case "why":
 		return runWhy(os.Args[2:])
 	case "-h", "--help", "help":
@@ -78,7 +80,8 @@ const usageText = `aforge — build and revise task graphs
   aforge competence [--db path] [--model slug]
   aforge services [--db path]
   aforge services stop <name> [--db path]
-  aforge wake [--db path]       run one standing-watch pass and exit
+  aforge wake [--db path] [--max-seconds N]  run one full resident pass and exit
+  aforge doctor [--db path]     show the brain, resident, watch, spend, and open counts
   aforge why self [--db path]   show today's self-spend receipts
 
 Environment:
