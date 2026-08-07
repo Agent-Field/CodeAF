@@ -25,6 +25,10 @@ type MediaProvider interface {
 	GenerateVideo(context.Context, provider.VideoRequest) (*provider.VideoResponse, error)
 }
 
+type DocumentProvider interface {
+	ParseDocument(context.Context, provider.DocumentRequest) (*provider.DocumentResponse, error)
+}
+
 type ModalityCatalog interface {
 	Supports(modelID, direction, modality string) bool
 }
@@ -44,6 +48,12 @@ type MediaTools struct {
 	// VisionClient is a direct completion client. The selected VisionModel is
 	// applied per request so capability resolution can stay live at leaf start.
 	VisionClient Completer
+	// DocumentClient owns the explicit OpenRouter file-parser completion. It is
+	// separate from ordinary model turns so every request names its cost rung.
+	DocumentClient DocumentProvider
+	// DocumentEngine is auto, local, free, or ocr. Empty is auto for embedders
+	// that construct MediaTools directly.
+	DocumentEngine string
 	// VideoPrice is the catalog's fixed per-request price when advertised.
 	// Zero means the catalog had no trustworthy estimate; the rail still runs.
 	VideoPrice   float64

@@ -372,3 +372,63 @@ func TestCompileReceiptKeepsLegacyBytes(t *testing.T) {
 		t.Fatalf("compile receipt changed:\n got %q\nwant %q", got, want)
 	}
 }
+
+// Attached documents have to survive compilation twice over: the compiler sees
+// them in its graph context, and the goal carries them even when a provider
+// ignores that context. Losing them here would leave planning blind to the one
+// input the user actually supplied.
+func TestAttachedDocumentsReachTheCompilerContextAndTheCompiledGoal(t *testing.T) {
+	graph := openStore(t)
+	command, err := graph.RequestCommand(store.Command{
+		SessionID:   "session-docs",
+		Kind:        store.CommandSplice,
+		Instruction: "Summarise the filing",
+		Attachments: []string{"/drop/q3 filing.pdf", "/drop/chart.png", "/drop/q3 filing.pdf", "/drop/deck.pptx"},
+	})
+	if err != nil {
+		t.Fatalf("request command: %v", err)
+	}
+
+	seen := ""
+	compile := func(_ context.Context, _, graphContext string) (Compiled, error) {
+		seen = graphContext
+		return Compiled{Goal: "Summarise the filing", Scale: "task"}, nil
+	}
+	plan := func(_ context.Context, compiled Compiled) (store.Subtree, error) {
+		for _, want := range []string{"q3 filing.pdf", "deck.pptx", "read_document"} {
+			if !strings.Contains(compiled.Goal, want) {
+				return store.Subtree{}, fmt.Errorf("goal %q omitted %q", compiled.Goal, want)
+			}
+		}
+		if strings.Contains(compiled.Goal, "chart.png") {
+			return store.Subtree{}, fmt.Errorf("goal named an image attachment: %q", compiled.Goal)
+		}
+		if strings.Count(compiled.Goal, "q3 filing.pdf") != 1 {
+			return store.Subtree{}, fmt.Errorf("goal repeated a document: %q", compiled.Goal)
+		}
+		return store.Subtree{Nodes: []store.NodeSpec{{ID: "summarise", Brief: compiled.Goal, Stage: 1}}}, nil
+	}
+	if err := New(graph, compile, plan).Tick(context.Background()); err != nil {
+		t.Fatalf("tick: %v", err)
+	}
+	if settled := commandBySeq(t, graph, command.Seq); settled.Status != store.CommandApplied {
+		t.Fatalf("settled command = %+v", settled)
+	}
+	for _, want := range []string{"Attached documents", "q3 filing.pdf", "deck.pptx", "read_document"} {
+		if !strings.Contains(seen, want) {
+			t.Fatalf("compile context omitted %q: %q", want, seen)
+		}
+	}
+	if strings.Contains(seen, "chart.png") {
+		t.Fatalf("compile context described an image as a document: %q", seen)
+	}
+}
+
+func TestPlainCommandsCarryNoDocumentPreamble(t *testing.T) {
+	if got := attachedDocumentCompileContext([]string{"/drop/chart.png"}); got != "" {
+		t.Fatalf("image-only compile context = %q", got)
+	}
+	if got := anchorAttachedDocuments("Ship the parser", nil); got != "Ship the parser" {
+		t.Fatalf("unattached goal changed: %q", got)
+	}
+}

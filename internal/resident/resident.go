@@ -6,6 +6,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"path/filepath"
 	"strings"
 	"sync"
 	"time"
@@ -421,6 +422,7 @@ func (r *Reconciler) splice(ctx context.Context, command store.Command) (command
 	}
 
 	compileContext := r.renderCompileContext(snapshot, command.Instruction)
+	compileContext += attachedDocumentCompileContext(command.Attachments)
 	promotion, promoted, err := r.promotionSource(command)
 	if err != nil {
 		return commandOutcome{}, err
@@ -434,6 +436,7 @@ func (r *Reconciler) splice(ctx context.Context, command store.Command) (command
 	if err != nil {
 		return commandOutcome{}, fmt.Errorf("compile request: %w", err)
 	}
+	compiled.Goal = anchorAttachedDocuments(compiled.Goal, command.Attachments)
 	if promoted {
 		compiled.BuildsOn = append([]string{promotion.ID}, compiled.BuildsOn...)
 	}
@@ -514,6 +517,47 @@ func (r *Reconciler) splice(ctx context.Context, command store.Command) (command
 		result:  fmt.Sprintf("spliced %d nodes", len(subtree.Nodes)),
 		receipt: receipt,
 	}, nil
+}
+
+func attachedDocumentNames(attachments []string) []string {
+	seen := make(map[string]bool)
+	var names []string
+	for _, path := range attachments {
+		switch strings.ToLower(filepath.Ext(path)) {
+		case ".pdf", ".docx", ".pptx":
+		default:
+			continue
+		}
+		name := filepath.Base(path)
+		if name == "." || name == "" || seen[name] {
+			continue
+		}
+		seen[name] = true
+		names = append(names, name)
+	}
+	return names
+}
+
+func attachedDocumentCompileContext(attachments []string) string {
+	names := attachedDocumentNames(attachments)
+	if len(names) == 0 {
+		return ""
+	}
+	return "\n\nAttached documents (workspace inputs; workers receive exact staged paths in their briefs):\n- " +
+		strings.Join(names, "\n- ") +
+		"\nWorkers read these with read_document; they are not ordinary chat-model content parts."
+}
+
+// anchorAttachedDocuments makes the compiler's brief reliable even when a
+// provider overlooks the attachment context. Planning therefore cannot erase
+// the inputs before the leaf receives its exact staged workspace paths.
+func anchorAttachedDocuments(goal string, attachments []string) string {
+	names := attachedDocumentNames(attachments)
+	if len(names) == 0 {
+		return goal
+	}
+	return strings.TrimSpace(goal) + "\n\nAttached documents:\n- " + strings.Join(names, "\n- ") +
+		"\nUse the workspace copies through read_document when their contents are needed."
 }
 
 func (r *Reconciler) promotionSource(command store.Command) (store.Node, bool, error) {
