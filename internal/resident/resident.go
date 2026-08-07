@@ -175,6 +175,7 @@ type Reconciler struct {
 	progress           map[string]*subtreeProgress
 	learningMoments    map[string]*pendingLearningMoment
 	lastConsolidation  time.Time
+	lastWatchPass      WatchPass
 	now                func() time.Time
 }
 
@@ -222,6 +223,7 @@ func (r *Reconciler) Tick(ctx context.Context) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	r.learningMoments = make(map[string]*pendingLearningMoment)
+	r.lastWatchPass = WatchPass{}
 
 	if r.store == nil {
 		return errors.New("resident tick: nil store")
@@ -259,7 +261,9 @@ func (r *Reconciler) Tick(ctx context.Context) error {
 			return fmt.Errorf("resident tick: resume deferred overruns: %w", err)
 		}
 	}
-	if _, err := r.watchOnceLocked(ctx); err != nil {
+	watchPass, err := r.watchOnceLocked(ctx)
+	r.lastWatchPass = watchPass
+	if err != nil {
 		return fmt.Errorf("resident tick: standing watches: %w", err)
 	}
 	if err := r.reconcileCharterOutcomes(); err != nil {
@@ -286,6 +290,15 @@ func (r *Reconciler) Tick(ctx context.Context) error {
 		return fmt.Errorf("resident tick: practice loop: %w", err)
 	}
 	return nil
+}
+
+// LastWatchPass returns the standing-watch decisions made by the latest Tick.
+// It is an ephemeral operation report for bounded callers such as `aforge
+// wake`; all resulting state transitions remain journaled in the store.
+func (r *Reconciler) LastWatchPass() WatchPass {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.lastWatchPass
 }
 
 type commandOutcome struct {
