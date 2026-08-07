@@ -4,12 +4,14 @@
 package tui
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"strings"
 	"time"
 
 	"github.com/Agent-Field/aforge-v2/internal/store"
+	"github.com/Agent-Field/aforge-v2/internal/voice"
 	"github.com/charmbracelet/bubbles/textinput"
 	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
@@ -70,6 +72,7 @@ type pollTickMsg time.Time
 type animationTickMsg time.Time
 
 type catalogResultMsg struct {
+	role    string
 	choices []ModelChoice
 }
 
@@ -226,6 +229,29 @@ type Model struct {
 	status           string
 	statusUntil      time.Time
 
+	voiceRecorder         voice.Recorder
+	voiceTranscriber      voice.Transcriber
+	voiceState            voiceState
+	voiceGeneration       int
+	voiceStartedAt        time.Time
+	voicePending          string
+	voiceChunkText        map[int]string
+	voiceNextChunk        int
+	voiceInFlight         int
+	voiceChunksClosed     bool
+	voiceFinalReady       bool
+	voiceFinalText        string
+	voiceFinalErr         error
+	voiceLevels           []float64
+	voiceHint             string
+	voiceHintUntil        time.Time
+	voiceHintShown        bool
+	voiceModelCatalog     []ModelChoice
+	voiceCatalogRequested bool
+	voiceCatalogLoading   bool
+	voiceContext          context.Context
+	voiceCancel           context.CancelFunc
+
 	// splitPct is the chat pane's share of the width in percent; zero means
 	// the default. draggingSplit is true while the divider is held.
 	splitPct      int
@@ -236,12 +262,15 @@ type Model struct {
 	headerQuestionBounds      paneBounds
 	headerTalkBounds          paneBounds
 	headerWorkBounds          paneBounds
+	headerVoiceBounds         paneBounds
 	headerFocusIndex          int
 	graphBounds               paneBounds
 	graphRowsBounds           paneBounds
 	standingRowsBounds        paneBounds
 	graphToggleBounds         paneBounds
 	inputBounds               paneBounds
+	micBounds                 paneBounds
+	voiceCancelBounds         paneBounds
 	nodeBounds                paneBounds
 	nodeTraceBounds           paneBounds
 	nodeBackBounds            paneBounds
@@ -249,6 +278,7 @@ type Model struct {
 	modelPickerBounds         paneBounds
 	modelTalkBounds           paneBounds
 	modelWorkBounds           paneBounds
+	modelVoiceBounds          paneBounds
 	modelPickerRows           []modelPickerRow
 	activityBarBounds         paneBounds
 	textQuestionDismissBounds paneBounds
@@ -298,6 +328,16 @@ func NewWithCommander(backend Backend, sessionID string, commander Commander) *M
 	return newModel(backend, sessionID, commander)
 }
 
+// NewWithVoice injects deterministic audio services. It is primarily useful
+// to embedders and tests; the resident chat commander supplies these services
+// automatically in the normal application.
+func NewWithVoice(backend Backend, sessionID string, commander Commander, recorder voice.Recorder, transcriber voice.Transcriber) *Model {
+	m := newModel(backend, sessionID, commander)
+	m.voiceRecorder = recorder
+	m.voiceTranscriber = transcriber
+	return m
+}
+
 func newModel(backend Backend, sessionID string, commander Commander) *Model {
 	input := textinput.New()
 	input.Prompt = "› "
@@ -331,6 +371,11 @@ func newModel(backend Backend, sessionID string, commander Commander) *Model {
 		questionDismissed: map[string]bool{},
 		optimisticModels:  map[string]string{},
 		dockSummaryLine:   -1,
+		voiceChunkText:    map[int]string{},
+	}
+	if services, ok := commander.(voiceServices); ok {
+		m.voiceRecorder = services.VoiceRecorder()
+		m.voiceTranscriber = services.VoiceTranscriber()
 	}
 	if source, ok := commander.(streamSource); ok {
 		m.streamEvents = source.StreamEvents()
@@ -419,7 +464,8 @@ func (m *Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		}
 		m.shimmerFrame++
-		if !m.graphAnimating && !m.streamAnimating() && !m.shimmerVisible() {
+		m.sampleVoiceLevel()
+		if !m.graphAnimating && !m.streamAnimating() && !m.shimmerVisible() && !m.voiceAnimating() {
 			return m, nil
 		}
 		m.spinnerFrame = (m.spinnerFrame + 1) % len(spinnerFrames)
@@ -428,7 +474,25 @@ func (m *Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		return m, m.scheduleAnimation()
 
 	case catalogResultMsg:
-		m.applyCatalog(message.choices)
+		m.applyCatalog(message.role, message.choices)
+		return m, nil
+
+	case voiceStartedMsg:
+		return m, m.applyVoiceStarted(message)
+
+	case voiceChunkMsg:
+		return m, m.applyVoiceChunk(message)
+
+	case voiceChunkResultMsg:
+		return m, m.applyVoiceChunkResult(message)
+
+	case voiceFinalResultMsg:
+		return m, m.applyVoiceFinal(message)
+
+	case voiceStoppedMsg:
+		return m, nil
+
+	case voiceUsageRecordedMsg:
 		return m, nil
 
 	case postResultMsg:
@@ -521,6 +585,9 @@ func (m *Model) updateKey(message tea.KeyMsg) (tea.Cmd, bool) {
 		m.toggleGraph()
 		return nil, true
 	}
+	if key == keyBindings.voice {
+		return m.toggleVoice(), true
+	}
 	if m.nodeViewID != "" {
 		switch {
 		case key == "esc":
@@ -543,6 +610,9 @@ func (m *Model) updateKey(message tea.KeyMsg) (tea.Cmd, bool) {
 		return nil, false
 	}
 	if key == "esc" {
+		if m.voiceState != voiceIdle {
+			return m.cancelVoice(), true
+		}
 		// The back-out ladder (see the design-system comment in view.go):
 		// expanded element → collapsed element → zone → input → quit.
 		switch {
@@ -598,10 +668,10 @@ func (m *Model) updateKey(message tea.KeyMsg) (tea.Cmd, bool) {
 	if m.focus == focusHeader {
 		switch key {
 		case "left", "up", "k":
-			m.headerFocusIndex = (m.headerFocusIndex + 2) % 3
+			m.headerFocusIndex = (m.headerFocusIndex + 3) % 4
 			return nil, true
 		case "right", "down", "j":
-			m.headerFocusIndex = (m.headerFocusIndex + 1) % 3
+			m.headerFocusIndex = (m.headerFocusIndex + 1) % 4
 			return nil, true
 		case "enter":
 			return m.activateHeaderFocus(), true
@@ -714,6 +784,9 @@ func (m *Model) updateKey(message tea.KeyMsg) (tea.Cmd, bool) {
 		return m.openSelectedNode(), true
 	}
 	if key == "enter" && m.inputFocused {
+		if m.voiceState != voiceIdle {
+			return m.flashVoiceHint("finish voice input first · " + keyBindings.voice), true
+		}
 		return m.submit(), true
 	}
 	// An empty input has nothing for the arrows to do, so they read backwards
@@ -806,7 +879,7 @@ func nextAnimationTick() tea.Cmd {
 }
 
 func (m *Model) scheduleAnimation() tea.Cmd {
-	if m.animationPending || (!m.graphAnimating && !m.streamAnimating() && !m.shimmerVisible()) {
+	if m.animationPending || (!m.graphAnimating && !m.streamAnimating() && !m.shimmerVisible() && !m.voiceAnimating()) {
 		return nil
 	}
 	m.animationPending = true
@@ -1005,7 +1078,7 @@ func (m *Model) toggleFocus() tea.Cmd {
 		m.chatFocusIndex = 1 << 30
 	}
 	if m.focus == focusHeader {
-		m.headerFocusIndex = max(0, min(2, m.headerFocusIndex))
+		m.headerFocusIndex = max(0, min(3, m.headerFocusIndex))
 	}
 	if m.inputFocused {
 		m.setSize(m.width, m.height)
@@ -1055,7 +1128,11 @@ func (m *Model) setSize(width, height int) {
 	// The input's width determines how many rows it wraps to, and every height
 	// below is measured against that row count — so the width must land first
 	// or a resize computes the frame against the stale wrap.
-	m.input.Width = max(1, m.width-4)
+	pendingReserve := 0
+	if strings.TrimSpace(m.voicePending) != "" {
+		pendingReserve = min(32, max(12, m.width/3))
+	}
+	m.input.Width = max(1, m.width-4-m.voiceControlWidth()-pendingReserve)
 
 	paletteHeight := m.layoutPaletteHeight()
 	footerHeight := 1

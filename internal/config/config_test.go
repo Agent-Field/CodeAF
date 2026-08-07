@@ -65,6 +65,17 @@ func TestNoPanelIsTheKillSwitch(t *testing.T) {
 	}
 }
 
+func TestVoiceModelHasIndependentDefaultAndEnvironmentOverride(t *testing.T) {
+	t.Setenv("AFORGE_VOICE_MODEL", "")
+	if got := settings(t).VoiceModel; got != DefaultVoiceModel {
+		t.Fatalf("voice model = %q, want %q", got, DefaultVoiceModel)
+	}
+	t.Setenv("AFORGE_VOICE_MODEL", "acme/transcriber")
+	if got := settings(t).VoiceModel; got != "acme/transcriber" {
+		t.Fatalf("voice model override = %q", got)
+	}
+}
+
 // TestAPanelSwitchesInTheRouter is the other side of the switch, and it is one
 // line of environment away.
 func TestAPanelSwitchesInTheRouter(t *testing.T) {
