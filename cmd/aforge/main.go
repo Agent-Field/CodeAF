@@ -74,7 +74,7 @@ const usageText = `aforge — build and revise task graphs
   aforge notebook [--db path]
   aforge notebook retract|restore <seq> [--db path]
   aforge competence [--db path] [--model slug]
-  aforge wake [--db path]       run one standing-watch pass and exit
+  aforge wake [--db path] [--max-seconds N]  run one full resident pass and exit
   aforge why self [--db path]   show today's self-spend receipts
 
 Environment:
