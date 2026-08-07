@@ -459,6 +459,48 @@ func TestHeadReceivesMeasuredReflexPrior(t *testing.T) {
 	}
 }
 
+func TestHeadGroundsCompetenceQuestionInExistingSingleCall(t *testing.T) {
+	graphStore := openHeadStore(t)
+	client := &fakeClient{responses: []string{
+		`{"reply":"I'm strongest at Go parser work, with eight clean runs.","command":null}`,
+	}}
+	user := store.Message{SessionID: "competence", Body: "what are you good at now?"}
+	groundCalls := 0
+	decision, err := New(client, graphStore).
+		WithCompetenceMap(func() string {
+			groundCalls++
+			return `- {"scope":"tool:go","class":"strong","samples":8,"failure_rate":0}`
+		}).
+		route(context.Background(), user)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if decision.Command != nil || groundCalls != 1 || client.callCount() != 1 {
+		t.Fatalf("competence route = %+v, ground calls %d, provider calls %d", decision, groundCalls, client.callCount())
+	}
+	if len(client.seen) != 2 || !strings.Contains(client.seen[1].Content[0].Text, "Competence map (ground truth") ||
+		!strings.Contains(client.seen[1].Content[0].Text, `"scope":"tool:go"`) {
+		t.Fatalf("competence evidence did not reach head: %+v", client.seen)
+	}
+}
+
+func TestHeadDoesNotReadCompetenceMapForUnrelatedMessage(t *testing.T) {
+	graphStore := openHeadStore(t)
+	client := &fakeClient{responses: []string{
+		`{"reply":"Hello.","command":null}`,
+	}}
+	called := false
+	_, err := New(client, graphStore).
+		WithCompetenceMap(func() string { called = true; return "unexpected" }).
+		route(context.Background(), store.Message{Body: "hello"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if called {
+		t.Fatal("unrelated message read competence map")
+	}
+}
+
 func TestHeadVoicePromptPreservesEmptyBytesAndRendersPreference(t *testing.T) {
 	t.Run("empty notebook", func(t *testing.T) {
 		graphStore := openHeadStore(t)

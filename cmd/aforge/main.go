@@ -49,6 +49,8 @@ func run() error {
 		return runModels(os.Args[2:])
 	case "notebook":
 		return runNotebook(os.Args[2:])
+	case "competence":
+		return runCompetence(os.Args[2:])
 	case "wake":
 		return runWake(os.Args[2:])
 	case "why":
@@ -71,6 +73,7 @@ const usageText = `aforge — build and revise task graphs
   aforge models
   aforge notebook [--db path]
   aforge notebook retract|restore <seq> [--db path]
+  aforge competence [--db path] [--model slug]
   aforge wake [--db path]       run one standing-watch pass and exit
   aforge why self [--db path]   show today's self-spend receipts
 
