@@ -3,6 +3,7 @@ package exec
 import (
 	"context"
 	"encoding/base64"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -18,6 +19,7 @@ const maxImageInputBytes = 10 << 20
 type MediaProvider interface {
 	GenerateImage(context.Context, provider.ImageRequest) (*provider.ImageResponse, error)
 	Speak(context.Context, provider.SpeechRequest) (*provider.SpeechResponse, error)
+	GenerateVideo(context.Context, provider.VideoRequest) (*provider.VideoResponse, error)
 }
 
 type ModalityCatalog interface {
@@ -25,14 +27,21 @@ type ModalityCatalog interface {
 }
 
 // MediaTools is the leaf-wide capability bundle. BeforeSpend is the same
-// policy gate used before ordinary work launches; nil means no dollar rail.
+// policy gate used before ordinary work launches; its amount is a catalog
+// estimate when one is known, or zero for the standard gate path. Nil means no
+// dollar rail.
 type MediaTools struct {
-	Provider     MediaProvider
-	Catalog      ModalityCatalog
-	ImageModel   string
-	SpeechModel  string
+	Provider    MediaProvider
+	Catalog     ModalityCatalog
+	ImageModel  string
+	SpeechModel string
+	MusicModel  string
+	VideoModel  string
+	// VideoPrice is the catalog's fixed per-request price when advertised.
+	// Zero means the catalog had no trustworthy estimate; the rail still runs.
+	VideoPrice   float64
 	WorkingModel string
-	BeforeSpend  func(context.Context) error
+	BeforeSpend  func(context.Context, float64) error
 }
 
 func (t *Toolbox) generateImage(ctx context.Context, args map[string]any) Result {
@@ -61,7 +70,7 @@ func (t *Toolbox) generateImage(ctx context.Context, args map[string]any) Result
 		encoded = append(encoded, dataURL)
 	}
 	if t.media.BeforeSpend != nil {
-		if err := t.media.BeforeSpend(ctx); err != nil {
+		if err := t.media.BeforeSpend(ctx, 0); err != nil {
 			return errorf("image generation paused at the daily budget — approve it in chat to continue")
 		}
 	}
@@ -124,7 +133,7 @@ func (t *Toolbox) speak(ctx context.Context, args map[string]any) Result {
 		return errorf("no speech model is available")
 	}
 	if t.media.BeforeSpend != nil {
-		if err := t.media.BeforeSpend(ctx); err != nil {
+		if err := t.media.BeforeSpend(ctx, 0); err != nil {
 			return errorf("speech synthesis paused at the daily budget — approve it in chat to continue")
 		}
 	}
@@ -145,6 +154,117 @@ func (t *Toolbox) speak(ctx context.Context, args map[string]any) Result {
 	t.workspace.Record(t.nodeID, full)
 	return Result{
 		Content: "♪ " + filepath.ToSlash(relative) + "\nSynthesized speech for " + oneLine(body, 100) + ".",
+		Usage:   mediaUsage(response.Usage),
+	}
+}
+
+func (t *Toolbox) generateMusic(ctx context.Context, args map[string]any) Result {
+	if t.media == nil || t.media.Provider == nil {
+		return errorf("music generation is not configured")
+	}
+	prompt := strings.TrimSpace(stringArg(args, "prompt"))
+	if prompt == "" {
+		return errorf("generate_music needs prompt")
+	}
+	format := strings.ToLower(strings.TrimSpace(stringArg(args, "format")))
+	if format == "" {
+		format = "mp3"
+	}
+	if format != "mp3" {
+		return errorf("generate_music format must be mp3")
+	}
+	model := strings.TrimSpace(t.media.MusicModel)
+	if model == "" {
+		return errorf("no music-generation model is available")
+	}
+	if t.media.BeforeSpend != nil {
+		if err := t.media.BeforeSpend(ctx, 0); err != nil {
+			return errorf("music generation paused at the daily budget — approve it in chat to continue")
+		}
+	}
+	response, err := t.media.Provider.Speak(ctx, provider.SpeechRequest{
+		Model: model, Input: prompt, ResponseFormat: format,
+	})
+	if err != nil || response == nil || len(response.Audio) == 0 {
+		return errorf("music generation failed — try another prompt or music model")
+	}
+	relative, full, pathErr := t.nextMediaPath(prompt, 0, ".mp3")
+	if pathErr != nil || os.WriteFile(full, response.Audio, 0o644) != nil {
+		return errorf("could not save the generated music")
+	}
+	t.workspace.Record(t.nodeID, full)
+	return Result{
+		Content: "♪ " + filepath.ToSlash(relative) + "\nGenerated music for " + oneLine(prompt, 100) + ".",
+		Usage:   mediaUsage(response.Usage),
+	}
+}
+
+func (t *Toolbox) generateVideo(ctx context.Context, args map[string]any) Result {
+	if t.media == nil || t.media.Provider == nil {
+		return errorf("video generation is not configured")
+	}
+	prompt := strings.TrimSpace(stringArg(args, "prompt"))
+	if prompt == "" {
+		return errorf("generate_video needs prompt")
+	}
+	duration := intArg(args, "duration", 0)
+	if duration < 0 {
+		return errorf("generate_video duration must be a positive number of seconds")
+	}
+	model := strings.TrimSpace(t.media.VideoModel)
+	if model == "" {
+		return errorf("no video-generation model is available")
+	}
+
+	references := stringsArg(args, "reference_paths")
+	frames := make([]provider.VideoImageReference, 0, min(2, len(references)))
+	styles := make([]provider.VideoImageReference, 0, max(0, len(references)-2))
+	for index, path := range references {
+		dataURL, refusal := t.workspaceImageDataURL(path)
+		if refusal != "" {
+			return errorf("reference %s", refusal)
+		}
+		reference := provider.VideoImageReference{
+			Type: "image_url", ImageURL: provider.VideoImageURL{URL: dataURL},
+		}
+		switch index {
+		case 0:
+			reference.FrameType = "first_frame"
+			frames = append(frames, reference)
+		case 1:
+			reference.FrameType = "last_frame"
+			frames = append(frames, reference)
+		default:
+			styles = append(styles, reference)
+		}
+	}
+	if t.media.BeforeSpend != nil {
+		if err := t.media.BeforeSpend(ctx, t.media.VideoPrice); err != nil {
+			return errorf("video generation paused at the daily budget — approve it in chat to continue")
+		}
+	}
+	response, err := t.media.Provider.GenerateVideo(ctx, provider.VideoRequest{
+		Model: model, Prompt: prompt, Duration: duration,
+		Resolution:  strings.TrimSpace(stringArg(args, "resolution")),
+		AspectRatio: strings.TrimSpace(stringArg(args, "aspect_ratio")),
+		FrameImages: frames, InputReferences: styles,
+	})
+	if err != nil {
+		if errors.Is(err, provider.ErrVideoTimeout) {
+			return errorf("video generation timed out — no video was saved")
+		}
+		return errorf("video generation failed — %s", oneLine(err.Error(), 180))
+	}
+	if response == nil || len(response.Video) == 0 {
+		return errorf("video generation failed — the completed job returned no video")
+	}
+	relative, full, pathErr := t.nextMediaPath(prompt, 0, ".mp4")
+	if pathErr != nil || os.WriteFile(full, response.Video, 0o644) != nil {
+		return errorf("could not save the generated video")
+	}
+	t.workspace.Record(t.nodeID, full)
+	return Result{
+		Content: "▶ " + filepath.ToSlash(relative) + "\nGenerated video for " + oneLine(prompt, 100) + ".",
 		Usage:   mediaUsage(response.Usage),
 	}
 }

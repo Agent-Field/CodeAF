@@ -160,6 +160,8 @@ func mediaGlyph(path string) (string, bool) {
 		return "⌾", true
 	case ".mp3", ".wav", ".m4a", ".ogg", ".flac":
 		return "♪", true
+	case ".mp4", ".mov", ".m4v", ".webm":
+		return "▶", true
 	default:
 		return "", false
 	}

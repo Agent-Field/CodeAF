@@ -147,6 +147,17 @@ func (t *Toolbox) Definitions() []ai.ToolDefinition {
 				"size":            prop("string", "optional image size or aspect ratio"),
 				"reference_paths": map[string]any{"type": "array", "items": map[string]any{"type": "string"}, "description": "workspace image paths to use as references"},
 			}, "prompt"),
+			define("generate_music", "Generate a music clip as an MP3 in the workspace media directory.", map[string]any{
+				"prompt": prop("string", "music prompt or lyrics"),
+				"format": prop("string", "optional output format; mp3 is currently supported"),
+			}, "prompt"),
+			define("generate_video", "Generate a video into the workspace media directory. This call waits for the asynchronous provider job to finish, for up to ten minutes. The first two reference_paths become first/last frames; any remaining images are style references.", map[string]any{
+				"prompt":          prop("string", "what to generate"),
+				"duration":        prop("integer", "optional duration in seconds"),
+				"resolution":      prop("string", "optional resolution such as 480p, 720p, or 1080p"),
+				"aspect_ratio":    prop("string", "optional aspect ratio such as 16:9"),
+				"reference_paths": map[string]any{"type": "array", "items": map[string]any{"type": "string"}, "description": "workspace image paths for first/last frames and style guidance"},
+			}, "prompt"),
 			define("speak", "Synthesize speech as an MP3 in the workspace media directory.", map[string]any{
 				"text":  prop("string", "text to speak"),
 				"voice": prop("string", "optional voice, default alloy"),
@@ -207,6 +218,10 @@ func (t *Toolbox) Execute(ctx context.Context, name string, arguments string) Re
 		result = t.recall(args)
 	case "generate_image":
 		result = t.generateImage(ctx, args)
+	case "generate_music":
+		result = t.generateMusic(ctx, args)
+	case "generate_video":
+		result = t.generateVideo(ctx, args)
 	case "speak":
 		result = t.speak(ctx, args)
 	case "view_image":
@@ -217,7 +232,7 @@ func (t *Toolbox) Execute(ctx context.Context, name string, arguments string) Re
 			available += ", recall"
 		}
 		if t.media != nil && t.media.Provider != nil {
-			available += ", generate_image, speak, view_image"
+			available += ", generate_image, generate_music, generate_video, speak, view_image"
 		}
 		return errorf("no tool named %q. Available: %s", name, available)
 	}

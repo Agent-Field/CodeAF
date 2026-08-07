@@ -33,8 +33,10 @@ func catalogClient(t *testing.T, status int, body string, inspect func(*http.Req
 
 const catalogPayload = `{"data":[
   {"id":"vision/model","name":"Vision","architecture":{"input_modalities":["text","image"],"output_modalities":["text"]},"pricing":{"prompt":"0.000001","completion":"0.000002"}},
-  {"id":"paint/model","architecture":{"input_modalities":["text"],"output_modalities":["image"]}},
+  {"id":"paint/model","architecture":{"input_modalities":["text"],"output_modalities":["image"]},"pricing":{"request":"0.05"}},
   {"id":"voice/model","architecture":{"input_modalities":["text"],"output_modalities":["audio"]}},
+  {"id":"song/model","architecture":{"input_modalities":["text"],"output_modalities":["music"]}},
+  {"id":"motion/model","architecture":{"input_modalities":["text","image"],"output_modalities":["video"]},"pricing":{"request":"0.25"}},
   {"id":"stt/model","architecture":{"input_modalities":["audio"],"output_modalities":["transcription"]}}
 ]}`
 
@@ -45,8 +47,9 @@ func TestLoadFetchesParsesCachesAndQueriesModalities(t *testing.T) {
 		BaseURL: "https://openrouter.example/api/v1", APIKey: "secret", Dir: dir,
 		HTTPClient: catalogClient(t, http.StatusOK, catalogPayload, func(request *http.Request) {
 			calls.Add(1)
-			if request.URL.Path != "/api/v1/models" || request.Header.Get("Authorization") != "Bearer secret" {
-				t.Errorf("request = %s auth %q", request.URL.Path, request.Header.Get("Authorization"))
+			if request.URL.Path != "/api/v1/models" || request.URL.Query().Get("output_modalities") != "all" ||
+				request.Header.Get("Authorization") != "Bearer secret" {
+				t.Errorf("request = %s?%s auth %q", request.URL.Path, request.URL.RawQuery, request.Header.Get("Authorization"))
 			}
 		}),
 	})
@@ -61,6 +64,15 @@ func TestLoadFetchesParsesCachesAndQueriesModalities(t *testing.T) {
 	}
 	if got := c.ModelsWithOutput("speech"); len(got) != 1 || got[0].ID != "voice/model" {
 		t.Fatalf("speech models = %+v", got)
+	}
+	if got := c.ModelsWithOutput("music"); len(got) != 2 || got[0].ID != "voice/model" || got[1].ID != "song/model" {
+		t.Fatalf("music models = %+v", got)
+	}
+	if got := c.ModelsWithOutput("video"); len(got) != 1 || got[0].ID != "motion/model" {
+		t.Fatalf("video models = %+v", got)
+	}
+	if model, ok := c.Model("~motion/model"); !ok || model.RequestPrice != 0.25 {
+		t.Fatalf("video row = %+v, found %t", model, ok)
 	}
 	if got := c.ModelsWithOutput("transcription"); len(got) != 1 || got[0].ID != "stt/model" {
 		t.Fatalf("transcription models = %+v", got)

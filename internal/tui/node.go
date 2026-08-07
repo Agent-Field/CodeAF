@@ -512,7 +512,7 @@ func thoughtBlock(raw string, width int) feedBlock {
 func toolCallBlock(rest string, width int) feedBlock {
 	name, args, _ := strings.Cut(rest, " ")
 	glyph, detail := "⚙", ""
-	salient := map[string]string{"sh": "cmd", "write": "path", "edit": "path", "web": "q", "generate_image": "prompt", "speak": "text", "view_image": "path"}[name]
+	salient := map[string]string{"sh": "cmd", "write": "path", "edit": "path", "web": "q", "generate_image": "prompt", "generate_music": "prompt", "generate_video": "prompt", "speak": "text", "view_image": "path"}[name]
 	if salient != "" {
 		switch name {
 		case "sh":
@@ -523,8 +523,10 @@ func toolCallBlock(rest string, width int) feedBlock {
 			glyph = "⌕"
 		case "generate_image", "view_image":
 			glyph = "⌾"
-		case "speak":
+		case "generate_music", "speak":
 			glyph = "♪"
+		case "generate_video":
+			glyph = "▶"
 		}
 		if value, ok := extractStringField(args, salient); ok {
 			detail = value

@@ -30,6 +30,7 @@ type Model struct {
 	Name             string   `json:"name,omitempty"`
 	PromptPrice      float64  `json:"prompt_price,omitempty"`
 	CompletionPrice  float64  `json:"completion_price,omitempty"`
+	RequestPrice     float64  `json:"request_price,omitempty"`
 	InputModalities  []string `json:"input_modalities,omitempty"`
 	OutputModalities []string `json:"output_modalities,omitempty"`
 }
@@ -91,6 +92,21 @@ func (c *Catalog) ModelsWithOutput(modality string) []Model {
 	return c.modelsWith("output", modality)
 }
 
+// Model returns one catalog row by slug. The returned slices do not alias the
+// immutable catalog, so callers may safely retain or amend the result.
+func (c *Catalog) Model(modelID string) (Model, bool) {
+	if c == nil {
+		return Model{}, false
+	}
+	modelID = normalizeID(modelID)
+	for _, model := range c.models {
+		if normalizeID(model.ID) == modelID {
+			return cloneModel(model), true
+		}
+	}
+	return Model{}, false
+}
+
 // Supports answers whether modelID advertises modality in direction. Unknown
 // models and directions calmly return false.
 func (c *Catalog) Supports(modelID, direction, modality string) bool {
@@ -143,9 +159,13 @@ func hasModality(values []string, requested string) bool {
 			return true
 		}
 		// OpenRouter currently describes synthesized sound as either audio or
-		// speech across model families. Keep that provider vocabulary behind the
-		// catalog seam so callers can consistently ask for speech.
+		// speech across model families, while music models may say music or the
+		// broader audio. Keep that provider vocabulary behind the catalog seam so
+		// callers can ask stable capability questions.
 		if requested == "speech" && value == "audio" {
+			return true
+		}
+		if requested == "music" && value == "audio" {
 			return true
 		}
 	}
@@ -153,7 +173,7 @@ func hasModality(values []string, requested string) bool {
 }
 
 func fetch(ctx context.Context, options Options) ([]Model, error) {
-	endpoint := strings.TrimSuffix(strings.TrimSpace(options.BaseURL), "/") + "/models"
+	endpoint := strings.TrimSuffix(strings.TrimSpace(options.BaseURL), "/") + "/models?output_modalities=all"
 	request, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
 	if err != nil {
 		return nil, err
@@ -186,6 +206,7 @@ func fetch(ctx context.Context, options Options) ([]Model, error) {
 			Pricing struct {
 				Prompt     string `json:"prompt"`
 				Completion string `json:"completion"`
+				Request    string `json:"request"`
 			} `json:"pricing"`
 		} `json:"data"`
 	}
@@ -198,6 +219,7 @@ func fetch(ctx context.Context, options Options) ([]Model, error) {
 		models = append(models, Model{
 			ID: strings.TrimSpace(item.ID), Name: strings.TrimSpace(item.Name),
 			PromptPrice: parsePrice(item.Pricing.Prompt), CompletionPrice: parsePrice(item.Pricing.Completion),
+			RequestPrice:    parsePrice(item.Pricing.Request),
 			InputModalities: cleanModalities(item.Architecture.Input), OutputModalities: cleanModalities(item.Architecture.Output),
 		})
 	}
@@ -317,8 +339,10 @@ func writeCache(path string, cached cache) error {
 
 func hardcodedFallbacks() []Model {
 	return []Model{
-		{ID: "google/gemini-3-pro-image", InputModalities: []string{"text", "image"}, OutputModalities: []string{"image"}},
+		{ID: "krea/krea-2-medium-turbo", InputModalities: []string{"text", "image"}, OutputModalities: []string{"image"}},
+		{ID: "hexgrad/kokoro-82m", InputModalities: []string{"text"}, OutputModalities: []string{"speech"}},
 		{ID: "openai/gpt-4o-mini-tts", InputModalities: []string{"text"}, OutputModalities: []string{"speech"}},
-		{ID: "openai/tts-1", InputModalities: []string{"text"}, OutputModalities: []string{"speech"}},
+		{ID: "google/lyria-3-clip-preview", InputModalities: []string{"text"}, OutputModalities: []string{"music"}, RequestPrice: 0.04},
+		{ID: "bytedance/seedance-1-5-pro", InputModalities: []string{"text", "image"}, OutputModalities: []string{"video"}},
 	}
 }

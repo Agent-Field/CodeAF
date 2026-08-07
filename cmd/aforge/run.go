@@ -159,6 +159,10 @@ func runExecute(args []string) error {
 	mediaTools := &exec.MediaTools{
 		Provider: mediaClient, Catalog: modelCatalog, WorkingModel: settings.Model,
 		ImageModel: settings.ResolveImageModel(modelCatalog), SpeechModel: settings.ResolveSpeechModel(modelCatalog),
+		MusicModel: settings.ResolveMusicModel(modelCatalog), VideoModel: settings.ResolveVideoModel(modelCatalog),
+	}
+	if video, ok := modelCatalog.Model(mediaTools.VideoModel); ok {
+		mediaTools.VideoPrice = video.RequestPrice
 	}
 	linear := exec.NewLinear(client, space, web, *maxTurns, *maxTokens, deadline).
 		WithStore(history).WithMedia(mediaTools)
@@ -167,14 +171,14 @@ func runExecute(args []string) error {
 	preauthorized := spendPreauthorized(*yesSpend, os.Getenv)
 	interactive := stdinIsTerminal(os.Stdin)
 	var spendGate sync.Mutex
-	scheduler.BeforeLaunch = func(context.Context) error {
+	beforeSpend := func(additional float64) error {
 		spendGate.Lock()
 		defer spendGate.Unlock()
 		rail, err := railStore.DailyRailToday(settings.DailyBudgetUSD)
 		if err != nil {
 			return err
 		}
-		rail = rail.WithAdditionalSpend(scheduler.Usage().Cost)
+		rail = rail.WithAdditionalSpend(scheduler.Usage().Cost + additional)
 		if !rail.Reached {
 			return nil
 		}
@@ -193,7 +197,8 @@ func runExecute(args []string) error {
 		}
 		return railStore.RaiseDailyRail(rail.RaiseAmount(), origin)
 	}
-	mediaTools.BeforeSpend = scheduler.BeforeLaunch
+	scheduler.BeforeLaunch = func(context.Context) error { return beforeSpend(0) }
+	mediaTools.BeforeSpend = func(_ context.Context, additional float64) error { return beforeSpend(additional) }
 	// A failed leaf is only worth re-running when there is somewhere stronger to
 	// run it, so the panel decides rather than the scheduler assuming. One
 	// escalation, not a ladder: the router lab's cascade averaged 1.35 calls a
