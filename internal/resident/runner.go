@@ -312,9 +312,10 @@ func (r *Runner) claimNext() (store.Node, bool, error) {
 				// pending leaf nobody will ever claim would keep its root open
 				// forever. Cancelling one node per pass is deliberate — each is
 				// journaled with its own reason, and the root settles as soon as
-				// the last child is terminal.
+				// the last child is terminal. A refused cancel is a race with
+				// another writer, not a reason to take the whole runner down.
 				if err := r.graph.CancelPending(node.ID, practiceBudgetStop); err != nil {
-					return store.Node{}, false, err
+					_ = guard.Note("resident/runner practice rail "+node.ID, err)
 				}
 				continue
 			}
