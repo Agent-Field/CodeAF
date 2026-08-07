@@ -486,6 +486,9 @@ func runChat(args []string) error {
 		})
 		_ = head.New(chatClient, graph).
 			WithSelfKnowledge(func() string { return selfKnowledge(settings, taskClient.Model()) }).
+			WithCompetenceMap(func() string {
+				return competenceGrounding(graph, settings.ProfileDir, taskClient.Model())
+			}).
 			WithDailyBudgetUSD(settings.DailyBudgetUSD).
 			Serve(headContext)
 	}()
