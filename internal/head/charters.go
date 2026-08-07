@@ -67,6 +67,9 @@ func (h *Head) applyAgentQuestionOption(user store.Message, question store.Agent
 		return err
 	}
 	if action, kind, target, instruction, ok := decodeSurgeryOption(option.Value); ok {
+		if handled, err := h.applyClassOption(user, action, kind, target, instruction); handled {
+			return err
+		}
 		switch action {
 		case "apply":
 			return h.resolveSurgery(user, kind, target, instruction, true)
@@ -232,6 +235,9 @@ func (h *Head) applyQuestionOption(user store.Message, question store.Message, o
 		return err
 	}
 	if action, kind, target, instruction, ok := decodeSurgeryOption(option.Value); ok {
+		if handled, err := h.applyClassOption(user, action, kind, target, instruction); handled {
+			return err
+		}
 		switch action {
 		case "select":
 			return h.resolveSurgery(user, kind, target, instruction, false)
