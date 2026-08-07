@@ -98,6 +98,7 @@ Environment:
   AFORGE_MUSIC_MODEL          music-generation model (catalog-resolved by default)
   AFORGE_VIDEO_MODEL          video-generation model (catalog-resolved by default)
   AFORGE_VISION_MODEL         image-inspection proxy model (talk/work/catalog-resolved by default)
+  AFORGE_DOC_ENGINE           auto (default), local, free, or ocr document-reading rung
   AFORGE_PRACTICE_BUDGET  2.0  daily self-practice carve-out (0 = disabled)
   AFORGE_PRACTICE_IDLE  20m  quiet period before self-practice
   AFORGE_BRIEF_AFTER   4h  minimum absence before an arrival brief (0 = always)

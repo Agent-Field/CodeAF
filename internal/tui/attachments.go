@@ -62,8 +62,9 @@ type draftToken struct {
 }
 
 // detectImageAttachments understands the shell-style quoting terminals use
-// for drag-and-drop paths and removes only existing image files from the
-// visible draft.
+// for drag-and-drop paths and removes existing image and PDF inputs from the
+// visible draft. The historical name remains internal compatibility; submit
+// keeps documents distinct from image model content.
 func detectImageAttachments(draft string) (string, []string) {
 	tokens := draftTokens(draft)
 	remove := make([]bool, len(tokens))
@@ -76,7 +77,7 @@ func detectImageAttachments(draft string) (string, []string) {
 			}
 		}
 		absolute, err := filepath.Abs(path)
-		if err != nil || !isImageExtension(absolute) {
+		if err != nil || !isAttachmentExtension(absolute) {
 			continue
 		}
 		info, err := os.Stat(absolute)
@@ -148,4 +149,28 @@ func isImageExtension(path string) bool {
 	default:
 		return false
 	}
+}
+
+func isAttachmentExtension(path string) bool {
+	return isImageExtension(path) || strings.EqualFold(filepath.Ext(path), ".pdf")
+}
+
+func isDocumentAttachment(path string) bool {
+	return strings.EqualFold(filepath.Ext(path), ".pdf")
+}
+
+func hasImageAttachments(paths []string) bool {
+	for _, path := range paths {
+		if isImageExtension(path) {
+			return true
+		}
+	}
+	return false
+}
+
+func attachmentGlyph(path string) string {
+	if isDocumentAttachment(path) {
+		return "▤"
+	}
+	return "⌾"
 }

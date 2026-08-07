@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"crypto/rand"
+	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -85,10 +86,15 @@ func runChat(args []string) error {
 	if err != nil {
 		return err
 	}
+	documentClient, err := settings.DocumentClient()
+	if err != nil {
+		return err
+	}
 	talkModel := firstNonEmptyString(prefs.ChatModel, settings.Model)
 	workModel := firstNonEmptyString(prefs.TaskModel, settings.Model)
 	baseMedia := exec.MediaTools{
 		Provider: mediaClient, Catalog: modelCatalog, VisionClient: visionClient,
+		DocumentClient: documentClient, DocumentEngine: settings.DocumentEngine,
 		ImageModel: prefs.ImageModel, SpeechModel: prefs.SpeechModel,
 		MusicModel: prefs.MusicModel, VideoModel: prefs.VideoModel,
 		VisionModel: settings.ResolveVisionModel(modelCatalog, talkModel, workModel),
@@ -200,6 +206,10 @@ func runChat(args []string) error {
 		if err != nil {
 			return resident.ExecResult{}, err
 		}
+		documentPaths, err := stageDocumentAttachments(jobSpace, node.Provenance.Attachments)
+		if err != nil {
+			return resident.ExecResult{}, err
+		}
 		// A planned job keeps one executor for every leaf so its profile key names
 		// the model that actually produced all measured turns. A picker change
 		// applies to the next job rather than relabeling work already in flight.
@@ -280,7 +290,7 @@ func runChat(args []string) error {
 			NodeID: int(node.CreatedSeq),
 			Title:  firstLine(node.Brief),
 			Goal:   node.Provenance.Intent,
-			Brief:  residentDeliveryBrief(graph, node),
+			Brief:  withDocumentAttachmentBrief(residentDeliveryBrief(graph, node), documentPaths),
 			Inputs: inputs,
 			Steer:  steer,
 			Control: func() exec.ControlAction {
@@ -617,6 +627,77 @@ func residentDeliveryBrief(graph *store.Store, node store.Node) string {
 		return node.Brief
 	}
 	return resident.VoicePrompt(graph, node.Brief, node.Provenance.Intent, node.Brief)
+}
+
+const chatDocumentAttachmentLimit = 25 << 20
+
+// stageDocumentAttachments turns durable drag-and-drop paths into immutable
+// workspace inputs. A content suffix avoids basename collisions and lets every
+// leaf in one job race safely toward the same already-complete file.
+func stageDocumentAttachments(space *exec.Workspace, attachments []string) ([]string, error) {
+	if space == nil {
+		return nil, fmt.Errorf("stage document attachments: nil workspace")
+	}
+	seen := make(map[string]bool)
+	var staged []string
+	for _, source := range attachments {
+		extension := strings.ToLower(filepath.Ext(source))
+		if extension != ".pdf" && extension != ".docx" && extension != ".pptx" {
+			continue
+		}
+		info, err := os.Stat(source)
+		if err != nil || info.IsDir() {
+			return nil, fmt.Errorf("stage attached document %s: file is unavailable", filepath.Base(source))
+		}
+		if info.Size() > chatDocumentAttachmentLimit {
+			return nil, fmt.Errorf("stage attached document %s: over the 25 MB document limit", filepath.Base(source))
+		}
+		data, err := os.ReadFile(source)
+		if err != nil {
+			return nil, fmt.Errorf("stage attached document %s: %w", filepath.Base(source), err)
+		}
+		hash := sha256.Sum256(data)
+		stem := strings.TrimSuffix(filepath.Base(source), filepath.Ext(source))
+		relative := filepath.Join("attachments", stem+"-"+hex.EncodeToString(hash[:4])+extension)
+		if seen[relative] {
+			continue
+		}
+		seen[relative] = true
+		target, err := space.Resolve(relative)
+		if err != nil {
+			return nil, fmt.Errorf("stage attached document %s: %w", filepath.Base(source), err)
+		}
+		if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
+			return nil, fmt.Errorf("stage attached document %s: %w", filepath.Base(source), err)
+		}
+		file, err := os.OpenFile(target, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o644)
+		if err == nil {
+			if _, err = file.Write(data); err == nil {
+				err = file.Close()
+			} else {
+				_ = file.Close()
+			}
+		}
+		if err != nil && !os.IsExist(err) {
+			return nil, fmt.Errorf("stage attached document %s: %w", filepath.Base(source), err)
+		}
+		staged = append(staged, filepath.ToSlash(relative))
+	}
+	return staged, nil
+}
+
+func withDocumentAttachmentBrief(brief string, paths []string) string {
+	if len(paths) == 0 {
+		return brief
+	}
+	var addition strings.Builder
+	addition.WriteString("\n\nAttached documents are workspace inputs. Read them with read_document:\n")
+	for _, path := range paths {
+		addition.WriteString("- ")
+		addition.WriteString(filepath.ToSlash(path))
+		addition.WriteByte('\n')
+	}
+	return strings.TrimSpace(brief) + strings.TrimRight(addition.String(), "\n")
 }
 
 // chatPrefs persists the surface's model choices across launches. It lives

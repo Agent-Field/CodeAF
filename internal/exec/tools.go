@@ -180,6 +180,15 @@ func (t *Toolbox) Definitions() []ai.ToolDefinition {
 			}, "path"),
 		)
 	}
+	if t.media != nil && t.media.DocumentClient != nil {
+		definitions = append(definitions,
+			define("read_document", "Read a PDF into text. Free and local when possible; scanned documents escalate to OCR through the rail. Repeat reads are cached.", map[string]any{
+				"path":     prop("string", "workspace-relative PDF, DOCX, or PPTX path"),
+				"pages":    prop("string", "optional PDF page range such as 1-5"),
+				"question": prop("string", "optional question the worker will answer from the extracted text"),
+			}, "path"),
+		)
+	}
 	return definitions
 }
 
@@ -241,6 +250,8 @@ func (t *Toolbox) Execute(ctx context.Context, name string, arguments string) Re
 		result = t.speak(ctx, args)
 	case "view_image":
 		result = t.viewImage(ctx, args)
+	case "read_document":
+		result = t.readDocument(ctx, args)
 	default:
 		available := "sh, job, write, edit, web"
 		if t.history != nil {
@@ -248,6 +259,9 @@ func (t *Toolbox) Execute(ctx context.Context, name string, arguments string) Re
 		}
 		if t.media != nil && t.media.Provider != nil {
 			available += ", generate_image, generate_music, generate_video, speak, view_image"
+		}
+		if t.media != nil && t.media.DocumentClient != nil {
+			available += ", read_document"
 		}
 		result = errorf("no tool named %q. Available: %s", name, available)
 	}

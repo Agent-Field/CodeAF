@@ -572,14 +572,15 @@ func (m *Model) renderInput() string {
 	m.attachmentBounds = m.attachmentBounds[:0]
 	chipLines := make([]string, 0, len(m.attachments)+1)
 	for index, path := range m.attachments {
-		prefix := "⌾ " + truncate(filepath.Base(path), max(1, m.width-lipgloss.Width("⌾  ⟨×⟩"))) + " "
+		glyph := attachmentGlyph(path)
+		prefix := glyph + " " + truncate(filepath.Base(path), max(1, m.width-lipgloss.Width(glyph+"  ⟨×⟩"))) + " "
 		line := mutedStyle.Faint(true).Render(prefix + "⟨×⟩")
 		chipLines = append(chipLines, line)
 		m.attachmentBounds = append(m.attachmentBounds, paneBounds{
 			x: lipgloss.Width(prefix), y: inputY + index, width: lipgloss.Width("⟨×⟩"), height: 1,
 		})
 	}
-	if len(m.attachments) > 0 {
+	if hasImageAttachments(m.attachments) {
 		if model, supported := m.imageInputSupport(); !supported {
 			hint := truncate(model+" can't see images — try a vision model", m.width)
 			chipLines = append(chipLines, mutedStyle.Faint(true).Render(hint))
