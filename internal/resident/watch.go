@@ -368,6 +368,26 @@ func (r *Reconciler) finishCharterFiring(ctx context.Context, charter store.Char
 	if charter.Autonomy == store.CharterProbation {
 		approved, _ = r.store.CharterFiringApproved(charter.ID, charter.WakeSeq)
 		if !approved {
+			// Silence is an answer, and it was the one answer this loop could
+			// not hear. A proposal nobody responded to pinned the wake open
+			// forever — the charter could neither fire nor advance to its next
+			// due moment, and the same unread question was re-offered on every
+			// pass. Past its window it is declined the way an explicit "not
+			// now" is, which closes the wake, resets the consecutive run, and
+			// counts against promotion through the same refusal ledger.
+			lapsed, err := r.store.LapsedCharterFiringProposal(charter.ID, charter.WakeSeq, r.now())
+			if err != nil {
+				log.Printf("charter %s proposal window: %v", charter.ID, err)
+			} else if lapsed {
+				if err := r.store.DeclineCharterFiring(charter.ID, charter.WakeSeq,
+					"the firing was proposed and stood unanswered past its window", false); err != nil {
+					log.Printf("charter %s lapse: %v", charter.ID, err)
+					pass.Errors++
+					return
+				}
+				pass.No++
+				return
+			}
 			posted, err := r.store.ProposeCharterFiring(charter.ID, charter.WakeSeq, charter.Action.Template)
 			if err != nil {
 				log.Printf("charter %s propose firing: %v", charter.ID, err)
@@ -400,6 +420,7 @@ func (r *Reconciler) finishCharterFiring(ctx context.Context, charter store.Char
 
 func (r *Reconciler) admitCharterFiring(ctx context.Context, charter store.Charter, approved bool) (store.FireDisposition, string, error) {
 	intent := strings.TrimSpace(charter.Action.Template)
+	craftReference := ""
 	var subtree store.Subtree
 	jobID := "say:" + charter.ID + ":" + fmt.Sprint(charter.WakeSeq)
 	sessionID := charter.SessionID
@@ -420,9 +441,21 @@ func (r *Reconciler) admitCharterFiring(ctx context.Context, charter store.Chart
 		}
 		intent = compiled.Goal
 		prefix := firingPrefix(charter.ID, charter.WakeSeq)
-		if r.plan == nil {
+		// The same craft seam an ordinary splice gets, asked in the same place:
+		// in front of the planner, on the user's own words rather than the
+		// compiler's paraphrase. The standing invariant is those words verbatim;
+		// the action template is the compiled restatement and stands in only
+		// when a charter carries no invariant of its own.
+		firingProvenance := store.Provenance{Origin: store.OriginTrigger, SessionID: sessionID,
+			Intent: intent, CharterID: charter.ID}
+		use, usingCraft := r.craftFor(ctx, charterCraftRequest(charter), prefix, firingProvenance)
+		switch {
+		case usingCraft:
+			subtree = use.subtree
+			craftReference = use.reference
+		case r.plan == nil:
 			subtree = store.Subtree{Nodes: []store.NodeSpec{{ID: prefix, Brief: intent, Stage: 1}}}
-		} else {
+		default:
 			planCtx := withPlanAnchor(ctx, PlanAnchor{NodeID: prefix, SessionID: sessionID})
 			subtree, err = r.plan(planCtx, compiled)
 			if err != nil {
@@ -433,7 +466,7 @@ func (r *Reconciler) admitCharterFiring(ctx context.Context, charter store.Chart
 		jobID = subtreeRootID(subtree)
 	}
 	provenance := store.Provenance{Origin: store.OriginTrigger, SessionID: sessionID,
-		Intent: intent, CharterID: charter.ID}
+		Intent: intent, CharterID: charter.ID, Craft: craftReference}
 	var disposition store.FireDisposition
 	var err error
 	if approved {
@@ -451,6 +484,17 @@ func (r *Reconciler) admitCharterFiring(ctx context.Context, charter store.Chart
 		}, tenureAfter())
 	}
 	return disposition, jobID, err
+}
+
+// charterCraftRequest is what the shelf is asked to recognize. The invariant is
+// the sentence the user actually said — "watch HN every morning for posts about
+// agent frameworks and brief me" — and recognition is deliberately run against
+// the user's wording everywhere else for the same reason it is here.
+func charterCraftRequest(charter store.Charter) string {
+	if invariant := strings.TrimSpace(charter.Invariant); invariant != "" {
+		return invariant
+	}
+	return strings.TrimSpace(charter.Action.Template)
 }
 
 func subtreeRootID(subtree store.Subtree) string {

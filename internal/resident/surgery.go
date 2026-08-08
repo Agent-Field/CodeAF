@@ -173,17 +173,83 @@ func (r *Reconciler) restart(command store.Command) (commandOutcome, error) {
 		Origin: store.OriginUser, SessionID: command.SessionID, Intent: intent,
 		RetryOf: predecessor.ID, Attachments: append([]string(nil), predecessor.Provenance.Attachments...),
 	}
+	// "Rerun that with the better model" used to become a restart on whatever
+	// the default happened to be: the model words were recognized, journaled on
+	// the command, and then dropped on the floor here. The head states the
+	// request in its receipt; this states the outcome, which is the half only
+	// the catalog can answer.
+	model, note := r.restartWorkModel(command.Instruction)
+	provenance.WorkModel = model
+	if model == "" {
+		provenance.WorkModel = strings.TrimSpace(predecessor.Provenance.WorkModel)
+	}
 	if err := r.store.Splice(parent, subtree, provenance); err != nil {
 		root, found, readErr := r.store.Node(remap[command.Target])
 		if readErr != nil || !found || root.Provenance.RetryOf != predecessor.ID {
 			return commandOutcome{}, err
 		}
 	}
+	receipt := "restarted — fresh work linked to " + surgeryLabel(predecessor)
+	if note != "" {
+		receipt += " · " + note
+	}
 	return commandOutcome{
 		status:  store.CommandApplied,
 		result:  fmt.Sprintf("respliced %d retry nodes after %s", len(subtree.Nodes), predecessor.ID),
-		receipt: "restarted — fresh work linked to " + surgeryLabel(predecessor),
+		receipt: receipt,
 	}, nil
+}
+
+// RestartModelMarker is the head's reading of the model words on a restart,
+// written out here for the same reason CorrectionMarker is: it is a wire form
+// between two halves of the system and the dependency between them runs one
+// way. RestartBoostModel is what the marker carries when the ask named the
+// boost slot rather than a model.
+const (
+	RestartModelMarker = "Run this restart on:"
+	RestartBoostModel  = "the boost model"
+)
+
+// ModelResolveFunc answers whether the catalog has the model a restart named.
+// It is a seam rather than a lookup because the catalog is the surface's, and
+// the resident holds no opinion about which provider exists this week. Without
+// it every restart runs on the default and says so.
+type ModelResolveFunc func(names []string, boost bool) (string, bool)
+
+// WithModelResolver installs the surface's catalog-backed reading of the model
+// words a restart carries.
+func (r *Reconciler) WithModelResolver(resolve ModelResolveFunc) *Reconciler {
+	r.resolveModel = resolve
+	return r
+}
+
+// restartWorkModel reads the model a restart asked for and says what became of
+// the request. An unresolvable name is worth one calm clause rather than
+// silence: the user asked for something specific and got something else, and a
+// restart that quietly runs on the default is the failure this whole path was
+// added to end.
+func (r *Reconciler) restartWorkModel(instruction string) (string, string) {
+	index := strings.LastIndex(instruction, RestartModelMarker)
+	if index < 0 {
+		return "", ""
+	}
+	choice := strings.TrimSpace(firstLine(instruction[index+len(RestartModelMarker):]))
+	if choice == "" {
+		return "", ""
+	}
+	boost := choice == RestartBoostModel
+	var names []string
+	if !boost {
+		names = []string{choice}
+	}
+	if r.resolveModel == nil {
+		return "", "on the usual model — I can't reach the catalog from here"
+	}
+	model, ok := r.resolveModel(names, boost)
+	if !ok || strings.TrimSpace(model) == "" {
+		return "", "on the usual model — I don't have " + clipLabel(choice, 60)
+	}
+	return strings.TrimSpace(model), "on " + strings.TrimSpace(model)
 }
 
 func surgeryLabel(node store.Node) string {
