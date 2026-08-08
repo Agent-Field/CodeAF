@@ -431,10 +431,7 @@ func buildChatBrain(w *chatWindow, session string, hand resident.HandoverFunc) (
 		// has and must not gather again — so a standing lesson reading "check X
 		// before Y" arrived as a claim that X had been checked. The notebook is
 		// not a prior result and says so; a dependency says whose it is.
-		inputs := make([]exec.Input, 0)
-		if digest := resident.NotebookDigest(graph, node.ID, node.Brief, node.Provenance.Intent, 8); digest != "" {
-			inputs = append(inputs, exec.Input{Title: notebookInputTitle, Result: digest})
-		}
+		inputs := leafNotebookInputs(graph, node)
 		dependencies, err := graph.DependencyInputs(node.ID, store.MaxDigestBytes)
 		if err == nil {
 			for _, dependency := range dependencies {
@@ -1101,6 +1098,22 @@ func newVisitorCommander(path, sessionID string, graph *store.Store,
 // memory instead, and the only thing that separates the two in the rendering is
 // this name.
 const notebookInputTitle = "your notebook — standing preferences and lessons, not results"
+
+// leafNotebookInputs is the whole of how what aforge has learned reaches the
+// work: one retrieval against this leaf's own brief and goal, rendered into the
+// first input the worker reads.
+//
+// It is a named seam rather than four lines inside the runner because it is the
+// last link in the chain the harness measures — a lesson taught in the thread
+// has to survive capture, retrieval, injection and rendering to change the next
+// job's behaviour, and a chain is only as testable as its narrowest seam.
+func leafNotebookInputs(graph *store.Store, node store.Node) []exec.Input {
+	inputs := make([]exec.Input, 0, 4)
+	if digest := resident.NotebookDigest(graph, node.ID, node.Brief, node.Provenance.Intent, 8); digest != "" {
+		inputs = append(inputs, exec.Input{Title: notebookInputTitle, Result: digest})
+	}
+	return inputs
+}
 
 // planNodeContract reads the working method off the plan node when this leaf
 // belongs to a planned job. A splice and a reflex have no contract, and
