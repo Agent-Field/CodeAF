@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/Agent-Field/aforge-v2/internal/store"
 )
@@ -30,6 +31,21 @@ func seedResultBoard(t *testing.T, graph *store.Store) {
 	completeNodeWith(t, graph, "podcast-edit",
 		podcastFinding+"\n"+podcastDetail+"\n"+podcastFile)
 	spliceSurgeryJob(t, graph, "line-scans", "Line scans", "scan the lines")
+}
+
+// deliverJob settles one job and announces it into the thread the way the
+// reconciler does: a system message anchored to the node that produced it. That
+// anchor is what every adjacency reading in this package is built on, so a
+// fixture about delivered work has to carry it.
+func deliverJob(t *testing.T, graph *store.Store, session, id, title, intent, summary string) {
+	t.Helper()
+	spliceSurgeryJob(t, graph, id, title, intent)
+	completeNodeWith(t, graph, id, summary)
+	if _, err := graph.PostMessage(store.Message{
+		SessionID: session, Role: store.RoleSystem, Body: summary, NodeID: id,
+	}); err != nil {
+		t.Fatalf("announce %s: %v", id, err)
+	}
 }
 
 func completeNodeWith(t *testing.T, graph *store.Store, id, summary string) {
@@ -87,6 +103,23 @@ func TestFinanceQuestionCarriesTheFindingsAndNotTheOtherJobs(t *testing.T) {
 	}
 }
 
+// splitNowLine removes the one volatile clock line from a router prompt and
+// returns it beside the rest, so a byte-for-byte assertion can be made about
+// everything that is not the current time.
+func splitNowLine(t *testing.T, prompt string) (string, string) {
+	t.Helper()
+	start := strings.Index(prompt, "\n\nnow: ")
+	if start < 0 {
+		t.Fatalf("the router prompt carries no clock:\n%s", prompt)
+	}
+	end := strings.Index(prompt[start+2:], "\n")
+	if end < 0 {
+		t.Fatalf("the clock line never ends:\n%s", prompt)
+	}
+	end += start + 2
+	return prompt[start+2 : end], prompt[:start] + prompt[end:]
+}
+
 // The regression guard. A message about nothing on the graph must produce the
 // prompt it produced before any of this existed, to the byte.
 func TestGreetingProducesTodaysContextExactly(t *testing.T) {
@@ -104,8 +137,15 @@ func TestGreetingProducesTodaysContextExactly(t *testing.T) {
 	// when the router was reshaped for prefix caching; the blocks and their
 	// bytes did not.
 	thread := "(no earlier messages in this session)"
+	// The clock is lifted out before the comparison rather than reconstructed
+	// into it: it is the one block whose bytes are a function of the wall clock,
+	// and a test that rebuilt it would fail once a minute by arithmetic.
+	clock, prompt := splitNowLine(t, prompt)
+	if _, err := time.ParseInLocation(nowLineLayout, strings.TrimSuffix(strings.TrimPrefix(clock, "now: "), " local"), time.Local); err != nil {
+		t.Fatalf("the clock line does not parse as its own layout: %q", clock)
+	}
 	want := "Recent thread before this message:\n" + thread +
-		"\n\nLive graph snapshot:\n" + renderGraph(snapshot, "greeting", thread, nil) +
+		"\n\nLive graph snapshot:\n" + renderGraph(snapshot, "greeting", thread, nil, time.Now()) +
 		"\n\nNotebook (durable memory across jobs and conversations):\n" + renderNotebook(graph, greeting, thread) +
 		"\n\nCurrent user message (verbatim):\n" + greeting
 	if prompt != want {
@@ -173,7 +213,7 @@ func TestBreadthAndDepthKeepTheirOwnBudgets(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if skeleton := renderGraph(snapshot, "", "", nil); len(skeleton) > maxGraphContextBytes {
+	if skeleton := renderGraph(snapshot, "", "", nil, time.Now()); len(skeleton) > maxGraphContextBytes {
 		t.Fatalf("board skeleton = %d bytes, over its %d budget", len(skeleton), maxGraphContextBytes)
 	}
 	deep, _ := New(nil, graph).renderDeep("what did the ledger reconciliation conclude", "")
@@ -318,7 +358,7 @@ func TestTruncationMarkersFitTheirBudget(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		board := renderGraph(snapshot, "", "", nil)
+		board := renderGraph(snapshot, "", "", nil, time.Now())
 		if !strings.Contains(board, strings.TrimSpace(snapshotTruncatedMark)) {
 			t.Fatalf("width %d: the board never truncated, so the marker is untested", width)
 		}

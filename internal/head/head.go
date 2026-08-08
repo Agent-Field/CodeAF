@@ -502,7 +502,7 @@ func (h *Head) route(ctx context.Context, user store.Message) (routeDecision, er
 	// which of those jobs the block below is about to quote in full and drops
 	// only the clause it would have said twice.
 	deep, opened := h.renderDeep(user.Body, threadContext)
-	graphContext := renderGraph(snapshot, user.SessionID, threadContext, opened)
+	graphContext := renderGraph(snapshot, user.SessionID, threadContext, opened, time.Now())
 	if services := renderServices(h.store); services != "" {
 		graphContext += "\n" + services
 	}
@@ -540,6 +540,13 @@ func (h *Head) route(ctx context.Context, user store.Message) (routeDecision, er
 			body.WriteString("\n\nAforge manual (the authoritative account of aforge itself; quote its substance, invent nothing):\n" + pages)
 		}
 	}
+	// The clock. Every other block in this prompt is time-ordered and none of
+	// them said what time it is, so "yesterday", "this week" and "how long has
+	// that been sitting there" were words the head could read and never resolve.
+	// It rides in the volatile floor beside the spend line because it moves
+	// every minute; at minute resolution it still holds still for the length of
+	// an exchange, and there is nothing behind it left to invalidate.
+	body.WriteString("\n\n" + nowLine(time.Now()))
 	// The spend line is the fastest-moving fact in the prompt, so it is the last
 	// thing before the message. It is never dropped: the daily-rail approval
 	// flow reads the user's "yes" against it, and the system prompt promises it
@@ -812,8 +819,14 @@ func renderNotebook(graphStore *store.Store, message, thread string) string {
 			}
 			line := fmt.Sprintf("- #%d [%s · %s · %s] %s", fact.Seq, fact.Scope,
 				fact.Kind, store.AgeLabel(fact.Time, now), fact.Body)
+			// Skip, never stop. One 512-byte belief landing at relevance-rank
+			// three used to end the whole pass — silencing the search hits behind
+			// it AND the recency layer that runs after it — so the notebook the
+			// model read was a function of which long fact happened to match this
+			// message's wording. Packing past an oversized line costs nothing and
+			// makes the budget the bound it claims to be.
 			if total+len(line) > notebookContextBytes {
-				return
+				continue
 			}
 			total += len(line)
 			lines = append(lines, line)
@@ -997,7 +1010,7 @@ func crossSession(node store.Node, sessionID string) bool {
 // line the user can read in the thread above, or one the deep slice is about to
 // quote in full below, is the same finding stated twice in one prompt — which
 // costs budget and reads to the model as corroboration.
-func renderGraph(snapshot store.Snapshot, sessionID, thread string, opened map[string]bool) string {
+func renderGraph(snapshot store.Snapshot, sessionID, thread string, opened map[string]bool, now time.Time) string {
 	if len(snapshot.Nodes) == 0 {
 		return "(no active nodes)"
 	}
@@ -1056,6 +1069,14 @@ func renderGraph(snapshot store.Snapshot, sessionID, thread string, opened map[s
 			result = ""
 		}
 		line := fmt.Sprintf("- %s | %s | %s", node.ID, node.Status, brief)
+		// The board was sorted by time and never labelled by it, so the head was
+		// handed an ordering it could not read as one and asked "what did you do
+		// yesterday" with no way to tell yesterday from an hour ago. The age is
+		// the belt's own age — coarse on purpose, so a row does not rewrite
+		// itself between two messages the way a running clock would.
+		if age := store.AgeLabel(node.FinishedAt, now); age != "" {
+			line += " | finished " + age
+		}
 		if result != "" {
 			line += " | result: " + result
 		}
@@ -1088,6 +1109,20 @@ func renderThread(messages []store.Message) string {
 		rendered.WriteString(line)
 	}
 	return strings.TrimSpace(rendered.String())
+}
+
+// nowLineLayout is the one spelling of the clock every conversational prompt
+// uses. The weekday is there because people say "Monday" far more often than
+// they say a date; the minute is the floor because nothing this head decides
+// turns on a second, and a second-resolution clock would rewrite the prompt's
+// tail on every single message.
+const nowLineLayout = "Mon 2006-01-02 15:04"
+
+// nowLine is the head's clock, in local time because every word the user uses
+// for time is local. It is deliberately one line: the time-scoped reads bound
+// their own windows, and this is only what those windows are measured from.
+func nowLine(now time.Time) string {
+	return "now: " + now.Local().Format(nowLineLayout) + " local"
 }
 
 func firstLine(value string) string {
