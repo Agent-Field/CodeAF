@@ -48,6 +48,12 @@ const (
 
 // CronKind is one supported structured schedule. Raw cron expressions are
 // deliberately not represented by this type.
+//
+// Every wall-clock kind here is read in the PROCESS'S LOCAL ZONE — the zone the
+// machine running aforge is set to. "Sunday at 9" means nine in the morning
+// where the user is sitting, and a schedule that survives a restart is
+// recomputed in that same zone (NextWatchDue restores time.Local before doing
+// wall-clock math, because SQLite hands timestamps back in UTC).
 type CronKind string
 
 const (
@@ -55,6 +61,12 @@ const (
 	CronEveryHours   CronKind = "every_hours"
 	CronDaily        CronKind = "daily"
 	CronWeekdays     CronKind = "weekdays"
+	// CronWeekly is one named weekday at one wall time — "every Sunday",
+	// "Tuesdays at 8pm". It exists because it is the commonest standing rule a
+	// person states and the only one the engine could not hold: before it,
+	// "every Sunday" degraded to an interval measured from the ratification
+	// instant, which drifts off the named day immediately.
+	CronWeekly CronKind = "weekly"
 	// CronAt is a single wall-clock instant: the reminder schedule. After it
 	// fires once, its expiry rail retires the charter.
 	CronAt CronKind = "at"
@@ -62,11 +74,14 @@ const (
 
 // CronSchedule is a local-time schedule with no raw-cron escape hatch.
 type CronSchedule struct {
-	Kind     CronKind  `json:"kind"`
-	Interval int       `json:"interval,omitempty"`
-	Hour     int       `json:"hour,omitempty"`
-	Minute   int       `json:"minute,omitempty"`
-	At       time.Time `json:"at,omitempty"`
+	Kind     CronKind `json:"kind"`
+	Interval int      `json:"interval,omitempty"`
+	Hour     int      `json:"hour,omitempty"`
+	Minute   int      `json:"minute,omitempty"`
+	// Weekday is read only by CronWeekly. Sunday is the zero value, so a
+	// weekly schedule on a Sunday round-trips through JSON without the field.
+	Weekday time.Weekday `json:"weekday,omitempty"`
+	At      time.Time    `json:"at,omitempty"`
 }
 
 // FileWatch is an mtime-polled glob. Cadence bounds filesystem work even when
@@ -112,6 +127,14 @@ type WatchSpec struct {
 	File    *FileWatch    `json:"file,omitempty"`
 	Graph   *GraphWatch   `json:"graph,omitempty"`
 	Poll    *PollWatch    `json:"poll,omitempty"`
+
+	// CadenceGuessed marks a rhythm nobody said. Cadence used to hold the
+	// user's words OR a default backfilled when nothing was recognised, and the
+	// two were indistinguishable downstream — so a card told a user her weekly
+	// reminder fired "about every 2 minutes" in the same flat voice it would
+	// have used for words she actually said. A guess is a question, and this
+	// flag is what lets the ratification card ask it.
+	CadenceGuessed bool `json:"cadence_guessed,omitempty"`
 }
 
 // String renders the internal structured schedule with the interface's stable
@@ -131,6 +154,9 @@ func (watch WatchSpec) String() string {
 			return fmt.Sprintf("cron:daily %02d:%02d", watch.Cron.Hour, watch.Cron.Minute)
 		case CronWeekdays:
 			return fmt.Sprintf("cron:weekdays %02d:%02d", watch.Cron.Hour, watch.Cron.Minute)
+		case CronWeekly:
+			return fmt.Sprintf("cron:weekly %s %02d:%02d",
+				watch.Cron.Weekday, watch.Cron.Hour, watch.Cron.Minute)
 		case CronAt:
 			return "cron:at " + watch.Cron.At.Local().Format("2006-01-02 15:04")
 		}
@@ -151,6 +177,100 @@ func (watch WatchSpec) String() string {
 		return "poll:"
 	}
 	return string(watch.Kind) + ":"
+}
+
+// Spoken renders the same schedule the way a person says it: "Sundays at 9am",
+// "every day at 8pm", "about every 2 minutes". It is the only spelling any
+// surface a user reads should use — String is the log's spelling and carries a
+// watch-family prefix and a colon, which is machinery wearing a schedule's
+// clothes ("fires: about every 2 minutes (cron:every 2 minutes)" was a real
+// card). Times are in the process's local zone, the same zone the schedule runs
+// in.
+func (watch WatchSpec) Spoken() string {
+	switch watch.Kind {
+	case WatchCron:
+		if watch.Cron == nil {
+			break
+		}
+		schedule := *watch.Cron
+		switch schedule.Kind {
+		case CronEveryMinutes:
+			return "about " + everyPhrase(schedule.Interval, "minute")
+		case CronEveryHours:
+			if schedule.Interval > 0 && schedule.Interval%24 == 0 {
+				return everyPhrase(schedule.Interval/24, "day")
+			}
+			return everyPhrase(schedule.Interval, "hour")
+		case CronDaily:
+			return "every day at " + spokenClock(schedule.Hour, schedule.Minute)
+		case CronWeekdays:
+			return "weekdays at " + spokenClock(schedule.Hour, schedule.Minute)
+		case CronWeekly:
+			return schedule.Weekday.String() + "s at " + spokenClock(schedule.Hour, schedule.Minute)
+		case CronAt:
+			at := schedule.At.Local()
+			return at.Format("Monday 2 January") + " at " + spokenClock(at.Hour(), at.Minute())
+		}
+	case WatchFile:
+		if watch.File != nil {
+			return "whenever " + watch.File.Glob + " changes"
+		}
+	case WatchGraph:
+		if watch.Graph != nil && watch.Graph.Predicate == GraphSpendThreshold {
+			return fmt.Sprintf("when spending passes $%.2f", watch.Graph.ThresholdUSD)
+		}
+		return "when the work changes"
+	case WatchPoll:
+		if watch.Poll != nil && watch.Poll.Cadence > 0 {
+			return "about " + spokenInterval(watch.Poll.Cadence)
+		}
+	}
+	if cadence := strings.TrimSpace(watch.Cadence); cadence != "" {
+		return cadence
+	}
+	return "on its own schedule"
+}
+
+func everyPhrase(count int, unit string) string {
+	if count <= 1 {
+		return "every " + unit
+	}
+	return fmt.Sprintf("every %d %ss", count, unit)
+}
+
+// spokenInterval says a duration the way a person says one. It rounds to the
+// unit the number lives in rather than printing 2h0m0s at a user.
+func spokenInterval(d time.Duration) string {
+	switch {
+	case d >= 7*24*time.Hour && d%(7*24*time.Hour) == 0:
+		return everyPhrase(int(d/(7*24*time.Hour)), "week")
+	case d >= 24*time.Hour && d%(24*time.Hour) == 0:
+		return everyPhrase(int(d/(24*time.Hour)), "day")
+	case d >= time.Hour && d%time.Hour == 0:
+		return everyPhrase(int(d/time.Hour), "hour")
+	case d >= time.Minute:
+		return everyPhrase(int(d/time.Minute), "minute")
+	default:
+		return "every " + d.String()
+	}
+}
+
+// spokenClock is a 24-hour wall time in the spelling people use out loud.
+func spokenClock(hour, minute int) string {
+	suffix := "am"
+	display := hour
+	switch {
+	case hour == 0:
+		display = 12
+	case hour == 12:
+		suffix = "pm"
+	case hour > 12:
+		display, suffix = hour-12, "pm"
+	}
+	if minute == 0 {
+		return fmt.Sprintf("%d%s", display, suffix)
+	}
+	return fmt.Sprintf("%d:%02d%s", display, minute, suffix)
 }
 
 // CharterAction is re-grounded into ordinary work when a sentinel answers
@@ -370,6 +490,13 @@ func validateCron(schedule CronSchedule) error {
 	case CronDaily, CronWeekdays:
 		if schedule.Hour < 0 || schedule.Hour > 23 || schedule.Minute < 0 || schedule.Minute > 59 {
 			return fmt.Errorf("%w: cron wall time is invalid", ErrInvalid)
+		}
+	case CronWeekly:
+		if schedule.Hour < 0 || schedule.Hour > 23 || schedule.Minute < 0 || schedule.Minute > 59 {
+			return fmt.Errorf("%w: cron wall time is invalid", ErrInvalid)
+		}
+		if schedule.Weekday < time.Sunday || schedule.Weekday > time.Saturday {
+			return fmt.Errorf("%w: cron weekday is invalid", ErrInvalid)
 		}
 	case CronAt:
 		if schedule.At.IsZero() {
@@ -1901,11 +2028,18 @@ func NextCronDue(schedule CronSchedule, after time.Time) (time.Time, error) {
 			return schedule.At, nil
 		}
 		return schedule.At.AddDate(1, 0, 0), nil
-	case CronDaily, CronWeekdays:
+	case CronDaily, CronWeekdays, CronWeekly:
 		local := after.In(location)
 		for offset := 0; offset <= 8; offset++ {
 			day := local.AddDate(0, 0, offset)
 			if schedule.Kind == CronWeekdays && (day.Weekday() == time.Saturday || day.Weekday() == time.Sunday) {
+				continue
+			}
+			// A weekly rule keeps its named day forever: the search walks days
+			// and only a matching weekday can answer, so the occurrence after
+			// one Sunday is the next Sunday and never seven days from whenever
+			// the last one happened to run.
+			if schedule.Kind == CronWeekly && day.Weekday() != schedule.Weekday {
 				continue
 			}
 			candidate := wallClockOccurrence(day, schedule.Hour, schedule.Minute, location)
