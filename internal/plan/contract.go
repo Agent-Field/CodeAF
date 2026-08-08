@@ -158,7 +158,15 @@ func Contracts(ctx context.Context, client Completer, graph *Graph, playbook Con
 
 func writeContract(ctx context.Context, client Completer, shared string, node Node, playbook string) (string, *ai.Usage, error) {
 	var target strings.Builder
-	fmt.Fprintf(&target, "The job: %s — %s\n", node.Title, node.Summary)
+	// A node that came out of a plan always has a title; the one-leaf job does
+	// not, because there was nothing to distinguish it from. Naming the job
+	// twice, or naming it as an empty handle, both spend the model's attention
+	// on nothing.
+	if title := strings.TrimSpace(node.Title); title != "" {
+		fmt.Fprintf(&target, "The job: %s — %s\n", title, node.Summary)
+	} else {
+		fmt.Fprintf(&target, "The job: %s\n", node.Summary)
+	}
 	if len(node.Sources) > 0 {
 		fmt.Fprintf(&target, "It is expected to touch: %s\n", strings.Join(node.Sources, "; "))
 	}
