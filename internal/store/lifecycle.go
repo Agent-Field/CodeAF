@@ -144,7 +144,7 @@ func (s *Store) Start(claim Claim) error {
 // Complete settles a claimed or running node successfully. Composite nodes
 // cannot complete while any child remains open.
 func (s *Store) Complete(claim Claim, summary string) error {
-	summary = bounded(summary, MaxDigestBytes)
+	summary = bounded(summary, MaxSummaryBytes)
 	tx, err := s.db.BeginTx(context.Background(), nil)
 	if err != nil {
 		return fmt.Errorf("complete %q: %w", claim.ID, err)
@@ -205,7 +205,7 @@ func (s *Store) CompleteAndRequestFollowup(claim Claim, summary string, command 
 		strings.TrimSpace(command.Instruction) == "" {
 		return Command{}, fmt.Errorf("complete %q with follow-up: %w: follow-up must be an ordinary splice targeted at the completed node", claim.ID, ErrInvalid)
 	}
-	summary = bounded(summary, MaxDigestBytes)
+	summary = bounded(summary, MaxSummaryBytes)
 	tx, err := s.db.BeginTx(context.Background(), nil)
 	if err != nil {
 		return Command{}, fmt.Errorf("complete %q with follow-up: %w", claim.ID, err)

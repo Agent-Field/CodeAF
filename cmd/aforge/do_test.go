@@ -564,6 +564,11 @@ type scriptedBrain struct {
 	// leafCost is what each call reports spending, which is what the consent
 	// desk's estimate is built from.
 	leafCost float64
+	// longAnswer, when set, is what the worker hands back instead of the short
+	// draft, and the gate passes it on sight. It is how a deliverable longer
+	// than any single bound on the path can be followed from the worker's
+	// mouth to the person's screen.
+	longAnswer string
 
 	mu     sync.Mutex
 	counts map[string]int
@@ -671,6 +676,9 @@ func (s *scriptedBrain) reply(body string) string {
 
 	case strings.Contains(body, "You are the final gate"):
 		round := s.tally("gate")
+		if s.longAnswer != "" {
+			return s.say(`{"pass":true,"gaps":"","quote":"","exercised":true}`)
+		}
 		if s.inventedGap {
 			// The quote is a span of the compiled goal's own working
 			// decisions, not of anything the person typed.
@@ -704,6 +712,9 @@ func (s *scriptedBrain) reply(body string) string {
 // commissioned.
 func (s *scriptedBrain) leaf(body string) string {
 	switch {
+	case s.longAnswer != "":
+		s.tally("draft")
+		return s.say(s.longAnswer)
 	case strings.Contains(body, "Finish work a previous agent started"):
 		s.tally("extension")
 		return s.say(repairedAnswer)
