@@ -71,7 +71,7 @@ func TestGatePromptKeepsChurnBelowTheSettledBlocks(t *testing.T) {
 		t.Helper()
 		capture := &gateCaptureClient{model: "worker/model"}
 		client := &liveClient{settings: settings, model: capture.model, client: capture}
-		judgeDeliverable(context.Background(), settings, client, graph, node, deliverable, "worker/model")
+		judgeDeliverable(context.Background(), settings, client, graph, node, deliverable, deliveryEvidence{}, "worker/model")
 		return capture.messages[len(capture.messages)-1].Content[0].Text
 	}
 

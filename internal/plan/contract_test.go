@@ -159,3 +159,27 @@ func contractFixture() *Graph {
 	})
 	return graph
 }
+
+// The one-leaf job has no title because there was nothing to distinguish it
+// from — it is the whole ask. Naming it as an empty handle, or naming the same
+// words twice, spends the model's attention on nothing.
+func TestUntitledLeafStatesTheJobOnce(t *testing.T) {
+	graph := &Graph{Goal: "write the note that announces the change"}
+	graph.Add(Node{Kind: KindWork, Summary: "write the note that announces the change", Stage: 1})
+	client := &contractCaptureClient{}
+	usage, err := Contracts(context.Background(), client, graph, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if usage.Calls != 1 {
+		t.Fatalf("calls = %d, want exactly 1 for a one-leaf job", usage.Calls)
+	}
+	want := "The job: write the note that announces the change\n\n" +
+		"Write the working method for this kind of job."
+	if got := textOf(client.messages[2]); got != want {
+		t.Fatalf("untitled target message:\ngot:  %q\nwant: %q", got, want)
+	}
+	if got := textOf(client.messages[0]); got != contractPrompt {
+		t.Fatalf("the one-leaf job reads a different doctrine byte: %q", got)
+	}
+}

@@ -57,6 +57,42 @@ coordination, review, or status work. That is human overhead, not structure.`
 const titleRule = `Give a title of 1-3 words, like a short file name, distinct from the others.
 Put the meaning in a one-line summary under 15 words, not in the title.`
 
+// proportionRule is the size of the plan measured against the size of the ask.
+//
+// Every other guard here argues about where a boundary belongs once the work is
+// already being divided. This one asks the question before that: how much of a
+// plan does this deserve at all. It exists because the observed failure was not
+// mis-drawn boundaries — it was ceremony, small asks arriving with a structure
+// built for large ones, each part then earning its own verification round, and
+// the user waiting on a graph to produce something one agent says in a
+// paragraph. The structural caps downstream bound how far that can run; they
+// cannot make the judgment, because by the time a cap fires the plan has already
+// decided the work is big.
+//
+// It is stated as a burden of proof rather than a number. A threshold would be
+// wrong at both ends — the same count is ceremony for one ask and thin for
+// another — and asked plainly whether something could be decomposed, a model
+// always says yes. Asked what each part buys, it can answer honestly.
+//
+// The last line is the one the verification spirals needed. Checking is part of
+// doing the work, and a plan that hands it to a separate part has both invented
+// a piece of work that produces nothing and taught the part that does the work
+// that finishing is someone else's problem.
+const proportionRule = `Make the plan exactly as large as the goal, and no larger. A large plan for a
+small goal is not thoroughness; it is delay and expense the person asking pays
+for, and it is the more common mistake by far.
+
+Decomposition has to earn itself. Keep a division only when you can say what it
+buys: parts that genuinely run at the same time, or a gate that genuinely blocks
+what follows. When the honest answer is that the pieces would run one after
+another anyway, or that one agent would simply do the whole thing, that is the
+plan — a goal that asks for one finished thing is one piece of work by default,
+and returning it whole is a correct answer rather than a failure to decompose.
+
+Checking the work is part of doing it, never a piece of work of its own. Do not
+add anything whose purpose is to look at, confirm, review, or verify what
+another part produced; whoever produces a thing is who checks it.`
+
 // Completer is the slice of the provider adapter this package needs. Depending
 // on the method rather than the concrete client keeps the prompts testable
 // without a network.
