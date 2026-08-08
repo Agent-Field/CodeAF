@@ -199,6 +199,24 @@ func normalizeSubtree(parent string, subtree Subtree, provenance Provenance) (sp
 			if need.NodeID == node.ID {
 				return splicedPayload{}, fmt.Errorf("node %q depends on itself: %w", node.ID, ErrInvalid)
 			}
+			// The permanent spine is Running by construction — it is the trunk
+			// every job splices under, not work that anybody finishes. A hard
+			// dependency on it is therefore a wait with no end: Ready excludes
+			// any node whose dependency is not done, failed or cancelled, and
+			// the root is none of those and never will be.
+			//
+			// This is not hypothetical. A compiler answered builds_on:["root"],
+			// continuity wired the edge because a node by that name existed, and
+			// the job was deadlocked from the instant it was created: compiled
+			// cleanly, spliced cleanly, pending with an empty started_at for the
+			// full 900-second ceiling while the resident ticked beside it once a
+			// second with nothing it was allowed to claim. The refusal belongs
+			// here, beside the identical one RetryOf already gets, because the
+			// store is the only layer that knows why the root is Running.
+			if need.NodeID == RootID {
+				return splicedPayload{}, fmt.Errorf(
+					"node %q depends on the permanent spine, which never settles: %w", node.ID, ErrInvalid)
+			}
 		}
 		byID[node.ID] = node
 		nodes = append(nodes, node)
