@@ -295,6 +295,27 @@ func (f *fakeBackend) PendingQuestions(sessionID string, limit int) ([]store.Age
 	return questions, nil
 }
 
+// OpenQuestions is the dock's read: everything still waiting on the user,
+// whether or not it has already been said in the thread.
+func (f *fakeBackend) OpenQuestions(sessionID string, limit int) ([]store.AgentQuestion, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	var questions []store.AgentQuestion
+	for _, question := range f.agentQuestions {
+		if question.SessionID != sessionID && question.SessionID != "" {
+			continue
+		}
+		if question.Status != store.QuestionPending && question.Status != store.QuestionAsked {
+			continue
+		}
+		questions = append(questions, question)
+		if limit > 0 && len(questions) == limit {
+			break
+		}
+	}
+	return questions, nil
+}
+
 func (f *fakeBackend) SurfaceQuestionForSession(seq int64, sessionID string) (store.Message, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
