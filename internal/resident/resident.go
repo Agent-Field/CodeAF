@@ -722,7 +722,19 @@ func receiptAnchor(command store.Command, status store.CommandStatus) string {
 // silence and typed the answer again. Where the conversation already carries an
 // answer the receipt stays filed, because the wave-4 rule cuts both ways: one
 // user action, exactly one visible response.
+//
+// A refusal is the one case where the head having spoken is not an answer, it
+// is the wrong answer. The head says "cancelling that job" in the same breath
+// that it journals the command; when the command is then rejected — the target
+// finished a second earlier, the job no longer exists — the head's sentence is
+// already on screen and untrue, and filing the correction as grey furniture is
+// how the user is left believing something happened. So a rejection speaks,
+// whoever else spoke first. It is still one visible line, and it is the only
+// one that is true.
 func receiptVoice(command store.Command, status store.CommandStatus) store.Role {
+	if status == store.CommandRejected {
+		return store.RoleAgent
+	}
 	if receiptAnchor(command, status) != "" || headSpeaksFor(command.Kind) {
 		return store.RoleSystem
 	}
