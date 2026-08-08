@@ -1406,6 +1406,12 @@ func (r *Reconciler) announceTransitions(ctx context.Context) error {
 					r.recordForNarration(byID, event)
 					if ok {
 						r.recordCraftOutcome(node, event.Kind == store.EventNodeCompleted)
+						// A redirection that raced this landing was never read.
+						// The landing is the only moment that can know it, and
+						// saying nothing is how a correction evaporates.
+						if err := r.reportMissedDirection(node); err != nil {
+							return err
+						}
 					}
 				}
 				practice := ok && node.Group == store.PracticeGroup &&

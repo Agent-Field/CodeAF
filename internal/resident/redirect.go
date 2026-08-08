@@ -333,6 +333,79 @@ func BroadcastRedirection(graph *store.Store, jobRoot, sessionID, message string
 	return informed, nil
 }
 
+// A broadcast is delivery to a mailbox, not delivery to a mind. The steering
+// poll runs between turns, so words that arrive after the last turn of a leaf
+// are read by nobody — and the leaf then lands with a result written before the
+// user spoke. That is what happened at 03:30:37: "make sure you test the
+// functionality at the end" reached a worker that completed two seconds later
+// saying "everything is verified". The redirection changed nothing, nobody
+// re-checked, and — the part that made it a betrayal rather than a race — nobody
+// said so. The user was left believing their correction had been taken.
+//
+// The read is structural: the informs are journaled at the node, the landing has
+// a time, and a landing this close to the words means there was no turn boundary
+// between them.
+const (
+	// directionMissWindow is shorter than a single worker turn on purpose. Past
+	// it, a leaf has almost certainly polled its mailbox and the words were
+	// heard; inside it, claiming they were heard is a guess in the direction
+	// that costs the user their correction.
+	directionMissWindow = 15 * time.Second
+	// missedDirectionScan bounds the mailbox read. A leaf steered more times
+	// than this has a conversation of its own, and the newest words are the ones
+	// that were missed.
+	missedDirectionScan = 50
+)
+
+// reportMissedDirection says so when a redirection arrived too late to be read.
+// It respawns nothing: the words were about work that no longer exists to change,
+// and spending on a re-run the user has not asked for twice is the opposite of
+// the honesty this is for. What it does instead is put the job back in front of
+// them with the fact attached, so their next sentence reaches the correction path
+// — which owns exactly this shape, a delivered result the user disagrees with —
+// with everything it needs to anchor.
+func (r *Reconciler) reportMissedDirection(node store.Node) error {
+	sessionID := r.effectiveSessionID(node)
+	if sessionID == "" || node.FinishedAt.IsZero() {
+		return nil
+	}
+	messages, err := r.store.NodeMessages(node.ID, 0, missedDirectionScan)
+	if err != nil {
+		return err
+	}
+	var arrived time.Time
+	for _, message := range messages {
+		// Only a redirection carries the user's own words. Urgency broadcasts a
+		// fixed line about pace, and a missed "hurry up" on finished work is not
+		// news anyone needs.
+		if message.Role == store.RoleUser && strings.HasPrefix(message.Body, redirectSteerPrefix) {
+			arrived = message.Time
+		}
+	}
+	if !directionMissed(node.FinishedAt, arrived) {
+		return nil
+	}
+	_, err = r.store.PostMessage(store.Message{
+		SessionID: r.deliverySessionID(sessionID),
+		Role:      store.RoleAgent,
+		Body: "Your words reached " + surgeryLabel(node) +
+			" as it was already finishing, so nothing there acted on them. " +
+			"Tell me what you want done and I'll take it from there.",
+	})
+	return err
+}
+
+// directionMissed is the whole judgment, and it is arithmetic on two journal
+// times. A negative difference is words that arrived after the work was already
+// recorded as over; a small positive one is words that arrived with no turn left
+// to read them in.
+func directionMissed(finished, arrived time.Time) bool {
+	if finished.IsZero() || arrived.IsZero() {
+		return false
+	}
+	return finished.Sub(arrived) <= directionMissWindow
+}
+
 // RedirectAudience counts who a redirection would reach if it were broadcast
 // now. It exists so the head can say how many workers are about to hear the
 // user's words in the moment the user asks, rather than waiting for the
