@@ -46,8 +46,8 @@ func TestVoiceSectionIsBoundedAndUTF8Safe(t *testing.T) {
 	}
 
 	section := VoiceSection(graph, "answer this")
-	if len(section) > voiceSectionBytes {
-		t.Fatalf("voice section = %d bytes, want at most %d", len(section), voiceSectionBytes)
+	if learned := len(section) - len(voiceDoctrine); learned > voiceSectionBytes {
+		t.Fatalf("learned voice = %d bytes, want at most %d", learned, voiceSectionBytes)
 	}
 	if !utf8.ValidString(section) {
 		t.Fatalf("voice section is not valid UTF-8: %q", section)
@@ -72,10 +72,44 @@ func TestQuarantinedVoicePreferenceStopsRendering(t *testing.T) {
 	}
 }
 
-func TestVoicePromptKeepsEmptyNotebookBytes(t *testing.T) {
+// TestVoiceRegisterInstallsOnAnEmptyNotebook pins the thing that was wrong: the
+// anti-jargon doctrine used to be conditional on the notebook already carrying a
+// learned voice preference, so a fresh machine — the one install whose user has
+// the least vocabulary for any of this — got no register instruction at all.
+// The register now rides every prompt, and the exact byte difference from the
+// bare prompt is that register and nothing else.
+func TestVoiceRegisterInstallsOnAnEmptyNotebook(t *testing.T) {
 	graph := openStore(t)
 	const prompt = "first line\n\nExact trailing doctrine."
-	if got := VoicePrompt(graph, prompt, "answer this"); got != prompt {
-		t.Fatalf("empty-notebook prompt changed:\n got %q\nwant %q", got, prompt)
+	got := VoicePrompt(graph, prompt, "answer this")
+	if want := prompt + "\n\n" + VoiceRegister; got != want {
+		t.Fatalf("empty-notebook prompt:\n got %q\nwant %q", got, want)
+	}
+	for _, word := range []string{"node", "leaf", "graph", "splice", "worker",
+		"charter", "craft", "rail", "firing"} {
+		if !strings.Contains(got, word) {
+			t.Fatalf("register does not name the backstage word %q: %q", word, got)
+		}
+	}
+}
+
+// TestVoiceRegisterIsAStablePrefixOfLearnedVoice is the cache-shape guard.
+// Learning a first voice preference must APPEND to what a cached prompt already
+// paid for rather than rewriting the segment: the register is a byte-exact
+// prefix of the full section in both directions.
+func TestVoiceRegisterIsAStablePrefixOfLearnedVoice(t *testing.T) {
+	graph := openStore(t)
+	const prompt = "first line\n\nExact trailing doctrine."
+	before := VoicePrompt(graph, prompt, "answer this")
+	if _, err := graph.RecordFact("", "user", store.FactPreference,
+		"keep answers short; no preamble"); err != nil {
+		t.Fatal(err)
+	}
+	after := VoicePrompt(graph, prompt, "answer this")
+	if after == before {
+		t.Fatal("a learned preference did not reach the prompt")
+	}
+	if !strings.HasPrefix(after, before) {
+		t.Fatalf("learned voice rewrote the cached prefix:\nbefore %q\n after %q", before, after)
 	}
 }

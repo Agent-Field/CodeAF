@@ -12,11 +12,29 @@ import (
 const (
 	// voiceSectionBytes keeps learned style from crowding out the work itself.
 	voiceSectionBytes = 400
-	voiceDoctrine     = `Voice for anything the user will read:
+	// VoiceRegister is the register every reply is written in, and it is true
+	// of a machine nobody has taught anything yet. It used to ride inside the
+	// learned-preference section, which meant a fresh install — the exact
+	// moment a person is meeting the product for the first time and has the
+	// least vocabulary for it — was the one install that got no anti-jargon
+	// instruction at all. The rule that covers every string nobody thought to
+	// enumerate cannot be conditional on the user having already complained
+	// about something else.
+	//
+	// The banned list is named rather than gestured at because "jargon" is not
+	// a word a model can check a sentence against; these are the words this
+	// system uses for itself, and each one has a plain replacement that says
+	// the same thing to a person who has never read the source.
+	VoiceRegister = `Voice for anything the user will read:
 - Use plain speech in the user's terms.
-- Keep internal plumbing and jargon backstage.
-- Do not open with an apology or preamble.
-Follow these standing user preferences:`
+- Keep internal plumbing and jargon backstage. The names this machinery uses for itself are never the words a person reads: not node, leaf, graph, splice, subtree, worker, charter, craft, rail, firing, notebook, or a raw id. Say the thing itself — a step, the work, a standing rule, the way you already do this, a daily limit, a run, what you have learned.
+- Do not open with an apology or preamble.`
+	// voicePreferenceHeader introduces what the notebook actually taught. It is
+	// separate from the register so the register is a stable PREFIX of the full
+	// section: the first learned preference appends bytes rather than rewriting
+	// the segment a cached prompt already paid for.
+	voicePreferenceHeader = `Follow these standing user preferences:`
+	voiceDoctrine         = VoiceRegister + "\n" + voicePreferenceHeader
 )
 
 // The store's safe FTS query keeps twelve terms. These cover the durable
@@ -75,9 +93,14 @@ func VoiceSection(graph *store.Store, contextCues ...string) string {
 
 	var section strings.Builder
 	section.WriteString(voiceDoctrine)
+	// The budget bounds what the NOTEBOOK contributes, not the constant
+	// register in front of it. Measuring the whole section against it made the
+	// bound a function of how long the doctrine happens to be, which is how
+	// naming the backstage words outright silently spent every preference slot.
+	budget := len(voiceDoctrine) + voiceSectionBytes
 	for _, preference := range preferences {
 		line := "- " + preference
-		remaining := voiceSectionBytes - section.Len() - 1
+		remaining := budget - section.Len() - 1
 		if remaining <= 3 {
 			break
 		}
@@ -93,13 +116,20 @@ func VoiceSection(graph *store.Store, contextCues ...string) string {
 	return section.String()
 }
 
-// VoicePrompt appends the assembled contract only when the notebook contributes
-// learned voice. That compatibility rule keeps every empty-notebook prompt
-// byte-identical to the prompt that preceded adaptive voice.
+// VoicePrompt installs the register on every prompt and the learned
+// preferences on top of it when the notebook has any. The register is
+// unconditional on purpose: it is the one instruction that covers strings
+// nobody enumerated, including strings that do not exist yet, and gating it on
+// learned preferences meant a fresh machine spoke the implementation's
+// language until the user complained about something unrelated.
+//
+// The bytes stay cache-friendly. Whatever this returns begins
+// prompt + "\n\n" + VoiceRegister in both branches, so learning a first voice
+// preference extends the prompt rather than rewriting it.
 func VoicePrompt(graph *store.Store, prompt string, contextCues ...string) string {
 	section := VoiceSection(graph, contextCues...)
 	if section == "" {
-		return prompt
+		section = VoiceRegister
 	}
 	return prompt + "\n\n" + section
 }
