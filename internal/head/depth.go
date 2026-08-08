@@ -5,6 +5,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Agent-Field/aforge-v2/internal/resident"
 	"github.com/Agent-Field/aforge-v2/internal/store"
 )
 
@@ -97,7 +98,7 @@ func (h *Head) renderDeep(message, thread string) (string, map[string]bool) {
 		if target.Score < RedirectAnchorScore || !beltAddressable(target.Node) {
 			continue
 		}
-		result := nodeResult(target.Node)
+		result := h.jobResult(target.Node)
 		if result == "" || deepAlreadyInThread(thread, result) {
 			continue
 		}
@@ -160,6 +161,44 @@ func unnamedFiles(node store.Node, body string) []string {
 		}
 	}
 	return files
+}
+
+// jobResult is nodeResult with the graph consulted about whether the node's own
+// account is still the job's account.
+//
+// A leaf that ran out of budget lands with a half-sentence and a stamp saying the
+// rest was re-planned into its split namespace. Every read in this package took
+// that half-sentence at face value, so the head answered a status question with
+// "it hit a conflict and split, so it isn't verified working yet" a hundred
+// seconds after the continuation had landed saying the opposite. Nothing was
+// running; the person watching could see that, and the head could not.
+//
+// The correction is a read, not a rewrite. History keeps what each node actually
+// said; the chain is followed at the moment the question is asked, and the answer
+// names both — which piece carries on, how it ended, and what it found.
+func (h *Head) jobResult(node store.Node) string {
+	if h == nil || h.store == nil {
+		return nodeResult(node)
+	}
+	pieces, continued := resident.SplitContinuation(h.store, node)
+	if !continued {
+		return nodeResult(node)
+	}
+	chain := make([]string, 0, len(pieces))
+	result := ""
+	for _, piece := range pieces {
+		chain = append(chain, fmt.Sprintf("%s (%s)", piece.ID, piece.Status))
+		// The latest piece with anything to say wins: a running tail has no
+		// result yet, and the round before it is then the freshest truth there is.
+		if body := nodeResult(piece); body != "" {
+			result = body
+		}
+	}
+	note := "continued as " + strings.Join(chain, " → ")
+	if result == "" {
+		return note + " — nothing recorded there yet"
+	}
+	return note + ": " + result
 }
 
 // nodeResult is what a node has to say for itself, in the order the head should

@@ -194,6 +194,65 @@ func OverrunContinuationMessage(pieces int) string {
 	return fmt.Sprintf("splitting the remaining work -- %d pieces queued", pieces)
 }
 
+// SplitContinued reports that a node's summary is not its last word. A leaf that
+// ran out of budget mid-thought completes with whatever it had said so far, and
+// that sentence is a paragraph cut in half — "the file conflicted, let me clean
+// up and run the test properly" — stamped with the receipt that says the rest was
+// re-planned elsewhere. Read as a result it is a lie of tense: it narrates as
+// present something the graph finished a minute later.
+func SplitContinued(summary string) bool {
+	return strings.Contains(summary, overrunSplitPrefix)
+}
+
+// SplitContinuation follows a stamped node into its own split namespace and
+// returns the pieces that carry on from it, oldest round first. It is a read of
+// ids and statuses and nothing else: the namespace is an id-index range, the
+// sink of each round is that round's prefix exactly (SubtreeFromPlan gives the
+// plan root the prefix itself), and a node that is itself a piece only ever
+// continues into rounds above its own.
+//
+// It lives here because the id law lives here. Anyone who re-derived the "-x"
+// arithmetic at the reading end would own a second copy of it, and the day the
+// counter changes shape the second copy quietly starts answering with the stale
+// half of the job — which is the failure it exists to end.
+func SplitContinuation(graph *store.Store, node store.Node) ([]store.Node, bool) {
+	if graph == nil || !SplitContinued(node.Summary) {
+		return nil, false
+	}
+	base, after := node.ID, 0
+	if marked, round, ok := splitOverrunID(node.ID); ok {
+		base, after = marked, round
+	}
+	ids, err := graph.NodeIDsWithPrefix(base + overrunMarker)
+	if err != nil {
+		return nil, false
+	}
+	rounds := make(map[int]bool, len(ids))
+	highest := 0
+	for _, id := range ids {
+		candidateBase, round, ok := splitOverrunID(id)
+		if !ok || candidateBase != base || round <= after {
+			continue
+		}
+		rounds[round] = true
+		if round > highest {
+			highest = round
+		}
+	}
+	pieces := make([]store.Node, 0, len(rounds))
+	for round := after + 1; round <= highest; round++ {
+		if !rounds[round] {
+			continue
+		}
+		piece, found, err := graph.Node(fmt.Sprintf("%s%s%d", base, overrunMarker, round))
+		if err != nil || !found {
+			continue
+		}
+		pieces = append(pieces, piece)
+	}
+	return pieces, len(pieces) > 0
+}
+
 func overrunPrefixExists(graph *store.Store, prefix string) (bool, error) {
 	return graph.NodeIDExistsWithPrefix(prefix)
 }

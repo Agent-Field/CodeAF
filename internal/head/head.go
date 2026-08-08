@@ -543,7 +543,7 @@ func (h *Head) route(ctx context.Context, user store.Message) (routeDecision, er
 	// which of those jobs the block below is about to quote in full and drops
 	// only the clause it would have said twice.
 	deep, opened := h.renderDeep(user.Body, threadContext)
-	graphContext := renderGraph(snapshot, user.SessionID, threadContext, opened, time.Now())
+	graphContext := h.renderGraph(snapshot, user.SessionID, threadContext, opened, time.Now())
 	if services := renderServices(h.store); services != "" {
 		graphContext += "\n" + services
 	}
@@ -1055,7 +1055,10 @@ func crossSession(node store.Node, sessionID string) bool {
 // line the user can read in the thread above, or one the deep slice is about to
 // quote in full below, is the same finding stated twice in one prompt — which
 // costs budget and reads to the model as corroboration.
-func renderGraph(snapshot store.Snapshot, sessionID, thread string, opened map[string]bool, now time.Time) string {
+// It is a method for one reason: a board row is not always a read of the node it
+// names. A node whose remainder was re-planned elsewhere has its current truth in
+// the graph rather than in its own summary, and following that takes the store.
+func (h *Head) renderGraph(snapshot store.Snapshot, sessionID, thread string, opened map[string]bool, now time.Time) string {
 	if len(snapshot.Nodes) == 0 {
 		return "(no active nodes)"
 	}
@@ -1109,7 +1112,7 @@ func renderGraph(snapshot store.Snapshot, sessionID, thread string, opened map[s
 		// teaches nothing: the deep slice below is about to quote this job in
 		// full, or announceNode already posted the same summary into the thread
 		// above and renderThread has rendered it.
-		result := firstLine(nodeResult(node))
+		result := firstLine(h.jobResult(node))
 		if opened[node.ID] || deepAlreadyInThread(thread, result) {
 			result = ""
 		}
