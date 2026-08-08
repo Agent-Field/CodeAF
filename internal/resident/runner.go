@@ -37,6 +37,10 @@ type ExecResult struct {
 	// same verbatim instruction on the ordinary compiled path atomically.
 	Promote         bool
 	ServiceRequests []executor.ServiceRequest
+	// Model is who actually served the work — the rung a panel picked or an
+	// escalation moved to, which is not the model anyone asked for. It rides
+	// the spend row because that is the row a receipt already reads.
+	Model string
 }
 
 // ExecuteFunc runs one claimed node to completion. The runner owns the claim
@@ -533,6 +537,7 @@ func (r *Runner) recordSpend(node store.Node, result ExecResult) {
 		PromptTokens:     result.PromptTokens,
 		CompletionTokens: result.CompletionTokens,
 		Cost:             result.Cost,
+		Model:            result.Model,
 	})
 }
 
