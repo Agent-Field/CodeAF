@@ -30,13 +30,13 @@ func TestNodeSurgeryRecognitionTable(t *testing.T) {
 	}
 	for _, test := range tests {
 		t.Run(test.message, func(t *testing.T) {
-			charterKind, _, _, charter := charterManagement(test.message)
+			charterIntent, charter := charterManagement(test.message)
 			intent, surgery := nodeSurgery(test.message)
 			route := "new"
 			kind := store.CommandKind("")
 			if charter && (strings.Contains(strings.ToLower(test.message), "watch") ||
 				strings.Contains(strings.ToLower(test.message), "monitor")) {
-				route, kind = "charter", charterKind
+				route, kind = "charter", charterIntent.Kind
 			} else if surgery {
 				route, kind = "surgery", intent.Kind
 			}

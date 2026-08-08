@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"path/filepath"
 	"reflect"
+	"strings"
 	"testing"
 	"time"
 )
@@ -326,5 +327,139 @@ func TestUnlimitedTodayRailAdmitsCharterFirings(t *testing.T) {
 	disposition, err = graph.FireCharter(charter.ID, wakeSeq, subtree, provenance, 1, now)
 	if err != nil || disposition != FireAdmitted {
 		t.Fatalf("firing under an unlimited rail = %q err=%v, want %q", disposition, err, FireAdmitted)
+	}
+}
+
+// TestWeeklyCadenceKeepsItsNamedDayAndReArms is friction #1 of the everyday
+// simulation, at the layer where it was structural: "every Sunday" had no
+// schedule this engine could hold, so it degraded to an interval measured from
+// the ratification instant and drifted off the day the user named.
+func TestWeeklyCadenceKeepsItsNamedDayAndReArms(t *testing.T) {
+	location, err := time.LoadLocation("America/Toronto")
+	if err != nil {
+		t.Fatal(err)
+	}
+	// A fixed clock: Monday 8:14 in the morning, the moment of the simulation.
+	monday := time.Date(2026, time.August, 3, 8, 14, 0, 0, location)
+
+	schedule := CadenceSchedule("every sunday at 9", monday)
+	if schedule.Kind != CronWeekly || schedule.Weekday != time.Sunday ||
+		schedule.Hour != 9 || schedule.Minute != 0 {
+		t.Fatalf("weekly cadence = %+v, want Sunday 09:00", schedule)
+	}
+	first, err := NextCronDue(schedule, monday)
+	if err != nil {
+		t.Fatal(err)
+	}
+	wantFirst := time.Date(2026, time.August, 9, 9, 0, 0, 0, location)
+	if !first.Equal(wantFirst) {
+		t.Fatalf("first firing = %s, want the coming Sunday %s", first, wantFirst)
+	}
+	// It re-arms on the same day of the week rather than expiring or drifting.
+	second, err := NextCronDue(schedule, first)
+	if err != nil {
+		t.Fatal(err)
+	}
+	wantSecond := wantFirst.AddDate(0, 0, 7)
+	if !second.Equal(wantSecond) || second.Weekday() != time.Sunday {
+		t.Fatalf("second firing = %s, want %s", second, wantSecond)
+	}
+
+	// The words people actually use, each landing on a real day and clock.
+	for _, test := range []struct {
+		cadence string
+		want    CronSchedule
+	}{
+		{"every sunday", CronSchedule{Kind: CronWeekly, Weekday: time.Sunday, Hour: 9}},
+		{"every sunday morning", CronSchedule{Kind: CronWeekly, Weekday: time.Sunday, Hour: 9}},
+		{"tuesdays at 8pm", CronSchedule{Kind: CronWeekly, Weekday: time.Tuesday, Hour: 20}},
+		{"on fridays at 6:30pm", CronSchedule{Kind: CronWeekly, Weekday: time.Friday, Hour: 18, Minute: 30}},
+		{"every day at 8pm", CronSchedule{Kind: CronDaily, Hour: 20}},
+		{"every evening", CronSchedule{Kind: CronDaily, Hour: 18}},
+		{"every weekday at 7:45", CronSchedule{Kind: CronWeekdays, Hour: 7, Minute: 45}},
+		{"weekly", CronSchedule{Kind: CronWeekly, Weekday: monday.Weekday(), Hour: 9}},
+		{"every 2 hours", CronSchedule{Kind: CronEveryHours, Interval: 2}},
+	} {
+		t.Run(test.cadence, func(t *testing.T) {
+			got := CadenceSchedule(test.cadence, monday)
+			if got != test.want {
+				t.Fatalf("schedule = %+v, want %+v", got, test.want)
+			}
+			if _, err := NextCronDue(got, monday); err != nil {
+				t.Fatalf("no occurrence for %q: %v", test.cadence, err)
+			}
+		})
+	}
+}
+
+// TestRecurringReminderOutlivesItsFirstFiring is the other half of friction #1:
+// the reminder rails read "once" for every reminder, so a weekly rule expired
+// twenty-three hours after ratification — before the day it named.
+func TestRecurringReminderOutlivesItsFirstFiring(t *testing.T) {
+	graph := openTestStore(t, filepath.Join(t.TempDir(), "weekly-reminder.db"))
+	charter, err := graph.DraftCharter("plants", "chat", 5, CharterSpec{
+		Invariant: "remind me every sunday to water the plants",
+		Watch:     CharterWatch{Kind: WatchCron, Cadence: "every sunday"},
+		Sentinel:  "Is it time for the reminder?",
+		Action:    "Say: water the plants.",
+		SayOnly:   true,
+		Rails: CharterSpecRails{
+			EstimatedCostUSD: 0.02, MaxPerDay: 1,
+			MaxPerDayJustification: "one firing a day is all a reminder needs",
+			Expiry:                 "once",
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if charter.Watch.Cron == nil || charter.Watch.Cron.Kind != CronWeekly ||
+		charter.Watch.Cron.Weekday != time.Sunday {
+		t.Fatalf("weekly reminder watch = %+v", charter.Watch)
+	}
+	rails := charter.Rails()
+	if rails.ExpiresAt != nil {
+		t.Fatalf("recurring reminder expires at %s; a standing rule does not expire", rails.ExpiresAt)
+	}
+	if rails.MaxFiringsPerDay != 1 {
+		t.Fatalf("reminder daily cap = %d, want 1", rails.MaxFiringsPerDay)
+	}
+	if charter.NextDue.Weekday() != time.Sunday {
+		t.Fatalf("next due = %s, want a Sunday", charter.NextDue)
+	}
+	if !charter.NextDue.After(time.Now()) {
+		t.Fatalf("next due = %s, want a future Sunday", charter.NextDue)
+	}
+}
+
+// TestSpokenSchedulesNeverSpeakCron guards the card's spelling at its source.
+func TestSpokenSchedulesNeverSpeakCron(t *testing.T) {
+	at := time.Date(2026, time.August, 9, 9, 0, 0, 0, time.Local)
+	for _, test := range []struct {
+		watch WatchSpec
+		want  string
+	}{
+		{WatchSpec{Kind: WatchCron, Cron: &CronSchedule{Kind: CronWeekly, Weekday: time.Sunday, Hour: 9}},
+			"Sundays at 9am"},
+		{WatchSpec{Kind: WatchCron, Cron: &CronSchedule{Kind: CronWeekly, Weekday: time.Tuesday, Hour: 20, Minute: 30}},
+			"Tuesdays at 8:30pm"},
+		{WatchSpec{Kind: WatchCron, Cron: &CronSchedule{Kind: CronDaily, Hour: 0}}, "every day at 12am"},
+		{WatchSpec{Kind: WatchCron, Cron: &CronSchedule{Kind: CronWeekdays, Hour: 12}}, "weekdays at 12pm"},
+		{WatchSpec{Kind: WatchCron, Cron: &CronSchedule{Kind: CronEveryMinutes, Interval: 2}},
+			"about every 2 minutes"},
+		{WatchSpec{Kind: WatchCron, Cron: &CronSchedule{Kind: CronEveryHours, Interval: 1}}, "every hour"},
+		{WatchSpec{Kind: WatchCron, Cron: &CronSchedule{Kind: CronAt, At: at}},
+			"Sunday 9 August at 9am"},
+		{WatchSpec{Kind: WatchPoll, Poll: &PollWatch{Condition: "price drop", Cadence: 15 * time.Minute}},
+			"about every 15 minutes"},
+		{WatchSpec{Kind: WatchFile, File: &FileWatch{Glob: "notes/*.md", Cadence: time.Minute}},
+			"whenever notes/*.md changes"},
+	} {
+		if got := test.watch.Spoken(); got != test.want {
+			t.Fatalf("spoken = %q, want %q", got, test.want)
+		}
+		if strings.Contains(test.watch.Spoken(), "cron") || strings.Contains(test.watch.Spoken(), ":") &&
+			!strings.Contains(test.watch.Spoken(), "pm") && !strings.Contains(test.watch.Spoken(), "am") {
+			t.Fatalf("spoken schedule leaks machinery: %q", test.watch.Spoken())
+		}
 	}
 }

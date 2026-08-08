@@ -33,14 +33,28 @@ var (
 	standingStatePattern    = regexp.MustCompile(`(?i)\bmake\s+sure\b.+\b(?:stays?|remains?)\b`)
 	standingReminderPattern = regexp.MustCompile(`(?i)\b(?:remind|notify|alert)\s+me\s+(?:when|whenever|at|on|in|tomorrow|next)\b`)
 	standingWhenOncePattern = regexp.MustCompile(`(?i)\bwhen\s+i\s+say\b.*\bonce\b`)
-	cadencePatterns         = []*regexp.Regexp{
-		regexp.MustCompile(`(?i)\bevery\s+weekday(?:\s+at\s+\d{1,2}(?::\d{2})?)?`),
+	// clockTail is the time-of-day a cadence phrase may carry with it: "at 9",
+	// "at 8pm", "at 6:30 pm", "in the morning". It is spelled once and appended
+	// to every pattern that can be qualified by one, because the clock is the
+	// half of "every Sunday at 9am" that used to fall on the floor.
+	clockTail       = `(?:\s+(?:morning|afternoon|evening|night))?(?:\s+at\s+\d{1,2}(?::\d{2})?\s*(?:am|pm)?|\s+\d{1,2}(?::\d{2})?\s*(?:am|pm))?`
+	weekdayName     = `(?:sun|mon|tues|wednes|thurs|fri|satur)days?`
+	cadencePatterns = []*regexp.Regexp{
+		regexp.MustCompile(`(?i)\bevery\s+weekday` + clockTail),
 		regexp.MustCompile(`(?i)\bevery\s+\d+\s+(?:minutes?|hours?|days?|weeks?)\b`),
-		regexp.MustCompile(`(?i)\bevery\s+(?:morning|afternoon|evening|night|day|week|hour)\b`),
-		regexp.MustCompile(`(?i)\b(?:hourly|daily|weekly)\b`),
+		// A named day is the commonest standing rule there is and was the one
+		// shape no pattern here knew. It reads with or without a leading word,
+		// so "every sunday", "on sundays" and "sunday mornings" all land.
+		regexp.MustCompile(`(?i)\b(?:every|each|on)\s+` + weekdayName + clockTail),
+		regexp.MustCompile(`(?i)\b` + weekdayName + clockTail),
+		regexp.MustCompile(`(?i)\bevery\s+(?:morning|afternoon|evening|night|day|week|hour)` + clockTail),
+		regexp.MustCompile(`(?i)\b(?:hourly|daily|weekly)` + clockTail),
 		regexp.MustCompile(`(?i)\b(?:whenever|each\s+time)\b`),
-		regexp.MustCompile(`(?i)\btomorrow(?:\s+at\s+\d{1,2}(?::\d{2})?)?`),
+		regexp.MustCompile(`(?i)\btomorrow` + clockTail),
 		regexp.MustCompile(`(?i)\bin\s+\d+\s+(?:minutes?|hours?|days?)\b`),
+		// A bare clock is a cadence on its own: "remind me at 6pm to leave".
+		regexp.MustCompile(`(?i)\bat\s+\d{1,2}(?::\d{2})?\s*(?:am|pm)?\b`),
+		regexp.MustCompile(`(?i)\b\d{1,2}(?::\d{2})?\s*(?:am|pm)\b`),
 	}
 	measuredCostPattern = regexp.MustCompile(`(?i)(?:avg(?:erage)?\s+cost|cost)\s*[:=]?\s*\$([0-9]+(?:\.[0-9]+)?)`)
 )
@@ -74,7 +88,7 @@ func RecognizesStandingIntent(instruction string) bool {
 
 // standingDraftReply is the receipt for a deterministically recognized durable
 // ask. It promises a draft and nothing else: ratification is still the user's.
-const standingDraftReply = "Reading that as a standing rule — drafting a charter for you to confirm."
+const standingDraftReply = "Reading that as a standing rule — writing it up for you to confirm."
 
 // manageStanding gives durable language the same treatment node surgery already
 // has: the deterministic reading runs BEFORE the routing model, so recognized
@@ -133,10 +147,10 @@ func (c *Compiler) compileStanding(ctx context.Context, instruction, graphContex
 	}
 	spec = normalizeCharterSpec(spec, instruction, graphContext)
 	return Brief{
-		Question: "Stand this charter up?",
+		Question: "Stand this rule up?",
 		QuestionOptions: []store.QuestionOption{
 			{Label: "yes, stand this up", Value: "ratify"},
-			{Label: "change the cadence", Value: "cadence"},
+			{Label: "change when it runs", Value: "cadence"},
 			{Label: "once, not standing", Value: "once"},
 		},
 		Charter: &spec,
@@ -168,9 +182,10 @@ func normalizeCharterSpec(spec store.CharterSpec, instruction, graphContext stri
 			spec.Rails.MaxPerDay = 1
 		}
 	}
+	recurring := store.RecurringWatch(spec.Watch.Spec)
 	if strings.TrimSpace(spec.Rails.MaxPerDayJustification) == "" {
 		if reminder {
-			spec.Rails.MaxPerDayJustification = "one firing matches the reminder's once expiry"
+			spec.Rails.MaxPerDayJustification = "one a day is all a reminder needs"
 		} else {
 			worst := spec.Rails.EstimatedCostUSD * float64(spec.Rails.MaxPerDay)
 			spec.Rails.MaxPerDayJustification = fmt.Sprintf(
@@ -179,9 +194,15 @@ func normalizeCharterSpec(spec store.CharterSpec, instruction, graphContext stri
 	}
 	if strings.TrimSpace(spec.Rails.Expiry) == "" {
 		spec.Rails.Expiry = "never"
-		if reminder {
+		// A reminder ends when its one moment passes — and only then. Reading
+		// every reminder as one-shot is what killed "remind me every sunday"
+		// inside a day; the schedule already knows which kind this is.
+		if reminder && !recurring {
 			spec.Rails.Expiry = "once"
 		}
+	}
+	if recurring && strings.EqualFold(strings.TrimSpace(spec.Rails.Expiry), "once") {
+		spec.Rails.Expiry = "never"
 	}
 	return spec
 }
@@ -193,22 +214,24 @@ func normalizeCharterSpec(spec store.CharterSpec, instruction, graphContext stri
 // executed.
 func standingWatch(instruction string, proposed store.CharterWatch) store.CharterWatch {
 	lower := strings.ToLower(instruction)
-	cadence := extractCadence(instruction)
+	cadence, guessed := standingCadence(instruction, proposed)
 	kind := store.WatchPoll
 	switch {
 	case strings.Contains(lower, "folder") || strings.Contains(lower, "directory") ||
 		strings.Contains(lower, " file") || strings.HasPrefix(lower, "file "):
 		kind = store.WatchFile
 		if cadence == "" {
-			cadence = "on change"
+			// A file watch has a natural rhythm — the file changing — so this
+			// is the family answering, not a rhythm nobody chose.
+			cadence, guessed = "on change", false
 		}
 	case strings.Contains(lower, "node settled") || strings.Contains(lower, "node failed") ||
 		strings.Contains(lower, "spend threshold") || strings.Contains(lower, "budget threshold"):
 		kind = store.WatchGraph
 		if cadence == "" {
-			cadence = "on graph change"
+			cadence, guessed = "on graph change", false
 		}
-	case isReminder(instruction) || strings.Contains(lower, "morning") ||
+	case isReminder(instruction) || store.WeekdayNamed(lower) || strings.Contains(lower, "morning") ||
 		strings.Contains(lower, "weekday") || strings.Contains(lower, "hourly") ||
 		strings.Contains(lower, "daily") || strings.Contains(lower, "weekly"):
 		kind = store.WatchCron
@@ -218,15 +241,42 @@ func standingWatch(instruction string, proposed store.CharterWatch) store.Charte
 		if strings.HasPrefix(lower, "keep ") || strings.HasPrefix(lower, "please keep ") {
 			cadence = "about every 15 minutes"
 		}
+		guessed = true
 	}
 	hint := strings.TrimSpace(proposed.Schedule)
 	watch := store.CharterWatch{Kind: kind, Cadence: cadence, Schedule: hint}
 	watch.Spec = store.CadenceWatchSpec(kind, cadence, hint, instruction, time.Now())
 	watch.Spec.Cadence = cadence
+	watch.Spec.CadenceGuessed = guessed
 	// The typed derivation degrades underdetermined file and graph watches to
 	// a poll; the spec records what will actually run.
 	watch.Kind = watch.Spec.Kind
 	return watch
+}
+
+// standingCadence reads the rhythm in three descending degrees of authority:
+// the user's own words, then the temporal compiler's reading of them, then
+// nothing.
+//
+// The middle one is the repair. The compiler is asked for "human cadence
+// words" and answers with them, and standingWatch used to throw that answer
+// away — only the structured schedule hint survived, which cron never reads —
+// and substitute a literal two minutes. So a model that had correctly
+// understood "every sunday" watched the sentence say "about every 2 minutes"
+// on the card. The deterministic patterns stay in front of it because they are
+// free and exact; the model catches everything a pattern list never will.
+//
+// The second return is whether the rhythm is a guess. Nothing here invents one
+// silently: an unreadable cadence comes back empty and the caller both defaults
+// AND says that it did.
+func standingCadence(instruction string, proposed store.CharterWatch) (string, bool) {
+	if cadence := extractCadence(instruction); cadence != "" {
+		return cadence, false
+	}
+	if cadence := strings.TrimSpace(proposed.Cadence); cadence != "" && store.RecognizedCadence(cadence) {
+		return cadence, false
+	}
+	return "", true
 }
 
 func extractCadence(instruction string) string {
