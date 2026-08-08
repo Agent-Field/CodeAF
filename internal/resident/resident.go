@@ -232,6 +232,14 @@ type Reconciler struct {
 	standingMu         sync.Mutex
 	standingWatchCheck time.Time
 
+	// craftMu serializes recognition. Independent asks are compiled and planned
+	// side by side now, and the shelf they all ask "do we already know how to do
+	// this?" is a git-backed index rather than a pure function. Recognition is a
+	// local BM25 read and a file load, so holding one lock across it costs
+	// nothing measurable and removes the only shared mutable thing on the
+	// concurrent splice path.
+	craftMu sync.Mutex
+
 	// gate is the change-detection state that lets an idle tick return
 	// without re-deriving a graph nothing has touched.
 	gatePrimed     bool
@@ -432,13 +440,8 @@ func (r *Reconciler) Tick(ctx context.Context) error {
 		if err != nil {
 			return fmt.Errorf("resident tick: pending commands: %w", err)
 		}
-		for _, command := range commands {
-			if err := ctx.Err(); err != nil {
-				return err
-			}
-			if err := r.reconcileCommand(ctx, command); err != nil {
-				return fmt.Errorf("resident tick: command %d: %w", command.Seq, err)
-			}
+		if err := r.reconcileBatch(ctx, commands); err != nil {
+			return fmt.Errorf("resident tick: %w", err)
 		}
 		if len(commands) < commandBatchSize {
 			break
@@ -641,8 +644,124 @@ type commandOutcome struct {
 	defaultAnswer string
 }
 
+// concurrentCommands bounds how many independent asks are planned at once. It
+// is small on purpose: this is not a throughput dial, it is the difference
+// between one sentence naming three things and three sentences said in a queue.
+const concurrentCommands = 4
+
+// independentCommand reports that applying this command shares nothing with any
+// other pending command, so it may be applied beside them.
+//
+// The membrane is deliberately narrow — a fresh, untargeted, non-reflex splice
+// and nothing else. That is exactly the fan-out case and exactly the expensive
+// one: a splice is three model round-trips (compile, plan, title) before its
+// work exists as a single node. Everything else — a redirect, a cancel, a
+// charter, a reflex, any splice that names a target — reads or edits something
+// another command in the same breath may be writing, and stays in seq order
+// where it has always been.
+func independentCommand(command store.Command) bool {
+	return !command.Reflex && command.Kind == store.CommandSplice &&
+		strings.TrimSpace(command.Target) == ""
+}
+
+// reconcileBatch applies one drained queue. Runs of independent commands go
+// side by side; anything else is a barrier that waits for the run before it and
+// is applied alone, so the ordering guarantees the rest of the resident relies
+// on are untouched.
+//
+// This is the half of "the jobs ran one after another" that no amount of worker
+// pool would have fixed. The runner was never the thing holding the second job
+// back — the second job did not exist yet, because the first one's planner was
+// still talking to a model on the only goroutine allowed to make work.
+func (r *Reconciler) reconcileBatch(ctx context.Context, commands []store.Command) error {
+	for start := 0; start < len(commands); {
+		if !independentCommand(commands[start]) {
+			if err := ctx.Err(); err != nil {
+				return err
+			}
+			if err := r.reconcileCommand(ctx, commands[start]); err != nil {
+				return fmt.Errorf("command %d: %w", commands[start].Seq, err)
+			}
+			start++
+			continue
+		}
+		end := start
+		for end < len(commands) && independentCommand(commands[end]) {
+			end++
+		}
+		if err := r.reconcileGroup(ctx, commands[start:end]); err != nil {
+			return err
+		}
+		start = end
+	}
+	return nil
+}
+
+// reconcileGroup applies a run of independent commands concurrently and then
+// settles them in seq order.
+//
+// The split is the whole safety argument. Application is the model work and the
+// splice, and those genuinely do not care about each other. Settlement is the
+// resolution, the receipt and any askback — the parts a reader sees, and the
+// parts that touch the reconciler's own locked helpers — and those stay
+// single-file, in the order the person said them.
+func (r *Reconciler) reconcileGroup(ctx context.Context, group []store.Command) error {
+	if len(group) < 2 {
+		if len(group) == 1 {
+			if err := r.reconcileCommand(ctx, group[0]); err != nil {
+				return fmt.Errorf("command %d: %w", group[0].Seq, err)
+			}
+		}
+		return nil
+	}
+	type applied struct {
+		outcome commandOutcome
+		err     error
+	}
+	results := make([]applied, len(group))
+	slots := make(chan struct{}, concurrentCommands)
+	var wait sync.WaitGroup
+	started := 0
+	for index := range group {
+		if err := ctx.Err(); err != nil {
+			break
+		}
+		slots <- struct{}{}
+		started++
+		wait.Add(1)
+		go func(index int) {
+			// A fault applying one ask becomes that ask's recorded rejection,
+			// exactly as it would have on the serial path, rather than a panic
+			// crossing back into a tick that is holding the reconciler's lock.
+			defer func() {
+				if recovered := recover(); recovered != nil {
+					results[index].err = guard.Note("resident/reconciler command", recovered)
+				}
+			}()
+			defer wait.Done()
+			defer func() { <-slots }()
+			results[index].outcome, results[index].err = r.applyCommand(ctx, group[index])
+		}(index)
+	}
+	wait.Wait()
+	// Only what was actually applied is settled. A command the context cut off
+	// before it started is still pending, and the next tick owns it.
+	for index, command := range group[:started] {
+		if err := r.settleCommand(command, results[index].outcome, results[index].err); err != nil {
+			return fmt.Errorf("command %d: %w", command.Seq, err)
+		}
+	}
+	return ctx.Err()
+}
+
 func (r *Reconciler) reconcileCommand(ctx context.Context, command store.Command) error {
 	outcome, err := r.applyCommand(ctx, command)
+	return r.settleCommand(command, outcome, err)
+}
+
+// settleCommand records what applying one command decided: the durable
+// resolution, and the single visible line the person is owed for it.
+func (r *Reconciler) settleCommand(command store.Command, outcome commandOutcome, err error) error {
 	if err != nil {
 		reason := fmt.Sprintf("%s failed: %v", command.Kind, err)
 		outcome = commandOutcome{

@@ -65,6 +65,14 @@ type Runner struct {
 	craft               *CraftRunner
 	drain               chan struct{}
 	drainOnce           sync.Once
+	// wake is the event edge under the poll. Claiming used to be purely timed,
+	// so every leaf that came free — a slot returned, a dependent unblocked by
+	// the landing that just happened — waited out the rest of the tick before
+	// anybody looked. Three jobs cost three of those gaps, and the gaps are
+	// visible in the only number that matters: what the person waited. A
+	// landing is the one moment the ready set provably changed, so it says so
+	// instead of leaving the next pass to find out.
+	wake chan struct{}
 }
 
 // NewRunner builds a runner executing at most workers nodes concurrently.
@@ -84,6 +92,18 @@ func NewRunner(graph *store.Store, execute ExecuteFunc, owner string, workers in
 		serviceConsentGrace: ServiceConsentGrace,
 		governor:            executor.HostGovernor(),
 		drain:               make(chan struct{}),
+		wake:                make(chan struct{}, 1),
+	}
+}
+
+// nudge asks the dispatch loop to look again now. It is a one-slot signal, so a
+// burst of landings costs one extra pass rather than one per landing — the
+// difference between an event edge and the busy loop the load governor exists
+// to prevent.
+func (r *Runner) nudge() {
+	select {
+	case r.wake <- struct{}{}:
+	default:
 	}
 }
 
@@ -131,11 +151,50 @@ func (r *Runner) WithDailyBudgetUSD(amount float64) *Runner {
 	return r
 }
 
+// runnerTickFailures is how many consecutive failed passes end the dispatch
+// loop, and it is the same number the reconciler's own loop uses because it is
+// the same lesson learned twice.
+//
+// A pass fails for two very different reasons: something transient — a store
+// busy behind the reconciler's own heavy queries, one racing writer — or
+// something structural, a store that can no longer be read at all. Returning on
+// the first error treated them as the same thing, and the transient one is
+// overwhelmingly the common one. The consequence is the worst failure this
+// component has: the loop returned, the process lived on holding the resident
+// lease, and no leaf was ever claimed again — silently, forever. It was caught
+// in the field as a compiled task sitting pending with an empty started_at for
+// fifteen minutes while the reconciler beside it ticked happily once a second.
+// Nothing was wrong with the node, nothing was wrong with the queue, and there
+// was nobody left to look at either.
+//
+// Counting consecutive failures separates the two without anyone having to
+// enumerate a store's error strings: a store that is genuinely gone fails every
+// pass, and a transient fault does not survive the next one.
+const runnerTickFailures = 10
+
 // Serve polls for ready work until ctx ends, then waits for in-flight nodes
 // to land. Landing is bounded by each execution's own respect for ctx.
 func (r *Runner) Serve(ctx context.Context) error {
 	ticker := time.NewTicker(500 * time.Millisecond)
 	defer ticker.Stop()
+	failures := 0
+	pass := func() error {
+		if _, err := r.tickGuarded(ctx); err != nil {
+			// Cancellation is the caller's decision, not a fault, and it is the
+			// one error that must end the loop on its first appearance.
+			if ctx.Err() != nil || errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+				return err
+			}
+			failures++
+			_ = guard.Note("resident/runner tick", err)
+			if failures >= runnerTickFailures {
+				return fmt.Errorf("runner serve: %d consecutive failed passes: %w", failures, err)
+			}
+			return nil
+		}
+		failures = 0
+		return nil
+	}
 	for {
 		select {
 		case <-ctx.Done():
@@ -144,8 +203,14 @@ func (r *Runner) Serve(ctx context.Context) error {
 		case <-r.drain:
 			r.wg.Wait()
 			return nil
+		case <-r.wake:
+			if err := pass(); err != nil {
+				r.wg.Wait()
+				return err
+			}
 		case <-ticker.C:
-			if _, err := r.tickGuarded(ctx); err != nil {
+			if err := pass(); err != nil {
+				r.wg.Wait()
 				return err
 			}
 		}
@@ -255,6 +320,10 @@ func (r *Runner) dispatchOne(ctx context.Context) (spawned bool, err error) {
 		// a fault in the settling itself. Registered first so it absorbs last.
 		defer guard.Recover("resident/runner worker " + node.ID)
 		defer r.wg.Done()
+		// Registered before the slot goes back so it fires after it: a pass
+		// woken while this worker still held its slot would find the queue
+		// exactly as full as it was.
+		defer r.nudge()
 		defer func() { <-r.slots }()
 		if cancel != nil {
 			defer cancel()
