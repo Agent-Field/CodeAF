@@ -45,9 +45,15 @@ type standingCharter struct {
 	ProposalReason string
 	Proposed       bool
 	Breathing      bool
-	LastFired      time.Time
-	Today          int
-	Firings        []standingFiring
+	// LastChecked and LastCheckLine are the quiet half of a watch: a sentinel
+	// that looked and found nothing worth firing on. Without them a faithful
+	// watch that has checked every morning for a month reads exactly like a
+	// dead one — "last fired never · 0 today".
+	LastChecked   time.Time
+	LastCheckLine string
+	LastFired     time.Time
+	Today         int
+	Firings       []standingFiring
 }
 
 type standingFiring struct {
@@ -173,6 +179,7 @@ func (r storeStandingReader) Charters(
 			Proposed:  record.Status == store.CharterProposed,
 			Breathing: record.WakePending,
 		}
+		charter.LastChecked, charter.LastCheckLine = charterCheckState(record)
 		if rails.ExpiresAt != nil {
 			charter.Expiry = rails.ExpiresAt.Local().Format("2006-01-02 15:04")
 		}
@@ -406,8 +413,7 @@ func (m *Model) renderStandingSection(width int) string {
 		if m.focus == focusGraph && m.selectedNodeID == standingGraphRowID(charter.ID) {
 			marker = powderStyle.Bold(true).Render("▸ ")
 		}
-		line := fmt.Sprintf("⏱ %s · last fired %s · %d today",
-			charter.Name, standingAge(charter.LastFired, m.standingTime()), charter.Today)
+		line := m.standingCharterLine(charter)
 		if charter.Proposed {
 			line += " · proposed"
 		}
@@ -424,6 +430,31 @@ func (m *Model) renderStandingSection(width int) string {
 	}
 	lines = append(lines, "")
 	return strings.Join(lines, "\n")
+}
+
+// standingCharterLine keeps one shape for every watch and changes only which
+// facts are true of this one: a watch that has fired says when and how often
+// today, and a watch that has only looked says when it looked and what it
+// found. Nothing that has done neither is described as if it had.
+func (m *Model) standingCharterLine(charter standingCharter) string {
+	if charter.LastFired.IsZero() && !charter.LastChecked.IsZero() {
+		found := strings.TrimSpace(charter.LastCheckLine)
+		if found == "" {
+			found = "nothing new"
+		}
+		return fmt.Sprintf("⏱ %s · last checked %s · %s",
+			charter.Name, standingAge(charter.LastChecked, m.standingTime()), found)
+	}
+	return fmt.Sprintf("⏱ %s · last fired %s · %d today",
+		charter.Name, standingAge(charter.LastFired, m.standingTime()), charter.Today)
+}
+
+// charterCheckState is the one seam that reads the durable check fields. They
+// land with the resident's half of this wave as store.Charter.LastChecked and
+// .LastCheckLine; until then a watch keeps the wording it had, and this is the
+// single line that changes when the halves meet.
+func charterCheckState(store.Charter) (time.Time, string) {
+	return time.Time{}, ""
 }
 
 // hasStandingHistory is deliberately broader than the visible charter list:

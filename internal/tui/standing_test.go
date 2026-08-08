@@ -563,3 +563,70 @@ func TestStoreNativeChartersRenderWithoutCompatibilityNodes(t *testing.T) {
 		t.Fatalf("firing not attached through CharterID: %#v", got)
 	}
 }
+
+// A watch that looks every morning and correctly finds nothing was rendered
+// exactly like a dead one — "last fired never · 0 today". The quiet day is
+// durable state now, so the line says what actually happened.
+func TestAQuietWatchSaysItChecked(t *testing.T) {
+	now := time.Date(2026, time.August, 7, 9, 0, 0, 0, time.Local)
+	model := standingModel(&fakeBackend{}, now, store.Snapshot{Nodes: []store.Node{{ID: store.RootID}}})
+
+	quiet := standingCharter{
+		Name:          "watch PRs on aforge",
+		LastChecked:   now.Add(-2 * time.Hour),
+		LastCheckLine: "nothing new on the feed",
+	}
+	line := model.standingCharterLine(quiet)
+	if !strings.Contains(line, "last checked 2h") || !strings.Contains(line, "nothing new on the feed") {
+		t.Fatalf("quiet watch line = %q", line)
+	}
+	if strings.Contains(line, "last fired") {
+		t.Fatalf("a watch that only checked claimed a firing: %q", line)
+	}
+
+	// A check with no reason recorded still reads as a check.
+	quiet.LastCheckLine = ""
+	if line := model.standingCharterLine(quiet); !strings.Contains(line, "· nothing new") {
+		t.Fatalf("reasonless check line = %q", line)
+	}
+
+	// A watch that has fired keeps the firing line, and one that has done
+	// neither keeps the wording it had.
+	fired := standingCharter{Name: "watch", LastChecked: now.Add(-time.Hour), LastFired: now.Add(-30 * time.Minute), Today: 2}
+	if line := model.standingCharterLine(fired); !strings.Contains(line, "last fired 30m") ||
+		!strings.Contains(line, "2 today") {
+		t.Fatalf("fired watch line = %q", line)
+	}
+	if line := model.standingCharterLine(standingCharter{Name: "new"}); line != "⏱ new · last fired never · 0 today" {
+		t.Fatalf("untouched watch line = %q", line)
+	}
+}
+
+// The brief's waiting rows are the only present-tense thing in it, and they
+// take the same flag a card waiting on a person carries.
+func TestBriefWaitingRowsCarryTheNeedsYouFlag(t *testing.T) {
+	if glyph := ansi.Strip(briefItemGlyph(briefWaitingKind)); glyph != "⚑" {
+		t.Fatalf("waiting glyph = %q, want the ⚑ a waiting card already uses", glyph)
+	}
+	if glyph := ansi.Strip(briefItemGlyph(store.BriefItemKind("something-new"))); glyph != "·" {
+		t.Fatalf("unknown kinds must stay quiet: %q", glyph)
+	}
+
+	model := New(&fakeBackend{}, "brief")
+	model.setSize(90, 30)
+	seq := int64(11)
+	model.briefExpanded[seq] = true
+	rendered := ansi.Strip(model.renderBrief(store.Message{
+		Seq: seq, Role: store.RoleAgent, Body: "While you were away.",
+		Brief: &store.Brief{Items: []store.BriefItem{
+			{Kind: store.BriefDone, Body: "The market report landed."},
+			{Kind: briefWaitingKind, Body: "Which vendor did you mean — waiting on you 3h."},
+		}},
+	}, 88, 0, false))
+	if !strings.Contains(rendered, "⚑ Which vendor did you mean") {
+		t.Fatalf("waiting row did not read as needing you:\n%s", rendered)
+	}
+	if !strings.Contains(rendered, "✓ The market report landed.") {
+		t.Fatalf("brief lost its ordinary rows:\n%s", rendered)
+	}
+}
