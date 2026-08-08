@@ -169,3 +169,58 @@ func TestTheLockCarriesTheHoldersBuild(t *testing.T) {
 		t.Fatalf("a heartbeat dropped the build stamp: %+v", stamped.Build)
 	}
 }
+
+// A holder rewrites the lock's payload without a lock of its own — it is the
+// holder, so nothing else may write — and the moments after a role changes
+// hands are exactly when several processes are reading it. A reader that landed
+// inside a write used to come back with "unexpected end of JSON input", which a
+// window waiting to promote read as a broken lock and gave up on.
+func TestReadingALockThatIsBeingRewrittenNeverReportsItBroken(t *testing.T) {
+	dir := t.TempDir()
+	release, _, err := AcquireResident(dir, "chat")
+	if err != nil || release == nil {
+		t.Fatalf("acquire: %v", err)
+	}
+	defer release()
+
+	stop := make(chan struct{})
+	writing := make(chan struct{})
+	go func() {
+		defer close(writing)
+		for i := 0; ; i++ {
+			select {
+			case <-stop:
+				return
+			default:
+			}
+			// The heartbeat is the rewrite, and it is the one the resident makes
+			// on every completed pass.
+			if err := NoteResidentTick(dir, time.Now().Add(time.Duration(i)*time.Second)); err != nil {
+				t.Errorf("tick: %v", err)
+				return
+			}
+		}
+	}()
+
+	deadline := time.Now().Add(2 * time.Second)
+	reads := 0
+	for time.Now().Before(deadline) {
+		holder, err := ProbeResident(dir)
+		if err != nil {
+			close(stop)
+			<-writing
+			t.Fatalf("a lock being rewritten read as broken: %v", err)
+		}
+		if holder == nil || holder.PID <= 0 {
+			close(stop)
+			<-writing
+			t.Fatalf("a held lock read as free: %+v", holder)
+		}
+		reads++
+	}
+	close(stop)
+	<-writing
+	if reads < 100 {
+		t.Fatalf("only %d reads landed; the race was never exercised", reads)
+	}
+}
