@@ -38,7 +38,8 @@ anyone anything. Whatever you leave out is simply missing.
 Write directly to it:
 - Give it the context it needs to make sense of the job on its own.
 - State exactly what it is responsible for delivering.
-- Say what finished looks like, and where to stop.
+- Say what finished looks like in the terms of whoever will use the result —
+  what they do with it, what they must see — and where to stop.
 - Where other agents are delivering something adjacent, say which results are
   theirs, so this one does not redo them.
 

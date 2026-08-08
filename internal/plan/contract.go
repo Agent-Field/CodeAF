@@ -35,11 +35,14 @@ from someone merely competent.
 Concretely, for this kind of work:
 - What to understand before touching anything, and what order the work is best
   produced in.
-- What "done" means here — including how the result must connect to or be
-  reachable from what already exists, if anything does. Work that functions
-  only in isolation is unfinished.
-- How to verify: the checks this kind of work admits, exercised the way the
-  result's eventual user would reach it.
+- What "done" means here, said as what whoever ends up using the result does
+  with it and sees — including how it must connect to or be reachable from what
+  already exists, if anything does. Work that functions only in isolation is
+  unfinished.
+- How to verify: the whole path exercised the way that user reaches it, run
+  before anything may be called verified, since parts checked separately never
+  add up to a working result — and, for whatever cannot be run from here, what
+  to declare unverified and the one short check that would settle it.
 - The two or three mistakes most often made in this kind of work, stated as
   things to watch for.
 - Where this kind of work most often gets stuck — the source that is down, the
