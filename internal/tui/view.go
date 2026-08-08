@@ -63,7 +63,11 @@ var (
 	butter   = lipgloss.AdaptiveColor{Light: "#826614", Dark: "#FBE7A1"}
 	rose     = lipgloss.AdaptiveColor{Light: "#B23A57", Dark: "#F5A9B8"}
 	muted    = lipgloss.AdaptiveColor{Light: "#686A78", Dark: "#6C7086"}
-	ink      = lipgloss.AdaptiveColor{Light: "#2E3038", Dark: "#E8E7EE"}
+	// control sits between muted and ink: quiet interactive elements (mic,
+	// header doors, the model glance) render here at full strength so they
+	// stay legible — muted+faint is reserved for pure structure and hints.
+	control = lipgloss.AdaptiveColor{Light: "#565B6E", Dark: "#9399B2"}
+	ink     = lipgloss.AdaptiveColor{Light: "#2E3038", Dark: "#E8E7EE"}
 
 	// One style per ink, built once. A style carries its color in an interface,
 	// so building one inside a render heap-allocates per glyph, per row, per
@@ -77,6 +81,7 @@ var (
 	roseStyle     = lipgloss.NewStyle().Foreground(rose)
 	lavenderStyle = lipgloss.NewStyle().Foreground(lavender)
 	mutedStyle    = lipgloss.NewStyle().Foreground(muted)
+	controlStyle  = lipgloss.NewStyle().Foreground(control)
 
 	selectedInk   = lipgloss.AdaptiveColor{Light: "#FFFFFF", Dark: "#24202E"}
 	selectionBand = lipgloss.AdaptiveColor{Light: "#E8E7EE", Dark: "#343442"}
@@ -159,7 +164,8 @@ func (m *Model) View() string {
 				hint = tip
 			}
 		}
-		renderedHint := mutedStyle.Faint(true).Render(truncate(hint, m.width))
+		indent := strings.Repeat(" ", inputFrameInset)
+		renderedHint := indent + mutedStyle.Render(truncate(hint, max(1, m.width-inputFrameInset)))
 		if boostShown {
 			m.boostBounds = paneBounds{x: 0, y: m.inputBounds.bottom(), width: lipgloss.Width(renderedHint), height: 1}
 		}
@@ -274,9 +280,9 @@ func (m *Model) renderTopBar() string {
 	if m.boost == boostPinned {
 		talkGlance = "talk » " + truncate(modelShort(m.currentModel("boost")), 18)
 	}
-	glance := mutedStyle.Faint(true).Render(talkGlance +
+	glance := controlStyle.Render(talkGlance +
 		" · work " + truncate(modelShort(m.currentModel("work")), 18))
-	compactGlance := mutedStyle.Faint(true).Render(talkGlance)
+	compactGlance := controlStyle.Render(talkGlance)
 	models := m.renderModelsButton()
 	settings := m.renderSettingsButton()
 
@@ -391,7 +397,7 @@ func (m *Model) renderPlaceLabel(name string, target place, attention bool) stri
 }
 
 func (m *Model) renderModelsButton() string {
-	style := mutedStyle.Faint(true)
+	style := controlStyle
 	if m.focus == focusHeader && m.headerFocusIndex == 0 {
 		style = powderStyle.Bold(true)
 	}
@@ -402,9 +408,9 @@ func (m *Model) renderModelsButton() string {
 // onto whole overlays are the two things it can afford to spell in symbols.
 // It reads in the same quiet ink as the models door and brightens under focus.
 func (m *Model) renderSettingsButton() string {
-	style := mutedStyle.Faint(true)
+	style := controlStyle
 	if (m.focus == focusHeader && m.headerFocusIndex == 1) || m.palette == paletteSettings {
-		style = lipgloss.NewStyle().Foreground(powder)
+		style = powderStyle
 	}
 	return style.Render("⚙")
 }
@@ -418,7 +424,7 @@ func (m *Model) renderTasksButton() string {
 	if m.hasPendingQuestion() {
 		dot = questionStyle.Bold(true).Render("●") + " "
 	}
-	style := mutedStyle.Faint(true)
+	style := controlStyle
 	if m.focus == focusHeader && m.headerFocusIndex == 2 {
 		style = powderStyle
 	}
@@ -429,7 +435,7 @@ func (m *Model) renderTasksButton() string {
 }
 
 func (m *Model) renderHelpButton() string {
-	style := mutedStyle.Faint(true)
+	style := controlStyle
 	if (m.focus == focusHeader && m.headerFocusIndex == 3) || m.palette == paletteHelp {
 		style = powderStyle
 	}
@@ -736,11 +742,20 @@ func (m *Model) renderNodePane() string {
 	return lipgloss.NewStyle().Width(m.width).Render(strings.Join(lines, "\n"))
 }
 
+// inputFrameInset is the columns between the terminal edge and the editable
+// content on each side of the input frame: the edge glyph plus one padding
+// column. The footer hint indents by the same amount so its first glyph
+// aligns with the prompt inside the frame.
+const inputFrameInset = 2
+
 // renderInput keeps editable text owned by textinput while laying the pending
 // transcript beside it as non-editable, visibly provisional ink. The mic is
 // overlaid at the right edge after ANSI-aware clipping, so neither a long
-// draft nor a live transcript can widen the pane. A text question adds one
-// quiet context line above all of that without changing what enter submits —
+// draft nor a live transcript can widen the pane. The whole surface sits
+// inside a faint rounded frame with one column of padding on each side — the
+// frame marks the editable zone the way the doctrine's other frames mark
+// structure, without borrowing any ink from the words. A text question adds
+// one quiet context line above the frame without changing what enter submits —
 // the provisional transcript and the "answering:" line never share a row.
 func (m *Model) renderInput() string {
 	input := m.input
@@ -755,6 +770,8 @@ func (m *Model) renderInput() string {
 	if strings.TrimSpace(m.voicePending) != "" {
 		input.Placeholder = ""
 	}
+	// Frame edge + one padding column per side.
+	innerWidth := max(1, m.width-2*inputFrameInset)
 	lines := strings.Split(input.View(), "\n")
 	last := len(lines) - 1
 	if strings.TrimSpace(m.voicePending) != "" {
@@ -763,16 +780,17 @@ func (m *Model) renderInput() string {
 	control := m.voiceControl()
 	for index := range lines {
 		if index == last {
-			lines[index] = overlayRight(lines[index], control, m.width)
+			lines[index] = overlayRight(lines[index], control, innerWidth)
 		} else {
-			lines[index] = truncate(lines[index], m.width)
+			lines[index] = truncate(lines[index], innerWidth)
 		}
 	}
 	card := m.activeTextQuestion()
-	inputY := m.inputBounds.y
+	frameY := m.inputBounds.y
 	if card != nil {
-		inputY++ // the question context line owns the input surface's first row
+		frameY++ // the question context line owns the input surface's first row
 	}
+	contentY := frameY + 1 // first row inside the frame, below the top edge
 	// Attachment chips sit between the question line and the editable input,
 	// each with its own dismiss target; an extra hint row warns when the talk
 	// model cannot see images.
@@ -780,11 +798,12 @@ func (m *Model) renderInput() string {
 	chipLines := make([]string, 0, len(m.attachments)+1)
 	for index, path := range m.attachments {
 		glyph := attachmentGlyph(path)
-		prefix := glyph + " " + truncate(filepath.Base(path), max(1, m.width-lipgloss.Width(glyph+"  ⟨×⟩"))) + " "
+		prefix := glyph + " " + truncate(filepath.Base(path), max(1, innerWidth-lipgloss.Width(glyph+"  ⟨×⟩"))) + " "
 		line := mutedStyle.Faint(true).Render(prefix + "⟨×⟩")
 		chipLines = append(chipLines, line)
 		m.attachmentBounds = append(m.attachmentBounds, paneBounds{
-			x: lipgloss.Width(prefix), y: inputY + index, width: lipgloss.Width("⟨×⟩"), height: 1,
+			x: inputFrameInset + lipgloss.Width(prefix), y: contentY + index,
+			width: lipgloss.Width("⟨×⟩"), height: 1,
 		})
 	}
 	if hasImageAttachments(m.attachments) {
@@ -792,32 +811,42 @@ func (m *Model) renderInput() string {
 			// The image is staged either way now, so the line says what will
 			// happen rather than what cannot: the front desk is blind here,
 			// the work is not necessarily.
-			hint := truncate(model+" can't see it here — it still rides to the work", m.width)
+			hint := truncate(model+" can't see it here — it still rides to the work", innerWidth)
 			chipLines = append(chipLines, mutedStyle.Faint(true).Render(hint))
 		}
 	}
-	inputY += len(chipLines)
+	contentY += len(chipLines)
 	controlWidth := lipgloss.Width(control)
-	controlX := max(0, m.width-controlWidth)
 	micWidth := lipgloss.Width(m.voiceMicGlyph())
 	m.micBounds = paneBounds{
-		x: controlX, y: inputY + last,
+		x: inputFrameInset + max(0, innerWidth-controlWidth), y: contentY + last,
 		width: micWidth, height: 1,
 	}
 	if m.voiceState != voiceIdle {
 		cancelWidth := lipgloss.Width("⟨×⟩")
 		m.voiceCancelBounds = paneBounds{
-			x: m.width - cancelWidth, y: inputY + last,
+			x: m.width - inputFrameInset - cancelWidth, y: contentY + last,
 			width: cancelWidth, height: 1,
 		}
 	}
-	rendered := lipgloss.NewStyle().PaddingLeft(0).Width(m.width).Render(
-		strings.Join(append(chipLines, lines...), "\n"))
+	edge := mutedStyle.Faint(true)
+	rule := strings.Repeat("─", max(0, m.width-2))
+	rows := make([]string, 0, len(chipLines)+len(lines)+2)
+	rows = append(rows, edge.Render("╭"+rule+"╮"))
+	side := edge.Render("│")
+	for _, line := range chipLines {
+		rows = append(rows, side+" "+padANSI(line, innerWidth)+" "+side)
+	}
+	for _, line := range lines {
+		rows = append(rows, side+" "+padANSI(line, innerWidth)+" "+side)
+	}
+	rows = append(rows, edge.Render("╰"+rule+"╯"))
+	rendered := strings.Join(rows, "\n")
 	if card == nil {
 		return rendered
 	}
 	close := "⟨×⟩"
-	prefix := "answering: "
+	prefix := "  answering: "
 	available := max(1, m.width-lipgloss.Width(prefix)-lipgloss.Width(close)-3)
 	line := mutedStyle.Faint(true).Render(prefix+truncate(card.Question, available)+" · ") +
 		mutedStyle.Render(close)

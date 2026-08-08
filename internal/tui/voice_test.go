@@ -279,7 +279,8 @@ func TestVoiceCoexistsWithPendingTextQuestion(t *testing.T) {
 	if !strings.Contains(rest, "provisional words") {
 		t.Fatalf("provisional transcript missing from the prompt line: %q", rest)
 	}
-	if model.micBounds.y != model.textQuestionDismissBounds.y+1 {
+	// The frame's top edge sits between the question line and the prompt row.
+	if model.micBounds.y != model.textQuestionDismissBounds.y+2 {
 		t.Fatalf("mic row %d does not sit below the question row %d", model.micBounds.y, model.textQuestionDismissBounds.y)
 	}
 }

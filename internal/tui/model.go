@@ -2053,7 +2053,9 @@ func (m *Model) setSize(width, height int) {
 	if strings.TrimSpace(m.voicePending) != "" {
 		pendingReserve = min(32, max(12, m.width/3))
 	}
-	m.input.Width = max(1, m.width-4-m.voiceControlWidth()-pendingReserve)
+	// The frame takes inputFrameInset columns per side; inside it the prompt
+	// and the right-edge voice control share the row with the text.
+	m.input.Width = max(1, m.width-4-2*inputFrameInset-m.voiceControlWidth()-pendingReserve)
 
 	paletteHeight := m.layoutPaletteHeight()
 	footerHeight := 1

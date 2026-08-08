@@ -1934,7 +1934,7 @@ func TestFrameHeightStaysExactAsDockAndInputGrow(t *testing.T) {
 	if dock < 3 {
 		t.Fatalf("expanded card dock is %d rows, expected several", dock)
 	}
-	if want := max(3, 24-3-dock-model.input.LineCount()-1); model.chatHeight != want {
+	if want := max(3, 24-3-dock-model.inputSurfaceHeight()-1); model.chatHeight != want {
 		t.Fatalf("chat height = %d, want %d (dock %d rows)", model.chatHeight, want, dock)
 	}
 
