@@ -51,6 +51,26 @@ func TestContractsNoPlaybookPromptIsByteIdentical(t *testing.T) {
 	}
 }
 
+// The working method is where a domain's own idea of "checked" gets written
+// down, so it is where the inference across the join has to be refused: a
+// contract that says which parts to test is what lets a leaf prove every part
+// and hand over something nobody can use. Done is stated in the user's terms
+// and verification is the whole path, with an honest exit for what this machine
+// cannot run.
+func TestContractDemandsUserTruthDoneAndEndToEndVerification(t *testing.T) {
+	for name, want := range map[string]string{
+		"done is what the user does and sees": "said as what whoever ends up using the result does\n  with it and sees",
+		"verification is the whole path":      "the whole path exercised the way that user reaches it",
+		"before the word may be used":         "run\n  before anything may be called verified",
+		"parts never add up":                  "parts checked separately never\n  add up to a working result",
+		"the honest gap is named":             "what\n  to declare unverified and the one short check that would settle it",
+	} {
+		if !strings.Contains(contractPrompt, want) {
+			t.Errorf("the contract prompt no longer asks for %s: %q missing", name, want)
+		}
+	}
+}
+
 func TestContractsAppendsEarnedMethodNotesToTargetMessage(t *testing.T) {
 	graph := contractFixture()
 	client := &contractCaptureClient{}

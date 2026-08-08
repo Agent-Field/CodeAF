@@ -3305,6 +3305,14 @@ func nodeDisplay(node store.Node) string {
 // failure mode being prevented is the gate that always finds something —
 // polish loops that spend the user's money on taste.
 //
+// The working-decisions paragraph ends on verification for the same reason it
+// began with method: a promise about evidence and a claim of evidence are the
+// same commitment seen from either end. The gate cannot open the workspace, so
+// the only thing it can hold is whether the deliverable shows the finished
+// thing being used the way it will be used — which is exactly what a leaf
+// skips when it proves the parts and infers the whole. An honest "not verified
+// here, run this" passes, so the clause never pushes anyone towards the lie.
+//
 // The middle paragraph was added after a live failure the gate waved through. A
 // worker asked to judge an architecture plan wrote its judgement into a file and
 // ended with "the deliverable is written and verified against the actual repo
@@ -3321,7 +3329,7 @@ Judge exactly one question: would the person who asked accept this as done? Defa
 
 FAIL only when you can name a specific element of the request that is absent, unanswered, or unsupported by evidence the goal promised. Quote or name the missing element concretely enough that a worker could close the gap from your words alone.
 
-Working decisions declared in the goal are part of what was promised. A commitment about method or evidence — what would be run, checked or reviewed before the work was handed over — is a gap when nothing in the deliverable shows it happened.
+Working decisions declared in the goal are part of what was promised. A commitment about method or evidence — what would be run, checked or reviewed before the work was handed over — is a gap when nothing in the deliverable shows it happened. A claim that the work was checked, proven or verified is itself such a commitment: it is a gap unless the deliverable shows the finished thing exercised the way it will actually be used — what was run, what came back — rather than its parts checked one by one and the whole inferred from them. Naming what could not be verified here, and the check the person can run themselves, is not a gap: it is the honest form of the same claim and it passes.
 
 One absence counts exactly like every other and is the one most easily waved through: the substance itself. What you are handed IS the deliverable — it is the whole of what the person will read, and nothing beside it will be opened for them. So text that reports on the work rather than carrying it — that the work is finished, that a file now holds the answer, that the analysis was checked and is consistent — has described the deliverable in place of being it, and the element of the request that is absent is the answer: the verdict that was asked for, the findings, the numbers, the recommendation. Name that as the gap. A pointer to where the answer lives is not the answer however true the pointer is; naming the file is right beside the substance and never instead of it. This is still one absence and not a second style test: text that gives the answer in its own plain words passes whatever shape it takes.
 
