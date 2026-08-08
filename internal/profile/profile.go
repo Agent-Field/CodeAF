@@ -24,6 +24,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/Agent-Field/aforge-v2/internal/home"
 	"github.com/Agent-Field/aforge-v2/internal/provider"
 )
 
@@ -159,11 +160,7 @@ var decodes sync.Map // path -> decoded
 // state.
 func Load(dir, model, skill string) (*Profile, error) {
 	if strings.TrimSpace(dir) == "" {
-		home, err := os.UserHomeDir()
-		if err != nil {
-			return nil, err
-		}
-		dir = filepath.Join(home, ".aforge")
+		dir = home.Dir()
 	}
 	path := filepath.Join(dir, fmt.Sprintf("profile-%s-%s.json", slug(model), slug(skill)))
 	profile := &Profile{Model: model, Skill: skill, path: path}

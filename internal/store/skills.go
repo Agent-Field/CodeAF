@@ -2,22 +2,21 @@ package store
 
 import (
 	"fmt"
-	"os"
 	"path/filepath"
+	"strings"
+
+	"github.com/Agent-Field/aforge-v2/internal/home"
 )
 
 // SkillsRoot is the user-owned shelf where promoted artifacts live. Keeping
 // this path independent of any one database lets every resident thread offer
 // the same learned commands without changing the headless no-store path.
 func SkillsRoot() (string, error) {
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return "", fmt.Errorf("resolve skill home: %w", err)
-	}
-	if home == "" {
+	root := home.Join("skills")
+	if strings.TrimSpace(root) == "" {
 		return "", fmt.Errorf("resolve skill home: empty home directory")
 	}
-	return filepath.Join(home, ".aforge", "skills"), nil
+	return root, nil
 }
 
 func SkillsBinDir() (string, error) {
