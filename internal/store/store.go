@@ -26,10 +26,24 @@ const (
 	// is never itself scheduled or folded.
 	RootID = "root"
 
-	// MaxDigestBytes keeps summaries small enough to route through the graph.
+	// MaxDigestBytes keeps a digest small enough to route through the graph.
 	// Large results belong in the content-addressed store and are referenced by
-	// pointers instead.
+	// pointers instead. It is a bound on what a reader TAKES — a dependency
+	// input, a partial quoted into a prompt, a receipt line — and every such
+	// reader applies it at the read.
 	MaxDigestBytes = 4 << 10
+
+	// MaxSummaryBytes bounds what a settled node records as its own outcome.
+	//
+	// It is deliberately not MaxDigestBytes. A job root's summary is not a
+	// digest of the deliverable, it IS the deliverable: it is what the thread
+	// announces, what `aforge do` prints, and what an export carries. Bounding
+	// the record at the routing bound made a guillotine out of a budget — a
+	// 697-second PR review lost its approve/request-changes verdict mid-word at
+	// 4,096 bytes, in the store, before any surface could have shown it. So the
+	// record is bounded by what the thread can carry, and the readers that need
+	// something smaller keep taking MaxDigestBytes of it.
+	MaxSummaryBytes = MaxMessageBytes
 )
 
 // Status is the scheduling state of a node.

@@ -46,8 +46,14 @@ func TestRebuildMatchesMixedIncrementalWorkload(t *testing.T) {
 	if err != nil || !ok {
 		t.Fatalf("Node collect = (%v, %v)", ok, err)
 	}
-	if len(collected.Summary) > MaxDigestBytes {
-		t.Fatalf("summary has %d bytes, want at most %d", len(collected.Summary), MaxDigestBytes)
+	// A summary is bounded by what the thread can carry, not by what a reader
+	// takes out of it: this record is the deliverable when the node is a job
+	// root, and MaxDigestBytes on it was a guillotine.
+	if len(collected.Summary) > MaxSummaryBytes {
+		t.Fatalf("summary has %d bytes, want at most %d", len(collected.Summary), MaxSummaryBytes)
+	}
+	if len(collected.Summary) != len(strings.TrimSpace(strings.Repeat("evidence ", 700))) {
+		t.Fatalf("a %d-byte summary was clipped to %d", 700*9, len(collected.Summary))
 	}
 
 	review := mustClaim(t, store, "review", "reviewer")

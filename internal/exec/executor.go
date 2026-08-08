@@ -53,7 +53,17 @@ type Task struct {
 	Brief       string // the self-contained instruction: what the job is
 	Contract    string // the working method: how this kind of job is done well
 	Inputs      []Input
-	OutputHint  string // suggested artifact path when the deliverable is a file
+	// OutputHint is where a file goes if this work needs one. It is an
+	// address, never an instruction: what a leaf owes is its final message,
+	// and a path offered as though a document were expected is how a job came
+	// to leave 07-pr-482-code-review.md, 70-read-diff.md and 144-synthesis.md
+	// in a person's own directory.
+	OutputHint string
+	// Intermediate says this leaf's result is consumed by later work rather
+	// than read by the person who asked. Its handoff is its final message, so
+	// it is offered no deliverable path at all — OutputHint, when it carries
+	// anything, names the run's own scratch.
+	Intermediate bool
 	// ImagePaths are user-supplied inputs attached to the initial leaf turn.
 	ImagePaths []string
 	// DocumentPaths are user-supplied documents already staged in the

@@ -221,6 +221,52 @@ func TestBriefSaysWhatIsWaitingOnTheUser(t *testing.T) {
 	}
 }
 
+// A long deliverable is announced whole. The measured defect was a review that
+// stopped mid-word at 4,096 bytes and never reached its verdict: the store
+// bounded a settled node's summary with the bound meant for what a reader takes
+// OUT of it, so the deliverable was already amputated by the time anything
+// could announce or export it. The thread's own bound is the only one that
+// belongs on this path.
+func TestALongDeliverableIsAnnouncedWhole(t *testing.T) {
+	graph := openStore(t)
+	spliceOvernightJob(t, graph, "review", "now")
+	reconciler := New(graph, nil, nil)
+	if err := reconciler.Tick(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := graph.TouchSeen("tui", "now", store.SeenAttached); err != nil {
+		t.Fatal(err)
+	}
+	verdict := "VERDICT: request changes."
+	deliverable := strings.Repeat("the parser change reads correctly and is tested. ", 200) + "\n" + verdict
+	if len(deliverable) < 8<<10 {
+		t.Fatalf("the fixture is only %d bytes — it has to be longer than the old bound", len(deliverable))
+	}
+	landNode(t, graph, "review", deliverable)
+	if err := reconciler.Tick(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+
+	node, ok, err := graph.Node("review")
+	if err != nil || !ok {
+		t.Fatalf("node: ok=%v err=%v", ok, err)
+	}
+	if !strings.HasSuffix(node.Summary, verdict) {
+		t.Fatalf("the journal clipped the deliverable at %d bytes of %d", len(node.Summary), len(deliverable))
+	}
+	messages, err := graph.Messages("now", 0, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(messages) != 1 {
+		t.Fatalf("want one announcement, got %d", len(messages))
+	}
+	if !strings.HasSuffix(messages[0].Body, verdict) {
+		t.Fatalf("the announcement clipped the deliverable at %d bytes of %d",
+			len(messages[0].Body), len(deliverable))
+	}
+}
+
 func TestClippedResultKeepsItsFilePaths(t *testing.T) {
 	prose := strings.Repeat("the report explains everything at length. ", 40)
 	block := prose + "\nFiles:\n/tmp/ws/report.md\n/tmp/ws/data.csv"
