@@ -408,9 +408,14 @@ type Model struct {
 	// shimmerSeen dates each live card's status line so a wedged worker stops
 	// breathing; sweepCache holds this frame's swept lines, which every line on
 	// screen shares a phase with.
-	shimmerSeen      map[string]shimmerStamp
-	sweepFrame       int
-	sweepCache       map[string]string
+	shimmerSeen map[string]shimmerStamp
+	sweepFrame  int
+	sweepCache  map[string]string
+	// awaitingSeq is the user turn this window posted and has not been answered
+	// for yet, and awaitingSince is when it went out. Together they are the
+	// whole presence indicator: a window only ever waits on its own words.
+	awaitingSeq      int64
+	awaitingSince    time.Time
 	receiptsExpanded bool
 	historyExpanded  bool
 	err              error
@@ -793,7 +798,8 @@ func (m *Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		m.shimmerFrame++
 		m.sampleVoiceLevel()
-		animating := m.graphAnimating || m.streamAnimating() || m.shimmerAnimating() || m.voiceAnimating()
+		animating := m.graphAnimating || m.streamAnimating() || m.shimmerAnimating() ||
+			m.voiceAnimating() || m.awaitingAnimating()
 		if animating {
 			m.spinnerFrame = (m.spinnerFrame + 1) % len(spinnerFrames)
 		}
@@ -855,8 +861,9 @@ func (m *Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 			m.landOptimisticNodeMessage(message.nodeID, message.message)
 		}
 		m.landPostedMessage(message.message)
+		m.noteAwaitingReply(message.message)
 		m.err = nil
-		return m, nil
+		return m, m.scheduleAnimation()
 
 	case questionSurfaceResultMsg:
 		if message.err != nil {
@@ -1645,7 +1652,8 @@ func nextAnimationTick() tea.Cmd {
 }
 
 func (m *Model) scheduleAnimation() tea.Cmd {
-	if m.animationPending || (!m.graphAnimating && !m.streamAnimating() && !m.shimmerAnimating() && !m.voiceAnimating()) {
+	if m.animationPending || (!m.graphAnimating && !m.streamAnimating() &&
+		!m.shimmerAnimating() && !m.voiceAnimating() && !m.awaitingAnimating()) {
 		return nil
 	}
 	m.animationPending = true
@@ -1853,6 +1861,7 @@ func (m *Model) applyPoll(result pollResultMsg) {
 	added := 0
 	questionArrived := false
 	for _, message := range accepted {
+		m.noteAwaitingAnswered(message)
 		if isQuestionMessage(message) {
 			questionArrived = true
 			if card := m.cardForMessage(message); card != nil {

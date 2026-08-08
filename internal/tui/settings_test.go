@@ -381,7 +381,10 @@ func TestSettingsScrollsAndClicksRowsLikeTheKeyboard(t *testing.T) {
 		t.Fatalf("the click selected row %d, want %d", model.settingsIndex, hit.index)
 	}
 
-	// A click outside the sheet closes it, exactly as help does.
+	// A click outside the sheet closes it, exactly as help does. The sheet is
+	// re-opened first because the row just activated may itself have opened
+	// something — which row that is depends on how many the frame can hold.
+	_ = model.openSettings()
 	_ = model.View()
 	_, _ = model.Update(tea.MouseMsg{X: 0, Y: model.height - 1, Button: tea.MouseButtonLeft, Action: tea.MouseActionPress})
 	if model.palette != paletteNone {

@@ -136,13 +136,16 @@ func TestHelpOverlayCategoriesAt80And120Columns(t *testing.T) {
 		_, _ = model.Update(tea.WindowSizeMsg{Width: width, Height: 120})
 		model.openHelp()
 		view := model.View()
-		plain := ansi.Strip(view)
+		// The guide is longer than any terminal now that it opens with the
+		// catalog, so completeness is asserted over the content it scrolls
+		// through rather than over one screenful of it.
+		content := ansi.Strip(strings.Join(model.helpContentLines(model.helpOverlayWidth()-2), "\n"))
 		for _, category := range []string{
-			"talking", "moving around", "self", "models", "asking for work",
-			"money", "memory", "slash commands", "glyphs",
+			"what you can say", "talking", "moving around", "self", "models",
+			"asking for work", "money", "memory", "slash commands", "glyphs",
 		} {
-			if !strings.Contains(plain, category) {
-				t.Fatalf("width %d missing category %q:\n%s", width, category, plain)
+			if !strings.Contains(content, category) {
+				t.Fatalf("width %d missing category %q:\n%s", width, category, content)
 			}
 		}
 		for _, line := range strings.Split(view, "\n") {
