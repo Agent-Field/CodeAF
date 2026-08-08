@@ -1474,6 +1474,12 @@ func (m *Model) renderMessages() string {
 		}
 		group.messages = append(group.messages, item.message)
 	}
+	// The wait sits directly under the turn that started it, above ambient
+	// work, because that is where the answer to that turn will land.
+	if awaiting := m.renderAwaitingReply(max(1, m.chat.Width-2)); awaiting != "" {
+		flushGroup()
+		appendBlock(awaiting)
+	}
 	if shimmer := m.renderShimmerLines(max(1, m.chat.Width-2)); shimmer != "" {
 		flushGroup()
 		appendBlock(shimmer)
