@@ -96,6 +96,10 @@ type Outcome struct {
 	Turns     int
 	ToolCalls int
 	Decayed   int // observations faded to stubs, a measure of how much context was reclaimed
+	// Steered counts the user's mid-flight lines this run actually read. It is
+	// the difference between a redirection delivered to a mailbox and one
+	// delivered to a mind, and it is zero on every leaf nobody steered.
+	Steered int
 	Usage     Usage
 	Stop      StopReason
 	// Exhausted is what ran out, when something did. It is separate from Stop

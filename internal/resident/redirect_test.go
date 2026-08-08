@@ -481,3 +481,44 @@ func TestDirectionWithTurnsLeftToReadItIsNotReportedMissed(t *testing.T) {
 		t.Fatal("a node that never landed reported a missed direction")
 	}
 }
+
+// Steering is a race against a leaf that is already finishing, and the
+// reconciler used to run the slow half of the redirect first: the plan revision
+// is a model call, and the user's own words waited behind it before reaching
+// anybody who could still act on them. Seconds there are the whole defect —
+// past the last turn of a leaf, a correction is only ever an apology.
+//
+// So the broadcast happens before the revision, and this proves the ordering by
+// making the revision observe the mailbox it must no longer precede.
+func TestTheUsersWordsReachRunningWorkBeforeThePlanIsRevised(t *testing.T) {
+	graph := openStore(t)
+	spliceRedirectJob(t, graph)
+	startRedirectLeaf(t, graph, "api-n1")
+
+	heardBeforeRevision := 0
+	reconciler := New(graph, nil, nil).WithRedirector(
+		func(context.Context, store.Node, string, RevisionFlavor) (Redirection, error) {
+			// The revision is the model call. By the time it runs, the worker
+			// that is mid-turn must already be holding the user's sentence.
+			heardBeforeRevision = len(steerMailbox(t, graph, "api-n1"))
+			return Redirection{Amended: 1}, nil
+		})
+	if _, err := graph.RequestCommand(store.Command{
+		SessionID: "redirect", Kind: store.CommandRedirect, Target: "api",
+		Instruction: "make it about the sea",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := reconciler.Tick(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+
+	if heardBeforeRevision != 1 {
+		t.Fatalf("the running worker held %d lines when the revision started, want the user's own",
+			heardBeforeRevision)
+	}
+	mailbox := steerMailbox(t, graph, "api-n1")
+	if len(mailbox) != 1 || !strings.Contains(mailbox[0], "make it about the sea") {
+		t.Fatalf("mailbox = %v, want the redirect delivered exactly once", mailbox)
+	}
+}
