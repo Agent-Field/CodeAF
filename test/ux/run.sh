@@ -11,9 +11,12 @@
 #   test/ux/run.sh --only 01,02,05     these journeys
 #   test/ux/run.sh --suite quality     the quality suite only
 #   test/ux/run.sh --keep              leave the tmux session and home behind
+#   test/ux/run.sh --work-model SLUG   repin the model that does the work
+#   test/ux/run.sh --tag NAME          write evidence-NAME/ and report-NAME.md
+#   test/ux/tier-matrix.sh             the same journeys on two work models
 #
 # Money: every model call lands in the disposable store's usage table, and the
-# cumulative total is checked between journeys against UX_CAP (default $3).
+# cumulative total is checked between journeys against UX_CAP (default $5).
 # Over the cap the run aborts — a test suite must not be able to spend a
 # surprise.
 
@@ -22,7 +25,7 @@ set -uo pipefail
 UX_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO="$(cd "$UX_ROOT/../.." && pwd)"
 
-: "${UX_CAP:=3.00}"
+: "${UX_CAP:=5.00}"
 : "${UX_WIDTH:=200}"
 : "${UX_HEIGHT:=50}"
 : "${UX_REAL_HOME:=$HOME}"
@@ -30,6 +33,9 @@ REPO="$(cd "$UX_ROOT/../.." && pwd)"
 SUITES=(journeys quality)
 ONLY=""
 KEEP=0
+WORK_MODEL=""
+TAG=""
+REPORT_OVERRIDE=""
 
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -37,6 +43,12 @@ while [ $# -gt 0 ]; do
     --suite) SUITES=("$2"); shift 2 ;;
     --keep) KEEP=1; shift ;;
     --cap) UX_CAP="$2"; shift 2 ;;
+    # --work-model repins the model that does the WORK for this whole run. The
+    # talk model is left alone on purpose: the tier question is whether a
+    # smarter executor earns its tokens, not whether a smarter receptionist does.
+    --work-model) WORK_MODEL="$2"; shift 2 ;;
+    --tag) TAG="$2"; shift 2 ;;
+    --report) REPORT_OVERRIDE="$2"; shift 2 ;;
     -h|--help) sed -n '2,25p' "$0"; exit 0 ;;
     *) echo "unknown flag $1" >&2; exit 2 ;;
   esac
@@ -60,14 +72,15 @@ UX_RUN="${UX_RUN:-$(mktemp -d "${TMPDIR:-/tmp}/aforge-ux-$RUN_ID-XXXX")}"
 UX_HOME="$UX_RUN/home"
 UX_STATE="$UX_HOME/state"
 UX_DB="$UX_STATE/graph.db"
-UX_EVIDENCE="$UX_ROOT/evidence"
-UX_REPORT="$UX_ROOT/report.md"
+UX_EVIDENCE="$UX_ROOT/evidence${TAG:+-$TAG}"
+UX_REPORT="${REPORT_OVERRIDE:-$UX_ROOT/report${TAG:+-$TAG}.md}"
 UX_SESSION="aforge-ux-$$"
 UX_SESSION_B="aforge-ux-$$-b"
 UX_BIN="$REPO/bin/aforge"
 
 mkdir -p "$UX_STATE" "$UX_HOME/Library/LaunchAgents"
 rm -rf "$UX_EVIDENCE"; mkdir -p "$UX_EVIDENCE"
+echo 'journey,verdict,jobs,nodes,cost,tokens_in,tokens_out,seconds,quality,flags' > "$UX_EVIDENCE/gauges.csv"
 
 cleanup() {
   local code=$?
@@ -92,9 +105,10 @@ if [ ! -f "$UX_REAL_HOME/.aforge/config.json" ]; then
   exit 2
 fi
 
-python3 - "$UX_REAL_HOME/.aforge" "$UX_STATE" <<'PY'
+python3 - "$UX_REAL_HOME/.aforge" "$UX_STATE" "$WORK_MODEL" <<'PY'
 import json, os, sys
 real, disposable = sys.argv[1], sys.argv[2]
+work_model = sys.argv[3] if len(sys.argv) > 3 else ""
 config = json.load(open(os.path.join(real, "config.json")))
 key = config.get("api_key", "")
 if not key:
@@ -110,6 +124,11 @@ except FileNotFoundError:
     settings = {}
 settings.setdefault("chat_model", "~deepseek/deepseek-v4-flash-latest")
 settings.setdefault("task_model", "~deepseek/deepseek-v4-flash-latest")
+if work_model:
+    settings["task_model"] = work_model
+    # The plan model follows the work model for a tier run, or the comparison
+    # measures two things at once and attributes the difference to one of them.
+    settings["plan_model"] = work_model
 json.dump(settings, open(os.path.join(disposable, "settings.json"), "w"), indent=2)
 print("talk=%s work=%s plan=%s boost=%s" % (
     settings.get("chat_model"), settings.get("task_model"),
@@ -216,6 +235,9 @@ for script in "${ORDER[@]}"; do
   # problem, and the report has to be able to say so.
   nodes="$(sql "select count(*) from nodes where created_seq > $mark_before")"
   jobs="$(sql "select count(*) from nodes where created_seq > $mark_before and origin='user' and parent_id='root'")"
+  tok_in="$(sql "select coalesce(sum(prompt_tokens),0) from usage where seq > $mark_before")"
+  tok_out="$(sql "select coalesce(sum(completion_tokens),0) from usage where seq > $mark_before")"
+  calls="$(sql "select count(*) from usage where seq > $mark_before")"
   users="$(sql "select count(*) from messages where seq > $mark_before and role='user'")"
   agents="$(sql "select count(*) from messages where seq > $mark_before and role='agent'")"
   systems="$(sql "select count(*) from messages where seq > $mark_before and role='system'")"
@@ -232,6 +254,12 @@ for script in "${ORDER[@]}"; do
   [ "${noise:-0}" -ge 2 ] && flags="$flags CHATTY(+$noise)"
   python3 -c "import sys; sys.exit(0 if float('$cost') > 0.05 else 1)" && flags="$flags EXPENSIVE"
   [ "${elapsed:-0}" -gt 180 ] && flags="$flags SLOW"
+
+  # Tokens are the honest unit. Dollars hide behind whichever model happened to
+  # answer; 50k of input tokens to write a haiku is disproportionate whoever
+  # charged for it, and it is the number that moves when a smarter work model
+  # re-reads the same context on every turn.
+  [ "${tok_in:-0}" -gt 50000 ] && flags="$flags TOKEN-HEAVY(${tok_in}in)"
 
   # ------------------------------------------------------------- the judge
   quality="—"; why=""
@@ -255,7 +283,11 @@ for script in "${ORDER[@]}"; do
     esac
   fi
 
-  GAUGES+=("$name|$verdict|${jobs:-0}/${nodes:-0}|\$$cost|${elapsed}|$quality|${flags:-—}|$why")
+  concurrency="$(cat "$UX_EVIDENCE/$name/concurrency" 2>/dev/null || echo '')"
+  GAUGES+=("$name|$verdict|${jobs:-0}/${nodes:-0}|\$$cost|${tok_in:-0}|${tok_out:-0}|${elapsed}|$quality|${flags:-—}|$why|$concurrency|${calls:-0}")
+  printf '%s,%s,%s,%s,%s,%s,%s,%s,%s,"%s"\n' \
+    "$name" "$verdict" "${jobs:-0}" "${nodes:-0}" "$cost" "${tok_in:-0}" "${tok_out:-0}" \
+    "$elapsed" "$quality" "${flags# }" >> "$UX_EVIDENCE/gauges.csv"
 
   if over_cap "$after"; then
     ABORTED="spend \$$after exceeded the \$$UX_CAP cap after $name"
@@ -292,18 +324,27 @@ import json;s=json.load(open('$UX_STATE/settings.json'));print('talk %s · work 
   echo '(a haiku should be one node); `quality` is a cheap model reading the deliverable'
   echo 'against a fixed rubric — literal ask satisfied, answer-first, competent, 1–5.'
   echo
-  echo '| journey | pass | jobs/nodes | $ | seconds | quality/5 | flags |'
-  echo '|---|---|---|---|---|---|---|'
+  echo '| journey | pass | jobs/nodes | $ | tokens in/out | calls | seconds | quality/5 | flags |'
+  echo '|---|---|---|---|---|---|---|---|---|'
   for row in "${GAUGES[@]}"; do
-    IFS='|' read -r n v nodes money secs q f _why <<< "$row"
-    echo "| $n | $v | $nodes | $money | $secs | $q | $f |"
+    IFS='|' read -r n v nodes money tin tout secs q f _why _conc calls <<< "$row"
+    echo "| $n | $v | $nodes | $money | $tin / $tout | $calls | $secs | $q | $f |"
   done
   echo
   for row in "${GAUGES[@]}"; do
-    IFS='|' read -r n v nodes money secs q f why <<< "$row"
+    IFS='|' read -r n v nodes money tin tout secs q f why conc calls <<< "$row"
     [ -n "$why" ] && echo "- **$n** judged $q/5 — $why"
   done
   echo
+  for row in "${GAUGES[@]}"; do
+    IFS='|' read -r n v nodes money tin tout secs q f why conc calls <<< "$row"
+    if [ -n "$conc" ]; then
+      echo "**Parallelism** — \`$n\` ran ${nodes%%/*} jobs from one sentence in ${secs}s of the person's time."
+      echo "Concurrency factor **${conc}×** (summed job seconds ÷ wall seconds). 1.0 means a queue;"
+      echo 'above it the graph is doing what terminal tabs would otherwise be for.'
+      echo
+    fi
+  done
   echo '## Journeys'
   echo
   echo '| journey | verdict | checks | time | cost | evidence |'
