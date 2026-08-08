@@ -60,6 +60,7 @@ var SettingCategories = []string{
 // KeyDailyBudget keeps the name /budget default already writes.
 const (
 	KeyDailyBudget    = "daily_budget_usd"
+	KeyPlanConsent    = "plan_consent_usd"
 	KeyPracticeBudget = "practice_budget_usd"
 	KeyPracticeIdle   = "practice_idle"
 	KeyBriefAfter     = "brief_after"
@@ -101,6 +102,13 @@ var OperatorEnvPins = []string{
 
 // Defaults the registry owns beyond the ones config.go already declares.
 const (
+	// DefaultPlanConsentUSD is where ambition stops being cheap. Below it a
+	// plan simply runs, because asking about a two-dollar errand is the nagging
+	// nobody wants; above it the user is quoted a count and a price and gets to
+	// say no first. It is deliberately far under the daily rail: the rail is a
+	// stop after the fact, and this is the moment before.
+	DefaultPlanConsentUSD = 3.0
+
 	// DefaultTenureAfter is the clean-firing count a standing charter needs
 	// before it earns tenure.
 	DefaultTenureAfter = 3
@@ -320,6 +328,14 @@ func (s *Settings) build() []Setting {
 			write: func(raw string) error { return writeDollars(dir, KeyDailyBudget, raw) },
 		},
 		Setting{
+			Key: KeyPlanConsent, Category: CategoryMoney, Kind: SettingDollars,
+			Label: "ask before spending", Env: "AFORGE_PLAN_CONSENT",
+			Hint: "when a planned job is estimated to cost more than this, aforge quotes " +
+				"the step count and the price and waits for your go-ahead. 0 never asks.",
+			read:  func() string { return formatDollars(resolvedDollars(PlanConsentUSDAt(dir))) },
+			write: func(raw string) error { return writeDollars(dir, KeyPlanConsent, raw) },
+		},
+		Setting{
 			Key: KeyPracticeBudget, Category: CategoryMoney, Kind: SettingDollars,
 			Label: "practice budget", Env: "AFORGE_PRACTICE_BUDGET",
 			Hint: "the slice of the day reserved for aforge practicing on itself. " +
@@ -520,6 +536,17 @@ func modelSlotHint(slot string) string {
 // built-in default. Malformed persisted values fall back to the default rather
 // than stopping a launch; a malformed environment value is the operator's own
 // explicit instruction and still errors.
+
+// PlanConsentUSDAt resolves the estimate above which a plan asks first.
+func PlanConsentUSDAt(profileDir string) (float64, error) {
+	if raw := strings.TrimSpace(os.Getenv("AFORGE_PLAN_CONSENT")); raw != "" {
+		return validateDailyBudgetValue(raw, "AFORGE_PLAN_CONSENT")
+	}
+	if value, ok := persistedFloat(profileDir, KeyPlanConsent); ok && value >= 0 {
+		return value, nil
+	}
+	return DefaultPlanConsentUSD, nil
+}
 
 // PracticeBudgetUSDAt resolves the daily self-practice carve-out.
 func PracticeBudgetUSDAt(profileDir string) (float64, error) {

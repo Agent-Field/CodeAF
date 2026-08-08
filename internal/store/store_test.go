@@ -726,3 +726,78 @@ func TestDependencyInputsKeepTheProducersFilesOutOfTheByteBound(t *testing.T) {
 		t.Fatalf("digests = %v err=%v", digests, err)
 	}
 }
+
+// The scale wall nobody saw: one shared pot handed out in edge order meant the
+// first verbose finding could take the whole budget and every sibling after it
+// vanished on a bare `continue`. The synthesis leaf of a fifty-leaf audit then
+// wrote a confident report over whatever happened to be first.
+func TestDependencyInputsShareTheBudgetAndSayWhatTheyClipped(t *testing.T) {
+	graph := openTestStore(t, filepath.Join(t.TempDir(), "fanin.db"))
+	nodes := []NodeSpec{{ID: "merge", Brief: "merge the findings", Stage: 2}}
+	for index := 0; index < 6; index++ {
+		id := fmt.Sprintf("panelist-%d", index)
+		nodes = append(nodes, NodeSpec{ID: id, Parent: "merge", Brief: "read a slice", Stage: 1})
+		nodes[0].Needs = append(nodes[0].Needs, Need{NodeID: id, Kind: FeedsInto})
+	}
+	if err := graph.Splice(RootID, Subtree{Nodes: nodes}, Provenance{
+		Origin: OriginUser, Intent: "audit the service",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	// The first panelist is a firehose; the rest are terse. Under the old rule
+	// the firehose ate everything.
+	for index := 0; index < 6; index++ {
+		claim := mustClaim(t, graph, fmt.Sprintf("panelist-%d", index), "worker")
+		summary := fmt.Sprintf("finding %d", index)
+		if index == 0 {
+			summary = strings.Repeat("a use-after-free in parser.c. ", 400)
+		}
+		if err := graph.Complete(claim, summary); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	inputs, err := graph.DependencyInputs("merge", 4096)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(inputs) != 6 {
+		t.Fatalf("inputs = %d, want every panelist carried", len(inputs))
+	}
+	total := 0
+	for index, input := range inputs {
+		total += len(input.Digest)
+		if input.NodeID != fmt.Sprintf("panelist-%d", index) {
+			t.Fatalf("input %d is %q", index, input.NodeID)
+		}
+		if strings.TrimSpace(input.Digest) == "" {
+			t.Fatalf("panelist %d arrived empty", index)
+		}
+	}
+	if total > 4096 {
+		t.Fatalf("digests total %d bytes, over the pot", total)
+	}
+	if !strings.Contains(inputs[0].Digest, "clipped to fit") {
+		t.Fatal("the clipped digest does not say it was clipped")
+	}
+	for _, input := range inputs[1:] {
+		if strings.Contains(input.Digest, "clipped to fit") {
+			t.Fatalf("a terse finding was marked clipped: %q", input.Digest)
+		}
+	}
+
+	// A fan-in too wide for anyone to get a readable share takes fewer, fuller
+	// inputs — and names the ones it could not carry rather than dropping them
+	// into silence.
+	narrow, err := graph.DependencyInputs("merge", 1200)
+	if err != nil {
+		t.Fatal(err)
+	}
+	last := narrow[len(narrow)-1]
+	if last.NodeID != "" || !strings.Contains(last.Digest, "did not fit here") {
+		t.Fatalf("a starved fan-in dropped its tail silently: %+v", narrow)
+	}
+	if !strings.Contains(last.Digest, "panelist-5") {
+		t.Fatalf("the overflow notice does not name what was left out: %q", last.Digest)
+	}
+}
