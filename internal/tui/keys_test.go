@@ -146,3 +146,58 @@ func TestEndBelongsToTheCaretOnlyWhileADraftExists(t *testing.T) {
 		t.Fatal("end did not jump the feed with an empty steer line")
 	}
 }
+
+// Help says esc discards voice. It was false in the one surface where a
+// dictated line is most likely — the node view closed instead.
+func TestEscapeDiscardsVoiceBeforeClosingTheNodeView(t *testing.T) {
+	model, _ := inspectedWorkerModel(t)
+	model.voiceState = voiceRecording
+
+	_, _ = model.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	if model.voiceState != voiceIdle {
+		t.Fatalf("esc did not discard voice: state=%v", model.voiceState)
+	}
+	if model.nodeViewID != "worker" {
+		t.Fatal("esc closed the node view while voice was recording")
+	}
+	_, _ = model.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	if model.nodeViewID != "" {
+		t.Fatal("a second esc did not close the node view")
+	}
+}
+
+// The header draws the three places as clickable targets and the keyboard
+// could not reach any of them; the option chords that can are the ones a
+// default terminal swallows.
+func TestHeaderFocusReachesThePlacesItDraws(t *testing.T) {
+	model := NewWithCommander(&fakeBackend{}, "places", newFakeCommander())
+	model.setSize(120, 30)
+	_ = model.View()
+	if !model.headerPlacesShown {
+		t.Fatal("a 120-column header did not draw the places")
+	}
+	model.focus = focusHeader
+	model.inputFocused = false
+	model.input.Blur()
+	model.headerFocusIndex = 0
+	if got := model.headerDoorCount(); got != headerDoors+3 {
+		t.Fatalf("header doors = %d, want the four actions plus three places", got)
+	}
+	for step := 0; step < headerDoors+2; step++ {
+		_, _ = model.Update(tea.KeyMsg{Type: tea.KeyRight})
+	}
+	if model.headerFocusIndex != headerDoors+2 {
+		t.Fatalf("right walked to index %d", model.headerFocusIndex)
+	}
+	_, _ = model.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	if model.activePlace() != placeSelf {
+		t.Fatalf("enter on the self label opened %v", model.activePlace())
+	}
+	// A narrow frame folds the places away, and the cycle folds with them.
+	narrow := NewWithCommander(&fakeBackend{}, "places", newFakeCommander())
+	narrow.setSize(46, 24)
+	_ = narrow.View()
+	if narrow.headerPlacesShown != (narrow.headerDoorCount() > headerDoors) {
+		t.Fatal("the header cycle disagrees with what the header drew")
+	}
+}

@@ -68,7 +68,7 @@ var slashCommands = []commandSpec{
 	{name: "self", description: "open the employee file"},
 	{name: "tasks", description: "focus and expand the active-task dock"},
 	{name: "node", description: "open a node by id prefix or current selection", takesArg: true},
-	{name: "open", description: "open the focused deliverable with your machine's opener", takesArg: true},
+	{name: "open", description: "open the focused deliverable in your OS", takesArg: true},
 	{name: "notebook", description: "browse or search the scoped notebook"},
 	{name: "history", description: "find settled work in permanent graph memory", takesArg: true},
 	{name: "budget", description: "show or change today's dollar rail", takesArg: true},
@@ -986,9 +986,19 @@ func (m *Model) fallbackModelChoices(role string) []ModelChoice {
 	return normalizeModelChoices(choices)
 }
 
-// headerDoors is the count of focusable header actions, left to right:
-// models ⌄ · settings · ⟨tasks⟩ · ?
+// headerDoors is the count of focusable header actions: the four doors —
+// models ⌄ · settings · ⟨tasks⟩ · ? — and then the three place labels, which
+// the header draws as clickable and the keyboard could not reach at all. They
+// come last so the cycle keeps its indices when a narrow frame folds the
+// places into the wordmark and there is nothing there to focus.
 const headerDoors = 4
+
+func (m *Model) headerDoorCount() int {
+	if m.headerPlacesShown {
+		return headerDoors + 3
+	}
+	return headerDoors
+}
 
 func (m *Model) activateHeaderFocus() tea.Cmd {
 	switch m.headerFocusIndex {
@@ -1006,6 +1016,12 @@ func (m *Model) activateHeaderFocus() tea.Cmd {
 		}
 		m.toggleGraph()
 		return nil
+	case 4:
+		return m.selectPlace(placeThread)
+	case 5:
+		return m.selectPlace(placeBoard)
+	case 6:
+		return m.selectPlace(placeSelf)
 	default:
 		m.openHelp()
 		return nil
