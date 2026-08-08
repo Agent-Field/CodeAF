@@ -65,6 +65,13 @@ const (
 	beltToolCompetence = "competence"
 	beltToolStanding   = "standing"
 	beltToolSpending   = "spending"
+	// beltToolHistory is the read that makes time a dimension of this belt
+	// rather than a word in it. Every other read is topical — board is BM25 over
+	// the snapshot, result and read need an id — and "what did you do yesterday"
+	// carries no topic and no id, only a window. It is also the only read that
+	// reaches work a territory has packed away, because it queries the settled
+	// rows directly rather than the compacted snapshot every other read sees.
+	beltToolHistory = "history"
 	// beltToolNote is the belt's only write that never touches the graph. The
 	// loop could change work and answer questions and had nowhere at all to put
 	// a durable instruction about its own behaviour, so "always answer from the
@@ -170,6 +177,10 @@ func beltDefinitions() []ai.ToolDefinition {
 		beltTool(beltToolCompetence, "Read the measured view of your own current strengths, weak spots and learning frontier, derived from how your work has actually gone. Always safe. Read it before answering anything about what you are good at, where you struggle, whether you are improving, or whether the user is asking too much of you — this is the only evidence for those answers, and a self-assessment given without it is invention.", map[string]any{}),
 		beltTool(beltToolStanding, "Read what you are keeping watch over: whether checks continue with no terminal open, the last wake, the next check, and every standing charter with what it watches for and how often. Always safe. Read it for any question about what you are watching, what runs while the user is away, or what happens overnight.", map[string]any{}),
 		beltTool(beltToolSpending, "Read what has been spent: today's total against the daily rail, and separately what your own upkeep — practice, learning, self-maintenance — has cost and what it bought. Always safe. Read it whenever the question is about money in general rather than one job's cost.", map[string]any{}),
+		beltTool(beltToolHistory, "Read what has actually been done, in time order, newest first: one line per finished job with what it concluded and what it cost. Always safe. This is the only read that answers a question about WHEN — yesterday, this week, last month — and the only one that still finds work old enough to have been packed away. Bound it with since and until from the current time given to you; omit both for the most recent work.", map[string]any{
+			"since": beltProp("string", `local date or time the window starts, "2026-08-06" or "2026-08-06T09:00"`),
+			"until": beltProp("string", "local date or time the window ends, same spelling"),
+		}),
 		beltTool(beltToolNote, "Write one durable thing the user has just told you into the notebook: how they want answers given, a correction to how something was done for them, a lasting fact about them or their setup. The test is whether it will still matter after this conversation is forgotten — task details and one-off instructions fail it. Call it before you tell them it is noted, because this call is the only thing that makes that true.", map[string]any{
 			"body":  beltProp("string", "one sharp sentence, in the user's own terms"),
 			"scope": beltProp("string", `what it is about: "user" for a personal preference, otherwise tool:<name>, repo:<path>, file:<path>, or domain:<topic>`),
@@ -229,6 +240,8 @@ func (run *beltRun) execute(name, arguments string) (string, bool) {
 		return run.standing()
 	case beltToolSpending:
 		return run.spending()
+	case beltToolHistory:
+		return run.history(args)
 	case beltToolNote:
 		return run.note(args)
 	}
@@ -456,6 +469,97 @@ func (run *beltRun) spending() (string, bool) {
 	}
 	return truncateBytes(strings.TrimSpace(rendered.String()), beltGroundingBytes), false
 }
+
+// history is a read like every other read here: nothing is journalled and a
+// message that only asked what got done carries no command seq. It is the one
+// read whose argument is a bound rather than a subject, and the bound is
+// composed by the model out of the clock it was given — which is the whole of
+// how "yesterday" becomes a query without a single phrase list anywhere.
+func (run *beltRun) history(args map[string]any) (string, bool) {
+	if run.head == nil || run.head.store == nil {
+		return "history is not available on this surface.", false
+	}
+	since, ok := parseHistoryBound(beltString(args, "since"), false)
+	if !ok {
+		return `since must be a local date or time, "2026-08-06" or "2026-08-06T09:00"`, true
+	}
+	until, ok := parseHistoryBound(beltString(args, "until"), true)
+	if !ok {
+		return `until must be a local date or time, "2026-08-06" or "2026-08-06T09:00"`, true
+	}
+	if !since.IsZero() && !until.IsZero() && until.Before(since) {
+		return "until is before since — the window is empty as written", true
+	}
+	lines, err := run.head.historyLines(since, until)
+	if err != nil {
+		return "that could not be read: " + err.Error(), true
+	}
+	if len(lines) == 0 {
+		return "nothing settled in that window.", false
+	}
+	return strings.Join(lines, "\n"), false
+}
+
+// historyBoundLayouts are the two spellings the tool description promises, in
+// the order that reads a bare date as the whole day rather than as midnight.
+var historyBoundLayouts = []string{"2006-01-02T15:04:05", "2006-01-02T15:04", "2006-01-02 15:04", "2006-01-02"}
+
+// parseHistoryBound reads one end of the window in the user's own timezone,
+// which is the only timezone any of their time words mean. A bare date used as
+// an upper bound covers that whole day: "until Friday" means through Friday,
+// not up to the first instant of it.
+func parseHistoryBound(value string, upper bool) (time.Time, bool) {
+	if value = strings.TrimSpace(value); value == "" {
+		return time.Time{}, true
+	}
+	value = strings.TrimSuffix(strings.TrimSpace(value), "Z")
+	for _, layout := range historyBoundLayouts {
+		parsed, err := time.ParseInLocation(layout, value, time.Local)
+		if err != nil {
+			continue
+		}
+		if upper && layout == "2006-01-02" {
+			parsed = parsed.AddDate(0, 0, 1).Add(-time.Nanosecond)
+		}
+		return parsed, true
+	}
+	return time.Time{}, false
+}
+
+// historyLines renders the window one job to a line: when it landed, what it
+// was, how it ended, what it concluded and what it cost. The order is the one
+// the question was asked in — newest first — and the age is spelled the way
+// every other age in this package is spelled.
+func (h *Head) historyLines(since, until time.Time) ([]string, error) {
+	nodes, err := h.store.SettledHistory(since, until, store.SettledHistoryCap)
+	if err != nil {
+		return nil, err
+	}
+	now := time.Now()
+	lines := make([]string, 0, len(nodes))
+	for _, node := range nodes {
+		if !beltAddressable(node) {
+			continue
+		}
+		line := fmt.Sprintf("- %s | %s | %s | %s", node.FinishedAt.Local().Format(nowLineLayout),
+			node.ID, node.Status, surgeryTargetLabel(node))
+		if age := store.AgeLabel(node.FinishedAt, now); age != "" {
+			line += " | " + age
+		}
+		if impact, err := h.store.Impact(node.ID, now); err == nil && impact.Cost > 0 {
+			line += fmt.Sprintf(" | $%.2f", impact.Cost)
+		}
+		if summary := firstLine(nodeResult(node)); summary != "" {
+			line += " | " + truncateBytes(summary, historyResultBytes)
+		}
+		lines = append(lines, line)
+	}
+	return lines, nil
+}
+
+// historyResultBytes is one job's share of a window. A window is a list of what
+// happened, and result reads the one the user then asks about.
+const historyResultBytes = 200
 
 // selfWorkLines renders the last few self-work receipts one line each: what the
 // inquiry was about, what it cost, and whether anything came of it. "Learned
@@ -863,6 +967,21 @@ func (h *Head) boardRows(sessionID, query, status, id string) ([]boardRow, error
 		if err != nil {
 			return nil, fmt.Errorf("the board could not be read: %w", err)
 		}
+		if len(candidates) == 0 {
+			// The search above ranks over ActiveNodes, and a territory packs the
+			// jobs it swallows out of that view entirely — the territory row
+			// itself is furniture and is filtered, its members are folded under
+			// it and are not returned. So a job the retrospective tidied away a
+			// few hours after it landed is unreachable by every snapshot-derived
+			// read in this package, which is the whole of why Tuesday's job was
+			// invisible on Thursday. Recall is the store's own index over folded
+			// memory and it does reach them; it is asked only when the ordinary
+			// ranking came back empty, so nothing about a live board changes.
+			candidates, err = h.recalledCandidates(strings.TrimSpace(query))
+			if err != nil {
+				return nil, err
+			}
+		}
 	default:
 		// The unqueried board is an enumeration, not a search. Ranking words
 		// against nothing scores every job the same and then truncates the tie
@@ -909,6 +1028,34 @@ func (h *Head) boardRows(sessionID, query, status, id string) ([]boardRow, error
 		}
 	}
 	return rows, nil
+}
+
+// recalledCandidates turns folded memory back into board rows. It is the last
+// resort and it stays that way on purpose: recall is lexical over digests, so
+// it answers a question about a topic rather than about the board, and a live
+// board must never be reordered by it. What it buys is that the id comes back —
+// and an id is all the result and read tools have ever needed.
+func (h *Head) recalledCandidates(query string) ([]store.SurgeryTarget, error) {
+	hits, err := h.store.Recall(query, nil, BoardRowCap)
+	if err != nil {
+		// Recall is an additive hint everywhere else it is used, and a miss and
+		// a failure are deliberately indistinguishable there. The board keeps
+		// that contract: an index that cannot answer leaves the board empty
+		// rather than turning a read into an error.
+		return nil, nil
+	}
+	now := time.Now()
+	targets := make([]store.SurgeryTarget, 0, len(hits))
+	for _, hit := range hits {
+		node, found, readErr := h.store.Node(hit.NodeID)
+		if readErr != nil || !found || node.ID == store.RootID || !beltAddressable(node) {
+			continue
+		}
+		targets = append(targets, store.SurgeryTarget{
+			Node: node, Score: hit.Score, Age: store.AgeLabel(node.FinishedAt, now),
+		})
+	}
+	return targets, nil
 }
 
 // boardEnumeration lists every job root, live first and newest first within

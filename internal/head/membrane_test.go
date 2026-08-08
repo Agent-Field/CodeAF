@@ -3,6 +3,7 @@ package head
 import (
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/Agent-Field/aforge-v2/internal/store"
 )
@@ -39,7 +40,7 @@ func TestCharterFiredJobIsListableAndCancellable(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	board := renderGraph(snapshot, "membrane", "", nil)
+	board := renderGraph(snapshot, "membrane", "", nil, time.Now())
 	if !strings.Contains(board, "firing-charter-1-1") {
 		t.Fatalf("the snapshot the head speaks from omits the charter job:\n%s", board)
 	}
@@ -81,7 +82,7 @@ func TestTheOneMembraneStillHidesTheResidentsOwnWork(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	board := renderGraph(snapshot, "membrane", "", nil)
+	board := renderGraph(snapshot, "membrane", "", nil, time.Now())
 	if strings.Contains(board, "self-upkeep") {
 		t.Fatalf("the resident's own work reached the snapshot:\n%s", board)
 	}
@@ -120,7 +121,7 @@ func TestCrossSessionWorkIsMarkedRatherThanHidden(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	board := renderGraph(snapshot, "terminal", "", nil)
+	board := renderGraph(snapshot, "terminal", "", nil, time.Now())
 	for _, line := range strings.Split(board, "\n") {
 		switch {
 		case strings.Contains(line, "local-job") && strings.Contains(line, crossSessionMark):
