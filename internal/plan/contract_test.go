@@ -149,6 +149,69 @@ func (c *contractFanoutClient) snapshot() [][]ai.Message {
 	return append([][]ai.Message(nil), c.calls...)
 }
 
+// The hole this closes: both structuring passes iterated Leaves(), which is
+// KindWork only, so the node whose output IS the deliverable — the one every
+// finished job is judged against — was the single node in a plan with no
+// instruction and no working method. It is written for like any other leaf, and
+// it is told which of the two jobs it has.
+func TestTheDeliverableOwnerIsWrittenAWorkingMethod(t *testing.T) {
+	graph := &Graph{Goal: "compare three cities and write the result", NextID: 1}
+	graph.Add(Node{Stage: 1, Title: "Berlin", Summary: "read Berlin", Brief: "Read Berlin."})
+	graph.Add(Node{Stage: 1, Title: "Lisbon", Summary: "read Lisbon", Brief: "Read Lisbon."})
+	graph.addSynthesis()
+	sink := graph.Nodes[len(graph.Nodes)-1].ID
+	if got := graph.deliverableSink(); got != sink {
+		t.Fatalf("deliverable sink = %d, want the appended synthesis %d", got, sink)
+	}
+
+	client := &contractFanoutClient{}
+	if _, err := Contracts(context.Background(), client, graph, nil); err != nil {
+		t.Fatal(err)
+	}
+	calls := client.snapshot()
+	if len(calls) != 3 {
+		t.Fatalf("contract calls = %d, want one per leaf and one for the deliverable owner", len(calls))
+	}
+	if got := graph.Node(sink); got == nil || strings.TrimSpace(got.Contract) == "" {
+		t.Fatal("the deliverable owner still runs on the generic loop")
+	}
+
+	// Exactly one of the three is told it is the deliverable, and the shared
+	// prefix every contract is billed against does not move to say so.
+	owners := 0
+	for _, call := range calls {
+		if textOf(call[0]) != contractPrompt || textOf(call[0]) != textOf(calls[0][0]) {
+			t.Fatal("the deliverable owner reads a different doctrine byte")
+		}
+		if textOf(call[1]) != textOf(calls[0][1]) {
+			t.Fatal("the deliverable owner shifted the shared context")
+		}
+		if strings.Contains(textOf(call[2]), contractDeliverableLine) {
+			owners++
+		}
+	}
+	if owners != 1 {
+		t.Fatalf("%d contracts were told they are the deliverable, want exactly 1", owners)
+	}
+}
+
+// Proportionality, on the same seam: a one-leaf job is already its own answer,
+// so there is no second node to write for and no second call to buy.
+func TestAOneLeafPlanBuysNoSecondMethod(t *testing.T) {
+	graph := &Graph{Goal: "write the note"}
+	graph.Add(Node{Kind: KindWork, Summary: "write the note", Stage: 1})
+	if got := graph.deliverableSink(); got != 0 {
+		t.Fatalf("deliverable sink = %d, want none for a one-leaf plan", got)
+	}
+	client := &contractFanoutClient{}
+	if _, err := Contracts(context.Background(), client, graph, nil); err != nil {
+		t.Fatal(err)
+	}
+	if calls := client.snapshot(); len(calls) != 1 {
+		t.Fatalf("contract calls = %d, want exactly 1", len(calls))
+	}
+}
+
 func contractFixture() *Graph {
 	graph := &Graph{Goal: "Repair the parser", NextID: 1}
 	graph.Add(Node{

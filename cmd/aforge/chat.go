@@ -707,7 +707,7 @@ func buildChatBrain(w *chatWindow, session string, hand resident.HandoverFunc) (
 		// revision pass with the critique as input; then the result ships
 		// either way, because a gate that can loop is a gate that can stall.
 		if len(outcome.ServiceRequests) == 0 && shouldGate(node, outcome, continuing) {
-			gate := judgeDeliverable(ctx, settings, planClient, graph, node, text,
+			gate := judgeDeliverable(ctx, settings, planClient, graph, node, text, task.Contract,
 				deliveryEvidence{Artifacts: absolute, Ran: outcome.Ran}, workerModel)
 			if gate.Checked {
 				evidence := store.DeliveryGate{Pass: gate.Pass, Gap: gate.Gaps}
@@ -744,7 +744,7 @@ func buildChatBrain(w *chatWindow, session string, hand resident.HandoverFunc) (
 						if len(absolute) > 0 {
 							text += "\n\nFiles:\n" + strings.Join(absolute, "\n")
 						}
-						closed := judgeDeliverable(ctx, settings, planClient, graph, node, text,
+						closed := judgeDeliverable(ctx, settings, planClient, graph, node, text, task.Contract,
 							deliveryEvidence{Artifacts: absolute, Ran: outcome.Ran}, polishModel)
 						evidence.PolishClosed = closed.Checked && closed.Pass
 						outcome.Verdict = provider.VerdictSemanticFailure
@@ -3386,6 +3386,15 @@ func nodeDisplay(node store.Node) string {
 // one, and a gate told otherwise would start failing honest work for the sin of
 // having run somewhere it cannot see.
 //
+// The working-method paragraph closes the hole that made all of this weaker
+// than it reads on a planned job. The gate's "compiled goal" for such a job was
+// the harness's own two-line stub — "Synthesis / Assemble the finished answer" —
+// because the passes that write instructions and methods only ever ran for work
+// leaves, and the node that IS the deliverable is not one. The method is where a
+// kind of work states what done means and how it is checked, in its own terms
+// and per job rather than per domain, which is the only calibration this gate can
+// have that is neither a hardcoded rubric nor the worker's own opinion of itself.
+//
 // The middle paragraph was added after a live failure the gate waved through. A
 // worker asked to judge an architecture plan wrote its judgement into a file and
 // ended with "the deliverable is written and verified against the actual repo
@@ -3407,6 +3416,8 @@ Working decisions declared in the goal are part of what was promised. A commitme
 One absence counts exactly like every other and is the one most easily waved through: the substance itself. What you are handed IS the deliverable — it is the whole of what the person will read, and nothing beside it will be opened for them. So text that reports on the work rather than carrying it — that the work is finished, that a file now holds the answer, that the analysis was checked and is consistent — has described the deliverable in place of being it, and the element of the request that is absent is the answer: the verdict that was asked for, the findings, the numbers, the recommendation. Name that as the gap. A pointer to where the answer lives is not the answer however true the pointer is; naming the file is right beside the substance and never instead of it. This is still one absence and not a second style test: text that gives the answer in its own plain words passes whatever shape it takes.
 
 Below the deliverable, whenever there is anything to show, you are given two records of the run itself: what it left behind, and the tail of what it actually ran. Read the deliverable's claims against them, the way the person would. Something named as produced that nothing produced, or a check the work says it made when nothing of that kind appears in what it ran, is an element unsupported by evidence and is a gap of exactly the kind above — name it in those words. Both records are partial by construction: the tail is the end of a longer run, and what was left behind is one place among many. So they can convict a claim and never acquit one — silence in them is evidence, never proof, and where the deliverable's own account is consistent with what is there, or where these records could never have held the thing in question, pass.
+
+Where a working method is given, it is the standard this kind of work set for itself before anything was produced, and it is the only standard beside the request itself that you hold the deliverable to. Where it asks for nothing, nothing is missing: a method that names no verification makes an unverified result complete, and a method that names one makes its absence a gap.
 
 Return exactly one JSON object, nothing else: {"pass": true, "exercised": true or false} or {"pass": false, "gaps": "<the named gaps>"}. "exercised" is a statement about evidence and never about quality: true only when the finished thing was run the way it will actually be used and held — visible in what was run, or reported in the deliverable as what was run and what came back. Everything else is false, including an honest "not verified here" and work that nothing available could have exercised. Both of those still pass; they are simply not evidenced.`
 
@@ -3519,7 +3530,7 @@ func (e deliveryEvidence) block() string {
 // judgeDeliverable returns a checked pass or named gap. Every failure of the
 // gate itself remains fail-open: Checked is false, so it neither blocks delivery
 // nor manufactures verified evidence for the profile.
-func judgeDeliverable(ctx context.Context, settings config.Config, client *liveClient, graph *store.Store, node store.Node, deliverable string, evidence deliveryEvidence, workerModel string) deliverableJudgment {
+func judgeDeliverable(ctx context.Context, settings config.Config, client *liveClient, graph *store.Store, node store.Node, deliverable, method string, evidence deliveryEvidence, workerModel string) deliverableJudgment {
 	ask := node.Provenance.Intent
 	// The standing half of the gate comes first and the job in front of it last,
 	// which is both the reading order and the billing order. Settled taste is
@@ -3540,7 +3551,16 @@ func judgeDeliverable(ctx context.Context, settings config.Config, client *liveC
 	if digest := resident.NotebookDigest(graph, node.ID, node.Brief, ask, 8); digest != "" {
 		body += "Standing preferences and relevant lessons:\n" + clipUTF8Bytes(digest, gateNotebookBytes) + "\n\n"
 	}
-	body += "Verbatim request:\n" + ask + "\n\nCompiled goal:\n" + node.Brief + "\n\nDeliverable as produced:\n" + deliverable
+	body += "Verbatim request:\n" + ask + "\n\nCompiled goal:\n" + node.Brief
+	// The working method the worker was actually held to, which is where this
+	// kind of work states what done means and how it is checked. It is the only
+	// standard the gate is given that was written for the work in front of it,
+	// and it is stable across a job's repair passes, so it rides above the
+	// deliverable with the rest of the settled half.
+	if method = strings.TrimSpace(method); method != "" {
+		body += "\n\nThe working method this deliverable was held to:\n" + method
+	}
+	body += "\n\nDeliverable as produced:\n" + deliverable
 	// The records come last, under the deliverable they are used to check: they
 	// are the most volatile block in the prompt — a revision rewrites the text
 	// and re-runs the work — and the cache pays for volatility by position.

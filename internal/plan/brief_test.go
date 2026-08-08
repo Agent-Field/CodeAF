@@ -1,8 +1,13 @@
 package plan
 
 import (
+	"context"
+	"fmt"
 	"strings"
+	"sync"
 	"testing"
+
+	"github.com/Agent-Field/agentfield/sdk/go/ai"
 )
 
 // TestOneNodeOwnsTheDeliverable is the fix for five agents writing REVIEW.md
@@ -104,4 +109,64 @@ func TestBriefPromptStatesSingleOwnership(t *testing.T) {
 			}
 		})
 	}
+}
+
+// The other half of the same hole. The gathering node executes as an ordinary
+// leaf and its output is the whole of what the person reads, but it was refused
+// an instruction for not being KindWork — so what reached the executor, and what
+// the delivery gate then judged the finished job against, was the harness's own
+// two-line stub.
+func TestTheDeliverableOwnerIsWrittenAnInstruction(t *testing.T) {
+	graph := &Graph{Goal: "compare three cities and write the result", NextID: 1}
+	graph.Add(Node{Stage: 1, Title: "Berlin", Summary: "read Berlin"})
+	graph.Add(Node{Stage: 1, Title: "Lisbon", Summary: "read Lisbon"})
+	graph.addSynthesis()
+	sink := graph.Nodes[len(graph.Nodes)-1].ID
+
+	client := &briefFanoutClient{}
+	if _, err := Briefs(context.Background(), client, graph); err != nil {
+		t.Fatal(err)
+	}
+	if calls := client.count(); calls != 3 {
+		t.Fatalf("brief calls = %d, want one per leaf and one for the deliverable owner", calls)
+	}
+	owner := graph.Node(sink)
+	if owner == nil || strings.TrimSpace(owner.Brief) == "" || owner.Brief == owner.Summary {
+		t.Fatalf("the deliverable owner still carries the harness stub: %q", owner.Brief)
+	}
+	// And it is told the thing only it is told: the deliverable is its own.
+	if !strings.Contains(client.targetFor(sink), "owns the final deliverable") {
+		t.Fatalf("the owner's instruction does not say it owns the deliverable:\n%s", client.targetFor(sink))
+	}
+}
+
+type briefFanoutClient struct {
+	mutex   sync.Mutex
+	targets []string
+}
+
+func (c *briefFanoutClient) CompleteWithMessages(_ context.Context, messages []ai.Message, _ ...ai.Option) (*ai.Response, error) {
+	c.mutex.Lock()
+	c.targets = append(c.targets, textOf(messages[len(messages)-1]))
+	c.mutex.Unlock()
+	return response("Do this part and hand over its concrete result."), nil
+}
+
+func (c *briefFanoutClient) count() int {
+	c.mutex.Lock()
+	defer c.mutex.Unlock()
+	return len(c.targets)
+}
+
+// targetFor finds the call written for one node, by the id its target message
+// opens with.
+func (c *briefFanoutClient) targetFor(id int) string {
+	c.mutex.Lock()
+	defer c.mutex.Unlock()
+	for _, target := range c.targets {
+		if strings.HasPrefix(target, fmt.Sprintf("Write the instruction for node %d,", id)) {
+			return target
+		}
+	}
+	return ""
 }

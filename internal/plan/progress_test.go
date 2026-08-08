@@ -60,8 +60,11 @@ func TestBuildProgressSequence(t *testing.T) {
 			t.Fatalf("progress phases = %#v, missing %q", phases, want)
 		}
 	}
-	if finalBrief.Done != 3 || finalBrief.Total != 3 || finalBrief.Latest == "" {
-		t.Fatalf("final plan-writing progress = %#v, want 3 of 3 with a real title", finalBrief)
+	// Three city leaves and the node that gathers them: the deliverable owner is
+	// written an instruction like any other leaf, and the count says so rather
+	// than reading "4/3" while the fourth call runs.
+	if finalBrief.Done != 4 || finalBrief.Total != 4 || finalBrief.Latest == "" {
+		t.Fatalf("final plan-writing progress = %#v, want 4 of 4 with a real title", finalBrief)
 	}
 }
 

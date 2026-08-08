@@ -90,3 +90,90 @@ func TestLookupScaleBuysNoWorkingMethod(t *testing.T) {
 		t.Errorf("a lookup leaf carries a working method: %q", contract)
 	}
 }
+
+// The deliverable owner, end to end. On a planned job the gated node is the
+// plan's gathering node, and it used to reach the executor and the gate holding
+// a two-line harness stub — so the one node whose output IS the answer was the
+// one node with no statement of what done means. It now carries a method like
+// any other leaf, and the gate is handed the same one the worker was held to.
+func TestThePlannedDeliverableOwnerCarriesTheMethodTheGateReads(t *testing.T) {
+	graph := openCacheStore(t)
+	settings := config.Config{Model: "worker/model", MaxDepth: 0, NodeBudget: 6}
+	capture := &planScriptClient{
+		model:    "worker/model",
+		parts:    `{"parts":[{"title":"Read","summary":"Read the diff."},{"title":"Weigh","summary":"Weigh the risks."}]}`,
+		contract: `{"contract":"State the verdict in the first line, then the evidence under it."}`,
+	}
+	client := &liveClient{settings: settings, model: capture.model, client: capture}
+	plans := &jobPlans{graphs: map[string]plannedJob{}}
+
+	subtree, err := planSubtree(settings, client, client, plans, graph)(context.Background(), resident.Compiled{
+		Goal:  "review the pull request and deliver REVIEW.md",
+		Scale: head.ScaleProject,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	root := subtreeSink(subtree)
+	if root == "" || len(subtree.Nodes) < 3 {
+		t.Fatalf("planned subtree = %d nodes with root %q, want the two leaves and their gathering node", len(subtree.Nodes), root)
+	}
+	// The gathering node is the subtree's own root — the node the delivery gate
+	// fires on — and it is written for like the leaves under it.
+	if calls := capture.keysFor(provider.ClassPlanContract); len(calls) != 3 {
+		t.Fatalf("contract calls = %d, want one per leaf and one for the deliverable owner", len(calls))
+	}
+	_, _, planNode, _, _ := plans.lookup(root)
+	if planNode == nil || strings.TrimSpace(planNode.Contract) == "" {
+		t.Fatal("the deliverable owner still runs on the generic loop")
+	}
+	var rootSpec store.NodeSpec
+	for _, spec := range subtree.Nodes {
+		if spec.ID == root {
+			rootSpec = spec
+		}
+	}
+	if strings.Contains(rootSpec.Brief, "Assemble the finished answer to the goal from every result") {
+		t.Fatalf("the deliverable owner reached the store with the harness stub: %q", rootSpec.Brief)
+	}
+
+	// And the gate is handed that method, above the deliverable so a repair pass
+	// still moves the deliverable first.
+	node := store.Node{ID: root, Brief: rootSpec.Brief, Provenance: store.Provenance{Intent: "review the pull request", SessionID: "s1"}}
+	gate := &gateCaptureClient{model: "worker/model"}
+	judgeDeliverable(context.Background(), settings,
+		&liveClient{settings: settings, model: gate.model, client: gate}, graph, node,
+		"the review", leafContract(plans, planNode, node), deliveryEvidence{}, "worker/model")
+	body := gate.messages[len(gate.messages)-1].Content[0].Text
+	method := strings.Index(body, "The working method this deliverable was held to:\n")
+	deliverable := strings.Index(body, "Deliverable as produced:\n")
+	if method < 0 || !strings.Contains(body, "State the verdict in the first line") {
+		t.Fatalf("the gate was not handed the working method:\n%s", body)
+	}
+	if deliverable < method {
+		t.Fatalf("the method churns below the deliverable: method=%d deliverable=%d", method, deliverable)
+	}
+	if !strings.Contains(judgeDeliverablePrompt, "it is the only standard beside the request itself that you hold the deliverable to") {
+		t.Fatal("the gate is handed the method and never told what to do with it")
+	}
+	// Calibration comes from the method, never from a rubric this file could
+	// grow: where the method asks for nothing, nothing is missing.
+	if !strings.Contains(judgeDeliverablePrompt, "Where it asks for nothing, nothing is missing") {
+		t.Fatal("the gate lost the clause that keeps a small ask small")
+	}
+}
+
+// A gate with no method in force says nothing about one: an empty block in
+// every prompt would be paid for on every job that has none.
+func TestTheGateGrowsNoEmptyMethodBlock(t *testing.T) {
+	graph := openCacheStore(t)
+	settings := config.Config{Model: "worker/model"}
+	node := store.Node{ID: "job", Brief: "produce it", Provenance: store.Provenance{Intent: "produce it"}}
+	capture := &gateCaptureClient{model: "worker/model"}
+	judgeDeliverable(context.Background(), settings,
+		&liveClient{settings: settings, model: capture.model, client: capture}, graph, node,
+		"done", "  \n ", deliveryEvidence{}, "worker/model")
+	if got := capture.messages[len(capture.messages)-1].Content[0].Text; strings.Contains(got, "The working method") {
+		t.Errorf("an empty method block reached the gate:\n%s", got)
+	}
+}

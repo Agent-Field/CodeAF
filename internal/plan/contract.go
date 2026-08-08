@@ -91,14 +91,20 @@ func Contracts(ctx context.Context, client Completer, graph *Graph, playbook Con
 	var results []result
 	var targets []Node
 
-	for _, id := range graph.Leaves() {
+	// The deliverable owner is written for like any other leaf. It used to be
+	// skipped for not being KindWork, which left the node the delivery gate
+	// judges holding a two-line harness stub where every other node held a
+	// method — and the gate's whole question is whether the finished whole is
+	// what was asked for, judged against exactly that stub.
+	sink := graph.deliverableSink()
+	for _, id := range graph.writtenLeaves() {
 		node := graph.Node(id)
-		if node == nil || node.Kind != KindWork || strings.TrimSpace(node.Contract) != "" {
+		if node == nil || strings.TrimSpace(node.Contract) != "" {
 			continue
 		}
 		targets = append(targets, *node)
 	}
-	total := len(graph.Leaves())
+	total := len(graph.writtenLeaves())
 	base := total - len(targets)
 	if progress != nil {
 		emitProgress(progress, "contracts", fmt.Sprintf("%d/%d", base, total), "")
@@ -123,7 +129,7 @@ func Contracts(ctx context.Context, client Completer, graph *Graph, playbook Con
 			if playbook != nil {
 				notes = playbook(node)
 			}
-			contract, usage, err := writeContract(ctx, client, shared, node, notes)
+			contract, usage, err := writeContract(ctx, client, shared, node, notes, node.ID == sink)
 			mutex.Lock()
 			defer mutex.Unlock()
 			results = append(results, result{id: node.ID, contract: contract, usage: usage, err: err})
@@ -156,7 +162,16 @@ func Contracts(ctx context.Context, client Completer, graph *Graph, playbook Con
 	return usage, joinErrors(failures)
 }
 
-func writeContract(ctx context.Context, client Completer, shared string, node Node, playbook string) (string, *ai.Usage, error) {
+// contractDeliverableLine tells the method writer which of the two jobs it is
+// writing for. Every other leaf produces material; this one produces the thing
+// itself, and its method has to be about the finished whole from the seat of the
+// person who asked — what they open, what they read, what would make them say it
+// is not done. Without the line the sink reads as a filing step and gets a
+// filing method.
+const contractDeliverableLine = "This job IS the deliverable: every other result arrives here as material, and what " +
+	"this agent produces is the whole of what the person who asked will read.\n"
+
+func writeContract(ctx context.Context, client Completer, shared string, node Node, playbook string, deliverable bool) (string, *ai.Usage, error) {
 	var target strings.Builder
 	// A node that came out of a plan always has a title; the one-leaf job does
 	// not, because there was nothing to distinguish it from. Naming the job
@@ -172,6 +187,9 @@ func writeContract(ctx context.Context, client Completer, shared string, node No
 	}
 	if brief := strings.TrimSpace(node.Brief); brief != "" {
 		fmt.Fprintf(&target, "The instruction the agent will receive:\n%s\n", brief)
+	}
+	if deliverable {
+		target.WriteString(contractDeliverableLine)
 	}
 	// The earned notes are per-leaf, retrieved for this node's territory, so
 	// they belong here and nowhere earlier. Every leaf in a project is written
