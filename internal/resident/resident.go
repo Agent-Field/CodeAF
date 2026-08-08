@@ -681,10 +681,7 @@ func (r *Reconciler) reconcileCommand(ctx context.Context, command store.Command
 	if strings.TrimSpace(outcome.receipt) == "" {
 		return nil
 	}
-	role := store.RoleSystem
-	if outcome.asAgent {
-		role = store.RoleAgent
-	}
+	role := receiptVoice(command, outcome.status)
 	body := outcome.receipt
 	if len(outcome.options) > 0 {
 		// Selectable receipts carry the structured payload the TUI's question
@@ -714,6 +711,46 @@ func receiptAnchor(command store.Command, status store.CommandStatus) string {
 		return ""
 	}
 	return commandReceiptNode(command)
+}
+
+// receiptVoice decides whether a receipt is heard or filed, and it is the other
+// half of receiptAnchor's question. An anchored receipt has a card to live on. An
+// unanchored one has only the thread, and the thread files a system post as
+// collapsed machine furniture — which is exactly what happened to the answer
+// "1": the standing-watch receipt was written, journaled, and rendered as a grey
+// line nobody reads, so the person who had just answered a question watched
+// silence and typed the answer again. Where the conversation already carries an
+// answer the receipt stays filed, because the wave-4 rule cuts both ways: one
+// user action, exactly one visible response.
+func receiptVoice(command store.Command, status store.CommandStatus) store.Role {
+	if receiptAnchor(command, status) != "" || headSpeaksFor(command.Kind) {
+		return store.RoleSystem
+	}
+	return store.RoleAgent
+}
+
+// headSpeaksFor is the audit, written down: every kind here is journaled by a
+// route that answers the user in its own voice in the same breath — surgery and
+// revision, charters, services, splices — and handover, whose outcome the
+// residency narrates while it waits for it. A kind absent from this list is one
+// nobody has volunteered to answer for, so its receipt becomes the answer.
+// Silence is the failure this list exists to prevent; a kind that grows a spoken
+// reply and is not added here says the same thing twice, which is the cheaper
+// mistake and the one a reader can see.
+func headSpeaksFor(kind store.CommandKind) bool {
+	switch kind {
+	case store.CommandSplice, store.CommandAmend, store.CommandCancel, store.CommandRedirect,
+		store.CommandExpedite, store.CommandPause, store.CommandResume,
+		store.CommandReprioritize, store.CommandRestart, store.CommandHandover,
+		store.CommandServiceStop, store.CommandServiceRestart, store.CommandServiceAutoRestart,
+		store.CommandCharterRatify, store.CommandCharterPause, store.CommandCharterRetire,
+		store.CommandCharterCadence, store.CommandCharterOnce, store.CommandCharterFire,
+		store.CommandCharterDecline, store.CommandCharterAlways, store.CommandCharterNever,
+		store.CommandCharterProbation:
+		return true
+	default:
+		return false
+	}
 }
 
 func (r *Reconciler) applyCommand(ctx context.Context, command store.Command) (commandOutcome, error) {
