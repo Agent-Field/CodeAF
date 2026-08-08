@@ -341,6 +341,12 @@ func CadenceInterval(cadence string) time.Duration {
 // RetimeWatch applies new cadence words to an existing typed watch: cron
 // watches get a freshly mapped schedule while file, graph, and poll watches
 // keep their structure and change only how often they are examined.
+//
+// A clock on its own — "push the reminder to 8pm" — moves the hour and keeps
+// the rhythm. Read as a fresh cadence it would say "once, at eight tonight",
+// which turns a standing rule into a one-off in answer to a sentence that only
+// asked for a later hour. The same words mean a single instant when nothing
+// exists yet, and that reading still lives in CadenceSchedule.
 func RetimeWatch(watch WatchSpec, cadence string, now time.Time) WatchSpec {
 	cadence = strings.TrimSpace(cadence)
 	retimed := watch
@@ -348,30 +354,67 @@ func RetimeWatch(watch WatchSpec, cadence string, now time.Time) WatchSpec {
 	// Retiming only ever happens because someone said when. Whatever was
 	// guessed before, this rhythm is theirs.
 	retimed.CadenceGuessed = false
+	hour, minute, clockOnly := clockOnlyCadence(cadence)
 	switch watch.Kind {
 	case WatchCron:
 		schedule := CadenceSchedule(cadence, now)
+		if clockOnly {
+			schedule = CronSchedule{Kind: CronDaily, Hour: hour, Minute: minute}
+			if watch.Cron != nil && wallClockCron(watch.Cron.Kind) {
+				schedule = *watch.Cron
+				schedule.Hour, schedule.Minute = hour, minute
+			}
+		}
 		retimed.Cron = &schedule
 	case WatchFile:
 		if watch.File != nil {
 			file := *watch.File
-			file.Cadence = CadenceInterval(cadence)
+			if !clockOnly {
+				file.Cadence = CadenceInterval(cadence)
+			}
 			retimed.File = &file
 		}
 	case WatchGraph:
 		if watch.Graph != nil {
 			graph := *watch.Graph
-			graph.Cadence = CadenceInterval(cadence)
+			if !clockOnly {
+				graph.Cadence = CadenceInterval(cadence)
+			}
 			retimed.Graph = &graph
 		}
 	case WatchPoll:
 		if watch.Poll != nil {
 			poll := *watch.Poll
-			poll.Cadence = CadenceInterval(cadence)
+			if !clockOnly {
+				poll.Cadence = CadenceInterval(cadence)
+			}
 			retimed.Poll = &poll
 		}
 	}
 	return retimed
+}
+
+func wallClockCron(kind CronKind) bool {
+	return kind == CronDaily || kind == CronWeekdays || kind == CronWeekly
+}
+
+// clockOnlyCadence is true for words that say a time of day and nothing else.
+func clockOnlyCadence(cadence string) (int, int, bool) {
+	lower := strings.ToLower(strings.TrimSpace(cadence))
+	hour, minute, stated := cadenceClock(lower)
+	if !stated {
+		return 0, 0, false
+	}
+	if _, named := cadenceWeekday(lower); named {
+		return 0, 0, false
+	}
+	for _, word := range []string{"every", "each", "hourly", "daily", "weekly",
+		"weekday", "tomorrow", "morning", "afternoon", "evening", "night", "in "} {
+		if strings.Contains(lower, word) {
+			return 0, 0, false
+		}
+	}
+	return hour, minute, true
 }
 
 func cadenceCount(cadence string) (int, time.Duration, bool) {

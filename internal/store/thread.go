@@ -139,10 +139,15 @@ const (
 
 	// Charter commands are requested through the same durable reconciler queue
 	// as graph mutations. Their target names a charter rather than a node.
-	CommandCharterRatify    CommandKind = "charter_ratify"
-	CommandCharterPause     CommandKind = "charter_pause"
-	CommandCharterRetire    CommandKind = "charter_retire"
-	CommandCharterCadence   CommandKind = "charter_cadence"
+	CommandCharterRatify  CommandKind = "charter_ratify"
+	CommandCharterPause   CommandKind = "charter_pause"
+	CommandCharterRetire  CommandKind = "charter_retire"
+	CommandCharterCadence CommandKind = "charter_cadence"
+	// CommandCharterWording changes what a standing rule says or does without
+	// touching when it runs. It is the other half of editing a rule by talking
+	// about it: "change it to Tuesday" retimes, "make it say take the bins out
+	// too" rewords, and before this the second sentence had nowhere to land.
+	CommandCharterWording   CommandKind = "charter_wording"
 	CommandCharterOnce      CommandKind = "charter_once"
 	CommandCharterFire      CommandKind = "charter_fire"
 	CommandCharterDecline   CommandKind = "charter_decline"
@@ -949,7 +954,8 @@ func validCommandKind(kind CommandKind) bool {
 	switch kind {
 	case CommandSplice, CommandAmend, CommandCancel, CommandRedirect, CommandExpedite, CommandPause, CommandResume,
 		CommandReprioritize, CommandRestart, CommandCharterRatify,
-		CommandCharterPause, CommandCharterRetire, CommandCharterCadence, CommandCharterOnce,
+		CommandCharterPause, CommandCharterRetire, CommandCharterCadence, CommandCharterWording,
+		CommandCharterOnce,
 		CommandCharterFire, CommandCharterDecline, CommandCharterAlways, CommandCharterNever, CommandCharterProbation,
 		CommandServiceStop, CommandServiceRestart, CommandServiceAutoRestart,
 		CommandStandingWatchEnable, CommandStandingWatchDecline, CommandHandover:
@@ -1010,7 +1016,7 @@ func validateNodeCommand(tx *sql.Tx, kind CommandKind, target string) error {
 func isCharterCommand(kind CommandKind) bool {
 	switch kind {
 	case CommandCharterRatify, CommandCharterPause, CommandCharterRetire,
-		CommandCharterCadence, CommandCharterOnce, CommandCharterFire,
+		CommandCharterCadence, CommandCharterWording, CommandCharterOnce, CommandCharterFire,
 		CommandCharterDecline, CommandCharterAlways, CommandCharterNever, CommandCharterProbation:
 		return true
 	default:
