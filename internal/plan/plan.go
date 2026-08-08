@@ -399,6 +399,10 @@ func Build(ctx context.Context, client Completer, goal string, options Options) 
 	graph.Prune()
 	emitProgress(progress, "steps", fmt.Sprintf("%d", len(graph.Nodes)), "")
 	graph.addSynthesis()
+	// The gathering node exists only now, and it is written for like any other
+	// leaf: it is the one the finished job is judged against, so it is the last
+	// place that can afford a harness stub for an instruction.
+	briefs.sink = graph.deliverableSink()
 
 	// Everything that was still moving has now stopped.
 	announce(graph, options, settled, briefs, start, func(*Node) bool { return true })
@@ -406,7 +410,7 @@ func Build(ctx context.Context, client Completer, goal string, options Options) 
 	briefUsage, briefErr := briefs.apply(graph)
 	graph.Usage.merge(briefUsage)
 	if options.Briefs {
-		report("brief", time.Since(start), plural(len(graph.Leaves()), "leaf"))
+		report("brief", time.Since(start), plural(len(graph.writtenLeaves()), "leaf"))
 	}
 
 	return graph, errors.Join(groundErr, fanErr, bindErr, sizeErr, auditErr, briefErr)
@@ -432,7 +436,7 @@ func announce(graph *Graph, options Options, settled map[int]bool, briefs *brief
 	elapsed := time.Since(start)
 	for index := range graph.Nodes {
 		node := &graph.Nodes[index]
-		if settled[node.ID] || node.Kind != KindWork || !ready(node) {
+		if settled[node.ID] || (node.Kind != KindWork && node.ID != briefs.sink) || !ready(node) {
 			continue
 		}
 		settled[node.ID] = true

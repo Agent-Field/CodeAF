@@ -406,6 +406,41 @@ func (g *Graph) Leaves() []int {
 	return leaves
 }
 
+// deliverableSink names the node that holds the finished whole: the synthesis
+// the harness appends once nothing else gathers the plan.
+//
+// It is a leaf in every operational sense — it is dispatched like one, and what
+// it produces is the whole of what the person who asked will read — but its
+// kind keeps it out of Leaves(), so for a long time the one node in a plan whose
+// job is to BE the deliverable was the one node with no instruction and no
+// working method. Everything that judges a finished job judges this node.
+//
+// Zero means there is none to write for: a one-node plan is already its own
+// answer, and an unfinished graph has not gathered yet.
+func (g *Graph) deliverableSink() int {
+	sinks := g.Sinks()
+	if len(sinks) != 1 {
+		return 0
+	}
+	node := g.Node(sinks[0])
+	if node == nil || node.Kind != KindSynthesis {
+		return 0
+	}
+	return node.ID
+}
+
+// writtenLeaves are the nodes the instruction and working-method passes write
+// for: every work leaf, plus the deliverable owner when the plan has one. It is
+// the honest denominator for those passes too — counting Leaves() while writing
+// one more than that is how progress reads "6/5".
+func (g *Graph) writtenLeaves() []int {
+	ids := g.Leaves()
+	if sink := g.deliverableSink(); sink != 0 {
+		ids = append(ids, sink)
+	}
+	return ids
+}
+
 // Unresolved counts leaves that are still judged too big for one agent. They
 // are shipped anyway — a leaf that is too large still gets done, only slowly —
 // but the count is the honest measure of where decomposition ran out of depth

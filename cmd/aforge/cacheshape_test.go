@@ -71,7 +71,7 @@ func TestGatePromptKeepsChurnBelowTheSettledBlocks(t *testing.T) {
 		t.Helper()
 		capture := &gateCaptureClient{model: "worker/model"}
 		client := &liveClient{settings: settings, model: capture.model, client: capture}
-		judgeDeliverable(context.Background(), settings, client, graph, node, deliverable, deliveryEvidence{}, "worker/model")
+		judgeDeliverable(context.Background(), settings, client, graph, node, deliverable, "", deliveryEvidence{}, "worker/model")
 		return capture.messages[len(capture.messages)-1].Content[0].Text
 	}
 
@@ -229,6 +229,10 @@ type planScriptClient struct {
 	mutex sync.Mutex
 	model string
 	keys  map[provider.CallClass][]string
+	// parts overrides the fan-out reply for tests that need a plan wide enough
+	// to grow the gathering node the harness appends.
+	parts    string
+	contract string
 }
 
 func (c *planScriptClient) CompleteWithMessages(ctx context.Context, messages []ai.Message, _ ...ai.Option) (*ai.Response, error) {
@@ -251,6 +255,9 @@ func (c *planScriptClient) CompleteWithMessages(ctx context.Context, messages []
 			`"pass_sources":[],"setup_title":"","setup_summary":"","deliverable":""}`
 	case provider.ClassPlanFanOut, provider.ClassPlanExpand:
 		text = `{"parts":[{"title":"Review","summary":"Write REVIEW.md."}]}`
+		if c.parts != "" {
+			text = c.parts
+		}
 	case provider.ClassPlanBind:
 		text = `{"bindings":[],"duplicates":[]}`
 	case provider.ClassPlanSize:
@@ -259,6 +266,9 @@ func (c *planScriptClient) CompleteWithMessages(ctx context.Context, messages []
 		text = `{"checks":[{"node":1,"ok":true,"missing":[]}]}`
 	case provider.ClassPlanContract:
 		text = `{"contract":"Read the diff, then write the review it earns."}`
+		if c.contract != "" {
+			text = c.contract
+		}
 	case provider.ClassPlanBrief:
 		text = "Read the diff and write REVIEW.md with the verdict in its first line."
 	default:
