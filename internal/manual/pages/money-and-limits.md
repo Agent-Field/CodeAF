@@ -29,8 +29,22 @@ not once per attempt.
 | `/budget default 25` | changes the standing default to $25, from tomorrow on |
 | `/budget unlimited today` | no ceiling until local midnight; the default is untouched |
 
-The header meter is a different number: it shows tokens and measured cost for
-**this session**, plus what aforge has spent on itself today.
+The header meter is the same day on a smaller surface: `$3.40 today`, plus what
+aforge has spent on itself today beside it. It counts from your local midnight,
+exactly as the rail does. In a narrow window it keeps the figure and drops the
+word, so the money is still there in a docked pane.
+
+## Asking about money in words
+
+Ask for any stretch of time — "what has this month cost?", "how much did last
+week come to?", "what's been expensive lately?" — and aforge reads its own
+ledger for that window: the total, and the jobs the money went on, named the way
+you named them and priced heaviest first. Those job figures do not add up to the
+window's total, and it will say so: planning, answering and its own upkeep
+belong to no single job.
+
+"What did that cost?" about one particular job is answered from that job's own
+record instead, which also carries what it produced.
 
 ## Per-job and per-firing limits
 

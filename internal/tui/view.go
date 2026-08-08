@@ -297,12 +297,19 @@ func (m *Model) renderTopBar() string {
 	settings := m.renderSettingsButton()
 
 	rightMeta := m.renderSpend()
+	// shrunkMeta is what the meta slot degrades to before it degrades away.
+	// Money shrinks; ambient status and errors keep yielding whole, because the
+	// footer line picks the status up and an error truncated to a stub is worse
+	// than an error the next frame repeats.
+	shrunkMeta := m.renderSpendCompact()
 	statusActive := m.status != "" && time.Now().Before(m.statusUntil)
 	if statusActive {
 		rightMeta = mutedStyle.Render(truncate(m.status, max(8, m.width/2)))
+		shrunkMeta = ""
 	}
 	if m.err != nil {
 		rightMeta = roseStyle.Render(truncate(m.err.Error(), max(8, m.width/2)))
+		shrunkMeta = ""
 	}
 	// The rail toggle is a real button: alt+g and /graph are accelerators, the
 	// click path is always visible. It follows the affordance grammar (▸ when
@@ -311,12 +318,19 @@ func (m *Model) renderTopBar() string {
 	help := m.renderHelpButton()
 
 	// The header yields in one fixed order as the frame narrows: the model
-	// glance shortens to talk-only, then ambient status leaves (the footer
-	// line picks it up), then the glance goes entirely — it is context the
-	// model door already owns — then the settings gear, which /settings and
-	// alt+, still reach, and only in the last resort do the places collapse to
-	// the wordmark. The model door, the rail button, and ? never yield: they
-	// are the header's irreplaceable actions.
+	// glance shortens to talk-only, then the money shrinks to the bare figure
+	// (and ambient status, which shares that slot, leaves — the footer line
+	// picks it up), then the glance goes entirely — it is context the model
+	// door already owns — then the settings gear, which /settings and alt+,
+	// still reach, then the places collapse to the wordmark, and only after all
+	// of that does the money itself go. The model door, the rail button, and ?
+	// never yield: they are the header's irreplaceable actions.
+	//
+	// Money used to be the first thing dropped, which made it invisible in
+	// exactly the 60-column dock docs/JOURNEY.md designs for — while the same
+	// document promises costs ride the header. It now shrinks the way the
+	// residency label shrinks rather than leaving, and the ladder is ordered so
+	// that at 60 columns the places and the figure are both still there.
 	//
 	// The residency label yields by shrinking to the bare fact and never by
 	// leaving. A window that is not the one answering must say so at every
@@ -338,7 +352,7 @@ func (m *Model) renderTopBar() string {
 		return right + "  " + button + "  " + help
 	}
 	yields := []func(){
-		func() { shownMeta = "" },
+		func() { shownMeta = shrunkMeta },
 		func() { shownGlance = "" },
 		func() { shownSettings = "" },
 		func() {
@@ -353,6 +367,7 @@ func (m *Model) renderTopBar() string {
 				left += separator + mutedStyle.Faint(true).Render(shortMode)
 			}
 		},
+		func() { shownMeta = "" },
 	}
 	if m.width >= railAtWidth {
 		// Only a frame wide enough for the side rail shortens the glance
@@ -468,13 +483,22 @@ func (m *Model) renderHelpButton() string {
 	return style.Render("?")
 }
 
-// renderSpend keeps session usage and today's self-spend together in the
-// top-right corner. Tokens and cost are quiet metadata.
+// renderSpend is the money JOURNEY.md promises rides the header, and it says
+// today. It used to say the graph-wide total — every dollar since the journal
+// was created — while the comment here and the money manual page both called it
+// "this session"; a figure that can only grow, that nothing else in the product
+// quotes, and that the user cannot act on. Both numbers here are now the same
+// window as each other and as the daily limit, so the line reads as one fact
+// about one day rather than two figures from two clocks.
+//
+// The token count left with the all-time total rather than being windowed
+// beside it. Resource units are backstage everywhere else money is spoken —
+// the rail question, the consent card, the spend read — and at 60 columns they
+// were spending the exact cells the dollars needed.
 func (m *Model) renderSpend() string {
 	parts := make([]string, 0, 2)
-	if m.usage.Nodes > 0 {
-		tokens := humanizeTokens(m.usage.PromptTokens + m.usage.CompletionTokens)
-		parts = append(parts, tokens+" tok · "+fmt.Sprintf("$%.2f", m.usage.Cost))
+	if m.spendToday > 0 {
+		parts = append(parts, fmt.Sprintf("$%.2f today", m.spendToday))
 	}
 	if m.selfSpendToday > 0 {
 		parts = append(parts, formatCardCost(m.selfSpendToday)+" self")
@@ -483,6 +507,19 @@ func (m *Model) renderSpend() string {
 		return ""
 	}
 	return mutedStyle.Render(strings.Join(parts, " · "))
+}
+
+// renderSpendCompact is the same fact with everything but the fact removed: the
+// word and the upkeep figure go, the dollars stay. This is what the header
+// shows in a dock, and it is the whole reason the money survives down there —
+// a meter that vanishes at the width the product is designed for is not a
+// meter. The self figure is what yields because it is contained in the total
+// beside it, so dropping it loses no money from the number.
+func (m *Model) renderSpendCompact() string {
+	if m.spendToday <= 0 {
+		return ""
+	}
+	return mutedStyle.Render(fmt.Sprintf("$%.2f", m.spendToday))
 }
 
 // residentPresenceText is the sole projection of self-directed life. Active
