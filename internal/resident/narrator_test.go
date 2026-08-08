@@ -220,6 +220,12 @@ func TestLandedJobsFoldOutOfTheActiveView(t *testing.T) {
 	if err := reconciler.Tick(context.Background()); err != nil {
 		t.Fatalf("tick after landing: %v", err)
 	}
+	// Folding waits out the grace window that keeps a just-delivered job
+	// addressable; the pass that files it is a later tick, not this one.
+	reconciler.now = func() time.Time { return time.Now().Add(2 * settledFoldGrace) }
+	if err := reconciler.Tick(context.Background()); err != nil {
+		t.Fatalf("tick past the fold grace window: %v", err)
+	}
 
 	root, ok, err := s.Node("goal")
 	if err != nil || !ok {

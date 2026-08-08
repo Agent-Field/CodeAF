@@ -11,15 +11,24 @@ import (
 )
 
 type fakeStandingWatch struct {
-	status   watchdog.Status
-	installs int
-	err      error
+	status     watchdog.Status
+	installs   int
+	uninstalls int
+	err        error
 }
 
 func (watch *fakeStandingWatch) Install(context.Context) error {
 	watch.installs++
 	if watch.err == nil {
 		watch.status.Installed = true
+	}
+	return watch.err
+}
+
+func (watch *fakeStandingWatch) Uninstall(context.Context) error {
+	watch.uninstalls++
+	if watch.err == nil {
+		watch.status.Installed = false
 	}
 	return watch.err
 }
