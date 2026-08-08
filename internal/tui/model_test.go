@@ -25,6 +25,7 @@ type fakeBackend struct {
 	selfReceipts      []store.SelfReceipt
 	facts             map[int64]store.Fact
 	posted            []store.Message
+	nextSeq           int64
 	agentQuestions    []store.AgentQuestion
 	surfacedQuestions []int64
 	postErr           error
@@ -158,6 +159,10 @@ func (f *fakeBackend) PostMessage(message store.Message) (store.Message, error) 
 		return store.Message{}, f.postErr
 	}
 	message.Seq = int64(len(f.messages) + 1)
+	if f.nextSeq > 0 {
+		message.Seq = f.nextSeq
+		f.nextSeq++
+	}
 	message.Time = time.Now()
 	f.posted = append(f.posted, message)
 	f.messages = append(f.messages, message)
