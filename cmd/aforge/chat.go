@@ -36,6 +36,7 @@ import (
 	"github.com/Agent-Field/aforge-v2/internal/store"
 	"github.com/Agent-Field/aforge-v2/internal/tui"
 	"github.com/Agent-Field/aforge-v2/internal/voice"
+	"github.com/Agent-Field/aforge-v2/internal/watchdog"
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 )
 
@@ -95,22 +96,74 @@ func runChat(args []string) error {
 	return errors.Join(err, seenErr)
 }
 
-// buildChatBrain assembles the resident half of a window: every provider
-// client, the reconciler, the runner, the consent desk, and the commander that
-// lets the surface reach all of it. It is a function rather than the body of
-// runChat because a window may need it twice over — once at launch if it is the
-// first on the store, and again if it starts as a visitor and later takes the
-// role over. Nothing here starts a goroutine or holds the terminal; start does
-// that, once, on a brain that has already been built.
+// brainOptions is what separates the two ways this machine is driven. There is
+// one brain and one construction of it; these say which parts of it a
+// particular driver has any use for.
+//
+// A chat window takes the zero value, which is the whole thing — head, voice,
+// arrival brief, standing watch, the commander the surface reaches everything
+// through. A headless one-shot takes headless, which removes exactly the
+// conversational half and nothing else: the compiler, the reconciler, the
+// runner, the contracts, the gate, the extensions and the replans are the same
+// objects wired the same way, because a headless run that planned once and
+// froze the plan would not be this system at all.
+type brainOptions struct {
+	// hand is the handover seam. Only a window that can stand down has one.
+	hand resident.HandoverFunc
+	// headless removes the head, the TUI commander, voice, the arrival brief,
+	// the narrator, and the standing-watch installer. Nothing else.
+	headless bool
+	// ephemeral says the store evaporates when this process exits, so the
+	// loops whose whole product is a durable record — craft, self-practice —
+	// would be paying for something nobody can ever read.
+	ephemeral bool
+	// workspaceRoot overrides where jobs work. Empty is the store's own
+	// workspace directory, which is what a window has always used.
+	workspaceRoot string
+	// model and planModel are the per-run slot overrides. They outrank both the
+	// environment and the persisted picker, because a flag is the most recent
+	// thing the person said.
+	model, planModel string
+	// consent answers the price question for a desk with nobody at it. Nil is
+	// the ordinary desk: it asks, and the job waits.
+	consent func(store.Node, planEstimate) bool
+	// newClient builds provider clients. Nil is the real one; a test scripts a
+	// provider through it and drives the same brain every other caller drives.
+	newClient func(config.Config, string) (*liveClient, error)
+}
+
+// buildChatBrain assembles the resident half of a window. It is the whole brain
+// with a head on it, which is what a chat window is.
 func buildChatBrain(w *chatWindow, session string, hand resident.HandoverFunc) (*chatBrain, error) {
+	return buildBrain(w, session, brainOptions{hand: hand})
+}
+
+// buildBrain assembles the brain: every provider client, the reconciler, the
+// runner, the consent desk, and — for a window — the commander that lets the
+// surface reach all of it. It is a function rather than the body of runChat
+// because a window may need it twice over — once at launch if it is the first
+// on the store, and again if it starts as a visitor and later takes the role
+// over — and because `aforge do` needs the same brain with the conversation
+// taken off. Nothing here starts a goroutine or holds the terminal; start does
+// that, once, on a brain that has already been built.
+func buildBrain(w *chatWindow, session string, opts brainOptions) (*chatBrain, error) {
 	brain := &chatBrain{window: w, session: session}
 	path, database, graph := w.path, w.database, w.graph
+	newClient := opts.newClient
+	if newClient == nil {
+		newClient = newLiveClient
+	}
 	settings, err := config.Load()
 	if err != nil {
-		fmt.Fprintln(os.Stderr, "aforge chat needs a model to talk with.")
+		if opts.headless {
+			fmt.Fprintln(os.Stderr, "aforge do needs a model to work with.")
+		} else {
+			fmt.Fprintln(os.Stderr, "aforge chat needs a model to talk with.")
+		}
 		fmt.Fprintln(os.Stderr, "export OPENROUTER_API_KEY (or OPENAI_API_KEY) and run it again.")
 		return nil, err
 	}
+	applyModelFlags(&settings, opts.model, opts.planModel)
 	prefs := loadChatPrefs(filepath.Dir(path))
 	if strings.TrimSpace(prefs.VoiceModel) == "" {
 		prefs.VoiceModel = settings.VoiceModel
@@ -135,8 +188,12 @@ func buildChatBrain(w *chatWindow, session string, hand resident.HandoverFunc) (
 	if err != nil {
 		return nil, err
 	}
-	talkModel := firstNonEmptyString(prefs.ChatModel, settings.Model)
-	workModel := firstNonEmptyString(prefs.TaskModel, settings.Model)
+	// A flag names the model for this run and outranks the picker, which is a
+	// standing preference; the picker outranks the environment, which is a
+	// default. With no flag — every chat window — this is the picker exactly as
+	// before.
+	talkModel := firstNonEmptyString(opts.model, prefs.ChatModel, settings.Model)
+	workModel := firstNonEmptyString(opts.model, prefs.TaskModel, settings.Model)
 	baseMedia := exec.MediaTools{
 		Provider: mediaClient, Catalog: modelCatalog, VisionClient: visionClient,
 		DocumentClient: documentClient, DocumentEngine: settings.DocumentEngine,
@@ -164,12 +221,12 @@ func buildChatBrain(w *chatWindow, session string, hand resident.HandoverFunc) (
 		}
 	}
 
-	chatClient, err := newLiveClient(settings, talkModel)
+	chatClient, err := newClient(settings, talkModel)
 	if err != nil {
 		return nil, err
 	}
 	brain.closing(chatClient.Close)
-	taskClient, err := newLiveClient(settings, workModel)
+	taskClient, err := newClient(settings, workModel)
 	if err != nil {
 		return nil, brain.abandon(err)
 	}
@@ -179,8 +236,8 @@ func buildChatBrain(w *chatWindow, session string, hand resident.HandoverFunc) (
 	// the same model behind a second hot-swappable handle; a picked plan model
 	// or AFORGE_PLAN_MODEL splits structuring from execution, and a /model
 	// change lands on the very next planning call.
-	planModel := firstNonEmptyString(prefs.PlanModel, settings.PlanModel, workModel)
-	planClient, err := newLiveClient(settings, planModel)
+	planModel := firstNonEmptyString(opts.planModel, prefs.PlanModel, settings.PlanModel, workModel)
+	planClient, err := newClient(settings, planModel)
 	if err != nil {
 		return nil, brain.abandon(err)
 	}
@@ -206,12 +263,22 @@ func buildChatBrain(w *chatWindow, session string, hand resident.HandoverFunc) (
 	taskClient.WithUsageJournal(journalSpend)
 	planClient.WithUsageJournal(journalSpend)
 	boostClients.journal = journalSpend
-	standingWatch, err := newStandingWatchManager(graph)
-	if err != nil {
-		return nil, brain.abandon(err)
+	// The standing watch is a host timer: installing it shells out to launchctl
+	// or systemctl and leaves something behind that outlives the process. A
+	// one-shot command may not do that to a machine, so headless never builds
+	// the manager and the reconciler's repair pass finds nothing to reconcile.
+	var standingWatch *watchdog.Manager
+	if !opts.headless {
+		standingWatch, err = newStandingWatchManager(graph)
+		if err != nil {
+			return nil, brain.abandon(err)
+		}
 	}
 
-	workspaceRoot := filepath.Join(filepath.Dir(path), "workspace")
+	workspaceRoot := strings.TrimSpace(opts.workspaceRoot)
+	if workspaceRoot == "" {
+		workspaceRoot = filepath.Join(filepath.Dir(path), "workspace")
+	}
 	if err := os.MkdirAll(workspaceRoot, 0o700); err != nil {
 		return nil, brain.abandon(fmt.Errorf("create chat workspace: %w", err))
 	}
@@ -250,14 +317,19 @@ func buildChatBrain(w *chatWindow, session string, hand resident.HandoverFunc) (
 	plans := newJobPlans(graph)
 	// The craft repository lives beside the graph it serves. Without git or
 	// with a broken repo, craft is dormant — never a startup failure.
+	// An ephemeral store has no craft: the repository would be born in a
+	// directory that is deleted a minute later, so recognising a learned
+	// workflow could never find one and forging a new one would throw it away.
 	var craftRunner *resident.CraftRunner
 	var craftShelf resident.CraftShelf
 	craftDir := ""
-	if craftRepo, craftErr := craft.Open(filepath.Join(filepath.Dir(database), "craft")); craftErr == nil {
-		craftRunner = resident.NewCraftRunner(graph, craftRepo, craftRepo.Dir())
-		craftShelf, craftDir = craftRepo, craftRepo.Dir()
-	} else {
-		log.Printf("note: craft repository unavailable: %v", craftErr)
+	if !opts.ephemeral {
+		if craftRepo, craftErr := craft.Open(filepath.Join(filepath.Dir(database), "craft")); craftErr == nil {
+			craftRunner = resident.NewCraftRunner(graph, craftRepo, craftRepo.Dir())
+			craftShelf, craftDir = craftRepo, craftRepo.Dir()
+		} else {
+			log.Printf("note: craft repository unavailable: %v", craftErr)
+		}
 	}
 	// The commander owns the live boost slot, and it is built further down;
 	// the resolver reads it through this handle so a later /model change is
@@ -271,19 +343,34 @@ func buildChatBrain(w *chatWindow, session string, hand resident.HandoverFunc) (
 				}
 				return taskClient.Model()
 			})
-		}).
-		WithNarrator(narrateProgress(settings, chatClient, graph)).
-		WithBriefComposer(composeMorningBrief(settings, chatClient, graph)).
-		// Redirection is a chat-surface concern — a wake pass has no user
-		// whose words could revise a running job.
-		WithRedirector(func(ctx context.Context, job store.Node, message string,
-			flavor resident.RevisionFlavor) (resident.Redirection, error) {
-			return plans.reviseForUser(ctx, settings, planClient, graph, job, message, flavor)
-		}).
-		WithStandingWatch(standingWatch).
-		WithStandingWatchKeyPersist(func() (bool, string, error) {
-			return config.EnsurePersistedAPIKey(settings.ProfileDir)
 		})
+	// Narration, the arrival brief, redirection and the host timer are all one
+	// thing: a conversation. Each of them speaks into a thread, or waits for
+	// somebody to speak into it, or leaves something on the machine that
+	// outlives the process. A one-shot has none of those, so it buys none of
+	// the calls they cost.
+	if !opts.headless {
+		reconciler = reconciler.
+			WithNarrator(narrateProgress(settings, chatClient, graph)).
+			WithBriefComposer(composeMorningBrief(settings, chatClient, graph)).
+			// Redirection is a chat-surface concern — a wake pass has no user
+			// whose words could revise a running job.
+			WithRedirector(func(ctx context.Context, job store.Node, message string,
+				flavor resident.RevisionFlavor) (resident.Redirection, error) {
+				return plans.reviseForUser(ctx, settings, planClient, graph, job, message, flavor)
+			}).
+			WithStandingWatch(standingWatch).
+			WithStandingWatchKeyPersist(func() (bool, string, error) {
+				return config.EnsurePersistedAPIKey(settings.ProfileDir)
+			})
+	}
+	// Self-practice is curiosity spent on a notebook. An ephemeral store's
+	// notebook is deleted with it, so the practice would be paid for and
+	// unreadable — and it would be competing with the one errand this process
+	// was started to run.
+	if opts.ephemeral {
+		reconciler = reconciler.WithPracticeLoop(0, 0)
+	}
 	if craftRunner != nil {
 		reconciler = reconciler.WithCraftRunner(craftRunner)
 	}
@@ -310,7 +397,7 @@ func buildChatBrain(w *chatWindow, session string, hand resident.HandoverFunc) (
 	// serving then; answering it would make a window that has just promoted
 	// stand straight back down, and the role would circle the open windows
 	// forever.
-	reconciler = reconciler.WithHandover(hand).WithResidentSince(time.Now())
+	reconciler = reconciler.WithHandover(opts.hand).WithResidentSince(time.Now())
 	// Recognition and forging ride the resident's own talk client, like every
 	// other small verdict it makes about itself.
 	if craftShelf != nil {
@@ -326,9 +413,15 @@ func buildChatBrain(w *chatWindow, session string, hand resident.HandoverFunc) (
 	// waited on the network to be told what happened while they were away. The
 	// thread is the delivery channel, so the composition rides behind the
 	// surface and the brief lands in the same place a moment later.
-	deliverBrief, briefErr := reconciler.SessionOpening(session, "tui", settings.BriefAfter)
-	if briefErr != nil {
-		log.Printf("note: could not prepare the arrival brief: %v", briefErr)
+	// A one-shot has not been away and has nobody to greet, so there is no
+	// arrival and no brief to compose for it.
+	var deliverBrief func(context.Context) error
+	if !opts.headless {
+		brief, briefErr := reconciler.SessionOpening(session, "tui", settings.BriefAfter)
+		if briefErr != nil {
+			log.Printf("note: could not prepare the arrival brief: %v", briefErr)
+		}
+		deliverBrief = brief
 	}
 
 	web := exec.NewWeb()
@@ -340,6 +433,7 @@ func buildChatBrain(w *chatWindow, session string, hand resident.HandoverFunc) (
 	// it on the very first tick of a claimed leaf, which is the last moment at
 	// which not starting the work is still free.
 	consent := newConsentDesk(graph)
+	consent.headless = opts.consent
 	consent.rehydrate()
 	runner := resident.NewRunner(graph, func(ctx context.Context, node store.Node) (resident.ExecResult, error) {
 		isReflex := node.Group == resident.ReflexGroup
@@ -908,6 +1002,21 @@ func buildChatBrain(w *chatWindow, session string, hand resident.HandoverFunc) (
 		runner = runner.WithCraftRunner(craftRunner)
 	}
 
+	brain.settings = settings
+	brain.reconciler = reconciler
+	brain.runner = runner
+	brain.consent = consent
+	brain.workspaceRoot = workspaceRoot
+	// Everything below this line is the conversation: the commander the surface
+	// reaches capabilities through, the microphone, the stream the reply is
+	// typed into, and the head that does the replying. A headless run has no
+	// surface to reach anything, nothing to listen to, nobody to stream at, and
+	// no routing to do — the task IS the work order. The brain above is
+	// complete and identical either way.
+	if opts.headless {
+		return brain, nil
+	}
+
 	streamEvents := make(chan tui.StreamEvent, 256)
 	commander = &chatCommander{
 		settings:      settings,
@@ -934,11 +1043,7 @@ func buildChatBrain(w *chatWindow, session string, hand resident.HandoverFunc) (
 		return nil, brain.abandon(err)
 	}
 
-	brain.settings = settings
 	brain.commander = commander
-	brain.reconciler = reconciler
-	brain.runner = runner
-	brain.consent = consent
 	brain.streamEvents = streamEvents
 	brain.deliverBrief = deliverBrief
 	// Routing is a structuring call, and it was the one loop served with a bare
@@ -1000,7 +1105,13 @@ type chatBrain struct {
 	consent      *consentDesk
 	streamEvents chan tui.StreamEvent
 	deliverBrief func(context.Context) error
-	serveHead    func(context.Context)
+	// serveHead is nil in a headless brain, which is the one structural
+	// difference between the two: no head means nothing routes, and the command
+	// journal is written by the caller instead.
+	serveHead func(context.Context)
+	// workspaceRoot is where this brain's jobs work, so a caller that gave one
+	// can find what was written without guessing at the id law.
+	workspaceRoot string
 
 	closers    []func()
 	background sync.WaitGroup
@@ -1049,15 +1160,18 @@ func (b *chatBrain) start() {
 	// fails without it, and until it lands every command runs plain.
 	guard.Go("chat/rtk", func() { rtk.Bootstrap(ctx) })
 
-	b.background.Add(3)
-	go func() {
-		// Registered first so it absorbs last: the channel close and the wait
-		// group both settle on the unwind before the fault is recorded.
-		defer guard.Recover("chat/head")
-		defer b.background.Done()
-		defer close(b.streamEvents)
-		b.serveHead(ctx)
-	}()
+	if b.serveHead != nil {
+		b.background.Add(1)
+		go func() {
+			// Registered first so it absorbs last: the channel close and the wait
+			// group both settle on the unwind before the fault is recorded.
+			defer guard.Recover("chat/head")
+			defer b.background.Done()
+			defer close(b.streamEvents)
+			b.serveHead(ctx)
+		}()
+	}
+	b.background.Add(2)
 	guard.Go("chat/reconciler", func() {
 		defer b.background.Done()
 		superviseResident(ctx, b.reconciler.Serve, residentRestartBackoff, residentHealthyRun, func(body string) {
@@ -2298,7 +2412,17 @@ func firstNonEmptyString(values ...string) string {
 	return ""
 }
 
+// aforgeHomeEnv moves the whole home — graph, workspace, craft, settings, the
+// resident lease — somewhere else in one word. Every path in the product is
+// derived from the database's directory, so this is the only place it has to be
+// said, and it is what lets a harness or a one-shot run against a home of its
+// own without a flag on every command.
+const aforgeHomeEnv = "AFORGE_HOME"
+
 func defaultChatDB() string {
+	if home := strings.TrimSpace(os.Getenv(aforgeHomeEnv)); home != "" {
+		return filepath.Join(home, "graph.db")
+	}
 	home, err := os.UserHomeDir()
 	if err != nil {
 		return filepath.Join(".aforge", "graph.db")
@@ -2495,10 +2619,16 @@ func medianProfileCost(measured *profile.Profile) float64 {
 // question and the hold are both durable, so a restart rebuilds the watch from
 // the graph rather than from anything kept here.
 type consentDesk struct {
-	graph   *store.Store
-	mu      sync.Mutex
-	waiting map[string]int64
-	wake    chan struct{}
+	graph *store.Store
+	// headless is the answer given by a desk with nobody standing at it. A
+	// durable question asked where no one can read it is a job that waits
+	// forever, so a one-shot run decides at this exact point instead — approve
+	// and carry on, or refuse with the price it refused — and the question is
+	// never asked. Nil is the ordinary desk.
+	headless func(store.Node, planEstimate) bool
+	mu       sync.Mutex
+	waiting  map[string]int64
+	wake     chan struct{}
 }
 
 func newConsentDesk(graph *store.Store) *consentDesk {
@@ -2551,6 +2681,16 @@ func (d *consentDesk) gate(settings config.Config, measured *profile.Profile, no
 	estimate, priced := estimateJob(d.graph, measured, root.ID)
 	if !priced || estimate.Dollars < settings.PlanConsentUSD {
 		return false
+	}
+	if d.headless != nil {
+		if d.headless(root, estimate) {
+			return false
+		}
+		// Refused. The hold is what makes the refusal cost nothing: the claim
+		// is released, no worker has said a word, and the driver above reports
+		// the price rather than paying it.
+		d.hold(root)
+		return true
 	}
 	seq, err := d.ask(root, estimate)
 	if err != nil {
