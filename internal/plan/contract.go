@@ -168,8 +168,18 @@ func Contracts(ctx context.Context, client Completer, graph *Graph, playbook Con
 // person who asked — what they open, what they read, what would make them say it
 // is not done. Without the line the sink reads as a filing step and gets a
 // filing method.
+//
+// The second sentence is the same lesson one level further in. A method that
+// knows this job is the deliverable can still describe a way of *assembling*
+// one — read the inputs, reconcile them, record the result — and a merge run to
+// that method ends with an account of the merging. So the line says what the
+// method must ask for in the end: the thing written out, here, in the agent's
+// own last message.
 const contractDeliverableLine = "This job IS the deliverable: every other result arrives here as material, and what " +
-	"this agent produces is the whole of what the person who asked will read.\n"
+	"this agent produces is the whole of what the person who asked will read. The method must therefore end by " +
+	"telling the agent to write that whole thing out in its own final message — the merged result, the figures, " +
+	"the verdict, in full — and never to file it somewhere and name the place, describe how the material was " +
+	"combined, or report that the assembly is finished.\n"
 
 func writeContract(ctx context.Context, client Completer, shared string, node Node, playbook string, deliverable bool) (string, *ai.Usage, error) {
 	var target strings.Builder

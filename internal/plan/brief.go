@@ -238,8 +238,15 @@ func (g *Graph) deliverableLine(nodeID int) string {
 // round resolves it once and spends the walk once instead of per node.
 func deliverableLineFor(owner int, label string, nodeID int) string {
 	if owner == nodeID {
+		// Owning it and handing it over are two different facts, and only the
+		// first used to be stated. An agent told it owns the deliverable and
+		// nothing more can own it into a file and reply with the path, which
+		// reads as ownership and delivers nothing — so the instruction is told
+		// to say where the finished thing has to appear.
 		return "This node owns the final deliverable the goal asks for: it is the only " +
-			"one that produces it, and the other results arrive here as inputs.\n"
+			"one that produces it, and the other results arrive here as inputs. Tell it to put that " +
+			"finished deliverable in its own reply, written out in full, rather than describing it or " +
+			"saying where it can be found.\n"
 	}
 	return fmt.Sprintf("The final deliverable the goal asks for — whatever single file, report or "+
 		"document it names — is produced by %s, not here. This node produces its own result "+
