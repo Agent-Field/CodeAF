@@ -27,6 +27,12 @@ func (s *Store) AddEdge(from, to string, kind EdgeKind) error {
 	if from == to {
 		return fmt.Errorf("add edge: %w: self-edge %q", ErrInvalid, from)
 	}
+	// The same invariant the splice path enforces, on the path that adds a
+	// dependency after admission: the permanent spine is Running by
+	// construction, so waiting on it is waiting forever.
+	if from == RootID {
+		return fmt.Errorf("add edge: %w: the permanent spine never settles and cannot be waited on", ErrInvalid)
+	}
 	tx, err := s.db.Begin()
 	if err != nil {
 		return fmt.Errorf("add edge: %w", err)
