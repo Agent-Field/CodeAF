@@ -2,6 +2,7 @@ package tui
 
 import (
 	"fmt"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -241,7 +242,7 @@ func TestCharterCardAnatomyActionsHistoryAndEsc(t *testing.T) {
 		"expiry · never",
 		"firing history",
 		"15¢ · Three review notes delivered.",
-		"▸ pause", "▸ resume", "▸ retire", "▸ edit cadence",
+		"▸ pause", "▸ retire", "▸ edit cadence",
 	} {
 		if !strings.Contains(card, want) {
 			t.Fatalf("charter card is missing %q:\n%s", want, card)
@@ -281,14 +282,118 @@ func TestCharterCardAnatomyActionsHistoryAndEsc(t *testing.T) {
 		t.Fatalf("charter action requests = %d, want 1", len(backend.requested))
 	}
 	request := backend.requested[0]
-	if request.Kind != store.CommandAmend || request.Target != "pr-watch" || request.Instruction != "pause" {
+	if request.Kind != store.CommandCharterPause || request.Target != "pr-watch" {
 		t.Fatalf("unexpected charter command request: %#v", request)
+	}
+	if !strings.Contains(request.Instruction, "pause") {
+		t.Fatalf("charter command lost its evidence: %q", request.Instruction)
 	}
 
 	_, _ = model.Update(tea.KeyMsg{Type: tea.KeyEsc})
 	if model.charterCardID != "" || !model.graphOpen || model.focus != focusGraph {
 		t.Fatalf("esc did not return from charter card to rail: charter=%q open=%v focus=%v",
 			model.charterCardID, model.graphOpen, model.focus)
+	}
+}
+
+// liveCharterBackend reads from the fake snapshot and writes to a real store,
+// because the shape of a request proves nothing: every card action used to
+// pass its own assertion and be rejected by validation the moment it reached
+// the graph.
+type liveCharterBackend struct {
+	*fakeBackend
+	graph *store.Store
+}
+
+func (b *liveCharterBackend) RequestCommand(command store.Command) (store.Command, error) {
+	return b.graph.RequestCommand(command)
+}
+
+func TestEveryCharterCardActionSurvivesRealStoreValidation(t *testing.T) {
+	now := time.Date(2026, time.August, 6, 14, 0, 0, 0, time.Local)
+	graph, err := store.Open(filepath.Join(t.TempDir(), "charter-actions.db"))
+	if err != nil {
+		t.Fatalf("open store: %v", err)
+	}
+	defer graph.Close()
+
+	charter, err := store.NewCharter("pr-watch", "watch PRs on Agent-Field/aforge",
+		store.WatchSpec{Kind: store.WatchPoll, Poll: &store.PollWatch{
+			Condition: "a new pull request appeared", Cadence: 2 * time.Minute,
+		}}, "any new PR?", store.CharterAction{Template: "review the new pull request"},
+		store.CharterRails{PerFiringBudgetUSD: 0.15, MaxFiringsPerDay: 10},
+		store.CharterActive, store.Ratification{
+			Origin: store.OriginUser, SessionID: "standing", Evidence: "yes, stand this up",
+		})
+	if err != nil {
+		t.Fatalf("build charter: %v", err)
+	}
+	if err := graph.CreateCharter(charter); err != nil {
+		t.Fatalf("create charter: %v", err)
+	}
+
+	snapshot := seededStandingSnapshot(now)
+	backend := &liveCharterBackend{fakeBackend: &fakeBackend{snapshot: snapshot}, graph: graph}
+
+	// Every verb the card can show, in every state it can show it in.
+	states := []struct {
+		name  string
+		state string
+	}{{"active", "active"}, {"paused", "paused"}, {"proposed", "proposed"}}
+	for _, state := range states {
+		card := standingCharter{ID: "pr-watch", Name: "pr-watch", Watch: "every 2 minutes", State: state.state}
+		if state.state == "proposed" {
+			card.Proposed = true
+		}
+		actions := charterCardActions(card)
+		if len(actions) == 0 {
+			t.Fatalf("%s charter offers no action at all", state.name)
+		}
+		for _, action := range actions {
+			model := standingModel(backend, now, snapshot)
+			model.setSize(90, 32)
+			model.toggleGraph()
+			model.openStandingCharter("pr-watch")
+			command := model.requestCharterAction(action)
+			if command == nil {
+				t.Fatalf("%s · %s produced no command", state.name, action)
+			}
+			if action == charterCadenceAction {
+				if !model.charterEditing {
+					t.Fatalf("%s · edit cadence did not open the inline field", state.name)
+				}
+				typeIntoModel(model, "every morning")
+				if got := model.charterCadence.Value(); !strings.Contains(got, "every morning") {
+					t.Fatalf("cadence field did not take the typing: %q", got)
+				}
+				var handled bool
+				command, handled = model.updateCharterCadenceKey(tea.KeyMsg{Type: tea.KeyEnter})
+				if !handled || command == nil || model.charterEditing {
+					t.Fatalf("enter did not commit the cadence edit: handled=%v", handled)
+				}
+			}
+			result, ok := command().(charterCommandResultMsg)
+			if !ok {
+				t.Fatalf("%s · %s did not return a charter result", state.name, action)
+			}
+			if result.err != nil {
+				t.Fatalf("%s · %s was rejected by the store: %v", state.name, action, result.err)
+			}
+		}
+	}
+
+	amendments, err := graph.TargetedCommands("pr-watch", store.CommandAmend, 10)
+	if err != nil {
+		t.Fatalf("read commands: %v", err)
+	}
+	if len(amendments) > 0 {
+		t.Fatalf("a card action still journals an amendment at charter furniture: %#v", amendments[0])
+	}
+}
+
+func TestRetiredCharterOffersNoActionItCannotPerform(t *testing.T) {
+	if actions := charterCardActions(standingCharter{ID: "x", State: "retired"}); len(actions) != 0 {
+		t.Fatalf("retired charter still offers %v", actions)
 	}
 }
 

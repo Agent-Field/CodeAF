@@ -172,8 +172,11 @@ history with costs is one click deep, the full graphs two.
 ### Manage goals by talking (or clicking)
 **What**: "pause the PR watcher", "make it hourly", "stop watching PRs" —
 references resolve by searching the invariants; ambiguity asks back with
-options. The charter card offers pause/retire/edit-cadence as clicks.
-`/standing` lists all charters.
+options. The charter card offers the same verbs as clicks, and offers only
+the ones this charter's state can perform: pause or resume, retire, and edit
+cadence — which turns the row itself into a field rather than opening a
+dialog. A proposal's first row stands it up. Click and sentence journal the
+identical typed charter command. `/standing` lists all charters.
 **Tip seed**: There's no goals settings page — say "pause it" or click
 the goal's line; both end in the same journaled event.
 
