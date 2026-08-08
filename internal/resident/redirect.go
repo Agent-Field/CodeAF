@@ -320,15 +320,45 @@ func BroadcastRedirection(graph *store.Store, jobRoot, sessionID, message string
 	if err != nil {
 		return 0, err
 	}
+	informed := 0
+	for _, id := range redirectAudience(nodes, jobRoot) {
+		if _, err := graph.PostMessage(store.Message{
+			SessionID: sessionID, Role: store.RoleUser, NodeID: id,
+			Body: redirectSteerPrefix + strings.TrimSpace(message),
+		}); err != nil {
+			return informed, err
+		}
+		informed++
+	}
+	return informed, nil
+}
+
+// RedirectAudience counts who a redirection would reach if it were broadcast
+// now. It exists so the head can say how many workers are about to hear the
+// user's words in the moment the user asks, rather than waiting for the
+// reconciler to say how many did — and it shares the broadcast's own membrane
+// rather than restating it, because two copies of that rule would drift and the
+// receipt would then name a number nobody was told.
+func RedirectAudience(graph *store.Store, jobRoot string) (int, error) {
+	nodes, err := graph.Nodes()
+	if err != nil {
+		return 0, err
+	}
+	return len(redirectAudience(nodes, jobRoot)), nil
+}
+
+// redirectAudience is the membrane itself: the leaves of the job that are
+// mid-turn, minus the ones this same revision is withdrawing.
+func redirectAudience(nodes []store.Node, jobRoot string) []string {
 	ids, ok := descendants(nodes, jobRoot)
 	if !ok {
-		return 0, nil
+		return nil
 	}
 	byID := make(map[string]store.Node, len(nodes))
 	for _, node := range nodes {
 		byID[node.ID] = node
 	}
-	informed := 0
+	audience := make([]string, 0, len(ids))
 	for _, id := range ids {
 		node, present := byID[id]
 		if !present || (node.Status != store.Running && node.Status != store.Claimed) {
@@ -339,15 +369,9 @@ func BroadcastRedirection(graph *store.Store, jobRoot, sessionID, message string
 		if node.CancelRequested {
 			continue
 		}
-		if _, err := graph.PostMessage(store.Message{
-			SessionID: sessionID, Role: store.RoleUser, NodeID: id,
-			Body: redirectSteerPrefix + strings.TrimSpace(message),
-		}); err != nil {
-			return informed, err
-		}
-		informed++
+		audience = append(audience, id)
 	}
-	return informed, nil
+	return audience
 }
 
 // cutRunningWork degrades removal to the cooperative cancel control, because
