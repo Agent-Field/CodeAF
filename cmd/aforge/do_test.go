@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/Agent-Field/aforge-v2/internal/config"
+	homepkg "github.com/Agent-Field/aforge-v2/internal/home"
 	"github.com/Agent-Field/aforge-v2/internal/provider"
 	"github.com/Agent-Field/aforge-v2/internal/router"
 )
@@ -261,7 +262,7 @@ func TestBuildBrainSeparatesTheConversationFromTheWork(t *testing.T) {
 // fleet of isolated aforges through.
 func TestAforgeHomeMovesTheDefaultStore(t *testing.T) {
 	home := t.TempDir()
-	t.Setenv(aforgeHomeEnv, home)
+	t.Setenv(homepkg.EnvVar, home)
 	if got, want := defaultChatDB(), filepath.Join(home, "graph.db"); got != want {
 		t.Fatalf("default store = %q, want %q", got, want)
 	}
