@@ -148,8 +148,11 @@ type Config struct {
 	NodeBudget        int
 	DailyBudgetUSD    float64
 	PracticeBudgetUSD float64
-	PracticeIdle      time.Duration
-	BriefAfter        time.Duration
+	// PlanConsentUSD is the estimate above which a planned job asks before it
+	// starts. Zero never asks.
+	PlanConsentUSD float64
+	PracticeIdle   time.Duration
+	BriefAfter     time.Duration
 
 	// PracticeDemandPct and ProposeSkills are the learning dial. They are
 	// persisted settings with no environment pin: the surface writes them now
@@ -228,6 +231,9 @@ func Load() (Config, error) {
 		return Config{}, err
 	}
 	if config.DailyBudgetUSD, err = DailyBudgetUSDAt(config.ProfileDir); err != nil {
+		return Config{}, err
+	}
+	if config.PlanConsentUSD, err = PlanConsentUSDAt(config.ProfileDir); err != nil {
 		return Config{}, err
 	}
 	if raw := strings.TrimSpace(os.Getenv("AFORGE_REASONING")); raw != "" {
