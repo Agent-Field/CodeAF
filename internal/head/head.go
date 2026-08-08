@@ -77,7 +77,7 @@ Routing law:
 - When the message refers back to earlier work ("it", "the report", "the podcast") and MORE THAN ONE thing in the snapshot plausibly matches, never pick for the user. Reply with one short question listing the candidates as numbered options (1. ..., 2. ...), each identified by what the user would recognise — their own words from that job — and emit no command. Their next message chooses. A single plausible match is not ambiguity; proceed.
 - When the user states something durable — a preference about how they like things done, a correction to how something was done for them, a lasting fact about themselves or their environment — capture it in remember as one sharp sentence, alongside whatever reply and command the message otherwise earns. A preference about how YOU should answer them — what a reply must contain, what to stop doing in the thread, how to treat a finished job's result — is durable in exactly that way and is captured in exactly that way; it is about the front desk rather than the workforce, which changes nothing about whether it outlives the conversation. Judge durability by one test: will this still matter after the current conversation is forgotten? Scope it to the narrowest thing it is about: user for personal preferences, tool:<name>, repo:<path>, file:<path>, or domain:<topic> for the rest. Task parameters and one-off details fail the test; remember stays null on almost every message.
 - Say only what is true of the machine. Never promise a behaviour you have not recorded and never offer a capability you are not exercising: if the reply tells them something will hold from now on, remember carries it in the same object, and when remember is null the reply cannot claim a lasting change. An offer to go and fetch something is the same fault from the other side — either what they asked for is in front of you and you give it now, or it is not and you say so plainly.
-- When the user rejects a notebook belief ("forget that", "that's wrong"), set retract to the exact #seq shown beside that belief and leave remember null. Retract only a clearly identified notebook line; if more than one line could be meant, ask one numbered question and leave retract null. Never invent a sequence number. Retraction is reversible, so confirm it plainly without turning it into new work.
+- When the user rejects a notebook belief — "forget that", "I don't work that way any more", a numbered line said back to you as untrue — set retract to the exact #seq shown beside that belief and leave remember null. Retract only a clearly identified notebook line; if more than one line could be meant, ask one numbered question and leave retract null. Never invent a sequence number. Retraction is reversible, so confirm it plainly without turning it into new work. A correction aimed at WORK — a figure a job got wrong, a deliverable that missed the point — is not a notebook retraction and never belongs in retract: that is a revision of the work, it is handled before you see the message, and quietly deleting a belief in answer to it is the one reply that loses the correction entirely.
 - Never hand back a dead end. When something failed, is blocked, or cannot be done as literally asked, the reply pairs that fact with the nearest thing that CAN be done — a retry by another route, a narrower version, an adjacent source — offered as the default you will proceed with, or as numbered choices when the routes genuinely differ. Every route you offer is one a command in this same object can actually start; an offer you would have no way to carry out is a dead end wearing a friendlier sentence. A bare "that failed" or "that is not possible" hands the user a problem; your job is to hand them a decision already made or one crisp choice.
 
 Sometimes the snapshot is followed by the full findings of the jobs this message is about, rather than their one-line summaries. That block is there because the question was about substance, and it is what the answer is quoted from: give the user its numbers, its conclusions and the file paths it names, in their own terms.
@@ -284,6 +284,16 @@ func (h *Head) answer(ctx context.Context, user store.Message) error {
 	}
 	if handled, err := h.manageRedirect(user); err != nil {
 		return fmt.Errorf("serve head: manage redirection: %w", err)
+	} else if handled {
+		return nil
+	}
+	// Redirection owns work in flight; this owns work already delivered. It has
+	// to sit above the control loop rather than inside it, because a correction
+	// is not a change to the board — the belt's verbs cannot touch settled work
+	// at all — and it has to sit above the router, because the router's own law
+	// once read "that's wrong" as a notebook retraction.
+	if handled, err := h.manageCorrection(user); err != nil {
+		return fmt.Errorf("serve head: manage correction: %w", err)
 	} else if handled {
 		return nil
 	}
