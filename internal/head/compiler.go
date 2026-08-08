@@ -24,10 +24,11 @@ import (
 const compilerSystemPrompt = `You are the intent compiler for an asynchronous task graph. Apply ASSUME-AND-DECLARE.
 
 Turn the user's verbatim instruction and the current graph context into a complete execution brief. Return exactly one JSON object with this shape and no text outside it:
-{"goal":"...","scale":"lookup|task|project","builds_on":["<job id>"],"assumptions":["..."],"question":"","question_options":[{"label":"...","value":"..."}],"trial_of":0}
+{"goal":"...","title":"...","scale":"lookup|task|project","builds_on":["<job id>"],"assumptions":["..."],"question":"","question_options":[{"label":"...","value":"..."}],"trial_of":0}
 
 Rules:
 - State a clear goal that names the final deliverable, what success means, and the evidence standard that will prove it. Write success from the seat of whoever will use the result: what they will do with it the first time, and what they must observe for it to count as working. Parts of it behaving in a test harness is the builder's evidence, never theirs, and a goal that settles for it buys work that passes its own checks and fails the first real use.
+- Name the job in "title": 3 to 5 words, no quotes and no closing punctuation, judged by one test — someone who asked for this work yesterday must recognise it at a glance among unrelated jobs. Prefer the distinctive noun over the generic verb: "Mahabharata nighttime podcast" beats "Create audio content", "Org-wide star count" beats "Gather repository data". Never use the words task, job, request, or goal. It is a NAME, not a summary and not a restatement; a name that needs the goal to be understood has failed.
 - Match the shaping to the ask. Something the person will come back to and use repeatedly earns a beat on whether its shape fits that use, named in the goal; a one-shot artefact earns none — say which of the two this is and let the work be exactly as small as it is.
 - Write the goal as commander's intent: the end-state and why it matters, never one fixed method. Workers will hit obstacles no one can foresee; a goal that names the outcome lets them substitute means and still land it, while a goal that prescribes a method dies with that method.
 - No instruction compiles to impossible. When the ask looks blocked or out of reach, name what actually makes it hard — access, tooling, scale, uncertainty — and reshape around that by safe means: substitute an available source or route for an unavailable one, split the achievable core from the blocked remainder and name both in the goal, or reach the target by approximation first and refinement after. Every such reshaping is declared in assumptions like any other default.
@@ -60,6 +61,14 @@ Be precise enough for downstream planning, but do not design the task graph your
 type Brief struct {
 	Goal        string   `json:"goal"`
 	Assumptions []string `json:"assumptions"`
+
+	// Title is the rail-sized display name for the job, produced by the one
+	// call that has already read the whole ask. It used to be a second model
+	// round-trip of its own — measured at 222-330 prompt tokens for a 5-token
+	// answer, ~0.6s of the critical path before any leaf could start — for a
+	// label nothing downstream waits on. Empty is a valid answer and the
+	// caller falls back to whatever it named jobs with before.
+	Title string `json:"title,omitempty"`
 
 	// Scale is the compiler's honest judgement of shape: "lookup" (one fact,
 	// one step), "task" (one worker end to end), or "project" (parallel parts
@@ -182,6 +191,7 @@ func (c *Compiler) Compile(ctx context.Context, instruction string, graphContext
 	}
 	brief.Goal = anchorQualityWords(anchorGoal(brief.Goal, instruction), instruction)
 	brief.Scale = normalizeScale(brief.Scale)
+	brief.Title = normalizeTitle(brief.Title)
 	brief.BuildsOn = normalizeBuildsOn(brief.BuildsOn)
 	brief.TrialOf = normalizeTrialOf(graphContext, brief.TrialOf)
 	brief.ServiceIntent = serviceIntent
@@ -315,6 +325,20 @@ func validateBrief(brief Brief) error {
 		}
 	}
 	return nil
+}
+
+// normalizeTitle takes the model's name at its word and only strips what a
+// display surface cannot use: surrounding quotes, trailing punctuation, and a
+// length no rail could show. A title that comes back empty or unusable is not
+// an error — the naming pass is a nicety and the caller has a fallback.
+func normalizeTitle(title string) string {
+	title = strings.TrimSpace(title)
+	title = strings.Trim(title, "\"'")
+	title = strings.TrimRight(title, " .!?:;,")
+	if strings.Contains(title, "\n") {
+		title = strings.TrimSpace(strings.SplitN(title, "\n", 2)[0])
+	}
+	return title
 }
 
 func anchorGoal(goal, instruction string) string {

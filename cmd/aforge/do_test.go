@@ -63,6 +63,12 @@ func TestDoRepairsARejectedDeliverableThroughTheGate(t *testing.T) {
 	if got := script.count("replan"); got == 0 {
 		t.Fatal("the gap never reached the remainder planner")
 	}
+	// The job is named by the call that already read the whole ask. A second
+	// round-trip for a five-token label was ~0.6 s of dead critical path in
+	// front of every job, and nothing downstream waits on the name.
+	if got := script.count("title"); got != 0 {
+		t.Fatalf("the naming pass ran %d times beside a compile that already named the job", got)
+	}
 	if !strings.Contains(stdout.String(), repairedAnswer) {
 		t.Fatalf("stdout does not carry the repaired deliverable:\n%s", stdout.String())
 	}
@@ -644,6 +650,7 @@ func (s *scriptedBrain) reply(body string) string {
 		// Task scale: one worker end to end, which is the shape that still
 		// earns a written working method and still faces the gate.
 		return s.say(`{"goal":"Write the release note for the parser work, including the migration steps.",` +
+			`"title":"Release note and migration",` +
 			`"scale":"task","builds_on":[],"assumptions":[],"question":"","trial_of":0}`)
 
 	case strings.Contains(body, "You write the working method for one agent"):

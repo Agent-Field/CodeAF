@@ -38,6 +38,11 @@ type Compiled struct {
 	Goal        string
 	Assumptions []string
 	Scale       string
+
+	// Title is the job's rail-sized display name, produced by the compile
+	// call itself. Empty falls back to the separate naming pass, which is
+	// what every caller without a compiler still gets.
+	Title string
 	// TrialOf is the retrieved unsettled fact this goal deliberately tests.
 	// Zero means the compiled job is ordinary work.
 	TrialOf int64
@@ -1315,7 +1320,12 @@ func (r *Reconciler) WithOverrunPlanner(dailyBudgetUSD float64, plan OverrunPlan
 // full compiled goal. Best effort by design: a titling failure costs a long
 // label, never the job.
 func (r *Reconciler) titleSubtree(ctx context.Context, subtree *store.Subtree, compiled Compiled) {
-	if r.title == nil {
+	// The compile call has already read the whole ask, so the name comes back
+	// with the goal it names and costs nothing. The separate pass survives as
+	// the fallback for a compiler that did not answer and for every caller
+	// that has no compiler at all.
+	named := strings.TrimSpace(compiled.Title)
+	if named == "" && r.title == nil {
 		return
 	}
 	for index := range subtree.Nodes {
@@ -1326,9 +1336,15 @@ func (r *Reconciler) titleSubtree(ctx context.Context, subtree *store.Subtree, c
 		if node.Title != "" && !strings.EqualFold(node.Title, "synthesis") {
 			return
 		}
-		short, err := r.title(ctx, compiled.Goal)
-		short = strings.TrimSpace(short)
-		if err != nil || short == "" {
+		short := named
+		if short == "" {
+			answered, err := r.title(ctx, compiled.Goal)
+			if err != nil {
+				return
+			}
+			short = strings.TrimSpace(answered)
+		}
+		if short == "" {
 			return
 		}
 		node.Title = clipLabel(short, 48)
