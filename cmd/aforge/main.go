@@ -50,9 +50,15 @@ func execute() (code int) {
 		}
 	}()
 	err := run()
+	var status exitStatus
 	switch {
 	case err == nil:
 		return 0
+	case errors.As(err, &status):
+		// A command that names its own exit code has already written everything
+		// it has to say to the right stream. Printing "error:" after an honest
+		// partial answer would only make it look like the answer was noise.
+		return int(status)
 	case errors.Is(err, tea.ErrProgramPanic):
 		// bubbletea catches panics in its own loop and restores the terminal
 		// before handing this back — so the screen is already the user's again
@@ -73,6 +79,8 @@ func run() error {
 	switch os.Args[1] {
 	case "chat":
 		return runChat(os.Args[2:])
+	case "do":
+		return runDo(os.Args[2:])
 	case "plan":
 		return runPlan(os.Args[2:])
 	case "revise":
@@ -108,9 +116,13 @@ const usageText = `aforge — build and revise task graphs
 
   aforge                 open the chat surface, resuming your last conversation
   aforge chat [--db path] [--session id|new]
+  aforge do   "<task>" [--db path] [--keep] [-w dir] [--timeout 900] [--json] [--yes-spend] [--model slug] [--plan-model slug]
+                         do one task and exit — the same living brain the chat runs, with nobody watching
   aforge plan "<goal>" [-o graph.json] [--json] [--brief] [--ensemble N] [--model slug] [--plan-model slug]
   aforge revise <graph.json> "<what happened>" [--done 1,2,3] [-o graph.json] [--model slug] [--plan-model slug]
   aforge run  <graph.json> [-w dir] [-j 8] [-o done.json] [--yes-spend] [--model slug] [--plan-model slug]
+                         plan and run are the static pipeline: a graph written to a file, then executed
+                         exactly as written. Kept for reading, editing, and inspecting a plan by hand.
   aforge show <graph.json>
   aforge models
   aforge notebook [--db path]
@@ -154,6 +166,7 @@ Environment:
   AFORGE_BRIEF_AFTER   4h  minimum absence before an arrival brief (0 = always)
   AFORGE_PREAUTHORIZE_SPEND  1 raises the rail without a headless stdin prompt
   AFORGE_PROFILE_DIR   where measured behaviour is kept (default ~/.aforge)
+  AFORGE_HOME          where the graph, workspace, craft and lease live (default ~/.aforge)
 
   The user-facing knobs above — budgets, rhythm, the document rung, the vision
   and media slots — are also the ` + "`/settings`" + ` sheet in the chat, which persists
