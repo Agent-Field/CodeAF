@@ -486,7 +486,7 @@ func buildChatBrain(w *chatWindow, session string, hand resident.HandoverFunc) (
 			Title:       firstLine(node.Brief),
 			Goal:        node.Provenance.Intent,
 			Brief:       withDocumentAttachmentBrief(residentDeliveryBrief(graph, node), documentPaths),
-			Contract:    planNodeContract(planNode),
+			Contract:    leafContract(plans, planNode, node),
 			OutputHint:  exec.SuggestPath(int(node.CreatedSeq), leafTitle),
 			Inputs:      inputs,
 			Steer:       steer,
@@ -1099,14 +1099,31 @@ func newVisitorCommander(path, sessionID string, graph *store.Store,
 const notebookInputTitle = "your notebook — standing preferences and lessons, not results"
 
 // planNodeContract reads the working method off the plan node when this leaf
-// belongs to a planned job. A single-leaf job, a splice and a reflex have no
-// contract, and inventing a generic one would only dilute the system message
-// they do have.
+// belongs to a planned job. A splice and a reflex have no contract, and
+// inventing a generic one would only dilute the system message they do have.
 func planNodeContract(node *plan.Node) string {
 	if node == nil {
 		return ""
 	}
 	return strings.TrimSpace(node.Contract)
+}
+
+// leafContract is the working method in force for this leaf.
+//
+// A planned job carries it on the plan node. A task-scale job has no plan node
+// at all — one leaf, spliced whole — and for as long as that was true, the
+// single most valuable half of the executor never ran for the shape of work the
+// product handles most: what done means in the user's terms, how it is
+// verified, and where to stop. It is written at splice time and handed over
+// here, once, to the leaf it was written for.
+func leafContract(plans *jobPlans, planNode *plan.Node, node store.Node) string {
+	if contract := planNodeContract(planNode); contract != "" {
+		return contract
+	}
+	if plans == nil {
+		return ""
+	}
+	return plans.takeContract(node.ID)
 }
 
 // previousAttemptInput hands the escalated attempt what the first one actually
@@ -2813,6 +2830,13 @@ func leafDeadline(budget int) time.Duration {
 type jobPlans struct {
 	mu     sync.Mutex
 	graphs map[string]plannedJob
+	// contracts holds the working method for the jobs that never earn a graph.
+	// A task-scale ask is spliced as one leaf, so there is no plan node to hang
+	// the method on and no plan to journal; the registry carries it from the
+	// splice to the moment its leaf starts and hands it over exactly once. A
+	// restart in between loses it and that leaf runs the generic loop — the
+	// same degradation a failed contract call has always had.
+	contracts map[string]string
 	// journal persists a job's structure, and hydrate reads it back. Both are
 	// nil on surfaces with no store to write to — `aforge wake` builds a
 	// registry for one bounded pass and never outlives it — and a nil pair
@@ -2956,6 +2980,34 @@ func (j *jobPlans) put(prefix string, graph *plan.Graph, root, model string, cli
 	if j.journal != nil {
 		j.journal(prefix, entry)
 	}
+}
+
+// putContract holds a one-leaf job's working method until its leaf claims it.
+func (j *jobPlans) putContract(nodeID, contract string) {
+	contract = strings.TrimSpace(contract)
+	if nodeID == "" || contract == "" {
+		return
+	}
+	j.mu.Lock()
+	defer j.mu.Unlock()
+	if j.contracts == nil {
+		j.contracts = map[string]string{}
+	}
+	j.contracts[nodeID] = contract
+}
+
+// takeContract hands the method to the leaf and forgets it. Once is enough:
+// the task struct is built one time and every retry, escalation and revision
+// pass is built from that struct, so a second reader would only be a leak.
+func (j *jobPlans) takeContract(nodeID string) string {
+	j.mu.Lock()
+	defer j.mu.Unlock()
+	contract, ok := j.contracts[nodeID]
+	if !ok {
+		return ""
+	}
+	delete(j.contracts, nodeID)
+	return contract
 }
 
 // get reads one retained job without holding the registry across whatever the
@@ -3671,6 +3723,13 @@ func planSubtree(settings config.Config, planClient, workClient *liveClient, pla
 			}
 		}
 		if compiled.Scale != head.ScaleProject {
+			// One leaf is the whole plan, and it still deserves a working
+			// method. A lookup does not: it is a question with an answer, the
+			// method for which is to answer it, and buying a call to say so
+			// would break the proportionality this whole path exists to keep.
+			if compiled.Scale == head.ScaleTask {
+				plans.putContract(prefix, taskContract(ctx, settings, planClient, history, compiled.Goal))
+			}
 			return store.Subtree{Nodes: []store.NodeSpec{{
 				ID:    prefix,
 				Brief: compiled.Goal,
@@ -3720,6 +3779,37 @@ func planSubtree(settings config.Config, planClient, workClient *liveClient, pla
 		plans.put(prefix, graph, subtreeSink(subtree), workingModel, workingClient)
 		return subtree, nil
 	}
+}
+
+// taskContract writes the working method for a job small enough to be one leaf.
+//
+// It is the same pass a planned job's leaves get, on a graph of one node, so
+// the doctrine byte in the system message is shared with every other contract
+// the machine writes and the whole thing costs exactly one call. It runs on the
+// plan slot, like every structuring call, and under the job's own run key, so
+// it lands wherever the rest of this job's structuring lands.
+//
+// The empty string is a real answer: a contract that could not be written
+// degrades to the generic loop, which is what a leaf had before this existed.
+func taskContract(ctx context.Context, settings config.Config, planClient *liveClient, history *store.Store, goal string) string {
+	if planClient == nil || strings.TrimSpace(goal) == "" {
+		return ""
+	}
+	_, structuring := planClient.Snapshot()
+	if structuring == nil {
+		return ""
+	}
+	graph := &plan.Graph{Goal: goal}
+	// Summary and nothing else: the brief the leaf will actually receive is
+	// assembled from the store at dispatch, and repeating the goal as a second
+	// field would only pay for the same words twice.
+	graph.Add(plan.Node{Kind: plan.KindWork, Summary: goal, Stage: 1})
+	usage, err := plan.Contracts(settings.Context(ctx, goal), structuring, graph, resident.ContractPlaybook(history))
+	if err != nil {
+		log.Printf("note: could not write the working method: %v", err)
+	}
+	journalPlanSpend(history, planClient, usage)
+	return strings.TrimSpace(graph.Nodes[0].Contract)
 }
 
 // subtreeSink is the one spec with no parent — the node whose landing means
