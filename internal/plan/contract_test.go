@@ -212,6 +212,56 @@ func TestAOneLeafPlanBuysNoSecondMethod(t *testing.T) {
 	}
 }
 
+// The contract call is the one structuring call every leaf makes, and it used
+// to fail on 100% of `aforge do` runs against a model the router had no
+// structured-output path to: the reply came back fenced or with a sentence in
+// front of it, the decode demanded a bare value, and stderr filled with
+// `contract "": parse response: invalid character 'B'`. The call was paid for
+// either way; the leaf then ran with no working method and nothing said so.
+// Both shapes must now produce the method.
+func TestContractSurvivesFencedAndProseWrappedReplies(t *testing.T) {
+	const method = "Run the focused checks and verify the integrated result."
+	for _, shape := range []struct {
+		name  string
+		reply string
+	}{
+		{"fenced", "```json\n{\"contract\":\"" + method + "\"}\n```"},
+		{"prose prefixed", `Based on the task, here is the working method: {"contract":"` + method + `"}`},
+	} {
+		t.Run(shape.name, func(t *testing.T) {
+			graph := contractFixture()
+			usage, err := Contracts(context.Background(), &wrappedReplyClient{reply: shape.reply}, graph, nil)
+			if err != nil {
+				t.Fatalf("Contracts(): %v", err)
+			}
+			if usage.Calls != 1 {
+				t.Fatalf("calls = %d, want 1", usage.Calls)
+			}
+			if got := graph.Nodes[0].Contract; got != method {
+				t.Fatalf("contract = %q, want %q", got, method)
+			}
+		})
+	}
+}
+
+// The prompt has to ask for what the parser now tolerates, so the tolerance is
+// the safety net rather than the plan.
+func TestContractPromptDemandsABareJSONObject(t *testing.T) {
+	for _, phrase := range []string{"bare JSON object", `{"contract"`, "no code fence"} {
+		if !strings.Contains(contractPrompt, phrase) {
+			t.Fatalf("the contract prompt never says %q", phrase)
+		}
+	}
+}
+
+type wrappedReplyClient struct {
+	reply string
+}
+
+func (c *wrappedReplyClient) CompleteWithMessages(_ context.Context, _ []ai.Message, _ ...ai.Option) (*ai.Response, error) {
+	return response(c.reply), nil
+}
+
 func contractFixture() *Graph {
 	graph := &Graph{Goal: "Repair the parser", NextID: 1}
 	graph.Add(Node{
