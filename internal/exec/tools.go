@@ -492,12 +492,11 @@ func (t *Toolbox) decaySpill(toolCallID, body string) (string, bool) {
 	return t.writeObs(fmt.Sprintf("%d-decay-%s.txt", t.nodeID, safeName(toolCallID)), body)
 }
 
-// writeObs writes one observation file and returns its workspace-relative
-// path. It is the one place spilled bytes land, shared by the size-triggered
-// spill and the decay pass.
+// writeObs writes one observation file and returns the path to name it by. It
+// is the one place spilled bytes land, shared by the size-triggered spill and
+// the decay pass.
 func (t *Toolbox) writeObs(name, content string) (string, bool) {
-	relative := filepath.Join(obsDir, name)
-	full, err := t.workspace.Resolve(relative)
+	full, shown, err := t.workspace.ScratchPath(filepath.Join(obsDir, name))
 	if err != nil {
 		return "", false
 	}
@@ -507,7 +506,7 @@ func (t *Toolbox) writeObs(name, content string) (string, bool) {
 	if err := os.WriteFile(full, []byte(content), 0o644); err != nil {
 		return "", false
 	}
-	return relative, true
+	return shown, true
 }
 
 var unsafeName = regexp.MustCompile(`[^A-Za-z0-9_-]+`)

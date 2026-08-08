@@ -597,25 +597,14 @@ func retryTokenBudget(response *ai.Response) int {
 	return budget
 }
 
-// decodeJSON reads a structured reply. The fence stripping is defensive: strict
-// schema should make it unnecessary, but a router that silently falls back to a
-// provider without structured-output support would otherwise turn a good answer
-// into a parse error.
+// decodeJSON reads a structured reply. The tolerance is not a nicety: a router
+// that silently falls back to a provider without structured-output support
+// answers in prose or behind a code fence, and this pass used to demand a bare
+// value. Every contract call on such a model failed on "invalid character 'B'"
+// — the call was paid for and the leaf ran without its working method — so the
+// decode goes through the one extractor the whole system shares.
 func decodeJSON(text string, destination any) error {
-	trimmed := strings.TrimSpace(text)
-	if trimmed == "" {
-		return errors.New("empty response")
-	}
-	if strings.HasPrefix(trimmed, "```") {
-		if start := strings.Index(trimmed, "\n"); start >= 0 {
-			trimmed = trimmed[start+1:]
-		}
-		trimmed = strings.TrimSpace(strings.TrimSuffix(strings.TrimSpace(trimmed), "```"))
-	}
-	if err := json.Unmarshal([]byte(trimmed), destination); err != nil {
-		return fmt.Errorf("parse response: %w", err)
-	}
-	return nil
+	return provider.DecodeJSONObject(text, destination)
 }
 
 // annotate turns an unusable reply into a diagnosable one. A truncated answer

@@ -55,7 +55,10 @@ Every line must be specific to this kind of work — advice that would fit any
 job ("plan first", "be thorough") is filler and wastes the agent's attention.
 
 Write as direct instruction to the agent. 120-200 words, plain prose or short
-dashes, no headings, no preamble, no mention of "the plan" or "this task".`
+dashes, no headings, no preamble, no mention of "the plan" or "this task".
+
+Answer with one bare JSON object and nothing else — {"contract": "<the method>"}
+— with no code fence around it and no sentence before or after it.`
 
 var contractSchema = json.RawMessage(`{
   "type": "object",

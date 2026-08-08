@@ -127,8 +127,7 @@ func (t *Toolbox) startBackground(ctx context.Context, command string, args map[
 	}
 
 	id := r.workspace.nextJobID()
-	relative := filepath.Join(jobsDir, fmt.Sprintf("%d.log", id))
-	full, err := r.workspace.Resolve(relative)
+	full, relative, err := r.workspace.ScratchPath(filepath.Join(jobsDir, fmt.Sprintf("%d.log", id)))
 	if err != nil {
 		return errorf("could not create background log: %v", err)
 	}

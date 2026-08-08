@@ -22,8 +22,7 @@ type tracer struct {
 }
 
 func newTracer(workspace *Workspace, nodeID int) *tracer {
-	relative := filepath.Join(obsDir, fmt.Sprintf("%d.trace.log", nodeID))
-	full, err := workspace.Resolve(relative)
+	full, _, err := workspace.ScratchPath(filepath.Join(obsDir, fmt.Sprintf("%d.trace.log", nodeID)))
 	if err != nil {
 		return &tracer{}
 	}
