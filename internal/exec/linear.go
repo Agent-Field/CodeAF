@@ -864,12 +864,45 @@ func (l *Linear) brief(task Task) string {
 	}
 	block.WriteString("Your work:\n")
 	block.WriteString(task.Brief)
-	if task.OutputHint != "" {
-		fmt.Fprintf(&block, "\n\nIf your instructions already say where the deliverable goes, that wins. "+
-			"Otherwise: a standalone document goes to %s, and work that belongs inside existing "+
-			"material goes there — never into a separate file.", task.OutputHint)
-	}
+	block.WriteString(outputClause(task))
 	return block.String()
+}
+
+// outputClause says where a file goes, and — far more often — that there is no
+// file to write.
+//
+// It used to say only the first half, to every leaf, as a standing offer: "a
+// standalone document goes to NN-title.md". Workers took the offer, because an
+// address handed to you reads as an expectation, and a run left
+// 07-pr-482-code-review.md beside 70-read-diff.md and 144-synthesis.md in the
+// person's own directory — process artifacts from nodes whose whole output was
+// consumed downstream, littered next to the one file anybody might have wanted.
+//
+// So the offer is conditioned rather than phrased away. No list of giveaway
+// words: the model judges whether the ask named a file or the content is
+// genuinely unusable as a message, which is the only honest test and the only
+// one that survives contact with work nobody anticipated.
+func outputClause(task Task) string {
+	if task.Intermediate {
+		if task.OutputHint == "" {
+			return "\n\nNothing you produce here is handed to anyone: your result is read by the work " +
+				"that comes after you, and your final message is how it travels. There is no document to write."
+		}
+		return fmt.Sprintf("\n\nNothing you produce here is handed to anyone: your result is read by the "+
+			"work that comes after you, and your final message is how it travels. Do not write a document "+
+			"for it. If the work itself needs a file — something too large to carry in a message, or notes "+
+			"you will read back — put it at %s and name that path in your final message. Work that belongs "+
+			"inside existing material still goes there.", task.OutputHint)
+	}
+	if task.OutputHint == "" {
+		return ""
+	}
+	return fmt.Sprintf("\n\nIf your instructions already say where the deliverable goes, that wins. "+
+		"Otherwise your final message is the deliverable — it is the whole of what the person will read, "+
+		"and the substance belongs in it. Write a separate document as well only when they asked for a "+
+		"file or when what you produced cannot be read as a message; it goes to %s, named in your final "+
+		"message beside the substance and never in place of it. Work that belongs inside existing material "+
+		"goes there — never into a separate file.", task.OutputHint)
 }
 
 // wrapUpAt is how much of the budget may be spent before the model is told to

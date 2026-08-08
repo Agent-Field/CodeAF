@@ -603,17 +603,19 @@ func buildBrain(w *chatWindow, session string, opts brainOptions) (*chatBrain, e
 		if title := strings.TrimSpace(node.Title); title != "" {
 			leafTitle = title
 		}
+		outputHint, intermediate := leafOutputHint(node, leafTitle, jobSpace)
 		task := exec.Task{
-			Reflex:      isReflex,
-			NodeID:      int(node.CreatedSeq),
-			StoreNodeID: node.ID,
-			Title:       firstLine(node.Brief),
-			Goal:        node.Provenance.Intent,
-			Brief:       withDocumentAttachmentBrief(residentDeliveryBrief(graph, node), documentPaths),
-			Contract:    leafContract(plans, planNode, node),
-			OutputHint:  exec.SuggestPath(int(node.CreatedSeq), leafTitle),
-			Inputs:      inputs,
-			Steer:       steer,
+			Reflex:       isReflex,
+			NodeID:       int(node.CreatedSeq),
+			StoreNodeID:  node.ID,
+			Title:        firstLine(node.Brief),
+			Goal:         node.Provenance.Intent,
+			Brief:        withDocumentAttachmentBrief(residentDeliveryBrief(graph, node), documentPaths),
+			Contract:     leafContract(plans, planNode, node),
+			OutputHint:   outputHint,
+			Intermediate: intermediate,
+			Inputs:       inputs,
+			Steer:        steer,
 			Control: func() exec.ControlAction {
 				control, err := graph.Control(node.ID)
 				if err != nil {
@@ -1410,6 +1412,37 @@ func residentDeliveryBrief(graph *store.Store, node store.Node) string {
 		brief = resident.VoicePrompt(graph, node.Brief, node.Provenance.Intent, node.Brief)
 	}
 	return withTasteBrief(graph, brief)
+}
+
+// leafOutputHint decides where, if anywhere, a leaf is invited to write a file,
+// and whether it is working for the person or for the work that comes after it.
+//
+// The invitation was the defect. Every leaf was handed a numbered path in the
+// workspace, so a single job left 07-pr-482-code-review.md, 52-write-complete-
+// review.md, 70-read-diff.md, 144-low-findings.md, 144-synthesis.md and
+// 216-assemble-review.md in the person's own directory: an offered address
+// reads as an expectation, and most of those nodes were producing a handoff
+// nobody would ever open.
+//
+// Who the deliverable belongs to is not a guess. It is the law the delivery
+// gate and the announcement already run on — a job root's result is what the
+// person reads, everything under it is a handoff — so the workspace path is
+// offered to the root alone. An intermediate leaf is pointed at the run's own
+// scratch instead, which for an errand working in someone's project is not
+// their directory at all.
+func leafOutputHint(node store.Node, title string, space *exec.Workspace) (hint string, intermediate bool) {
+	suggested := exec.SuggestPath(int(node.CreatedSeq), title)
+	if node.Parent == store.RootID {
+		return suggested, false
+	}
+	// The shown spelling, not the one on disk: it is absolute exactly when
+	// scratch has been moved out of the workspace, which is the only case where
+	// a relative path would name nothing the worker could open.
+	_, shown, err := space.ScratchPath(suggested)
+	if err != nil {
+		return "", true
+	}
+	return shown, true
 }
 
 // withTasteBrief puts settled taste in front of every worker, not only the one

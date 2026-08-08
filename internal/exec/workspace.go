@@ -114,6 +114,17 @@ func (w *Workspace) Resolve(path string) (string, error) {
 				return filepath.Join(w.root, relative), nil
 			}
 		}
+		// Scratch is the run's own directory and a legitimate destination when
+		// it has been moved out of the workspace. An intermediate leaf is
+		// handed a path under it precisely so its working files stay out of a
+		// person's project; refusing the path we handed out would send the
+		// file straight back beside their work.
+		if w.scratch != w.root {
+			if relative, err := filepath.Rel(w.scratch, cleaned); err == nil &&
+				relative != ".." && !strings.HasPrefix(relative, ".."+string(os.PathSeparator)) {
+				return filepath.Join(w.scratch, relative), nil
+			}
+		}
 		return "", fmt.Errorf("path %q is outside the workspace %s; stay within it", path, w.root)
 	}
 	if cleaned == ".." || strings.HasPrefix(cleaned, ".."+string(os.PathSeparator)) {
