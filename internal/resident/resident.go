@@ -193,6 +193,7 @@ type Reconciler struct {
 	standingWatch   StandingWatch
 	craft           *CraftRunner
 	craftMind       *CraftMind
+	resolveModel    ModelResolveFunc
 	proposeCharters bool
 	dailyBudgetUSD  float64
 	practiceEnabled bool
@@ -1036,10 +1037,35 @@ func (r *Reconciler) unfinishedSource(command store.Command) string {
 		return ""
 	}
 	node, ok, err := r.store.Node(target)
-	if err != nil || !ok || node.Group == ReflexGroup || terminal(node.Status) {
+	if err != nil || !ok || node.Group == ReflexGroup {
 		return ""
 	}
+	// A correction is the one splice whose target is supposed to be over. The
+	// user is not saying "this arrived beside live work", they are saying the
+	// delivered thing is wrong — so the settled job is the strongest
+	// continuity source there is, and refusing it left the revision with no
+	// builds_on edge and therefore no sight of what it was revising.
+	if terminal(node.Status) {
+		if !IsCorrection(command.Instruction) {
+			return ""
+		}
+		return node.ID
+	}
 	return node.ID
+}
+
+// CorrectionMarker is the head's mark on a splice that revises the work it
+// targets. It is written here as well as where the head mints it because it is
+// a wire form between two halves of the system — the same reason the head
+// writes the craft-consent option codes out twice — and because the resident
+// cannot import the head: the head already imports the resident for cue
+// extraction, so the dependency runs one way only.
+const CorrectionMarker = "Correcting delivered work:"
+
+// IsCorrection reports that this splice is a revision of the job it targets
+// rather than new work that merely follows one.
+func IsCorrection(instruction string) bool {
+	return strings.Contains(instruction, CorrectionMarker)
 }
 
 func prependBuildsOn(first string, rest []string) []string {
@@ -1817,6 +1843,35 @@ func (r *Reconciler) redirectBlock(node store.Node) string {
 		"asked for mid-flight is the user's standard stated out loud. Record the standard, not the episode.]"
 }
 
+// correctionBlock renders what the user said when they rejected a delivery.
+//
+// The distiller's prompt asks for exactly this — the user's correction — and
+// has never had a wire to it. A redirect is the standard stated against work in
+// progress; a correction is the standard stated against a finished deliverable
+// the user has actually read, which is stronger still, because they are not
+// guessing at what is coming, they are looking at it.
+//
+// The words come off the job's own intent rather than out of a command scan:
+// the head writes the user's verbatim sentence in front of its deterministic
+// block, and the splice carries that whole instruction as the intent, so the
+// critique is already durable on this node. TargetedCommands would find the
+// same text one join further away.
+func correctionBlock(node store.Node) string {
+	intent := node.Provenance.Intent
+	if !IsCorrection(intent) {
+		return ""
+	}
+	words := strings.TrimSpace(intent[:strings.Index(intent, CorrectionMarker)])
+	if words == "" {
+		return ""
+	}
+	return "[The user read the earlier delivery and said it was wrong, in their own words:\n- " +
+		clipBlock(words, redirectDistillLineBytes) + "\n" +
+		"This job is the corrected version. The difference between what was delivered and what they " +
+		"asked for after reading it is the user's standard, stated against something they could see. " +
+		"Record the standard, not the episode.]"
+}
+
 const (
 	// redirectDistillBytes bounds the mid-run correction block.
 	redirectDistillBytes = 600
@@ -1844,6 +1899,10 @@ func (r *Reconciler) distillJob(ctx context.Context, node store.Node, failed boo
 		revealedGap = true
 		outcome += "\n\n[This job continued or revised earlier delivered work:\n" + prior +
 			"When the new instruction reworks an earlier delivery, the difference between them is evidence of the user's real standard — record the standard, not the episode.]"
+	}
+	if correction := correctionBlock(node); correction != "" {
+		revealedGap = true
+		outcome += "\n\n" + correction
 	}
 	if redirect := r.redirectBlock(node); redirect != "" {
 		revealedGap = true

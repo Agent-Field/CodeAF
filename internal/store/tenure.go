@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"time"
 )
 
 type charterFiringProposalPayload struct {
@@ -82,7 +83,8 @@ func (s *Store) ProposeCharterFiring(id string, wakeSeq int64, intent string) (b
 		return false, nil
 	}
 	payload := charterFiringProposalPayload{WakeSeq: wakeSeq, Intent: bounded(intent, MaxDigestBytes)}
-	if _, _, err := appendEvent(tx, id, EventCharterFiringProposed, payload); err != nil {
+	_, proposedAt, err := appendEvent(tx, id, EventCharterFiringProposed, payload)
+	if err != nil {
 		return false, err
 	}
 	body := fmt.Sprintf("I would have done %s now — approve? You can also always allow this.", intent)
@@ -92,8 +94,13 @@ func (s *Store) ProposeCharterFiring(id string, wakeSeq int64, intent string) (b
 		{Label: "always allow", Value: "charter:always:" + id + ":" + strconv.FormatInt(wakeSeq, 10)},
 		{Label: "never", Value: "charter:never:" + id + ":" + strconv.FormatInt(wakeSeq, 10)},
 	}
+	// The window makes silence answerable. Without it a proposal nobody ever
+	// looked at pinned the wake open forever, so the charter could neither fire
+	// nor move on to its next due moment and the ladder simply stopped — the
+	// one response the ladder could not read was the most common one.
 	question := agentQuestionPayload{
 		Text: body, OriginCharterID: id, Urgency: QuestionNextNaturalMoment, Options: options,
+		ExpiresAt: proposedAt.Add(ProbationProposalWindow),
 	}
 	questionSeq, questionAt, err := appendEvent(tx, id, EventAgentQuestionQueued, question)
 	if err != nil {
@@ -118,6 +125,88 @@ func (s *Store) ProposeCharterFiring(id string, wakeSeq int64, intent string) (b
 		return false, err
 	}
 	return true, nil
+}
+
+// ProbationProposalWindow is how long "I would have done X now — approve?"
+// stands before silence is read as a no.
+//
+// The number is the same reasoning as a clarifying question's window and lands
+// on the same answer: long enough to survive a night away from the machine, so
+// a proposal made at 09:00 is still approvable when the user sits down at
+// 08:00 the next morning, and short enough that yesterday's moment has not
+// quietly become the day after tomorrow's.
+const ProbationProposalWindow = 20 * time.Hour
+
+// CharterFiringRefusals counts every firing this charter proposed and did not
+// get: explicit declines, and proposals that stood past their window with no
+// answer. Both are the user saying no; one of them just costs less to say.
+//
+// The ladder measured whether work completed and never whether it mattered, so
+// a watch the user waved away four times could still be promoted to
+// unsupervised firing on its next three approvals — the refusals reset the
+// consecutive run and left no other trace. This is that trace.
+func (s *Store) CharterFiringRefusals(id string) (int, error) {
+	tx, err := s.db.BeginTx(context.Background(), nil)
+	if err != nil {
+		return 0, fmt.Errorf("count charter firing refusals: %w", err)
+	}
+	defer tx.Rollback()
+	return charterFiringRefusalsTx(tx, id)
+}
+
+func charterFiringRefusalsTx(tx *sql.Tx, id string) (int, error) {
+	var declined, lapsed int
+	if err := tx.QueryRow(`SELECT COUNT(*) FROM events WHERE node_id=? AND kind=?`,
+		id, EventCharterFiringDeclined).Scan(&declined); err != nil {
+		return 0, fmt.Errorf("count charter firing declines: %w", err)
+	}
+	if err := tx.QueryRow(`SELECT COUNT(*) FROM agent_questions
+		WHERE origin_charter_id=? AND status=?`, id, QuestionExpired).Scan(&lapsed); err != nil {
+		return 0, fmt.Errorf("count charter firing lapses: %w", err)
+	}
+	return declined + lapsed, nil
+}
+
+// LapsedCharterFiringProposal reports whether the proposal standing on this
+// wake has run past its window unanswered. It is the read the watch pass makes
+// before re-offering a firing nobody responded to.
+func (s *Store) LapsedCharterFiringProposal(id string, wakeSeq int64, now time.Time) (bool, error) {
+	var timestamp string
+	err := s.db.QueryRow(`SELECT ts FROM events WHERE node_id=? AND kind=?
+		AND json_extract(payload, '$.wake_seq')=? ORDER BY seq DESC LIMIT 1`,
+		id, EventCharterFiringProposed, wakeSeq).Scan(&timestamp)
+	if errors.Is(err, sql.ErrNoRows) {
+		return false, nil
+	}
+	if err != nil {
+		return false, fmt.Errorf("read charter firing proposal: %w", err)
+	}
+	at, err := parseTime(timestamp)
+	if err != nil {
+		return false, fmt.Errorf("read charter firing proposal: %w", err)
+	}
+	return !now.Before(at.Add(ProbationProposalWindow)), nil
+}
+
+// CharterHygieneAsked mirrors ServiceHygieneAsked exactly: the durable question
+// is the memory, and asking twice about the same watch is what it prevents.
+func (s *Store) CharterHygieneAsked(charterID string) (bool, error) {
+	var asked bool
+	err := s.db.QueryRow(`SELECT EXISTS(
+		SELECT 1 FROM agent_questions, json_each(agent_questions.options)
+		WHERE json_extract(json_each.value, '$.value') = ?)`,
+		CharterHygieneKeepValue(strings.TrimSpace(charterID))).Scan(&asked)
+	if err != nil {
+		return false, fmt.Errorf("read charter hygiene memory: %w", err)
+	}
+	return asked, nil
+}
+
+// CharterHygieneKeepValue is the durable option value that marks a watch as
+// already questioned. The stop half deliberately reuses the ordinary retire
+// code, so the answer travels the route that already exists.
+func CharterHygieneKeepValue(charterID string) string {
+	return "charter:hygiene-keep:" + charterID
 }
 
 // CharterFiringApproved reports the durable one-wake authorization used to
@@ -332,10 +421,24 @@ func (s *Store) RecordCharterFiringOutcome(assessment CharterFiringAssessment, t
 		return false, err
 	}
 
-	if assessment.Success && charter.Autonomy == CharterProbation && green >= tenureAfter {
+	// Every refusal raises the bar rather than merely resetting the run. A
+	// watch the user keeps waving away is not one they want handled unasked,
+	// however cleanly the firings they did approve happened to complete, and
+	// the bar is the only place that judgment can live: mechanical success is
+	// all AssessCharterFiring can see. The rise is one firing per refusal, so
+	// a watch that is genuinely wanted still earns its tenure — it just has to
+	// earn back what it spent.
+	refusals, err := charterFiringRefusalsTx(tx, assessment.CharterID)
+	if err != nil {
+		return false, err
+	}
+	if assessment.Success && charter.Autonomy == CharterProbation && green >= tenureAfter+refusals {
+		reason := fmt.Sprintf("%d consecutive approved and verified-green firings", green)
+		if refusals > 0 {
+			reason += fmt.Sprintf(" against %d refused", refusals)
+		}
 		promotion := charterAutonomyPayload{From: CharterProbation, To: CharterTenured,
-			Reason:       fmt.Sprintf("%d consecutive approved and verified-green firings", green),
-			GreenFirings: green, Demotions: charter.Demotions}
+			Reason: reason, GreenFirings: green, Demotions: charter.Demotions}
 		seq, _, err := appendEvent(tx, assessment.CharterID, EventCharterPromoted, promotion)
 		if err != nil {
 			return false, err
