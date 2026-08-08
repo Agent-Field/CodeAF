@@ -60,7 +60,7 @@ func TestTheBackstageListsNameTheWordsThatActuallyLeak(t *testing.T) {
 			"the control-loop prompt": controlSystemPrompt,
 			"the revision prompt":     revisionVoicePrompt,
 		} {
-			if !containsWord(prompt, word) {
+			if !promptCarriesWord(prompt, word) {
 				t.Errorf("%s never tells the model to keep %q backstage", name, word)
 			}
 		}
@@ -72,7 +72,7 @@ func TestTheBackstageListsNameTheWordsThatActuallyLeak(t *testing.T) {
 	}
 }
 
-func containsWord(text, word string) bool {
+func promptCarriesWord(text, word string) bool {
 	return regexp.MustCompile(`(?i)\b` + regexp.QuoteMeta(word) + `\b`).MatchString(text)
 }
 
