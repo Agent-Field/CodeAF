@@ -121,6 +121,19 @@ type brainOptions struct {
 	// workspaceRoot overrides where jobs work. Empty is the store's own
 	// workspace directory, which is what a window has always used.
 	workspaceRoot string
+	// sharedWorkspace makes every node work directly in workspaceRoot instead
+	// of in a per-job subdirectory beneath it, and moves the harness's own
+	// scratch out of it entirely.
+	//
+	// It is what an errand selects. A window hosts many unrelated jobs and
+	// gives each one its own directory so they cannot trample each other; an
+	// errand IS one job, aimed at a directory a person named, and the only
+	// correct reading of "fix the bug in intervals.py -w ~/project" is that the
+	// agent works in ~/project — opening the file that is there, editing it in
+	// place, the way every other CLI agent does. Under the per-job layout it
+	// started in an empty ~/project/task-2 instead, could not see the file it
+	// was sent to fix, and invented one.
+	sharedWorkspace bool
 	// model and planModel are the per-run slot overrides. They outrank both the
 	// environment and the persisted picker, because a flag is the most recent
 	// thing the person said.
@@ -282,6 +295,14 @@ func buildBrain(w *chatWindow, session string, opts brainOptions) (*chatBrain, e
 	}
 	if err := os.MkdirAll(workspaceRoot, 0o700); err != nil {
 		return nil, brain.abandon(fmt.Errorf("create chat workspace: %w", err))
+	}
+	// A shared workspace belongs to the person rather than to the run, so the
+	// machinery that would otherwise pile up beside their files — spilled
+	// observations, turn traces, background job logs — is sent to the store's
+	// own directory, which for a one-shot evaporates with it.
+	scratchRoot := ""
+	if opts.sharedWorkspace {
+		scratchRoot = filepath.Join(filepath.Dir(path), "scratch")
 	}
 
 	// The lease proves that no live resident can still own a claim in this DB.
@@ -451,10 +472,21 @@ func buildBrain(w *chatWindow, session string, opts brainOptions) (*chatBrain, e
 		// many unrelated jobs, and continuity between them travels through
 		// the graph as digests and absolute paths, never through a shared
 		// folder they could trample.
-		jobDir := filepath.Join(workspaceRoot, jobIDOf(graph, node))
+		//
+		// An errand is the one case with nothing to trample. It is a single job
+		// pointed at a directory somebody named, every node of it — leaves,
+		// gate-bought extensions, overrun continuations — shares that directory,
+		// and the files already in it are the work.
+		jobDir := workspaceRoot
+		if !opts.sharedWorkspace {
+			jobDir = filepath.Join(workspaceRoot, jobIDOf(graph, node))
+		}
 		jobSpace, err := exec.NewWorkspace(jobDir)
 		if err != nil {
 			return resident.ExecResult{}, err
+		}
+		if scratchRoot != "" {
+			jobSpace = jobSpace.WithScratch(scratchRoot)
 		}
 		staged, err := exec.StageAttachments(jobSpace, attachmentStoreRoot(path), node.Provenance.Attachments)
 		if err != nil {
@@ -3786,19 +3818,18 @@ func judgeDeliverable(ctx context.Context, settings config.Config, client *liveC
 		provider.Report(judgeCtx, provider.VerdictProviderFailure)
 		return deliverableJudgment{Pass: true}
 	}
-	text := strings.TrimSpace(response.Text())
-	start, end := strings.Index(text, "{"), strings.LastIndex(text, "}")
-	if start < 0 || end <= start {
-		provider.Report(judgeCtx, provider.VerdictFormatFailure)
-		return deliverableJudgment{Pass: true}
-	}
 	var verdict struct {
 		Pass      bool   `json:"pass"`
 		Gaps      string `json:"gaps"`
 		Quote     string `json:"quote"`
 		Exercised bool   `json:"exercised"`
 	}
-	if err := json.Unmarshal([]byte(text[start:end+1]), &verdict); err != nil {
+	// One extractor for every structured reply in the system. This used to hold
+	// its own — first brace to last brace — which is tolerant in the same
+	// direction and wrong in one: a judge that wrote a sentence containing a
+	// brace after its object swallowed the sentence into the JSON and failed the
+	// parse, and a failed parse here is a silent pass.
+	if err := provider.DecodeJSONObject(response.Text(), &verdict); err != nil {
 		provider.Report(judgeCtx, provider.VerdictFormatFailure)
 		return deliverableJudgment{Pass: true}
 	}

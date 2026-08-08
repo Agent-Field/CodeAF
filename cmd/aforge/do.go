@@ -43,6 +43,12 @@ const (
 	// looks at the graph when the journal has moved, so an idle beat is one
 	// integer read.
 	settlementBeat = 200 * time.Millisecond
+	// quietBeat is how long a run may say nothing before it has to account for
+	// itself. A wedged run and a run thinking hard look identical from outside,
+	// and a person watched a blank terminal for the full fifteen minutes of the
+	// wall before being handed exit 2. This is the cheapest possible fix for
+	// that: a structural read of the graph, no model call, one line.
+	quietBeat = 30 * time.Second
 	// headlessSurface names this lens wherever a surface is recorded.
 	headlessSurface = "do"
 )
@@ -79,7 +85,7 @@ func runDo(args []string) error {
 	flags := flag.NewFlagSet("do", flag.ContinueOnError)
 	database := flags.String("db", "", "work in this durable store instead of a private one")
 	keep := flags.Bool("keep", false, "keep the private store instead of deleting it on the way out")
-	workspace := flags.String("w", "", "where the job's files land (default: inside the private store)")
+	workspace := flags.String("w", "", "the directory to work in, edited in place (default: the current directory)")
 	timeout := flags.Int("timeout", defaultDoSeconds, "hard wall in seconds")
 	asJSON := flags.Bool("json", false, "print one machine-readable object instead of the deliverable")
 	yesSpend := flags.Bool("yes-spend", false, "approve a plan whose price crosses the consent threshold")
@@ -229,18 +235,15 @@ func headlessBrain(window *chatWindow, session string, request doRequest,
 	if releaseLease != nil {
 		release = func() { _ = releaseLease() }
 	}
-	workspaceRoot := strings.TrimSpace(request.workspace)
-	if workspaceRoot != "" {
-		absolute, err := filepath.Abs(workspaceRoot)
-		if err != nil {
-			release()
-			return nil, nil, err
-		}
-		workspaceRoot = absolute
+	workspaceRoot, err := errandWorkspace(request.workspace)
+	if err != nil {
+		release()
+		return nil, nil, err
 	}
 	brain, err := buildBrain(window, session, brainOptions{
 		headless: true, ephemeral: ephemeral, workspaceRoot: workspaceRoot,
-		model: request.model, planModel: request.planModel,
+		sharedWorkspace: true,
+		model:           request.model, planModel: request.planModel,
 		consent: consent, newClient: request.newClient,
 	})
 	if err != nil {
@@ -248,6 +251,33 @@ func headlessBrain(window *chatWindow, session string, request doRequest,
 		return nil, nil, err
 	}
 	return brain, release, nil
+}
+
+// errandWorkspace resolves the directory this errand works in.
+//
+// It is a directory, not a place to file output. Every other agent a person
+// runs from a terminal treats the directory it was pointed at as the work —
+// it opens what is there, edits it in place, and leaves nothing behind that
+// the person did not ask for — and an errand that filed its results into a
+// freshly created subdirectory was wrong in the two ways that matter: what it
+// wrote landed somewhere nobody looks, and what it was sent to read was not
+// there to be read, so it wrote a plausible file from nothing instead.
+//
+// The default is the current directory for the same reason: that is what every
+// CLI in this shape means by saying nothing at all.
+func errandWorkspace(named string) (string, error) {
+	if trimmed := strings.TrimSpace(named); trimmed != "" {
+		expanded, err := expandHome(trimmed)
+		if err != nil {
+			return "", err
+		}
+		return filepath.Abs(expanded)
+	}
+	here, err := os.Getwd()
+	if err != nil {
+		return "", fmt.Errorf("find the current directory: %w", err)
+	}
+	return here, nil
 }
 
 // headlessStore decides where this errand lives. The default is a private home
@@ -298,11 +328,30 @@ type settlementWatch struct {
 
 	watermark int64
 	seen      map[string]store.Status
+	// structured records that the "understood" line has been said. Without it
+	// the first thing stderr ever carried was a leaf changing status, so a run
+	// that compiled and then hung showed nothing at all.
+	structured bool
+	// moved and said are the two clocks the quiet line reads: when the journal
+	// last changed, and when this watcher last admitted to being alive.
+	lastMoved time.Time
+	lastSaid  time.Time
+	// quiet is how long silence may last. Zero is quietBeat; a test names a
+	// shorter one rather than sitting through half a minute of nothing.
+	quiet time.Duration
+}
+
+func (w *settlementWatch) quietInterval() time.Duration {
+	if w.quiet > 0 {
+		return w.quiet
+	}
+	return quietBeat
 }
 
 func (w *settlementWatch) wait(ctx context.Context) (headlessOutcome, error) {
 	ticker := time.NewTicker(settlementBeat)
 	defer ticker.Stop()
+	w.lastMoved, w.lastSaid = time.Now(), time.Now()
 	for {
 		select {
 		case estimate := <-w.refused:
@@ -335,8 +384,12 @@ func (w *settlementWatch) wait(ctx context.Context) (headlessOutcome, error) {
 				return headlessOutcome{}, err
 			}
 			if !moved {
+				if err := w.saySomethingIfQuiet(); err != nil {
+					return headlessOutcome{}, err
+				}
 				continue
 			}
+			w.lastMoved = time.Now()
 			outcome, settled, err := w.check()
 			if err != nil {
 				return headlessOutcome{}, err
@@ -455,6 +508,15 @@ func (w *settlementWatch) report(nodes []store.Node) {
 	if w.seen == nil {
 		w.seen = make(map[string]store.Status, len(nodes))
 	}
+	// The ask becoming work is the first thing that happens and used to be the
+	// one thing never said. Everything below prints on a status change, and a
+	// node's first status is Pending, which is skipped — so a run whose leaf was
+	// never claimed printed nothing whatsoever for the whole of its life.
+	if !w.structured {
+		w.structured = true
+		fmt.Fprintf(w.progress, "  · understood · %s %s\n",
+			plural(len(nodes), "task"), time.Since(w.started).Round(time.Second))
+	}
 	for _, node := range nodes {
 		if previous, ok := w.seen[node.ID]; ok && previous == node.Status {
 			continue
@@ -466,6 +528,52 @@ func (w *settlementWatch) report(nodes []store.Node) {
 		fmt.Fprintf(w.progress, "  %s %-28s %s\n", statusMark(node.Status),
 			clip(firstLine(nodeDisplay(node)), 28), time.Since(w.started).Round(time.Second))
 	}
+}
+
+// saySomethingIfQuiet accounts for a run that has stopped producing evidence.
+//
+// It is a structural read and nothing else: how many of this errand's nodes are
+// waiting, how many are running, and how long since anything last happened. A
+// run thinking hard and a run wedged forever emit exactly the same silence, and
+// the only honest difference a watcher can offer is to name what the silence is
+// standing on. Nothing here spends money and nothing here is a new flag.
+func (w *settlementWatch) saySomethingIfQuiet() error {
+	interval := w.quietInterval()
+	if w.progress == nil || time.Since(w.lastMoved) < interval || time.Since(w.lastSaid) < interval {
+		return nil
+	}
+	w.lastSaid = time.Now()
+	nodes, err := w.sessionNodes()
+	if err != nil {
+		return err
+	}
+	quiet := time.Since(w.lastMoved).Round(time.Second)
+	if len(nodes) == 0 {
+		fmt.Fprintf(w.progress, "  still waiting: the task is being turned into work — %s\n", quiet)
+		return nil
+	}
+	var pending, running int
+	for _, node := range nodes {
+		switch {
+		case node.Status == store.Running || node.Status == store.Claimed:
+			running++
+		case !terminalStatus(node.Status):
+			pending++
+		}
+	}
+	fmt.Fprintf(w.progress, "  still waiting: %s pending, %s — %s\n",
+		plural(pending, "task"), runningWords(running), quiet)
+	return nil
+}
+
+// runningWords says "none running" rather than "0 running", because the whole
+// value of the line is that a person reads it at a glance and knows whether the
+// run is stuck behind a worker or behind nothing at all.
+func runningWords(running int) string {
+	if running == 0 {
+		return "none running"
+	}
+	return fmt.Sprintf("%d running", running)
 }
 
 func statusMark(status store.Status) string {

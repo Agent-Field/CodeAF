@@ -26,6 +26,12 @@ type Workspace struct {
 	// /private/tmp, so the same workspace has two honest spellings; an agent
 	// that learned one from pwd must not be refused for using the other.
 	real string
+	// scratch is where the harness's own files land — spilled observations,
+	// turn traces, background job logs. It is the workspace itself whenever the
+	// workspace belongs to the harness, which is every layout but one: an errand
+	// that works directly in a person's own directory must not leave machinery
+	// in it, so that caller points scratch at its private home instead.
+	scratch string
 
 	mutex     sync.Mutex
 	artifacts map[int]map[string]bool
@@ -47,11 +53,41 @@ func NewWorkspace(root string) (*Workspace, error) {
 	if err != nil {
 		real = absolute
 	}
-	return &Workspace{root: absolute, real: real, artifacts: map[int]map[string]bool{}}, nil
+	return &Workspace{root: absolute, real: real, scratch: absolute, artifacts: map[int]map[string]bool{}}, nil
+}
+
+// WithScratch sends the harness's own files somewhere other than the workspace.
+// It is for the one caller whose workspace is not its own: `aforge do` edits a
+// person's directory in place, and a run that left .obs and .aforge behind in
+// someone's repository would be a mess they never asked for.
+func (w *Workspace) WithScratch(dir string) *Workspace {
+	if trimmed := strings.TrimSpace(dir); trimmed != "" {
+		if absolute, err := filepath.Abs(trimmed); err == nil {
+			w.scratch = absolute
+		}
+	}
+	return w
 }
 
 // Root is the absolute directory.
 func (w *Workspace) Root() string { return w.root }
+
+// ScratchPath maps a harness-owned relative path onto disk and returns, beside
+// it, the spelling to show a model. The two differ only when scratch has been
+// moved out of the workspace: a relative path would then name nothing an agent
+// could open from its own cwd, so it is shown the absolute one.
+func (w *Workspace) ScratchPath(relative string) (full, shown string, err error) {
+	if w.scratch == w.root {
+		full, err = w.Resolve(relative)
+		return full, relative, err
+	}
+	cleaned := filepath.Clean(strings.TrimSpace(relative))
+	if cleaned == "" || filepath.IsAbs(cleaned) || strings.HasPrefix(cleaned, "..") {
+		return "", "", fmt.Errorf("scratch path %q is not relative", relative)
+	}
+	full = filepath.Join(w.scratch, cleaned)
+	return full, full, nil
+}
 
 // Resolve maps a workspace-relative path onto disk, refusing anything that
 // climbs out. Safety is not the point here — the point is that a path escaping
