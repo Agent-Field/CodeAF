@@ -24,7 +24,7 @@ func (m *Model) renderNotebookSurface(width, atLine int, track bool) string {
 			line = "nothing learned about “" + m.notebookQuery + "”"
 		}
 		lines := []string{mutedStyle.Faint(true).Render(truncate(line, width))}
-		lines = append(lines, mutedStyle.Faint(true).Render("⟨×⟩ close"))
+		lines = append(lines, controlStyle.Render("⟨×⟩ close"))
 		if track {
 			m.chatExpandRows = append(m.chatExpandRows, chatExpandRow{
 				line: atLine + 1, action: chatNotebookClose,
@@ -86,7 +86,7 @@ func (m *Model) renderNotebookSurface(width, atLine int, track bool) string {
 			}
 		}
 	}
-	lines = append(lines, mutedStyle.Faint(true).Render("⟨×⟩ close"))
+	lines = append(lines, controlStyle.Render("⟨×⟩ close"))
 	if track {
 		m.chatExpandRows = append(m.chatExpandRows, chatExpandRow{
 			line: atLine + len(lines) - 1, action: chatNotebookClose,

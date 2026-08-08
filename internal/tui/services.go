@@ -98,7 +98,7 @@ func (m *Model) renderServicesSection(width int) string {
 	for _, service := range services {
 		row := len(lines)
 		selected := m.focus == focusGraph && m.selectedNodeID == serviceGraphRowID(service.ID)
-		marker := mutedStyle.Faint(true).Render("▸ ")
+		marker := controlStyle.Render("▸ ")
 		if selected {
 			marker = powderStyle.Bold(true).Render("▸ ")
 		}

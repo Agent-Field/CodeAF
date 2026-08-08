@@ -145,7 +145,7 @@ func (m *Model) workspaceDirectoryLink(nodeID string) string {
 	if !found {
 		return ""
 	}
-	return osc8FileLink(target, mutedStyle.Faint(true).Render("▸ workspace"))
+	return osc8FileLink(target, controlStyle.Render("▸ workspace"))
 }
 
 func (m *Model) renderMediaArtifacts(message store.Message, width int) string {
