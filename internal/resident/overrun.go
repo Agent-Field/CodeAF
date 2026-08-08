@@ -23,7 +23,7 @@ type OverrunPlanFunc func(ctx context.Context, goal, prefix string) (store.Subtr
 // overrunMarker tags re-expansion namespaces. The counter advances for every
 // repair while replacing the old suffix, so journal ids stay unique without
 // growing a stack of -x1 markers.
-const overrunMarker = "-x"
+const overrunMarker = store.SplitNamespace
 
 // The two caps that keep re-decomposition a repair rather than a lifestyle.
 //
@@ -185,6 +185,21 @@ func replanOverrun(ctx context.Context, graph *store.Store, node store.Node, par
 		}
 	}
 	return len(subtree.Nodes), sink, false, nil
+}
+
+// OverrunLineage names the lineage a node belongs to and how deep into it the
+// node already is: the id it was split from and its round number, or its own id
+// and zero when it has never been split.
+//
+// It is exported for the same reason SplitContinuation is: the "-x" arithmetic
+// is the id law and it lives here. A caller that wants to read a whole job's
+// history — every round of it, under one namespace — asks for the base rather
+// than parsing the suffix itself.
+func OverrunLineage(nodeID string) (string, int) {
+	if base, round, ok := splitOverrunID(nodeID); ok {
+		return base, round
+	}
+	return nodeID, 0
 }
 
 // overrunRoundsSpent reports that a lineage has used its splitting allowance.
