@@ -533,6 +533,9 @@ const (
 	// holding aforge to a standard it wrote after reading its own output.
 	inventedQuote   = "the note is addressed to an operator audience"
 	inventedGapText = "the note does not address an operator audience"
+	// gateCritique is the reviewer's own prose. It is journaled and readable on
+	// request; it is not something the person should ever find in the answer.
+	gateCritique = "the migration steps are missing"
 	// artifactName is what the worker writes when the test asks it to leave
 	// something on disk.
 	artifactName = "notes.md"
@@ -569,6 +572,11 @@ type scriptedBrain struct {
 	// than any single bound on the path can be followed from the worker's
 	// mouth to the person's screen.
 	longAnswer string
+	// revisionCloses runs the ordinary repair to its ordinary end: the gate
+	// fails the first draft on the person's own words, the one revision it buys
+	// comes back with the answer, and the second reading passes. It is the
+	// common case and the one the panel read as a doubted deliverable.
+	revisionCloses bool
 
 	mu     sync.Mutex
 	counts map[string]int
@@ -685,6 +693,13 @@ func (s *scriptedBrain) reply(body string) string {
 			return s.say(fmt.Sprintf(
 				`{"pass":false,"gaps":%q,"quote":%q,"exercised":false}`, inventedGapText, inventedQuote))
 		}
+		if s.revisionCloses {
+			if round == 1 {
+				return s.say(fmt.Sprintf(
+					`{"pass":false,"gaps":%q,"quote":%q,"exercised":false}`, gateCritique, citedQuote))
+			}
+			return s.say(`{"pass":true,"gaps":"","quote":"","exercised":true}`)
+		}
 		if round <= 2 {
 			// The first draft and the revision of it are both judged short of
 			// the ask, and the gap quotes the ask itself — the one thing that
@@ -720,6 +735,9 @@ func (s *scriptedBrain) leaf(body string) string {
 		return s.say(repairedAnswer)
 	case strings.Contains(body, "A reviewer compared the previous attempt"):
 		s.tally("revision")
+		if s.revisionCloses {
+			return s.say(repairedAnswer)
+		}
 		return s.say(firstDraftAnswer + " (revised, still nothing about migrating)")
 	// The first leaf turn edits; the task itself names the file, so the guard
 	// counts turns rather than looking for the path in the transcript.
