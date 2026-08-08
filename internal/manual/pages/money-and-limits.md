@@ -32,6 +32,18 @@ not once per attempt.
 The header meter is a different number: it shows tokens and measured cost for
 **this session**, plus what aforge has spent on itself today.
 
+## Asking about money in words
+
+Ask for any stretch of time — "what has this month cost?", "how much did last
+week come to?", "what's been expensive lately?" — and aforge reads its own
+ledger for that window: the total, and the jobs the money went on, named the way
+you named them and priced heaviest first. Those job figures do not add up to the
+window's total, and it will say so: planning, answering and its own upkeep
+belong to no single job.
+
+"What did that cost?" about one particular job is answered from that job's own
+record instead, which also carries what it produced.
+
 ## Per-job and per-firing limits
 
 There is no fixed per-job dollar cap — a job's budget is written into its brief,
