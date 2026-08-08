@@ -672,85 +672,17 @@ func TestDistillerParsesVoiceCorrectionAsUserPreference(t *testing.T) {
 	}
 }
 
-// A dragged document is durable only for as long as the user leaves it where
-// they dropped it. Staging copies it into the job's workspace so the leaf reads
-// an immutable input, and names it in the brief so the worker knows it exists.
-func TestStageDocumentAttachmentsCopiesIntoTheWorkspaceAndNamesThemInTheBrief(t *testing.T) {
-	source := t.TempDir()
-	document := filepath.Join(source, "q3 filing.pdf")
-	if err := os.WriteFile(document, []byte("%PDF-1.7 filing"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	image := filepath.Join(source, "chart.png")
-	if err := os.WriteFile(image, []byte("png"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	space, err := exec.NewWorkspace(t.TempDir())
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	staged, err := stageDocumentAttachments(space, []string{document, image})
-	if err != nil {
-		t.Fatalf("stage: %v", err)
-	}
-	if len(staged) != 1 || !strings.HasPrefix(staged[0], "attachments/q3 filing-") ||
-		!strings.HasSuffix(staged[0], ".pdf") {
-		t.Fatalf("staged = %v", staged)
-	}
-	located, ok := space.Locate(staged[0])
-	if !ok {
-		t.Fatalf("staged file is not in the workspace: %v", staged)
-	}
-	data, err := os.ReadFile(located)
-	if err != nil || string(data) != "%PDF-1.7 filing" {
-		t.Fatalf("staged bytes = %q err=%v", data, err)
-	}
-
-	// Staging is idempotent: every leaf of one job stages the same inputs and
-	// must converge on the identical already-complete path.
-	repeat, err := stageDocumentAttachments(space, []string{document, document})
-	if err != nil || len(repeat) != 1 || repeat[0] != staged[0] {
-		t.Fatalf("repeat staging = %v err=%v", repeat, err)
-	}
-
-	brief := withDocumentAttachmentBrief("Summarise the filing.", staged)
-	if !strings.Contains(brief, "read_document") || !strings.Contains(brief, staged[0]) ||
+// The document-staging journey moved to internal/exec, where copy-at-mention
+// and copy-at-run are one seam. Its tests moved with it.
+func TestAttachedDocumentsAreNamedInTheBrief(t *testing.T) {
+	brief := withDocumentAttachmentBrief("Summarise the filing.", []string{"attachments/q3-filing-ab12cd34.pdf"})
+	if !strings.Contains(brief, "read_document") ||
+		!strings.Contains(brief, "attachments/q3-filing-ab12cd34.pdf") ||
 		!strings.HasPrefix(brief, "Summarise the filing.") {
 		t.Fatalf("brief = %q", brief)
 	}
 	if plain := withDocumentAttachmentBrief("Summarise the filing.", nil); plain != "Summarise the filing." {
 		t.Fatalf("unattached brief changed: %q", plain)
-	}
-}
-
-func TestStageDocumentAttachmentsRefusesOversizedAndVanishedFiles(t *testing.T) {
-	space, err := exec.NewWorkspace(t.TempDir())
-	if err != nil {
-		t.Fatal(err)
-	}
-	oversized := filepath.Join(t.TempDir(), "huge.pdf")
-	file, err := os.Create(oversized)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := file.Truncate(chatDocumentAttachmentLimit + 1); err != nil {
-		file.Close()
-		t.Fatal(err)
-	}
-	if err := file.Close(); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := stageDocumentAttachments(space, []string{oversized}); err == nil ||
-		!strings.Contains(err.Error(), "over the 25 MB document limit") {
-		t.Fatalf("oversized stage error = %v", err)
-	}
-	if _, err := stageDocumentAttachments(space, []string{filepath.Join(t.TempDir(), "gone.pdf")}); err == nil ||
-		!strings.Contains(err.Error(), "file is unavailable") {
-		t.Fatalf("vanished stage error = %v", err)
-	}
-	if _, err := stageDocumentAttachments(nil, []string{oversized}); err == nil {
-		t.Fatal("staging into a nil workspace succeeded")
 	}
 }
 
