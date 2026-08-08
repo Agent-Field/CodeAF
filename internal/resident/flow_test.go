@@ -311,3 +311,54 @@ func TestIndependentAsksArePlannedSideBySide(t *testing.T) {
 		t.Fatalf("%d commands were left unresolved by a concurrent pass", len(pending))
 	}
 }
+
+// The whole Tier B stall, end to end, from the one input that caused it.
+//
+// A compiler answered builds_on:["root"]. Continuity accepted it because a node
+// by that name existed, and wired a feeds_into edge from the permanent spine —
+// which is Running by construction and settles never. The job compiled cleanly,
+// spliced cleanly, and was deadlocked from birth: pending, empty started_at, for
+// the entire 900-second ceiling, while the resident ticked beside it once a
+// second with nothing it was allowed to claim.
+//
+// The assertion is the only one that matters: the work runs. A test that merely
+// checked the edge was absent would pass on a graph that still never moved.
+func TestAJobWhoseCompilerNamedTheSpineStillRuns(t *testing.T) {
+	graph := openStore(t)
+	compile := func(_ context.Context, instruction, _ string) (Compiled, error) {
+		// Verbatim the shape that wedged it.
+		return Compiled{Goal: instruction, BuildsOn: []string{store.RootID}}, nil
+	}
+	reconciler := New(graph, compile, func(context.Context, Compiled) (store.Subtree, error) {
+		return store.Subtree{Nodes: []store.NodeSpec{
+			{ID: "task-2", Brief: "the work that could never start", Stage: 1},
+		}}, nil
+	})
+	if _, err := graph.RequestCommand(store.Command{
+		SessionID: "flow", Kind: store.CommandSplice,
+		Instruction: "fix the failing test",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := reconciler.Tick(context.Background()); err != nil {
+		t.Fatalf("tick: %v", err)
+	}
+
+	// Ready is the whole diagnosis: it is what the dispatcher asks, and for 900
+	// seconds it answered nothing.
+	ready, err := graph.Ready(0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(ready) != 1 || ready[0].ID != "task-2" {
+		t.Fatalf("ready = %+v, want the compiled leaf claimable", ready)
+	}
+	runner, spans := recordingRunner(t, graph, time.Millisecond, 2)
+	if _, err := runner.Tick(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	runner.Wait()
+	if len(spans()) != 1 {
+		t.Fatal("the leaf was spliced and never claimed — the job was deadlocked from birth")
+	}
+}
