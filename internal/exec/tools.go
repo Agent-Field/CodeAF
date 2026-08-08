@@ -16,6 +16,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/Agent-Field/aforge-v2/internal/guard"
+	"github.com/Agent-Field/aforge-v2/internal/rtk"
 	"github.com/Agent-Field/aforge-v2/internal/store"
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 )
@@ -543,24 +544,109 @@ func (t *Toolbox) sh(ctx context.Context, args map[string]any) Result {
 		return errorf("sh needs cmd")
 	}
 	if boolArg(args, "bg") {
+		// A background job is deliberately never compressed. Its output is
+		// watched rather than read — readiness loops grep the log, the job tool
+		// tails it, a promoted service keeps writing to it long after the leaf
+		// is gone — and all of that is programmatic, which is indistinguishable
+		// from parsing. There is also no fallback available once a job has
+		// started, and a compressor with no way back is not one we can offer.
 		return t.startBackground(ctx, command, args)
 	}
 	seconds := intArg(args, "t", 60)
 	if seconds <= 0 || seconds > maxCommandSeconds {
 		seconds = maxCommandSeconds
 	}
+	// rtk compresses what the command said before the model has to pay for it,
+	// on every later turn as well as this one. It only ever stands in for the
+	// plain command when it can be trusted to have said the same thing: see
+	// trustworthy, which sends anything doubtful back to the shell itself.
+	if tool, ok := rtk.Available(); ok {
+		if wrapped, class := tool.Wrap(ctx, command); class != rtk.ClassNone {
+			run := t.runShell(ctx, wrapped, seconds, tool.Path)
+			if run.trustworthy(class) {
+				return run.result(seconds)
+			}
+			if rtk.Failed(run.exitCode, run.body) {
+				tool.Ban(command)
+			}
+		}
+	}
+	return t.runShell(ctx, command, seconds, "").result(seconds)
+}
+
+// shellRun is one command's whole outcome, kept separate from the Result it
+// becomes so a wrapped run can be weighed and discarded before it is spoken.
+type shellRun struct {
+	body     string
+	err      error
+	exitCode int
+	timedOut bool
+	detached bool
+}
+
+// trustworthy asks whether a wrapped run may stand as the answer.
+//
+// A timeout stands as it is: it belongs to the command, not to the wrapping,
+// and waiting for it a second time would spend the leaf's budget twice to learn
+// nothing. rtk failing to run what it was handed never stands. Beyond that a
+// check is believed whatever it exits with — a failing test suite is reporting,
+// and its compressed failure is the most valuable output rtk produces — while a
+// read that fails is asked again plain, because "no such file" has to reach the
+// model as the shell's own sentence and asking twice costs nothing.
+func (r shellRun) trustworthy(class rtk.Class) bool {
+	if r.timedOut || r.detached {
+		return true
+	}
+	if rtk.Failed(r.exitCode, r.body) {
+		return false
+	}
+	return class == rtk.ClassCheck || r.exitCode == 0
+}
+
+func (r shellRun) result(seconds int) Result {
+	if r.timedOut {
+		return errorf("command timed out after %ds. Partial output:\n%s", seconds, r.body)
+	}
+	if r.detached {
+		// The command itself finished; something it started in the background
+		// kept the output pipe open until the grace ran out. That is a
+		// completed command with a detached child, not a failure.
+		return Result{Content: r.body + "\n(a background process the command started was left running detached)"}
+	}
+	if r.err != nil {
+		// The exit status matters less than the output; a build failure's value
+		// is entirely in what it printed.
+		return Result{Content: fmt.Sprintf("exit: %v\n%s", r.err, r.body), IsError: true}
+	}
+	if strings.TrimSpace(r.body) == "" {
+		return Result{Content: "(no output)"}
+	}
+	return Result{Content: r.body}
+}
+
+// runShell runs one command to completion in the workspace. rtkBin is the
+// resolved rtk when this is a wrapped run and empty otherwise; a rewritten line
+// calls rtk by bare name, so its shelf goes on PATH here.
+func (t *Toolbox) runShell(ctx context.Context, command string, seconds int, rtkBin string) shellRun {
 	runCtx, cancel := context.WithTimeout(ctx, time.Duration(seconds)*time.Second)
 	defer cancel()
 	var environment []string
+	// The login shell may rewrite inherited PATH while reading its profile.
+	// Export inside that shell so a shelf is added without changing the
+	// benchmarked bare command path, which still runs with no Env set at all.
 	if t.history != nil {
 		if bin, err := store.SkillsBinDir(); err == nil {
 			environment = os.Environ()
-			// The login shell may rewrite inherited PATH while reading its
-			// profile. Export inside that shell so a store adds the learned
-			// shelf without changing the benchmarked no-store command path.
 			environment = replaceEnv(environment, "AFORGE_SKILLS_BIN", bin)
 			command = "export PATH=\"${AFORGE_SKILLS_BIN:?}:$PATH\"\n" + command
 		}
+	}
+	if rtkBin != "" {
+		if environment == nil {
+			environment = os.Environ()
+		}
+		environment = replaceEnv(environment, "AFORGE_RTK_BIN", filepath.Dir(rtkBin))
+		command = "export PATH=\"${AFORGE_RTK_BIN:?}:$PATH\"\n" + command
 	}
 
 	cmd := exec.CommandContext(runCtx, "bash", "-lc", command)
@@ -584,25 +670,26 @@ func (t *Toolbox) sh(ctx context.Context, args map[string]any) Result {
 	}
 	cmd.WaitDelay = 3 * time.Second
 	output, err := cmd.CombinedOutput()
-	body := clamp(string(output))
-	if runCtx.Err() == context.DeadlineExceeded {
-		return errorf("command timed out after %ds. Partial output:\n%s", seconds, body)
+	body := string(output)
+	if rtkBin != "" {
+		body = rtk.StripNudge(body)
 	}
-	if errors.Is(err, exec.ErrWaitDelay) {
-		// The command itself finished; something it started in the background
-		// kept the output pipe open until the grace ran out. That is a
-		// completed command with a detached child, not a failure.
-		return Result{Content: body + "\n(a background process the command started was left running detached)"}
+	run := shellRun{body: clamp(body), err: err, exitCode: exitCode(cmd, err)}
+	run.timedOut = runCtx.Err() == context.DeadlineExceeded
+	run.detached = errors.Is(err, exec.ErrWaitDelay)
+	return run
+}
+
+func exitCode(cmd *exec.Cmd, err error) int {
+	if err == nil {
+		return 0
 	}
-	if err != nil {
-		// The exit status matters less than the output; a build failure's value
-		// is entirely in what it printed.
-		return Result{Content: fmt.Sprintf("exit: %v\n%s", err, body), IsError: true}
+	if cmd.ProcessState != nil {
+		if code := cmd.ProcessState.ExitCode(); code >= 0 {
+			return code
+		}
 	}
-	if strings.TrimSpace(body) == "" {
-		return Result{Content: "(no output)"}
-	}
-	return Result{Content: body}
+	return -1
 }
 
 func (t *Toolbox) write(args map[string]any) Result {

@@ -53,6 +53,11 @@ const (
 	// of those documents, result hands back a pointer and the loop used to stop
 	// there — offering to fetch a file it had no way to open. artifact.go holds
 	// the boundary this reads through.
+	//
+	// This read is deliberately never compressed, while a leaf's sh is: a leaf
+	// reads to decide what to do next, and the head reads to quote. internal/rtk
+	// shortens the first because the bytes are a means; it stays away from the
+	// second because here the bytes are the answer.
 	beltToolRead = "read"
 	// beltToolCompetence, beltToolStanding and beltToolSpending are the three
 	// reads that are about the employee rather than the work. Each was already
