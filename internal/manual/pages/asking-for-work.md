@@ -53,18 +53,25 @@ keeping a server alive — are never silenced this way.
 
 ## Attachments, images, documents
 
-Drag a file path into the input to attach it. Attached files become workspace
-inputs the workers can actually open.
+Drag a file path into the input to attach it. Attaching copies the file: the
+bytes are kept where aforge lives, so a retry next week and a follow-up
+tomorrow read exactly what you attached even after you have moved, renamed, or
+deleted your own copy. Your file is read once and never written to.
 
 - **Images**: if your current talk model can see, the image goes to it directly.
   If it cannot, a vision model looks on its behalf and the answer comes back
-  labelled `seen by <model>: …` so you always know who looked.
+  labelled `seen by <model>: …` so you always know who looked. Either way the
+  image is staged into the job's workspace, so a worker can look at it too —
+  and when nothing available can see an image, the answer says so rather than
+  quietly working around it.
 - **Documents** (`.pdf`, `.docx`, `.pptx`) are read with a cost ladder, cheapest
   rung first: local extraction if the tools are on your machine (free), then a
   free remote parse, and only for a genuinely scanned document does it escalate
   to OCR — which is priced at about **$2 per 1,000 pages** and passes through
   your daily rail before it spends. Repeat reads of the same file are cached
-  next to it, so you pay at most once.
+  next to it, so you pay at most once. Two limits are real: the local and OCR
+  rungs are PDF-only, so `.docx` and `.pptx` are read remotely, and asking for
+  a page range only means something for a PDF.
 
 ## Attribution: how aforge signs git work
 

@@ -310,8 +310,18 @@ func (l *Linear) Run(ctx context.Context, task Task) (returned *Outcome, runErr 
 	if l.media != nil {
 		workingModel = l.media.WorkingModel
 	}
-	if l.media != nil && l.media.Catalog != nil && l.media.Catalog.Supports(workingModel, "input", "image") {
-		userContent = append(userContent, imageParts(task.ImagePaths)...)
+	if len(task.ImagePaths) > 0 {
+		sees := l.media != nil && l.media.Catalog != nil &&
+			l.media.Catalog.Supports(workingModel, "input", "image")
+		if sees {
+			userContent = append(userContent, imageParts(task.ImagePaths)...)
+		} else if note := attachedImageNote(l.workspaceNames(task.ImagePaths), l.visionProxy()); note != "" {
+			// An attached image used to vanish here when the working model had
+			// no eyes: no content part, no fallback, and nobody told. The image
+			// is in the workspace now, so the leaf is told what it has and who
+			// can look — and when nothing can, that it must say so.
+			userContent = append(userContent, text(note)...)
+		}
 	}
 	messages := []ai.Message{
 		{Role: "system", Content: text(system)},

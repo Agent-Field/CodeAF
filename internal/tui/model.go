@@ -1865,27 +1865,21 @@ func (m *Model) submit() tea.Cmd {
 	}
 	attachments := append([]string(nil), m.attachments...)
 	if len(attachments) > 0 {
-		_, imagesSupported := m.imageInputSupport()
 		kept := make([]string, 0, len(attachments))
-		fallbackImages := make([]string, 0)
 		documents, images := 0, 0
 		for _, path := range attachments {
-			if isImageExtension(path) {
+			// A screenshot is staged whatever the model in the talk slot can
+			// see. Dropping it here was the silence: no copy, no fallback, and
+			// nothing said. What can look at it is decided where the work runs.
+			switch {
+			case isImageExtension(path):
 				images++
-				if imagesSupported {
-					kept = append(kept, path)
-				} else {
-					fallbackImages = append(fallbackImages, path)
-				}
+			case isDocumentAttachment(path):
+				documents++
+			default:
 				continue
 			}
-			if isDocumentAttachment(path) {
-				documents++
-				kept = append(kept, path)
-			}
-		}
-		if len(fallbackImages) > 0 {
-			body = strings.TrimSpace(strings.Join(append([]string{body}, fallbackImages...), " "))
+			kept = append(kept, m.keepAttachment(path))
 		}
 		attachments = kept
 		if body == "" {

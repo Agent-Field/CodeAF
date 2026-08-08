@@ -47,6 +47,29 @@ func (m *Model) captureImageAttachments() {
 	m.input.SetValue(cleaned)
 }
 
+// attachmentKeeper copies an attached file somewhere durable and answers with
+// the reference the message will carry. The composer keeps holding the
+// person's own path until the message is sent — the chips should say what they
+// attached — and the durable record is a copy from that moment on.
+type attachmentKeeper interface {
+	KeepAttachment(path string) (string, error)
+}
+
+// keepAttachment degrades to the path itself. A surface with no keeper (a
+// visitor, an embedder, a test) behaves exactly as it did before copies
+// existed rather than losing the attachment.
+func (m *Model) keepAttachment(path string) string {
+	keeper, ok := m.commander.(attachmentKeeper)
+	if !ok {
+		return path
+	}
+	reference, err := keeper.KeepAttachment(path)
+	if err != nil || strings.TrimSpace(reference) == "" {
+		return path
+	}
+	return reference
+}
+
 func (m *Model) removeAttachment(index int) {
 	if index < 0 || index >= len(m.attachments) {
 		return
@@ -152,11 +175,20 @@ func isImageExtension(path string) bool {
 }
 
 func isAttachmentExtension(path string) bool {
-	return isImageExtension(path) || strings.EqualFold(filepath.Ext(path), ".pdf")
+	return isImageExtension(path) || isDocumentAttachment(path)
 }
 
+// The manual has always promised that documents are read with a cost ladder,
+// and named all three; the executor has always handled all three. Only the
+// composer disagreed, and it disagreed silently — a .docx dragged in stayed in
+// the draft as literal text and went to the head as prose.
 func isDocumentAttachment(path string) bool {
-	return strings.EqualFold(filepath.Ext(path), ".pdf")
+	switch strings.ToLower(filepath.Ext(path)) {
+	case ".pdf", ".docx", ".pptx":
+		return true
+	default:
+		return false
+	}
 }
 
 func hasImageAttachments(paths []string) bool {
