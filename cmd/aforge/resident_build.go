@@ -18,17 +18,29 @@ import (
 // planClient structures (the task graph, replans, contracts, the delivery
 // gate), and taskClient executes leaves. By default plan follows work, so the
 // split is dormant until a plan model is chosen.
+// oneShotErrand says this reconciler serves `aforge do`: one errand, run once,
+// with nobody who could answer a question about it. It is a fact about the
+// surface, not a judgement about the work, and it travels to both halves that
+// would otherwise have to guess it — the compiler's temporal classification and
+// the reconciler's charter draft.
 func newResidentReconciler(settings config.Config, graph *store.Store,
 	chatClient, taskClient, planClient *liveClient, plans *jobPlans,
-	resolveModel func(head.ModelWords) head.WorkModelChoice) *resident.Reconciler {
+	resolveModel func(head.ModelWords) head.WorkModelChoice, oneShotErrand bool) *resident.Reconciler {
 	compiler := head.NewCompiler(chatClient)
 	if resolveModel != nil {
 		compiler = compiler.WithModelResolver(resolveModel)
 	}
-	return resident.New(graph,
+	if oneShotErrand {
+		compiler = compiler.WithOneShotErrands()
+	}
+	reconciler := resident.New(graph,
 		compileIntent(settings, compiler, taskClient),
 		planSubtree(settings, planClient, taskClient, plans, graph),
-	).
+	)
+	if oneShotErrand {
+		reconciler = reconciler.WithOneShotErrands()
+	}
+	return reconciler.
 		WithDistiller(distillFacts(settings, chatClient, graph)).
 		WithConsolidator(consolidateFacts(settings, chatClient, graph)).
 		WithTitler(titleGoal(settings, chatClient)).

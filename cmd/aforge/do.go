@@ -66,6 +66,15 @@ const (
 )
 
 // headlessOutcome is what one errand came to, in the shape --json prints.
+//
+// Settled means the errand is over — nothing this process is waiting for can
+// still move — and it is deliberately not a verdict on the work. The verdict is
+// the exit code, and the two disagree in exactly one honest way: an errand
+// stopped by a question is over (settled) and did nothing (exit 1). BlockedOn
+// is what tells a machine caller which of those it is holding, and it is why
+// the question never goes in Deliverable: a caller that read the deliverable
+// field recorded an interactive charter card as the answer to a bank
+// reconciliation and never learned the task was not attempted.
 type headlessOutcome struct {
 	Deliverable string   `json:"deliverable"`
 	Artifacts   []string `json:"artifacts"`
@@ -73,6 +82,10 @@ type headlessOutcome struct {
 	Nodes       int      `json:"nodes"`
 	Seconds     float64  `json:"seconds"`
 	Settled     bool     `json:"settled"`
+	// BlockedOn is the question this run could not answer, verbatim. It is
+	// empty on every run that was not stopped by one, and non-empty only
+	// alongside a non-zero exit code and an empty deliverable.
+	BlockedOn string `json:"blocked_on,omitempty"`
 
 	// status is what the process leaves with. It is decided where the outcome
 	// is produced, because only there is the difference visible between a job
@@ -87,7 +100,9 @@ func runDo(args []string) error {
 	keep := flags.Bool("keep", false, "keep the private store instead of deleting it on the way out")
 	workspace := flags.String("w", "", "the directory to work in, edited in place (default: the current directory)")
 	timeout := flags.Int("timeout", defaultDoSeconds, "hard wall in seconds")
-	asJSON := flags.Bool("json", false, "print one machine-readable object instead of the deliverable")
+	asJSON := flags.Bool("json", false,
+		"print one machine-readable object instead of the deliverable; settled says the errand is over, "+
+			"the exit code says whether it worked, and blocked_on carries a question nobody was here to answer")
 	yesSpend := flags.Bool("yes-spend", false, "approve a plan whose price crosses the consent threshold")
 	model := flags.String("model", "", "work model for this run (default AFORGE_MODEL)")
 	planModel := flags.String("plan-model", "", "model that plans, when different from the work model (default AFORGE_PLAN_MODEL)")
@@ -374,7 +389,15 @@ func (w *settlementWatch) wait(ctx context.Context) (headlessOutcome, error) {
 				return headlessOutcome{}, err
 			}
 			outcome.Settled, outcome.status = false, exitTimeout
-			if strings.TrimSpace(outcome.Deliverable) == "" {
+			// A wall a question was standing behind is not a slow run. Saying
+			// which of the two it was costs one read and is the difference
+			// between a diagnosable timeout and fifteen minutes of nothing.
+			asked, questionErr := w.blockingQuestion()
+			if questionErr != nil {
+				return headlessOutcome{}, questionErr
+			}
+			outcome.BlockedOn = asked
+			if strings.TrimSpace(outcome.Deliverable) == "" && asked == "" {
 				outcome.Deliverable = "The time limit was reached before anything finished."
 			}
 			return outcome, nil
@@ -436,7 +459,24 @@ func (w *settlementWatch) check() (headlessOutcome, bool, error) {
 			return headlessOutcome{}, false, err
 		}
 		outcome.Settled, outcome.status = true, exitFailed
-		outcome.Deliverable = w.refusalWords(command)
+		words := w.refusalWords(command)
+		// A refusal that is a question is not a deliverable, and putting it
+		// there is what made a three-second do-nothing run indistinguishable
+		// from an answer. Asked and answerable are different things: this
+		// process has no keyboard, so the question goes in its own field, the
+		// deliverable stays empty, and reportErrand says so out loud.
+		asked, err := w.blockingQuestion()
+		if err != nil {
+			return headlessOutcome{}, false, err
+		}
+		if asked != "" {
+			words = asked
+		}
+		if asked != "" || rejectedForAnAnswer(command) {
+			outcome.BlockedOn, outcome.Deliverable = words, ""
+		} else {
+			outcome.Deliverable = words
+		}
 		return outcome, true, nil
 	}
 	nodes, err := w.sessionNodes()
@@ -475,6 +515,43 @@ func (w *settlementWatch) refusalWords(command store.Command) string {
 		words = "the request was not turned into work"
 	}
 	return words
+}
+
+// blockingQuestion is the card this errand is standing behind, if any.
+//
+// It is the whole of part two of the contract: no question may end a headless
+// run in silence. Consent already fails fast through --yes-spend and the
+// standing-versus-once classification is answered structurally by the verb, so
+// what reaches here is a question the errand's own semantics genuinely cannot
+// resolve — and the only honest thing to do with one of those is say it, loudly,
+// and leave with a failure.
+//
+// Open means unanswered, surfaced or not; a question that resolves itself on a
+// grace timer (service consent) has already left the set by the time an errand
+// settles or walls, so nothing self-answering is reported as a block.
+func (w *settlementWatch) blockingQuestion() (string, error) {
+	questions, err := w.graph.OpenQuestions(w.session, 8)
+	if err != nil {
+		return "", err
+	}
+	lines := make([]string, 0, len(questions))
+	for _, question := range questions {
+		if text := strings.TrimSpace(question.Text); text != "" {
+			lines = append(lines, text)
+		}
+	}
+	return strings.Join(lines, "\n\n"), nil
+}
+
+// rejectedForAnAnswer is the backstop for a refusal whose question did not
+// survive as a durable row — expired between the rejection and this read, or
+// written straight into the receipt. The reconciler records why it refused, and
+// the two reasons that mean "waiting on a person" are exactly these. Anything
+// else is a failure, and a failure's words belong in the deliverable, where a
+// caller reads what went wrong.
+func rejectedForAnAnswer(command store.Command) bool {
+	result := strings.ToLower(strings.TrimSpace(command.Result))
+	return strings.HasPrefix(result, "asked the user") || strings.Contains(result, "pending ratification")
 }
 
 // sessionNodes is every node this errand owns. The splice stamps one provenance
@@ -679,6 +756,7 @@ func errandArtifacts(nodes []store.Node) []string {
 // stdout is the deliverable and a short footer and nothing else, because the
 // most common thing anyone does with a one-shot is pipe it somewhere.
 func reportErrand(request doRequest, outcome headlessOutcome) error {
+	sayBlocked(request.stderr, outcome)
 	if request.asJSON {
 		encoded, err := json.MarshalIndent(outcome, "", "  ")
 		if err != nil {
@@ -701,6 +779,26 @@ func reportErrand(request doRequest, outcome headlessOutcome) error {
 		time.Duration(outcome.Seconds*float64(time.Second)).Round(time.Second),
 		plural(outcome.Nodes, "node"), outcome.Spend)
 	return errandStatus(outcome)
+}
+
+// sayBlocked is the loud half. A run that ended on a question wrote nothing to
+// stdout on purpose, and a pipeline reading only stdout would see a fast, cheap,
+// empty success — which is precisely how a run that did zero work for three
+// seconds and five thousandths of a cent went unnoticed. stderr carries the
+// question verbatim and the one line that says nobody here could answer it.
+func sayBlocked(stderr io.Writer, outcome headlessOutcome) {
+	question := strings.TrimSpace(outcome.BlockedOn)
+	if stderr == nil || question == "" {
+		return
+	}
+	fmt.Fprintln(stderr, "it stopped to ask:")
+	for _, line := range strings.Split(question, "\n") {
+		fmt.Fprintln(stderr, "  "+line)
+	}
+	fmt.Fprintln(stderr,
+		"headless mode cannot answer that — `aforge do` runs with nobody at the keyboard, so nothing was done.")
+	fmt.Fprintln(stderr,
+		"say the answer in the ask itself and run it again, or bring it to `aforge` where it can be answered.")
 }
 
 // errandStatus is the contract a script reads: nothing to say means it worked,

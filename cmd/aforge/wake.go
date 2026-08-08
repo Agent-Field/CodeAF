@@ -56,7 +56,9 @@ func runWake(args []string) error {
 		plans := &jobPlans{graphs: map[string]plannedJob{}}
 		// A wake pass has no live boost slot to resolve model words against;
 		// jobs born here run on the configured work model.
-		reconciler := newResidentReconciler(settings, graph, chatClient, taskClient, planClient, plans, nil)
+		// A wake pass is the standing half of the product doing its job, not a
+		// one-shot errand: charters are exactly what it exists to serve.
+		reconciler := newResidentReconciler(settings, graph, chatClient, taskClient, planClient, plans, nil, false)
 		// Craft is not a chat ornament. Without it an overnight charter plans
 		// from scratch a job that has a proven learned workflow, and any craft
 		// that overnight job would have taught is discarded before it can even
