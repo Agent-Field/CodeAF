@@ -448,7 +448,7 @@ func (r *Reconciler) admitCharterFiring(ctx context.Context, charter store.Chart
 		// when a charter carries no invariant of its own.
 		firingProvenance := store.Provenance{Origin: store.OriginTrigger, SessionID: sessionID,
 			Intent: intent, CharterID: charter.ID}
-		use, usingCraft := r.craftFor(ctx, charterCraftRequest(charter), prefix, firingProvenance)
+		use, usingCraft := r.craftFor(ctx, charterCraftRequest(charter), false, prefix, firingProvenance)
 		switch {
 		case usingCraft:
 			subtree = use.subtree

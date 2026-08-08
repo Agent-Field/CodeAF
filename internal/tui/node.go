@@ -208,7 +208,7 @@ func (m *Model) closeNodeView() {
 	m.nodeLastSeq = 0
 	m.nodeTraceText = ""
 	m.input.Reset()
-	m.input.Placeholder = "Ask the graph…"
+	m.input.Placeholder = composerPlaceholder
 	m.input.SetValue(m.chatDraft)
 	m.attachments = append([]string(nil), m.chatAttachments...)
 	m.chatDraft = ""
@@ -321,7 +321,7 @@ func (m *Model) toggleNodeSteerFocus() {
 
 func (m *Model) cancelInspectedNode() tea.Cmd {
 	if m.commander == nil {
-		return m.showStatus("cancel unavailable — no Commander")
+		return m.showStatus("cancelling isn't available in this window")
 	}
 	if err := m.commander.Cancel(m.nodeViewID); err != nil {
 		return m.showStatus(fmt.Sprintf("could not cancel %s: %v", m.nodeViewID, err))

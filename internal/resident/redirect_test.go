@@ -37,7 +37,7 @@ func TestUserRedirectRevisesInformsAndReceiptsOnce(t *testing.T) {
 
 	receipt := commandReceipt(t, graph, "redirect", command.Seq)
 	if receipt.NodeID != "api" ||
-		!strings.Contains(receipt.Body, "redirected v1 API client — 2 steps amended, 1 added; 1 running worker informed") ||
+		!strings.Contains(receipt.Body, "redirected v1 API client — 2 steps amended, 1 added; 1 step already under way heard it") ||
 		!strings.Contains(receipt.Body, "node 7 does not exist") {
 		t.Fatalf("redirect receipt = %+v", receipt)
 	}
@@ -214,7 +214,7 @@ func TestExpediteMovesInformsAndTrims(t *testing.T) {
 	receipt := commandReceipt(t, graph, "hurry", command.Seq)
 	if receipt.NodeID != "api" || !strings.Contains(receipt.Body,
 		"understood — v1 API client: moved it to the front of the queue, "+
-			"told its 1 running worker to cut to the essentials, dropped 1 remaining step") {
+			"told the 1 step already under way to cut to the essentials, dropped 1 remaining step") {
 		t.Fatalf("expedite receipt = %+v", receipt)
 	}
 	if commands, err := graph.PendingCommands(10); err != nil || len(commands) != 0 {
@@ -325,7 +325,7 @@ func TestRedirectStillInformsWorkersWhenTheRevisionFails(t *testing.T) {
 		t.Fatal(err)
 	}
 	receipt := commandReceipt(t, graph, "broken", command.Seq)
-	if !strings.Contains(receipt.Body, "the remaining plan is unchanged; 1 running worker informed") ||
+	if !strings.Contains(receipt.Body, "the remaining plan is unchanged; 1 step already under way heard it") ||
 		!strings.Contains(receipt.Body, "provider unavailable") {
 		t.Fatalf("failed-revision receipt = %+v", receipt)
 	}

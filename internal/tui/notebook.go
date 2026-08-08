@@ -227,7 +227,7 @@ func (m *Model) retractNotebookFact(seq int64) {
 		RetractNotebook(int64) error
 	})
 	if !ok {
-		m.status = "retract unavailable — no Commander"
+		m.status = "forgetting that isn't available in this window"
 		m.statusUntil = time.Now().Add(statusTTL)
 		return
 	}

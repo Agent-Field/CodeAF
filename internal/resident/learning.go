@@ -52,7 +52,7 @@ func forgedCraftMoment(name string, refined bool) learningMomentItem {
 	if refined {
 		verb = "refined"
 	}
-	return learningMomentItem{headline: "⚒ " + verb + ": the " + name + " craft — it'll be used next time"}
+	return learningMomentItem{headline: "⚒ " + verb + ": how to do " + name + " — I'll work this way next time"}
 }
 
 func letGoMoment(body string) learningMomentItem {
@@ -280,7 +280,7 @@ func (r *Reconciler) postRetrospectiveDigest(afterSeq int64) {
 			}
 			if json.Unmarshal(event.Payload, &payload) == nil {
 				addCategory("scopes", event.Seq, 1, func(count int) string {
-					return fmt.Sprintf("%d %s merged", count, plural(count, "scope", "scopes"))
+					return fmt.Sprintf("%d %s merged", count, plural(count, "topic", "topics"))
 				})
 				addDetail("~ " + payload.From + " · " + payload.To)
 			}
@@ -288,7 +288,7 @@ func (r *Reconciler) postRetrospectiveDigest(afterSeq int64) {
 			node, ok, readErr := r.store.Node(event.NodeID)
 			if readErr == nil && ok && node.Group == store.TerritoryGroup && node.Provenance.Origin == store.OriginSelf {
 				addCategory("territories", event.Seq, 1, func(count int) string {
-					return fmt.Sprintf("%d %s formed", count, plural(count, "territory", "territories"))
+					return fmt.Sprintf("%d %s formed", count, plural(count, "area", "areas"))
 				})
 				addDetail("~ " + firstLine(node.Title))
 			}

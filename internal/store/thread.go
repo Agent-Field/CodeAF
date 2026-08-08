@@ -231,7 +231,14 @@ type Command struct {
 	// Reflex asks the reconciler to admit exactly one verbatim micro-leaf
 	// without compiling or planning it. It remains a splice command so a
 	// promotion can enqueue the ordinary path with the same instruction.
-	Reflex      bool
+	Reflex bool
+	// Fresh is the person asking for this one to be worked out from scratch
+	// rather than the way it has been done before. It is a reading of what they
+	// meant — "don't use the template this time", "plan this one properly" —
+	// made where every other reading of a message is made, and carried here
+	// because the engine that would reach for learned know-how runs long after
+	// the sentence is gone.
+	Fresh       bool
 	Target      string
 	Instruction string
 	Attachments []string
@@ -264,6 +271,7 @@ CREATE TABLE IF NOT EXISTS commands (
     session_id  TEXT NOT NULL DEFAULT '',
     kind        TEXT NOT NULL,
     reflex      INTEGER NOT NULL DEFAULT 0 CHECK (reflex IN (0, 1)),
+    fresh       INTEGER NOT NULL DEFAULT 0 CHECK (fresh IN (0, 1)),
     target      TEXT NOT NULL DEFAULT '',
 	instruction TEXT NOT NULL,
 	attachments JSON NOT NULL DEFAULT '[]' CHECK (json_valid(attachments)),
@@ -298,6 +306,7 @@ type commandPayload struct {
 	SessionID   string      `json:"session_id,omitempty"`
 	Kind        CommandKind `json:"kind"`
 	Reflex      bool        `json:"reflex,omitempty"`
+	Fresh       bool        `json:"fresh,omitempty"`
 	Target      string      `json:"target,omitempty"`
 	Instruction string      `json:"instruction"`
 	Attachments []string    `json:"attachments,omitempty"`
@@ -648,6 +657,7 @@ func requestCommandTx(tx *sql.Tx, command Command) (Command, error) {
 		SessionID:   command.SessionID,
 		Kind:        command.Kind,
 		Reflex:      command.Reflex,
+		Fresh:       command.Fresh,
 		Target:      command.Target,
 		Instruction: command.Instruction,
 		Attachments: append([]string(nil), command.Attachments...),
@@ -756,7 +766,7 @@ func (s *Store) ResolveCommand(seq int64, status CommandStatus, result string) e
 
 func (s *Store) queryCommands(where string, args []any) ([]Command, error) {
 	rows, err := s.db.Query(`
-		SELECT seq, ts, session_id, kind, reflex, target, instruction, attachments, status, result, updated_seq
+		SELECT seq, ts, session_id, kind, reflex, fresh, target, instruction, attachments, status, result, updated_seq
 		FROM commands WHERE `+where, args...)
 	if err != nil {
 		return nil, fmt.Errorf("list commands: %w", err)
@@ -766,10 +776,10 @@ func (s *Store) queryCommands(where string, args []any) ([]Command, error) {
 	commands := make([]Command, 0)
 	for rows.Next() {
 		var command Command
-		var reflex int
+		var reflex, fresh int
 		var timestamp, attachments string
 		if err := rows.Scan(&command.Seq, &timestamp, &command.SessionID, &command.Kind,
-			&reflex, &command.Target, &command.Instruction, &attachments, &command.Status, &command.Result,
+			&reflex, &fresh, &command.Target, &command.Instruction, &attachments, &command.Status, &command.Result,
 			&command.UpdatedSeq); err != nil {
 			return nil, fmt.Errorf("list commands: %w", err)
 		}
@@ -778,6 +788,7 @@ func (s *Store) queryCommands(where string, args []any) ([]Command, error) {
 			return nil, fmt.Errorf("list commands: parse time: %w", err)
 		}
 		command.Reflex = reflex != 0
+		command.Fresh = fresh != 0
 		if err := json.Unmarshal([]byte(attachments), &command.Attachments); err != nil {
 			return nil, fmt.Errorf("list commands: decode attachments: %w", err)
 		}
@@ -905,9 +916,9 @@ func applyCommandView(tx *sql.Tx, payload commandPayload, seq int64, at time.Tim
 		return err
 	}
 	_, err = tx.Exec(`
-		INSERT INTO commands (seq, ts, session_id, kind, reflex, target, instruction, attachments, status, result, updated_seq)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, '', ?)`,
-		seq, formatTime(at), payload.SessionID, payload.Kind, payload.Reflex, payload.Target,
+		INSERT INTO commands (seq, ts, session_id, kind, reflex, fresh, target, instruction, attachments, status, result, updated_seq)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, '', ?)`,
+		seq, formatTime(at), payload.SessionID, payload.Kind, payload.Reflex, payload.Fresh, payload.Target,
 		payload.Instruction, string(attachments), CommandPending, seq)
 	return err
 }

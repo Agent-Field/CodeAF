@@ -475,7 +475,7 @@ func TestAffordanceGrammarReplacesLegacyHints(t *testing.T) {
 	model.expandedMessages[2] = true
 	model.cardExpanded["landed"] = true
 	flipped := model.renderMessages()
-	for _, expected := range []string{"▾ Read the request. · 1 assumption", "▾ collapse", "⟨×⟩ close · ▸ job graph"} {
+	for _, expected := range []string{"▾ Read the request. · 1 assumption", "▾ collapse", "⟨×⟩ close · ▸ the steps"} {
 		if !strings.Contains(flipped, expected) {
 			t.Fatalf("expanded state did not flip its glyph to %q:\n%s", expected, flipped)
 		}

@@ -91,7 +91,7 @@ func TestRedirectAlwaysAnswersInTheThread(t *testing.T) {
 		t.Fatalf("the redirect reply did not go through the voice path: %q", prompt)
 	}
 	if len(client.seen) < 2 || !strings.Contains(client.seen[1].Content[0].Text,
-		"Workers mid-turn who hear their words verbatim: 2") {
+		"Steps of that work already under way, which hear their words verbatim: 2") {
 		t.Fatalf("the composer was not told who is mid-turn: %+v", client.seen)
 	}
 }
@@ -113,7 +113,7 @@ func TestRedirectSpeaksEvenWhenTheComposerFails(t *testing.T) {
 		t.Fatalf("a failed composer left the thread silent: %+v", replies)
 	}
 	if !strings.Contains(replies[0].Body, "the parser rewrite") ||
-		!strings.Contains(replies[0].Body, "2 running workers") {
+		!strings.Contains(replies[0].Body, "2 steps already under way") {
 		t.Fatalf("the fallback said nothing true about the work: %q", replies[0].Body)
 	}
 }

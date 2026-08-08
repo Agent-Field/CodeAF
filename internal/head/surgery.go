@@ -274,7 +274,7 @@ func surgeryLoss(kind store.CommandKind, impact store.SurgeryImpact) string {
 		cascade = impact.Nodes
 	}
 	if cascade > SurgeryCascadeGateNodes {
-		parts = append(parts, fmt.Sprintf("%d nodes affected", cascade))
+		parts = append(parts, fmt.Sprintf("%d steps affected", cascade))
 	}
 	return strings.Join(parts, " and ") + "."
 }
@@ -315,8 +315,12 @@ func surgeryTargetLabel(node store.Node) string {
 	return node.ID
 }
 
+// surgeryTargetHint says what a candidate row is doing, in the words a person
+// already has. The status values are the store's own vocabulary — "claimed"
+// tells a reader nothing, and it is the first thing they read when the head has
+// to ask which job they meant.
 func surgeryTargetHint(target store.SurgeryTarget) string {
-	status := string(target.Node.Status)
+	status := surgeryStatusWord(target.Node.Status)
 	if target.Node.Held {
 		status = "paused"
 	}
@@ -324,6 +328,29 @@ func surgeryTargetHint(target store.SurgeryTarget) string {
 		return status
 	}
 	return status + " · " + target.Age
+}
+
+// surgeryStatusWord translates one store status into the word a person would
+// use for it. Only "claimed" and "pending" genuinely need it — the rest already
+// say themselves — but the translation is total so a new status cannot leak
+// through by being forgotten here.
+func surgeryStatusWord(status store.Status) string {
+	switch status {
+	case store.Pending:
+		return "waiting"
+	case store.Claimed:
+		return "starting"
+	case store.Running:
+		return "working"
+	case store.Done:
+		return "done"
+	case store.Failed:
+		return "failed"
+	case store.Cancelled:
+		return "cancelled"
+	default:
+		return string(status)
+	}
 }
 
 func surgeryVerb(kind store.CommandKind) string {

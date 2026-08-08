@@ -85,10 +85,10 @@ func TestSelfRootListShowsCountsExplainersAndTheTodayLine(t *testing.T) {
 
 	for _, want := range []string{
 		"today: $0.43", "1 learned",
-		"Crafts (1)", "job-shapes I've learned",
+		"Know-how (1)", "what I've learned to repeat",
 		"Competence (3)", "where I'm strong",
 		"Beliefs (1)", "what I hold true about you",
-		"Skills (1)", "tools I forged and verified",
+		"Skills (1)", "tools I built and checked",
 		"Watches (1)", "standing goals checking on their own schedule",
 		"Services (1)", "processes I keep alive for you",
 		"Practice", "what I did with idle time",
@@ -106,7 +106,7 @@ func TestSelfZeroStateRowsStillTeachWhatTheyWouldHold(t *testing.T) {
 	_ = model.selectPlace(placeSelf)
 	view := selfView(model)
 	for _, want := range []string{
-		"Crafts (0)", "I forge one when a job's shape looks reusable",
+		"Know-how (0)", "I keep one when a job's shape looks worth repeating",
 		"Beliefs (0)", "I write one down when work teaches me",
 		"Skills (0)", "run and pass twice",
 		"Watches (0)", "say \"whenever…\"",
@@ -336,7 +336,7 @@ func TestSelfRendersAtNarrowWidthWithoutLosingItsExplainers(t *testing.T) {
 	model := openedSelf(t, now, newSelfCraftCommander(now))
 	model.setSize(46, 24)
 	view := selfView(model)
-	for _, want := range []string{"Crafts (1)", "job-shapes I've learned"} {
+	for _, want := range []string{"Know-how (1)", "what I've learned to repeat"} {
 		if !strings.Contains(view, want) {
 			t.Fatalf("the narrow Self root list is missing %q:\n%s", want, view)
 		}

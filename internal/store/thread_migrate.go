@@ -73,6 +73,16 @@ func migrateThreadSchema(db *sql.DB) error {
 		}
 	}
 
+	hasFresh, err := tableHasColumn(db, "commands", "fresh")
+	if err != nil {
+		return err
+	}
+	if !hasFresh {
+		if _, err := db.Exec(`ALTER TABLE commands ADD COLUMN fresh INTEGER NOT NULL DEFAULT 0 CHECK (fresh IN (0, 1))`); err != nil {
+			return err
+		}
+	}
+
 	if err := addJSONColumn(db, "messages", "attachments"); err != nil {
 		return err
 	}
@@ -97,6 +107,7 @@ func migrateThreadSchema(db *sql.DB) error {
 		    session_id  TEXT NOT NULL DEFAULT '',
 		    kind        TEXT NOT NULL,
 		    reflex      INTEGER NOT NULL DEFAULT 0 CHECK (reflex IN (0, 1)),
+		    fresh       INTEGER NOT NULL DEFAULT 0 CHECK (fresh IN (0, 1)),
 		    target      TEXT NOT NULL DEFAULT '',
 		    instruction TEXT NOT NULL,
 		    attachments JSON NOT NULL DEFAULT '[]' CHECK (json_valid(attachments)),
@@ -104,7 +115,7 @@ func migrateThreadSchema(db *sql.DB) error {
 		    result      TEXT NOT NULL DEFAULT '',
 		    updated_seq INTEGER NOT NULL
 		);
-		INSERT INTO commands SELECT seq, ts, session_id, kind, reflex, target,
+		INSERT INTO commands SELECT seq, ts, session_id, kind, reflex, fresh, target,
 		    instruction, attachments, status, result, updated_seq FROM commands_legacy;
 		DROP TABLE commands_legacy;
 		CREATE INDEX commands_status_seq ON commands (status, seq);
