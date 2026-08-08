@@ -204,7 +204,17 @@ type Charter struct {
 	SourceCommandSeq int64
 	CreatedAt        time.Time
 
-	LastWake        time.Time
+	LastWake time.Time
+	// LastChecked and LastCheckLine are the quiet half of a standing watch: the
+	// moment a sentinel last looked, and the sentence it wrote when it did.
+	// Both were journaled and neither was ever materialized or read, so a watch
+	// that had checked faithfully for thirty mornings and correctly found
+	// nothing rendered byte-identically to a watch that had never run once —
+	// "last fired never · 0 today". Diligence and death are not the same state
+	// and the user must be able to tell them apart without being told anything
+	// on the days there is nothing to tell.
+	LastChecked     time.Time
+	LastCheckLine   string
 	NextDue         time.Time
 	WakeSeq         int64
 	WakePending     bool
@@ -406,6 +416,8 @@ CREATE TABLE IF NOT EXISTS charters (
     wake_pending      INTEGER NOT NULL DEFAULT 0 CHECK (wake_pending IN (0, 1)),
     sentinel_yes      INTEGER NOT NULL DEFAULT 0 CHECK (sentinel_yes IN (0, 1)),
     wake_evidence     TEXT NOT NULL DEFAULT '',
+    last_checked      TEXT,
+    last_check_line   TEXT NOT NULL DEFAULT '',
     file_fingerprint  TEXT NOT NULL DEFAULT '',
     graph_cursor      INTEGER NOT NULL DEFAULT 0,
     graph_day         TEXT NOT NULL DEFAULT '',
@@ -437,6 +449,8 @@ type charterRecord struct {
 	SourceCommandSeq int64           `json:"source_command_seq,omitempty"`
 	ProposalShape    string          `json:"proposal_shape,omitempty"`
 	LastWake         time.Time       `json:"last_wake,omitempty"`
+	LastChecked      time.Time       `json:"last_checked,omitempty"`
+	LastCheckLine    string          `json:"last_check_line,omitempty"`
 	NextDue          time.Time       `json:"next_due,omitempty"`
 	WakeSeq          int64           `json:"wake_seq,omitempty"`
 	WakePending      bool            `json:"wake_pending,omitempty"`
@@ -570,7 +584,8 @@ func charterToRecord(c Charter) charterRecord {
 		Autonomy: autonomy, GreenFirings: c.GreenFirings, Demotions: c.Demotions,
 		Ratification: c.Ratification, SessionID: sessionID, Spec: spec,
 		SourceCommandSeq: c.SourceCommandSeq,
-		ProposalShape:    c.ProposalShape, LastWake: c.LastWake, NextDue: c.NextDue,
+		ProposalShape:    c.ProposalShape, LastWake: c.LastWake,
+		LastChecked: c.LastChecked, LastCheckLine: c.LastCheckLine, NextDue: c.NextDue,
 		WakeSeq: c.WakeSeq, WakePending: c.WakePending, SentinelYes: c.SentinelYes,
 		WakeEvidence:    c.WakeEvidence,
 		FileFingerprint: c.FileFingerprint, GraphCursor: c.GraphCursor, GraphDay: c.GraphDay,
@@ -609,12 +624,14 @@ func applyCharterCreated(tx *sql.Tx, payload charterRecord, seq int64, at time.T
 		    id, invariant, watch, sentinel_hint, action, rails, status, autonomy,
 		    green_firings, demotions, ratification, session_id, spec, source_command_seq,
 		    proposal_shape, last_wake, next_due, wake_seq, wake_pending, sentinel_yes, wake_evidence,
+		    last_checked, last_check_line,
 		    file_fingerprint, graph_cursor, graph_day, graph_triggered, created_seq, updated_seq, created_at
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		payload.ID, payload.Invariant, string(watch), payload.SentinelHint, string(action), string(encodedRails),
 		payload.Status, payload.Autonomy, payload.GreenFirings, payload.Demotions, string(ratification),
 		payload.SessionID, string(spec), payload.SourceCommandSeq, payload.ProposalShape, nullTime(payload.LastWake),
 		nullTime(payload.NextDue), payload.WakeSeq, payload.WakePending, payload.SentinelYes, payload.WakeEvidence,
+		nullTime(payload.LastChecked), payload.LastCheckLine,
 		payload.FileFingerprint, graphCursor, payload.GraphDay, payload.GraphTriggered, seq, seq,
 		formatTime(payload.CreatedAt)); err != nil {
 		return err
@@ -686,6 +703,7 @@ const charterColumns = `
     id, invariant, watch, sentinel_hint, action, rails, status, autonomy,
     green_firings, demotions, ratification, session_id, spec, source_command_seq,
     proposal_shape, last_wake, next_due, wake_seq, wake_pending, sentinel_yes, wake_evidence,
+    last_checked, last_check_line,
     file_fingerprint, graph_cursor, graph_day, graph_triggered, created_seq, updated_seq, created_at`
 
 // qualifiedCharterColumns prefixes every charter column for queries that join
@@ -701,11 +719,12 @@ func qualifiedCharterColumns(table string) string {
 func scanCharter(scanner rowScanner) (Charter, error) {
 	var c Charter
 	var watch, action, rails, ratification, spec, createdAt string
-	var lastWake, nextDue sql.NullString
+	var lastWake, nextDue, lastChecked sql.NullString
 	if err := scanner.Scan(&c.ID, &c.Invariant, &watch, &c.SentinelHint, &action, &rails,
 		&c.Status, &c.Autonomy, &c.GreenFirings, &c.Demotions, &ratification,
 		&c.SessionID, &spec, &c.SourceCommandSeq, &c.ProposalShape, &lastWake, &nextDue, &c.WakeSeq,
-		&c.WakePending, &c.SentinelYes, &c.WakeEvidence, &c.FileFingerprint, &c.GraphCursor, &c.GraphDay,
+		&c.WakePending, &c.SentinelYes, &c.WakeEvidence, &lastChecked, &c.LastCheckLine,
+		&c.FileFingerprint, &c.GraphCursor, &c.GraphDay,
 		&c.GraphTriggered, &c.CreatedSeq, &c.UpdatedSeq, &createdAt); err != nil {
 		return Charter{}, err
 	}
@@ -744,6 +763,12 @@ func scanCharter(scanner rowScanner) (Charter, error) {
 	}
 	if nextDue.Valid {
 		c.NextDue, err = parseTime(nextDue.String)
+		if err != nil {
+			return Charter{}, err
+		}
+	}
+	if lastChecked.Valid {
+		c.LastChecked, err = parseTime(lastChecked.String)
 		if err != nil {
 			return Charter{}, err
 		}
@@ -1226,11 +1251,11 @@ func (s *Store) RecordSentinelCheck(id string, check SentinelCheck) error {
 	if !pending || wakeSeq != check.WakeSeq {
 		return fmt.Errorf("sentinel check: %w: stale wake", ErrInvalid)
 	}
-	seq, _, err := appendEvent(tx, id, EventSentinelChecked, check)
+	seq, at, err := appendEvent(tx, id, EventSentinelChecked, check)
 	if err != nil {
 		return err
 	}
-	if err := applySentinelCheck(tx, id, check, seq); err != nil {
+	if err := applySentinelCheck(tx, id, check, at, seq); err != nil {
 		return err
 	}
 	return tx.Commit()
@@ -1310,13 +1335,17 @@ func (s *Store) RecentSentinelJudgments(id string, limit int) ([]SentinelJudgmen
 	return judgments, nil
 }
 
-func applySentinelCheck(tx *sql.Tx, id string, check SentinelCheck, seq int64) error {
+func applySentinelCheck(tx *sql.Tx, id string, check SentinelCheck, at time.Time, seq int64) error {
 	pending, yes := false, false
 	if check.Yes && check.Error == "" {
 		pending, yes = true, true
 	}
-	result, err := tx.Exec(`UPDATE charters SET wake_pending=?, sentinel_yes=?, updated_seq=? WHERE id=? AND wake_seq=?`,
-		pending, yes, seq, id, check.WakeSeq)
+	// The check itself is the state. A sentinel that answers no closes its wake
+	// and used to leave nothing behind but an event nobody read; the moment and
+	// the reason now live on the row every surface already loads.
+	result, err := tx.Exec(`UPDATE charters SET wake_pending=?, sentinel_yes=?,
+		last_checked=?, last_check_line=?, updated_seq=? WHERE id=? AND wake_seq=?`,
+		pending, yes, formatTime(at), check.Line, seq, id, check.WakeSeq)
 	if err != nil {
 		return err
 	}
@@ -1324,6 +1353,38 @@ func applySentinelCheck(tx *sql.Tx, id string, check SentinelCheck, seq int64) e
 		return fmt.Errorf("sentinel wake %d is missing", check.WakeSeq)
 	}
 	return nil
+}
+
+// CharterLastFired is when this watch last did anything at all. A zero time
+// means it never has, which is the sharpest form of the same answer.
+func (s *Store) CharterLastFired(id string) (time.Time, error) {
+	var timestamp string
+	err := s.db.QueryRow(`SELECT ts FROM events WHERE node_id=? AND kind=?
+		ORDER BY seq DESC LIMIT 1`, id, EventCharterFired).Scan(&timestamp)
+	if errors.Is(err, sql.ErrNoRows) {
+		return time.Time{}, nil
+	}
+	if err != nil {
+		return time.Time{}, fmt.Errorf("read charter last firing: %w", err)
+	}
+	at, err := parseTime(timestamp)
+	if err != nil {
+		return time.Time{}, fmt.Errorf("read charter last firing: %w", err)
+	}
+	return at, nil
+}
+
+// CharterCheckCount is how many times a sentinel has looked since a moment. It
+// is the denominator of usefulness: without it "this watch has found nothing"
+// cannot be told apart from "this watch has never run".
+func (s *Store) CharterCheckCount(id string, since time.Time) (int, error) {
+	var checks int
+	err := s.db.QueryRow(`SELECT COUNT(*) FROM events WHERE node_id=? AND kind=? AND ts>=?`,
+		id, EventSentinelChecked, formatTime(since)).Scan(&checks)
+	if err != nil {
+		return 0, fmt.Errorf("count charter checks: %w", err)
+	}
+	return checks, nil
 }
 
 // RetireExpiredCharter journals expiry before any wake-time model call.
@@ -1785,7 +1846,7 @@ func replayCharterEvent(tx *sql.Tx, event Event) error {
 		if err := json.Unmarshal(event.Payload, &payload); err != nil {
 			return err
 		}
-		return applySentinelCheck(tx, event.NodeID, payload, event.Seq)
+		return applySentinelCheck(tx, event.NodeID, payload, event.Time, event.Seq)
 	case EventCharterFired:
 		var payload charterFiringPayload
 		if err := json.Unmarshal(event.Payload, &payload); err != nil {

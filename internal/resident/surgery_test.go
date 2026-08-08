@@ -169,3 +169,84 @@ func TestRestartRespliceIsFreshAndLinksFailedPredecessor(t *testing.T) {
 		t.Fatalf("rebuilt retry = %+v found=%t err=%v", retry, found, err)
 	}
 }
+
+// failedJobToRestart is the setup every restart-arm test shares.
+func failedJobToRestart(t *testing.T, graph *store.Store) {
+	t.Helper()
+	if err := graph.Splice(store.RootID, store.Subtree{Nodes: []store.NodeSpec{{
+		ID: "weak-draft", Brief: "draft the essay", Title: "Essay draft", Stage: 1,
+	}}}, store.Provenance{Origin: store.OriginUser, SessionID: "restart", Intent: "draft the essay"}); err != nil {
+		t.Fatal(err)
+	}
+	claim, won, err := graph.Claim("weak-draft", "worker")
+	if err != nil || !won {
+		t.Fatalf("claim won=%t err=%v", won, err)
+	}
+	if err := graph.Start(claim); err != nil {
+		t.Fatal(err)
+	}
+	if err := graph.Fail(claim, "thin"); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestRestartCarriesTheModelTheAskNamed(t *testing.T) {
+	graph := openStore(t)
+	failedJobToRestart(t, graph)
+	command, err := graph.RequestCommand(store.Command{
+		SessionID: "restart", Kind: store.CommandRestart, Target: "weak-draft",
+		Instruction: "rerun that with the better model\n\n" + RestartModelMarker + " " + RestartBoostModel,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var asked []string
+	var boosted bool
+	reconciler := New(graph, nil, nil).WithModelResolver(
+		func(names []string, boost bool) (string, bool) {
+			asked, boosted = names, boost
+			return "anthropic/claude-opus", true
+		})
+	if err := reconciler.Tick(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if len(asked) != 0 || !boosted {
+		t.Fatalf("the boost slot was not read back: names=%v boost=%t", asked, boosted)
+	}
+	retry, found, err := graph.Node("retry-" + fmt.Sprint(command.Seq) + "-1")
+	if err != nil || !found {
+		t.Fatalf("retry: found=%t err=%v", found, err)
+	}
+	if retry.Provenance.WorkModel != "anthropic/claude-opus" {
+		t.Fatalf("the restart ran on the default anyway: %+v", retry.Provenance)
+	}
+	receipt := commandReceipt(t, graph, "restart", command.Seq)
+	if !strings.Contains(receipt.Body, "on anthropic/claude-opus") {
+		t.Fatalf("restart receipt did not state the outcome: %q", receipt.Body)
+	}
+}
+
+func TestRestartSaysSoWhenTheModelItWasAskedForIsNotThere(t *testing.T) {
+	graph := openStore(t)
+	failedJobToRestart(t, graph)
+	command, err := graph.RequestCommand(store.Command{
+		SessionID: "restart", Kind: store.CommandRestart, Target: "weak-draft",
+		Instruction: "rerun that on gpt-9\n\n" + RestartModelMarker + " gpt-9",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	reconciler := New(graph, nil, nil).WithModelResolver(
+		func([]string, bool) (string, bool) { return "", false })
+	if err := reconciler.Tick(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	retry, found, err := graph.Node("retry-" + fmt.Sprint(command.Seq) + "-1")
+	if err != nil || !found || retry.Provenance.WorkModel != "" {
+		t.Fatalf("an unresolvable name reached the executor: %+v found=%t err=%v", retry, found, err)
+	}
+	receipt := commandReceipt(t, graph, "restart", command.Seq)
+	if !strings.Contains(receipt.Body, "I don't have gpt-9") {
+		t.Fatalf("the restart quietly used the default: %q", receipt.Body)
+	}
+}

@@ -108,11 +108,31 @@ type craftUse struct {
 // every miss is an ordinary plan, and the user is never asked to confirm a
 // craft they did not bring up.
 func (r *Reconciler) craftCompile(ctx context.Context, command store.Command) (craftUse, bool) {
+	// The command sequence is the id namespace for the same reason task-<seq>
+	// is: it is unique, it is derivable from the journal, and a retried splice
+	// lands on the nodes it already made instead of beside them.
+	return r.craftFor(ctx, command.Instruction, fmt.Sprintf("craft-%d", command.Seq), store.Provenance{
+		Origin:    store.OriginUser,
+		SessionID: command.SessionID,
+		Intent:    command.Instruction,
+	})
+}
+
+// craftFor is the recognition itself, separated from where the request came
+// from. A standing watch firing is the case a learned workflow exists for —
+// the same shape of work, over and over, on a schedule — and it was the one
+// path that could not reach the shelf: admitCharterFiring compiled and planned
+// directly, so the recurring overnight job planned itself from scratch every
+// morning while the craft distilled from it sat unread.
+//
+// The caller supplies the id namespace and the provenance, because those are
+// the only two things a firing and a chat splice genuinely differ on.
+func (r *Reconciler) craftFor(ctx context.Context, request, rootID string, provenance store.Provenance) (craftUse, bool) {
 	mind := r.craftMind
 	if mind == nil || mind.shelf == nil {
 		return craftUse{}, false
 	}
-	instruction := strings.TrimSpace(command.Instruction)
+	instruction := strings.TrimSpace(request)
 	if instruction == "" || craftDeclined(instruction) {
 		return craftUse{}, false
 	}
@@ -138,16 +158,8 @@ func (r *Reconciler) craftCompile(ctx context.Context, command store.Command) (c
 		return craftUse{}, false
 	}
 
-	provenance := store.Provenance{
-		Origin:    store.OriginUser,
-		SessionID: command.SessionID,
-		Intent:    command.Instruction,
-		Craft:     CraftRef(workflow),
-	}
-	// The command sequence is the id namespace for the same reason task-<seq>
-	// is: it is unique, it is derivable from the journal, and a retried splice
-	// lands on the nodes it already made instead of beside them.
-	subtree, err := CompileCraftAs(fmt.Sprintf("craft-%d", command.Seq), mind.dir, workflow, params, provenance)
+	provenance.Craft = CraftRef(workflow)
+	subtree, err := CompileCraftAs(rootID, mind.dir, workflow, params, provenance)
 	if err != nil {
 		return craftUse{}, false
 	}

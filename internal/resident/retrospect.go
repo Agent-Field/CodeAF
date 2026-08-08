@@ -131,6 +131,7 @@ func (r *Reconciler) reflectOnJobs(ctx context.Context) {
 	}
 	if onCadence {
 		r.proposeServiceHygiene(now)
+		r.proposeCharterHygiene(now)
 		r.proposeStandingWatchStandDown()
 	}
 
@@ -303,6 +304,103 @@ func (r *Reconciler) askCharterProposal(charter store.Charter) {
 	}); err != nil {
 		log.Printf("charter proposal %s: %v", charter.ID, err)
 	}
+}
+
+const (
+	// charterHygieneQuiet is how long a watch must have checked and found
+	// nothing before the retrospective wonders aloud whether it is still
+	// wanted, and charterHygieneChecks how many of those checks it takes.
+	//
+	// Both are larger than the service equivalents on purpose. A service up for
+	// three days is unusual; a watch that finds nothing for three days is doing
+	// its job — most of a standing watch's life is correctly quiet, and asking
+	// about that would punish the watch for being the thing the user asked for.
+	// Two weeks with a couple of dozen checks and not one firing is a different
+	// claim: this watch has had every chance to be useful and has not been.
+	charterHygieneQuiet   = 14 * 24 * time.Hour
+	charterHygieneChecks  = 20
+	charterHygienePerPass = 1
+)
+
+// proposeCharterHygiene is the missing third call site of the retrospective's
+// own cadence gate. A service up for 72 hours with nobody near it is asked
+// "still needed?"; a watch that has checked two hundred mornings and never once
+// found anything was never questioned by anybody. Same shape, same discipline:
+// once per watch, defaulting to keep, and only when the user has gone quiet, so
+// the noticing never arrives in the middle of something.
+func (r *Reconciler) proposeCharterHygiene(now time.Time) {
+	charters, err := r.store.Charters(store.CharterActive)
+	if err != nil {
+		return
+	}
+	asked := 0
+	for _, charter := range charters {
+		if asked >= charterHygienePerPass {
+			return
+		}
+		if store.IsPracticeCharter(charter) || charter.LastChecked.IsZero() {
+			continue
+		}
+		// The most recent thing that counts as usefulness. A firing is the
+		// watch doing its job; for a watch that has never fired at all, the
+		// clock starts when it was created.
+		fired, err := r.store.CharterLastFired(charter.ID)
+		if err != nil {
+			continue
+		}
+		since := charter.CreatedAt
+		if fired.After(since) {
+			since = fired
+		}
+		if since.IsZero() || now.Sub(since) < charterHygieneQuiet {
+			continue
+		}
+		checks, err := r.store.CharterCheckCount(charter.ID, since)
+		if err != nil || checks < charterHygieneChecks {
+			continue
+		}
+		nudged, err := r.store.CharterHygieneAsked(charter.ID)
+		if err != nil || nudged {
+			continue
+		}
+		session := strings.TrimSpace(charter.SessionID)
+		if session == "" {
+			session = strings.TrimSpace(charter.Ratification.SessionID)
+		}
+		if session == "" {
+			continue
+		}
+		quiet, err := r.store.SessionQuietSince(session, now.Add(-serviceHygieneQuiet))
+		if err != nil || !quiet {
+			continue
+		}
+		if err := r.askCharterHygiene(charter, session, checks); err == nil {
+			asked++
+		}
+	}
+}
+
+func (r *Reconciler) askCharterHygiene(charter store.Charter, session string, checks int) error {
+	allowFree := true
+	options := []store.QuestionOption{
+		{Label: "keep", Value: store.CharterHygieneKeepValue(charter.ID)},
+		{Label: "stop it", Value: "charter:retire:" + charter.ID},
+	}
+	prompt := fmt.Sprintf("%s — I've checked %d times and found nothing worth firing on. Still want it?",
+		clipLabel(firstLine(charter.Invariant), 120), checks)
+	text := store.QuestionMessageBody(prompt, options,
+		store.QuestionConfig{Kind: store.QuestionConfirm, Category: store.QuestionCategoryStandingHygiene,
+			Default: "1", AllowFree: &allowFree})
+	question, err := r.askQuestionLocked(store.AgentQuestion{
+		SessionID: session, Text: text, OriginCharterID: charter.ID,
+		Urgency: store.QuestionWhenever, Category: store.QuestionCategoryStandingHygiene,
+		DefaultAnswer: "1", Options: options,
+	})
+	if err != nil {
+		return err
+	}
+	_, err = r.store.SurfaceQuestion(question.Seq)
+	return err
 }
 
 func recurringAskShape(ask string) string {
