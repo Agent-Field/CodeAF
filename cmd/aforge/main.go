@@ -106,8 +106,8 @@ func run() error {
 
 const usageText = `aforge — build and revise task graphs
 
-  aforge                 open the chat surface over the durable graph
-  aforge chat [--db path] [--session id]
+  aforge                 open the chat surface, resuming your last conversation
+  aforge chat [--db path] [--session id|new]
   aforge plan "<goal>" [-o graph.json] [--json] [--brief] [--ensemble N] [--model slug] [--plan-model slug]
   aforge revise <graph.json> "<what happened>" [--done 1,2,3] [-o graph.json] [--model slug] [--plan-model slug]
   aforge run  <graph.json> [-w dir] [-j 8] [-o done.json] [--yes-spend] [--model slug] [--plan-model slug]
