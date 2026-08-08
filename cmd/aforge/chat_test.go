@@ -870,6 +870,34 @@ func TestTheGateHoldsTheAnswerFirstContractWithoutBecomingACritic(t *testing.T) 
 	}
 }
 
+// The gate cannot open the workspace, so the only verification it can hold is
+// whether the deliverable shows the finished thing being used the way it will
+// be used. A leaf that exercised every part in a harness and reported the whole
+// verified is the case: the claim is a promise about evidence like any other,
+// and it is a gap when the evidence is an inference. The honest exit passes, or
+// the clause would be teaching the lie it exists to catch.
+func TestTheGateHoldsAClaimOfVerifiedToAnActualRun(t *testing.T) {
+	for name, required := range map[string]string{
+		"a claim of evidence is a commitment": "A claim that the work was checked, proven or verified is itself such a commitment",
+		"the whole thing, used as it is used": "shows the finished thing exercised the way it will actually be used",
+		"no inference from the parts":         "rather than its parts checked one by one and the whole inferred from them",
+		"the honest gap passes":               "is not a gap: it is the honest form of the same claim and it passes",
+	} {
+		if !strings.Contains(judgeDeliverablePrompt, required) {
+			t.Errorf("the gate no longer holds %s: %q missing", name, required)
+		}
+	}
+	// Still a gate and not a critic: the clause rides the paragraph that was
+	// already about promised evidence rather than opening a second test.
+	decisions := strings.Index(judgeDeliverablePrompt, "Working decisions declared in the goal")
+	claim := strings.Index(judgeDeliverablePrompt, "A claim that the work was checked")
+	substance := strings.Index(judgeDeliverablePrompt, "One absence counts exactly like every other")
+	if decisions < 0 || claim < decisions || substance < claim {
+		t.Fatalf("the verification clause left its paragraph: decisions=%d claim=%d substance=%d",
+			decisions, claim, substance)
+	}
+}
+
 // A named gap is what buys the one revision pass, and the revision is told the
 // thing the first attempt demonstrably did not hear.
 func TestNamedGapEarnsARevisionThatIsToldWhereTheAnswerGoes(t *testing.T) {
