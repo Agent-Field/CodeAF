@@ -2955,10 +2955,13 @@ func jobRootOf(graph *store.Store, node store.Node) (store.Node, bool) {
 	return store.Node{}, false
 }
 
-// deliveryPartialBytes bounds the partial a rail-deferred job posts. It is the
-// same courtesy every other body in the thread gets: enough to be the answer,
-// not so much that a stalled job floods the room.
-const deliveryPartialBytes = 4 << 10
+// deliveryPartialBytes bounds the partial a rail-deferred job posts. A partial
+// is still what the person reads, so it is bounded by what a message can carry
+// and not by what a digest may route — the room is left for the sentence this
+// body is posted with. Held at 4 KiB it was the same guillotine the node
+// summary used to be: long work reached the rail and its answer stopped
+// mid-word.
+const deliveryPartialBytes = store.MaxMessageBytes - 1<<10
 
 func boundedDelivery(text string) string {
 	return clipUTF8Bytes(strings.TrimSpace(text), deliveryPartialBytes)
