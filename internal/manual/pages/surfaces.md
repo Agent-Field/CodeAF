@@ -57,9 +57,11 @@ the split. `↑/↓` or `j/k` move the selection, enter opens what is selected, 
 Opening a task turns the input into a **steer** box — the placeholder changes to
 *"steer this worker — lands before its next turn"*. Type there and your line
 reaches that worker between turns, without re-planning anything. Steered lines
-appear in the feed prefixed `steered:`. With that box empty, `c` cancels the
-worker you are looking at. Close it and your chat draft comes back exactly as it
-was.
+appear in the feed prefixed `steered:`. With the keyboard on the feed, `c` cancels the
+worker you are looking at — `tab` moves the keyboard between that box and the
+activity feed, and the single-key actions belong to the feed, so nothing you
+type into a steer line can act on the job. Close it and your chat draft comes
+back exactly as it was.
 
 ## Voice
 
@@ -111,6 +113,7 @@ are the machine's settings, not yours.
 | `alt+1` / `alt+2` / `alt+3` | thread / board / self |
 | `alt+,` / `,` | open the settings sheet |
 | `v` | expand or collapse reading receipts |
+| `y` / `Y` | copy the focused answer / the file it produced |
 | `?` | this guide's surface-level twin, when the draft is empty |
 | `esc` | back out one layer at a time, then quit |
 | `ctrl+c` | quit immediately |
@@ -119,11 +122,20 @@ are the machine's settings, not yours.
 
 Type `/` and filter. The full set:
 
-`/graph` `/self` `/tasks` `/node` `/notebook` `/history` `/budget` `/standing`
-`/settings` `/help` `/model` `/memory` `/session` `/new` `/cancel` `/quit`
+`/graph` `/self` `/tasks` `/node` `/open` `/notebook` `/history` `/budget`
+`/standing` `/settings` `/help` `/model` `/memory` `/session` `/new` `/cancel`
+`/quit`
 
 `?` opens the same catalogue as a scrollable overlay, generated from that same
 list, so the two can never disagree.
+
+## Getting work out
+
+A deliverable's path is printed in full and rendered as a link your terminal can
+open. Beyond that: `y` copies the focused answer, `Y` copies the file it
+produced, and `/open` hands that file to your machine's own opener. The copy
+goes through the terminal's clipboard, so it works the same over ssh as it does
+locally.
 
 ## From a shell, without the chat
 

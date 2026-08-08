@@ -68,6 +68,7 @@ var slashCommands = []commandSpec{
 	{name: "self", description: "open the employee file"},
 	{name: "tasks", description: "focus and expand the active-task dock"},
 	{name: "node", description: "open a node by id prefix or current selection", takesArg: true},
+	{name: "open", description: "open the focused deliverable with your machine's opener", takesArg: true},
 	{name: "notebook", description: "browse or search the scoped notebook"},
 	{name: "history", description: "find settled work in permanent graph memory", takesArg: true},
 	{name: "budget", description: "show or change today's dollar rail", takesArg: true},
@@ -85,7 +86,7 @@ var slashCommands = []commandSpec{
 func init() {
 	handlers := map[string]slashHandler{
 		"graph": (*Model).slashGraph, "self": (*Model).slashSelf,
-		"tasks": (*Model).slashTasks, "node": (*Model).slashNode,
+		"tasks": (*Model).slashTasks, "node": (*Model).slashNode, "open": (*Model).slashOpen,
 		"notebook": (*Model).slashNotebook, "history": (*Model).slashHistory, "budget": (*Model).slashBudget,
 		"standing": (*Model).slashStanding, "help": (*Model).slashHelp, "model": (*Model).slashModel,
 		"settings": (*Model).slashSettings, "memory": (*Model).slashNotebook,
