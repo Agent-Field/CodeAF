@@ -13,6 +13,7 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strconv"
 	"strings"
@@ -176,6 +177,19 @@ func runChat(args []string) error {
 	if err != nil {
 		return err
 	}
+	// Every structuring call this surface makes now bills the same rail its
+	// leaves bill. A journal write that fails is not a reason to fail the call
+	// it is describing, so this is best-effort by construction — but it fails
+	// loudly enough into the log to be findable.
+	journalSpend := func(usage store.NodeUsage) {
+		if err := graph.RecordUsage(usage); err != nil {
+			log.Printf("note: could not journal structuring spend for %s: %v", usage.NodeID, err)
+		}
+	}
+	chatClient.WithUsageJournal(journalSpend)
+	taskClient.WithUsageJournal(journalSpend)
+	planClient.WithUsageJournal(journalSpend)
+	boostClients.journal = journalSpend
 	standingWatch, err := newStandingWatchManager(graph)
 	if err != nil {
 		return err
@@ -288,8 +302,22 @@ func runChat(args []string) error {
 	// rate limiter is the real throttle. This is a local sanity bound on
 	// goroutines/file handles, far above any realistic graph width.
 	const chatWorkerCeiling = 32
+	// The price before the purchase. It is built here so the runner can consult
+	// it on the very first tick of a claimed leaf, which is the last moment at
+	// which not starting the work is still free.
+	consent := newConsentDesk(graph)
+	consent.rehydrate()
 	runner := resident.NewRunner(graph, func(ctx context.Context, node store.Node) (resident.ExecResult, error) {
 		isReflex := node.Group == resident.ReflexGroup
+		// Nothing above this line spends anything, which is the whole point of
+		// its position: a job whose estimate crosses the threshold is held and
+		// asked about before its first worker has said a word. The runner's
+		// landing path reads the hold and releases the claim, so this returns
+		// nothing and the node goes back to the queue rather than lying about
+		// having finished or failed.
+		if consent.gate(settings, measured, node) {
+			return resident.ExecResult{}, nil
+		}
 		// Each top-level job works in its own directory: one thread hosts
 		// many unrelated jobs, and continuity between them travels through
 		// the graph as digests and absolute paths, never through a shared
@@ -493,7 +521,7 @@ func runChat(args []string) error {
 			return resident.ExecResult{
 				Summary: outcome.Text, PromptTokens: spent.PromptTokens,
 				CompletionTokens: spent.CompletionTokens, Cost: spent.Cost,
-				ServiceRequests: outcome.ServiceRequests,
+				ServiceRequests: outcome.ServiceRequests, Model: workerModel,
 			}, nil
 		}
 		// The workspace-relative paths become absolute once, here, because three
@@ -546,6 +574,23 @@ func runChat(args []string) error {
 					})
 				}
 			}
+			// A failed leaf usually leaves something behind. The files are on
+			// disk in the job's workspace and, until now, no surface in the
+			// product knew they existed: the error path threw the outcome away,
+			// the summary stayed empty, and the fold pointers had no absolute
+			// path to find. Naming them in the error text is enough — the error
+			// is what a failed node records, and a downstream step now reads
+			// paths out of it the same way it reads them out of a summary.
+			failure := humanFailure(node, err, absolute)
+			if len(absolute) > 0 {
+				_, _ = graph.PostMessage(store.Message{
+					SessionID: node.Provenance.SessionID,
+					Role:      store.RoleSystem,
+					NodeID:    node.ID,
+					Body: "it stopped before finishing, but it had already written these — they are yours to keep or hand to a retry:\n" +
+						strings.Join(absolute, "\n"),
+				})
+			}
 			// The error says the leaf produced nothing; it says nothing about
 			// what producing nothing cost. Escalation has usually run the whole
 			// task twice by the time we arrive here, so this is the most
@@ -555,7 +600,8 @@ func runChat(args []string) error {
 				PromptTokens:     spent.PromptTokens,
 				CompletionTokens: spent.CompletionTokens,
 				Cost:             spent.Cost,
-			}, err
+				Model:            workerModel,
+			}, failure
 		}
 		// The user's next act is opening the file, so the summary carries where
 		// it actually lives; the absolute paths were resolved above.
@@ -585,6 +631,22 @@ func runChat(args []string) error {
 				// resumes the split after the head records consent.
 				if rail, err := graph.DailyRailToday(settings.DailyBudgetUSD); err == nil {
 					continuing = rail.Reached
+				}
+				if continuing {
+					// Continuing suppresses the announcement, which is right for
+					// a job that will speak again in a minute and wrong for one
+					// waiting on a human. Without this the user got the budget
+					// question and no result line at all, while a real partial
+					// sat finished in the graph. It is posted here rather than
+					// left to the announcer because the announcer is the thing
+					// being suppressed.
+					_, _ = graph.PostMessage(store.Message{
+						SessionID: node.Provenance.SessionID,
+						Role:      store.RoleSystem,
+						NodeID:    node.ID,
+						Body: boundedDelivery(text) +
+							"\n\nThat is as far as today's budget goes. The rest is planned and waiting on the rail — raise it and I'll carry on.",
+					})
 				}
 			}
 		}
@@ -649,6 +711,23 @@ func runChat(args []string) error {
 						})
 					} else {
 						outcome.Verdict = provider.VerdictSemanticFailure
+						// The revision produced nothing, and the rejected draft
+						// ships anyway because a gate that can loop is a gate
+						// that can stall. What must not also happen is that it
+						// ships in silence: the verdict was recorded, no message
+						// was posted, and the user read a draft the system had
+						// already judged incomplete as though it were the
+						// answer. The reservation goes on the delivery itself so
+						// it cannot be missed and cannot be separated from it.
+						reservation := "I'm handing this over with a reservation — a review found this still missing: " +
+							firstLine(gate.Gaps) + ". The revision pass came back empty, so this is the first draft."
+						text += "\n\n" + reservation
+						_, _ = graph.PostMessage(store.Message{
+							SessionID: node.Provenance.SessionID,
+							Role:      store.RoleSystem,
+							NodeID:    node.ID,
+							Body:      reservation,
+						})
 					}
 				}
 				_ = graph.RecordDeliveryGate(node.ID, evidence)
@@ -657,6 +736,17 @@ func runChat(args []string) error {
 			// allowed to be a gate: an unproven rule rides one quiet question
 			// with the delivery, which lands either way.
 			_, _, _ = resident.AnnotateDelivery(graph, node, text)
+		}
+		// A settled failure downstream of a synthesis node is terminal by
+		// design, so the parent goes Ready over it, receives `<id> (failed):
+		// <error>` as one input among many, and writes the confident summary any
+		// synthesis writes. The user then reads an interruption line and, right
+		// under it, an answer that behaves as though nothing was missing. What
+		// the parent knows and does not say is exactly what has to be said.
+		if node.Parent == store.RootID {
+			if note := failedPartsNote(graph, node); note != "" {
+				text += "\n\n" + note
+			}
 		}
 		outcome.Text = text
 		outcome.Usage = spent
@@ -709,6 +799,7 @@ func runChat(args []string) error {
 			Cost:             spent.Cost,
 			Promote:          promoted,
 			ServiceRequests:  outcome.ServiceRequests,
+			Model:            workerModel,
 		}, nil
 	}, "chat-runner", chatWorkerCeiling).WithDailyBudgetUSD(settings.DailyBudgetUSD)
 	if craftRunner != nil {
@@ -769,6 +860,8 @@ func runChat(args []string) error {
 		})
 	})
 	go func() { defer guard.Recover("chat/runner"); defer background.Done(); _ = runner.Serve(ctx) }()
+	background.Add(1)
+	guard.Go("chat/consent", func() { defer background.Done(); consent.serve(ctx) })
 
 	commander = &chatCommander{
 		settings:      settings,
@@ -910,11 +1003,38 @@ func previousAttemptInput(outcome *exec.Outcome, jobDir string) exec.Input {
 	}
 }
 
+// tasteBriefBytes bounds settled taste inside a leaf's brief. Taste is a short
+// list of rules by construction — a user has to correct their way to one twice
+// before it is even a candidate — so this is a guard against pathology rather
+// than a working budget.
+const tasteBriefBytes = 1 << 10
+
 func residentDeliveryBrief(graph *store.Store, node store.Node) string {
-	if node.Parent != store.RootID {
-		return node.Brief
+	brief := node.Brief
+	if node.Parent == store.RootID {
+		brief = resident.VoicePrompt(graph, node.Brief, node.Provenance.Intent, node.Brief)
 	}
-	return resident.VoicePrompt(graph, node.Brief, node.Provenance.Intent, node.Brief)
+	return withTasteBrief(graph, brief)
+}
+
+// withTasteBrief puts settled taste in front of every worker, not only the one
+// that owns the deliverable.
+//
+// Taste had exactly one consumer in the tree — the gate — and the gate is told
+// in the same breath that wording and style are not gaps. So a rule the user
+// corrected their way to three times reached the one reader instructed to
+// ignore it and reached none of the readers it was for. A worker cannot honour
+// a standard it was never shown; a reviewer cannot repair one that was never
+// applied. It rides the brief rather than the inputs because the input header
+// calls everything below it prior results this leaf already has, and a standing
+// rule is not a result.
+func withTasteBrief(graph *store.Store, brief string) string {
+	taste := strings.TrimSpace(resident.TasteBlock(graph))
+	if taste == "" {
+		return brief
+	}
+	return strings.TrimSpace(brief) + "\n\nSettled taste — how this person likes work done. Hold to these:\n" +
+		clipUTF8Bytes(taste, tasteBriefBytes)
 }
 
 const chatDocumentAttachmentLimit = 25 << 20
@@ -1680,11 +1800,91 @@ func saveChatPrefs(dir string, prefs chatPrefs) error {
 // liveClient is a model-switchable completion client. Long-running leaves take
 // a snapshot so one measurement has one model; structuring consumers hold this
 // handle directly, so a swap takes effect on their next call.
+//
+// It is also the one seam every structuring call in this surface passes
+// through — the head's routing loop, the compiler, the delivery gate, the
+// revision sentinel, the narrator, the distiller. None of that spend reached
+// the journal: the daily rail is summed from the usage table and nowhere else,
+// so it systematically understated the bill by the entire cost of thinking
+// about the work. The headless path has journaled its own preparation spend
+// since it existed; chat is what forgot. Billing here rather than at each of a
+// dozen call sites is what makes it hard to forget again.
 type liveClient struct {
 	settings config.Config
 	mu       sync.RWMutex
 	model    string
 	client   router.Client
+	journal  func(store.NodeUsage)
+}
+
+// spendNodeKey carries the node a structuring call is about. Most of them are
+// about a specific piece of work — the gate judging one deliverable, the
+// sentinel revising one plan — and attributing those to the job rather than to
+// the spine is the difference between a job's cost being its whole cost and
+// being only what its leaves happened to burn.
+type spendNodeKey struct{}
+
+// withSpendNode names the work a structuring call belongs to.
+func withSpendNode(ctx context.Context, nodeID string) context.Context {
+	if strings.TrimSpace(nodeID) == "" {
+		return ctx
+	}
+	return context.WithValue(ctx, spendNodeKey{}, nodeID)
+}
+
+func spendNodeFrom(ctx context.Context) string {
+	if id, ok := ctx.Value(spendNodeKey{}).(string); ok {
+		return id
+	}
+	// The spine is the honest home for work that belongs to no job: routing a
+	// message, composing an arrival brief, consolidating the notebook. It is
+	// not a job root, so it lands on the day's rail without inventing spend for
+	// an errand that never asked for it.
+	return store.RootID
+}
+
+// WithUsageJournal wires the durable rail. It is set after the graph opens
+// rather than at construction because the clients exist first; until it is set
+// a client simply does not bill, which is the old behaviour and the right one
+// for a client that has no store to bill to.
+func (l *liveClient) WithUsageJournal(journal func(store.NodeUsage)) *liveClient {
+	if l == nil {
+		return l
+	}
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	l.journal = journal
+	return l
+}
+
+func (l *liveClient) usageJournal() func(store.NodeUsage) {
+	l.mu.RLock()
+	defer l.mu.RUnlock()
+	return l.journal
+}
+
+// recordStructuringSpend bills one completed structuring call. A response with
+// no usage block is not billed: guessing at a number is worse than a gap, and
+// the gap is visible as a run the rail did not see rather than as money the
+// rail invented.
+func (l *liveClient) recordStructuringSpend(ctx context.Context, model string, response *ai.Response) {
+	journal := l.usageJournal()
+	if journal == nil || response == nil || response.Usage == nil {
+		return
+	}
+	usage := store.NodeUsage{
+		NodeID:           spendNodeFrom(ctx),
+		PromptTokens:     response.Usage.PromptTokens,
+		CompletionTokens: response.Usage.CompletionTokens,
+		Model:            model,
+	}
+	if response.Usage.Cost != nil {
+		usage.Cost = *response.Usage.Cost
+	}
+	if usage.PromptTokens == 0 && usage.CompletionTokens == 0 && usage.Cost == 0 {
+		return
+	}
+	journal(usage)
 }
 
 // messageClientPool keeps per-message chat overrides pinned to the exact model
@@ -1692,6 +1892,7 @@ type liveClient struct {
 // cannot race an armed submission that the head has not tailed yet.
 type messageClientPool struct {
 	settings config.Config
+	journal  func(store.NodeUsage)
 	mu       sync.Mutex
 	clients  map[string]*liveClient
 }
@@ -1720,6 +1921,7 @@ func (p *messageClientPool) ForModel(model string) (*liveClient, error) {
 	if err != nil {
 		return nil, err
 	}
+	client.WithUsageJournal(p.journal)
 	if p.clients == nil {
 		p.clients = make(map[string]*liveClient)
 	}
@@ -1778,8 +1980,16 @@ func newLiveClient(settings config.Config, model string) (*liveClient, error) {
 }
 
 func (l *liveClient) CompleteWithMessages(ctx context.Context, messages []ai.Message, options ...ai.Option) (*ai.Response, error) {
-	_, client := l.Snapshot()
-	return client.CompleteWithMessages(ctx, messages, options...)
+	slot, client := l.Snapshot()
+	response, err := client.CompleteWithMessages(ctx, messages, options...)
+	// The served model, not the slot: a panel picks a rung and an escalation
+	// moves one, and the row should name whoever actually answered.
+	model := slot
+	if served := provider.CallFrom(ctx).Model(); served != "" {
+		model = served
+	}
+	l.recordStructuringSpend(ctx, model, response)
+	return response, err
 }
 
 func (l *liveClient) Model() string {
@@ -1999,6 +2209,467 @@ const (
 
 func continuationMessage(pieces int) string {
 	return resident.OverrunContinuationMessage(pieces)
+}
+
+// Every number in this system used to be retrospective. Cost was computed after
+// spending, the rail fired after crossing, and the first quantity a user ever
+// saw about a fifty-leaf job was a step count emitted well after the planning
+// that produced it had been paid for. There was no moment at which a person
+// could look at what they had asked for and decline it.
+//
+// This is that moment, and it is deliberately small: one question, quoting a
+// count and a price, with two options, on the last tick at which not starting
+// is free — the claim. Below the threshold nothing is asked at all, because a
+// resident that asks permission for two dollars of work is not a resident.
+const (
+	// planConsentApprove and planConsentHold are the two answers. The gate
+	// reads the recorded resolution rather than decoding an option value, so
+	// the labels are the contract and are matched exactly.
+	planConsentApprove = "yes, start it"
+	planConsentHold    = "hold it — I'll trim it first"
+
+	// planConsentPoll is how often an outstanding question is re-read. It runs
+	// only while at least one job is waiting, so an idle resident pays nothing
+	// for it.
+	planConsentPoll = 2 * time.Second
+
+	// planConsentHoldReason is what the hold records. It appears wherever a
+	// held node explains itself.
+	planConsentHoldReason = "waiting for your go-ahead on the estimate"
+)
+
+// planEstimate is the honest arithmetic behind the question: how many steps,
+// and what a step has cost on this machine. Both halves are measurements. When
+// there is no measurement there is no estimate and no question — a forecast the
+// model made up would be worse than the silence it replaced.
+type planEstimate struct {
+	Leaves  int
+	PerLeaf float64
+	Dollars float64
+}
+
+// estimateJob prices a spliced subtree. The unit cost is the median of what a
+// run has actually cost here, preferring the executor's own profile records
+// (which know the shape of the work) and falling back to the journal's own
+// median (which knows this machine). A job with no measured history anywhere
+// returns nothing at all.
+func estimateJob(graph *store.Store, measured *profile.Profile, root string) (planEstimate, bool) {
+	nodes, err := graph.SubtreeNodes(root)
+	if err != nil || len(nodes) == 0 {
+		return planEstimate{}, false
+	}
+	hasChild := make(map[string]bool, len(nodes))
+	for _, node := range nodes {
+		if node.Parent != "" {
+			hasChild[node.Parent] = true
+		}
+	}
+	estimate := planEstimate{}
+	for _, node := range nodes {
+		if !hasChild[node.ID] {
+			estimate.Leaves++
+		}
+	}
+	if estimate.Leaves == 0 {
+		return planEstimate{}, false
+	}
+	estimate.PerLeaf = medianProfileCost(measured)
+	if estimate.PerLeaf <= 0 {
+		if journaled, err := graph.MeasuredCostPerRun(); err == nil {
+			estimate.PerLeaf = journaled
+		}
+	}
+	if estimate.PerLeaf <= 0 {
+		return planEstimate{}, false
+	}
+	estimate.Dollars = float64(estimate.Leaves) * estimate.PerLeaf
+	return estimate, true
+}
+
+// medianProfileCost is what one leaf of ordinary planned work has cost this
+// model. The median rather than the mean because leaf costs are long-tailed and
+// one runaway must not set the price of the next fifty.
+func medianProfileCost(measured *profile.Profile) float64 {
+	if measured == nil {
+		return 0
+	}
+	costs := make([]float64, 0, len(measured.Records))
+	for _, record := range measured.Records {
+		if record.Cost > 0 && record.Size != profile.BucketReflex {
+			costs = append(costs, record.Cost)
+		}
+	}
+	if len(costs) == 0 {
+		return 0
+	}
+	sort.Float64s(costs)
+	return costs[len(costs)/2]
+}
+
+// consentDesk holds the jobs waiting on an answer and releases them when one
+// arrives. It is in-memory because it is a watch loop, not a record: the
+// question and the hold are both durable, so a restart rebuilds the watch from
+// the graph rather than from anything kept here.
+type consentDesk struct {
+	graph   *store.Store
+	mu      sync.Mutex
+	waiting map[string]int64
+	wake    chan struct{}
+}
+
+func newConsentDesk(graph *store.Store) *consentDesk {
+	return &consentDesk{graph: graph, waiting: make(map[string]int64), wake: make(chan struct{}, 1)}
+}
+
+// consentQuestion finds the one consent question this job has ever been asked.
+// One is the whole design: a job is priced once, and a person who said "hold"
+// is not asked again every time a leaf comes up for claim.
+func (d *consentDesk) consentQuestion(root string) (store.AgentQuestion, bool) {
+	questions, err := d.graph.QuestionsForNode(root, 20)
+	if err != nil {
+		return store.AgentQuestion{}, false
+	}
+	for _, question := range questions {
+		if question.Category == planConsentCategory {
+			return question, true
+		}
+	}
+	return store.AgentQuestion{}, false
+}
+
+// gate is the last free moment. It returns true when the caller must not run.
+//
+// The hold is what makes this work without a new mechanism: a held node is not
+// ready, the runner's landing path already treats a held claim as a release
+// rather than a failure, and the leaf that got this far has spent nothing yet
+// because this is the first thing its executor does.
+func (d *consentDesk) gate(settings config.Config, measured *profile.Profile, node store.Node) bool {
+	if d == nil || settings.PlanConsentUSD <= 0 || node.Group == resident.ReflexGroup ||
+		node.Provenance.Origin != store.OriginUser {
+		return false
+	}
+	root, ok := jobRootOf(d.graph, node)
+	if !ok {
+		return false
+	}
+	if question, found := d.consentQuestion(root.ID); found {
+		if question.Status == store.QuestionAnswered || question.Status == store.QuestionExpired {
+			// Asked and settled. Whatever the answer was, the decision has
+			// been made once and by a person; re-holding here would be the
+			// system overruling them, and would deadlock a job they released
+			// by hand.
+			return false
+		}
+		d.hold(root)
+		d.watch(root.ID, question.Seq)
+		return true
+	}
+	estimate, priced := estimateJob(d.graph, measured, root.ID)
+	if !priced || estimate.Dollars < settings.PlanConsentUSD {
+		return false
+	}
+	seq, err := d.ask(root, estimate)
+	if err != nil {
+		// A question that could not be asked must not become a job that never
+		// runs. Silence here costs money; a wedge costs the errand.
+		log.Printf("note: could not ask for spending consent on %s: %v", root.ID, err)
+		return false
+	}
+	d.hold(root)
+	d.watch(root.ID, seq)
+	return true
+}
+
+// planConsentCategory names this ask for the empirical gate the way every other
+// durable question is named. It is its own class because its answer is the one
+// thing no default may be assumed for: the whole point is that a person said
+// yes before the money moved.
+const planConsentCategory = store.QuestionCategory("plan-consent")
+
+func (d *consentDesk) ask(root store.Node, estimate planEstimate) (int64, error) {
+	label := clipUTF8Bytes(firstLine(nodeDisplay(root)), 60)
+	prompt := fmt.Sprintf("%s comes to %d %s, about $%.2f at what work like this has cost here. Start it, or trim it first?",
+		label, estimate.Leaves, plural(estimate.Leaves, "step"), estimate.Dollars)
+	options := []store.QuestionOption{
+		{Label: planConsentApprove},
+		{Label: planConsentHold, Hint: "the plan stays as it is; cancel the parts you don't want, then say go"},
+	}
+	allowFree := false
+	body := store.QuestionMessageBody(prompt, options, store.QuestionConfig{
+		Kind: store.QuestionConfirm, Category: planConsentCategory,
+		Default: "1", AllowFree: &allowFree,
+	})
+	question, err := d.graph.AskQuestion(store.AgentQuestion{
+		SessionID: root.Provenance.SessionID, Text: body, OriginNodeID: root.ID,
+		Urgency: store.QuestionBlocking, Category: planConsentCategory,
+		DefaultAnswer: "1", Options: options,
+	})
+	if err != nil {
+		return 0, err
+	}
+	if _, err := d.graph.SurfaceQuestion(question.Seq); err != nil {
+		return 0, err
+	}
+	return question.Seq, nil
+}
+
+func (d *consentDesk) hold(root store.Node) {
+	d.setHold(root, true)
+}
+
+func (d *consentDesk) setHold(root store.Node, held bool) {
+	nodes, err := d.graph.SubtreeNodes(root.ID)
+	if err != nil {
+		return
+	}
+	for _, node := range nodes {
+		if node.Status == store.Done || node.Status == store.Failed || node.Status == store.Cancelled {
+			continue
+		}
+		if node.Held == held {
+			continue
+		}
+		if err := d.graph.SetNodeHold(node.ID, held, planConsentHoldReason); err != nil {
+			log.Printf("note: could not %s %s for consent: %v", holdVerb(held), node.ID, err)
+		}
+	}
+}
+
+func holdVerb(held bool) string {
+	if held {
+		return "hold"
+	}
+	return "release"
+}
+
+func (d *consentDesk) watch(root string, seq int64) {
+	if !d.enqueue(root, seq) {
+		return
+	}
+	select {
+	case d.wake <- struct{}{}:
+	default:
+	}
+}
+
+func (d *consentDesk) enqueue(root string, seq int64) bool {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	if _, already := d.waiting[root]; already {
+		return false
+	}
+	d.waiting[root] = seq
+	return true
+}
+
+func (d *consentDesk) outstanding() map[string]int64 {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	pending := make(map[string]int64, len(d.waiting))
+	for root, seq := range d.waiting {
+		pending[root] = seq
+	}
+	return pending
+}
+
+func (d *consentDesk) forget(root string) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	delete(d.waiting, root)
+}
+
+// rehydrate rebuilds the watch after a restart. Held nodes and unanswered
+// questions are both durable, so a resident that died between the question and
+// the answer comes back knowing exactly what it was waiting for — and a job
+// approved while it was down is released on the way up rather than sitting
+// held forever.
+func (d *consentDesk) rehydrate() {
+	nodes, err := d.graph.ActiveNodes()
+	if err != nil {
+		return
+	}
+	for _, node := range nodes {
+		if node.Parent != store.RootID || !node.Held {
+			continue
+		}
+		question, found := d.consentQuestion(node.ID)
+		if !found {
+			continue
+		}
+		switch question.Status {
+		case store.QuestionAnswered, store.QuestionExpired:
+			d.settle(node.ID, question)
+		default:
+			d.watch(node.ID, question.Seq)
+		}
+	}
+}
+
+// serve is the release loop. It sleeps on a channel while nothing is waiting,
+// which is the difference between a feature and a tax on every idle resident.
+func (d *consentDesk) serve(ctx context.Context) {
+	for {
+		if len(d.outstanding()) == 0 {
+			select {
+			case <-ctx.Done():
+				return
+			case <-d.wake:
+			}
+			continue
+		}
+		select {
+		case <-ctx.Done():
+			return
+		case <-time.After(planConsentPoll):
+		}
+		for root, seq := range d.outstanding() {
+			question, found, err := d.graph.AgentQuestionBySeq(seq)
+			if err != nil || !found {
+				continue
+			}
+			if question.Status != store.QuestionAnswered && question.Status != store.QuestionExpired {
+				continue
+			}
+			d.settle(root, question)
+		}
+	}
+}
+
+// settle acts on an answered question exactly once. An approval releases the
+// hold and says so; anything else leaves the plan standing and held, which is
+// what "trim it first" means — the pending nodes are all still there to cancel.
+func (d *consentDesk) settle(root string, question store.AgentQuestion) {
+	d.forget(root)
+	node, found, err := d.graph.Node(root)
+	if err != nil || !found {
+		return
+	}
+	if !strings.EqualFold(strings.TrimSpace(question.Resolution), planConsentApprove) {
+		return
+	}
+	d.setHold(node, false)
+	_, _ = d.graph.PostMessage(store.Message{
+		SessionID: node.Provenance.SessionID,
+		Role:      store.RoleSystem,
+		NodeID:    node.ID,
+		Body:      "starting — " + clipUTF8Bytes(firstLine(nodeDisplay(node)), 60),
+	})
+}
+
+// jobRootOf walks to the top-level node an errand hangs from. It is the unit a
+// price is quoted for, because it is the unit a person asked for.
+func jobRootOf(graph *store.Store, node store.Node) (store.Node, bool) {
+	current := node
+	for depth := 0; depth < 32; depth++ {
+		if current.Parent == store.RootID {
+			return current, true
+		}
+		if strings.TrimSpace(current.Parent) == "" {
+			return store.Node{}, false
+		}
+		parent, found, err := graph.Node(current.Parent)
+		if err != nil || !found {
+			return store.Node{}, false
+		}
+		current = parent
+	}
+	return store.Node{}, false
+}
+
+// deliveryPartialBytes bounds the partial a rail-deferred job posts. It is the
+// same courtesy every other body in the thread gets: enough to be the answer,
+// not so much that a stalled job floods the room.
+const deliveryPartialBytes = 4 << 10
+
+func boundedDelivery(text string) string {
+	return clipUTF8Bytes(strings.TrimSpace(text), deliveryPartialBytes)
+}
+
+// failedPartsNamed bounds how many failed steps a delivery names one by one.
+// Past a handful the list stops being information and becomes a wall; the count
+// still tells the truth.
+const failedPartsNamed = 3
+
+// failedPartsNote is the sentence a parent owes its reader when part of the
+// work under it did not land. It counts the whole subtree rather than the
+// direct children because a fan-out's failures are usually two levels down, and
+// it names the first few with their own reasons, because "3 of 4 parts landed"
+// without saying which one is missing is only marginally better than silence.
+func failedPartsNote(graph *store.Store, node store.Node) string {
+	nodes, err := graph.SubtreeNodes(node.ID)
+	if err != nil || len(nodes) <= 1 {
+		return ""
+	}
+	total, lost := 0, make([]store.Node, 0)
+	for _, part := range nodes {
+		if part.ID == node.ID {
+			continue
+		}
+		total++
+		if part.Status == store.Failed || part.Status == store.Cancelled {
+			lost = append(lost, part)
+		}
+	}
+	if len(lost) == 0 || total == 0 {
+		return ""
+	}
+	note := fmt.Sprintf("Not all of this landed: %d of %d parts finished.", total-len(lost), total)
+	named := lost
+	if len(named) > failedPartsNamed {
+		named = named[:failedPartsNamed]
+	}
+	for _, part := range named {
+		reason := firstLine(strings.TrimSpace(part.Error))
+		if reason == "" {
+			reason = "no reason was recorded"
+		}
+		note += "\n- " + clipUTF8Bytes(firstLine(nodeDisplay(part)), 70) + " — " + clipUTF8Bytes(reason, 160)
+	}
+	if len(lost) > len(named) {
+		note += fmt.Sprintf("\n- and %d more that did not finish", len(lost)-len(named))
+	}
+	return note + "\nRead what is above knowing that much of it is missing."
+}
+
+// leafErrorPrefix is how the executor stamps its own errors: `node 7: ...`,
+// where 7 is the node's CreatedSeq. It is a real handle inside the executor and
+// meaningless outside it — the number appears on no surface the user has ever
+// seen — so it is stripped here, at the seam where an executor error becomes
+// something a person reads.
+var leafErrorPrefix = regexp.MustCompile(`^node \d+: `)
+
+// humanFailure turns an executor error into a sentence about the errand.
+//
+// The failure formatter downstream renders whatever this returns as
+// `I hit a problem with "<label>": <first line>`, so the first line is the
+// whole of what most people ever read about a failure. It used to be a leaked
+// Go error carrying an internal integer id. What replaces it says what the work
+// was and keeps the cause clause verbatim — the provider's own words are the
+// only diagnosis anyone has, and paraphrasing them would be inventing one.
+//
+// The partial files ride below the first line, where clipping bites and the
+// formatter does not look, because they are for the retry and for the person
+// who wants them, not for the notification.
+func humanFailure(node store.Node, err error, artifacts []string) error {
+	if err == nil {
+		return nil
+	}
+	cause := strings.TrimSpace(leafErrorPrefix.ReplaceAllString(strings.TrimSpace(err.Error()), ""))
+	if cause == "" {
+		cause = "it stopped without saying why"
+	}
+	label := strings.TrimSpace(node.Title)
+	if label == "" {
+		label = firstLine(node.Brief)
+	}
+	body := clipUTF8Bytes(firstLine(label), 80) + " did not finish — " + firstLine(cause)
+	if rest := strings.TrimSpace(strings.TrimPrefix(cause, firstLine(cause))); rest != "" {
+		body += "\n" + rest
+	}
+	if len(artifacts) > 0 {
+		body += "\n\nFiles it left behind:\n" + strings.Join(artifacts, "\n")
+	}
+	return errors.New(body)
 }
 
 // shouldGate keeps the delivery ceremony off the reflex rung. A promoted
@@ -2328,7 +2999,9 @@ func (j *jobPlans) reviseAfter(ctx context.Context, settings config.Config, clie
 
 	j.mu.Lock()
 	defer j.mu.Unlock()
-	judgeCtx := router.WithAvoidModel(ctx, workerModel)
+	// The sentinel is this job's own second thought about its own remainder,
+	// so its spend belongs to this job.
+	judgeCtx := withSpendNode(router.WithAvoidModel(ctx, workerModel), node.ID)
 	operations, _, err := plan.Revise(settings.Context(judgeCtx, planGraph.Goal), client, planGraph,
 		resident.RevisionEvent(node, summary, artifacts, failure))
 	if err != nil || len(operations) == 0 {
@@ -2391,7 +3064,7 @@ func (j *jobPlans) reviseForUser(ctx context.Context, settings config.Config, cl
 		// revision that could not happen; this is how it reaches it.
 		return resident.Redirection{}, errNoRetainedPlan
 	}
-	operations, _, err := plan.Revise(settings.Context(ctx, entry.graph.Goal), client, entry.graph,
+	operations, _, err := plan.Revise(settings.Context(withSpendNode(ctx, job.ID), entry.graph.Goal), client, entry.graph,
 		resident.UserRevisionEvent(message, flavor))
 	if err != nil {
 		return resident.Redirection{}, err
@@ -2616,6 +3289,10 @@ func judgeDeliverable(ctx context.Context, settings config.Config, client *liveC
 	body += "Verbatim request:\n" + ask + "\n\nCompiled goal:\n" + node.Brief + "\n\nDeliverable as produced:\n" + deliverable
 	judgeCtx := settings.Context(router.WithAvoidModel(ctx, workerModel), "gate")
 	judgeCtx = provider.WithCall(judgeCtx, provider.ClassPlanAudit)
+	// The gate is part of what this deliverable cost, not part of the day's
+	// overhead: a job whose bill omits its own review reads as cheaper than it
+	// was, and the review is often the second most expensive thing in it.
+	judgeCtx = withSpendNode(judgeCtx, node.ID)
 	options := []ai.Option{ai.WithMaxTokens(400)}
 	// Structured output is the cascade's free verifier. Keep the no-panel
 	// adapter's request options unchanged; there is no second rung to unlock.
@@ -2761,6 +3438,41 @@ func recordProfileSurprise(graph *store.Store, nodeID string, record profile.Rec
 	})
 }
 
+// journalPlanSpend bills the planner's passes to the spine.
+//
+// The spine rather than the job is deliberate and is the honest half of a
+// compromise: the nodes this plan describes do not exist yet — the reconciler
+// splices them in the statement after this one — so there is nothing to charge
+// yet. What matters most is that the money is on the day's rail at all, which
+// is the number the user is actually shown and the number that decides whether
+// the next leaf may start. Attributing a plan to the job it produced is the
+// remaining half and needs the splice to have happened first.
+func journalPlanSpend(history *store.Store, client *liveClient, passes ...plan.Usage) {
+	if history == nil {
+		return
+	}
+	var total plan.Usage
+	for _, pass := range passes {
+		total.Calls += pass.Calls
+		total.PromptTokens += pass.PromptTokens
+		total.CompletionTokens += pass.CompletionTokens
+		total.Cost += pass.Cost
+	}
+	if total.Calls == 0 {
+		return
+	}
+	model := ""
+	if client != nil {
+		model = client.Model()
+	}
+	if err := history.RecordUsage(store.NodeUsage{
+		NodeID: store.RootID, PromptTokens: total.PromptTokens,
+		CompletionTokens: total.CompletionTokens, Cost: total.Cost, Model: model,
+	}); err != nil {
+		log.Printf("note: could not journal planning spend: %v", err)
+	}
+}
+
 func planSubtree(settings config.Config, planClient, workClient *liveClient, plans *jobPlans, history *store.Store) resident.PlanFunc {
 	return func(ctx context.Context, compiled resident.Compiled) (store.Subtree, error) {
 		anchor, anchored := resident.PlanAnchorFromContext(ctx)
@@ -2805,9 +3517,16 @@ func planSubtree(settings config.Config, planClient, workClient *liveClient, pla
 		// pass is the widest fan-out in the lineage, and without the run's cache
 		// key its N concurrent calls scatter across providers and each writes the
 		// shared prefix cold. It also carries the operator's reasoning setting.
-		if _, err := plan.Contracts(settings.Context(ctx, compiled.Goal), structuring, graph, resident.ContractPlaybook(history), progress); err != nil {
+		contractUsage, err := plan.Contracts(settings.Context(ctx, compiled.Goal), structuring, graph, resident.ContractPlaybook(history), progress)
+		if err != nil {
 			log.Printf("note: could not write contracts: %v", err)
 		}
+		// The planner talks to the provider through a raw client rather than
+		// through the billing seam, so its passes — spine, ground, fan-out,
+		// bind, size, audit, expansion, briefs, contracts — are journaled here
+		// by hand. It is the largest single structuring cost in the system and
+		// it was the one the rail never saw.
+		journalPlanSpend(history, planClient, graph.Usage, contractUsage)
 		subtree, err := resident.SubtreeFromPlan(graph, prefix)
 		if err != nil {
 			return store.Subtree{}, err
@@ -2855,9 +3574,11 @@ func replanRemainder(settings config.Config, planClient, workClient *liveClient,
 				Stage: 1,
 			}}}, nil
 		}
-		if _, err := plan.Contracts(settings.Context(ctx, goal), structuring, graph, resident.ContractPlaybook(history), progress); err != nil {
+		contractUsage, err := plan.Contracts(settings.Context(ctx, goal), structuring, graph, resident.ContractPlaybook(history), progress)
+		if err != nil {
 			log.Printf("note: could not write repair contracts: %v", err)
 		}
+		journalPlanSpend(history, planClient, graph.Usage, contractUsage)
 		subtree, err := resident.SubtreeFromPlan(graph, prefix)
 		if err != nil {
 			return store.Subtree{}, err
