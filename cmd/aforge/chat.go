@@ -647,40 +647,55 @@ func buildChatBrain(w *chatWindow, session string, hand resident.HandoverFunc) (
 		// Resource exhaustion is invisible: it grows the graph and the final
 		// assembled deliverable reaches the gate. Semantic failure stays honest
 		// and still lands with the evidence from the failing leaf.
+		//
+		// But exhaustion alone is not evidence of unfinished work. A leaf that
+		// is told to land within its reserve often lands complete — one real
+		// run split a finished, self-described "complete and verified"
+		// inventory into 27 rounds of invented verification, because the
+		// replan was asked to find a remainder rather than whether one exists.
+		// So the judge runs first: a checked "done" ships the result as-is,
+		// and a named gap becomes the replan's target instead of a guess.
 		if !isReflex && outcome.Overran() {
-			spliced, _, replanErr := resident.ReplanOverrun(ctx, graph, node, outcome.Text, absolute,
-				settings.DailyBudgetUSD, replanRemainder(settings, planClient, taskClient, plans, graph))
-			if replanErr == nil && spliced > 0 {
-				continuing = true
-				text += "\n\n[" + continuationMessage(spliced) + "]"
-				_, _ = graph.PostMessage(store.Message{
-					SessionID: node.Provenance.SessionID,
-					Role:      store.RoleSystem,
-					NodeID:    node.ID,
-					Body:      continuationMessage(spliced),
-				})
-			} else if replanErr == nil {
-				// A zero splice at the rail is a pause, not a final partial. The
-				// question and deferred remainder are journaled; the reconciler
-				// resumes the split after the head records consent.
-				if rail, err := graph.DailyRailToday(settings.DailyBudgetUSD); err == nil {
-					continuing = rail.Reached
-				}
-				if continuing {
-					// Continuing suppresses the announcement, which is right for
-					// a job that will speak again in a minute and wrong for one
-					// waiting on a human. Without this the user got the budget
-					// question and no result line at all, while a real partial
-					// sat finished in the graph. It is posted here rather than
-					// left to the announcer because the announcer is the thing
-					// being suppressed.
+			remainder := judgeRemainder(ctx, settings, planClient, graph, node, text, workerModel)
+			if remainder.Checked && remainder.Done {
+				outcome.Verdict = provider.VerdictVerifiedSuccess
+			} else {
+				spliced, _, replanErr := resident.ReplanOverrun(ctx, graph, node, outcome.Text, remainder.Remaining, absolute,
+					settings.DailyBudgetUSD, replanRemainder(settings, planClient, taskClient, plans, graph))
+				if replanErr == nil && spliced > 0 {
+					continuing = true
+					text += "\n\n[" + continuationMessage(spliced) + "]"
 					_, _ = graph.PostMessage(store.Message{
 						SessionID: node.Provenance.SessionID,
 						Role:      store.RoleSystem,
 						NodeID:    node.ID,
-						Body: boundedDelivery(text) +
-							"\n\nThat is as far as today's budget goes. The rest is planned and waiting on the rail — raise it and I'll carry on.",
+						Body:      continuationMessage(spliced),
 					})
+				} else if replanErr == nil {
+					// A zero splice at the rail is a pause, not a final partial. The
+					// question and deferred remainder are journaled; the reconciler
+					// resumes the split after the head records consent. A zero
+					// splice from a governor cap is final: the rail check below
+					// stays false and the partial delivers as the result.
+					if rail, err := graph.DailyRailToday(settings.DailyBudgetUSD); err == nil {
+						continuing = rail.Reached
+					}
+					if continuing {
+						// Continuing suppresses the announcement, which is right for
+						// a job that will speak again in a minute and wrong for one
+						// waiting on a human. Without this the user got the budget
+						// question and no result line at all, while a real partial
+						// sat finished in the graph. It is posted here rather than
+						// left to the announcer because the announcer is the thing
+						// being suppressed.
+						_, _ = graph.PostMessage(store.Message{
+							SessionID: node.Provenance.SessionID,
+							Role:      store.RoleSystem,
+							NodeID:    node.ID,
+							Body: boundedDelivery(text) +
+								"\n\nThat is as far as today's budget goes. The rest is planned and waiting on the rail — raise it and I'll carry on.",
+						})
+					}
 				}
 			}
 		}
@@ -3412,6 +3427,85 @@ func judgeDeliverable(ctx context.Context, settings config.Config, client *liveC
 	return deliverableJudgment{Gaps: gaps, Checked: true}
 }
 
+// judgeRemainderPrompt asks the one question the overrun path used to assume
+// an answer to. Running out of budget while landing a finished result is
+// common — the executor grants a landing reserve for exactly that — so
+// exhaustion is treated as a fact about resources, never as evidence of
+// unfinished work. The judgment is against the leaf's own brief, not the
+// job's intent: a mid-graph leaf that inventoried a folder is done when the
+// inventory is done, even though the job it serves is not.
+const judgeRemainderPrompt = `A worker ran out of resources while working on one assignment and stopped. You decide whether anything is actually left to do.
+
+You receive the assignment and what the worker had produced when it stopped. Judge exactly one question: does the produced result already fulfill the assignment? Running out of budget while landing a finished result is common — exhaustion is not evidence of incompleteness. Judge only the substance against the assignment.
+
+Return exactly one JSON object, nothing else:
+{"done": true} when the assignment is fulfilled and a consumer could use this result as-is.
+{"done": false, "remaining": "<the unfinished work>"} only when you can name a specific element of the assignment that is absent or unfinished — concretely enough that a worker could finish from your words alone. Work the assignment never asked for is never remaining work: do not prescribe verification, re-verification, or review of what already exists.`
+
+var judgeRemainderSchema = json.RawMessage(`{
+  "type": "object",
+  "properties": {
+    "done": {"type": "boolean"},
+    "remaining": {"type": "string"}
+  },
+  "required": ["done"],
+  "additionalProperties": false
+}`)
+
+type remainderJudgment struct {
+	Done      bool
+	Remaining string
+	Checked   bool
+}
+
+// judgeRemainder decides whether an exhausted leaf actually left work behind.
+// Failures fail toward "not done" with Checked false: the continuation still
+// runs, now bounded by the overrun governors, rather than a judge outage
+// silently shipping genuinely cut-off work as finished.
+func judgeRemainder(ctx context.Context, settings config.Config, client *liveClient, graph *store.Store, node store.Node, produced, workerModel string) remainderJudgment {
+	body := "The assignment:\n" + node.Brief + "\n\nProduced before stopping:\n" + produced
+	judgeCtx := settings.Context(router.WithAvoidModel(ctx, workerModel), "remainder")
+	judgeCtx = provider.WithCall(judgeCtx, provider.ClassPlanAudit)
+	// Like the delivery gate, the judgment is part of what this leaf cost.
+	judgeCtx = withSpendNode(judgeCtx, node.ID)
+	options := []ai.Option{ai.WithMaxTokens(400)}
+	if client.routed() {
+		options = append(options, ai.WithSchema(judgeRemainderSchema))
+	}
+	response, err := client.CompleteWithMessages(judgeCtx, []ai.Message{
+		{Role: "system", Content: []ai.ContentPart{{Type: "text", Text: judgeRemainderPrompt}}},
+		{Role: "user", Content: []ai.ContentPart{{Type: "text", Text: body}}},
+	}, options...)
+	if err != nil || response == nil {
+		provider.Report(judgeCtx, provider.VerdictProviderFailure)
+		return remainderJudgment{}
+	}
+	text := strings.TrimSpace(response.Text())
+	start, end := strings.Index(text, "{"), strings.LastIndex(text, "}")
+	if start < 0 || end <= start {
+		provider.Report(judgeCtx, provider.VerdictFormatFailure)
+		return remainderJudgment{}
+	}
+	var verdict struct {
+		Done      bool   `json:"done"`
+		Remaining string `json:"remaining"`
+	}
+	if err := json.Unmarshal([]byte(text[start:end+1]), &verdict); err != nil {
+		provider.Report(judgeCtx, provider.VerdictFormatFailure)
+		return remainderJudgment{}
+	}
+	remaining := strings.TrimSpace(verdict.Remaining)
+	if !verdict.Done && remaining == "" {
+		// A "not done" that cannot name the gap is the exact failure the old
+		// path had: a remainder assumed rather than found. Unchecked, so the
+		// replan proceeds on the partial alone.
+		provider.Report(judgeCtx, provider.VerdictSemanticFailure)
+		return remainderJudgment{}
+	}
+	provider.Report(judgeCtx, provider.VerdictVerifiedSuccess)
+	return remainderJudgment{Done: verdict.Done, Remaining: remaining, Checked: true}
+}
+
 // runLeafWithWatchdog is the scheduler's node watchdog, inline: the executor
 // has its own deadline, so this only fires when a worker is wedged past every
 // limit it was given — turning a silent forever-hang into a recorded failure.
@@ -3625,11 +3719,24 @@ func subtreeSink(subtree store.Subtree) string {
 	return ""
 }
 
-// replanRemainder plans an exhausted leaf's remaining work: the same full
-// planning pass a fresh project gets — briefs, contracts, the retained graph
-// for call shapes and profile records — scoped to what the partial left
-// undone. Falls back to one continuation node rather than failing: a leaf
-// out of budget deserves at least one fresh worker on the remainder.
+// replanNodeBudget caps what one continuation round may add. A remainder is by
+// definition smaller than the assignment it came from; a replan that wants
+// more nodes than this is planning the job again, not finishing a leaf.
+const replanNodeBudget = 12
+
+// replanRemainder plans an exhausted leaf's remaining work with briefs,
+// contracts, and the retained graph for call shapes and profile records —
+// scoped to what the partial left undone. Falls back to one continuation node
+// rather than failing: a leaf out of budget deserves at least one fresh
+// worker on the remainder.
+//
+// It is deliberately NOT the same full pass a fresh project gets. A replan
+// runs flat (no expansion — the depth-multiplies lesson of plan/expand.go,
+// relearned at runtime when 27 nested rounds grew under one leaf), never
+// convenes an ensemble (a remainder is finishing work, not a fresh judgment
+// whose misses are worth buying recall against — and a "verify"-flavoured
+// remainder goal reads exactly like panel work to the judge), and adds at
+// most replanNodeBudget nodes.
 func replanRemainder(settings config.Config, planClient, workClient *liveClient, plans *jobPlans, history *store.Store) resident.OverrunPlanFunc {
 	return func(ctx context.Context, goal, prefix string) (store.Subtree, error) {
 		workingModel, workingClient := workClient.Snapshot()
@@ -3639,9 +3746,10 @@ func replanRemainder(settings config.Config, planClient, workClient *liveClient,
 		graph, err := plan.Build(settings.Context(ctx, goal), structuring, goal, plan.Options{
 			Recall:       recallHits(history, goal, groundRecallLimit),
 			SpineSamples: settings.SpineSamples,
-			MaxDepth:     settings.MaxDepth,
-			NodeBudget:   settings.NodeBudget,
+			MaxDepth:     0,
+			NodeBudget:   min(settings.NodeBudget, replanNodeBudget),
 			Briefs:       true,
+			Ensemble:     plan.EnsembleNever,
 			Progress:     progress,
 		})
 		if err != nil {

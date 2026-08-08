@@ -20,21 +20,57 @@ import (
 // subtree, with prefix as the id namespace for the new nodes.
 type OverrunPlanFunc func(ctx context.Context, goal, prefix string) (store.Subtree, error)
 
-// overrunMarker tags re-expansion namespaces. Splitting is bounded by dollars,
-// not by rounds: the counter advances for every repair while replacing the old
-// suffix, so journal ids stay unique without growing a stack of -x1 markers.
+// overrunMarker tags re-expansion namespaces. The counter advances for every
+// repair while replacing the old suffix, so journal ids stay unique without
+// growing a stack of -x1 markers.
 const overrunMarker = "-x"
+
+// The two caps that keep re-decomposition a repair rather than a lifestyle.
+//
+// Splitting used to be bounded by dollars alone, and one real run showed what
+// that bound is worth on a cheap model: a leaf that had already finished was
+// replanned 27 rounds deep — each round inventing verification of the round
+// before it — and burned $4.48 of a $20 rail in 22 minutes while the job's
+// actual work sat pending behind it. Dollars bound the damage, not the loop.
+const (
+	// MaxOverrunRounds bounds how many times one leaf's lineage may be
+	// re-planned. Rounds are sequential by construction — each replans the
+	// remainder of the last — so a lineage that is still overrunning after
+	// three fresh budgets is not too big, it is thrashing, and the honest
+	// move is to hand over what exists.
+	MaxOverrunRounds = 3
+
+	// maxJobNodes is the job-lifetime ceiling on dynamic growth, the runtime
+	// twin of the planner's NodeBudget: that ceiling is enforced per planning
+	// pass, so a job that keeps splicing repairs could sprawl past it without
+	// any single pass noticing. 1.5x the default plan budget leaves real room
+	// for legitimate repair while refusing the sprawl the round cap alone
+	// might miss when many siblings each split within their allowance.
+	maxJobNodes = 90
+)
 
 // OverrunGoal phrases the replan brief. The partial result is in the goal on
 // purpose — "based on the current result" is the whole point: the planner
 // sees what was actually produced and plans only what remains.
-func OverrunGoal(node store.Node, partial string, artifacts []string) string {
+//
+// The phrasing is deliberately neutral about how much is left. The first
+// version asserted the work "could not be completed", and handed that premise
+// to a planner that cannot answer "nothing" — so when the partial was in fact
+// complete, the planner obliged the premise by inventing verification of it,
+// and each round of invented verification became the next round's premise.
+// Naming what a reviewer found missing, when a reviewer ran, keeps the replan
+// aimed at the actual gap instead of at whatever sounds like more work.
+func OverrunGoal(node store.Node, partial string, artifacts []string, gap string) string {
 	var goal strings.Builder
-	goal.WriteString("Finish work a previous agent started but could not complete before running out of budget. Plan only the REMAINING work — completed parts must not be redone.\n\nThe original assignment:\n")
+	goal.WriteString("Finish work a previous agent started. It stopped when its resources ran out, so parts of the assignment may already be complete. Plan only what the assignment still needs — work that is already done must not be redone, and do not add verification, re-verification, or review of existing results unless the assignment itself asks for it.\n\nThe original assignment:\n")
 	goal.WriteString(node.Brief)
 	if strings.TrimSpace(partial) != "" {
 		goal.WriteString("\n\nWhat the previous agent produced before stopping (its partial result arrives as a dependency input; build on it):\n")
 		goal.WriteString(partial)
+	}
+	if strings.TrimSpace(gap) != "" {
+		goal.WriteString("\n\nA reviewer compared that result against the assignment and named what is missing. Plan the work that closes these gaps and nothing else:\n")
+		goal.WriteString(gap)
 	}
 	if len(artifacts) > 0 {
 		goal.WriteString("\n\nFiles already produced, to reuse rather than recreate:\n")
@@ -48,41 +84,59 @@ func OverrunGoal(node store.Node, partial string, artifacts []string) string {
 // digest, its sink feeds every consumer that was waiting on the exhausted
 // node and has not started, and the whole thing lives under the same job so
 // workspaces, folding, and narration all treat it as the job's own work.
+// The gap, when non-empty, is what a reviewer found missing from the partial —
+// it aims the replan at the actual remainder.
 // Returns the spliced node count and the repair sink's id. DailyBudgetUSD zero
 // is unlimited; at the rail the durable question is posted and no splice lands.
-func ReplanOverrun(ctx context.Context, graph *store.Store, node store.Node, partial string, artifacts []string, dailyBudgetUSD float64, planRemainder OverrunPlanFunc) (int, string, error) {
-	return replanOverrun(ctx, graph, node, partial, artifacts, dailyBudgetUSD, "", planRemainder)
+func ReplanOverrun(ctx context.Context, graph *store.Store, node store.Node, partial, gap string, artifacts []string, dailyBudgetUSD float64, planRemainder OverrunPlanFunc) (int, string, error) {
+	spliced, sink, _, err := replanOverrun(ctx, graph, node, partial, gap, artifacts, dailyBudgetUSD, "", planRemainder)
+	return spliced, sink, err
 }
 
-func replanOverrun(ctx context.Context, graph *store.Store, node store.Node, partial string, artifacts []string, dailyBudgetUSD float64, prefix string, planRemainder OverrunPlanFunc) (int, string, error) {
+// replanOverrun reports capped=true when a governor refused the splice: the
+// repair is abandoned for good, unlike the rail's zero-splice pause, which is
+// waiting for consent. Deferred resumption needs the difference — a capped
+// repair must resolve rather than wait forever.
+func replanOverrun(ctx context.Context, graph *store.Store, node store.Node, partial, gap string, artifacts []string, dailyBudgetUSD float64, prefix string, planRemainder OverrunPlanFunc) (int, string, bool, error) {
 	var err error
 	if prefix == "" {
 		prefix, err = nextOverrunPrefix(graph, node.ID)
 		if err != nil {
-			return 0, "", fmt.Errorf("replan overrun %s: %w", node.ID, err)
+			return 0, "", false, fmt.Errorf("replan overrun %s: %w", node.ID, err)
 		}
+	}
+	if overrunRoundsSpent(prefix) {
+		postGovernorNotice(graph, node, "this work has split as many times as splitting helps — handing over what's done")
+		return 0, "", true, nil
 	}
 	if dailyBudgetUSD > 0 {
 		rail, _, err := graph.PauseDailyRail(dailyBudgetUSD, node.Provenance.SessionID)
 		if err != nil {
-			return 0, "", fmt.Errorf("replan overrun %s: check daily rail: %w", node.ID, err)
+			return 0, "", false, fmt.Errorf("replan overrun %s: check daily rail: %w", node.ID, err)
 		}
 		if rail.Reached {
-			deferred := store.DeferredOverrun{NodeID: node.ID, Partial: partial, Artifacts: artifacts, Prefix: prefix}
+			deferred := store.DeferredOverrun{NodeID: node.ID, Partial: partial, Gap: gap, Artifacts: artifacts, Prefix: prefix}
 			if err := graph.DeferOverrun(deferred); err != nil {
-				return 0, "", fmt.Errorf("replan overrun %s: defer at daily rail: %w", node.ID, err)
+				return 0, "", false, fmt.Errorf("replan overrun %s: defer at daily rail: %w", node.ID, err)
 			}
-			return 0, "", nil
+			return 0, "", false, nil
 		}
 	}
 	anchor := PlanAnchor{NodeID: jobRootID(graph, node), SessionID: node.Provenance.SessionID}
 	planCtx := withPlanAnchor(ctx, anchor)
-	subtree, err := planRemainder(planCtx, OverrunGoal(node, partial, artifacts), prefix)
+	subtree, err := planRemainder(planCtx, OverrunGoal(node, partial, artifacts, gap), prefix)
 	if err != nil {
-		return 0, "", fmt.Errorf("replan overrun %s: %w", node.ID, err)
+		return 0, "", false, fmt.Errorf("replan overrun %s: %w", node.ID, err)
 	}
 	if len(subtree.Nodes) == 0 {
-		return 0, "", nil
+		return 0, "", false, nil
+	}
+	// The ceiling is enforced at the splice rather than before planning for the
+	// same reason the planner's own budget is enforced there: until the plan
+	// exists nobody knows how many nodes it holds.
+	if ids, err := graph.NodeIDsWithPrefix(jobRootID(graph, node)); err == nil && len(ids)+len(subtree.Nodes) > maxJobNodes {
+		postGovernorNotice(graph, node, "this job has grown as large as jobs are allowed to grow — handing over what's done")
+		return 0, "", true, nil
 	}
 	subtree = attachNeeds(subtree, []string{node.ID})
 
@@ -94,7 +148,7 @@ func replanOverrun(ctx context.Context, graph *store.Store, node store.Node, par
 		}
 	}
 	if sink == "" {
-		return 0, "", fmt.Errorf("replan overrun %s: subtree has no sink", node.ID)
+		return 0, "", false, fmt.Errorf("replan overrun %s: subtree has no sink", node.ID)
 	}
 
 	// The repair joins the exhausted node's own job when there is one; an
@@ -111,7 +165,7 @@ func replanOverrun(ctx context.Context, graph *store.Store, node store.Node, par
 		Attachments: append([]string(nil), node.Provenance.Attachments...),
 	}
 	if err := graph.Splice(parent, subtree, provenance); err != nil {
-		return 0, "", fmt.Errorf("replan overrun %s: %w", node.ID, err)
+		return 0, "", false, fmt.Errorf("replan overrun %s: %w", node.ID, err)
 	}
 
 	// Consumers that were waiting on the exhausted node now also wait for
@@ -130,7 +184,28 @@ func replanOverrun(ctx context.Context, graph *store.Store, node store.Node, par
 			_ = graph.AddEdge(sink, edge.To, store.FeedsInto)
 		}
 	}
-	return len(subtree.Nodes), sink, nil
+	return len(subtree.Nodes), sink, false, nil
+}
+
+// overrunRoundsSpent reports that a lineage has used its splitting allowance.
+// The round is read off the prefix rather than counted from the graph because
+// the prefix already carries it: nextOverrunPrefix numbers rounds past the
+// highest spliced round, so an unspliced refusal does not consume one.
+func overrunRoundsSpent(prefix string) bool {
+	_, round, ok := splitOverrunID(prefix)
+	return ok && round > MaxOverrunRounds
+}
+
+// postGovernorNotice is the calm receipt a refused splice leaves in the thread:
+// a governor stopping work quietly reads as work finishing, and the difference
+// is exactly what the user needs to know.
+func postGovernorNotice(graph *store.Store, node store.Node, body string) {
+	_, _ = graph.PostMessage(store.Message{
+		SessionID: node.Provenance.SessionID,
+		Role:      store.RoleSystem,
+		NodeID:    node.ID,
+		Body:      body,
+	})
 }
 
 // ResumeDeferredOverruns admits journaled repairs after the rail is raised.
@@ -166,10 +241,18 @@ func ResumeDeferredOverruns(ctx context.Context, graph *store.Store, dailyBudget
 			}
 			continue
 		}
-		spliced, _, err := replanOverrun(ctx, graph, node, deferred.Partial, deferred.Artifacts,
+		spliced, _, capped, err := replanOverrun(ctx, graph, node, deferred.Partial, deferred.Gap, deferred.Artifacts,
 			dailyBudgetUSD, deferred.Prefix, planRemainder)
 		if err != nil {
 			return resumed, err
+		}
+		// A capped repair is abandoned for good: resolve it so it stops
+		// occupying the queue. A rail pause keeps waiting for consent.
+		if capped {
+			if err := graph.ResolveOverrun(deferred); err != nil {
+				return resumed, err
+			}
+			continue
 		}
 		if spliced == 0 {
 			return resumed, nil
