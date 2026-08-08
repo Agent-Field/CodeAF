@@ -10,6 +10,7 @@ journey_is 'Q8 Errand quality — an ordinary, slightly vague household ask: doe
 expect_nodes 1
 since="$(mark)"
 started="$(date +%s)"
+touch "$UX_DIR/.stamp"
 
 say "make me a packing list for a 3-day work trip and save it as a file"
 
@@ -33,7 +34,7 @@ record 'questions asked back' "$asked"
 
 # The list itself has to be a list of things a person packs.
 hits=0
-for item in charger toothbrush shirt sock laptop passport\|id trousers\|pants shoes; do
+for item in charger toothbrush shirt sock laptop 'passport|id' 'trousers|pants' shoes; do
   printf '%s' "$answer" | grep -qiE "$item" && hits=$((hits + 1))
 done
 record 'ordinary packing items named' "$hits of 8"
@@ -41,7 +42,7 @@ record 'ordinary packing items named' "$hits of 8"
   && _check yes 'the list is a real packing list' 'at least 4 of the obvious items' "$hits" \
   || _check no 'the list is a real packing list' 'at least 4 of the obvious items' "$hits"
 
-file="$(find "$UX_STATE/workspace" -type f -newermt "@$((started - 30))" 2>/dev/null | head -1)"
+file="$(find "$UX_STATE/workspace" -type f -newer "$UX_DIR/.stamp" 2>/dev/null | head -1)"
 record 'file written' "${file:-<none>}"
 [ -n "$file" ] && [ -s "$file" ] \
   && _check yes 'it saved the file it was asked to save' 'a non-empty file in the workspace' "$(wc -c < "$file" | tr -d ' ') bytes" \
