@@ -277,8 +277,8 @@ func expediteReceipt(job store.Node, moved bool, revision Redirection, informed,
 		did = append(did, "moved it to the front of the queue")
 	}
 	if informed > 0 {
-		did = append(did, fmt.Sprintf("told its %d running %s to cut to the essentials",
-			informed, plural(informed, "worker", "workers")))
+		did = append(did, fmt.Sprintf("told the %d %s already under way to cut to the essentials",
+			informed, plural(informed, "step", "steps")))
 	}
 	if revision.Dropped > 0 {
 		did = append(did, fmt.Sprintf("dropped %d remaining %s",
@@ -533,7 +533,7 @@ func redirectReceipt(job store.Node, revision Redirection, informed int, revised
 	if revision.Dropped > 0 {
 		changes = append(changes, fmt.Sprintf("%d dropped", revision.Dropped))
 	}
-	told := fmt.Sprintf("%d running %s informed", informed, plural(informed, "worker", "workers"))
+	told := fmt.Sprintf("%d %s already under way heard it", informed, plural(informed, "step", "steps"))
 	receipt := "redirected " + surgeryLabel(job) + " — "
 	switch {
 	case !revised && informed > 0:

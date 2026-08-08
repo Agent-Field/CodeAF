@@ -20,6 +20,14 @@ import (
 	"github.com/charmbracelet/lipgloss"
 )
 
+// composerPlaceholder is the first sentence the product says to anyone, and it
+// is the highest-traffic string in the whole surface. It used to read "Ask the
+// graph…", which taught a word we invented before the user had typed anything
+// — the design filter's own failure case, at the one place it costs the most.
+// The resting state names no machinery at all: there is one place to speak and
+// nothing to learn before speaking in it.
+const composerPlaceholder = "Ask for anything…"
+
 const (
 	pollInterval      = 400 * time.Millisecond
 	animationInterval = 120 * time.Millisecond
@@ -622,7 +630,7 @@ func NewWithVoice(backend Backend, sessionID string, commander Commander, record
 func newModel(backend Backend, sessionID string, commander Commander) *Model {
 	input := textinput.New()
 	input.Prompt = "› "
-	input.Placeholder = "Ask the graph…"
+	input.Placeholder = composerPlaceholder
 	input.CharLimit = store.MaxMessageBytes
 	input.PromptStyle = promptStyle
 	input.TextStyle = inputTextStyle

@@ -60,7 +60,7 @@ func (m *Model) restoreSettings() { _ = m.showSettings(false) }
 func (m *Model) showSettings(fresh bool) tea.Cmd {
 	if !m.settingsAvailable() {
 		m.input.Reset()
-		return m.showStatus("settings unavailable — no Commander")
+		return m.showStatus("settings aren't available in this window")
 	}
 	if fresh && m.palette != paletteSettings {
 		m.settingsReturnFocus = m.focus

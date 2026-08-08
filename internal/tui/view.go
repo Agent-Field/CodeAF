@@ -2108,7 +2108,7 @@ func (m *Model) renderTree(width, height int) string {
 		}
 	}
 	if len(roots) == 0 && len(lines) == 0 {
-		empty := truncate("the graph is quiet — ask for something", max(1, width))
+		empty := truncate("nothing is running — ask for something", max(1, width))
 		return lipgloss.Place(
 			max(1, width),
 			max(1, height),

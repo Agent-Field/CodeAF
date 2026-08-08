@@ -1036,7 +1036,7 @@ func TestHintsDescribeReceiptsGraphViewAndTwoVoices(t *testing.T) {
 	view := ansi.Strip(strings.Join(model.helpContentLines(76), "\n"))
 	normalizedHelp := strings.Join(strings.Fields(view), " ")
 	for _, expected := range []string{
-		"/notebook", "v", "alt+g", "jump to the task", "cancel the inspected", "mouse",
+		"/notebook", "v", "alt+g", "jump to the task", "cancel the step you are looking at", "mouse",
 	} {
 		if !strings.Contains(normalizedHelp, expected) {
 			t.Fatalf("help does not contain %q:\n%s", expected, view)
@@ -1204,7 +1204,7 @@ func TestNodeTraceWithoutCommanderHasNoSectionAndDoesNotPanic(t *testing.T) {
 func TestMemoryWithoutCommanderDegradesGracefully(t *testing.T) {
 	model := New(&fakeBackend{}, "test-session")
 	_ = model.executeSlash("/memory")
-	if model.palette != paletteNone || !strings.Contains(model.View(), "memory unavailable — no Commander") {
+	if model.palette != paletteNone || !strings.Contains(model.View(), "memory isn't available in this window") {
 		t.Fatalf("memory without a Commander did not degrade gracefully:\n%s", model.View())
 	}
 }
