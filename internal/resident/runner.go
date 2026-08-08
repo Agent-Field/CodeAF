@@ -63,6 +63,8 @@ type Runner struct {
 	serviceConsentGrace time.Duration
 	governor            *executor.Governor
 	craft               *CraftRunner
+	drain               chan struct{}
+	drainOnce           sync.Once
 }
 
 // NewRunner builds a runner executing at most workers nodes concurrently.
@@ -81,7 +83,21 @@ func NewRunner(graph *store.Store, execute ExecuteFunc, owner string, workers in
 		activePractice:      make(map[string]context.CancelFunc),
 		serviceConsentGrace: ServiceConsentGrace,
 		governor:            executor.HostGovernor(),
+		drain:               make(chan struct{}),
 	}
+}
+
+// Drain stops the dispatch loop without cancelling the work already in flight,
+// and Serve returns nil once the running leaves have landed.
+//
+// A handover is why it exists. The process giving up the resident role must
+// stop claiming new leaves the instant it lets go of the lease, or two runners
+// race for the same queue; but it must not take its running leaves down with
+// it, because the store owns their claims and a leaf killed mid-turn is work
+// paid for and thrown away. Cancelling the context does both at once, which is
+// exactly the thing that must not happen here.
+func (r *Runner) Drain() {
+	r.drainOnce.Do(func() { close(r.drain) })
 }
 
 // WithGovernor replaces the shared host gate. Production uses the process-wide
@@ -125,6 +141,9 @@ func (r *Runner) Serve(ctx context.Context) error {
 		case <-ctx.Done():
 			r.wg.Wait()
 			return ctx.Err()
+		case <-r.drain:
+			r.wg.Wait()
+			return nil
 		case <-ticker.C:
 			if _, err := r.tickGuarded(ctx); err != nil {
 				return err

@@ -176,6 +176,16 @@ type pollResultMsg struct {
 	nodeTrace       string
 	nodeErr         error
 	nodeMessagesErr error
+
+	// residency rides every cycle, quiet ones included: which process runs the
+	// brain can change without a single row moving in the journal, so the
+	// watermark cannot speak for it. residencyRead separates "the surface said
+	// this window is the resident" from "no surface was asked".
+	residency     Residency
+	residencyRead bool
+	// adopt is the replacement commander the surface handed back when the role
+	// moved. Nil on every ordinary cycle.
+	adopt Commander
 }
 
 type postResultMsg struct {
@@ -348,6 +358,12 @@ type Model struct {
 	// simulated landed answers share one paced renderer so neither path pops.
 	streamEvents <-chan StreamEvent
 	streamMode   streamMode
+	// residency is the window's own account of which process runs the brain.
+	// The zero value is "this one", so a single-window session carries none of
+	// this and renders as it always has.
+	residency       Residency
+	residencySource residentSurface
+	streamRearm     bool
 	// streamRaw accumulates the provider's raw structured response. It is a
 	// builder, not a string: a token-by-token `+=` re-allocates the whole reply
 	// per token, which is quadratic over a long answer.
@@ -629,21 +645,47 @@ func newModel(backend Backend, sessionID string, commander Commander) *Model {
 		tipSeen:               map[int]bool{},
 		selfShown:             selfWindow,
 	}
+	m.adoptCommander(commander)
+	if saved, ok := commander.(splitStore); ok {
+		m.splitPct = clampSplitPct(saved.SplitPct())
+	}
+	m.setSize(100, 30)
+	return m
+}
+
+// adoptCommander wires the capabilities a commander optionally offers.
+//
+// It runs at construction and again whenever the window's commander is
+// replaced, which is what taking or giving up the resident role looks like from
+// in here. Voice and the provider stream are set or cleared rather than merely
+// set: they are the two capabilities whose absence the user can feel, and a
+// window that has just lost its head must stop offering a microphone it can no
+// longer transcribe with. The saved divider position is deliberately not
+// re-read — the person may have dragged it since, and a role change is not a
+// reason to move their pane.
+func (m *Model) adoptCommander(commander Commander) {
+	m.commander = commander
+	m.residencySource, _ = commander.(residentSurface)
 	if services, ok := commander.(voiceServices); ok {
 		m.voiceRecorder = services.VoiceRecorder()
 		m.voiceTranscriber = services.VoiceTranscriber()
+	} else {
+		m.voiceRecorder, m.voiceTranscriber = nil, nil
 	}
 	if source, ok := commander.(streamSource); ok {
 		m.streamEvents = source.StreamEvents()
-	}
-	if saved, ok := commander.(splitStore); ok {
-		m.splitPct = clampSplitPct(saved.SplitPct())
+	} else {
+		m.streamEvents = nil
 	}
 	if source, ok := commander.(settingsSource); ok {
 		m.settingsRegistry = source.Settings()
 	}
-	m.setSize(100, 30)
-	return m
+	// Every model name on screen was answered by the commander that just left,
+	// so none of it speaks for the one that arrived.
+	clear(m.mediaModelCatalogs)
+	clear(m.mediaCatalogRequested)
+	clear(m.mediaCatalogLoading)
+	clear(m.optimisticModels)
 }
 
 // splitStore is the optional Commander capability of remembering the divider
@@ -709,7 +751,16 @@ func (m *Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 
 	case pollResultMsg:
 		m.applyPoll(message)
-		return m, tea.Batch(m.nextPollTick(), m.scheduleAnimation())
+		commands := []tea.Cmd{m.nextPollTick(), m.scheduleAnimation()}
+		if m.streamRearm {
+			// The window changed what it is. Whatever stream the previous
+			// commander offered has been replaced, so the listener is started
+			// over the new one — once, here, and never again until the role
+			// moves again.
+			m.streamRearm = false
+			commands = append(commands, waitForStream(m.streamEvents))
+		}
+		return m, tea.Batch(commands...)
 
 	case StreamEvent:
 		m.lastActionAt = m.standingTime()
@@ -1355,9 +1406,20 @@ func (m *Model) poll() tea.Cmd {
 	readSelf := m.selfVisible()
 	selfNow := m.standingTime()
 	journal, _ := backend.(journalReader)
+	residencySource := m.residencySource
 	force := m.pollForce || !m.journalPrimed
 	knownSeq := m.journalSeq
 	return func() tea.Msg {
+		// Asked before the quiet short-circuit, because the one thing this
+		// answers — is the process that answers me still there — is exactly the
+		// thing that can change while the journal does not move.
+		var residency Residency
+		var residencyRead bool
+		var adopt Commander
+		if residencySource != nil {
+			residency, adopt = residencySource.Residency()
+			residencyRead = true
+		}
 		var journalSeq int64
 		var journalRead bool
 		if journal != nil {
@@ -1372,6 +1434,7 @@ func (m *Model) poll() tea.Cmd {
 					// and the quiet path stays quiet with a node view open.
 					quiet := pollResultMsg{
 						quiet: true, journalSeq: seq, journalRead: true, sessionID: sessionID,
+						residency: residency, residencyRead: residencyRead, adopt: adopt,
 					}
 					if nodeID != "" && commander != nil {
 						quiet.nodeID = nodeID
@@ -1432,6 +1495,9 @@ func (m *Model) poll() tea.Cmd {
 			selfLearning:      selfLearning,
 			selfSpendErr:      selfSpendErr,
 			selfReceiptsErr:   selfReceiptsErr,
+			residency:         residency,
+			residencyRead:     residencyRead,
+			adopt:             adopt,
 		}
 		// Charters are read every cycle because the self place-dot must be
 		// able to light while the user is somewhere else. The rest of the
@@ -1578,12 +1644,35 @@ func (m *Model) scheduleAnimation() tea.Cmd {
 	return nextAnimationTick()
 }
 
+// applyResidency records what the surface said about which process runs the
+// brain, and adopts a replacement commander when the role has moved. Both
+// paths through the poll call it, because a quiet journal is not evidence that
+// the resident is still alive.
+//
+// A commander change raises streamRearm, because a window that has just
+// promoted has a head to listen to for the first time and nothing else would
+// ever go looking for it.
+func (m *Model) applyResidency(result pollResultMsg) {
+	if !result.residencyRead {
+		return
+	}
+	m.residency = result.residency
+	if result.adopt == nil {
+		return
+	}
+	m.adoptCommander(result.adopt)
+	m.streamRearm = true
+	m.threadGen++
+	m.invalidateRailCaches()
+}
+
 // applyQuietPoll is the whole no-op path: the journal did not move, so every
 // cached pane is still correct and nothing is rebuilt. The one exception is
 // the clock — relative timestamps live inside cached content — and that is
 // answered by re-rendering from state already in hand, never by reading again.
 func (m *Model) applyQuietPoll(result pollResultMsg) {
 	m.journalSeq = result.journalSeq
+	m.applyResidency(result)
 	// The one read a quiet cycle still makes: the open node's trace is a file
 	// the executor appends to outside the journal, so the watermark cannot
 	// speak for it. It re-renders only when the text actually moved.
@@ -1613,6 +1702,7 @@ func (m *Model) applyPoll(result pollResultMsg) {
 	}
 	m.pollForce = false
 	m.lastRepaintAt = m.standingTime()
+	m.applyResidency(result)
 	m.invalidateRailCaches()
 	// A moved journal is the one thing that can change a settled message's
 	// rendering from outside the message itself: the node it names, the files

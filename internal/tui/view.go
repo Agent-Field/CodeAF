@@ -275,7 +275,16 @@ func (m *Model) renderTopBar() string {
 	board := m.renderPlaceLabel("board", placeBoard, m.boardNeedsAttention())
 	self := m.renderPlaceLabel("self", placeSelf, m.selfNeedsAttention())
 	separator := mutedStyle.Faint(true).Render(" · ")
-	left := wordmark + "   " + thread + separator + board + separator + self
+	places := thread + separator + board + separator + self
+	// The residency label sits at the end of the places, in their own quiet
+	// register, because it answers the same kind of question they do: where am
+	// I. It is absent entirely for the ordinary single window, which is every
+	// window until a second one is opened.
+	mode, shortMode := m.residency.label(), m.residency.shortLabel()
+	left := wordmark + "   " + places
+	if mode != "" {
+		left += separator + mutedStyle.Faint(true).Render(mode)
+	}
 	showPlaces := true
 	talkGlance := "talk " + truncate(modelShort(m.currentModel("talk")), 18)
 	if m.boost == boostPinned {
@@ -308,6 +317,11 @@ func (m *Model) renderTopBar() string {
 	// alt+, still reach, and only in the last resort do the places collapse to
 	// the wordmark. The model door, the rail button, and ? never yield: they
 	// are the header's irreplaceable actions.
+	//
+	// The residency label yields by shrinking to the bare fact and never by
+	// leaving. A window that is not the one answering must say so at every
+	// width, because the alternative — a silent second window — is the exact
+	// symptom of a broken application.
 	shownGlance, shownMeta, shownSettings := glance, rightMeta, settings
 	compose := func() string {
 		right := ""
@@ -327,7 +341,18 @@ func (m *Model) renderTopBar() string {
 		func() { shownMeta = "" },
 		func() { shownGlance = "" },
 		func() { shownSettings = "" },
-		func() { left, showPlaces = wordmark, false },
+		func() {
+			if mode != "" && mode != shortMode {
+				mode = shortMode
+				left = wordmark + "   " + places + separator + mutedStyle.Faint(true).Render(mode)
+			}
+		},
+		func() {
+			left, showPlaces = wordmark, false
+			if mode != "" {
+				left += separator + mutedStyle.Faint(true).Render(shortMode)
+			}
+		},
 	}
 	if m.width >= railAtWidth {
 		// Only a frame wide enough for the side rail shortens the glance
