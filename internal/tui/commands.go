@@ -906,6 +906,7 @@ func (m *Model) newSession() tea.Cmd {
 	m.questionDismissed = map[string]bool{}
 	m.agentQuestions = nil
 	m.answeringQuestionSeq = 0
+	m.clearAwaitingReply()
 	m.historyEntries = nil
 	m.historyTerms = ""
 	m.historyVisible = false
