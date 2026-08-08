@@ -137,6 +137,35 @@ func (s *Store) ActiveNodes() ([]Node, error) {
 		)`, nil)
 }
 
+// AddressableNodes is ActiveNodes plus the jobs a territory has packed away.
+//
+// The packer is what made a month-old job invisible to every snapshot-derived
+// read at once. FormTerritory re-parents a settled fold under a territory node
+// that is itself a fold root, so ActiveNodes' "outermost representative"
+// clause — correct for a fold's own members, which the root speaks for — starts
+// excluding the job root too. The territory then speaks for it, and a territory
+// says "eleven jobs about pricing", which is not an answer to a question about
+// one of them.
+//
+// So reads that are asking "what do I have about this?" use this corpus and
+// verbs keep the compact one. Membership in a territory is a filing decision
+// made hours after a job landed; it was never meant to be the thing that
+// decides whether the job can be spoken about.
+func (s *Store) AddressableNodes() ([]Node, error) {
+	return s.queryNodes(`
+		WHERE folded = 0 OR (
+			fold_root = 1 AND NOT EXISTS (
+				SELECT 1 FROM nodes AS parent
+				WHERE parent.id = nodes.parent_id AND parent.fold_root = 1
+			)
+		) OR (
+			fold_root = 1 AND EXISTS (
+				SELECT 1 FROM nodes AS packer
+				WHERE packer.id = nodes.parent_id AND packer.grp = ?
+			)
+		)`, []any{TerritoryGroup})
+}
+
 func (s *Store) queryNodes(where string, args []any) ([]Node, error) {
 	return s.queryNodesLimit(where, args, 0)
 }
