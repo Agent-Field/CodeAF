@@ -86,6 +86,11 @@ var DocumentEngines = []string{"auto", "local", "free", "ocr"}
 // footer and never become editable rows.
 var OperatorEnvPins = []string{
 	"AFORGE_BASE_URL",
+	// AFORGE_HOME moves the graph, workspace, craft repository and resident
+	// lease somewhere else in one word. It is plumbing rather than a setting
+	// for the plainest reason there is: it decides which store the sheet
+	// itself is being read out of.
+	"AFORGE_HOME",
 	"AFORGE_SITE_URL",
 	"AFORGE_SITE_NAME",
 	"AFORGE_PROFILE_DIR",
