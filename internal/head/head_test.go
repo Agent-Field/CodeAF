@@ -1252,6 +1252,32 @@ func TestCompilerIsToldAssumptionsAreDecisionsTheWorkIsHeldTo(t *testing.T) {
 	}
 }
 
+// The compiler is the only prompt every job passes through — a task-scale or
+// lookup-scale ask never reaches the planner — so the acceptance criterion it
+// writes is the only one a single-leaf build is ever held to. Written as the
+// builder's evidence it licences the failure it exists to catch: every part
+// checked, the thing itself never used by anyone.
+func TestCompilerWritesSuccessFromTheUsersSeat(t *testing.T) {
+	for name, want := range map[string]string{
+		"acceptance is the user's first use": "what they will do with it the first time",
+		"observable, not inferred":           "what they must observe for it to count as working",
+		"the harness is not their evidence":  "is the builder's evidence, never theirs",
+		"shaping is proportional":            "Match the shaping to the ask",
+		"and small asks stay small":          "a one-shot artefact earns none",
+	} {
+		if !strings.Contains(compilerSystemPrompt, want) {
+			t.Errorf("the compiler prompt no longer states %s: %q missing", name, want)
+		}
+	}
+	// The rule is about the shape of an acceptance criterion, so it must name no
+	// kind of thing that could be built.
+	for _, forbidden := range []string{"browser", "website", "dashboard", "spreadsheet"} {
+		if strings.Contains(strings.ToLower(compilerSystemPrompt), strings.ToLower(forbidden)) {
+			t.Errorf("the compiler prompt grew a domain specific: %q", forbidden)
+		}
+	}
+}
+
 // One value, said once in each register: work about something already in flight
 // amends it, and work that genuinely is separate follows it rather than racing
 // it. The router says it in amend-and-splice terms, the belt in revise-and-steer
