@@ -71,6 +71,54 @@ func TestDoRepairsARejectedDeliverableThroughTheGate(t *testing.T) {
 	}
 }
 
+// The other half of the same mechanism: a gate that fails a deliverable
+// against a standard the person never set buys nothing at all.
+//
+// Measured on a benchmark cell, that round held the worker to a working
+// decision aforge had invented for itself, bought a five-turn re-run against
+// it, and handed back a worse answer than the one it rejected. The citation
+// invariant already refused to let such a gap grow the graph; it now refuses
+// to let it redo the work either. Nothing is hidden: the review's words ride
+// the delivery and the ledger records the refusal.
+func TestAnUngroundedGateFailureShipsANoteInsteadOfBuyingARound(t *testing.T) {
+	script := newScriptedBrain(t)
+	script.inventedGap = true
+	defer script.close()
+
+	var stdout, stderr strings.Builder
+	if err := doErrand(doRequest{
+		task:      "write the release note and include the migration steps",
+		timeout:   60 * time.Second,
+		stdout:    &stdout,
+		stderr:    &stderr,
+		newClient: script.client,
+	}); err != nil {
+		t.Fatalf("the errand did not settle cleanly: %v\nstdout:\n%s\nstderr:\n%s", err, stdout.String(), stderr.String())
+	}
+
+	if got := script.count("gate"); got != 1 {
+		t.Fatalf("the gate ran %d times, want exactly 1 — an ungrounded fail is not re-judged", got)
+	}
+	if got := script.count("revision"); got != 0 {
+		t.Fatalf("an ungrounded gap bought %d revision passes", got)
+	}
+	if got := script.count("extension"); got != 0 {
+		t.Fatalf("an ungrounded gap grew the graph by %d leaves", got)
+	}
+	if got := script.count("replan"); got != 0 {
+		t.Fatalf("an ungrounded gap reached the remainder planner %d times", got)
+	}
+	delivered := stdout.String()
+	if !strings.Contains(delivered, firstDraftAnswer) {
+		t.Fatalf("the deliverable did not ship:\n%s", delivered)
+	}
+	// Refused-style honesty: the gap is named in the person's reading, not
+	// swallowed into a silent pass.
+	if !strings.Contains(delivered, inventedGapText) {
+		t.Fatalf("the delivery never said what the review raised:\n%s", delivered)
+	}
+}
+
 // The private store is the default because isolation is the point, and a
 // default that leaves a database behind on every invocation is a mess nobody
 // asked for. --keep is the way to look at what happened.
@@ -474,6 +522,11 @@ const (
 	// gap commission new work. A gap that invented a requirement would be
 	// refused before a planning call was made.
 	citedQuote = "include the migration steps"
+	// inventedQuote is the opposite: words the compiler put in its own goal
+	// and the person never typed. A gap that can only quote this is aforge
+	// holding aforge to a standard it wrote after reading its own output.
+	inventedQuote   = "the note is addressed to an operator audience"
+	inventedGapText = "the note does not address an operator audience"
 	// artifactName is what the worker writes when the test asks it to leave
 	// something on disk.
 	artifactName = "notes.md"
@@ -493,6 +546,10 @@ type scriptedBrain struct {
 
 	// stall makes every leaf call hang, so a wall can be proved.
 	stall bool
+	// inventedGap makes the gate fail the deliverable against a standard
+	// nobody asked for — the shape of the one measured round that made a
+	// deliverable worse.
+	inventedGap bool
 	// writeFile makes the first leaf write a real artifact.
 	writeFile bool
 	// editPath names a file already in the workspace that the first leaf edits
@@ -607,6 +664,12 @@ func (s *scriptedBrain) reply(body string) string {
 
 	case strings.Contains(body, "You are the final gate"):
 		round := s.tally("gate")
+		if s.inventedGap {
+			// The quote is a span of the compiled goal's own working
+			// decisions, not of anything the person typed.
+			return s.say(fmt.Sprintf(
+				`{"pass":false,"gaps":%q,"quote":%q,"exercised":false}`, inventedGapText, inventedQuote))
+		}
 		if round <= 2 {
 			// The first draft and the revision of it are both judged short of
 			// the ask, and the gap quotes the ask itself — the one thing that
