@@ -148,7 +148,10 @@ func approveAndLandFiring(t *testing.T, graph *store.Store, charterID string, ro
 	if err != nil {
 		t.Fatal(err)
 	}
-	at := time.Now().Add(time.Duration(round) * time.Hour)
+	// Each round gets its own day: the daily-quota rail is someone else's test,
+	// and a shared-day schedule made this helper pass only in the hours before
+	// midnight, when round four happened to land past the boundary.
+	at := time.Now().Add(time.Duration(round) * 25 * time.Hour)
 	wakeSeq, err := graph.BeginCharterWake(charterID, at, "poll occurrence", store.CharterWatchState{
 		NextDue: at.Add(time.Hour),
 	})
