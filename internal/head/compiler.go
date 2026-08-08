@@ -104,12 +104,44 @@ type Brief struct {
 type Compiler struct {
 	client       Client
 	resolveModel ModelResolver
+	oneShot      bool
 }
 
 // NewCompiler returns an intent compiler backed by client.
 func NewCompiler(client Client) *Compiler {
 	return &Compiler{client: client}
 }
+
+// WithOneShotErrands says every ask this compiler will ever see arrived on a
+// surface that runs exactly one errand and then exits — `aforge do`.
+//
+// This is the surface stating a fact about itself, not an opinion about the
+// work. "Once, not standing" is an option on the ratification card because a
+// person may want it; a person who typed `aforge do "<task>"` has already
+// chosen it, in the verb, before the compiler read a word. Asking them again
+// is asking a question into a process with nobody at the keyboard, and the
+// live defect it caused was total: "flag every discrepancy" tripped the
+// temporal recognizer's `every <word>` cue, a plain reconciliation of two CSVs
+// was drafted as a standing rule with an invented two-minute cadence, and the
+// run exited in three seconds having done none of the work it was sent to do.
+//
+// So the temporal route is not taken here at all, and the ordinary compiler is
+// told what surface it is compiling for. Nothing about the judgement of the
+// WORK changes; the classification that changes is the one the surface already
+// answered.
+func (c *Compiler) WithOneShotErrands() *Compiler {
+	c.oneShot = true
+	return c
+}
+
+// oneShotErrandBrief is that fact, in the prompt, for the reasoning half of
+// the rail. The deterministic route above is gated structurally; this is the
+// same law said to the model, which would otherwise be free to draft a
+// standing rule out of an ask that merely sounds recurrent.
+const oneShotErrandBrief = "\n\nSurface: this instruction arrived as a single headless errand — one run, " +
+	"start to finish, with nobody at a keyboard. It is never a standing rule, a schedule, a watch or a " +
+	"recurring routine, however recurrent its wording sounds; compile it as work to be done once, now. " +
+	"Never ask a question that only a person could answer: there is no one to answer it."
 
 // WithModelResolver installs the surface's catalog-backed reading of model
 // words. Without it the compiler still recognizes them and still says nothing
@@ -126,7 +158,7 @@ func (c *Compiler) Compile(ctx context.Context, instruction string, graphContext
 	if c == nil || c.client == nil {
 		return Brief{}, errors.New("compile intent: nil client")
 	}
-	if RecognizesStandingIntent(instruction) {
+	if !c.oneShot && RecognizesStandingIntent(instruction) {
 		return c.compileStanding(ctx, instruction, graphContext)
 	}
 	serviceIntent := RecognizesServiceIntent(instruction)
@@ -152,7 +184,7 @@ func (c *Compiler) Compile(ctx context.Context, instruction string, graphContext
 	}
 	user := "Current graph context:\n" + graphContext +
 		"\n\nUser instruction (verbatim; preserve exactly):\n" + instruction +
-		settledQuestionBrief(instruction)
+		settledQuestionBrief(instruction) + c.surfaceBrief()
 	response, err := c.client.CompleteWithMessages(ctx, []ai.Message{
 		textMessage("system", compilerSystemPrompt),
 		textMessage("user", user),
@@ -190,6 +222,16 @@ func (c *Compiler) Compile(ctx context.Context, instruction string, graphContext
 		brief.ModelNote = modelReceiptNote(words, choice)
 	}
 	return brief, nil
+}
+
+// surfaceBrief is what the surface knows about itself and the model cannot
+// guess. Empty for a chat window, which is every other caller: a conversation
+// has a mouth and may be asked anything.
+func (c *Compiler) surfaceBrief() string {
+	if c == nil || !c.oneShot {
+		return ""
+	}
+	return oneShotErrandBrief
 }
 
 // settledQuestionBrief declares the answers this ask already carries. The

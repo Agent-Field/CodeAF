@@ -195,6 +195,10 @@ type Reconciler struct {
 	craftMind       *CraftMind
 	resolveModel    ModelResolveFunc
 	proposeCharters bool
+	// oneShotErrand is the headless surface's fact about itself: every command
+	// this reconciler will apply is one errand, run once, with nobody who could
+	// answer a question about it.
+	oneShotErrand   bool
 	dailyBudgetUSD  float64
 	practiceEnabled bool
 	practiceBudget  float64
@@ -287,6 +291,20 @@ func (r *Reconciler) WithServiceRuntime(runtime ServiceRuntime) *Reconciler {
 // a completion and its splice pick up exactly where it stopped.
 func (r *Reconciler) WithCraftRunner(craft *CraftRunner) *Reconciler {
 	r.craft = craft
+	return r
+}
+
+// WithOneShotErrands pins this reconciler to the headless errand surface.
+//
+// The compiler is told the same fact and is the place it should be settled;
+// this is the second rung, for the case where a charter draft arrives anyway —
+// a compiler that is not the head's, a provider that emitted a charter key the
+// prompt never asked for. A draft that reaches a surface with no one at the
+// keyboard is auto-resolved exactly as the caller already chose by typing the
+// verb: once, not standing. The resolution is journaled, and the work then
+// runs, which is the whole point of the errand.
+func (r *Reconciler) WithOneShotErrands() *Reconciler {
+	r.oneShotErrand = true
 	return r
 }
 
@@ -971,6 +989,9 @@ func (r *Reconciler) splice(ctx context.Context, command store.Command) (command
 
 	compileContext := r.renderCompileContextFor(snapshot, command.Instruction, command.SessionID)
 	compileContext += attachedDocumentCompileContext(command.Attachments)
+	if r.oneShotErrand {
+		compileContext += oneShotErrandContext
+	}
 	promotion, promoted, err := r.promotionSource(command)
 	if err != nil {
 		return commandOutcome{}, err
@@ -994,19 +1015,26 @@ func (r *Reconciler) splice(ctx context.Context, command store.Command) (command
 		// changing one thing at once, and only the second is unrepairable.
 		compiled.BuildsOn = prependBuildsOn(unfinished, compiled.BuildsOn)
 	}
+	onceNote := ""
 	if compiled.Charter != nil {
-		id := fmt.Sprintf("charter-%d", command.Seq)
-		charter, err := r.store.DraftCharter(id, command.SessionID, command.Seq, *compiled.Charter)
-		if err != nil {
-			return commandOutcome{}, fmt.Errorf("draft charter: %w", err)
+		if !r.oneShotErrand {
+			id := fmt.Sprintf("charter-%d", command.Seq)
+			charter, err := r.store.DraftCharter(id, command.SessionID, command.Seq, *compiled.Charter)
+			if err != nil {
+				return commandOutcome{}, fmt.Errorf("draft charter: %w", err)
+			}
+			question, options := charterRatificationQuestion(charter, compiled.Charter.Rails.MaxPerDayJustification)
+			return commandOutcome{
+				status: store.CommandRejected, result: "drafted charter pending ratification",
+				receipt: question, asAgent: true, options: options,
+				category:      store.QuestionCategoryCharterRatification,
+				defaultAnswer: "1",
+			}, nil
 		}
-		question, options := charterRatificationQuestion(charter, compiled.Charter.Rails.MaxPerDayJustification)
-		return commandOutcome{
-			status: store.CommandRejected, result: "drafted charter pending ratification",
-			receipt: question, asAgent: true, options: options,
-			category:      store.QuestionCategoryCharterRatification,
-			defaultAnswer: "1",
-		}, nil
+		compiled, onceNote, err = r.resolveStandingAsOnce(command, compiled)
+		if err != nil {
+			return commandOutcome{}, err
+		}
 	}
 
 	if question := strings.TrimSpace(compiled.Question); question != "" {
@@ -1114,11 +1142,72 @@ func (r *Reconciler) splice(ctx context.Context, command store.Command) (command
 	if promoted {
 		receipt = reflexPromotionLine
 	}
+	result := fmt.Sprintf("spliced %d nodes", len(subtree.Nodes))
+	if onceNote != "" {
+		receipt = onceNote + "\n" + receipt
+		result = "standing draft resolved as once; " + result
+	}
 	return commandOutcome{
 		status:  store.CommandApplied,
-		result:  fmt.Sprintf("spliced %d nodes", len(subtree.Nodes)),
+		result:  result,
 		receipt: receipt,
 	}, nil
+}
+
+// oneShotErrandContext is the surface fact in the compile context, for any
+// compiler that reads context rather than being told directly.
+const oneShotErrandContext = "\n\nSurface: this ask arrived as a single headless errand — one run, nobody " +
+	"at a keyboard. It is work to be done once, now; it is never a standing rule, schedule or watch, and " +
+	"no question asked about it can be answered.\n"
+
+// oneShotErrandOnceEvidence is what the journal records about a standing draft
+// that never had a ratification card to stand on.
+const oneShotErrandOnceEvidence = "one-shot errand surface: `aforge do` is the choice of once, not standing"
+
+// resolveStandingAsOnce answers the ratification question the way the caller
+// already answered it by typing the verb, and hands back ordinary work.
+//
+// It is deliberately not a shortcut around the machinery: the draft is
+// journaled and retired so the record says what was proposed and what became
+// of it, and the returned brief then goes through compile's own splice path —
+// planner, working method, gate — because "do it once" means do it properly
+// once, not splice a bare node and hope.
+//
+// The goal is the invariant, which the temporal compiler is required to keep
+// verbatim: the user's own sentence, done now. The action template is the
+// fallback for a spec that lost it, and the raw instruction backstops both.
+func (r *Reconciler) resolveStandingAsOnce(command store.Command, compiled Compiled) (Compiled, string, error) {
+	spec := *compiled.Charter
+	goal := strings.TrimSpace(spec.Invariant)
+	if goal == "" {
+		goal = strings.TrimSpace(spec.Action)
+	}
+	if goal == "" {
+		goal = strings.TrimSpace(command.Instruction)
+	}
+	// A spec complete enough to be a charter is recorded as one and retired in
+	// the same breath. One too thin to draft is not an error here — it was
+	// never going to be a standing rule on this surface anyway — and the work
+	// still runs, which is the only thing the caller asked for.
+	id := fmt.Sprintf("charter-%d", command.Seq)
+	if charter, err := r.store.DraftCharter(id, command.SessionID, command.Seq, spec); err == nil {
+		if template := strings.TrimSpace(charter.Invariant); template != "" {
+			goal = template
+		}
+		if err := r.store.SetCharterStatusWithReason(charter.ID, store.CharterRetired, store.Ratification{
+			Origin: store.OriginUser, SessionID: command.SessionID, Evidence: oneShotErrandOnceEvidence,
+		}, oneShotErrandOnceEvidence); err != nil {
+			return compiled, "", fmt.Errorf("retire the standing draft this surface cannot ratify: %w", err)
+		}
+	}
+	compiled.Charter = nil
+	compiled.Question = ""
+	compiled.QuestionOptions = nil
+	compiled.Goal = goal
+	if strings.TrimSpace(compiled.Scale) == "" {
+		compiled.Scale = "task"
+	}
+	return compiled, "Read as a standing rule; doing it once instead — a one-shot errand has no cadence to ratify.", nil
 }
 
 func defaultQuestionAnswer(options []store.QuestionOption) string {

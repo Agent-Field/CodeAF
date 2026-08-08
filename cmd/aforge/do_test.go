@@ -461,6 +461,267 @@ func TestAforgeHomeMovesTheDefaultStore(t *testing.T) {
 	}
 }
 
+// The defect this fixes cost a benchmark two whole cells. "Reconcile
+// bank_export.csv against ledger.csv for June 2026 and flag every discrepancy"
+// is a plain one-shot analytical ask, and the words "every discrepancy" tripped
+// the temporal recognizer's `every <word>` cue. The compiler drafted a STANDING
+// RULE for it, invented a two-minute cadence and a daily budget out of nothing,
+// and put a ratification card to a process with nobody at the keyboard. The run
+// exited 1 in three seconds having done zero work, with the interactive question
+// sitting in the JSON `deliverable` field where a caller reads the answer.
+//
+// `aforge do` IS the answer to that question. A person who typed the verb has
+// already chosen "once, not standing", so the classification is settled by the
+// surface before a model reads a word: the temporal route is never taken, and
+// the ask compiles, plans, runs and delivers exactly like any other errand.
+func TestDoRunsAStandingSoundingAskOnceInsteadOfAskingToRatifyIt(t *testing.T) {
+	script := newScriptedBrain(t)
+	defer script.close()
+	script.gatePasses = true
+
+	var stdout, stderr strings.Builder
+	err := doErrand(doRequest{
+		task:    "Reconcile bank_export.csv against ledger.csv for June 2026 and flag every discrepancy",
+		asJSON:  true,
+		timeout: 60 * time.Second, workspace: t.TempDir(),
+		stdout: &stdout, stderr: &stderr, newClient: script.client,
+	})
+	if err != nil {
+		t.Fatalf("a plain one-shot ask did not run: %v\nstdout:\n%s\nstderr:\n%s",
+			err, stdout.String(), stderr.String())
+	}
+	// The structural pin: the temporal compiler was never reached at all. Its
+	// prompt is the only door to a charter draft on this path, and a headless
+	// errand does not have that door.
+	if got := script.count("standing"); got != 0 {
+		t.Fatalf("the temporal compiler ran %d times on a one-shot errand, want 0", got)
+	}
+	if got := script.count("compile"); got == 0 {
+		t.Fatal("the ordinary intent compiler never saw the ask")
+	}
+	outcome := decodeErrand(t, stdout.String())
+	if !outcome.Settled || outcome.BlockedOn != "" {
+		t.Fatalf("the errand did not settle cleanly: %+v", outcome)
+	}
+	// The work actually happened, and what the caller reads is its product.
+	if script.count("draft") == 0 {
+		t.Fatalf("no leaf ever ran:\n%s", stderr.String())
+	}
+	if !strings.Contains(outcome.Deliverable, firstDraftAnswer) {
+		t.Fatalf("the deliverable is not the work product: %q", outcome.Deliverable)
+	}
+	assertErrandIsHonest(t, outcome, nil)
+}
+
+// Defense in depth for the same law. The surface fact settles the classification
+// in the compiler, but a charter draft can still arrive from a provider that
+// emitted the key uninvited or a compiler that is not the head's. A draft that
+// reaches a process with no keyboard is auto-resolved the way the caller already
+// chose — once, not standing — journaled as retired, and then the work RUNS.
+// The failure mode this replaces is the one that matters: exiting having done
+// nothing.
+func TestDoResolvesAnUnexpectedCharterDraftAsOnceAndRunsTheWork(t *testing.T) {
+	script := newScriptedBrain(t)
+	defer script.close()
+	script.compileDraftsCharter = true
+	script.gatePasses = true
+
+	var stdout, stderr strings.Builder
+	err := doErrand(doRequest{
+		task:    "Reconcile bank_export.csv against ledger.csv for June 2026 and flag every discrepancy",
+		asJSON:  true,
+		timeout: 60 * time.Second, workspace: t.TempDir(),
+		stdout: &stdout, stderr: &stderr, newClient: script.client,
+	})
+	if err != nil {
+		t.Fatalf("a charter draft ended the errand instead of being resolved: %v\nstderr:\n%s",
+			err, stderr.String())
+	}
+	outcome := decodeErrand(t, stdout.String())
+	if outcome.BlockedOn != "" {
+		t.Fatalf("the ratification card reached the caller anyway: %q", outcome.BlockedOn)
+	}
+	if script.count("draft") == 0 {
+		t.Fatalf("the draft was resolved and the work still never ran:\n%s", stderr.String())
+	}
+	if !strings.Contains(outcome.Deliverable, firstDraftAnswer) {
+		t.Fatalf("the deliverable is not the work product: %q", outcome.Deliverable)
+	}
+	assertErrandIsHonest(t, outcome, nil)
+}
+
+// The other half of the contract: a question the errand's own semantics cannot
+// answer must not end the run in silence. Three seconds, five thousandths of a
+// cent and an empty stdout is indistinguishable from a fast cheap success in a
+// pipeline, which is exactly how the original defect went unnoticed.
+//
+// So it fails loudly: the question verbatim on stderr, a line saying headless
+// mode cannot answer it, exit 1, and a JSON object whose blocked_on carries the
+// question while deliverable stays empty.
+func TestDoFailsLoudlyOnAQuestionItCannotAnswer(t *testing.T) {
+	script := newScriptedBrain(t)
+	defer script.close()
+	script.compilerAsks = unanswerableQuestion
+
+	var stdout, stderr strings.Builder
+	err := doErrand(doRequest{
+		task:    "reconcile the two ledgers and tell me what is wrong",
+		asJSON:  true,
+		timeout: 60 * time.Second, workspace: t.TempDir(),
+		stdout: &stdout, stderr: &stderr, newClient: script.client,
+	})
+	var status exitStatus
+	if !asExitStatus(err, &status) || status != exitFailed {
+		t.Fatalf("a blocked errand exited %v, want exit status 1", err)
+	}
+	said := stderr.String()
+	if !strings.Contains(said, unanswerableQuestion) {
+		t.Fatalf("stderr never carried the question:\n%s", said)
+	}
+	if !strings.Contains(said, "headless mode cannot answer") {
+		t.Fatalf("stderr never said why nothing was done:\n%s", said)
+	}
+	outcome := decodeErrand(t, stdout.String())
+	if !strings.Contains(outcome.BlockedOn, unanswerableQuestion) {
+		t.Fatalf("blocked_on does not carry the question: %+v", outcome)
+	}
+	if strings.TrimSpace(outcome.Deliverable) != "" {
+		t.Fatalf("the question polluted the deliverable: %q", outcome.Deliverable)
+	}
+	assertErrandIsHonest(t, outcome, err)
+}
+
+// The pin. `settled` says the errand is over, the exit code says whether it
+// worked, and blocked_on says a question stopped it — three fields that a caller
+// reads together and that may never contradict each other. The rule that was
+// broken and is now enforced everywhere: a question is never a deliverable, and
+// a run that produced one is never reported as having produced work.
+func TestErrandOutcomesNeverContradictThemselves(t *testing.T) {
+	root := t.TempDir()
+	graph, err := store.Open(filepath.Join(root, "graph.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer graph.Close()
+
+	for _, shape := range []struct {
+		name     string
+		question string
+		rejected string
+		landed   string
+	}{
+		{name: "work landed", landed: "the reconciliation found three breaks"},
+		{name: "stopped on a question", question: "Which ledger is authoritative?", rejected: "asked the user"},
+		{name: "refused without a question", rejected: "splice failed: the planner is unreachable"},
+	} {
+		t.Run(shape.name, func(t *testing.T) {
+			session := "headless-" + strings.ReplaceAll(shape.name, " ", "-")
+			command, err := graph.RequestCommand(store.Command{
+				SessionID: session, Kind: store.CommandSplice, Instruction: "reconcile the ledgers",
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if shape.question != "" {
+				if _, err := graph.AskQuestion(store.AgentQuestion{
+					SessionID: session, Text: shape.question, OriginCommandSeq: command.Seq,
+					Urgency: store.QuestionBlocking,
+				}); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if shape.rejected != "" {
+				if err := graph.ResolveCommand(command.Seq, store.CommandRejected, shape.rejected); err != nil {
+					t.Fatal(err)
+				}
+			} else {
+				if err := graph.ResolveCommand(command.Seq, store.CommandApplied, "spliced 1 node"); err != nil {
+					t.Fatal(err)
+				}
+				if err := graph.Splice(store.RootID, store.Subtree{Nodes: []store.NodeSpec{
+					{ID: "task-" + session, Brief: "reconcile the ledgers", Stage: 0},
+				}}, store.Provenance{Origin: store.OriginUser, SessionID: session,
+					Intent: "reconcile the ledgers"}); err != nil {
+					t.Fatal(err)
+				}
+				claim, claimed, err := graph.Claim("task-"+session, "test")
+				if err != nil || !claimed {
+					t.Fatalf("claim: %v (claimed=%v)", err, claimed)
+				}
+				if err := graph.Start(claim); err != nil {
+					t.Fatal(err)
+				}
+				if err := graph.Complete(claim, shape.landed); err != nil {
+					t.Fatal(err)
+				}
+			}
+
+			watcher := &settlementWatch{
+				graph: graph, session: session, commandSeq: command.Seq,
+				refused: make(chan planEstimate, 1), started: time.Now(),
+			}
+			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
+			outcome, err := watcher.wait(ctx)
+			if err != nil {
+				t.Fatal(err)
+			}
+			assertErrandIsHonest(t, outcome, errandStatus(outcome))
+
+			switch {
+			case shape.question != "":
+				if !strings.Contains(outcome.BlockedOn, shape.question) {
+					t.Fatalf("the question never reached blocked_on: %+v", outcome)
+				}
+			case shape.rejected != "":
+				if outcome.BlockedOn != "" {
+					t.Fatalf("a plain refusal was reported as a question: %+v", outcome)
+				}
+				if strings.TrimSpace(outcome.Deliverable) == "" {
+					t.Fatal("a plain refusal said nothing at all")
+				}
+			default:
+				if !strings.Contains(outcome.Deliverable, shape.landed) {
+					t.Fatalf("the landed work is not the deliverable: %+v", outcome)
+				}
+			}
+		})
+	}
+}
+
+// assertErrandIsHonest is the invariant every one of the paths above is held to.
+func assertErrandIsHonest(t *testing.T, outcome headlessOutcome, exit error) {
+	t.Helper()
+	var status exitStatus
+	if exit != nil && !asExitStatus(exit, &status) {
+		t.Fatalf("the errand left with something that is not an exit status: %v", exit)
+	}
+	if strings.TrimSpace(outcome.BlockedOn) != "" {
+		if status == 0 {
+			t.Fatalf("a run stopped by a question reported success: %+v", outcome)
+		}
+		if strings.TrimSpace(outcome.Deliverable) != "" {
+			t.Fatalf("a question and a deliverable were reported together: %+v", outcome)
+		}
+	}
+	if status == 0 && !outcome.Settled {
+		t.Fatalf("a run that exited zero called itself unsettled: %+v", outcome)
+	}
+	if status == 0 && strings.TrimSpace(outcome.BlockedOn) != "" {
+		t.Fatalf("a successful run carried an unanswered question: %+v", outcome)
+	}
+}
+
+// decodeErrand reads the machine shape the way a caller does.
+func decodeErrand(t *testing.T, stdout string) headlessOutcome {
+	t.Helper()
+	var outcome headlessOutcome
+	if err := json.Unmarshal([]byte(stdout), &outcome); err != nil {
+		t.Fatalf("stdout is not one JSON object: %v\n%s", err, stdout)
+	}
+	return outcome
+}
+
 // ---------------------------------------------------------------------------
 // The scripted brain: one HTTP endpoint standing in for every model call the
 // run makes, dispatching on the prompt that arrived. It is deliberately not a
@@ -484,7 +745,21 @@ const (
 	brokenLine     = "return start <= other.end and other.start < end"
 	fixedLine      = "return start <= other.end and other.start <= end"
 	originalSource = "def overlaps(start, end, other):\n    " + brokenLine + "\n"
+	// unanswerableQuestion is a gap no errand semantics can close: not the
+	// standing-or-once classification the verb already answers, and not a price
+	// --yes-spend covers. Nobody is here, so the run must say so and leave.
+	unanswerableQuestion = "Which ledger is authoritative when the two disagree?"
 )
+
+// scriptedCharter is what a temporal compiler answers with — and what the
+// benchmark's two failing cells were handed for asks that were nothing of the
+// kind. The two-minute cadence is not invented here for colour; it is the
+// literal default standingWatch supplies when nobody stated a rhythm.
+const scriptedCharter = `{"invariant":"Reconcile bank_export.csv against ledger.csv for June 2026 and flag every discrepancy",` +
+	`"watch":{"kind":"poll","cadence":"about every 2 minutes","schedule":""},` +
+	`"sentinel":"Decide whether the ledgers have diverged.",` +
+	`"action":"Reconcile the two ledgers and flag every discrepancy.",` +
+	`"rails":{"estimated_cost_usd":0.05,"max_per_day":10,"max_per_day_justification":"caps the default worst day at about $0.50","expiry":"never"}}`
 
 type scriptedBrain struct {
 	t      *testing.T
@@ -501,6 +776,15 @@ type scriptedBrain struct {
 	// leafCost is what each call reports spending, which is what the consent
 	// desk's estimate is built from.
 	leafCost float64
+	// compileDraftsCharter makes the ORDINARY intent compiler hand back a
+	// charter, which is the shape a provider emitting an uninvited key produces
+	// — the case the structural pin cannot catch and the reconciler must.
+	compileDraftsCharter bool
+	// compilerAsks makes the compiler stop on a question instead of compiling.
+	compilerAsks string
+	// gatePasses lets a deliverable through on the first look, for the runs
+	// whose subject is not the gate.
+	gatePasses bool
 
 	mu     sync.Mutex
 	counts map[string]int
@@ -582,8 +866,25 @@ func (s *scriptedBrain) serve(writer http.ResponseWriter, request *http.Request)
 // reply is the whole script, in the order the run reaches it.
 func (s *scriptedBrain) reply(body string) string {
 	switch {
+	case strings.Contains(body, "You compile durable intent into one inert charter draft"):
+		// Reaching this at all on a headless errand is the defect. The count is
+		// the assertion; the answer is what the benchmark actually received.
+		s.tally("standing")
+		return s.say(scriptedCharter)
+
 	case strings.Contains(body, "You are the intent compiler"):
 		s.tally("compile")
+		if s.compilerAsks != "" {
+			return s.say(fmt.Sprintf(`{"goal":"","scale":"task","builds_on":[],"assumptions":[],`+
+				`"question":%q,"question_options":[],"trial_of":0}`, s.compilerAsks))
+		}
+		if s.compileDraftsCharter {
+			return s.say(`{"goal":"","scale":"task","builds_on":[],"assumptions":[],` +
+				`"question":"Stand this rule up?","question_options":[` +
+				`{"label":"yes, stand this up","value":"ratify"},` +
+				`{"label":"once, not standing","value":"once"}],` +
+				`"trial_of":0,"charter":` + scriptedCharter + `}`)
+		}
 		// Task scale: one worker end to end, which is the shape that still
 		// earns a written working method and still faces the gate.
 		return s.say(`{"goal":"Write the release note for the parser work, including the migration steps.",` +
@@ -607,6 +908,9 @@ func (s *scriptedBrain) reply(body string) string {
 
 	case strings.Contains(body, "You are the final gate"):
 		round := s.tally("gate")
+		if s.gatePasses {
+			return s.say(`{"pass":true,"gaps":"","quote":"","exercised":true}`)
+		}
 		if round <= 2 {
 			// The first draft and the revision of it are both judged short of
 			// the ask, and the gap quotes the ask itself — the one thing that
