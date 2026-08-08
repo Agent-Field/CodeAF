@@ -327,6 +327,13 @@ type Model struct {
 	cardOptionRows     []cardOptionRow
 	notebookOptionRows []cardOptionRow
 
+	// threadQuestion is the open askback the thread itself owns: a question
+	// the head asked with no job behind it, so nothing in the card derivation
+	// can speak for it. It is card-shaped because every answer path — a digit,
+	// the arrows, enter, a click, the input placeholder — resolves one target,
+	// and it lives outside m.cards so a question never becomes a job row.
+	threadQuestion *jobCard
+
 	selectedNodeID   string
 	graphRows        []graphRow
 	nodeViewID       string
@@ -1295,8 +1302,8 @@ func (m *Model) updateKey(message tea.KeyMsg) (tea.Cmd, bool) {
 		return nil, true
 	}
 	if key == "enter" && m.focus == focusChat {
-		if m.activateChatFocus() {
-			return nil, true
+		if command, ok := m.activateChatFocus(); ok {
+			return command, true
 		}
 		if card := m.cardByID(m.selectedCardID); card != nil && card.State == cardSettled {
 			return m.advanceCard(card.ID, focusChat), true
@@ -2309,10 +2316,10 @@ func (m *Model) moveChatFocus(delta int) {
 
 // activateChatFocus is enter-equals-click for the thread zone: it triggers
 // whatever a click on the focused interactive line would.
-func (m *Model) activateChatFocus() bool {
+func (m *Model) activateChatFocus() (tea.Cmd, bool) {
 	targets := m.chatFocusLines()
 	if len(targets) == 0 {
-		return false
+		return nil, false
 	}
 	m.chatFocusIndex = max(0, min(m.chatFocusIndex, len(targets)-1))
 	return m.activateChatLine(targets[m.chatFocusIndex])

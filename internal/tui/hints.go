@@ -106,11 +106,23 @@ func (m *Model) tipSuppressed(feature tipFeature) bool {
 	}
 }
 
+// questionSelectable reports whether the arrows and enter will answer a visible
+// option question rather than move the surface — the composer holding focus
+// over an empty draft, with choices on screen. It is the one state the footer
+// announces ahead of the focus zone: a question whose choices nothing says how
+// to take is how a live choice ends up reading as dead.
+func (m *Model) questionSelectable() bool {
+	return m.nodeViewID == "" && m.palette == paletteNone && m.inputFocused &&
+		m.input.Value() == "" && m.questionCardWithOptions() != nil
+}
+
 // contextHelpLine keeps at most four actions and follows the current focus
 // zone, so the footer describes what the next key will do rather than acting
 // as a static command inventory.
 func (m *Model) contextHelpLine() string {
 	switch {
+	case m.questionSelectable():
+		return "↑/↓ choose · enter answer · 1–9 pick · or type your own"
 	case m.focus == focusCards:
 		return "↑/↓ select · enter details · esc back · ctrl+t tasks"
 	case m.focus == focusQuestions:

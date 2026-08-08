@@ -1489,7 +1489,8 @@ func (m *Model) renderMessages() string {
 }
 
 // chatFocusLines lists, in order, every thread line a click would activate:
-// receipts, folds, provenance chips, card headers, part rows, and close rows.
+// receipts, folds, provenance chips, card headers, part rows, close rows, and
+// the option rows of an open question.
 func (m *Model) chatFocusLines() []int {
 	seen := make(map[int]bool)
 	for _, row := range m.chatExpandRows {
@@ -1513,6 +1514,11 @@ func (m *Model) chatFocusLines() []int {
 	}
 	for _, row := range m.notebookOptionRows {
 		seen[row.line] = true
+	}
+	for _, row := range m.cardOptionRows {
+		if !row.dock {
+			seen[row.line] = true
+		}
 	}
 	for _, row := range m.historyRows {
 		seen[row.line] = true
@@ -1595,6 +1601,7 @@ type threadBlock struct {
 	chips    []chatChipRow
 	expands  []chatExpandRow
 	messages []chatMessageRow
+	options  []cardOptionRow
 }
 
 func (m *Model) renderMessageGroup(group messageGroup, atLine int) string {
@@ -1666,6 +1673,10 @@ func (m *Model) replayThreadBlock(block threadBlock, atLine int) {
 		row.end += atLine
 		m.chatMessageRows = append(m.chatMessageRows, row)
 	}
+	for _, row := range block.options {
+		row.line += atLine
+		m.cardOptionRows = append(m.cardOptionRows, row)
+	}
 }
 
 func (m *Model) buildMessageGroup(group messageGroup) threadBlock {
@@ -1697,7 +1708,6 @@ func (m *Model) buildMessageGroup(group messageGroup) threadBlock {
 			}
 			item += artifacts
 		}
-		item = m.withThreadQuestionOptions(item, message, available)
 		// A task-anchored answer names its origin: a small clickable chip that
 		// jumps to that task's activity view.
 		if message.NodeID != "" && message.Role != store.RoleUser && !secondaryMessage(message) {
@@ -1705,6 +1715,20 @@ func (m *Model) buildMessageGroup(group messageGroup) threadBlock {
 				"↳ " + truncate(m.nodeChipLabel(message.NodeID), max(6, min(40, available-2))))
 			block.chips = append(block.chips, chatChipRow{line: line, nodeID: message.NodeID})
 			item = chip + "\n" + item
+		}
+		// A still-open question keeps its choices with the words that asked
+		// them, and each choice is a row a click or enter answers with.
+		if rows, targets := m.threadQuestionOptions(message, available); len(rows) > 0 {
+			at := 0
+			if item != "" {
+				at = lipgloss.Height(item)
+				item += "\n"
+			}
+			item += strings.Join(rows, "\n")
+			for _, target := range targets {
+				target.line += line + at
+				block.options = append(block.options, target)
+			}
 		}
 		items = append(items, item)
 		height := lipgloss.Height(item)
@@ -1740,38 +1764,55 @@ func (m *Model) buildMessageGroup(group messageGroup) threadBlock {
 // card gutter is a frame the thread does not have.
 const threadQuestionIndent = "  "
 
-// withThreadQuestionOptions keeps a still-open question's choices with the
-// message that asked it. The thread is the durable surface: the activity dock
-// collapses to a one-line summary as soon as work piles up, and the numbers
-// the input placeholder promises must exist somewhere that cannot fold away.
-// An answered question keeps its prompt and loses its choices — the record
-// stays, the affordance does not.
-func (m *Model) withThreadQuestionOptions(item string, message store.Message, width int) string {
+// threadQuestionOptions keeps a still-open question's choices with the message
+// that asked it, and returns the rows a click or enter can answer with, held
+// relative to the first option row. The thread is the durable surface: the
+// activity dock collapses to a one-line summary as soon as work piles up, and
+// the numbers the input placeholder promises must exist somewhere that cannot
+// fold away. An answered question keeps its prompt and loses its choices — the
+// record stays, the affordance does not. A question nothing owns any more
+// keeps its rows as record and offers no targets: a choice that cannot be
+// submitted must not look like one that can.
+func (m *Model) threadQuestionOptions(message store.Message, width int) ([]string, []cardOptionRow) {
 	if message.Role != store.RoleAgent {
-		return item
+		return nil, nil
 	}
 	component, ok := readQuestionComponent(message.Body)
 	if !ok || len(component.Options) == 0 || m.questionAnswered(message) {
-		return item
+		return nil, nil
 	}
 	// Selection state belongs to the card that owns the question, so the band
 	// the arrows move is the same band in both places.
-	selected := 0
-	if card := m.cardForMessage(message); card != nil && card.State == cardQuestion &&
+	cardID, selected := "", 0
+	if card := m.questionCardForMessage(message); card != nil &&
 		len(card.Options) == len(component.Options) {
+		cardID = card.ID
 		selected = m.questionOptionIndex(*card)
 	}
-	var rows []string
 	if component.Kind == questionConfirm {
-		line, _ := renderConfirmOptions(component, selected, width, threadQuestionIndent)
-		rows = []string{line}
-	} else {
-		rows = renderChooseOptions(component.Options, selected, width, threadQuestionIndent)
+		line, spans := renderConfirmOptions(component, selected, width, threadQuestionIndent)
+		if cardID == "" {
+			return []string{line}, nil
+		}
+		targets := make([]cardOptionRow, 0, len(spans))
+		for index, span := range spans {
+			targets = append(targets, cardOptionRow{
+				startX: span.startX, endX: span.endX, cardID: cardID, optionIndex: index,
+			})
+		}
+		return []string{line}, targets
 	}
-	if item == "" {
-		return strings.Join(rows, "\n")
+	rows := renderChooseOptions(component.Options, selected, width, threadQuestionIndent)
+	if cardID == "" {
+		return rows, nil
 	}
-	return item + "\n" + strings.Join(rows, "\n")
+	targets := make([]cardOptionRow, 0, len(rows))
+	for index := range rows {
+		targets = append(targets, cardOptionRow{
+			line: index, endX: width, cardID: cardID, optionIndex: index,
+		})
+	}
+	return rows, targets
 }
 
 // questionAnswered reads the same no-intervening-user-turn rule the head
