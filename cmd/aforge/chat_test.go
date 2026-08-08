@@ -547,6 +547,9 @@ func TestBudgetStoppedReflexCarriesPartialIntoCompiledJob(t *testing.T) {
 	}
 }
 
+// With no learned voice the user-facing prompts are the stable prompt plus the
+// unconditional register, exactly — nothing else drifts, and the register is
+// what a fresh machine used to be missing entirely.
 func TestResidentUserFacingPromptsKeepEmptyNotebookBytes(t *testing.T) {
 	graph, err := store.Open(filepath.Join(t.TempDir(), "graph.db"))
 	if err != nil {
@@ -562,20 +565,22 @@ func TestResidentUserFacingPromptsKeepEmptyNotebookBytes(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	if got := capture.messages[0].Content[0].Text; got != narratorSystemPrompt {
-		t.Fatalf("empty-notebook narrator prompt changed:\n got %q\nwant %q", got, narratorSystemPrompt)
+	wantNarrator := narratorSystemPrompt + "\n\n" + resident.VoiceRegister
+	if got := capture.messages[0].Content[0].Text; got != wantNarrator {
+		t.Fatalf("empty-notebook narrator prompt changed:\n got %q\nwant %q", got, wantNarrator)
 	}
 
 	node := store.Node{
 		ID: "job", Parent: store.RootID, Brief: "assemble the finished report",
 		Provenance: store.Provenance{Intent: "prepare the report"},
 	}
-	if got := residentDeliveryBrief(graph, node); got != node.Brief {
-		t.Fatalf("empty-notebook delivery brief changed:\n got %q\nwant %q", got, node.Brief)
+	wantBrief := node.Brief + "\n\n" + resident.VoiceRegister
+	if got := residentDeliveryBrief(graph, node); got != wantBrief {
+		t.Fatalf("empty-notebook delivery brief changed:\n got %q\nwant %q", got, wantBrief)
 	}
 	initial := exec.Task{Brief: residentDeliveryBrief(graph, node)}
 	polish := initial
-	if initial.Brief != node.Brief || polish.Brief != node.Brief {
+	if initial.Brief != wantBrief || polish.Brief != wantBrief {
 		t.Fatalf("empty-notebook initial/polish briefs changed: initial=%q polish=%q", initial.Brief, polish.Brief)
 	}
 
@@ -629,7 +634,7 @@ func TestResidentDeliveryAndPolishBriefShareLearnedVoice(t *testing.T) {
 	}
 	child := node
 	child.Parent = node.ID
-	if got := residentDeliveryBrief(graph, child); got != child.Brief {
+	if got := residentDeliveryBrief(graph, child); strings.Contains(got, preference) {
 		t.Fatalf("worker-to-worker child brief gained user voice: %q", got)
 	}
 }
