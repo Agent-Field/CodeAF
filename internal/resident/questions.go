@@ -57,6 +57,12 @@ func (r *Reconciler) AttachSession(sessionID string) error {
 	}
 	r.mu.Lock()
 	defer r.mu.Unlock()
+	// The journal head before the arrival says anything. Everything after this
+	// point — a lapsed request, a blocking question re-surfaced, the one queued
+	// natural-moment question — is the arrival talking, not news from while the
+	// user was away, and the brief's window closes here rather than on the
+	// attach edge that is journaled afterwards.
+	r.arrivalSession, r.arrivalSeq = strings.TrimSpace(sessionID), r.latestEventSeq()
 	if err := r.expireQuestionsLocked(); err != nil {
 		return fmt.Errorf("resident attach session: expire questions: %w", err)
 	}

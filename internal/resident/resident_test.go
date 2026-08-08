@@ -334,6 +334,10 @@ func TestDeferredResourceCompletionStaysInternalButStillSettles(t *testing.T) {
 	if len(distilled) != 1 || !strings.Contains(distilled[0], "useful but unfinished") {
 		t.Fatalf("deferred partial distillations = %+v", distilled)
 	}
+	reconciler.now = func() time.Time { return time.Now().Add(2 * settledFoldGrace) }
+	if err := reconciler.Tick(context.Background()); err != nil {
+		t.Fatal(err)
+	}
 	node, ok, err := graph.Node("deferred-partial")
 	if err != nil || !ok || !node.Folded {
 		t.Fatalf("deferred partial was not folded: node=%+v ok=%t err=%v", node, ok, err)
@@ -678,6 +682,14 @@ func TestSettlementResumesAcrossProcessBoundary(t *testing.T) {
 	}
 	if distilled != 1 {
 		t.Fatalf("distillations across the gap = %d", distilled)
+	}
+	// Folding is derived from graph state rather than from the tick that
+	// announced the landing, so a third process still files the job once the
+	// grace window has closed.
+	filing := New(graph, nil, nil)
+	filing.now = func() time.Time { return time.Now().Add(2 * settledFoldGrace) }
+	if err := filing.Tick(context.Background()); err != nil {
+		t.Fatalf("filing tick: %v", err)
 	}
 	node, ok, err := graph.Node("overnight")
 	if err != nil || !ok || !node.Folded {
