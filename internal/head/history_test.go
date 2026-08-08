@@ -42,7 +42,7 @@ func TestSnapshotRowsCarryTheirAge(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	board := renderGraph(snapshot, "age", "", nil, time.Now().Add(3*time.Hour))
+	board := New(nil, graph).renderGraph(snapshot, "age", "", nil, time.Now().Add(3*time.Hour))
 	if !strings.Contains(board, "finance-close | done | close the finance books for Q3 | finished 3h ago") {
 		t.Fatalf("a settled row carries no age:\n%s", board)
 	}
