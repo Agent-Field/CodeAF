@@ -279,11 +279,8 @@ func (r *Reconciler) askCharterProposal(charter store.Charter) {
 	}
 
 	rails := charter.Rails()
-	fires := strings.TrimSpace(charter.Watch.Cadence)
-	if fires == "" {
-		fires = charter.Watch.String()
-	}
-	prompt := fmt.Sprintf("This keeps coming back: %s\nI can make it standing — %s, ~$%.2f/firing, ≤%d/day.\nWant me to?",
+	fires := charter.Watch.Spoken()
+	prompt := fmt.Sprintf("This keeps coming back: %s\nI can make it standing — %s, about $%.2f a run, at most %d a day.\nWant me to?",
 		clipLabel(firstLine(charter.Invariant), 160), fires,
 		rails.PerFiringBudgetUSD, rails.MaxFiringsPerDay)
 	options := []store.QuestionOption{

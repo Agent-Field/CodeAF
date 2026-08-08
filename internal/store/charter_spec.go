@@ -97,7 +97,7 @@ func (s *Store) DraftCharter(id, sessionID string, sourceCommandSeq int64, spec 
 		// recurring rule that also said "once" means one firing a day, and
 		// reading it as an expiry is how "remind me every Sunday" used to die
 		// twenty-three hours after it was ratified — before its first Sunday.
-		if recurringWatch(watch) {
+		if RecurringWatch(watch) {
 			rails.MaxFiringsPerDay = 1
 		} else {
 			first, err := initialCharterDue(watch, now)
@@ -161,9 +161,11 @@ func watchSpecPopulated(watch WatchSpec) bool {
 	return watch.Cron != nil || watch.File != nil || watch.Graph != nil || watch.Poll != nil
 }
 
-// recurringWatch is true for every watch that comes back around. Only a cron
-// at-schedule — one named instant — happens exactly once.
-func recurringWatch(watch WatchSpec) bool {
+// RecurringWatch is true for every watch that comes back around. Only a cron
+// at-schedule — one named instant — happens exactly once. Expiry is decided
+// from this and never from the words: "remind me every Sunday" and "remind me
+// tomorrow at 9" are the same sentence shape and opposite lifetimes.
+func RecurringWatch(watch WatchSpec) bool {
 	if watch.Kind == WatchCron && watch.Cron != nil {
 		return watch.Cron.Kind != CronAt
 	}
@@ -218,29 +220,51 @@ func CadenceWatchSpec(kind WatchKind, cadence, hint, condition string, now time.
 // who said a day meant the day — "every sunday morning" is a weekly rule at
 // nine, not a daily one.
 func CadenceSchedule(cadence string, now time.Time) CronSchedule {
+	schedule, _ := cadenceSchedule(cadence, now)
+	return schedule
+}
+
+// RecognizedCadence is whether these words say anything about time that this
+// engine can act on. It is how a caller tells a cadence apart from a default:
+// words that fall through to the two-minute fallback are not a rhythm anyone
+// chose, and a surface that presents them as one is lying quietly.
+func RecognizedCadence(cadence string) bool {
+	_, recognized := cadenceSchedule(cadence, time.Now())
+	return recognized
+}
+
+// WeekdayNamed is whether these words name a day of the week. Callers deciding
+// which watch family a sentence implies need it: a named day is a clock rule
+// however the rest of the sentence reads.
+func WeekdayNamed(text string) bool {
+	_, named := cadenceWeekday(strings.ToLower(text))
+	return named
+}
+
+func cadenceSchedule(cadence string, now time.Time) (CronSchedule, bool) {
 	lower := strings.ToLower(strings.TrimSpace(cadence))
 	hour, minute, stated := cadenceClock(lower)
 	if weekday, named := cadenceWeekday(lower); named {
 		if !stated {
 			hour, minute = dayPartClock(lower)
 		}
-		return CronSchedule{Kind: CronWeekly, Weekday: weekday, Hour: hour, Minute: minute}
+		return CronSchedule{Kind: CronWeekly, Weekday: weekday, Hour: hour, Minute: minute}, true
 	}
 	switch {
 	case strings.Contains(lower, "weekday"):
 		if !stated {
 			hour, minute = dayPartClock(lower)
 		}
-		return CronSchedule{Kind: CronWeekdays, Hour: hour, Minute: minute}
+		return CronSchedule{Kind: CronWeekdays, Hour: hour, Minute: minute}, true
 	case strings.Contains(lower, "hourly") || strings.Contains(lower, "every hour"):
-		return CronSchedule{Kind: CronEveryHours, Interval: 1}
+		return CronSchedule{Kind: CronEveryHours, Interval: 1}, true
 	case strings.Contains(lower, "daily") || strings.Contains(lower, "every day") ||
 		strings.Contains(lower, "morning") || strings.Contains(lower, "afternoon") ||
 		strings.Contains(lower, "evening") || strings.Contains(lower, "night"):
 		if !stated {
 			hour, minute = dayPartClock(lower)
 		}
-		return CronSchedule{Kind: CronDaily, Hour: hour, Minute: minute}
+		return CronSchedule{Kind: CronDaily, Hour: hour, Minute: minute}, true
 	case strings.Contains(lower, "weekly") || strings.Contains(lower, "every week"):
 		// A week with no day named still lands on a real day: today's, at a
 		// stated or default hour. The old reading — an interval of 168 hours —
@@ -249,35 +273,44 @@ func CadenceSchedule(cadence string, now time.Time) CronSchedule {
 		if !stated {
 			hour, minute = dayPartClock(lower)
 		}
-		return CronSchedule{Kind: CronWeekly, Weekday: now.Weekday(), Hour: hour, Minute: minute}
+		return CronSchedule{Kind: CronWeekly, Weekday: now.Weekday(), Hour: hour, Minute: minute}, true
 	case strings.Contains(lower, "tomorrow"):
 		day := now.AddDate(0, 0, 1)
 		if !stated {
 			hour, minute = dayPartClock(lower)
 		}
 		at := time.Date(day.Year(), day.Month(), day.Day(), hour, minute, 0, 0, now.Location())
-		return CronSchedule{Kind: CronAt, At: at}
+		return CronSchedule{Kind: CronAt, At: at}, true
+	case stated:
+		// A clock and nothing else — "at 6pm", "remind me at 8". It means the
+		// next time that hour comes round, which is today when today still has
+		// it and tomorrow when it does not.
+		at := time.Date(now.Year(), now.Month(), now.Day(), hour, minute, 0, 0, now.Location())
+		if !at.After(now) {
+			at = at.AddDate(0, 0, 1)
+		}
+		return CronSchedule{Kind: CronAt, At: at}, true
 	}
 	if count, unit, ok := cadenceCount(lower); ok {
 		if strings.HasPrefix(lower, "in ") {
-			return CronSchedule{Kind: CronAt, At: now.Add(time.Duration(count) * unit)}
+			return CronSchedule{Kind: CronAt, At: now.Add(time.Duration(count) * unit)}, true
 		}
 		switch unit {
 		case time.Minute:
 			if count < 60 {
-				return CronSchedule{Kind: CronEveryMinutes, Interval: count}
+				return CronSchedule{Kind: CronEveryMinutes, Interval: count}, true
 			}
 		case time.Hour:
 			if count < 24 {
-				return CronSchedule{Kind: CronEveryHours, Interval: count}
+				return CronSchedule{Kind: CronEveryHours, Interval: count}, true
 			}
 		case 24 * time.Hour:
-			return CronSchedule{Kind: CronEveryHours, Interval: count * 24}
+			return CronSchedule{Kind: CronEveryHours, Interval: count * 24}, true
 		case 7 * 24 * time.Hour:
-			return CronSchedule{Kind: CronEveryHours, Interval: count * 7 * 24}
+			return CronSchedule{Kind: CronEveryHours, Interval: count * 7 * 24}, true
 		}
 	}
-	return CronSchedule{Kind: CronEveryMinutes, Interval: 2}
+	return CronSchedule{Kind: CronEveryMinutes, Interval: 2}, false
 }
 
 // CadenceInterval is the polling-cadence reading of the same words, used by
