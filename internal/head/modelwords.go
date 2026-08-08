@@ -218,6 +218,99 @@ func recognizeModelWords(instruction string) (ModelWords, bool) {
 	return ModelWords{Names: names}, true
 }
 
+// RecognizeModelWords had exactly one call site — inside Compiler.Compile,
+// which only a fresh splice reaches — so model words could create a new job and
+// could never move an existing one. The two natural phrasings diverged
+// completely: "redo that with the better model" fell through to the router and
+// became a brand-new job in a brand-new workspace, while "rerun that with the
+// better model" matched the restart cue, was handled deterministically, and
+// re-ran the failure on the default slot. A restart is where escalation
+// actually belongs — the work exists, the user watched it go wrong, and they
+// are asking for a stronger hand on the same job.
+//
+// store.Command has no model field and adding one is a store change this seam
+// does not need: the instruction is a durable payload and the model words are
+// already in it, verbatim. What the head adds is its own deterministic READING
+// of them, on one marked line, in exactly the idiom CompilerAnswerPrefix
+// already uses. The head cannot resolve a name — the catalog lives with the
+// surface that owns the slots — so it says what it read and leaves resolution
+// where the resolver is.
+const (
+	// RestartModelPrefix marks the head's reading of the model words on a
+	// restart. It is matched rather than reconstructed, so a change to the
+	// wording makes the reader return nothing — today's behaviour — instead of
+	// a wrong model.
+	RestartModelPrefix = "Run this restart on:"
+	// RestartModelBoost is what the prefix carries when the ask named the boost
+	// slot rather than a model. The slot always resolves, so this always does.
+	RestartModelBoost = "the boost model"
+)
+
+// MarkRestartModel appends the head's reading of a restart's model words to the
+// instruction it journals. An instruction that names no model comes back
+// byte-identical, so every restart that was silent stays silent.
+func MarkRestartModel(instruction string) string {
+	// Idempotent, because a gated restart is journaled from the same instruction
+	// the confirmation question carried: marking a marked instruction would read
+	// its own mark as a second set of model words.
+	if strings.Contains(instruction, RestartModelPrefix) {
+		return instruction
+	}
+	words, wanted := RecognizeModelWords(instruction)
+	if !wanted {
+		return instruction
+	}
+	choice := RestartModelBoost
+	if !words.Boost {
+		if len(words.Names) == 0 {
+			return instruction
+		}
+		choice = words.Names[0]
+	}
+	return strings.TrimSpace(instruction) + "\n\n" + RestartModelPrefix + " " + choice
+}
+
+// RestartModel reads back what MarkRestartModel wrote. The second return is
+// whether the restart named a model at all; the first is the words to resolve,
+// in the shape a ModelResolver already takes.
+func RestartModel(instruction string) (ModelWords, bool) {
+	index := strings.LastIndex(instruction, RestartModelPrefix)
+	if index < 0 {
+		return ModelWords{}, false
+	}
+	choice := strings.TrimSpace(firstMarkedLine(instruction[index+len(RestartModelPrefix):]))
+	switch {
+	case choice == "":
+		return ModelWords{}, false
+	case choice == RestartModelBoost:
+		return ModelWords{Boost: true}, true
+	default:
+		return ModelWords{Names: []string{choice}, Explicit: true}, true
+	}
+}
+
+// restartModelReceipt is the calm half-sentence the surgery receipt gains when
+// the restart carries a model. It states the request, which is what the command
+// records; whether the catalog has that model is the resolver's news to give.
+func restartModelReceipt(instruction string) string {
+	words, wanted := RestartModel(instruction)
+	switch {
+	case !wanted:
+		return ""
+	case words.Boost:
+		return " on the stronger model"
+	default:
+		return " on " + words.Names[0]
+	}
+}
+
+func firstMarkedLine(value string) string {
+	if index := strings.IndexAny(value, "\r\n"); index >= 0 {
+		return value[:index]
+	}
+	return value
+}
+
 // RecognizesQualityIntent reads the user asking for quality rather than for
 // routine work. It is the signal media tools need to reach for "best".
 func RecognizesQualityIntent(instruction string) bool {

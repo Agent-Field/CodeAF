@@ -64,12 +64,18 @@ func (h *Head) manageSurgery(user store.Message) (bool, error) {
 		}
 	}
 	if len(matches) == 0 {
-		what := strings.TrimSpace(intent.Reference)
-		if what == "" {
-			return true, h.postAgent(user.SessionID, "I couldn't find any current work that matches.", 0)
-		}
-		return true, h.postAgent(user.SessionID,
-			fmt.Sprintf("I couldn't find any current work matching %q.", what), 0)
+		// Decline, do not answer. "try again" on the job that just failed found
+		// nothing here — the reconciler folds a settled job in the same tick that
+		// announces it, so by the time the user has read the failure the target
+		// is folded and invisible to a verb's status filter — and this arm
+		// claimed the sentence anyway and replied "I couldn't find any current
+		// work that matches." over a board the user could still see. It was the
+		// last word on a question two better readers were waiting to take: the
+		// belt reads settled work now, and the router carries the fold roots in
+		// its snapshot. A deterministic arm that resolved nothing has learned
+		// nothing, and the honest thing to do with a sentence you did not
+		// understand is to hand it on.
+		return false, nil
 	}
 	if len(matches) > 1 {
 		return true, h.postSurgeryChoice(user, intent, matches)
@@ -169,6 +175,7 @@ func surgeryEligible(node store.Node, kind store.CommandKind) bool {
 }
 
 func (h *Head) resolveSurgery(user store.Message, kind store.CommandKind, target, instruction string, confirmed bool) error {
+	instruction = restartInstruction(kind, instruction)
 	node, found, err := h.store.Node(target)
 	if err != nil {
 		return err
@@ -216,7 +223,18 @@ func (h *Head) resolveSurgery(user store.Message, kind store.CommandKind, target
 	if err != nil {
 		return h.postAgent(user.SessionID, commandErrorReply, 0)
 	}
-	return h.postAgent(user.SessionID, surgeryQueuedReceipt(kind, node), command.Seq)
+	return h.postAgent(user.SessionID, surgeryQueuedReceipt(kind, node, instruction), command.Seq)
+}
+
+// restartInstruction is the one place a restart's model words are read. It sits
+// on the journaling funnel rather than in the recognizers, so every route to a
+// restart — the deterministic cue, the router's own command, a confirmed
+// question replayed later — carries the same reading.
+func restartInstruction(kind store.CommandKind, instruction string) string {
+	if kind != store.CommandRestart {
+		return instruction
+	}
+	return MarkRestartModel(instruction)
 }
 
 func surgeryNeedsConfirmation(kind store.CommandKind, impact store.SurgeryImpact) bool {
@@ -261,8 +279,14 @@ func surgeryLoss(kind store.CommandKind, impact store.SurgeryImpact) string {
 	return strings.Join(parts, " and ") + "."
 }
 
-func surgeryQueuedReceipt(kind store.CommandKind, node store.Node) string {
+func surgeryQueuedReceipt(kind store.CommandKind, node store.Node, instruction string) string {
 	label := surgeryTargetLabel(node)
+	if kind == store.CommandRestart {
+		// The receipt names the model because the command carries it. Saying it
+		// out loud is also the only way a wrong reading costs one word to fix
+		// rather than a whole re-run on the slot the user was trying to leave.
+		return "Restarting " + label + restartModelReceipt(instruction) + "."
+	}
 	switch kind {
 	case store.CommandCancel:
 		return "Cancelling " + label + "."
@@ -353,7 +377,14 @@ func decodeSurgeryOption(value string) (action string, kind store.CommandKind, t
 }
 
 func nodeSurgery(message string) (surgeryIntent, bool) {
-	lower := strings.ToLower(strings.TrimSpace(message))
+	// The cue has to sit at the start of the INSTRUCTION, which is not always
+	// the start of the recording. Filler is skipped, and then a sentence that
+	// withdraws its own opening is declined outright rather than acted on from
+	// its first three words — dictation.go argues both.
+	lower := instructionOpening(strings.ToLower(strings.TrimSpace(message)))
+	if selfRepairsAfterCue(lower) {
+		return surgeryIntent{}, false
+	}
 	intent := surgeryIntent{}
 	switch {
 	case strings.HasPrefix(lower, "cancel ") || lower == "cancel" || strings.HasPrefix(lower, "stop "):

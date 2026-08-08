@@ -372,6 +372,15 @@ func postUser(t *testing.T, graph *store.Store, session, body string) store.Mess
 	return user
 }
 
+func pendingCommandsOf(t *testing.T, graph *store.Store) []store.Command {
+	t.Helper()
+	commands, err := graph.PendingCommands(50)
+	if err != nil {
+		t.Fatalf("pending commands: %v", err)
+	}
+	return commands
+}
+
 func pendingTargets(t *testing.T, graph *store.Store, kind store.CommandKind) []string {
 	t.Helper()
 	commands, err := graph.PendingCommands(50)
