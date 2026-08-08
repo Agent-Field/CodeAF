@@ -365,7 +365,7 @@ func buildBrain(w *chatWindow, session string, opts brainOptions) (*chatBrain, e
 				}
 				return taskClient.Model()
 			})
-		})
+		}, opts.headless)
 	// Narration, the arrival brief, redirection and the host timer are all one
 	// thing: a conversation. Each of them speaks into a thread, or waits for
 	// somebody to speak into it, or leaves something on the machine that
