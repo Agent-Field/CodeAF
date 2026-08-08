@@ -445,32 +445,37 @@ func charterFireCommandOutcome(disposition store.FireDisposition, jobID, label s
 	}
 }
 
-// charterRatificationQuestion reads the canonical charter: the cadence words
-// the user said, the executable schedule they compiled into, and the rails
-// that bound every firing. justification is the compiler's cap reasoning; it
-// travels with the initial draft only.
+// charterRatificationQuestion reads the canonical charter back to the person
+// who said it: when it runs, what each run costs, and — when the schedule is
+// one nobody stated — the schedule itself, asked rather than asserted.
+// justification is the compiler's cap reasoning; it travels with the initial
+// draft only.
+//
+// Two things this must never do again. It must not print the engine's own
+// spelling of a schedule: "fires: about every 2 minutes (cron:every 2 minutes)"
+// showed a user a guess twice, once in words she could not read. And it must
+// not state a guess as a fact — a card is already a question, and the cheapest
+// possible place to catch a misread rhythm is the sentence that asks about it.
 func charterRatificationQuestion(charter store.Charter, justification string) (string, []store.QuestionOption) {
 	rails := charter.Rails()
-	fires := strings.TrimSpace(charter.Watch.Cadence)
-	if fires == "" {
-		fires = charter.Watch.String()
-	} else {
-		fires += " (" + charter.Watch.String() + ")"
+	when := "when: " + charter.Watch.Spoken()
+	if charter.Watch.CadenceGuessed {
+		when = "when: " + charter.Watch.Spoken() + " — you didn't say, so that's my guess. Right?"
 	}
-	costs := fmt.Sprintf("~$%.2f/firing, ≤%d/day", rails.PerFiringBudgetUSD, rails.MaxFiringsPerDay)
+	costs := fmt.Sprintf("costs: about $%.2f a run, at most %d a day",
+		rails.PerFiringBudgetUSD, rails.MaxFiringsPerDay)
 	if justification = strings.TrimSpace(justification); justification != "" {
 		costs += " — " + justification
 	}
-	expires := "never"
+	lines := []string{charter.Invariant, when, costs}
 	if rails.ExpiresAt != nil {
-		expires = rails.ExpiresAt.Local().Format("2006-01-02 15:04")
+		lines = append(lines, "then it's done — this one runs once.")
 	}
-	question := fmt.Sprintf("%s\nfires: %s\ncosts: %s\nexpires: %s\nWhat should I do?",
-		charter.Invariant, fires, costs, expires)
+	lines = append(lines, "What should I do?")
 	options := []store.QuestionOption{
 		{Label: "yes, stand this up", Value: "charter:ratify:" + charter.ID},
-		{Label: "change the cadence", Value: "charter:cadence:" + charter.ID},
+		{Label: "change when it runs", Value: "charter:cadence:" + charter.ID},
 		{Label: "once, not standing", Value: "charter:once:" + charter.ID},
 	}
-	return question, options
+	return strings.Join(lines, "\n"), options
 }
