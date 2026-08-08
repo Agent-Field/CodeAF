@@ -1217,7 +1217,15 @@ func (b *chatBrain) start() {
 		defer guard.Recover("chat/runner")
 		defer b.background.Done()
 		defer close(b.runDone)
-		_ = b.runner.Serve(runCtx)
+		// A dispatch loop that gives up is the quietest failure this process
+		// has: the reconciler keeps ticking, the board keeps rendering, and
+		// nothing is ever claimed again. It now takes ten consecutive failed
+		// passes to get here, so arriving with anything but a cancellation is
+		// news worth writing down.
+		if err := b.runner.Serve(runCtx); err != nil &&
+			!errors.Is(err, context.Canceled) && !errors.Is(err, context.DeadlineExceeded) {
+			log.Printf("note: the work dispatcher stopped claiming: %v", err)
+		}
 	}()
 	b.background.Add(1)
 	guard.Go("chat/consent", func() { defer b.background.Done(); b.consent.serve(ctx) })
