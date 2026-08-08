@@ -158,7 +158,7 @@ func TestDeliveryGateSeesNotebookPreferencesAndNoPanelStaysBare(t *testing.T) {
 			resident.WorkingDecisionsHeader + "\n- " + securityDecision,
 		Provenance: store.Provenance{Intent: "recommend an approach", SessionID: "s1"},
 	}
-	judgment := judgeDeliverable(context.Background(), settings, client, graph, node, "approach A wins", deliveryEvidence{}, "worker/model")
+	judgment := judgeDeliverable(context.Background(), settings, client, graph, node, "approach A wins", "", deliveryEvidence{}, "worker/model")
 	if !judgment.Checked || !judgment.Pass {
 		t.Fatalf("judgment = %+v, want a checked pass", judgment)
 	}
@@ -585,7 +585,7 @@ func TestResidentUserFacingPromptsKeepEmptyNotebookBytes(t *testing.T) {
 	}
 
 	const deliverable = "the finished report"
-	judgment := judgeDeliverable(context.Background(), settings, client, graph, node, deliverable, deliveryEvidence{}, "worker/model")
+	judgment := judgeDeliverable(context.Background(), settings, client, graph, node, deliverable, "", deliveryEvidence{}, "worker/model")
 	if !judgment.Checked || !judgment.Pass {
 		t.Fatalf("judgment = %+v, want checked pass", judgment)
 	}
@@ -922,7 +922,7 @@ func TestNamedGapEarnsARevisionThatIsToldWhereTheAnswerGoes(t *testing.T) {
 		response: `{"pass":false,"gaps":"` + gap + `"}`}
 	judgment := judgeDeliverable(context.Background(), settings,
 		&liveClient{settings: settings, model: failing.model, client: failing}, graph, node,
-		"The deliverable is written and verified against the actual repo source.", deliveryEvidence{}, "worker/model")
+		"The deliverable is written and verified against the actual repo source.", "", deliveryEvidence{}, "worker/model")
 	if !judgment.Checked || judgment.Pass || judgment.Gaps != gap {
 		t.Fatalf("a meta-only deliverable did not draw a checked gap: %+v", judgment)
 	}
@@ -933,7 +933,7 @@ func TestNamedGapEarnsARevisionThatIsToldWhereTheAnswerGoes(t *testing.T) {
 	settled := judgeDeliverable(context.Background(), settings,
 		&liveClient{settings: settings, model: passing.model, client: passing}, graph, node,
 		"The plan is valid: the plugin boundary it assumes already exists and the migration is reversible.",
-		deliveryEvidence{}, "worker/model")
+		"", deliveryEvidence{}, "worker/model")
 	if !settled.Checked || !settled.Pass {
 		t.Fatalf("a deliverable carrying its answer did not pass: %+v", settled)
 	}

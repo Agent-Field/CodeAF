@@ -36,7 +36,7 @@ func TestTheGateIsHandedTheFilesAndTheRun(t *testing.T) {
 	client := &liveClient{settings: settings, model: capture.model, client: capture}
 	judgeDeliverable(context.Background(), settings, client, graph, node,
 		"Here is the summary. I verified it end to end.",
-		deliveryEvidence{
+		"", deliveryEvidence{
 			Artifacts: []string{landed, missing},
 			Ran:       []string{`write {"path":"summary.md"}`, `sh {"command":"wc -l summary.md"}`},
 		}, "worker/model")
@@ -63,7 +63,7 @@ func TestTheGateIsHandedTheFilesAndTheRun(t *testing.T) {
 	bare := &gateCaptureClient{model: "worker/model"}
 	judgeDeliverable(context.Background(), settings,
 		&liveClient{settings: settings, model: bare.model, client: bare}, graph, node,
-		"Here is the summary.", deliveryEvidence{}, "worker/model")
+		"Here is the summary.", "", deliveryEvidence{}, "worker/model")
 	if got := bare.messages[len(bare.messages)-1].Content[0].Text; strings.Contains(got, "What actually happened") {
 		t.Errorf("an empty evidence block reached the gate:\n%s", got)
 	}
@@ -82,7 +82,7 @@ func TestTheGateReturnsEvidenceAsItsOwnAnswer(t *testing.T) {
 		capture := &gateCaptureClient{model: "worker/model", response: reply}
 		return judgeDeliverable(context.Background(), settings,
 			&liveClient{settings: settings, model: capture.model, client: capture}, graph, node,
-			"done", deliveryEvidence{}, "worker/model")
+			"done", "", deliveryEvidence{}, "worker/model")
 	}
 
 	// An honest gap — nothing here could run it — passes, and is not evidence.
