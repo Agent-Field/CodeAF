@@ -627,7 +627,8 @@ func buildBrain(w *chatWindow, session string, opts brainOptions) (*chatBrain, e
 				}
 				return exec.ControlNone
 			},
-			ImagePaths: append([]string(nil), staged.ImageFiles...),
+			ImagePaths:    append([]string(nil), staged.ImageFiles...),
+			DocumentPaths: append([]string(nil), documentPaths...),
 		}
 		// The scheduler's quality loop, inline: each attempt is one routable
 		// unit carrying its call shape, a watchdog sits above the leaf's own

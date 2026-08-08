@@ -191,6 +191,12 @@ const (
 func TestReadDocumentIsRegisteredOnlyWithADocumentClient(t *testing.T) {
 	wire := &documentWireCapture{}
 	tools, space := documentToolbox(t, wire, fakeModalities{})
+	// A configured document client offers the family; carrying the schema is
+	// what arming it buys.
+	if got := len(tools.Definitions()); got != 6 {
+		t.Fatalf("unarmed definitions = %d, want five base plus the discovery tool", got)
+	}
+	tools.Arm(FamilyDocument)
 	definitions := tools.Definitions()
 	if len(definitions) != 6 {
 		t.Fatalf("definitions = %d, want five base plus read_document", len(definitions))

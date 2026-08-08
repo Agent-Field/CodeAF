@@ -148,6 +148,13 @@ func TestMediaToolsAreRegisteredAndHonorTheSpendGate(t *testing.T) {
 		Data: []provider.GeneratedImage{{Base64: base64.StdEncoding.EncodeToString([]byte("png")), MediaType: "image/png"}},
 	}}
 	tools, _ := mediaToolbox(t, fake, fakeModalities{})
+	// Configured is not the same as carried: a media provider on the brain
+	// puts one discovery tool in the prompt, and asking for the family is what
+	// puts the five schemas there.
+	if got := len(tools.Definitions()); got != 6 {
+		t.Fatalf("unarmed definitions = %d, want five base plus the discovery tool", got)
+	}
+	tools.Arm(FamilyMedia)
 	definitions := tools.Definitions()
 	if len(definitions) != 10 {
 		t.Fatalf("definitions = %d, want five base + five media", len(definitions))

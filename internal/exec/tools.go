@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"syscall"
 	"time"
@@ -99,6 +100,130 @@ type Toolbox struct {
 	// two large results spilling at once must not race the counter into the
 	// same file name.
 	spills atomic.Int64
+
+	// armed names the optional capability families whose schemas this leaf is
+	// currently carrying. It is guarded because a turn's tool calls run
+	// concurrently and Definitions is read between turns.
+	armedMu sync.Mutex
+	armed   map[string]bool
+}
+
+// The optional capability families, and the whole of why they are optional.
+//
+// Every definition is re-sent on every turn of every leaf. Measured on a
+// six-cell benchmark, the media and document schemas were ~1,112 tokens of
+// each leaf turn's ~3,778-token fixed floor — 18% of every input token the run
+// spent — and not one of those cells could have used a single one of them. A
+// bugfix cannot generate a video. A release note cannot read a PDF that does
+// not exist.
+//
+// The answer is not to remove the tools; the resident's charter, watch and
+// media journeys genuinely need them. It is to stop paying for them by
+// default. A leaf carries the core loop plus one small tool that says what
+// else exists; asking for a family arms it for the next turn and every turn
+// after. The judgement of whether the work needs a camera stays with the model
+// doing the work, made at the moment it knows — not predicted for it at
+// compile time by a call that has never seen the workspace.
+//
+// The cost is honest and worth naming: a job that does need media pays one
+// extra turn and one prefix-cache invalidation at the moment it arms. A job
+// that does not — the overwhelming majority — pays nothing at all, ever.
+const (
+	FamilyMedia    = "media"
+	FamilyDocument = "documents"
+)
+
+// The tools each family carries. Arming is per tool rather than per family so
+// a structural signal can admit exactly what it justifies: an attached
+// screenshot is a reason to be able to look at an image, not a reason to be
+// able to score a film.
+var familyTools = map[string][]string{
+	FamilyMedia:    {"generate_image", "generate_music", "generate_video", "speak", "view_image"},
+	FamilyDocument: {"read_document"},
+}
+
+// Arm admits named capability families or individual tools for the rest of
+// this leaf's life. It is how a structural fact about the assignment — an
+// attached image, an attached document — buys back exactly the schema it
+// justifies before the first turn, and how the discovery tool answers a
+// worker that asked.
+func (t *Toolbox) Arm(names ...string) {
+	t.armedMu.Lock()
+	defer t.armedMu.Unlock()
+	if t.armed == nil {
+		t.armed = map[string]bool{}
+	}
+	for _, name := range names {
+		if tools, ok := familyTools[name]; ok {
+			for _, tool := range tools {
+				t.armed[tool] = true
+			}
+			continue
+		}
+		t.armed[name] = true
+	}
+}
+
+func (t *Toolbox) isArmed(name string) bool {
+	t.armedMu.Lock()
+	defer t.armedMu.Unlock()
+	return t.armed[name]
+}
+
+// offered names the families this leaf could arm — configured on the brain,
+// and not already fully in hand. An empty answer is what retires the
+// discovery tool from the prompt.
+func (t *Toolbox) offered() []string {
+	var families []string
+	if t.media != nil && t.media.Provider != nil && !t.isArmed("generate_image") {
+		families = append(families, FamilyMedia)
+	}
+	if t.media != nil && t.media.DocumentClient != nil && !t.isArmed("read_document") {
+		families = append(families, FamilyDocument)
+	}
+	return families
+}
+
+// capabilitiesDefinition is the whole discovery surface: one tool, one
+// argument, and an enum the code owns because the families are the code's own
+// grouping of its own tools. The model reads its own work and decides; nothing
+// here matches a phrase against the brief.
+func capabilitiesDefinition(families []string) ai.ToolDefinition {
+	descriptions := map[string]string{
+		FamilyMedia:    "media: generate images, music, video, speech; look at an image.",
+		FamilyDocument: "documents: read a PDF, DOCX or PPTX into text.",
+	}
+	description := "Load tools you do not have yet; they arrive on your next turn. Ask once, only if the work needs one."
+	for _, family := range families {
+		description += " " + descriptions[family]
+	}
+	return define("capabilities", description, map[string]any{
+		"need": map[string]any{"type": "string", "enum": families},
+	}, "need")
+}
+
+// capabilities arms what was asked for and says what arrived. The reply names
+// the tools rather than the family, because the next turn's schema list is
+// what the worker will actually be holding.
+func (t *Toolbox) capabilities(args map[string]any) Result {
+	need := strings.TrimSpace(stringArg(args, "need"))
+	tools, known := familyTools[need]
+	if !known {
+		return errorf("no capability family named %q. Available: %s", need, strings.Join(t.offered(), ", "))
+	}
+	switch need {
+	case FamilyMedia:
+		if t.media == nil || t.media.Provider == nil {
+			return errorf("media generation is not configured on this machine — do what the assignment needs without it and say plainly in your answer that it could not be done")
+		}
+	case FamilyDocument:
+		if t.media == nil || t.media.DocumentClient == nil {
+			return errorf("document parsing is not configured on this machine — do what the assignment needs without it and say plainly in your answer that it could not be done")
+		}
+	}
+	t.Arm(need)
+	return Result{Content: "Loaded for your next turn and every turn after: " + strings.Join(tools, ", ") +
+		". Their full descriptions are in your tool list from here on."}
 }
 
 func NewToolbox(workspace *Workspace, nodeID int, web *Web) *Toolbox {
@@ -162,8 +287,17 @@ func (t *Toolbox) Definitions() []ai.ToolDefinition {
 			"limit":      prop("integer", "maximum fold and notebook hits, default 5, maximum 10"),
 		}, "terms"))
 	}
+	// The optional families ride the prompt only once this leaf has a reason
+	// to carry them: a structural one it was armed with before turn 1, or the
+	// worker's own request through the discovery tool.
+	if families := t.offered(); len(families) > 0 {
+		definitions = append(definitions, capabilitiesDefinition(families))
+	}
+	// Each optional schema is admitted on its own name, not on its family's,
+	// so an attached screenshot buys view_image without also buying a video
+	// generator it has no use for.
 	if t.media != nil && t.media.Provider != nil {
-		definitions = append(definitions,
+		optional := []ai.ToolDefinition{
 			define("generate_image", "Generate one or more images into the workspace media directory. reference_paths may name existing workspace images for image-to-image work.", map[string]any{
 				"prompt":          prop("string", "what to generate"),
 				"n":               prop("integer", "number of images, default 1, maximum 10"),
@@ -193,9 +327,14 @@ func (t *Toolbox) Definitions() []ai.ToolDefinition {
 				"path":     prop("string", "workspace-relative image path"),
 				"question": prop("string", "optional targeted question about the image"),
 			}, "path"),
-		)
+		}
+		for _, definition := range optional {
+			if t.isArmed(definition.Function.Name) {
+				definitions = append(definitions, definition)
+			}
+		}
 	}
-	if t.media != nil && t.media.DocumentClient != nil {
+	if t.media != nil && t.media.DocumentClient != nil && t.isArmed("read_document") {
 		definitions = append(definitions,
 			define("read_document", "Read a PDF into text. Free and local when possible; scanned documents escalate to OCR through the rail. Repeat reads are cached.", map[string]any{
 				"path":     prop("string", "workspace-relative PDF, DOCX, or PPTX path"),
@@ -276,16 +415,25 @@ func (t *Toolbox) Execute(ctx context.Context, name string, arguments string) (o
 		result = t.viewImage(ctx, args)
 	case "read_document":
 		result = t.readDocument(ctx, args)
+	case "capabilities":
+		result = t.capabilities(args)
 	default:
 		available := "sh, job, write, edit, web"
 		if t.history != nil {
 			available += ", recall"
 		}
-		if t.media != nil && t.media.Provider != nil {
-			available += ", generate_image, generate_music, generate_video, speak, view_image"
+		// Only what this leaf is actually holding is named, plus the door to
+		// the rest. A model told about a tool it does not have is a model that
+		// will call it next turn and be told the same thing again.
+		for _, family := range []string{FamilyMedia, FamilyDocument} {
+			for _, tool := range familyTools[family] {
+				if t.isArmed(tool) {
+					available += ", " + tool
+				}
+			}
 		}
-		if t.media != nil && t.media.DocumentClient != nil {
-			available += ", read_document"
+		if families := t.offered(); len(families) > 0 {
+			available += ", capabilities (loads: " + strings.Join(families, ", ") + ")"
 		}
 		result = errorf("no tool named %q. Available: %s", name, available)
 	}

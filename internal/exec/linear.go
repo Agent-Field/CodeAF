@@ -338,9 +338,26 @@ func (l *Linear) Run(ctx context.Context, task Task) (returned *Outcome, runErr 
 		}
 		task.control.detach(tools, terminated)
 	}()
-	definitions := tools.Definitions()
-	if task.Reflex {
-		definitions = append(definitions, reflexPromotionDefinition())
+	// What the assignment structurally already contains buys back its own
+	// schema before turn 1: a leaf handed an image must be able to look at it,
+	// and a leaf handed a PDF must be able to read it, without spending a turn
+	// asking. This is code judging structure — the presence of a file — and
+	// never code judging what the work is about.
+	if len(task.ImagePaths) > 0 {
+		tools.Arm("view_image")
+	}
+	if len(task.DocumentPaths) > 0 {
+		tools.Arm("read_document")
+	}
+	// Recomputed every turn rather than once, because a worker that asks for a
+	// capability has to be holding it on the turn after it asked. The cost is
+	// one slice build per turn against a model call.
+	definitions := func() []ai.ToolDefinition {
+		current := tools.Definitions()
+		if task.Reflex {
+			current = append(current, reflexPromotionDefinition())
+		}
+		return current
 	}
 	trace := newTracer(l.workspace, task.NodeID)
 	defer trace.close()
@@ -440,7 +457,7 @@ func (l *Linear) Run(ctx context.Context, task Task) (returned *Outcome, runErr 
 		// can weigh what the turn cost against what remained rather than against
 		// the budget it started with.
 		remaining := l.maxTokens - spent(outcome)
-		response, err := l.complete(ctx, messages, definitions)
+		response, err := l.complete(ctx, messages, definitions())
 		if err != nil {
 			outcome.Stop = StopError
 			outcome.Text = strings.TrimSpace(lastAssistantText(messages))
