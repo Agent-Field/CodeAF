@@ -694,11 +694,24 @@ func (r *Reconciler) reconcileCommand(ctx context.Context, command store.Command
 		SessionID:  command.SessionID,
 		Role:       role,
 		Body:       boundMessage(body),
-		NodeID:     commandReceiptNode(command),
+		NodeID:     receiptAnchor(command, outcome.status),
 		CommandSeq: command.Seq,
 		Options:    outcome.options,
 	})
 	return err
+}
+
+// receiptAnchor decides where a command's receipt is read. Applied surgery is
+// progress and belongs on the job's own card; a refusal is news and belongs in
+// the thread, where the person who asked is actually looking. The worst case is
+// the one that made this necessary: a command rejected because its target no
+// longer exists was filed under that missing target, so the refusal rendered
+// nowhere at all.
+func receiptAnchor(command store.Command, status store.CommandStatus) string {
+	if status == store.CommandRejected {
+		return ""
+	}
+	return commandReceiptNode(command)
 }
 
 func (r *Reconciler) applyCommand(ctx context.Context, command store.Command) (commandOutcome, error) {
