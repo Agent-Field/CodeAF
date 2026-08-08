@@ -4487,7 +4487,14 @@ func replanRemainder(settings config.Config, planClient, workClient *liveClient,
 			NodeBudget:   min(settings.NodeBudget, replanNodeBudget),
 			Briefs:       true,
 			Ensemble:     plan.EnsembleNever,
-			Progress:     progress,
+			// A remainder that the spine finds nothing gated in is one fresh
+			// worker's assignment, and buying a seven-pass planning bundle to
+			// discover that was measured at 13.8k and 23.9k prompt tokens on
+			// two real extensions — five to eight times the whole structuring
+			// cost of the jobs they were repairing. The full pipeline is still
+			// there for the remainder the spine judges genuinely multi-stage.
+			Undivided: true,
+			Progress:  progress,
 		})
 		if err != nil {
 			return store.Subtree{Nodes: []store.NodeSpec{{
