@@ -809,7 +809,7 @@ func buildBrain(w *chatWindow, session string, opts brainOptions) (*chatBrain, e
 		// one: it loops on the user's words, which are finite and do not move.
 		if len(outcome.ServiceRequests) == 0 && shouldGate(node, outcome, continuing) {
 			gate := judgeDeliverable(ctx, settings, planClient, graph, node, text, task.Contract,
-				deliveryEvidence{Artifacts: absolute, Ran: outcome.Ran}, workerModel)
+				deliveryEvidence{Artifacts: absolute, Ran: outcome.Ran, Observed: true}, workerModel)
 			if gate.Checked {
 				evidence := store.DeliveryGate{Pass: gate.Pass, Gap: gate.Gaps, Quote: gate.Quote}
 				if gate.Pass {
@@ -853,7 +853,7 @@ func buildBrain(w *chatWindow, session string, opts brainOptions) (*chatBrain, e
 							text += "\n\nFiles:\n" + strings.Join(absolute, "\n")
 						}
 						closed := judgeDeliverable(ctx, settings, planClient, graph, node, text, task.Contract,
-							deliveryEvidence{Artifacts: absolute, Ran: outcome.Ran}, polishModel)
+							deliveryEvidence{Artifacts: absolute, Ran: outcome.Ran, Observed: true}, polishModel)
 						evidence.PolishClosed = closed.Checked && closed.Pass
 						outcome.Verdict = provider.VerdictSemanticFailure
 						revised = true
@@ -3604,9 +3604,11 @@ FAIL only when you can name a specific element of the request that is absent, un
 
 Working decisions declared in the goal are part of what was promised. A commitment about method or evidence — what would be run, checked or reviewed before the work was handed over — is a gap when nothing in the deliverable shows it happened. A claim that the work was checked, proven or verified is itself such a commitment: it is a gap unless the deliverable shows the finished thing exercised the way it will actually be used — what was run, what came back — rather than its parts checked one by one and the whole inferred from them. Naming what could not be verified here, and the check the person can run themselves, is not a gap: it is the honest form of the same claim and it passes.
 
-One absence counts exactly like every other and is the one most easily waved through: the substance itself. What you are handed IS the deliverable — it is the whole of what the person will read, and nothing beside it will be opened for them. So text that reports on the work rather than carrying it — that the work is finished, that a file now holds the answer, that the analysis was checked and is consistent — has described the deliverable in place of being it, and the element of the request that is absent is the answer: the verdict that was asked for, the findings, the numbers, the recommendation. Name that as the gap. A pointer to where the answer lives is not the answer however true the pointer is; naming the file is right beside the substance and never instead of it. This is still one absence and not a second style test: text that gives the answer in its own plain words passes whatever shape it takes.
+One absence counts exactly like every other and is the one most easily waved through: the substance itself. What you are handed IS the deliverable — it is the whole of what the person will read, and nothing beside it will be opened for them. So text that reports on the work rather than carrying it — that the work is finished, that a file now holds the answer, that the analysis was checked and is consistent — has described the deliverable in place of being it, and the element of the request that is absent is the answer: the verdict that was asked for, the findings, the numbers, the recommendation. Name that as the gap. A pointer to where the answer lives is not the answer however true the pointer is; naming the file is right beside the substance and never instead of it. The same absence in the future tense is the purest form of it: text saying what would be looked up, what will be compared, what remains to be checked, is a plan for producing the answer handed over in place of the answer, and it is a gap however sound the plan is. This is still one absence and not a second style test: text that gives the answer in its own plain words passes whatever shape it takes.
 
 Below the deliverable, whenever there is anything to show, you are given two records of the run itself: what it left behind, and the tail of what it actually ran. Read the deliverable's claims against them, the way the person would. Something named as produced that nothing produced, or a check the work says it made when nothing of that kind appears in what it ran, is an element unsupported by evidence and is a gap of exactly the kind above — name it in those words. Both records are partial by construction: the tail is the end of a longer run, and what was left behind is one place among many. So they can convict a claim and never acquit one — silence in them is evidence, never proof, and where the deliverable's own account is consistent with what is there, or where these records could never have held the thing in question, pass.
+
+There is one record that is not partial, and it says so of itself: that the run called no tools and left nothing behind — the whole of it, not a tail. Nothing was looked up, read, computed or checked, so anything the request needed the work to go and find is not in the deliverable and cannot be. Hold the request against that. Where it asked for something only work could produce — figures, sources, the state of something out in the world, a thing built or changed — the gap is that content itself: name what was to be found and never was, in those words, and never as a remark about effort or process. Where the request was answerable from what the worker was already given, an unexercised run is no gap at all and the ordinary reading above decides it.
 
 Where a working method is given, it is the standard this kind of work set for itself before anything was produced, and it is the only standard beside the request itself that you hold the deliverable to. Where it asks for nothing, nothing is missing: a method that names no verification makes an unverified result complete, and a method that names one makes its absence a gap.
 
@@ -3634,7 +3636,9 @@ var judgeDeliverableSchema = json.RawMessage(`{
 // its own contract; a revision is the moment it demonstrably was not heard.
 const gateRevisionContract = "Your final message is the deliverable and the only thing the person will read. " +
 	"Put the substance in it — the verdict, the findings, the numbers they asked for — " +
-	"and name the files beside that substance, never in place of it."
+	"and name the files beside that substance, never in place of it. Nothing written in the " +
+	"future tense counts: what you would look up or intend to check is a plan, and the person " +
+	"is owed the result of carrying it out."
 
 type deliverableJudgment struct {
 	Pass bool
@@ -3684,6 +3688,16 @@ func gateVerdict(judgment deliverableJudgment) provider.Verdict {
 type deliveryEvidence struct {
 	Artifacts []string
 	Ran       []string
+	// Observed says the run was watched from beginning to end, which is the
+	// only thing that turns two empty slices into a fact. Without it the gate
+	// could not tell "this leaf did nothing" from "nobody was recording", and
+	// it was told in the same breath that silence never acquits — so a run that
+	// called no tools and answered with a plan read to the judge as an honest
+	// answer whose evidence was simply not available, and passed. It is a field
+	// rather than an inference because only the caller holding the outcome
+	// knows which of the two it has; every real delivery sets it, and the unit
+	// tests that construct a bare deliveryEvidence deliberately do not.
+	Observed bool
 }
 
 // gateEvidenceRan bounds what travels. The executor already keeps a short tail;
@@ -3692,10 +3706,28 @@ type deliveryEvidence struct {
 // reading the wrong thing first.
 const gateEvidenceRan = 24
 
+// unexercisedRecord is what an observed run with nothing in it says for itself.
+// It is the one record in this block that is complete rather than a tail, and it
+// is written to say so, because everything else the gate is told about these
+// records is that they can never acquit.
+const unexercisedRecord = "Nothing. The work called no tools and left nothing behind: it looked nothing up, " +
+	"read nothing, ran nothing, wrote nothing. This is the whole record of the run and not a tail of one."
+
 // block renders the evidence, or nothing at all when there is none to show. It
 // sits below the deliverable so a rewritten deliverable is still the first byte
 // that moves in a repair pass.
+//
+// "Nothing to show" and "nothing happened" are different answers and this used
+// to give the same one to both. An observed run that did nothing now says so in
+// words; an unobserved one still renders empty, so a caller with no outcome in
+// hand cannot manufacture the strongest record in the block by omission.
 func (e deliveryEvidence) block() string {
+	if len(e.Artifacts) == 0 && len(e.Ran) == 0 {
+		if !e.Observed {
+			return ""
+		}
+		return unexercisedRecord
+	}
 	var body strings.Builder
 	if len(e.Artifacts) > 0 {
 		body.WriteString("What the work left behind:\n")

@@ -315,7 +315,12 @@ Say what you checked.
 
 Do not describe the passes, count them, attribute findings to them, or report
 that they agreed. The reader wants the merged result, in the form the goal asked
-for, as though one very thorough agent had produced it.`, panelists, deliverable, panelists)
+for, as though one very thorough agent had produced it.
+
+Write that merged result out in your own final message. An account of how you
+combined the passes is not it, and neither is a file path with a sentence saying
+the merged result is in there — the evidence and the long working belong in a
+file, and the merged result itself belongs in the message.`, panelists, deliverable, panelists)
 }
 
 // ensembleMergeContract is the working method for the merge, written here
