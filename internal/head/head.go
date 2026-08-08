@@ -38,6 +38,15 @@ const (
 	threadTruncatedMark   = "(thread context truncated)\n"
 	providerErrorReply    = "hit a provider error answering that — try again"
 	commandErrorReply     = "I couldn't queue that change — try again"
+	// unclearCommandReply is what the head says when it meant to change
+	// something and cannot say what. It replaces a reply that was already
+	// worded as if the change had happened, so it has to do that reply's whole
+	// job: say plainly that nothing was done, and name what would settle it.
+	unclearCommandReply = "I couldn't tell what you wanted changed there — say which one you mean and I'll do it."
+	// noSuchTargetReply is the same honesty when the description was clear and
+	// matched nothing. There is no third option here: either it acts, or it
+	// asks, or it says this.
+	noSuchTargetReply = "I don't see any work or standing rule like that."
 	// manualRouteSections is the router's grounding read. It is smaller than
 	// the belt's because the router carries the snapshot, the notebook and the
 	// thread in the same prompt, and the manual must not crowd them out.
@@ -92,7 +101,7 @@ Routing law:
 - Use the measured reflex history when it appears below as a prior, never as a hard rule: a high promotion rate argues for splice on similar asks; a high clean-success rate at low cost argues for reflex. The current request and its consequences still decide.
 - A reflex is not a synonym for lookup. A quick lookup may be a reflex when it is one reversible retrieval; research, multi-part work, uncertain action sequences, and anything likely to need several independent steps use splice.
 - Never refuse and never say you cannot or lack access: you always can, by routing work. A normal splice receives the same verbatim instruction. Not finding something you were asked to remember is not a refusal and is not lack of access — it is a fact about your memory, and saying it is the only honest move available.
-- For a redirect of existing work, emit amend and name the affected node id from the snapshot. For stopping work, emit cancel with its target. Never invent a node id; if there is no unambiguous target, explain that briefly and emit no command.
+- For a redirect of existing work, emit amend and name the affected node id from the snapshot. For stopping or holding something — a job on the snapshot, or a standing rule this conversation set up — emit cancel or pause, and name the id when the snapshot shows one. Never invent an id. When you have no id to name, leave target empty and put what is being stopped into instruction in the user's own words: an empty target is resolved against everything addressable, standing rules included, and comes back as one short question when more than one thing fits. The one thing you may never do is word the reply as though the thing has stopped while emitting no command — that sentence is a claim about the world, and nothing will have happened.
 - Work that concerns something running right now, or something a job reported in the thread a moment ago, is an amendment of that work before it is a new job. Prefer amend on the job the snapshot shows, and do not require the user to borrow that job's vocabulary — people answer what was just said to them without naming it. When the ask genuinely is separate work about a running job, it still belongs behind that job rather than beside it: say plainly that it follows the work already underway. Two jobs changing the same thing at the same time is the one outcome nothing downstream can repair.
 - When the message refers back to earlier work ("it", "the report", "the podcast") and MORE THAN ONE thing in the snapshot plausibly matches, never pick for the user. Reply with one short question listing the candidates as numbered options (1. ..., 2. ...), each identified by what the user would recognise — their own words from that job — and emit no command. Their next message chooses. A single plausible match is not ambiguity; proceed.
 - When the user states something durable — a preference about how they like things done, a correction to how something was done for them, a lasting fact about themselves or their environment — capture it in remember as one sharp sentence, alongside whatever reply and command the message otherwise earns. A preference about how YOU should answer them — what a reply must contain, what to stop doing in the thread, how to treat a finished job's result — is durable in exactly that way and is captured in exactly that way; it is about the front desk rather than the workforce, which changes nothing about whether it outlives the conversation. Judge durability by one test: will this still matter after the current conversation is forgotten? Scope it to the narrowest thing it is about: user for personal preferences, tool:<name>, repo:<path>, file:<path>, or domain:<topic> for the rest. Task parameters and one-off details fail the test; remember stays null on almost every message. When what they just said makes one of the numbered notebook lines below untrue — the same subject, a different answer — set "replaces" to that line's number so the old one retires into the new. Two live beliefs that contradict each other is worse than either one alone, and it is the state you create by capturing beside a line instead of over it. Judge it by meaning, not wording: a line saying the opposite of the new one is replaced even when it shares no words with it, and a line about a different subject is never replaced merely because it sounds similar. Leave "replaces" 0 when nothing shown is contradicted, and never name a number you were not shown.
@@ -378,36 +387,10 @@ func (h *Head) answer(ctx context.Context, user store.Message) error {
 		return h.spliceWorkOrders(user, decision)
 	}
 
-	var commandSeq int64
 	if decision.Command != nil {
-		kind, reflex, ok := commandKind(decision.Command.Kind)
-		if !ok {
-			// Validation normally catches this. Keeping the guard at the store
-			// membrane prevents a future decoder change from emitting bad work.
-			return h.postAgent(user.SessionID, commandErrorReply, 0)
-		}
-		if !reflex && isSurgeryCommand(kind) {
-			return h.resolveSurgery(user, kind, decision.Command.Target, decision.Command.Instruction, false)
-		}
-		target := decision.Command.Target
-		if kind == store.CommandSplice && !reflex && strings.TrimSpace(target) == "" {
-			target = h.spliceContinuity(user)
-		}
-		command, requestErr := h.store.RequestCommand(store.Command{
-			SessionID:   user.SessionID,
-			Kind:        kind,
-			Reflex:      reflex,
-			Fresh:       decision.Fresh,
-			Target:      target,
-			Instruction: decision.Command.Instruction,
-			Attachments: append([]string(nil), user.Attachments...),
-		})
-		if requestErr != nil {
-			return h.postAgent(user.SessionID, commandErrorReply, 0)
-		}
-		commandSeq = command.Seq
+		return h.issueRoutedCommand(user, decision)
 	}
-	return h.postAgentFloor(user.SessionID, decision.Reply, commandSeq, decision.model)
+	return h.postAgentFloor(user.SessionID, decision.Reply, 0, decision.model)
 }
 
 // postAgentFloor is the seam a route may not go quiet through. A reasoning model
@@ -732,7 +715,21 @@ func (h *Head) route(ctx context.Context, user store.Message) (routeDecision, er
 		decision.Command.Instruction = user.Body
 		decision.enforceConsequences()
 	}
-	if decision.validate() != nil {
+	if err := decision.validate(); err != nil {
+		// A decoded object whose only defect is its command is not prose. The
+		// old answer here was to hand the whole raw object back as the reply,
+		// which posted the model's own promise — "it won't fire anymore" — with
+		// nothing behind it and no way for the turn below to know. The command
+		// travels on to the journaling door instead, which owes the person
+		// either the act or an honest sentence and may not post the reply
+		// without one. A defect anywhere else — no reply at all, a retraction
+		// that contradicts itself — really is prose, and falls through.
+		if decision.commandFault() != nil && decision.Retract == nil &&
+			strings.TrimSpace(decision.Reply) != "" {
+			decision.Reply = strings.TrimSpace(decision.Reply)
+			decision.model = attribution
+			return decision, nil
+		}
 		if raw == "" {
 			return routeDecision{}, errors.New("provider returned an empty response")
 		}
@@ -1128,6 +1125,20 @@ func (decision routeDecision) validate() error {
 		}
 		return nil
 	}
+	return decision.commandFault()
+}
+
+// commandFault is the half of validation that is about the command alone.
+//
+// It is separated from validate because the two halves have different remedies.
+// A decision that is malformed as a whole is not a decision — the model wrote
+// prose and the prose is the reply. A decision whose command is malformed is an
+// intention stated badly: the model meant to act, said so in the reply, and got
+// one field wrong. Collapsing the second case into the first published the
+// promise and dropped the act, which is the one failure the thread must never
+// contain. So this names the fault and the head's turn decides what to do with
+// it — resolve it, ask about it, or say plainly that it did not happen.
+func (decision routeDecision) commandFault() error {
 	if decision.Command == nil {
 		return nil
 	}

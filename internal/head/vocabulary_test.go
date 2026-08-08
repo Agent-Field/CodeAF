@@ -46,6 +46,14 @@ func TestTheDeterministicRepliesSpeakPlainly(t *testing.T) {
 	assertPlain(t, "the consent line",
 		surgeryLoss(store.CommandCancel,
 			store.SurgeryImpact{Nodes: 40, OpenNodes: 40, Running: 2}))
+
+	// The sentences that replace a reply the head can no longer stand behind.
+	// They are the only thing the person sees on those turns, which makes them
+	// the worst possible place to say "charter" or "node".
+	assertPlain(t, "the honest refusal", unclearCommandReply, noSuchTargetReply,
+		commandErrorReply, providerErrorReply)
+	assertPlain(t, "the which-one question", describedChoicePrompt(2, 0),
+		describedChoicePrompt(0, 2), describedChoicePrompt(1, 1))
 }
 
 // TestTheBackstageListsNameTheWordsThatActuallyLeak pins the second half of the
