@@ -1681,9 +1681,20 @@ func (m *Model) renderBrief(message store.Message, width, atLine int, track bool
 	}
 	for _, item := range message.Brief.Items {
 		prefix := mutedStyle.Faint(true).Render("  " + briefItemGlyph(item.Kind) + " ")
-		available := max(1, width-lipgloss.Width(prefix))
-		body := inputTextStyle.Render(truncate(oneSentence(item.Body), available))
-		lines = append(lines, truncate(prefix+body, width))
+		indent := lipgloss.Width(prefix)
+		available := max(1, width-indent)
+		// The rows wrap rather than clip. A docked pane is 60 columns and an
+		// overnight result rarely says what it did in 56 of them, so clipping
+		// turned the one surface that answers "what did I miss" into a column
+		// of ellipses. Continuations hang under the text, not under the glyph.
+		wrapped := strings.Split(wrapText(oneSentence(item.Body), available), "\n")
+		for index, part := range wrapped {
+			lead := prefix
+			if index > 0 {
+				lead = strings.Repeat(" ", indent)
+			}
+			lines = append(lines, truncate(lead+inputTextStyle.Render(part), width))
+		}
 	}
 	return strings.Join(lines, "\n")
 }

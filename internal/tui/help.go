@@ -149,11 +149,23 @@ func (m *Model) closeHelp() {
 	m.setSize(m.width, m.height)
 }
 
+// helpOverlayWidth floats the panel inside a wide frame and gives up floating
+// in a narrow one. A docked 60-column pane has no columns to spare on a margin,
+// and the margin was worse than useless there: the two columns it left showed
+// the sides of the input frame straight through the modal, so the guide read as
+// a panel with box-drawing debris hanging off both edges.
 func (m *Model) helpOverlayWidth() int {
+	if m.width < railAtWidth {
+		return m.width
+	}
 	return min(112, max(36, m.width-4))
 }
 
-func (m *Model) helpLineLimit() int { return max(1, m.height-2) }
+// helpLineLimit stops the panel at the bottom of the reading pane rather than
+// at the bottom of the terminal. Running to m.height-2 painted the guide across
+// the composer, leaving the input's own corners poking out on either side of it
+// — and taking away the one thing the reader is being taught to use.
+func (m *Model) helpLineLimit() int { return max(1, min(m.height-2, m.chatHeight)) }
 
 func (m *Model) helpMaxOffset() int {
 	innerWidth := max(1, m.helpOverlayWidth()-2)
