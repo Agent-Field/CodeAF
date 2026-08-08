@@ -38,10 +38,12 @@ import (
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 )
 
-// runChat is the resident surface: one durable graph, a head that always
-// replies, a reconciler that applies mutations, a runner that executes ready
-// nodes — all clients over the same SQLite file, all shut down when the TUI
-// exits. The one-shot plan/run path shares none of this and stays untouched.
+// runChat opens one window on a durable graph. Which half of aforge that window
+// runs is not its decision: the first process on a store takes the resident
+// role and runs the brain — a head that always replies, a reconciler that
+// applies mutations, a runner that executes ready nodes — and every later
+// window is a surface over the same journal until the role comes free. The
+// one-shot plan/run path shares none of this and stays untouched.
 func runChat(args []string) error {
 	flags := flag.NewFlagSet("chat", flag.ContinueOnError)
 	database := flags.String("db", defaultChatDB(), "path to the durable graph database")
@@ -61,26 +63,52 @@ func runChat(args []string) error {
 	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 		return fmt.Errorf("create chat database directory: %w", err)
 	}
-	releaseResident, heldBy, err := lease.AcquireResident(filepath.Dir(path), "chat")
+	window, err := openChatWindow(path, strings.TrimSpace(*database), requestedSession)
 	if err != nil {
 		return err
 	}
-	if releaseResident == nil {
-		host := strings.TrimSpace(heldBy.Host)
-		if host == "" {
-			host = "unknown host"
-		}
-		fmt.Fprintf(os.Stderr, "another aforge is resident (pid %d on %s); attaching as a visitor\n",
-			heldBy.PID, host)
-		return runChatVisitor(path, requestedSession)
-	}
-	defer releaseResident()
+	defer window.close()
 
+	role := newChatResidency(window)
+	defer role.stop()
+	if err := role.claim(); err != nil {
+		return err
+	}
+
+	// While bubbletea owns the terminal, anything written to stderr or the
+	// standard logger tears straight through the alt screen as a raw row (a
+	// contract failure once printed itself across both panes). Everything the
+	// runtime logs goes to a file for the TUI's lifetime instead.
+	if logFile, logErr := os.OpenFile(filepath.Join(filepath.Dir(defaultChatDB()), "chat.log"),
+		os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o644); logErr == nil {
+		log.SetOutput(logFile)
+		defer func() {
+			log.SetOutput(os.Stderr)
+			_ = logFile.Close()
+		}()
+	}
+
+	err = tui.RunWithCommander(window.graph, window.session, role.commander())
+	seenErr := role.sessionClosed()
+	role.stop()
+	return errors.Join(err, seenErr)
+}
+
+// buildChatBrain assembles the resident half of a window: every provider
+// client, the reconciler, the runner, the consent desk, and the commander that
+// lets the surface reach all of it. It is a function rather than the body of
+// runChat because a window may need it twice over — once at launch if it is the
+// first on the store, and again if it starts as a visitor and later takes the
+// role over. Nothing here starts a goroutine or holds the terminal; start does
+// that, once, on a brain that has already been built.
+func buildChatBrain(w *chatWindow, session string, hand resident.HandoverFunc) (*chatBrain, error) {
+	brain := &chatBrain{window: w, session: session}
+	path, database, graph := w.path, w.database, w.graph
 	settings, err := config.Load()
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "aforge chat needs a model to talk with.")
 		fmt.Fprintln(os.Stderr, "export OPENROUTER_API_KEY (or OPENAI_API_KEY) and run it again.")
-		return err
+		return nil, err
 	}
 	prefs := loadChatPrefs(filepath.Dir(path))
 	if strings.TrimSpace(prefs.VoiceModel) == "" {
@@ -96,15 +124,15 @@ func runChat(args []string) error {
 	})
 	mediaClient, err := settings.MediaClient()
 	if err != nil {
-		return err
+		return nil, err
 	}
 	visionClient, err := settings.VisionClient()
 	if err != nil {
-		return err
+		return nil, err
 	}
 	documentClient, err := settings.DocumentClient()
 	if err != nil {
-		return err
+		return nil, err
 	}
 	talkModel := firstNonEmptyString(prefs.ChatModel, settings.Model)
 	workModel := firstNonEmptyString(prefs.TaskModel, settings.Model)
@@ -137,14 +165,14 @@ func runChat(args []string) error {
 
 	chatClient, err := newLiveClient(settings, talkModel)
 	if err != nil {
-		return err
+		return nil, err
 	}
-	defer chatClient.Close()
+	brain.closing(chatClient.Close)
 	taskClient, err := newLiveClient(settings, workModel)
 	if err != nil {
-		return err
+		return nil, brain.abandon(err)
 	}
-	defer taskClient.Close()
+	brain.closing(taskClient.Close)
 	// The plan slot structures work — the task graph, replans, contracts, the
 	// delivery gate. Empty follows the work model live, so by default this is
 	// the same model behind a second hot-swappable handle; a picked plan model
@@ -153,29 +181,17 @@ func runChat(args []string) error {
 	planModel := firstNonEmptyString(prefs.PlanModel, settings.PlanModel, workModel)
 	planClient, err := newLiveClient(settings, planModel)
 	if err != nil {
-		return err
+		return nil, brain.abandon(err)
 	}
-	defer planClient.Close()
+	brain.closing(planClient.Close)
 	boostClients := &messageClientPool{settings: settings, clients: make(map[string]*liveClient)}
-	defer boostClients.Close()
+	brain.closing(boostClients.Close)
 	// The ruler stays keyed to the work model even when a different model
 	// plans: the anchors measure how the executor spends turns, and the plan
 	// model only reads them to size work for that executor.
 	measured, _ := profile.Load(settings.ProfileDir, taskClient.Model(), "linear")
 	plan.UseAnchors(measured.Anchors)
 
-	graph, err := store.Open(path)
-	if err != nil {
-		return err
-	}
-	defer graph.Close()
-	// The session is resolved here rather than at flag-definition time because
-	// only the journal knows which conversation this is. Everything below reads
-	// the resolved id; nothing reads the flag again.
-	session, err := resolveChatSession(graph, requestedSession)
-	if err != nil {
-		return err
-	}
 	// Every structuring call this surface makes now bills the same rail its
 	// leaves bill. A journal write that fails is not a reason to fail the call
 	// it is describing, so this is best-effort by construction — but it fails
@@ -191,12 +207,12 @@ func runChat(args []string) error {
 	boostClients.journal = journalSpend
 	standingWatch, err := newStandingWatchManager(graph)
 	if err != nil {
-		return err
+		return nil, brain.abandon(err)
 	}
 
 	workspaceRoot := filepath.Join(filepath.Dir(path), "workspace")
 	if err := os.MkdirAll(workspaceRoot, 0o700); err != nil {
-		return fmt.Errorf("create chat workspace: %w", err)
+		return nil, brain.abandon(fmt.Errorf("create chat workspace: %w", err))
 	}
 
 	// The lease proves that no live resident can still own a claim in this DB.
@@ -220,7 +236,7 @@ func runChat(args []string) error {
 		})
 	}
 	if err := resident.ReAdoptServices(graph, session, nil); err != nil {
-		return fmt.Errorf("re-adopt services: %w", err)
+		return nil, brain.abandon(fmt.Errorf("re-adopt services: %w", err))
 	}
 
 	// plans retains each planned job's graph so execution can be the headless
@@ -236,7 +252,7 @@ func runChat(args []string) error {
 	var craftRunner *resident.CraftRunner
 	var craftShelf resident.CraftShelf
 	craftDir := ""
-	if craftRepo, craftErr := craft.Open(filepath.Join(filepath.Dir(*database), "craft")); craftErr == nil {
+	if craftRepo, craftErr := craft.Open(filepath.Join(filepath.Dir(database), "craft")); craftErr == nil {
 		craftRunner = resident.NewCraftRunner(graph, craftRepo, craftRepo.Dir())
 		craftShelf, craftDir = craftRepo, craftRepo.Dir()
 	} else {
@@ -288,6 +304,12 @@ func runChat(args []string) error {
 	reconciler = reconciler.WithHeartbeat(func(at time.Time) {
 		_ = lease.NoteResidentTick(filepath.Dir(path), at)
 	})
+	// The handover seam, and the moment it is measured against. A request
+	// journaled before this process took the role belongs to whoever was
+	// serving then; answering it would make a window that has just promoted
+	// stand straight back down, and the role would circle the open windows
+	// forever.
+	reconciler = reconciler.WithHandover(hand).WithResidentSince(time.Now())
 	// Recognition and forging ride the resident's own talk client, like every
 	// other small verdict it makes about itself.
 	if craftShelf != nil {
@@ -295,7 +317,7 @@ func runChat(args []string) error {
 			fillCraftParams(settings, chatClient), repairCraft(settings, chatClient)))
 	}
 	if err := reconciler.AttachSession(session); err != nil {
-		return err
+		return nil, brain.abandon(err)
 	}
 	// The attach edge is journalled now, because its ordering is what fixes the
 	// brief's window. Composing that brief is a model round-trip over a journal
@@ -818,21 +840,44 @@ func runChat(args []string) error {
 		runner = runner.WithCraftRunner(craftRunner)
 	}
 
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-	var background sync.WaitGroup
 	streamEvents := make(chan tui.StreamEvent, 256)
-	background.Add(3)
+	commander = &chatCommander{
+		settings:      settings,
+		database:      path,
+		prefsDir:      filepath.Dir(path),
+		workspaceRoot: workspaceRoot,
+		chatClient:    chatClient,
+		taskClient:    taskClient,
+		planClient:    planClient,
+		store:         graph,
+		prefs:         prefs,
+		sessionID:     session,
+		streamEvents:  streamEvents,
+		voiceRecorder: voice.NewSystemRecorder(),
+		models:        modelCatalog,
+		mediaModels:   mediaModels,
+		attachSession: reconciler.AttachSession,
+	}
+	commander.voiceTranscriber, err = voice.NewClient(voice.ClientConfig{
+		APIKey: settings.APIKey, BaseURL: settings.BaseURL, Timeout: settings.Timeout,
+		SiteURL: settings.SiteURL, SiteName: settings.SiteName,
+	})
+	if err != nil {
+		return nil, brain.abandon(err)
+	}
+
+	brain.settings = settings
+	brain.commander = commander
+	brain.reconciler = reconciler
+	brain.runner = runner
+	brain.consent = consent
+	brain.streamEvents = streamEvents
+	brain.deliverBrief = deliverBrief
 	// Routing is a structuring call, and it was the one loop served with a bare
 	// context: without the configured effort knob, a reasoning model spends the
 	// head's whole token cap deliberating and returns empty text — measured as
 	// 600/600 completion tokens of thought and zero answer on the default model.
-	go func() {
-		// Registered first so it absorbs last: the channel close and the wait
-		// group both settle on the unwind before the fault is recorded.
-		defer guard.Recover("chat/head")
-		defer background.Done()
-		defer close(streamEvents)
+	brain.serveHead = func(ctx context.Context) {
 		headContext := provider.WithStreamObserver(settings.Context(ctx, "head"), func(event provider.StreamEvent) {
 			translated := tui.StreamEvent{Delta: event.Delta}
 			switch event.Kind {
@@ -862,98 +907,147 @@ func runChat(args []string) error {
 			}).
 			WithDailyBudgetUSD(settings.DailyBudgetUSD).
 			Serve(headContext)
+	}
+	return brain, nil
+}
+
+// chatBrain is the resident half of a window: the head that replies, the
+// reconciler that applies the command journal, the runner that executes ready
+// leaves, and the consent desk that prices work before it is bought. A window
+// has one for as long as it holds the resident role and none the rest of the
+// time.
+//
+// It keeps two contexts rather than one, and that is the whole reason it is a
+// type. An ordinary shutdown ends both, because the terminal is going away. A
+// handover ends only the first: the head must stop answering the instant this
+// process is no longer the brain, while the leaves already running belong to
+// claims in the store and must be allowed to land.
+type chatBrain struct {
+	window       *chatWindow
+	session      string
+	settings     config.Config
+	commander    *chatCommander
+	reconciler   *resident.Reconciler
+	runner       *resident.Runner
+	consent      *consentDesk
+	streamEvents chan tui.StreamEvent
+	deliverBrief func(context.Context) error
+	serveHead    func(context.Context)
+
+	closers    []func()
+	background sync.WaitGroup
+	cancel     context.CancelFunc
+	runCancel  context.CancelFunc
+	runDone    chan struct{}
+	stopOnce   sync.Once
+	closeOnce  sync.Once
+}
+
+// closing registers something built here that must be given back. They are
+// collected rather than deferred because construction returns the brain to a
+// caller that will run it, so the unwind of the constructor is exactly the
+// wrong moment to close a client.
+func (b *chatBrain) closing(close func()) {
+	b.closers = append(b.closers, close)
+}
+
+// abandon gives back everything built so far and returns the error that ended
+// construction, so a half-built brain never leaks the clients it opened.
+func (b *chatBrain) abandon(err error) error {
+	b.closeAll()
+	return err
+}
+
+func (b *chatBrain) closeAll() {
+	b.closeOnce.Do(func() {
+		for i := len(b.closers) - 1; i >= 0; i-- {
+			b.closers[i]()
+		}
+	})
+}
+
+// start runs the brain. Every loop it owns lives on this side of the call, so
+// a window that has just promoted starts exactly what a window that launched
+// as the resident starts, in the same order.
+func (b *chatBrain) start() {
+	ctx, cancel := context.WithCancel(context.Background())
+	runCtx, runCancel := context.WithCancel(context.Background())
+	b.cancel, b.runCancel = cancel, runCancel
+	b.runDone = make(chan struct{})
+	graph, session := b.window.graph, b.session
+
+	b.background.Add(3)
+	go func() {
+		// Registered first so it absorbs last: the channel close and the wait
+		// group both settle on the unwind before the fault is recorded.
+		defer guard.Recover("chat/head")
+		defer b.background.Done()
+		defer close(b.streamEvents)
+		b.serveHead(ctx)
 	}()
 	guard.Go("chat/reconciler", func() {
-		defer background.Done()
-		superviseResident(ctx, reconciler.Serve, residentRestartBackoff, residentHealthyRun, func(body string) {
+		defer b.background.Done()
+		superviseResident(ctx, b.reconciler.Serve, residentRestartBackoff, residentHealthyRun, func(body string) {
 			_, _ = graph.PostMessage(store.Message{
 				SessionID: session, Role: store.RoleSystem, Body: body,
 			})
 		})
 	})
-	go func() { defer guard.Recover("chat/runner"); defer background.Done(); _ = runner.Serve(ctx) }()
-	background.Add(1)
-	guard.Go("chat/consent", func() { defer background.Done(); consent.serve(ctx) })
+	go func() {
+		defer guard.Recover("chat/runner")
+		defer b.background.Done()
+		defer close(b.runDone)
+		_ = b.runner.Serve(runCtx)
+	}()
+	b.background.Add(1)
+	guard.Go("chat/consent", func() { defer b.background.Done(); b.consent.serve(ctx) })
 
-	commander = &chatCommander{
-		settings:      settings,
-		database:      path,
-		prefsDir:      filepath.Dir(path),
-		workspaceRoot: workspaceRoot,
-		chatClient:    chatClient,
-		taskClient:    taskClient,
-		planClient:    planClient,
-		store:         graph,
-		prefs:         prefs,
-		sessionID:     session,
-		streamEvents:  streamEvents,
-		voiceRecorder: voice.NewSystemRecorder(),
-		models:        modelCatalog,
-		mediaModels:   mediaModels,
-		attachSession: reconciler.AttachSession,
-	}
-	commander.voiceTranscriber, err = voice.NewClient(voice.ClientConfig{
-		APIKey: settings.APIKey, BaseURL: settings.BaseURL, Timeout: settings.Timeout,
-		SiteURL: settings.SiteURL, SiteName: settings.SiteName,
-	})
-	if err != nil {
-		return err
-	}
-	// While bubbletea owns the terminal, anything written to stderr or the
-	// standard logger tears straight through the alt screen as a raw row (a
-	// contract failure once printed itself across both panes). Everything the
-	// runtime logs goes to a file for the TUI's lifetime instead.
-	if logFile, logErr := os.OpenFile(filepath.Join(filepath.Dir(defaultChatDB()), "chat.log"),
-		os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o644); logErr == nil {
-		log.SetOutput(logFile)
-		defer func() {
-			log.SetOutput(os.Stderr)
-			_ = logFile.Close()
-		}()
-	}
-	if deliverBrief != nil {
-		background.Add(1)
+	if b.deliverBrief != nil {
+		b.background.Add(1)
 		go func() {
 			defer guard.Recover("chat/arrival-brief")
-			defer background.Done()
-			if err := deliverBrief(ctx); err != nil {
+			defer b.background.Done()
+			if err := b.deliverBrief(ctx); err != nil {
 				log.Printf("note: could not deliver the arrival brief: %v", err)
 			}
 		}()
 	}
-	err = tui.RunWithCommander(graph, session, commander)
-	seenErr := reconciler.SessionClosed(session, "tui")
-	cancel()
-	waitWithGrace(&background, 5*time.Second)
-	return errors.Join(err, seenErr)
 }
 
-// runChatVisitor is a pure surface over the durable store. The elected
-// resident's head will route its user messages and the command journal will be
-// reconciled there; this process tails the thread and never starts a head,
-// reconciler, or worker runner of its own.
-func runChatVisitor(path, requestedSession string) error {
-	graph, err := store.Open(path)
-	if err != nil {
-		return err
+// standDown is the handover shutdown. The head, the reconciler and the consent
+// desk end at once, because from this moment another process is answering for
+// this store and two of anything would be a race. The runner is only told to
+// stop claiming: its running leaves keep the context they started with until
+// they land, and the clients they are still talking through are given back
+// after — never before.
+func (b *chatBrain) standDown() {
+	if b.cancel != nil {
+		b.cancel()
 	}
-	defer graph.Close()
+	b.runner.Drain()
+	guard.Go("chat/stand-down", func() {
+		<-b.runDone
+		if b.runCancel != nil {
+			b.runCancel()
+		}
+		b.closeAll()
+	})
+}
 
-	sessionID, err := resolveChatSession(graph, requestedSession)
-	if err != nil {
-		return err
-	}
-	surface := resident.New(graph, nil, nil)
-	if err := surface.AttachSession(sessionID); err != nil {
-		return err
-	}
-	if err := surface.SessionOpened(context.Background(), sessionID, "tui", 0); err != nil {
-		return err
-	}
-	commander := newVisitorCommander(path, sessionID, graph, surface.AttachSession)
-	err = tui.RunWithCommander(graph, sessionID, commander)
-	seenErr := surface.SessionClosed(sessionID, "tui")
-	return errors.Join(err, seenErr)
+// stop is the ordinary shutdown: the terminal is going away, so everything
+// goes with it, bounded by the same grace the surface has always allowed.
+func (b *chatBrain) stop() {
+	b.stopOnce.Do(func() {
+		if b.cancel != nil {
+			b.cancel()
+		}
+		if b.runCancel != nil {
+			b.runCancel()
+		}
+		b.runner.Drain()
+		waitWithGrace(&b.background, 5*time.Second)
+		b.closeAll()
+	})
 }
 
 // newVisitorCommander builds the commander a visitor drives. It deliberately
@@ -1173,6 +1267,11 @@ type chatCommander struct {
 	voiceTranscriber voice.Transcriber
 	attachSession    func(string) error
 
+	// residency is the window's account of which process runs the brain. Nil
+	// for an embedded or test commander, which is simply never a second
+	// window and says nothing about it.
+	residency *chatResidency
+
 	catalogOnce    sync.Once
 	catalogChoices []tui.ModelChoice
 	slotCatalogMu  sync.Mutex
@@ -1195,6 +1294,17 @@ func attachmentStoreRoot(database string) string {
 }
 
 func (c *chatCommander) StreamEvents() <-chan tui.StreamEvent { return c.streamEvents }
+
+// Residency lets the surface say what this window is, and hands it a
+// replacement commander at the moment that answer changes. It runs on the
+// poll's goroutine every cycle, so everything expensive behind it is a
+// goroutine the residency starts for itself.
+func (c *chatCommander) Residency() (tui.Residency, tui.Commander) {
+	if c == nil || c.residency == nil {
+		return tui.Residency{}, nil
+	}
+	return c.residency.poll()
+}
 
 func (c *chatCommander) VoiceRecorder() voice.Recorder       { return c.voiceRecorder }
 func (c *chatCommander) VoiceTranscriber() voice.Transcriber { return c.voiceTranscriber }
