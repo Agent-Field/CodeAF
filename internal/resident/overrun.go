@@ -71,6 +71,13 @@ func OverrunGoal(node store.Node, partial string, artifacts []string, gap string
 	if strings.TrimSpace(gap) != "" {
 		goal.WriteString("\n\nA reviewer compared that result against the assignment and named what is missing. Plan the work that closes these gaps and nothing else:\n")
 		goal.WriteString(gap)
+		// What comes back from this round is what the person reads, and it is
+		// the last thing they read: a repair on a top-level job continues as a
+		// top-level job and is announced as its deliverable. Without this
+		// sentence the round answers the reviewer instead of the person — one
+		// measured cell delivered "no bug to find" as its opening line, on work
+		// whose fix had already been applied and verified.
+		goal.WriteString("\n\nWhat this work hands back is the finished assignment as the person will read it — the whole answer, standing on its own. It is not a reply to the review, not a note on what was missing, and not an account of what was repaired.")
 	}
 	if len(artifacts) > 0 {
 		goal.WriteString("\n\nFiles already produced, to reuse rather than recreate:\n")

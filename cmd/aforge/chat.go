@@ -603,17 +603,19 @@ func buildBrain(w *chatWindow, session string, opts brainOptions) (*chatBrain, e
 		if title := strings.TrimSpace(node.Title); title != "" {
 			leafTitle = title
 		}
+		outputHint, intermediate := leafOutputHint(node, leafTitle, jobSpace)
 		task := exec.Task{
-			Reflex:      isReflex,
-			NodeID:      int(node.CreatedSeq),
-			StoreNodeID: node.ID,
-			Title:       firstLine(node.Brief),
-			Goal:        node.Provenance.Intent,
-			Brief:       withDocumentAttachmentBrief(residentDeliveryBrief(graph, node), documentPaths),
-			Contract:    leafContract(plans, planNode, node),
-			OutputHint:  exec.SuggestPath(int(node.CreatedSeq), leafTitle),
-			Inputs:      inputs,
-			Steer:       steer,
+			Reflex:       isReflex,
+			NodeID:       int(node.CreatedSeq),
+			StoreNodeID:  node.ID,
+			Title:        firstLine(node.Brief),
+			Goal:         node.Provenance.Intent,
+			Brief:        withDocumentAttachmentBrief(residentDeliveryBrief(graph, node), documentPaths),
+			Contract:     leafContract(plans, planNode, node),
+			OutputHint:   outputHint,
+			Intermediate: intermediate,
+			Inputs:       inputs,
+			Steer:        steer,
 			Control: func() exec.ControlAction {
 				control, err := graph.Control(node.ID)
 				if err != nil {
@@ -769,6 +771,12 @@ func buildBrain(w *chatWindow, session string, opts brainOptions) (*chatBrain, e
 		if len(absolute) > 0 {
 			text += "\n\nFiles:\n" + strings.Join(absolute, "\n")
 		}
+		// notes are what the system owes the person ABOUT the work, kept apart
+		// from the work itself for the whole of this function and joined only at
+		// the end. text is always the final state of the deliverable and nothing
+		// else — a revision replaces it whole — so no round of a dispute can
+		// leave its prose in front of the answer. See composeDelivery.
+		var notes []string
 		continuing := false
 		// Resource exhaustion is invisible: it grows the graph and the final
 		// assembled deliverable reaches the gate. Semantic failure stays honest
@@ -790,7 +798,7 @@ func buildBrain(w *chatWindow, session string, opts brainOptions) (*chatBrain, e
 					settings.DailyBudgetUSD, replanRemainder(settings, planClient, taskClient, plans, graph))
 				if replanErr == nil && spliced > 0 {
 					continuing = true
-					text += "\n\n[" + continuationMessage(spliced) + "]"
+					notes = append(notes, "["+continuationMessage(spliced)+"]")
 					_, _ = graph.PostMessage(store.Message{
 						SessionID: node.Provenance.SessionID,
 						Role:      store.RoleSystem,
@@ -862,14 +870,12 @@ func buildBrain(w *chatWindow, session string, opts brainOptions) (*chatBrain, e
 				}
 				if ungrounded != "" {
 					evidence.Refused = ungrounded
-					note := gapNote(gate.Gaps, ungrounded)
-					text += "\n\n" + note
-					_, _ = graph.PostMessage(store.Message{
-						SessionID: node.Provenance.SessionID,
-						Role:      store.RoleSystem,
-						NodeID:    node.ID,
-						Body:      note,
-					})
+					// It rides the delivery as its own short note after the work
+					// and is not also posted on its own. Posted separately it
+					// arrived BEFORE the announcement — the review's words
+					// standing in front of an answer the review was wrong about,
+					// which is the shape the panel scored 2/5.
+					notes = append(notes, gapNote(gate.Gaps, ungrounded))
 					// The verdict is deliberately left where the worker put it.
 					// Nothing about the work was shown to be wrong here; a judge
 					// invented a requirement, and charging the model's rating for
@@ -933,12 +939,14 @@ func buildBrain(w *chatWindow, session string, opts brainOptions) (*chatBrain, e
 					}
 					switch {
 					case evidence.PolishClosed:
-						_, _ = graph.PostMessage(store.Message{
-							SessionID: node.Provenance.SessionID,
-							Role:      store.RoleSystem,
-							NodeID:    node.ID,
-							Body:      "a review found gaps in the first draft — revised before delivering: " + firstLine(gate.Gaps),
-						})
+						// A settled dispute leaves no trace in the conversation.
+						// The revision closed the gap, so the finished work is
+						// the whole of what happened as far as the person is
+						// concerned; the round, its critique and its verdict are
+						// in the gate ledger, where the belt tools read them. The
+						// line that used to be posted here — "a review found gaps
+						// in the first draft" — landed just before the answer and
+						// made a repaired deliverable read as a doubted one.
 					default:
 						// The gap survived the one revision, which is exactly where
 						// the old path gave up. The job may grow the work that closes
@@ -954,7 +962,7 @@ func buildBrain(w *chatWindow, session string, opts brainOptions) (*chatBrain, e
 							// downstream that this node's last word is not its last
 							// word; the sentence in the thread is what tells the
 							// person, and it says why rather than only what.
-							text += "\n\n[" + continuationMessage(extension.Spliced) + "]"
+							notes = append(notes, "["+continuationMessage(extension.Spliced)+"]")
 							_, _ = graph.PostMessage(store.Message{
 								SessionID: node.Provenance.SessionID,
 								Role:      store.RoleSystem,
@@ -969,18 +977,13 @@ func buildBrain(w *chatWindow, session string, opts brainOptions) (*chatBrain, e
 						// silence: for a while the verdict was recorded, no message
 						// was posted, and the user read a draft the system had already
 						// judged incomplete as though it were the answer. The
-						// reservation goes on the delivery itself so it cannot be
-						// missed and cannot be separated from it, and it names the gap
-						// and why nothing more was started — which is what makes the
-						// user's next sentence land in the correction path.
-						reservation := gapHandover(unmet.Gaps, revised, extension.Refused)
-						text += "\n\n" + reservation
-						_, _ = graph.PostMessage(store.Message{
-							SessionID: node.Provenance.SessionID,
-							Role:      store.RoleSystem,
-							NodeID:    node.ID,
-							Body:      reservation,
-						})
+						// reservation rides the delivery so it cannot be missed and
+						// cannot be separated from it, and it names the gap and why
+						// nothing more was started — which is what makes the user's
+						// next sentence land in the correction path. It is a note
+						// AFTER the work and only that: said once, last, and never
+						// standing in front of what was actually produced.
+						notes = append(notes, gapHandover(unmet.Gaps, revised, extension.Refused))
 					}
 				}
 				_ = graph.RecordDeliveryGate(node.ID, evidence)
@@ -1001,10 +1004,9 @@ func buildBrain(w *chatWindow, session string, opts brainOptions) (*chatBrain, e
 		// under it, an answer that behaves as though nothing was missing. What
 		// the parent knows and does not say is exactly what has to be said.
 		if node.Parent == store.RootID {
-			if note := failedPartsNote(graph, node); note != "" {
-				text += "\n\n" + note
-			}
+			notes = append(notes, failedPartsNote(graph, node))
 		}
+		text = composeDelivery(text, notes)
 		outcome.Text = text
 		outcome.Usage = spent
 		outcome.Turns = spentTurns
@@ -1410,6 +1412,37 @@ func residentDeliveryBrief(graph *store.Store, node store.Node) string {
 		brief = resident.VoicePrompt(graph, node.Brief, node.Provenance.Intent, node.Brief)
 	}
 	return withTasteBrief(graph, brief)
+}
+
+// leafOutputHint decides where, if anywhere, a leaf is invited to write a file,
+// and whether it is working for the person or for the work that comes after it.
+//
+// The invitation was the defect. Every leaf was handed a numbered path in the
+// workspace, so a single job left 07-pr-482-code-review.md, 52-write-complete-
+// review.md, 70-read-diff.md, 144-low-findings.md, 144-synthesis.md and
+// 216-assemble-review.md in the person's own directory: an offered address
+// reads as an expectation, and most of those nodes were producing a handoff
+// nobody would ever open.
+//
+// Who the deliverable belongs to is not a guess. It is the law the delivery
+// gate and the announcement already run on — a job root's result is what the
+// person reads, everything under it is a handoff — so the workspace path is
+// offered to the root alone. An intermediate leaf is pointed at the run's own
+// scratch instead, which for an errand working in someone's project is not
+// their directory at all.
+func leafOutputHint(node store.Node, title string, space *exec.Workspace) (hint string, intermediate bool) {
+	suggested := exec.SuggestPath(int(node.CreatedSeq), title)
+	if node.Parent == store.RootID {
+		return suggested, false
+	}
+	// The shown spelling, not the one on disk: it is absolute exactly when
+	// scratch has been moved out of the workspace, which is the only case where
+	// a relative path would name nothing the worker could open.
+	_, shown, err := space.ScratchPath(suggested)
+	if err != nil {
+		return "", true
+	}
+	return shown, true
 }
 
 // withTasteBrief puts settled taste in front of every worker, not only the one
@@ -2955,13 +2988,49 @@ func jobRootOf(graph *store.Store, node store.Node) (store.Node, bool) {
 	return store.Node{}, false
 }
 
-// deliveryPartialBytes bounds the partial a rail-deferred job posts. It is the
-// same courtesy every other body in the thread gets: enough to be the answer,
-// not so much that a stalled job floods the room.
-const deliveryPartialBytes = 4 << 10
+// deliveryPartialBytes bounds the partial a rail-deferred job posts. A partial
+// is still what the person reads, so it is bounded by what a message can carry
+// and not by what a digest may route — the room is left for the sentence this
+// body is posted with. Held at 4 KiB it was the same guillotine the node
+// summary used to be: long work reached the rail and its answer stopped
+// mid-word.
+const deliveryPartialBytes = store.MaxMessageBytes - 1<<10
 
 func boundedDelivery(text string) string {
 	return clipUTF8Bytes(strings.TrimSpace(text), deliveryPartialBytes)
+}
+
+// composeDelivery is the whole of one rule: what is delivered is the FINAL
+// state of the work, and everything the system has to say about that work comes
+// after it.
+//
+// The body is the deliverable and only ever the deliverable — a revision
+// replaces it outright rather than adding to it, so no round of a dispute can
+// leave its prose in front of the answer. The notes are what is owed about it:
+// a review the system declined to act on, a reservation on a gap nothing could
+// close, parts of the job that failed. They are short, they are separate, and
+// they are last.
+//
+// Measured: on a cell that objectively passed, the visible reply opened "no bug
+// to find" — a reservation from a dispute the system had already settled,
+// standing where the answer should have been. Judges scored it 2/5. The residue
+// was structural, so the separation is too: the dispute's own history lives in
+// the journal and the delivery-gate ledger, which the belt tools read on
+// request. It is never the opening of a deliverable.
+func composeDelivery(body string, notes []string) string {
+	delivered := strings.TrimSpace(body)
+	for _, note := range notes {
+		note = strings.TrimSpace(note)
+		if note == "" || strings.Contains(delivered, note) {
+			continue
+		}
+		if delivered == "" {
+			delivered = note
+			continue
+		}
+		delivered += "\n\n" + note
+	}
+	return delivered
 }
 
 // failedPartsNamed bounds how many failed steps a delivery names one by one.
@@ -3706,7 +3775,15 @@ const gateRevisionContract = "Your final message is the deliverable and the only
 	"Put the substance in it — the verdict, the findings, the numbers they asked for — " +
 	"and name the files beside that substance, never in place of it. Nothing written in the " +
 	"future tense counts: what you would look up or intend to check is a plan, and the person " +
-	"is owed the result of carrying it out."
+	"is owed the result of carrying it out. " +
+	// The one clause that keeps a repaired deliverable from reading as a
+	// disputed one. The revision's message REPLACES the first attempt as the
+	// node's summary, so anything it says about the review is what the person
+	// opens the answer with — and a correct answer introduced by an account of
+	// what was wrong with the last one reads as a hedge on itself.
+	"Write it as the first and only draft: it replaces the previous attempt entirely. " +
+	"Say nothing about the review, the gaps it named, or what you changed — the person is " +
+	"reading the work, not its history."
 
 type deliverableJudgment struct {
 	Pass bool
