@@ -367,3 +367,114 @@ func TestDayBoundaryHoldsForBothTimestampSpellings(t *testing.T) {
 		t.Fatalf("parseTime(%q) = %v, %v; want the instant it was written", stamp, parsed, err)
 	}
 }
+
+// "Which model produced this?" was unanswerable from every surface in the
+// product. The row that carries the money now carries the name, and a rebuild
+// from the journal has to agree — the column would otherwise be a cache that
+// silently emptied itself the first time the views were replayed.
+func TestUsageRecordsTheServingModelAndSurvivesRebuild(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "model.db")
+	graph := openTestStore(t, path)
+	if err := graph.Splice(RootID, Subtree{Nodes: []NodeSpec{
+		{ID: "job", Brief: "deliver the report", Stage: 2},
+		{ID: "leaf", Parent: "job", Brief: "write it", Stage: 1},
+	}}, Provenance{Origin: OriginUser, Intent: "write the report"}); err != nil {
+		t.Fatal(err)
+	}
+	for _, usage := range []NodeUsage{
+		{NodeID: "leaf", Cost: 0.20, Model: "cheap/one"},
+		{NodeID: "leaf", Cost: 1.80, Model: "strong/two"},
+	} {
+		if err := graph.RecordUsage(usage); err != nil {
+			t.Fatal(err)
+		}
+	}
+	assert := func(stage string) {
+		t.Helper()
+		models, err := graph.NodeModels("job")
+		if err != nil {
+			t.Fatal(err)
+		}
+		// Most expensive first: the escalation that produced the deliverable
+		// leads, not the rung that gave up on it.
+		if len(models) != 2 || models[0] != "strong/two" || models[1] != "cheap/one" {
+			t.Fatalf("%s: models = %v", stage, models)
+		}
+	}
+	assert("live")
+	if err := graph.Rebuild(); err != nil {
+		t.Fatal(err)
+	}
+	assert("after rebuild")
+}
+
+// The user's most common money question had no code path at any layer: every
+// time-bounded read in this package was hard-wired to today.
+func TestSpendBetweenAndByJobAnswerAWindow(t *testing.T) {
+	graph := openTestStore(t, filepath.Join(t.TempDir(), "window.db"))
+	if err := graph.Splice(RootID, Subtree{Nodes: []NodeSpec{
+		{ID: "audit", Title: "security audit", Brief: "audit the service", Stage: 2},
+		{ID: "audit-leaf", Parent: "audit", Brief: "read the code", Stage: 1},
+	}}, Provenance{Origin: OriginUser, Intent: "audit the service"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := graph.Splice(RootID, Subtree{Nodes: []NodeSpec{
+		{ID: "notes", Title: "release notes", Brief: "write release notes", Stage: 1},
+	}}, Provenance{Origin: OriginUser, Intent: "write release notes"}); err != nil {
+		t.Fatal(err)
+	}
+	before := time.Now()
+	for _, usage := range []NodeUsage{
+		{NodeID: "audit-leaf", Cost: 3, Model: "strong/two"},
+		{NodeID: "audit", Cost: 1, Model: "strong/two"},
+		{NodeID: "notes", Cost: 0.50, Model: "cheap/one"},
+	} {
+		if err := graph.RecordUsage(usage); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	window, err := graph.SpendBetween(before.Add(-time.Hour), time.Time{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if window.Runs != 3 || window.Cost < 4.49 || window.Cost > 4.51 {
+		t.Fatalf("window = %+v, want three runs at $4.50", window)
+	}
+	empty, err := graph.SpendBetween(before.Add(-2*time.Hour), before.Add(-time.Hour))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if empty.Runs != 0 || empty.Cost != 0 {
+		t.Fatalf("a window before any spend reported %+v", empty)
+	}
+
+	jobs, err := graph.SpendByJob(before.Add(-time.Hour), time.Time{}, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(jobs) != 2 {
+		t.Fatalf("jobs = %+v, want one row per errand", jobs)
+	}
+	if jobs[0].JobID != "audit" || jobs[0].Cost < 3.99 || jobs[0].Cost > 4.01 {
+		t.Fatalf("heaviest job = %+v; the leaf's spend has to roll up to its root", jobs[0])
+	}
+	if jobs[0].Title != "security audit" {
+		t.Fatalf("job title = %q; a spend row has to be readable aloud", jobs[0].Title)
+	}
+	if len(jobs[0].Models) != 1 || jobs[0].Models[0] != "strong/two" {
+		t.Fatalf("job models = %v", jobs[0].Models)
+	}
+	if jobs[1].JobID != "notes" {
+		t.Fatalf("second job = %+v, want the cheaper errand", jobs[1])
+	}
+	if limited, err := graph.SpendByJob(before.Add(-time.Hour), time.Time{}, 1); err != nil || len(limited) != 1 {
+		t.Fatalf("limited = %+v err=%v", limited, err)
+	}
+
+	// The estimator's only honest input: what a run has actually cost here.
+	median, err := graph.MeasuredCostPerRun()
+	if err != nil || median != 1 {
+		t.Fatalf("median run cost = %v err=%v, want the middle of {0.50, 1, 3}", median, err)
+	}
+}

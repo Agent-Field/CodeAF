@@ -483,6 +483,9 @@ func Open(path string) (*Store, error) {
 	if _, err := db.Exec(usageSchema); err != nil {
 		return closeOnError(fmt.Errorf("initialize usage schema: %w", err))
 	}
+	if err := migrateUsageSchema(db); err != nil {
+		return closeOnError(fmt.Errorf("migrate usage schema: %w", err))
+	}
 	if _, err := db.Exec(surpriseSchema); err != nil {
 		return closeOnError(fmt.Errorf("initialize surprise schema: %w", err))
 	}

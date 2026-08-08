@@ -433,8 +433,28 @@ func (s *Store) DependencyDigests(id string, maxBytes int) ([]string, error) {
 	return digests, nil
 }
 
+// minDependencyBytes is the floor under one dependency's share. Below roughly
+// this much a digest is a stub rather than a summary, so a fan-in wide enough to
+// push every share under it takes fewer, fuller inputs instead of a hundred
+// unreadable fragments — and says so.
+const minDependencyBytes = 512
+
+// dependencyClipNote is appended to a digest the budget cut short. It exists
+// because the alternative is the failure this whole function used to have: a
+// synthesis leaf writing a confident report over six of fifty findings, with
+// nothing anywhere telling it the other forty-four were ever produced.
+const dependencyClipNote = "\n[clipped to fit — the full text is in this step's own record and its files]"
+
 // DependencyInputs is DependencyDigests with the producer and its files kept
 // separate instead of flattened into one line.
+//
+// The budget is shared out per dependency rather than first-come. One shared
+// pot in edge order meant the first verbose finding could take all 4 KB and
+// every sibling after it was dropped by a bare `continue` — no marker, no
+// warning, nothing the consumer could notice. A fan-out of fifty leaves
+// therefore synthesised whatever happened to be first. Each dependency now gets
+// an equal share of the pot, unused share is handed back to the ones that need
+// it, and a clipped digest says out loud that it was clipped.
 func (s *Store) DependencyInputs(id string, maxBytes int) ([]DependencyInput, error) {
 	if maxBytes <= 0 {
 		return nil, nil
@@ -449,8 +469,13 @@ func (s *Store) DependencyInputs(id string, maxBytes int) ([]DependencyInput, er
 		return nil, fmt.Errorf("read dependencies for %q: %w", id, err)
 	}
 	defer rows.Close()
-	remaining := maxBytes
-	inputs := make([]DependencyInput, 0)
+	type produced struct {
+		id      string
+		line    string
+		summary string
+		failure string
+	}
+	settled := make([]produced, 0)
 	for rows.Next() {
 		var dependencyID, summary, failure string
 		var status Status
@@ -458,17 +483,94 @@ func (s *Store) DependencyInputs(id string, maxBytes int) ([]DependencyInput, er
 			return nil, fmt.Errorf("read dependencies for %q: %w", id, err)
 		}
 		line := dependencyDigest(dependencyID, status, summary, failure)
-		if line == "" || remaining <= 0 {
+		if line == "" {
 			continue
 		}
-		line = bounded(line, remaining)
-		inputs = append(inputs, DependencyInput{
-			NodeID: dependencyID, Digest: line, Artifacts: summaryPaths(summary),
-		})
-		remaining -= len(line)
+		settled = append(settled, produced{id: dependencyID, line: line, summary: summary, failure: failure})
 	}
 	if err := rows.Err(); err != nil {
 		return nil, fmt.Errorf("read dependencies for %q: %w", id, err)
+	}
+	if len(settled) == 0 {
+		return []DependencyInput{}, nil
+	}
+
+	// How many can be carried at all. A share below the floor is not a small
+	// digest, it is a fragment, so the pot buys as many whole inputs as it can
+	// and the ones that did not fit are named rather than vanishing.
+	pot := maxBytes
+	carried := len(settled)
+	if share := pot / carried; share < minDependencyBytes {
+		carried = pot / minDependencyBytes
+		if carried < 1 {
+			carried = 1
+		}
+	}
+	dropped := settled[carried:]
+	settled = settled[:carried]
+	overflow := ""
+	if len(dropped) > 0 {
+		names := make([]string, 0, len(dropped))
+		for _, dependency := range dropped {
+			names = append(names, dependency.id)
+		}
+		overflow = fmt.Sprintf("%d more finished step(s) fed into this one and did not fit here: %s. "+
+			"Their results exist — say so rather than writing as though they did not.",
+			len(dropped), strings.Join(names, ", "))
+		// The notice is part of the bill, not an exemption from it.
+		overflow = bounded(overflow, pot/2)
+		pot -= len(overflow)
+	}
+
+	// Two passes so a short digest's unspent share reaches a long one: the first
+	// gives each only what it needs up to an equal share, the second hands the
+	// unspent remainder to whoever is still clipped.
+	share := pot / len(settled)
+	allotted := make([]int, len(settled))
+	remaining := pot
+	for index, dependency := range settled {
+		allotted[index] = share
+		if len(dependency.line) < share {
+			allotted[index] = len(dependency.line)
+		}
+		remaining -= allotted[index]
+	}
+	for index, dependency := range settled {
+		if remaining <= 0 {
+			break
+		}
+		growth := len(dependency.line) - allotted[index]
+		if growth <= 0 {
+			continue
+		}
+		if growth > remaining {
+			growth = remaining
+		}
+		allotted[index] += growth
+		remaining -= growth
+	}
+
+	inputs := make([]DependencyInput, 0, len(settled)+1)
+	for index, dependency := range settled {
+		line := bounded(dependency.line, allotted[index])
+		if len(dependency.line) > allotted[index] {
+			// The marker is budgeted inside the allotment, not added on top of
+			// it: a truncation that overflows the bound it is announcing is the
+			// same lie in a different direction.
+			line = bounded(dependency.line, allotted[index]-len(dependencyClipNote)) + dependencyClipNote
+			if len(line) > allotted[index] {
+				line = bounded(dependency.line, allotted[index])
+			}
+		}
+		inputs = append(inputs, DependencyInput{
+			NodeID: dependency.id, Digest: line,
+			// A failed step's files are as real as a finished one's, and the
+			// only place a failure records them is its error text.
+			Artifacts: summaryPaths(dependency.summary + "\n" + dependency.failure),
+		})
+	}
+	if overflow != "" {
+		inputs = append(inputs, DependencyInput{Digest: overflow})
 	}
 	return inputs, nil
 }

@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"fmt"
 	"math"
+	"sort"
 	"strings"
 	"time"
 )
@@ -14,11 +15,21 @@ import (
 // answer "what has this graph cost" without replaying history.
 
 // NodeUsage is what one node's execution spent.
+//
+// Model is the model that actually served the call, which is not the model
+// anybody asked for: an escalation moves a leaf to a stronger rung, a cascade
+// picks by class, and the only durable record of who did the work used to be
+// Provenance.WorkModel — the pin the user requested, empty on almost every job.
+// So "which model wrote this?" was unanswerable from every surface. It is
+// recorded here rather than on the node because a node can run more than once
+// and each run has its own answer, and because the row that carries the money
+// is the row that should carry the name.
 type NodeUsage struct {
 	NodeID           string  `json:"node_id"`
 	PromptTokens     int     `json:"prompt_tokens"`
 	CompletionTokens int     `json:"completion_tokens"`
 	Cost             float64 `json:"cost"`
+	Model            string  `json:"model,omitempty"`
 }
 
 // NodeSurprise is the prediction attached to one leaf when its profile record
@@ -101,10 +112,31 @@ CREATE TABLE IF NOT EXISTS usage (
     node_id           TEXT NOT NULL,
     prompt_tokens     INTEGER NOT NULL DEFAULT 0,
     completion_tokens INTEGER NOT NULL DEFAULT 0,
-    cost              REAL NOT NULL DEFAULT 0
+    cost              REAL NOT NULL DEFAULT 0,
+    model             TEXT NOT NULL DEFAULT ''
 );
 CREATE INDEX IF NOT EXISTS usage_node ON usage (node_id);
+CREATE INDEX IF NOT EXISTS usage_ts ON usage (ts);
 `
+
+// migrateUsageSchema adds the served model to an existing journal. Rows written
+// before it existed keep the empty string, which reads as "not recorded" rather
+// than as a model named "" — the same distinction every other backfilled column
+// here draws. Replay needs nothing: the event payload is JSON and an absent
+// field decodes to the same empty string the column defaults to.
+func migrateUsageSchema(db *sql.DB) error {
+	hasModel, err := tableHasColumn(db, "usage", "model")
+	if err != nil {
+		return err
+	}
+	if !hasModel {
+		if _, err := db.Exec(`ALTER TABLE usage ADD COLUMN model TEXT NOT NULL DEFAULT ''`); err != nil {
+			return err
+		}
+	}
+	_, err = db.Exec(`CREATE INDEX IF NOT EXISTS usage_ts ON usage (ts)`)
+	return err
+}
 
 const surpriseSchema = `
 CREATE TABLE IF NOT EXISTS surprises (
@@ -541,11 +573,206 @@ func (s *Store) TopLevelJobUsage() (map[string]JobUsage, error) {
 	return result, nil
 }
 
+// SpendWindow is what one arbitrary stretch of time cost. It is the shape
+// every "what did I spend this week" question wants and the shape no query in
+// this package could answer: localDayBounds was the only bucketing helper
+// anywhere, so every user-facing number was either today or all time.
+//
+// SelfReceipts(since) had already proved the signature — for the resident's own
+// practice, and unreachable from any user surface. The user's jobs get the same
+// courtesy here.
+type SpendWindow struct {
+	Since            time.Time
+	Until            time.Time
+	Runs             int
+	PromptTokens     int
+	CompletionTokens int
+	Cost             float64
+}
+
+// JobSpend is one job root's share of a window, named well enough to read
+// aloud: what it was for, what it cost, and when it last spent anything.
+type JobSpend struct {
+	JobID  string
+	Title  string
+	Runs   int
+	Cost   float64
+	Last   time.Time
+	Models []string
+}
+
+// SpendBetween sums recorded cost over an arbitrary window. A zero Until means
+// now; a zero Since means the beginning of the journal. Both bounds are
+// half-open the way every other range read here is: [since, until).
+func (s *Store) SpendBetween(since, until time.Time) (SpendWindow, error) {
+	since, until = spendBounds(since, until)
+	window := SpendWindow{Since: since, Until: until}
+	err := s.db.QueryRow(`
+		SELECT COUNT(*), COALESCE(SUM(prompt_tokens), 0),
+		       COALESCE(SUM(completion_tokens), 0), COALESCE(SUM(cost), 0)
+		FROM usage WHERE ts >= ? AND ts < ?`,
+		formatTime(since), formatTime(until)).Scan(&window.Runs, &window.PromptTokens,
+		&window.CompletionTokens, &window.Cost)
+	if err != nil {
+		return SpendWindow{}, fmt.Errorf("spend between: %w", err)
+	}
+	return window, nil
+}
+
+// SpendByJob groups a window's cost under the job root each run belongs to,
+// heaviest first. Grouping needs no new taxonomy: the graph already knows which
+// root a node descends from, and that root's title is what the user called the
+// work. A limit of zero returns every job that spent anything.
+//
+// A run under no job root at all — planning charged to the spine, a voice
+// transcription — is deliberately absent rather than bucketed into a fake job.
+// The window total from SpendBetween is the authority on the whole bill, and
+// the difference between it and the sum of these rows is exactly the overhead
+// that belongs to no single errand.
+func (s *Store) SpendByJob(since, until time.Time, limit int) ([]JobSpend, error) {
+	since, until = spendBounds(since, until)
+	rows, err := s.db.Query(`
+		WITH RECURSIVE job_roots(id) AS (
+			SELECT node.id
+			FROM nodes AS node
+			LEFT JOIN nodes AS parent ON parent.id = node.parent_id
+			WHERE node.grp <> ?
+			  AND (node.parent_id = ? OR parent.grp = ?)
+		), descendants(job_id, node_id) AS (
+			SELECT id, id FROM job_roots
+			UNION ALL
+			SELECT descendants.job_id, child.id
+			FROM descendants
+			JOIN nodes AS child ON child.parent_id = descendants.node_id
+		)
+		SELECT descendants.job_id, COUNT(usage.seq), COALESCE(SUM(usage.cost), 0),
+		       COALESCE(MAX(usage.ts), ''),
+		       COALESCE(GROUP_CONCAT(DISTINCT usage.model), '')
+		FROM descendants
+		JOIN usage ON usage.node_id = descendants.node_id
+		WHERE usage.ts >= ? AND usage.ts < ?
+		GROUP BY descendants.job_id
+		ORDER BY SUM(usage.cost) DESC, descendants.job_id`,
+		TerritoryGroup, RootID, TerritoryGroup, formatTime(since), formatTime(until))
+	if err != nil {
+		return nil, fmt.Errorf("spend by job: %w", err)
+	}
+	defer rows.Close()
+
+	spends := make([]JobSpend, 0)
+	for rows.Next() {
+		var spend JobSpend
+		var last, models string
+		if err := rows.Scan(&spend.JobID, &spend.Runs, &spend.Cost, &last, &models); err != nil {
+			return nil, fmt.Errorf("spend by job: %w", err)
+		}
+		if last != "" {
+			if at, err := parseTime(last); err == nil {
+				spend.Last = at
+			}
+		}
+		for _, model := range strings.Split(models, ",") {
+			if model = strings.TrimSpace(model); model != "" {
+				spend.Models = append(spend.Models, model)
+			}
+		}
+		sort.Strings(spend.Models)
+		spends = append(spends, spend)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("spend by job: %w", err)
+	}
+	if limit > 0 && len(spends) > limit {
+		spends = spends[:limit]
+	}
+	for index := range spends {
+		if node, found, err := s.Node(spends[index].JobID); err == nil && found {
+			spends[index].Title = strings.TrimSpace(node.Title)
+			if spends[index].Title == "" {
+				spends[index].Title = strings.TrimSpace(strings.SplitN(node.Brief, "\n", 2)[0])
+			}
+		}
+	}
+	return spends, nil
+}
+
+// NodeModels names every model that served one node's subtree, most expensive
+// first. This is the read behind "which model produced this?" — a question that
+// had no answer on any surface until the usage row started carrying the name.
+func (s *Store) NodeModels(id string) ([]string, error) {
+	rows, err := s.db.Query(`
+		WITH RECURSIVE descendants(id) AS (
+			SELECT id FROM nodes WHERE id = ?
+			UNION ALL
+			SELECT child.id FROM nodes AS child
+			JOIN descendants ON child.parent_id = descendants.id
+		)
+		SELECT usage.model
+		FROM usage JOIN descendants ON descendants.id = usage.node_id
+		WHERE usage.model <> ''
+		GROUP BY usage.model
+		ORDER BY SUM(usage.cost) DESC, usage.model`, id)
+	if err != nil {
+		return nil, fmt.Errorf("node models for %q: %w", id, err)
+	}
+	defer rows.Close()
+	models := make([]string, 0)
+	for rows.Next() {
+		var model string
+		if err := rows.Scan(&model); err != nil {
+			return nil, fmt.Errorf("node models for %q: %w", id, err)
+		}
+		models = append(models, model)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("node models for %q: %w", id, err)
+	}
+	return models, nil
+}
+
+// MeasuredCostPerRun is what one executed node has actually cost on this
+// machine, taken as the median of every priced run so one runaway job cannot
+// set the price of the next one. Zero means nothing has been measured yet, and
+// a caller with no measurement must say nothing rather than guess.
+func (s *Store) MeasuredCostPerRun() (float64, error) {
+	rows, err := s.db.Query(`SELECT cost FROM usage WHERE cost > 0 ORDER BY cost`)
+	if err != nil {
+		return 0, fmt.Errorf("measured cost per run: %w", err)
+	}
+	defer rows.Close()
+	var costs []float64
+	for rows.Next() {
+		var cost float64
+		if err := rows.Scan(&cost); err != nil {
+			return 0, fmt.Errorf("measured cost per run: %w", err)
+		}
+		costs = append(costs, cost)
+	}
+	if err := rows.Err(); err != nil {
+		return 0, fmt.Errorf("measured cost per run: %w", err)
+	}
+	if len(costs) == 0 {
+		return 0, nil
+	}
+	return costs[len(costs)/2], nil
+}
+
+func spendBounds(since, until time.Time) (time.Time, time.Time) {
+	if until.IsZero() {
+		until = time.Now()
+	}
+	if since.After(until) {
+		since = until
+	}
+	return since.UTC(), until.UTC()
+}
+
 func applyUsageView(tx *sql.Tx, usage NodeUsage, seq int64, at time.Time) error {
 	_, err := tx.Exec(`
-		INSERT INTO usage (seq, ts, node_id, prompt_tokens, completion_tokens, cost)
-		VALUES (?, ?, ?, ?, ?, ?)`,
-		seq, formatTime(at), usage.NodeID, usage.PromptTokens, usage.CompletionTokens, usage.Cost)
+		INSERT INTO usage (seq, ts, node_id, prompt_tokens, completion_tokens, cost, model)
+		VALUES (?, ?, ?, ?, ?, ?, ?)`,
+		seq, formatTime(at), usage.NodeID, usage.PromptTokens, usage.CompletionTokens,
+		usage.Cost, strings.TrimSpace(usage.Model))
 	return err
 }
 
