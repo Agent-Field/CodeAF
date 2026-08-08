@@ -1430,9 +1430,7 @@ func (m *Model) renderMessages() string {
 	})
 	blocks := make([]string, 0, len(items)+1)
 	if len(items) == 0 {
-		// Wrapped, not raw: a line wider than the pane would be soft-wrapped by
-		// the pane style, growing the frame and shifting every row below it.
-		blocks = append(blocks, mutedStyle.Render(wrapText("No messages yet. Start with a thought or a task.", max(8, m.chat.Width-2))))
+		blocks = append(blocks, m.renderWelcome(max(8, m.chat.Width-2)))
 	}
 	line := 0
 	appendBlock := func(block string) {
@@ -1492,6 +1490,31 @@ func (m *Model) renderMessages() string {
 		appendBlock(m.renderRecallHistory(max(8, m.chat.Width-2), line, true))
 	}
 	return m.applyChatFocus(strings.Join(blocks, "\n\n"))
+}
+
+// welcomeLines is the empty thread's whole teaching: the one law said as an
+// instruction, the fact that leaving costs nothing, and where the rest is. It
+// replaced "No messages yet. Start with a thought or a task." — a sentence that
+// described the screen instead of the product, and left a first-time reader
+// with no idea that this line is also how work is steered, corrected and
+// stopped. Four lines is the budget; the catalog lives one keystroke away
+// rather than being pasted here.
+var welcomeLines = []string{
+	"say it here — new work, changes to work already running, corrections, questions",
+	"this thread is the only place you have to speak; the board and the self page are for looking",
+	"close the terminal whenever — the work keeps going and this session resumes where you left it",
+	"? for what you can say",
+}
+
+// renderWelcome wraps rather than truncates: at a docked 60 columns every one
+// of these lines is longer than the pane, and a welcome that ends in an ellipsis
+// teaches nothing at all.
+func (m *Model) renderWelcome(width int) string {
+	lines := make([]string, 0, len(welcomeLines))
+	for _, line := range welcomeLines {
+		lines = append(lines, mutedStyle.Faint(true).Render(wrapText(line, width)))
+	}
+	return strings.Join(lines, "\n")
 }
 
 // chatFocusLines lists, in order, every thread line a click would activate:
