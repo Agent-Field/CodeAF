@@ -707,11 +707,12 @@ func buildChatBrain(w *chatWindow, session string, hand resident.HandoverFunc) (
 		// revision pass with the critique as input; then the result ships
 		// either way, because a gate that can loop is a gate that can stall.
 		if len(outcome.ServiceRequests) == 0 && shouldGate(node, outcome, continuing) {
-			gate := judgeDeliverable(ctx, settings, planClient, graph, node, text, workerModel)
+			gate := judgeDeliverable(ctx, settings, planClient, graph, node, text,
+				deliveryEvidence{Artifacts: absolute, Ran: outcome.Ran}, workerModel)
 			if gate.Checked {
 				evidence := store.DeliveryGate{Pass: gate.Pass, Gap: gate.Gaps}
 				if gate.Pass {
-					outcome.Verdict = provider.VerdictVerifiedSuccess
+					outcome.Verdict = gateVerdict(gate)
 				}
 				if !gate.Pass {
 					revision := task
@@ -743,11 +744,14 @@ func buildChatBrain(w *chatWindow, session string, hand resident.HandoverFunc) (
 						if len(absolute) > 0 {
 							text += "\n\nFiles:\n" + strings.Join(absolute, "\n")
 						}
-						closed := judgeDeliverable(ctx, settings, planClient, graph, node, text, polishModel)
+						closed := judgeDeliverable(ctx, settings, planClient, graph, node, text,
+							deliveryEvidence{Artifacts: absolute, Ran: outcome.Ran}, polishModel)
 						evidence.PolishClosed = closed.Checked && closed.Pass
 						outcome.Verdict = provider.VerdictSemanticFailure
 						if evidence.PolishClosed {
-							outcome.Verdict = provider.VerdictVerifiedSuccess
+							// The same distinction the first gate makes; drawing it
+							// only there would launder the verdict one round later.
+							outcome.Verdict = gateVerdict(closed)
 						}
 						message := "a review found gaps in the first draft — revised before delivering: " + firstLine(gate.Gaps)
 						if !evidence.PolishClosed {
@@ -3365,11 +3369,22 @@ func nodeDisplay(node store.Node) string {
 //
 // The working-decisions paragraph ends on verification for the same reason it
 // began with method: a promise about evidence and a claim of evidence are the
-// same commitment seen from either end. The gate cannot open the workspace, so
-// the only thing it can hold is whether the deliverable shows the finished
-// thing being used the way it will be used — which is exactly what a leaf
-// skips when it proves the parts and infers the whole. An honest "not verified
-// here, run this" passes, so the clause never pushes anyone towards the lie.
+// same commitment seen from either end. What the deliverable shows about the
+// finished thing being used the way it will be used is the first thing it can
+// hold — which is exactly what a leaf skips when it proves the parts and infers
+// the whole. An honest "not verified here, run this" passes, so the clause
+// never pushes anyone towards the lie.
+//
+// The evidence paragraph is the second thing it can hold, and it is the one
+// that stops the claim from being self-certifying. For as long as the gate read
+// only the final message, the strongest sentence in the language — "verified" —
+// cost a worker nothing to write and the gate nothing to believe. It now
+// receives what the leaf left in the workspace and the tail of what the leaf
+// actually ran, both of which already existed and neither of which costs a
+// call. The records are stated as partial on purpose: they are a tail and one
+// directory, so they can convict a claim and can never acquit the absence of
+// one, and a gate told otherwise would start failing honest work for the sin of
+// having run somewhere it cannot see.
 //
 // The middle paragraph was added after a live failure the gate waved through. A
 // worker asked to judge an architecture plan wrote its judgement into a file and
@@ -3391,13 +3406,16 @@ Working decisions declared in the goal are part of what was promised. A commitme
 
 One absence counts exactly like every other and is the one most easily waved through: the substance itself. What you are handed IS the deliverable — it is the whole of what the person will read, and nothing beside it will be opened for them. So text that reports on the work rather than carrying it — that the work is finished, that a file now holds the answer, that the analysis was checked and is consistent — has described the deliverable in place of being it, and the element of the request that is absent is the answer: the verdict that was asked for, the findings, the numbers, the recommendation. Name that as the gap. A pointer to where the answer lives is not the answer however true the pointer is; naming the file is right beside the substance and never instead of it. This is still one absence and not a second style test: text that gives the answer in its own plain words passes whatever shape it takes.
 
-Return exactly one JSON object, nothing else: {"pass": true} or {"pass": false, "gaps": "<the named gaps>"}`
+Below the deliverable, whenever there is anything to show, you are given two records of the run itself: what it left behind, and the tail of what it actually ran. Read the deliverable's claims against them, the way the person would. Something named as produced that nothing produced, or a check the work says it made when nothing of that kind appears in what it ran, is an element unsupported by evidence and is a gap of exactly the kind above — name it in those words. Both records are partial by construction: the tail is the end of a longer run, and what was left behind is one place among many. So they can convict a claim and never acquit one — silence in them is evidence, never proof, and where the deliverable's own account is consistent with what is there, or where these records could never have held the thing in question, pass.
+
+Return exactly one JSON object, nothing else: {"pass": true, "exercised": true or false} or {"pass": false, "gaps": "<the named gaps>"}. "exercised" is a statement about evidence and never about quality: true only when the finished thing was run the way it will actually be used and held — visible in what was run, or reported in the deliverable as what was run and what came back. Everything else is false, including an honest "not verified here" and work that nothing available could have exercised. Both of those still pass; they are simply not evidenced.`
 
 var judgeDeliverableSchema = json.RawMessage(`{
   "type": "object",
   "properties": {
     "pass": {"type": "boolean"},
-    "gaps": {"type": "string"}
+    "gaps": {"type": "string"},
+    "exercised": {"type": "boolean"}
   },
   "required": ["pass"],
   "additionalProperties": false
@@ -3414,17 +3432,94 @@ const gateRevisionContract = "Your final message is the deliverable and the only
 	"and name the files beside that substance, never in place of it."
 
 type deliverableJudgment struct {
-	Pass    bool
-	Gaps    string
-	Checked bool
+	Pass bool
+	Gaps string
+	// Exercised is the gate's separate answer about evidence: it saw the
+	// finished thing run the way it will be used, and hold. A pass without it
+	// is a pass — it is simply not a verified one, and the difference is the
+	// whole reason the field exists rather than being read out of the prose.
+	Exercised bool
+	Checked   bool
 }
 
 const gateNotebookBytes = 1 << 10
 
+// gateVerdict is what a passing gate is entitled to record.
+//
+// The leaf itself never claims a verified success — the general loop has no
+// suite it can assume, so it lands as an unverified one however well it went —
+// and for a while a gate PASS overwrote that with the strongest verdict there
+// is. Nothing had been checked in the sense the verdict means: one judge read
+// one final message and found nothing missing from it. That is a success, and
+// it is the same success the leaf already reported; only the evidenced form,
+// where the finished thing was actually exercised, is more than that.
+//
+// The two are not interchangeable in exactly one place, which is where the
+// distinction is load-bearing: an unverified success is inert in Graded(), so a
+// sentence can no longer move a model's ability rating. Everywhere the product
+// counts operational success — competence rates, reflex outcomes, the self
+// page — both already count, and they still do.
+func gateVerdict(judgment deliverableJudgment) provider.Verdict {
+	if judgment.Exercised {
+		return provider.VerdictVerifiedSuccess
+	}
+	return provider.VerdictUnverifiedSuccess
+}
+
+// deliveryEvidence is what the gate can hold a claim against: what the leaf
+// left behind and the tail of what it actually ran. Both already existed —
+// the artifact list is resolved for three other readers a few lines above the
+// gate call, and the run tail is recorded by the executor as it goes — so the
+// gate stops being a judge of prose for the price of passing two slices.
+type deliveryEvidence struct {
+	Artifacts []string
+	Ran       []string
+}
+
+// gateEvidenceRan bounds what travels. The executor already keeps a short tail;
+// this is the second bound, because the gate's own reply budget is small and a
+// judge reading a hundred lines of shell before the deliverable is a judge
+// reading the wrong thing first.
+const gateEvidenceRan = 24
+
+// block renders the evidence, or nothing at all when there is none to show. It
+// sits below the deliverable so a rewritten deliverable is still the first byte
+// that moves in a repair pass.
+func (e deliveryEvidence) block() string {
+	var body strings.Builder
+	if len(e.Artifacts) > 0 {
+		body.WriteString("What the work left behind:\n")
+		for _, path := range e.Artifacts {
+			if info, err := os.Stat(path); err == nil {
+				fmt.Fprintf(&body, "%s (%d bytes)\n", path, info.Size())
+				continue
+			}
+			// A path the deliverable names and the filesystem does not have is
+			// the loudest thing in this block, so it is stated rather than
+			// dropped for being unreadable.
+			fmt.Fprintf(&body, "%s (not on disk)\n", path)
+		}
+	}
+	ran := e.Ran
+	if len(ran) > gateEvidenceRan {
+		ran = ran[len(ran)-gateEvidenceRan:]
+	}
+	if len(ran) > 0 {
+		if body.Len() > 0 {
+			body.WriteString("\n")
+		}
+		fmt.Fprintf(&body, "The last %d things the work ran, oldest first:\n", len(ran))
+		for _, line := range ran {
+			body.WriteString(line + "\n")
+		}
+	}
+	return strings.TrimRight(body.String(), "\n")
+}
+
 // judgeDeliverable returns a checked pass or named gap. Every failure of the
 // gate itself remains fail-open: Checked is false, so it neither blocks delivery
 // nor manufactures verified evidence for the profile.
-func judgeDeliverable(ctx context.Context, settings config.Config, client *liveClient, graph *store.Store, node store.Node, deliverable, workerModel string) deliverableJudgment {
+func judgeDeliverable(ctx context.Context, settings config.Config, client *liveClient, graph *store.Store, node store.Node, deliverable string, evidence deliveryEvidence, workerModel string) deliverableJudgment {
 	ask := node.Provenance.Intent
 	// The standing half of the gate comes first and the job in front of it last,
 	// which is both the reading order and the billing order. Settled taste is
@@ -3446,6 +3541,12 @@ func judgeDeliverable(ctx context.Context, settings config.Config, client *liveC
 		body += "Standing preferences and relevant lessons:\n" + clipUTF8Bytes(digest, gateNotebookBytes) + "\n\n"
 	}
 	body += "Verbatim request:\n" + ask + "\n\nCompiled goal:\n" + node.Brief + "\n\nDeliverable as produced:\n" + deliverable
+	// The records come last, under the deliverable they are used to check: they
+	// are the most volatile block in the prompt — a revision rewrites the text
+	// and re-runs the work — and the cache pays for volatility by position.
+	if records := evidence.block(); records != "" {
+		body += "\n\nWhat actually happened, as recorded while it ran:\n" + records
+	}
 	judgeCtx := settings.Context(router.WithAvoidModel(ctx, workerModel), "gate")
 	judgeCtx = provider.WithCall(judgeCtx, provider.ClassPlanAudit)
 	// The gate is part of what this deliverable cost, not part of the day's
@@ -3473,8 +3574,9 @@ func judgeDeliverable(ctx context.Context, settings config.Config, client *liveC
 		return deliverableJudgment{Pass: true}
 	}
 	var verdict struct {
-		Pass bool   `json:"pass"`
-		Gaps string `json:"gaps"`
+		Pass      bool   `json:"pass"`
+		Gaps      string `json:"gaps"`
+		Exercised bool   `json:"exercised"`
 	}
 	if err := json.Unmarshal([]byte(text[start:end+1]), &verdict); err != nil {
 		provider.Report(judgeCtx, provider.VerdictFormatFailure)
@@ -3482,7 +3584,9 @@ func judgeDeliverable(ctx context.Context, settings config.Config, client *liveC
 	}
 	if verdict.Pass {
 		provider.Report(judgeCtx, provider.VerdictVerifiedSuccess)
-		return deliverableJudgment{Pass: true, Checked: true}
+		// A judge that omits the field says nothing about evidence, and
+		// nothing is the honest reading: the missing answer stays false.
+		return deliverableJudgment{Pass: true, Exercised: verdict.Exercised, Checked: true}
 	}
 	gaps := strings.TrimSpace(verdict.Gaps)
 	if gaps == "" {

@@ -14,9 +14,11 @@ package exec
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/Agent-Field/aforge-v2/internal/provider"
+	"github.com/Agent-Field/agentfield/sdk/go/ai"
 )
 
 // Input is one upstream result routed into a task.
@@ -121,6 +123,38 @@ type Outcome struct {
 	// produced text and stopped because it was out of budget reads as "budget"
 	// and grades as a failure.
 	Verdict provider.Verdict
+
+	// Ran is the tail of what the leaf actually did: the last calls it made,
+	// in order, with the arguments clipped. ToolCalls already counted them and
+	// a count settles nothing — the question a reader of a finished job
+	// actually has is whether the check the deliverable claims to have run
+	// appears anywhere in the run. The trace file answers that too, but it is
+	// a file in the workspace holding every turn's prose; this is the same
+	// evidence in memory, bounded, and already beside the text it is used to
+	// check. It is a tail and not a transcript: absence in it is evidence, not
+	// proof, and whatever reads it must say so.
+	Ran []string
+}
+
+// ranLimit and ranArgumentBytes bound the record. Forty calls is well past the
+// length of any single verification pass and small enough to hand to a judge
+// whole; the argument clip keeps a command recognisable without carrying a
+// pasted file into someone else's context.
+const (
+	ranLimit         = 40
+	ranArgumentBytes = 200
+)
+
+// record appends one executed call to the bounded tail.
+func (o *Outcome) record(call ai.ToolCall, failed bool) {
+	line := strings.TrimSpace(call.Function.Name + " " + snip(strings.TrimSpace(call.Function.Arguments), ranArgumentBytes))
+	if failed {
+		line += "  → error"
+	}
+	o.Ran = append(o.Ran, line)
+	if len(o.Ran) > ranLimit {
+		o.Ran = o.Ran[len(o.Ran)-ranLimit:]
+	}
 }
 
 // StopReason says how the loop ended. It is recorded rather than inferred
