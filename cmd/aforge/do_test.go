@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -17,6 +18,7 @@ import (
 	homepkg "github.com/Agent-Field/aforge-v2/internal/home"
 	"github.com/Agent-Field/aforge-v2/internal/provider"
 	"github.com/Agent-Field/aforge-v2/internal/router"
+	"github.com/Agent-Field/aforge-v2/internal/store"
 )
 
 // The whole point of `do` in one test: a headless run is not the static
@@ -218,6 +220,197 @@ func TestDoLeavesArtifactsUnderTheNamedWorkspace(t *testing.T) {
 	}
 }
 
+// The defect this fixes cost a benchmark run its whole point. Sent at a
+// project with `-w`, the errand worked in a freshly created empty subdirectory
+// of it: the file it was told to fix was not there to read, so it invented a
+// module from nothing, tested its invention, and reported success while the
+// person's file sat byte-identical beside it.
+//
+// The directory a person names IS the working directory. The proof is the edit
+// tool, which replaces an exact string in an existing file: it can only succeed
+// if the real file was visible from where the leaf ran.
+func TestDoEditsTheNamedDirectoryInPlace(t *testing.T) {
+	script := newScriptedBrain(t)
+	script.editPath = "intervals.py"
+	defer script.close()
+
+	workspace := t.TempDir()
+	target := filepath.Join(workspace, script.editPath)
+	if err := os.WriteFile(target, []byte(originalSource), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	var stdout, stderr strings.Builder
+	if err := doErrand(doRequest{
+		task: "fix the failing test in intervals.py", workspace: workspace,
+		timeout: 60 * time.Second, stdout: &stdout, stderr: &stderr, newClient: script.client,
+	}); err != nil {
+		t.Fatalf("errand: %v\n%s", err, stderr.String())
+	}
+	if script.count("edited") == 0 {
+		t.Fatalf("the leaf never reached the file it was sent to fix:\n%s", stderr.String())
+	}
+
+	after, err := os.ReadFile(target)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(after), fixedLine) {
+		t.Fatalf("%s was not edited in place:\n%s", target, string(after))
+	}
+	if strings.Contains(string(after), brokenLine) {
+		t.Fatalf("the broken line survived the edit:\n%s", string(after))
+	}
+
+	// Nothing of the engine's may remain in someone's project. The scratch
+	// directories are the second-order half of the same defect: leftover
+	// task-2/ folders broke the user's own pytest run with a duplicate module
+	// basename collection error.
+	entries, err := os.ReadDir(workspace)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, entry := range entries {
+		if entry.IsDir() {
+			t.Fatalf("the run left %s/ inside the person's directory", entry.Name())
+		}
+		if entry.Name() != script.editPath {
+			t.Fatalf("the run left %s beside the person's files", entry.Name())
+		}
+	}
+}
+
+// Saying nothing means here, which is what every other agent a person runs
+// from a terminal means by it.
+func TestErrandWorkspaceDefaultsToTheCurrentDirectory(t *testing.T) {
+	here, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := errandWorkspace("")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != here {
+		t.Fatalf("default workspace = %q, want the process directory %q", got, here)
+	}
+	// A named one is resolved against the same place rather than left relative,
+	// because the leaf that will use it does not run from here.
+	named, err := errandWorkspace("sub/dir")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := filepath.Join(here, "sub", "dir"); named != want {
+		t.Fatalf("named workspace = %q, want %q", named, want)
+	}
+}
+
+// A chat window is the other half of the same seam and must not have moved.
+// One thread hosts many unrelated jobs, so each still gets its own directory
+// under the store's workspace; only an errand shares one.
+func TestChatKeepsItsPerJobWorkspaceLayout(t *testing.T) {
+	script := newScriptedBrain(t)
+	defer script.close()
+	root := t.TempDir()
+	window := testWindow(t, root)
+	brain, err := buildBrain(window, "s1", brainOptions{newClient: script.client})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(brain.closeAll)
+	if brain.workspaceRoot != filepath.Join(root, "workspace") {
+		t.Fatalf("chat workspace root = %q, want the store's own", brain.workspaceRoot)
+	}
+	// The commander resolves a node to its own job directory beneath that root,
+	// which is the layout the whole chat surface reads through.
+	if err := window.graph.Splice(store.RootID, store.Subtree{Nodes: []store.NodeSpec{
+		{ID: "job", Brief: "produce the artifact", Stage: 0},
+	}}, store.Provenance{Origin: store.OriginUser, Intent: "produce the artifact"}); err != nil {
+		t.Fatal(err)
+	}
+	jobDir := filepath.Join(brain.workspaceRoot, "job")
+	if err := os.MkdirAll(jobDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if got, ok := brain.commander.WorkspacePath("job"); !ok || got != jobDir {
+		t.Fatalf("chat job workspace = (%q, %v), want (%q, true)", got, ok, jobDir)
+	}
+}
+
+// stderr is the only window a person has into a headless run, and it was
+// shut. Every line it printed hung off a node changing status, a node's first
+// status is Pending, and Pending is skipped — so a run whose leaf was never
+// claimed printed nothing at all for the whole of its life and then exited 2.
+// The ask becoming work is said out loud now, before any leaf moves.
+func TestDoReportsItsProgressOnStderr(t *testing.T) {
+	script := newScriptedBrain(t)
+	defer script.close()
+	var stdout, stderr strings.Builder
+	if err := doErrand(doRequest{
+		task: "write the release note and include the migration steps", workspace: t.TempDir(),
+		timeout: 60 * time.Second, stdout: &stdout, stderr: &stderr, newClient: script.client,
+	}); err != nil {
+		t.Fatalf("errand: %v\n%s", err, stderr.String())
+	}
+	said := stderr.String()
+	understood := strings.Index(said, "understood")
+	if understood < 0 {
+		t.Fatalf("stderr never said the ask became work:\n%s", said)
+	}
+	landed := strings.Index(said, statusMark(store.Done))
+	if landed < 0 {
+		t.Fatalf("stderr never reported a node landing:\n%s", said)
+	}
+	if understood > landed {
+		t.Fatalf("the structure was announced after the work finished:\n%s", said)
+	}
+}
+
+// A run that has stopped producing evidence has to account for itself. This is
+// the trace that prompted it: fifteen minutes of a completely empty terminal
+// behind a leaf that was never claimed, then exit 2. One structural read — no
+// model call, no flag — turns an invisible hang into a diagnosable one.
+func TestDoSaysWhatItIsWaitingOnWhenNothingMoves(t *testing.T) {
+	root := t.TempDir()
+	graph, err := store.Open(filepath.Join(root, "graph.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer graph.Close()
+	session := "headless-quiet"
+	command, err := graph.RequestCommand(store.Command{
+		SessionID: session, Kind: store.CommandSplice, Instruction: "fix the failing test",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	// One task, admitted to this errand and never claimed by anyone — the
+	// shape of the wedged run exactly.
+	if err := graph.Splice(store.RootID, store.Subtree{Nodes: []store.NodeSpec{
+		{ID: "task-1", Brief: "fix the failing test", Stage: 0},
+	}}, store.Provenance{Origin: store.OriginUser, SessionID: session, Intent: "fix the failing test"}); err != nil {
+		t.Fatal(err)
+	}
+
+	var progress strings.Builder
+	watcher := &settlementWatch{
+		graph: graph, session: session, commandSeq: command.Seq,
+		refused: make(chan planEstimate, 1), progress: &progress,
+		started: time.Now(), quiet: 50 * time.Millisecond,
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	if _, err := watcher.wait(ctx); err != nil {
+		t.Fatal(err)
+	}
+	said := progress.String()
+	for _, phrase := range []string{"still waiting", "1 task pending", "none running"} {
+		if !strings.Contains(said, phrase) {
+			t.Fatalf("the quiet line never said %q:\n%s", phrase, said)
+		}
+	}
+}
+
 // The factoring itself: one construction, two shapes. A chat window still gets
 // every piece it ever had, and headless differs by exactly the conversational
 // half — no head, no commander, no stream, no arrival brief — over an
@@ -284,6 +477,13 @@ const (
 	// artifactName is what the worker writes when the test asks it to leave
 	// something on disk.
 	artifactName = "notes.md"
+	// The in-place edit: a file that already exists in the person's directory,
+	// with one line the worker is scripted to replace. The edit tool requires
+	// the old text to be found, so a successful edit is proof the real file was
+	// where the leaf was standing.
+	brokenLine     = "return start <= other.end and other.start < end"
+	fixedLine      = "return start <= other.end and other.start <= end"
+	originalSource = "def overlaps(start, end, other):\n    " + brokenLine + "\n"
 )
 
 type scriptedBrain struct {
@@ -295,6 +495,9 @@ type scriptedBrain struct {
 	stall bool
 	// writeFile makes the first leaf write a real artifact.
 	writeFile bool
+	// editPath names a file already in the workspace that the first leaf edits
+	// in place, which is what a coding errand actually does.
+	editPath string
 	// leafCost is what each call reports spending, which is what the consent
 	// desk's estimate is built from.
 	leafCost float64
@@ -437,6 +640,11 @@ func (s *scriptedBrain) leaf(body string) string {
 	case strings.Contains(body, "A reviewer compared the previous attempt"):
 		s.tally("revision")
 		return s.say(firstDraftAnswer + " (revised, still nothing about migrating)")
+	// The first leaf turn edits; the task itself names the file, so the guard
+	// counts turns rather than looking for the path in the transcript.
+	case s.editPath != "" && s.count("edited") == 0:
+		s.tally("edited")
+		return s.tool("edit", fmt.Sprintf(`{"path":%q,"old":%q,"new":%q}`, s.editPath, brokenLine, fixedLine))
 	case s.writeFile && !strings.Contains(body, artifactName):
 		// The honest way to leave a file behind is the tool the product gives
 		// the worker for it, so the artifact reaches the outcome the way every
