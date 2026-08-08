@@ -383,13 +383,13 @@ func (m *Model) voiceControl() string {
 	glyph := m.voiceMicGlyph()
 	switch m.voiceState {
 	case voiceStarting:
-		return glyph + " " + mutedStyle.Render("········ 0:00") + " " + mutedStyle.Faint(true).Render("⟨×⟩")
+		return glyph + " " + mutedStyle.Render("········ 0:00") + " " + controlStyle.Render("⟨×⟩")
 	case voiceRecording:
 		elapsed := time.Since(m.voiceStartedAt)
-		return glyph + " " + mutedStyle.Render(renderWaveform(m.voiceLevels, 8)+" "+formatVoiceElapsed(elapsed)) + " " + mutedStyle.Faint(true).Render("⟨×⟩")
+		return glyph + " " + mutedStyle.Render(renderWaveform(m.voiceLevels, 8)+" "+formatVoiceElapsed(elapsed)) + " " + controlStyle.Render("⟨×⟩")
 	case voiceFinalizing:
 		elapsed := time.Since(m.voiceStartedAt)
-		return glyph + " " + mutedStyle.Render(renderWaveform(m.voiceLevels, 8)+" "+formatVoiceElapsed(elapsed)) + " " + mutedStyle.Faint(true).Render("⟨×⟩")
+		return glyph + " " + mutedStyle.Render(renderWaveform(m.voiceLevels, 8)+" "+formatVoiceElapsed(elapsed)) + " " + controlStyle.Render("⟨×⟩")
 	default:
 		return glyph
 	}
@@ -397,7 +397,7 @@ func (m *Model) voiceControl() string {
 
 func (m *Model) voiceMicGlyph() string {
 	if m.voiceState == voiceIdle {
-		return mutedStyle.Faint(true).Render("◌")
+		return controlStyle.Render("◌")
 	}
 	return m.matteSweep("⟨●⟩")
 }
