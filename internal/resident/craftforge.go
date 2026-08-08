@@ -228,14 +228,14 @@ func (r *Reconciler) craftForgedSince(since time.Time) []BriefEvent {
 }
 
 func (r *Reconciler) craftForgedLine(summary craft.Summary) string {
-	line := "Forged the " + summary.Name + " craft"
+	line := "Learned how to do " + summary.Name
 	if versions, err := r.craftMind.shelf.History(summary.Name, 1); err == nil && len(versions) > 0 {
 		subject := strings.TrimSpace(strings.TrimPrefix(versions[0].Subject, summary.Name+":"))
 		if rest, ok := strings.CutPrefix(subject, "forged"); ok {
-			line = "Forged the " + summary.Name + " craft " + strings.TrimSpace(rest)
+			line = "Learned how to do " + summary.Name + " " + strings.TrimSpace(rest)
 		} else if rest, ok := strings.CutPrefix(subject, "refined"); ok {
-			line = "Refined the " + summary.Name + " craft " + strings.TrimSpace(rest)
+			line = "Got better at " + summary.Name + " " + strings.TrimSpace(rest)
 		}
 	}
-	return strings.TrimSpace(line) + " — it'll be used next time."
+	return strings.TrimSpace(line) + " — I'll work this way next time."
 }

@@ -1,6 +1,7 @@
 package head
 
 import (
+	"context"
 	"regexp"
 	"testing"
 
@@ -77,4 +78,39 @@ func containsWord(text, word string) bool {
 
 func containsPhrase(text, phrase string) bool {
 	return regexp.MustCompile(`(?i)` + regexp.QuoteMeta(phrase)).MatchString(text)
+}
+
+// TestFreshRidesTheRouteDecisionOntoTheWorkOrder is the opt-out that stopped
+// needing a word we invented. Skipping learned know-how used to be six frozen
+// phrases, and the reliable ones required saying "craft" — the one escape hatch
+// in the product that demanded the internal noun, in direct violation of the
+// design filter that forbids it. It is a reading of intent now, made where
+// every other reading of a message is made, and carried to the engine as a flag
+// on the work order.
+func TestFreshRidesTheRouteDecisionOntoTheWorkOrder(t *testing.T) {
+	for name, response := range map[string]string{
+		"asked for": `{"reply":"Working it out from scratch.","command":{"kind":"splice","target":"","instruction":"do the investor update, but don't use the template this time"},"remember":null,"retract":null,"fresh":true}`,
+		"not asked": `{"reply":"On it.","command":{"kind":"splice","target":"","instruction":"do the investor update"},"remember":null,"retract":null,"fresh":false}`,
+	} {
+		t.Run(name, func(t *testing.T) {
+			graphStore := openHeadStore(t)
+			user, err := graphStore.PostMessage(store.Message{
+				SessionID: "fresh", Role: store.RoleUser, Body: "do the investor update",
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := New(&fakeClient{responses: []string{response}}, graphStore).
+				answer(context.Background(), user); err != nil {
+				t.Fatal(err)
+			}
+			commands, err := graphStore.PendingCommands(10)
+			if err != nil || len(commands) != 1 {
+				t.Fatalf("commands = %+v err=%v", commands, err)
+			}
+			if want := name == "asked for"; commands[0].Fresh != want {
+				t.Fatalf("journaled command Fresh = %t, want %t", commands[0].Fresh, want)
+			}
+		})
+	}
 }
