@@ -6,6 +6,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/Agent-Field/aforge-v2/internal/cas"
+	"github.com/Agent-Field/aforge-v2/internal/exec"
 	"github.com/Agent-Field/aforge-v2/internal/store"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
@@ -29,6 +31,62 @@ func (c *artifactCommander) ResolveMediaPath(_, _ string) (string, bool) {
 
 func (c *attachmentCommander) ImageInputSupport() (string, bool) {
 	return c.model, c.supported
+}
+
+type keepingCommander struct {
+	*fakeCommander
+	root string
+	kept []string
+}
+
+func (c *keepingCommander) KeepAttachment(path string) (string, error) {
+	c.kept = append(c.kept, path)
+	return exec.KeepAttachment(c.root, path)
+}
+
+// The message is the mention: what it carries is a reference to our own copy,
+// while the composer above it goes on naming the person's own file.
+func TestSendingAnAttachmentKeepsACopyAndCarriesTheReference(t *testing.T) {
+	backend := &fakeBackend{}
+	commander := &keepingCommander{fakeCommander: newFakeCommander(), root: filepath.Join(t.TempDir(), "cas")}
+	model := NewWithCommander(backend, "keeping", commander)
+	path := imageFixture(t, "contract.pdf")
+	model.input.SetValue("what does " + path + " say about termination")
+	model.captureImageAttachments()
+	if len(model.attachments) != 1 || model.attachments[0] != path {
+		t.Fatalf("composer holds %v, want the person's own path", model.attachments)
+	}
+
+	_, command := model.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	if command == nil {
+		t.Fatal("attachment did not submit")
+	}
+	_ = command()
+	backend.mu.Lock()
+	defer backend.mu.Unlock()
+	posted := backend.posted[len(backend.posted)-1]
+	if len(posted.Attachments) != 1 {
+		t.Fatalf("posted = %+v", posted)
+	}
+	reference := posted.Attachments[0]
+	digest, source, ok := cas.ParseReference(reference)
+	if !ok || source != path || digest == "" {
+		t.Fatalf("posted attachment %q is not a durable reference", reference)
+	}
+	if len(commander.kept) != 1 || commander.kept[0] != path {
+		t.Fatalf("keeper saw %v", commander.kept)
+	}
+	// The copy is real: deleting the person's file leaves the message whole.
+	if err := os.Remove(path); err != nil {
+		t.Fatal(err)
+	}
+	blobs, err := cas.New(commander.root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := blobs.Verify(digest); err != nil {
+		t.Fatalf("kept copy did not survive: %v", err)
+	}
 }
 
 func imageFixture(t *testing.T, name string) string {
@@ -92,7 +150,10 @@ func TestVisionAttachmentChipRemovalAndSubmit(t *testing.T) {
 	}
 }
 
-func TestNonVisionAttachmentShowsHintAndFallsBackToPlainPath(t *testing.T) {
+// A screenshot pasted at a talk model with no eyes used to be dropped on the
+// floor: no copy, no fallback, and nothing said to anyone. It is staged like
+// any other attachment now, and the chip says where it can be looked at.
+func TestNonVisionAttachmentIsStagedRatherThanDropped(t *testing.T) {
 	backend := &fakeBackend{}
 	commander := &attachmentCommander{
 		fakeCommander: &fakeCommander{current: map[string]string{"talk": "text/model"}},
@@ -102,19 +163,22 @@ func TestNonVisionAttachmentShowsHintAndFallsBackToPlainPath(t *testing.T) {
 	path := imageFixture(t, "fallback.webp")
 	model.input.SetValue("inspect " + path)
 	model.captureImageAttachments()
-	if rendered := ansi.Strip(model.renderInput()); !strings.Contains(rendered, "text/model can't see images — try a vision model") {
+	if rendered := ansi.Strip(model.renderInput()); !strings.Contains(rendered, "text/model can't see it here") {
 		t.Fatalf("fallback hint missing: %q", rendered)
 	}
 	_, command := model.Update(tea.KeyMsg{Type: tea.KeyEnter})
 	if command == nil {
-		t.Fatal("non-vision fallback did not submit")
+		t.Fatal("non-vision attachment did not submit")
 	}
 	_ = command()
 	backend.mu.Lock()
 	defer backend.mu.Unlock()
 	posted := backend.posted[len(backend.posted)-1]
-	if len(posted.Attachments) != 0 || !strings.Contains(posted.Body, path) {
-		t.Fatalf("fallback posted = %+v", posted)
+	if len(posted.Attachments) != 1 || posted.Attachments[0] != path {
+		t.Fatalf("blind talk model dropped the image: %+v", posted)
+	}
+	if strings.Contains(posted.Body, path) {
+		t.Fatalf("image degraded into the message body: %q", posted.Body)
 	}
 }
 
@@ -155,7 +219,7 @@ func TestDocumentAttachmentBecomesADocChipAndSurvivesATextOnlyModel(t *testing.T
 	}
 }
 
-func TestMixedAttachmentsSplitDocumentsFromUnsupportedImages(t *testing.T) {
+func TestMixedAttachmentsAllRideAsAttachments(t *testing.T) {
 	backend := &fakeBackend{}
 	commander := &attachmentCommander{
 		fakeCommander: &fakeCommander{current: map[string]string{"talk": "text/model"}},
@@ -171,7 +235,7 @@ func TestMixedAttachmentsSplitDocumentsFromUnsupportedImages(t *testing.T) {
 	}
 	rendered := ansi.Strip(model.renderInput())
 	if !strings.Contains(rendered, "▤ brief.pdf") || !strings.Contains(rendered, "⌾ chart.png") ||
-		!strings.Contains(rendered, "text/model can't see images") {
+		!strings.Contains(rendered, "text/model can't see it here") {
 		t.Fatalf("mixed chips = %q", rendered)
 	}
 
@@ -183,13 +247,30 @@ func TestMixedAttachmentsSplitDocumentsFromUnsupportedImages(t *testing.T) {
 	backend.mu.Lock()
 	defer backend.mu.Unlock()
 	posted := backend.posted[len(backend.posted)-1]
-	// The image falls back to a plain path the model can at least name; the
-	// document stays an attachment so the workspace copy is made.
-	if len(posted.Attachments) != 1 || posted.Attachments[0] != document {
+	// Both are staged for the work; what can look at the image is decided
+	// where the job runs, not by the model answering in the thread.
+	if len(posted.Attachments) != 2 || posted.Attachments[0] != document || posted.Attachments[1] != image {
 		t.Fatalf("posted attachments = %v", posted.Attachments)
 	}
-	if !strings.Contains(posted.Body, image) || strings.Contains(posted.Body, document) {
+	if strings.Contains(posted.Body, image) {
 		t.Fatalf("posted body = %q", posted.Body)
+	}
+}
+
+// The manual promises .pdf, .docx and .pptx. The composer used to detect only
+// the first two-thirds of that sentence, and said nothing about the rest.
+func TestOfficeDocumentsAttachTheWayPDFsDo(t *testing.T) {
+	for _, name := range []string{"minutes.docx", "deck.pptx", "filing.pdf"} {
+		model := NewWithCommander(&fakeBackend{}, "docs", newFakeCommander())
+		path := imageFixture(t, name)
+		model.input.SetValue("read " + path)
+		model.captureImageAttachments()
+		if model.input.Value() != "read" || len(model.attachments) != 1 || model.attachments[0] != path {
+			t.Fatalf("%s: draft=%q attachments=%v", name, model.input.Value(), model.attachments)
+		}
+		if rendered := ansi.Strip(model.renderInput()); !strings.Contains(rendered, "▤ "+name) {
+			t.Fatalf("%s did not become a document chip: %q", name, rendered)
+		}
 	}
 }
 

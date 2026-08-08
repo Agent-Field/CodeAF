@@ -305,6 +305,20 @@ func (m *Model) appendNodeMessages(messages []store.Message) {
 	}
 }
 
+// toggleNodeSteerFocus hands the keyboard between the steer line and the feed.
+// The letters can only belong to one of them at a time: with the field focused
+// every key is a character, so a steer that opens with "check…" survives, and
+// the single-key actions wait until the field gives the keyboard back. The
+// blurred caret and the footer both say which half is listening.
+func (m *Model) toggleNodeSteerFocus() {
+	m.inputFocused = !m.inputFocused
+	if m.inputFocused {
+		_ = m.input.Focus()
+		return
+	}
+	m.input.Blur()
+}
+
 func (m *Model) cancelInspectedNode() tea.Cmd {
 	if m.commander == nil {
 		return m.showStatus("cancel unavailable — no Commander")
@@ -385,10 +399,38 @@ func (m *Model) renderNodeDetailsContent(width, maxLines int) string {
 		}
 	}
 	lines := strings.Split(content, "\n")
-	if len(lines) > maxLines {
-		lines = append(lines[:maxLines], mutedStyle.Faint(true).Render("… (full result lands in chat)"))
+	m.nodeDetailsClipped = len(lines) > maxLines
+	if m.nodeDetailsClipped {
+		// The header is a fixed-height précis. What it cannot hold is not
+		// truncated away any more: it is repeated at the end of the feed,
+		// which scrolls, and which is where the eye already is when a job
+		// settles.
+		lines = append(lines[:maxLines], mutedStyle.Faint(true).Render("… (in full at the end of the feed)"))
 	}
 	return strings.Join(lines, "\n")
+}
+
+// settledOutcomeBlock is the whole of a finished worker's result, laid at the
+// end of the activity feed so a long deliverable is readable in the surface
+// that produced it rather than only in chat.
+func (m *Model) settledOutcomeBlock(width int) (feedBlock, bool) {
+	if !m.nodeDetailsClipped || !terminalStatus(m.inspectedNode.Status) {
+		return feedBlock{}, false
+	}
+	body := strings.TrimSpace(m.inspectedNode.Summary)
+	style := inputTextStyle
+	if m.inspectedNode.Status == store.Failed || m.inspectedNode.Status == store.Cancelled {
+		body = strings.TrimSpace(m.inspectedNode.Error)
+		style = roseStyle
+	}
+	if body == "" {
+		return feedBlock{}, false
+	}
+	lines := []string{mutedStyle.Faint(true).Render("── outcome ──")}
+	for _, line := range strings.Split(wrapText(body, width), "\n") {
+		lines = append(lines, style.Render(line))
+	}
+	return feedBlock{brief: lines}, true
 }
 
 // The activity feed's visual grammar, kept to five distinct voices so the eye
@@ -432,6 +474,9 @@ type feedRow struct {
 // open on click.
 func (m *Model) renderActivityFeed(width int) string {
 	blocks := parseFeedBlocks(m.nodeTraceText, m.nodeMessages, width)
+	if outcome, ok := m.settledOutcomeBlock(width); ok {
+		blocks = append(blocks, outcome)
+	}
 	if artifacts := m.renderMediaArtifacts(store.Message{
 		NodeID: m.nodeViewID, Body: strings.ReplaceAll(m.nodeTraceText, "⏎", " "),
 	}, width); artifacts != "" {

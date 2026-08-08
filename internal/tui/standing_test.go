@@ -2,6 +2,7 @@ package tui
 
 import (
 	"fmt"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -241,7 +242,7 @@ func TestCharterCardAnatomyActionsHistoryAndEsc(t *testing.T) {
 		"expiry · never",
 		"firing history",
 		"15¢ · Three review notes delivered.",
-		"▸ pause", "▸ resume", "▸ retire", "▸ edit cadence",
+		"▸ pause", "▸ retire", "▸ edit cadence",
 	} {
 		if !strings.Contains(card, want) {
 			t.Fatalf("charter card is missing %q:\n%s", want, card)
@@ -281,14 +282,118 @@ func TestCharterCardAnatomyActionsHistoryAndEsc(t *testing.T) {
 		t.Fatalf("charter action requests = %d, want 1", len(backend.requested))
 	}
 	request := backend.requested[0]
-	if request.Kind != store.CommandAmend || request.Target != "pr-watch" || request.Instruction != "pause" {
+	if request.Kind != store.CommandCharterPause || request.Target != "pr-watch" {
 		t.Fatalf("unexpected charter command request: %#v", request)
+	}
+	if !strings.Contains(request.Instruction, "pause") {
+		t.Fatalf("charter command lost its evidence: %q", request.Instruction)
 	}
 
 	_, _ = model.Update(tea.KeyMsg{Type: tea.KeyEsc})
 	if model.charterCardID != "" || !model.graphOpen || model.focus != focusGraph {
 		t.Fatalf("esc did not return from charter card to rail: charter=%q open=%v focus=%v",
 			model.charterCardID, model.graphOpen, model.focus)
+	}
+}
+
+// liveCharterBackend reads from the fake snapshot and writes to a real store,
+// because the shape of a request proves nothing: every card action used to
+// pass its own assertion and be rejected by validation the moment it reached
+// the graph.
+type liveCharterBackend struct {
+	*fakeBackend
+	graph *store.Store
+}
+
+func (b *liveCharterBackend) RequestCommand(command store.Command) (store.Command, error) {
+	return b.graph.RequestCommand(command)
+}
+
+func TestEveryCharterCardActionSurvivesRealStoreValidation(t *testing.T) {
+	now := time.Date(2026, time.August, 6, 14, 0, 0, 0, time.Local)
+	graph, err := store.Open(filepath.Join(t.TempDir(), "charter-actions.db"))
+	if err != nil {
+		t.Fatalf("open store: %v", err)
+	}
+	defer graph.Close()
+
+	charter, err := store.NewCharter("pr-watch", "watch PRs on Agent-Field/aforge",
+		store.WatchSpec{Kind: store.WatchPoll, Poll: &store.PollWatch{
+			Condition: "a new pull request appeared", Cadence: 2 * time.Minute,
+		}}, "any new PR?", store.CharterAction{Template: "review the new pull request"},
+		store.CharterRails{PerFiringBudgetUSD: 0.15, MaxFiringsPerDay: 10},
+		store.CharterActive, store.Ratification{
+			Origin: store.OriginUser, SessionID: "standing", Evidence: "yes, stand this up",
+		})
+	if err != nil {
+		t.Fatalf("build charter: %v", err)
+	}
+	if err := graph.CreateCharter(charter); err != nil {
+		t.Fatalf("create charter: %v", err)
+	}
+
+	snapshot := seededStandingSnapshot(now)
+	backend := &liveCharterBackend{fakeBackend: &fakeBackend{snapshot: snapshot}, graph: graph}
+
+	// Every verb the card can show, in every state it can show it in.
+	states := []struct {
+		name  string
+		state string
+	}{{"active", "active"}, {"paused", "paused"}, {"proposed", "proposed"}}
+	for _, state := range states {
+		card := standingCharter{ID: "pr-watch", Name: "pr-watch", Watch: "every 2 minutes", State: state.state}
+		if state.state == "proposed" {
+			card.Proposed = true
+		}
+		actions := charterCardActions(card)
+		if len(actions) == 0 {
+			t.Fatalf("%s charter offers no action at all", state.name)
+		}
+		for _, action := range actions {
+			model := standingModel(backend, now, snapshot)
+			model.setSize(90, 32)
+			model.toggleGraph()
+			model.openStandingCharter("pr-watch")
+			command := model.requestCharterAction(action)
+			if command == nil {
+				t.Fatalf("%s · %s produced no command", state.name, action)
+			}
+			if action == charterCadenceAction {
+				if !model.charterEditing {
+					t.Fatalf("%s · edit cadence did not open the inline field", state.name)
+				}
+				typeIntoModel(model, "every morning")
+				if got := model.charterCadence.Value(); !strings.Contains(got, "every morning") {
+					t.Fatalf("cadence field did not take the typing: %q", got)
+				}
+				var handled bool
+				command, handled = model.updateCharterCadenceKey(tea.KeyMsg{Type: tea.KeyEnter})
+				if !handled || command == nil || model.charterEditing {
+					t.Fatalf("enter did not commit the cadence edit: handled=%v", handled)
+				}
+			}
+			result, ok := command().(charterCommandResultMsg)
+			if !ok {
+				t.Fatalf("%s · %s did not return a charter result", state.name, action)
+			}
+			if result.err != nil {
+				t.Fatalf("%s · %s was rejected by the store: %v", state.name, action, result.err)
+			}
+		}
+	}
+
+	amendments, err := graph.TargetedCommands("pr-watch", store.CommandAmend, 10)
+	if err != nil {
+		t.Fatalf("read commands: %v", err)
+	}
+	if len(amendments) > 0 {
+		t.Fatalf("a card action still journals an amendment at charter furniture: %#v", amendments[0])
+	}
+}
+
+func TestRetiredCharterOffersNoActionItCannotPerform(t *testing.T) {
+	if actions := charterCardActions(standingCharter{ID: "x", State: "retired"}); len(actions) != 0 {
+		t.Fatalf("retired charter still offers %v", actions)
 	}
 }
 
@@ -456,5 +561,72 @@ func TestStoreNativeChartersRenderWithoutCompatibilityNodes(t *testing.T) {
 	}
 	if len(got.Firings) != 1 || got.Firings[0].Cost != 0.11 || got.Today != 1 || got.LastFired.IsZero() {
 		t.Fatalf("firing not attached through CharterID: %#v", got)
+	}
+}
+
+// A watch that looks every morning and correctly finds nothing was rendered
+// exactly like a dead one — "last fired never · 0 today". The quiet day is
+// durable state now, so the line says what actually happened.
+func TestAQuietWatchSaysItChecked(t *testing.T) {
+	now := time.Date(2026, time.August, 7, 9, 0, 0, 0, time.Local)
+	model := standingModel(&fakeBackend{}, now, store.Snapshot{Nodes: []store.Node{{ID: store.RootID}}})
+
+	quiet := standingCharter{
+		Name:          "watch PRs on aforge",
+		LastChecked:   now.Add(-2 * time.Hour),
+		LastCheckLine: "nothing new on the feed",
+	}
+	line := model.standingCharterLine(quiet)
+	if !strings.Contains(line, "last checked 2h") || !strings.Contains(line, "nothing new on the feed") {
+		t.Fatalf("quiet watch line = %q", line)
+	}
+	if strings.Contains(line, "last fired") {
+		t.Fatalf("a watch that only checked claimed a firing: %q", line)
+	}
+
+	// A check with no reason recorded still reads as a check.
+	quiet.LastCheckLine = ""
+	if line := model.standingCharterLine(quiet); !strings.Contains(line, "· nothing new") {
+		t.Fatalf("reasonless check line = %q", line)
+	}
+
+	// A watch that has fired keeps the firing line, and one that has done
+	// neither keeps the wording it had.
+	fired := standingCharter{Name: "watch", LastChecked: now.Add(-time.Hour), LastFired: now.Add(-30 * time.Minute), Today: 2}
+	if line := model.standingCharterLine(fired); !strings.Contains(line, "last fired 30m") ||
+		!strings.Contains(line, "2 today") {
+		t.Fatalf("fired watch line = %q", line)
+	}
+	if line := model.standingCharterLine(standingCharter{Name: "new"}); line != "⏱ new · last fired never · 0 today" {
+		t.Fatalf("untouched watch line = %q", line)
+	}
+}
+
+// The brief's waiting rows are the only present-tense thing in it, and they
+// take the same flag a card waiting on a person carries.
+func TestBriefWaitingRowsCarryTheNeedsYouFlag(t *testing.T) {
+	if glyph := ansi.Strip(briefItemGlyph(briefWaitingKind)); glyph != "⚑" {
+		t.Fatalf("waiting glyph = %q, want the ⚑ a waiting card already uses", glyph)
+	}
+	if glyph := ansi.Strip(briefItemGlyph(store.BriefItemKind("something-new"))); glyph != "·" {
+		t.Fatalf("unknown kinds must stay quiet: %q", glyph)
+	}
+
+	model := New(&fakeBackend{}, "brief")
+	model.setSize(90, 30)
+	seq := int64(11)
+	model.briefExpanded[seq] = true
+	rendered := ansi.Strip(model.renderBrief(store.Message{
+		Seq: seq, Role: store.RoleAgent, Body: "While you were away.",
+		Brief: &store.Brief{Items: []store.BriefItem{
+			{Kind: store.BriefDone, Body: "The market report landed."},
+			{Kind: briefWaitingKind, Body: "Which vendor did you mean — waiting on you 3h."},
+		}},
+	}, 88, 0, false))
+	if !strings.Contains(rendered, "⚑ Which vendor did you mean") {
+		t.Fatalf("waiting row did not read as needing you:\n%s", rendered)
+	}
+	if !strings.Contains(rendered, "✓ The market report landed.") {
+		t.Fatalf("brief lost its ordinary rows:\n%s", rendered)
 	}
 }

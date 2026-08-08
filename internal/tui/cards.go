@@ -1642,10 +1642,21 @@ func briefItemGlyph(kind store.BriefItemKind) string {
 		return powderStyle.Render("◇")
 	case store.BriefSpend:
 		return mutedStyle.Render("$")
+	case briefWaitingKind:
+		// The brief's one present-tense row: a question nobody answered, or a
+		// job stopped waiting for one. It takes the flag a card waiting on a
+		// person already carries, so "needs you" reads the same wherever it
+		// appears — glancing down the brief, the eye finds the flag first.
+		return questionStyle.Render("⚑")
 	default:
 		return mutedStyle.Render("·")
 	}
 }
+
+// briefWaitingKind is store.BriefWaiting, spelled as the value the journal
+// carries because the constant lands with the resident's half of this wave.
+// Swap it for the constant when the two halves meet.
+const briefWaitingKind = store.BriefItemKind("waiting")
 
 func oneSentence(value string) string {
 	value = strings.Join(strings.Fields(value), " ")

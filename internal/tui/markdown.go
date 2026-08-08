@@ -7,6 +7,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/Agent-Field/aforge-v2/internal/cas"
 	"github.com/Agent-Field/aforge-v2/internal/store"
 	"github.com/charmbracelet/lipgloss"
 )
@@ -148,7 +149,12 @@ func (m *Model) workspaceDirectoryLink(nodeID string) string {
 }
 
 func (m *Model) renderMediaArtifacts(message store.Message, width int) string {
-	paths := append([]string(nil), message.Attachments...)
+	paths := make([]string, 0, len(message.Attachments))
+	for _, attachment := range message.Attachments {
+		// An attachment is journaled as a reference to our own copy; what a
+		// person wants to click is still their own file, under its own name.
+		paths = append(paths, cas.SourcePath(attachment))
+	}
 	paths = append(paths, mediaReferences(message.Body)...)
 	seen := make(map[string]bool, len(paths))
 	lines := make([]string, 0, len(paths))
