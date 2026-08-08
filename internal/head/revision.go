@@ -66,7 +66,17 @@ func (h *Head) manageRedirect(ctx context.Context, user store.Message) (bool, er
 		// the wait it is meant to shorten, and everything expedite does is
 		// reversible, so the best-ranked live job takes the pressure and the
 		// receipt names it.
-		return true, h.requestRevision(ctx, user, store.CommandExpedite, intent.Candidates[0].Node.ID, user.Body)
+		//
+		// When nothing cleared the anchor floor the ranking is not evidence and
+		// the first row of an arbitrary list is not a choice. The oldest thing
+		// still running is: it is what the person has been waiting on longest,
+		// which is what impatience is about, and the receipt names it so a wrong
+		// guess costs one word.
+		pressed := intent.Candidates[0]
+		if intent.Floorless {
+			pressed = oldestRunningTarget(intent.Candidates)
+		}
+		return true, h.requestRevision(ctx, user, store.CommandExpedite, pressed.Node.ID, user.Body)
 	}
 	if intent.Certain {
 		return true, h.requestRedirect(ctx, user, intent.Candidates[0].Node.ID, user.Body)
@@ -125,7 +135,7 @@ func (h *Head) recognizeRedirect(user store.Message) (redirectIntent, bool, erro
 		// something a moment ago. That is the whole signal, and it is the one a
 		// person would use.
 		return redirectIntent{Cue: cue, Candidates: []store.SurgeryTarget{adjacent}, Certain: true}, true, nil
-	case !refersToLiveWork(message, len(active)):
+	case !refersToLiveWork(message, true, len(active)):
 		return redirectIntent{}, false, nil
 	case len(active) == 1:
 		// One job running and the user said "the job". There is nothing else
@@ -394,6 +404,76 @@ func (h *Head) applyRedirectOption(ctx context.Context, user store.Message, opti
 	return false, nil
 }
 
+// applyUrgency is impatience the frozen cue list was never going to catch.
+//
+// "taking too long" is in the phrase list and "taking forever" is not, and no
+// amount of adding phrases fixes that — the next one is always the one nobody
+// wrote down. So the list stays exactly as it is, keeps being the fast path, and
+// the sentences it misses are read by the model in the routing call that was
+// already happening. What happens after the reading is the cue path's own
+// machinery, unchanged: expedite the job, never ask, name it in the receipt.
+//
+// Which job takes the pressure follows the same order every other referent
+// follows: what the words name, then what the conversation points at, and only
+// then the oldest thing still running — which is what a person waiting is
+// waiting on.
+func (h *Head) applyUrgency(ctx context.Context, user store.Message) (bool, error) {
+	active, err := h.activeUserJobs()
+	if err != nil || len(active) == 0 {
+		return false, err
+	}
+	ranked, err := h.rankRedirectTargets(strings.TrimSpace(user.Body), active)
+	if err != nil {
+		return false, err
+	}
+	anchored := make([]store.SurgeryTarget, 0, len(ranked))
+	for _, target := range ranked {
+		if target.Score >= RedirectAnchorScore {
+			anchored = append(anchored, target)
+		}
+	}
+	pressed := store.SurgeryTarget{}
+	switch {
+	case len(anchored) == 1:
+		pressed = anchored[0]
+	default:
+		adjacent, adjoins, adjacentErr := h.adjacencyTarget(user, active)
+		if adjacentErr != nil {
+			return false, adjacentErr
+		}
+		if adjoins {
+			pressed = adjacent
+		} else {
+			pressed = oldestRunningTarget(active)
+		}
+	}
+	return true, h.requestRevision(ctx, user, store.CommandExpedite, pressed.Node.ID, user.Body)
+}
+
+// oldestRunningTarget is the answer to "which one" when nothing in the sentence
+// and nothing in the conversation says. Somebody impatient is impatient about
+// the thing that has been going longest, and work that has actually started
+// outranks work that has not.
+func oldestRunningTarget(targets []store.SurgeryTarget) store.SurgeryTarget {
+	best := targets[0]
+	bestRunning := runningStatus(best.Node)
+	for _, target := range targets[1:] {
+		running := runningStatus(target.Node)
+		switch {
+		case running && !bestRunning:
+		case running == bestRunning && target.Node.CreatedSeq < best.Node.CreatedSeq:
+		default:
+			continue
+		}
+		best, bestRunning = target, running
+	}
+	return best
+}
+
+func runningStatus(node store.Node) bool {
+	return node.Status == store.Running || node.Status == store.Claimed
+}
+
 func clipTargets(targets []store.SurgeryTarget) []store.SurgeryTarget {
 	if len(targets) > RedirectCandidateLimit {
 		return targets[:RedirectCandidateLimit]
@@ -452,9 +532,22 @@ func redirectCue(message string) (string, bool) {
 }
 
 // refersToLiveWork is the deictic half of the anchor: the sentence points at
-// the running work without naming any of its words. A bare pronoun counts only
-// when there is exactly one thing it could point at.
-func refersToLiveWork(message string, active int) bool {
+// the running work without naming any of its words.
+//
+// A bare pronoun used to count only when exactly one thing was running, and the
+// argument for that was resolution: with four jobs live, "it" names none of them
+// and the reading was refused rather than guessed. But refusing is not neutral —
+// "this is taking forever" with four jobs running fell out of every reading and
+// landed on the router as ordinary new work, so impatience switched itself off
+// at exactly the load that produces it.
+//
+// cued is what makes the difference safe. On the redirect path a cue has already
+// established that this sentence changes work already underway, so "it" is doing
+// referential work and the only open question is which job — settled where
+// ambiguity belongs, by one plain question, or for the class that must never ask,
+// by the oldest thing running. Without a cue the same pronoun is as likely to be
+// "thanks, that helps", and one thing running stays the whole licence.
+func refersToLiveWork(message string, cued bool, active int) bool {
 	lower := strings.ToLower(strings.TrimSpace(message))
 	for _, phrase := range []string{
 		"the job", "that job", "this job", "the task", "that task", "this task",
@@ -468,7 +561,7 @@ func refersToLiveWork(message string, active int) bool {
 			return true
 		}
 	}
-	if active != 1 {
+	if !cued && active != 1 {
 		return false
 	}
 	for _, word := range strings.FieldsFunc(lower, func(r rune) bool {

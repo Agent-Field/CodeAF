@@ -248,7 +248,7 @@ func (h *Head) controlLoopApplies(user store.Message) (bool, error) {
 		return false, err
 	}
 	if len(active) > 0 {
-		if controlVerbPresent(message) || refersToLiveWork(message, len(active)) {
+		if controlVerbPresent(message) || refersToLiveWork(message, false, len(active)) {
 			return true, nil
 		}
 	}

@@ -447,6 +447,41 @@ func (h *Head) askWhichWork(user store.Message, message string, rivals []store.N
 	return err
 }
 
+// applyAdjustment is the polite half of the same event. "That's wrong" was the
+// only sentence that reached this path, because the gate above is a frozen list
+// of conflict vocabulary — and "make it warmer, less legal" matches none of it,
+// so every mannerly revision of a delivered draft became a brand-new job:
+// re-planned, re-priced, without the previous version in hand and without the
+// line that says the user outranks the predecessor's account of itself. Three
+// revisions of one email were four jobs.
+//
+// The cue list does not grow; it stays the fast path it always was. What judges
+// the sentences it was never going to cover is the model, on the routing call
+// that was already happening. Once the reading arrives, everything downstream is
+// the correction path unchanged — same resolution, same workspace inheritance,
+// same dispute line — because a polite adjustment and a blunt rejection are the
+// same event said in two registers.
+func (h *Head) applyAdjustment(user store.Message) (bool, error) {
+	message := strings.TrimSpace(user.Body)
+	if message == "" {
+		return false, nil
+	}
+	anchor, anchored, err := h.correctionTarget(user, message)
+	if err != nil || !anchored {
+		return false, err
+	}
+	if len(anchor.Rivals) > 1 {
+		return true, h.askWhichWork(user, message, anchor.Rivals)
+	}
+	previous := h.jobResult(anchor.Job)
+	if strings.TrimSpace(previous) == "" {
+		// Nothing was delivered, so there is nothing to adjust. Whatever the
+		// sentence is, it is new work and the ordinary path owns it.
+		return false, nil
+	}
+	return true, h.requestCorrection(user, anchor.Job, message, previous)
+}
+
 // correctable is the membrane: the user's own work, finished, and not the
 // permanent spine. Cancelled work is included deliberately — "that's wrong, I
 // didn't want it stopped" is a correction of the same shape.
