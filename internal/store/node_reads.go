@@ -7,6 +7,13 @@ import "fmt"
 // ids are a namespace the primary key already indexes, and the queue beside a
 // node is a count, not a view.
 
+// SplitNamespace is the id suffix a node's work continues under when it is
+// re-planned: "<id>-x<n>". How many rounds a lineage may take, and how the
+// counter advances, are the reconciler's law; the namespace itself is an id
+// fact, and reads that walk one lineage happen here — so the marker is stated
+// once, where ids are made, and the reconciler takes it from here.
+const SplitNamespace = "-x"
+
 // NodeIDExistsWithPrefix reports whether the graph holds prefix itself or any
 // node inside its dash-delimited namespace.
 func (s *Store) NodeIDExistsWithPrefix(prefix string) (bool, error) {
