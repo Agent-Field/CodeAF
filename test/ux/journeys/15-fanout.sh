@@ -62,7 +62,9 @@ fi
 
 # Each ask must be answered on its own terms, not merged into one blob.
 answers="$(journal "select group_concat(lower(body), char(10)) from messages where seq > $since and role in ('agent','system')")"
-for want in 'prime' 'lima\|peru\|tokyo\|paris' 'rain'; do
+# ERE, not BRE: grep -E reads \| as a literal pipe, and the earlier spelling
+# searched for the six-character string "lima|peru" and never found it.
+for want in 'prime' 'lima|peru|tokyo|paris' 'rain'; do
   if printf '%s' "$answers" | grep -Eqi "$want"; then
     _check yes "the thread answers the '$want' part of the ask" "a deliverable mentioning $want" 'found'
   else

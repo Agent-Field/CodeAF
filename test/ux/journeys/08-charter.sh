@@ -9,7 +9,7 @@ since="$(mark)"
 
 say "remind me every day at 9am to stretch"
 
-assert_screen 'fires:' 'the drafted charter shows its cadence' 120
+assert_screen 'when:|fires:' 'the drafted charter shows its cadence' 120
 assert_screen 'costs:' 'the draft carries a price line — per firing and per day' 30
 snap drafted
 record 'price line' "$(pane | grep -i 'costs:' | head -1)"

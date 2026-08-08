@@ -28,7 +28,7 @@ record 'the draft' "$(printf '%s' "$draft" | tr '\n' ' ' | head -c 800)"
 
 # The literal shape of an email, checked without a model: the parts a person
 # would notice missing at a glance.
-for part in 'subject' 'dear\|hello\|hi ' 'regards\|sincerely\|best'; do
+for part in 'subject' 'dear|hello|hi ' 'regards|sincerely|best'; do
   if printf '%s' "$draft" | grep -Eqi "$part"; then
     _check yes "the draft has the '$part' part of an email" "an email-shaped section" 'present'
   else

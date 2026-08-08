@@ -10,6 +10,7 @@ journey_is 'Q1 Coding quality — a real programming task, graded by running the
 expect_nodes 2
 since="$(mark)"
 started="$(date +%s)"
+touch "$UX_DIR/.stamp"
 
 say "write a python file called stats.py with a function median(numbers) that returns the median of a list of numbers and raises ValueError on an empty list. write pytest tests for it in test_stats.py. run the tests and tell me the result."
 
@@ -26,7 +27,7 @@ record 'node shape' "$(journal "select group_concat(id || '(' || status || ')' |
 
 # ------------------------------------------------------------ find the files
 
-work="$(find "$UX_STATE/workspace" -name 'stats.py' -newermt "@$((started - 60))" 2>/dev/null | head -1)"
+work="$(find "$UX_STATE/workspace" -name 'stats.py' -newer "$UX_DIR/.stamp" 2>/dev/null | head -1)"
 if [ -z "$work" ]; then
   work="$(find "$UX_STATE/workspace" -name 'stats.py' 2>/dev/null | head -1)"
 fi

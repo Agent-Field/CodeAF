@@ -10,6 +10,7 @@ journey_is 'Q7 Data quality — five numbers, a ranking, and a median: arithmeti
 expect_nodes 1
 since="$(mark)"
 started="$(date +%s)"
+touch "$UX_DIR/.stamp"
 
 say "here are five numbers: 12, 7, 41, 3, 28 — make a file ranking them from largest to smallest and tell me the median"
 
@@ -32,7 +33,7 @@ else
 fi
 
 # The ranking, largest first, in the file it was asked to write.
-ranked="$(find "$UX_STATE/workspace" -type f -newermt "@$((started - 30))" 2>/dev/null | head -5)"
+ranked="$(find "$UX_STATE/workspace" -type f -newer "$UX_DIR/.stamp" 2>/dev/null | head -5)"
 record 'files written' "$(printf '%s' "$ranked" | tr '\n' ' ')"
 found_order=0
 while IFS= read -r file; do
