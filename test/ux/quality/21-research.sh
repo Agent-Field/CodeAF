@@ -48,7 +48,10 @@ printf '%s' "$grade" | grep -q 'services=True' \
   && _check yes 'Services revenue is right (\$96.2B)' 'a number within \$1.5B of 96.2' 'found' \
   || _check no  'Services revenue is right (\$96.2B)' 'a number within \$1.5B of 96.2' "$(printf '%s' "$answer" | grep -Eo '\$?[0-9][0-9,.]*( ?(billion|B))?' | head -8 | tr '\n' ' ')"
 
-if printf '%s' "$answer" | grep -Eqi 'http|sec\.gov|10-k|annual report|investor\.apple|press release'; then
+# A citation is a document a person could go and check. "Form 8-K, filed
+# 31 October 2024" is one; so is a URL. The earlier spelling accepted only the
+# URL and failed a correctly cited answer.
+if printf '%s' "$answer" | grep -Eqi 'http|sec\.gov|10-k|8-k|form 10|annual report|investor\.apple|press release|earnings release|filing'; then
   _check yes 'the claim carries evidence, not confidence' 'a named source' "$(printf '%s' "$answer" | grep -Eoi 'https?://[^ )]*|sec\.gov[^ )]*|10-K' | head -3 | tr '\n' ' ')"
 else
   _check no 'the claim carries evidence, not confidence' 'a named source' 'no URL, filing, or report named'
