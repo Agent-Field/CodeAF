@@ -53,20 +53,25 @@ type jobCard struct {
 	Default      string
 	AllowFree    bool
 	QuestionAt   time.Time
-	Outcome      string
-	BirthSeq     int64
-	CommandSeq   int64
-	StartedAt    time.Time
-	FinishedAt   time.Time
-	Done         int
-	Total        int
-	Usage        store.JobUsage
-	Messages     []store.Message
-	Narration    []string
-	Learning     []cardLearningMoment
-	Parts        []cardPart
-	Deliverable  *store.Message
-	Failed       bool
+	// QuestionSeq is the durable identity of the question this card is
+	// showing. It is the whole reason a click on one card cannot answer
+	// another card's question: the eyes point, and the pointing rides the
+	// reply instead of being discarded at the seam.
+	QuestionSeq int64
+	Outcome     string
+	BirthSeq    int64
+	CommandSeq  int64
+	StartedAt   time.Time
+	FinishedAt  time.Time
+	Done        int
+	Total       int
+	Usage       store.JobUsage
+	Messages    []store.Message
+	Narration   []string
+	Learning    []cardLearningMoment
+	Parts       []cardPart
+	Deliverable *store.Message
+	Failed      bool
 }
 
 type cardPart struct {
@@ -276,7 +281,7 @@ func deriveJobCards(
 			switch {
 			case message.Role == store.RoleAgent:
 				if component, ok := readQuestionComponent(message.Body); ok {
-					card.applyQuestion(component, message.Time)
+					card.applyQuestion(component, message)
 					continue
 				}
 				line := firstLine(message.Body)
@@ -423,6 +428,7 @@ func deriveJobCards(
 			Default:      component.Default,
 			AllowFree:    component.AllowFree,
 			QuestionAt:   question.Time,
+			QuestionSeq:  question.QuestionSeq,
 			Latest:       firstLine(component.Prompt),
 			BirthSeq:     command.Seq,
 			CommandSeq:   command.Seq,
@@ -619,13 +625,14 @@ func isQuestionMessage(message store.Message) bool {
 	return ok
 }
 
-func (card *jobCard) applyQuestion(component questionComponent, at time.Time) {
+func (card *jobCard) applyQuestion(component questionComponent, message store.Message) {
 	card.QuestionKind = component.Kind
 	card.Question = component.Prompt
 	card.Options = component.Options
 	card.Default = component.Default
 	card.AllowFree = component.AllowFree
-	card.QuestionAt = at
+	card.QuestionAt = message.Time
+	card.QuestionSeq = message.QuestionSeq
 	card.Latest = firstLine(component.Prompt)
 }
 
@@ -935,7 +942,8 @@ func (m *Model) refreshThreadQuestion() {
 			QuestionKind: component.Kind, Question: component.Prompt,
 			Options: component.Options, Default: component.Default,
 			AllowFree: component.AllowFree, QuestionAt: message.Time,
-			Latest: firstLine(component.Prompt), BirthSeq: message.Seq,
+			QuestionSeq: message.QuestionSeq,
+			Latest:      firstLine(component.Prompt), BirthSeq: message.Seq,
 		}
 		return
 	}
@@ -1624,6 +1632,13 @@ func (m *Model) submitQuestionOption(cardID string, optionIndex int) tea.Cmd {
 	if reply == "" {
 		reply = card.Options[optionIndex].Key
 	}
+	// The reply is a bare digit, and a bare digit is only ever the right answer
+	// by luck once a second question is open. What the user actually did was
+	// point at a row of a particular question, so that question's identity goes
+	// with the words — the store honours an explicit reference and never has to
+	// guess. A card the store knows no question for carries a zero, which also
+	// clears any older aim rather than letting it ride onto this answer.
+	m.answeringQuestionSeq = card.QuestionSeq
 	return m.postUserMessage(reply)
 }
 
