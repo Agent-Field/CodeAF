@@ -45,20 +45,18 @@ import (
 func runChat(args []string) error {
 	flags := flag.NewFlagSet("chat", flag.ContinueOnError)
 	database := flags.String("db", defaultChatDB(), "path to the durable graph database")
-	sessionID := flags.String("session", newSessionID(), "thread session id")
+	sessionID := flags.String("session", "", "thread session id; empty resumes the last one, \"new\" starts a fresh one")
 	if err := flags.Parse(reorder(args, map[string]bool{"db": true, "session": true})); err != nil {
 		return err
 	}
 	if flags.NArg() != 0 {
-		return fmt.Errorf("usage: aforge [chat] [--db path] [--session id]")
+		return fmt.Errorf("usage: aforge [chat] [--db path] [--session id|new]")
 	}
+	requestedSession := strings.TrimSpace(*sessionID)
 
 	path, err := expandHome(strings.TrimSpace(*database))
 	if err != nil {
 		return err
-	}
-	if strings.TrimSpace(*sessionID) == "" {
-		return fmt.Errorf("chat session cannot be empty")
 	}
 	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 		return fmt.Errorf("create chat database directory: %w", err)
@@ -74,7 +72,7 @@ func runChat(args []string) error {
 		}
 		fmt.Fprintf(os.Stderr, "another aforge is resident (pid %d on %s); attaching as a visitor\n",
 			heldBy.PID, host)
-		return runChatVisitor(path, *sessionID)
+		return runChatVisitor(path, requestedSession)
 	}
 	defer releaseResident()
 
@@ -171,6 +169,13 @@ func runChat(args []string) error {
 		return err
 	}
 	defer graph.Close()
+	// The session is resolved here rather than at flag-definition time because
+	// only the journal knows which conversation this is. Everything below reads
+	// the resolved id; nothing reads the flag again.
+	session, err := resolveChatSession(graph, requestedSession)
+	if err != nil {
+		return err
+	}
 	standingWatch, err := newStandingWatchManager(graph)
 	if err != nil {
 		return err
@@ -186,15 +191,22 @@ func runChat(args []string) error {
 	// "running" forever. Release them back to pending before the
 	// reconciler starts, and say so once: recovered work resumes rather than
 	// haunting the rail.
+	//
+	// What it does NOT do is continue a transcript. The executor is rebuilt from
+	// nothing and the worker starts at turn zero; only the workspace directory
+	// survives, because the job id that names it is stable. The old sentence
+	// here promised the opposite — the surface's own bootstrap breaking the
+	// house rule against describing a behaviour nobody recorded — so it now says
+	// what actually happens and what actually survives.
 	if released, err := graph.ReleaseOrphans(); err == nil && len(released) > 0 {
 		_, _ = graph.PostMessage(store.Message{
-			SessionID: *sessionID,
+			SessionID: session,
 			Role:      store.RoleSystem,
-			Body: fmt.Sprintf("recovered %d interrupted task(s) from the last session — resuming where they left off",
+			Body: fmt.Sprintf("recovered %d interrupted task(s) from the last session — each restarts from the beginning, with the files it had already written still in its workspace",
 				len(released)),
 		})
 	}
-	if err := resident.ReAdoptServices(graph, *sessionID, nil); err != nil {
+	if err := resident.ReAdoptServices(graph, session, nil); err != nil {
 		return fmt.Errorf("re-adopt services: %w", err)
 	}
 
@@ -257,7 +269,7 @@ func runChat(args []string) error {
 		reconciler = reconciler.WithCraftMind(resident.NewCraftMind(craftShelf, craftDir,
 			fillCraftParams(settings, chatClient), repairCraft(settings, chatClient)))
 	}
-	if err := reconciler.AttachSession(*sessionID); err != nil {
+	if err := reconciler.AttachSession(session); err != nil {
 		return err
 	}
 	// The attach edge is journalled now, because its ordering is what fixes the
@@ -266,7 +278,7 @@ func runChat(args []string) error {
 	// waited on the network to be told what happened while they were away. The
 	// thread is the delivery channel, so the composition rides behind the
 	// surface and the brief lands in the same place a moment later.
-	deliverBrief, briefErr := reconciler.SessionOpening(*sessionID, "tui", settings.BriefAfter)
+	deliverBrief, briefErr := reconciler.SessionOpening(session, "tui", settings.BriefAfter)
 	if briefErr != nil {
 		log.Printf("note: could not prepare the arrival brief: %v", briefErr)
 	}
@@ -752,7 +764,7 @@ func runChat(args []string) error {
 		defer background.Done()
 		superviseResident(ctx, reconciler.Serve, residentRestartBackoff, residentHealthyRun, func(body string) {
 			_, _ = graph.PostMessage(store.Message{
-				SessionID: *sessionID, Role: store.RoleSystem, Body: body,
+				SessionID: session, Role: store.RoleSystem, Body: body,
 			})
 		})
 	})
@@ -768,7 +780,7 @@ func runChat(args []string) error {
 		planClient:    planClient,
 		store:         graph,
 		prefs:         prefs,
-		sessionID:     *sessionID,
+		sessionID:     session,
 		streamEvents:  streamEvents,
 		voiceRecorder: voice.NewSystemRecorder(),
 		models:        modelCatalog,
@@ -804,8 +816,8 @@ func runChat(args []string) error {
 			}
 		}()
 	}
-	err = tui.RunWithCommander(graph, *sessionID, commander)
-	seenErr := reconciler.SessionClosed(*sessionID, "tui")
+	err = tui.RunWithCommander(graph, session, commander)
+	seenErr := reconciler.SessionClosed(session, "tui")
 	cancel()
 	waitWithGrace(&background, 5*time.Second)
 	return errors.Join(err, seenErr)
@@ -815,13 +827,17 @@ func runChat(args []string) error {
 // resident's head will route its user messages and the command journal will be
 // reconciled there; this process tails the thread and never starts a head,
 // reconciler, or worker runner of its own.
-func runChatVisitor(path, sessionID string) error {
+func runChatVisitor(path, requestedSession string) error {
 	graph, err := store.Open(path)
 	if err != nil {
 		return err
 	}
 	defer graph.Close()
 
+	sessionID, err := resolveChatSession(graph, requestedSession)
+	if err != nil {
+		return err
+	}
 	surface := resident.New(graph, nil, nil)
 	if err := surface.AttachSession(sessionID); err != nil {
 		return err
@@ -1919,6 +1935,46 @@ func newSessionID() string {
 		return hex.EncodeToString(random[:])
 	}
 	return fmt.Sprintf("%08x", time.Now().UnixNano())
+}
+
+// sessionNewWord is the one spelling that means "do not resume". It is a flag
+// value rather than an absence because absence is now the common case.
+const sessionNewWord = "new"
+
+// resolveChatSession decides which conversation this launch belongs to.
+//
+// A resident whose thread empties every morning is not a resident: the dock,
+// the head's memory of what was said, and every question a job filed against
+// the session that created it all live behind this one id, and minting a fresh
+// one at every launch quietly threw all four away — including the deliverable
+// an overnight job posted into the session it was born in. So the default is
+// continuity: come back to the conversation the journal last saw someone in.
+// Starting over is still available and is now the explicit act it always
+// should have been — `--session new`, or `/new` once the surface is up.
+//
+// The journal is the only honest source for "the last one": the seen edge is
+// written on every attach and detach of every lens, so its newest row names the
+// session a human was most recently present in, whether they left it by
+// quitting or by closing the lid.
+func resolveChatSession(graph *store.Store, requested string) (string, error) {
+	requested = strings.TrimSpace(requested)
+	if strings.EqualFold(requested, sessionNewWord) {
+		return newSessionID(), nil
+	}
+	if requested != "" {
+		return requested, nil
+	}
+	if graph == nil {
+		return newSessionID(), nil
+	}
+	seen, found, err := graph.LastSeen()
+	if err != nil {
+		return "", fmt.Errorf("resolve chat session: %w", err)
+	}
+	if found && strings.TrimSpace(seen.SessionID) != "" {
+		return seen.SessionID, nil
+	}
+	return newSessionID(), nil
 }
 
 // planSubtree decides how much structure a compiled request deserves. A
