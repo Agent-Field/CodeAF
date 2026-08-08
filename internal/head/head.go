@@ -550,7 +550,7 @@ func (h *Head) route(ctx context.Context, user store.Message) (routeDecision, er
 		return routeDecision{}, fmt.Errorf("read recent thread: %w", err)
 	}
 
-	threadContext := renderThread(recent)
+	threadContext := h.renderThread(recent)
 	// Depth is bought in its own budget and only for the jobs this message is
 	// about. A message about nothing on the graph adds nothing at all, so the
 	// ordinary prompt is unchanged to the byte.
@@ -780,13 +780,41 @@ func imageContentPart(reference string) (ai.ContentPart, bool) {
 // maxThreadContextBytes doubled alongside the window, which leaves the
 // allowance per message exactly where the sliding window had it: the block is
 // still bounded, and nothing about it grows message over message.
+// The window is counted over the conversation, not over the journal. A message
+// count was the whole window once, and a running job speaks on a two-minute
+// heartbeat: three of them filled twenty rows in about thirteen minutes and the
+// user's own words fell out the front of a window they had never left. The
+// person asks "did you find anything cheaper?" against a slice containing none
+// of the conversation that question is deictic to.
+//
+// So there are two windows over one read. The person's window holds their turns
+// and every thread-level line spoken to them, and nothing a job says can evict
+// a single row of it. The ambient window holds the job chatter — narration,
+// heartbeats, deliverables — bounded separately and far smaller, because the
+// board carries that content already and the thread only needs enough of it for
+// position to mean something.
+//
+// Both cut in big steps for the same reason the single window did: the front of
+// this block sits near the front of the router's prompt, and a front that moves
+// on every message re-bills everything behind it at full price.
 const (
-	threadWindowMax  = 20
-	threadWindowKeep = 10
+	threadWindowMax   = 20
+	threadWindowKeep  = 10
+	ambientWindowMax  = 12
+	ambientWindowKeep = 6
 )
 
+// personRelevant separates the conversation from the reporting around it. A
+// user turn is theirs; so is anything said to the thread itself rather than
+// filed under a job — a receipt, a question, an answer. A line anchored to a
+// node is a worker narrating, which is ambient by construction.
+func personRelevant(message store.Message) bool {
+	return message.Role == store.RoleUser || strings.TrimSpace(message.NodeID) == ""
+}
+
 func (h *Head) recentThread(sessionID string, beforeSeq int64) ([]store.Message, error) {
-	recent := make([]store.Message, 0, threadWindowMax+1)
+	person := make([]store.Message, 0, threadWindowMax+1)
+	ambient := make([]store.Message, 0, ambientWindowMax+1)
 	var cursor int64
 	for {
 		messages, err := h.store.Messages(sessionID, cursor, messagePageSize)
@@ -794,22 +822,48 @@ func (h *Head) recentThread(sessionID string, beforeSeq int64) ([]store.Message,
 			return nil, err
 		}
 		if len(messages) == 0 {
-			return recent, nil
+			return mergeThreadWindow(person, ambient), nil
 		}
 		for _, message := range messages {
 			cursor = message.Seq
 			if message.Seq >= beforeSeq {
-				return recent, nil
+				return mergeThreadWindow(person, ambient), nil
 			}
-			recent = append(recent, message)
-			// The cut is a fold over the whole session, so the window is a pure
+			// Each cut is a fold over the whole session, so the window is a pure
 			// function of how many messages precede this one — the same session
 			// read twice renders the same bytes.
-			if len(recent) > threadWindowMax {
-				recent = append(recent[:0], recent[len(recent)-threadWindowKeep:]...)
+			if personRelevant(message) {
+				person = append(person, message)
+				if len(person) > threadWindowMax {
+					person = append(person[:0], person[len(person)-threadWindowKeep:]...)
+				}
+				continue
+			}
+			ambient = append(ambient, message)
+			if len(ambient) > ambientWindowMax {
+				ambient = append(ambient[:0], ambient[len(ambient)-ambientWindowKeep:]...)
 			}
 		}
 	}
+}
+
+// mergeThreadWindow puts the two windows back into journal order. Both are
+// already in it, so this is one pass — and every surviving line keeps its true
+// position, which is the whole of what adjacency reads.
+func mergeThreadWindow(person, ambient []store.Message) []store.Message {
+	if len(ambient) == 0 {
+		return person
+	}
+	merged := make([]store.Message, 0, len(person)+len(ambient))
+	next := 0
+	for _, message := range person {
+		for next < len(ambient) && ambient[next].Seq < message.Seq {
+			merged = append(merged, ambient[next])
+			next++
+		}
+		merged = append(merged, message)
+	}
+	return append(merged, ambient[next:]...)
 }
 
 func (h *Head) postAgent(sessionID, body string, commandSeq int64) error {
@@ -1108,7 +1162,20 @@ func (h *Head) renderGraph(snapshot store.Snapshot, sessionID, thread string, op
 			return 2
 		}
 	}
+	// Jobs before their parts, and the reason is that the flat list was a lie of
+	// omission. Sixteen leaves and four roots rendered as twenty peers left the
+	// model to invent which of them were the workstreams a person would name —
+	// while the belt's own board, one row per job with its subtree rolled up,
+	// sat behind a trigger the router never fires. So the board leads with the
+	// jobs and their counts, and a part says whose part it is.
+	byID := make(map[string]store.Node, len(snapshot.Nodes))
+	for _, node := range snapshot.Nodes {
+		byID[node.ID] = node
+	}
 	sort.SliceStable(nodes, func(i, j int) bool {
+		if ri, rj := boardJobRoot(nodes[i], byID), boardJobRoot(nodes[j], byID); ri != rj {
+			return ri
+		}
 		ri, rj := rank(nodes[i]), rank(nodes[j])
 		if ri != rj {
 			return ri < rj
@@ -1118,6 +1185,12 @@ func (h *Head) renderGraph(snapshot store.Snapshot, sessionID, thread string, op
 		}
 		return nodes[i].CreatedSeq > nodes[j].CreatedSeq
 	})
+	children := make(map[string][]string, len(byID))
+	for _, node := range snapshot.Nodes {
+		if _, ok := byID[node.Parent]; ok {
+			children[node.Parent] = append(children[node.Parent], node.ID)
+		}
+	}
 	var rendered strings.Builder
 	for _, node := range nodes {
 		brief := firstLine(node.Brief)
@@ -1146,6 +1219,19 @@ func (h *Head) renderGraph(snapshot store.Snapshot, sessionID, thread string, op
 		if result != "" {
 			line += " | result: " + result
 		}
+		if boardJobRoot(node, byID) {
+			// The rolled-up counts are what turns a status into a workforce: one
+			// row that says how many people are on this job right now, how many
+			// steps are waiting, and what has already broken. A settled job with
+			// nothing open adds no clause at all.
+			if counts := boardSubtreeCounts(node, byID, children); counts != "" {
+				line += " | " + counts
+			}
+		} else if owner := boardOwnerLabel(node, byID); owner != "" {
+			// A part says whose part it is, by the job's own name — the same name
+			// the thread, the cards and the receipts use.
+			line += " | part of " + owner
+		}
 		if crossSession(node, sessionID) {
 			line += crossSessionMark
 		}
@@ -1159,15 +1245,85 @@ func (h *Head) renderGraph(snapshot store.Snapshot, sessionID, thread string, op
 	return strings.TrimSpace(rendered.String())
 }
 
-func renderThread(messages []store.Message) string {
+// boardJobRoot is the store's own definition of a job root read off a snapshot:
+// parented on the permanent spine, or on a territory that packed it away. A node
+// whose parent is not in the snapshot at all is treated as a root, because there
+// is nothing to attribute it to and dropping it is never an option.
+func boardJobRoot(node store.Node, byID map[string]store.Node) bool {
+	parent := strings.TrimSpace(node.Parent)
+	if parent == "" || parent == store.RootID {
+		return true
+	}
+	owner, ok := byID[parent]
+	return !ok || owner.Group == store.TerritoryGroup
+}
+
+// boardSubtreeCounts rolls a job's open subtree into the clause the belt's board
+// has always carried. It is the same reading: "the running ones" means jobs with
+// somebody working on them, not jobs whose root happens to hold a running status.
+func boardSubtreeCounts(root store.Node, byID map[string]store.Node, children map[string][]string) string {
+	running, queued, failed := 0, 0, 0
+	seen := make(map[string]bool, 8)
+	stack := []string{root.ID}
+	for len(stack) > 0 {
+		id := stack[len(stack)-1]
+		stack = stack[:len(stack)-1]
+		if seen[id] {
+			continue
+		}
+		seen[id] = true
+		switch byID[id].Status {
+		case store.Running, store.Claimed:
+			running++
+		case store.Pending:
+			queued++
+		case store.Failed:
+			failed++
+		}
+		stack = append(stack, children[id]...)
+	}
+	if running == 0 && queued == 0 && failed == 0 {
+		return ""
+	}
+	counts := fmt.Sprintf("%d running, %d queued", running, queued)
+	if failed > 0 {
+		counts += fmt.Sprintf(", %d failed", failed)
+	}
+	return counts
+}
+
+// boardOwnerLabel names the job one part belongs to.
+func boardOwnerLabel(node store.Node, byID map[string]store.Node) string {
+	for depth := 0; depth < adjacencyAncestorDepth; depth++ {
+		owner, ok := byID[strings.TrimSpace(node.Parent)]
+		if !ok || owner.ID == store.RootID {
+			return ""
+		}
+		if boardJobRoot(owner, byID) {
+			return surgeryTargetLabel(owner)
+		}
+		node = owner
+	}
+	return ""
+}
+
+// renderThread is the conversation as the model reads it, and every line spoken
+// by a job says which job spoke it. The label is the job's own short title —
+// what the user sees on the card and in the receipt — because a referent only
+// resolves when both parties are using the same name for the same work.
+func (h *Head) renderThread(messages []store.Message) string {
 	if len(messages) == 0 {
 		return "(no earlier messages in this session)"
 	}
+	names := h.jobNames()
 	var rendered strings.Builder
 	for _, message := range messages {
 		body := truncateBytes(strings.TrimSpace(message.Body), 600)
 		body = strings.ReplaceAll(body, "\n", "\n  ")
 		line := fmt.Sprintf("%s: %s\n", message.Role, body)
+		if label := names.label(message.NodeID); label != "" {
+			line = fmt.Sprintf("%s [%s]: %s\n", message.Role, label, body)
+		}
 		if rendered.Len()+len(line) > maxThreadContextBytes-len(threadTruncatedMark) {
 			rendered.WriteString(threadTruncatedMark)
 			break

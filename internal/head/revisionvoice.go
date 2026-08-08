@@ -94,7 +94,7 @@ func (h *Head) composeRevision(ctx context.Context, user store.Message, kind sto
 		"\nWhat has already been done with their words: " + revisionFacts(kind) +
 		fmt.Sprintf("\nWorkers mid-turn who hear their words verbatim: %d", audience)
 	if recent, err := h.recentThread(user.SessionID, user.Seq); err == nil {
-		body += "\n\nRecent thread before this message:\n" + renderThread(recent)
+		body += "\n\nRecent thread before this message:\n" + h.renderThread(recent)
 	}
 	body += "\n\nNotebook (durable memory across jobs and conversations):\n" +
 		renderNotebook(h.store, user.Body, "") +
