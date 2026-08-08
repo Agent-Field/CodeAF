@@ -854,6 +854,7 @@ func (m *Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		if message.nodeID != "" {
 			m.landOptimisticNodeMessage(message.nodeID, message.message)
 		}
+		m.landPostedMessage(message.message)
 		m.err = nil
 		return m, nil
 
@@ -1828,6 +1829,10 @@ func (m *Model) applyPoll(result pollResultMsg) {
 			if message.Seq > m.lastSeq {
 				m.lastSeq = message.Seq
 			}
+			// A turn already landed at post time is not news twice.
+			if m.hasThreadMessage(message.Seq) {
+				continue
+			}
 			// A pure progress state line (no Latest content) is replaceable,
 			// not history: the newest one for a node supersedes its
 			// predecessor in place, so a compile narrates in one updating
@@ -1839,7 +1844,7 @@ func (m *Model) applyPoll(result pollResultMsg) {
 					continue
 				}
 			}
-			m.messages = append(m.messages, message)
+			m.insertThreadMessage(message)
 			accepted = append(accepted, message)
 		}
 	}
@@ -2049,6 +2054,56 @@ func (m *Model) postUserMessage(body string, attachments ...string) tea.Cmd {
 		posted, err := backend.PostMessage(message)
 		return postResultMsg{message: posted, questionSeq: message.QuestionSeq, err: err}
 	}
+}
+
+// landPostedMessage puts an accepted turn in the thread the moment the store
+// takes it, rather than at the next poll. Answering a question is where the
+// wait was loudest: the choice was made, the options stayed up, and nothing on
+// screen said whether it had landed. The message carries the sequence the store
+// gave it, so the poll behind it recognizes the turn instead of doubling it.
+func (m *Model) landPostedMessage(posted store.Message) {
+	// Only the newest turn lands early. The watermark deliberately stays where
+	// it is: advancing it here would let the poll behind this post skip turns
+	// that arrived between the last read and this one.
+	if posted.Seq <= m.lastSeq || posted.NodeID != "" || m.hasThreadMessage(posted.Seq) {
+		return
+	}
+	m.insertThreadMessage(posted)
+	m.threadGen++
+	m.rebuildCards()
+	m.setSize(m.width, m.height)
+	if m.autoScroll {
+		m.chat.GotoBottom()
+	}
+}
+
+// insertThreadMessage keeps m.messages in sequence order. A turn landed at post
+// time can be older than one a poll in flight is about to deliver, and readers
+// that walk the thread backwards — which question a reply answered, which
+// progress line a node owns — depend on that order.
+func (m *Model) insertThreadMessage(message store.Message) {
+	at := len(m.messages)
+	for at > 0 && message.Seq != 0 && m.messages[at-1].Seq > message.Seq {
+		at--
+	}
+	m.messages = append(m.messages, store.Message{})
+	copy(m.messages[at+1:], m.messages[at:])
+	m.messages[at] = message
+}
+
+func (m *Model) hasThreadMessage(seq int64) bool {
+	if seq == 0 {
+		return false
+	}
+	for index := len(m.messages) - 1; index >= 0; index-- {
+		switch existing := m.messages[index].Seq; {
+		case existing == seq:
+			return true
+		case existing != 0 && existing < seq:
+			return false
+		}
+	}
+	return false
 }
 
 func (m *Model) toggleBoost() {

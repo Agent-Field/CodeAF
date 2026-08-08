@@ -153,6 +153,31 @@ func TestHeadQuestionOptionRowIsClickable(t *testing.T) {
 	}
 }
 
+// A submitted answer must show up as the user's own turn without waiting for a
+// poll, and the choices it consumed must leave with it.
+func TestAnsweredQuestionLandsInTheThreadAtOnce(t *testing.T) {
+	backend := &fakeBackend{}
+	model := headQuestionModel(t, backend, "head-question-echo")
+	_, command := model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'1'}})
+	if command == nil {
+		t.Fatal("digit produced no command")
+	}
+	_, _ = model.Update(command())
+	thread := ansi.Strip(model.renderMessages())
+	if !strings.Contains(thread, "1") || !strings.Contains(thread, "you") {
+		t.Fatalf("answer is not visible in the thread:\n%s", thread)
+	}
+	if strings.Contains(thread, "keep it this way") {
+		t.Fatalf("answered question kept its choices:\n%s", thread)
+	}
+	if model.threadQuestion != nil {
+		t.Fatalf("answered question is still the answer target: %#v", model.threadQuestion)
+	}
+	if model.err != nil {
+		t.Fatalf("clean answer reported %v", model.err)
+	}
+}
+
 // Silence is the one unacceptable outcome: a refused answer says so.
 func TestFailedAnswerSaysSo(t *testing.T) {
 	backend := &fakeBackend{postErr: errAnswerRefused}
@@ -240,6 +265,35 @@ func TestJobQuestionOptionRowIsAnswerableInTheThread(t *testing.T) {
 	})
 	if posted := requirePosted(t, model, backend, click); posted.Body != "2" {
 		t.Fatalf("job question click posted %q", posted.Body)
+	}
+}
+
+// An answer landing early must not push the thread out of sequence: a poll
+// already in flight can still be carrying turns older than the one just posted.
+func TestPollTurnsLandBehindAnEarlyAnsweredTurn(t *testing.T) {
+	backend := &fakeBackend{}
+	model := headQuestionModel(t, backend, "head-question-order")
+	backend.nextSeq = 3350
+	_, command := model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'1'}})
+	_, _ = model.Update(command())
+	// The read behind the post carries a turn the thread had not seen yet, and
+	// the answer it already holds.
+	model.applyPoll(pollResultMsg{sessionID: model.sessionID, messages: []store.Message{
+		{Seq: 3342, Time: time.Now(), SessionID: model.sessionID, Role: store.RoleAgent, Body: "meanwhile"},
+		{Seq: 3350, Time: time.Now(), SessionID: model.sessionID, Role: store.RoleUser, Body: "1"},
+	}})
+	seqs := make([]int64, 0, len(model.messages))
+	for _, message := range model.messages {
+		seqs = append(seqs, message.Seq)
+	}
+	want := []int64{3341, 3342, 3350}
+	if len(seqs) != len(want) {
+		t.Fatalf("thread sequences = %v, want %v", seqs, want)
+	}
+	for index, seq := range want {
+		if seqs[index] != seq {
+			t.Fatalf("thread sequences = %v, want %v", seqs, want)
+		}
 	}
 }
 
