@@ -31,8 +31,15 @@ type CraftSource interface {
 const (
 	// craftBudgetQuestionPrefix marks the consent stop a craft run posts,
 	// exactly as the daily rail's own prefix marks its. It is stable because the
-	// journaled question is also the durable record of what was asked.
-	craftBudgetQuestionPrefix = "Craft budget reached -- "
+	// journaled question is also the durable record of what was asked — which is
+	// why renaming it did not simply replace it: a run that was mid-flight when
+	// the binary changed has its consent recorded under the old marker, and a
+	// stop that stopped recognising its own answered question would ask again
+	// and spend on consent it already had.
+	craftBudgetQuestionPrefix = "Cost check -- "
+	// craftBudgetQuestionLegacyPrefix is the marker this stop carried when it
+	// still said "Craft" to the person answering it. Read, never written.
+	craftBudgetQuestionLegacyPrefix = "Craft budget reached -- "
 	// craftContinueOption and craftStopOption are the two things a person may
 	// say to that stop, in the wire form the head resolves the question with.
 	// The run reads the answer back off the question row rather than being
@@ -145,9 +152,9 @@ func (c *CraftRunner) RunCraft(name string, params map[string]string, sessionID,
 // craftCompileReceipt names what is about to run and which version of it.
 func craftCompileReceipt(workflow *craft.Workflow) string {
 	steps := len(workflow.Steps)
-	receipt := fmt.Sprintf("using your %s craft", strings.TrimSpace(workflow.Name))
+	receipt := fmt.Sprintf("using your %s way of doing this", strings.TrimSpace(workflow.Name))
 	if commit := strings.TrimSpace(workflow.Commit); commit != "" {
-		receipt += " v " + craftShortCommit(commit)
+		receipt += " (v " + craftShortCommit(commit) + ")"
 	}
 	return fmt.Sprintf("%s — %d %s", receipt, steps, plural(steps, "step", "steps"))
 }
@@ -171,7 +178,7 @@ func craftShortCommit(commit string) string {
 }
 
 func craftIntent(workflow *craft.Workflow, params map[string]string) string {
-	intent := "run the " + strings.TrimSpace(workflow.Name) + " craft"
+	intent := "do " + strings.TrimSpace(workflow.Name) + " the way you have before"
 	named := make([]string, 0, len(params))
 	for _, param := range workflow.Params {
 		if value := strings.TrimSpace(params[strings.TrimSpace(param.Name)]); value != "" {
@@ -346,7 +353,7 @@ func (c *CraftRunner) unroll(prefix string, node store.Node, step craft.Step, wo
 	items := craftListItems(result, craftFanCap(step.ForEach))
 	if len(items) == 0 {
 		advance := CraftAdvance{Stopped: "no items",
-			Receipt: fmt.Sprintf("the %q step named no items to fan out over — taking it no further",
+			Receipt: fmt.Sprintf("the %q step named nothing to work through — taking it no further",
 				strings.TrimSpace(step.ID))}
 		c.post(node, advance.Receipt)
 		return advance, nil
@@ -419,7 +426,7 @@ func (c *CraftRunner) unroll(prefix string, node store.Node, step craft.Step, wo
 	}
 	advance := CraftAdvance{
 		Unrolled: spliced, Spliced: spliced,
-		Receipt: fmt.Sprintf("%s craft — %q fans out over %d %s",
+		Receipt: fmt.Sprintf("%s — the %q step splits into %d %s",
 			strings.TrimSpace(workflow.Name), strings.TrimSpace(step.ID),
 			len(ids), plural(len(ids), "item", "items")),
 	}
@@ -567,10 +574,10 @@ func (c *CraftRunner) round(prefix string, node store.Node, step craft.Step, wor
 
 func craftExhaustedReceipt(step craft.Step, round, maxRounds int) string {
 	if step.Verify.UntilPass == nil {
-		return fmt.Sprintf("the %q check failed and the craft buys no rounds for it — delivering what landed, unverified",
+		return fmt.Sprintf("the %q check failed and this way of working buys no second try — delivering what landed, unchecked",
 			strings.TrimSpace(step.ID))
 	}
-	return fmt.Sprintf("the %q check still failed after %d %s — delivering what landed, unverified",
+	return fmt.Sprintf("the %q check still failed after %d %s — delivering what landed, unchecked",
 		strings.TrimSpace(step.ID), maxRounds, plural(maxRounds, "round", "rounds"))
 }
 
@@ -698,7 +705,7 @@ func (c *CraftRunner) checkLimits(prefix string, node store.Node, workflow *craf
 		return "", err
 	}
 	if !started.IsZero() && now.Sub(started) >= bound {
-		receipt := fmt.Sprintf("%s craft hit its %s bound — delivered what landed",
+		receipt := fmt.Sprintf("%s hit its %s bound — delivered what landed",
 			strings.TrimSpace(workflow.Name), craftDuration(bound))
 		c.post(node, receipt)
 		return "wall clock", nil
@@ -747,7 +754,8 @@ func (c *CraftRunner) budgetConsent(prefix string) (craftConsent, error) {
 	}
 	var consent craftConsent
 	for _, question := range questions {
-		if !strings.Contains(question.Text, craftBudgetQuestionPrefix) {
+		if !strings.Contains(question.Text, craftBudgetQuestionPrefix) &&
+			!strings.Contains(question.Text, craftBudgetQuestionLegacyPrefix) {
 			continue
 		}
 		answered, keepGoing, ok := craftBudgetAnswer(question.Resolution)
@@ -807,7 +815,7 @@ func (c *CraftRunner) closeRun(prefix string, node store.Node, workflow *craft.W
 		if candidate.Status != store.Pending || !strings.HasPrefix(candidate.ID, member) {
 			continue
 		}
-		if err := c.graph.CancelPending(candidate.ID, "you asked the craft to stop and deliver what landed"); err != nil {
+		if err := c.graph.CancelPending(candidate.ID, "you asked it to stop and deliver what landed"); err != nil {
 			// A leaf that started while this was being decided keeps running:
 			// it built its transcript from what it had, and taking the work
 			// away mid-turn buys nothing the next boundary does not.
@@ -817,7 +825,7 @@ func (c *CraftRunner) closeRun(prefix string, node store.Node, workflow *craft.W
 			return err
 		}
 	}
-	c.post(node, fmt.Sprintf("%s craft — stopping here as you asked; delivering what already landed",
+	c.post(node, fmt.Sprintf("%s — stopping here as you asked; delivering what already landed",
 		strings.TrimSpace(workflow.Name)))
 	return nil
 }
@@ -826,7 +834,7 @@ func (c *CraftRunner) closeRun(prefix string, node store.Node, workflow *craft.W
 // spend against its bound, what continuing buys, and two choices. Whether it
 // may be asked at all is budgetConsent's judgment, not this function's.
 func (c *CraftRunner) askForBudget(prefix string, node store.Node, workflow *craft.Workflow, spend, ceiling float64) error {
-	prompt := fmt.Sprintf("%sthe %s craft has spent $%.2f of its $%.2f bound. Say the word and I'll keep going with another $%.2f; otherwise it delivers what has already landed.",
+	prompt := fmt.Sprintf("%s%s has spent $%.2f of its $%.2f bound. Say the word and I'll keep going with another $%.2f; otherwise it delivers what has already landed.",
 		craftBudgetQuestionPrefix, strings.TrimSpace(workflow.Name), spend, ceiling,
 		craftCostCeiling(workflow.Limits))
 	options := []store.QuestionOption{

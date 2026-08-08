@@ -78,10 +78,11 @@ When manual pages appear, they are aforge's own authoritative account of itself 
 const headPromptContract = `A snapshot line ending in "elsewhere" is work the user started in another window of their own — a second terminal, the browser. It is still theirs and still yours to speak about; say where it came from rather than answering as though this conversation began it, because the receipt for a change to it lands in the window that started it, not in this one.
 
 Return exactly one JSON object with this shape and no text outside it:
-{"reply":"<what to say right now>","command":null,"remember":null,"retract":null}
+{"reply":"<what to say right now>","command":null,"remember":null,"retract":null,"fresh":false}
 where command may instead be {"kind":"reflex|splice|amend|cancel|pause|resume|reprioritize|restart","target":"<node id or empty>","instruction":"<the user's instruction, preserving their words verbatim>"}
 and remember may instead be {"scope":"<scope>","kind":"preference|fact","body":"<one sharp sentence>"}
 and retract may instead be {"seq":123}, naming exactly one numbered notebook line.
+and fresh is true only when the message asks for THIS piece of work to be figured out from first principles rather than done the way it has been done before — "don't use the template this time", "plan this one properly", "start over on this", "do it from scratch". It is about method, never about content: asking for a fresh draft of a document, fresh data, or a fresh look at a file is not it. It stays false on almost every message.
 
 Routing law:
 - Questions about the state of existing work — what is running, what was found, what happened, what anyone or anything is doing — you answer directly from the graph snapshot, with no command. Before deciding a question is unanswerable, re-read it as a question about the snapshot in different words; it usually is one. "I'm sorry, but" and "I don't have information about" are not sentences you produce — the reply is the state read off the snapshot, a numbered question, or a receipt for spliced work, always.
@@ -367,6 +368,7 @@ func (h *Head) answer(ctx context.Context, user store.Message) error {
 			SessionID:   user.SessionID,
 			Kind:        kind,
 			Reflex:      reflex,
+			Fresh:       decision.Fresh,
 			Target:      target,
 			Instruction: decision.Command.Instruction,
 			Attachments: append([]string(nil), user.Attachments...),
@@ -914,7 +916,15 @@ type routeDecision struct {
 	Command  *routeCommand    `json:"command"`
 	Remember *routeMemory     `json:"remember"`
 	Retract  *routeRetraction `json:"retract"`
-	model    string
+	// Fresh is the person asking for this one to be worked out from scratch
+	// rather than the way it has been done before. It belongs on this surface
+	// for the same reason remember and retract do: it is a reading of what a
+	// sentence MEANT, and the reading is made here or it is made by a phrase
+	// list somewhere downstream that has to be taught every spelling. "Don't
+	// use the template this time", "plan this one properly", "start over on
+	// this" are all the same intent and no list will hold them.
+	Fresh bool `json:"fresh"`
+	model string
 }
 
 // routeMemory is a durable fact the user just stated, captured into the

@@ -2,7 +2,10 @@ package resident
 
 import (
 	"regexp"
+	"strings"
 	"testing"
+
+	"github.com/Agent-Field/aforge-v2/internal/craft"
 
 	"github.com/Agent-Field/aforge-v2/internal/store"
 )
@@ -44,4 +47,46 @@ func TestEveryComposedReceiptSpeaksPlainly(t *testing.T) {
 		forgedCraftMoment("release-notes", true).headline,
 		forgedSkillMoment("changelog-diff").headline)
 
+	// The word "craft" was worst here, because this is the line a person reads
+	// the moment learned know-how takes over a job they asked for in their own
+	// words — and the only escape from it used to require saying that word.
+	reconciler := &Reconciler{}
+	assertPlain(t, "the learned-way receipt",
+		craftCompileReceipt(plainWorkflow()),
+		reconciler.craftUseReceipt(plainWorkflow(), false, 0),
+		reconciler.craftUseReceipt(plainWorkflow(), false, 0.38),
+		reconciler.craftUseReceipt(plainWorkflow(), true, 0),
+		craftSetAsideLine(),
+		craftIntent(plainWorkflow(), map[string]string{"topic": "Q3"}))
+}
+
+func plainWorkflow() *craft.Workflow {
+	return &craft.Workflow{
+		Name: "investor-update", Commit: "a1b2c3d4e5",
+		Steps: []craft.Step{{ID: "gather"}, {ID: "draft"}, {ID: "check"}},
+	}
+}
+
+// TestTheReceiptQuotesWhatTheLastRunActuallyCost is the trust half. The receipt
+// named steps and a ceiling — both promises — while the one number that would
+// have proved the relationship compounds was already on disk beside the
+// survival record and quoted nowhere.
+func TestTheReceiptQuotesWhatTheLastRunActuallyCost(t *testing.T) {
+	reconciler := &Reconciler{}
+	if line := reconciler.craftUseReceipt(plainWorkflow(), false, 0.38); !strings.Contains(line, "last time $0.38") {
+		t.Fatalf("the receipt did not carry the prior run's cost: %q", line)
+	}
+	// No prior run recorded is no clause, never a zero. A record written before
+	// the cost was measured reads as exactly that.
+	if line := reconciler.craftUseReceipt(plainWorkflow(), false, 0); strings.Contains(line, "last time") {
+		t.Fatalf("a receipt invented a prior run: %q", line)
+	}
+	// A first run has no last time to quote and says what it does have.
+	first := reconciler.craftUseReceipt(plainWorkflow(), true, 0)
+	if !strings.Contains(first, "first time working this way") || strings.Contains(first, "last time") {
+		t.Fatalf("the first-run receipt = %q", first)
+	}
+	if strings.Contains(first, "\n") {
+		t.Fatalf("the receipt grew past one line: %q", first)
+	}
 }

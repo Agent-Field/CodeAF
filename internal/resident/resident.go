@@ -981,8 +981,14 @@ func (r *Reconciler) splice(ctx context.Context, command store.Command) (command
 	}
 
 	receipt := compileReceipt(compiled.Goal, compiled.Assumptions, compiled.ModelNote)
-	if usingCraft {
+	switch {
+	case usingCraft:
 		receipt = use.receipt
+	case strings.TrimSpace(use.receipt) != "":
+		// A learned way of working was found and set aside because the person
+		// asked for this one from scratch. Saying so is the whole difference
+		// between being heard and being ignored.
+		receipt = use.receipt + "\n" + receipt
 	}
 	if promoted {
 		receipt = reflexPromotionLine

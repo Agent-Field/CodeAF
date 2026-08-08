@@ -111,11 +111,12 @@ func (r *Reconciler) craftCompile(ctx context.Context, command store.Command) (c
 	// The command sequence is the id namespace for the same reason task-<seq>
 	// is: it is unique, it is derivable from the journal, and a retried splice
 	// lands on the nodes it already made instead of beside them.
-	return r.craftFor(ctx, command.Instruction, fmt.Sprintf("craft-%d", command.Seq), store.Provenance{
-		Origin:    store.OriginUser,
-		SessionID: command.SessionID,
-		Intent:    command.Instruction,
-	})
+	return r.craftFor(ctx, command.Instruction, command.Fresh, fmt.Sprintf("craft-%d", command.Seq),
+		store.Provenance{
+			Origin:    store.OriginUser,
+			SessionID: command.SessionID,
+			Intent:    command.Instruction,
+		})
 }
 
 // craftFor is the recognition itself, separated from where the request came
@@ -127,13 +128,14 @@ func (r *Reconciler) craftCompile(ctx context.Context, command store.Command) (c
 //
 // The caller supplies the id namespace and the provenance, because those are
 // the only two things a firing and a chat splice genuinely differ on.
-func (r *Reconciler) craftFor(ctx context.Context, request, rootID string, provenance store.Provenance) (craftUse, bool) {
+func (r *Reconciler) craftFor(ctx context.Context, request string, fresh bool, rootID string,
+	provenance store.Provenance) (craftUse, bool) {
 	mind := r.craftMind
 	if mind == nil || mind.shelf == nil {
 		return craftUse{}, false
 	}
 	instruction := strings.TrimSpace(request)
-	if instruction == "" || craftDeclined(instruction) {
+	if instruction == "" {
 		return craftUse{}, false
 	}
 	// The user's own words, not the compiled goal. The goal is the compiler's
@@ -145,11 +147,38 @@ func (r *Reconciler) craftFor(ctx context.Context, request, rootID string, prove
 	if len(matches) == 0 || matches[0].Score < CraftDecisiveScore {
 		return craftUse{}, false
 	}
+	// The decline is read AFTER the match rather than before it, which costs
+	// one local BM25 read and buys the whole difference between being heard and
+	// being ignored: only here is it known that there WAS a learned way to do
+	// this, so only here can the receipt say the thing was set aside. Silence
+	// was the old answer, and silence after "don't use the template this time"
+	// reads as the machine going ahead anyway.
+	if fresh || craftDeclined(instruction) {
+		return craftUse{receipt: craftSetAsideLine()}, false
+	}
 	workflow, err := mind.shelf.Load(matches[0].Name)
 	if err != nil || workflow == nil {
 		return craftUse{}, false
 	}
-	if !r.craftProven(workflow.Name) &&
+	// What a draft has to clear is a question about evidence, and the evidence
+	// has three states rather than two. A workflow that has landed a job is
+	// proven and answers at the decisive bar. A workflow that has never run at
+	// all is UNTRIED, and the overwhelming bar was unreachable for it in a way
+	// nobody chose: a realistic repeat of the phrasing that would use it scores
+	// 3.98 against a 4.0 line, so whether a draft ever escapes was decided by
+	// the name the distiller happened to pick against the words the user
+	// happens to habitually use. A workflow that never fires never becomes
+	// proven, so that draft could never earn the run that would prove it. An
+	// untried draft therefore gets exactly one provisional run at the decisive
+	// bar — affordable because a craft's own clamped ceilings already bound
+	// what one run may spend and how long it may take, and honest because the
+	// receipt says plainly that it is the first time and how to refuse it.
+	// After that the evidence decides: it settles and it is proven, or it fails
+	// and it goes behind the overwhelming bar, where it stays until the user
+	// asks for it by name.
+	survival := r.craftSurvival(workflow.Name)
+	firstRun := survival.For == 0
+	if firstRun && survival.Against > 0 &&
 		matches[0].Score < CraftOverwhelmingScore && !craftNamedOutright(instruction, workflow.Name) {
 		return craftUse{}, false
 	}
@@ -163,7 +192,10 @@ func (r *Reconciler) craftFor(ctx context.Context, request, rootID string, prove
 	if err != nil {
 		return craftUse{}, false
 	}
-	return craftUse{subtree: subtree, reference: provenance.Craft, receipt: craftUseReceipt(workflow)}, true
+	return craftUse{
+		subtree: subtree, reference: provenance.Craft,
+		receipt: r.craftUseReceipt(workflow, firstRun, survival.LastCost),
+	}, true
 }
 
 // craftParams fills the workflow's holes from the request. A missing required
@@ -184,18 +216,46 @@ func (r *Reconciler) craftParams(ctx context.Context, instruction string, workfl
 	return filled, true
 }
 
-// craftUseReceipt names what is about to run, which version of it, and what it
-// may spend. The version is the load-bearing half: a craft is refined across
-// commits, and a receipt that named only the craft would say the same thing
-// about two runs that behaved differently.
-func craftUseReceipt(workflow *craft.Workflow) string {
-	return fmt.Sprintf("%s, ~$%.2f cap", craftCompileReceipt(workflow), craftCostCeiling(workflow.Limits))
+// craftUseReceipt names what is about to run, which version of it, what it may
+// spend, and — the part that makes it read like a colleague rather than a log
+// line — what the last run of it actually cost. Nothing new is measured: the
+// prior cost was already written beside the survival record when that run
+// settled, and putting it in the same sentence as this run's ceiling is the one
+// place in the product where "this used to cost more" can be said with evidence
+// already on disk.
+//
+// The version is the load-bearing half of the first clause: a learned way of
+// working is refined across commits, and a receipt naming only the workflow
+// would say the same thing about two runs that behaved differently.
+func (r *Reconciler) craftUseReceipt(workflow *craft.Workflow, firstRun bool, lastCost float64) string {
+	receipt := fmt.Sprintf("%s, ~$%.2f cap", craftCompileReceipt(workflow), craftCostCeiling(workflow.Limits))
+	switch {
+	case firstRun:
+		// A provisional run says so. The offer is the whole reason one is
+		// affordable: a wrong guess costs the user two words, not a job.
+		receipt += " — first time working this way; say \"from scratch\" if you'd rather I plan it"
+	case lastCost > 0:
+		receipt += fmt.Sprintf(" — last time $%.2f", lastCost)
+	}
+	return receipt
 }
 
-// craftDeclineWords are how the user says "don't reach for what you already
-// know". One guard rather than a cue system: any of these anywhere in the
-// instruction skips craft matching entirely, and every other phrasing still
-// reaches the planner on its own whenever the match is not decisive.
+// craftSetAsideLine is what the thread hears when the person asked for this one
+// to be worked out from scratch and there WAS a learned way to do it. One line,
+// no nouns they did not bring: the whole content is that their sentence changed
+// what happened.
+func craftSetAsideLine() string {
+	return "Working this one out from scratch, as you asked, rather than the way I usually do it."
+}
+
+// craftDeclineWords are the frozen spellings of "don't reach for what you
+// already know". They are kept for compatibility and for the case where no
+// model ran, but they are no longer the primary path: the head reads the intent
+// on its own decision surface and carries it here as a flag on the work order,
+// which is what lets "don't use the template this time" and "plan this one
+// properly" land without either phrase ever being added to a list. Two of the
+// spellings below need the word "craft" — a word we invented — and the design
+// filter forbids an escape hatch that requires it.
 var craftDeclineWords = []string{
 	" from scratch ", " fresh ", " freshly ", " afresh ",
 	" no craft ", " without the craft ", " don t use the craft ", " do not use the craft ",
@@ -250,6 +310,14 @@ func craftWords(text string) string {
 type CraftSurvival struct {
 	For     int `json:"for"`
 	Against int `json:"against"`
+	// LastCost is what the most recent clean run of this workflow actually
+	// spent, whole-subtree. It rides here rather than in a new query because
+	// the outcome write is already standing over the node that just landed and
+	// the store already totals a subtree's spend; a receipt that wants to say
+	// "last time $0.38" would otherwise be one join away and has never been
+	// made. Absent on records written before this field existed, which reads as
+	// zero and simply leaves the clause off.
+	LastCost float64 `json:"last_cost,omitempty"`
 }
 
 // CraftSurvivalKey is the trait name one craft's record is kept under. Both a
@@ -272,6 +340,15 @@ func (r *Reconciler) recordCraftOutcome(node store.Node, settled bool) {
 	if cut := strings.LastIndex(reference, "@"); cut > 0 {
 		name = reference[:cut]
 	}
+	// What this run cost, read while the run is still addressable. A store that
+	// refuses leaves the figure at zero, which the receipt reads as "no prior
+	// run to quote" — the honest degradation, and never a wrong number.
+	landed := 0.0
+	if settled {
+		if impact, err := r.store.Impact(node.ID, r.now()); err == nil {
+			landed = impact.Cost
+		}
+	}
 	// Two keys, because they answer two questions. The version key measures the
 	// file that actually ran, which is the only fair unit for a workflow that
 	// gets refined. The bare name carries whether this craft has ever settled
@@ -281,6 +358,7 @@ func (r *Reconciler) recordCraftOutcome(node store.Node, settled bool) {
 		record := r.craftSurvival(key)
 		if settled {
 			record.For++
+			record.LastCost = landed
 		} else {
 			record.Against++
 		}
