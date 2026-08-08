@@ -18,8 +18,25 @@ node="$(journal "select id from nodes where created_seq > $since and origin='use
 record 'task node' "${node:-<none>}"
 record 'nodes formed' "$(journal "select count(*) from nodes where created_seq > $since and origin='user'")"
 
-assert_journal "select count(*) from messages where seq > $since and role in ('agent','system') and lower(body) like '%river%' and length(body) > 40" \
-  'the final message carries the haiku itself, not only a path' 60
+# "I'm on it — I'll have a haiku about rivers written to a file" also contains
+# the word "rivers" and is longer than forty characters. It is a promise, not a
+# deliverable, and an answer-first check that a promise can satisfy is not a
+# check. So this asks for the message the finished NODE produced.
+assert_journal "select count(*) from messages where seq > $since and node_id='$node' and lower(body) like '%river%'" \
+  'the finished job posted its own message into the thread' 90
+assert_journal "select count(*) from messages where seq > $since and node_id='$node' and length(body) > 60 and (body like '%' || char(10) || '%')" \
+  'that message carries the haiku itself — several lines of it — not only a path' 30
+
+deliverable="$(journal "select body from messages where seq > $since and node_id='$node' order by seq desc limit 1")"
+record 'the deliverable message' "$(printf '%s' "$deliverable" | tr '\n' ' / ' | head -c 400)"
+if printf '%s' "$deliverable" | grep -Eqi "i'?m on it|i will|i'll have|when it'?s done"; then
+  _check no 'the deliverable is the work, not another promise' \
+    'the haiku, not a sentence about writing one' "$(printf '%s' "$deliverable" | head -c 120)"
+else
+  _check yes 'the deliverable is the work, not another promise' \
+    'the haiku, not a sentence about writing one' 'no promise language in the delivered message'
+fi
+
 assert_screen 'river' 'the thread shows the haiku on screen' 30
 snap delivered
 
@@ -33,7 +50,7 @@ assert_journal_is "select count(*) from nodes where created_seq > $since and sta
 journal "select group_concat(body, char(10)) from messages where seq > $since and role in ('agent','system')" \
   > "$UX_DIR/deliverable.txt"
 
-judge_this 'write a haiku about rivers into a file and show me the haiku' "$(deliverable_since "$since")"
+judge_this 'write a haiku about rivers into a file and show me the haiku' "$(journal "select group_concat(body, char(10)) from messages where seq > $since and node_id='$node'")"
 
 dump_turn "$since"
 finish

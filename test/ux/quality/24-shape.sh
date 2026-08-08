@@ -32,6 +32,17 @@ record 'max depth below root' "$(journal "select coalesce(max(stage),0) from nod
     order by n.created_order"
 } >> "$UX_DIR/notes.md"
 
+# The other half of proportionality, and the more interesting one: how often
+# did a job branch AT ALL? A graph product whose every job is one leaf is not
+# over-decomposing, but it is also not decomposing, and a reader of this report
+# should be told which of those two things is happening.
+branched="$(journal "
+  select count(*) from nodes n
+  where n.origin='user' and n.parent_id='root'
+    and (select count(*) from nodes c where c.parent_id = n.id) > 0")"
+total_jobs="$(journal "select count(*) from nodes where origin='user' and parent_id='root'")"
+record 'jobs that decomposed into children at all' "$branched of $total_jobs"
+
 bloated="$(journal "
   select count(*) from nodes n
   where n.origin='user' and n.parent_id='root'
@@ -41,8 +52,12 @@ record 'jobs that fanned out past 6 children' "$bloated"
   && _check yes 'no toy job exploded into a bureaucracy' 'no user job with more than 6 children' "$bloated" \
   || _check no 'no toy job exploded into a bureaucracy' 'no user job with more than 6 children' "$bloated jobs did"
 
-orphans="$(journal "select count(*) from nodes where origin='user' and status in ('pending','claimed') and created_seq < (select max(seq) - 200 from events)")"
+# Held work is not forgotten work: J9 refuses a plan on purpose and the node
+# that stays pending behind that refusal is the refusal being honoured.
+orphans="$(journal "select count(*) from nodes where origin='user' and status in ('pending','claimed') and held=0 and created_seq < (select max(seq) - 200 from events)")"
 record 'jobs still stuck pending long after they were asked for' "$orphans"
+record 'jobs deliberately held (a refused plan is not a forgotten one)' \
+  "$(journal "select count(*) from nodes where origin='user' and held=1")"
 [ "${orphans:-0}" = "0" ] \
   && _check yes 'nothing was commissioned and then quietly forgotten' 'no stale pending user job' "$orphans" \
   || _check no 'nothing was commissioned and then quietly forgotten' 'no stale pending user job' "$orphans stuck"
