@@ -77,3 +77,30 @@ func TestGenuineAmbiguityAsksOnePlainQuestion(t *testing.T) {
 		t.Fatalf("the question named work by its id: %q", reply.Body)
 	}
 }
+
+// And the answer to that question is the revision. The option carries the job
+// it names, so choosing settles the referent rather than re-guessing it.
+func TestAnsweringTheAmbiguityQuestionJournalsTheCorrection(t *testing.T) {
+	graph := openHeadStore(t)
+	deliverJob(t, graph, "settle", "auth-fix", "Auth token refresh",
+		"fix the auth token refresh", "The refresh path retries once.")
+	deliverJob(t, graph, "settle", "auth-login", "Auth login page",
+		"fix the auth login page", "The login page validates the session cookie.")
+
+	answerWith(t, graph, "settle", "actually the auth fix is wrong", `{"reply":"noted"}`)
+	if commands := pendingCommandsOf(t, graph); len(commands) != 0 {
+		t.Fatalf("the question was skipped: %+v", commands)
+	}
+
+	answerWith(t, graph, "settle", "2", `{"reply":"noted"}`)
+	commands := pendingCommandsOf(t, graph)
+	if len(commands) != 1 {
+		t.Fatalf("answering journaled %d commands: %+v", len(commands), commands)
+	}
+	if commands[0].Target != "auth-login" || !IsCorrection(commands[0].Instruction) {
+		t.Fatalf("the chosen job did not become the revision: %+v", commands[0])
+	}
+	if !strings.Contains(commands[0].Instruction, "actually the auth fix is wrong") {
+		t.Fatalf("the answer replaced the critique with a digit:\n%s", commands[0].Instruction)
+	}
+}
