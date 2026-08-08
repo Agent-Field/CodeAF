@@ -1229,6 +1229,12 @@ func (r *Reconciler) unfinishedSource(command store.Command) string {
 	if target == "" {
 		return ""
 	}
+	// The spine is never "work still in flight" that this ask arrived beside,
+	// however it got named. It is Running by construction, so continuity from
+	// it is a dependency that never settles.
+	if target == store.RootID {
+		return ""
+	}
 	node, ok, err := r.store.Node(target)
 	if err != nil || !ok || node.Group == ReflexGroup {
 		return ""
@@ -1944,6 +1950,15 @@ func (r *Reconciler) wireContinuity(subtree store.Subtree, buildsOn []string) st
 	}
 	sources := make([]string, 0, len(buildsOn))
 	for _, id := range buildsOn {
+		// The permanent spine is a node, so it passes an existence check — and
+		// it is Running forever, so a job wired to build on it can never become
+		// ready. A compiler answering builds_on:["root"] is all it took to
+		// deadlock a job from birth, silently, for the whole of its ceiling.
+		// Continuity is between pieces of work; the trunk is not one, and it is
+		// dropped with the same forgiveness an id naming nothing already gets.
+		if strings.TrimSpace(id) == store.RootID {
+			continue
+		}
 		if _, ok, err := r.store.Node(id); err == nil && ok {
 			sources = append(sources, id)
 		}
