@@ -188,3 +188,57 @@ func TestBuildAnchorsLooseLateNode(t *testing.T) {
 		t.Error("build produced a cycle")
 	}
 }
+
+// The plan must be the size of the ask. Real sessions produced multi-node
+// ceremony for single-deliverable requests and then spent further rounds
+// verifying it, so the judgment is written into the two prompts that actually
+// decide decomposition — the stage split and the part split — and into no
+// third place, because expansion is those same two prompts one level down.
+func TestBothDecompositionPromptsCarryTheProportionJudgment(t *testing.T) {
+	for name, want := range map[string]string{
+		"as large as the goal and no larger": "Make the plan exactly as large as the goal, and no larger",
+		"a division must say what it buys":   "Keep a division only when you can say what it\nbuys",
+		"one deliverable defaults to one":    "a goal that asks for one finished thing is one piece of work by default",
+		"whole is a correct answer":          "returning it whole is a correct answer rather than a failure to decompose",
+		"checking is part of the work":       "Checking the work is part of doing it, never a piece of work of its own",
+		"no node exists to check another":    "Do not\nadd anything whose purpose is to look at, confirm, review, or verify what\nanother part produced",
+	} {
+		if !strings.Contains(proportionRule, want) {
+			t.Errorf("the proportion rule no longer states %s: %q missing", name, want)
+		}
+	}
+	for prompt, text := range map[string]string{
+		"spine":  spinePrompt,
+		"fanout": fanoutPrompt,
+	} {
+		if !strings.Contains(text, proportionRule) {
+			t.Errorf("the %s prompt does not carry the proportion rule", prompt)
+		}
+	}
+}
+
+// The planner is handed every kind of work there is, so a rule that reaches for
+// one kind's nouns quietly mis-plans every other kind. The judgment is about
+// what a division buys, which is sayable without naming a single subject.
+func TestTheProportionRuleNamesNoDomain(t *testing.T) {
+	// Nouns from the domains the planner is most often used on, plus the
+	// process words that would turn the rule into a template for one shape of
+	// work rather than a judgment about any.
+	for _, forbidden := range []string{
+		"code", "repo", "file", "test suite", "commit", "pull request", "deploy",
+		"report", "document", "essay", "article", "email", "spreadsheet",
+		"vendor", "market", "customer", "research", "dataset", "model",
+		"design", "sprint", "ticket", "requirement", "stakeholder",
+	} {
+		if strings.Contains(strings.ToLower(proportionRule), forbidden) {
+			t.Errorf("the proportion rule names a domain: %q", forbidden)
+		}
+	}
+	// And it must not have become a number: a threshold is wrong at both ends
+	// and the whole point is that the model makes the judgment.
+	for _, forbidden := range []string{"at most", "no more than", "fewer than", "nodes", "1 to", "2 to"} {
+		if strings.Contains(strings.ToLower(proportionRule), forbidden) {
+			t.Errorf("the proportion rule became a cap rather than a judgment: %q", forbidden)
+		}
+	}
+}
