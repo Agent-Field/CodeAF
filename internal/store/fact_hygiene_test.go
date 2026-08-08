@@ -3,6 +3,7 @@ package store
 import (
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"path/filepath"
 	"reflect"
 	"testing"
@@ -263,11 +264,13 @@ func TestUserRetractedBeliefStaysDownWhenTheDistillerRederivesIt(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// The same world produces the same belief tomorrow.
+	// The same world produces the same belief tomorrow, and the refusal is
+	// audible: the caller is told nothing was written, and still gets the
+	// standing retraction back so it can say which belief stopped it.
 	again, err := graph.RecordFactFrom(FactWriterDistiller, "", "user", FactPreference,
 		"they prefer their reports in bullet points")
-	if err != nil {
-		t.Fatal(err)
+	if !errors.Is(err, ErrFactVetoed) {
+		t.Fatalf("re-derivation over a user veto returned err=%v, want ErrFactVetoed", err)
 	}
 	if again.Seq != fact.Seq || again.Status != FactQuarantined {
 		t.Fatalf("a re-derivation lifted the user's retraction: %+v", again)

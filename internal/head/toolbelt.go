@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"math"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -77,6 +78,21 @@ const (
 	// reaches work a territory has packed away, because it queries the settled
 	// rows directly rather than the compacted snapshot every other read sees.
 	beltToolHistory = "history"
+	// beltToolSearch is the read for a question about something that was SAID.
+	//
+	// Every other read here starts from work: a board row, an id, a settled
+	// window. But the messages table had no index at all, so anything that never
+	// became a job — a decision reached in conversation, a number quoted in
+	// passing, a name that changed — was unreachable by every read in the
+	// product, forever. The head saw the last ten to twenty lines and the prompt
+	// forbade it from saying so, which made confident reconstruction of a
+	// conversation that no longer existed the only sanctioned output.
+	//
+	// It searches the three places memory actually lives — the conversation, the
+	// notebook, and folded jobs — because a person asking "what did we decide
+	// about pricing?" has no idea which of the three holds the answer and should
+	// not have to.
+	beltToolSearch = "search"
 	// beltToolNote is the belt's only write that never touches the graph. The
 	// loop could change work and answer questions and had nowhere at all to put
 	// a durable instruction about its own behaviour, so "always answer from the
@@ -194,10 +210,14 @@ func beltDefinitions() []ai.ToolDefinition {
 			"since": beltProp("string", `local date or time the window starts, "2026-08-06" or "2026-08-06T09:00"`),
 			"until": beltProp("string", "local date or time the window ends, same spelling"),
 		}),
+		beltTool(beltToolSearch, "Search everything you remember for words: the conversation itself, the notebook, and jobs that have long since finished. Always safe. Read it whenever the user refers to something from the past that is not in front of you — a decision you reached together, something they told you once, a job from last month — instead of reconstructing it. It is the only read that reaches what was merely said and never became work. If it comes back empty, say so plainly; that is a true answer and inventing one is not.", map[string]any{
+			"q": beltProp("string", "the words to look for, in the user's own terms"),
+		}, "q"),
 		beltTool(beltToolNote, "Write one durable thing the user has just told you into the notebook: how they want answers given, a correction to how something was done for them, a lasting fact about them or their setup. The test is whether it will still matter after this conversation is forgotten — task details and one-off instructions fail it. Call it before you tell them it is noted, because this call is the only thing that makes that true.", map[string]any{
-			"body":  beltProp("string", "one sharp sentence, in the user's own terms"),
-			"scope": beltProp("string", `what it is about: "user" for a personal preference, otherwise tool:<name>, repo:<path>, file:<path>, or domain:<topic>`),
-			"kind":  beltProp("string", `"preference" for how they want things done, "fact" for something that is simply true`),
+			"body":     beltProp("string", "one sharp sentence, in the user's own terms"),
+			"scope":    beltProp("string", `what it is about: "user" for a personal preference, otherwise tool:<name>, repo:<path>, file:<path>, or domain:<topic>`),
+			"kind":     beltProp("string", `"preference" for how they want things done, "fact" for something that is simply true`),
+			"replaces": beltProp("integer", "the number of the notebook line this makes untrue, when what they just said contradicts one of the numbered lines in front of you; the old line retires into the new one. Omit it when nothing shown is contradicted, and never name a number you were not shown"),
 		}, "body"),
 	}
 }
@@ -255,6 +275,8 @@ func (run *beltRun) execute(name, arguments string) (string, bool) {
 		return run.spending(args)
 	case beltToolHistory:
 		return run.history(args)
+	case beltToolSearch:
+		return run.search(args)
 	case beltToolNote:
 		return run.note(args)
 	}
@@ -685,6 +707,75 @@ func (h *Head) selfWorkLines() []string {
 	return lines
 }
 
+// searchHitCap bounds each of the three memories a search reads. Small on
+// purpose: this read exists to find the thread back into something, and eight
+// lines of conversation, six beliefs and four jobs is already more than an
+// answer can honestly quote.
+const (
+	searchMessageCap = 8
+	searchFactCap    = 6
+	searchRecallCap  = 4
+)
+
+// search is the read that answers a question about the past honestly.
+//
+// It asks all three memories at once because the person cannot know which one
+// holds their answer: what they said lives in the conversation, what they told
+// you lives in the notebook, and what you did lives in folded jobs. Nothing here
+// is new machinery — the notebook retrieval and the fold recall have both been
+// in the store for months — except the conversation index, which never existed
+// and is the reason "remember that pricing analysis from January?" had no
+// truthful answer available to it at all.
+//
+// An empty result is returned as an empty result. That sentence is the point of
+// the whole tool: the alternative the prompt used to leave was a fluent
+// reconstruction of something that may never have happened.
+func (run *beltRun) search(args map[string]any) (string, bool) {
+	if run.head == nil || run.head.store == nil {
+		return "search is not available on this surface.", false
+	}
+	query := beltString(args, "q")
+	if query == "" {
+		return "q must say what to look for", true
+	}
+	var rendered strings.Builder
+	now := time.Now()
+
+	if hits, err := run.head.store.SearchMessages(query, "", searchMessageCap); err == nil && len(hits) > 0 {
+		rendered.WriteString("said in conversation:\n")
+		for _, hit := range hits {
+			who := "you"
+			if hit.Role == store.RoleUser {
+				who = "they"
+			}
+			fmt.Fprintf(&rendered, "- %s, %s: %s\n", who, hit.Age, firstLine(hit.Body))
+		}
+	}
+	if facts, err := run.head.store.SearchFacts(store.FactQuery{
+		Cues: resident.ExtractCues(query), Terms: query, Limit: searchFactCap,
+	}); err == nil && len(facts) > 0 {
+		rendered.WriteString("\nin the notebook:\n")
+		for _, fact := range facts {
+			fmt.Fprintf(&rendered, "- #%d [%s · %s] %s\n", fact.Seq, fact.Scope,
+				store.AgeLabel(fact.Time, now), fact.Body)
+		}
+	}
+	if recalled, err := run.head.store.Recall(query, resident.ExtractCues(query), searchRecallCap); err == nil && len(recalled) > 0 {
+		rendered.WriteString("\nin work that has already finished:\n")
+		for _, hit := range recalled {
+			fmt.Fprintf(&rendered, "- %s (%s), id %s", firstLine(hit.Intent), hit.Age, hit.NodeID)
+			if digest := strings.TrimSpace(hit.Digest); digest != "" {
+				fmt.Fprintf(&rendered, ": %s", firstLine(digest))
+			}
+			rendered.WriteByte('\n')
+		}
+	}
+	if strings.TrimSpace(rendered.String()) == "" {
+		return "nothing remembered matches those words — not in the conversation, not in the notebook, not in finished work. Say that plainly rather than reconstructing it.", false
+	}
+	return truncateBytes(strings.TrimSpace(rendered.String()), beltGroundingBytes), false
+}
+
 // note is durable feedback landing where durable feedback goes. It records
 // through the head's own fact writer, so the line it writes is indistinguishable
 // from one the router's remember wrote and is read back by the same notebook
@@ -710,6 +801,12 @@ func (run *beltRun) note(args map[string]any) (string, bool) {
 	if err != nil {
 		return "that could not be written down: " + err.Error(), true
 	}
+	// The same supersession the router's remember has. This loop reads the same
+	// numbered notebook, so it can see the line the new note makes untrue, and
+	// leaving it standing beside the correction is the accumulation failure the
+	// consolidator then has to clean up by guessing.
+	replaced := beltInt(args, "replaces")
+	supersedeBelief(run.head.store, replaced, fact)
 	// The receipt is the record, which is the point: a note that failed to
 	// journal produces a tool error, and the loop can then only say so.
 	//
@@ -1341,6 +1438,23 @@ func beltString(args map[string]any, key string) string {
 		return strings.TrimSpace(value)
 	}
 	return ""
+}
+
+// beltInt reads a numeric argument through the two shapes JSON gives it: a
+// number, which decodes to float64, and the same number spelled as a string,
+// which several providers emit for integer-typed tool parameters.
+func beltInt(args map[string]any, key string) int64 {
+	switch value := args[key].(type) {
+	case float64:
+		return int64(value)
+	case string:
+		parsed, err := strconv.ParseInt(strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(value), "#")), 10, 64)
+		if err != nil {
+			return 0
+		}
+		return parsed
+	}
+	return 0
 }
 
 // beltStrings accepts both shapes providers actually emit for a list argument:

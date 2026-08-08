@@ -635,7 +635,7 @@ func (s *Store) recordFact(writer FactWriter, nodeID, scope string, kind FactKin
 				return Fact{}, fmt.Errorf("record fact: %w", err)
 			}
 			if found {
-				return retracted, nil
+				return retracted, ErrFactVetoed
 			}
 		}
 	}
@@ -1208,9 +1208,10 @@ type FactQuery struct {
 	Limit    int
 }
 
-// SearchFacts blends the two retrieval layers: scope-cue matches first in
-// cue order, then BM25 matches for the terms, deduplicated, capped. Returned
-// facts have their use telemetry bumped.
+// SearchFacts blends the two retrieval layers under reserved slots: the scope
+// cues get their share, relevance gets a share that nothing can eat, and the
+// leftovers go to whichever arm still has candidates. Returned facts have their
+// use telemetry bumped.
 func (s *Store) SearchFacts(query FactQuery) ([]Fact, error) {
 	return s.searchFacts(query, true)
 }
@@ -1222,6 +1223,25 @@ func (s *Store) SearchFactsUncounted(query FactQuery) ([]Fact, error) {
 	return s.searchFacts(query, false)
 }
 
+// relevanceReserveShare is the fraction of one retrieval that belongs to
+// relevance and that no scope cue may eat: one slot in every two.
+//
+// The two arms used to run in sequence. Every cue went first, each one allowed
+// the entire limit, and BM25 ran only "if len(results) < query.Limit" — so on
+// any notebook with more than a handful of user-scoped beliefs, the `user` cue
+// that ExtractCues appends to every single query filled the answer with the
+// newest lines and the relevance arm never executed at all. What the head and
+// every leaf read was a recency feed wearing a retrieval's name, and a belief
+// the message was actually about became unreachable the moment anything newer
+// happened to share a cue with it.
+//
+// Half is deliberately generous to relevance. Cues are the precise signal when
+// they are precise (file:, repo:, tool:) and pure noise when they degenerate to
+// ["user","env"] on prose, and the query itself cannot tell which case it is
+// in. Splitting the capacity means neither arm can silence the other, which is
+// the only property that was ever missing.
+const relevanceReserveShare = 2
+
 func (s *Store) searchFacts(query FactQuery, countUses bool) ([]Fact, error) {
 	if query.Limit <= 0 {
 		query.Limit = 12
@@ -1229,11 +1249,19 @@ func (s *Store) searchFacts(query FactQuery, countUses bool) ([]Fact, error) {
 	if query.Kind != "" && !validFactKind(query.Kind) {
 		return nil, fmt.Errorf("search facts: %w: invalid kind %q", ErrInvalid, query.Kind)
 	}
-	seen := make(map[int64]bool)
-	results := make([]Fact, 0, query.Limit)
 	// The ordering that matters is applied in Go, against journal-derived
 	// evidence, once the candidates are known. SQL orders by recency alone.
 	const order = "seq DESC"
+	// Candidates are drawn wider than the answer, because eligibility is judged
+	// per row and used to be judged AFTER the cut: a query for eight could come
+	// back with two while six perfectly good beliefs sat unread behind the
+	// LIMIT. The over-draw is that backfill. It costs nothing until it is used —
+	// admission is lazy, so a retrieval that fills on its first candidates never
+	// asks the eligibility question about the rest.
+	candidateDraw := query.Limit * 3
+	if candidateDraw < 24 {
+		candidateDraw = 24
+	}
 
 	// Channel survival is one projection of the whole journal. Every candidate
 	// asks it the same question, so this retrieval derives it at most once and
@@ -1252,42 +1280,60 @@ func (s *Store) searchFacts(query FactQuery, countUses bool) ([]Fact, error) {
 		return credibility, nil
 	}
 
-	for _, cue := range query.Cues {
-		if len(results) >= query.Limit {
-			break
+	seen := make(map[int64]bool)
+	// admit is the one gate every candidate passes, whichever arm found it: seen
+	// once, eligible for a prompt, or it never becomes an answer. A rejected row
+	// still counts as seen so the other arm does not pay to reject it twice.
+	admit := func(fact Fact) (bool, error) {
+		if seen[fact.Seq] {
+			return false, nil
 		}
-		cue, err := resolveScope(s.db, cue)
+		seen[fact.Seq] = true
+		loaded, err := loadCredibility()
+		if err != nil {
+			return false, err
+		}
+		return s.promptEligible(fact, loaded)
+	}
+
+	// One bucket per cue rather than one queue for all of them. The cue list is
+	// ordered most-specific-first, and the old loop let the first cue take the
+	// whole limit — so a brief carrying a file path never reached the `user`
+	// shelf, where a lesson the person had just stated in their own words was
+	// sitting. Round-robin gives specificity the first pick in every round and
+	// still guarantees every cue a seat.
+	buckets := make([][]Fact, 0, len(query.Cues))
+	for _, cue := range query.Cues {
+		resolved, err := resolveScope(s.db, cue)
 		if err != nil {
 			return nil, fmt.Errorf("search facts: %w", err)
 		}
 		where := `scope = ? AND status = ?`
-		args := []any{cue, FactActive}
+		args := []any{resolved, FactActive}
 		if query.Kind != "" {
 			where += ` AND kind = ?`
 			args = append(args, query.Kind)
 		}
 		where += ` ORDER BY ` + order + ` LIMIT ?`
-		args = append(args, query.Limit)
+		args = append(args, candidateDraw)
 		facts, err := s.factsWhere(where, args...)
 		if err != nil {
 			return nil, err
 		}
-		for _, fact := range facts {
-			if !seen[fact.Seq] && len(results) < query.Limit {
-				seen[fact.Seq] = true
-				results = append(results, fact)
-			}
+		if len(facts) > 0 {
+			buckets = append(buckets, facts)
 		}
 	}
 
-	if terms := ftsQueryFrom(query.Terms); terms != "" && len(results) < query.Limit {
+	var relevance []Fact
+	if terms := ftsQueryFrom(query.Terms); terms != "" {
 		kindClause := ""
 		args := []any{terms, FactActive}
 		if query.Kind != "" {
 			kindClause = " AND f.kind = ?"
 			args = append(args, query.Kind)
 		}
-		args = append(args, query.Limit)
+		args = append(args, candidateDraw)
 		rows, err := s.db.Query(`
 			SELECT f.seq, f.ts, f.node_id, f.scope, f.kind, f.channel, f.body, f.unsettled, f.status, f.artifact, f.status_note,
 			       f.status_seq, f.evidence_seq, f.status_origin, f.uses, f.last_used
@@ -1303,15 +1349,95 @@ func (s *Store) searchFacts(query FactQuery, countUses bool) ([]Fact, error) {
 			if loaded, credibilityErr := loadCredibility(); credibilityErr == nil {
 				applyCredibility(facts, loaded)
 			}
-			for _, fact := range facts {
-				if !seen[fact.Seq] && len(results) < query.Limit {
-					seen[fact.Seq] = true
-					results = append(results, fact)
-				}
-			}
+			relevance = facts
 		}
 		// An FTS syntax error from hostile terms is a miss, not a failure.
 	}
+
+	cursors := make([]int, len(buckets))
+	ring := 0
+	drawCue := func() (Fact, bool, error) {
+		for tries := 0; len(buckets) > 0 && tries < len(buckets); {
+			if cursors[ring] >= len(buckets[ring]) {
+				ring = (ring + 1) % len(buckets)
+				tries++
+				continue
+			}
+			fact := buckets[ring][cursors[ring]]
+			cursors[ring]++
+			ring = (ring + 1) % len(buckets)
+			tries = 0
+			ok, err := admit(fact)
+			if err != nil {
+				return Fact{}, false, err
+			}
+			if ok {
+				return fact, true, nil
+			}
+		}
+		return Fact{}, false, nil
+	}
+	relevanceCursor := 0
+	drawRelevance := func() (Fact, bool, error) {
+		for relevanceCursor < len(relevance) {
+			fact := relevance[relevanceCursor]
+			relevanceCursor++
+			ok, err := admit(fact)
+			if err != nil {
+				return Fact{}, false, err
+			}
+			if ok {
+				return fact, true, nil
+			}
+		}
+		return Fact{}, false, nil
+	}
+
+	relevanceSlots := query.Limit / relevanceReserveShare
+	if len(relevance) > 0 && relevanceSlots < 1 {
+		relevanceSlots = 1
+	}
+	if len(relevance) == 0 {
+		relevanceSlots = 0
+	}
+	cueSlots := query.Limit - relevanceSlots
+
+	cueTaken := make([]Fact, 0, query.Limit)
+	relevanceTaken := make([]Fact, 0, query.Limit)
+	fill := func(draw func() (Fact, bool, error), into *[]Fact, upTo int) error {
+		for len(*into) < upTo {
+			fact, ok, err := draw()
+			if err != nil {
+				return err
+			}
+			if !ok {
+				return nil
+			}
+			*into = append(*into, fact)
+		}
+		return nil
+	}
+	if err := fill(drawCue, &cueTaken, cueSlots); err != nil {
+		return nil, err
+	}
+	if err := fill(drawRelevance, &relevanceTaken, relevanceSlots); err != nil {
+		return nil, err
+	}
+	// Reserved, not wasted. An arm that could not fill its share hands the
+	// remainder back rather than shrinking the answer, so the reservation only
+	// ever costs the other arm slots it had a candidate for.
+	for pass := 0; pass < 2 && len(cueTaken)+len(relevanceTaken) < query.Limit; pass++ {
+		remaining := query.Limit - len(relevanceTaken)
+		if err := fill(drawCue, &cueTaken, remaining); err != nil {
+			return nil, err
+		}
+		remaining = query.Limit - len(cueTaken)
+		if err := fill(drawRelevance, &relevanceTaken, remaining); err != nil {
+			return nil, err
+		}
+	}
+	results := append(cueTaken, relevanceTaken...)
+
 	if query.PreferUseful && len(results) > 1 {
 		// Proven, not popular. This used to rank on facts.uses — a counter
 		// incremented by retrieval itself, outside the journal, with a bare
@@ -1342,23 +1468,9 @@ func (s *Store) searchFacts(query FactQuery, countUses bool) ([]Fact, error) {
 			return results[i].Seq > results[j].Seq
 		})
 	}
-	if len(results) > 0 {
-		loaded, credibilityErr := loadCredibility()
-		if credibilityErr != nil {
-			return nil, credibilityErr
-		}
-		eligible := results[:0]
-		for _, fact := range results {
-			ok, eligibilityErr := s.promptEligible(fact, loaded)
-			if eligibilityErr != nil {
-				return nil, eligibilityErr
-			}
-			if ok {
-				eligible = append(eligible, fact)
-			}
-		}
-		results = eligible
-	}
+	// Eligibility is no longer a filter that runs here, after the cut. It runs
+	// inside admit, one candidate at a time, before a slot is spent — so a row
+	// the gate rejects costs the answer nothing instead of costing it a line.
 	if query.MaxBytes > 0 {
 		bounded := make([]Fact, 0, len(results))
 		used := 0

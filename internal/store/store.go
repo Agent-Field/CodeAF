@@ -208,6 +208,14 @@ var (
 	ErrInvalid     = errors.New("invalid graph mutation")
 	ErrOpenChild   = errors.New("node has an open child")
 	ErrOpenSubtree = errors.New("subtree is not complete")
+	// ErrFactVetoed is the store refusing to re-derive a belief the user threw
+	// away. It is an error rather than a quiet return because the quiet return
+	// was a lie the callers believed: recordFact handed back the quarantined row
+	// with a nil error and no event, so the reconciler announced a learning
+	// moment for a write that never happened and pointed a supersession at a
+	// dead row. The refusal is still not a failure — the returned Fact is the
+	// standing retraction — but a caller now has to look at it to miss it.
+	ErrFactVetoed = errors.New("fact was retracted by the user and may not be re-derived")
 )
 
 // Provenance is stamped onto every node admitted by one splice. Intent is
@@ -481,6 +489,11 @@ func Open(path string) (*Store, error) {
 	}
 	if err := migrateThreadSchema(db); err != nil {
 		return closeOnError(fmt.Errorf("migrate thread schema: %w", err))
+	}
+	// After the thread migration, never before it: the backfill reads the
+	// message view, and the view's shape is what that migration settles.
+	if err := migrateMessagesFTS(db); err != nil {
+		return closeOnError(fmt.Errorf("migrate conversation index: %w", err))
 	}
 	if _, err := db.Exec(agentQuestionSchema); err != nil {
 		return closeOnError(fmt.Errorf("initialize agent question schema: %w", err))

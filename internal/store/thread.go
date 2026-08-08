@@ -828,7 +828,13 @@ func applyMessageView(tx *sql.Tx, payload messagePayload, seq int64, at time.Tim
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		seq, formatTime(at), payload.SessionID, payload.Role, payload.Body,
 		string(attachments), payload.Model, payload.NodeID, payload.CommandSeq, payload.QuestionSeq, string(options), string(brief), string(progress))
-	return err
+	if err != nil {
+		return err
+	}
+	// The searchable copy is written by the same transaction as the row it
+	// indexes. Every message write in this package goes through here, so there
+	// is exactly one seam to keep honest.
+	return refreshMessageFTS(tx, seq)
 }
 
 func normalizeMessageProgress(progress *MessageProgress) (*MessageProgress, error) {
