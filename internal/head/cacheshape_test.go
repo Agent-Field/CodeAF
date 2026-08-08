@@ -149,7 +149,7 @@ func TestThreadWindowIsAPureFunctionOfTheSession(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if renderThread(first) != renderThread(second) {
+	if head.renderThread(first) != head.renderThread(second) {
 		t.Fatal("two reads of one session rendered different threads")
 	}
 }

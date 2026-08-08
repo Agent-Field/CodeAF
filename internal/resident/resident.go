@@ -2186,6 +2186,9 @@ const (
 	// compileThreadLineBytes bounds any single turn, so one pasted wall of text
 	// cannot be the whole slice.
 	compileThreadLineBytes = 400
+	// compileThreadLabelBytes bounds the job name a thread line is attributed
+	// to. It is a short title, and a title long enough to need this is a brief.
+	compileThreadLabelBytes = 80
 	// compileTraitBytes bounds the measured-traits block.
 	compileTraitBytes = 320
 )
@@ -2220,7 +2223,15 @@ func (r *Reconciler) recentThreadBlock(sessionID string) string {
 		if body == "" {
 			continue
 		}
-		line := string(messages[i].Role) + ": " +
+		// A line spoken by a job says which job spoke it, by the short name the
+		// user reads on screen. Four jobs narrating into one thread arrived here
+		// in one undifferentiated voice, and the slice exists precisely to say
+		// what the instruction's words point at.
+		speaker := string(messages[i].Role)
+		if label := r.jobLabelFor(messages[i].NodeID); label != "" {
+			speaker += " [" + label + "]"
+		}
+		line := speaker + ": " +
 			strings.ReplaceAll(clipBlock(body, compileThreadLineBytes), "\n", "\n  ")
 		if used+len(line)+1 > compileThreadBytes {
 			break
@@ -2236,6 +2247,30 @@ func (r *Reconciler) recentThreadBlock(sessionID string) string {
 	}
 	return "recent conversation in this session (oldest first) — use it only to resolve what the " +
 		"instruction's words refer to; the instruction itself is the ask:\n" + strings.Join(lines, "\n")
+}
+
+// jobLabelFor names the job one thread line was spoken by, in the words the
+// user already reads: the job's short title, never an id.
+func (r *Reconciler) jobLabelFor(nodeID string) string {
+	nodeID = strings.TrimSpace(nodeID)
+	if r.store == nil || nodeID == "" || nodeID == store.RootID {
+		return ""
+	}
+	node, found, err := r.store.Node(nodeID)
+	if err != nil || !found {
+		return ""
+	}
+	root, found, err := r.store.Node(jobRootID(r.store, node))
+	if err != nil || !found {
+		root = node
+	}
+	if title := strings.TrimSpace(root.Title); title != "" {
+		return clipLabel(firstLine(title), compileThreadLabelBytes)
+	}
+	if brief := firstLine(root.Brief); brief != "" {
+		return clipLabel(brief, compileThreadLabelBytes)
+	}
+	return ""
 }
 
 // foldJob compacts a landed job in the active view: the subtree collapses to
