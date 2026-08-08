@@ -474,7 +474,9 @@ func DecodeRedirectOption(value string) (action, target, message string, ok bool
 		return "", "", "", false
 	}
 	switch parts[1] {
-	case "apply", "new", "cancel", "keep":
+	// "correct" is the settled twin of "apply": the same question — which work
+	// did you mean — answered about a deliverable rather than a running plan.
+	case "apply", "new", "correct", "cancel", "keep":
 	default:
 		return "", "", "", false
 	}
