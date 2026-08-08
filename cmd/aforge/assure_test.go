@@ -88,6 +88,53 @@ func TestOnlyTheAsksOwnWordsAdmitAGap(t *testing.T) {
 	}
 }
 
+// The same grounding, one layer earlier: what a failed gate may buy with a
+// paid revision round. The measured failure this closes is a gate that held a
+// worker to a working decision aforge wrote for itself after reading its own
+// output, bought a re-run against it, and got back a worse deliverable. The
+// working method is admitted beside the ask because it is the one other
+// standard that was fixed before the work started and cannot move in response
+// to it.
+func TestAGapTheAskNeverSetBuysNoRevisionRound(t *testing.T) {
+	const intent = "what was March revenue"
+	const method = "Done means the figure is traced to a named source row."
+	for name, test := range map[string]struct {
+		quote    string
+		admitted bool
+	}{
+		"a span of the ask admits":            {quote: "March revenue", admitted: true},
+		"a span of the working method admits": {quote: "traced to a named source row", admitted: true},
+		"an invented working decision is refused": {
+			quote: "March refers to any calendar year present in the data"},
+		"a formatting preference is refused": {quote: "wrapped in a markdown code fence"},
+		"no citation at all is refused":      {quote: "  "},
+	} {
+		t.Run(name, func(t *testing.T) {
+			refusal := admitGapRevision(intent, method, test.quote)
+			if test.admitted && refusal != "" {
+				t.Fatalf("a grounded gap was refused its round: %q", refusal)
+			}
+			if !test.admitted {
+				if refusal == "" {
+					t.Fatal("an ungrounded gap bought a paid round")
+				}
+				// A refusal is not silence: the person reads the review's own
+				// words and the reason nothing was redone over them.
+				note := gapNote("the year was never disambiguated", refusal)
+				if !strings.Contains(note, "the year was never disambiguated") ||
+					!strings.Contains(note, refusal) {
+					t.Fatalf("the note hid either the gap or the reason: %q", note)
+				}
+			}
+		})
+	}
+	// A job with no working method is the ordinary case and must not become
+	// a job where every gap is grounded by an empty string.
+	if refusal := admitGapRevision(intent, "", "any calendar year present"); refusal == "" {
+		t.Fatal("an empty working method grounded a gap it never contained")
+	}
+}
+
 // The ledger is read out of the journal, so it survives a restart: what bounds
 // new work has to replay, or every crash hands the job a fresh allowance. Only
 // a quote that actually bought a round is spent — a refused one never cost

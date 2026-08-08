@@ -847,7 +847,34 @@ func buildBrain(w *chatWindow, session string, opts brainOptions) (*chatBrain, e
 				if gate.Pass {
 					outcome.Verdict = gateVerdict(gate)
 				}
+				// The grounding check the extension has always had, applied one
+				// layer earlier: to the revision round. A gap the review cannot
+				// quote from the ask or from the working method is a standard
+				// this system set for itself after seeing its own output, and a
+				// round bought against a moving standard cannot converge — it
+				// produced the one measured round that made a deliverable worse.
+				// So it downgrades to a note: journaled, said, carried on the
+				// delivery, and free.
+				ungrounded := ""
 				if !gate.Pass {
+					ungrounded = admitGapRevision(node.Provenance.Intent, task.Contract, gate.Quote)
+				}
+				if ungrounded != "" {
+					evidence.Refused = ungrounded
+					note := gapNote(gate.Gaps, ungrounded)
+					text += "\n\n" + note
+					_, _ = graph.PostMessage(store.Message{
+						SessionID: node.Provenance.SessionID,
+						Role:      store.RoleSystem,
+						NodeID:    node.ID,
+						Body:      note,
+					})
+					// The verdict is deliberately left where the worker put it.
+					// Nothing about the work was shown to be wrong here; a judge
+					// invented a requirement, and charging the model's rating for
+					// that would teach the profile the reviewer's mistake.
+				}
+				if !gate.Pass && ungrounded == "" {
 					// unmet is the judgement that still stands against whatever is
 					// about to be delivered: the second gate's when a revision ran
 					// and was re-judged, the first gate's when nothing came back to
@@ -3885,11 +3912,11 @@ func judgeDeliverable(ctx context.Context, settings config.Config, client *liveC
 		return deliverableJudgment{Pass: true}
 	}
 	provider.Report(judgeCtx, provider.VerdictVerifiedSuccess)
-	// An unquotable gap is still a gap: it earns the revision pass every named
-	// gap has always earned, and the honest reservation if that comes back
-	// empty. What it does not earn is a round of new work — that is the one
-	// authority the citation buys, and it is refused at the wiring seam rather
-	// than laundered into a pass here.
+	// An ungrounded gap is still recorded as a gap: it is said out loud, it
+	// rides the delivery, and it is in the ledger. What it does not buy is
+	// paid work — neither the revision round nor the extension — and both of
+	// those refusals happen at the wiring seam rather than being laundered
+	// into a pass here.
 	return deliverableJudgment{Gaps: gaps, Quote: strings.TrimSpace(verdict.Quote), Checked: true}
 }
 
@@ -3921,22 +3948,72 @@ func judgeDeliverable(ctx context.Context, settings config.Config, client *liveC
 // for an invented requirement — bounded by the round cap, and by the plan's own
 // rule that no piece of work may exist to check another's product.
 func admitGapCitation(intent, quote string, spent []string) string {
+	if refusal := admitGapGrounding(quote, intent); refusal != "" {
+		return refusal
+	}
 	quote = citationKey(quote)
-	if quote == "" {
-		return "the review could not point at anything in the request that is missing"
-	}
-	// Whitespace is normalised on both sides and nothing else is: a model that
-	// re-wraps a quoted line has still quoted it, and a model that invents a
-	// requirement has still invented it.
-	if !strings.Contains(citationKey(intent), quote) {
-		return "what the review asked for next is not in the request"
-	}
 	for _, prior := range spent {
 		if citationKey(prior) == quote {
 			return "the same words were already worked on once"
 		}
 	}
 	return ""
+}
+
+// admitGapGrounding is the citation invariant's core, and the one door both
+// readers of it go through. A quote is admitted when it is a verbatim span of
+// something nobody in this system wrote for itself during the run: the user's
+// ask, or the working method this kind of job was held to before anything was
+// produced. Everything else — the compiled goal, the working decisions, the
+// previous round's own output — is aforge talking to aforge, and a gap that can
+// only quote those is a preference rather than a failure.
+//
+// Whitespace is normalised on both sides and nothing else is: a model that
+// re-wraps a quoted line has still quoted it, and a model that invents a
+// requirement has still invented it.
+func admitGapGrounding(quote string, grounds ...string) string {
+	quote = citationKey(quote)
+	if quote == "" {
+		return "the review could not point at anything in the request that is missing"
+	}
+	for _, ground := range grounds {
+		if ground = citationKey(ground); ground != "" && strings.Contains(ground, quote) {
+			return ""
+		}
+	}
+	return "what the review asked for next is not in the request"
+}
+
+// admitGapRevision applies that same grounding one layer earlier than the
+// extension does: to the paid revision round a failed gate buys.
+//
+// The extension was guarded and the revision was not, and the measured cost of
+// that asymmetry is one benchmark cell where the gate held the worker to a
+// working decision aforge had invented for itself — "March refers to any
+// calendar year present in the data" — bought a five-turn re-run against it,
+// and got back a worse deliverable than the one it rejected. A round bought on
+// a self-authored standard cannot converge on anything, because the standard
+// moves with each round that is written against it.
+//
+// The working method is admitted as a second ground because it is the one
+// standard besides the ask that was fixed before the work started and that the
+// worker was actually held to. It is not self-authored in the sense that
+// matters: it does not move in response to what the work produced.
+//
+// A refusal is not a pass. The gap is journaled, it is said in the thread, and
+// it rides the delivery — it simply does not redo the work.
+func admitGapRevision(intent, method, quote string) string {
+	return admitGapGrounding(quote, intent, method)
+}
+
+// gapNote is what an ungrounded gap gets instead of a round: the reviewer's
+// words, said plainly, with the honest reason nothing was redone over them. It
+// is the same register as gapHandover and deliberately not the same sentence —
+// a reservation says the work fell short, and this says the review did.
+func gapNote(gaps, refusal string) string {
+	return "a review raised this: " + firstLine(gaps) +
+		" — I've delivered as it stands, because " + refusal +
+		", and I don't redo work over a standard the request never set. Say the word and I will."
 }
 
 func citationKey(text string) string { return strings.Join(strings.Fields(text), " ") }
