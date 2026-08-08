@@ -212,10 +212,18 @@ func (s *Store) promptEligible(fact Fact, credibility channelCredibility) (bool,
 			return true, nil
 		}
 	}
+	// A row the user threw away is not corroboration for the same claim coming
+	// back. Counting it meant a retracted belief that got re-derived cleared
+	// the two-occurrence bar on its first day back, using the retraction itself
+	// as the second occurrence — the deletion became evidence for the thing
+	// deleted. Every other status still counts: an aged-out or superseded row
+	// is a claim this system made and later tidied, not one a human refused.
 	var occurrences int
 	err := s.db.QueryRow(`SELECT COUNT(*) FROM facts
-		WHERE kind=? AND channel=? AND scope=? AND lower(body)=lower(?) AND seq<=?`,
-		fact.Kind, fact.Channel, fact.Scope, fact.Body, fact.Seq).Scan(&occurrences)
+		WHERE kind=? AND channel=? AND scope=? AND lower(body)=lower(?) AND seq<=?
+		AND NOT (status=? AND status_origin=?)`,
+		fact.Kind, fact.Channel, fact.Scope, fact.Body, fact.Seq,
+		FactQuarantined, FactOriginUser).Scan(&occurrences)
 	if err != nil {
 		return false, fmt.Errorf("prompt fact evidence: %w", err)
 	}
@@ -290,6 +298,12 @@ const (
 	// QuestionCategoryServiceHygiene is the long-running nudge, which is an
 	// ordinary VOI-gated ask: if the user always keeps them, stop nagging.
 	QuestionCategoryServiceHygiene QuestionCategory = "service-hygiene"
+	// QuestionCategoryStandingHygiene is the same nudge pointed at a watch
+	// rather than a process. It is its own category because the two are
+	// answered differently — a service is nearly always still wanted, a watch
+	// that has found nothing for a fortnight often is not — and one shared
+	// category would let each teach the gate the wrong thing about the other.
+	QuestionCategoryStandingHygiene QuestionCategory = "standing-hygiene"
 	// QuestionCategoryRedirectTarget is "did you mean the running job, or is
 	// this new work?" — reversible either way, so the meta loop is free to
 	// learn that the top-ranked job is simply always what was meant.

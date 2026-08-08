@@ -37,6 +37,9 @@ type BriefActivity struct {
 	SkillsLearned int          `json:"skills_learned"`
 	CraftsForged  int          `json:"crafts_forged"`
 	CostUSD       float64      `json:"cost_usd"`
+	// Waiting counts the standing rows: what is stopped on the user right now,
+	// as opposed to what happened while they were gone.
+	Waiting int `json:"waiting"`
 }
 
 // BriefDraftItem is the resident voice for one input event, joined by Seq.
@@ -103,7 +106,7 @@ func (r *Reconciler) SessionOpening(sessionID, surface string, after time.Durati
 	if !found || attached.Time.Sub(previous.Time) < after || r.composeBrief == nil {
 		return nil, nil
 	}
-	throughSeq := attached.Seq - 1
+	throughSeq := r.arrivalBoundary(sessionID, previous.Seq, attached.Seq-1)
 	return func(ctx context.Context) error {
 		activity, err := r.briefActivity(previous, throughSeq)
 		if err != nil {
@@ -135,6 +138,27 @@ func (r *Reconciler) SessionClosed(sessionID, surface string) error {
 		return fmt.Errorf("close resident session: %w", err)
 	}
 	return nil
+}
+
+// arrivalBoundary closes the away-window where the user's arrival began.
+//
+// AttachSession expires, rescues and surfaces questions before SessionOpening
+// journals the attach edge, so every one of those messages sits below that edge
+// and inside the window — and the brief then reported "2 questions" for
+// questions the act of opening the app had raised a millisecond earlier. The
+// mark AttachSession takes is the honest end of "while you were away". Falling
+// back to the attach edge keeps every embedding path that never calls
+// AttachSession behaving exactly as before.
+func (r *Reconciler) arrivalBoundary(sessionID string, sinceSeq, attachSeq int64) int64 {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.arrivalSession != strings.TrimSpace(sessionID) {
+		return attachSeq
+	}
+	if r.arrivalSeq < sinceSeq || r.arrivalSeq >= attachSeq {
+		return attachSeq
+	}
+	return r.arrivalSeq
 }
 
 func (r *Reconciler) briefActivity(previous store.Seen, throughSeq int64) (BriefActivity, error) {
@@ -300,6 +324,12 @@ func (r *Reconciler) briefActivity(previous store.Seen, throughSeq int64) (Brief
 		activity.CraftsForged++
 		activity.Events = append(activity.Events, forged)
 	}
+	standing, err := r.briefStanding(byID, throughSeq)
+	if err != nil {
+		return activity, err
+	}
+	activity.Waiting = len(standing)
+	activity.Events = append(activity.Events, standing...)
 	if activity.CostUSD > 0 {
 		activity.Events = append(activity.Events, BriefEvent{
 			Seq: spentSeq, Kind: store.BriefSpend,
@@ -307,6 +337,135 @@ func (r *Reconciler) briefActivity(previous store.Seen, throughSeq int64) (Brief
 		})
 	}
 	return activity, nil
+}
+
+const (
+	// briefStallAfter is how long a top-level job may show no landing before
+	// the brief calls it stalled. It is deliberately longer than any leaf
+	// deadline: a job whose leaves are each landing inside fifteen minutes is
+	// working, however slowly, and an hour with nothing settled is the first
+	// point at which "it is still going" and "it is stuck" stop being the same
+	// sentence to the person reading.
+	briefStallAfter = time.Hour
+	// briefStandingRows caps the standing half. The brief's whole discipline is
+	// that it is a closed sentence with detail behind it, and a returning user
+	// who is blocking six things needs to be told that, not handed six rows —
+	// the headline carries the count.
+	briefStandingRows = 3
+	// briefStandingLabelBytes bounds one row's quotation of a job or question.
+	briefStandingLabelBytes = 90
+)
+
+// briefStanding is the half of the brief that is not an event: what is waiting
+// on the user right now. It is computed from current state at compose time
+// rather than from the window's journal because the interesting thing about an
+// unanswered question is exactly that nothing has happened to it.
+//
+// Two shapes, in the order they cost the user. Work stopped on a question they
+// have not answered — with how long, because the cost of the delay is the whole
+// point and the age is already stored. Then work that is open and has not
+// landed anything in a long time, which is the other way a job goes quiet
+// without ever failing.
+func (r *Reconciler) briefStanding(byID map[string]store.Node, throughSeq int64) ([]BriefEvent, error) {
+	now := r.now()
+	rows := make([]BriefEvent, 0, briefStandingRows)
+	blocked := make(map[string]bool)
+
+	questions, err := r.store.UnresolvedQuestions(200)
+	if err != nil {
+		return nil, err
+	}
+	for _, question := range questions {
+		if len(rows) >= briefStandingRows {
+			break
+		}
+		// Only a question the user has actually seen can be said to be waiting
+		// on them, and only one raised before this arrival: a question surfaced
+		// by the arrival itself is being read right now.
+		if question.Status != store.QuestionAsked || question.Seq > throughSeq {
+			continue
+		}
+		age := store.AgeLabel(question.CreatedAt, now)
+		if age == "" {
+			continue
+		}
+		node, held := byID[strings.TrimSpace(question.OriginNodeID)]
+		if held && (node.Status == store.Done || node.Status == store.Failed || node.Status == store.Cancelled) {
+			held = false
+		}
+		text := clipLabel(firstLine(question.Text), briefStandingLabelBytes) +
+			" — waiting on you " + age + "."
+		ref := ""
+		if held {
+			blocked[node.ID] = true
+			ref = node.ID
+			text = clipLabel(briefNodeLabel(node), briefStandingLabelBytes) +
+				" has been stopped " + age + ", waiting on one answer."
+		}
+		rows = append(rows, BriefEvent{
+			Seq: question.Seq, Time: question.CreatedAt, Kind: store.BriefWaiting,
+			Text: text, Ref: ref,
+		})
+	}
+
+	// A job's own progress is the newest landing anywhere under it, so the
+	// stall test walks the active view once rather than querying per job.
+	newestLanding := make(map[string]time.Time)
+	for _, node := range byID {
+		root := briefRootOf(node, byID)
+		if root == "" || node.FinishedAt.IsZero() {
+			continue
+		}
+		if node.FinishedAt.After(newestLanding[root]) {
+			newestLanding[root] = node.FinishedAt
+		}
+	}
+	for _, node := range byID {
+		if len(rows) >= briefStandingRows {
+			break
+		}
+		if !briefJobRoot(node, byID) || blocked[node.ID] {
+			continue
+		}
+		switch node.Status {
+		case store.Pending, store.Claimed, store.Running:
+		default:
+			continue
+		}
+		// Nothing has landed yet is the sharpest version of stalled, so the
+		// job's own start stands in for a landing it never had.
+		since := newestLanding[node.ID]
+		if since.IsZero() {
+			since = node.StartedAt
+		}
+		if since.IsZero() || now.Sub(since) < briefStallAfter {
+			continue
+		}
+		rows = append(rows, BriefEvent{
+			Seq: node.CreatedSeq, Time: since, Kind: store.BriefWaiting,
+			Text: clipLabel(briefNodeLabel(node), briefStandingLabelBytes) +
+				" is still open and nothing has landed on it " +
+				store.AgeLabel(since, now) + ".",
+			Ref: node.ID,
+		})
+	}
+	return rows, nil
+}
+
+// briefRootOf names the top-level job one node belongs to, or empty for the
+// organizational scaffolding that is nobody's job.
+func briefRootOf(node store.Node, byID map[string]store.Node) string {
+	for hops := 0; hops < maxSessionWalk; hops++ {
+		if briefJobRoot(node, byID) {
+			return node.ID
+		}
+		parent, ok := byID[node.Parent]
+		if !ok {
+			return ""
+		}
+		node = parent
+	}
+	return ""
 }
 
 func briefJobRoot(node store.Node, byID map[string]store.Node) bool {
@@ -371,7 +530,8 @@ func materializeBrief(sinceSeq, throughSeq int64, activity BriefActivity, draft 
 			SinceSeq: sinceSeq, ThroughSeq: throughSeq,
 			Done: activity.Done, Failed: activity.Failed, Cancelled: activity.Cancelled, Questions: activity.Questions,
 			CharterFired: activity.CharterFired, FactsLearned: activity.FactsLearned,
-			SkillsLearned: activity.SkillsLearned, CostUSD: activity.CostUSD, Items: items,
+			SkillsLearned: activity.SkillsLearned, Waiting: activity.Waiting,
+			CostUSD: activity.CostUSD, Items: items,
 		},
 	}
 }
@@ -403,6 +563,11 @@ func defaultBriefHeadline(activity BriefActivity) string {
 	}
 	if activity.CostUSD > 0 {
 		parts = append(parts, fmt.Sprintf("$%.2f", activity.CostUSD))
+	}
+	// Last in the sentence and first in importance: everything before this is
+	// finished business, and this is the only clause the reader has to act on.
+	if activity.Waiting > 0 {
+		parts = append(parts, fmt.Sprintf("%d waiting on you", activity.Waiting))
 	}
 	return "While you were away: " + strings.Join(parts, ", ")
 }

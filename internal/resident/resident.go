@@ -193,6 +193,7 @@ type Reconciler struct {
 	standingWatch   StandingWatch
 	craft           *CraftRunner
 	craftMind       *CraftMind
+	resolveModel    ModelResolveFunc
 	proposeCharters bool
 	dailyBudgetUSD  float64
 	practiceEnabled bool
@@ -216,6 +217,15 @@ type Reconciler struct {
 	standingWatchKeyPersist func() (bool, string, error)
 	now                     func() time.Time
 
+	// arrivalSession and arrivalSeq mark where the user's arrival began. The
+	// attach edge is journaled after AttachSession has already surfaced
+	// questions and said what lapsed, so the brief's window — which ends at that
+	// edge — swallowed the arrival's own noise and reported it as news from
+	// while the user was away. This is the true boundary, taken before anything
+	// is surfaced, and the brief closes its window on it instead.
+	arrivalSession string
+	arrivalSeq     int64
+
 	// The host repair runs outside mu on purpose, so it keeps its own lock.
 	standingMu         sync.Mutex
 	standingWatchCheck time.Time
@@ -232,6 +242,11 @@ type Reconciler struct {
 // watchdog.Manager implements it; tests inject an in-memory recorder.
 type StandingWatch interface {
 	Install(ctx context.Context) error
+	// Uninstall is the reverse gear. A consent the product accepts and cannot
+	// give back is not consent, and the timer repairs itself against a manual
+	// `launchctl unload` every five minutes, so the only honest off-switch is
+	// one the resident itself performs after journalling the decision.
+	Uninstall(ctx context.Context) error
 	Status() (watchdog.Status, error)
 }
 
@@ -458,6 +473,9 @@ func (r *Reconciler) Tick(ctx context.Context) error {
 	if err := r.announceTransitions(ctx); err != nil {
 		return fmt.Errorf("resident tick: watch graph: %w", err)
 	}
+	if err := r.foldSettledJobs(); err != nil {
+		return fmt.Errorf("resident tick: fold settled jobs: %w", err)
+	}
 	if err := r.speakProgress(ctx); err != nil {
 		return fmt.Errorf("resident tick: narrate progress: %w", err)
 	}
@@ -581,6 +599,20 @@ func (r *Reconciler) nextClockDeadlineLocked() (time.Time, error) {
 		earlier(r.lastConsolidation.Add(consolidationInterval))
 	} else {
 		earlier(now)
+	}
+
+	// A job whose grace window has not closed yet is work the passage of time
+	// alone gives the next tick. Without this the gate would sleep through the
+	// deadline and the job would stay unfolded until something else wrote to
+	// the journal — which on a quiet machine can be hours.
+	nodes, err := r.store.ActiveNodes()
+	if err != nil {
+		return time.Time{}, err
+	}
+	for _, node := range nodes {
+		if foldableSettledJob(node) {
+			earlier(node.FinishedAt.Add(settledFoldGrace))
+		}
 	}
 	return deadline, nil
 }
@@ -1005,10 +1037,35 @@ func (r *Reconciler) unfinishedSource(command store.Command) string {
 		return ""
 	}
 	node, ok, err := r.store.Node(target)
-	if err != nil || !ok || node.Group == ReflexGroup || terminal(node.Status) {
+	if err != nil || !ok || node.Group == ReflexGroup {
 		return ""
 	}
+	// A correction is the one splice whose target is supposed to be over. The
+	// user is not saying "this arrived beside live work", they are saying the
+	// delivered thing is wrong — so the settled job is the strongest
+	// continuity source there is, and refusing it left the revision with no
+	// builds_on edge and therefore no sight of what it was revising.
+	if terminal(node.Status) {
+		if !IsCorrection(command.Instruction) {
+			return ""
+		}
+		return node.ID
+	}
 	return node.ID
+}
+
+// CorrectionMarker is the head's mark on a splice that revises the work it
+// targets. It is written here as well as where the head mints it because it is
+// a wire form between two halves of the system — the same reason the head
+// writes the craft-consent option codes out twice — and because the resident
+// cannot import the head: the head already imports the resident for cue
+// extraction, so the dependency runs one way only.
+const CorrectionMarker = "Correcting delivered work:"
+
+// IsCorrection reports that this splice is a revision of the job it targets
+// rather than new work that merely follows one.
+func IsCorrection(instruction string) bool {
+	return strings.Contains(instruction, CorrectionMarker)
 }
 
 func prependBuildsOn(first string, rest []string) []string {
@@ -1305,9 +1362,8 @@ func (r *Reconciler) announceTransitions(ctx context.Context) error {
 					} else if node.Parent == store.RootID && !r.reflexPromoted(node) {
 						r.distillJob(ctx, node, false)
 					}
-					if node.Parent == store.RootID {
-						r.foldJob(node)
-					}
+					// Folding no longer rides this tick; foldSettledJobs takes it
+					// once the grace window has passed. See settledFoldGrace.
 				}
 			case store.EventNodeCancelled:
 				// A cancelled craft run counts against its version the way a
@@ -1377,6 +1433,34 @@ func (r *Reconciler) effectiveSessionID(node store.Node) string {
 // costs a miss rather than the reconciler.
 const maxSessionWalk = 32
 
+// deliverySessionID names the room a deliverable is actually spoken into.
+//
+// The originating session is the right address only while somebody is still in
+// it. A charter's firings carry the session the user was in when they said
+// "yes, stand this up", and every launch mints a new session id, so for the
+// rest of that watch's life its findings were posted into a room that was
+// sealed on day one — the answer existed, was journaled, and was unreadable.
+// An overnight job has the same shape: it lands at 03:00 addressed to
+// yesterday.
+//
+// The brief already solved this: it reads the attach watermark and speaks into
+// whoever is home. So does the rescue that rehomes an orphaned blocking
+// question. This is the same reasoning applied to the deliverable itself —
+// deliver into the attached session when the originating one has nobody in it,
+// and leave everything exactly where it was when it has.
+func (r *Reconciler) deliverySessionID(origin string) string {
+	origin = strings.TrimSpace(origin)
+	seen, found, err := r.store.LastSeen()
+	if err != nil || !found || seen.State != store.SeenAttached {
+		return origin
+	}
+	live := strings.TrimSpace(seen.SessionID)
+	if live == "" || live == origin {
+		return origin
+	}
+	return live
+}
+
 func (r *Reconciler) announceNode(event store.Event) error {
 	node, ok, err := r.store.Node(event.NodeID)
 	if err != nil {
@@ -1389,6 +1473,7 @@ func (r *Reconciler) announceNode(event store.Event) error {
 	if sessionID == "" {
 		return nil
 	}
+	sessionID = r.deliverySessionID(sessionID)
 	if event.Kind == store.EventNodeCompleted && r.reflexPromoted(node) {
 		return nil
 	}
@@ -1508,7 +1593,7 @@ func renderGraphContext(snapshot store.Snapshot) string {
 			fmt.Fprintf(&context, "  asked: %s\n", clipLabel(firstLine(intent), 180))
 		}
 		if outcome := nodeOutcome(node); outcome != "" {
-			fmt.Fprintf(&context, "  result: %s\n", clipBlock(outcome, 600))
+			fmt.Fprintf(&context, "  result: %s\n", clipKeepingFiles(outcome, 600))
 		}
 	}
 
@@ -1533,6 +1618,66 @@ func clipBlock(block string, limit int) string {
 		cut--
 	}
 	return strings.TrimSpace(block[:cut]) + "…"
+}
+
+const (
+	// clipFileCap and clipFileBytes bound the tail a clipped result keeps. Six
+	// paths is the same count the head's deep slice settled on for the same
+	// reason: past that many, a compiler that cannot find the work from the
+	// first six will not find it from the twelfth.
+	clipFileCap   = 6
+	clipFileBytes = 400
+)
+
+// clipKeepingFiles bounds a result the way the compiler needs it bounded.
+//
+// A deliverable is prose with its file paths appended at the end, so clipping
+// the tail is precisely clipping away the only part of the result the next job
+// can act on: `builds_on` exists so day two can start from day one's artifacts,
+// and the paths were the first thing cut. The prose is what is expendable here
+// — the compiler is reading for continuity, not for the report — so the budget
+// is spent on the prose first and the paths are re-attached afterwards, exactly
+// as the head's files line re-attaches what its own truncation buried.
+//
+// A path already surviving inside the clipped prose is not repeated; that is
+// the same filter-then-cap discipline, and for the same reason.
+func clipKeepingFiles(block string, limit int) string {
+	if len(block) <= limit {
+		return block
+	}
+	paths := filePointers(block)
+	if len(paths) == 0 {
+		return clipBlock(block, limit)
+	}
+	// The prose keeps at least half the budget however many paths there are: a
+	// list of files with no account of what they contain is as useless to the
+	// compiler as an account with no files.
+	tailBudget := clipFileBytes
+	if half := limit / 2; tailBudget > half {
+		tailBudget = half
+	}
+	var tail strings.Builder
+	kept := 0
+	for _, path := range paths {
+		if kept == clipFileCap || tail.Len()+len(path)+1 > tailBudget {
+			break
+		}
+		tail.WriteString("\n")
+		tail.WriteString(path)
+		kept++
+	}
+	// clipBlock spends its limit on content and then adds its ellipsis, so the
+	// marker is budgeted here rather than discovered afterwards.
+	prose := clipBlock(block, limit-tail.Len()-len("…"))
+	var files strings.Builder
+	for _, path := range paths[:kept] {
+		if strings.Contains(prose, path) {
+			continue
+		}
+		files.WriteString("\n")
+		files.WriteString(path)
+	}
+	return prose + files.String()
 }
 
 func compileReceipt(goal string, assumptions []string, modelNote string) string {
@@ -1698,6 +1843,35 @@ func (r *Reconciler) redirectBlock(node store.Node) string {
 		"asked for mid-flight is the user's standard stated out loud. Record the standard, not the episode.]"
 }
 
+// correctionBlock renders what the user said when they rejected a delivery.
+//
+// The distiller's prompt asks for exactly this — the user's correction — and
+// has never had a wire to it. A redirect is the standard stated against work in
+// progress; a correction is the standard stated against a finished deliverable
+// the user has actually read, which is stronger still, because they are not
+// guessing at what is coming, they are looking at it.
+//
+// The words come off the job's own intent rather than out of a command scan:
+// the head writes the user's verbatim sentence in front of its deterministic
+// block, and the splice carries that whole instruction as the intent, so the
+// critique is already durable on this node. TargetedCommands would find the
+// same text one join further away.
+func correctionBlock(node store.Node) string {
+	intent := node.Provenance.Intent
+	if !IsCorrection(intent) {
+		return ""
+	}
+	words := strings.TrimSpace(intent[:strings.Index(intent, CorrectionMarker)])
+	if words == "" {
+		return ""
+	}
+	return "[The user read the earlier delivery and said it was wrong, in their own words:\n- " +
+		clipBlock(words, redirectDistillLineBytes) + "\n" +
+		"This job is the corrected version. The difference between what was delivered and what they " +
+		"asked for after reading it is the user's standard, stated against something they could see. " +
+		"Record the standard, not the episode.]"
+}
+
 const (
 	// redirectDistillBytes bounds the mid-run correction block.
 	redirectDistillBytes = 600
@@ -1725,6 +1899,10 @@ func (r *Reconciler) distillJob(ctx context.Context, node store.Node, failed boo
 		revealedGap = true
 		outcome += "\n\n[This job continued or revised earlier delivered work:\n" + prior +
 			"When the new instruction reworks an earlier delivery, the difference between them is evidence of the user's real standard — record the standard, not the episode.]"
+	}
+	if correction := correctionBlock(node); correction != "" {
+		revealedGap = true
+		outcome += "\n\n" + correction
 	}
 	if redirect := r.redirectBlock(node); redirect != "" {
 		revealedGap = true
@@ -2001,6 +2179,68 @@ func (r *Reconciler) foldJob(node store.Node) {
 		digest = node.Error
 	}
 	_ = r.store.Fold(node.ID, digest, filePointers(digest))
+}
+
+// settledFoldGrace is how long a landed job stays open before folding files it.
+//
+// Folding is context economy and it is worth having, but it is also what makes
+// a job unaddressable: every surgery verb — correct it, try again, redirect,
+// expedite, open the result — selects on `folded = 0`. Folding in the same tick
+// that announced the deliverable meant the moment a user read an answer was the
+// moment they could no longer act on it, so "actually, make it shorter" landed
+// on nothing every time.
+//
+// The window is chosen against the human it exists for, not against the
+// machine: it has to outlast reading a deliverable and typing a reaction, and
+// it has to be short enough that the compile context never carries a working
+// day of open jobs. Fifteen minutes is comfortably longer than the first, well
+// inside the second, and it costs a settled subtree fifteen minutes of rows in
+// the active view — which is nothing against the days of tenure folding exists
+// to compact. Nothing is lost by waiting: the journal already has everything,
+// and the fold is derived from state rather than from an event, so a restart
+// mid-window folds the job on the next tick past the deadline rather than
+// forgetting it.
+const settledFoldGrace = 15 * time.Minute
+
+// foldSettledJobs files every job whose grace window has closed. It reads the
+// active view rather than a per-tick memory precisely so that a process that
+// died between the landing and the fold still folds the job: the condition is a
+// property of the graph, not of this reconciler's lifetime.
+func (r *Reconciler) foldSettledJobs() error {
+	nodes, err := r.store.ActiveNodes()
+	if err != nil {
+		return err
+	}
+	cutoff := r.now().Add(-settledFoldGrace)
+	for _, node := range nodes {
+		if !foldableSettledJob(node) || node.FinishedAt.After(cutoff) {
+			continue
+		}
+		if r.effectiveSessionID(node) == "" &&
+			!(node.Group == store.PracticeGroup && node.Provenance.Origin == store.OriginSelf) {
+			continue
+		}
+		r.foldJob(node)
+	}
+	return nil
+}
+
+// foldableSettledJob is the fold's admission test, stated once. A job root that
+// has already folded is represented by its own fold root, which stays in the
+// active view forever and must never be folded again.
+func foldableSettledJob(node store.Node) bool {
+	if node.Parent != store.RootID || node.Folded || node.FoldRoot {
+		return false
+	}
+	if store.IsOrganizationalGroup(node.Group) {
+		return false
+	}
+	switch node.Status {
+	case store.Done, store.Failed, store.Cancelled:
+		return !node.FinishedAt.IsZero()
+	default:
+		return false
+	}
 }
 
 // filePointers pulls the absolute paths a summary names, so a fold keeps

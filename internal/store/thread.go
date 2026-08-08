@@ -53,6 +53,13 @@ const (
 	BriefFact      BriefItemKind = "fact"
 	BriefSkill     BriefItemKind = "skill"
 	BriefSpend     BriefItemKind = "spend"
+	// BriefWaiting is the only kind that is not an event in the window. Every
+	// other row answers "what happened while you were away"; this one answers
+	// "what is still true now" — work stopped on an unanswered question, work
+	// that has not moved. A returning employer's first question is what is
+	// waiting on them, and until this kind existed the brief structurally could
+	// not say it.
+	BriefWaiting BriefItemKind = "waiting"
 )
 
 // BriefItem is one composed row in a morning-brief fold. Ref is optional
@@ -67,17 +74,20 @@ type BriefItem struct {
 // deterministic journal facts; Items and the containing message Body are the
 // resident's composed voice. SinceSeq and ThroughSeq make the interval auditable.
 type Brief struct {
-	SinceSeq      int64       `json:"since_seq"`
-	ThroughSeq    int64       `json:"through_seq"`
-	Done          int         `json:"done,omitempty"`
-	Failed        int         `json:"failed,omitempty"`
-	Cancelled     int         `json:"cancelled,omitempty"`
-	Questions     int         `json:"questions,omitempty"`
-	CharterFired  int         `json:"charter_fired,omitempty"`
-	FactsLearned  int         `json:"facts_learned,omitempty"`
-	SkillsLearned int         `json:"skills_learned,omitempty"`
-	CostUSD       float64     `json:"cost_usd,omitempty"`
-	Items         []BriefItem `json:"items"`
+	SinceSeq      int64 `json:"since_seq"`
+	ThroughSeq    int64 `json:"through_seq"`
+	Done          int   `json:"done,omitempty"`
+	Failed        int   `json:"failed,omitempty"`
+	Cancelled     int   `json:"cancelled,omitempty"`
+	Questions     int   `json:"questions,omitempty"`
+	CharterFired  int   `json:"charter_fired,omitempty"`
+	FactsLearned  int   `json:"facts_learned,omitempty"`
+	SkillsLearned int   `json:"skills_learned,omitempty"`
+	// Waiting counts the standing rows — what is stopped on the user now, not
+	// what happened in the window. Every other total is a fact about the past.
+	Waiting int         `json:"waiting,omitempty"`
+	CostUSD float64     `json:"cost_usd,omitempty"`
+	Items   []BriefItem `json:"items"`
 }
 
 // SeenState is one edge of a human-facing session. Both edges are journaled:
@@ -832,7 +842,7 @@ func normalizeBrief(brief *Brief) (*Brief, error) {
 	}
 	if brief.SinceSeq < 0 || brief.ThroughSeq < brief.SinceSeq ||
 		brief.Done < 0 || brief.Failed < 0 || brief.Cancelled < 0 || brief.Questions < 0 || brief.CharterFired < 0 ||
-		brief.FactsLearned < 0 || brief.SkillsLearned < 0 || brief.CostUSD < 0 ||
+		brief.FactsLearned < 0 || brief.SkillsLearned < 0 || brief.Waiting < 0 || brief.CostUSD < 0 ||
 		math.IsNaN(brief.CostUSD) || math.IsInf(brief.CostUSD, 0) {
 		return nil, fmt.Errorf("%w: invalid brief totals", ErrInvalid)
 	}
@@ -871,7 +881,8 @@ func decodeBrief(raw string, target **Brief) error {
 
 func validBriefItemKind(kind BriefItemKind) bool {
 	switch kind {
-	case BriefDone, BriefFailure, BriefCancelled, BriefQuestion, BriefCharter, BriefFact, BriefSkill, BriefSpend:
+	case BriefDone, BriefFailure, BriefCancelled, BriefQuestion, BriefCharter,
+		BriefFact, BriefSkill, BriefSpend, BriefWaiting:
 		return true
 	default:
 		return false

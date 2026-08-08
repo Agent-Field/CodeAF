@@ -251,3 +251,43 @@ func assertFactAbsentFromRetrieval(t *testing.T, graph *Store, query FactQuery) 
 		t.Fatalf("recent facts returned quarantine: %+v err=%v", recent, err)
 	}
 }
+
+func TestUserRetractedBeliefStaysDownWhenTheDistillerRederivesIt(t *testing.T) {
+	graph := openTestStore(t, filepath.Join(t.TempDir(), "graph.db"))
+	fact, err := graph.RecordFactFrom(FactWriterDistiller, "", "user", FactPreference,
+		"they prefer their reports in bullet points")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := graph.QuarantineFact(fact.Seq, fact.Seq, FactOriginUser); err != nil {
+		t.Fatal(err)
+	}
+
+	// The same world produces the same belief tomorrow.
+	again, err := graph.RecordFactFrom(FactWriterDistiller, "", "user", FactPreference,
+		"they prefer their reports in bullet points")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if again.Seq != fact.Seq || again.Status != FactQuarantined {
+		t.Fatalf("a re-derivation lifted the user's retraction: %+v", again)
+	}
+	query := FactQuery{Cues: []string{"user"}, Terms: "bullet points", Limit: 5}
+	assertFactAbsentFromRetrieval(t, graph, query)
+
+	retracted, err := graph.RetractedFacts(10)
+	if err != nil || len(retracted) != 1 || retracted[0].Seq != fact.Seq {
+		t.Fatalf("retracted facts = %+v err=%v", retracted, err)
+	}
+
+	// The user's own voice may still bring it back — that is a person changing
+	// their mind, not the machine overruling them.
+	restated, err := graph.RecordFactFrom(FactWriterHead, "", "user", FactPreference,
+		"they prefer their reports in bullet points")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if restated.Seq == fact.Seq || restated.Status != FactActive {
+		t.Fatalf("the user could not restate their own preference: %+v", restated)
+	}
+}

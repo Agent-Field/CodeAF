@@ -10,6 +10,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
+	"log"
 	"strings"
 	"time"
 	"unicode"
@@ -130,6 +131,8 @@ func (r *Reconciler) reflectOnJobs(ctx context.Context) {
 	}
 	if onCadence {
 		r.proposeServiceHygiene(now)
+		r.proposeCharterHygiene(now)
+		r.proposeStandingWatchStandDown()
 	}
 
 	learned, err := r.reflect(ctx, jobs)
@@ -194,9 +197,16 @@ func (r *Reconciler) proposeRecurringCharter(jobs []JobSketch) {
 		return
 	}
 	for _, charter := range charters {
-		if charter.ProposalShape == bestShape {
-			return
+		if charter.ProposalShape != bestShape {
+			continue
 		}
+		// The shape already has a charter, so nothing new is proposed — but a
+		// proposal that was minted while nobody was at the surface never got
+		// its question, and this is the pass that notices.
+		if charter.Status == store.CharterProposed {
+			r.askCharterProposal(charter)
+		}
+		return
 	}
 	declined, err := r.store.CharterProposalDeclined(bestShape)
 	if err != nil || declined {
@@ -220,7 +230,177 @@ func (r *Reconciler) proposeRecurringCharter(jobs []JobSketch) {
 	if err != nil {
 		return
 	}
-	_ = r.store.CreateCharter(charter.WithProposalShape(bestShape))
+	if err := r.store.CreateCharter(charter.WithProposalShape(bestShape)); err != nil {
+		return
+	}
+	stored, found, err := r.store.Charter(charter.ID)
+	if err != nil || !found {
+		return
+	}
+	r.askCharterProposal(stored)
+}
+
+// askCharterProposal is the door the proposal never had.
+//
+// The detector was complete: it noticed three near-identical asks, compiled a
+// standing rule for them, and filed it as CharterProposed — where nothing could
+// ratify it, the decline was dead code, and DueCharters filters to active, so
+// it could never fire either. A standing goal nobody can accept is a note to
+// self.
+//
+// Everything it needs already exists and is used verbatim: the ratification
+// option codes the head already decodes, so a plain "yes" ratifies through the
+// same path a user-uttered charter takes, and "no" retires the proposal —
+// which, for a charter that is still only proposed, is a decline, and the
+// decline is what stops the same shape being offered again forever.
+//
+// Next-natural-moment, never blocking. This is the resident volunteering an
+// observation about the user's own habits; it waited three occurrences to say
+// it and it can wait for a gap in the conversation. It is asked into whichever
+// session is live, and if nobody is there it is not asked at all — the charter
+// row is durable and the next retrospective picks the question back up.
+func (r *Reconciler) askCharterProposal(charter store.Charter) {
+	pending, err := r.store.UnresolvedQuestions(200)
+	if err != nil {
+		return
+	}
+	for _, question := range pending {
+		if question.OriginCharterID == charter.ID {
+			return
+		}
+	}
+	seen, found, err := r.store.LastSeen()
+	if err != nil || !found || seen.State != store.SeenAttached {
+		return
+	}
+	session := strings.TrimSpace(seen.SessionID)
+	if session == "" {
+		return
+	}
+
+	rails := charter.Rails()
+	fires := strings.TrimSpace(charter.Watch.Cadence)
+	if fires == "" {
+		fires = charter.Watch.String()
+	}
+	prompt := fmt.Sprintf("This keeps coming back: %s\nI can make it standing — %s, ~$%.2f/firing, ≤%d/day.\nWant me to?",
+		clipLabel(firstLine(charter.Invariant), 160), fires,
+		rails.PerFiringBudgetUSD, rails.MaxFiringsPerDay)
+	options := []store.QuestionOption{
+		{Label: "yes, stand this up", Value: "charter:ratify:" + charter.ID},
+		{Label: "no, not standing", Value: "charter:retire:" + charter.ID},
+	}
+	allowFree := true
+	// Default to the no. An offer the user did not ask for must not become a
+	// standing spend because they pressed enter to get past it.
+	text := store.QuestionMessageBody(prompt, options, store.QuestionConfig{
+		Kind: store.QuestionChoose, Category: store.QuestionCategoryCharterRatification,
+		Default: "2", AllowFree: &allowFree,
+	})
+	if _, err := r.askQuestionLocked(store.AgentQuestion{
+		SessionID: session, Text: text, OriginCharterID: charter.ID,
+		Urgency: store.QuestionNextNaturalMoment, Category: store.QuestionCategoryCharterRatification,
+		DefaultAnswer: "2", Options: options,
+	}); err != nil {
+		log.Printf("charter proposal %s: %v", charter.ID, err)
+	}
+}
+
+const (
+	// charterHygieneQuiet is how long a watch must have checked and found
+	// nothing before the retrospective wonders aloud whether it is still
+	// wanted, and charterHygieneChecks how many of those checks it takes.
+	//
+	// Both are larger than the service equivalents on purpose. A service up for
+	// three days is unusual; a watch that finds nothing for three days is doing
+	// its job — most of a standing watch's life is correctly quiet, and asking
+	// about that would punish the watch for being the thing the user asked for.
+	// Two weeks with a couple of dozen checks and not one firing is a different
+	// claim: this watch has had every chance to be useful and has not been.
+	charterHygieneQuiet   = 14 * 24 * time.Hour
+	charterHygieneChecks  = 20
+	charterHygienePerPass = 1
+)
+
+// proposeCharterHygiene is the missing third call site of the retrospective's
+// own cadence gate. A service up for 72 hours with nobody near it is asked
+// "still needed?"; a watch that has checked two hundred mornings and never once
+// found anything was never questioned by anybody. Same shape, same discipline:
+// once per watch, defaulting to keep, and only when the user has gone quiet, so
+// the noticing never arrives in the middle of something.
+func (r *Reconciler) proposeCharterHygiene(now time.Time) {
+	charters, err := r.store.Charters(store.CharterActive)
+	if err != nil {
+		return
+	}
+	asked := 0
+	for _, charter := range charters {
+		if asked >= charterHygienePerPass {
+			return
+		}
+		if store.IsPracticeCharter(charter) || charter.LastChecked.IsZero() {
+			continue
+		}
+		// The most recent thing that counts as usefulness. A firing is the
+		// watch doing its job; for a watch that has never fired at all, the
+		// clock starts when it was created.
+		fired, err := r.store.CharterLastFired(charter.ID)
+		if err != nil {
+			continue
+		}
+		since := charter.CreatedAt
+		if fired.After(since) {
+			since = fired
+		}
+		if since.IsZero() || now.Sub(since) < charterHygieneQuiet {
+			continue
+		}
+		checks, err := r.store.CharterCheckCount(charter.ID, since)
+		if err != nil || checks < charterHygieneChecks {
+			continue
+		}
+		nudged, err := r.store.CharterHygieneAsked(charter.ID)
+		if err != nil || nudged {
+			continue
+		}
+		session := strings.TrimSpace(charter.SessionID)
+		if session == "" {
+			session = strings.TrimSpace(charter.Ratification.SessionID)
+		}
+		if session == "" {
+			continue
+		}
+		quiet, err := r.store.SessionQuietSince(session, now.Add(-serviceHygieneQuiet))
+		if err != nil || !quiet {
+			continue
+		}
+		if err := r.askCharterHygiene(charter, session, checks); err == nil {
+			asked++
+		}
+	}
+}
+
+func (r *Reconciler) askCharterHygiene(charter store.Charter, session string, checks int) error {
+	allowFree := true
+	options := []store.QuestionOption{
+		{Label: "keep", Value: store.CharterHygieneKeepValue(charter.ID)},
+		{Label: "stop it", Value: "charter:retire:" + charter.ID},
+	}
+	prompt := fmt.Sprintf("%s — I've checked %d times and found nothing worth firing on. Still want it?",
+		clipLabel(firstLine(charter.Invariant), 120), checks)
+	text := store.QuestionMessageBody(prompt, options,
+		store.QuestionConfig{Kind: store.QuestionConfirm, Category: store.QuestionCategoryStandingHygiene,
+			Default: "1", AllowFree: &allowFree})
+	question, err := r.askQuestionLocked(store.AgentQuestion{
+		SessionID: session, Text: text, OriginCharterID: charter.ID,
+		Urgency: store.QuestionWhenever, Category: store.QuestionCategoryStandingHygiene,
+		DefaultAnswer: "1", Options: options,
+	})
+	if err != nil {
+		return err
+	}
+	_, err = r.store.SurfaceQuestion(question.Seq)
+	return err
 }
 
 func recurringAskShape(ask string) string {
