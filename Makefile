@@ -1,6 +1,10 @@
+# The one binary. Every build lands here — never at the repo root, never
+# anywhere else — so a stale copy can't shadow a fresh one.
 BINARY := bin/aforge
 
-.PHONY: build debug test vet clean
+.PHONY: all build debug test vet check clean
+
+all: build
 
 # The symbol table and DWARF are a third of the shipped binary and nothing at
 # runtime reads them. Stripping costs symbolized panic traces, which is exactly
@@ -16,6 +20,9 @@ test:
 
 vet:
 	go vet ./...
+
+# The end-of-change ritual in one word: prove it, then ship the binary.
+check: vet test build
 
 clean:
 	rm -rf bin
