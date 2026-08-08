@@ -93,7 +93,8 @@ func helpCategories() []helpCategory {
 			{key: "/budget 25", meaning: "raise today's ceiling to $25"},
 			{key: "/budget default 25", meaning: "set the default daily ceiling to $25"},
 			{key: "/budget unlimited today", meaning: "remove today's ceiling until midnight"},
-			{key: "header meter", meaning: "tokens and measured model/tool cost used by this session"},
+			{key: "header meter", meaning: "what today has cost so far, and what aforge spent on itself today"},
+			{key: "ask", meaning: "“What has this month cost?” · “What's been expensive lately?”"},
 		}},
 		{title: "memory", rows: []helpRow{
 			{key: "/notebook", meaning: "browse durable scoped facts and lessons"},
