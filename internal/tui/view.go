@@ -343,6 +343,7 @@ func (m *Model) renderTopBar() string {
 		return truncate(left+" "+right, m.width)
 	}
 	m.headerStatusShown = statusActive && shownMeta != ""
+	m.headerPlacesShown = showPlaces
 	rightX := lipgloss.Width(left) + space
 	modelsOffset := 0
 	if shownGlance != "" {
@@ -378,6 +379,9 @@ func (m *Model) renderPlaceLabel(name string, target place, attention bool) stri
 	style := mutedStyle.Faint(true)
 	if m.activePlace() == target {
 		style = inkStyle
+	}
+	if m.focus == focusHeader && m.headerFocusIndex == headerDoors+int(target) {
+		style = powderStyle.Bold(true)
 	}
 	label := style.Render(name)
 	if attention {

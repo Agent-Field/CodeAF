@@ -1010,7 +1010,7 @@ func TestHintsDescribeReceiptsGraphViewAndTwoVoices(t *testing.T) {
 	view := ansi.Strip(strings.Join(model.helpContentLines(76), "\n"))
 	normalizedHelp := strings.Join(strings.Fields(view), " ")
 	for _, expected := range []string{
-		"/notebook", "v", "alt+g", "jump to the task", "cancels the inspected", "mouse",
+		"/notebook", "v", "alt+g", "jump to the task", "cancel the inspected", "mouse",
 	} {
 		if !strings.Contains(normalizedHelp, expected) {
 			t.Fatalf("help does not contain %q:\n%s", expected, view)

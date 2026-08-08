@@ -472,15 +472,19 @@ type Model struct {
 	splitPct      int
 	draggingSplit bool
 
-	chatBounds                paneBounds
-	headerTasksBounds         paneBounds
-	headerThreadBounds        paneBounds
-	headerBoardBounds         paneBounds
-	headerSelfBounds          paneBounds
-	headerQuestionBounds      paneBounds
-	headerModelsBounds        paneBounds
-	headerHelpBounds          paneBounds
-	headerFocusIndex          int
+	chatBounds           paneBounds
+	headerTasksBounds    paneBounds
+	headerThreadBounds   paneBounds
+	headerBoardBounds    paneBounds
+	headerSelfBounds     paneBounds
+	headerQuestionBounds paneBounds
+	headerModelsBounds   paneBounds
+	headerHelpBounds     paneBounds
+	headerFocusIndex     int
+	// headerPlacesShown records whether the last frame drew the place labels:
+	// a narrow header folds them into the wordmark, and a focus ring around
+	// something that is not on screen is worse than not reaching it.
+	headerPlacesShown         bool
 	graphBounds               paneBounds
 	graphRowsBounds           paneBounds
 	standingRowsBounds        paneBounds
@@ -1024,6 +1028,11 @@ func (m *Model) updateKey(message tea.KeyMsg) (tea.Cmd, bool) {
 	}
 	if m.nodeViewID != "" {
 		switch {
+		case key == "esc" && m.voiceState != voiceIdle:
+			// Voice owns esc wherever it is recording. The node view used to
+			// close instead, which made help's "esc discards it" false in the
+			// one surface where a dictated steer is most likely.
+			return m.cancelVoice(), true
 		case key == "esc":
 			m.closeNodeView()
 			return nil, true
@@ -1125,10 +1134,11 @@ func (m *Model) updateKey(message tea.KeyMsg) (tea.Cmd, bool) {
 	if m.focus == focusHeader {
 		switch key {
 		case "left", "up", "k":
-			m.headerFocusIndex = (m.headerFocusIndex + headerDoors - 1) % headerDoors
+			doors := m.headerDoorCount()
+			m.headerFocusIndex = (m.headerFocusIndex + doors - 1) % doors
 			return nil, true
 		case "right", "down", "j":
-			m.headerFocusIndex = (m.headerFocusIndex + 1) % headerDoors
+			m.headerFocusIndex = (m.headerFocusIndex + 1) % m.headerDoorCount()
 			return nil, true
 		case "enter":
 			return m.activateHeaderFocus(), true
