@@ -346,14 +346,27 @@ func (s *Store) Impact(id string, now time.Time) (SurgeryImpact, error) {
 // caller that intends to read supplies none. So the same argument that already
 // separates reading from acting decides this, and no folded node can be reached
 // by a verb through a route that did not exist before.
+// The same argument decides the corpus. A statusless read searches the
+// addressable graph — which includes the jobs a territory packed away — and a
+// verb searches the compact one it always did. Filing a settled job under a
+// territory was never meant to decide whether it can be spoken about, and it
+// was deciding exactly that: the read that opens the head's toolbelt starts
+// here, so a January job being tidied in February made every later question
+// about it fall through to a router with no January in its context at all.
 func (s *Store) SearchSurgeryTargets(reference string, includeLeaves bool, allowed ...Status) ([]SurgeryTarget, error) {
-	nodes, err := s.ActiveNodes()
-	if err != nil {
-		return nil, err
-	}
 	allowedSet := make(map[Status]bool, len(allowed))
 	for _, status := range allowed {
 		allowedSet[status] = true
+	}
+	read := func() ([]Node, error) {
+		if len(allowedSet) == 0 {
+			return s.AddressableNodes()
+		}
+		return s.ActiveNodes()
+	}
+	nodes, err := read()
+	if err != nil {
+		return nil, err
 	}
 	byID := make(map[string]Node, len(nodes))
 	for _, node := range nodes {

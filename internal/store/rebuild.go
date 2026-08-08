@@ -34,6 +34,9 @@ func (s *Store) Rebuild() error {
 	if _, err := tx.Exec(`DELETE FROM nodes`); err != nil {
 		return fmt.Errorf("rebuild nodes: %w", err)
 	}
+	if _, err := tx.Exec(`DELETE FROM messages_fts`); err != nil {
+		return fmt.Errorf("rebuild conversation index: %w", err)
+	}
 	if _, err := tx.Exec(`DELETE FROM messages`); err != nil {
 		return fmt.Errorf("rebuild messages: %w", err)
 	}

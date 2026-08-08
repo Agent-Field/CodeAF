@@ -490,6 +490,11 @@ func Open(path string) (*Store, error) {
 	if err := migrateThreadSchema(db); err != nil {
 		return closeOnError(fmt.Errorf("migrate thread schema: %w", err))
 	}
+	// After the thread migration, never before it: the backfill reads the
+	// message view, and the view's shape is what that migration settles.
+	if err := migrateMessagesFTS(db); err != nil {
+		return closeOnError(fmt.Errorf("migrate conversation index: %w", err))
+	}
 	if _, err := db.Exec(agentQuestionSchema); err != nil {
 		return closeOnError(fmt.Errorf("initialize agent question schema: %w", err))
 	}
