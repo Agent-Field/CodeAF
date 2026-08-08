@@ -90,7 +90,7 @@ func TestNothingAboveTheFloorIsEverSilentlySteered(t *testing.T) {
 
 	head := New(nil, graph)
 	user := postUser(t, graph, "floor", "actually do the job differently")
-	handled, err := head.manageRedirect(user)
+	handled, err := head.manageRedirect(context.Background(), user)
 	if err != nil || !handled {
 		t.Fatalf("redirect not handled: handled=%t err=%v", handled, err)
 	}

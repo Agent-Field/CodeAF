@@ -243,12 +243,12 @@ func (h *Head) poll(ctx context.Context, cursor int64) (int64, error) {
 }
 
 func (h *Head) answer(ctx context.Context, user store.Message) error {
-	if handled, err := h.answerAgentQuestion(user); err != nil {
+	if handled, err := h.answerAgentQuestion(ctx, user); err != nil {
 		return fmt.Errorf("serve head: answer agent question: %w", err)
 	} else if handled {
 		return nil
 	}
-	if handled, err := h.answerPendingQuestion(user); err != nil {
+	if handled, err := h.answerPendingQuestion(ctx, user); err != nil {
 		return fmt.Errorf("serve head: answer selectable question: %w", err)
 	} else if handled {
 		return nil
@@ -283,7 +283,7 @@ func (h *Head) answer(ctx context.Context, user store.Message) error {
 	} else if handled {
 		return nil
 	}
-	if handled, err := h.manageRedirect(user); err != nil {
+	if handled, err := h.manageRedirect(ctx, user); err != nil {
 		return fmt.Errorf("serve head: manage redirection: %w", err)
 	} else if handled {
 		return nil
