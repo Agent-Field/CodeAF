@@ -371,6 +371,14 @@ func (h *Head) answer(ctx context.Context, user store.Message) error {
 		}
 		commandSeq = command.Seq
 	}
+	// The last seam is the one that must never go quiet. A reasoning model
+	// that spends its whole window deliberating returns zero words, and
+	// posting that empty string is silence wearing a message id — the user
+	// watches nothing happen, twice, and concludes the whole thing is broken.
+	// An honest "try again" is the floor under every message.
+	if strings.TrimSpace(decision.Reply) == "" {
+		return h.postAgent(user.SessionID, providerErrorReply, 0)
+	}
 	return h.postAgentModel(user.SessionID, decision.Reply, commandSeq, decision.model)
 }
 
