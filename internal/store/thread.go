@@ -158,6 +158,16 @@ const (
 	// decision. They deliberately have no graph-node or charter target.
 	CommandStandingWatchEnable  CommandKind = "standing_watch_enable"
 	CommandStandingWatchDecline CommandKind = "standing_watch_decline"
+
+	// CommandHandover asks whoever currently holds the resident role to give it
+	// up; Instruction says who is asking and why, in plain words. It is a
+	// command rather than a new event because the journal already has exactly
+	// the shape this needs: a durable request only the resident drains,
+	// resolved exactly once, replayed like everything else — and because a
+	// resident too old to know the verb rejects it in words instead of
+	// ignoring it, which is how a requester learns it must wait for the
+	// heartbeat to go stale instead.
+	CommandHandover CommandKind = "handover"
 )
 
 // CommandStatus is the lifecycle of a requested command. Commands are durable
@@ -942,7 +952,7 @@ func validCommandKind(kind CommandKind) bool {
 		CommandCharterPause, CommandCharterRetire, CommandCharterCadence, CommandCharterOnce,
 		CommandCharterFire, CommandCharterDecline, CommandCharterAlways, CommandCharterNever, CommandCharterProbation,
 		CommandServiceStop, CommandServiceRestart, CommandServiceAutoRestart,
-		CommandStandingWatchEnable, CommandStandingWatchDecline:
+		CommandStandingWatchEnable, CommandStandingWatchDecline, CommandHandover:
 		return true
 	default:
 		return false
@@ -1008,6 +1018,10 @@ func isCharterCommand(kind CommandKind) bool {
 	}
 }
 
+// isGlobalCommand names the kinds that address the whole store rather than a
+// node in the graph. A handover joins them: it is about which process is
+// serving, and there is no node it could point at.
 func isGlobalCommand(kind CommandKind) bool {
-	return kind == CommandStandingWatchEnable || kind == CommandStandingWatchDecline
+	return kind == CommandStandingWatchEnable || kind == CommandStandingWatchDecline ||
+		kind == CommandHandover
 }

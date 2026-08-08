@@ -201,6 +201,8 @@ type Reconciler struct {
 	practiceIdle    time.Duration
 	services        *ServiceSupervisor
 	heartbeat       func(time.Time)
+	handover        HandoverFunc
+	residentSince   time.Time
 
 	mu                 sync.Mutex
 	watcherInitialized bool
@@ -732,6 +734,8 @@ func (r *Reconciler) applyCommand(ctx context.Context, command store.Command) (c
 		return r.applyStandingWatchCommand(ctx, command)
 	case store.CommandAmend:
 		return r.amend(command)
+	case store.CommandHandover:
+		return r.applyHandoverCommand(command)
 	default:
 		reason := fmt.Sprintf("command kind %q is not supported", command.Kind)
 		return commandOutcome{

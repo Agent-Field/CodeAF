@@ -10,6 +10,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"runtime/debug"
 	"strings"
 	"sync"
 	"syscall"
@@ -42,9 +43,88 @@ type Resident struct {
 	// than as dead, so a surface that does not stamp is never taken from.
 	LastTick time.Time `json:"last_tick,omitempty"`
 
+	// Build identifies the binary the holder is running. A missing stamp means
+	// the holder is an older build that never wrote one, and — exactly as with
+	// LastTick — silence is read as unknown rather than as old.
+	Build Build `json:"build,omitempty"`
+
 	// Stuck is derived at probe time and never serialized: the holder is alive,
 	// has stamped a pass at some point, and has not stamped one since.
 	Stuck bool `json:"-"`
+}
+
+// Build is the identity of a running binary, kept deliberately small.
+//
+// The obvious signal is vcs.revision out of runtime/debug.ReadBuildInfo, and it
+// rides along here because it is the only part a human reading the lock file
+// can act on. It cannot be the deciding one: a `go build` of a tree with
+// uncommitted work stamps the revision of the commit underneath it, or nothing
+// at all, so the rebuild that actually caused a handover to be needed is the
+// one case where two binaries share a revision. Two revisions also do not
+// order — deciding which of them is newer needs the repository, which a lock
+// file does not have.
+//
+// The executable's own mtime has none of those problems. It always exists, a
+// rebuild always moves it forward, and it compares with a single operator. So
+// mtime decides, size disambiguates a same-second rebuild, and the revision is
+// a label.
+type Build struct {
+	ModTime  time.Time `json:"mod_time,omitempty"`
+	Size     int64     `json:"size,omitempty"`
+	Revision string    `json:"revision,omitempty"`
+}
+
+// LocalBuild stamps the binary this process is running. Everything it reads can
+// fail on an exotic platform, and every failure degrades to the zero value —
+// which the comparison below reads as "would not claim to be newer".
+func LocalBuild() Build {
+	build := Build{Revision: localRevision()}
+	executable, err := os.Executable()
+	if err != nil {
+		return build
+	}
+	info, err := os.Stat(executable)
+	if err != nil {
+		return build
+	}
+	build.ModTime = info.ModTime().UTC()
+	build.Size = info.Size()
+	return build
+}
+
+// NewerThan asks whether this build should be allowed to displace another.
+// It answers no whenever it cannot answer yes: an unstamped holder is an older
+// binary that predates handover entirely, and taking the role from it on a
+// guess would be the same mistake as treating a silent heartbeat as a dead
+// process. Those residents are reclaimed by the stale-heartbeat path instead.
+func (b Build) NewerThan(other Build) bool {
+	if b.ModTime.IsZero() || other.ModTime.IsZero() {
+		return false
+	}
+	if b.ModTime.After(other.ModTime) {
+		return true
+	}
+	// A same-second rebuild is common on a fast machine with a coarse
+	// filesystem timestamp. A different size is then the only honest evidence
+	// that the binary changed at all, and it is evidence of difference rather
+	// than of direction — so it counts only when the revisions also disagree.
+	return b.ModTime.Equal(other.ModTime) && b.Size != other.Size && b.Revision != other.Revision
+}
+
+// localRevision reads the commit this binary was built from, if the toolchain
+// recorded one. An empty string is the ordinary answer for a `go run`, a test
+// binary, or a build from a tree without git.
+func localRevision() string {
+	info, ok := debug.ReadBuildInfo()
+	if !ok {
+		return ""
+	}
+	for _, setting := range info.Settings {
+		if setting.Key == "vcs.revision" {
+			return strings.TrimSpace(setting.Value)
+		}
+	}
+	return ""
 }
 
 // AcquireResident attempts to become the resident for the store directory.
@@ -83,6 +163,7 @@ func AcquireResident(dir, surface string) (release func() error, heldBy *Residen
 		Host:       strings.TrimSpace(host),
 		Surface:    strings.TrimSpace(surface),
 		AcquiredAt: time.Now().UTC(),
+		Build:      LocalBuild(),
 	}
 	if resident.Surface == "" {
 		resident.Surface = "unknown"
