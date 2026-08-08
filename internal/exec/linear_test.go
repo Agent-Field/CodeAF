@@ -306,6 +306,35 @@ func TestTheFinalMessageContractSplitsAnswerFromWorkingNotFromPointer(t *testing
 	}
 }
 
+// A thing was built, every part of it was exercised in a harness, and the leaf
+// reported that everything was verified — while the person who opened it could
+// not do the one thing they had asked for. Three sentences stand between the
+// harness and that report: the user's first use is settled before building, the
+// check is the whole path rather than the parts, and "verified" is a word that
+// costs an actual run. The fourth keeps the honest exit open, because a law
+// with no honest exit is a law that teaches the lie.
+func TestTheLeafMustEarnTheWordVerified(t *testing.T) {
+	for name, required := range map[string]string{
+		"the user's first use is settled before building": "settle before you build what their first\nreal use looks like",
+		"proportional to the ask":                         "a one-shot\nartefact needs no ceremony beyond being right",
+		"the check is the whole path":                     "exercising the whole of it the way its eventual user would reach it,\nnot part by part",
+		"verified is protected":                           "Verified is a word you earn by running the finished thing the way it will be\nused",
+		"no inference across the join":                    "never reason from working pieces\nto a working result",
+		"the honest gap is the way out":                   "name the part that is unverified and\nhand over the one short check that settles it",
+	} {
+		if !strings.Contains(systemPrompt, required) {
+			t.Errorf("the leaf contract no longer states %s: %q missing", name, required)
+		}
+	}
+	// Generic by construction: the craft is about the shape of the claim, never
+	// about a kind of thing being built.
+	for _, forbidden := range []string{"browser", "GUI", "web app", "headless"} {
+		if strings.Contains(strings.ToLower(systemPrompt), strings.ToLower(forbidden)) {
+			t.Errorf("the leaf contract grew a domain specific: %q", forbidden)
+		}
+	}
+}
+
 // The landing the budget orders is the case that matters, and it is the one the
 // loop used to record as an ordinary finish.
 //
