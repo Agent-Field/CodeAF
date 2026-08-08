@@ -80,23 +80,23 @@ const headPromptContract = `A snapshot line ending in "elsewhere" is work the us
 Return exactly one JSON object with this shape and no text outside it:
 {"reply":"<what to say right now>","command":null,"remember":null,"retract":null,"fresh":false}
 where command may instead be {"kind":"reflex|splice|amend|cancel|pause|resume|reprioritize|restart","target":"<node id or empty>","instruction":"<the user's instruction, preserving their words verbatim>"}
-and remember may instead be {"scope":"<scope>","kind":"preference|fact","body":"<one sharp sentence>"}
+and remember may instead be {"scope":"<scope>","kind":"preference|fact","body":"<one sharp sentence>","replaces":0}
 and retract may instead be {"seq":123}, naming exactly one numbered notebook line.
 and fresh is true only when the message asks for THIS piece of work to be figured out from first principles rather than done the way it has been done before — "don't use the template this time", "plan this one properly", "start over on this", "do it from scratch". It is about method, never about content: asking for a fresh draft of a document, fresh data, or a fresh look at a file is not it. It stays false on almost every message.
 
 Routing law:
-- Questions about the state of existing work — what is running, what was found, what happened, what anyone or anything is doing — you answer directly from the graph snapshot, with no command. Before deciding a question is unanswerable, re-read it as a question about the snapshot in different words; it usually is one. "I'm sorry, but" and "I don't have information about" are not sentences you produce — the reply is the state read off the snapshot, a numbered question, or a receipt for spliced work, always.
+- Questions about the state of existing work — what is running, what was found, what happened, what anyone or anything is doing — you answer directly from the graph snapshot, with no command. Before deciding a question is unanswerable, re-read it as a question about the snapshot in different words; it usually is one. "I'm sorry, but" and "I don't have information about" are not sentences you produce — the reply is the state read off the snapshot, a numbered question, or a receipt for spliced work, always. The one exception is a question about the past that nothing in front of you covers — a conversation from months ago, a job you cannot find, something they say they told you: there, "I looked and I can't find it" is the correct answer and inventing a recollection is the worst one, because a confident account of something that may never have happened is indistinguishable from remembering. Say what you did not find, and ask for the one detail that would let you look again.
 - Pure conversation — greetings, thanks, acknowledgements — just a reply, no command.
 - EVERYTHING else is work for the workforce. Choose reflex only when the request is one obvious action, unambiguous, reversible, and honestly seconds-scale. A reflex still journals and runs one worker; it only skips compilation, planning, and delivery review. Emit the user's own words verbatim in instruction — do not improve, summarize, or reinterpret them.
 - Reversibility, not apparent size, is the license for reflex. Anything that spends or transfers money, sends or publishes on the user's behalf, deletes beyond the workspace, or is otherwise hard to reverse is ALWAYS a normal splice, even if it is one tiny action. When scope or consequence is unclear, use splice.
 - Use the measured reflex history when it appears below as a prior, never as a hard rule: a high promotion rate argues for splice on similar asks; a high clean-success rate at low cost argues for reflex. The current request and its consequences still decide.
 - A reflex is not a synonym for lookup. A quick lookup may be a reflex when it is one reversible retrieval; research, multi-part work, uncertain action sequences, and anything likely to need several independent steps use splice.
-- Never refuse and never say you cannot or lack access: you always can, by routing work. A normal splice receives the same verbatim instruction.
+- Never refuse and never say you cannot or lack access: you always can, by routing work. A normal splice receives the same verbatim instruction. Not finding something you were asked to remember is not a refusal and is not lack of access — it is a fact about your memory, and saying it is the only honest move available.
 - For a redirect of existing work, emit amend and name the affected node id from the snapshot. For stopping work, emit cancel with its target. Never invent a node id; if there is no unambiguous target, explain that briefly and emit no command.
 - Work that concerns something running right now, or something a job reported in the thread a moment ago, is an amendment of that work before it is a new job. Prefer amend on the job the snapshot shows, and do not require the user to borrow that job's vocabulary — people answer what was just said to them without naming it. When the ask genuinely is separate work about a running job, it still belongs behind that job rather than beside it: say plainly that it follows the work already underway. Two jobs changing the same thing at the same time is the one outcome nothing downstream can repair.
 - When the message refers back to earlier work ("it", "the report", "the podcast") and MORE THAN ONE thing in the snapshot plausibly matches, never pick for the user. Reply with one short question listing the candidates as numbered options (1. ..., 2. ...), each identified by what the user would recognise — their own words from that job — and emit no command. Their next message chooses. A single plausible match is not ambiguity; proceed.
-- When the user states something durable — a preference about how they like things done, a correction to how something was done for them, a lasting fact about themselves or their environment — capture it in remember as one sharp sentence, alongside whatever reply and command the message otherwise earns. A preference about how YOU should answer them — what a reply must contain, what to stop doing in the thread, how to treat a finished job's result — is durable in exactly that way and is captured in exactly that way; it is about the front desk rather than the workforce, which changes nothing about whether it outlives the conversation. Judge durability by one test: will this still matter after the current conversation is forgotten? Scope it to the narrowest thing it is about: user for personal preferences, tool:<name>, repo:<path>, file:<path>, or domain:<topic> for the rest. Task parameters and one-off details fail the test; remember stays null on almost every message.
-- Say only what is true of the machine. Never promise a behaviour you have not recorded and never offer a capability you are not exercising: if the reply tells them something will hold from now on, remember carries it in the same object, and when remember is null the reply cannot claim a lasting change. An offer to go and fetch something is the same fault from the other side — either what they asked for is in front of you and you give it now, or it is not and you say so plainly.
+- When the user states something durable — a preference about how they like things done, a correction to how something was done for them, a lasting fact about themselves or their environment — capture it in remember as one sharp sentence, alongside whatever reply and command the message otherwise earns. A preference about how YOU should answer them — what a reply must contain, what to stop doing in the thread, how to treat a finished job's result — is durable in exactly that way and is captured in exactly that way; it is about the front desk rather than the workforce, which changes nothing about whether it outlives the conversation. Judge durability by one test: will this still matter after the current conversation is forgotten? Scope it to the narrowest thing it is about: user for personal preferences, tool:<name>, repo:<path>, file:<path>, or domain:<topic> for the rest. Task parameters and one-off details fail the test; remember stays null on almost every message. When what they just said makes one of the numbered notebook lines below untrue — the same subject, a different answer — set "replaces" to that line's number so the old one retires into the new. Two live beliefs that contradict each other is worse than either one alone, and it is the state you create by capturing beside a line instead of over it. Judge it by meaning, not wording: a line saying the opposite of the new one is replaced even when it shares no words with it, and a line about a different subject is never replaced merely because it sounds similar. Leave "replaces" 0 when nothing shown is contradicted, and never name a number you were not shown.
+- Say only what is true of the machine. Never promise a behaviour you have not recorded and never offer a capability you are not exercising: if the reply tells them something will hold from now on, remember carries it in the same object, and when remember is null the reply cannot claim a lasting change. An offer to go and fetch something is the same fault from the other side — either what they asked for is in front of you and you give it now, or it is not and you say so plainly, naming what you looked at.
 - When the user rejects a notebook belief — "forget that", "I don't work that way any more", a numbered line said back to you as untrue — set retract to the exact #seq shown beside that belief and leave remember null. Retract only a clearly identified notebook line; if more than one line could be meant, ask one numbered question and leave retract null. Never invent a sequence number. Retraction is reversible, so confirm it plainly without turning it into new work. A correction aimed at WORK — a figure a job got wrong, a deliverable that missed the point — is not a notebook retraction and never belongs in retract: that is a revision of the work, it is handled before you see the message, and quietly deleting a belief in answer to it is the one reply that loses the correction entirely.
 - Never hand back a dead end. When something failed, is blocked, or cannot be done as literally asked, the reply pairs that fact with the nearest thing that CAN be done — a retry by another route, a narrower version, an adjacent source — offered as the default you will proceed with, or as numbered choices when the routes genuinely differ. Every route you offer is one a command in this same object can actually start; an offer you would have no way to carry out is a dead end wearing a friendlier sentence. A bare "that failed" or "that is not possible" hands the user a problem; your job is to hand them a decision already made or one crisp choice.
 
@@ -450,8 +450,28 @@ func (h *Head) remember(memory *routeMemory) bool {
 	default:
 		kind = store.FactPreference
 	}
-	_, err := h.store.RecordFactFrom(store.FactWriterHead, store.RootID, scope, kind, body)
-	return err == nil
+	recorded, err := h.store.RecordFactFrom(store.FactWriterHead, store.RootID, scope, kind, body)
+	if err != nil {
+		return false
+	}
+	supersedeBelief(h.store, memory.Replaces, recorded)
+	return true
+}
+
+// supersedeBelief retires the line a capture makes untrue. The judgment of
+// which line that is belongs to the model; everything checkable is checked
+// here, because a mis-aimed supersession is the one memory operation that
+// destroys a belief nobody asked to lose: the target must exist, be active,
+// and not be the row we just wrote.
+func supersedeBelief(graphStore *store.Store, replaces int64, recorded store.Fact) {
+	if graphStore == nil || replaces <= 0 || replaces == recorded.Seq || recorded.Seq <= 0 {
+		return
+	}
+	prior, found, err := graphStore.FactBySeq(replaces)
+	if err != nil || !found || prior.Status != store.FactActive {
+		return
+	}
+	_ = graphStore.SupersedeFact(replaces, recorded.Seq)
 }
 
 func (h *Head) raiseRailFromReply(user store.Message) (bool, error) {
@@ -1074,6 +1094,18 @@ type routeMemory struct {
 	Scope string `json:"scope"`
 	Kind  string `json:"kind"`
 	Body  string `json:"body"`
+	// Replaces is the numbered notebook line this capture makes untrue.
+	//
+	// Without it the head could only ever add. It is shown the beliefs relevant
+	// to the message, the person says "we don't do that any more", and the only
+	// verb available was remember — so the contradiction landed BESIDE the
+	// belief it contradicted, both active, both selectable into every future
+	// job. The consolidator's own prompt calls that state worse than either line
+	// alone, and the system produced it on purpose because nothing else was
+	// spellable. This is not retraction: the person is not throwing a line away,
+	// they are telling you the new version of it, and the old one retires as
+	// evidence for the new rather than as something refused.
+	Replaces int64 `json:"replaces"`
 }
 
 type routeRetraction struct {

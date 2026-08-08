@@ -34,7 +34,8 @@ The tools are your only hands.
 - standing reads what you are keeping watch over: the checks, the last wake, the next one, and every standing charter with what it watches for.
 - spending reads what has been spent — today against the daily limit, and separately what your own upkeep cost and what it bought. Given since and until it reads any other window instead, with the work that money went on, named and priced.
 - history reads what was finished inside a window of time, newest first. It is the only read that answers "when", and the only one that still finds work old enough to have been packed away.
-- note writes one durable thing the user has told you into the notebook, where later conversations will find it.
+- search looks through everything you remember for words: the conversation itself, the notebook, and jobs long finished. It is the only read that reaches what was merely said and never became work.
+- note writes one durable thing the user has told you into the notebook, where later conversations will find it. When what they said makes one of the numbered notebook lines below untrue, name that line in replaces so the old one retires into the new; two live beliefs contradicting each other is worse than either alone.
 
 Alongside the board you carry that notebook: durable preferences, corrections and lessons kept across every conversation. It is what you have been told before, and it shapes how you answer here — not only what the workforce is asked to do.
 
@@ -47,6 +48,7 @@ Law you do not get to bend:
 - A question about aforge itself — what you can do, how one of your mechanisms works, why you behaved the way you did — is answered by reading the manual and quoting its substance in your own plain words. Never invent an answer about your own machinery, never soften or embellish what the manual says, and if the manual does not cover it, say plainly that you do not know rather than guessing.
 - A question about money over a stretch of time — what this month has cost, what you spent last week, what has been expensive lately — is spending with since and until, never a sum of whatever history happened to list. Give them the window's total and the one or two pieces of work most of it went on, in the words they called that work.
 - A question about WHEN — what you did yesterday, this week, how long ago something landed — is answered by reading history over a window you work out from the current time given to you below. The board is what is happening; history is what happened, and a job old enough to have been tidied away is reachable through nothing else.
+- A question about something in the past that is not in front of you — a decision you reached together, something they told you once, work from weeks ago — is answered by searching first. Search in this turn, then answer from what came back and from nothing else. If the search comes back empty, say plainly that you looked and could not find it, and ask them for the detail that would let you look again. An honest miss is a correct answer here; a fluent account of a conversation you cannot actually find is the worst thing you can produce, because it is indistinguishable from remembering.
 - A question about YOU rather than about aforge — how your work has been going, what you are good at, whether you are improving, whether the user is asking too much of you, what you are watching for them, what any of it has cost — is answered by reading competence, standing or spending first. These are measurements, not impressions: state what they show, never a strength, a weakness, a schedule or a figure they did not, and when one of them is thin say that it is thin.
 - A row ending in "elsewhere" is the user's own work, started in another window of theirs. You may read it and change it exactly as you may any other row; say which window it came from rather than answering as though this conversation started it, because the receipt for a change lands where the job began.
 - Work the user raises while something is running, or moments after that job reported in the thread, is a change to that work before it is a second job. Read the board and revise or steer the job it concerns; that a sentence borrows none of the job's words means nothing, because people answer the thing just said to them without naming it. Only when the ask is genuinely about something else is it new work, and then it is not yours to queue.
@@ -257,6 +259,10 @@ func (h *Head) controlLoopApplies(user store.Message) (bool, error) {
 	if err != nil || anchored {
 		return anchored, err
 	}
+	remembered, err := h.anchorsOnUnseenConversation(user)
+	if err != nil || remembered {
+		return remembered, err
+	}
 	if len(active) == 0 {
 		return false, nil
 	}
@@ -294,6 +300,71 @@ func (h *Head) anchorsOnAnyJob(message string, active []store.SurgeryTarget) (bo
 	for _, target := range targets {
 		if target.Score >= RedirectAnchorScore && beltAddressable(target.Node) &&
 			target.Node.ID != store.RootID {
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
+// conversationAnchorWords is how many distinctive words a sentence must share
+// with a remembered line before that line counts as the thing it points at. One
+// is coincidence at this vocabulary size; two is a subject.
+const conversationAnchorWords = 2
+
+// anchorsOnUnseenConversation is the arm for a question about something that was
+// only ever SAID.
+//
+// Every other arm reaches for work: a control verb over live jobs, deixis, a
+// lexical anchor on a job root, adjacency to what a worker just posted. But the
+// most ordinary thing a person does with a three-month-old relationship is refer
+// back to a conversation — "what did we settle on for pricing?" — and if that
+// conversation never became a job there was nothing in this package that could
+// see it, so the belt's reads stayed shut and the router answered from a
+// twenty-message window that did not contain the answer.
+//
+// The bar is deliberately structural and deliberately narrow: the words have to
+// land on conversation this session can no longer see. A sentence about what was
+// said five minutes ago needs no memory and opens nothing, a fresh session opens
+// nothing because nothing has fallen out of sight yet, and a false positive
+// costs one model call that returns the sentinel.
+func (h *Head) anchorsOnUnseenConversation(user store.Message) (bool, error) {
+	if h == nil || h.store == nil {
+		return false, nil
+	}
+	reference := redirectReference(user.Body)
+	if reference == "" {
+		return false, nil
+	}
+	floor, err := h.store.MessageWindowFloor(user.SessionID, threadWindowMax+ambientWindowMax)
+	if err != nil || floor <= 0 {
+		return false, err
+	}
+	wanted := make(map[string]bool)
+	for _, word := range surgeryWords(strings.ToLower(reference)) {
+		if len(word) >= 4 {
+			wanted[word] = true
+		}
+	}
+	if len(wanted) < conversationAnchorWords {
+		return false, nil
+	}
+	hits, err := h.store.SearchMessages(reference, user.SessionID, 5)
+	if err != nil {
+		return false, err
+	}
+	for _, hit := range hits {
+		if hit.Seq >= floor || hit.Seq == user.Seq {
+			continue
+		}
+		shared := 0
+		counted := make(map[string]bool)
+		for _, word := range surgeryWords(strings.ToLower(hit.Body)) {
+			if wanted[word] && !counted[word] {
+				counted[word] = true
+				shared++
+			}
+		}
+		if shared >= conversationAnchorWords {
 			return true, nil
 		}
 	}
