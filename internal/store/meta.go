@@ -212,10 +212,18 @@ func (s *Store) promptEligible(fact Fact, credibility channelCredibility) (bool,
 			return true, nil
 		}
 	}
+	// A row the user threw away is not corroboration for the same claim coming
+	// back. Counting it meant a retracted belief that got re-derived cleared
+	// the two-occurrence bar on its first day back, using the retraction itself
+	// as the second occurrence — the deletion became evidence for the thing
+	// deleted. Every other status still counts: an aged-out or superseded row
+	// is a claim this system made and later tidied, not one a human refused.
 	var occurrences int
 	err := s.db.QueryRow(`SELECT COUNT(*) FROM facts
-		WHERE kind=? AND channel=? AND scope=? AND lower(body)=lower(?) AND seq<=?`,
-		fact.Kind, fact.Channel, fact.Scope, fact.Body, fact.Seq).Scan(&occurrences)
+		WHERE kind=? AND channel=? AND scope=? AND lower(body)=lower(?) AND seq<=?
+		AND NOT (status=? AND status_origin=?)`,
+		fact.Kind, fact.Channel, fact.Scope, fact.Body, fact.Seq,
+		FactQuarantined, FactOriginUser).Scan(&occurrences)
 	if err != nil {
 		return false, fmt.Errorf("prompt fact evidence: %w", err)
 	}

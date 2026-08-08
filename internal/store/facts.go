@@ -611,13 +611,32 @@ func (s *Store) recordFact(writer FactWriter, nodeID, scope string, kind FactKin
 
 	var duplicate int64
 	if deduplicate {
+		var duplicateStatus, duplicateOrigin string
 		err = tx.QueryRow(`
-			SELECT seq FROM facts
+			SELECT seq, status, status_origin FROM facts
 			WHERE scope = ? AND status IN (?, ?) AND lower(body) = lower(?)
 			ORDER BY status = ? DESC, seq DESC LIMIT 1`,
-			scope, FactActive, FactQuarantined, body, FactActive).Scan(&duplicate)
+			scope, FactActive, FactQuarantined, body, FactActive).Scan(
+			&duplicate, &duplicateStatus, &duplicateOrigin)
 		if err != nil && err != sql.ErrNoRows {
 			return Fact{}, fmt.Errorf("record fact: %w", err)
+		}
+		// A human veto and a consolidator's tidy-up used to be the same row.
+		// They are not: the distiller re-derives the same belief from the same
+		// world the day after the user says "forget that", dedup finds the
+		// quarantined row and supersedes it with a fresh active one, and the
+		// retraction ends up counted as evidence for the thing it retracted.
+		// Only the user's own voice may lift the user's own veto — everything
+		// else finds the retraction still standing and leaves it standing.
+		if duplicateStatus == FactQuarantined && duplicateOrigin == string(FactOriginUser) &&
+			writer != FactWriterHead {
+			retracted, found, err := factInTx(tx, duplicate)
+			if err != nil {
+				return Fact{}, fmt.Errorf("record fact: %w", err)
+			}
+			if found {
+				return retracted, nil
+			}
 		}
 	}
 
@@ -1137,6 +1156,24 @@ func (s *Store) CorrectionFacts(limit int) ([]Fact, error) {
 		FactPreference, FactActive, TasteScopePrefix+"%", limit)
 }
 
+// RetractedFacts lists what the user has explicitly thrown away, newest first.
+//
+// The derivation path's whole visible world is FactActive — searchFacts filters
+// on it in both arms and the quarantine also deletes the row from the FTS index
+// — so the one thing the distiller could never see was what the user had
+// refused, which is exactly the thing it needs in order not to write it down
+// again. The store now refuses to promote a human veto on its own (see
+// recordFact), and this is the other half: the lines a derivation prompt can be
+// shown as already-rejected, so the model has the evidence rather than the
+// system having a rule.
+func (s *Store) RetractedFacts(limit int) ([]Fact, error) {
+	if limit <= 0 {
+		limit = 20
+	}
+	return s.factsWhere(`status = ? AND status_origin = ? ORDER BY status_seq DESC LIMIT ?`,
+		FactQuarantined, FactOriginUser, limit)
+}
+
 func normalizedFactSeqs(seqs []int64) []int64 {
 	seen := make(map[int64]bool, len(seqs))
 	normalized := make([]int64, 0, len(seqs))
@@ -1395,6 +1432,24 @@ func (s *Store) Fact(seq int64) (Fact, bool, error) {
 	}
 	if len(facts) == 0 {
 		return Fact{}, false, nil
+	}
+	return facts[0], true, nil
+}
+
+// factInTx reads one fact from inside the write it is about to affect. The
+// credibility projection is deliberately not applied: the caller is deciding
+// whether to write, not ranking anything for a prompt.
+func factInTx(tx *sql.Tx, seq int64) (Fact, bool, error) {
+	rows, err := tx.Query(`
+		SELECT seq, ts, node_id, scope, kind, channel, body, unsettled, status, artifact, status_note,
+		       status_seq, evidence_seq, status_origin, uses, last_used
+		FROM facts WHERE seq = ?`, seq)
+	if err != nil {
+		return Fact{}, false, fmt.Errorf("query fact: %w", err)
+	}
+	facts, err := scanFacts(rows)
+	if err != nil || len(facts) == 0 {
+		return Fact{}, false, err
 	}
 	return facts[0], true, nil
 }
