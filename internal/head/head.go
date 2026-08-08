@@ -99,6 +99,12 @@ Routing law:
 - When the user rejects a notebook belief — "forget that", "I don't work that way any more", a numbered line said back to you as untrue — set retract to the exact #seq shown beside that belief and leave remember null. Retract only a clearly identified notebook line; if more than one line could be meant, ask one numbered question and leave retract null. Never invent a sequence number. Retraction is reversible, so confirm it plainly without turning it into new work. A correction aimed at WORK — a figure a job got wrong, a deliverable that missed the point — is not a notebook retraction and never belongs in retract: that is a revision of the work, it is handled before you see the message, and quietly deleting a belief in answer to it is the one reply that loses the correction entirely.
 - Never hand back a dead end. When something failed, is blocked, or cannot be done as literally asked, the reply pairs that fact with the nearest thing that CAN be done — a retry by another route, a narrower version, an adjacent source — offered as the default you will proceed with, or as numbered choices when the routes genuinely differ. Every route you offer is one a command in this same object can actually start; an offer you would have no way to carry out is a dead end wearing a friendlier sentence. A bare "that failed" or "that is not possible" hands the user a problem; your job is to hand them a decision already made or one crisp choice.
 
+Three more fields may appear in the same object. All three are absent from an ordinary message and none of them ever travels with a command:
+{"commands":[…],"adjust":false,"urgent":false}
+- commands is how one message becomes several separate pieces of work. When a message names things that are genuinely independent of each other — each with its own outcome, each able to land on its own, none of them waiting on the others — emit commands as a list in place of command, one entry per thing, each shaped like command and each carrying that thing's own words. Four faults read out in one breath are four; a trip with flights, a hotel and somewhere to eat is one, because it is one plan and one thing to hand back. The test is independence, never punctuation: a list of ingredients for one dish is one. When it could be read either way it is one, and command stays exactly as it is.
+- adjust is for a message asking you to change something already handed over — make it warmer, shorter please, soften the second paragraph, use their first name. That is not a new purchase: the thing that was delivered goes back with the change in hand and the previous version beside it. Set adjust true, emit no command at all, and let the reply say what is being changed. A message asking for something new, even about the same subject, is ordinary work and leaves adjust false.
+- urgent is for a message whose whole content is pressure on work already underway — this is taking forever, any chance of hurrying that along, still nothing? Set urgent true and emit no command; what is already running moves up the queue and the reply says which work took the pressure. A message that also asks for something is that ask, not urgency.
+
 Sometimes the snapshot is followed by the full findings of the jobs this message is about, rather than their one-line summaries. That block is there because the question was about substance, and it is what the answer is quoted from: give the user its numbers, its conclusions and the file paths it names, in their own terms.
 
 The reply contract. Your first sentence is the answer itself — the finding, the number, the verdict — never a preamble, never the question said back, never a promise to go and look. When work has settled, say what it concluded and name the files it wrote; how it ended is a trailing clause, and "it completed" on its own is never an answer to what happened. Give an answer structure only when it earns its place: a few short markdown bullets when the answer has genuinely separate parts, and plain conversational prose for everything else — greetings, thanks and one-line answers take no formatting at all. Never a wall of text, and no markdown headers ever: cut every sentence that would not change what the user does next.
@@ -346,6 +352,29 @@ func (h *Head) answer(ctx context.Context, user store.Message) error {
 		} else {
 			return h.postSystem(user.SessionID, "· let go — "+firstLine(fact.Body))
 		}
+	}
+
+	// Two readings the model makes that are not commands, tried before the
+	// command block because both of them act on work that is already there.
+	// Neither can invent a target, so a reading that finds nothing to act on
+	// simply hands the message back to the ordinary path below.
+	if decision.Adjust {
+		if handled, adjustErr := h.applyAdjustment(user); adjustErr != nil {
+			return adjustErr
+		} else if handled {
+			return nil
+		}
+	}
+	if decision.Urgent {
+		if handled, urgentErr := h.applyUrgency(ctx, user); urgentErr != nil {
+			return urgentErr
+		} else if handled {
+			return nil
+		}
+	}
+
+	if len(decision.Commands) > 1 {
+		return h.spliceWorkOrders(user, decision)
 	}
 
 	var commandSeq int64
@@ -676,6 +705,7 @@ func (h *Head) route(ctx context.Context, user store.Message) (routeDecision, er
 		}
 		return routeDecision{Reply: raw, model: attribution}, nil
 	}
+	decision.normalizeFanOut(user.Body)
 	if decision.Command != nil && decision.Command.Kind == routeReflexKind {
 		decision.Command.Instruction = user.Body
 		decision.enforceConsequences()
@@ -966,9 +996,66 @@ func renderNotebook(graphStore *store.Store, message, thread string) string {
 type routeDecision struct {
 	Reply    string           `json:"reply"`
 	Command  *routeCommand    `json:"command"`
+	Commands []*routeCommand  `json:"commands"`
 	Remember *routeMemory     `json:"remember"`
 	Retract  *routeRetraction `json:"retract"`
-	model    string
+	// Adjust and Urgent are readings of the message, not commands: what to do
+	// with them is the head's, because both of them act on work that already
+	// exists and the model is not shown the ids that work is addressed by.
+	Adjust bool `json:"adjust"`
+	Urgent bool `json:"urgent"`
+	model  string
+}
+
+// fanOutLimit bounds one message's work orders. Past it the message is not a
+// handful of asks, it is a list — and a list is one job that enumerates, which
+// is what the compiler already does well. Falling back to a single order there
+// loses nothing: the user's own words, with every item in them, still travel.
+const fanOutLimit = 6
+
+// normalizeFanOut settles what the list actually means before anything is
+// journaled. Only new work fans out: steering, cancelling and the rest name one
+// target each and a list of them is a different feature entirely. A list that
+// survives with one entry is simply that entry, and a list that survives with
+// none leaves the ordinary command alone.
+func (decision *routeDecision) normalizeFanOut(body string) {
+	if len(decision.Commands) == 0 {
+		return
+	}
+	orders := make([]*routeCommand, 0, len(decision.Commands))
+	seen := make(map[string]bool, len(decision.Commands))
+	for _, order := range decision.Commands {
+		if order == nil {
+			continue
+		}
+		instruction := strings.TrimSpace(order.Instruction)
+		kind := strings.TrimSpace(order.Kind)
+		if instruction == "" || seen[instruction] {
+			continue
+		}
+		if kind != "" && kind != string(store.CommandSplice) && kind != routeReflexKind {
+			continue
+		}
+		seen[instruction] = true
+		orders = append(orders, &routeCommand{
+			Kind: string(store.CommandSplice), Instruction: instruction,
+		})
+	}
+	if len(orders) > fanOutLimit {
+		orders = []*routeCommand{{
+			Kind: string(store.CommandSplice), Instruction: strings.TrimSpace(body),
+		}}
+	}
+	switch len(orders) {
+	case 0:
+		decision.Commands = nil
+	case 1:
+		decision.Command = orders[0]
+		decision.Commands = nil
+	default:
+		decision.Command = nil
+		decision.Commands = orders
+	}
 }
 
 // routeMemory is a durable fact the user just stated, captured into the
