@@ -1,6 +1,8 @@
 package resident
 
 import (
+	"context"
+	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -77,5 +79,102 @@ func TestTheCardStatesAStatedScheduleAndAsksAboutAGuessedOne(t *testing.T) {
 				t.Fatalf("ratification card leaks %q:\n%s", machinery, body)
 			}
 		}
+	}
+}
+
+// A charter draft is the right answer in a conversation and a dead end on a
+// surface with no mouth. `aforge do` already carries the answer to "standing or
+// once?" in its verb, so a draft that reaches a one-shot errand is resolved as
+// the caller already chose — journaled as a retired proposal, then run as work.
+//
+// The chat half of the same seam must not move: a resident SHOULD still ask.
+func TestAOneShotErrandResolvesACharterDraftAsOnceAndStillRunsTheWork(t *testing.T) {
+	spec := store.CharterSpec{
+		Invariant: "Reconcile bank_export.csv against ledger.csv and flag every discrepancy",
+		Watch: store.CharterWatch{
+			Kind: store.WatchPoll, Cadence: "about every 2 minutes",
+			Spec: store.CadenceWatchSpec(store.WatchPoll, "about every 2 minutes", "",
+				"reconcile the ledgers", time.Now()),
+		},
+		Sentinel: "Have the ledgers diverged?", Action: "Reconcile the two ledgers.",
+		Rails: store.CharterSpecRails{EstimatedCostUSD: 0.05, MaxPerDay: 10,
+			MaxPerDayJustification: "caps the default worst day at about $0.50", Expiry: "never"},
+	}
+	compile := func(context.Context, string, string) (Compiled, error) {
+		draft := spec
+		return Compiled{Question: "Stand this rule up?", Charter: &draft}, nil
+	}
+
+	for _, surface := range []struct {
+		name    string
+		oneShot bool
+	}{{"chat", false}, {"errand", true}} {
+		t.Run(surface.name, func(t *testing.T) {
+			graph := openStore(t)
+			command, err := graph.RequestCommand(store.Command{
+				SessionID: "s", Kind: store.CommandSplice,
+				Instruction: spec.Invariant,
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+			reconciler := New(graph, compile, nil)
+			if surface.oneShot {
+				reconciler = reconciler.WithOneShotErrands()
+			}
+			if err := reconciler.Tick(context.Background()); err != nil {
+				t.Fatal(err)
+			}
+			resolved, found, err := graph.CommandBySeq(command.Seq)
+			if err != nil || !found {
+				t.Fatalf("command found=%t err=%v", found, err)
+			}
+			nodes, err := graph.Nodes()
+			if err != nil {
+				t.Fatal(err)
+			}
+			// The charter draft is itself journaled as a node; work means the
+			// thing the person asked for.
+			work := 0
+			for _, node := range nodes {
+				if node.ID != store.RootID && !strings.HasPrefix(node.ID, "charter-") {
+					work++
+				}
+			}
+
+			if !surface.oneShot {
+				if resolved.Status != store.CommandRejected {
+					t.Fatalf("a chat window stopped asking for ratification: %s", resolved.Status)
+				}
+				if work != 0 {
+					t.Fatalf("an unratified rule spliced %d nodes", work)
+				}
+				return
+			}
+			if resolved.Status != store.CommandApplied {
+				t.Fatalf("the errand ended on a card it cannot answer: %s / %s",
+					resolved.Status, resolved.Result)
+			}
+			if work == 0 {
+				t.Fatal("the draft was resolved and the work still never existed")
+			}
+			// The record says what was proposed and what became of it.
+			charter, found, err := graph.Charter(fmt.Sprintf("charter-%d", command.Seq))
+			if err != nil || !found {
+				t.Fatalf("the proposal was never journaled: found=%t err=%v", found, err)
+			}
+			if charter.Status != store.CharterRetired {
+				t.Fatalf("a rule nobody ratified is %s, want retired", charter.Status)
+			}
+			// And nothing is left standing that could fire on a two-minute
+			// cadence nobody ever asked for.
+			active, err := graph.ActiveCharters()
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(active) != 0 {
+				t.Fatalf("a one-shot errand stood up %d charters", len(active))
+			}
+		})
 	}
 }
