@@ -2,6 +2,7 @@ package resident
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"path"
 	"sort"
@@ -143,9 +144,10 @@ func NotebookDigest(graph *store.Store, nodeID, brief, goal string, limit int) s
 		}
 		_ = graph.RecordFactInjection(nodeID, seqs)
 	}
+	facts = statedFirst(facts)
 
 	var digest strings.Builder
-	digest.WriteString("notebook (lessons from earlier work; if your own experience in this task contradicts one, trust the experience and state the correction explicitly in your final message — that is how the notebook stays true):\n")
+	digest.WriteString("notebook (lessons from earlier work; a line marked \"they told you this\" is the person's own standing instruction and is followed, not weighed; if your own experience in this task contradicts one, trust the experience and state the correction explicitly in your final message — that is how the notebook stays true):\n")
 	for _, fact := range facts {
 		if fact.Kind == store.FactUnsettled && fact.Unsettled != nil {
 			digest.WriteString("- ")
@@ -158,6 +160,8 @@ func NotebookDigest(graph *store.Store, nodeID, brief, goal string, limit int) s
 		}
 		if fact.Kind == store.FactSkill {
 			fmt.Fprintf(&digest, "- #%d skill: ", fact.Seq)
+		} else if fact.Channel == store.FactChannelStated {
+			fmt.Fprintf(&digest, "- #%d (they told you this) ", fact.Seq)
 		} else {
 			fmt.Fprintf(&digest, "- #%d ", fact.Seq)
 		}
@@ -165,6 +169,58 @@ func NotebookDigest(graph *store.Store, nodeID, brief, goal string, limit int) s
 		digest.WriteByte('\n')
 	}
 	return strings.TrimSuffix(digest.String(), "\n")
+}
+
+// statedFirst lifts what the person said in their own voice above what the
+// machine inferred, without dropping or reordering anything else.
+//
+// Retrieval decides what is relevant; it has nothing to say about what carries
+// authority, and until now the digest did not either. A lesson taught in the
+// thread twenty minutes ago — "always run what you build once before telling me
+// it's done" — arrived as line six of eight, in the same typeface as a distilled
+// guess about a file layout, and the next job read past it. The channel already
+// records which of those two a line is; this is the only place that reads it.
+func statedFirst(facts []store.Fact) []store.Fact {
+	stated := make([]store.Fact, 0, len(facts))
+	rest := make([]store.Fact, 0, len(facts))
+	for _, fact := range facts {
+		if fact.Channel == store.FactChannelStated {
+			stated = append(stated, fact)
+			continue
+		}
+		rest = append(rest, fact)
+	}
+	if len(stated) == 0 || len(rest) == 0 {
+		return facts
+	}
+	return append(stated, rest...)
+}
+
+// RetractedBlock renders what the user has explicitly thrown away, for the
+// prompts that derive new beliefs.
+//
+// The store has refused to let a derivation lift a human veto since the day
+// RetractedFacts was written, and its own doc comment called this the other
+// half — "the lines a derivation prompt can be shown as already-rejected". That
+// half was never wired. So the distiller re-proposed a vetoed belief every week
+// off the same evidence, the store swallowed it every week, and nobody upstream
+// learned anything. Showing the model what was refused is how the refusal
+// becomes knowledge instead of a wall it keeps walking into.
+func RetractedBlock(graph *store.Store, limit int) string {
+	if graph == nil {
+		return ""
+	}
+	retracted, err := graph.RetractedFacts(limit)
+	if err != nil || len(retracted) == 0 {
+		return ""
+	}
+	var block strings.Builder
+	block.WriteString("Already rejected — the person threw these lines away. Do not write them again in any wording, and do not treat the same evidence as reason to revive them:\n")
+	now := time.Now()
+	for _, fact := range retracted {
+		fmt.Fprintf(&block, "- [%s · %s] %s\n", fact.Scope, store.AgeLabel(fact.Time, now), fact.Body)
+	}
+	return strings.TrimSuffix(block.String(), "\n")
 }
 
 // consolidateNotebook rewrites at most one overgrown scope. Maintenance is
@@ -384,6 +440,14 @@ func (r *Reconciler) consolidateNotebook(ctx context.Context) {
 			fact, err = r.store.RewriteActiveSkillFrom(store.FactWriterDistiller, rewrite.nodeID, rewrite.learned.Scope, clipFactBody(rewrite.learned.Body), rewrite.skillSource)
 		} else {
 			fact, err = r.recordLearnedFact(rewrite.nodeID, rewrite.learned)
+		}
+		// A rewrite the user has already vetoed is dropped, not fatal, and its
+		// sources stay unmapped so they stay standing. The swallow used to hand
+		// back the quarantined row with a nil error, and this loop mapped live
+		// beliefs onto it — the pass retired good lines in favour of a row that
+		// no retrieval can ever return.
+		if errors.Is(err, store.ErrFactVetoed) {
+			continue
 		}
 		if err != nil {
 			return

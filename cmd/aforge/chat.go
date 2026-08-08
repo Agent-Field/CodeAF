@@ -4176,6 +4176,11 @@ func reflectAcrossJobs(settings config.Config, client *liveClient, graph *store.
 				fmt.Fprintf(&input, "#%d [%s · %s · %s] %s\n", fact.Seq, fact.Scope, fact.Kind, store.AgeLabel(fact.Time, now), fact.Body)
 			}
 		}
+		// A pattern across three jobs is exactly the evidence that revives a
+		// belief the user has already refused once. The refusals travel with it.
+		if refused := resident.RetractedBlock(graph, 10); refused != "" {
+			input.WriteString("\n" + refused + "\n")
+		}
 		response, err := client.CompleteWithMessages(settings.Context(ctx, "reflect"), []ai.Message{
 			{Role: "system", Content: []ai.ContentPart{{Type: "text", Text: reflectorSystemPrompt}}},
 			{Role: "user", Content: []ai.ContentPart{{Type: "text", Text: input.String()}}},
@@ -4369,6 +4374,13 @@ func distillFacts(settings config.Config, client *liveClient, graph *store.Store
 				fmt.Fprintf(&standing, "#%d [%s · %s · %s] %s\n", fact.Seq, fact.Scope, fact.Kind, store.AgeLabel(fact.Time, now), fact.Body)
 			}
 			input += "\n\nStanding notebook entries this job's evidence may touch:\n" + standing.String()
+		}
+		// The vetoed half of the same memory. Without it the distiller sees only
+		// status='active' and re-proposes what the user already refused, which
+		// the store then silently declines to write — a paid call whose whole
+		// output is a lesson nobody is allowed to keep.
+		if refused := resident.RetractedBlock(graph, 10); refused != "" {
+			input += "\n\n" + refused
 		}
 		// The same call may now carry a whole workflow file, which is worth
 		// several times what five one-line memories are: the ceiling is what
