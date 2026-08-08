@@ -532,12 +532,9 @@ func (r *chatResidency) serving() bool {
 // store owns their claims and a leaf killed mid-turn is work already paid for
 // and thrown away.
 func (r *chatResidency) demote(reason string) {
-	brain, release, session, ok := r.giveUpRole()
+	brain, session, ok := r.giveUpRole()
 	if !ok {
 		return
-	}
-	if release != nil {
-		_ = release()
 	}
 	if brain != nil {
 		brain.standDown()
@@ -552,13 +549,21 @@ func (r *chatResidency) demote(reason string) {
 	r.say(session, line)
 }
 
-func (r *chatResidency) giveUpRole() (*chatBrain, func() error, string, bool) {
+// giveUpRole lets go of the lease inside the same critical section that stops
+// this window being the resident. The two have to be one step: anything that
+// reads "not the resident any more" and then reaches for the lock must find it
+// free, or the window that was asked to take over is told the role is still
+// taken by a process that has already given it up.
+func (r *chatResidency) giveUpRole() (*chatBrain, string, bool) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	if !r.resident {
-		return nil, nil, "", false
+		return nil, "", false
 	}
-	brain, release := r.brain, r.release
+	brain := r.brain
+	if r.release != nil {
+		_ = r.release()
+	}
 	r.resident, r.brain, r.release = false, nil, nil
 	session := r.window.session
 	if r.current != nil {
@@ -566,7 +571,7 @@ func (r *chatResidency) giveUpRole() (*chatBrain, func() error, string, bool) {
 			session = current
 		}
 	}
-	return brain, release, session, true
+	return brain, session, true
 }
 
 // say posts one quiet line into the thread. A role change is a fact about the
@@ -597,16 +602,19 @@ func (r *chatResidency) halves() (*chatBrain, *resident.Reconciler) {
 	return r.brain, r.surface
 }
 
-func (r *chatResidency) shutdown() (*chatBrain, func() error, bool) {
+func (r *chatResidency) shutdown() (*chatBrain, bool) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	r.closed = true
 	if !r.resident {
-		return nil, nil, false
+		return nil, false
 	}
-	brain, release := r.brain, r.release
+	brain := r.brain
+	if r.release != nil {
+		_ = r.release()
+	}
 	r.resident, r.brain, r.release = false, nil, nil
-	return brain, release, true
+	return brain, true
 }
 
 // stop is the ordinary shutdown, and it is idempotent: the window may already
@@ -615,7 +623,7 @@ func (r *chatResidency) shutdown() (*chatBrain, func() error, bool) {
 // a moment ago must not become a brain running over a store that is about to
 // be closed.
 func (r *chatResidency) stop() {
-	brain, release, ok := r.shutdown()
+	brain, ok := r.shutdown()
 	// A promotion may be halfway through building a brain over the store this
 	// window is about to close. shutdown has already closed the window to it —
 	// it will give back whatever it took — and this gives it a bounded moment
@@ -629,8 +637,5 @@ func (r *chatResidency) stop() {
 	}
 	if brain != nil {
 		brain.stop()
-	}
-	if release != nil {
-		_ = release()
 	}
 }

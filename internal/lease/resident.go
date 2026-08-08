@@ -148,7 +148,7 @@ func AcquireResident(dir, surface string) (release func() error, heldBy *Residen
 			_ = file.Close()
 			return nil, nil, fmt.Errorf("acquire resident: lock: %w", err)
 		}
-		holder, readErr := readResident(file)
+		holder, readErr := readSteadyResident(file)
 		_ = file.Close()
 		if readErr != nil {
 			return nil, nil, fmt.Errorf("acquire resident: read holder: %w", readErr)
@@ -213,7 +213,7 @@ func ProbeResident(dir string) (*Resident, error) {
 	} else if !lockBusy(err) {
 		return nil, fmt.Errorf("probe resident: lock: %w", err)
 	}
-	holder, err := readResident(file)
+	holder, err := readSteadyResident(file)
 	if err != nil {
 		return nil, fmt.Errorf("probe resident: read holder: %w", err)
 	}
@@ -240,7 +240,7 @@ func NoteResidentTick(dir string, at time.Time) error {
 	}
 	defer file.Close()
 
-	holder, err := readResident(file)
+	holder, err := readSteadyResident(file)
 	if err != nil {
 		return fmt.Errorf("note resident tick: read holder: %w", err)
 	}
@@ -269,6 +269,33 @@ func lockBusy(err error) bool {
 	return errors.Is(err, syscall.EWOULDBLOCK) || errors.Is(err, syscall.EAGAIN)
 }
 
+// readSteadyResident reads the payload of a lock somebody else is holding, and
+// tolerates catching them in the act of writing it.
+//
+// A holder rewrites the payload without any lock of its own — it is the holder,
+// so nothing else may write — but a reader is not excluded, and the moments
+// after a role changes hands are exactly when several processes are reading a
+// lock that is being rewritten. A reader that landed inside that window used to
+// return "unexpected end of JSON input", which a promoting window read as a
+// broken lock and gave up on. The write is one small syscall wide, so a couple
+// of retries is the whole fix; only a payload that will not parse across all of
+// them is genuinely corrupt.
+const readAttempts = 5
+
+func readSteadyResident(file *os.File) (*Resident, error) {
+	var resident *Resident
+	var err error
+	for attempt := 0; attempt < readAttempts; attempt++ {
+		if attempt > 0 {
+			time.Sleep(time.Millisecond)
+		}
+		if resident, err = readResident(file); err == nil {
+			return resident, nil
+		}
+	}
+	return nil, err
+}
+
 func readResident(file *os.File) (*Resident, error) {
 	reader := io.NewSectionReader(file, 0, maxPayloadBytes+1)
 	payload, err := io.ReadAll(reader)
@@ -294,13 +321,18 @@ func writeResident(file *os.File, resident Resident) error {
 		return err
 	}
 	payload = append(payload, '\n')
-	if err := file.Truncate(0); err != nil {
-		return err
-	}
+	// Written before the file is shortened, never after. Truncating first
+	// leaves a window in which a concurrent reader sees an empty lock and
+	// concludes the payload is broken; this way the file is never shorter than
+	// what is already in it, and the worst a reader can catch is a payload
+	// halfway between two good ones — which the retry above rides out.
 	if _, err := file.Seek(0, io.SeekStart); err != nil {
 		return err
 	}
 	if _, err := file.Write(payload); err != nil {
+		return err
+	}
+	if err := file.Truncate(int64(len(payload))); err != nil {
 		return err
 	}
 	return file.Sync()

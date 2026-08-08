@@ -250,16 +250,26 @@ func TestResidentStandsDownWhenAskedToHandOver(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	// The pass that read the request settles it and the standing down runs
+	// beside that pass, so the two land in either order; both have to land.
+	var settled store.Command
 	deadline := time.Now().Add(10 * time.Second)
-	for time.Now().Before(deadline) && role.serving() {
+	for time.Now().Before(deadline) {
+		current, ok, err := window.graph.CommandBySeq(command.Seq)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !ok {
+			t.Fatal("the handover command vanished")
+		}
+		settled = current
+		if settled.Status != store.CommandPending && !role.serving() {
+			break
+		}
 		time.Sleep(20 * time.Millisecond)
 	}
 	if role.serving() {
 		t.Fatal("the resident ignored a handover request")
-	}
-	settled, ok, err := window.graph.CommandBySeq(command.Seq)
-	if err != nil || !ok {
-		t.Fatalf("the handover command vanished: %v %v", ok, err)
 	}
 	if settled.Status != store.CommandApplied {
 		t.Fatalf("handover settled as %s: %s", settled.Status, settled.Result)
@@ -381,10 +391,9 @@ func TestANewerWindowTakesTheRoleFromAnOlderOne(t *testing.T) {
 		t.Fatal("the second window took the role without asking")
 	}
 
-	until(t, newer, func() bool { return newer.serving() && !older.serving() })
-	if brains.count() != 2 {
-		t.Fatalf("%d brains for two windows over one role", brains.count())
-	}
+	until(t, newer, func() bool {
+		return newer.serving() && !older.serving() && brains.count() == 2
+	})
 	state, _ := older.poll()
 	if !state.Visitor {
 		t.Fatalf("the window that stood down still calls itself resident: %+v", state)
