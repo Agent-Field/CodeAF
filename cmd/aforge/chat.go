@@ -32,6 +32,7 @@ import (
 	"github.com/Agent-Field/aforge-v2/internal/provider"
 	"github.com/Agent-Field/aforge-v2/internal/resident"
 	"github.com/Agent-Field/aforge-v2/internal/router"
+	"github.com/Agent-Field/aforge-v2/internal/rtk"
 	"github.com/Agent-Field/aforge-v2/internal/store"
 	"github.com/Agent-Field/aforge-v2/internal/tui"
 	"github.com/Agent-Field/aforge-v2/internal/voice"
@@ -990,6 +991,11 @@ func (b *chatBrain) start() {
 	b.cancel, b.runCancel = cancel, runCancel
 	b.runDone = make(chan struct{})
 	graph, session := b.window.graph, b.session
+
+	// The leaves' shell compressor fetches itself here if it is missing, off
+	// the startup path and outside the wait group: nothing waits on it, nothing
+	// fails without it, and until it lands every command runs plain.
+	guard.Go("chat/rtk", func() { rtk.Bootstrap(ctx) })
 
 	b.background.Add(3)
 	go func() {
