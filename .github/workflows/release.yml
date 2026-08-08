@@ -35,6 +35,15 @@ jobs:
             target: x86_64-unknown-linux-gnu
             os: ubuntu-latest
             native: true
+          # arm64 Linux is not a niche here: DGX Spark and Jetson, Graviton,
+          # Ampere, and Raspberry Pi all land on this target, and every one of
+          # them has to install a Rust toolchain and build from source today.
+          # Native on a hosted arm64 runner, so it gets the same smoke test as
+          # the other native targets instead of shipping unverified.
+          - asset: furrow-linux-arm64
+            target: aarch64-unknown-linux-gnu
+            os: ubuntu-24.04-arm
+            native: true
           - asset: furrow-darwin-arm64
             target: aarch64-apple-darwin
             os: macos-14
