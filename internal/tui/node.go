@@ -305,6 +305,20 @@ func (m *Model) appendNodeMessages(messages []store.Message) {
 	}
 }
 
+// toggleNodeSteerFocus hands the keyboard between the steer line and the feed.
+// The letters can only belong to one of them at a time: with the field focused
+// every key is a character, so a steer that opens with "check…" survives, and
+// the single-key actions wait until the field gives the keyboard back. The
+// blurred caret and the footer both say which half is listening.
+func (m *Model) toggleNodeSteerFocus() {
+	m.inputFocused = !m.inputFocused
+	if m.inputFocused {
+		_ = m.input.Focus()
+		return
+	}
+	m.input.Blur()
+}
+
 func (m *Model) cancelInspectedNode() tea.Cmd {
 	if m.commander == nil {
 		return m.showStatus("cancel unavailable — no Commander")

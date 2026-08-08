@@ -936,6 +936,13 @@ func (m *Model) updateKey(message tea.KeyMsg) (tea.Cmd, bool) {
 			return command, true
 		}
 	}
+	// The one gate that keeps every single-key action out of a sentence being
+	// typed (the law and its table live in keys.go). Returning unhandled hands
+	// the key to the focused field unchanged, which is exactly what a character
+	// is for.
+	if !m.commandKey(key) {
+		return nil, false
+	}
 	// Every option-chord has a control synonym: on macOS, Option only reaches
 	// the program as alt+<key> when the terminal is configured to send it as
 	// Meta (Terminal.app "Use Option as Meta key", iTerm2 "Left Option: Esc+");
@@ -976,7 +983,7 @@ func (m *Model) updateKey(message tea.KeyMsg) (tea.Cmd, bool) {
 	}
 	// The settings door: the option chord anywhere, and the bare comma only
 	// outside the input, where a letter is a command rather than a character.
-	if key == keyBindings.settings || (key == "," && !m.inputFocused && m.nodeViewID == "") {
+	if key == keyBindings.settings || (key == "," && m.nodeViewID == "") {
 		return m.openSettings(), true
 	}
 	if m.paletteOpen() {
@@ -1007,7 +1014,10 @@ func (m *Model) updateKey(message tea.KeyMsg) (tea.Cmd, bool) {
 		case key == "esc":
 			m.closeNodeView()
 			return nil, true
-		case key == "c" && m.input.Value() == "":
+		case key == "tab":
+			m.toggleNodeSteerFocus()
+			return nil, true
+		case key == "c":
 			return m.cancelInspectedNode(), true
 		case key == "enter" && m.inputFocused:
 			return m.submitSteer(), true
@@ -1219,7 +1229,7 @@ func (m *Model) updateKey(message tea.KeyMsg) (tea.Cmd, bool) {
 		}
 		return nil, true
 	}
-	if key == "v" && !m.inputFocused {
+	if key == "v" {
 		m.receiptsExpanded = !m.receiptsExpanded
 		m.refreshChat()
 		return nil, true
@@ -1227,7 +1237,7 @@ func (m *Model) updateKey(message tea.KeyMsg) (tea.Cmd, bool) {
 	if key == "tab" {
 		return m.toggleFocus(), true
 	}
-	if !m.inputFocused && (key == "[" || key == "]") {
+	if key == "[" || key == "]" {
 		delta := -5
 		if key == "]" {
 			delta = 5
