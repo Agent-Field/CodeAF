@@ -103,3 +103,124 @@ func TestProbeReportsAHolderThatStoppedTicking(t *testing.T) {
 		t.Fatalf("conflict report = %+v, %v", conflict, err)
 	}
 }
+
+// The stamp is what makes a handover possible at all, and its ordering has one
+// rule that matters more than being right about which build is newer: it must
+// never claim to be newer than a holder that said nothing. Every binary from
+// before this existed is exactly that holder.
+func TestABuildNeverClaimsToBeNewerThanSilence(t *testing.T) {
+	now := time.Now().UTC()
+	newer := Build{ModTime: now, Size: 20, Revision: "b"}
+	older := Build{ModTime: now.Add(-time.Hour), Size: 10, Revision: "a"}
+
+	if !newer.NewerThan(older) {
+		t.Fatal("a later mtime did not order as newer")
+	}
+	if older.NewerThan(newer) {
+		t.Fatal("an earlier mtime ordered as newer")
+	}
+	if newer.NewerThan(Build{}) {
+		t.Fatal("a stamped build claimed to outrank a holder that never said")
+	}
+	if (Build{}).NewerThan(newer) {
+		t.Fatal("an unstamped build claimed to outrank a stamped one")
+	}
+	if newer.NewerThan(newer) {
+		t.Fatal("a build outranked itself")
+	}
+	// A same-second rebuild is evidence of difference only when the size and
+	// the revision both disagree; a mere size difference is not a direction.
+	sameSecond := Build{ModTime: now, Size: 21, Revision: "b"}
+	if sameSecond.NewerThan(newer) {
+		t.Fatal("a same-second build of the same revision claimed to be newer")
+	}
+	rebuilt := Build{ModTime: now, Size: 21, Revision: "c"}
+	if !rebuilt.NewerThan(newer) {
+		t.Fatal("a same-second build of a different revision did not order as newer")
+	}
+}
+
+// The lock carries the stamp, so a visitor can compare without asking the
+// holder anything.
+func TestTheLockCarriesTheHoldersBuild(t *testing.T) {
+	dir := t.TempDir()
+	release, _, err := AcquireResident(dir, "chat")
+	if err != nil || release == nil {
+		t.Fatalf("acquire: %v", err)
+	}
+	defer release()
+
+	holder, err := ProbeResident(dir)
+	if err != nil || holder == nil {
+		t.Fatalf("probe: %v %v", holder, err)
+	}
+	if holder.Build != LocalBuild() {
+		t.Fatalf("the lock does not name this binary: %+v", holder.Build)
+	}
+	// A heartbeat rewrites the payload and must not lose it.
+	if err := NoteResidentTick(dir, time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	stamped, err := ProbeResident(dir)
+	if err != nil || stamped == nil {
+		t.Fatalf("probe after tick: %v %v", stamped, err)
+	}
+	if stamped.Build != holder.Build {
+		t.Fatalf("a heartbeat dropped the build stamp: %+v", stamped.Build)
+	}
+}
+
+// A holder rewrites the lock's payload without a lock of its own — it is the
+// holder, so nothing else may write — and the moments after a role changes
+// hands are exactly when several processes are reading it. A reader that landed
+// inside a write used to come back with "unexpected end of JSON input", which a
+// window waiting to promote read as a broken lock and gave up on.
+func TestReadingALockThatIsBeingRewrittenNeverReportsItBroken(t *testing.T) {
+	dir := t.TempDir()
+	release, _, err := AcquireResident(dir, "chat")
+	if err != nil || release == nil {
+		t.Fatalf("acquire: %v", err)
+	}
+	defer release()
+
+	stop := make(chan struct{})
+	writing := make(chan struct{})
+	go func() {
+		defer close(writing)
+		for i := 0; ; i++ {
+			select {
+			case <-stop:
+				return
+			default:
+			}
+			// The heartbeat is the rewrite, and it is the one the resident makes
+			// on every completed pass.
+			if err := NoteResidentTick(dir, time.Now().Add(time.Duration(i)*time.Second)); err != nil {
+				t.Errorf("tick: %v", err)
+				return
+			}
+		}
+	}()
+
+	deadline := time.Now().Add(2 * time.Second)
+	reads := 0
+	for time.Now().Before(deadline) {
+		holder, err := ProbeResident(dir)
+		if err != nil {
+			close(stop)
+			<-writing
+			t.Fatalf("a lock being rewritten read as broken: %v", err)
+		}
+		if holder == nil || holder.PID <= 0 {
+			close(stop)
+			<-writing
+			t.Fatalf("a held lock read as free: %+v", holder)
+		}
+		reads++
+	}
+	close(stop)
+	<-writing
+	if reads < 100 {
+		t.Fatalf("only %d reads landed; the race was never exercised", reads)
+	}
+}
