@@ -7,6 +7,7 @@ journey_is 'Q1 Coding quality — a real programming task, graded by running the
 # takes the files it produced, runs them here, and grades the claim against
 # what the interpreter says.
 
+expect_nodes 2
 since="$(mark)"
 started="$(date +%s)"
 
@@ -106,6 +107,8 @@ else
   _check no 'it ran the tests and reported real output, not a promise' \
     'test output in the deliverable' "$(printf '%s' "$claim" | head -c 200)"
 fi
+
+judge_this 'write stats.py with median(numbers) raising ValueError on empty, write pytest tests in test_stats.py, run the tests and tell me the result' "$(deliverable_since "$since")"
 
 dump_turn "$since"
 finish

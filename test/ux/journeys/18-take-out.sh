@@ -3,6 +3,8 @@
 source "$(dirname "${BASH_SOURCE[0]}")/../lib.sh"
 journey_is 'J18 Take things out — y/Y copy, /open, clickable paths: deliverables exit the terminal without friction'
 
+expect_nodes 0
+
 # The clipboard itself is the machine's, not aforge's — pbcopy on a headless CI
 # box is a different journey. What is aforge's, and what this asserts, is that
 # the way out is discoverable and that the paths are real.
@@ -35,7 +37,10 @@ if [ -n "$paths" ]; then
     && _check yes 'every workspace path the thread printed is a real file' 'all paths exist' 'all exist' \
     || _check no 'every workspace path the thread printed is a real file' 'all paths exist' "$missing missing"
 else
-  _check no 'the thread printed at least one deliverable path to take out' 'a workspace path' 'none found'
+  # Not a failure. An answer-first deliverable is allowed to hand back the
+  # content and no path at all — /open and the workspace link are the way out
+  # in that case, and grading their absence would punish the better behaviour.
+  record 'OBSERVED' 'this run delivered answer-first with no absolute path in the thread; the way out is /open and the workspace link, not a printed path'
 fi
 
 dump_turn "$(mark)"

@@ -8,12 +8,13 @@ journey_is 'Q2 Research quality — a finance question with checkable answers, g
 # journey grades against — a number in the right place is worth more than a
 # confident paragraph, and a wrong number is worth less than nothing.
 
+expect_nodes 1
 since="$(mark)"
 started="$(date +%s)"
 
 say "research Apple's total revenue in fiscal year 2024 and how much of it was Services. give me the two numbers and cite where they come from."
 
-assert_screen 'aforge' 'it replied' 240
+assert_journal "select count(*) from messages where seq > $since and role in ('agent','system')" 'it replied' 240
 wait_journal "select count(*) from messages where seq > $since and role in ('agent','system') and length(body) > 120" 300
 sleep 15
 snap answered
@@ -58,6 +59,8 @@ if printf '%s' "$answer" | grep -Eqi 'https?://'; then
 else
   record 'looked it up' 'no live URL in the answer; the numbers may be from model memory rather than the web tool'
 fi
+
+judge_this "research Apple's total revenue in fiscal 2024 and how much was Services; give the two numbers and cite where they come from" "$(deliverable_since "$since")"
 
 dump_turn "$since"
 finish

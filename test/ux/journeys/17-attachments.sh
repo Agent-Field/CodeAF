@@ -18,6 +18,7 @@ record 'file mentioned' "$img ($(wc -c < "$img" | tr -d ' ') bytes)"
 before_cas="$(find "$UX_STATE/cas" -type f 2>/dev/null | wc -l | tr -d ' ')"
 record 'CAS objects before' "$before_cas"
 
+expect_nodes 1
 since="$(mark)"
 tmux send-keys -t "$UX_SESSION" -l -- "tell me in one word what colour this image is: $img"
 sleep 2

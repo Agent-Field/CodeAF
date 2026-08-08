@@ -3,6 +3,8 @@
 source "$(dirname "${BASH_SOURCE[0]}")/../lib.sh"
 journey_is 'J6 Answer its questions — type the number; the answer appears as the user'"'"'s message and a receipt lands in the thread'
 
+expect_nodes 0
+
 since="$(mark)"
 
 # The cheapest reliable question generator is a standing rule: its proposal

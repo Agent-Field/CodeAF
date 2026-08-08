@@ -3,6 +3,7 @@
 source "$(dirname "${BASH_SOURCE[0]}")/../lib.sh"
 journey_is 'J1 Ask a small thing — "what'"'"'s 2^32?" → direct answer in thread, no job ceremony'
 
+expect_nodes 0
 since="$(mark)"
 
 say "what is 2 to the power 10?"

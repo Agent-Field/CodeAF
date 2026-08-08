@@ -3,6 +3,7 @@
 source "$(dirname "${BASH_SOURCE[0]}")/../lib.sh"
 journey_is 'J5 Correct delivered work — "that'"'"'s wrong" spawns a revision beside the original, inheriting its workspace'
 
+expect_nodes 1
 since="$(mark)"
 
 say "that haiku is wrong — the haiku must mention a heron. fix it and show me the new haiku"
@@ -39,6 +40,8 @@ else
 fi
 
 record 'the head'"'"'s reply' "$(journal "select group_concat(substr(body,1,200),' | ') from messages where seq > $since and role in ('agent','system')" | head -c 600)"
+
+judge_this 'that haiku is wrong — the haiku must mention a heron. fix it and show me the new haiku' "$(deliverable_since "$since")"
 
 dump_turn "$since"
 finish

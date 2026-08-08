@@ -3,6 +3,8 @@
 source "$(dirname "${BASH_SOURCE[0]}")/../lib.sh"
 journey_is 'Q5 Graph shape — across everything the suite commissioned: how many tasks did it form, and was that the right number?'
 
+expect_nodes 0
+
 # Nothing is said in this journey. It reads the whole run's graph and judges the
 # one thing a task graph can get obviously wrong in both directions: a haiku
 # that became eleven tasks, or a research report that became none.
@@ -58,6 +60,16 @@ record 'user turns / agent+system replies' "$users / $agents"
 [ "${agents:-0}" -ge "${users:-1}" ] \
   && _check yes 'every user turn was answered — no silence wearing a message id' 'replies ≥ user turns' "$agents ≥ $users" \
   || _check no 'every user turn was answered — no silence wearing a message id' 'replies ≥ user turns' "$agents < $users"
+
+# The thread is the only mouth, so a journaled agent message that draws as a
+# bare stream cursor is silence wearing a message id — the exact sin the law
+# names. One live cursor is a reply in flight; a screen full of them is not.
+snap final-thread
+cursors="$(pane | grep -c '^[[:space:]]*▌[[:space:]]*$')"
+record 'thread rows that are a bare stream cursor with no words' "$cursors"
+[ "${cursors:-0}" -le 1 ] \
+  && _check yes 'agent messages render their words, not an empty stream cursor' 'at most one live cursor on screen' "$cursors" \
+  || _check no 'agent messages render their words, not an empty stream cursor' 'at most one live cursor on screen' "$cursors bare cursors — journaled replies are drawing blank"
 
 {
   echo

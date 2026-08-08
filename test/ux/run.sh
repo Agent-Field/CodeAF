@@ -183,14 +183,20 @@ if ! tmux capture-pane -t "$UX_SESSION" -p | grep -q 'aforge'; then
 fi
 
 declare -a RESULTS=()
+declare -a GAUGES=()
 ABORTED=""
+JUDGE_CALLS=0
 START_TS="$(date +%s)"
+
+sql() { sqlite3 -readonly "$UX_DB" "$1" 2>/dev/null; }
+watermark() { sql "select coalesce(max(seq),0) from events"; }
 
 for script in "${ORDER[@]}"; do
   name="$(basename "$script" .sh)"
   wanted "$script" || continue
 
   before="$(total_spend)"
+  mark_before="$(watermark)"
   started="$(date +%s)"
   UX_JOURNEY="$name" UX_SESSION="$UX_SESSION" bash "$script"
   code=$?
@@ -202,6 +208,54 @@ for script in "${ORDER[@]}"; do
   checks="$(cat "$UX_EVIDENCE/$name/checks" 2>/dev/null || echo '0/0 checks')"
   [ "$code" -ne 0 ] && [ "$verdict" = "PASS" ] && verdict=FAIL
   RESULTS+=("$name|$verdict|$checks|${elapsed}s|\$$cost")
+
+  # ------------------------------------------------------------- the gauges
+  #
+  # Proportionality: how much machinery did the ask actually buy? A haiku is
+  # one node. A haiku that became five is a passing journey with a quality
+  # problem, and the report has to be able to say so.
+  nodes="$(sql "select count(*) from nodes where created_seq > $mark_before")"
+  jobs="$(sql "select count(*) from nodes where created_seq > $mark_before and origin='user' and parent_id='root'")"
+  users="$(sql "select count(*) from messages where seq > $mark_before and role='user'")"
+  agents="$(sql "select count(*) from messages where seq > $mark_before and role='agent'")"
+  systems="$(sql "select count(*) from messages where seq > $mark_before and role='system'")"
+  expect="$(cat "$UX_EVIDENCE/$name/expect-nodes" 2>/dev/null || echo 1)"
+
+  # Noise: agent turns beyond one reply per thing the user said. Receipts and
+  # deliverables are not noise — they are the product working.
+  noise="$(python3 -c "print(max(0, ${agents:-0} - ${users:-0}))")"
+
+  flags=""
+  if [ "${nodes:-0}" -gt "${expect:-1}" ] && [ "${nodes:-0}" -gt 2 ]; then
+    flags="$flags OVER-DECOMPOSED(${nodes}v${expect})"
+  fi
+  [ "${noise:-0}" -ge 2 ] && flags="$flags CHATTY(+$noise)"
+  python3 -c "import sys; sys.exit(0 if float('$cost') > 0.05 else 1)" && flags="$flags EXPENSIVE"
+  [ "${elapsed:-0}" -gt 180 ] && flags="$flags SLOW"
+
+  # ------------------------------------------------------------- the judge
+  quality="—"; why=""
+  if [ -s "$UX_EVIDENCE/$name/judge-deliverable" ]; then
+    judged="$(python3 "$UX_ROOT/judge.py" "$UX_STATE" \
+      "$UX_EVIDENCE/$name/judge-ask" "$UX_EVIDENCE/$name/judge-deliverable" 2>/dev/null)"
+    JUDGE_CALLS=$((JUDGE_CALLS + 1))
+    quality="${judged%%|*}"
+    why="${judged#*|}"
+    {
+      echo
+      echo "### quality judge"
+      echo
+      echo "- **score**: $quality/5"
+      echo "- **why**: $why"
+    } >> "$UX_EVIDENCE/$name/notes.md"
+    printf '    · quality %s/5 — %s\n' "$quality" "$why" >&2
+    case "$quality" in
+      1|2) flags="$flags POOR-RESULT" ;;
+      3)   flags="$flags MIDDLING" ;;
+    esac
+  fi
+
+  GAUGES+=("$name|$verdict|${jobs:-0}/${nodes:-0}|\$$cost|${elapsed}|$quality|${flags:-—}|$why")
 
   if over_cap "$after"; then
     ABORTED="spend \$$after exceeded the \$$UX_CAP cap after $name"
@@ -229,8 +283,28 @@ PLIST="$(ls "$UX_HOME/Library/LaunchAgents" 2>/dev/null | tr '\n' ' ')"
   echo "disposable brain at \`\$AFORGE_HOME\`. Models: $(python3 -c "
 import json;s=json.load(open('$UX_STATE/settings.json'));print('talk %s · work %s · plan %s · boost %s' % (s.get('chat_model'),s.get('task_model'),s.get('plan_model'),s.get('boost_model')))")"
   echo
-  echo "**Total spend: \$$TOTAL** (cap \$$UX_CAP)"
+  echo "**Total spend: \$$TOTAL** (cap \$$UX_CAP) · plus $JUDGE_CALLS quality-judge calls made outside aforge and not in its journal"
   [ -n "$ABORTED" ] && echo && echo "> **RUN ABORTED** — $ABORTED"
+  echo
+  echo '## The report card'
+  echo
+  echo 'Completion is the cheap half. `jobs/nodes` is how much machinery the ask bought'
+  echo '(a haiku should be one node); `quality` is a cheap model reading the deliverable'
+  echo 'against a fixed rubric — literal ask satisfied, answer-first, competent, 1–5.'
+  echo
+  echo '| journey | pass | jobs/nodes | $ | seconds | quality/5 | flags |'
+  echo '|---|---|---|---|---|---|---|'
+  for row in "${GAUGES[@]}"; do
+    IFS='|' read -r n v nodes money secs q f _why <<< "$row"
+    echo "| $n | $v | $nodes | $money | $secs | $q | $f |"
+  done
+  echo
+  for row in "${GAUGES[@]}"; do
+    IFS='|' read -r n v nodes money secs q f why <<< "$row"
+    [ -n "$why" ] && echo "- **$n** judged $q/5 — $why"
+  done
+  echo
+  echo '## Journeys'
   echo
   echo '| journey | verdict | checks | time | cost | evidence |'
   echo '|---|---|---|---|---|---|'

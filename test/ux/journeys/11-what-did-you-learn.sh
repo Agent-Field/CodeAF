@@ -3,11 +3,12 @@
 source "$(dirname "${BASH_SOURCE[0]}")/../lib.sh"
 journey_is 'J11 Ask what it learned — a read over the notebook: lessons, beliefs, retractions'
 
+expect_nodes 0
 since="$(mark)"
 record 'notebook holds' "$(journal "select count(*) from facts where status='active'") active facts"
 
 say "what have you learned about how I like work done?"
-assert_screen 'aforge' 'the head replied' 120
+assert_journal "select count(*) from messages where seq > $since and role='agent'" 'the head replied' 150
 sleep 8
 snap answered
 

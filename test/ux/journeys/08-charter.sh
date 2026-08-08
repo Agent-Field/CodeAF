@@ -3,6 +3,8 @@
 source "$(dirname "${BASH_SOURCE[0]}")/../lib.sh"
 journey_is 'J8 Stand up a rule — charter drafted and priced, ratified with one answer, and stood down just as sayably'
 
+expect_nodes 0
+
 since="$(mark)"
 
 say "remind me every day at 9am to stretch"
@@ -19,9 +21,17 @@ record 'charter' "$charter"
 assert_journal_is "select status from charters where id='$charter'" 'proposed' \
   'the charter starts proposed, not active — nothing stands up unasked'
 
+# Answer only once the question is actually open in the journal. A digit typed
+# at a draft that has not yet been asked lands in the composer instead, and the
+# journey would then be measuring the suite's timing rather than the product.
+assert_journal "select count(*) from agent_questions where seq > $since and status in ('pending','asked')" \
+  'the ratification question is open' 120
+qseq="$(journal "select seq from agent_questions where seq > $since and status in ('pending','asked') order by seq limit 1")"
 answer_number 1
-sleep 10
+wait_journal "select count(*) from agent_questions where seq=$qseq and status='answered'" 60
+sleep 8
 snap ratified
+record 'ratification question' "$(journal "select status || ' → ' || resolution from agent_questions where seq=$qseq")"
 
 assert_journal_is "select status from charters where id='$charter'" 'active' \
   'ratifying with one answer made the charter active'
