@@ -395,11 +395,14 @@ func (m *Model) voiceControl() string {
 	}
 }
 
+// The mic is a labelled control in the affordance grammar, not a bare glyph:
+// no basic Unicode codepoint reads as a microphone, so the word does the work
+// and the rose dot — the recording convention everywhere — marks capture.
 func (m *Model) voiceMicGlyph() string {
 	if m.voiceState == voiceIdle {
-		return controlStyle.Render("◌")
+		return controlStyle.Render("⟨mic⟩")
 	}
-	return m.matteSweep("⟨●⟩")
+	return controlStyle.Render("⟨mic ") + roseStyle.Render("●") + controlStyle.Render("⟩")
 }
 
 func (m *Model) voiceControlWidth() int { return lipgloss.Width(m.voiceControl()) + 1 }

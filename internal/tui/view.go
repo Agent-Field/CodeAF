@@ -35,7 +35,8 @@ import (
 // failure is a rose ✗ on the status position only — never a whole red block.
 //
 // Affordance grammar (terminals have no hover, so every clickable element
-// declares its action at rest, in muted ink, never the accent):
+// declares its action at rest in control ink — never muted+faint, which is
+// reserved for non-interactive structure, and never the accent):
 //
 //	▸  expandable — click or enter opens it (also the focus/selection marker,
 //	   which renders in powder so target and affordance stay distinguishable)
@@ -382,9 +383,9 @@ func (m *Model) renderTopBar() string {
 }
 
 func (m *Model) renderPlaceLabel(name string, target place, attention bool) string {
-	style := mutedStyle.Faint(true)
+	style := controlStyle
 	if m.activePlace() == target {
-		style = inkStyle
+		style = inkStyle.Bold(true)
 	}
 	if m.focus == focusHeader && m.headerFocusIndex == headerDoors+int(target) {
 		style = powderStyle.Bold(true)
@@ -777,13 +778,18 @@ func (m *Model) renderInput() string {
 	if strings.TrimSpace(m.voicePending) != "" {
 		lines[last] += mutedStyle.Faint(true).Italic(true).Render(" " + m.voicePending)
 	}
+	// The voice control sits beside the prompt, not across the terminal from
+	// it: the mic leads the first row and wrapped rows indent to match, so
+	// eye and pointer never travel to the far edge.
 	control := m.voiceControl()
+	gutter := lipgloss.Width(control) + 1
 	for index := range lines {
-		if index == last {
-			lines[index] = overlayRight(lines[index], control, innerWidth)
+		if index == 0 {
+			lines[index] = control + " " + lines[index]
 		} else {
-			lines[index] = truncate(lines[index], innerWidth)
+			lines[index] = strings.Repeat(" ", gutter) + lines[index]
 		}
+		lines[index] = truncate(lines[index], innerWidth)
 	}
 	card := m.activeTextQuestion()
 	frameY := m.inputBounds.y
@@ -816,16 +822,14 @@ func (m *Model) renderInput() string {
 		}
 	}
 	contentY += len(chipLines)
-	controlWidth := lipgloss.Width(control)
-	micWidth := lipgloss.Width(m.voiceMicGlyph())
 	m.micBounds = paneBounds{
-		x: inputFrameInset + max(0, innerWidth-controlWidth), y: contentY + last,
-		width: micWidth, height: 1,
+		x: inputFrameInset, y: contentY,
+		width: lipgloss.Width(m.voiceMicGlyph()), height: 1,
 	}
 	if m.voiceState != voiceIdle {
 		cancelWidth := lipgloss.Width("⟨×⟩")
 		m.voiceCancelBounds = paneBounds{
-			x: m.width - inputFrameInset - cancelWidth, y: contentY + last,
+			x: inputFrameInset + lipgloss.Width(control) - cancelWidth, y: contentY,
 			width: cancelWidth, height: 1,
 		}
 	}
@@ -1809,7 +1813,7 @@ func (m *Model) renderAnswerFold(message store.Message, width int) (string, bool
 	}
 	if m.expandedMessages[message.Seq] {
 		// The affordance flips with state: an opened fold shows how to close.
-		return rendered + "\n" + mutedStyle.Faint(true).Render("▾ collapse"), true
+		return rendered + "\n" + controlStyle.Render("▾ collapse"), true
 	}
 	head := strings.Join(lines[:deliverableLead], "\n")
 	return head + "\n" + mutedStyle.Faint(true).Render(
