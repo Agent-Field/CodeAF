@@ -1130,7 +1130,7 @@ func TestAmbiguousCharterManagementProducesOptions(t *testing.T) {
 		t.Fatal(err)
 	}
 	reply := waitForAgentReply(t, graph, "ambiguous-charter", user.Seq)
-	if !strings.HasPrefix(reply.Body, "Which standing charter do you mean?") || len(reply.Options) != 2 {
+	if !strings.HasPrefix(reply.Body, "Which rule do you mean?") || len(reply.Options) != 2 {
 		t.Fatalf("ambiguous reply = %+v", reply)
 	}
 	// The body carries the structured payload the TUI's question components

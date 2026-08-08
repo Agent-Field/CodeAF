@@ -107,7 +107,41 @@ func (r *Reconciler) applyCharterCommand(ctx context.Context, command store.Comm
 		}
 		return commandOutcome{
 			status: store.CommandApplied, result: "charter cadence edited",
-			receipt: fmt.Sprintf("Cadence changed: %s → %s.", label, cadence),
+			receipt: fmt.Sprintf("%s — now %s.", label, updated.Watch.Spoken()),
+		}, nil
+
+	case store.CommandCharterWording:
+		// The other half of editing a rule by talking about it. The invariant
+		// is left alone on purpose: it is the sentence the user consented to,
+		// and the ratification record has to keep saying what they agreed to.
+		// What changes is what the rule does when it runs.
+		wording := strings.TrimSpace(command.Instruction)
+		if wording == "" {
+			return commandOutcome{}, fmt.Errorf("charter wording is empty")
+		}
+		action := charter.Action
+		action.Template = wording
+		if err := r.store.ReviseCharter(charter.ID, charter.Invariant, charter.Watch,
+			charter.SentinelHint, action, charter.Rails()); err != nil {
+			return commandOutcome{}, err
+		}
+		updated, _, err := r.store.Charter(charter.ID)
+		if err != nil {
+			return commandOutcome{}, err
+		}
+		if updated.Status == store.CharterProposed {
+			question, options := charterRatificationQuestion(updated, "")
+			return commandOutcome{
+				status: store.CommandApplied, result: "draft charter wording edited",
+				receipt: question, asAgent: true, options: options,
+			}, nil
+		}
+		receipt := "Changed — it'll say: " + clipLabel(firstLine(wording), 100) + "."
+		if !charter.Action.SayOnly {
+			receipt = "Changed — it'll do this instead: " + clipLabel(firstLine(wording), 100) + "."
+		}
+		return commandOutcome{
+			status: store.CommandApplied, result: "charter wording edited", receipt: receipt,
 		}, nil
 
 	case store.CommandCharterFire:
