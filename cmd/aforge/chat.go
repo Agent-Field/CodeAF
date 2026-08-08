@@ -701,20 +701,36 @@ func buildChatBrain(w *chatWindow, session string, hand resident.HandoverFunc) (
 			}
 		}
 		promoted := shouldPromoteReflex(node, outcome)
+		extended := false
 		// The quality gate: before a deliverable lands in the thread, one
 		// judge call asks the only question that matters — would the person
 		// who asked accept this as done? A named gap earns exactly one
-		// revision pass with the critique as input; then the result ships
-		// either way, because a gate that can loop is a gate that can stall.
+		// revision pass with the critique as input.
+		//
+		// A gap that survives that pass used to be the end of the road: the
+		// draft shipped with a reservation on it, because a gate that can loop
+		// is a gate that can stall. It can now buy one thing instead — the work
+		// that closes it, through the same path an exhausted leaf takes, on the
+		// one condition that the gap quotes the ask. That condition is what makes
+		// looping impossible rather than merely capped, so the old sentence is
+		// still true of a gate that loops on its own judgement, and this is not
+		// one: it loops on the user's words, which are finite and do not move.
 		if len(outcome.ServiceRequests) == 0 && shouldGate(node, outcome, continuing) {
 			gate := judgeDeliverable(ctx, settings, planClient, graph, node, text, task.Contract,
 				deliveryEvidence{Artifacts: absolute, Ran: outcome.Ran}, workerModel)
 			if gate.Checked {
-				evidence := store.DeliveryGate{Pass: gate.Pass, Gap: gate.Gaps}
+				evidence := store.DeliveryGate{Pass: gate.Pass, Gap: gate.Gaps, Quote: gate.Quote}
 				if gate.Pass {
 					outcome.Verdict = gateVerdict(gate)
 				}
 				if !gate.Pass {
+					// unmet is the judgement that still stands against whatever is
+					// about to be delivered: the second gate's when a revision ran
+					// and was re-judged, the first gate's when nothing came back to
+					// re-judge. It is what any further work would be aimed at, so it
+					// is also what the honest handover has to name.
+					unmet := gate
+					revised := false
 					revision := task
 					revision.Inputs = append(append([]exec.Input{}, inputs...), exec.Input{
 						Title:     "a review of your own first draft",
@@ -748,33 +764,64 @@ func buildChatBrain(w *chatWindow, session string, hand resident.HandoverFunc) (
 							deliveryEvidence{Artifacts: absolute, Ran: outcome.Ran}, polishModel)
 						evidence.PolishClosed = closed.Checked && closed.Pass
 						outcome.Verdict = provider.VerdictSemanticFailure
+						revised = true
 						if evidence.PolishClosed {
 							// The same distinction the first gate makes; drawing it
 							// only there would launder the verdict one round later.
 							outcome.Verdict = gateVerdict(closed)
+						} else if closed.Checked && strings.TrimSpace(closed.Gaps) != "" {
+							// The second reading is the current one: it was taken
+							// against the revised text, so it is what any further
+							// work is aimed at and what the citation is checked on.
+							unmet = closed
+							evidence.Gap, evidence.Quote = closed.Gaps, closed.Quote
 						}
-						message := "a review found gaps in the first draft — revised before delivering: " + firstLine(gate.Gaps)
-						if !evidence.PolishClosed {
-							message += " (the follow-up gate did not confirm the gap was closed)"
-						}
+					} else {
+						outcome.Verdict = provider.VerdictSemanticFailure
+					}
+					switch {
+					case evidence.PolishClosed:
 						_, _ = graph.PostMessage(store.Message{
 							SessionID: node.Provenance.SessionID,
 							Role:      store.RoleSystem,
 							NodeID:    node.ID,
-							Body:      message,
+							Body:      "a review found gaps in the first draft — revised before delivering: " + firstLine(gate.Gaps),
 						})
-					} else {
-						outcome.Verdict = provider.VerdictSemanticFailure
-						// The revision produced nothing, and the rejected draft
-						// ships anyway because a gate that can loop is a gate
-						// that can stall. What must not also happen is that it
-						// ships in silence: the verdict was recorded, no message
-						// was posted, and the user read a draft the system had
-						// already judged incomplete as though it were the
-						// answer. The reservation goes on the delivery itself so
-						// it cannot be missed and cannot be separated from it.
-						reservation := "I'm handing this over with a reservation — a review found this still missing: " +
-							firstLine(gate.Gaps) + ". The revision pass came back empty, so this is the first draft."
+					default:
+						// The gap survived the one revision, which is exactly where
+						// the old path gave up. The job may grow the work that closes
+						// it — once per span of the ask, inside the same round caps,
+						// rails and consent an exhausted leaf lives under.
+						extension := extendForGap(ctx, graph, node, outcome.Text, unmet, absolute,
+							settings.DailyBudgetUSD, replanRemainder(settings, planClient, taskClient, plans, graph))
+						evidence.Quote, evidence.Round = extension.Quote, extension.Round
+						evidence.Extended, evidence.Refused = extension.Spliced > 0, extension.Refused
+						if extension.Spliced > 0 {
+							extended = true
+							// The receipt on the summary is what tells every reader
+							// downstream that this node's last word is not its last
+							// word; the sentence in the thread is what tells the
+							// person, and it says why rather than only what.
+							text += "\n\n[" + continuationMessage(extension.Spliced) + "]"
+							_, _ = graph.PostMessage(store.Message{
+								SessionID: node.Provenance.SessionID,
+								Role:      store.RoleSystem,
+								NodeID:    node.ID,
+								Body:      gapContinuationNotice(unmet.Gaps),
+							})
+							break
+						}
+						// Nothing more will run, and the rejected draft ships anyway
+						// because a job that cannot finish still owes the person what
+						// it has. What must not also happen is that it ships in
+						// silence: for a while the verdict was recorded, no message
+						// was posted, and the user read a draft the system had already
+						// judged incomplete as though it were the answer. The
+						// reservation goes on the delivery itself so it cannot be
+						// missed and cannot be separated from it, and it names the gap
+						// and why nothing more was started — which is what makes the
+						// user's next sentence land in the correction path.
+						reservation := gapHandover(unmet.Gaps, revised, extension.Refused)
 						text += "\n\n" + reservation
 						_, _ = graph.PostMessage(store.Message{
 							SessionID: node.Provenance.SessionID,
@@ -788,8 +835,12 @@ func buildChatBrain(w *chatWindow, session string, hand resident.HandoverFunc) (
 			}
 			// The gate judges the request. Taste is the other half and is never
 			// allowed to be a gate: an unproven rule rides one quiet question
-			// with the delivery, which lands either way.
-			_, _, _ = resident.AnnotateDelivery(graph, node, text)
+			// with the delivery, which lands either way. A job that is about to
+			// carry on asks nothing yet — the question belongs to the delivery
+			// that actually lands.
+			if !extended {
+				_, _, _ = resident.AnnotateDelivery(graph, node, text)
+			}
 		}
 		// A settled failure downstream of a synthesis node is terminal by
 		// design, so the parent goes Ready over it, receives `<id> (failed):
@@ -3678,6 +3729,91 @@ func admitGapCitation(intent, quote string, spent []string) string {
 }
 
 func citationKey(text string) string { return strings.Join(strings.Fields(text), " ") }
+
+// gapExtension is what a gate's judgement was allowed to do about a gap that
+// survived the revision pass: the work it commissioned, the words it cited, the
+// round it was, and — when nothing was commissioned — why, in the words the user
+// would be told.
+type gapExtension struct {
+	Spliced int
+	Quote   string
+	Round   int
+	Refused string
+}
+
+// gapContinuationNotice is the whole of what a person sees when a judgement
+// grows the job: one line, in the same calm register as the governor's, saying
+// what is missing and that it is being finished rather than delivered around.
+// No new noun is introduced — the user never learns that any of this has a name.
+func gapContinuationNotice(gaps string) string {
+	return "a review found this still missing: " + firstLine(gaps) + " — finishing that before delivering"
+}
+
+// gapHandover is what the delivery carries when nothing more will run. It names
+// the gap in the system's own words and says why it stopped, because the next
+// thing the person says about it is the correction path's input and a handover
+// they cannot see is a handover that never happened.
+func gapHandover(gaps string, revised bool, refused string) string {
+	handover := "I'm handing this over with a reservation — a review found this still missing: " + firstLine(gaps) + "."
+	if !revised {
+		handover += " The revision pass came back empty, so this is the first draft."
+	}
+	if refused != "" {
+		handover += " I've taken it as far as repair takes it: " + refused + "."
+	}
+	return handover
+}
+
+// extendForGap is the authority the delivery gate never had.
+//
+// The judgement at the job root was already the right one and its maximum power
+// was to re-run the same leaf once and then ship regardless; meanwhile the only
+// mechanism that can grow a live job fires on running out of money and never on
+// being wrong. Quality failure and resource failure were handled by two disjoint
+// mechanisms and only the resource one could add work. This is the wire between
+// them, and it is short because ReplanOverrun already handles everything hard:
+// the round counter is read off id arithmetic, the daily rail defers and resumes,
+// the job-size ceiling and the round cap post their own notices, and a repair on
+// a top-level job continues as a top-level job that will be announced like any
+// other deliverable.
+//
+// What arrives here is a named gap, so the replan is aimed at a remainder a
+// reviewer found rather than at whatever sounds like more work — and the goal it
+// is planned from forbids inventing verification, as the plan's own proportion
+// rule forbids a node whose purpose is to check another's product. Assurance may
+// add work that closes a gap; it may never add work that checks one.
+func extendForGap(ctx context.Context, graph *store.Store, node store.Node, partial string,
+	unmet deliverableJudgment, artifacts []string, dailyBudgetUSD float64,
+	planRemainder resident.OverrunPlanFunc) gapExtension {
+	base, round := resident.OverrunLineage(node.ID)
+	extension := gapExtension{Quote: strings.TrimSpace(unmet.Quote), Round: round + 1}
+	if graph == nil || planRemainder == nil {
+		extension.Refused = "there is nothing here that could plan the rest"
+		return extension
+	}
+	// Admissibility is decided before any planning call: an ungrounded gap must
+	// cost nothing at all, or the refusal is only a refusal to splice what has
+	// already been bought.
+	if refusal := admitGapCitation(node.Provenance.Intent, extension.Quote, spentCitations(graph, base)); refusal != "" {
+		extension.Refused = refusal
+		return extension
+	}
+	spliced, _, err := resident.ReplanOverrun(ctx, graph, node, partial, unmet.Gaps, artifacts, dailyBudgetUSD, planRemainder)
+	if err != nil {
+		log.Printf("note: could not plan the rest of %s: %v", node.ID, err)
+		extension.Refused = "the work that would close it could not be planned"
+		return extension
+	}
+	if spliced == 0 {
+		// A governor has already said so in the thread in its own words, or the
+		// rail has journaled the repair and is waiting on consent. Either way
+		// nothing new is running and the delivery has to say so.
+		extension.Refused = "no more work could be started on it"
+		return extension
+	}
+	extension.Spliced = spliced
+	return extension
+}
 
 // spentCitations is the ledger: the spans of the ask that earlier rounds of this
 // job already commissioned work against. A read failure returns nothing, which
