@@ -52,10 +52,10 @@ func (r *Reconciler) pause(command store.Command) (commandOutcome, error) {
 			running++
 		}
 	}
-	receipt := fmt.Sprintf("paused — %d %s held", held, plural(held, "node", "nodes"))
+	receipt := fmt.Sprintf("paused — %d %s held", held, plural(held, "step", "steps"))
 	if running > 0 {
 		receipt += fmt.Sprintf(", %d running %s will hold after the current turn",
-			running, plural(running, "leaf", "leaves"))
+			running, plural(running, "step", "steps"))
 	}
 	return commandOutcome{
 		status: store.CommandApplied, result: fmt.Sprintf("held %d nodes", held), receipt: receipt,
@@ -87,7 +87,7 @@ func (r *Reconciler) resume(command store.Command) (commandOutcome, error) {
 	}
 	return commandOutcome{
 		status: store.CommandApplied, result: fmt.Sprintf("resumed %d nodes", resumed),
-		receipt: fmt.Sprintf("resumed — %d %s returned to the claim queue", resumed, plural(resumed, "node", "nodes")),
+		receipt: fmt.Sprintf("resumed — %d %s back in the queue", resumed, plural(resumed, "step", "steps")),
 	}, nil
 }
 
@@ -108,7 +108,7 @@ func (r *Reconciler) reprioritize(command store.Command) (commandOutcome, error)
 	}
 	return commandOutcome{
 		status: store.CommandApplied, result: fmt.Sprintf("priority set to %d", priority),
-		receipt: "reprioritized — " + surgeryLabel(node) + " will be claimed before its pending siblings",
+		receipt: "moved up — " + surgeryLabel(node) + " goes next, ahead of the rest of what is queued",
 	}, nil
 }
 

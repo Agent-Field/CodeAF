@@ -1347,9 +1347,9 @@ func (m *Model) renderJobCard(card jobCard, width int, expanded bool, atLine int
 
 	hint := "▸ details"
 	if expanded {
-		hint = "⟨×⟩ close · compiling the job graph…"
+		hint = "⟨×⟩ close · working out the steps…"
 		if card.RootID != "" {
-			hint = "⟨×⟩ close · ▸ job graph"
+			hint = "⟨×⟩ close · ▸ the steps"
 		}
 	}
 	workspace := ""

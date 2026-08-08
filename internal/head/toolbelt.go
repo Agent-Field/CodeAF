@@ -157,15 +157,15 @@ func beltDefinitions() []ai.ToolDefinition {
 			"verb": beltProp("string", "cancel, pause, resume, restart, or reprioritize"),
 			"ids":  map[string]any{"type": "array", "description": "ids from a board read", "items": map[string]any{"type": "string"}},
 		}, "verb", "ids"),
-		beltTool(beltToolSteer, "Say something to the workers running a job right now, without changing its plan. Use it when the user is adding a constraint or a hint to work already in motion.", map[string]any{
+		beltTool(beltToolSteer, "Say something to the parts of a job already under way right now, without changing its plan. Use it when the user is adding a constraint or a hint to work already in motion.", map[string]any{
 			"job":     beltProp("string", "job id from a board read"),
-			"message": beltProp("string", "what the workers should hear, in the user's own terms"),
+			"message": beltProp("string", "what the work already under way should hear, in the user's own terms"),
 		}, "job", "message"),
 		beltTool(beltToolRevise, "Hand the user's own words to a job so its remaining plan is edited to match them. Use it when what the job is FOR has changed. Pass their words verbatim — do not improve or summarize them.", map[string]any{
 			"job":   beltProp("string", "job id from a board read"),
 			"words": beltProp("string", "the user's message, verbatim"),
 		}, "job", "words"),
-		beltTool(beltToolExpedite, "Make a job arrive sooner: it moves up the claim order and its unstarted tail is trimmed to the shortest path to the deliverable. It never adds work. Use it for impatience, never for a change of goal.", map[string]any{
+		beltTool(beltToolExpedite, "Make a job arrive sooner: it goes next in the queue and its unstarted tail is trimmed to the shortest path to the deliverable. It never adds work. Use it for impatience, never for a change of goal.", map[string]any{
 			"job": beltProp("string", "job id from a board read"),
 		}, "job"),
 		beltTool(beltToolManual, "Read aforge's own manual: what it can do, how one of its mechanisms works, why it behaved the way it did. Always safe. Search with q, or read a whole topic with page. This is the only place answers about aforge itself may come from.", map[string]any{
@@ -180,8 +180,8 @@ func beltDefinitions() []ai.ToolDefinition {
 			"file": beltProp("string", "the path or filename, as that job recorded it; omit it when the job wrote only one file"),
 		}, "job"),
 		beltTool(beltToolCompetence, "Read the measured view of your own current strengths, weak spots and learning frontier, derived from how your work has actually gone. Always safe. Read it before answering anything about what you are good at, where you struggle, whether you are improving, or whether the user is asking too much of you — this is the only evidence for those answers, and a self-assessment given without it is invention.", map[string]any{}),
-		beltTool(beltToolStanding, "Read what you are keeping watch over: whether checks continue with no terminal open, the last wake, the next check, and every standing charter with what it watches for and how often. Always safe. Read it for any question about what you are watching, what runs while the user is away, or what happens overnight.", map[string]any{}),
-		beltTool(beltToolSpending, "Read what has been spent: today's total against the daily rail, and separately what your own upkeep — practice, learning, self-maintenance — has cost and what it bought. Always safe. Read it whenever the question is about money in general rather than one job's cost.", map[string]any{}),
+		beltTool(beltToolStanding, "Read what you are keeping watch over: whether checks continue with no terminal open, the last wake, the next check, and every standing rule with what it watches for and how often. Always safe. Read it for any question about what you are watching, what runs while the user is away, or what happens overnight.", map[string]any{}),
+		beltTool(beltToolSpending, "Read what has been spent: today's total against the daily limit, and separately what your own upkeep — practice, learning, self-maintenance — has cost and what it bought. Always safe. Read it whenever the question is about money in general rather than one job's cost.", map[string]any{}),
 		beltTool(beltToolHistory, "Read what has actually been done, in time order, newest first: one line per finished job with what it concluded and what it cost. Always safe. This is the only read that answers a question about WHEN — yesterday, this week, last month — and the only one that still finds work old enough to have been packed away. Bound it with since and until from the current time given to you; omit both for the most recent work.", map[string]any{
 			"since": beltProp("string", `local date or time the window starts, "2026-08-06" or "2026-08-06T09:00"`),
 			"until": beltProp("string", "local date or time the window ends, same spelling"),
@@ -325,9 +325,9 @@ func (run *beltRun) steer(args map[string]any) (string, bool) {
 		run.record(0, "Nothing on "+label+" is running at this moment, so there was no one to pass that to.")
 		return fmt.Sprintf("nothing on %s is running at this moment, so no one was told", label), false
 	}
-	run.record(0, fmt.Sprintf("Passed that on to %d %s on %s.",
-		informed, pluralWord(informed, "worker", "workers"), label))
-	return fmt.Sprintf("told %d running %s on %s", informed, pluralWord(informed, "worker", "workers"), label), false
+	run.record(0, fmt.Sprintf("Passed that on to the %d %s of %s already under way.",
+		informed, pluralWord(informed, "step", "steps"), label))
+	return fmt.Sprintf("told %d %s of %s already under way", informed, pluralWord(informed, "step", "steps"), label), false
 }
 
 func (run *beltRun) revise(args map[string]any) (string, bool) {

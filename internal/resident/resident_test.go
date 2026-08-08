@@ -111,7 +111,7 @@ func TestTickAppliesSpliceAndPostsCompiledReceipt(t *testing.T) {
 		"Here's my reading: Benchmark the parser and preserve observable output",
 		"Assumed: main is the comparison baseline",
 		"Assumed: the existing benchmark harness is sufficient",
-		"Correct me anytime — redirects are cheap.",
+		"Correct me anytime — changing course costs nothing.",
 	}
 	for _, line := range wantLines {
 		if !strings.Contains(receipt.Body, line) {
@@ -198,7 +198,7 @@ func TestTickCancelsPendingSubtreeAndReportsCounts(t *testing.T) {
 		t.Fatalf("settled cancel = %+v", settled)
 	}
 	receipt := commandReceipt(t, graph, command.SessionID, command.Seq)
-	if !strings.Contains(receipt.Body, "cancelled — 3 leaves cancelled") ||
+	if !strings.Contains(receipt.Body, "cancelled — 3 steps cancelled") ||
 		!strings.Contains(receipt.Body, "$0.85 spent stays spent") || receipt.NodeID != "cancel-root" {
 		t.Fatalf("cancel receipt = %q", receipt.Body)
 	}
@@ -408,7 +408,7 @@ func TestCompileReceiptKeepsLegacyBytes(t *testing.T) {
 	const want = "Here's my reading: Benchmark the parser\n" +
 		"Assumed: main is the baseline\n" +
 		"Assumed: keep observable output\n" +
-		"Correct me anytime — redirects are cheap."
+		"Correct me anytime — changing course costs nothing."
 	if got != want {
 		t.Fatalf("compile receipt changed:\n got %q\nwant %q", got, want)
 	}
@@ -417,7 +417,7 @@ func TestCompileReceiptKeepsLegacyBytes(t *testing.T) {
 	withModel := compileReceipt("Benchmark the parser", nil, "Running on google/gemini-3-pro.")
 	const wantModel = "Here's my reading: Benchmark the parser\n" +
 		"Running on google/gemini-3-pro.\n" +
-		"Correct me anytime — redirects are cheap."
+		"Correct me anytime — changing course costs nothing."
 	if withModel != wantModel {
 		t.Fatalf("model receipt = %q, want %q", withModel, wantModel)
 	}

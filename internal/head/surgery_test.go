@@ -81,7 +81,7 @@ func TestSurgeryReferentResolutionUniqueAmbiguousAndNone(t *testing.T) {
 			t.Fatalf("ambiguous reply = %+v", reply)
 		}
 		for _, option := range reply.Options {
-			if option.Hint == "" || !strings.Contains(option.Hint, "pending") {
+			if option.Hint == "" || !strings.Contains(option.Hint, "waiting") {
 				t.Fatalf("option lacks status + age hint: %+v", option)
 			}
 		}
