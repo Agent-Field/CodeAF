@@ -33,12 +33,12 @@ func TestGovernorAdmitsUnderTheCeilingAndHoldsOverIt(t *testing.T) {
 	now := time.Date(2026, 8, 6, 9, 0, 0, 0, time.UTC)
 	governor := testGovernor(&load, &ok, &now)
 
-	if !governor.Admit(2) {
+	if !governor.Admit(GovernorMinInFlight) {
 		t.Fatal("an idle machine refused a claim")
 	}
 	load = GovernorLoadCeiling + 0.5
 	now = now.Add(governorSampleTTL)
-	if governor.Admit(2) {
+	if governor.Admit(GovernorMinInFlight) {
 		t.Fatal("a saturated machine admitted a claim")
 	}
 }
@@ -47,7 +47,7 @@ func TestGovernorHysteresisHoldsThroughTheBand(t *testing.T) {
 	load, ok := GovernorLoadCeiling+0.5, true
 	now := time.Date(2026, 8, 6, 9, 0, 0, 0, time.UTC)
 	governor := testGovernor(&load, &ok, &now)
-	if governor.Admit(2) {
+	if governor.Admit(GovernorMinInFlight) {
 		t.Fatal("a saturated machine admitted a claim")
 	}
 
@@ -55,28 +55,34 @@ func TestGovernorHysteresisHoldsThroughTheBand(t *testing.T) {
 	// stands. Releasing here is what makes the gate flap.
 	load = (GovernorLoadCeiling + GovernorLoadResume) / 2
 	now = now.Add(governorSampleTTL)
-	if governor.Admit(2) {
+	if governor.Admit(GovernorMinInFlight) {
 		t.Fatal("the hold released inside the hysteresis band")
 	}
 
 	load = GovernorLoadResume - 0.01
 	now = now.Add(governorSampleTTL)
-	if !governor.Admit(2) {
+	if !governor.Admit(GovernorMinInFlight) {
 		t.Fatal("the hold survived below the resume edge")
 	}
 }
 
-func TestGovernorAdmitsWhenNothingIsRunning(t *testing.T) {
+// The floor is the promise "say five things and five jobs run", written as a
+// number. Someone else's load must never leave aforge running nothing at all,
+// and it must never collapse a fan-out into a queue either — the failure that
+// made this a floor rather than a single leaf was three independent jobs
+// measured executing strictly one after another on a busy machine.
+func TestGovernorAdmitsUpToTheFloorHoweverSaturatedTheHostIs(t *testing.T) {
 	load, ok := 99.0, true
 	now := time.Date(2026, 8, 6, 9, 0, 0, 0, time.UTC)
 	governor := testGovernor(&load, &ok, &now)
 
-	// Someone else's load must never leave aforge running nothing at all.
-	if !governor.Admit(0) {
-		t.Fatal("a fully saturated machine starved the runner of its first leaf")
+	for inFlight := range GovernorMinInFlight {
+		if !governor.Admit(inFlight) {
+			t.Fatalf("a fully saturated machine starved the runner at %d in flight", inFlight)
+		}
 	}
-	if governor.Admit(1) {
-		t.Fatal("the starvation guard admitted a second leaf")
+	if governor.Admit(GovernorMinInFlight) {
+		t.Fatal("the floor admitted a leaf above itself on a saturated machine")
 	}
 }
 
@@ -98,13 +104,13 @@ func TestGovernorSamplesAtMostOncePerTTL(t *testing.T) {
 		func() time.Time { return now },
 	)
 	for range 20 {
-		governor.Admit(2)
+		governor.Admit(GovernorMinInFlight)
 	}
 	if samples != 1 {
 		t.Fatalf("the host was read %d times inside one TTL, want 1", samples)
 	}
 	now = now.Add(governorSampleTTL)
-	governor.Admit(2)
+	governor.Admit(GovernorMinInFlight)
 	if samples != 2 {
 		t.Fatalf("the host was read %d times after the TTL, want 2", samples)
 	}

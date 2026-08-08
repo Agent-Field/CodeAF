@@ -3,6 +3,7 @@ package exec
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strings"
 	"sync"
 	"testing"
@@ -366,31 +367,35 @@ func (c *countingExecutor) Run(ctx context.Context, task Task) (*Outcome, error)
 // --concurrency 8` launched eight leaves onto a machine already at ten times
 // its cores, and the gate the resident honours was invisible here.
 func TestSchedulerAsksTheHostBeforeLaunching(t *testing.T) {
+	leaves := GovernorMinInFlight + 1
 	build := func() (*plan.Graph, *countingExecutor) {
 		graph := &plan.Graph{Goal: "g", Stages: []plan.Stage{{Title: "One"}}, NextID: 1}
-		for _, title := range []string{"A", "B", "C"} {
-			graph.Add(plan.Node{Stage: 1, Title: title})
+		for index := range leaves {
+			graph.Add(plan.Node{Stage: 1, Title: fmt.Sprintf("leaf-%d", index)})
 		}
 		return graph, &countingExecutor{}
 	}
 
-	// A saturated machine: the first leaf always gets through — someone else's
-	// load must never leave aforge running nothing — and the second one does
-	// not, however much concurrency the panel was given.
+	// A saturated machine: the guaranteed floor always gets through — someone
+	// else's load must never leave aforge running nothing, and must never turn
+	// independent work into a queue — and the leaf above the floor does not,
+	// however much concurrency the panel was given.
 	graph, fake := build()
-	fake.arrived = make(chan struct{}, 3)
+	fake.arrived = make(chan struct{}, leaves)
 	fake.release = make(chan struct{})
-	scheduler := NewScheduler(NewRegistry(fake), workspace(t), 4).WithGovernor(saturatedGovernor())
+	scheduler := NewScheduler(NewRegistry(fake), workspace(t), leaves+4).WithGovernor(saturatedGovernor())
 	stopped := make(chan error, 1)
 	go func() { stopped <- scheduler.Run(context.Background(), graph) }()
-	select {
-	case <-fake.arrived:
-	case <-time.After(10 * time.Second):
-		t.Fatal("the starvation guard failed: no leaf launched at all")
+	for admitted := range GovernorMinInFlight {
+		select {
+		case <-fake.arrived:
+		case <-time.After(10 * time.Second):
+			t.Fatalf("the starvation guard failed: only %d leaves launched", admitted)
+		}
 	}
 	select {
 	case <-fake.arrived:
-		t.Fatal("a second leaf launched onto a machine ten times over its ceiling")
+		t.Fatal("a leaf above the floor launched onto a machine ten times over its ceiling")
 	case <-time.After(250 * time.Millisecond):
 	}
 	close(fake.release)
@@ -405,24 +410,25 @@ func TestSchedulerAsksTheHostBeforeLaunching(t *testing.T) {
 	fake.mutex.Lock()
 	peak := fake.peak
 	fake.mutex.Unlock()
-	if peak != 1 {
-		t.Fatalf("peak concurrency under saturation = %d, want 1", peak)
+	if peak != GovernorMinInFlight {
+		t.Fatalf("peak concurrency under saturation = %d, want the guaranteed floor %d",
+			peak, GovernorMinInFlight)
 	}
 
-	// The same graph on a calm machine launches all three together. A gate that
+	// The same graph on a calm machine launches every leaf together. A gate that
 	// refused here would be a hold, and a hold is exactly what the governor is
 	// designed never to be.
 	calm, barrier := build()
-	barrier.arrived = make(chan struct{}, 3)
+	barrier.arrived = make(chan struct{}, leaves)
 	barrier.release = make(chan struct{})
-	calmScheduler := NewScheduler(NewRegistry(barrier), workspace(t), 4).WithGovernor(calmGovernor())
+	calmScheduler := NewScheduler(NewRegistry(barrier), workspace(t), leaves+4).WithGovernor(calmGovernor())
 	finished := make(chan error, 1)
 	go func() { finished <- calmScheduler.Run(context.Background(), calm) }()
-	for launched := 0; launched < 3; launched++ {
+	for launched := range leaves {
 		select {
 		case <-barrier.arrived:
 		case <-time.After(10 * time.Second):
-			t.Fatalf("only %d of 3 leaves launched on a calm machine", launched)
+			t.Fatalf("only %d of %d leaves launched on a calm machine", launched, leaves)
 		}
 	}
 	close(barrier.release)

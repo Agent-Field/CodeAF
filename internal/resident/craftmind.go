@@ -130,6 +130,10 @@ func (r *Reconciler) craftCompile(ctx context.Context, command store.Command) (c
 // the only two things a firing and a chat splice genuinely differ on.
 func (r *Reconciler) craftFor(ctx context.Context, request string, fresh bool, rootID string,
 	provenance store.Provenance) (craftUse, bool) {
+	// Independent asks reach this from several goroutines at once; the shelf
+	// underneath is a git-backed index, not a pure function.
+	r.craftMu.Lock()
+	defer r.craftMu.Unlock()
 	mind := r.craftMind
 	if mind == nil || mind.shelf == nil {
 		return craftUse{}, false
