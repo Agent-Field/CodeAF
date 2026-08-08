@@ -18,6 +18,8 @@ package tui
 var actionRunes = map[string]bool{
 	"c": true, // cancel the inspected worker
 	"v": true, // expand or collapse reading receipts
+	"y": true, // copy the answer
+	"Y": true, // copy the file the answer produced
 	"j": true, // move the selection down
 	"k": true, // move the selection up
 	" ": true, // activate the selected row

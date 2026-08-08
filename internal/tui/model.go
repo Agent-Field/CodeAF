@@ -368,7 +368,10 @@ type Model struct {
 	graphHeight int
 
 	nodeDetailsText string
-	nodeTraceHeight int
+	// nodeDetailsClipped says the header could not hold the whole outcome, so
+	// the feed carries it in full rather than the reader losing the rest.
+	nodeDetailsClipped bool
+	nodeTraceHeight    int
 
 	inputFocused     bool
 	focus            paneFocus
@@ -1243,6 +1246,13 @@ func (m *Model) updateKey(message tea.KeyMsg) (tea.Cmd, bool) {
 		m.receiptsExpanded = !m.receiptsExpanded
 		m.refreshChat()
 		return nil, true
+	}
+	// Getting work out of here: the answer, or the file it produced.
+	if key == "y" {
+		return m.copyAnswer(), true
+	}
+	if key == "Y" {
+		return m.copyDeliverablePath(), true
 	}
 	if key == "tab" {
 		return m.toggleFocus(), true
