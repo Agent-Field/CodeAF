@@ -8,6 +8,8 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+
+	"github.com/Agent-Field/aforge-v2/internal/home"
 )
 
 // DailyBudgetUSDAt resolves env → persisted config → built-in default. The env
@@ -109,18 +111,15 @@ func writeProfileValue(profileDir, key string, value any) error {
 	return nil
 }
 
-// BudgetConfigPath is ~/.aforge/config.json unless AFORGE_PROFILE_DIR supplies
-// the same alternate state root used by measured profiles.
+// BudgetConfigPath is config.json in aforge's state root unless
+// AFORGE_PROFILE_DIR supplies the same alternate root used by measured
+// profiles.
 func BudgetConfigPath(profileDir string) string {
 	profileDir = strings.TrimSpace(profileDir)
 	if profileDir != "" {
 		return filepath.Join(profileDir, "config.json")
 	}
-	home, err := os.UserHomeDir()
-	if err != nil || home == "" {
-		return filepath.Join(".aforge", "config.json")
-	}
-	return filepath.Join(home, ".aforge", "config.json")
+	return home.Join("config.json")
 }
 
 func parseDailyBudget(raw, source string) (float64, error) {

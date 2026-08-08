@@ -34,6 +34,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/Agent-Field/aforge-v2/internal/home"
 )
 
 const (
@@ -232,11 +234,7 @@ func executable(path string) bool {
 // BinDir is where a bootstrapped rtk lives. It is aforge's own shelf, not the
 // user's ~/.local/bin, because aforge put it there and aforge maintains it.
 func BinDir() (string, error) {
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return "", err
-	}
-	return filepath.Join(home, ".aforge", "bin"), nil
+	return home.Join("bin"), nil
 }
 
 func managedPath() (string, error) {

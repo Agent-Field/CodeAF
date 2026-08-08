@@ -11,6 +11,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/Agent-Field/aforge-v2/internal/home"
 )
 
 // catalogTTL is how long a fetched catalog is trusted. Prices and context
@@ -176,11 +178,7 @@ func writeCatalog(path string, catalog *Catalog) {
 // because a run's memory should live in one directory, not two.
 func statePath(dir, name string) (string, error) {
 	if strings.TrimSpace(dir) == "" {
-		home, err := os.UserHomeDir()
-		if err != nil {
-			return "", err
-		}
-		dir = filepath.Join(home, ".aforge")
+		dir = home.Dir()
 	}
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return "", err

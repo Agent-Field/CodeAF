@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/Agent-Field/aforge-v2/internal/guard"
+	"github.com/Agent-Field/aforge-v2/internal/home"
 )
 
 const (
@@ -361,11 +362,7 @@ func parsePrice(raw string) float64 {
 func cachePath(dir string) string {
 	dir = strings.TrimSpace(dir)
 	if dir == "" {
-		home, err := os.UserHomeDir()
-		if err != nil {
-			return ""
-		}
-		dir = filepath.Join(home, ".aforge")
+		dir = home.Dir()
 	}
 	return filepath.Join(dir, cacheName)
 }

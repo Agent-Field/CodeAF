@@ -26,6 +26,7 @@ import (
 	"github.com/Agent-Field/aforge-v2/internal/exec"
 	"github.com/Agent-Field/aforge-v2/internal/guard"
 	"github.com/Agent-Field/aforge-v2/internal/head"
+	"github.com/Agent-Field/aforge-v2/internal/home"
 	"github.com/Agent-Field/aforge-v2/internal/lease"
 	"github.com/Agent-Field/aforge-v2/internal/plan"
 	"github.com/Agent-Field/aforge-v2/internal/profile"
@@ -2412,22 +2413,8 @@ func firstNonEmptyString(values ...string) string {
 	return ""
 }
 
-// aforgeHomeEnv moves the whole home — graph, workspace, craft, settings, the
-// resident lease — somewhere else in one word. Every path in the product is
-// derived from the database's directory, so this is the only place it has to be
-// said, and it is what lets a harness or a one-shot run against a home of its
-// own without a flag on every command.
-const aforgeHomeEnv = "AFORGE_HOME"
-
 func defaultChatDB() string {
-	if home := strings.TrimSpace(os.Getenv(aforgeHomeEnv)); home != "" {
-		return filepath.Join(home, "graph.db")
-	}
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return filepath.Join(".aforge", "graph.db")
-	}
-	return filepath.Join(home, ".aforge", "graph.db")
+	return home.Join("graph.db")
 }
 
 func expandHome(path string) (string, error) {
