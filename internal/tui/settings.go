@@ -299,11 +299,19 @@ func (m *Model) applySetting(row config.Setting, value string) tea.Cmd {
 // aligned with the header words that open it, scrolling when it outgrows the
 // frame.
 
+// The sheet floats in a wide frame and fills a narrow one, and it stops at the
+// bottom of the reading pane rather than at the bottom of the terminal — the
+// same two rules the help overlay follows, for the same reason. A modal drawn
+// over the composer in a 60-column dock leaves the input's own corners showing
+// on either side of it, and takes the composer away while it does.
 func (m *Model) settingsOverlayWidth() int {
+	if m.width < railAtWidth {
+		return m.width
+	}
 	return min(settingsMaxWidth, max(settingsMinWidth, m.width-4))
 }
 
-func (m *Model) settingsLineLimit() int { return max(1, m.height-2) }
+func (m *Model) settingsLineLimit() int { return max(1, min(m.height-2, m.chatHeight)) }
 
 func (m *Model) settingsMaxOffset() int {
 	lines, _ := m.settingsContentLines(m.settingsContentWidth())
