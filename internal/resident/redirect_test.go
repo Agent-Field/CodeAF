@@ -332,3 +332,45 @@ func TestRedirectStillInformsWorkersWhenTheRevisionFails(t *testing.T) {
 		t.Fatalf("steering lost to a failed revision: %+v", lines)
 	}
 }
+
+// A refusal is news, and news does not belong on a job card. Every rejected
+// receipt used to be filed under command.Target — and when the target is what
+// went missing, that anchor names a node the thread cannot render, so the one
+// message the user most needed to read went nowhere at all.
+func TestRejectedReceiptsLandInTheThread(t *testing.T) {
+	command := store.Command{Kind: store.CommandRedirect, Target: "api"}
+	if anchor := receiptAnchor(command, store.CommandApplied); anchor != "api" {
+		t.Fatalf("an applied revision left its job card: %q", anchor)
+	}
+	if anchor := receiptAnchor(command, store.CommandRejected); anchor != "" {
+		t.Fatalf("a refusal was filed under a job card: %q", anchor)
+	}
+	if anchor := receiptAnchor(store.Command{Kind: store.CommandSplice}, store.CommandApplied); anchor != "" {
+		t.Fatalf("new work grew an anchor: %q", anchor)
+	}
+}
+
+// Who is about to hear a redirection is read through the broadcast's own
+// membrane, so the head can name the number before the reconciler names it and
+// the two can never disagree.
+func TestRedirectAudienceMatchesWhoTheBroadcastReaches(t *testing.T) {
+	graph := openStore(t)
+	spliceRedirectJob(t, graph)
+	startRedirectLeaf(t, graph, "api-n1")
+	startRedirectLeaf(t, graph, "api-n2")
+	if err := graph.RequestNodeCancel("api-n2", "on its way out"); err != nil {
+		t.Fatal(err)
+	}
+
+	audience, err := RedirectAudience(graph, "api")
+	if err != nil {
+		t.Fatal(err)
+	}
+	informed, err := BroadcastRedirection(graph, "api", "steer", "focus on the v2 API instead")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if audience != informed || audience != 1 {
+		t.Fatalf("audience = %d, informed = %d, want 1 each", audience, informed)
+	}
+}

@@ -1,6 +1,7 @@
 package head
 
 import (
+	"context"
 	"fmt"
 	"strings"
 	"testing"
@@ -88,7 +89,7 @@ func TestServiceConversationAmbiguityUsesOptions(t *testing.T) {
 		t.Fatalf("ambiguity message = %+v", messages)
 	}
 	answer, _ := graph.PostMessage(store.Message{SessionID: "services", Role: store.RoleUser, Body: "2"})
-	if handled, err := h.answerPendingQuestion(answer); err != nil || !handled {
+	if handled, err := h.answerPendingQuestion(context.Background(), answer); err != nil || !handled {
 		t.Fatalf("answer handled=%v err=%v", handled, err)
 	}
 	commands, _ := graph.PendingCommands(10)
@@ -144,7 +145,7 @@ func TestShutItAllDownStopsServicesAndGatesInFlightWork(t *testing.T) {
 	}
 
 	answer, _ := graph.PostMessage(store.Message{SessionID: "services", Role: store.RoleUser, Body: "1"})
-	if handled, err := h.answerPendingQuestion(answer); err != nil || !handled {
+	if handled, err := h.answerPendingQuestion(context.Background(), answer); err != nil || !handled {
 		t.Fatalf("cancel answer handled=%v err=%v", handled, err)
 	}
 	commands, _ = graph.PendingCommands(10)

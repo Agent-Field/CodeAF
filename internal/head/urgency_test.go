@@ -77,8 +77,13 @@ func TestImpatienceExpeditesTheLiveJobInsteadOfCompilingASecondOne(t *testing.T)
 		commands[0].Instruction != "please complete the dinance research fast and give me result immediatly" {
 		t.Fatalf("expedite command = %+v", commands[0])
 	}
-	if calls := client.callCount(); calls != 0 {
-		t.Fatalf("urgency consulted the routing model %d times", calls)
+	// One model call, and it is the voice that acknowledges the expedite — never
+	// the router, whose only move here would be to compile a second job.
+	if calls := client.callCount(); calls != 1 {
+		t.Fatalf("urgency made %d model calls, want the single acknowledgement", calls)
+	}
+	if prompt := client.systemPrompt(); !strings.Contains(prompt, revisionVoicePrompt) {
+		t.Fatalf("urgency consulted the routing model: %q", prompt)
 	}
 	// Urgency does not ask. A question spends the one thing the user is short of.
 	if questions, err := graph.UnresolvedQuestions(10); err != nil || len(questions) != 0 {
@@ -109,8 +114,11 @@ func TestNotJustXIWantYRedirectsTheLiveJob(t *testing.T) {
 		commands[0].Instruction != "not jsut summary i want the answer to the problem we started" {
 		t.Fatalf("redirect command = %+v err=%v", commands, err)
 	}
-	if calls := client.callCount(); calls != 0 {
-		t.Fatalf("correction consulted the routing model %d times", calls)
+	if calls := client.callCount(); calls != 1 {
+		t.Fatalf("the correction made %d model calls, want the single acknowledgement", calls)
+	}
+	if prompt := client.systemPrompt(); !strings.Contains(prompt, revisionVoicePrompt) {
+		t.Fatalf("correction consulted the routing model: %q", prompt)
 	}
 }
 
