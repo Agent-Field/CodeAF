@@ -4,6 +4,8 @@ import (
 	"strings"
 
 	"github.com/charmbracelet/lipgloss"
+
+	"github.com/Agent-Field/aforge-v2/internal/manual"
 )
 
 type helpRow struct {
@@ -24,7 +26,16 @@ func helpCategories() []helpCategory {
 	for _, command := range slashCommands {
 		slashRows = append(slashRows, helpRow{key: "/" + command.name, meaning: command.description})
 	}
+	// The first thing the guide says is what a person can say, because the keys
+	// below it are accelerators for things this list already covers. The rows
+	// are read out of the same authored catalog the head carries in its prompt,
+	// so the screen and the spoken answer to "what can you do?" cannot drift.
+	sayRows := make([]helpRow, 0, len(manual.Says()))
+	for _, say := range manual.Says() {
+		sayRows = append(sayRows, helpRow{key: say.Verb, meaning: say.Example})
+	}
 	return []helpCategory{
+		{title: "what you can say", rows: sayRows},
 		{title: "talking", rows: []helpRow{
 			{key: "enter", meaning: "send the draft; a confirm card takes its default"},
 			{key: keyBindings.newline, meaning: "insert a newline without sending"},
