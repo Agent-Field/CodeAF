@@ -464,7 +464,7 @@ func TestAffordanceGrammarReplacesLegacyHints(t *testing.T) {
 			t.Fatalf("legacy affordance hint %q survived:\n%s", legacy, surfaces)
 		}
 	}
-	for _, expected := range []string{"▸ reading + 1 assumptions", "▸ 35 more lines", "▸ details", " ▸"} {
+	for _, expected := range []string{"▸ Read the request. · 1 assumption", "▸ 35 more lines", "▸ details", " ▸"} {
 		if !strings.Contains(surfaces, expected) {
 			t.Fatalf("grammar affordance %q missing:\n%s", expected, surfaces)
 		}
@@ -475,7 +475,7 @@ func TestAffordanceGrammarReplacesLegacyHints(t *testing.T) {
 	model.expandedMessages[2] = true
 	model.cardExpanded["landed"] = true
 	flipped := model.renderMessages()
-	for _, expected := range []string{"▾ reading + 1 assumptions", "▾ collapse", "⟨×⟩ close · ▸ job graph"} {
+	for _, expected := range []string{"▾ Read the request. · 1 assumption", "▾ collapse", "⟨×⟩ close · ▸ job graph"} {
 		if !strings.Contains(flipped, expected) {
 			t.Fatalf("expanded state did not flip its glyph to %q:\n%s", expected, flipped)
 		}

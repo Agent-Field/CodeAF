@@ -90,6 +90,23 @@ attention costs zero (attach brief, resumed session, instant launch). A
 native menu-bar/web surface is a future wave (the web surface exists on an
 unmerged branch); nothing in the core may assume wide terminals.
 
+## The design filter (every proposal passes this or dies)
+
+Apple's discipline, applied: **no new nouns, no new modes, no ceremony.**
+
+- A capability ships as *behavior*, never as *terminology*. If explaining a
+  feature requires teaching a user a word we invented, the design is wrong.
+  (Internally we may speak of focus, lenses, charters, craft; the user only
+  ever experiences "it understood which one I meant", "I can see just that
+  conversation", "it remembers my rule", "it's gotten faster at this".)
+- Ambiguity is resolved the human way: it asks one short question, in plain
+  words, at most once. Never a picker UI, never an error, never a mode.
+- Every addition must remove more confusion than it adds. Bloat is measured
+  at the surface: if the default screen gains a permanent element, the bar
+  is "would a first-time user be confused for even a second?"
+- Defaults over settings. Behavior over configuration. Sentences over
+  commands. The product should feel inevitable, not featureful.
+
 ## How we verify (the UX test doctrine)
 
 Journeys are tested **as a human** — by driving the real binary in a real
