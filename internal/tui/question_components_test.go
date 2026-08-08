@@ -207,14 +207,14 @@ func TestPendingOptionQuestionSwapsInputPlaceholderInAndOut(t *testing.T) {
 	model.cards = []jobCard{answerFlowCard("question", 1, questionChoose, "")}
 	withQuestion := ansi.Strip(model.renderInput())
 	if !strings.Contains(withQuestion, "1–2 to answer · or type your own") ||
-		strings.Contains(withQuestion, "Ask the graph…") {
+		strings.Contains(withQuestion, composerPlaceholder) {
 		t.Fatalf("pending-question input = %q", withQuestion)
 	}
 
 	model.cards[0].State = cardSettled
 	withoutQuestion := ansi.Strip(model.renderInput())
 	baseline := ansi.Strip(New(&fakeBackend{}, "question-placeholder-baseline").renderInput())
-	if !strings.Contains(withoutQuestion, "Ask the graph…") ||
+	if !strings.Contains(withoutQuestion, composerPlaceholder) ||
 		strings.Contains(withoutQuestion, "to answer · or type your own") || withoutQuestion != baseline {
 		t.Fatalf("resolved-question input = %q, baseline %q", withoutQuestion, baseline)
 	}

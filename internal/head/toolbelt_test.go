@@ -374,7 +374,7 @@ func TestSteerReviseExpediteJournalExistingCommandKinds(t *testing.T) {
 
 	result, failed := run.execute(beltToolSteer, mustJSON(map[string]any{
 		"job": "api", "message": "prefer the v2 endpoints"}))
-	if failed || !strings.Contains(result, "told 1 running worker") {
+	if failed || !strings.Contains(result, "told 1 step of API client already under way") {
 		t.Fatalf("steer = %q failed=%t", result, failed)
 	}
 	anchored := 0

@@ -232,7 +232,7 @@ func buildChatBrain(w *chatWindow, session string, hand resident.HandoverFunc) (
 		_, _ = graph.PostMessage(store.Message{
 			SessionID: session,
 			Role:      store.RoleSystem,
-			Body: fmt.Sprintf("recovered %d interrupted task(s) from the last session — each restarts from the beginning, with the files it had already written still in its workspace",
+			Body: fmt.Sprintf("picked up %d piece(s) of work that were interrupted — each starts again from the beginning, with the files it had already written still where it left them",
 				len(released)),
 		})
 	}
@@ -3270,7 +3270,7 @@ func superviseResident(ctx context.Context, serve func(context.Context) error,
 			log.Printf("resident loop abandoned after %d restarts; background work has stopped", consecutive)
 			if announce != nil {
 				announce("my background half has stopped and I could not restart it — " +
-					"standing watches, charters and follow-up work are paused until aforge is restarted. " +
+					"standing rules, watching and follow-up work are paused until aforge is restarted. " +
 					"The reason is in the log: " + firstLine(fmt.Sprint(err)))
 			}
 			return

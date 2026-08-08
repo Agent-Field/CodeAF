@@ -109,7 +109,7 @@ func TestTheBoardYieldsRatherThanTruncatingInTheDock(t *testing.T) {
 	if !strings.Contains(frame, "tasks") {
 		t.Fatalf("the narrow board never rendered:\n%s", frame)
 	}
-	if !strings.Contains(frame, "Ask the graph") {
+	if !strings.Contains(frame, composerPlaceholder) {
 		t.Fatalf("the composer left the frame while the board was open:\n%s", frame)
 	}
 }
@@ -129,7 +129,7 @@ func TestModalsStopAboveTheComposer(t *testing.T) {
 				width, bottom, model.inputBounds.y)
 		}
 		plain := ansi.Strip(model.View())
-		if !strings.Contains(plain, "Ask the graph") {
+		if !strings.Contains(plain, composerPlaceholder) {
 			t.Fatalf("width %d: the composer is gone under the guide:\n%s", width, plain)
 		}
 		model.closeHelp()

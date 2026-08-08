@@ -94,9 +94,9 @@ type selfSection struct {
 
 var selfSections = []selfSection{
 	{
-		route: selfRouteCrafts, title: "Crafts",
-		explain: "job-shapes I've learned — versioned, measured, reusable",
-		empty:   "none yet; I forge one when a job's shape looks reusable",
+		route: selfRouteCrafts, title: "Know-how",
+		explain: "what I've learned to repeat — versioned, measured, reused",
+		empty:   "none yet; I keep one when a job's shape looks worth repeating",
 	},
 	{
 		route: selfRouteCompetence, title: "Competence",
@@ -110,7 +110,7 @@ var selfSections = []selfSection{
 	},
 	{
 		route: selfRouteSkills, title: "Skills",
-		explain: "tools I forged and verified; they ride every worker's PATH",
+		explain: "tools I built and checked; everything I run for you can reach them",
 		empty:   "none yet; a procedure has to run and pass twice before I keep it",
 	},
 	{

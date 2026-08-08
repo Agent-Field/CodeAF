@@ -1261,10 +1261,10 @@ func (r *Reconciler) cancel(ctx context.Context, command store.Command) (command
 		}
 	}
 	result := fmt.Sprintf("cancelled %d; requested cooperative cancellation for %d", cancelled, requested)
-	receipt := fmt.Sprintf("cancelled — %d %s cancelled", cancelled, plural(cancelled, "leaf", "leaves"))
+	receipt := fmt.Sprintf("cancelled — %d %s cancelled", cancelled, plural(cancelled, "step", "steps"))
 	if requested > 0 {
 		receipt = fmt.Sprintf("cancellation requested — %d running %s will release at the next boundary",
-			requested, plural(requested, "leaf", "leaves"))
+			requested, plural(requested, "step", "steps"))
 		if cancelled > 0 {
 			receipt += fmt.Sprintf(", %d pending cancelled", cancelled)
 		}
@@ -1763,7 +1763,7 @@ func compileReceipt(goal string, assumptions []string, modelNote string) string 
 	if modelNote = strings.TrimSpace(modelNote); modelNote != "" {
 		fmt.Fprintf(&receipt, "\n%s", modelNote)
 	}
-	receipt.WriteString("\nCorrect me anytime — redirects are cheap.")
+	receipt.WriteString("\nCorrect me anytime — changing course costs nothing.")
 	return receipt.String()
 }
 
