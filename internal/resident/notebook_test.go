@@ -1211,3 +1211,37 @@ func TestCompileGraphRanksLiveWorkFirstAndPrefersTheFoldDigest(t *testing.T) {
 		t.Fatalf("compile graph context is %d bytes against a %d budget", len(got), compileContextBytes)
 	}
 }
+
+// The compiler resolves what an instruction's words point at from this slice,
+// and four jobs narrating into one thread arrived here in one undifferentiated
+// voice. Every job-anchored line now says which job spoke it, by the short name
+// the user reads on screen — never by an id, because a second vocabulary would
+// be worse than none.
+func TestCompileThreadSliceNamesTheJobThatSpoke(t *testing.T) {
+	graph := openStore(t)
+	if err := graph.Splice(store.RootID, store.Subtree{Nodes: []store.NodeSpec{
+		{ID: "auth-fix", Title: "Auth token refresh", Brief: "patch the auth token refresh", Stage: 1},
+		{ID: "auth-fix-test", Parent: "auth-fix", Brief: "add a regression test", Stage: 2},
+	}}, store.Provenance{Origin: store.OriginUser, SessionID: "attributed", Intent: "patch auth"}); err != nil {
+		t.Fatal(err)
+	}
+	for _, message := range []store.Message{
+		{SessionID: "attributed", Role: store.RoleUser, Body: "patch the auth token refresh"},
+		{SessionID: "attributed", Role: store.RoleAgent, NodeID: "auth-fix-test", Body: "the regression test is written"},
+	} {
+		if _, err := graph.PostMessage(message); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	block := New(graph, nil, nil).recentThreadBlock("attributed")
+	if !strings.Contains(block, "agent [Auth token refresh]:") {
+		t.Fatalf("the compiler's slice never says which job spoke:\n%s", block)
+	}
+	if strings.Contains(block, "[auth-fix-test]") {
+		t.Fatalf("the slice attributed a line by its id:\n%s", block)
+	}
+	if !strings.Contains(block, "user: patch the auth token refresh") {
+		t.Fatalf("a user turn was filed under a job:\n%s", block)
+	}
+}
