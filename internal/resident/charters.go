@@ -56,6 +56,26 @@ func (r *Reconciler) applyCharterCommand(ctx context.Context, command store.Comm
 		}, nil
 
 	case store.CommandCharterRetire:
+		// Retiring something that was never stood up is declining it, and the
+		// difference matters: a decline writes the durable "do not offer this
+		// shape again" record, so the retrospective that noticed the recurring
+		// ask three times does not notice it again next week and ask again.
+		// This is also the only route by which DeclineCharterProposal is ever
+		// called — the proposal question offers it under the retire code the
+		// head already decodes, rather than inventing a second vocabulary.
+		if charter.Status == store.CharterProposed {
+			reason := strings.TrimSpace(command.Instruction)
+			if reason == "" {
+				reason = "the user declined the proposal"
+			}
+			if err := r.store.DeclineCharterProposal(charter.ID, reason); err != nil {
+				return commandOutcome{}, err
+			}
+			return commandOutcome{
+				status: store.CommandApplied, result: "charter proposal declined",
+				receipt: "Understood — not standing, and I won't offer it again: " + label + ".",
+			}, nil
+		}
 		if err := r.store.SetCharterStatus(charter.ID, store.CharterRetired, store.Ratification{}); err != nil {
 			return commandOutcome{}, err
 		}
@@ -238,6 +258,55 @@ func (r *Reconciler) installStandingWatch(ctx context.Context) error {
 	return r.standingWatch.Install(installCtx)
 }
 
+// uninstallStandingWatch is Install's mirror, bounded the same way and for the
+// same reason: it shells out to launchctl or systemctl on the way out.
+func (r *Reconciler) uninstallStandingWatch(ctx context.Context) error {
+	if r.standingWatch == nil {
+		return nil
+	}
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	removeCtx, cancel := context.WithTimeout(ctx, standingWatchInstallTimeout)
+	defer cancel()
+	return r.standingWatch.Uninstall(removeCtx)
+}
+
+// proposeStandingWatchStandDown is the ask-to-disable that mirrors the
+// ask-to-enable. The moment it looks for is the honest one: quiet checks were
+// consented to on behalf of a standing goal, and there are no standing goals
+// left — so the machine is waking every five minutes on nobody's behalf and is
+// the only party that knows.
+func (r *Reconciler) proposeStandingWatchStandDown() {
+	if r.store == nil || r.standingWatch == nil {
+		return
+	}
+	decision, err := r.store.StandingWatchDecisionState()
+	if err != nil || decision != store.StandingWatchEnabled {
+		return
+	}
+	active, err := r.store.Charters(store.CharterActive)
+	if err != nil {
+		return
+	}
+	for _, charter := range active {
+		if !store.IsPracticeCharter(charter) {
+			return
+		}
+	}
+	seen, found, err := r.store.LastSeen()
+	if err != nil || !found || seen.State != store.SeenAttached {
+		return
+	}
+	session := strings.TrimSpace(seen.SessionID)
+	if session == "" {
+		return
+	}
+	if _, err := r.store.OfferStandingWatchStandDown(session); err != nil {
+		log.Printf("standing watch stand-down offer: %v", err)
+	}
+}
+
 // reconcileStandingWatch repairs a missing host timer. It runs outside the
 // reconciler mutex — the install shells out to launchctl or systemctl, and a
 // slow host must never hold the lock every other resident path waits on. Its
@@ -315,6 +384,28 @@ func (r *Reconciler) applyStandingWatchCommand(ctx context.Context, command stor
 			receipt: receipt,
 		}, nil
 	case store.CommandStandingWatchDecline:
+		// The same word, read against the state it arrives in. Before the timer
+		// exists, "no" declines an offer. Once it exists, "no" is the reverse
+		// gear — and the reverse gear has to reach the host, because the repair
+		// pass reinstalls a timer it finds missing every five minutes, so a
+		// journalled stand-down that never called Uninstall would leave the
+		// user's own `launchctl unload` being undone by us.
+		current, err := r.store.StandingWatchDecisionState()
+		if err != nil {
+			return commandOutcome{}, err
+		}
+		if current == store.StandingWatchEnabled {
+			if err := r.store.RecordStandingWatchDecision(store.StandingWatchStoodDown, reason); err != nil {
+				return commandOutcome{}, err
+			}
+			if err := r.uninstallStandingWatch(ctx); err != nil {
+				log.Printf("standing watch uninstall: %v", err)
+			}
+			return commandOutcome{
+				status: store.CommandApplied, result: "standing watch stood down",
+				receipt: "Stood down — no more checks with the terminal closed. Say the word and I'll pick it back up.",
+			}, nil
+		}
 		if err := r.store.RecordStandingWatchDecision(store.StandingWatchDeclined, reason); err != nil {
 			return commandOutcome{}, err
 		}

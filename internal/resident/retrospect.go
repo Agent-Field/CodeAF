@@ -10,6 +10,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
+	"log"
 	"strings"
 	"time"
 	"unicode"
@@ -130,6 +131,7 @@ func (r *Reconciler) reflectOnJobs(ctx context.Context) {
 	}
 	if onCadence {
 		r.proposeServiceHygiene(now)
+		r.proposeStandingWatchStandDown()
 	}
 
 	learned, err := r.reflect(ctx, jobs)
@@ -194,9 +196,16 @@ func (r *Reconciler) proposeRecurringCharter(jobs []JobSketch) {
 		return
 	}
 	for _, charter := range charters {
-		if charter.ProposalShape == bestShape {
-			return
+		if charter.ProposalShape != bestShape {
+			continue
 		}
+		// The shape already has a charter, so nothing new is proposed — but a
+		// proposal that was minted while nobody was at the surface never got
+		// its question, and this is the pass that notices.
+		if charter.Status == store.CharterProposed {
+			r.askCharterProposal(charter)
+		}
+		return
 	}
 	declined, err := r.store.CharterProposalDeclined(bestShape)
 	if err != nil || declined {
@@ -220,7 +229,80 @@ func (r *Reconciler) proposeRecurringCharter(jobs []JobSketch) {
 	if err != nil {
 		return
 	}
-	_ = r.store.CreateCharter(charter.WithProposalShape(bestShape))
+	if err := r.store.CreateCharter(charter.WithProposalShape(bestShape)); err != nil {
+		return
+	}
+	stored, found, err := r.store.Charter(charter.ID)
+	if err != nil || !found {
+		return
+	}
+	r.askCharterProposal(stored)
+}
+
+// askCharterProposal is the door the proposal never had.
+//
+// The detector was complete: it noticed three near-identical asks, compiled a
+// standing rule for them, and filed it as CharterProposed — where nothing could
+// ratify it, the decline was dead code, and DueCharters filters to active, so
+// it could never fire either. A standing goal nobody can accept is a note to
+// self.
+//
+// Everything it needs already exists and is used verbatim: the ratification
+// option codes the head already decodes, so a plain "yes" ratifies through the
+// same path a user-uttered charter takes, and "no" retires the proposal —
+// which, for a charter that is still only proposed, is a decline, and the
+// decline is what stops the same shape being offered again forever.
+//
+// Next-natural-moment, never blocking. This is the resident volunteering an
+// observation about the user's own habits; it waited three occurrences to say
+// it and it can wait for a gap in the conversation. It is asked into whichever
+// session is live, and if nobody is there it is not asked at all — the charter
+// row is durable and the next retrospective picks the question back up.
+func (r *Reconciler) askCharterProposal(charter store.Charter) {
+	pending, err := r.store.UnresolvedQuestions(200)
+	if err != nil {
+		return
+	}
+	for _, question := range pending {
+		if question.OriginCharterID == charter.ID {
+			return
+		}
+	}
+	seen, found, err := r.store.LastSeen()
+	if err != nil || !found || seen.State != store.SeenAttached {
+		return
+	}
+	session := strings.TrimSpace(seen.SessionID)
+	if session == "" {
+		return
+	}
+
+	rails := charter.Rails()
+	fires := strings.TrimSpace(charter.Watch.Cadence)
+	if fires == "" {
+		fires = charter.Watch.String()
+	}
+	prompt := fmt.Sprintf("This keeps coming back: %s\nI can make it standing — %s, ~$%.2f/firing, ≤%d/day.\nWant me to?",
+		clipLabel(firstLine(charter.Invariant), 160), fires,
+		rails.PerFiringBudgetUSD, rails.MaxFiringsPerDay)
+	options := []store.QuestionOption{
+		{Label: "yes, stand this up", Value: "charter:ratify:" + charter.ID},
+		{Label: "no, not standing", Value: "charter:retire:" + charter.ID},
+	}
+	allowFree := true
+	// Default to the no. An offer the user did not ask for must not become a
+	// standing spend because they pressed enter to get past it.
+	text := store.QuestionMessageBody(prompt, options, store.QuestionConfig{
+		Kind: store.QuestionChoose, Category: store.QuestionCategoryCharterRatification,
+		Default: "2", AllowFree: &allowFree,
+	})
+	if _, err := r.askQuestionLocked(store.AgentQuestion{
+		SessionID: session, Text: text, OriginCharterID: charter.ID,
+		Urgency: store.QuestionNextNaturalMoment, Category: store.QuestionCategoryCharterRatification,
+		DefaultAnswer: "2", Options: options,
+	}); err != nil {
+		log.Printf("charter proposal %s: %v", charter.ID, err)
+	}
 }
 
 func recurringAskShape(ask string) string {

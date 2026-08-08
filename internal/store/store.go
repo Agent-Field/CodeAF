@@ -106,7 +106,15 @@ const (
 	EventStandingWatchOffered  EventKind = "standing_watch_offered"
 	EventStandingWatchEnabled  EventKind = "standing_watch_enabled"
 	EventStandingWatchDeclined EventKind = "standing_watch_declined"
-	EventStandingWatchPass     EventKind = "standing_watch_pass"
+	// EventStandingWatchStoodDown is the reverse gear. Enabled and declined
+	// used to be terminal by construction, which made an unattended-presence
+	// consent one the product accepted and structurally refused to give back —
+	// while the timer repaired itself against the user's own hands every five
+	// minutes. Standing down is a fifth state rather than a rewrite of the
+	// fourth because the journal is append-only and the fact that the user once
+	// said yes is part of the history.
+	EventStandingWatchStoodDown EventKind = "standing_watch_stood_down"
+	EventStandingWatchPass      EventKind = "standing_watch_pass"
 
 	// Usage and surprise are journaled separately because a planned leaf's
 	// prediction becomes known when the complete plan lands, after its spend.

@@ -243,3 +243,126 @@ func createProposedStandingCharter(t *testing.T, graph *store.Store, id, session
 	}
 	return charter
 }
+
+// enableStandingWatch drives one brain to a consented, installed timer.
+func enableStandingWatch(t *testing.T, graph *store.Store, charterID string) {
+	t.Helper()
+	if posted, err := graph.OfferStandingWatch("standing-session", charterID); err != nil || !posted {
+		t.Fatalf("offer posted=%t err=%v", posted, err)
+	}
+	if err := graph.RecordStandingWatchDecision(store.StandingWatchEnabled, "yes, always"); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestStandingWatchConsentCanBeWithdrawnAndStopsRepairingItself(t *testing.T) {
+	graph := openStore(t)
+	charter := createProposedStandingCharter(t, graph, "charter-off", "standing-session")
+	if err := graph.SetCharterStatus(charter.ID, store.CharterActive, store.Ratification{
+		Origin: store.OriginUser, SessionID: "standing-session", Evidence: "yes",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	enableStandingWatch(t, graph, charter.ID)
+
+	command, err := graph.RequestCommand(store.Command{
+		SessionID: "standing-session", Kind: store.CommandStandingWatchDecline,
+		Instruction: "stand down",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	watch := &fakeStandingWatch{status: watchdog.Status{Installed: true}}
+	reconciler := New(graph, nil, nil).WithStandingWatch(watch)
+	if err := reconciler.Tick(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	settled, _, _ := graph.CommandBySeq(command.Seq)
+	if settled.Status != store.CommandApplied {
+		t.Fatalf("stand-down command = %+v", settled)
+	}
+	if watch.uninstalls != 1 || watch.status.Installed {
+		t.Fatalf("the host timer outlived the consent: uninstalls=%d status=%+v", watch.uninstalls, watch.status)
+	}
+	decision, err := graph.StandingWatchDecisionState()
+	if err != nil || decision != store.StandingWatchStoodDown {
+		t.Fatalf("decision = %q err=%v", decision, err)
+	}
+
+	// The five-minute repair pass is exactly what made this irreversible.
+	reconciler.standingWatchCheck = time.Time{}
+	if err := reconciler.Tick(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if watch.installs != 0 || watch.status.Installed {
+		t.Fatalf("the repair pass undid the user's own decision: installs=%d status=%+v",
+			watch.installs, watch.status)
+	}
+
+	// And the reverse gear is itself reversible.
+	if _, err := graph.RequestCommand(store.Command{
+		SessionID: "standing-session", Kind: store.CommandStandingWatchEnable,
+		Instruction: "pick it back up",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	reconciler.standingWatchCheck = time.Time{}
+	if err := reconciler.Tick(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if decision, err := graph.StandingWatchDecisionState(); err != nil || decision != store.StandingWatchEnabled {
+		t.Fatalf("re-enabled decision = %q err=%v", decision, err)
+	}
+	if !watch.status.Installed {
+		t.Fatalf("re-enabling did not reinstall: %+v", watch.status)
+	}
+}
+
+func TestStandDownIsOfferedOnceWhenNothingStandsAnyMore(t *testing.T) {
+	graph := openStore(t)
+	charter := createProposedStandingCharter(t, graph, "charter-last", "standing-session")
+	if err := graph.SetCharterStatus(charter.ID, store.CharterActive, store.Ratification{
+		Origin: store.OriginUser, SessionID: "standing-session", Evidence: "yes",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	enableStandingWatch(t, graph, charter.ID)
+	if _, err := graph.TouchSeen("tui", "standing-session", store.SeenAttached); err != nil {
+		t.Fatal(err)
+	}
+	reconciler := New(graph, nil, nil).WithStandingWatch(&fakeStandingWatch{
+		status: watchdog.Status{Installed: true},
+	})
+
+	// While something still stands, the machine keeps quiet.
+	reconciler.proposeStandingWatchStandDown()
+	if posted, err := standDownQuestions(graph); err != nil || posted != 0 {
+		t.Fatalf("stand-down offered while a charter still stood: %d err=%v", posted, err)
+	}
+
+	if err := graph.SetCharterStatus(charter.ID, store.CharterRetired, store.Ratification{}); err != nil {
+		t.Fatal(err)
+	}
+	reconciler.proposeStandingWatchStandDown()
+	reconciler.proposeStandingWatchStandDown()
+	posted, err := standDownQuestions(graph)
+	if err != nil || posted != 1 {
+		t.Fatalf("stand-down offers = %d err=%v", posted, err)
+	}
+}
+
+func standDownQuestions(graph *store.Store) (int, error) {
+	questions, err := graph.UnresolvedQuestions(50)
+	if err != nil {
+		return 0, err
+	}
+	count := 0
+	for _, question := range questions {
+		for _, option := range question.Options {
+			if option.Value == "standing-watch:decline" && question.Urgency == store.QuestionNextNaturalMoment {
+				count++
+			}
+		}
+	}
+	return count, nil
+}
