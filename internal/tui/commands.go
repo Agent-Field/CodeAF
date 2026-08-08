@@ -899,6 +899,7 @@ func (m *Model) newSession() tea.Cmd {
 	m.messages = nil
 	m.lastSeq = 0
 	m.cards = nil
+	m.threadQuestion = nil
 	m.commands = map[int64]store.Command{}
 	m.cardExpanded = map[string]bool{}
 	m.questionSelection = map[string]int{}

@@ -40,7 +40,7 @@ func TestArrivalBriefRendersAsOneCollapsibleTailCard(t *testing.T) {
 
 	model.focus = focusChat
 	model.chatFocusIndex = len(model.chatFocusLines()) - 1
-	if !model.activateChatFocus() {
+	if _, ok := model.activateChatFocus(); !ok {
 		t.Fatal("enter target did not activate the brief")
 	}
 	expanded := ansi.Strip(model.renderMessages())

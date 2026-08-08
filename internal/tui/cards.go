@@ -869,6 +869,7 @@ func (m *Model) rebuildCards() {
 		}
 	}
 	m.cards = next
+	m.refreshThreadQuestion()
 	m.noteShimmerActivity()
 	if m.selectedCardID != "" && m.cardByID(m.selectedCardID) == nil {
 		m.selectedCardID = ""
@@ -894,6 +895,61 @@ func (m *Model) cardByID(cardID string) *jobCard {
 		if m.cards[index].ID == cardID {
 			return &m.cards[index]
 		}
+	}
+	if m.threadQuestion != nil && m.threadQuestion.ID == cardID {
+		return m.threadQuestion
+	}
+	return nil
+}
+
+// threadQuestionID names the question the thread owns by the message that
+// asked it, so a selection survives every rebuild that message survives.
+func threadQuestionID(messageSeq int64) string {
+	return fmt.Sprintf("question:%d", messageSeq)
+}
+
+// refreshThreadQuestion resolves the newest still-open askback that no job card
+// owns. A head question carries no node and no command, so deriveJobCards has
+// nothing to hang it on: without this the thread drew its choices and they
+// answered nothing — digits fell into the composer, and the arrows moved a band
+// enter could not submit.
+func (m *Model) refreshThreadQuestion() {
+	m.threadQuestion = nil
+	for index := len(m.messages) - 1; index >= 0; index-- {
+		message := m.messages[index]
+		if message.Role != store.RoleAgent || message.Seq == 0 {
+			continue
+		}
+		component, ok := readQuestionComponent(message.Body)
+		if !ok || len(component.Options) == 0 {
+			continue
+		}
+		// Only the newest question is answerable — a later user turn consumes
+		// any question before it — so the walk stops at the first one found.
+		if m.questionAnswered(message) || m.cardForMessage(message) != nil {
+			return
+		}
+		m.threadQuestion = &jobCard{
+			ID: threadQuestionID(message.Seq), State: cardQuestion,
+			Title: firstLine(component.Prompt), Ask: component.Prompt,
+			QuestionKind: component.Kind, Question: component.Prompt,
+			Options: component.Options, Default: component.Default,
+			AllowFree: component.AllowFree, QuestionAt: message.Time,
+			Latest: firstLine(component.Prompt), BirthSeq: message.Seq,
+		}
+		return
+	}
+}
+
+// questionCardForMessage resolves whichever open question card a thread message
+// asked with — the job's card, or the thread's own — so the band the arrows
+// move is the band that message shows.
+func (m *Model) questionCardForMessage(message store.Message) *jobCard {
+	if m.threadQuestion != nil && m.threadQuestion.BirthSeq == message.Seq {
+		return m.threadQuestion
+	}
+	if card := m.cardForMessage(message); card != nil && card.State == cardQuestion {
+		return card
 	}
 	return nil
 }
@@ -1483,6 +1539,12 @@ func (m *Model) answerTargetQuestionCard() *jobCard {
 			newest = card
 			newestIndex = index
 		}
+	}
+	// The thread's own question competes on the same newest-wins rule: an
+	// askback with no job behind it is still the live ask when it is the last
+	// thing said.
+	if m.threadQuestion != nil && questionCardIsNewer(m.threadQuestion, len(m.cards), newest, newestIndex) {
+		newest = m.threadQuestion
 	}
 	return newest
 }

@@ -1006,8 +1006,8 @@ func (m *Model) updateMouseClick(x, y int) (tea.Cmd, bool) {
 		return nil, true
 	}
 	if m.chatBounds.contains(x, y) {
-		if m.toggleChatMessageAt(x, y) {
-			return nil, true
+		if command, ok := m.toggleChatMessageAt(x, y); ok {
+			return command, true
 		}
 		m.focus = focusChat
 		m.inputFocused = false
@@ -1083,13 +1083,14 @@ func (m *Model) clickCardDock(x, line int) (tea.Cmd, bool) {
 	return nil, true
 }
 
-// toggleChatMessageAt handles a click inside the chat column: a provenance
-// chip jumps to its task, a collapsed answer opens or closes in place, and
-// anything else is a harmless no-op.
-func (m *Model) toggleChatMessageAt(x, y int) bool {
+// toggleChatMessageAt handles a click inside the chat column: an option row
+// answers the question that offered it, a provenance chip jumps to its task, a
+// collapsed answer opens or closes in place, and anything else is a harmless
+// no-op.
+func (m *Model) toggleChatMessageAt(x, y int) (tea.Cmd, bool) {
 	line := y - m.chatBounds.y + m.chat.YOffset
 	if line < 0 {
-		return false
+		return nil, false
 	}
 	contentX := x - m.chatBounds.x
 	for _, option := range m.notebookOptionRows {
@@ -1099,24 +1100,36 @@ func (m *Model) toggleChatMessageAt(x, y int) bool {
 		m.notebookOption = option.optionIndex
 		m.activateSelectedNotebookOption()
 		m.refreshChat()
-		return true
+		return nil, true
+	}
+	// A confirm question packs every choice onto one row, so the column decides
+	// which one was clicked before the line-level path guesses.
+	for _, option := range m.cardOptionRows {
+		if option.dock || option.line != line || contentX < option.startX || contentX >= option.endX {
+			continue
+		}
+		m.questionSelection[option.cardID] = option.optionIndex
+		return m.submitQuestionOption(option.cardID, option.optionIndex), true
 	}
 	return m.activateChatLine(line)
 }
 
 // activateChatLine is the one activation path for a thread content line —
 // clicks and keyboard traversal both land here, so enter always equals click.
-func (m *Model) activateChatLine(line int) bool {
+func (m *Model) activateChatLine(line int) (tea.Cmd, bool) {
 	for _, option := range m.notebookOptionRows {
 		if option.line == line {
 			m.activateSelectedNotebookOption()
 			m.refreshChat()
-			return true
+			return nil, true
 		}
+	}
+	if command, ok := m.activateChatOptionLine(line); ok {
+		return command, true
 	}
 	for _, row := range m.historyRows {
 		if row.line == line {
-			return m.activateHistory(row.index)
+			return nil, m.activateHistory(row.index)
 		}
 	}
 	for _, row := range m.cardCloseRows {
@@ -1124,20 +1137,20 @@ func (m *Model) activateChatLine(line int) bool {
 			m.selectedCardID = row.cardID
 			m.cardExpanded[row.cardID] = false
 			m.setSize(m.width, m.height)
-			return true
+			return nil, true
 		}
 	}
 	for _, chip := range m.chatChipRows {
 		if line == chip.line {
 			_ = m.openNodeByID(chip.nodeID)
-			return true
+			return nil, true
 		}
 	}
 	for _, part := range m.cardPartRows {
 		if !part.dock && part.line == line {
 			m.selectedCardID = part.cardID
 			_ = m.openNodeByID(part.nodeID)
-			return true
+			return nil, true
 		}
 	}
 	for _, row := range m.chatExpandRows {
@@ -1163,7 +1176,7 @@ func (m *Model) activateChatLine(line int) bool {
 		offset := m.chat.YOffset
 		m.refreshChat()
 		m.chat.SetYOffset(offset)
-		return true
+		return nil, true
 	}
 	for _, row := range m.chatMessageRows {
 		if line < row.start || line > row.end {
@@ -1173,14 +1186,41 @@ func (m *Model) activateChatLine(line int) bool {
 		offset := m.chat.YOffset
 		m.refreshChat()
 		m.chat.SetYOffset(offset)
-		return true
+		return nil, true
 	}
 	for _, row := range m.chatCardRows {
 		if line < row.start || line > row.end {
 			continue
 		}
 		_ = m.advanceCard(row.cardID, focusChat)
-		return true
+		return nil, true
 	}
-	return false
+	return nil, false
+}
+
+// activateChatOptionLine answers the question whose option rows cover this
+// thread line. One choice per line takes that choice; a confirm row carries
+// every choice on one line, so keyboard activation takes the banded one — a
+// click has already resolved by column before reaching here.
+func (m *Model) activateChatOptionLine(line int) (tea.Cmd, bool) {
+	target := -1
+	shared := 0
+	for index, option := range m.cardOptionRows {
+		if option.dock || option.line != line {
+			continue
+		}
+		shared++
+		if target < 0 {
+			target = index
+		}
+	}
+	if target < 0 {
+		return nil, false
+	}
+	option := m.cardOptionRows[target]
+	if shared > 1 {
+		return m.submitSelectedQuestionOption(option.cardID), true
+	}
+	m.questionSelection[option.cardID] = option.optionIndex
+	return m.submitQuestionOption(option.cardID, option.optionIndex), true
 }
