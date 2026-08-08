@@ -502,6 +502,10 @@ func (h *Head) journalUnits(user store.Message, kind store.CommandKind, instruct
 	units []store.Node) ([]string, int64) {
 	labels := make([]string, 0, len(units))
 	var first int64
+	// The set path reaches restart too — "rerun the failed ones on the better
+	// model" is one sentence — so the model reading rides the same funnel here
+	// as it does on the single-target path.
+	instruction = restartInstruction(kind, instruction)
 	for _, node := range units {
 		command, err := h.store.RequestCommand(store.Command{
 			SessionID: user.SessionID, Kind: kind, Target: node.ID, Instruction: instruction,

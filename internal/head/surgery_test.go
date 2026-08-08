@@ -91,18 +91,50 @@ func TestSurgeryReferentResolutionUniqueAmbiguousAndNone(t *testing.T) {
 		}
 	})
 
-	t.Run("none", func(t *testing.T) {
+	// A deterministic arm that resolved nothing declines. "try again" on the job
+	// that just failed used to end here — folded a tick after it was announced,
+	// invisible to a verb's status filter, and answered with "I couldn't find
+	// any current work that matches" by the one reader that could not see it.
+	// The readers behind it can: the belt reads settled work, the router carries
+	// fold roots. So the message must reach them.
+	t.Run("none falls through instead of answering", func(t *testing.T) {
 		graph := openHeadStore(t)
+		client := &fakeClient{responses: []string{
+			`{"reply":"Nothing by that name is on the board.","command":null}`,
+		}}
 		user, err := graph.PostMessage(store.Message{SessionID: "none", Role: store.RoleUser, Body: "cancel the audio job"})
 		if err != nil {
 			t.Fatal(err)
 		}
-		if err := New(&fakeClient{}, graph).answer(context.Background(), user); err != nil {
+		if err := New(client, graph).answer(context.Background(), user); err != nil {
 			t.Fatal(err)
 		}
 		reply := waitForAgentReply(t, graph, "none", user.Seq)
-		if !strings.Contains(reply.Body, "couldn't find any current work matching") {
-			t.Fatalf("none reply = %q", reply.Body)
+		if reply.Body != "Nothing by that name is on the board." {
+			t.Fatalf("surgery answered instead of declining: %q", reply.Body)
+		}
+		if client.callCount() == 0 {
+			t.Fatal("the message never reached a reader behind surgery")
+		}
+	})
+
+	// The same decline, on the sentence the finding was written about.
+	t.Run("try again on a folded failure reaches the router", func(t *testing.T) {
+		graph := openHeadStore(t)
+		spliceSurgeryJob(t, graph, "audio-en", "English audio", "produce the audio job")
+		failNode(t, graph, "audio-en")
+		if err := graph.Fold("audio-en", "the audio job failed", nil); err != nil {
+			t.Fatal(err)
+		}
+		client := &fakeClient{responses: []string{
+			`{"reply":"Starting the audio job over.","command":null}`,
+		}}
+		user := postUser(t, graph, "folded", "try again")
+		if err := New(client, graph).answer(context.Background(), user); err != nil {
+			t.Fatal(err)
+		}
+		if client.callCount() == 0 {
+			t.Fatal("try again dead-ended in surgery over a folded failure")
 		}
 	})
 }
