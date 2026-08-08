@@ -1,6 +1,7 @@
 package head
 
 import (
+	"context"
 	"strconv"
 	"strings"
 	"unicode"
@@ -22,7 +23,7 @@ const (
 // answerAgentQuestion routes replies to the durable reverse-direction queue.
 // An explicit QuestionSeq wins; otherwise the store applies the same
 // no-intervening-user-turn recency rule as ordinary conversational askbacks.
-func (h *Head) answerAgentQuestion(user store.Message) (bool, error) {
+func (h *Head) answerAgentQuestion(ctx context.Context, user store.Message) (bool, error) {
 	question, found, err := h.store.QuestionForAnswer(user.SessionID, user.Seq, user.QuestionSeq)
 	if err != nil || !found {
 		return false, err
@@ -45,7 +46,7 @@ func (h *Head) answerAgentQuestion(user store.Message) (bool, error) {
 		if err := h.store.ResolveQuestion(question.Seq, store.QuestionAnswered, answer, user.Seq); err != nil {
 			return true, err
 		}
-		return true, h.applyAgentQuestionOption(user, question, option)
+		return true, h.applyAgentQuestionOption(ctx, user, question, option)
 	}
 	if standingWatchQuestion(question.Options) {
 		// Unattended presence is decided once and never asked again, so only an
@@ -76,8 +77,8 @@ func (h *Head) answerAgentQuestion(user store.Message) (bool, error) {
 	return true, h.postAgent(user.SessionID, "Got it — I’ll use that.", 0)
 }
 
-func (h *Head) applyAgentQuestionOption(user store.Message, question store.AgentQuestion, option store.QuestionOption) error {
-	if handled, err := h.applyRedirectOption(user, option); handled {
+func (h *Head) applyAgentQuestionOption(ctx context.Context, user store.Message, question store.AgentQuestion, option store.QuestionOption) error {
+	if handled, err := h.applyRedirectOption(ctx, user, option); handled {
 		return err
 	}
 	if action, kind, target, instruction, ok := decodeSurgeryOption(option.Value); ok {
@@ -170,7 +171,7 @@ func (h *Head) continueAgentCompilerQuestion(user store.Message, question store.
 	return h.postAgent(user.SessionID, "Got it — proceeding with that choice.", command.Seq)
 }
 
-func (h *Head) answerPendingQuestion(user store.Message) (bool, error) {
+func (h *Head) answerPendingQuestion(ctx context.Context, user store.Message) (bool, error) {
 	question, pending, err := h.store.PendingQuestion(user.SessionID, user.Seq)
 	if err != nil || !pending {
 		return false, err
@@ -182,7 +183,7 @@ func (h *Head) answerPendingQuestion(user store.Message) (bool, error) {
 				return true, err
 			}
 		}
-		return true, h.applyQuestionOption(user, question, option)
+		return true, h.applyQuestionOption(ctx, user, question, option)
 	}
 
 	if charterID, ok := charterQuestionID(question.Options); ok {
@@ -257,11 +258,11 @@ func charterQuestionID(options []store.QuestionOption) (string, bool) {
 	return "", false
 }
 
-func (h *Head) applyQuestionOption(user store.Message, question store.Message, option store.QuestionOption) error {
+func (h *Head) applyQuestionOption(ctx context.Context, user store.Message, question store.Message, option store.QuestionOption) error {
 	if handled, err := h.applyServiceOption(user, option); handled {
 		return err
 	}
-	if handled, err := h.applyRedirectOption(user, option); handled {
+	if handled, err := h.applyRedirectOption(ctx, user, option); handled {
 		return err
 	}
 	if action, kind, target, instruction, ok := decodeSurgeryOption(option.Value); ok {

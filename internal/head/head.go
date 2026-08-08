@@ -243,12 +243,12 @@ func (h *Head) poll(ctx context.Context, cursor int64) (int64, error) {
 }
 
 func (h *Head) answer(ctx context.Context, user store.Message) error {
-	if handled, err := h.answerAgentQuestion(user); err != nil {
+	if handled, err := h.answerAgentQuestion(ctx, user); err != nil {
 		return fmt.Errorf("serve head: answer agent question: %w", err)
 	} else if handled {
 		return nil
 	}
-	if handled, err := h.answerPendingQuestion(user); err != nil {
+	if handled, err := h.answerPendingQuestion(ctx, user); err != nil {
 		return fmt.Errorf("serve head: answer selectable question: %w", err)
 	} else if handled {
 		return nil
@@ -283,7 +283,7 @@ func (h *Head) answer(ctx context.Context, user store.Message) error {
 	} else if handled {
 		return nil
 	}
-	if handled, err := h.manageRedirect(user); err != nil {
+	if handled, err := h.manageRedirect(ctx, user); err != nil {
 		return fmt.Errorf("serve head: manage redirection: %w", err)
 	} else if handled {
 		return nil
@@ -316,21 +316,7 @@ func (h *Head) answer(ctx context.Context, user store.Message) error {
 		return h.postAgent(user.SessionID, providerErrorReply, 0)
 	}
 
-	if memory := decision.Remember; memory != nil {
-		if body := strings.TrimSpace(memory.Body); body != "" {
-			scope := strings.TrimSpace(strings.ToLower(memory.Scope))
-			if scope == "" {
-				scope = "user"
-			}
-			kind := store.FactKind(strings.ToLower(strings.TrimSpace(memory.Kind)))
-			switch kind {
-			case store.FactPreference, store.FactQuirk, store.FactLesson, store.FactPlain:
-			default:
-				kind = store.FactPreference
-			}
-			_, _ = h.store.RecordFactFrom(store.FactWriterHead, store.RootID, scope, kind, body)
-		}
-	}
+	h.remember(decision.Remember)
 
 	if retraction := decision.Retract; retraction != nil {
 		fact, found, readErr := h.store.FactBySeq(retraction.Seq)
@@ -372,15 +358,51 @@ func (h *Head) answer(ctx context.Context, user store.Message) error {
 		}
 		commandSeq = command.Seq
 	}
-	// The last seam is the one that must never go quiet. A reasoning model
-	// that spends its whole window deliberating returns zero words, and
-	// posting that empty string is silence wearing a message id — the user
-	// watches nothing happen, twice, and concludes the whole thing is broken.
-	// An honest "try again" is the floor under every message.
-	if strings.TrimSpace(decision.Reply) == "" {
-		return h.postAgent(user.SessionID, providerErrorReply, 0)
+	return h.postAgentFloor(user.SessionID, decision.Reply, commandSeq, decision.model)
+}
+
+// postAgentFloor is the seam a route may not go quiet through. A reasoning model
+// that spends its whole window deliberating returns zero words, and posting that
+// empty string is silence wearing a message id — the user watches nothing
+// happen, twice, and concludes the whole thing is broken. An honest "try again"
+// is the floor under every message that reaches here.
+//
+// Every route that acts on the graph ends in this call. That is the invariant,
+// not a convention: a redirection that journals a command and returns is the
+// same silence arriving by a different door.
+func (h *Head) postAgentFloor(sessionID, body string, commandSeq int64, model string) error {
+	if strings.TrimSpace(body) == "" {
+		return h.postAgent(sessionID, providerErrorReply, commandSeq)
 	}
-	return h.postAgentModel(user.SessionID, decision.Reply, commandSeq, decision.model)
+	return h.postAgentModel(sessionID, body, commandSeq, model)
+}
+
+// remember writes one durable belief a decision asked to keep. It is the single
+// capture seam into the notebook: the router reaches it with what a message
+// stated, and the revision route reaches it with what a redirection taught, so a
+// lesson lands the same way whichever door the sentence came through. Kind is
+// coerced rather than rejected — a belief filed under the wrong heading is still
+// a belief, and dropping it loses the only copy.
+func (h *Head) remember(memory *routeMemory) bool {
+	if h == nil || h.store == nil || memory == nil {
+		return false
+	}
+	body := strings.TrimSpace(memory.Body)
+	if body == "" {
+		return false
+	}
+	scope := strings.TrimSpace(strings.ToLower(memory.Scope))
+	if scope == "" {
+		scope = "user"
+	}
+	kind := store.FactKind(strings.ToLower(strings.TrimSpace(memory.Kind)))
+	switch kind {
+	case store.FactPreference, store.FactQuirk, store.FactLesson, store.FactPlain:
+	default:
+		kind = store.FactPreference
+	}
+	_, err := h.store.RecordFactFrom(store.FactWriterHead, store.RootID, scope, kind, body)
+	return err == nil
 }
 
 func (h *Head) raiseRailFromReply(user store.Message) (bool, error) {
