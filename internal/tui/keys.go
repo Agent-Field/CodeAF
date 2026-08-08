@@ -43,6 +43,8 @@ func (m *Model) textEntryFocused() bool {
 		return true
 	case m.palette == paletteSettings && m.settingsEditing:
 		return true
+	case m.charterEditing:
+		return true
 	case m.selfVisible() && m.focus == focusSelf &&
 		m.selfRoute != selfRouteRoot && m.selfFilterable():
 		return true

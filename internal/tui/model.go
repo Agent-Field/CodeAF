@@ -283,6 +283,9 @@ type Model struct {
 	charterFocusIndex int
 	standingRows      []standingRow
 	charterRows       []charterCardRow
+	// A cadence is edited where it is read: the action row becomes a field.
+	charterEditing    bool
+	charterCadence    textinput.Model
 	serviceCardID     string
 	serviceFocusIndex int
 	serviceRows       []serviceRow
@@ -933,6 +936,13 @@ func (m *Model) updateKey(message tea.KeyMsg) (tea.Cmd, bool) {
 	if m.palette == paletteNone && m.selfVisible() && m.focus == focusSelf &&
 		m.selfRoute != selfRouteRoot && key != "esc" {
 		if command, handled := m.updateSelfKey(message); handled {
+			return command, true
+		}
+	}
+	// A charter's cadence editor is a text field like any other: while it is
+	// open the letters are the cadence being written.
+	if m.charterEditing {
+		if command, handled := m.updateCharterCadenceKey(message); handled {
 			return command, true
 		}
 	}
