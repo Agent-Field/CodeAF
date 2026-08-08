@@ -1454,7 +1454,7 @@ func splitReceiptPrefix() string {
 }
 
 func (r *Reconciler) continuingNode(node store.Node) (bool, error) {
-	if strings.Contains(node.Summary, overrunSplitPrefix) {
+	if SplitContinued(node.Summary) {
 		return true, nil
 	}
 	return r.store.OverrunDeferred(node.ID)

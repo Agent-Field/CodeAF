@@ -549,7 +549,7 @@ func (h *Head) historyLines(since, until time.Time) ([]string, error) {
 		if impact, err := h.store.Impact(node.ID, now); err == nil && impact.Cost > 0 {
 			line += fmt.Sprintf(" | $%.2f", impact.Cost)
 		}
-		if summary := firstLine(nodeResult(node)); summary != "" {
+		if summary := firstLine(h.jobResult(node)); summary != "" {
 			line += " | " + truncateBytes(summary, historyResultBytes)
 		}
 		lines = append(lines, line)
@@ -659,7 +659,7 @@ func (h *Head) renderResult(node store.Node) string {
 		rendered.WriteString(" | finished " + age)
 	}
 	rendered.WriteString("\n")
-	body := truncateBytes(nodeResult(node), beltResultBytes)
+	body := truncateBytes(h.jobResult(node), beltResultBytes)
 	if body != "" {
 		rendered.WriteString("result:\n" + body + "\n")
 	} else {
@@ -694,7 +694,7 @@ func (h *Head) resultChildren(id string) []string {
 			continue
 		}
 		line := fmt.Sprintf("- %s | %s | %s", node.ID, node.Status, surgeryTargetLabel(node))
-		if summary := firstLine(nodeResult(node)); summary != "" {
+		if summary := firstLine(h.jobResult(node)); summary != "" {
 			line += " | " + summary
 		}
 		lines = append(lines, line)

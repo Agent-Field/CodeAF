@@ -145,7 +145,7 @@ func TestGreetingProducesTodaysContextExactly(t *testing.T) {
 		t.Fatalf("the clock line does not parse as its own layout: %q", clock)
 	}
 	want := "Recent thread before this message:\n" + thread +
-		"\n\nLive graph snapshot:\n" + renderGraph(snapshot, "greeting", thread, nil, time.Now()) +
+		"\n\nLive graph snapshot:\n" + New(nil, graph).renderGraph(snapshot, "greeting", thread, nil, time.Now()) +
 		"\n\nNotebook (durable memory across jobs and conversations):\n" + renderNotebook(graph, greeting, thread) +
 		"\n\nCurrent user message (verbatim):\n" + greeting
 	if prompt != want {
@@ -213,7 +213,7 @@ func TestBreadthAndDepthKeepTheirOwnBudgets(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if skeleton := renderGraph(snapshot, "", "", nil, time.Now()); len(skeleton) > maxGraphContextBytes {
+	if skeleton := New(nil, graph).renderGraph(snapshot, "", "", nil, time.Now()); len(skeleton) > maxGraphContextBytes {
 		t.Fatalf("board skeleton = %d bytes, over its %d budget", len(skeleton), maxGraphContextBytes)
 	}
 	deep, _ := New(nil, graph).renderDeep("what did the ledger reconciliation conclude", "")
@@ -358,7 +358,7 @@ func TestTruncationMarkersFitTheirBudget(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		board := renderGraph(snapshot, "", "", nil, time.Now())
+		board := New(nil, graph).renderGraph(snapshot, "", "", nil, time.Now())
 		if !strings.Contains(board, strings.TrimSpace(snapshotTruncatedMark)) {
 			t.Fatalf("width %d: the board never truncated, so the marker is untested", width)
 		}
