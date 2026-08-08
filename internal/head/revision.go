@@ -1,6 +1,7 @@
 package head
 
 import (
+	"context"
 	"fmt"
 	"strings"
 	"time"
@@ -55,7 +56,7 @@ type redirectIntent struct {
 //
 // It runs after surgery on purpose. "cancel", "pause", and their neighbours
 // are surgery's vocabulary and stay surgery's, unchanged.
-func (h *Head) manageRedirect(user store.Message) (bool, error) {
+func (h *Head) manageRedirect(ctx context.Context, user store.Message) (bool, error) {
 	intent, redirecting, err := h.recognizeRedirect(user)
 	if err != nil || !redirecting {
 		return false, err
@@ -65,12 +66,12 @@ func (h *Head) manageRedirect(user store.Message) (bool, error) {
 		// the wait it is meant to shorten, and everything expedite does is
 		// reversible, so the best-ranked live job takes the pressure and the
 		// receipt names it.
-		return true, h.requestRevision(user, store.CommandExpedite, intent.Candidates[0].Node.ID, user.Body)
+		return true, h.requestRevision(ctx, user, store.CommandExpedite, intent.Candidates[0].Node.ID, user.Body)
 	}
 	if intent.Certain {
-		return true, h.requestRedirect(user, intent.Candidates[0].Node.ID, user.Body)
+		return true, h.requestRedirect(ctx, user, intent.Candidates[0].Node.ID, user.Body)
 	}
-	return true, h.askRedirectTarget(user, intent)
+	return true, h.askRedirectTarget(ctx, user, intent)
 }
 
 // recognizeRedirect requires two independent signals before it fires: a cue
@@ -276,21 +277,27 @@ func (h *Head) rankRedirectTargets(message string, active []store.SurgeryTarget)
 	return ranked, nil
 }
 
-func (h *Head) requestRedirect(user store.Message, target, message string) error {
-	return h.requestRevision(user, store.CommandRedirect, target, message)
+func (h *Head) requestRedirect(ctx context.Context, user store.Message, target, message string) error {
+	return h.requestRevision(ctx, user, store.CommandRedirect, target, message)
 }
 
-// requestRevision journals one mid-flight revision. Both verbs carry the user's
-// words verbatim and differ only in what the reconciler does with them: change
-// the work, or hurry it.
-func (h *Head) requestRevision(user store.Message, kind store.CommandKind, target, message string) error {
-	// No acknowledgement on success, on purpose. The only honest receipt is
-	// the one that knows what actually changed in the plan and who was told,
-	// and that is written a moment later by the reconciler that did it.
-	if _, err := h.journalRevision(user, kind, target, message); err != nil {
+// requestRevision journals one mid-flight revision and says so. Both verbs carry
+// the user's words verbatim and differ only in what the reconciler does with
+// them: change the work, or hurry it.
+//
+// The acknowledgement used to be withheld here, on the argument that the only
+// honest receipt is the one that knows what actually changed in the plan. That
+// receipt does get written a moment later by the reconciler — and it is filed
+// under the job's own card, where ambient progress lives and the thread does
+// not look. So the route was silent to the only reader that mattered. What is
+// said now is the handoff and nothing more, which is exactly what is true at
+// this moment; the counts still follow from the party that knows them.
+func (h *Head) requestRevision(ctx context.Context, user store.Message, kind store.CommandKind, target, message string) error {
+	seq, err := h.journalRevision(user, kind, target, message)
+	if err != nil {
 		return h.postAgent(user.SessionID, commandErrorReply, 0)
 	}
-	return nil
+	return h.speakRevision(ctx, user, kind, target, seq)
 }
 
 // journalRevision is requestRevision's returning half. The toolbelt needs the
@@ -310,7 +317,7 @@ func (h *Head) journalRevision(user store.Message, kind store.CommandKind, targe
 // askRedirectTarget is the single structured question this path is allowed:
 // the same words could steer a running job or start a new one, and picking for
 // the user either edits the wrong plan or duplicates the work.
-func (h *Head) askRedirectTarget(user store.Message, intent redirectIntent) error {
+func (h *Head) askRedirectTarget(ctx context.Context, user store.Message, intent redirectIntent) error {
 	message := strings.TrimSpace(user.Body)
 	options := make([]store.QuestionOption, 0, len(intent.Candidates)+1)
 	for _, candidate := range intent.Candidates {
@@ -333,7 +340,7 @@ func (h *Head) askRedirectTarget(user store.Message, intent redirectIntent) erro
 	if ask, _, err := h.store.ShouldAsk(store.QuestionCategoryRedirectTarget); err == nil && !ask && !intent.Floorless {
 		if err := h.store.RecordAssumedWithDefault(store.QuestionCategoryRedirectTarget, "1",
 			user.SessionID, prompt); err == nil {
-			return h.requestRedirect(user, intent.Candidates[0].Node.ID, message)
+			return h.requestRedirect(ctx, user, intent.Candidates[0].Node.ID, message)
 		}
 	}
 	body := store.QuestionMessageBody(prompt, options, store.QuestionConfig{
@@ -353,14 +360,14 @@ func (h *Head) askRedirectTarget(user store.Message, intent redirectIntent) erro
 
 // applyRedirectOption settles every redirection answer: which job the words
 // were for, and whether a running leaf the revision wanted gone may be stopped.
-func (h *Head) applyRedirectOption(user store.Message, option store.QuestionOption) (bool, error) {
+func (h *Head) applyRedirectOption(ctx context.Context, user store.Message, option store.QuestionOption) (bool, error) {
 	action, target, message, ok := store.DecodeRedirectOption(option.Value)
 	if !ok {
 		return false, nil
 	}
 	switch action {
 	case "apply":
-		return true, h.requestRedirect(user, target, message)
+		return true, h.requestRedirect(ctx, user, target, message)
 	case "new":
 		command, err := h.store.RequestCommand(store.Command{
 			SessionID: user.SessionID, Kind: store.CommandSplice, Instruction: message,

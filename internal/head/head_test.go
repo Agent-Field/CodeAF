@@ -86,6 +86,21 @@ func (client *fakeClient) callCount() int {
 	return client.calls
 }
 
+// systemPrompt is which of the head's prompts the last call carried. It is how a
+// test says "not the router" now that more than one path speaks to a model.
+func (client *fakeClient) systemPrompt() string {
+	client.mutex.Lock()
+	defer client.mutex.Unlock()
+	if len(client.seen) == 0 {
+		return ""
+	}
+	var text strings.Builder
+	for _, part := range client.seen[0].Content {
+		text.WriteString(part.Text)
+	}
+	return text.String()
+}
+
 func TestHeadPostsReply(t *testing.T) {
 	graphStore := openHeadStore(t)
 	client := &fakeClient{responses: []string{
