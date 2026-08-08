@@ -107,7 +107,7 @@ func TestDistilledCraftIsSavedWithItsEvidence(t *testing.T) {
 	if err != nil || len(facts) != 1 {
 		t.Fatalf("notebook = %+v err=%v", facts, err)
 	}
-	if !strings.Contains(craftSessionMessages(t, graph), "⚒ forged: the release-notes craft") {
+	if !strings.Contains(craftSessionMessages(t, graph), "⚒ forged: how to do release-notes") {
 		t.Fatalf("the forge was invisible: %q", craftSessionMessages(t, graph))
 	}
 }

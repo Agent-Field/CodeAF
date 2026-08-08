@@ -163,7 +163,7 @@ func TestSpliceReceiptIsForbiddenFromPromisingAcceleration(t *testing.T) {
 		// reprioritize raises claim order and nothing else; trimming the
 		// unstarted tail is the belt's expedite, and saying otherwise here would
 		// be the same dishonesty from the generous side.
-		"claimed before its pending siblings",
+		"goes next, ahead of the rest of what is queued",
 	} {
 		if !strings.Contains(headSystemPrompt, phrase) {
 			t.Fatalf("the router prompt no longer constrains the splice receipt: %q", phrase)

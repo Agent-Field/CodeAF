@@ -552,6 +552,14 @@ func (l *Linear) Run(ctx context.Context, task Task) (returned *Outcome, runErr 
 		for index := range results {
 			outcome.Usage.merge(results[index].Usage)
 		}
+		// The run record is written here rather than in the workers, for the
+		// same reason the cache below is: it is one slice and several
+		// goroutines just finished. It records every call the model asked for,
+		// including one answered from the cache — the model asked, and a
+		// reader checking whether a check was ever run needs the ask.
+		for index, call := range calls {
+			outcome.record(call, results[index].IsError)
+		}
 
 		// The cache is filled here, on this goroutine, and never inside the
 		// workers. Writing a shared map from several tool goroutines at once is

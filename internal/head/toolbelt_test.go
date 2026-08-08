@@ -8,6 +8,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/Agent-Field/aforge-v2/internal/store"
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
@@ -374,7 +375,7 @@ func TestSteerReviseExpediteJournalExistingCommandKinds(t *testing.T) {
 
 	result, failed := run.execute(beltToolSteer, mustJSON(map[string]any{
 		"job": "api", "message": "prefer the v2 endpoints"}))
-	if failed || !strings.Contains(result, "told 1 running worker") {
+	if failed || !strings.Contains(result, "told 1 step of API client already under way") {
 		t.Fatalf("steer = %q failed=%t", result, failed)
 	}
 	anchored := 0
@@ -563,4 +564,87 @@ func mustJSON(value map[string]any) string {
 		panic(err)
 	}
 	return string(encoded)
+}
+
+// "How much have you cost me this month?" was a today-shaped read answering a
+// month-shaped question: the only spend the belt could reach was the day's
+// total, so a month became a model adding up whichever finished jobs history
+// had handed it — capped at two dozen rows and blind to anything a territory
+// had packed away. The windowed reads it needed were already written and tested
+// in the store with zero production callers, one of them carrying the job title
+// the user's own words gave the work. This is the wire.
+func TestSpendingReadsAWindowAndNamesTheWorkTheMoneyWentOn(t *testing.T) {
+	graph := openHeadStore(t)
+	splice := func(nodes []store.NodeSpec, intent string) {
+		t.Helper()
+		if err := graph.Splice(store.RootID, store.Subtree{Nodes: nodes},
+			store.Provenance{Origin: store.OriginUser, SessionID: "money", Intent: intent}); err != nil {
+			t.Fatalf("splice %s: %v", intent, err)
+		}
+	}
+	splice([]store.NodeSpec{
+		{ID: "trip", Title: "Lisbon trip research", Brief: "find flights and a hotel", Stage: 2},
+		{ID: "trip-leaf", Parent: "trip", Brief: "price the flights", Stage: 1},
+	}, "look into flights and a hotel for lisbon")
+	splice([]store.NodeSpec{
+		{ID: "letter", Title: "Landlord mold letter", Brief: "draft the letter", Stage: 1},
+	}, "write to my landlord about the mold")
+	for _, usage := range []store.NodeUsage{
+		{NodeID: "trip-leaf", Cost: 8.10, Model: "strong/one"},
+		{NodeID: "letter", Cost: 3.10, Model: "cheap/two"},
+		// Planning charged to the spine belongs to no errand at all, which is
+		// exactly the money the rows must not be read as covering.
+		{NodeID: store.RootID, Cost: 0.50, Model: "strong/one"},
+	} {
+		if err := graph.RecordUsage(usage); err != nil {
+			t.Fatalf("record usage: %v", err)
+		}
+	}
+
+	head := New(nil, graph).WithDailyBudgetUSD(20)
+	run := &beltRun{head: head, user: store.Message{SessionID: "money",
+		Body: "how much have you cost me this month?"}}
+	windowed, failed := run.spending(map[string]any{
+		"since": time.Now().Local().Format("2006-01-02"),
+	})
+	if failed {
+		t.Fatalf("the windowed spend read failed: %s", windowed)
+	}
+	for _, want := range []string{"$11.70", "Lisbon trip research", "$8.10", "Landlord mold letter", "$3.10"} {
+		if !strings.Contains(windowed, want) {
+			t.Fatalf("the window read is missing %q:\n%s", want, windowed)
+		}
+	}
+	if trip, letter := strings.Index(windowed, "$8.10"), strings.Index(windowed, "$3.10"); trip > letter {
+		t.Fatalf("the rows are not heaviest first:\n%s", windowed)
+	}
+	// The rows do not sum to the total, and the read says what the difference
+	// is rather than leaving a model to imply that they do.
+	if !strings.Contains(windowed, "$0.50") || !strings.Contains(windowed, "everything else") {
+		t.Fatalf("the unattributed remainder is silent:\n%s", windowed)
+	}
+	// Today's rail and the resident's own upkeep stay under it: the window is
+	// the answer, the day is the context for it.
+	if !strings.Contains(windowed, "daily rail") || !strings.Contains(windowed, "your own upkeep today") {
+		t.Fatalf("the window read dropped today's figures:\n%s", windowed)
+	}
+	if run.acted {
+		t.Fatal("reading what was spent recorded an action")
+	}
+
+	// With no bounds it is the read it always was: today, and nothing invented
+	// about any other window.
+	today, failed := run.spending(nil)
+	if failed || strings.Contains(today, "what the money went on") {
+		t.Fatalf("an unbounded spend read invented a window failed=%t:\n%s", failed, today)
+	}
+	// A bound it cannot read is a tool error the model can correct, never a
+	// silently different window.
+	if answer, failed := run.spending(map[string]any{"since": "last tuesday"}); !failed {
+		t.Fatalf("an unparseable bound was accepted: %s", answer)
+	}
+	if answer, failed := run.spending(map[string]any{
+		"since": "2026-08-06", "until": "2026-08-01"}); !failed {
+		t.Fatalf("a backwards window was accepted: %s", answer)
+	}
 }

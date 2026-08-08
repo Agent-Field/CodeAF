@@ -400,7 +400,7 @@ func TestSettingsWithoutACommanderRefusesQuietly(t *testing.T) {
 	if model.palette == paletteSettings {
 		t.Fatal("the sheet opened without a registry")
 	}
-	if !strings.Contains(model.status, "settings unavailable") {
+	if !strings.Contains(model.status, "settings aren't available in this window") {
 		t.Fatalf("status = %q", model.status)
 	}
 }

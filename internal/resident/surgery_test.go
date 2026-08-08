@@ -35,7 +35,7 @@ func TestPauseResumeAndReprioritizeApplyJournaledSchedulerState(t *testing.T) {
 		}
 	}
 	pauseReceipt := commandReceipt(t, graph, "surgery", pause.Seq)
-	if pauseReceipt.NodeID != "release" || !strings.Contains(pauseReceipt.Body, "paused — 3 nodes held") {
+	if pauseReceipt.NodeID != "release" || !strings.Contains(pauseReceipt.Body, "paused — 3 steps held") {
 		t.Fatalf("pause receipt = %+v", pauseReceipt)
 	}
 
@@ -72,7 +72,7 @@ func TestPauseResumeAndReprioritizeApplyJournaledSchedulerState(t *testing.T) {
 		t.Fatalf("tests priority = %d", testsNode.Priority)
 	}
 	if receipt := commandReceipt(t, graph, "surgery", priority.Seq); receipt.NodeID != "tests" ||
-		!strings.Contains(receipt.Body, "before its pending siblings") {
+		!strings.Contains(receipt.Body, "goes next, ahead of the rest of what is queued") {
 		t.Fatalf("priority receipt = %+v", receipt)
 	}
 	if err := graph.Rebuild(); err != nil {

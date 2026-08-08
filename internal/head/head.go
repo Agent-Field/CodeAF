@@ -78,10 +78,11 @@ When manual pages appear, they are aforge's own authoritative account of itself 
 const headPromptContract = `A snapshot line ending in "elsewhere" is work the user started in another window of their own — a second terminal, the browser. It is still theirs and still yours to speak about; say where it came from rather than answering as though this conversation began it, because the receipt for a change to it lands in the window that started it, not in this one.
 
 Return exactly one JSON object with this shape and no text outside it:
-{"reply":"<what to say right now>","command":null,"remember":null,"retract":null}
+{"reply":"<what to say right now>","command":null,"remember":null,"retract":null,"fresh":false}
 where command may instead be {"kind":"reflex|splice|amend|cancel|pause|resume|reprioritize|restart","target":"<node id or empty>","instruction":"<the user's instruction, preserving their words verbatim>"}
 and remember may instead be {"scope":"<scope>","kind":"preference|fact","body":"<one sharp sentence>"}
 and retract may instead be {"seq":123}, naming exactly one numbered notebook line.
+and fresh is true only when the message asks for THIS piece of work to be figured out from first principles rather than done the way it has been done before — "don't use the template this time", "plan this one properly", "start over on this", "do it from scratch". It is about method, never about content: asking for a fresh draft of a document, fresh data, or a fresh look at a file is not it. It stays false on almost every message.
 
 Routing law:
 - Questions about the state of existing work — what is running, what was found, what happened, what anyone or anything is doing — you answer directly from the graph snapshot, with no command. Before deciding a question is unanswerable, re-read it as a question about the snapshot in different words; it usually is one. "I'm sorry, but" and "I don't have information about" are not sentences you produce — the reply is the state read off the snapshot, a numbered question, or a receipt for spliced work, always.
@@ -99,11 +100,17 @@ Routing law:
 - When the user rejects a notebook belief — "forget that", "I don't work that way any more", a numbered line said back to you as untrue — set retract to the exact #seq shown beside that belief and leave remember null. Retract only a clearly identified notebook line; if more than one line could be meant, ask one numbered question and leave retract null. Never invent a sequence number. Retraction is reversible, so confirm it plainly without turning it into new work. A correction aimed at WORK — a figure a job got wrong, a deliverable that missed the point — is not a notebook retraction and never belongs in retract: that is a revision of the work, it is handled before you see the message, and quietly deleting a belief in answer to it is the one reply that loses the correction entirely.
 - Never hand back a dead end. When something failed, is blocked, or cannot be done as literally asked, the reply pairs that fact with the nearest thing that CAN be done — a retry by another route, a narrower version, an adjacent source — offered as the default you will proceed with, or as numbered choices when the routes genuinely differ. Every route you offer is one a command in this same object can actually start; an offer you would have no way to carry out is a dead end wearing a friendlier sentence. A bare "that failed" or "that is not possible" hands the user a problem; your job is to hand them a decision already made or one crisp choice.
 
+Three more fields may appear in the same object. All three are absent from an ordinary message and none of them ever travels with a command:
+{"commands":[…],"adjust":false,"urgent":false}
+- commands is how one message becomes several separate pieces of work. When a message names things that are genuinely independent of each other — each with its own outcome, each able to land on its own, none of them waiting on the others — emit commands as a list in place of command, one entry per thing, each shaped like command and each carrying that thing's own words. Four faults read out in one breath are four; a trip with flights, a hotel and somewhere to eat is one, because it is one plan and one thing to hand back. The test is independence, never punctuation: a list of ingredients for one dish is one. When it could be read either way it is one, and command stays exactly as it is.
+- adjust is for a message asking you to change something already handed over — make it warmer, shorter please, soften the second paragraph, use their first name. That is not a new purchase: the thing that was delivered goes back with the change in hand and the previous version beside it. Set adjust true, emit no command at all, and let the reply say what is being changed. A message asking for something new, even about the same subject, is ordinary work and leaves adjust false.
+- urgent is for a message whose whole content is pressure on work already underway — this is taking forever, any chance of hurrying that along, still nothing? Set urgent true and emit no command; what is already running moves up the queue and the reply says which work took the pressure. A message that also asks for something is that ask, not urgency.
+
 Sometimes the snapshot is followed by the full findings of the jobs this message is about, rather than their one-line summaries. That block is there because the question was about substance, and it is what the answer is quoted from: give the user its numbers, its conclusions and the file paths it names, in their own terms.
 
 The reply contract. Your first sentence is the answer itself — the finding, the number, the verdict — never a preamble, never the question said back, never a promise to go and look. When work has settled, say what it concluded and name the files it wrote; how it ended is a trailing clause, and "it completed" on its own is never an answer to what happened. Give an answer structure only when it earns its place: a few short markdown bullets when the answer has genuinely separate parts, and plain conversational prose for everything else — greetings, thanks and one-line answers take no formatting at all. Never a wall of text, and no markdown headers ever: cut every sentence that would not change what the user does next.
 
-The reply is what the user sees immediately. When splicing, make it a receipt: say you are on it and will report back when it lands. Never imply the work already finished or promise synchronous completion. The receipt states what the command actually does and nothing more: new work is queued and starts when the workforce reaches it, so if something is already running, say the new work is queued behind it. Existing work can be moved up the queue, and reprioritize is exactly and only that: the job you name is claimed before its pending siblings. It does not add workers, shorten the work, or change what the job does, so the honest receipt is that it goes next — never a completion time, never "faster", and never a claim that you are pushing something through unless reprioritize is the command in this same object. Be concise and warm. Speak entirely in the user's terms — what each piece of work is about and how it is going. Your internals stay backstage: the permanent spine or root is plumbing rather than an assignment and is never worth mentioning, and words like node, splice, snapshot, or raw ids belong to the machinery, not the conversation.`
+The reply is what the user sees immediately. When splicing, make it a receipt: say you are on it and will report back when it lands. Never imply the work already finished or promise synchronous completion. The receipt states what the command actually does and nothing more: new work is queued and starts when the workforce reaches it, so if something is already running, say the new work is queued behind it. Existing work can be moved up the queue, and reprioritize is exactly and only that: the job you name goes next, ahead of the rest of what is queued. It does not put more people on it, shorten the work, or change what the job does, so the honest receipt is that it goes next — never a completion time, never "faster", and never a claim that you are pushing something through unless reprioritize is the command in this same object. Be concise and warm. Speak entirely in the user's terms — what each piece of work is about and how it is going. Your internals stay backstage: the permanent spine or root is plumbing rather than an assignment and is never worth mentioning, and the names this machinery uses for itself belong to the machinery rather than the conversation — not node, leaf, graph, splice, subtree, snapshot, worker, charter, craft, rail, firing, notebook, or a raw id. The snapshot's own vocabulary is how you read it, never how you speak: a leaf is a step, workers are the work or the people on it, a charter is a standing rule, a firing is a run of it, a craft is the way you already do this, the rail is the daily limit, the notebook is what you have learned. Translate every one of them.`
 
 // Client is the one provider operation the conversational components need.
 // Keeping the boundary this small makes both routing and compiling testable
@@ -348,6 +355,29 @@ func (h *Head) answer(ctx context.Context, user store.Message) error {
 		}
 	}
 
+	// Two readings the model makes that are not commands, tried before the
+	// command block because both of them act on work that is already there.
+	// Neither can invent a target, so a reading that finds nothing to act on
+	// simply hands the message back to the ordinary path below.
+	if decision.Adjust {
+		if handled, adjustErr := h.applyAdjustment(user); adjustErr != nil {
+			return adjustErr
+		} else if handled {
+			return nil
+		}
+	}
+	if decision.Urgent {
+		if handled, urgentErr := h.applyUrgency(ctx, user); urgentErr != nil {
+			return urgentErr
+		} else if handled {
+			return nil
+		}
+	}
+
+	if len(decision.Commands) > 1 {
+		return h.spliceWorkOrders(user, decision)
+	}
+
 	var commandSeq int64
 	if decision.Command != nil {
 		kind, reflex, ok := commandKind(decision.Command.Kind)
@@ -367,6 +397,7 @@ func (h *Head) answer(ctx context.Context, user store.Message) error {
 			SessionID:   user.SessionID,
 			Kind:        kind,
 			Reflex:      reflex,
+			Fresh:       decision.Fresh,
 			Target:      target,
 			Instruction: decision.Command.Instruction,
 			Attachments: append([]string(nil), user.Attachments...),
@@ -550,7 +581,7 @@ func (h *Head) route(ctx context.Context, user store.Message) (routeDecision, er
 		return routeDecision{}, fmt.Errorf("read recent thread: %w", err)
 	}
 
-	threadContext := renderThread(recent)
+	threadContext := h.renderThread(recent)
 	// Depth is bought in its own budget and only for the jobs this message is
 	// about. A message about nothing on the graph adds nothing at all, so the
 	// ordinary prompt is unchanged to the byte.
@@ -676,6 +707,7 @@ func (h *Head) route(ctx context.Context, user store.Message) (routeDecision, er
 		}
 		return routeDecision{Reply: raw, model: attribution}, nil
 	}
+	decision.normalizeFanOut(user.Body)
 	if decision.Command != nil && decision.Command.Kind == routeReflexKind {
 		decision.Command.Instruction = user.Body
 		decision.enforceConsequences()
@@ -780,13 +812,41 @@ func imageContentPart(reference string) (ai.ContentPart, bool) {
 // maxThreadContextBytes doubled alongside the window, which leaves the
 // allowance per message exactly where the sliding window had it: the block is
 // still bounded, and nothing about it grows message over message.
+// The window is counted over the conversation, not over the journal. A message
+// count was the whole window once, and a running job speaks on a two-minute
+// heartbeat: three of them filled twenty rows in about thirteen minutes and the
+// user's own words fell out the front of a window they had never left. The
+// person asks "did you find anything cheaper?" against a slice containing none
+// of the conversation that question is deictic to.
+//
+// So there are two windows over one read. The person's window holds their turns
+// and every thread-level line spoken to them, and nothing a job says can evict
+// a single row of it. The ambient window holds the job chatter — narration,
+// heartbeats, deliverables — bounded separately and far smaller, because the
+// board carries that content already and the thread only needs enough of it for
+// position to mean something.
+//
+// Both cut in big steps for the same reason the single window did: the front of
+// this block sits near the front of the router's prompt, and a front that moves
+// on every message re-bills everything behind it at full price.
 const (
-	threadWindowMax  = 20
-	threadWindowKeep = 10
+	threadWindowMax   = 20
+	threadWindowKeep  = 10
+	ambientWindowMax  = 12
+	ambientWindowKeep = 6
 )
 
+// personRelevant separates the conversation from the reporting around it. A
+// user turn is theirs; so is anything said to the thread itself rather than
+// filed under a job — a receipt, a question, an answer. A line anchored to a
+// node is a worker narrating, which is ambient by construction.
+func personRelevant(message store.Message) bool {
+	return message.Role == store.RoleUser || strings.TrimSpace(message.NodeID) == ""
+}
+
 func (h *Head) recentThread(sessionID string, beforeSeq int64) ([]store.Message, error) {
-	recent := make([]store.Message, 0, threadWindowMax+1)
+	person := make([]store.Message, 0, threadWindowMax+1)
+	ambient := make([]store.Message, 0, ambientWindowMax+1)
 	var cursor int64
 	for {
 		messages, err := h.store.Messages(sessionID, cursor, messagePageSize)
@@ -794,22 +854,48 @@ func (h *Head) recentThread(sessionID string, beforeSeq int64) ([]store.Message,
 			return nil, err
 		}
 		if len(messages) == 0 {
-			return recent, nil
+			return mergeThreadWindow(person, ambient), nil
 		}
 		for _, message := range messages {
 			cursor = message.Seq
 			if message.Seq >= beforeSeq {
-				return recent, nil
+				return mergeThreadWindow(person, ambient), nil
 			}
-			recent = append(recent, message)
-			// The cut is a fold over the whole session, so the window is a pure
+			// Each cut is a fold over the whole session, so the window is a pure
 			// function of how many messages precede this one — the same session
 			// read twice renders the same bytes.
-			if len(recent) > threadWindowMax {
-				recent = append(recent[:0], recent[len(recent)-threadWindowKeep:]...)
+			if personRelevant(message) {
+				person = append(person, message)
+				if len(person) > threadWindowMax {
+					person = append(person[:0], person[len(person)-threadWindowKeep:]...)
+				}
+				continue
+			}
+			ambient = append(ambient, message)
+			if len(ambient) > ambientWindowMax {
+				ambient = append(ambient[:0], ambient[len(ambient)-ambientWindowKeep:]...)
 			}
 		}
 	}
+}
+
+// mergeThreadWindow puts the two windows back into journal order. Both are
+// already in it, so this is one pass — and every surviving line keeps its true
+// position, which is the whole of what adjacency reads.
+func mergeThreadWindow(person, ambient []store.Message) []store.Message {
+	if len(ambient) == 0 {
+		return person
+	}
+	merged := make([]store.Message, 0, len(person)+len(ambient))
+	next := 0
+	for _, message := range person {
+		for next < len(ambient) && ambient[next].Seq < message.Seq {
+			merged = append(merged, ambient[next])
+			next++
+		}
+		merged = append(merged, message)
+	}
+	return append(merged, ambient[next:]...)
 }
 
 func (h *Head) postAgent(sessionID, body string, commandSeq int64) error {
@@ -912,9 +998,74 @@ func renderNotebook(graphStore *store.Store, message, thread string) string {
 type routeDecision struct {
 	Reply    string           `json:"reply"`
 	Command  *routeCommand    `json:"command"`
+	Commands []*routeCommand  `json:"commands"`
 	Remember *routeMemory     `json:"remember"`
 	Retract  *routeRetraction `json:"retract"`
-	model    string
+	// Adjust and Urgent are readings of the message, not commands: what to do
+	// with them is the head's, because both of them act on work that already
+	// exists and the model is not shown the ids that work is addressed by.
+	Adjust bool `json:"adjust"`
+	Urgent bool `json:"urgent"`
+	// Fresh is the person asking for this one to be worked out from scratch
+	// rather than the way it has been done before. It belongs on this surface
+	// for the same reason remember and retract do: it is a reading of what a
+	// sentence MEANT, and the reading is made here or it is made by a phrase
+	// list somewhere downstream that has to be taught every spelling. "Don't
+	// use the template this time", "plan this one properly", "start over on
+	// this" are all the same intent and no list will hold them.
+	Fresh bool `json:"fresh"`
+	model string
+}
+
+// fanOutLimit bounds one message's work orders. Past it the message is not a
+// handful of asks, it is a list — and a list is one job that enumerates, which
+// is what the compiler already does well. Falling back to a single order there
+// loses nothing: the user's own words, with every item in them, still travel.
+const fanOutLimit = 6
+
+// normalizeFanOut settles what the list actually means before anything is
+// journaled. Only new work fans out: steering, cancelling and the rest name one
+// target each and a list of them is a different feature entirely. A list that
+// survives with one entry is simply that entry, and a list that survives with
+// none leaves the ordinary command alone.
+func (decision *routeDecision) normalizeFanOut(body string) {
+	if len(decision.Commands) == 0 {
+		return
+	}
+	orders := make([]*routeCommand, 0, len(decision.Commands))
+	seen := make(map[string]bool, len(decision.Commands))
+	for _, order := range decision.Commands {
+		if order == nil {
+			continue
+		}
+		instruction := strings.TrimSpace(order.Instruction)
+		kind := strings.TrimSpace(order.Kind)
+		if instruction == "" || seen[instruction] {
+			continue
+		}
+		if kind != "" && kind != string(store.CommandSplice) && kind != routeReflexKind {
+			continue
+		}
+		seen[instruction] = true
+		orders = append(orders, &routeCommand{
+			Kind: string(store.CommandSplice), Instruction: instruction,
+		})
+	}
+	if len(orders) > fanOutLimit {
+		orders = []*routeCommand{{
+			Kind: string(store.CommandSplice), Instruction: strings.TrimSpace(body),
+		}}
+	}
+	switch len(orders) {
+	case 0:
+		decision.Commands = nil
+	case 1:
+		decision.Command = orders[0]
+		decision.Commands = nil
+	default:
+		decision.Command = nil
+		decision.Commands = orders
+	}
 }
 
 // routeMemory is a durable fact the user just stated, captured into the
@@ -1108,7 +1259,20 @@ func (h *Head) renderGraph(snapshot store.Snapshot, sessionID, thread string, op
 			return 2
 		}
 	}
+	// Jobs before their parts, and the reason is that the flat list was a lie of
+	// omission. Sixteen leaves and four roots rendered as twenty peers left the
+	// model to invent which of them were the workstreams a person would name —
+	// while the belt's own board, one row per job with its subtree rolled up,
+	// sat behind a trigger the router never fires. So the board leads with the
+	// jobs and their counts, and a part says whose part it is.
+	byID := make(map[string]store.Node, len(snapshot.Nodes))
+	for _, node := range snapshot.Nodes {
+		byID[node.ID] = node
+	}
 	sort.SliceStable(nodes, func(i, j int) bool {
+		if ri, rj := boardJobRoot(nodes[i], byID), boardJobRoot(nodes[j], byID); ri != rj {
+			return ri
+		}
 		ri, rj := rank(nodes[i]), rank(nodes[j])
 		if ri != rj {
 			return ri < rj
@@ -1118,6 +1282,12 @@ func (h *Head) renderGraph(snapshot store.Snapshot, sessionID, thread string, op
 		}
 		return nodes[i].CreatedSeq > nodes[j].CreatedSeq
 	})
+	children := make(map[string][]string, len(byID))
+	for _, node := range snapshot.Nodes {
+		if _, ok := byID[node.Parent]; ok {
+			children[node.Parent] = append(children[node.Parent], node.ID)
+		}
+	}
 	var rendered strings.Builder
 	for _, node := range nodes {
 		brief := firstLine(node.Brief)
@@ -1146,6 +1316,19 @@ func (h *Head) renderGraph(snapshot store.Snapshot, sessionID, thread string, op
 		if result != "" {
 			line += " | result: " + result
 		}
+		if boardJobRoot(node, byID) {
+			// The rolled-up counts are what turns a status into a workforce: one
+			// row that says how many people are on this job right now, how many
+			// steps are waiting, and what has already broken. A settled job with
+			// nothing open adds no clause at all.
+			if counts := boardSubtreeCounts(node, byID, children); counts != "" {
+				line += " | " + counts
+			}
+		} else if owner := boardOwnerLabel(node, byID); owner != "" {
+			// A part says whose part it is, by the job's own name — the same name
+			// the thread, the cards and the receipts use.
+			line += " | part of " + owner
+		}
 		if crossSession(node, sessionID) {
 			line += crossSessionMark
 		}
@@ -1159,15 +1342,85 @@ func (h *Head) renderGraph(snapshot store.Snapshot, sessionID, thread string, op
 	return strings.TrimSpace(rendered.String())
 }
 
-func renderThread(messages []store.Message) string {
+// boardJobRoot is the store's own definition of a job root read off a snapshot:
+// parented on the permanent spine, or on a territory that packed it away. A node
+// whose parent is not in the snapshot at all is treated as a root, because there
+// is nothing to attribute it to and dropping it is never an option.
+func boardJobRoot(node store.Node, byID map[string]store.Node) bool {
+	parent := strings.TrimSpace(node.Parent)
+	if parent == "" || parent == store.RootID {
+		return true
+	}
+	owner, ok := byID[parent]
+	return !ok || owner.Group == store.TerritoryGroup
+}
+
+// boardSubtreeCounts rolls a job's open subtree into the clause the belt's board
+// has always carried. It is the same reading: "the running ones" means jobs with
+// somebody working on them, not jobs whose root happens to hold a running status.
+func boardSubtreeCounts(root store.Node, byID map[string]store.Node, children map[string][]string) string {
+	running, queued, failed := 0, 0, 0
+	seen := make(map[string]bool, 8)
+	stack := []string{root.ID}
+	for len(stack) > 0 {
+		id := stack[len(stack)-1]
+		stack = stack[:len(stack)-1]
+		if seen[id] {
+			continue
+		}
+		seen[id] = true
+		switch byID[id].Status {
+		case store.Running, store.Claimed:
+			running++
+		case store.Pending:
+			queued++
+		case store.Failed:
+			failed++
+		}
+		stack = append(stack, children[id]...)
+	}
+	if running == 0 && queued == 0 && failed == 0 {
+		return ""
+	}
+	counts := fmt.Sprintf("%d running, %d queued", running, queued)
+	if failed > 0 {
+		counts += fmt.Sprintf(", %d failed", failed)
+	}
+	return counts
+}
+
+// boardOwnerLabel names the job one part belongs to.
+func boardOwnerLabel(node store.Node, byID map[string]store.Node) string {
+	for depth := 0; depth < adjacencyAncestorDepth; depth++ {
+		owner, ok := byID[strings.TrimSpace(node.Parent)]
+		if !ok || owner.ID == store.RootID {
+			return ""
+		}
+		if boardJobRoot(owner, byID) {
+			return surgeryTargetLabel(owner)
+		}
+		node = owner
+	}
+	return ""
+}
+
+// renderThread is the conversation as the model reads it, and every line spoken
+// by a job says which job spoke it. The label is the job's own short title —
+// what the user sees on the card and in the receipt — because a referent only
+// resolves when both parties are using the same name for the same work.
+func (h *Head) renderThread(messages []store.Message) string {
 	if len(messages) == 0 {
 		return "(no earlier messages in this session)"
 	}
+	names := h.jobNames()
 	var rendered strings.Builder
 	for _, message := range messages {
 		body := truncateBytes(strings.TrimSpace(message.Body), 600)
 		body = strings.ReplaceAll(body, "\n", "\n  ")
 		line := fmt.Sprintf("%s: %s\n", message.Role, body)
+		if label := names.label(message.NodeID); label != "" {
+			line = fmt.Sprintf("%s [%s]: %s\n", message.Role, label, body)
+		}
 		if rendered.Len()+len(line) > maxThreadContextBytes-len(threadTruncatedMark) {
 			rendered.WriteString(threadTruncatedMark)
 			break

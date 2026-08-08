@@ -3,6 +3,7 @@ package tui
 import (
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/Agent-Field/aforge-v2/internal/store"
 	tea "github.com/charmbracelet/bubbletea"
@@ -155,6 +156,22 @@ func (m *Model) surfaceSelectedAgentQuestion() tea.Cmd {
 	}
 	index := max(0, min(m.questionDockSelection, len(m.agentQuestions)-1))
 	question := m.agentQuestions[index]
+	// A question that is already in the thread has nothing left to surface;
+	// choosing it in the dock aims the next answer at it instead. That is the
+	// same gesture with the same meaning — the eyes pointed, and the pointing
+	// rides the reply — and it is what makes a question that scrolled past
+	// answerable again without saying it twice.
+	if question.Status == store.QuestionAsked {
+		m.answeringQuestionSeq = question.Seq
+		m.questionDockExpanded = false
+		m.focus = focusInput
+		m.inputFocused = true
+		_ = m.input.Focus()
+		m.status = "answering: " + firstLine(question.Text)
+		m.statusUntil = time.Now().Add(statusTTL)
+		m.setSize(m.width, m.height)
+		return nil
+	}
 	// Neutral questions — a charter's firing proposal belongs to no session —
 	// surface into whichever session is reading the dock right now.
 	sessionID := m.sessionID

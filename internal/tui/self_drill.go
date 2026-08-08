@@ -319,7 +319,7 @@ func (m *Model) openSelfCraft(name string) {
 
 func (m *Model) renderSelfCraftDetail(width int) string {
 	detail := m.selfCraftDetail
-	title := mutedStyle.Faint(true).Render("‹ self · crafts · ") + inputTextStyle.Render(detail.Name)
+	title := mutedStyle.Faint(true).Render("‹ self · know-how · ") + inputTextStyle.Render(detail.Name)
 	counter := mutedStyle.Faint(true).Render(shortCommit(detail.Commit))
 	lines := []string{truncate(overlayRight(title, counter, width), width)}
 	if description := strings.TrimSpace(detail.Description); description != "" {

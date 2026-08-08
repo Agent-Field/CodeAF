@@ -46,7 +46,9 @@ failure to decompose.
 Do not add a final merge, synthesis, or summary stage. That is added
 automatically after you.
 
-` + titleRule
+` + titleRule + `
+
+` + proportionRule
 
 var spineSchema = json.RawMessage(`{
   "type": "object",

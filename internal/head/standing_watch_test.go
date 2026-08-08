@@ -156,7 +156,7 @@ func TestSelfReadsReturnTheirGroundTruthAndRecordNothing(t *testing.T) {
 		!strings.Contains(standing, "keep the release notes current") {
 		t.Fatalf("standing read failed=%t: %s", failed, standing)
 	}
-	spending, failed := run.spending()
+	spending, failed := run.spending(nil)
 	if failed || !strings.Contains(spending, "daily rail") ||
 		!strings.Contains(spending, "your own upkeep today: $0.00") {
 		t.Fatalf("spending read failed=%t: %s", failed, spending)

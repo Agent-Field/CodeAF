@@ -756,7 +756,8 @@ func headSpeaksFor(kind store.CommandKind) bool {
 		store.CommandReprioritize, store.CommandRestart, store.CommandHandover,
 		store.CommandServiceStop, store.CommandServiceRestart, store.CommandServiceAutoRestart,
 		store.CommandCharterRatify, store.CommandCharterPause, store.CommandCharterRetire,
-		store.CommandCharterCadence, store.CommandCharterOnce, store.CommandCharterFire,
+		store.CommandCharterCadence, store.CommandCharterWording, store.CommandCharterOnce,
+		store.CommandCharterFire,
 		store.CommandCharterDecline, store.CommandCharterAlways, store.CommandCharterNever,
 		store.CommandCharterProbation:
 		return true
@@ -789,7 +790,8 @@ func (r *Reconciler) applyCommand(ctx context.Context, command store.Command) (c
 	case store.CommandServiceStop, store.CommandServiceRestart, store.CommandServiceAutoRestart:
 		return r.applyServiceCommand(command)
 	case store.CommandCharterRatify, store.CommandCharterPause, store.CommandCharterRetire,
-		store.CommandCharterCadence, store.CommandCharterOnce, store.CommandCharterFire,
+		store.CommandCharterCadence, store.CommandCharterWording, store.CommandCharterOnce,
+		store.CommandCharterFire,
 		store.CommandCharterDecline, store.CommandCharterAlways, store.CommandCharterNever, store.CommandCharterProbation:
 		return r.applyCharterCommand(ctx, command)
 	case store.CommandStandingWatchEnable, store.CommandStandingWatchDecline:
@@ -981,8 +983,14 @@ func (r *Reconciler) splice(ctx context.Context, command store.Command) (command
 	}
 
 	receipt := compileReceipt(compiled.Goal, compiled.Assumptions, compiled.ModelNote)
-	if usingCraft {
+	switch {
+	case usingCraft:
 		receipt = use.receipt
+	case strings.TrimSpace(use.receipt) != "":
+		// A learned way of working was found and set aside because the person
+		// asked for this one from scratch. Saying so is the whole difference
+		// between being heard and being ignored.
+		receipt = use.receipt + "\n" + receipt
 	}
 	if promoted {
 		receipt = reflexPromotionLine
@@ -1261,10 +1269,10 @@ func (r *Reconciler) cancel(ctx context.Context, command store.Command) (command
 		}
 	}
 	result := fmt.Sprintf("cancelled %d; requested cooperative cancellation for %d", cancelled, requested)
-	receipt := fmt.Sprintf("cancelled — %d %s cancelled", cancelled, plural(cancelled, "leaf", "leaves"))
+	receipt := fmt.Sprintf("cancelled — %d %s cancelled", cancelled, plural(cancelled, "step", "steps"))
 	if requested > 0 {
 		receipt = fmt.Sprintf("cancellation requested — %d running %s will release at the next boundary",
-			requested, plural(requested, "leaf", "leaves"))
+			requested, plural(requested, "step", "steps"))
 		if cancelled > 0 {
 			receipt += fmt.Sprintf(", %d pending cancelled", cancelled)
 		}
@@ -1763,7 +1771,7 @@ func compileReceipt(goal string, assumptions []string, modelNote string) string 
 	if modelNote = strings.TrimSpace(modelNote); modelNote != "" {
 		fmt.Fprintf(&receipt, "\n%s", modelNote)
 	}
-	receipt.WriteString("\nCorrect me anytime — redirects are cheap.")
+	receipt.WriteString("\nCorrect me anytime — changing course costs nothing.")
 	return receipt.String()
 }
 
@@ -2186,6 +2194,9 @@ const (
 	// compileThreadLineBytes bounds any single turn, so one pasted wall of text
 	// cannot be the whole slice.
 	compileThreadLineBytes = 400
+	// compileThreadLabelBytes bounds the job name a thread line is attributed
+	// to. It is a short title, and a title long enough to need this is a brief.
+	compileThreadLabelBytes = 80
 	// compileTraitBytes bounds the measured-traits block.
 	compileTraitBytes = 320
 )
@@ -2220,7 +2231,15 @@ func (r *Reconciler) recentThreadBlock(sessionID string) string {
 		if body == "" {
 			continue
 		}
-		line := string(messages[i].Role) + ": " +
+		// A line spoken by a job says which job spoke it, by the short name the
+		// user reads on screen. Four jobs narrating into one thread arrived here
+		// in one undifferentiated voice, and the slice exists precisely to say
+		// what the instruction's words point at.
+		speaker := string(messages[i].Role)
+		if label := r.jobLabelFor(messages[i].NodeID); label != "" {
+			speaker += " [" + label + "]"
+		}
+		line := speaker + ": " +
 			strings.ReplaceAll(clipBlock(body, compileThreadLineBytes), "\n", "\n  ")
 		if used+len(line)+1 > compileThreadBytes {
 			break
@@ -2236,6 +2255,30 @@ func (r *Reconciler) recentThreadBlock(sessionID string) string {
 	}
 	return "recent conversation in this session (oldest first) — use it only to resolve what the " +
 		"instruction's words refer to; the instruction itself is the ask:\n" + strings.Join(lines, "\n")
+}
+
+// jobLabelFor names the job one thread line was spoken by, in the words the
+// user already reads: the job's short title, never an id.
+func (r *Reconciler) jobLabelFor(nodeID string) string {
+	nodeID = strings.TrimSpace(nodeID)
+	if r.store == nil || nodeID == "" || nodeID == store.RootID {
+		return ""
+	}
+	node, found, err := r.store.Node(nodeID)
+	if err != nil || !found {
+		return ""
+	}
+	root, found, err := r.store.Node(jobRootID(r.store, node))
+	if err != nil || !found {
+		root = node
+	}
+	if title := strings.TrimSpace(root.Title); title != "" {
+		return clipLabel(firstLine(title), compileThreadLabelBytes)
+	}
+	if brief := firstLine(root.Brief); brief != "" {
+		return clipLabel(brief, compileThreadLabelBytes)
+	}
+	return ""
 }
 
 // foldJob compacts a landed job in the active view: the subtree collapses to
