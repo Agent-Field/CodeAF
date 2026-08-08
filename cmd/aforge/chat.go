@@ -3419,13 +3419,16 @@ Below the deliverable, whenever there is anything to show, you are given two rec
 
 Where a working method is given, it is the standard this kind of work set for itself before anything was produced, and it is the only standard beside the request itself that you hold the deliverable to. Where it asks for nothing, nothing is missing: a method that names no verification makes an unverified result complete, and a method that names one makes its absence a gap.
 
-Return exactly one JSON object, nothing else: {"pass": true, "exercised": true or false} or {"pass": false, "gaps": "<the named gaps>"}. "exercised" is a statement about evidence and never about quality: true only when the finished thing was run the way it will actually be used and held — visible in what was run, or reported in the deliverable as what was run and what came back. Everything else is false, including an honest "not verified here" and work that nothing available could have exercised. Both of those still pass; they are simply not evidenced.`
+When you name a gap, quote the words of the request it is a failure of — a span of the person's own text, copied exactly as they wrote it, long enough to be unmistakably theirs. Quote the part of what they asked for that is not there. A gap you cannot quote from their request is a preference of yours rather than something they asked for and did not get, and the honest answer for it is pass.
+
+Return exactly one JSON object, nothing else: {"pass": true, "exercised": true or false} or {"pass": false, "gaps": "<the named gaps>", "quote": "<the words of the request this gap fails, copied exactly>"}. "exercised" is a statement about evidence and never about quality: true only when the finished thing was run the way it will actually be used and held — visible in what was run, or reported in the deliverable as what was run and what came back. Everything else is false, including an honest "not verified here" and work that nothing available could have exercised. Both of those still pass; they are simply not evidenced.`
 
 var judgeDeliverableSchema = json.RawMessage(`{
   "type": "object",
   "properties": {
     "pass": {"type": "boolean"},
     "gaps": {"type": "string"},
+    "quote": {"type": "string"},
     "exercised": {"type": "boolean"}
   },
   "required": ["pass"],
@@ -3445,6 +3448,11 @@ const gateRevisionContract = "Your final message is the deliverable and the only
 type deliverableJudgment struct {
 	Pass bool
 	Gaps string
+	// Quote is the span of the user's own request the gap is a failure of. It
+	// is what buys the gap authority over the job: a gate may re-run one leaf on
+	// any named gap, but it may only grow the graph for a gap that quotes the
+	// ask. See admitGapCitation for why that is the whole convergence argument.
+	Quote string
 	// Exercised is the gate's separate answer about evidence: it saw the
 	// finished thing run the way it will be used, and hold. A pass without it
 	// is a pass — it is simply not a verified one, and the difference is the
@@ -3596,6 +3604,7 @@ func judgeDeliverable(ctx context.Context, settings config.Config, client *liveC
 	var verdict struct {
 		Pass      bool   `json:"pass"`
 		Gaps      string `json:"gaps"`
+		Quote     string `json:"quote"`
 		Exercised bool   `json:"exercised"`
 	}
 	if err := json.Unmarshal([]byte(text[start:end+1]), &verdict); err != nil {
@@ -3614,7 +3623,82 @@ func judgeDeliverable(ctx context.Context, settings config.Config, client *liveC
 		return deliverableJudgment{Pass: true}
 	}
 	provider.Report(judgeCtx, provider.VerdictVerifiedSuccess)
-	return deliverableJudgment{Gaps: gaps, Checked: true}
+	// An unquotable gap is still a gap: it earns the revision pass every named
+	// gap has always earned, and the honest reservation if that comes back
+	// empty. What it does not earn is a round of new work — that is the one
+	// authority the citation buys, and it is refused at the wiring seam rather
+	// than laundered into a pass here.
+	return deliverableJudgment{Gaps: gaps, Quote: strings.TrimSpace(verdict.Quote), Checked: true}
+}
+
+// The citation invariant: a gate's gap may commission new work only if it
+// quotes the ask. This is the whole of why an extending gate cannot spiral, and
+// it is worth stating why a string comparison is enough.
+//
+// The 27-round run was not a failure to terminate — the dollar rail would have
+// stopped it eventually. It was a failure to be ABLE to terminate: each round's
+// gap was derived from the previous round's own output, so the set of things
+// left to fix was unbounded and self-replenishing, and every cap was therefore
+// the mechanism rather than the backstop. The fix is to make the set of
+// admissible gaps finite and fixed before the first round runs. The user's
+// verbatim intent is immutable by construction — the store refuses an empty
+// one, never rewrites it, and stamps the same value on every node of every
+// splice — so the substrings of that one string are a fixed, finite set. A gap
+// must name one of them. Round k+1 must name one no earlier round spent. The
+// number of unspent spans falls by at least one per admitted round, so the loop
+// terminates on the content of the ask rather than on a counter.
+//
+// "verification of what the previous round produced" is not a substring of
+// anything a person typed, so that round is refused before a planning call is
+// made. That is construction rather than policy, and it is the difference
+// between a cap that fires and a cap that never has to.
+//
+// This is a provenance check and not a quality rubric: it says nothing about
+// whether the gap is a good one, only that the words it claims to be a failure
+// of are the user's own. The residual it does not close is a real span cited
+// for an invented requirement — bounded by the round cap, and by the plan's own
+// rule that no piece of work may exist to check another's product.
+func admitGapCitation(intent, quote string, spent []string) string {
+	quote = citationKey(quote)
+	if quote == "" {
+		return "the review could not point at anything in the request that is missing"
+	}
+	// Whitespace is normalised on both sides and nothing else is: a model that
+	// re-wraps a quoted line has still quoted it, and a model that invents a
+	// requirement has still invented it.
+	if !strings.Contains(citationKey(intent), quote) {
+		return "what the review asked for next is not in the request"
+	}
+	for _, prior := range spent {
+		if citationKey(prior) == quote {
+			return "the same words were already worked on once"
+		}
+	}
+	return ""
+}
+
+func citationKey(text string) string { return strings.Join(strings.Fields(text), " ") }
+
+// spentCitations is the ledger: the spans of the ask that earlier rounds of this
+// job already commissioned work against. A read failure returns nothing, which
+// is the fail-safe direction for a bound on new work only in company with the
+// round cap — which is exactly what that cap is for.
+func spentCitations(graph *store.Store, baseID string) []string {
+	if graph == nil {
+		return nil
+	}
+	gates, err := graph.DeliveryGateLineage(baseID)
+	if err != nil {
+		log.Printf("note: could not read the gap ledger for %s: %v", baseID, err)
+		return nil
+	}
+	var spent []string
+	for _, gate := range gates {
+		if gate.Extended && strings.TrimSpace(gate.Quote) != "" {
+			spent = append(spent, gate.Quote)
+		}
+	}
+	return spent
 }
 
 // judgeRemainderPrompt asks the one question the overrun path used to assume
