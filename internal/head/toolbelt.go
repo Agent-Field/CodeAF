@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"math"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -187,9 +188,10 @@ func beltDefinitions() []ai.ToolDefinition {
 			"until": beltProp("string", "local date or time the window ends, same spelling"),
 		}),
 		beltTool(beltToolNote, "Write one durable thing the user has just told you into the notebook: how they want answers given, a correction to how something was done for them, a lasting fact about them or their setup. The test is whether it will still matter after this conversation is forgotten — task details and one-off instructions fail it. Call it before you tell them it is noted, because this call is the only thing that makes that true.", map[string]any{
-			"body":  beltProp("string", "one sharp sentence, in the user's own terms"),
-			"scope": beltProp("string", `what it is about: "user" for a personal preference, otherwise tool:<name>, repo:<path>, file:<path>, or domain:<topic>`),
-			"kind":  beltProp("string", `"preference" for how they want things done, "fact" for something that is simply true`),
+			"body":     beltProp("string", "one sharp sentence, in the user's own terms"),
+			"scope":    beltProp("string", `what it is about: "user" for a personal preference, otherwise tool:<name>, repo:<path>, file:<path>, or domain:<topic>`),
+			"kind":     beltProp("string", `"preference" for how they want things done, "fact" for something that is simply true`),
+			"replaces": beltProp("integer", "the number of the notebook line this makes untrue, when what they just said contradicts one of the numbered lines in front of you; the old line retires into the new one. Omit it when nothing shown is contradicted, and never name a number you were not shown"),
 		}, "body"),
 	}
 }
@@ -615,6 +617,12 @@ func (run *beltRun) note(args map[string]any) (string, bool) {
 	if err != nil {
 		return "that could not be written down: " + err.Error(), true
 	}
+	// The same supersession the router's remember has. This loop reads the same
+	// numbered notebook, so it can see the line the new note makes untrue, and
+	// leaving it standing beside the correction is the accumulation failure the
+	// consolidator then has to clean up by guessing.
+	replaced := beltInt(args, "replaces")
+	supersedeBelief(run.head.store, replaced, fact)
 	// The receipt is the record, which is the point: a note that failed to
 	// journal produces a tool error, and the loop can then only say so.
 	//
@@ -1246,6 +1254,23 @@ func beltString(args map[string]any, key string) string {
 		return strings.TrimSpace(value)
 	}
 	return ""
+}
+
+// beltInt reads a numeric argument through the two shapes JSON gives it: a
+// number, which decodes to float64, and the same number spelled as a string,
+// which several providers emit for integer-typed tool parameters.
+func beltInt(args map[string]any, key string) int64 {
+	switch value := args[key].(type) {
+	case float64:
+		return int64(value)
+	case string:
+		parsed, err := strconv.ParseInt(strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(value), "#")), 10, 64)
+		if err != nil {
+			return 0
+		}
+		return parsed
+	}
+	return 0
 }
 
 // beltStrings accepts both shapes providers actually emit for a list argument:
