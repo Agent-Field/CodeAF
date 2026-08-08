@@ -146,6 +146,21 @@ func (r *Reconciler) restart(command store.Command) (commandOutcome, error) {
 		}
 		needs[edge.To] = append(needs[edge.To], store.Need{NodeID: from, Kind: edge.Kind})
 	}
+	// Every retried node feeds from the attempt it replaces. Without this a
+	// restart was a clean slate in the worst sense: a fresh worker in a fresh
+	// directory with no way to read the partial its predecessor had already
+	// written and paid for, retyping from the brief while the half-finished
+	// file sat on disk beside it. The dependency digest is the channel that
+	// already exists for exactly this — a settled node's words and its files
+	// handed to whoever comes next.
+	//
+	// Only a settled predecessor may be wired. A node still pending would never
+	// settle, and a hard dependency on it is a retry that can never be claimed.
+	for _, id := range ids {
+		if node := byID[id]; terminal(node.Status) {
+			needs[id] = append(needs[id], store.Need{NodeID: id, Kind: store.FeedsInto})
+		}
+	}
 	subtree := store.Subtree{Nodes: make([]store.NodeSpec, 0, len(ids))}
 	for _, id := range ids {
 		node := byID[id]
@@ -169,9 +184,20 @@ func (r *Reconciler) restart(command store.Command) (commandOutcome, error) {
 	if intent == "" {
 		intent = predecessor.Brief
 	}
+	// A retry inherits what its predecessor was, not only what it was asked.
+	// The model the user pinned, the workflow it was compiled from, the belief
+	// it was a trial of, the service it was meant to stand up: all of it used
+	// to be dropped here, so a user who pinned a strong model, watched it fail
+	// and said "try again" got the cheap one. Attachments were already carried;
+	// these are the rest of the same idea.
 	provenance := store.Provenance{
 		Origin: store.OriginUser, SessionID: command.SessionID, Intent: intent,
-		RetryOf: predecessor.ID, Attachments: append([]string(nil), predecessor.Provenance.Attachments...),
+		RetryOf:       predecessor.ID,
+		WorkModel:     predecessor.Provenance.WorkModel,
+		Craft:         predecessor.Provenance.Craft,
+		TrialOf:       predecessor.Provenance.TrialOf,
+		ServiceIntent: predecessor.Provenance.ServiceIntent,
+		Attachments:   append([]string(nil), predecessor.Provenance.Attachments...),
 	}
 	if err := r.store.Splice(parent, subtree, provenance); err != nil {
 		root, found, readErr := r.store.Node(remap[command.Target])

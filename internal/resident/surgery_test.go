@@ -169,3 +169,80 @@ func TestRestartRespliceIsFreshAndLinksFailedPredecessor(t *testing.T) {
 		t.Fatalf("rebuilt retry = %+v found=%t err=%v", retry, found, err)
 	}
 }
+
+// A restart used to be a clean slate in the worst sense: a fresh worker in a
+// fresh directory, told nothing about the attempt it replaced, and stripped of
+// the model the user had pinned — so pinning a strong model, watching it fail
+// and saying "try again" handed the work back to the cheap one.
+func TestRestartInheritsWhatItsPredecessorKnew(t *testing.T) {
+	graph := openStore(t)
+	if err := graph.Splice(store.RootID, store.Subtree{Nodes: []store.NodeSpec{{
+		ID: "failed-audit", Brief: "audit the service", Title: "Audit", Stage: 1,
+	}}}, store.Provenance{
+		Origin: store.OriginUser, SessionID: "restart", Intent: "audit the service",
+		WorkModel: "strong/two", Attachments: []string{"/docs/contract.pdf"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	claim, won, err := graph.Claim("failed-audit", "worker")
+	if err != nil || !won {
+		t.Fatalf("claim won=%t err=%v", won, err)
+	}
+	if err := graph.Start(claim); err != nil {
+		t.Fatal(err)
+	}
+	// The failure names the partial it left behind, which is how the retry can
+	// reach files nobody else knows about.
+	if err := graph.Fail(claim, "it stopped early\n\nFiles it left behind:\n/w/job/01-notes.md"); err != nil {
+		t.Fatal(err)
+	}
+	command, err := graph.RequestCommand(store.Command{
+		SessionID: "restart", Kind: store.CommandRestart, Target: "failed-audit",
+		Instruction: "try again",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := New(graph, nil, nil).Tick(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	retryID := "retry-" + fmt.Sprint(command.Seq) + "-1"
+	retry, found, err := graph.Node(retryID)
+	if err != nil || !found {
+		t.Fatalf("retry found=%t err=%v", found, err)
+	}
+	if retry.Provenance.WorkModel != "strong/two" {
+		t.Fatalf("the pinned model was dropped on the retry: %+v", retry.Provenance)
+	}
+	if len(retry.Provenance.Attachments) != 1 {
+		t.Fatalf("attachments = %v", retry.Provenance.Attachments)
+	}
+	// The predecessor is wired in, so the fresh worker starts from what the
+	// first attempt actually produced rather than from the brief again.
+	inputs, err := graph.DependencyInputs(retryID, store.MaxDigestBytes)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(inputs) != 1 || inputs[0].NodeID != "failed-audit" {
+		t.Fatalf("inputs = %+v; the retry cannot read its predecessor", inputs)
+	}
+	if !strings.Contains(inputs[0].Digest, "it stopped early") {
+		t.Fatalf("digest = %q", inputs[0].Digest)
+	}
+	if len(inputs[0].Artifacts) != 1 || inputs[0].Artifacts[0] != "/w/job/01-notes.md" {
+		t.Fatalf("artifacts = %v; the partial is unreachable again", inputs[0].Artifacts)
+	}
+	// And it is still claimable: a settled predecessor is a satisfied
+	// dependency, not a wedge.
+	ready, err := graph.Ready(0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	claimable := false
+	for _, node := range ready {
+		claimable = claimable || node.ID == retryID
+	}
+	if !claimable {
+		t.Fatal("the retry is not ready — the predecessor edge wedged it")
+	}
+}
