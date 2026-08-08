@@ -430,14 +430,20 @@ func TestFailedReflexStillDistills(t *testing.T) {
 	}
 }
 
-func spliceTwoIndependentLeaves(t *testing.T, s *store.Store) {
+// spliceIndependentLeaves hangs count unordered leaves under one goal, which is
+// the shape a fan-out has once the plans are in: nothing between them, all of
+// them ready at once.
+func spliceIndependentLeaves(t *testing.T, s *store.Store, count int) {
 	t.Helper()
-	err := s.Splice(store.RootID, store.Subtree{Nodes: []store.NodeSpec{
-		{ID: "goal", Brief: "the deliverable", Stage: 0},
-		{ID: "one", Parent: "goal", Brief: "first leaf", Stage: 1},
-		{ID: "two", Parent: "goal", Brief: "second leaf", Stage: 1},
-	}}, store.Provenance{Origin: store.OriginUser, SessionID: "s1", Intent: "two leaves, no order"})
-	if err != nil {
+	nodes := []store.NodeSpec{{ID: "goal", Brief: "the deliverable", Stage: 0}}
+	for index := range count {
+		nodes = append(nodes, store.NodeSpec{
+			ID: fmt.Sprintf("leaf-%d", index), Parent: "goal",
+			Brief: fmt.Sprintf("leaf %d", index), Stage: 1,
+		})
+	}
+	if err := s.Splice(store.RootID, store.Subtree{Nodes: nodes},
+		store.Provenance{Origin: store.OriginUser, SessionID: "s1", Intent: "leaves, no order"}); err != nil {
 		t.Fatalf("splice leaves: %v", err)
 	}
 }
@@ -447,25 +453,27 @@ func governedRunner(t *testing.T, s *store.Store, load float64, release <-chan s
 	return NewRunner(s, func(ctx context.Context, node store.Node) (ExecResult, error) {
 		<-release
 		return ExecResult{Summary: "did " + node.Brief}, nil
-	}, "governed", 2).WithGovernor(executor.NewGovernorFrom(func() (float64, bool) {
+	}, "governed", 2*executor.GovernorMinInFlight).WithGovernor(executor.NewGovernorFrom(func() (float64, bool) {
 		return load, true
 	}))
 }
 
-func TestSaturatedHostDelaysTheSecondClaimButNeverTheFirst(t *testing.T) {
+func TestSaturatedHostDelaysClaimsAboveTheFloorButNeverBelowIt(t *testing.T) {
 	s := openRunnerStore(t)
-	spliceTwoIndependentLeaves(t, s)
+	spliceIndependentLeaves(t, s, executor.GovernorMinInFlight+2)
 	release := make(chan struct{})
 	runner := governedRunner(t, s, executor.GovernorLoadCeiling+1, release)
 
-	// The starvation guard always lets one leaf through: the user asked for
-	// work, and someone else's load must not leave aforge running nothing.
+	// The starvation guard always lets the floor through: the user asked for
+	// work, someone else's load must not leave aforge running nothing, and it
+	// must not turn independent jobs into a queue either.
 	dispatched, err := runner.Tick(context.Background())
 	if err != nil {
 		t.Fatalf("first tick: %v", err)
 	}
-	if dispatched != 1 {
-		t.Fatalf("saturated host dispatched %d leaves, want exactly the guaranteed one", dispatched)
+	if dispatched != executor.GovernorMinInFlight {
+		t.Fatalf("saturated host dispatched %d leaves, want the guaranteed %d",
+			dispatched, executor.GovernorMinInFlight)
 	}
 	// With that one in flight the gate holds, and holds on every later tick —
 	// it delays the claim, it never cancels or fails anything.
@@ -480,7 +488,8 @@ func TestSaturatedHostDelaysTheSecondClaimButNeverTheFirst(t *testing.T) {
 
 func TestCalmHostClaimsUpToTheWorkerSlots(t *testing.T) {
 	s := openRunnerStore(t)
-	spliceTwoIndependentLeaves(t, s)
+	leaves := 2 * executor.GovernorMinInFlight
+	spliceIndependentLeaves(t, s, leaves)
 	release := make(chan struct{})
 	runner := governedRunner(t, s, governorCalmLoad, release)
 
@@ -488,8 +497,8 @@ func TestCalmHostClaimsUpToTheWorkerSlots(t *testing.T) {
 	if err != nil {
 		t.Fatalf("tick: %v", err)
 	}
-	if dispatched != 2 {
-		t.Fatalf("calm host dispatched %d leaves, want both slots filled", dispatched)
+	if dispatched != leaves {
+		t.Fatalf("calm host dispatched %d leaves, want all %d slots filled", dispatched, leaves)
 	}
 	close(release)
 	runner.Wait()

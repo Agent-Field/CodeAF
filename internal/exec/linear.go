@@ -430,17 +430,7 @@ func (l *Linear) Run(ctx context.Context, task Task) (returned *Outcome, runErr 
 					"again; run the single quickest check that would catch breakage; fix only what " +
 					"it reveals. Do not start anything new. Then give your final answer.")})
 		}
-		if task.Steer != nil {
-			for _, guidance := range task.Steer() {
-				guidance = strings.TrimSpace(guidance)
-				if guidance == "" {
-					continue
-				}
-				trace.note("steered: " + guidance)
-				messages = append(messages, ai.Message{Role: "user", Content: text(
-					"Guidance from the user, mid-task — adjust course without discarding sound work already done:\n" + guidance)})
-			}
-		}
+		outcome.Steered += readSteering(task, &messages, trace)
 		// Called every turn, but mutating on few of them: decay only fires once
 		// the window crosses the budget, and then clears to a low-water mark so
 		// the turns that follow can resend a byte-identical prefix and be billed
@@ -529,6 +519,36 @@ func (l *Linear) Run(ctx context.Context, task Task) (returned *Outcome, runErr 
 							"large — and keep the final message short.")})
 				trace.turn(outcome.Turns, response, nil, nil, "truncated reply — nudged to use tools")
 				continue
+			}
+			// The mailbox, one last time, before the door closes.
+			//
+			// Steering is polled at the top of a turn, which quietly meant a
+			// leaf could only hear the user during work it had not finished.
+			// Words arriving while the final turn was in flight reached a
+			// worker that had already written its answer and was one statement
+			// away from handing it over — and the delivered thing was then the
+			// thing the user had just said they did not want. That is the whole
+			// of "commission a poem about mountains, say make it about the sea,
+			// receive a poem about mountains": the redirect was journaled, the
+			// mailbox got it, and the only reader had stopped reading.
+			//
+			// A leaf that has not landed has not delivered, so it looks once
+			// more. Guidance found here reopens the loop rather than ending it:
+			// the answer just written goes into the transcript as the draft it
+			// now is, the user's words follow it, and the next turn produces the
+			// deliverable they asked for. A leaf under a landing reserve is
+			// exempt — it is out of clock or out of budget, and reopening work
+			// there buys a truncated answer instead of a redirected one.
+			if landing == 0 && turn+1 < l.maxTurns {
+				draft := ai.Message{Role: "assistant", Content: text(response.Text())}
+				messages = append(messages, draft)
+				if steered := readSteering(task, &messages, trace); steered > 0 {
+					outcome.Steered += steered
+					trace.turn(outcome.Turns, response, nil, nil,
+						"steered at the finish — the answer was reopened rather than delivered")
+					continue
+				}
+				messages = messages[:len(messages)-1]
 			}
 			trace.turn(outcome.Turns, response, nil, nil, "final")
 			return l.land(ctx, task, outcome, started), nil
@@ -682,6 +702,28 @@ func (l *Linear) Run(ctx context.Context, task Task) (returned *Outcome, runErr 
 	outcome.Stop = StopTurnCap
 	outcome.Text = strings.TrimSpace(lastAssistantText(messages))
 	return l.land(ctx, task, outcome, started), nil
+}
+
+// readSteering drains the mailbox into the transcript and reports how many of
+// the user's lines landed there. It is one function rather than two copies
+// because it is called at both ends of a turn — before the model speaks and
+// before its answer is accepted — and the two must deliver identically.
+func readSteering(task Task, messages *[]ai.Message, trace *tracer) int {
+	if task.Steer == nil {
+		return 0
+	}
+	delivered := 0
+	for _, guidance := range task.Steer() {
+		guidance = strings.TrimSpace(guidance)
+		if guidance == "" {
+			continue
+		}
+		trace.note("steered: " + guidance)
+		*messages = append(*messages, ai.Message{Role: "user", Content: text(
+			"Guidance from the user, mid-task — adjust course without discarding sound work already done:\n" + guidance)})
+		delivered++
+	}
+	return delivered
 }
 
 // land finishes a leaf. It collects what the leaf left behind, decides the

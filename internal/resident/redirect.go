@@ -107,11 +107,21 @@ func (r *Reconciler) redirectJob(ctx context.Context, command store.Command) (co
 	if !found {
 		return commandOutcome{}, fmt.Errorf("target %q no longer exists", command.Target)
 	}
+	// The words go first, before anything slow, and this ordering is the whole
+	// difference between steering and paperwork. The broadcast is a store write
+	// measured in milliseconds; the plan revision under it is a model call
+	// measured in seconds. Running the model call first meant the user's own
+	// sentence reached the workers who could still act on it a full round-trip
+	// after they could have had it — which is how "make it about the sea"
+	// arrived at a leaf that had already delivered a poem about mountains.
+	// The fallible half must not swallow the reliable one, and it must not
+	// delay it either.
+	informed, err := BroadcastRedirection(r.store, job.ID, command.SessionID, command.Instruction)
+	if err != nil {
+		return commandOutcome{}, err
+	}
 	revision, revised := Redirection{}, true
 	if r.redirect != nil {
-		// The plan pass is the fallible half of this — it is a model call. Its
-		// failure must not swallow the reliable half: the words still reach
-		// everyone who is mid-turn, and the receipt says which part happened.
 		edited, revisionErr := r.redirect(ctx, job, command.Instruction, RevisionRedirect)
 		if revisionErr != nil {
 			revised = false
@@ -125,10 +135,6 @@ func (r *Reconciler) redirectJob(ctx context.Context, command store.Command) (co
 		return commandOutcome{}, err
 	}
 	revision.Dropped += len(cancelled)
-	informed, err := BroadcastRedirection(r.store, job.ID, command.SessionID, command.Instruction)
-	if err != nil {
-		return commandOutcome{}, err
-	}
 	for _, node := range gated {
 		if err := r.askBeforeCutting(command, node); err != nil {
 			return commandOutcome{}, err
@@ -162,6 +168,14 @@ func (r *Reconciler) expediteJob(ctx context.Context, command store.Command) (co
 	if err != nil {
 		return commandOutcome{}, err
 	}
+	// Pressure reaches the people under it first, for the same reason a
+	// redirect's words do: the trim below is a model call, and a worker told to
+	// cut to the essentials one round-trip late has spent that round-trip not
+	// cutting to the essentials.
+	informed, err := BroadcastRedirection(r.store, job.ID, command.SessionID, urgencySteerLine)
+	if err != nil {
+		return commandOutcome{}, err
+	}
 	revision, revised := Redirection{}, false
 	// A tail is the only thing a trim can take. With nothing unstarted the
 	// model call would be spend with no outcome available to it.
@@ -183,10 +197,6 @@ func (r *Reconciler) expediteJob(ctx context.Context, command store.Command) (co
 		return commandOutcome{}, err
 	}
 	revision.Dropped += len(cancelled)
-	informed, err := BroadcastRedirection(r.store, job.ID, command.SessionID, urgencySteerLine)
-	if err != nil {
-		return commandOutcome{}, err
-	}
 	for _, node := range gated {
 		if err := r.askBeforeCutting(command, node); err != nil {
 			return commandOutcome{}, err

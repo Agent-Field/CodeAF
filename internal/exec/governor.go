@@ -29,6 +29,23 @@ const (
 	// average cannot move faster than this, and the claim path ticks in
 	// hundreds of milliseconds.
 	governorSampleTTL = time.Second
+	// GovernorMinInFlight is the floor under back-pressure: however loaded the
+	// machine is, this many leaves may always be claimed.
+	//
+	// The floor used to be one, and one turned the product's central promise
+	// into a lie on any busy machine. "Say five things and five jobs run" is
+	// the journey; what actually happened, measured, was three independent
+	// single-leaf jobs executing strictly one after another with a claim gap
+	// between each — because a leaf is a goroutine parked on a socket, its own
+	// load contribution is nil, and yet the *first* one raised inFlight to 1
+	// and every sibling after it met a gate reading somebody else's compile.
+	//
+	// The ceiling is still what it was and still does what it was built for:
+	// it stops the tenth leaf joining a shell that is already pinning cores.
+	// This only says that the difference between a resident and a queue is
+	// worth three sockets, and that host pressure is a reason to stop growing
+	// the fan-out — never a reason to abolish it.
+	GovernorMinInFlight = 3
 )
 
 // Governor is the admission gate on new leaves. It never blocks: a refusal is
@@ -74,9 +91,10 @@ func HostGovernor() *Governor { return hostGovernor }
 // caller is already running.
 func (g *Governor) Admit(inFlight int) bool {
 	// Starvation guard: someone else's load must never leave aforge running
-	// nothing at all. The user asked for work, so one leaf always gets through
-	// no matter how saturated the machine is.
-	if inFlight <= 0 {
+	// nothing at all, and it must never collapse a fan-out into a queue. The
+	// user asked for work, so the floor always gets through no matter how
+	// saturated the machine is.
+	if inFlight < GovernorMinInFlight {
 		return true
 	}
 	if g == nil {
