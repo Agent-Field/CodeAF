@@ -2,6 +2,7 @@ package head
 
 import (
 	"strings"
+	"time"
 
 	"github.com/Agent-Field/aforge-v2/internal/store"
 )
@@ -119,7 +120,8 @@ func (h *Head) manageCorrection(user store.Message) (bool, error) {
 	if err != nil {
 		return false, err
 	}
-	job, anchored := asked, waiting
+	anchor := correctionAnchor{Job: asked}
+	anchored := waiting
 	if !waiting {
 		if cue, cued := redirectCue(message); !cued || cue != "correction" {
 			return false, nil
@@ -131,10 +133,14 @@ func (h *Head) manageCorrection(user store.Message) (bool, error) {
 		if strings.HasSuffix(message, "?") {
 			return false, nil
 		}
-		job, anchored, err = h.correctionTarget(user, message)
+		anchor, anchored, err = h.correctionTarget(user, message)
 		if err != nil || !anchored {
 			return false, err
 		}
+	}
+	job := anchor.Job
+	if len(anchor.Rivals) > 1 {
+		return true, h.askWhichWork(user, message, anchor.Rivals)
 	}
 	previous := h.jobResult(job)
 	if strings.TrimSpace(previous) == "" {
@@ -234,72 +240,211 @@ func (h *Head) openCorrectionAsk(user store.Message) (store.Node, bool, error) {
 	return store.Node{}, false, nil
 }
 
+// correctionAnchor is which delivered work a correction is about. Rivals is
+// non-empty only when the two readings disagree and neither one deserves to win
+// silently; the caller asks one plain question and the answer settles it.
+type correctionAnchor struct {
+	Job    store.Node
+	Rivals []store.Node
+}
+
+// CorrectionQuiet bounds adjacency once more than one delivered job is in the
+// window. With a single settled job, position needs no clock: a result is the
+// last word until the user answers it, however long they take to read it, and
+// that argument is still exactly right. With four, the last node-anchored line
+// is as likely to be some other job's heartbeat as the deliverable being
+// corrected — so stale position stops being evidence and becomes a question.
+const CorrectionQuiet = 20 * time.Minute
+
 // correctionTarget is the anchor, and it has redirection's two arms pointed at
 // settled work instead of live work.
 //
-// Adjacency leads, because a correction is a reply: the deliverable was posted
-// into the thread anchored to its own node, and the sentence that follows it is
-// about it whether or not it borrows a single one of its words. Vocabulary is
-// the fallback for the case adjacency cannot cover — a correction typed after
-// the conversation has moved on — and it clears the same anchor floor
-// redirection uses, because the doubt is the same doubt.
-func (h *Head) correctionTarget(user store.Message, message string) (store.Node, bool, error) {
-	if node, found, err := h.settledAdjacency(user); err != nil || found {
-		return node, found, err
+// The order used to be adjacency first, returning on the first hit, which made
+// the vocabulary arm unreachable whenever any job had spoken. That is right with
+// one job and wrong with four: "that's wrong, the test you added doesn't compile"
+// names the work in its own words, and answering it with whichever job narrated
+// most recently buys a paid revision of the wrong deliverable. So the words go
+// first when the sentence has any — they are the deliberate signal — and position
+// is the tiebreak for the follow-ups that carry no content at all. When the two
+// arms name different work, neither is quietly preferred: one question settles
+// it, which is the same reasoning the redirect path already applies in the same
+// situation.
+func (h *Head) correctionTarget(user store.Message, message string) (correctionAnchor, bool, error) {
+	described, err := h.describedCorrections(message)
+	if err != nil {
+		return correctionAnchor{}, false, err
 	}
+	switch {
+	case len(described) == 1:
+		// The words name one delivered job and no other clears the floor. That is
+		// the most deliberate signal this path ever gets, and whichever job
+		// happened to narrate most recently does not outrank it.
+		return correctionAnchor{Job: described[0]}, true, nil
+	case len(described) > 1:
+		return correctionAnchor{Job: described[0], Rivals: described}, true, nil
+	}
+	spoken, adjacentFound, err := h.settledAdjacency(user)
+	if err != nil || !adjacentFound {
+		return correctionAnchor{}, false, err
+	}
+	if len(spoken.Others) == 0 || spoken.Fresh(user) {
+		return correctionAnchor{Job: spoken.Job}, true, nil
+	}
+	// Several jobs delivered into this window and the newest of them said its
+	// piece long enough ago that being last proves nothing. The sentence carries
+	// no words to break the tie, so the person does.
+	return correctionAnchor{
+		Job:    spoken.Job,
+		Rivals: append([]store.Node{spoken.Job}, spoken.Others...),
+	}, true, nil
+}
+
+// describedCorrections is the vocabulary arm: the delivered jobs the user's own
+// words name, best first, at the same anchor floor redirection uses, because
+// the doubt is the same doubt. One match is an answer; several are a question.
+func (h *Head) describedCorrections(message string) ([]store.Node, error) {
 	reference := redirectReference(message)
 	if reference == "" {
-		return store.Node{}, false, nil
+		return nil, nil
 	}
 	targets, err := h.store.SearchSurgeryTargets(reference, false)
 	if err != nil {
-		return store.Node{}, false, err
+		return nil, err
 	}
+	named := make([]store.Node, 0, RedirectCandidateLimit)
 	for _, target := range targets {
 		if target.Score < RedirectAnchorScore || !correctable(target.Node) {
 			continue
 		}
-		return target.Node, true, nil
+		named = append(named, target.Node)
+		if len(named) == RedirectCandidateLimit {
+			break
+		}
 	}
-	return store.Node{}, false, nil
+	return named, nil
+}
+
+// settledSpeaker is what position alone can say: the delivered job whose own
+// message is the last thing before this one, when it said it, and which other
+// delivered jobs also spoke inside the same window.
+type settledSpeaker struct {
+	Job    store.Node
+	Spoke  time.Time
+	Others []store.Node
+}
+
+// Fresh reports that the last word is still recent enough to be the thing being
+// answered. A line with no time on it is treated as fresh: the fixtures and the
+// oldest journal rows carry none, and inventing staleness out of a missing
+// timestamp would silently move work that has always resolved.
+func (speaker settledSpeaker) Fresh(user store.Message) bool {
+	if speaker.Spoke.IsZero() {
+		return true
+	}
+	asked := user.Time
+	if asked.IsZero() {
+		asked = time.Now()
+	}
+	return asked.Sub(speaker.Spoke) <= CorrectionQuiet
 }
 
 // settledAdjacency is adjacencyTarget's settled twin: the job whose own message
-// is the last thing said before this one. It carries no freshness bound, and
-// that is the difference. A running job speaks on a heartbeat, so position
-// there only means something for a few minutes; a delivered result is the last
-// word until the user answers it, however long they take to read it. The thread
-// window is the whole bound, which is the same thing as saying: while it is
-// still on screen, it is still what the conversation is about.
-func (h *Head) settledAdjacency(user store.Message) (store.Node, bool, error) {
+// is the last thing said before this one. It reads the whole window rather than
+// stopping at the first hit, because how many jobs delivered into this stretch of
+// conversation is the difference between position being evidence and position
+// being a coin toss.
+func (h *Head) settledAdjacency(user store.Message) (settledSpeaker, bool, error) {
 	recent, err := h.recentThread(user.SessionID, user.Seq)
 	if err != nil {
-		return store.Node{}, false, err
+		return settledSpeaker{}, false, err
 	}
 	if len(recent) > AdjacencyMessageWindow {
 		recent = recent[len(recent)-AdjacencyMessageWindow:]
 	}
+	var speaker settledSpeaker
+	found := false
+	seen := make(map[string]bool, 4)
 	for index := len(recent) - 1; index >= 0; index-- {
 		message := recent[index]
 		if message.Role == store.RoleUser || strings.TrimSpace(message.NodeID) == "" {
 			continue
 		}
-		nodeID := message.NodeID
-		for depth := 0; depth < adjacencyAncestorDepth; depth++ {
-			if nodeID = strings.TrimSpace(nodeID); nodeID == "" || nodeID == store.RootID {
-				break
-			}
-			node, found, readErr := h.store.Node(nodeID)
-			if readErr != nil || !found {
-				break
-			}
-			if correctable(node) {
-				return node, true, nil
-			}
-			nodeID = node.Parent
+		node, ok := h.correctableOwner(message.NodeID)
+		if !ok || seen[node.ID] {
+			continue
 		}
+		seen[node.ID] = true
+		if !found {
+			speaker.Job, speaker.Spoke, found = node, message.Time, true
+			continue
+		}
+		speaker.Others = append(speaker.Others, node)
 	}
-	return store.Node{}, false, nil
+	return speaker, found, nil
+}
+
+// correctableOwner walks the node that spoke up to the delivered job it belongs
+// to. A part of a job speaking is the job speaking.
+func (h *Head) correctableOwner(nodeID string) (store.Node, bool) {
+	for depth := 0; depth < adjacencyAncestorDepth; depth++ {
+		if nodeID = strings.TrimSpace(nodeID); nodeID == "" || nodeID == store.RootID {
+			return store.Node{}, false
+		}
+		node, found, err := h.store.Node(nodeID)
+		if err != nil || !found {
+			return store.Node{}, false
+		}
+		if correctable(node) {
+			return node, true
+		}
+		nodeID = node.Parent
+	}
+	return store.Node{}, false
+}
+
+// askWhichWork is the whole of what ambiguity is allowed to cost: one short
+// question in plain words, naming the candidates the way the user would
+// recognise them, and no picker, no error, no mode. It reuses the redirect
+// target question because it is the same question — which work did you mean —
+// and a second spelling of it would be a second thing for a person to learn.
+//
+// The assume-the-default shortcut is deliberately not consulted. This question
+// only ever exists because two readings disagreed; there is no default here that
+// is evidence, and applying one silently is exactly the wrong revision bought
+// without asking.
+func (h *Head) askWhichWork(user store.Message, message string, rivals []store.Node) error {
+	if len(rivals) < 2 {
+		return nil
+	}
+	if len(rivals) > RedirectCandidateLimit {
+		rivals = rivals[:RedirectCandidateLimit]
+	}
+	options := make([]store.QuestionOption, 0, len(rivals))
+	labels := make([]string, 0, len(rivals))
+	for _, job := range rivals {
+		label := surgeryTargetLabel(job)
+		labels = append(labels, label)
+		options = append(options, store.QuestionOption{
+			Label: label,
+			Hint:  string(job.Status),
+			Value: store.RedirectOptionValue("correct", job.ID, message),
+		})
+	}
+	prompt := "Which one — " + strings.Join(labels[:len(labels)-1], ", ") +
+		", or " + labels[len(labels)-1] + "?"
+	body := store.QuestionMessageBody(prompt, options, store.QuestionConfig{
+		Kind: store.QuestionChoose, Category: store.QuestionCategoryRedirectTarget, Default: "1",
+	})
+	question, err := h.store.AskQuestion(store.AgentQuestion{
+		SessionID: user.SessionID, Text: body, OriginNodeID: rivals[0].ID,
+		Urgency: store.QuestionBlocking, Category: store.QuestionCategoryRedirectTarget,
+		DefaultAnswer: "1", Options: options,
+	})
+	if err != nil {
+		return err
+	}
+	_, err = h.store.SurfaceQuestion(question.Seq)
+	return err
 }
 
 // correctable is the membrane: the user's own work, finished, and not the

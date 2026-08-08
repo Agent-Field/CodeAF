@@ -376,6 +376,16 @@ func (h *Head) applyRedirectOption(ctx context.Context, user store.Message, opti
 			return true, h.postAgent(user.SessionID, commandErrorReply, 0)
 		}
 		return true, h.postAgent(user.SessionID, "Starting that as new work.", command.Seq)
+	case "correct":
+		node, found, err := h.store.Node(target)
+		if err != nil || !found {
+			return true, h.postAgent(user.SessionID, commandErrorReply, 0)
+		}
+		previous := h.jobResult(node)
+		if strings.TrimSpace(previous) == "" {
+			return true, h.postAgent(user.SessionID, commandErrorReply, 0)
+		}
+		return true, h.requestCorrection(user, node, message, previous)
 	case "cancel":
 		return true, h.resolveSurgery(user, store.CommandCancel, target, message, true)
 	case "keep":
