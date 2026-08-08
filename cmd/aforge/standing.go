@@ -118,7 +118,9 @@ func standingCharterLines(graph *store.Store, limit int) ([]string, error) {
 	for _, charter := range charters {
 		cadence := strings.TrimSpace(charter.Watch.Cadence)
 		if cadence == "" {
-			cadence = charter.Watch.String()
+			// Spoken, never String: this list is read by a person, and it is
+			// also handed to the conversational standing read.
+			cadence = charter.Watch.Spoken()
 		}
 		lines = append(lines, fmt.Sprintf("%s · %s · %s", charter.ID,
 			cadence, strings.Join(strings.Fields(charter.Invariant), " ")))
