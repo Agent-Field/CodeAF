@@ -892,10 +892,10 @@ func TestReceiptsCollapseAndExpandTogether(t *testing.T) {
 	model.refreshChat()
 
 	collapsed := model.renderMessages()
-	if !strings.Contains(collapsed, "▸ reading + 2 assumptions") {
+	if !strings.Contains(collapsed, "▸ Read the compiled request. · 2 assumptions") {
 		t.Fatalf("collapsed receipt summary is missing:\n%s", collapsed)
 	}
-	if strings.Contains(collapsed, "Read the compiled request.") {
+	if strings.Contains(collapsed, "Assumed: the local branch is authoritative.") {
 		t.Fatalf("collapsed receipt exposed its body:\n%s", collapsed)
 	}
 	if !strings.Contains(collapsed, "▸ Background sync complete.") ||
@@ -913,7 +913,7 @@ func TestReceiptsCollapseAndExpandTogether(t *testing.T) {
 	}
 	expanded := model.renderMessages()
 	for _, expected := range []string{
-		"Read the compiled request.", "Assumed: no schema changes.", "This is secondary plumbing.", "▾ reading + 2 assumptions",
+		"Read the compiled request.", "Assumed: no schema changes.", "This is secondary plumbing.", "▾ Read the compiled request. · 2 assumptions",
 	} {
 		if !strings.Contains(expanded, expected) {
 			t.Fatalf("expanded receipt does not contain %q:\n%s", expected, expanded)
@@ -936,7 +936,7 @@ func TestThreadDisclosureAffordancesRegisterClickableRows(t *testing.T) {
 	}
 	model.refreshChat()
 	view := model.View()
-	if !strings.Contains(view, "▸ reading + 2 assumptions") || !strings.Contains(view, "more lines") {
+	if !strings.Contains(view, "▸ Read the compiled request. · 2 assumptions") || !strings.Contains(view, "more lines") {
 		t.Fatalf("thread is missing disclosure affordances:\n%s", view)
 	}
 

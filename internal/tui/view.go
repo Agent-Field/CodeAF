@@ -1970,21 +1970,35 @@ func secondaryMessage(message store.Message) bool {
 	return message.Role == store.RoleSystem && message.NodeID == ""
 }
 
+// receiptSummary is the one line a folded receipt shows. Every receipt says
+// something different — what was read, what was assumed, what was refused — and
+// a command stamp used to overwrite all of it with "reading + N assumptions",
+// so a rejection and a compile note were the same grey sentence and neither was
+// worth opening. The receipt's own first line is the summary; the assumption
+// count is a suffix, and only where there are assumptions to count.
 func receiptSummary(message store.Message) string {
-	if message.CommandSeq != 0 {
-		assumptions := 0
-		for _, line := range strings.Split(strings.ReplaceAll(message.Body, "\r\n", "\n"), "\n") {
-			if strings.HasPrefix(line, "Assumed:") {
-				assumptions++
-			}
-		}
-		return fmt.Sprintf("reading + %d assumptions", assumptions)
-	}
 	label := firstLine(message.Body)
 	if label == "" {
 		label = "update"
 	}
+	if assumptions := assumptionLines(message.Body); assumptions > 0 {
+		noun := "assumptions"
+		if assumptions == 1 {
+			noun = "assumption"
+		}
+		label += fmt.Sprintf(" · %d %s", assumptions, noun)
+	}
 	return label
+}
+
+func assumptionLines(body string) int {
+	assumptions := 0
+	for _, line := range strings.Split(strings.ReplaceAll(body, "\r\n", "\n"), "\n") {
+		if strings.HasPrefix(line, "Assumed:") {
+			assumptions++
+		}
+	}
+	return assumptions
 }
 
 func indentLines(text, prefix string) string {
