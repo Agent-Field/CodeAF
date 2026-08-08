@@ -449,12 +449,10 @@ func (m *Model) standingCharterLine(charter standingCharter) string {
 		charter.Name, standingAge(charter.LastFired, m.standingTime()), charter.Today)
 }
 
-// charterCheckState is the one seam that reads the durable check fields. They
-// land with the resident's half of this wave as store.Charter.LastChecked and
-// .LastCheckLine; until then a watch keeps the wording it had, and this is the
-// single line that changes when the halves meet.
-func charterCheckState(store.Charter) (time.Time, string) {
-	return time.Time{}, ""
+// charterCheckState is the one seam that reads the durable check fields the
+// resident's half of this wave materialized on the charter row.
+func charterCheckState(charter store.Charter) (time.Time, string) {
+	return charter.LastChecked, charter.LastCheckLine
 }
 
 // hasStandingHistory is deliberately broader than the visible charter list:

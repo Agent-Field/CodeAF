@@ -270,6 +270,18 @@ func runChat(args []string) error {
 	if craftRunner != nil {
 		reconciler = reconciler.WithCraftRunner(craftRunner)
 	}
+	// A restart that names a model resolves it through the same catalog the
+	// compiler's model words use; without this seam every "rerun that on the
+	// better model" honestly reports falling back to the default.
+	reconciler = reconciler.WithModelResolver(func(names []string, boost bool) (string, bool) {
+		choice := resolveWorkModelWords(head.ModelWords{Names: names, Boost: boost}, modelCatalog, func() string {
+			if commander != nil {
+				return commander.CurrentModel(head.ModelSlotBoost)
+			}
+			return taskClient.Model()
+		})
+		return choice.Model, choice.Model != ""
+	})
 	// The lease's flock proves the process exists; the heartbeat proves it is
 	// doing the work. Without this stamp a wedged TUI holds the resident role
 	// while every wake pass defers to it, and the standing watches go blind.
@@ -3617,7 +3629,36 @@ func jobIDOf(graph *store.Store, node store.Node) string {
 		}
 		current = parent
 	}
+	// A correction revises a delivered thing, and the files it must see live
+	// in the predecessor's workspace. The store's splice rail refuses a closed
+	// parent, so the correction stands beside the job it corrects — the id in
+	// its own instruction (written by the head, one format, one owner) is how
+	// the two share a directory anyway.
+	if predecessorID := correctionPredecessor(current.Provenance.Intent); predecessorID != "" {
+		if predecessor, ok, err := graph.Node(predecessorID); err == nil && ok {
+			return jobIDOf(graph, predecessor)
+		}
+	}
 	return current.ID
+}
+
+// correctionPredecessor reads the delivered job a correction names. The line is
+// head.SpliceCorrection's: "Correcting delivered work: <id> (<label>)" — the id
+// runs from the prefix to the first space, and anything else is not a
+// correction worth following.
+func correctionPredecessor(intent string) string {
+	if !head.IsCorrection(intent) {
+		return ""
+	}
+	at := strings.Index(intent, head.CorrectionPrefix)
+	if at < 0 {
+		return ""
+	}
+	rest := strings.TrimSpace(intent[at+len(head.CorrectionPrefix):])
+	if cut := strings.IndexAny(rest, " \n("); cut > 0 {
+		rest = rest[:cut]
+	}
+	return strings.TrimSpace(rest)
 }
 
 // distillerSystemPrompt writes the notebook. The bar is durability: a memory

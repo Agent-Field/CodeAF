@@ -1653,10 +1653,9 @@ func briefItemGlyph(kind store.BriefItemKind) string {
 	}
 }
 
-// briefWaitingKind is store.BriefWaiting, spelled as the value the journal
-// carries because the constant lands with the resident's half of this wave.
-// Swap it for the constant when the two halves meet.
-const briefWaitingKind = store.BriefItemKind("waiting")
+// briefWaitingKind aliases the store's own constant now that both halves of
+// the wave have met.
+const briefWaitingKind = store.BriefWaiting
 
 func oneSentence(value string) string {
 	value = strings.Join(strings.Fields(value), " ")
