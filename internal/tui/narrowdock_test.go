@@ -73,6 +73,11 @@ func TestEverySurfaceFitsTheDockedPane(t *testing.T) {
 // the rest of the bar held to it.
 func TestTheHeaderStaysHonestDownToSixtyColumns(t *testing.T) {
 	model := dockModel(t)
+	// docs/JOURNEY.md:18 promises costs ride the header. The money was the first
+	// thing the yield ladder dropped, so in the 60-column dock the same document
+	// designs for, it rode nothing.
+	model.spendToday = 1.25
+	model.selfSpendToday = 0.04
 	for _, width := range dockWidths {
 		model.setSize(width, 26)
 		header := ansi.Strip(model.renderTopBar())
@@ -89,6 +94,16 @@ func TestTheHeaderStaysHonestDownToSixtyColumns(t *testing.T) {
 		if !strings.Contains(header, "thread · board · self") {
 			t.Fatalf("width %d header lost the places: %q", width, header)
 		}
+		// The money shrinks rather than vanishing: the word and the upkeep
+		// figure may go, the dollars may not.
+		if !strings.Contains(header, "$1.25") {
+			t.Fatalf("width %d header lost the money: %q", width, header)
+		}
+	}
+	// And at the widths that have the room, it says which window it means.
+	model.setSize(120, 26)
+	if header := ansi.Strip(model.renderTopBar()); !strings.Contains(header, "$1.25 today") {
+		t.Fatalf("a wide header does not name the window its money covers: %q", header)
 	}
 }
 
@@ -109,7 +124,7 @@ func TestTheBoardYieldsRatherThanTruncatingInTheDock(t *testing.T) {
 	if !strings.Contains(frame, "tasks") {
 		t.Fatalf("the narrow board never rendered:\n%s", frame)
 	}
-	if !strings.Contains(frame, "Ask the graph") {
+	if !strings.Contains(frame, composerPlaceholder) {
 		t.Fatalf("the composer left the frame while the board was open:\n%s", frame)
 	}
 }
@@ -129,7 +144,7 @@ func TestModalsStopAboveTheComposer(t *testing.T) {
 				width, bottom, model.inputBounds.y)
 		}
 		plain := ansi.Strip(model.View())
-		if !strings.Contains(plain, "Ask the graph") {
+		if !strings.Contains(plain, composerPlaceholder) {
 			t.Fatalf("width %d: the composer is gone under the guide:\n%s", width, plain)
 		}
 		model.closeHelp()

@@ -4,6 +4,7 @@ import (
 	"context"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/Agent-Field/aforge-v2/internal/resident"
 	"github.com/Agent-Field/aforge-v2/internal/store"
@@ -134,5 +135,72 @@ func TestNonStandingPhrasingStaysOnTheOrdinaryPath(t *testing.T) {
 				t.Fatalf("charters = %+v err=%v", charters, err)
 			}
 		})
+	}
+}
+
+// TestEverySundayCompilesToAWeeklyRuleThatOutlivesItsFirstFiring is the
+// everyday simulation's Monday 08:14, at the layer that read the sentence.
+// "remind me every sunday …" produced no cadence at all, so the head
+// substituted a literal two minutes, and the reminder fired once — two minutes
+// after ratification — and expired before the Sunday it named.
+func TestEverySundayCompilesToAWeeklyRuleThatOutlivesItsFirstFiring(t *testing.T) {
+	const said = "remind me every sunday to water the plants and check my mom called"
+	if !RecognizesStandingIntent(said) {
+		t.Fatal("a weekly reminder is not recognized as standing intent")
+	}
+	if cadence := extractCadence(said); cadence != "every sunday" {
+		t.Fatalf("extracted cadence = %q, want the words she said", cadence)
+	}
+	spec := normalizeCharterSpec(store.CharterSpec{}, said, "")
+	if spec.Watch.Kind != store.WatchCron || spec.Watch.Spec.Cron == nil {
+		t.Fatalf("weekly reminder watch = %+v, want a clock rule", spec.Watch)
+	}
+	schedule := *spec.Watch.Spec.Cron
+	if schedule.Kind != store.CronWeekly || schedule.Weekday != time.Sunday || schedule.Hour != 9 {
+		t.Fatalf("schedule = %+v, want Sunday at 9", schedule)
+	}
+	if spec.Watch.Spec.CadenceGuessed {
+		t.Fatal("a cadence the user said was recorded as a guess")
+	}
+	if spec.Rails.Expiry != "never" {
+		t.Fatalf("recurring reminder expiry = %q, want never", spec.Rails.Expiry)
+	}
+	// The stated clock survives, and so does the day.
+	timed := normalizeCharterSpec(store.CharterSpec{}, "remind me every sunday at 8pm to take the bins out", "")
+	if got := *timed.Watch.Spec.Cron; got.Kind != store.CronWeekly ||
+		got.Weekday != time.Sunday || got.Hour != 20 || got.Minute != 0 {
+		t.Fatalf("schedule = %+v, want Sunday at 20:00", got)
+	}
+	// A reminder that genuinely happens once still expires once.
+	once := normalizeCharterSpec(store.CharterSpec{}, "remind me tomorrow at 9 to call the dentist", "")
+	if once.Rails.Expiry != "once" {
+		t.Fatalf("one-shot reminder expiry = %q, want once", once.Rails.Expiry)
+	}
+}
+
+// TestTheCompilersOwnCadenceIsUsedRatherThanReplaced covers the discarded
+// reading: the temporal compiler is asked for human cadence words, answers with
+// them, and the head threw the answer away in favour of a default.
+func TestTheCompilersOwnCadenceIsUsedRatherThanReplaced(t *testing.T) {
+	// A sentence no deterministic pattern reads, with a model that read it.
+	watch := standingWatch("keep an eye on the release queue",
+		store.CharterWatch{Cadence: "every 30 minutes", Schedule: "queue depth"})
+	if watch.Cadence != "every 30 minutes" {
+		t.Fatalf("cadence = %q, want the compiler's own reading", watch.Cadence)
+	}
+	if watch.Spec.CadenceGuessed {
+		t.Fatal("a cadence the compiler read was recorded as a guess")
+	}
+	if watch.Spec.Poll == nil || watch.Spec.Poll.Cadence != 30*time.Minute {
+		t.Fatalf("poll watch = %+v, want a 30 minute cadence", watch.Spec.Poll)
+	}
+
+	// A compiler reading that says nothing about time cannot rescue anything,
+	// and the default that follows announces itself as a guess.
+	guessed := standingWatch("watch for when the dyson v15 drops under 500",
+		store.CharterWatch{Cadence: "when the price drops"})
+	if guessed.Cadence != "about every 2 minutes" || !guessed.Spec.CadenceGuessed {
+		t.Fatalf("unreadable cadence = %q guessed=%t, want an announced default",
+			guessed.Cadence, guessed.Spec.CadenceGuessed)
 	}
 }

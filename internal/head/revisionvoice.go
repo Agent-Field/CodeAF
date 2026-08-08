@@ -38,7 +38,7 @@ Return exactly one JSON object with this shape and no text outside it:
 {"reply":"<what to say right now>","remember":null}
 and remember may instead be {"scope":"<scope>","kind":"preference|lesson","body":"<one sharp sentence>"}.
 
-The reply is one or two short sentences in their terms: which work you took it to, how many workers heard it, and that you will say what changed once it lands. Say only what the facts below actually support — never a completion, never a speed you cannot deliver, never a plan edit nobody has reported to you yet. No preamble, no exclamation, no saying their own sentence back to them, and none of the machinery's vocabulary: no node, no graph, no raw ids.
+The reply is one or two short sentences in their terms: which work you took it to, whether anything already under way heard it, and that you will say what changed once it lands. Say only what the facts below actually support — never a completion, never a speed you cannot deliver, never a plan edit nobody has reported to you yet. No preamble, no exclamation, no saying their own sentence back to them, and none of the machinery's vocabulary: not node, leaf, graph, splice, worker, charter, craft, rail, firing, notebook, or a raw id. Count steps of the work, never workers.
 
 remember is the part of the message that outlives this job. People steer and teach in the same breath — "stop over-studying the repo and move faster, and learn that for next time" is a redirection AND a durable lesson about how they want work paced — and the steering is spent the moment the job ends while the lesson is not. Judge durability by one test: will this still matter after this job is forgotten and this conversation is gone? Write the body as guidance a stranger could act on months from now: the lesson about how to work, never the pointing sentence that carried it, because "this one", "right now" and "don't change anything else" name nothing a later reader can find. Scope it to the narrowest thing it is about: user for how they like work done, tool:<name>, repo:<path>, file:<path>, or domain:<topic>. Most redirections teach nothing lasting and remember stays null. When it is not null the reply says plainly that you have noted it — and when it is null the reply may not claim you will remember anything, because a promise nothing recorded is the one sentence you may never write.`
 
@@ -92,9 +92,9 @@ func (h *Head) composeRevision(ctx context.Context, user store.Message, kind sto
 	}
 	body := "The work: " + label +
 		"\nWhat has already been done with their words: " + revisionFacts(kind) +
-		fmt.Sprintf("\nWorkers mid-turn who hear their words verbatim: %d", audience)
+		fmt.Sprintf("\nSteps of that work already under way, which hear their words verbatim: %d", audience)
 	if recent, err := h.recentThread(user.SessionID, user.Seq); err == nil {
-		body += "\n\nRecent thread before this message:\n" + renderThread(recent)
+		body += "\n\nRecent thread before this message:\n" + h.renderThread(recent)
 	}
 	body += "\n\nNotebook (durable memory across jobs and conversations):\n" +
 		renderNotebook(h.store, user.Body, "") +
@@ -137,9 +137,9 @@ func revisionFloorReply(kind store.CommandKind, label string, audience int) stri
 		took = "Pushing " + label + " to the front and trimming what it has not started"
 	}
 	if audience > 0 {
-		return fmt.Sprintf("%s — %d running %s %s it now; I'll say what changed once it lands.",
-			took, audience, pluralWord(audience, "worker", "workers"),
+		return fmt.Sprintf("%s — %d %s already under way %s it now; I'll say what changed once it lands.",
+			took, audience, pluralWord(audience, "step", "steps"),
 			pluralWord(audience, "hears", "hear"))
 	}
-	return took + " — nothing is mid-turn there, so it lands as a change to the remaining plan; I'll say what changed."
+	return took + " — nothing is part-way through there, so it lands as a change to the remaining plan; I'll say what changed."
 }

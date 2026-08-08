@@ -333,7 +333,7 @@ func TestTruncationMarkersFitTheirBudget(t *testing.T) {
 	for index := 0; index < cap(messages); index++ {
 		messages = append(messages, store.Message{Role: store.RoleUser, Body: body})
 	}
-	thread := renderThread(messages)
+	thread := New(nil, nil).renderThread(messages)
 	if !strings.Contains(thread, strings.TrimSpace(threadTruncatedMark)) {
 		t.Fatalf("the thread never truncated, so the marker is untested:\n%s", thread)
 	}

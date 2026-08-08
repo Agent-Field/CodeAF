@@ -12,10 +12,10 @@ package store
 import (
 	"fmt"
 	"math"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
-	"unicode"
 )
 
 // CharterWatch preserves the user's cadence words beside their executable
@@ -83,6 +83,7 @@ func (s *Store) DraftCharter(id, sessionID string, sourceCommandSeq int64, spec 
 		watch = CadenceWatchSpec(spec.Watch.Kind, spec.Watch.Cadence, spec.Watch.Schedule, spec.Invariant, now)
 	}
 	watch.Cadence = strings.TrimSpace(spec.Watch.Cadence)
+	watch.CadenceGuessed = spec.Watch.Spec.CadenceGuessed
 
 	rails := CharterRails{
 		PerFiringBudgetUSD: spec.Rails.EstimatedCostUSD,
@@ -92,13 +93,21 @@ func (s *Store) DraftCharter(id, sessionID string, sourceCommandSeq int64, spec 
 		rails.PerFiringBudgetUSD = defaultPerFiringBudgetUSD
 	}
 	if strings.EqualFold(strings.TrimSpace(spec.Rails.Expiry), "once") {
-		first, err := initialCharterDue(watch, now)
-		if err != nil {
-			return Charter{}, fmt.Errorf("draft charter: %w", err)
+		// "Once" is only an expiry when the schedule itself happens once. A
+		// recurring rule that also said "once" means one firing a day, and
+		// reading it as an expiry is how "remind me every Sunday" used to die
+		// twenty-three hours after it was ratified — before its first Sunday.
+		if RecurringWatch(watch) {
+			rails.MaxFiringsPerDay = 1
+		} else {
+			first, err := initialCharterDue(watch, now)
+			if err != nil {
+				return Charter{}, fmt.Errorf("draft charter: %w", err)
+			}
+			expires := first.Add(reminderExpiryWindow)
+			rails.ExpiresAt = &expires
+			rails.MaxFiringsPerDay = 1
 		}
-		expires := first.Add(reminderExpiryWindow)
-		rails.ExpiresAt = &expires
-		rails.MaxFiringsPerDay = 1
 	}
 
 	action := CharterAction{Template: reminderTemplate(spec.Action), SayOnly: spec.SayOnly}
@@ -152,6 +161,17 @@ func watchSpecPopulated(watch WatchSpec) bool {
 	return watch.Cron != nil || watch.File != nil || watch.Graph != nil || watch.Poll != nil
 }
 
+// RecurringWatch is true for every watch that comes back around. Only a cron
+// at-schedule — one named instant — happens exactly once. Expiry is decided
+// from this and never from the words: "remind me every Sunday" and "remind me
+// tomorrow at 9" are the same sentence shape and opposite lifetimes.
+func RecurringWatch(watch WatchSpec) bool {
+	if watch.Kind == WatchCron && watch.Cron != nil {
+		return watch.Cron.Kind != CronAt
+	}
+	return true
+}
+
 func reminderTemplate(action string) string {
 	action = strings.TrimSpace(action)
 	for _, prefix := range []string{"Say this reminder: ", "Say: "} {
@@ -193,55 +213,113 @@ func CadenceWatchSpec(kind WatchKind, cadence, hint, condition string, now time.
 // CadenceSchedule maps cadence words onto one structured CronSchedule.
 // Unknown words remain a short every-minutes interval instead of being
 // treated as cron syntax.
+//
+// Every wall time it produces is local: "Sundays at 9" is nine in the morning
+// in the zone this process runs in, and NextCronDue searches real instants in
+// that zone. A named weekday wins over every other reading, because a person
+// who said a day meant the day — "every sunday morning" is a weekly rule at
+// nine, not a daily one.
 func CadenceSchedule(cadence string, now time.Time) CronSchedule {
+	schedule, _ := cadenceSchedule(cadence, now)
+	return schedule
+}
+
+// RecognizedCadence is whether these words say anything about time that this
+// engine can act on. It is how a caller tells a cadence apart from a default:
+// words that fall through to the two-minute fallback are not a rhythm anyone
+// chose, and a surface that presents them as one is lying quietly.
+func RecognizedCadence(cadence string) bool {
+	_, recognized := cadenceSchedule(cadence, time.Now())
+	return recognized
+}
+
+// WeekdayNamed is whether these words name a day of the week. Callers deciding
+// which watch family a sentence implies need it: a named day is a clock rule
+// however the rest of the sentence reads.
+func WeekdayNamed(text string) bool {
+	_, named := cadenceWeekday(strings.ToLower(text))
+	return named
+}
+
+func cadenceSchedule(cadence string, now time.Time) (CronSchedule, bool) {
 	lower := strings.ToLower(strings.TrimSpace(cadence))
+	hour, minute, stated := cadenceClock(lower)
+	if weekday, named := cadenceWeekday(lower); named {
+		if !stated {
+			hour, minute = dayPartClock(lower)
+		}
+		return CronSchedule{Kind: CronWeekly, Weekday: weekday, Hour: hour, Minute: minute}, true
+	}
 	switch {
 	case strings.Contains(lower, "weekday"):
-		return CronSchedule{Kind: CronWeekdays, Hour: cadenceHour(lower, 9), Minute: cadenceMinute(lower)}
-	case strings.Contains(lower, "morning"):
-		return CronSchedule{Kind: CronDaily, Hour: 9}
-	case strings.Contains(lower, "afternoon"):
-		return CronSchedule{Kind: CronDaily, Hour: 13}
-	case strings.Contains(lower, "evening"):
-		return CronSchedule{Kind: CronDaily, Hour: 18}
+		if !stated {
+			hour, minute = dayPartClock(lower)
+		}
+		return CronSchedule{Kind: CronWeekdays, Hour: hour, Minute: minute}, true
 	case strings.Contains(lower, "hourly") || strings.Contains(lower, "every hour"):
-		return CronSchedule{Kind: CronEveryHours, Interval: 1}
-	case strings.Contains(lower, "daily") || strings.Contains(lower, "every day"):
-		return CronSchedule{Kind: CronDaily, Hour: 9}
+		return CronSchedule{Kind: CronEveryHours, Interval: 1}, true
+	case strings.Contains(lower, "daily") || strings.Contains(lower, "every day") ||
+		strings.Contains(lower, "morning") || strings.Contains(lower, "afternoon") ||
+		strings.Contains(lower, "evening") || strings.Contains(lower, "night"):
+		if !stated {
+			hour, minute = dayPartClock(lower)
+		}
+		return CronSchedule{Kind: CronDaily, Hour: hour, Minute: minute}, true
 	case strings.Contains(lower, "weekly") || strings.Contains(lower, "every week"):
-		return CronSchedule{Kind: CronEveryHours, Interval: 7 * 24}
+		// A week with no day named still lands on a real day: today's, at a
+		// stated or default hour. The old reading — an interval of 168 hours —
+		// was measured from the ratification instant and drifted off any
+		// weekday the user could have had in mind.
+		if !stated {
+			hour, minute = dayPartClock(lower)
+		}
+		return CronSchedule{Kind: CronWeekly, Weekday: now.Weekday(), Hour: hour, Minute: minute}, true
 	case strings.Contains(lower, "tomorrow"):
 		day := now.AddDate(0, 0, 1)
-		at := time.Date(day.Year(), day.Month(), day.Day(),
-			cadenceHour(lower, 9), cadenceMinute(lower), 0, 0, now.Location())
-		return CronSchedule{Kind: CronAt, At: at}
+		if !stated {
+			hour, minute = dayPartClock(lower)
+		}
+		at := time.Date(day.Year(), day.Month(), day.Day(), hour, minute, 0, 0, now.Location())
+		return CronSchedule{Kind: CronAt, At: at}, true
+	case stated:
+		// A clock and nothing else — "at 6pm", "remind me at 8". It means the
+		// next time that hour comes round, which is today when today still has
+		// it and tomorrow when it does not.
+		at := time.Date(now.Year(), now.Month(), now.Day(), hour, minute, 0, 0, now.Location())
+		if !at.After(now) {
+			at = at.AddDate(0, 0, 1)
+		}
+		return CronSchedule{Kind: CronAt, At: at}, true
 	}
 	if count, unit, ok := cadenceCount(lower); ok {
 		if strings.HasPrefix(lower, "in ") {
-			return CronSchedule{Kind: CronAt, At: now.Add(time.Duration(count) * unit)}
+			return CronSchedule{Kind: CronAt, At: now.Add(time.Duration(count) * unit)}, true
 		}
 		switch unit {
 		case time.Minute:
 			if count < 60 {
-				return CronSchedule{Kind: CronEveryMinutes, Interval: count}
+				return CronSchedule{Kind: CronEveryMinutes, Interval: count}, true
 			}
 		case time.Hour:
 			if count < 24 {
-				return CronSchedule{Kind: CronEveryHours, Interval: count}
+				return CronSchedule{Kind: CronEveryHours, Interval: count}, true
 			}
 		case 24 * time.Hour:
-			return CronSchedule{Kind: CronEveryHours, Interval: count * 24}
+			return CronSchedule{Kind: CronEveryHours, Interval: count * 24}, true
 		case 7 * 24 * time.Hour:
-			return CronSchedule{Kind: CronEveryHours, Interval: count * 7 * 24}
+			return CronSchedule{Kind: CronEveryHours, Interval: count * 7 * 24}, true
 		}
 	}
-	return CronSchedule{Kind: CronEveryMinutes, Interval: 2}
+	return CronSchedule{Kind: CronEveryMinutes, Interval: 2}, false
 }
 
 // CadenceInterval is the polling-cadence reading of the same words, used by
 // file, graph, and poll watches whose wake-up is an interval, not a schedule.
 func CadenceInterval(cadence string) time.Duration {
 	lower := strings.ToLower(strings.TrimSpace(cadence))
+	if _, named := cadenceWeekday(lower); named {
+		return 7 * 24 * time.Hour
+	}
 	switch {
 	case strings.Contains(lower, "hourly") || strings.Contains(lower, "every hour"):
 		return time.Hour
@@ -249,8 +327,9 @@ func CadenceInterval(cadence string) time.Duration {
 		strings.Contains(lower, "morning") || strings.Contains(lower, "afternoon") ||
 		strings.Contains(lower, "evening"):
 		return 24 * time.Hour
-	case strings.Contains(lower, "weekly") || strings.Contains(lower, "every week") ||
-		strings.Contains(lower, "weekday"):
+	case strings.Contains(lower, "weekly") || strings.Contains(lower, "every week"):
+		return 7 * 24 * time.Hour
+	case strings.Contains(lower, "weekday"):
 		return 24 * time.Hour
 	}
 	if count, unit, ok := cadenceCount(lower); ok {
@@ -262,34 +341,80 @@ func CadenceInterval(cadence string) time.Duration {
 // RetimeWatch applies new cadence words to an existing typed watch: cron
 // watches get a freshly mapped schedule while file, graph, and poll watches
 // keep their structure and change only how often they are examined.
+//
+// A clock on its own — "push the reminder to 8pm" — moves the hour and keeps
+// the rhythm. Read as a fresh cadence it would say "once, at eight tonight",
+// which turns a standing rule into a one-off in answer to a sentence that only
+// asked for a later hour. The same words mean a single instant when nothing
+// exists yet, and that reading still lives in CadenceSchedule.
 func RetimeWatch(watch WatchSpec, cadence string, now time.Time) WatchSpec {
 	cadence = strings.TrimSpace(cadence)
 	retimed := watch
 	retimed.Cadence = cadence
+	// Retiming only ever happens because someone said when. Whatever was
+	// guessed before, this rhythm is theirs.
+	retimed.CadenceGuessed = false
+	hour, minute, clockOnly := clockOnlyCadence(cadence)
 	switch watch.Kind {
 	case WatchCron:
 		schedule := CadenceSchedule(cadence, now)
+		if clockOnly {
+			schedule = CronSchedule{Kind: CronDaily, Hour: hour, Minute: minute}
+			if watch.Cron != nil && wallClockCron(watch.Cron.Kind) {
+				schedule = *watch.Cron
+				schedule.Hour, schedule.Minute = hour, minute
+			}
+		}
 		retimed.Cron = &schedule
 	case WatchFile:
 		if watch.File != nil {
 			file := *watch.File
-			file.Cadence = CadenceInterval(cadence)
+			if !clockOnly {
+				file.Cadence = CadenceInterval(cadence)
+			}
 			retimed.File = &file
 		}
 	case WatchGraph:
 		if watch.Graph != nil {
 			graph := *watch.Graph
-			graph.Cadence = CadenceInterval(cadence)
+			if !clockOnly {
+				graph.Cadence = CadenceInterval(cadence)
+			}
 			retimed.Graph = &graph
 		}
 	case WatchPoll:
 		if watch.Poll != nil {
 			poll := *watch.Poll
-			poll.Cadence = CadenceInterval(cadence)
+			if !clockOnly {
+				poll.Cadence = CadenceInterval(cadence)
+			}
 			retimed.Poll = &poll
 		}
 	}
 	return retimed
+}
+
+func wallClockCron(kind CronKind) bool {
+	return kind == CronDaily || kind == CronWeekdays || kind == CronWeekly
+}
+
+// clockOnlyCadence is true for words that say a time of day and nothing else.
+func clockOnlyCadence(cadence string) (int, int, bool) {
+	lower := strings.ToLower(strings.TrimSpace(cadence))
+	hour, minute, stated := cadenceClock(lower)
+	if !stated {
+		return 0, 0, false
+	}
+	if _, named := cadenceWeekday(lower); named {
+		return 0, 0, false
+	}
+	for _, word := range []string{"every", "each", "hourly", "daily", "weekly",
+		"weekday", "tomorrow", "morning", "afternoon", "evening", "night", "in "} {
+		if strings.Contains(lower, word) {
+			return 0, 0, false
+		}
+	}
+	return hour, minute, true
 }
 
 func cadenceCount(cadence string) (int, time.Duration, bool) {
@@ -316,29 +441,107 @@ func cadenceCount(cadence string) (int, time.Duration, bool) {
 	return 0, 0, false
 }
 
-func cadenceHour(cadence string, fallback int) int {
-	fields := strings.FieldsFunc(cadence, func(r rune) bool { return !unicode.IsNumber(r) })
-	for _, field := range fields {
-		value, err := strconv.Atoi(field)
-		if err == nil && 0 <= value && value <= 23 {
-			return value
-		}
+var (
+	// weekdayNames is the closed set of days, longest spellings first so
+	// "sundays" and "sunday" both resolve to the same day.
+	weekdayNames = []struct {
+		name string
+		day  time.Weekday
+	}{
+		{"sunday", time.Sunday}, {"monday", time.Monday}, {"tuesday", time.Tuesday},
+		{"wednesday", time.Wednesday}, {"thursday", time.Thursday},
+		{"friday", time.Friday}, {"saturday", time.Saturday},
 	}
-	return fallback
-}
+	// clockAtPattern reads a time introduced by "at": "at 8", "at 9:30",
+	// "at 8 pm". The bare-number form needs the preposition, so "every 2 hours"
+	// is never mistaken for two o'clock.
+	clockAtPattern = regexp.MustCompile(`\bat\s+(\d{1,2})(?::(\d{2}))?\s*(am|pm)?\b`)
+	// clockMeridiemPattern reads a time that names its half of the day —
+	// "8pm", "7:15 am" — which needs no preposition to be unambiguous.
+	clockMeridiemPattern = regexp.MustCompile(`\b(\d{1,2})(?::(\d{2}))?\s*(am|pm)\b`)
+	// clockColonPattern reads a bare "19:30".
+	clockColonPattern = regexp.MustCompile(`\b(\d{1,2}):(\d{2})\b`)
+)
 
-func cadenceMinute(cadence string) int {
-	if colon := strings.IndexByte(cadence, ':'); colon >= 0 {
-		rest := cadence[colon+1:]
-		end := 0
-		for end < len(rest) && rest[end] >= '0' && rest[end] <= '9' {
+// cadenceWeekday finds a named day in cadence words. "every sunday",
+// "on sundays", "change it to tuesday" all resolve; a day named inside another
+// word does not.
+func cadenceWeekday(cadence string) (time.Weekday, bool) {
+	for _, candidate := range weekdayNames {
+		index := strings.Index(cadence, candidate.name)
+		if index < 0 {
+			continue
+		}
+		before := index == 0 || !isWordByte(cadence[index-1])
+		end := index + len(candidate.name)
+		if end < len(cadence) && cadence[end] == 's' {
 			end++
 		}
-		if minute, err := strconv.Atoi(rest[:end]); err == nil && minute >= 0 && minute <= 59 {
-			return minute
+		after := end >= len(cadence) || !isWordByte(cadence[end])
+		if before && after {
+			return candidate.day, true
 		}
 	}
-	return 0
+	return 0, false
+}
+
+func isWordByte(b byte) bool {
+	return b >= 'a' && b <= 'z' || b >= 'A' && b <= 'Z' || b >= '0' && b <= '9'
+}
+
+// cadenceClock reads a stated wall time out of cadence words, returning false
+// when the user never said one. It is the difference between "every sunday"
+// (no time stated — a day part or the default answers) and "sundays at 8pm"
+// (a time stated, which must survive into the schedule exactly).
+func cadenceClock(cadence string) (hour, minute int, stated bool) {
+	for _, pattern := range []*regexp.Regexp{clockMeridiemPattern, clockAtPattern, clockColonPattern} {
+		match := pattern.FindStringSubmatch(cadence)
+		if match == nil {
+			continue
+		}
+		value, err := strconv.Atoi(match[1])
+		if err != nil || value < 0 || value > 23 {
+			continue
+		}
+		if len(match) > 2 && match[2] != "" {
+			parsed, err := strconv.Atoi(match[2])
+			if err != nil || parsed < 0 || parsed > 59 {
+				continue
+			}
+			minute = parsed
+		}
+		meridiem := ""
+		if len(match) > 3 {
+			meridiem = match[3]
+		}
+		switch {
+		case meridiem == "pm" && value < 12:
+			value += 12
+		case meridiem == "am" && value == 12:
+			value = 0
+		}
+		if value > 23 {
+			continue
+		}
+		return value, minute, true
+	}
+	return 0, 0, false
+}
+
+// dayPartClock is the hour a part of the day means when no clock was stated.
+// Nine in the morning is the default for everything else, which is what a
+// standing rule with no time in it has always meant here.
+func dayPartClock(cadence string) (hour, minute int) {
+	switch {
+	case strings.Contains(cadence, "afternoon"):
+		return 13, 0
+	case strings.Contains(cadence, "evening"):
+		return 18, 0
+	case strings.Contains(cadence, "night"):
+		return 21, 0
+	default:
+		return 9, 0
+	}
 }
 
 // fileGlobHint accepts only hints that plausibly name filesystem paths; a

@@ -2,8 +2,10 @@ package head
 
 import (
 	"context"
+	"sort"
 	"strconv"
 	"strings"
+	"time"
 	"unicode"
 
 	"github.com/Agent-Field/aforge-v2/internal/store"
@@ -21,18 +23,43 @@ const (
 )
 
 // answerAgentQuestion routes replies to the durable reverse-direction queue.
-// An explicit QuestionSeq wins; otherwise the store applies the same
-// no-intervening-user-turn recency rule as ordinary conversational askbacks.
+// An explicit QuestionSeq wins — every surface that knows which question is on
+// screen carries it, and a reply that names its question can never hit another
+// one. Without it the store applies the same no-intervening-user-turn recency
+// rule as ordinary conversational askbacks, and aimAgentQuestion stands between
+// that rule and a silent wrong answer when more than one question is open.
 func (h *Head) answerAgentQuestion(ctx context.Context, user store.Message) (bool, error) {
 	question, found, err := h.store.QuestionForAnswer(user.SessionID, user.Seq, user.QuestionSeq)
-	if err != nil || !found {
+	if err != nil {
 		return false, err
 	}
+	if !found {
+		// Nothing is answerable, which is exactly the state the ambiguity ask
+		// leaves behind: the reply it was asking about is itself an intervening
+		// user turn for every question it named. So this is where the answer to
+		// that ask is read, and nowhere else pays for the lookup.
+		return h.answerQuestionChoice(ctx, user)
+	}
+	if user.QuestionSeq == 0 {
+		aimed, asked, aimErr := h.aimAgentQuestion(user, question)
+		if asked || aimErr != nil {
+			return asked, aimErr
+		}
+		question = aimed
+	}
+	return h.resolveAgentQuestion(ctx, user, question, user.Body)
+}
+
+// resolveAgentQuestion settles one identified question with one body of words.
+// The words are a parameter rather than user.Body because the turn that names
+// which question was meant is not the turn that answered it.
+func (h *Head) resolveAgentQuestion(ctx context.Context, user store.Message,
+	question store.AgentQuestion, body string) (bool, error) {
 	if question.Status == store.QuestionAnswered || question.Status == store.QuestionExpired {
 		return true, nil
 	}
-	answer := strings.TrimSpace(user.Body)
-	if option, selected := selectQuestionOption(user.Body, question.Options); selected {
+	answer := strings.TrimSpace(body)
+	if option, selected := selectQuestionOption(body, question.Options); selected {
 		answer = strings.TrimSpace(option.Label)
 		if answer == "" {
 			answer = strings.TrimSpace(option.Value)
@@ -55,7 +82,7 @@ func (h *Head) answerAgentQuestion(ctx context.Context, user store.Message) (boo
 		return false, nil
 	}
 	if charterID, ok := charterQuestionID(question.Options); ok {
-		if cadence := extractCadence(user.Body); cadence != "" {
+		if cadence := extractCadence(body); cadence != "" {
 			if err := h.store.ResolveQuestion(question.Seq, store.QuestionAnswered, cadence, user.Seq); err != nil {
 				return true, err
 			}
@@ -126,6 +153,11 @@ func (h *Head) applyAgentQuestionOption(ctx context.Context, user store.Message,
 					strings.Join(parts[3:], ":"))
 			}
 			return h.askForCadence(user.SessionID, id)
+		case "wording":
+			if len(parts) > 3 {
+				return h.requestCharterCommand(user, store.CommandCharterWording, id,
+					strings.Join(parts[3:], ":"))
+			}
 		}
 	}
 	answer := compilerAnswerFromOption(option)
@@ -304,6 +336,11 @@ func (h *Head) applyQuestionOption(ctx context.Context, user store.Message, ques
 					strings.Join(parts[3:], ":"))
 			}
 			return h.askForCadence(user.SessionID, id)
+		case "wording":
+			if len(parts) > 3 {
+				return h.requestCharterCommand(user, store.CommandCharterWording, id,
+					strings.Join(parts[3:], ":"))
+			}
 		case "fire":
 			if len(parts) < 4 {
 				return h.postAgent(user.SessionID, "That firing approval is stale.", 0)
@@ -360,10 +397,10 @@ func (h *Head) continueCompilerQuestion(user store.Message, question store.Messa
 }
 
 func (h *Head) askForCadence(sessionID, charterID string) error {
-	return h.postQuestion(sessionID, "What cadence should I use?", 0, []store.QuestionOption{
-		{Label: "hourly", Value: "charter:cadence:" + charterID + ":hourly"},
-		{Label: "daily", Value: "charter:cadence:" + charterID + ":daily"},
-		{Label: "weekly", Value: "charter:cadence:" + charterID + ":weekly"},
+	return h.postQuestion(sessionID, "When should I do it?", 0, []store.QuestionOption{
+		{Label: "every hour", Value: "charter:cadence:" + charterID + ":hourly"},
+		{Label: "every day", Value: "charter:cadence:" + charterID + ":daily"},
+		{Label: "every week", Value: "charter:cadence:" + charterID + ":weekly"},
 	})
 }
 
@@ -459,18 +496,20 @@ func charterFiringCommand(option store.QuestionOption) (store.CommandKind, strin
 }
 
 func (h *Head) acknowledgeCharterCommand(user store.Message, command store.Command) error {
-	reply := "Updating that standing charter."
+	reply := "Updating that standing rule."
 	switch command.Kind {
 	case store.CommandCharterRatify:
 		reply = "Standing it up."
 	case store.CommandCharterPause:
-		reply = "Pausing that charter."
+		reply = "Pausing that rule."
 	case store.CommandCharterRetire:
-		reply = "Retiring that charter."
+		reply = "Retiring that rule."
 	case store.CommandCharterOnce:
 		reply = "Keeping it one-time."
 	case store.CommandCharterCadence:
-		reply = "Changing that cadence."
+		reply = "Changing when that runs."
+	case store.CommandCharterWording:
+		reply = "Changing what it says."
 	case store.CommandCharterFire:
 		reply = "Approved for this time."
 	case store.CommandCharterDecline:
@@ -478,7 +517,7 @@ func (h *Head) acknowledgeCharterCommand(user store.Message, command store.Comma
 	case store.CommandCharterAlways:
 		reply = "I’ll take this one and handle future firings on my own."
 	case store.CommandCharterNever:
-		reply = "I won’t do that, and I’m pausing the charter."
+		reply = "I won’t do that, and I’m pausing that rule."
 	case store.CommandCharterProbation:
 		reply = "I’ll ask before firing again."
 	}
@@ -497,66 +536,174 @@ func (h *Head) postQuestion(sessionID, body string, commandSeq int64, options []
 	return err
 }
 
+// charterIntent is one recognized instruction about a standing rule: which
+// durable transition it asks for, how the user pointed at the rule, and the new
+// words — a rhythm or a message — the transition carries.
+type charterIntent struct {
+	Kind      store.CommandKind
+	Reference string
+	Cadence   string
+	Wording   string
+}
+
+// charterAskbackCap bounds the rules one askback offers. A question with more
+// rows than this is a list to be searched rather than a choice to be made, and
+// the freshest handful is what a sentence with no description can plausibly
+// mean.
+const charterAskbackCap = 4
+
+// charterReferenceWindow is how far back a rule stays a plausible referent for
+// an utterance that describes nothing — "change it to Tuesday". A rule nobody
+// has touched or run in a month is not what "it" means.
+const charterReferenceWindow = 30 * 24 * time.Hour
+
 func (h *Head) manageCharter(user store.Message) (bool, error) {
-	kind, reference, cadence, managing := charterManagement(user.Body)
+	intent, managing := charterManagement(user.Body)
 	if !managing {
 		return false, nil
 	}
-	matches, err := h.store.SearchActiveCharters(reference)
+	matches, err := h.charterCandidates(intent.Reference)
 	if err != nil {
 		return true, err
 	}
 	if len(matches) == 0 {
-		// "pause" is shared vocabulary. If it names no standing charter, let
-		// ordinary node surgery try the live graph before claiming a miss.
-		if kind == store.CommandCharterPause {
+		// These verbs are shared vocabulary. If they name no standing rule,
+		// let ordinary node surgery try the live graph before claiming a miss:
+		// "change it to tuesday" is about a rule when a rule exists and about a
+		// job when one does not.
+		switch intent.Kind {
+		case store.CommandCharterPause, store.CommandCharterCadence, store.CommandCharterWording:
 			return false, nil
 		}
-		return true, h.postAgent(user.SessionID, "I couldn't match that to an active charter.", 0)
+		return true, h.postAgent(user.SessionID, "I couldn't find a standing rule like that.", 0)
 	}
 	if len(matches) > 1 {
 		options := make([]store.QuestionOption, 0, len(matches))
 		for _, charter := range matches {
-			value := "charter:" + charterOptionAction(kind) + ":" + charter.ID
-			if kind == store.CommandCharterCadence {
-				value += ":" + cadence
-			}
 			options = append(options, store.QuestionOption{
-				Label: firstLine(charter.Invariant), Value: value,
+				Label: firstLine(charter.Invariant), Value: charterOptionValue(intent, charter.ID),
 			})
 		}
-		return true, h.postQuestion(user.SessionID, "Which standing charter do you mean?", 0, options)
+		return true, h.postQuestion(user.SessionID, "Which rule do you mean?", 0, options)
 	}
-	return true, h.requestCharterCommand(user, kind, matches[0].ID, managementInstruction(kind, cadence))
+	return true, h.requestCharterCommand(user, intent.Kind, matches[0].ID, managementInstruction(intent))
 }
 
-func charterManagement(message string) (store.CommandKind, string, string, bool) {
-	lower := strings.ToLower(strings.TrimSpace(message))
-	kind := store.CommandKind("")
-	cadence := ""
-	switch {
-	case strings.Contains(lower, "back to asking"):
-		kind = store.CommandCharterProbation
-	case strings.Contains(lower, "stop watching") || strings.Contains(lower, "stop monitoring") ||
-		strings.HasPrefix(lower, "retire "):
-		kind = store.CommandCharterRetire
-	case strings.HasPrefix(lower, "pause ") || strings.Contains(lower, " pause the "):
-		kind = store.CommandCharterPause
-	default:
-		cadence = extractCadence(message)
-		if cadence != "" && (strings.HasPrefix(lower, "make ") || strings.HasPrefix(lower, "change ") ||
-			strings.HasPrefix(lower, "set ")) {
-			kind = store.CommandCharterCadence
+// charterCandidates resolves what the user pointed at. A description is matched
+// against the rules themselves; a sentence that describes nothing — "change it
+// to Tuesday", the one the audit found unanswerable — falls back to the rules
+// recently enough alive to be what "it" means, newest first.
+//
+// The one thing it must not do is guess between equals. Two plausible rules is
+// one plain question, which is the same answer the design filter gives
+// everywhere else ambiguity shows up.
+func (h *Head) charterCandidates(reference string) ([]store.Charter, error) {
+	matches, err := h.store.SearchActiveCharters(reference)
+	if err != nil {
+		return nil, err
+	}
+	if strings.TrimSpace(reference) == "" && len(matches) > 1 {
+		matches = freshCharters(matches, time.Now())
+	}
+	if len(matches) > charterAskbackCap {
+		matches = matches[:charterAskbackCap]
+	}
+	return matches, nil
+}
+
+// freshCharters keeps the rules that have been created, woken, or checked
+// inside the reference window, newest first. If nothing is fresh the whole set
+// comes back rather than nothing: an old rule is still a rule, and the question
+// that follows is the same one.
+func freshCharters(charters []store.Charter, now time.Time) []store.Charter {
+	fresh := make([]store.Charter, 0, len(charters))
+	for _, charter := range charters {
+		if now.Sub(charterFreshness(charter)) <= charterReferenceWindow {
+			fresh = append(fresh, charter)
 		}
 	}
-	if kind == "" {
-		return "", "", "", false
+	if len(fresh) == 0 {
+		return charters
 	}
-	if kind == store.CommandCharterCadence && cadence == "" {
-		return "", "", "", false
+	sort.SliceStable(fresh, func(i, j int) bool {
+		return charterFreshness(fresh[i]).After(charterFreshness(fresh[j]))
+	})
+	return fresh
+}
+
+func charterFreshness(charter store.Charter) time.Time {
+	latest := charter.CreatedAt
+	for _, at := range []time.Time{charter.LastWake, charter.LastChecked} {
+		if at.After(latest) {
+			latest = at
+		}
 	}
-	reference := charterReference(lower, cadence)
-	return kind, reference, cadence, true
+	return latest
+}
+
+func charterOptionValue(intent charterIntent, id string) string {
+	value := "charter:" + charterOptionAction(intent.Kind) + ":" + id
+	switch intent.Kind {
+	case store.CommandCharterCadence:
+		return value + ":" + intent.Cadence
+	case store.CommandCharterWording:
+		return value + ":" + intent.Wording
+	}
+	return value
+}
+
+// charterWordingCue is how a person says "keep the rule, change what it says".
+// The words after it are the new message, verbatim.
+const charterWordingCue = " to say "
+
+// charterVerbs open an edit to an existing rule. They are the verbs people
+// actually reach for when they move a reminder — "push the reminder to 8pm",
+// "move it to tuesday" — and before they were here those sentences were claimed
+// by node surgery, resolved to nothing, and answered with a list of jobs.
+var charterVerbs = []string{"make ", "change ", "set ", "move ", "push ",
+	"switch ", "shift ", "reword ", "rephrase "}
+
+func charterManagement(message string) (charterIntent, bool) {
+	trimmed := strings.TrimSpace(message)
+	lower := strings.ToLower(trimmed)
+	intent := charterIntent{}
+	switch {
+	case strings.Contains(lower, "back to asking"):
+		intent.Kind = store.CommandCharterProbation
+	case strings.Contains(lower, "stop watching") || strings.Contains(lower, "stop monitoring") ||
+		strings.HasPrefix(lower, "retire "):
+		intent.Kind = store.CommandCharterRetire
+	case strings.HasPrefix(lower, "pause ") || strings.Contains(lower, " pause the "):
+		intent.Kind = store.CommandCharterPause
+	case charterVerbPresent(lower):
+		// Wording is read before rhythm: "change the sunday reminder to say
+		// water the plants" names a day and is not about the day.
+		if cue := strings.Index(lower, charterWordingCue); cue >= 0 {
+			intent.Wording = strings.TrimSpace(trimmed[cue+len(charterWordingCue):])
+			if intent.Wording != "" {
+				intent.Kind = store.CommandCharterWording
+				intent.Reference = charterReference(lower[:cue], "")
+				return intent, true
+			}
+		}
+		if intent.Cadence = extractCadence(message); intent.Cadence != "" {
+			intent.Kind = store.CommandCharterCadence
+		}
+	}
+	if intent.Kind == "" {
+		return charterIntent{}, false
+	}
+	intent.Reference = charterReference(lower, intent.Cadence)
+	return intent, true
+}
+
+func charterVerbPresent(lower string) bool {
+	for _, verb := range charterVerbs {
+		if strings.HasPrefix(lower, verb) {
+			return true
+		}
+	}
+	return false
 }
 
 func charterReference(message, cadence string) string {
@@ -567,6 +714,8 @@ func charterReference(message, cadence string) string {
 		"please": true, "stop": true, "watching": true, "watch": true,
 		"monitoring": true, "monitor": true, "retire": true, "pause": true,
 		"make": true, "change": true, "set": true, "cadence": true,
+		"move": true, "push": true, "switch": true, "shift": true,
+		"reword": true, "rephrase": true, "my": true, "that": true,
 		"back": true, "asking": true, "the": true, "it": true, "to": true,
 	}
 	var kept []string
@@ -588,14 +737,19 @@ func charterOptionAction(kind store.CommandKind) string {
 		return "retire"
 	case store.CommandCharterProbation:
 		return "probation"
+	case store.CommandCharterWording:
+		return "wording"
 	default:
 		return "cadence"
 	}
 }
 
-func managementInstruction(kind store.CommandKind, cadence string) string {
-	if kind == store.CommandCharterCadence {
-		return cadence
+func managementInstruction(intent charterIntent) string {
+	switch intent.Kind {
+	case store.CommandCharterCadence:
+		return intent.Cadence
+	case store.CommandCharterWording:
+		return intent.Wording
 	}
-	return string(kind)
+	return string(intent.Kind)
 }

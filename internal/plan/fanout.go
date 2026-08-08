@@ -86,7 +86,9 @@ whatever this particular work actually involves. Name them concretely: "each of
 the four venue websites", "the parser and its tests", not "research" or "the
 code". List every one, however many that is. Do not round the list down to look
 tidy: it is used to judge how big the part really is, and an honest long list is
-more useful than a short one.`
+more useful than a short one.
+
+` + proportionRule
 
 var fanoutSchema = json.RawMessage(`{
   "type": "object",

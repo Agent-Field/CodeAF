@@ -70,11 +70,11 @@ func (c *countingBackend) Messages(sessionID string, afterSeq int64, limit int) 
 	return c.fakeBackend.Messages(sessionID, afterSeq, limit)
 }
 
-func (c *countingBackend) Usage() (store.TotalUsage, error) {
+func (c *countingBackend) SpendToday() (float64, error) {
 	c.countMu.Lock()
 	c.usages++
 	c.countMu.Unlock()
-	return c.fakeBackend.Usage()
+	return c.fakeBackend.SpendToday()
 }
 
 func (c *countingBackend) TopLevelJobUsage() (map[string]store.JobUsage, error) {
@@ -89,6 +89,13 @@ func (c *countingBackend) PendingQuestions(sessionID string, limit int) ([]store
 	c.questions++
 	c.countMu.Unlock()
 	return c.fakeBackend.PendingQuestions(sessionID, limit)
+}
+
+func (c *countingBackend) OpenQuestions(sessionID string, limit int) ([]store.AgentQuestion, error) {
+	c.countMu.Lock()
+	c.questions++
+	c.countMu.Unlock()
+	return c.fakeBackend.OpenQuestions(sessionID, limit)
 }
 
 // quietModel is a primed lens on a counting backend with a controllable clock:

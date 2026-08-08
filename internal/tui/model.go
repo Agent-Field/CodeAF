@@ -20,6 +20,14 @@ import (
 	"github.com/charmbracelet/lipgloss"
 )
 
+// composerPlaceholder is the first sentence the product says to anyone, and it
+// is the highest-traffic string in the whole surface. It used to read "Ask the
+// graph…", which taught a word we invented before the user had typed anything
+// — the design filter's own failure case, at the one place it costs the most.
+// The resting state names no machinery at all: there is one place to speak and
+// nothing to learn before speaking in it.
+const composerPlaceholder = "Ask for anything…"
+
 const (
 	pollInterval      = 400 * time.Millisecond
 	animationInterval = 120 * time.Millisecond
@@ -77,7 +85,17 @@ type Backend interface {
 	NodeMessages(nodeID string, afterSeq int64, limit int) ([]store.Message, error)
 	PendingCommands(limit int) ([]store.Command, error)
 	CommandBySeq(seq int64) (store.Command, bool, error)
-	Usage() (store.TotalUsage, error)
+	// SpendToday is the money the header shows, and it replaced the graph-wide
+	// SUM(cost) that used to sit there. That total was labelled "this session"
+	// in the manual and in this package's own comments while being every dollar
+	// the journal had ever seen — a number that only grows, that no other
+	// surface quotes, and that nothing can be done about. Today is the window
+	// the rest of the product already speaks in: the daily limit, the pause
+	// question, the /budget line and the self figure beside it in the header are
+	// all today, and the store answers it off an indexed range rather than a
+	// full-table scan. Session spend is not offered because it cannot be told
+	// the truth: a usage row carries a node and a time, never a session.
+	SpendToday() (float64, error)
 	TopLevelJobUsage() (map[string]store.JobUsage, error)
 }
 
@@ -88,6 +106,14 @@ type Backend interface {
 // an optional capability: a backend without it is simply always read in full.
 type journalReader interface {
 	LatestEventSeq() (int64, error)
+}
+
+// openQuestionReader lists every question still waiting on the user, surfaced
+// or not. It stays an optional capability beside the older unsurfaced-only
+// read so a lightweight embedder keeps working, but the real store answers it
+// and the dock is built on it.
+type openQuestionReader interface {
+	OpenQuestions(sessionID string, limit int) ([]store.AgentQuestion, error)
 }
 
 // selfActivityReader is the resident-life slice of the store. It stays an
@@ -136,7 +162,7 @@ type pollResultMsg struct {
 	snapshot          store.Snapshot
 	cardSnapshot      store.Snapshot
 	pending           []store.Command
-	usage             store.TotalUsage
+	spendToday        float64
 	jobUsage          map[string]store.JobUsage
 	commands          []store.Command
 	agentQuestions    []store.AgentQuestion
@@ -147,7 +173,7 @@ type pollResultMsg struct {
 	snapshotErr       error
 	cardSnapshotErr   error
 	pendingErr        error
-	usageErr          error
+	spendTodayErr     error
 	jobUsageErr       error
 	commandsErr       error
 	agentQuestionsErr error
@@ -220,7 +246,7 @@ type Model struct {
 	snapshot             store.Snapshot
 	cardSnapshot         store.Snapshot
 	pending              []store.Command
-	usage                store.TotalUsage
+	spendToday           float64
 	jobUsage             map[string]store.JobUsage
 	commands             map[int64]store.Command
 	agentQuestions       []store.AgentQuestion
@@ -614,7 +640,7 @@ func NewWithVoice(backend Backend, sessionID string, commander Commander, record
 func newModel(backend Backend, sessionID string, commander Commander) *Model {
 	input := textinput.New()
 	input.Prompt = "› "
-	input.Placeholder = "Ask the graph…"
+	input.Placeholder = composerPlaceholder
 	input.CharLimit = store.MaxMessageBytes
 	input.PromptStyle = promptStyle
 	input.TextStyle = inputTextStyle
@@ -1463,11 +1489,18 @@ func (m *Model) poll() tea.Cmd {
 		snapshot, snapshotErr := backend.ActiveSnapshot()
 		cardSnapshot, cardSnapshotErr := backend.Snapshot()
 		pending, pendingErr := backend.PendingCommands(pollLimit)
-		usage, usageErr := backend.Usage()
+		spendToday, spendTodayErr := backend.SpendToday()
 		jobUsage, jobUsageErr := backend.TopLevelJobUsage()
 		var agentQuestions []store.AgentQuestion
 		var agentQuestionsErr error
-		if reader, ok := backend.(interface {
+		// "Waiting on you" is a fact about the question, not about whether it has
+		// been shown. A blocking question is surfaced the moment it is asked, so a
+		// dock fed by the unsurfaced set went blind to exactly the questions a
+		// running job is stuck behind — they appeared in the thread and vanished
+		// from the one surface that carries their identity.
+		if reader, ok := backend.(openQuestionReader); ok {
+			agentQuestions, agentQuestionsErr = reader.OpenQuestions(sessionID, pollLimit)
+		} else if reader, ok := backend.(interface {
 			PendingQuestions(string, int) ([]store.AgentQuestion, error)
 		}); ok {
 			agentQuestions, agentQuestionsErr = reader.PendingQuestions(sessionID, pollLimit)
@@ -1495,13 +1528,13 @@ func (m *Model) poll() tea.Cmd {
 			snapshot:          snapshot,
 			cardSnapshot:      cardSnapshot,
 			pending:           pending,
-			usage:             usage,
+			spendToday:        spendToday,
 			jobUsage:          jobUsage,
 			messagesErr:       messagesErr,
 			snapshotErr:       snapshotErr,
 			cardSnapshotErr:   cardSnapshotErr,
 			pendingErr:        pendingErr,
-			usageErr:          usageErr,
+			spendTodayErr:     spendTodayErr,
 			jobUsageErr:       jobUsageErr,
 			agentQuestions:    agentQuestions,
 			agentQuestionsErr: agentQuestionsErr,
@@ -1745,8 +1778,8 @@ func (m *Model) applyPoll(result pollResultMsg) {
 	if result.pendingErr == nil {
 		m.pending = result.pending
 	}
-	if result.usageErr == nil {
-		m.usage = result.usage
+	if result.spendTodayErr == nil {
+		m.spendToday = result.spendToday
 	}
 	if result.selfSpendErr == nil {
 		m.selfSpendToday = result.selfSpendToday
@@ -1781,7 +1814,7 @@ func (m *Model) applyPoll(result pollResultMsg) {
 	if result.agentQuestionsErr == nil {
 		m.agentQuestions = m.agentQuestions[:0]
 		for _, question := range result.agentQuestions {
-			if question.Urgency != store.QuestionBlocking && question.Status == store.QuestionPending {
+			if question.Status == store.QuestionPending || question.Status == store.QuestionAsked {
 				m.agentQuestions = append(m.agentQuestions, question)
 			}
 		}
@@ -1911,8 +1944,8 @@ func (m *Model) applyPoll(result pollResultMsg) {
 	if result.pendingErr != nil {
 		problems = append(problems, fmt.Errorf("read pending commands: %w", result.pendingErr))
 	}
-	if result.usageErr != nil {
-		problems = append(problems, fmt.Errorf("read usage: %w", result.usageErr))
+	if result.spendTodayErr != nil {
+		problems = append(problems, fmt.Errorf("read today's spend: %w", result.spendTodayErr))
 	}
 	if result.jobUsageErr != nil {
 		problems = append(problems, fmt.Errorf("read job usage: %w", result.jobUsageErr))

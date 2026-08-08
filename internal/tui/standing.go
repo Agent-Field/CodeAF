@@ -171,7 +171,10 @@ func (r storeStandingReader) Charters(
 			ID:        record.ID,
 			Name:      charterShortName(record.Invariant, record.ID),
 			Invariant: strings.TrimSpace(record.Invariant),
-			Watch:     record.Watch.String(),
+			// Spoken, not String: this line is read by a person, and it is also
+			// what the cadence editor is seeded with — so it has to be words
+			// the cadence reader can take back.
+			Watch:     record.Watch.Spoken(),
 			Quote:     fmt.Sprintf("~$%.2f", rails.PerFiringBudgetUSD),
 			Cap:       fmt.Sprintf("≤%d/day", rails.MaxFiringsPerDay),
 			Expiry:    "never",

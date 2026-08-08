@@ -70,9 +70,30 @@ func fillsTopic(_ context.Context, instruction string, _ *craft.Workflow) (map[s
 // whether the planner was reached.
 func craftSplice(t *testing.T, graph *store.Store, mind *CraftMind, sessionID, instruction string) (int64, bool) {
 	t.Helper()
-	command, err := graph.RequestCommand(store.Command{
+	return craftSpliceCommand(t, graph, mind, store.Command{
 		SessionID: sessionID, Kind: store.CommandSplice, Instruction: instruction,
 	})
+}
+
+// craftSpliceFresh is the same path with the head's own reading of the person's
+// intent riding the work order, which is what "don't use the template this
+// time" becomes by the time the craft engine sees it.
+func craftSpliceFresh(t *testing.T, graph *store.Store, mind *CraftMind, sessionID, instruction string) (int64, bool) {
+	t.Helper()
+	return craftSpliceCommand(t, graph, mind, store.Command{
+		SessionID: sessionID, Kind: store.CommandSplice, Instruction: instruction, Fresh: true,
+	})
+}
+
+func craftSplice2(t *testing.T, splice func(*testing.T, *store.Store, *CraftMind, string, string) (int64, bool),
+	graph *store.Store, mind *CraftMind, sessionID, instruction string) (int64, bool) {
+	t.Helper()
+	return splice(t, graph, mind, sessionID, instruction)
+}
+
+func craftSpliceCommand(t *testing.T, graph *store.Store, mind *CraftMind, request store.Command) (int64, bool) {
+	t.Helper()
+	command, err := graph.RequestCommand(request)
 	if err != nil {
 		t.Fatalf("request command: %v", err)
 	}
@@ -120,7 +141,7 @@ func TestDecisiveMatchCompilesTheCraftInsteadOfPlanning(t *testing.T) {
 	}
 
 	receipt := commandReceipt(t, graph, "craft-session", seq)
-	if !strings.Contains(receipt.Body, "using your presentation craft v abc1234 — 4 steps, ~$1.50 cap") {
+	if !strings.Contains(receipt.Body, "using your presentation way of doing this (v abc1234) — 4 steps, ~$1.50 cap") {
 		t.Fatalf("receipt = %q", receipt.Body)
 	}
 }
@@ -144,27 +165,52 @@ func TestWeakMatchPlansFreeform(t *testing.T) {
 	}
 }
 
-// "from scratch" is the one guard. It skips matching entirely rather than
-// re-ranking it, so the user never has to argue with a score.
-func TestFromScratchSkipsCraftMatching(t *testing.T) {
-	graph := openStore(t)
-	shelf := matchedPresentation(50.0)
-	mind := NewCraftMind(shelf, "/home/craft", fillsTopic, nil)
+// The opt-out is a reading of intent now, not a phrase list. The head decides
+// what "don't use the template this time" meant and carries the answer on the
+// work order; the frozen spellings still work, and either way the person hears
+// one plain line saying their sentence changed what happened. Silence was the
+// old answer, and silence after asking for something else reads as being
+// ignored.
+func TestAskingForItFromScratchSetsTheLearnedWayAsideAndSaysSo(t *testing.T) {
+	for name, splice := range map[string]func(*testing.T, *store.Store, *CraftMind, string, string) (int64, bool){
+		"the head read the intent": craftSpliceFresh,
+		"the frozen spelling":      craftSplice,
+	} {
+		t.Run(name, func(t *testing.T) {
+			graph := openStore(t)
+			shelf := matchedPresentation(50.0)
+			mind := NewCraftMind(shelf, "/home/craft", fillsTopic, nil)
 
-	seq, planned := craftSplice(t, graph, mind, "fresh-session",
-		"make me a presentation about the Q3 numbers, from scratch this time")
-	if !planned {
-		t.Fatal("the planner did not run after the user asked for a fresh plan")
+			instruction := "make me a presentation about the Q3 numbers"
+			if name == "the frozen spelling" {
+				instruction += ", from scratch this time"
+			}
+			seq, planned := craftSplice2(t, splice, graph, mind, "fresh-session", instruction)
+			if !planned {
+				t.Fatal("the planner did not run after the user asked for a fresh plan")
+			}
+			if _, ok, _ := graph.Node(fmt.Sprintf("craft-%d", seq)); ok {
+				t.Fatal("a learned way of working ran despite the opt-out")
+			}
+			receipt := commandReceipt(t, graph, "fresh-session", seq)
+			if !strings.Contains(receipt.Body, "Working this one out from scratch, as you asked") {
+				t.Fatalf("the opt-out was silent: %q", receipt.Body)
+			}
+			if strings.Contains(strings.ToLower(receipt.Body), "craft") {
+				t.Fatalf("the receipt used the word we invented: %q", receipt.Body)
+			}
+		})
 	}
-	if len(shelf.requests) != 0 {
-		t.Fatalf("the shelf was consulted anyway: %+v", shelf.requests)
-	}
-	if _, ok, _ := graph.Node(fmt.Sprintf("craft-%d", seq)); ok {
-		t.Fatal("a craft ran despite the fresh-plan guard")
-	}
-	// The guard is a word test, not a substring test.
+	// The frozen spelling is still a word test, not a substring test.
 	if craftDeclined("refresh the cached numbers and rebuild the deck") {
 		t.Fatal("refresh was read as fresh")
+	}
+	// Nothing was set aside, so nothing is said about setting anything aside.
+	graph := openStore(t)
+	mind := NewCraftMind(matchedPresentation(CraftDecisiveScore-0.2), "/home/craft", fillsTopic, nil)
+	seq, _ := craftSpliceFresh(t, graph, mind, "quiet-session", "summarize this file, from scratch")
+	if receipt := commandReceipt(t, graph, "quiet-session", seq); strings.Contains(receipt.Body, "from scratch, as you asked") {
+		t.Fatalf("a miss announced an opt-out from nothing: %q", receipt.Body)
 	}
 }
 
@@ -198,33 +244,87 @@ func TestMissingParamsFallsThroughSilently(t *testing.T) {
 	}
 }
 
-// A forged craft has never run. Below the overwhelming line it waits to be
-// named; one clean landing is all it takes to become ordinary know-how.
-func TestDraftCraftWaitsForEvidenceOrAnOverwhelmingMatch(t *testing.T) {
+// The draft trap: a workflow that never fires never becomes proven, and an
+// unproven one needed an overwhelming match to fire. Measured against the real
+// scorer, a realistic repeat of the phrasing behind a stored workflow scores
+// 3.98 against a 4.0 line — so whether a draft ever escaped was decided by the
+// name the distiller happened to pick against the words the user happens to
+// habitually use, and a draft that fell short could NEVER earn the run that
+// would prove it.
+//
+// The fix is evidence in three states rather than two. Untried means no record
+// at all, and an untried draft gets exactly one provisional run at the decisive
+// bar, bounded by the workflow's own clamped ceilings and announced as a first
+// time. After that the evidence decides: a clean landing makes it ordinary
+// know-how, and a failure puts it behind the overwhelming bar where it stays
+// until it is asked for by name.
+func TestAnUntriedDraftGetsItsFirstRunAndThenTheEvidenceDecides(t *testing.T) {
+	// 3.98 against a 4.0 bar is the measured case. It runs now.
 	graph := openStore(t)
-	shelf := matchedPresentation(CraftOverwhelmingScore - 0.5)
+	shelf := matchedPresentation(CraftOverwhelmingScore - 0.02)
 	mind := NewCraftMind(shelf, "/home/craft", fillsTopic, nil)
 
 	seq, planned := craftSplice(t, graph, mind, "draft-session", "make me a presentation about Q3")
-	if !planned {
-		t.Fatal("an untried draft was used on an ordinary match")
-	}
-	if _, ok, _ := graph.Node(fmt.Sprintf("craft-%d", seq)); ok {
-		t.Fatal("an untried draft ran unasked")
-	}
-
-	// One settled run is the evidence the draft was missing.
-	New(graph, nil, nil).recordCraftOutcome(store.Node{
-		ID: "earlier", Parent: store.RootID,
-		Provenance: store.Provenance{Craft: "presentation@abc1234def"},
-	}, true)
-
-	seq, planned = craftSplice(t, graph, mind, "draft-session", "make me a presentation about Q3")
 	if planned {
-		t.Fatal("a proven craft still went to the planner")
+		t.Fatal("an untried draft two hundredths short of the old bar still never ran")
 	}
 	if _, ok, err := graph.Node(fmt.Sprintf("craft-%d", seq)); err != nil || !ok {
-		t.Fatalf("proven craft did not run: ok=%t err=%v", ok, err)
+		t.Fatalf("the provisional first run did not happen: ok=%t err=%v", ok, err)
+	}
+	receipt := commandReceipt(t, graph, "draft-session", seq)
+	if !strings.Contains(receipt.Body, "first time working this way") ||
+		!strings.Contains(receipt.Body, `say "from scratch" if you'd rather I plan it`) {
+		t.Fatalf("the provisional run did not say it was provisional: %q", receipt.Body)
+	}
+
+	// A draft that failed its one chance is back behind the overwhelming bar.
+	failed := openStore(t)
+	failedMind := NewCraftMind(matchedPresentation(CraftOverwhelmingScore-0.02), "/home/craft", fillsTopic, nil)
+	New(failed, nil, nil).recordCraftOutcome(store.Node{
+		ID: "earlier", Parent: store.RootID,
+		Provenance: store.Provenance{Craft: "presentation@abc1234def"},
+	}, false)
+	seq, planned = craftSplice(t, failed, failedMind, "failed-session", "make me a presentation about Q3")
+	if !planned {
+		t.Fatal("a draft that failed its first run was used again unasked")
+	}
+	if _, ok, _ := failed.Node(fmt.Sprintf("craft-%d", seq)); ok {
+		t.Fatal("a draft with a run against it ran on an ordinary match")
+	}
+
+	// One settled run makes it ordinary know-how, and the receipt then quotes
+	// what that run actually cost instead of announcing a first time.
+	proven := openStore(t)
+	provenMind := NewCraftMind(matchedPresentation(CraftDecisiveScore), "/home/craft", fillsTopic, nil)
+	reconciler := New(proven, nil, nil)
+	if err := proven.Splice(store.RootID, store.Subtree{Nodes: []store.NodeSpec{{
+		ID: "earlier", Brief: "deliver the deck", Stage: 1,
+	}}}, store.Provenance{Origin: store.OriginUser, SessionID: "prior", Intent: "a deck",
+		Craft: "presentation@abc1234def"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := proven.RecordUsage(store.NodeUsage{NodeID: "earlier", Model: "m", Cost: 0.38}); err != nil {
+		t.Fatal(err)
+	}
+	earlier, _, err := proven.Node("earlier")
+	if err != nil {
+		t.Fatal(err)
+	}
+	reconciler.recordCraftOutcome(earlier, true)
+	if record := reconciler.craftSurvival("presentation"); record.LastCost != 0.38 {
+		t.Fatalf("survival record = %+v, want the prior run's cost", record)
+	}
+
+	seq, planned = craftSplice(t, proven, provenMind, "proven-session", "make me a presentation about Q3")
+	if planned {
+		t.Fatal("a proven way of working still went to the planner")
+	}
+	receipt = commandReceipt(t, proven, "proven-session", seq)
+	if !strings.Contains(receipt.Body, "last time $0.38") {
+		t.Fatalf("the receipt did not quote what the last run cost: %q", receipt.Body)
+	}
+	if strings.Contains(receipt.Body, "first time working this way") {
+		t.Fatalf("a proven way of working still announced a first time: %q", receipt.Body)
 	}
 }
 
@@ -342,15 +442,15 @@ func TestBriefCarriesTheForgedCraftLine(t *testing.T) {
 			forged = event.Text
 		}
 	}
-	if !strings.Contains(forged, "Forged the presentation craft from job task-12") ||
-		!strings.Contains(forged, "it'll be used next time") {
+	if !strings.Contains(forged, "Learned how to do presentation from job task-12") ||
+		!strings.Contains(forged, "I'll work this way next time") {
 		t.Fatalf("forged line = %q", forged)
 	}
 	messages, err := graph.Messages("arrival", 0, 0)
 	if err != nil || len(messages) != 1 || messages[0].Brief == nil {
 		t.Fatalf("arrival messages = %+v err=%v", messages, err)
 	}
-	if !strings.Contains(strings.Join(briefItemBodies(messages[0].Brief.Items), "\n"), "Forged the presentation craft") {
+	if !strings.Contains(strings.Join(briefItemBodies(messages[0].Brief.Items), "\n"), "Learned how to do presentation") {
 		t.Fatalf("brief items = %+v", messages[0].Brief.Items)
 	}
 }

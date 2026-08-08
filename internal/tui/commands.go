@@ -64,22 +64,22 @@ var keyBindings = struct {
 }
 
 var slashCommands = []commandSpec{
-	{name: "graph", description: "toggle the task rail"},
+	{name: "graph", description: "show or hide the task list"},
 	{name: "self", description: "open the employee file"},
 	{name: "tasks", description: "focus and expand the active-task dock"},
-	{name: "node", description: "open a node by id prefix or current selection", takesArg: true},
+	{name: "node", description: "open one piece of work by id prefix or current selection", takesArg: true},
 	{name: "open", description: "open the focused deliverable in your OS", takesArg: true},
 	{name: "notebook", description: "browse or search the scoped notebook"},
-	{name: "history", description: "find settled work in permanent graph memory", takesArg: true},
-	{name: "budget", description: "show or change today's dollar rail", takesArg: true},
-	{name: "standing", description: "list active standing charters"},
+	{name: "history", description: "find finished work in permanent memory", takesArg: true},
+	{name: "budget", description: "show or change today's dollar limit", takesArg: true},
+	{name: "standing", description: "list the rules you have standing"},
 	{name: "settings", description: "open every setting in one place"},
 	{name: "help", description: "show the complete keyboard and command guide"},
 	{name: "model", description: "choose any model slot", takesArg: true},
 	{name: "memory", description: "alias for /notebook"},
 	{name: "session", description: "show the current session and database"},
 	{name: "new", description: "start a fresh chat session"},
-	{name: "cancel", description: "cancel a non-terminal graph node", takesArg: true},
+	{name: "cancel", description: "cancel a piece of work that has not finished", takesArg: true},
 	{name: "quit", description: "exit aforge cleanly"},
 }
 
@@ -472,7 +472,7 @@ func (m *Model) applyModel(role, slug string) tea.Cmd {
 		return command
 	}
 	if role != "talk" && role != "work" && role != "voice" {
-		return m.showStatus(fmt.Sprintf("%s model switching unavailable — no Commander", role))
+		return m.showStatus(fmt.Sprintf("%s model switching isn't available in this window", role))
 	}
 	requester, ok := m.backend.(commandRequester)
 	if !ok {
@@ -512,7 +512,7 @@ func (m *Model) cancelSelected(entries []paletteEntry) tea.Cmd {
 
 func (m *Model) cancelNode(nodeID string) tea.Cmd {
 	if m.commander == nil {
-		return m.showStatus("cancel unavailable — no Commander")
+		return m.showStatus("cancelling isn't available in this window")
 	}
 	if err := m.commander.Cancel(nodeID); err != nil {
 		return m.showStatus(fmt.Sprintf("could not cancel %s: %v", nodeID, err))
@@ -571,7 +571,7 @@ func (m *Model) slashBudget(arguments []string) tea.Cmd {
 	})
 	if !ok {
 		m.input.Reset()
-		return m.showStatus("budget unavailable — no Commander")
+		return m.showStatus("the budget isn't available in this window")
 	}
 	result, err := handler.Budget(arguments)
 	m.input.Reset()
@@ -587,7 +587,7 @@ func (m *Model) slashStanding(_ []string) tea.Cmd {
 	})
 	if !ok {
 		m.input.Reset()
-		return m.showStatus("standing unavailable — no Commander")
+		return m.showStatus("standing rules aren't available in this window")
 	}
 	result, err := handler.Standing()
 	m.input.Reset()
@@ -731,7 +731,7 @@ func (m *Model) openNodePrefix(prefix string) tea.Cmd {
 
 func (m *Model) openMemory(query string) tea.Cmd {
 	if m.commander == nil {
-		return m.showStatus("memory unavailable — no Commander")
+		return m.showStatus("memory isn't available in this window")
 	}
 	m.input.Reset()
 	query = strings.TrimSpace(query)
@@ -885,7 +885,7 @@ func (m *Model) applyCatalog(role string, choices []ModelChoice) {
 
 func (m *Model) newSession() tea.Cmd {
 	if m.commander == nil {
-		return m.showStatus("new session unavailable — no Commander")
+		return m.showStatus("starting a new conversation isn't available in this window")
 	}
 	sessionID, err := m.commander.NewSession()
 	if err != nil {

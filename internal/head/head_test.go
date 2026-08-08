@@ -650,6 +650,9 @@ func TestRouterNeitherCarriesNorInventsAMeasuredSelfAssessment(t *testing.T) {
 }
 
 func TestHeadVoicePromptPreservesEmptyBytesAndRendersPreference(t *testing.T) {
+	// The empty-notebook prompt is the stable prompt PLUS the register, exactly
+	// — the register is unconditional now, and the byte diff from the bare
+	// prompt is that one segment and nothing else.
 	t.Run("empty notebook", func(t *testing.T) {
 		graphStore := openHeadStore(t)
 		client := &fakeClient{responses: []string{
@@ -659,7 +662,8 @@ func TestHeadVoicePromptPreservesEmptyBytesAndRendersPreference(t *testing.T) {
 		if _, err := New(client, graphStore).route(context.Background(), user); err != nil {
 			t.Fatal(err)
 		}
-		if len(client.seen) != 2 || client.seen[0].Content[0].Text != headSystemPrompt {
+		want := headSystemPrompt + "\n\n" + resident.VoiceRegister
+		if len(client.seen) != 2 || client.seen[0].Content[0].Text != want {
 			t.Fatalf("empty-notebook head system prompt changed: %+v", client.seen)
 		}
 	})
@@ -1130,7 +1134,7 @@ func TestAmbiguousCharterManagementProducesOptions(t *testing.T) {
 		t.Fatal(err)
 	}
 	reply := waitForAgentReply(t, graph, "ambiguous-charter", user.Seq)
-	if !strings.HasPrefix(reply.Body, "Which standing charter do you mean?") || len(reply.Options) != 2 {
+	if !strings.HasPrefix(reply.Body, "Which rule do you mean?") || len(reply.Options) != 2 {
 		t.Fatalf("ambiguous reply = %+v", reply)
 	}
 	// The body carries the structured payload the TUI's question components

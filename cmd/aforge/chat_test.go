@@ -158,7 +158,7 @@ func TestDeliveryGateSeesNotebookPreferencesAndNoPanelStaysBare(t *testing.T) {
 			resident.WorkingDecisionsHeader + "\n- " + securityDecision,
 		Provenance: store.Provenance{Intent: "recommend an approach", SessionID: "s1"},
 	}
-	judgment := judgeDeliverable(context.Background(), settings, client, graph, node, "approach A wins", "worker/model")
+	judgment := judgeDeliverable(context.Background(), settings, client, graph, node, "approach A wins", deliveryEvidence{}, "worker/model")
 	if !judgment.Checked || !judgment.Pass {
 		t.Fatalf("judgment = %+v, want a checked pass", judgment)
 	}
@@ -547,6 +547,9 @@ func TestBudgetStoppedReflexCarriesPartialIntoCompiledJob(t *testing.T) {
 	}
 }
 
+// With no learned voice the user-facing prompts are the stable prompt plus the
+// unconditional register, exactly — nothing else drifts, and the register is
+// what a fresh machine used to be missing entirely.
 func TestResidentUserFacingPromptsKeepEmptyNotebookBytes(t *testing.T) {
 	graph, err := store.Open(filepath.Join(t.TempDir(), "graph.db"))
 	if err != nil {
@@ -562,25 +565,27 @@ func TestResidentUserFacingPromptsKeepEmptyNotebookBytes(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	if got := capture.messages[0].Content[0].Text; got != narratorSystemPrompt {
-		t.Fatalf("empty-notebook narrator prompt changed:\n got %q\nwant %q", got, narratorSystemPrompt)
+	wantNarrator := narratorSystemPrompt + "\n\n" + resident.VoiceRegister
+	if got := capture.messages[0].Content[0].Text; got != wantNarrator {
+		t.Fatalf("empty-notebook narrator prompt changed:\n got %q\nwant %q", got, wantNarrator)
 	}
 
 	node := store.Node{
 		ID: "job", Parent: store.RootID, Brief: "assemble the finished report",
 		Provenance: store.Provenance{Intent: "prepare the report"},
 	}
-	if got := residentDeliveryBrief(graph, node); got != node.Brief {
-		t.Fatalf("empty-notebook delivery brief changed:\n got %q\nwant %q", got, node.Brief)
+	wantBrief := node.Brief + "\n\n" + resident.VoiceRegister
+	if got := residentDeliveryBrief(graph, node); got != wantBrief {
+		t.Fatalf("empty-notebook delivery brief changed:\n got %q\nwant %q", got, wantBrief)
 	}
 	initial := exec.Task{Brief: residentDeliveryBrief(graph, node)}
 	polish := initial
-	if initial.Brief != node.Brief || polish.Brief != node.Brief {
+	if initial.Brief != wantBrief || polish.Brief != wantBrief {
 		t.Fatalf("empty-notebook initial/polish briefs changed: initial=%q polish=%q", initial.Brief, polish.Brief)
 	}
 
 	const deliverable = "the finished report"
-	judgment := judgeDeliverable(context.Background(), settings, client, graph, node, deliverable, "worker/model")
+	judgment := judgeDeliverable(context.Background(), settings, client, graph, node, deliverable, deliveryEvidence{}, "worker/model")
 	if !judgment.Checked || !judgment.Pass {
 		t.Fatalf("judgment = %+v, want checked pass", judgment)
 	}
@@ -629,7 +634,7 @@ func TestResidentDeliveryAndPolishBriefShareLearnedVoice(t *testing.T) {
 	}
 	child := node
 	child.Parent = node.ID
-	if got := residentDeliveryBrief(graph, child); got != child.Brief {
+	if got := residentDeliveryBrief(graph, child); strings.Contains(got, preference) {
 		t.Fatalf("worker-to-worker child brief gained user voice: %q", got)
 	}
 }
@@ -917,7 +922,7 @@ func TestNamedGapEarnsARevisionThatIsToldWhereTheAnswerGoes(t *testing.T) {
 		response: `{"pass":false,"gaps":"` + gap + `"}`}
 	judgment := judgeDeliverable(context.Background(), settings,
 		&liveClient{settings: settings, model: failing.model, client: failing}, graph, node,
-		"The deliverable is written and verified against the actual repo source.", "worker/model")
+		"The deliverable is written and verified against the actual repo source.", deliveryEvidence{}, "worker/model")
 	if !judgment.Checked || judgment.Pass || judgment.Gaps != gap {
 		t.Fatalf("a meta-only deliverable did not draw a checked gap: %+v", judgment)
 	}
@@ -928,7 +933,7 @@ func TestNamedGapEarnsARevisionThatIsToldWhereTheAnswerGoes(t *testing.T) {
 	settled := judgeDeliverable(context.Background(), settings,
 		&liveClient{settings: settings, model: passing.model, client: passing}, graph, node,
 		"The plan is valid: the plugin boundary it assumes already exists and the migration is reversible.",
-		"worker/model")
+		deliveryEvidence{}, "worker/model")
 	if !settled.Checked || !settled.Pass {
 		t.Fatalf("a deliverable carrying its answer did not pass: %+v", settled)
 	}

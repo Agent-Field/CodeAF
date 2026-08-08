@@ -116,7 +116,7 @@ func TestCraftFanOutUnrollsIntoRealSiblings(t *testing.T) {
 	graph := openStore(t)
 	workflow := presentationCraft()
 	runner, run := startCraftRun(t, graph, workflow)
-	if !strings.Contains(run.Receipt, "using your presentation craft v abc1234 — 4 steps") {
+	if !strings.Contains(run.Receipt, "using your presentation way of doing this (v abc1234) — 4 steps") {
 		t.Fatalf("compile receipt = %q", run.Receipt)
 	}
 
@@ -154,7 +154,7 @@ func TestCraftFanOutUnrollsIntoRealSiblings(t *testing.T) {
 			t.Fatalf("assemble does not wait on item %d: %+v", index, waiting)
 		}
 	}
-	if thread := craftMessages(t, graph); !strings.Contains(thread, `presentation craft — "sections" fans out over 3 items`) {
+	if thread := craftMessages(t, graph); !strings.Contains(thread, `presentation — the "sections" step splits into 3 items`) {
 		t.Fatalf("no fan-out receipt in the thread:\n%s", thread)
 	}
 }
@@ -226,7 +226,7 @@ func TestCraftRoundsExhaustedDeliverWhatLanded(t *testing.T) {
 		t.Fatalf("an exhausted run spliced anyway: %d nodes then %d", before, after)
 	}
 	if thread := craftMessages(t, graph); !strings.Contains(thread,
-		`the "check" check still failed after 1 round — delivering what landed, unverified`) {
+		`the "check" check still failed after 1 round — delivering what landed, unchecked`) {
 		t.Fatalf("no honest exhaustion receipt:\n%s", thread)
 	}
 }
@@ -282,7 +282,7 @@ func TestCraftWallClockBoundStopsOpeningWork(t *testing.T) {
 	if after := len(craftNodeIDs(t, graph, run.Prefix)); after != before {
 		t.Fatalf("work was opened past the wall clock: %d nodes then %d", before, after)
 	}
-	const receipt = "presentation craft hit its 30m bound — delivered what landed"
+	const receipt = "presentation hit its 30m bound — delivered what landed"
 	if thread := craftMessages(t, graph); !strings.Contains(thread, receipt) {
 		t.Fatalf("no honest wall-clock receipt:\n%s", thread)
 	}
@@ -607,7 +607,7 @@ func TestCraftBudgetStopAnsweredWithStopClosesTheRun(t *testing.T) {
 		t.Fatalf("the run's root is %s — nothing is left to deliver what landed", root.Status)
 	}
 	if thread := craftMessages(t, graph); !strings.Contains(thread,
-		"presentation craft — stopping here as you asked; delivering what already landed") {
+		"presentation — stopping here as you asked; delivering what already landed") {
 		t.Fatalf("no honest stop receipt:\n%s", thread)
 	}
 	// A closed run stays closed, and says so once.
@@ -717,7 +717,7 @@ func TestAFanOutWorkerThatNamedNoItemsUnrollsNothing(t *testing.T) {
 		t.Fatalf("a phantom item %s was unrolled from an empty list", id)
 	}
 	if thread := craftMessages(t, graph); !strings.Contains(thread,
-		`the "sections" step named no items to fan out over`) {
+		`the "sections" step named nothing to work through`) {
 		t.Fatalf("no honest reason in the thread:\n%s", thread)
 	}
 }
