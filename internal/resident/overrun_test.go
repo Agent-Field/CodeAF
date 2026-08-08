@@ -318,3 +318,63 @@ func TestReplanOverrunPausesBeforeSpliceAtDailyRail(t *testing.T) {
 		t.Fatalf("rebuilt pending overruns = %+v err=%v, want none", pending, err)
 	}
 }
+
+// The split counter replaces its suffix rather than stacking markers, so every
+// round of one node's continuation is a sibling in the same namespace. A reader
+// following the chain has to walk it in round order and — when it starts from a
+// piece that itself split — never walk backwards into the round it is standing
+// on.
+func TestSplitContinuationWalksTheNamespaceForward(t *testing.T) {
+	graph := openStore(t)
+	stamp := "ran out mid-thought.\n\n[" + OverrunContinuationMessage(1) + "]"
+	provenance := store.Provenance{Origin: store.OriginUser, SessionID: "split", Intent: "do the job"}
+	for _, spec := range []store.NodeSpec{
+		{ID: "job", Title: "Job", Brief: "do the job", Stage: 1},
+		{ID: "job-x1", Title: "Round one", Brief: "finish the remainder", Stage: 1},
+		{ID: "job-x2", Title: "Round two", Brief: "finish the remainder again", Stage: 1},
+	} {
+		if err := graph.Splice(store.RootID, store.Subtree{Nodes: []store.NodeSpec{spec}}, provenance); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// A part of round one: same namespace, not a round of it.
+	if err := graph.Splice("job-x1", store.Subtree{Nodes: []store.NodeSpec{
+		{ID: "job-x1-n2", Title: "A part", Brief: "a part of round one", Stage: 1},
+	}}, provenance); err != nil {
+		t.Fatal(err)
+	}
+	completeNode := func(id, summary string) store.Node {
+		t.Helper()
+		claim, won, err := graph.Claim(id, "worker")
+		if err != nil || !won {
+			t.Fatalf("claim %s won=%t err=%v", id, won, err)
+		}
+		if err := graph.Start(claim); err != nil {
+			t.Fatal(err)
+		}
+		if err := graph.Complete(claim, summary); err != nil {
+			t.Fatal(err)
+		}
+		node, _, err := graph.Node(id)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return node
+	}
+	completeNode("job-x1-n2", "the part landed")
+	root := completeNode("job", stamp)
+	piece := completeNode("job-x1", stamp)
+
+	chain, continued := SplitContinuation(graph, root)
+	if !continued || len(chain) != 2 || chain[0].ID != "job-x1" || chain[1].ID != "job-x2" {
+		t.Fatalf("chain from the root = %+v continued=%t", chain, continued)
+	}
+	// A part of round one shares the namespace but is not a round of it.
+	fromPiece, continued := SplitContinuation(graph, piece)
+	if !continued || len(fromPiece) != 1 || fromPiece[0].ID != "job-x2" {
+		t.Fatalf("chain from job-x1 = %+v continued=%t", fromPiece, continued)
+	}
+	if _, continued := SplitContinuation(graph, completeNode("job-x2", "finished properly")); continued {
+		t.Fatal("an unstamped landing claimed a continuation")
+	}
+}

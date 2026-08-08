@@ -168,3 +168,36 @@ func TestRoutingLawNoLongerTeachesThatsWrongAsARetraction(t *testing.T) {
 		t.Fatal("the router is not told what a correction of work is instead")
 	}
 }
+
+// The leaf said "Everything is verified. The browser builds cleanly, launches a
+// Fyne window" while the person watching it was typing "I keep getting could not
+// load, no page is loading". The delivery gate believed the leaf; the revision
+// spawned from the user's words inherited that belief as trusted context and
+// could re-verify nothing while still saying "verified" a second time. The
+// instruction now says which of the two accounts is evidence — with no phrase
+// list and no new classification, because what counts as a claim and what would
+// settle it is a judgment about the words, not a lookup.
+func TestCorrectionCarriesTheDisputeAgainstTheDeliverablesOwnVerification(t *testing.T) {
+	const verified = "Everything is verified. The browser builds cleanly and launches a Fyne window."
+	graph := openHeadStore(t)
+	deliverJob(t, graph, "dispute", "ui-browser", "UI browser",
+		"build a UI browser and launch it", verified)
+
+	user := postUser(t, graph, "dispute",
+		"that's wrong — the browser is not working properly, no page ever loads")
+	if err := New(&fakeClient{}, graph).answer(context.Background(), user); err != nil {
+		t.Fatal(err)
+	}
+
+	commands := pendingCommandsOf(t, graph)
+	if len(commands) != 1 {
+		t.Fatalf("correction journaled %d commands, want one: %+v", len(commands), commands)
+	}
+	instruction := commands[0].Instruction
+	if !strings.Contains(instruction, verified) {
+		t.Fatalf("the disputed claim never reached the revision:\n%s", instruction)
+	}
+	if !strings.Contains(instruction, correctionDisputeLine) {
+		t.Fatalf("the revision was handed the predecessor's verification as settled ground:\n%s", instruction)
+	}
+}
