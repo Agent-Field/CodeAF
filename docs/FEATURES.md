@@ -77,15 +77,26 @@ every path including cancel and failure.
 **Tip seed**: alt+v talks; your typed draft is never lost — voice adds to
 it, and esc discards only the voice.
 
-### Show it images
-**What**: Drag an image file into the terminal — the path becomes a dim
-`⌾ name.png ⟨×⟩` chip above the input and rides to the model as a real
-image when the talk model has vision (a calm hint tells you when it
-doesn't). Attachments persist durably on the thread and flow into
-spliced tasks.
+### Show it images, hand it documents
+**What**: Drag an image or a `.pdf`/`.docx`/`.pptx` into the terminal — the
+path becomes a dim `⌾ name.png ⟨×⟩` (or `▤`) chip above the input. Sending
+copies the file into aforge's own store, so the durable thread holds a copy
+rather than a pointer at yours: a retry next week and a follow-up tomorrow
+read exactly what you attached even after you have moved or deleted it.
+Images ride to the talk model when it has vision, and are staged into the
+job's workspace either way, so a worker can look with the vision model — and
+when nothing can see, the answer says so.
 **Where**: input bar; ⟨×⟩ or backspace-on-empty removes.
-**Tip seed**: Drag a screenshot straight into the chat — if your talk
-model has vision, aforge sees it.
+**Tip seed**: Drag a screenshot straight into the chat — attaching copies it,
+so tidying your Downloads folder never breaks a job.
+
+### Getting work out
+**What**: A deliverable's path prints in full and renders as a link your
+terminal opens. `y` copies the focused answer, `Y` copies the file it
+produced, `/open` hands that file to your machine's opener. The copy rides
+the terminal's own clipboard, so it works over ssh.
+**Where**: thread; the focused answer, or the last one.
+**Tip seed**: `y` copies the answer, `Y` copies its file — even over ssh.
 
 ### Tasks can generate media — any task, any time
 **What**: `generate_image`, `speak` (TTS), `generate_music`,
@@ -172,8 +183,11 @@ history with costs is one click deep, the full graphs two.
 ### Manage goals by talking (or clicking)
 **What**: "pause the PR watcher", "make it hourly", "stop watching PRs" —
 references resolve by searching the invariants; ambiguity asks back with
-options. The charter card offers pause/retire/edit-cadence as clicks.
-`/standing` lists all charters.
+options. The charter card offers the same verbs as clicks, and offers only
+the ones this charter's state can perform: pause or resume, retire, and edit
+cadence — which turns the row itself into a field rather than opening a
+dialog. A proposal's first row stands it up. Click and sentence journal the
+identical typed charter command. `/standing` lists all charters.
 **Tip seed**: There's no goals settings page — say "pause it" or click
 the goal's line; both end in the same journaled event.
 

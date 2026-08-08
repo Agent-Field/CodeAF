@@ -115,8 +115,10 @@ func (m *Model) contextHelpLine() string {
 		return "↑/↓ select · enter details · esc back · ctrl+t tasks"
 	case m.focus == focusQuestions:
 		return "↑/↓ select · enter ask inline · esc back · tab focus"
+	case m.nodeViewID != "" && m.inputFocused:
+		return "type to steer · enter send · tab reads · esc back"
 	case m.nodeViewID != "":
-		return "type to steer · enter send · c cancel · esc back"
+		return "↑/↓ read · c cancel · tab steers · esc back"
 	case m.focus == focusGraph:
 		return "↑/↓ select · enter inspect · esc close · ctrl+t hide"
 	case m.focus == focusSelf && m.selfFilterable():

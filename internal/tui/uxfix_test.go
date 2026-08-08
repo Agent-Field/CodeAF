@@ -673,3 +673,28 @@ func TestFocusTraversalWalksThreadElementsAndEnterEqualsClick(t *testing.T) {
 		t.Fatalf("esc did not return the thread zone to input: focus=%v", model.focus)
 	}
 }
+
+// A long outcome used to end at a truncation marker inside a fixed-height
+// header, and the rest of it existed only in chat. The feed scrolls, so the
+// whole result lands there — reachable from the surface that produced it.
+func TestALongOutcomeIsReadableInTheActivityFeed(t *testing.T) {
+	model, _ := inspectedWorkerModel(t)
+	model.setSize(90, 26)
+	model.inspectedNode = store.Node{
+		ID: "worker", Parent: store.RootID, Status: store.Done,
+		Brief:   "Inspect this worker",
+		Summary: strings.TrimSpace(strings.Repeat("a finding worth reading in full. ", 60)),
+	}
+	model.sizeNodeViewports()
+	if !model.nodeDetailsClipped {
+		t.Fatal("a 60-sentence outcome did not clip the header")
+	}
+	if !strings.Contains(ansi.Strip(model.nodeDetailsText), "in full at the end of the feed") {
+		t.Fatalf("clipped header points nowhere:\n%s", ansi.Strip(model.nodeDetailsText))
+	}
+	feed := ansi.Strip(model.renderActivityFeed(88))
+	if !strings.Contains(feed, "── outcome ──") ||
+		strings.Count(feed, "a finding worth reading in full.") < 10 {
+		t.Fatalf("feed does not carry the whole outcome:\n%s", feed)
+	}
+}

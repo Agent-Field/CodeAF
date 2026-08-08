@@ -283,6 +283,9 @@ type Model struct {
 	charterFocusIndex int
 	standingRows      []standingRow
 	charterRows       []charterCardRow
+	// A cadence is edited where it is read: the action row becomes a field.
+	charterEditing    bool
+	charterCadence    textinput.Model
 	serviceCardID     string
 	serviceFocusIndex int
 	serviceRows       []serviceRow
@@ -365,7 +368,10 @@ type Model struct {
 	graphHeight int
 
 	nodeDetailsText string
-	nodeTraceHeight int
+	// nodeDetailsClipped says the header could not hold the whole outcome, so
+	// the feed carries it in full rather than the reader losing the rest.
+	nodeDetailsClipped bool
+	nodeTraceHeight    int
 
 	inputFocused     bool
 	focus            paneFocus
@@ -466,15 +472,19 @@ type Model struct {
 	splitPct      int
 	draggingSplit bool
 
-	chatBounds                paneBounds
-	headerTasksBounds         paneBounds
-	headerThreadBounds        paneBounds
-	headerBoardBounds         paneBounds
-	headerSelfBounds          paneBounds
-	headerQuestionBounds      paneBounds
-	headerModelsBounds        paneBounds
-	headerHelpBounds          paneBounds
-	headerFocusIndex          int
+	chatBounds           paneBounds
+	headerTasksBounds    paneBounds
+	headerThreadBounds   paneBounds
+	headerBoardBounds    paneBounds
+	headerSelfBounds     paneBounds
+	headerQuestionBounds paneBounds
+	headerModelsBounds   paneBounds
+	headerHelpBounds     paneBounds
+	headerFocusIndex     int
+	// headerPlacesShown records whether the last frame drew the place labels:
+	// a narrow header folds them into the wordmark, and a focus ring around
+	// something that is not on screen is worse than not reaching it.
+	headerPlacesShown         bool
 	graphBounds               paneBounds
 	graphRowsBounds           paneBounds
 	standingRowsBounds        paneBounds
@@ -936,6 +946,20 @@ func (m *Model) updateKey(message tea.KeyMsg) (tea.Cmd, bool) {
 			return command, true
 		}
 	}
+	// A charter's cadence editor is a text field like any other: while it is
+	// open the letters are the cadence being written.
+	if m.charterEditing {
+		if command, handled := m.updateCharterCadenceKey(message); handled {
+			return command, true
+		}
+	}
+	// The one gate that keeps every single-key action out of a sentence being
+	// typed (the law and its table live in keys.go). Returning unhandled hands
+	// the key to the focused field unchanged, which is exactly what a character
+	// is for.
+	if !m.commandKey(key) {
+		return nil, false
+	}
 	// Every option-chord has a control synonym: on macOS, Option only reaches
 	// the program as alt+<key> when the terminal is configured to send it as
 	// Meta (Terminal.app "Use Option as Meta key", iTerm2 "Left Option: Esc+");
@@ -976,7 +1000,7 @@ func (m *Model) updateKey(message tea.KeyMsg) (tea.Cmd, bool) {
 	}
 	// The settings door: the option chord anywhere, and the bare comma only
 	// outside the input, where a letter is a command rather than a character.
-	if key == keyBindings.settings || (key == "," && !m.inputFocused && m.nodeViewID == "") {
+	if key == keyBindings.settings || (key == "," && m.nodeViewID == "") {
 		return m.openSettings(), true
 	}
 	if m.paletteOpen() {
@@ -1004,10 +1028,18 @@ func (m *Model) updateKey(message tea.KeyMsg) (tea.Cmd, bool) {
 	}
 	if m.nodeViewID != "" {
 		switch {
+		case key == "esc" && m.voiceState != voiceIdle:
+			// Voice owns esc wherever it is recording. The node view used to
+			// close instead, which made help's "esc discards it" false in the
+			// one surface where a dictated steer is most likely.
+			return m.cancelVoice(), true
 		case key == "esc":
 			m.closeNodeView()
 			return nil, true
-		case key == "c" && m.input.Value() == "":
+		case key == "tab":
+			m.toggleNodeSteerFocus()
+			return nil, true
+		case key == "c":
 			return m.cancelInspectedNode(), true
 		case key == "enter" && m.inputFocused:
 			return m.submitSteer(), true
@@ -1102,10 +1134,11 @@ func (m *Model) updateKey(message tea.KeyMsg) (tea.Cmd, bool) {
 	if m.focus == focusHeader {
 		switch key {
 		case "left", "up", "k":
-			m.headerFocusIndex = (m.headerFocusIndex + headerDoors - 1) % headerDoors
+			doors := m.headerDoorCount()
+			m.headerFocusIndex = (m.headerFocusIndex + doors - 1) % doors
 			return nil, true
 		case "right", "down", "j":
-			m.headerFocusIndex = (m.headerFocusIndex + 1) % headerDoors
+			m.headerFocusIndex = (m.headerFocusIndex + 1) % m.headerDoorCount()
 			return nil, true
 		case "enter":
 			return m.activateHeaderFocus(), true
@@ -1219,15 +1252,22 @@ func (m *Model) updateKey(message tea.KeyMsg) (tea.Cmd, bool) {
 		}
 		return nil, true
 	}
-	if key == "v" && !m.inputFocused {
+	if key == "v" {
 		m.receiptsExpanded = !m.receiptsExpanded
 		m.refreshChat()
 		return nil, true
 	}
+	// Getting work out of here: the answer, or the file it produced.
+	if key == "y" {
+		return m.copyAnswer(), true
+	}
+	if key == "Y" {
+		return m.copyDeliverablePath(), true
+	}
 	if key == "tab" {
 		return m.toggleFocus(), true
 	}
-	if !m.inputFocused && (key == "[" || key == "]") {
+	if key == "[" || key == "]" {
 		delta := -5
 		if key == "]" {
 			delta = 5
@@ -1845,27 +1885,21 @@ func (m *Model) submit() tea.Cmd {
 	}
 	attachments := append([]string(nil), m.attachments...)
 	if len(attachments) > 0 {
-		_, imagesSupported := m.imageInputSupport()
 		kept := make([]string, 0, len(attachments))
-		fallbackImages := make([]string, 0)
 		documents, images := 0, 0
 		for _, path := range attachments {
-			if isImageExtension(path) {
+			// A screenshot is staged whatever the model in the talk slot can
+			// see. Dropping it here was the silence: no copy, no fallback, and
+			// nothing said. What can look at it is decided where the work runs.
+			switch {
+			case isImageExtension(path):
 				images++
-				if imagesSupported {
-					kept = append(kept, path)
-				} else {
-					fallbackImages = append(fallbackImages, path)
-				}
+			case isDocumentAttachment(path):
+				documents++
+			default:
 				continue
 			}
-			if isDocumentAttachment(path) {
-				documents++
-				kept = append(kept, path)
-			}
-		}
-		if len(fallbackImages) > 0 {
-			body = strings.TrimSpace(strings.Join(append([]string{body}, fallbackImages...), " "))
+			kept = append(kept, m.keepAttachment(path))
 		}
 		attachments = kept
 		if body == "" {

@@ -45,9 +45,15 @@ type standingCharter struct {
 	ProposalReason string
 	Proposed       bool
 	Breathing      bool
-	LastFired      time.Time
-	Today          int
-	Firings        []standingFiring
+	// LastChecked and LastCheckLine are the quiet half of a watch: a sentinel
+	// that looked and found nothing worth firing on. Without them a faithful
+	// watch that has checked every morning for a month reads exactly like a
+	// dead one — "last fired never · 0 today".
+	LastChecked   time.Time
+	LastCheckLine string
+	LastFired     time.Time
+	Today         int
+	Firings       []standingFiring
 }
 
 type standingFiring struct {
@@ -173,6 +179,7 @@ func (r storeStandingReader) Charters(
 			Proposed:  record.Status == store.CharterProposed,
 			Breathing: record.WakePending,
 		}
+		charter.LastChecked, charter.LastCheckLine = charterCheckState(record)
 		if rails.ExpiresAt != nil {
 			charter.Expiry = rails.ExpiresAt.Local().Format("2006-01-02 15:04")
 		}
@@ -406,8 +413,7 @@ func (m *Model) renderStandingSection(width int) string {
 		if m.focus == focusGraph && m.selectedNodeID == standingGraphRowID(charter.ID) {
 			marker = powderStyle.Bold(true).Render("▸ ")
 		}
-		line := fmt.Sprintf("⏱ %s · last fired %s · %d today",
-			charter.Name, standingAge(charter.LastFired, m.standingTime()), charter.Today)
+		line := m.standingCharterLine(charter)
 		if charter.Proposed {
 			line += " · proposed"
 		}
@@ -424,6 +430,31 @@ func (m *Model) renderStandingSection(width int) string {
 	}
 	lines = append(lines, "")
 	return strings.Join(lines, "\n")
+}
+
+// standingCharterLine keeps one shape for every watch and changes only which
+// facts are true of this one: a watch that has fired says when and how often
+// today, and a watch that has only looked says when it looked and what it
+// found. Nothing that has done neither is described as if it had.
+func (m *Model) standingCharterLine(charter standingCharter) string {
+	if charter.LastFired.IsZero() && !charter.LastChecked.IsZero() {
+		found := strings.TrimSpace(charter.LastCheckLine)
+		if found == "" {
+			found = "nothing new"
+		}
+		return fmt.Sprintf("⏱ %s · last checked %s · %s",
+			charter.Name, standingAge(charter.LastChecked, m.standingTime()), found)
+	}
+	return fmt.Sprintf("⏱ %s · last fired %s · %d today",
+		charter.Name, standingAge(charter.LastFired, m.standingTime()), charter.Today)
+}
+
+// charterCheckState is the one seam that reads the durable check fields. They
+// land with the resident's half of this wave as store.Charter.LastChecked and
+// .LastCheckLine; until then a watch keeps the wording it had, and this is the
+// single line that changes when the halves meet.
+func charterCheckState(store.Charter) (time.Time, string) {
+	return time.Time{}, ""
 }
 
 // hasStandingHistory is deliberately broader than the visible charter list:
@@ -542,8 +573,18 @@ func (m *Model) renderCharterCardBody(width int) string {
 			kind: charterHistoryRow, jobID: firing.JobID,
 		})
 	}
-	appendLabel("actions")
-	for _, action := range []string{"pause", "resume", "retire", "edit cadence"} {
+	actions := charterCardActions(charter)
+	if len(actions) > 0 {
+		appendLabel("actions")
+	}
+	for _, action := range actions {
+		if action == charterCadenceAction && m.charterEditing && m.charterCardID == charter.ID {
+			row := charterCardRow{kind: charterActionRow, action: action, line: len(lines)}
+			prefix := mutedStyle.Faint(true).Render("│   ")
+			lines = append(lines, truncate(prefix+m.charterCadence.View(), width))
+			m.charterRows = append(m.charterRows, row)
+			continue
+		}
 		m.appendCharterRow(&lines, width, "▸ "+action, charterCardRow{
 			kind: charterActionRow, action: action,
 		})
@@ -595,6 +636,8 @@ func (m *Model) closeCharterCard() bool {
 	id := m.charterCardID
 	m.charterCardID = ""
 	m.charterFocusIndex = 0
+	m.charterEditing = false
+	m.charterCadence.Blur()
 	m.selectedNodeID = standingGraphRowID(id)
 	m.graph.SetYOffset(0)
 	m.setSize(m.width, m.height)
@@ -677,27 +720,126 @@ type charterCommandResultMsg struct {
 	err    error
 }
 
+// The card's verbs are the same verbs the conversation has: a click and a
+// sentence journal the identical typed charter command, and the reconciler
+// cannot tell which one asked. The card used to send an amendment at the
+// charter's spine node instead — folded territory furniture, which validation
+// rejects by construction, so every click failed after the status bar had
+// already claimed it worked.
+const (
+	charterCadenceAction = "edit cadence"
+	charterStandAction   = "stand it up"
+)
+
+// charterCardActions offers only what this charter's state can actually do.
+// Nothing here promises a verb the store would refuse.
+func charterCardActions(charter standingCharter) []string {
+	switch {
+	case charter.Proposed || charter.State == "proposed":
+		return []string{charterStandAction, charterCadenceAction, "retire"}
+	case charter.State == "retired":
+		return nil
+	case charter.State == "paused":
+		return []string{"resume", charterCadenceAction, "retire"}
+	default:
+		return []string{"pause", charterCadenceAction, "retire"}
+	}
+}
+
+// charterActionCommand maps a card verb onto the typed command the store
+// recognizes. Standing a proposal up and resuming a pause are the same durable
+// transition — a charter returning to active with the user's own hand on it.
+func charterActionCommand(action string) (store.CommandKind, bool) {
+	switch action {
+	case "pause":
+		return store.CommandCharterPause, true
+	case "retire":
+		return store.CommandCharterRetire, true
+	case "resume", charterStandAction:
+		return store.CommandCharterRatify, true
+	case charterCadenceAction:
+		return store.CommandCharterCadence, true
+	}
+	return "", false
+}
+
 func (m *Model) requestCharterAction(action string) tea.Cmd {
+	if action == charterCadenceAction {
+		return m.openCharterCadenceEditor()
+	}
+	return m.requestCharterCommand(action, action+" from the standing card")
+}
+
+func (m *Model) requestCharterCommand(action, instruction string) tea.Cmd {
 	charter, ok := m.standingCharter(m.charterCardID)
 	if !ok {
 		return m.showStatus("charter is no longer available")
+	}
+	kind, ok := charterActionCommand(action)
+	if !ok {
+		return m.showStatus("no such charter action — " + action)
 	}
 	requester, ok := m.backend.(commandRequester)
 	if !ok {
 		return m.showStatus("charter actions unavailable — command requests unsupported")
 	}
-	m.status = action + " requested → " + charter.Name
-	m.statusUntil = time.Now().Add(statusTTL)
 	request := store.Command{
 		SessionID:   m.sessionID,
-		Kind:        store.CommandAmend,
+		Kind:        kind,
 		Target:      charter.ID,
-		Instruction: action,
+		Instruction: instruction,
 	}
 	return func() tea.Msg {
 		_, err := requester.RequestCommand(request)
 		return charterCommandResultMsg{action: action, name: charter.Name, err: err}
 	}
+}
+
+// A cadence is the one charter verb that carries an argument, so the row
+// becomes the field — the settings sheet's inline editor, in the place the
+// value already lives, rather than a dialog over the card.
+func (m *Model) openCharterCadenceEditor() tea.Cmd {
+	charter, ok := m.standingCharter(m.charterCardID)
+	if !ok {
+		return m.showStatus("charter is no longer available")
+	}
+	m.charterEditing = true
+	m.charterCadence = newSettingsEditor()
+	m.charterCadence.Placeholder = "every weekday at 9am"
+	m.charterCadence.SetValue(strings.TrimSpace(charter.Watch))
+	command := m.charterCadence.Focus()
+	m.refreshGraph()
+	return command
+}
+
+func (m *Model) closeCharterCadenceEditor() {
+	m.charterEditing = false
+	m.charterCadence.Blur()
+	m.refreshGraph()
+}
+
+func (m *Model) updateCharterCadenceKey(message tea.KeyMsg) (tea.Cmd, bool) {
+	switch message.String() {
+	case "esc":
+		m.closeCharterCadenceEditor()
+		return nil, true
+	case "enter":
+		cadence := strings.TrimSpace(m.charterCadence.Value())
+		m.closeCharterCadenceEditor()
+		if cadence == "" {
+			return m.showStatus("cadence left as it was"), true
+		}
+		return m.requestCharterCommand(charterCadenceAction, cadence), true
+	}
+	if message.Alt {
+		// An option chord is an instruction the card is refusing, not a
+		// character: it must not land in the field as its bare letter.
+		return nil, true
+	}
+	var command tea.Cmd
+	m.charterCadence, command = m.charterCadence.Update(message)
+	m.refreshGraph()
+	return command, true
 }
 
 // charterDefinitionIDs identifies the non-task definition subtree so counts,

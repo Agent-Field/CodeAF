@@ -343,6 +343,7 @@ func (m *Model) renderTopBar() string {
 		return truncate(left+" "+right, m.width)
 	}
 	m.headerStatusShown = statusActive && shownMeta != ""
+	m.headerPlacesShown = showPlaces
 	rightX := lipgloss.Width(left) + space
 	modelsOffset := 0
 	if shownGlance != "" {
@@ -378,6 +379,9 @@ func (m *Model) renderPlaceLabel(name string, target place, attention bool) stri
 	style := mutedStyle.Faint(true)
 	if m.activePlace() == target {
 		style = inkStyle
+	}
+	if m.focus == focusHeader && m.headerFocusIndex == headerDoors+int(target) {
+		style = powderStyle.Bold(true)
 	}
 	label := style.Render(name)
 	if attention {
@@ -785,7 +789,10 @@ func (m *Model) renderInput() string {
 	}
 	if hasImageAttachments(m.attachments) {
 		if model, supported := m.imageInputSupport(); !supported {
-			hint := truncate(model+" can't see images — try a vision model", m.width)
+			// The image is staged either way now, so the line says what will
+			// happen rather than what cannot: the front desk is blind here,
+			// the work is not necessarily.
+			hint := truncate(model+" can't see it here — it still rides to the work", m.width)
 			chipLines = append(chipLines, mutedStyle.Faint(true).Render(hint))
 		}
 	}

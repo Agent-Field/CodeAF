@@ -18,6 +18,7 @@ import (
 	"unicode"
 	"unicode/utf8"
 
+	"github.com/Agent-Field/aforge-v2/internal/cas"
 	"github.com/Agent-Field/aforge-v2/internal/manual"
 	"github.com/Agent-Field/aforge-v2/internal/resident"
 	"github.com/Agent-Field/aforge-v2/internal/store"
@@ -692,7 +693,11 @@ func (h *Head) supportsImages(client Client) bool {
 	return h.modalities.Supports(model, "input", "image")
 }
 
-func imageContentPart(path string) (ai.ContentPart, bool) {
+func imageContentPart(reference string) (ai.ContentPart, bool) {
+	// An attachment is journaled as a durable reference to our own copy. The
+	// front desk answers in the moment and has no blob store in hand, so it
+	// reads the file the person attached, which is still where they left it.
+	path := cas.SourcePath(reference)
 	ext := strings.ToLower(filepath.Ext(path))
 	mediaType := map[string]string{".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".webp": "image/webp", ".gif": "image/gif"}[ext]
 	if mediaType == "" {
