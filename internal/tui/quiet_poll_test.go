@@ -91,6 +91,13 @@ func (c *countingBackend) PendingQuestions(sessionID string, limit int) ([]store
 	return c.fakeBackend.PendingQuestions(sessionID, limit)
 }
 
+func (c *countingBackend) OpenQuestions(sessionID string, limit int) ([]store.AgentQuestion, error) {
+	c.countMu.Lock()
+	c.questions++
+	c.countMu.Unlock()
+	return c.fakeBackend.OpenQuestions(sessionID, limit)
+}
+
 // quietModel is a primed lens on a counting backend with a controllable clock:
 // the first poll is always full, so every later assertion is about the second.
 func quietModel(t *testing.T, backend *countingBackend, now *time.Time) *Model {

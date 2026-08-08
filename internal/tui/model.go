@@ -90,6 +90,14 @@ type journalReader interface {
 	LatestEventSeq() (int64, error)
 }
 
+// openQuestionReader lists every question still waiting on the user, surfaced
+// or not. It stays an optional capability beside the older unsurfaced-only
+// read so a lightweight embedder keeps working, but the real store answers it
+// and the dock is built on it.
+type openQuestionReader interface {
+	OpenQuestions(sessionID string, limit int) ([]store.AgentQuestion, error)
+}
+
 // selfActivityReader is the resident-life slice of the store. It stays an
 // optional backend capability so lightweight TUI embedders do not have to
 // implement the resident, while the real store supplies every value.
@@ -1467,7 +1475,14 @@ func (m *Model) poll() tea.Cmd {
 		jobUsage, jobUsageErr := backend.TopLevelJobUsage()
 		var agentQuestions []store.AgentQuestion
 		var agentQuestionsErr error
-		if reader, ok := backend.(interface {
+		// "Waiting on you" is a fact about the question, not about whether it has
+		// been shown. A blocking question is surfaced the moment it is asked, so a
+		// dock fed by the unsurfaced set went blind to exactly the questions a
+		// running job is stuck behind — they appeared in the thread and vanished
+		// from the one surface that carries their identity.
+		if reader, ok := backend.(openQuestionReader); ok {
+			agentQuestions, agentQuestionsErr = reader.OpenQuestions(sessionID, pollLimit)
+		} else if reader, ok := backend.(interface {
 			PendingQuestions(string, int) ([]store.AgentQuestion, error)
 		}); ok {
 			agentQuestions, agentQuestionsErr = reader.PendingQuestions(sessionID, pollLimit)
@@ -1781,7 +1796,7 @@ func (m *Model) applyPoll(result pollResultMsg) {
 	if result.agentQuestionsErr == nil {
 		m.agentQuestions = m.agentQuestions[:0]
 		for _, question := range result.agentQuestions {
-			if question.Urgency != store.QuestionBlocking && question.Status == store.QuestionPending {
+			if question.Status == store.QuestionPending || question.Status == store.QuestionAsked {
 				m.agentQuestions = append(m.agentQuestions, question)
 			}
 		}

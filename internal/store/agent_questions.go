@@ -265,6 +265,25 @@ func (s *Store) UnresolvedQuestions(limit int) ([]AgentQuestion, error) {
 		[]any{QuestionPending, QuestionAsked, questionLimit(limit)})
 }
 
+// OpenQuestions returns every question in one session the user still owes an
+// answer to, quiet and already-surfaced alike, oldest first.
+//
+// PendingQuestions answers "what has nobody been shown yet", which is a
+// surfacing decision. This answers "what is still waiting on you", which is the
+// only honest basis for a lens that lists open questions: a blocking question
+// crosses into the thread the instant it is asked, so anything built on the
+// unsurfaced set is structurally blind to exactly the questions a running job
+// is stuck behind.
+func (s *Store) OpenQuestions(sessionID string, limit int) ([]AgentQuestion, error) {
+	where := `status IN (?, ?)`
+	args := []any{QuestionPending, QuestionAsked}
+	if sessionID != "" {
+		where += ` AND (session_id = ? OR session_id = '')`
+		args = append(args, sessionID)
+	}
+	return s.queryAgentQuestions(where+` ORDER BY seq LIMIT ?`, append(args, questionLimit(limit)))
+}
+
 // QuestionsForNode returns every question one node has asked, newest first,
 // whatever became of each. UnresolvedQuestions answers "what is outstanding",
 // which is a live queue; this answers "what has this node already asked and
@@ -532,16 +551,28 @@ func (s *Store) QuestionForAnswer(sessionID string, beforeSeq, referenceSeq int6
 		}
 		return questions[0], true, nil
 	}
-	questions, err := s.queryAgentQuestions(`(session_id = ? OR session_id = '') AND status = ? AND asked_message_seq < ?
-		AND NOT EXISTS (
-			SELECT 1 FROM messages u WHERE u.session_id = ?
-			AND u.role = ? AND u.seq > agent_questions.asked_message_seq AND u.seq < ?
-		) ORDER BY asked_message_seq DESC LIMIT 1`,
-		[]any{sessionID, QuestionAsked, beforeSeq, sessionID, RoleUser, beforeSeq})
+	questions, err := s.QuestionsForAnswer(sessionID, beforeSeq)
 	if err != nil || len(questions) == 0 {
 		return AgentQuestion{}, false, err
 	}
 	return questions[0], true, nil
+}
+
+// QuestionsForAnswer returns every surfaced question this reply could plausibly
+// be answering, newest first. QuestionForAnswer takes the first of these and
+// that is right whenever there is only one; when there are several, "newest
+// wins" is a coin toss dressed as a rule, and the caller needs to see the whole
+// set before it silently spends one of them.
+func (s *Store) QuestionsForAnswer(sessionID string, beforeSeq int64) ([]AgentQuestion, error) {
+	if beforeSeq <= 0 {
+		return nil, nil
+	}
+	return s.queryAgentQuestions(`(session_id = ? OR session_id = '') AND status = ? AND asked_message_seq < ?
+		AND NOT EXISTS (
+			SELECT 1 FROM messages u WHERE u.session_id = ?
+			AND u.role = ? AND u.seq > agent_questions.asked_message_seq AND u.seq < ?
+		) ORDER BY asked_message_seq DESC`,
+		[]any{sessionID, QuestionAsked, beforeSeq, sessionID, RoleUser, beforeSeq})
 }
 
 func validateQuestionAnswerTx(tx *sql.Tx, question AgentQuestion, answerSeq int64) error {

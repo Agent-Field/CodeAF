@@ -21,18 +21,43 @@ const (
 )
 
 // answerAgentQuestion routes replies to the durable reverse-direction queue.
-// An explicit QuestionSeq wins; otherwise the store applies the same
-// no-intervening-user-turn recency rule as ordinary conversational askbacks.
+// An explicit QuestionSeq wins — every surface that knows which question is on
+// screen carries it, and a reply that names its question can never hit another
+// one. Without it the store applies the same no-intervening-user-turn recency
+// rule as ordinary conversational askbacks, and aimAgentQuestion stands between
+// that rule and a silent wrong answer when more than one question is open.
 func (h *Head) answerAgentQuestion(ctx context.Context, user store.Message) (bool, error) {
 	question, found, err := h.store.QuestionForAnswer(user.SessionID, user.Seq, user.QuestionSeq)
-	if err != nil || !found {
+	if err != nil {
 		return false, err
 	}
+	if !found {
+		// Nothing is answerable, which is exactly the state the ambiguity ask
+		// leaves behind: the reply it was asking about is itself an intervening
+		// user turn for every question it named. So this is where the answer to
+		// that ask is read, and nowhere else pays for the lookup.
+		return h.answerQuestionChoice(ctx, user)
+	}
+	if user.QuestionSeq == 0 {
+		aimed, asked, aimErr := h.aimAgentQuestion(user, question)
+		if asked || aimErr != nil {
+			return asked, aimErr
+		}
+		question = aimed
+	}
+	return h.resolveAgentQuestion(ctx, user, question, user.Body)
+}
+
+// resolveAgentQuestion settles one identified question with one body of words.
+// The words are a parameter rather than user.Body because the turn that names
+// which question was meant is not the turn that answered it.
+func (h *Head) resolveAgentQuestion(ctx context.Context, user store.Message,
+	question store.AgentQuestion, body string) (bool, error) {
 	if question.Status == store.QuestionAnswered || question.Status == store.QuestionExpired {
 		return true, nil
 	}
-	answer := strings.TrimSpace(user.Body)
-	if option, selected := selectQuestionOption(user.Body, question.Options); selected {
+	answer := strings.TrimSpace(body)
+	if option, selected := selectQuestionOption(body, question.Options); selected {
 		answer = strings.TrimSpace(option.Label)
 		if answer == "" {
 			answer = strings.TrimSpace(option.Value)
@@ -55,7 +80,7 @@ func (h *Head) answerAgentQuestion(ctx context.Context, user store.Message) (boo
 		return false, nil
 	}
 	if charterID, ok := charterQuestionID(question.Options); ok {
-		if cadence := extractCadence(user.Body); cadence != "" {
+		if cadence := extractCadence(body); cadence != "" {
 			if err := h.store.ResolveQuestion(question.Seq, store.QuestionAnswered, cadence, user.Seq); err != nil {
 				return true, err
 			}

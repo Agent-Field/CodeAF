@@ -103,7 +103,108 @@ func (r *Reconciler) surfaceBlockingQuestionsLocked(sessionID string) error {
 			return err
 		}
 	}
-	return r.rehomeOrphanedBlockingLocked()
+	if err := r.rehomeOrphanedBlockingLocked(); err != nil {
+		return err
+	}
+	return r.resurfaceStrandedBlockingLocked()
+}
+
+// questionResurfaceQuiet is how long a stranded question waits before it comes
+// back. Short enough that a blocked worker is not forgotten for the rest of the
+// afternoon, long enough that a burst of conversation past an open question is
+// one interruption rather than one per sentence.
+const questionResurfaceQuiet = 3 * time.Minute
+
+const (
+	strandedPageSize = 50
+	strandedPages    = 20
+)
+
+// resurfaceStrandedBlockingLocked brings back a question the conversation
+// stepped over.
+//
+// Answering is matched to a question by recency: the newest surfaced question
+// with no user turn after it. That rule is exactly right with one question
+// open, and with two it quietly destroys the older one — the answer to the
+// newer question is itself an intervening user turn for the older, so the guard
+// that protects a question from capturing unrelated chat fires against it
+// forever. The words stayed on screen, the worker stayed blocked, and nothing
+// ever said so.
+//
+// A question is not spent by someone answering a different one. So the ones
+// that were stepped over come back: re-posted into the live conversation, which
+// moves the guard's watermark with them and makes them answerable again. The
+// three conditions are the whole policy — a user turn has gone past it, the
+// thread has since moved on (the last thing said is not the user still waiting
+// on a reply), and it has not just been asked. One per pass, because a wall of
+// re-asks is its own kind of silence.
+func (r *Reconciler) resurfaceStrandedBlockingLocked() error {
+	seen, found, err := r.store.LastSeen()
+	if err != nil || !found || seen.State != store.SeenAttached {
+		return err
+	}
+	live := strings.TrimSpace(seen.SessionID)
+	if live == "" {
+		return nil
+	}
+	questions, err := r.store.UnresolvedQuestions(200)
+	if err != nil {
+		return err
+	}
+	now := r.now()
+	for _, question := range questions {
+		if question.Status != store.QuestionAsked || question.Urgency != store.QuestionBlocking {
+			continue
+		}
+		if strings.TrimSpace(question.SessionID) != live {
+			continue
+		}
+		if !question.AskedAt.IsZero() && now.Sub(question.AskedAt) < questionResurfaceQuiet {
+			continue
+		}
+		stranded, err := r.questionStrandedLocked(live, question.AskedMessageSeq)
+		if err != nil {
+			return err
+		}
+		if !stranded {
+			continue
+		}
+		if _, err := r.store.ResurfaceQuestion(question.Seq, live); err != nil &&
+			!errors.Is(err, store.ErrInvalid) {
+			return err
+		}
+		return nil
+	}
+	return nil
+}
+
+// questionStrandedLocked reads the two halves of "stepped over" out of the
+// thread itself: somebody spoke after the question was asked, and what they
+// said has already been answered.
+func (r *Reconciler) questionStrandedLocked(sessionID string, askedMessageSeq int64) (bool, error) {
+	spoken, movedOn := false, false
+	cursor := askedMessageSeq
+	for page := 0; page < strandedPages; page++ {
+		messages, err := r.store.Messages(sessionID, cursor, strandedPageSize)
+		if err != nil {
+			return false, err
+		}
+		if len(messages) == 0 {
+			break
+		}
+		for _, message := range messages {
+			cursor = message.Seq
+			if message.Role == store.RoleUser {
+				spoken, movedOn = true, false
+				continue
+			}
+			movedOn = true
+		}
+		if len(messages) < strandedPageSize {
+			break
+		}
+	}
+	return spoken && movedOn, nil
 }
 
 // rehomeOrphanedBlockingLocked rescues a blocking question whose conversation
