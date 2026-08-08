@@ -5,6 +5,7 @@ import (
 	"errors"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/Agent-Field/aforge-v2/internal/store"
 )
@@ -372,5 +373,111 @@ func TestRedirectAudienceMatchesWhoTheBroadcastReaches(t *testing.T) {
 	}
 	if audience != informed || audience != 1 {
 		t.Fatalf("audience = %d, informed = %d, want 1 each", audience, informed)
+	}
+}
+
+// The redirection that evaporated. The user's feedback reached a leaf two
+// seconds before it completed with "everything is verified" — a sentence already
+// written when the words arrived. Nothing acted on them, nobody re-checked, and
+// the thread said nothing at all, so the user was left believing their correction
+// had been taken.
+func TestRedirectThatRacedTheLandingIsSaidOutLoud(t *testing.T) {
+	graph := openStore(t)
+	spliceRedirectJob(t, graph)
+	// The settle lane resumes where it left off, so a reconciler meeting a fresh
+	// store has to be present before the landing it is meant to react to.
+	reconciler := New(graph, nil, nil)
+	if err := reconciler.Tick(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	claim, won, err := graph.Claim("api-n1", "worker")
+	if err != nil || !won {
+		t.Fatalf("claim won=%t err=%v", won, err)
+	}
+	if err := graph.Start(claim); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := BroadcastRedirection(graph, "api", "redirect",
+		"I keep getting could not load — make sure you test the functionality"); err != nil {
+		t.Fatal(err)
+	}
+	if err := graph.Complete(claim, "Everything is verified. It builds cleanly and launches."); err != nil {
+		t.Fatal(err)
+	}
+	if err := reconciler.Tick(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+
+	said := ""
+	messages, err := graph.Messages("redirect", 0, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, message := range messages {
+		if message.Role == store.RoleAgent && message.NodeID == "" {
+			said = message.Body
+		}
+	}
+	if !strings.Contains(said, "as it was already finishing") ||
+		!strings.Contains(said, "Endpoints") {
+		t.Fatalf("missed-direction line = %q", said)
+	}
+}
+
+// Urgency broadcasts a fixed line about pace rather than the user's own words,
+// and a missed "hurry up" on finished work is not news anyone needs. Nothing
+// extra is said.
+func TestUrgencySteeringThatRacedTheLandingSaysNothingExtra(t *testing.T) {
+	graph := openStore(t)
+	spliceRedirectJob(t, graph)
+	// The settle lane resumes where it left off, so a reconciler meeting a fresh
+	// store has to be present before the landing it is meant to react to.
+	reconciler := New(graph, nil, nil)
+	if err := reconciler.Tick(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	claim, won, err := graph.Claim("api-n1", "worker")
+	if err != nil || !won {
+		t.Fatalf("claim won=%t err=%v", won, err)
+	}
+	if err := graph.Start(claim); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := BroadcastRedirection(graph, "api", "hurry", urgencySteerLine); err != nil {
+		t.Fatal(err)
+	}
+	if err := graph.Complete(claim, "Done."); err != nil {
+		t.Fatal(err)
+	}
+	if err := reconciler.Tick(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+
+	messages, err := graph.Messages("hurry", 0, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, message := range messages {
+		if message.Role == store.RoleAgent && message.NodeID == "" {
+			t.Fatalf("urgency produced an extra line: %q", message.Body)
+		}
+	}
+}
+
+// Words that arrived with turns left to read them in were heard, and saying they
+// were not would be its own dishonesty.
+func TestDirectionWithTurnsLeftToReadItIsNotReportedMissed(t *testing.T) {
+	landed := time.Now()
+	if directionMissed(landed, landed.Add(-10*time.Minute)) {
+		t.Fatal("a redirection ten minutes before the landing was called missed")
+	}
+	if !directionMissed(landed, landed.Add(-2*time.Second)) {
+		t.Fatal("a redirection two seconds before the landing was called heard")
+	}
+	if !directionMissed(landed, landed.Add(time.Second)) {
+		t.Fatal("a redirection after the landing was called heard")
+	}
+	if directionMissed(time.Time{}, landed) {
+		t.Fatal("a node that never landed reported a missed direction")
 	}
 }

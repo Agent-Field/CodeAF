@@ -55,6 +55,25 @@ const (
 	correctionAskLineBytes = 160
 )
 
+// correctionDisputeLine is the sentence that outranks the predecessor's own
+// account of itself.
+//
+// A leaf ended "Everything is verified. The browser builds cleanly, launches a
+// Fyne window…" while the person watching it was typing "I keep getting could
+// not load, no page is loading". The delivery gate believed the leaf, and the
+// revision spawned from the user's words inherited that belief as an input: the
+// previous attempt arrives as trusted context, and "verified" inside it reads as
+// settled ground the revision may build on rather than the exact claim under
+// dispute. Then it re-verifies nothing, and says "verified" again.
+//
+// So the block says which of the two accounts is evidence. It names no symptom
+// and no phrase — what counts as a claim, and what would settle it, is the
+// model's judgment on the words in front of it. It only fixes the standing:
+// the user was there, the predecessor is a witness for itself.
+const correctionDisputeLine = "Where the previous attempt claims something works, was tested, or was verified, " +
+	"treat that claim as disputed rather than established — the user is reporting what actually happened when " +
+	"they used it, and they outrank it. Check those claims yourself before repeating any of them."
+
 // IsCorrection reports that a splice is a revision of the work it targets.
 // Exported for the resident half, which owns what happens next.
 func IsCorrection(instruction string) bool {
@@ -81,6 +100,7 @@ func SpliceCorrection(words string, job store.Node, previous string, files []str
 	}
 	block.WriteString("\n\nThis is a revision of that deliverable, not a second opinion about it: " +
 		"produce it again with the correction above applied, and keep everything the user did not object to.")
+	block.WriteString("\n" + correctionDisputeLine)
 	return block.String()
 }
 
@@ -116,7 +136,7 @@ func (h *Head) manageCorrection(user store.Message) (bool, error) {
 			return false, err
 		}
 	}
-	previous := nodeResult(job)
+	previous := h.jobResult(job)
 	if strings.TrimSpace(previous) == "" {
 		// Nothing was delivered, so there is nothing to be wrong. Whatever this
 		// sentence is about, it is not a revision of this job.
