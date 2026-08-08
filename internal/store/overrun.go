@@ -14,6 +14,7 @@ type DeferredOverrun struct {
 	Seq       int64    `json:"-"`
 	NodeID    string   `json:"-"`
 	Partial   string   `json:"partial,omitempty"`
+	Gap       string   `json:"gap,omitempty"`
 	Artifacts []string `json:"artifacts,omitempty"`
 	Prefix    string   `json:"prefix"`
 }

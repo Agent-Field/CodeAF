@@ -2,6 +2,7 @@ package resident
 
 import (
 	"context"
+	"fmt"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -43,12 +44,15 @@ func TestReplanOverrunSplicesRepairAndRewiresWaiters(t *testing.T) {
 		if prefix == "job-a-x1" && (!strings.Contains(goal, "partial progress text") || !strings.Contains(goal, "/tmp/partial.md")) {
 			t.Fatalf("replan goal does not carry the partial result:\n%s", goal)
 		}
+		if prefix == "job-a-x2" && !strings.Contains(goal, "the docker half is missing") {
+			t.Fatalf("replan goal does not carry the reviewer's gap:\n%s", goal)
+		}
 		return store.Subtree{Nodes: []store.NodeSpec{
 			{ID: prefix + "-n9", Brief: "finish it", Title: "Finish"},
 			{ID: prefix + "-n5", Parent: prefix + "-n9", Brief: "remaining piece", Title: "Remaining piece"},
 		}}, nil
 	}
-	spliced, sink, err := ReplanOverrun(context.Background(), graph, nodeA, "partial progress text", []string{"/tmp/partial.md"}, 20, planned)
+	spliced, sink, err := ReplanOverrun(context.Background(), graph, nodeA, "partial progress text", "", []string{"/tmp/partial.md"}, 20, planned)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -112,15 +116,15 @@ func TestReplanOverrunSplicesRepairAndRewiresWaiters(t *testing.T) {
 		t.Fatalf("rebuild after edge additions: %v", err)
 	}
 
-	// Repair leaves may split for as many rounds as the dollar rail permits.
-	// The round counter replaces the old suffix instead of stacking markers.
+	// Repair leaves may split for MaxOverrunRounds rounds; the counter
+	// replaces the old suffix instead of stacking markers.
 	repair, _, _ := graph.Node("job-a-x1-n5")
-	spliced, sink, err = ReplanOverrun(context.Background(), graph, repair, "more partial", nil, 20, planned)
+	spliced, sink, err = ReplanOverrun(context.Background(), graph, repair, "more partial", "the docker half is missing", nil, 20, planned)
 	if err != nil || spliced != 2 || sink != "job-a-x2-n9" {
 		t.Fatalf("round two: spliced=%d sink=%q err=%v", spliced, sink, err)
 	}
 	repair, _, _ = graph.Node("job-a-x2-n5")
-	spliced, sink, err = ReplanOverrun(context.Background(), graph, repair, "last partial", nil, 20, planned)
+	spliced, sink, err = ReplanOverrun(context.Background(), graph, repair, "last partial", "", nil, 20, planned)
 	if err != nil || spliced != 2 || sink != "job-a-x3-n9" {
 		t.Fatalf("round three: spliced=%d sink=%q err=%v", spliced, sink, err)
 	}
@@ -138,6 +142,89 @@ func TestReplanOverrunSplicesRepairAndRewiresWaiters(t *testing.T) {
 	}
 	if _, ok, err := graph.Node("job-a-x3-n9"); err != nil || !ok {
 		t.Fatalf("rebuilt third round missing: ok=%t err=%v", ok, err)
+	}
+
+	// Round four is where the governor draws the line: 27 real rounds under
+	// one leaf is the incident this cap exists for. No splice, no planner
+	// call, and the thread carries a receipt instead of silence.
+	plansBefore := 0
+	counting := func(ctx context.Context, goal, prefix string) (store.Subtree, error) {
+		plansBefore++
+		return planned(ctx, goal, prefix)
+	}
+	repair, _, _ = graph.Node("job-a-x3-n5")
+	spliced, sink, err = ReplanOverrun(context.Background(), graph, repair, "still partial", "", nil, 20, counting)
+	if err != nil || spliced != 0 || sink != "" {
+		t.Fatalf("capped round: spliced=%d sink=%q err=%v", spliced, sink, err)
+	}
+	if plansBefore != 0 {
+		t.Fatalf("planner called %d times past the round cap", plansBefore)
+	}
+	messages, err := graph.Messages("s1", 0, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	noticed := false
+	for _, message := range messages {
+		if strings.Contains(message.Body, "split as many times") {
+			noticed = true
+		}
+	}
+	if !noticed {
+		t.Fatalf("round cap left no receipt in the thread")
+	}
+}
+
+// The job-lifetime ceiling: many siblings can each split within the round
+// allowance, and the sum is the sprawl the round cap alone cannot see.
+func TestReplanOverrunStopsAtJobCeiling(t *testing.T) {
+	graph, err := store.Open(filepath.Join(t.TempDir(), "ceiling.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer graph.Close()
+	specs := []store.NodeSpec{{ID: "big-job", Brief: "the whole job"}}
+	for i := 0; i < maxJobNodes-2; i++ {
+		specs = append(specs, store.NodeSpec{ID: fmt.Sprintf("big-job-n%d", i), Parent: "big-job", Brief: "piece"})
+	}
+	if err := graph.Splice(store.RootID, store.Subtree{Nodes: specs}, store.Provenance{
+		Origin: store.OriginUser, SessionID: "s9", Intent: "test",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	claim, ok, err := graph.Claim("big-job-n0", "w1")
+	if err != nil || !ok {
+		t.Fatalf("claim: %v %v", ok, err)
+	}
+	if err := graph.Start(claim); err != nil {
+		t.Fatal(err)
+	}
+	node, _, _ := graph.Node("big-job-n0")
+	planned := func(_ context.Context, _, prefix string) (store.Subtree, error) {
+		return store.Subtree{Nodes: []store.NodeSpec{
+			{ID: prefix + "-n1", Brief: "finish it"},
+			{ID: prefix + "-n2", Parent: prefix + "-n1", Brief: "remaining piece"},
+		}}, nil
+	}
+	spliced, sink, err := ReplanOverrun(context.Background(), graph, node, "partial", "", nil, 20, planned)
+	if err != nil || spliced != 0 || sink != "" {
+		t.Fatalf("ceiling replan: spliced=%d sink=%q err=%v", spliced, sink, err)
+	}
+	if _, ok, err := graph.Node("big-job-n0-x1-n1"); err != nil || ok {
+		t.Fatalf("repair landed past the job ceiling: ok=%t err=%v", ok, err)
+	}
+	messages, err := graph.Messages("s9", 0, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	noticed := false
+	for _, message := range messages {
+		if strings.Contains(message.Body, "grown as large") {
+			noticed = true
+		}
+	}
+	if !noticed {
+		t.Fatalf("job ceiling left no receipt in the thread")
 	}
 }
 
@@ -171,7 +258,7 @@ func TestReplanOverrunPausesBeforeSpliceAtDailyRail(t *testing.T) {
 		return store.Subtree{Nodes: []store.NodeSpec{{ID: prefix, Brief: "finish deferred remainder"}}}, nil
 	}
 	for attempt := 0; attempt < 2; attempt++ {
-		spliced, sink, err := ReplanOverrun(context.Background(), graph, node, "partial", nil, 1, plan)
+		spliced, sink, err := ReplanOverrun(context.Background(), graph, node, "partial", "", nil, 1, plan)
 		if err != nil || spliced != 0 || sink != "" {
 			t.Fatalf("rail replan %d = spliced %d sink %q err=%v", attempt, spliced, sink, err)
 		}
