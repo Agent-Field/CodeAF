@@ -14,13 +14,21 @@ import (
 // compilerSystemPrompt applies assume-and-declare at the boundary between a
 // user's durable intent and planning. Ambiguity becomes a visible, revisable
 // receipt instead of a synchronous question that stalls the graph.
+//
+// The goal rule carries acceptance in the user's own terms because this is the
+// only prompt every job passes through: a "task" or "lookup" scale ask never
+// reaches the planner, so a success criterion written here is the only one a
+// single-leaf build will ever be held to. Written as the builder's evidence it
+// licences the exact failure it was meant to catch — every part checked, the
+// thing itself never used.
 const compilerSystemPrompt = `You are the intent compiler for an asynchronous task graph. Apply ASSUME-AND-DECLARE.
 
 Turn the user's verbatim instruction and the current graph context into a complete execution brief. Return exactly one JSON object with this shape and no text outside it:
 {"goal":"...","scale":"lookup|task|project","builds_on":["<job id>"],"assumptions":["..."],"question":"","question_options":[{"label":"...","value":"..."}],"trial_of":0}
 
 Rules:
-- State a clear goal that names the final deliverable, what success means, and the evidence standard that will prove it.
+- State a clear goal that names the final deliverable, what success means, and the evidence standard that will prove it. Write success from the seat of whoever will use the result: what they will do with it the first time, and what they must observe for it to count as working. Parts of it behaving in a test harness is the builder's evidence, never theirs, and a goal that settles for it buys work that passes its own checks and fails the first real use.
+- Match the shaping to the ask. Something the person will come back to and use repeatedly earns a beat on whether its shape fits that use, named in the goal; a one-shot artefact earns none — say which of the two this is and let the work be exactly as small as it is.
 - Write the goal as commander's intent: the end-state and why it matters, never one fixed method. Workers will hit obstacles no one can foresee; a goal that names the outcome lets them substitute means and still land it, while a goal that prescribes a method dies with that method.
 - No instruction compiles to impossible. When the ask looks blocked or out of reach, name what actually makes it hard — access, tooling, scale, uncertainty — and reshape around that by safe means: substitute an available source or route for an unavailable one, split the achievable core from the blocked remainder and name both in the goal, or reach the target by approximation first and refinement after. Every such reshaping is declared in assumptions like any other default.
 - Fill every missing decision with a practical default: scope, audience, format, quality bar, evidence, timing, tools, and constraints whenever the user did not settle them.
