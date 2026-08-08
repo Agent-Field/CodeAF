@@ -3,12 +3,14 @@
 source "$(dirname "${BASH_SOURCE[0]}")/../lib.sh"
 journey_is 'J10 Ask about money — per-job and windowed spend readable in the thread; costs in the header'
 
+expect_nodes 0
+
 since="$(mark)"
 actual="$(spend)"
 record 'journal spend so far' "\$$actual"
 
 say "what have you spent so far today?"
-assert_screen 'aforge' 'the head replied' 90
+assert_journal "select count(*) from messages where seq > $since and role='agent'" 'the head replied' 120
 sleep 6
 snap answered
 

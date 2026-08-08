@@ -3,10 +3,11 @@
 source "$(dirname "${BASH_SOURCE[0]}")/../lib.sh"
 journey_is 'J7 Teach a lesson — a stated lesson lands in the notebook and future jobs see it'
 
+expect_nodes 0
 since="$(mark)"
 
 say "always run what you build once before telling me it's done — remember that"
-assert_screen 'aforge' 'the head replied' 90
+assert_journal "select count(*) from messages where seq > $since and role='agent'" 'the head replied' 120
 sleep 5
 snap taught
 

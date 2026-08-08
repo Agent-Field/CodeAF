@@ -3,15 +3,20 @@
 source "$(dirname "${BASH_SOURCE[0]}")/../lib.sh"
 journey_is 'J9 Approve spend — price shown before purchase, consent asked, refusal honored'
 
+expect_nodes 1
+
 # The real journey needs a plan estimated over $3, which is exactly the money a
 # test suite may not spend. AFORGE_PLAN_CONSENT is the same gate with a movable
 # line, so the cheap variant drops the line to a cent and asks the identical
 # question about a job costing cents. Same code path, 1/300th of the money.
-note 'variant: AFORGE_PLAN_CONSENT lowered to $0.01 so the same gate fires on a cheap job'
+note 'variant: AFORGE_PLAN_CONSENT lowered to $0.0002 — below the estimate of a cents-scale job, so the same gate fires'
 
 ux_kill "$UX_SESSION"
 sleep 2
-ux_launch "$UX_SESSION" "AFORGE_PLAN_CONSENT=0.01"
+# A cent is still above what these jobs are estimated to cost, so the gate
+# never fires at $0.01 — the line has to go below the estimate, not below the
+# real $3 rail.
+ux_launch "$UX_SESSION" "AFORGE_PLAN_CONSENT=0.0002"
 
 since="$(mark)"
 say "research the three most common causes of bridge collapses and write me a short report file"

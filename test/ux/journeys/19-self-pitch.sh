@@ -3,9 +3,10 @@
 source "$(dirname "${BASH_SOURCE[0]}")/../lib.sh"
 journey_is 'J19 Ask what it can do — the product carries its own pitch: journeys, in its own voice, from live capabilities'
 
+expect_nodes 0
 since="$(mark)"
 say "what can you do?"
-assert_screen 'aforge' 'the head replied' 120
+assert_journal "select count(*) from messages where seq > $since and role='agent'" 'the head replied' 150
 sleep 8
 snap answered
 

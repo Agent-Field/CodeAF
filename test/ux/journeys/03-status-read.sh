@@ -3,10 +3,11 @@
 source "$(dirname "${BASH_SOURCE[0]}")/../lib.sh"
 journey_is 'J3 Watch progress — "how'"'"'s it going" is a read of the live graph, never a refusal'
 
+expect_nodes 0
 since="$(mark)"
 
 say "did you finish the haiku?"
-assert_screen 'aforge' 'the head replied at all' 90
+assert_journal "select count(*) from messages where seq > $since and role='agent'" 'the head replied at all' 120
 sleep 6
 snap replied
 

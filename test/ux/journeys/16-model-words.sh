@@ -8,6 +8,7 @@ boost_model="$(python3 -c "import json;print(json.load(open('$UX_STATE/settings.
 record 'work model' "$work_model"
 record 'boost model' "$boost_model"
 
+expect_nodes 1
 since="$(mark)"
 say "use the boost model for this: write one sentence about mountains"
 

@@ -3,6 +3,7 @@
 source "$(dirname "${BASH_SOURCE[0]}")/../lib.sh"
 journey_is 'J2 Commission work — "build me X" → work order journaled, tasks on the board, deliverable lands in the thread answer-first'
 
+expect_nodes 1
 since="$(mark)"
 
 say "write a haiku about rivers into a file and show me the haiku"
@@ -31,6 +32,8 @@ assert_journal_is "select count(*) from nodes where created_seq > $since and sta
 # Keep the haiku's file path for the journeys that correct it later.
 journal "select group_concat(body, char(10)) from messages where seq > $since and role in ('agent','system')" \
   > "$UX_DIR/deliverable.txt"
+
+judge_this 'write a haiku about rivers into a file and show me the haiku' "$(deliverable_since "$since")"
 
 dump_turn "$since"
 finish

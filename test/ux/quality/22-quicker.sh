@@ -3,6 +3,8 @@
 source "$(dirname "${BASH_SOURCE[0]}")/../lib.sh"
 journey_is 'Q3 Urgency — "quick, do not overthink" against a matched control: does the shape of the work change?'
 
+expect_nodes 2
+
 run_one() {
   local label="$1" sentence="$2"
   local from t0 t1

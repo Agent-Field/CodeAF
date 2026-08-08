@@ -186,6 +186,32 @@ assert_cmd() {
   fi
 }
 
+# ---------------------------------------------------------------- gauges
+#
+# Completion is the cheap half. A journey that passes every assertion can still
+# have spliced eleven tasks to write a haiku, spent a dollar doing it, taken
+# four minutes, filled the thread with chatter, and produced something bad.
+# These four leave a trace the runner turns into the report card.
+
+# expect_nodes declares the proportionate size of this ask. The runner flags a
+# journey that formed materially more work than the ask deserved.
+expect_nodes() { printf '%s\n' "$1" > "$UX_DIR/expect-nodes"; }
+
+# judge_this hands one deliverable to a cheap model against a fixed rubric.
+# The suite can prove a haiku was journaled; only a reader can say it is a
+# haiku about rivers that mentions a heron.
+judge_this() {
+  printf '%s\n' "$1" > "$UX_DIR/judge-ask"
+  printf '%s\n' "$2" > "$UX_DIR/judge-deliverable"
+  note "queued for the quality judge (${#2} bytes of deliverable)"
+}
+
+# deliverable_since is the usual thing to judge: everything the agent said
+# after the ask, which is where an answer-first product puts the content.
+deliverable_since() {
+  journal "select group_concat(body, char(10)) from messages where seq > $1 and role in ('agent','system')"
+}
+
 # ---------------------------------------------------------------- verdicts
 
 # observed marks a journey whose mechanism has a threshold we cannot force

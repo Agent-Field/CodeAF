@@ -3,6 +3,7 @@
 source "$(dirname "${BASH_SOURCE[0]}")/../lib.sh"
 journey_is 'J4 Steer running work — words reach running workers; words arriving after landing are called out, not eaten'
 
+expect_nodes 1
 since="$(mark)"
 
 say "write a 6-verse poem about mountains, one verse at a time, into a file"
@@ -54,5 +55,8 @@ assert_journal "select count(*) from messages where seq > $steer_at and role in 
 
 settle 60
 snap after
+
+judge_this 'write a 6-verse poem, one verse at a time, into a file — then, while it ran: make it about the sea instead' "$(deliverable_since "$since")"
+
 dump_turn "$since"
 finish

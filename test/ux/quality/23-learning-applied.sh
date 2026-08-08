@@ -9,6 +9,7 @@ record 'the lesson on the shelf' "${lesson:-<the notebook has no such lesson>}"
   && _check yes 'the lesson is still in the notebook when the next job starts' 'an active fact about running/verifying' "$(printf '%s' "$lesson" | head -c 160)" \
   || _check no 'the lesson is still in the notebook when the next job starts' 'an active fact about running/verifying' 'nothing'
 
+expect_nodes 1
 since="$(mark)"
 # Deliberately NOT asking it to run anything. If the lesson landed, it runs the
 # script anyway and shows the output. If it only stored a sentence, it will
@@ -41,7 +42,10 @@ record 'script' "${script:-<none>}"
 if [ -n "$script" ]; then
   out="$(python3 "$script" 2>&1 | tr '\n' ' ')"
   record 'suite ran it' "$(printf '%s' "$out" | head -c 200)"
-  if printf '%s' "$out" | grep -q 'FizzBuzz' && printf '%s' "$out" | grep -qi 'fizz' && printf '%s' "$out" | grep -qi 'buzz'; then
+  # Case is not the contract — the sequence is. 3 and 15 must be fizz-ish,
+  # 5 must be buzz-ish, 15 must be the combined word.
+  if printf '%s' "$out" | grep -qi 'fizzbuzz' && printf '%s' "$out" | grep -qi 'fizz' \
+     && printf '%s' "$out" | grep -qi 'buzz' && printf '%s' "$out" | grep -q '11'; then
     _check yes 'the script is correct when the suite runs it' 'fizzbuzz through 15' "$(printf '%s' "$out" | head -c 120)"
   else
     _check no 'the script is correct when the suite runs it' 'fizzbuzz through 15' "$(printf '%s' "$out" | head -c 200)"
@@ -49,6 +53,8 @@ if [ -n "$script" ]; then
 else
   _check no 'the script exists on disk' 'a fizz*.py in the workspace' 'not found'
 fi
+
+judge_this 'write a python script called fizz.py that prints fizzbuzz for 1 to 15' "$(deliverable_since "$since")"
 
 dump_turn "$since"
 finish

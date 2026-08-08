@@ -3,6 +3,8 @@
 source "$(dirname "${BASH_SOURCE[0]}")/../lib.sh"
 journey_is 'J12 Leave and return — close the terminal, come back: the same thread resumes and a brief covers what landed'
 
+expect_nodes 0
+
 before_messages="$(journal "select count(*) from messages")"
 record 'messages before leaving' "$before_messages"
 snap before-leaving
@@ -51,6 +53,7 @@ else
   fi
 fi
 
-assert_screen 'aforge' 'the returned window answers' 90
+assert_journal "select count(*) from messages where seq > $since and role='agent'" \
+  'the returned window answers — the brain came back, not just the frame' 120
 dump_turn "$since"
 finish

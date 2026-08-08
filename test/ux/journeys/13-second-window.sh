@@ -3,6 +3,8 @@
 source "$(dirname "${BASH_SOURCE[0]}")/../lib.sh"
 journey_is 'J13 Second window — named "second window" in the header, same thread, promotion when the first closes'
 
+expect_nodes 0
+
 snap a-before
 assert_screen 'aforge' 'window A is alive' 30
 

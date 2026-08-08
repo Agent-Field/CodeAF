@@ -3,6 +3,8 @@
 source "$(dirname "${BASH_SOURCE[0]}")/../lib.sh"
 journey_is 'J14 Repeat a workflow — craft learned from the first run compiles into the second'
 
+expect_nodes 2
+
 # This one is reported, not graded. Craft is forged by the distiller only when
 # the model judges a job SHAPE reusable, and the prompt that asks it says
 # outright that "most jobs have none" (cmd/aforge/chat.go, the distiller's
