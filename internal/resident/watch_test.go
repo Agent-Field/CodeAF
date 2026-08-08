@@ -550,3 +550,75 @@ func TestTheSentinelIsShownWhatItLastDecidedAndHowItTurnedOut(t *testing.T) {
 		t.Fatalf("the sentinel was not shown which way it went: %q", prompts[1].Previous[0])
 	}
 }
+
+// TestAWeeklyReminderFiresOnItsDayAndComesBackTheNextWeek is the everyday
+// simulation's Sunday, run for real. Before this the rule fired two minutes
+// after ratification, once, and expired inside a day; Sunday came and went in
+// silence.
+func TestAWeeklyReminderFiresOnItsDayAndComesBackTheNextWeek(t *testing.T) {
+	graph := openStore(t)
+	// Ratified on a Monday morning, as she did.
+	monday := time.Date(2026, time.August, 3, 8, 14, 0, 0, time.Local)
+	watch := store.CadenceWatchSpec(store.WatchCron, "every sunday", "",
+		"remind me every sunday to water the plants", monday)
+	charter, err := graph.DraftCharter("plants", "chat", 1, store.CharterSpec{
+		Invariant: "remind me every sunday to water the plants",
+		Watch: store.CharterWatch{
+			Kind: store.WatchCron, Cadence: "every sunday", Spec: watch,
+		},
+		Sentinel: "Is it time for the reminder?", Action: "Say: water the plants.", SayOnly: true,
+		Rails: store.CharterSpecRails{
+			EstimatedCostUSD: 0.02, MaxPerDay: 1,
+			MaxPerDayJustification: "one a day is all a reminder needs", Expiry: "once",
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := graph.SetCharterStatus(charter.ID, store.CharterActive, store.Ratification{
+		Origin: store.OriginUser, SessionID: "chat", Evidence: "yes, stand this up",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := graph.PromoteCharter(charter.ID, "test tenure", true); err != nil {
+		t.Fatal(err)
+	}
+	armed, _, err := graph.Charter(charter.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if armed.NextDue.Weekday() != time.Sunday {
+		t.Fatalf("first due = %s, want a Sunday", armed.NextDue)
+	}
+
+	reconciler := New(graph, nil, nil).WithWatchEngine(0,
+		func(context.Context, SentinelPrompt) (SentinelVerdict, error) {
+			return SentinelVerdict{Yes: true, Line: "it is Sunday"}, nil
+		})
+	// Two minutes after ratification nothing is due: the old bug in one assert.
+	reconciler.now = func() time.Time { return monday.Add(2 * time.Minute) }
+	quiet, err := reconciler.WatchOnce(context.Background())
+	if err != nil || quiet.Fired != 0 {
+		t.Fatalf("a weekly rule fired on the Monday it was made: %+v err=%v", quiet, err)
+	}
+
+	// Sunday arrives.
+	reconciler.now = func() time.Time { return armed.NextDue.Add(time.Minute) }
+	sunday, err := reconciler.WatchOnce(context.Background())
+	if err != nil || sunday.Fired != 1 {
+		t.Fatalf("Sunday pass = %+v err=%v", sunday, err)
+	}
+	fired, _, err := graph.Charter(charter.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if fired.Status != store.CharterActive {
+		t.Fatalf("the rule ended as %q; a standing rule survives its own firing", fired.Status)
+	}
+	if want := armed.NextDue.AddDate(0, 0, 7); !fired.NextDue.Equal(want) {
+		t.Fatalf("re-armed for %s, want the next Sunday %s", fired.NextDue, want)
+	}
+	if rails := fired.Rails(); rails.ExpiresAt != nil {
+		t.Fatalf("a weekly reminder carries an expiry at %s", rails.ExpiresAt)
+	}
+}

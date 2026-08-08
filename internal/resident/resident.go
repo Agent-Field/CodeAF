@@ -756,7 +756,8 @@ func headSpeaksFor(kind store.CommandKind) bool {
 		store.CommandReprioritize, store.CommandRestart, store.CommandHandover,
 		store.CommandServiceStop, store.CommandServiceRestart, store.CommandServiceAutoRestart,
 		store.CommandCharterRatify, store.CommandCharterPause, store.CommandCharterRetire,
-		store.CommandCharterCadence, store.CommandCharterOnce, store.CommandCharterFire,
+		store.CommandCharterCadence, store.CommandCharterWording, store.CommandCharterOnce,
+		store.CommandCharterFire,
 		store.CommandCharterDecline, store.CommandCharterAlways, store.CommandCharterNever,
 		store.CommandCharterProbation:
 		return true
@@ -789,7 +790,8 @@ func (r *Reconciler) applyCommand(ctx context.Context, command store.Command) (c
 	case store.CommandServiceStop, store.CommandServiceRestart, store.CommandServiceAutoRestart:
 		return r.applyServiceCommand(command)
 	case store.CommandCharterRatify, store.CommandCharterPause, store.CommandCharterRetire,
-		store.CommandCharterCadence, store.CommandCharterOnce, store.CommandCharterFire,
+		store.CommandCharterCadence, store.CommandCharterWording, store.CommandCharterOnce,
+		store.CommandCharterFire,
 		store.CommandCharterDecline, store.CommandCharterAlways, store.CommandCharterNever, store.CommandCharterProbation:
 		return r.applyCharterCommand(ctx, command)
 	case store.CommandStandingWatchEnable, store.CommandStandingWatchDecline:
