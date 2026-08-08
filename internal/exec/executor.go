@@ -56,6 +56,11 @@ type Task struct {
 	OutputHint  string // suggested artifact path when the deliverable is a file
 	// ImagePaths are user-supplied inputs attached to the initial leaf turn.
 	ImagePaths []string
+	// DocumentPaths are user-supplied documents already staged in the
+	// workspace. The brief names them; this is the same fact in structural
+	// form, and it is what arms the document reader before turn 1 instead of
+	// making the leaf spend a turn asking for a tool it demonstrably needs.
+	DocumentPaths []string
 	// Reflex constrains the general loop to one obvious micro-action and gives
 	// it an explicit promotion verdict when the assignment is larger than it
 	// first appeared.
@@ -100,8 +105,8 @@ type Outcome struct {
 	// the difference between a redirection delivered to a mailbox and one
 	// delivered to a mind, and it is zero on every leaf nobody steered.
 	Steered int
-	Usage     Usage
-	Stop      StopReason
+	Usage   Usage
+	Stop    StopReason
 	// Exhausted is what ran out, when something did. It is separate from Stop
 	// because the two answer different questions and the common case makes them
 	// disagree: a leaf whose budget runs out is told to land, it lands, and it

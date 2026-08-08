@@ -63,11 +63,65 @@ func TestDoRepairsARejectedDeliverableThroughTheGate(t *testing.T) {
 	if got := script.count("replan"); got == 0 {
 		t.Fatal("the gap never reached the remainder planner")
 	}
+	// The job is named by the call that already read the whole ask. A second
+	// round-trip for a five-token label was ~0.6 s of dead critical path in
+	// front of every job, and nothing downstream waits on the name.
+	if got := script.count("title"); got != 0 {
+		t.Fatalf("the naming pass ran %d times beside a compile that already named the job", got)
+	}
 	if !strings.Contains(stdout.String(), repairedAnswer) {
 		t.Fatalf("stdout does not carry the repaired deliverable:\n%s", stdout.String())
 	}
 	if strings.Contains(stdout.String(), firstDraftAnswer) {
 		t.Fatalf("stdout shipped the rejected first draft:\n%s", stdout.String())
+	}
+}
+
+// The other half of the same mechanism: a gate that fails a deliverable
+// against a standard the person never set buys nothing at all.
+//
+// Measured on a benchmark cell, that round held the worker to a working
+// decision aforge had invented for itself, bought a five-turn re-run against
+// it, and handed back a worse answer than the one it rejected. The citation
+// invariant already refused to let such a gap grow the graph; it now refuses
+// to let it redo the work either. Nothing is hidden: the review's words ride
+// the delivery and the ledger records the refusal.
+func TestAnUngroundedGateFailureShipsANoteInsteadOfBuyingARound(t *testing.T) {
+	script := newScriptedBrain(t)
+	script.inventedGap = true
+	defer script.close()
+
+	var stdout, stderr strings.Builder
+	if err := doErrand(doRequest{
+		task:      "write the release note and include the migration steps",
+		timeout:   60 * time.Second,
+		stdout:    &stdout,
+		stderr:    &stderr,
+		newClient: script.client,
+	}); err != nil {
+		t.Fatalf("the errand did not settle cleanly: %v\nstdout:\n%s\nstderr:\n%s", err, stdout.String(), stderr.String())
+	}
+
+	if got := script.count("gate"); got != 1 {
+		t.Fatalf("the gate ran %d times, want exactly 1 — an ungrounded fail is not re-judged", got)
+	}
+	if got := script.count("revision"); got != 0 {
+		t.Fatalf("an ungrounded gap bought %d revision passes", got)
+	}
+	if got := script.count("extension"); got != 0 {
+		t.Fatalf("an ungrounded gap grew the graph by %d leaves", got)
+	}
+	if got := script.count("replan"); got != 0 {
+		t.Fatalf("an ungrounded gap reached the remainder planner %d times", got)
+	}
+	delivered := stdout.String()
+	if !strings.Contains(delivered, firstDraftAnswer) {
+		t.Fatalf("the deliverable did not ship:\n%s", delivered)
+	}
+	// Refused-style honesty: the gap is named in the person's reading, not
+	// swallowed into a silent pass.
+	if !strings.Contains(delivered, inventedGapText) {
+		t.Fatalf("the delivery never said what the review raised:\n%s", delivered)
 	}
 }
 
@@ -474,6 +528,11 @@ const (
 	// gap commission new work. A gap that invented a requirement would be
 	// refused before a planning call was made.
 	citedQuote = "include the migration steps"
+	// inventedQuote is the opposite: words the compiler put in its own goal
+	// and the person never typed. A gap that can only quote this is aforge
+	// holding aforge to a standard it wrote after reading its own output.
+	inventedQuote   = "the note is addressed to an operator audience"
+	inventedGapText = "the note does not address an operator audience"
 	// artifactName is what the worker writes when the test asks it to leave
 	// something on disk.
 	artifactName = "notes.md"
@@ -493,6 +552,10 @@ type scriptedBrain struct {
 
 	// stall makes every leaf call hang, so a wall can be proved.
 	stall bool
+	// inventedGap makes the gate fail the deliverable against a standard
+	// nobody asked for — the shape of the one measured round that made a
+	// deliverable worse.
+	inventedGap bool
 	// writeFile makes the first leaf write a real artifact.
 	writeFile bool
 	// editPath names a file already in the workspace that the first leaf edits
@@ -587,6 +650,7 @@ func (s *scriptedBrain) reply(body string) string {
 		// Task scale: one worker end to end, which is the shape that still
 		// earns a written working method and still faces the gate.
 		return s.say(`{"goal":"Write the release note for the parser work, including the migration steps.",` +
+			`"title":"Release note and migration",` +
 			`"scale":"task","builds_on":[],"assumptions":[],"question":"","trial_of":0}`)
 
 	case strings.Contains(body, "You write the working method for one agent"):
@@ -607,6 +671,12 @@ func (s *scriptedBrain) reply(body string) string {
 
 	case strings.Contains(body, "You are the final gate"):
 		round := s.tally("gate")
+		if s.inventedGap {
+			// The quote is a span of the compiled goal's own working
+			// decisions, not of anything the person typed.
+			return s.say(fmt.Sprintf(
+				`{"pass":false,"gaps":%q,"quote":%q,"exercised":false}`, inventedGapText, inventedQuote))
+		}
 		if round <= 2 {
 			// The first draft and the revision of it are both judged short of
 			// the ask, and the gap quotes the ask itself — the one thing that

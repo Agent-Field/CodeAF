@@ -167,6 +167,28 @@ type Options struct {
 	// execute them.
 	Briefs bool
 
+	// Undivided stops the build at the spine when the spine says there is
+	// nothing to divide. It exists for the remainder path and it is opt-in
+	// because it is the wrong answer for a fresh project: a one-stage project
+	// still has parallel parts inside that stage, and finding them is the
+	// point.
+	//
+	// A remainder is different in kind. It is what is left of one leaf's
+	// assignment after a reviewer named a gap, so it is by construction
+	// smaller than work one agent was already given. Measured: planning one
+	// such remainder — "run pytest and show the output" — cost 13,828 prompt
+	// tokens across seven planner passes, and another cost 23,964. That is
+	// five to eight times the entire structuring cost of the original job, to
+	// produce a graph of one node.
+	//
+	// The judgement stays the model's and the structure stays the code's: the
+	// spine call already reads the goal and already answers "one stage" when
+	// the goal has no real gate — its prompt says so in as many words, and
+	// calls that a correct and common answer. When it says one, this stops
+	// there and hands back one worker. When it says more, the full pipeline
+	// runs exactly as before. Nothing matches a phrase against anything.
+	Undivided bool
+
 	// Ensemble chooses between the two ways of spending parallelism: splitting
 	// work by subject, or doing one judgment several times over independently
 	// and merging. 0 lets the planner decide from the goal, -1 never asks, and
@@ -247,6 +269,23 @@ func Build(ctx context.Context, client Completer, goal string, options Options) 
 	report("ground", time.Since(start), fmt.Sprintf("%s settled, %s open",
 		plural(len(graph.Settled), "point"), plural(len(graph.Open), "question")))
 	report("spine", time.Since(start), fmt.Sprintf("%s %s", plural(len(choice.Stages), "stage"), spreadLabel(choice)))
+
+	// --- the undivided shortcut ---------------------------------------------
+	// The spine has spoken and there is nothing gated in this goal. For a
+	// remainder that is the whole answer: one fresh worker, one contract, and
+	// none of fan-out, bind, size, audit, expansion or per-leaf briefs.
+	if options.Undivided && len(choice.Stages) == 1 {
+		stage := choice.Stages[0]
+		graph.Add(Node{
+			Kind: KindWork, Stage: 1,
+			Title:   strings.TrimSpace(stage.Title),
+			Summary: strings.TrimSpace(stage.Summary),
+			Brief:   goal,
+		})
+		emitProgress(progress, "steps", "1", "")
+		report("undivided", time.Since(start), "one worker — the spine found nothing gated")
+		return graph, groundErr
+	}
 
 	// --- ensemble hook (ensemble.go) ---------------------------------------
 	// Redundancy is the other way to spend parallelism, and it replaces

@@ -923,6 +923,25 @@ func TestCompilerEpisodicOutputByteIdentity(t *testing.T) {
 	if string(encoded) != want {
 		t.Fatalf("episodic compile bytes changed:\n got %s\nwant %s", encoded, want)
 	}
+
+	// The name the compile pass now returns rides the same object and nothing
+	// else moves. A compiler that says nothing about the name adds no field at
+	// all, which is what keeps the shape above byte-identical.
+	named := &fakeClient{responses: []string{
+		`{"goal":"Produce the requested summary.","title":"File summary","assumptions":["Use the current file"]}`,
+	}}
+	titled, err := NewCompiler(named).Compile(context.Background(), "Summarize this file.", "root is running")
+	if err != nil {
+		t.Fatal(err)
+	}
+	encoded, err = json.Marshal(titled)
+	if err != nil {
+		t.Fatal(err)
+	}
+	const wantTitled = `{"goal":"Produce the requested summary.\n\nVerbatim request:\nSummarize this file.","assumptions":["Use the current file"],"title":"File summary","scale":"task","builds_on":[],"question":"","trial_of":0}`
+	if string(encoded) != wantTitled {
+		t.Fatalf("named compile bytes changed:\n got %s\nwant %s", encoded, wantTitled)
+	}
 }
 
 func TestCompilerQuestionOptionsPreserveOrder(t *testing.T) {
