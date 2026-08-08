@@ -461,3 +461,52 @@ func TestTheBriefNamesEachInputAndRoutesToItsFiles(t *testing.T) {
 		t.Fatalf("the working method never reached the system message:\n%s", system)
 	}
 }
+
+// The gate above this package used to judge a final message with nothing to
+// check it against. A count of tool calls settles nothing; what a reader of a
+// finished job needs is whether the check the deliverable claims appears
+// anywhere in the run. The record is the tail of what actually ran, it names a
+// failed call as failed, and it is bounded — a leaf that ran for an hour must
+// not hand its whole history to whoever asks.
+func TestTheRunRecordsWhatItActuallyRan(t *testing.T) {
+	client := &scriptedCompleter{turns: [][]ai.ToolCall{
+		{call("c1", "write", `{"path":"result.txt","text":"the answer"}`)},
+		{call("c2", "sh", `{"command":"cat missing.txt"}`)},
+	}}
+	linear := NewLinear(client, workspace(t), nil, 10, 1_000_000, time.Minute)
+	outcome, err := linear.Run(context.Background(), Task{NodeID: 1, Brief: "work"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(outcome.Ran) != 2 {
+		t.Fatalf("run record = %v, want both calls", outcome.Ran)
+	}
+	if !strings.HasPrefix(outcome.Ran[0], `write {"path":"result.txt"`) {
+		t.Errorf("the write is not recorded as itself: %q", outcome.Ran[0])
+	}
+	if !strings.Contains(outcome.Ran[1], `cat missing.txt`) {
+		t.Errorf("the command is not recorded: %q", outcome.Ran[1])
+	}
+	if !strings.HasSuffix(outcome.Ran[1], "→ error") {
+		t.Errorf("a call that failed is recorded as though it worked: %q", outcome.Ran[1])
+	}
+}
+
+func TestTheRunRecordIsATailAndNotATranscript(t *testing.T) {
+	var outcome Outcome
+	for index := 0; index < ranLimit*3; index++ {
+		outcome.record(call("c", "sh", fmt.Sprintf(`{"command":"step %d"}`, index)), false)
+	}
+	if len(outcome.Ran) != ranLimit {
+		t.Fatalf("run record kept %d calls, want the last %d", len(outcome.Ran), ranLimit)
+	}
+	if !strings.Contains(outcome.Ran[len(outcome.Ran)-1], fmt.Sprintf("step %d", ranLimit*3-1)) {
+		t.Errorf("the record dropped the newest call: %q", outcome.Ran[len(outcome.Ran)-1])
+	}
+	// A pasted file in one argument must not carry the whole file into a
+	// judge's context.
+	outcome.record(call("c", "write", `{"path":"big.txt","text":"`+strings.Repeat("x", 4000)+`"}`), false)
+	if got := len(outcome.Ran[len(outcome.Ran)-1]); got > ranArgumentBytes+64 {
+		t.Errorf("one recorded call is %d bytes, want it clipped near %d", got, ranArgumentBytes)
+	}
+}
