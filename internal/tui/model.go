@@ -85,7 +85,17 @@ type Backend interface {
 	NodeMessages(nodeID string, afterSeq int64, limit int) ([]store.Message, error)
 	PendingCommands(limit int) ([]store.Command, error)
 	CommandBySeq(seq int64) (store.Command, bool, error)
-	Usage() (store.TotalUsage, error)
+	// SpendToday is the money the header shows, and it replaced the graph-wide
+	// SUM(cost) that used to sit there. That total was labelled "this session"
+	// in the manual and in this package's own comments while being every dollar
+	// the journal had ever seen — a number that only grows, that no other
+	// surface quotes, and that nothing can be done about. Today is the window
+	// the rest of the product already speaks in: the daily limit, the pause
+	// question, the /budget line and the self figure beside it in the header are
+	// all today, and the store answers it off an indexed range rather than a
+	// full-table scan. Session spend is not offered because it cannot be told
+	// the truth: a usage row carries a node and a time, never a session.
+	SpendToday() (float64, error)
 	TopLevelJobUsage() (map[string]store.JobUsage, error)
 }
 
@@ -152,7 +162,7 @@ type pollResultMsg struct {
 	snapshot          store.Snapshot
 	cardSnapshot      store.Snapshot
 	pending           []store.Command
-	usage             store.TotalUsage
+	spendToday        float64
 	jobUsage          map[string]store.JobUsage
 	commands          []store.Command
 	agentQuestions    []store.AgentQuestion
@@ -163,7 +173,7 @@ type pollResultMsg struct {
 	snapshotErr       error
 	cardSnapshotErr   error
 	pendingErr        error
-	usageErr          error
+	spendTodayErr     error
 	jobUsageErr       error
 	commandsErr       error
 	agentQuestionsErr error
@@ -236,7 +246,7 @@ type Model struct {
 	snapshot             store.Snapshot
 	cardSnapshot         store.Snapshot
 	pending              []store.Command
-	usage                store.TotalUsage
+	spendToday           float64
 	jobUsage             map[string]store.JobUsage
 	commands             map[int64]store.Command
 	agentQuestions       []store.AgentQuestion
@@ -1479,7 +1489,7 @@ func (m *Model) poll() tea.Cmd {
 		snapshot, snapshotErr := backend.ActiveSnapshot()
 		cardSnapshot, cardSnapshotErr := backend.Snapshot()
 		pending, pendingErr := backend.PendingCommands(pollLimit)
-		usage, usageErr := backend.Usage()
+		spendToday, spendTodayErr := backend.SpendToday()
 		jobUsage, jobUsageErr := backend.TopLevelJobUsage()
 		var agentQuestions []store.AgentQuestion
 		var agentQuestionsErr error
@@ -1518,13 +1528,13 @@ func (m *Model) poll() tea.Cmd {
 			snapshot:          snapshot,
 			cardSnapshot:      cardSnapshot,
 			pending:           pending,
-			usage:             usage,
+			spendToday:        spendToday,
 			jobUsage:          jobUsage,
 			messagesErr:       messagesErr,
 			snapshotErr:       snapshotErr,
 			cardSnapshotErr:   cardSnapshotErr,
 			pendingErr:        pendingErr,
-			usageErr:          usageErr,
+			spendTodayErr:     spendTodayErr,
 			jobUsageErr:       jobUsageErr,
 			agentQuestions:    agentQuestions,
 			agentQuestionsErr: agentQuestionsErr,
@@ -1768,8 +1778,8 @@ func (m *Model) applyPoll(result pollResultMsg) {
 	if result.pendingErr == nil {
 		m.pending = result.pending
 	}
-	if result.usageErr == nil {
-		m.usage = result.usage
+	if result.spendTodayErr == nil {
+		m.spendToday = result.spendToday
 	}
 	if result.selfSpendErr == nil {
 		m.selfSpendToday = result.selfSpendToday
@@ -1934,8 +1944,8 @@ func (m *Model) applyPoll(result pollResultMsg) {
 	if result.pendingErr != nil {
 		problems = append(problems, fmt.Errorf("read pending commands: %w", result.pendingErr))
 	}
-	if result.usageErr != nil {
-		problems = append(problems, fmt.Errorf("read usage: %w", result.usageErr))
+	if result.spendTodayErr != nil {
+		problems = append(problems, fmt.Errorf("read today's spend: %w", result.spendTodayErr))
 	}
 	if result.jobUsageErr != nil {
 		problems = append(problems, fmt.Errorf("read job usage: %w", result.jobUsageErr))

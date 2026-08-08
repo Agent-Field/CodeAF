@@ -19,7 +19,7 @@ type fakeBackend struct {
 	snapshot          store.Snapshot
 	pending           []store.Command
 	commands          []store.Command
-	usage             store.TotalUsage
+	spendToday        float64
 	jobUsage          map[string]store.JobUsage
 	selfSpend         float64
 	selfReceipts      []store.SelfReceipt
@@ -239,10 +239,10 @@ func (f *fakeBackend) CommandBySeq(seq int64) (store.Command, bool, error) {
 	return store.Command{}, false, nil
 }
 
-func (f *fakeBackend) Usage() (store.TotalUsage, error) {
+func (f *fakeBackend) SpendToday() (float64, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	return f.usage, nil
+	return f.spendToday, nil
 }
 
 func (f *fakeBackend) SelfSpendToday() (float64, error) {
@@ -1653,6 +1653,9 @@ func TestRunningSpinnerAdvancesOnlyOnAnimationTicks(t *testing.T) {
 	}
 }
 
+// The header's money says which day it means, and means it. It used to render
+// an all-time SUM(cost) — every dollar in the journal — under a comment and a
+// manual page that both called it "this session".
 func TestUsageSpendFormatsAndHidesAtZero(t *testing.T) {
 	model := New(&fakeBackend{}, "test-session")
 	model.snapshot = store.Snapshot{Nodes: []store.Node{
@@ -1660,18 +1663,72 @@ func TestUsageSpendFormatsAndHidesAtZero(t *testing.T) {
 		{ID: "done-1", Status: store.Done},
 		{ID: "done-2", Status: store.Done},
 	}}
-	model.usage = store.TotalUsage{Nodes: 2, PromptTokens: 1_000, CompletionTokens: 234, Cost: 0.876}
+	model.spendToday = 0.876
+	model.selfSpendToday = 0.04
 	spend := model.renderSpend()
-	if !strings.Contains(spend, "1.2k tok") || !strings.Contains(spend, "$0.88") {
-		t.Fatalf("usage spend is wrong: %s", spend)
+	if !strings.Contains(spend, "$0.88 today") {
+		t.Fatalf("the header spend does not say what window it means: %s", spend)
+	}
+	if !strings.Contains(spend, "self") {
+		t.Fatalf("today's upkeep left the header: %s", spend)
+	}
+	// Resource units are backstage everywhere else money is spoken, and the
+	// count that used to sit here was all-time while the dollars beside it
+	// claimed to be a session.
+	if strings.Contains(spend, "tok") {
+		t.Fatalf("the header is quoting token counts again: %s", spend)
+	}
+	if strings.Contains(spend, "session") {
+		t.Fatalf("the header is claiming a window the store cannot answer: %s", spend)
 	}
 	if strings.Contains(spend, "done") || strings.Contains(spend, "failed") {
 		t.Fatalf("spend line should not carry status tallies: %s", spend)
 	}
 
-	model.usage = store.TotalUsage{}
+	// The compact form is the same fact with the word and the upkeep removed.
+	if compact := model.renderSpendCompact(); !strings.Contains(compact, "$0.88") ||
+		strings.Contains(compact, "self") {
+		t.Fatalf("the compact spend is not the bare figure: %s", compact)
+	}
+
+	model.spendToday, model.selfSpendToday = 0, 0
 	if spend := model.renderSpend(); spend != "" {
-		t.Fatalf("zero usage should hide spend entirely: %s", spend)
+		t.Fatalf("a day with no spend should hide the meter entirely: %s", spend)
+	}
+	if compact := model.renderSpendCompact(); compact != "" {
+		t.Fatalf("a day with no spend should hide the compact meter too: %s", compact)
+	}
+}
+
+// The store is the other half of the claim: what the header shows is today's
+// spend as the journal itself computes it, on the same clock as the daily
+// limit, not a running total that only grows.
+func TestHeaderSpendIsTodayFromTheStore(t *testing.T) {
+	graph, err := store.Open(t.TempDir() + "/money.db")
+	if err != nil {
+		t.Fatalf("open store: %v", err)
+	}
+	defer graph.Close()
+	if err := graph.Splice(store.RootID, store.Subtree{Nodes: []store.NodeSpec{
+		{ID: "job-1", Title: "the launch note", Brief: "write the launch note", Stage: 1},
+	}}, store.Provenance{Origin: store.OriginUser, Intent: "write the launch note"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := graph.RecordUsage(store.NodeUsage{NodeID: "job-1", Cost: 1.25}); err != nil {
+		t.Fatal(err)
+	}
+	spend, err := graph.SpendToday()
+	if err != nil || spend < 1.24 || spend > 1.26 {
+		t.Fatalf("today's spend = %v err=%v", spend, err)
+	}
+	model := New(graph, "money")
+	result, ok := model.poll()().(pollResultMsg)
+	if !ok || result.spendTodayErr != nil {
+		t.Fatalf("the poll could not read today's spend: %v", result.spendTodayErr)
+	}
+	model.Update(result)
+	if !strings.Contains(ansi.Strip(model.renderSpend()), "$1.25 today") {
+		t.Fatalf("the header did not carry today's spend: %q", model.renderSpend())
 	}
 }
 

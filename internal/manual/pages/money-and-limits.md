@@ -29,8 +29,10 @@ not once per attempt.
 | `/budget default 25` | changes the standing default to $25, from tomorrow on |
 | `/budget unlimited today` | no ceiling until local midnight; the default is untouched |
 
-The header meter is a different number: it shows tokens and measured cost for
-**this session**, plus what aforge has spent on itself today.
+The header meter is the same day on a smaller surface: `$3.40 today`, plus what
+aforge has spent on itself today beside it. It counts from your local midnight,
+exactly as the rail does. In a narrow window it keeps the figure and drops the
+word, so the money is still there in a docked pane.
 
 ## Asking about money in words
 

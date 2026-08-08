@@ -78,13 +78,13 @@ func TestLivePracticeRendersAmbientPresenceInRailAndDock(t *testing.T) {
 
 func TestHeaderSelfSpendAppearsOnlyWhenNonzero(t *testing.T) {
 	backend := &fakeBackend{
-		usage:     store.TotalUsage{Nodes: 1, PromptTokens: 800, CompletionTokens: 200, Cost: 0.44},
-		selfSpend: 0.31,
+		spendToday: 0.44,
+		selfSpend:  0.31,
 	}
 	model := New(backend, "spend")
 	model.applyPoll(model.poll()().(pollResultMsg))
 	spend := ansi.Strip(model.renderSpend())
-	if !strings.Contains(spend, "$0.44 · 31¢ self") {
+	if !strings.Contains(spend, "$0.44 today · 31¢ self") {
 		t.Fatalf("header spend is missing self spend: %q", spend)
 	}
 
