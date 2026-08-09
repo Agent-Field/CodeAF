@@ -139,6 +139,23 @@ type Commander interface {
 	NodeTrace(nodeID string, maxBytes int) string
 }
 
+// NodeTraceStamp is a trace file's identity as the last read already stat-ed
+// it. The executor appends to that file outside the journal, so the poll has to
+// ask for it on every cycle, quiet ones included.
+type NodeTraceStamp struct {
+	Size int64
+	Mod  time.Time
+}
+
+// NodeTraceReader is the stat-gated NodeTrace. The stat is already on the way
+// to the read, so handing back what it saw turns "the worker is thinking, not
+// writing" into a stat rather than 64KB read, allocated, and compared against
+// the copy the window is already holding. A commander that does not implement
+// it is read in full, as before.
+type NodeTraceReader interface {
+	NodeTraceSince(nodeID string, maxBytes int, since NodeTraceStamp) (string, NodeTraceStamp, bool)
+}
+
 var _ Backend = (*store.Store)(nil)
 
 type pollTickMsg time.Time
@@ -203,6 +220,8 @@ type pollResultMsg struct {
 	nodeFound       bool
 	nodeMessages    []store.Message
 	nodeTrace       string
+	nodeTraceStamp  NodeTraceStamp
+	nodeTraceMoved  bool
 	nodeErr         error
 	nodeMessagesErr error
 
@@ -370,6 +389,7 @@ type Model struct {
 	nodeMessages     []store.Message
 	nodeLastSeq      int64
 	nodeTraceText    string
+	nodeTraceStamp   NodeTraceStamp
 	chatDraft        string
 	chatAttachments  []string
 	returnFocus      paneFocus
@@ -1499,6 +1519,15 @@ func (m *Model) poll() tea.Cmd {
 	residencySource := m.residencySource
 	force := m.pollForce || !m.journalPrimed
 	knownSeq := m.journalSeq
+	traceStamp := m.nodeTraceStamp
+	// readTrace tails the open node's trace file, and says whether it moved. The
+	// stamp the window already holds is what makes "it did not" cheap.
+	readTrace := func() (string, NodeTraceStamp, bool) {
+		if reader, ok := commander.(NodeTraceReader); ok {
+			return reader.NodeTraceSince(nodeID, nodeTraceMaxBytes, traceStamp)
+		}
+		return commander.NodeTrace(nodeID, nodeTraceMaxBytes), NodeTraceStamp{}, true
+	}
 	return func() tea.Msg {
 		// Asked before the quiet short-circuit, because the one thing this
 		// answers — is the process that answers me still there — is exactly the
@@ -1528,7 +1557,7 @@ func (m *Model) poll() tea.Cmd {
 					}
 					if nodeID != "" && commander != nil {
 						quiet.nodeID = nodeID
-						quiet.nodeTrace = commander.NodeTrace(nodeID, nodeTraceMaxBytes)
+						quiet.nodeTrace, quiet.nodeTraceStamp, quiet.nodeTraceMoved = readTrace()
 					}
 					return quiet
 				}
@@ -1645,7 +1674,7 @@ func (m *Model) poll() tea.Cmd {
 			result.node, result.nodeFound, result.nodeErr = backend.Node(nodeID)
 			result.nodeMessages, result.nodeMessagesErr = backend.NodeMessages(nodeID, nodeAfterSeq, pollLimit)
 			if commander != nil {
-				result.nodeTrace = commander.NodeTrace(nodeID, nodeTraceMaxBytes)
+				result.nodeTrace, result.nodeTraceStamp, result.nodeTraceMoved = readTrace()
 			}
 		}
 		return result
@@ -1810,10 +1839,14 @@ func (m *Model) applyQuietPoll(result pollResultMsg) {
 	m.applyResidency(result)
 	// The one read a quiet cycle still makes: the open node's trace is a file
 	// the executor appends to outside the journal, so the watermark cannot
-	// speak for it. It re-renders only when the text actually moved.
-	if result.nodeID != "" && result.nodeID == m.nodeViewID && result.nodeTrace != m.nodeTraceText {
-		m.nodeTraceText = result.nodeTrace
-		m.refreshNodeView(false)
+	// speak for it. A file that did not grow is not read at all, and it
+	// re-renders only when the text actually moved.
+	if result.nodeID != "" && result.nodeID == m.nodeViewID && result.nodeTraceMoved {
+		m.nodeTraceStamp = result.nodeTraceStamp
+		if result.nodeTrace != m.nodeTraceText {
+			m.nodeTraceText = result.nodeTrace
+			m.refreshNodeView(false)
+		}
 	}
 	now := m.standingTime()
 	if now.Sub(m.lastRepaintAt) < quietRepaintInterval {
@@ -1942,7 +1975,10 @@ func (m *Model) applyPoll(result pollResultMsg) {
 		if result.nodeMessagesErr == nil {
 			m.appendNodeMessages(result.nodeMessages)
 		}
-		m.nodeTraceText = result.nodeTrace
+		if result.nodeTraceMoved {
+			m.nodeTraceText = result.nodeTrace
+			m.nodeTraceStamp = result.nodeTraceStamp
+		}
 		m.refreshNodeView(false)
 	}
 

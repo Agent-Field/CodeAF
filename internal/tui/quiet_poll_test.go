@@ -230,6 +230,68 @@ func TestTypingKeepsTheCadenceHotWithoutForcingAFullRead(t *testing.T) {
 	}
 }
 
+// stampedCommander is a trace file that answers with its identity: the poll
+// hands back the stamp it holds, and a file that has not moved is answered
+// without a read.
+type stampedCommander struct {
+	*fakeCommander
+	stamp NodeTraceStamp
+	text  string
+	reads int
+	asked []NodeTraceStamp
+}
+
+func (c *stampedCommander) NodeTraceSince(
+	nodeID string, maxBytes int, since NodeTraceStamp,
+) (string, NodeTraceStamp, bool) {
+	c.asked = append(c.asked, since)
+	if since.Size == c.stamp.Size && since.Mod.Equal(c.stamp.Mod) && !since.Mod.IsZero() {
+		return "", c.stamp, false
+	}
+	c.reads++
+	return c.text, c.stamp, true
+}
+
+// TestNodeTraceIsReadOnlyWhenTheFileGrew pins the stat gate: the open node's
+// trace is asked for on every cycle, quiet ones included, and a worker that is
+// thinking rather than writing costs the stat and nothing else.
+func TestNodeTraceIsReadOnlyWhenTheFileGrew(t *testing.T) {
+	now := time.Date(2026, 8, 6, 9, 0, 0, 0, time.UTC)
+	backend := newCountingBackend(&fakeBackend{})
+	model := quietModel(t, backend, &now)
+	commander := &stampedCommander{
+		fakeCommander: &fakeCommander{},
+		stamp:         NodeTraceStamp{Size: 12, Mod: now},
+		text:          "opened the file",
+	}
+	model.commander = commander
+	model.nodeViewID = "worker"
+
+	model.applyPoll(model.poll()().(pollResultMsg))
+	if commander.reads != 1 || model.nodeTraceText != "opened the file" {
+		t.Fatalf("first cycle read %d times, trace is %q", commander.reads, model.nodeTraceText)
+	}
+
+	model.applyPoll(model.poll()().(pollResultMsg))
+	model.applyPoll(model.poll()().(pollResultMsg))
+	if commander.reads != 1 {
+		t.Fatalf("an unmoved trace file was read %d times", commander.reads)
+	}
+	if model.nodeTraceText != "opened the file" {
+		t.Fatalf("an unchanged trace lost its text: %q", model.nodeTraceText)
+	}
+	if last := commander.asked[len(commander.asked)-1]; last != commander.stamp {
+		t.Fatalf("the poll asked with stamp %+v, want the one it was given", last)
+	}
+
+	commander.stamp = NodeTraceStamp{Size: 30, Mod: now.Add(time.Second)}
+	commander.text = "opened the file, then wrote"
+	model.applyPoll(model.poll()().(pollResultMsg))
+	if commander.reads != 2 || model.nodeTraceText != "opened the file, then wrote" {
+		t.Fatalf("a grown trace read %d times, trace is %q", commander.reads, model.nodeTraceText)
+	}
+}
+
 func TestQuietPollRepaintsTheClockWithoutRebuildingOrReading(t *testing.T) {
 	now := time.Date(2026, 8, 6, 9, 0, 0, 0, time.UTC)
 	backend := newCountingBackend(&fakeBackend{
