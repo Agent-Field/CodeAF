@@ -59,7 +59,14 @@ type jobCard struct {
 	// reply instead of being discarded at the seam.
 	QuestionSeq int64
 	Outcome     string
-	BirthSeq    int64
+	// Subharness, WorkModel and PlanModel are the job's non-default choices,
+	// read from the durable row rather than from anything the head promised in
+	// the thread. Every one of them is empty on nearly every job, and empty is
+	// what keeps the card silent.
+	Subharness string
+	WorkModel  string
+	PlanModel  string
+	BirthSeq   int64
 	CommandSeq  int64
 	StartedAt   time.Time
 	FinishedAt  time.Time
@@ -234,7 +241,13 @@ func deriveJobCards(
 			Title:     nodeLabel(root, root),
 			Ask:       strings.TrimSpace(root.Provenance.Intent),
 			Reading:   strings.TrimSpace(root.Brief),
-			BirthSeq:  root.CreatedSeq,
+			// What was chosen for this job, as the store settled it. The node's
+			// own worker where admission resolved one, the splice's otherwise —
+			// the same order every dispatch path reads it in.
+			Subharness: settledWorker(root),
+			WorkModel:  strings.TrimSpace(root.Provenance.WorkModel),
+			PlanModel:  strings.TrimSpace(root.Provenance.PlanModel),
+			BirthSeq:   root.CreatedSeq,
 			Usage:     usage[root.ID],
 			Messages:  append([]store.Message(nil), messagesByRoot[root.ID]...),
 			Failed:    root.Status == store.Failed || root.Status == store.Cancelled,
@@ -1232,6 +1245,12 @@ func (m *Model) renderJobCard(card jobCard, width int, expanded bool, atLine int
 		header += mutedStyle.Render(" · " + meta)
 	}
 	lines := []string{truncate(header, width)}
+	// One quiet line under the title, and only when something was chosen. It
+	// truncates rather than wraps, and costs no height at all on the ordinary
+	// job — the same bargain the presence line makes with the header.
+	if receipt := cardChoiceReceipt(card); receipt != "" {
+		lines = append(lines, truncate(mutedStyle.Faint(true).Render("│ "+receipt), width))
+	}
 	addText := func(text string, style lipgloss.Style) {
 		text = strings.TrimSpace(text)
 		if text == "" {
@@ -1827,6 +1846,60 @@ func (m *Model) cardMeta(card jobCard, now time.Time) string {
 	}
 	if card.State == cardSettled && card.Outcome != "" {
 		parts = append(parts, m.linkWorkspaceReferences(card.RootID, card.Outcome))
+	}
+	return strings.Join(parts, " · ")
+}
+
+// settledWorker is the node's own answer to "who runs this", in the order every
+// dispatch path already reads it: the worker admission settled on the row, the
+// subtree's choice otherwise. Whatever string is there is rendered verbatim —
+// this surface never learns one worker's name, because a surface that branched
+// on a name would have to be edited every time a worker is added.
+func settledWorker(node store.Node) string {
+	if settled := strings.TrimSpace(node.Subharness); settled != "" {
+		return settled
+	}
+	return strings.TrimSpace(node.Provenance.Subharness)
+}
+
+// cardChoiceReceipt is the proof that a choice was respected, and it is proof
+// precisely because it is read from the durable row the work will run from
+// rather than from the reply that promised it. Three facts at most — the worker
+// this job was given, the model the user named for it, the model that structured
+// it when that was not the model working it — and every one of them is absent on
+// an ordinary job. An ordinary job gets no line at all: silence is what makes
+// the line mean something on the job that has one.
+func cardChoiceReceipt(card jobCard) string {
+	parts := make([]string, 0, 3)
+	if worker := strings.TrimSpace(card.Subharness); worker != "" {
+		parts = append(parts, worker)
+	}
+	if model := strings.TrimSpace(card.WorkModel); model != "" {
+		parts = append(parts, modelShort(model))
+	}
+	// The plan slot is silent unless it split from the work slot, and the store
+	// is where that comparison was made — at splice, by the only party that knew
+	// both slots. Reading it here is reading a settled fact, not re-deciding one.
+	if planner := strings.TrimSpace(card.PlanModel); planner != "" {
+		parts = append(parts, "planned by "+modelShort(planner))
+	}
+	return strings.Join(parts, " · ")
+}
+
+// nodeChoiceReceipt is the same three facts one rung further down the ladder,
+// spelled in full. The card trades the vendor path for the width; the flight
+// recorder is where a person goes to check exactly which build ran their work,
+// and an id shortened there would be the one place the truth is not available.
+func nodeChoiceReceipt(node store.Node) string {
+	parts := make([]string, 0, 3)
+	if worker := settledWorker(node); worker != "" {
+		parts = append(parts, worker)
+	}
+	if model := strings.TrimSpace(node.Provenance.WorkModel); model != "" {
+		parts = append(parts, model)
+	}
+	if planner := strings.TrimSpace(node.Provenance.PlanModel); planner != "" {
+		parts = append(parts, "planned by "+planner)
 	}
 	return strings.Join(parts, " · ")
 }

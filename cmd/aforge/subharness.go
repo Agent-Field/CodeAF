@@ -4,7 +4,9 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/Agent-Field/aforge-v2/internal/config"
@@ -145,6 +147,105 @@ func profileSubharness(name string) string {
 		return strings.TrimSpace(name)
 	}
 	return exec.LinearSubharness
+}
+
+// promisedWorker is the node's own answer to "who runs this", read in the order
+// admission settled it: the row's worker where there is one, the subtree's
+// otherwise. It is a pure read — every surface that only wants to *know* asks
+// this one, and only the dispatch path asks the one that also speaks.
+func promisedWorker(node store.Node) string {
+	if settled := strings.TrimSpace(node.Subharness); settled != "" {
+		return settled
+	}
+	return strings.TrimSpace(node.Provenance.Subharness)
+}
+
+// leafWorkerNotes is where the conversational surface says the same thing the
+// headless one says on stderr. A chat window has no stderr a person will ever
+// read, and the note does not belong in the thread — it is not conversation, it
+// is machinery admitting a limit — so it goes where every other machinery fact
+// about one leaf goes: that node's flight recorder, once, before the worker
+// writes its first turn into the same file.
+//
+// It is seated rather than threaded because the dispatch path that discovers the
+// degradation is handed a node and nothing else; the surface's own coordinates
+// are a fact about the process, exactly like the worker table above it.
+var leafWorkerNotes struct {
+	mutex     sync.Mutex
+	workspace string
+	scratch   string
+	graph     *store.Store
+	said      map[string]bool
+}
+
+// seatLeafWorkerNotes tells this process where its jobs work. A surface that
+// never calls it — a test, an embedder — degrades exactly as before and says
+// nothing anywhere, which is the same silence the registry keeps.
+func seatLeafWorkerNotes(workspace, scratch string, graph *store.Store) {
+	leafWorkerNotes.mutex.Lock()
+	defer leafWorkerNotes.mutex.Unlock()
+	leafWorkerNotes.workspace, leafWorkerNotes.scratch, leafWorkerNotes.graph = workspace, scratch, graph
+	leafWorkerNotes.said = nil
+}
+
+// noteDegradedLeafWorker writes the one line, once per node. Everything about it
+// is best-effort: a missing directory, an unwritable file and an unseated
+// surface all mean the same thing here, which is that the work goes on.
+func noteDegradedLeafWorker(node store.Node, worker string) {
+	if !degradedWorker(worker) {
+		return
+	}
+	leafWorkerNotes.mutex.Lock()
+	defer leafWorkerNotes.mutex.Unlock()
+	if leafWorkerNotes.workspace == "" || leafWorkerNotes.graph == nil || node.ID == "" {
+		return
+	}
+	if leafWorkerNotes.said == nil {
+		leafWorkerNotes.said = make(map[string]bool, 1)
+	}
+	if leafWorkerNotes.said[node.ID] {
+		return
+	}
+	leafWorkerNotes.said[node.ID] = true
+	// The same place the tracer will open a moment later: the scratch home when
+	// the workspace belongs to a person, the job's own directory otherwise.
+	home := leafWorkerNotes.scratch
+	if home == "" {
+		home = filepath.Join(leafWorkerNotes.workspace, jobIDOf(leafWorkerNotes.graph, node))
+	}
+	directory := filepath.Join(home, ".obs")
+	if err := os.MkdirAll(directory, 0o755); err != nil {
+		return
+	}
+	file, err := os.OpenFile(filepath.Join(directory, fmt.Sprintf("%d.trace.log", node.CreatedSeq)),
+		os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644)
+	if err != nil {
+		return
+	}
+	defer file.Close()
+	noteUnavailableWorker(file, worker)
+}
+
+// degradedWorker answers whether a node's promised worker is one this build
+// cannot construct. The generalist and the unnamed are never degradations —
+// they are the default — and the registry's own answer is the authority, so this
+// asks the same question Registry.For asks a moment later.
+func degradedWorker(worker string) bool {
+	worker = strings.TrimSpace(worker)
+	return worker != "" && worker != exec.LinearSubharness && !exec.KnownSubharness(worker)
+}
+
+// noteUnavailableWorker is the one sentence a build owes a node whose promised
+// worker it does not have. The work still gets done on the generalist — the
+// registry's promise is degradation, never failure — but silent degradation is
+// how a measurement of the specialist becomes a measurement of the default
+// wearing its name. The registry, the store and exec stay quiet by law; saying
+// it is the surface's job, and this is the surface's sentence.
+func noteUnavailableWorker(stderr io.Writer, worker string) {
+	if stderr == nil {
+		return
+	}
+	fmt.Fprintf(stderr, "note: worker %q not in this build; ran linear\n", strings.TrimSpace(worker))
 }
 
 // resolveSubharnessFlag reads what a person typed on the command line. An
