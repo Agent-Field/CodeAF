@@ -334,12 +334,22 @@ func (r *Reconciler) previousJudgments(charterID string) []string {
 }
 
 func (r *Reconciler) checkCharterSentinel(ctx context.Context, charter store.Charter, evidence string, pass *WatchPass) {
-	verdict, err := r.sentinel(ctx, SentinelPrompt{
+	prompt := SentinelPrompt{
 		CharterID: charter.ID, Invariant: charter.Invariant, SentinelHint: charter.SentinelHint,
 		Watch: charter.Watch, Evidence: evidence,
 		Previous: r.previousJudgments(charter.ID),
 		Voice:    VoiceSection(r.store, charter.Invariant, charter.SentinelHint),
-	})
+	}
+	// The prompt is assembled under the reconciler's lock and the judgment is
+	// made without it. A sentinel is a model round-trip on a cadence nobody
+	// chose to wait for, and the lock it was holding is the one a chat takes to
+	// open — so this call was one of the ways arriving at the keyboard could
+	// hang. Nothing it decides lives in memory: the verdict lands in the journal
+	// keyed to this wake, which is what makes a stale one refuse rather than
+	// overwrite.
+	var verdict SentinelVerdict
+	var err error
+	r.thinking(func() { verdict, err = r.sentinel(ctx, prompt) })
 	check := store.SentinelCheck{WakeSeq: charter.WakeSeq, Yes: verdict.Yes, Line: verdict.Line}
 	if err != nil {
 		check.Yes, check.Error = false, err.Error()
