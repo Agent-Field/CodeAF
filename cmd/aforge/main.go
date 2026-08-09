@@ -26,6 +26,12 @@ import (
 )
 
 func main() {
+	// Before anything else — before the GC is tuned, before a flag is read,
+	// before a single line of aforge exists in this process — the binary asks
+	// whether it was started to be something else. See swepro.go.
+	if sweproSentinel(os.Getenv) {
+		os.Exit(dispatchSwepro(os.Args[1:]))
+	}
 	// The default heap target collects several times before the surface is even
 	// drawn, and none of those collections free anything worth the pause: the
 	// launch path allocates a graph snapshot, a catalog, and a thread, and then

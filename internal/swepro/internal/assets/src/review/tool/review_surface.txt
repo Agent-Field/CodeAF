@@ -1,0 +1,22 @@
+Writes one of the six standardized surface-map files under `.review/surface/`.
+Used by the Anatomist agent.
+
+Two operations:
+
+- `op: "init"` — start a section.
+    Required: `section` (one of: overview, files-changed, trust-boundaries,
+              data-flows, deps-touched, build-and-tests),
+              `intro` (short opening paragraph; can be empty string).
+    Creates `.review/surface/<section>.md` with a title and the intro.
+
+- `op: "append"` — add a subsection.
+    Required: `section`, `heading` (one-line subsection title), `body`
+              (markdown content for the subsection).
+    Appends `## <heading>\n\n<body>\n` to the section file.
+
+Build surfaces incrementally: call `init` once per section, then `append`
+multiple times to add each labeled subsection. This keeps every tool call
+small — no single call ever has to produce 500+ lines of content.
+
+You cannot write to any path outside `.review/surface/`. You cannot pick
+arbitrary section names — only the six standardized ones are accepted.
