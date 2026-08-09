@@ -664,9 +664,16 @@ func (r *Reconciler) primeQuietGateLocked() error {
 func (r *Reconciler) nextClockDeadlineLocked() (time.Time, error) {
 	now := r.now()
 	deadline := time.Time{}
+	// A deadline already in the past is a deadline of now: the thing it names is
+	// overdue, not perpetual. Clamping here is what keeps one lapsed question —
+	// or one supervision interval that elapsed while a long tick ran — from
+	// pinning the gate open with a moment that can never be reached again.
 	earlier := func(at time.Time) {
 		if at.IsZero() {
 			return
+		}
+		if at.Before(now) {
+			at = now
 		}
 		if deadline.IsZero() || at.Before(deadline) {
 			deadline = at
@@ -680,14 +687,15 @@ func (r *Reconciler) nextClockDeadlineLocked() (time.Time, error) {
 	earlier(charterDue)
 
 	// A supervised process can die without writing anything, so its health
-	// check is a clock deadline the journal never announces.
+	// check is a clock deadline the journal never announces. It is the
+	// supervisor's own interval, not "now": naming now meant that adopting a
+	// single service disarmed the gate for as long as that service lived, and
+	// the resident then ran its full pass twice a second forever.
 	services, err := r.store.ActiveServices()
 	if err != nil {
 		return time.Time{}, err
 	}
-	if len(services) > 0 {
-		earlier(now)
-	}
+	earlier(r.services.NextHealthCheck(services, now))
 
 	// The same window expireQuestionsLocked reads, so the gate cannot miss an
 	// expiry the tick itself would have applied.
