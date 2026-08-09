@@ -139,6 +139,15 @@ type Commander interface {
 	NodeTrace(nodeID string, maxBytes int) string
 }
 
+// Interrupter stops the turn the head is answering right now, carrying in the
+// words the reader has already seen so the durable line that ends the turn is
+// the same reply, marked where it stopped. It is a Commander refinement rather
+// than a Commander method for the reason every other one here is: a window with
+// no head behind it has no turn to stop, and says so by not implementing this.
+type Interrupter interface {
+	Interrupt(partial string) bool
+}
+
 // NodeTraceStamp is a trace file's identity as the last read already stat-ed
 // it. The executor appends to that file outside the journal, so the poll has to
 // ask for it on every cycle, quiet ones included.
@@ -462,6 +471,24 @@ type Model struct {
 	streamSeq          int64
 	streamProviderDone bool
 	streamQueue        []store.Message
+	// streamInterrupted says the reader stopped this reply. The words already
+	// drawn stay exactly where they are, and the durable line the head posts —
+	// the same words plus the mark — lands in place of them rather than
+	// redrawing the reply from nothing.
+	streamInterrupted bool
+
+	// What was typed here is never destroyed by anything but the person who
+	// typed it: sent turns go into a ring the arrows walk, a draft escape takes
+	// away is stashed where the same arrows reach it, and an overlay that
+	// borrows the composer gives the draft back when it closes.
+	inputHistory []string
+	inputRecall  int
+	draftStash   string
+	overlayDraft string
+	// quitArmedAt is when ctrl+c last stopped something instead of quitting. A
+	// second press inside the window means it: the first one is how people
+	// stop a reply, and a session with work in flight may not end by reflex.
+	quitArmedAt time.Time
 
 	width  int
 	height int
@@ -1143,6 +1170,9 @@ func (m *Model) update(message tea.Msg) (tea.Model, tea.Cmd) {
 		var command tea.Cmd
 		m.input, command = m.input.Update(message)
 		if m.input.Value() != before && m.nodeViewID == "" {
+			// Typing is the end of a recall walk: what is in the composer now is
+			// the person's line, not a copy of an older one.
+			m.inputRecall = 0
 			m.captureImageAttachments()
 			m.paletteSelected = 0
 			m.paletteDismissed = false
@@ -1176,7 +1206,7 @@ func (m *Model) update(message tea.Msg) (tea.Model, tea.Cmd) {
 func (m *Model) updateKey(message tea.KeyMsg) (tea.Cmd, bool) {
 	key := message.String()
 	if key == "ctrl+c" {
-		return tea.Quit, true
+		return m.updateQuitKey()
 	}
 	if m.nodeViewID == "" && m.inputFocused && (key == "backspace" || key == "ctrl+h") &&
 		m.input.Value() == "" && len(m.attachments) > 0 {
@@ -1369,6 +1399,9 @@ func (m *Model) updateKey(message tea.KeyMsg) (tea.Cmd, bool) {
 			m.focus = focusInput
 			m.inputFocused = true
 			_ = m.input.Focus()
+			// Coming back to the composer is where a draft some reading surface
+			// borrowed — /history is the one that leaves focus here — returns.
+			m.returnDraft()
 			m.setSize(m.width, m.height)
 		case m.graphVisible() && m.focus == focusGraph:
 			m.toggleGraph()
@@ -1378,7 +1411,12 @@ func (m *Model) updateKey(message tea.KeyMsg) (tea.Cmd, bool) {
 			_ = m.input.Focus()
 			m.setSize(m.width, m.height)
 		case m.focus == focusInput && m.dismissTextQuestion():
+		// Above the draft and above the quit: while a reply is on its way, this
+		// key stops it and nothing else. Escape may not end a session with a
+		// turn in it, and it may not spend the same press on the draft as well.
+		case m.interruptTurn():
 		case m.input.Value() != "" || len(m.attachments) > 0:
+			m.stashDraft(m.input.Value())
 			m.input.Reset()
 			m.attachments = nil
 			m.paletteDismissed = false
@@ -1580,8 +1618,16 @@ func (m *Model) updateKey(message tea.KeyMsg) (tea.Cmd, bool) {
 		return m.submit(), true
 	}
 	// An empty input has nothing for the arrows to do, so they read backwards
-	// through the conversation instead of dying silently: up scrolls history
-	// into view, down walks back toward now, End (or sending) re-pins.
+	// through what was typed here: up walks into older turns of your own, down
+	// walks back toward the empty line, and a draft escape stashed is the first
+	// thing up hands back. With nothing sent yet they keep their older job of
+	// scrolling the thread, and pgup/pgdn scroll it whatever the composer holds.
+	if m.inputFocused && (m.input.Value() == "" || m.recalling()) &&
+		(key == "up" || key == "down") {
+		if m.recallInput(key == "up") {
+			return nil, true
+		}
+	}
 	if m.inputFocused && m.input.Value() == "" && (key == "up" || key == "down") {
 		if key == "up" {
 			m.chat.SetYOffset(m.chat.YOffset - 3)
@@ -2325,6 +2371,7 @@ func (m *Model) postUserMessage(body string, attachments ...string) tea.Cmd {
 	if body == "" {
 		return nil
 	}
+	m.rememberSubmission(body)
 	m.err = nil
 	backend := m.backend
 	messageModel := ""

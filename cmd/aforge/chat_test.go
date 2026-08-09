@@ -8,9 +8,11 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/Agent-Field/aforge-v2/internal/config"
 	"github.com/Agent-Field/aforge-v2/internal/exec"
+	"github.com/Agent-Field/aforge-v2/internal/head"
 	"github.com/Agent-Field/aforge-v2/internal/profile"
 	"github.com/Agent-Field/aforge-v2/internal/provider"
 	"github.com/Agent-Field/aforge-v2/internal/resident"
@@ -948,4 +950,75 @@ func TestNamedGapEarnsARevisionThatIsToldWhereTheAnswerGoes(t *testing.T) {
 			t.Fatalf("the revision contract no longer says where the answer goes: %q missing", required)
 		}
 	}
+}
+
+// blockedHeadClient is a provider call that only ends when the turn's context
+// does — the one state in which an interrupt is a real thing.
+type blockedHeadClient struct{ entered chan struct{} }
+
+func (client blockedHeadClient) CompleteWithMessages(ctx context.Context, _ []ai.Message,
+	_ ...ai.Option) (*ai.Response, error) {
+	select {
+	case client.entered <- struct{}{}:
+	default:
+	}
+	<-ctx.Done()
+	return nil, ctx.Err()
+}
+
+// The surface's stop key has to reach the loop that is answering, and the turn
+// it stops still has to end in words. This is that wire, end to end: the
+// commander the window holds, the head the brain serves, and the durable line
+// the thread keeps.
+func TestChatCommanderInterruptReachesTheHeadAndTheTurnStillSpeaks(t *testing.T) {
+	var _ tui.Interrupter = (*chatCommander)(nil)
+	if (&chatCommander{}).Interrupt("nothing to stop") {
+		t.Fatal("a window with no head behind it claimed to stop a turn")
+	}
+
+	graph, err := store.Open(filepath.Join(t.TempDir(), "graph.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer graph.Close()
+	client := blockedHeadClient{entered: make(chan struct{}, 1)}
+	commander := &chatCommander{store: graph, head: head.New(client, graph)}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go func() { _ = commander.head.Serve(ctx) }()
+
+	user, err := graph.PostMessage(store.Message{
+		SessionID: "stop", Role: store.RoleUser, Body: "how is the report coming along?",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case <-client.entered:
+	case <-time.After(5 * time.Second):
+		t.Fatal("the head never reached the provider")
+	}
+	if !commander.Interrupt("the report is") {
+		t.Fatal("the commander found no turn to stop")
+	}
+
+	deadline := time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) {
+		messages, readErr := graph.Messages("stop", user.Seq, 0)
+		if readErr != nil {
+			t.Fatal(readErr)
+		}
+		for _, message := range messages {
+			if message.Role != store.RoleAgent {
+				continue
+			}
+			if !strings.Contains(message.Body, "the report is") ||
+				!strings.Contains(message.Body, "interrupted") {
+				t.Fatalf("the stopped turn ended in %q", message.Body)
+			}
+			return
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	t.Fatal("the stopped turn never said anything")
 }

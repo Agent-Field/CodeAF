@@ -1281,6 +1281,23 @@ func buildBrain(w *chatWindow, session string, opts brainOptions) (*chatBrain, e
 		return nil, brain.abandon(err)
 	}
 
+	// The head is built here rather than inside the loop below because the
+	// surface has to be able to reach it: stopping the turn being answered right
+	// now is a handle on this process, and the commander is where the surface
+	// keeps its handles.
+	conversationalHead := head.New(chatClient, graph).
+		WithMessageClient(boostClients.ForMessage).
+		WithSelfKnowledge(func() string { return selfKnowledge(settings, taskClient.Model()) }).
+		WithImageInput(modelCatalog, settings.Model).
+		WithCompetenceMap(func() string {
+			return competenceGrounding(graph, settings.ProfileDir, taskClient.Model())
+		}).
+		WithStandingWatch(func() string {
+			return watchGrounding(path, graph, standingWatch, settings.DailyBudgetUSD)
+		}).
+		WithDailyBudgetUSD(settings.DailyBudgetUSD)
+	commander.head = conversationalHead
+
 	brain.commander = commander
 	brain.streamEvents = streamEvents
 	brain.deliverBrief = deliverBrief
@@ -1306,18 +1323,7 @@ func buildBrain(w *chatWindow, session string, opts brainOptions) (*chatBrain, e
 			case <-ctx.Done():
 			}
 		})
-		_ = head.New(chatClient, graph).
-			WithMessageClient(boostClients.ForMessage).
-			WithSelfKnowledge(func() string { return selfKnowledge(settings, taskClient.Model()) }).
-			WithImageInput(modelCatalog, settings.Model).
-			WithCompetenceMap(func() string {
-				return competenceGrounding(graph, settings.ProfileDir, taskClient.Model())
-			}).
-			WithStandingWatch(func() string {
-				return watchGrounding(path, graph, standingWatch, settings.DailyBudgetUSD)
-			}).
-			WithDailyBudgetUSD(settings.DailyBudgetUSD).
-			Serve(headContext)
+		_ = conversationalHead.Serve(headContext)
 	}
 	return brain, nil
 }
@@ -1755,6 +1761,9 @@ type chatCommander struct {
 	taskClient *liveClient
 	planClient *liveClient
 	store      *store.Store
+	// head is the loop that answers, and the only thing the surface asks of it
+	// is to stop. A window that is not the brain has none and says so.
+	head *head.Head
 
 	mu               sync.Mutex
 	prefs            chatPrefs
@@ -1791,6 +1800,16 @@ func attachmentStoreRoot(database string) string {
 }
 
 func (c *chatCommander) StreamEvents() <-chan tui.StreamEvent { return c.streamEvents }
+
+// Interrupt stops the turn the head is answering right now and hands it the
+// words the reader has already seen, so the durable line that ends the turn is
+// that same reply marked where it stopped rather than a fresh apology.
+func (c *chatCommander) Interrupt(partial string) bool {
+	if c == nil || c.head == nil {
+		return false
+	}
+	return c.head.Interrupt(partial)
+}
 
 // Residency lets the surface say what this window is, and hands it a
 // replacement commander at the moment that answer changes. It runs on the
