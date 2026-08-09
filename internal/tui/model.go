@@ -578,6 +578,20 @@ type Model struct {
 	blockGen   uint64
 	threadGen  uint64
 
+	// chatBlocks is the thread exactly as the last full render assembled it,
+	// with the positions of the two lines that breathe. The shimmer and the
+	// awaiting line move every 120ms and nothing above them does, so the
+	// animation frame splices those two blocks back in and re-joins — the
+	// alternative was rebuilding the whole conversation eight times a second to
+	// walk a highlight across three lines. Any message other than the two
+	// clocks retires the slice, and the full render the handler does refills it.
+	chatBlocks        []string
+	chatAwaitingBlock int
+	chatShimmerBlock  int
+	chatBlocksWidth   int
+	chatBlocksGen     uint64
+	chatBlocksValid   bool
+
 	// chatMessageRows maps rendered chat lines to the message seq they
 	// belong to, so clicking a collapsed deliverable opens it in place.
 	chatMessageRows []chatMessageRow
@@ -779,6 +793,16 @@ func (m *Model) Init() tea.Cmd {
 // Update applies terminal events and store results. All store I/O is returned
 // as a command, so keystrokes and rendering never wait on SQLite or a reply.
 func (m *Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
+	// The animation frame reuses the thread the last full render assembled, so
+	// anything that could have moved the thread retires it first. The two
+	// clocks are the exceptions: one is the frame itself, the other only asks
+	// the store a question. Every other handler that changes the thread ends in
+	// a render, and that render is what fills the slice again.
+	switch message.(type) {
+	case animationTickMsg, pollTickMsg:
+	default:
+		m.chatBlocksValid = false
+	}
 	switch message := message.(type) {
 	case tea.WindowSizeMsg:
 		m.setSize(message.Width, message.Height)
@@ -830,12 +854,16 @@ func (m *Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 			m.spinnerFrame = (m.spinnerFrame + 1) % len(spinnerFrames)
 		}
 		// One refresh, not two: no frame is drawn between them, so the thread
-		// was rendered twice per tick for one visible result.
-		if streaming || animating {
+		// was rendered twice per tick for one visible result. A stream is new
+		// text arriving and rebuilds; an animation frame only breathes, and
+		// splices its two lines into the thread already assembled.
+		if streaming {
 			m.refreshChat()
-			if streaming && m.autoScroll {
+			if m.autoScroll {
 				m.chat.GotoBottom()
 			}
+		} else if animating {
+			m.refreshChatFrame()
 		}
 		if !animating {
 			return m, nil
@@ -2594,15 +2622,62 @@ func (m *Model) newMessagePillHit(x, y int) bool {
 // birth position above them or an earlier block changes height — the offset is
 // re-derived from a stable anchor (message seq or card id), not reused raw.
 func (m *Model) refreshChat() {
+	offset, anchor := m.captureChatScroll()
+	m.applyChatContent(m.renderMessages(), offset, anchor)
+}
+
+// captureChatScroll reads the reader's place from the row maps the previous
+// render left, which is why it has to run before the next one replaces them.
+func (m *Model) captureChatScroll() (int, chatAnchor) {
 	if m.autoScroll {
-		m.chat.SetContent(m.renderMessages())
+		return 0, chatAnchor{}
+	}
+	offset := m.chat.YOffset
+	return offset, m.captureChatAnchor(offset)
+}
+
+func (m *Model) applyChatContent(content string, offset int, anchor chatAnchor) {
+	m.chat.SetContent(content)
+	if m.autoScroll {
 		m.chat.GotoBottom()
 		return
 	}
-	offset := m.chat.YOffset
-	anchor := m.captureChatAnchor(offset)
-	m.chat.SetContent(m.renderMessages())
 	m.chat.SetYOffset(m.resolveChatAnchor(anchor, offset))
+}
+
+// refreshChatFrame is the animation tick's redraw. The tick moves exactly two
+// lines — the sweep across the shimmer and the awaiting dot — so it re-renders
+// those two blocks and puts them back into the thread the last full render
+// left behind. Anything the splice cannot vouch for, including a tail that
+// changed height and would shift every row map below it, falls back to the
+// ordinary rebuild.
+func (m *Model) refreshChatFrame() {
+	if !m.chatBlocksValid || m.chatBlocksWidth != m.chat.Width || m.chatBlocksGen != m.threadGen {
+		m.refreshChat()
+		return
+	}
+	width := max(1, m.chat.Width-2)
+	offset, anchor := m.captureChatScroll()
+	if !m.spliceChatBlock(m.chatAwaitingBlock, m.renderAwaitingReply(width)) ||
+		!m.spliceChatBlock(m.chatShimmerBlock, m.renderShimmerLines(width)) {
+		m.refreshChat()
+		return
+	}
+	m.applyChatContent(m.applyChatFocus(strings.Join(m.chatBlocks, "\n\n")), offset, anchor)
+}
+
+func (m *Model) spliceChatBlock(index int, block string) bool {
+	if index < 0 {
+		// The line was absent last frame; if it is still absent the cached
+		// thread already says exactly that.
+		return block == ""
+	}
+	if index >= len(m.chatBlocks) || block == "" ||
+		lipgloss.Height(block) != lipgloss.Height(m.chatBlocks[index]) {
+		return false
+	}
+	m.chatBlocks[index] = block
+	return true
 }
 
 // chatAnchor names the stable thing rendered at the top of the viewport: a
