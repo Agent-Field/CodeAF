@@ -76,6 +76,12 @@ type Task struct {
 	// first appeared.
 	Reflex bool
 
+	// Subharness names the worker this leaf was routed to. It is carried on the
+	// task rather than looked up again at dispatch because the choice was made
+	// once, upstream, and journaled: the scheduler's job is to honour it, not to
+	// re-decide it. Empty is the generalist, which is nearly every leaf.
+	Subharness string
+
 	// Steer, when set, is polled between turns for mid-flight guidance from
 	// the user. Each returned line lands in the transcript as a user message
 	// before the next model call, so a running worker can be redirected
@@ -232,30 +238,30 @@ func (u *Usage) merge(other Usage) {
 // leaves at once against a single executor, which is the entire point of having
 // built a graph.
 type Executor interface {
-	Skill() string
+	Subharness() string
 	Run(ctx context.Context, task Task) (*Outcome, error)
 }
 
-// Registry picks an executor by skill. Nodes carry no skill yet, so everything
-// resolves to the general loop; the lookup exists so that adding a specialised
-// worker later is a registration rather than a change to the scheduler.
+// Registry picks an executor by subharness. Nearly every node carries none and
+// resolves to the general loop; the lookup is what makes adding a specialised
+// worker a registration rather than a change to the scheduler.
 type Registry struct {
 	executors map[string]Executor
 	fallback  Executor
 }
 
 func NewRegistry(fallback Executor) *Registry {
-	return &Registry{executors: map[string]Executor{fallback.Skill(): fallback}, fallback: fallback}
+	return &Registry{executors: map[string]Executor{fallback.Subharness(): fallback}, fallback: fallback}
 }
 
 // Register adds a specialised executor.
-func (r *Registry) Register(executor Executor) { r.executors[executor.Skill()] = executor }
+func (r *Registry) Register(executor Executor) { r.executors[executor.Subharness()] = executor }
 
-// For returns the executor for a skill, falling back to the general one. An
-// unknown skill is served rather than refused: a plan that asks for a worker we
-// do not have should still get its work done by the generalist.
-func (r *Registry) For(skill string) Executor {
-	if executor, ok := r.executors[skill]; ok {
+// For returns the executor for a subharness, falling back to the general one.
+// An unknown name is served rather than refused: a plan that asks for a worker
+// we do not have should still get its work done by the generalist.
+func (r *Registry) For(subharness string) Executor {
+	if executor, ok := r.executors[subharness]; ok {
 		return executor
 	}
 	return r.fallback

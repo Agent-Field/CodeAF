@@ -138,6 +138,11 @@ func SubtreeFromPlan(graph *plan.Graph, prefix string) (store.Subtree, error) {
 			Title: strings.TrimSpace(node.Title),
 			Group: nodeGroup(node, groupOf),
 			Stage: node.Stage,
+			// The sizing pass's other verdict. A node the planner judged atomic
+			// for a specialist arrives here as one admitted leaf rather than as
+			// the eight the baseline ruler would have cut it into, and the name
+			// of who it is for has to arrive with it or the cut was for nothing.
+			Subharness: strings.TrimSpace(node.Subharness),
 		}
 		if node.ID != rootID {
 			spec.Parent = id(rootID)

@@ -84,6 +84,12 @@ type Compiled struct {
 
 	// ModelNote is the one calm receipt line about that choice.
 	ModelNote string
+
+	// Subharness is the specialist worker this whole job was judged to be for.
+	// It rides the splice as provenance, exactly as WorkModel does, so the
+	// leaves that run it are held to what was chosen when the ask was read
+	// rather than to whatever the process has registered an hour later.
+	Subharness string
 }
 
 // SkillCandidate names the artifact directory a job proved useful. It remains
@@ -215,15 +221,19 @@ type Reconciler struct {
 	// oneShotErrand is the headless surface's fact about itself: every command
 	// this reconciler will apply is one errand, run once, with nobody who could
 	// answer a question about it.
-	oneShotErrand   bool
-	dailyBudgetUSD  float64
-	practiceEnabled bool
-	practiceBudget  float64
-	practiceIdle    time.Duration
-	services        *ServiceSupervisor
-	heartbeat       func(time.Time)
-	handover        HandoverFunc
-	residentSince   time.Time
+	oneShotErrand bool
+	// forcedSubharness overrides every compiler judgement about who runs this
+	// job. It exists for measurement: comparing two workers on the same corpus
+	// means taking the choice away from the model that would otherwise vary it.
+	forcedSubharness string
+	dailyBudgetUSD   float64
+	practiceEnabled  bool
+	practiceBudget   float64
+	practiceIdle     time.Duration
+	services         *ServiceSupervisor
+	heartbeat        func(time.Time)
+	handover         HandoverFunc
+	residentSince    time.Time
 
 	mu                 sync.Mutex
 	watcherInitialized bool
@@ -323,6 +333,24 @@ func (r *Reconciler) WithCraftRunner(craft *CraftRunner) *Reconciler {
 func (r *Reconciler) WithOneShotErrands() *Reconciler {
 	r.oneShotErrand = true
 	return r
+}
+
+// WithSubharness forces every job this reconciler admits onto one worker,
+// whatever the compiler thought. It is a benchmarking instrument and is named
+// as one: a run that is comparing workers cannot let the choice be the variable
+// it is trying to measure. Empty restores the ordinary path, where the choice
+// is the compiler's and is usually the generalist.
+func (r *Reconciler) WithSubharness(subharness string) *Reconciler {
+	r.forcedSubharness = strings.TrimSpace(subharness)
+	return r
+}
+
+// chosenSubharness is the one place the two sources of the choice meet.
+func (r *Reconciler) chosenSubharness(compiled Compiled) string {
+	if r != nil && r.forcedSubharness != "" {
+		return r.forcedSubharness
+	}
+	return strings.TrimSpace(compiled.Subharness)
 }
 
 // WithStandingWatch enables the one-time unattended-presence offer after the
@@ -1139,6 +1167,7 @@ func (r *Reconciler) splice(ctx context.Context, command store.Command) (command
 		WorkModel:     strings.TrimSpace(compiled.WorkModel),
 		Attachments:   append([]string(nil), command.Attachments...),
 		Craft:         use.reference,
+		Subharness:    r.chosenSubharness(compiled),
 	}
 	if err := r.store.Splice(store.RootID, subtree, provenance); err != nil {
 		if r.plan != nil || !r.defaultSpliceExists(command, compiled) {

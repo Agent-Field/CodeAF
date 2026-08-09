@@ -99,6 +99,14 @@ type Node struct {
 	Kind  Kind   `json:"kind"`
 	Brief string `json:"brief,omitempty"`
 
+	// Subharness names the worker that takes this node whole. Empty is the
+	// baseline generalist and is what nearly every node carries. It is decided
+	// where size is decided — a node oversized for one agent working alone can
+	// be one job for a specialist — and it travels with the node from that
+	// judgment to the executor that runs it, through the file the graph is
+	// persisted to and through the splice that admits it to the store.
+	Subharness string `json:"subharness,omitempty"`
+
 	// Contract is the working method for this leaf: how an agent should work
 	// this particular kind of job, as distinct from the Brief, which says what
 	// the job is. A generic loop with a per-task contract is what lets one
