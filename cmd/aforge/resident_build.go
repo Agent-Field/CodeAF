@@ -46,6 +46,20 @@ func newResidentReconciler(settings config.Config, graph *store.Store,
 		reconciler = reconciler.WithOneShotErrands()
 	}
 	return reconciler.
+		// The two slots, asked at the moment a job is admitted rather than read
+		// from the environment: what a run was launched with is not what it is
+		// running on after a picker change, and a receipt that quotes the env var
+		// is a receipt about the wrong process.
+		WithModelsInForce(func() (string, string) {
+			plan, work := "", ""
+			if planClient != nil {
+				plan = planClient.Model()
+			}
+			if taskClient != nil {
+				work = taskClient.Model()
+			}
+			return plan, work
+		}).
 		WithDistiller(distillFacts(settings, chatClient, graph)).
 		WithConsolidator(consolidateFacts(settings, chatClient, graph)).
 		WithTitler(titleGoal(settings, chatClient)).
