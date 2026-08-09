@@ -44,3 +44,22 @@ func childPath(t *testing.T, environ []string) string {
 	t.Fatal("child environment carries no PATH")
 	return ""
 }
+
+// The flight recorder never appears in the deliverable's diff. The auditor
+// proved the need: it refused a change set whose only addition was a
+// 47,245-line trace of the run that produced it.
+func TestObsIsExcludedFromTheWorkspaceRepository(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(dir, ".git", "info"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	excludeFromGit(dir, obsDir+"/")
+	excludeFromGit(dir, obsDir+"/") // twice writes once
+	raw, err := os.ReadFile(filepath.Join(dir, ".git", "info", "exclude"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, want := strings.Count(string(raw), obsDir+"/"), 1; got != want {
+		t.Fatalf("exclude carries the pattern %d times, want %d:\n%s", got, want, raw)
+	}
+}

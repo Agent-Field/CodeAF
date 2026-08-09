@@ -152,6 +152,15 @@ func (s *SWE) Run(ctx context.Context, task Task) (*Outcome, error) {
 
 	directory := s.workspace.Root()
 	initialized, err := ensureGitRepository(runCtx, directory)
+	if err == nil {
+		// The leaf's own flight recorder lives in the workspace at .obs/, and
+		// the engine audits the change set it finds there. It git-excludes its
+		// own sidecars; ours gets the same treatment, or a 47,000-line trace
+		// of the run shows up in the diff and the auditor — correctly —
+		// refuses to ship it. info/exclude, never .gitignore: the repository's
+		// tracked files are the deliverable and are not ours to edit.
+		excludeFromGit(directory, obsDir+"/")
+	}
 	if err != nil {
 		outcome.Stop = StopError
 		outcome.Text = err.Error()
@@ -735,6 +744,35 @@ func porcelainPath(line string) string {
 // reports whether it had to create the repository, because that fact belongs in
 // the trace: a leaf that ran against a repository it made itself has no history
 // to reason from, and a reader of the trace should not have to guess.
+// excludeFromGit appends a pattern to the repository's local exclude file,
+// once. Local means .git/info/exclude: invisible to the diff, gone with the
+// clone, and never an edit to anything the repository tracks.
+func excludeFromGit(directory, pattern string) {
+	gitDir := filepath.Join(directory, ".git")
+	if info, err := os.Stat(gitDir); err != nil || !info.IsDir() {
+		// A worktree or an absent repository; a wrong write is worse than a
+		// visible trace, so do nothing.
+		return
+	}
+	path := filepath.Join(gitDir, "info", "exclude")
+	if existing, err := os.ReadFile(path); err == nil {
+		for _, line := range strings.Split(string(existing), "\n") {
+			if strings.TrimSpace(line) == pattern {
+				return
+			}
+		}
+	}
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		return
+	}
+	handle, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644)
+	if err != nil {
+		return
+	}
+	defer handle.Close()
+	fmt.Fprintln(handle, pattern)
+}
+
 func ensureGitRepository(ctx context.Context, directory string) (bool, error) {
 	if gitQuiet(ctx, directory, "rev-parse", "--verify", "HEAD") == nil {
 		return false, nil
