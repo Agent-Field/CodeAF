@@ -604,6 +604,47 @@ func buildBrain(w *chatWindow, session string, opts brainOptions) (*chatBrain, e
 			leafTitle = title
 		}
 		outputHint, intermediate := leafOutputHint(node, leafTitle, jobSpace)
+		// The job blackboard: what one worker learns mid-flight that changes how
+		// the others must act — a discovery about the material, a pitfall, a
+		// decision to match. A note is an agent message anchored to the job's
+		// root, and every leaf of the job (the sink included) reads the root at
+		// the same between-turn boundary that already reads user steering. A
+		// leaf that starts late reads the whole board on its first poll because
+		// its cursor starts at zero; a single-leaf job carries neither the tool
+		// nor the poll, so the atomic path pays nothing.
+		jobRoot := jobIDOf(graph, node)
+		var share func(string) error
+		if node.Parent != store.RootID {
+			share = func(line string) error {
+				_, postErr := graph.PostMessage(store.Message{
+					SessionID: node.Provenance.SessionID,
+					Role:      store.RoleAgent,
+					NodeID:    jobRoot,
+					Body:      jobNoteBody(leafTitle, line),
+				})
+				return postErr
+			}
+		}
+		// Reading the board costs one indexed query per turn boundary and zero
+		// tokens when it is empty, so every leaf reads it — including the sink,
+		// whose merge is exactly where a sibling's warning matters most.
+		var boardCursor int64
+		board := func() []string {
+			messages, boardErr := graph.NodeMessages(jobRoot, boardCursor, 20)
+			if boardErr != nil {
+				return nil
+			}
+			var lines []string
+			for _, message := range messages {
+				boardCursor = message.Seq
+				note, isNote := jobNoteLine(message)
+				if !isNote || strings.HasPrefix(note, leafTitle+": ") {
+					continue
+				}
+				lines = append(lines, note)
+			}
+			return lines
+		}
 		task := exec.Task{
 			Reflex:       isReflex,
 			NodeID:       int(node.CreatedSeq),
@@ -616,6 +657,8 @@ func buildBrain(w *chatWindow, session string, opts brainOptions) (*chatBrain, e
 			Intermediate: intermediate,
 			Inputs:       inputs,
 			Steer:        steer,
+			Share:        share,
+			Board:        board,
 			Control: func() exec.ControlAction {
 				control, err := graph.Control(node.ID)
 				if err != nil {
@@ -4528,6 +4571,31 @@ func taskContract(ctx context.Context, settings config.Config, planClient *liveC
 	}
 	journalPlanSpend(history, planClient, usage)
 	return strings.TrimSpace(graph.Nodes[0].Contract)
+}
+
+// jobNoteMark is the structural marker for a job-board note: written by code,
+// read by code, so a board read can never mistake an anchored ask, receipt or
+// progress post for a worker's shared line. It is a protocol byte, not a
+// phrase the model is asked to produce.
+const jobNoteMark = "⚑ "
+
+func jobNoteBody(from, line string) string {
+	return jobNoteMark + from + ": " + line
+}
+
+// jobNoteLine reads a message back as a board note, or says it is not one.
+// Everything else that anchors to a node — questions, receipts, briefs,
+// progress — declares itself in fields, and a note is what remains: an agent
+// line carrying only the marker and its words.
+func jobNoteLine(message store.Message) (string, bool) {
+	if message.Role != store.RoleAgent || message.QuestionSeq != 0 ||
+		message.CommandSeq != 0 || message.Brief != nil || message.Progress != nil {
+		return "", false
+	}
+	if !strings.HasPrefix(message.Body, jobNoteMark) {
+		return "", false
+	}
+	return strings.TrimPrefix(message.Body, jobNoteMark), true
 }
 
 // subtreeSink is the one spec with no parent — the node whose landing means

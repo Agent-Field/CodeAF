@@ -106,6 +106,11 @@ type Toolbox struct {
 	// concurrently and Definitions is read between turns.
 	armedMu sync.Mutex
 	armed   map[string]bool
+
+	// share is the worker's one-line channel to the rest of its job. Nil for a
+	// job with no siblings — the schema is only carried where somebody is
+	// listening. Installed from Task.Share at run start.
+	share func(line string) error
 }
 
 // The optional capability families, and the whole of why they are optional.
@@ -226,6 +231,37 @@ func (t *Toolbox) capabilities(args map[string]any) Result {
 		". Their full descriptions are in your tool list from here on."}
 }
 
+// shareLine hands one line to the rest of the job. The write itself is the
+// caller's closure — the toolbox knows nothing about where notes live, which
+// is what keeps this package free of the store's job topology.
+func (t *Toolbox) shareLine(args map[string]any) Result {
+	if t.share == nil {
+		return errorf("this work has no other workers to tell")
+	}
+	line := strings.TrimSpace(stringArg(args, "line"))
+	if line == "" {
+		return errorf("share needs the one line the others should read")
+	}
+	// One line means one line: a paragraph shared to every sibling is paid for
+	// in every sibling's every remaining turn.
+	if len(line) > shareLineBytes {
+		clipped := line[:shareLineBytes]
+		for len(clipped) > 0 && !utf8.ValidString(clipped) {
+			clipped = clipped[:len(clipped)-1]
+		}
+		line = clipped + "…"
+	}
+	if err := t.share(line); err != nil {
+		return errorf("could not pass that along: %v", err)
+	}
+	return Result{Content: "Passed along. The other workers read it between turns."}
+}
+
+// shareLineBytes bounds one shared line. It is a bound on cost, not on
+// content: every byte here is re-read by every sibling on every remaining
+// turn, so a note pays rent everywhere at once.
+const shareLineBytes = 300
+
 func NewToolbox(workspace *Workspace, nodeID int, web *Web) *Toolbox {
 	return &Toolbox{workspace: workspace, nodeID: nodeID, web: web, jobs: newJobRegistry(workspace, nodeID)}
 }
@@ -286,6 +322,11 @@ func (t *Toolbox) Definitions() []ai.ToolDefinition {
 			"scope_cues": map[string]any{"type": "array", "items": map[string]any{"type": "string"}, "description": "optional workspace or file paths"},
 			"limit":      prop("integer", "maximum fold and notebook hits, default 5, maximum 10"),
 		}, "terms"))
+	}
+	if t.share != nil {
+		definitions = append(definitions, define("share", "Tell the other workers on this job one line they need: a discovery about the material, a pitfall, a decision they must match. It reaches them between their turns. Only what changes how someone else acts — never progress reports, never your own status.", map[string]any{
+			"line": prop("string", "one sentence the rest of the job needs"),
+		}, "line"))
 	}
 	// The optional families ride the prompt only once this leaf has a reason
 	// to carry them: a structural one it was armed with before turn 1, or the
@@ -417,6 +458,8 @@ func (t *Toolbox) Execute(ctx context.Context, name string, arguments string) (o
 		result = t.readDocument(ctx, args)
 	case "capabilities":
 		result = t.capabilities(args)
+	case "share":
+		result = t.shareLine(args)
 	default:
 		available := "sh, job, write, edit, web"
 		if t.history != nil {
