@@ -2285,6 +2285,31 @@ func TestAnimationFrameSplicesTheSweepWithoutRebuildingTheThread(t *testing.T) {
 	}
 }
 
+// TestFocusReplacesTheBlinkLoopInsteadOfAddingOne guards the cursor's one
+// heartbeat: twenty-two call sites throw Focus's command away, so a walk around
+// the focus ring used to leave a live 530ms loop behind at every stop.
+func TestFocusReplacesTheBlinkLoopInsteadOfAddingOne(t *testing.T) {
+	model := New(&fakeBackend{}, "blink")
+	stale := model.input.Focus()()
+	live := model.input.Focus()()
+
+	if _, command := model.input.Update(stale); command != nil {
+		t.Fatal("a superseded blink loop kept ticking")
+	}
+	next, command := model.input.Update(live)
+	if command == nil {
+		t.Fatal("the newest blink loop stopped")
+	}
+	model.input = next
+	if _, command := model.input.Update(live); command == nil {
+		t.Fatal("the newest blink loop stopped on its second beat")
+	}
+	model.input.Blur()
+	if _, command := model.input.Update(live); command != nil {
+		t.Fatal("a blurred input kept blinking")
+	}
+}
+
 func TestGraphBindingRoutesAltGAndLeavesCtrlGAlone(t *testing.T) {
 	model := New(&fakeBackend{}, "bindings")
 	_, _ = model.Update(tea.KeyMsg{Type: tea.KeyCtrlG})
