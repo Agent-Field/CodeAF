@@ -696,25 +696,58 @@ func (m *Model) renderChatPane() string {
 	if len(lines) > m.chatHeight {
 		lines = lines[:m.chatHeight]
 	}
-	// Hard clamp: any line wider than the pane would be soft-wrapped by the
-	// Width style below, growing the frame taller than the terminal and
-	// letting ghost frames overlap. After the clamp the style only pads.
+	// Hard clamp: any line wider than the pane would be soft-wrapped, growing
+	// the frame taller than the terminal and letting ghost frames overlap.
 	clampLines(lines, m.chatWidth)
 	if m.newMessages > 0 {
 		pill := pillStyle.Render(m.newMessageLabel())
 		index := len(lines) - 1
-		lines[index] = overlayRight(lines[index], pill, max(1, m.chatWidth-2))
+		lines[index] = padANSI(overlayRight(lines[index], pill, max(1, m.chatWidth-2)), m.chatWidth)
 	}
-	return lipgloss.NewStyle().Width(m.chatWidth).Render(strings.Join(lines, "\n"))
+	return strings.Join(lines, "\n")
 }
 
-// clampLines truncates, ANSI-aware, every line that exceeds the pane width.
+// clampLines is the pane's whole width discipline: every line truncated,
+// ANSI-aware, to the pane and then padded out to it.
+//
+// The padding used to be done by rendering the joined block through a styled
+// Width, which re-wraps and re-pads a block the clamp has already guaranteed
+// fits — around seventy kilobytes of copying per forty-line pane, per frame,
+// to add spaces the clamp was already measuring for. Tabs are expanded here
+// because the styled Width did it, and a tab measured before expansion is a
+// line that clamps to the pane and then wraps out of it anyway.
 func clampLines(lines []string, width int) {
 	for index, line := range lines {
-		if lipgloss.Width(line) > width {
-			lines[index] = truncate(line, width)
+		if strings.IndexByte(line, '\t') >= 0 {
+			line = strings.ReplaceAll(line, "\t", styleTabStop)
 		}
+		measured := lipgloss.Width(line)
+		if measured > width {
+			line = truncate(line, width)
+			measured = lipgloss.Width(line)
+		}
+		lines[index] = line + spaces(width-measured)
 	}
+}
+
+// styleTabStop is what a styled Width renders a tab as: a flat run of spaces,
+// not a stop the column is counted to.
+const styleTabStop = "    "
+
+const spaceRun = "                                                                " +
+	"                                                                "
+
+// spaces is a run of blanks taken from one string rather than built. Padding a
+// pane is one of these per line per frame, and every one of them was an
+// allocation.
+func spaces(count int) string {
+	if count <= 0 {
+		return ""
+	}
+	if count <= len(spaceRun) {
+		return spaceRun[:count]
+	}
+	return strings.Repeat(" ", count)
 }
 
 // renderGraphPane is the task rail: a faint header naming it, then the tree.
@@ -758,7 +791,7 @@ func (m *Model) renderGraphPane() string {
 		lines = lines[:m.graphHeight]
 	}
 	clampLines(lines, m.graphWidth)
-	return lipgloss.NewStyle().Width(m.graphWidth).Render(strings.Join(lines, "\n"))
+	return strings.Join(lines, "\n")
 }
 
 func (m *Model) graphToggleHit(x, y int) bool {
@@ -838,7 +871,7 @@ func (m *Model) renderNodePane() string {
 		lines = lines[:m.chatHeight]
 	}
 	clampLines(lines, m.width)
-	return lipgloss.NewStyle().Width(m.width).Render(strings.Join(lines, "\n"))
+	return strings.Join(lines, "\n")
 }
 
 // inputFrameInset is the columns between the terminal edge and the editable
