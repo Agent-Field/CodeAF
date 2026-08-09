@@ -12,6 +12,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
@@ -50,8 +51,21 @@ const (
 var gitLock sync.Mutex
 
 // Repo is the craft repository at one directory.
+//
+// It is never copied — Open hands back a pointer and every caller keeps it —
+// which is what lets the catalogue cache below live on it.
 type Repo struct {
 	dir string
+
+	// The catalogue, and the state of the directory it was read from. List
+	// forks git once per workflow and the Self pane calls it on every poll;
+	// see listed.
+	listing sync.Mutex
+	listed  []Summary
+	listErr error
+	stamp   string
+
+	forks atomic.Int64
 }
 
 // Version is one commit in a workflow's history.
@@ -171,6 +185,11 @@ func (r *Repo) Save(w *Workflow, message string) (string, error) {
 
 	gitLock.Lock()
 	defer gitLock.Unlock()
+	// The catalogue is about to be a version out of date. The file's own stamp
+	// would say so too, but not on a filesystem that rounds modification times
+	// to the second, and this is the case where that matters: the distiller
+	// saves while the Self pane is watching.
+	defer r.forget()
 
 	if err := os.WriteFile(filepath.Join(r.dir, path), data, 0o644); err != nil {
 		return "", fmt.Errorf("craft save %s: %w", w.Name, err)
@@ -326,6 +345,7 @@ func (r *Repo) Revert(name, toCommit, message string) (string, error) {
 
 	gitLock.Lock()
 	defer gitLock.Unlock()
+	defer r.forget()
 
 	if err := os.WriteFile(filepath.Join(r.dir, path), data, 0o644); err != nil {
 		return "", fmt.Errorf("craft revert %s: %w", name, err)
@@ -341,6 +361,20 @@ func (r *Repo) Revert(name, toCommit, message string) (string, error) {
 // rather than fatal: one corrupt workflow must not hide the rest, and the
 // listing is the surface the resident chooses from. The returned error names
 // what was skipped — the summaries are complete either way.
+//
+// The answer is remembered against the state of the workflows directory,
+// because this is not an occasional call: each summary costs a `git log -1`,
+// which is a process fork of about six milliseconds, and the Self pane asks for
+// the whole catalogue on every poll for as long as it is open. Unchanged files
+// give back the same summaries without touching git at all.
+//
+// The stamp is every workflow file's name, size and modification time, plus the
+// directory's own — so a save, a revert, an added file and a removed one all
+// invalidate it, since every one of them writes. What it cannot see is a commit
+// made behind the files' backs: committing a workflow by hand, in the craft
+// directory, with git, leaves the listing showing the version it had a moment
+// ago until the file itself next changes. Everything that writes here goes
+// through Save or Revert, both of which write the file first.
 func (r *Repo) List() ([]Summary, error) {
 	entries, err := os.ReadDir(filepath.Join(r.dir, WorkflowDir))
 	if err != nil {
@@ -349,6 +383,14 @@ func (r *Repo) List() ([]Summary, error) {
 		}
 		return nil, fmt.Errorf("craft list: %w", err)
 	}
+
+	stamp := r.stampOf(entries)
+	r.listing.Lock()
+	defer r.listing.Unlock()
+	if stamp != "" && stamp == r.stamp {
+		return append([]Summary(nil), r.listed...), r.listErr
+	}
+
 	var summaries []Summary
 	var skipped []error
 	for _, entry := range entries {
@@ -378,7 +420,43 @@ func (r *Repo) List() ([]Summary, error) {
 		summaries = append(summaries, summary)
 	}
 	sort.Slice(summaries, func(a, b int) bool { return summaries[a].Name < summaries[b].Name })
-	return summaries, errors.Join(skipped...)
+	problems := errors.Join(skipped...)
+	r.listed, r.listErr, r.stamp = summaries, problems, stamp
+	// A copy, because the caller of a function that used to build a fresh slice
+	// every time is entitled to keep sorting or trimming what it is given.
+	return append([]Summary(nil), summaries...), problems
+}
+
+// forget drops the remembered catalogue, for the writers that know they have
+// just invalidated it.
+func (r *Repo) forget() {
+	r.listing.Lock()
+	defer r.listing.Unlock()
+	r.listed, r.listErr, r.stamp = nil, nil, ""
+}
+
+// stampOf describes the workflows directory closely enough that an unchanged
+// one is recognisable. It returns "" when the directory will not describe
+// itself, which reads as "changed" and costs a re-read rather than a wrong
+// answer.
+func (r *Repo) stampOf(entries []os.DirEntry) string {
+	directory, err := os.Stat(filepath.Join(r.dir, WorkflowDir))
+	if err != nil {
+		return ""
+	}
+	stamp := &strings.Builder{}
+	fmt.Fprintf(stamp, "%d\x1f%d", directory.ModTime().UnixNano(), len(entries))
+	for _, entry := range entries {
+		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".yaml") {
+			continue
+		}
+		info, err := entry.Info()
+		if err != nil {
+			return ""
+		}
+		fmt.Fprintf(stamp, "\x1e%s\x1f%d\x1f%d", entry.Name(), info.Size(), info.ModTime().UnixNano())
+	}
+	return stamp.String()
 }
 
 // WriteVerifier commits one executable check. The path law is the same one the
@@ -500,6 +578,10 @@ func (r *Repo) git(args ...string) (string, error) {
 }
 
 func (r *Repo) gitBytes(args ...string) ([]byte, error) {
+	// Counted because forks are the cost this package has to keep an eye on:
+	// one is about six milliseconds, and the surfaces that read the catalogue
+	// read it on a timer.
+	r.forks.Add(1)
 	command := exec.Command("git", args...)
 	command.Dir = r.dir
 	command.Env = append(os.Environ(),
