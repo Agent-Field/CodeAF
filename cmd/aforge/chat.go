@@ -576,7 +576,7 @@ func buildBrain(w *chatWindow, session string, opts brainOptions) (*chatBrain, e
 			shape = exec.LeafShape(planNode)
 			// Frozen means frozen everywhere: the sentinel may not edit a
 			// node whose transcript is already being written.
-			plans.markRunning(planNode)
+			plans.markRunning(planGraph, planNode)
 		}
 		// One ledger bucket per worker and no finer. What a router learns about
 		// a specialist says nothing about a generalist leaf, and a key any
@@ -782,7 +782,7 @@ func buildBrain(w *chatWindow, session string, opts brainOptions) (*chatBrain, e
 		}
 		if planNode != nil && !mechanical {
 			// A join that cost nothing is not a measurement of any model.
-			plans.recordOutcome(planNode, outcome, err)
+			plans.recordOutcome(planGraph, planNode, outcome, err)
 		}
 		if err == nil && outcome != nil && (outcome.Stop == exec.StopPaused || outcome.Stop == exec.StopCancelled) {
 			return resident.ExecResult{
@@ -1126,7 +1126,7 @@ func buildBrain(w *chatWindow, session string, opts brainOptions) (*chatBrain, e
 		outcome.Usage = spent
 		outcome.Turns = spentTurns
 		if planNode != nil {
-			plans.recordOutcome(planNode, outcome, nil)
+			plans.recordOutcome(planGraph, planNode, outcome, nil)
 		}
 		if landed, prefix := plans.takeIfRoot(node.ID); landed != nil {
 			// The recalibration report reaches the thread, not a stdout the TUI
@@ -3295,9 +3295,22 @@ func leafDeadline(budget int) time.Duration {
 // the durable graph because that is where what has happened is actually
 // recorded, and a rehydrated plan that thought every node was still pending
 // would hand the sentinel a licence to edit work already running.
+//
+// The registry keeps two kinds of lock and the difference between them is the
+// difference between a wide plan that fans out and one that quietly runs
+// serially. `mu` is the map lock and nothing else: it is held for a map read, a
+// map write, and never across anything that can block. What a job's plan
+// document needs is a lock of its own, because that document is edited by a
+// sentinel whose pass contains a model round-trip, and a round-trip held under
+// one registry-wide mutex stops every other job's leaves from so much as
+// looking themselves up.
 type jobPlans struct {
 	mu     sync.Mutex
 	graphs map[string]plannedJob
+	// locks is one pair of mutexes per retained plan graph, keyed by the graph
+	// itself because that is what they actually guard — a rehydrated job gets a
+	// new document and a new pair with it, so the pairing can never drift.
+	locks map[*plan.Graph]*planLocks
 	// contracts holds the working method for the jobs that never earn a graph.
 	// A task-scale ask is spliced as one leaf, so there is no plan node to hang
 	// the method on and no plan to journal; the registry carries it from the
@@ -3440,11 +3453,53 @@ type plannedJob struct {
 	client router.Client
 }
 
-func (j *jobPlans) put(prefix string, graph *plan.Graph, root, model string, client router.Client) {
+// planLocks are the two locks one retained plan document needs, and they are
+// two because they answer two different questions.
+//
+// document is "is anyone reading or writing this graph right now" — a leaf
+// resolving its node, a leaf marking itself running, a leaf recording what it
+// measured, the sentinel rendering the plan into a prompt or editing it
+// afterwards. It is held for microseconds by everything except the sentinel,
+// and the sentinel deliberately hands it back while the model thinks.
+//
+// pass is "is a revision of this job already in flight" — held for the whole
+// sentinel pass, including the round-trip. Without it, handing the document
+// back mid-call would let a second revision of the same plan start against the
+// same document and interleave its edits with the first one's, which is the one
+// ordering the old registry-wide lock did guarantee and the one worth keeping.
+type planLocks struct {
+	document sync.Mutex
+	pass     sync.Mutex
+}
+
+// locksFor returns the lock pair belonging to one plan document, minting it on
+// first use. The registry lock is taken and released inside — a document lock is
+// never acquired while holding it, which is the whole of the ordering rule.
+func (j *jobPlans) locksFor(graph *plan.Graph) *planLocks {
 	j.mu.Lock()
 	defer j.mu.Unlock()
+	if existing, ok := j.locks[graph]; ok {
+		return existing
+	}
+	if j.locks == nil {
+		j.locks = map[*plan.Graph]*planLocks{}
+	}
+	minted := &planLocks{}
+	j.locks[graph] = minted
+	return minted
+}
+
+func (j *jobPlans) put(prefix string, graph *plan.Graph, root, model string, client router.Client) {
+	// The document lock is taken before the map write rather than after: the
+	// instant the entry lands in the map a leaf can look itself up and mark
+	// itself running, and journalling serialises the whole graph.
+	locks := j.locksFor(graph)
+	locks.document.Lock()
+	defer locks.document.Unlock()
 	entry := plannedJob{graph: graph, root: root, model: model, client: client}
+	j.mu.Lock()
 	j.graphs[prefix] = entry
+	j.mu.Unlock()
 	if j.journal != nil {
 		j.journal(prefix, entry)
 	}
@@ -3497,10 +3552,13 @@ func (j *jobPlans) get(prefix string) (plannedJob, bool) {
 // makes the namespace a fact the registry states rather than a string every
 // caller re-parses.
 func (j *jobPlans) lookup(nodeID string) (string, *plan.Graph, *plan.Node, string, router.Client) {
-	j.mu.Lock()
-	defer j.mu.Unlock()
-
-	if entry, ok := j.entry(nodeID); ok {
+	// The map read and the document read are two separate holds. This is the
+	// call at the head of every leaf, and under the old single lock it was the
+	// call that waited behind another job's sentinel round-trip.
+	if entry, ok := j.get(nodeID); ok {
+		locks := j.locksFor(entry.graph)
+		locks.document.Lock()
+		defer locks.document.Unlock()
 		if len(entry.graph.Nodes) == 0 {
 			return nodeID, entry.graph, nil, entry.model, entry.client
 		}
@@ -3516,10 +3574,13 @@ func (j *jobPlans) lookup(nodeID string) (string, *plan.Graph, *plan.Node, strin
 		return "", nil, nil, "", nil
 	}
 	prefix := nodeID[:cut]
-	entry, ok := j.entry(prefix)
+	entry, ok := j.get(prefix)
 	if !ok {
 		return "", nil, nil, "", nil
 	}
+	locks := j.locksFor(entry.graph)
+	locks.document.Lock()
+	defer locks.document.Unlock()
 	for index := range entry.graph.Nodes {
 		if entry.graph.Nodes[index].ID == planID {
 			return prefix, entry.graph, &entry.graph.Nodes[index], entry.model, entry.client
@@ -3530,9 +3591,10 @@ func (j *jobPlans) lookup(nodeID string) (string, *plan.Graph, *plan.Node, strin
 
 // recordOutcome writes a leaf's measured ending onto its plan node — the same
 // fields, in the same shape, that the headless scheduler records.
-func (j *jobPlans) recordOutcome(node *plan.Node, outcome *exec.Outcome, err error) {
-	j.mu.Lock()
-	defer j.mu.Unlock()
+func (j *jobPlans) recordOutcome(graph *plan.Graph, node *plan.Node, outcome *exec.Outcome, err error) {
+	locks := j.locksFor(graph)
+	locks.document.Lock()
+	defer locks.document.Unlock()
 	if outcome != nil {
 		node.Turns = outcome.Turns
 		node.Tokens = outcome.Usage.PromptTokens + outcome.Usage.CompletionTokens
@@ -3559,11 +3621,16 @@ func (j *jobPlans) recordOutcome(node *plan.Node, outcome *exec.Outcome, err err
 // finds nothing on a planned root, so it silently recorded no surprises at
 // all — and on an overrun repair root it found the wrong one and wrote this
 // job's surprises onto a sibling leaf of another.
+//
+// The document's locks are dropped with it. The sink is the node every other
+// node of the job feeds, so nothing of this job can still be holding them by
+// the time it lands, and keeping them would be a map that only ever grew.
 func (j *jobPlans) takeIfRoot(nodeID string) (*plan.Graph, string) {
 	j.mu.Lock()
 	defer j.mu.Unlock()
 	if entry, ok := j.entry(nodeID); ok && entry.root == nodeID {
 		delete(j.graphs, nodeID)
+		delete(j.locks, entry.graph)
 		return entry.graph, nodeID
 	}
 
@@ -3577,20 +3644,39 @@ func (j *jobPlans) takeIfRoot(nodeID string) (*plan.Graph, string) {
 		return nil, ""
 	}
 	delete(j.graphs, prefix)
+	delete(j.locks, entry.graph)
 	return entry.graph, prefix
 }
 
-func (j *jobPlans) markRunning(node *plan.Node) {
-	j.mu.Lock()
-	defer j.mu.Unlock()
+func (j *jobPlans) markRunning(graph *plan.Graph, node *plan.Node) {
+	locks := j.locksFor(graph)
+	locks.document.Lock()
+	defer locks.document.Unlock()
 	node.State = plan.StateRunning
 }
 
 // reviseAfter runs the sentinel over a job's remaining plan in light of one
-// landed result, and mirrors whatever it legally edits onto the store. The
-// whole pass holds the registry lock — the sentinel must see a consistent
-// graph, and its call is a short structuring call — and it skips entirely
-// when the job has no unstarted work left to edit.
+// landed result, and mirrors whatever it legally edits onto the store. It skips
+// entirely when the job has no unstarted work left to edit.
+//
+// The pass takes this job's own two locks and not the registry's. It was once
+// defended as "a short structuring call", and it is not: it is a model
+// round-trip, and holding the registry across it meant that every leaf of every
+// other job in the process — a lookup is the first thing a leaf does — waited
+// for a sentinel that had nothing to do with it. A plan that fans out wide is
+// exactly the plan that lands results often enough to revise often, so the
+// arrangement went serial precisely when parallelism was the point.
+//
+// What replaces it is not a weaker guarantee, it is a narrower one. The pass
+// lock keeps this job's revisions in single file. The document lock is held
+// while the plan is rendered into the prompt and again while the answer is
+// applied, and is handed back only for the round-trip in between — see
+// unlockedWhileThinking. That the world may have moved during the round-trip is
+// not a new hazard needing a new generation counter: the plan package re-reads
+// each node's state at apply time and refuses to touch anything that has since
+// started, and the store refuses the same edits again on its own authority.
+// Both refusals were already the everyday case, because the store has always
+// been free to claim a node while this pass was running.
 func (j *jobPlans) reviseAfter(ctx context.Context, settings config.Config, client *liveClient, graph *store.Store, node store.Node, prefix string, planGraph *plan.Graph, summary string, artifacts []string, failure string, workerModel string) {
 	if prefix == "" {
 		return
@@ -3616,12 +3702,16 @@ func (j *jobPlans) reviseAfter(ctx context.Context, settings config.Config, clie
 		return
 	}
 
-	j.mu.Lock()
-	defer j.mu.Unlock()
+	locks := j.locksFor(planGraph)
+	locks.pass.Lock()
+	defer locks.pass.Unlock()
+	locks.document.Lock()
+	defer locks.document.Unlock()
 	// The sentinel is this job's own second thought about its own remainder,
 	// so its spend belongs to this job.
 	judgeCtx := withSpendNode(router.WithAvoidModel(ctx, workerModel), node.ID)
-	operations, _, err := plan.Revise(settings.Context(judgeCtx, planGraph.Goal), client, planGraph,
+	operations, _, err := plan.Revise(settings.Context(judgeCtx, planGraph.Goal),
+		unlockedWhileThinking{client: client, document: &locks.document}, planGraph,
 		resident.RevisionEvent(node, summary, artifacts, failure))
 	if err != nil || len(operations) == 0 {
 		return
@@ -3663,17 +3753,15 @@ func (j *jobPlans) reviseAfter(ctx context.Context, settings config.Config, clie
 	})
 }
 
-// reviseForUser is reviseAfter's twin for the other event source. It holds the
-// same registry lock for the same reason, and differs in exactly two places:
-// the event is the user speaking with authority, and it does not return early
-// when nothing is pending — the leaves already running still have to be told,
-// and that broadcast is the reconciler's next move.
+// reviseForUser is reviseAfter's twin for the other event source. It takes the
+// same two locks for the same reasons, and differs in exactly two places: the
+// event is the user speaking with authority, and it does not return early when
+// nothing is pending — the leaves already running still have to be told, and
+// that broadcast is the reconciler's next move.
 func (j *jobPlans) reviseForUser(ctx context.Context, settings config.Config, client *liveClient,
 	graph *store.Store, job store.Node, message string,
 	flavor resident.RevisionFlavor) (resident.Redirection, error) {
-	j.mu.Lock()
-	defer j.mu.Unlock()
-	entry, ok := j.entry(job.ID)
+	entry, ok := j.get(job.ID)
 	if !ok {
 		// Silence here was a lie with a receipt attached. An empty Redirection
 		// and a nil error are indistinguishable from "the sentinel read the
@@ -3683,7 +3771,13 @@ func (j *jobPlans) reviseForUser(ctx context.Context, settings config.Config, cl
 		// revision that could not happen; this is how it reaches it.
 		return resident.Redirection{}, errNoRetainedPlan
 	}
-	operations, _, err := plan.Revise(settings.Context(withSpendNode(ctx, job.ID), entry.graph.Goal), client, entry.graph,
+	locks := j.locksFor(entry.graph)
+	locks.pass.Lock()
+	defer locks.pass.Unlock()
+	locks.document.Lock()
+	defer locks.document.Unlock()
+	operations, _, err := plan.Revise(settings.Context(withSpendNode(ctx, job.ID), entry.graph.Goal),
+		unlockedWhileThinking{client: client, document: &locks.document}, entry.graph,
 		resident.UserRevisionEvent(message, flavor))
 	if err != nil {
 		return resident.Redirection{}, err
@@ -3721,6 +3815,31 @@ func (j *jobPlans) reviseForUser(ctx context.Context, settings config.Config, cl
 		j.journal(job.ID, entry)
 	}
 	return revision, nil
+}
+
+// unlockedWhileThinking hands a plan document back to the rest of the job for
+// as long as the model has the question.
+//
+// It reads as a trick and is not one. A revision pass is three phases with a
+// wall between them: the plan is rendered into the prompt, the prompt is sent,
+// and the answer is applied. The middle phase is the only slow one and it is
+// the only one that touches nothing — by the time the client is called the
+// messages are already bytes, and nothing the graph does afterwards can change
+// what was asked. So the lock the first and third phases need is exactly the
+// lock the second one should not be holding, and this is where that is said,
+// because plan.Revise is one call and the seam is inside it.
+//
+// The client is called from one goroutine and at most twice (a truncated answer
+// earns a retry), so the unlock and relock always pair.
+type unlockedWhileThinking struct {
+	client   plan.Completer
+	document *sync.Mutex
+}
+
+func (u unlockedWhileThinking) CompleteWithMessages(ctx context.Context, messages []ai.Message, options ...ai.Option) (*ai.Response, error) {
+	u.document.Unlock()
+	defer u.document.Lock()
+	return u.client.CompleteWithMessages(ctx, messages, options...)
 }
 
 // errNoRetainedPlan says that this job's plan is not in hand — not that it
