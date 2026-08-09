@@ -580,6 +580,16 @@ func (s *SWE) environ(directory string) []string {
 	if s.baseURL != "" {
 		pinned["OPENROUTER_BASE_URL"] = s.baseURL
 	}
+	// The engine's LLM auditor is off unless the operator turns it on. aforge
+	// already owns a taste layer — the delivery gate — and stacking a second
+	// judge inside the engine, at whatever tier the leaf's model happens to
+	// be, measured as a judge that never signs: four issues, real work
+	// committed, mechanical checks green, every verdict a refusal. The
+	// engine's machine verification (build, tests, discovered CI) stays on;
+	// what it can prove it still proves.
+	if os.Getenv("CODEAF_AUDITOR") == "" {
+		pinned["CODEAF_AUDITOR"] = "0"
+	}
 	environ := os.Environ()
 	kept := make([]string, 0, len(environ)+len(pinned)+len(s.extraEnv))
 	venvBin := projectVenvBin(directory)

@@ -82,7 +82,7 @@ func TestSWEMenuEntryIsNotSaidTwice(t *testing.T) {
 	}
 	for _, want := range []string{
 		"- swe — an end-to-end software-engineering pipeline",
-		"when the essence of the job is making a repository's code do something new",
+		"when the work must be discovered rather than merely made",
 		"When in doubt, or for mixed or non-matching work, leave it unset",
 	} {
 		if !strings.Contains(menu, want) {
@@ -110,14 +110,16 @@ func TestInstallingSWEReachesEveryReaderOfARegistration(t *testing.T) {
 	}
 
 	shape := exec.SubharnessFor("swe")
-	if floor := shape.Deadline(0); floor != 30*time.Minute {
-		t.Fatalf("deadline floor = %s, want 30m", floor)
+	if floor := shape.Deadline(0); floor != 60*time.Minute {
+		t.Fatalf("deadline floor = %s, want 60m", floor)
 	}
 	// The ordinary leaf grant has to buy the run the anchors promise: one
-	// coding issue taken whole, "even if that run takes an hour".
+	// coding issue taken whole, "even if that run takes an hour". The floor
+	// is measured, not guessed — a 30-minute floor watched two real issues
+	// die at the watchdog with the suite already growing.
 	typical := shape.Deadline(150_000)
-	if typical < 45*time.Minute || typical > 60*time.Minute {
-		t.Fatalf("a typical leaf gets %s — the anchors promise 45 to 60 minutes", typical)
+	if typical < 60*time.Minute || typical > 90*time.Minute {
+		t.Fatalf("a typical leaf gets %s — the anchors promise the hour, with room", typical)
 	}
 	if typical <= exec.SubharnessFor(exec.LinearSubharness).Deadline(150_000) {
 		t.Fatal("the coding pipeline is on the generalist's clock")
