@@ -3497,12 +3497,18 @@ func (j *jobPlans) put(prefix string, graph *plan.Graph, root, model string, cli
 	locks.document.Lock()
 	defer locks.document.Unlock()
 	entry := plannedJob{graph: graph, root: root, model: model, client: client}
-	j.mu.Lock()
-	j.graphs[prefix] = entry
-	j.mu.Unlock()
+	j.retain(prefix, entry)
 	if j.journal != nil {
 		j.journal(prefix, entry)
 	}
+}
+
+// retain files one job in the map and nothing more. It is its own function so
+// the registry lock is the whole of it, held under a defer.
+func (j *jobPlans) retain(prefix string, entry plannedJob) {
+	j.mu.Lock()
+	defer j.mu.Unlock()
+	j.graphs[prefix] = entry
 }
 
 // putContract holds a one-leaf job's working method until its leaf claims it.
