@@ -946,8 +946,10 @@ func (m *Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 
 	case tea.KeyMsg:
 		m.noteKeypress()
-		m.noteActivity()
-		if command, handled := m.updateKey(message); handled {
+		surface := m.surface()
+		command, handled := m.updateKey(message)
+		m.noteActivity(surface)
+		if handled {
 			if command == nil {
 				return m, m.scheduleAnimation()
 			}
@@ -955,8 +957,10 @@ func (m *Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		}
 
 	case tea.MouseMsg:
-		m.noteActivity()
-		if command, handled := m.updateMouse(message); handled {
+		surface := m.surface()
+		command, handled := m.updateMouse(message)
+		m.noteActivity(surface)
+		if handled {
 			return m, tea.Batch(command, m.scheduleAnimation())
 		}
 	}
@@ -1670,12 +1674,42 @@ func (m *Model) nextPollTick() tea.Cmd {
 	})
 }
 
-// noteActivity snaps the cadence back to hot and buys exactly one full read.
-// A key or a click can open a place whose data the journal watermark cannot
-// speak for — the employee file, a node view — so the next poll must not be
-// allowed to answer it with "nothing changed".
-func (m *Model) noteActivity() {
-	m.pollForce = true
+// surface names the places a key or a click can open whose data the journal
+// watermark cannot speak for — the employee file, a node view, a rail card.
+// Everything else a keystroke touches is either store-backed, and so covered
+// by the watermark, or pure presentation.
+type surface struct {
+	nodeViewID    string
+	selfOpen      bool
+	selfRoute     selfRoute
+	graphOpen     bool
+	graphScopeID  string
+	charterCardID string
+	serviceCardID string
+}
+
+func (m *Model) surface() surface {
+	return surface{
+		nodeViewID:    m.nodeViewID,
+		selfOpen:      m.selfOpen,
+		selfRoute:     m.selfRoute,
+		graphOpen:     m.graphOpen,
+		graphScopeID:  m.graphScopeID,
+		charterCardID: m.charterCardID,
+		serviceCardID: m.serviceCardID,
+	}
+}
+
+// noteActivity snaps the cadence back to hot and, when the input actually moved
+// between places, buys exactly one full read. Typing and scrolling stay inside
+// the place they started in, so they get the hot cadence without the full read:
+// forcing on every keystroke made the watermark short-circuit unreachable for
+// as long as somebody was at the keyboard, which is exactly when the store is
+// read most.
+func (m *Model) noteActivity(before surface) {
+	if m.surface() != before {
+		m.pollForce = true
+	}
 	m.lastActionAt = m.standingTime()
 }
 
