@@ -199,7 +199,7 @@ func (s *Scheduler) Run(ctx context.Context, graph *plan.Graph) error {
 				leafCtx, cancel := context.WithCancel(ctx)
 				control := &leafControl{}
 				task.control = control
-				inFlight[id] = leafFlight{started: time.Now(), cancel: cancel, control: control}
+				inFlight[id] = leafFlight{started: time.Now(), cancel: cancel, control: control, timeout: s.timeoutFor(task)}
 				go s.work(leafCtx, id, task, retries[id], leafShape(node), done)
 			}
 		}
@@ -243,12 +243,12 @@ func (s *Scheduler) Run(ctx context.Context, graph *plan.Graph) error {
 		case <-ticker.C:
 			now := time.Now()
 			for id, flight := range inFlight {
-				if s.NodeTimeout > 0 && now.Sub(flight.started) > s.NodeTimeout {
+				if flight.timeout > 0 && now.Sub(flight.started) > flight.timeout {
 					node := graph.Node(id)
 					flight.cancel()
 					terminated := flight.control.terminate()
 					node.State = plan.StateFailed
-					node.Failure = fmt.Sprintf("executor did not return within %s; abandoned", s.NodeTimeout.Round(time.Second))
+					node.Failure = fmt.Sprintf("executor did not return within %s; abandoned", flight.timeout.Round(time.Second))
 					if terminated > 0 {
 						node.Failure += fmt.Sprintf("; %d background jobs terminated at leaf end", terminated)
 					}
@@ -283,6 +283,32 @@ type leafFlight struct {
 	started time.Time
 	cancel  context.CancelFunc
 	control *leafControl
+	// timeout is this leaf's own watchdog, shaped to its worker. A flat
+	// NodeTimeout sized for the generalist abandoned a coding pipeline at
+	// seventeen minutes with a verification pass already in hand — and a leaf
+	// killed from outside lands no terminal event, so its spend vanishes with
+	// it. Zero disables, exactly as it does on the Scheduler field.
+	timeout time.Duration
+}
+
+// timeoutFor shapes the watchdog to the leaf's worker. The generalist keeps
+// NodeTimeout as configured; a specialist whose registered budget floor plus
+// the same landing pad exceeds it gets the larger figure, because a watchdog
+// below the worker's own deadline is not a backstop, it is the thing that
+// fires first.
+func (s *Scheduler) timeoutFor(task Task) time.Duration {
+	timeout := s.NodeTimeout
+	if timeout <= 0 {
+		return 0
+	}
+	name := strings.TrimSpace(task.Subharness)
+	if name == "" || name == LinearSubharness || !KnownSubharness(name) {
+		return timeout
+	}
+	if shaped := SubharnessFor(name).Deadline(0) + 2*time.Minute; shaped > timeout {
+		return shaped
+	}
+	return timeout
 }
 
 // work runs one node and always reports back, even when the executor panics —
