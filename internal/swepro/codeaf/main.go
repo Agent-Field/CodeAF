@@ -51,15 +51,38 @@ func probeControlPlane(ctx context.Context, reporter *afield.Reporter) error {
 	return err
 }
 
-func main() {
-	if err := runCLI(context.Background(), os.Args[1:], nil, os.Stdout, os.Stderr); err != nil {
+// aforge-embed: the control-plane gate, made skippable. Upstream the gate is
+// unconditional for the real backend — codeaf is not a standalone product and
+// every run is mirrored onto AgentField — but an embedded run is driven by
+// aforge's harness rather than by an AgentField reasoner, and requiring a
+// reachable control plane would make the engine unusable in-process. The
+// literal value "off" in CODEAF_CP_URL turns the gate off; every other value,
+// including the empty one, keeps the upstream condition byte-for-byte.
+func controlPlaneEnabled(baseURL string, injected backend) bool {
+	if baseURL == "off" {
+		return false
+	}
+	return injected == nil || baseURL != ""
+}
+
+// aforge-embed: the shipped binary's `func main()` becomes `Main`, the one
+// exported symbol of this package, so the aforge binary can BE codeaf in a
+// child process (cmd/aforge/swepro.go). The body is main()'s verbatim, with
+// os.Exit replaced by a returned code: passing a nil `injected` backend is
+// what makes runCLI construct the real OpenRouter backend, and every startup
+// semantic the binary had — the control-plane gate, the OPENROUTER_API_KEY
+// hard-require, the models.dev catalog wiring, the auto-resume supervisor —
+// lives inside runCLI and is therefore unchanged.
+func Main(argv []string) int {
+	if err := runCLI(context.Background(), argv, nil, os.Stdout, os.Stderr); err != nil {
 		var exit *cliExitError
 		if errors.As(err, &exit) {
-			os.Exit(exit.code)
+			return exit.code
 		}
 		fmt.Fprintln(os.Stderr, "codeaf:", err)
-		os.Exit(1)
+		return 1
 	}
+	return 0
 }
 
 func runCLI(
@@ -183,7 +206,7 @@ func runCLI(
 	// parity tests stay hermetic.
 	var bridge *cpBridge
 	baseURL := strings.TrimSpace(os.Getenv("CODEAF_CP_URL"))
-	if injected == nil || baseURL != "" {
+	if controlPlaneEnabled(baseURL, injected) {
 		if baseURL == "" {
 			baseURL = strings.TrimSpace(os.Getenv("AGENTFIELD_URL"))
 		}
