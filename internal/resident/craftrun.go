@@ -268,12 +268,18 @@ func (c *CraftRunner) Sweep(ctx context.Context) (int, error) {
 	if err != nil {
 		return 0, err
 	}
+	// The negative half of the cache is deliberately per-sweep: a repository
+	// that was briefly unreadable must be readable again on the next pass. The
+	// successes live on the runner, where a version cannot change under them.
 	cache := make(map[string]*craft.Workflow)
 	advanced, scanned := 0, 0
-	for _, node := range nodes {
+	// Ranged by index: this walks every live node in the graph, a node is around
+	// half a kilobyte, and almost every iteration reads two fields and moves on.
+	for i := range nodes {
 		if err := ctx.Err(); err != nil {
 			return advanced, err
 		}
+		node := &nodes[i]
 		if node.Status != store.Done || strings.TrimSpace(node.Provenance.Craft) == "" {
 			continue
 		}
@@ -286,7 +292,7 @@ func (c *CraftRunner) Sweep(ctx context.Context) (int, error) {
 		}
 		// Nothing is in flight here: every node this pass reads has already
 		// journaled whatever it spent, so the gate needs no additional spend.
-		result, err := c.advance(node, node.Summary, workflow, 0)
+		result, err := c.advance(*node, node.Summary, workflow, 0)
 		if err != nil {
 			continue
 		}
