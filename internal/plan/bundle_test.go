@@ -44,6 +44,9 @@ func TestABundleSharesOneStageAndNothingChains(t *testing.T) {
 			if !strings.Contains(node.Brief, "in the order the person asked") {
 				t.Errorf("the merge brief lost its ordering law: %q", node.Brief)
 			}
+			if !strings.Contains(node.Brief, "reconciling them is YOUR work") {
+				t.Errorf("the merge brief lost its reconciliation law: %q", node.Brief)
+			}
 		}
 	}
 	if workers != 3 || sinks != 1 {

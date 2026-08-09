@@ -48,7 +48,11 @@ func Bundle(goal string, parts []string) *Graph {
 		Kind:    KindSynthesis,
 		Brief: fmt.Sprintf("The %d results above were asked for in one breath and finished independently. "+
 			"Your final message is the whole delivery: every result in full, in the order the person asked, "+
-			"each under its own words from the request. Nothing is summarised away and nothing is added between them.", len(ids)),
+			"each under its own words from the request. Nothing is summarised away and nothing is added between them "+
+			"— with one exception, and it is your whole reason for existing as a separate step: when one part's "+
+			"finding impeaches another part's number, reconciling them is YOUR work. A total delivered one line "+
+			"above the discovery that inflates it is wrong, not thorough. Recompute from the shared material when "+
+			"you can, and when you cannot, lead the affected result with its corrected value, never the impeached one.", len(ids)),
 	})
 	return graph
 }
