@@ -362,3 +362,59 @@ func TestAJobWhoseCompilerNamedTheSpineStillRuns(t *testing.T) {
 		t.Fatal("the leaf was spliced and never claimed — the job was deadlocked from birth")
 	}
 }
+
+// Opening a chat must not wait out somebody else's planner.
+//
+// The reconciler's lock was taken for the whole of Tick, model calls included,
+// and AttachSession takes that same lock on the chat-startup path. Arriving at
+// the keyboard while any job was being compiled and planned therefore meant
+// sitting through three model round-trips that had nothing to do with you — and
+// on a slow provider that is the whole of the first impression.
+func TestOpeningAChatDoesNotWaitOutAPlan(t *testing.T) {
+	graph := openStore(t)
+	planning := make(chan struct{})
+	released := make(chan struct{})
+	reconciler := New(graph,
+		func(_ context.Context, instruction, _ string) (Compiled, error) {
+			return Compiled{Goal: instruction}, nil
+		},
+		func(_ context.Context, compiled Compiled) (store.Subtree, error) {
+			close(planning)
+			<-released
+			return store.Subtree{Nodes: []store.NodeSpec{{
+				ID: "planned", Brief: compiled.Goal, Stage: 1,
+			}}}, nil
+		})
+	if _, err := graph.RequestCommand(store.Command{
+		SessionID: "chat", Kind: store.CommandSplice, Instruction: "do the slow thing",
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	ticked := make(chan error, 1)
+	go func() { ticked <- reconciler.Tick(context.Background()) }()
+	<-planning
+
+	attached := make(chan error, 1)
+	go func() { attached <- reconciler.AttachSession("chat") }()
+	select {
+	case err := <-attached:
+		if err != nil {
+			close(released)
+			<-ticked
+			t.Fatalf("attach session: %v", err)
+		}
+	case <-time.After(5 * time.Second):
+		close(released)
+		<-ticked
+		t.Fatal("opening a chat waited out the planner")
+	}
+
+	close(released)
+	if err := <-ticked; err != nil {
+		t.Fatalf("tick: %v", err)
+	}
+	if _, found, err := graph.Node("planned"); err != nil || !found {
+		t.Fatalf("planned node found=%t err=%v", found, err)
+	}
+}
