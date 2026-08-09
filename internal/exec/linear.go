@@ -94,6 +94,14 @@ real use looks like — what they do first, what they must see — and hold the 
 to that: something they will come back to has to fit that life, while a one-shot
 artefact needs no ceremony beyond being right.
 
+A rule you restated is a rule you apply. When the material itself carries an
+instruction that changes the numbers — a unit, a rate, an exclusion, an
+adjustment — the work shows it applied, in the arithmetic and not only in the
+prose. A total computed in the same breath as quoting an unapplied rule is the
+exact shape of wrong, and it is caught by one look: before finishing, read your
+own answer against every rule you noted along the way and ask whether each one
+visibly happened.
+
 Where the work can be checked against something real — a test suite, a build, a
 source it must agree with — run that check before you finish and fix what it
 turns up, exercising the whole of it the way its eventual user would reach it,
