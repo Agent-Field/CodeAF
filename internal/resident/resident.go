@@ -252,6 +252,11 @@ type Reconciler struct {
 	progress                map[string]*subtreeProgress
 	learningMoments         map[string]*pendingLearningMoment
 	lastConsolidation       time.Time
+	// charterOutcomeSeq is how far the charter ladder has finished reading. It
+	// is a working cursor, not a durable one: zero re-reads every unfolded
+	// firing, which is what a fresh process should do and what makes losing it
+	// cost one pass rather than one outcome.
+	charterOutcomeSeq       int64
 	lastWatchPass           WatchPass
 	standingWatchKeyPersist func() (bool, string, error)
 	now                     func() time.Time

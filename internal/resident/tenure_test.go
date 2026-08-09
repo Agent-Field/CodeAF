@@ -96,6 +96,21 @@ func TestProbationProposalDoesNotSpliceUntilPendingApprovalAndPromotesAfterGreen
 	if stored.Autonomy != store.CharterTenured || stored.GreenFirings != 1 {
 		t.Fatalf("verified promotion = %+v", stored)
 	}
+
+	// A verdict the ladder has recorded is not re-derived on every later tick.
+	// The watermark moved past this firing, and the query it drives has nothing
+	// left to hand back.
+	if reconciler.charterOutcomeSeq < job.CreatedSeq {
+		t.Fatalf("charter outcome watermark = %d, want at or past the reviewed firing at %d",
+			reconciler.charterOutcomeSeq, job.CreatedSeq)
+	}
+	remaining, err := graph.CharterFiredNodes(reconciler.charterOutcomeSeq)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(remaining) != 0 {
+		t.Fatalf("reviewed firings still re-assessed every tick: %+v", remaining)
+	}
 }
 
 func TestProbationAlwaysAllowPromotesAndNeverPauses(t *testing.T) {
