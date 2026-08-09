@@ -108,3 +108,20 @@ func TestTheLeafIsToldEvidenceIsNeverEdited(t *testing.T) {
 		}
 	}
 }
+
+// Measured live on the cross-file cell: the worker read the VAT note, restated
+// it completely — "regionB and regionC amounts are pre-VAT (20% to add)" — and
+// then summed all three files plain. The rule survived into prose and died
+// before the arithmetic. Same model, same files, single competitor context:
+// applied. The law targets exactly the restate-then-drop shape.
+func TestTheLeafIsToldARestatedRuleIsAnAppliedRule(t *testing.T) {
+	for _, required := range []string{
+		"A rule you restated is a rule you apply",
+		"in the arithmetic and not only in the\nprose",
+		"read your\nown answer against every rule you noted along the way",
+	} {
+		if !strings.Contains(systemPrompt, required) {
+			t.Errorf("the leaf prompt lost the restated-rule law: %q", required)
+		}
+	}
+}
