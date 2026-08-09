@@ -82,6 +82,16 @@ type Task struct {
 	// without being killed. Nil (the default, and the whole one-shot path)
 	// costs nothing.
 	Steer func() []string
+	// Share, when set, gives the worker a one-line channel to the rest of its
+	// job: a discovery about the material, a pitfall, a decision siblings must
+	// match. It is nil for a job with no siblings, so a single-worker errand
+	// never pays the schema for a channel with nobody on the other end.
+	Share func(line string) error
+	// Board is the reading side of Share: polled at the same between-turn
+	// boundary as Steer, it returns lines other workers on this job shared.
+	// They land in the transcript in their own voice, never the user's — a
+	// sibling's discovery is testimony, not instruction.
+	Board func() []string
 	// Control is polled at the same between-turn boundary as Steer. It is
 	// deliberately cooperative: a model/tool turn already in flight lands,
 	// then the claim owner releases through the store CAS path.
