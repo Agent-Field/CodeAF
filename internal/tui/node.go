@@ -188,6 +188,7 @@ func (m *Model) openNodeByID(nodeID string) tea.Cmd {
 	m.nodeMessages = nil
 	m.nodeLastSeq = 0
 	m.nodeTraceText = ""
+	m.nodeTraceStamp = NodeTraceStamp{}
 	m.feedExpanded = map[string]bool{}
 	m.nodeTrace.GotoBottom()
 	m.palette = paletteNone
@@ -216,6 +217,7 @@ func (m *Model) closeNodeView() {
 	m.nodeMessages = nil
 	m.nodeLastSeq = 0
 	m.nodeTraceText = ""
+	m.nodeTraceStamp = NodeTraceStamp{}
 	m.nodePinTop = false
 	m.input.Reset()
 	m.input.Placeholder = composerPlaceholder
