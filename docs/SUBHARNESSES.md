@@ -234,14 +234,16 @@ carries them verbatim. They are the *prior*; measurement rewrites the anchors.
 > swe — an end-to-end software-engineering pipeline for changing code in a
 > real repository. Give it a coding issue whole — a feature, a bug fix, a
 > refactor with its tests — and it plans internally, edits in parallel git
-> worktrees, judges each change before merging, and audits the result against
-> the repository's own build and tests before calling itself done. Choose it
-> when the essence of the job is making a repository's code do something new
-> or something right, and done-ness is checkable by building or testing that
-> repository. Do not choose it when the change is one obvious edit (the
-> default worker is cheaper and faster), when the deliverable is prose or
-> analysis about code rather than a change to it, or when no repository's
-> tests or build could say whether the job is done.
+> worktrees, judges each change before merging, and verifies the result
+> against the repository's own build and tests before calling itself done.
+> Choose it when the work must be discovered rather than merely made: a bug
+> whose cause is not yet located, a refactor that crosses the codebase, an
+> issue that demands substantial new test surface. Do not choose it when the
+> change is already located and specified — a well-described edit in a
+> handful of files is the default worker's job even when it is a whole
+> feature — nor when the deliverable is prose or analysis about code rather
+> than a change to it, nor when no repository's tests or build could say
+> whether the job is done.
 
 **PriorAnchors (the swe capacity ruler, in the linear anchors' voice):**
 
@@ -249,10 +251,11 @@ carries them verbatim. They are the *prior*; measurement rewrites the anchors.
 > are the ruler; place the node against them rather than estimating it on its
 > own.
 >
-> TOO SMALL — one obvious edit whose location is already known. Fix a typo'd
->   flag; bump a version; correct one function when the failing test names it.
->   The default worker finishes this in minutes; this pipeline's planning and
->   auditing would cost more than the change.
+> TOO SMALL — a change already located and specified, however complete. Fix a
+>   typo'd flag; correct one function when the failing test names it; add a
+>   well-described option that touches a handful of files. The default worker
+>   finishes this in minutes; this pipeline's planning and verification would
+>   cost more than the change.
 >
 > RIGHT — one coding issue taken whole, however many files it touches.
 >   Implement a described feature along with the tests that prove it; hunt
