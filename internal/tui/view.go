@@ -2824,26 +2824,54 @@ func (m *Model) nodeGlyph(node store.Node) (string, bool) {
 	return m.nodeGlyphStyled(node, time.Now(), false)
 }
 
+// The rail's glyph inks, built once like every other style in this file. A
+// style carries its color in an interface, so the four that were built inline
+// here heap-allocated once per node, per row, per frame — on the one surface
+// that draws a row for every node in the graph.
+var (
+	foldGlyphStyle      = powderStyle
+	foldGlyphDimStyle   = mutedStyle
+	doneGlyphStyle      = mintStyle
+	doneGlyphFlashStyle = mintStyle.Bold(true)
+	doneGlyphDimStyle   = mutedStyle
+	doneGlyphDimFlash   = mutedStyle.Bold(true)
+	failedGlyphStyle    = roseStyle
+	failedGlyphDimStyle = mutedStyle
+	pendingGlyphStyle   = butterStyle
+	runningGlyphStyle   = peachStyle
+)
+
 func (m *Model) nodeGlyphStyled(node store.Node, now time.Time, dimmed bool) (string, bool) {
-	tint := func(color lipgloss.AdaptiveColor) lipgloss.AdaptiveColor {
-		if dimmed {
-			return muted
-		}
-		return color
-	}
 	if node.FoldRoot {
-		return lipgloss.NewStyle().Foreground(tint(powder)).Render("◆"), false
+		style := foldGlyphStyle
+		if dimmed {
+			style = foldGlyphDimStyle
+		}
+		return style.Render("◆"), false
 	}
 	switch node.Status {
 	case store.Done:
-		return lipgloss.NewStyle().Foreground(tint(mint)).Bold(m.completionFlashing(node, now)).Render("●"), false
+		style := doneGlyphStyle
+		switch {
+		case dimmed && m.completionFlashing(node, now):
+			style = doneGlyphDimFlash
+		case dimmed:
+			style = doneGlyphDimStyle
+		case m.completionFlashing(node, now):
+			style = doneGlyphFlashStyle
+		}
+		return style.Render("●"), false
 	case store.Claimed, store.Running:
 		frame := spinnerFrames[m.spinnerFrame%len(spinnerFrames)]
-		return peachStyle.Render("● " + frame), true
+		return runningGlyphStyle.Render("● " + frame), true
 	case store.Failed, store.Cancelled:
-		return lipgloss.NewStyle().Foreground(tint(rose)).Render("●"), false
+		style := failedGlyphStyle
+		if dimmed {
+			style = failedGlyphDimStyle
+		}
+		return style.Render("●"), false
 	default:
-		return butterStyle.Render("○"), false
+		return pendingGlyphStyle.Render("○"), false
 	}
 }
 
