@@ -96,3 +96,26 @@ func TestPartsSurviveTheShapesModelsActuallySend(t *testing.T) {
 		}
 	}
 }
+
+// Two GAIA questions long enough to echo hit the compile's 1000-token ceiling
+// to the digit and were lost whole — well-formed JSON, guillotined. The reply
+// must have room for the ask it restates, and a truncated object earns one
+// retry at double room before the question is forfeited.
+func TestTheCompileReplyBreathesWithTheAskAndRetriesATruncation(t *testing.T) {
+	short := compileReplyTokens("fix the failing test")
+	long := compileReplyTokens(strings.Repeat("a question with many words in it ", 200))
+	if short < 1000 || long <= short+1000 {
+		t.Fatalf("the cap does not breathe: short=%d long=%d", short, long)
+	}
+	client := &fakeClient{responses: []string{
+		`{"goal":"Fix the failing interval test, which is to say the whole of`, // cut mid-structure
+		`{"goal":"Fix the failing interval test.","assumptions":[],"scale":"task"}`,
+	}}
+	brief, err := NewCompiler(client).Compile(context.Background(), "fix the failing test", "")
+	if err != nil {
+		t.Fatalf("a truncated first reply forfeited the question: %v", err)
+	}
+	if brief.Goal == "" || client.calls != 2 {
+		t.Fatalf("retry did not rescue the compile: goal=%q calls=%d", brief.Goal, client.calls)
+	}
+}

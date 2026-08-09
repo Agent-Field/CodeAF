@@ -725,6 +725,13 @@ func (w *settlementWatch) compose(nodes []store.Node) headlessOutcome {
 			if outcome.Deliverable == "" {
 				outcome.Deliverable = "It did not finish, and no reason was recorded."
 			}
+		case resident.SplitContinued(final.Summary):
+			// The fallback lands here on a timeout mid-split: every root is a
+			// receipt saying more was coming, and a receipt about scheduling is
+			// not an answer — two GAIA questions delivered "[splitting the
+			// remaining work — 6 pieces queued]" as their FINAL ANSWER before
+			// this case existed. Say what actually happened instead.
+			outcome.Deliverable = "The work was still mid-flight when time ran out: it had split into further pieces that never finished. Nothing here is the answer."
 		default:
 			outcome.Deliverable = strings.TrimSpace(final.Summary)
 		}

@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"strings"
 	"testing"
 
 	"github.com/Agent-Field/aforge-v2/internal/config"
@@ -109,5 +110,38 @@ func TestABundleSinkWithNothingToReconcileIsAssembledByCode(t *testing.T) {
 	}
 	if _, ok := assembledBundle(graph, sink); ok {
 		t.Fatal("a board note did not hand the merge back to the model")
+	}
+}
+
+// A timeout mid-split used to deliver the split receipt as the FINAL ANSWER —
+// "[splitting the remaining work — 6 pieces queued]" scored against GAIA
+// ground truth. A receipt about scheduling is never an answer.
+func TestATimeoutMidSplitNeverDeliversTheReceipt(t *testing.T) {
+	graph := openCacheStore(t)
+	provenance := store.Provenance{SessionID: "gaia", Origin: store.OriginUser, Intent: "the question"}
+	if err := graph.Splice(store.RootID, store.Subtree{Nodes: []store.NodeSpec{
+		{ID: "q", Brief: "answer the question"},
+	}}, provenance); err != nil {
+		t.Fatal(err)
+	}
+	claim, won, err := graph.Claim("q", "w")
+	if err != nil || !won {
+		t.Fatal(err)
+	}
+	receipt := "partial work so far [" + resident.OverrunContinuationMessage(6) + "]"
+	if err := graph.Complete(claim, receipt); err != nil {
+		t.Fatal(err)
+	}
+	watch := &settlementWatch{graph: graph}
+	nodes, err := graph.Nodes()
+	if err != nil {
+		t.Fatal(err)
+	}
+	outcome := watch.compose(nodes)
+	if strings.Contains(outcome.Deliverable, "splitting the remaining work") {
+		t.Fatalf("the split receipt shipped as the answer:\n%s", outcome.Deliverable)
+	}
+	if !strings.Contains(outcome.Deliverable, "never finished") {
+		t.Fatalf("the timeout partial does not say what happened:\n%s", outcome.Deliverable)
 	}
 }
