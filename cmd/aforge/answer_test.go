@@ -155,6 +155,11 @@ func TestTheGateNamesThePlanAndTheUnexercisedRunAsMissingContent(t *testing.T) {
 		"a fat unnamed file convicts the thin message": "the run wrote a file and the deliverable's own text is thin beside it",
 		"the gap is the content in the message":        "the missing element is that content itself, in the message",
 		"an asked-for file is the correct shape":       "a short message beside an asked-for file convicts nothing by its length",
+		// Three waves, three convictions of "22 passed" for not being a
+		// transcript. The pair rule: a command to RUN is confirmed in the
+		// deliverable's words; only asked-for OUTPUT is failed by its absence.
+		"a confirmation is a fact, not a transcript": "the verbatim transcript of the command is never the gap",
+		"a preference passes":                        "the honest answer for a preference is pass. Only a request that asked for the output itself",
 	} {
 		if !strings.Contains(judgeDeliverablePrompt, required) {
 			t.Errorf("the gate no longer states %s: %q missing", name, required)
