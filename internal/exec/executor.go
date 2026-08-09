@@ -103,9 +103,34 @@ type Task struct {
 	// then the claim owner releases through the store CAS path.
 	Control func() ControlAction
 
+	// Progress is within-node visibility: where the work has got to, said in a
+	// way that replaces the last thing it said rather than adding to it.
+	//
+	// It exists for the worker whose leaf is long and whose insides are not
+	// nodes. A linear leaf is a turn loop nobody watches and passes nil; a
+	// subharness that runs a pipeline for forty minutes would otherwise be a
+	// spinner, and the two honest alternatives to this — splicing its stages
+	// into the graph, or posting them as thread messages — are the two things
+	// docs/SUBHARNESSES.md forbids by name. phase is the coarse thing being
+	// done, done/total are a count when there is one, and latest is the short
+	// right-hand side. Nil-safe and ignored when nil, so no existing caller
+	// pays anything for it.
+	Progress func(phase string, done, total int, latest string)
+
 	// control is installed by the scheduler so its watchdog can tear down a
 	// Toolbox even when the executor goroutine itself is abandoned.
 	control *leafControl
+}
+
+// progress reports one step of within-node progress, and reports nothing at all
+// when the surface offered no channel. The nil check lives here rather than at
+// every call site because a worker that has to remember it will forget it once,
+// in the path that only runs when something has already gone wrong.
+func (t Task) progress(phase string, done, total int, latest string) {
+	if t.Progress == nil || strings.TrimSpace(phase) == "" {
+		return
+	}
+	t.Progress(phase, done, total, latest)
 }
 
 type ControlAction string
