@@ -1,4 +1,4 @@
-package main
+package codeaf
 
 import (
 	"context"
@@ -8,9 +8,9 @@ import (
 	"time"
 	"unicode/utf16"
 
-	"github.com/Agent-Field/swe-pro-go/internal/session/adaptiveflag"
-	"github.com/Agent-Field/swe-pro-go/internal/session/frontierplanning"
-	"github.com/Agent-Field/swe-pro-go/internal/session/specidentifiers"
+	"github.com/Agent-Field/aforge-v2/internal/swepro/internal/session/adaptiveflag"
+	"github.com/Agent-Field/aforge-v2/internal/swepro/internal/session/frontierplanning"
+	"github.com/Agent-Field/aforge-v2/internal/swepro/internal/session/specidentifiers"
 )
 
 // runConventionScout ports W12b: path identifiers seed a one-shot sibling

@@ -1,4 +1,4 @@
-package main
+package codeaf
 
 import (
 	"context"
@@ -9,13 +9,13 @@ import (
 	"sync"
 	"unicode/utf16"
 
-	"github.com/Agent-Field/swe-pro-go/internal/engine/calc"
-	"github.com/Agent-Field/swe-pro-go/internal/engine/msgmodel"
-	"github.com/Agent-Field/swe-pro-go/internal/engine/orclient"
-	"github.com/Agent-Field/swe-pro-go/internal/engine/steploop"
-	"github.com/Agent-Field/swe-pro-go/internal/session/compaction"
-	"github.com/Agent-Field/swe-pro-go/internal/session/evidenceharvest"
-	"github.com/Agent-Field/swe-pro-go/internal/session/overflow"
+	"github.com/Agent-Field/aforge-v2/internal/swepro/internal/engine/calc"
+	"github.com/Agent-Field/aforge-v2/internal/swepro/internal/engine/msgmodel"
+	"github.com/Agent-Field/aforge-v2/internal/swepro/internal/engine/orclient"
+	"github.com/Agent-Field/aforge-v2/internal/swepro/internal/engine/steploop"
+	"github.com/Agent-Field/aforge-v2/internal/swepro/internal/session/compaction"
+	"github.com/Agent-Field/aforge-v2/internal/swepro/internal/session/evidenceharvest"
+	"github.com/Agent-Field/aforge-v2/internal/swepro/internal/session/overflow"
 )
 
 type codeafCompactionModels struct {

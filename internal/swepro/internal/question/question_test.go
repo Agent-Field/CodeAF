@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Agent-Field/swe-pro-go/internal/bus"
+	"github.com/Agent-Field/aforge-v2/internal/swepro/internal/bus"
 )
 
 type askResult struct {

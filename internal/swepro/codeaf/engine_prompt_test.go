@@ -1,4 +1,4 @@
-package main
+package codeaf
 
 import (
 	"context"
@@ -10,10 +10,10 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Agent-Field/swe-pro-go/internal/assets"
-	"github.com/Agent-Field/swe-pro-go/internal/baked"
-	configpkg "github.com/Agent-Field/swe-pro-go/internal/config"
-	"github.com/Agent-Field/swe-pro-go/internal/project"
+	"github.com/Agent-Field/aforge-v2/internal/swepro/internal/assets"
+	"github.com/Agent-Field/aforge-v2/internal/swepro/internal/baked"
+	configpkg "github.com/Agent-Field/aforge-v2/internal/swepro/internal/config"
+	"github.com/Agent-Field/aforge-v2/internal/swepro/internal/project"
 )
 
 func systemTextFromRequest(t *testing.T, raw []byte) string {

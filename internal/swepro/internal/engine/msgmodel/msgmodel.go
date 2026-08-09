@@ -67,7 +67,7 @@ package msgmodel
 import (
 	"encoding/json"
 
-	"github.com/Agent-Field/swe-pro-go/internal/jscompat"
+	"github.com/Agent-Field/aforge-v2/internal/swepro/internal/jscompat"
 )
 
 // SYNTHETIC_ATTACHMENT_PROMPT (message-v2.ts:38).

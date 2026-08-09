@@ -6,7 +6,7 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/Agent-Field/swe-pro-go/internal/jscompat"
+	"github.com/Agent-Field/aforge-v2/internal/swepro/internal/jscompat"
 )
 
 // state.ts has no .test.ts of its own; these cover the half the fixtures

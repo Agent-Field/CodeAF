@@ -13,11 +13,11 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Agent-Field/swe-pro-go/internal/baked"
-	"github.com/Agent-Field/swe-pro-go/internal/jscompat"
-	"github.com/Agent-Field/swe-pro-go/internal/plandb"
-	"github.com/Agent-Field/swe-pro-go/internal/session/agentjson"
-	"github.com/Agent-Field/swe-pro-go/internal/session/scheduler"
+	"github.com/Agent-Field/aforge-v2/internal/swepro/internal/baked"
+	"github.com/Agent-Field/aforge-v2/internal/swepro/internal/jscompat"
+	"github.com/Agent-Field/aforge-v2/internal/swepro/internal/plandb"
+	"github.com/Agent-Field/aforge-v2/internal/swepro/internal/session/agentjson"
+	"github.com/Agent-Field/aforge-v2/internal/swepro/internal/session/scheduler"
 )
 
 func BuildReviewTaskDescription(implTaskID, reviewerAgent string) string {

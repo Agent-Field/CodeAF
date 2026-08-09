@@ -1,5 +1,5 @@
 // This file ports checkpoint mechanics from swe-pro/src/cli/cmd/resume.ts:1-344.
-package main
+package codeaf
 
 import (
 	"encoding/json"
@@ -8,12 +8,12 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Agent-Field/swe-pro-go/internal/plandb"
-	"github.com/Agent-Field/swe-pro-go/internal/session/auditorgate"
-	"github.com/Agent-Field/swe-pro-go/internal/session/contextpolicy"
-	"github.com/Agent-Field/swe-pro-go/internal/session/fixgenerator"
-	"github.com/Agent-Field/swe-pro-go/internal/session/ledgers"
-	"github.com/Agent-Field/swe-pro-go/internal/session/scheduler"
+	"github.com/Agent-Field/aforge-v2/internal/swepro/internal/plandb"
+	"github.com/Agent-Field/aforge-v2/internal/swepro/internal/session/auditorgate"
+	"github.com/Agent-Field/aforge-v2/internal/swepro/internal/session/contextpolicy"
+	"github.com/Agent-Field/aforge-v2/internal/swepro/internal/session/fixgenerator"
+	"github.com/Agent-Field/aforge-v2/internal/swepro/internal/session/ledgers"
+	"github.com/Agent-Field/aforge-v2/internal/swepro/internal/session/scheduler"
 )
 
 const resumeCheckpointRelative = ".codeaf/resume-checkpoint.json"

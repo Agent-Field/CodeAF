@@ -41,7 +41,7 @@ package state
 import (
 	"encoding/json"
 
-	"github.com/Agent-Field/swe-pro-go/internal/router/adaptive"
+	"github.com/Agent-Field/aforge-v2/internal/swepro/internal/router/adaptive"
 )
 
 // ToRouteEvent is the `AdaptiveRouteEvent → RouteEvent` bridge. The two structs

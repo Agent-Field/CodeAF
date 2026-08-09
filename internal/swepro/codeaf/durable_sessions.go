@@ -1,4 +1,4 @@
-package main
+package codeaf
 
 import (
 	"context"
@@ -17,12 +17,12 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/Agent-Field/swe-pro-go/internal/bus"
-	"github.com/Agent-Field/swe-pro-go/internal/engine/msgmodel"
-	"github.com/Agent-Field/swe-pro-go/internal/project"
-	"github.com/Agent-Field/swe-pro-go/internal/session/projectors"
-	"github.com/Agent-Field/swe-pro-go/internal/session/sessioncore"
-	"github.com/Agent-Field/swe-pro-go/internal/storage"
+	"github.com/Agent-Field/aforge-v2/internal/swepro/internal/bus"
+	"github.com/Agent-Field/aforge-v2/internal/swepro/internal/engine/msgmodel"
+	"github.com/Agent-Field/aforge-v2/internal/swepro/internal/project"
+	"github.com/Agent-Field/aforge-v2/internal/swepro/internal/session/projectors"
+	"github.com/Agent-Field/aforge-v2/internal/swepro/internal/session/sessioncore"
+	"github.com/Agent-Field/aforge-v2/internal/swepro/internal/storage"
 	"golang.org/x/sys/unix"
 )
 

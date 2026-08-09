@@ -14,8 +14,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Agent-Field/swe-pro-go/internal/jscompat"
-	"github.com/Agent-Field/swe-pro-go/internal/router/ratehead"
+	"github.com/Agent-Field/aforge-v2/internal/swepro/internal/jscompat"
+	"github.com/Agent-Field/aforge-v2/internal/swepro/internal/router/ratehead"
 )
 
 // Replays testdata/fixtures.json, produced by tools/fixtures/gen-orfetch.ts

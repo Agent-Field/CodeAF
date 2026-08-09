@@ -39,7 +39,7 @@ import (
 	"sync"
 	"unicode"
 
-	"github.com/Agent-Field/swe-pro-go/internal/jscompat"
+	"github.com/Agent-Field/aforge-v2/internal/swepro/internal/jscompat"
 )
 
 // jsSpace is the JS `\s` class written out. Order/shape mirrors the spec's

@@ -9,7 +9,7 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/Agent-Field/swe-pro-go/internal/session/isolationfurrow"
+	"github.com/Agent-Field/aforge-v2/internal/swepro/internal/session/isolationfurrow"
 )
 
 func gitRun(t *testing.T, cwd string, args ...string) string {

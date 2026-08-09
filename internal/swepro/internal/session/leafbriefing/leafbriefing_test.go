@@ -9,8 +9,8 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/Agent-Field/swe-pro-go/internal/session/cochange"
-	"github.com/Agent-Field/swe-pro-go/internal/session/importgraph"
+	"github.com/Agent-Field/aforge-v2/internal/swepro/internal/session/cochange"
+	"github.com/Agent-Field/aforge-v2/internal/swepro/internal/session/importgraph"
 )
 
 type repoMapStub struct {

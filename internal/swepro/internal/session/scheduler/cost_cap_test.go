@@ -6,8 +6,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Agent-Field/swe-pro-go/internal/session/loopguard"
-	"github.com/Agent-Field/swe-pro-go/internal/session/sizeband"
+	"github.com/Agent-Field/aforge-v2/internal/swepro/internal/session/loopguard"
+	"github.com/Agent-Field/aforge-v2/internal/swepro/internal/session/sizeband"
 )
 
 type errorLedgerStepLoop struct{ result LeafRunResult }

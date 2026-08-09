@@ -1,4 +1,4 @@
-package main
+package codeaf
 
 import (
 	"bytes"
@@ -13,12 +13,12 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Agent-Field/swe-pro-go/internal/engine/orclient"
-	"github.com/Agent-Field/swe-pro-go/internal/engine/steploop"
-	"github.com/Agent-Field/swe-pro-go/internal/jscompat"
-	"github.com/Agent-Field/swe-pro-go/internal/router/adaptive"
-	"github.com/Agent-Field/swe-pro-go/internal/session/loopguard"
-	"github.com/Agent-Field/swe-pro-go/internal/session/scheduler"
+	"github.com/Agent-Field/aforge-v2/internal/swepro/internal/engine/orclient"
+	"github.com/Agent-Field/aforge-v2/internal/swepro/internal/engine/steploop"
+	"github.com/Agent-Field/aforge-v2/internal/swepro/internal/jscompat"
+	"github.com/Agent-Field/aforge-v2/internal/swepro/internal/router/adaptive"
+	"github.com/Agent-Field/aforge-v2/internal/swepro/internal/session/loopguard"
+	"github.com/Agent-Field/aforge-v2/internal/swepro/internal/session/scheduler"
 )
 
 func recordedResponse(

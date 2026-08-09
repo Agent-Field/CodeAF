@@ -16,10 +16,10 @@ import (
 	"sync"
 	"time"
 
-	"github.com/Agent-Field/swe-pro-go/internal/bus"
-	"github.com/Agent-Field/swe-pro-go/internal/engine/msgmodel"
-	"github.com/Agent-Field/swe-pro-go/internal/jscompat"
-	"github.com/Agent-Field/swe-pro-go/internal/session/agentjson"
+	"github.com/Agent-Field/aforge-v2/internal/swepro/internal/bus"
+	"github.com/Agent-Field/aforge-v2/internal/swepro/internal/engine/msgmodel"
+	"github.com/Agent-Field/aforge-v2/internal/swepro/internal/jscompat"
+	"github.com/Agent-Field/aforge-v2/internal/swepro/internal/session/agentjson"
 )
 
 const (

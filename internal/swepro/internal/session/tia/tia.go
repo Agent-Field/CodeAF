@@ -37,8 +37,8 @@ import (
 	"unicode/utf16"
 	"unicode/utf8"
 
-	"github.com/Agent-Field/swe-pro-go/internal/jscompat"
-	"github.com/Agent-Field/swe-pro-go/internal/session/importgraph"
+	"github.com/Agent-Field/aforge-v2/internal/swepro/internal/jscompat"
+	"github.com/Agent-Field/aforge-v2/internal/swepro/internal/session/importgraph"
 )
 
 // TestFilePattern is the Go stand-in for the TS `RegExp` option. A JS RegExp

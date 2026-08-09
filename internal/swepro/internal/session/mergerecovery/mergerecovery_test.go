@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Agent-Field/swe-pro-go/internal/attribution"
+	"github.com/Agent-Field/aforge-v2/internal/swepro/internal/attribution"
 )
 
 func recoveryInput(t *testing.T) Input {

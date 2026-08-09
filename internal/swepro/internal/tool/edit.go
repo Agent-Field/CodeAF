@@ -14,10 +14,10 @@ import (
 	"sync"
 	"unicode/utf16"
 
-	"github.com/Agent-Field/swe-pro-go/internal/engine/steploop"
-	"github.com/Agent-Field/swe-pro-go/internal/jscompat"
-	patchpkg "github.com/Agent-Field/swe-pro-go/internal/patch"
-	"github.com/Agent-Field/swe-pro-go/internal/util"
+	"github.com/Agent-Field/aforge-v2/internal/swepro/internal/engine/steploop"
+	"github.com/Agent-Field/aforge-v2/internal/swepro/internal/jscompat"
+	patchpkg "github.com/Agent-Field/aforge-v2/internal/swepro/internal/patch"
+	"github.com/Agent-Field/aforge-v2/internal/swepro/internal/util"
 )
 
 const (

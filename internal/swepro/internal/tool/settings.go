@@ -8,8 +8,8 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/Agent-Field/swe-pro-go/internal/config"
-	formatpkg "github.com/Agent-Field/swe-pro-go/internal/format"
+	"github.com/Agent-Field/aforge-v2/internal/swepro/internal/config"
+	formatpkg "github.com/Agent-Field/aforge-v2/internal/swepro/internal/format"
 )
 
 type formatterServices struct {

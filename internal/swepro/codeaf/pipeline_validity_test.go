@@ -1,6 +1,6 @@
 // This file covers the validity and decision-ledger wiring from
 // swe-pro/src/cli/cmd/run.ts:626-714,1055-1114,1611-1614,1717-1843,2285-2300.
-package main
+package codeaf
 
 import (
 	"bytes"
@@ -14,10 +14,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Agent-Field/swe-pro-go/internal/plandb"
-	"github.com/Agent-Field/swe-pro-go/internal/session/knobs"
-	"github.com/Agent-Field/swe-pro-go/internal/session/ledgers"
-	"github.com/Agent-Field/swe-pro-go/internal/session/validity"
+	"github.com/Agent-Field/aforge-v2/internal/swepro/internal/plandb"
+	"github.com/Agent-Field/aforge-v2/internal/swepro/internal/session/knobs"
+	"github.com/Agent-Field/aforge-v2/internal/swepro/internal/session/ledgers"
+	"github.com/Agent-Field/aforge-v2/internal/swepro/internal/session/validity"
 )
 
 type validityBackend struct {

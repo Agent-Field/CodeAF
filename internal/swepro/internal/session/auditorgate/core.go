@@ -13,10 +13,10 @@ import (
 	"unicode/utf16"
 	"unicode/utf8"
 
-	"github.com/Agent-Field/swe-pro-go/internal/jscompat"
-	"github.com/Agent-Field/swe-pro-go/internal/session/auditconvergence"
-	"github.com/Agent-Field/swe-pro-go/internal/session/specclauses"
-	"github.com/Agent-Field/swe-pro-go/internal/session/sprt"
+	"github.com/Agent-Field/aforge-v2/internal/swepro/internal/jscompat"
+	"github.com/Agent-Field/aforge-v2/internal/swepro/internal/session/auditconvergence"
+	"github.com/Agent-Field/aforge-v2/internal/swepro/internal/session/specclauses"
+	"github.com/Agent-Field/aforge-v2/internal/swepro/internal/session/sprt"
 )
 
 const (

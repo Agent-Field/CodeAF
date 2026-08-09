@@ -12,7 +12,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Agent-Field/swe-pro-go/internal/jscompat"
+	"github.com/Agent-Field/aforge-v2/internal/swepro/internal/jscompat"
 )
 
 // RunBudget is an explicitly supplied run-level budget. Nil means the TS field

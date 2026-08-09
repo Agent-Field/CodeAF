@@ -24,10 +24,10 @@ import (
 	"unicode/utf16"
 	"unicode/utf8"
 
-	"github.com/Agent-Field/swe-pro-go/internal/jscompat"
-	"github.com/Agent-Field/swe-pro-go/internal/session/cochange"
-	"github.com/Agent-Field/swe-pro-go/internal/session/contextrefs"
-	"github.com/Agent-Field/swe-pro-go/internal/session/importgraph"
+	"github.com/Agent-Field/aforge-v2/internal/swepro/internal/jscompat"
+	"github.com/Agent-Field/aforge-v2/internal/swepro/internal/session/cochange"
+	"github.com/Agent-Field/aforge-v2/internal/swepro/internal/session/contextrefs"
+	"github.com/Agent-Field/aforge-v2/internal/swepro/internal/session/importgraph"
 )
 
 const exemplarHeader = "# Analogous precedents (adopt their conventions for anything the spec leaves unstated)"

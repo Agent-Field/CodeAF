@@ -1,10 +1,10 @@
 package leafbriefing
 
 import (
-	"github.com/Agent-Field/swe-pro-go/internal/jscompat"
-	"github.com/Agent-Field/swe-pro-go/internal/session/importgraph"
-	"github.com/Agent-Field/swe-pro-go/internal/session/repomap"
-	"github.com/Agent-Field/swe-pro-go/internal/session/symbolgraph"
+	"github.com/Agent-Field/aforge-v2/internal/swepro/internal/jscompat"
+	"github.com/Agent-Field/aforge-v2/internal/swepro/internal/session/importgraph"
+	"github.com/Agent-Field/aforge-v2/internal/swepro/internal/session/repomap"
+	"github.com/Agent-Field/aforge-v2/internal/swepro/internal/session/symbolgraph"
 )
 
 type defaultRepoMapBuilder struct{}

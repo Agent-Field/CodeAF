@@ -4,7 +4,7 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/Agent-Field/swe-pro-go/internal/plandb"
+	"github.com/Agent-Field/aforge-v2/internal/swepro/internal/plandb"
 )
 
 // Translation of src/session/critical-path.test.ts. Subtest names are verbatim

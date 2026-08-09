@@ -3,7 +3,7 @@ package capability
 import (
 	"sync"
 
-	"github.com/Agent-Field/swe-pro-go/internal/session/leafoutcome"
+	"github.com/Agent-Field/aforge-v2/internal/swepro/internal/session/leafoutcome"
 )
 
 // OutcomeObserver serializes scheduler outcome delivery into a tracker.

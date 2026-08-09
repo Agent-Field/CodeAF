@@ -15,9 +15,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/Agent-Field/swe-pro-go/internal/engine/steploop"
-	"github.com/Agent-Field/swe-pro-go/internal/id"
-	"github.com/Agent-Field/swe-pro-go/internal/permission"
+	"github.com/Agent-Field/aforge-v2/internal/swepro/internal/engine/steploop"
+	"github.com/Agent-Field/aforge-v2/internal/swepro/internal/id"
+	"github.com/Agent-Field/aforge-v2/internal/swepro/internal/permission"
 )
 
 const (

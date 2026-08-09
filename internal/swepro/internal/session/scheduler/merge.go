@@ -11,11 +11,11 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/Agent-Field/swe-pro-go/internal/plandb"
-	"github.com/Agent-Field/swe-pro-go/internal/session/leafmerger"
-	"github.com/Agent-Field/swe-pro-go/internal/session/mergecoordinator"
-	"github.com/Agent-Field/swe-pro-go/internal/session/merger"
-	"github.com/Agent-Field/swe-pro-go/internal/session/mergerecovery"
+	"github.com/Agent-Field/aforge-v2/internal/swepro/internal/plandb"
+	"github.com/Agent-Field/aforge-v2/internal/swepro/internal/session/leafmerger"
+	"github.com/Agent-Field/aforge-v2/internal/swepro/internal/session/mergecoordinator"
+	"github.com/Agent-Field/aforge-v2/internal/swepro/internal/session/merger"
+	"github.com/Agent-Field/aforge-v2/internal/swepro/internal/session/mergerecovery"
 )
 
 // MergeStackOptions supplies the two model-driven recovery clients used after

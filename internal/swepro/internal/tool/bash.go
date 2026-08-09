@@ -22,12 +22,12 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/Agent-Field/swe-pro-go/internal/engine/msgmodel"
-	"github.com/Agent-Field/swe-pro-go/internal/engine/steploop"
-	"github.com/Agent-Field/swe-pro-go/internal/jscompat"
-	"github.com/Agent-Field/swe-pro-go/internal/session/adaptiveflag"
-	"github.com/Agent-Field/swe-pro-go/internal/session/outputoffload"
-	"github.com/Agent-Field/swe-pro-go/internal/session/testmemo"
+	"github.com/Agent-Field/aforge-v2/internal/swepro/internal/engine/msgmodel"
+	"github.com/Agent-Field/aforge-v2/internal/swepro/internal/engine/steploop"
+	"github.com/Agent-Field/aforge-v2/internal/swepro/internal/jscompat"
+	"github.com/Agent-Field/aforge-v2/internal/swepro/internal/session/adaptiveflag"
+	"github.com/Agent-Field/aforge-v2/internal/swepro/internal/session/outputoffload"
+	"github.com/Agent-Field/aforge-v2/internal/swepro/internal/session/testmemo"
 )
 
 const (

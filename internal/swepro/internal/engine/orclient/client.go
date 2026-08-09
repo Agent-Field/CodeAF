@@ -69,11 +69,11 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/Agent-Field/swe-pro-go/internal/engine/calc"
-	"github.com/Agent-Field/swe-pro-go/internal/engine/retrysched"
-	"github.com/Agent-Field/swe-pro-go/internal/logshim"
-	"github.com/Agent-Field/swe-pro-go/internal/router/adaptive"
-	"github.com/Agent-Field/swe-pro-go/internal/router/orfetch"
+	"github.com/Agent-Field/aforge-v2/internal/swepro/internal/engine/calc"
+	"github.com/Agent-Field/aforge-v2/internal/swepro/internal/engine/retrysched"
+	"github.com/Agent-Field/aforge-v2/internal/swepro/internal/logshim"
+	"github.com/Agent-Field/aforge-v2/internal/swepro/internal/router/adaptive"
+	"github.com/Agent-Field/aforge-v2/internal/swepro/internal/router/orfetch"
 )
 
 var log = logshim.Create(map[string]any{"service": "orclient"})

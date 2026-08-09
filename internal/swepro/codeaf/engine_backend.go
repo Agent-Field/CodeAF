@@ -1,4 +1,4 @@
-package main
+package codeaf
 
 import (
 	"context"
@@ -9,16 +9,16 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Agent-Field/swe-pro-go/internal/attribution"
-	"github.com/Agent-Field/swe-pro-go/internal/baked"
-	"github.com/Agent-Field/swe-pro-go/internal/engine/msgmodel"
-	"github.com/Agent-Field/swe-pro-go/internal/engine/steploop"
-	"github.com/Agent-Field/swe-pro-go/internal/jscompat"
-	"github.com/Agent-Field/swe-pro-go/internal/project"
-	"github.com/Agent-Field/swe-pro-go/internal/session/leafoutcome"
-	"github.com/Agent-Field/swe-pro-go/internal/session/scheduler"
-	systemprompt "github.com/Agent-Field/swe-pro-go/internal/session/system"
-	"github.com/Agent-Field/swe-pro-go/internal/session/testmemo"
+	"github.com/Agent-Field/aforge-v2/internal/swepro/internal/attribution"
+	"github.com/Agent-Field/aforge-v2/internal/swepro/internal/baked"
+	"github.com/Agent-Field/aforge-v2/internal/swepro/internal/engine/msgmodel"
+	"github.com/Agent-Field/aforge-v2/internal/swepro/internal/engine/steploop"
+	"github.com/Agent-Field/aforge-v2/internal/swepro/internal/jscompat"
+	"github.com/Agent-Field/aforge-v2/internal/swepro/internal/project"
+	"github.com/Agent-Field/aforge-v2/internal/swepro/internal/session/leafoutcome"
+	"github.com/Agent-Field/aforge-v2/internal/swepro/internal/session/scheduler"
+	systemprompt "github.com/Agent-Field/aforge-v2/internal/swepro/internal/session/system"
+	"github.com/Agent-Field/aforge-v2/internal/swepro/internal/session/testmemo"
 )
 
 type turnToolExecutor struct{ request turn }

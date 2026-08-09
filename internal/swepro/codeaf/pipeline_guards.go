@@ -1,4 +1,4 @@
-package main
+package codeaf
 
 import (
 	"context"
@@ -8,11 +8,11 @@ import (
 	"strings"
 	"unicode/utf16"
 
-	"github.com/Agent-Field/swe-pro-go/internal/session/auditconvergence"
-	"github.com/Agent-Field/swe-pro-go/internal/session/auditorgate"
-	"github.com/Agent-Field/swe-pro-go/internal/session/hygiene"
-	"github.com/Agent-Field/swe-pro-go/internal/session/specidentifiers"
-	"github.com/Agent-Field/swe-pro-go/internal/session/tamperchecks"
+	"github.com/Agent-Field/aforge-v2/internal/swepro/internal/session/auditconvergence"
+	"github.com/Agent-Field/aforge-v2/internal/swepro/internal/session/auditorgate"
+	"github.com/Agent-Field/aforge-v2/internal/swepro/internal/session/hygiene"
+	"github.com/Agent-Field/aforge-v2/internal/swepro/internal/session/specidentifiers"
+	"github.com/Agent-Field/aforge-v2/internal/swepro/internal/session/tamperchecks"
 )
 
 func (runner *pipeline) changedFiles(

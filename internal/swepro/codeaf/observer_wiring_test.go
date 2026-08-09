@@ -1,4 +1,4 @@
-package main
+package codeaf
 
 import (
 	"bytes"
@@ -10,10 +10,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Agent-Field/swe-pro-go/internal/engine/msgmodel"
-	"github.com/Agent-Field/swe-pro-go/internal/plandb"
-	"github.com/Agent-Field/swe-pro-go/internal/project"
-	"github.com/Agent-Field/swe-pro-go/internal/session/observer"
+	"github.com/Agent-Field/aforge-v2/internal/swepro/internal/engine/msgmodel"
+	"github.com/Agent-Field/aforge-v2/internal/swepro/internal/plandb"
+	"github.com/Agent-Field/aforge-v2/internal/swepro/internal/project"
+	"github.com/Agent-Field/aforge-v2/internal/swepro/internal/session/observer"
 )
 
 func TestObserverRunSiteHonorsFlagAndTracksEntryPayload(t *testing.T) {

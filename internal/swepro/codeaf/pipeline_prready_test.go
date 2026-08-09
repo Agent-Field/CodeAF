@@ -1,4 +1,4 @@
-package main
+package codeaf
 
 import (
 	"context"
@@ -9,7 +9,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Agent-Field/swe-pro-go/internal/session/prreadyphase"
+	"github.com/Agent-Field/aforge-v2/internal/swepro/internal/session/prreadyphase"
 )
 
 func TestPipelineReverifiesOnlyWhenPostAuditTreeChanges(t *testing.T) {

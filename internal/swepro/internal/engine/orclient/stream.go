@@ -26,9 +26,9 @@ package orclient
 import (
 	"encoding/json"
 
-	"github.com/Agent-Field/swe-pro-go/internal/engine/calc"
-	"github.com/Agent-Field/swe-pro-go/internal/fixflag"
-	"github.com/Agent-Field/swe-pro-go/internal/jscompat"
+	"github.com/Agent-Field/aforge-v2/internal/swepro/internal/engine/calc"
+	"github.com/Agent-Field/aforge-v2/internal/swepro/internal/fixflag"
+	"github.com/Agent-Field/aforge-v2/internal/swepro/internal/jscompat"
 )
 
 // toolCallSlot is one entry of the provider's `toolCalls` array.

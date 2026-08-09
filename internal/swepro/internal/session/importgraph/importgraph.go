@@ -59,7 +59,7 @@ import (
 	"unicode/utf16"
 	"unicode/utf8"
 
-	"github.com/Agent-Field/swe-pro-go/internal/jscompat"
+	"github.com/Agent-Field/aforge-v2/internal/swepro/internal/jscompat"
 )
 
 // MAX_IMPORT_SCAN_LINES is the max number of import lines scanned per file

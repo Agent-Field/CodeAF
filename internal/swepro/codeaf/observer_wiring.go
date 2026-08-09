@@ -1,11 +1,11 @@
-package main
+package codeaf
 
 import (
 	"context"
 
-	"github.com/Agent-Field/swe-pro-go/internal/baked"
-	"github.com/Agent-Field/swe-pro-go/internal/session/agentjson"
-	"github.com/Agent-Field/swe-pro-go/internal/session/observer"
+	"github.com/Agent-Field/aforge-v2/internal/swepro/internal/baked"
+	"github.com/Agent-Field/aforge-v2/internal/swepro/internal/session/agentjson"
+	"github.com/Agent-Field/aforge-v2/internal/swepro/internal/session/observer"
 )
 
 // runtimeObserverDispatcher is observer.ts:456-486's LOW-tier JSON dispatch.

@@ -35,8 +35,8 @@ import (
 	"strings"
 	"unicode/utf8"
 
-	"github.com/Agent-Field/swe-pro-go/internal/fixflag"
-	"github.com/Agent-Field/swe-pro-go/internal/jscompat"
+	"github.com/Agent-Field/aforge-v2/internal/swepro/internal/fixflag"
+	"github.com/Agent-Field/aforge-v2/internal/swepro/internal/jscompat"
 )
 
 // W5-TODO(knobs): register these defaults with the shared knob registry during

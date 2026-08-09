@@ -1,5 +1,5 @@
 // This file ports terminal pipeline reporting from swe-pro/src/cli/cmd/run.ts:367-2930.
-package main
+package codeaf
 
 import (
 	"encoding/json"
@@ -7,7 +7,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/Agent-Field/swe-pro-go/internal/bus"
+	"github.com/Agent-Field/aforge-v2/internal/swepro/internal/bus"
 )
 
 type event struct {

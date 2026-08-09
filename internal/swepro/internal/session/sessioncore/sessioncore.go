@@ -15,13 +15,13 @@ import (
 	"sync"
 	"time"
 
-	"github.com/Agent-Field/swe-pro-go/internal/bus"
-	"github.com/Agent-Field/swe-pro-go/internal/engine/calc"
-	"github.com/Agent-Field/swe-pro-go/internal/engine/msgmodel"
-	"github.com/Agent-Field/swe-pro-go/internal/engine/runner"
-	"github.com/Agent-Field/swe-pro-go/internal/id"
-	"github.com/Agent-Field/swe-pro-go/internal/session/status"
-	"github.com/Agent-Field/swe-pro-go/internal/storage"
+	"github.com/Agent-Field/aforge-v2/internal/swepro/internal/bus"
+	"github.com/Agent-Field/aforge-v2/internal/swepro/internal/engine/calc"
+	"github.com/Agent-Field/aforge-v2/internal/swepro/internal/engine/msgmodel"
+	"github.com/Agent-Field/aforge-v2/internal/swepro/internal/engine/runner"
+	"github.com/Agent-Field/aforge-v2/internal/swepro/internal/id"
+	"github.com/Agent-Field/aforge-v2/internal/swepro/internal/session/status"
+	"github.com/Agent-Field/aforge-v2/internal/swepro/internal/storage"
 )
 
 const (

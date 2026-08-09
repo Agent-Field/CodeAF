@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	formatpkg "github.com/Agent-Field/swe-pro-go/internal/format"
+	formatpkg "github.com/Agent-Field/aforge-v2/internal/swepro/internal/format"
 )
 
 func TestEditDiffReflectsPostFormatContent(t *testing.T) {
