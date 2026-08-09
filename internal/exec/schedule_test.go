@@ -23,7 +23,7 @@ type blockingExecutor struct {
 	ran   []int
 }
 
-func (b *blockingExecutor) Skill() string { return "linear" }
+func (b *blockingExecutor) Subharness() string { return "linear" }
 
 func (b *blockingExecutor) Run(ctx context.Context, task Task) (*Outcome, error) {
 	b.mutex.Lock()
@@ -157,7 +157,7 @@ type landingExecutor struct {
 	ran   []int
 }
 
-func (e *landingExecutor) Skill() string { return "linear" }
+func (e *landingExecutor) Subharness() string { return "linear" }
 
 func (e *landingExecutor) Run(_ context.Context, task Task) (*Outcome, error) {
 	e.mutex.Lock()
@@ -252,7 +252,7 @@ type wedgedExecutor struct {
 	release chan struct{}
 }
 
-func (w *wedgedExecutor) Skill() string { return "linear" }
+func (w *wedgedExecutor) Subharness() string { return "linear" }
 
 func (w *wedgedExecutor) Run(ctx context.Context, task Task) (*Outcome, error) {
 	if task.NodeID == w.healthy {
@@ -283,7 +283,7 @@ func TestExecutorPanicIsARecordedFailure(t *testing.T) {
 
 type panickyExecutor struct{}
 
-func (panickyExecutor) Skill() string { return "linear" }
+func (panickyExecutor) Subharness() string { return "linear" }
 func (panickyExecutor) Run(ctx context.Context, task Task) (*Outcome, error) {
 	panic("boom")
 }
@@ -338,7 +338,7 @@ type countingExecutor struct {
 	release chan struct{}
 }
 
-func (c *countingExecutor) Skill() string { return "linear" }
+func (c *countingExecutor) Subharness() string { return "linear" }
 
 func (c *countingExecutor) Run(ctx context.Context, task Task) (*Outcome, error) {
 	c.mutex.Lock()
