@@ -787,6 +787,13 @@ func buildBrain(w *chatWindow, session string, opts brainOptions) (*chatBrain, e
 			// is what a failed node records, and a downstream step now reads
 			// paths out of it the same way it reads them out of a summary.
 			failure := humanFailure(node, err, absolute)
+			// A sibling's failure is the board note nobody should have to
+			// remember to write: the workers still running are about to lean on
+			// a result that is not coming, and the reason it died is the fact
+			// they need. Structural — the reason already exists; no model call.
+			if share != nil {
+				_ = share("did not finish — " + firstLine(err.Error()))
+			}
 			if len(absolute) > 0 {
 				_, _ = graph.PostMessage(store.Message{
 					SessionID: node.Provenance.SessionID,

@@ -86,6 +86,11 @@ type headlessOutcome struct {
 	// empty on every run that was not stopped by one, and non-empty only
 	// alongside a non-zero exit code and an empty deliverable.
 	BlockedOn string `json:"blocked_on,omitempty"`
+	// Learned is the job's own board: what workers shared with each other
+	// mid-flight — discoveries about the material, pitfalls, a sibling's
+	// failure and why. An ephemeral store evaporates on exit, and these lines
+	// are the one piece of what the run understood that would die with it.
+	Learned []string `json:"learned,omitempty"`
 
 	// status is what the process leaves with. It is decided where the outcome
 	// is produced, because only there is the difference visible between a job
@@ -725,6 +730,20 @@ func (w *settlementWatch) compose(nodes []store.Node) headlessOutcome {
 		}
 	}
 	outcome.Artifacts = errandArtifacts(nodes)
+	// The board survives as the outcome's learned lines: what one worker told
+	// the others is exactly what the caller would want to know about the
+	// material, and in an ephemeral run this is its only way out.
+	for _, root := range roots {
+		messages, err := w.graph.NodeMessages(root.ID, 0, 40)
+		if err != nil {
+			continue
+		}
+		for _, message := range messages {
+			if note, ok := jobNoteLine(message); ok {
+				outcome.Learned = append(outcome.Learned, note)
+			}
+		}
+	}
 	return outcome
 }
 
@@ -773,6 +792,12 @@ func reportErrand(request doRequest, outcome headlessOutcome) error {
 		fmt.Fprintln(request.stdout, "files:")
 		for _, path := range outcome.Artifacts {
 			fmt.Fprintln(request.stdout, "  "+path)
+		}
+	}
+	if len(outcome.Learned) > 0 {
+		fmt.Fprintln(request.stdout, "learned:")
+		for _, line := range outcome.Learned {
+			fmt.Fprintln(request.stdout, "  "+line)
 		}
 	}
 	fmt.Fprintf(request.stdout, "%s · %s · $%.4f\n",
