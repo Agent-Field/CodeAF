@@ -875,7 +875,10 @@ func (l *Linear) brief(task Task) string {
 		fmt.Fprintf(&block, "This work is part of a larger goal:\n%s\n\n", task.Goal)
 	}
 	if len(task.Inputs) > 0 {
-		block.WriteString("Results from earlier work, which you already have and must not gather again:\n")
+		block.WriteString("Results from earlier work, which you already have and must not gather again. " +
+			"Where two of them speak to the same quantity, the LATER one stands: a corrected figure " +
+			"replaces its predecessor, and reaching back past a correction to the number it corrected " +
+			"is the one way to be wrong with everything you need in hand:\n")
 		for _, input := range task.Inputs {
 			fmt.Fprintf(&block, "\n=== from %q ===\n%s\n", input.Title, input.Result)
 			if len(input.Artifacts) > 0 {
