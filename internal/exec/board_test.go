@@ -93,3 +93,18 @@ func TestOnlyAWorkerWithSiblingsIsToldToShareDiscoveries(t *testing.T) {
 		t.Fatalf("a worker with no siblings was told about a channel it does not have:\n%s", alone)
 	}
 }
+
+// Measured live: asked to compute revenue FROM a CSV, a worker rewrote the CSV
+// itself — cents became dollars, the duplicate row vanished, and the original
+// evidence was gone. The board saved that run (the transformer's note warned
+// the others), but the mutation is the sin: evidence is never edited.
+func TestTheLeafIsToldEvidenceIsNeverEdited(t *testing.T) {
+	for _, required := range []string{
+		"material you were asked to read, analyse, or judge\nis evidence, and evidence is never edited",
+		"Only what the ask\nitself asks you to change is yours to change",
+	} {
+		if !strings.Contains(systemPrompt, required) {
+			t.Errorf("the leaf prompt lost the evidence law: %q", required)
+		}
+	}
+}

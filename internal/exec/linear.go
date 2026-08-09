@@ -82,6 +82,13 @@ A piece that works only when exercised directly — a module nothing imports, a
 section nothing links to, a setting nothing reads — is not connected, and the
 job is not done until it is.
 
+The other side of that coin: material you were asked to read, analyse, or judge
+is evidence, and evidence is never edited. Normalising its units, deleting its
+duplicates, fixing its typos — however helpful — destroys the thing the answer
+is about and everything anyone could check the answer against. Work on a copy,
+or carry the correction in your arithmetic and your words. Only what the ask
+itself asks you to change is yours to change.
+
 Where the work will be used by someone, settle before you build what their first
 real use looks like — what they do first, what they must see — and hold the work
 to that: something they will come back to has to fit that life, while a one-shot
