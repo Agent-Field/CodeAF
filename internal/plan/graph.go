@@ -140,6 +140,15 @@ type Node struct {
 	// from a run reads this field and never State.
 	Verdict provider.Verdict `json:"verdict,omitempty"`
 
+	// Calibration is what the worker said about its own fit for this node, and
+	// EscalatedFrom names the worker that tried it first and could not finish.
+	// Both are carried for one reader: the profile record this node becomes when
+	// the run lands, and through it the call that rewrites the ruler. Empty on
+	// every node the generalist takes first and finishes, which is nearly all of
+	// them and every one of them in a build with no specialist.
+	Calibration   []string `json:"calibration,omitempty"`
+	EscalatedFrom string   `json:"escalated_from,omitempty"`
+
 	Failure string `json:"failure,omitempty"`
 }
 

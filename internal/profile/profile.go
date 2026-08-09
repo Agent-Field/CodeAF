@@ -53,6 +53,23 @@ type Record struct {
 	ExpectedTokens *int     `json:"expected_tokens,omitempty"`
 	Surprise       *float64 `json:"surprise,omitempty"`
 
+	// Calibration is what the worker said about its own fit for this task —
+	// exec.Outcome.Calibration, journaled. It is free text and it is only ever
+	// read by a model: the recalibration call renders it beside the turns and
+	// tokens, so the three anchor examples get rewritten from what the work felt
+	// like as well as from what it cost. Nil on every record the generalist has
+	// ever written, which is why every existing profile file and every existing
+	// recalibration prompt is byte-identical.
+	Calibration []string `json:"calibration,omitempty"`
+
+	// EscalatedFrom names the worker that tried this task first and could not
+	// finish it. It is one string rather than a chain because the boundary it
+	// measures has two sides and no more: "linear could not, this one could" is
+	// the entire fact, and it is the only direct evidence there is that the
+	// boundary between two rulers sits too high. Empty is the ordinary case —
+	// the task came here first, by choice, and nothing about a ruler follows.
+	EscalatedFrom string `json:"escalated_from,omitempty"`
+
 	// Verdict is how the leaf actually ended. It replaced a `done` flag that was
 	// the scheduler's StateDone carried across — true of a leaf that exhausted
 	// its budget mid-edit as much as of one that finished — and the flag was
@@ -472,6 +489,39 @@ func (p *Profile) Evidence(each int) (small, middle, large []Record) {
 	from := max(0, centre-each/2)
 	to := min(len(sorted), from+each)
 	return small, sorted[from:to], large
+}
+
+// Boundary reports whether this record says anything about where the edge of
+// this worker's capacity is: a note the worker wrote about its own fit, or the
+// fact that another worker tried the task first and could not finish it.
+func (r Record) Boundary() bool {
+	return len(r.Calibration) > 0 || strings.TrimSpace(r.EscalatedFrom) != ""
+}
+
+// BoundaryEvidence is the newest handful of records that say something about
+// where this worker's edge is.
+//
+// It is a separate pick from Evidence rather than a fourth band inside it
+// because the two answer different questions. Evidence samples the observed
+// range — cheapest, middle, overran — and a note about fit is not a point on
+// that range: a run that finished in four turns because the job was trivial for
+// this worker sits in the same band as one that finished in four turns because
+// the worker is fast, and only one of them is evidence that the boundary is in
+// the wrong place. Newest first, because a boundary that has already moved once
+// is described by what happened after it moved.
+func (p *Profile) BoundaryEvidence(limit int) []Record {
+	if p == nil || limit <= 0 {
+		return nil
+	}
+	p.mutex.Lock()
+	defer p.mutex.Unlock()
+	picked := make([]Record, 0, limit)
+	for index := len(p.Records) - 1; index >= 0 && len(picked) < limit; index-- {
+		if p.Records[index].Boundary() {
+			picked = append(picked, p.Records[index])
+		}
+	}
+	return picked
 }
 
 var nonWord = regexp.MustCompile(`[^a-zA-Z0-9]+`)

@@ -9,6 +9,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/Agent-Field/aforge-v2/internal/catalog"
 	"github.com/Agent-Field/aforge-v2/internal/config"
 	"github.com/Agent-Field/aforge-v2/internal/exec"
 	"github.com/Agent-Field/aforge-v2/internal/plan"
@@ -59,6 +60,11 @@ type leafBuild struct {
 	// specialist quietly substituting its own vendor defaults would make the
 	// router's ledger a record of models nobody chose.
 	model string
+	// models is the provider's own catalog, carried for one question: what
+	// concrete model a floating alias stands for. Only a worker that hands the
+	// name to another process needs the answer, and only the surface has the
+	// catalog, so it is threaded rather than looked up in exec.
+	models *catalog.Catalog
 }
 
 // leafExecutors is name-to-constructor: what a surface calls when a node says
@@ -77,10 +83,34 @@ var leafExecutors = map[string]func(leafBuild) exec.Executor{
 	// the key), no toolbox, no store. What it needs is the workspace, the
 	// model this leaf was promised, the credentials to reach it, and a clock.
 	exec.SWESubharness: func(build leafBuild) exec.Executor {
-		return exec.NewSWE(build.workspace, build.model,
+		return exec.NewSWE(build.workspace, engineModelID(build.models, build.model),
 			build.settings.APIKey, build.settings.BaseURL, build.deadline).
 			WithMaxCost(sweMaxCost(os.Getenv))
 	},
+}
+
+// engineModelID is the leaf's model in the spelling a second process can look
+// up, and it exists because of one live failure that cost nothing and told us
+// everything: `models.dev: model "deepseek/deepseek-v4-flash-latest" not found
+// for provider "openrouter"` — the engine dead at startup, $0 spent, on the
+// default model of every aforge install.
+//
+// A floating alias is a real OpenRouter id, which is why every linear leaf in
+// the product runs on one without noticing. It is not a models.dev id, and the
+// engine prices its calls from models.dev. The alias has to be resolved on this
+// side of the process boundary, where the catalog that knows about aliases
+// lives; exec stays generic and is handed a name.
+//
+// Resolution that fails passes the name through untouched. A model nobody chose
+// must never enter the pools, so the failure mode is the engine's own error
+// message about the id it was actually given — not a quiet substitution of some
+// near neighbour that happens to be in a catalog.
+func engineModelID(models *catalog.Catalog, model string) string {
+	model = strings.TrimSpace(model)
+	if models == nil || model == "" {
+		return model
+	}
+	return models.Concrete(model)
 }
 
 // executorFor builds the worker one leaf was promised, degrading to the
@@ -147,6 +177,41 @@ func profileSubharness(name string) string {
 		return strings.TrimSpace(name)
 	}
 	return exec.LinearSubharness
+}
+
+// withBoundaryEvidence is the one comparison no single worker can make about
+// itself: what this run cost against what the generalist's ordinary leaf costs.
+//
+// A specialist knows whether a job sat inside its own envelope — it says so in
+// Outcome.Calibration — but "inside my envelope" and "cheaper than the ordinary
+// worker's median leaf" are different claims, and only the second one says the
+// boundary between the two rulers is in the wrong place. A specialist run that
+// came in under the generalist's median is a specialist that was reached for
+// when the generalist would have done, and that is the boundary-too-low half of
+// the evidence the recalibration call needs to move the seam in both directions.
+//
+// It is written generically and it has to be: the comparison is "any worker that
+// is not the baseline, against the baseline", which is a fact about the registry
+// and not about any worker's name. Nothing here may ask which specialist this is
+// — the grep law is not decoration, it is what keeps the next specialist a
+// registration instead of a rewrite.
+func withBoundaryEvidence(settings config.Config, model, worker string, record profile.Record) profile.Record {
+	if worker == exec.LinearSubharness || record.Cost <= 0 {
+		return record
+	}
+	generalist, err := profile.Load(settings.ProfileDir, model, exec.LinearSubharness)
+	if err != nil {
+		return record
+	}
+	median := medianProfileCost(generalist)
+	if median <= 0 || record.Cost >= median {
+		return record
+	}
+	record.Calibration = append(record.Calibration, fmt.Sprintf(
+		"it cost $%.4f, under the default worker's median leaf at $%.4f — "+
+			"work this cheap may not have needed a specialist, and the boundary may sit too high",
+		record.Cost, median))
+	return record
 }
 
 // promisedWorker is the node's own answer to "who runs this", read in the order

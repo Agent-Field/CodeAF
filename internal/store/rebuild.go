@@ -321,6 +321,13 @@ func replayEvent(tx *sql.Tx, event Event) error {
 		}
 		return applyNodePriorityView(tx, event.NodeID, payload.Priority, event.Seq)
 
+	case EventNodeWorkerChanged:
+		var payload nodeWorkerPayload
+		if err := json.Unmarshal(event.Payload, &payload); err != nil {
+			return err
+		}
+		return applyNodeWorkerView(tx, event.NodeID, payload.Subharness, event.Seq)
+
 	case EventMessagePosted:
 		var payload messagePayload
 		if err := json.Unmarshal(event.Payload, &payload); err != nil {

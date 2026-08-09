@@ -17,6 +17,12 @@ type DeferredOverrun struct {
 	Gap       string   `json:"gap,omitempty"`
 	Artifacts []string `json:"artifacts,omitempty"`
 	Prefix    string   `json:"prefix"`
+	// Subharness is the worker the remainder was judged to belong to, held
+	// across the wait for the same reason everything else here is: the judgement
+	// was made and paid for before the rail stopped the splice, and a repair
+	// that resumed on a different worker than the one it was planned for would
+	// be a decision quietly unmade by a budget question.
+	Subharness string `json:"subharness,omitempty"`
 }
 
 type overrunResumed struct {

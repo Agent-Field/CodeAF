@@ -28,17 +28,17 @@ func TestMeasurementsLandInTheirOwnWorkersFile(t *testing.T) {
 	outcome.Usage.PromptTokens = 1000
 
 	specialist := store.Node{ID: "a", Title: "fix the parser", Brief: "fix it", Subharness: "swe"}
-	if _, ok := recordSingleLeaf(settings, settings.Model, specialist, outcome); !ok {
+	if _, ok := recordSingleLeaf(settings, settings.Model, specialist, outcome, ""); !ok {
 		t.Fatal("the specialist's leaf was not recorded")
 	}
 	ordinary := store.Node{ID: "b", Title: "read the file", Brief: "read it"}
-	if _, ok := recordSingleLeaf(settings, settings.Model, ordinary, outcome); !ok {
+	if _, ok := recordSingleLeaf(settings, settings.Model, ordinary, outcome, ""); !ok {
 		t.Fatal("the ordinary leaf was not recorded")
 	}
 	// A worker this build does not have is served by the generalist, so its
 	// record describes what happened rather than what was asked for.
 	stranger := store.Node{ID: "c", Title: "review it", Brief: "review", Subharness: "reviewer"}
-	if _, ok := recordSingleLeaf(settings, settings.Model, stranger, outcome); !ok {
+	if _, ok := recordSingleLeaf(settings, settings.Model, stranger, outcome, ""); !ok {
 		t.Fatal("the degraded leaf was not recorded")
 	}
 

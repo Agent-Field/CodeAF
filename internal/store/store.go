@@ -103,6 +103,11 @@ const (
 	EventNodeHeld            EventKind = "node_held"
 	EventNodeResumed         EventKind = "node_resumed"
 	EventNodePriorityChanged EventKind = "node_priority_changed"
+	// A node's worker may change once, when a failed first attempt is handed to
+	// a different kind of worker rather than to a stronger model. It is journaled
+	// for the same reason the choice is journaled at splice time: a leaf claimed
+	// after a restart must run on what it was last promised.
+	EventNodeWorkerChanged EventKind = "node_worker_changed"
 
 	// Thread events: the conversation and its asynchronous mutation requests
 	// live in the same journal as the graph they act on.
