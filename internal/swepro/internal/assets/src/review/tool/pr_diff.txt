@@ -1,0 +1,29 @@
+Summarises the PR diff between two git refs as markdown.
+
+Output format:
+
+```
+# PR diff <base>...<head>
+
+## Stat (N files changed, +A/-B)
+
+- <path> (+N/-M)
+- ...
+
+## <path>
+@@ <hunk header> @@
+<unified diff hunk>
+...
+```
+
+Parameters:
+
+- `base` (required): merge-base ref or branch to diff against (e.g. "main", "origin/main").
+- `head` (optional, default "HEAD"): the side under review.
+- `pathspec` (optional): a single git pathspec to scope the diff (e.g. "src/").
+
+This is a read-only tool. Run it ONCE at the start of a review run — output is cached per-session if you call it again with the same args.
+
+For very large diffs the output is truncated at ~8000 lines with a trailing
+note. If you need a specific file's hunks beyond truncation, call again with
+`pathspec` narrowing.

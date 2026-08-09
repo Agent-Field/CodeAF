@@ -1,0 +1,86 @@
+Search the codebase by natural language, by symbol reachability, or by relevance subgraph. Backed by qtfr — a CPU-only, BM25 + structural-graph code retrieval engine. No neural inference. Auto-indexes the repo on first call (~5-10s for a typical repo); subsequent calls are ~50ms each. Auto-detects staleness via git, so re-indexing is invisible to you.
+
+You should reach for `search_code` instead of `grep` whenever you need to answer questions about how code is used, not just where a literal string appears. Concretely:
+
+- "Where is symbol X defined and what calls it?" → `search_code(op="context", query="X")`.
+- "Does the codebase already have a helper for normalizing emails?" → `search_code(op="query", query="normalize email lowercase")`.
+- "What other handlers in this repo follow the same permission pattern as the one I'm reviewing?" → `search_code(op="query", query="isTeamAdmin permission check handler", mode="locate")` and read 1-2 hits to see the convention.
+- "Does function A reach function B through any call chain?" → `search_code(op="trail", from="A", to="B")` runs a BFS over the structural graph and returns the import/call path.
+- "Give me the relevant subgraph for this concept across files (one call instead of 20+ grep+read sequences)" → `search_code(op="context", query="<concept>")`.
+
+`grep` still wins for literal string lookups, exact identifier searches, and small targeted regex. `search_code` wins for everything *conceptual*, *cross-file*, or *symbol-reachability*-related.
+
+## Operations
+
+### `op="query"` — BM25 top-k chunks
+
+```
+search_code(op="query", query="<keyword cluster>", k=10, mode="preview")
+```
+
+- `query` (required) — what you're looking for. **Use 2-6 code-identifier keywords, NOT English questions.**
+- `k` (optional, default 10) — number of results.
+- `mode` (optional, default "preview") — output verbosity:
+  - `"locate"` — file paths + line ranges only (~75 tokens / 10 results, cheapest)
+  - `"preview"` — paths + 3-line preview (~500 tokens / 10 results, default)
+  - `"context"` — full chunk content (~4000 tokens / 5 results, use sparingly)
+
+Returns JSON with `results: [{ path, lines, score, preview? }]`.
+
+#### Query construction rules (qtfr is BM25 — term-frequency matters)
+
+GOOD (cluster of specific code-identifiers, 2-6 terms):
+- `"userIdsFromOrg teamsFromOrg authorization"` → finds the exact handler
+- `"deleteMany retryCount workflowReminder"` → finds the cron + schema
+- `"refreshOAuthTokens credential update"` → finds OAuth refresh chain
+- `"backupCodes hex case-insensitive indexOf"` → finds case-sensitivity bug
+- `"forEach async cron scheduledJobs"` → finds fire-and-forget loops
+
+BAD (English questions, generic verbs, stop words):
+- `"Find unreachable code branches"` → pulls vite.config + workflow yaml (junk)
+- `"How does the authorization work"` → pulls READMEs and comments
+- `"Does this code have a race condition"` → pulls test prose
+- `"What happens when this fails"` → pulls error-handling docs everywhere
+
+The pattern: BM25 rewards rare terms. English question words ("find", "where", "how", "when") are common — they pull noise across the entire codebase. Code identifiers (`camelCaseSymbolNames`, `WorkflowReminder`, `parseRefreshTokenResponse`) are rare and pull focused results.
+
+#### When in doubt, try multiple short queries
+
+Two `query` calls with different keyword clusters cost less and surface more than one long NLP query. Iterate: see what comes back, refine.
+
+### `op="context"` — relevance subgraph
+
+```
+search_code(op="context", query="<query>", max_results=20)
+```
+
+- `query` (required) — natural-language or keyword.
+- `max_results` (optional, default 20).
+
+Returns the BM25 seed hits + their structural neighbours (up to 2 hops over imports/calls). One call replaces 20+ grep+read sequences. Use when you want "everything relevant to this concept" without picking each file by hand.
+
+### `op="trail"` — call/import path between symbols
+
+```
+search_code(op="trail", from="<sourceSymbol>", to="<targetSymbol>", max_hops=10)
+```
+
+- `from` (required) — source symbol name (e.g. function/class/exported variable name).
+- `to` (required) — target symbol name.
+- `max_hops` (optional, default 10).
+
+Returns the shortest path (or `null` if no path exists) between the two symbols via imports/calls. Use when you want to know whether one part of the code can reach another — answers questions like "does the public API surface ever invoke this internal helper?" or "is there a call chain from this handler to that database write?".
+
+## Common patterns (use these proactively)
+
+**Sibling consistency check.** When reviewing a new handler/function/class, run a `query` for the kind of thing it is (e.g. "trpc bookings mutation handler", "react form component", "kafka consumer"), read the top 2-3 sibling hits, and see whether the new code follows the same conventions. Divergence is often (but not always) a bug.
+
+**Helper reuse check.** When you see new inline logic that looks reusable (parsing, normalization, validation), run a `query` for what the logic does (e.g. "normalize email", "parse RFC3339 timestamp", "validate phone number"). If a helper exists, ask whether the new code should call it instead of reimplementing — reimplementation is a common source of subtle behavioural drift.
+
+**Symbol reach.** Before claiming a piece of code is unused, run `trail from=<symbol> to=<entrypoint>` or `query` for the symbol — a hidden import path is the difference between "dead code" and "load-bearing".
+
+## Failure modes
+
+- **qtfr not installed / not on PATH.** The tool returns a clear error message naming the configuration variable (`QTFR_BIN`) to set or the binary name to install. The whole tool is unavailable in this case — fall back to `grep`/`read`.
+- **Empty index.** First-ever call takes 5-15s (auto-indexes). Subsequent calls are fast.
+- **No results.** Returned as an empty `results: []`. Not an error — just means BM25 didn't find anything matching. Try different keywords.

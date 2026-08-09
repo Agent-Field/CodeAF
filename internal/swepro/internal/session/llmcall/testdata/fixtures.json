@@ -1,0 +1,7 @@
+{"name":"empty","fn":"hasToolCalls","args_json":"[[]]","out_json":"false"}
+{"name":"string-content","fn":"hasToolCalls","args_json":"[[{\"role\":\"system\",\"content\":\"tool-call\"}]]","out_json":"false"}
+{"name":"text","fn":"hasToolCalls","args_json":"[[{\"role\":\"user\",\"content\":[{\"type\":\"text\",\"text\":\"x\"}]}]]","out_json":"false"}
+{"name":"tool-call","fn":"hasToolCalls","args_json":"[[{\"role\":\"assistant\",\"content\":[{\"type\":\"tool-call\",\"toolCallId\":\"1\",\"toolName\":\"read\",\"input\":{}}]}]]","out_json":"true"}
+{"name":"tool-result","fn":"hasToolCalls","args_json":"[[{\"role\":\"tool\",\"content\":[{\"type\":\"tool-result\",\"toolCallId\":\"1\",\"toolName\":\"read\",\"output\":{\"type\":\"text\",\"value\":\"ok\"}}]}]]","out_json":"true"}
+{"name":"late-tool","fn":"hasToolCalls","args_json":"[[{\"role\":\"assistant\",\"content\":[{\"type\":\"text\",\"text\":\"x\"},{\"type\":\"tool-call\"}]}]]","out_json":"true"}
+{"name":"unicode-type","fn":"hasToolCalls","args_json":"[[{\"role\":\"assistant\",\"content\":[{\"type\":\"tool－call\"}]}]]","out_json":"false"}
