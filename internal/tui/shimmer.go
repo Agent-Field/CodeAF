@@ -44,14 +44,21 @@ func (m *Model) shimmerAnimating() bool {
 	return false
 }
 
+// shimmerCards is the live half of the card list. Three callers ask for it per
+// frame — is there a line, does it still have news, draw it — and each answer
+// was a fresh copy of every working card, eight times a second. The filter is
+// cheap and the copy was not, so it refills one buffer instead: every caller
+// reads it out before the next one asks, and the answer is always the card
+// list as it stands rather than as it stood.
 func (m *Model) shimmerCards() []jobCard {
-	cards := make([]jobCard, 0, len(m.cards))
+	cards := m.shimmerLive[:0]
 	for _, card := range m.cards {
 		if card.State != cardWorking && card.State != cardCompiling {
 			continue
 		}
 		cards = append(cards, card)
 	}
+	m.shimmerLive = cards
 	return cards
 }
 

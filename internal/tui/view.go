@@ -536,28 +536,14 @@ func (m *Model) renderSpendCompact() string {
 // practice takes precedence over the one-poll learning afterglow; otherwise
 // silence is the state.
 func (m *Model) residentPresenceText() string {
-	if root, ok := activePracticeRoot(m.snapshot); ok {
+	if facts := m.graphFacts.of(m.snapshot.Nodes); facts.practicing {
 		return fmt.Sprintf("practicing: %s · $%.2f on myself today",
-			practiceScope(root), m.selfSpendToday)
+			practiceScope(facts.practice), m.selfSpendToday)
 	}
 	if clause := strings.TrimSpace(m.selfLearning); clause != "" {
 		return "learned: " + clause
 	}
 	return ""
-}
-
-func activePracticeRoot(snapshot store.Snapshot) (store.Node, bool) {
-	var newest store.Node
-	found := false
-	for _, node := range snapshot.Nodes {
-		if node.Parent != store.RootID || node.Group != store.PracticeGroup || nodeSettled(node) {
-			continue
-		}
-		if !found || node.CreatedSeq > newest.CreatedSeq {
-			newest, found = node, true
-		}
-	}
-	return newest, found
 }
 
 func practiceScope(node store.Node) string {
@@ -603,25 +589,55 @@ func (m *Model) residentPresenceHeight() int {
 	return 1
 }
 
-// taskCounts sweeps the snapshot once for the activity bar and the rail
-// header: work in flight, work queued, and anything that failed.
-func (m *Model) taskCounts() (running, queued, failed int) {
-	definitions := charterDefinitionIDs(m.snapshot)
-	for _, node := range m.snapshot.Nodes {
-		if node.ID == store.RootID || definitions[node.ID] ||
+// graphFacts is everything a frame asks of the whole graph, swept once. The
+// header dot, the footer tip, the legacy activity bar, the tree, the presence
+// line and the poll cadence each used to walk every node for themselves — and
+// the charter-definition subtree, which two of them need, allocated two maps
+// and recursed the graph on every one of those walks. They are one sweep now,
+// kept for as long as the snapshot they read is the snapshot in hand.
+type graphFacts struct {
+	nodes       []store.Node
+	definitions map[string]bool
+	running     int
+	queued      int
+	failed      int
+	practice    store.Node
+	practicing  bool
+}
+
+func (f *graphFacts) of(nodes []store.Node) *graphFacts {
+	if f.definitions != nil && len(f.nodes) == len(nodes) &&
+		(len(nodes) == 0 || &f.nodes[0] == &nodes[0]) {
+		return f
+	}
+	*f = graphFacts{nodes: nodes, definitions: charterDefinitionIDs(nodes)}
+	for _, node := range nodes {
+		if node.Parent == store.RootID && node.Group == store.PracticeGroup && !nodeSettled(node) {
+			if !f.practicing || node.CreatedSeq > f.practice.CreatedSeq {
+				f.practice, f.practicing = node, true
+			}
+		}
+		if node.ID == store.RootID || f.definitions[node.ID] ||
 			node.Provenance.Origin == store.OriginSelf {
 			continue
 		}
 		switch node.Status {
 		case store.Claimed, store.Running:
-			running++
+			f.running++
 		case store.Pending:
-			queued++
+			f.queued++
 		case store.Failed:
-			failed++
+			f.failed++
 		}
 	}
-	return running, queued, failed
+	return f
+}
+
+// taskCounts sweeps the snapshot once for the activity bar and the rail
+// header: work in flight, work queued, and anything that failed.
+func (m *Model) taskCounts() (running, queued, failed int) {
+	facts := m.graphFacts.of(m.snapshot.Nodes)
+	return facts.running, facts.queued, facts.failed
 }
 
 // liveWorkCount is everything still moving: planning placeholders plus
@@ -2347,7 +2363,7 @@ func (m *Model) renderTree(width, height int) string {
 		m.noteAnimatedGraphRow(row)
 	}
 
-	definitions := charterDefinitionIDs(snapshot)
+	definitions := m.treeFacts.of(snapshot.Nodes).definitions
 	children := make(map[string][]store.Node, len(snapshot.Nodes))
 	for _, node := range snapshot.Nodes {
 		if node.ID == store.RootID || definitions[node.ID] {
