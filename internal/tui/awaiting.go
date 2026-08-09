@@ -37,8 +37,14 @@ func (m *Model) noteAwaitingReply(posted store.Message) {
 	if posted.Role != store.RoleUser || posted.NodeID != "" || posted.Seq == 0 {
 		return
 	}
-	m.awaitingSeq = posted.Seq
-	m.awaitingSince = m.standingTime()
+	// A turn typed while an earlier one is still unanswered adds to the count
+	// rather than replacing it. The line keeps standing under the oldest turn
+	// nobody has answered, which is the one the reader is still waiting on.
+	if m.awaitingSeq == 0 {
+		m.awaitingSeq = posted.Seq
+		m.awaitingSince = m.standingTime()
+	}
+	m.awaitingPending++
 }
 
 // noteAwaitingAnswered ends it. Anything unanchored the thread accepts after
@@ -49,21 +55,36 @@ func (m *Model) noteAwaitingAnswered(message store.Message) {
 	if m.awaitingSeq == 0 || message.Role == store.RoleUser || message.NodeID != "" {
 		return
 	}
-	if message.Seq > m.awaitingSeq {
-		m.clearAwaitingReply()
+	if message.Seq <= m.awaitingSeq {
+		return
 	}
+	// One answer settles one turn. With another still owed, the wait moves to
+	// it — past this answer's own sequence, so the next line the thread accepts
+	// is the one that can end it — instead of ending here for everybody.
+	if m.awaitingPending > 1 {
+		m.awaitingPending--
+		m.awaitingSeq = message.Seq
+		m.awaitingSince = m.standingTime()
+		return
+	}
+	m.clearAwaitingReply()
 }
 
 func (m *Model) clearAwaitingReply() {
 	m.awaitingSeq = 0
+	m.awaitingPending = 0
 	m.awaitingSince = time.Time{}
 }
 
 // awaitingReply reports whether the indicator belongs on screen. A live stream
 // is already the reply arriving, so the line yields to it rather than sitting
-// above it saying the same thing twice.
+// above it saying the same thing twice — but only to a stream with something in
+// it. A stream that has opened and produced nothing yet, which is every control
+// call and every reasoning phase, draws no line of its own; yielding to it put
+// the thread back where this whole file started, blank for the longest part of
+// the wait.
 func (m *Model) awaitingReply() bool {
-	return m.awaitingSeq != 0 && m.streamMode == streamNone
+	return m.awaitingSeq != 0 && !m.streamVisible()
 }
 
 // awaitingAnimating is what keeps the animation ticking for it, and what stops.

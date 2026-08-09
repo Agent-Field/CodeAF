@@ -1471,6 +1471,13 @@ type threadRenderItem struct {
 	message store.Message
 	card    jobCard
 	isCard  bool
+	// tail marks a block the journal cannot place: the optimistic echo of a
+	// turn the store has not numbered yet, and the live stream, whose reply has
+	// no sequence until it lands. Both belong after everything already on
+	// screen, so they sort by arrival rather than by a sequence they lack —
+	// which is also what keeps the stream from drawing above the turn that
+	// caused it while the poll watermark is still behind that turn.
+	tail bool
 }
 
 func (m *Model) renderMessages() string {
@@ -1515,11 +1522,9 @@ func (m *Model) renderMessages() string {
 		if !m.streamMessage(message) {
 			continue
 		}
-		order := message.Seq
-		if order == 0 {
-			order = int64(index - len(m.messages) - 1)
-		}
-		items = append(items, threadRenderItem{order: order, index: index, message: message})
+		items = append(items, threadRenderItem{
+			order: message.Seq, index: index, message: message, tail: message.Seq == 0,
+		})
 	}
 	_, settled := placeJobCards(m.cards)
 	for index, card := range settled {
@@ -1528,11 +1533,21 @@ func (m *Model) renderMessages() string {
 		})
 	}
 	if message, ok := m.streamingMessage(); ok {
+		// The stream carries the largest index in the frame, so among the tail
+		// blocks it lands last: below the echo of the turn it answers, and below
+		// every turn the poll has not caught up with yet.
 		items = append(items, threadRenderItem{
-			order: m.lastSeq + 1, index: len(m.messages) + len(m.cards), message: message,
+			index: len(m.messages) + len(m.cards), message: message, tail: true,
 		})
 	}
+	// One comparator for the whole frame, and it agrees with the order
+	// insertThreadMessage keeps the thread in: sequenced blocks by sequence,
+	// unsequenced ones after them in arrival order. Nothing on screen can be
+	// pushed above a block that is already above it.
 	sort.SliceStable(items, func(i, j int) bool {
+		if items[i].tail != items[j].tail {
+			return !items[i].tail
+		}
 		if items[i].order == items[j].order {
 			return items[i].index < items[j].index
 		}
@@ -2150,6 +2165,15 @@ func (m *Model) questionAnswered(question store.Message) bool {
 	}
 	for index := len(m.messages) - 1; index >= 0; index-- {
 		message := m.messages[index]
+		// An echo carries no sequence yet, but it is the same turn the store is
+		// about to number: it consumes the question now rather than leaving the
+		// choices live under the reader's hand for one more round trip.
+		if message.Seq == 0 {
+			if message.Role == store.RoleUser && message.NodeID == "" {
+				return true
+			}
+			continue
+		}
 		if message.Seq <= question.Seq {
 			return false
 		}

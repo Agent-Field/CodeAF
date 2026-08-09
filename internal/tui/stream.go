@@ -130,7 +130,11 @@ func (m *Model) applyStreamEvent(event StreamEvent) {
 		if m.streamMode == streamReal {
 			m.streamProviderDone = true
 			m.normalizeLandedTarget()
-			if m.streamSeq != 0 && m.streamShown == m.streamTarget {
+			// Either the reply is drawn and durable, or the call ended holding
+			// nothing at all — a control belt that produced no reply of its
+			// own. Both end the stream here; only the second one used to be
+			// left standing, with a landed reply parked behind it forever.
+			if m.streamStalled() || (m.streamSeq != 0 && m.streamShown == m.streamTarget) {
 				m.finishStream()
 			}
 		}
@@ -143,6 +147,11 @@ func (m *Model) applyStreamEvent(event StreamEvent) {
 }
 
 func (m *Model) queueSimulatedStream(message store.Message) {
+	// A stalled stream owns nothing and must not be queued behind: a reply
+	// parked behind it draws an empty line for as long as the window lives.
+	if m.streamStalled() {
+		m.finishStream()
+	}
 	if m.streamMode == streamNone {
 		m.startSimulatedStream(message)
 		return
@@ -223,6 +232,14 @@ func (m *Model) advanceStream() {
 	if m.streamMode == streamNone {
 		return
 	}
+	// The last exit no other path can be trusted to take. A stalled stream can
+	// never satisfy the finish conditions below — it has no target to finish
+	// drawing and no durable row to finish into — so it is ended here rather
+	// than left holding the queue.
+	if m.streamStalled() {
+		m.finishStream()
+		return
+	}
 	if m.streamShown != m.streamTarget {
 		m.streamShown = typewriterAdvance(m.streamShown, m.streamTarget, streamTokensPerTick)
 	}
@@ -269,6 +286,26 @@ func (m *Model) streamAnimating() bool {
 	return m.streamMode != streamNone && m.streamShown != m.streamTarget
 }
 
+// streamStalled names the one state the stream machine cannot leave on its own:
+// the provider ended the call having produced no reply of its own — the control
+// belt does this on every message — and no durable row ever attached to it. The
+// mode says a reply is arriving, nothing is on screen, and the finish
+// conditions elsewhere all require either a target to finish drawing or a
+// sequence to finish into. Left alone it holds the queue forever and the reply
+// that did land renders as an empty line.
+func (m *Model) streamStalled() bool {
+	return m.streamMode == streamReal && m.streamProviderDone &&
+		m.streamSeq == 0 && m.streamTarget == "" && m.streamShown == ""
+}
+
+// streamVisible reports whether the live stream actually draws something. A
+// stream with nothing in it occupies the state machine without occupying the
+// screen, and everything that yields to a stream — the awaiting line, a queued
+// reply's body — must yield only to one the reader can see.
+func (m *Model) streamVisible() bool {
+	return m.streamMode != streamNone && (m.streamShown != "" || m.streamTarget != "")
+}
+
 func (m *Model) streamingMessage() (store.Message, bool) {
 	if m.streamMode != streamReal || m.streamSeq != 0 || (m.streamShown == "" && m.streamTarget == "") {
 		return store.Message{}, false
@@ -282,6 +319,13 @@ func (m *Model) streamedBody(message store.Message) (string, bool) {
 	}
 	if m.streamMode != streamNone && message.Seq == m.streamSeq {
 		return m.streamShown, true
+	}
+	// A reply waiting its turn draws nothing — but only while something is
+	// actually being drawn ahead of it. A landed reply that is not animating
+	// and has nothing animating in front of it renders in full: no state path
+	// may leave it as an empty line.
+	if !m.streamVisible() {
+		return "", false
 	}
 	for _, queued := range m.streamQueue {
 		if queued.Seq == message.Seq {

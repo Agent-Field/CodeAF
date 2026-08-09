@@ -700,6 +700,202 @@ func TestALongOutcomeIsReadableInTheActivityFeed(t *testing.T) {
 	}
 }
 
+// ── wave 1 · transcript truth ───────────────────────────────────────────────
+
+// The reported symptom, verbatim: "it waits, then reprints older chat". The
+// live stream was placed at the poll watermark plus one, and the watermark is
+// deliberately left behind by a turn that lands at post time — so for as long
+// as a poll cycle the reply drew ABOVE the message it was answering, then
+// leapt below it in one frame. Sequence numbers are the global journal's, and
+// node transitions, receipts and commands all consume them, so the gap between
+// the watermark and a just-posted turn is the ordinary case, not the rare one.
+func TestALiveStreamNeverRendersAboveTheTurnItAnswers(t *testing.T) {
+	model := New(&fakeBackend{}, "order")
+	model.setSize(100, 30)
+	model.messages = []store.Message{
+		{Seq: 12, SessionID: "order", Role: store.RoleAgent, Body: "Earlier answer.", Time: time.Now()},
+	}
+	model.lastSeq = 12
+
+	_, _ = model.Update(postResultMsg{message: store.Message{
+		Seq: 400, SessionID: "order", Role: store.RoleUser, Body: "what is the total?", Time: time.Now(),
+	}})
+	if model.lastSeq != 12 {
+		t.Fatalf("a turn landed at post time moved the poll watermark to %d", model.lastSeq)
+	}
+
+	model.applyStreamEvent(StreamEvent{Kind: StreamStarted})
+	model.applyStreamEvent(StreamEvent{Kind: StreamDelta, Delta: `{"reply":"It adds up to 41,208.`})
+	for index := 0; index < 64 && model.streamAnimating(); index++ {
+		model.advanceStream()
+	}
+
+	thread := ansi.Strip(model.renderMessages())
+	earlier := strings.Index(thread, "Earlier answer.")
+	turn := strings.Index(thread, "what is the total?")
+	reply := strings.Index(thread, "It adds up to 41,208.")
+	if earlier < 0 || turn < 0 || reply < 0 {
+		t.Fatalf("thread lost one of its three blocks:\n%s", thread)
+	}
+	if !(earlier < turn && turn < reply) {
+		t.Fatalf("the frame reordered visible blocks (earlier %d, turn %d, reply %d):\n%s",
+			earlier, turn, reply, thread)
+	}
+}
+
+// An unsequenced line used to be given a NEGATIVE sort order, which put it at
+// the very top of the transcript — above history it arrived long after. It
+// belongs at the tail, in arrival order, and the slice the thread is kept in
+// has to agree with the frame: a sequenced arrival goes in front of it.
+func TestAnUnsequencedLineSortsAtTheTailAndNeverAboveHistory(t *testing.T) {
+	model := New(&fakeBackend{}, "unsequenced")
+	model.setSize(100, 30)
+	for _, message := range []store.Message{
+		{Seq: 1, SessionID: "unsequenced", Role: store.RoleUser, Body: "first turn", Time: time.Now()},
+		{Seq: 2, SessionID: "unsequenced", Role: store.RoleAgent, Body: "first answer", Time: time.Now()},
+	} {
+		model.insertThreadMessage(message)
+	}
+	model.insertThreadMessage(store.Message{
+		SessionID: "unsequenced", Role: store.RoleUser, Body: "the newest words", Time: time.Now(),
+	})
+	model.insertThreadMessage(store.Message{
+		Seq: 3, SessionID: "unsequenced", Role: store.RoleAgent, Body: "second answer", Time: time.Now(),
+	})
+
+	bodies := make([]string, 0, len(model.messages))
+	for _, message := range model.messages {
+		bodies = append(bodies, message.Body)
+	}
+	want := []string{"first turn", "first answer", "second answer", "the newest words"}
+	if !reflect.DeepEqual(bodies, want) {
+		t.Fatalf("thread order = %v, want %v", bodies, want)
+	}
+	thread := ansi.Strip(model.renderMessages())
+	if at := strings.Index(thread, "the newest words"); at < strings.Index(thread, "second answer") {
+		t.Fatalf("an unsequenced line rendered above history:\n%s", thread)
+	}
+}
+
+// JOURNEY.md journey 6: the turn "appears as the user's message instantly".
+// It used to appear only after the SQLite round trip returned — between Enter
+// and the commit the words existed nowhere on screen at all. When the durable
+// row lands, whichever of the post result and the poll wins that race, the
+// echo is taken rather than doubled.
+func TestTheTurnAppearsTheInstantItIsTyped(t *testing.T) {
+	backend := &fakeBackend{nextSeq: 512}
+	model := New(backend, "echo")
+	model.setSize(100, 30)
+	model.input.SetValue("check the totals")
+	command := model.submit()
+	if command == nil {
+		t.Fatal("submit produced no post")
+	}
+	if model.input.Value() != "" {
+		t.Fatalf("the composer kept the sent words: %q", model.input.Value())
+	}
+	if thread := ansi.Strip(model.renderMessages()); !strings.Contains(thread, "check the totals") {
+		t.Fatalf("the typed turn is nowhere on screen:\n%s", thread)
+	}
+
+	_, _ = model.Update(command())
+	if !model.hasThreadMessage(512) {
+		t.Fatal("the durable row never reconciled with the echo")
+	}
+	if count := strings.Count(ansi.Strip(model.renderMessages()), "check the totals"); count != 1 {
+		t.Fatalf("the turn is on screen %d times, want once", count)
+	}
+
+	// The other order: a poll delivers the durable row before the post result
+	// gets back. The echo comes off there too.
+	model.input.SetValue("and the tax line")
+	command = model.submit()
+	model.applyPoll(pollResultMsg{sessionID: "echo", messages: []store.Message{
+		{Seq: 513, SessionID: "echo", Role: store.RoleUser, Body: "and the tax line", Time: time.Now()},
+	}})
+	if count := strings.Count(ansi.Strip(model.renderMessages()), "and the tax line"); count != 1 {
+		t.Fatalf("the poll doubled the echoed turn (%d on screen)", count)
+	}
+	_, _ = model.Update(command())
+	if count := strings.Count(ansi.Strip(model.renderMessages()), "and the tax line"); count != 1 {
+		t.Fatalf("the post result doubled the turn the poll already landed (%d on screen)", count)
+	}
+}
+
+// A post the store refuses must not leave the echo standing as if it had been
+// taken, and must not eat the words either: they go back where they were typed.
+func TestARejectedTurnComesBackToTheComposer(t *testing.T) {
+	backend := &fakeBackend{postErr: fmt.Errorf("the store is locked")}
+	model := New(backend, "reject")
+	model.setSize(100, 30)
+	model.input.SetValue("try the risky thing")
+	command := model.submit()
+	if command == nil {
+		t.Fatal("submit produced no post")
+	}
+	if thread := ansi.Strip(model.renderMessages()); !strings.Contains(thread, "try the risky thing") {
+		t.Fatalf("the turn was never echoed:\n%s", thread)
+	}
+
+	_, _ = model.Update(command())
+	if model.err == nil {
+		t.Fatal("a refused post said nothing")
+	}
+	if thread := ansi.Strip(model.renderMessages()); strings.Contains(thread, "try the risky thing") {
+		t.Fatalf("a turn the store refused is still standing in the thread:\n%s", thread)
+	}
+	if model.input.Value() != "try the risky thing" {
+		t.Fatalf("the refused words are unrecoverable: composer holds %q", model.input.Value())
+	}
+}
+
+// The permanent-blank-reply trap, reproduced in the state sequence that made
+// it: the control belt opens a stream and produces no reply of its own, the
+// provider ends it with no durable row attached, and the real reply then lands
+// through the poll — where it used to be parked behind a stream that could
+// never finish, rendering as an empty line for the life of the window.
+func TestAStreamThatDrewNothingNeverParksTheReplyBlank(t *testing.T) {
+	model := New(&fakeBackend{}, "belt")
+	model.setSize(100, 30)
+	model.applyStreamEvent(StreamEvent{Kind: StreamStarted})
+	model.applyStreamEvent(StreamEvent{Kind: StreamFinished})
+	if model.streamMode != streamNone {
+		t.Fatalf("a stream that drew nothing still holds the lane: mode %d seq %d",
+			model.streamMode, model.streamSeq)
+	}
+
+	reply := store.Message{Seq: 7, SessionID: "belt", Role: store.RoleAgent,
+		Body: "Two jobs are running.", Time: time.Now()}
+	model.applyPoll(pollResultMsg{sessionID: "belt", messages: []store.Message{reply}})
+	for index := 0; index < 256 && model.streamAnimating(); index++ {
+		model.advanceStream()
+	}
+	if thread := ansi.Strip(model.renderMessages()); !strings.Contains(thread, "Two jobs are running.") {
+		t.Fatalf("the landed reply rendered as an empty line:\n%s", thread)
+	}
+
+	// The same trap approached from the other side: the stalled state forced by
+	// hand, as a lost or reordered boundary event would leave it. No path may
+	// hold a landed reply blank behind a stream with nothing in it.
+	stuck := New(&fakeBackend{}, "belt")
+	stuck.setSize(100, 30)
+	stuck.streamMode, stuck.streamProviderDone = streamReal, true
+	stuck.streamQueue = []store.Message{reply}
+	if body, held := stuck.streamedBody(reply); held || body != "" {
+		t.Fatalf("a landed reply is held blank behind an empty stream: body %q held %t", body, held)
+	}
+	stuck.applyPoll(pollResultMsg{sessionID: "belt", messages: []store.Message{reply}})
+	for index := 0; index < 256 && stuck.streamAnimating(); index++ {
+		stuck.advanceStream()
+	}
+	if stuck.streamMode != streamNone || len(stuck.streamQueue) != 0 {
+		t.Fatalf("the queue never drained: mode %d queued %d", stuck.streamMode, len(stuck.streamQueue))
+	}
+	if thread := ansi.Strip(stuck.renderMessages()); !strings.Contains(thread, "Two jobs are running.") {
+		t.Fatalf("the forced-stall reply rendered as an empty line:\n%s", thread)
+	}
+}
+
 // ── the reply's own whitespace is not the reader's ──────────────────────────
 
 // A model that opens or closes its reply on a blank line handed those rows
