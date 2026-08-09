@@ -12,7 +12,19 @@ import (
 
 const blinkSpeed = 530 * time.Millisecond
 
-type blinkMsg struct{}
+// blinkMsg carries the tag of the loop that sent it. Every Focus starts a loop
+// and twenty-two call sites throw the command away, so a fast walk around the
+// focus ring used to leave several loops ticking at once against one cursor —
+// each one a wake-up every 530ms for the same blink. A message whose tag is not
+// the current one is a loop that has been replaced, and it ends there.
+type blinkMsg struct{ tag uint64 }
+
+// IsBlink reports whether a message is the cursor's own heartbeat, so the
+// window above can skip the layout arithmetic a blink cannot move.
+func IsBlink(message tea.Msg) bool {
+	_, ok := message.(blinkMsg)
+	return ok
+}
 
 // Cursor contains the style applied to the character at the insertion point.
 type Cursor struct {
@@ -35,6 +47,7 @@ type Model struct {
 	position      int
 	focused       bool
 	cursorVisible bool
+	blinkTag      uint64
 }
 
 // New creates an unfocused input with conventional defaults.
@@ -55,14 +68,22 @@ func (m Model) LineCount() int {
 	return min(max(1, m.MaxLines), len(m.lineRanges()))
 }
 
-// Blink initializes or advances cursor blinking.
+// Blink initializes cursor blinking. It carries the untagged loop, which the
+// first Focus supersedes.
 func Blink() tea.Msg { return blinkMsg{} }
 
-// Focus allows the input to consume key events.
+// Focus allows the input to consume key events, and starts the one blink loop
+// that outlives every loop started before it.
 func (m *Model) Focus() tea.Cmd {
 	m.focused = true
 	m.cursorVisible = true
-	return Blink
+	m.blinkTag++
+	tag := m.blinkTag
+	return func() tea.Msg { return blinkMsg{tag: tag} }
+}
+
+func blinkTick(tag uint64) tea.Cmd {
+	return tea.Tick(blinkSpeed, func(time.Time) tea.Msg { return blinkMsg{tag: tag} })
 }
 
 // Blur prevents the input from consuming key events.
@@ -95,12 +116,14 @@ func (m *Model) Reset() {
 // Update handles standard line-editing keys and printable runes.
 func (m Model) Update(message tea.Msg) (Model, tea.Cmd) {
 	if blink, ok := message.(blinkMsg); ok {
-		_ = blink
-		if !m.focused {
+		// A blur ends the loop; so does a tag the current focus has already
+		// replaced. Tag zero is the untagged starter from Init, which the
+		// running loop adopts rather than duplicates.
+		if !m.focused || (blink.tag != 0 && blink.tag != m.blinkTag) {
 			return m, nil
 		}
 		m.cursorVisible = !m.cursorVisible
-		return m, tea.Tick(blinkSpeed, func(time.Time) tea.Msg { return blinkMsg{} })
+		return m, blinkTick(m.blinkTag)
 	}
 	if !m.focused {
 		return m, nil

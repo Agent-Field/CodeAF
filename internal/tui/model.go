@@ -1002,6 +1002,14 @@ func (m *Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 	}
 
 	if m.inputFocused {
+		// A blink is one cell of one row changing ink twice a second. It can
+		// move neither the draft's wrapped height nor the palette's, so it
+		// skips both measurements instead of taking them to prove it.
+		if textinput.IsBlink(message) {
+			var command tea.Cmd
+			m.input, command = m.input.Update(message)
+			return m, command
+		}
 		before := m.input.Value()
 		// Typing can only move two heights: the draft's own wrapped rows and the
 		// palette below it. Everything else the relayout recomputes — the whole
