@@ -96,10 +96,33 @@ func modelWordScore(model catalog.Model, word string) (int, int, bool) {
 		return matchExact, 0, true
 	case strings.HasPrefix(base, word):
 		return matchPrefix, len(base) - len(word), true
-	case strings.Contains(id, word):
+	case wordStartsAToken(id, word):
 		return matchInside, strings.Index(id, word) + len(id) - len(word), true
 	default:
 		return 0, 0, false
+	}
+}
+
+// wordStartsAToken says whether word appears in id at a token boundary — the
+// start, or right after a separator. A raw substring match here once turned
+// "use the net column, not gross" into a four-way Claude menu, because "net"
+// sits inside "sonnet": the person's data vocabulary reached a model matcher
+// that read letters instead of names. "kimi" in "moonshotai/kimi-k2" still
+// matches; the inside of somebody else's word never does.
+func wordStartsAToken(id, word string) bool {
+	if word == "" {
+		return false
+	}
+	for at := 0; ; {
+		index := strings.Index(id[at:], word)
+		if index < 0 {
+			return false
+		}
+		position := at + index
+		if position == 0 || strings.ContainsRune("/-._ :@", rune(id[position-1])) {
+			return true
+		}
+		at = position + 1
 	}
 }
 

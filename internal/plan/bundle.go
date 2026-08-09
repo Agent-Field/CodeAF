@@ -42,6 +42,7 @@ func Bundle(goal string, parts []string) *Graph {
 	}
 	graph.Add(Node{
 		Stage:   2,
+		Bundle:  true,
 		Title:   "Deliver together",
 		Summary: fmt.Sprintf("Assemble the %d finished results into one delivery, in the order they were asked.", len(ids)),
 		Needs:   ids,

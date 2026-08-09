@@ -54,6 +54,14 @@ Concretely, for this kind of work:
 Every line must be specific to this kind of work — advice that would fit any
 job ("plan first", "be thorough") is filler and wastes the agent's attention.
 
+The method may demand evidence only in the shape the request asked for it. A
+request to confirm, check, or verify something is satisfied by the fact of the
+result — what was run and what came back, in the agent's own words — and the
+method never escalates that into reporting the raw output, the full transcript,
+or the verbatim text of anything the request did not ask to see. The method is
+held against the deliverable by a reviewer later: every demand you write
+becomes a requirement the person never made, so write none they did not.
+
 Write as direct instruction to the agent. 120-200 words, plain prose or short
 dashes, no headings, no preamble, no mention of "the plan" or "this task".
 
