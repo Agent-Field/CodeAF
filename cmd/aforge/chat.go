@@ -4503,6 +4503,26 @@ func planSubtree(settings config.Config, planClient, workClient *liveClient, pla
 		workingModel, workingClient := workClient.Snapshot()
 		_, structuring := planClient.Snapshot()
 		progress := chatPlanProgress(history, anchor)
+		// A declared bundle never meets the planner. The compile call already
+		// judged the requests independent and wrote each as a standalone
+		// assignment; laying them side by side is geometry, and the spine was
+		// measured restating the independence rule and then chaining them
+		// anyway. This is also the cheaper path: no spine, no fan-out, no bind
+		// — the contract pass below is the only structuring these jobs buy.
+		if parts := trimmedParts(compiled.Parts); len(parts) >= 2 {
+			graph := plan.Bundle(compiled.Goal, parts)
+			contractUsage, contractErr := plan.Contracts(settings.Context(ctx, compiled.Goal), structuring, graph, resident.ContractPlaybook(history), progress)
+			if contractErr != nil {
+				log.Printf("note: could not write contracts: %v", contractErr)
+			}
+			journalPlanSpend(history, planClient, contractUsage)
+			subtree, subtreeErr := resident.SubtreeFromPlan(graph, prefix)
+			if subtreeErr != nil {
+				return store.Subtree{}, subtreeErr
+			}
+			plans.put(prefix, graph, subtreeSink(subtree), workingModel, workingClient)
+			return subtree, nil
+		}
 		graph, err := plan.Build(settings.Context(ctx, compiled.Goal), structuring, compiled.Goal, plan.Options{
 			Recall:       recallHits(history, compiled.Goal, groundRecallLimit),
 			SpineSamples: settings.SpineSamples,
@@ -4596,6 +4616,18 @@ func jobNoteLine(message store.Message) (string, bool) {
 		return "", false
 	}
 	return strings.TrimPrefix(message.Body, jobNoteMark), true
+}
+
+// trimmedParts is the structural half of the bundle judgment: the model said
+// which requests stand alone; code only refuses blanks.
+func trimmedParts(parts []string) []string {
+	kept := parts[:0:0]
+	for _, part := range parts {
+		if part = strings.TrimSpace(part); part != "" {
+			kept = append(kept, part)
+		}
+	}
+	return kept
 }
 
 // subtreeSink is the one spec with no parent — the node whose landing means
