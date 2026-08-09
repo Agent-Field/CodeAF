@@ -2138,35 +2138,54 @@ func (c *chatCommander) Cancel(nodeID string) error {
 }
 
 func (c *chatCommander) NodeTrace(nodeID string, maxBytes int) string {
+	text, _, _ := c.NodeTraceSince(nodeID, maxBytes, tui.NodeTraceStamp{})
+	return text
+}
+
+// NodeTraceSince tails the worker's trace file only when the file has moved.
+// The window asks for the trace on every poll — the executor appends to it
+// outside the journal, so nothing else can say whether it changed — and the
+// stat that decides where to seek is already on the path to the read. Handing
+// its answer back turns a worker that is thinking rather than writing into an
+// open and a stat, instead of 64KB read, allocated, and compared against the
+// copy the window already holds.
+func (c *chatCommander) NodeTraceSince(
+	nodeID string, maxBytes int, since tui.NodeTraceStamp,
+) (string, tui.NodeTraceStamp, bool) {
+	var none tui.NodeTraceStamp
 	if c == nil || c.store == nil || c.workspaceRoot == "" || nodeID == "" || maxBytes <= 0 {
-		return ""
+		return "", none, true
 	}
 	node, ok, err := c.store.Node(nodeID)
 	if err != nil || !ok {
-		return ""
+		return "", none, true
 	}
 	jobDir := filepath.Join(c.workspaceRoot, jobIDOf(c.store, node))
 	file, err := os.Open(filepath.Join(jobDir, ".obs", fmt.Sprintf("%d.trace.log", node.CreatedSeq)))
 	if err != nil {
-		return ""
+		return "", none, true
 	}
 	defer file.Close()
 	info, err := file.Stat()
 	if err != nil {
-		return ""
+		return "", none, true
+	}
+	stamp := tui.NodeTraceStamp{Size: info.Size(), Mod: info.ModTime()}
+	if stamp.Size == since.Size && stamp.Mod.Equal(since.Mod) && !since.Mod.IsZero() {
+		return "", stamp, false
 	}
 	offset := info.Size() - int64(maxBytes)
 	if offset < 0 {
 		offset = 0
 	}
 	if _, err := file.Seek(offset, io.SeekStart); err != nil {
-		return ""
+		return "", none, true
 	}
 	data, err := io.ReadAll(io.LimitReader(file, int64(maxBytes)))
 	if err != nil {
-		return ""
+		return "", none, true
 	}
-	return string(data)
+	return string(data), stamp, true
 }
 
 func (c *chatCommander) ResolveMediaPath(nodeID, relative string) (string, bool) {
