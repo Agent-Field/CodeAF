@@ -54,7 +54,7 @@ func probeControlPlane(ctx context.Context, reporter *afield.Reporter) error {
 // aforge-embed: the control-plane gate, made skippable. Upstream the gate is
 // unconditional for the real backend — codeaf is not a standalone product and
 // every run is mirrored onto AgentField — but an embedded run is driven by
-// aforge's harness rather than by an AgentField reasoner, and requiring a
+// aforge's subharness rather than by an AgentField reasoner, and requiring a
 // reachable control plane would make the engine unusable in-process. The
 // literal value "off" in CODEAF_CP_URL turns the gate off; every other value,
 // including the empty one, keeps the upstream condition byte-for-byte.

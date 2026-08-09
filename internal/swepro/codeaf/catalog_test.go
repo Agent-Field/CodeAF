@@ -11,10 +11,6 @@ import (
 func codeafCatalogFixture(t *testing.T) modelsdev.Catalog {
 	t.Helper()
 	client, err := modelsdev.New(modelsdev.Options{
-		// aforge-embed: one directory shallower. Upstream this package was
-		// cmd/codeaf, two levels under the repo root; here it is
-		// internal/swepro/codeaf, one level under the vendored root, and the
-		// fixture it reads moved with it.
 		CatalogPath:  "../internal/modelsdev/testdata/catalog.json",
 		CacheDir:     t.TempDir(),
 		DisableFetch: true,
