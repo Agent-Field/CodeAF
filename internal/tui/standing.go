@@ -313,6 +313,12 @@ func (m *Model) standingTime() time.Time {
 	return time.Now()
 }
 
+// standingCharters deliberately keeps no answer. The projection reads a
+// firing's status, its finish time and the sentence it settled on, and those
+// are edited in the snapshot where they lie — so a projection kept beside the
+// snapshot it came from would go on saying a firing is still running after it
+// has landed. The store read in front of it is where the cost was, and that is
+// already answered once per poll.
 func (m *Model) standingCharters() []standingCharter {
 	reader := m.standingReader
 	if reader == nil {
@@ -862,10 +868,10 @@ func (m *Model) updateCharterCadenceKey(message tea.KeyMsg) (tea.Cmd, bool) {
 // charterDefinitionIDs identifies the non-task definition subtree so counts,
 // cards, and the task tree can exclude it while trigger-born firing jobs keep
 // behaving as ordinary jobs.
-func charterDefinitionIDs(snapshot store.Snapshot) map[string]bool {
+func charterDefinitionIDs(nodes []store.Node) map[string]bool {
 	children := make(map[string][]string)
 	marked := make(map[string]bool)
-	for _, node := range snapshot.Nodes {
+	for _, node := range nodes {
 		children[node.Parent] = append(children[node.Parent], node.ID)
 		if node.Parent == store.RootID && node.Group == charterGroupMarker {
 			marked[node.ID] = true

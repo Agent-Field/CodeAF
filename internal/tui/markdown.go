@@ -124,7 +124,36 @@ type mediaPathResolver interface {
 	ResolveMediaPath(nodeID, relative string) (string, bool)
 }
 
+// workspaceLink is one remembered answer from the resolver.
+type workspaceLink struct {
+	target string
+	found  bool
+}
+
+// resolveWorkspacePath asks the resolver once per question and then remembers
+// the answer. Every whitespace-separated token of every answer on screen is a
+// question, and in the running product each one is a row read out of SQLite, a
+// walk up the node's parents for the job it belongs to, and a stat — so a
+// forty-line reply was several hundred queries, redrawn eight times a second.
+//
+// What makes remembering safe is the stamp: a job that is still running is
+// still writing files, so "no such file" is only durable for as long as the
+// node's status holds. When the status moves the question is asked again, which
+// is the moment a finished job's deliverables become links.
 func (m *Model) resolveWorkspacePath(nodeID, relative string) (string, bool) {
+	key := nodeID + "\x00" + m.workspaceStamp(nodeID) + "\x00" + relative
+	if link, remembered := m.workspaceLinks[key]; remembered {
+		return link.target, link.found
+	}
+	target, found := m.askWorkspacePath(nodeID, relative)
+	if m.workspaceLinks == nil {
+		m.workspaceLinks = make(map[string]workspaceLink, 256)
+	}
+	m.workspaceLinks[key] = workspaceLink{target: target, found: found}
+	return target, found
+}
+
+func (m *Model) askWorkspacePath(nodeID, relative string) (string, bool) {
 	if resolver, ok := m.commander.(workspacePathResolver); ok {
 		return resolver.ResolveWorkspacePath(nodeID, relative)
 	}
@@ -134,6 +163,27 @@ func (m *Model) resolveWorkspacePath(nodeID, relative string) (string, bool) {
 		return resolver.ResolveMediaPath(nodeID, relative)
 	}
 	return "", false
+}
+
+// workspaceStamp is the one fact about a node that can change what its
+// directory holds. A node the snapshots no longer carry has been folded away,
+// and a folded node has finished writing.
+func (m *Model) workspaceStamp(nodeID string) string {
+	if node, ok := m.cardSnapshotIndex.lookup(m.cardSnapshot.Nodes, nodeID); ok {
+		return string(node.Status)
+	}
+	if node, ok := m.snapshotIndex.lookup(m.snapshot.Nodes, nodeID); ok {
+		return string(node.Status)
+	}
+	return ""
+}
+
+// forgetWorkspaceLinks drops every remembered answer and moves the generation
+// the rendered blocks are keyed by. It is the coarse net under the stamp: the
+// clock's own repaint, and a window that has just taken over the brain.
+func (m *Model) forgetWorkspaceLinks() {
+	clear(m.workspaceLinks)
+	m.workspaceGen++
 }
 
 func (m *Model) workspaceDirectoryLink(nodeID string) string {
@@ -156,6 +206,13 @@ func (m *Model) renderMediaArtifacts(message store.Message, width int) string {
 		paths = append(paths, cas.SourcePath(attachment))
 	}
 	paths = append(paths, mediaReferences(message.Body)...)
+	return m.renderMediaPaths(message.NodeID, paths, width)
+}
+
+// renderMediaPaths is the same rendering from a list of references already in
+// hand, for the one caller — the activity feed — that scans an append-only
+// file and keeps what it found rather than reading it again.
+func (m *Model) renderMediaPaths(nodeID string, paths []string, width int) string {
 	seen := make(map[string]bool, len(paths))
 	lines := make([]string, 0, len(paths))
 	for _, path := range paths {
@@ -171,7 +228,7 @@ func (m *Model) renderMediaArtifacts(message store.Message, width int) string {
 		target := path
 		if !filepath.IsAbs(target) {
 			var found bool
-			target, found = m.resolveWorkspacePath(message.NodeID, path)
+			target, found = m.resolveWorkspacePath(nodeID, path)
 			if !found {
 				continue
 			}
