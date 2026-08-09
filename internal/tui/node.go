@@ -190,6 +190,7 @@ func (m *Model) openNodeByID(nodeID string) tea.Cmd {
 	m.nodeTraceText = ""
 	m.nodeTraceStamp = NodeTraceStamp{}
 	m.feedExpanded = map[string]bool{}
+	m.forgetFeedTrace()
 	m.nodeTrace.GotoBottom()
 	m.palette = paletteNone
 	m.input.Reset()
@@ -235,21 +236,68 @@ func (m *Model) closeNodeView() {
 	m.setSize(m.width, m.height)
 }
 
-func (m *Model) snapshotNode(nodeID string) (store.Node, bool) {
-	for _, node := range m.snapshot.Nodes {
-		if node.ID == nodeID {
-			return node, true
+// nodeIndex is a snapshot read by id. A snapshot is a value the poll swaps
+// whole rather than edits in place, so the slice it is holding — its length and
+// where its first element lives — is the whole identity the index needs: hand
+// it a different slice and it rebuilds, hand it the same one and it answers
+// from the map.
+type nodeIndex struct {
+	nodes []store.Node
+	byID  map[string]store.Node
+}
+
+func (x *nodeIndex) lookup(nodes []store.Node, nodeID string) (store.Node, bool) {
+	if x.byID == nil || len(x.nodes) != len(nodes) ||
+		(len(nodes) > 0 && &x.nodes[0] != &nodes[0]) {
+		x.nodes = nodes
+		x.byID = make(map[string]store.Node, len(nodes))
+		// First writer wins, which is what a walk from the front returned.
+		for _, node := range nodes {
+			if _, seen := x.byID[node.ID]; !seen {
+				x.byID[node.ID] = node
+			}
 		}
+	}
+	node, ok := x.byID[nodeID]
+	return node, ok
+}
+
+// jobRootIndex is the same projection for "which job does this node belong
+// to". Resolving it walks the parents of every node in the graph and builds
+// two maps to do it, and the thread asks for it once per provenance chip on
+// screen — so the answer is kept for as long as the snapshot it came from is.
+type jobRootIndex struct {
+	nodes []store.Node
+	roots map[string]store.Node
+}
+
+func (x *jobRootIndex) lookup(nodes []store.Node, nodeID string) (store.Node, bool) {
+	if x.roots == nil || len(x.nodes) != len(nodes) ||
+		(len(nodes) > 0 && &x.nodes[0] != &nodes[0]) {
+		x.nodes = nodes
+		x.roots = nodeJobRoots(nodes)
+	}
+	root, ok := x.roots[nodeID]
+	return root, ok
+}
+
+// nodeLabelIn is nodeLabelInSnapshot against the snapshot this window is
+// showing, answered from the kept projection rather than by walking it again.
+func (m *Model) nodeLabelIn(node store.Node, nodes []store.Node) string {
+	if root, ok := m.jobRoots.lookup(nodes, node.ID); ok {
+		return nodeLabel(node, root)
+	}
+	return nodeLabel(node)
+}
+
+func (m *Model) snapshotNode(nodeID string) (store.Node, bool) {
+	if node, ok := m.snapshotIndex.lookup(m.snapshot.Nodes, nodeID); ok {
+		return node, true
 	}
 	if m.graphScopeID == "" {
 		return store.Node{}, false
 	}
-	for _, node := range m.cardSnapshot.Nodes {
-		if node.ID == nodeID {
-			return node, true
-		}
-	}
-	return store.Node{}, false
+	return m.cardSnapshotIndex.lookup(m.cardSnapshot.Nodes, nodeID)
 }
 
 func (m *Model) submitSteer() tea.Cmd {
@@ -410,7 +458,7 @@ func (m *Model) toggleFeedBlockAt(x, y int) bool {
 func (m *Model) renderNodeDetailsContent(width int) string {
 	brief := strings.TrimSpace(m.inspectedNode.Brief)
 	if brief == "" {
-		brief = nodeLabelInSnapshot(m.inspectedNode, m.snapshot)
+		brief = m.nodeLabelIn(m.inspectedNode, m.snapshot.Nodes)
 	}
 	content := inputTextStyle.Render(wrapText(brief, width))
 	// One rung down from the card, the same receipt in full: this is where a
@@ -501,15 +549,21 @@ type feedRow struct {
 // messages. The raw log stays on disk; this is the human view of it. Collapsed
 // blocks end in a muted ⋯ and open on click.
 func (m *Model) renderActivityFeed(width int) string {
-	blocks := parseFeedBlocks(m.nodeTraceText, m.nodeMessages, width)
-	if artifacts := m.renderMediaArtifacts(store.Message{
-		NodeID: m.nodeViewID, Body: strings.ReplaceAll(m.nodeTraceText, "⏎", " "),
-	}, width); artifacts != "" {
+	settled, keys, media := m.settledTrace(width)
+	blocks := append([]feedBlock(nil), settled...)
+	// The tail is whatever the worker has written since the last complete
+	// line, plus the thread — neither is settled, so neither is kept.
+	tail := m.feedTail
+	blocks = appendTraceBlocks(blocks, tail, width)
+	blocks = appendMessageBlocks(blocks, m.nodeMessages, width)
+	references := append(append([]string(nil), media...), traceMediaReferences(tail)...)
+	if artifacts := m.renderMediaPaths(m.nodeViewID, references, width); artifacts != "" {
 		blocks = append(blocks, feedBlock{brief: strings.Split(artifacts, "\n")})
 	}
 	m.feedRows = m.feedRows[:0]
 	m.feedBlocks = blocks
-	m.feedKeys = feedBlockKeys(blocks)
+	m.feedKeys = appendFeedBlockKeys(keys, m.feedOccurrences, blocks[len(settled):])
+	releaseFeedBlockKeys(m.feedOccurrences, blocks[len(settled):])
 	// The head opens the document and claims no click target of its own, so the
 	// rows that follow keep counting from where it ends — a click still lands on
 	// the block under the pointer.
@@ -533,12 +587,69 @@ func (m *Model) renderActivityFeed(width int) string {
 	return strings.Join(out, "\n")
 }
 
-// feedBlockKeys derives a stable identity per block from its own content plus
-// an occurrence counter for identical blocks. Identity survives the trace's
-// head truncation and new blocks appending, which block indices do not.
-func feedBlockKeys(blocks []feedBlock) []string {
-	keys := make([]string, len(blocks))
-	occurrences := make(map[uint64]int, len(blocks))
+// settledTrace is everything in the worker's log up to its last complete line,
+// parsed once. The log is a file the executor only appends to, and the pane
+// tails it every cycle the file grew — so re-matching every line of sixty-four
+// kilobytes against the turn rule, and re-hashing every one of them for its
+// identity, was work that had already been done for all but the last few
+// hundred bytes of it.
+//
+// The kept prefix has to still be a prefix: the trace is clipped to its last
+// sixty-four kilobytes, and when the head falls off, everything is read again.
+func (m *Model) settledTrace(width int) ([]feedBlock, []string, []string) {
+	trace := strings.ReplaceAll(m.nodeTraceText, "\r\n", "\n")
+	if m.feedTraceWidth != width || !strings.HasPrefix(trace, m.feedTraceParsed) {
+		m.forgetFeedTrace()
+		m.feedTraceWidth = width
+	}
+	grown := trace[len(m.feedTraceParsed):]
+	// Only whole lines settle. A line the worker is still writing is parsed
+	// fresh every cycle until the newline that ends it arrives.
+	complete := strings.LastIndexByte(grown, '\n') + 1
+	if complete > 0 {
+		chunk := grown[:complete]
+		before := len(m.feedBlocksKept)
+		m.feedBlocksKept = appendTraceBlocks(m.feedBlocksKept, chunk, width)
+		m.feedKeysKept = appendFeedBlockKeys(m.feedKeysKept, m.feedOccurrences, m.feedBlocksKept[before:])
+		m.feedMediaKept = append(m.feedMediaKept, traceMediaReferences(chunk)...)
+		m.feedTraceParsed = trace[:len(m.feedTraceParsed)+complete]
+	}
+	m.feedTail = grown[complete:]
+	return m.feedBlocksKept, m.feedKeysKept, m.feedMediaKept
+}
+
+// forgetFeedTrace drops the parsed prefix. Opening another node is the obvious
+// caller; the other is a log whose head has fallen off its byte budget, which
+// is no longer the log the prefix was read from.
+func (m *Model) forgetFeedTrace() {
+	m.feedTraceParsed = ""
+	m.feedTraceWidth = 0
+	m.feedTail = ""
+	m.feedBlocksKept = nil
+	m.feedKeysKept = nil
+	m.feedMediaKept = nil
+	m.feedOccurrences = make(map[uint64]int, 256)
+}
+
+func traceMediaReferences(chunk string) []string {
+	if chunk == "" {
+		return nil
+	}
+	return mediaReferences(strings.ReplaceAll(chunk, "⏎", " "))
+}
+
+// appendFeedBlockKeys derives a stable identity per block from its own content
+// plus an occurrence counter for identical blocks. Identity survives the
+// trace's head truncation and new blocks appending, which block indices do
+// not. The counter carries across calls so a block appended later gets the
+// number it would have got had the whole log been keyed at once; whatever the
+// unsettled tail contributes is taken back off before returning, because the
+// tail is keyed again from scratch next cycle.
+func appendFeedBlockKeys(keys []string, occurrences map[uint64]int, blocks []feedBlock) []string {
+	if len(blocks) == 0 {
+		return keys
+	}
+	out := append(append([]string(nil), keys...), make([]string, len(blocks))...)
 	for index, block := range blocks {
 		lines := block.full
 		if lines == nil {
@@ -550,16 +661,41 @@ func feedBlockKeys(blocks []feedBlock) []string {
 			_, _ = digest.Write([]byte{'\n'})
 		}
 		sum := digest.Sum64()
-		keys[index] = fmt.Sprintf("%016x#%d", sum, occurrences[sum])
+		out[len(keys)+index] = fmt.Sprintf("%016x#%d", sum, occurrences[sum])
 		occurrences[sum]++
 	}
-	return keys
+	return out
 }
 
-func parseFeedBlocks(trace string, messages []store.Message, width int) []feedBlock {
-	trace = strings.TrimRight(strings.ReplaceAll(trace, "\r\n", "\n"), "\n")
-	var blocks []feedBlock
-	for _, line := range strings.Split(trace, "\n") {
+// releaseFeedBlockKeys hands back the occurrence numbers a transient run took.
+func releaseFeedBlockKeys(occurrences map[uint64]int, blocks []feedBlock) {
+	for _, block := range blocks {
+		lines := block.full
+		if lines == nil {
+			lines = block.brief
+		}
+		digest := fnv.New64a()
+		for _, line := range lines {
+			_, _ = digest.Write([]byte(line))
+			_, _ = digest.Write([]byte{'\n'})
+		}
+		sum := digest.Sum64()
+		if occurrences[sum] <= 1 {
+			delete(occurrences, sum)
+			continue
+		}
+		occurrences[sum]--
+	}
+}
+
+// appendTraceBlocks turns a run of whole log lines into blocks. It appends
+// rather than returning its own slice, because the feed hands it the blocks it
+// already has and the chunk that arrived since.
+func appendTraceBlocks(blocks []feedBlock, chunk string, width int) []feedBlock {
+	if chunk == "" {
+		return blocks
+	}
+	for _, line := range strings.Split(chunk, "\n") {
 		if strings.TrimSpace(line) == "" {
 			continue
 		}
@@ -586,15 +722,20 @@ func parseFeedBlocks(trace string, messages []store.Message, width int) []feedBl
 				mutedStyle.Faint(true).Render(truncate(strings.ReplaceAll(line, "⏎", " "), width))}})
 		}
 	}
-	if len(messages) > 0 {
-		rule := feedRule("thread", width)
-		blocks = append(blocks, feedBlock{brief: []string{"", mutedStyle.Faint(true).Render(rule)}})
-		now := time.Now()
-		for _, message := range messages {
-			header := speakerHeader(message, now)
-			body := strings.Split(renderMarkdown(message.Body, width), "\n")
-			blocks = append(blocks, feedBlock{brief: append([]string{header}, body...)})
-		}
+	return blocks
+}
+
+func appendMessageBlocks(blocks []feedBlock, messages []store.Message, width int) []feedBlock {
+	if len(messages) == 0 {
+		return blocks
+	}
+	rule := feedRule("thread", width)
+	blocks = append(blocks, feedBlock{brief: []string{"", mutedStyle.Faint(true).Render(rule)}})
+	now := time.Now()
+	for _, message := range messages {
+		header := speakerHeader(message, now)
+		body := strings.Split(renderMarkdown(message.Body, width), "\n")
+		blocks = append(blocks, feedBlock{brief: append([]string{header}, body...)})
 	}
 	return blocks
 }

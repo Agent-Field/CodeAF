@@ -264,9 +264,25 @@ type Model struct {
 
 	nodeTrace viewport.Model
 
-	messages             []store.Message
-	snapshot             store.Snapshot
-	cardSnapshot         store.Snapshot
+	messages     []store.Message
+	snapshot     store.Snapshot
+	cardSnapshot store.Snapshot
+	// Both snapshots are asked "which node is this" far more often than they
+	// are replaced — once per message in the thread, once per part of every
+	// card, once per glyph in the rail — and each answer was a walk of the
+	// whole graph. The index projects the slice it was built from and notices
+	// when that slice is swapped for another.
+	snapshotIndex     nodeIndex
+	cardSnapshotIndex nodeIndex
+	jobRoots          jobRootIndex
+	cardIndex         cardIndex
+	// Two, because the rail draws whichever snapshot it is scoped to while
+	// everything else reads the live one; one projection would be rebuilt
+	// twice a frame doing nothing but alternating between them.
+	graphFacts graphFacts
+	treeFacts  graphFacts
+
+	shimmerLive          []jobCard
 	pending              []store.Command
 	spendToday           float64
 	jobUsage             map[string]store.JobUsage
@@ -403,6 +419,19 @@ type Model struct {
 	// tail-truncated at its byte budget, so positions shift as it grows.
 	feedKeys     []string
 	feedExpanded map[string]bool
+
+	// The parsed prefix of the worker's log, and what it yielded. The log is
+	// append-only, so everything up to its last complete line has already been
+	// matched, rendered, keyed and scanned for media, and only what arrived
+	// since needs any of that done again. feedTail is the line the worker is
+	// still writing, which settles nothing.
+	feedTraceParsed string
+	feedTraceWidth  int
+	feedTail        string
+	feedBlocksKept  []feedBlock
+	feedKeysKept    []string
+	feedMediaKept   []string
+	feedOccurrences map[uint64]int
 
 	// expandedMessages holds the seqs of long chat deliverables opened in
 	// place; everything else shows its lead and a ⋯.
@@ -597,9 +626,42 @@ type Model struct {
 	// dropped whole when the pane's width changes or the journal moves, which
 	// is the only way the parts of a block outside its key can change.
 	blockCache map[string]threadBlock
+	blockSeen  map[string]uint64
 	blockWidth int
 	blockGen   uint64
 	threadGen  uint64
+	renderSeq  uint64
+
+	// cardBlocks and briefBlocks are the same bargain for the two thread
+	// blocks that are not message groups. Both are keyed by the thing they
+	// draw rather than by its bytes, and both keep the value they were built
+	// from: a settled card and an arrival brief are only redrawn when the card
+	// or the brief itself is no longer the one on screen.
+	cardBlocks  map[string]cardBlock
+	briefBlocks map[int64]briefBlock
+
+	// workspaceLinks remembers which words in an answer are files. workspaceGen
+	// moves when the whole memory is dropped, and the rendered blocks carry it
+	// in their keys so they are rebuilt with it.
+	workspaceLinks map[string]workspaceLink
+	workspaceGen   uint64
+
+	// The two modal documents are laid out whole and shown a window at a time,
+	// so each is kept beside the shape it was laid out for. The settings sheet
+	// is not kept while a row is being edited: the cursor in the field is part
+	// of its bytes and it blinks.
+	helpLines        []string
+	helpLinesWidth   int
+	helpLinesNarrow  bool
+	settingsLines    []string
+	settingsRowLines []int
+	settingsLinesOK  bool
+	settingsLinesFor int
+
+	// blockBuilds counts the thread blocks this session has had to assemble.
+	// It is the one number that says whether the caches above are doing their
+	// work, and the render-reuse tests read it.
+	blockBuilds int
 
 	// chatBlocks is the thread exactly as the last full render assembled it,
 	// with the positions of the two lines that breathe. The shimmer and the
@@ -831,6 +893,10 @@ func (m *Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 	default:
 		m.chatBlocksValid = false
 	}
+	// The settings sheet is laid out for the state this message finds, and
+	// every hand on it — the selection, the editor, the values behind the
+	// rows — moves only because a message arrived.
+	m.settingsLinesOK = false
 	switch message := message.(type) {
 	case tea.WindowSizeMsg:
 		m.setSize(message.Width, message.Height)
@@ -1847,6 +1913,7 @@ func (m *Model) applyResidency(result pollResultMsg) {
 	m.adoptCommander(result.adopt)
 	m.streamRearm = true
 	m.threadGen++
+	m.forgetWorkspaceLinks()
 	m.invalidateRailCaches()
 }
 
@@ -1877,8 +1944,10 @@ func (m *Model) applyQuietPoll(result pollResultMsg) {
 	// The minute repaint is the clock's own frame: it re-renders everything
 	// from state already in hand. Retiring the rendered blocks with it keeps
 	// the cache one thread wide, instead of one entry per timestamp a long
-	// idle stretch walks through.
+	// idle stretch walks through, and it is where a file that landed under a
+	// node nobody has touched since finally gets to become a link.
 	m.threadGen++
+	m.forgetWorkspaceLinks()
 	m.rebuildCards()
 	m.setSize(m.width, m.height)
 }
@@ -1893,11 +1962,13 @@ func (m *Model) applyPoll(result pollResultMsg) {
 	m.applyResidency(result)
 	m.invalidateRailCaches()
 	m.seedRailCaches(result)
-	// A moved journal is the one thing that can change a settled message's
-	// rendering from outside the message itself: the node it names, the files
-	// it links, the turn that answers its question. So it retires the thread's
-	// rendered blocks, and nothing else has to.
-	m.threadGen++
+	// A moved journal can change a settled message's rendering from outside the
+	// message itself: the node it names, the files it links, the turn that
+	// answers its question. It used to say so by retiring every rendered block,
+	// which meant a busy hour rebuilt the whole conversation two and a half
+	// times a second to draw the one line that had actually moved. All three
+	// are named in the block keys now, so a poll retires exactly the blocks
+	// that depended on what it changed and leaves the rest standing.
 	if result.journalRead {
 		if result.journalSeq != m.journalSeq || !m.journalPrimed {
 			m.lastChangeAt = m.standingTime()
@@ -2380,6 +2451,7 @@ func (m *Model) activityBarVisible() bool {
 
 func (m *Model) setSize(width, height int) {
 	m.invalidateDock()
+	m.settingsLinesOK = false
 	m.width = max(20, width)
 	m.height = max(8, height)
 	m.horizontal = m.width >= railAtWidth
