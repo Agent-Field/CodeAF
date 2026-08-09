@@ -144,6 +144,16 @@ const usageText = `aforge — build and revise task graphs
   aforge rebuild [--db path] [--yes]  discard every derived table and replay the journal
   aforge why self [--db path]   show today's self-spend receipts
 
+Workers:
+  chat, do and run each take --subharness <name>, which forces every leaf onto
+  one worker instead of letting the compiler choose per node. Leave it unset
+  unless you are measuring one worker against another. This build has:
+    swe   a whole software-engineering pipeline. It takes a coding issue in a
+          git repository whole — plans it, edits in parallel worktrees, judges
+          each change before merging, and audits the result against that
+          repository's own build and tests before calling itself done.
+  An unknown name is a note on stderr and the default worker, never a refusal.
+
 Environment:
   OPENROUTER_API_KEY   required
   AFORGE_MODEL         default ` + config.DefaultModel + `
@@ -174,6 +184,9 @@ Environment:
   AFORGE_PRACTICE_IDLE  20m  quiet period before self-practice
   AFORGE_BRIEF_AFTER   4h  minimum absence before an arrival brief (0 = always)
   AFORGE_PREAUTHORIZE_SPEND  1 raises the rail without a headless stdin prompt
+  AFORGE_SWE_MAX_COST  10.0  dollar ceiling on one swe leaf's run inside the
+                       coding pipeline. A backstop, not a budget — the daily
+                       rail is the budget.
   AFORGE_HOME          the whole state root — journal, workspace, CAS, craft,
                        profiles, catalog, skills (default ~/.aforge). Move it to
                        run a disposable brain that touches nothing of yours.
