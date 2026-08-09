@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"strings"
 
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 )
@@ -45,6 +46,41 @@ func newSSEDecoder(reader io.Reader) *sseDecoder {
 // the underlying reader failed with otherwise.
 func (d *sseDecoder) Decode() (ai.StreamChunk, error) {
 	for {
+		payload, err := d.next()
+		if err != nil {
+			return ai.StreamChunk{}, err
+		}
+		var chunk ai.StreamChunk
+		if json.Unmarshal(payload, &chunk) != nil {
+			continue
+		}
+		return chunk, nil
+	}
+}
+
+// DecodeChunk is the same stream read into the wire's own shape rather than the
+// SDK's. Everything the SDK's type has no field for — a tool call being spelled
+// out fragment by fragment, a reasoning token — is dropped by Decode and kept
+// here, which is the whole difference between the two.
+func (d *sseDecoder) DecodeChunk() (streamChunk, error) {
+	for {
+		payload, err := d.next()
+		if err != nil {
+			return streamChunk{}, err
+		}
+		var chunk streamChunk
+		if json.Unmarshal(payload, &chunk) != nil {
+			continue
+		}
+		return chunk, nil
+	}
+}
+
+// next returns the JSON payload of the next data: message. The bytes belong to
+// the decoder and are valid until the call after this one, which is why both
+// decoders above unmarshal before asking for another.
+func (d *sseDecoder) next() ([]byte, error) {
+	for {
 		line, err := d.reader.ReadSlice('\n')
 		if errors.Is(err, bufio.ErrBufferFull) {
 			// One SSE line may be the whole message and the whole message may
@@ -59,13 +95,13 @@ func (d *sseDecoder) Decode() (ai.StreamChunk, error) {
 			// message so far ended with one. Everything before that first
 			// newline is the message; the rest of the buffer is the next one.
 			if line[0] == '\n' && len(d.message) > 0 && d.message[len(d.message)-1] == '\n' {
-				chunk, delivered, done := parseSSEMessage(d.message[:len(d.message)-1])
+				payload, delivered, done := parseSSEMessage(d.message[:len(d.message)-1])
 				d.message = d.message[:0]
 				switch {
 				case done:
-					return ai.StreamChunk{}, io.EOF
+					return nil, io.EOF
 				case delivered:
-					return chunk, nil
+					return payload, nil
 				}
 				continue
 			}
@@ -76,26 +112,144 @@ func (d *sseDecoder) Decode() (ai.StreamChunk, error) {
 			// error, and the bytes are consumed above before the error is
 			// surfaced here. A partial trailing message is dropped, which is
 			// what a message with no separator has always been.
-			return ai.StreamChunk{}, err
+			return nil, err
 		}
 	}
 }
 
 // parseSSEMessage is the SDK's message handling, byte for byte: delivered says
-// the chunk is one to hand back, done says the stream said [DONE].
-func parseSSEMessage(message []byte) (chunk ai.StreamChunk, delivered, done bool) {
+// the payload is one to hand back, done says the stream said [DONE]. A payload
+// that will not parse as JSON is still delivered here and skipped by the caller,
+// which is where the SDK skips it too.
+func parseSSEMessage(message []byte) (payload []byte, delivered, done bool) {
 	const prefix = "data: "
 	if !bytes.HasPrefix(message, []byte(prefix)) {
 		// A comment, a keepalive, an event: line, a multi-line message — none
 		// of them are chunks and none of them stop the stream.
-		return ai.StreamChunk{}, false, false
+		return nil, false, false
 	}
-	payload := bytes.TrimSpace(message[len(prefix):])
+	payload = bytes.TrimSpace(message[len(prefix):])
 	if bytes.Equal(payload, []byte("[DONE]")) {
-		return ai.StreamChunk{}, false, true
+		return nil, false, true
 	}
-	if err := json.Unmarshal(payload, &chunk); err != nil {
-		return ai.StreamChunk{}, false, false
+	return payload, true, false
+}
+
+// streamChunk is the streamed response as the wire actually spells it. The
+// SDK's StreamChunk carries a delta of role and content and nothing else, so a
+// tool call arriving in fragments and a reasoning token are invisible to
+// anything decoding through it: every streamed completion returned zero tool
+// calls, which made tool-calling dead on the streamed path and turned the head's
+// control belt into a round trip that could not succeed.
+//
+// The fields below are the OpenAI streaming shape plus the two names reasoning
+// travels under — OpenRouter's "reasoning" and the "reasoning_content" the
+// DeepSeek-family endpoints send. Reasoning text is never accumulated and never
+// shown; that it is happening is the whole of what leaves this file.
+type streamChunk struct {
+	ID      string         `json:"id"`
+	Object  string         `json:"object"`
+	Created int64          `json:"created"`
+	Model   string         `json:"model"`
+	Choices []streamChoice `json:"choices"`
+	Usage   *ai.Usage      `json:"usage,omitempty"`
+}
+
+type streamChoice struct {
+	Index        int         `json:"index"`
+	Delta        streamDelta `json:"delta"`
+	FinishReason *string     `json:"finish_reason"`
+}
+
+type streamDelta struct {
+	Role             string          `json:"role,omitempty"`
+	Content          string          `json:"content,omitempty"`
+	ToolCalls        []toolCallDelta `json:"tool_calls,omitempty"`
+	Reasoning        string          `json:"reasoning,omitempty"`
+	ReasoningContent string          `json:"reasoning_content,omitempty"`
+}
+
+// thinking reports that this delta carried thought rather than answer.
+func (d streamDelta) thinking() bool {
+	return d.Reasoning != "" || d.ReasoningContent != ""
+}
+
+// toolCallDelta is one fragment of one tool call. Index is a pointer because
+// its absence and its zero are different claims: an endpoint that omits it is
+// spelling out one call at a time, and reading that as "call 0" would fuse a
+// second call onto the first.
+type toolCallDelta struct {
+	Index    *int              `json:"index"`
+	ID       string            `json:"id,omitempty"`
+	Type     string            `json:"type,omitempty"`
+	Function toolFunctionDelta `json:"function"`
+}
+
+type toolFunctionDelta struct {
+	Name      string `json:"name,omitempty"`
+	Arguments string `json:"arguments,omitempty"`
+}
+
+// toolCallAccumulator reassembles the fragments into whole calls. Providers
+// differ in what they repeat — some resend the id and the name on every
+// fragment, some send them once — so the rule is the same for every field: the
+// first non-empty value wins, and arguments always append.
+type toolCallAccumulator struct {
+	order []int
+	calls map[int]*ai.ToolCall
+	args  map[int]*strings.Builder
+}
+
+func (a *toolCallAccumulator) add(fragment toolCallDelta) {
+	index := 0
+	switch {
+	case fragment.Index != nil:
+		index = *fragment.Index
+	case len(a.order) > 0 && fragment.ID == "":
+		// A continuation of the call already open.
+		index = a.order[len(a.order)-1]
+	default:
+		index = len(a.order)
 	}
-	return chunk, true, false
+	if a.calls == nil {
+		a.calls, a.args = make(map[int]*ai.ToolCall, 2), make(map[int]*strings.Builder, 2)
+	}
+	call, known := a.calls[index]
+	if !known {
+		call = &ai.ToolCall{Type: "function"}
+		a.calls[index], a.args[index] = call, &strings.Builder{}
+		a.order = append(a.order, index)
+	}
+	if fragment.ID != "" {
+		call.ID = fragment.ID
+	}
+	if fragment.Type != "" {
+		call.Type = fragment.Type
+	}
+	if fragment.Function.Name != "" {
+		call.Function.Name = fragment.Function.Name
+	}
+	a.args[index].WriteString(fragment.Function.Arguments)
+}
+
+// assembled returns the whole calls, in the order the stream opened them. A call
+// with no name is dropped: the harness would only fail it, and a half-delivered
+// fragment is not an instruction.
+func (a *toolCallAccumulator) assembled() []ai.ToolCall {
+	if len(a.order) == 0 {
+		return nil
+	}
+	assembled := make([]ai.ToolCall, 0, len(a.order))
+	for _, index := range a.order {
+		call := a.calls[index]
+		if call.Function.Name == "" {
+			continue
+		}
+		call.Function.Arguments = a.args[index].String()
+		assembled = append(assembled, *call)
+	}
+	if len(assembled) == 0 {
+		return nil
+	}
+	return assembled
 }

@@ -944,3 +944,222 @@ func TestAStreamedReplyNeverPaintsBarsOnItsBlankEdges(t *testing.T) {
 		t.Fatalf("the card lost the reply it was trimming:\n%s", frame)
 	}
 }
+
+// ── wave 5 · pipeline hygiene ───────────────────────────────────────────────
+
+// streamWords is what the reader can actually see, counted the way the reveal
+// spends it.
+func streamWords(text string) int {
+	return len(strings.Fields(text))
+}
+
+// THREAD-UX.md calls the unroll pacing "the floor", and it had become the
+// ceiling: two words per 120ms frame is under 17 words a second, so a reply the
+// provider finished in two seconds took twenty-four to draw. The tick spends
+// more when it is behind — and never so much that a paragraph appears whole.
+func TestTheRevealCatchesUpWithAFastProviderWithoutDumpingParagraphs(t *testing.T) {
+	model := New(&fakeBackend{}, "pace")
+	model.setSize(100, 30)
+	words := make([]string, 400)
+	for index := range words {
+		words[index] = fmt.Sprintf("word%d", index)
+	}
+	reply := strings.Join(words, " ")
+
+	model.applyStreamEvent(StreamEvent{Kind: StreamStarted})
+	model.applyStreamEvent(StreamEvent{Kind: StreamDelta, Delta: `{"reply":"` + reply + `"}`})
+	if model.streamTarget != reply {
+		t.Fatalf("the fixture did not deliver the whole reply: %d bytes", len(model.streamTarget))
+	}
+
+	ticks := 0
+	for model.streamShown != model.streamTarget {
+		before := streamWords(model.streamShown)
+		model.advanceStream()
+		drawn := streamWords(model.streamShown) - before
+		if drawn > streamMaxTokensPerTick {
+			t.Fatalf("frame %d drew %d words at once", ticks, drawn)
+		}
+		ticks++
+		if ticks > len(words) {
+			t.Fatalf("the reveal never finished: %d words shown", streamWords(model.streamShown))
+		}
+	}
+	// The floor alone would need one frame per two words — twenty-four seconds
+	// for this reply. Catching up costs a frame per dozen until the backlog is
+	// one the cadence can carry, and the calm tail after that.
+	ceiling := len(words)/streamMaxTokensPerTick + streamLagTokens/streamTokensPerTick + 2
+	if ticks > ceiling {
+		t.Fatalf("the reveal took %d frames, want at most %d", ticks, ceiling)
+	}
+	if ticks <= len(words)/(2*streamMaxTokensPerTick) {
+		t.Fatalf("the reveal drew %d frames — faster than a typewriter is not the ask", ticks)
+	}
+}
+
+// The calm case is the common case and it is untouched: a reply arriving at
+// provider speed is never more than a couple of words ahead of the reveal, and
+// those frames still draw exactly two.
+func TestASlowProviderKeepsTheOriginalCadenceExactly(t *testing.T) {
+	model := New(&fakeBackend{}, "cadence")
+	model.applyStreamEvent(StreamEvent{Kind: StreamStarted})
+	for _, delta := range []string{`{"reply":"one two `, `three four `, `five six seven eight"}`} {
+		model.applyStreamEvent(StreamEvent{Kind: StreamDelta, Delta: delta})
+		if got := model.streamRevealTokens(); got != streamTokensPerTick {
+			t.Fatalf("a small backlog spent %d words a frame, want %d", got, streamTokensPerTick)
+		}
+		model.advanceStream()
+	}
+}
+
+// A stopped turn keeps the calm cadence whatever it is holding: what lands
+// after an interruption is the words already on screen plus the mark that they
+// stopped there, and the frozen partial is never redrawn at speed.
+func TestAStoppedReplyIsNotCaughtUpWith(t *testing.T) {
+	model, _ := liveTurn(t, "the report is ")
+	if !model.interruptTurn() {
+		t.Fatal("the fixture had no turn to stop")
+	}
+	if model.streamShown != model.streamTarget {
+		t.Fatalf("the stopped reply is still moving: shown %q target %q",
+			model.streamShown, model.streamTarget)
+	}
+	model.advanceStream()
+	if model.streamShown != model.streamTarget {
+		t.Fatal("a frame moved a stopped reply")
+	}
+	// The durable line lands with a long tail; it still types itself in.
+	model.streamTarget = model.streamShown + strings.Repeat(" more", 200)
+	if got := model.streamRevealTokens(); got != streamTokensPerTick {
+		t.Fatalf("a stopped reply's tail spent %d words a frame, want %d", got, streamTokensPerTick)
+	}
+}
+
+// A reasoning phase draws nothing and used to say nothing: the pulse stood
+// there for as long as the model thought, indistinguishable from a window that
+// had not heard. It says the one word now, and loses it the instant an answer
+// starts arriving.
+func TestTheThinkingPhaseSaysSoAndStopsAtTheFirstWord(t *testing.T) {
+	model := New(&fakeBackend{}, "thinking")
+	model.setSize(100, 30)
+	model.noteAwaitingReply(store.Message{
+		Seq: 12, SessionID: "thinking", Role: store.RoleUser, Body: "how did the scans go?",
+	})
+	model.applyStreamEvent(StreamEvent{Kind: StreamStarted})
+	if line := ansi.Strip(model.renderAwaitingReply(60)); strings.Contains(line, "thinking") {
+		t.Fatalf("an ordinary wait claimed the model was thinking: %q", line)
+	}
+	model.applyStreamEvent(StreamEvent{Kind: StreamThinking})
+	line := ansi.Strip(model.renderAwaitingReply(60))
+	if !strings.HasPrefix(line, "aforge") || !strings.Contains(line, "thinking") {
+		t.Fatalf("the reasoning phase drew %q", line)
+	}
+	model.applyStreamEvent(StreamEvent{Kind: StreamDelta, Delta: `{"reply":"They finished clean.`})
+	if model.streamThinking {
+		t.Fatal("the first word of the answer left the line still saying thinking")
+	}
+}
+
+// pollTicksIn runs a command tree and returns every poll tick it schedules.
+// Batches are walked because that is how the handlers return them.
+func pollTicksIn(command tea.Cmd) []pollTickMsg {
+	if command == nil {
+		return nil
+	}
+	switch message := command().(type) {
+	case pollTickMsg:
+		return []pollTickMsg{message}
+	case tea.BatchMsg:
+		var ticks []pollTickMsg
+		for _, inner := range message {
+			ticks = append(ticks, pollTicksIn(inner)...)
+		}
+		return ticks
+	}
+	return nil
+}
+
+// A landed post used to wait out whatever tick was already scheduled — up to
+// two seconds on an idle window — before the reply could be picked up. It pokes
+// the read forward now, and the poke is a re-arm rather than a second timer:
+// the tick it replaced arrives spent and reads nothing.
+func TestALandedPostPokesOnePollAndSpendsTheTickItReplaced(t *testing.T) {
+	model := New(&fakeBackend{}, "poke")
+	model.setSize(100, 30)
+	stale := pollTicksIn(model.nextPollTick())
+	if len(stale) != 1 {
+		t.Fatalf("the chain armed %d ticks", len(stale))
+	}
+
+	_, command := model.Update(postResultMsg{message: store.Message{
+		Seq: 64, SessionID: "poke", Role: store.RoleUser, Body: "how is it going?", Time: time.Now(),
+	}})
+	poked := pollTicksIn(command)
+	if len(poked) != 1 {
+		t.Fatalf("a landed post scheduled %d polls, want exactly one", len(poked))
+	}
+	if poked[0].serial != model.pollSerial {
+		t.Fatalf("the poke armed serial %d while the window holds %d", poked[0].serial, model.pollSerial)
+	}
+
+	if _, command := model.Update(stale[0]); command != nil {
+		t.Fatal("the replaced tick still read the store")
+	}
+	if _, command := model.Update(poked[0]); command == nil {
+		t.Fatal("the poke's own tick read nothing")
+	}
+}
+
+// The other end of the same turn: the provider stops streaming, the durable
+// reply is written right after it, and the window used to sit on the cadence
+// before noticing. A delta never pokes — that would be a read per token.
+func TestAFinishedStreamPokesThePollAndADeltaNeverDoes(t *testing.T) {
+	model := New(&fakeBackend{}, "stream-poke")
+	model.setSize(100, 30)
+	before := model.pollSerial
+	if ticks := pollTicksIn(model.streamPoke(StreamDelta)); len(ticks) != 0 {
+		t.Fatalf("a delta scheduled %d polls", len(ticks))
+	}
+	if ticks := pollTicksIn(model.streamPoke(StreamThinking)); len(ticks) != 0 {
+		t.Fatalf("a thinking event scheduled %d polls", len(ticks))
+	}
+	if model.pollSerial != before {
+		t.Fatal("a delta re-armed the poll chain")
+	}
+	if ticks := pollTicksIn(model.streamPoke(StreamFinished)); len(ticks) != 1 {
+		t.Fatalf("a finished stream scheduled %d polls, want one", len(ticks))
+	}
+	if model.pollSerial != before+1 {
+		t.Fatalf("the finish armed the chain %d times", model.pollSerial-before)
+	}
+}
+
+// The steady state, which is what the reader actually lives in: a provider
+// running faster than the floor. The reveal keeps pace with it and the words
+// still owed stay inside a breath — under two dozen plus one frame's worth —
+// instead of growing for the length of the reply.
+func TestTheRevealStaysWithinABreathOfAFastProvider(t *testing.T) {
+	model := New(&fakeBackend{}, "lag")
+	model.applyStreamEvent(StreamEvent{Kind: StreamStarted})
+	model.applyStreamEvent(StreamEvent{Kind: StreamDelta, Delta: `{"reply":"`})
+
+	const perFrame = 8
+	worst := 0
+	for frame := 0; frame < 80; frame++ {
+		words := make([]string, perFrame)
+		for index := range words {
+			words[index] = fmt.Sprintf("w%d-%d", frame, index)
+		}
+		model.applyStreamEvent(StreamEvent{Kind: StreamDelta, Delta: strings.Join(words, " ") + " "})
+		model.advanceStream()
+		if pending := pendingStreamTokens(model.streamShown, model.streamTarget, 1<<20); pending > worst {
+			worst = pending
+		}
+	}
+	if worst > streamLagTokens+streamMaxTokensPerTick {
+		t.Fatalf("the reveal fell %d words behind a %d-word-per-frame provider", worst, perFrame)
+	}
+	if worst < streamTokensPerTick {
+		t.Fatalf("the reveal drew ahead of the provider: backlog peaked at %d", worst)
+	}
+}

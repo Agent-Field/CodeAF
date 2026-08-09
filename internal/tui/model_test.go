@@ -1638,7 +1638,7 @@ func TestRunningSpinnerAdvancesOnlyOnAnimationTicks(t *testing.T) {
 	model.refreshGraph()
 	initial := model.spinnerFrame
 
-	_, _ = model.Update(pollTickMsg(time.Now()))
+	_, _ = model.Update(pollTickMsg{at: time.Now(), serial: model.pollSerial})
 	if model.spinnerFrame != initial {
 		t.Fatalf("data-poll tick advanced spinner from %d to %d", initial, model.spinnerFrame)
 	}

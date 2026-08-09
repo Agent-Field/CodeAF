@@ -221,7 +221,9 @@ func (c *Client) completeWithMessagesStreaming(
 
 	response := &ai.Response{Model: request.Model}
 	var content strings.Builder
+	var tools toolCallAccumulator
 	finishReason := ""
+	thinking := false
 	// The decoder is ours rather than the SDK's, and sse.go says why: the SDK's
 	// accumulation is quadratic in the length of a single message, which costs
 	// about a gigabyte of copying to deliver one four-megabyte reasoning block.
@@ -236,7 +238,7 @@ func (c *Client) completeWithMessagesStreaming(
 	// connection's idle watchdog.
 	decoder := newSSEDecoder(httpResponse.Body)
 	for {
-		chunk, decodeErr := decoder.Decode()
+		chunk, decodeErr := decoder.DecodeChunk()
 		if decodeErr != nil {
 			if errors.Is(decodeErr, io.EOF) {
 				break
@@ -259,22 +261,31 @@ func (c *Client) completeWithMessagesStreaming(
 				continue
 			}
 			if choice.Delta.Content != "" {
+				thinking = false
 				content.WriteString(choice.Delta.Content)
 				observer(StreamEvent{Kind: StreamDelta, Delta: choice.Delta.Content})
+			}
+			// Reasoning is announced once per run of it rather than per token:
+			// the surface only ever draws that thought is happening, and the
+			// text itself is not ours to show.
+			if !thinking && choice.Delta.thinking() {
+				thinking = true
+				observer(StreamEvent{Kind: StreamThinking})
+			}
+			for _, fragment := range choice.Delta.ToolCalls {
+				tools.add(fragment)
 			}
 			if choice.FinishReason != nil {
 				finishReason = *choice.FinishReason
 			}
 		}
 	}
-	response.Choices = []ai.Choice{{
-		Index: 0,
-		Message: ai.Message{
-			Role:    "assistant",
-			Content: []ai.ContentPart{{Type: "text", Text: content.String()}},
-		},
-		FinishReason: finishReason,
-	}}
+	message := ai.Message{
+		Role:      "assistant",
+		Content:   []ai.ContentPart{{Type: "text", Text: content.String()}},
+		ToolCalls: tools.assembled(),
+	}
+	response.Choices = []ai.Choice{{Index: 0, Message: message, FinishReason: finishReason}}
 	finished = true
 	observer(StreamEvent{Kind: StreamFinished})
 	return response, nil
