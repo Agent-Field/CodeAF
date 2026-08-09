@@ -105,6 +105,12 @@ var OperatorEnvPins = []string{
 	"AFORGE_RTK",
 	"AFORGE_RTK_BIN",
 	"AFORGE_PREAUTHORIZE_SPEND",
+	// AFORGE_SWE_MAX_COST is the dollar ceiling one coding-pipeline leaf may
+	// spend inside the vendored engine. It is plumbing rather than a setting
+	// for the same reason the node budget is: it is a number handed to a
+	// subprocess, not a preference the product has an opinion about, and the
+	// preference that governs spending is the daily rail.
+	"AFORGE_SWE_MAX_COST",
 	// AFORGE_SWEPRO is not a setting anybody would ever want to turn on: it
 	// tells the binary, before it has read anything else, that this process
 	// is not aforge at all but the vendored swe engine (cmd/aforge/swepro.go).

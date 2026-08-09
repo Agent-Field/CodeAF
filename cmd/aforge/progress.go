@@ -61,6 +61,25 @@ func chatPlanProgress(history *store.Store, anchor resident.PlanAnchor) plan.Pro
 	return poster.report
 }
 
+// leafProgress is the same poster, offered to a running leaf.
+//
+// A compile's phases and a leaf's stages are the same kind of fact — where a
+// long thing has got to — and they have the same right answer: one replaceable
+// row per phase, throttled, anchored to the job rather than posted into the
+// conversation. Reusing the poster rather than writing a second one is what
+// keeps them looking the same on the surface, which is the whole of "one
+// mouth". It answers nil when there is nothing to post to, and Task.Progress is
+// nil-safe, so a one-shot leaf carries no channel at all.
+func leafProgress(history *store.Store, anchor resident.PlanAnchor) func(string, int, int, string) {
+	report := chatPlanProgress(history, anchor)
+	if report == nil {
+		return nil
+	}
+	return func(phase string, done, total int, latest string) {
+		report(plan.ProgressUpdate{Phase: phase, Done: done, Total: total, Latest: latest})
+	}
+}
+
 func (p *planProgressPoster) report(update plan.ProgressUpdate) {
 	phase := update.Phase
 	count := update.Total > 0

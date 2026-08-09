@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"io"
+	"os"
 	"strings"
 	"time"
 
@@ -23,15 +24,18 @@ import (
 // them the same way, which is exactly why the table is a table of constructors
 // and not a table of executors.
 //
-// Wave one ships one entry. That is the point: the seam has to be load-bearing
-// before the second worker exists, or the second worker arrives as a rewrite of
-// every dispatch path instead of a registration.
+// Wave one shipped one entry, and that was the point: the seam had to be
+// load-bearing before the second worker existed, or the second worker would
+// have arrived as a rewrite of every dispatch path instead of a registration.
+// swe is the proof — it is two lines here and one file beside this one.
 
 // installSubharnesses declares this build's workers to the whole process. It is
 // called once, before any command runs, so every surface — chat, do, run, wake
 // — sees the same menu and the same rulers. Adding a worker is a line here and
 // a line in leafExecutors, and nothing else.
-func installSubharnesses() {}
+func installSubharnesses() {
+	exec.RegisterSubharness(sweInfo())
+}
 
 // leafBuild is everything a worker needs to be constructed for one leaf. It is
 // the linear executor's own argument list, named, because that list is the
@@ -47,6 +51,12 @@ type leafBuild struct {
 	maxTurns  int
 	maxTokens int
 	deadline  time.Duration
+	// model names what this leaf runs on, in aforge's spelling. The generalist
+	// never needed it — its client already is that model — but a worker that
+	// drives a separate process has to be able to say the name out loud, and a
+	// specialist quietly substituting its own vendor defaults would make the
+	// router's ledger a record of models nobody chose.
+	model string
 }
 
 // leafExecutors is name-to-constructor: what a surface calls when a node says
@@ -59,6 +69,15 @@ var leafExecutors = map[string]func(leafBuild) exec.Executor{
 			build.maxTurns, build.maxTokens, build.deadline).
 			WithStore(build.graph).WithMedia(build.media).
 			WithAttribution(config.AttributionAt(build.settings.ProfileDir))
+	},
+	// The coding pipeline takes none of the leaf loop's wiring, because it
+	// shares none of it: no provider client (it opens its own connections from
+	// the key), no toolbox, no store. What it needs is the workspace, the
+	// model this leaf was promised, the credentials to reach it, and a clock.
+	exec.SWESubharness: func(build leafBuild) exec.Executor {
+		return exec.NewSWE(build.workspace, build.model,
+			build.settings.APIKey, build.settings.BaseURL, build.deadline).
+			WithMaxCost(sweMaxCost(os.Getenv))
 	},
 }
 
@@ -86,7 +105,13 @@ func registerLeafExecutors(registry *exec.Registry, build leafBuild) {
 			// registered, so Registry.For hands its leaves to the generalist.
 			continue
 		}
-		registry.Register(construct(build))
+		// Each worker gets its own budget shape, here as well as in the
+		// resident, because a headless registry is built once for a whole run:
+		// the generalist's fifteen-minute hang backstop applied to a coding
+		// pipeline is not a backstop, it is a guillotine at the first merge.
+		shaped := build
+		shaped.deadline = info.Deadline(build.maxTokens)
+		registry.Register(construct(shaped))
 	}
 }
 
