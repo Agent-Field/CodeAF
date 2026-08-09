@@ -235,21 +235,68 @@ func (m *Model) closeNodeView() {
 	m.setSize(m.width, m.height)
 }
 
-func (m *Model) snapshotNode(nodeID string) (store.Node, bool) {
-	for _, node := range m.snapshot.Nodes {
-		if node.ID == nodeID {
-			return node, true
+// nodeIndex is a snapshot read by id. A snapshot is a value the poll swaps
+// whole rather than edits in place, so the slice it is holding — its length and
+// where its first element lives — is the whole identity the index needs: hand
+// it a different slice and it rebuilds, hand it the same one and it answers
+// from the map.
+type nodeIndex struct {
+	nodes []store.Node
+	byID  map[string]store.Node
+}
+
+func (x *nodeIndex) lookup(nodes []store.Node, nodeID string) (store.Node, bool) {
+	if x.byID == nil || len(x.nodes) != len(nodes) ||
+		(len(nodes) > 0 && &x.nodes[0] != &nodes[0]) {
+		x.nodes = nodes
+		x.byID = make(map[string]store.Node, len(nodes))
+		// First writer wins, which is what a walk from the front returned.
+		for _, node := range nodes {
+			if _, seen := x.byID[node.ID]; !seen {
+				x.byID[node.ID] = node
+			}
 		}
+	}
+	node, ok := x.byID[nodeID]
+	return node, ok
+}
+
+// jobRootIndex is the same projection for "which job does this node belong
+// to". Resolving it walks the parents of every node in the graph and builds
+// two maps to do it, and the thread asks for it once per provenance chip on
+// screen — so the answer is kept for as long as the snapshot it came from is.
+type jobRootIndex struct {
+	nodes []store.Node
+	roots map[string]store.Node
+}
+
+func (x *jobRootIndex) lookup(nodes []store.Node, nodeID string) (store.Node, bool) {
+	if x.roots == nil || len(x.nodes) != len(nodes) ||
+		(len(nodes) > 0 && &x.nodes[0] != &nodes[0]) {
+		x.nodes = nodes
+		x.roots = nodeJobRoots(nodes)
+	}
+	root, ok := x.roots[nodeID]
+	return root, ok
+}
+
+// nodeLabelIn is nodeLabelInSnapshot against the snapshot this window is
+// showing, answered from the kept projection rather than by walking it again.
+func (m *Model) nodeLabelIn(node store.Node, nodes []store.Node) string {
+	if root, ok := m.jobRoots.lookup(nodes, node.ID); ok {
+		return nodeLabel(node, root)
+	}
+	return nodeLabel(node)
+}
+
+func (m *Model) snapshotNode(nodeID string) (store.Node, bool) {
+	if node, ok := m.snapshotIndex.lookup(m.snapshot.Nodes, nodeID); ok {
+		return node, true
 	}
 	if m.graphScopeID == "" {
 		return store.Node{}, false
 	}
-	for _, node := range m.cardSnapshot.Nodes {
-		if node.ID == nodeID {
-			return node, true
-		}
-	}
-	return store.Node{}, false
+	return m.cardSnapshotIndex.lookup(m.cardSnapshot.Nodes, nodeID)
 }
 
 func (m *Model) submitSteer() tea.Cmd {
@@ -410,7 +457,7 @@ func (m *Model) toggleFeedBlockAt(x, y int) bool {
 func (m *Model) renderNodeDetailsContent(width int) string {
 	brief := strings.TrimSpace(m.inspectedNode.Brief)
 	if brief == "" {
-		brief = nodeLabelInSnapshot(m.inspectedNode, m.snapshot)
+		brief = m.nodeLabelIn(m.inspectedNode, m.snapshot.Nodes)
 	}
 	content := inputTextStyle.Render(wrapText(brief, width))
 	// One rung down from the card, the same receipt in full: this is where a

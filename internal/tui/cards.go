@@ -1034,12 +1034,7 @@ func (m *Model) streamMessage(message store.Message) bool {
 }
 
 func (m *Model) cardNode(nodeID string) (store.Node, bool) {
-	for _, node := range m.cardSnapshot.Nodes {
-		if node.ID == nodeID {
-			return node, true
-		}
-	}
-	return store.Node{}, false
+	return m.cardSnapshotIndex.lookup(m.cardSnapshot.Nodes, nodeID)
 }
 
 func (m *Model) attentionMessage(message store.Message) bool {
