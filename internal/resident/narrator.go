@@ -211,13 +211,21 @@ func (r *Reconciler) speakProgress(ctx context.Context, nodes []store.Node) erro
 			continue
 		}
 
-		line, err := r.narrate(ctx, Narration{
+		// Said without the reconciler's lock. Everything the narrator reads was
+		// gathered above and everything it writes is applied below; in between
+		// is a model round-trip that a chat opening beside it should never have
+		// had to wait for. Nothing else touches this job's progress state — it
+		// is written only by the settle pass, on this same goroutine.
+		narration := Narration{
 			Goal:     root.Provenance.Intent,
 			Finished: state.finished,
 			Running:  running,
 			Queued:   queued,
 			Previous: state.previous,
-		})
+		}
+		var line string
+		var err error
+		r.thinking(func() { line, err = r.narrate(ctx, narration) })
 		// A narrator error or empty line skips this update; lastPost still
 		// advances so a persistent failure cannot hammer the model.
 		state.lastPost = time.Now()

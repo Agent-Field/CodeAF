@@ -843,28 +843,30 @@ func (r *Reconciler) reconcileGroup(ctx context.Context, group []store.Command) 
 	slots := make(chan struct{}, concurrentCommands)
 	var wait sync.WaitGroup
 	started := 0
-	for index := range group {
-		if err := ctx.Err(); err != nil {
-			break
+	r.thinking(func() {
+		for index := range group {
+			if err := ctx.Err(); err != nil {
+				break
+			}
+			slots <- struct{}{}
+			started++
+			wait.Add(1)
+			go func(index int) {
+				// A fault applying one ask becomes that ask's recorded rejection,
+				// exactly as it would have on the serial path, rather than a panic
+				// crossing back into a tick that is holding the reconciler's lock.
+				defer func() {
+					if recovered := recover(); recovered != nil {
+						results[index].err = guard.Note("resident/reconciler command", recovered)
+					}
+				}()
+				defer wait.Done()
+				defer func() { <-slots }()
+				results[index].outcome, results[index].err = r.applyCommand(ctx, group[index])
+			}(index)
 		}
-		slots <- struct{}{}
-		started++
-		wait.Add(1)
-		go func(index int) {
-			// A fault applying one ask becomes that ask's recorded rejection,
-			// exactly as it would have on the serial path, rather than a panic
-			// crossing back into a tick that is holding the reconciler's lock.
-			defer func() {
-				if recovered := recover(); recovered != nil {
-					results[index].err = guard.Note("resident/reconciler command", recovered)
-				}
-			}()
-			defer wait.Done()
-			defer func() { <-slots }()
-			results[index].outcome, results[index].err = r.applyCommand(ctx, group[index])
-		}(index)
-	}
-	wait.Wait()
+		wait.Wait()
+	})
 	// Only what was actually applied is settled. A command the context cut off
 	// before it started is still pending, and the next tick owns it.
 	for index, command := range group[:started] {
@@ -876,8 +878,35 @@ func (r *Reconciler) reconcileGroup(ctx context.Context, group []store.Command) 
 }
 
 func (r *Reconciler) reconcileCommand(ctx context.Context, command store.Command) error {
-	outcome, err := r.applyCommand(ctx, command)
+	var outcome commandOutcome
+	var err error
+	r.thinking(func() { outcome, err = r.applyCommand(ctx, command) })
 	return r.settleCommand(command, outcome, err)
+}
+
+// thinking runs one stretch of model work with the reconciler's lock released,
+// and takes it back before returning.
+//
+// The lock is a guard over a handful of in-memory cursors — the settle lane's
+// place in the event stream, the narrator's unspoken milestones, the change
+// gate — and it was never protecting the model call. Holding it across one
+// meant every other holder waited out somebody else's planner, and the holder
+// that matters is the person: AttachSession and the arrival brief take this
+// same lock on the chat-startup path, so opening a chat could sit behind three
+// model round-trips of a job that had nothing to do with it.
+//
+// The rule for what may go inside is the one the concurrent splice path already
+// established: application touches the store and nothing this lock guards,
+// which is why four of them can run side by side. Settlement — the resolution,
+// the receipt, the askback — stays locked and in seq order, because that is the
+// half a reader sees and the half that reaches the guarded state.
+//
+// Every caller holds the lock when it calls, and a fault inside do unwinds
+// through the deferred re-acquire, so the tick's own release stays balanced.
+func (r *Reconciler) thinking(do func()) {
+	r.mu.Unlock()
+	defer r.mu.Lock()
+	do()
 }
 
 // settleCommand records what applying one command decided: the durable
