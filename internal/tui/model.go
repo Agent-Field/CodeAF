@@ -1002,9 +1002,9 @@ func (m *Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 
 	case tea.KeyMsg:
 		m.noteKeypress()
-		surface := m.surface()
+		armed := m.armActivity()
 		command, handled := m.updateKey(message)
-		m.noteActivity(surface)
+		m.noteActivity(armed)
 		if handled {
 			if command == nil {
 				return m, m.scheduleAnimation()
@@ -1013,9 +1013,9 @@ func (m *Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		}
 
 	case tea.MouseMsg:
-		surface := m.surface()
+		armed := m.armActivity()
 		command, handled := m.updateMouse(message)
-		m.noteActivity(surface)
+		m.noteActivity(armed)
 		if handled {
 			return m, tea.Batch(command, m.scheduleAnimation())
 		}
@@ -1784,15 +1784,31 @@ func (m *Model) surface() surface {
 	}
 }
 
-// noteActivity snaps the cadence back to hot and, when the input actually moved
-// between places, buys exactly one full read. Typing and scrolling stay inside
-// the place they started in, so they get the hot cadence without the full read:
+// activity is the state a keystroke is measured against: where the window was
+// standing, and whether a full read was already owed.
+type activity struct {
+	surface surface
+	force   bool
+}
+
+// armActivity buys the full read before the handler runs, because a handler
+// that opens a place fires its own poll on the way out, and that poll must not
+// be answered with "nothing changed".
+func (m *Model) armActivity() activity {
+	armed := activity{surface: m.surface(), force: m.pollForce}
+	m.pollForce = true
+	return armed
+}
+
+// noteActivity snaps the cadence back to hot and keeps the armed read only when
+// the input actually moved between places. Typing and scrolling stay inside the
+// place they started in, so they get the hot cadence and give the read back:
 // forcing on every keystroke made the watermark short-circuit unreachable for
 // as long as somebody was at the keyboard, which is exactly when the store is
 // read most.
-func (m *Model) noteActivity(before surface) {
-	if m.surface() != before {
-		m.pollForce = true
+func (m *Model) noteActivity(armed activity) {
+	if m.surface() == armed.surface {
+		m.pollForce = armed.force
 	}
 	m.lastActionAt = m.standingTime()
 }
