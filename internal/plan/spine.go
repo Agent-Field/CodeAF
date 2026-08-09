@@ -43,6 +43,13 @@ could be worked on at the same time, or when it is small enough that one agent
 finishes it in a single pass. That is a correct and common answer, not a
 failure to decompose.
 
+A goal that bundles several requests which do not feed each other is that
+single-stage case in disguise, and it is the one most often missed: the order
+they were listed in is the order they were spoken in, never a gate. Do not lay
+them out as stages — laying a bundle end to end makes every request wait for
+strangers. They are one stage, they divide into parts there, and they run at
+the same time. A stage exists where output feeds input, and nowhere else.
+
 Do not add a final merge, synthesis, or summary stage. That is added
 automatically after you.
 
