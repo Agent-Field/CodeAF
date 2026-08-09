@@ -357,6 +357,22 @@ func (m *Model) invalidateRailCaches() {
 	m.railChartersValid = false
 }
 
+// seedRailCaches fills them back from the poll's own reads. Dropping the caches
+// and leaving them empty only moved the two queries: the next frame asked for
+// charters and services while composing itself, so both ran synchronously on
+// the render goroutine. The poll already reads the same rows off thread — same
+// data, same freshness, nobody waiting on SQLite to draw.
+func (m *Model) seedRailCaches(result pollResultMsg) {
+	if result.chartersRead && result.selfChartersErr == nil {
+		m.railCharters, m.railChartersErr = result.selfCharters, nil
+		m.railChartersValid = true
+	}
+	if result.servicesRead && result.servicesErr == nil {
+		m.railServices = result.services
+		m.railServicesValid = true
+	}
+}
+
 func (m *Model) standingCharter(charterID string) (standingCharter, bool) {
 	for _, charter := range m.standingCharters() {
 		if charter.ID == charterID {

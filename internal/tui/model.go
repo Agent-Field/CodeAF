@@ -180,6 +180,9 @@ type pollResultMsg struct {
 	selfCharters      []store.Charter
 	chartersRead      bool
 	selfChartersErr   error
+	services          []store.Service
+	servicesRead      bool
+	servicesErr       error
 
 	selfDataRead      bool
 	selfSpend         float64
@@ -1592,6 +1595,13 @@ func (m *Model) poll() tea.Cmd {
 			result.chartersRead = true
 			result.selfCharters, result.selfChartersErr = reader.Charters()
 		}
+		// The rail's other store-backed section rides the same cycle, for the
+		// same reason the charters do: the poll drops its cache, and whoever
+		// asked next was a render goroutine holding a SQLite query.
+		if lister, ok := backend.(serviceLister); ok {
+			result.servicesRead = true
+			result.services, result.servicesErr = lister.ActiveServices()
+		}
 		if reader, ok := backend.(selfDataReader); ok && readSelf {
 			result.selfDataRead = true
 			// Practice folds by the week, so the receipt read reaches back one
@@ -1821,6 +1831,7 @@ func (m *Model) applyPoll(result pollResultMsg) {
 	m.lastRepaintAt = m.standingTime()
 	m.applyResidency(result)
 	m.invalidateRailCaches()
+	m.seedRailCaches(result)
 	// A moved journal is the one thing that can change a settled message's
 	// rendering from outside the message itself: the node it names, the files
 	// it links, the turn that answers its question. So it retires the thread's
