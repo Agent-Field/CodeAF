@@ -1,0 +1,20 @@
+{
+  "type": "object",
+  "properties": {
+    "sizes": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "node":  { "type": "integer" },
+          "size":  { "type": "string", "enum": ["atomic", "borderline", "oversized"] },
+          "split_into": { "type": "array", "items": { "type": "string" } }
+        },
+        "required": ["node", "size", "split_into"],
+        "additionalProperties": false
+      }
+    }
+  },
+  "required": ["sizes"],
+  "additionalProperties": false
+}
