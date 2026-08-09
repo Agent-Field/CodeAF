@@ -114,6 +114,7 @@ func (m *Model) applyStreamEvent(event StreamEvent) {
 		m.streamShown = ""
 		m.streamSeq = landedSeq
 		m.streamProviderDone = false
+		m.streamInterrupted = false
 	case StreamDelta:
 		if m.streamMode != streamReal {
 			return
@@ -166,6 +167,7 @@ func (m *Model) startSimulatedStream(message store.Message) {
 	m.streamShown = typewriterAdvance("", message.Body, 1)
 	m.streamSeq = message.Seq
 	m.streamProviderDone = true
+	m.streamInterrupted = false
 }
 
 func (m *Model) matchRealStream(message store.Message) bool {
@@ -176,7 +178,13 @@ func (m *Model) matchRealStream(message store.Message) bool {
 	landed := strings.TrimSpace(message.Body)
 	preview := strings.TrimSpace(m.streamTarget)
 	if m.streamProviderDone && landed != preview {
-		return false
+		// A stopped turn's durable line is the words on screen plus the mark
+		// that it stopped there. It is the same reply, so it lands in place and
+		// only the tail types itself in; refusing it here would park the real
+		// row behind a stream that can no longer finish.
+		if !m.streamInterrupted || preview == "" || !strings.HasPrefix(landed, preview) {
+			return false
+		}
 	}
 	if !m.streamProviderDone && preview != "" && !strings.HasPrefix(landed, preview) {
 		return false
@@ -184,6 +192,13 @@ func (m *Model) matchRealStream(message store.Message) bool {
 	m.streamSeq = message.Seq
 	if m.streamProviderDone {
 		m.streamTarget = message.Body
+		// The typewriter can only extend what it has already drawn. A frozen
+		// partial that is not a byte-prefix of the durable line — a stray edge
+		// of whitespace is enough — would leave it unable to advance and the
+		// reply unable to finish, so it redraws rather than stalls.
+		if !strings.HasPrefix(m.streamTarget, m.streamShown) {
+			m.streamShown = ""
+		}
 		if strings.TrimSpace(m.streamShown) == landed {
 			m.streamShown = message.Body
 			m.finishStream()
@@ -268,6 +283,7 @@ func (m *Model) clearStream() {
 	m.streamShown = ""
 	m.streamSeq = 0
 	m.streamProviderDone = false
+	m.streamInterrupted = false
 }
 
 func (m *Model) messageBySeq(seq int64) (store.Message, bool) {

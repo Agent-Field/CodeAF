@@ -141,6 +141,9 @@ func (m *Model) contextHelpLine() string {
 		return "←/→ choose · enter models/tasks/help · esc back · tab focus"
 	case m.focus == focusChat:
 		return "↑/↓ select · enter open · esc back · tab focus"
+	case m.turnInFlight():
+		// The one key nobody guesses, said only while it does something.
+		return "esc stops this reply · ↑ what you sent · ? help"
 	default:
 		return "/ commands · ctrl+v voice · v receipts · ? help"
 	}

@@ -63,10 +63,10 @@ type jobCard struct {
 	// read from the durable row rather than from anything the head promised in
 	// the thread. Every one of them is empty on nearly every job, and empty is
 	// what keeps the card silent.
-	Subharness string
-	WorkModel  string
-	PlanModel  string
-	BirthSeq   int64
+	Subharness  string
+	WorkModel   string
+	PlanModel   string
+	BirthSeq    int64
 	CommandSeq  int64
 	StartedAt   time.Time
 	FinishedAt  time.Time
@@ -235,12 +235,12 @@ func deriveJobCards(
 		}
 		nodes := nodesByRoot[root.ID]
 		card := jobCard{
-			ID:        root.ID,
-			RootID:    root.ID,
-			State:     cardWorking,
-			Title:     nodeLabel(root, root),
-			Ask:       strings.TrimSpace(root.Provenance.Intent),
-			Reading:   strings.TrimSpace(root.Brief),
+			ID:      root.ID,
+			RootID:  root.ID,
+			State:   cardWorking,
+			Title:   nodeLabel(root, root),
+			Ask:     strings.TrimSpace(root.Provenance.Intent),
+			Reading: strings.TrimSpace(root.Brief),
 			// What was chosen for this job, as the store settled it. The node's
 			// own worker where admission resolved one, the splice's otherwise —
 			// the same order every dispatch path reads it in.
@@ -248,10 +248,10 @@ func deriveJobCards(
 			WorkModel:  strings.TrimSpace(root.Provenance.WorkModel),
 			PlanModel:  strings.TrimSpace(root.Provenance.PlanModel),
 			BirthSeq:   root.CreatedSeq,
-			Usage:     usage[root.ID],
-			Messages:  append([]store.Message(nil), messagesByRoot[root.ID]...),
-			Failed:    root.Status == store.Failed || root.Status == store.Cancelled,
-			StartedAt: root.StartedAt,
+			Usage:      usage[root.ID],
+			Messages:   append([]store.Message(nil), messagesByRoot[root.ID]...),
+			Failed:     root.Status == store.Failed || root.Status == store.Cancelled,
+			StartedAt:  root.StartedAt,
 		}
 		if card.Ask == "" {
 			card.Ask = card.Reading

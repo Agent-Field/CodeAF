@@ -94,7 +94,7 @@ func TestChoiceReceiptTruncatesInsteadOfWrapping(t *testing.T) {
 	card := jobCard{
 		ID: "job", Title: "Draft the launch note", State: cardWorking,
 		Subharness: "swe", WorkModel: "moonshotai/kimi-k2-instruct",
-		PlanModel:  "anthropic/claude-opus-5",
+		PlanModel: "anthropic/claude-opus-5",
 	}
 	for _, width := range []int{24, 40, 100} {
 		frame := ansi.Strip(model.renderJobCard(card, width, false, 0, false, false))

@@ -52,6 +52,12 @@ const (
 	// the belt's because the router carries the snapshot, the notebook and the
 	// thread in the same prompt, and the manual must not crowd them out.
 	manualRouteSections = 3
+	// A stopped turn is still a turn, and the floor under every route holds for
+	// it too: a message the user cut off may not end in nothing on screen. The
+	// tail marks the words that did arrive as the piece of an answer they are;
+	// the standalone line is for a turn stopped before it had any.
+	interruptedTail  = "\n\n— interrupted"
+	interruptedReply = "— interrupted before I had anything to say"
 )
 
 // headSystemPrompt is deliberately a router prompt, not a planning prompt. Its
@@ -150,6 +156,15 @@ type Head struct {
 	// single-threaded is the kind that stops being so without anyone noticing.
 	foldMu sync.Mutex
 	fold   *threadFold
+	// turnMu guards the in-flight turn's cancellation. The head answers on its
+	// own goroutine and the surface that stops a turn runs on another, both
+	// inside one process: this is the entire seam between them, and it is a
+	// handle rather than a journal row because a message the user has already
+	// given up on must not wait on the store to be given up.
+	turnMu      sync.Mutex
+	turnCancel  context.CancelFunc
+	turnPartial string
+	turnStopped bool
 }
 
 // WithImageInput lets the routing head receive durable chat attachments as
@@ -274,13 +289,92 @@ func (h *Head) poll(ctx context.Context, cursor int64) (int64, error) {
 			// that worker, not a new ask — the executor consumes it between
 			// turns and the head stays out of the way.
 			if message.Role == store.RoleUser && message.NodeID == "" {
-				if err := h.answer(ctx, message); err != nil {
+				if err := h.answerTurn(ctx, message); err != nil {
 					return cursor, err
 				}
 			}
 			cursor = message.Seq
 		}
 	}
+}
+
+// answerTurn answers one message under a context of its own. The head's own
+// context outlives every turn — it is the process — so a turn nobody wants any
+// more had no way to end before this: the provider call ran to completion and
+// the reply landed in a conversation that had moved on.
+//
+// The cursor advances on the caller's side whether the turn finished or was
+// stopped, because a stopped turn is handled: re-answering the message the user
+// gave up on is the one thing an interrupt may not lead to.
+func (h *Head) answerTurn(ctx context.Context, user store.Message) error {
+	turnContext, cancel := context.WithCancel(ctx)
+	h.beginTurn(cancel)
+	err := h.answer(turnContext, user)
+	cancel()
+	partial, stopped := h.endTurn()
+	if !stopped {
+		return err
+	}
+	// The interrupt raced the answer and lost. The turn already ended in words,
+	// and a second line about it would be the thread talking to itself.
+	if err == nil {
+		return nil
+	}
+	// The head itself is going away, and the thread with it. Nothing to say.
+	if ctx.Err() != nil {
+		return ctx.Err()
+	}
+	return h.postInterrupted(user.SessionID, partial)
+}
+
+// Interrupt stops the turn being answered right now and carries in whatever of
+// it the reader had already seen. It reports whether there was a turn to stop,
+// so a surface that asked at the wrong moment can tell that nothing happened.
+func (h *Head) Interrupt(partial string) bool {
+	if h == nil {
+		return false
+	}
+	h.turnMu.Lock()
+	cancel := h.turnCancel
+	if cancel == nil {
+		h.turnMu.Unlock()
+		return false
+	}
+	h.turnPartial = strings.TrimSpace(partial)
+	h.turnStopped = true
+	h.turnMu.Unlock()
+	cancel()
+	return true
+}
+
+func (h *Head) beginTurn(cancel context.CancelFunc) {
+	h.turnMu.Lock()
+	defer h.turnMu.Unlock()
+	h.turnCancel = cancel
+	h.turnPartial = ""
+	h.turnStopped = false
+}
+
+func (h *Head) endTurn() (string, bool) {
+	h.turnMu.Lock()
+	defer h.turnMu.Unlock()
+	partial, stopped := h.turnPartial, h.turnStopped
+	h.turnCancel = nil
+	h.turnPartial = ""
+	h.turnStopped = false
+	return partial, stopped
+}
+
+// postInterrupted is postAgentFloor's law applied to the one route that never
+// reaches it: the words the user stopped. What they saw on screen is what the
+// thread keeps, marked where it stopped, so the transcript reads as the
+// conversation it was rather than as a gap.
+func (h *Head) postInterrupted(sessionID, partial string) error {
+	body := interruptedReply
+	if partial != "" {
+		body = partial + interruptedTail
+	}
+	return h.postAgentFloor(sessionID, body, 0, "")
 }
 
 func (h *Head) answer(ctx context.Context, user store.Message) error {
