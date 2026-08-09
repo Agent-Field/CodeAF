@@ -403,6 +403,26 @@ resumes where it left off, saying so once.
 
 ## 8. Headless — the same power, scripted
 
+> The full contract — every flag, the exit codes, the `--json` schema, the
+> stream discipline, and the rules for measuring aforge — is
+> [HEADLESS.md](HEADLESS.md). This section is the catalog entry; that file is
+> what a harness is written against.
+
+### `aforge do` — one errand, the whole living brain
+**What**: The task, done, with nobody watching. Not the static pipeline: this
+is the resident's own brain with the conversation removed, so the contract for
+the work, the delivery gate, the repair a cited gap earns, and the replan when
+a leaf runs out of room are all still there. It works in the directory you're
+standing in and edits it in place.
+**Where**: `aforge do "<task>" [-w dir] [-db path] [--json] [--yes-spend]`
+**How**: The exit code is the verdict — `0` worked, `1` didn't, `2` hit the
+wall with partial work. `--json` prints one object with the deliverable, the
+artifacts, real spend, node count, and `blocked_on` when a question stopped it.
+Share one `-db` across runs and the second run knows what the first learned;
+omit it and the store is private and deleted on the way out.
+**Tip seed**: aforge do runs a whole job from one command — and its exit code
+is honest enough to put in a script.
+
 ### `aforge plan` / `aforge run`
 **What**: The benchmarked, byte-stable CLI path: compile a goal to a
 plan, run it with the atomic linear harness. Learning surfaces

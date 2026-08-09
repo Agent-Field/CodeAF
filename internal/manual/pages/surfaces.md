@@ -141,6 +141,12 @@ locally.
 
 - `aforge` — open the resident chat. A second instance opens as a read-only
   visitor rather than fighting over the same brain.
+- `aforge do "<task>"` — one errand, start to finish, with nobody watching. It
+  is the same brain the chat runs with the conversation removed: the same
+  planning, the same contracts, the same delivery gate, the same repair when a
+  gap is found. It works in the directory you are standing in and edits what is
+  there. The exit code is the verdict — 0 worked, 1 did not, 2 hit the wall with
+  partial work — so a script can believe it.
 - `aforge wake` — run one bounded pass and exit. This is what the standing watch
   timer runs; you can run it by hand too.
 - `aforge doctor` — the brain's path and size, whether a resident is alive, the
@@ -153,8 +159,10 @@ locally.
   each one
 - `aforge why self` — today's self-spend, itemized
 - `aforge plan "<goal>"`, `aforge run <graph.json>`, `aforge revise`,
-  `aforge show` — the headless path: build a graph, execute it, re-plan it from
-  what happened.
+  `aforge show` — the static pipeline: build a graph to a file, execute exactly
+  what the file says, re-plan it from what happened. Reach for these to read or
+  hand-edit a plan. To *do* a job, `aforge do` is the one that thinks while it
+  works.
 
 ## There is no web surface
 
