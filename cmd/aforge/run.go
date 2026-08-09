@@ -214,6 +214,19 @@ func runExecute(args []string) error {
 		graph: history, media: mediaTools,
 		maxTurns: *maxTurns, maxTokens: *maxTokens, deadline: deadline,
 	})
+	// A graph may name a worker this build was not compiled with. The registry
+	// will hand those leaves to the generalist and say nothing, which is the
+	// right behavior and the wrong silence: said once per node, here, before
+	// anything is spent, it is the difference between a degraded run and a run
+	// that lied about which worker it measured.
+	noted := make(map[int]bool)
+	for _, node := range graph.Nodes {
+		if node.Kind != plan.KindWork || noted[node.ID] || !degradedWorker(node.Subharness) {
+			continue
+		}
+		noted[node.ID] = true
+		noteUnavailableWorker(os.Stderr, node.Subharness)
+	}
 	scheduler := exec.NewScheduler(registry, space, *concurrency)
 	scheduler.Budget = *runBudget
 	preauthorized := spendPreauthorized(*yesSpend, os.Getenv)

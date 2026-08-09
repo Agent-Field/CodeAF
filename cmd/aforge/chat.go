@@ -314,6 +314,10 @@ func buildBrain(w *chatWindow, session string, opts brainOptions) (*chatBrain, e
 	if opts.sharedWorkspace {
 		scratchRoot = filepath.Join(filepath.Dir(path), "scratch")
 	}
+	// Where this surface's jobs work, so a leaf promised a worker this build does
+	// not have can say so once in its own flight recorder rather than degrading
+	// in silence.
+	seatLeafWorkerNotes(workspaceRoot, scratchRoot, graph)
 
 	// The lease proves that no live resident can still own a claim in this DB.
 	// A closed terminal mid-run can otherwise leave leaves stranded as
@@ -2448,10 +2452,13 @@ func pinnedWorkClient(pool *messageClientPool, node store.Node) (*liveClient, bo
 // pass made one, the splice's otherwise — and the provenance behind it is read
 // only for a node written before the row carried it.
 func leafSubharness(node store.Node) string {
-	if settled := strings.TrimSpace(node.Subharness); settled != "" {
-		return settled
-	}
-	return strings.TrimSpace(node.Provenance.Subharness)
+	settled := promisedWorker(node)
+	// Reading the promise is also the moment this build discovers it cannot keep
+	// it. The leaf still runs, on the generalist, exactly as the registry
+	// promises — and the node's own recorder now carries the one line that tells
+	// a reader afterwards which of the two actually happened.
+	noteDegradedLeafWorker(node, settled)
+	return settled
 }
 
 // resolveWorkModelWords is the surface's answer to the model words the
