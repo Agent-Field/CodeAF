@@ -24,7 +24,7 @@ import (
 const compilerSystemPrompt = `You are the intent compiler for an asynchronous task graph. Apply ASSUME-AND-DECLARE.
 
 Turn the user's verbatim instruction and the current graph context into a complete execution brief. Return exactly one JSON object with this shape and no text outside it:
-{"goal":"...","title":"...","scale":"lookup|task|project","builds_on":["<job id>"],"assumptions":["..."],"question":"","question_options":[{"label":"...","value":"..."}],"trial_of":0}
+{"goal":"...","title":"...","scale":"lookup|task|project","contract":"","builds_on":["<job id>"],"assumptions":["..."],"question":"","question_options":[{"label":"...","value":"..."}],"trial_of":0}
 
 Rules:
 - State a clear goal that names the final deliverable, what success means, and the evidence standard that will prove it. Write success from the seat of whoever will use the result: what they will do with it the first time, and what they must observe for it to count as working. Parts of it behaving in a test harness is the builder's evidence, never theirs, and a goal that settles for it buys work that passes its own checks and fails the first real use.
@@ -45,6 +45,8 @@ Rules:
 - When the graph context lists attached documents, name them in the goal as required inputs. They become workspace files for workers, which read them with read_document; do not assume the conversational model receives a file content part.
 - For project scale, make the parallel structure explicit in the goal: name the parts if they are known, or state that the first step enumerates them and each then proceeds independently. Downstream planning fans out exactly what the goal names; a vague goal collapses into needlessly serial work.
 - Judge scale by the structure of the work, never by its topic. Ask two questions. First: does the job enumerate — does doing it mean repeating the same operation over a set of items, sources, or sections that do not depend on each other? Second: does it stratify — does it separate into stages with different working modes, such as gathering, verifying, and synthesizing, where intermediate outputs feed a final deliverable? If either answer is yes, the scale is "project": independent parts are parallel structure, and parallel structure is the point even when one worker could grind through serially. If both answers are no and the job still requires acting — producing, transforming, fetching-then-shaping — it is "task": one worker, one thread of attention, end to end. If the whole job is retrieving or computing a single thing, where the answer is itself the deliverable, it is "lookup".
+- One boundary overrides both of those questions: work whose essence is judging or understanding a single artifact as a whole — reviewing a change, auditing an agreement, weighing a body of evidence to reach one verdict — is "task" at any length. The sections of one thing under judgment are not independent items: what the judgment exists to catch lives in the cross-references between them, and a reader split into parts can never see a number in one section contradict a claim in another. Enumeration means repeating an operation over items that stand alone, never dividing one act of comprehension.
+- For "task" scale only, also write "contract": the working method this one worker is held to, in two to four sentences from the seat of the person who asked — what done means, what will be run or checked as evidence before handover, and that the whole finished thing is written out in the worker's own final message. For "lookup" and "project" leave contract empty: a lookup's method is to answer, and a project's parts each get their own method later.
 
 Be precise enough for downstream planning, but do not design the task graph yourself.`
 
@@ -75,6 +77,13 @@ type Brief struct {
 	// worth a planning pass). Downstream decides what to do with it; an
 	// unrecognised value degrades to task.
 	Scale string `json:"scale"`
+
+	// Contract is the working method for a task-scale job, written by the one
+	// call that has already read the whole ask. It used to be a second
+	// structuring round-trip serialized between compile and dispatch — a paid
+	// call on the critical path of every single-worker job. Empty is a valid
+	// answer and the caller falls back to that separate pass.
+	Contract string `json:"contract,omitempty"`
 
 	// BuildsOn names earlier jobs this instruction continues or improves.
 	// The reconciler turns each into a real dependency edge, so the prior
