@@ -33,7 +33,7 @@ func TestBaselineSizingPromptAndSchemaAreByteIdentical(t *testing.T) {
 }
 
 func TestRegisteredSpecialistReachesPromptAndSchema(t *testing.T) {
-	defer forgetSubharnesses()
+	defer ForgetSubharnesses()
 	UseSubharness(Subharness{Name: "swe", Purpose: "software engineering taken whole"}, "SWE RULER: three worked examples.")
 
 	prompt := sizePromptWith(Anchors())
@@ -70,7 +70,7 @@ func TestRegisteredSpecialistReachesPromptAndSchema(t *testing.T) {
 // for it and stops decomposing. An unregistered name degrades to the baseline
 // rather than failing — Registry.For's promise, made this far upstream.
 func TestSizeApplyHonorsAndDegradesSubharnessVerdicts(t *testing.T) {
-	defer forgetSubharnesses()
+	defer ForgetSubharnesses()
 	UseSubharness(Subharness{Name: "swe", Purpose: "coding"}, "ruler")
 
 	graph := &Graph{Nodes: []Node{
@@ -95,7 +95,7 @@ func TestSizeApplyHonorsAndDegradesSubharnessVerdicts(t *testing.T) {
 }
 
 func TestAnchorsAreKeptPerSubharness(t *testing.T) {
-	defer forgetSubharnesses()
+	defer ForgetSubharnesses()
 	defer UseAnchors("")
 	UseSubharness(Subharness{Name: "swe", Purpose: "coding"}, "the swe prior")
 

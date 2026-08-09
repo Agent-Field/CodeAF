@@ -173,10 +173,10 @@ func KnownSubharness(name string) bool {
 	return ok
 }
 
-// forgetSubharnesses restores the registry to its linear-only state. Tests own
+// ForgetSubharnesses restores the registry to its linear-only state. Tests own
 // it: registration is process-global by design, and a test that adds a
 // specialist must be able to put the process back.
-func forgetSubharnesses() {
+func ForgetSubharnesses() {
 	anchorMutex.Lock()
 	defer anchorMutex.Unlock()
 	subharnessOrder = nil

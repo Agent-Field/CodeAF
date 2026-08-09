@@ -117,7 +117,7 @@ type verdictExecutor struct {
 	then     Outcome
 }
 
-func (v *verdictExecutor) Skill() string { return "linear" }
+func (v *verdictExecutor) Subharness() string { return "linear" }
 
 func (v *verdictExecutor) Run(ctx context.Context, task Task) (*Outcome, error) {
 	v.mutex.Lock()

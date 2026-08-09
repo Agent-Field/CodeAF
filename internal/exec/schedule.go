@@ -297,7 +297,10 @@ func (s *Scheduler) work(ctx context.Context, id int, task Task, attempt int, sh
 	// model mid-loop would rewrite its prefix cache every turn and splice two
 	// lineages into one conversation.
 	ctx = provider.WithCallShape(ctx, provider.ClassExecLeaf, attempt, shape)
-	outcome, err := s.registry.For("linear").Run(ctx, task)
+	// The node's own choice, honoured. Registry.For serves an unknown name with
+	// the generalist, so a graph that names a worker this process does not have
+	// still gets its work done.
+	outcome, err := s.registry.For(task.Subharness).Run(ctx, task)
 	done <- completion{nodeID: id, outcome: outcome, err: err}
 }
 
@@ -323,6 +326,13 @@ func (s *Scheduler) work(ctx context.Context, id int, task Task, attempt int, sh
 // and because erring that way keeps a lesson learned on a doubtful leaf away
 // from the leaves nobody doubted.
 func leafShape(node *plan.Node) string {
+	// A specialist is its own population, and exactly one: what a router learns
+	// about a coding pipeline says nothing about a generalist leaf, and slicing
+	// a specialist further by size would be the fine-key mistake this comment
+	// warns about with a tenth of the traffic to survive it.
+	if KnownSubharness(node.Subharness) {
+		return node.Subharness
+	}
 	if node.Kind == plan.KindSynthesis {
 		return "synthesis"
 	}
@@ -464,6 +474,7 @@ func (s *Scheduler) taskFor(graph *plan.Graph, node *plan.Node) Task {
 		Goal:       graph.Goal,
 		Brief:      node.Brief,
 		Contract:   node.Contract,
+		Subharness: node.Subharness,
 		OutputHint: SuggestPath(node.ID, node.Title),
 	}
 	if strings.TrimSpace(task.Brief) == "" {
