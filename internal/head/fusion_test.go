@@ -71,3 +71,28 @@ func TestJudgingOneArtifactIsOneWorkerAtAnyLength(t *testing.T) {
 		}
 	}
 }
+
+// The shapes models actually send for a bundle declaration, measured live: an
+// array of wrapper objects killed the whole compile through a strict []string.
+// A declaration field's worst legal outcome is no declaration.
+func TestPartsSurviveTheShapesModelsActuallySend(t *testing.T) {
+	for name, wire := range map[string]struct {
+		raw  string
+		want int
+	}{
+		"plain strings":   {`["fix the test","compute revenue"]`, 2},
+		"wrapper objects": {`[{"part":"fix the test","id":"1"},{"text":"compute revenue"}]`, 2},
+		"one bare string": {`"fix the test"`, 1},
+		"garbage numbers": {`[1,2,3]`, 0},
+		"an object":       {`{"parts":"nope"}`, 0},
+	} {
+		var parts PartList
+		if err := parts.UnmarshalJSON([]byte(wire.raw)); err != nil {
+			t.Errorf("%s: a parts declaration failed the parse: %v", name, err)
+			continue
+		}
+		if len(parts) != wire.want {
+			t.Errorf("%s: kept %d parts, want %d (%v)", name, len(parts), wire.want, parts)
+		}
+	}
+}
