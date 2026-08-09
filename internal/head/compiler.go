@@ -2,6 +2,7 @@ package head
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"strconv"
@@ -24,7 +25,7 @@ import (
 const compilerSystemPrompt = `You are the intent compiler for an asynchronous task graph. Apply ASSUME-AND-DECLARE.
 
 Turn the user's verbatim instruction and the current graph context into a complete execution brief. Return exactly one JSON object with this shape and no text outside it:
-{"goal":"...","title":"...","scale":"lookup|task|project","contract":"","parts":[],"builds_on":["<job id>"],"assumptions":["..."],"question":"","question_options":[{"label":"...","value":"..."}],"trial_of":0}
+{"goal":"...","title":"...","scale":"lookup|task|project","contract":"","parts":["..."],"builds_on":["<job id>"],"assumptions":["..."],"question":"","question_options":[{"label":"...","value":"..."}],"trial_of":0}
 
 Rules:
 - State a clear goal that names the final deliverable, what success means, and the evidence standard that will prove it. Write success from the seat of whoever will use the result: what they will do with it the first time, and what they must observe for it to count as working. Parts of it behaving in a test harness is the builder's evidence, never theirs, and a goal that settles for it buys work that passes its own checks and fails the first real use.
@@ -50,6 +51,51 @@ Rules:
 - When the instruction is a bundle — several requests in one breath that do not feed each other — write each one into "parts" as a complete standalone assignment: everything its worker needs carried inside it (its subject, its inputs, its own success bar from the goal), because that worker sees its part and nothing else. Parts filled means scale is "project" and they run at the same time. Leave parts [] whenever the work is one thing, however large, and whenever one request's output feeds another — a genuine sequence is not a bundle.
 
 Be precise enough for downstream planning, but do not design the task graph yourself.`
+
+// PartList tolerates the shapes models actually send for a bundle
+// declaration. The strict form is an array of strings; live models were
+// measured wrapping each part in an object instead, and a declaration field
+// must never be able to fail the compile — the worst legal outcome of a
+// malformed parts array is no declaration, which is exactly what the field
+// meant before it existed.
+type PartList []string
+
+func (p *PartList) UnmarshalJSON(data []byte) error {
+	var plain []string
+	if err := json.Unmarshal(data, &plain); err == nil {
+		*p = plain
+		return nil
+	}
+	var wrapped []map[string]any
+	if err := json.Unmarshal(data, &wrapped); err == nil {
+		parts := make(PartList, 0, len(wrapped))
+		for _, item := range wrapped {
+			// Whatever the key, the part is the longest string in the object:
+			// a wrapper key like "part" or "text" carries the assignment, and
+			// any id or index beside it is shorter.
+			best := ""
+			for _, value := range item {
+				if text, ok := value.(string); ok && len(text) > len(best) {
+					best = text
+				}
+			}
+			if strings.TrimSpace(best) != "" {
+				parts = append(parts, best)
+			}
+		}
+		*p = parts
+		return nil
+	}
+	var one string
+	if err := json.Unmarshal(data, &one); err == nil {
+		if strings.TrimSpace(one) != "" {
+			*p = PartList{one}
+		}
+		return nil
+	}
+	*p = nil
+	return nil
+}
 
 // Brief is the complete, assumption-bearing intent handed to planning.
 //
@@ -91,7 +137,7 @@ type Brief struct {
 	// as a complete standalone assignment. Independence is the model's
 	// judgment, made here where the whole ask was read; the layout downstream
 	// is geometry. Empty means the work is one thing.
-	Parts []string `json:"parts,omitempty"`
+	Parts PartList `json:"parts,omitempty"`
 
 	// BuildsOn names earlier jobs this instruction continues or improves.
 	// The reconciler turns each into a real dependency edge, so the prior
