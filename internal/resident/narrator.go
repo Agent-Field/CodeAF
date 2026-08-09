@@ -138,17 +138,16 @@ func (r *Reconciler) spokenLines(rootID string) []string {
 }
 
 // speakProgress applies the firing rules and posts at most one line per job.
-func (r *Reconciler) speakProgress(ctx context.Context) error {
+// nodes is the tick's own reading of the active view, shared with the fold pass
+// that runs immediately before it: the only thing that pass changes is which
+// settled jobs are folded, and a settled job is one this loop drops either way.
+func (r *Reconciler) speakProgress(ctx context.Context, nodes []store.Node) error {
 	if r.narrate == nil || len(r.progress) == 0 {
 		return nil
 	}
-	nodes, err := r.store.ActiveNodes()
-	if err != nil {
-		return err
-	}
 	byID := make(map[string]store.Node, len(nodes))
-	for _, node := range nodes {
-		byID[node.ID] = node
+	for i := range nodes {
+		byID[nodes[i].ID] = nodes[i]
 	}
 
 	for rootID, state := range r.progress {
@@ -164,9 +163,26 @@ func (r *Reconciler) speakProgress(ctx context.Context) error {
 			continue
 		}
 
+		// The debounce is tested before the scan below, not after it. Every one
+		// of the rules that can fire needs at least a debounce of quiet — the
+		// heartbeat needs far more — so a job inside its window was walking the
+		// whole active view once per tick to reach a decision the clock had
+		// already made. The two thresholds are stated the way the rules read
+		// them: finished milestones come due at the debounce, an otherwise
+		// silent job only at the heartbeat.
+		quiet := time.Since(state.lastPost)
+		due := narrateHeartbeat
+		if len(state.finished) > 0 {
+			due = narrateDebounce
+		}
+		if quiet < due {
+			continue
+		}
+
 		var running []string
 		queued := 0
-		for _, node := range nodes {
+		for i := range nodes {
+			node := nodes[i]
 			if node.ID == rootID || !descendsFrom(byID, node, rootID) {
 				continue
 			}
@@ -189,8 +205,7 @@ func (r *Reconciler) speakProgress(ctx context.Context) error {
 			}
 		}
 
-		quiet := time.Since(state.lastPost)
-		fire := (len(state.finished) > 0 && quiet >= narrateDebounce) ||
+		fire := len(state.finished) > 0 ||
 			(len(running) > 0 && quiet >= narrateHeartbeat)
 		if !fire {
 			continue

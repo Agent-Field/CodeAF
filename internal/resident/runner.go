@@ -301,13 +301,19 @@ func (r *Runner) Tick(ctx context.Context) (int, error) {
 		return 0, err
 	}
 	dispatched := 0
+	// The open-children map is a decode of every live node in the graph, and
+	// claimNext asked for one on every claim attempt — so a pass that filled
+	// four slots read the whole graph four times. Nothing a claim does gives a
+	// node children, so one reading serves the whole pass. It is derived lazily
+	// because the overwhelmingly common pass claims nothing at all.
+	var open map[string]bool
 	for {
 		select {
 		case r.slots <- struct{}{}:
 		default:
 			return dispatched, nil
 		}
-		spawned, err := r.dispatchOne(ctx)
+		spawned, err := r.dispatchOne(ctx, &open)
 		if err != nil {
 			return dispatched, err
 		}
@@ -322,7 +328,7 @@ func (r *Runner) Tick(ctx context.Context) (int, error) {
 // hand it to a worker gives it back, including the fault path. A panic between
 // taking a slot and spawning would otherwise starve the runner one worker at a
 // time, which is exactly the kind of slow death a crash at least announces.
-func (r *Runner) dispatchOne(ctx context.Context) (spawned bool, err error) {
+func (r *Runner) dispatchOne(ctx context.Context, open *map[string]bool) (spawned bool, err error) {
 	held := true
 	release := func() {
 		if held {
@@ -353,7 +359,7 @@ func (r *Runner) dispatchOne(ctx context.Context) (spawned bool, err error) {
 		release()
 		return false, nil
 	}
-	node, ok, claimErr := r.claimNext()
+	node, ok, claimErr := r.claimNext(open)
 	if claimErr != nil {
 		release()
 		return false, claimErr
@@ -405,7 +411,7 @@ func (r *Runner) dispatchOne(ctx context.Context) (spawned bool, err error) {
 // Tick deterministic.
 func (r *Runner) Wait() { r.wg.Wait() }
 
-func (r *Runner) claimNext() (store.Node, bool, error) {
+func (r *Runner) claimNext(open *map[string]bool) (store.Node, bool, error) {
 	// A raised rail must let the reconciler admit every durable repair before a
 	// former consumer can race ahead using only the partial result.
 	deferred, err := r.graph.PendingOverruns(1)
@@ -430,9 +436,12 @@ func (r *Runner) claimNext() (store.Node, bool, error) {
 	sort.SliceStable(ready, func(i, j int) bool {
 		return runnerPriority(ready[i]) < runnerPriority(ready[j])
 	})
-	open, err := openChildren(r.graph)
-	if err != nil {
-		return store.Node{}, false, err
+	if *open == nil {
+		derived, err := openChildren(r.graph)
+		if err != nil {
+			return store.Node{}, false, err
+		}
+		*open = derived
 	}
 	for _, node := range ready {
 		// Yield to user work only for BACKGROUND self work (practice, or
@@ -448,7 +457,7 @@ func (r *Runner) claimNext() (store.Node, bool, error) {
 		// A goal node lands after its children: it may be ready by its edges
 		// while its subtree is still working, and the store would refuse its
 		// completion anyway. Skip it until the children are terminal.
-		if open[node.ID] {
+		if (*open)[node.ID] {
 			continue
 		}
 		// Admission reserves the per-firing budget; nothing until now spent it.

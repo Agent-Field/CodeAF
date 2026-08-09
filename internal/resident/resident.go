@@ -582,10 +582,19 @@ func (r *Reconciler) Tick(ctx context.Context) error {
 	if err := r.announceTransitions(ctx); err != nil {
 		return fmt.Errorf("resident tick: watch graph: %w", err)
 	}
-	if err := r.foldSettledJobs(); err != nil {
+	// One reading of the active view serves both passes below. It is a decode of
+	// every live node in the graph, and the two of them asked for it separately
+	// on every tick; nothing between them admits a node, and the only thing
+	// either changes is which settled jobs are folded — which is terminal work
+	// the narrator drops from its state either way.
+	active, err := r.store.ActiveNodes()
+	if err != nil {
+		return fmt.Errorf("resident tick: active nodes: %w", err)
+	}
+	if err := r.foldSettledJobs(active); err != nil {
 		return fmt.Errorf("resident tick: fold settled jobs: %w", err)
 	}
-	if err := r.speakProgress(ctx); err != nil {
+	if err := r.speakProgress(ctx, active); err != nil {
 		return fmt.Errorf("resident tick: narrate progress: %w", err)
 	}
 	retrospectiveAfter := r.latestEventSeq()
@@ -726,9 +735,9 @@ func (r *Reconciler) nextClockDeadlineLocked() (time.Time, error) {
 	if err != nil {
 		return time.Time{}, err
 	}
-	for _, node := range nodes {
-		if foldableSettledJob(node) {
-			earlier(node.FinishedAt.Add(settledFoldGrace))
+	for i := range nodes {
+		if foldableSettledJob(&nodes[i]) {
+			earlier(nodes[i].FinishedAt.Add(settledFoldGrace))
 		}
 	}
 	return deadline, nil
@@ -1702,6 +1711,12 @@ func (r *Reconciler) announceTransitions(ctx context.Context) error {
 		if err != nil {
 			return err
 		}
+		// Nothing to announce is the overwhelmingly common case, and the active
+		// view below is a full-table decode. Reading it before finding out there
+		// were no events meant paying for the whole graph to walk an empty list.
+		if len(events) == 0 {
+			return nil
+		}
 		var byID map[string]store.Node
 		if r.narrate != nil {
 			nodes, err := r.store.ActiveNodes()
@@ -2647,25 +2662,25 @@ func (r *Reconciler) foldJob(node store.Node) {
 // forgetting it.
 const settledFoldGrace = 15 * time.Minute
 
-// foldSettledJobs files every job whose grace window has closed. It reads the
-// active view rather than a per-tick memory precisely so that a process that
-// died between the landing and the fold still folds the job: the condition is a
-// property of the graph, not of this reconciler's lifetime.
-func (r *Reconciler) foldSettledJobs() error {
-	nodes, err := r.store.ActiveNodes()
-	if err != nil {
-		return err
-	}
+// foldSettledJobs files every job whose grace window has closed. It is handed
+// the active view rather than a per-tick memory precisely so that a process
+// that died between the landing and the fold still folds the job: the condition
+// is a property of the graph, not of this reconciler's lifetime.
+func (r *Reconciler) foldSettledJobs(nodes []store.Node) error {
 	cutoff := r.now().Add(-settledFoldGrace)
-	for _, node := range nodes {
+	// Ranged by index: a node is around half a kilobyte, the active view is
+	// every live one of them, and the overwhelming majority of this loop's
+	// iterations read three fields and move on.
+	for i := range nodes {
+		node := &nodes[i]
 		if !foldableSettledJob(node) || node.FinishedAt.After(cutoff) {
 			continue
 		}
-		if r.effectiveSessionID(node) == "" &&
+		if r.effectiveSessionID(*node) == "" &&
 			!(node.Group == store.PracticeGroup && node.Provenance.Origin == store.OriginSelf) {
 			continue
 		}
-		r.foldJob(node)
+		r.foldJob(*node)
 	}
 	return nil
 }
@@ -2673,7 +2688,7 @@ func (r *Reconciler) foldSettledJobs() error {
 // foldableSettledJob is the fold's admission test, stated once. A job root that
 // has already folded is represented by its own fold root, which stays in the
 // active view forever and must never be folded again.
-func foldableSettledJob(node store.Node) bool {
+func foldableSettledJob(node *store.Node) bool {
 	if node.Parent != store.RootID || node.Folded || node.FoldRoot {
 		return false
 	}
