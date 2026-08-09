@@ -14,6 +14,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 	"unicode"
 	"unicode/utf8"
@@ -143,6 +144,12 @@ type Head struct {
 	}
 	defaultModel string
 	dailyRailSet bool
+	// foldMu guards fold. The head answers one message at a time, so this is
+	// never contended in the running product; it is here because a cache is a
+	// piece of shared state and shared state that is only accidentally
+	// single-threaded is the kind that stops being so without anyone noticing.
+	foldMu sync.Mutex
+	fold   *threadFold
 }
 
 // WithImageInput lets the routing head receive durable chat attachments as
@@ -861,22 +868,71 @@ func personRelevant(message store.Message) bool {
 	return message.Role == store.RoleUser || strings.TrimSpace(message.NodeID) == ""
 }
 
+// threadFold is where the window's fold gets left between reads.
+//
+// The window is a left fold over an append-only sequence, which is the property
+// the big-step cut was built on and it has a second consequence nobody was
+// collecting: a fold that has already consumed the first N messages never has
+// to consume them again. So the state is kept — the two windows and the bound
+// they cover — and the next read starts where the last one stopped.
+//
+// That matters twice over. Within one turn the same window is asked for between
+// two and six times, by the router, the correction reader, the redirect reader
+// and the identity reader, all with the same bound; they now fold once and the
+// rest read the answer. Across turns, a session that has run all day stops
+// re-decoding every message it has ever held to keep the last thirty-two.
+//
+// One session's fold is kept rather than a table of them: the head answers one
+// message at a time and a conversation arrives in runs, so a second thread
+// simply folds from zero — which is what every read did before.
+type threadFold struct {
+	sessionID string
+	// folded is the exclusive bound the two windows cover: every message of
+	// this session below it has been folded in. It is also the resume point,
+	// because the journal only ever appends and a seq below it can never
+	// appear later.
+	folded  int64
+	person  []store.Message
+	ambient []store.Message
+	window  []store.Message
+}
+
 func (h *Head) recentThread(sessionID string, beforeSeq int64) ([]store.Message, error) {
-	person := make([]store.Message, 0, threadWindowMax+1)
-	ambient := make([]store.Message, 0, ambientWindowMax+1)
-	var cursor int64
-	for {
+	h.foldMu.Lock()
+	defer h.foldMu.Unlock()
+
+	fold := h.fold
+	// Resuming is only sound forward. A read of an older bound would have to
+	// un-fold messages the window has already cut against, so it starts over.
+	if fold == nil || fold.sessionID != sessionID || fold.folded > beforeSeq {
+		fold = &threadFold{
+			sessionID: sessionID,
+			person:    make([]store.Message, 0, threadWindowMax+1),
+			ambient:   make([]store.Message, 0, ambientWindowMax+1),
+		}
+	}
+	if fold.folded == beforeSeq && fold.window != nil {
+		return copyThread(fold.window), nil
+	}
+
+	cursor := fold.folded - 1
+	if cursor < 0 {
+		cursor = 0
+	}
+	person, ambient := fold.person, fold.ambient
+	for done := false; !done; {
 		messages, err := h.store.Messages(sessionID, cursor, messagePageSize)
 		if err != nil {
 			return nil, err
 		}
 		if len(messages) == 0 {
-			return mergeThreadWindow(person, ambient), nil
+			break
 		}
 		for _, message := range messages {
 			cursor = message.Seq
 			if message.Seq >= beforeSeq {
-				return mergeThreadWindow(person, ambient), nil
+				done = true
+				break
 			}
 			// Each cut is a fold over the whole session, so the window is a pure
 			// function of how many messages precede this one — the same session
@@ -894,6 +950,21 @@ func (h *Head) recentThread(sessionID string, beforeSeq int64) ([]store.Message,
 			}
 		}
 	}
+
+	// The kept window is a copy of its own, and so is every window handed out.
+	// mergeThreadWindow returns the person slice itself when nothing is ambient,
+	// and the next cut rewrites that slice in place — a caller holding it, or a
+	// cache holding it, would find its thread had quietly changed shape. Every
+	// read used to build its own slices, so a copy is what callers already had.
+	fold.person, fold.ambient = person, ambient
+	fold.folded = beforeSeq
+	fold.window = copyThread(mergeThreadWindow(person, ambient))
+	h.fold = fold
+	return copyThread(fold.window), nil
+}
+
+func copyThread(messages []store.Message) []store.Message {
+	return append(make([]store.Message, 0, len(messages)), messages...)
 }
 
 // mergeThreadWindow puts the two windows back into journal order. Both are
