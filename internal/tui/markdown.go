@@ -206,6 +206,13 @@ func (m *Model) renderMediaArtifacts(message store.Message, width int) string {
 		paths = append(paths, cas.SourcePath(attachment))
 	}
 	paths = append(paths, mediaReferences(message.Body)...)
+	return m.renderMediaPaths(message.NodeID, paths, width)
+}
+
+// renderMediaPaths is the same rendering from a list of references already in
+// hand, for the one caller — the activity feed — that scans an append-only
+// file and keeps what it found rather than reading it again.
+func (m *Model) renderMediaPaths(nodeID string, paths []string, width int) string {
 	seen := make(map[string]bool, len(paths))
 	lines := make([]string, 0, len(paths))
 	for _, path := range paths {
@@ -221,7 +228,7 @@ func (m *Model) renderMediaArtifacts(message store.Message, width int) string {
 		target := path
 		if !filepath.IsAbs(target) {
 			var found bool
-			target, found = m.resolveWorkspacePath(message.NodeID, path)
+			target, found = m.resolveWorkspacePath(nodeID, path)
 			if !found {
 				continue
 			}
