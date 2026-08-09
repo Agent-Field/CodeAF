@@ -318,7 +318,11 @@ func (runner *pipeline) run(
 			"project_id": projectID, "root_task_id": rootID,
 		})
 	} else if decomposed {
-		runner.events.stage("root-cut", "decompose", nil)
+		// aforge-embed: the sizing band rides the root-cut event. The band is
+		// the engine's own judgement of how big this goal is, and the embedding
+		// reads it as calibration evidence about whether the work belonged with
+		// this worker at all — see internal/exec/swe.go's Calibration notes.
+		runner.events.stage("root-cut", "decompose", map[string]any{"band": runner.rootCutBand})
 		var err error
 		if os.Getenv("CODEAF_PRE_GATES") == "0" {
 			runner.events.stage("pre-gates", "disabled", nil)
@@ -330,7 +334,10 @@ func (runner *pipeline) run(
 		}
 		projectID, rootID = plan.ProjectID, plan.RootID
 	} else if runner.args.EntryAgent == baked.EntryAgent {
-		runner.events.stage("root-cut", "selected", nil)
+		// aforge-embed: same band, on the arm that says the whole goal fits one
+		// leaf — which is the strongest "this may have been too small for this
+		// worker" signal the engine produces.
+		runner.events.stage("root-cut", "selected", map[string]any{"band": runner.rootCutBand})
 	}
 
 	if os.Getenv("CODEAF_VALIDITY") != "0" && !options.Resume {
@@ -1665,7 +1672,12 @@ func (runner *pipeline) auditFixLoop(
 			history = append(history, convergenceCycle(*audit.Verdict))
 		}
 		status := string(audit.Status)
-		runner.events.stage("audit", status, map[string]any{"cycle": cycle})
+		// aforge-embed: the ceiling rides beside the count. A cycle number on
+		// its own says nothing about strain; the same number beside the maximum
+		// is the difference between a comfortable run and one that used every
+		// cycle it had, which is exactly what the embedding records as
+		// calibration evidence.
+		runner.events.stage("audit", status, map[string]any{"cycle": cycle, "max_cycles": maxCycles})
 		blockers := 0
 		if audit.Verdict != nil {
 			blockers = len(audit.Verdict.Blockers)

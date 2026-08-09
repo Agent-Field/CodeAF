@@ -211,7 +211,7 @@ func runExecute(args []string) error {
 	registry := exec.NewRegistry(linear)
 	registerLeafExecutors(registry, leafBuild{
 		settings: settings, client: client, workspace: space, web: web,
-		graph: history, media: mediaTools, model: settings.Model,
+		graph: history, media: mediaTools, model: settings.Model, models: modelCatalog,
 		maxTurns: *maxTurns, maxTokens: *maxTokens, deadline: deadline,
 	})
 	// A graph may name a worker this build was not compiled with. The registry
@@ -427,7 +427,7 @@ func recordAndCalibrateDetailed(ctx context.Context, client plan.Completer, sett
 		if _, seen := byWorker[worker]; !seen && worker != order[0] {
 			order = append(order, worker)
 		}
-		byWorker[worker] = append(byWorker[worker], landedProfileRecord{planID: node.ID, record: profile.Record{
+		byWorker[worker] = append(byWorker[worker], landedProfileRecord{planID: node.ID, record: withBoundaryEvidence(settings, model, worker, profile.Record{
 			Title:        node.Title,
 			Summary:      node.Summary,
 			Sources:      len(node.Sources),
@@ -435,9 +435,16 @@ func recordAndCalibrateDetailed(ctx context.Context, client plan.Completer, sett
 			Size:         string(node.Size),
 			Turns:        node.Turns,
 			Tokens:       node.Tokens,
+			Cost:         node.Cost,
 			Stop:         node.Stop,
 			Verdict:      node.Verdict,
-		}})
+			// What the worker said about its own fit, and whoever tried this
+			// node before it did. Both are empty on every node the generalist
+			// took first and finished, which is the additive law arriving at the
+			// profile file: an existing profile gains no new keys.
+			Calibration:   append([]string(nil), node.Calibration...),
+			EscalatedFrom: node.EscalatedFrom,
+		})})
 	}
 
 	var reports []string
