@@ -185,11 +185,17 @@ func TestPollCadenceDecaysWhenQuietAndSnapsBackOnChange(t *testing.T) {
 	if got := model.pollCadence(); got != pollIdleInterval {
 		t.Fatalf("cadence before the keypress is %s, want %s", got, pollIdleInterval)
 	}
-	before := model.surface()
+	// The read is armed before the handler runs, because a handler that opens a
+	// place fires its own poll on the way out.
+	armed := model.armActivity()
+	fromHandler := model.poll()
 	model.selfOpen = true
-	model.noteActivity(before)
+	model.noteActivity(armed)
 	if got := model.pollCadence(); got != pollInterval {
 		t.Fatalf("cadence after a keypress is %s, want %s", got, pollInterval)
+	}
+	if result := fromHandler().(pollResultMsg); result.quiet {
+		t.Fatal("the poll the place-opening key fired skipped the read set")
 	}
 	if result := model.poll()().(pollResultMsg); result.quiet {
 		t.Fatal("the poll after a place change skipped the read set")
