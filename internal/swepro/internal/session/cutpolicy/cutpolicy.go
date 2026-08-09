@@ -41,9 +41,9 @@ import (
 	"unicode"
 	"unicode/utf8"
 
-	"github.com/Agent-Field/swe-pro-go/internal/jscompat"
-	"github.com/Agent-Field/swe-pro-go/internal/session/capability"
-	"github.com/Agent-Field/swe-pro-go/internal/session/sizeband"
+	"github.com/Agent-Field/aforge-v2/internal/swepro/internal/jscompat"
+	"github.com/Agent-Field/aforge-v2/internal/swepro/internal/session/capability"
+	"github.com/Agent-Field/aforge-v2/internal/swepro/internal/session/sizeband"
 )
 
 // bandIndexTable is TS BAND_INDEX (cut-policy.ts:25).

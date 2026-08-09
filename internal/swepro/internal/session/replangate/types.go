@@ -9,7 +9,7 @@ import (
 	"strconv"
 	"unicode/utf16"
 
-	"github.com/Agent-Field/swe-pro-go/internal/session/agentjson"
+	"github.com/Agent-Field/aforge-v2/internal/swepro/internal/session/agentjson"
 )
 
 // ReplanOp is one member of ReplanOpSchema.

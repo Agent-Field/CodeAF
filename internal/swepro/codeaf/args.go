@@ -1,6 +1,6 @@
 // This file ports the CLI surface from swe-pro/src/cli/cmd/run.ts:151-365,
 // resume.ts:345-429, and portfolio.ts:238-280.
-package main
+package codeaf
 
 import (
 	"errors"

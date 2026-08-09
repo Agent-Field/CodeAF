@@ -30,7 +30,7 @@ package luby
 import (
 	"math"
 
-	"github.com/Agent-Field/swe-pro-go/internal/fixflag"
+	"github.com/Agent-Field/aforge-v2/internal/swepro/internal/fixflag"
 )
 
 // LubySequence is the i-th value of the Luby sequence (1-indexed).

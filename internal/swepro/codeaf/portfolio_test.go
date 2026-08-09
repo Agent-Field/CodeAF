@@ -1,4 +1,4 @@
-package main
+package codeaf
 
 import (
 	"bytes"
@@ -10,7 +10,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Agent-Field/swe-pro-go/internal/session/resourceguard"
+	"github.com/Agent-Field/aforge-v2/internal/swepro/internal/session/resourceguard"
 )
 
 func TestParsePortfolioSurface(t *testing.T) {

@@ -1,6 +1,6 @@
 package scheduler
 
-import "github.com/Agent-Field/swe-pro-go/internal/session/leafoutcome"
+import "github.com/Agent-Field/aforge-v2/internal/swepro/internal/session/leafoutcome"
 
 // OutcomeObserverFunc adapts a function to OutcomeObserver.
 type OutcomeObserverFunc func(leafoutcome.LeafOutcome)

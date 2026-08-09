@@ -1,4 +1,4 @@
-package main
+package codeaf
 
 import (
 	"context"
@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"sync"
 
-	"github.com/Agent-Field/swe-pro-go/internal/engine/msgmodel"
+	"github.com/Agent-Field/aforge-v2/internal/swepro/internal/engine/msgmodel"
 )
 
 // turnStore is the in-memory fallback for direct engine tests. The shipped

@@ -1,4 +1,4 @@
-package main
+package codeaf
 
 import (
 	"bytes"
@@ -12,10 +12,10 @@ import (
 	"testing"
 	"unicode/utf16"
 
-	"github.com/Agent-Field/swe-pro-go/internal/session/auditorgate"
-	"github.com/Agent-Field/swe-pro-go/internal/session/contract"
-	"github.com/Agent-Field/swe-pro-go/internal/session/fixgenerator"
-	"github.com/Agent-Field/swe-pro-go/internal/session/frontierplanning"
+	"github.com/Agent-Field/aforge-v2/internal/swepro/internal/session/auditorgate"
+	"github.com/Agent-Field/aforge-v2/internal/swepro/internal/session/contract"
+	"github.com/Agent-Field/aforge-v2/internal/swepro/internal/session/fixgenerator"
+	"github.com/Agent-Field/aforge-v2/internal/swepro/internal/session/frontierplanning"
 )
 
 func frontierRoleRunner(

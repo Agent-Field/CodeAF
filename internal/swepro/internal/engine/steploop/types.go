@@ -6,9 +6,9 @@ import (
 	"io"
 	"math"
 
-	"github.com/Agent-Field/swe-pro-go/internal/engine/calc"
-	"github.com/Agent-Field/swe-pro-go/internal/engine/msgmodel"
-	"github.com/Agent-Field/swe-pro-go/internal/engine/orclient"
+	"github.com/Agent-Field/aforge-v2/internal/swepro/internal/engine/calc"
+	"github.com/Agent-Field/aforge-v2/internal/swepro/internal/engine/msgmodel"
+	"github.com/Agent-Field/aforge-v2/internal/swepro/internal/engine/orclient"
 )
 
 // Store is the MessageV2 persistence slice used by the loop and processor.

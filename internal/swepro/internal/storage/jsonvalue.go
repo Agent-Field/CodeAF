@@ -13,7 +13,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/Agent-Field/swe-pro-go/internal/jscompat"
+	"github.com/Agent-Field/aforge-v2/internal/swepro/internal/jscompat"
 )
 
 // Object is a JavaScript plain-object image. Existing keys retain their first

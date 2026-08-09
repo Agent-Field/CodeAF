@@ -16,12 +16,12 @@ import (
 	"strings"
 	"unicode/utf16"
 
-	"github.com/Agent-Field/swe-pro-go/internal/jscompat"
-	"github.com/Agent-Field/swe-pro-go/internal/plandb"
-	"github.com/Agent-Field/swe-pro-go/internal/session/agentjson"
-	"github.com/Agent-Field/swe-pro-go/internal/session/artifactregistry"
-	"github.com/Agent-Field/swe-pro-go/internal/session/auditorgate"
-	"github.com/Agent-Field/swe-pro-go/internal/session/hardmode"
+	"github.com/Agent-Field/aforge-v2/internal/swepro/internal/jscompat"
+	"github.com/Agent-Field/aforge-v2/internal/swepro/internal/plandb"
+	"github.com/Agent-Field/aforge-v2/internal/swepro/internal/session/agentjson"
+	"github.com/Agent-Field/aforge-v2/internal/swepro/internal/session/artifactregistry"
+	"github.com/Agent-Field/aforge-v2/internal/swepro/internal/session/auditorgate"
+	"github.com/Agent-Field/aforge-v2/internal/swepro/internal/session/hardmode"
 )
 
 type FixKind string

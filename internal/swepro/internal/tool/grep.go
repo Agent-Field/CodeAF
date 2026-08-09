@@ -13,7 +13,7 @@ import (
 	"strings"
 	"unicode/utf16"
 
-	"github.com/Agent-Field/swe-pro-go/internal/engine/steploop"
+	"github.com/Agent-Field/aforge-v2/internal/swepro/internal/engine/steploop"
 )
 
 const maxGrepLineLength = 2000

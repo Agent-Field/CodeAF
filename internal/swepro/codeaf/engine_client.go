@@ -1,4 +1,4 @@
-package main
+package codeaf
 
 import (
 	"context"
@@ -10,16 +10,16 @@ import (
 	"sync"
 	"time"
 
-	"github.com/Agent-Field/swe-pro-go/internal/attribution"
-	"github.com/Agent-Field/swe-pro-go/internal/baked"
-	"github.com/Agent-Field/swe-pro-go/internal/engine/calc"
-	"github.com/Agent-Field/swe-pro-go/internal/engine/msgmodel"
-	"github.com/Agent-Field/swe-pro-go/internal/engine/orclient"
-	"github.com/Agent-Field/swe-pro-go/internal/engine/steploop"
-	"github.com/Agent-Field/swe-pro-go/internal/router/adaptive"
-	"github.com/Agent-Field/swe-pro-go/internal/session/llmcall"
-	sessionretry "github.com/Agent-Field/swe-pro-go/internal/session/retry"
-	"github.com/Agent-Field/swe-pro-go/internal/tool"
+	"github.com/Agent-Field/aforge-v2/internal/swepro/internal/attribution"
+	"github.com/Agent-Field/aforge-v2/internal/swepro/internal/baked"
+	"github.com/Agent-Field/aforge-v2/internal/swepro/internal/engine/calc"
+	"github.com/Agent-Field/aforge-v2/internal/swepro/internal/engine/msgmodel"
+	"github.com/Agent-Field/aforge-v2/internal/swepro/internal/engine/orclient"
+	"github.com/Agent-Field/aforge-v2/internal/swepro/internal/engine/steploop"
+	"github.com/Agent-Field/aforge-v2/internal/swepro/internal/router/adaptive"
+	"github.com/Agent-Field/aforge-v2/internal/swepro/internal/session/llmcall"
+	sessionretry "github.com/Agent-Field/aforge-v2/internal/swepro/internal/session/retry"
+	"github.com/Agent-Field/aforge-v2/internal/swepro/internal/tool"
 )
 
 type codeafModels struct {

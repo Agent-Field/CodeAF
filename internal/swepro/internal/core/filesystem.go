@@ -13,7 +13,7 @@ import (
 	"runtime"
 	"strings"
 
-	"github.com/Agent-Field/swe-pro-go/internal/jscompat"
+	"github.com/Agent-Field/aforge-v2/internal/swepro/internal/jscompat"
 )
 
 // FileSystemError wraps operations implemented outside the basic os package.

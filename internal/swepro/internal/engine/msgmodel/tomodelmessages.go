@@ -5,7 +5,7 @@ import (
 	"sync/atomic"
 	"unicode/utf16"
 
-	"github.com/Agent-Field/swe-pro-go/internal/jscompat"
+	"github.com/Agent-Field/aforge-v2/internal/swepro/internal/jscompat"
 )
 
 // ToModelOptions is message-v2.ts:733 — `{stripMedia?, toolOutputMaxChars?}`.

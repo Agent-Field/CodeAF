@@ -6,7 +6,7 @@
 // decisions. Type aliases keep both call sites on one implementation.
 package overflow
 
-import "github.com/Agent-Field/swe-pro-go/internal/engine/calc"
+import "github.com/Agent-Field/aforge-v2/internal/swepro/internal/engine/calc"
 
 type CompactionConfig = calc.CompactionConfig
 type Config = calc.Config

@@ -7,9 +7,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Agent-Field/swe-pro-go/internal/plandb"
-	"github.com/Agent-Field/swe-pro-go/internal/session/leafoutcome"
-	"github.com/Agent-Field/swe-pro-go/internal/session/resourceguard"
+	"github.com/Agent-Field/aforge-v2/internal/swepro/internal/plandb"
+	"github.com/Agent-Field/aforge-v2/internal/swepro/internal/session/leafoutcome"
+	"github.com/Agent-Field/aforge-v2/internal/swepro/internal/session/resourceguard"
 )
 
 func clearSchedulerInFlight(t *testing.T) {

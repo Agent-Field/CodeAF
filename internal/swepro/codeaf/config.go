@@ -1,4 +1,4 @@
-package main
+package codeaf
 
 import (
 	"context"
@@ -8,13 +8,13 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/Agent-Field/swe-pro-go/internal/baked"
-	configpkg "github.com/Agent-Field/swe-pro-go/internal/config"
-	"github.com/Agent-Field/swe-pro-go/internal/engine/orclient"
-	"github.com/Agent-Field/swe-pro-go/internal/engine/steploop"
-	"github.com/Agent-Field/swe-pro-go/internal/permission"
-	"github.com/Agent-Field/swe-pro-go/internal/session/overflow"
-	"github.com/Agent-Field/swe-pro-go/internal/tool"
+	"github.com/Agent-Field/aforge-v2/internal/swepro/internal/baked"
+	configpkg "github.com/Agent-Field/aforge-v2/internal/swepro/internal/config"
+	"github.com/Agent-Field/aforge-v2/internal/swepro/internal/engine/orclient"
+	"github.com/Agent-Field/aforge-v2/internal/swepro/internal/engine/steploop"
+	"github.com/Agent-Field/aforge-v2/internal/swepro/internal/permission"
+	"github.com/Agent-Field/aforge-v2/internal/swepro/internal/session/overflow"
+	"github.com/Agent-Field/aforge-v2/internal/swepro/internal/tool"
 )
 
 type codeafConfig struct {

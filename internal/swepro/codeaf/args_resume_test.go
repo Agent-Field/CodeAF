@@ -1,5 +1,5 @@
 // This file covers pure CLI/resume decisions from swe-pro/src/cli/cmd/resume.ts:1-429.
-package main
+package codeaf
 
 import (
 	"context"
@@ -8,9 +8,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Agent-Field/swe-pro-go/internal/plandb"
-	"github.com/Agent-Field/swe-pro-go/internal/session/fixgenerator"
-	"github.com/Agent-Field/swe-pro-go/internal/session/ledgers"
+	"github.com/Agent-Field/aforge-v2/internal/swepro/internal/plandb"
+	"github.com/Agent-Field/aforge-v2/internal/swepro/internal/session/fixgenerator"
+	"github.com/Agent-Field/aforge-v2/internal/swepro/internal/session/ledgers"
 )
 
 func TestParseArgsAllowsOptionsAroundMessage(t *testing.T) {

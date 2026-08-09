@@ -7,10 +7,10 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/Agent-Field/swe-pro-go/internal/engine/msgmodel"
-	"github.com/Agent-Field/swe-pro-go/internal/engine/steploop"
-	"github.com/Agent-Field/swe-pro-go/internal/jscompat"
-	"github.com/Agent-Field/swe-pro-go/internal/project"
+	"github.com/Agent-Field/aforge-v2/internal/swepro/internal/engine/msgmodel"
+	"github.com/Agent-Field/aforge-v2/internal/swepro/internal/engine/steploop"
+	"github.com/Agent-Field/aforge-v2/internal/swepro/internal/jscompat"
+	"github.com/Agent-Field/aforge-v2/internal/swepro/internal/project"
 )
 
 const taskDescription = "Launch a new agent to handle complex, multistep tasks autonomously. Each invocation returns a task_id that can resume the same subagent session."

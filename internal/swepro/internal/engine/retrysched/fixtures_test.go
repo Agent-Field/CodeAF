@@ -29,8 +29,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Agent-Field/swe-pro-go/internal/jscompat"
-	"github.com/Agent-Field/swe-pro-go/internal/router/adaptive"
+	"github.com/Agent-Field/aforge-v2/internal/swepro/internal/jscompat"
+	"github.com/Agent-Field/aforge-v2/internal/swepro/internal/router/adaptive"
 )
 
 // fixedNow mirrors FIXED_NOW in tools/fixtures/gen-retrysched.ts

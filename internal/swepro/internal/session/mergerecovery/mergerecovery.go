@@ -21,9 +21,9 @@ import (
 	"strings"
 	"unicode/utf16"
 
-	"github.com/Agent-Field/swe-pro-go/internal/attribution"
-	"github.com/Agent-Field/swe-pro-go/internal/jscompat"
-	"github.com/Agent-Field/swe-pro-go/internal/logshim"
+	"github.com/Agent-Field/aforge-v2/internal/swepro/internal/attribution"
+	"github.com/Agent-Field/aforge-v2/internal/swepro/internal/jscompat"
+	"github.com/Agent-Field/aforge-v2/internal/swepro/internal/logshim"
 )
 
 var log = logshim.Create(map[string]any{"service": "session.merge-recovery"})

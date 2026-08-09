@@ -1,5 +1,5 @@
 // This file ports src/cli/cmd/portfolio.ts:1-542 from swe-pro commit 3b25a1a.
-package main
+package codeaf
 
 import (
 	"bytes"
@@ -17,12 +17,12 @@ import (
 	"time"
 	"unicode/utf16"
 
-	"github.com/Agent-Field/swe-pro-go/internal/jscompat"
-	"github.com/Agent-Field/swe-pro-go/internal/session/auditorgate"
-	"github.com/Agent-Field/swe-pro-go/internal/session/luby"
-	"github.com/Agent-Field/swe-pro-go/internal/session/mergeexecution"
-	"github.com/Agent-Field/swe-pro-go/internal/session/portfolio"
-	"github.com/Agent-Field/swe-pro-go/internal/session/resourceguard"
+	"github.com/Agent-Field/aforge-v2/internal/swepro/internal/jscompat"
+	"github.com/Agent-Field/aforge-v2/internal/swepro/internal/session/auditorgate"
+	"github.com/Agent-Field/aforge-v2/internal/swepro/internal/session/luby"
+	"github.com/Agent-Field/aforge-v2/internal/swepro/internal/session/mergeexecution"
+	"github.com/Agent-Field/aforge-v2/internal/swepro/internal/session/portfolio"
+	"github.com/Agent-Field/aforge-v2/internal/swepro/internal/session/resourceguard"
 )
 
 const maxPortfolioAttempts = 8

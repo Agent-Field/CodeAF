@@ -7,8 +7,8 @@ import (
 	"errors"
 	"os"
 
-	"github.com/Agent-Field/swe-pro-go/internal/jscompat"
-	"github.com/Agent-Field/swe-pro-go/internal/session/ledgers"
+	"github.com/Agent-Field/aforge-v2/internal/swepro/internal/jscompat"
+	"github.com/Agent-Field/aforge-v2/internal/swepro/internal/session/ledgers"
 )
 
 // VerdictStatus is the on-disk auditor verdict tag.

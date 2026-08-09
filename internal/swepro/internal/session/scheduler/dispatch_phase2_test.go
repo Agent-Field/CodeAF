@@ -11,10 +11,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Agent-Field/swe-pro-go/internal/plandb"
-	"github.com/Agent-Field/swe-pro-go/internal/session/leafoutcome"
-	"github.com/Agent-Field/swe-pro-go/internal/session/loopguard"
-	"github.com/Agent-Field/swe-pro-go/internal/session/mergecoordinator"
+	"github.com/Agent-Field/aforge-v2/internal/swepro/internal/plandb"
+	"github.com/Agent-Field/aforge-v2/internal/swepro/internal/session/leafoutcome"
+	"github.com/Agent-Field/aforge-v2/internal/swepro/internal/session/loopguard"
+	"github.com/Agent-Field/aforge-v2/internal/swepro/internal/session/mergecoordinator"
 )
 
 type phase2PlanDB struct {

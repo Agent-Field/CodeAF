@@ -1,5 +1,5 @@
 // Command codeaf ports swe-pro/src/cli/cmd/run.ts and resume.ts at commit 3b25a1a.
-package main
+package codeaf
 
 import (
 	"context"
@@ -12,12 +12,12 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Agent-Field/swe-pro-go/internal/afield"
-	"github.com/Agent-Field/swe-pro-go/internal/modelsdev"
-	"github.com/Agent-Field/swe-pro-go/internal/plandb"
-	"github.com/Agent-Field/swe-pro-go/internal/session/auditorgate"
-	"github.com/Agent-Field/swe-pro-go/internal/session/ledgers"
-	"github.com/Agent-Field/swe-pro-go/internal/session/supervisor"
+	"github.com/Agent-Field/aforge-v2/internal/swepro/internal/afield"
+	"github.com/Agent-Field/aforge-v2/internal/swepro/internal/modelsdev"
+	"github.com/Agent-Field/aforge-v2/internal/swepro/internal/plandb"
+	"github.com/Agent-Field/aforge-v2/internal/swepro/internal/session/auditorgate"
+	"github.com/Agent-Field/aforge-v2/internal/swepro/internal/session/ledgers"
+	"github.com/Agent-Field/aforge-v2/internal/swepro/internal/session/supervisor"
 )
 
 var version = "dev"

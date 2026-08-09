@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"github.com/Agent-Field/swe-pro-go/internal/jscompat"
+	"github.com/Agent-Field/aforge-v2/internal/swepro/internal/jscompat"
 )
 
 // ── AssistantError (message-v2.ts:40-62, 462-472) ────────────────────────

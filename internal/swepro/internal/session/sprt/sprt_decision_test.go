@@ -5,7 +5,7 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/Agent-Field/swe-pro-go/internal/session/sprt"
+	"github.com/Agent-Field/aforge-v2/internal/swepro/internal/session/sprt"
 )
 
 // Snapshot API. Convention: success = healthy observation. p0 = flaky rate,

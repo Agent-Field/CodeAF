@@ -1,4 +1,4 @@
-package main
+package codeaf
 
 import (
 	"context"
@@ -6,11 +6,11 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/Agent-Field/swe-pro-go/internal/engine/steploop"
-	"github.com/Agent-Field/swe-pro-go/internal/session/auditconvergence"
-	"github.com/Agent-Field/swe-pro-go/internal/session/auditorgate"
-	"github.com/Agent-Field/swe-pro-go/internal/session/fullverification"
-	"github.com/Agent-Field/swe-pro-go/internal/tool"
+	"github.com/Agent-Field/aforge-v2/internal/swepro/internal/engine/steploop"
+	"github.com/Agent-Field/aforge-v2/internal/swepro/internal/session/auditconvergence"
+	"github.com/Agent-Field/aforge-v2/internal/swepro/internal/session/auditorgate"
+	"github.com/Agent-Field/aforge-v2/internal/swepro/internal/session/fullverification"
+	"github.com/Agent-Field/aforge-v2/internal/swepro/internal/tool"
 )
 
 const fullVerificationTimeoutMS = 600_000

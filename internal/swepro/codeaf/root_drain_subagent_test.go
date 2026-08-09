@@ -1,9 +1,9 @@
-package main
+package codeaf
 
 import (
 	"testing"
 
-	"github.com/Agent-Field/swe-pro-go/internal/plandb"
+	"github.com/Agent-Field/aforge-v2/internal/swepro/internal/plandb"
 )
 
 // Contract (run-T shape): leaked "Harness-created subagent task." bookkeeping

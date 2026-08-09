@@ -3,7 +3,7 @@ package compaction
 import (
 	"context"
 
-	"github.com/Agent-Field/swe-pro-go/internal/session/evidenceharvest"
+	"github.com/Agent-Field/aforge-v2/internal/swepro/internal/session/evidenceharvest"
 )
 
 // FallbackEvidenceSelector exposes evidence-harvest.ts's deterministic

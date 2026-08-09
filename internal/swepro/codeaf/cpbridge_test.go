@@ -1,4 +1,4 @@
-package main
+package codeaf
 
 import (
 	"bytes"
@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Agent-Field/swe-pro-go/internal/afield"
+	"github.com/Agent-Field/aforge-v2/internal/swepro/internal/afield"
 )
 
 type roundTripFunc func(*http.Request) (*http.Response, error)

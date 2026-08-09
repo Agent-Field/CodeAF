@@ -1,8 +1,8 @@
-package main
+package codeaf
 
 import (
-	"github.com/Agent-Field/swe-pro-go/internal/router/adaptive"
-	"github.com/Agent-Field/swe-pro-go/internal/router/state"
+	"github.com/Agent-Field/aforge-v2/internal/swepro/internal/router/adaptive"
+	"github.com/Agent-Field/aforge-v2/internal/swepro/internal/router/state"
 )
 
 type adaptiveRouterBackend interface {

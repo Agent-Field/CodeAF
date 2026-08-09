@@ -1,4 +1,4 @@
-package main
+package codeaf
 
 import (
 	"context"
@@ -6,13 +6,13 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/Agent-Field/swe-pro-go/internal/engine/msgmodel"
-	"github.com/Agent-Field/swe-pro-go/internal/engine/orclient"
-	"github.com/Agent-Field/swe-pro-go/internal/engine/steploop"
-	"github.com/Agent-Field/swe-pro-go/internal/session/agentjson"
-	"github.com/Agent-Field/swe-pro-go/internal/session/merger"
-	"github.com/Agent-Field/swe-pro-go/internal/session/mergerecovery"
-	"github.com/Agent-Field/swe-pro-go/internal/session/scheduler"
+	"github.com/Agent-Field/aforge-v2/internal/swepro/internal/engine/msgmodel"
+	"github.com/Agent-Field/aforge-v2/internal/swepro/internal/engine/orclient"
+	"github.com/Agent-Field/aforge-v2/internal/swepro/internal/engine/steploop"
+	"github.com/Agent-Field/aforge-v2/internal/swepro/internal/session/agentjson"
+	"github.com/Agent-Field/aforge-v2/internal/swepro/internal/session/merger"
+	"github.com/Agent-Field/aforge-v2/internal/swepro/internal/session/mergerecovery"
+	"github.com/Agent-Field/aforge-v2/internal/swepro/internal/session/scheduler"
 )
 
 // runtimeMergerDispatcher adapts merger.ts's structured agent call to the

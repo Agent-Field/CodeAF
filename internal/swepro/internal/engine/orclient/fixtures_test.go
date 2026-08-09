@@ -14,8 +14,8 @@ import (
 	"encoding/json"
 	"testing"
 
-	"github.com/Agent-Field/swe-pro-go/internal/engine/msgmodel"
-	"github.com/Agent-Field/swe-pro-go/internal/jscompat"
+	"github.com/Agent-Field/aforge-v2/internal/swepro/internal/engine/msgmodel"
+	"github.com/Agent-Field/aforge-v2/internal/swepro/internal/jscompat"
 )
 
 func stringify(t *testing.T, v any) string {

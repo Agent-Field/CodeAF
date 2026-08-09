@@ -1,4 +1,4 @@
-package main
+package codeaf
 
 import (
 	"context"
@@ -9,7 +9,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Agent-Field/swe-pro-go/internal/session/contract"
+	"github.com/Agent-Field/aforge-v2/internal/swepro/internal/session/contract"
 )
 
 // Validation contract for the base-contract check, derived from werkzeug-3146.

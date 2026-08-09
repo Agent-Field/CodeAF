@@ -5,7 +5,7 @@ import (
 	"math"
 	"testing"
 
-	"github.com/Agent-Field/swe-pro-go/internal/session/sprt"
+	"github.com/Agent-Field/aforge-v2/internal/swepro/internal/session/sprt"
 )
 
 func ptr(f float64) *float64 { return &f }

@@ -1,7 +1,7 @@
 //go:build darwin
 
 // Darwin names the stat ctime field Ctimespec, not Ctim; same value, same units.
-package main
+package codeaf
 
 import (
 	"syscall"

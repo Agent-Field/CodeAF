@@ -10,16 +10,16 @@ import (
 	"context"
 	"time"
 
-	"github.com/Agent-Field/swe-pro-go/internal/jscompat"
-	"github.com/Agent-Field/swe-pro-go/internal/plandb"
-	"github.com/Agent-Field/swe-pro-go/internal/session/capability"
-	"github.com/Agent-Field/swe-pro-go/internal/session/isolationfurrow"
-	"github.com/Agent-Field/swe-pro-go/internal/session/leafbriefing"
-	"github.com/Agent-Field/swe-pro-go/internal/session/leafoutcome"
-	"github.com/Agent-Field/swe-pro-go/internal/session/loopguard"
-	"github.com/Agent-Field/swe-pro-go/internal/session/resourceguard"
-	"github.com/Agent-Field/swe-pro-go/internal/session/sizeband"
-	"github.com/Agent-Field/swe-pro-go/internal/session/specclauses"
+	"github.com/Agent-Field/aforge-v2/internal/swepro/internal/jscompat"
+	"github.com/Agent-Field/aforge-v2/internal/swepro/internal/plandb"
+	"github.com/Agent-Field/aforge-v2/internal/swepro/internal/session/capability"
+	"github.com/Agent-Field/aforge-v2/internal/swepro/internal/session/isolationfurrow"
+	"github.com/Agent-Field/aforge-v2/internal/swepro/internal/session/leafbriefing"
+	"github.com/Agent-Field/aforge-v2/internal/swepro/internal/session/leafoutcome"
+	"github.com/Agent-Field/aforge-v2/internal/swepro/internal/session/loopguard"
+	"github.com/Agent-Field/aforge-v2/internal/swepro/internal/session/resourceguard"
+	"github.com/Agent-Field/aforge-v2/internal/swepro/internal/session/sizeband"
+	"github.com/Agent-Field/aforge-v2/internal/swepro/internal/session/specclauses"
 )
 
 const (

@@ -1,4 +1,4 @@
-package main
+package codeaf
 
 import (
 	"context"
@@ -8,10 +8,10 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/Agent-Field/swe-pro-go/internal/engine/orclient"
-	"github.com/Agent-Field/swe-pro-go/internal/engine/steploop"
-	"github.com/Agent-Field/swe-pro-go/internal/session/merger"
-	"github.com/Agent-Field/swe-pro-go/internal/session/mergerecovery"
+	"github.com/Agent-Field/aforge-v2/internal/swepro/internal/engine/orclient"
+	"github.com/Agent-Field/aforge-v2/internal/swepro/internal/engine/steploop"
+	"github.com/Agent-Field/aforge-v2/internal/swepro/internal/session/merger"
+	"github.com/Agent-Field/aforge-v2/internal/swepro/internal/session/mergerecovery"
 )
 
 type mergeWiringBackend func(context.Context, turn) (turnResult, error)

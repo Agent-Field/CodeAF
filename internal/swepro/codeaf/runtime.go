@@ -1,5 +1,5 @@
 // This file adapts the Effect services consumed by swe-pro/src/cli/cmd/run.ts:404-2899.
-package main
+package codeaf
 
 import (
 	"context"
@@ -17,23 +17,23 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/Agent-Field/swe-pro-go/internal/baked"
-	"github.com/Agent-Field/swe-pro-go/internal/bus"
-	"github.com/Agent-Field/swe-pro-go/internal/engine/msgmodel"
-	"github.com/Agent-Field/swe-pro-go/internal/engine/steploop"
-	"github.com/Agent-Field/swe-pro-go/internal/id"
-	"github.com/Agent-Field/swe-pro-go/internal/jscompat"
-	"github.com/Agent-Field/swe-pro-go/internal/modelsdev"
-	"github.com/Agent-Field/swe-pro-go/internal/permission"
-	"github.com/Agent-Field/swe-pro-go/internal/project"
-	"github.com/Agent-Field/swe-pro-go/internal/question"
-	"github.com/Agent-Field/swe-pro-go/internal/router/adaptive"
-	"github.com/Agent-Field/swe-pro-go/internal/session/agentjson"
-	"github.com/Agent-Field/swe-pro-go/internal/session/leafoutcome"
-	"github.com/Agent-Field/swe-pro-go/internal/session/scheduler"
-	"github.com/Agent-Field/swe-pro-go/internal/session/sessioncore"
-	"github.com/Agent-Field/swe-pro-go/internal/storage"
-	"github.com/Agent-Field/swe-pro-go/internal/tool"
+	"github.com/Agent-Field/aforge-v2/internal/swepro/internal/baked"
+	"github.com/Agent-Field/aforge-v2/internal/swepro/internal/bus"
+	"github.com/Agent-Field/aforge-v2/internal/swepro/internal/engine/msgmodel"
+	"github.com/Agent-Field/aforge-v2/internal/swepro/internal/engine/steploop"
+	"github.com/Agent-Field/aforge-v2/internal/swepro/internal/id"
+	"github.com/Agent-Field/aforge-v2/internal/swepro/internal/jscompat"
+	"github.com/Agent-Field/aforge-v2/internal/swepro/internal/modelsdev"
+	"github.com/Agent-Field/aforge-v2/internal/swepro/internal/permission"
+	"github.com/Agent-Field/aforge-v2/internal/swepro/internal/project"
+	"github.com/Agent-Field/aforge-v2/internal/swepro/internal/question"
+	"github.com/Agent-Field/aforge-v2/internal/swepro/internal/router/adaptive"
+	"github.com/Agent-Field/aforge-v2/internal/swepro/internal/session/agentjson"
+	"github.com/Agent-Field/aforge-v2/internal/swepro/internal/session/leafoutcome"
+	"github.com/Agent-Field/aforge-v2/internal/swepro/internal/session/scheduler"
+	"github.com/Agent-Field/aforge-v2/internal/swepro/internal/session/sessioncore"
+	"github.com/Agent-Field/aforge-v2/internal/swepro/internal/storage"
+	"github.com/Agent-Field/aforge-v2/internal/swepro/internal/tool"
 )
 
 type turn struct {

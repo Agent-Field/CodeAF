@@ -6,8 +6,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Agent-Field/swe-pro-go/internal/session/ledgers"
-	"github.com/Agent-Field/swe-pro-go/internal/session/sizeband"
+	"github.com/Agent-Field/aforge-v2/internal/swepro/internal/session/ledgers"
+	"github.com/Agent-Field/aforge-v2/internal/swepro/internal/session/sizeband"
 )
 
 // Translation of src/session/context-policy.test.ts. describe/test names are

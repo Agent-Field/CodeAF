@@ -14,15 +14,15 @@ import (
 	"strings"
 	"unicode/utf16"
 
-	"github.com/Agent-Field/swe-pro-go/internal/jscompat"
-	"github.com/Agent-Field/swe-pro-go/internal/plandb"
-	"github.com/Agent-Field/swe-pro-go/internal/session/capability"
-	"github.com/Agent-Field/swe-pro-go/internal/session/criticalpath"
-	"github.com/Agent-Field/swe-pro-go/internal/session/cutpolicy"
-	"github.com/Agent-Field/swe-pro-go/internal/session/heftassign"
-	"github.com/Agent-Field/swe-pro-go/internal/session/leafoutcome"
-	"github.com/Agent-Field/swe-pro-go/internal/session/policyline"
-	"github.com/Agent-Field/swe-pro-go/internal/session/sizeband"
+	"github.com/Agent-Field/aforge-v2/internal/swepro/internal/jscompat"
+	"github.com/Agent-Field/aforge-v2/internal/swepro/internal/plandb"
+	"github.com/Agent-Field/aforge-v2/internal/swepro/internal/session/capability"
+	"github.com/Agent-Field/aforge-v2/internal/swepro/internal/session/criticalpath"
+	"github.com/Agent-Field/aforge-v2/internal/swepro/internal/session/cutpolicy"
+	"github.com/Agent-Field/aforge-v2/internal/swepro/internal/session/heftassign"
+	"github.com/Agent-Field/aforge-v2/internal/swepro/internal/session/leafoutcome"
+	"github.com/Agent-Field/aforge-v2/internal/swepro/internal/session/policyline"
+	"github.com/Agent-Field/aforge-v2/internal/swepro/internal/session/sizeband"
 )
 
 type nativePlanDBRunner struct{}

@@ -21,7 +21,7 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/Agent-Field/swe-pro-go/internal/jscompat"
+	"github.com/Agent-Field/aforge-v2/internal/swepro/internal/jscompat"
 )
 
 // IsolationBackend is the CODEAF_ISOLATION backend union.

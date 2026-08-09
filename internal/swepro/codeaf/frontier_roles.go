@@ -1,4 +1,4 @@
-package main
+package codeaf
 
 import (
 	"context"
@@ -10,13 +10,13 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Agent-Field/swe-pro-go/internal/baked"
-	"github.com/Agent-Field/swe-pro-go/internal/jscompat"
-	"github.com/Agent-Field/swe-pro-go/internal/session/adaptiveflag"
-	"github.com/Agent-Field/swe-pro-go/internal/session/auditorgate"
-	"github.com/Agent-Field/swe-pro-go/internal/session/contract"
-	"github.com/Agent-Field/swe-pro-go/internal/session/frontierplanning"
-	"github.com/Agent-Field/swe-pro-go/internal/session/hardmode"
+	"github.com/Agent-Field/aforge-v2/internal/swepro/internal/baked"
+	"github.com/Agent-Field/aforge-v2/internal/swepro/internal/jscompat"
+	"github.com/Agent-Field/aforge-v2/internal/swepro/internal/session/adaptiveflag"
+	"github.com/Agent-Field/aforge-v2/internal/swepro/internal/session/auditorgate"
+	"github.com/Agent-Field/aforge-v2/internal/swepro/internal/session/contract"
+	"github.com/Agent-Field/aforge-v2/internal/swepro/internal/session/frontierplanning"
+	"github.com/Agent-Field/aforge-v2/internal/swepro/internal/session/hardmode"
 )
 
 func (runner *pipeline) frontierPlanningLedger() *frontierplanning.FrontierPlanningLedger {

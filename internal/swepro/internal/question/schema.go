@@ -6,7 +6,7 @@ import (
 	"bytes"
 	"encoding/json"
 
-	idpkg "github.com/Agent-Field/swe-pro-go/internal/id"
+	idpkg "github.com/Agent-Field/aforge-v2/internal/swepro/internal/id"
 )
 
 // QuestionID is the branded string used to identify a pending question.

@@ -9,9 +9,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Agent-Field/swe-pro-go/internal/plandb"
-	"github.com/Agent-Field/swe-pro-go/internal/session/merger"
-	"github.com/Agent-Field/swe-pro-go/internal/session/mergerecovery"
+	"github.com/Agent-Field/aforge-v2/internal/swepro/internal/plandb"
+	"github.com/Agent-Field/aforge-v2/internal/swepro/internal/session/merger"
+	"github.com/Agent-Field/aforge-v2/internal/swepro/internal/session/mergerecovery"
 )
 
 type mergePromptOps struct{}

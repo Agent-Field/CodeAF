@@ -51,8 +51,8 @@ import (
 	"math"
 	"sort"
 
-	"github.com/Agent-Field/swe-pro-go/internal/jscompat"
-	"github.com/Agent-Field/swe-pro-go/internal/session/heft"
+	"github.com/Agent-Field/aforge-v2/internal/swepro/internal/jscompat"
+	"github.com/Agent-Field/aforge-v2/internal/swepro/internal/session/heft"
 )
 
 // Tier is the TS string-literal union `"high" | "low"`. TS has no name for it;

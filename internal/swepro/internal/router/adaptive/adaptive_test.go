@@ -13,7 +13,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Agent-Field/swe-pro-go/internal/jscompat"
+	"github.com/Agent-Field/aforge-v2/internal/swepro/internal/jscompat"
 )
 
 // cand mirrors the `cand()` helper at the top of adaptive.test.ts.

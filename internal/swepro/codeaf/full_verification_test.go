@@ -1,4 +1,4 @@
-package main
+package codeaf
 
 import (
 	"bytes"
@@ -11,9 +11,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Agent-Field/swe-pro-go/internal/engine/steploop"
-	"github.com/Agent-Field/swe-pro-go/internal/session/auditorgate"
-	"github.com/Agent-Field/swe-pro-go/internal/session/ledgers"
+	"github.com/Agent-Field/aforge-v2/internal/swepro/internal/engine/steploop"
+	"github.com/Agent-Field/aforge-v2/internal/swepro/internal/session/auditorgate"
+	"github.com/Agent-Field/aforge-v2/internal/swepro/internal/session/ledgers"
 )
 
 func TestGreenHarnessClearsExhaustedNotVerifiedTemplate(t *testing.T) {

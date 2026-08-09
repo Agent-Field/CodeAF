@@ -1,7 +1,7 @@
 //go:build linux
 
 // Linux spelling of the stat ctime field read by durable_sessions.go's projection mark.
-package main
+package codeaf
 
 import (
 	"syscall"

@@ -1,7 +1,7 @@
 // Serve mode exposes this binary as an AgentField node so other reasoners can
 // trigger coding tasks. Go-only additive divergence: the TypeScript CLI has no
 // serve command.
-package main
+package codeaf
 
 import (
 	"bytes"
