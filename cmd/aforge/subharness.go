@@ -49,7 +49,7 @@ type leafBuild struct {
 	deadline  time.Duration
 }
 
-// leafExecutors is skill-to-constructor: what a surface calls when a node says
+// leafExecutors is name-to-constructor: what a surface calls when a node says
 // it wants a particular worker. Linear's entry builds exactly what every leaf
 // has always been built with, so routing through the table changes nothing for
 // the leaf that takes the default.
