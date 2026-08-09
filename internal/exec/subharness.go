@@ -101,16 +101,22 @@ func RegisterSubharness(info SubharnessInfo) {
 		return
 	}
 	info.Name = name
-	subharnessMutex.Lock()
-	if _, known := subharnessBy[name]; !known {
-		subharnessOrder = append(subharnessOrder, name)
-		sort.Strings(subharnessOrder)
-	}
-	subharnessBy[name] = info
-	subharnessMutex.Unlock()
+	remember(info)
 	// The sizing pass reads its rulers out of plan, which cannot import this
 	// package. One registration, both readers.
 	plan.UseSubharness(plan.Subharness{Name: name, Purpose: info.Purpose}, info.PriorAnchors)
+}
+
+// remember is the guarded half of registration, split out so the lock it takes
+// is released by a defer under the line that took it.
+func remember(info SubharnessInfo) {
+	subharnessMutex.Lock()
+	defer subharnessMutex.Unlock()
+	if _, known := subharnessBy[info.Name]; !known {
+		subharnessOrder = append(subharnessOrder, info.Name)
+		sort.Strings(subharnessOrder)
+	}
+	subharnessBy[info.Name] = info
 }
 
 // Subharnesses returns the registered specialists in a stable order. Linear is
@@ -162,6 +168,16 @@ func UseSubharnessKnowledge(knowledge func(subharness string) string) {
 	measured = knowledge
 }
 
+// knowledgeHook takes one stable reference to the hook. The hook itself reads
+// files, so it is called outside the lock: the menu is rendered on the compile
+// path and holding a process-wide lock across disk work is how a registry
+// becomes a bottleneck nobody can see.
+func knowledgeHook() func(string) string {
+	subharnessMutex.RLock()
+	defer subharnessMutex.RUnlock()
+	return measured
+}
+
 // MenuText is the choice context, and it is empty until there is a choice.
 //
 // It is built from the registrations rather than written anywhere, so adding a
@@ -173,9 +189,7 @@ func MenuText() string {
 	if len(specialists) == 0 {
 		return ""
 	}
-	subharnessMutex.RLock()
-	knowledge := measured
-	subharnessMutex.RUnlock()
+	knowledge := knowledgeHook()
 
 	var menu strings.Builder
 	menu.WriteString("Subharnesses. A job is normally taken by the default worker: one agent, " +
@@ -200,10 +214,14 @@ func MenuText() string {
 // it: registration is global by design, and a test that adds one must be able
 // to put the process back for every test that asserts the baseline.
 func ForgetSubharnesses() {
+	forget()
+	plan.ForgetSubharnesses()
+}
+
+func forget() {
 	subharnessMutex.Lock()
+	defer subharnessMutex.Unlock()
 	subharnessOrder = nil
 	subharnessBy = map[string]SubharnessInfo{LinearSubharness: linearInfo}
 	measured = nil
-	subharnessMutex.Unlock()
-	plan.ForgetSubharnesses()
 }

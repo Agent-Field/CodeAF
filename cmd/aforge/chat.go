@@ -138,6 +138,11 @@ type brainOptions struct {
 	// environment and the persisted picker, because a flag is the most recent
 	// thing the person said.
 	model, planModel string
+	// subharness forces every job this brain admits onto one worker. It is a
+	// benchmarking instrument: a run comparing two workers on the same corpus
+	// cannot let the choice be the variable it is measuring. Empty is the
+	// ordinary path, where the compiler chooses and usually chooses nothing.
+	subharness string
 	// consent answers the price question for a desk with nobody at it. Nil is
 	// the ordinary desk: it asks, and the job waits.
 	consent func(store.Node, planEstimate) bool
@@ -261,8 +266,13 @@ func buildBrain(w *chatWindow, session string, opts brainOptions) (*chatBrain, e
 	// The ruler stays keyed to the work model even when a different model
 	// plans: the anchors measure how the executor spends turns, and the plan
 	// model only reads them to size work for that executor.
-	measured, _ := profile.Load(settings.ProfileDir, taskClient.Model(), "linear")
-	plan.UseAnchors(measured.Anchors)
+	measured := installMeasuredRulers(settings.ProfileDir, taskClient.Model())
+	// What each worker has actually cost, under its own name on the menu. The
+	// hook is read at render time rather than captured, so a specialist that
+	// crosses its evidence gate mid-session is grounded in that session.
+	exec.UseSubharnessKnowledge(func(subharness string) string {
+		return subharnessKnowledge(settings, taskClient.Model(), subharness)
+	})
 
 	// Every structuring call this surface makes now bills the same rail its
 	// leaves bill. A journal write that fails is not a reason to fail the call
@@ -420,6 +430,11 @@ func buildBrain(w *chatWindow, session string, opts brainOptions) (*chatBrain, e
 	// stand straight back down, and the role would circle the open windows
 	// forever.
 	reconciler = reconciler.WithHandover(opts.hand).WithResidentSince(time.Now())
+	// A forced worker takes the choice away from the compiler for this whole
+	// process. It is what a measurement run asks for and nothing else asks for.
+	if forced := resolveSubharnessFlag(opts.subharness, os.Stderr); forced != "" {
+		reconciler = reconciler.WithSubharness(forced)
+	}
 	// Recognition and forging ride the resident's own talk client, like every
 	// other small verdict it makes about itself.
 	if craftShelf != nil {
@@ -513,10 +528,15 @@ func buildBrain(w *chatWindow, session string, opts brainOptions) (*chatBrain, e
 			workingModel, workingClient = pinned.Snapshot()
 			escalatable = pinned.escalatable()
 		}
+		// What runs this leaf was settled when the job was admitted, and the
+		// node's row carries the answer. Reading it here rather than deciding
+		// it here is the whole point of journaling it: a leaf claimed an hour
+		// after its splice runs on what it was promised.
+		subharness := leafSubharness(node)
 		// Ordinary leaves retain the byte-identical headless envelope. Reflexes use
 		// the deliberately tiny rung budget and a seconds-scale watchdog.
 		turns, tokens := chatLeafTurns, chatLeafTokens
-		deadline := leafDeadline(tokens)
+		deadline := exec.SubharnessFor(subharness).Deadline(tokens)
 		watchdog := deadline + 2*time.Minute
 		if isReflex {
 			turns, tokens = reflexTurns, reflexTokens
@@ -539,9 +559,11 @@ func buildBrain(w *chatWindow, session string, opts brainOptions) (*chatBrain, e
 			}
 			return nil
 		}
-		linear := exec.NewLinear(workingClient, jobSpace, web, turns, tokens, deadline).
-			WithStore(graph).WithMedia(&leafMedia).
-			WithAttribution(config.AttributionAt(settings.ProfileDir))
+		worker := executorFor(subharness, leafBuild{
+			settings: settings, client: workingClient, workspace: jobSpace, web: web,
+			graph: graph, media: &leafMedia,
+			maxTurns: turns, maxTokens: tokens, deadline: deadline,
+		})
 		shape := "atomic"
 		if isReflex {
 			shape = "reflex"
@@ -551,6 +573,13 @@ func buildBrain(w *chatWindow, session string, opts brainOptions) (*chatBrain, e
 			// Frozen means frozen everywhere: the sentinel may not edit a
 			// node whose transcript is already being written.
 			plans.markRunning(planNode)
+		}
+		// One ledger bucket per worker and no finer. What a router learns about
+		// a specialist says nothing about a generalist leaf, and a key any
+		// finer than this never accumulates enough graded outcomes to mean
+		// anything — see exec.LeafShape, which splits on the same principle.
+		if exec.KnownSubharness(subharness) {
+			shape = subharness
 		}
 
 		// Every input is named. Untitled, they render as `=== from "" ===`
@@ -647,6 +676,7 @@ func buildBrain(w *chatWindow, session string, opts brainOptions) (*chatBrain, e
 		}
 		task := exec.Task{
 			Reflex:       isReflex,
+			Subharness:   subharness,
 			NodeID:       int(node.CreatedSeq),
 			StoreNodeID:  node.ID,
 			Title:        firstLine(node.Brief),
@@ -721,7 +751,7 @@ func buildBrain(w *chatWindow, session string, opts brainOptions) (*chatBrain, e
 				task = attempted
 			}
 			runCtx := provider.WithCallShape(settings.ExecContext(ctx), provider.ClassExecLeaf, attempt, shape)
-			outcome, err = runLeafWithWatchdog(runCtx, linear, task, watchdog)
+			outcome, err = runLeafWithWatchdog(runCtx, worker, task, watchdog)
 			if model := provider.CallFrom(runCtx).Model(); model != "" {
 				workerModel = model
 			}
@@ -968,7 +998,7 @@ func buildBrain(w *chatWindow, session string, opts brainOptions) (*chatBrain, e
 							"\n\n" + gateRevisionContract,
 					})
 					retryCtx := provider.WithCallShape(settings.ExecContext(ctx), provider.ClassExecLeaf, 1, shape)
-					polished, polishErr := runLeafWithWatchdog(retryCtx, linear, revision, deadline+2*time.Minute)
+					polished, polishErr := runLeafWithWatchdog(retryCtx, worker, revision, deadline+2*time.Minute)
 					polishModel := workerModel
 					if model := provider.CallFrom(retryCtx).Model(); model != "" {
 						polishModel = model
@@ -1910,8 +1940,7 @@ func (c *chatCommander) SetModel(role, slug string) error {
 		}
 		// A model switch changes the capability being sized; install that model's
 		// own ruler before the next planning call can observe the new client.
-		measured, _ := profile.Load(c.settings.ProfileDir, c.taskClient.Model(), "linear")
-		plan.UseAnchors(measured.Anchors)
+		installMeasuredRulers(c.settings.ProfileDir, c.taskClient.Model())
 		// A following plan slot moves with the work model, live — the next
 		// planning call sees the new model without the user touching the slot.
 		if c.planClient != nil && c.ModelFollows("plan") {
@@ -2412,6 +2441,17 @@ func pinnedWorkClient(pool *messageClientPool, node store.Node) (*liveClient, bo
 		return nil, false
 	}
 	return client, true
+}
+
+// leafSubharness reads what was promised, not what could be chosen now. The
+// node's own row holds the settled answer — its own choice where the sizing
+// pass made one, the splice's otherwise — and the provenance behind it is read
+// only for a node written before the row carried it.
+func leafSubharness(node store.Node) string {
+	if settled := strings.TrimSpace(node.Subharness); settled != "" {
+		return settled
+	}
+	return strings.TrimSpace(node.Provenance.Subharness)
 }
 
 // resolveWorkModelWords is the surface's answer to the model words the
@@ -4365,7 +4405,7 @@ func judgeRemainder(ctx context.Context, settings config.Config, client *liveCli
 // runLeafWithWatchdog is the scheduler's node watchdog, inline: the executor
 // has its own deadline, so this only fires when a worker is wedged past every
 // limit it was given — turning a silent forever-hang into a recorded failure.
-func runLeafWithWatchdog(ctx context.Context, linear *exec.Linear, task exec.Task, timeout time.Duration) (*exec.Outcome, error) {
+func runLeafWithWatchdog(ctx context.Context, worker exec.Executor, task exec.Task, timeout time.Duration) (*exec.Outcome, error) {
 	type landing struct {
 		outcome *exec.Outcome
 		err     error
@@ -4377,7 +4417,7 @@ func runLeafWithWatchdog(ctx context.Context, linear *exec.Linear, task exec.Tas
 				done <- landing{nil, guard.Note("chat/leaf executor", recovered)}
 			}
 		}()
-		outcome, err := linear.Run(ctx, task)
+		outcome, err := worker.Run(ctx, task)
 		done <- landing{outcome, err}
 	}()
 	select {
@@ -4390,11 +4430,17 @@ func runLeafWithWatchdog(ctx context.Context, linear *exec.Linear, task exec.Tas
 
 // recordSingleLeaf keeps direct-job costs available to compiler self-knowledge
 // without pretending an unplanned task was atomic ruler evidence.
+//
+// The profile it lands in is the one belonging to whatever actually ran the
+// leaf. A specialist's cost written into the generalist's file would not merely
+// be misfiled: it is the file the ruler is recalibrated from, so one coding
+// pipeline's forty minutes would teach the planner that ordinary leaves are
+// enormous and it would stop splitting anything.
 func recordSingleLeaf(settings config.Config, model string, node store.Node, outcome *exec.Outcome) (profile.Record, bool) {
 	if strings.TrimSpace(model) == "" {
 		model = settings.Model
 	}
-	measured, err := profile.Load(settings.ProfileDir, model, "linear")
+	measured, err := profile.Load(settings.ProfileDir, model, profileSubharness(leafSubharness(node)))
 	if err != nil {
 		return profile.Record{}, false
 	}

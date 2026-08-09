@@ -111,8 +111,9 @@ func runDo(args []string) error {
 	yesSpend := flags.Bool("yes-spend", false, "approve a plan whose price crosses the consent threshold")
 	model := flags.String("model", "", "work model for this run (default AFORGE_MODEL)")
 	planModel := flags.String("plan-model", "", "model that plans, when different from the work model (default AFORGE_PLAN_MODEL)")
+	subharness := flags.String("subharness", "", "force this errand onto one worker, for measuring workers against each other (default: let the compiler choose)")
 	if err := flags.Parse(reorder(args, map[string]bool{
-		"db": true, "w": true, "timeout": true, "model": true, "plan-model": true,
+		"db": true, "w": true, "timeout": true, "model": true, "plan-model": true, "subharness": true,
 	})); err != nil {
 		return err
 	}
@@ -127,7 +128,8 @@ func runDo(args []string) error {
 		task: task, database: *database, keep: *keep, workspace: *workspace,
 		timeout: time.Duration(*timeout) * time.Second, asJSON: *asJSON,
 		yesSpend: *yesSpend, model: *model, planModel: *planModel,
-		stdout: os.Stdout, stderr: os.Stderr,
+		subharness: *subharness,
+		stdout:     os.Stdout, stderr: os.Stderr,
 	})
 }
 
@@ -143,8 +145,12 @@ type doRequest struct {
 	yesSpend  bool
 	model     string
 	planModel string
-	stdout    io.Writer
-	stderr    io.Writer
+	// subharness forces this errand onto one worker. It is the benchmarking
+	// path: an unknown name is a note on stderr and the default worker, so a
+	// measurement run never dies at argument parsing.
+	subharness string
+	stdout     io.Writer
+	stderr     io.Writer
 	// newClient scripts the provider. Nil is the real one.
 	newClient func(config.Config, string) (*liveClient, error)
 }
@@ -264,7 +270,8 @@ func headlessBrain(window *chatWindow, session string, request doRequest,
 		headless: true, ephemeral: ephemeral, workspaceRoot: workspaceRoot,
 		sharedWorkspace: true,
 		model:           request.model, planModel: request.planModel,
-		consent: consent, newClient: request.newClient,
+		subharness: request.subharness,
+		consent:    consent, newClient: request.newClient,
 	})
 	if err != nil {
 		release()
