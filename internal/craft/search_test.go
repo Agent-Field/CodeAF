@@ -78,8 +78,12 @@ func TestMatchFindsTheCraftTheRequestIsAbout(t *testing.T) {
 		if found[0].Score < MatchFloor {
 			t.Fatalf("%q scored %.2f, under the floor", probe.request, found[0].Score)
 		}
-		if found[0].Commit == "" || found[0].Description == "" {
-			t.Fatalf("%q returned a match with no version: %+v", probe.request, found[0])
+		// The description comes back because it is what a caller shows. The
+		// version does not: ranking never reads it, the caller picks by score
+		// and name, and Load resolves the version it will actually run —
+		// including an uncommitted edit, which a stamp taken here would miss.
+		if found[0].Description == "" {
+			t.Fatalf("%q returned a match with no description: %+v", probe.request, found[0])
 		}
 	}
 }

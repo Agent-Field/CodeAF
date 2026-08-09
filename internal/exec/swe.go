@@ -246,6 +246,12 @@ func (s *SWE) Run(ctx context.Context, task Task) (*Outcome, error) {
 				kill(stopFor(action), note)
 			}
 		case <-ticker.C:
+			// The tick is the trace's record boundary. Every NDJSON line the
+			// engine emits is traced and a busy stream is a thousand a second,
+			// so the lines are batched and landed here — one flush per poll
+			// interval, which is what a crash can cost and what someone reading
+			// the file during a run has to wait for.
+			trace.flush()
 			if action, note := state.poll(); action != ControlNone {
 				kill(stopFor(action), note)
 			}

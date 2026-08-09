@@ -6,7 +6,6 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
-	"time"
 	"unicode"
 )
 
@@ -134,6 +133,14 @@ type document struct {
 // cache because the distiller writes to this directory while the resident is
 // running, and a stale index would answer with a craft that no longer says
 // what it used to; a few dozen small files is a read the user cannot feel.
+//
+// It does not read versions. It used to run `git log -1` per workflow to stamp
+// each candidate with the commit it came from, which is a process fork per file
+// on every user message — and nothing downstream ever read it: ranking is over
+// name, description and briefs, the caller picks by score and name, and the
+// version it goes on to run with comes from Load, which resolves it properly
+// and can see an uncommitted edit. A field nobody reads is not worth a fork per
+// file per message.
 func (r *Repo) corpus() []document {
 	entries, err := os.ReadDir(filepath.Join(r.dir, WorkflowDir))
 	if err != nil {
@@ -159,13 +166,6 @@ func (r *Repo) corpus() []document {
 				Description: w.Description,
 			},
 			terms: map[string]int{},
-		}
-		if line, err := r.git("log", "-1", "--format=%H%x1f%aI", "--", path); err == nil {
-			fields := strings.Split(strings.TrimSpace(line), "\x1f")
-			next.summary.Commit = fields[0]
-			if len(fields) > 1 {
-				next.summary.When, _ = time.Parse(time.RFC3339, fields[1])
-			}
 		}
 		count := func(text string, weight int) {
 			for _, word := range tokenize(text) {

@@ -859,12 +859,22 @@ func (t *Toolbox) runShell(ctx context.Context, command string, seconds int, rtk
 		return syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL)
 	}
 	cmd.WaitDelay = 3 * time.Second
-	output, err := cmd.CombinedOutput()
-	body := string(output)
+	// Collected rather than read whole. A command inside a fifteen-minute call
+	// may print hundreds of megabytes and all but twelve kilobytes of them are
+	// discarded a line later; the collector keeps only the part that survives,
+	// including the nudge stripping, which it does a line at a time so that the
+	// elided-byte count is counted on what a reader would have seen.
+	var strip func([]byte) bool
 	if rtkBin != "" {
-		body = rtk.StripNudge(body)
+		strip = func(start []byte) bool {
+			line := string(start)
+			return rtk.StripNudge(line) != line
+		}
 	}
-	run := shellRun{body: clamp(body), err: err, exitCode: exitCode(cmd, err)}
+	collected := newCappedOutput(strip)
+	cmd.Stdout, cmd.Stderr = collected, collected
+	err := cmd.Run()
+	run := shellRun{body: collected.String(), err: err, exitCode: exitCode(cmd, err)}
 	run.timedOut = runCtx.Err() == context.DeadlineExceeded
 	run.detached = errors.Is(err, exec.ErrWaitDelay)
 	return run
