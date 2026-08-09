@@ -37,6 +37,24 @@ func TestTheBriefOffersAFileOnlyToTheWorkThatOwnsTheDeliverable(t *testing.T) {
 	}
 }
 
+// A deliverable owner with no offered address is not off the hook — it is the
+// exact seat from which a worker invented `answer.txt`, filed the analysis in
+// it, and lost the cell to a pointer. The in-channel law rides the brief even
+// when there is no path to condition it on.
+func TestALeafWithNoAddressStillCarriesTheInChannelLaw(t *testing.T) {
+	linear := NewLinear(&scriptedCompleter{}, workspace(t), nil, 10, 1_000_000, time.Minute)
+	brief := linear.brief(Task{Brief: "compare march orders against february"})
+
+	for _, clause := range []string{
+		"your final message is the deliverable",
+		"a message that says where the answer lives instead of carrying it has delivered nothing",
+	} {
+		if !strings.Contains(strings.ToLower(brief), clause) {
+			t.Fatalf("with no output hint the brief lost %q:\n%s", clause, brief)
+		}
+	}
+}
+
 // An intermediate leaf is working for the work that comes after it. It is
 // offered no deliverable path at all: its handoff is its final message, and
 // the only address it gets is the run's own scratch.
