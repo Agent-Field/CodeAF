@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/Agent-Field/aforge-v2/internal/store"
+	tea "github.com/charmbracelet/bubbletea"
 )
 
 // countingBackend is the ordinary fake plus a journal watermark and a tally of
@@ -177,19 +178,55 @@ func TestPollCadenceDecaysWhenQuietAndSnapsBackOnChange(t *testing.T) {
 		t.Fatalf("cadence after a journal change is %s, want %s", got, pollInterval)
 	}
 
-	// A keypress is its own reason to be hot, and buys one full read: the key
-	// may have opened a place the watermark cannot speak for.
+	// A keypress is its own reason to be hot, and a keypress that opened a place
+	// the watermark cannot speak for also buys one full read.
 	now = now.Add(pollQuietAfter + time.Second)
 	model.applyPoll(model.poll()().(pollResultMsg))
 	if got := model.pollCadence(); got != pollIdleInterval {
 		t.Fatalf("cadence before the keypress is %s, want %s", got, pollIdleInterval)
 	}
-	model.noteActivity()
+	before := model.surface()
+	model.selfOpen = true
+	model.noteActivity(before)
 	if got := model.pollCadence(); got != pollInterval {
 		t.Fatalf("cadence after a keypress is %s, want %s", got, pollInterval)
 	}
 	if result := model.poll()().(pollResultMsg); result.quiet {
-		t.Fatal("the poll after a keypress skipped the read set")
+		t.Fatal("the poll after a place change skipped the read set")
+	}
+}
+
+// TestTypingKeepsTheCadenceHotWithoutForcingAFullRead is the other half of the
+// rule: the hot cadence is about when to ask, the forced read is about what the
+// watermark cannot answer, and a keystroke that stayed in the thread is not a
+// reason to read the whole store again.
+func TestTypingKeepsTheCadenceHotWithoutForcingAFullRead(t *testing.T) {
+	now := time.Date(2026, 8, 6, 9, 0, 0, 0, time.UTC)
+	backend := newCountingBackend(&fakeBackend{})
+	model := quietModel(t, backend, &now)
+
+	now = now.Add(pollQuietAfter + time.Second)
+	model.applyPoll(model.poll()().(pollResultMsg))
+
+	reads := backend.heavyReads()
+	for _, key := range []string{"h", "i", "!"} {
+		model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(key)})
+	}
+	if got := model.pollCadence(); got != pollInterval {
+		t.Fatalf("cadence after typing is %s, want %s", got, pollInterval)
+	}
+	if result := model.poll()().(pollResultMsg); !result.quiet {
+		t.Fatal("typing forced the full read set")
+	}
+	if got := backend.heavyReads(); got != reads {
+		t.Fatalf("typing cost %d store reads, want 0", got-reads)
+	}
+
+	// Scrolling the thread is the same kind of motion: it moves the eye, not
+	// the place.
+	model.Update(tea.MouseMsg{Type: tea.MouseWheelUp})
+	if result := model.poll()().(pollResultMsg); !result.quiet {
+		t.Fatal("a scroll forced the full read set")
 	}
 }
 
