@@ -735,8 +735,6 @@ func (m *Model) renderGraphPane() string {
 	return lipgloss.NewStyle().Width(m.graphWidth).Render(strings.Join(lines, "\n"))
 }
 
-// renderNodePane is one task's flight recorder, full-bleed: a header line,
-// a faint hairline, the brief, then the scrolling activity feed.
 func (m *Model) graphToggleHit(x, y int) bool {
 	if m.graphToggleBounds.contains(x, y) {
 		return true
@@ -744,6 +742,16 @@ func (m *Model) graphToggleHit(x, y int) bool {
 	return m.graphBounds.contains(x, y) && x == m.graphBounds.right()-1
 }
 
+// nodeTitleFloor is the fewest cells a task's name may be squeezed into before
+// the title line stops carrying a receipt at all.
+const nodeTitleFloor = 16
+
+// renderNodePane is one task's flight recorder, full-bleed. The sticky chrome
+// is one line — back, state, title, elapsed, and the choice receipt held at the
+// right edge — over a faint hairline. Everything else, brief and decisions and
+// every turn, is one scrolling document underneath: a header a person cannot
+// move is a header that buries whatever it sits on, and what it sat on here was
+// the work itself.
 func (m *Model) renderNodePane() string {
 	innerWidth := max(1, m.width-2)
 	now := time.Now()
@@ -759,41 +767,43 @@ func (m *Model) renderNodePane() string {
 	if timing != "" {
 		timingWidth = lipgloss.Width("  ·  " + timing)
 	}
-	title = truncate(title, max(1, innerWidth-lipgloss.Width(glyph)-10-timingWidth))
+	// The receipt rides the title because a line that has to be scrolled to is a
+	// line that does not get read. It is the short spelling here — the full ids
+	// are two lines down in the brief, where checking a build is the errand.
+	receipt := nodeChoiceReceiptShort(m.inspectedNode)
+	titleRoom := max(1, innerWidth-lipgloss.Width(glyph)-10-timingWidth)
+	// The name outranks the receipt. A frame narrow enough that the badge would
+	// eat the title into an ellipsis simply does not draw the badge — the full
+	// spelling is two lines down either way, and a view that cannot say which
+	// task it is showing has lost more than a receipt.
+	if room := titleRoom - lipgloss.Width(receipt) - 2; receipt != "" && room >= nodeTitleFloor {
+		titleRoom = room
+	} else {
+		receipt = ""
+	}
+	title = truncate(title, titleRoom)
 	header := back + "  " + glyph + " " + inkStyle.Bold(true).Render(title)
 	if timing != "" {
 		header += mutedStyle.Render("  ·  " + timing)
 	}
+	if receipt != "" {
+		// Right-aligned, and only where the title still fits without it: a
+		// receipt that pushed the name off the screen would be the wrong trade.
+		if gap := innerWidth - lipgloss.Width(header) - lipgloss.Width(receipt); gap >= 2 {
+			header += strings.Repeat(" ", gap) + mutedStyle.Render(receipt)
+		}
+	}
 
 	hairline := mutedStyle.Faint(true).Render(strings.Repeat("─", innerWidth))
 	lines := []string{header, hairline}
-	contentX := m.nodeBounds.x
-	contentY := m.nodeBounds.y + len(lines)
-	appendSection := func(label string, view string, height int, bounds *paneBounds) {
-		lines = append(lines, mutedStyle.Faint(true).Render(label))
-		contentY++
-		if height <= 0 {
-			return
-		}
-		*bounds = paneBounds{x: contentX, y: contentY, width: innerWidth, height: height}
-		visible := strings.Split(view, "\n")
-		if view == "" {
-			visible = nil
-		}
-		for len(visible) < height {
-			visible = append(visible, "")
-		}
-		if len(visible) > height {
-			visible = visible[:height]
-		}
-		lines = append(lines, visible...)
-		contentY += height
+	m.nodeTraceBounds = paneBounds{
+		x: m.nodeBounds.x, y: m.nodeBounds.y + len(lines), width: innerWidth, height: m.nodeTraceHeight,
 	}
-	appendSection("BRIEF", m.nodeDetailsText, strings.Count(m.nodeDetailsText, "\n")+1, new(paneBounds))
-	lines = append(lines, "")
-	contentY++
-	appendSection("ACTIVITY   ✳ model · $ shell · ✎ file · ⌕ web · › you · ⋯ expands",
-		m.nodeTrace.View(), m.nodeTraceHeight, &m.nodeTraceBounds)
+	document := strings.Split(m.nodeTrace.View(), "\n")
+	for len(document) < m.nodeTraceHeight {
+		document = append(document, "")
+	}
+	lines = append(lines, document[:m.nodeTraceHeight]...)
 
 	for len(lines) < m.chatHeight {
 		lines = append(lines, "")
@@ -1932,12 +1942,13 @@ func (m *Model) renderAnswerFold(message store.Message, width int) (string, bool
 	if message.Role != store.RoleUser {
 		body = m.linkWorkspaceReferences(message.NodeID, body)
 	}
-	rendered := renderMarkdown(body, width)
+	// A reply that opens or closes on a blank line is the model's whitespace, not
+	// the reader's. Left in, those rows come back as a stray vertical bar above
+	// and below the words wherever the answer sits behind a gutter — the settled
+	// card draws one — and as a hole between the speaker and what they said.
+	rendered := trimBlankEdges(renderMarkdown(body, width))
 	if streaming {
-		if rendered != "" {
-			rendered += "\n"
-		}
-		return rendered + powderStyle.Render("▌"), false
+		return appendStreamCaret(rendered, width), false
 	}
 	lines := strings.Split(rendered, "\n")
 	if len(lines) <= deliverableLead+4 {
@@ -1950,6 +1961,40 @@ func (m *Model) renderAnswerFold(message store.Message, width int) (string, bool
 	head := strings.Join(lines[:deliverableLead], "\n")
 	return head + "\n" + mutedStyle.Faint(true).Render(
 		fmt.Sprintf("▸ %d more lines", len(lines)-deliverableLead)), true
+}
+
+// trimBlankEdges drops the leading and trailing rows that carry no ink. A line
+// styled to nothing is still nothing, so the test is the rendered width rather
+// than the bytes.
+func trimBlankEdges(rendered string) string {
+	lines := strings.Split(rendered, "\n")
+	start, end := 0, len(lines)
+	for start < end && lipgloss.Width(lines[start]) == 0 {
+		start++
+	}
+	for end > start && lipgloss.Width(lines[end-1]) == 0 {
+		end--
+	}
+	return strings.Join(lines[start:end], "\n")
+}
+
+// appendStreamCaret puts the typewriter caret where the words stopped — on the
+// last line that has any, never alone on a row of its own. A caret with a blank
+// line to itself reads as a glyph the reply emitted, which is the one thing it
+// is not. It takes its own line only when the arriving reply has no ink yet, or
+// when the last line has no room left for it.
+func appendStreamCaret(rendered string, width int) string {
+	caret := powderStyle.Render("▌")
+	if rendered == "" {
+		return caret
+	}
+	lines := strings.Split(rendered, "\n")
+	last := len(lines) - 1
+	if lipgloss.Width(lines[last])+2 <= width {
+		lines[last] += powderStyle.Render(" ▌")
+		return strings.Join(lines, "\n")
+	}
+	return strings.Join(append(lines, caret), "\n")
 }
 
 func (m *Model) renderReceipt(message store.Message, width int) string {
