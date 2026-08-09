@@ -1,0 +1,157 @@
+package artifactregistry
+
+import (
+	"bufio"
+	"encoding/json"
+	"os"
+	"testing"
+
+	"github.com/Agent-Field/swe-pro-go/internal/jscompat"
+)
+
+type fixture struct {
+	Name     string `json:"name"`
+	Fn       string `json:"fn"`
+	ArgsJSON string `json:"args_json"`
+	OutJSON  string `json:"out_json"`
+}
+
+func loadFixtures(t *testing.T) []fixture {
+	t.Helper()
+	f, err := os.Open("testdata/fixtures.json")
+	if err != nil {
+		t.Fatalf("open fixtures: %v", err)
+	}
+	defer f.Close()
+	var fixtures []fixture
+	sc := bufio.NewScanner(f)
+	sc.Buffer(make([]byte, 0, 1<<20), 1<<22)
+	for sc.Scan() {
+		var fx fixture
+		if err := json.Unmarshal(sc.Bytes(), &fx); err != nil {
+			t.Fatalf("decode fixture: %v", err)
+		}
+		fixtures = append(fixtures, fx)
+	}
+	if err := sc.Err(); err != nil {
+		t.Fatalf("scan fixtures: %v", err)
+	}
+	return fixtures
+}
+
+func fixtureArgs(t *testing.T, raw string) []json.RawMessage {
+	t.Helper()
+	var args []json.RawMessage
+	if err := json.Unmarshal([]byte(raw), &args); err != nil {
+		t.Fatalf("decode args_json: %v", err)
+	}
+	return args
+}
+
+func decodeArg[T any](t *testing.T, raw json.RawMessage) T {
+	t.Helper()
+	var value T
+	if err := json.Unmarshal(raw, &value); err != nil {
+		t.Fatalf("decode argument: %v", err)
+	}
+	return value
+}
+
+func callFixture(t *testing.T, fx fixture) any {
+	t.Helper()
+	args := fixtureArgs(t, fx.ArgsJSON)
+	switch fx.Fn {
+	case "artifactRefsEnabled":
+		var value *string
+		if err := json.Unmarshal(args[0], &value); err != nil {
+			t.Fatalf("decode env: %v", err)
+		}
+		if value == nil {
+			restore, had := os.LookupEnv("CODEAF_ARTIFACT_REFS")
+			_ = os.Unsetenv("CODEAF_ARTIFACT_REFS")
+			t.Cleanup(func() {
+				if had {
+					_ = os.Setenv("CODEAF_ARTIFACT_REFS", restore)
+				}
+			})
+		} else {
+			t.Setenv("CODEAF_ARTIFACT_REFS", *value)
+		}
+		return ArtifactRefsEnabled()
+	case "putArtifact":
+		return PutArtifact(
+			decodeArg[string](t, args[0]),
+			decodeArg[string](t, args[1]),
+			decodeArg[string](t, args[2]),
+		)
+	case "getArtifact":
+		workspace := decodeArg[string](t, args[0])
+		id := decodeArg[string](t, args[1])
+		var body string
+		var ok bool
+		if len(args) == 3 {
+			body, ok = GetArtifact(workspace, id, decodeArg[string](t, args[2]))
+		} else {
+			body, ok = GetArtifact(workspace, id)
+		}
+		if !ok {
+			return nil
+		}
+		return body
+	case "renderRef":
+		ref := decodeArg[ArtifactRef](t, args[0])
+		// Make fixture replay independent of files left by the TS generator.
+		PutArtifact(ref.Workspace, ref.Kind, ref.Body)
+		var opts *RenderRefOptions
+		if len(args) == 2 {
+			opts = decodeArg[*RenderRefOptions](t, args[1])
+		}
+		return RenderRef(ref, opts)
+	case "embedArtifact":
+		var opts *RenderRefOptions
+		if len(args) == 4 {
+			opts = decodeArg[*RenderRefOptions](t, args[3])
+		}
+		return EmbedArtifact(
+			decodeArg[string](t, args[0]),
+			decodeArg[string](t, args[1]),
+			decodeArg[string](t, args[2]),
+			opts,
+		)
+	default:
+		t.Fatalf("unknown fixture function %q", fx.Fn)
+		return nil
+	}
+}
+
+func TestFixtureParity(t *testing.T) {
+	fixtures := loadFixtures(t)
+	if len(fixtures) < 30 {
+		t.Fatalf("expected at least 30 fixtures, got %d", len(fixtures))
+	}
+	for _, fx := range fixtures {
+		t.Run(fx.Fn+"/"+fx.Name, func(t *testing.T) {
+			got, err := jscompat.Stringify(callFixture(t, fx))
+			if err != nil {
+				t.Fatalf("stringify: %v", err)
+			}
+			if string(got) != fx.OutJSON {
+				t.Fatalf("args=%s\n got: %s\nwant: %s", fx.ArgsJSON, got, fx.OutJSON)
+			}
+		})
+	}
+}
+
+func TestFixtureCoverage(t *testing.T) {
+	seen := map[string]int{}
+	for _, fx := range loadFixtures(t) {
+		seen[fx.Fn]++
+	}
+	for _, fn := range []string{
+		"artifactRefsEnabled", "putArtifact", "getArtifact", "renderRef", "embedArtifact",
+	} {
+		if seen[fn] == 0 {
+			t.Errorf("no fixture cases for %s", fn)
+		}
+	}
+}

@@ -1,0 +1,29 @@
+{"name":"resolveRunBudget/empty","fn":"resolveRunBudget","args_json":"[{},{}]","out_json":"{}"}
+{"name":"resolveRunBudget/flags-both","fn":"resolveRunBudget","args_json":"[{\"maxCost\":2.5,\"maxHours\":3},{}]","out_json":"{\"maxCostUsd\":2.5,\"maxWallMs\":10800000}"}
+{"name":"resolveRunBudget/env-both","fn":"resolveRunBudget","args_json":"[{},{\"CODEAF_MAX_COST_USD\":\"5\",\"CODEAF_MAX_WALL_H\":\"1.5\"}]","out_json":"{\"maxCostUsd\":5,\"maxWallMs\":5400000}"}
+{"name":"resolveRunBudget/flags-win","fn":"resolveRunBudget","args_json":"[{\"maxCost\":9,\"maxHours\":2},{\"CODEAF_MAX_COST_USD\":\"1\",\"CODEAF_MAX_WALL_H\":\"1\"}]","out_json":"{\"maxCostUsd\":9,\"maxWallMs\":7200000}"}
+{"name":"resolveRunBudget/invalid-flags-fall-through","fn":"resolveRunBudget","args_json":"[{\"maxCost\":0,\"maxHours\":-1},{\"CODEAF_MAX_COST_USD\":\"4\",\"CODEAF_MAX_WALL_H\":\"2\"}]","out_json":"{\"maxCostUsd\":4,\"maxWallMs\":7200000}"}
+{"name":"resolveRunBudget/garbage","fn":"resolveRunBudget","args_json":"[{},{\"CODEAF_MAX_COST_USD\":\"nope\",\"CODEAF_MAX_WALL_H\":\"\"}]","out_json":"{}"}
+{"name":"resolveRunBudget/number-coercion","fn":"resolveRunBudget","args_json":"[{},{\"CODEAF_MAX_COST_USD\":\" 0x10 \",\"CODEAF_MAX_WALL_H\":\"1e-3\"}]","out_json":"{\"maxCostUsd\":16,\"maxWallMs\":3600}"}
+{"name":"resolveRunBudget/signed-radix-is-garbage","fn":"resolveRunBudget","args_json":"[{},{\"CODEAF_MAX_COST_USD\":\"+0x10\",\"CODEAF_MAX_WALL_H\":\"-0b10\"}]","out_json":"{}"}
+{"name":"resolveRunBudget/large-radix-rounds-as-js-number","fn":"resolveRunBudget","args_json":"[{},{\"CODEAF_MAX_COST_USD\":\"0x10000000000000000\"}]","out_json":"{\"maxCostUsd\":18446744073709552000}"}
+{"name":"resolveRunBudget/js-whitespace","fn":"resolveRunBudget","args_json":"[{},{\"CODEAF_MAX_COST_USD\":\"﻿2　\",\"CODEAF_MAX_WALL_H\":\" 0.5 \"}]","out_json":"{\"maxCostUsd\":2,\"maxWallMs\":1800000}"}
+{"name":"resolveRunBudget/numeric-separator-is-garbage","fn":"resolveRunBudget","args_json":"[{},{\"CODEAF_MAX_COST_USD\":\"1_000\"}]","out_json":"{}"}
+{"name":"resolveRunBudget/lowercase-infinity-is-garbage","fn":"resolveRunBudget","args_json":"[{},{\"CODEAF_MAX_COST_USD\":\"infinity\"}]","out_json":"{}"}
+{"name":"resolveRunBudget/exact-infinity-is-not-finite","fn":"resolveRunBudget","args_json":"[{},{\"CODEAF_MAX_COST_USD\":\"Infinity\"}]","out_json":"{}"}
+{"name":"resolveRunBudget/empty-and-zero","fn":"resolveRunBudget","args_json":"[{},{\"CODEAF_MAX_COST_USD\":\"0\",\"CODEAF_MAX_WALL_H\":\"0\"}]","out_json":"{}"}
+{"name":"isBounded/empty","fn":"isBounded","args_json":"[{}]","out_json":"false"}
+{"name":"isBounded/cost","fn":"isBounded","args_json":"[{\"maxCostUsd\":1}]","out_json":"true"}
+{"name":"isBounded/wall","fn":"isBounded","args_json":"[{\"maxWallMs\":1}]","out_json":"true"}
+{"name":"isBounded/explicit-zero","fn":"isBounded","args_json":"[{\"maxCostUsd\":0}]","out_json":"true"}
+{"name":"isBounded/explicit-null","fn":"isBounded","args_json":"[{\"maxCostUsd\":null}]","out_json":"true"}
+{"name":"trackerScenario/unbounded","fn":"trackerScenario","args_json":"[{\"budget\":{},\"startTs\":0,\"ops\":[{\"op\":\"add\",\"usd\":1000000000},{\"op\":\"cost\"},{\"op\":\"exhausted\",\"nowMs\":9007199254740991}]}]","out_json":"[null,1000000000,{\"yes\":false}]"}
+{"name":"trackerScenario/cost-threshold-and-format","fn":"trackerScenario","args_json":"[{\"budget\":{\"maxCostUsd\":1},\"startTs\":0,\"ops\":[{\"op\":\"add\",\"usd\":0.5},{\"op\":\"exhausted\",\"nowMs\":0},{\"op\":\"add\",\"usd\":0.5},{\"op\":\"exhausted\",\"nowMs\":0}]}]","out_json":"[null,{\"yes\":false},null,{\"yes\":true,\"reason\":\"cost $1.0000 >= budget $1.0000\"}]"}
+{"name":"trackerScenario/to-fixed-binary-rounding","fn":"trackerScenario","args_json":"[{\"budget\":{\"maxCostUsd\":0.125},\"startTs\":0,\"priorCostUsd\":0.125,\"ops\":[{\"op\":\"exhausted\",\"nowMs\":0}]}]","out_json":"[{\"yes\":true,\"reason\":\"cost $0.1250 >= budget $0.1250\"}]"}
+{"name":"trackerScenario/wall-boundary","fn":"trackerScenario","args_json":"[{\"budget\":{\"maxWallMs\":500},\"startTs\":1000,\"ops\":[{\"op\":\"exhausted\",\"nowMs\":1499},{\"op\":\"exhausted\",\"nowMs\":1500}]}]","out_json":"[{\"yes\":false},{\"yes\":true,\"reason\":\"wall 1s >= budget 1s\"}]"}
+{"name":"trackerScenario/wall-rounding-positive-half","fn":"trackerScenario","args_json":"[{\"budget\":{\"maxWallMs\":1499},\"startTs\":0,\"ops\":[{\"op\":\"exhausted\",\"nowMs\":1500}]}]","out_json":"[{\"yes\":true,\"reason\":\"wall 2s >= budget 1s\"}]"}
+{"name":"trackerScenario/wall-rounding-negative-half","fn":"trackerScenario","args_json":"[{\"budget\":{\"maxWallMs\":-2000},\"startTs\":0,\"ops\":[{\"op\":\"exhausted\",\"nowMs\":-1500}]}]","out_json":"[{\"yes\":true,\"reason\":\"wall -1s >= budget -2s\"}]"}
+{"name":"trackerScenario/cost-wins-over-wall","fn":"trackerScenario","args_json":"[{\"budget\":{\"maxCostUsd\":1,\"maxWallMs\":1},\"startTs\":0,\"priorCostUsd\":1,\"ops\":[{\"op\":\"exhausted\",\"nowMs\":100}]}]","out_json":"[{\"yes\":true,\"reason\":\"cost $1.0000 >= budget $1.0000\"}]"}
+{"name":"trackerScenario/prior-invalid","fn":"trackerScenario","args_json":"[{\"budget\":{\"maxCostUsd\":5},\"startTs\":0,\"priorCostUsd\":-1,\"ops\":[{\"op\":\"cost\"}]}]","out_json":"[0]"}
+{"name":"trackerScenario/ignore-invalid-adds","fn":"trackerScenario","args_json":"[{\"budget\":{\"maxCostUsd\":5},\"startTs\":0,\"ops\":[{\"op\":\"add\",\"usd\":0},{\"op\":\"add\",\"usd\":-1},{\"op\":\"cost\"}]}]","out_json":"[null,null,0]"}
+{"name":"trackerScenario/accumulation-shape","fn":"trackerScenario","args_json":"[{\"budget\":{\"maxCostUsd\":0.3},\"startTs\":0,\"ops\":[{\"op\":\"add\",\"usd\":0.1},{\"op\":\"add\",\"usd\":0.2},{\"op\":\"cost\"},{\"op\":\"exhausted\",\"nowMs\":0}]}]","out_json":"[null,null,0.30000000000000004,{\"yes\":true,\"reason\":\"cost $0.3000 >= budget $0.3000\"}]"}

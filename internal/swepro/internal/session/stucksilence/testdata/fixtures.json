@@ -1,0 +1,9 @@
+{"name":"fresh-start","fn":"isLeafStuck","args_json":"[{\"nowMs\":1000,\"startedAtMs\":1000,\"unchangedIterations\":0}]","out_json":"false"}
+{"name":"silence-one-ms-short","fn":"isLeafStuck","args_json":"[{\"nowMs\":89999,\"startedAtMs\":0,\"unchangedIterations\":0}]","out_json":"false"}
+{"name":"silence-boundary","fn":"isLeafStuck","args_json":"[{\"nowMs\":90000,\"startedAtMs\":0,\"unchangedIterations\":0}]","out_json":"true"}
+{"name":"tool-event-wins-nullishly","fn":"isLeafStuck","args_json":"[{\"nowMs\":90000,\"startedAtMs\":0,\"lastToolEventMs\":89999,\"unchangedIterations\":0}]","out_json":"false"}
+{"name":"explicit-zero-tool-event","fn":"isLeafStuck","args_json":"[{\"nowMs\":90000,\"startedAtMs\":89999,\"lastToolEventMs\":0,\"unchangedIterations\":0}]","out_json":"true"}
+{"name":"hard-cap-one-short","fn":"isLeafStuck","args_json":"[{\"nowMs\":1,\"startedAtMs\":0,\"unchangedIterations\":9}]","out_json":"false"}
+{"name":"hard-cap-boundary","fn":"isLeafStuck","args_json":"[{\"nowMs\":1,\"startedAtMs\":0,\"unchangedIterations\":10}]","out_json":"true"}
+{"name":"negative-elapsed","fn":"isLeafStuck","args_json":"[{\"nowMs\":0,\"startedAtMs\":1000,\"unchangedIterations\":-1}]","out_json":"false"}
+{"name":"fractional-iterations","fn":"isLeafStuck","args_json":"[{\"nowMs\":0,\"startedAtMs\":0,\"unchangedIterations\":10.5}]","out_json":"true"}
