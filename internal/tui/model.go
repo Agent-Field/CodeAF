@@ -420,6 +420,19 @@ type Model struct {
 	feedKeys     []string
 	feedExpanded map[string]bool
 
+	// The parsed prefix of the worker's log, and what it yielded. The log is
+	// append-only, so everything up to its last complete line has already been
+	// matched, rendered, keyed and scanned for media, and only what arrived
+	// since needs any of that done again. feedTail is the line the worker is
+	// still writing, which settles nothing.
+	feedTraceParsed string
+	feedTraceWidth  int
+	feedTail        string
+	feedBlocksKept  []feedBlock
+	feedKeysKept    []string
+	feedMediaKept   []string
+	feedOccurrences map[uint64]int
+
 	// expandedMessages holds the seqs of long chat deliverables opened in
 	// place; everything else shows its lead and a ⋯.
 	expandedMessages map[int64]bool
