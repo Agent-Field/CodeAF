@@ -2172,13 +2172,18 @@ func TestFeedExpansionSurvivesTraceTruncation(t *testing.T) {
 	if !model.toggleFeedBlockAt(model.nodeTraceBounds.x+1, model.nodeTraceBounds.y+line-model.nodeTrace.YOffset) {
 		t.Fatal("clicking the collapsed thought did not toggle it")
 	}
-	if feed := model.renderActivityFeed(model.nodeTrace.Width); strings.Contains(feed, "⋯") {
+	// The legend that opens the document names the ⋯ affordance, so the search
+	// for a surviving collapse marker looks past it.
+	turns := func() string {
+		return strings.ReplaceAll(model.renderActivityFeed(model.nodeTrace.Width), activityLegend, "")
+	}
+	if feed := turns(); strings.Contains(feed, "⋯") {
 		t.Fatalf("thought did not expand:\n%s", feed)
 	}
 
 	model.nodeTraceText = thought // the byte budget trimmed the head
 	model.refreshNodeView(false)
-	if feed := model.renderActivityFeed(model.nodeTrace.Width); strings.Contains(feed, "⋯") {
+	if feed := turns(); strings.Contains(feed, "⋯") {
 		t.Fatalf("head truncation moved the expansion off the thought:\n%s", feed)
 	}
 }

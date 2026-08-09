@@ -198,6 +198,15 @@ func (m *Model) openNodeByID(nodeID string) tea.Cmd {
 	_ = m.input.Focus()
 	m.setSize(m.width, m.height)
 	m.refreshNodeView(true)
+	// Where the document opens is the answer to why it was opened. A running
+	// worker is opened to be watched, so it opens at the live end; a settled one
+	// is opened to be read, and reading starts at the brief. The pin holds the
+	// settled reader in place while the first poll fills the feed in underneath
+	// them — one scroll of their own releases it.
+	if terminalStatus(node.Status) {
+		m.nodePinTop = true
+		m.nodeTrace.GotoTop()
+	}
 	return m.poll()
 }
 
@@ -207,6 +216,7 @@ func (m *Model) closeNodeView() {
 	m.nodeMessages = nil
 	m.nodeLastSeq = 0
 	m.nodeTraceText = ""
+	m.nodePinTop = false
 	m.input.Reset()
 	m.input.Placeholder = composerPlaceholder
 	m.input.SetValue(m.chatDraft)
@@ -329,33 +339,43 @@ func (m *Model) cancelInspectedNode() tea.Cmd {
 	return m.showStatus("cancel requested → " + m.nodeViewID)
 }
 
-// sizeNodeViewports lays the node view out as a short static header (the
-// brief, plus outcome once terminal) over one scrolling activity feed. One
-// scrollable region means one obvious scroll — the wheel, PgUp, and arrows
-// all move the same thing.
+// sizeNodeViewports gives the node view one sticky line and one scrolling
+// document. Everything a person came to read — the brief, what was decided,
+// what came of it, and every turn — lives in the same scroll, so the reader
+// never has to argue with a header that will not move. The title is the only
+// chrome that stays, because it is the only line that answers "where am I".
 func (m *Model) sizeNodeViewports() {
 	innerWidth := max(1, m.width-2)
 	innerHeight := max(1, m.chatHeight)
-	m.nodeDetailsText = m.renderNodeDetailsContent(innerWidth, max(2, innerHeight/3))
-	detailLines := strings.Count(m.nodeDetailsText, "\n") + 1
-	// header + hairline + BRIEF label + details + blank + ACTIVITY label
-	m.nodeTraceHeight = max(3, innerHeight-5-detailLines)
+	// title + hairline
+	m.nodeTraceHeight = max(3, innerHeight-2)
 	m.nodeTrace.Width, m.nodeTrace.Height = innerWidth, m.nodeTraceHeight
 }
 
-// refreshNodeView re-renders the feed without stealing the scrollback: it
+// refreshNodeView re-renders the document without stealing the scrollback: it
 // follows new output only when the reader was already at the bottom (or just
-// acted), never yanking someone who scrolled up to read history.
+// acted), never yanking someone who scrolled up to read history. A reader who
+// opened a settled worker to read it stays at its first line until they move.
 func (m *Model) refreshNodeView(force bool) {
+	if force {
+		m.nodePinTop = false
+	}
 	follow := force || m.nodeTrace.AtBottom()
 	offset := m.nodeTrace.YOffset
 	m.nodeTrace.SetContent(m.renderActivityFeed(max(1, m.nodeTrace.Width)))
-	if follow {
+	switch {
+	case m.nodePinTop:
+		m.nodeTrace.GotoTop()
+	case follow:
 		m.nodeTrace.GotoBottom()
-	} else {
+	default:
 		m.nodeTrace.SetYOffset(offset)
 	}
 }
+
+// releaseNodeTopPin hands the document back to the reader: any scroll they make
+// themselves is a decision, and the pin never argues with one.
+func (m *Model) releaseNodeTopPin() { m.nodePinTop = false }
 
 // toggleFeedBlockAt opens or closes the expandable block under a click in
 // the feed, keeping the scroll where the reader left it.
@@ -381,7 +401,11 @@ func (m *Model) toggleFeedBlockAt(x, y int) bool {
 	return false
 }
 
-func (m *Model) renderNodeDetailsContent(width, maxLines int) string {
+// renderNodeDetailsContent is the job's own description — what was asked, what
+// was decided, and what came of it — nothing more. It is no longer a
+// fixed-height précis: it opens the scrolling document, so it says the whole
+// thing and lets the scroll do the hiding.
+func (m *Model) renderNodeDetailsContent(width int) string {
 	brief := strings.TrimSpace(m.inspectedNode.Brief)
 	if brief == "" {
 		brief = nodeLabelInSnapshot(m.inspectedNode, m.snapshot)
@@ -389,10 +413,11 @@ func (m *Model) renderNodeDetailsContent(width, maxLines int) string {
 	content := inputTextStyle.Render(wrapText(brief, width))
 	// One rung down from the card, the same receipt in full: this is where a
 	// person comes to check what actually ran their work, so the model id keeps
-	// its vendor path and nothing is shortened. Silent, as ever, on a job that
-	// chose nothing.
+	// its vendor path and nothing is shortened. The title line carries the short
+	// spelling for the glance; this is the copy you can check a build against.
+	// Silent, as ever, on a job that chose nothing.
 	if receipt := nodeChoiceReceipt(m.inspectedNode); receipt != "" {
-		content += "\n" + mutedStyle.Faint(true).Render(truncate(receipt, width))
+		content += "\n" + mutedStyle.Render(truncate(receipt, width))
 	}
 	if terminalStatus(m.inspectedNode.Status) {
 		if m.inspectedNode.Status == store.Failed || m.inspectedNode.Status == store.Cancelled {
@@ -405,39 +430,32 @@ func (m *Model) renderNodeDetailsContent(width, maxLines int) string {
 			content += "\n" + inputTextStyle.Render(wrapText(summary, width))
 		}
 	}
-	lines := strings.Split(content, "\n")
-	m.nodeDetailsClipped = len(lines) > maxLines
-	if m.nodeDetailsClipped {
-		// The header is a fixed-height précis. What it cannot hold is not
-		// truncated away any more: it is repeated at the end of the feed,
-		// which scrolls, and which is where the eye already is when a job
-		// settles.
-		lines = append(lines[:maxLines], mutedStyle.Faint(true).Render("… (in full at the end of the feed)"))
-	}
-	return strings.Join(lines, "\n")
+	return content
 }
 
-// settledOutcomeBlock is the whole of a finished worker's result, laid at the
-// end of the activity feed so a long deliverable is readable in the surface
-// that produced it rather than only in chat.
-func (m *Model) settledOutcomeBlock(width int) (feedBlock, bool) {
-	if !m.nodeDetailsClipped || !terminalStatus(m.inspectedNode.Status) {
-		return feedBlock{}, false
-	}
-	body := strings.TrimSpace(m.inspectedNode.Summary)
-	style := inputTextStyle
-	if m.inspectedNode.Status == store.Failed || m.inspectedNode.Status == store.Cancelled {
-		body = strings.TrimSpace(m.inspectedNode.Error)
-		style = roseStyle
-	}
-	if body == "" {
-		return feedBlock{}, false
-	}
-	lines := []string{mutedStyle.Faint(true).Render("── outcome ──")}
-	for _, line := range strings.Split(wrapText(body, width), "\n") {
-		lines = append(lines, style.Render(line))
-	}
-	return feedBlock{brief: lines}, true
+// nodeDocumentHead is the descriptive half of the scrolling document: a quiet
+// BRIEF label over the job's own words, then one seam. The seam is the feed's
+// own rule idiom — the same `──` that separates turn from turn — because the
+// grammar the eye already learned three lines down is the cheapest way to say
+// "the description ends here and the work begins".
+func (m *Model) nodeDocumentHead(width int) []string {
+	lines := []string{mutedStyle.Faint(true).Render("BRIEF")}
+	lines = append(lines, strings.Split(m.renderNodeDetailsContent(width), "\n")...)
+	lines = append(lines, "", mutedStyle.Faint(true).Render(truncate(feedRule("execution", width), width)))
+	lines = append(lines, mutedStyle.Faint(true).Render(truncate(activityLegend, width)))
+	return lines
+}
+
+// activityLegend teaches the feed's five voices once, in the scroll rather than
+// pinned above it: a legend is read on the first visit and never again.
+const activityLegend = "✳ model · $ shell · ✎ file · ⌕ web · › you · ⋯ expands"
+
+// feedRule is the one divider this surface draws: a named seam that runs to the
+// right edge. Turn rules, the thread rule, and the execution seam are all the
+// same line so none of them reads as a new kind of thing.
+func feedRule(label string, width int) string {
+	rule := "── " + label + " "
+	return rule + strings.Repeat("─", max(0, width-lipgloss.Width(rule)-1))
 }
 
 // The activity feed's visual grammar, kept to five distinct voices so the eye
@@ -474,16 +492,14 @@ type feedRow struct {
 	block int
 }
 
-// renderActivityFeed parses the worker's flight-recorder log into a readable
-// timeline: what the model said to itself, what it ran, what came back, and
-// any steering, followed by the node's thread messages. The raw log stays on
-// disk; this is the human view of it. Collapsed blocks end in a muted ⋯ and
-// open on click.
+// renderActivityFeed is the whole scrolling document, not just the turns: the
+// descriptive head first, the execution seam, then the worker's flight-recorder
+// log parsed into a readable timeline — what the model said to itself, what it
+// ran, what came back, and any steering — followed by the node's thread
+// messages. The raw log stays on disk; this is the human view of it. Collapsed
+// blocks end in a muted ⋯ and open on click.
 func (m *Model) renderActivityFeed(width int) string {
 	blocks := parseFeedBlocks(m.nodeTraceText, m.nodeMessages, width)
-	if outcome, ok := m.settledOutcomeBlock(width); ok {
-		blocks = append(blocks, outcome)
-	}
 	if artifacts := m.renderMediaArtifacts(store.Message{
 		NodeID: m.nodeViewID, Body: strings.ReplaceAll(m.nodeTraceText, "⏎", " "),
 	}, width); artifacts != "" {
@@ -492,7 +508,11 @@ func (m *Model) renderActivityFeed(width int) string {
 	m.feedRows = m.feedRows[:0]
 	m.feedBlocks = blocks
 	m.feedKeys = feedBlockKeys(blocks)
-	var out []string
+	// The head opens the document and claims no click target of its own, so the
+	// rows that follow keep counting from where it ends — a click still lands on
+	// the block under the pointer.
+	out := m.nodeDocumentHead(width)
+	head := len(out)
 	for index, block := range blocks {
 		lines := block.brief
 		if block.expandable() && m.feedExpanded[m.feedKeys[index]] {
@@ -505,8 +525,8 @@ func (m *Model) renderActivityFeed(width int) string {
 			out = append(out, line)
 		}
 	}
-	if len(out) == 0 {
-		return mutedStyle.Faint(true).Render("waiting for the worker's first turn…")
+	if len(out) == head {
+		out = append(out, mutedStyle.Faint(true).Render("waiting for the worker's first turn…"))
 	}
 	return strings.Join(out, "\n")
 }
@@ -544,11 +564,11 @@ func parseFeedBlocks(trace string, messages []store.Message, width int) []feedBl
 		switch {
 		case feedTurnRule.MatchString(line):
 			parts := feedTurnRule.FindStringSubmatch(line)
-			rule := "── turn " + parts[1] + " · " + parts[4] + " tok"
+			label := "turn " + parts[1] + " · " + parts[4] + " tok"
 			if parts[5] != "" {
-				rule += " · " + parts[5]
+				label += " · " + parts[5]
 			}
-			rule += " " + strings.Repeat("─", max(0, width-lipgloss.Width(rule)-1))
+			rule := feedRule(label, width)
 			blocks = append(blocks, feedBlock{brief: []string{"", mutedStyle.Faint(true).Render(truncate(rule, width))}})
 		case strings.HasPrefix(line, "text: "):
 			blocks = append(blocks, thoughtBlock(strings.TrimPrefix(line, "text: "), width))
@@ -565,8 +585,7 @@ func parseFeedBlocks(trace string, messages []store.Message, width int) []feedBl
 		}
 	}
 	if len(messages) > 0 {
-		rule := "── thread "
-		rule += strings.Repeat("─", max(0, width-lipgloss.Width(rule)-1))
+		rule := feedRule("thread", width)
 		blocks = append(blocks, feedBlock{brief: []string{"", mutedStyle.Faint(true).Render(rule)}})
 		now := time.Now()
 		for _, message := range messages {
@@ -779,11 +798,13 @@ func (m *Model) nodeTiming(now time.Time) string {
 }
 
 func (m *Model) updateNodeViewport(message tea.Msg) {
+	m.releaseNodeTopPin()
 	updated, _ := m.nodeTrace.Update(message)
 	m.nodeTrace = updated
 }
 
 func (m *Model) pageNodeViewport(down bool) {
+	m.releaseNodeTopPin()
 	if down {
 		m.nodeTrace.PageDown()
 	} else {
@@ -792,6 +813,7 @@ func (m *Model) pageNodeViewport(down bool) {
 }
 
 func (m *Model) scrollNodeFeed(down bool) {
+	m.releaseNodeTopPin()
 	if down {
 		m.nodeTrace.SetYOffset(m.nodeTrace.YOffset + 3)
 	} else {

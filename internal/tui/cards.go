@@ -1225,6 +1225,15 @@ func (m *Model) renderCardDock(track bool) string {
 	return m.clampCardDock(strings.Join(lines, "\n"), lineCap)
 }
 
+// The card's two quiet inks, named apart because the difference between them is
+// a decision. The frame recedes — structure is faint, per the design system. The
+// choice receipt does not: it was faint on top of muted, and a proof nobody
+// notices proves nothing. Same line, same rules, one weight louder.
+var (
+	cardFrameStyle   = mutedStyle.Faint(true)
+	cardReceiptStyle = mutedStyle
+)
+
 func (m *Model) renderJobCard(card jobCard, width int, expanded bool, atLine int, dock, track bool) string {
 	width = max(12, width)
 	if dock && !expanded && card.State != cardCompiling && !(card.State == cardQuestion && card.QuestionKind != questionText) {
@@ -1249,7 +1258,8 @@ func (m *Model) renderJobCard(card jobCard, width int, expanded bool, atLine int
 	// truncates rather than wraps, and costs no height at all on the ordinary
 	// job — the same bargain the presence line makes with the header.
 	if receipt := cardChoiceReceipt(card); receipt != "" {
-		lines = append(lines, truncate(mutedStyle.Faint(true).Render("│ "+receipt), width))
+		lines = append(lines, truncate(
+			cardFrameStyle.Render("│ ")+cardReceiptStyle.Render(receipt), width))
 	}
 	addText := func(text string, style lipgloss.Style) {
 		text = strings.TrimSpace(text)
@@ -1900,6 +1910,24 @@ func nodeChoiceReceipt(node store.Node) string {
 	}
 	if planner := strings.TrimSpace(node.Provenance.PlanModel); planner != "" {
 		parts = append(parts, "planned by "+planner)
+	}
+	return strings.Join(parts, " · ")
+}
+
+// nodeChoiceReceiptShort is the glance version of the same facts, for the one
+// line of the drill-down that never scrolls away. Same three facts, same
+// silence on a job that chose nothing, model ids in their short spelling —
+// the title line has room for a badge, not for a vendor path.
+func nodeChoiceReceiptShort(node store.Node) string {
+	parts := make([]string, 0, 3)
+	if worker := settledWorker(node); worker != "" {
+		parts = append(parts, worker)
+	}
+	if model := strings.TrimSpace(node.Provenance.WorkModel); model != "" {
+		parts = append(parts, modelShort(model))
+	}
+	if planner := strings.TrimSpace(node.Provenance.PlanModel); planner != "" {
+		parts = append(parts, "planned by "+modelShort(planner))
 	}
 	return strings.Join(parts, " · ")
 }

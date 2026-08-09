@@ -416,11 +416,11 @@ type Model struct {
 	graphWidth  int
 	graphHeight int
 
-	nodeDetailsText string
-	// nodeDetailsClipped says the header could not hold the whole outcome, so
-	// the feed carries it in full rather than the reader losing the rest.
-	nodeDetailsClipped bool
-	nodeTraceHeight    int
+	// nodePinTop holds a settled worker's document at its first line while the
+	// first poll fills the feed in underneath the reader. Cleared by any scroll
+	// of their own, and never set on a running worker — that one opens live.
+	nodePinTop      bool
+	nodeTraceHeight int
 
 	inputFocused     bool
 	focus            paneFocus
@@ -1142,6 +1142,7 @@ func (m *Model) updateKey(message tea.KeyMsg) (tea.Cmd, bool) {
 			m.scrollNodeFeed(key == "down")
 			return nil, true
 		case key == "end":
+			m.releaseNodeTopPin()
 			m.nodeTrace.GotoBottom()
 			return nil, true
 		}

@@ -65,6 +65,27 @@ func TestChoiceReceiptCostsNoHeightOnAnOrdinaryJob(t *testing.T) {
 	}
 }
 
+// Quiet, not invisible. The receipt was faint on top of muted and readers
+// reported never seeing it; the frame keeps the faint, the words do not.
+func TestChoiceReceiptOnACardIsNotFaint(t *testing.T) {
+	model := New(&fakeBackend{}, "receipt-weight")
+	model.setSize(110, 34)
+	card := jobCard{
+		ID: "job", Title: "Draft the launch note", State: cardWorking,
+		Subharness: "swe", WorkModel: "moonshotai/kimi-k2",
+	}
+	if cardReceiptStyle.GetFaint() {
+		t.Fatal("the choice receipt still speaks in faint ink")
+	}
+	if !cardFrameStyle.GetFaint() {
+		t.Fatal("the card frame stopped receding — structure is faint, words are not")
+	}
+	frame := model.renderJobCard(card, 100, false, 0, false, false)
+	if !strings.Contains(frame, cardReceiptStyle.Render("swe · kimi-k2")) {
+		t.Fatalf("the receipt is not rendered in the receipt's own ink:\n%q", frame)
+	}
+}
+
 // The receipt truncates with the card and never wraps: a narrow window loses the
 // end of one line, not the shape of the card.
 func TestChoiceReceiptTruncatesInsteadOfWrapping(t *testing.T) {
@@ -185,13 +206,141 @@ func TestNodeDrillDownCarriesTheUntruncatedChoice(t *testing.T) {
 			WorkModel: "moonshotai/kimi-k2", PlanModel: "anthropic/claude-opus-5",
 		},
 	}
-	details := ansi.Strip(model.renderNodeDetailsContent(100, 12))
+	details := ansi.Strip(model.renderNodeDetailsContent(100))
 	if !strings.Contains(details, "swe · moonshotai/kimi-k2 · planned by anthropic/claude-opus-5") {
 		t.Fatalf("node details lost the choice:\n%s", details)
 	}
 
 	model.inspectedNode = store.Node{ID: "chore", Brief: "Read the file", Status: store.Running}
-	if plain := ansi.Strip(model.renderNodeDetailsContent(100, 12)); strings.Contains(plain, "planned by") {
+	if plain := ansi.Strip(model.renderNodeDetailsContent(100)); strings.Contains(plain, "planned by") {
 		t.Fatalf("an ordinary node spoke:\n%s", plain)
+	}
+}
+
+// The short spelling rides the one line that never scrolls away. A receipt a
+// reader has to go looking for is a receipt they never see, and this one is the
+// answer to "who is actually running this" — the first question the drill-down
+// exists to answer.
+func TestNodeDrillDownReceiptRidesTheStickyTitle(t *testing.T) {
+	model, _ := inspectedWorkerModel(t)
+	model.setSize(120, 30)
+	model.inspectedNode = store.Node{
+		ID: "worker", Parent: store.RootID, Brief: "Land the migration", Status: store.Running,
+		Subharness: "swe",
+		Provenance: store.Provenance{
+			WorkModel: "moonshotai/kimi-k2", PlanModel: "anthropic/glm-5-2",
+		},
+	}
+	model.setSize(120, 30)
+	title := ansi.Strip(strings.Split(model.renderNodePane(), "\n")[0])
+	if !strings.Contains(title, "swe · kimi-k2 · planned by glm-5-2") {
+		t.Fatalf("the sticky title lost the receipt:\n%q", title)
+	}
+	if strings.Contains(title, "moonshotai/") {
+		t.Fatalf("the vendor path reached the title line: %q", title)
+	}
+	if ansi.StringWidth(title) > 120 {
+		t.Fatalf("the title line overflows the frame: %q", title)
+	}
+
+	// The name outranks the badge: a frame too narrow for both drops the badge
+	// rather than truncating the task away.
+	model.setSize(46, 30)
+	narrow := ansi.Strip(strings.Split(model.renderNodePane(), "\n")[0])
+	if strings.Contains(narrow, "planned by") {
+		t.Fatalf("a 46-column title kept the badge and lost the name: %q", narrow)
+	}
+	if !strings.Contains(narrow, "land") {
+		t.Fatalf("a 46-column title lost the task's name entirely: %q", narrow)
+	}
+
+	model.setSize(120, 30)
+	model.inspectedNode.Provenance = store.Provenance{}
+	model.inspectedNode.Subharness = ""
+	plain := ansi.Strip(strings.Split(model.renderNodePane(), "\n")[0])
+	if strings.Contains(plain, "planned by") {
+		t.Fatalf("an ordinary worker's title spoke: %q", plain)
+	}
+}
+
+// The title is the only thing pinned. The brief, the decisions and the turns are
+// one document underneath it, so the first two lines of the pane can hold a name
+// and a hairline and nothing else — and the description is reachable only by the
+// same scroll that reaches the work.
+func TestNodeDrillDownStickyRegionHoldsOnlyTheTitle(t *testing.T) {
+	model, _ := inspectedWorkerModel(t)
+	model.setSize(100, 30)
+	model.inspectedNode = store.Node{
+		ID: "worker", Parent: store.RootID, Status: store.Running,
+		Title: "Land the migration",
+		Brief: "Land the migration. Keep every contract green.",
+	}
+	model.nodeTraceText = "── turn 1 finish=stop in=10 out=20 ──\ntext: thinking about it\n"
+	model.setSize(100, 30)
+	model.refreshNodeView(true)
+
+	pane := strings.Split(ansi.Strip(model.renderNodePane()), "\n")
+	sticky := strings.Join(pane[:2], "\n")
+	if name := nodeLabelInSnapshot(model.inspectedNode, model.snapshot); !strings.Contains(sticky, name) {
+		t.Fatalf("the sticky line does not name %q:\n%s", name, sticky)
+	}
+	if strings.Contains(sticky, "BRIEF") || strings.Contains(sticky, "Keep every contract green.") {
+		t.Fatalf("the brief is still pinned above the scroll:\n%s", sticky)
+	}
+
+	document := ansi.Strip(model.renderActivityFeed(98))
+	for _, want := range []string{"BRIEF", "Keep every contract green.",
+		"── execution ", "✳ model · $ shell", "── turn 1 · 20 tok"} {
+		if !strings.Contains(document, want) {
+			t.Fatalf("the scrolling document is missing %q:\n%s", want, document)
+		}
+	}
+	if strings.Index(document, "── execution ") < strings.Index(document, "Keep every contract green") {
+		t.Fatal("the execution seam falls before the description it separates")
+	}
+	if strings.Index(document, "── turn 1 · 20 tok") < strings.Index(document, "── execution ") {
+		t.Fatal("a turn falls above the seam that announces the turns")
+	}
+}
+
+// Where the document opens says why it was opened: a running worker is being
+// watched, a settled one is being read.
+func TestNodeDrillDownOpensLiveForWorkAndAtTheTopToRead(t *testing.T) {
+	for _, probe := range []struct {
+		name   string
+		status store.Status
+		top    bool
+	}{
+		{"running worker follows the live end", store.Running, false},
+		{"settled worker opens at its brief", store.Done, true},
+	} {
+		t.Run(probe.name, func(t *testing.T) {
+			backend := &fakeBackend{snapshot: store.Snapshot{Nodes: []store.Node{
+				{ID: store.RootID},
+				{ID: "worker", Parent: store.RootID, Brief: "Inspect this worker", Status: probe.status},
+			}}}
+			model := NewWithCommander(backend, "open-position", newFakeCommander())
+			model.setSize(100, 26)
+			model.snapshot = backend.snapshot
+			_ = model.openNodeByID("worker")
+			model.nodeTraceText = strings.Repeat("text: a line worth reading\n", 80)
+			model.refreshNodeView(false)
+
+			if probe.top {
+				if !model.nodeTrace.AtTop() {
+					t.Fatalf("a settled worker opened at offset %d", model.nodeTrace.YOffset)
+				}
+				// One scroll of the reader's own releases the pin for good.
+				model.scrollNodeFeed(true)
+				model.refreshNodeView(false)
+				if model.nodePinTop {
+					t.Fatal("the pin survived a scroll the reader made")
+				}
+				return
+			}
+			if !model.nodeTrace.AtBottom() {
+				t.Fatalf("a running worker did not open live: offset %d", model.nodeTrace.YOffset)
+			}
+		})
 	}
 }
