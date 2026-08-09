@@ -96,10 +96,29 @@ func TestCachedThreadIsByteIdenticalToAColdRender(t *testing.T) {
 		{Seq: 5, SessionID: "identical", Role: store.RoleAgent, NodeID: "job", Body: long, Time: now.Add(-10 * time.Minute)},
 		{Seq: 6, SessionID: "identical", Role: store.RoleUser, Body: "and then?", Time: now.Add(-time.Minute)},
 		{Seq: 7, SessionID: "identical", Role: store.RoleAgent, Body: "the last word", Time: now},
+		{
+			Seq: 8, SessionID: "identical", Role: store.RoleAgent, Time: now,
+			Body: "while you were away four things landed.",
+			Brief: &store.Brief{Items: []store.BriefItem{
+				{Kind: store.BriefDone, Body: "the report is written"},
+				{Kind: store.BriefQuestion, Body: "one job is waiting on you"},
+			}},
+		},
+		{
+			Seq: 9, SessionID: "identical", Role: store.RoleAgent, NodeID: "landed", Time: now.Add(-5 * time.Minute),
+			Body: "the landed job's answer is here, and it is " + long,
+		},
 	}
 	backend := &fakeBackend{
 		messages: messages,
-		snapshot: store.Snapshot{Nodes: []store.Node{{ID: store.RootID}, {ID: "job", Parent: store.RootID, Title: "the job"}}},
+		snapshot: store.Snapshot{Nodes: []store.Node{
+			{ID: store.RootID},
+			{ID: "job", Parent: store.RootID, Title: "the job"},
+			{
+				ID: "landed", Parent: store.RootID, Title: "the landed job", Status: store.Done,
+				CreatedSeq: 2, StartedAt: now.Add(-9 * time.Minute), FinishedAt: now.Add(-5 * time.Minute),
+			},
+		}},
 	}
 	model := New(backend, "identical")
 	model.standingNow = func() time.Time { return now }
@@ -114,17 +133,40 @@ func TestCachedThreadIsByteIdenticalToAColdRender(t *testing.T) {
 		coldChips := append([]chatChipRow(nil), model.chatChipRows...)
 		coldExpands := append([]chatExpandRow(nil), model.chatExpandRows...)
 		coldRows := append([]chatMessageRow(nil), model.chatMessageRows...)
+		coldCards := append([]cardRow(nil), model.chatCardRows...)
+		coldParts := append([]cardPartRow(nil), model.cardPartRows...)
+		coldCloses := append([]cardCloseRow(nil), model.cardCloseRows...)
+		coldOptions := append([]cardOptionRow(nil), model.cardOptionRows...)
 		warm := model.renderMessages()
 		if warm != cold {
 			t.Fatalf("%s: cached thread differs from a cold render:\n--- cold\n%q\n--- warm\n%q", stage, cold, warm)
 		}
 		if !reflect.DeepEqual(model.chatChipRows, coldChips) ||
 			!reflect.DeepEqual(model.chatExpandRows, coldExpands) ||
-			!reflect.DeepEqual(model.chatMessageRows, coldRows) {
+			!reflect.DeepEqual(model.chatMessageRows, coldRows) ||
+			!reflect.DeepEqual(model.chatCardRows, coldCards) ||
+			!reflect.DeepEqual(model.cardPartRows, coldParts) ||
+			!reflect.DeepEqual(model.cardCloseRows, coldCloses) ||
+			!reflect.DeepEqual(model.cardOptionRows, coldOptions) {
 			t.Fatalf("%s: cached thread moved its interactive rows", stage)
 		}
 	}
 
+	// The thread has to hold one of each kind of block, or the comparison
+	// below is only watching the half that was already cached.
+	_ = model.renderMessages()
+	if len(model.chatCardRows) == 0 {
+		t.Fatalf("no settled card in the thread: %+v", model.cards)
+	}
+	briefRows := 0
+	for _, row := range model.chatExpandRows {
+		if row.action == chatExpandBrief {
+			briefRows++
+		}
+	}
+	if briefRows == 0 {
+		t.Fatal("no arrival brief in the thread")
+	}
 	compare("settled")
 	model.expandedMessages[5] = true
 	compare("answer opened")
@@ -132,6 +174,10 @@ func TestCachedThreadIsByteIdenticalToAColdRender(t *testing.T) {
 	compare("learning opened")
 	model.receiptsExpanded = true
 	compare("receipts opened")
+	model.cardExpanded["landed"] = true
+	compare("settled card opened")
+	model.briefExpanded[8] = true
+	compare("brief opened")
 	model.applyStreamEvent(StreamEvent{Kind: StreamStarted})
 	model.applyStreamEvent(StreamEvent{Kind: StreamDelta, Delta: `{"reply":"still arriving`})
 	model.advanceStream()
