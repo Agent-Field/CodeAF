@@ -22,7 +22,6 @@ import (
 
 	"github.com/Agent-Field/aforge-v2/internal/config"
 	"github.com/Agent-Field/aforge-v2/internal/plan"
-	"github.com/Agent-Field/aforge-v2/internal/profile"
 	"github.com/Agent-Field/aforge-v2/internal/router"
 )
 
@@ -71,6 +70,10 @@ func execute() (code int) {
 }
 
 func run() error {
+	// Who this build can hand a leaf to, declared once, before any command has
+	// read a flag. Every surface below reads the same menu and the same rulers
+	// because none of them registers anything of its own.
+	installSubharnesses()
 	if len(os.Args) < 2 {
 		// No arguments opens the resident surface: the chat thread over the
 		// durable graph. The one-shot commands below are unchanged.
@@ -215,8 +218,7 @@ func runPlan(args []string) error {
 
 	// The ruler in force comes from measured work when there is any; the
 	// built-in prior is only the starting point.
-	store, _ := profile.Load(settings.ProfileDir, settings.Model, "linear")
-	plan.UseAnchors(store.Anchors)
+	store := installMeasuredRulers(settings.ProfileDir, settings.Model)
 
 	if !*asJSON {
 		fmt.Printf("goal:   %s\nmodel:  %s (reasoning: %s)\n", goal, settings.PlanModelResolved(), settings.Reasoning)

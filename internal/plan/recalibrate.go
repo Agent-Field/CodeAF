@@ -79,6 +79,13 @@ func calibrationEvidence(small, middle, large []profile.Record) string {
 // and whether anything changed. It is a no-op unless the profile both has enough
 // evidence and disagrees with the ruler in force.
 func Recalibrate(ctx context.Context, client Completer, store *profile.Profile) (string, string, Usage, error) {
+	return RecalibrateFor(ctx, client, store, LinearSubharness)
+}
+
+// RecalibrateFor is the same loop keyed to one subharness. Each measures a
+// different capacity, so each rewrites its own three examples from its own
+// evidence and nothing else — the ruler doc's promise kept literally.
+func RecalibrateFor(ctx context.Context, client Completer, store *profile.Profile, subharness string) (string, string, Usage, error) {
 	var usage Usage
 	needed, reason := store.NeedsRecalibration()
 	if !needed {
@@ -93,7 +100,7 @@ func Recalibrate(ctx context.Context, client Completer, store *profile.Profile) 
 
 	messages := []ai.Message{
 		systemMessage(recalibratePrompt),
-		userMessage("The ruler currently in force:\n\n" + Anchors()),
+		userMessage("The ruler currently in force:\n\n" + AnchorsFor(subharness)),
 		userMessage("Tasks this model actually ran:\n\n" + evidence),
 	}
 	ctx = provider.WithCall(ctx, provider.ClassPlanRecalibrate)

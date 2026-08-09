@@ -49,7 +49,7 @@ func TestLoadRemembersAParseWithoutSharingItOrGoingStale(t *testing.T) {
 	// A rewrite from outside this process is picked up too.
 	path := filepath.Join(dir, "profile-vendor-worker-linear.json")
 	time.Sleep(10 * time.Millisecond)
-	if err := os.WriteFile(path, []byte(`{"model":"vendor/worker","skill":"linear","anchors":"rewritten","records":[]}`), 0o644); err != nil {
+	if err := os.WriteFile(path, []byte(`{"model":"vendor/worker","subharness":"linear","anchors":"rewritten","records":[]}`), 0o644); err != nil {
 		t.Fatalf("rewrite: %v", err)
 	}
 	fourth, err := Load(dir, "vendor/worker", "linear")
