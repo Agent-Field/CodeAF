@@ -302,6 +302,45 @@ func TestWedgedWorkStopsBreathing(t *testing.T) {
 	}
 }
 
+// The card lookups are a map read now, and a map read has to answer exactly
+// what the walk answered: the first card that owns the node or the command,
+// including after a card is edited where it lies.
+func TestCardLookupsAnswerWhatTheWalkAnswered(t *testing.T) {
+	model := New(&fakeBackend{}, "lookups")
+	model.cards = []jobCard{
+		{ID: "first", CommandSeq: 7, Parts: []cardPart{{NodeID: "shared"}, {NodeID: "one"}}},
+		{ID: "second", CommandSeq: 7, Parts: []cardPart{{NodeID: "shared"}, {NodeID: "two"}}},
+	}
+	if card := model.cardForNodeID("shared"); card == nil || card.ID != "first" {
+		t.Fatalf("shared node resolved to %v, want the first card", card)
+	}
+	if card := model.cardForNodeID("two"); card == nil || card.ID != "second" {
+		t.Fatalf("second card's own node resolved to %v", card)
+	}
+	if card := model.cardForNodeID("absent"); card != nil {
+		t.Fatalf("unknown node resolved to %q", card.ID)
+	}
+	message := store.Message{CommandSeq: 7}
+	if card := model.cardForMessage(message); card == nil || card.ID != "first" {
+		t.Fatalf("shared command resolved to %v, want the first card", card)
+	}
+
+	// A card edited in place keeps its position, so the index still finds it.
+	model.cards[1].State = cardSettled
+	if card := model.cardForNodeID("two"); card == nil || card.State != cardSettled {
+		t.Fatal("a card edited where it lies was no longer findable")
+	}
+
+	// A replaced list is a different list.
+	model.cards = []jobCard{{ID: "only", Parts: []cardPart{{NodeID: "shared"}}}}
+	if card := model.cardForNodeID("shared"); card == nil || card.ID != "only" {
+		t.Fatalf("a rebuilt card list resolved to %v", card)
+	}
+	if card := model.cardForMessage(message); card != nil {
+		t.Fatalf("a retired command still resolved to %q", card.ID)
+	}
+}
+
 // A character in the draft changes the draft. It does not change the thread,
 // the rail, or the employee file — so it must not rebuild them.
 func TestTypingDoesNotRelayoutTheWholeFrame(t *testing.T) {

@@ -975,14 +975,45 @@ func (m *Model) questionCardForMessage(message store.Message) *jobCard {
 	return nil
 }
 
-func (m *Model) cardForNodeID(nodeID string) *jobCard {
-	for index := range m.cards {
-		card := &m.cards[index]
-		for _, part := range card.Parts {
-			if part.NodeID == nodeID {
-				return card
+// cardIndex answers the two questions the thread asks of the card list on
+// every message it draws: which card owns this node, and which card owns this
+// command. Both were answered by walking every card and every part of every
+// card, once per message — messages times cards times parts of comparisons to
+// decide what the conversation is even made of. It holds positions rather than
+// cards, so a card edited where it lies stays findable.
+type cardIndex struct {
+	cards     []jobCard
+	byNode    map[string]int
+	byCommand map[int64]int
+}
+
+func (x *cardIndex) refresh(cards []jobCard) {
+	if x.byNode != nil && len(x.cards) == len(cards) &&
+		(len(cards) == 0 || &x.cards[0] == &cards[0]) {
+		return
+	}
+	x.cards = cards
+	x.byNode = make(map[string]int, len(cards))
+	x.byCommand = make(map[int64]int, len(cards))
+	// First card wins both ways, which is what a walk from the front returned.
+	for index := range cards {
+		for _, part := range cards[index].Parts {
+			if _, seen := x.byNode[part.NodeID]; !seen {
+				x.byNode[part.NodeID] = index
 			}
 		}
+		if seq := cards[index].CommandSeq; seq != 0 {
+			if _, seen := x.byCommand[seq]; !seen {
+				x.byCommand[seq] = index
+			}
+		}
+	}
+}
+
+func (m *Model) cardForNodeID(nodeID string) *jobCard {
+	m.cardIndex.refresh(m.cards)
+	if index, ok := m.cardIndex.byNode[nodeID]; ok {
+		return &m.cards[index]
 	}
 	return nil
 }
@@ -997,10 +1028,9 @@ func (m *Model) cardForMessage(message store.Message) *jobCard {
 		}
 	}
 	if message.CommandSeq != 0 {
-		for index := range m.cards {
-			if m.cards[index].CommandSeq == message.CommandSeq {
-				return &m.cards[index]
-			}
+		m.cardIndex.refresh(m.cards)
+		if index, ok := m.cardIndex.byCommand[message.CommandSeq]; ok {
+			return &m.cards[index]
 		}
 	}
 	return nil
