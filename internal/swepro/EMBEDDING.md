@@ -1,113 +1,72 @@
-# Embedding — where this tree came from and what was done to it
+# Embedding — an owned copy of swe-pro-go
 
-This directory is the **swe subharness engine**: swe-pro-go, copied into the
-aforge binary so that the `swe` subharness can drive it. Read
-`docs/SUBHARNESSES.md` first — it is the law this vendoring serves. Read
-`BUGS-KEPT.md` next, because it explains the rule that governs every line
-here: **the engine is held bug-for-bug at its upstream commit.** Do not fix,
-refactor, reformat, or improve anything in this tree. A behavior you think is
-wrong is upstream's to change, and then this tree is re-vendored.
+This directory is the **swe subharness engine**: swe-pro-go, imported into
+aforge at commit `af248e9` (see `UPSTREAM`). Read `docs/SUBHARNESSES.md`
+first — it is the law this serves, and its section *"The engine copy is owned,
+not borrowed"* is the rule below.
 
-## Provenance
+## Owned, not borrowed
 
-| | |
-|---|---|
-| Source repo | `github.com/Agent-Field/swe-pro-go` |
-| Commit | `af248e9` (*Merge pull request #27 from Agent-Field/model/v4-flash-0731-default*) |
-| Vendored | 2026-08-09 |
-| Files | 649 `.go` files, ~114k lines, 121 packages |
-| Upstream module | `github.com/Agent-Field/swe-pro-go` |
-| Upstream go directive | `go 1.25.0` |
+From the moment this landed it is **aforge code**. Modify it freely, in place,
+whenever tighter integration serves the product — richer events for the chat
+surface, steering injection, per-call data for the ledger, performance work.
+Ordinary commits, ordinary review, no fork-management ceremony.
 
-### Licensing — unsettled, on purpose visible
+Upstream swe-pro-go continues to evolve separately. Improvements worth having
+are harvested by **occasional cherry-pick**, not by mechanical re-sync, and
+divergence is the expected steady state rather than a debt. Two things keep
+that honest:
 
-**swe-pro-go carries no LICENSE file.** Both repositories are Agent-Field
-property and this copy was made with the owner's explicit authorization, so
-nothing here is in question internally. But an unlicensed source tree copied
-into a second repository is a loose end, and it is worth naming rather than
-inheriting silently: **a license should be settled upstream in swe-pro-go**,
-and this file updated with it at the next re-vendor.
+- `UPSTREAM` records the import commit, so a harvest knows what it is diffing
+  against.
+- The **divergence log** below records every intentional departure, so a
+  harvest knows what not to clobber. *Adding to it is part of changing this
+  tree.*
 
-## Why a copy at all
+One thing is not negotiable: the **outer seam**. However deep the integration
+goes inside this directory, the engine is reached only through the swe
+subharness's `Executor` implementation — one Task in, one Outcome out. That is
+what lets the next subharness arrive the same way.
 
-`docs/SUBHARNESSES.md` explains the shape. In one paragraph: a subharness is
-an alternative executor for a single leaf of the graph, and the `swe`
-subharness is a full software-engineering pipeline — plan, parallel coder
-leaves in git worktrees, per-leaf judge, merge, audit-fix loop, verified
-terminal status. A coding issue that would decompose into eight linear leaves
-is better taken whole by something that owns worktrees, merges, and a
-verifier. That something already exists and works; it is this engine.
+`BUGS-KEPT.md` is upstream's document and still worth reading: several
+behaviors here look wrong and are deliberate ports of swe-pro's own quirks.
+Know which is which before you "fix" one.
 
-It is a copy rather than a module dependency because the aforge binary must be
-able to *be* the engine (see the sentinel below), which means the engine's
-code has to be linked into it, and because a vendored tree is a thing you can
-read, bisect, and patch in place — a version-pinned dependency is not.
+---
 
-## Layout
+# Divergence log
 
-```
-internal/swepro/
-  internal/      <- swe-pro-go/internal/*, verbatim
-  codeaf/        <- swe-pro-go/cmd/codeaf/*, `package main` -> `package codeaf`
-  EMBEDDING.md   <- this file
-  BUGS-KEPT.md   ENGINE-DESIGN.md   EVENTS-CONTRACT.md   <- upstream docs
-```
+Every intentional departure from upstream `af248e9`, newest last. Each is
+marked in the source with an `// aforge-embed:` comment;
+`grep -rn 'aforge-embed:' internal/swepro` is the same list from the code
+side, and the two must agree.
 
-The nesting is the encapsulation. Go's internal rule scopes
-`internal/swepro/internal/...` to the `internal/swepro/...` subtree, so no
-package outside this directory can import a single one of the engine's 121
-packages by accident. The only door is `codeaf.Main`.
+### D1 — `codeaf/main.go`: `func main()` → `func Main(argv []string) int`
 
-## What was dropped
-
-| Dropped | Why |
-|---|---|
-| `cmd/swedog` | A standalone watchdog binary. Nothing in the subharness path calls it. |
-| `cmd/plandb-diff` | A developer diff tool for the plan database. Same. |
-| `.git` | It is a copy, not a submodule. Provenance lives in this file. |
-| Upstream docs other than the three kept | `AGENTFIELD.md`, `DOGFOOD.md`, `FIX-CANDIDATES.md`, `OBSERVER-WIRING.md` stayed upstream; the three kept are the ones a maintainer of *this* tree needs. |
-
-**`serve` mode was NOT dropped.** `codeaf/serve.go` wires the engine up as an
-AgentField node through `agentfield/sdk/go/agent`, and the plan allowed
-dropping it if it failed to compile against aforge's newer SDK pin. It did
-not fail: swe-pro pinned the SDK at `v0.0.0-20260724201800-7ee31640a2f4`,
-aforge at `v0.0.0-20260801225427-e6587ade0886`, MVS picked aforge's, and
-serve.go compiles against it with zero changes. The SDK skew cost nothing —
-the only surfaces that moved between those two versions (`agent.go`,
-`agent_did.go`, `discovery.go`, `note.go`) moved compatibly, and swe-pro-go
-touches the SDK in exactly one file.
-
-## The `// aforge-embed:` patches — the complete inventory
-
-Three, and only three. Every one carries an `// aforge-embed:` comment in the
-source; `grep -rn 'aforge-embed:' internal/swepro` is the authoritative list
-and should always agree with this table.
-
-### 1. `codeaf/main.go` — `func main()` becomes `func Main(argv []string) int`
-
-The exported entry point, and the only exported symbol in the package.
+*Wave 2, the import itself.* The aforge binary must be able to **be** codeaf
+in a child process, so the command needs one exported, callable entry point.
 The body is the binary's `main()` verbatim with `os.Exit(n)` replaced by
-`return n`. It passes a **nil** injected backend, which is precisely what
-makes `runCLI` construct the real OpenRouter backend — so every startup
-semantic the shipped binary had survives untouched inside `runCLI`:
+`return n`. It passes a **nil** injected backend — which is exactly what makes
+`runCLI` construct the real OpenRouter backend — so every startup semantic the
+shipped binary had is untouched inside `runCLI`: the control-plane gate, the
+`OPENROUTER_API_KEY` hard-require (checked after the gate so the gate's
+refusal keeps precedence), the models.dev catalog fetch and its background
+refresh, the terminal checkpoint, the auto-resume supervisor.
 
-- the control-plane probe and gate (with patch 2 applied),
-- the hard `OPENROUTER_API_KEY` requirement, checked after the gate so the
-  gate's refusal keeps precedence,
-- the models.dev catalog fetch and its background refresh,
-- the terminal checkpoint write and the auto-resume supervisor.
+*Cherry-pick note:* upstream still has `func main()`. A harvest that touches
+main.go's entry point must re-apply this shape.
 
-### 2. `codeaf/main.go` — `controlPlaneEnabled`, i.e. `CODEAF_CP_URL=off`
+### D2 — `codeaf/main.go`: `CODEAF_CP_URL=off` skips the control-plane gate
 
-Upstream, the control-plane gate is unconditional for the real backend:
-codeaf is not a standalone product, every run is mirrored onto AgentField, and
-a run without a reachable control plane is refused. Embedded, that is wrong —
-the run is driven by aforge's subharness, which is not an AgentField reasoner,
-and a developer running `aforge do` should not need `af dev` up.
+*Wave 2.* Upstream the gate is unconditional for the real backend — codeaf is
+not a standalone product, every run is mirrored onto AgentField, and a run
+without a reachable plane is refused. Embedded that is wrong: the run is
+driven by aforge's subharness, which is not an AgentField reasoner, and a
+developer running `aforge do` should not need `af dev` up.
 
-The patch extracts the gate's condition into a named predicate and adds one
-row to it: the literal value `off` in `CODEAF_CP_URL` refuses the gate. Every
-other value, including the empty one, evaluates exactly as upstream did:
+The gate's condition is extracted into a predicate with one row added. Every
+value other than the literal `off`, including the empty one, evaluates exactly
+as upstream:
 
 ```go
 func controlPlaneEnabled(baseURL string, injected backend) bool {
@@ -118,46 +77,122 @@ func controlPlaneEnabled(baseURL string, injected backend) bool {
 }
 ```
 
-`TestAforgeEmbedControlPlaneGateKeepsUpstreamShapeExceptOff` pins all six
-rows, upstream's four and the patch's two.
+*Cherry-pick note:* upstream's `if injected == nil || baseURL != ""` is the
+line this replaced. Held from outside by
+`cmd/aforge.TestSweproControlPlaneGateIsOffOnlyForOff`.
 
-### 3. `codeaf/catalog_test.go` — one `../` fewer
+### D3 — mechanical, applied at import by `revendor.sh`
 
-`CatalogPath: "../../internal/modelsdev/testdata/catalog.json"` was correct
-when this package was `cmd/codeaf`, two directories under the repo root. It is
-now `internal/swepro/codeaf`, one directory under the vendored root, and the
-fixture moved with it: `"../internal/modelsdev/testdata/catalog.json"`. A
-relocation consequence, not a behavior change.
+Not really divergences — the same code at a different address — but a harvest
+has to reproduce them on anything it pulls across:
 
-### Added files (not patches)
+1. **Import paths.** `github.com/Agent-Field/swe-pro-go/internal/` →
+   `github.com/Agent-Field/aforge-v2/internal/swepro/internal/`, in 453 files.
+   The package layout below the module path is identical, so one substitution
+   is the whole rewrite. String literals naming `swe-pro-go` (default
+   control-plane node IDs, test fixtures) are data, not imports, and were
+   deliberately left alone.
+2. **Package clause.** `^package main$` → `package codeaf` across
+   `codeaf/*.go`, anchored so a `package main` inside a string literal or a
+   testdata fixture is untouched.
+3. **One directory shallower.** `"../../internal/` → `"../internal/` in
+   `codeaf/*.go`: upstream this package was `cmd/codeaf`, two levels under the
+   repo root, and its fixtures reached the engine's tree as `../../internal/`.
 
-- `codeaf/aforge_embed_test.go` — tests the two `main.go` patches and the
-  supervisor argv contract. Named `TestAforgeEmbed*` so `make test` can run
-  exactly these out of the vendored package.
+### D4 — dropped at import
 
-Nothing else in 649 files was touched. The import rewrite and package rename
-below were mechanical and applied to every file at once.
+| Dropped | Why |
+|---|---|
+| `cmd/swedog` | A standalone watchdog binary. Nothing on the subharness path calls it. |
+| `cmd/plandb-diff` | A developer diff tool for the plan database. |
+| `.git` | The import exports a ref; provenance is `UPSTREAM`. |
+| `AGENTFIELD.md`, `DOGFOOD.md`, `FIX-CANDIDATES.md`, `OBSERVER-WIRING.md` | Stay upstream. `BUGS-KEPT.md`, `ENGINE-DESIGN.md`, `EVENTS-CONTRACT.md` came across. |
 
-## The mechanical rewrite
+**`codeaf/serve.go` was NOT dropped.** swe-pro-go pinned
+`agentfield/sdk/go` at `v0.0.0-20260724201800-7ee31640a2f4` and aforge at
+`v0.0.0-20260801225427-e6587ade0886`; MVS picks aforge's. serve.go — the only
+file in the whole engine that touches the SDK — compiles against the newer one
+unchanged, so **the SDK skew cost nothing and no compatibility edit exists.**
+
+---
+
+# The initial import
+
+Reproducible, and scripted for exactly that reason:
 
 ```sh
-# every import of the old module, in 453 files
-sed -i '' 's|github.com/Agent-Field/swe-pro-go/internal/|github.com/Agent-Field/aforge-v2/internal/swepro/internal/|g'
+internal/swepro/revendor.sh <path-to-swe-pro-go-checkout> [ref]
 
-# the package clause, in the 63 files of codeaf/
-sed -i '' 's|^package main$|package codeaf|'
+# what actually ran, once:
+internal/swepro/revendor.sh ~/src/swe-pro-go af248e9
 ```
 
-String literals that name `swe-pro-go` (default node IDs, test fixtures) were
-deliberately left alone: they are data, not imports, and changing them would
-be a behavior change.
+It exports the ref (not the working tree), copies `internal/` and
+`cmd/codeaf/`, drops the unused binaries, applies the three mechanical
+rewrites of D3, and stamps `UPSTREAM`. It refuses to finish if an upstream
+import survived the rewrite.
+
+**It is not a re-sync tool.** Re-running it against a newer ref would
+overwrite every edit in the divergence log. Harvesting an upstream improvement
+is a cherry-pick or a hand-port of the specific change, read against this log.
+
+## Provenance
+
+| | |
+|---|---|
+| Source repo | `github.com/Agent-Field/swe-pro-go` |
+| Import commit | `af248e9` (*Merge pull request #27 from Agent-Field/model/v4-flash-0731-default*) |
+| Imported | 2026-08-09 |
+| Size | 649 `.go` files, ~114k lines, 121 packages |
+| Upstream go directive | `go 1.25.0` |
+
+### Licensing — unsettled, and named rather than inherited
+
+**swe-pro-go carries no LICENSE file.** Both repositories are Agent-Field
+property and this copy was made with the owner's explicit authorization, so
+nothing here is in question internally. But an unlicensed source tree copied
+into a second repository is a loose end worth naming: **a license should be
+settled upstream in swe-pro-go**, and this file updated when it is.
+
+## Layout
+
+```
+internal/swepro/
+  revendor.sh    <- the scripted initial import (not a re-sync tool)
+  UPSTREAM       <- the import commit
+  EMBEDDING.md   <- this file, incl. the divergence log
+  internal/      <- the engine: swe-pro-go/internal/*
+  codeaf/        <- the orchestrator: swe-pro-go/cmd/codeaf/*, as `package codeaf`
+  BUGS-KEPT.md   ENGINE-DESIGN.md   EVENTS-CONTRACT.md   <- upstream docs
+```
+
+The nesting is the encapsulation. Go's internal rule scopes
+`internal/swepro/internal/...` to the `internal/swepro/...` subtree, so no
+package outside this directory can reach one of the engine's 121 packages by
+accident. Today the only door is `codeaf.Main`.
+
+## The boundary today, and where it is going
+
+v1 of the swe subharness drives the engine through its **process boundary**,
+because the engine's process-global state (env knobs it sets on itself, the
+plandb singleton, a working directory it owns) makes that the safe seam:
+
+- **In:** argv and environment — the codeaf CLI's flags plus `CODEAF_CP_URL`,
+  `OPENROUTER_API_KEY`, `PLANDB_DB`, `AFORGE_SWEPRO`.
+- **Out:** the stdout NDJSON event stream specified in `EVENTS-CONTRACT.md`,
+  with the `terminal` event as the result.
+
+That is a starting point, not a permanent contract. As this copy is
+domesticated — globals threaded, hooks added — the boundary tightens:
+in-process event callbacks instead of NDJSON parsing, mid-run steering,
+aforge's router behind the engine's backend interface. Each tightening is an
+ordinary aforge change and belongs in the divergence log above.
 
 ## The sentinel — how the binary becomes the engine
 
-The engine has process-global state: environment knobs it sets on itself, a
-plandb singleton, a working directory it owns. A run of it is therefore a
-process, not a goroutine. Rather than ship a second binary, `cmd/aforge`
-agrees to *be* that process when told to (`cmd/aforge/swepro.go`):
+A run of the engine is a process, not a goroutine (see the globals above).
+Rather than ship a second binary, `cmd/aforge` agrees to *be* that process
+when told to. `cmd/aforge/swepro.go` is aforge's own file, outside this tree:
 
 ```go
 func main() {
@@ -173,84 +208,65 @@ is read. Only the exact value `1` counts, so an operator who exports the
 variable to something else still gets aforge.
 
 The sentinel pays for itself twice. The engine's auto-resume supervisor
-re-execs `os.Executable()` with a codeaf argv of its own
-(`codeaf/main.go`, `runAutoResume`) and hands it `os.Environ()` plus
-`CODEAF_SUPERVISED=1`. Embedded, `os.Executable()` is the aforge binary — and
-because `AFORGE_SWEPRO=1` is already in that environment, the grandchild is
-codeaf too. **The supervisor required no modification.** Two tests hold this:
-
-- `cmd/aforge.TestSweproSentinelTurnsTheBinaryIntoTheEngine` builds the
-  binary, runs it with the sentinel and the supervisor's exact argv shape, and
-  asserts codeaf's voice comes out; then clears the sentinel and asserts the
-  same argv lands back in aforge's command switch.
-- `codeaf.TestAforgeEmbedSupervisorResumeArgvIsAcceptedByMain` asserts the
-  argv `runAutoResume` builds parses under `Main`'s own parser with every
-  optional flag set.
+re-execs `os.Executable()` with a codeaf argv of its own (`codeaf/main.go`,
+`runAutoResume`) and hands it `os.Environ()` plus `CODEAF_SUPERVISED=1`.
+Embedded, `os.Executable()` is the aforge binary — and because
+`AFORGE_SWEPRO=1` is already in that environment, the grandchild is codeaf
+too. **The supervisor needed no change at all**, and that is not an accident
+of this design, it is the reason for it.
+`cmd/aforge.TestSweproSentinelTurnsTheBinaryIntoTheEngine` holds it: build the
+binary, run it with the sentinel and the supervisor's exact argv, hear
+codeaf's voice; clear the sentinel and the same argv lands back in aforge's
+command switch.
 
 Smoke test by hand:
 
 ```sh
 make build
-AFORGE_SWEPRO=1 ./bin/aforge          # codeaf's error, not aforge's chat
-AFORGE_SWEPRO=1 ./bin/aforge help     # codeaf's usage
+AFORGE_SWEPRO=1 ./bin/aforge
+#   codeaf: missing message; pass a prompt as a positional argument
+AFORGE_SWEPRO=1 CODEAF_CP_URL=off ./bin/aforge run "x" --dir /tmp/ws --high vendor/high
+#   codeaf: OPENROUTER_API_KEY is not set in the environment      (gate skipped, D2)
+AFORGE_SWEPRO=1 CODEAF_CP_URL=http://127.0.0.1:1 ./bin/aforge run "x" --dir /tmp/ws --high vendor/high
+#   codeaf: codeaf requires a running AgentField control plane    (gate intact)
 ```
 
 ## go.mod
 
-- `go` directive raised to `1.25.0` (upstream's floor).
+- `go` directive raised to `1.25.0` (the engine's floor).
 - Already identical, no change: `modernc.org/sqlite v1.29.1`,
   `gopkg.in/yaml.v3 v3.0.1`.
-- Raised by MVS: `golang.org/x/sys` 0.36.0 → 0.47.0,
-  `golang.org/x/text` 0.3.8 → 0.40.0. The x/sys jump was the identified risk
-  to the bubbletea/termenv TUI stack; the full suite is green across it.
+- Raised by MVS: `golang.org/x/sys` 0.36.0 → 0.47.0, `golang.org/x/text`
+  0.3.8 → 0.40.0. The x/sys jump was the identified risk to the
+  bubbletea/termenv TUI stack; the suite is green across it.
 - Added: `golang.org/x/net`, `github.com/santhosh-tekuri/jsonschema/v5`.
-- Added, but **not linked into a default build**:
+- Added but **not linked into a default build**:
   `github.com/smacker/go-tree-sitter`. It is reachable only from
   `internal/tool/shell_treesitter.go`, behind the `treesitter` build tag, and
-  it is cgo. `go mod tidy` considers all build configurations so it appears in
-  `go.mod`; that is fine and expected. What matters is the invariant:
+  it is cgo. `go mod tidy` considers all build configurations, so it appears
+  in `go.mod`; that is expected. The invariant that matters is
   **`CGO_ENABLED=0 go build ./...` must succeed.** It does. Keep it that way.
 - `replace github.com/charmbracelet/bubbles => ./internal/tui/charmbubbles`
   preserved.
 
 ## The test ritual and this tree
 
-`make check` does **not** run the engine's own test suite. In a clean
-swe-pro-go clone at `af248e9` on macOS, fifteen of its tests already fail —
-`/var` vs `/private/var` symlink resolution, a case-insensitive filesystem,
-and JS float-rounding parity. Those are upstream's verdicts to change, and
-under the bug-for-bug rule they are not ours to fix, so they are not part of
-aforge's end-of-change ritual. This is the same line the repo already draws
-around `internal/tui/charmbubbles`, which sits outside `./...` by being its
-own module.
+`make check` does not run the engine's own suite. At the import commit, in a
+clean upstream checkout on macOS, fifteen of its tests already fail — `/var`
+vs `/private/var` symlink resolution, a case-insensitive filesystem, and JS
+float-rounding parity. They fail here for the same reasons, and they were not
+worth fixing on the way in.
 
-The exclusion is exactly this narrow, and lives in one Makefile variable:
+The exclusion is one Makefile variable and it is exactly this narrow:
 
 - `go build ./...` and `go vet ./...` **do** cover `internal/swepro`, and both
   are green.
-- `make test` runs everything outside `internal/swepro`, plus
-  `go test -run AforgeEmbed ./internal/swepro/codeaf` — the tests that cover
-  the embedding patches themselves.
-- `make test-swepro` runs the engine's full suite. This is a re-vendoring
-  tool, not a ritual step.
+- `make test` runs everything outside `internal/swepro`. The embedding's own
+  divergences are covered from outside by `cmd/aforge/swepro_test.go`, which
+  drives the real binary.
+- `make test-swepro` runs the engine's full suite.
 
-## Re-vendoring procedure
-
-1. Clone swe-pro-go at the new commit somewhere outside this repo. Run
-   `go test ./...` in that clone and **keep the output** — it is the baseline.
-2. `rsync -a --exclude .git <clone>/internal/ internal/swepro/internal/`
-   and `rsync -a <clone>/cmd/codeaf/ internal/swepro/codeaf/`. Do not copy
-   `cmd/swedog` or `cmd/plandb-diff`. Refresh `BUGS-KEPT.md`,
-   `ENGINE-DESIGN.md`, `EVENTS-CONTRACT.md` from the clone.
-3. Re-run the two `sed` commands above over `internal/swepro`.
-4. Re-apply the three patches. `git diff` against the previous vendored tree
-   will show them as the only conflicts; each is a handful of lines and each
-   is findable by `grep -rn 'aforge-embed:'`.
-5. `go mod tidy`. Check the `replace` survived and that
-   `CGO_ENABLED=0 go build ./...` still succeeds.
-6. `make test-swepro` and diff its failure set against step 1's baseline.
-   **Equal failure sets mean the embedding changed nothing.** A failure the
-   clone does not have is a bug in the vendoring, not in the engine.
-7. `make check`, then the sentinel smoke test above.
-8. Update the provenance table at the top of this file: commit, date, file
-   count, and the licensing line if it has finally been settled.
+Now that this is owned code, that fifteen is a to-do rather than a fact of
+life: as the copy is domesticated, the environment-dependent tests can be
+fixed and the exclusion narrowed, until `internal/swepro` is simply part of
+`make test` like everything else.
