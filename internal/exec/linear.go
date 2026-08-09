@@ -895,13 +895,20 @@ func outputClause(task Task) string {
 			"inside existing material still goes there.", task.OutputHint)
 	}
 	if task.OutputHint == "" {
-		return ""
+		// No address was offered, and that is not a loophole: the two cells this
+		// product lost on a blind reading were lost to a worker who invented its
+		// own file name and left the message pointing at it.
+		return "\n\nYour final message is the deliverable — it is the whole of what the person will read, " +
+			"and the substance belongs in it. Write a file only when they asked for one or your " +
+			"instructions name a place; a message that says where the answer lives instead of " +
+			"carrying it has delivered nothing. Work that belongs inside existing material goes there."
 	}
 	return fmt.Sprintf("\n\nIf your instructions already say where the deliverable goes, that wins. "+
 		"Otherwise your final message is the deliverable — it is the whole of what the person will read, "+
 		"and the substance belongs in it. Write a separate document as well only when they asked for a "+
 		"file or when what you produced cannot be read as a message; it goes to %s, named in your final "+
-		"message beside the substance and never in place of it. Work that belongs inside existing material "+
+		"message beside the substance and never in place of it. A message that says where the answer "+
+		"lives instead of carrying it has delivered nothing. Work that belongs inside existing material "+
 		"goes there — never into a separate file.", task.OutputHint)
 }
 
