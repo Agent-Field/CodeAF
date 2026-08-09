@@ -194,6 +194,7 @@ func (r *Reconciler) restart(command store.Command) (commandOutcome, error) {
 		Origin: store.OriginUser, SessionID: command.SessionID, Intent: intent,
 		RetryOf:       predecessor.ID,
 		WorkModel:     predecessor.Provenance.WorkModel,
+		PlanModel:     predecessor.Provenance.PlanModel,
 		Craft:         predecessor.Provenance.Craft,
 		TrialOf:       predecessor.Provenance.TrialOf,
 		ServiceIntent: predecessor.Provenance.ServiceIntent,
