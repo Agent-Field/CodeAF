@@ -36,10 +36,10 @@ completed graph, the kept store where there is one, and a CSV row per cell in
 ## The CSV
 
 ```
-harness,issue,seconds,exit,changed_files,passed,failed,cost_usd,cost_source,aforge_mode,subharness_chosen
+harness,issue,seconds,exit,changed_files,passed,failed,cost_usd,cost_source,aforge_mode,subharness_chosen,nodes_failed
 ```
 
-The last two columns are new and are **appended, not inserted**. A CSV written
+The last three columns are new and are **appended, not inserted**. A CSV written
 before they existed is still a valid CSV, and a reader that indexed the first
 nine columns by position still reads the same nine things. Old rows simply have
 no value for the new two; read them as `node` and `linear`, which is what every
@@ -51,6 +51,11 @@ recorded aforge row was.
   shapes it is read back out of the completed graph rather than assumed; for
   `select` it is read out of the run's own store. `unknown` means the run left
   nothing legible to read, and that case is real — see below.
+- `nodes_failed` — failed nodes counted out of `done.json`, because the exit
+  code is not the verdict: a smoke run watched the engine crash inside its
+  leaf while `run` exited 0, over a suite that was green before the harness
+  arrived. A row with `nodes_failed > 0` is a DNF whatever its other columns
+  say. `n/a` for pi, opencode, and `select` (no `done.json` to read).
 
 ## Cost: harness self-reporting only
 
@@ -239,11 +244,27 @@ MODEL=deepseek/deepseek-v4-flash-0731 \
 ISSUES="20 21 22 23" \
 HARNESSES="aforge pi opencode" \
 AFORGE_MODE=node \
+BASE_COMMIT=6c978ffa1c49ba600c85eb893958409e37dbedd2 \
 bench/run.sh
 ```
 
 The three-way aforge comparison is three runs of that with `AFORGE_MODE` set to
 `node`, `swe`, and `select`, each writing its own `results.csv`.
+
+Two lines of that invocation are load-bearing honesty:
+
+- **`BASE_COMMIT` pins every clone to 2026-08-02** — the last commit with all
+  four issues still open. The repository has since merged fixes for #23
+  (2026-08-06) and #21 (2026-08-08), so an unpinned clone passes the suite
+  before any harness runs and every row on it measures nothing. The recorded
+  pi/opencode rows predate those merges; only pinned reruns are comparable to
+  them, and even then suite drift means within-row comparison beats
+  cross-table comparison.
+- **`MODEL` is passed to aforge as `-model` on every invocation** (run, plan,
+  do), because the CLI flag is the only rung that outranks the picker
+  preference in `~/.aforge/settings.json` — an env var does not. The smoke run
+  found this the honest way: settings resolved to a `-latest` alias the
+  engine's catalog rejected, and the cell died at $0 while claiming exit 0.
 
 Requires `git`, `python3`, `gh` (authenticated), and `timeout` (`gtimeout` from
 coreutils on macOS is picked up automatically); `sqlite3` is optional and is
