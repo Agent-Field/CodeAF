@@ -11,6 +11,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/x/ansi"
+	"github.com/muesli/termenv"
 )
 
 type fakeBackend struct {
@@ -2232,6 +2233,55 @@ func TestScrolledUpChatKeepsContentWhenACardSettlesAbove(t *testing.T) {
 	model.refreshChat()
 	if !model.chat.AtBottom() {
 		t.Fatal("pinned-to-bottom did not stay pinned through a refresh")
+	}
+}
+
+// TestAnimationFrameSplicesTheSweepWithoutRebuildingTheThread pins the two
+// halves of the cheap frame: the settled thread above the shimmer is reused
+// rather than assembled again, and what reaches the screen is byte for byte
+// what a full rebuild at the same frame would have produced.
+func TestAnimationFrameSplicesTheSweepWithoutRebuildingTheThread(t *testing.T) {
+	// The sweep is made of inks, so it only moves under a profile that has any.
+	previous := lipgloss.ColorProfile()
+	lipgloss.SetColorProfile(termenv.TrueColor)
+	defer lipgloss.SetColorProfile(previous)
+
+	model := New(&fakeBackend{}, "shimmer")
+	model.setSize(80, 20)
+	base := time.Now().Add(-time.Hour)
+	for index := 1; index <= 12; index++ {
+		model.messages = append(model.messages, store.Message{
+			Seq: int64(index), Time: base.Add(time.Duration(index) * time.Minute),
+			SessionID: "shimmer", Role: store.RoleAgent, Body: fmt.Sprintf("update number %02d", index),
+		})
+	}
+	model.cards = []jobCard{{
+		ID: "job", RootID: "job", State: cardWorking, Title: "Working job",
+		Latest: "still going", BirthSeq: 2,
+	}}
+	model.refreshChat()
+	if !model.shimmerAnimating() {
+		t.Fatal("a live card did not put a breathing line in the thread")
+	}
+	before := model.chat.View()
+
+	// A full assembly rebuilds the row maps; a spliced frame leaves the ones
+	// the last assembly wrote exactly where they were.
+	model.chatMessageRows = nil
+	if _, command := model.Update(animationTickMsg(time.Now())); command == nil {
+		t.Fatal("the animation tick did not schedule the next frame")
+	}
+	if len(model.chatMessageRows) != 0 {
+		t.Fatal("the animation frame rebuilt the whole transcript")
+	}
+
+	frame := model.chat.View()
+	if frame == before {
+		t.Fatal("the sweep did not move")
+	}
+	model.refreshChat()
+	if rebuilt := model.chat.View(); rebuilt != frame {
+		t.Fatalf("the spliced frame is not what a rebuild draws:\nspliced:\n%s\nrebuilt:\n%s", frame, rebuilt)
 	}
 }
 

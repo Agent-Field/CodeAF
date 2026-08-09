@@ -1521,12 +1521,15 @@ func (m *Model) renderMessages() string {
 	}
 	// The wait sits directly under the turn that started it, above ambient
 	// work, because that is where the answer to that turn will land.
+	awaitingBlock, shimmerBlock := -1, -1
 	if awaiting := m.renderAwaitingReply(max(1, m.chat.Width-2)); awaiting != "" {
 		flushGroup()
+		awaitingBlock = len(blocks)
 		appendBlock(awaiting)
 	}
 	if shimmer := m.renderShimmerLines(max(1, m.chat.Width-2)); shimmer != "" {
 		flushGroup()
+		shimmerBlock = len(blocks)
 		appendBlock(shimmer)
 	}
 	flushGroup()
@@ -1536,7 +1539,20 @@ func (m *Model) renderMessages() string {
 	if m.historyVisible {
 		appendBlock(m.renderRecallHistory(max(8, m.chat.Width-2), line, true))
 	}
+	m.keepChatBlocks(blocks, awaitingBlock, shimmerBlock)
 	return m.applyChatFocus(strings.Join(blocks, "\n\n"))
+}
+
+// keepChatBlocks hands the assembled thread to the animation frame. Everything
+// but the two breathing lines is settled bytes, so the next frame can put its
+// own sweep back into this slice instead of building the thread again.
+func (m *Model) keepChatBlocks(blocks []string, awaitingBlock, shimmerBlock int) {
+	m.chatBlocks = blocks
+	m.chatAwaitingBlock = awaitingBlock
+	m.chatShimmerBlock = shimmerBlock
+	m.chatBlocksWidth = m.chat.Width
+	m.chatBlocksGen = m.threadGen
+	m.chatBlocksValid = true
 }
 
 // welcomeLines is the empty thread's whole teaching: the one law said as an
