@@ -879,6 +879,17 @@ func (l *Linear) brief(task Task) string {
 	}
 	block.WriteString("Your work:\n")
 	block.WriteString(task.Brief)
+	if task.Share != nil {
+		// The measured miss this line exists for: a sibling found the
+		// duplicated row while the revenue worker was still summing, told
+		// nobody, and the total shipped wrong. The tool's own description says
+		// what share is; this says when — the moment of discovery, because
+		// the others are acting on the material right now.
+		block.WriteString("\n\nOther workers are on this job with you right now. The moment you discover " +
+			"something about the shared material — a unit, a quirk, a duplicate, a broken assumption, a dead end — " +
+			"share it (the share tool) before you continue. They are acting on that material as you read this, " +
+			"and what you just learned may be the difference between their answer being right or wrong.")
+	}
 	block.WriteString(outputClause(task))
 	return block.String()
 }

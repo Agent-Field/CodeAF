@@ -3,6 +3,7 @@ package exec
 import (
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 )
@@ -74,5 +75,21 @@ func TestTheBoardArrivesAsTestimonyAndNeverAsTheUsersVoice(t *testing.T) {
 	}
 	if guidance := messages[1].Content[0].Text; !strings.Contains(guidance, "Guidance from the user") {
 		t.Fatalf("the user's steering lost its framing:\n%s", guidance)
+	}
+}
+
+// The brief tells a worker with siblings WHEN to share — at the moment of
+// discovery — and says nothing about sharing to a worker who has nobody to
+// tell. The measured miss: a sibling found the duplicated row while the
+// revenue worker was still summing, and the total shipped wrong.
+func TestOnlyAWorkerWithSiblingsIsToldToShareDiscoveries(t *testing.T) {
+	linear := NewLinear(&scriptedCompleter{}, workspace(t), nil, 10, 1_000_000, time.Minute)
+	withSiblings := linear.brief(Task{Brief: "sum the revenue", Share: func(string) error { return nil }})
+	if !strings.Contains(withSiblings, "share it (the share tool) before you continue") {
+		t.Fatalf("a worker with siblings was never told when to share:\n%s", withSiblings)
+	}
+	alone := linear.brief(Task{Brief: "sum the revenue"})
+	if strings.Contains(alone, "share tool") {
+		t.Fatalf("a worker with no siblings was told about a channel it does not have:\n%s", alone)
 	}
 }
