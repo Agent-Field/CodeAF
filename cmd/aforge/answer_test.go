@@ -154,7 +154,7 @@ func TestTheGateNamesThePlanAndTheUnexercisedRunAsMissingContent(t *testing.T) {
 		// paragraph reads that shape against the substance rule.
 		"a fat unnamed file convicts the thin message": "the run wrote a file and the deliverable's own text is thin beside it",
 		"the gap is the content in the message":        "the missing element is that content itself, in the message",
-		"an asked-for file still rides beside":         "the message must still carry the answer it holds rather than its address",
+		"an asked-for file is the correct shape":       "a short message beside an asked-for file convicts nothing by its length",
 	} {
 		if !strings.Contains(judgeDeliverablePrompt, required) {
 			t.Errorf("the gate no longer states %s: %q missing", name, required)
