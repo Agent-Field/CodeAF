@@ -248,10 +248,10 @@ type Reconciler struct {
 	// exists so a pass that consumed nothing but its own watermark event does
 	// not write another one, which would otherwise make the lane a perpetual
 	// writer and defeat the quiet-tick gate.
-	settlementMark          int64
-	progress                map[string]*subtreeProgress
-	learningMoments         map[string]*pendingLearningMoment
-	lastConsolidation       time.Time
+	settlementMark    int64
+	progress          map[string]*subtreeProgress
+	learningMoments   map[string]*pendingLearningMoment
+	lastConsolidation time.Time
 	// charterOutcomeSeq is how far the charter ladder has finished reading. It
 	// is a working cursor, not a durable one: zero re-reads every unfolded
 	// firing, which is what a fresh process should do and what makes losing it
