@@ -5,6 +5,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/Agent-Field/aforge-v2/internal/plan"
 )
 
 type namedExecutor struct {
@@ -69,6 +71,46 @@ func TestMenuIsEmptyUntilThereIsAChoice(t *testing.T) {
 	for _, baseline := range []string{"", LinearSubharness, "swe-ish"} {
 		if KnownSubharness(baseline) {
 			t.Fatalf("%q reads as a specialist", baseline)
+		}
+	}
+}
+
+// The scheduler's half of the covenant: the node's choice reaches the task, the
+// registry routes on it, and the ledger gives that worker a bucket of its own.
+func TestSchedulerRoutesTheNodesChoice(t *testing.T) {
+	defer ForgetSubharnesses()
+	RegisterSubharness(SubharnessInfo{Name: "swe", Purpose: "coding"})
+
+	ran := make(chan string, 2)
+	registry := NewRegistry(&namedExecutor{name: LinearSubharness, ran: ran})
+	registry.Register(&namedExecutor{name: "swe", ran: ran})
+	scheduler := &Scheduler{registry: registry}
+
+	graph := &plan.Graph{Goal: "g", Nodes: []plan.Node{
+		{ID: 1, Kind: plan.KindWork, Title: "fix it", Brief: "fix it", Size: plan.SizeAtomic, Subharness: "swe"},
+		{ID: 2, Kind: plan.KindWork, Title: "read it", Brief: "read it", Size: plan.SizeOversized},
+	}, NextID: 3}
+
+	for _, testCase := range []struct {
+		node            int
+		want, wantShape string
+	}{
+		{1, "swe", "swe"},
+		{2, LinearSubharness, "oversized"},
+	} {
+		node := graph.Node(testCase.node)
+		task := scheduler.taskFor(graph, node)
+		if task.Subharness != node.Subharness {
+			t.Fatalf("node %d: task carries %q, node says %q", testCase.node, task.Subharness, node.Subharness)
+		}
+		if got := LeafShape(node); got != testCase.wantShape {
+			t.Fatalf("node %d: ledger bucket = %q, want %q", testCase.node, got, testCase.wantShape)
+		}
+		done := make(chan completion, 1)
+		scheduler.work(context.Background(), node.ID, task, 0, LeafShape(node), done)
+		<-done
+		if got := <-ran; got != testCase.want {
+			t.Fatalf("node %d ran on %q, want %q", testCase.node, got, testCase.want)
 		}
 	}
 }
