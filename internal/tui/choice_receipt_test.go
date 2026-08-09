@@ -171,3 +171,27 @@ func TestModelShortNamesTheModelNotThePath(t *testing.T) {
 		}
 	}
 }
+
+// The drill-down is where the full spelling lives. A card trades the vendor path
+// for width; the flight recorder must not, or there is nowhere left to check
+// which build ran the work.
+func TestNodeDrillDownCarriesTheUntruncatedChoice(t *testing.T) {
+	model := New(&fakeBackend{}, "node-receipt")
+	model.setSize(110, 34)
+	model.inspectedNode = store.Node{
+		ID: "job-leaf", Parent: "job", Brief: "Land the migration", Status: store.Running,
+		Subharness: "swe",
+		Provenance: store.Provenance{
+			WorkModel: "moonshotai/kimi-k2", PlanModel: "anthropic/claude-opus-5",
+		},
+	}
+	details := ansi.Strip(model.renderNodeDetailsContent(100, 12))
+	if !strings.Contains(details, "swe · moonshotai/kimi-k2 · planned by anthropic/claude-opus-5") {
+		t.Fatalf("node details lost the choice:\n%s", details)
+	}
+
+	model.inspectedNode = store.Node{ID: "chore", Brief: "Read the file", Status: store.Running}
+	if plain := ansi.Strip(model.renderNodeDetailsContent(100, 12)); strings.Contains(plain, "planned by") {
+		t.Fatalf("an ordinary node spoke:\n%s", plain)
+	}
+}

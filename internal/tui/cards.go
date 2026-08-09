@@ -1886,6 +1886,24 @@ func cardChoiceReceipt(card jobCard) string {
 	return strings.Join(parts, " · ")
 }
 
+// nodeChoiceReceipt is the same three facts one rung further down the ladder,
+// spelled in full. The card trades the vendor path for the width; the flight
+// recorder is where a person goes to check exactly which build ran their work,
+// and an id shortened there would be the one place the truth is not available.
+func nodeChoiceReceipt(node store.Node) string {
+	parts := make([]string, 0, 3)
+	if worker := settledWorker(node); worker != "" {
+		parts = append(parts, worker)
+	}
+	if model := strings.TrimSpace(node.Provenance.WorkModel); model != "" {
+		parts = append(parts, model)
+	}
+	if planner := strings.TrimSpace(node.Provenance.PlanModel); planner != "" {
+		parts = append(parts, "planned by "+planner)
+	}
+	return strings.Join(parts, " · ")
+}
+
 func cardAssumptions(receipt string) []string {
 	var assumptions []string
 	for _, line := range strings.Split(strings.ReplaceAll(receipt, "\r\n", "\n"), "\n") {
