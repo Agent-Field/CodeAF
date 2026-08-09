@@ -159,6 +159,38 @@ siblings during the run and posterity after it — one mechanism, two ranges.
 The capability profiles from the calibration plan live in the same store, keyed
 by model and skill: capability memory and knowledge memory, same shelf.
 
+## Decision 7 — The conversation is a lens on the brain, not the brain
+
+**Decision.** There is one brain. A surface attaches to it and removes or adds
+nothing but the person. `aforge chat` is that brain with a head and a terminal;
+`aforge do` is the same construction with the conversation removed, and the
+seam between them is exactly one thing: where the task comes from.
+
+A chat ask travels through the head, which resolves what it points back into
+before it becomes a command. A headless task is **verbatim** — there is no
+conversation for it to point into, so it is referentially closed by definition
+and goes straight into the journal the head would have written to. From that
+command onward nothing downstream can tell which surface produced it, because
+it is literally the same code.
+
+**Why this and not a separate headless engine.** The alternative already exists
+and is instructive: `plan`/`run` compiles a graph to a file and executes what
+the file says. Everything this system learned about doing jobs happens *after*
+the plan is written — the contract for the kind of work in front of it, the
+gate that asks whether the person would accept this, the round a cited gap
+earns, the replan when a leaf runs out of room. A frozen graph cannot do any of
+it, so a second engine would either be a worse brain or a duplicate of this
+one. Keeping `plan`/`run` for reading and hand-editing plans, and making `do` a
+lens rather than an engine, is what stops the two from drifting.
+
+**What the lens must still answer for.** With nobody watching, the process
+itself has to say what a person would have seen: an exit code that separates
+*failed* from *hit the wall* from *never attempted*, a question surfaced as
+`blocked_on` rather than smuggled into the deliverable, and a periodic
+structural read on stderr so silence is diagnosable. Those are contracts, not
+conveniences — [HEADLESS.md](HEADLESS.md) is where they are written down and
+what every harness is programmed against.
+
 ## What this is not
 
 - **Not a message bus.** Nodes do not talk to each other; they read folds and
@@ -169,6 +201,9 @@ by model and skill: capability memory and knowledge memory, same shelf.
   and workspace. Add embeddings only when a measured recall failure demands it.
 - **Not distributed.** One host and one lease-elected resident per database.
   The event log keeps the door open; nothing walks through it yet.
+- **Not two products.** The headless command is a lens on the same brain, not a
+  scripting-flavoured reimplementation of it. A feature that exists in chat and
+  not headless — or that behaves differently there — is a bug in the seam.
 
 ## Migration map
 
