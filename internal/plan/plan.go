@@ -91,7 +91,14 @@ and returning it whole is a correct answer rather than a failure to decompose.
 
 Checking the work is part of doing it, never a piece of work of its own. Do not
 add anything whose purpose is to look at, confirm, review, or verify what
-another part produced; whoever produces a thing is who checks it.`
+another part produced; whoever produces a thing is who checks it.
+
+Judging one artifact is one part, whatever its length. The sections of a thing
+under judgment are not independent items, because what the judgment exists to
+catch lives in the cross-references between them — a figure in one section
+contradicting a claim in another is invisible to a reader who was handed only
+one of them. Divide repeated operations over items that stand alone; never
+divide one act of comprehension.`
 
 // Completer is the slice of the provider adapter this package needs. Depending
 // on the method rather than the concrete client keeps the prompts testable

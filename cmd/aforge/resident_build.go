@@ -76,6 +76,7 @@ func compileIntent(settings config.Config, compiler *head.Compiler, taskClient *
 		return resident.Compiled{
 			Goal:            brief.Goal,
 			Title:           brief.Title,
+			Contract:        brief.Contract,
 			Assumptions:     brief.Assumptions,
 			Scale:           brief.Scale,
 			TrialOf:         brief.TrialOf,

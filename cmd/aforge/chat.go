@@ -4437,8 +4437,16 @@ func planSubtree(settings config.Config, planClient, workClient *liveClient, pla
 			// method. A lookup does not: it is a question with an answer, the
 			// method for which is to answer it, and buying a call to say so
 			// would break the proportionality this whole path exists to keep.
+			//
+			// The compile call that read the whole ask writes the method in the
+			// same breath now; the separate structuring round-trip is the
+			// fallback for a compiler that left it empty, not the path.
 			if compiled.Scale == head.ScaleTask {
-				plans.putContract(prefix, taskContract(ctx, settings, planClient, history, compiled.Goal))
+				method := strings.TrimSpace(compiled.Contract)
+				if method == "" {
+					method = taskContract(ctx, settings, planClient, history, compiled.Goal)
+				}
+				plans.putContract(prefix, method)
 			}
 			return store.Subtree{Nodes: []store.NodeSpec{{
 				ID:    prefix,

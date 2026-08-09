@@ -43,6 +43,9 @@ type Compiled struct {
 	// call itself. Empty falls back to the separate naming pass, which is
 	// what every caller without a compiler still gets.
 	Title string
+	// Contract is the task-scale working method, produced by the same compile
+	// call. Empty falls back to the separate contract pass.
+	Contract string
 	// TrialOf is the retrieved unsettled fact this goal deliberately tests.
 	// Zero means the compiled job is ordinary work.
 	TrialOf int64
