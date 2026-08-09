@@ -165,6 +165,13 @@ type Head struct {
 	turnCancel  context.CancelFunc
 	turnPartial string
 	turnStopped bool
+	// turnFold is the run of the person's words this turn answers, and it keeps
+	// growing while the turn runs: the mid-turn watch folds arrivals into it and
+	// raises turnRefold, which withdraws the routing call. turnAnswers is the
+	// span the turn was actually given, stamped on everything the head says.
+	turnFold    *foldedTurn
+	turnRefold  bool
+	turnAnswers int64
 }
 
 // WithImageInput lets the routing head receive durable chat attachments as
@@ -284,47 +291,70 @@ func (h *Head) poll(ctx context.Context, cursor int64) (int64, error) {
 		if len(messages) == 0 {
 			return cursor, nil
 		}
-		for _, message := range messages {
-			// A user message anchored to a node is mid-flight steering for
-			// that worker, not a new ask — the executor consumes it between
-			// turns and the head stays out of the way.
-			if message.Role == store.RoleUser && message.NodeID == "" {
-				if err := h.answerTurn(ctx, message); err != nil {
+		for index, message := range messages {
+			// Rows the turn before this one folded into itself are answered
+			// already; the cursor is what says so.
+			if message.Seq <= cursor {
+				continue
+			}
+			if answerable(message) {
+				answered, err := h.answerTurn(ctx, foldAhead(messages[index:]))
+				if err != nil {
 					return cursor, err
 				}
+				if answered > cursor {
+					cursor = answered
+				}
 			}
-			cursor = message.Seq
+			if message.Seq > cursor {
+				cursor = message.Seq
+			}
 		}
 	}
 }
 
-// answerTurn answers one message under a context of its own. The head's own
-// context outlives every turn — it is the process — so a turn nobody wants any
-// more had no way to end before this: the provider call ran to completion and
-// the reply landed in a conversation that had moved on.
+// answerTurn answers one turn — one folded run of the person's words — under a
+// context of its own. The head's own context outlives every turn — it is the
+// process — so a turn nobody wants any more had no way to end before this: the
+// provider call ran to completion and the reply landed in a conversation that
+// had moved on.
 //
-// The cursor advances on the caller's side whether the turn finished or was
-// stopped, because a stopped turn is handled: re-answering the message the user
-// gave up on is the one thing an interrupt may not lead to.
-func (h *Head) answerTurn(ctx context.Context, user store.Message) error {
-	turnContext, cancel := context.WithCancel(ctx)
-	h.beginTurn(cancel)
-	err := h.answer(turnContext, user)
-	cancel()
-	partial, stopped := h.endTurn()
-	if !stopped {
-		return err
+// It returns the newest row the turn actually answered, which is what the cursor
+// may advance to. That is deliberately not the newest row folded in: a turn that
+// finished before its refold could take effect has absorbed rows it never
+// answered, and reporting those as handled is how a message goes silent.
+//
+// The cursor advances whether the turn finished or was stopped, because a
+// stopped turn is handled: re-answering the message the user gave up on is the
+// one thing an interrupt may not lead to.
+func (h *Head) answerTurn(ctx context.Context, fold *foldedTurn) (int64, error) {
+	for {
+		turnContext, cancel := context.WithCancel(ctx)
+		user, answered := h.beginTurn(cancel, fold)
+		err := h.answer(turnContext, user)
+		cancel()
+		partial, stopped, refolded := h.endTurn()
+		// The person corrected themselves while the routing call was out. The
+		// turn withdrew before saying anything, so it is asked again carrying
+		// both halves of what they said.
+		if refolded && errors.Is(err, errRefold) && ctx.Err() == nil {
+			continue
+		}
+		if !stopped {
+			return answered, err
+		}
+		// The interrupt raced the answer and lost. The turn already ended in
+		// words, and a second line about it would be the thread talking to
+		// itself.
+		if err == nil {
+			return answered, nil
+		}
+		// The head itself is going away, and the thread with it. Nothing to say.
+		if ctx.Err() != nil {
+			return answered, ctx.Err()
+		}
+		return answered, h.postInterrupted(user.SessionID, partial)
 	}
-	// The interrupt raced the answer and lost. The turn already ended in words,
-	// and a second line about it would be the thread talking to itself.
-	if err == nil {
-		return nil
-	}
-	// The head itself is going away, and the thread with it. Nothing to say.
-	if ctx.Err() != nil {
-		return ctx.Err()
-	}
-	return h.postInterrupted(user.SessionID, partial)
 }
 
 // Interrupt stops the turn being answered right now and carries in whatever of
@@ -347,22 +377,34 @@ func (h *Head) Interrupt(partial string) bool {
 	return true
 }
 
-func (h *Head) beginTurn(cancel context.CancelFunc) {
+// beginTurn arms the turn and hands back the two things it is answered under:
+// the folded message as it stands right now, and the span that message covers.
+// Both are snapshots — the fold itself keeps growing under the mid-turn watch.
+func (h *Head) beginTurn(cancel context.CancelFunc, fold *foldedTurn) (store.Message, int64) {
 	h.turnMu.Lock()
 	defer h.turnMu.Unlock()
 	h.turnCancel = cancel
 	h.turnPartial = ""
 	h.turnStopped = false
+	h.turnRefold = false
+	h.turnFold = fold
+	h.turnAnswers = fold.last
+	return fold.message, fold.last
 }
 
-func (h *Head) endTurn() (string, bool) {
+func (h *Head) endTurn() (string, bool, bool) {
 	h.turnMu.Lock()
 	defer h.turnMu.Unlock()
-	partial, stopped := h.turnPartial, h.turnStopped
+	partial, stopped, refolded := h.turnPartial, h.turnStopped, h.turnRefold
 	h.turnCancel = nil
 	h.turnPartial = ""
 	h.turnStopped = false
-	return partial, stopped
+	h.turnRefold = false
+	h.turnFold = nil
+	// turnAnswers outlives the turn on purpose. The interrupted line is posted
+	// after the turn has ended and is still that turn's answer; anything else
+	// the head says next is later than every row already settled by it.
+	return partial, stopped, refolded
 }
 
 // postInterrupted is postAgentFloor's law applied to the one route that never
@@ -445,6 +487,11 @@ func (h *Head) answer(ctx context.Context, user store.Message) error {
 
 	decision, err := h.route(ctx, user)
 	if err != nil {
+		// The turn withdrew itself; nothing has been said and nothing is owed
+		// here. answerTurn asks it again with everything the person has said.
+		if errors.Is(err, errRefold) {
+			return err
+		}
 		if ctx.Err() != nil {
 			return ctx.Err()
 		}
@@ -777,17 +824,25 @@ func (h *Head) route(ctx context.Context, user store.Message) (routeDecision, er
 	// model, schema-constrained calls came back empty two times in three and
 	// took 4-6s, while prompt-shaped JSON parsed three of three at under a
 	// second. The defensive decoder below covers the difference.
+	// The one call in the turn that is long enough for the person to overtake it,
+	// and the last moment at which overtaking costs nothing: everything that
+	// acts has either already acted and spoken, or has not begun.
+	routeContext, stopWatch := h.watchForFold(ctx)
+	defer stopWatch()
 	raw := ""
 	servedModel := ""
 	for attempt := 0; attempt < 2; attempt++ {
-		response, err := client.CompleteWithMessages(ctx, messages, ai.WithMaxTokens(600))
+		response, err := client.CompleteWithMessages(routeContext, messages, ai.WithMaxTokens(600))
 		if err != nil {
+			if h.refolding() {
+				return routeDecision{}, errRefold
+			}
 			// One transient failure should not surface as "try again" — the
 			// user already tried. Retry once; only a repeat offense escapes.
-			if attempt == 0 && ctx.Err() == nil {
+			if attempt == 0 && routeContext.Err() == nil {
 				select {
-				case <-ctx.Done():
-					return routeDecision{}, ctx.Err()
+				case <-routeContext.Done():
+					return routeDecision{}, routeContext.Err()
 				case <-time.After(400 * time.Millisecond):
 				}
 				continue
@@ -1095,6 +1150,7 @@ func (h *Head) postSystem(sessionID, body string) error {
 		SessionID: sessionID,
 		Role:      store.RoleSystem,
 		Body:      body,
+		Answers:   h.answering(),
 	})
 	if err != nil {
 		return fmt.Errorf("serve head: post system line: %w", err)
@@ -1109,6 +1165,7 @@ func (h *Head) postAgentModel(sessionID, body string, commandSeq int64, model st
 		Body:       body,
 		CommandSeq: commandSeq,
 		Model:      strings.TrimSpace(model),
+		Answers:    h.answering(),
 	})
 	if err != nil {
 		return fmt.Errorf("serve head: post reply: %w", err)

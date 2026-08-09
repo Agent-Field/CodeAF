@@ -523,11 +523,12 @@ type Model struct {
 	// awaitingSeq is the oldest user turn this window posted and has not been
 	// answered for yet, and awaitingSince is when the current wait began.
 	// Together they are the whole presence indicator: a window only ever waits
-	// on its own words. awaitingPending counts the turns still owed an answer,
-	// so a second message typed before the first is answered does not have its
-	// wait cleared by the first reply.
+	// on its own words. awaitingTurns holds every turn still owed an answer, so
+	// a second message typed before the first is answered keeps its own place
+	// in the queue — and a folded reply, which says the span it covers, settles
+	// all of the turns it actually answered at once.
 	awaitingSeq      int64
-	awaitingPending  int
+	awaitingTurns    []int64
 	awaitingSince    time.Time
 	receiptsExpanded bool
 	historyExpanded  bool
@@ -1071,8 +1072,11 @@ func (m *Model) update(message tea.Msg) (tea.Model, tea.Cmd) {
 		// The echo comes off first: whether the durable row lands here or a poll
 		// beat it to the thread, the turn is on screen exactly once.
 		m.takeUserEcho(message.message)
-		m.landPostedMessage(message.message)
+		// The wait is noted before the thread is rebuilt, because the rebuild
+		// draws the pulse: noting it after left the line a frame behind what it
+		// was counting.
 		m.noteAwaitingReply(message.message)
+		m.landPostedMessage(message.message)
 		m.err = nil
 		return m, m.scheduleAnimation()
 
