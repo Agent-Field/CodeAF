@@ -149,6 +149,12 @@ func TestTheGateNamesThePlanAndTheUnexercisedRunAsMissingContent(t *testing.T) {
 		"nothing could have been found":        "anything the request needed the work to go and find is not in the deliverable and cannot be",
 		"the gap is the content, not the work": "name what was to be found and never was, in those words, and never as a remark about effort or process",
 		"an answerable ask is no gap":          "an unexercised run is no gap at all",
+		// The diversion shape lost both losing cells of the final benchmark
+		// pass: a thin message beside a fat file nobody asked for. The records
+		// paragraph reads that shape against the substance rule.
+		"a fat unnamed file convicts the thin message": "the run wrote a file and the deliverable's own text is thin beside it",
+		"the gap is the content in the message":        "the missing element is that content itself, in the message",
+		"an asked-for file still rides beside":         "the message must still carry the answer it holds rather than its address",
 	} {
 		if !strings.Contains(judgeDeliverablePrompt, required) {
 			t.Errorf("the gate no longer states %s: %q missing", name, required)
