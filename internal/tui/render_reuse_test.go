@@ -341,6 +341,56 @@ func TestCardLookupsAnswerWhatTheWalkAnswered(t *testing.T) {
 	}
 }
 
+// The whole-graph sweep is kept beside the snapshot it swept, and it answers
+// what the separate walks answered — including the charter definition subtree
+// that neither the counts nor the presence line may see.
+func TestGraphFactsAreSweptOncePerSnapshot(t *testing.T) {
+	model := New(&fakeBackend{}, "facts")
+	definition := store.Node{ID: "watch", Parent: store.RootID, Group: charterGroupMarker}
+	model.snapshot = store.Snapshot{Nodes: []store.Node{
+		{ID: store.RootID},
+		definition,
+		{ID: "sentinel", Parent: "watch", Status: store.Running},
+		{ID: "work", Parent: store.RootID, Status: store.Running},
+		{ID: "queued", Parent: store.RootID, Status: store.Pending},
+		{ID: "broken", Parent: store.RootID, Status: store.Failed},
+		{ID: "mine", Parent: store.RootID, Status: store.Running,
+			Provenance: store.Provenance{Origin: store.OriginSelf}},
+		{ID: "practice", Parent: store.RootID, Group: store.PracticeGroup,
+			Title: "practice writing", Status: store.Running, CreatedSeq: 9,
+			Provenance: store.Provenance{Origin: store.OriginSelf}},
+	}}
+	running, queued, failed := model.taskCounts()
+	if running != 1 || queued != 1 || failed != 1 {
+		t.Fatalf("counts = %d/%d/%d, want 1/1/1", running, queued, failed)
+	}
+	if text := model.residentPresenceText(); !strings.Contains(text, "practicing: writing") {
+		t.Fatalf("presence line = %q", text)
+	}
+
+	// The same snapshot is not swept again.
+	facts := model.graphFacts.of(model.snapshot.Nodes)
+	if !facts.definitions["sentinel"] {
+		t.Fatal("the charter definition subtree was not marked")
+	}
+	facts.definitions["\x00mark"] = true
+	if again := model.graphFacts.of(model.snapshot.Nodes); !again.definitions["\x00mark"] {
+		t.Fatal("the same snapshot was swept twice")
+	}
+
+	// A replaced snapshot is swept for itself.
+	model.snapshot = store.Snapshot{Nodes: []store.Node{
+		{ID: store.RootID},
+		{ID: "work", Parent: store.RootID, Status: store.Done},
+	}}
+	if running, queued, failed = model.taskCounts(); running != 0 || queued != 0 || failed != 0 {
+		t.Fatalf("a replaced snapshot counted %d/%d/%d", running, queued, failed)
+	}
+	if text := model.residentPresenceText(); text != "" {
+		t.Fatalf("a replaced snapshot kept the presence line %q", text)
+	}
+}
+
 // A character in the draft changes the draft. It does not change the thread,
 // the rail, or the employee file — so it must not rebuild them.
 func TestTypingDoesNotRelayoutTheWholeFrame(t *testing.T) {

@@ -272,10 +272,17 @@ type Model struct {
 	// card, once per glyph in the rail — and each answer was a walk of the
 	// whole graph. The index projects the slice it was built from and notices
 	// when that slice is swapped for another.
-	snapshotIndex        nodeIndex
-	cardSnapshotIndex    nodeIndex
-	jobRoots             jobRootIndex
-	cardIndex            cardIndex
+	snapshotIndex     nodeIndex
+	cardSnapshotIndex nodeIndex
+	jobRoots          jobRootIndex
+	cardIndex         cardIndex
+	// Two, because the rail draws whichever snapshot it is scoped to while
+	// everything else reads the live one; one projection would be rebuilt
+	// twice a frame doing nothing but alternating between them.
+	graphFacts graphFacts
+	treeFacts  graphFacts
+
+	shimmerLive          []jobCard
 	pending              []store.Command
 	spendToday           float64
 	jobUsage             map[string]store.JobUsage
