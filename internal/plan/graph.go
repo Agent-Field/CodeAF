@@ -86,6 +86,13 @@ type Node struct {
 	// — a split nobody can describe concretely is a split that does not exist.
 	Parts []string `json:"parts,omitempty"`
 
+	// Bundle marks the synthesis of declared-independent requests. Its merge
+	// is assembly unless something mid-flight said otherwise, and the executor
+	// reads this to skip the model when there is nothing to reconcile —
+	// measured: a sink re-typing a 1,863-word part spent 121 of a 212-second
+	// job saying what the parts had already said.
+	Bundle bool `json:"-"`
+
 	Needs []int  `json:"needs"`
 	Size  Size   `json:"size,omitempty"`
 	State State  `json:"state"`

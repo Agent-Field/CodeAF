@@ -24,6 +24,12 @@ const (
 	eventBatchSize   = 200
 )
 
+// BundleGroup is the durable marker on a bundle's synthesis node: a merge of
+// declared-independent parts, which is assembly rather than judgment unless
+// the job's board says otherwise. Written by the plan adapter, read by the
+// executor — code-to-code, like every other structural marker.
+const BundleGroup = "bundle"
+
 // ReflexGroup is the durable node marker for the no-compiler, no-planner rung.
 // Group is already part of the splice event and rebuilt node view.
 const ReflexGroup = "reflex"

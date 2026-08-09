@@ -15,6 +15,16 @@ import (
 // SubtreeFromPlan converts a planned graph into the store's admission shape:
 // the deliverable owner becomes the subtree root and every other node its
 // child, so the goal lands last and the whole subtree reads as one task.
+// nodeGroup is the display provenance, except for the one structural marker
+// that rides the same field: a bundle's synthesis carries BundleGroup so the
+// executor can tell assembly from judgment.
+func nodeGroup(node plan.Node, groupOf func(plan.Node) string) string {
+	if node.Bundle {
+		return BundleGroup
+	}
+	return groupOf(node)
+}
+
 func SubtreeFromPlan(graph *plan.Graph, prefix string) (store.Subtree, error) {
 	// Container nodes that were expanded into children are structure, not
 	// work; only the nodes an executor would actually run are admitted.
@@ -126,7 +136,7 @@ func SubtreeFromPlan(graph *plan.Graph, prefix string) (store.Subtree, error) {
 			ID:    id(node.ID),
 			Brief: nodeBrief(node),
 			Title: strings.TrimSpace(node.Title),
-			Group: groupOf(node),
+			Group: nodeGroup(node, groupOf),
 			Stage: node.Stage,
 		}
 		if node.ID != rootID {

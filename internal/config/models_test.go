@@ -116,3 +116,19 @@ func TestResolveMediaModelReadsAllThreeSpellingsAndRefusesWrongModality(t *testi
 		t.Fatalf("unadvertised best refusal = %v", err)
 	}
 }
+
+// "use the net column, not gross" once produced a four-way Claude menu,
+// because "net" sits inside "sonnet" and the matcher read letters instead of
+// names. A word matches inside an id only at a token boundary.
+func TestAModelWordNeverMatchesInsideSomebodyElsesWord(t *testing.T) {
+	for word, want := range map[string]bool{
+		"net":    false, // son|net — the measured failure
+		"kimi":   true,  // moonshotai/kimi-k2
+		"sonnet": true,
+		"onnet":  false,
+	} {
+		if got := wordStartsAToken("moonshotai/kimi-k2 anthropic/claude-sonnet-4", word); got != want {
+			t.Errorf("wordStartsAToken(%q) = %v, want %v", word, got, want)
+		}
+	}
+}

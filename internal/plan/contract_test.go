@@ -296,3 +296,19 @@ func TestUntitledLeafStatesTheJobOnce(t *testing.T) {
 		t.Fatalf("the one-leaf job reads a different doctrine byte: %q", got)
 	}
 }
+
+// Fifth appearance of the transcript demand, first with the located cause:
+// "confirm all tests pass" became "report the full output" when the method
+// was written, and the gate then correctly enforced a requirement the person
+// never made. The law lives where the laundering happened.
+func TestTheMethodWriterMayNotEscalateAConfirmationIntoATranscript(t *testing.T) {
+	for _, required := range []string{
+		"satisfied by the fact of the\nresult",
+		"never escalates that into reporting the raw output",
+		"every demand you write\nbecomes a requirement the person never made",
+	} {
+		if !strings.Contains(contractPrompt, required) {
+			t.Errorf("the contract prompt lost the no-escalation law: %q", required)
+		}
+	}
+}

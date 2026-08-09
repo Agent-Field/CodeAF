@@ -692,7 +692,23 @@ func buildBrain(w *chatWindow, session string, opts brainOptions) (*chatBrain, e
 		var spent exec.Usage
 		spentTurns := 0
 		workerModel := taskClient.Model()
-		for attempt := 0; attempt < attempts; attempt++ {
+		// A bundle sink with nothing to reconcile is assembly, not judgment:
+		// the parts are self-contained deliveries and the board is silent, so
+		// joining them in the asked order is geometry — measured, a model sink
+		// re-typing a 1,863-word part spent 121 of a 212-second job saying
+		// what the parts had already said. When the board carries notes or a
+		// part came back dirty, the model sink runs exactly as before, and if
+		// the gate finds a contradiction in a mechanical join, its revision
+		// buys the model pass with the critique in hand — reconciliation on
+		// demand instead of re-emission by default.
+		mechanical := false
+		if node.Group == resident.BundleGroup {
+			if joined, ok := assembledBundle(graph, node); ok {
+				outcome = &exec.Outcome{Text: joined, Verdict: provider.VerdictUnverifiedSuccess}
+				mechanical = true
+			}
+		}
+		for attempt := 0; !mechanical && attempt < attempts; attempt++ {
 			// An escalation that repeats the task verbatim buys a stronger model
 			// and then pays it to rediscover everything the first attempt found —
 			// including files sitting in the shared workspace it is about to
@@ -719,7 +735,8 @@ func buildBrain(w *chatWindow, session string, opts brainOptions) (*chatBrain, e
 				break
 			}
 		}
-		if planNode != nil {
+		if planNode != nil && !mechanical {
+			// A join that cost nothing is not a measurement of any model.
 			plans.recordOutcome(planNode, outcome, err)
 		}
 		if err == nil && outcome != nil && (outcome.Stop == exec.StopPaused || outcome.Stop == exec.StopCancelled) {
@@ -899,8 +916,11 @@ func buildBrain(w *chatWindow, session string, opts brainOptions) (*chatBrain, e
 		// still true of a gate that loops on its own judgement, and this is not
 		// one: it loops on the user's words, which are finite and do not move.
 		if len(outcome.ServiceRequests) == 0 && shouldGate(node, outcome, continuing) {
+			// A mechanical join was never a watched worker run: its parts were
+			// the watched runs, so the gate reads the joined text on its own
+			// merits rather than convicting an assembly for calling no tools.
 			gate := judgeDeliverable(ctx, settings, planClient, graph, node, text, task.Contract,
-				deliveryEvidence{Artifacts: absolute, Ran: outcome.Ran, Observed: true}, workerModel)
+				deliveryEvidence{Artifacts: absolute, Ran: outcome.Ran, Observed: !mechanical}, workerModel)
 			if gate.Checked {
 				evidence := store.DeliveryGate{Pass: gate.Pass, Gap: gate.Gaps, Quote: gate.Quote}
 				if gate.Pass {
@@ -4625,6 +4645,50 @@ func jobNoteLine(message store.Message) (string, bool) {
 		return "", false
 	}
 	return strings.TrimPrefix(message.Body, jobNoteMark), true
+}
+
+// assembledBundle joins a bundle's finished parts in the asked order, or says
+// the merge needs a model after all. Structure decides: a board note means a
+// worker learned something the parts may not all reflect, and a part that
+// failed or came back empty has nothing to join — both fall through to the
+// ordinary sink leaf. The gate still reads the joined delivery afterwards, so
+// a contradiction code cannot see buys the model pass through the ordinary
+// revision path, critique in hand.
+func assembledBundle(graph *store.Store, sink store.Node) (string, bool) {
+	messages, err := graph.NodeMessages(sink.ID, 0, 12)
+	if err != nil {
+		return "", false
+	}
+	for _, message := range messages {
+		if _, isNote := jobNoteLine(message); isNote {
+			return "", false
+		}
+	}
+	nodes, err := graph.SubtreeNodes(sink.ID)
+	if err != nil {
+		return "", false
+	}
+	parts := make([]store.Node, 0, len(nodes))
+	for _, candidate := range nodes {
+		if candidate.Parent == sink.ID {
+			parts = append(parts, candidate)
+		}
+	}
+	sort.SliceStable(parts, func(i, j int) bool { return parts[i].CreatedSeq < parts[j].CreatedSeq })
+	if len(parts) < 2 {
+		return "", false
+	}
+	var joined strings.Builder
+	for _, part := range parts {
+		if part.Status != store.Done || strings.TrimSpace(part.Summary) == "" {
+			return "", false
+		}
+		if joined.Len() > 0 {
+			joined.WriteString("\n\n")
+		}
+		joined.WriteString(strings.TrimSpace(part.Summary))
+	}
+	return joined.String(), true
 }
 
 // trimmedParts is the structural half of the bundle judgment: the model said
