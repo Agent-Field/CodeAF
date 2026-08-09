@@ -237,7 +237,11 @@ type pollResultMsg struct {
 }
 
 type postResultMsg struct {
-	message     store.Message
+	message store.Message
+	// sent is the turn as it was handed to the store. On a rejection the
+	// store's answer is empty, and this is the only record of what the person
+	// typed — without it a failed post is a message nobody can get back.
+	sent        store.Message
 	nodeID      string
 	questionSeq int64
 	err         error
@@ -489,10 +493,14 @@ type Model struct {
 	shimmerSeen map[string]shimmerStamp
 	sweepFrame  int
 	sweepCache  map[string]string
-	// awaitingSeq is the user turn this window posted and has not been answered
-	// for yet, and awaitingSince is when it went out. Together they are the
-	// whole presence indicator: a window only ever waits on its own words.
+	// awaitingSeq is the oldest user turn this window posted and has not been
+	// answered for yet, and awaitingSince is when the current wait began.
+	// Together they are the whole presence indicator: a window only ever waits
+	// on its own words. awaitingPending counts the turns still owed an answer,
+	// so a second message typed before the first is answered does not have its
+	// wait cleared by the first reply.
 	awaitingSeq      int64
+	awaitingPending  int
 	awaitingSince    time.Time
 	receiptsExpanded bool
 	historyExpanded  bool
@@ -1002,12 +1010,16 @@ func (m *Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 			if message.questionSeq != 0 {
 				m.answeringQuestionSeq = message.questionSeq
 			}
+			m.restoreFailedPost(message.sent)
 			m.err = fmt.Errorf("send message: %w", message.err)
 			return m, nil
 		}
 		if message.nodeID != "" {
 			m.landOptimisticNodeMessage(message.nodeID, message.message)
 		}
+		// The echo comes off first: whether the durable row lands here or a poll
+		// beat it to the thread, the turn is on screen exactly once.
+		m.takeUserEcho(message.message)
 		m.landPostedMessage(message.message)
 		m.noteAwaitingReply(message.message)
 		m.err = nil
@@ -2099,6 +2111,10 @@ func (m *Model) applyPoll(result pollResultMsg) {
 					continue
 				}
 			}
+			// A turn this window echoed comes back through the poll as readily
+			// as through the post result; whichever arrives first takes the
+			// echo with it, so the words never appear twice.
+			m.takeUserEcho(message)
 			m.insertThreadMessage(message)
 			accepted = append(accepted, message)
 		}
@@ -2306,9 +2322,10 @@ func (m *Model) postUserMessage(body string, attachments ...string) tea.Cmd {
 		QuestionSeq: m.answeringQuestionSeq,
 	}
 	m.answeringQuestionSeq = 0
+	m.echoUserMessage(message)
 	return func() tea.Msg {
 		posted, err := backend.PostMessage(message)
-		return postResultMsg{message: posted, questionSeq: message.QuestionSeq, err: err}
+		return postResultMsg{message: posted, sent: message, questionSeq: message.QuestionSeq, err: err}
 	}
 }
 
@@ -2337,14 +2354,81 @@ func (m *Model) landPostedMessage(posted store.Message) {
 // time can be older than one a poll in flight is about to deliver, and readers
 // that walk the thread backwards — which question a reply answered, which
 // progress line a node owns — depend on that order.
+//
+// Unsequenced lines — the echo of a turn the store has not numbered yet — live
+// at the tail and stay there, which is exactly where the render comparator puts
+// them: a sequenced arrival goes in front of them, wherever its sequence says,
+// so the slice and the frame never disagree about what is above what.
 func (m *Model) insertThreadMessage(message store.Message) {
 	at := len(m.messages)
-	for at > 0 && message.Seq != 0 && m.messages[at-1].Seq > message.Seq {
-		at--
+	if message.Seq != 0 {
+		for at > 0 && m.messages[at-1].Seq == 0 {
+			at--
+		}
+		for at > 0 && m.messages[at-1].Seq > message.Seq {
+			at--
+		}
 	}
 	m.messages = append(m.messages, store.Message{})
 	copy(m.messages[at+1:], m.messages[at:])
 	m.messages[at] = message
+}
+
+// echoUserMessage puts the turn on screen the instant Enter is pressed, before
+// the store has taken it. Between the keystroke and the round trip the words
+// existed nowhere on screen, and people retyped them. The echo carries no
+// sequence — that is what makes it an echo rather than history — so it sorts at
+// the tail and the durable row takes its place rather than doubling it.
+func (m *Model) echoUserMessage(message store.Message) {
+	if message.Body == "" || message.NodeID != "" {
+		return
+	}
+	message.Seq = 0
+	message.Time = time.Now()
+	m.insertThreadMessage(message)
+	m.threadGen++
+	m.setSize(m.width, m.height)
+	if m.autoScroll {
+		m.chat.GotoBottom()
+	}
+}
+
+// takeUserEcho removes the echo drawn for a turn that has now come back from
+// the store, whichever of the post result and the poll wins that race. Echoes
+// only ever live at the tail, so the walk stops at the first sequenced line.
+func (m *Model) takeUserEcho(posted store.Message) bool {
+	if posted.Role != store.RoleUser || posted.NodeID != "" || posted.Body == "" {
+		return false
+	}
+	for index := len(m.messages) - 1; index >= 0; index-- {
+		existing := m.messages[index]
+		if existing.Seq != 0 {
+			return false
+		}
+		if existing.Role != store.RoleUser || existing.NodeID != "" || existing.Body != posted.Body {
+			continue
+		}
+		m.messages = append(m.messages[:index], m.messages[index+1:]...)
+		m.threadGen++
+		return true
+	}
+	return false
+}
+
+// restoreFailedPost gives a rejected turn back. The echo comes off the thread —
+// it was never taken — and the words return to the composer, so a failed post
+// is something to answer rather than something that ate the message.
+func (m *Model) restoreFailedPost(sent store.Message) {
+	if !m.takeUserEcho(sent) {
+		return
+	}
+	if strings.TrimSpace(m.input.Value()) == "" {
+		m.input.SetValue(sent.Body)
+	}
+	if len(sent.Attachments) > 0 && len(m.attachments) == 0 {
+		m.attachments = append([]string(nil), sent.Attachments...)
+	}
+	m.setSize(m.width, m.height)
 }
 
 func (m *Model) hasThreadMessage(seq int64) bool {
