@@ -257,10 +257,20 @@ func (c *Compiler) Compile(ctx context.Context, instruction string, graphContext
 	user := "Current graph context:\n" + graphContext +
 		"\n\nUser instruction (verbatim; preserve exactly):\n" + instruction +
 		settledQuestionBrief(instruction) + c.surfaceBrief()
+	// The compile reply carries the goal with the verbatim ask inside it, the
+	// title, the task method, and any bundle parts — all in one JSON object,
+	// which is exactly why a completion cap sized for the goal alone became a
+	// guillotine: two GAIA questions long enough to echo hit 1000 tokens to
+	// the digit, the JSON was cut mid-structure, and both questions were lost
+	// whole for $0.0003 each. The cap breathes with the ask now, and a reply
+	// that still comes back without a complete object gets exactly one more
+	// try at double room — a compile is the cheapest call in the job and the
+	// only one whose loss forfeits everything after it.
+	compileTokens := compileReplyTokens(instruction)
 	response, err := c.client.CompleteWithMessages(ctx, []ai.Message{
 		textMessage("system", compilerSystemPrompt),
 		textMessage("user", user),
-	}, ai.WithMaxTokens(1000))
+	}, ai.WithMaxTokens(compileTokens))
 	if err != nil {
 		return Brief{}, fmt.Errorf("compile intent: %w", err)
 	}
@@ -270,7 +280,17 @@ func (c *Compiler) Compile(ctx context.Context, instruction string, graphContext
 
 	var brief Brief
 	if err := decodeJSONObject(response.Text(), &brief); err != nil {
-		return Brief{}, fmt.Errorf("compile intent: %w", err)
+		retry, retryErr := c.client.CompleteWithMessages(ctx, []ai.Message{
+			textMessage("system", compilerSystemPrompt),
+			textMessage("user", user),
+		}, ai.WithMaxTokens(compileTokens*2))
+		if retryErr != nil || retry == nil {
+			return Brief{}, fmt.Errorf("compile intent: %w", err)
+		}
+		if err := decodeJSONObject(retry.Text(), &brief); err != nil {
+			return Brief{}, fmt.Errorf("compile intent: %w", err)
+		}
+		response = retry
 	}
 	if question := strings.TrimSpace(brief.Question); question != "" {
 		// A question suspends the brief: the rest of the fields are drafts at
@@ -396,6 +416,16 @@ func normalizeBuildsOn(ids []string) []string {
 		kept = append(kept, id)
 	}
 	return kept
+}
+
+// compileReplyTokens sizes the compile reply's room by the ask it must echo:
+// the goal restates the instruction verbatim, so the floor plus the ask's own
+// bulk (tokens ≈ bytes/3, doubled for the goal's framing around it) is the
+// least that cannot be cut mid-structure.
+func compileReplyTokens(instruction string) int {
+	const floor = 1000
+	echo := 2 * len(instruction) / 3
+	return floor + echo
 }
 
 // Scale values the compiler may emit. ScaleTask is also the degradation
