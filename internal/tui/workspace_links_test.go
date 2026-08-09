@@ -53,11 +53,21 @@ func workspaceFixture(t *testing.T) (*workspaceFixtureCommander, string) {
 	}, file
 }
 
+// linkedBody draws a body once to write its file questions down, lets the
+// command loop answer them, and draws it again. A render never asks, so this
+// is what "the links a reader sees" means anywhere outside the program.
+func linkedBody(t *testing.T, model *Model, nodeID, body string) string {
+	t.Helper()
+	_ = model.linkWorkspaceReferences(nodeID, body)
+	settleWorkspaceLinks(t, model)
+	return model.linkWorkspaceReferences(nodeID, body)
+}
+
 func TestWorkspaceDeliverableLinkificationChecksExistenceAndPreservesText(t *testing.T) {
 	commander, file := workspaceFixture(t)
 	model := NewWithCommander(&fakeBackend{}, "links", commander)
 	body := "saved agentfield_twitter_ad.md in the workspace; missing.md stayed plain."
-	linked := model.linkWorkspaceReferences("job", body)
+	linked := linkedBody(t, model, "job", body)
 	if got := ansi.Strip(linked); got != body {
 		t.Fatalf("visible text changed:\n got %q\nwant %q", got, body)
 	}
@@ -68,7 +78,7 @@ func TestWorkspaceDeliverableLinkificationChecksExistenceAndPreservesText(t *tes
 	if strings.Contains(linked, "missing.md\x1b]8") || strings.Count(linked, "\x1b]8;;") != 2 {
 		t.Fatalf("nonexistent path was linked or OSC8 pair malformed: %q", linked)
 	}
-	spaced := model.linkWorkspaceReferences("job", "saved `campaign brief.md` too")
+	spaced := linkedBody(t, model, "job", "saved `campaign brief.md` too")
 	if ansi.Strip(spaced) != "saved `campaign brief.md` too" || !strings.Contains(spaced, "campaign%20brief.md") {
 		t.Fatalf("quoted relative path with spaces was not linked safely: %q", spaced)
 	}
@@ -92,6 +102,10 @@ func TestSettledExpandedCardAddsWorkspaceDirectoryLinkOnlyWhenExpanded(t *testin
 		},
 		Done: 1, Total: 1,
 	}
+	// The first drawing writes the card's file questions down; the links are
+	// there from the drawing after the command answered them.
+	_ = model.renderJobCard(card, 100, true, 0, false, false)
+	settleWorkspaceLinks(t, model)
 	collapsed := model.renderJobCard(card, 100, false, 0, false, false)
 	if strings.Contains(ansi.Strip(collapsed), "▸ workspace") {
 		t.Fatalf("collapsed card gained workspace chrome: %q", collapsed)

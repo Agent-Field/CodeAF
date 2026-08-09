@@ -630,13 +630,13 @@ type Model struct {
 	// blockCache holds already-rendered settled message groups. A settled
 	// message is immutable and the thread is re-rendered many times between
 	// two of them — every animation tick, every relayout — so the whole
-	// conversation was being rebuilt to draw one moving tail. The cache is
-	// dropped whole when the pane's width changes or the journal moves, which
-	// is the only way the parts of a block outside its key can change.
+	// conversation was being rebuilt to draw one moving tail. Only the pane's
+	// width is outside a block's key, so only a resize drops the cache whole;
+	// everything else a poll can move is named in the key and retires the
+	// blocks that depend on it.
 	blockCache map[string]threadBlock
 	blockSeen  map[string]uint64
 	blockWidth int
-	blockGen   uint64
 	threadGen  uint64
 	renderSeq  uint64
 
@@ -648,11 +648,17 @@ type Model struct {
 	cardBlocks  map[string]cardBlock
 	briefBlocks map[int64]briefBlock
 
-	// workspaceLinks remembers which words in an answer are files. workspaceGen
-	// moves when the whole memory is dropped, and the rendered blocks carry it
-	// in their keys so they are rebuilt with it.
-	workspaceLinks map[string]workspaceLink
-	workspaceGen   uint64
+	// workspaceLinks remembers which words in an answer are files, and
+	// workspaceAsk holds the questions the last render could not answer from
+	// it — they leave for the resolver on the one path out of Update, never
+	// from inside a render. workspaceNodeGen counts the files found under each
+	// node, and the rendered blocks carry it in their keys, so an answer
+	// retires the blocks about the node it was about. workspaceGen moves only
+	// when the whole memory is dropped.
+	workspaceLinks   map[string]workspaceLink
+	workspaceNodeGen map[string]uint64
+	workspaceAsk     []workspaceQuestion
+	workspaceGen     uint64
 
 	// The two modal documents are laid out whole and shown a window at a time,
 	// so each is kept beside the shape it was laid out for. The settings sheet
@@ -890,7 +896,21 @@ func (m *Model) Init() tea.Cmd {
 
 // Update applies terminal events and store results. All store I/O is returned
 // as a command, so keystrokes and rendering never wait on SQLite or a reply.
+//
+// The file questions are the last of that I/O to leave the render path, and
+// they leave here: whatever renders this message caused wrote down the words it
+// could not answer from memory, and they go to the resolver as a command like
+// everything else. No renderer has to know it is being deferred, and there is
+// exactly one door for them to leave by.
 func (m *Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
+	model, command := m.update(message)
+	if ask := m.askWorkspaceLinks(); ask != nil {
+		return model, tea.Batch(command, ask)
+	}
+	return model, command
+}
+
+func (m *Model) update(message tea.Msg) (tea.Model, tea.Cmd) {
 	// The animation frame reuses the thread the last full render assembled, so
 	// anything that could have moved the thread retires it first. The two
 	// clocks are the exceptions: one is the frame itself, the other only asks
@@ -940,6 +960,10 @@ func (m *Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 
 	case streamClosedMsg:
 		m.streamEvents = nil
+		return m, nil
+
+	case workspaceLinksMsg:
+		m.applyWorkspaceLinks(message)
 		return m, nil
 
 	case animationTickMsg:
@@ -1953,13 +1977,17 @@ func (m *Model) applyQuietPoll(result pollResultMsg) {
 	}
 	m.lastRepaintAt = now
 	m.invalidateRailCaches()
-	// The minute repaint is the clock's own frame: it re-renders everything
-	// from state already in hand. Retiring the rendered blocks with it keeps
-	// the cache one thread wide, instead of one entry per timestamp a long
-	// idle stretch walks through, and it is where a file that landed under a
-	// node nobody has touched since finally gets to become a link.
-	m.threadGen++
-	m.forgetWorkspaceLinks()
+	// The minute repaint is the clock's own frame, and the clock moves exactly
+	// the lines that print a relative time. It used to retire every rendered
+	// block to draw them, which made an idle screen pay for a cold render of
+	// the whole conversation once a minute; the printed label is part of each
+	// block's key, so re-rendering from state already in hand now rebuilds the
+	// handful of blocks whose label actually changed and replays the rest.
+	//
+	// The other thing the minute is for is a file that landed under a job
+	// still running: those answers are dropped so the next render asks again,
+	// off the UI thread.
+	m.forgetUnsettledWorkspaceLinks()
 	m.rebuildCards()
 	m.setSize(m.width, m.height)
 }

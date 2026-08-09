@@ -5,10 +5,12 @@ import (
 	"path/filepath"
 	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 
 	"github.com/Agent-Field/aforge-v2/internal/cas"
 	"github.com/Agent-Field/aforge-v2/internal/store"
+	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 )
 
@@ -124,42 +126,149 @@ type mediaPathResolver interface {
 	ResolveMediaPath(nodeID, relative string) (string, bool)
 }
 
-// workspaceLink is one remembered answer from the resolver.
+// workspaceLink is one remembered answer from the resolver. An entry that is
+// only asked carries the sole answer a render is allowed to give — plain text —
+// and holds the place until the real one arrives.
 type workspaceLink struct {
 	target string
 	found  bool
+	asked  bool
 }
 
-// resolveWorkspacePath asks the resolver once per question and then remembers
-// the answer. Every whitespace-separated token of every answer on screen is a
-// question, and in the running product each one is a row read out of SQLite, a
-// walk up the node's parents for the job it belongs to, and a stat — so a
-// forty-line reply was several hundred queries, redrawn eight times a second.
+// workspaceQuestion is one lookup a render walked past without an answer.
+type workspaceQuestion struct {
+	key      string
+	nodeID   string
+	relative string
+}
+
+// workspaceLinksMsg carries a batch of answers back from the resolver.
+type workspaceLinksMsg struct {
+	epoch   uint64
+	answers []workspaceAnswer
+}
+
+type workspaceAnswer struct {
+	key    string
+	nodeID string
+	link   workspaceLink
+}
+
+// resolveWorkspacePath answers from memory, and from memory only. Every
+// whitespace-separated token of every answer on screen is a question, and in
+// the running product each one is a row read out of SQLite, a walk up the
+// node's parents for the job it belongs to, and a stat — so a forty-line reply
+// was several hundred queries, made inside Update with the frame waiting on
+// them. A question memory cannot answer is written down here and asked off the
+// render path; until the answer lands the token is drawn as what it is.
 //
 // What makes remembering safe is the stamp: a job that is still running is
 // still writing files, so "no such file" is only durable for as long as the
 // node's status holds. When the status moves the question is asked again, which
 // is the moment a finished job's deliverables become links.
 func (m *Model) resolveWorkspacePath(nodeID, relative string) (string, bool) {
-	key := nodeID + "\x00" + m.workspaceStamp(nodeID) + "\x00" + relative
+	key := workspaceLinkKey(nodeID, m.workspaceStamp(nodeID), relative)
 	if link, remembered := m.workspaceLinks[key]; remembered {
 		return link.target, link.found
 	}
-	target, found := m.askWorkspacePath(nodeID, relative)
-	if m.workspaceLinks == nil {
-		m.workspaceLinks = make(map[string]workspaceLink, 256)
+	// The placeholder is what keeps one question from being asked once per
+	// frame for as long as the answer is in flight.
+	m.keepWorkspaceLink(key, nodeID, workspaceLink{asked: true})
+	m.workspaceAsk = append(m.workspaceAsk,
+		workspaceQuestion{key: key, nodeID: nodeID, relative: relative})
+	return "", false
+}
+
+// resolveWorkspacePathNow is the form for the caller that cannot draw something
+// else and try again: copying a file needs the file. Nothing on the render path
+// may use it.
+func (m *Model) resolveWorkspacePathNow(nodeID, relative string) (string, bool) {
+	key := workspaceLinkKey(nodeID, m.workspaceStamp(nodeID), relative)
+	if link, remembered := m.workspaceLinks[key]; remembered && !link.asked {
+		return link.target, link.found
 	}
-	m.workspaceLinks[key] = workspaceLink{target: target, found: found}
+	target, found := askWorkspacePath(m.commander, nodeID, relative)
+	m.keepWorkspaceLink(key, nodeID, workspaceLink{target: target, found: found})
 	return target, found
 }
 
-func (m *Model) askWorkspacePath(nodeID, relative string) (string, bool) {
-	if resolver, ok := m.commander.(workspacePathResolver); ok {
+func workspaceLinkKey(nodeID, stamp, relative string) string {
+	return nodeID + "\x00" + stamp + "\x00" + relative
+}
+
+// keepWorkspaceLink writes an answer down. Only a file that exists changes what
+// the thread draws, so only a file that exists moves the node's link
+// generation — and the generation is what retires the blocks that name that
+// node, and only those.
+func (m *Model) keepWorkspaceLink(key, nodeID string, link workspaceLink) {
+	if m.workspaceLinks == nil {
+		m.workspaceLinks = make(map[string]workspaceLink, 256)
+	}
+	previous, remembered := m.workspaceLinks[key]
+	m.workspaceLinks[key] = link
+	if !link.found || (remembered && previous.found) {
+		return
+	}
+	if m.workspaceNodeGen == nil {
+		m.workspaceNodeGen = make(map[string]uint64, 8)
+	}
+	m.workspaceNodeGen[nodeID]++
+}
+
+// askWorkspaceLinks hands every question the last render wrote down to the
+// resolver, on a command rather than on the UI thread. The commander is taken
+// here rather than read there: a window that promotes mid-flight replaces it.
+func (m *Model) askWorkspaceLinks() tea.Cmd {
+	if len(m.workspaceAsk) == 0 {
+		return nil
+	}
+	questions := m.workspaceAsk
+	m.workspaceAsk = nil
+	commander, epoch := m.commander, m.workspaceGen
+	return func() tea.Msg {
+		answers := make([]workspaceAnswer, 0, len(questions))
+		for _, question := range questions {
+			target, found := askWorkspacePath(commander, question.nodeID, question.relative)
+			answers = append(answers, workspaceAnswer{
+				key: question.key, nodeID: question.nodeID,
+				link: workspaceLink{target: target, found: found},
+			})
+		}
+		return workspaceLinksMsg{epoch: epoch, answers: answers}
+	}
+}
+
+// applyWorkspaceLinks takes the batch back. A round of answers in which nothing
+// turned out to be a file changes not one byte of the thread, and re-renders
+// nothing.
+func (m *Model) applyWorkspaceLinks(message workspaceLinksMsg) {
+	if message.epoch != m.workspaceGen {
+		// The window changed which brain it asks. These answers are about a
+		// workspace it no longer has.
+		return
+	}
+	moved := false
+	for _, answer := range message.answers {
+		before := m.workspaceNodeGen[answer.nodeID]
+		m.keepWorkspaceLink(answer.key, answer.nodeID, answer.link)
+		moved = moved || m.workspaceNodeGen[answer.nodeID] != before
+	}
+	if !moved {
+		return
+	}
+	m.refreshChat()
+	if m.nodeViewID != "" {
+		m.refreshNodeView(false)
+	}
+}
+
+func askWorkspacePath(commander Commander, nodeID, relative string) (string, bool) {
+	if resolver, ok := commander.(workspacePathResolver); ok {
 		return resolver.ResolveWorkspacePath(nodeID, relative)
 	}
 	// Compatibility for embedders written against the original media-only
 	// seam. The production commander implements the generalized interface.
-	if resolver, ok := m.commander.(mediaPathResolver); ok {
+	if resolver, ok := commander.(mediaPathResolver); ok {
 		return resolver.ResolveMediaPath(nodeID, relative)
 	}
 	return "", false
@@ -178,12 +287,53 @@ func (m *Model) workspaceStamp(nodeID string) string {
 	return ""
 }
 
+// workspaceMark names the state a node's links were answered under: the status
+// that bounds what its directory holds, and the count of files found under it
+// since. A block keyed by the mark is retired by an answer about its own node,
+// and by nothing else.
+func (m *Model) workspaceMark(nodeID string) string {
+	return m.workspaceStamp(nodeID) + "/" + strconv.FormatUint(m.workspaceNodeGen[nodeID], 10)
+}
+
 // forgetWorkspaceLinks drops every remembered answer and moves the generation
-// the rendered blocks are keyed by. It is the coarse net under the stamp: the
-// clock's own repaint, and a window that has just taken over the brain.
+// the rendered blocks are keyed by. One caller: a window that has just taken
+// over the brain, and is therefore asking a different process about a different
+// workspace.
 func (m *Model) forgetWorkspaceLinks() {
 	clear(m.workspaceLinks)
+	clear(m.workspaceNodeGen)
+	m.workspaceAsk = nil
 	m.workspaceGen++
+}
+
+// forgetUnsettledWorkspaceLinks drops the "no such file" answers about work
+// that is still running. A finished node has finished writing, so its answers
+// stand; a running one may have written the file since it was asked, and the
+// minute is when the thread goes and looks. Nothing is resolved here — what the
+// next render finds is a question again, and a question is asked off the UI
+// thread.
+func (m *Model) forgetUnsettledWorkspaceLinks() {
+	for key, link := range m.workspaceLinks {
+		if link.found {
+			continue
+		}
+		nodeID, _, _ := strings.Cut(key, "\x00")
+		if workspaceIsSettled(m.workspaceStamp(nodeID)) {
+			continue
+		}
+		delete(m.workspaceLinks, key)
+	}
+}
+
+// workspaceIsSettled reads a stamp as "this directory is finished". The empty
+// stamp is a node the snapshots have folded away, which is the most finished a
+// node gets.
+func workspaceIsSettled(stamp string) bool {
+	switch store.Status(stamp) {
+	case store.Done, store.Failed, store.Cancelled, "":
+		return true
+	}
+	return false
 }
 
 func (m *Model) workspaceDirectoryLink(nodeID string) string {
