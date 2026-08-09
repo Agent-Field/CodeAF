@@ -2431,6 +2431,14 @@ func resolveWorkModelWords(words head.ModelWords, models *catalog.Catalog, boost
 			return head.WorkModelChoice{Model: matches[0], Requested: name}
 		}
 		if len(matches) > 1 {
+			// An interrogation has to be earned. "use the kimi model" said
+			// "model" and may ask which kimi; a bare preposition-noun read out
+			// of ordinary prose — "with the command below" — may not stop the
+			// job to offer a Cohere menu. Ambiguity in an unearned reading
+			// resolves to the default, silently, like any other non-match.
+			if !words.Explicit {
+				continue
+			}
 			return head.WorkModelChoice{Candidates: matches, Requested: name}
 		}
 	}
