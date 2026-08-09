@@ -46,6 +46,9 @@ type Compiled struct {
 	// Contract is the task-scale working method, produced by the same compile
 	// call. Empty falls back to the separate contract pass.
 	Contract string
+	// Parts is the compile call's declaration of a bundle: independent
+	// requests that share a stage instead of pretending to be a sequence.
+	Parts []string
 	// TrialOf is the retrieved unsettled fact this goal deliberately tests.
 	// Zero means the compiled job is ordinary work.
 	TrialOf int64
