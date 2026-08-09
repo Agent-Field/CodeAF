@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/Agent-Field/aforge-v2/internal/config"
+	"github.com/Agent-Field/aforge-v2/internal/exec"
 	"github.com/Agent-Field/aforge-v2/internal/profile"
 	"github.com/Agent-Field/aforge-v2/internal/provider"
 )
@@ -49,6 +50,21 @@ func selfKnowledge(settings config.Config, model string) string {
 	}
 
 	text := measureSelfKnowledge(settings, model)
+	// Each specialist's own history, in its own block, under its own name. It
+	// is appended rather than merged because these are different workers with
+	// different capacities: a median that averaged a coding pipeline with a
+	// lookup would describe neither, and the compiler choosing between them
+	// needs exactly the difference the merge would destroy.
+	for _, info := range exec.Subharnesses() {
+		line := subharnessKnowledge(settings, model, info.Name)
+		if line == "" {
+			continue
+		}
+		if text != "" {
+			text += "\n"
+		}
+		text += info.Name + ": " + line
+	}
 	selfKnowledgeCached = cachedSelfKnowledge{
 		profileDir: settings.ProfileDir,
 		model:      model,
@@ -56,6 +72,37 @@ func selfKnowledge(settings config.Config, model string) string {
 		expires:    now.Add(selfKnowledgeTTL),
 	}
 	return text
+}
+
+// subharnessKnowledge is the menu's measured line: one sentence about what this
+// worker's leaves have actually cost, or nothing at all until enough of them
+// have run to say anything honest. It is the hook exec.MenuText renders under
+// each purpose, and it is why the compiler's choice is grounded in this
+// session's own evidence rather than in the prior the worker shipped with.
+//
+// The gate is one evidence gate's worth of runs, the same MinSamples the ruler
+// may not be rewritten below. A median of three leaves is not a measurement,
+// and a compiler that read it as one would route on noise.
+func subharnessKnowledge(settings config.Config, model, subharness string) string {
+	measured, err := profile.Load(settings.ProfileDir, model, subharness)
+	if err != nil || len(measured.Records) < profile.MinSamples {
+		return ""
+	}
+	var tokens, turns []int
+	var cost float64
+	failures := 0
+	for _, record := range measured.Records {
+		tokens = append(tokens, record.Tokens)
+		turns = append(turns, record.Turns)
+		cost += record.Cost
+		if positive, graded := record.Verdict.Graded(); graded && !positive {
+			failures++
+		}
+	}
+	samples := len(tokens)
+	return fmt.Sprintf("median %d tokens, %d turns over %d runs; %.0f%% succeeded; avg cost $%.4f",
+		selfKnowledgeMedian(tokens), selfKnowledgeMedian(turns), samples,
+		100*float64(samples-failures)/float64(samples), cost/float64(samples))
 }
 
 func measureSelfKnowledge(settings config.Config, model string) string {

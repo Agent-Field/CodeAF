@@ -97,15 +97,15 @@ func (r Record) Overran() bool {
 
 // Profile is the accumulated experience of one model running one kind of work.
 //
-// Keyed by model and skill because capability is a property of the executor, not
-// of the project. When specialised sub-harnesses arrive — a reviewer, a coding
-// worker — each accumulates its own profile with no new machinery: a different
-// skill is simply a different file.
+// Keyed by model and subharness because capability is a property of the
+// executor, not of the project. Specialised workers — a reviewer, a coding
+// pipeline — each accumulate their own profile with no new machinery: a
+// different subharness is simply a different file.
 type Profile struct {
-	Model   string   `json:"model"`
-	Skill   string   `json:"skill"`
-	Anchors string   `json:"anchors,omitempty"` // empty means the built-in prior
-	Records []Record `json:"records"`
+	Model      string   `json:"model"`
+	Subharness string   `json:"subharness"`
+	Anchors    string   `json:"anchors,omitempty"` // empty means the built-in prior
+	Records    []Record `json:"records"`
 
 	path string
 	// modifiedAt is the coarse timestamp available to features reading an old
@@ -131,14 +131,14 @@ const maxSurprise = 10.0
 // decoded is one parse of one profile file, held against the identity the file
 // had when it was read.
 type decoded struct {
-	// model and skill are held because the file names them too, and decoding
+	// model and subharness are held because the file names them too, and decoding
 	// lets the file's spelling win over the caller's arguments.
-	model    string
-	skill    string
-	anchors  string
-	records  []Record
-	modified time.Time
-	size     int64
+	model      string
+	subharness string
+	anchors    string
+	records    []Record
+	modified   time.Time
+	size       int64
 }
 
 // decodes memoizes parses by path, because the same file is read far more often
@@ -152,18 +152,18 @@ type decoded struct {
 // or an edit from another one is picked up on the next read.
 var decodes sync.Map // path -> decoded
 
-// Load reads the profile for a model and skill, returning an empty one when
+// Load reads the profile for a model and subharness, returning an empty one when
 // there is nothing recorded yet.
 //
 // The result is always a fresh value owning its own records: callers Add to a
 // profile and Save it, so a remembered parse must never become shared mutable
 // state.
-func Load(dir, model, skill string) (*Profile, error) {
+func Load(dir, model, subharness string) (*Profile, error) {
 	if strings.TrimSpace(dir) == "" {
 		dir = home.Dir()
 	}
-	path := filepath.Join(dir, fmt.Sprintf("profile-%s-%s.json", slug(model), slug(skill)))
-	profile := &Profile{Model: model, Skill: skill, path: path}
+	path := filepath.Join(dir, fmt.Sprintf("profile-%s-%s.json", slug(model), slug(subharness)))
+	profile := &Profile{Model: model, Subharness: subharness, path: path}
 
 	before, statErr := os.Stat(path)
 	if errors.Is(statErr, os.ErrNotExist) {
@@ -174,7 +174,7 @@ func Load(dir, model, skill string) (*Profile, error) {
 		if remembered, ok := decodes.Load(path); ok {
 			if hit := remembered.(decoded); hit.size == before.Size() && hit.modified.Equal(before.ModTime()) {
 				profile.Model = hit.model
-				profile.Skill = hit.skill
+				profile.Subharness = hit.subharness
 				profile.Anchors = hit.anchors
 				profile.Records = append([]Record(nil), hit.records...)
 				profile.modifiedAt = hit.modified.UTC()
@@ -195,7 +195,7 @@ func Load(dir, model, skill string) (*Profile, error) {
 		// A corrupt profile is not worth failing a run over; it is a cache of
 		// observations, and the built-in prior is a safe place to restart from.
 		decodes.Delete(path)
-		return &Profile{Model: model, Skill: skill, path: path}, nil
+		return &Profile{Model: model, Subharness: subharness, path: path}, nil
 	}
 	profile.path = path
 	after, err := os.Stat(path)
@@ -206,12 +206,12 @@ func Load(dir, model, skill string) (*Profile, error) {
 	// Only remember a parse of a file that did not move under the read.
 	if statErr == nil && after.Size() == before.Size() && after.ModTime().Equal(before.ModTime()) {
 		decodes.Store(path, decoded{
-			model:    profile.Model,
-			skill:    profile.Skill,
-			anchors:  profile.Anchors,
-			records:  append([]Record(nil), profile.Records...),
-			modified: after.ModTime(),
-			size:     after.Size(),
+			model:      profile.Model,
+			subharness: profile.Subharness,
+			anchors:    profile.Anchors,
+			records:    append([]Record(nil), profile.Records...),
+			modified:   after.ModTime(),
+			size:       after.Size(),
 		})
 	}
 	return profile, nil
