@@ -464,7 +464,7 @@ func TestAffordanceGrammarReplacesLegacyHints(t *testing.T) {
 			t.Fatalf("legacy affordance hint %q survived:\n%s", legacy, surfaces)
 		}
 	}
-	for _, expected := range []string{"▸ Read the request. · 1 assumption", "▸ 35 more lines", "▸ details", " ▸"} {
+	for _, expected := range []string{"▸ Read the request. · 1 assumption", "▸ 33 more lines", "▸ details", " ▸"} {
 		if !strings.Contains(surfaces, expected) {
 			t.Fatalf("grammar affordance %q missing:\n%s", expected, surfaces)
 		}
@@ -675,8 +675,10 @@ func TestFocusTraversalWalksThreadElementsAndEnterEqualsClick(t *testing.T) {
 }
 
 // A long outcome used to end at a truncation marker inside a fixed-height
-// header, and the rest of it existed only in chat. The feed scrolls, so the
-// whole result lands there — reachable from the surface that produced it.
+// header, and the rest of it existed only in chat. Nothing is fixed-height any
+// more: the description opens the same scroll the turns live in, so the whole
+// result is simply there, in the surface that produced it, with no marker to
+// follow and nowhere for the rest to hide.
 func TestALongOutcomeIsReadableInTheActivityFeed(t *testing.T) {
 	model, _ := inspectedWorkerModel(t)
 	model.setSize(90, 26)
@@ -686,15 +688,63 @@ func TestALongOutcomeIsReadableInTheActivityFeed(t *testing.T) {
 		Summary: strings.TrimSpace(strings.Repeat("a finding worth reading in full. ", 60)),
 	}
 	model.sizeNodeViewports()
-	if !model.nodeDetailsClipped {
-		t.Fatal("a 60-sentence outcome did not clip the header")
-	}
-	if !strings.Contains(ansi.Strip(model.nodeDetailsText), "in full at the end of the feed") {
-		t.Fatalf("clipped header points nowhere:\n%s", ansi.Strip(model.nodeDetailsText))
-	}
 	feed := ansi.Strip(model.renderActivityFeed(88))
-	if !strings.Contains(feed, "── outcome ──") ||
-		strings.Count(feed, "a finding worth reading in full.") < 10 {
-		t.Fatalf("feed does not carry the whole outcome:\n%s", feed)
+	if strings.Contains(feed, "in full at the end of the feed") {
+		t.Fatalf("the document still speaks as if it were clipped:\n%s", feed)
+	}
+	// The wrap breaks sentences across rows, so the count is taken on the words
+	// rejoined — what matters is that none of them was thrown away.
+	unwrapped := strings.Join(strings.Fields(feed), " ")
+	if strings.Count(unwrapped, "a finding worth reading in full.") < 55 {
+		t.Fatalf("document does not carry the whole outcome:\n%s", feed)
+	}
+}
+
+// ── the reply's own whitespace is not the reader's ──────────────────────────
+
+// A model that opens or closes its reply on a blank line handed those rows
+// straight to the renderer. Behind the settled card's gutter each one came back
+// as a stray vertical bar — one above the words, one below — and the typewriter
+// caret took a row of its own besides, reading as a glyph the reply had emitted.
+// The reply renders to its ink, and the caret rides the last line of it.
+func TestAStreamedReplyNeverPaintsBarsOnItsBlankEdges(t *testing.T) {
+	model := New(&fakeBackend{}, "stream-edges")
+	model.setSize(100, 34)
+	model.streamMode = streamReal
+	model.streamTarget, model.streamShown = "\nHello world\n", "\nHello world\n"
+
+	arriving, ok := model.streamingMessage()
+	if !ok {
+		t.Fatal("a live real stream did not offer its arriving message")
+	}
+	lines := strings.Split(ansi.Strip(model.renderAnswer(arriving, 60)), "\n")
+	if len(lines) != 1 {
+		t.Fatalf("the reply's blank edges survived as rows: %q", lines)
+	}
+	if !strings.HasPrefix(lines[0], "Hello world") || !strings.HasSuffix(lines[0], "▌") {
+		t.Fatalf("the caret does not ride the words: %q", lines[0])
+	}
+
+	// Nothing has arrived yet: the caret is all there is to draw, and it is
+	// still exactly one line.
+	model.streamShown = ""
+	empty, _ := model.streamingMessage()
+	if got := ansi.Strip(model.renderAnswer(empty, 60)); got != "▌" {
+		t.Fatalf("an empty arriving reply rendered %q", got)
+	}
+
+	// And the same body behind the settled card's gutter: no bare bars.
+	settled := jobCard{
+		ID: "job", RootID: "job", Title: "Compare the plans", State: cardSettled,
+		Deliverable: &store.Message{Seq: 9, Role: store.RoleAgent, NodeID: "job", Body: "\nHello world\n"},
+	}
+	frame := ansi.Strip(model.renderJobCard(settled, 60, false, 0, false, false))
+	for _, line := range strings.Split(frame, "\n") {
+		if strings.TrimSpace(line) == "│" {
+			t.Fatalf("a blank edge came back as a bare gutter bar:\n%s", frame)
+		}
+	}
+	if !strings.Contains(frame, "│ Hello world") {
+		t.Fatalf("the card lost the reply it was trimming:\n%s", frame)
 	}
 }
