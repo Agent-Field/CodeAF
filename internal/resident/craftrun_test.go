@@ -824,3 +824,42 @@ func TestTheReceiptSaysWhenARunIsOnAnUnsavedFile(t *testing.T) {
 		t.Fatalf("compile receipt = %q", run.Receipt)
 	}
 }
+
+// countingCraftRepo is a fakeCraftRepo that says how often it was asked. In
+// production every one of those asks is two git processes.
+type countingCraftRepo struct {
+	fakeCraftRepo
+	loads int
+}
+
+func (f *countingCraftRepo) Load(name string) (*craft.Workflow, error) {
+	f.loads++
+	return f.fakeCraftRepo.Load(name)
+}
+
+// A Done craft node stays in the active view for the whole settled-fold grace,
+// and the sweep visits it on every tick. Reading the workflow again each time
+// was thousands of git invocations over one run, for a version that cannot have
+// changed: name@commit is the version.
+func TestCraftSweepReadsTheRepositoryOncePerVersion(t *testing.T) {
+	graph := openStore(t)
+	workflow := presentationCraft()
+	repo := &countingCraftRepo{fakeCraftRepo: fakeCraftRepo{workflow: workflow}}
+	runner := NewCraftRunner(graph, repo, "/home/craft")
+	run, err := runner.RunCraft(workflow.Name, map[string]string{"topic": "quantum error correction"},
+		"craft", "make me a deck")
+	if err != nil {
+		t.Fatal(err)
+	}
+	completeCraftNode(t, graph, run.Prefix+"~research", "the list is above")
+
+	repo.loads = 0
+	for pass := 0; pass < 5; pass++ {
+		if _, err := runner.Sweep(context.Background()); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if repo.loads > 1 {
+		t.Fatalf("five sweeps read the craft repository %d times, want at most one", repo.loads)
+	}
+}

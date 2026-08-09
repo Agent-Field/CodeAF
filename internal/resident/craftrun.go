@@ -13,6 +13,7 @@ import (
 	"fmt"
 	"regexp"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/Agent-Field/aforge-v2/internal/craft"
@@ -92,6 +93,23 @@ type CraftRunner struct {
 	source CraftSource
 	dir    string
 	now    func() time.Time
+
+	// loadedMu guards loaded, which the sweep reads from the resident's tick
+	// while a landing settles a run on a worker goroutine beside it.
+	loadedMu sync.Mutex
+	// loaded remembers workflows by the reference their runs name, name@commit.
+	// That reference is immutable by construction — an uncommitted edit gets its
+	// own version from the content's hash — so a hit is the same bytes the miss
+	// would have read.
+	//
+	// It lives on the runner rather than inside one sweep because the sweep is
+	// what pays for it: a Done craft node stays in the active view for the whole
+	// settled-fold grace, and re-reading its workflow means two `git` processes
+	// per node per tick — thousands of forks over one run's quarter hour, for a
+	// version that cannot have changed. Only successes are kept: a repository
+	// that was briefly unreadable must be readable again on the next pass, so
+	// failures stay scoped to the sweep that saw them.
+	loaded map[string]*craft.Workflow
 }
 
 // NewCraftRunner builds the runner over one store and one craft repository.
@@ -289,6 +307,9 @@ func (c *CraftRunner) load(reference string, cache map[string]*craft.Workflow) (
 		}
 		return cached, nil
 	}
+	if remembered := c.remembered(reference); remembered != nil {
+		return remembered, nil
+	}
 	name := reference
 	if cut := strings.LastIndex(reference, "@"); cut > 0 {
 		name = reference[:cut]
@@ -307,7 +328,26 @@ func (c *CraftRunner) load(reference string, cache map[string]*craft.Workflow) (
 	if err != nil {
 		return nil, err
 	}
+	c.remember(reference, workflow)
 	return workflow, nil
+}
+
+func (c *CraftRunner) remembered(reference string) *craft.Workflow {
+	c.loadedMu.Lock()
+	defer c.loadedMu.Unlock()
+	return c.loaded[reference]
+}
+
+func (c *CraftRunner) remember(reference string, workflow *craft.Workflow) {
+	if workflow == nil || strings.TrimSpace(reference) == "" {
+		return
+	}
+	c.loadedMu.Lock()
+	defer c.loadedMu.Unlock()
+	if c.loaded == nil {
+		c.loaded = make(map[string]*craft.Workflow)
+	}
+	c.loaded[reference] = workflow
 }
 
 // advance is the whole sentinel: what kind of node landed, whether the run is
