@@ -211,7 +211,7 @@ func runExecute(args []string) error {
 	registry := exec.NewRegistry(linear)
 	registerLeafExecutors(registry, leafBuild{
 		settings: settings, client: client, workspace: space, web: web,
-		graph: history, media: mediaTools,
+		graph: history, media: mediaTools, model: settings.Model,
 		maxTurns: *maxTurns, maxTokens: *maxTokens, deadline: deadline,
 	})
 	scheduler := exec.NewScheduler(registry, space, *concurrency)

@@ -17,6 +17,7 @@ schema, and a person needs to know which command actually thinks.
 ```
 aforge do "<task>" [-w dir] [-db path] [-keep] [-timeout N]
                    [--json] [--yes-spend] [--model slug] [--plan-model slug]
+                   [--subharness name]
 ```
 
 **Use this one.** `do` is the resident's own brain with the conversation
@@ -42,8 +43,16 @@ done.
 | `--yes-spend` | off | Approve a plan whose price crosses the consent threshold. Equivalent to `AFORGE_PREAUTHORIZE_SPEND=1`. |
 | `--model slug` | `AFORGE_MODEL` | The work model for this run. |
 | `--plan-model slug` | `AFORGE_PLAN_MODEL` | Model that plans, replans, writes contracts, and runs the delivery gate, when it should differ from the model executing leaves. |
+| `--subharness name` | the compiler chooses per node | Force every leaf onto one worker. This build has **`swe`** — a whole software-engineering pipeline that takes a coding issue in a git repository whole: it plans internally, edits in parallel worktrees, judges each change before merging, and audits the result against that repository's own build and tests. It exists for measuring one worker against another; an unknown name is a note on stderr and the default worker, never a refusal. `aforge run` takes the same flag. |
 
 Flags may appear after the task text; `do` reorders its own arguments.
+
+A `swe` leaf is an ordinary node in every way that matters headlessly: it
+reports one `exec.Outcome`, it obeys pause and cancel, its cost lands in
+`--json`'s usage, its milestones land in `learned[]`, and the whole of the
+engine's event stream is written to `.obs/<node>.trace.log` in the workspace.
+Its exit codes are the ordinary ones — nothing about the verdict table below
+changes when a specialist ran the leaf. See `docs/SUBHARNESSES.md`.
 
 ### Exit codes — the verdict
 
@@ -181,7 +190,7 @@ esac
 | Command | What it is for |
 | --- | --- |
 | `aforge plan "<goal>" [-o graph.json] [--json] [--brief] [--ensemble N]` | Compile a goal to a graph file. For reading and editing a plan by hand. |
-| `aforge run <graph.json> [-w dir] [-j 8] [-o done.json] [--yes-spend]` | Execute exactly what the file says. Byte-stable, no mid-flight thinking. |
+| `aforge run <graph.json> [-w dir] [-j 8] [-o done.json] [--yes-spend] [--subharness name]` | Execute exactly what the file says. Byte-stable, no mid-flight thinking. |
 | `aforge revise <graph.json> "<what happened>" [--done 1,2,3]` | Re-plan a graph from what actually happened. |
 | `aforge show <graph.json>` | Print a graph. |
 | `aforge wake [--max-seconds N]` | One full resident pass — evaluate sentinels, fire what is due, journal it, exit. What the standing watch timer runs. |
@@ -212,6 +221,7 @@ The full list is `aforge --help`. What matters headless:
 | `AFORGE_NODE_BUDGET` | `60` | Hard ceiling on total nodes. |
 | `AFORGE_REASONING` | `off` | Planning-call reasoning effort. |
 | `AFORGE_EXEC_REASONING` | model default | Executor-call reasoning effort. |
+| `AFORGE_SWE_MAX_COST` | `10.0` | Dollar ceiling on one `swe` leaf's run inside the coding pipeline. Crossing it ends the leaf as a budget stop with a resume checkpoint on disk, not as a failure. |
 
 A variable set in the environment always wins over the `/settings` sheet, and
 that row reads read-only in the sheet rather than fighting your shell.
