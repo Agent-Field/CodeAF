@@ -117,18 +117,32 @@ func TestResolveMediaModelReadsAllThreeSpellingsAndRefusesWrongModality(t *testi
 	}
 }
 
-// "use the net column, not gross" once produced a four-way Claude menu,
-// because "net" sits inside "sonnet" and the matcher read letters instead of
-// names. A word matches inside an id only at a token boundary.
-func TestAModelWordNeverMatchesInsideSomebodyElsesWord(t *testing.T) {
+// "use the net column" once produced a four-way Claude menu ("net" inside
+// "sonnet"), and the official GAIA template's "comma separated list" produced
+// a four-way Cohere one ("comma" leading "command"). Letters are not names:
+// a person's word matches whole tokens or not at all, at both ends.
+func TestAModelWordMatchesWholeTokensOrNotAtAll(t *testing.T) {
 	for word, want := range map[string]bool{
-		"net":    false, // son|net — the measured failure
-		"kimi":   true,  // moonshotai/kimi-k2
-		"sonnet": true,
-		"onnet":  false,
+		"net":       false, // son|net — the f4 failure
+		"comma":     false, // comma|nd — the GAIA failure
+		"kimi":      true,  // moonshotai/kimi-k2
+		"sonnet":    true,
+		"command":   true,
+		"command-r": true,
+		"onnet":     false,
+		"comm":      false,
 	} {
-		if got := wordStartsAToken("moonshotai/kimi-k2 anthropic/claude-sonnet-4", word); got != want {
-			t.Errorf("wordStartsAToken(%q) = %v, want %v", word, got, want)
+		got := tokensAlignInside("moonshotai/kimi-k2", word) ||
+			tokensAlignInside("anthropic/claude-sonnet-4", word) ||
+			tokensAlignInside("cohere/command-r-08-2024", word)
+		if got != want {
+			t.Errorf("token alignment for %q = %v, want %v", word, got, want)
 		}
+	}
+	if tokensLeadBase("command-a", "comma") {
+		t.Fatal("comma still leads command-a — the GAIA template dies at compile again")
+	}
+	if !tokensLeadBase("kimi-k2", "kimi") {
+		t.Fatal("kimi no longer leads kimi-k2")
 	}
 }

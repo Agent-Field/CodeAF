@@ -94,36 +94,63 @@ func modelWordScore(model catalog.Model, word string) (int, int, bool) {
 	switch {
 	case id == word || base == word:
 		return matchExact, 0, true
-	case strings.HasPrefix(base, word):
+	case tokensLeadBase(base, word):
 		return matchPrefix, len(base) - len(word), true
-	case wordStartsAToken(id, word):
+	case tokensAlignInside(id, word):
 		return matchInside, strings.Index(id, word) + len(id) - len(word), true
 	default:
 		return 0, 0, false
 	}
 }
 
-// wordStartsAToken says whether word appears in id at a token boundary — the
-// start, or right after a separator. A raw substring match here once turned
-// "use the net column, not gross" into a four-way Claude menu, because "net"
-// sits inside "sonnet": the person's data vocabulary reached a model matcher
-// that read letters instead of names. "kimi" in "moonshotai/kimi-k2" still
-// matches; the inside of somebody else's word never does.
-func wordStartsAToken(id, word string) bool {
-	if word == "" {
+// modelTokens splits an id or a person's word on the separators model slugs
+// actually use. A "word" here may itself be several tokens — "command-r",
+// "deepseek-v4" — and alignment is judged token-sequence to token-sequence.
+func modelTokens(s string) []string {
+	return strings.FieldsFunc(s, func(r rune) bool {
+		return strings.ContainsRune("/-._ :@", r)
+	})
+}
+
+// tokensLeadBase says the word's tokens are the leading whole tokens of the
+// base name: "kimi" leads "kimi-k2", "command-r" leads "command-r-08-2024".
+// A raw HasPrefix here once turned the word "comma" into a four-way Cohere
+// menu, because "comma" is the first five letters of "command" — the official
+// GAIA answer template says "comma separated list" and every question died at
+// compile. Letters are not names: a word matches whole tokens or not at all.
+func tokensLeadBase(base, word string) bool {
+	baseTokens, wordTokens := modelTokens(base), modelTokens(word)
+	if len(wordTokens) == 0 || len(wordTokens) > len(baseTokens) {
 		return false
 	}
-	for at := 0; ; {
-		index := strings.Index(id[at:], word)
-		if index < 0 {
+	for i, token := range wordTokens {
+		if baseTokens[i] != token {
 			return false
 		}
-		position := at + index
-		if position == 0 || strings.ContainsRune("/-._ :@", rune(id[position-1])) {
+	}
+	return true
+}
+
+// tokensAlignInside says the word's tokens appear as consecutive whole tokens
+// somewhere in the id: "sonnet" inside "claude-sonnet-4", never "net".
+func tokensAlignInside(id, word string) bool {
+	idTokens, wordTokens := modelTokens(id), modelTokens(word)
+	if len(wordTokens) == 0 || len(wordTokens) > len(idTokens) {
+		return false
+	}
+	for start := 0; start+len(wordTokens) <= len(idTokens); start++ {
+		matched := true
+		for i, token := range wordTokens {
+			if idTokens[start+i] != token {
+				matched = false
+				break
+			}
+		}
+		if matched {
 			return true
 		}
-		at = position + 1
 	}
+	return false
 }
 
 // BestMediaModel resolves the documented preference order for one modality
