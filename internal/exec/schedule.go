@@ -186,6 +186,16 @@ func (s *Scheduler) Run(ctx context.Context, graph *plan.Graph) error {
 				node.State = plan.StateRunning
 				s.emit(Event{NodeID: id, Title: node.Title, State: plan.StateRunning, Elapsed: time.Since(started)})
 				task := s.taskFor(graph, node)
+				// Within-node progress on the surface that has no thread to
+				// post to: the run's own event stream, which is already how a
+				// headless run learns that anything is happening at all. A leaf
+				// that says nothing for forty minutes is indistinguishable from
+				// a wedged one, and the stall reporter below can only say which
+				// node it is still waiting on, never what that node is doing.
+				task.Progress = func(phase string, done, total int, latest string) {
+					s.emit(Event{NodeID: node.ID, Title: node.Title, State: plan.StateRunning,
+						Detail: progressDetail(phase, done, total, latest), Elapsed: time.Since(started)})
+				}
 				leafCtx, cancel := context.WithCancel(ctx)
 				control := &leafControl{}
 				task.control = control
@@ -603,6 +613,23 @@ func (s *Scheduler) apply(graph *plan.Graph, nodeID int, outcome *Outcome, err e
 		detail += ", wrote " + strings.Join(outcome.Artifacts, ", ")
 	}
 	s.emit(Event{NodeID: nodeID, Title: node.Title, State: plan.StateDone, Detail: detail, Elapsed: time.Since(started)})
+}
+
+// progressDetail renders one within-node step for a line of terminal output.
+// It is the same shape the chat surface's rows carry, said in one line, because
+// the two surfaces are reporting the same fact and a reader moving between them
+// should not have to learn it twice.
+func progressDetail(phase string, done, total int, latest string) string {
+	line := phase
+	if total > 0 {
+		line += fmt.Sprintf(" · %d of %d", done, total)
+	} else if done > 0 {
+		line += fmt.Sprintf(" · %d", done)
+	}
+	if latest = strings.TrimSpace(latest); latest != "" {
+		line += " · " + latest
+	}
+	return line
 }
 
 func (s *Scheduler) emit(event Event) {
