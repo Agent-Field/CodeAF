@@ -164,6 +164,16 @@ func Subharnesses() []Subharness {
 	return list
 }
 
+// PurposeFor is what a registered specialist is for, in the words it registered
+// with. Linear, empty and anything nobody registered answer nothing at all —
+// which is the same "there is no specialist here" every other reader gets, and
+// what keeps a prompt that asks for it byte-identical in a process without one.
+func PurposeFor(subharness string) string {
+	anchorMutex.RLock()
+	defer anchorMutex.RUnlock()
+	return subharnessBy[strings.TrimSpace(subharness)].Purpose
+}
+
 // KnownSubharness reports whether a name reaches a registered specialist. Empty
 // and "linear" are the baseline rather than a specialist, so both answer no.
 func KnownSubharness(name string) bool {

@@ -194,6 +194,31 @@ type Outcome struct {
 	// check. It is a tail and not a transcript: absence in it is evidence, not
 	// proof, and whatever reads it must say so.
 	Ran []string
+
+	// Calibration is what the worker noticed about its own fit for this job:
+	// free-text sentences, in the worker's own voice, about whether the work sat
+	// comfortably inside its envelope, under it, or at the top of it.
+	//
+	// It is deliberately prose rather than a number or an enum. The only reader
+	// is the recalibration call that rewrites a subharness's three anchor
+	// examples, and that reader is a model reading evidence — a "fit: 0.3" would
+	// have to be invented at one end and interpreted at the other, and both
+	// halves would be fiction. Nothing branches on it and nothing may; the
+	// generalist emits none of it, so every existing profile record and every
+	// existing prompt is exactly what it was.
+	//
+	// A worker writes these about ITSELF. "This sat under my envelope" is a fact
+	// this executor is uniquely placed to observe; "the other worker should have
+	// had it" is a judgement it is not, and the note says the first thing.
+	Calibration []string
+}
+
+// Calibrate appends one self-observation, ignoring the empty ones so a caller
+// can compose a note conditionally without guarding every call.
+func (o *Outcome) Calibrate(note string) {
+	if note = strings.TrimSpace(note); note != "" {
+		o.Calibration = append(o.Calibration, note)
+	}
 }
 
 // ranLimit and ranArgumentBytes bound the record. Forty calls is well past the

@@ -323,7 +323,7 @@ func TestSingleLeafProfileCarriesPolishedGateVerdict(t *testing.T) {
 		Turns: 6, Stop: exec.StopDone, Verdict: provider.VerdictSemanticFailure,
 		Usage: exec.Usage{PromptTokens: 120, CompletionTokens: 30},
 	}
-	recordSingleLeaf(settings, "polish/model", node, outcome)
+	recordSingleLeaf(settings, "polish/model", node, outcome, "")
 
 	measured, err := profile.Load(dir, "polish/model", "linear")
 	if err != nil {

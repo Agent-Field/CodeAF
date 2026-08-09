@@ -89,6 +89,12 @@ func fakeEngine(scenario string, argv []string) int {
 
 	stage("bootstrap", "ready", map[string]any{"workspace": directory})
 	stage("classifier", "focused", map[string]any{"reason": "one coding issue"})
+	if scenario == "trivial" {
+		// The engine deciding the whole goal is one leaf, in its own two
+		// events: the root cut it made and the band it made it from.
+		stage("root-cut", "selected", map[string]any{"band": "xs"})
+		stage("classifier", "trivial", map[string]any{"reason": "one obvious edit"})
+	}
 	stage("plan-apply", "completed", map[string]any{"tasks": 3, "edges": 2})
 	stage("scheduler", "cycle", map[string]any{"cycle": 1, "dispatched": 2})
 	_ = out.Encode(map[string]any{
@@ -113,7 +119,11 @@ func fakeEngine(scenario string, argv []string) int {
 		}},
 	})
 	stage("verification", "pass", map[string]any{"commands": "go test ./..."})
-	stage("audit", "pass", map[string]any{"cycle": 2})
+	if scenario == "strained" {
+		stage("audit", "pass", map[string]any{"cycle": 5, "max_cycles": 5})
+	} else {
+		stage("audit", "pass", map[string]any{"cycle": 2})
+	}
 
 	if directory != "" && scenario == "pass" {
 		_ = os.WriteFile(filepath.Join(directory, "fixed.txt"), []byte("the parser is fixed\n"), 0o644)
@@ -138,6 +148,20 @@ func fakeEngine(scenario string, argv []string) int {
 			"type": "terminal", "status": "fail",
 			"message": "the audit gate never cleared",
 			"data":    map[string]any{"cycle": 3, "cost_usd": 2.5},
+		})
+	case "trivial":
+		_ = out.Encode(map[string]any{
+			"type": "terminal", "status": "pass",
+			"message": "The flag name was corrected.",
+			"data":    map[string]any{"cycle": 1, "cost_usd": 0.0104},
+		})
+	case "strained":
+		// Most of the ceiling, so the cheap-run note stays silent and only the
+		// audit's own exhaustion speaks.
+		_ = out.Encode(map[string]any{
+			"type": "terminal", "status": "pass",
+			"message": "It took five audit cycles, but the suite is green.",
+			"data":    map[string]any{"cycle": 5, "cost_usd": 8.0},
 		})
 	default:
 		_ = out.Encode(map[string]any{

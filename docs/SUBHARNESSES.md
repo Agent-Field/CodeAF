@@ -94,9 +94,27 @@ time, durable across restarts.
   subtrees: instead of eight linear leaves, one swe leaf.
 - **Craft.** `craft.Step.Skill` is promoted from advice to dispatch when it
   names a registered subharness (later wave).
-- **Escalation (later wave).** A linear leaf that fails or overruns on work
-  matching a specialist's purpose escalates to that specialist as a second
-  rung, the way model escalation already works.
+- **Escalation.** A leaf that fails or overruns on work matching a
+  specialist's purpose escalates to that specialist as a second rung, the way
+  model escalation already works. The *decision* is extended, not the
+  machinery: the two judgements that already read a leaf that did not get
+  there — the retry judge and the remainder judge — are handed the menu and
+  may answer with a worker as well as with a remainder. The menu they are
+  handed excludes the worker that just failed, so no worker is ever offered
+  its own failure back; with one specialist registered, that means a failed
+  specialist leaf sees an empty menu and follows the ordinary model-escalation
+  path or fails honestly. A retry's new worker is journaled on the node
+  (`EventNodeWorkerChanged`) and a continuation's rides its subtree
+  provenance, so both survive a restart.
+
+  The headless scheduler's escalation (`exec.Scheduler.Escalations`) stays
+  mechanical, and that is not a breach of the two-surface covenant. The
+  covenant is that every worker is *reachable* from both dispatch paths, which
+  it is — the headless registry constructs every worker this build has, and
+  the planner chooses one at sizing time. It is not that every judgement is
+  made on both. There is no model in that retry loop to hand a menu to: a
+  verdict puts the node back to pending and the ordinary launch path picks it
+  up. Retries are judged on the surface that has a head to judge with.
 
 ## Learning the boundary — SWE hardness
 
@@ -110,7 +128,7 @@ new machinery is invented; three existing loops are keyed by subharness:
    (`profile.go:98-103`). In-session: records accumulate immediately and feed
    price consent (`medianProfileCost`) and self-knowledge. Cross-session: the
    file is loaded at launch.
-2. **Anchors.** `plan.UseAnchors` becomes per-subharness
+2. **Anchors.** `plan.UseAnchors` is per-subharness
    (`UseAnchorsFor(subharness, anchors)` / `AnchorsFor(subharness)`). Each
    subharness ships PriorAnchors; `profile.NeedsRecalibration` fires per
    subharness on measured overrun/underrun, and `plan.Recalibrate` rewrites
@@ -124,6 +142,20 @@ new machinery is invented; three existing loops are keyed by subharness:
    under the linear median cost (the boundary was too low). Both land in the
    swe profile records and are rendered into the recalibration evidence, so
    the two rulers move toward the true seam between them.
+
+   It is carried by one generic field at each layer and no branching anywhere:
+   `exec.Outcome.Calibration` — free-text sentences a worker writes about its
+   own fit, nil for linear — journaled as `profile.Record.Calibration`, beside
+   `profile.Record.EscalatedFrom`, which names the worker that tried the task
+   first and could not finish it. `plan.Recalibrate` renders both into the
+   evidence the anchor-rewrite model reads. The swe executor writes its notes
+   from what the engine already decided on the way past: the root-cut band, the
+   intake classification, the audit's position against its own cycle ceiling,
+   and the run's cost and wall clock against the ceilings it was given. The
+   one comparison no worker can make about itself — this run against the
+   *generalist's* median leaf cost — is made where the record is written, for
+   any worker that is not the baseline, by asking the registry and never a
+   name.
 
 Self-knowledge (`selfknow.go`) renders per-subharness measured history into
 every compile, so the compiler's menu choice is grounded in measurement
