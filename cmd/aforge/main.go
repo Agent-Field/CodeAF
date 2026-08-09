@@ -132,12 +132,6 @@ const usageText = `aforge — build and revise task graphs
   aforge run  <graph.json> [-w dir] [-j 8] [-o done.json] [--yes-spend] [--model slug] [--plan-model slug]
                          plan and run are the static pipeline: a graph written to a file, then executed
                          exactly as written. Kept for reading, editing, and inspecting a plan by hand.
-  --subharness <name>    on do, chat and run: force every leaf onto one worker instead of letting the
-                         compiler choose. This build has swe — a whole software-engineering pipeline
-                         that takes a coding issue in a git repository whole, plans it, edits in
-                         parallel worktrees, and audits the result against that repository's own
-                         build and tests. It is for measuring one worker against another; leave it
-                         unset and the choice is made per node.
   aforge show <graph.json>
   aforge models
   aforge notebook [--db path]
@@ -149,6 +143,16 @@ const usageText = `aforge — build and revise task graphs
   aforge doctor [--db path]     show the brain, resident, watch, spend, and open counts
   aforge rebuild [--db path] [--yes]  discard every derived table and replay the journal
   aforge why self [--db path]   show today's self-spend receipts
+
+Workers:
+  chat, do and run each take --subharness <name>, which forces every leaf onto
+  one worker instead of letting the compiler choose per node. Leave it unset
+  unless you are measuring one worker against another. This build has:
+    swe   a whole software-engineering pipeline. It takes a coding issue in a
+          git repository whole — plans it, edits in parallel worktrees, judges
+          each change before merging, and audits the result against that
+          repository's own build and tests before calling itself done.
+  An unknown name is a note on stderr and the default worker, never a refusal.
 
 Environment:
   OPENROUTER_API_KEY   required
