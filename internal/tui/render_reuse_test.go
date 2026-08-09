@@ -30,6 +30,11 @@ func (c *countingResolver) ResolveWorkspacePath(_ string, relative string) (stri
 	return target, err == nil && !info.IsDir()
 }
 
+// The fixture is a settled thread with both kinds of block in it: a plain
+// message group, and a finished job's card. The card is the expensive one —
+// it carries the deliverable, its parts and its outcome, and every word of all
+// three is asked whether it names a file — and until this fixture had one, the
+// reuse tests were watching the only half of the thread that was cached.
 func countingResolverModel(t *testing.T) (*Model, *countingResolver, *countingBackend) {
 	t.Helper()
 	dir := t.TempDir()
@@ -40,15 +45,40 @@ func countingResolverModel(t *testing.T) (*Model, *countingResolver, *countingBa
 		fakeCommander: &fakeCommander{current: map[string]string{}}, workspace: dir,
 	}
 	now := time.Date(2026, time.August, 6, 14, 0, 0, 0, time.Local)
-	backend := newCountingBackend(&fakeBackend{messages: []store.Message{{
-		Seq: 1, SessionID: "reuse", Role: store.RoleAgent, NodeID: "job",
-		Body: "wrote notes.md for you", Time: now.Add(-2 * time.Minute),
-	}}})
+	started := now.Add(-9 * time.Minute)
+	finished := now.Add(-8 * time.Minute)
+	snapshot := store.Snapshot{Nodes: []store.Node{
+		{ID: store.RootID},
+		{
+			ID: "landed", Parent: store.RootID, Title: "the landed job", Status: store.Done,
+			CreatedSeq: 1, StartedAt: started, FinishedAt: finished,
+		},
+		// An organizational root owns no card, so the answer anchored under it
+		// stays in the thread and keeps its provenance chip.
+		{ID: "box", Parent: store.RootID, Group: store.TerritoryGroup, CreatedSeq: 2},
+		{ID: "job", Parent: "box", Title: "the first task", Status: store.Done, CreatedSeq: 3},
+	}}
+	backend := newCountingBackend(&fakeBackend{
+		snapshot: snapshot,
+		messages: []store.Message{
+			{
+				Seq: 1, SessionID: "reuse", Role: store.RoleAgent, NodeID: "job",
+				Body: "wrote notes.md for you", Time: now.Add(-2 * time.Minute),
+			},
+			{
+				Seq: 2, SessionID: "reuse", Role: store.RoleAgent, NodeID: "landed",
+				Body: "the job is done and its answer is in notes.md", Time: finished,
+			},
+		},
+	})
 	model := NewWithCommander(backend, "reuse", commander)
 	model.standingNow = func() time.Time { return now }
 	model.setSize(100, 30)
 	model.applyPoll(model.poll()().(pollResultMsg))
 	_ = model.View()
+	if card := model.cardByID("landed"); card == nil || card.State != cardSettled {
+		t.Fatalf("fixture has no settled card: %+v", model.cards)
+	}
 	return model, commander, backend
 }
 
@@ -111,40 +141,105 @@ func TestCachedThreadIsByteIdenticalToAColdRender(t *testing.T) {
 }
 
 // A settled message is immutable, so the thread it sits in is rendered once
-// and replayed until the store says otherwise.
+// and replayed until the store says otherwise. blockBuilds is the count of
+// blocks this session has had to assemble — message groups, settled cards and
+// briefs alike — so it says which halves of the thread were reused and which
+// were not.
 func TestSettledThreadIsRenderedOncePerChange(t *testing.T) {
-	model, commander, backend := countingResolverModel(t)
+	model, _, backend := countingResolverModel(t)
 
-	before := commander.resolves
+	before := model.blockBuilds
 	for range 5 {
 		model.refreshChat()
 		_ = model.View()
 	}
-	if commander.resolves != before {
-		t.Fatalf("five frames re-rendered the settled thread %d times", commander.resolves-before)
+	if model.blockBuilds != before {
+		t.Fatalf("five frames rebuilt %d thread blocks", model.blockBuilds-before)
 	}
 
 	// A quiet poll proves nothing moved, so the rendered blocks stand.
 	model.applyPoll(model.poll()().(pollResultMsg))
 	_ = model.View()
-	if commander.resolves != before {
+	if model.blockBuilds != before {
 		t.Fatal("a quiet poll retired the rendered thread")
+	}
+
+	// A journal that moved but changed nothing this thread is made of keeps
+	// every block: the keys name what a block depends on, so a poll that
+	// touched none of it has nothing to retire.
+	backend.bump()
+	model.applyPoll(model.poll()().(pollResultMsg))
+	_ = model.View()
+	if model.blockBuilds != before {
+		t.Fatalf("an irrelevant poll rebuilt %d thread blocks", model.blockBuilds-before)
 	}
 
 	// Opening the answer in place is a change to that block, and only to it.
 	model.expandedMessages[1] = true
 	model.refreshChat()
-	if commander.resolves == before {
-		t.Fatal("opening a folded answer reused its collapsed block")
+	if model.blockBuilds != before+1 {
+		t.Fatalf("opening one folded answer rebuilt %d blocks", model.blockBuilds-before)
 	}
 
-	// So is a moved journal: it can rename the node the answer points at or
-	// land the file it links.
-	before = commander.resolves
+	// Opening the settled card is a change to the card's block, and only it.
+	before = model.blockBuilds
+	model.cardExpanded["landed"] = true
+	model.refreshChat()
+	if model.blockBuilds != before+1 {
+		t.Fatalf("opening one settled card rebuilt %d blocks", model.blockBuilds-before)
+	}
+}
+
+// A poll that renames the node an answer points at must retire that answer's
+// block — the chip carries the name — and a settled card whose contents moved
+// must be redrawn.
+func TestReferencedNodeChangeRetiresOnlyItsBlock(t *testing.T) {
+	model, _, backend := countingResolverModel(t)
+	_ = model.View()
+
+	before := model.blockBuilds
+	backend.fakeBackend.mu.Lock()
+	nodes := append([]store.Node(nil), backend.fakeBackend.snapshot.Nodes...)
+	for index := range nodes {
+		if nodes[index].ID == "job" {
+			nodes[index].Title = "the renamed task"
+		}
+	}
+	backend.fakeBackend.snapshot = store.Snapshot{Nodes: nodes}
+	backend.fakeBackend.mu.Unlock()
 	backend.bump()
 	model.applyPoll(model.poll()().(pollResultMsg))
+	_ = model.View()
+	if model.blockBuilds == before {
+		t.Fatal("a renamed node kept the block whose chip names it")
+	}
+	if built := model.blockBuilds - before; built > 2 {
+		t.Fatalf("a renamed node rebuilt %d blocks", built)
+	}
+}
+
+// Every whitespace-separated token of every answer on screen is a question for
+// the resolver, and in production each one is a query and a stat. The same
+// question is asked of the store once.
+func TestWorkspaceResolutionIsAskedOncePerQuestion(t *testing.T) {
+	model, commander, _ := countingResolverModel(t)
+
+	before := commander.resolves
+	for range 5 {
+		model.threadGen++
+		model.refreshChat()
+	}
+	if commander.resolves != before {
+		t.Fatalf("five cold renders asked the resolver %d more times", commander.resolves-before)
+	}
+
+	// The clock's own repaint is where a file that landed under a node nobody
+	// has touched since finally gets to become a link.
+	model.forgetWorkspaceLinks()
+	model.threadGen++
+	model.refreshChat()
 	if commander.resolves == before {
-		t.Fatal("a moved journal did not retire the rendered thread")
+		t.Fatal("dropping the remembered links did not ask the resolver again")
 	}
 }
 

@@ -3,6 +3,7 @@ package tui
 import (
 	"fmt"
 	"path/filepath"
+	"reflect"
 	"sort"
 	"strconv"
 	"strings"
@@ -767,7 +768,7 @@ func (m *Model) renderNodePane() string {
 	back := powderStyle.Render("‹ back")
 	m.nodeBackBounds = paneBounds{x: m.nodeBounds.x, y: m.nodeBounds.y, width: lipgloss.Width(back), height: 1}
 	glyph, _ := m.nodeGlyphStyled(m.inspectedNode, now, false)
-	title := nodeLabelInSnapshot(m.inspectedNode, m.snapshot)
+	title := m.nodeLabelIn(m.inspectedNode, m.snapshot.Nodes)
 	timing := m.nodeTiming(now)
 	if timing != "" {
 		timing = truncate(timing, max(1, innerWidth-lipgloss.Width(glyph)-4))
@@ -1424,9 +1425,13 @@ type threadRenderItem struct {
 }
 
 func (m *Model) renderMessages() string {
+	m.renderSeq++
 	if m.blockWidth != m.chat.Width || m.blockGen != m.threadGen {
 		m.blockWidth, m.blockGen = m.chat.Width, m.threadGen
 		clear(m.blockCache)
+		clear(m.blockSeen)
+		clear(m.cardBlocks)
+		clear(m.briefBlocks)
 	}
 	m.chatMessageRows = m.chatMessageRows[:0]
 	m.chatExpandRows = m.chatExpandRows[:0]
@@ -1505,8 +1510,8 @@ func (m *Model) renderMessages() string {
 	for _, item := range items {
 		if item.isCard {
 			flushGroup()
-			block := m.renderJobCard(item.card, max(8, m.chat.Width-2),
-				m.cardExpanded[item.card.ID], line, false, true)
+			block := m.renderThreadCard(item.card, max(8, m.chat.Width-2),
+				m.cardExpanded[item.card.ID], line)
 			m.chatCardRows = append(m.chatCardRows, cardRow{
 				start: line, end: line + lipgloss.Height(block) - 1, cardID: item.card.ID,
 			})
@@ -1515,7 +1520,7 @@ func (m *Model) renderMessages() string {
 		}
 		if item.message.Brief != nil {
 			flushGroup()
-			appendBlock(m.renderBrief(item.message, max(8, m.chat.Width-2), line, true))
+			appendBlock(m.renderThreadBrief(item.message, max(8, m.chat.Width-2), line))
 			continue
 		}
 		voice := messageVoice(item.message)
@@ -1549,6 +1554,7 @@ func (m *Model) renderMessages() string {
 		appendBlock(m.renderRecallHistory(max(8, m.chat.Width-2), line, true))
 	}
 	m.keepChatBlocks(blocks, awaitingBlock, shimmerBlock)
+	m.sweepBlockCache()
 	return m.applyChatFocus(strings.Join(blocks, "\n\n"))
 }
 
@@ -1703,12 +1709,15 @@ type threadBlock struct {
 	expands  []chatExpandRow
 	messages []chatMessageRow
 	options  []cardOptionRow
+	parts    []cardPartRow
+	closes   []cardCloseRow
 }
 
 func (m *Model) renderMessageGroup(group messageGroup, atLine int) string {
 	key, cacheable := m.threadBlockKey(group)
 	if cacheable {
 		if block, found := m.blockCache[key]; found {
+			m.blockSeen[key] = m.renderSeq
 			m.replayThreadBlock(block, atLine)
 			return block.content
 		}
@@ -1717,21 +1726,165 @@ func (m *Model) renderMessageGroup(group messageGroup, atLine int) string {
 	if cacheable {
 		if m.blockCache == nil {
 			m.blockCache = make(map[string]threadBlock, 64)
+			m.blockSeen = make(map[string]uint64, 64)
 		}
-		m.blockCache[key] = block
+		m.blockCache[key], m.blockSeen[key] = block, m.renderSeq
 	}
 	m.replayThreadBlock(block, atLine)
 	return block.content
 }
 
+// sweepBlockCache drops the blocks this render had no use for. A group's key
+// carries the relative time it prints, so an hour of conversation leaves an
+// hour of superseded keys behind it; the thread is the only thing worth
+// keeping, and the thread is what the render just asked for.
+func (m *Model) sweepBlockCache() {
+	if len(m.blockCache) <= 2*len(m.chatBlocks)+8 {
+		return
+	}
+	for key, seen := range m.blockSeen {
+		if seen != m.renderSeq {
+			delete(m.blockSeen, key)
+			delete(m.blockCache, key)
+		}
+	}
+}
+
+// cardBlock is a settled job card kept beside the card it was drawn from. The
+// cards come from the whole graph, so their number grows with the session and
+// every one of them was being redrawn — markdown, gutters, and one workspace
+// lookup per word of the deliverable — on every frame. A settled card is
+// finished by definition: hand this the same card at the same width and the
+// bytes cannot have changed.
+type cardBlock struct {
+	block    threadBlock
+	card     jobCard
+	width    int
+	expanded bool
+	links    uint64
+}
+
+// briefBlock is the same for an arrival brief, which is settled the moment it
+// is written.
+type briefBlock struct {
+	block    threadBlock
+	message  store.Message
+	width    int
+	expanded bool
+	links    uint64
+}
+
+// renderThreadCard draws a card in the thread, reusing the last drawing of it
+// whenever the card is settled and nothing it is made of has moved. A working
+// card is deliberately never kept: its whole job is to show that it is moving.
+func (m *Model) renderThreadCard(card jobCard, width int, expanded bool, atLine int) string {
+	cacheable := m.settledCardIsStill(card)
+	if cacheable {
+		if kept, found := m.cardBlocks[card.ID]; found && kept.width == width &&
+			kept.expanded == expanded && kept.links == m.workspaceGen &&
+			reflect.DeepEqual(kept.card, card) {
+			m.replayThreadBlock(kept.block, atLine)
+			return kept.block.content
+		}
+	}
+	block := m.captureThreadBlock(func() string {
+		return m.renderJobCard(card, width, expanded, 0, false, true)
+	})
+	if cacheable {
+		if m.cardBlocks == nil {
+			m.cardBlocks = make(map[string]cardBlock, 32)
+		}
+		m.cardBlocks[card.ID] = cardBlock{
+			block: block, card: card, width: width, expanded: expanded, links: m.workspaceGen,
+		}
+	}
+	m.replayThreadBlock(block, atLine)
+	return block.content
+}
+
+// settledCardIsStill refuses the one settled card whose bytes still move: the
+// header's elapsed reading is measured against the clock while the finish time
+// is missing, so it changes every second and nothing about the card says so.
+func (m *Model) settledCardIsStill(card jobCard) bool {
+	if card.State != cardSettled || card.ID == "" {
+		return false
+	}
+	if !card.StartedAt.IsZero() && card.FinishedAt.IsZero() {
+		return false
+	}
+	if card.Deliverable == nil {
+		return true
+	}
+	_, streaming := m.streamedBody(*card.Deliverable)
+	return !streaming
+}
+
+func (m *Model) renderThreadBrief(message store.Message, width, atLine int) string {
+	expanded := m.briefExpanded[message.Seq]
+	cacheable := message.Seq != 0
+	if cacheable {
+		if kept, found := m.briefBlocks[message.Seq]; found && kept.width == width &&
+			kept.expanded == expanded && kept.links == m.workspaceGen &&
+			reflect.DeepEqual(kept.message, message) {
+			m.replayThreadBlock(kept.block, atLine)
+			return kept.block.content
+		}
+	}
+	block := m.captureThreadBlock(func() string {
+		return m.renderBrief(message, width, 0, true)
+	})
+	if cacheable {
+		if m.briefBlocks == nil {
+			m.briefBlocks = make(map[int64]briefBlock, 8)
+		}
+		m.briefBlocks[message.Seq] = briefBlock{
+			block: block, message: message, width: width, expanded: expanded, links: m.workspaceGen,
+		}
+	}
+	m.replayThreadBlock(block, atLine)
+	return block.content
+}
+
+// captureThreadBlock runs a renderer that registers its click targets straight
+// into the model's row lists, and lifts whatever it registered back out as a
+// block held relative to its own first line. Nothing about the renderer has to
+// know it is being cached — it draws at line zero and the rows follow.
+func (m *Model) captureThreadBlock(draw func() string) threadBlock {
+	m.blockBuilds++
+	chips, expands := len(m.chatChipRows), len(m.chatExpandRows)
+	messages, options := len(m.chatMessageRows), len(m.cardOptionRows)
+	parts, closes := len(m.cardPartRows), len(m.cardCloseRows)
+	block := threadBlock{content: draw()}
+	block.chips = append(block.chips, m.chatChipRows[chips:]...)
+	block.expands = append(block.expands, m.chatExpandRows[expands:]...)
+	block.messages = append(block.messages, m.chatMessageRows[messages:]...)
+	block.options = append(block.options, m.cardOptionRows[options:]...)
+	block.parts = append(block.parts, m.cardPartRows[parts:]...)
+	block.closes = append(block.closes, m.cardCloseRows[closes:]...)
+	m.chatChipRows = m.chatChipRows[:chips]
+	m.chatExpandRows = m.chatExpandRows[:expands]
+	m.chatMessageRows = m.chatMessageRows[:messages]
+	m.cardOptionRows = m.cardOptionRows[:options]
+	m.cardPartRows = m.cardPartRows[:parts]
+	m.cardCloseRows = m.cardCloseRows[:closes]
+	return block
+}
+
 // threadBlockKey names everything a settled group's block depends on that can
 // move while the thread stands still: which messages it holds, which of them
-// are open, and the one clock-derived string in it. A group the key cannot
-// speak for — a message still arriving, a question whose choices move under
-// the reader — is not cached at all.
+// are open, the one clock-derived string in it, and the three things the store
+// can change from outside a message — the node it names, the files it links,
+// the turn that answers its question. Those three used to be answered by
+// retiring the whole cache on every poll that moved the journal, which meant
+// the settled thread was rebuilt from scratch two and a half times a second
+// for as long as anything was running. Named here instead, a poll that changes
+// nothing this group depends on keeps every one of its bytes.
+//
+// A group the key cannot speak for — a message still arriving, a question
+// whose choices are still under the reader's hand — is not cached at all.
 func (m *Model) threadBlockKey(group messageGroup) (string, bool) {
 	var key strings.Builder
-	key.Grow(16 * len(group.messages))
+	key.Grow(24 * len(group.messages))
 	for _, message := range group.messages {
 		if message.Seq == 0 {
 			return "", false
@@ -1740,7 +1893,12 @@ func (m *Model) threadBlockKey(group messageGroup) (string, bool) {
 			return "", false
 		}
 		if component, ok := readQuestionComponent(message.Body); ok && len(component.Options) > 0 {
-			return "", false
+			// An answered question has already lost its choices and cannot get
+			// them back; only one still open moves under the reader.
+			if !m.questionAnswered(message) {
+				return "", false
+			}
+			key.WriteByte('a')
 		}
 		key.WriteString(strconv.FormatInt(message.Seq, 10))
 		if m.expandedMessages[message.Seq] {
@@ -1749,11 +1907,21 @@ func (m *Model) threadBlockKey(group messageGroup) (string, bool) {
 		if m.learningExpanded[message.Seq] {
 			key.WriteByte('l')
 		}
+		if message.NodeID != "" {
+			// The chip carries the node's name as the snapshot spells it now,
+			// and the stamp is what the linked files are remembered under.
+			key.WriteByte('@')
+			key.WriteString(m.nodeChipLabel(message.NodeID))
+			key.WriteByte('/')
+			key.WriteString(m.workspaceStamp(message.NodeID))
+		}
 		key.WriteByte(',')
 	}
 	if m.receiptsExpanded {
 		key.WriteByte('r')
 	}
+	key.WriteString(strconv.FormatUint(m.workspaceGen, 10))
+	key.WriteByte(';')
 	latest := group.messages[len(group.messages)-1]
 	key.WriteString(relativeTime(latest.Time, m.standingTime()))
 	return key.String(), true
@@ -1778,9 +1946,18 @@ func (m *Model) replayThreadBlock(block threadBlock, atLine int) {
 		row.line += atLine
 		m.cardOptionRows = append(m.cardOptionRows, row)
 	}
+	for _, row := range block.parts {
+		row.line += atLine
+		m.cardPartRows = append(m.cardPartRows, row)
+	}
+	for _, row := range block.closes {
+		row.line += atLine
+		m.cardCloseRows = append(m.cardCloseRows, row)
+	}
 }
 
 func (m *Model) buildMessageGroup(group messageGroup) threadBlock {
+	m.blockBuilds++
 	block := threadBlock{}
 	latest := group.messages[len(group.messages)-1]
 	available := max(8, m.chat.Width-2)
@@ -1938,7 +2115,7 @@ func (m *Model) questionAnswered(question store.Message) bool {
 // node's title while it is visible in the snapshot, its id once folded away.
 func (m *Model) nodeChipLabel(nodeID string) string {
 	if node, ok := m.snapshotNode(nodeID); ok {
-		return nodeLabelInSnapshot(node, m.snapshot)
+		return m.nodeLabelIn(node, m.snapshot.Nodes)
 	}
 	return nodeID
 }
