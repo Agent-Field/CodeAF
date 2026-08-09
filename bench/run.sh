@@ -19,6 +19,14 @@ HARNESSES="${HARNESSES:-aforge pi opencode}"
 # kept spending after the diff never arrived.
 CELL_TIMEOUT="${CELL_TIMEOUT:-40m}"
 
+# The commit every cell starts from. Empty means the clone's HEAD, which is
+# only honest while the issues are still open there — the repository has since
+# merged fixes for #23 (2026-08-06) and #21 (2026-08-08), so a HEAD clone
+# passes the suite before any harness touches it and the row measures nothing.
+# For the recorded issue set the pin is 6c978ffa1c49ba600c85eb893958409e37dbedd2
+# (2026-08-02, merge of PR #18): the last commit with all four issues open.
+BASE_COMMIT="${BASE_COMMIT:-}"
+
 # aforge shape. Four values, and the first three are the comparison this file
 # exists for — the same issue taken three ways, against the same recorded pi and
 # opencode rows:
@@ -93,7 +101,7 @@ CSV="$RESULTS/results.csv"
 # The two new columns are appended, never inserted. A reader that indexes the
 # old nine by position still reads the old nine; a reader that goes by header
 # gets the new two; and a CSV written before this change is still a CSV.
-echo "harness,issue,seconds,exit,changed_files,passed,failed,cost_usd,cost_source,aforge_mode,subharness_chosen" > "$CSV"
+echo "harness,issue,seconds,exit,changed_files,passed,failed,cost_usd,cost_source,aforge_mode,subharness_chosen,nodes_failed" > "$CSV"
 
 SLUG="$(basename "$REPO" .git)"
 OWNER_REPO="$(echo "$REPO" | sed -E 's#^.*github.com[:/]##; s#\.git$##')"
@@ -118,7 +126,13 @@ Work in this repository. Implement the change and make the existing test suite p
 fresh_clone() {
   local dir="$1"
   rm -rf "$dir"
-  git clone --depth 1 --quiet "$REPO" "$dir" || return 1
+  if [ -n "$BASE_COMMIT" ]; then
+    # A pinned start needs history; --depth 1 would not contain it.
+    git clone --quiet "$REPO" "$dir" || return 1
+    (cd "$dir" && git checkout --quiet "$BASE_COMMIT") || return 1
+  else
+    git clone --depth 1 --quiet "$REPO" "$dir" || return 1
+  fi
   (cd "$dir" && git rev-parse HEAD)
 }
 
@@ -193,8 +207,8 @@ compose_aforge() {
   case "$AFORGE_MODE" in
     pipeline)
       AFORGE_HAS_PRE="1"
-      AFORGE_PRE_ARGV=("$TIMEOUT_BIN" "$CELL_TIMEOUT" "$AFORGE_BIN" plan "$prompt" --brief -o "$cell/graph.json")
-      AFORGE_ARGV=("$TIMEOUT_BIN" "$CELL_TIMEOUT" "$AFORGE_BIN" run "$cell/graph.json" -w "$dir" -o "$cell/done.json")
+      AFORGE_PRE_ARGV=("$TIMEOUT_BIN" "$CELL_TIMEOUT" "$AFORGE_BIN" plan "$prompt" --brief -model "$MODEL" -o "$cell/graph.json")
+      AFORGE_ARGV=("$TIMEOUT_BIN" "$CELL_TIMEOUT" "$AFORGE_BIN" run "$cell/graph.json" -w "$dir" -model "$MODEL" -o "$cell/done.json")
       ;;
     select)
       # No graph and no forcing: the compiler decides both the shape and the
@@ -202,12 +216,28 @@ compose_aforge() {
       # in the clone, so the diff afterwards is this run's diff; --keep leaves
       # the private store behind, which is where the choice is legible.
       AFORGE_ARGV=("$TIMEOUT_BIN" "$CELL_TIMEOUT" "$AFORGE_BIN" "do" "$prompt" \
-        -w "$dir" -keep -timeout "$(seconds_of "$CELL_TIMEOUT")")
+        -w "$dir" -keep -model "$MODEL" -timeout "$(seconds_of "$CELL_TIMEOUT")")
       ;;
     *)
-      AFORGE_ARGV=("$TIMEOUT_BIN" "$CELL_TIMEOUT" "$AFORGE_BIN" run "$cell/graph.json" -w "$dir" -o "$cell/done.json")
+      AFORGE_ARGV=("$TIMEOUT_BIN" "$CELL_TIMEOUT" "$AFORGE_BIN" run "$cell/graph.json" -w "$dir" -model "$MODEL" -o "$cell/done.json")
       ;;
   esac
+}
+
+# nodes_failed reads the run's own verdict out of done.json. The smoke run
+# proved why the exit code is not enough: the engine crashed inside its leaf,
+# `run` exited 0, and the row read like a pass with a suite that was green
+# before the harness arrived. Only aforge's graph shapes have a done.json;
+# everyone else is n/a, not 0 — absence of evidence, recorded as absence.
+nodes_failed() {
+  local harness="$1" cell="$2"
+  [ "$harness" = "aforge" ] || { echo "n/a"; return; }
+  [ -f "$cell/done.json" ] || { echo "n/a"; return; }
+  python3 - "$cell/done.json" <<'PY' 2>/dev/null || echo "n/a"
+import json, sys
+nodes = json.load(open(sys.argv[1])).get("nodes", [])
+print(sum(1 for n in nodes if n.get("state") == "failed"))
+PY
 }
 
 # render_cell_graph writes the graph the node and swe shapes execute. It costs
@@ -433,6 +463,7 @@ dry_cell() {
 # ── the grid ────────────────────────────────────────────────────────────────
 echo "repo:     $REPO"
 echo "model:    $MODEL"
+[ -n "$BASE_COMMIT" ] && echo "pinned:   $BASE_COMMIT" || echo "pinned:   (none — clone HEAD; see BASE_COMMIT in this file before trusting rows)"
 echo "issues:   $ISSUES"
 echo "harness:  $HARNESSES (aforge mode: $AFORGE_MODE)"
 echo "results:  $RESULTS"
@@ -481,11 +512,13 @@ Work in this repository. Implement the change and make the existing test suite p
     counts="$(run_suite "$dir" "$cell/pytest.log")"
     cost="$(harness_cost "$harness" "$cell/harness.log")"
     worker="$(subharness_chosen "$harness" "$cell" "$cell/harness.log")"
+    failed_nodes="$(nodes_failed "$harness" "$cell")"
     stow_store "$cell/harness.log" "$cell"
 
-    echo "$harness,$issue,$seconds,$code,$changed,$counts,$cost,$(mode_of "$harness"),$worker" >> "$CSV"
-    printf '%4ss  exit %-3s %2s files  %s passed/failed  %s  %s\n' \
-      "$seconds" "$code" "$changed" "${counts/,/ + }" "${cost%%,*}" "$worker"
+    echo "$harness,$issue,$seconds,$code,$changed,$counts,$cost,$(mode_of "$harness"),$worker,$failed_nodes" >> "$CSV"
+    printf '%4ss  exit %-3s %2s files  %s passed/failed  %s  %s%s\n' \
+      "$seconds" "$code" "$changed" "${counts/,/ + }" "${cost%%,*}" "$worker" \
+      "$([ "$failed_nodes" != "n/a" ] && [ "$failed_nodes" != "0" ] && echo "  ⚠ $failed_nodes node(s) failed")"
   done
 done
 
