@@ -275,6 +275,7 @@ type Model struct {
 	snapshotIndex        nodeIndex
 	cardSnapshotIndex    nodeIndex
 	jobRoots             jobRootIndex
+	cardIndex            cardIndex
 	pending              []store.Command
 	spendToday           float64
 	jobUsage             map[string]store.JobUsage
