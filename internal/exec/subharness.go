@@ -184,8 +184,30 @@ func knowledgeHook() func(string) string {
 // subharness adds it to every prompt that chooses one; and it states the rule
 // in the same breath as the options, because a menu without a rule for reading
 // it is how a model talks itself into the interesting answer.
-func MenuText() string {
-	specialists := Subharnesses()
+func MenuText() string { return MenuTextExcept("") }
+
+// MenuTextExcept is the same menu with one worker struck off it, and it exists
+// for one situation: a job that has already been tried by that worker and
+// failed.
+//
+// Offering the failed worker its own job back is a rung that goes nowhere. Model
+// escalation earns its second attempt by changing something — a stronger model
+// on the same worker — while re-choosing the same specialist changes nothing at
+// all, and a menu that leaves the option on the table is a menu inviting a loop.
+// So the exclusion is structural rather than a sentence in the prompt: a model
+// cannot pick what it was never shown.
+//
+// With one specialist registered and that one excluded, the menu is empty and
+// every caller is back to the byte-identical baseline — which is the additive
+// law arriving at exactly the right answer without being asked.
+func MenuTextExcept(exclude string) string {
+	exclude = strings.TrimSpace(exclude)
+	specialists := make([]SubharnessInfo, 0, 2)
+	for _, info := range Subharnesses() {
+		if info.Name != exclude {
+			specialists = append(specialists, info)
+		}
+	}
 	if len(specialists) == 0 {
 		return ""
 	}

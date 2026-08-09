@@ -563,11 +563,16 @@ func buildBrain(w *chatWindow, session string, opts brainOptions) (*chatBrain, e
 			}
 			return nil
 		}
-		worker := executorFor(subharness, leafBuild{
+		// The wiring one worker is built from, kept rather than spent, because a
+		// second attempt may be given to a different kind of worker: everything
+		// here is a fact about the leaf and none of it is a fact about who runs
+		// it, so the same build serves whichever one does.
+		build := leafBuild{
 			settings: settings, client: workingClient, workspace: jobSpace, web: web,
-			graph: graph, media: &leafMedia, model: workingModel,
+			graph: graph, media: &leafMedia, model: workingModel, models: modelCatalog,
 			maxTurns: turns, maxTokens: tokens, deadline: deadline,
-		})
+		}
+		worker := executorFor(subharness, build)
 		shape := "atomic"
 		if isReflex {
 			shape = "reflex"
@@ -725,10 +730,28 @@ func buildBrain(w *chatWindow, session string, opts brainOptions) (*chatBrain, e
 		// deadline so a wedged executor becomes a recorded failure rather
 		// than a silent hang, and a leaf whose verdict says a stronger model
 		// might fix it gets exactly one escalation when a panel offers one.
+		//
+		// A stronger model is not the only second rung there is. A leaf whose
+		// work is, in its essence, the thing a registered specialist exists for
+		// has somewhere else to go — a different KIND of worker rather than a
+		// bigger version of the same one — and that is the rung the boundary
+		// between the two rulers is actually made of. It is offered here, on the
+		// existing loop, and the menu it is chosen from excludes whoever just
+		// failed, so no worker is ever handed back its own failure.
+		//
+		// In a build with no specialist the menu is empty, the condition below
+		// reads exactly as it always did, and not one extra call is made.
+		specialists := exec.MenuTextExcept(subharness)
 		attempts := 1
-		if !isReflex && escalatable {
+		if !isReflex && (escalatable || specialists != "") {
 			attempts = 2
 		}
+		// escalatedFrom remembers that this leaf reached its worker through a
+		// failure rather than through a choice. It is the one piece of evidence
+		// that says a boundary sits too high — "the generalist could not, this
+		// one could" — and it is worth nothing unless it survives into the
+		// profile record, which is where recalibration reads it.
+		escalatedFrom := ""
 		// One job is one cache lineage, exactly as one headless run is: the
 		// affinity key rides every leaf of the job so a prefix cache warmed
 		// by one worker serves its siblings.
@@ -763,6 +786,42 @@ func buildBrain(w *chatWindow, session string, opts brainOptions) (*chatBrain, e
 				attempted := task
 				attempted.Inputs = append(append([]exec.Input{}, inputs...),
 					previousAttemptInput(outcome, jobDir))
+				// Who takes the retry, asked once, of the same judge machinery
+				// that already reads failures. An empty menu never reaches here.
+				if chosen := judgeRetryWorker(ctx, settings, planClient, node,
+					attempted, outcome, err, specialists, workerModel); chosen != "" {
+					escalatedFrom = subharness
+					if escalatedFrom == "" {
+						escalatedFrom = exec.LinearSubharness
+					}
+					subharness = chosen
+					attempted.Subharness = chosen
+					// The row this function goes on to read for the profile
+					// key. Without it the specialist's leaf would be measured
+					// into the generalist's file — the one the generalist's
+					// ruler is rewritten from — and one coding pipeline's forty
+					// minutes would teach the planner that ordinary leaves are
+					// enormous.
+					node.Subharness = chosen
+					// Durable, because the promise has to outlive this process:
+					// a leaf whose retry is interrupted and claimed again must
+					// be claimed by the worker it was moved to, not by the one
+					// that already failed at it.
+					if _, changeErr := graph.SetNodeSubharness(node.ID, chosen,
+						"escalated from "+escalatedFrom+" after a failed attempt"); changeErr != nil {
+						log.Printf("note: could not journal the worker change for %s: %v", node.ID, changeErr)
+					}
+					if planNode != nil {
+						plans.markWorker(planNode, chosen)
+					}
+					// The budget shape belongs to the worker, not to the leaf:
+					// the generalist's fifteen-minute backstop applied to a
+					// coding pipeline is a guillotine at its first merge.
+					build.deadline = exec.SubharnessFor(chosen).Deadline(tokens)
+					watchdog = build.deadline + 2*time.Minute
+					worker = executorFor(chosen, build)
+					shape = chosen
+				}
 				task = attempted
 			}
 			runCtx := provider.WithCallShape(settings.ExecContext(ctx), provider.ClassExecLeaf, attempt, shape)
@@ -782,7 +841,7 @@ func buildBrain(w *chatWindow, session string, opts brainOptions) (*chatBrain, e
 		}
 		if planNode != nil && !mechanical {
 			// A join that cost nothing is not a measurement of any model.
-			plans.recordOutcome(planNode, outcome, err)
+			plans.recordOutcome(planNode, outcome, err, escalatedFrom)
 		}
 		if err == nil && outcome != nil && (outcome.Stop == exec.StopPaused || outcome.Stop == exec.StopCancelled) {
 			return resident.ExecResult{
@@ -834,7 +893,7 @@ func buildBrain(w *chatWindow, session string, opts brainOptions) (*chatBrain, e
 					})
 				} else {
 					guard.Go("chat/record-single-leaf", func() {
-						record, ok := recordSingleLeaf(settings, workerModel, node, outcome)
+						record, ok := recordSingleLeaf(settings, workerModel, node, outcome, escalatedFrom)
 						if ok {
 							recordProfileSurprise(graph, node.ID, record)
 						}
@@ -906,8 +965,9 @@ func buildBrain(w *chatWindow, session string, opts brainOptions) (*chatBrain, e
 			if remainder.Checked && remainder.Done {
 				outcome.Verdict = provider.VerdictVerifiedSuccess
 			} else {
-				spliced, _, replanErr := resident.ReplanOverrun(ctx, graph, node, outcome.Text, remainder.Remaining, absolute,
-					settings.DailyBudgetUSD, replanRemainder(settings, planClient, taskClient, plans, graph))
+				spliced, _, replanErr := resident.ReplanOverrunOn(ctx, graph, node, outcome.Text, remainder.Remaining, absolute,
+					settings.DailyBudgetUSD, remainder.Worker,
+					replanRemainder(settings, planClient, taskClient, plans, graph))
 				if replanErr == nil && spliced > 0 {
 					continuing = true
 					notes = append(notes, "["+continuationMessage(spliced)+"]")
@@ -1126,7 +1186,7 @@ func buildBrain(w *chatWindow, session string, opts brainOptions) (*chatBrain, e
 		outcome.Usage = spent
 		outcome.Turns = spentTurns
 		if planNode != nil {
-			plans.recordOutcome(planNode, outcome, nil)
+			plans.recordOutcome(planNode, outcome, nil, escalatedFrom)
 		}
 		if landed, prefix := plans.takeIfRoot(node.ID); landed != nil {
 			// The recalibration report reaches the thread, not a stdout the TUI
@@ -1159,7 +1219,7 @@ func buildBrain(w *chatWindow, session string, opts brainOptions) (*chatBrain, e
 				})
 			} else {
 				guard.Go("chat/record-single-leaf", func() {
-					record, ok := recordSingleLeaf(settings, workerModel, node, outcome)
+					record, ok := recordSingleLeaf(settings, workerModel, node, outcome, escalatedFrom)
 					if ok {
 						recordProfileSurprise(graph, node.ID, record)
 					}
@@ -3530,9 +3590,20 @@ func (j *jobPlans) lookup(nodeID string) (string, *plan.Graph, *plan.Node, strin
 
 // recordOutcome writes a leaf's measured ending onto its plan node — the same
 // fields, in the same shape, that the headless scheduler records.
-func (j *jobPlans) recordOutcome(node *plan.Node, outcome *exec.Outcome, err error) {
+// markWorker settles a plan node onto a different worker mid-flight, so the
+// measurement this node becomes is filed under whoever actually ran it. A leaf
+// escalated to a specialist and recorded against the generalist would teach the
+// generalist's ruler that ordinary leaves cost what a specialist costs.
+func (j *jobPlans) markWorker(node *plan.Node, subharness string) {
 	j.mu.Lock()
 	defer j.mu.Unlock()
+	node.Subharness = strings.TrimSpace(subharness)
+}
+
+func (j *jobPlans) recordOutcome(node *plan.Node, outcome *exec.Outcome, err error, escalatedFrom string) {
+	j.mu.Lock()
+	defer j.mu.Unlock()
+	node.EscalatedFrom = strings.TrimSpace(escalatedFrom)
 	if outcome != nil {
 		node.Turns = outcome.Turns
 		node.Tokens = outcome.Usage.PromptTokens + outcome.Usage.CompletionTokens
@@ -3541,6 +3612,7 @@ func (j *jobPlans) recordOutcome(node *plan.Node, outcome *exec.Outcome, err err
 		node.Verdict = outcome.Verdict
 		node.Artifacts = outcome.Artifacts
 		node.Result = outcome.Text
+		node.Calibration = append([]string(nil), outcome.Calibration...)
 	}
 	if err != nil || outcome == nil || strings.TrimSpace(node.Result) == "" {
 		node.State = plan.StateFailed
@@ -4341,6 +4413,142 @@ func spentCitations(graph *store.Store, baseID string) []string {
 	return spent
 }
 
+// ── who takes the next attempt ───────────────────────────────────────────────
+//
+// Two judgements in this file already read a leaf that did not get there: the
+// one that decides whether an exhausted leaf left work behind, and — from this
+// wave — the one that decides who retries a failed one. Both used to answer with
+// a stronger model or a continuation and nothing else, because a stronger model
+// was the only other place a leaf could go.
+//
+// The menu is injected into both rather than a third mechanism being built,
+// because there is no third question. "This failed; what now" already has a
+// judge; what changes is that the answer may name a different kind of worker.
+// And the menu is the registry's, so a build with only the generalist renders
+// nothing, no prompt gains a byte, and no call is made that was not made before.
+//
+// The headless scheduler's escalation (internal/exec/schedule.go's Escalations)
+// is deliberately left mechanical. Nothing judges there: a verdict that says
+// "a stronger model might fix this" puts the node back to pending and the
+// ordinary launch path picks it up, and there is no model in that loop to hand a
+// menu to. Adding one would be a second dispatch policy in the surface that has
+// no conversation to explain itself in — the two-surface covenant says every
+// worker is REACHABLE from both surfaces, which it is, not that every judgement
+// is made on both. Retries are judged where retries are judged: on the surface
+// with a head. A headless run reaches a specialist the way it always has, by the
+// planner choosing one at sizing time.
+
+// workerChoiceBrief renders the menu into a judgement that may name a worker,
+// or nothing at all when there is nothing to choose between.
+func workerChoiceBrief(menu string) string {
+	if strings.TrimSpace(menu) == "" {
+		return ""
+	}
+	return "\n\n" + menu + "\nReturn the choice as \"worker\":\"<name>\". " +
+		"Omit it, or leave it empty, for the default worker."
+}
+
+// judgeRetryWorkerPrompt asks whether the second attempt should go somewhere
+// different in kind, not merely somewhere stronger.
+//
+// The default answer is stated as the default and the specialist as the
+// exception, in the compiler's own words, because this is the same choice the
+// compiler makes and a leaf that reaches here has already been judged once. The
+// difference is the evidence: a failure is in front of this judge and was not in
+// front of that one. What must not follow from that evidence is "it failed, so
+// try something else" — most failures are answered by a stronger model doing the
+// same thing, and a judge that reads failure as a reason to change worker would
+// route every hard prose leaf into a coding pipeline.
+const judgeRetryWorkerPrompt = `A worker was given one assignment, worked on it, and did not finish it. The same assignment is about to be attempted once more.
+
+By default that second attempt goes to the same kind of worker, on a stronger model. You decide one thing only: whether the essence of this assignment is the thing a specialist below exists for, in which case the attempt goes to that specialist instead.
+
+The failure itself is not a reason to change the kind of worker. Most work that fails once is finished by the same kind of worker trying again with more capacity behind it. Change the kind only when the assignment's essence — what the work fundamentally is — matches a specialist's purpose, in which case the first attempt was on the wrong sort of worker from the beginning.
+
+Return exactly one JSON object, nothing else.`
+
+var judgeRetryWorkerSchema = json.RawMessage(`{
+  "type": "object",
+  "properties": {
+    "worker": {"type": "string"}
+  },
+  "required": ["worker"],
+  "additionalProperties": false
+}`)
+
+// judgeRetryWorker names the worker for one retry, or nothing for the default.
+//
+// Everything about it fails toward the behavior that existed before it did: no
+// menu means no call at all, an unparseable answer means the default worker, and
+// a name that reaches no registered worker means the default worker. The retry
+// happens either way — this decides who gets it, never whether there is one.
+func judgeRetryWorker(ctx context.Context, settings config.Config, client *liveClient,
+	node store.Node, task exec.Task, outcome *exec.Outcome, failure error,
+	menu, workerModel string) string {
+	if strings.TrimSpace(menu) == "" || client == nil {
+		return ""
+	}
+	var body strings.Builder
+	body.WriteString("The assignment:\n" + task.Brief)
+	if produced := strings.TrimSpace(outcome.Text); produced != "" {
+		body.WriteString("\n\nWhat the first attempt had produced when it stopped:\n" + boundedDelivery(produced))
+	}
+	if failure != nil {
+		body.WriteString("\n\nHow it ended: " + firstLine(failure.Error()))
+	} else {
+		body.WriteString("\n\nHow it ended: " + string(outcome.Verdict))
+	}
+	judgeCtx := settings.Context(router.WithAvoidModel(ctx, workerModel), "retry-worker")
+	judgeCtx = provider.WithCall(judgeCtx, provider.ClassPlanAudit)
+	judgeCtx = withSpendNode(judgeCtx, node.ID)
+	options := []ai.Option{ai.WithMaxTokens(200)}
+	if client.routed() {
+		options = append(options, ai.WithSchema(judgeRetryWorkerSchema))
+	}
+	response, err := client.CompleteWithMessages(judgeCtx, []ai.Message{
+		{Role: "system", Content: []ai.ContentPart{{Type: "text",
+			Text: judgeRetryWorkerPrompt + workerChoiceBrief(menu)}}},
+		{Role: "user", Content: []ai.ContentPart{{Type: "text", Text: body.String()}}},
+	}, options...)
+	if err != nil || response == nil {
+		provider.Report(judgeCtx, provider.VerdictProviderFailure)
+		return ""
+	}
+	chosen := decodeWorkerChoice(response.Text())
+	if chosen == "" {
+		// Not a failure: "the default worker" is the answer this judge gives
+		// most of the time and the one it is told to give when in doubt.
+		provider.Report(judgeCtx, provider.VerdictVerifiedSuccess)
+		return ""
+	}
+	provider.Report(judgeCtx, provider.VerdictVerifiedSuccess)
+	return chosen
+}
+
+// decodeWorkerChoice reads a worker out of a judgement's reply, keeping only a
+// name that reaches a worker this build can actually construct. It is the same
+// degradation head.Compiler.normalizeSubharness makes on the compile path, for
+// the same reason: a hallucinated worker costs a retry its specialist and
+// nothing else.
+func decodeWorkerChoice(text string) string {
+	text = strings.TrimSpace(text)
+	start, end := strings.Index(text, "{"), strings.LastIndex(text, "}")
+	if start < 0 || end <= start {
+		return ""
+	}
+	var reply struct {
+		Worker string `json:"worker"`
+	}
+	if json.Unmarshal([]byte(text[start:end+1]), &reply) != nil {
+		return ""
+	}
+	chosen := strings.TrimSpace(reply.Worker)
+	if !exec.KnownSubharness(chosen) {
+		return ""
+	}
+	return chosen
+}
+
 // judgeRemainderPrompt asks the one question the overrun path used to assume
 // an answer to. Running out of budget while landing a finished result is
 // common — the executor grants a landing reserve for exactly that — so
@@ -4370,7 +4578,26 @@ type remainderJudgment struct {
 	Done      bool
 	Remaining string
 	Checked   bool
+	// Worker is the specialist the same judge named for the work that is left,
+	// when it named one. Empty is the default worker and is the answer in every
+	// build without a specialist, because the question is never asked there.
+	Worker string
 }
+
+// judgeRemainderWorkerSchema is the remainder schema with the worker field.
+// Two constants rather than one built at runtime: a prompt's schema is part of
+// the prompt, and the baseline one has to be readable as the thing that has not
+// changed.
+var judgeRemainderWorkerSchema = json.RawMessage(`{
+  "type": "object",
+  "properties": {
+    "done": {"type": "boolean"},
+    "remaining": {"type": "string"},
+    "worker": {"type": "string"}
+  },
+  "required": ["done"],
+  "additionalProperties": false
+}`)
 
 // judgeRemainder decides whether an exhausted leaf actually left work behind.
 // Failures fail toward "not done" with Checked false: the continuation still
@@ -4378,16 +4605,28 @@ type remainderJudgment struct {
 // silently shipping genuinely cut-off work as finished.
 func judgeRemainder(ctx context.Context, settings config.Config, client *liveClient, graph *store.Store, node store.Node, produced, workerModel string) remainderJudgment {
 	body := "The assignment:\n" + node.Brief + "\n\nProduced before stopping:\n" + produced
+	// The same judgement, one question wider: what is left, and who should take
+	// it. The exclusion is the leaf's own worker — a continuation of work this
+	// worker ran out of resources on belongs with it by default and needs no
+	// naming, and the interesting answer is the other one.
+	// promisedWorker rather than leafSubharness: this only wants to KNOW who ran
+	// the leaf, and the reading that also speaks belongs to the dispatch path.
+	menu := exec.MenuTextExcept(promisedWorker(node))
 	judgeCtx := settings.Context(router.WithAvoidModel(ctx, workerModel), "remainder")
 	judgeCtx = provider.WithCall(judgeCtx, provider.ClassPlanAudit)
 	// Like the delivery gate, the judgment is part of what this leaf cost.
 	judgeCtx = withSpendNode(judgeCtx, node.ID)
 	options := []ai.Option{ai.WithMaxTokens(400)}
 	if client.routed() {
-		options = append(options, ai.WithSchema(judgeRemainderSchema))
+		schema := judgeRemainderSchema
+		if menu != "" {
+			schema = judgeRemainderWorkerSchema
+		}
+		options = append(options, ai.WithSchema(schema))
 	}
 	response, err := client.CompleteWithMessages(judgeCtx, []ai.Message{
-		{Role: "system", Content: []ai.ContentPart{{Type: "text", Text: judgeRemainderPrompt}}},
+		{Role: "system", Content: []ai.ContentPart{{Type: "text",
+			Text: judgeRemainderPrompt + workerChoiceBrief(menu)}}},
 		{Role: "user", Content: []ai.ContentPart{{Type: "text", Text: body}}},
 	}, options...)
 	if err != nil || response == nil {
@@ -4417,7 +4656,8 @@ func judgeRemainder(ctx context.Context, settings config.Config, client *liveCli
 		return remainderJudgment{}
 	}
 	provider.Report(judgeCtx, provider.VerdictVerifiedSuccess)
-	return remainderJudgment{Done: verdict.Done, Remaining: remaining, Checked: true}
+	return remainderJudgment{Done: verdict.Done, Remaining: remaining, Checked: true,
+		Worker: decodeWorkerChoice(text)}
 }
 
 // runLeafWithWatchdog is the scheduler's node watchdog, inline: the executor
@@ -4454,11 +4694,12 @@ func runLeafWithWatchdog(ctx context.Context, worker exec.Executor, task exec.Ta
 // be misfiled: it is the file the ruler is recalibrated from, so one coding
 // pipeline's forty minutes would teach the planner that ordinary leaves are
 // enormous and it would stop splitting anything.
-func recordSingleLeaf(settings config.Config, model string, node store.Node, outcome *exec.Outcome) (profile.Record, bool) {
+func recordSingleLeaf(settings config.Config, model string, node store.Node, outcome *exec.Outcome, escalatedFrom string) (profile.Record, bool) {
 	if strings.TrimSpace(model) == "" {
 		model = settings.Model
 	}
-	measured, err := profile.Load(settings.ProfileDir, model, profileSubharness(leafSubharness(node)))
+	worker := profileSubharness(leafSubharness(node))
+	measured, err := profile.Load(settings.ProfileDir, model, worker)
 	if err != nil {
 		return profile.Record{}, false
 	}
@@ -4466,15 +4707,25 @@ func recordSingleLeaf(settings config.Config, model string, node store.Node, out
 	if title == "" {
 		title = firstLine(node.Brief)
 	}
-	added := measured.Add(profile.Record{
+	record := profile.Record{
 		Title:   title,
 		Summary: firstLine(node.Brief),
 		Size:    profile.BucketDirect,
 		Turns:   outcome.Turns,
 		Tokens:  outcome.Usage.PromptTokens + outcome.Usage.CompletionTokens,
-		Stop:    string(outcome.Stop),
-		Verdict: outcome.Verdict,
-	})
+		// The cost was measured all along and thrown away here, which left every
+		// direct record priced at zero — and the self-knowledge line the compiler
+		// reads off these records has been quoting an average cost of $0.0000
+		// ever since. It is also the figure the boundary comparison below is
+		// made of, so a specialist could never be found to have undercut the
+		// generalist: both sides of the comparison were zero.
+		Cost:          outcome.Usage.Cost,
+		Stop:          string(outcome.Stop),
+		Verdict:       outcome.Verdict,
+		Calibration:   append([]string(nil), outcome.Calibration...),
+		EscalatedFrom: strings.TrimSpace(escalatedFrom),
+	}
+	added := measured.Add(withBoundaryEvidence(settings, model, worker, record))
 	if len(added) == 0 || measured.Save() != nil {
 		return profile.Record{}, false
 	}

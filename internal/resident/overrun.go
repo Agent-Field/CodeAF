@@ -96,7 +96,24 @@ func OverrunGoal(node store.Node, partial string, artifacts []string, gap string
 // Returns the spliced node count and the repair sink's id. DailyBudgetUSD zero
 // is unlimited; at the rail the durable question is posted and no splice lands.
 func ReplanOverrun(ctx context.Context, graph *store.Store, node store.Node, partial, gap string, artifacts []string, dailyBudgetUSD float64, planRemainder OverrunPlanFunc) (int, string, error) {
-	spliced, sink, _, err := replanOverrun(ctx, graph, node, partial, gap, artifacts, dailyBudgetUSD, "", planRemainder)
+	return ReplanOverrunOn(ctx, graph, node, partial, gap, artifacts, dailyBudgetUSD, "", planRemainder)
+}
+
+// ReplanOverrunOn is the same splice with the remaining work handed to a named
+// worker.
+//
+// The name comes from the judgement that decided there was a remainder at all —
+// the same call, one question wider — and it rides the subtree's provenance,
+// which is where every other whole-subtree choice already rides. Empty is the
+// default worker and is what every caller passed before this existed, so the
+// splice is unchanged for a build with nothing to choose between.
+//
+// The choice is deliberately not inherited from the exhausted node. A worker
+// that ran out of resources on a piece of work has said nothing about who
+// should finish it, and the graph's answer to a question nobody asked is the
+// baseline — which is what "degradation, never failure" means at a splice.
+func ReplanOverrunOn(ctx context.Context, graph *store.Store, node store.Node, partial, gap string, artifacts []string, dailyBudgetUSD float64, worker string, planRemainder OverrunPlanFunc) (int, string, error) {
+	spliced, sink, _, err := replanOverrun(ctx, graph, node, partial, gap, artifacts, dailyBudgetUSD, "", worker, planRemainder)
 	return spliced, sink, err
 }
 
@@ -104,7 +121,7 @@ func ReplanOverrun(ctx context.Context, graph *store.Store, node store.Node, par
 // repair is abandoned for good, unlike the rail's zero-splice pause, which is
 // waiting for consent. Deferred resumption needs the difference — a capped
 // repair must resolve rather than wait forever.
-func replanOverrun(ctx context.Context, graph *store.Store, node store.Node, partial, gap string, artifacts []string, dailyBudgetUSD float64, prefix string, planRemainder OverrunPlanFunc) (int, string, bool, error) {
+func replanOverrun(ctx context.Context, graph *store.Store, node store.Node, partial, gap string, artifacts []string, dailyBudgetUSD float64, prefix, worker string, planRemainder OverrunPlanFunc) (int, string, bool, error) {
 	var err error
 	if prefix == "" {
 		prefix, err = nextOverrunPrefix(graph, node.ID)
@@ -122,7 +139,8 @@ func replanOverrun(ctx context.Context, graph *store.Store, node store.Node, par
 			return 0, "", false, fmt.Errorf("replan overrun %s: check daily rail: %w", node.ID, err)
 		}
 		if rail.Reached {
-			deferred := store.DeferredOverrun{NodeID: node.ID, Partial: partial, Gap: gap, Artifacts: artifacts, Prefix: prefix}
+			deferred := store.DeferredOverrun{NodeID: node.ID, Partial: partial, Gap: gap,
+				Artifacts: artifacts, Prefix: prefix, Subharness: worker}
 			if err := graph.DeferOverrun(deferred); err != nil {
 				return 0, "", false, fmt.Errorf("replan overrun %s: defer at daily rail: %w", node.ID, err)
 			}
@@ -170,6 +188,10 @@ func replanOverrun(ctx context.Context, graph *store.Store, node store.Node, par
 		SessionID:   node.Provenance.SessionID,
 		Intent:      node.Provenance.Intent,
 		Attachments: append([]string(nil), node.Provenance.Attachments...),
+		// The worker the remainder was judged to belong to, journaled at the
+		// splice exactly as the compiler's own choice is — once, durably, on the
+		// subtree, so every leaf under it is claimed by what it was promised.
+		Subharness: strings.TrimSpace(worker),
 	}
 	if err := graph.Splice(parent, subtree, provenance); err != nil {
 		return 0, "", false, fmt.Errorf("replan overrun %s: %w", node.ID, err)
@@ -264,7 +286,7 @@ func ResumeDeferredOverruns(ctx context.Context, graph *store.Store, dailyBudget
 			continue
 		}
 		spliced, _, capped, err := replanOverrun(ctx, graph, node, deferred.Partial, deferred.Gap, deferred.Artifacts,
-			dailyBudgetUSD, deferred.Prefix, planRemainder)
+			dailyBudgetUSD, deferred.Prefix, deferred.Subharness, planRemainder)
 		if err != nil {
 			return resumed, err
 		}

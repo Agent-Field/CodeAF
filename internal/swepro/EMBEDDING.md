@@ -108,6 +108,29 @@ has to reproduce them on anything it pulls across:
 | `.git` | The import exports a ref; provenance is `UPSTREAM`. |
 | `AGENTFIELD.md`, `DOGFOOD.md`, `FIX-CANDIDATES.md`, `OBSERVER-WIRING.md` | Stay upstream. `BUGS-KEPT.md`, `ENGINE-DESIGN.md`, `EVENTS-CONTRACT.md` came across. |
 
+### D5 — `codeaf/pipeline.go`: two stage events carry the numbers that grade the run
+
+*Wave 4, the learning wave.* The embedding calibrates the boundary between the
+generalist and this worker from what the engine already decided, and two of the
+engine's own judgements were being made and then dropped on the floor:
+
+- `root-cut` (`decompose` and `selected`) now carries `data.band` — the
+  `sizeband` estimate the cut was made from. A `selected` root cut on a small
+  band is the engine saying, in its own voice, that the whole goal fits one
+  leaf; that is the clearest available evidence that the work may have been
+  too small for this worker.
+- `audit` (the verdict event) now carries `data.max_cycles` beside `cycle`. A
+  cycle number alone says nothing about strain. The same number next to its
+  ceiling is the difference between a comfortable run and one that used every
+  cycle it had.
+
+Both are additive keys in an existing event's `data` map, so the event contract
+in `EVENTS-CONTRACT.md` still holds for every consumer that does not read them;
+`internal/exec/swe.go` turns them into `Outcome.Calibration` notes.
+
+*Cherry-pick note:* upstream passes `nil` and `{"cycle": cycle}`. A harvest
+touching those three lines must re-apply the maps.
+
 **`codeaf/serve.go` was NOT dropped.** swe-pro-go pinned
 `agentfield/sdk/go` at `v0.0.0-20260724201800-7ee31640a2f4` and aforge at
 `v0.0.0-20260801225427-e6587ade0886`; MVS picks aforge's. serve.go — the only

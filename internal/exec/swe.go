@@ -350,8 +350,76 @@ func (s *SWE) settle(
 		runErr = fmt.Errorf("node %d: the coding pipeline crashed: %s", task.NodeID, reason)
 	}
 	outcome.Text = state.text(outcome.Stop, terminal)
+	s.calibrate(outcome, state.fit, terminal.Status, time.Since(started))
 	return s.land(ctx, task, outcome, started, before), runErr
 }
+
+// calibrate is this worker saying, in its own words, how the job it just did sat
+// against what it is built for.
+//
+// It is written here and nowhere else because the evidence is here and nowhere
+// else: the engine's root-cut band, its intake classification and its audit
+// ceiling are facts the pipeline produced on the way past, and no reader further
+// down the graph could reconstruct any of them from a cost and a verdict. The
+// sentences go into the profile record and from there into the recalibration
+// call that rewrites this worker's three anchor examples — which is the whole
+// mechanism by which the boundary between the generalist and this worker moves
+// on measurement instead of on the paragraph somebody wrote before it had ever
+// run.
+//
+// Every note is about this worker's own envelope. None of them names another
+// worker or asks for one: choosing is the compiler's job and the judge's, and a
+// note that made the choice would be an executor deciding what reaches it.
+func (s *SWE) calibrate(outcome *Outcome, fit sweFit, status string, elapsed time.Duration) {
+	// Under the floor. The engine judged the whole goal small enough to run as
+	// one coder leaf with no plan at all, or its intake read the issue as
+	// trivial — either way the planning and auditing this worker exists for was
+	// overhead on this job.
+	switch {
+	case fit.rootCut:
+		band := fit.band
+		if band == "" {
+			band = "unstated"
+		}
+		outcome.Calibrate("the engine judged this goal small enough to run whole, with no plan at all " +
+			"(root-cut: " + band + ") — a lighter worker may have sufficed")
+	case fit.class == "trivial":
+		outcome.Calibrate("the engine's intake read this issue as trivial — a lighter worker may have sufficed")
+	}
+
+	// Far under budget on both clocks. One of the two alone is ordinary — a
+	// cheap run can still take an hour, and a fast one can still cost — so the
+	// note is spent only when the job finished well inside both.
+	if s.maxCost > 0 && s.deadline > 0 && outcome.Usage.Cost > 0 &&
+		outcome.Usage.Cost < sweUnderBudgetShare*s.maxCost &&
+		elapsed < time.Duration(float64(s.deadline)*sweUnderBudgetShare) {
+		outcome.Calibrate(fmt.Sprintf(
+			"it finished on $%.4f of a $%s ceiling in %s of %s — far inside this worker's envelope; "+
+				"a lighter worker may have sufficed",
+			outcome.Usage.Cost, trimFloat(s.maxCost),
+			elapsed.Round(time.Second), s.deadline.Round(time.Second)))
+	}
+
+	// The other end. A run that spent its ceiling, or an audit loop that used
+	// every cycle it had, is this worker at full stretch — and a ruler rewritten
+	// without that half would learn only that the boundary is too high.
+	switch status {
+	case "budget-exhausted", "budget-exhausted-retries":
+		outcome.Calibrate("it spent its whole cost ceiling and was still working — " +
+			"this sat at the top of this worker's envelope")
+	}
+	if fit.auditMax > 0 && fit.auditCycle >= fit.auditMax {
+		outcome.Calibrate(fmt.Sprintf(
+			"the audit needed every one of its %d cycles — this sat at the top of this worker's envelope",
+			fit.auditMax))
+	}
+}
+
+// sweUnderBudgetShare is how little of a ceiling counts as "far inside". A fifth
+// is deliberately generous in the safe direction: a run that used a quarter of
+// its money and half its clock is an ordinary comfortable run, and a note that
+// fired on it would push the ruler down on evidence that says nothing.
+const sweUnderBudgetShare = 0.2
 
 // land collects what the leaf left behind and grades it, exactly as linear.land
 // does. verdictFor is shared deliberately: a verdict this executor did not set
@@ -767,6 +835,26 @@ type sweRun struct {
 	// polled throttles the between-lines poll: a stream can deliver a thousand
 	// deltas a second and a store query per delta is a store query too many.
 	polled time.Time
+
+	// fit is what the engine said about the size of the job it was handed, kept
+	// as it streams past because the sentences that use it are written at the
+	// end. None of it changes what runs — it is read once, in settle, and turned
+	// into prose for the ruler that decides what reaches this worker next time.
+	fit sweFit
+}
+
+// sweFit is the engine's own sizing judgements, harvested from the stream.
+type sweFit struct {
+	// rootCut is the strongest signal there is: the engine looked at the whole
+	// goal and decided it was one leaf, no decomposition at all.
+	rootCut bool
+	// band is the sizing estimate the cut was made from ("xs", "s", "m", …).
+	band string
+	// class is the intake classifier's reading: trivial, focused or vague.
+	class string
+	// auditCycle and auditMax are the last audit verdict's position against its
+	// own ceiling. Equal means the audit loop used everything it had.
+	auditCycle, auditMax int
 }
 
 type sweTokens struct {
@@ -813,11 +901,40 @@ func (r *sweRun) stage(event sweEvent) {
 	if name == "" {
 		name = event.Type
 	}
+	r.noteFit(event)
 	r.record(name + " " + event.Status)
 	done, latest := sweLatest(event)
 	r.task.progress(swePhase(name), done, 0, latest)
 	if milestone := sweMilestone(event); milestone != "" && r.task.Share != nil {
 		_ = r.task.Share(milestone)
+	}
+}
+
+// noteFit collects the engine's own judgements about the size of this job as
+// they go past. It reads three stages and changes nothing: the pipeline had
+// already decided all of this to run the job, and the only new thing here is
+// that the decisions survive the run instead of scrolling away in the trace.
+func (r *sweRun) noteFit(event sweEvent) {
+	switch event.Stage {
+	case "root-cut":
+		if band, ok := event.Data["band"].(string); ok {
+			r.fit.band = strings.TrimSpace(band)
+		}
+		// "selected" is the arm where the engine ran the goal as a single coder
+		// leaf rather than planning it into a DAG.
+		r.fit.rootCut = event.Status == "selected"
+	case "classifier":
+		switch event.Status {
+		case "trivial", "focused", "vague":
+			r.fit.class = event.Status
+		}
+	case "audit":
+		if cycle := event.count("cycle"); cycle > 0 {
+			r.fit.auditCycle = cycle
+		}
+		if ceiling := event.count("max_cycles"); ceiling > 0 {
+			r.fit.auditMax = ceiling
+		}
 	}
 }
 
