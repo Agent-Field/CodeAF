@@ -915,6 +915,12 @@ func (h *Head) recentThread(sessionID string, beforeSeq int64) ([]store.Message,
 		return copyThread(fold.window), nil
 	}
 
+	// The fold is dropped for the duration of the work and put back only when
+	// the work finished. Folding appends to the kept windows and a cut rewrites
+	// one of them in place, so a read that fails halfway leaves state that no
+	// longer matches the bound recorded beside it — and the cheapest correct
+	// answer to that is to have no fold rather than a wrong one.
+	h.fold = nil
 	cursor := fold.folded - 1
 	if cursor < 0 {
 		cursor = 0
