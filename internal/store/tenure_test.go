@@ -369,3 +369,35 @@ func messagesContain(messages []Message, body string) bool {
 	}
 	return false
 }
+
+// The reconciler re-derives charter outcomes twice a second, and assessing one
+// firing costs a node read, a walk up the parent chain and two unindexed
+// json_extract queries. Neither a folded firing nor one below the caller's
+// watermark can still be undecided, so neither should reach that price.
+func TestCharterFiredNodesDropsSettledFirings(t *testing.T) {
+	graph := openTestStore(t, filepath.Join(t.TempDir(), "fired-scan.db"))
+	charter := mustTestCharter(t, "fired-scan", CharterActive, CharterRails{
+		PerFiringBudgetUSD: 0.20, MaxFiringsPerDay: 3,
+	})
+	if err := graph.CreateCharter(charter); err != nil {
+		t.Fatal(err)
+	}
+	completeApprovedFiring(t, graph, charter.ID, "scan-1", 3)
+
+	fired, err := graph.CharterFiredNodes(0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(fired) != 1 || fired[0].ID != "scan-1" {
+		t.Fatalf("fired nodes = %+v", fired)
+	}
+	if above, err := graph.CharterFiredNodes(fired[0].CreatedSeq); err != nil || len(above) != 0 {
+		t.Fatalf("watermarked scan = %+v err=%v", above, err)
+	}
+	if err := graph.Fold("scan-1", "verified green", nil); err != nil {
+		t.Fatal(err)
+	}
+	if folded, err := graph.CharterFiredNodes(0); err != nil || len(folded) != 0 {
+		t.Fatalf("folded firing still scanned = %+v err=%v", folded, err)
+	}
+}

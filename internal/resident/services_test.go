@@ -101,6 +101,8 @@ func TestServiceSupervisorHealthOKAndSuccessfulRestart(t *testing.T) {
 	service := residentServiceFixture(t, graph, "svc", "preview", "leaf", 12, true)
 	runtime := &fakeServiceRuntime{}
 	supervisor := testSupervisor(graph, runtime)
+	clock := time.Date(2026, 8, 6, 12, 0, 0, 0, time.UTC)
+	supervisor.now = func() time.Time { return clock }
 	if err := supervisor.Tick(context.Background()); err != nil {
 		t.Fatal(err)
 	}
@@ -109,6 +111,9 @@ func TestServiceSupervisorHealthOKAndSuccessfulRestart(t *testing.T) {
 		t.Fatalf("healthy service = %+v starts=%d", got, runtime.starts)
 	}
 	runtime.healthErr = errors.New("down")
+	// The supervisor probes on its own interval now, so the second look has to
+	// be a later moment rather than merely a later call.
+	clock = clock.Add(serviceHealthInterval)
 	if err := supervisor.Tick(context.Background()); err != nil {
 		t.Fatal(err)
 	}
@@ -231,5 +236,46 @@ func TestServiceStopAndStartupReadoption(t *testing.T) {
 	events, _ := stopGraph.Events(0, 100)
 	if events[len(events)-1].Kind != store.EventServiceStopped {
 		t.Fatalf("last event = %s, want service_stopped", events[len(events)-1].Kind)
+	}
+}
+
+// TestChangeGateSleepsWhileAServiceIsSupervised is the regression for the
+// finding that adopting a service disarmed the resident's change gate: the gate
+// named "now" as the supervision deadline, so a machine with one dev server on
+// it re-derived the whole graph twice a second for as long as that server lived.
+func TestChangeGateSleepsWhileAServiceIsSupervised(t *testing.T) {
+	graph := residentTestStore(t, "service-change-gate.db")
+	residentServiceFixture(t, graph, "svc", "dev-server", "leaf", 21, false)
+	clock := time.Date(2026, 8, 6, 12, 0, 0, 0, time.UTC)
+	reconciler := New(graph, nil, nil)
+	reconciler.now = func() time.Time { return clock }
+	supervisor := testSupervisor(graph, &fakeServiceRuntime{})
+	supervisor.now = reconciler.now
+	reconciler.services = supervisor
+
+	// Two passes prime the gate: the first records the watermark, the second
+	// finds it unmoved and derives the deadlines.
+	for pass := 0; pass < 4; pass++ {
+		if err := reconciler.Tick(context.Background()); err != nil {
+			t.Fatal(err)
+		}
+	}
+	quiet, err := reconciler.quietTickLocked()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !quiet {
+		t.Fatalf("a supervised service pinned the change gate open: deadline=%s now=%s",
+			reconciler.gateDeadline, clock)
+	}
+
+	// And the gate still wakes for the probe rather than sleeping past it.
+	clock = clock.Add(serviceHealthInterval)
+	quiet, err = reconciler.quietTickLocked()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if quiet {
+		t.Fatal("the change gate slept through a service health check")
 	}
 }
