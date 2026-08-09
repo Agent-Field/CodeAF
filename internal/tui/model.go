@@ -592,6 +592,11 @@ type Model struct {
 	chatBlocksGen     uint64
 	chatBlocksValid   bool
 
+	// graphPaneStale and selfPaneStale remember a relayout that ran while the
+	// pane was off screen. The frame that first shows the pane builds it.
+	graphPaneStale bool
+	selfPaneStale  bool
+
 	// chatMessageRows maps rendered chat lines to the message seq they
 	// belong to, so clicking a collapsed deliverable opens it in place.
 	chatMessageRows []chatMessageRow
@@ -2349,8 +2354,21 @@ func (m *Model) setSize(width, height int) {
 	m.self.Height = max(1, mainHeight)
 	m.sizeNodeViewports()
 	m.refreshChat()
-	m.refreshGraph()
-	m.refreshSelf()
+	// A relayout that renders into panes nobody can see is a tree and an
+	// employee file built for the wastebasket — and the relayout runs on every
+	// poll that moves the journal. Only the animation bookkeeping stays
+	// unconditional: the collapsed rail's spinner lives in the activity bar.
+	if m.graphContentVisible() {
+		m.refreshGraph()
+	} else {
+		m.graphPaneStale = true
+		m.noteGraphAnimation()
+	}
+	if m.selfVisible() {
+		m.refreshSelf()
+	} else {
+		m.selfPaneStale = true
+	}
 	if m.autoScroll {
 		m.chat.GotoBottom()
 	}
@@ -2391,6 +2409,7 @@ func (m *Model) noteGraphAnimation() {
 }
 
 func (m *Model) refreshGraphContent() {
+	m.graphPaneStale = false
 	offset := m.graph.YOffset
 	if m.serviceCardID != "" {
 		m.graphRows = nil

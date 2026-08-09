@@ -283,6 +283,7 @@ func startOfLocalDay(now time.Time) time.Time {
 }
 
 func (m *Model) refreshSelf() {
+	m.selfPaneStale = false
 	offset := m.self.YOffset
 	m.self.SetContent(m.renderSelfContent(max(1, m.self.Width)))
 	m.self.SetYOffset(offset)

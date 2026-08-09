@@ -107,6 +107,15 @@ var (
 // View composes the complete frame once, avoiding terminal-clearing redraws.
 // The frame is open text — hierarchy comes from ink and whitespace, not boxes.
 func (m *Model) View() string {
+	// A pane the relayout skipped while it was off screen is built here, at the
+	// one moment it can be read. Nothing else opens a place, so this is a
+	// comparison per frame and a build per arrival.
+	if m.graphPaneStale && m.graphContentVisible() {
+		m.refreshGraphContent()
+	}
+	if m.selfPaneStale && m.selfVisible() {
+		m.refreshSelf()
+	}
 	// One frame, one dock. Bounds tracking and the bar itself both need it, and
 	// rendering it twice to throw one away is a card render per frame.
 	m.invalidateDock()
