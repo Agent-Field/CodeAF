@@ -1,0 +1,26 @@
+The blackboard for the review system. Two surfaces:
+
+1. `.review/events.log` — append-only JSONL. The ONE structured surface; code
+   branches on `type` and `verdict`. Every dynamic spawn or finding must land
+   an event with a `cause` field for explainability/replayability.
+2. `.review/board.md` — free-text shared notes (hypotheses, observations across
+   lenses). Plain markdown; consumed by other agents.
+
+Operations (one per call, select via `op`):
+
+- `op: "post-event"` — append an event to events.log.
+  Required: `eventType` (one of finding-confirmed / finding-refuted /
+  finding-inconclusive / hypothesis-posted / lens-saturated / gap-detected /
+  anatomy-revised), `cause` (short string).
+  Type-specific fields go in `fields` (object). Examples:
+    - finding-confirmed: {findingID, lens, file, line?, severity, confidence}
+    - finding-refuted: {findingID, lens, reason}
+    - hypothesis-posted: {lens, file?, claim}
+    - lens-saturated: {lens, candidateCount, confirmedCount}
+- `op: "list-events"` — read events.log. Optional filters: `eventType`, `lens`.
+- `op: "post-hypothesis"` — append a hypothesis block to board.md.
+  Required: `lens`, `claim`. Optional: `file`.
+- `op: "read-board"` — return the current board.md contents.
+
+The blackboard does NOT write proofs, candidates, or final report — those are
+plain markdown files agents write directly with the standard `write` tool.
