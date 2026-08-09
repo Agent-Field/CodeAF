@@ -331,7 +331,26 @@ func (m *Model) scrollSettings(delta int) {
 // settingsContentLines renders the whole sheet and reports which line each
 // selectable row landed on, so scrolling can keep the selection in view and a
 // click can find the row under the pointer.
+//
+// The sheet is laid out once per event rather than once per reader of it: the
+// wheel asks how far down the sheet goes and then the frame draws it, and both
+// were rendering every row of it. Everything the layout reads — the selection,
+// the row being edited, the error under it, the values themselves — changes
+// only in response to a message, and the arrival of a message is what drops
+// this. An open editor is never kept: its cursor is part of the bytes.
 func (m *Model) settingsContentLines(width int) ([]string, []int) {
+	if m.settingsLinesOK && m.settingsLinesFor == width {
+		return m.settingsLines, m.settingsRowLines
+	}
+	lines, rowLines := m.layOutSettings(width)
+	if !m.settingsEditing {
+		m.settingsLines, m.settingsRowLines = lines, rowLines
+		m.settingsLinesOK, m.settingsLinesFor = true, width
+	}
+	return lines, rowLines
+}
+
+func (m *Model) layOutSettings(width int) ([]string, []int) {
 	lines := make([]string, 0, 48)
 	rowLines := make([]int, 0, 24)
 	labelWidth := min(settingsLabelWidth, max(12, width/3))

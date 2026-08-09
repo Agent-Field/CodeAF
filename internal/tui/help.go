@@ -2,6 +2,7 @@ package tui
 
 import (
 	"strings"
+	"sync"
 
 	"github.com/charmbracelet/lipgloss"
 
@@ -21,7 +22,16 @@ type helpCategory struct {
 // helpCategories is deliberately generated from the same slashCommands table
 // executeSlash dispatches. Adding a routed slash command therefore adds it to
 // help in the same edit; there is no second command list to remember.
-func helpCategories() []helpCategory {
+//
+// The catalog is authored text and the tables are constants, so the whole list
+// is built once for the life of the process rather than once per frame the
+// guide is open — reparsing the pitch catalog to scroll it by one line was
+// work nobody had asked for.
+func helpCategories() []helpCategory { return authoredHelpCategories() }
+
+var authoredHelpCategories = sync.OnceValue(buildHelpCategories)
+
+func buildHelpCategories() []helpCategory {
 	slashRows := make([]helpRow, 0, len(slashCommands))
 	for _, command := range slashCommands {
 		slashRows = append(slashRows, helpRow{key: "/" + command.name, meaning: command.description})
@@ -238,9 +248,25 @@ func (m *Model) overlayHelp(frame string) string {
 	return overlayBlock(frame, panel, x, y, m.width)
 }
 
+// helpContentLines is the whole guide laid out, of which the overlay shows one
+// window. Scrolling it used to lay the whole thing out twice — once to ask how
+// far down it goes, once to draw the window — and every frame it was open laid
+// it out again. It depends on exactly two things, the column it is set in and
+// whether the frame is wide enough to pair the categories up, so it is kept
+// until one of those moves.
 func (m *Model) helpContentLines(width int) []string {
+	narrow := m.width < 100
+	if m.helpLines != nil && m.helpLinesWidth == width && m.helpLinesNarrow == narrow {
+		return m.helpLines
+	}
+	m.helpLines = m.layOutHelp(width, narrow)
+	m.helpLinesWidth, m.helpLinesNarrow = width, narrow
+	return m.helpLines
+}
+
+func (m *Model) layOutHelp(width int, narrow bool) []string {
 	categories := helpCategories()
-	if m.width < 100 {
+	if narrow {
 		keyWidth := helpKeyWidth(categories, width)
 		lines := make([]string, 0)
 		for index, category := range categories {

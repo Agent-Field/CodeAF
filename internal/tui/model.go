@@ -626,6 +626,18 @@ type Model struct {
 	workspaceLinks map[string]workspaceLink
 	workspaceGen   uint64
 
+	// The two modal documents are laid out whole and shown a window at a time,
+	// so each is kept beside the shape it was laid out for. The settings sheet
+	// is not kept while a row is being edited: the cursor in the field is part
+	// of its bytes and it blinks.
+	helpLines        []string
+	helpLinesWidth   int
+	helpLinesNarrow  bool
+	settingsLines    []string
+	settingsRowLines []int
+	settingsLinesOK  bool
+	settingsLinesFor int
+
 	// blockBuilds counts the thread blocks this session has had to assemble.
 	// It is the one number that says whether the caches above are doing their
 	// work, and the render-reuse tests read it.
@@ -861,6 +873,10 @@ func (m *Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 	default:
 		m.chatBlocksValid = false
 	}
+	// The settings sheet is laid out for the state this message finds, and
+	// every hand on it — the selection, the editor, the values behind the
+	// rows — moves only because a message arrived.
+	m.settingsLinesOK = false
 	switch message := message.(type) {
 	case tea.WindowSizeMsg:
 		m.setSize(message.Width, message.Height)
@@ -2415,6 +2431,7 @@ func (m *Model) activityBarVisible() bool {
 
 func (m *Model) setSize(width, height int) {
 	m.invalidateDock()
+	m.settingsLinesOK = false
 	m.width = max(20, width)
 	m.height = max(8, height)
 	m.horizontal = m.width >= railAtWidth
