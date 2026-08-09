@@ -212,6 +212,61 @@ func TestTheFirstReplyDoesNotTakeTheSecondTurnsWait(t *testing.T) {
 	}
 }
 
+// A second turn typed before the first is answered is owed an answer too, and
+// the one dot said nothing about that. The count does, quietly, and only while
+// there is more than one.
+func TestThePulseSaysHowManyTurnsAreOwed(t *testing.T) {
+	model := New(&fakeBackend{}, "owed")
+	model.setSize(100, 30)
+	_, _ = model.Update(postResultMsg{message: store.Message{
+		Seq: 4, SessionID: "owed", Role: store.RoleUser, Body: "how are the totals?",
+	}})
+	if line := ansi.Strip(model.renderAwaitingReply(100)); strings.Contains(line, "1") {
+		t.Fatalf("one owed turn counted itself: %q", line)
+	}
+	_, _ = model.Update(postResultMsg{message: store.Message{
+		Seq: 5, SessionID: "owed", Role: store.RoleUser, Body: "actually, this quarter only",
+	}})
+	line := ansi.Strip(model.renderAwaitingReply(100))
+	if !strings.Contains(line, "aforge") || !strings.Contains(line, "· 2") {
+		t.Fatalf("the pulse does not say two turns are owed: %q", line)
+	}
+	frame := model.View()
+	if !strings.Contains(ansi.Strip(frame), "· 2") {
+		t.Fatalf("the count never reached the frame:\n%s", ansi.Strip(frame))
+	}
+	assertFitsWidth(t, frame, 100, "presence")
+}
+
+// The head folds messages typed in one breath into one turn and answers them
+// once, saying which rows the answer covers. Every wait it covers ends with it —
+// otherwise the window waits forever for a reply that was never coming.
+func TestAFoldedReplySettlesEveryTurnItAnswers(t *testing.T) {
+	model := New(&fakeBackend{}, "folded")
+	model.setSize(100, 30)
+	for _, turn := range []store.Message{
+		{Seq: 4, SessionID: "folded", Role: store.RoleUser, Body: "how are the totals?"},
+		{Seq: 5, SessionID: "folded", Role: store.RoleUser, Body: "actually, this quarter only"},
+	} {
+		_, _ = model.Update(postResultMsg{message: turn})
+	}
+	model.applyPoll(pollResultMsg{sessionID: "folded", messages: []store.Message{
+		{Seq: 6, SessionID: "folded", Role: store.RoleAgent, Answers: 5, Body: "This quarter: 12,004."},
+	}})
+	if model.awaitingSeq != 0 || len(model.awaitingTurns) != 0 {
+		t.Fatalf("the folded reply left %d turns waiting on %d",
+			len(model.awaitingTurns), model.awaitingSeq)
+	}
+	// A turn typed after that answer is still its own wait.
+	_, _ = model.Update(postResultMsg{message: store.Message{
+		Seq: 7, SessionID: "folded", Role: store.RoleUser, Body: "and the headcount?",
+	}})
+	if model.awaitingSeq != 7 || len(model.awaitingTurns) != 1 {
+		t.Fatalf("a turn typed after the folded reply waits on %d with %d owed, want 7 and 1",
+			model.awaitingSeq, len(model.awaitingTurns))
+	}
+}
+
 // The one-shot: pressing enter arms the wait through the real submit path, not
 // only through a synthesized post result.
 func TestSubmittingATurnArmsTheWait(t *testing.T) {
