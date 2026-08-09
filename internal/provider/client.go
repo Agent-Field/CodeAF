@@ -222,21 +222,19 @@ func (c *Client) completeWithMessagesStreaming(
 	response := &ai.Response{Model: request.Model}
 	var content strings.Builder
 	finishReason := ""
-	// The decoder is the SDK's, and its accumulation is quadratic in the length
-	// of a single SSE message: every Decode copies the whole undelivered buffer
-	// to a string and back. Ordinary token deltas are small enough that this
-	// never shows, but one multi-megabyte message — a reasoning block delivered
-	// whole — is re-copied once per 8 KB read. It is not ours to fix here and
-	// forking the SDK for it would cost more than it saves; the note is so the
-	// next person measuring a slow stream looks in the right module.
+	// The decoder is ours rather than the SDK's, and sse.go says why: the SDK's
+	// accumulation is quadratic in the length of a single message, which costs
+	// about a gigabyte of copying to deliver one four-megabyte reasoning block.
+	// It decodes the same framing to the same chunks — that equivalence is the
+	// whole of its test — so the only difference here is the copying.
 	//
-	// What *is* ours is the loop below, and it is deliberately trivial: the
-	// observer is called synchronously and in order, so it must not work. The
-	// one live observer (chat's head stream) does nothing but translate the
-	// event and hand it to a buffered channel with a ctx escape, which is the
-	// contract to keep — anything heavier would be paid per token, in the read
-	// loop, against the connection's idle watchdog.
-	decoder := ai.NewSSEDecoder(httpResponse.Body)
+	// The loop below is deliberately trivial: the observer is called
+	// synchronously and in order, so it must not work. The one live observer
+	// (chat's head stream) does nothing but translate the event and hand it to
+	// a buffered channel with a ctx escape, which is the contract to keep —
+	// anything heavier would be paid per token, in the read loop, against the
+	// connection's idle watchdog.
+	decoder := newSSEDecoder(httpResponse.Body)
 	for {
 		chunk, decodeErr := decoder.Decode()
 		if decodeErr != nil {
@@ -329,7 +327,7 @@ func (c *Client) StreamComplete(ctx context.Context, prompt string, options ...a
 			return
 		}
 
-		decoder := ai.NewSSEDecoder(httpResponse.Body)
+		decoder := newSSEDecoder(httpResponse.Body)
 		for {
 			chunk, err := decoder.Decode()
 			if err != nil {
