@@ -260,6 +260,14 @@ type Provenance struct {
 	// current work model serves, as always. It is provenance rather than
 	// configuration: the leaf that ran is inseparable from the model asked for.
 	WorkModel string `json:"work_model,omitempty"`
+	// PlanModel is the model that actually structured this job, recorded only
+	// when it was not the model the job's work runs on. Empty — which is nearly
+	// every job — means the plan slot followed the work slot, the default the
+	// whole product is built around, and a surface that shows it says nothing.
+	// It is provenance for the same reason WorkModel is: a graph's shape is
+	// inseparable from the model that drew it, and a slot moved an hour later
+	// must not be able to rewrite the answer to "who planned this".
+	PlanModel string `json:"plan_model,omitempty"`
 	// Craft names the learned workflow this subtree compiled from, as
 	// "name@commit". Empty is ordinary planned work. Every node of a craft run
 	// carries it: survival is measured per workflow version, so the version a
@@ -420,6 +428,7 @@ CREATE TABLE IF NOT EXISTS nodes (
 	retry_of       TEXT NOT NULL DEFAULT '',
 	service_intent INTEGER NOT NULL DEFAULT 0 CHECK (service_intent IN (0, 1)),
 	work_model     TEXT NOT NULL DEFAULT '',
+	plan_model     TEXT NOT NULL DEFAULT '',
 	craft          TEXT NOT NULL DEFAULT '',
 	subharness     TEXT NOT NULL DEFAULT '',
 	splice_subharness TEXT NOT NULL DEFAULT '',

@@ -226,7 +226,13 @@ type Reconciler struct {
 	// job. It exists for measurement: comparing two workers on the same corpus
 	// means taking the choice away from the model that would otherwise vary it.
 	forcedSubharness string
-	dailyBudgetUSD   float64
+	// modelsInForce answers, at the moment a job is admitted, which model would
+	// structure it and which would work it if the job named neither. It is a
+	// question only the surface can answer — the slots live there — and it is
+	// asked here because this is where the answer stops being configuration and
+	// becomes provenance.
+	modelsInForce  func() (plan, work string)
+	dailyBudgetUSD float64
 	practiceEnabled  bool
 	practiceBudget   float64
 	practiceIdle     time.Duration
@@ -343,6 +349,36 @@ func (r *Reconciler) WithOneShotErrands() *Reconciler {
 func (r *Reconciler) WithSubharness(subharness string) *Reconciler {
 	r.forcedSubharness = strings.TrimSpace(subharness)
 	return r
+}
+
+// WithModelsInForce teaches the resident the surface's two model slots, read at
+// splice time: the one that structures and the one that works. Without it a job
+// records nothing about who planned it, which is exactly what every embedding
+// path with no slots to speak of should record.
+func (r *Reconciler) WithModelsInForce(models func() (plan, work string)) *Reconciler {
+	r.modelsInForce = models
+	return r
+}
+
+// splitPlanModel is the durable answer to "who structured this job", and it is
+// deliberately silent in the ordinary case. The plan slot follows the work slot
+// by default, so recording the same name twice would be a fact about nothing —
+// and a surface reading it back would announce a split that never happened. The
+// model the user pinned for the work outranks the slot, because that is the
+// model this job's leaves will actually run on.
+func (r *Reconciler) splitPlanModel(pinnedWork string) string {
+	if r == nil || r.modelsInForce == nil {
+		return ""
+	}
+	plan, work := r.modelsInForce()
+	plan = strings.TrimSpace(plan)
+	if pinned := strings.TrimSpace(pinnedWork); pinned != "" {
+		work = pinned
+	}
+	if plan == "" || strings.EqualFold(plan, strings.TrimSpace(work)) {
+		return ""
+	}
+	return plan
 }
 
 // chosenSubharness is the one place the two sources of the choice meet.
@@ -1165,6 +1201,7 @@ func (r *Reconciler) splice(ctx context.Context, command store.Command) (command
 		TrialOf:       compiled.TrialOf,
 		ServiceIntent: compiled.ServiceIntent,
 		WorkModel:     strings.TrimSpace(compiled.WorkModel),
+		PlanModel:     r.splitPlanModel(compiled.WorkModel),
 		Attachments:   append([]string(nil), command.Attachments...),
 		Craft:         use.reference,
 		Subharness:    r.chosenSubharness(compiled),

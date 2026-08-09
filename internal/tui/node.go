@@ -387,6 +387,13 @@ func (m *Model) renderNodeDetailsContent(width, maxLines int) string {
 		brief = nodeLabelInSnapshot(m.inspectedNode, m.snapshot)
 	}
 	content := inputTextStyle.Render(wrapText(brief, width))
+	// One rung down from the card, the same receipt in full: this is where a
+	// person comes to check what actually ran their work, so the model id keeps
+	// its vendor path and nothing is shortened. Silent, as ever, on a job that
+	// chose nothing.
+	if receipt := nodeChoiceReceipt(m.inspectedNode); receipt != "" {
+		content += "\n" + mutedStyle.Faint(true).Render(truncate(receipt, width))
+	}
 	if terminalStatus(m.inspectedNode.Status) {
 		if m.inspectedNode.Status == store.Failed || m.inspectedNode.Status == store.Cancelled {
 			failure := strings.TrimSpace(m.inspectedNode.Error)
