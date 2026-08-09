@@ -134,15 +134,23 @@ func (m *Model) renderAwaitingReply(width int) string {
 	if m.awaitingAnimating() {
 		dot = awaitingPulse[(m.shimmerFrame/awaitingPulseTicks)%len(awaitingPulse)]
 	}
-	owed := ""
+	trailer := ""
 	if len(m.awaitingTurns) > 1 {
-		owed = " " + strconv.Itoa(len(m.awaitingTurns))
+		trailer = " " + strconv.Itoa(len(m.awaitingTurns))
+	}
+	// The one word this line is ever allowed to say. A reasoning phase produces
+	// nothing to draw for seconds at a time — no text, no tool, no reply — and
+	// the pulse alone cannot tell that apart from a machine that did not hear.
+	// It is the same line with a word after it, and the word leaves the instant
+	// the first token of the answer arrives.
+	if m.streamThinking {
+		trailer += " thinking"
 	}
 	line := aforgeLabelStyle.Render(truncate("aforge", width))
-	if width > lipgloss.Width("aforge")+2+lipgloss.Width(owed) {
+	if width > lipgloss.Width("aforge")+2+lipgloss.Width(trailer) {
 		line += mutedStyle.Faint(true).Render("  ") + dot.Render("·")
-		if owed != "" {
-			line += mutedStyle.Faint(true).Render(owed)
+		if trailer != "" {
+			line += mutedStyle.Faint(true).Render(trailer)
 		}
 	}
 	return line

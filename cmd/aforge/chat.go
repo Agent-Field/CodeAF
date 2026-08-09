@@ -1313,6 +1313,8 @@ func buildBrain(w *chatWindow, session string, opts brainOptions) (*chatBrain, e
 				translated.Kind = tui.StreamStarted
 			case provider.StreamDelta:
 				translated.Kind = tui.StreamDelta
+			case provider.StreamThinking:
+				translated.Kind = tui.StreamThinking
 			case provider.StreamFinished:
 				translated.Kind = tui.StreamFinished
 			case provider.StreamFailed:

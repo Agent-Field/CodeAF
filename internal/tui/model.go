@@ -47,6 +47,10 @@ const (
 	// pollActiveAfter keeps the hot cadence for a moment after the user acts:
 	// they just asked for something and its first event is imminent.
 	pollActiveAfter = 3 * time.Second
+	// pollPokeDelay is how soon a read follows an action the window took
+	// itself. It is a frame rather than zero so the post's own render lands
+	// first, and it replaces the pending tick instead of joining it.
+	pollPokeDelay = 20 * time.Millisecond
 	// quietRepaintInterval refreshes the cached panes from state already in
 	// hand, with no store read at all. Relative timestamps are minute-grained,
 	// so that is exactly how often "now" can go stale while nothing happens.
@@ -167,7 +171,16 @@ type NodeTraceReader interface {
 
 var _ Backend = (*store.Store)(nil)
 
-type pollTickMsg time.Time
+// pollTickMsg is the store read falling due. It carries the serial of the arm
+// that scheduled it because there is exactly one poll chain in a window: a tick
+// from an arm that has since been superseded — by a poke, or by a result that
+// re-armed first — is spent and does nothing. Without that, every out-of-band
+// poll left its own timer running beside the first, and a window that had been
+// open a while was reading the store several times per cadence for nothing.
+type pollTickMsg struct {
+	at     time.Time
+	serial uint64
+}
 
 type animationTickMsg time.Time
 
@@ -317,6 +330,10 @@ type Model struct {
 	journalSeq    int64
 	journalPrimed bool
 	pollForce     bool
+	// pollSerial names the live arm of the single poll chain. Every arm bumps
+	// it, so the tick it replaces is spent on arrival and no timer outlives the
+	// arm that made it.
+	pollSerial    uint64
 	lastChangeAt  time.Time
 	lastActionAt  time.Time
 	lastRepaintAt time.Time
@@ -476,6 +493,10 @@ type Model struct {
 	// the same words plus the mark — lands in place of them rather than
 	// redrawing the reply from nothing.
 	streamInterrupted bool
+	// streamThinking says the provider is reasoning: a phase with nothing to
+	// draw, which used to be the longest blank stretch of the wait. It says only
+	// that, and it ends the moment a word of the answer arrives.
+	streamThinking bool
 
 	// What was typed here is never destroyed by anything but the person who
 	// typed it: sent turns go into a ring the arrows walk, a draft escape takes
@@ -959,6 +980,11 @@ func (m *Model) update(message tea.Msg) (tea.Model, tea.Cmd) {
 		return m, m.scheduleAnimation()
 
 	case pollTickMsg:
+		if message.serial != m.pollSerial {
+			// A tick from an arm something has already replaced. The chain it
+			// belonged to ended when the replacement was scheduled.
+			return m, nil
+		}
 		return m, m.poll()
 
 	case pollResultMsg:
@@ -977,14 +1003,20 @@ func (m *Model) update(message tea.Msg) (tea.Model, tea.Cmd) {
 	case StreamEvent:
 		m.lastActionAt = m.standingTime()
 		m.applyStreamEvent(message)
-		return m, tea.Batch(waitForStream(m.streamEvents), m.scheduleAnimation())
+		return m, tea.Batch(m.streamPoke(message.Kind), waitForStream(m.streamEvents),
+			m.scheduleAnimation())
 
 	case streamBatchMsg:
 		m.lastActionAt = m.standingTime()
+		ended := StreamStarted
 		for _, event := range message.events {
 			m.applyStreamEvent(event)
+			if event.Kind == StreamFinished || event.Kind == StreamFailed {
+				ended = event.Kind
+			}
 		}
-		return m, tea.Batch(waitForStream(m.streamEvents), m.scheduleAnimation())
+		return m, tea.Batch(m.streamPoke(ended), waitForStream(m.streamEvents),
+			m.scheduleAnimation())
 
 	case streamClosedMsg:
 		m.streamEvents = nil
@@ -1078,7 +1110,10 @@ func (m *Model) update(message tea.Msg) (tea.Model, tea.Cmd) {
 		m.noteAwaitingReply(message.message)
 		m.landPostedMessage(message.message)
 		m.err = nil
-		return m, m.scheduleAnimation()
+		// The turn is in the journal now, so the head is already reading it: the
+		// reply is the next thing this window expects and the pending tick may be
+		// two seconds away. The poke replaces that tick rather than adding to it.
+		return m, tea.Batch(m.pokePoll(), m.scheduleAnimation())
 
 	case questionSurfaceResultMsg:
 		if message.err != nil {
@@ -1905,8 +1940,36 @@ func (m *Model) pollCadence() time.Duration {
 }
 
 func (m *Model) nextPollTick() tea.Cmd {
-	return tea.Tick(m.pollCadence(), func(at time.Time) tea.Msg {
-		return pollTickMsg(at)
+	return m.armPollTick(m.pollCadence())
+}
+
+// pokePoll brings the next read forward to now. Landing a post and finishing a
+// stream are the two moments the window knows something has just changed, and
+// waiting out the cadence for them is the difference between a reply that
+// appears and one that arrives up to two seconds late.
+//
+// It is a re-arm of the one chain rather than an extra read: the outstanding
+// tick is spent by the bump, so a poke can never add a timer and a hundred of
+// them in a row is still one poll in flight.
+func (m *Model) pokePoll() tea.Cmd {
+	return m.armPollTick(pollPokeDelay)
+}
+
+// streamPoke brings the read forward when the provider call ends. The durable
+// reply is written after the last delta, so the frame that stops the stream is
+// exactly the frame before the row it finishes into is readable.
+func (m *Model) streamPoke(kind StreamEventKind) tea.Cmd {
+	if kind != StreamFinished && kind != StreamFailed {
+		return nil
+	}
+	return m.pokePoll()
+}
+
+func (m *Model) armPollTick(after time.Duration) tea.Cmd {
+	m.pollSerial++
+	serial := m.pollSerial
+	return tea.Tick(after, func(at time.Time) tea.Msg {
+		return pollTickMsg{at: at, serial: serial}
 	})
 }
 

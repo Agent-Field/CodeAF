@@ -17,6 +17,10 @@ type StreamEventKind int
 const (
 	StreamStarted StreamEventKind = iota
 	StreamDelta
+	// StreamThinking is a phase with nothing to draw: the model is reasoning.
+	// The text of that reasoning never reaches here and is not wanted — the
+	// line says the wait has a reason, and nothing else.
+	StreamThinking
 	StreamFinished
 	StreamFailed
 )
@@ -50,7 +54,25 @@ const (
 	streamSimulated
 )
 
-const streamTokensPerTick = 2
+// The reveal's pacing is a floor and not a ceiling. Two words per 120ms frame
+// is the cadence a reply unrolls at when the provider is the slow half — which
+// is the ordinary case, and the one this number was chosen for. It stops being
+// the whole rule the moment the provider is ahead: a reply that arrived in two
+// seconds used to take twenty-four to draw, with the machine idle and the reader
+// watching a typewriter re-type what was already paid for.
+//
+// So the tick spends what it has to spend to be at most a breath behind, and no
+// more than that: streamLagTokens is the backlog it is content to carry, and
+// streamMaxTokensPerTick keeps the fastest frame a line of text rather than a
+// paragraph appearing whole.
+const (
+	streamTokensPerTick = 2
+	// streamLagTokens is a dozen frames of the base cadence — about a second and
+	// a half of unroll still owed, which is what makes a fast reply read as
+	// typing rather than as a printer.
+	streamLagTokens        = 24
+	streamMaxTokensPerTick = 12
+)
 
 func waitForStream(events <-chan StreamEvent) tea.Cmd {
 	if events == nil {
@@ -115,10 +137,17 @@ func (m *Model) applyStreamEvent(event StreamEvent) {
 		m.streamSeq = landedSeq
 		m.streamProviderDone = false
 		m.streamInterrupted = false
+		m.streamThinking = false
+	case StreamThinking:
+		if m.streamMode != streamReal || m.streamThinking {
+			return
+		}
+		m.streamThinking = true
 	case StreamDelta:
 		if m.streamMode != streamReal {
 			return
 		}
+		m.streamThinking = false
 		m.streamRaw.WriteString(event.Delta)
 		if reply, found := partialJSONReply(m.streamRaw.String()); found {
 			m.streamTarget = reply
@@ -168,6 +197,7 @@ func (m *Model) startSimulatedStream(message store.Message) {
 	m.streamSeq = message.Seq
 	m.streamProviderDone = true
 	m.streamInterrupted = false
+	m.streamThinking = false
 }
 
 func (m *Model) matchRealStream(message store.Message) bool {
@@ -256,7 +286,7 @@ func (m *Model) advanceStream() {
 		return
 	}
 	if m.streamShown != m.streamTarget {
-		m.streamShown = typewriterAdvance(m.streamShown, m.streamTarget, streamTokensPerTick)
+		m.streamShown = typewriterAdvance(m.streamShown, m.streamTarget, m.streamRevealTokens())
 	}
 	if m.streamShown != m.streamTarget {
 		return
@@ -264,6 +294,61 @@ func (m *Model) advanceStream() {
 	if m.streamMode == streamSimulated || (m.streamProviderDone && m.streamSeq != 0) {
 		m.finishStream()
 	}
+}
+
+// streamRevealTokens is how many words this frame draws: the base cadence while
+// the backlog is one the base cadence can carry — every ordinary reply — and the
+// excess over that backlog otherwise, capped so no frame dumps a paragraph.
+//
+// A stopped reply keeps the base cadence unconditionally: what lands after an
+// interruption is the same words plus the mark that they stopped there, and
+// that tail belongs to the calm path.
+func (m *Model) streamRevealTokens() int {
+	if m.streamInterrupted {
+		return streamTokensPerTick
+	}
+	backlog := pendingStreamTokens(m.streamShown, m.streamTarget,
+		streamLagTokens+streamMaxTokensPerTick)
+	tokens := backlog - streamLagTokens
+	if tokens < streamTokensPerTick {
+		return streamTokensPerTick
+	}
+	if tokens > streamMaxTokensPerTick {
+		return streamMaxTokensPerTick
+	}
+	return tokens
+}
+
+// pendingStreamTokens counts the whitespace tokens the provider is ahead by.
+// Counting stops at limit because the answer above is capped anyway, so a reply
+// of any length costs the same bounded scan per frame.
+func pendingStreamTokens(shown, target string, limit int) int {
+	if len(target) <= len(shown) || !strings.HasPrefix(target, shown) {
+		return 0
+	}
+	remaining := target[len(shown):]
+	tokens, offset := 0, 0
+	for offset < len(remaining) && tokens < limit {
+		for offset < len(remaining) {
+			char, size := utf8.DecodeRuneInString(remaining[offset:])
+			if !unicode.IsSpace(char) {
+				break
+			}
+			offset += size
+		}
+		if offset >= len(remaining) {
+			break
+		}
+		for offset < len(remaining) {
+			char, size := utf8.DecodeRuneInString(remaining[offset:])
+			if unicode.IsSpace(char) {
+				break
+			}
+			offset += size
+		}
+		tokens++
+	}
+	return tokens
 }
 
 func (m *Model) finishStream() {
@@ -284,6 +369,7 @@ func (m *Model) clearStream() {
 	m.streamSeq = 0
 	m.streamProviderDone = false
 	m.streamInterrupted = false
+	m.streamThinking = false
 }
 
 func (m *Model) messageBySeq(seq int64) (store.Message, bool) {
