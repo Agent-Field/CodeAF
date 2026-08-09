@@ -561,7 +561,7 @@ func buildBrain(w *chatWindow, session string, opts brainOptions) (*chatBrain, e
 		}
 		worker := executorFor(subharness, leafBuild{
 			settings: settings, client: workingClient, workspace: jobSpace, web: web,
-			graph: graph, media: &leafMedia,
+			graph: graph, media: &leafMedia, model: workingModel,
 			maxTurns: turns, maxTokens: tokens, deadline: deadline,
 		})
 		shape := "atomic"
@@ -704,6 +704,17 @@ func buildBrain(w *chatWindow, session string, opts brainOptions) (*chatBrain, e
 			},
 			ImagePaths:    append([]string(nil), staged.ImageFiles...),
 			DocumentPaths: append([]string(nil), documentPaths...),
+			// Within-node progress, through the one channel the thread already
+			// has for "this is still happening": the same replaceable rows a
+			// compile posts, anchored to the job rather than typed into it.
+			// The generalist passes nothing here and pays nothing for it; a
+			// worker whose leaf runs for the better part of an hour would
+			// otherwise be a spinner, and the two alternatives — splicing its
+			// insides into the graph, or narrating them as messages — are the
+			// two things the subharness law forbids by name.
+			Progress: leafProgress(graph, resident.PlanAnchor{
+				NodeID: jobRoot, SessionID: node.Provenance.SessionID,
+			}),
 		}
 		// The scheduler's quality loop, inline: each attempt is one routable
 		// unit carrying its call shape, a watchdog sits above the leaf's own

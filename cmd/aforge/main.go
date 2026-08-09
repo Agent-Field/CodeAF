@@ -132,6 +132,12 @@ const usageText = `aforge — build and revise task graphs
   aforge run  <graph.json> [-w dir] [-j 8] [-o done.json] [--yes-spend] [--model slug] [--plan-model slug]
                          plan and run are the static pipeline: a graph written to a file, then executed
                          exactly as written. Kept for reading, editing, and inspecting a plan by hand.
+  --subharness <name>    on do, chat and run: force every leaf onto one worker instead of letting the
+                         compiler choose. This build has swe — a whole software-engineering pipeline
+                         that takes a coding issue in a git repository whole, plans it, edits in
+                         parallel worktrees, and audits the result against that repository's own
+                         build and tests. It is for measuring one worker against another; leave it
+                         unset and the choice is made per node.
   aforge show <graph.json>
   aforge models
   aforge notebook [--db path]
@@ -174,6 +180,9 @@ Environment:
   AFORGE_PRACTICE_IDLE  20m  quiet period before self-practice
   AFORGE_BRIEF_AFTER   4h  minimum absence before an arrival brief (0 = always)
   AFORGE_PREAUTHORIZE_SPEND  1 raises the rail without a headless stdin prompt
+  AFORGE_SWE_MAX_COST  10.0  dollar ceiling on one swe leaf's run inside the
+                       coding pipeline. A backstop, not a budget — the daily
+                       rail is the budget.
   AFORGE_HOME          the whole state root — journal, workspace, CAS, craft,
                        profiles, catalog, skills (default ~/.aforge). Move it to
                        run a disposable brain that touches nothing of yours.
