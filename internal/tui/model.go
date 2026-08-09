@@ -1514,6 +1514,10 @@ func (m *Model) poll() tea.Cmd {
 		selfReceiptSince = time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
 	}
 	readSelf := m.selfVisible()
+	// The services table is read for the places that show it. With the rail
+	// closed nothing asks, and nothing is read — the lazy cache behind
+	// activeServices still answers whoever asks anyway.
+	readServices := m.graphContentVisible() || m.selfVisible()
 	selfNow := m.standingTime()
 	journal, _ := backend.(journalReader)
 	residencySource := m.residencySource
@@ -1635,7 +1639,7 @@ func (m *Model) poll() tea.Cmd {
 		// The rail's other store-backed section rides the same cycle, for the
 		// same reason the charters do: the poll drops its cache, and whoever
 		// asked next was a render goroutine holding a SQLite query.
-		if lister, ok := backend.(serviceLister); ok {
+		if lister, ok := backend.(serviceLister); ok && readServices {
 			result.servicesRead = true
 			result.services, result.servicesErr = lister.ActiveServices()
 		}
