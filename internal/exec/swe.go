@@ -567,11 +567,21 @@ func (s *SWE) environ(directory string) []string {
 	}
 	environ := os.Environ()
 	kept := make([]string, 0, len(environ)+len(pinned)+len(s.extraEnv))
+	venvBin := projectVenvBin(directory)
 	for _, entry := range environ {
 		name, _, _ := strings.Cut(entry, "=")
-		if _, overridden := pinned[name]; !overridden {
-			kept = append(kept, entry)
+		if _, overridden := pinned[name]; overridden {
+			continue
 		}
+		// The project's own venv outranks the machine's PATH for the child. The
+		// engine verifies by running the commands it discovers — `pytest`, not
+		// `.venv/bin/pytest` — and a generalist agent would have found the venv
+		// itself where the engine mechanically takes the first interpreter PATH
+		// offers. A repository that carries its toolchain gets judged by it.
+		if venvBin != "" && name == "PATH" {
+			entry = "PATH=" + venvBin + string(os.PathListSeparator) + entry[len("PATH="):]
+		}
+		kept = append(kept, entry)
 	}
 	names := make([]string, 0, len(pinned))
 	for name := range pinned {
@@ -582,6 +592,19 @@ func (s *SWE) environ(directory string) []string {
 		kept = append(kept, name+"="+pinned[name])
 	}
 	return append(kept, s.extraEnv...)
+}
+
+// projectVenvBin is the workspace's own Python toolchain, if it carries one
+// under either conventional name. Empty when it does not, which leaves the
+// child's PATH exactly as inherited.
+func projectVenvBin(directory string) string {
+	for _, name := range []string{".venv", "venv"} {
+		bin := filepath.Join(directory, name, "bin")
+		if info, err := os.Stat(bin); err == nil && info.IsDir() {
+			return bin
+		}
+	}
+	return ""
 }
 
 // signalGroup takes the whole tree down politely, then not politely. The group
