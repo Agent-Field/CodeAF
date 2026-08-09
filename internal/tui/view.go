@@ -1482,8 +1482,14 @@ type threadRenderItem struct {
 
 func (m *Model) renderMessages() string {
 	m.renderSeq++
-	if m.blockWidth != m.chat.Width || m.blockGen != m.threadGen {
-		m.blockWidth, m.blockGen = m.chat.Width, m.threadGen
+	// The pane's width is the one thing a block depends on that its key does
+	// not say, so a resize is the one event that drops the caches whole. The
+	// journal moving used to do it too, which meant the settled conversation
+	// was rebuilt from scratch two and a half times a second for as long as
+	// anything was running — while a stream is arriving, that is the normal
+	// path, not the cold one. Everything else is named in the keys.
+	if m.blockWidth != m.chat.Width {
+		m.blockWidth = m.chat.Width
 		clear(m.blockCache)
 		clear(m.blockSeen)
 		clear(m.cardBlocks)
@@ -1803,6 +1809,13 @@ func (m *Model) renderMessageGroup(group messageGroup, atLine int) string {
 // hour of superseded keys behind it; the thread is the only thing worth
 // keeping, and the thread is what the render just asked for.
 func (m *Model) sweepBlockCache() {
+	// The card blocks are keyed by the card rather than by its bytes, so they
+	// cannot go stale — an entry that disagrees with the card it was drawn from
+	// is not used. They can only be too many, once a session has retired more
+	// cards than it shows, and starting over costs one thread's worth of cards.
+	if len(m.cardBlocks) > 2*len(m.chatCardRows)+16 {
+		clear(m.cardBlocks)
+	}
 	if len(m.blockCache) <= 2*len(m.chatBlocks)+8 {
 		return
 	}
@@ -1825,7 +1838,7 @@ type cardBlock struct {
 	card     jobCard
 	width    int
 	expanded bool
-	links    uint64
+	links    string
 }
 
 // briefBlock is the same for an arrival brief, which is settled the moment it
@@ -1843,9 +1856,11 @@ type briefBlock struct {
 // card is deliberately never kept: its whole job is to show that it is moving.
 func (m *Model) renderThreadCard(card jobCard, width int, expanded bool, atLine int) string {
 	cacheable := m.settledCardIsStill(card)
+	links := ""
 	if cacheable {
+		links = m.cardWorkspaceMark(card)
 		if kept, found := m.cardBlocks[card.ID]; found && kept.width == width &&
-			kept.expanded == expanded && kept.links == m.workspaceGen &&
+			kept.expanded == expanded && kept.links == links &&
 			reflect.DeepEqual(kept.card, card) {
 			m.replayThreadBlock(kept.block, atLine)
 			return kept.block.content
@@ -1859,11 +1874,31 @@ func (m *Model) renderThreadCard(card jobCard, width int, expanded bool, atLine 
 			m.cardBlocks = make(map[string]cardBlock, 32)
 		}
 		m.cardBlocks[card.ID] = cardBlock{
-			block: block, card: card, width: width, expanded: expanded, links: m.workspaceGen,
+			block: block, card: card, width: width, expanded: expanded, links: links,
 		}
 	}
 	m.replayThreadBlock(block, atLine)
 	return block.content
+}
+
+// cardWorkspaceMark names every node a card's drawing asks about files under:
+// its own root, the deliverable's, and each part's. An answer about any of them
+// is what retires the card, and an answer about anything else is not.
+func (m *Model) cardWorkspaceMark(card jobCard) string {
+	var mark strings.Builder
+	mark.WriteString(m.workspaceMark(card.RootID))
+	if card.Deliverable != nil && card.Deliverable.NodeID != card.RootID {
+		mark.WriteByte(',')
+		mark.WriteString(m.workspaceMark(card.Deliverable.NodeID))
+	}
+	for _, part := range card.Parts {
+		if part.NodeID == card.RootID {
+			continue
+		}
+		mark.WriteByte(',')
+		mark.WriteString(m.workspaceMark(part.NodeID))
+	}
+	return mark.String()
 }
 
 // settledCardIsStill refuses the one settled card whose bytes still move: the
@@ -1973,11 +2008,11 @@ func (m *Model) threadBlockKey(group messageGroup) (string, bool) {
 		}
 		if message.NodeID != "" {
 			// The chip carries the node's name as the snapshot spells it now,
-			// and the stamp is what the linked files are remembered under.
+			// and the mark is what the linked files are remembered under.
 			key.WriteByte('@')
 			key.WriteString(m.nodeChipLabel(message.NodeID))
 			key.WriteByte('/')
-			key.WriteString(m.workspaceStamp(message.NodeID))
+			key.WriteString(m.workspaceMark(message.NodeID))
 		}
 		key.WriteByte(',')
 	}

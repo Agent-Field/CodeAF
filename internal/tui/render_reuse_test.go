@@ -30,6 +30,26 @@ func (c *countingResolver) ResolveWorkspacePath(_ string, relative string) (stri
 	return target, err == nil && !info.IsDir()
 }
 
+// settleWorkspaceLinks runs the lookups a render deferred, exactly the way the
+// program does: the questions leave Update on a command, the answers come back
+// as a message. Any test that wants the links a render draws has to let the
+// command loop turn, because the render itself never asks.
+func settleWorkspaceLinks(t *testing.T, model *Model) {
+	t.Helper()
+	for range 8 {
+		ask := model.askWorkspaceLinks()
+		if ask == nil {
+			return
+		}
+		answers, ok := ask().(workspaceLinksMsg)
+		if !ok {
+			t.Fatal("the workspace command did not answer with its own message")
+		}
+		model.applyWorkspaceLinks(answers)
+	}
+	t.Fatal("the workspace questions never stopped coming")
+}
+
 // The fixture is a settled thread with both kinds of block in it: a plain
 // message group, and a finished job's card. The card is the expensive one —
 // it carries the deliverable, its parts and its outcome, and every word of all
@@ -75,6 +95,10 @@ func countingResolverModel(t *testing.T) (*Model, *countingResolver, *countingBa
 	model.standingNow = func() time.Time { return now }
 	model.setSize(100, 30)
 	model.applyPoll(model.poll()().(pollResultMsg))
+	_ = model.View()
+	// The first render writes the file questions down rather than answering
+	// them; the links this fixture is about arrive with the command.
+	settleWorkspaceLinks(t, model)
 	_ = model.View()
 	if card := model.cardByID("landed"); card == nil || card.State != cardSettled {
 		t.Fatalf("fixture has no settled card: %+v", model.cards)
@@ -127,8 +151,9 @@ func TestCachedThreadIsByteIdenticalToAColdRender(t *testing.T) {
 
 	compare := func(stage string) {
 		t.Helper()
-		// Cold: the cache is retired, so every block is built from scratch.
-		model.threadGen++
+		// Cold: a width the caches were not built for retires all three of
+		// them, so every block is built from scratch.
+		model.blockWidth = 0
 		cold := model.renderMessages()
 		coldChips := append([]chatChipRow(nil), model.chatChipRows...)
 		coldExpands := append([]chatExpandRow(nil), model.chatExpandRows...)
@@ -265,27 +290,211 @@ func TestReferencedNodeChangeRetiresOnlyItsBlock(t *testing.T) {
 }
 
 // Every whitespace-separated token of every answer on screen is a question for
-// the resolver, and in production each one is a query and a stat. The same
-// question is asked of the store once.
-func TestWorkspaceResolutionIsAskedOncePerQuestion(t *testing.T) {
+// the resolver, and in production each one is a row out of SQLite, a walk up
+// the node's parents and a stat. No render may make one — not the warm render,
+// not the cold one, and not the very first — and no frame may wait on one.
+func TestRenderingNeverAsksTheWorkspaceResolver(t *testing.T) {
 	model, commander, _ := countingResolverModel(t)
 
 	before := commander.resolves
 	for range 5 {
 		model.threadGen++
+		model.blockWidth = 0 // the cold path: every block built from scratch
 		model.refreshChat()
+		_ = model.View()
 	}
 	if commander.resolves != before {
-		t.Fatalf("five cold renders asked the resolver %d more times", commander.resolves-before)
+		t.Fatalf("five cold renders asked the resolver %d times", commander.resolves-before)
 	}
 
-	// The clock's own repaint is where a file that landed under a node nobody
-	// has touched since finally gets to become a link.
-	model.forgetWorkspaceLinks()
+	// A thread the model has never drawn before is the same rule: the first
+	// render of a new answer writes its questions down and draws plain text.
+	model.insertThreadMessage(store.Message{
+		Seq: 40, SessionID: "reuse", Role: store.RoleAgent, NodeID: "job",
+		Body: "and a second copy landed in notes.md", Time: model.standingTime(),
+	})
 	model.threadGen++
 	model.refreshChat()
+	_ = model.View()
+	if commander.resolves != before {
+		t.Fatalf("a newly landed answer asked the resolver %d times inside the render",
+			commander.resolves-before)
+	}
+	if len(model.workspaceAsk) == 0 {
+		t.Fatal("the render neither asked nor wrote the question down")
+	}
+
+	// The command is where they are asked, and the answers land as a message.
+	settleWorkspaceLinks(t, model)
 	if commander.resolves == before {
-		t.Fatal("dropping the remembered links did not ask the resolver again")
+		t.Fatal("the deferred questions were never asked at all")
+	}
+
+	// And they are asked once: the same question is remembered, however many
+	// renders walk past it.
+	before = commander.resolves
+	for range 5 {
+		model.threadGen++
+		model.blockWidth = 0
+		model.refreshChat()
+		settleWorkspaceLinks(t, model)
+	}
+	if commander.resolves != before {
+		t.Fatalf("a remembered question was asked %d more times", commander.resolves-before)
+	}
+
+	// A job still running may have written the file since it was asked, so the
+	// minute drops its refusals — off the render path, as a question again.
+	model.snapshot.Nodes = append(model.snapshot.Nodes,
+		store.Node{ID: "running", Parent: store.RootID, Status: store.Running})
+	model.snapshotIndex = nodeIndex{}
+	_, _ = model.resolveWorkspacePath("running", "later.md")
+	settleWorkspaceLinks(t, model)
+	before = model.blockBuilds
+	model.forgetUnsettledWorkspaceLinks()
+	if _, remembered := model.workspaceLinks[workspaceLinkKey("job", "done", "notes.md")]; !remembered {
+		t.Fatal("the minute forgot what a finished job answered")
+	}
+	if _, remembered := model.workspaceLinks[workspaceLinkKey("running", "running", "later.md")]; remembered {
+		t.Fatal("the minute kept a running job's refusal")
+	}
+	if model.blockBuilds != before {
+		t.Fatal("dropping remembered answers rebuilt the thread by itself")
+	}
+}
+
+// The questions a render writes down are worth nothing until they leave. There
+// is one door — the command Update returns — and this is the test that it is
+// open: without it a path would never become a link in the running product and
+// every other test here would still pass.
+func TestFileQuestionsLeaveOnTheCommandUpdateReturns(t *testing.T) {
+	model, commander, _ := countingResolverModel(t)
+	model.forgetWorkspaceLinks()
+
+	before := commander.resolves
+	_, command := model.Update(tea.WindowSizeMsg{Width: 101, Height: 30})
+	if command == nil {
+		t.Fatal("a render with unanswered file questions returned no command")
+	}
+	if commander.resolves != before {
+		t.Fatalf("the render asked the resolver %d times", commander.resolves-before)
+	}
+	message := command()
+	if batch, ok := message.(tea.BatchMsg); ok {
+		for _, part := range batch {
+			if answers, ok := part().(workspaceLinksMsg); ok {
+				message = answers
+				break
+			}
+		}
+	}
+	answers, ok := message.(workspaceLinksMsg)
+	if !ok {
+		t.Fatalf("the command answered with %T, not the resolver's batch", message)
+	}
+	if len(answers.answers) == 0 || commander.resolves == before {
+		t.Fatal("the command carried no questions to the resolver")
+	}
+	found := false
+	for _, answer := range answers.answers {
+		found = found || answer.link.found
+	}
+	if !found {
+		t.Fatal("the batch found none of the files the thread names")
+	}
+
+	// And handing the batch back to Update is what puts the links on screen.
+	_, _ = model.Update(answers)
+	if !strings.Contains(model.renderMessages(), "\x1b]8;;file://") {
+		t.Fatal("the answered questions never became links")
+	}
+}
+
+// The active-work path is the one the audit was about: while a stream runs, a
+// poll lands every 400ms and the journal moves under it. None of that touches
+// a settled block, and none of it may redraw one.
+func TestActiveWorkKeepsTheSettledThread(t *testing.T) {
+	model, commander, backend := countingResolverModel(t)
+	model.applyStreamEvent(StreamEvent{Kind: StreamStarted})
+	model.applyStreamEvent(StreamEvent{Kind: StreamDelta, Delta: `{"reply":"working on it`})
+	model.advanceStream()
+
+	before, resolves := model.blockBuilds, commander.resolves
+	for round := range 6 {
+		// A journal that moved: the poll reads, the model applies, the frame
+		// draws — the whole loop, six times over, as a live turn arrives.
+		backend.bump()
+		backend.fakeBackend.mu.Lock()
+		backend.fakeBackend.messages = append(backend.fakeBackend.messages, store.Message{
+			Seq: int64(10 + round), SessionID: "reuse", Role: store.RoleSystem,
+			Body: "read a file · $0.00", Time: model.standingTime(),
+		})
+		backend.fakeBackend.mu.Unlock()
+		model.applyPoll(model.poll()().(pollResultMsg))
+		model.applyStreamEvent(StreamEvent{Kind: StreamDelta, Delta: " and still going"})
+		model.advanceStream()
+		_ = model.View()
+	}
+	// Six new receipts are six new blocks, and the settled card is not one of
+	// them: the whole point is that the thread already on screen stands.
+	if built := model.blockBuilds - before; built > 6 {
+		t.Fatalf("six polls under a live stream rebuilt %d thread blocks", built)
+	}
+	if commander.resolves != resolves {
+		t.Fatalf("active work asked the resolver %d times", commander.resolves-resolves)
+	}
+	if _, cached := model.cardBlocks["landed"]; !cached {
+		t.Fatal("the settled card was dropped from the cache by a poll that never touched it")
+	}
+
+	// And speaking mid-stream is the same rule. Two renders happen — the echo
+	// and the durable row behind it — and each redraws only what is still
+	// arriving at the tail plus the turn itself. The settled thread above them,
+	// card included, is not redrawn for either.
+	before = model.blockBuilds
+	model.echoUserMessage(store.Message{
+		SessionID: "reuse", Role: store.RoleUser, Body: "actually, make it shorter",
+	})
+	_ = model.View()
+	model.landPostedMessage(store.Message{
+		Seq: 30, SessionID: "reuse", Role: store.RoleUser,
+		Body: "actually, make it shorter", Time: model.standingTime(),
+	})
+	_ = model.View()
+	if built := model.blockBuilds - before; built > 6 {
+		t.Fatalf("one turn typed mid-stream rebuilt %d thread blocks", built)
+	}
+	if commander.resolves != resolves {
+		t.Fatalf("a turn typed mid-stream asked the resolver %d times", commander.resolves-resolves)
+	}
+	if _, cached := model.cardBlocks["landed"]; !cached {
+		t.Fatal("a turn typed mid-stream retired the settled card")
+	}
+}
+
+// A minute of idle moves nothing but the clock, and the clock is one string in
+// each block's header. The blocks whose printed label did not change keep their
+// bytes — the repaint used to retire the whole conversation to redraw them.
+func TestTheMinuteRepaintDrawsOnlyTheLabelsThatMoved(t *testing.T) {
+	model, commander, _ := countingResolverModel(t)
+	now := model.standingTime()
+	model.standingNow = func() time.Time { return now.Add(90 * time.Second) }
+
+	before, resolves := model.blockBuilds, commander.resolves
+	result := model.poll()().(pollResultMsg)
+	if !result.quiet {
+		t.Fatal("a store nobody wrote to was not quiet")
+	}
+	model.applyPoll(result)
+	_ = model.View()
+	if built := model.blockBuilds - before; built > 2 {
+		t.Fatalf("the minute repaint rebuilt %d thread blocks", built)
+	}
+	if commander.resolves != resolves {
+		t.Fatalf("the minute repaint asked the resolver %d times", commander.resolves-resolves)
+	}
+	if _, cached := model.cardBlocks["landed"]; !cached {
+		t.Fatal("the minute repaint dropped the settled card")
 	}
 }
 

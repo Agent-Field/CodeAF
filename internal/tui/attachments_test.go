@@ -343,7 +343,10 @@ func TestMediaArtifactLinksAreGlyphPrefixedAndWidthSafe(t *testing.T) {
 	}
 	commander := &artifactCommander{fakeCommander: &fakeCommander{current: map[string]string{}}, target: path}
 	relativeModel := NewWithCommander(&fakeBackend{}, "media", commander)
-	relative := relativeModel.renderMediaArtifacts(store.Message{NodeID: "task", Body: "made media/result.png"}, 40)
+	artifact := store.Message{NodeID: "task", Body: "made media/result.png"}
+	_ = relativeModel.renderMediaArtifacts(artifact, 40)
+	settleWorkspaceLinks(t, relativeModel)
+	relative := relativeModel.renderMediaArtifacts(artifact, 40)
 	if !strings.Contains(relative, "file://") || !strings.Contains(ansi.Strip(relative), "⌾ media/result.png") {
 		t.Fatalf("relative generated artifact was not linked: %q", relative)
 	}
@@ -353,7 +356,10 @@ func TestVideoArtifactsUsePlayGlyph(t *testing.T) {
 	path := imageFixture(t, "result.mp4")
 	commander := &artifactCommander{fakeCommander: &fakeCommander{current: map[string]string{}}, target: path}
 	model := NewWithCommander(&fakeBackend{}, "media-video", commander)
-	rendered := model.renderMediaArtifacts(store.Message{NodeID: "task", Body: "made media/result.mp4"}, 40)
+	artifact := store.Message{NodeID: "task", Body: "made media/result.mp4"}
+	_ = model.renderMediaArtifacts(artifact, 40)
+	settleWorkspaceLinks(t, model)
+	rendered := model.renderMediaArtifacts(artifact, 40)
 	if !strings.Contains(ansi.Strip(rendered), "▶ media/result.mp4") {
 		t.Fatalf("video artifact = %q", rendered)
 	}
