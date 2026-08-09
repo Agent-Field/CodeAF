@@ -4438,10 +4438,17 @@ func runLeafWithWatchdog(ctx context.Context, worker exec.Executor, task exec.Ta
 		outcome, err := worker.Run(ctx, task)
 		done <- landing{outcome, err}
 	}()
+	// The watchdog is a named timer rather than time.After because the branch it
+	// guards is the one that almost never runs: a leaf lands in seconds and the
+	// select leaves by done, while an unstopped time.After holds its runtime
+	// timer — and the leaf's whole 17 minutes of it — alive in the heap for
+	// nothing. One per leaf and one per gate revision, on every job.
+	watchdog := time.NewTimer(timeout)
+	defer watchdog.Stop()
 	select {
 	case result := <-done:
 		return result.outcome, result.err
-	case <-time.After(timeout):
+	case <-watchdog.C:
 		return nil, fmt.Errorf("executor did not return within %s; abandoned", timeout.Round(time.Second))
 	}
 }
