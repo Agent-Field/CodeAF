@@ -1575,6 +1575,17 @@ func boardRowMatches(row boardRow, class string) bool {
 	}
 }
 
+// dimeUSD spells money for a prompt at the resolution a person actually decides
+// on. Position by volatility applies to precision as well as to order: a figure
+// is only allowed to be as precise as it is stable, and a cent on a live job
+// ticks constantly while nobody cancels a job over three cents. Rounded to a
+// dime the line holds still for as long as the decision it informs. The exact
+// figure stays exact everywhere it is read as a number rather than said to a
+// model: the TUI, the receipts, the store.
+func dimeUSD(cost float64) string {
+	return fmt.Sprintf("$%.2f", math.Round(cost*10)/10)
+}
+
 func renderBoard(rows []boardRow) string {
 	lines := make([]string, 0, len(rows))
 	for _, row := range rows {
@@ -1583,15 +1594,11 @@ func renderBoard(rows []boardRow) string {
 		if row.failed > 0 {
 			line += fmt.Sprintf(", %d failed", row.failed)
 		}
-		// Dimes, not cents, and only here. Within one control loop the board is
-		// written once and the transcript is append-only, so the damage was at
-		// the seam between messages: a single cent ticking on a single live job
-		// rewrote the board, and the board is the first thing in the prompt. A
-		// dime is the resolution a person actually decides on — nobody cancels a
-		// job over three cents — and it holds the same string for a while. The
-		// exact figure stays exact everywhere it is read as a number: the TUI,
-		// the receipts, the store.
-		line += fmt.Sprintf(" | $%.2f", math.Round(row.cost*10)/10)
+		// Dimes, not cents. Within one control loop the board is written once and
+		// the transcript is append-only, so the damage was at the seam between
+		// messages: a single cent ticking on a single live job rewrote the board,
+		// and the board is the first thing in the prompt.
+		line += " | " + dimeUSD(row.cost)
 		if age := strings.TrimSpace(row.age); age != "" {
 			line += " | " + age
 		}

@@ -127,8 +127,12 @@ const deepContextHeader = "What these jobs actually found (the board above gives
 func (h *Head) renderDeepSlice(node store.Node, result string, now time.Time) string {
 	var block strings.Builder
 	fmt.Fprintf(&block, "- %s | %s | %s", node.ID, node.Status, surgeryTargetLabel(node))
+	// Dimes, like the board's own cost clause and for the same reason: a job
+	// opened here is usually the live one the user just asked about, and at cent
+	// precision its spend rewrote this block on every tick — invalidating the
+	// whole prompt below it to say a number nobody decides on.
 	if impact, err := h.store.Impact(node.ID, now); err == nil && impact.Cost > 0 {
-		fmt.Fprintf(&block, " | $%.2f", impact.Cost)
+		block.WriteString(" | " + dimeUSD(impact.Cost))
 	}
 	if age := store.AgeLabel(node.FinishedAt, now); age != "" {
 		block.WriteString(" | finished " + age)
