@@ -127,7 +127,7 @@ const usageText = `aforge — build and revise task graphs
   aforge chat [--db path] [--session id|new]
   aforge do   "<task>" [--db path] [--keep] [-w dir] [--timeout 900] [--json] [--yes-spend] [--model slug] [--plan-model slug]
                          do one task and exit — the same living brain the chat runs, with nobody watching
-  aforge plan "<goal>" [-o graph.json] [--json] [--brief] [--ensemble N] [--model slug] [--plan-model slug]
+  aforge plan "<goal>" [-o graph.json] [-w dir] [--json] [--brief] [--ensemble N] [--model slug] [--plan-model slug]
   aforge revise <graph.json> "<what happened>" [--done 1,2,3] [-o graph.json] [--model slug] [--plan-model slug]
   aforge run  <graph.json> [-w dir] [-j 8] [-o done.json] [--yes-spend] [--model slug] [--plan-model slug]
                          plan and run are the static pipeline: a graph written to a file, then executed
@@ -210,7 +210,12 @@ func runPlan(args []string) error {
 	ensemble := flags.Int("ensemble", plan.EnsembleAuto, "0 decide from the goal, -1 never, N>=2 force N independent passes and merge them")
 	model := flags.String("model", "", "work model for this run (default AFORGE_MODEL)")
 	planModel := flags.String("plan-model", "", "model that plans, when different from the work model (default AFORGE_PLAN_MODEL)")
-	if err := flags.Parse(reorder(args, map[string]bool{"o": true, "ensemble": true, "model": true, "plan-model": true})); err != nil {
+	// The same -w that run takes, and it means the same directory. Plan runs
+	// before run in the headless pipeline, so there is no workspace yet unless
+	// the person naming the goal also names the material it is about — which is
+	// exactly when the material is worth looking at.
+	workspace := flags.String("w", "", "directory holding the material this goal is about, read once to ground the plan")
+	if err := flags.Parse(reorder(args, map[string]bool{"o": true, "ensemble": true, "model": true, "plan-model": true, "w": true})); err != nil {
 		return err
 	}
 	goal, err := readText(flags.Args())
@@ -264,7 +269,11 @@ func runPlan(args []string) error {
 		defer history.Close()
 	}
 	graph, err := plan.Build(ctx, client, goal, plan.Options{
-		Recall:       recallHits(history, goal, groundRecallLimit),
+		Recall: recallHits(history, goal, groundRecallLimit),
+		// Rendered here rather than inside the build, and rendered once: the
+		// snapshot is frozen for the whole build, and an unset -w renders the
+		// empty string, which leaves every prompt exactly as it was.
+		Terrain:      plan.RenderTerrain(*workspace, goal),
 		SpineSamples: settings.SpineSamples,
 		MaxDepth:     settings.MaxDepth,
 		NodeBudget:   settings.NodeBudget,
@@ -287,6 +296,13 @@ func runPlan(args []string) error {
 	return emit(graph, *output, *asJSON)
 }
 
+// runRevise takes no -w and renders no terrain of its own, which is deliberate
+// twice over. It has no workspace to name — it is handed a graph file and a
+// sentence about what happened — and it does not need one: the graph it loads
+// carries the terrain that was rendered when it was planned, and the reviser
+// reads the same shared preamble every other pass does. What the reviser is
+// actually missing is not the picture but the difference between that picture
+// and the workspace now, and a delta is a different thing from a snapshot.
 func runRevise(args []string) error {
 	flags := flag.NewFlagSet("revise", flag.ContinueOnError)
 	output := flags.String("o", "", "write the revised graph as JSON to this file")
