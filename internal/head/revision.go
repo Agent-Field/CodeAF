@@ -583,7 +583,13 @@ func redirectReference(message string) string {
 		"also": true, "and": true, "plus": true, "include": true, "add": true,
 		"skip": true, "forget": true, "leave": true, "out": true, "drop": true,
 		"bother": true, "need": true, "instead": true, "focus": true, "on": true,
-		"change": true, "of": true, "plan": true, "rather": true, "than": true,
+		// "plan" is not in here, and its absence is deliberate. It was stripped
+		// as cue vocabulary — "change the plan" says how, not what — but it is
+		// also the most ordinary word a person uses for the thing itself, and
+		// stripping it left "what is the plan for the market research?" scoring
+		// on "market research" alone and "what's the plan?" scoring on nothing
+		// at all. A cue word that is also a subject belongs to the subject.
+		"change": true, "of": true, "rather": true, "than": true,
 		"while": true, "you": true, "your": true, "youre": true, "re": true,
 		"at": true, "it": true, "that": true, "this": true, "them": true, "those": true,
 		"the": true, "a": true, "an": true, "is": true, "isn": true, "not": true,
