@@ -4,7 +4,6 @@ import (
 	"context"
 	"flag"
 	"fmt"
-	"os"
 	"strings"
 
 	"github.com/Agent-Field/aforge-v2/internal/tui2"
@@ -25,9 +24,13 @@ import (
 // value opens v2, because someone who exported it meant it.
 const chatV2Env = "AFORGE_CHAT_V2"
 
-// chatV2LinearEnv turns on the accessible rendering without a flag, for the
-// people who want it every time rather than once (10.1.5).
-const chatV2LinearEnv = "AFORGE_CHAT_LINEAR"
+// Linear mode (10.1.5) is a flag here and nothing else, deliberately. Somebody
+// who wants the accessible rendering every time wants it PERSISTED, and a
+// persisted preference belongs in the settings registry — where it gets a row,
+// a group and a live preview (8.2.19) — not in a second environment variable
+// this file invented. The registry's completeness gate says the same thing by
+// failing the build for an unregistered pin. Wave 4 owns that surface and the
+// row lands with it; until then the flag is the whole door.
 
 // wantChatV2 reports whether this invocation asked for the new surface, and
 // returns the arguments with the switch removed so the rest parses normally.
@@ -73,7 +76,7 @@ func runChatV2(args []string) error {
 	flags := flag.NewFlagSet("chat --v2", flag.ContinueOnError)
 	database := flags.String("db", defaultChatDB(), "path to the durable graph database")
 	sessionID := flags.String("session", "", "thread session id; empty resumes the last one, \"new\" starts a fresh one")
-	linear := flags.Bool("linear", truthyEnv(os.Getenv(chatV2LinearEnv)),
+	linear := flags.Bool("linear", false,
 		"single column, no motion — the accessible rendering")
 	if err := flags.Parse(reorder(args, map[string]bool{"db": true, "session": true})); err != nil {
 		return err
