@@ -26,7 +26,7 @@ func TestSentinelClientCallParsesYesAndNo(t *testing.T) {
 	} {
 		capture := &gateCaptureClient{model: "talk/model", response: test.response}
 		settings := config.Config{Model: capture.model}
-		client := &liveClient{settings: settings, model: capture.model, client: capture}
+		client := adoptLiveClient(settings, capture.model, capture)
 		verdict, err := checkSentinel(settings, client)(context.Background(), resident.SentinelPrompt{
 			CharterID: "release-watch", Invariant: "Keep release notes current.",
 			SentinelHint: "Did a release land?", Evidence: "poll due",

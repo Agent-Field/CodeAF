@@ -5,6 +5,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/Agent-Field/aforge-v2/internal/command"
 	"github.com/Agent-Field/aforge-v2/internal/config"
 )
 
@@ -39,10 +40,11 @@ func TestEveryChatPreferenceIsFrontedByASettingsRow(t *testing.T) {
 // live model slots, the divider, and the profile directory it persists into.
 func TestChatCommanderBuildsALiveRegistry(t *testing.T) {
 	dir := t.TempDir()
-	commander := &chatCommander{prefsDir: dir}
-	commander.settings.ProfileDir = dir
-	commander.prefs.ChatModel = "vendor/talk"
-	commander.prefs.SplitPct = 62
+	commander := command.New(command.Options{
+		PrefsDir: dir,
+		Settings: config.Config{ProfileDir: dir},
+		Prefs:    command.Prefs{ChatModel: "vendor/talk", SplitPct: 62},
+	})
 
 	registry := commander.Settings()
 	if registry == nil {
@@ -66,8 +68,8 @@ func TestChatCommanderBuildsALiveRegistry(t *testing.T) {
 	if err := budget.Apply("28"); err != nil {
 		t.Fatal(err)
 	}
-	if commander.settings.DailyBudgetUSD != 28 {
-		t.Fatalf("the running rail = %v, want the applied 28", commander.settings.DailyBudgetUSD)
+	if commander.DailyBudgetUSD() != 28 {
+		t.Fatalf("the running rail = %v, want the applied 28", commander.DailyBudgetUSD())
 	}
 	if got, err := config.DailyBudgetUSDAt(dir); err != nil || got != 28 {
 		t.Fatalf("persisted rail = %v err=%v", got, err)

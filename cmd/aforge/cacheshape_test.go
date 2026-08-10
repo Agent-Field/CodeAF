@@ -11,6 +11,7 @@ import (
 	"github.com/Agent-Field/aforge-v2/internal/head"
 	"github.com/Agent-Field/aforge-v2/internal/provider"
 	"github.com/Agent-Field/aforge-v2/internal/resident"
+	"github.com/Agent-Field/aforge-v2/internal/revision"
 	"github.com/Agent-Field/aforge-v2/internal/store"
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 )
@@ -70,8 +71,8 @@ func TestGatePromptKeepsChurnBelowTheSettledBlocks(t *testing.T) {
 	gateBody := func(deliverable string) string {
 		t.Helper()
 		capture := &gateCaptureClient{model: "worker/model"}
-		client := &liveClient{settings: settings, model: capture.model, client: capture}
-		judgeDeliverable(context.Background(), settings, client, graph, node, deliverable, "", deliveryEvidence{}, "worker/model")
+		client := adoptLiveClient(settings, capture.model, capture)
+		revision.JudgeDeliverable(context.Background(), settings, client, graph, node, deliverable, "", revision.Evidence{}, "worker/model")
 		return capture.messages[len(capture.messages)-1].Content[0].Text
 	}
 
@@ -111,7 +112,7 @@ func TestGatePromptKeepsChurnBelowTheSettledBlocks(t *testing.T) {
 func TestNarratorPromptLeadsWithTheAppendOnlyHalf(t *testing.T) {
 	settings := config.Config{Model: "talk/model"}
 	capture := &gateCaptureClient{model: "talk/model", response: "still going"}
-	client := &liveClient{settings: settings, model: capture.model, client: capture}
+	client := adoptLiveClient(settings, capture.model, capture)
 	narrate := narrateProgress(settings, client, nil)
 
 	if _, err := narrate(context.Background(), resident.Narration{
@@ -140,7 +141,7 @@ func TestNarratorPromptLeadsWithTheAppendOnlyHalf(t *testing.T) {
 func TestCompileRidesOneConstantCacheKey(t *testing.T) {
 	settings := config.Config{Model: "talk/model"}
 	capture := &compileCaptureClient{model: "talk/model"}
-	client := &liveClient{settings: settings, model: capture.model, client: capture}
+	client := adoptLiveClient(settings, capture.model, capture)
 	compile := compileIntent(settings, head.NewCompiler(client), client)
 
 	for _, instruction := range []string{"summarise this file", "benchmark the parser"} {
@@ -195,7 +196,7 @@ func TestPlanContractsRideTheRunCacheKey(t *testing.T) {
 	graph := openCacheStore(t)
 	settings := config.Config{Model: "worker/model", MaxDepth: 1, NodeBudget: 6}
 	capture := &planScriptClient{model: "worker/model"}
-	client := &liveClient{settings: settings, model: capture.model, client: capture}
+	client := adoptLiveClient(settings, capture.model, capture)
 	plans := &jobPlans{graphs: map[string]plannedJob{}}
 
 	subtree, err := planSubtree(settings, client, client, plans, graph)(context.Background(), resident.Compiled{

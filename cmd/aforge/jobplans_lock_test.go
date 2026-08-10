@@ -94,7 +94,7 @@ func TestRevisionDoesNotBlockLeavesWhileTheModelThinks(t *testing.T) {
 	planJobFixture(t, graph, plans, "task-2")
 
 	sentinel := newHeldRevisionClient()
-	client := &liveClient{settings: config.Config{}, model: "test/sentinel", client: sentinel}
+	client := adoptLiveClient(config.Config{}, "test/sentinel", sentinel)
 
 	revised := make(chan struct{})
 	go func() {
@@ -141,7 +141,7 @@ func TestRevisionsOfOnePlanStayInSingleFile(t *testing.T) {
 	second := planJobFixture(t, graph, plans, "task-2")
 
 	sentinel := newHeldRevisionClient()
-	client := &liveClient{settings: config.Config{}, model: "test/sentinel", client: sentinel}
+	client := adoptLiveClient(config.Config{}, "test/sentinel", sentinel)
 	revise := func(job store.Node) chan struct{} {
 		done := make(chan struct{})
 		go func() {

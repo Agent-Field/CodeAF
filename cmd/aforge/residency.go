@@ -164,7 +164,7 @@ func (r *chatResidency) becomeVisitor(holder *lease.Resident, open bool) error {
 		}
 	}
 	commander := newVisitorCommander(r.window.path, session, r.window.graph, surface.AttachSession)
-	commander.residency = r
+	commander.SetResidency(r)
 	r.installVisitor(surface, commander, holder, !open)
 	return nil
 }
@@ -179,7 +179,7 @@ func (r *chatResidency) commander() tui.Commander {
 
 func (r *chatResidency) currentSession() string {
 	if current := r.currentCommander(); current != nil {
-		if session := strings.TrimSpace(current.session()); session != "" {
+		if session := strings.TrimSpace(current.Session()); session != "" {
 			return session
 		}
 	}
@@ -192,11 +192,11 @@ func (r *chatResidency) currentCommander() *chatCommander {
 	return r.current
 }
 
-// poll is what the surface asks on every cycle. It is a probe and a decision,
+// Poll is what the surface asks on every cycle. It is a probe and a decision,
 // never the work itself: acquiring a lease and building a brain both happen on
 // goroutines this starts, so the poll that asked returns in the time one
 // non-blocking flock takes.
-func (r *chatResidency) poll() (tui.Residency, tui.Commander) {
+func (r *chatResidency) Poll() (tui.Residency, tui.Commander) {
 	handed := r.takeHanded()
 	state, due := r.probeDue()
 	if !due {
@@ -479,7 +479,7 @@ func (r *chatResidency) installBrain(brain *chatBrain, release func() error, han
 	// The commander the brain built has to be able to answer the surface's next
 	// residency question, or a window that promotes can never hear that it has
 	// been asked to stand down again.
-	brain.commander.residency = r
+	brain.commander.SetResidency(r)
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	if r.closed {
@@ -568,7 +568,7 @@ func (r *chatResidency) giveUpRole() (*chatBrain, string, bool) {
 	r.resident, r.brain, r.release = false, nil, nil
 	session := r.window.session
 	if r.current != nil {
-		if current := strings.TrimSpace(r.current.session()); current != "" {
+		if current := strings.TrimSpace(r.current.Session()); current != "" {
 			session = current
 		}
 	}

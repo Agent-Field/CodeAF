@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/Agent-Field/aforge-v2/internal/catalog"
+	"github.com/Agent-Field/aforge-v2/internal/command"
 	"github.com/Agent-Field/aforge-v2/internal/config"
 	"github.com/Agent-Field/aforge-v2/internal/store"
 )
@@ -34,11 +35,11 @@ func TestVoiceModelDiscoveryFiltersTranscriptionOutput(t *testing.T) {
 	models := catalog.Load(context.Background(), catalog.Options{
 		BaseURL: "https://example.invalid/api/v1", Dir: t.TempDir(), HTTPClient: client,
 	})
-	commander := &chatCommander{
-		settings: config.Config{VoiceModel: config.DefaultVoiceModel},
-		prefs:    chatPrefs{VoiceModel: config.DefaultVoiceModel},
-		models:   models,
-	}
+	commander := command.New(command.Options{
+		Settings: config.Config{VoiceModel: config.DefaultVoiceModel},
+		Prefs:    chatPrefs{VoiceModel: config.DefaultVoiceModel},
+		Models:   models,
+	})
 	got := commander.CatalogFor("voice")
 	if len(got) != 2 || got[0].Slug != "audio/asr" || got[1].Slug != "audio/caps" {
 		t.Fatalf("voice models = %+v", got)
@@ -63,12 +64,12 @@ func TestVoiceModelCatalogUsesStaleCacheOfflineAndHasDefaultFallback(t *testing.
 	models := catalog.Load(context.Background(), catalog.Options{
 		BaseURL: "https://example.invalid/api/v1", Dir: directory, HTTPClient: offline,
 	})
-	commander := &chatCommander{
-		settings: config.Config{VoiceModel: config.DefaultVoiceModel},
-		prefsDir: directory,
-		prefs:    chatPrefs{VoiceModel: config.DefaultVoiceModel},
-		models:   models,
-	}
+	commander := command.New(command.Options{
+		Settings: config.Config{VoiceModel: config.DefaultVoiceModel},
+		PrefsDir: directory,
+		Prefs:    chatPrefs{VoiceModel: config.DefaultVoiceModel},
+		Models:   models,
+	})
 	if got := commander.CatalogFor("voice"); len(got) != 1 || got[0].Slug != "cached/asr" {
 		t.Fatalf("offline cached catalog = %+v", got)
 	}
@@ -78,12 +79,12 @@ func TestVoiceModelCatalogUsesStaleCacheOfflineAndHasDefaultFallback(t *testing.
 	emptyModels := catalog.Load(context.Background(), catalog.Options{
 		BaseURL: "https://example.invalid/api/v1", Dir: t.TempDir(), HTTPClient: offline,
 	})
-	emptyCommander := &chatCommander{
-		settings: config.Config{VoiceModel: config.DefaultVoiceModel},
-		prefsDir: t.TempDir(),
-		prefs:    chatPrefs{VoiceModel: config.DefaultVoiceModel},
-		models:   emptyModels,
-	}
+	emptyCommander := command.New(command.Options{
+		Settings: config.Config{VoiceModel: config.DefaultVoiceModel},
+		PrefsDir: t.TempDir(),
+		Prefs:    chatPrefs{VoiceModel: config.DefaultVoiceModel},
+		Models:   emptyModels,
+	})
 	if got := emptyCommander.CatalogFor("voice"); len(got) != 1 || got[0].Slug != config.DefaultVoiceModel {
 		t.Fatalf("offline default catalog = %+v", got)
 	}
@@ -91,11 +92,11 @@ func TestVoiceModelCatalogUsesStaleCacheOfflineAndHasDefaultFallback(t *testing.
 
 func TestVoiceModelChoicePersistsInChatConfig(t *testing.T) {
 	directory := t.TempDir()
-	commander := &chatCommander{
-		settings: config.Config{VoiceModel: config.DefaultVoiceModel},
-		prefsDir: directory,
-		prefs:    chatPrefs{VoiceModel: config.DefaultVoiceModel},
-	}
+	commander := command.New(command.Options{
+		Settings: config.Config{VoiceModel: config.DefaultVoiceModel},
+		PrefsDir: directory,
+		Prefs:    chatPrefs{VoiceModel: config.DefaultVoiceModel},
+	})
 	if err := commander.SetModel("voice", "acme/asr"); err != nil {
 		t.Fatal(err)
 	}
@@ -110,7 +111,7 @@ func TestVoiceSpendUsesTheDurableUsageLedger(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer graph.Close()
-	commander := &chatCommander{store: graph}
+	commander := command.New(command.Options{Store: graph})
 	commander.RecordVoiceUsage(0.0125)
 	usage, err := graph.Usage()
 	if err != nil {

@@ -34,7 +34,7 @@ func TestTheDistillerIsShownWhatTheUserThrewAway(t *testing.T) {
 
 	settings := config.Config{Model: "worker/model"}
 	capture := &gateCaptureClient{model: "worker/model", response: `{"facts":[]}`}
-	client := &liveClient{settings: settings, model: capture.model, client: capture}
+	client := adoptLiveClient(settings, capture.model, capture)
 	if _, err := distillFacts(settings, client, graph)(context.Background(),
 		"write this week's investor update", "delivered the update", false); err != nil {
 		t.Fatal(err)
@@ -66,7 +66,7 @@ func TestTheRetrospectiveIsShownWhatTheUserThrewAway(t *testing.T) {
 
 	settings := config.Config{Model: "worker/model"}
 	capture := &gateCaptureClient{model: "worker/model", response: `{"facts":[]}`}
-	client := &liveClient{settings: settings, model: capture.model, client: capture}
+	client := adoptLiveClient(settings, capture.model, capture)
 	if _, err := reflectAcrossJobs(settings, client, graph)(context.Background(), []resident.JobSketch{
 		{Ask: "check what our competitors shipped", Outcome: "three launches", Age: "2 days ago"},
 		{Ask: "check what our competitors shipped", Outcome: "one launch", Age: "9 days ago"},

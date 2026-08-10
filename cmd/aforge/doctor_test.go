@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Agent-Field/aforge-v2/internal/command"
 	"github.com/Agent-Field/aforge-v2/internal/store"
 	"github.com/Agent-Field/aforge-v2/internal/watchdog"
 )
@@ -169,7 +170,7 @@ func TestWatchGroundingNamesEachCharterRatherThanCountingThem(t *testing.T) {
 	}
 	// The /standing slash command renders the same line, because two renderings
 	// of one thing eventually disagree about it.
-	lines, err := standingCharterLines(graph, 0)
+	lines, err := command.CharterLines(graph, 0)
 	if err != nil || len(lines) != 1 || !strings.Contains(grounding, lines[0]) {
 		t.Fatalf("grounding and /standing disagree: lines=%v err=%v\n%s", lines, err, grounding)
 	}

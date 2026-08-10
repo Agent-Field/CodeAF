@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Agent-Field/aforge-v2/internal/command"
 	"github.com/Agent-Field/aforge-v2/internal/config"
 	"github.com/Agent-Field/aforge-v2/internal/store"
 	"github.com/Agent-Field/aforge-v2/internal/watchdog"
@@ -196,7 +197,7 @@ func watchGrounding(path string, graph *store.Store, watch standingWatchStatus, 
 		return "standing watch status unavailable: " + err.Error()
 	}
 	grounding := strings.TrimSpace(formatDoctor(snapshot))
-	lines, err := standingCharterLines(graph, standingWatchCharterCap)
+	lines, err := command.CharterLines(graph, standingWatchCharterCap)
 	if err != nil || len(lines) == 0 {
 		return grounding
 	}

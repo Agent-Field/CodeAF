@@ -1,4 +1,4 @@
-package main
+package command
 
 import (
 	"path/filepath"
@@ -32,7 +32,7 @@ var (
 	selfCraftRepo *craft.Repo
 )
 
-func (c *chatCommander) craftRepo() *craft.Repo {
+func (c *Commander) craftRepo() *craft.Repo {
 	if c == nil || strings.TrimSpace(c.database) == "" {
 		return nil
 	}
@@ -50,7 +50,7 @@ func (c *chatCommander) craftRepo() *craft.Repo {
 // Crafts is the catalogue as Self lists it. A workflow that will not parse is
 // already skipped by the repository with a reported reason; the surface shows
 // what it could read rather than nothing.
-func (c *chatCommander) Crafts() ([]tui.CraftSummary, error) {
+func (c *Commander) Crafts() ([]tui.CraftSummary, error) {
 	repo := c.craftRepo()
 	if repo == nil {
 		return nil, nil
@@ -76,7 +76,7 @@ func (c *chatCommander) Crafts() ([]tui.CraftSummary, error) {
 
 // CraftDetail opens one workflow: its steps in file order, the bounds a run
 // will actually obey, and the versions behind it.
-func (c *chatCommander) CraftDetail(name string) (tui.CraftDetail, bool) {
+func (c *Commander) CraftDetail(name string) (tui.CraftDetail, bool) {
 	repo := c.craftRepo()
 	if repo == nil {
 		return tui.CraftDetail{}, false

@@ -21,7 +21,7 @@ func TestADeclaredBundleNeverMeetsThePlanner(t *testing.T) {
 	graph := openCacheStore(t)
 	settings := config.Config{Model: "worker/model"}
 	capture := &planScriptClient{model: "worker/model"}
-	client := &liveClient{settings: settings, model: capture.model, client: capture}
+	client := adoptLiveClient(settings, capture.model, capture)
 	plans := &jobPlans{graphs: map[string]plannedJob{}}
 
 	subtree, err := planSubtree(settings, client, client, plans, graph)(context.Background(), resident.Compiled{

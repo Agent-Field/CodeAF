@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Agent-Field/aforge-v2/internal/revision"
 	"github.com/Agent-Field/aforge-v2/internal/store"
 )
 
@@ -191,8 +192,8 @@ func TestTheRevisionContractForbidsNarratingTheRevision(t *testing.T) {
 		"replaces the previous attempt entirely",
 		"Say nothing about the review",
 	} {
-		if !strings.Contains(gateRevisionContract, clause) {
-			t.Fatalf("the revision contract lost %q:\n%s", clause, gateRevisionContract)
+		if !strings.Contains(revision.GateRevisionContract, clause) {
+			t.Fatalf("the revision contract lost %q:\n%s", clause, revision.GateRevisionContract)
 		}
 	}
 }

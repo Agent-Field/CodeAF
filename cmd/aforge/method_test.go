@@ -9,6 +9,7 @@ import (
 	"github.com/Agent-Field/aforge-v2/internal/head"
 	"github.com/Agent-Field/aforge-v2/internal/provider"
 	"github.com/Agent-Field/aforge-v2/internal/resident"
+	"github.com/Agent-Field/aforge-v2/internal/revision"
 	"github.com/Agent-Field/aforge-v2/internal/store"
 )
 
@@ -21,7 +22,7 @@ func TestTaskScaleLeafCarriesAWorkingMethod(t *testing.T) {
 	graph := openCacheStore(t)
 	settings := config.Config{Model: "worker/model"}
 	capture := &planScriptClient{model: "worker/model"}
-	client := &liveClient{settings: settings, model: capture.model, client: capture}
+	client := adoptLiveClient(settings, capture.model, capture)
 	plans := &jobPlans{graphs: map[string]plannedJob{}}
 
 	const goal = "write the note that announces the change"
@@ -71,7 +72,7 @@ func TestLookupScaleBuysNoWorkingMethod(t *testing.T) {
 	graph := openCacheStore(t)
 	settings := config.Config{Model: "worker/model"}
 	capture := &planScriptClient{model: "worker/model"}
-	client := &liveClient{settings: settings, model: capture.model, client: capture}
+	client := adoptLiveClient(settings, capture.model, capture)
 	plans := &jobPlans{graphs: map[string]plannedJob{}}
 
 	subtree, err := planSubtree(settings, client, client, plans, graph)(context.Background(), resident.Compiled{
@@ -104,7 +105,7 @@ func TestThePlannedDeliverableOwnerCarriesTheMethodTheGateReads(t *testing.T) {
 		parts:    `{"parts":[{"title":"Read","summary":"Read the diff."},{"title":"Weigh","summary":"Weigh the risks."}]}`,
 		contract: `{"contract":"State the verdict in the first line, then the evidence under it."}`,
 	}
-	client := &liveClient{settings: settings, model: capture.model, client: capture}
+	client := adoptLiveClient(settings, capture.model, capture)
 	plans := &jobPlans{graphs: map[string]plannedJob{}}
 
 	subtree, err := planSubtree(settings, client, client, plans, graph)(context.Background(), resident.Compiled{
@@ -141,9 +142,9 @@ func TestThePlannedDeliverableOwnerCarriesTheMethodTheGateReads(t *testing.T) {
 	// still moves the deliverable first.
 	node := store.Node{ID: root, Brief: rootSpec.Brief, Provenance: store.Provenance{Intent: "review the pull request", SessionID: "s1"}}
 	gate := &gateCaptureClient{model: "worker/model"}
-	judgeDeliverable(context.Background(), settings,
-		&liveClient{settings: settings, model: gate.model, client: gate}, graph, node,
-		"the review", leafContract(plans, planNode, node), deliveryEvidence{}, "worker/model")
+	revision.JudgeDeliverable(context.Background(), settings,
+		adoptLiveClient(settings, gate.model, gate), graph, node,
+		"the review", leafContract(plans, planNode, node), revision.Evidence{}, "worker/model")
 	body := gate.messages[len(gate.messages)-1].Content[0].Text
 	method := strings.Index(body, "The working method this deliverable was held to:\n")
 	deliverable := strings.Index(body, "Deliverable as produced:\n")
@@ -153,12 +154,12 @@ func TestThePlannedDeliverableOwnerCarriesTheMethodTheGateReads(t *testing.T) {
 	if deliverable < method {
 		t.Fatalf("the method churns below the deliverable: method=%d deliverable=%d", method, deliverable)
 	}
-	if !strings.Contains(judgeDeliverablePrompt, "it is the only standard beside the request itself that you hold the deliverable to") {
+	if !strings.Contains(revision.DeliverablePrompt, "it is the only standard beside the request itself that you hold the deliverable to") {
 		t.Fatal("the gate is handed the method and never told what to do with it")
 	}
 	// Calibration comes from the method, never from a rubric this file could
 	// grow: where the method asks for nothing, nothing is missing.
-	if !strings.Contains(judgeDeliverablePrompt, "Where it asks for nothing, nothing is missing") {
+	if !strings.Contains(revision.DeliverablePrompt, "Where it asks for nothing, nothing is missing") {
 		t.Fatal("the gate lost the clause that keeps a small ask small")
 	}
 }
@@ -170,9 +171,9 @@ func TestTheGateGrowsNoEmptyMethodBlock(t *testing.T) {
 	settings := config.Config{Model: "worker/model"}
 	node := store.Node{ID: "job", Brief: "produce it", Provenance: store.Provenance{Intent: "produce it"}}
 	capture := &gateCaptureClient{model: "worker/model"}
-	judgeDeliverable(context.Background(), settings,
-		&liveClient{settings: settings, model: capture.model, client: capture}, graph, node,
-		"done", "  \n ", deliveryEvidence{}, "worker/model")
+	revision.JudgeDeliverable(context.Background(), settings,
+		adoptLiveClient(settings, capture.model, capture), graph, node,
+		"done", "  \n ", revision.Evidence{}, "worker/model")
 	if got := capture.messages[len(capture.messages)-1].Content[0].Text; strings.Contains(got, "The working method") {
 		t.Errorf("an empty method block reached the gate:\n%s", got)
 	}

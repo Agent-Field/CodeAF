@@ -8,6 +8,7 @@ import (
 
 	"github.com/Agent-Field/aforge-v2/internal/config"
 	"github.com/Agent-Field/aforge-v2/internal/resident"
+	"github.com/Agent-Field/aforge-v2/internal/revision"
 	"github.com/Agent-Field/aforge-v2/internal/store"
 )
 
@@ -21,12 +22,12 @@ func TestTheGateReturnsTheWordsItsGapFails(t *testing.T) {
 	node := store.Node{ID: "job", Brief: "produce it",
 		Provenance: store.Provenance{Intent: "compare the two parsers and include the benchmark numbers"}}
 
-	judge := func(reply string) deliverableJudgment {
+	judge := func(reply string) revision.Judgment {
 		t.Helper()
 		capture := &gateCaptureClient{model: "worker/model", response: reply}
-		return judgeDeliverable(context.Background(), settings,
-			&liveClient{settings: settings, model: capture.model, client: capture}, graph, node,
-			"parser A wins", "", deliveryEvidence{}, "worker/model")
+		return revision.JudgeDeliverable(context.Background(), settings,
+			adoptLiveClient(settings, capture.model, capture), graph, node,
+			"parser A wins", "", revision.Evidence{}, "worker/model")
 	}
 
 	cited := judge(`{"pass":false,"gaps":"no numbers appear anywhere","quote":"include the benchmark numbers"}`)
@@ -49,7 +50,7 @@ func TestTheGateReturnsTheWordsItsGapFails(t *testing.T) {
 		"and the honest answer is pass": "the honest answer for it is pass",
 		"the field is in the contract":  `"quote": "<the words of the request this gap fails, copied exactly>"`,
 	} {
-		if !strings.Contains(judgeDeliverablePrompt, required) {
+		if !strings.Contains(revision.DeliverablePrompt, required) {
 			t.Errorf("the gate no longer asks for %s: %q missing", name, required)
 		}
 	}
@@ -77,7 +78,7 @@ func TestOnlyTheAsksOwnWordsAdmitAGap(t *testing.T) {
 		"a different span still admits":         {quote: "compare the two parsers", spent: []string{"the benchmark numbers"}, admitted: true},
 	} {
 		t.Run(name, func(t *testing.T) {
-			refusal := admitGapCitation(intent, test.quote, test.spent)
+			refusal := revision.AdmitGapCitation(intent, test.quote, test.spent)
 			if test.admitted && refusal != "" {
 				t.Fatalf("a legitimate citation was refused: %q", refusal)
 			}
@@ -110,7 +111,7 @@ func TestAGapTheAskNeverSetBuysNoRevisionRound(t *testing.T) {
 		"no citation at all is refused":      {quote: "  "},
 	} {
 		t.Run(name, func(t *testing.T) {
-			refusal := admitGapRevision(intent, method, test.quote)
+			refusal := revision.AdmitGapRevision(intent, method, test.quote)
 			if test.admitted && refusal != "" {
 				t.Fatalf("a grounded gap was refused its round: %q", refusal)
 			}
@@ -120,7 +121,7 @@ func TestAGapTheAskNeverSetBuysNoRevisionRound(t *testing.T) {
 				}
 				// A refusal is not silence: the person reads the review's own
 				// words and the reason nothing was redone over them.
-				note := gapNote("the year was never disambiguated", refusal)
+				note := revision.GapNote("the year was never disambiguated", refusal)
 				if !strings.Contains(note, "the year was never disambiguated") ||
 					!strings.Contains(note, refusal) {
 					t.Fatalf("the note hid either the gap or the reason: %q", note)
@@ -130,7 +131,7 @@ func TestAGapTheAskNeverSetBuysNoRevisionRound(t *testing.T) {
 	}
 	// A job with no working method is the ordinary case and must not become
 	// a job where every gap is grounded by an empty string.
-	if refusal := admitGapRevision(intent, "", "any calendar year present"); refusal == "" {
+	if refusal := revision.AdmitGapRevision(intent, "", "any calendar year present"); refusal == "" {
 		t.Fatal("an empty working method grounded a gap it never contained")
 	}
 }
@@ -160,18 +161,18 @@ func TestTheGapLedgerCountsOnlyTheRoundsThatWereBought(t *testing.T) {
 
 	// The lineage read follows the repair round, and the round the graph refused
 	// left nothing spent behind it.
-	spent := spentCitations(graph, "job")
+	spent := revision.SpentCitations(graph, "job")
 	if len(spent) != 1 || spent[0] != "every part" {
 		t.Fatalf("ledger = %v, want only the citation that bought a round", spent)
 	}
-	if refusal := admitGapCitation("answer every part", "every part", spent); refusal == "" {
+	if refusal := revision.AdmitGapCitation("answer every part", "every part", spent); refusal == "" {
 		t.Fatal("a span that already bought a round bought a second one")
 	}
-	if refusal := admitGapCitation("answer every part", "answer", spent); refusal != "" {
+	if refusal := revision.AdmitGapCitation("answer every part", "answer", spent); refusal != "" {
 		t.Fatalf("a refused citation blocked its own words forever: %q", refusal)
 	}
 	// The lineage is this job's, never the one whose id merely starts the same.
-	if got := spentCitations(graph, "job-x1"); len(got) != 0 {
+	if got := revision.SpentCitations(graph, "job-x1"); len(got) != 0 {
 		t.Fatalf("a repair round read its parent's ledger as its own: %v", got)
 	}
 }
@@ -228,10 +229,10 @@ func TestACitedGapGrowsTheJobThroughTheOverrunPath(t *testing.T) {
 	const intent = "compare the two parsers and include the benchmark numbers"
 	graph := assureFixture(t, intent)
 	planner := &countingPlanner{}
-	unmet := deliverableJudgment{Checked: true, Gaps: "no numbers appear anywhere",
+	unmet := revision.Judgment{Checked: true, Gaps: "no numbers appear anywhere",
 		Quote: "include the benchmark numbers"}
 
-	extension := extendForGap(context.Background(), graph, gateNode(t, graph, "job"), "parser A wins",
+	extension := revision.ExtendForGap(context.Background(), graph, gateNode(t, graph, "job"), "parser A wins",
 		unmet, []string{"/tmp/draft.md"}, 0, planner.plan)
 	if extension.Spliced != 1 || extension.Refused != "" || extension.Round != 1 {
 		t.Fatalf("a cited gap did not grow the job: %+v", extension)
@@ -259,7 +260,7 @@ func TestACitedGapGrowsTheJobThroughTheOverrunPath(t *testing.T) {
 		t.Fatalf("the repair lost the ask it exists to satisfy: %q", repair.Provenance.Intent)
 	}
 	// And the person is told, once, in one line that says what and why.
-	notice := gapContinuationNotice(unmet.Gaps)
+	notice := revision.GapContinuationNotice(unmet.Gaps)
 	if strings.Count(notice, "\n") != 0 || !strings.Contains(notice, "no numbers appear anywhere") {
 		t.Fatalf("the continuation notice is not one calm line naming the gap: %q", notice)
 	}
@@ -277,10 +278,10 @@ func TestACitedGapGrowsTheJobThroughTheOverrunPath(t *testing.T) {
 func TestAnUncitedGapReachesNoPlannerAndShipsWithAHandover(t *testing.T) {
 	graph := assureFixture(t, "compare the two parsers")
 	planner := &countingPlanner{}
-	unmet := deliverableJudgment{Checked: true, Gaps: "there is no chart of the results",
+	unmet := revision.Judgment{Checked: true, Gaps: "there is no chart of the results",
 		Quote: "a chart of the results"}
 
-	extension := extendForGap(context.Background(), graph, gateNode(t, graph, "job"), "parser A wins",
+	extension := revision.ExtendForGap(context.Background(), graph, gateNode(t, graph, "job"), "parser A wins",
 		unmet, nil, 0, planner.plan)
 	if extension.Spliced != 0 || extension.Refused == "" {
 		t.Fatalf("an uncited gap grew the job: %+v", extension)
@@ -291,7 +292,7 @@ func TestAnUncitedGapReachesNoPlannerAndShipsWithAHandover(t *testing.T) {
 	if _, ok, _ := graph.Node("job-x1"); ok {
 		t.Fatal("a refused gap still spliced a repair")
 	}
-	handover := gapHandover(unmet.Gaps, true, extension.Refused)
+	handover := revision.GapHandover(unmet.Gaps, true, extension.Refused)
 	for _, want := range []string{"there is no chart of the results", "as far as repair takes it", extension.Refused} {
 		if !strings.Contains(handover, want) {
 			t.Fatalf("the handover does not carry %q:\n%s", want, handover)
@@ -299,7 +300,7 @@ func TestAnUncitedGapReachesNoPlannerAndShipsWithAHandover(t *testing.T) {
 	}
 	// A gap the revision never got to answer says so, because "this is the first
 	// draft" is a different fact about the delivery than "it was revised once".
-	unrevised := gapHandover(unmet.Gaps, false, "")
+	unrevised := revision.GapHandover(unmet.Gaps, false, "")
 	if !strings.Contains(unrevised, "The revision pass came back empty") {
 		t.Fatalf("an unrevised handover does not say so:\n%s", unrevised)
 	}
@@ -312,9 +313,9 @@ func TestTheSameWordsCannotBuyASecondRound(t *testing.T) {
 	const intent = "compare the two parsers and include the benchmark numbers"
 	graph := assureFixture(t, intent)
 	planner := &countingPlanner{}
-	unmet := deliverableJudgment{Checked: true, Gaps: "no numbers", Quote: "the benchmark numbers"}
+	unmet := revision.Judgment{Checked: true, Gaps: "no numbers", Quote: "the benchmark numbers"}
 
-	first := extendForGap(context.Background(), graph, gateNode(t, graph, "job"), "draft",
+	first := revision.ExtendForGap(context.Background(), graph, gateNode(t, graph, "job"), "draft",
 		unmet, nil, 0, planner.plan)
 	if first.Spliced == 0 {
 		t.Fatalf("the first round was refused: %+v", first)
@@ -326,8 +327,8 @@ func TestTheSameWordsCannotBuyASecondRound(t *testing.T) {
 
 	// Round two, from the repair node, citing the same words in different
 	// whitespace — the same span by any honest reading.
-	repeat := deliverableJudgment{Checked: true, Gaps: "still no numbers", Quote: "the benchmark\nnumbers"}
-	second := extendForGap(context.Background(), graph, gateNode(t, graph, "job-x1"), "draft",
+	repeat := revision.Judgment{Checked: true, Gaps: "still no numbers", Quote: "the benchmark\nnumbers"}
+	second := revision.ExtendForGap(context.Background(), graph, gateNode(t, graph, "job-x1"), "draft",
 		repeat, nil, 0, planner.plan)
 	if second.Spliced != 0 || second.Refused == "" {
 		t.Fatalf("the same words bought a second round: %+v", second)
@@ -339,8 +340,8 @@ func TestTheSameWordsCannotBuyASecondRound(t *testing.T) {
 		t.Fatalf("the refused round did not read its own place in the lineage: %+v", second)
 	}
 	// A different span is still work the person asked for and still admissible.
-	other := deliverableJudgment{Checked: true, Gaps: "only one parser was read", Quote: "compare the two parsers"}
-	if got := extendForGap(context.Background(), graph, gateNode(t, graph, "job-x1"), "draft",
+	other := revision.Judgment{Checked: true, Gaps: "only one parser was read", Quote: "compare the two parsers"}
+	if got := revision.ExtendForGap(context.Background(), graph, gateNode(t, graph, "job-x1"), "draft",
 		other, nil, 0, planner.plan); got.Spliced == 0 {
 		t.Fatalf("a fresh span of the ask was refused: %+v", got)
 	}
@@ -361,12 +362,12 @@ func TestTheTwentySevenRoundShapeIsStructurallyImpossible(t *testing.T) {
 	for round := 1; round <= 27; round++ {
 		// Each round's gap is derived from the previous round's own output,
 		// which is exactly how the spiral fed itself.
-		spiral := deliverableJudgment{
+		spiral := revision.Judgment{
 			Checked: true,
 			Gaps:    fmt.Sprintf("verify what round %d produced: %s", round, produced),
 			Quote:   fmt.Sprintf("verify what round %d produced", round),
 		}
-		extension := extendForGap(context.Background(), graph, gateNode(t, graph, "job"), produced,
+		extension := revision.ExtendForGap(context.Background(), graph, gateNode(t, graph, "job"), produced,
 			spiral, nil, 0, planner.plan)
 		if extension.Spliced != 0 || extension.Refused == "" {
 			t.Fatalf("round %d of invented verification was admitted: %+v", round, extension)
@@ -396,8 +397,8 @@ func TestTheRoundCapStillBoundsEvenACitedLineage(t *testing.T) {
 
 	from := "job"
 	for round, quote := range []string{"one", "two", "three", "four"} {
-		unmet := deliverableJudgment{Checked: true, Gaps: "missing " + quote, Quote: quote}
-		extension := extendForGap(context.Background(), graph, gateNode(t, graph, from), "draft",
+		unmet := revision.Judgment{Checked: true, Gaps: "missing " + quote, Quote: quote}
+		extension := revision.ExtendForGap(context.Background(), graph, gateNode(t, graph, from), "draft",
 			unmet, nil, 0, planner.plan)
 		if round < resident.MaxOverrunRounds {
 			if extension.Spliced == 0 {

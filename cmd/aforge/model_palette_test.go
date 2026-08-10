@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/Agent-Field/aforge-v2/internal/catalog"
+	"github.com/Agent-Field/aforge-v2/internal/command"
 	"github.com/Agent-Field/aforge-v2/internal/config"
 	"github.com/Agent-Field/aforge-v2/internal/exec"
 )
@@ -32,7 +33,7 @@ func TestModelPaletteCatalogFiltersEveryCapabilitySlot(t *testing.T) {
 	models := catalog.Load(context.Background(), catalog.Options{
 		BaseURL: "https://example.invalid/api/v1", Dir: t.TempDir(), HTTPClient: client,
 	})
-	commander := &chatCommander{models: models, settings: config.Config{VoiceModel: config.DefaultVoiceModel}}
+	commander := command.New(command.Options{Models: models, Settings: config.Config{VoiceModel: config.DefaultVoiceModel}})
 	want := map[string][]string{
 		"talk":   {"chat/text", "chat/text-two", "chat/text-three", "chat/text-four"},
 		"work":   {"chat/text", "chat/text-two", "chat/text-three", "chat/text-four"},
@@ -56,10 +57,15 @@ func TestModelPaletteCatalogFiltersEveryCapabilitySlot(t *testing.T) {
 	}
 }
 
+// paletteTestSettings is enough configuration for a slot to build a client
+// when a test asks it to switch models. Nothing here reaches the network: the
+// palette tests only ever read back which slug a slot now names.
+var paletteTestSettings = config.Config{APIKey: "test-key", BaseURL: "https://example.invalid/api/v1"}
+
 func TestBoostPreferenceFollowsWorkPersistsOverrideAndCanBeCleared(t *testing.T) {
 	directory := t.TempDir()
-	work := &liveClient{model: "work/one"}
-	commander := &chatCommander{prefsDir: directory, taskClient: work}
+	work := adoptLiveClient(paletteTestSettings, "work/one", nil)
+	commander := command.New(command.Options{PrefsDir: directory, TaskClient: work})
 	if !commander.ModelFollows("boost") || commander.CurrentModel("boost") != "work/one" {
 		t.Fatalf("default boost follows=%t model=%q", commander.ModelFollows("boost"), commander.CurrentModel("boost"))
 	}
@@ -73,9 +79,9 @@ func TestBoostPreferenceFollowsWorkPersistsOverrideAndCanBeCleared(t *testing.T)
 	if err := commander.SetModel("boost", ""); err != nil {
 		t.Fatal(err)
 	}
-	work.mu.Lock()
-	work.model = "work/two"
-	work.mu.Unlock()
+	if err := work.SetModel("work/two"); err != nil {
+		t.Fatal(err)
+	}
 	if !commander.ModelFollows("boost") || commander.CurrentModel("boost") != "work/two" || loadChatPrefs(directory).BoostModel != "" {
 		t.Fatalf("cleared boost prefs = %+v model=%q", loadChatPrefs(directory), commander.CurrentModel("boost"))
 	}
@@ -84,9 +90,9 @@ func TestBoostPreferenceFollowsWorkPersistsOverrideAndCanBeCleared(t *testing.T)
 func TestPlanPreferenceFollowsWorkPersistsOverrideAndCanBeCleared(t *testing.T) {
 	directory := t.TempDir()
 	testSettings := config.Config{APIKey: "test-key", BaseURL: "https://example.invalid/api/v1"}
-	work := &liveClient{model: "work/one", settings: testSettings}
-	planner := &liveClient{model: "work/one", settings: testSettings}
-	commander := &chatCommander{prefsDir: directory, taskClient: work, planClient: planner, settings: testSettings}
+	work := adoptLiveClient(testSettings, "work/one", nil)
+	planner := adoptLiveClient(testSettings, "work/one", nil)
+	commander := command.New(command.Options{PrefsDir: directory, TaskClient: work, PlanClient: planner, Settings: testSettings})
 	if !commander.ModelFollows("plan") || commander.CurrentModel("plan") != "work/one" {
 		t.Fatalf("default plan follows=%t model=%q", commander.ModelFollows("plan"), commander.CurrentModel("plan"))
 	}
@@ -121,10 +127,10 @@ func TestPlanPreferenceFollowsWorkPersistsOverrideAndCanBeCleared(t *testing.T) 
 
 func TestMediaModelPreferencesPersistAndUpdateFutureLeafSnapshot(t *testing.T) {
 	directory := t.TempDir()
-	media := &chatMediaModels{tools: exec.MediaTools{
+	media := command.NewMediaModels(exec.MediaTools{
 		ImageModel: "old/image", SpeechModel: "old/speech", MusicModel: "old/music", VideoModel: "old/video",
-	}}
-	commander := &chatCommander{prefsDir: directory, prefs: chatPrefs{}, mediaModels: media}
+	}, nil)
+	commander := command.New(command.Options{PrefsDir: directory, MediaModels: media})
 	picks := map[string]string{
 		"image": "new/image", "speech": "new/speech", "music": "new/music", "video": "new/video",
 	}
@@ -143,7 +149,7 @@ func TestMediaModelPreferencesPersistAndUpdateFutureLeafSnapshot(t *testing.T) {
 		snapshot.MusicModel != picks["music"] || snapshot.VideoModel != picks["video"] {
 		t.Fatalf("future leaf media snapshot = %+v", snapshot)
 	}
-	reloaded := &chatCommander{prefs: loadChatPrefs(directory)}
+	reloaded := command.New(command.Options{Prefs: loadChatPrefs(directory)})
 	for role, slug := range picks {
 		if got := reloaded.CurrentModel(role); got != slug {
 			t.Fatalf("reloaded %s model = %q, want %q", role, got, slug)

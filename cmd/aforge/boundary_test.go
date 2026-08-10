@@ -12,6 +12,7 @@ import (
 	"github.com/Agent-Field/aforge-v2/internal/exec"
 	"github.com/Agent-Field/aforge-v2/internal/profile"
 	"github.com/Agent-Field/aforge-v2/internal/provider"
+	"github.com/Agent-Field/aforge-v2/internal/revision"
 	"github.com/Agent-Field/aforge-v2/internal/store"
 )
 
@@ -139,8 +140,8 @@ func TestOnlyARegisteredWorkerSurvivesAJudgementsReply(t *testing.T) {
 		{"not json at all", ""},
 		{"", ""},
 	} {
-		if got := decodeWorkerChoice(testCase.reply); got != testCase.want {
-			t.Fatalf("decodeWorkerChoice(%q) = %q, want %q", testCase.reply, got, testCase.want)
+		if got := revision.DecodeWorkerChoice(testCase.reply); got != testCase.want {
+			t.Fatalf("revision.DecodeWorkerChoice(%q) = %q, want %q", testCase.reply, got, testCase.want)
 		}
 	}
 }
@@ -149,13 +150,13 @@ func TestOnlyARegisteredWorkerSurvivesAJudgementsReply(t *testing.T) {
 // specialist registered the menu is empty, the brief is empty, and the prompt
 // those judges send is the prompt they have always sent.
 func TestAJudgementGetsAMenuOnlyWhenThereIsOne(t *testing.T) {
-	if got := workerChoiceBrief(exec.MenuTextExcept(exec.LinearSubharness)); got != "" {
+	if got := revision.WorkerChoiceBrief(exec.MenuTextExcept(exec.LinearSubharness)); got != "" {
 		t.Fatalf("a baseline build hands its judges a menu:\n%s", got)
 	}
 	defer exec.ForgetSubharnesses()
 	exec.RegisterSubharness(exec.SubharnessInfo{Name: "swe", Purpose: "software engineering taken whole"})
 
-	brief := workerChoiceBrief(exec.MenuTextExcept(exec.LinearSubharness))
+	brief := revision.WorkerChoiceBrief(exec.MenuTextExcept(exec.LinearSubharness))
 	if !strings.Contains(brief, "swe — software engineering taken whole") {
 		t.Fatalf("the judge was not shown the specialist:\n%s", brief)
 	}
@@ -163,11 +164,11 @@ func TestAJudgementGetsAMenuOnlyWhenThereIsOne(t *testing.T) {
 		t.Fatalf("the judge was not told how to answer:\n%s", brief)
 	}
 	// No self-rung: the specialist's own failed leaf is handed nothing.
-	if got := workerChoiceBrief(exec.MenuTextExcept("swe")); got != "" {
+	if got := revision.WorkerChoiceBrief(exec.MenuTextExcept("swe")); got != "" {
 		t.Fatalf("a failed swe leaf was offered swe again:\n%s", got)
 	}
 	// And with no menu the judge is never called at all.
-	if got := judgeRetryWorker(nil, config.Config{}, nil, store.Node{}, exec.Task{},
+	if got := revision.JudgeRetryWorker(nil, config.Config{}, nil, store.Node{}, exec.Task{},
 		&exec.Outcome{}, nil, "", ""); got != "" {
 		t.Fatalf("a judge with no menu answered %q", got)
 	}

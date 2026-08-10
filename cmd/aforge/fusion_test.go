@@ -21,7 +21,7 @@ func TestACompiledMethodCostsNoSecondCall(t *testing.T) {
 	graph := openCacheStore(t)
 	settings := config.Config{Model: "worker/model"}
 	capture := &planScriptClient{model: "worker/model"}
-	client := &liveClient{settings: settings, model: capture.model, client: capture}
+	client := adoptLiveClient(settings, capture.model, capture)
 	plans := &jobPlans{graphs: map[string]plannedJob{}}
 
 	const method = "Read the diff first. Done means the note names every migration step."
