@@ -27,9 +27,16 @@ import (
 )
 
 const (
-	pollInterval          = 400 * time.Millisecond
-	messagePageSize       = 200
-	maxGraphContextBytes  = 4 << 10
+	pollInterval    = 400 * time.Millisecond
+	messagePageSize = 200
+	// maxGraphContextBytes rose by a kilobyte when the board learned structure.
+	// Two clauses were added to it — what a row is waiting on, and how long live
+	// work has been going — and both land on exactly the rows a status question
+	// is about. Paying for them out of the old budget would have bought the
+	// answer by truncating the history the same prompt answers "what did you do
+	// yesterday" from; a kilobyte is the smaller price, and the live-work-first
+	// ordering still decides what the ceiling drops.
+	maxGraphContextBytes  = 5 << 10
 	maxThreadContextBytes = 8 << 10
 	// The truncation markers are part of what gets sent, so they are part of
 	// what the budget covers. Written after the check, they put the block over
@@ -1559,6 +1566,13 @@ func (h *Head) renderGraph(snapshot store.Snapshot, sessionID, thread string, op
 			children[node.Parent] = append(children[node.Parent], node.ID)
 		}
 	}
+	// The head had never read a graph edge. Its whole structural vocabulary was
+	// "N running, M queued", so "what's the plan?" could only be answered with a
+	// pair of counts — and a board that says three steps are queued without
+	// saying what they are queued behind has described a workforce as a number.
+	// The edges were in the snapshot the entire time; the rail has drawn this
+	// same clause from them for as long as it has had a tree.
+	waits := boardWaits(snapshot, byID)
 	var rendered strings.Builder
 	for _, node := range nodes {
 		brief := firstLine(node.Brief)
@@ -1599,6 +1613,16 @@ func (h *Head) renderGraph(snapshot store.Snapshot, sessionID, thread string, op
 			// A part says whose part it is, by the job's own name — the same name
 			// the thread, the cards and the receipts use.
 			line += " | part of " + owner
+		}
+		if clause := waits[node.ID]; clause != "" {
+			line += " | waits on " + clause
+		}
+		// How long it has been going, for work that is going. It is the same
+		// quantity Impact carries as RunningFor and is derived the same way —
+		// the longest-running node at or under this row — but off the snapshot
+		// already in hand rather than a recursive query per row.
+		if running := boardRunningFor(node, byID, children, now); running > 0 {
+			line += " | running " + boardElapsed(running)
 		}
 		if crossSession(node, sessionID) {
 			line += crossSessionMark
@@ -1673,6 +1697,96 @@ func boardOwnerLabel(node store.Node, byID map[string]store.Node) string {
 		node = owner
 	}
 	return ""
+}
+
+const (
+	// boardWaitsCap is how many upstreams one row names. Past a few this is the
+	// dependency list rather than the reason a row is sitting still, and the
+	// plan read is where a whole dependency list belongs.
+	boardWaitsCap = 3
+	// boardWaitLabelBytes keeps one upstream to the width of a name. The label
+	// is a job's own title; a title long enough to need cutting is a brief that
+	// was never given a title.
+	boardWaitLabelBytes = 48
+)
+
+// boardWaits derives "what is this row sitting behind" from the edges the
+// snapshot already carries. Only unsettled upstreams count: an edge from work
+// that has landed is a record of where the input came from, not a reason
+// anything is waiting, and saying "waits on" about it would make a moving job
+// read as a stuck one.
+func boardWaits(snapshot store.Snapshot, byID map[string]store.Node) map[string]string {
+	if len(snapshot.Edges) == 0 {
+		return nil
+	}
+	labels := make(map[string][]string)
+	named := make(map[string]bool, len(snapshot.Edges))
+	for _, edge := range snapshot.Edges {
+		source, ok := byID[edge.From]
+		if !ok || source.FoldRoot || !classOpen(source.Status) {
+			continue
+		}
+		if _, ok := byID[edge.To]; !ok {
+			continue
+		}
+		// Two kinds of edge between the same pair are one wait, not two.
+		pair := edge.To + "\x00" + edge.From
+		if named[pair] || len(labels[edge.To]) >= boardWaitsCap {
+			continue
+		}
+		named[pair] = true
+		labels[edge.To] = append(labels[edge.To],
+			truncateBytes(surgeryTargetLabel(source), boardWaitLabelBytes))
+	}
+	rendered := make(map[string]string, len(labels))
+	for id, names := range labels {
+		rendered[id] = strings.Join(names, ", ")
+	}
+	return rendered
+}
+
+// boardRunningFor is how long the longest-running node at or under a row has
+// been going. A job root usually carries no start time of its own — its parts
+// do the work — so a row that says "running" with no duration was the whole
+// reason the head could describe a job forty-nine minutes in as if it had just
+// been asked for.
+func boardRunningFor(node store.Node, byID map[string]store.Node, children map[string][]string, now time.Time) time.Duration {
+	longest := time.Duration(0)
+	seen := make(map[string]bool, 8)
+	stack := []string{node.ID}
+	for len(stack) > 0 {
+		id := stack[len(stack)-1]
+		stack = stack[:len(stack)-1]
+		if seen[id] {
+			continue
+		}
+		seen[id] = true
+		member := byID[id]
+		if member.Status == store.Running || member.Status == store.Claimed {
+			if !member.StartedAt.IsZero() {
+				if elapsed := now.Sub(member.StartedAt); elapsed > longest {
+					longest = elapsed
+				}
+			}
+		}
+		stack = append(stack, children[id]...)
+	}
+	return longest
+}
+
+// boardElapsed spells a live duration at the resolution the head's clock uses.
+// Nothing this head says turns on a second, and a second-resolution clause
+// would rewrite the board between two messages the way the cost in cents once
+// rewrote the belt's.
+func boardElapsed(elapsed time.Duration) string {
+	switch {
+	case elapsed < time.Minute:
+		return "under a minute"
+	case elapsed < time.Hour:
+		return fmt.Sprintf("%dm", int(elapsed/time.Minute))
+	default:
+		return fmt.Sprintf("%dh %02dm", int(elapsed/time.Hour), int(elapsed/time.Minute)%60)
+	}
 }
 
 // renderThread is the conversation as the model reads it, and every line spoken

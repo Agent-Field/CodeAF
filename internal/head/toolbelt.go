@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/Agent-Field/aforge-v2/internal/manual"
+	"github.com/Agent-Field/aforge-v2/internal/plan"
 	"github.com/Agent-Field/aforge-v2/internal/resident"
 	"github.com/Agent-Field/aforge-v2/internal/store"
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
@@ -49,6 +50,14 @@ const (
 	// knows which row the user meant. Both exist because the guess is free and
 	// the decision is right.
 	beltToolResult = "result"
+	// beltToolPlan is the read that answers "what's the plan?" — the question
+	// this belt could not answer at all. board says how many parts are running
+	// and result says what a part came back with; neither says what the work was
+	// broken into, which part waits on which, or where the thing is up to. That
+	// structure has been journaled on every job's root since plans became
+	// durable, and nothing in this package had ever opened it, so the head's
+	// entire structural vocabulary was "N running, M queued".
+	beltToolPlan = "plan"
 	// beltToolRead finishes what result starts. result returns what a job said
 	// about itself and the paths it wrote; when what was asked for is inside one
 	// of those documents, result hands back a pointer and the loop used to stop
@@ -196,6 +205,9 @@ func beltDefinitions() []ai.ToolDefinition {
 		beltTool(beltToolResult, "Read what one job actually produced: its findings in full, the files it wrote, what it spent, and how its parts ended. Always safe. Read it whenever the user asks what work found, produced, concluded or decided — the board only says how a job ended, and how it ended is not what it found.", map[string]any{
 			"id": beltProp("string", "one id from a board read"),
 		}, "id"),
+		beltTool(beltToolPlan, "Read how one job was broken up: every step in it, in the order they can run, what each step is waiting on, how each one is going, what each cost, and the method a step was given. Always safe. Read it whenever the user asks what the plan is, how far along something is, what is left, what is holding it up, or which part is slow — the board says how many parts are moving, and how many is not what the shape of the work is.", map[string]any{
+			"job": beltProp("string", "one id from a board read"),
+		}, "job"),
 		beltTool(beltToolRead, "Open a file a job wrote and read what is inside it. Always safe. Use it the moment the answer to the question is in a document and what the job recorded only names that document — a result that says where the answer is has not given you the answer, and this is how you go and get it. Never offer to fetch something you can fetch with this call right now. Only files a job actually recorded can be opened.", map[string]any{
 			"job":  beltProp("string", "the job that wrote it, id from a board or result read"),
 			"file": beltProp("string", "the path or filename, as that job recorded it; omit it when the job wrote only one file"),
@@ -265,6 +277,8 @@ func (run *beltRun) execute(name, arguments string) (string, bool) {
 		return run.manual(args)
 	case beltToolResult:
 		return run.result(args)
+	case beltToolPlan:
+		return run.plan(args)
 	case beltToolRead:
 		return run.read(args)
 	case beltToolCompetence:
@@ -425,6 +439,17 @@ func (run *beltRun) result(args map[string]any) (string, bool) {
 		return err.Error(), true
 	}
 	return run.head.renderResult(node), false
+}
+
+// plan is the read that answers a question about shape. It records nothing and
+// journals nothing, exactly as board, result and read do: asking what the work
+// was broken into changed none of it.
+func (run *beltRun) plan(args map[string]any) (string, bool) {
+	node, err := run.head.beltRecordedJob(beltString(args, "job"), "job")
+	if err != nil {
+		return err.Error(), true
+	}
+	return run.head.renderPlan(node)
 }
 
 // read is the third read, and the only one whose subject is outside the graph.
@@ -871,7 +896,231 @@ func (h *Head) renderResult(node store.Node) string {
 	return strings.TrimSpace(rendered.String())
 }
 
-// resultChildren gives each direct child the board's one line. BoardRowCap
+const (
+	// planStepCap is how many steps one plan read spells out. A plan longer than
+	// this is a document, and the question behind this read — what is this, what
+	// is left, what is holding it up — is answered by the first two dozen steps
+	// and by the counts on the line above them.
+	planStepCap = 24
+	// planIndentCap bounds how far a step is indented for its place in the
+	// dependency order. Past a few layers the indent stops saying anything a
+	// reader can hold, and the "after" clause on each line is the exact fact.
+	planIndentCap = 6
+	// planMethodBytes is how much of a step's working method one line carries.
+	// The contract is written for the agent that runs the step; here it is
+	// evidence of how the step is being worked, not the instructions themselves.
+	planMethodBytes = 120
+	// planTruncatedMark is the plan read's own version of the board's marker: a
+	// read that stopped saying it stopped, so a short answer is never mistaken
+	// for a short plan.
+	planTruncatedMark = "(plan truncated)"
+)
+
+// journaledPlan finds the plan a store node belongs to. Ids are minted as
+// "<prefix>-n<planID>" with the job root taking the bare prefix, so a plan is
+// reachable from any node of its job: the row's own id first, its namespace
+// second. The separator is the whole of the test — "task-14" is not the
+// namespace of "task-142-n1", however much it looks like one.
+func (h *Head) journaledPlan(node store.Node) (string, store.PlanGraph, bool) {
+	candidates := []string{node.ID}
+	if cut := strings.LastIndex(node.ID, "-n"); cut > 0 {
+		candidates = append(candidates, node.ID[:cut])
+	}
+	if parent := strings.TrimSpace(node.Parent); parent != "" && parent != store.RootID {
+		candidates = append(candidates, parent)
+	}
+	for _, prefix := range candidates {
+		journaled, found, err := h.store.PlanGraphFor(prefix)
+		if err != nil || !found {
+			continue
+		}
+		return prefix, journaled, true
+	}
+	return "", store.PlanGraph{}, false
+}
+
+// renderPlan is one job's structure in plain words: every step, in an order
+// that can actually run, with what each is waiting on and how each is going.
+//
+// The states and the spend are read off the durable rows rather than off the
+// journaled document, and that is not belt-and-braces. The journal is written
+// when a plan is made and when it is revised, never once per landed leaf, so a
+// document read on its own would report a finished job as entirely pending —
+// which is the same reason the executor re-derives state from the store when it
+// rehydrates a plan, by the same id mapping.
+func (h *Head) renderPlan(node store.Node) (string, bool) {
+	prefix, journaled, found := h.journaledPlan(node)
+	if !found {
+		return fmt.Sprintf("%s was taken on as a single step, so there is no breakdown to read — result is what it has to say for itself.",
+			surgeryTargetLabel(node)), false
+	}
+	document, err := plan.Load(journaled.Graph)
+	if err != nil {
+		return "that job's plan could not be read: " + err.Error(), true
+	}
+	root := strings.TrimSpace(journaled.Root)
+	if root == "" {
+		root = prefix
+	}
+	rows := h.planRows(prefix, root, document)
+
+	now := time.Now()
+	titles := make(map[int]string, len(document.Nodes))
+	for _, step := range document.Nodes {
+		titles[step.ID] = planStepLabel(step)
+	}
+	done, running, waiting := 0, 0, 0
+	lines := make([]string, 0, planStepCap)
+	truncated := false
+	for level, wave := range document.Waves() {
+		for _, id := range wave {
+			step := document.Node(id)
+			if step == nil {
+				continue
+			}
+			word, row, stored := planStepState(*step, rows)
+			switch word {
+			case surgeryStatusWord(store.Done):
+				done++
+			case surgeryStatusWord(store.Running), surgeryStatusWord(store.Claimed):
+				running++
+			case surgeryStatusWord(store.Pending):
+				waiting++
+			}
+			if len(lines) >= planStepCap {
+				truncated = true
+				continue
+			}
+			indent := level
+			if indent > planIndentCap {
+				indent = planIndentCap
+			}
+			line := strings.Repeat("  ", indent) + "- " + titles[step.ID] + " | " + word
+			if after := planAfter(*step, titles); after != "" {
+				line += " | " + after
+			}
+			if step.Turns > 0 {
+				line += fmt.Sprintf(" | %d turns", step.Turns)
+			}
+			if stored {
+				if impact, err := h.store.Impact(row.ID, now); err == nil && impact.Cost > 0 {
+					line += fmt.Sprintf(" | $%.2f", impact.Cost)
+				}
+				line += " | id " + row.ID
+			}
+			if method := firstLine(step.Contract); method != "" {
+				line += " | method: " + truncateBytes(method, planMethodBytes)
+			}
+			lines = append(lines, line)
+		}
+	}
+
+	var rendered strings.Builder
+	fmt.Fprintf(&rendered, "plan for %s | %d steps | %d done, %d under way, %d waiting\n",
+		surgeryTargetLabel(node), len(document.Nodes), done, running, waiting)
+	if goal := firstLine(document.Goal); goal != "" {
+		rendered.WriteString("goal: " + goal + "\n")
+	}
+	if evidence := firstLine(document.Evidence); evidence != "" {
+		rendered.WriteString("what counts as done: " + evidence + "\n")
+	}
+	rendered.WriteString(strings.Join(lines, "\n"))
+	if truncated {
+		rendered.WriteString("\n" + planTruncatedMark)
+	}
+	body := truncateBytes(strings.TrimSpace(rendered.String()), beltResultBytes)
+	return body, false
+}
+
+// planRows maps each plan step onto the durable row it was spliced as, by the
+// same rule the executor uses when it rehydrates a plan from the journal: the
+// minted id, and failing that the job root, which is what the deliverable sink
+// is admitted under. A step with no row at all has not been spliced, and that
+// is a fact about it rather than a gap.
+func (h *Head) planRows(prefix, root string, document *plan.Graph) map[int]store.Node {
+	nodes, err := h.store.SubtreeNodes(root)
+	if err != nil {
+		return nil
+	}
+	byID := make(map[string]store.Node, len(nodes))
+	for _, node := range nodes {
+		byID[node.ID] = node
+	}
+	rows := make(map[int]store.Node, len(document.Nodes))
+	for _, step := range document.Nodes {
+		stored, ok := byID[fmt.Sprintf("%s-n%d", prefix, step.ID)]
+		if !ok {
+			if stored, ok = byID[prefix]; !ok || stored.ID != root {
+				continue
+			}
+		}
+		rows[step.ID] = stored
+	}
+	return rows
+}
+
+// planStepState prefers the durable row's status and falls back to the
+// document's own, so a step that was never spliced still says where it stands
+// instead of borrowing somebody else's state.
+func planStepState(step plan.Node, rows map[int]store.Node) (string, store.Node, bool) {
+	if row, ok := rows[step.ID]; ok {
+		if row.Held {
+			return "paused", row, true
+		}
+		return surgeryStatusWord(row.Status), row, true
+	}
+	switch step.State {
+	case plan.StateDone:
+		return surgeryStatusWord(store.Done), store.Node{}, false
+	case plan.StateRunning:
+		return surgeryStatusWord(store.Running), store.Node{}, false
+	case plan.StateFailed:
+		return surgeryStatusWord(store.Failed), store.Node{}, false
+	case plan.StateBlocked:
+		return "held up by a step that failed", store.Node{}, false
+	default:
+		return surgeryStatusWord(store.Pending), store.Node{}, false
+	}
+}
+
+// planAfter says what a step is waiting for in the plan's own words rather than
+// in ids, because the reply may not use ids and the model should not have to
+// carry a second naming scheme to write one sentence.
+func planAfter(step plan.Node, titles map[int]string) string {
+	if len(step.Needs) == 0 {
+		return "starts straight away"
+	}
+	names := make([]string, 0, len(step.Needs))
+	for _, need := range step.Needs {
+		if title := titles[need]; title != "" {
+			names = append(names, title)
+		}
+		if len(names) == boardWaitsCap {
+			break
+		}
+	}
+	if len(names) == 0 {
+		return ""
+	}
+	return "after " + strings.Join(names, ", ")
+}
+
+// planStepLabel is a step's own short name, on the same rule the board uses for
+// a job: the title if it was given one, the first line of what it is otherwise.
+func planStepLabel(step plan.Node) string {
+	if title := firstLine(step.Title); title != "" {
+		return title
+	}
+	if summary := firstLine(step.Summary); summary != "" {
+		return truncateBytes(summary, boardWaitLabelBytes)
+	}
+	if brief := firstLine(step.Brief); brief != "" {
+		return truncateBytes(brief, boardWaitLabelBytes)
+	}
+	return fmt.Sprintf("step %d", step.ID)
+}
+
+// resultChildren gives each part of a job the board's one line. BoardRowCap
 // bounds it for the board's own reason: past a dozen rows this is a log rather
 // than a list of parts, and the parent's own result already summarises it.
 //
@@ -880,17 +1129,33 @@ func (h *Head) renderResult(node store.Node) string {
 // part conclude" is a question about exactly those parts, and answering it with
 // nothing because the work was tidied away is the same status-instead-of-
 // substance failure this whole read exists to end.
+//
+// It reads the whole subtree rather than the direct children, and the depth
+// marker is what makes that legible. A job whose plan put its real work two
+// layers down — a container per stage, the steps beneath it — answered "what
+// did each part conclude" with a list of containers that concluded nothing,
+// which is the flat-list lie the board itself had to be taught out of.
 func (h *Head) resultChildren(id string) []string {
-	nodes, err := h.store.ActiveNodes()
+	nodes, err := h.store.SubtreeNodes(id)
 	if err != nil {
 		return nil
 	}
+	depth := map[string]int{id: 0}
 	lines := make([]string, 0, BoardRowCap)
 	for _, node := range nodes {
-		if node.Parent != id {
+		if node.ID == id {
 			continue
 		}
-		line := fmt.Sprintf("- %s | %s | %s", node.ID, node.Status, surgeryTargetLabel(node))
+		// SubtreeNodes returns admission order, so a node's parent has always
+		// been seen by the time the node is. A part whose parent somehow is not
+		// in hand sits at the first level rather than being dropped.
+		level, ok := depth[node.Parent]
+		if !ok {
+			level = 0
+		}
+		depth[node.ID] = level + 1
+		line := fmt.Sprintf("%s- %s | %s | %s", strings.Repeat("  ", level),
+			node.ID, node.Status, surgeryTargetLabel(node))
 		if summary := firstLine(h.jobResult(node)); summary != "" {
 			line += " | " + summary
 		}

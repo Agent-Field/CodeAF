@@ -29,6 +29,7 @@ The tools are your only hands.
 - expedite makes a job arrive sooner. It never queues anything new.
 - manual reads aforge's own account of itself.
 - result reads what one job actually produced: its findings in full, the files it wrote, and what each of its parts concluded.
+- plan reads how one job was broken up: its steps in the order they can run, what each is waiting on, how each is going and what it cost.
 - read opens one of those files and gives you what is inside it.
 - competence reads the measured account of your own strengths, weak spots and learning frontier.
 - standing reads what you are keeping watch over: the checks, the last wake, the next one, and every standing charter with what it watches for.
@@ -40,8 +41,9 @@ The tools are your only hands.
 Alongside the board you carry that notebook: durable preferences, corrections and lessons kept across every conversation. It is what you have been told before, and it shapes how you answer here — not only what the workforce is asked to do.
 
 Law you do not get to bend:
-- Never invent an id. Every id you pass came from a board row you have seen in this conversation.
-- A question about state — what is running, how far along, what it cost — is answered from a board read and nothing else. Reading is not acting, and a status question earns no verb.
+- Never invent an id. Every id you pass came from a read you made in this conversation — a board row, a job's parts, or a step of its plan.
+- A question about state — what is running, how far along, what it cost, what is left, what is holding it up — is answered from reads and never from a verb. The board says what is live; when the question is about the shape of the work rather than its temperature, read plan on that job as well, and result for what a part actually came back with. Reading is not acting, and a status question earns no verb however many reads it takes.
+- "What's the plan", "how's it going", "what's left", "which part is slowest" are one question about multi-part work, and the honest answer names the steps: what is done, what is under way, what the remainder is waiting on. Two counts are not that answer. Read plan before you give it.
 - When the user asks what work found, produced, concluded or decided, read result on that job before you answer. The board says how a job ended; only result says what it came back with, and "it completed" is not an answer to what it found.
 - A result that says where the answer is has not given you the answer. When what a job recorded is thin and names a file, read that file and answer from what is in it. Anything you can fetch in this turn you fetch in this turn: never offer to go and look, never say you could pull something out if they want it, never end on an offer instead of an answer.
 - The user telling you how they want you to behave from now on is durable, exactly as a preference about the work is. Note it, then say it is noted. Never promise a lasting change you have not written down and never claim a capability you are not using: "from now on" with nothing behind it is a promise that dies with this conversation, and the next one repeats the same mistake.
@@ -127,6 +129,14 @@ func (h *Head) manageControl(ctx context.Context, user store.Message) (bool, err
 	if len(rows) > 0 {
 		board = renderBoard(rows)
 	}
+	// The loop carried no conversation at all, and that was a hole with a
+	// transcript: "which part is slowest?" arrived with the board in hand and no
+	// idea which job the previous sentence had been about, so a follow-up was
+	// answered blind or declined into the router, which then answered it without
+	// the reads. The window is the same folded slice the router gets, cut to its
+	// tail — this loop's floor is the board and the tools, and the conversation
+	// is here to resolve a referent rather than to be summarised.
+	thread := h.beltThread(user)
 	run := &beltRun{head: h, user: user}
 	// The notebook rides after the board and under its own byte budget, the
 	// same one the router reads it with. Order is the whole safeguard: the
@@ -140,11 +150,15 @@ func (h *Head) manageControl(ctx context.Context, user store.Message) (bool, err
 	messages := []ai.Message{
 		textMessage("system", resident.VoicePrompt(h.store, controlSystemPrompt)),
 		textMessage("user", "Board (the user's live work):\n"+board+
-			// No thread to dedup against: this loop carries the board and the
-			// notebook and not the conversation, so every belief it is shown is
-			// the only copy of itself in the prompt.
-			"\n\nNotebook (durable memory across jobs and conversations):\n"+renderNotebook(h.store, user.Body, "")+
+			// The notebook dedups against the thread now that there is one: a
+			// belief stated twice in one prompt costs budget and reads to the
+			// model as corroboration.
+			"\n\nNotebook (durable memory across jobs and conversations):\n"+renderNotebook(h.store, user.Body, thread)+
 			"\n\nManual pages available: "+strings.Join(manual.Pages(), ", ")+
+			// The conversation rides under the board and the notebook because
+			// those two are this loop's floor and must never be crowded out,
+			// and above the clock because it moves more slowly than the clock.
+			"\n\nRecent thread before this message:\n"+thread+
 			// The clock, for the same reason the router carries one: the history
 			// read takes a window, and a window has to be measured from
 			// somewhere. It sits last because it moves fastest.
@@ -216,6 +230,29 @@ func (h *Head) manageControl(ctx context.Context, user store.Message) (bool, err
 	return true, h.postAgent(user.SessionID, final, 0)
 }
 
+// beltThreadWindow is how many of the folded thread's messages the loop
+// carries. The router reads the whole window because it has to decide what a
+// message IS; this loop already knows the message is about the work and needs
+// only enough conversation to resolve what "it" and "that part" point at, which
+// is the last few exchanges.
+const beltThreadWindow = 8
+
+// beltThread is the loop's memory of the conversation, folded exactly as the
+// router's is — same window, same relevance rule, same cache — and then cut to
+// its tail. A read that fails is not worth failing the turn over: the loop's
+// grounding is the board and the tools, and an empty thread costs a follow-up
+// its referent rather than costing the message its answer.
+func (h *Head) beltThread(user store.Message) string {
+	recent, err := h.recentThread(user.SessionID, user.Seq)
+	if err != nil {
+		return "(no earlier messages in this session)"
+	}
+	if len(recent) > beltThreadWindow {
+		recent = recent[len(recent)-beltThreadWindow:]
+	}
+	return h.renderThread(recent)
+}
+
 // controlLoopApplies is the trigger, and it is meant to be broad and cheap. It
 // asks whether this sentence plausibly points at work the belt can reach — by
 // carrying a control verb anywhere while something is live, by pointing
@@ -251,7 +288,8 @@ func (h *Head) controlLoopApplies(user store.Message) (bool, error) {
 		return false, err
 	}
 	if len(active) > 0 {
-		if controlVerbPresent(message) || refersToLiveWork(message, false, len(active)) {
+		if controlVerbPresent(message) || controlStatusCued(message) ||
+			refersToLiveWork(message, false, len(active)) {
 			return true, nil
 		}
 	}
@@ -380,6 +418,51 @@ func controlVerbPresent(message string) bool {
 	return false
 }
 
+// controlStatusCues are the words a person uses to ask where something is up
+// to. They are not verbs and they were the hole: "hows it going, what's the
+// plan?" typed over three live multi-part jobs carries no control verb, points
+// at no single job by pronoun, borrows none of a job's words and follows no
+// worker's post — so every arm of the trigger declined, and the router answered
+// a question about structure from a board it reads as two counts.
+//
+// Like controlVerbs this is a cheap trigger and never a grammar. It only opens
+// the loop while something is live, because with an empty board these words are
+// ordinary conversation and the reads have nothing to be about.
+var controlStatusCues = map[string]bool{
+	"plan": true, "plans": true, "planned": true, "dag": true,
+	"progress": true, "status": true, "eta": true, "remaining": true,
+	"outstanding": true, "blocked": true, "blocking": true, "stuck": true,
+	"slowest": true, "steps": true, "breakdown": true,
+}
+
+// controlStatusAsks are the weaker half: words that mean "where is this up to"
+// only inside a question. "going" is a status word in "how's it going" and a
+// travel plan in "I'm going out", and the question mark — or the word that
+// stands in for one when nobody types it — is the whole difference.
+var controlStatusAsks = map[string]bool{
+	"going": true, "doing": true, "happening": true, "underway": true,
+	"along": true, "far": true, "left": true, "waiting": true, "stage": true,
+}
+
+func controlStatusCued(message string) bool {
+	lower := strings.ToLower(message)
+	words := surgeryWords(lower)
+	asked := strings.Contains(lower, "?")
+	weak := false
+	for _, word := range words {
+		if controlStatusCues[word] {
+			return true
+		}
+		if selfQuestionLeads[word] {
+			asked = true
+		}
+		if controlStatusAsks[word] {
+			weak = true
+		}
+	}
+	return weak && asked
+}
+
 // The second arm. Everything above is about work; this is about aforge. A
 // person learning what their employee can do asks in the same register they ask
 // for work in — "can you look at images?", "what happens overnight?" — and the
@@ -403,8 +486,12 @@ var selfQuestionPhrases = []string{
 
 // selfQuestionLeads mark a sentence as a question even without a question mark,
 // which is how most people type one.
+//
+// "hows" is here for the same reason "whats" is: the apostrophe is optional in
+// typing and "how's" already reduces to "how" when the words are split, while
+// "hows" reduced to nothing anybody had written down.
 var selfQuestionLeads = map[string]bool{
-	"how": true, "what": true, "whats": true, "why": true, "when": true,
+	"how": true, "hows": true, "what": true, "whats": true, "why": true, "when": true,
 	"where": true, "which": true, "who": true, "can": true, "could": true,
 	"does": true, "do": true, "did": true, "is": true, "are": true,
 	"explain": true, "tell": true,
