@@ -21,6 +21,7 @@ import (
 
 	"github.com/Agent-Field/aforge-v2/internal/cas"
 	"github.com/Agent-Field/aforge-v2/internal/manual"
+	"github.com/Agent-Field/aforge-v2/internal/provider"
 	"github.com/Agent-Field/aforge-v2/internal/resident"
 	"github.com/Agent-Field/aforge-v2/internal/store"
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
@@ -236,11 +237,14 @@ func (h *Head) WithDailyBudgetUSD(amount float64) *Head {
 
 // Serve tails every session until ctx is cancelled.
 //
-// On startup it resumes at the last non-user message. This intentionally
-// replays only a trailing run of user messages: history ending in an agent or
-// system message is treated as answered, while a crash after the user wrote but
-// before the head replied remains recoverable. It is a deliberately simple
-// journal rule; the cursor advances only after each message has been handled.
+// On startup it resumes each session at that session's last non-user message.
+// This intentionally replays only a trailing run of user messages: history
+// ending in an agent or system message is treated as answered, while a crash
+// after the user wrote but before the head replied remains recoverable. It is a
+// deliberately simple journal rule; the cursor advances only after each message
+// has been handled. The rule is asked per room because one number cannot state
+// it for two — a reply in either would carry it past the other's unanswered
+// rows, and those rows would never be read.
 func (h *Head) Serve(ctx context.Context) error {
 	if h == nil || h.client == nil {
 		return errors.New("serve head: nil client")
@@ -249,7 +253,7 @@ func (h *Head) Serve(ctx context.Context) error {
 		return errors.New("serve head: nil store")
 	}
 
-	cursor, err := h.initialCursor()
+	cursors, err := h.initialCursors()
 	if err != nil {
 		return fmt.Errorf("serve head: initialize cursor: %w", err)
 	}
@@ -267,8 +271,7 @@ func (h *Head) Serve(ctx context.Context) error {
 	for {
 		watermark, watermarkErr := h.store.LatestEventSeq()
 		if watermarkErr != nil || watermark != quiet {
-			cursor, err = h.poll(ctx, cursor)
-			if err != nil {
+			if err := h.poll(ctx, cursors); err != nil {
 				return err
 			}
 			quiet = -1
@@ -284,38 +287,58 @@ func (h *Head) Serve(ctx context.Context) error {
 	}
 }
 
-func (h *Head) initialCursor() (int64, error) { return h.store.LastNonUserMessageSeq() }
+// initialCursors reads every room's resume point in one query. One room is the
+// ordinary case and reads exactly as the single watermark did; the rest is what
+// keeps a second room from being answered on the first one's word.
+func (h *Head) initialCursors() (*sessionCursors, error) {
+	answered, err := h.store.SessionMessageCursors()
+	if err != nil {
+		return nil, err
+	}
+	return resumeCursors(answered), nil
+}
 
-func (h *Head) poll(ctx context.Context, cursor int64) (int64, error) {
+func (h *Head) poll(ctx context.Context, cursors *sessionCursors) error {
+	if cursors == nil {
+		cursors = newSessionCursors(0)
+	}
 	for {
 		if err := ctx.Err(); err != nil {
-			return cursor, err
+			return err
 		}
-		messages, err := h.store.Messages("", cursor, messagePageSize)
+		// One read across every room, because the journal is one sequence: the
+		// page is split by room only when deciding what is owed.
+		messages, err := h.store.Messages("", cursors.scanned, messagePageSize)
 		if err != nil {
-			return cursor, fmt.Errorf("serve head: tail messages: %w", err)
+			return fmt.Errorf("serve head: tail messages: %w", err)
 		}
 		if len(messages) == 0 {
-			return cursor, nil
+			return nil
 		}
 		for index, message := range messages {
+			// Walking past a row is what moves the read position, whatever the
+			// row turns out to be. It is recorded before anything is decided
+			// about the row, because the page can begin below rooms that are
+			// long since answered: a page made entirely of their rows would
+			// otherwise leave the poll exactly where it started and be read
+			// again forever.
+			cursors.read(message.Seq)
 			// Rows the turn before this one folded into itself are answered
-			// already; the cursor is what says so.
-			if message.Seq <= cursor {
+			// already; that room's watermark is what says so.
+			if cursors.handled(message) {
 				continue
 			}
 			if answerable(message) {
 				answered, err := h.answerTurn(ctx, foldAhead(messages[index:]))
 				if err != nil {
-					return cursor, err
+					return err
 				}
-				if answered > cursor {
-					cursor = answered
-				}
+				// The turn's own room, and only it: a fold stops at the first
+				// row from anywhere else, so every row this answer covers was
+				// typed here.
+				cursors.mark(message.SessionID, answered)
 			}
-			if message.Seq > cursor {
-				cursor = message.Seq
-			}
+			cursors.mark(message.SessionID, message.Seq)
 		}
 	}
 }
@@ -337,6 +360,11 @@ func (h *Head) poll(ctx context.Context, cursor int64) (int64, error) {
 func (h *Head) answerTurn(ctx context.Context, fold *foldedTurn) (int64, error) {
 	for {
 		turnContext, cancel := context.WithCancel(ctx)
+		// Stamped once, from the fold rather than from `user` below, because it
+		// names the room this turn is answering for and every event a provider
+		// call inside it emits belongs to that room — the same fold field
+		// `beginTurn` is about to hand back as `user.SessionID`.
+		turnContext = provider.WithStreamSession(turnContext, fold.message.SessionID)
 		user, answered := h.beginTurn(cancel, fold)
 		err := h.answer(turnContext, user)
 		cancel()

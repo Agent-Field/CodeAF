@@ -55,9 +55,10 @@ func interruptDuringTurn(t *testing.T, partial string) (store.Message, *blocking
 		err    error
 	}
 	done := make(chan outcome, 1)
+	cursors := newSessionCursors(0)
 	go func() {
-		cursor, pollErr := conversationalHead.poll(context.Background(), 0)
-		done <- outcome{cursor: cursor, err: pollErr}
+		pollErr := conversationalHead.poll(context.Background(), cursors)
+		done <- outcome{cursor: cursors.answeredThrough("chat-interrupt"), err: pollErr}
 	}()
 	select {
 	case <-client.entered:
