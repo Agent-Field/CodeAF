@@ -25,6 +25,13 @@ const (
 	// DefaultBaseURL is OpenRouter's OpenAI-compatible endpoint.
 	DefaultBaseURL = "https://openrouter.ai/api/v1"
 
+	// OpenRouterAppName / OpenRouterAppURL are the app-attribution identity
+	// every AgentField product reports OpenRouter usage under
+	// (https://openrouter.ai/docs/app-attribution). Exact copy of aforge v1's
+	// constants so usage from this harness lands in the same app bucket.
+	OpenRouterAppName = "AgentField AI"
+	OpenRouterAppURL  = "https://agentfield.ai/"
+
 	DefaultTemperature = 0.2
 
 	// DefaultMaxTokens has to cover reasoning tokens, not just the visible
@@ -108,8 +115,8 @@ func Load() (Config, error) {
 		Temperature:   DefaultTemperature,
 		MaxTokens:     DefaultMaxTokens,
 		Timeout:       DefaultTimeout,
-		SiteURL:       os.Getenv("AFORGE_SITE_URL"),
-		SiteName:      firstNonEmpty(os.Getenv("AFORGE_SITE_NAME"), "aforge"),
+		SiteURL:       firstNonEmpty(os.Getenv("AFORGE_SITE_URL"), OpenRouterAppURL),
+		SiteName:      firstNonEmpty(os.Getenv("AFORGE_SITE_NAME"), OpenRouterAppName),
 		Reasoning:     DefaultReasoning,
 		ExecReasoning: DefaultExecReasoning,
 		SpineSamples:  DefaultSpineSamples,
