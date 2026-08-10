@@ -134,6 +134,15 @@ func (l *Client) recordStructuringSpend(ctx context.Context, model string, respo
 	journal(usage)
 }
 
+// CompleteWithMessages is the one seam every structuring call passes through,
+// which makes it the one place two facts about a turn are both in hand: what it
+// cost, and how it ended. The cost is journaled here because a dozen call sites
+// would otherwise each have to remember to. How it ended is NOT journaled here,
+// and the asymmetry is deliberate: spend belongs to the day's rail no matter
+// who spent it, while an unfinished turn belongs to the message that turn
+// produced — and this seam does not know which message that is, or whether
+// there will be one. So the end mark rides back out on the response, and TurnEnd
+// below is how a caller reads it in one line at the moment it posts.
 func (l *Client) CompleteWithMessages(ctx context.Context, messages []ai.Message, options ...ai.Option) (*ai.Response, error) {
 	slot, client := l.Snapshot()
 	response, err := client.CompleteWithMessages(ctx, messages, options...)
@@ -145,6 +154,20 @@ func (l *Client) CompleteWithMessages(ctx context.Context, messages []ai.Message
 	}
 	l.recordStructuringSpend(ctx, model, response)
 	return response, err
+}
+
+// TurnEnd reads how one completion ended, or nil when it ended on its own
+// terms. It is the truncation law's read side for every pool caller — the
+// compiler, the delivery gate, the revision sentinel, the narrator, the head —
+// and it is a plain function over the value they already hold rather than
+// state on the client, because a client is shared by concurrent callers and
+// "the last finish reason" on a shared object is a race wearing a field name.
+//
+// A non-nil result belongs on the message that call produced, as
+// store.EndedMark(*end). Dropping it is how a 600-token cap became a diagram
+// that stopped mid-path and a journal that said nothing about it.
+func TurnEnd(ctx context.Context, response *ai.Response) *store.EndedPart {
+	return store.EndedFor(provider.FinishReason(response), provider.Streaming(ctx))
 }
 
 func (l *Client) Model() string {

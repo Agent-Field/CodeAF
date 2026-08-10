@@ -234,6 +234,12 @@ type Message struct {
 	// body remains a readable journal line; these fields let surfaces present
 	// the current phase and real generated titles without parsing prose.
 	Progress *MessageProgress
+	// Parts is the ordered list of typed blocks this message carries — see
+	// message_parts.go. Nil is a legacy prose message and is what almost every
+	// message in a real database is; Body remains the whole rendered line
+	// either way, so a surface that has never heard of parts renders exactly
+	// what it rendered before.
+	Parts []MessagePart
 }
 
 // MessageProgress is the durable, user-facing shape of compile progress.
@@ -288,7 +294,8 @@ CREATE TABLE IF NOT EXISTS messages (
     answers_seq INTEGER NOT NULL DEFAULT 0,
 	options     JSON NOT NULL DEFAULT '[]' CHECK (json_valid(options)),
 	brief       JSON NOT NULL DEFAULT 'null' CHECK (json_valid(brief)),
-	progress    JSON NOT NULL DEFAULT 'null' CHECK (json_valid(progress))
+	progress    JSON NOT NULL DEFAULT 'null' CHECK (json_valid(progress)),
+	parts       JSON NOT NULL DEFAULT 'null' CHECK (json_valid(parts))
 );
 CREATE INDEX IF NOT EXISTS messages_session_seq ON messages (session_id, seq);
 
@@ -323,6 +330,10 @@ type messagePayload struct {
 	Options     []QuestionOption `json:"options,omitempty"`
 	Brief       *Brief           `json:"brief,omitempty"`
 	Progress    *MessageProgress `json:"progress,omitempty"`
+	// Parts is omitempty so a message without them journals the byte-identical
+	// payload it journaled before this field existed. Replay of an old event is
+	// therefore not merely compatible, it is the same decode.
+	Parts []MessagePart `json:"parts,omitempty"`
 }
 
 type seenPayload struct {
@@ -379,6 +390,23 @@ func (s *Store) PostMessage(message Message) (Message, error) {
 	if progress != nil && message.Role != RoleSystem {
 		return Message{}, fmt.Errorf("post message: %w: progress must use the system role", ErrInvalid)
 	}
+	parts, err := normalizeMessageParts(message.Parts)
+	if err != nil {
+		return Message{}, fmt.Errorf("post message: %w", err)
+	}
+	// The size gate is here rather than in the normalizer because it costs an
+	// encode, and the read path calls the normalizer on every parts-bearing
+	// message it decodes. A write is rare; a read is a poll tick.
+	if len(parts) > 0 {
+		encoded, encodeErr := encodeMessageParts(parts)
+		if encodeErr != nil {
+			return Message{}, fmt.Errorf("post message: %w: %s", ErrInvalid, encodeErr)
+		}
+		if len(encoded) > MaxMessagePartsBytes {
+			return Message{}, fmt.Errorf("post message: %w: parts are %d bytes (limit %d); reference the content instead of carrying it",
+				ErrInvalid, len(encoded), MaxMessagePartsBytes)
+		}
+	}
 
 	tx, err := s.db.BeginTx(context.Background(), nil)
 	if err != nil {
@@ -406,6 +434,7 @@ func (s *Store) PostMessage(message Message) (Message, error) {
 		Options:     options,
 		Brief:       brief,
 		Progress:    progress,
+		Parts:       parts,
 	}
 	seq, at, err := appendEvent(tx, message.NodeID, EventMessagePosted, payload)
 	if err != nil {
@@ -423,6 +452,7 @@ func (s *Store) PostMessage(message Message) (Message, error) {
 	message.Options = options
 	message.Brief = brief
 	message.Progress = progress
+	message.Parts = parts
 	return message, nil
 }
 
@@ -512,7 +542,7 @@ func (s *Store) Messages(sessionID string, afterSeq int64, limit int) ([]Message
 	}
 	args = append(args, limit)
 	rows, err := s.db.Query(`
-		SELECT seq, ts, session_id, role, body, attachments, model, node_id, command_seq, question_seq, answers_seq, options, brief, progress
+		SELECT seq, ts, session_id, role, body, attachments, model, node_id, command_seq, question_seq, answers_seq, options, brief, progress, parts
 		FROM messages WHERE `+where+` ORDER BY seq LIMIT ?`, args...)
 	if err != nil {
 		return nil, fmt.Errorf("list messages: %w", err)
@@ -523,8 +553,12 @@ func (s *Store) Messages(sessionID string, afterSeq int64, limit int) ([]Message
 	for rows.Next() {
 		var message Message
 		var timestamp, attachments, options, brief, progress string
+		// RawBytes, not string: the driver hands the column's own buffer over
+		// and the legacy check below reads it without copying it. It is valid
+		// only until the next row, which is exactly as long as it is used.
+		var parts sql.RawBytes
 		if err := rows.Scan(&message.Seq, &timestamp, &message.SessionID,
-			&message.Role, &message.Body, &attachments, &message.Model, &message.NodeID, &message.CommandSeq, &message.QuestionSeq, &message.Answers, &options, &brief, &progress); err != nil {
+			&message.Role, &message.Body, &attachments, &message.Model, &message.NodeID, &message.CommandSeq, &message.QuestionSeq, &message.Answers, &options, &brief, &progress, &parts); err != nil {
 			return nil, fmt.Errorf("list messages: %w", err)
 		}
 		if err := decodeQuestionOptions(options, &message.Options); err != nil {
@@ -536,6 +570,7 @@ func (s *Store) Messages(sessionID string, afterSeq int64, limit int) ([]Message
 		if err := decodeMessageProgress(progress, &message.Progress); err != nil {
 			return nil, fmt.Errorf("list messages: %w", err)
 		}
+		decodeMessageParts(parts, message.Seq, &message.Parts)
 		at, err := parseTime(timestamp)
 		if err != nil {
 			return nil, fmt.Errorf("list messages: parse time: %w", err)
@@ -579,7 +614,7 @@ func (s *Store) NodeMessages(nodeID string, afterSeq int64, limit int) ([]Messag
 		limit = 200
 	}
 	rows, err := s.db.Query(`
-		SELECT seq, ts, session_id, role, body, attachments, model, node_id, command_seq, question_seq, answers_seq, options, brief, progress
+		SELECT seq, ts, session_id, role, body, attachments, model, node_id, command_seq, question_seq, answers_seq, options, brief, progress, parts
 		FROM messages WHERE node_id = ? AND seq > ? ORDER BY seq LIMIT ?`,
 		nodeID, afterSeq, limit)
 	if err != nil {
@@ -590,8 +625,12 @@ func (s *Store) NodeMessages(nodeID string, afterSeq int64, limit int) ([]Messag
 	for rows.Next() {
 		var message Message
 		var timestamp, attachments, options, brief, progress string
+		// RawBytes, not string: the driver hands the column's own buffer over
+		// and the legacy check below reads it without copying it. It is valid
+		// only until the next row, which is exactly as long as it is used.
+		var parts sql.RawBytes
 		if err := rows.Scan(&message.Seq, &timestamp, &message.SessionID,
-			&message.Role, &message.Body, &attachments, &message.Model, &message.NodeID, &message.CommandSeq, &message.QuestionSeq, &message.Answers, &options, &brief, &progress); err != nil {
+			&message.Role, &message.Body, &attachments, &message.Model, &message.NodeID, &message.CommandSeq, &message.QuestionSeq, &message.Answers, &options, &brief, &progress, &parts); err != nil {
 			return nil, fmt.Errorf("node messages: %w", err)
 		}
 		if err := decodeQuestionOptions(options, &message.Options); err != nil {
@@ -603,6 +642,7 @@ func (s *Store) NodeMessages(nodeID string, afterSeq int64, limit int) ([]Messag
 		if err := decodeMessageProgress(progress, &message.Progress); err != nil {
 			return nil, fmt.Errorf("node messages: %w", err)
 		}
+		decodeMessageParts(parts, message.Seq, &message.Parts)
 		at, err := parseTime(timestamp)
 		if err != nil {
 			return nil, fmt.Errorf("node messages: parse time: %w", err)
@@ -867,12 +907,24 @@ func applyMessageView(tx *sql.Tx, payload messagePayload, seq int64, at time.Tim
 	if err != nil {
 		return err
 	}
+	// Replay reaches here too, so the parts a journaled event carries are
+	// normalized on the way into the projection exactly as they were on the way
+	// into the journal — including the pass-through of a kind this build does
+	// not know, which is how a rebuild by an older binary stops being lossy.
+	parts, err := normalizeMessageParts(payload.Parts)
+	if err != nil {
+		return err
+	}
+	encodedParts, err := encodeMessageParts(parts)
+	if err != nil {
+		return err
+	}
 	_, err = tx.Exec(`
-		INSERT INTO messages (seq, ts, session_id, role, body, attachments, model, node_id, command_seq, question_seq, answers_seq, options, brief, progress)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		INSERT INTO messages (seq, ts, session_id, role, body, attachments, model, node_id, command_seq, question_seq, answers_seq, options, brief, progress, parts)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		seq, formatTime(at), payload.SessionID, payload.Role, payload.Body,
 		string(attachments), payload.Model, payload.NodeID, payload.CommandSeq, payload.QuestionSeq,
-		payload.Answers, string(options), string(brief), string(progress))
+		payload.Answers, string(options), string(brief), string(progress), encodedParts)
 	if err != nil {
 		return err
 	}

@@ -73,6 +73,20 @@ func migrateThreadSchema(db *sql.DB) error {
 		}
 	}
 
+	// Typed message parts. The default is 'null' rather than '[]' so an
+	// existing row says the true thing — this message was written before parts
+	// existed and has none — and so the read path's no-allocation legacy branch
+	// matches on the same literal for old rows and new prose-only ones alike.
+	hasParts, err := tableHasColumn(db, "messages", "parts")
+	if err != nil {
+		return err
+	}
+	if !hasParts {
+		if _, err := db.Exec(`ALTER TABLE messages ADD COLUMN parts JSON NOT NULL DEFAULT 'null' CHECK (json_valid(parts))`); err != nil {
+			return err
+		}
+	}
+
 	hasReflex, err := tableHasColumn(db, "commands", "reflex")
 	if err != nil {
 		return err

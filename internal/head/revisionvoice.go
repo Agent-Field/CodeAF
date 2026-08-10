@@ -77,7 +77,12 @@ func (h *Head) speakRevision(ctx context.Context, user store.Message, kind store
 	if reply == "" {
 		reply = revisionFloorReply(kind, label, audience)
 	}
-	return h.postAgentFloor(user.SessionID, reply, commandSeq, decision.model)
+	// No end mark: this route's own call is not read for one yet, and the reply
+	// posted here may be the floor sentence rather than the model's words —
+	// marking a sentence the head wrote itself as truncated would be a lie in
+	// the other direction. Wave 3 gives this seam the same capture the routing
+	// call has.
+	return h.postAgentFloor(user.SessionID, reply, commandSeq, decision.model, nil)
 }
 
 // composeRevision runs the one model call this route makes. Everything it can

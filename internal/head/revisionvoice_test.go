@@ -227,10 +227,10 @@ func TestRedirectWithNothingToTeachRecordsNothing(t *testing.T) {
 func TestPostAgentFloorNeverPostsAnEmptyBody(t *testing.T) {
 	graph := openHeadStore(t)
 	head := New(&fakeClient{}, graph)
-	if err := head.postAgentFloor("floor", "   \n ", 0, ""); err != nil {
+	if err := head.postAgentFloor("floor", "   \n ", 0, "", nil); err != nil {
 		t.Fatal(err)
 	}
-	if err := head.postAgentFloor("floor", "a real line", 0, ""); err != nil {
+	if err := head.postAgentFloor("floor", "a real line", 0, "", nil); err != nil {
 		t.Fatal(err)
 	}
 	replies := agentReplies(t, graph, "floor")

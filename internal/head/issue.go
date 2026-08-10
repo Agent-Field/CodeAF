@@ -75,7 +75,7 @@ func (h *Head) issueRoutedCommand(user store.Message, decision routeDecision) er
 	if err != nil {
 		return h.postAgent(user.SessionID, commandErrorReply, 0)
 	}
-	return h.postAgentFloor(user.SessionID, decision.Reply, command.Seq, decision.model)
+	return h.postAgentFloor(user.SessionID, decision.Reply, command.Seq, decision.model, decision.parts())
 }
 
 // describedTarget is one thing a verb with no target could have meant: a job on
