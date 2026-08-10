@@ -180,6 +180,66 @@ func TestAnAttachedDocumentArmsItsReaderBeforeTurnOne(t *testing.T) {
 	}
 }
 
+// Arming costs one invalidation, at the end of the tool list, and that is the
+// whole price the lazy design accepted.
+//
+// It used to cost two. The discovery tool's description and its enum were built
+// from whichever families were still unarmed, so the moment a worker armed
+// media the sentence describing the families changed — and tool definitions
+// ride at the very front of the request, ahead of the entire transcript, so the
+// prefix diverged there and everything behind it was re-billed cold. That
+// second invalidation was larger than the one it was riding on and nobody had
+// costed it. The definition is frozen now: the families it names and the enum
+// it offers are the same bytes on every turn of every leaf.
+func TestTheCapabilitiesDefinitionDoesNotMoveWhenAFamilyIsArmed(t *testing.T) {
+	space := workspace(t)
+	unarmed := newToolboxWithMedia(space, 1, nil, nil, offersEverything(t))
+	armed := newToolboxWithMedia(space, 1, nil, nil, offersEverything(t))
+	armed.Arm(FamilyMedia)
+
+	find := func(toolbox *Toolbox) (ai.ToolDefinition, bool) {
+		for _, definition := range toolbox.Definitions() {
+			if definition.Function.Name == "capabilities" {
+				return definition, true
+			}
+		}
+		return ai.ToolDefinition{}, false
+	}
+	before, ok := find(unarmed)
+	if !ok {
+		t.Fatal("a brain with everything configured offered no discovery tool")
+	}
+	after, ok := find(armed)
+	if !ok {
+		t.Fatal("the discovery tool vanished while a family was still unarmed")
+	}
+	first, err := json.Marshal(before)
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, err := json.Marshal(after)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(first) != string(second) {
+		t.Fatalf("arming a family moved the discovery tool's own bytes:\n before %s\n after  %s", first, second)
+	}
+	// It names every family whatever is armed, so the sentence has nothing left
+	// to move; a family this machine has not configured is answered by the tool
+	// itself, in prose, rather than by a schema that changes shape.
+	for _, family := range []string{FamilyMedia, FamilyDocument} {
+		if !strings.Contains(before.Function.Description, family) {
+			t.Errorf("the frozen description does not name %s: %q", family, before.Function.Description)
+		}
+	}
+	bare := newToolboxWithMedia(space, 1, nil, nil,
+		&MediaTools{Provider: &fakeMediaProvider{}, Catalog: fakeModalities{}, WorkingModel: "work/model"})
+	unconfigured := bare.capabilities(map[string]any{"need": FamilyDocument})
+	if !unconfigured.IsError || !strings.Contains(unconfigured.Content, "not configured") {
+		t.Fatalf("asking for an unconfigured family was answered with %+v", unconfigured)
+	}
+}
+
 // An unconfigured family is never advertised, so a worker is never told about
 // a capability this machine cannot provide.
 func TestNothingIsOfferedWhenNothingIsConfigured(t *testing.T) {
