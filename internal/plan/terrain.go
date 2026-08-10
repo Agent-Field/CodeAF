@@ -11,6 +11,8 @@ import (
 	"time"
 	"unicode"
 	"unicode/utf8"
+
+	"golang.org/x/text/unicode/norm"
 )
 
 // The planner is blind by design. Every pass in this package is one text-in,
@@ -24,7 +26,7 @@ import (
 // no turn. It is a picture of what the run's workspace actually holds, drawn in
 // code and frozen, that rides the shared prefix every pass already pays for.
 //
-// Two rules govern everything below.
+// Three rules govern everything below.
 //
 // It is not a coding feature. The material may be PDFs, spreadsheets, fetched
 // pages, a draft in progress, or nothing at all, so nothing here names code, and
@@ -36,11 +38,17 @@ import (
 // and no map is ever ranged over into output. That last one is not theoretical:
 // calibrationEvidence in recalibrate.go handed Go's randomized map iteration
 // straight into a prompt and made the whole pass unreproducible.
+//
+// It must be bounded in work, not only in output. A workspace is allowed to be a
+// directory of a million fetched files, and this runs on the critical path of
+// every build, so no read here is unbounded: what is not read is reported as
+// unread rather than guessed at.
 const (
-	// terrainBytes is the whole snapshot's ceiling. It is small on purpose: this
-	// block is paid for by every planning call in the run, and a listing that
-	// grows with the workspace would quietly become the most expensive sentence
-	// in the system on the one goal that has the most material to think about.
+	// terrainBytes is the whole snapshot's ceiling, ellipsis included. It is
+	// small on purpose: this block is paid for by every planning call in the run,
+	// and a listing that grows with the workspace would quietly become the most
+	// expensive sentence in the system on the one goal that has the most material
+	// to think about.
 	terrainBytes = 2 << 10
 
 	// terrainNamedFiles is where loose files at the top level stop being worth
@@ -59,21 +67,37 @@ const (
 	// costs a line.
 	terrainExtensions = 3
 
-	// terrainWalkLimit bounds the rollup walk per top-level directory. A
+	// terrainListLimit bounds one directory read for a listing. At most a couple
+	// of dozen rows are ever rendered, so this is generous by two orders of
+	// magnitude and exists only to keep a pathological directory from being
+	// pulled into memory and sorted for nothing.
+	terrainListLimit = 512
+
+	// terrainWalkLimit bounds the rollup walk under one top-level directory. A
 	// workspace can hold a fetched archive of a hundred thousand files, and an
 	// exact count of it is worth neither the syscalls nor the wait — past this
 	// the count is reported as a floor.
 	terrainWalkLimit = 4000
 
-	// terrainReadmeBytes bounds the one line taken from a README-like file.
-	// Whoever wrote it may have put a paragraph on the first line, and that
-	// paragraph would eat the listing it was meant to introduce.
+	// terrainReadmeBytes bounds the one line taken from a README-like file,
+	// ellipsis included. Whoever wrote it may have put a paragraph on the first
+	// line, and that paragraph would eat the listing it was meant to introduce.
 	terrainReadmeBytes = 160
 
-	// terrainGitTimeout keeps a wedged git from stalling a build. Terrain is a
+	// terrainReadmeHead is how much of such a file is read to find that line.
+	terrainReadmeHead = 4 << 10
+
+	// terrainGitTimeout keeps a wedged git from stalling a build, and
+	// terrainGitWaitDelay bounds the wait after it is killed. Terrain is a
 	// courtesy; nothing may wait on it.
-	terrainGitTimeout = 2 * time.Second
+	terrainGitTimeout   = 2 * time.Second
+	terrainGitWaitDelay = 500 * time.Millisecond
 )
+
+// terrainClipped is what a truncation leaves behind. It is one rune, and it is
+// charged against every budget it appears in — a cap that excludes its own
+// marker is not a cap.
+const terrainClipped = "…"
 
 // terrainBulk are directories whose contents are somebody else's material —
 // installed dependencies, vendored copies, a compiler's cache. They are skipped
@@ -106,8 +130,8 @@ func RenderTerrain(dir, goal string) string {
 	if dir == "" {
 		return ""
 	}
-	entries, err := os.ReadDir(dir)
-	if err != nil {
+	entries, unread := terrainEntries(dir, terrainListLimit)
+	if len(entries) == 0 && !unread {
 		return ""
 	}
 	cues := terrainCues(goal)
@@ -120,13 +144,8 @@ func RenderTerrain(dir, goal string) string {
 		lines = append(lines, line)
 	}
 
-	// os.ReadDir returns entries already sorted by name, which is the ordering
-	// the whole render inherits — including which rows survive a cap.
 	var directories, files []os.DirEntry
 	for _, entry := range entries {
-		if terrainSkipped(entry.Name()) {
-			continue
-		}
 		if entry.IsDir() {
 			directories = append(directories, entry)
 			continue
@@ -134,10 +153,7 @@ func RenderTerrain(dir, goal string) string {
 		files = append(files, entry)
 	}
 
-	shown := directories
-	if len(shown) > terrainDirs {
-		shown = shown[:terrainDirs]
-	}
+	shown := terrainChoose(directories, cues)
 	for _, entry := range shown {
 		path := filepath.Join(dir, entry.Name())
 		lines = append(lines, terrainDirLine("", entry.Name(), terrainRollupOf(path)))
@@ -145,27 +161,93 @@ func RenderTerrain(dir, goal string) string {
 			lines = append(lines, terrainChildLines(path)...)
 		}
 	}
-	if hidden := len(directories) - len(shown); hidden > 0 {
+	switch hidden := len(directories) - len(shown); {
+	case unread:
+		lines = append(lines, "… more entries than were read")
+	case hidden > 0:
 		lines = append(lines, fmt.Sprintf("… %d more %s", hidden, terrainDirectoryNoun(hidden)))
 	}
 
 	switch {
 	case len(files) == 0:
-	case len(files) <= terrainNamedFiles:
+	case len(files) <= terrainNamedFiles && !unread:
 		for _, entry := range files {
 			lines = append(lines, terrainFileLine("", entry))
 		}
 	default:
-		lines = append(lines, terrainFilesRollup(files))
+		lines = append(lines, terrainFilesRollup(files, unread))
 	}
 
 	if len(lines) == 0 {
 		return ""
 	}
-	// clipRunes is the same truncation the sentinel's prompt uses, and it is
-	// here for the same reason: a snapshot cut mid-character would put a mangled
-	// rune in front of every planning call in the run.
-	return clipRunes(strings.Join(lines, "\n"), terrainBytes)
+	return terrainClip(strings.Join(lines, "\n"), terrainBytes)
+}
+
+// terrainChoose picks which directories get a row when there are more than fit.
+//
+// The cue-matched ones are taken first and the rest fills alphabetically, which
+// is the fix for a real hole: the selection used to truncate alphabetically and
+// only then ask which names the goal had mentioned, so in a workspace with two
+// dozen directories the one the goal was actually about could be dropped before
+// it was ever considered — the cue mechanism silently doing nothing in exactly
+// the workspaces it was written for. The rows are re-sorted afterwards so the
+// render stays alphabetical whichever way the cues fell.
+func terrainChoose(directories []os.DirEntry, cues map[string]bool) []os.DirEntry {
+	if len(directories) <= terrainDirs {
+		return directories
+	}
+	shown := make([]os.DirEntry, 0, terrainDirs)
+	for _, entry := range directories {
+		if len(shown) < terrainDirs && terrainCued(cues, entry.Name()) {
+			shown = append(shown, entry)
+		}
+	}
+	for _, entry := range directories {
+		if len(shown) >= terrainDirs {
+			break
+		}
+		if !terrainCued(cues, entry.Name()) {
+			shown = append(shown, entry)
+		}
+	}
+	sort.Slice(shown, func(i, j int) bool { return shown[i].Name() < shown[j].Name() })
+	return shown
+}
+
+// terrainEntries reads one directory without agreeing to read all of it, and
+// reports whether there was more than it was willing to take.
+//
+// os.ReadDir would sort a million names before any guard could fire, which is
+// the whole cost of a pathological directory paid in full for a listing that
+// shows twenty rows. This reads at most limit+1 entries and sorts only those.
+//
+// When the limit bites, which entries were kept is whatever order the filesystem
+// handed them over in, so the render is byte-stable across runs only as far as
+// that order is. That is a knowingly weaker promise, and it is confined to
+// directories large enough that nothing here could have described them honestly
+// anyway — every such render says out loud that it did not read everything.
+func terrainEntries(dir string, limit int) ([]os.DirEntry, bool) {
+	handle, err := os.Open(dir)
+	if err != nil {
+		return nil, false
+	}
+	defer handle.Close()
+	// ReadDir with a positive count reads until it has that many or the
+	// directory ends, so one call is the whole bounded read.
+	raw, _ := handle.ReadDir(limit + 1)
+	unread := len(raw) > limit
+	if unread {
+		raw = raw[:limit]
+	}
+	kept := make([]os.DirEntry, 0, len(raw))
+	for _, entry := range raw {
+		if !terrainSkipped(entry.Name()) {
+			kept = append(kept, entry)
+		}
+	}
+	sort.Slice(kept, func(i, j int) bool { return kept[i].Name() < kept[j].Name() })
+	return kept, unread
 }
 
 // terrainChildLines opens one directory a level further. The children are
@@ -173,17 +255,8 @@ func RenderTerrain(dir, goal string) string {
 // and a size for a file — so a reader learns the shape of the deeper level
 // without learning a second notation for it.
 func terrainChildLines(dir string) []string {
-	entries, err := os.ReadDir(dir)
-	if err != nil {
-		return nil
-	}
-	var kept []os.DirEntry
-	for _, entry := range entries {
-		if !terrainSkipped(entry.Name()) {
-			kept = append(kept, entry)
-		}
-	}
-	shown := kept
+	entries, unread := terrainEntries(dir, terrainListLimit)
+	shown := entries
 	if len(shown) > terrainChildren {
 		shown = shown[:terrainChildren]
 	}
@@ -195,7 +268,10 @@ func terrainChildLines(dir string) []string {
 		}
 		lines = append(lines, terrainFileLine("  ", entry))
 	}
-	if hidden := len(kept) - len(shown); hidden > 0 {
+	switch hidden := len(entries) - len(shown); {
+	case unread:
+		lines = append(lines, "  … more entries than were read")
+	case hidden > 0:
 		lines = append(lines, fmt.Sprintf("  … %d more", hidden))
 	}
 	return lines
@@ -204,40 +280,70 @@ func terrainChildLines(dir string) []string {
 // terrainRollup is one directory said in a single line: how much is in it and
 // what kind of thing it is made of.
 type terrainRollup struct {
-	files      int
-	extensions []string
-	// clipped says the walk stopped at terrainWalkLimit, so files is a floor
-	// rather than a count. Saying which one it is matters: a planner told "4000
-	// files" plans differently from one told "over 4000".
+	files       int
+	directories int
+	extensions  []string
+	// clipped says the walk stopped early, so the counts are floors rather than
+	// counts. Saying which one it is matters: a planner told "4000 files" plans
+	// differently from one told "over 4000".
 	clipped bool
+}
+
+// label says what was actually counted, which is not always files.
+//
+// It used to say "over N files" whenever the walk was cut short, and a walk cut
+// short inside a deep directory of directories had counted no files at all — so
+// a tree with thousands of things in it rendered as "over 0 empty", which is
+// both wrong and the opposite of the truth. Every branch here reports the number
+// the walk really produced.
+func (r terrainRollup) label() string {
+	var body string
+	switch {
+	case r.files == 1:
+		body = "1 file"
+	case r.files > 1:
+		body = fmt.Sprintf("%d files", r.files)
+	case r.directories > 0:
+		body = "no files, " + terrainDirectoryCount(r.directories)
+	default:
+		body = "empty"
+	}
+	if r.clipped {
+		body = "over " + body
+		if r.files == 0 && r.directories == 0 {
+			body = "not read"
+		}
+	}
+	if len(r.extensions) > 0 {
+		body += " (" + strings.Join(r.extensions, ", ") + ")"
+	}
+	return body
 }
 
 // terrainRollupOf counts a directory whole, because the interesting number is
 // what is in there rather than what happens to sit at its top. The walk is
-// breadth-first over already-sorted entries so that hitting the limit truncates
-// the same way every time.
+// breadth-first over bounded, sorted reads, and it stops at terrainWalkLimit
+// entries — past which the answer is a floor and says so.
 func terrainRollupOf(root string) terrainRollup {
 	var rollup terrainRollup
 	counts := map[string]int{}
-	visited := 0
+	remaining := terrainWalkLimit
 	queue := []string{root}
-	for len(queue) > 0 && !rollup.clipped {
+	for len(queue) > 0 {
+		if remaining <= 0 {
+			rollup.clipped = true
+			break
+		}
 		current := queue[0]
 		queue = queue[1:]
-		entries, err := os.ReadDir(current)
-		if err != nil {
-			continue
+		entries, unread := terrainEntries(current, remaining)
+		if unread {
+			rollup.clipped = true
 		}
 		for _, entry := range entries {
-			if terrainSkipped(entry.Name()) {
-				continue
-			}
-			if visited >= terrainWalkLimit {
-				rollup.clipped = true
-				break
-			}
-			visited++
+			remaining--
 			if entry.IsDir() {
+				rollup.directories++
 				queue = append(queue, filepath.Join(current, entry.Name()))
 				continue
 			}
@@ -281,20 +387,7 @@ func terrainTopExtensions(counts map[string]int) []string {
 }
 
 func terrainDirLine(indent, name string, rollup terrainRollup) string {
-	label := indent + name + "/"
-	body := "empty"
-	if rollup.files == 1 {
-		body = "1 file"
-	} else if rollup.files > 1 {
-		body = fmt.Sprintf("%d files", rollup.files)
-	}
-	if rollup.clipped {
-		body = "over " + body
-	}
-	if len(rollup.extensions) > 0 {
-		body += " (" + strings.Join(rollup.extensions, ", ") + ")"
-	}
-	return fmt.Sprintf("%-24s %s", label, body)
+	return fmt.Sprintf("%-24s %s", indent+name+"/", rollup.label())
 }
 
 // terrainFileLine names a file and says how big it is. The size is the second
@@ -311,7 +404,7 @@ func terrainFileLine(indent string, entry os.DirEntry) string {
 	return fmt.Sprintf("%-24s %s", label, terrainSize(info.Size()))
 }
 
-func terrainFilesRollup(files []os.DirEntry) string {
+func terrainFilesRollup(files []os.DirEntry, unread bool) string {
 	counts := map[string]int{}
 	for _, entry := range files {
 		if extension := terrainExtensionOf(entry.Name()); extension != "" {
@@ -319,6 +412,9 @@ func terrainFilesRollup(files []os.DirEntry) string {
 		}
 	}
 	line := fmt.Sprintf("%d files at the top level", len(files))
+	if unread {
+		line = "over " + line
+	}
 	if top := terrainTopExtensions(counts); len(top) > 0 {
 		line += " (" + strings.Join(top, ", ") + ")"
 	}
@@ -334,6 +430,24 @@ func terrainSize(size int64) string {
 	default:
 		return fmt.Sprintf("%d B", size)
 	}
+}
+
+// terrainClip enforces a byte ceiling that includes the marker it adds.
+//
+// The package's clipRunes cuts at a rune boundary but appends its ellipsis
+// afterwards, so its result can exceed the limit it was given by three bytes.
+// That is harmless where it is used — a per-node slice of a much larger budget —
+// and it is not harmless here, where the number is the promise made to every
+// planning call in the run. So the marker is charged first and clipRunes is
+// asked for the smaller number.
+func terrainClip(body string, limit int) string {
+	if len(body) <= limit {
+		return body
+	}
+	if limit <= len(terrainClipped) {
+		return ""
+	}
+	return clipRunes(body, limit-len(terrainClipped))
 }
 
 // terrainExtensionOf reads the kind of a file off its name, lower-cased so that
@@ -357,40 +471,80 @@ func terrainSkipped(name string) bool {
 	return strings.HasPrefix(name, ".") || terrainBulk[name]
 }
 
-// terrainCues splits the goal into the words a directory name could plausibly
-// answer to. Short words are dropped because they match everything: a two-letter
-// cue would open a directory per goal on nothing but coincidence.
-func terrainCues(goal string) map[string]bool {
-	cues := map[string]bool{}
-	fields := strings.FieldsFunc(strings.ToLower(goal), func(r rune) bool {
+// terrainWords splits a phrase into the words a name could answer to, and it is
+// the single tokenizer both sides of the cue match go through.
+//
+// Both sides is the correction that matters. Only the goal used to be split, and
+// a directory name was compared whole, so "survey-responses/" could not match a
+// goal that said "survey responses" in any form — the separator alone defeated
+// it. Names and goals are also folded and NFC-normalized here, because a name
+// typed on one system and a goal typed on another can be the same word in
+// different bytes, and a byte comparison would call them strangers.
+func terrainWords(phrase string) []string {
+	folded := strings.ToLower(norm.NFC.String(phrase))
+	fields := strings.FieldsFunc(folded, func(r rune) bool {
 		return !unicode.IsLetter(r) && !unicode.IsDigit(r)
 	})
+	words := make([]string, 0, len(fields))
 	for _, field := range fields {
+		// Short words match everything: a two-letter cue would open a directory
+		// per goal on nothing but coincidence.
 		if utf8.RuneCountInString(field) >= 3 {
-			cues[field] = true
+			words = append(words, field)
 		}
+	}
+	return words
+}
+
+// terrainCues is the goal's half of the match. The map is only ever read, so it
+// costs no determinism.
+func terrainCues(goal string) map[string]bool {
+	cues := map[string]bool{}
+	for _, word := range terrainWords(goal) {
+		cues[word] = true
 	}
 	return cues
 }
 
 // terrainCued decides whether the goal already named this directory.
 //
-// The match is equality, with one plural either way, and it is strict on
+// The match is equality between words, with one plural fold, and it is strict on
 // purpose. A substring rule reads far more generously than it sounds: "data"
 // occurs inside "metadata" and "updates", so a goal mentioning it would open
 // directories the goal never referred to, and the budget for the level that
 // matters would go to the level that does not.
 //
-// The map here is read, never ranged over, so it costs no determinism.
+// The whole trade is deliberately lopsided. A miss costs one unopened directory
+// in a picture that is admittedly incomplete and says so; a false expansion
+// spends the cap — the budget every planning call in the run pays for — on
+// material nobody asked about, and pushes out the rows that were the point. So
+// every rule here is written to prefer missing.
 func terrainCued(cues map[string]bool, name string) bool {
-	name = strings.ToLower(name)
-	if utf8.RuneCountInString(name) < 3 {
-		return false
+	for _, word := range terrainWords(name) {
+		if terrainMatchesCue(cues, word) {
+			return true
+		}
 	}
-	if cues[name] || cues[name+"s"] {
+	return false
+}
+
+// terrainMatchesCue is equality, then one plural either way — but only on stems
+// long enough for a trailing "s" to be a plural rather than the word.
+//
+// Without that floor the fold is a false-expansion engine: a goal saying
+// "report" opened "news/", because dropping the s leaves "new", and a goal
+// saying "the" would reach anything ending in "thes". Four runes is where the
+// accidents stop and the real plurals ("responses"/"response",
+// "archive"/"archives") all still land.
+func terrainMatchesCue(cues map[string]bool, word string) bool {
+	if cues[word] {
 		return true
 	}
-	return strings.HasSuffix(name, "s") && cues[strings.TrimSuffix(name, "s")]
+	if stem, found := strings.CutSuffix(word, "s"); found &&
+		utf8.RuneCountInString(stem) >= 4 && cues[stem] {
+		return true
+	}
+	return utf8.RuneCountInString(word) >= 4 && cues[word+"s"]
 }
 
 // terrainReadmeLine takes the one sentence whoever built this workspace wrote to
@@ -405,7 +559,7 @@ func terrainReadmeLine(dir string, entries []os.DirEntry) string {
 		if opening == "" {
 			continue
 		}
-		return entry.Name() + ": " + clipRunes(opening, terrainReadmeBytes)
+		return entry.Name() + ": " + terrainClip(opening, terrainReadmeBytes)
 	}
 	return ""
 }
@@ -419,18 +573,23 @@ func terrainIsReadme(name string) bool {
 // punctuation stripped so that "# The 2024 filings" arrives as the sentence it
 // is. Only the head of the file is read: the first line is all that is wanted,
 // and a workspace is allowed to contain a very large file with a very long one.
+//
+// That head is a byte count, so it can land in the middle of a character — a
+// first line of accented prose, cut at 4096 bytes, ends in half a rune. The
+// whole render must be valid UTF-8 or every planning call in the run carries the
+// mangled byte, so the fragment is dropped before anything is read out of it.
 func terrainOpeningLine(path string) string {
 	file, err := os.Open(path)
 	if err != nil {
 		return ""
 	}
 	defer file.Close()
-	head := make([]byte, 4<<10)
+	head := make([]byte, terrainReadmeHead)
 	read, _ := file.Read(head)
 	if read <= 0 {
 		return ""
 	}
-	for _, line := range strings.Split(string(head[:read]), "\n") {
+	for _, line := range strings.Split(strings.ToValidUTF8(string(head[:read]), ""), "\n") {
 		line = strings.TrimSpace(strings.TrimLeft(strings.TrimSpace(line), "#>*- \t"))
 		if line != "" {
 			return line
@@ -443,16 +602,21 @@ func terrainOpeningLine(path string) string {
 // absent by default. A workspace holding a corpus of documents has no git in it,
 // most machines running this have no reason to, and neither case is a fault — so
 // every path out of here that is not a clean answer is the empty string.
+//
+// Whether git is there is asked of git rather than of the filesystem. Statting
+// .git answered only for a directory that is itself the top of a tree, so a run
+// pointed at any directory inside one lost the line entirely — and a linked
+// worktree, where .git is a file, was a coin flip.
 func terrainGitLine(dir string) string {
-	if _, err := os.Stat(filepath.Join(dir, ".git")); err != nil {
-		return ""
-	}
 	if _, err := exec.LookPath("git"); err != nil {
 		return ""
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), terrainGitTimeout)
 	defer cancel()
 
+	if inside, ok := terrainGitOutput(ctx, dir, "rev-parse", "--is-inside-work-tree"); !ok || inside != "true" {
+		return ""
+	}
 	branch, ok := terrainGitOutput(ctx, dir, "rev-parse", "--abbrev-ref", "HEAD")
 	if !ok || branch == "" {
 		return ""
@@ -482,15 +646,21 @@ func terrainGitLine(dir string) string {
 }
 
 // terrainGitOutput runs one read-only git command and reports whether the answer
-// is usable. A non-zero exit, a missing repository, a timeout and a binary that
-// is not really git all arrive here the same way and all mean the same thing:
-// say nothing about git at all.
+// is usable. A non-zero exit, a directory that is not in a tree, a timeout and a
+// binary that is not really git all arrive here the same way and all mean the
+// same thing: say nothing about git at all.
 func terrainGitOutput(ctx context.Context, dir string, args ...string) (string, bool) {
 	command := exec.CommandContext(ctx, "git", append([]string{"-C", dir}, args...)...)
 	// Git reads configuration and, for some subcommands, opens a pager. Neither
 	// belongs in a snapshot render, and a pager waiting for a terminal is how a
 	// courtesy becomes a hang.
 	command.Env = append(os.Environ(), "GIT_PAGER=cat", "GIT_OPTIONAL_LOCKS=0")
+	// The timeout alone does not bound this. Killing git on deadline leaves any
+	// child of git — a credential helper, a hook, a pager that ignored the
+	// environment — still holding the write end of the pipe, and Output() waits
+	// on the pipe rather than on the process it killed. WaitDelay is the only
+	// thing that closes that door.
+	command.WaitDelay = terrainGitWaitDelay
 	output, err := command.Output()
 	if err != nil {
 		return "", false
@@ -503,4 +673,8 @@ func terrainDirectoryNoun(count int) string {
 		return "directory"
 	}
 	return "directories"
+}
+
+func terrainDirectoryCount(count int) string {
+	return fmt.Sprintf("%d %s", count, terrainDirectoryNoun(count))
 }
