@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/Agent-Field/aforge-v2/internal/store"
+	"github.com/Agent-Field/aforge-v2/internal/thread"
 )
 
 // Learning visibility is a projection of journal writes, never another
@@ -156,7 +157,7 @@ func (r *Reconciler) flushLearningMoments() {
 			}
 			body = detail.String()
 		}
-		if _, err := r.store.PostMessage(store.Message{
+		if _, err := thread.Post(r.store, store.Message{
 			SessionID: pending.sessionID,
 			Role:      store.RoleSystem,
 			Body:      boundMessage(body),
@@ -353,7 +354,7 @@ func (r *Reconciler) postRetrospectiveDigest(afterSeq int64) {
 	for _, detail := range details {
 		body += "\n  " + detail
 	}
-	_, _ = r.store.PostMessage(store.Message{
+	_, _ = thread.Post(r.store, store.Message{
 		SessionID: seen.SessionID,
 		Role:      store.RoleSystem,
 		Body:      boundMessage(body),

@@ -35,6 +35,7 @@ import (
 	"github.com/Agent-Field/aforge-v2/internal/router"
 	"github.com/Agent-Field/aforge-v2/internal/rtk"
 	"github.com/Agent-Field/aforge-v2/internal/store"
+	"github.com/Agent-Field/aforge-v2/internal/thread"
 	"github.com/Agent-Field/aforge-v2/internal/tui"
 	"github.com/Agent-Field/aforge-v2/internal/voice"
 	"github.com/Agent-Field/aforge-v2/internal/watchdog"
@@ -332,7 +333,7 @@ func buildBrain(w *chatWindow, session string, opts brainOptions) (*chatBrain, e
 	// house rule against describing a behaviour nobody recorded — so it now says
 	// what actually happens and what actually survives.
 	if released, err := graph.ReleaseOrphans(); err == nil && len(released) > 0 {
-		_, _ = graph.PostMessage(store.Message{
+		_, _ = thread.Post(graph, store.Message{
 			SessionID: session,
 			Role:      store.RoleSystem,
 			Body: fmt.Sprintf("picked up %d piece(s) of work that were interrupted — each starts again from the beginning, with the files it had already written still where it left them",
@@ -654,7 +655,7 @@ func buildBrain(w *chatWindow, session string, opts brainOptions) (*chatBrain, e
 		var share func(string) error
 		if node.Parent != store.RootID {
 			share = func(line string) error {
-				_, postErr := graph.PostMessage(store.Message{
+				_, postErr := thread.Post(graph, store.Message{
 					SessionID: node.Provenance.SessionID,
 					Role:      store.RoleAgent,
 					NodeID:    jobRoot,
@@ -926,7 +927,7 @@ func buildBrain(w *chatWindow, session string, opts brainOptions) (*chatBrain, e
 				_ = share("did not finish — " + firstLine(err.Error()))
 			}
 			if len(absolute) > 0 {
-				_, _ = graph.PostMessage(store.Message{
+				_, _ = thread.Post(graph, store.Message{
 					SessionID: node.Provenance.SessionID,
 					Role:      store.RoleSystem,
 					NodeID:    node.ID,
@@ -981,7 +982,7 @@ func buildBrain(w *chatWindow, session string, opts brainOptions) (*chatBrain, e
 				if replanErr == nil && spliced > 0 {
 					continuing = true
 					notes = append(notes, "["+continuationMessage(spliced)+"]")
-					_, _ = graph.PostMessage(store.Message{
+					_, _ = thread.Post(graph, store.Message{
 						SessionID: node.Provenance.SessionID,
 						Role:      store.RoleSystem,
 						NodeID:    node.ID,
@@ -1004,7 +1005,7 @@ func buildBrain(w *chatWindow, session string, opts brainOptions) (*chatBrain, e
 						// sat finished in the graph. It is posted here rather than
 						// left to the announcer because the announcer is the thing
 						// being suppressed.
-						_, _ = graph.PostMessage(store.Message{
+						_, _ = thread.Post(graph, store.Message{
 							SessionID: node.Provenance.SessionID,
 							Role:      store.RoleSystem,
 							NodeID:    node.ID,
@@ -1148,7 +1149,7 @@ func buildBrain(w *chatWindow, session string, opts brainOptions) (*chatBrain, e
 							// word; the sentence in the thread is what tells the
 							// person, and it says why rather than only what.
 							notes = append(notes, "["+continuationMessage(extension.Spliced)+"]")
-							_, _ = graph.PostMessage(store.Message{
+							_, _ = thread.Post(graph, store.Message{
 								SessionID: node.Provenance.SessionID,
 								Role:      store.RoleSystem,
 								NodeID:    node.ID,
@@ -1212,7 +1213,7 @@ func buildBrain(w *chatWindow, session string, opts brainOptions) (*chatBrain, e
 				if strings.TrimSpace(report) == "" {
 					return
 				}
-				_, _ = graph.PostMessage(store.Message{
+				_, _ = thread.Post(graph, store.Message{
 					SessionID: sessionID,
 					Role:      store.RoleSystem,
 					NodeID:    node.ID,
@@ -1431,7 +1432,7 @@ func (b *chatBrain) start() {
 	guard.Go("chat/reconciler", func() {
 		defer b.background.Done()
 		superviseResident(ctx, b.reconciler.Serve, residentRestartBackoff, residentHealthyRun, func(body string) {
-			_, _ = graph.PostMessage(store.Message{
+			_, _ = thread.Post(graph, store.Message{
 				SessionID: session, Role: store.RoleSystem, Body: body,
 			})
 		})
@@ -2397,7 +2398,7 @@ func (c *chatCommander) RetractNotebook(seq int64) error {
 	if err := c.store.QuarantineFact(seq, 0, store.FactOriginUser); err != nil {
 		return err
 	}
-	_, err = c.store.PostMessage(store.Message{
+	_, err = thread.Post(c.store, store.Message{
 		SessionID: c.session(),
 		Role:      store.RoleSystem,
 		Body:      "· let go — " + firstLine(fact.Body),
@@ -3244,7 +3245,7 @@ func (d *consentDesk) settle(root string, question store.AgentQuestion) {
 		return
 	}
 	d.setHold(node, false)
-	_, _ = d.graph.PostMessage(store.Message{
+	_, _ = thread.Post(d.graph, store.Message{
 		SessionID: node.Provenance.SessionID,
 		Role:      store.RoleSystem,
 		NodeID:    node.ID,
@@ -3910,7 +3911,7 @@ func (j *jobPlans) reviseOn(ctx context.Context, settings config.Config, client 
 		j.journal(prefix, entry)
 	}
 	if len(notes) > 0 {
-		_, _ = graph.PostMessage(store.Message{
+		_, _ = thread.Post(graph, store.Message{
 			SessionID: node.Provenance.SessionID,
 			Role:      store.RoleSystem,
 			NodeID:    node.ID,
@@ -3930,7 +3931,7 @@ func (j *jobPlans) reviseOn(ctx context.Context, settings config.Config, client 
 	if len(reasons) > 0 {
 		body += "\n" + strings.Join(reasons, "\n")
 	}
-	_, _ = graph.PostMessage(store.Message{
+	_, _ = thread.Post(graph, store.Message{
 		SessionID: node.Provenance.SessionID,
 		Role:      store.RoleSystem,
 		NodeID:    node.ID,

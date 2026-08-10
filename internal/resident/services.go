@@ -16,6 +16,7 @@ import (
 
 	executor "github.com/Agent-Field/aforge-v2/internal/exec"
 	"github.com/Agent-Field/aforge-v2/internal/store"
+	"github.com/Agent-Field/aforge-v2/internal/thread"
 )
 
 const (
@@ -373,7 +374,7 @@ func (supervisor *ServiceSupervisor) attention(service store.Service, line strin
 	if err != nil || !found || strings.TrimSpace(node.Provenance.SessionID) == "" {
 		return err
 	}
-	_, err = supervisor.store.PostMessage(store.Message{
+	_, err = thread.Post(supervisor.store, store.Message{
 		SessionID: node.Provenance.SessionID, Role: store.RoleSystem, Body: line,
 	})
 	return err
@@ -563,7 +564,7 @@ func ReAdoptServices(graph *store.Store, sessionID string, runtime ServiceRuntim
 			messageSession = node.Provenance.SessionID
 		}
 		if messageSession != "" {
-			_, _ = graph.PostMessage(store.Message{SessionID: messageSession, Role: store.RoleSystem,
+			_, _ = thread.Post(graph, store.Message{SessionID: messageSession, Role: store.RoleSystem,
 				Body: fmt.Sprintf("%s was not running anymore — say 'start it again' to relaunch", service.Name)})
 		}
 	}

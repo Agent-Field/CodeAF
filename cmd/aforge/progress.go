@@ -10,6 +10,7 @@ import (
 	"github.com/Agent-Field/aforge-v2/internal/plan"
 	"github.com/Agent-Field/aforge-v2/internal/resident"
 	"github.com/Agent-Field/aforge-v2/internal/store"
+	"github.com/Agent-Field/aforge-v2/internal/thread"
 )
 
 const planCountThrottle = 2 * time.Second
@@ -170,7 +171,7 @@ func (p *planProgressPoster) post(update plan.ProgressUpdate) {
 		return
 	}
 	p.posted[update.Phase] = line
-	_, _ = p.history.PostMessage(store.Message{
+	_, _ = thread.Post(p.history, store.Message{
 		SessionID:  p.anchor.SessionID,
 		Role:       store.RoleSystem,
 		Body:       planProgressLine(update),

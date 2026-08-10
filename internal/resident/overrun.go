@@ -14,6 +14,7 @@ import (
 	"strings"
 
 	"github.com/Agent-Field/aforge-v2/internal/store"
+	"github.com/Agent-Field/aforge-v2/internal/thread"
 )
 
 // OverrunPlanFunc plans the remaining work of an exhausted leaf into a
@@ -244,7 +245,7 @@ func overrunRoundsSpent(prefix string) bool {
 // a governor stopping work quietly reads as work finishing, and the difference
 // is exactly what the user needs to know.
 func postGovernorNotice(graph *store.Store, node store.Node, body string) {
-	_, _ = graph.PostMessage(store.Message{
+	_, _ = thread.Post(graph, store.Message{
 		SessionID: node.Provenance.SessionID,
 		Role:      store.RoleSystem,
 		NodeID:    node.ID,
@@ -305,7 +306,7 @@ func ResumeDeferredOverruns(ctx context.Context, graph *store.Store, dailyBudget
 			return resumed, err
 		}
 		resumed += spliced
-		_, _ = graph.PostMessage(store.Message{
+		_, _ = thread.Post(graph, store.Message{
 			SessionID: node.Provenance.SessionID,
 			Role:      store.RoleSystem,
 			NodeID:    node.ID,
