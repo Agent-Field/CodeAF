@@ -1621,3 +1621,52 @@ never travels (7.1).
 
 Wave order is dependency order, but Waves 2–4 parallelize internally across
 builders once Wave 1's seams exist.
+
+## Part 12 — Build ledger (amendments and findings from the waves; later parts win)
+
+### 12.1 Wave 0 batch 1 (landed: dec816e question class, d7a485d keyed streams,
+8c724a9 sessions+cursors, 2345389 task budgets)
+
+1. **9.1 refined by the build**: the head never "served one session at a time" —
+   one head process tails every room and answers rows in journal order
+   (foldAhead/step already stop at session boundaries). The fix is per-room
+   *watermarks*, not a per-session head. The dominant stranding path is
+   restart/resume (global `LastNonUserMessageSeq` skipping rooms whose unanswered
+   rows sit below another room's newest reply); the secondary is a mid-turn fold
+   jumping the shared cursor. "Any reply advances the watermark" was right in
+   effect, wrong in immediacy.
+2. **New invariant (not in Part 9)**: once "what has been read" and "what is
+   owed" are different numbers, the head poll's read position must advance on
+   EVERY row walked — including skipped ones — or a page consisting entirely of
+   another room's settled history spins the poll forever. Regression-locked by
+   `TestAPageOfAlreadyAnsweredRowsStillMovesThePoll`; later waves must not
+   "simplify" that line.
+3. **Empty rooms cannot exist yet**: `sessions` is a projection of the messages
+   that name it, so a thread switcher that mints a room before its first message
+   needs a `session_opened` journal event first. Wave 3 prerequisite; deliberately
+   not invented in Wave 0.
+4. **Question-class survey**: every existing `AskQuestion` producer is genuinely
+   consent-bearing; none were labeled informational. The class axis is pure
+   capability until a producer earns the label.
+5. **Task-budget follow-ups**: (a) the media `BeforeSpend` gate in chat.go gains
+   the task-rail check during the Wave 1 dissolution; (b) the overrun-replan gate
+   must NOT defer on task rails until `PendingOverruns` is task-aware (today it
+   would stall the whole graph); (c) whichever wave surfaces ceilings must land
+   the raise-consent interception in the same wave (`head` handles
+   `PendingDailyRailApproval` only) or a stopped task is unresumable from chat.
+6. **Perf trap ledger**: the subtree-spend query must remain a `CROSS JOIN`
+   (planner otherwise full-scans the whole `usage` table per admission check);
+   `NodeModels` (usage.go) has the same pre-existing shape, off the hot path.
+7. **swepro test failures are pre-existing on the base commit** (hardcoded
+   homedir fixtures, float-parity fixtures) — outside `make test`'s curated set;
+   not Wave 0 fallout.
+
+### 12.2 Amendment to 9.7/9.8 for Wave 0 batch 2: pinning lands behind the seam
+
+Owner-thread delivery pinning and the announceNode subtree policy are observable
+behavior in the OLD surface (today a headless task's deliverable re-homes into
+whatever chat window attaches — that journey is load-bearing until v2 rooms
+exist). Part 11.1's disconnect-don't-delete therefore governs: batch 2 builds
+both policies as a single policy seam selected once (legacy | owner-pinned,
+`AFORGE_CHAT_V2=1` choosing owner-pinned), default legacy, both modes tested.
+The legacy path dies with the old chat, one wave after the default flips.
