@@ -262,7 +262,7 @@ func (p *sweProbe) engineCall(t *testing.T) (argv []string, environment map[stri
 
 func (p *sweProbe) trace(t *testing.T) string {
 	t.Helper()
-	full, _, err := p.workspace.ScratchPath(filepath.Join(traceDir, "7.trace.log"))
+	full, _, err := p.workspace.ScratchPath(traceName(7))
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
-	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -163,9 +162,10 @@ func TestDegradationReachesTheNodesFlightRecorder(t *testing.T) {
 	}
 	leafSubharness(node)
 
-	trace := filepath.Join(workspace, "task-1", ".obs",
-		strconv.FormatInt(node.CreatedSeq, 10)+".trace.log")
-	body, err := os.ReadFile(trace)
+	// Through the shared spelling, not a fourth hand-built copy of it: the note
+	// and the recorder have to land in one file, and a test that builds the path
+	// itself would go on passing after they stopped doing so.
+	body, err := os.ReadFile(exec.TraceFile(filepath.Join(workspace, "task-1"), node.CreatedSeq))
 	if err != nil {
 		t.Fatalf("read the trace: %v", err)
 	}

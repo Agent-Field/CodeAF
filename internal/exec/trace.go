@@ -40,8 +40,56 @@ type tracer struct {
 // per-line syscall is gone.
 const traceBuffer = 32 << 10
 
+// traceName is the one place the recorder's file name is spelled, and every
+// writer and reader in the process goes through it or through the two exported
+// helpers below.
+//
+// Single-sourcing it is not tidiness. The recorder moved out of .obs, and the
+// surfaces that read it — the live node view in the chat window, the note a
+// build owes a node whose promised worker it does not have — each built the
+// same path by hand from their own directory. A reader left behind does not
+// fail: it opens nothing, renders empty, and looks exactly like a worker that
+// is thinking rather than writing. A writer left behind is worse, appending a
+// sentence nobody will ever open.
+func traceName(nodeID int64) string {
+	return filepath.Join(traceDir, fmt.Sprintf("%d.trace.log", nodeID))
+}
+
+// legacyTraceName is where recorders written before the move still are. It is
+// read from and never written to.
+func legacyTraceName(nodeID int64) string {
+	return filepath.Join(obsDir, fmt.Sprintf("%d.trace.log", nodeID))
+}
+
+// TraceFile is where a node's recorder is written, under the directory the
+// harness keeps its own files in for that job. Writers use this and only this.
+func TraceFile(home string, nodeID int64) string {
+	return filepath.Join(home, traceName(nodeID))
+}
+
+// TracePath is where a node's recorder can be read from: the current location,
+// falling back to the pre-move .obs spelling when only that file exists.
+//
+// The fallback is what keeps a finished run readable after the move. A trace is
+// written once and read for as long as anyone is still asking what a node did,
+// and a relocation that silently emptied every existing run's view would be a
+// worse defect than the contamination it was fixing. When neither file exists
+// the current path is returned, so an error names where the recorder should
+// have been rather than where it used to be.
+func TracePath(home string, nodeID int64) string {
+	current := TraceFile(home, nodeID)
+	if _, err := os.Stat(current); err == nil {
+		return current
+	}
+	legacy := filepath.Join(home, legacyTraceName(nodeID))
+	if _, err := os.Stat(legacy); err == nil {
+		return legacy
+	}
+	return current
+}
+
 func newTracer(workspace *Workspace, nodeID int) *tracer {
-	full, _, err := workspace.ScratchPath(filepath.Join(traceDir, fmt.Sprintf("%d.trace.log", nodeID)))
+	full, _, err := workspace.ScratchPath(traceName(int64(nodeID)))
 	if err != nil {
 		return &tracer{}
 	}

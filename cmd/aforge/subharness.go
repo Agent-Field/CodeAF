@@ -279,17 +279,19 @@ func noteDegradedLeafWorker(node store.Node, worker string) {
 	}
 	leafWorkerNotes.said[node.ID] = true
 	// The same place the tracer will open a moment later: the scratch home when
-	// the workspace belongs to a person, the job's own directory otherwise.
+	// the workspace belongs to a person, the job's own directory otherwise. The
+	// path itself comes from exec rather than being spelled again here — this
+	// note and the recorder must land in one file, and they stopped doing so the
+	// moment the recorder moved and this line did not.
 	home := leafWorkerNotes.scratch
 	if home == "" {
 		home = filepath.Join(leafWorkerNotes.workspace, jobIDOf(leafWorkerNotes.graph, node))
 	}
-	directory := filepath.Join(home, ".obs")
-	if err := os.MkdirAll(directory, 0o755); err != nil {
+	path := exec.TraceFile(home, node.CreatedSeq)
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return
 	}
-	file, err := os.OpenFile(filepath.Join(directory, fmt.Sprintf("%d.trace.log", node.CreatedSeq)),
-		os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644)
+	file, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644)
 	if err != nil {
 		return
 	}

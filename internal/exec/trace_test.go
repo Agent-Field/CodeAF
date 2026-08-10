@@ -13,11 +13,53 @@ import (
 
 func tracePath(t *testing.T, space *Workspace, nodeID int) string {
 	t.Helper()
-	full, _, err := space.ScratchPath(filepath.Join(traceDir, fmt.Sprintf("%d.trace.log", nodeID)))
+	full, _, err := space.ScratchPath(traceName(int64(nodeID)))
 	if err != nil {
 		t.Fatal(err)
 	}
 	return full
+}
+
+// One spelling, reachable from both sides. The writer inside this package and
+// the surfaces outside it that read a live node's recorder must resolve to the
+// same file, or a relocation empties the reader's view while looking like a
+// worker that has gone quiet.
+func TestTheRecorderIsWrittenAndReadThroughOneSpelling(t *testing.T) {
+	space, err := NewWorkspace(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	home := space.Root()
+
+	trace := newTracer(space, 12)
+	trace.note("engine: started")
+	trace.close()
+
+	written := tracePath(t, space, 12)
+	if got := TraceFile(home, 12); got != written {
+		t.Fatalf("the writer opened %q and TraceFile names %q", written, got)
+	}
+	if got := TracePath(home, 12); got != written {
+		t.Fatalf("the reader resolves to %q, not the file the writer opened %q", got, written)
+	}
+
+	// A run recorded before the move stays readable: the reader falls back to
+	// the old spelling, and only when nothing is at the current one.
+	legacy := filepath.Join(home, legacyTraceName(13))
+	if err := os.MkdirAll(filepath.Dir(legacy), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(legacy, []byte("an older run\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if got := TracePath(home, 13); got != legacy {
+		t.Fatalf("a pre-move recorder resolves to %q, want the legacy file %q", got, legacy)
+	}
+	// With nothing anywhere, the reader names where the recorder should be
+	// rather than where it used to be.
+	if got := TracePath(home, 99); got != TraceFile(home, 99) {
+		t.Fatalf("a missing recorder resolved to %q", got)
+	}
 }
 
 // The recorder is buffered now, so the two things worth pinning are that the
