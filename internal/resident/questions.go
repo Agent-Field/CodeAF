@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/Agent-Field/aforge-v2/internal/store"
+	"github.com/Agent-Field/aforge-v2/internal/thread"
 )
 
 // compileAskWindow is how long a clarifying question about a request stays
@@ -343,7 +344,7 @@ func (r *Reconciler) sayTheRequestLapsed(question store.AgentQuestion, reason st
 	}
 	body := "That question lapsed unanswered (" + reason + "), so the request behind it never went ahead: " +
 		clipLabel(firstLine(question.Text), 160) + " — ask again whenever you want it."
-	_, err := r.store.PostMessage(store.Message{
+	_, err := thread.Post(r.store, store.Message{
 		SessionID: sessionID,
 		Role:      store.RoleSystem,
 		Body:      boundMessage(body),

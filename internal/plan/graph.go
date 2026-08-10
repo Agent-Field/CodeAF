@@ -199,6 +199,13 @@ type Graph struct {
 	// here matches a phrase against the goal.
 	FileShaped bool `json:"file_shaped,omitempty"`
 
+	// Terrain is the workspace this run stands on, drawn in code at build start
+	// and frozen. It is persisted with the graph for the same reason the settled
+	// points are: a graph read back off disk is revised against the premises it
+	// was built from, and a reviser that lost the picture would be judging what
+	// happened against a workspace it was told about but cannot see.
+	Terrain string `json:"terrain,omitempty"`
+
 	Stages []Stage `json:"stages"`
 	Nodes  []Node  `json:"nodes"`
 	NextID int     `json:"next_id"`
