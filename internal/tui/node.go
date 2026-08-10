@@ -562,6 +562,7 @@ func nodeDocumentMoved(before, after store.Node) bool {
 		before.Error != after.Error ||
 		before.Provenance.WorkModel != after.Provenance.WorkModel ||
 		before.Provenance.PlanModel != after.Provenance.PlanModel ||
+		before.Provenance.RunModel != after.Provenance.RunModel ||
 		settledWorker(before) != settledWorker(after)
 }
 

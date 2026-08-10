@@ -59,12 +59,14 @@ type jobCard struct {
 	// reply instead of being discarded at the seam.
 	QuestionSeq int64
 	Outcome     string
-	// Subharness, WorkModel and PlanModel are the job's non-default choices,
-	// read from the durable row rather than from anything the head promised in
-	// the thread. Every one of them is empty on nearly every job, and empty is
-	// what keeps the card silent.
+	// Subharness, WorkModel, RunModel and PlanModel are the job's non-default
+	// choices, read from the durable row rather than from anything the head
+	// promised in the thread. Every one of them is empty on nearly every job,
+	// and empty is what keeps the card silent. RunModel and PlanModel arrive
+	// together or not at all: they are the two halves of one split.
 	Subharness  string
 	WorkModel   string
+	RunModel    string
 	PlanModel   string
 	BirthSeq    int64
 	CommandSeq  int64
@@ -246,6 +248,7 @@ func deriveJobCards(
 			// the same order every dispatch path reads it in.
 			Subharness: settledWorker(root),
 			WorkModel:  strings.TrimSpace(root.Provenance.WorkModel),
+			RunModel:   strings.TrimSpace(root.Provenance.RunModel),
 			PlanModel:  strings.TrimSpace(root.Provenance.PlanModel),
 			BirthSeq:   root.CreatedSeq,
 			Usage:      usage[root.ID],
@@ -1900,25 +1903,51 @@ func settledWorker(node store.Node) string {
 // cardChoiceReceipt is the proof that a choice was respected, and it is proof
 // precisely because it is read from the durable row the work will run from
 // rather than from the reply that promised it. Three facts at most — the worker
-// this job was given, the model the user named for it, the model that structured
-// it when that was not the model working it — and every one of them is absent on
-// an ordinary job. An ordinary job gets no line at all: silence is what makes
-// the line mean something on the job that has one.
+// this job was given, the model the user named for it, and the split between
+// the model that structured it and the model that worked it — and every one of
+// them is absent on an ordinary job. An ordinary job gets no line at all:
+// silence is what makes the line mean something on the job that has one.
 func cardChoiceReceipt(card jobCard) string {
 	parts := make([]string, 0, 3)
 	if worker := strings.TrimSpace(card.Subharness); worker != "" {
 		parts = append(parts, worker)
 	}
-	if model := strings.TrimSpace(card.WorkModel); model != "" {
-		parts = append(parts, modelShort(model))
+	return strings.Join(append(parts,
+		modelFacts(card.WorkModel, card.RunModel, card.PlanModel, true)...), " · ")
+}
+
+// modelFacts is the model half of the receipt: the model the person named for
+// this job, and — only where the store recorded a split — the pair that says
+// who ran it and who planned it. The pair is one fact about one split, which is
+// why naming both never pushes the line past the three facts it is allowed.
+//
+// The order is the order a reader asks in. "Who is doing my work" comes first;
+// "and who drew the shape of it" is the follow-up. A build that answered only
+// the follow-up is what sent a user looking for a model they had never chosen.
+func modelFacts(pinned, ran, planned string, short bool) []string {
+	spell := func(model string) string {
+		if short {
+			return modelShort(model)
+		}
+		return model
+	}
+	pinned, ran, planned = strings.TrimSpace(pinned), strings.TrimSpace(ran), strings.TrimSpace(planned)
+	facts := make([]string, 0, 3)
+	if pinned != "" {
+		facts = append(facts, spell(pinned))
 	}
 	// The plan slot is silent unless it split from the work slot, and the store
 	// is where that comparison was made — at splice, by the only party that knew
 	// both slots. Reading it here is reading a settled fact, not re-deciding one.
-	if planner := strings.TrimSpace(card.PlanModel); planner != "" {
-		parts = append(parts, "planned by "+modelShort(planner))
+	if planned == "" {
+		return facts
 	}
-	return strings.Join(parts, " · ")
+	// A model the user named is already on the line under its own name, and it
+	// is the same model the work went to. Saying it twice is ceremony.
+	if ran != "" && !strings.EqualFold(ran, pinned) {
+		facts = append(facts, "ran by "+spell(ran))
+	}
+	return append(facts, "planned by "+spell(planned))
 }
 
 // nodeChoiceReceipt is the same three facts one rung further down the ladder,
@@ -1930,13 +1959,8 @@ func nodeChoiceReceipt(node store.Node) string {
 	if worker := settledWorker(node); worker != "" {
 		parts = append(parts, worker)
 	}
-	if model := strings.TrimSpace(node.Provenance.WorkModel); model != "" {
-		parts = append(parts, model)
-	}
-	if planner := strings.TrimSpace(node.Provenance.PlanModel); planner != "" {
-		parts = append(parts, "planned by "+planner)
-	}
-	return strings.Join(parts, " · ")
+	return strings.Join(append(parts, modelFacts(node.Provenance.WorkModel,
+		node.Provenance.RunModel, node.Provenance.PlanModel, false)...), " · ")
 }
 
 // nodeChoiceReceiptShort is the glance version of the same facts, for the one
@@ -1948,13 +1972,8 @@ func nodeChoiceReceiptShort(node store.Node) string {
 	if worker := settledWorker(node); worker != "" {
 		parts = append(parts, worker)
 	}
-	if model := strings.TrimSpace(node.Provenance.WorkModel); model != "" {
-		parts = append(parts, modelShort(model))
-	}
-	if planner := strings.TrimSpace(node.Provenance.PlanModel); planner != "" {
-		parts = append(parts, "planned by "+modelShort(planner))
-	}
-	return strings.Join(parts, " · ")
+	return strings.Join(append(parts, modelFacts(node.Provenance.WorkModel,
+		node.Provenance.RunModel, node.Provenance.PlanModel, true)...), " · ")
 }
 
 func cardAssumptions(receipt string) []string {

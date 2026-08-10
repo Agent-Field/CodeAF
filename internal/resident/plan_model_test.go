@@ -24,12 +24,15 @@ func TestPlanModelIsJournaledOnlyWhenThePlanSlotSplitsFromWork(t *testing.T) {
 		workSlot   string
 		pinnedWork string
 		want       string
+		wantRun    string
 	}{
-		{"plan follows work", "x-ai/grok-5", "x-ai/grok-5", "", ""},
-		{"no slots to speak of", "", "", "", ""},
-		{"the slots differ", "anthropic/claude-opus-5", "moonshotai/kimi-k2", "", "anthropic/claude-opus-5"},
-		{"a pin makes them differ", "x-ai/grok-5", "x-ai/grok-5", "moonshotai/kimi-k2", "x-ai/grok-5"},
-		{"a pin makes them agree", "moonshotai/kimi-k2", "x-ai/grok-5", "moonshotai/kimi-k2", ""},
+		{"plan follows work", "x-ai/grok-5", "x-ai/grok-5", "", "", ""},
+		{"no slots to speak of", "", "", "", "", ""},
+		{"the slots differ", "anthropic/claude-opus-5", "moonshotai/kimi-k2", "",
+			"anthropic/claude-opus-5", "moonshotai/kimi-k2"},
+		{"a pin makes them differ", "x-ai/grok-5", "x-ai/grok-5", "moonshotai/kimi-k2",
+			"x-ai/grok-5", "moonshotai/kimi-k2"},
+		{"a pin makes them agree", "moonshotai/kimi-k2", "x-ai/grok-5", "moonshotai/kimi-k2", "", ""},
 	} {
 		t.Run(probe.name, func(t *testing.T) {
 			graph := openStore(t)
@@ -53,6 +56,11 @@ func TestPlanModelIsJournaledOnlyWhenThePlanSlotSplitsFromWork(t *testing.T) {
 				}
 				if node.Provenance.PlanModel != probe.want {
 					t.Fatalf("%s plan model = %q, want %q", id, node.Provenance.PlanModel, probe.want)
+				}
+				// The other half of the same fact: a job that says who planned it
+				// and not who worked it is the receipt that confused everyone.
+				if node.Provenance.RunModel != probe.wantRun {
+					t.Fatalf("%s run model = %q, want %q", id, node.Provenance.RunModel, probe.wantRun)
 				}
 			}
 		})
@@ -82,7 +90,8 @@ func TestPlanModelStaysEmptyWithoutSlots(t *testing.T) {
 	if err != nil || !found {
 		t.Fatalf("read quiet: found=%t err=%v", found, err)
 	}
-	if node.Provenance.PlanModel != "" {
-		t.Fatalf("plan model = %q, want silence", node.Provenance.PlanModel)
+	if node.Provenance.PlanModel != "" || node.Provenance.RunModel != "" {
+		t.Fatalf("slots spoke without being told: plan %q run %q",
+			node.Provenance.PlanModel, node.Provenance.RunModel)
 	}
 }
