@@ -498,6 +498,19 @@ func (r *Runner) claimNext(open *map[string]bool) (store.Node, bool, error) {
 				return store.Node{}, false, nil
 			}
 		}
+		// The same rail scoped to one task, and off until somebody sets a
+		// ceiling: with none journaled anywhere this is a single probe of an
+		// empty table and the claim proceeds exactly as it did before task
+		// ceilings existed. Reaching one skips this node rather than the whole
+		// pass — the day is shared, a subtree is not, so everything outside the
+		// stopped task is still claimable.
+		taskRail, _, err := r.graph.PauseTaskRail(node.ID, node.Provenance.SessionID, 0)
+		if err != nil {
+			return store.Node{}, false, err
+		}
+		if taskRail.Reached {
+			continue
+		}
 		claim, ok, err := r.graph.Claim(node.ID, r.owner)
 		if err != nil {
 			return store.Node{}, false, err

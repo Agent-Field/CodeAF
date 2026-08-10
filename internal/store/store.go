@@ -151,6 +151,15 @@ const (
 	// work.
 	EventRailRaised EventKind = "rail_raised"
 
+	// EventTaskCeilingSet records a dollar ceiling placed over one task's
+	// subtree, or — carrying Cleared — its removal. The daily rail governs a
+	// shared day; this one governs a single root and stops nothing outside it.
+	EventTaskCeilingSet EventKind = "task_ceiling_set"
+	// EventTaskRailAsked is the per-root marker that the ceiling question has
+	// already been asked. It is journaled against the root because the question
+	// itself is an ordinary message and messages carry no task key.
+	EventTaskRailAsked EventKind = "task_rail_asked"
+
 	// Overrun deferrals preserve a landed partial whose repair could not be
 	// admitted at the rail. Resumption is a separate event so a rebuild can
 	// recover exactly the continuations that still need to be spliced.
@@ -554,6 +563,14 @@ func Open(path string) (*Store, error) {
 	if err := migrateMessagesFTS(db); err != nil {
 		return closeOnError(fmt.Errorf("migrate conversation index: %w", err))
 	}
+	// Sessions come after messages for the same reason, twice over: the table
+	// indexes the message view, and its backfill reads it.
+	if _, err := db.Exec(sessionSchema); err != nil {
+		return closeOnError(fmt.Errorf("initialize session schema: %w", err))
+	}
+	if err := backfillSessions(db); err != nil {
+		return closeOnError(fmt.Errorf("backfill sessions: %w", err))
+	}
 	if _, err := db.Exec(agentQuestionSchema); err != nil {
 		return closeOnError(fmt.Errorf("initialize agent question schema: %w", err))
 	}
@@ -568,6 +585,9 @@ func Open(path string) (*Store, error) {
 	}
 	if _, err := db.Exec(surpriseSchema); err != nil {
 		return closeOnError(fmt.Errorf("initialize surprise schema: %w", err))
+	}
+	if _, err := db.Exec(taskBudgetSchema); err != nil {
+		return closeOnError(fmt.Errorf("initialize task budget schema: %w", err))
 	}
 	if _, err := db.Exec(selfReceiptSchema); err != nil {
 		return closeOnError(fmt.Errorf("initialize self receipt schema: %w", err))

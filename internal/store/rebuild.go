@@ -40,6 +40,11 @@ func (s *Store) Rebuild() error {
 	if _, err := tx.Exec(`DELETE FROM messages`); err != nil {
 		return fmt.Errorf("rebuild messages: %w", err)
 	}
+	// Sessions are derived from the messages that name them, so they are
+	// discarded with the messages and minted again by the replay.
+	if _, err := tx.Exec(`DELETE FROM sessions`); err != nil {
+		return fmt.Errorf("rebuild sessions: %w", err)
+	}
 	if _, err := tx.Exec(`DELETE FROM agent_questions`); err != nil {
 		return fmt.Errorf("rebuild agent questions: %w", err)
 	}
@@ -48,6 +53,9 @@ func (s *Store) Rebuild() error {
 	}
 	if _, err := tx.Exec(`DELETE FROM usage`); err != nil {
 		return fmt.Errorf("rebuild usage: %w", err)
+	}
+	if _, err := tx.Exec(`DELETE FROM task_budgets`); err != nil {
+		return fmt.Errorf("rebuild task budgets: %w", err)
 	}
 	if _, err := tx.Exec(`DELETE FROM surprises`); err != nil {
 		return fmt.Errorf("rebuild surprises: %w", err)
@@ -421,6 +429,19 @@ func replayEvent(tx *sql.Tx, event Event) error {
 		// Rail raises have no materialized view: their event timestamps define
 		// "today", so replay only validates the policy record.
 		var payload RailAdjustment
+		return json.Unmarshal(event.Payload, &payload)
+
+	case EventTaskCeilingSet:
+		var payload TaskCeiling
+		if err := json.Unmarshal(event.Payload, &payload); err != nil {
+			return err
+		}
+		return applyTaskCeilingView(tx, payload, event.Seq, event.Time)
+
+	case EventTaskRailAsked:
+		// The ask has no materialized view: its own sequence is the marker, and
+		// replay only validates that the record decodes.
+		var payload TaskRailAsk
 		return json.Unmarshal(event.Payload, &payload)
 
 	case EventOverrunDeferred:

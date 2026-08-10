@@ -234,6 +234,71 @@ func TestRunnerPausesClaimsAndPostsOneRailQuestion(t *testing.T) {
 		t.Fatalf("rail questions = %d, want exactly one: %+v", questions, messages)
 	}
 }
+
+// TestRunnerPausesOnlyTheTaskThatReachedItsCeiling is the scoped half of the
+// rail: a task over its ceiling stops being claimed and says so once, while
+// everything outside that subtree keeps running. No ceiling is set on the free
+// job, and nothing about it changes.
+func TestRunnerPausesOnlyTheTaskThatReachedItsCeiling(t *testing.T) {
+	s := openRunnerStore(t)
+	if err := s.Splice(store.RootID, store.Subtree{Nodes: []store.NodeSpec{
+		{ID: "capped", Brief: "the expensive task", Stage: 2},
+		{ID: "capped-leaf", Parent: "capped", Brief: "its work", Stage: 1},
+	}}, store.Provenance{Origin: store.OriginUser, SessionID: "s1", Intent: "expensive"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.Splice(store.RootID, store.Subtree{Nodes: []store.NodeSpec{
+		{ID: "free", Brief: "an unrelated task", Stage: 1},
+	}}, store.Provenance{Origin: store.OriginUser, SessionID: "s1", Intent: "unrelated"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.RecordUsage(store.NodeUsage{NodeID: "capped-leaf", Cost: 2}); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.SetTaskCeiling("capped", 1, "test:user"); err != nil {
+		t.Fatal(err)
+	}
+
+	var mu sync.Mutex
+	ran := make([]string, 0, 2)
+	runner := NewRunner(s, func(_ context.Context, node store.Node) (ExecResult, error) {
+		mu.Lock()
+		ran = append(ran, node.ID)
+		mu.Unlock()
+		return ExecResult{Summary: "done"}, nil
+	}, "task-rail-runner", 2)
+
+	for tick := 0; tick < 2; tick++ {
+		if _, err := runner.Tick(context.Background()); err != nil {
+			t.Fatal(err)
+		}
+		runner.Wait()
+	}
+
+	mu.Lock()
+	defer mu.Unlock()
+	if len(ran) != 1 || ran[0] != "free" {
+		t.Fatalf("ran %v, want only the ungoverned job", ran)
+	}
+	leaf, ok, err := s.Node("capped-leaf")
+	if err != nil || !ok || leaf.Status != store.Pending {
+		t.Fatalf("capped leaf = %+v ok=%t err=%v, want still pending", leaf, ok, err)
+	}
+	messages, err := s.Messages("s1", 0, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	questions := 0
+	for _, message := range messages {
+		if strings.HasPrefix(message.Body, store.TaskRailQuestionPrefix) {
+			questions++
+		}
+	}
+	if questions != 1 {
+		t.Fatalf("task rail questions = %d, want exactly one: %+v", questions, messages)
+	}
+}
+
 func TestReflexMicroLeafIsJournaledClaimedSettledAndRebuildSafe(t *testing.T) {
 	s := openRunnerStore(t)
 	ask := "Read VERSION and report its value."
