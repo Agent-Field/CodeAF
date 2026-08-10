@@ -5,26 +5,20 @@ import (
 	"testing"
 
 	"github.com/charmbracelet/x/ansi"
-
-	"github.com/Agent-Field/aforge-v2/internal/store"
 )
 
-// stubCommander is the smallest thing the TUI will accept as a commander, plus
-// the one capability under test.
+// stubCommander is the shared fake plus the one capability under test.
 type stubCommander struct {
+	*fakeCommander
 	state     Residency
 	successor Commander
 	asked     int
 }
 
-func (s *stubCommander) Models() []string              { return nil }
-func (s *stubCommander) Catalog() []ModelChoice        { return nil }
-func (s *stubCommander) CurrentModel(string) string    { return "" }
-func (s *stubCommander) SetModel(string, string) error { return nil }
-func (s *stubCommander) Notebook(int) []store.Fact     { return nil }
-func (s *stubCommander) NewSession() (string, error)   { return "", nil }
-func (s *stubCommander) Cancel(string) error           { return nil }
-func (s *stubCommander) NodeTrace(string, int) string  { return "" }
+func newStubCommander(state Residency) *stubCommander {
+	return &stubCommander{fakeCommander: &fakeCommander{current: map[string]string{}}, state: state}
+}
+
 func (s *stubCommander) Residency() (Residency, Commander) {
 	s.asked++
 	successor := s.successor
@@ -41,7 +35,7 @@ func (s *stubCommander) Residency() (Residency, Commander) {
 // which is how a perfectly healthy second window became indistinguishable from
 // an application that had died.
 func TestVisitorHeaderSaysWhichWindowThisIs(t *testing.T) {
-	commander := &stubCommander{state: Residency{Visitor: true, PID: 4711}}
+	commander := newStubCommander(Residency{Visitor: true, PID: 4711})
 	model := NewWithCommander(&fakeBackend{}, "visitor", commander)
 	model.setSize(140, 30)
 	model.applyPoll(pollResultMsg{residency: commander.state, residencyRead: true})
@@ -96,8 +90,9 @@ func TestTheOnlyWindowSaysNothingAboutResidency(t *testing.T) {
 // adopts it whole, because a window that has just taken the resident role has
 // capabilities the one it replaced never had.
 func TestPollAdoptsTheCommanderHandedBackOnPromotion(t *testing.T) {
-	promoted := &stubCommander{state: Residency{}}
-	commander := &stubCommander{state: Residency{Visitor: true, PID: 88}, successor: promoted}
+	promoted := newStubCommander(Residency{})
+	commander := newStubCommander(Residency{Visitor: true, PID: 88})
+	commander.successor = promoted
 	model := NewWithCommander(&fakeBackend{}, "visitor", commander)
 	model.setSize(140, 30)
 
@@ -121,7 +116,7 @@ func TestPollAdoptsTheCommanderHandedBackOnPromotion(t *testing.T) {
 // A quiet cycle reads no rows at all, and it must still ask: which process is
 // running the brain can change without a single event reaching the journal.
 func TestQuietPollStillAsksWhoIsResident(t *testing.T) {
-	commander := &stubCommander{state: Residency{Visitor: true, PID: 5}}
+	commander := newStubCommander(Residency{Visitor: true, PID: 5})
 	model := NewWithCommander(&fakeBackend{}, "visitor", commander)
 	model.setSize(140, 30)
 	model.applyPoll(pollResultMsg{

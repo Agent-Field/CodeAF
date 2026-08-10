@@ -64,8 +64,8 @@ func (m *Model) interruptTurn() bool {
 	partial := strings.TrimSpace(m.streamTarget)
 	visible := m.streamVisible() && partial != ""
 	stopped := false
-	if interrupter, ok := m.commander.(Interrupter); ok && interrupter != nil {
-		stopped = interrupter.Interrupt(partial)
+	if m.commander != nil {
+		stopped = m.commander.Interrupt(partial)
 	}
 	if stopped && visible {
 		// The reply stops moving where it is. The head's durable line carries

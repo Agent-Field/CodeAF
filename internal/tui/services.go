@@ -17,12 +17,6 @@ const (
 	serviceLogMaxBytes    = 32 << 10
 )
 
-type serviceLister interface {
-	ActiveServices() ([]store.Service, error)
-}
-
-var _ serviceLister = (*store.Store)(nil)
-
 type serviceRow struct {
 	line      int
 	serviceID string
@@ -56,11 +50,7 @@ func (m *Model) activeServices() []store.Service {
 	}
 	m.railServicesValid = true
 	m.railServices = nil
-	lister, ok := m.backend.(serviceLister)
-	if !ok {
-		return nil
-	}
-	services, err := lister.ActiveServices()
+	services, err := m.backend.ActiveServices()
 	if err != nil {
 		return nil
 	}
@@ -257,10 +247,6 @@ func (m *Model) requestServiceAction(action string) tea.Cmd {
 	if !ok {
 		return m.showStatus("service is no longer available")
 	}
-	requester, ok := m.backend.(commandRequester)
-	if !ok {
-		return m.showStatus("service actions unavailable — command requests unsupported")
-	}
 	kind := store.CommandServiceStop
 	if action == "restart" {
 		kind = store.CommandServiceRestart
@@ -268,8 +254,9 @@ func (m *Model) requestServiceAction(action string) tea.Cmd {
 		kind = store.CommandServiceAutoRestart
 	}
 	request := store.Command{SessionID: m.sessionID, Kind: kind, Target: service.ID, Instruction: action}
+	backend := m.backend
 	return func() tea.Msg {
-		_, err := requester.RequestCommand(request)
+		_, err := backend.RequestCommand(request)
 		return serviceCommandResultMsg{action: action, name: service.Name, err: err}
 	}
 }

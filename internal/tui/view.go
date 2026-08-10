@@ -1416,10 +1416,7 @@ func (m *Model) slotFollowsWorkNow(slot string) bool {
 	if m.commander == nil {
 		return true
 	}
-	if follower, ok := m.commander.(interface{ ModelFollows(string) bool }); ok {
-		return follower.ModelFollows(slot)
-	}
-	return strings.TrimSpace(m.commander.CurrentModel(slot)) == ""
+	return m.commander.ModelFollows(slot)
 }
 
 func (m *Model) boostLabel() string {

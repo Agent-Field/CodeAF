@@ -25,23 +25,19 @@ type Residency struct {
 	Note string
 }
 
-// residentSurface is the optional capability a commander offers when the
-// window it serves may not be the process running the brain.
+// Commander.Residency is how a window learns all of this, and it is called from
+// the poll goroutine on every cycle, quiet ones included: the resident can die
+// while nothing at all changes in the store, so the journal watermark cannot
+// speak for it. That makes it a probe and only a probe — anything that takes
+// real time, promotion above all, belongs to a goroutine the implementation
+// starts for itself.
 //
-// Residency is called from the poll goroutine on every cycle, quiet ones
-// included: the resident can die while nothing at all changes in the store, so
-// the journal watermark cannot speak for it. That makes it a probe and only a
-// probe — anything that takes real time, promotion above all, belongs to a
-// goroutine the implementation starts for itself.
-//
-// The second return is how a window changes what it is. A visitor's commander
+// Its second return is how a window changes what it is. A visitor's commander
 // holds no model clients and no head; the one that promotes holds both. Rather
 // than making every capability mutable behind a lock, the surface hands back a
 // replacement commander at the moment the role moves, and the window adopts it
-// whole.
-type residentSurface interface {
-	Residency() (Residency, Commander)
-}
+// whole. A commander with nothing to say about the role answers the zero
+// Residency and no successor, which is the ordinary single-window journey.
 
 // label is the header's one quiet segment about all of this: what this window
 // is, and then whatever is currently true about the role — which process holds

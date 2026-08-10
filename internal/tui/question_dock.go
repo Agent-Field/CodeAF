@@ -175,15 +175,7 @@ func (m *Model) surfaceSelectedAgentQuestion() tea.Cmd {
 	// Neutral questions — a charter's firing proposal belongs to no session —
 	// surface into whichever session is reading the dock right now.
 	sessionID := m.sessionID
-	backend, ok := m.backend.(interface {
-		SurfaceQuestionForSession(int64, string) (store.Message, error)
-	})
-	if !ok {
-		return func() tea.Msg {
-			return questionSurfaceResultMsg{questionSeq: question.Seq,
-				err: fmt.Errorf("question surface is unavailable")}
-		}
-	}
+	backend := m.backend
 	return func() tea.Msg {
 		message, err := backend.SurfaceQuestionForSession(question.Seq, sessionID)
 		return questionSurfaceResultMsg{questionSeq: question.Seq, message: message, err: err}

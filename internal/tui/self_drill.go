@@ -57,14 +57,6 @@ type CraftDetail struct {
 	History     []CraftVersion
 }
 
-// craftShelfReader is the optional Commander capability of reading the craft
-// repository. Without it the Crafts row still renders — as an honest zero —
-// rather than the place refusing to open.
-type craftShelfReader interface {
-	Crafts() ([]CraftSummary, error)
-	CraftDetail(name string) (CraftDetail, bool)
-}
-
 // selfListRow is one candidate row: what it shows, what a filter tests, what
 // enter does, and whether it is old enough to fold.
 type selfListRow struct {
@@ -296,9 +288,11 @@ func shortCommit(commit string) string {
 	return commit
 }
 
-func (m *Model) craftShelf() (craftShelfReader, bool) {
-	shelf, ok := m.commander.(craftShelfReader)
-	return shelf, ok
+// craftShelf is the craft repository, when there is a commander holding one.
+// Without one the Crafts row still renders — as an honest zero — rather than
+// the place refusing to open.
+func (m *Model) craftShelf() (Commander, bool) {
+	return m.commander, m.commander != nil
 }
 
 func (m *Model) openSelfCraft(name string) {
@@ -428,10 +422,8 @@ func (m *Model) loadSelfBeliefs() {
 		m.selfBeliefHits = nil
 		return
 	}
-	if search, ok := m.commander.(interface {
-		SearchNotebook(string, int) []store.Fact
-	}); ok {
-		m.selfBeliefHits = search.SearchNotebook(query, selfWindow*2)
+	if m.commander != nil {
+		m.selfBeliefHits = m.commander.SearchNotebook(query, selfWindow*2)
 	}
 }
 

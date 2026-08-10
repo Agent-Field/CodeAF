@@ -1,25 +1,37 @@
 package tui
 
 import (
+	"errors"
 	"fmt"
 	"strings"
 	"sync"
 	"testing"
 	"time"
 
+	"github.com/Agent-Field/aforge-v2/internal/config"
 	"github.com/Agent-Field/aforge-v2/internal/store"
+	"github.com/Agent-Field/aforge-v2/internal/voice"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/x/ansi"
 	"github.com/muesli/termenv"
 )
 
+// fakeBackend is the whole Backend, once. Every other backend in this package
+// embeds it and overrides the handful of methods its own test is about, so a
+// method added to Backend lands here and nowhere else — and a fake that forgets
+// one fails the build rather than losing a feature at runtime, which is the
+// whole point of the interface collapse (chat-rebuild Part 2 item 17).
+//
+// The defaults below are the honest empty answers a store with nothing in it
+// would give, with one deliberate exception noted on LatestEventSeq.
 type fakeBackend struct {
 	mu                sync.Mutex
 	messages          []store.Message
 	snapshot          store.Snapshot
 	pending           []store.Command
 	commands          []store.Command
+	requested         []store.Command
 	spendToday        float64
 	jobUsage          map[string]store.JobUsage
 	selfSpend         float64
@@ -35,6 +47,44 @@ type fakeBackend struct {
 	recallErr         error
 }
 
+// errNoWatermark is how a fake says it keeps no journal. The poll treats a
+// failed watermark read exactly as it treated a backend that had no watermark
+// at all: every cycle is a full read, and nothing is ever quiet. Tests about
+// the quiet path use countingBackend, which does keep one.
+var errNoWatermark = errors.New("fake backend keeps no journal watermark")
+
+func (f *fakeBackend) LatestEventSeq() (int64, error) { return 0, errNoWatermark }
+
+func (f *fakeBackend) RequestCommand(command store.Command) (store.Command, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	command.Seq = int64(len(f.requested) + 1)
+	command.Time = time.Now()
+	command.Status = store.CommandPending
+	f.requested = append(f.requested, command)
+	return command, nil
+}
+
+func (f *fakeBackend) Charters(...store.CharterStatus) ([]store.Charter, error) { return nil, nil }
+
+func (f *fakeBackend) ActiveServices() ([]store.Service, error) { return nil, nil }
+
+func (f *fakeBackend) CompetenceMap(...store.CompetenceOptions) (store.CompetenceMap, error) {
+	return store.CompetenceMap{}, nil
+}
+
+func (f *fakeBackend) RecentFacts(int) ([]store.Fact, error) { return nil, nil }
+
+func (f *fakeBackend) SkillFacts(string, int) ([]store.Fact, error) { return nil, nil }
+
+// fakeCommander is the whole Commander, once, on the same terms as fakeBackend
+// above: every commander in this package embeds it and overrides only what its
+// test asserts.
+//
+// Several defaults are load-bearing rather than merely empty — they are the
+// behaviour the runtime type assertions used to produce when a fake did not
+// implement a capability, written down instead of inferred. Each is marked
+// where it sits.
 type fakeCommander struct {
 	models     []string
 	catalog    []ModelChoice
@@ -58,8 +108,67 @@ type fakeCommander struct {
 	searchTerms     string
 	retracted       []int64
 	evidence        map[int64][]string
+	split           int
+	voiceUsage      float64
 	err             error
 }
+
+func (f *fakeCommander) StreamEvents() <-chan StreamEvent { return nil }
+
+// ModelFollows is the answer the view used to compute for itself when a
+// commander had no opinion: a follow-capable slot follows the work model
+// exactly while it holds no choice of its own.
+func (f *fakeCommander) ModelFollows(role string) bool {
+	return strings.TrimSpace(f.current[role]) == ""
+}
+
+func (f *fakeCommander) ImageInputSupportFor(role string) (string, bool) {
+	return f.current[role], false
+}
+
+func (f *fakeCommander) Interrupt(string) bool { return false }
+
+// NodeTraceSince is the unstamped read: a fake with no stat gate answers the
+// whole tail and says it moved, which is what the poll did for a commander that
+// did not implement the gate. stampedCommander is the one that does.
+func (f *fakeCommander) NodeTraceSince(
+	nodeID string, maxBytes int, _ NodeTraceStamp,
+) (string, NodeTraceStamp, bool) {
+	return f.NodeTrace(nodeID, maxBytes), NodeTraceStamp{}, true
+}
+
+// KeepAttachment keeps nothing. The composer's documented degrade — an empty
+// reference means the person's own path rides on — is what a surface with
+// nowhere to copy to has always done.
+func (f *fakeCommander) KeepAttachment(string) (string, error) { return "", nil }
+
+func (f *fakeCommander) ResolveWorkspacePath(string, string) (string, bool) { return "", false }
+
+func (f *fakeCommander) ResolveMediaPath(string, string) (string, bool) { return "", false }
+
+func (f *fakeCommander) WorkspacePath(string) (string, bool) { return "", false }
+
+func (f *fakeCommander) Crafts() ([]CraftSummary, error) { return nil, nil }
+
+func (f *fakeCommander) CraftDetail(string) (CraftDetail, bool) { return CraftDetail{}, false }
+
+// Settings answers nil: there is no profile directory a test may write into,
+// and the settings sheet refuses to open rather than guessing one.
+func (f *fakeCommander) Settings() *config.Settings { return nil }
+
+func (f *fakeCommander) SplitPct() int { return f.split }
+
+func (f *fakeCommander) SaveSplitPct(pct int) { f.split = pct }
+
+func (f *fakeCommander) VoiceRecorder() voice.Recorder { return nil }
+
+func (f *fakeCommander) VoiceTranscriber() voice.Transcriber { return nil }
+
+func (f *fakeCommander) RecordVoiceUsage(cost float64) { f.voiceUsage += cost }
+
+// Residency is the ordinary single window: nothing to say about the role, and
+// no successor to hand over to.
+func (f *fakeCommander) Residency() (Residency, Commander) { return Residency{}, nil }
 
 func (f *fakeCommander) Models() []string { return append([]string(nil), f.models...) }
 
@@ -297,21 +406,6 @@ func (f *fakeBackend) TopLevelJobUsage() (map[string]store.JobUsage, error) {
 		result[jobID] = usage
 	}
 	return result, nil
-}
-
-func (f *fakeBackend) PendingQuestions(sessionID string, limit int) ([]store.AgentQuestion, error) {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	var questions []store.AgentQuestion
-	for _, question := range f.agentQuestions {
-		if (question.SessionID == sessionID || question.SessionID == "") && question.Status == store.QuestionPending {
-			questions = append(questions, question)
-			if limit > 0 && len(questions) == limit {
-				break
-			}
-		}
-	}
-	return questions, nil
 }
 
 // OpenQuestions is the dock's read: everything still waiting on the user,

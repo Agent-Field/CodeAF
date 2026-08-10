@@ -23,12 +23,6 @@ const (
 	voiceFinalizing
 )
 
-type voiceServices interface {
-	VoiceRecorder() voice.Recorder
-	VoiceTranscriber() voice.Transcriber
-	RecordVoiceUsage(float64)
-}
-
 type voiceStartedMsg struct {
 	generation int
 	err        error
@@ -330,16 +324,14 @@ func lastRune(text string) (rune, int) {
 }
 
 func (m *Model) recordVoiceUsage(cost float64) tea.Cmd {
-	if cost <= 0 {
+	if cost <= 0 || m.commander == nil {
 		return nil
 	}
-	if services, ok := m.commander.(voiceServices); ok {
-		return func() tea.Msg {
-			services.RecordVoiceUsage(cost)
-			return voiceUsageRecordedMsg{}
-		}
+	commander := m.commander
+	return func() tea.Msg {
+		commander.RecordVoiceUsage(cost)
+		return voiceUsageRecordedMsg{}
 	}
-	return nil
 }
 
 func (m *Model) flashVoiceHint(hint string) tea.Cmd {

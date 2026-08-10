@@ -6,27 +6,16 @@ import (
 	"strings"
 )
 
-type imageInputSupporter interface {
-	ImageInputSupport() (model string, supported bool)
-}
-
-type roleImageInputSupporter interface {
-	ImageInputSupportFor(role string) (model string, supported bool)
-}
-
 func (m *Model) imageInputSupport() (string, bool) {
 	role := "talk"
 	if m.boost != boostOff {
 		role = "boost"
 	}
 	model := m.currentModel(role)
-	if support, ok := m.commander.(roleImageInputSupporter); ok {
-		return support.ImageInputSupportFor(role)
+	if m.commander == nil {
+		return model, false
 	}
-	if support, ok := m.commander.(imageInputSupporter); ok {
-		return support.ImageInputSupport()
-	}
-	return model, false
+	return m.commander.ImageInputSupportFor(role)
 }
 
 func (m *Model) captureImageAttachments() {
@@ -47,23 +36,19 @@ func (m *Model) captureImageAttachments() {
 	m.input.SetValue(cleaned)
 }
 
-// attachmentKeeper copies an attached file somewhere durable and answers with
-// the reference the message will carry. The composer keeps holding the
-// person's own path until the message is sent — the chips should say what they
-// attached — and the durable record is a copy from that moment on.
-type attachmentKeeper interface {
-	KeepAttachment(path string) (string, error)
-}
-
-// keepAttachment degrades to the path itself. A surface with no keeper (a
-// visitor, an embedder, a test) behaves exactly as it did before copies
+// keepAttachment copies an attached file somewhere durable and answers with the
+// reference the message will carry. The composer keeps holding the person's own
+// path until the message is sent — the chips should say what they attached —
+// and the durable record is a copy from that moment on.
+//
+// It degrades to the path itself. A surface with no commander, and one whose
+// commander cannot place a copy, behaves exactly as it did before copies
 // existed rather than losing the attachment.
 func (m *Model) keepAttachment(path string) string {
-	keeper, ok := m.commander.(attachmentKeeper)
-	if !ok {
+	if m.commander == nil {
 		return path
 	}
-	reference, err := keeper.KeepAttachment(path)
+	reference, err := m.commander.KeepAttachment(path)
 	if err != nil || strings.TrimSpace(reference) == "" {
 		return path
 	}

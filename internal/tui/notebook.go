@@ -179,10 +179,8 @@ func notebookStatusMark(status string) string {
 }
 
 func (m *Model) notebookEvidence(fact store.Fact) []string {
-	if provider, ok := m.commander.(interface {
-		NotebookEvidence(int64) []string
-	}); ok {
-		return provider.NotebookEvidence(fact.Seq)
+	if m.commander != nil {
+		return m.commander.NotebookEvidence(fact.Seq)
 	}
 	if strings.TrimSpace(fact.NodeID) != "" && fact.NodeID != store.RootID {
 		return []string{fact.NodeID}
@@ -223,15 +221,12 @@ func (m *Model) retractNotebookFact(seq int64) {
 	if seq <= 0 {
 		return
 	}
-	handler, ok := m.commander.(interface {
-		RetractNotebook(int64) error
-	})
-	if !ok {
+	if m.commander == nil {
 		m.status = "forgetting that isn't available in this window"
 		m.statusUntil = time.Now().Add(statusTTL)
 		return
 	}
-	if err := handler.RetractNotebook(seq); err != nil {
+	if err := m.commander.RetractNotebook(seq); err != nil {
 		m.status = "could not retract belief: " + err.Error()
 		m.statusUntil = time.Now().Add(statusTTL)
 		return

@@ -9,16 +9,16 @@ import (
 	"github.com/Agent-Field/aforge-v2/internal/command"
 	"github.com/Agent-Field/aforge-v2/internal/resident"
 	"github.com/Agent-Field/aforge-v2/internal/store"
-	"github.com/Agent-Field/aforge-v2/internal/tui"
 )
 
-// The two capabilities the task page asks a commander for. Both are optional
-// interfaces, so a missing method is a silently dead key rather than a build
-// failure — which is exactly what this stops.
-var (
-	_ tui.Restarter   = (*chatCommander)(nil)
-	_ tui.SurgeryGate = (*chatCommander)(nil)
-)
+// The task page's two verbs live on tui.Commander now, so a missing method is
+// a build failure by construction rather than a silently dead key. This names
+// them anyway: the assertion is about the pair the task page asks for, and it
+// should fail here if either one is ever quietly dropped from the interface.
+var _ interface {
+	Restart(nodeID string) error
+	ConfirmSurgery(kind store.CommandKind, nodeID string) (bool, error)
+} = (*chatCommander)(nil)
 
 // The whole journey the restart was built for and never actually had: the user
 // stops a worker mid-turn, what it had already written survives the landing,

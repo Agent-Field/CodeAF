@@ -92,7 +92,7 @@ func TestTheIndicatorClearsOnWhateverAnswersTheTurn(t *testing.T) {
 // not send. The state is only ever entered where this window's own post is
 // accepted, so a turn arriving through the poll leaves it silent.
 func TestAVisitorWindowNeverWaitsOnSomebodyElsesTurn(t *testing.T) {
-	commander := &stubCommander{state: Residency{Visitor: true, PID: 4711}}
+	commander := newStubCommander(Residency{Visitor: true, PID: 4711})
 	model := NewWithCommander(&fakeBackend{}, "visitor", commander)
 	model.setSize(100, 30)
 	model.applyPoll(pollResultMsg{

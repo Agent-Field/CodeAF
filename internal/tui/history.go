@@ -1,7 +1,6 @@
 package tui
 
 import (
-	"errors"
 	"sort"
 	"strings"
 	"time"
@@ -28,10 +27,6 @@ type historyResultMsg struct {
 	terms      string
 	entries    []historyEntry
 	err        error
-}
-
-type recallReader interface {
-	Recall(terms string, scopeCues []string, limit int) ([]store.RecallHit, error)
 }
 
 func (m *Model) openRecallHistory(terms string) tea.Cmd {
@@ -66,10 +61,8 @@ func (m *Model) openRecallHistory(terms string) tea.Cmd {
 			if err == nil {
 				hits = recentSettledHistory(snapshot, historyLimit)
 			}
-		} else if reader, ok := backend.(recallReader); ok {
-			hits, err = reader.Recall(terms, nil, historyLimit)
 		} else {
-			err = errors.New("history search unavailable")
+			hits, err = backend.Recall(terms, nil, historyLimit)
 		}
 		entries := make([]historyEntry, 0, min(historyLimit, len(hits)))
 		for _, hit := range hits {

@@ -985,7 +985,7 @@ func (client blockedHeadClient) CompleteWithMessages(ctx context.Context, _ []ai
 // commander the window holds, the head the brain serves, and the durable line
 // the thread keeps.
 func TestChatCommanderInterruptReachesTheHeadAndTheTurnStillSpeaks(t *testing.T) {
-	var _ tui.Interrupter = (*chatCommander)(nil)
+	var _ interface{ Interrupt(partial string) bool } = (*chatCommander)(nil)
 	if command.New(command.Options{}).Interrupt("nothing to stop") {
 		t.Fatal("a window with no head behind it claimed to stop a turn")
 	}

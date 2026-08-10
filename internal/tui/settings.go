@@ -27,13 +27,6 @@ const (
 	settingsIndent     = "    "
 )
 
-// settingsSource is the optional Commander capability of exposing the unified
-// registry. Without it the sheet stays closed rather than writing into a
-// profile directory nobody chose.
-type settingsSource interface {
-	Settings() *config.Settings
-}
-
 type settingsRowBounds struct {
 	bounds paneBounds
 	index  int

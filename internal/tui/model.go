@@ -78,18 +78,41 @@ type ModelChoice struct {
 	Price string `json:"price,omitempty"`
 }
 
-// Backend is the small part of the durable store the terminal lens needs.
-// Keeping it local makes the Elm update loop straightforward to exercise with
-// an in-memory fake.
+// Backend is the durable store as the terminal lens reads and writes it.
+//
+// It is one interface rather than the dozen capability shards this package used
+// to hunt for with type assertions, because there has only ever been one thing
+// behind them: the store. A shard nobody implemented did not fail the build, it
+// failed as a feature that quietly stopped being offered — the charter rail is
+// still living proof (see standing.go's useStoreCharters). Every method here is
+// one *store.Store already answers, and the assertion below is what keeps that
+// true.
+//
+// Nothing degrades on a per-method basis any more. A surface that cannot answer
+// a read answers it emptily, in one place, rather than being discovered not to
+// have the method at all.
 type Backend interface {
+	// The thread, the graph, and the one write the lens itself makes.
 	Messages(sessionID string, afterSeq int64, limit int) ([]store.Message, error)
 	PostMessage(store.Message) (store.Message, error)
 	ActiveSnapshot() (store.Snapshot, error)
 	Snapshot() (store.Snapshot, error)
 	Node(id string) (store.Node, bool, error)
 	NodeMessages(nodeID string, afterSeq int64, limit int) ([]store.Message, error)
+
+	// LatestEventSeq is the cheapest possible proof that nothing happened.
+	// Every projection this lens reads — thread, graph, commands, usage,
+	// questions, charters, receipts — is written in the same transaction as an
+	// events row, so an unchanged watermark means an unchanged answer for all
+	// of them.
+	LatestEventSeq() (int64, error)
+
+	// Commands: the two reads that put a typed instruction on screen, and the
+	// write every card action and model switch goes through.
 	PendingCommands(limit int) ([]store.Command, error)
 	CommandBySeq(seq int64) (store.Command, bool, error)
+	RequestCommand(store.Command) (store.Command, error)
+
 	// SpendToday is the money the header shows, and it replaced the graph-wide
 	// SUM(cost) that used to sit there. That total was labelled "this session"
 	// in the manual and in this package's own comments while being every dollar
@@ -102,76 +125,123 @@ type Backend interface {
 	// the truth: a usage row carries a node and a time, never a session.
 	SpendToday() (float64, error)
 	TopLevelJobUsage() (map[string]store.JobUsage, error)
-}
 
-// journalReader is the cheapest possible proof that nothing happened. Every
-// projection this lens reads — thread, graph, commands, usage, questions,
-// charters, receipts — is written in the same transaction as an events row, so
-// an unchanged watermark means an unchanged answer for all of them. It stays
-// an optional capability: a backend without it is simply always read in full.
-type journalReader interface {
-	LatestEventSeq() (int64, error)
-}
-
-// openQuestionReader lists every question still waiting on the user, surfaced
-// or not. It stays an optional capability beside the older unsurfaced-only
-// read so a lightweight embedder keeps working, but the real store answers it
-// and the dock is built on it.
-type openQuestionReader interface {
+	// Questions. OpenQuestions is every question still waiting on the user,
+	// surfaced or not: "waiting on you" is a fact about the question, not about
+	// whether it has been shown. Surfacing one is what moves it into the thread.
 	OpenQuestions(sessionID string, limit int) ([]store.AgentQuestion, error)
-}
+	SurfaceQuestionForSession(seq int64, sessionID string) (store.Message, error)
 
-// selfActivityReader is the resident-life slice of the store. It stays an
-// optional backend capability so lightweight TUI embedders do not have to
-// implement the resident, while the real store supplies every value.
-type selfActivityReader interface {
+	// The resident-life slice: what the self file and the header's self figure
+	// are made of.
 	SelfSpendToday() (float64, error)
-	SelfReceipts(time.Time) ([]store.SelfReceipt, error)
-	FactBySeq(int64) (store.Fact, bool, error)
+	SelfReceipts(since time.Time) ([]store.SelfReceipt, error)
+	FactBySeq(seq int64) (store.Fact, bool, error)
+	CompetenceMap(...store.CompetenceOptions) (store.CompetenceMap, error)
+	RecentFacts(limit int) ([]store.Fact, error)
+	SkillFacts(status string, limit int) ([]store.Fact, error)
+	Charters(...store.CharterStatus) ([]store.Charter, error)
+	ActiveServices() ([]store.Service, error)
+
+	// Recall is what /history searches with; an empty query reads the snapshot
+	// instead and never reaches here.
+	Recall(terms string, scopeCues []string, limit int) ([]store.RecallHit, error)
 }
 
-// Commander owns the live operations that do not belong to the thread lens.
-// A nil Commander keeps ordinary chat fully functional and reports command
-// capabilities honestly when they are requested.
+// Commander is everything a window can do that is not a store read: the model
+// slots, the head's turn, node surgery, the notebook, the workspace on disk,
+// and the two window services (voice, settings) a headless surface has no way
+// to offer.
+//
+// A nil Commander is still the honest answer for a window with no head behind
+// it — ordinary chat stays fully functional and every door that needs one says
+// so — but a Commander that exists implements all of it. The capability shards
+// this replaced (Interrupter, Restarter, SurgeryGate, NodeTraceReader, and a
+// dozen anonymous one-method interfaces) all named the same object; asking it
+// twenty-eight questions about itself at runtime only ever hid a typo.
+//
+// Optionality that survived the collapse lives in return values, not in method
+// sets: WorkspacePath and CraftDetail say "not here" with a bool, Crafts and
+// Notebook with an empty slice, Settings with a nil registry, VoiceRecorder and
+// VoiceTranscriber with a nil recorder. Those are the answers a visitor
+// commander — one holding no head and no model clients — actually gives.
 type Commander interface {
+	Streams
+
+	// The model slots. CatalogFor is the per-role catalog; ModelFollows says a
+	// follow-capable slot is inheriting the work model rather than holding a
+	// choice of its own.
 	Models() []string
 	Catalog() []ModelChoice
+	CatalogFor(role string) []ModelChoice
 	CurrentModel(role string) string
+	ModelFollows(role string) bool
 	SetModel(role, slug string) error
-	Notebook(limit int) []store.Fact
+	ImageInputSupportFor(role string) (model string, supported bool)
+
+	// Sessions and the head's turn. Interrupt stops the turn being answered
+	// right now, carrying in the words the reader has already seen so the
+	// durable line that ends the turn is the same reply, marked where it
+	// stopped; it reports whether there was a turn to stop.
 	NewSession() (string, error)
-	Cancel(nodeID string) error
-	NodeTrace(nodeID string, maxBytes int) string
-}
-
-// Interrupter stops the turn the head is answering right now, carrying in the
-// words the reader has already seen so the durable line that ends the turn is
-// the same reply, marked where it stopped. It is a Commander refinement rather
-// than a Commander method for the reason every other one here is: a window with
-// no head behind it has no turn to stop, and says so by not implementing this.
-type Interrupter interface {
 	Interrupt(partial string) bool
-}
 
-// Restarter is the forward door of work that has stopped for good. Resume
-// belongs to work that is merely held; a failed or cancelled node cannot be
-// resumed, it can only be run again — and the store agrees, refusing
-// CommandRestart on anything else. It journals the identical typed command a
-// sentence would, so language and the keyboard reach the same place, and it is
-// a Commander refinement for the same reason Interrupter is: a window with no
-// command journal behind it has no restart to offer.
-type Restarter interface {
+	// Node surgery. Restart is the forward door of work that has stopped for
+	// good: a failed or cancelled node cannot be resumed, only run again, and
+	// the store agrees. ConfirmSurgery is the confirm law of the conversational
+	// path offered to the key path, so a keypress cannot buy what a sentence
+	// has to ask for — true means the durable question is already in the thread
+	// and the caller journals nothing, because answering it replays the
+	// command.
+	Cancel(nodeID string) error
 	Restart(nodeID string) error
-}
-
-// SurgeryGate is the confirm law of the conversational path, offered to the key
-// path so a keypress cannot buy what a sentence has to ask for. It reports
-// whether it asked; true means the durable question is already in the thread
-// and the caller must journal nothing, because answering the question is what
-// journals the command. A commander that does not implement it has no head to
-// ask with, and its keys behave as they always did.
-type SurgeryGate interface {
 	ConfirmSurgery(kind store.CommandKind, nodeID string) (bool, error)
+
+	// The task page's trace tail. NodeTraceSince is the stat-gated read: the
+	// stat is already on the way to the read, so handing back what it saw turns
+	// "the worker is thinking, not writing" into a stat rather than 64KB read,
+	// allocated, and compared against the copy the window already holds.
+	NodeTrace(nodeID string, maxBytes int) string
+	NodeTraceSince(nodeID string, maxBytes int, since NodeTraceStamp) (string, NodeTraceStamp, bool)
+
+	// The notebook: what is believed, what it was believed from, and the one
+	// way to stop believing it.
+	Notebook(limit int) []store.Fact
+	SearchNotebook(terms string, limit int) []store.Fact
+	NotebookEvidence(seq int64) []string
+	RetractNotebook(seq int64) error
+
+	// The two slash commands the window cannot answer for itself.
+	Budget(arguments []string) (string, error)
+	Standing() (string, error)
+
+	// The filesystem a job wrote into, and the copies the composer keeps. A
+	// resolver that cannot place a path answers false, which is how an embedder
+	// with no workspace behaves.
+	KeepAttachment(path string) (string, error)
+	ResolveWorkspacePath(nodeID, relative string) (string, bool)
+	ResolveMediaPath(nodeID, relative string) (string, bool)
+	WorkspacePath(nodeID string) (string, bool)
+
+	// The craft shelf on the self page.
+	Crafts() ([]CraftSummary, error)
+	CraftDetail(name string) (CraftDetail, bool)
+
+	// Window services and identity. Settings answers nil when there is no
+	// profile directory to write into, and the settings sheet stays shut.
+	Settings() *config.Settings
+	SplitPct() int
+	SaveSplitPct(pct int)
+	DatabasePath() string
+	VoiceRecorder() voice.Recorder
+	VoiceTranscriber() voice.Transcriber
+	RecordVoiceUsage(cost float64)
+
+	// Residency is asked on every poll cycle, quiet ones included: the resident
+	// can die while nothing at all changes in the store, so the journal
+	// watermark cannot speak for it. The second return is how a window changes
+	// what it is — see residency.go.
+	Residency() (Residency, Commander)
 }
 
 // NodeTraceStamp is a trace file's identity as the last read already stat-ed
@@ -180,15 +250,6 @@ type SurgeryGate interface {
 type NodeTraceStamp struct {
 	Size int64
 	Mod  time.Time
-}
-
-// NodeTraceReader is the stat-gated NodeTrace. The stat is already on the way
-// to the read, so handing back what it saw turns "the worker is thinking, not
-// writing" into a stat rather than 64KB read, allocated, and compared against
-// the copy the window is already holding. A commander that does not implement
-// it is read in full, as before.
-type NodeTraceReader interface {
-	NodeTraceSince(nodeID string, maxBytes int, since NodeTraceStamp) (string, NodeTraceStamp, bool)
 }
 
 var _ Backend = (*store.Store)(nil)
@@ -498,8 +559,12 @@ type Model struct {
 	// residency is the window's own account of which process runs the brain.
 	// The zero value is "this one", so a single-window session carries none of
 	// this and renders as it always has.
-	residency       Residency
-	residencySource residentSurface
+	residency Residency
+	// residencySource is the commander the poll asks about the role. It is the
+	// same object as commander — one interface, one implementation — held
+	// separately because the poll captures it before going off thread, and a
+	// window with no commander has nobody to ask.
+	residencySource Commander
 	streamRearm     bool
 	// streamRaw accumulates the provider's raw structured response. It is a
 	// builder, not a string: a token-by-token `+=` re-allocates the whole reply
@@ -873,8 +938,8 @@ func newModel(backend Backend, sessionID string, commander Commander) *Model {
 		selfShown:             selfWindow,
 	}
 	m.adoptCommander(commander)
-	if saved, ok := commander.(splitStore); ok {
-		m.splitPct = clampSplitPct(saved.SplitPct())
+	if commander != nil {
+		m.splitPct = clampSplitPct(commander.SplitPct())
 	}
 	m.setSize(100, 30)
 	return m
@@ -892,20 +957,20 @@ func newModel(backend Backend, sessionID string, commander Commander) *Model {
 // reason to move their pane.
 func (m *Model) adoptCommander(commander Commander) {
 	m.commander = commander
-	m.residencySource, _ = commander.(residentSurface)
-	if services, ok := commander.(voiceServices); ok {
-		m.voiceRecorder = services.VoiceRecorder()
-		m.voiceTranscriber = services.VoiceTranscriber()
+	m.residencySource = commander
+	if commander != nil {
+		m.voiceRecorder = commander.VoiceRecorder()
+		m.voiceTranscriber = commander.VoiceTranscriber()
+		m.streamEvents = commander.StreamEvents()
+		// The registry is merely set, never cleared: a commander with no
+		// profile directory of its own has no opinion about the one already
+		// installed, and the settings sheet stays open on it.
+		if registry := commander.Settings(); registry != nil {
+			m.settingsRegistry = registry
+		}
 	} else {
 		m.voiceRecorder, m.voiceTranscriber = nil, nil
-	}
-	if source, ok := commander.(streamSource); ok {
-		m.streamEvents = source.StreamEvents()
-	} else {
 		m.streamEvents = nil
-	}
-	if source, ok := commander.(settingsSource); ok {
-		m.settingsRegistry = source.Settings()
 	}
 	// Every model name on screen was answered by the commander that just left,
 	// so none of it speaks for the one that arrived.
@@ -913,14 +978,6 @@ func (m *Model) adoptCommander(commander Commander) {
 	clear(m.mediaCatalogRequested)
 	clear(m.mediaCatalogLoading)
 	clear(m.optimisticModels)
-}
-
-// splitStore is the optional Commander capability of remembering the divider
-// position across launches. A Commander without it still resizes live; the
-// position just resets next launch.
-type splitStore interface {
-	SplitPct() int
-	SaveSplitPct(pct int)
 }
 
 // The divider clamps so neither pane can be dragged into uselessness. The band
@@ -1744,7 +1801,6 @@ func (m *Model) poll() tea.Cmd {
 	// activeServices still answers whoever asks anyway.
 	readServices := m.graphContentVisible() || m.selfVisible()
 	selfNow := m.standingTime()
-	journal, _ := backend.(journalReader)
 	residencySource := m.residencySource
 	force := m.pollForce || !m.journalPrimed
 	knownSeq := m.journalSeq
@@ -1760,11 +1816,8 @@ func (m *Model) poll() tea.Cmd {
 	// returned string still works, because sanitizing is a pure function of
 	// the bytes read this cycle.
 	readTrace := func() (string, NodeTraceStamp, bool) {
-		if reader, ok := commander.(NodeTraceReader); ok {
-			text, stamp, moved := reader.NodeTraceSince(nodeID, nodeTraceMaxBytes, traceStamp)
-			return sanitizeText(text), stamp, moved
-		}
-		return sanitizeText(commander.NodeTrace(nodeID, nodeTraceMaxBytes)), NodeTraceStamp{}, true
+		text, stamp, moved := commander.NodeTraceSince(nodeID, nodeTraceMaxBytes, traceStamp)
+		return sanitizeText(text), stamp, moved
 	}
 	return func() tea.Msg {
 		// Asked before the quiet short-circuit, because the one thing this
@@ -1779,8 +1832,8 @@ func (m *Model) poll() tea.Cmd {
 		}
 		var journalSeq int64
 		var journalRead bool
-		if journal != nil {
-			seq, err := journal.LatestEventSeq()
+		{
+			seq, err := backend.LatestEventSeq()
 			if err == nil {
 				journalSeq, journalRead = seq, true
 				if !force && seq == knownSeq {
@@ -1808,34 +1861,21 @@ func (m *Model) poll() tea.Cmd {
 		pending, pendingErr := backend.PendingCommands(pollLimit)
 		spendToday, spendTodayErr := backend.SpendToday()
 		jobUsage, jobUsageErr := backend.TopLevelJobUsage()
-		var agentQuestions []store.AgentQuestion
-		var agentQuestionsErr error
 		// "Waiting on you" is a fact about the question, not about whether it has
 		// been shown. A blocking question is surfaced the moment it is asked, so a
 		// dock fed by the unsurfaced set went blind to exactly the questions a
 		// running job is stuck behind — they appeared in the thread and vanished
 		// from the one surface that carries their identity.
-		if reader, ok := backend.(openQuestionReader); ok {
-			agentQuestions, agentQuestionsErr = reader.OpenQuestions(sessionID, pollLimit)
-		} else if reader, ok := backend.(interface {
-			PendingQuestions(string, int) ([]store.AgentQuestion, error)
-		}); ok {
-			agentQuestions, agentQuestionsErr = reader.PendingQuestions(sessionID, pollLimit)
-		}
+		agentQuestions, agentQuestionsErr := backend.OpenQuestions(sessionID, pollLimit)
 		sanitizeQuestionText(agentQuestions)
-		var selfSpendToday float64
-		var selfReceipts []store.SelfReceipt
 		var selfLearning string
-		var selfSpendErr, selfReceiptsErr error
-		if reader, ok := backend.(selfActivityReader); ok {
-			selfSpendToday, selfSpendErr = reader.SelfSpendToday()
-			selfReceipts, selfReceiptsErr = reader.SelfReceipts(selfReceiptSince)
-			if selfReceiptsErr == nil && len(selfReceipts) > 0 {
-				newest := selfReceipts[len(selfReceipts)-1]
-				if newest.Seq > selfReceiptSeq && selfReceiptHasLearning(newest) &&
-					selfReceiptIsPractice(newest, cardSnapshot, snapshot) {
-					selfLearning, selfReceiptsErr = selfReceiptLearningClause(reader, newest)
-				}
+		selfSpendToday, selfSpendErr := backend.SelfSpendToday()
+		selfReceipts, selfReceiptsErr := backend.SelfReceipts(selfReceiptSince)
+		if selfReceiptsErr == nil && len(selfReceipts) > 0 {
+			newest := selfReceipts[len(selfReceipts)-1]
+			if newest.Seq > selfReceiptSeq && selfReceiptHasLearning(newest) &&
+				selfReceiptIsPractice(newest, cardSnapshot, snapshot) {
+				selfLearning, selfReceiptsErr = selfReceiptLearningClause(backend, newest)
 			}
 		}
 		result := pollResultMsg{
@@ -1868,33 +1908,31 @@ func (m *Model) poll() tea.Cmd {
 		// Charters are read every cycle because the self place-dot must be
 		// able to light while the user is somewhere else. The rest of the
 		// employee file is read only while the file is open.
-		if reader, ok := backend.(selfCharterLister); ok {
-			result.chartersRead = true
-			result.selfCharters, result.selfChartersErr = reader.Charters()
-		}
+		result.chartersRead = true
+		result.selfCharters, result.selfChartersErr = backend.Charters()
 		// The rail's other store-backed section rides the same cycle, for the
 		// same reason the charters do: the poll drops its cache, and whoever
 		// asked next was a render goroutine holding a SQLite query.
-		if lister, ok := backend.(serviceLister); ok && readServices {
+		if readServices {
 			result.servicesRead = true
-			result.services, result.servicesErr = lister.ActiveServices()
+			result.services, result.servicesErr = backend.ActiveServices()
 		}
-		if reader, ok := backend.(selfDataReader); ok && readSelf {
+		if readSelf {
 			result.selfDataRead = true
 			// Practice folds by the week, so the receipt read reaches back one
 			// fold rather than to midnight: the day's totals are a projection
 			// of the same rows.
-			result.selfReceipts, result.selfReceiptsErr = reader.SelfReceipts(selfNow.Add(-selfReceiptReach))
-			result.selfSpend, result.selfSpendErr = reader.SelfSpendToday()
-			result.selfCompetence, result.selfCompetenceErr = reader.CompetenceMap(
+			result.selfReceipts, result.selfReceiptsErr = backend.SelfReceipts(selfNow.Add(-selfReceiptReach))
+			result.selfSpend, result.selfSpendErr = backend.SelfSpendToday()
+			result.selfCompetence, result.selfCompetenceErr = backend.CompetenceMap(
 				store.CompetenceOptions{Now: selfNow},
 			)
-			result.selfFacts, result.selfFactsErr = reader.RecentFacts(selfBeliefScan)
-			result.selfSkills, result.selfSkillsErr = reader.SkillFacts("", selfSkillScan)
+			result.selfFacts, result.selfFactsErr = backend.RecentFacts(selfBeliefScan)
+			result.selfSkills, result.selfSkillsErr = backend.SkillFacts("", selfSkillScan)
 		}
-		if shelf, ok := commander.(craftShelfReader); ok && readSelf {
+		if commander != nil && readSelf {
 			result.selfCraftsRead = true
-			result.selfCrafts, result.selfCraftsErr = shelf.Crafts()
+			result.selfCrafts, result.selfCraftsErr = commander.Crafts()
 		}
 		seenCommands := make(map[int64]bool)
 		for _, message := range messages {
@@ -1938,7 +1976,7 @@ func selfReceiptIsPractice(receipt store.SelfReceipt, snapshots ...store.Snapsho
 	return false
 }
 
-func selfReceiptLearningClause(reader selfActivityReader, receipt store.SelfReceipt) (string, error) {
+func selfReceiptLearningClause(reader Backend, receipt store.SelfReceipt) (string, error) {
 	ids := make([]int64, 0, len(receipt.FactIDs)+len(receipt.SkillIDs))
 	ids = append(ids, receipt.FactIDs...)
 	ids = append(ids, receipt.SkillIDs...)
@@ -3073,8 +3111,8 @@ func (m *Model) nudgeSplit(delta int) {
 }
 
 func (m *Model) saveSplit() {
-	if saved, ok := m.commander.(splitStore); ok && m.splitPct != 0 {
-		saved.SaveSplitPct(m.splitPct)
+	if m.commander != nil && m.splitPct != 0 {
+		m.commander.SaveSplitPct(m.splitPct)
 	}
 }
 

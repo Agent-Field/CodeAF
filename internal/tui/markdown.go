@@ -114,18 +114,6 @@ func osc8FileLink(target, display string) string {
 	return "\x1b]8;;" + link + "\x1b\\" + display + "\x1b]8;;\x1b\\"
 }
 
-type workspacePathResolver interface {
-	ResolveWorkspacePath(nodeID, relative string) (string, bool)
-}
-
-type workspaceDirectoryResolver interface {
-	WorkspacePath(nodeID string) (string, bool)
-}
-
-type mediaPathResolver interface {
-	ResolveMediaPath(nodeID, relative string) (string, bool)
-}
-
 // workspaceLink is one remembered answer from the resolver. An entry that is
 // only asked carries the sole answer a render is allowed to give — plain text —
 // and holds the place until the real one arrives.
@@ -263,15 +251,10 @@ func (m *Model) applyWorkspaceLinks(message workspaceLinksMsg) {
 }
 
 func askWorkspacePath(commander Commander, nodeID, relative string) (string, bool) {
-	if resolver, ok := commander.(workspacePathResolver); ok {
-		return resolver.ResolveWorkspacePath(nodeID, relative)
+	if commander == nil {
+		return "", false
 	}
-	// Compatibility for embedders written against the original media-only
-	// seam. The production commander implements the generalized interface.
-	if resolver, ok := commander.(mediaPathResolver); ok {
-		return resolver.ResolveMediaPath(nodeID, relative)
-	}
-	return "", false
+	return commander.ResolveWorkspacePath(nodeID, relative)
 }
 
 // workspaceStamp is the one fact about a node that can change what its
@@ -337,11 +320,10 @@ func workspaceIsSettled(stamp string) bool {
 }
 
 func (m *Model) workspaceDirectoryLink(nodeID string) string {
-	resolver, ok := m.commander.(workspaceDirectoryResolver)
-	if !ok {
+	if m.commander == nil {
 		return ""
 	}
-	target, found := resolver.WorkspacePath(nodeID)
+	target, found := m.commander.WorkspacePath(nodeID)
 	if !found {
 		return ""
 	}
