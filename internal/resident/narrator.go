@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/Agent-Field/aforge-v2/internal/store"
+	"github.com/Agent-Field/aforge-v2/internal/thread"
 )
 
 // The narrator is how parallel work stays legible without becoming noise.
@@ -233,7 +234,7 @@ func (r *Reconciler) speakProgress(ctx context.Context, nodes []store.Node) erro
 			continue
 		}
 		line = strings.TrimSpace(line)
-		if _, err := r.store.PostMessage(store.Message{
+		if _, err := thread.Post(r.store, store.Message{
 			SessionID: state.sessionID,
 			Role:      store.RoleAgent,
 			Body:      boundMessage(line),

@@ -14,6 +14,7 @@ import (
 	"github.com/Agent-Field/aforge-v2/internal/lease"
 	"github.com/Agent-Field/aforge-v2/internal/resident"
 	"github.com/Agent-Field/aforge-v2/internal/store"
+	"github.com/Agent-Field/aforge-v2/internal/thread"
 	"github.com/Agent-Field/aforge-v2/internal/tui"
 )
 
@@ -578,7 +579,7 @@ func (r *chatResidency) giveUpRole() (*chatBrain, string, bool) {
 // window rather than an answer to anything, so it is a system message and it is
 // one sentence.
 func (r *chatResidency) say(session, body string) {
-	if _, err := r.window.graph.PostMessage(store.Message{
+	if _, err := thread.Post(r.window.graph, store.Message{
 		SessionID: session, Role: store.RoleSystem, Body: body,
 	}); err != nil {
 		log.Printf("note: could not say the resident role moved: %v", err)

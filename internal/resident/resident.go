@@ -16,6 +16,7 @@ import (
 
 	"github.com/Agent-Field/aforge-v2/internal/guard"
 	"github.com/Agent-Field/aforge-v2/internal/store"
+	"github.com/Agent-Field/aforge-v2/internal/thread"
 	"github.com/Agent-Field/aforge-v2/internal/watchdog"
 )
 
@@ -970,7 +971,7 @@ func (r *Reconciler) settleCommand(command store.Command, outcome commandOutcome
 		// and validation source.
 		body = store.QuestionMessageBody(outcome.receipt, outcome.options)
 	}
-	_, err = r.store.PostMessage(store.Message{
+	_, err = thread.Post(r.store, store.Message{
 		SessionID:  command.SessionID,
 		Role:       role,
 		Body:       boundMessage(body),
@@ -2082,7 +2083,7 @@ func (r *Reconciler) announceNode(event store.Event) error {
 		return nil
 	}
 
-	_, err = r.store.PostMessage(store.Message{
+	_, err = thread.Post(r.store, store.Message{
 		SessionID: sessionID,
 		Role:      store.RoleSystem,
 		Body:      boundMessage(body),

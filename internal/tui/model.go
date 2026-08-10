@@ -13,6 +13,7 @@ import (
 
 	"github.com/Agent-Field/aforge-v2/internal/config"
 	"github.com/Agent-Field/aforge-v2/internal/store"
+	"github.com/Agent-Field/aforge-v2/internal/thread"
 	"github.com/Agent-Field/aforge-v2/internal/voice"
 	"github.com/charmbracelet/bubbles/textinput"
 	"github.com/charmbracelet/bubbles/viewport"
@@ -2517,7 +2518,7 @@ func (m *Model) postUserMessage(body string, attachments ...string) tea.Cmd {
 	m.answeringQuestionSeq = 0
 	m.echoUserMessage(message)
 	return func() tea.Msg {
-		posted, err := backend.PostMessage(message)
+		posted, err := thread.Post(backend, message)
 		return postResultMsg{message: posted, sent: message, questionSeq: message.QuestionSeq, err: err}
 	}
 }
