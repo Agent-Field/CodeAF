@@ -14,6 +14,7 @@ import (
 
 	"github.com/Agent-Field/aforge-v2/internal/config"
 	"github.com/Agent-Field/aforge-v2/internal/provider"
+	"github.com/Agent-Field/aforge-v2/internal/revision"
 	"github.com/Agent-Field/aforge-v2/internal/router"
 	"github.com/Agent-Field/aforge-v2/internal/store"
 )
@@ -57,7 +58,7 @@ func TestAPlanWithNothingRunIsGatedAndTheAnswerReplacesIt(t *testing.T) {
 	if first == "" {
 		t.Fatal("the delivery gate never ran on the first draft")
 	}
-	if !strings.Contains(first, unexercisedRecord) {
+	if !strings.Contains(first, revision.UnexercisedRecord) {
 		t.Fatalf("the gate was not told the draft ran nothing:\n%s", first)
 	}
 	if !strings.Contains(first, planShapedDraft) {
@@ -67,12 +68,12 @@ func TestAPlanWithNothingRunIsGatedAndTheAnswerReplacesIt(t *testing.T) {
 	// The revision is the second chance, and it is handed the law in words as
 	// well as the critique — a revision that closes a gap and reports that it
 	// did has moved the failure one round along rather than fixing it.
-	revision := brain.leafPrompt("A reviewer compared the previous attempt")
-	if revision == "" {
+	repair := brain.leafPrompt("A reviewer compared the previous attempt")
+	if repair == "" {
 		t.Fatal("the named gap never bought a revision pass")
 	}
-	if !strings.Contains(revision, gateRevisionContract) {
-		t.Fatalf("the revision was not told its message is the deliverable:\n%s", revision)
+	if !strings.Contains(repair, revision.GateRevisionContract) {
+		t.Fatalf("the revision was not told its message is the deliverable:\n%s", repair)
 	}
 
 	// The gap quoted the ask, so it could buy real work: the extension ran, and
@@ -101,30 +102,30 @@ func TestOnlyAWatchedRunThatDidNothingSaysSo(t *testing.T) {
 	node := store.Node{ID: "job", Brief: "find the figures",
 		Provenance: store.Provenance{Intent: answerAsk}}
 
-	body := func(evidence deliveryEvidence) string {
+	body := func(evidence revision.Evidence) string {
 		t.Helper()
 		capture := &gateCaptureClient{model: "worker/model"}
-		judgeDeliverable(context.Background(), settings,
-			&liveClient{settings: settings, model: capture.model, client: capture}, graph, node,
+		revision.JudgeDeliverable(context.Background(), settings,
+			adoptLiveClient(settings, capture.model, capture), graph, node,
 			planShapedDraft, "", evidence, "worker/model")
 		return capture.messages[len(capture.messages)-1].Content[0].Text
 	}
 
 	// Nobody was watching: no record at all, exactly as before.
-	if got := body(deliveryEvidence{}); strings.Contains(got, "What actually happened") {
+	if got := body(revision.Evidence{}); strings.Contains(got, "What actually happened") {
 		t.Errorf("an unobserved run manufactured a record:\n%s", got)
 	}
 	// Watched, and it did nothing. The record is stated, and stated as complete.
-	watched := body(deliveryEvidence{Observed: true})
-	if !strings.Contains(watched, unexercisedRecord) {
+	watched := body(revision.Evidence{Observed: true})
+	if !strings.Contains(watched, revision.UnexercisedRecord) {
 		t.Errorf("a watched run that did nothing said nothing:\n%s", watched)
 	}
 	if !strings.Contains(watched, "the whole record of the run and not a tail of one") {
 		t.Errorf("the one complete record is not named as complete:\n%s", watched)
 	}
 	// Watched and it did something: the ordinary tail, unchanged.
-	busy := body(deliveryEvidence{Observed: true, Ran: []string{`web_search {"q":"filing"}`}})
-	if strings.Contains(busy, unexercisedRecord) {
+	busy := body(revision.Evidence{Observed: true, Ran: []string{`web_search {"q":"filing"}`}})
+	if strings.Contains(busy, revision.UnexercisedRecord) {
 		t.Errorf("a run that did something was recorded as doing nothing:\n%s", busy)
 	}
 	if !strings.Contains(busy, `web_search {"q":"filing"}`) {
@@ -161,20 +162,20 @@ func TestTheGateNamesThePlanAndTheUnexercisedRunAsMissingContent(t *testing.T) {
 		"a confirmation is a fact, not a transcript": "the verbatim transcript of the command is never the gap",
 		"a preference passes":                        "the honest answer for a preference is pass. Only a request that asked for the output itself",
 	} {
-		if !strings.Contains(judgeDeliverablePrompt, required) {
+		if !strings.Contains(revision.DeliverablePrompt, required) {
 			t.Errorf("the gate no longer states %s: %q missing", name, required)
 		}
 	}
 	// It is still a gate and not a critic: the substance test must stay one
 	// absence among the others rather than becoming a second style rubric.
-	if !strings.Contains(judgeDeliverablePrompt, "This is still one absence and not a second style test") {
+	if !strings.Contains(revision.DeliverablePrompt, "This is still one absence and not a second style test") {
 		t.Error("the substance test stopped being one absence among the others")
 	}
 	for _, required := range []string{
 		"Your final message is the deliverable",
 		"Nothing written in the future tense counts",
 	} {
-		if !strings.Contains(gateRevisionContract, required) {
+		if !strings.Contains(revision.GateRevisionContract, required) {
 			t.Errorf("the revision contract no longer states %q", required)
 		}
 	}
@@ -230,7 +231,7 @@ func (b *answerBrain) client(settings config.Config, model string) (*liveClient,
 		return nil, err
 	}
 	settings.Model = model
-	return &liveClient{settings: settings, model: model, client: panel}, nil
+	return adoptLiveClient(settings, model, panel), nil
 }
 
 func (b *answerBrain) tally(name string) int {

@@ -6,6 +6,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/Agent-Field/aforge-v2/internal/command"
 	"github.com/Agent-Field/aforge-v2/internal/resident"
 	"github.com/Agent-Field/aforge-v2/internal/store"
 	"github.com/Agent-Field/aforge-v2/internal/tui"
@@ -67,7 +68,7 @@ func TestCancellingAWorkerLeavesThePartialForTheRestartToRead(t *testing.T) {
 	}
 
 	// Restart, through the same durable command a sentence would journal.
-	commander := &chatCommander{store: graph, sessionID: "journey"}
+	commander := command.New(command.Options{Store: graph, SessionID: "journey"})
 	if err := commander.Restart("job-n1"); err != nil {
 		t.Fatalf("Restart: %v", err)
 	}
@@ -126,7 +127,7 @@ func TestTheCommanderRestartJournalsTheDurableRestartCommand(t *testing.T) {
 	if err := graph.CancelPendingWithPartial("job", store.UserCancelReason, "half of it"); err != nil {
 		t.Fatal(err)
 	}
-	commander := &chatCommander{store: graph, sessionID: "keys"}
+	commander := command.New(command.Options{Store: graph, SessionID: "keys"})
 	if err := commander.Restart("job"); err != nil {
 		t.Fatalf("Restart: %v", err)
 	}

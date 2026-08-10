@@ -6,6 +6,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/Agent-Field/aforge-v2/internal/command"
 	"github.com/Agent-Field/aforge-v2/internal/config"
 	"github.com/Agent-Field/aforge-v2/internal/store"
 )
@@ -44,10 +45,10 @@ func TestBudgetSlashForms(t *testing.T) {
 		if err != nil || got != "default daily budget → $35" {
 			t.Fatalf("/budget default 35 = %q err=%v", got, err)
 		}
-		persisted, err := config.DailyBudgetUSDAt(commander.settings.ProfileDir)
-		if err != nil || persisted != 35 || commander.settings.DailyBudgetUSD != 35 {
+		persisted, err := config.DailyBudgetUSDAt(commander.ProfileDir())
+		if err != nil || persisted != 35 || commander.DailyBudgetUSD() != 35 {
 			t.Fatalf("persisted budget = %v runtime=%v err=%v", persisted,
-				commander.settings.DailyBudgetUSD, err)
+				commander.DailyBudgetUSD(), err)
 		}
 	})
 
@@ -101,7 +102,7 @@ func TestStandingSlashListsOnlyActiveCharters(t *testing.T) {
 	}
 }
 
-func openBudgetCommander(t *testing.T, daily float64) (*chatCommander, *store.Store) {
+func openBudgetCommander(t *testing.T, daily float64, session ...string) (*chatCommander, *store.Store) {
 	t.Helper()
 	dir := t.TempDir()
 	graph, err := store.Open(filepath.Join(dir, "graph.db"))
@@ -109,9 +110,14 @@ func openBudgetCommander(t *testing.T, daily float64) (*chatCommander, *store.St
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = graph.Close() })
-	return &chatCommander{
-		settings: config.Config{DailyBudgetUSD: daily, ProfileDir: dir}, store: graph,
-	}, graph
+	options := command.Options{
+		Settings: config.Config{DailyBudgetUSD: daily, ProfileDir: dir}, Store: graph,
+		AttachSession: func(string) error { return nil },
+	}
+	if len(session) > 0 {
+		options.SessionID = session[0]
+	}
+	return command.New(options), graph
 }
 
 func assertRailEvent(t *testing.T, graph *store.Store, want store.RailAdjustment) {

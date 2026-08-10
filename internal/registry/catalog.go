@@ -22,14 +22,6 @@ import "github.com/Agent-Field/aforge-v2/internal/store"
 // Left out on purpose, findings for the ledger rather than gaps to quietly
 // fill:
 //
-//   - /model does not journal store.CommandSetModel. The command kind is
-//     real (internal/resident/setmodel.go applies it, and the belt could
-//     reach it), but the TUI's slash handler and the models palette call
-//     commander.SetModel, which repoints a session's own client model
-//     locally — cmd/aforge/chat.go's chatCommander.SetModel — rather than
-//     requesting the journaled command. 5.23's live subtree rebinding is
-//     therefore not yet wired to this door; the entry below carries an
-//     empty Journal until it is.
 //   - CommandSplice and CommandAmend have no seeded entry. Splice is what
 //     an ordinary chat message already does on every turn, not a discrete
 //     verb a person invokes; amend is issued by the reconciler itself, not
@@ -75,8 +67,14 @@ func slashRows() []Entry {
 			Scope: slashScope, Key: "alt+,", Slash: "settings"},
 		{ID: "slash.help", Verb: "open help", Description: "show the complete keyboard and command guide",
 			Scope: slashScope, Key: "?", Slash: "help"},
+		// /model journals now. The work slot is the one the graph carries, so a
+		// change to it asks CommandSetModel of every live job this room owns —
+		// the same typed command the belt would write — while the other slots
+		// stay a local preference with nothing in the journal to move. The Kind
+		// names what the door can journal, which is what a surface reading this
+		// registry needs to know before it offers the door.
 		{ID: "slash.model", Verb: "choose model", Description: "choose any model slot",
-			Scope: slashScope, Slash: "model"},
+			Scope: slashScope, Slash: "model", Journal: Journal{Kind: store.CommandSetModel}},
 		{ID: "slash.memory", Verb: "browse notebook (alias)", Description: "alias for /notebook",
 			Scope: slashScope, Slash: "memory"},
 		{ID: "slash.session", Verb: "show session", Description: "show the current session and database",

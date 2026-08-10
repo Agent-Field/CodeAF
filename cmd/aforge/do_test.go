@@ -910,7 +910,7 @@ func (s *scriptedBrain) client(settings config.Config, model string) (*liveClien
 		return nil, err
 	}
 	settings.Model = model
-	return &liveClient{settings: settings, model: model, client: panel}, nil
+	return adoptLiveClient(settings, model, panel), nil
 }
 
 func (s *scriptedBrain) serve(writer http.ResponseWriter, request *http.Request) {

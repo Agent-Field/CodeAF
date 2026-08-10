@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Agent-Field/aforge-v2/internal/config"
 	"github.com/Agent-Field/aforge-v2/internal/store"
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 )
@@ -45,7 +46,7 @@ func TestStructuringCallsReachTheRail(t *testing.T) {
 	}}, store.Provenance{Origin: store.OriginUser, SessionID: "s1", Intent: "write the report"}); err != nil {
 		t.Fatal(err)
 	}
-	client := &liveClient{model: "plan/slot", client: &billedClient{model: "plan/slot", cost: 0.40, prompt: 900}}
+	client := adoptLiveClient(config.Config{}, "plan/slot", &billedClient{model: "plan/slot", cost: 0.40, prompt: 900})
 	client.WithUsageJournal(func(usage store.NodeUsage) {
 		if err := graph.RecordUsage(usage); err != nil {
 			t.Error(err)

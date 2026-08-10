@@ -134,8 +134,7 @@ func TestNotebookDisplaysCanonicalScopesAndAliases(t *testing.T) {
 }
 
 func TestChatNotebookSearchEvidenceAndRetractMoment(t *testing.T) {
-	commander, graph := openBudgetCommander(t, 20)
-	commander.sessionID = "notebook-chat"
+	commander, graph := openBudgetCommander(t, 20, "notebook-chat")
 	if err := graph.Splice(store.RootID, store.Subtree{Nodes: []store.NodeSpec{{
 		ID: "notebook-source", Brief: "learn the parser", Stage: 1,
 	}}}, store.Provenance{Origin: store.OriginUser, SessionID: "notebook-chat", Intent: "learn the parser"}); err != nil {
@@ -170,7 +169,6 @@ func TestChatNotebookSearchEvidenceAndRetractMoment(t *testing.T) {
 
 func TestChatNewSessionAdvancesAttachedWatermark(t *testing.T) {
 	commander, graph := openBudgetCommander(t, 20)
-	commander.attachSession = func(string) error { return nil }
 	sessionID, err := commander.NewSession()
 	if err != nil {
 		t.Fatal(err)

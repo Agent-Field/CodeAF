@@ -1,4 +1,4 @@
-package main
+package command
 
 import (
 	"github.com/Agent-Field/aforge-v2/internal/config"
@@ -15,7 +15,7 @@ import (
 // The headless entry points (aforge run, aforge wake) do not carry a settings
 // surface: they read the same persisted values through config.Load and have no
 // place to show a sheet.
-func (c *chatCommander) Settings() *config.Settings {
+func (c *Commander) Settings() *config.Settings {
 	if c == nil {
 		return nil
 	}
@@ -40,7 +40,7 @@ func (c *chatCommander) Settings() *config.Settings {
 // The dollar rail is the one the surface must not make the user restart for:
 // /budget already keeps the same field current, and the next rail check reads
 // it.
-func (c *chatCommander) settingApplied(key string) {
+func (c *Commander) settingApplied(key string) {
 	if key != config.KeyDailyBudget {
 		return
 	}
@@ -54,13 +54,13 @@ func (c *chatCommander) settingApplied(key string) {
 // profileDir and setDailyBudgetUSD are the two critical sections the settings
 // snapshot has: everything else on it is fixed at construction. The disk read
 // between them is deliberately outside both.
-func (c *chatCommander) profileDir() string {
+func (c *Commander) profileDir() string {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	return c.settings.ProfileDir
 }
 
-func (c *chatCommander) setDailyBudgetUSD(amount float64) {
+func (c *Commander) setDailyBudgetUSD(amount float64) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	c.settings.DailyBudgetUSD = amount

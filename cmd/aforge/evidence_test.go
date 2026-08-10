@@ -9,6 +9,7 @@ import (
 
 	"github.com/Agent-Field/aforge-v2/internal/config"
 	"github.com/Agent-Field/aforge-v2/internal/provider"
+	"github.com/Agent-Field/aforge-v2/internal/revision"
 	"github.com/Agent-Field/aforge-v2/internal/store"
 )
 
@@ -33,10 +34,10 @@ func TestTheGateIsHandedTheFilesAndTheRun(t *testing.T) {
 	missing := filepath.Join(dir, "never-written.md")
 
 	capture := &gateCaptureClient{model: "worker/model"}
-	client := &liveClient{settings: settings, model: capture.model, client: capture}
-	judgeDeliverable(context.Background(), settings, client, graph, node,
+	client := adoptLiveClient(settings, capture.model, capture)
+	revision.JudgeDeliverable(context.Background(), settings, client, graph, node,
 		"Here is the summary. I verified it end to end.",
-		"", deliveryEvidence{
+		"", revision.Evidence{
 			Artifacts: []string{landed, missing},
 			Ran:       []string{`write {"path":"summary.md"}`, `sh {"command":"wc -l summary.md"}`},
 		}, "worker/model")
@@ -61,9 +62,9 @@ func TestTheGateIsHandedTheFilesAndTheRun(t *testing.T) {
 	// Nothing to show shows nothing: a leaf that wrote no files and ran no
 	// tools must not grow an empty block in every gate prompt it ever sees.
 	bare := &gateCaptureClient{model: "worker/model"}
-	judgeDeliverable(context.Background(), settings,
-		&liveClient{settings: settings, model: bare.model, client: bare}, graph, node,
-		"Here is the summary.", "", deliveryEvidence{}, "worker/model")
+	revision.JudgeDeliverable(context.Background(), settings,
+		adoptLiveClient(settings, bare.model, bare), graph, node,
+		"Here is the summary.", "", revision.Evidence{}, "worker/model")
 	if got := bare.messages[len(bare.messages)-1].Content[0].Text; strings.Contains(got, "What actually happened") {
 		t.Errorf("an empty evidence block reached the gate:\n%s", got)
 	}
@@ -77,12 +78,12 @@ func TestTheGateReturnsEvidenceAsItsOwnAnswer(t *testing.T) {
 	settings := config.Config{Model: "worker/model"}
 	node := store.Node{ID: "job", Brief: "produce it", Provenance: store.Provenance{Intent: "produce it"}}
 
-	judge := func(reply string) deliverableJudgment {
+	judge := func(reply string) revision.Judgment {
 		t.Helper()
 		capture := &gateCaptureClient{model: "worker/model", response: reply}
-		return judgeDeliverable(context.Background(), settings,
-			&liveClient{settings: settings, model: capture.model, client: capture}, graph, node,
-			"done", "", deliveryEvidence{}, "worker/model")
+		return revision.JudgeDeliverable(context.Background(), settings,
+			adoptLiveClient(settings, capture.model, capture), graph, node,
+			"done", "", revision.Evidence{}, "worker/model")
 	}
 
 	// An honest gap — nothing here could run it — passes, and is not evidence.
@@ -113,10 +114,10 @@ func TestTheGateReturnsEvidenceAsItsOwnAnswer(t *testing.T) {
 // a while a gate PASS overwrote its honest verdict with the strongest one there
 // is — on the strength of a sentence. Only the evidenced pass may say that now.
 func TestOnlyAnEvidencedGatePassRecordsAVerifiedSuccess(t *testing.T) {
-	if got := gateVerdict(deliverableJudgment{Pass: true, Checked: true}); got != provider.VerdictUnverifiedSuccess {
+	if got := revision.GateVerdict(revision.Judgment{Pass: true, Checked: true}); got != provider.VerdictUnverifiedSuccess {
 		t.Errorf("an unevidenced pass recorded %q, want a plain success", got)
 	}
-	if got := gateVerdict(deliverableJudgment{Pass: true, Checked: true, Exercised: true}); got != provider.VerdictVerifiedSuccess {
+	if got := revision.GateVerdict(revision.Judgment{Pass: true, Checked: true, Exercised: true}); got != provider.VerdictVerifiedSuccess {
 		t.Errorf("an evidenced pass recorded %q, want a verified success", got)
 	}
 	// The two part company in exactly one place, and it is the place the
@@ -148,22 +149,22 @@ func TestTheGateWeighsTheRecordWithoutAuditingIt(t *testing.T) {
 		"evidence is not quality":         `"exercised" is a statement about evidence and never about quality`,
 		"the honest exit still passes":    `including an honest "not verified here"`,
 	} {
-		if !strings.Contains(judgeDeliverablePrompt, required) {
+		if !strings.Contains(revision.DeliverablePrompt, required) {
 			t.Errorf("the gate no longer holds %s: %q missing", name, required)
 		}
 	}
 	// The blocks keep their order: the evidence paragraph rides under the
 	// substance test it extends, and the JSON contract stays last.
-	substance := strings.Index(judgeDeliverablePrompt, "One absence counts exactly like every other")
-	records := strings.Index(judgeDeliverablePrompt, "Below the deliverable, whenever there is anything to show")
-	json := strings.Index(judgeDeliverablePrompt, "Return exactly one JSON object")
+	substance := strings.Index(revision.DeliverablePrompt, "One absence counts exactly like every other")
+	records := strings.Index(revision.DeliverablePrompt, "Below the deliverable, whenever there is anything to show")
+	json := strings.Index(revision.DeliverablePrompt, "Return exactly one JSON object")
 	if substance < 0 || records < substance || json < records {
 		t.Fatalf("the gate's blocks were reordered: substance=%d records=%d json=%d", substance, records, json)
 	}
 	// No cue list, here least of all: the gate must judge whether the evidence
 	// is there, never whether a sentence pattern is.
 	for _, forbidden := range []string{"if the text contains", "phrases such as", "the word \"verified\""} {
-		if strings.Contains(strings.ToLower(judgeDeliverablePrompt), strings.ToLower(forbidden)) {
+		if strings.Contains(strings.ToLower(revision.DeliverablePrompt), strings.ToLower(forbidden)) {
 			t.Errorf("the evidence clause grew a cue list: %q", forbidden)
 		}
 	}

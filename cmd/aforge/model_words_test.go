@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/Agent-Field/aforge-v2/internal/catalog"
+	"github.com/Agent-Field/aforge-v2/internal/config"
 	"github.com/Agent-Field/aforge-v2/internal/head"
 	"github.com/Agent-Field/aforge-v2/internal/store"
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
@@ -74,9 +75,8 @@ func (c *recordingClient) Model() string { return c.model }
 // current work client even when both run in the same session.
 func TestPinnedWorkClientServesOnlyTheJobThatAskedForIt(t *testing.T) {
 	pinnedClient := &recordingClient{model: "google/gemini-3-pro"}
-	pool := &messageClientPool{clients: map[string]*liveClient{
-		"google/gemini-3-pro": {model: "google/gemini-3-pro", client: pinnedClient},
-	}}
+	pool := newMessageClientPool(config.Config{})
+	pool.Adopt("google/gemini-3-pro", pinnedClient)
 
 	pinnedNode := store.Node{ID: "bench-leaf", Provenance: store.Provenance{
 		Intent: "benchmark the parser with the gemini model", WorkModel: "google/gemini-3-pro",

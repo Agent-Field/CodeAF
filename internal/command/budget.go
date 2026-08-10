@@ -1,4 +1,4 @@
-package main
+package command
 
 import (
 	"fmt"
@@ -10,7 +10,7 @@ import (
 	"github.com/Agent-Field/aforge-v2/internal/store"
 )
 
-func (c *chatCommander) Budget(arguments []string) (string, error) {
+func (c *Commander) Budget(arguments []string) (string, error) {
 	if c == nil || c.store == nil {
 		return "", fmt.Errorf("budget store unavailable")
 	}
@@ -72,17 +72,17 @@ func (c *chatCommander) Budget(arguments []string) (string, error) {
 
 // dailyRailSettings reads the ceiling and the directory it is persisted in from
 // one instant, so a concurrent /budget default cannot leave them disagreeing.
-func (c *chatCommander) dailyRailSettings() (base float64, profileDir string) {
+func (c *Commander) dailyRailSettings() (base float64, profileDir string) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	return c.settings.DailyBudgetUSD, c.settings.ProfileDir
 }
 
-func (c *chatCommander) Standing() (string, error) {
+func (c *Commander) Standing() (string, error) {
 	if c == nil || c.store == nil {
 		return "", fmt.Errorf("standing store unavailable")
 	}
-	lines, err := standingCharterLines(c.store, 0)
+	lines, err := CharterLines(c.store, 0)
 	if err != nil {
 		return "", err
 	}
@@ -92,8 +92,8 @@ func (c *chatCommander) Standing() (string, error) {
 	return strings.Join(lines, "\n"), nil
 }
 
-// standingCharterLines is what every active charter watches for and how often,
-// one line each. /standing is one caller; the head's standing read is the other,
+// CharterLines is what every active charter watches for and how often, one
+// line each. /standing is one caller; the head's standing read is the other,
 // and it is the reason this is a free function rather than a method.
 //
 // The head used to receive this as an integer. doctor counted the charters and
@@ -103,7 +103,7 @@ func (c *chatCommander) Standing() (string, error) {
 // count was never the interesting part of a watch.
 //
 // limit <= 0 renders them all; a bounded caller passes what it can afford.
-func standingCharterLines(graph *store.Store, limit int) ([]string, error) {
+func CharterLines(graph *store.Store, limit int) ([]string, error) {
 	if graph == nil {
 		return nil, nil
 	}

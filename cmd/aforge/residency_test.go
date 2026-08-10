@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Agent-Field/aforge-v2/internal/command"
 	"github.com/Agent-Field/aforge-v2/internal/lease"
 	"github.com/Agent-Field/aforge-v2/internal/resident"
 	"github.com/Agent-Field/aforge-v2/internal/store"
@@ -36,10 +37,10 @@ func (b *testBrains) build(w *chatWindow, session string, hand resident.Handover
 	events := make(chan tui.StreamEvent, 1)
 	brain := &chatBrain{
 		window: w, session: session,
-		commander: &chatCommander{
-			database: w.path, prefsDir: w.dir, store: w.graph,
-			sessionID: session, streamEvents: events,
-		},
+		commander: command.New(command.Options{
+			Database: w.path, PrefsDir: w.dir, Store: w.graph,
+			SessionID: session, StreamEvents: events,
+		}),
 		reconciler:   reconciler,
 		runner:       runner,
 		consent:      newConsentDesk(w.graph),
@@ -94,7 +95,7 @@ func until(t *testing.T, role *chatResidency, want func() bool) {
 	t.Helper()
 	deadline := time.Now().Add(5 * time.Second)
 	for time.Now().Before(deadline) {
-		role.poll()
+		role.Poll()
 		if want() {
 			return
 		}
@@ -121,7 +122,7 @@ func TestVisitorPromotesWhenTheResidentLetsGo(t *testing.T) {
 	if role.serving() {
 		t.Fatal("a second window took the role while the first still held it")
 	}
-	state, _ := role.poll()
+	state, _ := role.Poll()
 	if !state.Visitor || state.PID == 0 {
 		t.Fatalf("the visitor does not know who is resident: %+v", state)
 	}
@@ -133,7 +134,7 @@ func TestVisitorPromotesWhenTheResidentLetsGo(t *testing.T) {
 		t.Fatal(err)
 	}
 	until(t, role, func() bool { return role.serving() && brains.count() == 1 })
-	state, _ = role.poll()
+	state, _ = role.Poll()
 	if state.Visitor {
 		t.Fatalf("a promoted window still calls itself a visitor: %+v", state)
 	}
@@ -166,8 +167,8 @@ func TestOnlyOneOfTwoVisitorsWinsTheRole(t *testing.T) {
 
 	deadline := time.Now().Add(5 * time.Second)
 	for time.Now().Before(deadline) {
-		first.poll()
-		second.poll()
+		first.Poll()
+		second.Poll()
 		if first.serving() != second.serving() {
 			break
 		}
@@ -182,7 +183,7 @@ func TestOnlyOneOfTwoVisitorsWinsTheRole(t *testing.T) {
 	}
 	// The loser must not sit on a stale reading. Its next poll names the winner.
 	until(t, loser, func() bool {
-		state, _ := loser.poll()
+		state, _ := loser.Poll()
 		return state.Visitor && state.PID > 0
 	})
 	if !winner.serving() {
@@ -284,7 +285,7 @@ func TestResidentStandsDownWhenAskedToHandOver(t *testing.T) {
 	if !saidEventually(t, window, "Handing the resident role over") {
 		t.Fatal("the demotion happened without one line saying so")
 	}
-	state, _ := role.poll()
+	state, _ := role.Poll()
 	if !state.Visitor {
 		t.Fatalf("a demoted window still calls itself the resident: %+v", state)
 	}
@@ -394,7 +395,7 @@ func TestANewerWindowTakesTheRoleFromAnOlderOne(t *testing.T) {
 	until(t, newer, func() bool {
 		return newer.serving() && !older.serving() && brains.count() == 2
 	})
-	state, _ := older.poll()
+	state, _ := older.Poll()
 	if !state.Visitor {
 		t.Fatalf("the window that stood down still calls itself resident: %+v", state)
 	}
@@ -428,7 +429,7 @@ func TestARefusedHandoverIsSaidOutLoudInTheHeader(t *testing.T) {
 	if err := role.claim(); err != nil {
 		t.Fatal(err)
 	}
-	if state, _ := role.poll(); !strings.Contains(state.Note, "asking pid") {
+	if state, _ := role.Poll(); !strings.Contains(state.Note, "asking pid") {
 		t.Fatalf("the newer window did not ask: %+v", state)
 	}
 	deadline := time.Now().Add(20 * time.Second)
@@ -436,11 +437,11 @@ func TestARefusedHandoverIsSaidOutLoudInTheHeader(t *testing.T) {
 		if err := stubborn.Tick(context.Background()); err != nil {
 			t.Fatal(err)
 		}
-		if state, _ := role.poll(); strings.Contains(state.Note, "would not hand over") {
+		if state, _ := role.Poll(); strings.Contains(state.Note, "would not hand over") {
 			return
 		}
 		time.Sleep(20 * time.Millisecond)
 	}
-	state, _ := role.poll()
+	state, _ := role.Poll()
 	t.Fatalf("the refusal never reached the header: %+v", state)
 }

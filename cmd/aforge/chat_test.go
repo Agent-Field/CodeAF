@@ -10,16 +10,28 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Agent-Field/aforge-v2/internal/command"
 	"github.com/Agent-Field/aforge-v2/internal/config"
 	"github.com/Agent-Field/aforge-v2/internal/exec"
 	"github.com/Agent-Field/aforge-v2/internal/head"
 	"github.com/Agent-Field/aforge-v2/internal/profile"
 	"github.com/Agent-Field/aforge-v2/internal/provider"
+	"github.com/Agent-Field/aforge-v2/internal/provider/pool"
 	"github.com/Agent-Field/aforge-v2/internal/resident"
+	"github.com/Agent-Field/aforge-v2/internal/revision"
+	"github.com/Agent-Field/aforge-v2/internal/router"
 	"github.com/Agent-Field/aforge-v2/internal/store"
 	"github.com/Agent-Field/aforge-v2/internal/tui"
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 )
+
+// adoptLiveClient wraps a scripted provider in the switchable client every
+// structuring call in this surface talks through. It is the moved constructor
+// under one name: the type is internal/provider/pool's now, and a test that
+// used to write the struct literal writes this instead.
+func adoptLiveClient(settings config.Config, model string, client router.Client) *liveClient {
+	return pool.Adopt(settings, model, client)
+}
 
 type gateCaptureClient struct {
 	model        string
@@ -51,7 +63,8 @@ func TestChatCommanderResolvesJobWorkspaceFilesAndDirectory(t *testing.T) {
 	if err := os.WriteFile(deliverable, []byte("done"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	commander := &chatCommander{store: graph, workspaceRoot: workspaceRoot}
+	commander := command.New(command.Options{Store: graph, WorkspaceRoot: workspaceRoot,
+		JobID: func(node store.Node) string { return jobIDOf(graph, node) }})
 	if target, ok := commander.ResolveWorkspacePath("leaf", "deliverable.md"); !ok || target != deliverable {
 		t.Fatalf("workspace file = (%q, %v), want (%q, true)", target, ok, deliverable)
 	}
@@ -101,7 +114,8 @@ func TestChatCommanderKeepsFoldedJobWorkspaceAfterTerritoryReparent(t *testing.T
 		t.Fatal(err)
 	}
 
-	commander := &chatCommander{store: graph, workspaceRoot: workspaceRoot}
+	commander := command.New(command.Options{Store: graph, WorkspaceRoot: workspaceRoot,
+		JobID: func(node store.Node) string { return jobIDOf(graph, node) }})
 	if target, ok := commander.WorkspacePath("job"); !ok || target != jobDir {
 		t.Fatalf("reparented workspace = (%q, %v), want (%q, true)", target, ok, jobDir)
 	}
@@ -149,7 +163,7 @@ func TestDeliveryGateSeesNotebookPreferencesAndNoPanelStaysBare(t *testing.T) {
 
 	settings := config.Config{Model: "worker/model"}
 	capture := &gateCaptureClient{model: "worker/model"}
-	client := &liveClient{settings: settings, model: capture.model, client: capture}
+	client := adoptLiveClient(settings, capture.model, capture)
 	// The job's own working decisions ride the brief the resident anchored them
 	// onto, which is what the gate is handed as the compiled goal. An assumption
 	// that never leaves the receipt is a promise nobody is held to.
@@ -160,7 +174,7 @@ func TestDeliveryGateSeesNotebookPreferencesAndNoPanelStaysBare(t *testing.T) {
 			resident.WorkingDecisionsHeader + "\n- " + securityDecision,
 		Provenance: store.Provenance{Intent: "recommend an approach", SessionID: "s1"},
 	}
-	judgment := judgeDeliverable(context.Background(), settings, client, graph, node, "approach A wins", "", deliveryEvidence{}, "worker/model")
+	judgment := revision.JudgeDeliverable(context.Background(), settings, client, graph, node, "approach A wins", "", revision.Evidence{}, "worker/model")
 	if !judgment.Checked || !judgment.Pass {
 		t.Fatalf("judgment = %+v, want a checked pass", judgment)
 	}
@@ -180,7 +194,7 @@ func TestDeliveryGateSeesNotebookPreferencesAndNoPanelStaysBare(t *testing.T) {
 	const digestHeading = "Standing preferences and relevant lessons:\n"
 	marker := strings.Index(body, digestHeading)
 	end := strings.Index(body, "Verbatim request:\n")
-	if marker < 0 || end <= marker || len(body[marker:end]) > gateNotebookBytes+len(digestHeading)+len("\n\n") {
+	if marker < 0 || end <= marker || len(body[marker:end]) > revision.GateNotebookBytes+len(digestHeading)+len("\n\n") {
 		t.Fatalf("gate notebook block is absent or over its bound: marker=%d end=%d", marker, end)
 	}
 	// Settled taste is not one lesson among eight — it is what an acceptable
@@ -196,7 +210,7 @@ func TestDeliveryGateSeesNotebookPreferencesAndNoPanelStaysBare(t *testing.T) {
 	if !strings.Contains(body, resident.WorkingDecisionsHeader) || !strings.Contains(body, securityDecision) {
 		t.Fatalf("gate input omitted the job's working decisions: %q", body)
 	}
-	if !strings.Contains(judgeDeliverablePrompt, "Working decisions declared in the goal are part of what was promised") {
+	if !strings.Contains(revision.DeliverablePrompt, "Working decisions declared in the goal are part of what was promised") {
 		t.Fatal("the gate prompt does not hold the deliverable to the decisions it is shown")
 	}
 }
@@ -250,7 +264,7 @@ func TestConsolidatorRendersPlaybookScope(t *testing.T) {
 	}
 	settings := config.Config{Model: "talk/model"}
 	capture := &gateCaptureClient{model: "talk/model"}
-	client := &liveClient{settings: settings, model: capture.model, client: capture}
+	client := adoptLiveClient(settings, capture.model, capture)
 	if _, err := consolidateFacts(settings, client, graph)(context.Background(), fact.Scope, []store.Fact{fact}, nil); err != nil {
 		t.Fatal(err)
 	}
@@ -297,7 +311,7 @@ func TestConsolidatorSeesBadRidePatternAndCausationCaution(t *testing.T) {
 
 	settings := config.Config{Model: "talk/model"}
 	capture := &gateCaptureClient{model: "talk/model"}
-	client := &liveClient{settings: settings, model: capture.model, client: capture}
+	client := adoptLiveClient(settings, capture.model, capture)
 	if _, err := consolidateFacts(settings, client, graph)(context.Background(), "repo:test", facts, nil); err != nil {
 		t.Fatal(err)
 	}
@@ -346,7 +360,7 @@ func TestRetrospectivePrioritizesAndRendersSurprise(t *testing.T) {
 
 	settings := config.Config{Model: "talk/model"}
 	capture := &gateCaptureClient{model: settings.Model}
-	client := &liveClient{settings: settings, model: capture.model, client: capture}
+	client := adoptLiveClient(settings, capture.model, capture)
 	surprise := 1.875
 	jobs := []resident.JobSketch{{
 		Title: "Mispredicted report", Ask: "write the report", Outcome: "report delivered", Age: "today",
@@ -413,7 +427,7 @@ func TestConsolidatorOffersExactlyOneScopeCandidateJudgment(t *testing.T) {
 	defer graph.Close()
 	settings := config.Config{Model: "talk/model"}
 	capture := &gateCaptureClient{model: "talk/model"}
-	client := &liveClient{settings: settings, model: capture.model, client: capture}
+	client := adoptLiveClient(settings, capture.model, capture)
 	candidate := &resident.ScopePair{First: "domain:podcast", Second: "domain:podcasts"}
 	if _, err := consolidateFacts(settings, client, graph)(context.Background(), "", nil, candidate); err != nil {
 		t.Fatal(err)
@@ -561,7 +575,7 @@ func TestResidentUserFacingPromptsKeepEmptyNotebookBytes(t *testing.T) {
 
 	settings := config.Config{Model: "talk/model"}
 	capture := &gateCaptureClient{model: "talk/model"}
-	client := &liveClient{settings: settings, model: capture.model, client: capture}
+	client := adoptLiveClient(settings, capture.model, capture)
 	if _, err := narrateProgress(settings, client, graph)(context.Background(), resident.Narration{
 		Goal: "prepare the report",
 	}); err != nil {
@@ -587,12 +601,12 @@ func TestResidentUserFacingPromptsKeepEmptyNotebookBytes(t *testing.T) {
 	}
 
 	const deliverable = "the finished report"
-	judgment := judgeDeliverable(context.Background(), settings, client, graph, node, deliverable, "", deliveryEvidence{}, "worker/model")
+	judgment := revision.JudgeDeliverable(context.Background(), settings, client, graph, node, deliverable, "", revision.Evidence{}, "worker/model")
 	if !judgment.Checked || !judgment.Pass {
 		t.Fatalf("judgment = %+v, want checked pass", judgment)
 	}
-	if got := capture.messages[0].Content[0].Text; got != judgeDeliverablePrompt {
-		t.Fatalf("empty-notebook gate system prompt changed:\n got %q\nwant %q", got, judgeDeliverablePrompt)
+	if got := capture.messages[0].Content[0].Text; got != revision.DeliverablePrompt {
+		t.Fatalf("empty-notebook gate system prompt changed:\n got %q\nwant %q", got, revision.DeliverablePrompt)
 	}
 	wantBody := "Verbatim request:\n" + node.Provenance.Intent +
 		"\n\nCompiled goal:\n" + node.Brief +
@@ -625,7 +639,7 @@ func TestResidentDeliveryAndPolishBriefShareLearnedVoice(t *testing.T) {
 	}
 	settings := config.Config{Model: "talk/model"}
 	capture := &gateCaptureClient{model: "talk/model"}
-	client := &liveClient{settings: settings, model: capture.model, client: capture}
+	client := adoptLiveClient(settings, capture.model, capture)
 	if _, err := narrateProgress(settings, client, graph)(context.Background(), resident.Narration{
 		Goal: node.Provenance.Intent,
 	}); err != nil {
@@ -653,7 +667,7 @@ func TestDistillerParsesVoiceCorrectionAsUserPreference(t *testing.T) {
 		model:    "talk/model",
 		response: `{"facts":[{"scope":"user","kind":"preference","body":"keep answers short; no preamble"}]}`,
 	}
-	client := &liveClient{settings: settings, model: capture.model, client: capture}
+	client := adoptLiveClient(settings, capture.model, capture)
 	learned, err := distillFacts(settings, client, graph)(
 		context.Background(),
 		"Revise the earlier report",
@@ -851,7 +865,7 @@ func TestTheGateHoldsTheAnswerFirstContractWithoutBecomingACritic(t *testing.T) 
 		"has described the deliverable in place of being it",
 		"A pointer to where the answer lives is not the answer",
 	} {
-		if !strings.Contains(judgeDeliverablePrompt, required) {
+		if !strings.Contains(revision.DeliverablePrompt, required) {
 			t.Fatalf("the gate no longer states the answer-first contract: %q missing", required)
 		}
 	}
@@ -862,7 +876,7 @@ func TestTheGateHoldsTheAnswerFirstContractWithoutBecomingACritic(t *testing.T) 
 		"The gate exists for real gaps, not polish",
 		"This is still one absence and not a second style test",
 	} {
-		if !strings.Contains(judgeDeliverablePrompt, required) {
+		if !strings.Contains(revision.DeliverablePrompt, required) {
 			t.Fatalf("the gate lost its default-pass character: %q missing", required)
 		}
 	}
@@ -871,7 +885,7 @@ func TestTheGateHoldsTheAnswerFirstContractWithoutBecomingACritic(t *testing.T) 
 	for _, forbidden := range []string{
 		"deliverable is written and verified", "if the text contains", "phrases such as",
 	} {
-		if strings.Contains(strings.ToLower(judgeDeliverablePrompt), strings.ToLower(forbidden)) {
+		if strings.Contains(strings.ToLower(revision.DeliverablePrompt), strings.ToLower(forbidden)) {
 			t.Fatalf("the gate grew a cue list: %q", forbidden)
 		}
 	}
@@ -890,15 +904,15 @@ func TestTheGateHoldsAClaimOfVerifiedToAnActualRun(t *testing.T) {
 		"no inference from the parts":         "rather than its parts checked one by one and the whole inferred from them",
 		"the honest gap passes":               "is not a gap: it is the honest form of the same claim and it passes",
 	} {
-		if !strings.Contains(judgeDeliverablePrompt, required) {
+		if !strings.Contains(revision.DeliverablePrompt, required) {
 			t.Errorf("the gate no longer holds %s: %q missing", name, required)
 		}
 	}
 	// Still a gate and not a critic: the clause rides the paragraph that was
 	// already about promised evidence rather than opening a second test.
-	decisions := strings.Index(judgeDeliverablePrompt, "Working decisions declared in the goal")
-	claim := strings.Index(judgeDeliverablePrompt, "A claim that the work was checked")
-	substance := strings.Index(judgeDeliverablePrompt, "One absence counts exactly like every other")
+	decisions := strings.Index(revision.DeliverablePrompt, "Working decisions declared in the goal")
+	claim := strings.Index(revision.DeliverablePrompt, "A claim that the work was checked")
+	substance := strings.Index(revision.DeliverablePrompt, "One absence counts exactly like every other")
 	if decisions < 0 || claim < decisions || substance < claim {
 		t.Fatalf("the verification clause left its paragraph: decisions=%d claim=%d substance=%d",
 			decisions, claim, substance)
@@ -922,9 +936,9 @@ func TestNamedGapEarnsARevisionThatIsToldWhereTheAnswerGoes(t *testing.T) {
 	const gap = "the verdict itself: the text says the assessment is complete but never says whether the plan is valid"
 	failing := &gateCaptureClient{model: "worker/model",
 		response: `{"pass":false,"gaps":"` + gap + `"}`}
-	judgment := judgeDeliverable(context.Background(), settings,
-		&liveClient{settings: settings, model: failing.model, client: failing}, graph, node,
-		"The deliverable is written and verified against the actual repo source.", "", deliveryEvidence{}, "worker/model")
+	judgment := revision.JudgeDeliverable(context.Background(), settings,
+		adoptLiveClient(settings, failing.model, failing), graph, node,
+		"The deliverable is written and verified against the actual repo source.", "", revision.Evidence{}, "worker/model")
 	if !judgment.Checked || judgment.Pass || judgment.Gaps != gap {
 		t.Fatalf("a meta-only deliverable did not draw a checked gap: %+v", judgment)
 	}
@@ -932,10 +946,10 @@ func TestNamedGapEarnsARevisionThatIsToldWhereTheAnswerGoes(t *testing.T) {
 	// Substance passes, and passing is the default: the gate must not have
 	// become a second opinion on every finished job.
 	passing := &gateCaptureClient{model: "worker/model"}
-	settled := judgeDeliverable(context.Background(), settings,
-		&liveClient{settings: settings, model: passing.model, client: passing}, graph, node,
+	settled := revision.JudgeDeliverable(context.Background(), settings,
+		adoptLiveClient(settings, passing.model, passing), graph, node,
 		"The plan is valid: the plugin boundary it assumes already exists and the migration is reversible.",
-		"", deliveryEvidence{}, "worker/model")
+		"", revision.Evidence{}, "worker/model")
 	if !settled.Checked || !settled.Pass {
 		t.Fatalf("a deliverable carrying its answer did not pass: %+v", settled)
 	}
@@ -946,7 +960,7 @@ func TestNamedGapEarnsARevisionThatIsToldWhereTheAnswerGoes(t *testing.T) {
 	for _, required := range []string{
 		"final message is the deliverable", "never in place of it",
 	} {
-		if !strings.Contains(gateRevisionContract, required) {
+		if !strings.Contains(revision.GateRevisionContract, required) {
 			t.Fatalf("the revision contract no longer says where the answer goes: %q missing", required)
 		}
 	}
@@ -972,7 +986,7 @@ func (client blockedHeadClient) CompleteWithMessages(ctx context.Context, _ []ai
 // the thread keeps.
 func TestChatCommanderInterruptReachesTheHeadAndTheTurnStillSpeaks(t *testing.T) {
 	var _ tui.Interrupter = (*chatCommander)(nil)
-	if (&chatCommander{}).Interrupt("nothing to stop") {
+	if command.New(command.Options{}).Interrupt("nothing to stop") {
 		t.Fatal("a window with no head behind it claimed to stop a turn")
 	}
 
@@ -982,10 +996,11 @@ func TestChatCommanderInterruptReachesTheHeadAndTheTurnStillSpeaks(t *testing.T)
 	}
 	defer graph.Close()
 	client := blockedHeadClient{entered: make(chan struct{}, 1)}
-	commander := &chatCommander{store: graph, head: head.New(client, graph)}
+	loop := head.New(client, graph)
+	commander := command.New(command.Options{Store: graph, Head: loop})
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	go func() { _ = commander.head.Serve(ctx) }()
+	go func() { _ = loop.Serve(ctx) }()
 
 	user, err := graph.PostMessage(store.Message{
 		SessionID: "stop", Role: store.RoleUser, Body: "how is the report coming along?",
@@ -1058,7 +1073,8 @@ func TestNodeTraceWindowStartsOnALineBoundary(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	commander := &chatCommander{store: graph, workspaceRoot: workspaceRoot}
+	commander := command.New(command.Options{Store: graph, WorkspaceRoot: workspaceRoot,
+		JobID: func(node store.Node) string { return jobIDOf(graph, node) }})
 	whole, _, _ := commander.NodeTraceSince("job", 1<<16, tui.NodeTraceStamp{})
 	if whole != log.String() {
 		t.Fatal("a log inside the budget was not returned whole")

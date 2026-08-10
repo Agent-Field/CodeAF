@@ -8,7 +8,6 @@ import (
 	"errors"
 	"flag"
 	"fmt"
-	"io"
 	"log"
 	"os"
 	"path/filepath"
@@ -21,7 +20,9 @@ import (
 	"unicode/utf8"
 
 	"github.com/Agent-Field/aforge-v2/internal/catalog"
+	"github.com/Agent-Field/aforge-v2/internal/command"
 	"github.com/Agent-Field/aforge-v2/internal/config"
+	"github.com/Agent-Field/aforge-v2/internal/consent"
 	"github.com/Agent-Field/aforge-v2/internal/craft"
 	"github.com/Agent-Field/aforge-v2/internal/exec"
 	"github.com/Agent-Field/aforge-v2/internal/guard"
@@ -31,7 +32,9 @@ import (
 	"github.com/Agent-Field/aforge-v2/internal/plan"
 	"github.com/Agent-Field/aforge-v2/internal/profile"
 	"github.com/Agent-Field/aforge-v2/internal/provider"
+	"github.com/Agent-Field/aforge-v2/internal/provider/pool"
 	"github.com/Agent-Field/aforge-v2/internal/resident"
+	"github.com/Agent-Field/aforge-v2/internal/revision"
 	"github.com/Agent-Field/aforge-v2/internal/router"
 	"github.com/Agent-Field/aforge-v2/internal/rtk"
 	"github.com/Agent-Field/aforge-v2/internal/store"
@@ -229,8 +232,7 @@ func buildBrain(w *chatWindow, session string, opts brainOptions) (*chatBrain, e
 	// for them, which is the first time they can possibly matter. Everything
 	// here is the same resolution in the same order as before; only the moment
 	// moves, from in front of the first frame to behind it.
-	mediaModels := &chatMediaModels{tools: baseMedia}
-	mediaModels.fill = func(tools *exec.MediaTools) {
+	mediaModels := command.NewMediaModels(baseMedia, func(tools *exec.MediaTools) {
 		tools.ImageModel = firstNonEmptyString(tools.ImageModel, settings.ResolveImageModel(modelCatalog))
 		tools.SpeechModel = firstNonEmptyString(tools.SpeechModel, settings.ResolveSpeechModel(modelCatalog))
 		tools.MusicModel = firstNonEmptyString(tools.MusicModel, settings.ResolveMusicModel(modelCatalog))
@@ -239,7 +241,7 @@ func buildBrain(w *chatWindow, session string, opts brainOptions) (*chatBrain, e
 		if video, ok := modelCatalog.Model(tools.VideoModel); ok {
 			tools.VideoPrice = video.RequestPrice
 		}
-	}
+	})
 
 	chatClient, err := newClient(settings, talkModel)
 	if err != nil {
@@ -262,7 +264,7 @@ func buildBrain(w *chatWindow, session string, opts brainOptions) (*chatBrain, e
 		return nil, brain.abandon(err)
 	}
 	brain.closing(planClient.Close)
-	boostClients := &messageClientPool{settings: settings, clients: make(map[string]*liveClient)}
+	boostClients := newMessageClientPool(settings)
 	brain.closing(boostClients.Close)
 	// The ruler stays keyed to the work model even when a different model
 	// plans: the anchors measure how the executor spends turns, and the plan
@@ -287,7 +289,7 @@ func buildBrain(w *chatWindow, session string, opts brainOptions) (*chatBrain, e
 	chatClient.WithUsageJournal(journalSpend)
 	taskClient.WithUsageJournal(journalSpend)
 	planClient.WithUsageJournal(journalSpend)
-	boostClients.journal = journalSpend
+	boostClients.WithUsageJournal(journalSpend)
 	// The standing watch is a host timer: installing it shells out to launchctl
 	// or systemctl and leaves something behind that outlives the process. A
 	// one-shot command may not do that to a machine, so headless never builds
@@ -474,9 +476,8 @@ func buildBrain(w *chatWindow, session string, opts brainOptions) (*chatBrain, e
 	// The price before the purchase. It is built here so the runner can consult
 	// it on the very first tick of a claimed leaf, which is the last moment at
 	// which not starting the work is still free.
-	consent := newConsentDesk(graph)
-	consent.headless = opts.consent
-	consent.rehydrate()
+	desk := newConsentDesk(graph).WithHeadless(opts.consent)
+	desk.Rehydrate()
 	runner := resident.NewRunner(graph, func(ctx context.Context, node store.Node) (resident.ExecResult, error) {
 		isReflex := node.Group == resident.ReflexGroup
 		// Nothing above this line spends anything, which is the whole point of
@@ -485,7 +486,7 @@ func buildBrain(w *chatWindow, session string, opts brainOptions) (*chatBrain, e
 		// landing path reads the hold and releases the claim, so this returns
 		// nothing and the node goes back to the queue rather than lying about
 		// having finished or failed.
-		if consent.gate(settings, measured, node) {
+		if desk.Gate(settings, measured, node) {
 			return resident.ExecResult{}, nil
 		}
 		// Each top-level job works in its own directory: one thread hosts
@@ -528,10 +529,10 @@ func buildBrain(w *chatWindow, session string, opts brainOptions) (*chatBrain, e
 		// A model the user named for this job outranks both, and only for this
 		// job: the request rides the node's provenance, so every leaf under it
 		// is served by that model however the work slot moves afterwards.
-		escalatable := taskClient.escalatable()
+		escalatable := taskClient.Escalatable()
 		if pinned, ok := pinnedWorkClient(boostClients, node); ok {
 			workingModel, workingClient = pinned.Snapshot()
-			escalatable = pinned.escalatable()
+			escalatable = pinned.Escalatable()
 		}
 		// What runs this leaf was settled when the job was admitted, and the
 		// node's row carries the answer. Reading it here rather than deciding
@@ -551,16 +552,30 @@ func buildBrain(w *chatWindow, session string, opts brainOptions) (*chatBrain, e
 		leafMedia := mediaModels.Snapshot()
 		leafMedia.WorkingModel = workingModel
 		leafMedia.VisionModel = settings.ResolveVisionModel(modelCatalog, chatClient.Model(), workingModel)
+		// A media purchase is the one spend in the system that is quoted before
+		// it is made, so it is the one place a rail can refuse rather than
+		// discover. Both rails are asked, in the order they bind: the day's
+		// ceiling governs the machine, and a task ceiling governs one subtree —
+		// a leaf inside a governed job must not spend the job's last dollars on
+		// a video while the rest of the job is being held for the same reason.
+		// An ungoverned graph pays nothing for the second question: the store's
+		// first act is to ask whether any ceiling exists at all.
 		leafMedia.BeforeSpend = func(_ context.Context, additional float64) error {
-			if settings.DailyBudgetUSD <= 0 {
-				return nil
+			if settings.DailyBudgetUSD > 0 {
+				rail, _, gateErr := graph.PauseDailyRailWithAdditionalSpend(settings.DailyBudgetUSD, node.Provenance.SessionID, additional)
+				if gateErr != nil {
+					return gateErr
+				}
+				if rail.Reached {
+					return fmt.Errorf("daily budget reached")
+				}
 			}
-			rail, _, gateErr := graph.PauseDailyRailWithAdditionalSpend(settings.DailyBudgetUSD, node.Provenance.SessionID, additional)
+			task, _, gateErr := graph.PauseTaskRail(node.ID, node.Provenance.SessionID, additional)
 			if gateErr != nil {
 				return gateErr
 			}
-			if rail.Reached {
-				return fmt.Errorf("daily budget reached")
+			if task.Reached {
+				return fmt.Errorf("this task's budget is reached")
 			}
 			return nil
 		}
@@ -789,7 +804,7 @@ func buildBrain(w *chatWindow, session string, opts brainOptions) (*chatBrain, e
 					previousAttemptInput(outcome, jobDir))
 				// Who takes the retry, asked once, of the same judge machinery
 				// that already reads failures. An empty menu never reaches here.
-				if chosen := judgeRetryWorker(ctx, settings, planClient, node,
+				if chosen := revision.JudgeRetryWorker(ctx, settings, planClient, node,
 					attempted, outcome, err, specialists, workerModel); chosen != "" {
 					escalatedFrom = subharness
 					if escalatedFrom == "" {
@@ -972,7 +987,8 @@ func buildBrain(w *chatWindow, session string, opts brainOptions) (*chatBrain, e
 		// So the judge runs first: a checked "done" ships the result as-is,
 		// and a named gap becomes the replan's target instead of a guess.
 		if !isReflex && outcome.Overran() {
-			remainder := judgeRemainder(ctx, settings, planClient, graph, node, text, workerModel)
+			remainder := revision.JudgeRemainder(ctx, settings, planClient, graph, node, text,
+				exec.MenuTextExcept(promisedWorker(node)), workerModel)
 			if remainder.Checked && remainder.Done {
 				outcome.Verdict = provider.VerdictVerifiedSuccess
 			} else {
@@ -1035,12 +1051,12 @@ func buildBrain(w *chatWindow, session string, opts brainOptions) (*chatBrain, e
 			// A mechanical join was never a watched worker run: its parts were
 			// the watched runs, so the gate reads the joined text on its own
 			// merits rather than convicting an assembly for calling no tools.
-			gate := judgeDeliverable(ctx, settings, planClient, graph, node, text, task.Contract,
-				deliveryEvidence{Artifacts: absolute, Ran: outcome.Ran, Observed: !mechanical}, workerModel)
+			gate := revision.JudgeDeliverable(ctx, settings, planClient, graph, node, text, task.Contract,
+				revision.Evidence{Artifacts: absolute, Ran: outcome.Ran, Observed: !mechanical}, workerModel)
 			if gate.Checked {
 				evidence := store.DeliveryGate{Pass: gate.Pass, Gap: gate.Gaps, Quote: gate.Quote}
 				if gate.Pass {
-					outcome.Verdict = gateVerdict(gate)
+					outcome.Verdict = revision.GateVerdict(gate)
 				}
 				// The grounding check the extension has always had, applied one
 				// layer earlier: to the revision round. A gap the review cannot
@@ -1052,7 +1068,7 @@ func buildBrain(w *chatWindow, session string, opts brainOptions) (*chatBrain, e
 				// delivery, and free.
 				ungrounded := ""
 				if !gate.Pass {
-					ungrounded = admitGapRevision(node.Provenance.Intent, task.Contract, gate.Quote)
+					ungrounded = revision.AdmitGapRevision(node.Provenance.Intent, task.Contract, gate.Quote)
 				}
 				if ungrounded != "" {
 					evidence.Refused = ungrounded
@@ -1061,7 +1077,7 @@ func buildBrain(w *chatWindow, session string, opts brainOptions) (*chatBrain, e
 					// arrived BEFORE the announcement — the review's words
 					// standing in front of an answer the review was wrong about,
 					// which is the shape the panel scored 2/5.
-					notes = append(notes, gapNote(gate.Gaps, ungrounded))
+					notes = append(notes, revision.GapNote(gate.Gaps, ungrounded))
 					// The verdict is deliberately left where the worker put it.
 					// Nothing about the work was shown to be wrong here; a judge
 					// invented a requirement, and charging the model's rating for
@@ -1075,16 +1091,18 @@ func buildBrain(w *chatWindow, session string, opts brainOptions) (*chatBrain, e
 					// is also what the honest handover has to name.
 					unmet := gate
 					revised := false
-					revision := task
-					revision.Inputs = append(append([]exec.Input{}, inputs...), exec.Input{
+					// repair is the one revision round a failed gate buys: the
+					// same task, plus the critique and the draft it is aimed at.
+					repair := task
+					repair.Inputs = append(append([]exec.Input{}, inputs...), exec.Input{
 						Title:     "a review of your own first draft",
 						Artifacts: append([]string(nil), absolute...),
 						Result: "A reviewer compared the previous attempt against the original request and found gaps that must be closed:\n" + gate.Gaps +
 							"\n\nThe previous attempt (build on it, fix the gaps, do not start over):\n" + text +
-							"\n\n" + gateRevisionContract,
+							"\n\n" + revision.GateRevisionContract,
 					})
 					retryCtx := provider.WithCallShape(settings.ExecContext(ctx), provider.ClassExecLeaf, 1, shape)
-					polished, polishErr := runLeafWithWatchdog(retryCtx, worker, revision, deadline+2*time.Minute)
+					polished, polishErr := runLeafWithWatchdog(retryCtx, worker, repair, deadline+2*time.Minute)
 					polishModel := workerModel
 					if model := provider.CallFrom(retryCtx).Model(); model != "" {
 						polishModel = model
@@ -1104,15 +1122,15 @@ func buildBrain(w *chatWindow, session string, opts brainOptions) (*chatBrain, e
 						if len(absolute) > 0 {
 							text += "\n\nFiles:\n" + strings.Join(absolute, "\n")
 						}
-						closed := judgeDeliverable(ctx, settings, planClient, graph, node, text, task.Contract,
-							deliveryEvidence{Artifacts: absolute, Ran: outcome.Ran, Observed: true}, polishModel)
+						closed := revision.JudgeDeliverable(ctx, settings, planClient, graph, node, text, task.Contract,
+							revision.Evidence{Artifacts: absolute, Ran: outcome.Ran, Observed: true}, polishModel)
 						evidence.PolishClosed = closed.Checked && closed.Pass
 						outcome.Verdict = provider.VerdictSemanticFailure
 						revised = true
 						if evidence.PolishClosed {
 							// The same distinction the first gate makes; drawing it
 							// only there would launder the verdict one round later.
-							outcome.Verdict = gateVerdict(closed)
+							outcome.Verdict = revision.GateVerdict(closed)
 						} else if closed.Checked && strings.TrimSpace(closed.Gaps) != "" {
 							// The second reading is the current one: it was taken
 							// against the revised text, so it is what any further
@@ -1138,7 +1156,7 @@ func buildBrain(w *chatWindow, session string, opts brainOptions) (*chatBrain, e
 						// the old path gave up. The job may grow the work that closes
 						// it — once per span of the ask, inside the same round caps,
 						// rails and consent an exhausted leaf lives under.
-						extension := extendForGap(ctx, graph, node, outcome.Text, unmet, absolute,
+						extension := revision.ExtendForGap(ctx, graph, node, outcome.Text, unmet, absolute,
 							settings.DailyBudgetUSD, replanRemainder(settings, planClient, taskClient, plans, graph))
 						evidence.Quote, evidence.Round = extension.Quote, extension.Round
 						evidence.Extended, evidence.Refused = extension.Spliced > 0, extension.Refused
@@ -1153,7 +1171,7 @@ func buildBrain(w *chatWindow, session string, opts brainOptions) (*chatBrain, e
 								SessionID: node.Provenance.SessionID,
 								Role:      store.RoleSystem,
 								NodeID:    node.ID,
-								Body:      gapContinuationNotice(unmet.Gaps),
+								Body:      revision.GapContinuationNotice(unmet.Gaps),
 							})
 							break
 						}
@@ -1169,7 +1187,7 @@ func buildBrain(w *chatWindow, session string, opts brainOptions) (*chatBrain, e
 						// next sentence land in the correction path. It is a note
 						// AFTER the work and only that: said once, last, and never
 						// standing in front of what was actually produced.
-						notes = append(notes, gapHandover(unmet.Gaps, revised, extension.Refused))
+						notes = append(notes, revision.GapHandover(unmet.Gaps, revised, extension.Refused))
 					}
 				}
 				_ = graph.RecordDeliveryGate(node.ID, evidence)
@@ -1254,7 +1272,7 @@ func buildBrain(w *chatWindow, session string, opts brainOptions) (*chatBrain, e
 	brain.settings = settings
 	brain.reconciler = reconciler
 	brain.runner = runner
-	brain.consent = consent
+	brain.consent = desk
 	brain.workspaceRoot = workspaceRoot
 	// Everything below this line is the conversation: the commander the surface
 	// reaches capabilities through, the microphone, the stream the reply is
@@ -1267,37 +1285,54 @@ func buildBrain(w *chatWindow, session string, opts brainOptions) (*chatBrain, e
 	}
 
 	streamEvents := make(chan tui.StreamEvent, 256)
-	commander = &chatCommander{
-		settings:      settings,
-		database:      path,
-		prefsDir:      filepath.Dir(path),
-		workspaceRoot: workspaceRoot,
-		chatClient:    chatClient,
-		taskClient:    taskClient,
-		planClient:    planClient,
-		store:         graph,
-		prefs:         prefs,
-		sessionID:     session,
-		streamEvents:  streamEvents,
-		voiceRecorder: voice.NewSystemRecorder(),
-		models:        modelCatalog,
-		mediaModels:   mediaModels,
-		attachSession: reconciler.AttachSession,
-	}
-	commander.voiceTranscriber, err = voice.NewClient(voice.ClientConfig{
+	transcriber, err := voice.NewClient(voice.ClientConfig{
 		APIKey: settings.APIKey, BaseURL: settings.BaseURL, Timeout: settings.Timeout,
 		SiteURL: settings.SiteURL, SiteName: settings.SiteName,
 	})
 	if err != nil {
 		return nil, brain.abandon(err)
 	}
+	commander = command.New(command.Options{
+		Settings:         settings,
+		Database:         path,
+		PrefsDir:         filepath.Dir(path),
+		WorkspaceRoot:    workspaceRoot,
+		ChatClient:       chatClient,
+		TaskClient:       taskClient,
+		PlanClient:       planClient,
+		Store:            graph,
+		Prefs:            prefs,
+		SessionID:        session,
+		StreamEvents:     streamEvents,
+		VoiceRecorder:    voice.NewSystemRecorder(),
+		VoiceTranscriber: transcriber,
+		Models:           modelCatalog,
+		MediaModels:      mediaModels,
+		AttachSession:    reconciler.AttachSession,
+		// The two seams the commander borrows from this process: where a job's
+		// files live, and what a work-model switch means to the measured ruler.
+		JobID: func(node store.Node) string { return jobIDOf(graph, node) },
+		InstallRuler: func(model string) {
+			installMeasuredRulers(settings.ProfileDir, model)
+		},
+	})
 
 	// The head is built here rather than inside the loop below because the
 	// surface has to be able to reach it: stopping the turn being answered right
 	// now is a handle on this process, and the commander is where the surface
 	// keeps its handles.
 	conversationalHead := head.New(chatClient, graph).
-		WithMessageClient(boostClients.ForMessage).
+		// The pool answers with its own concrete client; the head asks for its
+		// own interface. The lift is written out rather than passed as a method
+		// value so a failed pin returns a nil interface rather than a non-nil
+		// one wrapping a nil pointer.
+		WithMessageClient(func(message store.Message) (head.Client, error) {
+			pinned, pinErr := boostClients.ForMessage(message)
+			if pinErr != nil {
+				return nil, pinErr
+			}
+			return pinned, nil
+		}).
 		WithSelfKnowledge(func() string { return selfKnowledge(settings, taskClient.Model()) }).
 		WithImageInput(modelCatalog, settings.Model).
 		WithCompetenceMap(func() string {
@@ -1307,7 +1342,7 @@ func buildBrain(w *chatWindow, session string, opts brainOptions) (*chatBrain, e
 			return watchGrounding(path, graph, standingWatch, settings.DailyBudgetUSD)
 		}).
 		WithDailyBudgetUSD(settings.DailyBudgetUSD)
-	commander.head = conversationalHead
+	commander.SetHead(conversationalHead)
 
 	brain.commander = commander
 	brain.streamEvents = streamEvents
@@ -1452,7 +1487,7 @@ func (b *chatBrain) start() {
 		}
 	}()
 	b.background.Add(1)
-	guard.Go("chat/consent", func() { defer b.background.Done(); b.consent.serve(ctx) })
+	guard.Go("chat/consent", func() { defer b.background.Done(); b.consent.Serve(ctx) })
 
 	if b.deliverBrief != nil {
 		b.background.Add(1)
@@ -1500,23 +1535,6 @@ func (b *chatBrain) stop() {
 		waitWithGrace(&b.background, 5*time.Second)
 		b.closeAll()
 	})
-}
-
-// newVisitorCommander builds the commander a visitor drives. It deliberately
-// carries no model clients and no live catalog: a visitor owns no head, so
-// every capability that would speak to a provider must degrade to the recorded
-// preference rather than reach for a client that does not exist here.
-func newVisitorCommander(path, sessionID string, graph *store.Store,
-	attachSession func(string) error) *chatCommander {
-	return &chatCommander{
-		database:      path,
-		prefsDir:      filepath.Dir(path),
-		workspaceRoot: filepath.Join(filepath.Dir(path), "workspace"),
-		store:         graph,
-		prefs:         loadChatPrefs(filepath.Dir(path)),
-		sessionID:     sessionID,
-		attachSession: attachSession,
-	}
 }
 
 // residentDeliveryBrief gives only the top-level deliverable owner the voice
@@ -1673,924 +1691,39 @@ func withDocumentAttachmentBrief(brief string, paths []string) string {
 	return strings.TrimSpace(brief) + strings.TrimRight(addition.String(), "\n")
 }
 
-// chatPrefs persists the surface's model choices across launches. It lives
-// beside the graph database so the whole resident state moves as one
-// directory.
-type chatPrefs struct {
-	ChatModel string `json:"chat_model,omitempty"`
-	TaskModel string `json:"task_model,omitempty"`
-	// PlanModel empty means the plan slot follows the work model live —
-	// the same contract as an empty boost slot.
-	PlanModel   string `json:"plan_model,omitempty"`
-	BoostModel  string `json:"boost_model,omitempty"`
-	VoiceModel  string `json:"voice_model,omitempty"`
-	ImageModel  string `json:"image_model,omitempty"`
-	SpeechModel string `json:"speech_model,omitempty"`
-	MusicModel  string `json:"music_model,omitempty"`
-	VideoModel  string `json:"video_model,omitempty"`
-
-	// SplitPct is the chat pane's share of the terminal width in percent,
-	// set by dragging the divider (or [ and ]) in the TUI.
-	SplitPct int `json:"split_pct,omitempty"`
-}
-
-var fallbackChatModels = []string{
-	"~deepseek/deepseek-v4-flash-latest",
-	"moonshotai/kimi-k2.6",
-	"qwen/qwen3-30b-a3b",
-	"google/gemma-3-12b-it",
-}
-
-// chatMediaModels is the resolved media configuration seen by new leaves.
-// Each leaf takes one value snapshot, preserving the same "next job/leaf"
-// boundary used by the hot-swappable work model.
-type chatMediaModels struct {
-	// fill supplies the slot defaults that have to be asked of the model
-	// catalog. It runs at most once, on the first read, so a cold catalog is
-	// paid for by the first leaf that needs a media model rather than by the
-	// user waiting for the surface to appear.
-	once  sync.Once
-	fill  func(*exec.MediaTools)
-	mu    sync.RWMutex
-	tools exec.MediaTools
-}
-
-func (m *chatMediaModels) Snapshot() exec.MediaTools {
-	if m == nil {
-		return exec.MediaTools{}
-	}
-	m.resolve()
-	m.mu.RLock()
-	defer m.mu.RUnlock()
-	return m.tools
-}
-
-func (m *chatMediaModels) resolve() {
-	m.once.Do(func() {
-		if m.fill == nil {
-			return
-		}
-		m.mu.Lock()
-		defer m.mu.Unlock()
-		m.fill(&m.tools)
-	})
-}
-
-func (m *chatMediaModels) Set(role, slug string, models *catalog.Catalog) {
-	if m == nil {
-		return
-	}
-	// A user's choice must land on top of the discovered defaults, never
-	// underneath a fill that has not run yet.
-	m.resolve()
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	switch role {
-	case "image":
-		m.tools.ImageModel = slug
-	case "speech":
-		m.tools.SpeechModel = slug
-	case "music":
-		m.tools.MusicModel = slug
-	case "video":
-		m.tools.VideoModel = slug
-		m.tools.VideoPrice = 0
-		if model, ok := models.Model(slug); ok {
-			m.tools.VideoPrice = model.RequestPrice
-		}
-	}
-}
-
-// chatCommander bridges surface commands to the two hot-swappable clients
-// and the durable command journal. Session state lives here so /new and a
-// subsequent /cancel always agree about which thread owns the request.
-type chatCommander struct {
-	settings      config.Config
-	database      string
-	prefsDir      string
-	workspaceRoot string
-
-	chatClient *liveClient
-	taskClient *liveClient
-	planClient *liveClient
-	store      *store.Store
-	// head is the loop that answers, and the only thing the surface asks of it
-	// is to stop. A window that is not the brain has none and says so.
-	head *head.Head
-
-	mu               sync.Mutex
-	prefs            chatPrefs
-	sessionID        string
-	streamEvents     <-chan tui.StreamEvent
-	voiceRecorder    voice.Recorder
-	voiceTranscriber voice.Transcriber
-	attachSession    func(string) error
-
-	// residency is the window's account of which process runs the brain. Nil
-	// for an embedded or test commander, which is simply never a second
-	// window and says nothing about it.
-	residency *chatResidency
-
-	catalogOnce    sync.Once
-	catalogChoices []tui.ModelChoice
-	slotCatalogMu  sync.Mutex
-	slotCatalog    map[string][]tui.ModelChoice
-	models         *catalog.Catalog
-	mediaModels    *chatMediaModels
-}
-
-// KeepAttachment copies what the person attached into the resident's
-// content-addressed store, so the durable message carries our own immutable
-// copy rather than a pointer at a file they may move tomorrow.
-func (c *chatCommander) KeepAttachment(path string) (string, error) {
-	return exec.KeepAttachment(attachmentStoreRoot(c.database), path)
-}
-
-// attachmentStoreRoot is the same cas/ directory the store spills folds into:
-// one profile, one blob store.
-func attachmentStoreRoot(database string) string {
-	return filepath.Join(filepath.Dir(database), "cas")
-}
-
-func (c *chatCommander) StreamEvents() <-chan tui.StreamEvent { return c.streamEvents }
-
-// Interrupt stops the turn the head is answering right now and hands it the
-// words the reader has already seen, so the durable line that ends the turn is
-// that same reply marked where it stopped rather than a fresh apology.
-func (c *chatCommander) Interrupt(partial string) bool {
-	if c == nil || c.head == nil {
-		return false
-	}
-	return c.head.Interrupt(partial)
-}
-
-// Residency lets the surface say what this window is, and hands it a
-// replacement commander at the moment that answer changes. It runs on the
-// poll's goroutine every cycle, so everything expensive behind it is a
-// goroutine the residency starts for itself.
-func (c *chatCommander) Residency() (tui.Residency, tui.Commander) {
-	if c == nil || c.residency == nil {
-		return tui.Residency{}, nil
-	}
-	return c.residency.poll()
-}
-
-func (c *chatCommander) VoiceRecorder() voice.Recorder       { return c.voiceRecorder }
-func (c *chatCommander) VoiceTranscriber() voice.Transcriber { return c.voiceTranscriber }
-
-func (c *chatCommander) RecordVoiceUsage(cost float64) {
-	if c == nil || c.store == nil || cost <= 0 {
-		return
-	}
-	_ = c.store.RecordUsage(store.NodeUsage{NodeID: store.RootID, Cost: cost})
-}
-
-func (c *chatCommander) Models() []string {
-	candidates := make([]string, 0, len(c.settings.Panel.Models)+7)
-	for _, spec := range c.settings.Panel.Models {
-		candidates = append(candidates, spec.Slug)
-	}
-	candidates = append(candidates, c.settings.Model)
-	if c.chatClient != nil {
-		candidates = append(candidates, c.chatClient.Model())
-	}
-	if c.taskClient != nil {
-		candidates = append(candidates, c.taskClient.Model())
-	}
-	if c.planClient != nil {
-		candidates = append(candidates, c.planClient.Model())
-	}
-	if boost := strings.TrimSpace(c.CurrentModel("boost")); boost != "" {
-		candidates = append(candidates, boost)
-	}
-	models := dedupeModels(candidates)
-	if len(models) < 4 {
-		models = dedupeModels(append(models, fallbackChatModels...))
-	}
-	return models
-}
-
-func (c *chatCommander) Catalog() []tui.ModelChoice {
-	c.catalogOnce.Do(func() {
-		if c.models != nil {
-			for _, model := range config.ModelCandidates(c.models, "talk") {
-				c.catalogChoices = append(c.catalogChoices, tui.ModelChoice{
-					Slug: model.ID, Name: model.Name,
-					Price: formatModelPrice(model.PromptPrice, model.CompletionPrice),
-				})
-			}
-		}
-		if len(c.catalogChoices) < 4 {
-			seen := make(map[string]bool, len(c.catalogChoices))
-			for _, choice := range c.catalogChoices {
-				seen[choice.Slug] = true
-			}
-			for _, model := range c.Models() {
-				if seen[model] {
-					continue
-				}
-				c.catalogChoices = append(c.catalogChoices, tui.ModelChoice{Slug: model})
-				seen[model] = true
-			}
-		}
-	})
-	return append([]tui.ModelChoice(nil), c.catalogChoices...)
-}
-
-// CatalogFor keys the shared searchable picker by palette slot. Capability
-// filtering lives in config.ModelCandidates so music discovery uses the exact
-// same recognizable-TTS exclusion as runtime resolution.
-func (c *chatCommander) CatalogFor(role string) []tui.ModelChoice {
-	if role == "talk" || role == "work" || role == "plan" || role == "boost" {
-		return c.Catalog()
-	}
-	if cached, ok := c.cachedSlotCatalog(role); ok {
-		return cached
-	}
-
-	choices := make([]tui.ModelChoice, 0)
-	for _, model := range config.ModelCandidates(c.models, role) {
-		choices = append(choices, tui.ModelChoice{
-			Slug: model.ID, Name: model.Name,
-			Price: formatModelPrice(model.PromptPrice, model.CompletionPrice),
-		})
-	}
-	if len(choices) == 0 {
-		if current := strings.TrimSpace(c.CurrentModel(role)); current != "" {
-			choices = []tui.ModelChoice{{Slug: current}}
-		}
-	}
-	c.cacheSlotCatalog(role, choices)
-	return choices
-}
-
-// cachedSlotCatalog hands back a copy, never the stored slice: the picker is
-// free to sort what it is given.
-func (c *chatCommander) cachedSlotCatalog(role string) ([]tui.ModelChoice, bool) {
-	c.slotCatalogMu.Lock()
-	defer c.slotCatalogMu.Unlock()
-	choices, ok := c.slotCatalog[role]
-	if !ok {
-		return nil, false
-	}
-	return append([]tui.ModelChoice(nil), choices...), true
-}
-
-func (c *chatCommander) cacheSlotCatalog(role string, choices []tui.ModelChoice) {
-	c.slotCatalogMu.Lock()
-	defer c.slotCatalogMu.Unlock()
-	if c.slotCatalog == nil {
-		c.slotCatalog = make(map[string][]tui.ModelChoice)
-	}
-	c.slotCatalog[role] = append([]tui.ModelChoice(nil), choices...)
-}
-
-func (c *chatCommander) CurrentModel(role string) string {
-	switch role {
-	case "work":
-		if c.taskClient != nil {
-			return c.taskClient.Model()
-		}
-		c.mu.Lock()
-		defer c.mu.Unlock()
-		return c.prefs.TaskModel
-	case "plan":
-		if c.planClient != nil {
-			return c.planClient.Model()
-		}
-		c.mu.Lock()
-		defer c.mu.Unlock()
-		return c.prefs.PlanModel
-	case "boost":
-		if boost := c.boostPreference(); boost != "" {
-			return boost
-		}
-		if c.taskClient != nil {
-			return c.taskClient.Model()
-		}
-		return ""
-	case "voice":
-		c.mu.Lock()
-		defer c.mu.Unlock()
-		return firstNonEmptyString(c.prefs.VoiceModel, c.settings.VoiceModel)
-	case "image":
-		c.mu.Lock()
-		defer c.mu.Unlock()
-		return firstNonEmptyString(c.prefs.ImageModel, c.settings.ResolveImageModel(c.models))
-	case "speech":
-		c.mu.Lock()
-		defer c.mu.Unlock()
-		return firstNonEmptyString(c.prefs.SpeechModel, c.settings.ResolveSpeechModel(c.models))
-	case "music":
-		c.mu.Lock()
-		defer c.mu.Unlock()
-		return firstNonEmptyString(c.prefs.MusicModel, c.settings.ResolveMusicModel(c.models))
-	case "video":
-		c.mu.Lock()
-		defer c.mu.Unlock()
-		return firstNonEmptyString(c.prefs.VideoModel, c.settings.ResolveVideoModel(c.models))
-	}
-	if c.chatClient != nil {
-		return c.chatClient.Model()
-	}
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	return c.prefs.ChatModel
-}
-
-// boostPreference is the boost slot's own critical section: empty means the
-// user never chose one and the work model stands in.
-func (c *chatCommander) boostPreference() string {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	return strings.TrimSpace(c.prefs.BoostModel)
-}
-
-func (c *chatCommander) ImageInputSupport() (string, bool) {
-	return c.ImageInputSupportFor("talk")
-}
-
-func (c *chatCommander) ImageInputSupportFor(role string) (string, bool) {
-	model := c.CurrentModel(role)
-	return model, c.models != nil && c.models.Supports(model, "input", "image")
-}
-
-func (c *chatCommander) ModelFollows(role string) bool {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	switch role {
-	case "boost":
-		return strings.TrimSpace(c.prefs.BoostModel) == ""
-	case "plan":
-		// An environment pin is an explicit choice too: the slot only follows
-		// the work model when neither the prefs nor AFORGE_PLAN_MODEL name one.
-		return strings.TrimSpace(c.prefs.PlanModel) == "" && strings.TrimSpace(c.settings.PlanModel) == ""
-	}
-	return false
-}
-
-func (c *chatCommander) SetModel(role, slug string) error {
-	switch role {
-	case "talk":
-		if c.chatClient == nil {
-			return fmt.Errorf("talk model switching is unavailable in visitor mode")
-		}
-		if err := c.chatClient.SetModel(slug); err != nil {
-			return err
-		}
-	case "work":
-		if c.taskClient == nil {
-			return fmt.Errorf("work model switching is unavailable in visitor mode")
-		}
-		if err := c.taskClient.SetModel(slug); err != nil {
-			return err
-		}
-		// A model switch changes the capability being sized; install that model's
-		// own ruler before the next planning call can observe the new client.
-		installMeasuredRulers(c.settings.ProfileDir, c.taskClient.Model())
-		// A following plan slot moves with the work model, live — the next
-		// planning call sees the new model without the user touching the slot.
-		if c.planClient != nil && c.ModelFollows("plan") {
-			if err := c.planClient.SetModel(c.taskClient.Model()); err != nil {
-				return err
-			}
-		}
-	case "plan":
-		if c.planClient == nil {
-			return fmt.Errorf("plan model switching is unavailable in visitor mode")
-		}
-		// Empty is meaningful for plan, like boost: it resumes following the
-		// work model live.
-		target := strings.TrimSpace(slug)
-		if target == "" && c.taskClient != nil {
-			target = c.taskClient.Model()
-		}
-		if err := c.planClient.SetModel(target); err != nil {
-			return err
-		}
-	case "boost":
-		// Empty is meaningful for boost: it restores live inheritance from work.
-	case "voice", "image", "speech", "music", "video":
-		if strings.TrimSpace(slug) == "" {
-			return fmt.Errorf("%s model cannot be empty", role)
-		}
-	default:
-		return fmt.Errorf("unknown model role %q", role)
-	}
-
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	if role == "talk" {
-		c.prefs.ChatModel = c.chatClient.Model()
-	} else if role == "work" {
-		c.prefs.TaskModel = c.taskClient.Model()
-	} else if role == "plan" {
-		c.prefs.PlanModel = strings.TrimSpace(slug)
-		// The user cleared the slot by hand: their choice to follow the work
-		// model outranks the environment seed for the rest of this session.
-		if c.prefs.PlanModel == "" {
-			c.settings.PlanModel = ""
-		}
-	} else if role == "boost" {
-		c.prefs.BoostModel = strings.TrimSpace(slug)
-	} else if role == "voice" {
-		c.prefs.VoiceModel = strings.TrimSpace(slug)
-	} else if role == "image" {
-		c.prefs.ImageModel = strings.TrimSpace(slug)
-	} else if role == "speech" {
-		c.prefs.SpeechModel = strings.TrimSpace(slug)
-	} else if role == "music" {
-		c.prefs.MusicModel = strings.TrimSpace(slug)
-	} else if role == "video" {
-		c.prefs.VideoModel = strings.TrimSpace(slug)
-	}
-	if err := saveChatPrefs(c.prefsDir, c.prefs); err != nil {
-		return fmt.Errorf("save chat model preference: %w", err)
-	}
-	if role == "image" || role == "speech" || role == "music" || role == "video" {
-		c.mediaModels.Set(role, strings.TrimSpace(slug), c.models)
-	}
-	return nil
-}
-
-// SplitPct and SaveSplitPct persist the TUI's chat/graph divider position in
-// the same prefs file as the model choices.
-func (c *chatCommander) SplitPct() int {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	return c.prefs.SplitPct
-}
-
-func (c *chatCommander) SaveSplitPct(pct int) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	c.prefs.SplitPct = pct
-	_ = saveChatPrefs(c.prefsDir, c.prefs)
-}
-
-// session and setSession are the whole of the session id's critical section.
-// Everything downstream — attaching, posting, cancelling — happens outside the
-// lock, because those are store calls and a store call must never hold it.
-func (c *chatCommander) session() string {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	return c.sessionID
-}
-
-func (c *chatCommander) setSession(sessionID string) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	c.sessionID = sessionID
-}
-
-func (c *chatCommander) NewSession() (string, error) {
-	sessionID := newSessionID()
-	c.setSession(sessionID)
-	if c.attachSession != nil {
-		if err := c.attachSession(sessionID); err != nil {
-			return "", err
-		}
-	}
-	if c.store != nil {
-		if _, err := c.store.TouchSeen("tui", sessionID, store.SeenAttached); err != nil {
-			return "", err
-		}
-	}
-	return sessionID, nil
-}
-
-func (c *chatCommander) Cancel(nodeID string) error {
-	_, err := c.store.RequestCommand(store.Command{
-		SessionID:   c.session(),
-		Kind:        store.CommandCancel,
-		Target:      nodeID,
-		Instruction: "cancelled from the TUI",
-	})
-	return err
-}
-
-// Restart is the settled node's forward door, journaled as the identical
-// command "restart that" would journal. Cancel's twin in every respect: one
-// typed command, one durable receipt, and the reconciler's own splice behind
-// it — the key press adds no second control path for a sentence to miss.
-func (c *chatCommander) Restart(nodeID string) error {
-	_, err := c.store.RequestCommand(store.Command{
-		SessionID:   c.session(),
-		Kind:        store.CommandRestart,
-		Target:      nodeID,
-		Instruction: "restarted from the TUI",
-	})
-	return err
-}
-
-// ConfirmSurgery hands the key path the conversational path's own gates. The
-// head is in this process, so there is nothing to route: the same
-// surgeryNeedsConfirmation, the same durable question, the same encoded option
-// that replays the command when the answer comes back. A window with no head
-// behind it has no gate to consult and says so by answering "not asked" — it
-// also has no reconciler, so nothing it journals is applied here anyway.
-func (c *chatCommander) ConfirmSurgery(kind store.CommandKind, nodeID string) (bool, error) {
-	if c == nil || c.head == nil {
-		return false, nil
-	}
-	return c.head.ConfirmSurgery(c.session(), kind, nodeID)
-}
-
-func (c *chatCommander) NodeTrace(nodeID string, maxBytes int) string {
-	text, _, _ := c.NodeTraceSince(nodeID, maxBytes, tui.NodeTraceStamp{})
-	return text
-}
-
-// NodeTraceSince tails the worker's trace file only when the file has moved.
-// The window asks for the trace on every poll — the executor appends to it
-// outside the journal, so nothing else can say whether it changed — and the
-// stat that decides where to seek is already on the path to the read. Handing
-// its answer back turns a worker that is thinking rather than writing into an
-// open and a stat, instead of 64KB read, allocated, and compared against the
-// copy the window already holds.
-func (c *chatCommander) NodeTraceSince(
-	nodeID string, maxBytes int, since tui.NodeTraceStamp,
-) (string, tui.NodeTraceStamp, bool) {
-	var none tui.NodeTraceStamp
-	if c == nil || c.store == nil || c.workspaceRoot == "" || nodeID == "" || maxBytes <= 0 {
-		return "", none, true
-	}
-	node, ok, err := c.store.Node(nodeID)
-	if err != nil || !ok {
-		return "", none, true
-	}
-	jobDir := filepath.Join(c.workspaceRoot, jobIDOf(c.store, node))
-	file, err := os.Open(filepath.Join(jobDir, ".obs", fmt.Sprintf("%d.trace.log", node.CreatedSeq)))
-	if err != nil {
-		return "", none, true
-	}
-	defer file.Close()
-	info, err := file.Stat()
-	if err != nil {
-		return "", none, true
-	}
-	stamp := tui.NodeTraceStamp{Size: info.Size(), Mod: info.ModTime()}
-	if stamp.Size == since.Size && stamp.Mod.Equal(since.Mod) && !since.Mod.IsZero() {
-		return "", stamp, false
-	}
-	offset := info.Size() - int64(maxBytes)
-	if offset < 0 {
-		offset = 0
-	}
-	if _, err := file.Seek(offset, io.SeekStart); err != nil {
-		return "", none, true
-	}
-	data, err := io.ReadAll(io.LimitReader(file, int64(maxBytes)))
-	if err != nil {
-		return "", none, true
-	}
-	text := string(data)
-	if offset > 0 {
-		// A tail cut at a byte is a tail cut mid-line, and the fragment it
-		// begins with is a different fragment on every poll: the window's first
-		// block is re-keyed each cycle, the reader's anchor with it, and the
-		// parser's kept prefix can never hold. The head moves to the next line
-		// boundary so what arrives is always whole lines.
-		if at := strings.IndexByte(text, '\n'); at >= 0 {
-			text = text[at+1:]
-		}
-	}
-	return text, stamp, true
-}
-
-func (c *chatCommander) ResolveMediaPath(nodeID, relative string) (string, bool) {
-	if filepath.IsAbs(relative) {
-		if info, err := os.Stat(relative); err == nil && !info.IsDir() {
-			return relative, true
-		}
-		return "", false
-	}
-	return c.ResolveWorkspacePath(nodeID, relative)
-}
-
-// ResolveWorkspacePath is the shared safety boundary for every deliverable
-// link. A node resolves to its top-level job directory; relative traversal may
-// not escape that directory, and only existing files become links.
-func (c *chatCommander) ResolveWorkspacePath(nodeID, relative string) (string, bool) {
-	if c == nil || c.store == nil || c.workspaceRoot == "" || nodeID == "" || strings.TrimSpace(relative) == "" {
-		return "", false
-	}
-	if filepath.IsAbs(relative) {
-		return "", false
-	}
-	node, ok, err := c.store.Node(nodeID)
-	if err != nil || !ok {
-		return "", false
-	}
-	root := filepath.Join(c.workspaceRoot, jobIDOf(c.store, node))
-	target := filepath.Join(root, filepath.Clean(relative))
-	inside, err := filepath.Rel(root, target)
-	if err != nil || inside == ".." || strings.HasPrefix(inside, ".."+string(os.PathSeparator)) {
-		return "", false
-	}
-	info, err := os.Stat(target)
-	return target, err == nil && !info.IsDir()
-}
-
-// WorkspacePath resolves the directory itself for the settled-card and
-// history affordances. The directory must already exist; rendering never
-// creates workspaces or guesses at a missing job.
-func (c *chatCommander) WorkspacePath(nodeID string) (string, bool) {
-	if c == nil || c.store == nil || c.workspaceRoot == "" || nodeID == "" {
-		return "", false
-	}
-	node, ok, err := c.store.Node(nodeID)
-	if err != nil || !ok {
-		return "", false
-	}
-	target := filepath.Join(c.workspaceRoot, jobIDOf(c.store, node))
-	info, err := os.Stat(target)
-	return target, err == nil && info.IsDir()
-}
-
-func (c *chatCommander) Notebook(limit int) []store.Fact {
-	if c == nil || c.store == nil {
-		return nil
-	}
-	facts, err := c.store.Facts(limit)
-	if err != nil {
-		return nil
-	}
-	if limit > 0 && len(facts) > limit {
-		facts = facts[:limit]
-	}
-	return facts
-}
-
-func (c *chatCommander) SearchNotebook(terms string, limit int) []store.Fact {
-	if c == nil || c.store == nil {
-		return nil
-	}
-	facts, err := c.store.SearchFactsUncounted(store.FactQuery{
-		Terms: strings.TrimSpace(terms), Limit: limit,
-	})
-	if err != nil {
-		return nil
-	}
-	return facts
-}
-
-func (c *chatCommander) NotebookEvidence(seq int64) []string {
-	if c == nil || c.store == nil || seq <= 0 {
-		return nil
-	}
-	target, found, err := c.store.FactBySeq(seq)
-	if err != nil || !found {
-		return nil
-	}
-	all, err := c.store.Facts(0)
-	if err != nil {
-		return nil
-	}
-	bySeq := make(map[int64]store.Fact, len(all))
-	for _, fact := range all {
-		bySeq[fact.Seq] = fact
-	}
-	evidence := make([]store.Fact, 0)
-	if target.NodeID != "" {
-		evidence = append(evidence, target)
-	}
-	for _, fact := range all {
-		if fact.EvidenceSeq == target.Seq {
-			evidence = append(evidence, fact)
-		}
-	}
-	if target.Unsettled != nil {
-		for _, approach := range target.Unsettled.Approaches {
-			for _, evidenceSeq := range approach.Evidence {
-				if fact, ok := bySeq[evidenceSeq]; ok {
-					evidence = append(evidence, fact)
-				}
-			}
-		}
-	}
-	seen := make(map[string]bool)
-	refs := make([]string, 0, len(evidence))
-	for _, fact := range evidence {
-		ref := strings.TrimSpace(fact.NodeID)
-		if ref == "" || ref == store.RootID {
-			ref = "#" + strconv.FormatInt(fact.Seq, 10)
-		}
-		if !seen[ref] {
-			seen[ref] = true
-			refs = append(refs, ref)
-		}
-	}
-	return refs
-}
-
-func (c *chatCommander) RetractNotebook(seq int64) error {
-	if c == nil || c.store == nil {
-		return fmt.Errorf("notebook store unavailable")
-	}
-	fact, found, err := c.store.FactBySeq(seq)
-	if err != nil {
-		return err
-	}
-	if !found || fact.Status != store.FactActive {
-		return fmt.Errorf("belief #%d is not active", seq)
-	}
-	if err := c.store.QuarantineFact(seq, 0, store.FactOriginUser); err != nil {
-		return err
-	}
-	_, err = thread.Post(c.store, store.Message{
-		SessionID: c.session(),
-		Role:      store.RoleSystem,
-		Body:      "· let go — " + firstLine(fact.Body),
-	})
-	return err
-}
-
-func (c *chatCommander) DatabasePath() string { return c.database }
-
-func formatModelPrice(promptPrice, completionPrice float64) string {
-	if promptPrice < 0 || completionPrice < 0 || promptPrice == 0 && completionPrice == 0 {
-		return ""
-	}
-	return fmt.Sprintf("$%s/M in · $%s/M out",
-		formatMillionPrice(promptPrice*1_000_000),
-		formatMillionPrice(completionPrice*1_000_000),
-	)
-}
-
-func formatMillionPrice(price float64) string {
-	formatted := strings.TrimRight(strings.TrimRight(strconv.FormatFloat(price, 'f', 6, 64), "0"), ".")
-	if formatted == "" {
-		return "0"
-	}
-	return formatted
-}
-
-func dedupeModels(candidates []string) []string {
-	seen := make(map[string]bool, len(candidates))
-	models := make([]string, 0, len(candidates))
-	for _, candidate := range candidates {
-		candidate = strings.TrimSpace(candidate)
-		if candidate == "" || seen[candidate] {
-			continue
-		}
-		seen[candidate] = true
-		models = append(models, candidate)
-	}
-	return models
-}
-
-func prefsPath(dir string) string { return filepath.Join(dir, "settings.json") }
-
-func loadChatPrefs(dir string) chatPrefs {
-	var prefs chatPrefs
-	raw, err := os.ReadFile(prefsPath(dir))
-	if err != nil {
-		return prefs
-	}
-	_ = json.Unmarshal(raw, &prefs)
-	return prefs
-}
-
-func saveChatPrefs(dir string, prefs chatPrefs) error {
-	raw, err := json.MarshalIndent(prefs, "", "  ")
-	if err != nil {
-		return err
-	}
-	return os.WriteFile(prefsPath(dir), raw, 0o600)
-}
-
-// liveClient is a model-switchable completion client. Long-running leaves take
-// a snapshot so one measurement has one model; structuring consumers hold this
-// handle directly, so a swap takes effect on their next call.
-//
-// It is also the one seam every structuring call in this surface passes
-// through — the head's routing loop, the compiler, the delivery gate, the
-// revision sentinel, the narrator, the distiller. None of that spend reached
-// the journal: the daily rail is summed from the usage table and nowhere else,
-// so it systematically understated the bill by the entire cost of thinking
-// about the work. The headless path has journaled its own preparation spend
-// since it existed; chat is what forgot. Billing here rather than at each of a
-// dozen call sites is what makes it hard to forget again.
-type liveClient struct {
-	settings config.Config
-	mu       sync.RWMutex
-	model    string
-	client   router.Client
-	journal  func(store.NodeUsage)
-}
-
-// spendNodeKey carries the node a structuring call is about. Most of them are
-// about a specific piece of work — the gate judging one deliverable, the
-// sentinel revising one plan — and attributing those to the job rather than to
-// the spine is the difference between a job's cost being its whole cost and
-// being only what its leaves happened to burn.
-type spendNodeKey struct{}
-
-// withSpendNode names the work a structuring call belongs to.
-func withSpendNode(ctx context.Context, nodeID string) context.Context {
-	if strings.TrimSpace(nodeID) == "" {
-		return ctx
-	}
-	return context.WithValue(ctx, spendNodeKey{}, nodeID)
-}
-
-func spendNodeFrom(ctx context.Context) string {
-	if id, ok := ctx.Value(spendNodeKey{}).(string); ok {
-		return id
-	}
-	// The spine is the honest home for work that belongs to no job: routing a
-	// message, composing an arrival brief, consolidating the notebook. It is
-	// not a job root, so it lands on the day's rail without inventing spend for
-	// an errand that never asked for it.
-	return store.RootID
-}
-
-// WithUsageJournal wires the durable rail. It is set after the graph opens
-// rather than at construction because the clients exist first; until it is set
-// a client simply does not bill, which is the old behaviour and the right one
-// for a client that has no store to bill to.
-func (l *liveClient) WithUsageJournal(journal func(store.NodeUsage)) *liveClient {
-	if l == nil {
-		return l
-	}
-	l.mu.Lock()
-	defer l.mu.Unlock()
-	l.journal = journal
-	return l
-}
-
-func (l *liveClient) usageJournal() func(store.NodeUsage) {
-	l.mu.RLock()
-	defer l.mu.RUnlock()
-	return l.journal
-}
-
-// recordStructuringSpend bills one completed structuring call. A response with
-// no usage block is not billed: guessing at a number is worse than a gap, and
-// the gap is visible as a run the rail did not see rather than as money the
-// rail invented.
-func (l *liveClient) recordStructuringSpend(ctx context.Context, model string, response *ai.Response) {
-	journal := l.usageJournal()
-	if journal == nil || response == nil || response.Usage == nil {
-		return
-	}
-	usage := store.NodeUsage{
-		NodeID:           spendNodeFrom(ctx),
-		PromptTokens:     response.Usage.PromptTokens,
-		CompletionTokens: response.Usage.CompletionTokens,
-		Model:            model,
-	}
-	if response.Usage.Cost != nil {
-		usage.Cost = *response.Usage.Cost
-	}
-	if usage.PromptTokens == 0 && usage.CompletionTokens == 0 && usage.Cost == 0 {
-		return
-	}
-	journal(usage)
-}
-
-// messageClientPool keeps per-message chat overrides pinned to the exact model
-// recorded on the durable user message. A later work-model change therefore
-// cannot race an armed submission that the head has not tailed yet.
-type messageClientPool struct {
-	settings config.Config
-	journal  func(store.NodeUsage)
-	mu       sync.Mutex
-	clients  map[string]*liveClient
-}
-
-func (p *messageClientPool) ForMessage(message store.Message) (head.Client, error) {
-	model := strings.TrimSpace(message.Model)
-	if model == "" {
-		return nil, errors.New("boost message has no model")
-	}
-	return p.ForModel(model)
-}
-
-// ForModel is the same pinning seam seen from the graph side: one client per
-// exact model slug, shared by every leaf that asked for it.
-func (p *messageClientPool) ForModel(model string) (*liveClient, error) {
-	model = strings.TrimSpace(model)
-	if model == "" {
-		return nil, errors.New("no model named")
-	}
-	p.mu.Lock()
-	defer p.mu.Unlock()
-	if client := p.clients[model]; client != nil {
-		return client, nil
-	}
-	client, err := newLiveClient(p.settings, model)
-	if err != nil {
-		return nil, err
-	}
-	client.WithUsageJournal(p.journal)
-	if p.clients == nil {
-		p.clients = make(map[string]*liveClient)
-	}
-	p.clients[model] = client
-	return client, nil
-}
+// The commander is internal/command's now: every capability the surface
+// reaches through, in a package a process without a terminal can also reach.
+// These names stay because they are what this package's own prose calls them.
+type (
+	chatCommander   = command.Commander
+	chatPrefs       = command.Prefs
+	chatMediaModels = command.MediaModels
+)
+
+var (
+	newVisitorCommander = command.NewVisitor
+	loadChatPrefs       = command.LoadPrefs
+	saveChatPrefs       = command.SavePrefs
+	attachmentStoreRoot = command.AttachmentStoreRoot
+	newSessionID        = command.NewSessionID
+)
+
+// liveClient and messageClientPool are internal/provider/pool's Client and
+// Pool. The provider seam moved out of this file in the Wave 1 dissolution;
+// these names stay because they are what this package's own prose has always
+// called them, and an alias is the whole of the difference.
+type (
+	liveClient        = pool.Client
+	messageClientPool = pool.Pool
+)
+
+// newLiveClient and withSpendNode are the moved constructor and the moved
+// attribution seam, kept under their old spellings for the same reason.
+var (
+	newLiveClient        = pool.New
+	newMessageClientPool = pool.NewPool
+	withSpendNode        = pool.WithSpendNode
+)
 
 // pinnedWorkClient honors the model a job's own words asked for. An
 // unreachable slug degrades silently to the ordinary work client: the job
@@ -2656,113 +1789,6 @@ func resolveWorkModelWords(words head.ModelWords, models *catalog.Catalog, boost
 	return head.WorkModelChoice{Requested: requested}
 }
 
-func newLiveClient(settings config.Config, model string) (*liveClient, error) {
-	client, err := settings.ClientFor(model)
-	if err != nil {
-		return nil, err
-	}
-	return &liveClient{settings: settings, model: model, client: client}, nil
-}
-
-func (l *liveClient) CompleteWithMessages(ctx context.Context, messages []ai.Message, options ...ai.Option) (*ai.Response, error) {
-	slot, client := l.Snapshot()
-	response, err := client.CompleteWithMessages(ctx, messages, options...)
-	// The served model, not the slot: a panel picks a rung and an escalation
-	// moves one, and the row should name whoever actually answered.
-	model := slot
-	if served := provider.CallFrom(ctx).Model(); served != "" {
-		model = served
-	}
-	l.recordStructuringSpend(ctx, model, response)
-	return response, err
-}
-
-func (l *liveClient) Model() string {
-	l.mu.RLock()
-	defer l.mu.RUnlock()
-	return l.model
-}
-
-// Snapshot returns a model and client from the same instant, which keeps the
-// profile key and the executor it describes inseparable.
-func (l *liveClient) Snapshot() (string, router.Client) {
-	l.mu.RLock()
-	defer l.mu.RUnlock()
-	return l.model, l.client
-}
-
-// escalatable reports whether a failed leaf has somewhere stronger to go —
-// the same condition the headless runner uses to grant one escalation.
-func (l *liveClient) escalatable() bool {
-	l.mu.RLock()
-	defer l.mu.RUnlock()
-	if panel, ok := l.client.(*router.Router); ok {
-		return panel.Rungs() > 1
-	}
-	return false
-}
-
-func (l *liveClient) routed() bool {
-	l.mu.RLock()
-	defer l.mu.RUnlock()
-	_, ok := l.client.(*router.Router)
-	return ok
-}
-
-func (l *liveClient) SetModel(model string) error {
-	model = strings.TrimSpace(model)
-	if model == "" {
-		return fmt.Errorf("model cannot be empty")
-	}
-	client, err := l.settings.ClientFor(model)
-	if err != nil {
-		return err
-	}
-	closeReplaced(l.swap(model, client))
-	return nil
-}
-
-// swap installs the new pair and returns the client it displaced, which the
-// caller closes outside the lock — a client's Close flushes a ledger, and no
-// model read should wait behind that.
-func (l *liveClient) swap(model string, client router.Client) router.Client {
-	l.mu.Lock()
-	defer l.mu.Unlock()
-	previous := l.client
-	l.model, l.client = model, client
-	return previous
-}
-
-// Close releases the underlying router client so its ledger flushes and its
-// events handle is returned before the process exits.
-func (l *liveClient) Close() {
-	_, client := l.Snapshot()
-	closeReplaced(client)
-}
-
-// Close releases every pinned per-model client the pool has handed out.
-func (p *messageClientPool) Close() {
-	p.mu.Lock()
-	defer p.mu.Unlock()
-	for _, client := range p.clients {
-		client.Close()
-	}
-}
-
-// closeReplaced releases a client that has just been swapped out.
-//
-// A router is not a value: it owns the append handle on router-events.jsonl and
-// a queue of graded observations the run has already paid for. Every model
-// switch used to drop one on the floor, which leaks the handle for the life of
-// the process and loses whatever had not reached the ledger file yet. Closing
-// is best-effort and idempotent; a plain adapter has nothing to close and is
-// left alone.
-func closeReplaced(client router.Client) {
-	if closer, ok := client.(io.Closer); ok {
-		_ = closer.Close()
-	}
-}
-
 func waitWithGrace(group *sync.WaitGroup, grace time.Duration) {
 	done := make(chan struct{})
 	guard.Go("chat/background-wait", func() { group.Wait(); close(done) })
@@ -2818,14 +1844,6 @@ func expandHome(path string) (string, error) {
 		return home, nil
 	}
 	return filepath.Join(home, strings.TrimPrefix(path, "~/")), nil
-}
-
-func newSessionID() string {
-	var random [4]byte
-	if _, err := rand.Read(random[:]); err == nil {
-		return hex.EncodeToString(random[:])
-	}
-	return fmt.Sprintf("%08x", time.Now().UnixNano())
 }
 
 // sessionNewWord is the one spelling that means "do not resume". It is a flag
@@ -2892,386 +1910,22 @@ func continuationMessage(pieces int) string {
 	return resident.OverrunContinuationMessage(pieces)
 }
 
-// Every number in this system used to be retrospective. Cost was computed after
-// spending, the rail fired after crossing, and the first quantity a user ever
-// saw about a fifty-leaf job was a step count emitted well after the planning
-// that produced it had been paid for. There was no moment at which a person
-// could look at what they had asked for and decline it.
-//
-// This is that moment, and it is deliberately small: one question, quoting a
-// count and a price, with two options, on the last tick at which not starting
-// is free — the claim. Below the threshold nothing is asked at all, because a
-// resident that asks permission for two dollars of work is not a resident.
-const (
-	// planConsentApprove and planConsentHold are the two answers. The gate
-	// reads the recorded resolution rather than decoding an option value, so
-	// the labels are the contract and are matched exactly.
-	planConsentApprove = "yes, start it"
-	planConsentHold    = "hold it — I'll trim it first"
-
-	// planConsentPoll is how often an outstanding question is re-read. It runs
-	// only while at least one job is waiting, so an idle resident pays nothing
-	// for it.
-	planConsentPoll = 2 * time.Second
-
-	// planConsentHoldReason is what the hold records. It appears wherever a
-	// held node explains itself.
-	planConsentHoldReason = "waiting for your go-ahead on the estimate"
+// The consent desk is internal/consent's now: the price before the purchase,
+// reachable from anywhere work is admitted rather than only from the window
+// holding the terminal (chat-rebuild Part 9.10). These names stay because they
+// are what this package's own prose calls them.
+type (
+	consentDesk  = consent.Desk
+	planEstimate = consent.Estimate
 )
 
-// planEstimate is the honest arithmetic behind the question: how many steps,
-// and what a step has cost on this machine. Both halves are measurements. When
-// there is no measurement there is no estimate and no question — a forecast the
-// model made up would be worse than the silence it replaced.
-type planEstimate struct {
-	Leaves  int
-	PerLeaf float64
-	Dollars float64
-}
-
-// estimateJob prices a spliced subtree. The unit cost is the median of what a
-// run has actually cost here, preferring the executor's own profile records
-// (which know the shape of the work) and falling back to the journal's own
-// median (which knows this machine). A job with no measured history anywhere
-// returns nothing at all.
-func estimateJob(graph *store.Store, measured *profile.Profile, root string) (planEstimate, bool) {
-	nodes, err := graph.SubtreeNodes(root)
-	if err != nil || len(nodes) == 0 {
-		return planEstimate{}, false
-	}
-	hasChild := make(map[string]bool, len(nodes))
-	for _, node := range nodes {
-		if node.Parent != "" {
-			hasChild[node.Parent] = true
-		}
-	}
-	estimate := planEstimate{}
-	for _, node := range nodes {
-		if !hasChild[node.ID] {
-			estimate.Leaves++
-		}
-	}
-	if estimate.Leaves == 0 {
-		return planEstimate{}, false
-	}
-	estimate.PerLeaf = medianProfileCost(measured)
-	if estimate.PerLeaf <= 0 {
-		if journaled, err := graph.MeasuredCostPerRun(); err == nil {
-			estimate.PerLeaf = journaled
-		}
-	}
-	if estimate.PerLeaf <= 0 {
-		return planEstimate{}, false
-	}
-	estimate.Dollars = float64(estimate.Leaves) * estimate.PerLeaf
-	return estimate, true
-}
-
-// medianProfileCost is what one leaf of ordinary planned work has cost this
-// model. The median rather than the mean because leaf costs are long-tailed and
-// one runaway must not set the price of the next fifty.
-func medianProfileCost(measured *profile.Profile) float64 {
-	if measured == nil {
-		return 0
-	}
-	costs := make([]float64, 0, len(measured.Records))
-	for _, record := range measured.Records {
-		if record.Cost > 0 && record.Size != profile.BucketReflex {
-			costs = append(costs, record.Cost)
-		}
-	}
-	if len(costs) == 0 {
-		return 0
-	}
-	sort.Float64s(costs)
-	return costs[len(costs)/2]
-}
-
-// consentDesk holds the jobs waiting on an answer and releases them when one
-// arrives. It is in-memory because it is a watch loop, not a record: the
-// question and the hold are both durable, so a restart rebuilds the watch from
-// the graph rather than from anything kept here.
-type consentDesk struct {
-	graph *store.Store
-	// headless is the answer given by a desk with nobody standing at it. A
-	// durable question asked where no one can read it is a job that waits
-	// forever, so a one-shot run decides at this exact point instead — approve
-	// and carry on, or refuse with the price it refused — and the question is
-	// never asked. Nil is the ordinary desk.
-	headless func(store.Node, planEstimate) bool
-	mu       sync.Mutex
-	waiting  map[string]int64
-	wake     chan struct{}
-}
-
-func newConsentDesk(graph *store.Store) *consentDesk {
-	return &consentDesk{graph: graph, waiting: make(map[string]int64), wake: make(chan struct{}, 1)}
-}
-
-// consentQuestion finds the one consent question this job has ever been asked.
-// One is the whole design: a job is priced once, and a person who said "hold"
-// is not asked again every time a leaf comes up for claim.
-func (d *consentDesk) consentQuestion(root string) (store.AgentQuestion, bool) {
-	questions, err := d.graph.QuestionsForNode(root, 20)
-	if err != nil {
-		return store.AgentQuestion{}, false
-	}
-	for _, question := range questions {
-		if question.Category == planConsentCategory {
-			return question, true
-		}
-	}
-	return store.AgentQuestion{}, false
-}
-
-// gate is the last free moment. It returns true when the caller must not run.
-//
-// The hold is what makes this work without a new mechanism: a held node is not
-// ready, the runner's landing path already treats a held claim as a release
-// rather than a failure, and the leaf that got this far has spent nothing yet
-// because this is the first thing its executor does.
-func (d *consentDesk) gate(settings config.Config, measured *profile.Profile, node store.Node) bool {
-	if d == nil || settings.PlanConsentUSD <= 0 || node.Group == resident.ReflexGroup ||
-		node.Provenance.Origin != store.OriginUser {
-		return false
-	}
-	root, ok := jobRootOf(d.graph, node)
-	if !ok {
-		return false
-	}
-	if question, found := d.consentQuestion(root.ID); found {
-		if question.Status == store.QuestionAnswered || question.Status == store.QuestionExpired {
-			// Asked and settled. Whatever the answer was, the decision has
-			// been made once and by a person; re-holding here would be the
-			// system overruling them, and would deadlock a job they released
-			// by hand.
-			return false
-		}
-		d.hold(root)
-		d.watch(root.ID, question.Seq)
-		return true
-	}
-	estimate, priced := estimateJob(d.graph, measured, root.ID)
-	if !priced || estimate.Dollars < settings.PlanConsentUSD {
-		return false
-	}
-	if d.headless != nil {
-		if d.headless(root, estimate) {
-			return false
-		}
-		// Refused. The hold is what makes the refusal cost nothing: the claim
-		// is released, no worker has said a word, and the driver above reports
-		// the price rather than paying it.
-		d.hold(root)
-		return true
-	}
-	seq, err := d.ask(root, estimate)
-	if err != nil {
-		// A question that could not be asked must not become a job that never
-		// runs. Silence here costs money; a wedge costs the errand.
-		log.Printf("note: could not ask for spending consent on %s: %v", root.ID, err)
-		return false
-	}
-	d.hold(root)
-	d.watch(root.ID, seq)
-	return true
-}
-
-// planConsentCategory names this ask for the empirical gate the way every other
-// durable question is named. It is its own class because its answer is the one
-// thing no default may be assumed for: the whole point is that a person said
-// yes before the money moved.
-const planConsentCategory = store.QuestionCategory("plan-consent")
-
-func (d *consentDesk) ask(root store.Node, estimate planEstimate) (int64, error) {
-	label := clipUTF8Bytes(firstLine(nodeDisplay(root)), 60)
-	prompt := fmt.Sprintf("%s comes to %d %s, about $%.2f at what work like this has cost here. Start it, or trim it first?",
-		label, estimate.Leaves, plural(estimate.Leaves, "step"), estimate.Dollars)
-	options := []store.QuestionOption{
-		{Label: planConsentApprove},
-		{Label: planConsentHold, Hint: "the plan stays as it is; cancel the parts you don't want, then say go"},
-	}
-	allowFree := false
-	body := store.QuestionMessageBody(prompt, options, store.QuestionConfig{
-		Kind: store.QuestionConfirm, Category: planConsentCategory,
-		Default: "1", AllowFree: &allowFree,
-	})
-	question, err := d.graph.AskQuestion(store.AgentQuestion{
-		SessionID: root.Provenance.SessionID, Text: body, OriginNodeID: root.ID,
-		Urgency: store.QuestionBlocking, Category: planConsentCategory,
-		DefaultAnswer: "1", Options: options,
-	})
-	if err != nil {
-		return 0, err
-	}
-	if _, err := d.graph.SurfaceQuestion(question.Seq); err != nil {
-		return 0, err
-	}
-	return question.Seq, nil
-}
-
-func (d *consentDesk) hold(root store.Node) {
-	d.setHold(root, true)
-}
-
-func (d *consentDesk) setHold(root store.Node, held bool) {
-	nodes, err := d.graph.SubtreeNodes(root.ID)
-	if err != nil {
-		return
-	}
-	for _, node := range nodes {
-		if node.Status == store.Done || node.Status == store.Failed || node.Status == store.Cancelled {
-			continue
-		}
-		if node.Held == held {
-			continue
-		}
-		if err := d.graph.SetNodeHold(node.ID, held, planConsentHoldReason); err != nil {
-			log.Printf("note: could not %s %s for consent: %v", holdVerb(held), node.ID, err)
-		}
-	}
-}
-
-func holdVerb(held bool) string {
-	if held {
-		return "hold"
-	}
-	return "release"
-}
-
-func (d *consentDesk) watch(root string, seq int64) {
-	if !d.enqueue(root, seq) {
-		return
-	}
-	select {
-	case d.wake <- struct{}{}:
-	default:
-	}
-}
-
-func (d *consentDesk) enqueue(root string, seq int64) bool {
-	d.mu.Lock()
-	defer d.mu.Unlock()
-	if _, already := d.waiting[root]; already {
-		return false
-	}
-	d.waiting[root] = seq
-	return true
-}
-
-func (d *consentDesk) outstanding() map[string]int64 {
-	d.mu.Lock()
-	defer d.mu.Unlock()
-	pending := make(map[string]int64, len(d.waiting))
-	for root, seq := range d.waiting {
-		pending[root] = seq
-	}
-	return pending
-}
-
-func (d *consentDesk) forget(root string) {
-	d.mu.Lock()
-	defer d.mu.Unlock()
-	delete(d.waiting, root)
-}
-
-// rehydrate rebuilds the watch after a restart. Held nodes and unanswered
-// questions are both durable, so a resident that died between the question and
-// the answer comes back knowing exactly what it was waiting for — and a job
-// approved while it was down is released on the way up rather than sitting
-// held forever.
-func (d *consentDesk) rehydrate() {
-	nodes, err := d.graph.ActiveNodes()
-	if err != nil {
-		return
-	}
-	for _, node := range nodes {
-		if node.Parent != store.RootID || !node.Held {
-			continue
-		}
-		question, found := d.consentQuestion(node.ID)
-		if !found {
-			continue
-		}
-		switch question.Status {
-		case store.QuestionAnswered, store.QuestionExpired:
-			d.settle(node.ID, question)
-		default:
-			d.watch(node.ID, question.Seq)
-		}
-	}
-}
-
-// serve is the release loop. It sleeps on a channel while nothing is waiting,
-// which is the difference between a feature and a tax on every idle resident.
-func (d *consentDesk) serve(ctx context.Context) {
-	for {
-		if len(d.outstanding()) == 0 {
-			select {
-			case <-ctx.Done():
-				return
-			case <-d.wake:
-			}
-			continue
-		}
-		select {
-		case <-ctx.Done():
-			return
-		case <-time.After(planConsentPoll):
-		}
-		for root, seq := range d.outstanding() {
-			question, found, err := d.graph.AgentQuestionBySeq(seq)
-			if err != nil || !found {
-				continue
-			}
-			if question.Status != store.QuestionAnswered && question.Status != store.QuestionExpired {
-				continue
-			}
-			d.settle(root, question)
-		}
-	}
-}
-
-// settle acts on an answered question exactly once. An approval releases the
-// hold and says so; anything else leaves the plan standing and held, which is
-// what "trim it first" means — the pending nodes are all still there to cancel.
-func (d *consentDesk) settle(root string, question store.AgentQuestion) {
-	d.forget(root)
-	node, found, err := d.graph.Node(root)
-	if err != nil || !found {
-		return
-	}
-	if !strings.EqualFold(strings.TrimSpace(question.Resolution), planConsentApprove) {
-		return
-	}
-	d.setHold(node, false)
-	_, _ = thread.Post(d.graph, store.Message{
-		SessionID: node.Provenance.SessionID,
-		Role:      store.RoleSystem,
-		NodeID:    node.ID,
-		Body:      "starting — " + clipUTF8Bytes(firstLine(nodeDisplay(node)), 60),
-	})
-}
-
-// jobRootOf walks to the top-level node an errand hangs from. It is the unit a
-// price is quoted for, because it is the unit a person asked for.
-func jobRootOf(graph *store.Store, node store.Node) (store.Node, bool) {
-	current := node
-	for depth := 0; depth < 32; depth++ {
-		if current.Parent == store.RootID {
-			return current, true
-		}
-		if strings.TrimSpace(current.Parent) == "" {
-			return store.Node{}, false
-		}
-		parent, found, err := graph.Node(current.Parent)
-		if err != nil || !found {
-			return store.Node{}, false
-		}
-		current = parent
-	}
-	return store.Node{}, false
-}
+var (
+	newConsentDesk     = consent.NewDesk
+	estimateJob        = consent.EstimateJob
+	medianProfileCost  = consent.MedianLeafCost
+	jobRootOf          = consent.JobRootOf
+	planConsentApprove = consent.Approve
+)
 
 // deliveryPartialBytes bounds the partial a rail-deferred job posts. A partial
 // is still what the person reads, so it is bounded by what a message can carry
@@ -3894,49 +2548,15 @@ func (j *jobPlans) reviseOn(ctx context.Context, settings config.Config, client 
 	defer locks.pass.Unlock()
 	locks.document.Lock()
 	defer locks.document.Unlock()
-	// The sentinel is this job's own second thought about its own remainder,
-	// so its spend belongs to this job.
-	judgeCtx := withSpendNode(router.WithAvoidModel(ctx, workerModel), node.ID)
-	operations, _, err := plan.Revise(settings.Context(judgeCtx, planGraph.Goal),
-		unlockedWhileThinking{client: client, document: &locks.document}, planGraph, event)
-	if err != nil || len(operations) == 0 {
-		return
-	}
-	applied, notes := resident.ApplyRevision(graph, planGraph, prefix, entry.root, operations)
-	if applied > 0 && j.journal != nil {
-		// The journaled structure is now behind the graph in memory. Re-writing
-		// it here rather than on every landing is the whole economy of the
-		// arrangement: a revision is rare and changes the document, a landing is
-		// constant and changes only what the store already records.
-		j.journal(prefix, entry)
-	}
-	if len(notes) > 0 {
-		_, _ = thread.Post(graph, store.Message{
-			SessionID: node.Provenance.SessionID,
-			Role:      store.RoleSystem,
-			NodeID:    node.ID,
-			Body:      "revision sentinel refusals after " + fmt.Sprintf("%q", firstLine(nodeDisplay(node))) + ":\n" + strings.Join(notes, "\n"),
+	// The pass itself is internal/revision's. What stays here is the registry's
+	// half of it: which job's document, under which locks, and what journaling
+	// the retained structure means once an edit lands.
+	revision.Sentinel(ctx, settings, unlockedWhileThinking{client: client, document: &locks.document},
+		graph, node, prefix, entry.root, planGraph, event, workerModel, func() {
+			if j.journal != nil {
+				j.journal(prefix, entry)
+			}
 		})
-	}
-	if applied == 0 {
-		return
-	}
-	reasons := make([]string, 0, len(operations))
-	for _, operation := range operations {
-		if operation.Applied && strings.TrimSpace(operation.Reason) != "" {
-			reasons = append(reasons, operation.Op+": "+firstLine(operation.Reason))
-		}
-	}
-	body := fmt.Sprintf("revised the remaining plan after %q — %d change(s)", firstLine(nodeDisplay(node)), applied)
-	if len(reasons) > 0 {
-		body += "\n" + strings.Join(reasons, "\n")
-	}
-	_, _ = thread.Post(graph, store.Message{
-		SessionID: node.Provenance.SessionID,
-		Role:      store.RoleSystem,
-		NodeID:    node.ID,
-		Body:      body,
-	})
 }
 
 // reviseForUser is reviseAfter's twin for the other event source. It takes the
@@ -3962,45 +2582,16 @@ func (j *jobPlans) reviseForUser(ctx context.Context, settings config.Config, cl
 	defer locks.pass.Unlock()
 	locks.document.Lock()
 	defer locks.document.Unlock()
-	operations, _, err := plan.Revise(settings.Context(withSpendNode(ctx, job.ID), entry.graph.Goal),
-		unlockedWhileThinking{client: client, document: &locks.document}, entry.graph,
-		resident.UserRevisionEvent(message, flavor))
+	redirection, applied, err := revision.ForUser(ctx, settings,
+		unlockedWhileThinking{client: client, document: &locks.document},
+		graph, job, entry.graph, entry.root, message, flavor)
 	if err != nil {
 		return resident.Redirection{}, err
-	}
-
-	var revision resident.Redirection
-	editable := make([]plan.Operation, 0, len(operations))
-	for _, operation := range operations {
-		id := fmt.Sprintf("%s-n%d", job.ID, operation.Node)
-		if operation.Op == "remove" {
-			if node, found, err := graph.Node(id); err == nil && found &&
-				(node.Status == store.Running || node.Status == store.Claimed) {
-				revision.RunningRemovals = append(revision.RunningRemovals, id)
-				continue
-			}
-		}
-		editable = append(editable, operation)
-	}
-	applied, notes := resident.ApplyRevision(graph, entry.graph, job.ID, entry.root, editable)
-	revision.Notes = notes
-	for _, operation := range editable {
-		if !operation.Applied {
-			continue
-		}
-		switch operation.Op {
-		case "add":
-			revision.Added++
-		case "remove":
-			revision.Dropped++
-		case "rewire", "retitle":
-			revision.Amended++
-		}
 	}
 	if applied > 0 && j.journal != nil {
 		j.journal(job.ID, entry)
 	}
-	return revision, nil
+	return redirection, nil
 }
 
 // unlockedWhileThinking hands a plan document back to the rest of the job for
@@ -4129,768 +2720,6 @@ func nodeDisplay(node store.Node) string {
 		return title
 	}
 	return firstLine(node.Brief)
-}
-
-// judgeDeliverablePrompt is a gate, not a critic: its default is pass, and a
-// fail must name the specific element of the request that is absent. The
-// failure mode being prevented is the gate that always finds something —
-// polish loops that spend the user's money on taste.
-//
-// The working-decisions paragraph ends on verification for the same reason it
-// began with method: a promise about evidence and a claim of evidence are the
-// same commitment seen from either end. What the deliverable shows about the
-// finished thing being used the way it will be used is the first thing it can
-// hold — which is exactly what a leaf skips when it proves the parts and infers
-// the whole. An honest "not verified here, run this" passes, so the clause
-// never pushes anyone towards the lie.
-//
-// The evidence paragraph is the second thing it can hold, and it is the one
-// that stops the claim from being self-certifying. For as long as the gate read
-// only the final message, the strongest sentence in the language — "verified" —
-// cost a worker nothing to write and the gate nothing to believe. It now
-// receives what the leaf left in the workspace and the tail of what the leaf
-// actually ran, both of which already existed and neither of which costs a
-// call. The records are stated as partial on purpose: they are a tail and one
-// directory, so they can convict a claim and can never acquit the absence of
-// one, and a gate told otherwise would start failing honest work for the sin of
-// having run somewhere it cannot see.
-//
-// The working-method paragraph closes the hole that made all of this weaker
-// than it reads on a planned job. The gate's "compiled goal" for such a job was
-// the harness's own two-line stub — "Synthesis / Assemble the finished answer" —
-// because the passes that write instructions and methods only ever ran for work
-// leaves, and the node that IS the deliverable is not one. The method is where a
-// kind of work states what done means and how it is checked, in its own terms
-// and per job rather than per domain, which is the only calibration this gate can
-// have that is neither a hardcoded rubric nor the worker's own opinion of itself.
-//
-// The middle paragraph was added after a live failure the gate waved through. A
-// worker asked to judge an architecture plan wrote its judgement into a file and
-// ended with "the deliverable is written and verified against the actual repo
-// source" — true, complete, and containing no verdict. That text became the
-// node's summary, and the summary is the single source every later surface
-// reads, so the answer existed nowhere the user or the head could reach it. The
-// paragraph is stated as a value rather than a list of giveaway phrases,
-// because the next way to describe work instead of doing it is always a phrasing
-// nobody wrote down: the question is whether the substance is present, not
-// whether some sentence pattern is.
-const judgeDeliverablePrompt = `You are the final gate before a finished piece of work is handed to the person who asked for it. You receive their verbatim request, the compiled goal, and the deliverable as produced.
-
-Judge exactly one question: would the person who asked accept this as done? Default to PASS. The gate exists for real gaps, not polish — wording, style, and things they never asked for are not gaps.
-
-FAIL only when you can name a specific element of the request that is absent, unanswered, or unsupported by evidence the goal promised. Quote or name the missing element concretely enough that a worker could close the gap from your words alone.
-
-Working decisions declared in the goal are part of what was promised. A commitment about method or evidence — what would be run, checked or reviewed before the work was handed over — is a gap when nothing in the deliverable shows it happened. A claim that the work was checked, proven or verified is itself such a commitment: it is a gap unless the deliverable shows the finished thing exercised the way it will actually be used — what was run, what came back — rather than its parts checked one by one and the whole inferred from them. Naming what could not be verified here, and the check the person can run themselves, is not a gap: it is the honest form of the same claim and it passes.
-
-One absence counts exactly like every other and is the one most easily waved through: the substance itself. What you are handed IS the deliverable — it is the whole of what the person will read, and nothing beside it will be opened for them. So text that reports on the work rather than carrying it — that the work is finished, that a file now holds the answer, that the analysis was checked and is consistent — has described the deliverable in place of being it, and the element of the request that is absent is the answer: the verdict that was asked for, the findings, the numbers, the recommendation. Name that as the gap. A pointer to where the answer lives is not the answer however true the pointer is; naming the file is right beside the substance and never instead of it. The same absence in the future tense is the purest form of it: text saying what would be looked up, what will be compared, what remains to be checked, is a plan for producing the answer handed over in place of the answer, and it is a gap however sound the plan is. This is still one absence and not a second style test: text that gives the answer in its own plain words passes whatever shape it takes.
-
-Below the deliverable, whenever there is anything to show, you are given two records of the run itself: what it left behind, and the tail of what it actually ran. Read the deliverable's claims against them, the way the person would. Something named as produced that nothing produced, or a check the work says it made when nothing of that kind appears in what it ran, is an element unsupported by evidence and is a gap of exactly the kind above — name it in those words. Both records are partial by construction: the tail is the end of a longer run, and what was left behind is one place among many. So they can convict a claim and never acquit one — silence in them is evidence, never proof, and where the deliverable's own account is consistent with what is there, or where these records could never have held the thing in question, pass. One shape in these records is read against the substance rule above: the run wrote a file and the deliverable's own text is thin beside it. Where the request never named a file or document, the substance has been filed where nobody asked and the message points at it — the missing element is that content itself, in the message, and you name it as the gap. Where the request did ask for the file — named it, or asked for work whose product plainly lives in files, like a change to existing material — that split is the CORRECT shape, not a gap: the message carries what was done and the evidence it holds (the answer, the verdict, the numbers, what was run and what came back), never the file's whole contents, and a short message beside an asked-for file convicts nothing by its length.
-
-There is one record that is not partial, and it says so of itself: that the run called no tools and left nothing behind — the whole of it, not a tail. Nothing was looked up, read, computed or checked, so anything the request needed the work to go and find is not in the deliverable and cannot be. Hold the request against that. Where it asked for something only work could produce — figures, sources, the state of something out in the world, a thing built or changed — the gap is that content itself: name what was to be found and never was, in those words, and never as a remark about effort or process. Where the request was answerable from what the worker was already given, an unexercised run is no gap at all and the ordinary reading above decides it.
-
-Where a working method is given, it is the standard this kind of work set for itself before anything was produced, and it is the only standard beside the request itself that you hold the deliverable to. Where it asks for nothing, nothing is missing: a method that names no verification makes an unverified result complete, and a method that names one makes its absence a gap.
-
-A confirmation is the fact of what came back, in the deliverable's own words: what was run, how many passed, what failed, how it ended. When the request asked for a thing to be run and confirmed, that reading satisfies it, and the verbatim transcript of the command is never the gap — demanding the raw output, the exact formatting, or the full terminal text of a check the deliverable already states the result of is a preference of yours, and the honest answer for a preference is pass. Only a request that asked for the output itself — the log, the listing, the exact text — is failed by its absence.
-
-When you name a gap, quote the words of the request it is a failure of — a span of the person's own text, copied exactly as they wrote it, long enough to be unmistakably theirs. Quote the part of what they asked for that is not there. A gap you cannot quote from their request is a preference of yours rather than something they asked for and did not get, and the honest answer for it is pass.
-
-Return exactly one JSON object, nothing else: {"pass": true, "exercised": true or false} or {"pass": false, "gaps": "<the named gaps>", "quote": "<the words of the request this gap fails, copied exactly>"}. "exercised" is a statement about evidence and never about quality: true only when the finished thing was run the way it will actually be used and held — visible in what was run, or reported in the deliverable as what was run and what came back. Everything else is false, including an honest "not verified here" and work that nothing available could have exercised. Both of those still pass; they are simply not evidenced.`
-
-var judgeDeliverableSchema = json.RawMessage(`{
-  "type": "object",
-  "properties": {
-    "pass": {"type": "boolean"},
-    "gaps": {"type": "string"},
-    "quote": {"type": "string"},
-    "exercised": {"type": "boolean"}
-  },
-  "required": ["pass"],
-  "additionalProperties": false
-}`)
-
-// gateRevisionContract closes every revision, not only the ones whose named gap
-// was a missing answer. The revision's own final message replaces the first
-// attempt as the node's summary, and a second pass that closes a real gap inside
-// a file and then reports that it did so has moved the original failure one
-// round along rather than fixing it. The worker was told this once already in
-// its own contract; a revision is the moment it demonstrably was not heard.
-const gateRevisionContract = "Your final message is the deliverable and the only thing the person will read. " +
-	"Put the substance in it — the verdict, the findings, the numbers they asked for — " +
-	"and name the files beside that substance, never in place of it. Nothing written in the " +
-	"future tense counts: what you would look up or intend to check is a plan, and the person " +
-	"is owed the result of carrying it out. " +
-	// The one clause that keeps a repaired deliverable from reading as a
-	// disputed one. The revision's message REPLACES the first attempt as the
-	// node's summary, so anything it says about the review is what the person
-	// opens the answer with — and a correct answer introduced by an account of
-	// what was wrong with the last one reads as a hedge on itself.
-	"Write it as the first and only draft: it replaces the previous attempt entirely. " +
-	"Say nothing about the review, the gaps it named, or what you changed — the person is " +
-	"reading the work, not its history."
-
-type deliverableJudgment struct {
-	Pass bool
-	Gaps string
-	// Quote is the span of the user's own request the gap is a failure of. It
-	// is what buys the gap authority over the job: a gate may re-run one leaf on
-	// any named gap, but it may only grow the graph for a gap that quotes the
-	// ask. See admitGapCitation for why that is the whole convergence argument.
-	Quote string
-	// Exercised is the gate's separate answer about evidence: it saw the
-	// finished thing run the way it will be used, and hold. A pass without it
-	// is a pass — it is simply not a verified one, and the difference is the
-	// whole reason the field exists rather than being read out of the prose.
-	Exercised bool
-	Checked   bool
-}
-
-const gateNotebookBytes = 1 << 10
-
-// gateVerdict is what a passing gate is entitled to record.
-//
-// The leaf itself never claims a verified success — the general loop has no
-// suite it can assume, so it lands as an unverified one however well it went —
-// and for a while a gate PASS overwrote that with the strongest verdict there
-// is. Nothing had been checked in the sense the verdict means: one judge read
-// one final message and found nothing missing from it. That is a success, and
-// it is the same success the leaf already reported; only the evidenced form,
-// where the finished thing was actually exercised, is more than that.
-//
-// The two are not interchangeable in exactly one place, which is where the
-// distinction is load-bearing: an unverified success is inert in Graded(), so a
-// sentence can no longer move a model's ability rating. Everywhere the product
-// counts operational success — competence rates, reflex outcomes, the self
-// page — both already count, and they still do.
-func gateVerdict(judgment deliverableJudgment) provider.Verdict {
-	if judgment.Exercised {
-		return provider.VerdictVerifiedSuccess
-	}
-	return provider.VerdictUnverifiedSuccess
-}
-
-// deliveryEvidence is what the gate can hold a claim against: what the leaf
-// left behind and the tail of what it actually ran. Both already existed —
-// the artifact list is resolved for three other readers a few lines above the
-// gate call, and the run tail is recorded by the executor as it goes — so the
-// gate stops being a judge of prose for the price of passing two slices.
-type deliveryEvidence struct {
-	Artifacts []string
-	Ran       []string
-	// Observed says the run was watched from beginning to end, which is the
-	// only thing that turns two empty slices into a fact. Without it the gate
-	// could not tell "this leaf did nothing" from "nobody was recording", and
-	// it was told in the same breath that silence never acquits — so a run that
-	// called no tools and answered with a plan read to the judge as an honest
-	// answer whose evidence was simply not available, and passed. It is a field
-	// rather than an inference because only the caller holding the outcome
-	// knows which of the two it has; every real delivery sets it, and the unit
-	// tests that construct a bare deliveryEvidence deliberately do not.
-	Observed bool
-}
-
-// gateEvidenceRan bounds what travels. The executor already keeps a short tail;
-// this is the second bound, because the gate's own reply budget is small and a
-// judge reading a hundred lines of shell before the deliverable is a judge
-// reading the wrong thing first.
-const gateEvidenceRan = 24
-
-// unexercisedRecord is what an observed run with nothing in it says for itself.
-// It is the one record in this block that is complete rather than a tail, and it
-// is written to say so, because everything else the gate is told about these
-// records is that they can never acquit.
-const unexercisedRecord = "Nothing. The work called no tools and left nothing behind: it looked nothing up, " +
-	"read nothing, ran nothing, wrote nothing. This is the whole record of the run and not a tail of one."
-
-// block renders the evidence, or nothing at all when there is none to show. It
-// sits below the deliverable so a rewritten deliverable is still the first byte
-// that moves in a repair pass.
-//
-// "Nothing to show" and "nothing happened" are different answers and this used
-// to give the same one to both. An observed run that did nothing now says so in
-// words; an unobserved one still renders empty, so a caller with no outcome in
-// hand cannot manufacture the strongest record in the block by omission.
-func (e deliveryEvidence) block() string {
-	if len(e.Artifacts) == 0 && len(e.Ran) == 0 {
-		if !e.Observed {
-			return ""
-		}
-		return unexercisedRecord
-	}
-	var body strings.Builder
-	if len(e.Artifacts) > 0 {
-		body.WriteString("What the work left behind:\n")
-		for _, path := range e.Artifacts {
-			if info, err := os.Stat(path); err == nil {
-				fmt.Fprintf(&body, "%s (%d bytes)\n", path, info.Size())
-				continue
-			}
-			// A path the deliverable names and the filesystem does not have is
-			// the loudest thing in this block, so it is stated rather than
-			// dropped for being unreadable.
-			fmt.Fprintf(&body, "%s (not on disk)\n", path)
-		}
-	}
-	ran := e.Ran
-	if len(ran) > gateEvidenceRan {
-		ran = ran[len(ran)-gateEvidenceRan:]
-	}
-	if len(ran) > 0 {
-		if body.Len() > 0 {
-			body.WriteString("\n")
-		}
-		fmt.Fprintf(&body, "The last %d things the work ran, oldest first:\n", len(ran))
-		for _, line := range ran {
-			body.WriteString(line + "\n")
-		}
-	}
-	return strings.TrimRight(body.String(), "\n")
-}
-
-// judgeDeliverable returns a checked pass or named gap. Every failure of the
-// gate itself remains fail-open: Checked is false, so it neither blocks delivery
-// nor manufactures verified evidence for the profile.
-func judgeDeliverable(ctx context.Context, settings config.Config, client *liveClient, graph *store.Store, node store.Node, deliverable, method string, evidence deliveryEvidence, workerModel string) deliverableJudgment {
-	ask := node.Provenance.Intent
-	// The standing half of the gate comes first and the job in front of it last,
-	// which is both the reading order and the billing order. Settled taste is
-	// the same text for every job in a session, so leading with it makes it the
-	// one block the endpoint can hand back warm; the digest is retrieved per
-	// node but identical across a node's repair passes, so it extends that warm
-	// stretch through a revision. The request, the goal and the deliverable move
-	// with every call and can invalidate nothing but themselves down here.
-	//
-	// Settled taste still leads the notebook material for the older reason: a
-	// rule the user corrected their way to three times is not one lesson among
-	// eight — it is the shape of an acceptable answer, and cannot be crowded out
-	// by the digest's byte budget.
-	var body string
-	if taste := resident.TasteBlock(graph); taste != "" {
-		body += "Settled taste — hold to these:\n" + taste + "\n\n"
-	}
-	if digest := resident.NotebookDigest(graph, node.ID, node.Brief, ask, 8); digest != "" {
-		body += "Standing preferences and relevant lessons:\n" + clipUTF8Bytes(digest, gateNotebookBytes) + "\n\n"
-	}
-	body += "Verbatim request:\n" + ask + "\n\nCompiled goal:\n" + node.Brief
-	// The working method the worker was actually held to, which is where this
-	// kind of work states what done means and how it is checked. It is the only
-	// standard the gate is given that was written for the work in front of it,
-	// and it is stable across a job's repair passes, so it rides above the
-	// deliverable with the rest of the settled half.
-	if method = strings.TrimSpace(method); method != "" {
-		body += "\n\nThe working method this deliverable was held to:\n" + method
-	}
-	body += "\n\nDeliverable as produced:\n" + deliverable
-	// The records come last, under the deliverable they are used to check: they
-	// are the most volatile block in the prompt — a revision rewrites the text
-	// and re-runs the work — and the cache pays for volatility by position.
-	if records := evidence.block(); records != "" {
-		body += "\n\nWhat actually happened, as recorded while it ran:\n" + records
-	}
-	judgeCtx := settings.Context(router.WithAvoidModel(ctx, workerModel), "gate")
-	judgeCtx = provider.WithCall(judgeCtx, provider.ClassPlanAudit)
-	// The gate is part of what this deliverable cost, not part of the day's
-	// overhead: a job whose bill omits its own review reads as cheaper than it
-	// was, and the review is often the second most expensive thing in it.
-	judgeCtx = withSpendNode(judgeCtx, node.ID)
-	options := []ai.Option{ai.WithMaxTokens(400)}
-	// Structured output is the cascade's free verifier. Keep the no-panel
-	// adapter's request options unchanged; there is no second rung to unlock.
-	if client.routed() {
-		options = append(options, ai.WithSchema(judgeDeliverableSchema))
-	}
-	response, err := client.CompleteWithMessages(judgeCtx, []ai.Message{
-		{Role: "system", Content: []ai.ContentPart{{Type: "text", Text: judgeDeliverablePrompt}}},
-		{Role: "user", Content: []ai.ContentPart{{Type: "text", Text: body}}},
-	}, options...)
-	if err != nil || response == nil {
-		provider.Report(judgeCtx, provider.VerdictProviderFailure)
-		return deliverableJudgment{Pass: true}
-	}
-	var verdict struct {
-		Pass      bool   `json:"pass"`
-		Gaps      string `json:"gaps"`
-		Quote     string `json:"quote"`
-		Exercised bool   `json:"exercised"`
-	}
-	// One extractor for every structured reply in the system. This used to hold
-	// its own — first brace to last brace — which is tolerant in the same
-	// direction and wrong in one: a judge that wrote a sentence containing a
-	// brace after its object swallowed the sentence into the JSON and failed the
-	// parse, and a failed parse here is a silent pass.
-	if err := provider.DecodeJSONObject(response.Text(), &verdict); err != nil {
-		provider.Report(judgeCtx, provider.VerdictFormatFailure)
-		return deliverableJudgment{Pass: true}
-	}
-	if verdict.Pass {
-		provider.Report(judgeCtx, provider.VerdictVerifiedSuccess)
-		// A judge that omits the field says nothing about evidence, and
-		// nothing is the honest reading: the missing answer stays false.
-		return deliverableJudgment{Pass: true, Exercised: verdict.Exercised, Checked: true}
-	}
-	gaps := strings.TrimSpace(verdict.Gaps)
-	if gaps == "" {
-		provider.Report(judgeCtx, provider.VerdictSemanticFailure)
-		return deliverableJudgment{Pass: true}
-	}
-	provider.Report(judgeCtx, provider.VerdictVerifiedSuccess)
-	// An ungrounded gap is still recorded as a gap: it is said out loud, it
-	// rides the delivery, and it is in the ledger. What it does not buy is
-	// paid work — neither the revision round nor the extension — and both of
-	// those refusals happen at the wiring seam rather than being laundered
-	// into a pass here.
-	return deliverableJudgment{Gaps: gaps, Quote: strings.TrimSpace(verdict.Quote), Checked: true}
-}
-
-// The citation invariant: a gate's gap may commission new work only if it
-// quotes the ask. This is the whole of why an extending gate cannot spiral, and
-// it is worth stating why a string comparison is enough.
-//
-// The 27-round run was not a failure to terminate — the dollar rail would have
-// stopped it eventually. It was a failure to be ABLE to terminate: each round's
-// gap was derived from the previous round's own output, so the set of things
-// left to fix was unbounded and self-replenishing, and every cap was therefore
-// the mechanism rather than the backstop. The fix is to make the set of
-// admissible gaps finite and fixed before the first round runs. The user's
-// verbatim intent is immutable by construction — the store refuses an empty
-// one, never rewrites it, and stamps the same value on every node of every
-// splice — so the substrings of that one string are a fixed, finite set. A gap
-// must name one of them. Round k+1 must name one no earlier round spent. The
-// number of unspent spans falls by at least one per admitted round, so the loop
-// terminates on the content of the ask rather than on a counter.
-//
-// "verification of what the previous round produced" is not a substring of
-// anything a person typed, so that round is refused before a planning call is
-// made. That is construction rather than policy, and it is the difference
-// between a cap that fires and a cap that never has to.
-//
-// This is a provenance check and not a quality rubric: it says nothing about
-// whether the gap is a good one, only that the words it claims to be a failure
-// of are the user's own. The residual it does not close is a real span cited
-// for an invented requirement — bounded by the round cap, and by the plan's own
-// rule that no piece of work may exist to check another's product.
-func admitGapCitation(intent, quote string, spent []string) string {
-	if refusal := admitGapGrounding(quote, intent); refusal != "" {
-		return refusal
-	}
-	quote = citationKey(quote)
-	for _, prior := range spent {
-		if citationKey(prior) == quote {
-			return "the same words were already worked on once"
-		}
-	}
-	return ""
-}
-
-// admitGapGrounding is the citation invariant's core, and the one door both
-// readers of it go through. A quote is admitted when it is a verbatim span of
-// something nobody in this system wrote for itself during the run: the user's
-// ask, or the working method this kind of job was held to before anything was
-// produced. Everything else — the compiled goal, the working decisions, the
-// previous round's own output — is aforge talking to aforge, and a gap that can
-// only quote those is a preference rather than a failure.
-//
-// Whitespace is normalised on both sides and nothing else is: a model that
-// re-wraps a quoted line has still quoted it, and a model that invents a
-// requirement has still invented it.
-func admitGapGrounding(quote string, grounds ...string) string {
-	quote = citationKey(quote)
-	if quote == "" {
-		return "the review could not point at anything in the request that is missing"
-	}
-	for _, ground := range grounds {
-		if ground = citationKey(ground); ground != "" && strings.Contains(ground, quote) {
-			return ""
-		}
-	}
-	return "what the review asked for next is not in the request"
-}
-
-// admitGapRevision applies that same grounding one layer earlier than the
-// extension does: to the paid revision round a failed gate buys.
-//
-// The extension was guarded and the revision was not, and the measured cost of
-// that asymmetry is one benchmark cell where the gate held the worker to a
-// working decision aforge had invented for itself — "March refers to any
-// calendar year present in the data" — bought a five-turn re-run against it,
-// and got back a worse deliverable than the one it rejected. A round bought on
-// a self-authored standard cannot converge on anything, because the standard
-// moves with each round that is written against it.
-//
-// The working method is admitted as a second ground because it is the one
-// standard besides the ask that was fixed before the work started and that the
-// worker was actually held to. It is not self-authored in the sense that
-// matters: it does not move in response to what the work produced.
-//
-// A refusal is not a pass. The gap is journaled, it is said in the thread, and
-// it rides the delivery — it simply does not redo the work.
-func admitGapRevision(intent, method, quote string) string {
-	return admitGapGrounding(quote, intent, method)
-}
-
-// gapNote is what an ungrounded gap gets instead of a round: the reviewer's
-// words, said plainly, with the honest reason nothing was redone over them. It
-// is the same register as gapHandover and deliberately not the same sentence —
-// a reservation says the work fell short, and this says the review did.
-func gapNote(gaps, refusal string) string {
-	return "a review raised this: " + firstLine(gaps) +
-		" — I've delivered as it stands, because " + refusal +
-		", and I don't redo work over a standard the request never set. Say the word and I will."
-}
-
-func citationKey(text string) string { return strings.Join(strings.Fields(text), " ") }
-
-// gapExtension is what a gate's judgement was allowed to do about a gap that
-// survived the revision pass: the work it commissioned, the words it cited, the
-// round it was, and — when nothing was commissioned — why, in the words the user
-// would be told.
-type gapExtension struct {
-	Spliced int
-	Quote   string
-	Round   int
-	Refused string
-}
-
-// gapContinuationNotice is the whole of what a person sees when a judgement
-// grows the job: one line, in the same calm register as the governor's, saying
-// what is missing and that it is being finished rather than delivered around.
-// No new noun is introduced — the user never learns that any of this has a name.
-func gapContinuationNotice(gaps string) string {
-	return "a review found this still missing: " + firstLine(gaps) + " — finishing that before delivering"
-}
-
-// gapHandover is what the delivery carries when nothing more will run. It names
-// the gap in the system's own words and says why it stopped, because the next
-// thing the person says about it is the correction path's input and a handover
-// they cannot see is a handover that never happened.
-func gapHandover(gaps string, revised bool, refused string) string {
-	handover := "I'm handing this over with a reservation — a review found this still missing: " + firstLine(gaps) + "."
-	if !revised {
-		handover += " The revision pass came back empty, so this is the first draft."
-	}
-	if refused != "" {
-		handover += " I've taken it as far as repair takes it: " + refused + "."
-	}
-	return handover
-}
-
-// extendForGap is the authority the delivery gate never had.
-//
-// The judgement at the job root was already the right one and its maximum power
-// was to re-run the same leaf once and then ship regardless; meanwhile the only
-// mechanism that can grow a live job fires on running out of money and never on
-// being wrong. Quality failure and resource failure were handled by two disjoint
-// mechanisms and only the resource one could add work. This is the wire between
-// them, and it is short because ReplanOverrun already handles everything hard:
-// the round counter is read off id arithmetic, the daily rail defers and resumes,
-// the job-size ceiling and the round cap post their own notices, and a repair on
-// a top-level job continues as a top-level job that will be announced like any
-// other deliverable.
-//
-// What arrives here is a named gap, so the replan is aimed at a remainder a
-// reviewer found rather than at whatever sounds like more work — and the goal it
-// is planned from forbids inventing verification, as the plan's own proportion
-// rule forbids a node whose purpose is to check another's product. Assurance may
-// add work that closes a gap; it may never add work that checks one.
-func extendForGap(ctx context.Context, graph *store.Store, node store.Node, partial string,
-	unmet deliverableJudgment, artifacts []string, dailyBudgetUSD float64,
-	planRemainder resident.OverrunPlanFunc) gapExtension {
-	base, round := resident.OverrunLineage(node.ID)
-	extension := gapExtension{Quote: strings.TrimSpace(unmet.Quote), Round: round + 1}
-	if graph == nil || planRemainder == nil {
-		extension.Refused = "there is nothing here that could plan the rest"
-		return extension
-	}
-	// Admissibility is decided before any planning call: an ungrounded gap must
-	// cost nothing at all, or the refusal is only a refusal to splice what has
-	// already been bought.
-	if refusal := admitGapCitation(node.Provenance.Intent, extension.Quote, spentCitations(graph, base)); refusal != "" {
-		extension.Refused = refusal
-		return extension
-	}
-	spliced, _, err := resident.ReplanOverrun(ctx, graph, node, partial, unmet.Gaps, artifacts, dailyBudgetUSD, planRemainder)
-	if err != nil {
-		log.Printf("note: could not plan the rest of %s: %v", node.ID, err)
-		extension.Refused = "the work that would close it could not be planned"
-		return extension
-	}
-	if spliced == 0 {
-		// A governor has already said so in the thread in its own words, or the
-		// rail has journaled the repair and is waiting on consent. Either way
-		// nothing new is running and the delivery has to say so.
-		extension.Refused = "no more work could be started on it"
-		return extension
-	}
-	extension.Spliced = spliced
-	return extension
-}
-
-// spentCitations is the ledger: the spans of the ask that earlier rounds of this
-// job already commissioned work against. A read failure returns nothing, which
-// is the fail-safe direction for a bound on new work only in company with the
-// round cap — which is exactly what that cap is for.
-func spentCitations(graph *store.Store, baseID string) []string {
-	if graph == nil {
-		return nil
-	}
-	gates, err := graph.DeliveryGateLineage(baseID)
-	if err != nil {
-		log.Printf("note: could not read the gap ledger for %s: %v", baseID, err)
-		return nil
-	}
-	var spent []string
-	for _, gate := range gates {
-		if gate.Extended && strings.TrimSpace(gate.Quote) != "" {
-			spent = append(spent, gate.Quote)
-		}
-	}
-	return spent
-}
-
-// ── who takes the next attempt ───────────────────────────────────────────────
-//
-// Two judgements in this file already read a leaf that did not get there: the
-// one that decides whether an exhausted leaf left work behind, and — from this
-// wave — the one that decides who retries a failed one. Both used to answer with
-// a stronger model or a continuation and nothing else, because a stronger model
-// was the only other place a leaf could go.
-//
-// The menu is injected into both rather than a third mechanism being built,
-// because there is no third question. "This failed; what now" already has a
-// judge; what changes is that the answer may name a different kind of worker.
-// And the menu is the registry's, so a build with only the generalist renders
-// nothing, no prompt gains a byte, and no call is made that was not made before.
-//
-// The headless scheduler's escalation (internal/exec/schedule.go's Escalations)
-// is deliberately left mechanical. Nothing judges there: a verdict that says
-// "a stronger model might fix this" puts the node back to pending and the
-// ordinary launch path picks it up, and there is no model in that loop to hand a
-// menu to. Adding one would be a second dispatch policy in the surface that has
-// no conversation to explain itself in — the two-surface covenant says every
-// worker is REACHABLE from both surfaces, which it is, not that every judgement
-// is made on both. Retries are judged where retries are judged: on the surface
-// with a head. A headless run reaches a specialist the way it always has, by the
-// planner choosing one at sizing time.
-
-// workerChoiceBrief renders the menu into a judgement that may name a worker,
-// or nothing at all when there is nothing to choose between.
-func workerChoiceBrief(menu string) string {
-	if strings.TrimSpace(menu) == "" {
-		return ""
-	}
-	return "\n\n" + menu + "\nReturn the choice as \"worker\":\"<name>\". " +
-		"Omit it, or leave it empty, for the default worker."
-}
-
-// judgeRetryWorkerPrompt asks whether the second attempt should go somewhere
-// different in kind, not merely somewhere stronger.
-//
-// The default answer is stated as the default and the specialist as the
-// exception, in the compiler's own words, because this is the same choice the
-// compiler makes and a leaf that reaches here has already been judged once. The
-// difference is the evidence: a failure is in front of this judge and was not in
-// front of that one. What must not follow from that evidence is "it failed, so
-// try something else" — most failures are answered by a stronger model doing the
-// same thing, and a judge that reads failure as a reason to change worker would
-// route every hard prose leaf into a coding pipeline.
-const judgeRetryWorkerPrompt = `A worker was given one assignment, worked on it, and did not finish it. The same assignment is about to be attempted once more.
-
-By default that second attempt goes to the same kind of worker, on a stronger model. You decide one thing only: whether the essence of this assignment is the thing a specialist below exists for, in which case the attempt goes to that specialist instead.
-
-The failure itself is not a reason to change the kind of worker. Most work that fails once is finished by the same kind of worker trying again with more capacity behind it. Change the kind only when the assignment's essence — what the work fundamentally is — matches a specialist's purpose, in which case the first attempt was on the wrong sort of worker from the beginning.
-
-Return exactly one JSON object, nothing else.`
-
-var judgeRetryWorkerSchema = json.RawMessage(`{
-  "type": "object",
-  "properties": {
-    "worker": {"type": "string"}
-  },
-  "required": ["worker"],
-  "additionalProperties": false
-}`)
-
-// judgeRetryWorker names the worker for one retry, or nothing for the default.
-//
-// Everything about it fails toward the behavior that existed before it did: no
-// menu means no call at all, an unparseable answer means the default worker, and
-// a name that reaches no registered worker means the default worker. The retry
-// happens either way — this decides who gets it, never whether there is one.
-func judgeRetryWorker(ctx context.Context, settings config.Config, client *liveClient,
-	node store.Node, task exec.Task, outcome *exec.Outcome, failure error,
-	menu, workerModel string) string {
-	if strings.TrimSpace(menu) == "" || client == nil {
-		return ""
-	}
-	var body strings.Builder
-	body.WriteString("The assignment:\n" + task.Brief)
-	if produced := strings.TrimSpace(outcome.Text); produced != "" {
-		body.WriteString("\n\nWhat the first attempt had produced when it stopped:\n" + boundedDelivery(produced))
-	}
-	if failure != nil {
-		body.WriteString("\n\nHow it ended: " + firstLine(failure.Error()))
-	} else {
-		body.WriteString("\n\nHow it ended: " + string(outcome.Verdict))
-	}
-	judgeCtx := settings.Context(router.WithAvoidModel(ctx, workerModel), "retry-worker")
-	judgeCtx = provider.WithCall(judgeCtx, provider.ClassPlanAudit)
-	judgeCtx = withSpendNode(judgeCtx, node.ID)
-	options := []ai.Option{ai.WithMaxTokens(200)}
-	if client.routed() {
-		options = append(options, ai.WithSchema(judgeRetryWorkerSchema))
-	}
-	response, err := client.CompleteWithMessages(judgeCtx, []ai.Message{
-		{Role: "system", Content: []ai.ContentPart{{Type: "text",
-			Text: judgeRetryWorkerPrompt + workerChoiceBrief(menu)}}},
-		{Role: "user", Content: []ai.ContentPart{{Type: "text", Text: body.String()}}},
-	}, options...)
-	if err != nil || response == nil {
-		provider.Report(judgeCtx, provider.VerdictProviderFailure)
-		return ""
-	}
-	chosen := decodeWorkerChoice(response.Text())
-	if chosen == "" {
-		// Not a failure: "the default worker" is the answer this judge gives
-		// most of the time and the one it is told to give when in doubt.
-		provider.Report(judgeCtx, provider.VerdictVerifiedSuccess)
-		return ""
-	}
-	provider.Report(judgeCtx, provider.VerdictVerifiedSuccess)
-	return chosen
-}
-
-// decodeWorkerChoice reads a worker out of a judgement's reply, keeping only a
-// name that reaches a worker this build can actually construct. It is the same
-// degradation head.Compiler.normalizeSubharness makes on the compile path, for
-// the same reason: a hallucinated worker costs a retry its specialist and
-// nothing else.
-func decodeWorkerChoice(text string) string {
-	text = strings.TrimSpace(text)
-	start, end := strings.Index(text, "{"), strings.LastIndex(text, "}")
-	if start < 0 || end <= start {
-		return ""
-	}
-	var reply struct {
-		Worker string `json:"worker"`
-	}
-	if json.Unmarshal([]byte(text[start:end+1]), &reply) != nil {
-		return ""
-	}
-	chosen := strings.TrimSpace(reply.Worker)
-	if !exec.KnownSubharness(chosen) {
-		return ""
-	}
-	return chosen
-}
-
-// judgeRemainderPrompt asks the one question the overrun path used to assume
-// an answer to. Running out of budget while landing a finished result is
-// common — the executor grants a landing reserve for exactly that — so
-// exhaustion is treated as a fact about resources, never as evidence of
-// unfinished work. The judgment is against the leaf's own brief, not the
-// job's intent: a mid-graph leaf that inventoried a folder is done when the
-// inventory is done, even though the job it serves is not.
-const judgeRemainderPrompt = `A worker ran out of resources while working on one assignment and stopped. You decide whether anything is actually left to do.
-
-You receive the assignment and what the worker had produced when it stopped. Judge exactly one question: does the produced result already fulfill the assignment? Running out of budget while landing a finished result is common — exhaustion is not evidence of incompleteness. Judge only the substance against the assignment.
-
-Return exactly one JSON object, nothing else:
-{"done": true} when the assignment is fulfilled and a consumer could use this result as-is.
-{"done": false, "remaining": "<the unfinished work>"} only when you can name a specific element of the assignment that is absent or unfinished — concretely enough that a worker could finish from your words alone. Work the assignment never asked for is never remaining work: do not prescribe verification, re-verification, or review of what already exists.`
-
-var judgeRemainderSchema = json.RawMessage(`{
-  "type": "object",
-  "properties": {
-    "done": {"type": "boolean"},
-    "remaining": {"type": "string"}
-  },
-  "required": ["done"],
-  "additionalProperties": false
-}`)
-
-type remainderJudgment struct {
-	Done      bool
-	Remaining string
-	Checked   bool
-	// Worker is the specialist the same judge named for the work that is left,
-	// when it named one. Empty is the default worker and is the answer in every
-	// build without a specialist, because the question is never asked there.
-	Worker string
-}
-
-// judgeRemainderWorkerSchema is the remainder schema with the worker field.
-// Two constants rather than one built at runtime: a prompt's schema is part of
-// the prompt, and the baseline one has to be readable as the thing that has not
-// changed.
-var judgeRemainderWorkerSchema = json.RawMessage(`{
-  "type": "object",
-  "properties": {
-    "done": {"type": "boolean"},
-    "remaining": {"type": "string"},
-    "worker": {"type": "string"}
-  },
-  "required": ["done"],
-  "additionalProperties": false
-}`)
-
-// judgeRemainder decides whether an exhausted leaf actually left work behind.
-// Failures fail toward "not done" with Checked false: the continuation still
-// runs, now bounded by the overrun governors, rather than a judge outage
-// silently shipping genuinely cut-off work as finished.
-func judgeRemainder(ctx context.Context, settings config.Config, client *liveClient, graph *store.Store, node store.Node, produced, workerModel string) remainderJudgment {
-	body := "The assignment:\n" + node.Brief + "\n\nProduced before stopping:\n" + produced
-	// The same judgement, one question wider: what is left, and who should take
-	// it. The exclusion is the leaf's own worker — a continuation of work this
-	// worker ran out of resources on belongs with it by default and needs no
-	// naming, and the interesting answer is the other one.
-	// promisedWorker rather than leafSubharness: this only wants to KNOW who ran
-	// the leaf, and the reading that also speaks belongs to the dispatch path.
-	menu := exec.MenuTextExcept(promisedWorker(node))
-	judgeCtx := settings.Context(router.WithAvoidModel(ctx, workerModel), "remainder")
-	judgeCtx = provider.WithCall(judgeCtx, provider.ClassPlanAudit)
-	// Like the delivery gate, the judgment is part of what this leaf cost.
-	judgeCtx = withSpendNode(judgeCtx, node.ID)
-	options := []ai.Option{ai.WithMaxTokens(400)}
-	if client.routed() {
-		schema := judgeRemainderSchema
-		if menu != "" {
-			schema = judgeRemainderWorkerSchema
-		}
-		options = append(options, ai.WithSchema(schema))
-	}
-	response, err := client.CompleteWithMessages(judgeCtx, []ai.Message{
-		{Role: "system", Content: []ai.ContentPart{{Type: "text",
-			Text: judgeRemainderPrompt + workerChoiceBrief(menu)}}},
-		{Role: "user", Content: []ai.ContentPart{{Type: "text", Text: body}}},
-	}, options...)
-	if err != nil || response == nil {
-		provider.Report(judgeCtx, provider.VerdictProviderFailure)
-		return remainderJudgment{}
-	}
-	text := strings.TrimSpace(response.Text())
-	start, end := strings.Index(text, "{"), strings.LastIndex(text, "}")
-	if start < 0 || end <= start {
-		provider.Report(judgeCtx, provider.VerdictFormatFailure)
-		return remainderJudgment{}
-	}
-	var verdict struct {
-		Done      bool   `json:"done"`
-		Remaining string `json:"remaining"`
-	}
-	if err := json.Unmarshal([]byte(text[start:end+1]), &verdict); err != nil {
-		provider.Report(judgeCtx, provider.VerdictFormatFailure)
-		return remainderJudgment{}
-	}
-	remaining := strings.TrimSpace(verdict.Remaining)
-	if !verdict.Done && remaining == "" {
-		// A "not done" that cannot name the gap is the exact failure the old
-		// path had: a remainder assumed rather than found. Unchecked, so the
-		// replan proceeds on the partial alone.
-		provider.Report(judgeCtx, provider.VerdictSemanticFailure)
-		return remainderJudgment{}
-	}
-	provider.Report(judgeCtx, provider.VerdictVerifiedSuccess)
-	return remainderJudgment{Done: verdict.Done, Remaining: remaining, Checked: true,
-		Worker: decodeWorkerChoice(text)}
 }
 
 // runLeafWithWatchdog is the scheduler's node watchdog, inline: the executor
@@ -5115,6 +2944,7 @@ func planSubtree(settings config.Config, planClient, workClient *liveClient, pla
 			plans.put(prefix, graph, subtreeSink(subtree), workingModel, workingClient)
 			return subtree, nil
 		}
+		// terrain wiring lands here (world-grounded-planning handoff)
 		graph, err := plan.Build(settings.Context(ctx, compiled.Goal), structuring, compiled.Goal, plan.Options{
 			Recall:       recallHits(history, compiled.Goal, groundRecallLimit),
 			SpineSamples: settings.SpineSamples,
@@ -5301,6 +3131,7 @@ func replanRemainder(settings config.Config, planClient, workClient *liveClient,
 		_, structuring := planClient.Snapshot()
 		anchor, _ := resident.PlanAnchorFromContext(ctx)
 		progress := chatPlanProgress(history, anchor)
+		// terrain wiring lands here (world-grounded-planning handoff)
 		graph, err := plan.Build(settings.Context(ctx, goal), structuring, goal, plan.Options{
 			Recall:       recallHits(history, goal, groundRecallLimit),
 			SpineSamples: settings.SpineSamples,
@@ -5618,7 +3449,7 @@ func composeMorningBrief(settings config.Config, client *liveClient, graph *stor
 		}
 		briefCtx := provider.WithCall(settings.Context(ctx, "morning-brief"), provider.ClassPlanBrief)
 		options := []ai.Option{ai.WithMaxTokens(500)}
-		if client.routed() {
+		if client.Routed() {
 			options = append(options, ai.WithSchema(morningBriefSchema))
 		}
 		// The first thing a person reads after being away is not the place to
@@ -5849,7 +3680,7 @@ func fillCraftParams(settings config.Config, client *liveClient) resident.CraftP
 		options := []ai.Option{ai.WithMaxTokens(300)}
 		// The schema is built per workflow because the values are: a fixed one
 		// would either name nothing or name another craft's holes.
-		if client.routed() {
+		if client.Routed() {
 			if schema, err := json.Marshal(map[string]any{
 				"type": "object", "properties": properties, "additionalProperties": false,
 			}); err == nil {
