@@ -1,8 +1,6 @@
 package composer
 
 import (
-	tea "charm.land/bubbletea/v2"
-
 	"github.com/Agent-Field/aforge-v2/internal/tui2/tokens"
 )
 
