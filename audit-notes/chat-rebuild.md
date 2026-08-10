@@ -1670,3 +1670,41 @@ exist). Part 11.1's disconnect-don't-delete therefore governs: batch 2 builds
 both policies as a single policy seam selected once (legacy | owner-pinned,
 `AFORGE_CHAT_V2=1` choosing owner-pinned), default legacy, both modes tested.
 The legacy path dies with the old chat, one wave after the default flips.
+
+### 12.3 Wave 0 batch 2 (command authority + SetModel; room-policy seam)
+
+1. **Issuer default is `user`, resolved at read.** Empty stays empty on the wire
+   (old events replay byte-identical); `Command.Authority()` resolves `""` →
+   `user` once, at the reader. `user` because it is true of every existing
+   producer and it is the MAXIMUM authority — a future narrowing of `main` can
+   never retro-restrict the legacy journal. Unknown/malformed issuers (`task:`,
+   blank root) are refused, never promoted to the trusted default.
+2. **The subtree check walks UP from the target** (bounded by depth, not task
+   width), one indexed recursive CTE, zero cost for non-`task:` issuers. An
+   untargeted splice from a task issuer is refused (inside nobody's subtree);
+   charter/service/global targets refuse under the same single rule.
+3. **The reconciler's command dispatch has no extension point** — `applyCommand`
+   and its call sites live in resident.go with no registration seam. Batch 2
+   granted a two-line exception (the `CommandSetModel` case). Any wave adding a
+   command kind must edit resident.go; Wave 1's dissolution should consider a
+   dispatch seam if a third arm ever wants in.
+4. **9.6's real shape**: live model rebinding is event-per-node in the
+   `EventNodeWorkerChanged` mould (a root-scoped event would re-point whatever is
+   live at REPLAY time, not command time). Rewriting `nodes.work_model` IS the
+   next-provider-call semantics — dispatch re-reads the row; nothing running is
+   touched. `run_model` moves; `plan_model` never does; settled work keeps the
+   model it ran on; idempotent re-asks journal nothing.
+5. **Reasoning effort has no axis to ride** — no Provenance/nodes field; effort
+   is encoded inside the model slug (catalog normalization keeps `~` variants).
+   5.10's "effort rides the chip" therefore needs a Provenance change + doc
+   amendment before `CommandSetModel` can carry effort separately; deliberately
+   not invented in Wave 0.
+6. **9.7 corrected**: under owner-pinned, `LastSeen` survives as the FALLBACK for
+   ownerless items (an ownerless deliverable goes to the attached room; with no
+   room at all it stays silent-but-not-lost on the board). The singleton fully
+   dies only when a system/home room exists to own the ownerless.
+7. **9.8 in Wave 0 is re-addressing only** — which events announce is unchanged;
+   `announceRoom` is the single resolution point where the room boundary becomes
+   real when Wave 3 rooms land. `AFORGE_CHAT_V2` is registered as operator
+   plumbing (a which-surface switch that dies one wave after the flip, not a
+   settings row).
