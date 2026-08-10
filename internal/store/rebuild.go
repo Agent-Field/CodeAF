@@ -336,6 +336,13 @@ func replayEvent(tx *sql.Tx, event Event) error {
 		}
 		return applyNodeWorkerView(tx, event.NodeID, payload.Subharness, event.Seq)
 
+	case EventNodeModelChanged:
+		var payload nodeModelPayload
+		if err := json.Unmarshal(event.Payload, &payload); err != nil {
+			return err
+		}
+		return applyNodeModelView(tx, event.NodeID, payload, event.Seq)
+
 	case EventMessagePosted:
 		var payload messagePayload
 		if err := json.Unmarshal(event.Payload, &payload); err != nil {

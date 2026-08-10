@@ -108,6 +108,11 @@ const (
 	// for the same reason the choice is journaled at splice time: a leaf claimed
 	// after a restart must run on what it was last promised.
 	EventNodeWorkerChanged EventKind = "node_worker_changed"
+	// A node's model may change whenever somebody says so, for as long as the
+	// node still has work left. It is one event per node rather than one sweep
+	// over a subtree, so a replay re-points exactly the nodes the sweep found
+	// rather than whatever happens to be live when the replay runs.
+	EventNodeModelChanged EventKind = "node_model_changed"
 
 	// Thread events: the conversation and its asynchronous mutation requests
 	// live in the same journal as the graph they act on.
