@@ -49,6 +49,110 @@ type Session struct {
 	LastActive time.Time
 }
 
+// MaxSessionTitleBytes bounds a room's display title. A title is a tab label,
+// not a description; anything longer is truncated rather than refused, because
+// what a person types into a rename box should never fail to open a room.
+const MaxSessionTitleBytes = 256
+
+// sessionOpenedPayload is a room's birth certificate on the wire. There is no
+// created-at field: the event's own journal timestamp IS the birthday, exactly
+// as a message's timestamp is what dates the room a message mints. A second
+// time in the payload could disagree with the envelope, and replay would have
+// to choose which of the two lies.
+type sessionOpenedPayload struct {
+	SessionID string `json:"session_id"`
+	Title     string `json:"title,omitempty"`
+	Surface   string `json:"surface,omitempty"`
+}
+
+// OpenSession mints an empty room — one that exists before anything has been
+// said in it — and is the single door for doing so. It is the capability a
+// thread switcher needs: a new conversation is a place first and a transcript
+// second, and until this event existed the store could only learn of a room by
+// being spoken to in it.
+//
+// Opening is a mint, not a touch. A room that already exists has already been
+// opened, so a second call journals nothing and returns the row as it stands:
+// appending a second birthday would put a fact in the journal that is not
+// true, and replay would faithfully reproduce it. Callers that want to know
+// which happened compare the returned Created against their own clock, or read
+// the room first.
+//
+// The empty id is not a room, for the reason EnsureSession states: messages
+// posted to no room in particular carry one, and a nameless row would put a
+// phantom thread in every thread list.
+func (s *Store) OpenSession(id, title, surface string) (Session, error) {
+	id = strings.TrimSpace(id)
+	if id == "" {
+		return Session{}, fmt.Errorf("open session: %w: empty id", ErrInvalid)
+	}
+	tx, err := s.db.Begin()
+	if err != nil {
+		return Session{}, fmt.Errorf("open session: %w", err)
+	}
+	defer tx.Rollback()
+
+	// Read and mint in one transaction: two switchers opening the same id must
+	// not both decide the room is new.
+	existing, err := readSessionTx(tx, id)
+	if err == nil {
+		return existing, nil
+	}
+	if !errors.Is(err, sql.ErrNoRows) {
+		return Session{}, fmt.Errorf("open session: %w", err)
+	}
+
+	payload := sessionOpenedPayload{
+		SessionID: id,
+		Title:     bounded(title, MaxSessionTitleBytes),
+		Surface:   strings.TrimSpace(surface),
+	}
+	// The room is not a node, so the event carries no node id — the same shape
+	// TouchSeen uses for a fact about a lens rather than about the graph.
+	_, at, err := appendEvent(tx, "", EventSessionOpened, payload)
+	if err != nil {
+		return Session{}, fmt.Errorf("open session: %w", err)
+	}
+	if err := applySessionOpened(tx, payload, at); err != nil {
+		return Session{}, fmt.Errorf("open session: %w", err)
+	}
+	opened, err := readSessionTx(tx, id)
+	if err != nil {
+		return Session{}, fmt.Errorf("open session: %w", err)
+	}
+	if err := tx.Commit(); err != nil {
+		return Session{}, fmt.Errorf("open session: %w", err)
+	}
+	return opened, nil
+}
+
+// applySessionOpened is the projection write for a room's birth, and the one
+// place a session row's title is written. It is deliberately the same
+// never-lower shape ensureSessionTx uses — an open replays among the messages
+// in journal order, and a room whose first message beat its open event (an id
+// reused across builds) keeps the earlier birthday and the later activity mark
+// rather than having either rewritten under it.
+func applySessionOpened(tx *sql.Tx, payload sessionOpenedPayload, at time.Time) error {
+	id := strings.TrimSpace(payload.SessionID)
+	if id == "" {
+		return fmt.Errorf("session opened without an id")
+	}
+	if at.IsZero() {
+		at = time.Now()
+	}
+	stamp := formatTime(at)
+	_, err := tx.Exec(`
+		INSERT INTO sessions (id, title, surface, created_at, last_active_at)
+		VALUES (?, ?, ?, ?, ?)
+		ON CONFLICT(id) DO UPDATE SET
+			last_active_at = MAX(sessions.last_active_at, excluded.last_active_at),
+			created_at     = MIN(sessions.created_at, excluded.created_at),
+			title          = CASE WHEN sessions.title = '' THEN excluded.title ELSE sessions.title END,
+			surface        = CASE WHEN sessions.surface = '' THEN excluded.surface ELSE sessions.surface END`,
+		id, bounded(payload.Title, MaxSessionTitleBytes), strings.TrimSpace(payload.Surface), stamp, stamp)
+	return err
+}
+
 // EnsureSession mints the row for a session the first time it is seen and
 // raises its activity mark, and is safe to call on every message. An empty id
 // is not a session: messages the machine posts to no room in particular carry
