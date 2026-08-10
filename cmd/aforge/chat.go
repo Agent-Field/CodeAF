@@ -264,6 +264,7 @@ func buildBrain(w *chatWindow, session string, opts brainOptions) (*chatBrain, e
 		return nil, brain.abandon(err)
 	}
 	brain.closing(planClient.Close)
+	installRoleLadder(graph, talkModel, planModel, workModel, settings.PlanModel, opts.planModel)
 	boostClients := newMessageClientPool(settings)
 	brain.closing(boostClients.Close)
 	// The ruler stays keyed to the work model even when a different model

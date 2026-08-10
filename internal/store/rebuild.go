@@ -57,6 +57,9 @@ func (s *Store) Rebuild() error {
 	if _, err := tx.Exec(`DELETE FROM task_budgets`); err != nil {
 		return fmt.Errorf("rebuild task budgets: %w", err)
 	}
+	if _, err := tx.Exec(`DELETE FROM role_bindings`); err != nil {
+		return fmt.Errorf("rebuild role bindings: %w", err)
+	}
 	if _, err := tx.Exec(`DELETE FROM surprises`); err != nil {
 		return fmt.Errorf("rebuild surprises: %w", err)
 	}
@@ -444,6 +447,13 @@ func replayEvent(tx *sql.Tx, event Event) error {
 			return err
 		}
 		return applyTaskCeilingView(tx, payload, event.Seq, event.Time)
+
+	case EventRoleBindingSet:
+		var payload RoleBinding
+		if err := json.Unmarshal(event.Payload, &payload); err != nil {
+			return err
+		}
+		return applyRoleBindingView(tx, payload, event.Seq, event.Time)
 
 	case EventTaskRailAsked:
 		// The ask has no materialized view: its own sequence is the marker, and

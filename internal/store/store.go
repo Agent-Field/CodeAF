@@ -425,6 +425,10 @@ type Snapshot struct {
 type Store struct {
 	db    *sql.DB
 	blobs *cas.Store
+	// roleDefaults is the compiled-in floor of the role ladder (role_bindings.go)
+	// — process configuration rather than journaled policy, so it is installed
+	// on the handle and never written to the brain file.
+	roleDefaults roleDefaultsCell
 }
 
 const schema = `
@@ -593,6 +597,9 @@ func Open(path string) (*Store, error) {
 	}
 	if _, err := db.Exec(taskBudgetSchema); err != nil {
 		return closeOnError(fmt.Errorf("initialize task budget schema: %w", err))
+	}
+	if _, err := db.Exec(roleBindingSchema); err != nil {
+		return closeOnError(fmt.Errorf("initialize role binding schema: %w", err))
 	}
 	if _, err := db.Exec(selfReceiptSchema); err != nil {
 		return closeOnError(fmt.Errorf("initialize self receipt schema: %w", err))
