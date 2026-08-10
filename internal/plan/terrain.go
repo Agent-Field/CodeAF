@@ -2,7 +2,9 @@ package plan
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -81,6 +83,23 @@ const (
 	// about it reproducibly. A listing is not.
 	terrainNameCap = 100_000
 
+	// terrainBudget is the total number of entries one render will look at,
+	// across every directory it opens.
+	//
+	// terrainNameCap alone bounds nothing, because it is per directory: a
+	// workspace with two thousand children of a hundred thousand entries each is
+	// two hundred million entries, every one of them read and counted, in front
+	// of a build that has not made a single call yet. The per-directory cap says
+	// how much of one directory may be described; this says how much of the disk
+	// one snapshot may touch. It is spent by every batch, including the batches
+	// of a directory too large to list, and when it runs out everything still
+	// waiting is reported as not read rather than as absent.
+	//
+	// Stopping here is deterministic for the same reason the walk limit is: the
+	// budget is spent in a fixed order — sorted listings, a queue filled in that
+	// order — so the same tree stops at the same place every time.
+	terrainBudget = 1_000_000
+
 	// terrainReadBatch is how many entries are pulled per call. Batching is what
 	// makes the cap enforceable: os.ReadDir would read and sort the whole
 	// directory before any guard could run.
@@ -141,19 +160,23 @@ var terrainBulk = map[string]bool{
 // judgment here — deterministic string matching, so the same goal and the same
 // workspace always draw the same picture.
 func RenderTerrain(dir, goal string) string {
-	return renderTerrain(dir, goal, terrainNameCap)
+	return renderTerrain(dir, goal, terrainNameCap, terrainBudget)
 }
 
-// renderTerrain is the body, with the one size the tests cannot afford to build
-// for real left as a parameter.
-func renderTerrain(dir, goal string, nameCap int) string {
+// renderTerrain is the body, with the two sizes no test could afford to reach by
+// building the workspace that reaches them left as parameters.
+func renderTerrain(dir, goal string, nameCap, budget int) string {
 	dir = strings.TrimSpace(dir)
 	if dir == "" {
 		return ""
 	}
-	scan := terrainScan{cues: terrainCues(goal), nameCap: nameCap}
+	scan := &terrainScan{cues: terrainCues(goal), nameCap: nameCap, budget: budget}
 	listing := scan.read(dir)
-	if listing.count == 0 {
+	// A workspace that could not be read to the end is a workspace this has
+	// nothing dependable to say about, and half a listing presented as a whole one
+	// is worse than silence — the planner cannot tell the difference, and the
+	// difference is what it would be planning against.
+	if listing.failed || listing.count == 0 {
 		return ""
 	}
 
@@ -209,19 +232,30 @@ func renderTerrain(dir, goal string, nameCap int) string {
 	return terrainClip(strings.Join(lines, "\n"), terrainBytes)
 }
 
-// terrainScan is one render's reading of the disk: the goal's cues and the size
-// past which a directory is counted rather than described.
+// terrainScan is one render's reading of the disk: the goal's cues, the size
+// past which a directory is counted rather than described, and the entry budget
+// the whole render shares. It is held by pointer because the budget is spent
+// across every directory this opens, not per directory.
 type terrainScan struct {
 	cues    map[string]bool
 	nameCap int
+	budget  int
 }
 
-// terrainListing is one directory as read: everything in it, sorted, unless
-// there was too much to hold — in which case there is only the count.
+// terrainListing is one directory as read.
+//
+// The three outcomes are deliberately distinct, because two of them used to be
+// indistinguishable from success. capped means the directory was read to its end
+// and there was too much to hold, so the count is exact and the listing is gone.
+// failed means it was not read to its end — no permission, a read that stopped
+// on an error, or the render's budget running out mid-directory — so nothing
+// here is complete and nothing in it may be presented as if it were. Neither is
+// the same as an empty directory, and the old code rendered both as one.
 type terrainListing struct {
 	entries []os.DirEntry
 	count   int
 	capped  bool
+	failed  bool
 }
 
 // read takes a directory whole and sorts it before anything is dropped.
@@ -236,16 +270,31 @@ type terrainListing struct {
 // It is affordable because it is names and types only: os.File.ReadDir carries
 // the kind of each entry back with its name, and the only stat in this file is
 // the one that fetches a size for a row that is actually being rendered.
-func (s terrainScan) read(dir string) terrainListing {
+//
+// Every way this can end short of the directory's last entry ends as failed. A
+// non-EOF read error used to break the same loop that EOF breaks, so a directory
+// that stopped being readable halfway through was rendered as though it had
+// ended there — a complete-looking listing that was neither complete nor sorted
+// over the whole of what was in it. An open failure returned nothing at all,
+// which the caller could not tell from an empty directory, so a directory nobody
+// had permission to read was described as holding nothing.
+func (s *terrainScan) read(dir string) terrainListing {
+	if s.budget <= 0 {
+		return terrainListing{failed: true}
+	}
 	handle, err := os.Open(dir)
 	if err != nil {
-		return terrainListing{}
+		return terrainListing{failed: true}
 	}
 	defer handle.Close()
 
 	var listing terrainListing
 	for {
 		batch, err := handle.ReadDir(terrainReadBatch)
+		// Every entry the filesystem hands over is spent, whether it is kept,
+		// skipped as plumbing, or counted past the cap. What the meter bounds is
+		// how much disk one snapshot may walk, and all three cost the same walk.
+		s.budget -= len(batch)
 		for _, entry := range batch {
 			if terrainSkipped(entry.Name()) {
 				continue
@@ -264,9 +313,26 @@ func (s terrainScan) read(dir string) terrainListing {
 			}
 			listing.entries = append(listing.entries, entry)
 		}
-		if err != nil || len(batch) == 0 {
+		if err != nil {
+			// io.EOF is the directory ending, which is the only clean way out.
+			// Anything else means what was gathered is a fragment.
+			if !errors.Is(err, io.EOF) {
+				listing.failed = true
+			}
 			break
 		}
+		if len(batch) == 0 {
+			break
+		}
+		if s.budget <= 0 {
+			listing.failed = true
+			break
+		}
+	}
+	if listing.failed {
+		// A fragment is not a listing. Returning the count alone would invite a
+		// caller to print it as though it were the whole.
+		return terrainListing{failed: true}
 	}
 	sort.Slice(listing.entries, func(i, j int) bool {
 		return listing.entries[i].Name() < listing.entries[j].Name()
@@ -283,7 +349,7 @@ func (s terrainScan) read(dir string) terrainListing {
 // one the goal was about could be dropped before it was ever considered. Cue
 // matching now runs over the whole sorted listing, and the rows are re-sorted
 // afterwards so the render stays alphabetical whichever way the cues fell.
-func (s terrainScan) choose(directories []os.DirEntry) []os.DirEntry {
+func (s *terrainScan) choose(directories []os.DirEntry) []os.DirEntry {
 	if len(directories) <= terrainDirs {
 		return directories
 	}
@@ -309,8 +375,11 @@ func (s terrainScan) choose(directories []os.DirEntry) []os.DirEntry {
 // exactly as the level above them is — a rollup for a directory, a name and a
 // size for a file — so a reader learns the shape of the deeper level without
 // learning a second notation for it.
-func (s terrainScan) children(dir string) []string {
+func (s *terrainScan) children(dir string) []string {
 	listing := s.read(dir)
+	if listing.failed {
+		return []string{"  not read"}
+	}
 	if listing.capped {
 		return []string{fmt.Sprintf("  %d entries, too many to list", listing.count)}
 	}
@@ -338,13 +407,23 @@ type terrainRollup struct {
 	files       int
 	directories int
 	extensions  []string
-	// unread says the walk did not reach the bottom, so the counts above are
-	// floors. unreadEntries is how many entries are known to be under there
-	// unaccounted for, which is knowable only where a directory was counted but
-	// not held; zero means the shortfall has no number.
-	unread        bool
+
+	// The two shortfalls are separate because they are different facts and only
+	// one of them has a number. unreadEntries is a count that was taken but whose
+	// entries were not held — a directory past the name cap — and it is exact.
+	// unreadUnknown is a shortfall with no number at all: the walk limit, the
+	// render's entry budget, or a directory that could not be read.
+	//
+	// They were one field, and the label then printed the number alone whenever
+	// there was one, so a rollup that had both hit the cap somewhere and been cut
+	// short elsewhere reported the cap's exact figure as though it were the whole
+	// of what was missing. A number stated as the shortfall when it is only part
+	// of the shortfall is worse than no number.
 	unreadEntries int
+	unreadUnknown bool
 }
+
+func (r terrainRollup) counted() bool { return r.files > 0 || r.directories > 0 }
 
 // label says exactly what was counted and nothing beyond it.
 //
@@ -352,8 +431,8 @@ type terrainRollup struct {
 // inference the walk never made: a tree of thousands of directories holding one
 // file rendered as "over 1 file", and a stop before any file was seen rendered
 // as "over 0 empty" — the opposite of the truth in both directions. What is
-// known is the counts that were actually taken and the fact that something was
-// not reached, so that is what it says, in that order.
+// known is the counts that were actually taken, then each shortfall that is
+// known about, in that order.
 func (r terrainRollup) label() string {
 	var body string
 	switch {
@@ -363,20 +442,26 @@ func (r terrainRollup) label() string {
 		body = fmt.Sprintf("%d files", r.files)
 	case r.directories > 0:
 		body = "no files, " + terrainDirectoryCount(r.directories)
-	case r.unread:
+	case r.unreadEntries > 0 || r.unreadUnknown:
 		body = "not read"
 	default:
-		body = "empty"
+		return "empty"
 	}
 	if len(r.extensions) > 0 {
 		body += " (" + strings.Join(r.extensions, ", ") + ")"
 	}
-	switch {
-	case !r.unread || body == "not read":
-	case r.unreadEntries > 0:
-		body += fmt.Sprintf(", %d entries unread", r.unreadEntries)
-	default:
-		body += ", more unread"
+	var notes []string
+	if r.unreadEntries > 0 {
+		notes = append(notes, fmt.Sprintf("%d entries unread", r.unreadEntries))
+	}
+	// "not read" already states an unnumbered shortfall, so saying it twice adds
+	// nothing — unless a number is standing beside it, where the note is what
+	// stops that number being read as the whole of what is missing.
+	if r.unreadUnknown && (r.counted() || r.unreadEntries > 0) {
+		notes = append(notes, "more unread")
+	}
+	if len(notes) > 0 {
+		body += ", " + strings.Join(notes, ", ")
 	}
 	return body
 }
@@ -387,31 +472,40 @@ func (r terrainRollup) label() string {
 // The walk is breadth-first over directories that were each read and sorted in
 // full, and the queue is filled in that sorted order, so the traversal order is
 // a property of the tree rather than of the filesystem's mood. That is what
-// makes stopping at terrainWalkLimit safe: the same tree stops at the same
-// entry every time, and the line says that it stopped.
-func (s terrainScan) rollup(root string) terrainRollup {
+// makes stopping at terrainWalkLimit or at the render's shared budget safe: the
+// same tree stops at the same entry every time, and the line says that it
+// stopped.
+func (s *terrainScan) rollup(root string) terrainRollup {
 	var rollup terrainRollup
 	counts := map[string]int{}
 	remaining := terrainWalkLimit
 	queue := []string{root}
 	for len(queue) > 0 {
-		if remaining <= 0 {
-			rollup.unread = true
+		// Two stops, and the render's budget is the one that matters at scale.
+		// The per-rollup limit bounds one row; without a meter spanning the whole
+		// render, a workspace of two thousand enormous children would pay that
+		// limit two thousand times over, and every directory too large to list
+		// cost nothing at all against it while being read to its last entry.
+		if remaining <= 0 || s.budget <= 0 {
+			rollup.unreadUnknown = true
 			break
 		}
 		current := queue[0]
 		queue = queue[1:]
 		listing := s.read(current)
+		if listing.failed {
+			rollup.unreadUnknown = true
+			continue
+		}
 		if listing.capped {
 			// Counted but not held. The entries are real and their number is
 			// exact; what they are is the thing that cannot be said.
-			rollup.unread = true
 			rollup.unreadEntries += listing.count
 			continue
 		}
 		for _, entry := range listing.entries {
 			if remaining <= 0 {
-				rollup.unread = true
+				rollup.unreadUnknown = true
 				break
 			}
 			remaining--
@@ -557,8 +651,14 @@ func terrainSkipped(name string) bool {
 // a goal that named it in the other. NFC first, because two byte sequences for
 // one accented character are the same word and a byte comparison would call them
 // strangers.
+//
+// NFC again afterwards, because folding does not preserve it: full case folding
+// decomposes some characters — Greek ΐ folds to iota plus two combining marks —
+// and a combining mark is neither a letter nor a digit, so the splitter below
+// would tear such a word into fragments too short to be a cue at all. Recomposing
+// puts the character back together before anything is split on it.
 func terrainWords(phrase string) []string {
-	folded := cases.Fold().String(norm.NFC.String(phrase))
+	folded := norm.NFC.String(cases.Fold().String(norm.NFC.String(phrase)))
 	fields := strings.FieldsFunc(folded, func(r rune) bool {
 		return !unicode.IsLetter(r) && !unicode.IsDigit(r)
 	})
@@ -596,7 +696,7 @@ func terrainCues(goal string) map[string]bool {
 // spends the cap — the budget every planning call in the run pays for — on
 // material nobody asked about, and pushes out the rows that were the point. So
 // every rule here is written to prefer missing.
-func (s terrainScan) cued(name string) bool {
+func (s *terrainScan) cued(name string) bool {
 	for _, word := range terrainWords(name) {
 		if terrainMatchesCue(s.cues, word) {
 			return true

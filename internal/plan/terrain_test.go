@@ -262,6 +262,16 @@ func TestRenderTerrainMatchesCuesAcrossSeparatorsAndForms(t *testing.T) {
 		// that named it in the other.
 		{"the sharp s against a double s", "Stra\u00dfe", "photograph the strasse", true},
 		{"a Greek final sigma against a medial one", "\u03a3\u0399\u03a3\u03a5\u03a6\u039f\u03a3", "read the \u03c3\u03b9\u03c3\u03c5\u03c6\u03bf\u03c2 notes", true},
+		// Folding decomposes this one \u2014 \u0390 becomes iota plus two combining marks \u2014
+		// and a combining mark is neither letter nor digit, so without recomposing
+		// afterwards the splitter tears "\u03ba\u03b1\u0390\u03ba\u03b9" into "\u03ba\u03b1" and "\u03ba\u03b9" and rejoins
+		// nothing. The name survives as itself only if it is put back together.
+		{"a character folding into combining marks", "\u03ba\u03b1\u0390\u03ba\u03b9", "photograph the \u03ba\u03b1\u0390\u03ba\u03b9", true},
+		// The same shredding read the other way, which is the damaging half: the
+		// fragments of a torn name can spell a different and much commoner word \u2014
+		// here "\u03ba\u03b1\u03b9", Greek for "and" \u2014 and every goal containing that word would
+		// open a directory that has nothing to do with it.
+		{"a torn name must not spell a commoner word", "\u03ba\u03b1\u0390\u03ba\u03b9", "read the notes \u03ba\u03b1\u03b9 the rest", false},
 		{"a real plural", "archive", "read the archives end to end", true},
 		{"a short stem is not a plural", "news", "write the report", false},
 		{"nothing in common", "ledgers", "write a short poem", false},
@@ -298,20 +308,33 @@ func TestTerrainRollupSaysWhatItActuallyCounted(t *testing.T) {
 		{"kinds are named", terrainRollup{files: 3, extensions: []string{".csv", ".md"}}, "3 files (.csv, .md)"},
 		{
 			name:   "one file and a great many directories",
-			rollup: terrainRollup{files: 1, directories: 3999, unread: true},
+			rollup: terrainRollup{files: 1, directories: 3999, unreadUnknown: true},
 			want:   "1 file, more unread",
 		},
 		{
 			name:   "stopped before any file was seen",
-			rollup: terrainRollup{directories: 4000, unread: true},
+			rollup: terrainRollup{directories: 4000, unreadUnknown: true},
 			want:   "no files, 4000 directories, more unread",
 		},
 		{
 			name:   "the shortfall has a number",
-			rollup: terrainRollup{files: 12, unread: true, unreadEntries: 250000},
+			rollup: terrainRollup{files: 12, unreadEntries: 250000},
 			want:   "12 files, 250000 entries unread",
 		},
-		{"stopped before anything at all", terrainRollup{unread: true}, "not read"},
+		{
+			// The conflation: a number and a flag are different facts, and
+			// printing only the number reads as though it were the whole of what
+			// is missing when the flag says it is not.
+			name:   "a number and a shortfall with no number",
+			rollup: terrainRollup{files: 12, unreadEntries: 250000, unreadUnknown: true},
+			want:   "12 files, 250000 entries unread, more unread",
+		},
+		{
+			name:   "nothing counted, but a number is known",
+			rollup: terrainRollup{unreadEntries: 250000},
+			want:   "not read, 250000 entries unread",
+		},
+		{"stopped before anything at all", terrainRollup{unreadUnknown: true}, "not read"},
 	} {
 		t.Run(testcase.name, func(t *testing.T) {
 			if got := testcase.rollup.label(); got != testcase.want {
@@ -334,7 +357,7 @@ func TestTerrainReadsADirectoryWholeBeforeDroppingAnything(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	scan := terrainScan{cues: map[string]bool{}, nameCap: terrainNameCap}
+	scan := &terrainScan{cues: map[string]bool{}, nameCap: terrainNameCap, budget: terrainBudget}
 	listing := scan.read(root)
 	if listing.capped {
 		t.Fatal("a thousand entries is far under the cap and should have been held whole")
@@ -395,7 +418,7 @@ func TestTerrainCountsWhatItRefusesToList(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	scan := terrainScan{cues: map[string]bool{}, nameCap: 10}
+	scan := &terrainScan{cues: map[string]bool{}, nameCap: 10, budget: terrainBudget}
 	listing := scan.read(root)
 	if !listing.capped || listing.entries != nil {
 		t.Fatal("past the cap the listing must be dropped, not trimmed")
@@ -404,7 +427,7 @@ func TestTerrainCountsWhatItRefusesToList(t *testing.T) {
 		t.Fatalf("count = %d, want the exact %d — the count is what stays reproducible", listing.count, entries)
 	}
 
-	got := renderTerrain(root, "read it", 10)
+	got := renderTerrain(root, "read it", 10, terrainBudget)
 	want := fmt.Sprintf("%d entries at the top level, too many to list", entries)
 	if !strings.Contains(got, want) {
 		t.Fatalf("render = %q, want it to carry %q", got, want)
@@ -412,8 +435,75 @@ func TestTerrainCountsWhatItRefusesToList(t *testing.T) {
 	if strings.Contains(got, ".csv") {
 		t.Errorf("nothing from an unlistable directory may be named:\n%s", got)
 	}
-	if again := renderTerrain(root, "read it", 10); again != got {
+	if again := renderTerrain(root, "read it", 10, terrainBudget); again != got {
 		t.Error("even the refusal has to be byte-stable")
+	}
+}
+
+// TestTerrainStopsScanningWhenTheRenderRunsOutOfBudget is the fix for the only
+// unbounded thing left in here. The per-directory cap bounds one directory, and
+// a workspace with two thousand enormous children pays it two thousand times —
+// each of those directories read to its last entry to be counted, none of them
+// costing anything against a total. The meter spans the whole render, and what
+// it does not reach is reported as unread rather than as absent.
+func TestTerrainStopsScanningWhenTheRenderRunsOutOfBudget(t *testing.T) {
+	root := buildTerrain(t, map[string]string{
+		"alpha/one.csv": "a\n",
+		"beta/two.csv":  "a\n",
+		"top.txt":       "x\n",
+	})
+	// Enough to read the top level to its end and no further.
+	const budget = 4
+	got := renderTerrain(root, "read it", terrainNameCap, budget)
+
+	for _, want := range []string{"alpha/", "beta/", "top.txt"} {
+		if !strings.Contains(got, want) {
+			t.Errorf("the top level should still be described; %q missing:\n%s", want, got)
+		}
+	}
+	if strings.Count(got, "not read") != 2 {
+		t.Errorf("both rollups ran past the meter and should say so:\n%s", got)
+	}
+	if strings.Contains(got, "one.csv") || strings.Contains(got, "empty") {
+		t.Errorf("what the meter stopped short of is unread, never empty and never named:\n%s", got)
+	}
+	if again := renderTerrain(root, "read it", terrainNameCap, budget); again != got {
+		t.Error("the meter is spent in a fixed order, so where it runs out must be stable")
+	}
+}
+
+// TestTerrainRefusesToDescribeWhatItCouldNotRead is the error-path fix. A
+// directory that cannot be opened, or that stops being readable partway, used to
+// arrive at the caller looking exactly like a directory with nothing in it —
+// and "empty" is a claim about the workspace that a failed read never earned.
+func TestTerrainRefusesToDescribeWhatItCouldNotRead(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("root reads a 000 directory regardless, so the case cannot be built here")
+	}
+	root := buildTerrain(t, map[string]string{
+		"closed/secret.csv": "a\n",
+		"open/plain.csv":    "a\n",
+	})
+	closed := filepath.Join(root, "closed")
+	if err := os.Chmod(closed, 0o000); err != nil {
+		t.Skip("this filesystem does not enforce directory permissions")
+	}
+	t.Cleanup(func() { _ = os.Chmod(closed, 0o755) })
+
+	scan := &terrainScan{cues: map[string]bool{}, nameCap: terrainNameCap, budget: terrainBudget}
+	if listing := scan.read(closed); !listing.failed || listing.count != 0 {
+		t.Skip("this environment let the unreadable directory be read after all")
+	}
+
+	got := RenderTerrain(root, "read it")
+	if !strings.Contains(got, "not read") {
+		t.Errorf("an unreadable directory must say so:\n%s", got)
+	}
+	if strings.Contains(got, "empty") {
+		t.Errorf("a directory nobody could read is not a directory with nothing in it:\n%s", got)
+	}
+	if !strings.Contains(got, "1 file (.csv)") {
+		t.Errorf("the readable directory beside it should be unaffected:\n%s", got)
 	}
 }
 
