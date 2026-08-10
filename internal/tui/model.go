@@ -152,6 +152,27 @@ type Interrupter interface {
 	Interrupt(partial string) bool
 }
 
+// Restarter is the forward door of work that has stopped for good. Resume
+// belongs to work that is merely held; a failed or cancelled node cannot be
+// resumed, it can only be run again — and the store agrees, refusing
+// CommandRestart on anything else. It journals the identical typed command a
+// sentence would, so language and the keyboard reach the same place, and it is
+// a Commander refinement for the same reason Interrupter is: a window with no
+// command journal behind it has no restart to offer.
+type Restarter interface {
+	Restart(nodeID string) error
+}
+
+// SurgeryGate is the confirm law of the conversational path, offered to the key
+// path so a keypress cannot buy what a sentence has to ask for. It reports
+// whether it asked; true means the durable question is already in the thread
+// and the caller must journal nothing, because answering the question is what
+// journals the command. A commander that does not implement it has no head to
+// ask with, and its keys behave as they always did.
+type SurgeryGate interface {
+	ConfirmSurgery(kind store.CommandKind, nodeID string) (bool, error)
+}
+
 // NodeTraceStamp is a trace file's identity as the last read already stat-ed
 // it. The executor appends to that file outside the journal, so the poll has to
 // ask for it on every cycle, quiet ones included.
@@ -1378,6 +1399,8 @@ func (m *Model) updateKey(message tea.KeyMsg) (tea.Cmd, bool) {
 			return nil, true
 		case key == "c":
 			return m.cancelInspectedNode(), true
+		case key == "r":
+			return m.restartInspectedNode(), true
 		case key == "enter" && m.inputFocused:
 			return m.submitSteer(), true
 		case key == "pgup" || key == "pgdown":

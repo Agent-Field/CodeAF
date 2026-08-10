@@ -210,6 +210,7 @@ type Reconciler struct {
 	reflect         ReflectFunc
 	digestTerritory TerritoryDigestFunc
 	overrunPlan     OverrunPlanFunc
+	cancelRethink   CancelRethinkFunc
 	redirect        RedirectFunc
 	sentinel        SentinelFunc
 	composeBrief    BriefComposeFunc
@@ -1538,6 +1539,54 @@ func (r *Reconciler) WithOverrunPlanner(dailyBudgetUSD float64, plan OverrunPlan
 	return r
 }
 
+// CancelRethinkFunc shows one user cancellation to the plan sentinel. It is
+// injected for the same reason the overrun planner is: the live plan document
+// belongs to the process that planned it, and the reconciler owns only the
+// moment at which somebody should look at it again.
+type CancelRethinkFunc func(ctx context.Context, node store.Node, reason string)
+
+// WithCancelRethink gives cancellation the upward channel failure has had all
+// along. Without it a cancel is exactly what it was before — the work stops and
+// the plan around it carries on as though nothing had been withdrawn.
+func (r *Reconciler) WithCancelRethink(rethink CancelRethinkFunc) *Reconciler {
+	r.cancelRethink = rethink
+	return r
+}
+
+// rethinkAfterCancel routes one cancellation to the plan sentinel, at most once
+// per command.
+//
+// Three filters, and each is the whole reason a fourth replan authority is not
+// what this is. Only the user's own cancellations pass — a revision's own
+// removals cancel pending nodes too, and convening the sentinel over its own
+// edit is a loop with a budget attached. Only work that never started passes —
+// a running leaf is the leaf wrapper's business, which holds the partial and
+// revises before it hands the claim back, and letting both fire would spend
+// twice to say one thing. And only the top of a cancelled subtree passes: a
+// cascade cancels N nodes and the sentinel is owed one event naming the root,
+// not N events racing each other over the same remainder. The parent's own
+// status is the whole test, which keeps this derived from the graph rather than
+// from a set of command ids this process happens to remember.
+func (r *Reconciler) rethinkAfterCancel(ctx context.Context, node store.Node) error {
+	if r.cancelRethink == nil || strings.TrimSpace(node.Error) != store.UserCancelReason {
+		return nil
+	}
+	if !node.StartedAt.IsZero() {
+		return nil
+	}
+	if node.Parent != "" {
+		parent, ok, err := r.store.Node(node.Parent)
+		if err != nil {
+			return err
+		}
+		if ok && parent.Status == store.Cancelled {
+			return nil
+		}
+	}
+	r.cancelRethink(ctx, node, node.Error)
+	return nil
+}
+
 // titleSubtree names the job's root node — the line the rail shows for the
 // whole job. Planned leaves keep the planner's own short titles; the root is
 // the one node whose title would otherwise be a generic "Synthesis" or the
@@ -1616,12 +1665,12 @@ func (r *Reconciler) cancel(ctx context.Context, command store.Command) (command
 		}
 		switch node.Status {
 		case store.Pending:
-			if err := r.store.CancelPending(id, "cancelled by user"); err != nil {
+			if err := r.store.CancelPending(id, store.UserCancelReason); err != nil {
 				return commandOutcome{}, err
 			}
 			cancelled++
 		case store.Claimed, store.Running:
-			if err := r.store.RequestNodeCancel(id, "cancelled by user"); err != nil {
+			if err := r.store.RequestNodeCancel(id, store.UserCancelReason); err != nil {
 				return commandOutcome{}, err
 			}
 			requested++
@@ -1816,6 +1865,9 @@ func (r *Reconciler) announceTransitions(ctx context.Context) error {
 				// thing anyone can say about know-how that was supposed to fit.
 				if node, ok, err := r.store.Node(event.NodeID); err == nil && ok {
 					r.recordCraftOutcome(node, false)
+					if err := r.rethinkAfterCancel(ctx, node); err != nil {
+						return err
+					}
 				}
 			case store.EventNodeStarted:
 				r.recordForNarration(byID, event)

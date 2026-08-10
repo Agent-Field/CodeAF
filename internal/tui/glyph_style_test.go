@@ -44,8 +44,12 @@ func TestRailGlyphsPaintTheSameBytes(t *testing.T) {
 				case node.Status == store.Claimed || node.Status == store.Running:
 					want = peachStyle.Render("● " + spinnerFrames[frame%len(spinnerFrames)])
 					wantAnimated = true
-				case node.Status == store.Failed || node.Status == store.Cancelled:
+				case node.Status == store.Failed:
 					want = lipgloss.NewStyle().Foreground(tint(rose, dimmed)).Render("●")
+				case node.Status == store.Cancelled:
+					// Muted at both brightnesses: a cancellation is a decision,
+					// not a fault, and never wears failure's rose.
+					want = lipgloss.NewStyle().Foreground(muted).Render("●")
 				default:
 					want = butterStyle.Render("○")
 				}

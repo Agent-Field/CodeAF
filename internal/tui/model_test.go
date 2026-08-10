@@ -36,14 +36,19 @@ type fakeBackend struct {
 }
 
 type fakeCommander struct {
-	models          []string
-	catalog         []ModelChoice
-	catalogs        map[string][]ModelChoice
-	current         map[string]string
-	setRole         string
-	setModel        string
-	newSession      string
-	cancelled       []string
+	models     []string
+	catalog    []ModelChoice
+	catalogs   map[string][]ModelChoice
+	current    map[string]string
+	setRole    string
+	setModel   string
+	newSession string
+	cancelled  []string
+	restarted  []string
+	// gated is the confirm law standing in front of the key path: when it is
+	// set the commander asks rather than journals, exactly as the head does.
+	gated           bool
+	confirmed       []store.CommandKind
 	facts           []store.Fact
 	database        string
 	trace           string
@@ -88,6 +93,19 @@ func (f *fakeCommander) Cancel(nodeID string) error {
 	}
 	f.cancelled = append(f.cancelled, nodeID)
 	return nil
+}
+
+func (f *fakeCommander) Restart(nodeID string) error {
+	if f.err != nil {
+		return f.err
+	}
+	f.restarted = append(f.restarted, nodeID)
+	return nil
+}
+
+func (f *fakeCommander) ConfirmSurgery(kind store.CommandKind, _ string) (bool, error) {
+	f.confirmed = append(f.confirmed, kind)
+	return f.gated, nil
 }
 
 func (f *fakeCommander) Notebook(limit int) []store.Fact {
@@ -1037,7 +1055,7 @@ func TestHintsDescribeReceiptsGraphViewAndTwoVoices(t *testing.T) {
 	view := ansi.Strip(strings.Join(model.helpContentLines(76), "\n"))
 	normalizedHelp := strings.Join(strings.Fields(view), " ")
 	for _, expected := range []string{
-		"/notebook", "v", "alt+g", "jump to the task", "cancel the step you are looking at", "mouse",
+		"/notebook", "v", "alt+g", "jump to the task", "c stops live work", "mouse",
 	} {
 		if !strings.Contains(normalizedHelp, expected) {
 			t.Fatalf("help does not contain %q:\n%s", expected, view)

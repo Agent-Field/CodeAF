@@ -107,14 +107,14 @@ func TestTabLeavesTheSteerLineAndCancelActsThere(t *testing.T) {
 	model, commander := inspectedWorkerModel(t)
 
 	if hint := model.contextHelpLine(); !strings.Contains(hint, "type to steer") ||
-		strings.Contains(hint, "c cancel") {
+		strings.Contains(hint, "c stop") {
 		t.Fatalf("focused footer advertises a key that cannot act: %q", hint)
 	}
 	_, _ = model.Update(tea.KeyMsg{Type: tea.KeyTab})
 	if model.inputFocused {
 		t.Fatal("tab did not leave the steer line")
 	}
-	if hint := model.contextHelpLine(); !strings.Contains(hint, "c cancel") {
+	if hint := model.contextHelpLine(); !strings.Contains(hint, "c stop") {
 		t.Fatalf("unfocused footer does not advertise cancel: %q", hint)
 	}
 	_, _ = model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("c")})

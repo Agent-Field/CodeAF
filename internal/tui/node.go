@@ -403,13 +403,66 @@ func (m *Model) toggleNodeSteerFocus() {
 }
 
 func (m *Model) cancelInspectedNode() tea.Cmd {
+	// Work that has already stopped has nothing to stop. The store refuses the
+	// command anyway; refusing it here keeps the key silent rather than making
+	// the reader of a finished task read an error they could not have avoided.
+	if terminalStatus(m.inspectedNode.Status) {
+		return nil
+	}
 	if m.commander == nil {
 		return m.showStatus("cancelling isn't available in this window")
+	}
+	if asked, command := m.gateNodeSurgery(store.CommandCancel); asked {
+		return command
 	}
 	if err := m.commander.Cancel(m.nodeViewID); err != nil {
 		return m.showStatus(fmt.Sprintf("could not cancel %s: %v", m.nodeViewID, err))
 	}
 	return m.showStatus("cancel requested → " + m.nodeViewID)
+}
+
+// restartInspectedNode is the verb that matches the state the reader is looking
+// at. A node that failed or was cancelled has no resume — the work is over, and
+// the only forward move is to run it again against the digest of the attempt
+// that stopped. Offered nowhere else, because nowhere else is it true.
+func (m *Model) restartInspectedNode() tea.Cmd {
+	if !nodeRestartable(m.inspectedNode.Status) {
+		return nil
+	}
+	restarter, ok := m.commander.(Restarter)
+	if !ok || restarter == nil {
+		return m.showStatus("restarting isn't available in this window")
+	}
+	if asked, command := m.gateNodeSurgery(store.CommandRestart); asked {
+		return command
+	}
+	if err := restarter.Restart(m.nodeViewID); err != nil {
+		return m.showStatus(fmt.Sprintf("could not restart %s: %v", m.nodeViewID, err))
+	}
+	return m.showStatus("restart requested → " + m.nodeViewID)
+}
+
+// gateNodeSurgery puts the conversational confirm gates in front of the key
+// path. When the loss is large enough that a sentence would have been asked to
+// confirm it, the key press asks the same durable question and journals
+// nothing: the answer replays the command. The status line only says where to
+// look, because the question itself is the reply.
+func (m *Model) gateNodeSurgery(kind store.CommandKind) (bool, tea.Cmd) {
+	gate, ok := m.commander.(SurgeryGate)
+	if !ok || gate == nil {
+		return false, nil
+	}
+	asked, err := gate.ConfirmSurgery(kind, m.nodeViewID)
+	if err != nil || !asked {
+		return false, nil
+	}
+	return true, m.showStatus("asked first — answer in the thread")
+}
+
+// nodeRestartable is the store's own restart law, read here so the surface
+// never offers a door the journal would refuse.
+func nodeRestartable(status store.Status) bool {
+	return status == store.Failed || status == store.Cancelled
 }
 
 // sizeNodeViewports gives the node view one sticky line and one scrolling
@@ -559,14 +612,32 @@ func (m *Model) renderNodeDetailsContent(width int) string {
 		content += "\n" + mutedStyle.Render(truncate(receipt, width))
 	}
 	if terminalStatus(m.inspectedNode.Status) {
-		if m.inspectedNode.Status == store.Failed || m.inspectedNode.Status == store.Cancelled {
+		switch {
+		case m.inspectedNode.Status == store.Cancelled:
+			// A cancellation is not a failure and must not wear failure's ink. The
+			// user did this on purpose, so the reason reads as the quiet fact it
+			// is — and whatever the worker had written before it stopped is the
+			// most useful thing on the page, said under a label that admits what
+			// it is rather than pretending to be a summary.
+			reason := strings.TrimSpace(m.inspectedNode.Error)
+			if reason == "" {
+				reason = "stopped"
+			}
+			content += "\n" + mutedStyle.Render(wrapText(reason, width))
+			if partial := strings.TrimSpace(m.inspectedNode.Summary); partial != "" {
+				content += "\n\n" + mutedStyle.Faint(true).Render("LEFT OFF") +
+					"\n" + inputTextStyle.Render(wrapText(partial, width))
+			}
+		case m.inspectedNode.Status == store.Failed:
 			failure := strings.TrimSpace(m.inspectedNode.Error)
 			if failure == "" {
 				failure = string(m.inspectedNode.Status)
 			}
 			content += "\n" + roseStyle.Render(wrapText(failure, width))
-		} else if summary := strings.TrimSpace(m.inspectedNode.Summary); summary != "" {
-			content += "\n" + inputTextStyle.Render(wrapText(summary, width))
+		default:
+			if summary := strings.TrimSpace(m.inspectedNode.Summary); summary != "" {
+				content += "\n" + inputTextStyle.Render(wrapText(summary, width))
+			}
 		}
 	}
 	return content
@@ -1053,7 +1124,10 @@ func (m *Model) nodeTiming(now time.Time) string {
 			parts = append(parts, formatElapsed(node.FinishedAt.Sub(node.StartedAt)))
 		}
 		if !node.FinishedAt.IsZero() {
-			parts = append(parts, "finished "+relativeTime(node.FinishedAt, now))
+			// The verb is the state. "finished" over work the user stopped
+			// themselves reads as a claim that it completed, and the one line
+			// they cannot scroll away from is the wrong place to be vague.
+			parts = append(parts, nodeEndingWord(node.Status)+" "+relativeTime(node.FinishedAt, now))
 		} else {
 			parts = append(parts, string(node.Status))
 		}
@@ -1063,6 +1137,18 @@ func (m *Model) nodeTiming(now time.Time) string {
 		return formatElapsed(now.Sub(node.StartedAt)) + " elapsed"
 	}
 	return string(node.Status)
+}
+
+// nodeEndingWord says how a task ended in the word a person would use for it.
+func nodeEndingWord(status store.Status) string {
+	switch status {
+	case store.Failed:
+		return "failed"
+	case store.Cancelled:
+		return "cancelled"
+	default:
+		return "finished"
+	}
 }
 
 // updateNodeViewport hands a key the document did not claim to the document

@@ -1972,8 +1972,13 @@ func cardPartGlyph(status store.Status) string {
 	switch status {
 	case store.Done:
 		return mintStyle.Render("✓")
-	case store.Failed, store.Cancelled:
+	case store.Failed:
 		return roseStyle.Render("✗")
+	case store.Cancelled:
+		// The same dash the brief already uses for cancelled work: stopped on
+		// purpose is not the same news as broken, and one surface saying so
+		// while another paints a rose ✗ is two answers to one question.
+		return mutedStyle.Render("–")
 	case store.Running, store.Claimed:
 		return peachStyle.Render("◐")
 	default:

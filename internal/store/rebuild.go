@@ -300,7 +300,7 @@ func replayEvent(tx *sql.Tx, event Event) error {
 		if err := json.Unmarshal(event.Payload, &payload); err != nil {
 			return err
 		}
-		return applyNodeCancelledView(tx, event.NodeID, payload.Reason, event.Seq, formatTime(event.Time))
+		return applyNodeCancelledView(tx, event.NodeID, payload.Reason, payload.Partial, event.Seq, formatTime(event.Time))
 
 	case EventNodeCancelRequested:
 		if err := decodeNodeControlPayload(event.Payload); err != nil {

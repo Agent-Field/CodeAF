@@ -187,35 +187,11 @@ func (h *Head) resolveSurgery(user store.Message, kind store.CommandKind, target
 	if err != nil {
 		return err
 	}
-	if !confirmed && surgeryNeedsConfirmation(kind, impact) {
-		verb := surgeryVerb(kind)
-		prompt := fmt.Sprintf("%s %s? %s", upperFirst(verb), surgeryTargetLabel(node), surgeryLoss(kind, impact))
-		prompt = strings.TrimSpace(prompt)
-		allowFree := false
-		options := []store.QuestionOption{
-			{Label: "yes, " + verb + " it", Value: encodeSurgeryOption("apply", kind, target, instruction)},
-			{Label: surgeryKeepLabel(kind), Value: encodeSurgeryOption("keep", kind, target, instruction)},
-		}
-		ask, _, gateErr := h.store.ShouldAsk(store.QuestionCategorySurgeryConfirm)
-		if gateErr == nil && !ask {
-			if err := h.store.RecordAssumedWithDefault(store.QuestionCategorySurgeryConfirm, "2", user.SessionID, prompt); err == nil {
-				return h.postAgent(user.SessionID, "Assuming the default: "+surgeryKeepLabel(kind)+".", 0)
-			}
-		}
-		body := store.QuestionMessageBody(prompt, options, store.QuestionConfig{
-			Kind: store.QuestionConfirm, Category: store.QuestionCategorySurgeryConfirm,
-			Default: "2", AllowFree: &allowFree,
-		})
-		question, err := h.store.AskQuestion(store.AgentQuestion{
-			SessionID: user.SessionID, Text: body, OriginNodeID: target,
-			Urgency: store.QuestionBlocking, Category: store.QuestionCategorySurgeryConfirm,
-			DefaultAnswer: "2", Options: options,
-		})
-		if err != nil {
+	if !confirmed {
+		asked, err := h.askSurgeryConfirm(user.SessionID, node, kind, target, instruction, impact)
+		if err != nil || asked {
 			return err
 		}
-		_, err = h.store.SurfaceQuestion(question.Seq)
-		return err
 	}
 	command, err := h.store.RequestCommand(store.Command{
 		SessionID: user.SessionID, Kind: kind, Target: target, Instruction: instruction,
@@ -224,6 +200,70 @@ func (h *Head) resolveSurgery(user store.Message, kind store.CommandKind, target
 		return h.postAgent(user.SessionID, commandErrorReply, 0)
 	}
 	return h.postAgent(user.SessionID, surgeryQueuedReceipt(kind, node, instruction), command.Seq)
+}
+
+// ConfirmSurgery is the confirm law offered to whoever else can journal a node
+// command — today, the task page's single-key stop and restart.
+//
+// The gates are the product's promise that nothing large is thrown away without
+// somebody naming the loss out loud, and a keypress is not a smaller intention
+// than a sentence. A key that journalled directly bought, for one accidental
+// press, exactly what the conversational path has always had to ask for. So the
+// key path asks this first: it reports true when it has asked, and the caller
+// journals nothing — the durable question is the reply, and answering it
+// replays the command through the same option machinery a spoken confirm does.
+// False means the loss is small, and small work is simply done.
+func (h *Head) ConfirmSurgery(sessionID string, kind store.CommandKind, target string) (bool, error) {
+	if h == nil || h.store == nil {
+		return false, nil
+	}
+	node, found, err := h.store.Node(target)
+	if err != nil || !found {
+		return false, err
+	}
+	impact, err := h.store.Impact(target, time.Now())
+	if err != nil {
+		return false, err
+	}
+	return h.askSurgeryConfirm(sessionID, node, kind, target,
+		restartInstruction(kind, ""), impact)
+}
+
+// askSurgeryConfirm asks the one blocking question a large loss requires, and
+// reports whether it asked. A silent gate is not an error, it is permission.
+func (h *Head) askSurgeryConfirm(sessionID string, node store.Node, kind store.CommandKind,
+	target, instruction string, impact store.SurgeryImpact) (bool, error) {
+	if !surgeryNeedsConfirmation(kind, impact) {
+		return false, nil
+	}
+	verb := surgeryVerb(kind)
+	prompt := fmt.Sprintf("%s %s? %s", upperFirst(verb), surgeryTargetLabel(node), surgeryLoss(kind, impact))
+	prompt = strings.TrimSpace(prompt)
+	allowFree := false
+	options := []store.QuestionOption{
+		{Label: "yes, " + verb + " it", Value: encodeSurgeryOption("apply", kind, target, instruction)},
+		{Label: surgeryKeepLabel(kind), Value: encodeSurgeryOption("keep", kind, target, instruction)},
+	}
+	ask, _, gateErr := h.store.ShouldAsk(store.QuestionCategorySurgeryConfirm)
+	if gateErr == nil && !ask {
+		if err := h.store.RecordAssumedWithDefault(store.QuestionCategorySurgeryConfirm, "2", sessionID, prompt); err == nil {
+			return true, h.postAgent(sessionID, "Assuming the default: "+surgeryKeepLabel(kind)+".", 0)
+		}
+	}
+	body := store.QuestionMessageBody(prompt, options, store.QuestionConfig{
+		Kind: store.QuestionConfirm, Category: store.QuestionCategorySurgeryConfirm,
+		Default: "2", AllowFree: &allowFree,
+	})
+	question, err := h.store.AskQuestion(store.AgentQuestion{
+		SessionID: sessionID, Text: body, OriginNodeID: target,
+		Urgency: store.QuestionBlocking, Category: store.QuestionCategorySurgeryConfirm,
+		DefaultAnswer: "2", Options: options,
+	})
+	if err != nil {
+		return true, err
+	}
+	_, err = h.store.SurfaceQuestion(question.Seq)
+	return true, err
 }
 
 // restartInstruction is the one place a restart's model words are read. It sits

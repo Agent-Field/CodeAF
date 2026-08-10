@@ -68,7 +68,27 @@ func newResidentReconciler(settings config.Config, graph *store.Store,
 		WithTerritoryDigester(digestTerritory(settings, chatClient)).
 		WithWatchEngine(settings.DailyBudgetUSD, checkSentinel(settings, chatClient)).
 		WithOverrunPlanner(settings.DailyBudgetUSD, replanRemainder(settings, planClient, taskClient, plans, graph)).
+		WithCancelRethink(rethinkAfterCancel(settings, planClient, plans, graph)).
 		WithPracticeLoop(settings.PracticeBudgetUSD, settings.PracticeIdle)
+}
+
+// rethinkAfterCancel is the settle watcher's half of the cancel journey: work
+// the user withdrew before any worker started it. There is no leaf wrapper to
+// speak for it — nothing ran — so the reconciler names the top of the cancelled
+// subtree and this resolves it back to the plan document it belongs to. A job
+// with no retained plan (a single spliced leaf, a rehydration that failed) has
+// no remainder to reconsider and this quietly does nothing, which is the same
+// answer the sentinel would have given more expensively.
+func rethinkAfterCancel(settings config.Config, planClient *liveClient,
+	plans *jobPlans, graph *store.Store) resident.CancelRethinkFunc {
+	return func(ctx context.Context, node store.Node, reason string) {
+		prefix, planGraph, _, workModel, _ := plans.lookup(node.ID)
+		if planGraph == nil {
+			return
+		}
+		plans.reviseAfterCancel(ctx, settings, planClient, graph, node, prefix, planGraph,
+			node.Summary, reason, workModel)
+	}
 }
 
 // compileIntent turns one user instruction into a compiled goal.
