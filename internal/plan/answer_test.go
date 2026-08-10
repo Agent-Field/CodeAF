@@ -23,7 +23,7 @@ func TestEverySurfaceThatCommissionsTheFinishedWholeAsksForItInTheMessage(t *tes
 	// enumeration is the test: a fourth surface that can commission a final
 	// deliverable and is not in this list is the next regression.
 	for surface, text := range map[string]string{
-		"the deliverable owner's instruction": deliverableLineFor(1, "the last node", 1),
+		"the deliverable owner's instruction": deliverableLineFor(1, "the last node", 1, false),
 		"the deliverable owner's method":      contractDeliverableLine,
 		"the panel's merge":                   ensembleMergeBrief(3, "one merged review"),
 	} {

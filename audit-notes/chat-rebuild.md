@@ -1708,3 +1708,33 @@ The legacy path dies with the old chat, one wave after the default flips.
    real when Wave 3 rooms land. `AFORGE_CHAT_V2` is registered as operator
    plumbing (a which-surface switch that dies one wave after the flip, not a
    settings row).
+
+### 12.4 Wave 1 batch 1 (cache positions, registry, sanitizer)
+
+1. **Position-by-volatility law applied to the head**: compiler system prompt is
+   a bare const again (measured worker menu rides the end of the user message —
+   position chosen over TTL so a specialist crossing its evidence gate lands at
+   render time); router prompt puts the append-only thread ABOVE rewritten-in-
+   place measured history; deep-slice cost renders in dimes via `dimeUSD`
+   (shared with the board); revision audience count sits just above the message.
+2. **Cache-audit claim (c2) was a misread and is REJECTED**: head.go's
+   `| running` elapsed is the per-step duration from plan-sight (`00433f4`),
+   regression-tested, not derivable from `now:` (board has no start
+   timestamps). It stays. Honest residual: minute-tick churn inside the live
+   snapshot block; mitigation (coarsening `boardElapsed`) is a user-visible
+   plan-sight change, not this campaign's.
+3. **`/model` is a liar today**: it repoints the session client locally via
+   `chatCommander.SetModel` and never journals `CommandSetModel` — the Wave 0
+   reconciler arm has no user door. Wiring it through the journal belongs to the
+   chat.go dissolution. Registry seeds the entry with an empty Journal until
+   then. Belt `steer`/`note` journal non-CommandKind things; splice/amend have
+   no discrete door — all left unregistered rather than force-fit.
+4. **Sanitizer coverage**: all message bodies, question text, trace tail, and
+   stream deltas pass the chokepoint (three seams: poll, task-page poll, stream
+   delta). NOT covered, for Wave 2's structured parts to close:
+   `QuestionOption.Label/Hint` and receipt/reason text rendered outside bodies.
+   ANSI-16 remap mechanism landed with identity table; palette plugs in Wave 2.
+5. **Registry catalog is 39 entries**; the belt-tool gate reads toolbelt.go via
+   AST (constants unexported); the store-kind gate hand-mirrors exported
+   CommandKind constants. Multiple doors sharing one Kind (cancel ×3) is by
+   design.

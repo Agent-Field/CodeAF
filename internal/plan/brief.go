@@ -24,6 +24,10 @@ import (
 // interesting middle of the problem, which is how a wide graph collapses back
 // into duplicated work.
 //
+// Its second paragraph is workerPremise, shared verbatim with the working
+// method: both passes are writing for the same machine, and the one place that
+// fact was restated rather than shared is the one place it was wrong.
+//
 // The third is narrower and was the most expensive. The goal reaches every
 // agent, so a goal naming a deliverable reads to all of them as an instruction
 // to produce it — five nodes once wrote the same REVIEW.md over the top of each
@@ -31,9 +35,10 @@ import (
 // non-owner is told in words that its result is handed over instead.
 const briefPrompt = `You write the instruction that one agent receives.
 
-That agent works alone, in order, with tools. It sees only what you write — not
-the wider goal, not the plan, not the other agents' work — and it cannot ask
-anyone anything. Whatever you leave out is simply missing.
+` + workerPremise + `
+
+It sees only what you write — not the wider goal, not the plan, not the other
+agents' work. Whatever you leave out is simply missing.
 
 Write directly to it:
 - Give it the context it needs to make sense of the job on its own.
@@ -217,7 +222,7 @@ func Briefs(ctx context.Context, client Completer, graph *Graph, callbacks ...Pr
 				inputs = append(inputs, fmt.Sprintf("%q (%s)", source.Title, source.Summary))
 			}
 		}
-		writer.launch(shared, *node, inputs, deliverableLineFor(owner, label, node.ID))
+		writer.launch(shared, *node, inputs, deliverableLineFor(owner, label, node.ID, graph.FileShaped))
 	}
 	return writer.apply(graph)
 }
@@ -228,7 +233,7 @@ func Briefs(ctx context.Context, client Completer, graph *Graph, callbacks ...Pr
 // names the deliverable and reads as an instruction to build it.
 func (g *Graph) deliverableLine(nodeID int) string {
 	owner, label := g.deliverableOwner()
-	return deliverableLineFor(owner, label, nodeID)
+	return deliverableLineFor(owner, label, nodeID, g.FileShaped)
 }
 
 // deliverableLineFor is that line written from an ownership answer that has
@@ -236,13 +241,26 @@ func (g *Graph) deliverableLine(nodeID int) string {
 // every node's needs, and the answer is one fact about the whole graph rather
 // than a fact about the node — so a caller writing a line for every node in a
 // round resolves it once and spends the walk once instead of per node.
-func deliverableLineFor(owner int, label string, nodeID int) string {
+//
+// fileShaped is the delivery law's carve-out (see delivery.go). False is what a
+// caller that has not made the judgment passes, and it renders the line this
+// pass has always rendered, byte for byte.
+func deliverableLineFor(owner int, label string, nodeID int, fileShaped bool) string {
 	if owner == nodeID {
 		// Owning it and handing it over are two different facts, and only the
 		// first used to be stated. An agent told it owns the deliverable and
 		// nothing more can own it into a file and reply with the path, which
 		// reads as ownership and delivers nothing — so the instruction is told
 		// to say where the finished thing has to appear.
+		//
+		// Unless the ask itself named the file, in which case saying where it is
+		// IS the delivery, and the law that applies is the other half of
+		// DeliveryLaw rather than a weaker version of this one.
+		if fileShaped {
+			return "This node owns the final deliverable the goal asks for: it is the only " +
+				"one that produces it, and the other results arrive here as inputs. Hold the instruction " +
+				"you write to this:\n\n" + DeliverToNamedFile + "\n"
+		}
 		return "This node owns the final deliverable the goal asks for: it is the only " +
 			"one that produces it, and the other results arrive here as inputs. Tell it to put that " +
 			"finished deliverable in its own reply, written out in full, rather than describing it or " +
