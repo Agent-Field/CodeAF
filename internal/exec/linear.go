@@ -41,6 +41,21 @@ import (
 // stated rule while containing no answer at all. Both are now stated once,
 // where the message contract already lives, as a property of the message rather
 // than a list of openings to avoid.
+//
+// Two things it says in its own words on purpose. The opening states the worker
+// premise in the second person, to the worker — plan.workerPremise is the shared
+// fact, stated in the third person for the prompts that write *about* this
+// agent, and a system prompt that described its own reader from outside would be
+// the wrong voice for the one place the reader is present.
+//
+// The closing paragraphs are this package's rendering of the delivery law, whose
+// single statement is plan.DeliverInMessage. The wording differs and must not
+// contradict: the law says the split is between the answer and its working,
+// never between the answer and a pointer to the answer, and the budget below is
+// that same split with a number on the near side of it. The other half of the
+// law — plan.DeliverToNamedFile, for an ask that named its own file — is
+// rendered by outputClause, which is the one place here that knows the shape of
+// the ask.
 const systemPrompt = `You complete one piece of work, alone, using tools.
 
 You cannot ask anyone anything and nobody will follow up with you. What you are
@@ -926,6 +941,15 @@ func (l *Linear) brief(task Task) string {
 // words: the model judges whether the ask named a file or the content is
 // genuinely unusable as a message, which is the only honest test and the only
 // one that survives contact with work nobody anticipated.
+//
+// That judgment is the delivery law's carve-out arriving at the leaf, and it
+// must agree with plan.DeliverInMessage and plan.DeliverToNamedFile, which is
+// where the law is stated once for every prompt that commissions a deliverable.
+// The wording here is the leaf's own — second person, and specific about the
+// address it is being offered — but the two facts are the law's: a message that
+// says where the answer lives instead of carrying it has delivered nothing, and
+// an ask that named the file makes the file the deliverable, with the message
+// carrying the answer beside it rather than in place of it.
 func outputClause(task Task) string {
 	if task.Intermediate {
 		if task.OutputHint == "" {

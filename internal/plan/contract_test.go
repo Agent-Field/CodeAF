@@ -71,6 +71,49 @@ func TestContractDemandsUserTruthDoneAndEndToEndVerification(t *testing.T) {
 	}
 }
 
+// The prompt whose whole job is to say how this kind of work is done well
+// believed the worker held four tools. It holds a shell that also runs things in
+// the background, file writing and editing, web search and fetch, recall of
+// everything folded away, a line to its siblings, and — on ask, where the
+// machine is configured — document reading and image, music, video and speech
+// generation. A method cannot route through a capability it is not told exists,
+// which is how a job that needed a PDF read got a method that worked around it.
+func TestTheMethodWriterIsToldTheToolboxTheWorkerActuallyHas(t *testing.T) {
+	for name, want := range map[string]string{
+		"the shell runs background work": "a shell that also runs work in the background",
+		"files are written and edited":   "file writing and\nediting",
+		"the web is searched and read":   "web search and page fetching",
+		"folded work can be recalled":    "recall of work already folded away",
+		"siblings can be told one line":  "one line it can pass to the other agents on this job",
+		"documents and media on ask":     "read documents and\ngenerate images, music, video and speech",
+	} {
+		if !strings.Contains(contractPrompt, want) {
+			t.Errorf("the method writer is not told that %s: %q missing", name, want)
+		}
+	}
+	if strings.Contains(contractPrompt, "a shell, file writing, file editing, and web search") {
+		t.Error("the four-tool belief is still in the prompt")
+	}
+}
+
+// Done-means had two authors and only one of them knew it was binding. A task's
+// brief asked for a flicker to stop; its contract verified the structure of the
+// page, and a sibling task of the same shape got it right — a coin flip. The
+// clause costs a line and settles which document states the bar.
+func TestTheMethodsVerificationIsBoundToTheBriefsAcceptanceBar(t *testing.T) {
+	const want = "Where the\n  agent's instruction already states the bar for done, the check you write\n  exercises that bar itself rather than a stand-in for it."
+	if !strings.Contains(contractPrompt, want) {
+		t.Errorf("the verify step is no longer bound to the instruction's bar: %q missing", want)
+	}
+	// And it is bound inside the verify bullet, not stated somewhere the method
+	// writer reads as general advice.
+	verify := strings.Index(contractPrompt, "- How to verify:")
+	mistakes := strings.Index(contractPrompt, "- The two or three mistakes")
+	if verify < 0 || mistakes < verify || strings.Index(contractPrompt, want) > mistakes {
+		t.Error("the acceptance-bar clause drifted out of the verify step")
+	}
+}
+
 func TestContractsAppendsEarnedMethodNotesToTargetMessage(t *testing.T) {
 	graph := contractFixture()
 	client := &contractCaptureClient{}

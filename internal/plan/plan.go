@@ -52,6 +52,25 @@ They start together, never talk to each other, and never see each other's work.
 So there are no owners, roles, hand-offs, schedules, or budgets, and no
 coordination, review, or status work. That is human overhead, not structure.`
 
+// workerPremise is what the thing on the other side of a prompt actually is.
+//
+// Six prompts described it in prose and no two agreed, which matters because
+// every one of them is writing *for* that worker: an instruction, a working
+// method, a ruler, a repair. One of the six had it plainly wrong — it believed
+// the worker held four tools — and nothing could catch that, because there was
+// nothing for it to disagree with.
+//
+// It is deliberately the shared fact and only the shared fact. Sites whose
+// wording is doing work of their own keep theirs and point here: sizing
+// (size.go) needs the worker's serial capacity because capacity is what it
+// measures, the ruler (recalibrate.go) needs the same in order to say whose
+// envelope is being redrawn, the sentinel (revise.go) states it as a bound on
+// what a new node may be, and the leaf's own system prompt (exec/linear.go)
+// says it in the second person to the worker itself. Flattening those would
+// cost the specialisation, not buy the sharing.
+const workerPremise = `That agent works alone, in order, with tools. It cannot ask anyone anything and
+nobody will follow up with it, so whatever it is handed is all it gets.`
+
 // titleRule keeps the handle short. Titles are how a person and the model both
 // address a node; the summary carries the meaning.
 const titleRule = `Give a title of 1-3 words, like a short file name, distinct from the others.
@@ -74,6 +93,24 @@ Put the meaning in a one-line summary under 15 words, not in the title.`
 // another — and asked plainly whether something could be decomposed, a model
 // always says yes. Asked what each part buys, it can answer honestly.
 //
+// checkingRule is the paragraph the verification spirals needed, lifted out of
+// proportionRule so that the passes which build a plan are not the only ones
+// that state it.
+//
+// It was written for decomposition and it was true of every pass that can add
+// work: a plan that hands checking to a separate part has both invented a piece
+// of work that produces nothing and taught the part that does the work that
+// finishing is someone else's problem. The sentinel could add exactly that node
+// mid-run, one round at a time, and did — which is the doctrine gap under the
+// 27-round spiral the governors could only bound.
+//
+// The extraction is byte-preserving by construction: proportionRule is the same
+// literal with this paragraph spliced back in at the position it always held,
+// and a test reads both against the original bytes.
+const checkingRule = `Checking the work is part of doing it, never a piece of work of its own. Do not
+add anything whose purpose is to look at, confirm, review, or verify what
+another part produced; whoever produces a thing is who checks it.`
+
 // The last line is the one the verification spirals needed. Checking is part of
 // doing the work, and a plan that hands it to a separate part has both invented
 // a piece of work that produces nothing and taught the part that does the work
@@ -89,9 +126,7 @@ another anyway, or that one agent would simply do the whole thing, that is the
 plan — a goal that asks for one finished thing is one piece of work by default,
 and returning it whole is a correct answer rather than a failure to decompose.
 
-Checking the work is part of doing it, never a piece of work of its own. Do not
-add anything whose purpose is to look at, confirm, review, or verify what
-another part produced; whoever produces a thing is who checks it.
+` + checkingRule + `
 
 Judging one artifact is one part, whatever its length. The sections of a thing
 under judgment are not independent items, because what the judgment exists to
@@ -174,6 +209,11 @@ type Options struct {
 	// execute them.
 	Briefs bool
 
+	// FileShaped carries the delivery-law bit onto the graph, for the case where
+	// briefs are written inside the build and the caller never sees the graph
+	// before they are. See Graph.FileShaped and DeliveryLaw.
+	FileShaped bool
+
 	// Undivided stops the build at the spine when the spine says there is
 	// nothing to divide. It exists for the remainder path and it is opt-in
 	// because it is the wrong answer for a fresh project: a one-stage project
@@ -228,7 +268,7 @@ func Build(ctx context.Context, client Completer, goal string, options Options) 
 	}
 	progress := serialProgress(options.Progress)
 	start := time.Now()
-	graph := &Graph{Goal: goal, NextID: 1}
+	graph := &Graph{Goal: goal, NextID: 1, FileShaped: options.FileShaped}
 	emitProgress(progress, "grounding", "settling what to look at", "")
 
 	// Grounding and the spine both need only the goal, so they run together and
@@ -493,7 +533,7 @@ func announce(graph *Graph, options Options, settled map[int]bool, briefs *brief
 				inputs = append(inputs, fmt.Sprintf("%q (%s)", source.Title, source.Summary))
 			}
 		}
-		briefs.launch(shared, *node, inputs, deliverableLineFor(owner, label, node.ID))
+		briefs.launch(shared, *node, inputs, deliverableLineFor(owner, label, node.ID, graph.FileShaped))
 		if len(node.Needs) == 0 && options.OnReady != nil {
 			options.OnReady(*node, elapsed)
 		}
