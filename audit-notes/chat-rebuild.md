@@ -1810,3 +1810,68 @@ tool-loop head (Wave 3) + volatility cache (landed, 12.4.1).
 7. **Terrain markers placed** at chat.go:2947, chat.go:3134,
    revision/sentinel.go:39, revision/sentinel.go:93 for the world-grounded-
    planning handoff.
+
+## Part 13 — Build state at the laptop→Spark handoff (2026-08-10)
+
+Branch `chat-v2` (pushed to origin) is the build. `chat-v2-wip` (commit 5648060)
+is a FROZEN SNAPSHOT of three lanes killed mid-build — DO NOT MERGE IT; mine it
+for reusable code or ignore it.
+
+### Landed on chat-v2 (all green under `make check` on macOS)
+
+Wave 0 (all Part 9 prerequisites): question class axis; session-keyed stream
+events; sessions table + per-room head cursors; per-task budget ceilings;
+Command.Issuer + subtree authorization; CommandSetModel reconciler arm;
+room-policy seam (AFORGE_CHAT_V2=1 → owner-pinned delivery/announce/question,
+legacy default byte-identical); thread.Post single door + AST gate.
+
+Wave 1: head prompt volatility fixes; command registry package + gates;
+sanitizer + ANSI-remap chokepoint; chat.go dissolution 6063→3895 lines into
+internal/{command,consent,revision} + internal/provider/pool; media task-rail
+hook; /model journaling CommandSetModel; model roles table (five roles,
+scope ladder, env seeds that initialize-never-override).
+
+Wave 2 (partial): message parts + truncation marks (12.5's two engine laws);
+golden screenshot harness (internal/tui2/golden); committed-prefix block
+engine (internal/tui2/blocks) with anchor-preserving scroll, one latched
+clock, freeze-at-commit, bounded cache.
+
+### The three unfinished lanes (re-run these FIRST, fresh, in parallel)
+
+1. **BT2 shell** — `internal/tui2` root + `cmd/aforge/chatv2.go`: Bubble Tea v2
+   + Lip Gloss v2 shell, layer compositor with per-layer hit-testing, keyboard
+   negotiation (tmux constraints, 10.1.2), resize debounce 16-30ms, placeholder
+   panes, `aforge chat --v2` entry, linear-accessible stub. Was mid-way into the
+   cmd entry point. go.mod/go.sum in 5648060 carry the v2 deps.
+2. **Token layer** — `internal/tui2/tokens`: five-hue pastel vocabulary +
+   identity wheel + grey ramp with contrast tests as the shipping gate, state
+   axis (8.1.6), glyph table with width assertions, ANSI-16 remap table for
+   internal/sanitize (currently Identity), breakpoints table (10.5.24),
+   formatting laws (8.2.20) width-stable. Was mid test-writing; the 5648060
+   copy does NOT compile (profileCount/nearest256/sgrString undefined).
+   `blocks` does not block on it — it consumes a local `Styler` seam.
+3. **Interface collapse 28→3** — internal/tui + internal/command: fold the
+   capability shards into Backend/Commander/Streams, kill the 44 runtime type
+   assertions, rewrite internal/tui test fakes onto shared bases (this lane MAY
+   edit tui test scaffolding; assertions must stay unweakened). Was starting the
+   fakes. Note 12.6.2: internal/command holds compile-time assertions to update.
+
+### Then: the assembly wave (first user-testable chat)
+
+Wire blocks+tokens+shell to the real engine: store poll → transcript blocks,
+composer → head turn, keyed stream events → live region, parts → renderers
+(including the visible truncation mark). Target: type, stream, scroll,
+esc-interrupt in `aforge chat --v2`. THEN Wave 3 (rooms/rail), Wave 4 (chips/
+settings), Wave 5 (resident orchestrators).
+
+### Known non-blockers
+
+- `internal/swepro/**` tests fail on the base commit (hardcoded homedir, float
+  fixtures) — pre-existing, outside `make test`'s curated set (12.1.7).
+- `internal/plan` `TestRenderTerrainStaysUnderTheCap` FAILS ON LINUX only: it
+  mkdirs a 100-CJK-char name (300 bytes) over ext4's 255-byte filename limit.
+  It is the world-grounded-planning campaign's file (co-working territory) —
+  report it to them; do not silently fix.
+- Co-working campaign owns internal/plan, internal/exec, internal/resident and
+  merges onto chat-v2 rebasing over it. Terrain wiring markers are placed at
+  cmd/aforge/chat.go:2947, :3134 and internal/revision/sentinel.go:39, :93.
