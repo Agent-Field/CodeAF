@@ -38,8 +38,17 @@ type Model struct {
 	// not float, keyed by concrete id, has never heard of the alias, and this is
 	// the field that translates between them. Empty for the great majority of
 	// rows, and empty for every row in a cache written before it was read.
-	CanonicalSlug    string   `json:"canonical_slug,omitempty"`
-	Name             string   `json:"name,omitempty"`
+	CanonicalSlug string `json:"canonical_slug,omitempty"`
+	Name          string `json:"name,omitempty"`
+	// ContextLength is how many tokens the model will actually accept, and it
+	// was being thrown away by the row that already fetched it. Nothing priced
+	// it, so nothing kept it — and downstream the loop that has to decide how
+	// much transcript to carry was left sizing its memory from a spend ceiling
+	// instead, which is how a leaf ended up with a 25KB window in front of a
+	// 200k-token model. Zero means the provider did not say, or the row was
+	// cached before this field existed; every reader must have an answer for
+	// that case rather than treating zero as a tiny model.
+	ContextLength    int      `json:"context_length,omitempty"`
 	PromptPrice      float64  `json:"prompt_price,omitempty"`
 	CompletionPrice  float64  `json:"completion_price,omitempty"`
 	RequestPrice     float64  `json:"request_price,omitempty"`
@@ -175,6 +184,20 @@ func (c *Catalog) Model(modelID string) (Model, bool) {
 	return cloneModel(model), true
 }
 
+// ContextLength is how many tokens the named model accepts, or zero when this
+// catalog cannot say — an unknown slug, a catalog that never loaded, a row
+// cached before the field was kept. Zero is the honest answer and never a small
+// model: a caller sizing anything from this must have its own default for the
+// case where the provider was silent, because being wrong downward here means
+// forgetting material the model could have held.
+func (c *Catalog) ContextLength(modelID string) int {
+	model, ok := c.Model(modelID)
+	if !ok {
+		return 0
+	}
+	return model.ContextLength
+}
+
 // Concrete resolves a floating alias to the model actually behind it, in the
 // spelling the rest of the world uses.
 //
@@ -294,6 +317,7 @@ func fetch(ctx context.Context, options Options) ([]Model, error) {
 			ID            string `json:"id"`
 			CanonicalSlug string `json:"canonical_slug"`
 			Name          string `json:"name"`
+			ContextLength int    `json:"context_length"`
 			Architecture  struct {
 				Input  []string `json:"input_modalities"`
 				Output []string `json:"output_modalities"`
@@ -313,8 +337,9 @@ func fetch(ctx context.Context, options Options) ([]Model, error) {
 	for _, item := range payload.Data {
 		models = append(models, Model{
 			ID: strings.TrimSpace(item.ID), CanonicalSlug: strings.TrimSpace(item.CanonicalSlug),
-			Name:        strings.TrimSpace(item.Name),
-			PromptPrice: parsePrice(item.Pricing.Prompt), CompletionPrice: parsePrice(item.Pricing.Completion),
+			Name:          strings.TrimSpace(item.Name),
+			ContextLength: item.ContextLength,
+			PromptPrice:   parsePrice(item.Pricing.Prompt), CompletionPrice: parsePrice(item.Pricing.Completion),
 			RequestPrice:    parsePrice(item.Pricing.Request),
 			InputModalities: cleanModalities(item.Architecture.Input), OutputModalities: cleanModalities(item.Architecture.Output),
 		})

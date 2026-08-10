@@ -237,6 +237,27 @@ func (w *Workspace) Artifacts(nodeID int) []string {
 // workspace sees its own deliverables rather than the machinery behind them.
 const obsDir = ".obs"
 
+// traceDir holds the turn-by-turn flight recorders, and it is a different
+// directory from obsDir for one measured reason.
+//
+// .obs is the one machinery directory a leaf is deliberately sent into: every
+// decay stub and every spilled result names a path under it and tells the agent
+// to read the part it needs. An agent that follows one of those pointers and
+// then lists the directory around it finds the recorders too — its own, which is
+// its whole transcript restated, and every concurrent sibling's, because the
+// workspace is shared. That was observed: 8KB of another leaf's contract pulled
+// into a context that had no business holding it, cross-contamination by
+// construction rather than by any agent's mistake.
+//
+// Moving the recorders one directory across fixes it at the only place it can be
+// fixed. There is no listing surface to filter — the leaf reads its workspace
+// with a shell, and any exclusion it could be told about is one it could also
+// ignore. What actually removes a file from reach is not being where the agent
+// was sent. .aforge is where the harness's own bookkeeping already lives (job
+// logs), it is already excluded from a coding worker's diff, and nothing ever
+// hands a leaf a path under this subdirectory of it.
+const traceDir = ".aforge/trace"
+
 var nonWord = regexp.MustCompile(`[^a-z0-9]+`)
 
 // SuggestPath derives a distinct output path for a node. Deriving it from the

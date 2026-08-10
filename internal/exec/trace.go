@@ -11,8 +11,9 @@ import (
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 )
 
-// tracer writes one node's turn-by-turn transcript to a file in the
-// workspace's observation directory.
+// tracer writes one node's turn-by-turn transcript to a file under the
+// workspace's harness directory. See traceDir for why it is not the observation
+// directory, which is where it used to live and where leaves kept finding it.
 //
 // It exists because the loop's failures were invisible. A node that ran 139
 // turns and wrote nothing reported only "exhausted its token budget" — every
@@ -39,8 +40,56 @@ type tracer struct {
 // per-line syscall is gone.
 const traceBuffer = 32 << 10
 
+// traceName is the one place the recorder's file name is spelled, and every
+// writer and reader in the process goes through it or through the two exported
+// helpers below.
+//
+// Single-sourcing it is not tidiness. The recorder moved out of .obs, and the
+// surfaces that read it — the live node view in the chat window, the note a
+// build owes a node whose promised worker it does not have — each built the
+// same path by hand from their own directory. A reader left behind does not
+// fail: it opens nothing, renders empty, and looks exactly like a worker that
+// is thinking rather than writing. A writer left behind is worse, appending a
+// sentence nobody will ever open.
+func traceName(nodeID int64) string {
+	return filepath.Join(traceDir, fmt.Sprintf("%d.trace.log", nodeID))
+}
+
+// legacyTraceName is where recorders written before the move still are. It is
+// read from and never written to.
+func legacyTraceName(nodeID int64) string {
+	return filepath.Join(obsDir, fmt.Sprintf("%d.trace.log", nodeID))
+}
+
+// TraceFile is where a node's recorder is written, under the directory the
+// harness keeps its own files in for that job. Writers use this and only this.
+func TraceFile(home string, nodeID int64) string {
+	return filepath.Join(home, traceName(nodeID))
+}
+
+// TracePath is where a node's recorder can be read from: the current location,
+// falling back to the pre-move .obs spelling when only that file exists.
+//
+// The fallback is what keeps a finished run readable after the move. A trace is
+// written once and read for as long as anyone is still asking what a node did,
+// and a relocation that silently emptied every existing run's view would be a
+// worse defect than the contamination it was fixing. When neither file exists
+// the current path is returned, so an error names where the recorder should
+// have been rather than where it used to be.
+func TracePath(home string, nodeID int64) string {
+	current := TraceFile(home, nodeID)
+	if _, err := os.Stat(current); err == nil {
+		return current
+	}
+	legacy := filepath.Join(home, legacyTraceName(nodeID))
+	if _, err := os.Stat(legacy); err == nil {
+		return legacy
+	}
+	return current
+}
+
 func newTracer(workspace *Workspace, nodeID int) *tracer {
-	full, _, err := workspace.ScratchPath(filepath.Join(obsDir, fmt.Sprintf("%d.trace.log", nodeID)))
+	full, _, err := workspace.ScratchPath(traceName(int64(nodeID)))
 	if err != nil {
 		return &tracer{}
 	}
@@ -96,11 +145,22 @@ func (t *tracer) turn(turn int, response *ai.Response, calls []ai.ToolCall, resu
 	if response != nil && len(response.Choices) > 0 {
 		finish = response.Choices[0].FinishReason
 	}
-	in, out := 0, 0
+	// cached is the part of in= the provider billed at the cached rate, and it
+	// is on the line because its absence is what let a whole class of defect
+	// hide. Every cache-shape discipline in this codebase — the stable prefix,
+	// the batched decay, the frozen tool block — is unfalsifiable without it:
+	// a run whose affinity key was never set and a run whose prefix was perfect
+	// produce identical traces when the only numbers written down are in and
+	// out. It goes after them rather than replacing in=, because it is a share
+	// of that number and reads as one.
+	in, out, cached := 0, 0, 0
 	if response != nil && response.Usage != nil {
 		in, out = response.Usage.PromptTokens, response.Usage.CompletionTokens
+		if details := response.Usage.PromptTokensDetails; details != nil {
+			cached = details.CachedTokens
+		}
 	}
-	fmt.Fprintf(&block, "── turn %d  finish=%s  in=%d out=%d", turn, finish, in, out)
+	fmt.Fprintf(&block, "── turn %d  finish=%s  in=%d out=%d cached=%d", turn, finish, in, out, cached)
 	if note != "" {
 		fmt.Fprintf(&block, "  [%s]", note)
 	}
