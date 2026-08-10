@@ -1751,11 +1751,20 @@ func (m *Model) poll() tea.Cmd {
 	traceStamp := m.nodeTraceStamp
 	// readTrace tails the open node's trace file, and says whether it moved. The
 	// stamp the window already holds is what makes "it did not" cheap.
+	//
+	// The trace is a worker's raw stdout/stderr — the least trusted text this
+	// window ever draws — so it is sanitized here, at the read, rather than at
+	// every place that later touches nodeTraceText. Sanitize.Text's fast path
+	// costs nothing extra for the common case of a trace with no escape bytes
+	// in it; the "did the trace move" comparison callers make against the
+	// returned string still works, because sanitizing is a pure function of
+	// the bytes read this cycle.
 	readTrace := func() (string, NodeTraceStamp, bool) {
 		if reader, ok := commander.(NodeTraceReader); ok {
-			return reader.NodeTraceSince(nodeID, nodeTraceMaxBytes, traceStamp)
+			text, stamp, moved := reader.NodeTraceSince(nodeID, nodeTraceMaxBytes, traceStamp)
+			return sanitizeText(text), stamp, moved
 		}
-		return commander.NodeTrace(nodeID, nodeTraceMaxBytes), NodeTraceStamp{}, true
+		return sanitizeText(commander.NodeTrace(nodeID, nodeTraceMaxBytes)), NodeTraceStamp{}, true
 	}
 	return func() tea.Msg {
 		// Asked before the quiet short-circuit, because the one thing this
@@ -1793,6 +1802,7 @@ func (m *Model) poll() tea.Cmd {
 			}
 		}
 		messages, messagesErr := backend.Messages(sessionID, afterSeq, pollLimit)
+		sanitizeMessageBodies(messages)
 		snapshot, snapshotErr := backend.ActiveSnapshot()
 		cardSnapshot, cardSnapshotErr := backend.Snapshot()
 		pending, pendingErr := backend.PendingCommands(pollLimit)
@@ -1812,6 +1822,7 @@ func (m *Model) poll() tea.Cmd {
 		}); ok {
 			agentQuestions, agentQuestionsErr = reader.PendingQuestions(sessionID, pollLimit)
 		}
+		sanitizeQuestionText(agentQuestions)
 		var selfSpendToday float64
 		var selfReceipts []store.SelfReceipt
 		var selfLearning string
@@ -1902,6 +1913,7 @@ func (m *Model) poll() tea.Cmd {
 			result.nodeID = nodeID
 			result.node, result.nodeFound, result.nodeErr = backend.Node(nodeID)
 			result.nodeMessages, result.nodeMessagesErr = backend.NodeMessages(nodeID, nodeAfterSeq, pollLimit)
+			sanitizeMessageBodies(result.nodeMessages)
 			if commander != nil {
 				result.nodeTrace, result.nodeTraceStamp, result.nodeTraceMoved = readTrace()
 			}
