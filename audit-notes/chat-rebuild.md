@@ -1772,3 +1772,41 @@ Scorecard for the rest of that session's failures: head unable to re-read its
 own transcript → 8.2.10 `read thread://` (Wave 5); no open-affordance → 7.2
 clickable paths + cards (Waves 2-3); 4-calls-per-turn machinery → the one
 tool-loop head (Wave 3) + volatility cache (landed, 12.4.1).
+
+### 12.6 Wave 1 dissolution (9f4cb3b, 98b8f5f, 37a6e22, 6c96172)
+
+1. **chat.go: 6063 → 3895 lines.** Four packages out: `internal/provider/pool`
+   (provider proper is closed by the existing config→provider import edge —
+   4.5's "into internal/provider" reads "the provider tree"), `internal/consent`
+   (9.10's resident-reachability boundary delivered), `internal/revision` (NOT
+   internal/plan — co-working territory), `internal/command` (+ three companion
+   files Go's method rules forced out of cmd).
+2. **Interface collapse 28→3 is Wave 2's debt, not Wave 1's** — it requires
+   editing internal/tui's test fakes, violating tests-pass-unchanged. Landed
+   instead: compile-time `var _ tui.X = (*Commander)(nil)` assertions so a
+   dropped method fails the build in the owning package. The 44 runtime
+   assertions go when the fakes do.
+3. **THE 600-TOKEN SMOKING GUN (12.5's cause found)**: the head's answer turn
+   runs `ai.WithMaxTokens(600)` (head.go:880) — precisely the cap session
+   bd3c78ed hit mid-SVG. Full cap table: router/answer 600, control loop 600,
+   standing 800, revision voice 300, compiler 1000+2·len/3 (doubled on parse
+   retry), delivery gate 400, remainder 400, retry-worker 200. Raising the cap
+   is NOT the fix (the artifact law is); marking the truncation is (the
+   truncation law). Wave 3's head rebuild sets caps consciously with the
+   artifact door in place.
+4. **finish_reason hooks for Wave 2 (truncation law)**: parsed at provider
+   sse.go:161, assembled at client.go:292, then dropped by every consumer
+   (`response.Text()`). Hook points: `pool.Client.CompleteWithMessages`
+   (pool.go:132-143 — has the whole *ai.Response AND the attributed spend
+   node) and the head's direct client call (head.go:880). Two seams, total.
+5. **`/model` journaling is session-scoped by design** — one SetModel per live
+   top-level job OF THIS SESSION (funnel refuses root targets; a headless
+   errand beside a chat window does not move). Under rooms this becomes
+   room-scoped by the same rule — 5.23 should state it before Wave 3.
+   Issuer left empty = `user` via Authority(), correct for a typed command.
+6. **Lock arrangements stay at the caller**: revision.Sentinel takes the
+   already-wrapped plan.Completer, so unlocked-while-thinking remains
+   jobPlans's property; a future resident-side caller supplies its own.
+7. **Terrain markers placed** at chat.go:2947, chat.go:3134,
+   revision/sentinel.go:39, revision/sentinel.go:93 for the world-grounded-
+   planning handoff.
