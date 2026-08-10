@@ -9,9 +9,15 @@ import (
 	"github.com/charmbracelet/x/ansi"
 )
 
-// The real store must keep satisfying the optional resident-life capability,
-// or the presence line silently vanishes in production.
-var _ selfActivityReader = (*store.Store)(nil)
+// The real store must keep answering the resident-life reads the presence line
+// is made of, or the line silently vanishes in production. They are part of
+// Backend now, so the assertion beside Backend itself covers them; this one
+// names the three the presence line actually asks for.
+var _ interface {
+	SelfSpendToday() (float64, error)
+	SelfReceipts(since time.Time) ([]store.SelfReceipt, error)
+	FactBySeq(seq int64) (store.Fact, bool, error)
+} = (*store.Store)(nil)
 
 func TestPracticeAndSelfRootsNeverBecomeCards(t *testing.T) {
 	tests := []struct {

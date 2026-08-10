@@ -480,10 +480,6 @@ func (m *Model) applyModel(role, slug string) tea.Cmd {
 	if role != "talk" && role != "work" && role != "voice" {
 		return m.showStatus(fmt.Sprintf("%s model switching isn't available in this window", role))
 	}
-	requester, ok := m.backend.(commandRequester)
-	if !ok {
-		return m.showStatus("model switching unavailable — command requests unsupported")
-	}
 	m.optimisticModels[role] = slug
 	m.input.Reset()
 	m.paletteDismissed = false
@@ -492,8 +488,9 @@ func (m *Model) applyModel(role, slug string) tea.Cmd {
 		SessionID: m.sessionID, Kind: store.CommandAmend, Target: store.RootID,
 		Instruction: "use " + slug + " for " + role,
 	}
+	backend := m.backend
 	return func() tea.Msg {
-		_, err := requester.RequestCommand(request)
+		_, err := backend.RequestCommand(request)
 		return modelCommandResultMsg{role: role, slug: slug, previous: previous, err: err}
 	}
 }
@@ -572,14 +569,11 @@ func (m *Model) slashTasks(_ []string) tea.Cmd {
 
 func (m *Model) slashBudget(arguments []string) tea.Cmd {
 	m.budgetUsed = true
-	handler, ok := m.commander.(interface {
-		Budget(arguments []string) (string, error)
-	})
-	if !ok {
+	if m.commander == nil {
 		m.input.Reset()
 		return m.showStatus("the budget isn't available in this window")
 	}
-	result, err := handler.Budget(arguments)
+	result, err := m.commander.Budget(arguments)
 	m.input.Reset()
 	if err != nil {
 		return m.showStatus("could not change budget: " + err.Error())
@@ -588,14 +582,11 @@ func (m *Model) slashBudget(arguments []string) tea.Cmd {
 }
 
 func (m *Model) slashStanding(_ []string) tea.Cmd {
-	handler, ok := m.commander.(interface {
-		Standing() (string, error)
-	})
-	if !ok {
+	if m.commander == nil {
 		m.input.Reset()
 		return m.showStatus("standing rules aren't available in this window")
 	}
-	result, err := handler.Standing()
+	result, err := m.commander.Standing()
 	m.input.Reset()
 	if err != nil {
 		return m.showStatus("could not list standing charters: " + err.Error())
@@ -645,8 +636,8 @@ func (m *Model) slashModel(arguments []string) tea.Cmd {
 
 func (m *Model) slashSession(_ []string) tea.Cmd {
 	detail := "session " + m.sessionID
-	if source, ok := m.commander.(interface{ DatabasePath() string }); ok && source.DatabasePath() != "" {
-		detail += " · " + source.DatabasePath()
+	if m.commander != nil && m.commander.DatabasePath() != "" {
+		detail += " · " + m.commander.DatabasePath()
 	} else {
 		detail += " · database unavailable"
 	}
@@ -742,10 +733,8 @@ func (m *Model) openMemory(query string) tea.Cmd {
 	m.input.Reset()
 	query = strings.TrimSpace(query)
 	facts := m.commander.Notebook(10)
-	if search, ok := m.commander.(interface {
-		SearchNotebook(string, int) []store.Fact
-	}); ok && query != "" {
-		facts = search.SearchNotebook(query, 10)
+	if query != "" {
+		facts = m.commander.SearchNotebook(query, 10)
 	}
 	m.notebookOpen = true
 	m.notebookQuery = query
@@ -822,11 +811,7 @@ func (m *Model) openModelPicker(role string) tea.Cmd {
 	m.setModelCatalogRequested(role)
 	commander := m.commander
 	return func() tea.Msg {
-		choices := commander.Catalog()
-		if cataloger, ok := commander.(interface{ CatalogFor(string) []ModelChoice }); ok {
-			choices = cataloger.CatalogFor(role)
-		}
-		return catalogResultMsg{role: role, choices: choices}
+		return catalogResultMsg{role: role, choices: commander.CatalogFor(role)}
 	}
 }
 

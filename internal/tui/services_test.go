@@ -85,7 +85,7 @@ func (b *railReadBackend) ActiveServices() ([]store.Service, error) {
 	return append([]store.Service(nil), b.services...), nil
 }
 
-func (b *railReadBackend) Charters() ([]store.Charter, error) {
+func (b *railReadBackend) Charters(...store.CharterStatus) ([]store.Charter, error) {
 	b.charterReads++
 	return append([]store.Charter(nil), b.charters...), nil
 }
@@ -103,6 +103,9 @@ func TestRailSectionsReadTheStoreOncePerPollNotPerFrame(t *testing.T) {
 		}},
 	}
 	model := New(backend, "rail")
+	// The rail composes its charters from the store table here, so the read
+	// this counts is the one the rail itself makes.
+	model.useStoreCharters()
 	model.standingNow = func() time.Time { return now }
 	model.setSize(90, 30)
 	model.applyPoll(model.poll()().(pollResultMsg))

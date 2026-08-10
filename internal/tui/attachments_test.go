@@ -25,11 +25,18 @@ type artifactCommander struct {
 	target string
 }
 
+// A generated artifact resolves the same way whichever seam asks: the surface
+// reaches for the workspace resolver, and the media-only one is what an older
+// embedder had.
+func (c *artifactCommander) ResolveWorkspacePath(_, _ string) (string, bool) {
+	return c.target, true
+}
+
 func (c *artifactCommander) ResolveMediaPath(_, _ string) (string, bool) {
 	return c.target, true
 }
 
-func (c *attachmentCommander) ImageInputSupport() (string, bool) {
+func (c *attachmentCommander) ImageInputSupportFor(string) (string, bool) {
 	return c.model, c.supported
 }
 

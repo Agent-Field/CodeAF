@@ -85,13 +85,6 @@ func (c *countingBackend) TopLevelJobUsage() (map[string]store.JobUsage, error) 
 	return c.fakeBackend.TopLevelJobUsage()
 }
 
-func (c *countingBackend) PendingQuestions(sessionID string, limit int) ([]store.AgentQuestion, error) {
-	c.countMu.Lock()
-	c.questions++
-	c.countMu.Unlock()
-	return c.fakeBackend.PendingQuestions(sessionID, limit)
-}
-
 func (c *countingBackend) OpenQuestions(sessionID string, limit int) ([]store.AgentQuestion, error) {
 	c.countMu.Lock()
 	c.questions++

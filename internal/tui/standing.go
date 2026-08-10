@@ -136,15 +136,8 @@ func (snapshotStandingReader) Charters(
 	return charters
 }
 
-// charterLister is the store-native charter view. *store.Store implements it;
-// backends without a charter table (tests, embedders) keep the snapshot
-// projection above.
-type charterLister interface {
-	Charters() ([]store.Charter, error)
-}
-
 type storeStandingReader struct {
-	list charterLister
+	model *Model
 }
 
 // Charters projects first-class store charters into the same presentation
@@ -156,7 +149,7 @@ func (r storeStandingReader) Charters(
 	usage map[string]store.JobUsage,
 	now time.Time,
 ) []standingCharter {
-	records, err := r.list.Charters()
+	records, err := r.model.charterRecords()
 	if err != nil {
 		return snapshotStandingReader{}.Charters(snapshot, usage, now)
 	}
@@ -322,36 +315,43 @@ func (m *Model) standingTime() time.Time {
 func (m *Model) standingCharters() []standingCharter {
 	reader := m.standingReader
 	if reader == nil {
-		if _, ok := m.backend.(charterLister); ok {
-			reader = storeStandingReader{list: modelCharterLister{model: m}}
-		} else {
-			reader = snapshotStandingReader{}
-		}
+		reader = snapshotStandingReader{}
 	}
 	return reader.Charters(m.standingSnapshot(), m.jobUsage, m.standingTime())
 }
 
-// modelCharterLister is the poll-scoped read in front of the charter table.
-// The rail's height, its rows, the breathing check, the pane title, and the
-// self file all ask for charters while composing one frame; the store answers
-// once per poll and the projection above runs live against the snapshot.
-type modelCharterLister struct {
-	model *Model
+// useStoreCharters installs the store-native projection in place of the
+// snapshot one, and it is the seam this file has always carried — now a line
+// somebody has to write rather than a type assertion nobody could see fail.
+//
+// It has to be explicit because the assertion that used to install it asked for
+// a no-argument Charters(), and *store.Store's takes a variadic status filter:
+// the two signatures never matched, so the store-native rail has never once run
+// in a real window, and the rail has always rendered the snapshot projection.
+// Making the seam a method rather than a probe keeps that true — the collapse
+// changes nothing on screen — and leaves exactly one line to move when the
+// standing engine lands its store-native rail. (chat-rebuild Part 12.)
+func (m *Model) useStoreCharters() {
+	m.standingReader = storeStandingReader{model: m}
 }
 
-func (l modelCharterLister) Charters() ([]store.Charter, error) {
-	return l.model.charterRecords()
+// readsStoreCharters says the rail is composed from the charter table rather
+// than from charter nodes in the snapshot. It is the same seam, asked as a
+// question.
+func (m *Model) readsStoreCharters() bool {
+	return m.standingReader != nil
 }
 
+// charterRecords is the poll-scoped read in front of the charter table. The
+// rail's height, its rows, the breathing check, the pane title, and the self
+// file all ask for charters while composing one frame; the store answers once
+// per poll — usually in the poll itself, which seeds this cache — and the
+// projection above runs live against the snapshot.
 func (m *Model) charterRecords() ([]store.Charter, error) {
 	if m.railChartersValid {
 		return m.railCharters, m.railChartersErr
 	}
-	lister, ok := m.backend.(charterLister)
-	if !ok {
-		return nil, nil
-	}
-	m.railCharters, m.railChartersErr = lister.Charters()
+	m.railCharters, m.railChartersErr = m.backend.Charters()
 	m.railChartersValid = true
 	return m.railCharters, m.railChartersErr
 }
@@ -483,7 +483,7 @@ func charterCheckState(charter store.Charter) (time.Time, string) {
 // hasStandingHistory is deliberately broader than the visible charter list:
 // a retired charter still means the teaching hint has done its job once.
 func (m *Model) hasStandingHistory() bool {
-	if _, ok := m.backend.(charterLister); ok {
+	if m.readsStoreCharters() {
 		charters, err := m.charterRecords()
 		if err == nil {
 			return len(charters) > 0
@@ -733,10 +733,6 @@ func (m *Model) activateCharterLine(line int) (tea.Cmd, bool) {
 	return nil, false
 }
 
-type commandRequester interface {
-	RequestCommand(store.Command) (store.Command, error)
-}
-
 type charterCommandResultMsg struct {
 	action string
 	name   string
@@ -802,18 +798,15 @@ func (m *Model) requestCharterCommand(action, instruction string) tea.Cmd {
 	if !ok {
 		return m.showStatus("no such charter action — " + action)
 	}
-	requester, ok := m.backend.(commandRequester)
-	if !ok {
-		return m.showStatus("charter actions unavailable — command requests unsupported")
-	}
 	request := store.Command{
 		SessionID:   m.sessionID,
 		Kind:        kind,
 		Target:      charter.ID,
 		Instruction: instruction,
 	}
+	backend := m.backend
 	return func() tea.Msg {
-		_, err := requester.RequestCommand(request)
+		_, err := backend.RequestCommand(request)
 		return charterCommandResultMsg{action: action, name: charter.Name, err: err}
 	}
 }

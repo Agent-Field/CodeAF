@@ -83,10 +83,19 @@ func run() error {
 	if len(os.Args) < 2 {
 		// No arguments opens the resident surface: the chat thread over the
 		// durable graph. The one-shot commands below are unchanged.
+		if v2, rest := wantChatV2(nil, os.Getenv); v2 {
+			return runChatV2(rest)
+		}
 		return runChat(nil)
 	}
 	switch os.Args[1] {
 	case "chat":
+		// The v2 surface is chosen before the old one reads a flag, so the old
+		// path runs the same bytes it ran yesterday (11.1: disconnect, don't
+		// delete). Without --v2 or AFORGE_CHAT_V2 nothing here changes.
+		if v2, rest := wantChatV2(os.Args[2:], os.Getenv); v2 {
+			return runChatV2(rest)
+		}
 		return runChat(os.Args[2:])
 	case "do":
 		return runDo(os.Args[2:])

@@ -163,29 +163,6 @@ type selfRow struct {
 	key    string
 }
 
-// selfCharterLister matches the store's variadic status filter exactly. The
-// older rail compatibility seam intentionally keeps its no-argument shape.
-type selfCharterLister interface {
-	Charters(...store.CharterStatus) ([]store.Charter, error)
-}
-
-// selfDataReader is the whole read surface the employee file needs. Binding it
-// as one interface — rather than six anonymous assertions — makes the
-// compile-time assertion below the guarantee that the real store still answers
-// every question Self asks.
-type selfDataReader interface {
-	SelfReceipts(since time.Time) ([]store.SelfReceipt, error)
-	SelfSpendToday() (float64, error)
-	CompetenceMap(...store.CompetenceOptions) (store.CompetenceMap, error)
-	RecentFacts(limit int) ([]store.Fact, error)
-	SkillFacts(status string, limit int) ([]store.Fact, error)
-}
-
-var (
-	_ selfCharterLister = (*store.Store)(nil)
-	_ selfDataReader    = (*store.Store)(nil)
-)
-
 func (m *Model) activePlace() place {
 	switch {
 	case m.selfVisible():

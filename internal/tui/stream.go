@@ -38,7 +38,15 @@ type StreamEvent struct {
 	Session string
 }
 
-type streamSource interface {
+// Streams is the live token feed a window listens to while the head answers,
+// and the third of this package's three interfaces. It stays nameable on its
+// own — rather than being three more methods on Commander — because it is the
+// one surface whose absence the reader can see: a window that has just lost the
+// resident role must stop pretending to be streaming, and adoptCommander clears
+// the channel rather than merely failing to set it. It is also where a keyed,
+// per-room feed lands when rooms arrive; the Session field on StreamEvent is
+// already the key.
+type Streams interface {
 	StreamEvents() <-chan StreamEvent
 }
 

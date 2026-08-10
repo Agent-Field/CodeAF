@@ -23,7 +23,7 @@ type charterHistoryBackend struct {
 	charters []store.Charter
 }
 
-func (b *charterHistoryBackend) Charters() ([]store.Charter, error) {
+func (b *charterHistoryBackend) Charters(...store.CharterStatus) ([]store.Charter, error) {
 	return append([]store.Charter(nil), b.charters...), nil
 }
 
@@ -156,6 +156,9 @@ func TestStandingSectionPresenceContentAndClick(t *testing.T) {
 		charters:    []store.Charter{{ID: "retired", Status: store.CharterRetired}},
 	}
 	retired := standingModel(retiredBackend, now, store.Snapshot{Nodes: []store.Node{{ID: store.RootID}}})
+	// A backend with a charter table is read through the store-native seam;
+	// installing it is what the collapsed interface made explicit.
+	retired.useStoreCharters()
 	retired.setSize(90, 30)
 	retired.toggleGraph()
 	if section := ansi.Strip(retired.renderStandingSection(80)); section != "" {
@@ -514,7 +517,9 @@ type charterListingBackend struct {
 	charters []store.Charter
 }
 
-func (b *charterListingBackend) Charters() ([]store.Charter, error) { return b.charters, nil }
+func (b *charterListingBackend) Charters(...store.CharterStatus) ([]store.Charter, error) {
+	return b.charters, nil
+}
 
 // The store-native path: first-class charters render without any Group:
 // "charter" compatibility nodes, and firings attach through
@@ -546,6 +551,7 @@ func TestStoreNativeChartersRenderWithoutCompatibilityNodes(t *testing.T) {
 	snapshot := store.Snapshot{Nodes: []store.Node{{ID: store.RootID}, firing}}
 	backend := &charterListingBackend{fakeBackend: &fakeBackend{snapshot: snapshot}, charters: []store.Charter{charter}}
 	model := standingModel(backend, now, snapshot)
+	model.useStoreCharters()
 	model.jobUsage = map[string]store.JobUsage{"fire-native": {Cost: 0.11}}
 
 	charters := model.standingCharters()

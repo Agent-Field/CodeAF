@@ -430,14 +430,13 @@ func (m *Model) restartInspectedNode() tea.Cmd {
 	if !nodeRestartable(m.inspectedNode.Status) {
 		return nil
 	}
-	restarter, ok := m.commander.(Restarter)
-	if !ok || restarter == nil {
+	if m.commander == nil {
 		return m.showStatus("restarting isn't available in this window")
 	}
 	if asked, command := m.gateNodeSurgery(store.CommandRestart); asked {
 		return command
 	}
-	if err := restarter.Restart(m.nodeViewID); err != nil {
+	if err := m.commander.Restart(m.nodeViewID); err != nil {
 		return m.showStatus(fmt.Sprintf("could not restart %s: %v", m.nodeViewID, err))
 	}
 	return m.showStatus("restart requested → " + m.nodeViewID)
@@ -449,11 +448,10 @@ func (m *Model) restartInspectedNode() tea.Cmd {
 // nothing: the answer replays the command. The status line only says where to
 // look, because the question itself is the reply.
 func (m *Model) gateNodeSurgery(kind store.CommandKind) (bool, tea.Cmd) {
-	gate, ok := m.commander.(SurgeryGate)
-	if !ok || gate == nil {
+	if m.commander == nil {
 		return false, nil
 	}
-	asked, err := gate.ConfirmSurgery(kind, m.nodeViewID)
+	asked, err := m.commander.ConfirmSurgery(kind, m.nodeViewID)
 	if err != nil || !asked {
 		return false, nil
 	}
