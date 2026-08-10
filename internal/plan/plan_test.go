@@ -242,3 +242,87 @@ func TestTheProportionRuleNamesNoDomain(t *testing.T) {
 		}
 	}
 }
+
+// The checking paragraph was lifted out of the proportion rule so that the
+// passes which grow a plan can state it too, and the extraction is worth
+// nothing if it moved a byte: proportionRule is carried verbatim by the two
+// largest shared prefixes in the planner, and a whitespace change in it re-bills
+// every stage of every plan cold. So the pre-extraction literal is pinned here
+// once, in full, and read against the concatenation.
+func TestExtractingTheCheckingRuleMovedNoByteOfTheProportionRule(t *testing.T) {
+	const before = `Make the plan exactly as large as the goal, and no larger. A large plan for a
+small goal is not thoroughness; it is delay and expense the person asking pays
+for, and it is the more common mistake by far.
+
+Decomposition has to earn itself. Keep a division only when you can say what it
+buys: parts that genuinely run at the same time, or a gate that genuinely blocks
+what follows. When the honest answer is that the pieces would run one after
+another anyway, or that one agent would simply do the whole thing, that is the
+plan — a goal that asks for one finished thing is one piece of work by default,
+and returning it whole is a correct answer rather than a failure to decompose.
+
+Checking the work is part of doing it, never a piece of work of its own. Do not
+add anything whose purpose is to look at, confirm, review, or verify what
+another part produced; whoever produces a thing is who checks it.
+
+Judging one artifact is one part, whatever its length. The sections of a thing
+under judgment are not independent items, because what the judgment exists to
+catch lives in the cross-references between them — a figure in one section
+contradicting a claim in another is invisible to a reader who was handed only
+one of them. Divide repeated operations over items that stand alone; never
+divide one act of comprehension.`
+	if proportionRule != before {
+		t.Fatalf("the proportion rule changed bytes:\ngot:\n%s\nwant:\n%s", proportionRule, before)
+	}
+	if !strings.Contains(proportionRule, checkingRule) {
+		t.Fatal("the extracted paragraph is no longer part of the rule it came out of")
+	}
+}
+
+// The doctrine gap under the 27-round spiral: the rule reached the two prompts
+// that build a plan and neither of the two that grow one, so the sentinel could
+// add a node whose whole purpose was to look at what another node produced —
+// which reports a gap, which comes back to the sentinel.
+func TestTheSentinelIsToldThatCheckingIsPartOfDoing(t *testing.T) {
+	if !strings.Contains(revisePrompt, checkingRule) {
+		t.Error("the sentinel may still add a node that checks another node's work")
+	}
+	for prompt, text := range map[string]string{
+		"spine":  spinePrompt,
+		"fanout": fanoutPrompt,
+	} {
+		if !strings.Contains(text, checkingRule) {
+			t.Errorf("the %s prompt lost the checking rule", prompt)
+		}
+	}
+}
+
+// The worker premise had six prose authors and one of them was plainly wrong
+// about the machine it described. The two passes that write *for* the worker —
+// the instruction it receives and the working method it follows — are the ones
+// genuinely restating the same fact, so they share it. The rest keep their own
+// wording because their wording is doing work of its own, and this test names
+// which is which so that folding another one in stays a decision rather than an
+// accident.
+func TestTheWorkerPremiseIsStatedOnceForThePromptsThatWriteForTheWorker(t *testing.T) {
+	for name, prompt := range map[string]string{
+		"the instruction":    briefPrompt,
+		"the working method": contractPrompt,
+	} {
+		if !strings.Contains(prompt, workerPremise) {
+			t.Errorf("%s no longer carries the shared worker premise", name)
+		}
+	}
+	// Deliberately specialised, and pinned as such: sizing states the worker's
+	// serial capacity because capacity is what it measures, and the ruler states
+	// whose envelope is being redrawn because a specialist replaces exactly that
+	// sentence.
+	for name, prompt := range map[string]string{
+		"sizing":    sizePromptFor(sizeAnchors, nil),
+		"the ruler": recalibratePrompt,
+	} {
+		if strings.Contains(prompt, workerPremise) {
+			t.Errorf("%s was flattened into the shared premise; its wording was doing work of its own", name)
+		}
+	}
+}

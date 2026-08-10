@@ -20,6 +20,14 @@ import (
 // the ruler changes what tasks get produced and therefore what gets measured
 // next. Describing observed work keeps that loop descriptive instead of letting
 // it chase its own tail.
+//
+// Its second paragraph names the worker in its own words rather than reusing
+// workerPremise, which is the source of truth for the shared fact. The sentence
+// here is doing something else: it says whose envelope is being redrawn, and
+// specialistPreamble replaces exactly that sentence when the ruler belongs to a
+// specialist. A shared constant in its place would either be wrong for every
+// specialist or would have to be overridable, which is what the preamble
+// already is.
 const recalibratePrompt = `You rewrite the ruler used to judge whether a task is the right size for one agent.
 
 That agent works alone and in order, with tools. Below are tasks it really ran,

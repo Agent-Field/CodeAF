@@ -182,6 +182,23 @@ type Graph struct {
 	// report became a benchmarking project.
 	Evidence string `json:"evidence,omitempty"`
 
+	// FileShaped says the ask names its own deliverable — a file or document by
+	// name, or a change to material that already exists — which is the one case
+	// where filing the result is delivery rather than an evasion of it. It rides
+	// the graph because it is one fact about the goal and three passes need the
+	// same answer: the instruction the deliverable owner receives, the working
+	// method written for it, and anything later that judges what came back.
+	//
+	// False is the safe default and the shape almost every ask has, so a caller
+	// that has not made the judgment leaves every prompt exactly as it was.
+	//
+	// Intended wiring: the chat session sets Options.FileShaped on plan.Build, or
+	// graph.FileShaped before plan.Briefs/plan.Contracts, from the same judgment
+	// its delivery gate already makes about the request — the bit that decides
+	// whether a leaf is offered a workspace path at all (leafOutputHint). Nothing
+	// here matches a phrase against the goal.
+	FileShaped bool `json:"file_shaped,omitempty"`
+
 	Stages []Stage `json:"stages"`
 	Nodes  []Node  `json:"nodes"`
 	NextID int     `json:"next_id"`
