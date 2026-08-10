@@ -56,5 +56,5 @@ func (h *Head) spliceWorkOrders(user store.Message, decision routeDecision) erro
 	if journaled == 0 {
 		return h.postAgent(user.SessionID, commandErrorReply, 0)
 	}
-	return h.postAgentFloor(user.SessionID, decision.Reply, first, decision.model)
+	return h.postAgentFloor(user.SessionID, decision.Reply, first, decision.model, decision.parts())
 }

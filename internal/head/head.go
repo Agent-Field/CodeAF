@@ -447,12 +447,16 @@ func (h *Head) endTurn() (string, bool, bool) {
 // reaches it: the words the user stopped. What they saw on screen is what the
 // thread keeps, marked where it stopped, so the transcript reads as the
 // conversation it was rather than as a gap.
+// The mark is the same fact interruptedTail states in prose, said in a form a
+// renderer can act on rather than scan for. Both travel: the body is what every
+// surface already draws, the part is what the next one will.
 func (h *Head) postInterrupted(sessionID, partial string) error {
 	body := interruptedReply
 	if partial != "" {
 		body = partial + interruptedTail
 	}
-	return h.postAgentFloor(sessionID, body, 0, "")
+	return h.postAgentFloor(sessionID, body, 0, "",
+		[]store.MessagePart{store.EndedMark(*store.InterruptedEnd())})
 }
 
 func (h *Head) answer(ctx context.Context, user store.Message) error {
@@ -574,7 +578,7 @@ func (h *Head) answer(ctx context.Context, user store.Message) error {
 	if decision.Command != nil {
 		return h.issueRoutedCommand(user, decision)
 	}
-	return h.postAgentFloor(user.SessionID, decision.Reply, 0, decision.model)
+	return h.postAgentFloor(user.SessionID, decision.Reply, 0, decision.model, decision.parts())
 }
 
 // postAgentFloor is the seam a route may not go quiet through. A reasoning model
@@ -586,11 +590,17 @@ func (h *Head) answer(ctx context.Context, user store.Message) error {
 // Every route that acts on the graph ends in this call. That is the invariant,
 // not a convention: a redirection that journals a command and returns is the
 // same silence arriving by a different door.
-func (h *Head) postAgentFloor(sessionID, body string, commandSeq int64, model string) error {
+// parts rides through untouched. A message that has nothing structured to say
+// passes nil and is indistinguishable from the message this function posted
+// before parts existed.
+func (h *Head) postAgentFloor(sessionID, body string, commandSeq int64, model string, parts []store.MessagePart) error {
 	if strings.TrimSpace(body) == "" {
+		// The floor's own words are the head's, not the model's, and they are
+		// complete. Whatever marks the withdrawn turn earned describe a reply
+		// that is not being posted, so they do not travel with this one.
 		return h.postAgent(sessionID, providerErrorReply, commandSeq)
 	}
-	return h.postAgentModel(sessionID, body, commandSeq, model)
+	return h.postAgentModel(sessionID, body, commandSeq, model, parts)
 }
 
 // remember writes one durable belief a decision asked to keep. It is the single
@@ -876,6 +886,14 @@ func (h *Head) route(ctx context.Context, user store.Message) (routeDecision, er
 	defer stopWatch()
 	raw := ""
 	servedModel := ""
+	// How the answering call ended. Nil is the ordinary case and posts nothing;
+	// a cap or a dropped stream lands on the reply as a store part. This is the
+	// second of the two finish_reason seams (the other is pool.TurnEnd, which
+	// every structuring caller reads through) and it exists because the cap
+	// above — 600 tokens — is the exact one that cut session bd3c78ed's diagram
+	// in half and journaled the half as an answer. Raising the cap is not the
+	// fix; saying so is.
+	var ended *store.EndedPart
 	for attempt := 0; attempt < 2; attempt++ {
 		response, err := client.CompleteWithMessages(routeContext, messages, ai.WithMaxTokens(600))
 		if err != nil {
@@ -899,6 +917,9 @@ func (h *Head) route(ctx context.Context, user store.Message) (routeDecision, er
 		}
 		servedModel = strings.TrimSpace(response.Model)
 		raw = strings.TrimSpace(response.Text())
+		// Taken from the attempt whose words are actually used, so a retry that
+		// succeeds does not inherit the first attempt's ending.
+		ended = store.EndedFor(provider.FinishReason(response), provider.Streaming(routeContext))
 		if raw != "" {
 			break
 		}
@@ -909,7 +930,7 @@ func (h *Head) route(ctx context.Context, user store.Message) (routeDecision, er
 		if raw == "" {
 			return routeDecision{}, errors.New("provider returned an empty response")
 		}
-		return routeDecision{Reply: raw, model: attribution}, nil
+		return routeDecision{Reply: raw, model: attribution, ended: ended}, nil
 	}
 	decision.normalizeFanOut(user.Body)
 	if decision.Command != nil && decision.Command.Kind == routeReflexKind {
@@ -929,15 +950,17 @@ func (h *Head) route(ctx context.Context, user store.Message) (routeDecision, er
 			strings.TrimSpace(decision.Reply) != "" {
 			decision.Reply = strings.TrimSpace(decision.Reply)
 			decision.model = attribution
+			decision.ended = ended
 			return decision, nil
 		}
 		if raw == "" {
 			return routeDecision{}, errors.New("provider returned an empty response")
 		}
-		return routeDecision{Reply: raw, model: attribution}, nil
+		return routeDecision{Reply: raw, model: attribution, ended: ended}, nil
 	}
 	decision.Reply = strings.TrimSpace(decision.Reply)
 	decision.model = attribution
+	decision.ended = ended
 	return decision, nil
 }
 
@@ -1187,7 +1210,7 @@ func mergeThreadWindow(person, ambient []store.Message) []store.Message {
 }
 
 func (h *Head) postAgent(sessionID, body string, commandSeq int64) error {
-	return h.postAgentModel(sessionID, body, commandSeq, "")
+	return h.postAgentModel(sessionID, body, commandSeq, "", nil)
 }
 
 func (h *Head) postSystem(sessionID, body string) error {
@@ -1203,7 +1226,7 @@ func (h *Head) postSystem(sessionID, body string) error {
 	return nil
 }
 
-func (h *Head) postAgentModel(sessionID, body string, commandSeq int64, model string) error {
+func (h *Head) postAgentModel(sessionID, body string, commandSeq int64, model string, parts []store.MessagePart) error {
 	_, err := thread.Post(h.store, store.Message{
 		SessionID:  sessionID,
 		Role:       store.RoleAgent,
@@ -1211,6 +1234,7 @@ func (h *Head) postAgentModel(sessionID, body string, commandSeq int64, model st
 		CommandSeq: commandSeq,
 		Model:      strings.TrimSpace(model),
 		Answers:    h.answering(),
+		Parts:      parts,
 	})
 	if err != nil {
 		return fmt.Errorf("serve head: post reply: %w", err)
@@ -1305,6 +1329,21 @@ type routeDecision struct {
 	// this" are all the same intent and no list will hold them.
 	Fresh bool `json:"fresh"`
 	model string
+	// ended is how the answering call ended, and it is unexported for the same
+	// reason model is: it is not something the model said, it is something we
+	// observed about the call that carried what it said. Nil means the turn
+	// finished on its own terms, which is every ordinary turn.
+	ended *store.EndedPart
+}
+
+// parts is what a decision hands the posting door. Today it is only the end
+// mark, and only when there is one — so an ordinary turn posts the exact
+// message it posted before parts existed, byte for byte and column for column.
+func (decision routeDecision) parts() []store.MessagePart {
+	if decision.ended == nil {
+		return nil
+	}
+	return []store.MessagePart{store.EndedMark(*decision.ended)}
 }
 
 // fanOutLimit bounds one message's work orders. Past it the message is not a

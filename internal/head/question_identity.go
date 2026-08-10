@@ -108,7 +108,7 @@ func (h *Head) answerQuestionChoice(ctx context.Context, user store.Message) (bo
 func (h *Head) askWhichQuestion(user store.Message, candidates []store.AgentQuestion) error {
 	labels := h.questionChoiceLabels(questionsOldestFirst(candidates))
 	body := "That could answer " + joinChoices(labels) + ". " + questionChoiceTail
-	return h.postAgentFloor(user.SessionID, body, 0, "")
+	return h.postAgentFloor(user.SessionID, body, 0, "", nil)
 }
 
 func joinChoices(labels []string) string {
