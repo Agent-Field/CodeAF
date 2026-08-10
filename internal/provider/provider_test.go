@@ -470,3 +470,144 @@ func TestObservedMessageCompletionStreamsAndReturnsAccumulatedResponse(t *testin
 		t.Fatalf("observed completion did not use the streaming wire: %#v", recorded.body(0))
 	}
 }
+
+// The structural half of the streamed path: a tool call arrives in fragments
+// across several chunks, and until this was accumulated every streamed
+// completion returned zero tool calls — which made the head's control belt
+// spend a whole round trip that could not possibly succeed.
+func TestStreamedToolCallsAccumulateIntoTheResponse(t *testing.T) {
+	events := []string{
+		`{"id":"one","model":"sim/model","choices":[{"index":0,"delta":{"role":"assistant","reasoning":"the user is asking about live work"}}]}`,
+		`{"id":"one","choices":[{"index":0,"delta":{"reasoning":" so the board is the read"}}]}`,
+		`{"id":"one","choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"id":"call_1","type":"function","function":{"name":"board","arguments":""}}]}}]}`,
+		`{"id":"one","choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"function":{"arguments":"{\"stat"}}]}}]}`,
+		`{"id":"one","choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"function":{"arguments":"us\":\"live\"}"}}]}}]}`,
+		`{"id":"one","choices":[{"index":0,"delta":{"tool_calls":[{"index":1,"id":"call_2","type":"function","function":{"name":"control","arguments":"{\"verb\":\"cancel\"}"}}]},"finish_reason":"tool_calls"}]}`,
+	}
+	handler := http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
+		writer.Header().Set("Content-Type", "text/event-stream")
+		for _, event := range events {
+			_, _ = writer.Write([]byte("data: " + event + "\n\n"))
+		}
+		_, _ = writer.Write([]byte("data: [DONE]\n\n"))
+	})
+
+	client, err := NewClient(Config{
+		APIKey: "k", BaseURL: "http://provider.test", Model: "sim/model", HTTPClient: handlerClient(handler),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var observed []StreamEvent
+	ctx := WithStreamObserver(context.Background(), func(event StreamEvent) {
+		observed = append(observed, event)
+	})
+	response, err := client.CompleteWithMessages(ctx, userMessages("cancel the scans"),
+		ai.WithTools([]ai.ToolDefinition{{Type: "function"}}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !response.HasToolCalls() {
+		t.Fatalf("streamed response carried no tool calls: %#v", response.Choices)
+	}
+	calls := response.ToolCalls()
+	if len(calls) != 2 {
+		t.Fatalf("accumulated %d tool calls, want 2: %#v", len(calls), calls)
+	}
+	if calls[0].ID != "call_1" || calls[0].Function.Name != "board" ||
+		calls[0].Function.Arguments != `{"status":"live"}` {
+		t.Fatalf("first call reassembled as %#v", calls[0])
+	}
+	if calls[1].ID != "call_2" || calls[1].Function.Name != "control" ||
+		calls[1].Function.Arguments != `{"verb":"cancel"}` {
+		t.Fatalf("second call reassembled as %#v", calls[1])
+	}
+	if response.Choices[0].FinishReason != "tool_calls" {
+		t.Fatalf("finish reason = %q", response.Choices[0].FinishReason)
+	}
+
+	// Reasoning is announced once for the run of it and never carries its text.
+	thinking := 0
+	for _, event := range observed {
+		if event.Kind == StreamThinking {
+			thinking++
+			if event.Delta != "" {
+				t.Fatalf("a thinking event carried reasoning text: %q", event.Delta)
+			}
+		}
+		if event.Kind == StreamDelta {
+			t.Fatalf("a tool-call stream produced a text delta: %q", event.Delta)
+		}
+	}
+	if thinking != 1 {
+		t.Fatalf("thinking events = %d, want exactly one for the run", thinking)
+	}
+	if observed[0].Kind != StreamStarted || observed[len(observed)-1].Kind != StreamFinished {
+		t.Fatalf("stream boundaries = %#v", observed)
+	}
+}
+
+// Not every endpoint indexes its fragments. One that spells a call out without
+// an index must not have its arguments fused onto the previous call, and the
+// zero value of the missing field must not read as "call 0".
+func TestStreamedToolCallsWithoutAnIndexStayDistinct(t *testing.T) {
+	events := []string{
+		`{"choices":[{"index":0,"delta":{"tool_calls":[{"id":"a","function":{"name":"board","arguments":"{}"}}]}}]}`,
+		`{"choices":[{"index":0,"delta":{"tool_calls":[{"id":"b","function":{"name":"result"}}]}}]}`,
+		`{"choices":[{"index":0,"delta":{"tool_calls":[{"function":{"arguments":"{\"id\":\"scans\"}"}}]},"finish_reason":"tool_calls"}]}`,
+	}
+	handler := http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
+		writer.Header().Set("Content-Type", "text/event-stream")
+		for _, event := range events {
+			_, _ = writer.Write([]byte("data: " + event + "\n\n"))
+		}
+		_, _ = writer.Write([]byte("data: [DONE]\n\n"))
+	})
+	client, err := NewClient(Config{
+		APIKey: "k", BaseURL: "http://provider.test", Model: "sim/model", HTTPClient: handlerClient(handler),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx := WithStreamObserver(context.Background(), func(StreamEvent) {})
+	response, err := client.CompleteWithMessages(ctx, userMessages("what did the scans find"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	calls := response.ToolCalls()
+	if len(calls) != 2 {
+		t.Fatalf("accumulated %d calls, want 2: %#v", len(calls), calls)
+	}
+	if calls[0].Function.Name != "board" || calls[0].Function.Arguments != "{}" {
+		t.Fatalf("first call = %#v", calls[0])
+	}
+	if calls[1].Function.Name != "result" || calls[1].Function.Arguments != `{"id":"scans"}` {
+		t.Fatalf("second call = %#v", calls[1])
+	}
+}
+
+// The unstreamed path is unchanged, and a streamed answer that is only text
+// still carries no tool calls at all — an empty slice would be a claim.
+func TestStreamedTextAnswerCarriesNoToolCalls(t *testing.T) {
+	handler := http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
+		writer.Header().Set("Content-Type", "text/event-stream")
+		_, _ = writer.Write([]byte(`data: {"choices":[{"index":0,"delta":{"content":"hello"},"finish_reason":"stop"}]}` + "\n\ndata: [DONE]\n\n"))
+	})
+	client, err := NewClient(Config{
+		APIKey: "k", BaseURL: "http://provider.test", Model: "sim/model", HTTPClient: handlerClient(handler),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx := WithStreamObserver(context.Background(), func(StreamEvent) {})
+	response, err := client.CompleteWithMessages(ctx, userMessages("hi"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if response.HasToolCalls() || response.ToolCalls() != nil {
+		t.Fatalf("a text answer claimed tool calls: %#v", response.ToolCalls())
+	}
+	if response.Text() != "hello" {
+		t.Fatalf("streamed text = %q", response.Text())
+	}
+}

@@ -1,10 +1,12 @@
 package exec
 
 import (
+	"bufio"
 	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 )
@@ -17,9 +19,25 @@ import (
 // hypothesis about what those turns contained had to be tested by re-running
 // the task at full price. The trace is the flight recorder: cheap, local,
 // always on, and read only when something needs explaining.
+//
+// Always on is what makes the buffering necessary. A subharness stream can
+// deliver a thousand NDJSON deltas a second and every one of them is a line
+// here, which was a string concatenation and a write syscall each. The writes
+// are batched and flushed at record boundaries instead — the end of a turn, the
+// end of a poll interval, and the close — so a crash costs the tail of the
+// current batch and nothing before it. The mutex is not new caution: the child's
+// stdout and its stderr are traced from two goroutines at once, and a shared
+// buffer is not a file handle.
 type tracer struct {
-	file *os.File
+	mutex  sync.Mutex
+	file   *os.File
+	writer *bufio.Writer
 }
+
+// traceBuffer is a batch of lines rather than a page. Small enough that a run
+// killed between flushes has lost almost nothing, large enough that the
+// per-line syscall is gone.
+const traceBuffer = 32 << 10
 
 func newTracer(workspace *Workspace, nodeID int) *tracer {
 	full, _, err := workspace.ScratchPath(filepath.Join(obsDir, fmt.Sprintf("%d.trace.log", nodeID)))
@@ -33,29 +51,46 @@ func newTracer(workspace *Workspace, nodeID int) *tracer {
 	if err != nil {
 		return &tracer{}
 	}
-	return &tracer{file: file}
+	return &tracer{file: file, writer: bufio.NewWriterSize(file, traceBuffer)}
 }
 
 func (t *tracer) close() {
-	if t.file != nil {
-		t.file.Close()
+	t.mutex.Lock()
+	defer t.mutex.Unlock()
+	if t.file == nil {
+		return
+	}
+	t.writer.Flush()
+	t.file.Close()
+	t.file, t.writer = nil, nil
+}
+
+// flush lands everything written so far. It is called where a batch of lines
+// ends rather than where a line does: what a reader of a live trace wants is
+// the last complete thing that happened, and what a crash must not lose is
+// anything older than the batch in hand.
+func (t *tracer) flush() {
+	t.mutex.Lock()
+	defer t.mutex.Unlock()
+	if t.writer != nil {
+		t.writer.Flush()
 	}
 }
 
 // note records a free-form line, for run-level facts that belong in the
 // recorder but are not a turn — the contract in force, a nudge, a stop.
 func (t *tracer) note(body string) {
-	if t.file == nil {
+	t.mutex.Lock()
+	defer t.mutex.Unlock()
+	if t.writer == nil {
 		return
 	}
-	t.file.WriteString(body + "\n")
+	t.writer.WriteString(body)
+	t.writer.WriteByte('\n')
 }
 
 // turn records one round: what the model said, what it called, what came back.
 func (t *tracer) turn(turn int, response *ai.Response, calls []ai.ToolCall, results []Result, note string) {
-	if t.file == nil {
-		return
-	}
 	var block strings.Builder
 	finish := ""
 	if response != nil && len(response.Choices) > 0 {
@@ -85,7 +120,16 @@ func (t *tracer) turn(turn int, response *ai.Response, calls []ai.ToolCall, resu
 			fmt.Fprintf(&block, "  → %dB%s: %s\n", len(results[index].Content), status, snip(results[index].Content, 300))
 		}
 	}
-	t.file.WriteString(block.String())
+	// A turn is a whole record, so it is also a flush point: the linear loop
+	// writes one every few seconds and a trace that is a turn behind is a trace
+	// nobody can read over a run's shoulder.
+	t.mutex.Lock()
+	defer t.mutex.Unlock()
+	if t.writer == nil {
+		return
+	}
+	t.writer.WriteString(block.String())
+	t.writer.Flush()
 }
 
 func snip(text string, limit int) string {

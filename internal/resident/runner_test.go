@@ -637,3 +637,74 @@ func TestAPracticeFiringInsideItsReservationRunsNormally(t *testing.T) {
 		t.Fatalf("claimed %d leaves, want the one that was well inside its budget", claimed)
 	}
 }
+
+// The dispatch loop asks the store three questions on every pass — deferred
+// overruns, the ready set, whether the user is idle — and it used to ask them
+// twice a second forever. Every claimable leaf is journaled, so an unmoved
+// watermark is proof the ready set cannot have changed.
+func TestRunnerQuietGateSkipsOnlyWhatCannotHaveChanged(t *testing.T) {
+	now := time.Now()
+	gate := newRunnerQuietGate()
+	if gate.skip(7, nil, now) {
+		t.Fatal("a fresh gate skipped its first pass")
+	}
+
+	// A pass that dispatched nothing arms the gate at the watermark it read.
+	gate.settle(7, nil, 0, now)
+	if !gate.skip(7, nil, now.Add(time.Second)) {
+		t.Fatal("an unmoved journal did not let the pass be skipped")
+	}
+	if gate.skip(8, nil, now.Add(time.Second)) {
+		t.Fatal("a moved journal was slept through")
+	}
+	if gate.skip(7, errors.New("store is busy"), now.Add(time.Second)) {
+		t.Fatal("an unreadable watermark was taken as proof of quiet")
+	}
+	if gate.skip(7, nil, now.Add(runnerQuietCeiling)) {
+		t.Fatal("the ceiling did not force a pass")
+	}
+
+	// A pass that dispatched has freed no slot yet, and a nudge is news the
+	// held watermark cannot account for. Both disarm.
+	gate.settle(7, nil, 1, now)
+	if gate.skip(7, nil, now) {
+		t.Fatal("a dispatching pass armed the gate")
+	}
+	gate.settle(7, nil, 0, now)
+	gate.disarm()
+	if gate.skip(7, nil, now) {
+		t.Fatal("a nudge left the gate armed")
+	}
+}
+
+// And the gate never costs a claim. Work journaled by somebody else — no nudge,
+// no landing in this process — still moves the watermark, and the next timed
+// pass claims it.
+func TestRunnerServeStillClaimsWorkItWasNeverNudgedAbout(t *testing.T) {
+	graph := openRunnerStore(t)
+	runner, spans := recordingRunner(t, graph, time.Millisecond, 2)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	served := make(chan error, 1)
+	go func() { served <- runner.Serve(ctx) }()
+
+	// Let the loop go quiet over an empty graph first, so the claim below can
+	// only come from the watermark moving.
+	time.Sleep(200 * time.Millisecond)
+	if err := graph.Splice(store.RootID, store.Subtree{Nodes: []store.NodeSpec{
+		{ID: "unannounced", Brief: "work nobody nudged about", Stage: 1},
+	}}, store.Provenance{Origin: store.OriginUser, SessionID: "flow", Intent: "work nobody nudged about"}); err != nil {
+		t.Fatal(err)
+	}
+
+	deadline := time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) && len(spans()) == 0 {
+		time.Sleep(20 * time.Millisecond)
+	}
+	if len(spans()) == 0 {
+		t.Fatal("the quiet gate slept through work that was journaled beside it")
+	}
+	cancel()
+	<-served
+}

@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/Agent-Field/aforge-v2/internal/config"
+	"github.com/Agent-Field/aforge-v2/internal/exec"
 	"github.com/Agent-Field/aforge-v2/internal/lease"
 	"github.com/Agent-Field/aforge-v2/internal/resident"
 	"github.com/Agent-Field/aforge-v2/internal/store"
@@ -91,6 +92,12 @@ type headlessOutcome struct {
 	// failure and why. An ephemeral store evaporates on exit, and these lines
 	// are the one piece of what the run understood that would die with it.
 	Learned []string `json:"learned,omitempty"`
+	// Subharness is the worker that took the deliverable, read back from the
+	// durable row rather than from what was asked for. It is always present and
+	// never empty — "linear" is the generalist, and a caller comparing workers
+	// on a corpus needs the default spelled out as much as the specialist, or an
+	// absent field is indistinguishable from an older binary.
+	Subharness string `json:"subharness"`
 
 	// status is what the process leaves with. It is decided where the outcome
 	// is produced, because only there is the difference visible between a job
@@ -111,8 +118,9 @@ func runDo(args []string) error {
 	yesSpend := flags.Bool("yes-spend", false, "approve a plan whose price crosses the consent threshold")
 	model := flags.String("model", "", "work model for this run (default AFORGE_MODEL)")
 	planModel := flags.String("plan-model", "", "model that plans, when different from the work model (default AFORGE_PLAN_MODEL)")
+	subharness := flags.String("subharness", "", "force this errand onto one worker, for measuring workers against each other (default: let the compiler choose)")
 	if err := flags.Parse(reorder(args, map[string]bool{
-		"db": true, "w": true, "timeout": true, "model": true, "plan-model": true,
+		"db": true, "w": true, "timeout": true, "model": true, "plan-model": true, "subharness": true,
 	})); err != nil {
 		return err
 	}
@@ -127,7 +135,8 @@ func runDo(args []string) error {
 		task: task, database: *database, keep: *keep, workspace: *workspace,
 		timeout: time.Duration(*timeout) * time.Second, asJSON: *asJSON,
 		yesSpend: *yesSpend, model: *model, planModel: *planModel,
-		stdout: os.Stdout, stderr: os.Stderr,
+		subharness: *subharness,
+		stdout:     os.Stdout, stderr: os.Stderr,
 	})
 }
 
@@ -143,8 +152,12 @@ type doRequest struct {
 	yesSpend  bool
 	model     string
 	planModel string
-	stdout    io.Writer
-	stderr    io.Writer
+	// subharness forces this errand onto one worker. It is the benchmarking
+	// path: an unknown name is a note on stderr and the default worker, so a
+	// measurement run never dies at argument parsing.
+	subharness string
+	stdout     io.Writer
+	stderr     io.Writer
 	// newClient scripts the provider. Nil is the real one.
 	newClient func(config.Config, string) (*liveClient, error)
 }
@@ -264,7 +277,8 @@ func headlessBrain(window *chatWindow, session string, request doRequest,
 		headless: true, ephemeral: ephemeral, workspaceRoot: workspaceRoot,
 		sharedWorkspace: true,
 		model:           request.model, planModel: request.planModel,
-		consent: consent, newClient: request.newClient,
+		subharness: request.subharness,
+		consent:    consent, newClient: request.newClient,
 	})
 	if err != nil {
 		release()
@@ -348,6 +362,9 @@ type settlementWatch struct {
 
 	watermark int64
 	seen      map[string]store.Status
+	// noted remembers which nodes have already had their degradation said, so a
+	// build missing a worker admits it once per node rather than once per beat.
+	noted map[string]bool
 	// structured records that the "understood" line has been said. Without it
 	// the first thing stderr ever carried was a leaf changing status, so a run
 	// that compiled and then hung showed nothing at all.
@@ -596,9 +613,18 @@ func (w *settlementWatch) report(nodes []store.Node) {
 	// never claimed printed nothing whatsoever for the whole of its life.
 	if !w.structured {
 		w.structured = true
-		fmt.Fprintf(w.progress, "  · understood · %s %s\n",
-			plural(len(nodes), "task"), time.Since(w.started).Round(time.Second))
+		// The ask became work, and on the rare errand that named a specialist it
+		// says which one — once, in the line that already exists, in the same
+		// breath as how much work it became. A generalist errand reads exactly as
+		// it always did.
+		worker := ""
+		if named := errandWorker(nodes); named != "" {
+			worker = " (" + named + ")"
+		}
+		fmt.Fprintf(w.progress, "  · understood · %s%s %s\n",
+			plural(len(nodes), "task"), worker, time.Since(w.started).Round(time.Second))
 	}
+	w.noteDegradedWorkers(nodes)
 	for _, node := range nodes {
 		if previous, ok := w.seen[node.ID]; ok && previous == node.Status {
 			continue
@@ -609,6 +635,47 @@ func (w *settlementWatch) report(nodes []store.Node) {
 		}
 		fmt.Fprintf(w.progress, "  %s %-28s %s\n", statusMark(node.Status),
 			clip(firstLine(nodeDisplay(node)), 28), time.Since(w.started).Round(time.Second))
+	}
+}
+
+// errandWorker is the specialist this errand was given, if it was given one. It
+// reads the roots because the choice is a fact about the job rather than about
+// one leaf, and it names nothing when the answer is the generalist — a run that
+// took the default is the run everyone already knows how to read.
+func errandWorker(nodes []store.Node) string {
+	for _, node := range nodes {
+		if node.Parent != store.RootID {
+			continue
+		}
+		if worker := promisedWorker(node); worker != "" && worker != exec.LinearSubharness {
+			return worker
+		}
+	}
+	return ""
+}
+
+// noteDegradedWorkers says once, per node, that this build could not honor the
+// worker the node was promised. The run continues on the generalist — that is
+// the registry's promise and it is not changing — but a benchmark cell that
+// silently became a default cell is a measurement of the wrong thing, and the
+// only honest place to learn that was a profile file that may never be written.
+func (w *settlementWatch) noteDegradedWorkers(nodes []store.Node) {
+	if w.progress == nil {
+		return
+	}
+	for _, node := range nodes {
+		worker := promisedWorker(node)
+		if !degradedWorker(worker) {
+			continue
+		}
+		if w.noted == nil {
+			w.noted = make(map[string]bool, 1)
+		}
+		if w.noted[node.ID] {
+			continue
+		}
+		w.noted[node.ID] = true
+		noteUnavailableWorker(w.progress, worker)
 	}
 }
 
@@ -695,7 +762,12 @@ func (w *settlementWatch) survey() (headlessOutcome, error) {
 // first root's summary is a receipt saying "more is coming" and the last one's
 // is the answer.
 func (w *settlementWatch) compose(nodes []store.Node) headlessOutcome {
-	outcome := headlessOutcome{Nodes: len(nodes), Artifacts: []string{}}
+	outcome := headlessOutcome{
+		Nodes: len(nodes), Artifacts: []string{},
+		// The generalist until a row says otherwise, which is what an empty
+		// column has meant everywhere else since the day it was added.
+		Subharness: exec.LinearSubharness,
+	}
 	roots := make([]store.Node, 0, 4)
 	for _, node := range nodes {
 		if node.Parent == store.RootID {
@@ -718,6 +790,12 @@ func (w *settlementWatch) compose(nodes []store.Node) headlessOutcome {
 		final = &roots[len(roots)-1]
 	}
 	if final != nil {
+		// What ran the deliverable, as the store settled it. A machine caller
+		// asking "which worker took this issue" was reading the answer out of a
+		// kept sqlite file until this line existed.
+		if worker := promisedWorker(*final); worker != "" {
+			outcome.Subharness = worker
+		}
 		switch {
 		case final.Status == store.Failed || final.Status == store.Cancelled:
 			outcome.status = exitFailed

@@ -84,6 +84,12 @@ type Compiled struct {
 
 	// ModelNote is the one calm receipt line about that choice.
 	ModelNote string
+
+	// Subharness is the specialist worker this whole job was judged to be for.
+	// It rides the splice as provenance, exactly as WorkModel does, so the
+	// leaves that run it are held to what was chosen when the ask was read
+	// rather than to whatever the process has registered an hour later.
+	Subharness string
 }
 
 // SkillCandidate names the artifact directory a job proved useful. It remains
@@ -215,15 +221,25 @@ type Reconciler struct {
 	// oneShotErrand is the headless surface's fact about itself: every command
 	// this reconciler will apply is one errand, run once, with nobody who could
 	// answer a question about it.
-	oneShotErrand   bool
-	dailyBudgetUSD  float64
-	practiceEnabled bool
-	practiceBudget  float64
-	practiceIdle    time.Duration
-	services        *ServiceSupervisor
-	heartbeat       func(time.Time)
-	handover        HandoverFunc
-	residentSince   time.Time
+	oneShotErrand bool
+	// forcedSubharness overrides every compiler judgement about who runs this
+	// job. It exists for measurement: comparing two workers on the same corpus
+	// means taking the choice away from the model that would otherwise vary it.
+	forcedSubharness string
+	// modelsInForce answers, at the moment a job is admitted, which model would
+	// structure it and which would work it if the job named neither. It is a
+	// question only the surface can answer — the slots live there — and it is
+	// asked here because this is where the answer stops being configuration and
+	// becomes provenance.
+	modelsInForce  func() (plan, work string)
+	dailyBudgetUSD float64
+	practiceEnabled  bool
+	practiceBudget   float64
+	practiceIdle     time.Duration
+	services         *ServiceSupervisor
+	heartbeat        func(time.Time)
+	handover         HandoverFunc
+	residentSince    time.Time
 
 	mu                 sync.Mutex
 	watcherInitialized bool
@@ -232,10 +248,15 @@ type Reconciler struct {
 	// exists so a pass that consumed nothing but its own watermark event does
 	// not write another one, which would otherwise make the lane a perpetual
 	// writer and defeat the quiet-tick gate.
-	settlementMark          int64
-	progress                map[string]*subtreeProgress
-	learningMoments         map[string]*pendingLearningMoment
-	lastConsolidation       time.Time
+	settlementMark    int64
+	progress          map[string]*subtreeProgress
+	learningMoments   map[string]*pendingLearningMoment
+	lastConsolidation time.Time
+	// charterOutcomeSeq is how far the charter ladder has finished reading. It
+	// is a working cursor, not a durable one: zero re-reads every unfolded
+	// firing, which is what a fresh process should do and what makes losing it
+	// cost one pass rather than one outcome.
+	charterOutcomeSeq       int64
 	lastWatchPass           WatchPass
 	standingWatchKeyPersist func() (bool, string, error)
 	now                     func() time.Time
@@ -323,6 +344,54 @@ func (r *Reconciler) WithCraftRunner(craft *CraftRunner) *Reconciler {
 func (r *Reconciler) WithOneShotErrands() *Reconciler {
 	r.oneShotErrand = true
 	return r
+}
+
+// WithSubharness forces every job this reconciler admits onto one worker,
+// whatever the compiler thought. It is a benchmarking instrument and is named
+// as one: a run that is comparing workers cannot let the choice be the variable
+// it is trying to measure. Empty restores the ordinary path, where the choice
+// is the compiler's and is usually the generalist.
+func (r *Reconciler) WithSubharness(subharness string) *Reconciler {
+	r.forcedSubharness = strings.TrimSpace(subharness)
+	return r
+}
+
+// WithModelsInForce teaches the resident the surface's two model slots, read at
+// splice time: the one that structures and the one that works. Without it a job
+// records nothing about who planned it, which is exactly what every embedding
+// path with no slots to speak of should record.
+func (r *Reconciler) WithModelsInForce(models func() (plan, work string)) *Reconciler {
+	r.modelsInForce = models
+	return r
+}
+
+// splitPlanModel is the durable answer to "who structured this job", and it is
+// deliberately silent in the ordinary case. The plan slot follows the work slot
+// by default, so recording the same name twice would be a fact about nothing —
+// and a surface reading it back would announce a split that never happened. The
+// model the user pinned for the work outranks the slot, because that is the
+// model this job's leaves will actually run on.
+func (r *Reconciler) splitPlanModel(pinnedWork string) string {
+	if r == nil || r.modelsInForce == nil {
+		return ""
+	}
+	plan, work := r.modelsInForce()
+	plan = strings.TrimSpace(plan)
+	if pinned := strings.TrimSpace(pinnedWork); pinned != "" {
+		work = pinned
+	}
+	if plan == "" || strings.EqualFold(plan, strings.TrimSpace(work)) {
+		return ""
+	}
+	return plan
+}
+
+// chosenSubharness is the one place the two sources of the choice meet.
+func (r *Reconciler) chosenSubharness(compiled Compiled) string {
+	if r != nil && r.forcedSubharness != "" {
+		return r.forcedSubharness
+	}
+	return strings.TrimSpace(compiled.Subharness)
 }
 
 // WithStandingWatch enables the one-time unattended-presence offer after the
@@ -513,10 +582,19 @@ func (r *Reconciler) Tick(ctx context.Context) error {
 	if err := r.announceTransitions(ctx); err != nil {
 		return fmt.Errorf("resident tick: watch graph: %w", err)
 	}
-	if err := r.foldSettledJobs(); err != nil {
+	// One reading of the active view serves both passes below. It is a decode of
+	// every live node in the graph, and the two of them asked for it separately
+	// on every tick; nothing between them admits a node, and the only thing
+	// either changes is which settled jobs are folded — which is terminal work
+	// the narrator drops from its state either way.
+	active, err := r.store.ActiveNodes()
+	if err != nil {
+		return fmt.Errorf("resident tick: active nodes: %w", err)
+	}
+	if err := r.foldSettledJobs(active); err != nil {
 		return fmt.Errorf("resident tick: fold settled jobs: %w", err)
 	}
-	if err := r.speakProgress(ctx); err != nil {
+	if err := r.speakProgress(ctx, active); err != nil {
 		return fmt.Errorf("resident tick: narrate progress: %w", err)
 	}
 	retrospectiveAfter := r.latestEventSeq()
@@ -600,9 +678,16 @@ func (r *Reconciler) primeQuietGateLocked() error {
 func (r *Reconciler) nextClockDeadlineLocked() (time.Time, error) {
 	now := r.now()
 	deadline := time.Time{}
+	// A deadline already in the past is a deadline of now: the thing it names is
+	// overdue, not perpetual. Clamping here is what keeps one lapsed question —
+	// or one supervision interval that elapsed while a long tick ran — from
+	// pinning the gate open with a moment that can never be reached again.
 	earlier := func(at time.Time) {
 		if at.IsZero() {
 			return
+		}
+		if at.Before(now) {
+			at = now
 		}
 		if deadline.IsZero() || at.Before(deadline) {
 			deadline = at
@@ -616,14 +701,15 @@ func (r *Reconciler) nextClockDeadlineLocked() (time.Time, error) {
 	earlier(charterDue)
 
 	// A supervised process can die without writing anything, so its health
-	// check is a clock deadline the journal never announces.
+	// check is a clock deadline the journal never announces. It is the
+	// supervisor's own interval, not "now": naming now meant that adopting a
+	// single service disarmed the gate for as long as that service lived, and
+	// the resident then ran its full pass twice a second forever.
 	services, err := r.store.ActiveServices()
 	if err != nil {
 		return time.Time{}, err
 	}
-	if len(services) > 0 {
-		earlier(now)
-	}
+	earlier(r.services.NextHealthCheck(services, now))
 
 	// The same window expireQuestionsLocked reads, so the gate cannot miss an
 	// expiry the tick itself would have applied.
@@ -649,9 +735,9 @@ func (r *Reconciler) nextClockDeadlineLocked() (time.Time, error) {
 	if err != nil {
 		return time.Time{}, err
 	}
-	for _, node := range nodes {
-		if foldableSettledJob(node) {
-			earlier(node.FinishedAt.Add(settledFoldGrace))
+	for i := range nodes {
+		if foldableSettledJob(&nodes[i]) {
+			earlier(nodes[i].FinishedAt.Add(settledFoldGrace))
 		}
 	}
 	return deadline, nil
@@ -757,28 +843,30 @@ func (r *Reconciler) reconcileGroup(ctx context.Context, group []store.Command) 
 	slots := make(chan struct{}, concurrentCommands)
 	var wait sync.WaitGroup
 	started := 0
-	for index := range group {
-		if err := ctx.Err(); err != nil {
-			break
+	r.thinking(func() {
+		for index := range group {
+			if err := ctx.Err(); err != nil {
+				break
+			}
+			slots <- struct{}{}
+			started++
+			wait.Add(1)
+			go func(index int) {
+				// A fault applying one ask becomes that ask's recorded rejection,
+				// exactly as it would have on the serial path, rather than a panic
+				// crossing back into a tick that is holding the reconciler's lock.
+				defer func() {
+					if recovered := recover(); recovered != nil {
+						results[index].err = guard.Note("resident/reconciler command", recovered)
+					}
+				}()
+				defer wait.Done()
+				defer func() { <-slots }()
+				results[index].outcome, results[index].err = r.applyCommand(ctx, group[index])
+			}(index)
 		}
-		slots <- struct{}{}
-		started++
-		wait.Add(1)
-		go func(index int) {
-			// A fault applying one ask becomes that ask's recorded rejection,
-			// exactly as it would have on the serial path, rather than a panic
-			// crossing back into a tick that is holding the reconciler's lock.
-			defer func() {
-				if recovered := recover(); recovered != nil {
-					results[index].err = guard.Note("resident/reconciler command", recovered)
-				}
-			}()
-			defer wait.Done()
-			defer func() { <-slots }()
-			results[index].outcome, results[index].err = r.applyCommand(ctx, group[index])
-		}(index)
-	}
-	wait.Wait()
+		wait.Wait()
+	})
 	// Only what was actually applied is settled. A command the context cut off
 	// before it started is still pending, and the next tick owns it.
 	for index, command := range group[:started] {
@@ -790,8 +878,35 @@ func (r *Reconciler) reconcileGroup(ctx context.Context, group []store.Command) 
 }
 
 func (r *Reconciler) reconcileCommand(ctx context.Context, command store.Command) error {
-	outcome, err := r.applyCommand(ctx, command)
+	var outcome commandOutcome
+	var err error
+	r.thinking(func() { outcome, err = r.applyCommand(ctx, command) })
 	return r.settleCommand(command, outcome, err)
+}
+
+// thinking runs one stretch of model work with the reconciler's lock released,
+// and takes it back before returning.
+//
+// The lock is a guard over a handful of in-memory cursors — the settle lane's
+// place in the event stream, the narrator's unspoken milestones, the change
+// gate — and it was never protecting the model call. Holding it across one
+// meant every other holder waited out somebody else's planner, and the holder
+// that matters is the person: AttachSession and the arrival brief take this
+// same lock on the chat-startup path, so opening a chat could sit behind three
+// model round-trips of a job that had nothing to do with it.
+//
+// The rule for what may go inside is the one the concurrent splice path already
+// established: application touches the store and nothing this lock guards,
+// which is why four of them can run side by side. Settlement — the resolution,
+// the receipt, the askback — stays locked and in seq order, because that is the
+// half a reader sees and the half that reaches the guarded state.
+//
+// Every caller holds the lock when it calls, and a fault inside do unwinds
+// through the deferred re-acquire, so the tick's own release stays balanced.
+func (r *Reconciler) thinking(do func()) {
+	r.mu.Unlock()
+	defer r.mu.Lock()
+	do()
 }
 
 // settleCommand records what applying one command decided: the durable
@@ -1137,8 +1252,10 @@ func (r *Reconciler) splice(ctx context.Context, command store.Command) (command
 		TrialOf:       compiled.TrialOf,
 		ServiceIntent: compiled.ServiceIntent,
 		WorkModel:     strings.TrimSpace(compiled.WorkModel),
+		PlanModel:     r.splitPlanModel(compiled.WorkModel),
 		Attachments:   append([]string(nil), command.Attachments...),
 		Craft:         use.reference,
+		Subharness:    r.chosenSubharness(compiled),
 	}
 	if err := r.store.Splice(store.RootID, subtree, provenance); err != nil {
 		if r.plan != nil || !r.defaultSpliceExists(command, compiled) {
@@ -1622,6 +1739,12 @@ func (r *Reconciler) announceTransitions(ctx context.Context) error {
 		events, err := r.store.Events(r.lastEventSeq, eventBatchSize)
 		if err != nil {
 			return err
+		}
+		// Nothing to announce is the overwhelmingly common case, and the active
+		// view below is a full-table decode. Reading it before finding out there
+		// were no events meant paying for the whole graph to walk an empty list.
+		if len(events) == 0 {
+			return nil
 		}
 		var byID map[string]store.Node
 		if r.narrate != nil {
@@ -2568,25 +2691,25 @@ func (r *Reconciler) foldJob(node store.Node) {
 // forgetting it.
 const settledFoldGrace = 15 * time.Minute
 
-// foldSettledJobs files every job whose grace window has closed. It reads the
-// active view rather than a per-tick memory precisely so that a process that
-// died between the landing and the fold still folds the job: the condition is a
-// property of the graph, not of this reconciler's lifetime.
-func (r *Reconciler) foldSettledJobs() error {
-	nodes, err := r.store.ActiveNodes()
-	if err != nil {
-		return err
-	}
+// foldSettledJobs files every job whose grace window has closed. It is handed
+// the active view rather than a per-tick memory precisely so that a process
+// that died between the landing and the fold still folds the job: the condition
+// is a property of the graph, not of this reconciler's lifetime.
+func (r *Reconciler) foldSettledJobs(nodes []store.Node) error {
 	cutoff := r.now().Add(-settledFoldGrace)
-	for _, node := range nodes {
+	// Ranged by index: a node is around half a kilobyte, the active view is
+	// every live one of them, and the overwhelming majority of this loop's
+	// iterations read three fields and move on.
+	for i := range nodes {
+		node := &nodes[i]
 		if !foldableSettledJob(node) || node.FinishedAt.After(cutoff) {
 			continue
 		}
-		if r.effectiveSessionID(node) == "" &&
+		if r.effectiveSessionID(*node) == "" &&
 			!(node.Group == store.PracticeGroup && node.Provenance.Origin == store.OriginSelf) {
 			continue
 		}
-		r.foldJob(node)
+		r.foldJob(*node)
 	}
 	return nil
 }
@@ -2594,7 +2717,7 @@ func (r *Reconciler) foldSettledJobs() error {
 // foldableSettledJob is the fold's admission test, stated once. A job root that
 // has already folded is represented by its own fold root, which stays in the
 // active view forever and must never be folded again.
-func foldableSettledJob(node store.Node) bool {
+func foldableSettledJob(node *store.Node) bool {
 	if node.Parent != store.RootID || node.Folded || node.FoldRoot {
 		return false
 	}

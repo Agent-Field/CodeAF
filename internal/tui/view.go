@@ -3,6 +3,7 @@ package tui
 import (
 	"fmt"
 	"path/filepath"
+	"reflect"
 	"sort"
 	"strconv"
 	"strings"
@@ -107,6 +108,15 @@ var (
 // View composes the complete frame once, avoiding terminal-clearing redraws.
 // The frame is open text — hierarchy comes from ink and whitespace, not boxes.
 func (m *Model) View() string {
+	// A pane the relayout skipped while it was off screen is built here, at the
+	// one moment it can be read. Nothing else opens a place, so this is a
+	// comparison per frame and a build per arrival.
+	if m.graphPaneStale && m.graphContentVisible() {
+		m.refreshGraphContent()
+	}
+	if m.selfPaneStale && m.selfVisible() {
+		m.refreshSelf()
+	}
 	// One frame, one dock. Bounds tracking and the bar itself both need it, and
 	// rendering it twice to throw one away is a card render per frame.
 	m.invalidateDock()
@@ -526,28 +536,14 @@ func (m *Model) renderSpendCompact() string {
 // practice takes precedence over the one-poll learning afterglow; otherwise
 // silence is the state.
 func (m *Model) residentPresenceText() string {
-	if root, ok := activePracticeRoot(m.snapshot); ok {
+	if facts := m.graphFacts.of(m.snapshot.Nodes); facts.practicing {
 		return fmt.Sprintf("practicing: %s · $%.2f on myself today",
-			practiceScope(root), m.selfSpendToday)
+			practiceScope(facts.practice), m.selfSpendToday)
 	}
 	if clause := strings.TrimSpace(m.selfLearning); clause != "" {
 		return "learned: " + clause
 	}
 	return ""
-}
-
-func activePracticeRoot(snapshot store.Snapshot) (store.Node, bool) {
-	var newest store.Node
-	found := false
-	for _, node := range snapshot.Nodes {
-		if node.Parent != store.RootID || node.Group != store.PracticeGroup || nodeSettled(node) {
-			continue
-		}
-		if !found || node.CreatedSeq > newest.CreatedSeq {
-			newest, found = node, true
-		}
-	}
-	return newest, found
 }
 
 func practiceScope(node store.Node) string {
@@ -593,25 +589,55 @@ func (m *Model) residentPresenceHeight() int {
 	return 1
 }
 
-// taskCounts sweeps the snapshot once for the activity bar and the rail
-// header: work in flight, work queued, and anything that failed.
-func (m *Model) taskCounts() (running, queued, failed int) {
-	definitions := charterDefinitionIDs(m.snapshot)
-	for _, node := range m.snapshot.Nodes {
-		if node.ID == store.RootID || definitions[node.ID] ||
+// graphFacts is everything a frame asks of the whole graph, swept once. The
+// header dot, the footer tip, the legacy activity bar, the tree, the presence
+// line and the poll cadence each used to walk every node for themselves — and
+// the charter-definition subtree, which two of them need, allocated two maps
+// and recursed the graph on every one of those walks. They are one sweep now,
+// kept for as long as the snapshot they read is the snapshot in hand.
+type graphFacts struct {
+	nodes       []store.Node
+	definitions map[string]bool
+	running     int
+	queued      int
+	failed      int
+	practice    store.Node
+	practicing  bool
+}
+
+func (f *graphFacts) of(nodes []store.Node) *graphFacts {
+	if f.definitions != nil && len(f.nodes) == len(nodes) &&
+		(len(nodes) == 0 || &f.nodes[0] == &nodes[0]) {
+		return f
+	}
+	*f = graphFacts{nodes: nodes, definitions: charterDefinitionIDs(nodes)}
+	for _, node := range nodes {
+		if node.Parent == store.RootID && node.Group == store.PracticeGroup && !nodeSettled(node) {
+			if !f.practicing || node.CreatedSeq > f.practice.CreatedSeq {
+				f.practice, f.practicing = node, true
+			}
+		}
+		if node.ID == store.RootID || f.definitions[node.ID] ||
 			node.Provenance.Origin == store.OriginSelf {
 			continue
 		}
 		switch node.Status {
 		case store.Claimed, store.Running:
-			running++
+			f.running++
 		case store.Pending:
-			queued++
+			f.queued++
 		case store.Failed:
-			failed++
+			f.failed++
 		}
 	}
-	return running, queued, failed
+	return f
+}
+
+// taskCounts sweeps the snapshot once for the activity bar and the rail
+// header: work in flight, work queued, and anything that failed.
+func (m *Model) taskCounts() (running, queued, failed int) {
+	facts := m.graphFacts.of(m.snapshot.Nodes)
+	return facts.running, facts.queued, facts.failed
 }
 
 // liveWorkCount is everything still moving: planning placeholders plus
@@ -670,25 +696,58 @@ func (m *Model) renderChatPane() string {
 	if len(lines) > m.chatHeight {
 		lines = lines[:m.chatHeight]
 	}
-	// Hard clamp: any line wider than the pane would be soft-wrapped by the
-	// Width style below, growing the frame taller than the terminal and
-	// letting ghost frames overlap. After the clamp the style only pads.
+	// Hard clamp: any line wider than the pane would be soft-wrapped, growing
+	// the frame taller than the terminal and letting ghost frames overlap.
 	clampLines(lines, m.chatWidth)
 	if m.newMessages > 0 {
 		pill := pillStyle.Render(m.newMessageLabel())
 		index := len(lines) - 1
-		lines[index] = overlayRight(lines[index], pill, max(1, m.chatWidth-2))
+		lines[index] = padANSI(overlayRight(lines[index], pill, max(1, m.chatWidth-2)), m.chatWidth)
 	}
-	return lipgloss.NewStyle().Width(m.chatWidth).Render(strings.Join(lines, "\n"))
+	return strings.Join(lines, "\n")
 }
 
-// clampLines truncates, ANSI-aware, every line that exceeds the pane width.
+// clampLines is the pane's whole width discipline: every line truncated,
+// ANSI-aware, to the pane and then padded out to it.
+//
+// The padding used to be done by rendering the joined block through a styled
+// Width, which re-wraps and re-pads a block the clamp has already guaranteed
+// fits — around seventy kilobytes of copying per forty-line pane, per frame,
+// to add spaces the clamp was already measuring for. Tabs are expanded here
+// because the styled Width did it, and a tab measured before expansion is a
+// line that clamps to the pane and then wraps out of it anyway.
 func clampLines(lines []string, width int) {
 	for index, line := range lines {
-		if lipgloss.Width(line) > width {
-			lines[index] = truncate(line, width)
+		if strings.IndexByte(line, '\t') >= 0 {
+			line = strings.ReplaceAll(line, "\t", styleTabStop)
 		}
+		measured := lipgloss.Width(line)
+		if measured > width {
+			line = truncate(line, width)
+			measured = lipgloss.Width(line)
+		}
+		lines[index] = line + spaces(width-measured)
 	}
+}
+
+// styleTabStop is what a styled Width renders a tab as: a flat run of spaces,
+// not a stop the column is counted to.
+const styleTabStop = "    "
+
+const spaceRun = "                                                                " +
+	"                                                                "
+
+// spaces is a run of blanks taken from one string rather than built. Padding a
+// pane is one of these per line per frame, and every one of them was an
+// allocation.
+func spaces(count int) string {
+	if count <= 0 {
+		return ""
+	}
+	if count <= len(spaceRun) {
+		return spaceRun[:count]
+	}
+	return strings.Repeat(" ", count)
 }
 
 // renderGraphPane is the task rail: a faint header naming it, then the tree.
@@ -732,11 +791,9 @@ func (m *Model) renderGraphPane() string {
 		lines = lines[:m.graphHeight]
 	}
 	clampLines(lines, m.graphWidth)
-	return lipgloss.NewStyle().Width(m.graphWidth).Render(strings.Join(lines, "\n"))
+	return strings.Join(lines, "\n")
 }
 
-// renderNodePane is one task's flight recorder, full-bleed: a header line,
-// a faint hairline, the brief, then the scrolling activity feed.
 func (m *Model) graphToggleHit(x, y int) bool {
 	if m.graphToggleBounds.contains(x, y) {
 		return true
@@ -744,13 +801,23 @@ func (m *Model) graphToggleHit(x, y int) bool {
 	return m.graphBounds.contains(x, y) && x == m.graphBounds.right()-1
 }
 
+// nodeTitleFloor is the fewest cells a task's name may be squeezed into before
+// the title line stops carrying a receipt at all.
+const nodeTitleFloor = 16
+
+// renderNodePane is one task's flight recorder, full-bleed. The sticky chrome
+// is one line — back, state, title, elapsed, and the choice receipt held at the
+// right edge — over a faint hairline. Everything else, brief and decisions and
+// every turn, is one scrolling document underneath: a header a person cannot
+// move is a header that buries whatever it sits on, and what it sat on here was
+// the work itself.
 func (m *Model) renderNodePane() string {
 	innerWidth := max(1, m.width-2)
 	now := time.Now()
 	back := powderStyle.Render("‹ back")
 	m.nodeBackBounds = paneBounds{x: m.nodeBounds.x, y: m.nodeBounds.y, width: lipgloss.Width(back), height: 1}
 	glyph, _ := m.nodeGlyphStyled(m.inspectedNode, now, false)
-	title := nodeLabelInSnapshot(m.inspectedNode, m.snapshot)
+	title := m.nodeLabelIn(m.inspectedNode, m.snapshot.Nodes)
 	timing := m.nodeTiming(now)
 	if timing != "" {
 		timing = truncate(timing, max(1, innerWidth-lipgloss.Width(glyph)-4))
@@ -759,41 +826,43 @@ func (m *Model) renderNodePane() string {
 	if timing != "" {
 		timingWidth = lipgloss.Width("  ·  " + timing)
 	}
-	title = truncate(title, max(1, innerWidth-lipgloss.Width(glyph)-10-timingWidth))
+	// The receipt rides the title because a line that has to be scrolled to is a
+	// line that does not get read. It is the short spelling here — the full ids
+	// are two lines down in the brief, where checking a build is the errand.
+	receipt := nodeChoiceReceiptShort(m.inspectedNode)
+	titleRoom := max(1, innerWidth-lipgloss.Width(glyph)-10-timingWidth)
+	// The name outranks the receipt. A frame narrow enough that the badge would
+	// eat the title into an ellipsis simply does not draw the badge — the full
+	// spelling is two lines down either way, and a view that cannot say which
+	// task it is showing has lost more than a receipt.
+	if room := titleRoom - lipgloss.Width(receipt) - 2; receipt != "" && room >= nodeTitleFloor {
+		titleRoom = room
+	} else {
+		receipt = ""
+	}
+	title = truncate(title, titleRoom)
 	header := back + "  " + glyph + " " + inkStyle.Bold(true).Render(title)
 	if timing != "" {
 		header += mutedStyle.Render("  ·  " + timing)
 	}
+	if receipt != "" {
+		// Right-aligned, and only where the title still fits without it: a
+		// receipt that pushed the name off the screen would be the wrong trade.
+		if gap := innerWidth - lipgloss.Width(header) - lipgloss.Width(receipt); gap >= 2 {
+			header += strings.Repeat(" ", gap) + mutedStyle.Render(receipt)
+		}
+	}
 
 	hairline := mutedStyle.Faint(true).Render(strings.Repeat("─", innerWidth))
 	lines := []string{header, hairline}
-	contentX := m.nodeBounds.x
-	contentY := m.nodeBounds.y + len(lines)
-	appendSection := func(label string, view string, height int, bounds *paneBounds) {
-		lines = append(lines, mutedStyle.Faint(true).Render(label))
-		contentY++
-		if height <= 0 {
-			return
-		}
-		*bounds = paneBounds{x: contentX, y: contentY, width: innerWidth, height: height}
-		visible := strings.Split(view, "\n")
-		if view == "" {
-			visible = nil
-		}
-		for len(visible) < height {
-			visible = append(visible, "")
-		}
-		if len(visible) > height {
-			visible = visible[:height]
-		}
-		lines = append(lines, visible...)
-		contentY += height
+	m.nodeTraceBounds = paneBounds{
+		x: m.nodeBounds.x, y: m.nodeBounds.y + len(lines), width: innerWidth, height: m.nodeTraceHeight,
 	}
-	appendSection("BRIEF", m.nodeDetailsText, strings.Count(m.nodeDetailsText, "\n")+1, new(paneBounds))
-	lines = append(lines, "")
-	contentY++
-	appendSection("ACTIVITY   ✳ model · $ shell · ✎ file · ⌕ web · › you · ⋯ expands",
-		m.nodeTrace.View(), m.nodeTraceHeight, &m.nodeTraceBounds)
+	document := strings.Split(m.nodeTrace.View(), "\n")
+	for len(document) < m.nodeTraceHeight {
+		document = append(document, "")
+	}
+	lines = append(lines, document[:m.nodeTraceHeight]...)
 
 	for len(lines) < m.chatHeight {
 		lines = append(lines, "")
@@ -802,7 +871,7 @@ func (m *Model) renderNodePane() string {
 		lines = lines[:m.chatHeight]
 	}
 	clampLines(lines, m.width)
-	return lipgloss.NewStyle().Width(m.width).Render(strings.Join(lines, "\n"))
+	return strings.Join(lines, "\n")
 }
 
 // inputFrameInset is the columns between the terminal edge and the editable
@@ -1402,12 +1471,29 @@ type threadRenderItem struct {
 	message store.Message
 	card    jobCard
 	isCard  bool
+	// tail marks a block the journal cannot place: the optimistic echo of a
+	// turn the store has not numbered yet, and the live stream, whose reply has
+	// no sequence until it lands. Both belong after everything already on
+	// screen, so they sort by arrival rather than by a sequence they lack —
+	// which is also what keeps the stream from drawing above the turn that
+	// caused it while the poll watermark is still behind that turn.
+	tail bool
 }
 
 func (m *Model) renderMessages() string {
-	if m.blockWidth != m.chat.Width || m.blockGen != m.threadGen {
-		m.blockWidth, m.blockGen = m.chat.Width, m.threadGen
+	m.renderSeq++
+	// The pane's width is the one thing a block depends on that its key does
+	// not say, so a resize is the one event that drops the caches whole. The
+	// journal moving used to do it too, which meant the settled conversation
+	// was rebuilt from scratch two and a half times a second for as long as
+	// anything was running — while a stream is arriving, that is the normal
+	// path, not the cold one. Everything else is named in the keys.
+	if m.blockWidth != m.chat.Width {
+		m.blockWidth = m.chat.Width
 		clear(m.blockCache)
+		clear(m.blockSeen)
+		clear(m.cardBlocks)
+		clear(m.briefBlocks)
 	}
 	m.chatMessageRows = m.chatMessageRows[:0]
 	m.chatExpandRows = m.chatExpandRows[:0]
@@ -1442,11 +1528,9 @@ func (m *Model) renderMessages() string {
 		if !m.streamMessage(message) {
 			continue
 		}
-		order := message.Seq
-		if order == 0 {
-			order = int64(index - len(m.messages) - 1)
-		}
-		items = append(items, threadRenderItem{order: order, index: index, message: message})
+		items = append(items, threadRenderItem{
+			order: message.Seq, index: index, message: message, tail: message.Seq == 0,
+		})
 	}
 	_, settled := placeJobCards(m.cards)
 	for index, card := range settled {
@@ -1455,11 +1539,21 @@ func (m *Model) renderMessages() string {
 		})
 	}
 	if message, ok := m.streamingMessage(); ok {
+		// The stream carries the largest index in the frame, so among the tail
+		// blocks it lands last: below the echo of the turn it answers, and below
+		// every turn the poll has not caught up with yet.
 		items = append(items, threadRenderItem{
-			order: m.lastSeq + 1, index: len(m.messages) + len(m.cards), message: message,
+			index: len(m.messages) + len(m.cards), message: message, tail: true,
 		})
 	}
+	// One comparator for the whole frame, and it agrees with the order
+	// insertThreadMessage keeps the thread in: sequenced blocks by sequence,
+	// unsequenced ones after them in arrival order. Nothing on screen can be
+	// pushed above a block that is already above it.
 	sort.SliceStable(items, func(i, j int) bool {
+		if items[i].tail != items[j].tail {
+			return !items[i].tail
+		}
 		if items[i].order == items[j].order {
 			return items[i].index < items[j].index
 		}
@@ -1486,8 +1580,8 @@ func (m *Model) renderMessages() string {
 	for _, item := range items {
 		if item.isCard {
 			flushGroup()
-			block := m.renderJobCard(item.card, max(8, m.chat.Width-2),
-				m.cardExpanded[item.card.ID], line, false, true)
+			block := m.renderThreadCard(item.card, max(8, m.chat.Width-2),
+				m.cardExpanded[item.card.ID], line)
 			m.chatCardRows = append(m.chatCardRows, cardRow{
 				start: line, end: line + lipgloss.Height(block) - 1, cardID: item.card.ID,
 			})
@@ -1496,7 +1590,7 @@ func (m *Model) renderMessages() string {
 		}
 		if item.message.Brief != nil {
 			flushGroup()
-			appendBlock(m.renderBrief(item.message, max(8, m.chat.Width-2), line, true))
+			appendBlock(m.renderThreadBrief(item.message, max(8, m.chat.Width-2), line))
 			continue
 		}
 		voice := messageVoice(item.message)
@@ -1511,12 +1605,15 @@ func (m *Model) renderMessages() string {
 	}
 	// The wait sits directly under the turn that started it, above ambient
 	// work, because that is where the answer to that turn will land.
+	awaitingBlock, shimmerBlock := -1, -1
 	if awaiting := m.renderAwaitingReply(max(1, m.chat.Width-2)); awaiting != "" {
 		flushGroup()
+		awaitingBlock = len(blocks)
 		appendBlock(awaiting)
 	}
 	if shimmer := m.renderShimmerLines(max(1, m.chat.Width-2)); shimmer != "" {
 		flushGroup()
+		shimmerBlock = len(blocks)
 		appendBlock(shimmer)
 	}
 	flushGroup()
@@ -1526,7 +1623,21 @@ func (m *Model) renderMessages() string {
 	if m.historyVisible {
 		appendBlock(m.renderRecallHistory(max(8, m.chat.Width-2), line, true))
 	}
+	m.keepChatBlocks(blocks, awaitingBlock, shimmerBlock)
+	m.sweepBlockCache()
 	return m.applyChatFocus(strings.Join(blocks, "\n\n"))
+}
+
+// keepChatBlocks hands the assembled thread to the animation frame. Everything
+// but the two breathing lines is settled bytes, so the next frame can put its
+// own sweep back into this slice instead of building the thread again.
+func (m *Model) keepChatBlocks(blocks []string, awaitingBlock, shimmerBlock int) {
+	m.chatBlocks = blocks
+	m.chatAwaitingBlock = awaitingBlock
+	m.chatShimmerBlock = shimmerBlock
+	m.chatBlocksWidth = m.chat.Width
+	m.chatBlocksGen = m.threadGen
+	m.chatBlocksValid = true
 }
 
 // welcomeLines is the empty thread's whole teaching: the one law said as an
@@ -1668,12 +1779,15 @@ type threadBlock struct {
 	expands  []chatExpandRow
 	messages []chatMessageRow
 	options  []cardOptionRow
+	parts    []cardPartRow
+	closes   []cardCloseRow
 }
 
 func (m *Model) renderMessageGroup(group messageGroup, atLine int) string {
 	key, cacheable := m.threadBlockKey(group)
 	if cacheable {
 		if block, found := m.blockCache[key]; found {
+			m.blockSeen[key] = m.renderSeq
 			m.replayThreadBlock(block, atLine)
 			return block.content
 		}
@@ -1682,21 +1796,194 @@ func (m *Model) renderMessageGroup(group messageGroup, atLine int) string {
 	if cacheable {
 		if m.blockCache == nil {
 			m.blockCache = make(map[string]threadBlock, 64)
+			m.blockSeen = make(map[string]uint64, 64)
 		}
-		m.blockCache[key] = block
+		m.blockCache[key], m.blockSeen[key] = block, m.renderSeq
 	}
 	m.replayThreadBlock(block, atLine)
 	return block.content
 }
 
+// sweepBlockCache drops the blocks this render had no use for. A group's key
+// carries the relative time it prints, so an hour of conversation leaves an
+// hour of superseded keys behind it; the thread is the only thing worth
+// keeping, and the thread is what the render just asked for.
+func (m *Model) sweepBlockCache() {
+	// The card blocks are keyed by the card rather than by its bytes, so they
+	// cannot go stale — an entry that disagrees with the card it was drawn from
+	// is not used. They can only be too many, once a session has retired more
+	// cards than it shows, and starting over costs one thread's worth of cards.
+	if len(m.cardBlocks) > 2*len(m.chatCardRows)+16 {
+		clear(m.cardBlocks)
+	}
+	if len(m.blockCache) <= 2*len(m.chatBlocks)+8 {
+		return
+	}
+	for key, seen := range m.blockSeen {
+		if seen != m.renderSeq {
+			delete(m.blockSeen, key)
+			delete(m.blockCache, key)
+		}
+	}
+}
+
+// cardBlock is a settled job card kept beside the card it was drawn from. The
+// cards come from the whole graph, so their number grows with the session and
+// every one of them was being redrawn — markdown, gutters, and one workspace
+// lookup per word of the deliverable — on every frame. A settled card is
+// finished by definition: hand this the same card at the same width and the
+// bytes cannot have changed.
+type cardBlock struct {
+	block    threadBlock
+	card     jobCard
+	width    int
+	expanded bool
+	links    string
+}
+
+// briefBlock is the same for an arrival brief, which is settled the moment it
+// is written.
+type briefBlock struct {
+	block    threadBlock
+	message  store.Message
+	width    int
+	expanded bool
+	links    uint64
+}
+
+// renderThreadCard draws a card in the thread, reusing the last drawing of it
+// whenever the card is settled and nothing it is made of has moved. A working
+// card is deliberately never kept: its whole job is to show that it is moving.
+func (m *Model) renderThreadCard(card jobCard, width int, expanded bool, atLine int) string {
+	cacheable := m.settledCardIsStill(card)
+	links := ""
+	if cacheable {
+		links = m.cardWorkspaceMark(card)
+		if kept, found := m.cardBlocks[card.ID]; found && kept.width == width &&
+			kept.expanded == expanded && kept.links == links &&
+			reflect.DeepEqual(kept.card, card) {
+			m.replayThreadBlock(kept.block, atLine)
+			return kept.block.content
+		}
+	}
+	block := m.captureThreadBlock(func() string {
+		return m.renderJobCard(card, width, expanded, 0, false, true)
+	})
+	if cacheable {
+		if m.cardBlocks == nil {
+			m.cardBlocks = make(map[string]cardBlock, 32)
+		}
+		m.cardBlocks[card.ID] = cardBlock{
+			block: block, card: card, width: width, expanded: expanded, links: links,
+		}
+	}
+	m.replayThreadBlock(block, atLine)
+	return block.content
+}
+
+// cardWorkspaceMark names every node a card's drawing asks about files under:
+// its own root, the deliverable's, and each part's. An answer about any of them
+// is what retires the card, and an answer about anything else is not.
+func (m *Model) cardWorkspaceMark(card jobCard) string {
+	var mark strings.Builder
+	mark.WriteString(m.workspaceMark(card.RootID))
+	if card.Deliverable != nil && card.Deliverable.NodeID != card.RootID {
+		mark.WriteByte(',')
+		mark.WriteString(m.workspaceMark(card.Deliverable.NodeID))
+	}
+	for _, part := range card.Parts {
+		if part.NodeID == card.RootID {
+			continue
+		}
+		mark.WriteByte(',')
+		mark.WriteString(m.workspaceMark(part.NodeID))
+	}
+	return mark.String()
+}
+
+// settledCardIsStill refuses the one settled card whose bytes still move: the
+// header's elapsed reading is measured against the clock while the finish time
+// is missing, so it changes every second and nothing about the card says so.
+func (m *Model) settledCardIsStill(card jobCard) bool {
+	if card.State != cardSettled || card.ID == "" {
+		return false
+	}
+	if !card.StartedAt.IsZero() && card.FinishedAt.IsZero() {
+		return false
+	}
+	if card.Deliverable == nil {
+		return true
+	}
+	_, streaming := m.streamedBody(*card.Deliverable)
+	return !streaming
+}
+
+func (m *Model) renderThreadBrief(message store.Message, width, atLine int) string {
+	expanded := m.briefExpanded[message.Seq]
+	cacheable := message.Seq != 0
+	if cacheable {
+		if kept, found := m.briefBlocks[message.Seq]; found && kept.width == width &&
+			kept.expanded == expanded && kept.links == m.workspaceGen &&
+			reflect.DeepEqual(kept.message, message) {
+			m.replayThreadBlock(kept.block, atLine)
+			return kept.block.content
+		}
+	}
+	block := m.captureThreadBlock(func() string {
+		return m.renderBrief(message, width, 0, true)
+	})
+	if cacheable {
+		if m.briefBlocks == nil {
+			m.briefBlocks = make(map[int64]briefBlock, 8)
+		}
+		m.briefBlocks[message.Seq] = briefBlock{
+			block: block, message: message, width: width, expanded: expanded, links: m.workspaceGen,
+		}
+	}
+	m.replayThreadBlock(block, atLine)
+	return block.content
+}
+
+// captureThreadBlock runs a renderer that registers its click targets straight
+// into the model's row lists, and lifts whatever it registered back out as a
+// block held relative to its own first line. Nothing about the renderer has to
+// know it is being cached — it draws at line zero and the rows follow.
+func (m *Model) captureThreadBlock(draw func() string) threadBlock {
+	m.blockBuilds++
+	chips, expands := len(m.chatChipRows), len(m.chatExpandRows)
+	messages, options := len(m.chatMessageRows), len(m.cardOptionRows)
+	parts, closes := len(m.cardPartRows), len(m.cardCloseRows)
+	block := threadBlock{content: draw()}
+	block.chips = append(block.chips, m.chatChipRows[chips:]...)
+	block.expands = append(block.expands, m.chatExpandRows[expands:]...)
+	block.messages = append(block.messages, m.chatMessageRows[messages:]...)
+	block.options = append(block.options, m.cardOptionRows[options:]...)
+	block.parts = append(block.parts, m.cardPartRows[parts:]...)
+	block.closes = append(block.closes, m.cardCloseRows[closes:]...)
+	m.chatChipRows = m.chatChipRows[:chips]
+	m.chatExpandRows = m.chatExpandRows[:expands]
+	m.chatMessageRows = m.chatMessageRows[:messages]
+	m.cardOptionRows = m.cardOptionRows[:options]
+	m.cardPartRows = m.cardPartRows[:parts]
+	m.cardCloseRows = m.cardCloseRows[:closes]
+	return block
+}
+
 // threadBlockKey names everything a settled group's block depends on that can
 // move while the thread stands still: which messages it holds, which of them
-// are open, and the one clock-derived string in it. A group the key cannot
-// speak for — a message still arriving, a question whose choices move under
-// the reader — is not cached at all.
+// are open, the one clock-derived string in it, and the three things the store
+// can change from outside a message — the node it names, the files it links,
+// the turn that answers its question. Those three used to be answered by
+// retiring the whole cache on every poll that moved the journal, which meant
+// the settled thread was rebuilt from scratch two and a half times a second
+// for as long as anything was running. Named here instead, a poll that changes
+// nothing this group depends on keeps every one of its bytes.
+//
+// A group the key cannot speak for — a message still arriving, a question
+// whose choices are still under the reader's hand — is not cached at all.
 func (m *Model) threadBlockKey(group messageGroup) (string, bool) {
 	var key strings.Builder
-	key.Grow(16 * len(group.messages))
+	key.Grow(24 * len(group.messages))
 	for _, message := range group.messages {
 		if message.Seq == 0 {
 			return "", false
@@ -1705,7 +1992,12 @@ func (m *Model) threadBlockKey(group messageGroup) (string, bool) {
 			return "", false
 		}
 		if component, ok := readQuestionComponent(message.Body); ok && len(component.Options) > 0 {
-			return "", false
+			// An answered question has already lost its choices and cannot get
+			// them back; only one still open moves under the reader.
+			if !m.questionAnswered(message) {
+				return "", false
+			}
+			key.WriteByte('a')
 		}
 		key.WriteString(strconv.FormatInt(message.Seq, 10))
 		if m.expandedMessages[message.Seq] {
@@ -1714,11 +2006,21 @@ func (m *Model) threadBlockKey(group messageGroup) (string, bool) {
 		if m.learningExpanded[message.Seq] {
 			key.WriteByte('l')
 		}
+		if message.NodeID != "" {
+			// The chip carries the node's name as the snapshot spells it now,
+			// and the mark is what the linked files are remembered under.
+			key.WriteByte('@')
+			key.WriteString(m.nodeChipLabel(message.NodeID))
+			key.WriteByte('/')
+			key.WriteString(m.workspaceMark(message.NodeID))
+		}
 		key.WriteByte(',')
 	}
 	if m.receiptsExpanded {
 		key.WriteByte('r')
 	}
+	key.WriteString(strconv.FormatUint(m.workspaceGen, 10))
+	key.WriteByte(';')
 	latest := group.messages[len(group.messages)-1]
 	key.WriteString(relativeTime(latest.Time, m.standingTime()))
 	return key.String(), true
@@ -1743,9 +2045,18 @@ func (m *Model) replayThreadBlock(block threadBlock, atLine int) {
 		row.line += atLine
 		m.cardOptionRows = append(m.cardOptionRows, row)
 	}
+	for _, row := range block.parts {
+		row.line += atLine
+		m.cardPartRows = append(m.cardPartRows, row)
+	}
+	for _, row := range block.closes {
+		row.line += atLine
+		m.cardCloseRows = append(m.cardCloseRows, row)
+	}
 }
 
 func (m *Model) buildMessageGroup(group messageGroup) threadBlock {
+	m.blockBuilds++
 	block := threadBlock{}
 	latest := group.messages[len(group.messages)-1]
 	available := max(8, m.chat.Width-2)
@@ -1889,6 +2200,15 @@ func (m *Model) questionAnswered(question store.Message) bool {
 	}
 	for index := len(m.messages) - 1; index >= 0; index-- {
 		message := m.messages[index]
+		// An echo carries no sequence yet, but it is the same turn the store is
+		// about to number: it consumes the question now rather than leaving the
+		// choices live under the reader's hand for one more round trip.
+		if message.Seq == 0 {
+			if message.Role == store.RoleUser && message.NodeID == "" {
+				return true
+			}
+			continue
+		}
 		if message.Seq <= question.Seq {
 			return false
 		}
@@ -1903,7 +2223,7 @@ func (m *Model) questionAnswered(question store.Message) bool {
 // node's title while it is visible in the snapshot, its id once folded away.
 func (m *Model) nodeChipLabel(nodeID string) string {
 	if node, ok := m.snapshotNode(nodeID); ok {
-		return nodeLabelInSnapshot(node, m.snapshot)
+		return m.nodeLabelIn(node, m.snapshot.Nodes)
 	}
 	return nodeID
 }
@@ -1932,12 +2252,13 @@ func (m *Model) renderAnswerFold(message store.Message, width int) (string, bool
 	if message.Role != store.RoleUser {
 		body = m.linkWorkspaceReferences(message.NodeID, body)
 	}
-	rendered := renderMarkdown(body, width)
+	// A reply that opens or closes on a blank line is the model's whitespace, not
+	// the reader's. Left in, those rows come back as a stray vertical bar above
+	// and below the words wherever the answer sits behind a gutter — the settled
+	// card draws one — and as a hole between the speaker and what they said.
+	rendered := trimBlankEdges(renderMarkdown(body, width))
 	if streaming {
-		if rendered != "" {
-			rendered += "\n"
-		}
-		return rendered + powderStyle.Render("▌"), false
+		return appendStreamCaret(rendered, width), false
 	}
 	lines := strings.Split(rendered, "\n")
 	if len(lines) <= deliverableLead+4 {
@@ -1950,6 +2271,40 @@ func (m *Model) renderAnswerFold(message store.Message, width int) (string, bool
 	head := strings.Join(lines[:deliverableLead], "\n")
 	return head + "\n" + mutedStyle.Faint(true).Render(
 		fmt.Sprintf("▸ %d more lines", len(lines)-deliverableLead)), true
+}
+
+// trimBlankEdges drops the leading and trailing rows that carry no ink. A line
+// styled to nothing is still nothing, so the test is the rendered width rather
+// than the bytes.
+func trimBlankEdges(rendered string) string {
+	lines := strings.Split(rendered, "\n")
+	start, end := 0, len(lines)
+	for start < end && lipgloss.Width(lines[start]) == 0 {
+		start++
+	}
+	for end > start && lipgloss.Width(lines[end-1]) == 0 {
+		end--
+	}
+	return strings.Join(lines[start:end], "\n")
+}
+
+// appendStreamCaret puts the typewriter caret where the words stopped — on the
+// last line that has any, never alone on a row of its own. A caret with a blank
+// line to itself reads as a glyph the reply emitted, which is the one thing it
+// is not. It takes its own line only when the arriving reply has no ink yet, or
+// when the last line has no room left for it.
+func appendStreamCaret(rendered string, width int) string {
+	caret := powderStyle.Render("▌")
+	if rendered == "" {
+		return caret
+	}
+	lines := strings.Split(rendered, "\n")
+	last := len(lines) - 1
+	if lipgloss.Width(lines[last])+2 <= width {
+		lines[last] += powderStyle.Render(" ▌")
+		return strings.Join(lines, "\n")
+	}
+	return strings.Join(append(lines, caret), "\n")
 }
 
 func (m *Model) renderReceipt(message store.Message, width int) string {
@@ -2100,7 +2455,7 @@ func (m *Model) renderTree(width, height int) string {
 		m.noteAnimatedGraphRow(row)
 	}
 
-	definitions := charterDefinitionIDs(snapshot)
+	definitions := m.treeFacts.of(snapshot.Nodes).definitions
 	children := make(map[string][]store.Node, len(snapshot.Nodes))
 	for _, node := range snapshot.Nodes {
 		if node.ID == store.RootID || definitions[node.ID] {
@@ -2561,26 +2916,54 @@ func (m *Model) nodeGlyph(node store.Node) (string, bool) {
 	return m.nodeGlyphStyled(node, time.Now(), false)
 }
 
+// The rail's glyph inks, built once like every other style in this file. A
+// style carries its color in an interface, so the four that were built inline
+// here heap-allocated once per node, per row, per frame — on the one surface
+// that draws a row for every node in the graph.
+var (
+	foldGlyphStyle      = powderStyle
+	foldGlyphDimStyle   = mutedStyle
+	doneGlyphStyle      = mintStyle
+	doneGlyphFlashStyle = mintStyle.Bold(true)
+	doneGlyphDimStyle   = mutedStyle
+	doneGlyphDimFlash   = mutedStyle.Bold(true)
+	failedGlyphStyle    = roseStyle
+	failedGlyphDimStyle = mutedStyle
+	pendingGlyphStyle   = butterStyle
+	runningGlyphStyle   = peachStyle
+)
+
 func (m *Model) nodeGlyphStyled(node store.Node, now time.Time, dimmed bool) (string, bool) {
-	tint := func(color lipgloss.AdaptiveColor) lipgloss.AdaptiveColor {
-		if dimmed {
-			return muted
-		}
-		return color
-	}
 	if node.FoldRoot {
-		return lipgloss.NewStyle().Foreground(tint(powder)).Render("◆"), false
+		style := foldGlyphStyle
+		if dimmed {
+			style = foldGlyphDimStyle
+		}
+		return style.Render("◆"), false
 	}
 	switch node.Status {
 	case store.Done:
-		return lipgloss.NewStyle().Foreground(tint(mint)).Bold(m.completionFlashing(node, now)).Render("●"), false
+		style := doneGlyphStyle
+		switch {
+		case dimmed && m.completionFlashing(node, now):
+			style = doneGlyphDimFlash
+		case dimmed:
+			style = doneGlyphDimStyle
+		case m.completionFlashing(node, now):
+			style = doneGlyphFlashStyle
+		}
+		return style.Render("●"), false
 	case store.Claimed, store.Running:
 		frame := spinnerFrames[m.spinnerFrame%len(spinnerFrames)]
-		return peachStyle.Render("● " + frame), true
+		return runningGlyphStyle.Render("● " + frame), true
 	case store.Failed, store.Cancelled:
-		return lipgloss.NewStyle().Foreground(tint(rose)).Render("●"), false
+		style := failedGlyphStyle
+		if dimmed {
+			style = failedGlyphDimStyle
+		}
+		return style.Render("●"), false
 	default:
-		return butterStyle.Render("○"), false
+		return pendingGlyphStyle.Render("○"), false
 	}
 }
 

@@ -59,7 +59,9 @@ func (m *Model) restoreSettings() { _ = m.showSettings(false) }
 
 func (m *Model) showSettings(fresh bool) tea.Cmd {
 	if !m.settingsAvailable() {
-		m.input.Reset()
+		// Nothing opened, so nothing borrowed the composer: only the command
+		// that asked for the sheet goes.
+		m.dropSlashCommand()
 		return m.showStatus("settings aren't available in this window")
 	}
 	if fresh && m.palette != paletteSettings {
@@ -68,7 +70,10 @@ func (m *Model) showSettings(fresh bool) tea.Cmd {
 		m.settingsIndex = 0
 		m.settingsOffset = 0
 	}
-	m.input.Reset()
+	// The sheet takes the composer's focus, so it takes the composer's words
+	// with it and gives them back on the way out. Help and voice have always
+	// done this; settings resetting the line was a draft destroyed by a chord.
+	m.borrowDraft()
 	m.palette = paletteSettings
 	m.settingsEditing = false
 	m.settingsError = ""
@@ -90,6 +95,7 @@ func (m *Model) closeSettings() {
 	} else {
 		m.input.Blur()
 	}
+	m.returnDraft()
 	m.setSize(m.width, m.height)
 }
 
@@ -331,7 +337,26 @@ func (m *Model) scrollSettings(delta int) {
 // settingsContentLines renders the whole sheet and reports which line each
 // selectable row landed on, so scrolling can keep the selection in view and a
 // click can find the row under the pointer.
+//
+// The sheet is laid out once per event rather than once per reader of it: the
+// wheel asks how far down the sheet goes and then the frame draws it, and both
+// were rendering every row of it. Everything the layout reads — the selection,
+// the row being edited, the error under it, the values themselves — changes
+// only in response to a message, and the arrival of a message is what drops
+// this. An open editor is never kept: its cursor is part of the bytes.
 func (m *Model) settingsContentLines(width int) ([]string, []int) {
+	if m.settingsLinesOK && m.settingsLinesFor == width {
+		return m.settingsLines, m.settingsRowLines
+	}
+	lines, rowLines := m.layOutSettings(width)
+	if !m.settingsEditing {
+		m.settingsLines, m.settingsRowLines = lines, rowLines
+		m.settingsLinesOK, m.settingsLinesFor = true, width
+	}
+	return lines, rowLines
+}
+
+func (m *Model) layOutSettings(width int) ([]string, []int) {
 	lines := make([]string, 0, 48)
 	rowLines := make([]int, 0, 24)
 	labelWidth := min(settingsLabelWidth, max(12, width/3))

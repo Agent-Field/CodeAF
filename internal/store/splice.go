@@ -330,15 +330,23 @@ func applySpliceView(tx *sql.Tx, payload splicedPayload, seq int64) error {
 		if parent == "" {
 			parent = payload.Parent
 		}
+		// The node's own choice where the plan made one, the splice's otherwise.
+		// Resolving it here is what makes inheritance a fact in the row rather
+		// than a rule every reader has to remember.
+		subharness := strings.TrimSpace(node.Subharness)
+		if subharness == "" {
+			subharness = strings.TrimSpace(payload.Provenance.Subharness)
+		}
 		if _, err := tx.Exec(`
 			INSERT INTO nodes (
 			    id, parent_id, brief, title, grp, stage, status, origin, session_id,
-			    intent, charter_id, trial_of, retry_of, service_intent, work_model, craft, attachments, created_seq, created_order, updated_seq
-			) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+			    intent, charter_id, trial_of, retry_of, service_intent, work_model, plan_model, craft, subharness, splice_subharness, attachments, created_seq, created_order, updated_seq
+			) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 			node.ID, parent, node.Brief, node.Title, node.Group, node.Stage, Pending,
 			payload.Provenance.Origin, nullIfEmpty(payload.Provenance.SessionID),
 			payload.Provenance.Intent, payload.Provenance.CharterID, payload.Provenance.TrialOf, payload.Provenance.RetryOf, payload.Provenance.ServiceIntent,
-			payload.Provenance.WorkModel, payload.Provenance.Craft, string(attachments), seq, orderByID[node.ID], seq); err != nil {
+			payload.Provenance.WorkModel, payload.Provenance.PlanModel, payload.Provenance.Craft, subharness, payload.Provenance.Subharness,
+			string(attachments), seq, orderByID[node.ID], seq); err != nil {
 			return fmt.Errorf("insert node %q: %w", node.ID, err)
 		}
 		if err := refreshGraphFTS(tx, node.ID); err != nil {

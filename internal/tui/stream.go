@@ -17,6 +17,10 @@ type StreamEventKind int
 const (
 	StreamStarted StreamEventKind = iota
 	StreamDelta
+	// StreamThinking is a phase with nothing to draw: the model is reasoning.
+	// The text of that reasoning never reaches here and is not wanted — the
+	// line says the wait has a reason, and nothing else.
+	StreamThinking
 	StreamFinished
 	StreamFailed
 )
@@ -50,7 +54,25 @@ const (
 	streamSimulated
 )
 
-const streamTokensPerTick = 2
+// The reveal's pacing is a floor and not a ceiling. Two words per 120ms frame
+// is the cadence a reply unrolls at when the provider is the slow half — which
+// is the ordinary case, and the one this number was chosen for. It stops being
+// the whole rule the moment the provider is ahead: a reply that arrived in two
+// seconds used to take twenty-four to draw, with the machine idle and the reader
+// watching a typewriter re-type what was already paid for.
+//
+// So the tick spends what it has to spend to be at most a breath behind, and no
+// more than that: streamLagTokens is the backlog it is content to carry, and
+// streamMaxTokensPerTick keeps the fastest frame a line of text rather than a
+// paragraph appearing whole.
+const (
+	streamTokensPerTick = 2
+	// streamLagTokens is a dozen frames of the base cadence — about a second and
+	// a half of unroll still owed, which is what makes a fast reply read as
+	// typing rather than as a printer.
+	streamLagTokens        = 24
+	streamMaxTokensPerTick = 12
+)
 
 func waitForStream(events <-chan StreamEvent) tea.Cmd {
 	if events == nil {
@@ -114,10 +136,18 @@ func (m *Model) applyStreamEvent(event StreamEvent) {
 		m.streamShown = ""
 		m.streamSeq = landedSeq
 		m.streamProviderDone = false
+		m.streamInterrupted = false
+		m.streamThinking = false
+	case StreamThinking:
+		if m.streamMode != streamReal || m.streamThinking {
+			return
+		}
+		m.streamThinking = true
 	case StreamDelta:
 		if m.streamMode != streamReal {
 			return
 		}
+		m.streamThinking = false
 		m.streamRaw.WriteString(event.Delta)
 		if reply, found := partialJSONReply(m.streamRaw.String()); found {
 			m.streamTarget = reply
@@ -130,7 +160,11 @@ func (m *Model) applyStreamEvent(event StreamEvent) {
 		if m.streamMode == streamReal {
 			m.streamProviderDone = true
 			m.normalizeLandedTarget()
-			if m.streamSeq != 0 && m.streamShown == m.streamTarget {
+			// Either the reply is drawn and durable, or the call ended holding
+			// nothing at all — a control belt that produced no reply of its
+			// own. Both end the stream here; only the second one used to be
+			// left standing, with a landed reply parked behind it forever.
+			if m.streamStalled() || (m.streamSeq != 0 && m.streamShown == m.streamTarget) {
 				m.finishStream()
 			}
 		}
@@ -143,6 +177,11 @@ func (m *Model) applyStreamEvent(event StreamEvent) {
 }
 
 func (m *Model) queueSimulatedStream(message store.Message) {
+	// A stalled stream owns nothing and must not be queued behind: a reply
+	// parked behind it draws an empty line for as long as the window lives.
+	if m.streamStalled() {
+		m.finishStream()
+	}
 	if m.streamMode == streamNone {
 		m.startSimulatedStream(message)
 		return
@@ -157,6 +196,8 @@ func (m *Model) startSimulatedStream(message store.Message) {
 	m.streamShown = typewriterAdvance("", message.Body, 1)
 	m.streamSeq = message.Seq
 	m.streamProviderDone = true
+	m.streamInterrupted = false
+	m.streamThinking = false
 }
 
 func (m *Model) matchRealStream(message store.Message) bool {
@@ -167,7 +208,13 @@ func (m *Model) matchRealStream(message store.Message) bool {
 	landed := strings.TrimSpace(message.Body)
 	preview := strings.TrimSpace(m.streamTarget)
 	if m.streamProviderDone && landed != preview {
-		return false
+		// A stopped turn's durable line is the words on screen plus the mark
+		// that it stopped there. It is the same reply, so it lands in place and
+		// only the tail types itself in; refusing it here would park the real
+		// row behind a stream that can no longer finish.
+		if !m.streamInterrupted || preview == "" || !strings.HasPrefix(landed, preview) {
+			return false
+		}
 	}
 	if !m.streamProviderDone && preview != "" && !strings.HasPrefix(landed, preview) {
 		return false
@@ -175,6 +222,13 @@ func (m *Model) matchRealStream(message store.Message) bool {
 	m.streamSeq = message.Seq
 	if m.streamProviderDone {
 		m.streamTarget = message.Body
+		// The typewriter can only extend what it has already drawn. A frozen
+		// partial that is not a byte-prefix of the durable line — a stray edge
+		// of whitespace is enough — would leave it unable to advance and the
+		// reply unable to finish, so it redraws rather than stalls.
+		if !strings.HasPrefix(m.streamTarget, m.streamShown) {
+			m.streamShown = ""
+		}
 		if strings.TrimSpace(m.streamShown) == landed {
 			m.streamShown = message.Body
 			m.finishStream()
@@ -223,8 +277,16 @@ func (m *Model) advanceStream() {
 	if m.streamMode == streamNone {
 		return
 	}
+	// The last exit no other path can be trusted to take. A stalled stream can
+	// never satisfy the finish conditions below — it has no target to finish
+	// drawing and no durable row to finish into — so it is ended here rather
+	// than left holding the queue.
+	if m.streamStalled() {
+		m.finishStream()
+		return
+	}
 	if m.streamShown != m.streamTarget {
-		m.streamShown = typewriterAdvance(m.streamShown, m.streamTarget, streamTokensPerTick)
+		m.streamShown = typewriterAdvance(m.streamShown, m.streamTarget, m.streamRevealTokens())
 	}
 	if m.streamShown != m.streamTarget {
 		return
@@ -232,6 +294,61 @@ func (m *Model) advanceStream() {
 	if m.streamMode == streamSimulated || (m.streamProviderDone && m.streamSeq != 0) {
 		m.finishStream()
 	}
+}
+
+// streamRevealTokens is how many words this frame draws: the base cadence while
+// the backlog is one the base cadence can carry — every ordinary reply — and the
+// excess over that backlog otherwise, capped so no frame dumps a paragraph.
+//
+// A stopped reply keeps the base cadence unconditionally: what lands after an
+// interruption is the same words plus the mark that they stopped there, and
+// that tail belongs to the calm path.
+func (m *Model) streamRevealTokens() int {
+	if m.streamInterrupted {
+		return streamTokensPerTick
+	}
+	backlog := pendingStreamTokens(m.streamShown, m.streamTarget,
+		streamLagTokens+streamMaxTokensPerTick)
+	tokens := backlog - streamLagTokens
+	if tokens < streamTokensPerTick {
+		return streamTokensPerTick
+	}
+	if tokens > streamMaxTokensPerTick {
+		return streamMaxTokensPerTick
+	}
+	return tokens
+}
+
+// pendingStreamTokens counts the whitespace tokens the provider is ahead by.
+// Counting stops at limit because the answer above is capped anyway, so a reply
+// of any length costs the same bounded scan per frame.
+func pendingStreamTokens(shown, target string, limit int) int {
+	if len(target) <= len(shown) || !strings.HasPrefix(target, shown) {
+		return 0
+	}
+	remaining := target[len(shown):]
+	tokens, offset := 0, 0
+	for offset < len(remaining) && tokens < limit {
+		for offset < len(remaining) {
+			char, size := utf8.DecodeRuneInString(remaining[offset:])
+			if !unicode.IsSpace(char) {
+				break
+			}
+			offset += size
+		}
+		if offset >= len(remaining) {
+			break
+		}
+		for offset < len(remaining) {
+			char, size := utf8.DecodeRuneInString(remaining[offset:])
+			if unicode.IsSpace(char) {
+				break
+			}
+			offset += size
+		}
+		tokens++
+	}
+	return tokens
 }
 
 func (m *Model) finishStream() {
@@ -251,6 +368,8 @@ func (m *Model) clearStream() {
 	m.streamShown = ""
 	m.streamSeq = 0
 	m.streamProviderDone = false
+	m.streamInterrupted = false
+	m.streamThinking = false
 }
 
 func (m *Model) messageBySeq(seq int64) (store.Message, bool) {
@@ -269,6 +388,26 @@ func (m *Model) streamAnimating() bool {
 	return m.streamMode != streamNone && m.streamShown != m.streamTarget
 }
 
+// streamStalled names the one state the stream machine cannot leave on its own:
+// the provider ended the call having produced no reply of its own — the control
+// belt does this on every message — and no durable row ever attached to it. The
+// mode says a reply is arriving, nothing is on screen, and the finish
+// conditions elsewhere all require either a target to finish drawing or a
+// sequence to finish into. Left alone it holds the queue forever and the reply
+// that did land renders as an empty line.
+func (m *Model) streamStalled() bool {
+	return m.streamMode == streamReal && m.streamProviderDone &&
+		m.streamSeq == 0 && m.streamTarget == "" && m.streamShown == ""
+}
+
+// streamVisible reports whether the live stream actually draws something. A
+// stream with nothing in it occupies the state machine without occupying the
+// screen, and everything that yields to a stream — the awaiting line, a queued
+// reply's body — must yield only to one the reader can see.
+func (m *Model) streamVisible() bool {
+	return m.streamMode != streamNone && (m.streamShown != "" || m.streamTarget != "")
+}
+
 func (m *Model) streamingMessage() (store.Message, bool) {
 	if m.streamMode != streamReal || m.streamSeq != 0 || (m.streamShown == "" && m.streamTarget == "") {
 		return store.Message{}, false
@@ -282,6 +421,13 @@ func (m *Model) streamedBody(message store.Message) (string, bool) {
 	}
 	if m.streamMode != streamNone && message.Seq == m.streamSeq {
 		return m.streamShown, true
+	}
+	// A reply waiting its turn draws nothing — but only while something is
+	// actually being drawn ahead of it. A landed reply that is not animating
+	// and has nothing animating in front of it renders in full: no state path
+	// may leave it as an empty line.
+	if !m.streamVisible() {
+		return "", false
 	}
 	for _, queued := range m.streamQueue {
 		if queued.Seq == message.Seq {

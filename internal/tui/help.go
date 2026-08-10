@@ -2,6 +2,7 @@ package tui
 
 import (
 	"strings"
+	"sync"
 
 	"github.com/charmbracelet/lipgloss"
 
@@ -21,7 +22,16 @@ type helpCategory struct {
 // helpCategories is deliberately generated from the same slashCommands table
 // executeSlash dispatches. Adding a routed slash command therefore adds it to
 // help in the same edit; there is no second command list to remember.
-func helpCategories() []helpCategory {
+//
+// The catalog is authored text and the tables are constants, so the whole list
+// is built once for the life of the process rather than once per frame the
+// guide is open — reparsing the pitch catalog to scroll it by one line was
+// work nobody had asked for.
+func helpCategories() []helpCategory { return authoredHelpCategories() }
+
+var authoredHelpCategories = sync.OnceValue(buildHelpCategories)
+
+func buildHelpCategories() []helpCategory {
 	slashRows := make([]helpRow, 0, len(slashCommands))
 	for _, command := range slashCommands {
 		slashRows = append(slashRows, helpRow{key: "/" + command.name, meaning: command.description})
@@ -44,7 +54,9 @@ func helpCategories() []helpCategory {
 			{key: "v", meaning: "expand or collapse reading receipts outside the input"},
 			{key: "y / Y", meaning: "copy the answer · its file; /open opens it"},
 			{key: "↑/↓ · 1–9", meaning: "with an empty draft, choose and send a pending answer"},
-			{key: "esc", meaning: "dismiss question, clear draft/attachments, then quit when input is empty"},
+			{key: "↑/↓", meaning: "with no question up and an empty draft, walk back through what you sent"},
+			{key: "esc", meaning: "stop a reply on its way; then dismiss a question; then stash the draft — ↑ brings it back"},
+			{key: "ctrl+c", meaning: "stop a reply on its way; again within seconds quits, and quits at once when idle"},
 			{key: "backspace", meaning: "with an empty draft, remove the last attachment"},
 			{key: "drag a file in", meaning: "attach an image or .pdf/.docx/.pptx; it is copied, never moved"},
 			{key: "editing", meaning: "←/→ · home/end · ctrl+a/e/f · ctrl+u/k/w · delete (ctrl+b is boost)"},
@@ -53,12 +65,12 @@ func helpCategories() []helpCategory {
 			{key: keyBindings.thread + " / " + keyBindings.board + " / " + keyBindings.self, meaning: "open thread / board / self"},
 			{key: "tab", meaning: "cycle input, questions/tasks, thread, task list, header; in a task, field ⇄ feed"},
 			{key: "?", meaning: "open this guide only when the current draft is empty"},
-			{key: "ctrl+c", meaning: "quit immediately"},
+			{key: "ctrl+c", meaning: "stop a reply in flight; quits at once when nothing is in flight"},
 			{key: "↑/↓ · j/k", meaning: "move the selected row; j/k only where no field takes letters"},
 			{key: "enter", meaning: "activate the selected row exactly like a click"},
 			{key: "pgup/pgdn · ctrl+u/d · g/G", meaning: "scroll, half-page, jump to top or bottom"},
 			{key: "end", meaning: "outside a field: return to now; in task activity, jump to the bottom"},
-			{key: "esc", meaning: "expanded item → zone → input → quit; modal overlays close first"},
+			{key: "esc", meaning: "overlay → expanded item → zone → a reply in flight → draft → quit"},
 			{key: "ctrl+t/" + keyBindings.graph, meaning: "show or hide the task list"},
 			{key: "[ / ]", meaning: "nudge the chat/task split while outside the input"},
 			{key: "tab · c", meaning: "cancel the step you are looking at — tab out of steer"},
@@ -238,9 +250,25 @@ func (m *Model) overlayHelp(frame string) string {
 	return overlayBlock(frame, panel, x, y, m.width)
 }
 
+// helpContentLines is the whole guide laid out, of which the overlay shows one
+// window. Scrolling it used to lay the whole thing out twice — once to ask how
+// far down it goes, once to draw the window — and every frame it was open laid
+// it out again. It depends on exactly two things, the column it is set in and
+// whether the frame is wide enough to pair the categories up, so it is kept
+// until one of those moves.
 func (m *Model) helpContentLines(width int) []string {
+	narrow := m.width < 100
+	if m.helpLines != nil && m.helpLinesWidth == width && m.helpLinesNarrow == narrow {
+		return m.helpLines
+	}
+	m.helpLines = m.layOutHelp(width, narrow)
+	m.helpLinesWidth, m.helpLinesNarrow = width, narrow
+	return m.helpLines
+}
+
+func (m *Model) layOutHelp(width int, narrow bool) []string {
 	categories := helpCategories()
-	if m.width < 100 {
+	if narrow {
 		keyWidth := helpKeyWidth(categories, width)
 		lines := make([]string, 0)
 		for index, category := range categories {

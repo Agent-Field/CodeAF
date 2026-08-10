@@ -47,6 +47,10 @@ const (
 	// pollActiveAfter keeps the hot cadence for a moment after the user acts:
 	// they just asked for something and its first event is imminent.
 	pollActiveAfter = 3 * time.Second
+	// pollPokeDelay is how soon a read follows an action the window took
+	// itself. It is a frame rather than zero so the post's own render lands
+	// first, and it replaces the pending tick instead of joining it.
+	pollPokeDelay = 20 * time.Millisecond
 	// quietRepaintInterval refreshes the cached panes from state already in
 	// hand, with no store read at all. Relative timestamps are minute-grained,
 	// so that is exactly how often "now" can go stale while nothing happens.
@@ -139,9 +143,44 @@ type Commander interface {
 	NodeTrace(nodeID string, maxBytes int) string
 }
 
+// Interrupter stops the turn the head is answering right now, carrying in the
+// words the reader has already seen so the durable line that ends the turn is
+// the same reply, marked where it stopped. It is a Commander refinement rather
+// than a Commander method for the reason every other one here is: a window with
+// no head behind it has no turn to stop, and says so by not implementing this.
+type Interrupter interface {
+	Interrupt(partial string) bool
+}
+
+// NodeTraceStamp is a trace file's identity as the last read already stat-ed
+// it. The executor appends to that file outside the journal, so the poll has to
+// ask for it on every cycle, quiet ones included.
+type NodeTraceStamp struct {
+	Size int64
+	Mod  time.Time
+}
+
+// NodeTraceReader is the stat-gated NodeTrace. The stat is already on the way
+// to the read, so handing back what it saw turns "the worker is thinking, not
+// writing" into a stat rather than 64KB read, allocated, and compared against
+// the copy the window is already holding. A commander that does not implement
+// it is read in full, as before.
+type NodeTraceReader interface {
+	NodeTraceSince(nodeID string, maxBytes int, since NodeTraceStamp) (string, NodeTraceStamp, bool)
+}
+
 var _ Backend = (*store.Store)(nil)
 
-type pollTickMsg time.Time
+// pollTickMsg is the store read falling due. It carries the serial of the arm
+// that scheduled it because there is exactly one poll chain in a window: a tick
+// from an arm that has since been superseded — by a poke, or by a result that
+// re-armed first — is spent and does nothing. Without that, every out-of-band
+// poll left its own timer running beside the first, and a window that had been
+// open a while was reading the store several times per cadence for nothing.
+type pollTickMsg struct {
+	at     time.Time
+	serial uint64
+}
 
 type animationTickMsg time.Time
 
@@ -180,6 +219,9 @@ type pollResultMsg struct {
 	selfCharters      []store.Charter
 	chartersRead      bool
 	selfChartersErr   error
+	services          []store.Service
+	servicesRead      bool
+	servicesErr       error
 
 	selfDataRead      bool
 	selfSpend         float64
@@ -200,6 +242,8 @@ type pollResultMsg struct {
 	nodeFound       bool
 	nodeMessages    []store.Message
 	nodeTrace       string
+	nodeTraceStamp  NodeTraceStamp
+	nodeTraceMoved  bool
 	nodeErr         error
 	nodeMessagesErr error
 
@@ -215,7 +259,11 @@ type pollResultMsg struct {
 }
 
 type postResultMsg struct {
-	message     store.Message
+	message store.Message
+	// sent is the turn as it was handed to the store. On a rejection the
+	// store's answer is empty, and this is the only record of what the person
+	// typed — without it a failed post is a message nobody can get back.
+	sent        store.Message
 	nodeID      string
 	questionSeq int64
 	err         error
@@ -242,9 +290,25 @@ type Model struct {
 
 	nodeTrace viewport.Model
 
-	messages             []store.Message
-	snapshot             store.Snapshot
-	cardSnapshot         store.Snapshot
+	messages     []store.Message
+	snapshot     store.Snapshot
+	cardSnapshot store.Snapshot
+	// Both snapshots are asked "which node is this" far more often than they
+	// are replaced — once per message in the thread, once per part of every
+	// card, once per glyph in the rail — and each answer was a walk of the
+	// whole graph. The index projects the slice it was built from and notices
+	// when that slice is swapped for another.
+	snapshotIndex     nodeIndex
+	cardSnapshotIndex nodeIndex
+	jobRoots          jobRootIndex
+	cardIndex         cardIndex
+	// Two, because the rail draws whichever snapshot it is scoped to while
+	// everything else reads the live one; one projection would be rebuilt
+	// twice a frame doing nothing but alternating between them.
+	graphFacts graphFacts
+	treeFacts  graphFacts
+
+	shimmerLive          []jobCard
 	pending              []store.Command
 	spendToday           float64
 	jobUsage             map[string]store.JobUsage
@@ -266,6 +330,10 @@ type Model struct {
 	journalSeq    int64
 	journalPrimed bool
 	pollForce     bool
+	// pollSerial names the live arm of the single poll chain. Every arm bumps
+	// it, so the tick it replaces is spent on arrival and no timer outlives the
+	// arm that made it.
+	pollSerial    uint64
 	lastChangeAt  time.Time
 	lastActionAt  time.Time
 	lastRepaintAt time.Time
@@ -367,6 +435,7 @@ type Model struct {
 	nodeMessages     []store.Message
 	nodeLastSeq      int64
 	nodeTraceText    string
+	nodeTraceStamp   NodeTraceStamp
 	chatDraft        string
 	chatAttachments  []string
 	returnFocus      paneFocus
@@ -380,6 +449,19 @@ type Model struct {
 	// tail-truncated at its byte budget, so positions shift as it grows.
 	feedKeys     []string
 	feedExpanded map[string]bool
+
+	// The parsed prefix of the worker's log, and what it yielded. The log is
+	// append-only, so everything up to its last complete line has already been
+	// matched, rendered, keyed and scanned for media, and only what arrived
+	// since needs any of that done again. feedTail is the line the worker is
+	// still writing, which settles nothing.
+	feedTraceParsed string
+	feedTraceWidth  int
+	feedTail        string
+	feedBlocksKept  []feedBlock
+	feedKeysKept    []string
+	feedMediaKept   []string
+	feedOccurrences map[uint64]int
 
 	// expandedMessages holds the seqs of long chat deliverables opened in
 	// place; everything else shows its lead and a ⋯.
@@ -406,6 +488,28 @@ type Model struct {
 	streamSeq          int64
 	streamProviderDone bool
 	streamQueue        []store.Message
+	// streamInterrupted says the reader stopped this reply. The words already
+	// drawn stay exactly where they are, and the durable line the head posts —
+	// the same words plus the mark — lands in place of them rather than
+	// redrawing the reply from nothing.
+	streamInterrupted bool
+	// streamThinking says the provider is reasoning: a phase with nothing to
+	// draw, which used to be the longest blank stretch of the wait. It says only
+	// that, and it ends the moment a word of the answer arrives.
+	streamThinking bool
+
+	// What was typed here is never destroyed by anything but the person who
+	// typed it: sent turns go into a ring the arrows walk, a draft escape takes
+	// away is stashed where the same arrows reach it, and an overlay that
+	// borrows the composer gives the draft back when it closes.
+	inputHistory []string
+	inputRecall  int
+	draftStash   string
+	overlayDraft string
+	// quitArmedAt is when ctrl+c last stopped something instead of quitting. A
+	// second press inside the window means it: the first one is how people
+	// stop a reply, and a session with work in flight may not end by reflex.
+	quitArmedAt time.Time
 
 	width  int
 	height int
@@ -416,11 +520,11 @@ type Model struct {
 	graphWidth  int
 	graphHeight int
 
-	nodeDetailsText string
-	// nodeDetailsClipped says the header could not hold the whole outcome, so
-	// the feed carries it in full rather than the reader losing the rest.
-	nodeDetailsClipped bool
-	nodeTraceHeight    int
+	// nodePinTop holds a settled worker's document at its first line while the
+	// first poll fills the feed in underneath the reader. Cleared by any scroll
+	// of their own, and never set on a running worker — that one opens live.
+	nodePinTop      bool
+	nodeTraceHeight int
 
 	inputFocused     bool
 	focus            paneFocus
@@ -437,10 +541,15 @@ type Model struct {
 	shimmerSeen map[string]shimmerStamp
 	sweepFrame  int
 	sweepCache  map[string]string
-	// awaitingSeq is the user turn this window posted and has not been answered
-	// for yet, and awaitingSince is when it went out. Together they are the
-	// whole presence indicator: a window only ever waits on its own words.
+	// awaitingSeq is the oldest user turn this window posted and has not been
+	// answered for yet, and awaitingSince is when the current wait began.
+	// Together they are the whole presence indicator: a window only ever waits
+	// on its own words. awaitingTurns holds every turn still owed an answer, so
+	// a second message typed before the first is answered keeps its own place
+	// in the queue — and a folded reply, which says the span it covers, settles
+	// all of the turns it actually answered at once.
 	awaitingSeq      int64
+	awaitingTurns    []int64
 	awaitingSince    time.Time
 	receiptsExpanded bool
 	historyExpanded  bool
@@ -570,13 +679,71 @@ type Model struct {
 	// blockCache holds already-rendered settled message groups. A settled
 	// message is immutable and the thread is re-rendered many times between
 	// two of them — every animation tick, every relayout — so the whole
-	// conversation was being rebuilt to draw one moving tail. The cache is
-	// dropped whole when the pane's width changes or the journal moves, which
-	// is the only way the parts of a block outside its key can change.
+	// conversation was being rebuilt to draw one moving tail. Only the pane's
+	// width is outside a block's key, so only a resize drops the cache whole;
+	// everything else a poll can move is named in the key and retires the
+	// blocks that depend on it.
 	blockCache map[string]threadBlock
+	blockSeen  map[string]uint64
 	blockWidth int
-	blockGen   uint64
 	threadGen  uint64
+	renderSeq  uint64
+
+	// cardBlocks and briefBlocks are the same bargain for the two thread
+	// blocks that are not message groups. Both are keyed by the thing they
+	// draw rather than by its bytes, and both keep the value they were built
+	// from: a settled card and an arrival brief are only redrawn when the card
+	// or the brief itself is no longer the one on screen.
+	cardBlocks  map[string]cardBlock
+	briefBlocks map[int64]briefBlock
+
+	// workspaceLinks remembers which words in an answer are files, and
+	// workspaceAsk holds the questions the last render could not answer from
+	// it — they leave for the resolver on the one path out of Update, never
+	// from inside a render. workspaceNodeGen counts the files found under each
+	// node, and the rendered blocks carry it in their keys, so an answer
+	// retires the blocks about the node it was about. workspaceGen moves only
+	// when the whole memory is dropped.
+	workspaceLinks   map[string]workspaceLink
+	workspaceNodeGen map[string]uint64
+	workspaceAsk     []workspaceQuestion
+	workspaceGen     uint64
+
+	// The two modal documents are laid out whole and shown a window at a time,
+	// so each is kept beside the shape it was laid out for. The settings sheet
+	// is not kept while a row is being edited: the cursor in the field is part
+	// of its bytes and it blinks.
+	helpLines        []string
+	helpLinesWidth   int
+	helpLinesNarrow  bool
+	settingsLines    []string
+	settingsRowLines []int
+	settingsLinesOK  bool
+	settingsLinesFor int
+
+	// blockBuilds counts the thread blocks this session has had to assemble.
+	// It is the one number that says whether the caches above are doing their
+	// work, and the render-reuse tests read it.
+	blockBuilds int
+
+	// chatBlocks is the thread exactly as the last full render assembled it,
+	// with the positions of the two lines that breathe. The shimmer and the
+	// awaiting line move every 120ms and nothing above them does, so the
+	// animation frame splices those two blocks back in and re-joins — the
+	// alternative was rebuilding the whole conversation eight times a second to
+	// walk a highlight across three lines. Any message other than the two
+	// clocks retires the slice, and the full render the handler does refills it.
+	chatBlocks        []string
+	chatAwaitingBlock int
+	chatShimmerBlock  int
+	chatBlocksWidth   int
+	chatBlocksGen     uint64
+	chatBlocksValid   bool
+
+	// graphPaneStale and selfPaneStale remember a relayout that ran while the
+	// pane was off screen. The frame that first shows the pane builds it.
+	graphPaneStale bool
+	selfPaneStale  bool
 
 	// chatMessageRows maps rendered chat lines to the message seq they
 	// belong to, so clicking a collapsed deliverable opens it in place.
@@ -778,13 +945,46 @@ func (m *Model) Init() tea.Cmd {
 
 // Update applies terminal events and store results. All store I/O is returned
 // as a command, so keystrokes and rendering never wait on SQLite or a reply.
+//
+// The file questions are the last of that I/O to leave the render path, and
+// they leave here: whatever renders this message caused wrote down the words it
+// could not answer from memory, and they go to the resolver as a command like
+// everything else. No renderer has to know it is being deferred, and there is
+// exactly one door for them to leave by.
 func (m *Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
+	model, command := m.update(message)
+	if ask := m.askWorkspaceLinks(); ask != nil {
+		return model, tea.Batch(command, ask)
+	}
+	return model, command
+}
+
+func (m *Model) update(message tea.Msg) (tea.Model, tea.Cmd) {
+	// The animation frame reuses the thread the last full render assembled, so
+	// anything that could have moved the thread retires it first. The two
+	// clocks are the exceptions: one is the frame itself, the other only asks
+	// the store a question. Every other handler that changes the thread ends in
+	// a render, and that render is what fills the slice again.
+	switch message.(type) {
+	case animationTickMsg, pollTickMsg:
+	default:
+		m.chatBlocksValid = false
+	}
+	// The settings sheet is laid out for the state this message finds, and
+	// every hand on it — the selection, the editor, the values behind the
+	// rows — moves only because a message arrived.
+	m.settingsLinesOK = false
 	switch message := message.(type) {
 	case tea.WindowSizeMsg:
 		m.setSize(message.Width, message.Height)
 		return m, m.scheduleAnimation()
 
 	case pollTickMsg:
+		if message.serial != m.pollSerial {
+			// A tick from an arm something has already replaced. The chain it
+			// belonged to ended when the replacement was scheduled.
+			return m, nil
+		}
 		return m, m.poll()
 
 	case pollResultMsg:
@@ -803,17 +1003,27 @@ func (m *Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 	case StreamEvent:
 		m.lastActionAt = m.standingTime()
 		m.applyStreamEvent(message)
-		return m, tea.Batch(waitForStream(m.streamEvents), m.scheduleAnimation())
+		return m, tea.Batch(m.streamPoke(message.Kind), waitForStream(m.streamEvents),
+			m.scheduleAnimation())
 
 	case streamBatchMsg:
 		m.lastActionAt = m.standingTime()
+		ended := StreamStarted
 		for _, event := range message.events {
 			m.applyStreamEvent(event)
+			if event.Kind == StreamFinished || event.Kind == StreamFailed {
+				ended = event.Kind
+			}
 		}
-		return m, tea.Batch(waitForStream(m.streamEvents), m.scheduleAnimation())
+		return m, tea.Batch(m.streamPoke(ended), waitForStream(m.streamEvents),
+			m.scheduleAnimation())
 
 	case streamClosedMsg:
 		m.streamEvents = nil
+		return m, nil
+
+	case workspaceLinksMsg:
+		m.applyWorkspaceLinks(message)
 		return m, nil
 
 	case animationTickMsg:
@@ -830,12 +1040,16 @@ func (m *Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 			m.spinnerFrame = (m.spinnerFrame + 1) % len(spinnerFrames)
 		}
 		// One refresh, not two: no frame is drawn between them, so the thread
-		// was rendered twice per tick for one visible result.
-		if streaming || animating {
+		// was rendered twice per tick for one visible result. A stream is new
+		// text arriving and rebuilds; an animation frame only breathes, and
+		// splices its two lines into the thread already assembled.
+		if streaming {
 			m.refreshChat()
-			if streaming && m.autoScroll {
+			if m.autoScroll {
 				m.chat.GotoBottom()
 			}
+		} else if animating {
+			m.refreshChatFrame()
 		}
 		if !animating {
 			return m, nil
@@ -880,16 +1094,26 @@ func (m *Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 			if message.questionSeq != 0 {
 				m.answeringQuestionSeq = message.questionSeq
 			}
+			m.restoreFailedPost(message.sent)
 			m.err = fmt.Errorf("send message: %w", message.err)
 			return m, nil
 		}
 		if message.nodeID != "" {
 			m.landOptimisticNodeMessage(message.nodeID, message.message)
 		}
-		m.landPostedMessage(message.message)
+		// The echo comes off first: whether the durable row lands here or a poll
+		// beat it to the thread, the turn is on screen exactly once.
+		m.takeUserEcho(message.message)
+		// The wait is noted before the thread is rebuilt, because the rebuild
+		// draws the pulse: noting it after left the line a frame behind what it
+		// was counting.
 		m.noteAwaitingReply(message.message)
+		m.landPostedMessage(message.message)
 		m.err = nil
-		return m, m.scheduleAnimation()
+		// The turn is in the journal now, so the head is already reading it: the
+		// reply is the next thing this window expects and the pending tick may be
+		// two seconds away. The poke replaces that tick rather than adding to it.
+		return m, tea.Batch(m.pokePoll(), m.scheduleAnimation())
 
 	case questionSurfaceResultMsg:
 		if message.err != nil {
@@ -946,8 +1170,10 @@ func (m *Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 
 	case tea.KeyMsg:
 		m.noteKeypress()
-		m.noteActivity()
-		if command, handled := m.updateKey(message); handled {
+		armed := m.armActivity()
+		command, handled := m.updateKey(message)
+		m.noteActivity(armed)
+		if handled {
 			if command == nil {
 				return m, m.scheduleAnimation()
 			}
@@ -955,13 +1181,23 @@ func (m *Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		}
 
 	case tea.MouseMsg:
-		m.noteActivity()
-		if command, handled := m.updateMouse(message); handled {
+		armed := m.armActivity()
+		command, handled := m.updateMouse(message)
+		m.noteActivity(armed)
+		if handled {
 			return m, tea.Batch(command, m.scheduleAnimation())
 		}
 	}
 
 	if m.inputFocused {
+		// A blink is one cell of one row changing ink twice a second. It can
+		// move neither the draft's wrapped height nor the palette's, so it
+		// skips both measurements instead of taking them to prove it.
+		if textinput.IsBlink(message) {
+			var command tea.Cmd
+			m.input, command = m.input.Update(message)
+			return m, command
+		}
 		before := m.input.Value()
 		// Typing can only move two heights: the draft's own wrapped rows and the
 		// palette below it. Everything else the relayout recomputes — the whole
@@ -973,6 +1209,9 @@ func (m *Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		var command tea.Cmd
 		m.input, command = m.input.Update(message)
 		if m.input.Value() != before && m.nodeViewID == "" {
+			// Typing is the end of a recall walk: what is in the composer now is
+			// the person's line, not a copy of an older one.
+			m.inputRecall = 0
 			m.captureImageAttachments()
 			m.paletteSelected = 0
 			m.paletteDismissed = false
@@ -1006,7 +1245,7 @@ func (m *Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 func (m *Model) updateKey(message tea.KeyMsg) (tea.Cmd, bool) {
 	key := message.String()
 	if key == "ctrl+c" {
-		return tea.Quit, true
+		return m.updateQuitKey()
 	}
 	if m.nodeViewID == "" && m.inputFocused && (key == "backspace" || key == "ctrl+h") &&
 		m.input.Value() == "" && len(m.attachments) > 0 {
@@ -1142,6 +1381,7 @@ func (m *Model) updateKey(message tea.KeyMsg) (tea.Cmd, bool) {
 			m.scrollNodeFeed(key == "down")
 			return nil, true
 		case key == "end":
+			m.releaseNodeTopPin()
 			m.nodeTrace.GotoBottom()
 			return nil, true
 		}
@@ -1198,6 +1438,9 @@ func (m *Model) updateKey(message tea.KeyMsg) (tea.Cmd, bool) {
 			m.focus = focusInput
 			m.inputFocused = true
 			_ = m.input.Focus()
+			// Coming back to the composer is where a draft some reading surface
+			// borrowed — /history is the one that leaves focus here — returns.
+			m.returnDraft()
 			m.setSize(m.width, m.height)
 		case m.graphVisible() && m.focus == focusGraph:
 			m.toggleGraph()
@@ -1207,7 +1450,12 @@ func (m *Model) updateKey(message tea.KeyMsg) (tea.Cmd, bool) {
 			_ = m.input.Focus()
 			m.setSize(m.width, m.height)
 		case m.focus == focusInput && m.dismissTextQuestion():
+		// Above the draft and above the quit: while a reply is on its way, this
+		// key stops it and nothing else. Escape may not end a session with a
+		// turn in it, and it may not spend the same press on the draft as well.
+		case m.interruptTurn():
 		case m.input.Value() != "" || len(m.attachments) > 0:
+			m.stashDraft(m.input.Value())
 			m.input.Reset()
 			m.attachments = nil
 			m.paletteDismissed = false
@@ -1409,8 +1657,16 @@ func (m *Model) updateKey(message tea.KeyMsg) (tea.Cmd, bool) {
 		return m.submit(), true
 	}
 	// An empty input has nothing for the arrows to do, so they read backwards
-	// through the conversation instead of dying silently: up scrolls history
-	// into view, down walks back toward now, End (or sending) re-pins.
+	// through what was typed here: up walks into older turns of your own, down
+	// walks back toward the empty line, and a draft escape stashed is the first
+	// thing up hands back. With nothing sent yet they keep their older job of
+	// scrolling the thread, and pgup/pgdn scroll it whatever the composer holds.
+	if m.inputFocused && (m.input.Value() == "" || m.recalling()) &&
+		(key == "up" || key == "down") {
+		if m.recallInput(key == "up") {
+			return nil, true
+		}
+	}
 	if m.inputFocused && m.input.Value() == "" && (key == "up" || key == "down") {
 		if key == "up" {
 			m.chat.SetYOffset(m.chat.YOffset - 3)
@@ -1445,11 +1701,24 @@ func (m *Model) poll() tea.Cmd {
 		selfReceiptSince = time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
 	}
 	readSelf := m.selfVisible()
+	// The services table is read for the places that show it. With the rail
+	// closed nothing asks, and nothing is read — the lazy cache behind
+	// activeServices still answers whoever asks anyway.
+	readServices := m.graphContentVisible() || m.selfVisible()
 	selfNow := m.standingTime()
 	journal, _ := backend.(journalReader)
 	residencySource := m.residencySource
 	force := m.pollForce || !m.journalPrimed
 	knownSeq := m.journalSeq
+	traceStamp := m.nodeTraceStamp
+	// readTrace tails the open node's trace file, and says whether it moved. The
+	// stamp the window already holds is what makes "it did not" cheap.
+	readTrace := func() (string, NodeTraceStamp, bool) {
+		if reader, ok := commander.(NodeTraceReader); ok {
+			return reader.NodeTraceSince(nodeID, nodeTraceMaxBytes, traceStamp)
+		}
+		return commander.NodeTrace(nodeID, nodeTraceMaxBytes), NodeTraceStamp{}, true
+	}
 	return func() tea.Msg {
 		// Asked before the quiet short-circuit, because the one thing this
 		// answers — is the process that answers me still there — is exactly the
@@ -1479,7 +1748,7 @@ func (m *Model) poll() tea.Cmd {
 					}
 					if nodeID != "" && commander != nil {
 						quiet.nodeID = nodeID
-						quiet.nodeTrace = commander.NodeTrace(nodeID, nodeTraceMaxBytes)
+						quiet.nodeTrace, quiet.nodeTraceStamp, quiet.nodeTraceMoved = readTrace()
 					}
 					return quiet
 				}
@@ -1554,6 +1823,13 @@ func (m *Model) poll() tea.Cmd {
 			result.chartersRead = true
 			result.selfCharters, result.selfChartersErr = reader.Charters()
 		}
+		// The rail's other store-backed section rides the same cycle, for the
+		// same reason the charters do: the poll drops its cache, and whoever
+		// asked next was a render goroutine holding a SQLite query.
+		if lister, ok := backend.(serviceLister); ok && readServices {
+			result.servicesRead = true
+			result.services, result.servicesErr = lister.ActiveServices()
+		}
 		if reader, ok := backend.(selfDataReader); ok && readSelf {
 			result.selfDataRead = true
 			// Practice folds by the week, so the receipt read reaches back one
@@ -1589,7 +1865,7 @@ func (m *Model) poll() tea.Cmd {
 			result.node, result.nodeFound, result.nodeErr = backend.Node(nodeID)
 			result.nodeMessages, result.nodeMessagesErr = backend.NodeMessages(nodeID, nodeAfterSeq, pollLimit)
 			if commander != nil {
-				result.nodeTrace = commander.NodeTrace(nodeID, nodeTraceMaxBytes)
+				result.nodeTrace, result.nodeTraceStamp, result.nodeTraceMoved = readTrace()
 			}
 		}
 		return result
@@ -1664,17 +1940,91 @@ func (m *Model) pollCadence() time.Duration {
 }
 
 func (m *Model) nextPollTick() tea.Cmd {
-	return tea.Tick(m.pollCadence(), func(at time.Time) tea.Msg {
-		return pollTickMsg(at)
+	return m.armPollTick(m.pollCadence())
+}
+
+// pokePoll brings the next read forward to now. Landing a post and finishing a
+// stream are the two moments the window knows something has just changed, and
+// waiting out the cadence for them is the difference between a reply that
+// appears and one that arrives up to two seconds late.
+//
+// It is a re-arm of the one chain rather than an extra read: the outstanding
+// tick is spent by the bump, so a poke can never add a timer and a hundred of
+// them in a row is still one poll in flight.
+func (m *Model) pokePoll() tea.Cmd {
+	return m.armPollTick(pollPokeDelay)
+}
+
+// streamPoke brings the read forward when the provider call ends. The durable
+// reply is written after the last delta, so the frame that stops the stream is
+// exactly the frame before the row it finishes into is readable.
+func (m *Model) streamPoke(kind StreamEventKind) tea.Cmd {
+	if kind != StreamFinished && kind != StreamFailed {
+		return nil
+	}
+	return m.pokePoll()
+}
+
+func (m *Model) armPollTick(after time.Duration) tea.Cmd {
+	m.pollSerial++
+	serial := m.pollSerial
+	return tea.Tick(after, func(at time.Time) tea.Msg {
+		return pollTickMsg{at: at, serial: serial}
 	})
 }
 
-// noteActivity snaps the cadence back to hot and buys exactly one full read.
-// A key or a click can open a place whose data the journal watermark cannot
-// speak for — the employee file, a node view — so the next poll must not be
-// allowed to answer it with "nothing changed".
-func (m *Model) noteActivity() {
+// surface names the places a key or a click can open whose data the journal
+// watermark cannot speak for — the employee file, a node view, a rail card.
+// Everything else a keystroke touches is either store-backed, and so covered
+// by the watermark, or pure presentation.
+type surface struct {
+	nodeViewID    string
+	selfOpen      bool
+	selfRoute     selfRoute
+	graphOpen     bool
+	graphScopeID  string
+	charterCardID string
+	serviceCardID string
+}
+
+func (m *Model) surface() surface {
+	return surface{
+		nodeViewID:    m.nodeViewID,
+		selfOpen:      m.selfOpen,
+		selfRoute:     m.selfRoute,
+		graphOpen:     m.graphOpen,
+		graphScopeID:  m.graphScopeID,
+		charterCardID: m.charterCardID,
+		serviceCardID: m.serviceCardID,
+	}
+}
+
+// activity is the state a keystroke is measured against: where the window was
+// standing, and whether a full read was already owed.
+type activity struct {
+	surface surface
+	force   bool
+}
+
+// armActivity buys the full read before the handler runs, because a handler
+// that opens a place fires its own poll on the way out, and that poll must not
+// be answered with "nothing changed".
+func (m *Model) armActivity() activity {
+	armed := activity{surface: m.surface(), force: m.pollForce}
 	m.pollForce = true
+	return armed
+}
+
+// noteActivity snaps the cadence back to hot and keeps the armed read only when
+// the input actually moved between places. Typing and scrolling stay inside the
+// place they started in, so they get the hot cadence and give the read back:
+// forcing on every keystroke made the watermark short-circuit unreachable for
+// as long as somebody was at the keyboard, which is exactly when the store is
+// read most.
+func (m *Model) noteActivity(armed activity) {
+	if m.surface() == armed.surface {
+		m.pollForce = armed.force
+	}
 	m.lastActionAt = m.standingTime()
 }
 
@@ -1712,6 +2062,7 @@ func (m *Model) applyResidency(result pollResultMsg) {
 	m.adoptCommander(result.adopt)
 	m.streamRearm = true
 	m.threadGen++
+	m.forgetWorkspaceLinks()
 	m.invalidateRailCaches()
 }
 
@@ -1724,10 +2075,14 @@ func (m *Model) applyQuietPoll(result pollResultMsg) {
 	m.applyResidency(result)
 	// The one read a quiet cycle still makes: the open node's trace is a file
 	// the executor appends to outside the journal, so the watermark cannot
-	// speak for it. It re-renders only when the text actually moved.
-	if result.nodeID != "" && result.nodeID == m.nodeViewID && result.nodeTrace != m.nodeTraceText {
-		m.nodeTraceText = result.nodeTrace
-		m.refreshNodeView(false)
+	// speak for it. A file that did not grow is not read at all, and it
+	// re-renders only when the text actually moved.
+	if result.nodeID != "" && result.nodeID == m.nodeViewID && result.nodeTraceMoved {
+		m.nodeTraceStamp = result.nodeTraceStamp
+		if result.nodeTrace != m.nodeTraceText {
+			m.nodeTraceText = result.nodeTrace
+			m.refreshNodeView(false)
+		}
 	}
 	now := m.standingTime()
 	if now.Sub(m.lastRepaintAt) < quietRepaintInterval {
@@ -1735,11 +2090,17 @@ func (m *Model) applyQuietPoll(result pollResultMsg) {
 	}
 	m.lastRepaintAt = now
 	m.invalidateRailCaches()
-	// The minute repaint is the clock's own frame: it re-renders everything
-	// from state already in hand. Retiring the rendered blocks with it keeps
-	// the cache one thread wide, instead of one entry per timestamp a long
-	// idle stretch walks through.
-	m.threadGen++
+	// The minute repaint is the clock's own frame, and the clock moves exactly
+	// the lines that print a relative time. It used to retire every rendered
+	// block to draw them, which made an idle screen pay for a cold render of
+	// the whole conversation once a minute; the printed label is part of each
+	// block's key, so re-rendering from state already in hand now rebuilds the
+	// handful of blocks whose label actually changed and replays the rest.
+	//
+	// The other thing the minute is for is a file that landed under a job
+	// still running: those answers are dropped so the next render asks again,
+	// off the UI thread.
+	m.forgetUnsettledWorkspaceLinks()
 	m.rebuildCards()
 	m.setSize(m.width, m.height)
 }
@@ -1753,11 +2114,14 @@ func (m *Model) applyPoll(result pollResultMsg) {
 	m.lastRepaintAt = m.standingTime()
 	m.applyResidency(result)
 	m.invalidateRailCaches()
-	// A moved journal is the one thing that can change a settled message's
-	// rendering from outside the message itself: the node it names, the files
-	// it links, the turn that answers its question. So it retires the thread's
-	// rendered blocks, and nothing else has to.
-	m.threadGen++
+	m.seedRailCaches(result)
+	// A moved journal can change a settled message's rendering from outside the
+	// message itself: the node it names, the files it links, the turn that
+	// answers its question. It used to say so by retiring every rendered block,
+	// which meant a busy hour rebuilt the whole conversation two and a half
+	// times a second to draw the one line that had actually moved. All three
+	// are named in the block keys now, so a poll retires exactly the blocks
+	// that depended on what it changed and leaves the rest standing.
 	if result.journalRead {
 		if result.journalSeq != m.journalSeq || !m.journalPrimed {
 			m.lastChangeAt = m.standingTime()
@@ -1855,7 +2219,10 @@ func (m *Model) applyPoll(result pollResultMsg) {
 		if result.nodeMessagesErr == nil {
 			m.appendNodeMessages(result.nodeMessages)
 		}
-		m.nodeTraceText = result.nodeTrace
+		if result.nodeTraceMoved {
+			m.nodeTraceText = result.nodeTrace
+			m.nodeTraceStamp = result.nodeTraceStamp
+		}
 		m.refreshNodeView(false)
 	}
 
@@ -1885,6 +2252,10 @@ func (m *Model) applyPoll(result pollResultMsg) {
 					continue
 				}
 			}
+			// A turn this window echoed comes back through the poll as readily
+			// as through the post result; whichever arrives first takes the
+			// echo with it, so the words never appear twice.
+			m.takeUserEcho(message)
 			m.insertThreadMessage(message)
 			accepted = append(accepted, message)
 		}
@@ -2067,6 +2438,7 @@ func (m *Model) postUserMessage(body string, attachments ...string) tea.Cmd {
 	if body == "" {
 		return nil
 	}
+	m.rememberSubmission(body)
 	m.err = nil
 	backend := m.backend
 	messageModel := ""
@@ -2092,9 +2464,10 @@ func (m *Model) postUserMessage(body string, attachments ...string) tea.Cmd {
 		QuestionSeq: m.answeringQuestionSeq,
 	}
 	m.answeringQuestionSeq = 0
+	m.echoUserMessage(message)
 	return func() tea.Msg {
 		posted, err := backend.PostMessage(message)
-		return postResultMsg{message: posted, questionSeq: message.QuestionSeq, err: err}
+		return postResultMsg{message: posted, sent: message, questionSeq: message.QuestionSeq, err: err}
 	}
 }
 
@@ -2123,14 +2496,81 @@ func (m *Model) landPostedMessage(posted store.Message) {
 // time can be older than one a poll in flight is about to deliver, and readers
 // that walk the thread backwards — which question a reply answered, which
 // progress line a node owns — depend on that order.
+//
+// Unsequenced lines — the echo of a turn the store has not numbered yet — live
+// at the tail and stay there, which is exactly where the render comparator puts
+// them: a sequenced arrival goes in front of them, wherever its sequence says,
+// so the slice and the frame never disagree about what is above what.
 func (m *Model) insertThreadMessage(message store.Message) {
 	at := len(m.messages)
-	for at > 0 && message.Seq != 0 && m.messages[at-1].Seq > message.Seq {
-		at--
+	if message.Seq != 0 {
+		for at > 0 && m.messages[at-1].Seq == 0 {
+			at--
+		}
+		for at > 0 && m.messages[at-1].Seq > message.Seq {
+			at--
+		}
 	}
 	m.messages = append(m.messages, store.Message{})
 	copy(m.messages[at+1:], m.messages[at:])
 	m.messages[at] = message
+}
+
+// echoUserMessage puts the turn on screen the instant Enter is pressed, before
+// the store has taken it. Between the keystroke and the round trip the words
+// existed nowhere on screen, and people retyped them. The echo carries no
+// sequence — that is what makes it an echo rather than history — so it sorts at
+// the tail and the durable row takes its place rather than doubling it.
+func (m *Model) echoUserMessage(message store.Message) {
+	if message.Body == "" || message.NodeID != "" {
+		return
+	}
+	message.Seq = 0
+	message.Time = time.Now()
+	m.insertThreadMessage(message)
+	m.threadGen++
+	m.setSize(m.width, m.height)
+	if m.autoScroll {
+		m.chat.GotoBottom()
+	}
+}
+
+// takeUserEcho removes the echo drawn for a turn that has now come back from
+// the store, whichever of the post result and the poll wins that race. Echoes
+// only ever live at the tail, so the walk stops at the first sequenced line.
+func (m *Model) takeUserEcho(posted store.Message) bool {
+	if posted.Role != store.RoleUser || posted.NodeID != "" || posted.Body == "" {
+		return false
+	}
+	for index := len(m.messages) - 1; index >= 0; index-- {
+		existing := m.messages[index]
+		if existing.Seq != 0 {
+			return false
+		}
+		if existing.Role != store.RoleUser || existing.NodeID != "" || existing.Body != posted.Body {
+			continue
+		}
+		m.messages = append(m.messages[:index], m.messages[index+1:]...)
+		m.threadGen++
+		return true
+	}
+	return false
+}
+
+// restoreFailedPost gives a rejected turn back. The echo comes off the thread —
+// it was never taken — and the words return to the composer, so a failed post
+// is something to answer rather than something that ate the message.
+func (m *Model) restoreFailedPost(sent store.Message) {
+	if !m.takeUserEcho(sent) {
+		return
+	}
+	if strings.TrimSpace(m.input.Value()) == "" {
+		m.input.SetValue(sent.Body)
+	}
+	if len(sent.Attachments) > 0 && len(m.attachments) == 0 {
+		m.attachments = append([]string(nil), sent.Attachments...)
+	}
+	m.setSize(m.width, m.height)
 }
 
 func (m *Model) hasThreadMessage(seq int64) bool {
@@ -2237,6 +2677,7 @@ func (m *Model) activityBarVisible() bool {
 
 func (m *Model) setSize(width, height int) {
 	m.invalidateDock()
+	m.settingsLinesOK = false
 	m.width = max(20, width)
 	m.height = max(8, height)
 	m.horizontal = m.width >= railAtWidth
@@ -2286,8 +2727,21 @@ func (m *Model) setSize(width, height int) {
 	m.self.Height = max(1, mainHeight)
 	m.sizeNodeViewports()
 	m.refreshChat()
-	m.refreshGraph()
-	m.refreshSelf()
+	// A relayout that renders into panes nobody can see is a tree and an
+	// employee file built for the wastebasket — and the relayout runs on every
+	// poll that moves the journal. Only the animation bookkeeping stays
+	// unconditional: the collapsed rail's spinner lives in the activity bar.
+	if m.graphContentVisible() {
+		m.refreshGraph()
+	} else {
+		m.graphPaneStale = true
+		m.noteGraphAnimation()
+	}
+	if m.selfVisible() {
+		m.refreshSelf()
+	} else {
+		m.selfPaneStale = true
+	}
 	if m.autoScroll {
 		m.chat.GotoBottom()
 	}
@@ -2328,6 +2782,7 @@ func (m *Model) noteGraphAnimation() {
 }
 
 func (m *Model) refreshGraphContent() {
+	m.graphPaneStale = false
 	offset := m.graph.YOffset
 	if m.serviceCardID != "" {
 		m.graphRows = nil
@@ -2559,15 +3014,62 @@ func (m *Model) newMessagePillHit(x, y int) bool {
 // birth position above them or an earlier block changes height — the offset is
 // re-derived from a stable anchor (message seq or card id), not reused raw.
 func (m *Model) refreshChat() {
+	offset, anchor := m.captureChatScroll()
+	m.applyChatContent(m.renderMessages(), offset, anchor)
+}
+
+// captureChatScroll reads the reader's place from the row maps the previous
+// render left, which is why it has to run before the next one replaces them.
+func (m *Model) captureChatScroll() (int, chatAnchor) {
 	if m.autoScroll {
-		m.chat.SetContent(m.renderMessages())
+		return 0, chatAnchor{}
+	}
+	offset := m.chat.YOffset
+	return offset, m.captureChatAnchor(offset)
+}
+
+func (m *Model) applyChatContent(content string, offset int, anchor chatAnchor) {
+	m.chat.SetContent(content)
+	if m.autoScroll {
 		m.chat.GotoBottom()
 		return
 	}
-	offset := m.chat.YOffset
-	anchor := m.captureChatAnchor(offset)
-	m.chat.SetContent(m.renderMessages())
 	m.chat.SetYOffset(m.resolveChatAnchor(anchor, offset))
+}
+
+// refreshChatFrame is the animation tick's redraw. The tick moves exactly two
+// lines — the sweep across the shimmer and the awaiting dot — so it re-renders
+// those two blocks and puts them back into the thread the last full render
+// left behind. Anything the splice cannot vouch for, including a tail that
+// changed height and would shift every row map below it, falls back to the
+// ordinary rebuild.
+func (m *Model) refreshChatFrame() {
+	if !m.chatBlocksValid || m.chatBlocksWidth != m.chat.Width || m.chatBlocksGen != m.threadGen {
+		m.refreshChat()
+		return
+	}
+	width := max(1, m.chat.Width-2)
+	offset, anchor := m.captureChatScroll()
+	if !m.spliceChatBlock(m.chatAwaitingBlock, m.renderAwaitingReply(width)) ||
+		!m.spliceChatBlock(m.chatShimmerBlock, m.renderShimmerLines(width)) {
+		m.refreshChat()
+		return
+	}
+	m.applyChatContent(m.applyChatFocus(strings.Join(m.chatBlocks, "\n\n")), offset, anchor)
+}
+
+func (m *Model) spliceChatBlock(index int, block string) bool {
+	if index < 0 {
+		// The line was absent last frame; if it is still absent the cached
+		// thread already says exactly that.
+		return block == ""
+	}
+	if index >= len(m.chatBlocks) || block == "" ||
+		lipgloss.Height(block) != lipgloss.Height(m.chatBlocks[index]) {
+		return false
+	}
+	m.chatBlocks[index] = block
+	return true
 }
 
 // chatAnchor names the stable thing rendered at the top of the viewport: a

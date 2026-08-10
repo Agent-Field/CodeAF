@@ -1,6 +1,7 @@
 package router
 
 import (
+	"bytes"
 	"encoding/json"
 	"os"
 	"path/filepath"
@@ -444,4 +445,132 @@ func TestAClosedLedgerAbandonsTheLockWait(t *testing.T) {
 	// Closing twice is what a replaced router and an exiting process both do,
 	// and it must not panic on an already-closed channel.
 	_ = ledger.Close()
+}
+
+// A plan build grades its spine in one burst — eight to twelve observations,
+// then one per leaf and one per judge — and each of them used to take the lock
+// file, re-read, re-parse, re-encode and rename, serialised process-wide. The
+// burst rides one write now, and the file it leaves is the same file.
+func TestABurstOfObservationsCostsOneWrite(t *testing.T) {
+	dir := t.TempDir()
+	debounced, err := LoadLedger(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for range 40 {
+		debounced.Observe("a/one", provider.ClassPlanSpine, 0, provider.VerdictVerifiedSuccess)
+		debounced.Observe("b/two", provider.ClassExecLeaf, 0, provider.VerdictBudgetStop)
+	}
+	debounced.Alias("~a/one-latest", "a/one-0731")
+	if err := debounced.Save(); err != nil {
+		t.Fatal(err)
+	}
+	if writes := debounced.writes.Load(); writes > 2 {
+		t.Fatalf("81 observations took %d writes of the ledger file", writes)
+	}
+
+	// The same evidence, in the same order, written one observation at a time:
+	// the debounce must not have changed a byte of what ends up on disk.
+	eager := t.TempDir()
+	oneByOne, err := LoadLedger(eager)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for range 40 {
+		oneByOne.Observe("a/one", provider.ClassPlanSpine, 0, provider.VerdictVerifiedSuccess)
+		if err := oneByOne.Save(); err != nil {
+			t.Fatal(err)
+		}
+		oneByOne.Observe("b/two", provider.ClassExecLeaf, 0, provider.VerdictBudgetStop)
+		if err := oneByOne.Save(); err != nil {
+			t.Fatal(err)
+		}
+	}
+	oneByOne.Alias("~a/one-latest", "a/one-0731")
+	if err := oneByOne.Save(); err != nil {
+		t.Fatal(err)
+	}
+
+	batched, individual := readLedgerFile(t, dir), readLedgerFile(t, eager)
+	if !bytes.Equal(stripUpdated(t, batched), stripUpdated(t, individual)) {
+		t.Fatalf("the debounced ledger is not the eager one:\n%s\n\n%s", batched, individual)
+	}
+}
+
+// Crash durability is the window and no more: an observation nobody saves
+// reaches the file within it, on its own.
+func TestAnObservationReachesTheFileWithoutASave(t *testing.T) {
+	dir := t.TempDir()
+	ledger, err := LoadLedger(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ledger.Observe("a/one", provider.ClassPlanSpine, 0, provider.VerdictVerifiedSuccess)
+
+	deadline := time.Now().Add(4 * ledgerDebounce)
+	for {
+		reloaded, err := LoadLedger(dir)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, count := reloaded.Rating("a/one", provider.ClassPlanSpine, 0); count == 1 {
+			return
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("an observation never reached the file inside %s", 4*ledgerDebounce)
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+}
+
+// Save and Close do not wait out the window. The end of a run is where the
+// evidence has to be on disk, not a second later.
+func TestSaveLandsTheQueueImmediately(t *testing.T) {
+	dir := t.TempDir()
+	ledger, err := LoadLedger(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ledger.Observe("a/one", provider.ClassPlanSpine, 0, provider.VerdictVerifiedSuccess)
+	started := time.Now()
+	if err := ledger.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if elapsed := time.Since(started); elapsed > ledgerDebounce/2 {
+		t.Fatalf("closing waited %s for the debounce window", elapsed)
+	}
+	reloaded, err := LoadLedger(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, count := reloaded.Rating("a/one", provider.ClassPlanSpine, 0); count != 1 {
+		t.Fatal("closing left the observation in memory")
+	}
+}
+
+func readLedgerFile(t *testing.T, dir string) []byte {
+	t.Helper()
+	data, err := os.ReadFile(filepath.Join(dir, "router-ledger.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return data
+}
+
+// stripUpdated removes the one field that is a wall-clock reading rather than a
+// measurement, so two runs of the same evidence can be compared byte for byte.
+func stripUpdated(t *testing.T, data []byte) []byte {
+	t.Helper()
+	var file ledgerFile
+	if err := json.Unmarshal(data, &file); err != nil {
+		t.Fatalf("the ledger is not valid JSON: %v", err)
+	}
+	for index := range file.Entries {
+		file.Entries[index].Updated = time.Time{}
+	}
+	encoded, err := json.MarshalIndent(file, "", "  ")
+	if err != nil {
+		t.Fatal(err)
+	}
+	return encoded
 }

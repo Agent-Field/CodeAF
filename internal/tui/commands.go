@@ -115,7 +115,13 @@ func (m *Model) paletteOpen() bool { return m.palette != paletteNone }
 
 func (m *Model) closePalette() {
 	if m.palette == paletteModel {
+		// The picker types its filter into the composer, so the line it holds
+		// is the picker's, not the person's. Theirs comes back here.
 		m.input.Reset()
+		m.returnDraft()
+	}
+	if m.palette == paletteModels {
+		m.returnDraft()
 	}
 	m.palette = paletteNone
 	m.paletteSelected = 0
@@ -792,7 +798,7 @@ func (m *Model) openModelPicker(role string) tea.Cmd {
 	if len(fallback) == 0 {
 		return m.showStatus("model switching unavailable — no models configured")
 	}
-	m.input.Reset()
+	m.borrowDraft()
 	m.modelRole = role
 	m.palette = paletteModel
 	m.focus = focusInput
@@ -825,7 +831,7 @@ func (m *Model) openModelPicker(role string) tea.Cmd {
 }
 
 func (m *Model) openModelsPalette() tea.Cmd {
-	m.input.Reset()
+	m.borrowDraft()
 	m.palette = paletteModels
 	m.modelSlotIndex = max(0, min(len(modelSlots)-1, m.modelSlotIndex))
 	m.focus = focusHeader

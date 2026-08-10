@@ -30,7 +30,15 @@ const (
 // display-ready economics for the existing picker; architecture is retained
 // verbatim for modality queries.
 type Model struct {
-	ID               string   `json:"id"`
+	ID string `json:"id"`
+	// CanonicalSlug is the concrete model behind a floating alias. OpenRouter
+	// publishes ids like `deepseek/deepseek-v4-flash-latest` that resolve, at
+	// request time and on its side, to whatever is current — which is why every
+	// call aforge makes with the alias simply works. A second catalog that does
+	// not float, keyed by concrete id, has never heard of the alias, and this is
+	// the field that translates between them. Empty for the great majority of
+	// rows, and empty for every row in a cache written before it was read.
+	CanonicalSlug    string   `json:"canonical_slug,omitempty"`
 	Name             string   `json:"name,omitempty"`
 	PromptPrice      float64  `json:"prompt_price,omitempty"`
 	CompletionPrice  float64  `json:"completion_price,omitempty"`
@@ -167,6 +175,33 @@ func (c *Catalog) Model(modelID string) (Model, bool) {
 	return cloneModel(model), true
 }
 
+// Concrete resolves a floating alias to the model actually behind it, in the
+// spelling the rest of the world uses.
+//
+// Nothing inside aforge needs this: an alias is a model id OpenRouter accepts,
+// and every call aforge makes with one is answered. It matters at exactly one
+// boundary — a subprocess that looks a model up in a *different* catalog, one
+// keyed by concrete ids and with no idea what floats. Handed the alias, that
+// catalog says "not found" and the process dies before it has spent a cent.
+//
+// Everything unknown passes through unchanged, and that is the point rather
+// than a shortcut. A model nobody chose must never enter another engine's
+// pools, so an id this catalog cannot vouch for is forwarded verbatim and the
+// far side's own error is allowed to be the thing the operator reads. The
+// leading "~" — OpenRouter's own alias marker, and part of no model's name —
+// is dropped either way, exactly as Model and Supports already drop it.
+func (c *Catalog) Concrete(modelID string) string {
+	id := normalizeID(modelID)
+	model, ok := c.Model(id)
+	if !ok {
+		return id
+	}
+	if canonical := strings.TrimSpace(model.CanonicalSlug); canonical != "" {
+		return normalizeID(canonical)
+	}
+	return id
+}
+
 // Supports answers whether modelID advertises modality in direction. Unknown
 // models and directions calmly return false.
 func (c *Catalog) Supports(modelID, direction, modality string) bool {
@@ -256,9 +291,10 @@ func fetch(ctx context.Context, options Options) ([]Model, error) {
 	}
 	var payload struct {
 		Data []struct {
-			ID           string `json:"id"`
-			Name         string `json:"name"`
-			Architecture struct {
+			ID            string `json:"id"`
+			CanonicalSlug string `json:"canonical_slug"`
+			Name          string `json:"name"`
+			Architecture  struct {
 				Input  []string `json:"input_modalities"`
 				Output []string `json:"output_modalities"`
 			} `json:"architecture"`
@@ -276,7 +312,8 @@ func fetch(ctx context.Context, options Options) ([]Model, error) {
 	models := make([]Model, 0, len(payload.Data))
 	for _, item := range payload.Data {
 		models = append(models, Model{
-			ID: strings.TrimSpace(item.ID), Name: strings.TrimSpace(item.Name),
+			ID: strings.TrimSpace(item.ID), CanonicalSlug: strings.TrimSpace(item.CanonicalSlug),
+			Name:        strings.TrimSpace(item.Name),
 			PromptPrice: parsePrice(item.Pricing.Prompt), CompletionPrice: parsePrice(item.Pricing.Completion),
 			RequestPrice:    parsePrice(item.Pricing.Request),
 			InputModalities: cleanModalities(item.Architecture.Input), OutputModalities: cleanModalities(item.Architecture.Output),

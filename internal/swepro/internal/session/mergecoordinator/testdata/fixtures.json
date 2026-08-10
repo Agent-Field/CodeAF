@@ -1,0 +1,38 @@
+{"name":"empty","fn":"computeMergeRisk","args_json":"[\"\",0]","out_json":"0"}
+{"name":"ascii whitespace only","fn":"computeMergeRisk","args_json":"[\" \\t\\r\\n\",0]","out_json":"0"}
+{"name":"js whitespace only","fn":"computeMergeRisk","args_json":"[\"     ﻿\",0]","out_json":"0"}
+{"name":"one file","fn":"computeMergeRisk","args_json":"[\"1\\t2\\tsrc/a.ts\\n\",0]","out_json":"3"}
+{"name":"zero lines changed","fn":"computeMergeRisk","args_json":"[\"0\\t0\\tsrc/a.ts\\n\",0]","out_json":"0"}
+{"name":"binary file","fn":"computeMergeRisk","args_json":"[\"-\\t-\\tassets/a.bin\\n\",0]","out_json":"0"}
+{"name":"two files same top dir","fn":"computeMergeRisk","args_json":"[\"2\\t3\\tsrc/a.ts\\n5\\t7\\tsrc/b.ts\\n\",0]","out_json":"34"}
+{"name":"three top dirs","fn":"computeMergeRisk","args_json":"[\"1\\t1\\tsrc/a\\n2\\t2\\ttest/b\\n3\\t3\\tdocs/c\\n\",0]","out_json":"108"}
+{"name":"root files count as distinct tops","fn":"computeMergeRisk","args_json":"[\"1\\t0\\tREADME\\n1\\t0\\tLICENSE\\n\",0]","out_json":"8"}
+{"name":"nested unicode paths","fn":"computeMergeRisk","args_json":"[\"10\\t20\\t源/深/😀.ts\\n4\\t6\\tтест/файл.go\\n\",0]","out_json":"160"}
+{"name":"spaces in path","fn":"computeMergeRisk","args_json":"[\"3\\t4\\tmy dir/file name.ts\\n\",0]","out_json":"7"}
+{"name":"repeated whitespace in top path","fn":"computeMergeRisk","args_json":"[\"1\\t1\\ta  b/x\\n1\\t1\\ta b/y\\n\",0]","out_json":"8"}
+{"name":"crlf","fn":"computeMergeRisk","args_json":"[\"1\\t2\\tsrc/a.ts\\r\\n3\\t4\\ttest/b.ts\\r\\n\",0]","out_json":"40"}
+{"name":"blank internal lines","fn":"computeMergeRisk","args_json":"[\"1\\t2\\tsrc/a\\n\\n\\n3\\t4\\ttest/b\\n\",0]","out_json":"40"}
+{"name":"malformed one token","fn":"computeMergeRisk","args_json":"[\"garbage\\n\",0]","out_json":"0"}
+{"name":"malformed counts","fn":"computeMergeRisk","args_json":"[\"oops\\twat\\tsrc/a\\n\",0]","out_json":"0"}
+{"name":"parseInt decimal prefix","fn":"computeMergeRisk","args_json":"[\"12px\\t+7tail\\tsrc/a\\n\",0]","out_json":"19"}
+{"name":"parseInt radix ten","fn":"computeMergeRisk","args_json":"[\"0x10\\t010\\tsrc/a\\n\",0]","out_json":"10"}
+{"name":"signed negative","fn":"computeMergeRisk","args_json":"[\"-2\\t-3\\tsrc/a\\n\",0]","out_json":"-5"}
+{"name":"leading whitespace on internal line","fn":"computeMergeRisk","args_json":"[\"1\\t1\\tsrc/a\\n 2\\t3\\ttest/b\\n\",0]","out_json":"16"}
+{"name":"path with leading slash","fn":"computeMergeRisk","args_json":"[\"1\\t2\\t/rooted/a\\n\",0]","out_json":"3"}
+{"name":"huge exactness boundary","fn":"computeMergeRisk","args_json":"[\"9007199254740993\\t1\\tsrc/a\\n\",0]","out_json":"9007199254740992"}
+{"name":"huge finite score","fn":"computeMergeRisk","args_json":"[\"999999999999999999999\\t2\\tsrc/a\\n\",0]","out_json":"1e+21"}
+{"name":"overflow to infinity","fn":"computeMergeRisk","args_json":"[\"9999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999\\t0\\tsrc/a\\n\",0]","out_json":"null"}
+{"name":"positive plus negative infinity becomes NaN","fn":"computeMergeRisk","args_json":"[\"9999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999\\t0\\ta/x\\n-9999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999\\t0\\tb/y\\n\",0]","out_json":"null"}
+{"name":"unicode whitespace separators","fn":"computeMergeRisk","args_json":"[\"1 2　src/a\\n\",0]","out_json":"3"}
+{"name":"nonzero exit","fn":"computeMergeRisk","args_json":"[\"1\\t2\\tsrc/a\\n\",1]","out_json":"1000000"}
+{"name":"negative exit","fn":"computeMergeRisk","args_json":"[\"1\\t2\\tsrc/a\\n\",255]","out_json":"1000000"}
+{"name":"empty","fn":"orderByMergeRisk","args_json":"[[]]","out_json":"[]"}
+{"name":"single","fn":"orderByMergeRisk","args_json":"[[{\"taskID\":\"a\",\"riskScore\":10,\"arrived\":100}]]","out_json":"[\"a\"]"}
+{"name":"ascending already","fn":"orderByMergeRisk","args_json":"[[{\"taskID\":\"a\",\"riskScore\":1,\"arrived\":100},{\"taskID\":\"b\",\"riskScore\":2,\"arrived\":101},{\"taskID\":\"c\",\"riskScore\":3,\"arrived\":102}]]","out_json":"[\"a\",\"b\",\"c\"]"}
+{"name":"descending risk","fn":"orderByMergeRisk","args_json":"[[{\"taskID\":\"high\",\"riskScore\":100,\"arrived\":100},{\"taskID\":\"mid\",\"riskScore\":10,\"arrived\":101},{\"taskID\":\"low\",\"riskScore\":1,\"arrived\":102}]]","out_json":"[\"low\",\"mid\",\"high\"]"}
+{"name":"ties use arrival","fn":"orderByMergeRisk","args_json":"[[{\"taskID\":\"late\",\"riskScore\":5,\"arrived\":300},{\"taskID\":\"early\",\"riskScore\":5,\"arrived\":100},{\"taskID\":\"middle\",\"riskScore\":5,\"arrived\":200}]]","out_json":"[\"early\",\"middle\",\"late\"]"}
+{"name":"exact ties are stable","fn":"orderByMergeRisk","args_json":"[[{\"taskID\":\"first\",\"riskScore\":5,\"arrived\":100},{\"taskID\":\"second\",\"riskScore\":5,\"arrived\":100},{\"taskID\":\"third\",\"riskScore\":5,\"arrived\":100}]]","out_json":"[\"first\",\"second\",\"third\"]"}
+{"name":"negative and zero risk","fn":"orderByMergeRisk","args_json":"[[{\"taskID\":\"positive\",\"riskScore\":1,\"arrived\":1},{\"taskID\":\"negative\",\"riskScore\":-1,\"arrived\":2},{\"taskID\":\"zero\",\"riskScore\":0,\"arrived\":3},{\"taskID\":\"negative-zero\",\"riskScore\":0,\"arrived\":4}]]","out_json":"[\"negative\",\"zero\",\"negative-zero\",\"positive\"]"}
+{"name":"mixed tie groups","fn":"orderByMergeRisk","args_json":"[[{\"taskID\":\"five-late\",\"riskScore\":5,\"arrived\":50},{\"taskID\":\"one-late\",\"riskScore\":1,\"arrived\":40},{\"taskID\":\"five-early\",\"riskScore\":5,\"arrived\":10},{\"taskID\":\"one-early\",\"riskScore\":1,\"arrived\":20}]]","out_json":"[\"one-early\",\"one-late\",\"five-early\",\"five-late\"]"}
+{"name":"large finite risks","fn":"orderByMergeRisk","args_json":"[[{\"taskID\":\"max\",\"riskScore\":1.7976931348623157e+308,\"arrived\":1},{\"taskID\":\"safe\",\"riskScore\":9007199254740991,\"arrived\":2},{\"taskID\":\"tiny\",\"riskScore\":5e-324,\"arrived\":3}]]","out_json":"[\"tiny\",\"safe\",\"max\"]"}
+{"name":"unicode task ids preserve insertion","fn":"orderByMergeRisk","args_json":"[[{\"taskID\":\"😀\",\"riskScore\":2,\"arrived\":1},{\"taskID\":\"源\",\"riskScore\":1,\"arrived\":2},{\"taskID\":\"é\",\"riskScore\":1,\"arrived\":2}]]","out_json":"[\"源\",\"é\",\"😀\"]"}

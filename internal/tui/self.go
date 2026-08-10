@@ -9,7 +9,6 @@ import (
 
 	"github.com/Agent-Field/aforge-v2/internal/store"
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
 )
 
 // Self is one calm column, the way a settings app is: a root list of what
@@ -283,6 +282,7 @@ func startOfLocalDay(now time.Time) time.Time {
 }
 
 func (m *Model) refreshSelf() {
+	m.selfPaneStale = false
 	offset := m.self.YOffset
 	m.self.SetContent(m.renderSelfContent(max(1, m.self.Width)))
 	m.self.SetYOffset(offset)
@@ -721,7 +721,7 @@ func (m *Model) renderSelfPane() string {
 		lines = lines[:m.chatHeight]
 	}
 	clampLines(lines, m.width)
-	return lipgloss.NewStyle().Width(m.width).Render(strings.Join(lines, "\n"))
+	return strings.Join(lines, "\n")
 }
 
 func formatSelfDollars(cost float64) string {

@@ -386,7 +386,7 @@ type scriptedExecutor struct {
 	inputs map[int][]Input
 }
 
-func (s *scriptedExecutor) Skill() string { return "linear" }
+func (s *scriptedExecutor) Subharness() string { return "linear" }
 
 func (s *scriptedExecutor) Run(ctx context.Context, task Task) (*Outcome, error) {
 	s.mutex.Lock()

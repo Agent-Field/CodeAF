@@ -10,6 +10,11 @@ type StreamEventKind int
 const (
 	StreamStarted StreamEventKind = iota
 	StreamDelta
+	// StreamThinking says the model is producing reasoning rather than answer.
+	// It carries no text: reasoning tokens are the model's own working and are
+	// never shown, so the only thing that leaves the provider is that the wait
+	// has a reason. It is raised once per run of reasoning, not per token.
+	StreamThinking
 	StreamFinished
 	StreamFailed
 )

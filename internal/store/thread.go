@@ -208,6 +208,14 @@ type Message struct {
 	// agent-question lifecycle it belongs to. It is separate from Options:
 	// free-text questions need the same unambiguous answer routing.
 	QuestionSeq int64
+	// Answers is the newest user turn this line answers, and it exists because
+	// one reply is no longer one message. A run of messages typed in one breath
+	// is folded into a single turn and answered once, so a surface counting what
+	// it is still owed cannot read that count off the replies alone: it would
+	// wait forever for answers that were never going to come separately. Zero
+	// everywhere except the head's own replies, where it is the seq of the last
+	// user row the turn covered.
+	Answers int64
 	// Options is the ordered set of selectable answers for an askback.
 	// Nil means the question accepts free text only.
 	Options []QuestionOption
@@ -264,6 +272,7 @@ CREATE TABLE IF NOT EXISTS messages (
     node_id     TEXT NOT NULL DEFAULT '',
     command_seq INTEGER NOT NULL DEFAULT 0,
     question_seq INTEGER NOT NULL DEFAULT 0,
+    answers_seq INTEGER NOT NULL DEFAULT 0,
 	options     JSON NOT NULL DEFAULT '[]' CHECK (json_valid(options)),
 	brief       JSON NOT NULL DEFAULT 'null' CHECK (json_valid(brief)),
 	progress    JSON NOT NULL DEFAULT 'null' CHECK (json_valid(progress))
@@ -296,6 +305,7 @@ type messagePayload struct {
 	NodeID      string           `json:"node_id,omitempty"`
 	CommandSeq  int64            `json:"command_seq,omitempty"`
 	QuestionSeq int64            `json:"question_seq,omitempty"`
+	Answers     int64            `json:"answers_seq,omitempty"`
 	Options     []QuestionOption `json:"options,omitempty"`
 	Brief       *Brief           `json:"brief,omitempty"`
 	Progress    *MessageProgress `json:"progress,omitempty"`
@@ -377,6 +387,7 @@ func (s *Store) PostMessage(message Message) (Message, error) {
 		NodeID:      message.NodeID,
 		CommandSeq:  message.CommandSeq,
 		QuestionSeq: message.QuestionSeq,
+		Answers:     message.Answers,
 		Options:     options,
 		Brief:       brief,
 		Progress:    progress,
@@ -486,7 +497,7 @@ func (s *Store) Messages(sessionID string, afterSeq int64, limit int) ([]Message
 	}
 	args = append(args, limit)
 	rows, err := s.db.Query(`
-		SELECT seq, ts, session_id, role, body, attachments, model, node_id, command_seq, question_seq, options, brief, progress
+		SELECT seq, ts, session_id, role, body, attachments, model, node_id, command_seq, question_seq, answers_seq, options, brief, progress
 		FROM messages WHERE `+where+` ORDER BY seq LIMIT ?`, args...)
 	if err != nil {
 		return nil, fmt.Errorf("list messages: %w", err)
@@ -498,7 +509,7 @@ func (s *Store) Messages(sessionID string, afterSeq int64, limit int) ([]Message
 		var message Message
 		var timestamp, attachments, options, brief, progress string
 		if err := rows.Scan(&message.Seq, &timestamp, &message.SessionID,
-			&message.Role, &message.Body, &attachments, &message.Model, &message.NodeID, &message.CommandSeq, &message.QuestionSeq, &options, &brief, &progress); err != nil {
+			&message.Role, &message.Body, &attachments, &message.Model, &message.NodeID, &message.CommandSeq, &message.QuestionSeq, &message.Answers, &options, &brief, &progress); err != nil {
 			return nil, fmt.Errorf("list messages: %w", err)
 		}
 		if err := decodeQuestionOptions(options, &message.Options); err != nil {
@@ -549,7 +560,7 @@ func (s *Store) NodeMessages(nodeID string, afterSeq int64, limit int) ([]Messag
 		limit = 200
 	}
 	rows, err := s.db.Query(`
-		SELECT seq, ts, session_id, role, body, attachments, model, node_id, command_seq, question_seq, options, brief, progress
+		SELECT seq, ts, session_id, role, body, attachments, model, node_id, command_seq, question_seq, answers_seq, options, brief, progress
 		FROM messages WHERE node_id = ? AND seq > ? ORDER BY seq LIMIT ?`,
 		nodeID, afterSeq, limit)
 	if err != nil {
@@ -561,7 +572,7 @@ func (s *Store) NodeMessages(nodeID string, afterSeq int64, limit int) ([]Messag
 		var message Message
 		var timestamp, attachments, options, brief, progress string
 		if err := rows.Scan(&message.Seq, &timestamp, &message.SessionID,
-			&message.Role, &message.Body, &attachments, &message.Model, &message.NodeID, &message.CommandSeq, &message.QuestionSeq, &options, &brief, &progress); err != nil {
+			&message.Role, &message.Body, &attachments, &message.Model, &message.NodeID, &message.CommandSeq, &message.QuestionSeq, &message.Answers, &options, &brief, &progress); err != nil {
 			return nil, fmt.Errorf("node messages: %w", err)
 		}
 		if err := decodeQuestionOptions(options, &message.Options); err != nil {
@@ -824,10 +835,11 @@ func applyMessageView(tx *sql.Tx, payload messagePayload, seq int64, at time.Tim
 		return err
 	}
 	_, err = tx.Exec(`
-		INSERT INTO messages (seq, ts, session_id, role, body, attachments, model, node_id, command_seq, question_seq, options, brief, progress)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		INSERT INTO messages (seq, ts, session_id, role, body, attachments, model, node_id, command_seq, question_seq, answers_seq, options, brief, progress)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		seq, formatTime(at), payload.SessionID, payload.Role, payload.Body,
-		string(attachments), payload.Model, payload.NodeID, payload.CommandSeq, payload.QuestionSeq, string(options), string(brief), string(progress))
+		string(attachments), payload.Model, payload.NodeID, payload.CommandSeq, payload.QuestionSeq,
+		payload.Answers, string(options), string(brief), string(progress))
 	if err != nil {
 		return err
 	}

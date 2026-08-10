@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"reflect"
 	"regexp"
 	"strings"
 	"testing"
@@ -301,6 +302,77 @@ func TestHelpSitsAboveNodeViewAndOwnsKeysUntilClosed(t *testing.T) {
 	_, quit := model.Update(tea.KeyMsg{Type: tea.KeyEsc})
 	if quit != nil || model.palette != paletteNone || model.nodeViewID != "worker" {
 		t.Fatal("esc changed the node view instead of closing help first")
+	}
+}
+
+// A modal document is laid out whole and shown a window at a time. Scrolling
+// one moves the window; it must not lay the document out again, and the two
+// readers of it in a single frame — the one asking how far down it goes and
+// the one drawing it — must share the one layout.
+func TestScrollingAModalOverlayLaysItOutOnce(t *testing.T) {
+	model := New(&fakeBackend{}, "overlay-scroll")
+	model.setSize(120, 40)
+	model.openHelp()
+	_ = model.View()
+
+	width := max(1, model.helpOverlayWidth()-2)
+	first := model.helpContentLines(width)
+	if len(first) == 0 {
+		t.Fatal("the guide laid out to nothing")
+	}
+	// The layout is the same bytes it would be built cold.
+	if cold := model.layOutHelp(width, model.width < 100); !reflect.DeepEqual(cold, first) {
+		t.Fatal("the kept guide differs from one laid out cold")
+	}
+
+	before := model.View()
+	model.scrollHelp(3)
+	after := model.View()
+	if before == after {
+		t.Fatal("scrolling the guide moved nothing on screen")
+	}
+	again := model.helpContentLines(width)
+	if len(again) != len(first) || &again[0] != &first[0] {
+		t.Fatal("scrolling the guide laid the whole document out again")
+	}
+
+	// A narrower frame is a different document, and it is laid out for it.
+	model.setSize(80, 40)
+	narrow := model.helpContentLines(max(1, model.helpOverlayWidth()-2))
+	if len(narrow) > 0 && &narrow[0] == &first[0] {
+		t.Fatal("a narrower frame reused the wide layout")
+	}
+}
+
+func TestScrollingTheSettingsSheetLaysItOutOnce(t *testing.T) {
+	model, _, _ := newSettingsModel(t)
+	_ = model.openSettings()
+	_ = model.View()
+
+	width := model.settingsContentWidth()
+	first, firstRows := model.settingsContentLines(width)
+	if len(first) == 0 || len(firstRows) == 0 {
+		t.Fatal("the sheet laid out to nothing")
+	}
+	cold, coldRows := model.layOutSettings(width)
+	if !reflect.DeepEqual(cold, first) || !reflect.DeepEqual(coldRows, firstRows) {
+		t.Fatal("the kept sheet differs from one laid out cold")
+	}
+
+	// The wheel asks how far down the sheet goes and then the frame draws it.
+	model.scrollSettings(3)
+	_ = model.View()
+	again, _ := model.settingsContentLines(width)
+	if len(again) != len(first) || &again[0] != &first[0] {
+		t.Fatal("scrolling the sheet laid the whole document out again")
+	}
+
+	// Moving the selection changes the sheet, and the message that moves it
+	// is what drops the layout showing the old one.
+	_, _ = model.Update(tea.KeyMsg{Type: tea.KeyDown})
+	moved, _ := model.settingsContentLines(width)
+	if len(moved) > 0 && &moved[0] == &first[0] {
+		t.Fatal("moving the selection kept the sheet that showed the old one")
 	}
 }
 

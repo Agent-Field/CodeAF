@@ -45,7 +45,9 @@ func (m *Model) openRecallHistory(terms string) tea.Cmd {
 	m.historyEntries = nil
 	m.historySelection = 0
 	m.historyOpen = -1
-	m.input.Reset()
+	// Recall reads the thread, so it takes the composer's focus and its words.
+	// Escape back to the composer is where the draft is waiting.
+	m.borrowDraft()
 	m.palette = paletteNone
 	m.paletteSelected = 0
 	m.focus = focusChat

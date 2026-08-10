@@ -10,7 +10,7 @@ import (
 
 const nodeColumns = `
 	id, parent_id, brief, title, grp, stage, status, owner, claim_token, attempt,
-	summary, error, held, cancel_requested, priority, origin, session_id, intent, charter_id, trial_of, retry_of, service_intent, work_model, craft, attachments, created_seq, created_order, updated_seq,
+	summary, error, held, cancel_requested, priority, origin, session_id, intent, charter_id, trial_of, retry_of, service_intent, work_model, plan_model, craft, subharness, splice_subharness, attachments, created_seq, created_order, updated_seq,
     started_at, finished_at, folded, fold_root, fold_digest, fold_pointers`
 
 // migrateNodesSchema adds provenance and display columns introduced after the
@@ -48,9 +48,19 @@ func migrateNodesSchema(db *sql.DB) error {
 		"priority":         `INTEGER NOT NULL DEFAULT 0`,
 		"service_intent":   `INTEGER NOT NULL DEFAULT 0 CHECK (service_intent IN (0, 1))`,
 		"work_model":       `TEXT NOT NULL DEFAULT ''`,
-		"craft":            `TEXT NOT NULL DEFAULT ''`,
+		// plan_model is empty for every node written before it existed, and empty
+		// is exactly what "the plan slot followed the work slot" has always meant,
+		// so an old store reads back as the truth it was recorded under.
+		"plan_model": `TEXT NOT NULL DEFAULT ''`,
+		"craft":      `TEXT NOT NULL DEFAULT ''`,
+		// subharness is the node's settled worker; splice_subharness is the
+		// choice the whole subtree was admitted under. Both default to empty,
+		// which is the generalist, so every node written before either column
+		// existed reads back exactly as it always did.
+		"subharness":        `TEXT NOT NULL DEFAULT ''`,
+		"splice_subharness": `TEXT NOT NULL DEFAULT ''`,
 	}
-	for _, column := range []string{"title", "grp", "charter_id", "trial_of", "attachments", "retry_of", "held", "cancel_requested", "priority", "service_intent", "work_model", "craft"} {
+	for _, column := range []string{"title", "grp", "charter_id", "trial_of", "attachments", "retry_of", "held", "cancel_requested", "priority", "service_intent", "work_model", "plan_model", "craft", "subharness", "splice_subharness"} {
 		if existing[column] {
 			continue
 		}
@@ -85,12 +95,23 @@ func (s *Store) Nodes() ([]Node, error) {
 	return s.queryNodes(``, nil)
 }
 
-// CharterFiredNodes returns only the nodes a charter firing admitted, in the
-// same stable admission order as Nodes. The reconciler asks this question twice
-// a second and the answer is almost always empty, so the filter belongs in SQL
-// rather than in a full-table decode the caller throws away.
-func (s *Store) CharterFiredNodes() ([]Node, error) {
-	return s.queryNodes(`WHERE origin = ? AND charter_id != ''`, []any{OriginTrigger})
+// CharterFiredNodes returns the nodes a charter firing admitted and whose
+// outcome may still be undecided, in the same stable admission order as Nodes.
+// The reconciler asks this question twice a second and the answer is almost
+// always empty, so the filter belongs in SQL rather than in a full-table decode
+// the caller throws away.
+//
+// Two clauses do that narrowing, and both are statements about what cannot
+// still be pending. A folded node's job settled at least a fold grace ago, and
+// the resident reviews charter outcomes before it folds anything on every one
+// of the thousands of ticks in between — so a folded firing has been reviewed,
+// and asking again costs a node read, a parent walk and two unindexed
+// json_extract queries to be told so. afterSeq is the caller's own watermark
+// over the same fact: everything at or below it is settled business, and the
+// verdict it reached is journaled, so nothing is lost by not deriving it twice.
+func (s *Store) CharterFiredNodes(afterSeq int64) ([]Node, error) {
+	return s.queryNodes(`WHERE origin = ? AND charter_id != '' AND folded = 0 AND created_seq > ?`,
+		[]any{OriginTrigger, afterSeq})
 }
 
 // SubtreeNodes returns root and every descendant in the same stable admission
@@ -212,7 +233,7 @@ func scanNode(scanner rowScanner) (Node, error) {
 		&node.Owner, &node.ClaimToken, &node.Attempt, &node.Summary, &node.Error,
 		&node.Held, &node.CancelRequested, &node.Priority,
 		&node.Provenance.Origin, &session, &node.Provenance.Intent, &node.Provenance.CharterID, &node.Provenance.TrialOf, &node.Provenance.RetryOf, &node.Provenance.ServiceIntent,
-		&node.Provenance.WorkModel, &node.Provenance.Craft, &attachments,
+		&node.Provenance.WorkModel, &node.Provenance.PlanModel, &node.Provenance.Craft, &node.Subharness, &node.Provenance.Subharness, &attachments,
 		&node.CreatedSeq, &node.CreatedOrder, &node.UpdatedSeq, &started, &finished,
 		&node.Folded, &node.FoldRoot, &node.FoldDigest, &pointers,
 	); err != nil {

@@ -22,11 +22,16 @@ import (
 
 	"github.com/Agent-Field/aforge-v2/internal/config"
 	"github.com/Agent-Field/aforge-v2/internal/plan"
-	"github.com/Agent-Field/aforge-v2/internal/profile"
 	"github.com/Agent-Field/aforge-v2/internal/router"
 )
 
 func main() {
+	// Before anything else — before the GC is tuned, before a flag is read,
+	// before a single line of aforge exists in this process — the binary asks
+	// whether it was started to be something else. See swepro.go.
+	if sweproSentinel(os.Getenv) {
+		os.Exit(dispatchSwepro(os.Args[1:]))
+	}
 	// The default heap target collects several times before the surface is even
 	// drawn, and none of those collections free anything worth the pause: the
 	// launch path allocates a graph snapshot, a catalog, and a thread, and then
@@ -71,6 +76,10 @@ func execute() (code int) {
 }
 
 func run() error {
+	// Who this build can hand a leaf to, declared once, before any command has
+	// read a flag. Every surface below reads the same menu and the same rulers
+	// because none of them registers anything of its own.
+	installSubharnesses()
 	if len(os.Args) < 2 {
 		// No arguments opens the resident surface: the chat thread over the
 		// durable graph. The one-shot commands below are unchanged.
@@ -135,6 +144,16 @@ const usageText = `aforge — build and revise task graphs
   aforge rebuild [--db path] [--yes]  discard every derived table and replay the journal
   aforge why self [--db path]   show today's self-spend receipts
 
+Workers:
+  chat, do and run each take --subharness <name>, which forces every leaf onto
+  one worker instead of letting the compiler choose per node. Leave it unset
+  unless you are measuring one worker against another. This build has:
+    swe   a whole software-engineering pipeline. It takes a coding issue in a
+          git repository whole — plans it, edits in parallel worktrees, judges
+          each change before merging, and audits the result against that
+          repository's own build and tests before calling itself done.
+  An unknown name is a note on stderr and the default worker, never a refusal.
+
 Environment:
   OPENROUTER_API_KEY   required
   AFORGE_MODEL         default ` + config.DefaultModel + `
@@ -165,6 +184,9 @@ Environment:
   AFORGE_PRACTICE_IDLE  20m  quiet period before self-practice
   AFORGE_BRIEF_AFTER   4h  minimum absence before an arrival brief (0 = always)
   AFORGE_PREAUTHORIZE_SPEND  1 raises the rail without a headless stdin prompt
+  AFORGE_SWE_MAX_COST  10.0  dollar ceiling on one swe leaf's run inside the
+                       coding pipeline. A backstop, not a budget — the daily
+                       rail is the budget.
   AFORGE_HOME          the whole state root — journal, workspace, CAS, craft,
                        profiles, catalog, skills (default ~/.aforge). Move it to
                        run a disposable brain that touches nothing of yours.
@@ -215,8 +237,7 @@ func runPlan(args []string) error {
 
 	// The ruler in force comes from measured work when there is any; the
 	// built-in prior is only the starting point.
-	store, _ := profile.Load(settings.ProfileDir, settings.Model, "linear")
-	plan.UseAnchors(store.Anchors)
+	store := installMeasuredRulers(settings.ProfileDir, settings.Model)
 
 	if !*asJSON {
 		fmt.Printf("goal:   %s\nmodel:  %s (reasoning: %s)\n", goal, settings.PlanModelResolved(), settings.Reasoning)
