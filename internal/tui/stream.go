@@ -27,9 +27,15 @@ const (
 
 // StreamEvent is the TUI-facing stream protocol. Head deltas carry the raw
 // structured response; the lens extracts only its reply field before drawing.
+// Session names the room the event belongs to; empty is the zero value every
+// existing test constructs and means "no room asserted" rather than "no
+// room" — applyStreamEvent only drops an event whose Session is set AND
+// disagrees with the model's own, so today's single-session behavior is
+// unchanged either way.
 type StreamEvent struct {
-	Kind  StreamEventKind
-	Delta string
+	Kind    StreamEventKind
+	Delta   string
+	Session string
 }
 
 type streamSource interface {
@@ -115,6 +121,15 @@ func waitForStream(events <-chan StreamEvent) tea.Cmd {
 }
 
 func (m *Model) applyStreamEvent(event StreamEvent) {
+	// A keyed event for a room this model is not showing is dropped rather
+	// than drawn. Today there is exactly one room and the key always matches
+	// (chat.go stamps the same session the TUI was opened with), so this is a
+	// no-op in practice; it exists so the day a second room's events reach
+	// this channel, they render into that room and not into whichever one
+	// happens to be on screen.
+	if event.Session != "" && event.Session != m.sessionID {
+		return
+	}
 	switch event.Kind {
 	case StreamStarted:
 		// The store poll and event channel are independent. If the durable head

@@ -211,11 +211,15 @@ func (c *Client) completeWithMessagesStreaming(
 		return nil, apiError(httpResponse.StatusCode, payload)
 	}
 
-	observer(StreamEvent{Kind: StreamStarted})
+	// Read once per call rather than once per event: the session does not
+	// change mid-stream, and this loop already runs against the connection's
+	// idle watchdog (see the note below on why the observer stays trivial).
+	session := streamSessionFrom(ctx)
+	observer(StreamEvent{Kind: StreamStarted, Session: session})
 	finished := false
 	defer func() {
 		if !finished {
-			observer(StreamEvent{Kind: StreamFailed})
+			observer(StreamEvent{Kind: StreamFailed, Session: session})
 		}
 	}()
 
@@ -263,14 +267,14 @@ func (c *Client) completeWithMessagesStreaming(
 			if choice.Delta.Content != "" {
 				thinking = false
 				content.WriteString(choice.Delta.Content)
-				observer(StreamEvent{Kind: StreamDelta, Delta: choice.Delta.Content})
+				observer(StreamEvent{Kind: StreamDelta, Delta: choice.Delta.Content, Session: session})
 			}
 			// Reasoning is announced once per run of it rather than per token:
 			// the surface only ever draws that thought is happening, and the
 			// text itself is not ours to show.
 			if !thinking && choice.Delta.thinking() {
 				thinking = true
-				observer(StreamEvent{Kind: StreamThinking})
+				observer(StreamEvent{Kind: StreamThinking, Session: session})
 			}
 			for _, fragment := range choice.Delta.ToolCalls {
 				tools.add(fragment)
@@ -287,7 +291,7 @@ func (c *Client) completeWithMessagesStreaming(
 	}
 	response.Choices = []ai.Choice{{Index: 0, Message: message, FinishReason: finishReason}}
 	finished = true
-	observer(StreamEvent{Kind: StreamFinished})
+	observer(StreamEvent{Kind: StreamFinished, Session: session})
 	return response, nil
 }
 
