@@ -166,6 +166,40 @@ func RevisionEvent(node store.Node, summary string, artifacts []string, failure 
 	return event
 }
 
+// CancelledRevisionEvent is RevisionEvent's third flavor, and the one that had
+// no channel at all until now. A failure tells the sentinel that an assumption
+// died; a redirection tells it the owner changed their mind about the goal. A
+// cancellation says something narrower than either: this particular piece of
+// work is not wanted, and nothing about the goal has changed.
+//
+// So the licence is narrow to match. The remaining plan may need to stop
+// depending on what was withdrawn — that is a real contradiction, and it is the
+// only one here. What it must never do is treat the cancellation as a failure
+// to repair: adding a node to redo the cancelled work, or to check what it left
+// behind, spends the user's money undoing the decision they just made. The
+// prompt refuses it and this says it again at the event, because the event is
+// what the sentinel reads last.
+func CancelledRevisionEvent(node store.Node, partial, reason string) string {
+	label := strings.TrimSpace(node.Title)
+	if label == "" {
+		label = firstLine(node.Brief)
+	}
+	if reason = strings.TrimSpace(reason); reason == "" {
+		reason = "no reason given"
+	}
+	event := fmt.Sprintf("Node %q was CANCELLED by the user: %s.", label,
+		clipEventBytes(firstLine(reason), revisionFailureBytes))
+	if partial = strings.TrimSpace(partial); partial != "" {
+		event += "\n\nWhat it had written when they stopped it:\n" +
+			clipEventBytes(partial, revisionResultBytes)
+	}
+	return event + "\n\nThe user stopped this on purpose; it is not a failure and it is not " +
+		"waiting to be finished. Reconsider only the unstarted remainder: a step that can no " +
+		"longer get what it needed from this one may need rewiring, retitling or removing. " +
+		"Never add a node that redoes, finishes, resumes or verifies the cancelled work, and " +
+		"never treat what it left behind as something to be repaired."
+}
+
 const (
 	revisionResultBytes  = 1200
 	revisionFailureBytes = 300

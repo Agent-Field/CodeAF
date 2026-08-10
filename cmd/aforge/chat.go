@@ -844,6 +844,16 @@ func buildBrain(w *chatWindow, session string, opts brainOptions) (*chatBrain, e
 			plans.recordOutcome(planGraph, planNode, outcome, err, escalatedFrom)
 		}
 		if err == nil && outcome != nil && (outcome.Stop == exec.StopPaused || outcome.Stop == exec.StopCancelled) {
+			// A cancel is news for the plan above this leaf, and it is the one
+			// ending that never told it anything. A pause is not: the work is
+			// coming back, and nothing about the remainder has changed. The
+			// sentinel is asked before the early return because this is the last
+			// moment the partial is in hand — after this the claim goes back and
+			// the node settles cancelled somewhere else entirely.
+			if outcome.Stop == exec.StopCancelled && !isReflex && planGraph != nil {
+				plans.reviseAfterCancel(ctx, settings, planClient, graph, node, planPrefix, planGraph,
+					outcome.Text, store.UserCancelReason, workerModel)
+			}
 			return resident.ExecResult{
 				Summary: outcome.Text, PromptTokens: spent.PromptTokens,
 				CompletionTokens: spent.CompletionTokens, Cost: spent.Cost,
@@ -2156,6 +2166,33 @@ func (c *chatCommander) Cancel(nodeID string) error {
 		Instruction: "cancelled from the TUI",
 	})
 	return err
+}
+
+// Restart is the settled node's forward door, journaled as the identical
+// command "restart that" would journal. Cancel's twin in every respect: one
+// typed command, one durable receipt, and the reconciler's own splice behind
+// it — the key press adds no second control path for a sentence to miss.
+func (c *chatCommander) Restart(nodeID string) error {
+	_, err := c.store.RequestCommand(store.Command{
+		SessionID:   c.session(),
+		Kind:        store.CommandRestart,
+		Target:      nodeID,
+		Instruction: "restarted from the TUI",
+	})
+	return err
+}
+
+// ConfirmSurgery hands the key path the conversational path's own gates. The
+// head is in this process, so there is nothing to route: the same
+// surgeryNeedsConfirmation, the same durable question, the same encoded option
+// that replays the command when the answer comes back. A window with no head
+// behind it has no gate to consult and says so by answering "not asked" — it
+// also has no reconciler, so nothing it journals is applied here anyway.
+func (c *chatCommander) ConfirmSurgery(kind store.CommandKind, nodeID string) (bool, error) {
+	if c == nil || c.head == nil {
+		return false, nil
+	}
+	return c.head.ConfirmSurgery(c.session(), kind, nodeID)
 }
 
 func (c *chatCommander) NodeTrace(nodeID string, maxBytes int) string {
@@ -3808,6 +3845,25 @@ func (j *jobPlans) markRunning(graph *plan.Graph, node *plan.Node) {
 // Both refusals were already the everyday case, because the store has always
 // been free to claim a node while this pass was running.
 func (j *jobPlans) reviseAfter(ctx context.Context, settings config.Config, client *liveClient, graph *store.Store, node store.Node, prefix string, planGraph *plan.Graph, summary string, artifacts []string, failure string, workerModel string) {
+	j.reviseOn(ctx, settings, client, graph, node, prefix, planGraph,
+		resident.RevisionEvent(node, summary, artifacts, failure), workerModel)
+}
+
+// reviseAfterCancel is the same pass convened by a withdrawal rather than a
+// landing. Cancellation used to have no upward channel at all: the leaf wrapper
+// returned before the sentinel was ever asked, so a plan whose third step had
+// just been taken away carried on building the fourth against an input that
+// would never arrive. The event says what was stopped and what it had already
+// written; the sentinel's own rules do the rest — only unstarted nodes, only a
+// named contradiction, and nothing that re-adds the work the user cut.
+func (j *jobPlans) reviseAfterCancel(ctx context.Context, settings config.Config, client *liveClient,
+	graph *store.Store, node store.Node, prefix string, planGraph *plan.Graph,
+	partial, reason, workerModel string) {
+	j.reviseOn(ctx, settings, client, graph, node, prefix, planGraph,
+		resident.CancelledRevisionEvent(node, partial, reason), workerModel)
+}
+
+func (j *jobPlans) reviseOn(ctx context.Context, settings config.Config, client *liveClient, graph *store.Store, node store.Node, prefix string, planGraph *plan.Graph, event string, workerModel string) {
 	if prefix == "" {
 		return
 	}
@@ -3841,8 +3897,7 @@ func (j *jobPlans) reviseAfter(ctx context.Context, settings config.Config, clie
 	// so its spend belongs to this job.
 	judgeCtx := withSpendNode(router.WithAvoidModel(ctx, workerModel), node.ID)
 	operations, _, err := plan.Revise(settings.Context(judgeCtx, planGraph.Goal),
-		unlockedWhileThinking{client: client, document: &locks.document}, planGraph,
-		resident.RevisionEvent(node, summary, artifacts, failure))
+		unlockedWhileThinking{client: client, document: &locks.document}, planGraph, event)
 	if err != nil || len(operations) == 0 {
 		return
 	}

@@ -116,6 +116,23 @@ func (m *Model) questionSelectable() bool {
 		m.input.Value() == "" && m.questionCardWithOptions() != nil
 }
 
+// nodeActionHints names the verb that is true of the task being read, and no
+// other. The line used to say "c cancel" over every task there is, which is a
+// promise on a job that finished an hour ago and a wrong word on one the user
+// stopped themselves: a cancelled node's forward door is restart, and a done
+// node has no door at all. Same grammar, same four slots, same control ink —
+// only the middle term follows the state.
+func (m *Model) nodeActionHints() string {
+	verb := ""
+	switch {
+	case nodeRestartable(m.inspectedNode.Status):
+		verb = " · r restart"
+	case !terminalStatus(m.inspectedNode.Status):
+		verb = " · c stop"
+	}
+	return "↑/↓ read" + verb + " · tab steers · esc back"
+}
+
 // contextHelpLine keeps at most four actions and follows the current focus
 // zone, so the footer describes what the next key will do rather than acting
 // as a static command inventory.
@@ -130,7 +147,7 @@ func (m *Model) contextHelpLine() string {
 	case m.nodeViewID != "" && m.inputFocused:
 		return "type to steer · enter send · tab reads · esc back"
 	case m.nodeViewID != "":
-		return "↑/↓ read · c cancel · tab steers · esc back"
+		return m.nodeActionHints()
 	case m.focus == focusGraph:
 		return "↑/↓ select · enter inspect · esc close · ctrl+t hide"
 	case m.focus == focusSelf && m.selfFilterable():

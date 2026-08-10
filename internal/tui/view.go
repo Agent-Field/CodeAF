@@ -2976,6 +2976,10 @@ var (
 	doneGlyphDimFlash   = mutedStyle.Bold(true)
 	failedGlyphStyle    = roseStyle
 	failedGlyphDimStyle = mutedStyle
+	// Cancelled is muted whether the row is dimmed or not: the ink is already
+	// as quiet as the surface goes, and dimming it further would be saying
+	// something about a decision the user made deliberately.
+	cancelledGlyphStyle = mutedStyle
 	pendingGlyphStyle   = butterStyle
 	runningGlyphStyle   = peachStyle
 )
@@ -3003,7 +3007,12 @@ func (m *Model) nodeGlyphStyled(node store.Node, now time.Time, dimmed bool) (st
 	case store.Claimed, store.Running:
 		frame := spinnerFrames[m.spinnerFrame%len(spinnerFrames)]
 		return runningGlyphStyle.Render("● " + frame), true
-	case store.Failed, store.Cancelled:
+	case store.Cancelled:
+		// A cancellation wears the muted ink, never failure's rose. The person
+		// who stopped the work does not need it flagged back at them as an
+		// error, and the brief's own cancelled row has always said so.
+		return cancelledGlyphStyle.Render("●"), false
+	case store.Failed:
 		style := failedGlyphStyle
 		if dimmed {
 			style = failedGlyphDimStyle

@@ -399,11 +399,59 @@ func (s *Store) ReleaseOrphans() ([]string, error) {
 			continue
 		}
 		if item.cancel {
-			_ = s.CancelPending(item.claim.ID, "cancelled by user")
+			_ = s.CancelPending(item.claim.ID, UserCancelReason)
 		}
 		released = append(released, item.claim.ID)
 	}
+	if err := s.finishParkedCancellations(); err != nil {
+		return released, err
+	}
 	return released, nil
+}
+
+// finishParkedCancellations completes a cancellation that was asked for and
+// then never landed. The runner releases the claim first and cancels second, so
+// a store write that fails between the two leaves the node Pending with
+// cancel_requested still set — and that row is invisible in both directions:
+// Ready excludes it, so nothing will ever claim it, and its parent stays open
+// forever waiting for a child no worker will pick up. It is not an orphaned
+// claim, which is why the sweep above never repaired it, but it is the same
+// kind of wreckage and the same moment is the right one to clear it.
+//
+// Parked rows are not counted as released work: nobody is resuming them, and
+// the surface's "picked up N pieces of work" line would be saying the opposite
+// of what happened.
+func (s *Store) finishParkedCancellations() error {
+	rows, err := s.db.Query(
+		`SELECT id, error FROM nodes
+		 WHERE status = ? AND cancel_requested = 1 AND folded = 0 AND id != ?`,
+		Pending, RootID)
+	if err != nil {
+		return fmt.Errorf("finish parked cancellations: %w", err)
+	}
+	type parked struct{ id, reason string }
+	var stuck []parked
+	for rows.Next() {
+		var item parked
+		if err := rows.Scan(&item.id, &item.reason); err != nil {
+			rows.Close()
+			return fmt.Errorf("finish parked cancellations: %w", err)
+		}
+		stuck = append(stuck, item)
+	}
+	if err := rows.Close(); err != nil {
+		return fmt.Errorf("finish parked cancellations: %w", err)
+	}
+	for _, item := range stuck {
+		reason := strings.TrimSpace(item.reason)
+		if reason == "" {
+			reason = UserCancelReason
+		}
+		// A refusal here is another writer having finished the row first, which
+		// is the outcome this wanted anyway.
+		_ = s.CancelPending(item.id, reason)
+	}
+	return nil
 }
 
 func requireChanged(tx *sql.Tx, result sql.Result, claim Claim, allowed ...Status) error {

@@ -17,6 +17,7 @@ package tui
 // again.
 var actionRunes = map[string]bool{
 	"c": true, // cancel the inspected worker
+	"r": true, // restart the inspected worker once it has stopped
 	"v": true, // expand or collapse reading receipts
 	"y": true, // copy the answer
 	"Y": true, // copy the file the answer produced

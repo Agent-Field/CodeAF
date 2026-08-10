@@ -666,6 +666,14 @@ func dependencyDigest(id string, status Status, summary, failure string) string 
 		}
 		return id + " (failed): " + failure
 	case Cancelled:
+		// A cancelled node that got somewhere before it was stopped is not the
+		// same input as one that never ran, and saying "(not run)" over a
+		// half-written report is how a restart retyped work that was already on
+		// disk. The label says where the work stopped; the partial itself is the
+		// digest, budgeted and clipped exactly as a finished node's is.
+		if partial := strings.TrimSpace(summary); partial != "" {
+			return id + " (cancelled midway): " + partial
+		}
 		if strings.TrimSpace(failure) == "" {
 			failure = "no reason recorded"
 		}

@@ -18,8 +18,20 @@ type nodeAmendedPayload struct {
 	Title string `json:"title,omitempty"`
 }
 
+// UserCancelReason is the reason a person's own cancellation is journaled
+// with. It is a named constant because it is read as well as written: the
+// upward-rethink seam convenes the plan sentinel for a cancellation the user
+// asked for and for no other kind, and a revision's own removals, the practice
+// rail's budget stop and a craft run's early landing all cancel pending work
+// with reasons of their own.
+const UserCancelReason = "cancelled by user"
+
 type nodeCancelledPayload struct {
 	Reason string `json:"reason"`
+	// Partial is whatever the worker had already written when the user stopped
+	// it. Added after the fact and omitted when empty, so every cancellation
+	// journaled before it existed replays as the empty partial it was.
+	Partial string `json:"partial,omitempty"`
 }
 
 type nodeReparentedPayload struct {
@@ -64,9 +76,28 @@ func (s *Store) AmendPending(id, brief, title string) error {
 // the claim-based cancel path, it does not require the node to be ready —
 // revision most often removes nodes still waiting on their inputs.
 func (s *Store) CancelPending(id, reason string) error {
+	return s.CancelPendingWithPartial(id, reason, "")
+}
+
+// CancelPendingWithPartial is the same retirement carrying what the worker had
+// already written before it was stopped.
+//
+// The partial used to be computed and then dropped on the floor: the cancel
+// path built it, handed it to the runner as a result summary, and the store
+// wrote only the reason — so a cancelled node's whole contribution to whatever
+// came next was "(not run): cancelled by user". The restart wires a fresh
+// subtree to the dead attempt's digest precisely so the retry can read what its
+// predecessor got done, and there was never anything there to read. It goes in
+// the summary column because that is where every other settled node's words
+// already live, and the digest reads it from there.
+func (s *Store) CancelPendingWithPartial(id, reason, partial string) error {
 	reason = strings.TrimSpace(reason)
 	if reason == "" {
 		reason = "cancelled by revision"
+	}
+	partial = strings.TrimSpace(partial)
+	if partial != "" {
+		partial = bounded(partial, MaxDigestBytes)
 	}
 	tx, err := s.db.Begin()
 	if err != nil {
@@ -76,11 +107,12 @@ func (s *Store) CancelPending(id, reason string) error {
 	if err := requirePending(tx, id, "cancel node"); err != nil {
 		return err
 	}
-	seq, at, err := appendEvent(tx, id, EventNodeCancelled, nodeCancelledPayload{Reason: reason})
+	seq, at, err := appendEvent(tx, id, EventNodeCancelled,
+		nodeCancelledPayload{Reason: reason, Partial: partial})
 	if err != nil {
 		return fmt.Errorf("cancel node: %w", err)
 	}
-	if err := applyNodeCancelledView(tx, id, reason, seq, formatTime(at)); err != nil {
+	if err := applyNodeCancelledView(tx, id, reason, partial, seq, formatTime(at)); err != nil {
 		return fmt.Errorf("cancel node: %w", err)
 	}
 	if err := recordSelfReceipt(tx, id); err != nil {
@@ -168,10 +200,16 @@ func applyNodeReparentedView(tx *sql.Tx, id, parent string, seq int64) error {
 	return nil
 }
 
-func applyNodeCancelledView(tx *sql.Tx, id, reason string, seq int64, finishedAt string) error {
-	_, err := tx.Exec(`UPDATE nodes SET status = ?, error = ?, held = 0, cancel_requested = 0,
+func applyNodeCancelledView(tx *sql.Tx, id, reason, partial string, seq int64, finishedAt string) error {
+	if strings.TrimSpace(partial) == "" {
+		_, err := tx.Exec(`UPDATE nodes SET status = ?, error = ?, held = 0, cancel_requested = 0,
+			owner = '', updated_seq = ?, finished_at = ? WHERE id = ?`,
+			Cancelled, reason, seq, finishedAt, id)
+		return err
+	}
+	_, err := tx.Exec(`UPDATE nodes SET status = ?, error = ?, summary = ?, held = 0, cancel_requested = 0,
 		owner = '', updated_seq = ?, finished_at = ? WHERE id = ?`,
-		Cancelled, reason, seq, finishedAt, id)
+		Cancelled, reason, partial, seq, finishedAt, id)
 	return err
 }
 

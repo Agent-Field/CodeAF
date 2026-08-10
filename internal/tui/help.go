@@ -73,7 +73,7 @@ func buildHelpCategories() []helpCategory {
 			{key: "esc", meaning: "overlay → expanded item → zone → a reply in flight → draft → quit"},
 			{key: "ctrl+t/" + keyBindings.graph, meaning: "show or hide the task list"},
 			{key: "[ / ]", meaning: "nudge the chat/task split while outside the input"},
-			{key: "tab · c", meaning: "cancel the step you are looking at — tab out of steer"},
+			{key: "tab · c/r", meaning: "in a task: c stops live work, r restarts what failed or was stopped"},
 			{key: keyBindings.settings + " / ,", meaning: "open settings; the bare comma works outside the input"},
 			{key: "header", meaning: "tab, then ←/→: models ⌄ · ⚙ · tasks · ? · thread · board · self"},
 			{key: "mouse", meaning: "click focus/select/open; drag the pane divider"},

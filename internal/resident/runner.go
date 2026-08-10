@@ -528,6 +528,30 @@ func (r *Runner) executeGuarded(ctx context.Context, node store.Node) (result Ex
 	return r.execute(ctx, node)
 }
 
+// finishCancellation lands the node the user stopped, carrying whatever the
+// worker had already written.
+//
+// The error used to be discarded, and that discard is the whole reason this is
+// a named function. Release has already run by the time it is called, so a
+// cancellation that does not land leaves the node Pending with cancel_requested
+// still set — a row Ready refuses to offer and Claim refuses to take, whose
+// parent then waits on it forever. Nothing anywhere noticed, because nothing
+// anywhere was told.
+//
+// One retry, because the realistic failure is a momentary collision with
+// another writer and the second attempt costs nothing. A cancellation that
+// still will not land is journaled as a fault so it is visible, and the startup
+// sweep finishes the parked row — see finishParkedCancellations.
+func (r *Runner) finishCancellation(node store.Node, partial string) {
+	err := r.graph.CancelPendingWithPartial(node.ID, store.UserCancelReason, partial)
+	if err == nil {
+		return
+	}
+	if retry := r.graph.CancelPendingWithPartial(node.ID, store.UserCancelReason, partial); retry != nil {
+		_ = guard.Note("resident/runner cancel "+node.ID, retry)
+	}
+}
+
 func (r *Runner) runOne(ctx context.Context, node store.Node) {
 	claim := store.Claim{ID: node.ID, Owner: node.Owner, Token: node.ClaimToken}
 	// Settling beats stranding. A fault in the landing steps below — service
@@ -552,7 +576,7 @@ func (r *Runner) runOne(ctx context.Context, node store.Node) {
 			return
 		}
 		if control.CancelRequested {
-			_ = r.graph.CancelPending(node.ID, "cancelled by user")
+			r.finishCancellation(node, result.Summary)
 		}
 		return
 	}
