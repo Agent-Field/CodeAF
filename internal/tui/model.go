@@ -1208,7 +1208,13 @@ func (m *Model) update(message tea.Msg) (tea.Model, tea.Cmd) {
 		paletteHeight := m.layoutPaletteHeight()
 		var command tea.Cmd
 		m.input, command = m.input.Update(message)
-		if m.input.Value() != before && m.nodeViewID == "" {
+		// The steer line is a composer too. Guarding this on the thread meant a
+		// draft that wrapped to a second row in a task page grew the frame by a
+		// line with no relayout behind it — one row past the alt-screen bottom,
+		// the screen scrolls, and the header the clock re-stamps every tick is
+		// left ghosted above. It also meant a slash steer got no completion
+		// palette and typing never ended a recall walk.
+		if m.input.Value() != before {
 			// Typing is the end of a recall walk: what is in the composer now is
 			// the person's line, not a copy of an older one.
 			m.inputRecall = 0
@@ -1377,8 +1383,16 @@ func (m *Model) updateKey(message tea.KeyMsg) (tea.Cmd, bool) {
 		case key == "pgup" || key == "pgdown":
 			m.pageNodeViewport(key == "pgdown")
 			return nil, true
-		case (key == "up" || key == "down") && m.input.Value() == "":
+		case key == "up" || key == "down":
+			// One page, one scroll, one step. The arrows used to move the
+			// document three lines, one line, or none at all depending on which
+			// half held the keyboard and whether a draft was being written —
+			// and a single-line steer field has no caret for them to move.
 			m.scrollNodeFeed(key == "down")
+			return nil, true
+		case key == "home":
+			m.releaseNodeTopPin()
+			m.nodeTrace.GotoTop()
 			return nil, true
 		case key == "end":
 			m.releaseNodeTopPin()
@@ -2103,6 +2117,12 @@ func (m *Model) applyQuietPoll(result pollResultMsg) {
 	m.forgetUnsettledWorkspaceLinks()
 	m.rebuildCards()
 	m.setSize(m.width, m.height)
+	// The open document has its own printed relative times — the thread under
+	// the log — and the minute is what they move on. Nothing else re-renders it
+	// now that an unchanged poll leaves it alone.
+	if m.nodeViewID != "" && len(m.nodeMessages) > 0 {
+		m.refreshNodeView(false)
+	}
 }
 
 func (m *Model) applyPoll(result pollResultMsg) {
@@ -2213,17 +2233,25 @@ func (m *Model) applyPoll(result pollResultMsg) {
 		m.selfCrafts = append(m.selfCrafts[:0], result.selfCrafts...)
 	}
 	if result.nodeID != "" && result.nodeID == m.nodeViewID {
+		// A poll that moved the journal somewhere else is not news for this
+		// document. It used to re-render anyway, once per cycle, for a page
+		// whose every word was already on screen.
+		changed := false
 		if result.nodeErr == nil && result.nodeFound {
+			changed = nodeDocumentMoved(m.inspectedNode, result.node)
 			m.inspectedNode = result.node
 		}
-		if result.nodeMessagesErr == nil {
-			m.appendNodeMessages(result.nodeMessages)
+		if result.nodeMessagesErr == nil && m.appendNodeMessages(result.nodeMessages) {
+			changed = true
 		}
 		if result.nodeTraceMoved {
+			changed = changed || result.nodeTrace != m.nodeTraceText
 			m.nodeTraceText = result.nodeTrace
 			m.nodeTraceStamp = result.nodeTraceStamp
 		}
-		m.refreshNodeView(false)
+		if changed {
+			m.refreshNodeView(false)
+		}
 	}
 
 	var accepted []store.Message
@@ -2725,7 +2753,16 @@ func (m *Model) setSize(width, height int) {
 	m.graph.Height = max(1, m.graphHeight-2-m.standingSectionHeight()-m.servicesSectionHeight()-m.residentPresenceHeight())
 	m.self.Width = max(1, m.width-2)
 	m.self.Height = max(1, mainHeight)
+	traceWidth, traceHeight := m.nodeTrace.Width, m.nodeTrace.Height
 	m.sizeNodeViewports()
+	// A document is laid out for the width it was rendered at. Resizing only the
+	// viewport left a settled worker wrapped at the old width for as long as it
+	// stayed open, and left the offset pointing into a document of a different
+	// height; the re-render puts the reader back on the same block at the new
+	// shape. Only a frame that actually changed shape pays for it.
+	if m.nodeViewID != "" && (m.nodeTrace.Width != traceWidth || m.nodeTrace.Height != traceHeight) {
+		m.refreshNodeView(false)
+	}
 	m.refreshChat()
 	// A relayout that renders into panes nobody can see is a tree and an
 	// employee file built for the wastebasket — and the relayout runs on every
@@ -2922,7 +2959,12 @@ func (m *Model) updateMouse(message tea.MouseMsg) (tea.Cmd, bool) {
 		return nil, true
 	}
 	if m.nodeViewID != "" {
-		return nil, m.scrollNodeAt(event.X, event.Y, down)
+		// One pane, one scroll: a task page is a single document, so the wheel
+		// means the same thing over the steer frame and the footer hint as it
+		// does over the feed. Falling through there used to scroll nothing and
+		// release the reading pin on the way past.
+		m.scrollNodeFeed(down)
+		return nil, true
 	}
 	if m.selfBounds.contains(event.X, event.Y) {
 		if down {
