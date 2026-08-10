@@ -257,6 +257,11 @@ func TestRenderTerrainMatchesCuesAcrossSeparatorsAndForms(t *testing.T) {
 		{"the goal writes it hyphenated", "surveys", "check the survey-responses", true},
 		{"composed against decomposed", "re\u0301sume\u0301s", "read the r\u00e9sum\u00e9s", true},
 		{"different case", "RESPONSES", "summarise the responses", true},
+		// Lowercasing is not folding, and the difference is not pedantic: a
+		// directory named in one of these forms could never answer to a goal
+		// that named it in the other.
+		{"the sharp s against a double s", "Stra\u00dfe", "photograph the strasse", true},
+		{"a Greek final sigma against a medial one", "\u03a3\u0399\u03a3\u03a5\u03a6\u039f\u03a3", "read the \u03c3\u03b9\u03c3\u03c5\u03c6\u03bf\u03c2 notes", true},
 		{"a real plural", "archive", "read the archives end to end", true},
 		{"a short stem is not a plural", "news", "write the report", false},
 		{"nothing in common", "ledgers", "write a short poem", false},
@@ -274,9 +279,12 @@ func TestRenderTerrainMatchesCuesAcrossSeparatorsAndForms(t *testing.T) {
 	}
 }
 
-// TestTerrainRollupSaysWhatItActuallyCounted is the label bug. A walk cut short
-// inside a tree of directories had counted no files at all, and the line said
-// "over 0 empty" — both wrong and the exact opposite of the truth.
+// TestTerrainRollupSaysWhatItActuallyCounted is the label bug. The line used to
+// turn "the walk stopped early" into "over N files", an inference the walk never
+// made: a tree of thousands of directories holding one file rendered as "over 1
+// file", and a stop before any file was seen rendered as "over 0 empty". Every
+// case here reports the numbers that were actually taken, and says separately
+// that something was not reached.
 func TestTerrainRollupSaysWhatItActuallyCounted(t *testing.T) {
 	for _, testcase := range []struct {
 		name   string
@@ -287,10 +295,23 @@ func TestTerrainRollupSaysWhatItActuallyCounted(t *testing.T) {
 		{"one file", terrainRollup{files: 1}, "1 file"},
 		{"several files", terrainRollup{files: 41}, "41 files"},
 		{"directories but no files", terrainRollup{directories: 7}, "no files, 7 directories"},
-		{"cut short over files", terrainRollup{files: 4000, clipped: true}, "over 4000 files"},
-		{"cut short over directories", terrainRollup{directories: 4000, clipped: true}, "over no files, 4000 directories"},
-		{"cut short before anything", terrainRollup{clipped: true}, "not read"},
 		{"kinds are named", terrainRollup{files: 3, extensions: []string{".csv", ".md"}}, "3 files (.csv, .md)"},
+		{
+			name:   "one file and a great many directories",
+			rollup: terrainRollup{files: 1, directories: 3999, unread: true},
+			want:   "1 file, more unread",
+		},
+		{
+			name:   "stopped before any file was seen",
+			rollup: terrainRollup{directories: 4000, unread: true},
+			want:   "no files, 4000 directories, more unread",
+		},
+		{
+			name:   "the shortfall has a number",
+			rollup: terrainRollup{files: 12, unread: true, unreadEntries: 250000},
+			want:   "12 files, 250000 entries unread",
+		},
+		{"stopped before anything at all", terrainRollup{unread: true}, "not read"},
 	} {
 		t.Run(testcase.name, func(t *testing.T) {
 			if got := testcase.rollup.label(); got != testcase.want {
@@ -300,29 +321,99 @@ func TestTerrainRollupSaysWhatItActuallyCounted(t *testing.T) {
 	}
 }
 
-// TestTerrainReadsOnlyWhatItAgreedTo pins the bounded read. A pathological
-// directory must not be pulled into memory and sorted whole for a listing that
-// shows a couple of dozen rows, and the render has to say that it did not look
-// at everything rather than implying it did.
-func TestTerrainReadsOnlyWhatItAgreedTo(t *testing.T) {
+// TestTerrainReadsADirectoryWholeBeforeDroppingAnything is the determinism fix.
+// A bounded prefix read kept whichever entries the filesystem returned first, so
+// a large directory could render different bytes on two consecutive calls and a
+// goal-named directory could be discarded before the cue match ever saw it. The
+// listing is now read whole and sorted, and only then cut.
+func TestTerrainReadsADirectoryWholeBeforeDroppingAnything(t *testing.T) {
 	root := t.TempDir()
-	for index := 0; index < terrainListLimit+40; index++ {
+	const entries = 1000
+	for index := 0; index < entries; index++ {
 		if err := os.WriteFile(filepath.Join(root, fmt.Sprintf("%05d.csv", index)), []byte("a\n"), 0o644); err != nil {
 			t.Fatal(err)
 		}
 	}
-	kept, unread := terrainEntries(root, terrainListLimit)
-	if !unread {
-		t.Fatal("a directory larger than the limit should report that more was left unread")
+	scan := terrainScan{cues: map[string]bool{}, nameCap: terrainNameCap}
+	listing := scan.read(root)
+	if listing.capped {
+		t.Fatal("a thousand entries is far under the cap and should have been held whole")
 	}
-	if len(kept) > terrainListLimit {
-		t.Fatalf("kept %d entries, over the %d-entry read bound", len(kept), terrainListLimit)
+	if listing.count != entries || len(listing.entries) != entries {
+		t.Fatalf("read %d of %d entries", len(listing.entries), entries)
 	}
-	if !sort.SliceIsSorted(kept, func(i, j int) bool { return kept[i].Name() < kept[j].Name() }) {
-		t.Error("what was kept was not sorted, so the render would not be reproducible")
+	if !sort.SliceIsSorted(listing.entries, func(i, j int) bool {
+		return listing.entries[i].Name() < listing.entries[j].Name()
+	}) {
+		t.Error("the listing was not sorted, so any cut through it would be filesystem order")
 	}
-	if got := RenderTerrain(root, "read it"); !strings.Contains(got, "over ") {
-		t.Errorf("a partial read should be reported as a floor:\n%s", got)
+
+	first := RenderTerrain(root, "read it")
+	for pass := 0; pass < 4; pass++ {
+		if again := RenderTerrain(root, "read it"); again != first {
+			t.Fatalf("render %d of a large directory differs:\n%s\n---\n%s", pass, first, again)
+		}
+	}
+}
+
+// TestRenderTerrainKeepsACuedDirectoryAmongAThousand is the same fix seen from
+// the cue's side: the directory the goal named sorts last of a thousand, and
+// must still be the one that gets opened.
+func TestRenderTerrainKeepsACuedDirectoryAmongAThousand(t *testing.T) {
+	root := t.TempDir()
+	for index := 0; index < 1000; index++ {
+		if err := os.MkdirAll(filepath.Join(root, fmt.Sprintf("%05d-filler", index)), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	named := filepath.Join(root, "zzzz-responses")
+	if err := os.MkdirAll(named, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(named, "north.csv"), []byte("a\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	got := RenderTerrain(root, "summarise the responses")
+	if !strings.Contains(got, "zzzz-responses/") {
+		t.Fatalf("the directory the goal named lost its row among a thousand others:\n%s", got)
+	}
+	if !strings.Contains(got, "  north.csv") {
+		t.Errorf("it was listed but never opened:\n%s", got)
+	}
+}
+
+// TestTerrainCountsWhatItRefusesToList covers the one directory this will not
+// describe. Past the cap a listing would be a sample of an arbitrary order, so
+// there is no listing — only the count, which is the same number whatever order
+// the entries arrived in, and therefore the only reproducible thing left to say.
+func TestTerrainCountsWhatItRefusesToList(t *testing.T) {
+	root := t.TempDir()
+	const entries = 40
+	for index := 0; index < entries; index++ {
+		if err := os.WriteFile(filepath.Join(root, fmt.Sprintf("%03d.csv", index)), []byte("a\n"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	scan := terrainScan{cues: map[string]bool{}, nameCap: 10}
+	listing := scan.read(root)
+	if !listing.capped || listing.entries != nil {
+		t.Fatal("past the cap the listing must be dropped, not trimmed")
+	}
+	if listing.count != entries {
+		t.Fatalf("count = %d, want the exact %d — the count is what stays reproducible", listing.count, entries)
+	}
+
+	got := renderTerrain(root, "read it", 10)
+	want := fmt.Sprintf("%d entries at the top level, too many to list", entries)
+	if !strings.Contains(got, want) {
+		t.Fatalf("render = %q, want it to carry %q", got, want)
+	}
+	if strings.Contains(got, ".csv") {
+		t.Errorf("nothing from an unlistable directory may be named:\n%s", got)
+	}
+	if again := renderTerrain(root, "read it", 10); again != got {
+		t.Error("even the refusal has to be byte-stable")
 	}
 }
 
