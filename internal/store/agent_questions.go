@@ -21,6 +21,21 @@ const (
 	QuestionWhenever          QuestionUrgency = "whenever"
 )
 
+// QuestionClass separates a question that needs a human's consent from one
+// that merely informs — the axis that will later gate which questions an
+// orchestrator may answer on its own. The conservative default is law:
+// nothing constructs a question this package will read back as
+// QuestionInformational unless a producer explicitly says so. An unlabeled
+// question is a consent question, everywhere — the zero value, the schema
+// default, and every read path agree on that, so silence never widens
+// autonomy.
+type QuestionClass string
+
+const (
+	QuestionConsent       QuestionClass = "consent"
+	QuestionInformational QuestionClass = "informational"
+)
+
 // AgentQuestionStatus is the durable lifecycle of an agent-to-user question.
 // Pending is quiet, Asked has entered a thread, and Answered/Expired are
 // terminal resolutions.
@@ -44,6 +59,7 @@ type AgentQuestion struct {
 	OriginCharterID  string
 	OriginCommandSeq int64
 	Urgency          QuestionUrgency
+	Class            QuestionClass
 	Status           AgentQuestionStatus
 	Options          []QuestionOption
 	Category         QuestionCategory
@@ -67,6 +83,7 @@ CREATE TABLE IF NOT EXISTS agent_questions (
     origin_charter_id   TEXT NOT NULL DEFAULT '',
     origin_command_seq  INTEGER NOT NULL DEFAULT 0,
     urgency             TEXT NOT NULL CHECK (urgency IN ('blocking', 'next-natural-moment', 'whenever')),
+    class               TEXT NOT NULL DEFAULT 'consent' CHECK (class IN ('consent', 'informational')),
     status              TEXT NOT NULL CHECK (status IN ('pending', 'asked', 'answered', 'expired')),
 	options             JSON NOT NULL DEFAULT '[]' CHECK (json_valid(options)),
 	category            TEXT NOT NULL DEFAULT 'generic',
@@ -93,6 +110,11 @@ func migrateAgentQuestionSchema(db *sql.DB) error {
 	}{
 		{"category", `ALTER TABLE agent_questions ADD COLUMN category TEXT NOT NULL DEFAULT 'generic'`},
 		{"default_answer", `ALTER TABLE agent_questions ADD COLUMN default_answer TEXT NOT NULL DEFAULT ''`},
+		// Conservative default at the schema layer: a row from before this column
+		// existed reads back as 'consent', the same as an unlabeled new row — a
+		// legacy question never silently becomes eligible for informational
+		// autonomy just because it predates the axis.
+		{"class", `ALTER TABLE agent_questions ADD COLUMN class TEXT NOT NULL DEFAULT 'consent' CHECK (class IN ('consent', 'informational'))`},
 	} {
 		found, err := tableHasColumn(db, "agent_questions", column.name)
 		if err != nil {
@@ -114,6 +136,7 @@ type agentQuestionPayload struct {
 	OriginCharterID  string           `json:"origin_charter_id,omitempty"`
 	OriginCommandSeq int64            `json:"origin_command_seq,omitempty"`
 	Urgency          QuestionUrgency  `json:"urgency"`
+	Class            QuestionClass    `json:"class"`
 	Options          []QuestionOption `json:"options,omitempty"`
 	Category         QuestionCategory `json:"category,omitempty"`
 	DefaultAnswer    string           `json:"default,omitempty"`
@@ -160,6 +183,16 @@ func (s *Store) AskQuestion(question AgentQuestion) (AgentQuestion, error) {
 	}
 	if !validQuestionUrgency(question.Urgency) {
 		return AgentQuestion{}, fmt.Errorf("ask question: %w: unknown urgency %q", ErrInvalid, question.Urgency)
+	}
+	// Conservative default at the Go layer: a producer that says nothing about
+	// class gets the class that always escalates to a human. This runs before
+	// validation so an unlabeled question can never be rejected as "unknown
+	// class" — silence is a valid, and the safest, answer.
+	if question.Class == "" {
+		question.Class = QuestionConsent
+	}
+	if !validQuestionClass(question.Class) {
+		return AgentQuestion{}, fmt.Errorf("ask question: %w: unknown class %q", ErrInvalid, question.Class)
 	}
 	if question.OriginNodeID != "" && question.OriginCharterID != "" {
 		return AgentQuestion{}, fmt.Errorf("ask question: %w: node and charter origins are mutually exclusive", ErrInvalid)
@@ -218,7 +251,7 @@ func (s *Store) AskQuestion(question AgentQuestion) (AgentQuestion, error) {
 	payload := agentQuestionPayload{
 		SessionID: question.SessionID, Text: question.Text,
 		OriginNodeID: question.OriginNodeID, OriginCharterID: question.OriginCharterID,
-		OriginCommandSeq: question.OriginCommandSeq, Urgency: question.Urgency,
+		OriginCommandSeq: question.OriginCommandSeq, Urgency: question.Urgency, Class: question.Class,
 		Options: options, ExpiresAt: question.ExpiresAt,
 		Category: question.Category, DefaultAnswer: question.DefaultAnswer,
 	}
@@ -620,10 +653,10 @@ func applyAgentQuestionView(tx *sql.Tx, payload agentQuestionPayload, seq int64,
 	}
 	_, err = tx.Exec(`INSERT INTO agent_questions (
 		seq, session_id, text, origin_node_id, origin_charter_id, origin_command_seq,
-		urgency, status, options, category, default_answer, created_at, expires_at, updated_seq
-	) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		urgency, class, status, options, category, default_answer, created_at, expires_at, updated_seq
+	) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		seq, payload.SessionID, payload.Text, payload.OriginNodeID, payload.OriginCharterID,
-		payload.OriginCommandSeq, payload.Urgency, QuestionPending, options,
+		payload.OriginCommandSeq, payload.Urgency, defaultQuestionClass(payload.Class), QuestionPending, options,
 		defaultQuestionCategory(payload.Category), strings.TrimSpace(payload.DefaultAnswer), formatTime(at),
 		nullableQuestionTime(payload.ExpiresAt), seq)
 	return err
@@ -675,7 +708,7 @@ func requireOneQuestionChange(result sql.Result, action string, seq int64) error
 
 func (s *Store) queryAgentQuestions(where string, args []any) ([]AgentQuestion, error) {
 	rows, err := s.db.Query(`SELECT seq, session_id, text, origin_node_id, origin_charter_id,
-		origin_command_seq, urgency, status, options, category, default_answer, created_at, asked_at, resolved_at,
+		origin_command_seq, urgency, class, status, options, category, default_answer, created_at, asked_at, resolved_at,
 		expires_at, resolution, asked_message_seq, answer_message_seq, updated_seq
 		FROM agent_questions WHERE `+where, args...)
 	if err != nil {
@@ -704,11 +737,18 @@ func scanAgentQuestion(scanner questionScanner) (AgentQuestion, error) {
 	var asked, resolved, expires sql.NullString
 	if err := scanner.Scan(&question.Seq, &question.SessionID, &question.Text,
 		&question.OriginNodeID, &question.OriginCharterID, &question.OriginCommandSeq,
-		&question.Urgency, &question.Status, &options, &question.Category, &question.DefaultAnswer, &created, &asked, &resolved,
+		&question.Urgency, &question.Class, &question.Status, &options, &question.Category, &question.DefaultAnswer, &created, &asked, &resolved,
 		&expires, &question.Resolution, &question.AskedMessageSeq,
 		&question.AnswerMessageSeq, &question.UpdatedSeq); err != nil {
 		return AgentQuestion{}, err
 	}
+	// Read-path enforcement of the conservative default: whatever the column
+	// actually holds, an unrecognized or empty class is never handed back as
+	// anything but consent. This is belt-and-suspenders against the DB-layer
+	// default (schema + migration both default to 'consent'), not a
+	// substitute for it — a defense that only existed in Go would not protect
+	// a raw SQL reader of this table.
+	question.Class = defaultQuestionClass(question.Class)
 	if err := decodeQuestionOptions(options, &question.Options); err != nil {
 		return AgentQuestion{}, err
 	}
@@ -730,7 +770,7 @@ func scanAgentQuestion(scanner questionScanner) (AgentQuestion, error) {
 
 func queryAgentQuestionTx(tx *sql.Tx, seq int64) (AgentQuestion, bool, error) {
 	row := tx.QueryRow(`SELECT seq, session_id, text, origin_node_id, origin_charter_id,
-		origin_command_seq, urgency, status, options, category, default_answer, created_at, asked_at, resolved_at,
+		origin_command_seq, urgency, class, status, options, category, default_answer, created_at, asked_at, resolved_at,
 		expires_at, resolution, asked_message_seq, answer_message_seq, updated_seq
 		FROM agent_questions WHERE seq = ?`, seq)
 	question, err := scanAgentQuestion(row)
@@ -750,6 +790,27 @@ func defaultQuestionCategory(category QuestionCategory) QuestionCategory {
 func validQuestionUrgency(urgency QuestionUrgency) bool {
 	switch urgency {
 	case QuestionBlocking, QuestionNextNaturalMoment, QuestionWhenever:
+		return true
+	default:
+		return false
+	}
+}
+
+// defaultQuestionClass is the last-line defense for the conservative-default
+// law: anything that reaches this function with an empty or otherwise
+// unrecognized class — a legacy row, a hand-built payload, a future caller
+// that forgets to normalize — reads back as QuestionConsent rather than
+// falling through to whatever SQLite's column default happens to be.
+func defaultQuestionClass(class QuestionClass) QuestionClass {
+	if !validQuestionClass(class) {
+		return QuestionConsent
+	}
+	return class
+}
+
+func validQuestionClass(class QuestionClass) bool {
+	switch class {
+	case QuestionConsent, QuestionInformational:
 		return true
 	default:
 		return false
