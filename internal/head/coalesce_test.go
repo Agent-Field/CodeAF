@@ -85,8 +85,8 @@ func TestTwoMessagesTypedInOneBreathAreOneTurn(t *testing.T) {
 	second := postUserLine(t, graphStore, "one-breath", "actually, this quarter only")
 
 	conversationalHead := New(client, graphStore)
-	cursor, err := conversationalHead.poll(context.Background(), 0)
-	if err != nil {
+	cursors := newSessionCursors(0)
+	if err := conversationalHead.poll(context.Background(), cursors); err != nil {
 		t.Fatalf("poll: %v", err)
 	}
 	if calls := client.callCount(); calls != 1 {
@@ -106,23 +106,23 @@ func TestTwoMessagesTypedInOneBreathAreOneTurn(t *testing.T) {
 	if replies[0].Answers != second.Seq {
 		t.Fatalf("the reply answers %d, want the newest folded row %d", replies[0].Answers, second.Seq)
 	}
-	if cursor < second.Seq {
+	if cursor := cursors.answeredThrough("one-breath"); cursor < second.Seq {
 		t.Fatalf("cursor = %d, want past every folded row (%d)", cursor, second.Seq)
 	}
 
 	// Restart: the head resumes past rows a fold already answered, and a poll
-	// from the cursor it returned re-answers nothing.
-	if _, err := conversationalHead.poll(context.Background(), cursor); err != nil {
+	// from the cursors it advanced re-answers nothing.
+	if err := conversationalHead.poll(context.Background(), cursors); err != nil {
 		t.Fatalf("second poll: %v", err)
 	}
 	if calls := client.callCount(); calls != 1 {
 		t.Fatalf("provider calls = %d after a second poll, want the folded rows left alone", calls)
 	}
-	resumed, err := conversationalHead.initialCursor()
+	restarted, err := conversationalHead.initialCursors()
 	if err != nil {
 		t.Fatal(err)
 	}
-	if resumed < second.Seq {
+	if resumed := restarted.answeredThrough("one-breath"); resumed < second.Seq {
 		t.Fatalf("a restart resumes at %d, want past the folded rows (%d)", resumed, second.Seq)
 	}
 }
@@ -138,7 +138,7 @@ func TestAFoldedTurnStillFansOutIntoSeparateWork(t *testing.T) {
 	postUserLine(t, graphStore, "fan-out", "book the flights")
 	last := postUserLine(t, graphStore, "fan-out", "and find somewhere to eat")
 
-	if _, err := New(client, graphStore).poll(context.Background(), 0); err != nil {
+	if err := New(client, graphStore).poll(context.Background(), newSessionCursors(0)); err != nil {
 		t.Fatalf("poll: %v", err)
 	}
 	if calls := client.callCount(); calls != 1 {
@@ -243,7 +243,7 @@ func TestAFoldNeverStepsOverAnotherWindowsTurn(t *testing.T) {
 	visitor := postUserLine(t, graphStore, "that-window", "what is running?")
 	back := postUserLine(t, graphStore, "this-window", "actually, this quarter only")
 
-	if _, err := New(client, graphStore).poll(context.Background(), 0); err != nil {
+	if err := New(client, graphStore).poll(context.Background(), newSessionCursors(0)); err != nil {
 		t.Fatalf("poll: %v", err)
 	}
 	if calls := client.callCount(); calls != 3 {
@@ -278,8 +278,8 @@ func TestAMessageArrivingMidTurnIsAbsorbedIntoIt(t *testing.T) {
 	first := postUserLine(t, graphStore, "mid-turn", "how are the totals?")
 
 	conversationalHead := New(client, graphStore)
-	cursor, err := conversationalHead.poll(context.Background(), 0)
-	if err != nil {
+	cursors := newSessionCursors(0)
+	if err := conversationalHead.poll(context.Background(), cursors); err != nil {
 		t.Fatalf("poll: %v", err)
 	}
 	if calls := client.callCount(); calls != 2 {
@@ -296,7 +296,7 @@ func TestAMessageArrivingMidTurnIsAbsorbedIntoIt(t *testing.T) {
 	if replies[0].Answers != second.Seq {
 		t.Fatalf("the reply answers %d, want the row it absorbed (%d)", replies[0].Answers, second.Seq)
 	}
-	if cursor < second.Seq {
+	if cursor := cursors.answeredThrough("mid-turn"); cursor < second.Seq {
 		t.Fatalf("cursor = %d, want past the absorbed row %d", cursor, second.Seq)
 	}
 }
@@ -319,8 +319,8 @@ func TestContinuousTypingStillEndsInAnAnswer(t *testing.T) {
 	}
 	opening := postUserLine(t, graphStore, "still-typing", "how are the totals?")
 
-	cursor, err := New(client, graphStore).poll(context.Background(), 0)
-	if err != nil {
+	cursors := newSessionCursors(0)
+	if err := New(client, graphStore).poll(context.Background(), cursors); err != nil {
 		t.Fatalf("poll: %v", err)
 	}
 	if calls := client.callCount(); calls != foldLimit {
@@ -340,7 +340,7 @@ func TestContinuousTypingStillEndsInAnAnswer(t *testing.T) {
 	if replies[0].Answers != last.Seq {
 		t.Fatalf("the reply answers %d, want every row it carried (%d)", replies[0].Answers, last.Seq)
 	}
-	if cursor < last.Seq {
+	if cursor := cursors.answeredThrough("still-typing"); cursor < last.Seq {
 		t.Fatalf("cursor = %d, want past every row the turn answered (%d)", cursor, last.Seq)
 	}
 }

@@ -543,6 +543,10 @@ func (s *Store) Messages(sessionID string, afterSeq int64, limit int) ([]Message
 // It answers the head's resume question — where does the trailing run of
 // unanswered user messages begin — without reading the thread. Tailing pages
 // the whole history to keep one number, and that history only grows.
+//
+// Deprecated: one number cannot answer that question for two rooms — a reply in
+// either carries it past the other's unanswered rows. Use
+// SessionLastNonUserMessageSeq, or SessionMessageCursors for every room at once.
 func (s *Store) LastNonUserMessageSeq() (int64, error) {
 	var seq int64
 	if err := s.db.QueryRow(
@@ -846,7 +850,15 @@ func applyMessageView(tx *sql.Tx, payload messagePayload, seq int64, at time.Tim
 	// The searchable copy is written by the same transaction as the row it
 	// indexes. Every message write in this package goes through here, so there
 	// is exactly one seam to keep honest.
-	return refreshMessageFTS(tx, seq)
+	if err := refreshMessageFTS(tx, seq); err != nil {
+		return err
+	}
+	// And for the same reason, this is where a session becomes a thing rather
+	// than a string: the row is minted by the first message that names it and
+	// its activity mark is raised by every one after, in the message's own
+	// transaction, so the projection cannot drift from the messages it is a
+	// projection of.
+	return ensureSessionTx(tx, payload.SessionID, "", at)
 }
 
 func normalizeMessageProgress(progress *MessageProgress) (*MessageProgress, error) {

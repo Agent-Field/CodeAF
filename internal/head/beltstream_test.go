@@ -3,14 +3,17 @@ package head
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/Agent-Field/aforge-v2/internal/provider"
+	"github.com/Agent-Field/aforge-v2/internal/store"
 )
 
 // The belt's calls go through the real adapter here, streamed, because that is
@@ -174,5 +177,64 @@ func TestStreamedBeltDeclineCostsOneCall(t *testing.T) {
 	}
 	if tooled, _ := server.counts(); tooled != 1 {
 		t.Fatalf("a declining belt made %d tooled calls, want one", tooled)
+	}
+}
+
+// TestServeStampsStreamEventsWithTheAnsweringSession exercises the producer
+// side of the session key end to end: Serve, not a direct answer() call, so
+// the stamp actually goes through answerTurn's context wrapping rather than
+// being skipped by a test that builds its own context. Every event the
+// provider call emits for one turn must carry that turn's session, because
+// that is the value a multi-room consumer would key on.
+func TestServeStampsStreamEventsWithTheAnsweringSession(t *testing.T) {
+	graph := openHeadStore(t)
+	handler := http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
+		writer.Header().Set("Content-Type", "text/event-stream")
+		_, _ = writer.Write([]byte(`data: {"choices":[{"index":0,"delta":{"content":"{\"reply\":\"hi there\",\"command\":null}"},"finish_reason":"stop"}]}` + "\n\n"))
+		_, _ = writer.Write([]byte("data: [DONE]\n\n"))
+	})
+	client := streamedProviderClient(t, handler)
+
+	var mutex sync.Mutex
+	var sessions []string
+	ctx, cancel := context.WithCancel(context.Background())
+	ctx = provider.WithStreamObserver(ctx, func(event provider.StreamEvent) {
+		mutex.Lock()
+		sessions = append(sessions, event.Session)
+		mutex.Unlock()
+	})
+
+	done := make(chan error, 1)
+	go func() { done <- New(client, graph).Serve(ctx) }()
+
+	const session = "room-a"
+	user, err := graph.PostMessage(store.Message{SessionID: session, Role: store.RoleUser, Body: "hello"})
+	if err != nil {
+		t.Fatalf("post user message: %v", err)
+	}
+	reply := waitForAgentReply(t, graph, session, user.Seq)
+	if reply.Body != "hi there" {
+		t.Fatalf("reply body = %q", reply.Body)
+	}
+
+	cancel()
+	select {
+	case err := <-done:
+		if !errors.Is(err, context.Canceled) {
+			t.Errorf("serve returned %v, want context cancellation", err)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("serve did not stop after cancellation")
+	}
+
+	mutex.Lock()
+	defer mutex.Unlock()
+	if len(sessions) == 0 {
+		t.Fatal("no stream events observed for the turn")
+	}
+	for index, got := range sessions {
+		if got != session {
+			t.Fatalf("event %d carried session %q, want the answering session %q", index, got, session)
+		}
 	}
 }
