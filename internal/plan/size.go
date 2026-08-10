@@ -211,6 +211,14 @@ func sizePromptWith(anchors string) string {
 // per registered specialist. With none registered the returned bytes are
 // exactly the bytes this prompt had before subharnesses existed — that is the
 // law, and there is a test that reads it byte for byte.
+//
+// Its second paragraph restates the worker premise in its own words, and keeps
+// them deliberately — workerPremise is the source of truth for the shared fact,
+// but this pass is the one that measures capacity, and capacity is precisely
+// what the shared fact leaves out. One tool at a time, one deliverable, and a
+// context that fills as it goes are the terms every judgment below is made in;
+// a prompt that said only "works alone, in order, with tools" would be asking
+// for a size against nothing.
 func sizePromptFor(anchors string, specialists []Subharness) string {
 	prompt := `You judge whether each node is the right size to hand to a single agent.
 

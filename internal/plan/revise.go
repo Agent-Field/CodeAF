@@ -25,6 +25,19 @@ import (
 // here. A started node's output may already be another node's input, so the
 // past cannot be edited; a correction to finished work is new work appended
 // after it, never a rewrite of it.
+//
+// It carries checkingRule for a reason found the expensive way. The rule was
+// written into the two prompts that build a plan and into neither of the two
+// that grow one, and this is the pass that grows one mid-run: told a result was
+// disappointing, it would add a node to look at what another node produced, that
+// node would report a gap, and the gap would come back here. That is the shape
+// of the 27-round spiral the governors could only bound by counting. A cap stops
+// a loop; the doctrine stops it being started.
+//
+// The paragraph about what a new node may be restates the worker premise in its
+// own words on purpose — see workerPremise for the shared fact. Here it is a
+// bound on the size of an edit rather than a description of the executor, and
+// the sentence that follows it is the whole point of the sentence before it.
 const revisePrompt = `You maintain a task graph while it is being executed.
 
 ` + agentPremise + `
@@ -45,6 +58,8 @@ Anything you add is going to one agent working alone, in order, with tools. Keep
 a new node to something one agent finishes in a single pass and hand off as one
 result. If what is needed is genuinely larger than that, add it as two or three
 nodes that can run at the same time rather than one that cannot.
+
+` + checkingRule + `
 
 Your default is no change. Return an empty operation list unless a specific
 result contradicts a specific assumption in a specific unstarted node. If you

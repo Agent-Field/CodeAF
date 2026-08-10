@@ -25,8 +25,34 @@ import (
 // It is a structuring call: it runs with the planner's economy (reasoning
 // off), one call per leaf, all leaves in parallel, so the layer costs one
 // call's latency however wide the graph is.
-const contractPrompt = `You write the working method for one agent about to do one job, alone, with
-tools: a shell, file writing, file editing, and web search.
+//
+// The toolbox sentence is load-bearing and used to be wrong. It named four
+// tools — shell, write, edit, web — for a worker that also holds background
+// jobs, recall of everything folded away, a line to its siblings, and, on ask,
+// tools that read documents and generate images, music, video and speech. The
+// one prompt whose entire job is to say how this kind of work is done well
+// could therefore not route a method through any of them, so a job that needed
+// a PDF read or a chart drawn got a method that worked around the capability
+// sitting unused. It is a sentence, not a manual: the method writer needs to
+// know the routes exist, and the tool descriptions themselves say how to drive
+// them.
+//
+// The verify bullet binds to the brief for the same reason. Done-means has two
+// authors — the instruction states the acceptance bar, the method states how to
+// check — and the second was never told the first was binding. One task's brief
+// asked for a flicker to stop and its contract verified the structure of the
+// page instead; a sibling task with the same shape got it right, which is what a
+// coin flip looks like. The clause costs a line and removes the flip: the bar is
+// stated once, in the instruction, and the method exercises that one.
+const contractPrompt = `You write the working method for one agent about to do one job.
+
+` + workerPremise + `
+
+Its toolbox is a shell that also runs work in the background, file writing and
+editing, web search and page fetching, recall of work already folded away, and
+one line it can pass to the other agents on this job when there are any; where
+the machine is configured for them it can ask for tools that read documents and
+generate images, music, video and speech.
 
 Do not restate the job — the agent already has its instruction. Write the
 method: what someone experienced in exactly this kind of work does differently
@@ -42,7 +68,9 @@ Concretely, for this kind of work:
 - How to verify: the whole path exercised the way that user reaches it, run
   before anything may be called verified, since parts checked separately never
   add up to a working result — and, for whatever cannot be run from here, what
-  to declare unverified and the one short check that would settle it.
+  to declare unverified and the one short check that would settle it. Where the
+  agent's instruction already states the bar for done, the check you write
+  exercises that bar itself rather than a stand-in for it.
 - The two or three mistakes most often made in this kind of work, stated as
   things to watch for.
 - Where this kind of work most often gets stuck — the source that is down, the
@@ -108,6 +136,10 @@ func Contracts(ctx context.Context, client Completer, graph *Graph, playbook Con
 	// method — and the gate's whole question is whether the finished whole is
 	// what was asked for, judged against exactly that stub.
 	sink := graph.deliverableSink()
+	// Read off the graph here rather than inside the goroutines: it is one fact
+	// about the goal, and the discipline in this loop is that nothing concurrent
+	// touches the graph at all.
+	fileShaped := graph.FileShaped
 	for _, id := range graph.writtenLeaves() {
 		node := graph.Node(id)
 		if node == nil || strings.TrimSpace(node.Contract) != "" {
@@ -140,7 +172,7 @@ func Contracts(ctx context.Context, client Completer, graph *Graph, playbook Con
 			if playbook != nil {
 				notes = playbook(node)
 			}
-			contract, usage, err := writeContract(ctx, client, shared, node, notes, node.ID == sink)
+			contract, usage, err := writeContract(ctx, client, shared, node, notes, node.ID == sink, fileShaped)
 			mutex.Lock()
 			defer mutex.Unlock()
 			results = append(results, result{id: node.ID, contract: contract, usage: usage, err: err})
@@ -192,7 +224,27 @@ const contractDeliverableLine = "This job IS the deliverable: every other result
 	"the verdict, in full — and never to file it somewhere and name the place, describe how the material was " +
 	"combined, or report that the assembly is finished.\n"
 
-func writeContract(ctx context.Context, client Completer, shared string, node Node, playbook string, deliverable bool) (string, *ai.Usage, error) {
+// contractDeliverableFileLine is the same job under the delivery law's carve-out
+// (delivery.go): the ask named the file, so the method that ends by forbidding
+// the file is the one that fails the run. The framing sentence is identical
+// because the job is identical — what changes is only where the finished thing
+// has to land, which is why that half comes from the shared constant rather than
+// being said again here in slightly different words.
+const contractDeliverableFileLine = "This job IS the deliverable: every other result arrives here as material, and what " +
+	"this agent produces is the whole of what the person who asked will read. The method must therefore end by " +
+	"holding the agent to this:\n\n" + DeliverToNamedFile + "\n"
+
+// contractDeliverableLineFor picks the half of the law the ask calls for. False
+// is what a caller that has not made the judgment passes, and it renders exactly
+// the bytes this pass has always rendered.
+func contractDeliverableLineFor(fileShaped bool) string {
+	if fileShaped {
+		return contractDeliverableFileLine
+	}
+	return contractDeliverableLine
+}
+
+func writeContract(ctx context.Context, client Completer, shared string, node Node, playbook string, deliverable, fileShaped bool) (string, *ai.Usage, error) {
 	var target strings.Builder
 	// A node that came out of a plan always has a title; the one-leaf job does
 	// not, because there was nothing to distinguish it from. Naming the job
@@ -210,7 +262,7 @@ func writeContract(ctx context.Context, client Completer, shared string, node No
 		fmt.Fprintf(&target, "The instruction the agent will receive:\n%s\n", brief)
 	}
 	if deliverable {
-		target.WriteString(contractDeliverableLine)
+		target.WriteString(contractDeliverableLineFor(fileShaped))
 	}
 	// The earned notes are per-leaf, retrieved for this node's territory, so
 	// they belong here and nowhere earlier. Every leaf in a project is written
