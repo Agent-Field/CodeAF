@@ -154,6 +154,20 @@ type Options struct {
 	// ground pass, before parallel planning can reinterpret the goal.
 	Recall []store.RecallHit
 
+	// Terrain is what the run's workspace holds, rendered by the caller with
+	// RenderTerrain before the build starts. Empty is the whole of the
+	// compatibility story: a caller with no workspace sends the prompt bytes it
+	// has always sent.
+	//
+	// The caller renders it, not this package, and renders it exactly once. This
+	// block joins the frozen preamble that every fan-out, bind, size, audit and
+	// brief call shares, so re-reading the directory mid-build — where a worker
+	// may already be writing into it — would change the prefix under passes that
+	// are still running, cost every cache hit behind it, and leave two calls
+	// planning from two different pictures of the same workspace. It is a
+	// snapshot taken at build start and frozen for the build.
+	Terrain string
+
 	// SpineSamples is how many spines to draw before choosing one. The spine is
 	// the only call whose framing every later pass inherits, so it is the only
 	// one worth sampling; the samples run concurrently and cost no wall clock.
@@ -228,7 +242,12 @@ func Build(ctx context.Context, client Completer, goal string, options Options) 
 	}
 	progress := serialProgress(options.Progress)
 	start := time.Now()
-	graph := &Graph{Goal: goal, NextID: 1}
+	// The terrain is placed on the graph before either opener launches. Both
+	// goroutines below, and every pass after them, read the graph's preamble;
+	// setting it afterwards would give the openers a different prefix from
+	// everything that follows, which is the one thing the shared block exists to
+	// prevent.
+	graph := &Graph{Goal: goal, NextID: 1, Terrain: options.Terrain}
 	emitProgress(progress, "grounding", "settling what to look at", "")
 
 	// Grounding and the spine both need only the goal, so they run together and

@@ -1,0 +1,113 @@
+Terrain (Wave 1) — the chat.go wiring, handed over as a note. NOT APPLIED.
+
+Wave 1 of audit-notes/world-grounded-planning.md landed on branch `terrain-w1`:
+`plan.RenderTerrain(dir, goal)` renders a deterministic, code-only snapshot of a
+run's workspace; `plan.Options.Terrain` carries it onto `Graph.Terrain`, and
+`graph.context()` renders it between the goal and the settled points. Empty
+terrain emits zero bytes, so every prompt in a run without a workspace is byte
+for byte the prompt it is today. Nothing below changes behaviour for a chat
+session that does not opt in.
+
+The campaign never edits cmd/aforge/chat.go while the chat rebuild owns it, so
+the two `plan.Build` call sites are written down here instead of applied. Apply
+whenever convenient — or not at all; the feature is complete without it.
+
+--------------------------------------------------------------------------------
+What the two lines are
+
+  plan.Options{
+      ...
+      Terrain: plan.RenderTerrain(<workspace dir>, <goal>),
+  }
+
+at cmd/aforge/chat.go:5117 (planSubtree) and :5303 (replanRemainder), line
+numbers as of the chat-v2 working tree on 2026-08-10.
+
+--------------------------------------------------------------------------------
+Why it is not literally two lines
+
+There is no workspace variable in scope at either site. Both functions are
+package-level and take (settings, planClient, workClient, plans, history); the
+directory they would describe lives in `buildBrain` as `workspaceRoot`
+(chat.go:302). So the wiring is one new parameter threaded down two call chains,
+plus the two lines above.
+
+Which directory to pass is the real decision, and the honest answer is: only a
+shared workspace has anything true to show. In the default layout each job works
+in `workspaceRoot/<jobID>`, created at dispatch — it does not exist when the plan
+is built, and `workspaceRoot` itself holds only the other jobs' folders, which
+says nothing about this goal and would spend prompt budget saying it. Under
+`--shared-workspace` the root is the person's own material, which is exactly what
+the planner is blind to today. Hence the `terrainRoot` below, empty by default.
+
+--------------------------------------------------------------------------------
+1. cmd/aforge/chat.go — buildBrain, just after workspaceRoot is settled (~305)
+
+     if err := os.MkdirAll(workspaceRoot, 0o700); err != nil {
+         return nil, brain.abandon(fmt.Errorf("create chat workspace: %w", err))
+     }
++    // What the planner is allowed to see of the world before it plans. Only a
++    // shared workspace holds the person's own material; in the per-job layout
++    // the directory a job will work in does not exist yet, and the root above
++    // it holds nothing but the other jobs' folders. Empty renders nothing and
++    // every planning prompt stays exactly as it is.
++    terrainRoot := ""
++    if opts.sharedWorkspace {
++        terrainRoot = workspaceRoot
++    }
+
+2. cmd/aforge/chat.go:374 — hand it to the reconciler builder
+
+-    reconciler := newResidentReconciler(settings, graph, chatClient, taskClient, planClient, plans,
++    reconciler := newResidentReconciler(settings, graph, chatClient, taskClient, planClient, plans, terrainRoot,
+
+3. cmd/aforge/chat.go:980 and :1141 — both replanRemainder constructions
+
+-        replanRemainder(settings, planClient, taskClient, plans, graph))
++        replanRemainder(settings, planClient, taskClient, plans, graph, terrainRoot))
+
+4. cmd/aforge/chat.go:5058 — planSubtree takes the directory
+
+-func planSubtree(settings config.Config, planClient, workClient *liveClient, plans *jobPlans, history *store.Store) resident.PlanFunc {
++func planSubtree(settings config.Config, planClient, workClient *liveClient, plans *jobPlans, history *store.Store, terrainRoot string) resident.PlanFunc {
+
+5. cmd/aforge/chat.go:5117 — THE FIRST OF THE TWO LINES
+
+     graph, err := plan.Build(settings.Context(ctx, compiled.Goal), structuring, compiled.Goal, plan.Options{
+         Recall:       recallHits(history, compiled.Goal, groundRecallLimit),
++        // Rendered once, here, and frozen for the build: this block joins the
++        // shared prefix every pass reads, and a workspace re-read mid-build —
++        // with workers already writing into it — would move the prefix under
++        // passes still in flight.
++        Terrain:      plan.RenderTerrain(terrainRoot, compiled.Goal),
+         SpineSamples: settings.SpineSamples,
+
+6. cmd/aforge/chat.go:5297 — replanRemainder takes the directory
+
+-func replanRemainder(settings config.Config, planClient, workClient *liveClient, plans *jobPlans, history *store.Store) resident.OverrunPlanFunc {
++func replanRemainder(settings config.Config, planClient, workClient *liveClient, plans *jobPlans, history *store.Store, terrainRoot string) resident.OverrunPlanFunc {
+
+7. cmd/aforge/chat.go:5303 — THE SECOND OF THE TWO LINES
+
+     graph, err := plan.Build(settings.Context(ctx, goal), structuring, goal, plan.Options{
+         Recall:       recallHits(history, goal, groundRecallLimit),
++        // A remainder is planned against a workspace a worker has already been
++        // writing in, which is the case where this is worth the most: the
++        // replan can see what the exhausted leaf actually left behind.
++        Terrain:      plan.RenderTerrain(terrainRoot, goal),
+         SpineSamples: settings.SpineSamples,
+
+--------------------------------------------------------------------------------
+Companion changes outside chat.go (small, and they only exist because the two
+functions above live in chat.go)
+
+  cmd/aforge/resident_build.go:27  newResidentReconciler gains `terrainRoot string`
+  cmd/aforge/resident_build.go:43  planSubtree(..., graph, terrainRoot)
+  cmd/aforge/resident_build.go:70  replanRemainder(..., graph, terrainRoot)
+  cmd/aforge/wake.go:58            newResidentReconciler(..., plans, "", nil, false)
+                                   — a wake pass has no shared workspace to show
+  cmd/aforge/{bundle,cacheshape,fusion,method}_test.go
+                                   — planSubtree(settings, client, client, plans, graph, "")
+
+They are not applied here either: they would not compile against a chat.go that
+still has the old signatures, so the whole set belongs to whoever applies this.

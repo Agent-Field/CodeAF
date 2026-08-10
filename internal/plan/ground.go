@@ -157,8 +157,9 @@ func GroundWith(ctx context.Context, client Completer, goal string, recall []sto
 	}, usageOf(response), nil
 }
 
-// context is the frozen preamble every planning call shares: the goal, what has
-// been settled about it, and what is still open.
+// context is the frozen preamble every planning call shares: the goal, the
+// workspace it stands on, what has been settled about it, and what is still
+// open.
 //
 // Rendering it in one place is not tidiness. This block is the byte-stable
 // prefix behind every fan-out, sizing, binding and briefing call, so a stray
@@ -169,6 +170,22 @@ func (g *Graph) context() string {
 	var block strings.Builder
 	block.WriteString("Goal:\n")
 	block.WriteString(g.Goal)
+	// The terrain sits here, between the goal and what was settled about it,
+	// because that is the order the reader needs: what was asked for, then what
+	// is actually lying around, then the decisions taken over the two. It is
+	// indented and left otherwise verbatim — it was rendered in code, and this is
+	// not the place to reinterpret it. An empty terrain writes nothing at all,
+	// which is what keeps a run with no workspace byte-identical to the runs that
+	// came before terrain existed.
+	if g.Terrain != "" {
+		block.WriteString("\n\nThe workspace this run stands on (rendered from the material itself; it may\nbe incomplete, and it is what was there when planning began):\n")
+		for index, line := range strings.Split(g.Terrain, "\n") {
+			if index > 0 {
+				block.WriteString("\n")
+			}
+			block.WriteString("  " + line)
+		}
+	}
 	if len(g.Settled) > 0 {
 		block.WriteString("\n\nSettled for this goal. Use these exactly as written. Never substitute\nyour own choice for one of these, and never leave one of them vague:\n")
 		for _, item := range g.Settled {

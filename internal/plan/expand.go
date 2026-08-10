@@ -197,12 +197,16 @@ func expandOne(ctx context.Context, client Completer, graph *Graph, nodeID int, 
 	// itself, which is exactly how one expansion produced Berlin, Paris and
 	// Madrid while another produced Amsterdam — each answer defensible, the pair
 	// useless — and how a subtree of a written report decides on its own that the
-	// comparison needs a benchmark harness first.
+	// comparison needs a benchmark harness first. The terrain travels with them:
+	// a sub-planner is the part of the build most likely to invent material that
+	// is not there, and it is the one place a fresh render would be forbidden
+	// anyway, since by now workers are writing into that directory.
 	sub := &Graph{
 		Goal:     goal,
 		Settled:  graph.Settled,
 		Open:     graph.Open,
 		Evidence: graph.Evidence,
+		Terrain:  graph.Terrain,
 		Stages:   []Stage{{Title: node.Title, Summary: node.Summary}},
 		NextID:   1,
 	}
