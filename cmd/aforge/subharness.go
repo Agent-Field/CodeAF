@@ -73,10 +73,16 @@ type leafBuild struct {
 // the leaf that takes the default.
 var leafExecutors = map[string]func(leafBuild) exec.Executor{
 	exec.LinearSubharness: func(build leafBuild) exec.Executor {
+		// The catalog is already here for the specialist's sake, and it answers
+		// one more question the generalist needs: how much this leaf's model can
+		// hold, which is what its observation window is sized from. Threaded
+		// rather than looked up in exec, for the same reason the model name is —
+		// the surface owns the catalog, and the loop is handed facts.
 		return exec.NewLinear(build.client, build.workspace, build.web,
 			build.maxTurns, build.maxTokens, build.deadline).
 			WithStore(build.graph).WithMedia(build.media).
-			WithAttribution(config.AttributionAt(build.settings.ProfileDir))
+			WithAttribution(config.AttributionAt(build.settings.ProfileDir)).
+			WithContextLength(build.models.ContextLength(build.model))
 	},
 	// The coding pipeline takes none of the leaf loop's wiring, because it
 	// shares none of it: no provider client (it opens its own connections from

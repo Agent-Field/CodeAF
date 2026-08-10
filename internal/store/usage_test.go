@@ -478,3 +478,112 @@ func TestSpendBetweenAndByJobAnswerAWindow(t *testing.T) {
 		t.Fatalf("median run cost = %v err=%v, want the middle of {0.50, 1, 3}", median, err)
 	}
 }
+
+// The cached share of a prompt has to survive the round trip, through the
+// incremental write and through a rebuild from the event log alike.
+//
+// It was computed in three places and kept in none, and that gap is why an
+// affinity key that was never set on the busiest path in the product went
+// unnoticed for as long as it did: a run with a perfect prefix and a run with
+// no cache at all leave the same journal when the only numbers written down
+// are in and out.
+func TestCachedTokensSurviveTheJournalAndTheRebuild(t *testing.T) {
+	graph := openTestStore(t, filepath.Join(t.TempDir(), "cached.db"))
+	if err := graph.Splice(RootID, Subtree{Nodes: []NodeSpec{
+		{ID: "job", Brief: "measure the cache", Stage: 2},
+		{ID: "warm", Parent: "job", Brief: "a leaf that rode a warm prefix", Stage: 1},
+		{ID: "cold", Parent: "job", Brief: "a leaf that wrote one", Stage: 1},
+	}}, Provenance{Origin: OriginUser, Intent: "measure the cache"}); err != nil {
+		t.Fatal(err)
+	}
+	for _, usage := range []NodeUsage{
+		{NodeID: "warm", PromptTokens: 10_000, CompletionTokens: 400, CachedTokens: 9_100, Cost: 0.02},
+		{NodeID: "cold", PromptTokens: 10_000, CompletionTokens: 400, Cost: 0.08},
+	} {
+		if err := graph.RecordUsage(usage); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	read := func(stage string) {
+		t.Helper()
+		var warm, cold int
+		if err := graph.db.QueryRow(
+			`SELECT COALESCE(SUM(cached_tokens), 0) FROM usage WHERE node_id = 'warm'`).Scan(&warm); err != nil {
+			t.Fatal(err)
+		}
+		if err := graph.db.QueryRow(
+			`SELECT COALESCE(SUM(cached_tokens), 0) FROM usage WHERE node_id = 'cold'`).Scan(&cold); err != nil {
+			t.Fatal(err)
+		}
+		if warm != 9_100 {
+			t.Fatalf("%s: warm leaf recorded %d cached tokens, want 9100", stage, warm)
+		}
+		// Absent is zero and stays zero: a run nobody measured must not read as
+		// a run that was measured at nothing warm.
+		if cold != 0 {
+			t.Fatalf("%s: cold leaf recorded %d cached tokens, want none", stage, cold)
+		}
+	}
+	read("incremental")
+	if err := graph.Rebuild(); err != nil {
+		t.Fatal(err)
+	}
+	read("rebuilt")
+}
+
+// An existing journal gains the column without losing a row. Every other
+// backfilled column here draws the same distinction, and this one draws it in
+// the only way a number can: rows written before the column existed default to
+// zero, which reads as "nobody was keeping this" — the same thing the empty
+// model string says.
+func TestUsageGainsCachedTokensOnAnOlderJournal(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "legacy.db")
+	graph := openTestStore(t, path)
+	if _, err := graph.db.Exec(`
+		ALTER TABLE usage RENAME TO usage_current;
+		CREATE TABLE usage (
+		    seq               INTEGER PRIMARY KEY REFERENCES events(seq),
+		    ts                TEXT NOT NULL,
+		    node_id           TEXT NOT NULL,
+		    prompt_tokens     INTEGER NOT NULL DEFAULT 0,
+		    completion_tokens INTEGER NOT NULL DEFAULT 0,
+		    cost              REAL NOT NULL DEFAULT 0,
+		    model             TEXT NOT NULL DEFAULT ''
+		);
+		INSERT INTO usage SELECT seq, ts, node_id, prompt_tokens, completion_tokens, cost, model
+		FROM usage_current;
+		DROP TABLE usage_current;
+	`); err != nil {
+		t.Fatal(err)
+	}
+	if err := graph.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	reopened, err := Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer reopened.Close()
+	if found, err := tableHasColumn(reopened.db, "usage", "cached_tokens"); err != nil || !found {
+		t.Fatalf("usage cached_tokens migration: found=%t err=%v", found, err)
+	}
+	if err := reopened.Splice(RootID, Subtree{Nodes: []NodeSpec{
+		{ID: "after", Brief: "a leaf journaled after the migration", Stage: 1},
+	}}, Provenance{Origin: OriginUser, Intent: "keep spending"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := reopened.RecordUsage(NodeUsage{
+		NodeID: "after", PromptTokens: 500, CachedTokens: 480}); err != nil {
+		t.Fatal(err)
+	}
+	var cached int
+	if err := reopened.db.QueryRow(
+		`SELECT cached_tokens FROM usage WHERE node_id = 'after'`).Scan(&cached); err != nil {
+		t.Fatal(err)
+	}
+	if cached != 480 {
+		t.Fatalf("cached tokens after the migration = %d, want 480", cached)
+	}
+}

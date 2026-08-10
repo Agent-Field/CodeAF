@@ -2,8 +2,6 @@ package exec
 
 import (
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
 	"fmt"
 	"strings"
 	"sync"
@@ -228,6 +226,10 @@ type Linear struct {
 	deadline  time.Duration
 	// attribution carries the user's settings row into the standing contract.
 	attribution bool
+	// contextTokens is how much the working model can hold in one request, and
+	// it is the only honest input to the observation window. Zero means nobody
+	// could say; see observationWindow, which has a default for exactly that.
+	contextTokens int
 }
 
 // WithStore enables the optional persistent-memory pull tool. It mutates the
@@ -242,6 +244,22 @@ func (l *Linear) WithStore(history *store.Store) *Linear {
 // It is executor configuration, so reflex micro-leaves inherit it unchanged.
 func (l *Linear) WithMedia(media *MediaTools) *Linear {
 	l.media = media
+	return l
+}
+
+// WithContextLength tells the loop how much its model can actually hold, in
+// tokens, so the observation window can be sized from it.
+//
+// It is a separate setter rather than a constructor argument because the answer
+// comes from the provider's catalog, which the surface owns and this package
+// deliberately does not: exec is handed facts about the model, never a client
+// it has to interrogate. An unknown or unavailable model is zero, which is not
+// an error — the window has a default for it, and a leaf must never fail to run
+// because a metadata endpoint was down.
+func (l *Linear) WithContextLength(tokens int) *Linear {
+	if tokens > 0 {
+		l.contextTokens = tokens
+	}
 	return l
 }
 
@@ -405,35 +423,36 @@ func (l *Linear) Run(ctx context.Context, task Task) (returned *Outcome, runErr 
 	}
 
 	outcome := &Outcome{Stop: StopDone}
-	// Identical repeated calls are the most common way a loop burns turns
-	// without learning anything. Answering from the previous result turns that
-	// spend into a nudge.
-	seen := map[string]string{}
 	// What each tool result was, so a faded one can still be recognised.
 	labels := map[string]string{}
 	// fade shortens old observations losslessly: before a result is stubbed
 	// its bytes go to a spill file the agent can re-read with sh. The decayer
 	// carries the once-per-result bookkeeping across turns.
 	fade := newDecayer(labels, tools.decaySpill)
+	// Material the leaf has already been shown is carried once and pointed at
+	// afterwards. This is keyed on the bytes rather than on the call, so every
+	// route to the same content collapses and nothing is ever answered from a
+	// stale copy; see observations.
+	carried := newObservations(fade)
 	warned := false
 	// landing counts the reserved turns left after the node has been told to
 	// finish; zero means no landing has begun yet.
 	landing := 0
 	landingStop := StopReason("")
 
-	// The observation window scales with the task's budget rather than sitting
-	// at a constant. The constant was tuned for the default budget, and a task
-	// granted ten times the tokens was still forgetting at the small-task rate —
-	// which for file-heavy work meant re-reading the same sources for the whole
-	// run. One sixth of the budget in bytes reproduces the original tuning at
-	// the default and grows with what the operator actually granted.
-	obsBudget := l.maxTokens / 6
-	if obsBudget < observationBudget {
-		obsBudget = observationBudget
-	}
-	if obsBudget > maxObservationBudget {
-		obsBudget = maxObservationBudget
-	}
+	// The observation window is sized from what the model can hold in one
+	// request, and from nothing else.
+	//
+	// It used to be one sixth of maxTokens, which is a ceiling on what the leaf
+	// may spend across every turn of the whole run — a quantity with no
+	// relationship at all to how much material fits in a single call. The
+	// arithmetic looked like tuning and was a category error: at the default
+	// budget it produced a 25KB window, so a 26KB file did not fit in the
+	// memory meant to hold it, and the leaf spent the run re-reading what it had
+	// already been shown. maxTokens stays what it is — the spend ceiling the
+	// landing reserve and the wrap-up warning are measured against — and stops
+	// sizing memory.
+	obsBudget := observationWindow(l.contextTokens)
 
 	for turn := 0; turn < l.maxTurns; turn++ {
 		if task.Control != nil {
@@ -597,16 +616,9 @@ func (l *Linear) Run(ctx context.Context, task Task) (returned *Outcome, runErr 
 		// the model asked for them together — so running them concurrently is a
 		// free wall-clock win, and the results go back in the order requested.
 		results := make([]Result, len(calls))
-		keys := make([]string, len(calls))
 		var group sync.WaitGroup
 		for index, call := range calls {
 			outcome.ToolCalls++
-			key := fingerprint(call)
-			if previous, repeated := seen[key]; repeated && call.Function.Name != "view_image" {
-				results[index] = tools.finishResult(Result{Content: previous + "\n\n(identical call already made; this is the same result. If you were re-checking, nothing has changed — move on to the next step)"})
-				continue
-			}
-			keys[index] = key
 			labels[call.ID] = callLabel(call)
 			group.Add(1)
 			go func(index int, call ai.ToolCall) {
@@ -626,49 +638,34 @@ func (l *Linear) Run(ctx context.Context, task Task) (returned *Outcome, runErr 
 		for index := range results {
 			outcome.Usage.merge(results[index].Usage)
 		}
-		// The run record is written here rather than in the workers, for the
-		// same reason the cache below is: it is one slice and several
-		// goroutines just finished. It records every call the model asked for,
-		// including one answered from the cache — the model asked, and a
-		// reader checking whether a check was ever run needs the ask.
+		// The run record is written here rather than in the workers, because it
+		// is one slice and several goroutines just finished. It records every
+		// call the model asked for, including one whose bytes turn out to be a
+		// repeat — the model asked, and a reader checking whether a check was
+		// ever run needs the ask.
 		for index, call := range calls {
 			outcome.record(call, results[index].IsError)
 		}
 
-		// The cache is filled here, on this goroutine, and never inside the
-		// workers. Writing a shared map from several tool goroutines at once is
-		// a hard panic in Go, and it would only ever fire on the turns where the
-		// model asked for several tools — the exact case this loop exists for.
-		for index, key := range keys {
-			if key != "" && !results[index].IsError && !results[index].reportedJobs {
-				seen[key] = results[index].Content
-			}
-		}
-		// Any mutation invalidates the whole cache. A memoised read served after
-		// an edit is the pre-edit file presented as current — an answer that is
-		// confidently wrong, which is worse than paying to run the call again.
-		// sh is included because a shell command can change anything.
-		for index, call := range calls {
-			name := call.Function.Name
-			if !results[index].IsError && (name == "write" || name == "edit" || name == "sh" || name == "generate_image" || name == "generate_music" || name == "generate_video" || name == "speak") {
-				clear(seen)
-				break
-			}
-		}
-
 		trace.turn(outcome.Turns, response, calls, results, "")
 
+		// What the transcript actually carries, which is what is billed on every
+		// remaining turn — the body the first time these bytes appear, a pointer
+		// to the earlier copy after that. The same total is what the decay pass
+		// is told about: hysteresis is sized from the bytes the leaf really adds
+		// per turn, not from the bytes its tools happened to return.
+		admitted := 0
 		for index, call := range calls {
-			body := results[index].Content
-			if results[index].IsError {
-				body = "ERROR: " + body
-			}
+			body := carried.admit(outcome.Turns, call, results[index])
+			admitted += len(body)
 			messages = append(messages, ai.Message{
 				Role:       "tool",
 				ToolCallID: call.ID,
 				Content:    text(body),
 			})
 		}
+		fade.observe(admitted)
+
 		for _, result := range results {
 			if len(result.Followup) == 0 || result.IsError {
 				continue
@@ -978,11 +975,6 @@ func deadlineLandingReserve(deadline time.Duration) time.Duration {
 
 func spent(outcome *Outcome) int {
 	return outcome.Usage.PromptTokens + outcome.Usage.CompletionTokens
-}
-
-func fingerprint(call ai.ToolCall) string {
-	sum := sha256.Sum256([]byte(call.Function.Name + "\x00" + call.Function.Arguments))
-	return hex.EncodeToString(sum[:12])
 }
 
 func completionOf(response *ai.Response) int {

@@ -153,13 +153,17 @@ func (s *SWE) Run(ctx context.Context, task Task) (*Outcome, error) {
 	directory := s.workspace.Root()
 	initialized, err := ensureGitRepository(runCtx, directory)
 	if err == nil {
-		// The leaf's own flight recorder lives in the workspace at .obs/, and
-		// the engine audits the change set it finds there. It git-excludes its
-		// own sidecars; ours gets the same treatment, or a 47,000-line trace
-		// of the run shows up in the diff and the auditor — correctly —
-		// refuses to ship it. info/exclude, never .gitignore: the repository's
-		// tracked files are the deliverable and are not ours to edit.
+		// The leaf's spilled output and its own flight recorder both live in the
+		// workspace, and the engine audits the change set it finds there. It
+		// git-excludes its own sidecars; ours get the same treatment, or a
+		// 47,000-line trace of the run shows up in the diff and the auditor —
+		// correctly — refuses to ship it. Both directories are named because
+		// the recorder moved out of .obs and an exclusion that covered it by
+		// accident would stop covering it silently. info/exclude, never
+		// .gitignore: the repository's tracked files are the deliverable and are
+		// not ours to edit.
 		excludeFromGit(directory, obsDir+"/")
+		excludeFromGit(directory, traceDir+"/")
 	}
 	if err != nil {
 		outcome.Stop = StopError

@@ -193,18 +193,33 @@ func (t *Toolbox) offered() []string {
 // argument, and an enum the code owns because the families are the code's own
 // grouping of its own tools. The model reads its own work and decides; nothing
 // here matches a phrase against the brief.
-func capabilitiesDefinition(families []string) ai.ToolDefinition {
-	descriptions := map[string]string{
-		FamilyMedia:    "media: generate images, music, video, speech; look at an image.",
-		FamilyDocument: "documents: read a PDF, DOCX or PPTX into text.",
-	}
-	description := "Load tools you do not have yet; they arrive on your next turn. Ask once, only if the work needs one."
-	for _, family := range families {
-		description += " " + descriptions[family]
-	}
-	return define("capabilities", description, map[string]any{
-		"need": map[string]any{"type": "string", "enum": families},
-	}, "need")
+//
+// Every byte of it is frozen, and that is the fix rather than the style.
+//
+// The description used to be assembled from whichever families were still
+// unarmed, and the enum with it. Tool definitions ride at the front of every
+// request, ahead of the entire transcript, so the moment a worker armed media
+// the sentence describing the families changed, the prefix diverged at the tool
+// block, and the whole prompt behind it was re-billed cold. Arming is supposed
+// to cost exactly one invalidation — the new schemas appended at the end of the
+// tool list, which is the price the design already accepted and named. This was
+// a second, larger one nobody had costed, paid at the front instead of the back.
+//
+// So the enum stays full width too, including a family this machine may not
+// have configured. Asking for one that is missing is answered by capabilities
+// itself, in a sentence that tells the worker to do the job without it and say
+// so — one wasted call in the rare case, against a definition block that never
+// moves for any leaf on any turn. Whether the tool is offered at all is still a
+// live question, and still the only moving part: Definitions retires it once
+// there is nothing left to arm.
+func capabilitiesDefinition() ai.ToolDefinition {
+	return define("capabilities",
+		"Load tools you do not have yet; they arrive on your next turn. Ask once, only if the work needs one. "+
+			"media: generate images, music, video, speech; look at an image. "+
+			"documents: read a PDF, DOCX or PPTX into text.",
+		map[string]any{
+			"need": map[string]any{"type": "string", "enum": []string{FamilyMedia, FamilyDocument}},
+		}, "need")
 }
 
 // capabilities arms what was asked for and says what arrived. The reply names
@@ -214,7 +229,10 @@ func (t *Toolbox) capabilities(args map[string]any) Result {
 	need := strings.TrimSpace(stringArg(args, "need"))
 	tools, known := familyTools[need]
 	if !known {
-		return errorf("no capability family named %q. Available: %s", need, strings.Join(t.offered(), ", "))
+		// The families, not what is left to arm: the enum is the same on every
+		// turn now, so the correction has to name the same thing the enum does
+		// or the two disagree in front of the model.
+		return errorf("no capability family named %q. Available: %s, %s", need, FamilyMedia, FamilyDocument)
 	}
 	switch need {
 	case FamilyMedia:
@@ -332,7 +350,7 @@ func (t *Toolbox) Definitions() []ai.ToolDefinition {
 	// to carry them: a structural one it was armed with before turn 1, or the
 	// worker's own request through the discovery tool.
 	if families := t.offered(); len(families) > 0 {
-		definitions = append(definitions, capabilitiesDefinition(families))
+		definitions = append(definitions, capabilitiesDefinition())
 	}
 	// Each optional schema is admitted on its own name, not on its family's,
 	// so an attached screenshot buys view_image without also buying a video
