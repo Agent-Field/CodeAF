@@ -7,11 +7,13 @@ import (
 	"strings"
 	"sync"
 	"testing"
+
+	"github.com/Agent-Field/agentfield/sdk/go/ai"
 )
 
 func tracePath(t *testing.T, space *Workspace, nodeID int) string {
 	t.Helper()
-	full, _, err := space.ScratchPath(filepath.Join(obsDir, fmt.Sprintf("%d.trace.log", nodeID)))
+	full, _, err := space.ScratchPath(filepath.Join(traceDir, fmt.Sprintf("%d.trace.log", nodeID)))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -86,6 +88,47 @@ func TestTraceLandsATurnWhenItIsWritten(t *testing.T) {
 	}
 	if !strings.Contains(string(data), "contract: do the thing") || !strings.Contains(string(data), "turn 1") {
 		t.Fatalf("a written turn is not on disk: %q", data)
+	}
+}
+
+// The turn line carries the cached share of the prompt, and the recorder does
+// not live where the leaf was sent to read.
+//
+// Both are the same defect seen from two sides. Every cache discipline in this
+// codebase is unfalsifiable while the trace writes only in= and out=: a run
+// whose affinity key was never set and a run whose prefix was perfect leave
+// identical records. And the recorder itself used to sit in .obs, which is the
+// one machinery directory a leaf is deliberately sent into by every spill
+// pointer — so leaves read their own flight recorders, and their siblings', out
+// of the directory they had been told to read.
+func TestTheTurnLineCarriesTheCachedShareAndSitsOutOfTheLeafsWay(t *testing.T) {
+	space, err := NewWorkspace(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	trace := newTracer(space, 11)
+	trace.turn(3, &ai.Response{
+		Choices: []ai.Choice{{FinishReason: "tool_calls"}},
+		Usage: &ai.Usage{PromptTokens: 12_000, CompletionTokens: 300,
+			PromptTokensDetails: &ai.PromptTokensDetails{CachedTokens: 11_400}},
+	}, nil, nil, "")
+	trace.close()
+
+	data, err := os.ReadFile(tracePath(t, space, 11))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(data), "in=12000 out=300 cached=11400") {
+		t.Fatalf("the turn line does not say what was billed warm: %q", data)
+	}
+
+	// The recorder is not in the directory the spill stubs send the leaf to.
+	if entries, err := os.ReadDir(filepath.Join(space.Root(), obsDir)); err == nil {
+		for _, entry := range entries {
+			if strings.Contains(entry.Name(), "trace") {
+				t.Fatalf("the flight recorder is back in %s, where leaves read: %s", obsDir, entry.Name())
+			}
+		}
 	}
 }
 

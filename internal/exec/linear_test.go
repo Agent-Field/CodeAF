@@ -161,11 +161,63 @@ func TestDeadlineExhaustionLandsWithTranscriptOutcome(t *testing.T) {
 	}
 }
 
-// TestRepeatedReadAfterEditSeesTheNewContent guards the cache invalidation
-// rule. The dedup cache once memoised results forever, so a read repeated
-// after an edit served the pre-edit file presented as current — an answer that
-// is confidently wrong, in the one workflow (modify, then re-check) where the
-// model most needs the truth.
+// The same material, fetched twice, is carried once.
+//
+// Measured over 332 leaf turns, 12.5% of every observation byte the loop paid
+// for was material it had already been shown — 27 duplicate fetches, none of
+// which the old call-keyed memo caught, because any successful sh emptied it
+// and sh is in 87% of turns. Keying on the bytes catches all of them: the call
+// still runs, and only the second copy of its answer is replaced by a line
+// saying where the first one is.
+func TestTheSameOutputFetchedTwiceIsCarriedOnce(t *testing.T) {
+	space := workspace(t)
+	body := strings.Repeat("the quick brown fox\n", 200)
+	if err := os.WriteFile(filepath.Join(space.Root(), "notes.txt"), []byte(body), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	read := `{"cmd":"cat notes.txt"}`
+	client := &scriptedCompleter{turns: [][]ai.ToolCall{
+		{call("c1", "sh", read)},
+		{call("c2", "sh", `{"cmd":"echo thinking"}`)},
+		{call("c3", "sh", read)},
+	}}
+	linear := NewLinear(client, space, nil, 10, 1_000_000, time.Minute)
+	if _, err := linear.Run(context.Background(), Task{NodeID: 1, Brief: "read the notes"}); err != nil {
+		t.Fatal(err)
+	}
+
+	final := client.seen[len(client.seen)-1]
+	var results []string
+	for _, message := range final {
+		if message.Role == "tool" {
+			results = append(results, message.Content[0].Text)
+		}
+	}
+	if len(results) != 3 {
+		t.Fatalf("the transcript carries %d tool results, want three", len(results))
+	}
+	if !strings.Contains(results[0], "quick brown fox") {
+		t.Fatalf("the first read was not carried in full: %q", results[0])
+	}
+	if strings.Contains(results[2], "quick brown fox") {
+		t.Fatalf("the repeated read was carried a second time: %d bytes", len(results[2]))
+	}
+	if !strings.Contains(results[2], "turn 1") {
+		t.Fatalf("the repeated read does not point at the first copy: %q", results[2])
+	}
+	if len(results[2]) >= len(results[0])/8 {
+		t.Fatalf("the pointer is %d bytes against a %d-byte first copy", len(results[2]), len(results[0]))
+	}
+}
+
+// TestRepeatedReadAfterEditSeesTheNewContent guards the correctness half, and
+// it is the reason the old memo had to go rather than be tuned. That memo
+// answered a repeated call from the previous result without running it, so a
+// read repeated after an edit served the pre-edit file presented as current —
+// confidently wrong, in the one workflow (modify, then re-check) where the
+// model most needs the truth. Content addressing cannot make that mistake: the
+// call runs, and bytes that differ are simply different bytes.
 func TestRepeatedReadAfterEditSeesTheNewContent(t *testing.T) {
 	space := workspace(t)
 	if err := os.WriteFile(filepath.Join(space.Root(), "f.txt"), []byte("alpha"), 0o644); err != nil {
@@ -199,8 +251,8 @@ func TestRepeatedReadAfterEditSeesTheNewContent(t *testing.T) {
 	if !strings.Contains(lastTool, "beta") {
 		t.Fatalf("repeated read returned %q, want the post-edit content", lastTool)
 	}
-	if strings.Contains(lastTool, "identical call already made") {
-		t.Fatalf("repeated read was served from the cache after a mutation: %q", lastTool)
+	if strings.Contains(lastTool, "identical to the result of") {
+		t.Fatalf("a read whose answer had changed was replaced by a pointer: %q", lastTool)
 	}
 }
 

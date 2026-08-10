@@ -2,6 +2,8 @@ package main
 
 import (
 	"context"
+	"os"
+	"os/signal"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -160,6 +162,45 @@ func TestCompileRidesOneConstantCacheKey(t *testing.T) {
 	}
 	if keys[0] != provider.RunCacheKey("compile", settings.Model) {
 		t.Fatalf("compile cache key = %q, want the constant class key", keys[0])
+	}
+}
+
+// The headless entrypoints — run, plan, revise — pin one affinity key for the
+// whole run, and every context they derive from it keeps it.
+//
+// The key is set once, in Config.Context, and then wrapped twice on the way to
+// the loop: ExecContext layers the executor's own reasoning level over the
+// planning economy, and signal.NotifyContext makes Ctrl+C land the run rather
+// than vanish it. Both are places where a rebuild from context.Background would
+// look harmless and silently split the run into one cache lineage per call —
+// which is exactly the shape of the defect this pins shut, and the one that had
+// the whole headless path writing its prefix cold on every request.
+func TestTheHeadlessRunPathPinsOneAffinityKeyThroughout(t *testing.T) {
+	settings := config.Config{Model: "worker/model"}
+	const goal = "review the pull request and deliver REVIEW.md"
+	want := provider.RunCacheKey(goal, settings.Model)
+
+	planning := settings.Context(context.Background(), goal)
+	if got := provider.CacheKeyFrom(planning); got != want {
+		t.Fatalf("the run's planning context carries %q, want %q", got, want)
+	}
+	executing := settings.ExecContext(planning)
+	if got := provider.CacheKeyFrom(executing); got != want {
+		t.Fatalf("the executor context dropped the run key: %q", got)
+	}
+	interruptible, stop := signal.NotifyContext(executing, os.Interrupt)
+	defer stop()
+	if got := provider.CacheKeyFrom(interruptible); got != want {
+		t.Fatalf("the interrupt-aware context dropped the run key: %q", got)
+	}
+	// One run is one lineage: a different goal is a different key, and the same
+	// goal on a later run is the same one, so a repeat reuses the warm prefix
+	// rather than paying to write it again.
+	if provider.RunCacheKey("something else entirely", settings.Model) == want {
+		t.Fatal("two different runs collapsed onto one key")
+	}
+	if provider.RunCacheKey(goal, settings.Model) != want {
+		t.Fatal("the same run asked for two different instances")
 	}
 }
 

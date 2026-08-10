@@ -24,10 +24,20 @@ import (
 // recorded here rather than on the node because a node can run more than once
 // and each run has its own answer, and because the row that carries the money
 // is the row that should carry the name.
+//
+// CachedTokens is the part of PromptTokens the provider billed at the cached
+// rate. It was computed in three places and persisted in none, which is not a
+// missing nicety: it is the reason a whole class of defect went unnoticed. The
+// harness spends real effort on cache shape — a byte-stable prefix, decay that
+// fires in batches so most turns leave the transcript untouched, a tool block
+// that never moves — and a run key that was never set produces exactly the same
+// journal as a run whose prefix was perfect. The number that separates them is
+// this one, and until it was written down nobody could tell the two apart.
 type NodeUsage struct {
 	NodeID           string  `json:"node_id"`
 	PromptTokens     int     `json:"prompt_tokens"`
 	CompletionTokens int     `json:"completion_tokens"`
+	CachedTokens     int     `json:"cached_tokens,omitempty"`
 	Cost             float64 `json:"cost"`
 	Model            string  `json:"model,omitempty"`
 }
@@ -112,6 +122,7 @@ CREATE TABLE IF NOT EXISTS usage (
     node_id           TEXT NOT NULL,
     prompt_tokens     INTEGER NOT NULL DEFAULT 0,
     completion_tokens INTEGER NOT NULL DEFAULT 0,
+    cached_tokens     INTEGER NOT NULL DEFAULT 0,
     cost              REAL NOT NULL DEFAULT 0,
     model             TEXT NOT NULL DEFAULT ''
 );
@@ -119,11 +130,13 @@ CREATE INDEX IF NOT EXISTS usage_node ON usage (node_id);
 CREATE INDEX IF NOT EXISTS usage_ts ON usage (ts);
 `
 
-// migrateUsageSchema adds the served model to an existing journal. Rows written
-// before it existed keep the empty string, which reads as "not recorded" rather
-// than as a model named "" — the same distinction every other backfilled column
-// here draws. Replay needs nothing: the event payload is JSON and an absent
-// field decodes to the same empty string the column defaults to.
+// migrateUsageSchema adds the served model and the cached share of the prompt to
+// an existing journal. Rows written before either existed keep the column
+// default — the empty string, which reads as "not recorded" rather than as a
+// model named "", and zero, which reads the same way for a number nobody was
+// keeping. That is the distinction every other backfilled column here draws.
+// Replay needs nothing: the event payload is JSON and an absent field decodes
+// to exactly the value the column defaults to.
 func migrateUsageSchema(db *sql.DB) error {
 	hasModel, err := tableHasColumn(db, "usage", "model")
 	if err != nil {
@@ -131,6 +144,15 @@ func migrateUsageSchema(db *sql.DB) error {
 	}
 	if !hasModel {
 		if _, err := db.Exec(`ALTER TABLE usage ADD COLUMN model TEXT NOT NULL DEFAULT ''`); err != nil {
+			return err
+		}
+	}
+	hasCached, err := tableHasColumn(db, "usage", "cached_tokens")
+	if err != nil {
+		return err
+	}
+	if !hasCached {
+		if _, err := db.Exec(`ALTER TABLE usage ADD COLUMN cached_tokens INTEGER NOT NULL DEFAULT 0`); err != nil {
 			return err
 		}
 	}
@@ -769,10 +791,10 @@ func spendBounds(since, until time.Time) (time.Time, time.Time) {
 
 func applyUsageView(tx *sql.Tx, usage NodeUsage, seq int64, at time.Time) error {
 	_, err := tx.Exec(`
-		INSERT INTO usage (seq, ts, node_id, prompt_tokens, completion_tokens, cost, model)
-		VALUES (?, ?, ?, ?, ?, ?, ?)`,
+		INSERT INTO usage (seq, ts, node_id, prompt_tokens, completion_tokens, cached_tokens, cost, model)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
 		seq, formatTime(at), usage.NodeID, usage.PromptTokens, usage.CompletionTokens,
-		usage.Cost, strings.TrimSpace(usage.Model))
+		usage.CachedTokens, usage.Cost, strings.TrimSpace(usage.Model))
 	return err
 }
 

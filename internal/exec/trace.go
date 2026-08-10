@@ -11,8 +11,9 @@ import (
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 )
 
-// tracer writes one node's turn-by-turn transcript to a file in the
-// workspace's observation directory.
+// tracer writes one node's turn-by-turn transcript to a file under the
+// workspace's harness directory. See traceDir for why it is not the observation
+// directory, which is where it used to live and where leaves kept finding it.
 //
 // It exists because the loop's failures were invisible. A node that ran 139
 // turns and wrote nothing reported only "exhausted its token budget" — every
@@ -40,7 +41,7 @@ type tracer struct {
 const traceBuffer = 32 << 10
 
 func newTracer(workspace *Workspace, nodeID int) *tracer {
-	full, _, err := workspace.ScratchPath(filepath.Join(obsDir, fmt.Sprintf("%d.trace.log", nodeID)))
+	full, _, err := workspace.ScratchPath(filepath.Join(traceDir, fmt.Sprintf("%d.trace.log", nodeID)))
 	if err != nil {
 		return &tracer{}
 	}
@@ -96,11 +97,22 @@ func (t *tracer) turn(turn int, response *ai.Response, calls []ai.ToolCall, resu
 	if response != nil && len(response.Choices) > 0 {
 		finish = response.Choices[0].FinishReason
 	}
-	in, out := 0, 0
+	// cached is the part of in= the provider billed at the cached rate, and it
+	// is on the line because its absence is what let a whole class of defect
+	// hide. Every cache-shape discipline in this codebase — the stable prefix,
+	// the batched decay, the frozen tool block — is unfalsifiable without it:
+	// a run whose affinity key was never set and a run whose prefix was perfect
+	// produce identical traces when the only numbers written down are in and
+	// out. It goes after them rather than replacing in=, because it is a share
+	// of that number and reads as one.
+	in, out, cached := 0, 0, 0
 	if response != nil && response.Usage != nil {
 		in, out = response.Usage.PromptTokens, response.Usage.CompletionTokens
+		if details := response.Usage.PromptTokensDetails; details != nil {
+			cached = details.CachedTokens
+		}
 	}
-	fmt.Fprintf(&block, "── turn %d  finish=%s  in=%d out=%d", turn, finish, in, out)
+	fmt.Fprintf(&block, "── turn %d  finish=%s  in=%d out=%d cached=%d", turn, finish, in, out, cached)
 	if note != "" {
 		fmt.Fprintf(&block, "  [%s]", note)
 	}

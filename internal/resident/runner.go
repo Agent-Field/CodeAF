@@ -33,7 +33,13 @@ type ExecResult struct {
 	Summary          string
 	PromptTokens     int
 	CompletionTokens int
-	Cost             float64
+	// CachedTokens is the share of PromptTokens the provider billed at the
+	// cached rate. The executor has always measured it and the journal now has
+	// somewhere to put it; carrying it here is what joins the two, and without
+	// it every cache discipline the harness practises stays unfalsifiable from
+	// the outside.
+	CachedTokens int
+	Cost         float64
 	// Promote asks the runner to settle this reflex partial and enqueue the
 	// same verbatim instruction on the ordinary compiled path atomically.
 	Promote         bool
@@ -734,6 +740,7 @@ func (r *Runner) recordSpend(node store.Node, result ExecResult) {
 		NodeID:           node.ID,
 		PromptTokens:     result.PromptTokens,
 		CompletionTokens: result.CompletionTokens,
+		CachedTokens:     result.CachedTokens,
 		Cost:             result.Cost,
 		Model:            result.Model,
 	})

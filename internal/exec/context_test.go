@@ -38,6 +38,10 @@ func (l *steadyLeaf) turn(t *testing.T, size, budget int) (rewrote, wasOver bool
 		ai.Message{Role: "tool", ToolCallID: id, Content: text(strings.Repeat("x", size))},
 	)
 	wasOver = liveObservationBytes(l.messages) > budget
+	// The loop tells the decayer what each turn added, because that is what the
+	// low-water mark is solved against. A leaf that measures nothing gets the
+	// fixed fraction, which is the case this replay is no longer in.
+	l.fade.observe(size)
 	l.fade.decay(l.messages, budget)
 	for index, before := range l.previous {
 		if contentOf(l.messages[index]) != before {
@@ -49,6 +53,17 @@ func (l *steadyLeaf) turn(t *testing.T, size, budget int) (rewrote, wasOver bool
 		l.previous[index] = contentOf(l.messages[index])
 	}
 	return rewrote, wasOver
+}
+
+// steadyLowWater is where a firing pass lands for a leaf whose every turn adds
+// the same number of bytes — the mark the loop itself would compute once it has
+// measured that leaf, which is what the replays below run against.
+func steadyLowWater(budget, perTurn int) int {
+	gauge := newDecayer(nil, nil)
+	for sample := 0; sample < minInflowSamples; sample++ {
+		gauge.observe(perTurn)
+	}
+	return gauge.lowWater(budget)
 }
 
 // stubbedIDs is the set of tool_call_ids currently carrying a stub.
@@ -79,7 +94,7 @@ func TestDecayBatchesRewrites(t *testing.T) {
 		result = 2 << 10
 		turns  = 40
 	)
-	lowWater := decayLowWater(budget)
+	lowWater := steadyLowWater(budget, result)
 	// Turns of headroom each batch buys: the gap it clears, divided by what a
 	// turn adds.
 	perBatch := (budget - lowWater) / result
@@ -133,7 +148,7 @@ func TestDecayHoldsTheBudgetInvariant(t *testing.T) {
 		result = 3 << 10
 		turns  = 30
 	)
-	lowWater := decayLowWater(budget)
+	lowWater := steadyLowWater(budget, result)
 
 	leaf := newSteadyLeaf()
 	stubbed := map[string]bool{}
@@ -195,6 +210,244 @@ func TestDecayLowWaterRespectsTheFloor(t *testing.T) {
 	if decayLowWater(observationBudget) != observationBudget*decayLowWaterPercent/100 {
 		t.Error("the mark is no longer a fixed fraction of the budget")
 	}
+	// And the fixed fraction is what a leaf gets only until it has been
+	// measured: a decayer nobody has told anything is still on it.
+	if newDecayer(nil, nil).lowWater(observationBudget) != decayLowWater(observationBudget) {
+		t.Error("an unmeasured leaf no longer falls back to the fixed fraction")
+	}
+}
+
+// The mark is solved for the denominator, not declared as a fraction of the
+// numerator. That is the whole of F3: a quarter of the window was 6.25KB of
+// headroom against a measured 3.7KB of inflow per turn, so a batch bought 1.7
+// quiet turns and the hysteresis paid its cost in window size while delivering
+// almost none of its benefit. What has to hold now is the ratio, at any inflow
+// the leaf turns out to have.
+func TestDecayLowWaterBuysHeadroomForTheMeasuredInflow(t *testing.T) {
+	const budget = defaultObservationBudget
+	// Inflows whose solved mark lands between the two bounds, which is where
+	// the ratio is the thing being tested. 3,700 bytes is the measured median.
+	for _, inflow := range []int{2 << 10, 3_700, 8 << 10} {
+		mark := steadyLowWater(budget, inflow)
+		if mark >= budget {
+			t.Fatalf("inflow %d: mark %d retires nothing", inflow, mark)
+		}
+		turns := (budget - mark) / inflow
+		if turns < 6 || turns > 8 {
+			t.Errorf("inflow %d: one batch buys %d quiet turns (mark %d of %d), want six to eight",
+				inflow, turns, mark, budget)
+		}
+	}
+	// Below the band the ceiling takes over, and it may only err towards more
+	// headroom than the ratio asked for — never less, which would be the
+	// every-turn rewrite arriving through the measurement instead of through
+	// the arithmetic.
+	for _, inflow := range []int{64, 512} {
+		mark := steadyLowWater(budget, inflow)
+		if turns := (budget - mark) / inflow; turns < decayHeadroomTurns {
+			t.Errorf("inflow %d: a near-silent leaf was left only %d quiet turns", inflow, turns)
+		}
+	}
+	// Above it the floor takes over, and it errs the other way because it must:
+	// a leaf adding a quarter of the whole window every turn cannot be given
+	// seven turns of headroom by any mark. What the floor guarantees instead is
+	// that one batch never gives up more than half the window, so a fire stays
+	// a batch rather than becoming a reset.
+	for _, inflow := range []int{32 << 10, budget} {
+		if mark := steadyLowWater(budget, inflow); mark < budget/2 {
+			t.Errorf("inflow %d: one fire retired down to %d of %d — that is a reset, not a batch",
+				inflow, mark, budget)
+		}
+	}
+	// Both bounds are about measurement rather than policy. A leaf adding more
+	// than the whole window per turn must not solve for a full reset, and a leaf
+	// whose sampled turns were near-silent must not solve for a mark so close to
+	// the budget that the next ordinary result crosses it again.
+	if mark := steadyLowWater(budget, budget); mark != budget*decayHeadroomFloorPercent/100 {
+		t.Errorf("an enormous inflow solved for %d, want the %d%% floor", mark, decayHeadroomFloorPercent)
+	}
+	if mark := steadyLowWater(budget, 1); mark != budget*decayHeadroomCeilingPercent/100 {
+		t.Errorf("a near-silent leaf solved for %d, want the %d%% ceiling", mark, decayHeadroomCeilingPercent)
+	}
+}
+
+// The window is sized from what the model can hold and from nothing else.
+//
+// It used to be maxTokens/6 — a share of the leaf's cumulative *spend* ceiling,
+// which is not a quantity that fits in a request. At the default budget that
+// arithmetic produced a 25KB window, smaller than the single 26KB file the leaf
+// was re-reading all run, in front of a model with hundreds of thousands of
+// tokens of room. The category error is what this pins shut.
+func TestObservationWindowIsSizedFromContextNotSpend(t *testing.T) {
+	// The measured re-read subject: whatever else changes, one ordinary
+	// document has to fit inside the memory meant to hold it.
+	const reReadSubject = 26 << 10
+	// What the old arithmetic gave the default leaf budget.
+	const spendSizedWindow = defaultLeafTokens / 6
+
+	unknown := observationWindow(0)
+	if unknown < reReadSubject {
+		t.Fatalf("with no catalog answer the window is %d bytes, smaller than the %d-byte subject a leaf re-reads",
+			unknown, reReadSubject)
+	}
+	if unknown <= spendSizedWindow {
+		t.Fatalf("the default window is %d bytes, no better than the %d the spend ceiling used to buy",
+			unknown, spendSizedWindow)
+	}
+
+	// A real context grows it further, and a large one is held at the ceiling
+	// rather than allowed to eat the whole prompt.
+	if roomy := observationWindow(400_000); roomy <= unknown {
+		t.Errorf("a 400k-token model got %d bytes, no more than the no-answer default %d", roomy, unknown)
+	}
+	if huge := observationWindow(2_000_000); huge != maxObservationBudget {
+		t.Errorf("a 2M-token model got %d bytes, want the %d ceiling", huge, maxObservationBudget)
+	}
+	// A genuinely small model is clamped up to the floor rather than handed a
+	// negative window by the fixed floor and completion reserve.
+	if tiny := observationWindow(8_000); tiny != observationBudget {
+		t.Errorf("an 8k-token model got %d bytes, want the %d floor", tiny, observationBudget)
+	}
+	// Whatever the context, the window leaves room for the turn itself: the
+	// bytes it may carry must fit well inside the tokens the model accepts.
+	for _, context := range []int{64_000, 128_000, 200_000, 400_000} {
+		if tokens := observationWindow(context) / observationBytesPerToken; tokens > context/2 {
+			t.Errorf("a %d-token model got a window of about %d tokens, more than half its context",
+				context, tokens)
+		}
+	}
+}
+
+// The same bytes are carried once and pointed at afterwards. The pointer is a
+// line rather than a copy, and it names where the material can be read, so a
+// model that needs the detail can still reach it.
+func TestRepeatedBytesBecomeAPointerToTheFirstCopy(t *testing.T) {
+	fade := newDecayer(map[string]string{}, nil)
+	carried := newObservations(fade)
+	body := strings.Repeat("the same output\n", 200)
+
+	first := carried.admit(1, call("c1", "sh", `{"cmd":"cat notes.md"}`), Result{Content: body})
+	if first != body {
+		t.Fatalf("the first copy of some bytes was not carried in full: %q", clipForTest(first))
+	}
+	second := carried.admit(4, call("c9", "sh", `{"cmd":"cat notes.md"}`), Result{Content: body})
+	if second == body {
+		t.Fatal("the same bytes were carried a second time")
+	}
+	if !strings.Contains(second, "turn 1") || !strings.Contains(second, "sh {\"cmd\":\"cat notes.md\"}") {
+		t.Fatalf("the pointer does not say which earlier result it stands for: %q", second)
+	}
+	if len(second) >= len(body)/4 {
+		t.Fatalf("the pointer is %d bytes against a %d-byte body; it has to be a line", len(second), len(body))
+	}
+
+	// A third copy points back at the original rather than at the pointer, so
+	// the chain never grows a hop.
+	third := carried.admit(9, call("c11", "sh", `{"cmd":"sed -n 1,400p notes.md"}`), Result{Content: body})
+	if !strings.Contains(third, "turn 1") {
+		t.Fatalf("a third copy pointed somewhere other than the original: %q", third)
+	}
+}
+
+// Decay is running underneath this, so a pointer has to be checked against
+// where its target actually is. Once the original has been stubbed its bytes
+// are on disk, and the pointer names the file instead of the transcript.
+func TestAPointerNamesTheSpillFileOnceTheOriginalHasDecayed(t *testing.T) {
+	space := workspace(t)
+	tools := NewToolbox(space, 2, nil)
+	fade := newDecayer(map[string]string{}, tools.decaySpill)
+	carried := newObservations(fade)
+	body := strings.Repeat("A", 20<<10)
+	fresh := strings.Repeat("B", 20<<10)
+
+	original := call("c7", "sh", `{"cmd":"cat big.txt"}`)
+	fade.labels[original.ID] = callLabel(original)
+	messages := []ai.Message{
+		{Role: "tool", ToolCallID: original.ID, Content: text(carried.admit(1, original, Result{Content: body}))},
+		{Role: "tool", ToolCallID: "c8", Content: text(fresh)},
+	}
+	if decayed := fade.decay(messages, observationBudget); decayed != 1 {
+		t.Fatalf("decayed = %d, want the older result stubbed", decayed)
+	}
+
+	pointer := carried.admit(6, call("c12", "sh", `{"cmd":"cat big.txt"}`), Result{Content: body})
+	wantPath := filepath.Join(obsDir, "2-decay-c7.txt")
+	if !strings.Contains(pointer, wantPath) {
+		t.Fatalf("the pointer does not send the model to where the bytes went: %q", pointer)
+	}
+	if strings.Contains(pointer, body[:64]) {
+		t.Fatal("the pointer carried the body it was meant to replace")
+	}
+	// And the file it names really holds them.
+	on, err := os.ReadFile(filepath.Join(space.Root(), wantPath))
+	if err != nil || string(on) != body {
+		t.Fatalf("the spill file the pointer names holds %d bytes, err=%v", len(on), err)
+	}
+}
+
+// The case a pointer must never be emitted for: the original was stubbed with
+// nowhere to point, so those bytes are gone from everywhere the model can
+// reach. A pointer at unreachable material is worse than the material.
+func TestAnUnreachableOriginalIsCarriedInFullAgain(t *testing.T) {
+	// A decayer with no spill function stubs without writing anything.
+	fade := newDecayer(map[string]string{}, nil)
+	carried := newObservations(fade)
+	body := strings.Repeat("C", 20<<10)
+	fresh := strings.Repeat("D", 20<<10)
+
+	original := call("c1", "sh", `{"cmd":"cat gone.txt"}`)
+	fade.labels[original.ID] = callLabel(original)
+	messages := []ai.Message{
+		{Role: "tool", ToolCallID: original.ID, Content: text(carried.admit(1, original, Result{Content: body}))},
+		{Role: "tool", ToolCallID: "c2", Content: text(fresh)},
+	}
+	if decayed := fade.decay(messages, observationBudget); decayed != 1 {
+		t.Fatalf("decayed = %d, want the older result stubbed", decayed)
+	}
+
+	again := carried.admit(5, call("c3", "sh", `{"cmd":"cat gone.txt"}`), Result{Content: body})
+	if again != body {
+		t.Fatalf("bytes with nowhere left to point were not re-emitted in full: %q", clipForTest(again))
+	}
+	// This copy is now the reachable one, so the next repeat points here.
+	next := carried.admit(7, call("c4", "sh", `{"cmd":"cat gone.txt"}`), Result{Content: body})
+	if !strings.Contains(next, "turn 5") {
+		t.Fatalf("the re-emitted copy did not become the pointer target: %q", next)
+	}
+}
+
+// Three kinds of result are never content-addressed, and each for its own
+// reason. An error's whole value is being read where it happened; a background
+// job report describes state that was true when it was written; and a result
+// carrying multimodal follow-up content is not its text at all.
+func TestErrorsJobReportsAndMultimodalResultsAreNeverPointedAt(t *testing.T) {
+	carried := newObservations(newDecayer(map[string]string{}, nil))
+	body := strings.Repeat("no such file or directory\n", 100)
+
+	failing := Result{Content: body, IsError: true}
+	if first, second := carried.admit(1, call("e1", "sh", `{"cmd":"cat x"}`), failing),
+		carried.admit(2, call("e2", "sh", `{"cmd":"cat x"}`), failing); first != second {
+		t.Fatalf("a repeated error was replaced by a pointer: %q", clipForTest(second))
+	}
+
+	report := Result{Content: body, reportedJobs: true}
+	if first, second := carried.admit(1, call("j1", "job", `{}`), report),
+		carried.admit(2, call("j2", "job", `{}`), report); first != second {
+		t.Fatalf("a repeated job report was replaced by a pointer: %q", clipForTest(second))
+	}
+
+	looked := Result{Content: body, Followup: []ai.ContentPart{{Type: "image_url"}}}
+	if first, second := carried.admit(1, call("v1", "view_image", `{"path":"a.png"}`), looked),
+		carried.admit(2, call("v2", "view_image", `{"path":"a.png"}`), looked); first != second {
+		t.Fatalf("a repeated image result was replaced by a pointer: %q", clipForTest(second))
+	}
+}
+
+func clipForTest(body string) string {
+	if len(body) <= 120 {
+		return body
+	}
+	return body[:120] + "…"
 }
 
 // TestDecayStubsAnOversizedResult is the degenerate case, unchanged by

@@ -172,7 +172,8 @@ func runExecute(args []string) error {
 	if preparedUsage.Calls > 0 {
 		if err := railStore.RecordUsage(store.NodeUsage{
 			NodeID: store.RootID, PromptTokens: preparedUsage.PromptTokens,
-			CompletionTokens: preparedUsage.CompletionTokens, Cost: preparedUsage.Cost,
+			CompletionTokens: preparedUsage.CompletionTokens,
+			CachedTokens:     preparedUsage.CachedTokens, Cost: preparedUsage.Cost,
 		}); err != nil {
 			return fmt.Errorf("journal headless preparation usage: %w", err)
 		}
@@ -202,8 +203,14 @@ func runExecute(args []string) error {
 	if video, ok := modelCatalog.Model(mediaTools.VideoModel); ok {
 		mediaTools.VideoPrice = video.RequestPrice
 	}
+	// The window a leaf remembers in is sized from what the model can hold, and
+	// the catalog is the only thing on this side that knows. An unknown model,
+	// or no catalog at all, passes zero and the loop takes its own default —
+	// this is economics, never a capability check, and a run must not depend on
+	// a metadata endpoint having answered.
 	linear := exec.NewLinear(client, space, web, *maxTurns, *maxTokens, deadline).
-		WithStore(history).WithMedia(mediaTools).WithAttribution(settings.Attribution)
+		WithStore(history).WithMedia(mediaTools).WithAttribution(settings.Attribution).
+		WithContextLength(modelCatalog.ContextLength(settings.Model))
 	// Every worker this build can construct, offered to the scheduler by name.
 	// The headless surface resolves a node's choice through this registry while
 	// the resident surface builds one per leaf; the covenant is that both reach
@@ -304,7 +311,8 @@ func runExecute(args []string) error {
 	if runUsage.Calls > 0 {
 		if err := railStore.RecordUsage(store.NodeUsage{
 			NodeID: store.RootID, PromptTokens: runUsage.PromptTokens,
-			CompletionTokens: runUsage.CompletionTokens, Cost: runUsage.Cost,
+			CompletionTokens: runUsage.CompletionTokens,
+			CachedTokens:     runUsage.CachedTokens, Cost: runUsage.Cost,
 		}); err != nil && runErr == nil {
 			runErr = fmt.Errorf("journal headless usage: %w", err)
 		}
