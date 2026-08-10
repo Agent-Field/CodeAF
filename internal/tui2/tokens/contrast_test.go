@@ -121,3 +121,48 @@ func TestForbiddenPairingsAreNotGratuitous(t *testing.T) {
 	t.Logf("dimmed secondary on band = %.2f < gate %.2f — an unfocused pane draws "+
 		"no band, it marks selection with the dim accent rail", got, min)
 }
+
+// TestContrastGateAtEveryProfile closes the hole a truecolor-only gate leaves.
+// The palette is AUTHORED in 24-bit sRGB, and the numbers above measure those
+// authored values — but most terminals will never see them. A 256-color
+// terminal renders the nearest cube entry, and a cube entry is a DIFFERENT
+// colour, several percent of luminance away in either direction.
+//
+// 5.16's law is about what a person can read, not about what was authored, so
+// the gate runs again over the colours each profile will actually paint. This
+// is the test that would catch a palette edit whose truecolor value clears 4.5
+// and whose 256-color approximation does not.
+//
+// ANSI16 is excluded and the exclusion is the honest one: at sixteen colours
+// the actual pixels belong to the user's terminal theme, so no contrast number
+// we compute would be a fact about anything. That profile is carried by the
+// glyph vocabulary (5.17), which is why every state that colour carries also
+// has a shape.
+func TestContrastGateAtEveryProfile(t *testing.T) {
+	for _, p := range Pairings() {
+		fg := color256(int(p.Fg.Index(ANSI256, p.FgFocus)))
+		ground := color256(int(p.Ground.Index(ANSI256, p.GroundFocus)))
+		got, min := Contrast(fg, ground), p.Min()
+		if got < min {
+			t.Errorf("at 256 colours %s(%s) on %s(%s) resolves to %s on %s: contrast %.2f < required %.2f",
+				p.Fg, p.FgFocus, p.Ground, p.GroundFocus, fg.Hex(), ground.Hex(), got, min)
+		}
+	}
+}
+
+// TestBandSeparationSurvives256: the selection band must still read as a raised
+// pill after degradation, or selection stops being visible on the majority of
+// terminals. It is allowed to lose its identity TINT there
+// ([Profile.BandTintDistinct] says so out loud); it is not allowed to lose the
+// band.
+func TestBandSeparationSurvives256(t *testing.T) {
+	ground := color256(int(Ground.Index(ANSI256, FocusNormal)))
+	band := color256(int(Band.Index(ANSI256, FocusNormal)))
+	sep := Contrast(band, ground)
+	if sep < BandSeparationMin || sep > BandSeparationMax {
+		t.Errorf("at 256 colours the band separates from the ground by %.3f, outside [%.2f, %.2f]",
+			sep, BandSeparationMin, BandSeparationMax)
+	}
+	t.Logf("band separation: %.3f authored, %.3f at 256 colours",
+		Contrast(Band.Color(FocusNormal), Ground.Color(FocusNormal)), sep)
+}

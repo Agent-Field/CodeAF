@@ -253,10 +253,43 @@ func buildTable() [tokenCount]entry {
 	// Derived resolutions: the 256-color index and the precomputed SGR strings
 	// for every profile and focus. Doing it here means a render never formats
 	// an escape sequence — it appends a constant string.
+	//
+	// The 256-color resolution runs in TWO passes, and the second one exists
+	// because a naive nearest-neighbour walk measurably breaks 5.16. The xterm
+	// cube is coarse in exactly the pastel corner this palette lives in: taken
+	// independently, identity.1 lands on the same cube entry as GREEN and
+	// identity.2 on the same entry as CYAN, so a 256-color terminal would draw
+	// a task's identity accent in the colour that means "success" or "alive".
+	// That is not a degradation, it is the vocabulary collapsing — the exact
+	// failure the hue-separation test forbids at the source values.
+	//
+	// So: every other token resolves to its nearest entry first and CLAIMS it,
+	// and the identity wheel then resolves to the nearest entry that is not
+	// already claimed and is a visible step away from every claim. Meaning is
+	// served first and identity absorbs the approximation, which is the right
+	// way round — a slightly-off pastel still says "this task", while a
+	// perfectly-accurate one that reads as green says something false.
+	var claimed [focusCount][]uint8
 	for i := range t {
+		if tok := Token(i); tok >= Identity0 && tok <= Identity7 {
+			continue
+		}
 		e := &t[i]
 		for f := Focus(0); f < focusCount; f++ {
 			e.idx256[f] = nearest256(e.color[f])
+			claimed[f] = append(claimed[f], e.idx256[f])
+		}
+	}
+	for i := range IdentityCount {
+		e := &t[Identity0+Token(i)]
+		for f := Focus(0); f < focusCount; f++ {
+			e.idx256[f] = nearestDistinct256(e.color[f], claimed[f])
+			claimed[f] = append(claimed[f], e.idx256[f])
+		}
+	}
+	for i := range t {
+		e := &t[i]
+		for f := Focus(0); f < focusCount; f++ {
 			for p := Profile(0); p < profileCount; p++ {
 				e.sgrFg[p][f] = sgrString(p, e, f, layerFg)
 				e.sgrBg[p][f] = sgrString(p, e, f, layerBg)
