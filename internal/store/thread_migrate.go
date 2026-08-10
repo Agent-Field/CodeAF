@@ -6,8 +6,8 @@ import (
 )
 
 // migrateThreadSchema keeps selectable questions, charter commands, durable
-// media attachments, and reply-model attribution usable when an existing
-// resident database is opened by a newer build.
+// media attachments, reply-model attribution, and the span a reply answers
+// usable when an existing resident database is opened by a newer build.
 func migrateThreadSchema(db *sql.DB) error {
 	hasOptions, err := tableHasColumn(db, "messages", "options")
 	if err != nil {
@@ -42,6 +42,16 @@ func migrateThreadSchema(db *sql.DB) error {
 	if _, err := db.Exec(`CREATE INDEX IF NOT EXISTS messages_question_seq
 		ON messages (question_seq, role, seq)`); err != nil {
 		return err
+	}
+
+	hasAnswers, err := tableHasColumn(db, "messages", "answers_seq")
+	if err != nil {
+		return err
+	}
+	if !hasAnswers {
+		if _, err := db.Exec(`ALTER TABLE messages ADD COLUMN answers_seq INTEGER NOT NULL DEFAULT 0`); err != nil {
+			return err
+		}
 	}
 
 	hasModel, err := tableHasColumn(db, "messages", "model")

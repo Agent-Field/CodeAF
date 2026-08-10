@@ -103,6 +103,11 @@ const (
 	EventNodeHeld            EventKind = "node_held"
 	EventNodeResumed         EventKind = "node_resumed"
 	EventNodePriorityChanged EventKind = "node_priority_changed"
+	// A node's worker may change once, when a failed first attempt is handed to
+	// a different kind of worker rather than to a stronger model. It is journaled
+	// for the same reason the choice is journaled at splice time: a leaf claimed
+	// after a restart must run on what it was last promised.
+	EventNodeWorkerChanged EventKind = "node_worker_changed"
 
 	// Thread events: the conversation and its asynchronous mutation requests
 	// live in the same journal as the graph they act on.
@@ -260,11 +265,27 @@ type Provenance struct {
 	// current work model serves, as always. It is provenance rather than
 	// configuration: the leaf that ran is inseparable from the model asked for.
 	WorkModel string `json:"work_model,omitempty"`
+	// PlanModel is the model that actually structured this job, recorded only
+	// when it was not the model the job's work runs on. Empty — which is nearly
+	// every job — means the plan slot followed the work slot, the default the
+	// whole product is built around, and a surface that shows it says nothing.
+	// It is provenance for the same reason WorkModel is: a graph's shape is
+	// inseparable from the model that drew it, and a slot moved an hour later
+	// must not be able to rewrite the answer to "who planned this".
+	PlanModel string `json:"plan_model,omitempty"`
 	// Craft names the learned workflow this subtree compiled from, as
 	// "name@commit". Empty is ordinary planned work. Every node of a craft run
 	// carries it: survival is measured per workflow version, so the version a
 	// leaf actually ran under must be as durable as the leaf itself.
 	Craft string `json:"craft,omitempty"`
+	// Subharness names the worker chosen for this whole subtree — the compiler's
+	// judgement that the essence of this job is what one specialist is for.
+	// Empty is the generalist and is nearly every job. It is provenance for the
+	// same reason WorkModel is: the leaf that ran is inseparable from what ran
+	// it, so the choice is made once, at splice, and survives a restart rather
+	// than being re-decided by whatever the process happens to have registered
+	// when the leaf finally starts.
+	Subharness string `json:"subharness,omitempty"`
 }
 
 // Need is one incoming edge named by a node specification.
@@ -290,6 +311,13 @@ type NodeSpec struct {
 	// Group names the planning container this node expanded out of. It is
 	// provenance for display — execution reads only Parent and Needs.
 	Group string `json:"group,omitempty"`
+
+	// Subharness names the worker this one node was sized for, when the sizing
+	// pass judged it atomic for a specialist rather than for the generalist.
+	// Empty inherits the splice's own choice, which is empty for nearly every
+	// job — one node of a subtree may be a coding job while its siblings are
+	// not, and the graph is where that difference lives.
+	Subharness string `json:"subharness,omitempty"`
 }
 
 // Subtree is the atomic unit of admission.
@@ -299,11 +327,16 @@ type Subtree struct {
 
 // Node is the durable scheduling view of one graph node.
 type Node struct {
-	ID         string
-	Parent     string
-	Brief      string
-	Title      string
-	Group      string
+	ID     string
+	Parent string
+	Brief  string
+	Title  string
+	Group  string
+	// Subharness is the settled answer to "what runs this leaf": the node's own
+	// choice where it made one, the splice's otherwise. It is resolved once, at
+	// admission, so every dispatch path reads one field and cannot disagree
+	// with another about which worker a node was promised.
+	Subharness string
 	Stage      int
 	Status     Status
 	Owner      string
@@ -400,7 +433,10 @@ CREATE TABLE IF NOT EXISTS nodes (
 	retry_of       TEXT NOT NULL DEFAULT '',
 	service_intent INTEGER NOT NULL DEFAULT 0 CHECK (service_intent IN (0, 1)),
 	work_model     TEXT NOT NULL DEFAULT '',
+	plan_model     TEXT NOT NULL DEFAULT '',
 	craft          TEXT NOT NULL DEFAULT '',
+	subharness     TEXT NOT NULL DEFAULT '',
+	splice_subharness TEXT NOT NULL DEFAULT '',
     attachments    JSON NOT NULL DEFAULT '[]' CHECK (json_valid(attachments)),
     created_seq    INTEGER NOT NULL REFERENCES events(seq),
     created_order  INTEGER NOT NULL CHECK (created_order >= 0),

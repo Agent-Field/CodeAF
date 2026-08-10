@@ -464,7 +464,7 @@ func TestAffordanceGrammarReplacesLegacyHints(t *testing.T) {
 			t.Fatalf("legacy affordance hint %q survived:\n%s", legacy, surfaces)
 		}
 	}
-	for _, expected := range []string{"▸ Read the request. · 1 assumption", "▸ 35 more lines", "▸ details", " ▸"} {
+	for _, expected := range []string{"▸ Read the request. · 1 assumption", "▸ 33 more lines", "▸ details", " ▸"} {
 		if !strings.Contains(surfaces, expected) {
 			t.Fatalf("grammar affordance %q missing:\n%s", expected, surfaces)
 		}
@@ -675,8 +675,10 @@ func TestFocusTraversalWalksThreadElementsAndEnterEqualsClick(t *testing.T) {
 }
 
 // A long outcome used to end at a truncation marker inside a fixed-height
-// header, and the rest of it existed only in chat. The feed scrolls, so the
-// whole result lands there — reachable from the surface that produced it.
+// header, and the rest of it existed only in chat. Nothing is fixed-height any
+// more: the description opens the same scroll the turns live in, so the whole
+// result is simply there, in the surface that produced it, with no marker to
+// follow and nowhere for the rest to hide.
 func TestALongOutcomeIsReadableInTheActivityFeed(t *testing.T) {
 	model, _ := inspectedWorkerModel(t)
 	model.setSize(90, 26)
@@ -686,15 +688,478 @@ func TestALongOutcomeIsReadableInTheActivityFeed(t *testing.T) {
 		Summary: strings.TrimSpace(strings.Repeat("a finding worth reading in full. ", 60)),
 	}
 	model.sizeNodeViewports()
-	if !model.nodeDetailsClipped {
-		t.Fatal("a 60-sentence outcome did not clip the header")
-	}
-	if !strings.Contains(ansi.Strip(model.nodeDetailsText), "in full at the end of the feed") {
-		t.Fatalf("clipped header points nowhere:\n%s", ansi.Strip(model.nodeDetailsText))
-	}
 	feed := ansi.Strip(model.renderActivityFeed(88))
-	if !strings.Contains(feed, "── outcome ──") ||
-		strings.Count(feed, "a finding worth reading in full.") < 10 {
-		t.Fatalf("feed does not carry the whole outcome:\n%s", feed)
+	if strings.Contains(feed, "in full at the end of the feed") {
+		t.Fatalf("the document still speaks as if it were clipped:\n%s", feed)
+	}
+	// The wrap breaks sentences across rows, so the count is taken on the words
+	// rejoined — what matters is that none of them was thrown away.
+	unwrapped := strings.Join(strings.Fields(feed), " ")
+	if strings.Count(unwrapped, "a finding worth reading in full.") < 55 {
+		t.Fatalf("document does not carry the whole outcome:\n%s", feed)
+	}
+}
+
+// ── wave 1 · transcript truth ───────────────────────────────────────────────
+
+// The reported symptom, verbatim: "it waits, then reprints older chat". The
+// live stream was placed at the poll watermark plus one, and the watermark is
+// deliberately left behind by a turn that lands at post time — so for as long
+// as a poll cycle the reply drew ABOVE the message it was answering, then
+// leapt below it in one frame. Sequence numbers are the global journal's, and
+// node transitions, receipts and commands all consume them, so the gap between
+// the watermark and a just-posted turn is the ordinary case, not the rare one.
+func TestALiveStreamNeverRendersAboveTheTurnItAnswers(t *testing.T) {
+	model := New(&fakeBackend{}, "order")
+	model.setSize(100, 30)
+	model.messages = []store.Message{
+		{Seq: 12, SessionID: "order", Role: store.RoleAgent, Body: "Earlier answer.", Time: time.Now()},
+	}
+	model.lastSeq = 12
+
+	_, _ = model.Update(postResultMsg{message: store.Message{
+		Seq: 400, SessionID: "order", Role: store.RoleUser, Body: "what is the total?", Time: time.Now(),
+	}})
+	if model.lastSeq != 12 {
+		t.Fatalf("a turn landed at post time moved the poll watermark to %d", model.lastSeq)
+	}
+
+	model.applyStreamEvent(StreamEvent{Kind: StreamStarted})
+	model.applyStreamEvent(StreamEvent{Kind: StreamDelta, Delta: `{"reply":"It adds up to 41,208.`})
+	for index := 0; index < 64 && model.streamAnimating(); index++ {
+		model.advanceStream()
+	}
+
+	thread := ansi.Strip(model.renderMessages())
+	earlier := strings.Index(thread, "Earlier answer.")
+	turn := strings.Index(thread, "what is the total?")
+	reply := strings.Index(thread, "It adds up to 41,208.")
+	if earlier < 0 || turn < 0 || reply < 0 {
+		t.Fatalf("thread lost one of its three blocks:\n%s", thread)
+	}
+	if !(earlier < turn && turn < reply) {
+		t.Fatalf("the frame reordered visible blocks (earlier %d, turn %d, reply %d):\n%s",
+			earlier, turn, reply, thread)
+	}
+}
+
+// An unsequenced line used to be given a NEGATIVE sort order, which put it at
+// the very top of the transcript — above history it arrived long after. It
+// belongs at the tail, in arrival order, and the slice the thread is kept in
+// has to agree with the frame: a sequenced arrival goes in front of it.
+func TestAnUnsequencedLineSortsAtTheTailAndNeverAboveHistory(t *testing.T) {
+	model := New(&fakeBackend{}, "unsequenced")
+	model.setSize(100, 30)
+	for _, message := range []store.Message{
+		{Seq: 1, SessionID: "unsequenced", Role: store.RoleUser, Body: "first turn", Time: time.Now()},
+		{Seq: 2, SessionID: "unsequenced", Role: store.RoleAgent, Body: "first answer", Time: time.Now()},
+	} {
+		model.insertThreadMessage(message)
+	}
+	model.insertThreadMessage(store.Message{
+		SessionID: "unsequenced", Role: store.RoleUser, Body: "the newest words", Time: time.Now(),
+	})
+	model.insertThreadMessage(store.Message{
+		Seq: 3, SessionID: "unsequenced", Role: store.RoleAgent, Body: "second answer", Time: time.Now(),
+	})
+
+	bodies := make([]string, 0, len(model.messages))
+	for _, message := range model.messages {
+		bodies = append(bodies, message.Body)
+	}
+	want := []string{"first turn", "first answer", "second answer", "the newest words"}
+	if !reflect.DeepEqual(bodies, want) {
+		t.Fatalf("thread order = %v, want %v", bodies, want)
+	}
+	thread := ansi.Strip(model.renderMessages())
+	if at := strings.Index(thread, "the newest words"); at < strings.Index(thread, "second answer") {
+		t.Fatalf("an unsequenced line rendered above history:\n%s", thread)
+	}
+}
+
+// JOURNEY.md journey 6: the turn "appears as the user's message instantly".
+// It used to appear only after the SQLite round trip returned — between Enter
+// and the commit the words existed nowhere on screen at all. When the durable
+// row lands, whichever of the post result and the poll wins that race, the
+// echo is taken rather than doubled.
+func TestTheTurnAppearsTheInstantItIsTyped(t *testing.T) {
+	backend := &fakeBackend{nextSeq: 512}
+	model := New(backend, "echo")
+	model.setSize(100, 30)
+	model.input.SetValue("check the totals")
+	command := model.submit()
+	if command == nil {
+		t.Fatal("submit produced no post")
+	}
+	if model.input.Value() != "" {
+		t.Fatalf("the composer kept the sent words: %q", model.input.Value())
+	}
+	if thread := ansi.Strip(model.renderMessages()); !strings.Contains(thread, "check the totals") {
+		t.Fatalf("the typed turn is nowhere on screen:\n%s", thread)
+	}
+
+	_, _ = model.Update(command())
+	if !model.hasThreadMessage(512) {
+		t.Fatal("the durable row never reconciled with the echo")
+	}
+	if count := strings.Count(ansi.Strip(model.renderMessages()), "check the totals"); count != 1 {
+		t.Fatalf("the turn is on screen %d times, want once", count)
+	}
+
+	// The other order: a poll delivers the durable row before the post result
+	// gets back. The echo comes off there too.
+	model.input.SetValue("and the tax line")
+	command = model.submit()
+	model.applyPoll(pollResultMsg{sessionID: "echo", messages: []store.Message{
+		{Seq: 513, SessionID: "echo", Role: store.RoleUser, Body: "and the tax line", Time: time.Now()},
+	}})
+	if count := strings.Count(ansi.Strip(model.renderMessages()), "and the tax line"); count != 1 {
+		t.Fatalf("the poll doubled the echoed turn (%d on screen)", count)
+	}
+	_, _ = model.Update(command())
+	if count := strings.Count(ansi.Strip(model.renderMessages()), "and the tax line"); count != 1 {
+		t.Fatalf("the post result doubled the turn the poll already landed (%d on screen)", count)
+	}
+}
+
+// A post the store refuses must not leave the echo standing as if it had been
+// taken, and must not eat the words either: they go back where they were typed.
+func TestARejectedTurnComesBackToTheComposer(t *testing.T) {
+	backend := &fakeBackend{postErr: fmt.Errorf("the store is locked")}
+	model := New(backend, "reject")
+	model.setSize(100, 30)
+	model.input.SetValue("try the risky thing")
+	command := model.submit()
+	if command == nil {
+		t.Fatal("submit produced no post")
+	}
+	if thread := ansi.Strip(model.renderMessages()); !strings.Contains(thread, "try the risky thing") {
+		t.Fatalf("the turn was never echoed:\n%s", thread)
+	}
+
+	_, _ = model.Update(command())
+	if model.err == nil {
+		t.Fatal("a refused post said nothing")
+	}
+	if thread := ansi.Strip(model.renderMessages()); strings.Contains(thread, "try the risky thing") {
+		t.Fatalf("a turn the store refused is still standing in the thread:\n%s", thread)
+	}
+	if model.input.Value() != "try the risky thing" {
+		t.Fatalf("the refused words are unrecoverable: composer holds %q", model.input.Value())
+	}
+}
+
+// The permanent-blank-reply trap, reproduced in the state sequence that made
+// it: the control belt opens a stream and produces no reply of its own, the
+// provider ends it with no durable row attached, and the real reply then lands
+// through the poll — where it used to be parked behind a stream that could
+// never finish, rendering as an empty line for the life of the window.
+func TestAStreamThatDrewNothingNeverParksTheReplyBlank(t *testing.T) {
+	model := New(&fakeBackend{}, "belt")
+	model.setSize(100, 30)
+	model.applyStreamEvent(StreamEvent{Kind: StreamStarted})
+	model.applyStreamEvent(StreamEvent{Kind: StreamFinished})
+	if model.streamMode != streamNone {
+		t.Fatalf("a stream that drew nothing still holds the lane: mode %d seq %d",
+			model.streamMode, model.streamSeq)
+	}
+
+	reply := store.Message{Seq: 7, SessionID: "belt", Role: store.RoleAgent,
+		Body: "Two jobs are running.", Time: time.Now()}
+	model.applyPoll(pollResultMsg{sessionID: "belt", messages: []store.Message{reply}})
+	for index := 0; index < 256 && model.streamAnimating(); index++ {
+		model.advanceStream()
+	}
+	if thread := ansi.Strip(model.renderMessages()); !strings.Contains(thread, "Two jobs are running.") {
+		t.Fatalf("the landed reply rendered as an empty line:\n%s", thread)
+	}
+
+	// The same trap approached from the other side: the stalled state forced by
+	// hand, as a lost or reordered boundary event would leave it. No path may
+	// hold a landed reply blank behind a stream with nothing in it.
+	stuck := New(&fakeBackend{}, "belt")
+	stuck.setSize(100, 30)
+	stuck.streamMode, stuck.streamProviderDone = streamReal, true
+	stuck.streamQueue = []store.Message{reply}
+	if body, held := stuck.streamedBody(reply); held || body != "" {
+		t.Fatalf("a landed reply is held blank behind an empty stream: body %q held %t", body, held)
+	}
+	stuck.applyPoll(pollResultMsg{sessionID: "belt", messages: []store.Message{reply}})
+	for index := 0; index < 256 && stuck.streamAnimating(); index++ {
+		stuck.advanceStream()
+	}
+	if stuck.streamMode != streamNone || len(stuck.streamQueue) != 0 {
+		t.Fatalf("the queue never drained: mode %d queued %d", stuck.streamMode, len(stuck.streamQueue))
+	}
+	if thread := ansi.Strip(stuck.renderMessages()); !strings.Contains(thread, "Two jobs are running.") {
+		t.Fatalf("the forced-stall reply rendered as an empty line:\n%s", thread)
+	}
+}
+
+// ── the reply's own whitespace is not the reader's ──────────────────────────
+
+// A model that opens or closes its reply on a blank line handed those rows
+// straight to the renderer. Behind the settled card's gutter each one came back
+// as a stray vertical bar — one above the words, one below — and the typewriter
+// caret took a row of its own besides, reading as a glyph the reply had emitted.
+// The reply renders to its ink, and the caret rides the last line of it.
+func TestAStreamedReplyNeverPaintsBarsOnItsBlankEdges(t *testing.T) {
+	model := New(&fakeBackend{}, "stream-edges")
+	model.setSize(100, 34)
+	model.streamMode = streamReal
+	model.streamTarget, model.streamShown = "\nHello world\n", "\nHello world\n"
+
+	arriving, ok := model.streamingMessage()
+	if !ok {
+		t.Fatal("a live real stream did not offer its arriving message")
+	}
+	lines := strings.Split(ansi.Strip(model.renderAnswer(arriving, 60)), "\n")
+	if len(lines) != 1 {
+		t.Fatalf("the reply's blank edges survived as rows: %q", lines)
+	}
+	if !strings.HasPrefix(lines[0], "Hello world") || !strings.HasSuffix(lines[0], "▌") {
+		t.Fatalf("the caret does not ride the words: %q", lines[0])
+	}
+
+	// Nothing has arrived yet: the caret is all there is to draw, and it is
+	// still exactly one line.
+	model.streamShown = ""
+	empty, _ := model.streamingMessage()
+	if got := ansi.Strip(model.renderAnswer(empty, 60)); got != "▌" {
+		t.Fatalf("an empty arriving reply rendered %q", got)
+	}
+
+	// And the same body behind the settled card's gutter: no bare bars.
+	settled := jobCard{
+		ID: "job", RootID: "job", Title: "Compare the plans", State: cardSettled,
+		Deliverable: &store.Message{Seq: 9, Role: store.RoleAgent, NodeID: "job", Body: "\nHello world\n"},
+	}
+	frame := ansi.Strip(model.renderJobCard(settled, 60, false, 0, false, false))
+	for _, line := range strings.Split(frame, "\n") {
+		if strings.TrimSpace(line) == "│" {
+			t.Fatalf("a blank edge came back as a bare gutter bar:\n%s", frame)
+		}
+	}
+	if !strings.Contains(frame, "│ Hello world") {
+		t.Fatalf("the card lost the reply it was trimming:\n%s", frame)
+	}
+}
+
+// ── wave 5 · pipeline hygiene ───────────────────────────────────────────────
+
+// streamWords is what the reader can actually see, counted the way the reveal
+// spends it.
+func streamWords(text string) int {
+	return len(strings.Fields(text))
+}
+
+// THREAD-UX.md calls the unroll pacing "the floor", and it had become the
+// ceiling: two words per 120ms frame is under 17 words a second, so a reply the
+// provider finished in two seconds took twenty-four to draw. The tick spends
+// more when it is behind — and never so much that a paragraph appears whole.
+func TestTheRevealCatchesUpWithAFastProviderWithoutDumpingParagraphs(t *testing.T) {
+	model := New(&fakeBackend{}, "pace")
+	model.setSize(100, 30)
+	words := make([]string, 400)
+	for index := range words {
+		words[index] = fmt.Sprintf("word%d", index)
+	}
+	reply := strings.Join(words, " ")
+
+	model.applyStreamEvent(StreamEvent{Kind: StreamStarted})
+	model.applyStreamEvent(StreamEvent{Kind: StreamDelta, Delta: `{"reply":"` + reply + `"}`})
+	if model.streamTarget != reply {
+		t.Fatalf("the fixture did not deliver the whole reply: %d bytes", len(model.streamTarget))
+	}
+
+	ticks := 0
+	for model.streamShown != model.streamTarget {
+		before := streamWords(model.streamShown)
+		model.advanceStream()
+		drawn := streamWords(model.streamShown) - before
+		if drawn > streamMaxTokensPerTick {
+			t.Fatalf("frame %d drew %d words at once", ticks, drawn)
+		}
+		ticks++
+		if ticks > len(words) {
+			t.Fatalf("the reveal never finished: %d words shown", streamWords(model.streamShown))
+		}
+	}
+	// The floor alone would need one frame per two words — twenty-four seconds
+	// for this reply. Catching up costs a frame per dozen until the backlog is
+	// one the cadence can carry, and the calm tail after that.
+	ceiling := len(words)/streamMaxTokensPerTick + streamLagTokens/streamTokensPerTick + 2
+	if ticks > ceiling {
+		t.Fatalf("the reveal took %d frames, want at most %d", ticks, ceiling)
+	}
+	if ticks <= len(words)/(2*streamMaxTokensPerTick) {
+		t.Fatalf("the reveal drew %d frames — faster than a typewriter is not the ask", ticks)
+	}
+}
+
+// The calm case is the common case and it is untouched: a reply arriving at
+// provider speed is never more than a couple of words ahead of the reveal, and
+// those frames still draw exactly two.
+func TestASlowProviderKeepsTheOriginalCadenceExactly(t *testing.T) {
+	model := New(&fakeBackend{}, "cadence")
+	model.applyStreamEvent(StreamEvent{Kind: StreamStarted})
+	for _, delta := range []string{`{"reply":"one two `, `three four `, `five six seven eight"}`} {
+		model.applyStreamEvent(StreamEvent{Kind: StreamDelta, Delta: delta})
+		if got := model.streamRevealTokens(); got != streamTokensPerTick {
+			t.Fatalf("a small backlog spent %d words a frame, want %d", got, streamTokensPerTick)
+		}
+		model.advanceStream()
+	}
+}
+
+// A stopped turn keeps the calm cadence whatever it is holding: what lands
+// after an interruption is the words already on screen plus the mark that they
+// stopped there, and the frozen partial is never redrawn at speed.
+func TestAStoppedReplyIsNotCaughtUpWith(t *testing.T) {
+	model, _ := liveTurn(t, "the report is ")
+	if !model.interruptTurn() {
+		t.Fatal("the fixture had no turn to stop")
+	}
+	if model.streamShown != model.streamTarget {
+		t.Fatalf("the stopped reply is still moving: shown %q target %q",
+			model.streamShown, model.streamTarget)
+	}
+	model.advanceStream()
+	if model.streamShown != model.streamTarget {
+		t.Fatal("a frame moved a stopped reply")
+	}
+	// The durable line lands with a long tail; it still types itself in.
+	model.streamTarget = model.streamShown + strings.Repeat(" more", 200)
+	if got := model.streamRevealTokens(); got != streamTokensPerTick {
+		t.Fatalf("a stopped reply's tail spent %d words a frame, want %d", got, streamTokensPerTick)
+	}
+}
+
+// A reasoning phase draws nothing and used to say nothing: the pulse stood
+// there for as long as the model thought, indistinguishable from a window that
+// had not heard. It says the one word now, and loses it the instant an answer
+// starts arriving.
+func TestTheThinkingPhaseSaysSoAndStopsAtTheFirstWord(t *testing.T) {
+	model := New(&fakeBackend{}, "thinking")
+	model.setSize(100, 30)
+	model.noteAwaitingReply(store.Message{
+		Seq: 12, SessionID: "thinking", Role: store.RoleUser, Body: "how did the scans go?",
+	})
+	model.applyStreamEvent(StreamEvent{Kind: StreamStarted})
+	if line := ansi.Strip(model.renderAwaitingReply(60)); strings.Contains(line, "thinking") {
+		t.Fatalf("an ordinary wait claimed the model was thinking: %q", line)
+	}
+	model.applyStreamEvent(StreamEvent{Kind: StreamThinking})
+	line := ansi.Strip(model.renderAwaitingReply(60))
+	if !strings.HasPrefix(line, "aforge") || !strings.Contains(line, "thinking") {
+		t.Fatalf("the reasoning phase drew %q", line)
+	}
+	model.applyStreamEvent(StreamEvent{Kind: StreamDelta, Delta: `{"reply":"They finished clean.`})
+	if model.streamThinking {
+		t.Fatal("the first word of the answer left the line still saying thinking")
+	}
+}
+
+// pollTicksIn runs a command tree and returns every poll tick it schedules.
+// Batches are walked because that is how the handlers return them.
+func pollTicksIn(command tea.Cmd) []pollTickMsg {
+	if command == nil {
+		return nil
+	}
+	switch message := command().(type) {
+	case pollTickMsg:
+		return []pollTickMsg{message}
+	case tea.BatchMsg:
+		var ticks []pollTickMsg
+		for _, inner := range message {
+			ticks = append(ticks, pollTicksIn(inner)...)
+		}
+		return ticks
+	}
+	return nil
+}
+
+// A landed post used to wait out whatever tick was already scheduled — up to
+// two seconds on an idle window — before the reply could be picked up. It pokes
+// the read forward now, and the poke is a re-arm rather than a second timer:
+// the tick it replaced arrives spent and reads nothing.
+func TestALandedPostPokesOnePollAndSpendsTheTickItReplaced(t *testing.T) {
+	model := New(&fakeBackend{}, "poke")
+	model.setSize(100, 30)
+	stale := pollTicksIn(model.nextPollTick())
+	if len(stale) != 1 {
+		t.Fatalf("the chain armed %d ticks", len(stale))
+	}
+
+	_, command := model.Update(postResultMsg{message: store.Message{
+		Seq: 64, SessionID: "poke", Role: store.RoleUser, Body: "how is it going?", Time: time.Now(),
+	}})
+	poked := pollTicksIn(command)
+	if len(poked) != 1 {
+		t.Fatalf("a landed post scheduled %d polls, want exactly one", len(poked))
+	}
+	if poked[0].serial != model.pollSerial {
+		t.Fatalf("the poke armed serial %d while the window holds %d", poked[0].serial, model.pollSerial)
+	}
+
+	if _, command := model.Update(stale[0]); command != nil {
+		t.Fatal("the replaced tick still read the store")
+	}
+	if _, command := model.Update(poked[0]); command == nil {
+		t.Fatal("the poke's own tick read nothing")
+	}
+}
+
+// The other end of the same turn: the provider stops streaming, the durable
+// reply is written right after it, and the window used to sit on the cadence
+// before noticing. A delta never pokes — that would be a read per token.
+func TestAFinishedStreamPokesThePollAndADeltaNeverDoes(t *testing.T) {
+	model := New(&fakeBackend{}, "stream-poke")
+	model.setSize(100, 30)
+	before := model.pollSerial
+	if ticks := pollTicksIn(model.streamPoke(StreamDelta)); len(ticks) != 0 {
+		t.Fatalf("a delta scheduled %d polls", len(ticks))
+	}
+	if ticks := pollTicksIn(model.streamPoke(StreamThinking)); len(ticks) != 0 {
+		t.Fatalf("a thinking event scheduled %d polls", len(ticks))
+	}
+	if model.pollSerial != before {
+		t.Fatal("a delta re-armed the poll chain")
+	}
+	if ticks := pollTicksIn(model.streamPoke(StreamFinished)); len(ticks) != 1 {
+		t.Fatalf("a finished stream scheduled %d polls, want one", len(ticks))
+	}
+	if model.pollSerial != before+1 {
+		t.Fatalf("the finish armed the chain %d times", model.pollSerial-before)
+	}
+}
+
+// The steady state, which is what the reader actually lives in: a provider
+// running faster than the floor. The reveal keeps pace with it and the words
+// still owed stay inside a breath — under two dozen plus one frame's worth —
+// instead of growing for the length of the reply.
+func TestTheRevealStaysWithinABreathOfAFastProvider(t *testing.T) {
+	model := New(&fakeBackend{}, "lag")
+	model.applyStreamEvent(StreamEvent{Kind: StreamStarted})
+	model.applyStreamEvent(StreamEvent{Kind: StreamDelta, Delta: `{"reply":"`})
+
+	const perFrame = 8
+	worst := 0
+	for frame := 0; frame < 80; frame++ {
+		words := make([]string, perFrame)
+		for index := range words {
+			words[index] = fmt.Sprintf("w%d-%d", frame, index)
+		}
+		model.applyStreamEvent(StreamEvent{Kind: StreamDelta, Delta: strings.Join(words, " ") + " "})
+		model.advanceStream()
+		if pending := pendingStreamTokens(model.streamShown, model.streamTarget, 1<<20); pending > worst {
+			worst = pending
+		}
+	}
+	if worst > streamLagTokens+streamMaxTokensPerTick {
+		t.Fatalf("the reveal fell %d words behind a %d-word-per-frame provider", worst, perFrame)
+	}
+	if worst < streamTokensPerTick {
+		t.Fatalf("the reveal drew ahead of the provider: backlog peaked at %d", worst)
 	}
 }

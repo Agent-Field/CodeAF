@@ -602,7 +602,7 @@ func (m *Model) practiceGroups() []practiceGroup {
 		if nodeSettled(node) {
 			continue
 		}
-		label := nodeLabelInSnapshot(node, m.snapshot)
+		label := m.nodeLabelIn(node, m.snapshot.Nodes)
 		groups = append(groups, practiceGroup{
 			key: "live:" + node.ID, glyph: "⠋", goal: label, kind: "practice", live: true, last: now,
 		})

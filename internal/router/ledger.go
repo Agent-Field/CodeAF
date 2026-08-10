@@ -8,6 +8,7 @@ import (
 	"os"
 	"sort"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/Agent-Field/aforge-v2/internal/provider"
@@ -51,12 +52,32 @@ type Ledger struct {
 
 	flushing sync.Mutex
 
+	// timing guards the debounce timer and nothing else, so scheduling a flush
+	// never waits on the map or on the disk.
+	timing sync.Mutex
+	timer  *time.Timer
+	writes atomic.Int64
+
 	// closed makes the file-lock wait abandonable. A run on its way out must
 	// not sit through a second of 25ms retries for a lock another process is
 	// holding, and a lock wait is the one place this code sleeps.
 	closeOnce sync.Once
 	closed    chan struct{}
 }
+
+// ledgerDebounce is how long a graded observation waits for company.
+//
+// Every one of them used to take a lock file, a re-read, a re-parse, a re-encode
+// and a rename — process-wide serialised, and there are eight to twelve of them
+// in a plan build alone, plus one per leaf and one per judge. They arrive in
+// bursts, because a plan grades its spine all at once, so the whole burst can
+// ride one write.
+//
+// The window opens at the first unflushed observation rather than resetting at
+// each one: a steady stream of them must still reach the file every second,
+// which is also the whole of what a crash can cost. Save and Close land the
+// queue immediately, so the ordinary end of a run loses nothing at all.
+const ledgerDebounce = time.Second
 
 // observation is one graded outcome waiting to reach the file. It is kept
 // rather than applied-and-forgotten so that a flush blocked by another process
@@ -210,11 +231,10 @@ func (l *Ledger) Observe(model string, class provider.CallClass, prior float64, 
 	l.unsaved = true
 	l.mutex.Unlock()
 	// Flushed as it goes rather than at the end of the run: a run that is
-	// interrupted has still learned what it learned, and the cost is one locked
-	// read-modify-write of a small file after a call that took seconds. That
-	// cost is paid outside the map lock — what a ranking call needs is the
-	// number, and the number is already in memory.
-	_ = l.flush()
+	// interrupted has still learned what it learned. What it does not do is
+	// take the file once per observation — the queue is already in memory and
+	// correct, so the write can wait a second for the rest of its burst.
+	l.schedule()
 }
 
 // Alias records which dated snapshot a floating slug actually served. The
@@ -232,7 +252,7 @@ func (l *Ledger) Alias(slug, resolved string) {
 	l.aliases[slug] = resolved
 	l.unsaved = true
 	l.mutex.Unlock()
-	_ = l.flush()
+	l.schedule()
 }
 
 // Resolve maps a configured slug onto the snapshot last seen behind it. Ratings
@@ -279,10 +299,62 @@ func (l *Ledger) Aliases() map[string]string {
 	return copied
 }
 
-// Save flushes anything still queued. It is called on the way out; the ordinary
-// path flushes as it goes, so this is only ever picking up after a file lock
-// that was busy at the time.
+// schedule asks for a flush within the debounce window, joining one already
+// asked for rather than adding a second.
+func (l *Ledger) schedule() {
+	if l.abandoned() {
+		// A closed ledger has already had its Save and will not get another,
+		// so a late observation carries itself to the file. That is cheap by
+		// construction: a closed ledger does not wait out the lock file.
+		_ = l.flush()
+		return
+	}
+	l.timing.Lock()
+	defer l.timing.Unlock()
+	if l.timer != nil {
+		return
+	}
+	l.timer = time.AfterFunc(ledgerDebounce, func() {
+		// Cleared before the flush, not after: an observation that arrives
+		// while this one is on the disk must be able to ask for the next
+		// window rather than be swallowed by this one.
+		l.timing.Lock()
+		l.timer = nil
+		l.timing.Unlock()
+		_ = l.flush()
+	})
+}
+
+// unschedule cancels a pending window, for the callers that are about to write
+// the file themselves.
+func (l *Ledger) unschedule() {
+	l.timing.Lock()
+	defer l.timing.Unlock()
+	if l.timer != nil {
+		l.timer.Stop()
+		l.timer = nil
+	}
+}
+
+// abandoned reports whether the ledger has been closed.
+func (l *Ledger) abandoned() bool {
+	if l.closed == nil {
+		return false
+	}
+	select {
+	case <-l.closed:
+		return true
+	default:
+		return false
+	}
+}
+
+// Save flushes anything still queued, now rather than at the end of the window.
+// It is called on the way out; the ordinary path flushes as it goes, so this is
+// only ever picking up a debounced burst or a file lock that was busy at the
+// time.
 func (l *Ledger) Save() error {
+	l.unschedule()
 	return l.flush()
 }
 
@@ -296,6 +368,11 @@ func (l *Ledger) Close() error {
 			close(l.closed)
 		}
 	})
+	// An observation that landed while the save was in the air has asked for a
+	// window nothing is going to wait for now. Take it here instead, which is
+	// quick either way: past this point the lock file is no longer waited on.
+	l.unschedule()
+	_ = l.flush()
 	return err
 }
 
@@ -359,6 +436,10 @@ func (l *Ledger) flush() error {
 // write is the file half of a flush: everything that touches the disk, and
 // nothing that touches the live maps.
 func (l *Ledger) write(pending []observation, aliases map[string]string) (*Ledger, error) {
+	// Counted because the debounce is only worth having if it holds: the number
+	// of times the file is taken is the thing under test, and it is not
+	// otherwise visible from outside.
+	l.writes.Add(1)
 	unlock, err := l.lockFile()
 	if err != nil {
 		return nil, err

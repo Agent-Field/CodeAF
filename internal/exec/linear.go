@@ -294,7 +294,7 @@ func NewLinear(client Completer, workspace *Workspace, web *Web, maxTurns, maxTo
 		maxTurns: maxTurns, maxTokens: maxTokens, deadline: deadline}
 }
 
-func (l *Linear) Skill() string { return "linear" }
+func (l *Linear) Subharness() string { return LinearSubharness }
 
 // system is the leaf's standing contract: the harness's invariants, then the
 // laws the user has switched on, then the narrowing for this assignment, then

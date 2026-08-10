@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/Agent-Field/aforge-v2/internal/store"
+	tea "github.com/charmbracelet/bubbletea"
 )
 
 // countingBackend is the ordinary fake plus a journal watermark and a tally of
@@ -177,19 +178,123 @@ func TestPollCadenceDecaysWhenQuietAndSnapsBackOnChange(t *testing.T) {
 		t.Fatalf("cadence after a journal change is %s, want %s", got, pollInterval)
 	}
 
-	// A keypress is its own reason to be hot, and buys one full read: the key
-	// may have opened a place the watermark cannot speak for.
+	// A keypress is its own reason to be hot, and a keypress that opened a place
+	// the watermark cannot speak for also buys one full read.
 	now = now.Add(pollQuietAfter + time.Second)
 	model.applyPoll(model.poll()().(pollResultMsg))
 	if got := model.pollCadence(); got != pollIdleInterval {
 		t.Fatalf("cadence before the keypress is %s, want %s", got, pollIdleInterval)
 	}
-	model.noteActivity()
+	// The read is armed before the handler runs, because a handler that opens a
+	// place fires its own poll on the way out.
+	armed := model.armActivity()
+	fromHandler := model.poll()
+	model.selfOpen = true
+	model.noteActivity(armed)
 	if got := model.pollCadence(); got != pollInterval {
 		t.Fatalf("cadence after a keypress is %s, want %s", got, pollInterval)
 	}
+	if result := fromHandler().(pollResultMsg); result.quiet {
+		t.Fatal("the poll the place-opening key fired skipped the read set")
+	}
 	if result := model.poll()().(pollResultMsg); result.quiet {
-		t.Fatal("the poll after a keypress skipped the read set")
+		t.Fatal("the poll after a place change skipped the read set")
+	}
+}
+
+// TestTypingKeepsTheCadenceHotWithoutForcingAFullRead is the other half of the
+// rule: the hot cadence is about when to ask, the forced read is about what the
+// watermark cannot answer, and a keystroke that stayed in the thread is not a
+// reason to read the whole store again.
+func TestTypingKeepsTheCadenceHotWithoutForcingAFullRead(t *testing.T) {
+	now := time.Date(2026, 8, 6, 9, 0, 0, 0, time.UTC)
+	backend := newCountingBackend(&fakeBackend{})
+	model := quietModel(t, backend, &now)
+
+	now = now.Add(pollQuietAfter + time.Second)
+	model.applyPoll(model.poll()().(pollResultMsg))
+
+	reads := backend.heavyReads()
+	for _, key := range []string{"h", "i", "!"} {
+		model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(key)})
+	}
+	if got := model.pollCadence(); got != pollInterval {
+		t.Fatalf("cadence after typing is %s, want %s", got, pollInterval)
+	}
+	if result := model.poll()().(pollResultMsg); !result.quiet {
+		t.Fatal("typing forced the full read set")
+	}
+	if got := backend.heavyReads(); got != reads {
+		t.Fatalf("typing cost %d store reads, want 0", got-reads)
+	}
+
+	// Scrolling the thread is the same kind of motion: it moves the eye, not
+	// the place.
+	model.Update(tea.MouseMsg{Type: tea.MouseWheelUp})
+	if result := model.poll()().(pollResultMsg); !result.quiet {
+		t.Fatal("a scroll forced the full read set")
+	}
+}
+
+// stampedCommander is a trace file that answers with its identity: the poll
+// hands back the stamp it holds, and a file that has not moved is answered
+// without a read.
+type stampedCommander struct {
+	*fakeCommander
+	stamp NodeTraceStamp
+	text  string
+	reads int
+	asked []NodeTraceStamp
+}
+
+func (c *stampedCommander) NodeTraceSince(
+	nodeID string, maxBytes int, since NodeTraceStamp,
+) (string, NodeTraceStamp, bool) {
+	c.asked = append(c.asked, since)
+	if since.Size == c.stamp.Size && since.Mod.Equal(c.stamp.Mod) && !since.Mod.IsZero() {
+		return "", c.stamp, false
+	}
+	c.reads++
+	return c.text, c.stamp, true
+}
+
+// TestNodeTraceIsReadOnlyWhenTheFileGrew pins the stat gate: the open node's
+// trace is asked for on every cycle, quiet ones included, and a worker that is
+// thinking rather than writing costs the stat and nothing else.
+func TestNodeTraceIsReadOnlyWhenTheFileGrew(t *testing.T) {
+	now := time.Date(2026, 8, 6, 9, 0, 0, 0, time.UTC)
+	backend := newCountingBackend(&fakeBackend{})
+	model := quietModel(t, backend, &now)
+	commander := &stampedCommander{
+		fakeCommander: &fakeCommander{},
+		stamp:         NodeTraceStamp{Size: 12, Mod: now},
+		text:          "opened the file",
+	}
+	model.commander = commander
+	model.nodeViewID = "worker"
+
+	model.applyPoll(model.poll()().(pollResultMsg))
+	if commander.reads != 1 || model.nodeTraceText != "opened the file" {
+		t.Fatalf("first cycle read %d times, trace is %q", commander.reads, model.nodeTraceText)
+	}
+
+	model.applyPoll(model.poll()().(pollResultMsg))
+	model.applyPoll(model.poll()().(pollResultMsg))
+	if commander.reads != 1 {
+		t.Fatalf("an unmoved trace file was read %d times", commander.reads)
+	}
+	if model.nodeTraceText != "opened the file" {
+		t.Fatalf("an unchanged trace lost its text: %q", model.nodeTraceText)
+	}
+	if last := commander.asked[len(commander.asked)-1]; last != commander.stamp {
+		t.Fatalf("the poll asked with stamp %+v, want the one it was given", last)
+	}
+
+	commander.stamp = NodeTraceStamp{Size: 30, Mod: now.Add(time.Second)}
+	commander.text = "opened the file, then wrote"
+	model.applyPoll(model.poll()().(pollResultMsg))
+	if commander.reads != 2 || model.nodeTraceText != "opened the file, then wrote" {
+		t.Fatalf("a grown trace read %d times, trace is %q", commander.reads, model.nodeTraceText)
 	}
 }
 

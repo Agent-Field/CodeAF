@@ -221,24 +221,24 @@ func (c *Client) completeWithMessagesStreaming(
 
 	response := &ai.Response{Model: request.Model}
 	var content strings.Builder
+	var tools toolCallAccumulator
 	finishReason := ""
-	// The decoder is the SDK's, and its accumulation is quadratic in the length
-	// of a single SSE message: every Decode copies the whole undelivered buffer
-	// to a string and back. Ordinary token deltas are small enough that this
-	// never shows, but one multi-megabyte message — a reasoning block delivered
-	// whole — is re-copied once per 8 KB read. It is not ours to fix here and
-	// forking the SDK for it would cost more than it saves; the note is so the
-	// next person measuring a slow stream looks in the right module.
+	thinking := false
+	// The decoder is ours rather than the SDK's, and sse.go says why: the SDK's
+	// accumulation is quadratic in the length of a single message, which costs
+	// about a gigabyte of copying to deliver one four-megabyte reasoning block.
+	// It decodes the same framing to the same chunks — that equivalence is the
+	// whole of its test — so the only difference here is the copying.
 	//
-	// What *is* ours is the loop below, and it is deliberately trivial: the
-	// observer is called synchronously and in order, so it must not work. The
-	// one live observer (chat's head stream) does nothing but translate the
-	// event and hand it to a buffered channel with a ctx escape, which is the
-	// contract to keep — anything heavier would be paid per token, in the read
-	// loop, against the connection's idle watchdog.
-	decoder := ai.NewSSEDecoder(httpResponse.Body)
+	// The loop below is deliberately trivial: the observer is called
+	// synchronously and in order, so it must not work. The one live observer
+	// (chat's head stream) does nothing but translate the event and hand it to
+	// a buffered channel with a ctx escape, which is the contract to keep —
+	// anything heavier would be paid per token, in the read loop, against the
+	// connection's idle watchdog.
+	decoder := newSSEDecoder(httpResponse.Body)
 	for {
-		chunk, decodeErr := decoder.Decode()
+		chunk, decodeErr := decoder.DecodeChunk()
 		if decodeErr != nil {
 			if errors.Is(decodeErr, io.EOF) {
 				break
@@ -261,22 +261,31 @@ func (c *Client) completeWithMessagesStreaming(
 				continue
 			}
 			if choice.Delta.Content != "" {
+				thinking = false
 				content.WriteString(choice.Delta.Content)
 				observer(StreamEvent{Kind: StreamDelta, Delta: choice.Delta.Content})
+			}
+			// Reasoning is announced once per run of it rather than per token:
+			// the surface only ever draws that thought is happening, and the
+			// text itself is not ours to show.
+			if !thinking && choice.Delta.thinking() {
+				thinking = true
+				observer(StreamEvent{Kind: StreamThinking})
+			}
+			for _, fragment := range choice.Delta.ToolCalls {
+				tools.add(fragment)
 			}
 			if choice.FinishReason != nil {
 				finishReason = *choice.FinishReason
 			}
 		}
 	}
-	response.Choices = []ai.Choice{{
-		Index: 0,
-		Message: ai.Message{
-			Role:    "assistant",
-			Content: []ai.ContentPart{{Type: "text", Text: content.String()}},
-		},
-		FinishReason: finishReason,
-	}}
+	message := ai.Message{
+		Role:      "assistant",
+		Content:   []ai.ContentPart{{Type: "text", Text: content.String()}},
+		ToolCalls: tools.assembled(),
+	}
+	response.Choices = []ai.Choice{{Index: 0, Message: message, FinishReason: finishReason}}
 	finished = true
 	observer(StreamEvent{Kind: StreamFinished})
 	return response, nil
@@ -329,7 +338,7 @@ func (c *Client) StreamComplete(ctx context.Context, prompt string, options ...a
 			return
 		}
 
-		decoder := ai.NewSSEDecoder(httpResponse.Body)
+		decoder := newSSEDecoder(httpResponse.Body)
 		for {
 			chunk, err := decoder.Decode()
 			if err != nil {

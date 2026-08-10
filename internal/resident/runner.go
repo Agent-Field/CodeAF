@@ -172,27 +172,89 @@ func (r *Runner) WithDailyBudgetUSD(amount float64) *Runner {
 // pass, and a transient fault does not survive the next one.
 const runnerTickFailures = 10
 
+// runnerQuietCeiling is the longest the dispatch loop may skip on an unmoved
+// journal. Every claimable leaf is journaled, so the watermark is a complete
+// account of the ready set — but not of the clock, and a few of the claim's own
+// gates are clock-driven: the daily rail rolls over at midnight, the practice
+// lane waits out an idle threshold. This is the standing guarantee for those,
+// so no clock-driven readiness can ever be more than one ceiling late.
+const runnerQuietCeiling = 15 * time.Second
+
+// runnerQuietGate is the dispatch loop's proof that a timed pass would find
+// nothing. A negative seq means it is disarmed and the next pass runs.
+type runnerQuietGate struct {
+	seq   int64
+	until time.Time
+}
+
+func newRunnerQuietGate() runnerQuietGate { return runnerQuietGate{seq: -1} }
+
+// skip reports that this pass can be dropped whole. A watermark that cannot be
+// read is not an argument for sleeping, so it wakes the loop instead.
+func (gate runnerQuietGate) skip(watermark int64, watermarkErr error, now time.Time) bool {
+	return watermarkErr == nil && gate.seq >= 0 && watermark == gate.seq && now.Before(gate.until)
+}
+
+// settle records what the pass that just ran leaves behind. Only a pass that
+// dispatched nothing may arm the gate: one that dispatched has freed no slot
+// yet and its own landing is the next thing that will move the journal.
+func (gate *runnerQuietGate) settle(watermark int64, watermarkErr error, dispatched int, now time.Time) {
+	if dispatched > 0 || watermarkErr != nil {
+		gate.disarm()
+		return
+	}
+	gate.seq, gate.until = watermark, now.Add(runnerQuietCeiling)
+}
+
+// disarm is what a nudge does: a splice or a landing is news the watermark
+// this gate is holding cannot possibly account for.
+func (gate *runnerQuietGate) disarm() { gate.seq = -1 }
+
 // Serve polls for ready work until ctx ends, then waits for in-flight nodes
 // to land. Landing is bounded by each execution's own respect for ctx.
+//
+// A pass is not free: it asks the store for deferred overruns, for the ready
+// set, and for whether the user is idle, three times a second even on a machine
+// with nothing to do. So a pass that dispatched nothing records the journal
+// watermark it started from, and the ticker skips while that watermark stands
+// still — the same proof the head already sleeps on. The watermark is read
+// before the pass and only kept afterwards: anything journaled while the pass
+// was reading sits above the recorded mark, so the next tick looks again rather
+// than sleeping through it. Nothing about latency changes — nudge() still fires
+// the instant a landing opens the ready set, and it never consults the gate.
 func (r *Runner) Serve(ctx context.Context) error {
 	ticker := time.NewTicker(500 * time.Millisecond)
 	defer ticker.Stop()
 	failures := 0
-	pass := func() error {
-		if _, err := r.tickGuarded(ctx); err != nil {
+	pass := func() (int, error) {
+		dispatched, err := r.tickGuarded(ctx)
+		if err != nil {
 			// Cancellation is the caller's decision, not a fault, and it is the
 			// one error that must end the loop on its first appearance.
 			if ctx.Err() != nil || errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
-				return err
+				return dispatched, err
 			}
 			failures++
 			_ = guard.Note("resident/runner tick", err)
 			if failures >= runnerTickFailures {
-				return fmt.Errorf("runner serve: %d consecutive failed passes: %w", failures, err)
+				return dispatched, fmt.Errorf("runner serve: %d consecutive failed passes: %w", failures, err)
 			}
-			return nil
+			return dispatched, nil
 		}
 		failures = 0
+		return dispatched, nil
+	}
+	gate := newRunnerQuietGate()
+	timed := func() error {
+		watermark, watermarkErr := r.graph.LatestEventSeq()
+		if gate.skip(watermark, watermarkErr, time.Now()) {
+			return nil
+		}
+		dispatched, err := pass()
+		if err != nil {
+			return err
+		}
+		gate.settle(watermark, watermarkErr, dispatched, time.Now())
 		return nil
 	}
 	for {
@@ -204,12 +266,13 @@ func (r *Runner) Serve(ctx context.Context) error {
 			r.wg.Wait()
 			return nil
 		case <-r.wake:
-			if err := pass(); err != nil {
+			gate.disarm()
+			if _, err := pass(); err != nil {
 				r.wg.Wait()
 				return err
 			}
 		case <-ticker.C:
-			if err := pass(); err != nil {
+			if err := timed(); err != nil {
 				r.wg.Wait()
 				return err
 			}
@@ -238,13 +301,19 @@ func (r *Runner) Tick(ctx context.Context) (int, error) {
 		return 0, err
 	}
 	dispatched := 0
+	// The open-children map is a decode of every live node in the graph, and
+	// claimNext asked for one on every claim attempt — so a pass that filled
+	// four slots read the whole graph four times. Nothing a claim does gives a
+	// node children, so one reading serves the whole pass. It is derived lazily
+	// because the overwhelmingly common pass claims nothing at all.
+	var open map[string]bool
 	for {
 		select {
 		case r.slots <- struct{}{}:
 		default:
 			return dispatched, nil
 		}
-		spawned, err := r.dispatchOne(ctx)
+		spawned, err := r.dispatchOne(ctx, &open)
 		if err != nil {
 			return dispatched, err
 		}
@@ -259,7 +328,7 @@ func (r *Runner) Tick(ctx context.Context) (int, error) {
 // hand it to a worker gives it back, including the fault path. A panic between
 // taking a slot and spawning would otherwise starve the runner one worker at a
 // time, which is exactly the kind of slow death a crash at least announces.
-func (r *Runner) dispatchOne(ctx context.Context) (spawned bool, err error) {
+func (r *Runner) dispatchOne(ctx context.Context, open *map[string]bool) (spawned bool, err error) {
 	held := true
 	release := func() {
 		if held {
@@ -290,7 +359,7 @@ func (r *Runner) dispatchOne(ctx context.Context) (spawned bool, err error) {
 		release()
 		return false, nil
 	}
-	node, ok, claimErr := r.claimNext()
+	node, ok, claimErr := r.claimNext(open)
 	if claimErr != nil {
 		release()
 		return false, claimErr
@@ -342,7 +411,7 @@ func (r *Runner) dispatchOne(ctx context.Context) (spawned bool, err error) {
 // Tick deterministic.
 func (r *Runner) Wait() { r.wg.Wait() }
 
-func (r *Runner) claimNext() (store.Node, bool, error) {
+func (r *Runner) claimNext(open *map[string]bool) (store.Node, bool, error) {
 	// A raised rail must let the reconciler admit every durable repair before a
 	// former consumer can race ahead using only the partial result.
 	deferred, err := r.graph.PendingOverruns(1)
@@ -367,9 +436,12 @@ func (r *Runner) claimNext() (store.Node, bool, error) {
 	sort.SliceStable(ready, func(i, j int) bool {
 		return runnerPriority(ready[i]) < runnerPriority(ready[j])
 	})
-	open, err := openChildren(r.graph)
-	if err != nil {
-		return store.Node{}, false, err
+	if *open == nil {
+		derived, err := openChildren(r.graph)
+		if err != nil {
+			return store.Node{}, false, err
+		}
+		*open = derived
 	}
 	for _, node := range ready {
 		// Yield to user work only for BACKGROUND self work (practice, or
@@ -385,7 +457,7 @@ func (r *Runner) claimNext() (store.Node, bool, error) {
 		// A goal node lands after its children: it may be ready by its edges
 		// while its subtree is still working, and the store would refuse its
 		// completion anyway. Skip it until the children are terminal.
-		if open[node.ID] {
+		if (*open)[node.ID] {
 			continue
 		}
 		// Admission reserves the per-firing budget; nothing until now spent it.

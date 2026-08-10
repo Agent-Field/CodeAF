@@ -53,6 +53,23 @@ type Record struct {
 	ExpectedTokens *int     `json:"expected_tokens,omitempty"`
 	Surprise       *float64 `json:"surprise,omitempty"`
 
+	// Calibration is what the worker said about its own fit for this task —
+	// exec.Outcome.Calibration, journaled. It is free text and it is only ever
+	// read by a model: the recalibration call renders it beside the turns and
+	// tokens, so the three anchor examples get rewritten from what the work felt
+	// like as well as from what it cost. Nil on every record the generalist has
+	// ever written, which is why every existing profile file and every existing
+	// recalibration prompt is byte-identical.
+	Calibration []string `json:"calibration,omitempty"`
+
+	// EscalatedFrom names the worker that tried this task first and could not
+	// finish it. It is one string rather than a chain because the boundary it
+	// measures has two sides and no more: "linear could not, this one could" is
+	// the entire fact, and it is the only direct evidence there is that the
+	// boundary between two rulers sits too high. Empty is the ordinary case —
+	// the task came here first, by choice, and nothing about a ruler follows.
+	EscalatedFrom string `json:"escalated_from,omitempty"`
+
 	// Verdict is how the leaf actually ended. It replaced a `done` flag that was
 	// the scheduler's StateDone carried across — true of a leaf that exhausted
 	// its budget mid-edit as much as of one that finished — and the flag was
@@ -97,15 +114,15 @@ func (r Record) Overran() bool {
 
 // Profile is the accumulated experience of one model running one kind of work.
 //
-// Keyed by model and skill because capability is a property of the executor, not
-// of the project. When specialised sub-harnesses arrive — a reviewer, a coding
-// worker — each accumulates its own profile with no new machinery: a different
-// skill is simply a different file.
+// Keyed by model and subharness because capability is a property of the
+// executor, not of the project. Specialised workers — a reviewer, a coding
+// pipeline — each accumulate their own profile with no new machinery: a
+// different subharness is simply a different file.
 type Profile struct {
-	Model   string   `json:"model"`
-	Skill   string   `json:"skill"`
-	Anchors string   `json:"anchors,omitempty"` // empty means the built-in prior
-	Records []Record `json:"records"`
+	Model      string   `json:"model"`
+	Subharness string   `json:"subharness"`
+	Anchors    string   `json:"anchors,omitempty"` // empty means the built-in prior
+	Records    []Record `json:"records"`
 
 	path string
 	// modifiedAt is the coarse timestamp available to features reading an old
@@ -131,14 +148,14 @@ const maxSurprise = 10.0
 // decoded is one parse of one profile file, held against the identity the file
 // had when it was read.
 type decoded struct {
-	// model and skill are held because the file names them too, and decoding
+	// model and subharness are held because the file names them too, and decoding
 	// lets the file's spelling win over the caller's arguments.
-	model    string
-	skill    string
-	anchors  string
-	records  []Record
-	modified time.Time
-	size     int64
+	model      string
+	subharness string
+	anchors    string
+	records    []Record
+	modified   time.Time
+	size       int64
 }
 
 // decodes memoizes parses by path, because the same file is read far more often
@@ -152,18 +169,18 @@ type decoded struct {
 // or an edit from another one is picked up on the next read.
 var decodes sync.Map // path -> decoded
 
-// Load reads the profile for a model and skill, returning an empty one when
+// Load reads the profile for a model and subharness, returning an empty one when
 // there is nothing recorded yet.
 //
 // The result is always a fresh value owning its own records: callers Add to a
 // profile and Save it, so a remembered parse must never become shared mutable
 // state.
-func Load(dir, model, skill string) (*Profile, error) {
+func Load(dir, model, subharness string) (*Profile, error) {
 	if strings.TrimSpace(dir) == "" {
 		dir = home.Dir()
 	}
-	path := filepath.Join(dir, fmt.Sprintf("profile-%s-%s.json", slug(model), slug(skill)))
-	profile := &Profile{Model: model, Skill: skill, path: path}
+	path := filepath.Join(dir, fmt.Sprintf("profile-%s-%s.json", slug(model), slug(subharness)))
+	profile := &Profile{Model: model, Subharness: subharness, path: path}
 
 	before, statErr := os.Stat(path)
 	if errors.Is(statErr, os.ErrNotExist) {
@@ -174,7 +191,7 @@ func Load(dir, model, skill string) (*Profile, error) {
 		if remembered, ok := decodes.Load(path); ok {
 			if hit := remembered.(decoded); hit.size == before.Size() && hit.modified.Equal(before.ModTime()) {
 				profile.Model = hit.model
-				profile.Skill = hit.skill
+				profile.Subharness = hit.subharness
 				profile.Anchors = hit.anchors
 				profile.Records = append([]Record(nil), hit.records...)
 				profile.modifiedAt = hit.modified.UTC()
@@ -195,7 +212,7 @@ func Load(dir, model, skill string) (*Profile, error) {
 		// A corrupt profile is not worth failing a run over; it is a cache of
 		// observations, and the built-in prior is a safe place to restart from.
 		decodes.Delete(path)
-		return &Profile{Model: model, Skill: skill, path: path}, nil
+		return &Profile{Model: model, Subharness: subharness, path: path}, nil
 	}
 	profile.path = path
 	after, err := os.Stat(path)
@@ -206,12 +223,12 @@ func Load(dir, model, skill string) (*Profile, error) {
 	// Only remember a parse of a file that did not move under the read.
 	if statErr == nil && after.Size() == before.Size() && after.ModTime().Equal(before.ModTime()) {
 		decodes.Store(path, decoded{
-			model:    profile.Model,
-			skill:    profile.Skill,
-			anchors:  profile.Anchors,
-			records:  append([]Record(nil), profile.Records...),
-			modified: after.ModTime(),
-			size:     after.Size(),
+			model:      profile.Model,
+			subharness: profile.Subharness,
+			anchors:    profile.Anchors,
+			records:    append([]Record(nil), profile.Records...),
+			modified:   after.ModTime(),
+			size:       after.Size(),
 		})
 	}
 	return profile, nil
@@ -472,6 +489,39 @@ func (p *Profile) Evidence(each int) (small, middle, large []Record) {
 	from := max(0, centre-each/2)
 	to := min(len(sorted), from+each)
 	return small, sorted[from:to], large
+}
+
+// Boundary reports whether this record says anything about where the edge of
+// this worker's capacity is: a note the worker wrote about its own fit, or the
+// fact that another worker tried the task first and could not finish it.
+func (r Record) Boundary() bool {
+	return len(r.Calibration) > 0 || strings.TrimSpace(r.EscalatedFrom) != ""
+}
+
+// BoundaryEvidence is the newest handful of records that say something about
+// where this worker's edge is.
+//
+// It is a separate pick from Evidence rather than a fourth band inside it
+// because the two answer different questions. Evidence samples the observed
+// range — cheapest, middle, overran — and a note about fit is not a point on
+// that range: a run that finished in four turns because the job was trivial for
+// this worker sits in the same band as one that finished in four turns because
+// the worker is fast, and only one of them is evidence that the boundary is in
+// the wrong place. Newest first, because a boundary that has already moved once
+// is described by what happened after it moved.
+func (p *Profile) BoundaryEvidence(limit int) []Record {
+	if p == nil || limit <= 0 {
+		return nil
+	}
+	p.mutex.Lock()
+	defer p.mutex.Unlock()
+	picked := make([]Record, 0, limit)
+	for index := len(p.Records) - 1; index >= 0 && len(picked) < limit; index-- {
+		if p.Records[index].Boundary() {
+			picked = append(picked, p.Records[index])
+		}
+	}
+	return picked
 }
 
 var nonWord = regexp.MustCompile(`[^a-zA-Z0-9]+`)

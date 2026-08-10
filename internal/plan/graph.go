@@ -99,6 +99,14 @@ type Node struct {
 	Kind  Kind   `json:"kind"`
 	Brief string `json:"brief,omitempty"`
 
+	// Subharness names the worker that takes this node whole. Empty is the
+	// baseline generalist and is what nearly every node carries. It is decided
+	// where size is decided — a node oversized for one agent working alone can
+	// be one job for a specialist — and it travels with the node from that
+	// judgment to the executor that runs it, through the file the graph is
+	// persisted to and through the splice that admits it to the store.
+	Subharness string `json:"subharness,omitempty"`
+
 	// Contract is the working method for this leaf: how an agent should work
 	// this particular kind of job, as distinct from the Brief, which says what
 	// the job is. A generic loop with a per-task contract is what lets one
@@ -131,6 +139,15 @@ type Node struct {
 	// one nothing could ask before: was that a success. Anything that learns
 	// from a run reads this field and never State.
 	Verdict provider.Verdict `json:"verdict,omitempty"`
+
+	// Calibration is what the worker said about its own fit for this node, and
+	// EscalatedFrom names the worker that tried it first and could not finish.
+	// Both are carried for one reader: the profile record this node becomes when
+	// the run lands, and through it the call that rewrites the ruler. Empty on
+	// every node the generalist takes first and finishes, which is nearly all of
+	// them and every one of them in a build with no specialist.
+	Calibration   []string `json:"calibration,omitempty"`
+	EscalatedFrom string   `json:"escalated_from,omitempty"`
 
 	Failure string `json:"failure,omitempty"`
 }

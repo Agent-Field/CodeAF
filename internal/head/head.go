@@ -14,6 +14,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 	"unicode"
 	"unicode/utf8"
@@ -51,6 +52,12 @@ const (
 	// the belt's because the router carries the snapshot, the notebook and the
 	// thread in the same prompt, and the manual must not crowd them out.
 	manualRouteSections = 3
+	// A stopped turn is still a turn, and the floor under every route holds for
+	// it too: a message the user cut off may not end in nothing on screen. The
+	// tail marks the words that did arrive as the piece of an answer they are;
+	// the standalone line is for a turn stopped before it had any.
+	interruptedTail  = "\n\n— interrupted"
+	interruptedReply = "— interrupted before I had anything to say"
 )
 
 // headSystemPrompt is deliberately a router prompt, not a planning prompt. Its
@@ -143,6 +150,28 @@ type Head struct {
 	}
 	defaultModel string
 	dailyRailSet bool
+	// foldMu guards fold. The head answers one message at a time, so this is
+	// never contended in the running product; it is here because a cache is a
+	// piece of shared state and shared state that is only accidentally
+	// single-threaded is the kind that stops being so without anyone noticing.
+	foldMu sync.Mutex
+	fold   *threadFold
+	// turnMu guards the in-flight turn's cancellation. The head answers on its
+	// own goroutine and the surface that stops a turn runs on another, both
+	// inside one process: this is the entire seam between them, and it is a
+	// handle rather than a journal row because a message the user has already
+	// given up on must not wait on the store to be given up.
+	turnMu      sync.Mutex
+	turnCancel  context.CancelFunc
+	turnPartial string
+	turnStopped bool
+	// turnFold is the run of the person's words this turn answers, and it keeps
+	// growing while the turn runs: the mid-turn watch folds arrivals into it and
+	// raises turnRefold, which withdraws the routing call. turnAnswers is the
+	// span the turn was actually given, stamped on everything the head says.
+	turnFold    *foldedTurn
+	turnRefold  bool
+	turnAnswers int64
 }
 
 // WithImageInput lets the routing head receive durable chat attachments as
@@ -262,18 +291,132 @@ func (h *Head) poll(ctx context.Context, cursor int64) (int64, error) {
 		if len(messages) == 0 {
 			return cursor, nil
 		}
-		for _, message := range messages {
-			// A user message anchored to a node is mid-flight steering for
-			// that worker, not a new ask — the executor consumes it between
-			// turns and the head stays out of the way.
-			if message.Role == store.RoleUser && message.NodeID == "" {
-				if err := h.answer(ctx, message); err != nil {
+		for index, message := range messages {
+			// Rows the turn before this one folded into itself are answered
+			// already; the cursor is what says so.
+			if message.Seq <= cursor {
+				continue
+			}
+			if answerable(message) {
+				answered, err := h.answerTurn(ctx, foldAhead(messages[index:]))
+				if err != nil {
 					return cursor, err
 				}
+				if answered > cursor {
+					cursor = answered
+				}
 			}
-			cursor = message.Seq
+			if message.Seq > cursor {
+				cursor = message.Seq
+			}
 		}
 	}
+}
+
+// answerTurn answers one turn — one folded run of the person's words — under a
+// context of its own. The head's own context outlives every turn — it is the
+// process — so a turn nobody wants any more had no way to end before this: the
+// provider call ran to completion and the reply landed in a conversation that
+// had moved on.
+//
+// It returns the newest row the turn actually answered, which is what the cursor
+// may advance to. That is deliberately not the newest row folded in: a turn that
+// finished before its refold could take effect has absorbed rows it never
+// answered, and reporting those as handled is how a message goes silent.
+//
+// The cursor advances whether the turn finished or was stopped, because a
+// stopped turn is handled: re-answering the message the user gave up on is the
+// one thing an interrupt may not lead to.
+func (h *Head) answerTurn(ctx context.Context, fold *foldedTurn) (int64, error) {
+	for {
+		turnContext, cancel := context.WithCancel(ctx)
+		user, answered := h.beginTurn(cancel, fold)
+		err := h.answer(turnContext, user)
+		cancel()
+		partial, stopped, refolded := h.endTurn()
+		// The person corrected themselves while the routing call was out. The
+		// turn withdrew before saying anything, so it is asked again carrying
+		// both halves of what they said.
+		if refolded && errors.Is(err, errRefold) && ctx.Err() == nil {
+			continue
+		}
+		if !stopped {
+			return answered, err
+		}
+		// The interrupt raced the answer and lost. The turn already ended in
+		// words, and a second line about it would be the thread talking to
+		// itself.
+		if err == nil {
+			return answered, nil
+		}
+		// The head itself is going away, and the thread with it. Nothing to say.
+		if ctx.Err() != nil {
+			return answered, ctx.Err()
+		}
+		return answered, h.postInterrupted(user.SessionID, partial)
+	}
+}
+
+// Interrupt stops the turn being answered right now and carries in whatever of
+// it the reader had already seen. It reports whether there was a turn to stop,
+// so a surface that asked at the wrong moment can tell that nothing happened.
+func (h *Head) Interrupt(partial string) bool {
+	if h == nil {
+		return false
+	}
+	h.turnMu.Lock()
+	cancel := h.turnCancel
+	if cancel == nil {
+		h.turnMu.Unlock()
+		return false
+	}
+	h.turnPartial = strings.TrimSpace(partial)
+	h.turnStopped = true
+	h.turnMu.Unlock()
+	cancel()
+	return true
+}
+
+// beginTurn arms the turn and hands back the two things it is answered under:
+// the folded message as it stands right now, and the span that message covers.
+// Both are snapshots — the fold itself keeps growing under the mid-turn watch.
+func (h *Head) beginTurn(cancel context.CancelFunc, fold *foldedTurn) (store.Message, int64) {
+	h.turnMu.Lock()
+	defer h.turnMu.Unlock()
+	h.turnCancel = cancel
+	h.turnPartial = ""
+	h.turnStopped = false
+	h.turnRefold = false
+	h.turnFold = fold
+	h.turnAnswers = fold.last
+	return fold.message, fold.last
+}
+
+func (h *Head) endTurn() (string, bool, bool) {
+	h.turnMu.Lock()
+	defer h.turnMu.Unlock()
+	partial, stopped, refolded := h.turnPartial, h.turnStopped, h.turnRefold
+	h.turnCancel = nil
+	h.turnPartial = ""
+	h.turnStopped = false
+	h.turnRefold = false
+	h.turnFold = nil
+	// turnAnswers outlives the turn on purpose. The interrupted line is posted
+	// after the turn has ended and is still that turn's answer; anything else
+	// the head says next is later than every row already settled by it.
+	return partial, stopped, refolded
+}
+
+// postInterrupted is postAgentFloor's law applied to the one route that never
+// reaches it: the words the user stopped. What they saw on screen is what the
+// thread keeps, marked where it stopped, so the transcript reads as the
+// conversation it was rather than as a gap.
+func (h *Head) postInterrupted(sessionID, partial string) error {
+	body := interruptedReply
+	if partial != "" {
+		body = partial + interruptedTail
+	}
+	return h.postAgentFloor(sessionID, body, 0, "")
 }
 
 func (h *Head) answer(ctx context.Context, user store.Message) error {
@@ -344,6 +487,11 @@ func (h *Head) answer(ctx context.Context, user store.Message) error {
 
 	decision, err := h.route(ctx, user)
 	if err != nil {
+		// The turn withdrew itself; nothing has been said and nothing is owed
+		// here. answerTurn asks it again with everything the person has said.
+		if errors.Is(err, errRefold) {
+			return err
+		}
 		if ctx.Err() != nil {
 			return ctx.Err()
 		}
@@ -676,17 +824,25 @@ func (h *Head) route(ctx context.Context, user store.Message) (routeDecision, er
 	// model, schema-constrained calls came back empty two times in three and
 	// took 4-6s, while prompt-shaped JSON parsed three of three at under a
 	// second. The defensive decoder below covers the difference.
+	// The one call in the turn that is long enough for the person to overtake it,
+	// and the last moment at which overtaking costs nothing: everything that
+	// acts has either already acted and spoken, or has not begun.
+	routeContext, stopWatch := h.watchForFold(ctx)
+	defer stopWatch()
 	raw := ""
 	servedModel := ""
 	for attempt := 0; attempt < 2; attempt++ {
-		response, err := client.CompleteWithMessages(ctx, messages, ai.WithMaxTokens(600))
+		response, err := client.CompleteWithMessages(routeContext, messages, ai.WithMaxTokens(600))
 		if err != nil {
+			if h.refolding() {
+				return routeDecision{}, errRefold
+			}
 			// One transient failure should not surface as "try again" — the
 			// user already tried. Retry once; only a repeat offense escapes.
-			if attempt == 0 && ctx.Err() == nil {
+			if attempt == 0 && routeContext.Err() == nil {
 				select {
-				case <-ctx.Done():
-					return routeDecision{}, ctx.Err()
+				case <-routeContext.Done():
+					return routeDecision{}, routeContext.Err()
 				case <-time.After(400 * time.Millisecond):
 				}
 				continue
@@ -861,22 +1017,77 @@ func personRelevant(message store.Message) bool {
 	return message.Role == store.RoleUser || strings.TrimSpace(message.NodeID) == ""
 }
 
+// threadFold is where the window's fold gets left between reads.
+//
+// The window is a left fold over an append-only sequence, which is the property
+// the big-step cut was built on and it has a second consequence nobody was
+// collecting: a fold that has already consumed the first N messages never has
+// to consume them again. So the state is kept — the two windows and the bound
+// they cover — and the next read starts where the last one stopped.
+//
+// That matters twice over. Within one turn the same window is asked for between
+// two and six times, by the router, the correction reader, the redirect reader
+// and the identity reader, all with the same bound; they now fold once and the
+// rest read the answer. Across turns, a session that has run all day stops
+// re-decoding every message it has ever held to keep the last thirty-two.
+//
+// One session's fold is kept rather than a table of them: the head answers one
+// message at a time and a conversation arrives in runs, so a second thread
+// simply folds from zero — which is what every read did before.
+type threadFold struct {
+	sessionID string
+	// folded is the exclusive bound the two windows cover: every message of
+	// this session below it has been folded in. It is also the resume point,
+	// because the journal only ever appends and a seq below it can never
+	// appear later.
+	folded  int64
+	person  []store.Message
+	ambient []store.Message
+	window  []store.Message
+}
+
 func (h *Head) recentThread(sessionID string, beforeSeq int64) ([]store.Message, error) {
-	person := make([]store.Message, 0, threadWindowMax+1)
-	ambient := make([]store.Message, 0, ambientWindowMax+1)
-	var cursor int64
-	for {
+	h.foldMu.Lock()
+	defer h.foldMu.Unlock()
+
+	fold := h.fold
+	// Resuming is only sound forward. A read of an older bound would have to
+	// un-fold messages the window has already cut against, so it starts over.
+	if fold == nil || fold.sessionID != sessionID || fold.folded > beforeSeq {
+		fold = &threadFold{
+			sessionID: sessionID,
+			person:    make([]store.Message, 0, threadWindowMax+1),
+			ambient:   make([]store.Message, 0, ambientWindowMax+1),
+		}
+	}
+	if fold.folded == beforeSeq && fold.window != nil {
+		return copyThread(fold.window), nil
+	}
+
+	// The fold is dropped for the duration of the work and put back only when
+	// the work finished. Folding appends to the kept windows and a cut rewrites
+	// one of them in place, so a read that fails halfway leaves state that no
+	// longer matches the bound recorded beside it — and the cheapest correct
+	// answer to that is to have no fold rather than a wrong one.
+	h.fold = nil
+	cursor := fold.folded - 1
+	if cursor < 0 {
+		cursor = 0
+	}
+	person, ambient := fold.person, fold.ambient
+	for done := false; !done; {
 		messages, err := h.store.Messages(sessionID, cursor, messagePageSize)
 		if err != nil {
 			return nil, err
 		}
 		if len(messages) == 0 {
-			return mergeThreadWindow(person, ambient), nil
+			break
 		}
 		for _, message := range messages {
 			cursor = message.Seq
 			if message.Seq >= beforeSeq {
-				return mergeThreadWindow(person, ambient), nil
+				done = true
+				break
 			}
 			// Each cut is a fold over the whole session, so the window is a pure
 			// function of how many messages precede this one — the same session
@@ -894,6 +1105,21 @@ func (h *Head) recentThread(sessionID string, beforeSeq int64) ([]store.Message,
 			}
 		}
 	}
+
+	// The kept window is a copy of its own, and so is every window handed out.
+	// mergeThreadWindow returns the person slice itself when nothing is ambient,
+	// and the next cut rewrites that slice in place — a caller holding it, or a
+	// cache holding it, would find its thread had quietly changed shape. Every
+	// read used to build its own slices, so a copy is what callers already had.
+	fold.person, fold.ambient = person, ambient
+	fold.folded = beforeSeq
+	fold.window = copyThread(mergeThreadWindow(person, ambient))
+	h.fold = fold
+	return copyThread(fold.window), nil
+}
+
+func copyThread(messages []store.Message) []store.Message {
+	return append(make([]store.Message, 0, len(messages)), messages...)
 }
 
 // mergeThreadWindow puts the two windows back into journal order. Both are
@@ -924,6 +1150,7 @@ func (h *Head) postSystem(sessionID, body string) error {
 		SessionID: sessionID,
 		Role:      store.RoleSystem,
 		Body:      body,
+		Answers:   h.answering(),
 	})
 	if err != nil {
 		return fmt.Errorf("serve head: post system line: %w", err)
@@ -938,6 +1165,7 @@ func (h *Head) postAgentModel(sessionID, body string, commandSeq int64, model st
 		Body:       body,
 		CommandSeq: commandSeq,
 		Model:      strings.TrimSpace(model),
+		Answers:    h.answering(),
 	})
 	if err != nil {
 		return fmt.Errorf("serve head: post reply: %w", err)

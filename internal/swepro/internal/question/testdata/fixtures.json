@@ -1,0 +1,111 @@
+{"name":"option-valid-effect","fn":"schema","args_json":"[\"option\",\"effect\",{\"label\":\"Yes\",\"description\":\"Continue with the operation\"}]","out_json":"true"}
+{"name":"option-valid-zod","fn":"schema","args_json":"[\"option\",\"zod\",{\"label\":\"Yes\",\"description\":\"Continue with the operation\"}]","out_json":"true"}
+{"name":"option-empty-strings-effect","fn":"schema","args_json":"[\"option\",\"effect\",{\"label\":\"\",\"description\":\"\"}]","out_json":"true"}
+{"name":"option-empty-strings-zod","fn":"schema","args_json":"[\"option\",\"zod\",{\"label\":\"\",\"description\":\"\"}]","out_json":"true"}
+{"name":"option-missing-label-effect","fn":"schema","args_json":"[\"option\",\"effect\",{\"description\":\"x\"}]","out_json":"false"}
+{"name":"option-missing-label-zod","fn":"schema","args_json":"[\"option\",\"zod\",{\"description\":\"x\"}]","out_json":"false"}
+{"name":"option-missing-description-effect","fn":"schema","args_json":"[\"option\",\"effect\",{\"label\":\"x\"}]","out_json":"false"}
+{"name":"option-missing-description-zod","fn":"schema","args_json":"[\"option\",\"zod\",{\"label\":\"x\"}]","out_json":"false"}
+{"name":"option-number-label-effect","fn":"schema","args_json":"[\"option\",\"effect\",{\"label\":1,\"description\":\"x\"}]","out_json":"false"}
+{"name":"option-number-label-zod","fn":"schema","args_json":"[\"option\",\"zod\",{\"label\":1,\"description\":\"x\"}]","out_json":"false"}
+{"name":"option-null-description-effect","fn":"schema","args_json":"[\"option\",\"effect\",{\"label\":\"x\",\"description\":null}]","out_json":"false"}
+{"name":"option-null-description-zod","fn":"schema","args_json":"[\"option\",\"zod\",{\"label\":\"x\",\"description\":null}]","out_json":"false"}
+{"name":"option-extra-key-effect","fn":"schema","args_json":"[\"option\",\"effect\",{\"label\":\"Yes\",\"description\":\"Continue with the operation\",\"extra\":true}]","out_json":"true"}
+{"name":"option-extra-key-zod","fn":"schema","args_json":"[\"option\",\"zod\",{\"label\":\"Yes\",\"description\":\"Continue with the operation\",\"extra\":true}]","out_json":"true"}
+{"name":"info-valid-effect","fn":"schema","args_json":"[\"info\",\"effect\",{\"question\":\"Continue?\",\"header\":\"Confirm\",\"options\":[{\"label\":\"Yes\",\"description\":\"Continue with the operation\"}]}]","out_json":"true"}
+{"name":"info-valid-zod","fn":"schema","args_json":"[\"info\",\"zod\",{\"question\":\"Continue?\",\"header\":\"Confirm\",\"options\":[{\"label\":\"Yes\",\"description\":\"Continue with the operation\"}]}]","out_json":"true"}
+{"name":"info-optionals-effect","fn":"schema","args_json":"[\"info\",\"effect\",{\"question\":\"Continue?\",\"header\":\"Confirm\",\"options\":[{\"label\":\"Yes\",\"description\":\"Continue with the operation\"}],\"multiple\":true,\"custom\":false}]","out_json":"true"}
+{"name":"info-optionals-zod","fn":"schema","args_json":"[\"info\",\"zod\",{\"question\":\"Continue?\",\"header\":\"Confirm\",\"options\":[{\"label\":\"Yes\",\"description\":\"Continue with the operation\"}],\"multiple\":true,\"custom\":false}]","out_json":"true"}
+{"name":"info-empty-effect","fn":"schema","args_json":"[\"info\",\"effect\",{\"question\":\"\",\"header\":\"\",\"options\":[]}]","out_json":"true"}
+{"name":"info-empty-zod","fn":"schema","args_json":"[\"info\",\"zod\",{\"question\":\"\",\"header\":\"\",\"options\":[]}]","out_json":"true"}
+{"name":"info-missing-question-effect","fn":"schema","args_json":"[\"info\",\"effect\",{\"header\":\"h\",\"options\":[]}]","out_json":"false"}
+{"name":"info-missing-question-zod","fn":"schema","args_json":"[\"info\",\"zod\",{\"header\":\"h\",\"options\":[]}]","out_json":"false"}
+{"name":"info-missing-header-effect","fn":"schema","args_json":"[\"info\",\"effect\",{\"question\":\"q\",\"options\":[]}]","out_json":"false"}
+{"name":"info-missing-header-zod","fn":"schema","args_json":"[\"info\",\"zod\",{\"question\":\"q\",\"options\":[]}]","out_json":"false"}
+{"name":"info-missing-options-effect","fn":"schema","args_json":"[\"info\",\"effect\",{\"question\":\"q\",\"header\":\"h\"}]","out_json":"false"}
+{"name":"info-missing-options-zod","fn":"schema","args_json":"[\"info\",\"zod\",{\"question\":\"q\",\"header\":\"h\"}]","out_json":"false"}
+{"name":"info-null-options-effect","fn":"schema","args_json":"[\"info\",\"effect\",{\"question\":\"Continue?\",\"header\":\"Confirm\",\"options\":null}]","out_json":"false"}
+{"name":"info-null-options-zod","fn":"schema","args_json":"[\"info\",\"zod\",{\"question\":\"Continue?\",\"header\":\"Confirm\",\"options\":null}]","out_json":"false"}
+{"name":"info-invalid-option-effect","fn":"schema","args_json":"[\"info\",\"effect\",{\"question\":\"Continue?\",\"header\":\"Confirm\",\"options\":[{\"label\":\"x\"}]}]","out_json":"false"}
+{"name":"info-invalid-option-zod","fn":"schema","args_json":"[\"info\",\"zod\",{\"question\":\"Continue?\",\"header\":\"Confirm\",\"options\":[{\"label\":\"x\"}]}]","out_json":"false"}
+{"name":"info-invalid-custom-effect","fn":"schema","args_json":"[\"info\",\"effect\",{\"question\":\"Continue?\",\"header\":\"Confirm\",\"options\":[{\"label\":\"Yes\",\"description\":\"Continue with the operation\"}],\"custom\":\"yes\"}]","out_json":"false"}
+{"name":"info-invalid-custom-zod","fn":"schema","args_json":"[\"info\",\"zod\",{\"question\":\"Continue?\",\"header\":\"Confirm\",\"options\":[{\"label\":\"Yes\",\"description\":\"Continue with the operation\"}],\"custom\":\"yes\"}]","out_json":"false"}
+{"name":"info-long-header-is-description-only-effect","fn":"schema","args_json":"[\"info\",\"effect\",{\"question\":\"Continue?\",\"header\":\"xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\",\"options\":[{\"label\":\"Yes\",\"description\":\"Continue with the operation\"}]}]","out_json":"true"}
+{"name":"info-long-header-is-description-only-zod","fn":"schema","args_json":"[\"info\",\"zod\",{\"question\":\"Continue?\",\"header\":\"xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\",\"options\":[{\"label\":\"Yes\",\"description\":\"Continue with the operation\"}]}]","out_json":"true"}
+{"name":"prompt-valid-effect","fn":"schema","args_json":"[\"prompt\",\"effect\",{\"question\":\"Continue?\",\"header\":\"Confirm\",\"options\":[{\"label\":\"Yes\",\"description\":\"Continue with the operation\"}]}]","out_json":"true"}
+{"name":"prompt-valid-zod","fn":"schema","args_json":"[\"prompt\",\"zod\",{\"question\":\"Continue?\",\"header\":\"Confirm\",\"options\":[{\"label\":\"Yes\",\"description\":\"Continue with the operation\"}]}]","out_json":"true"}
+{"name":"prompt-multiple-false-effect","fn":"schema","args_json":"[\"prompt\",\"effect\",{\"question\":\"Continue?\",\"header\":\"Confirm\",\"options\":[{\"label\":\"Yes\",\"description\":\"Continue with the operation\"}],\"multiple\":false}]","out_json":"true"}
+{"name":"prompt-multiple-false-zod","fn":"schema","args_json":"[\"prompt\",\"zod\",{\"question\":\"Continue?\",\"header\":\"Confirm\",\"options\":[{\"label\":\"Yes\",\"description\":\"Continue with the operation\"}],\"multiple\":false}]","out_json":"true"}
+{"name":"prompt-custom-is-extra-effect","fn":"schema","args_json":"[\"prompt\",\"effect\",{\"question\":\"Continue?\",\"header\":\"Confirm\",\"options\":[{\"label\":\"Yes\",\"description\":\"Continue with the operation\"}],\"custom\":true}]","out_json":"true"}
+{"name":"prompt-custom-is-extra-zod","fn":"schema","args_json":"[\"prompt\",\"zod\",{\"question\":\"Continue?\",\"header\":\"Confirm\",\"options\":[{\"label\":\"Yes\",\"description\":\"Continue with the operation\"}],\"custom\":true}]","out_json":"true"}
+{"name":"prompt-missing-options-effect","fn":"schema","args_json":"[\"prompt\",\"effect\",{\"question\":\"q\",\"header\":\"h\"}]","out_json":"false"}
+{"name":"prompt-missing-options-zod","fn":"schema","args_json":"[\"prompt\",\"zod\",{\"question\":\"q\",\"header\":\"h\"}]","out_json":"false"}
+{"name":"tool-valid-effect","fn":"schema","args_json":"[\"tool\",\"effect\",{\"messageID\":\"msg_1\",\"callID\":\"call-1\"}]","out_json":"true"}
+{"name":"tool-valid-zod","fn":"schema","args_json":"[\"tool\",\"zod\",{\"messageID\":\"msg_1\",\"callID\":\"call-1\"}]","out_json":"true"}
+{"name":"tool-empty-effect","fn":"schema","args_json":"[\"tool\",\"effect\",{\"messageID\":\"\",\"callID\":\"\"}]","out_json":"true"}
+{"name":"tool-empty-zod","fn":"schema","args_json":"[\"tool\",\"zod\",{\"messageID\":\"\",\"callID\":\"\"}]","out_json":"false"}
+{"name":"tool-wrong-message-prefix-effect","fn":"schema","args_json":"[\"tool\",\"effect\",{\"messageID\":\"part_1\",\"callID\":\"c\"}]","out_json":"true"}
+{"name":"tool-wrong-message-prefix-zod","fn":"schema","args_json":"[\"tool\",\"zod\",{\"messageID\":\"part_1\",\"callID\":\"c\"}]","out_json":"false"}
+{"name":"tool-missing-message-effect","fn":"schema","args_json":"[\"tool\",\"effect\",{\"callID\":\"c\"}]","out_json":"false"}
+{"name":"tool-missing-message-zod","fn":"schema","args_json":"[\"tool\",\"zod\",{\"callID\":\"c\"}]","out_json":"false"}
+{"name":"tool-number-call-effect","fn":"schema","args_json":"[\"tool\",\"effect\",{\"messageID\":\"msg_1\",\"callID\":2}]","out_json":"false"}
+{"name":"tool-number-call-zod","fn":"schema","args_json":"[\"tool\",\"zod\",{\"messageID\":\"msg_1\",\"callID\":2}]","out_json":"false"}
+{"name":"request-valid-effect","fn":"schema","args_json":"[\"request\",\"effect\",{\"id\":\"que_1\",\"sessionID\":\"ses_1\",\"questions\":[{\"question\":\"Continue?\",\"header\":\"Confirm\",\"options\":[{\"label\":\"Yes\",\"description\":\"Continue with the operation\"}]}]}]","out_json":"true"}
+{"name":"request-valid-zod","fn":"schema","args_json":"[\"request\",\"zod\",{\"id\":\"que_1\",\"sessionID\":\"ses_1\",\"questions\":[{\"question\":\"Continue?\",\"header\":\"Confirm\",\"options\":[{\"label\":\"Yes\",\"description\":\"Continue with the operation\"}]}]}]","out_json":"true"}
+{"name":"request-tool-effect","fn":"schema","args_json":"[\"request\",\"effect\",{\"id\":\"que_1\",\"sessionID\":\"ses_1\",\"questions\":[{\"question\":\"Continue?\",\"header\":\"Confirm\",\"options\":[{\"label\":\"Yes\",\"description\":\"Continue with the operation\"}]}],\"tool\":{\"messageID\":\"msg_1\",\"callID\":\"call-1\"}}]","out_json":"true"}
+{"name":"request-tool-zod","fn":"schema","args_json":"[\"request\",\"zod\",{\"id\":\"que_1\",\"sessionID\":\"ses_1\",\"questions\":[{\"question\":\"Continue?\",\"header\":\"Confirm\",\"options\":[{\"label\":\"Yes\",\"description\":\"Continue with the operation\"}]}],\"tool\":{\"messageID\":\"msg_1\",\"callID\":\"call-1\"}}]","out_json":"true"}
+{"name":"request-empty-questions-effect","fn":"schema","args_json":"[\"request\",\"effect\",{\"id\":\"que_1\",\"sessionID\":\"ses_1\",\"questions\":[]}]","out_json":"true"}
+{"name":"request-empty-questions-zod","fn":"schema","args_json":"[\"request\",\"zod\",{\"id\":\"que_1\",\"sessionID\":\"ses_1\",\"questions\":[]}]","out_json":"true"}
+{"name":"request-arbitrary-effect-ids-effect","fn":"schema","args_json":"[\"request\",\"effect\",{\"id\":\"\",\"sessionID\":\"anything\",\"questions\":[{\"question\":\"Continue?\",\"header\":\"Confirm\",\"options\":[{\"label\":\"Yes\",\"description\":\"Continue with the operation\"}]}]}]","out_json":"true"}
+{"name":"request-arbitrary-effect-ids-zod","fn":"schema","args_json":"[\"request\",\"zod\",{\"id\":\"\",\"sessionID\":\"anything\",\"questions\":[{\"question\":\"Continue?\",\"header\":\"Confirm\",\"options\":[{\"label\":\"Yes\",\"description\":\"Continue with the operation\"}]}]}]","out_json":"false"}
+{"name":"request-wrong-zod-prefixes-effect","fn":"schema","args_json":"[\"request\",\"effect\",{\"id\":\"evt_1\",\"sessionID\":\"msg_1\",\"questions\":[{\"question\":\"Continue?\",\"header\":\"Confirm\",\"options\":[{\"label\":\"Yes\",\"description\":\"Continue with the operation\"}]}]}]","out_json":"true"}
+{"name":"request-wrong-zod-prefixes-zod","fn":"schema","args_json":"[\"request\",\"zod\",{\"id\":\"evt_1\",\"sessionID\":\"msg_1\",\"questions\":[{\"question\":\"Continue?\",\"header\":\"Confirm\",\"options\":[{\"label\":\"Yes\",\"description\":\"Continue with the operation\"}]}]}]","out_json":"false"}
+{"name":"request-missing-id-effect","fn":"schema","args_json":"[\"request\",\"effect\",{\"sessionID\":\"ses_1\",\"questions\":[]}]","out_json":"false"}
+{"name":"request-missing-id-zod","fn":"schema","args_json":"[\"request\",\"zod\",{\"sessionID\":\"ses_1\",\"questions\":[]}]","out_json":"false"}
+{"name":"request-missing-session-effect","fn":"schema","args_json":"[\"request\",\"effect\",{\"id\":\"que_1\",\"questions\":[]}]","out_json":"false"}
+{"name":"request-missing-session-zod","fn":"schema","args_json":"[\"request\",\"zod\",{\"id\":\"que_1\",\"questions\":[]}]","out_json":"false"}
+{"name":"request-missing-questions-effect","fn":"schema","args_json":"[\"request\",\"effect\",{\"id\":\"que_1\",\"sessionID\":\"ses_1\"}]","out_json":"false"}
+{"name":"request-missing-questions-zod","fn":"schema","args_json":"[\"request\",\"zod\",{\"id\":\"que_1\",\"sessionID\":\"ses_1\"}]","out_json":"false"}
+{"name":"request-null-tool-effect","fn":"schema","args_json":"[\"request\",\"effect\",{\"id\":\"que_1\",\"sessionID\":\"ses_1\",\"questions\":[{\"question\":\"Continue?\",\"header\":\"Confirm\",\"options\":[{\"label\":\"Yes\",\"description\":\"Continue with the operation\"}]}],\"tool\":null}]","out_json":"false"}
+{"name":"request-null-tool-zod","fn":"schema","args_json":"[\"request\",\"zod\",{\"id\":\"que_1\",\"sessionID\":\"ses_1\",\"questions\":[{\"question\":\"Continue?\",\"header\":\"Confirm\",\"options\":[{\"label\":\"Yes\",\"description\":\"Continue with the operation\"}]}],\"tool\":null}]","out_json":"false"}
+{"name":"request-invalid-question-effect","fn":"schema","args_json":"[\"request\",\"effect\",{\"id\":\"que_1\",\"sessionID\":\"ses_1\",\"questions\":[{\"question\":\"q\"}]}]","out_json":"false"}
+{"name":"request-invalid-question-zod","fn":"schema","args_json":"[\"request\",\"zod\",{\"id\":\"que_1\",\"sessionID\":\"ses_1\",\"questions\":[{\"question\":\"q\"}]}]","out_json":"false"}
+{"name":"answer-empty-effect","fn":"schema","args_json":"[\"answer\",\"effect\",[]]","out_json":"true"}
+{"name":"answer-empty-zod","fn":"schema","args_json":"[\"answer\",\"zod\",[]]","out_json":"true"}
+{"name":"answer-labels-effect","fn":"schema","args_json":"[\"answer\",\"effect\",[\"One\",\"Two\"]]","out_json":"true"}
+{"name":"answer-labels-zod","fn":"schema","args_json":"[\"answer\",\"zod\",[\"One\",\"Two\"]]","out_json":"true"}
+{"name":"answer-unicode-effect","fn":"schema","args_json":"[\"answer\",\"effect\",[\"😀\",\" \",\"é\"]]","out_json":"true"}
+{"name":"answer-unicode-zod","fn":"schema","args_json":"[\"answer\",\"zod\",[\"😀\",\" \",\"é\"]]","out_json":"true"}
+{"name":"answer-number-effect","fn":"schema","args_json":"[\"answer\",\"effect\",[\"One\",2]]","out_json":"false"}
+{"name":"answer-number-zod","fn":"schema","args_json":"[\"answer\",\"zod\",[\"One\",2]]","out_json":"false"}
+{"name":"answer-null-effect","fn":"schema","args_json":"[\"answer\",\"effect\",null]","out_json":"false"}
+{"name":"answer-null-zod","fn":"schema","args_json":"[\"answer\",\"zod\",null]","out_json":"false"}
+{"name":"answer-object-effect","fn":"schema","args_json":"[\"answer\",\"effect\",{}]","out_json":"false"}
+{"name":"answer-object-zod","fn":"schema","args_json":"[\"answer\",\"zod\",{}]","out_json":"false"}
+{"name":"reply-valid-effect","fn":"schema","args_json":"[\"reply\",\"effect\",{\"answers\":[[\"One\"],[\"Two\",\"Custom\"]]}]","out_json":"true"}
+{"name":"reply-valid-zod","fn":"schema","args_json":"[\"reply\",\"zod\",{\"answers\":[[\"One\"],[\"Two\",\"Custom\"]]}]","out_json":"true"}
+{"name":"reply-empty-effect","fn":"schema","args_json":"[\"reply\",\"effect\",{\"answers\":[]}]","out_json":"true"}
+{"name":"reply-empty-zod","fn":"schema","args_json":"[\"reply\",\"zod\",{\"answers\":[]}]","out_json":"true"}
+{"name":"reply-missing-effect","fn":"schema","args_json":"[\"reply\",\"effect\",{}]","out_json":"false"}
+{"name":"reply-missing-zod","fn":"schema","args_json":"[\"reply\",\"zod\",{}]","out_json":"false"}
+{"name":"reply-flat-effect","fn":"schema","args_json":"[\"reply\",\"effect\",{\"answers\":[\"One\"]}]","out_json":"false"}
+{"name":"reply-flat-zod","fn":"schema","args_json":"[\"reply\",\"zod\",{\"answers\":[\"One\"]}]","out_json":"false"}
+{"name":"reply-null-effect","fn":"schema","args_json":"[\"reply\",\"effect\",{\"answers\":null}]","out_json":"false"}
+{"name":"reply-null-zod","fn":"schema","args_json":"[\"reply\",\"zod\",{\"answers\":null}]","out_json":"false"}
+{"name":"question-id-empty-effect-effect","fn":"schema","args_json":"[\"questionID\",\"effect\",\"\"]","out_json":"true"}
+{"name":"question-id-empty-effect-zod","fn":"schema","args_json":"[\"questionID\",\"zod\",\"\"]","out_json":"false"}
+{"name":"question-id-prefix-effect","fn":"schema","args_json":"[\"questionID\",\"effect\",\"que_1\"]","out_json":"true"}
+{"name":"question-id-prefix-zod","fn":"schema","args_json":"[\"questionID\",\"zod\",\"que_1\"]","out_json":"true"}
+{"name":"question-id-bare-prefix-effect","fn":"schema","args_json":"[\"questionID\",\"effect\",\"que\"]","out_json":"true"}
+{"name":"question-id-bare-prefix-zod","fn":"schema","args_json":"[\"questionID\",\"zod\",\"que\"]","out_json":"true"}
+{"name":"question-id-prefix-without-underscore-effect","fn":"schema","args_json":"[\"questionID\",\"effect\",\"question\"]","out_json":"true"}
+{"name":"question-id-prefix-without-underscore-zod","fn":"schema","args_json":"[\"questionID\",\"zod\",\"question\"]","out_json":"true"}
+{"name":"question-id-wrong-prefix-effect","fn":"schema","args_json":"[\"questionID\",\"effect\",\"evt_1\"]","out_json":"true"}
+{"name":"question-id-wrong-prefix-zod","fn":"schema","args_json":"[\"questionID\",\"zod\",\"evt_1\"]","out_json":"false"}
+{"name":"question-id-number-effect","fn":"schema","args_json":"[\"questionID\",\"effect\",1]","out_json":"false"}
+{"name":"question-id-number-zod","fn":"schema","args_json":"[\"questionID\",\"zod\",1]","out_json":"false"}
+{"name":"question-id-null-effect","fn":"schema","args_json":"[\"questionID\",\"effect\",null]","out_json":"false"}
+{"name":"question-id-null-zod","fn":"schema","args_json":"[\"questionID\",\"zod\",null]","out_json":"false"}
+{"name":"question-id-ascending-que_custom","fn":"ascending","args_json":"[\"que_custom\"]","out_json":"{\"ok\":true,\"value\":\"que_custom\"}"}
+{"name":"question-id-ascending-question-is-prefix-valid","fn":"ascending","args_json":"[\"question-is-prefix-valid\"]","out_json":"{\"ok\":true,\"value\":\"question-is-prefix-valid\"}"}
+{"name":"question-id-ascending-evt_wrong","fn":"ascending","args_json":"[\"evt_wrong\"]","out_json":"{\"ok\":false}"}

@@ -76,6 +76,12 @@ type Task struct {
 	// first appeared.
 	Reflex bool
 
+	// Subharness names the worker this leaf was routed to. It is carried on the
+	// task rather than looked up again at dispatch because the choice was made
+	// once, upstream, and journaled: the scheduler's job is to honour it, not to
+	// re-decide it. Empty is the generalist, which is nearly every leaf.
+	Subharness string
+
 	// Steer, when set, is polled between turns for mid-flight guidance from
 	// the user. Each returned line lands in the transcript as a user message
 	// before the next model call, so a running worker can be redirected
@@ -97,9 +103,34 @@ type Task struct {
 	// then the claim owner releases through the store CAS path.
 	Control func() ControlAction
 
+	// Progress is within-node visibility: where the work has got to, said in a
+	// way that replaces the last thing it said rather than adding to it.
+	//
+	// It exists for the worker whose leaf is long and whose insides are not
+	// nodes. A linear leaf is a turn loop nobody watches and passes nil; a
+	// subharness that runs a pipeline for forty minutes would otherwise be a
+	// spinner, and the two honest alternatives to this — splicing its stages
+	// into the graph, or posting them as thread messages — are the two things
+	// docs/SUBHARNESSES.md forbids by name. phase is the coarse thing being
+	// done, done/total are a count when there is one, and latest is the short
+	// right-hand side. Nil-safe and ignored when nil, so no existing caller
+	// pays anything for it.
+	Progress func(phase string, done, total int, latest string)
+
 	// control is installed by the scheduler so its watchdog can tear down a
 	// Toolbox even when the executor goroutine itself is abandoned.
 	control *leafControl
+}
+
+// progress reports one step of within-node progress, and reports nothing at all
+// when the surface offered no channel. The nil check lives here rather than at
+// every call site because a worker that has to remember it will forget it once,
+// in the path that only runs when something has already gone wrong.
+func (t Task) progress(phase string, done, total int, latest string) {
+	if t.Progress == nil || strings.TrimSpace(phase) == "" {
+		return
+	}
+	t.Progress(phase, done, total, latest)
 }
 
 type ControlAction string
@@ -163,6 +194,31 @@ type Outcome struct {
 	// check. It is a tail and not a transcript: absence in it is evidence, not
 	// proof, and whatever reads it must say so.
 	Ran []string
+
+	// Calibration is what the worker noticed about its own fit for this job:
+	// free-text sentences, in the worker's own voice, about whether the work sat
+	// comfortably inside its envelope, under it, or at the top of it.
+	//
+	// It is deliberately prose rather than a number or an enum. The only reader
+	// is the recalibration call that rewrites a subharness's three anchor
+	// examples, and that reader is a model reading evidence — a "fit: 0.3" would
+	// have to be invented at one end and interpreted at the other, and both
+	// halves would be fiction. Nothing branches on it and nothing may; the
+	// generalist emits none of it, so every existing profile record and every
+	// existing prompt is exactly what it was.
+	//
+	// A worker writes these about ITSELF. "This sat under my envelope" is a fact
+	// this executor is uniquely placed to observe; "the other worker should have
+	// had it" is a judgement it is not, and the note says the first thing.
+	Calibration []string
+}
+
+// Calibrate appends one self-observation, ignoring the empty ones so a caller
+// can compose a note conditionally without guarding every call.
+func (o *Outcome) Calibrate(note string) {
+	if note = strings.TrimSpace(note); note != "" {
+		o.Calibration = append(o.Calibration, note)
+	}
 }
 
 // ranLimit and ranArgumentBytes bound the record. Forty calls is well past the
@@ -232,30 +288,30 @@ func (u *Usage) merge(other Usage) {
 // leaves at once against a single executor, which is the entire point of having
 // built a graph.
 type Executor interface {
-	Skill() string
+	Subharness() string
 	Run(ctx context.Context, task Task) (*Outcome, error)
 }
 
-// Registry picks an executor by skill. Nodes carry no skill yet, so everything
-// resolves to the general loop; the lookup exists so that adding a specialised
-// worker later is a registration rather than a change to the scheduler.
+// Registry picks an executor by subharness. Nearly every node carries none and
+// resolves to the general loop; the lookup is what makes adding a specialised
+// worker a registration rather than a change to the scheduler.
 type Registry struct {
 	executors map[string]Executor
 	fallback  Executor
 }
 
 func NewRegistry(fallback Executor) *Registry {
-	return &Registry{executors: map[string]Executor{fallback.Skill(): fallback}, fallback: fallback}
+	return &Registry{executors: map[string]Executor{fallback.Subharness(): fallback}, fallback: fallback}
 }
 
 // Register adds a specialised executor.
-func (r *Registry) Register(executor Executor) { r.executors[executor.Skill()] = executor }
+func (r *Registry) Register(executor Executor) { r.executors[executor.Subharness()] = executor }
 
-// For returns the executor for a skill, falling back to the general one. An
-// unknown skill is served rather than refused: a plan that asks for a worker we
-// do not have should still get its work done by the generalist.
-func (r *Registry) For(skill string) Executor {
-	if executor, ok := r.executors[skill]; ok {
+// For returns the executor for a subharness, falling back to the general one.
+// An unknown name is served rather than refused: a plan that asks for a worker
+// we do not have should still get its work done by the generalist.
+func (r *Registry) For(subharness string) Executor {
+	if executor, ok := r.executors[subharness]; ok {
 		return executor
 	}
 	return r.fallback

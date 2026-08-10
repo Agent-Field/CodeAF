@@ -109,9 +109,9 @@ func TestAVisitorWindowNeverWaitsOnSomebodyElsesTurn(t *testing.T) {
 	}
 }
 
-// Two more ways the line has to know when to stop: a live stream is already the
-// reply arriving, and a wait nobody ever answered stops breathing rather than
-// pinning the repaint loop forever.
+// Two more ways the line has to know when to stop: a live stream that is
+// actually drawing is already the reply arriving, and a wait nobody ever
+// answered stops breathing rather than pinning the repaint loop forever.
 func TestTheIndicatorYieldsToTheStreamAndStopsBreathing(t *testing.T) {
 	model := New(&fakeBackend{}, "yield")
 	model.setSize(100, 30)
@@ -121,7 +121,13 @@ func TestTheIndicatorYieldsToTheStreamAndStopsBreathing(t *testing.T) {
 	if !model.awaitingReply() {
 		t.Fatal("the wait never started")
 	}
+	// An opened stream with nothing in it draws no line of its own, so the wait
+	// is still the only thing on screen saying the head has the turn.
 	model.applyStreamEvent(StreamEvent{Kind: StreamStarted})
+	if !model.awaitingReply() {
+		t.Fatal("an empty stream took the indicator away and put nothing in its place")
+	}
+	model.applyStreamEvent(StreamEvent{Kind: StreamDelta, Delta: `{"reply":"two jobs`})
 	if model.awaitingReply() {
 		t.Fatal("the indicator sat above a live stream saying the same thing twice")
 	}
@@ -150,6 +156,114 @@ func TestTheIndicatorSurvivesTheNarrowDock(t *testing.T) {
 			t.Fatalf("width %d lost the presence line:\n%s", width, ansi.Strip(frame))
 		}
 		assertFitsWidth(t, frame, width, "presence")
+	}
+}
+
+// A stream can be live and still be drawing nothing — the control belt's call
+// and every reasoning phase look exactly like this — and for those seconds the
+// thread showed nothing at all. The wait covers them.
+func TestAnEmptyStreamLeavesTheWaitOnScreen(t *testing.T) {
+	model := New(&fakeBackend{}, "empty-stream")
+	model.setSize(100, 30)
+	_, _ = model.Update(postResultMsg{message: store.Message{
+		Seq: 4, SessionID: "empty-stream", Role: store.RoleUser, Body: "how are the totals?",
+	}})
+	model.applyStreamEvent(StreamEvent{Kind: StreamStarted})
+	frame := ansi.Strip(model.renderMessages())
+	if !strings.Contains(frame, "aforge") || !strings.Contains(frame, "·") {
+		t.Fatalf("an open stream with nothing in it left the thread blank:\n%s", frame)
+	}
+	// And the moment it has something to say, the line steps aside for it.
+	model.applyStreamEvent(StreamEvent{Kind: StreamDelta, Delta: `{"reply":"They add up to 41,208.`})
+	if model.awaitingReply() {
+		t.Fatal("the wait stayed up over a stream that is drawing the reply")
+	}
+}
+
+// Two turns typed before either is answered: the first reply used to clear the
+// only slot there is, leaving the second turn with no pending indicator at all.
+// Per-turn awaiting is a later wave; this is only the guard that one answer
+// settles one turn.
+func TestTheFirstReplyDoesNotTakeTheSecondTurnsWait(t *testing.T) {
+	model := New(&fakeBackend{}, "two-turns")
+	model.setSize(100, 30)
+	for _, turn := range []store.Message{
+		{Seq: 4, SessionID: "two-turns", Role: store.RoleUser, Body: "how are the totals?"},
+		{Seq: 5, SessionID: "two-turns", Role: store.RoleUser, Body: "actually, this quarter only"},
+	} {
+		_, _ = model.Update(postResultMsg{message: turn})
+	}
+	model.applyPoll(pollResultMsg{sessionID: "two-turns", messages: []store.Message{
+		{Seq: 6, SessionID: "two-turns", Role: store.RoleAgent, Body: "They add up to 41,208."},
+	}})
+	// The reply for the first turn draws itself, and the line yields while it
+	// does. When it has finished, the second turn is still owed an answer.
+	for index := 0; index < 256 && model.streamAnimating(); index++ {
+		model.advanceStream()
+	}
+	if !model.awaitingReply() {
+		t.Fatal("the first reply took the second turn's wait with it")
+	}
+	model.applyPoll(pollResultMsg{sessionID: "two-turns", messages: []store.Message{
+		{Seq: 7, SessionID: "two-turns", Role: store.RoleAgent, Body: "This quarter: 12,004."},
+	}})
+	if model.awaitingReply() {
+		t.Fatalf("both turns were answered and the line is still waiting on %d", model.awaitingSeq)
+	}
+}
+
+// A second turn typed before the first is answered is owed an answer too, and
+// the one dot said nothing about that. The count does, quietly, and only while
+// there is more than one.
+func TestThePulseSaysHowManyTurnsAreOwed(t *testing.T) {
+	model := New(&fakeBackend{}, "owed")
+	model.setSize(100, 30)
+	_, _ = model.Update(postResultMsg{message: store.Message{
+		Seq: 4, SessionID: "owed", Role: store.RoleUser, Body: "how are the totals?",
+	}})
+	if line := ansi.Strip(model.renderAwaitingReply(100)); strings.Contains(line, "1") {
+		t.Fatalf("one owed turn counted itself: %q", line)
+	}
+	_, _ = model.Update(postResultMsg{message: store.Message{
+		Seq: 5, SessionID: "owed", Role: store.RoleUser, Body: "actually, this quarter only",
+	}})
+	line := ansi.Strip(model.renderAwaitingReply(100))
+	if !strings.Contains(line, "aforge") || !strings.Contains(line, "· 2") {
+		t.Fatalf("the pulse does not say two turns are owed: %q", line)
+	}
+	frame := model.View()
+	if !strings.Contains(ansi.Strip(frame), "· 2") {
+		t.Fatalf("the count never reached the frame:\n%s", ansi.Strip(frame))
+	}
+	assertFitsWidth(t, frame, 100, "presence")
+}
+
+// The head folds messages typed in one breath into one turn and answers them
+// once, saying which rows the answer covers. Every wait it covers ends with it —
+// otherwise the window waits forever for a reply that was never coming.
+func TestAFoldedReplySettlesEveryTurnItAnswers(t *testing.T) {
+	model := New(&fakeBackend{}, "folded")
+	model.setSize(100, 30)
+	for _, turn := range []store.Message{
+		{Seq: 4, SessionID: "folded", Role: store.RoleUser, Body: "how are the totals?"},
+		{Seq: 5, SessionID: "folded", Role: store.RoleUser, Body: "actually, this quarter only"},
+	} {
+		_, _ = model.Update(postResultMsg{message: turn})
+	}
+	model.applyPoll(pollResultMsg{sessionID: "folded", messages: []store.Message{
+		{Seq: 6, SessionID: "folded", Role: store.RoleAgent, Answers: 5, Body: "This quarter: 12,004."},
+	}})
+	if model.awaitingSeq != 0 || len(model.awaitingTurns) != 0 {
+		t.Fatalf("the folded reply left %d turns waiting on %d",
+			len(model.awaitingTurns), model.awaitingSeq)
+	}
+	// A turn typed after that answer is still its own wait.
+	_, _ = model.Update(postResultMsg{message: store.Message{
+		Seq: 7, SessionID: "folded", Role: store.RoleUser, Body: "and the headcount?",
+	}})
+	if model.awaitingSeq != 7 || len(model.awaitingTurns) != 1 {
+		t.Fatalf("a turn typed after the folded reply waits on %d with %d owed, want 7 and 1",
+			model.awaitingSeq, len(model.awaitingTurns))
 	}
 }
 

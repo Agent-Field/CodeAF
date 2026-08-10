@@ -15,8 +15,6 @@ import (
 	"github.com/Agent-Field/aforge-v2/internal/config"
 	"github.com/Agent-Field/aforge-v2/internal/craft"
 	"github.com/Agent-Field/aforge-v2/internal/lease"
-	"github.com/Agent-Field/aforge-v2/internal/plan"
-	"github.com/Agent-Field/aforge-v2/internal/profile"
 	"github.com/Agent-Field/aforge-v2/internal/resident"
 	"github.com/Agent-Field/aforge-v2/internal/store"
 )
@@ -51,8 +49,7 @@ func runWake(args []string) error {
 		if err != nil {
 			return nil, err
 		}
-		measured, _ := profile.Load(settings.ProfileDir, taskClient.Model(), "linear")
-		plan.UseAnchors(measured.Anchors)
+		installMeasuredRulers(settings.ProfileDir, taskClient.Model())
 		plans := &jobPlans{graphs: map[string]plannedJob{}}
 		// A wake pass has no live boost slot to resolve model words against;
 		// jobs born here run on the configured work model.

@@ -136,7 +136,7 @@ func (m *Model) deliverablePaths(message store.Message) []string {
 			add(trimmed)
 			continue
 		}
-		if resolved, ok := m.resolveWorkspacePath(message.NodeID, filepath.Clean(trimmed)); ok {
+		if resolved, ok := m.resolveWorkspacePathNow(message.NodeID, filepath.Clean(trimmed)); ok {
 			add(resolved)
 		}
 	}
@@ -186,7 +186,7 @@ func (m *Model) slashOpen(arguments []string) tea.Cmd {
 	paths := m.deliverablePaths(message)
 	if len(arguments) > 0 {
 		wanted := strings.TrimSpace(strings.Join(arguments, " "))
-		if resolved, found := m.resolveWorkspacePath(message.NodeID, filepath.Clean(wanted)); found {
+		if resolved, found := m.resolveWorkspacePathNow(message.NodeID, filepath.Clean(wanted)); found {
 			paths = []string{resolved}
 		} else if filepath.IsAbs(wanted) {
 			paths = []string{wanted}

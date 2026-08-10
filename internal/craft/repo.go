@@ -12,6 +12,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
@@ -50,8 +51,44 @@ const (
 var gitLock sync.Mutex
 
 // Repo is the craft repository at one directory.
+//
+// It is never copied — Open hands back a pointer and every caller keeps it —
+// which is what lets the catalogue cache below live on it.
 type Repo struct {
 	dir string
+
+	// listing guards everything this repository remembers. The catalogue, and
+	// the state of the directory it was read from: List forks git once per
+	// workflow and the Self pane calls it on every poll; see listed. And the
+	// resolved workflows, keyed by the state each was read at; see loaded.
+	listing sync.Mutex
+	listed  []Summary
+	listErr error
+	stamp   string
+	loaded  map[string]remembered
+
+	forks atomic.Int64
+}
+
+// remembered is one workflow's Load answer and the state of the file and
+// repository it was resolved from. The Self pane loads every workflow on every
+// poll for the one number the catalogue does not carry — the step count — and
+// each load is two forks.
+type remembered struct {
+	stamp string
+	answer
+}
+
+// answer is one Load's outcome, and whether it is the kind of outcome that may
+// be remembered. A file that will not parse and a workflow that was never
+// committed are facts about the file and the repository, and both stop being
+// true the moment the stamp changes. A git invocation that failed is not a
+// fact about anything — a lock held by another process, a full disk, a signal
+// — and remembering it would make one bad moment permanent.
+type answer struct {
+	w      *Workflow
+	err    error
+	stable bool
 }
 
 // Version is one commit in a workflow's history.
@@ -171,6 +208,11 @@ func (r *Repo) Save(w *Workflow, message string) (string, error) {
 
 	gitLock.Lock()
 	defer gitLock.Unlock()
+	// The catalogue is about to be a version out of date. The file's own stamp
+	// would say so too, but not on a filesystem that rounds modification times
+	// to the second, and this is the case where that matters: the distiller
+	// saves while the Self pane is watching.
+	defer r.forget()
 
 	if err := os.WriteFile(filepath.Join(r.dir, path), data, 0o644); err != nil {
 		return "", fmt.Errorf("craft save %s: %w", w.Name, err)
@@ -191,38 +233,120 @@ func (r *Repo) Save(w *Workflow, message string) (string, error) {
 // run moves the reference and the guard fires; and a workflow that was never
 // committed has no version at all, which is a refusal rather than a bare name
 // with the guard switched off.
+//
+// The answer is remembered against the state it was resolved from, for the
+// same reason the catalogue is: resolving a version costs two forks — a
+// `git log -1` and a `git status --porcelain` — and the Self pane loads every
+// workflow in the catalogue on every poll, for the step count alone. See
+// versionStamp for what "unchanged" has to mean before an answer is reused.
 func (r *Repo) Load(name string) (*Workflow, error) {
 	path, err := workflowPath(name)
 	if err != nil {
 		return nil, err
 	}
+	stamp := r.versionStamp(path)
+	if held, ok := r.recall(name, stamp); ok {
+		return held.w.clone(), held.err
+	}
+	// Resolved outside the lock: settling a file calls missing on a name that
+	// is not there, and missing reads the catalogue.
+	resolved := r.resolve(name, path)
+	if resolved.stable && stamp != "" {
+		r.remember(name, stamp, resolved)
+	}
+	return resolved.w.clone(), resolved.err
+}
+
+// resolve is Load without the memory: read the file, settle it, and name the
+// version the bytes on disk belong to.
+func (r *Repo) resolve(name, path string) answer {
 	data, err := os.ReadFile(filepath.Join(r.dir, path))
 	if err != nil {
 		if os.IsNotExist(err) {
-			return nil, r.missing(name)
+			return answer{err: r.missing(name)}
 		}
-		return nil, fmt.Errorf("craft load %s: %w", name, err)
+		return answer{err: fmt.Errorf("craft load %s: %w", name, err)}
 	}
 	w, err := r.settle(name, data)
 	if err != nil {
-		return nil, err
+		return answer{err: err, stable: true}
 	}
 	commit, err := r.git("log", "-1", "--format=%H", "--", path)
 	if err != nil {
-		return nil, err
+		return answer{err: err}
 	}
 	w.Commit = strings.TrimSpace(commit)
 	if w.Commit == "" {
-		return nil, fmt.Errorf("craft load %s: this workflow has never been committed — save it before running it, so the run can name the version it ran", name)
+		return answer{
+			err:    fmt.Errorf("craft load %s: this workflow has never been committed — save it before running it, so the run can name the version it ran", name),
+			stable: true,
+		}
 	}
 	dirty, err := r.pending([]string{path})
 	if err != nil {
-		return nil, err
+		return answer{err: err}
 	}
 	if dirty {
 		w.Commit = dirtyVersion(w.Commit, data)
 	}
-	return w, nil
+	return answer{w: w, stable: true}
+}
+
+// recall gives back the answer this workflow last resolved to, if the file and
+// the repository are both in the state it was resolved from.
+func (r *Repo) recall(name, stamp string) (answer, bool) {
+	if stamp == "" {
+		return answer{}, false
+	}
+	r.listing.Lock()
+	defer r.listing.Unlock()
+	held, ok := r.loaded[name]
+	if !ok || held.stamp != stamp {
+		return answer{}, false
+	}
+	return held.answer, true
+}
+
+func (r *Repo) remember(name, stamp string, resolved answer) {
+	r.listing.Lock()
+	defer r.listing.Unlock()
+	if r.loaded == nil {
+		r.loaded = make(map[string]remembered)
+	}
+	r.loaded[name] = remembered{stamp: stamp, answer: resolved}
+}
+
+// clone is a caller's own copy. Load used to build a fresh Workflow on every
+// call, and its callers fill parameters into one, compile it into a subtree, or
+// hand it on to Save — none of which may reach back into what is remembered.
+// Nil clones to nil, so a refusal still returns no workflow.
+func (w *Workflow) clone() *Workflow {
+	if w == nil {
+		return nil
+	}
+	copied := *w
+	copied.Params = append([]Param(nil), w.Params...)
+	if w.Steps != nil {
+		copied.Steps = make([]Step, len(w.Steps))
+	}
+	for index, step := range w.Steps {
+		step.Needs = append([]string(nil), step.Needs...)
+		if step.ForEach != nil {
+			forEach := *step.ForEach
+			step.ForEach = &forEach
+		}
+		if step.Verify != nil {
+			verify := *step.Verify
+			if verify.UntilPass != nil {
+				until := *verify.UntilPass
+				until.Revise = append([]string(nil), until.Revise...)
+				verify.UntilPass = &until
+			}
+			step.Verify = &verify
+		}
+		copied.Steps[index] = step
+	}
+	return &copied
 }
 
 // dirtyVersion names an uncommitted edit as its own version: the commit it
@@ -326,6 +450,7 @@ func (r *Repo) Revert(name, toCommit, message string) (string, error) {
 
 	gitLock.Lock()
 	defer gitLock.Unlock()
+	defer r.forget()
 
 	if err := os.WriteFile(filepath.Join(r.dir, path), data, 0o644); err != nil {
 		return "", fmt.Errorf("craft revert %s: %w", name, err)
@@ -341,6 +466,20 @@ func (r *Repo) Revert(name, toCommit, message string) (string, error) {
 // rather than fatal: one corrupt workflow must not hide the rest, and the
 // listing is the surface the resident chooses from. The returned error names
 // what was skipped — the summaries are complete either way.
+//
+// The answer is remembered against the state of the workflows directory,
+// because this is not an occasional call: each summary costs a `git log -1`,
+// which is a process fork of about six milliseconds, and the Self pane asks for
+// the whole catalogue on every poll for as long as it is open. Unchanged files
+// give back the same summaries without touching git at all.
+//
+// The stamp is every workflow file's name, size and modification time, plus the
+// directory's own — so a save, a revert, an added file and a removed one all
+// invalidate it, since every one of them writes. What it cannot see is a commit
+// made behind the files' backs: committing a workflow by hand, in the craft
+// directory, with git, leaves the listing showing the version it had a moment
+// ago until the file itself next changes. Everything that writes here goes
+// through Save or Revert, both of which write the file first.
 func (r *Repo) List() ([]Summary, error) {
 	entries, err := os.ReadDir(filepath.Join(r.dir, WorkflowDir))
 	if err != nil {
@@ -349,6 +488,14 @@ func (r *Repo) List() ([]Summary, error) {
 		}
 		return nil, fmt.Errorf("craft list: %w", err)
 	}
+
+	stamp := r.stampOf(entries)
+	r.listing.Lock()
+	defer r.listing.Unlock()
+	if stamp != "" && stamp == r.stamp {
+		return append([]Summary(nil), r.listed...), r.listErr
+	}
+
 	var summaries []Summary
 	var skipped []error
 	for _, entry := range entries {
@@ -378,7 +525,118 @@ func (r *Repo) List() ([]Summary, error) {
 		summaries = append(summaries, summary)
 	}
 	sort.Slice(summaries, func(a, b int) bool { return summaries[a].Name < summaries[b].Name })
-	return summaries, errors.Join(skipped...)
+	problems := errors.Join(skipped...)
+	r.listed, r.listErr, r.stamp = summaries, problems, stamp
+	// A copy, because the caller of a function that used to build a fresh slice
+	// every time is entitled to keep sorting or trimming what it is given.
+	return append([]Summary(nil), summaries...), problems
+}
+
+// forget drops everything remembered — the catalogue and the resolved
+// workflows both — for the writers that know they have just invalidated it.
+func (r *Repo) forget() {
+	r.listing.Lock()
+	defer r.listing.Unlock()
+	r.listed, r.listErr, r.stamp = nil, nil, ""
+	r.loaded = nil
+}
+
+// stampOf describes the workflows directory closely enough that an unchanged
+// one is recognisable. It returns "" when the directory will not describe
+// itself, which reads as "changed" and costs a re-read rather than a wrong
+// answer.
+func (r *Repo) stampOf(entries []os.DirEntry) string {
+	directory, err := os.Stat(filepath.Join(r.dir, WorkflowDir))
+	if err != nil {
+		return ""
+	}
+	stamp := &strings.Builder{}
+	fmt.Fprintf(stamp, "%d\x1f%d", directory.ModTime().UnixNano(), len(entries))
+	for _, entry := range entries {
+		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".yaml") {
+			continue
+		}
+		info, err := entry.Info()
+		if err != nil {
+			return ""
+		}
+		stamp.WriteString("\x1e")
+		stamp.WriteString(fileStamp(entry.Name(), info))
+	}
+	return stamp.String()
+}
+
+// fileStamp describes one file closely enough that an unchanged one is
+// recognisable: what it is called, how big it is, and when it was last written.
+func fileStamp(name string, info os.FileInfo) string {
+	return fmt.Sprintf("%s\x1f%d\x1f%d", name, info.Size(), info.ModTime().UnixNano())
+}
+
+// versionStamp describes everything Load's answer depends on, so that an
+// unchanged one can be given again without forking git.
+//
+// A version is the file's bytes plus the repository's opinion of them, so the
+// stamp is both: the file as the catalogue already stamps it, and the state of
+// the git directory. The second half is what lets the dirty probe be
+// remembered at all — whether a path differs from HEAD is a function of the
+// working tree, the index and the ref, and while the working tree half is the
+// file's own stamp, committing or resetting by hand moves the other two
+// without touching the file. Those all write .git/index and the branch ref,
+// and reading — `git log -1`, `git status --porcelain` — writes neither,
+// because the git this package runs is told GIT_OPTIONAL_LOCKS=0 and so never
+// refreshes the index behind a read.
+//
+// What is left is a hand commit landing inside the same modification-time tick
+// as the write before it, which is the granularity of the filesystem: not
+// reachable on the nanosecond timestamps macOS and Linux keep, possible on one
+// that rounds to the second. It is the same edge the catalogue's own stamp
+// carries, and the same answer applies — everything in this package that
+// writes goes through Save or Revert, and both forget.
+//
+// An empty stamp reads as "changed", costing a re-read rather than a wrong
+// answer, and is what a file or a git directory that will not describe itself
+// gets.
+func (r *Repo) versionStamp(path string) string {
+	info, err := os.Stat(filepath.Join(r.dir, path))
+	if err != nil {
+		return ""
+	}
+	git := r.gitStamp()
+	if git == "" {
+		return ""
+	}
+	return fileStamp(filepath.Base(path), info) + "\x1d" + git
+}
+
+// gitStamp describes the repository's own state: where HEAD points, and the
+// three files every commit, checkout and reset writes through.
+func (r *Repo) gitStamp() string {
+	git := filepath.Join(r.dir, ".git")
+	head, err := os.ReadFile(filepath.Join(git, "HEAD"))
+	if err != nil {
+		return ""
+	}
+	stamp := &strings.Builder{}
+	stamp.Write(bytes.TrimSpace(head))
+	paths := []string{filepath.Join(git, "index"), filepath.Join(git, "packed-refs")}
+	if ref, pointed := strings.CutPrefix(strings.TrimSpace(string(head)), "ref: "); pointed {
+		if clean := filepath.Clean(filepath.FromSlash(ref)); !strings.HasPrefix(clean, "..") && !filepath.IsAbs(clean) {
+			paths = append(paths, filepath.Join(git, clean))
+		}
+	}
+	for _, path := range paths {
+		info, err := os.Stat(path)
+		if err != nil {
+			// Absence is a state too, and a distinct one: a repository with no
+			// index yet, a branch with no commit on it, refs that are all
+			// packed. It has to stamp differently from presence.
+			stamp.WriteString("\x1e-")
+			continue
+		}
+		stamp.WriteString("\x1e")
+		stamp.WriteString(fileStamp(filepath.Base(path), info))
+	}
+	return stamp.String()
 }
 
 // WriteVerifier commits one executable check. The path law is the same one the
@@ -500,6 +758,10 @@ func (r *Repo) git(args ...string) (string, error) {
 }
 
 func (r *Repo) gitBytes(args ...string) ([]byte, error) {
+	// Counted because forks are the cost this package has to keep an eye on:
+	// one is about six milliseconds, and the surfaces that read the catalogue
+	// read it on a timer.
+	r.forks.Add(1)
 	command := exec.Command("git", args...)
 	command.Dir = r.dir
 	command.Env = append(os.Environ(),

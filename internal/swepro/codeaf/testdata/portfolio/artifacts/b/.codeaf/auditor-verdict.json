@@ -1,0 +1,9 @@
+{
+  "verdict": "pass",
+  "commands": [{"cmd": "go test ./...", "exit": 0}],
+  "blockers": [],
+  "clause_coverage": [
+    {"clause": "Alpha behavior works", "evidence": "go test alpha passed"},
+    {"clause": "Beta behavior works", "evidence": "go test beta passed"}
+  ]
+}

@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"github.com/Agent-Field/aforge-v2/internal/config"
+	"github.com/Agent-Field/aforge-v2/internal/exec"
 	"github.com/Agent-Field/aforge-v2/internal/head"
 	"github.com/Agent-Field/aforge-v2/internal/resident"
 	"github.com/Agent-Field/aforge-v2/internal/store"
@@ -26,7 +27,11 @@ import (
 func newResidentReconciler(settings config.Config, graph *store.Store,
 	chatClient, taskClient, planClient *liveClient, plans *jobPlans,
 	resolveModel func(head.ModelWords) head.WorkModelChoice, oneShotErrand bool) *resident.Reconciler {
-	compiler := head.NewCompiler(chatClient)
+	compiler := head.NewCompiler(chatClient).
+		// The menu, and the check on what comes back from it. Both answer from
+		// the registry, so a build with one worker installs a menu that renders
+		// empty and a compile that sends the prompt it always sent.
+		WithSubharnessMenu(exec.MenuText, exec.KnownSubharness)
 	if resolveModel != nil {
 		compiler = compiler.WithModelResolver(resolveModel)
 	}
@@ -41,6 +46,20 @@ func newResidentReconciler(settings config.Config, graph *store.Store,
 		reconciler = reconciler.WithOneShotErrands()
 	}
 	return reconciler.
+		// The two slots, asked at the moment a job is admitted rather than read
+		// from the environment: what a run was launched with is not what it is
+		// running on after a picker change, and a receipt that quotes the env var
+		// is a receipt about the wrong process.
+		WithModelsInForce(func() (string, string) {
+			plan, work := "", ""
+			if planClient != nil {
+				plan = planClient.Model()
+			}
+			if taskClient != nil {
+				work = taskClient.Model()
+			}
+			return plan, work
+		}).
 		WithDistiller(distillFacts(settings, chatClient, graph)).
 		WithConsolidator(consolidateFacts(settings, chatClient, graph)).
 		WithTitler(titleGoal(settings, chatClient)).
@@ -88,6 +107,7 @@ func compileIntent(settings config.Config, compiler *head.Compiler, taskClient *
 			ServiceIntent:   brief.ServiceIntent,
 			WorkModel:       brief.WorkModel,
 			ModelNote:       brief.ModelNote,
+			Subharness:      brief.Subharness,
 		}, nil
 	}
 }

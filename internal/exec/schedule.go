@@ -186,10 +186,20 @@ func (s *Scheduler) Run(ctx context.Context, graph *plan.Graph) error {
 				node.State = plan.StateRunning
 				s.emit(Event{NodeID: id, Title: node.Title, State: plan.StateRunning, Elapsed: time.Since(started)})
 				task := s.taskFor(graph, node)
+				// Within-node progress on the surface that has no thread to
+				// post to: the run's own event stream, which is already how a
+				// headless run learns that anything is happening at all. A leaf
+				// that says nothing for forty minutes is indistinguishable from
+				// a wedged one, and the stall reporter below can only say which
+				// node it is still waiting on, never what that node is doing.
+				task.Progress = func(phase string, done, total int, latest string) {
+					s.emit(Event{NodeID: node.ID, Title: node.Title, State: plan.StateRunning,
+						Detail: progressDetail(phase, done, total, latest), Elapsed: time.Since(started)})
+				}
 				leafCtx, cancel := context.WithCancel(ctx)
 				control := &leafControl{}
 				task.control = control
-				inFlight[id] = leafFlight{started: time.Now(), cancel: cancel, control: control}
+				inFlight[id] = leafFlight{started: time.Now(), cancel: cancel, control: control, timeout: s.timeoutFor(task)}
 				go s.work(leafCtx, id, task, retries[id], leafShape(node), done)
 			}
 		}
@@ -233,12 +243,12 @@ func (s *Scheduler) Run(ctx context.Context, graph *plan.Graph) error {
 		case <-ticker.C:
 			now := time.Now()
 			for id, flight := range inFlight {
-				if s.NodeTimeout > 0 && now.Sub(flight.started) > s.NodeTimeout {
+				if flight.timeout > 0 && now.Sub(flight.started) > flight.timeout {
 					node := graph.Node(id)
 					flight.cancel()
 					terminated := flight.control.terminate()
 					node.State = plan.StateFailed
-					node.Failure = fmt.Sprintf("executor did not return within %s; abandoned", s.NodeTimeout.Round(time.Second))
+					node.Failure = fmt.Sprintf("executor did not return within %s; abandoned", flight.timeout.Round(time.Second))
 					if terminated > 0 {
 						node.Failure += fmt.Sprintf("; %d background jobs terminated at leaf end", terminated)
 					}
@@ -273,6 +283,32 @@ type leafFlight struct {
 	started time.Time
 	cancel  context.CancelFunc
 	control *leafControl
+	// timeout is this leaf's own watchdog, shaped to its worker. A flat
+	// NodeTimeout sized for the generalist abandoned a coding pipeline at
+	// seventeen minutes with a verification pass already in hand — and a leaf
+	// killed from outside lands no terminal event, so its spend vanishes with
+	// it. Zero disables, exactly as it does on the Scheduler field.
+	timeout time.Duration
+}
+
+// timeoutFor shapes the watchdog to the leaf's worker. The generalist keeps
+// NodeTimeout as configured; a specialist whose registered budget floor plus
+// the same landing pad exceeds it gets the larger figure, because a watchdog
+// below the worker's own deadline is not a backstop, it is the thing that
+// fires first.
+func (s *Scheduler) timeoutFor(task Task) time.Duration {
+	timeout := s.NodeTimeout
+	if timeout <= 0 {
+		return 0
+	}
+	name := strings.TrimSpace(task.Subharness)
+	if name == "" || name == LinearSubharness || !KnownSubharness(name) {
+		return timeout
+	}
+	if shaped := SubharnessFor(name).Deadline(0) + 2*time.Minute; shaped > timeout {
+		return shaped
+	}
+	return timeout
 }
 
 // work runs one node and always reports back, even when the executor panics —
@@ -297,7 +333,10 @@ func (s *Scheduler) work(ctx context.Context, id int, task Task, attempt int, sh
 	// model mid-loop would rewrite its prefix cache every turn and splice two
 	// lineages into one conversation.
 	ctx = provider.WithCallShape(ctx, provider.ClassExecLeaf, attempt, shape)
-	outcome, err := s.registry.For("linear").Run(ctx, task)
+	// The node's own choice, honoured. Registry.For serves an unknown name with
+	// the generalist, so a graph that names a worker this process does not have
+	// still gets its work done.
+	outcome, err := s.registry.For(task.Subharness).Run(ctx, task)
 	done <- completion{nodeID: id, outcome: outcome, err: err}
 }
 
@@ -323,6 +362,13 @@ func (s *Scheduler) work(ctx context.Context, id int, task Task, attempt int, sh
 // and because erring that way keeps a lesson learned on a doubtful leaf away
 // from the leaves nobody doubted.
 func leafShape(node *plan.Node) string {
+	// A specialist is its own population, and exactly one: what a router learns
+	// about a coding pipeline says nothing about a generalist leaf, and slicing
+	// a specialist further by size would be the fine-key mistake this comment
+	// warns about with a tenth of the traffic to survive it.
+	if KnownSubharness(node.Subharness) {
+		return node.Subharness
+	}
 	if node.Kind == plan.KindSynthesis {
 		return "synthesis"
 	}
@@ -464,6 +510,7 @@ func (s *Scheduler) taskFor(graph *plan.Graph, node *plan.Node) Task {
 		Goal:       graph.Goal,
 		Brief:      node.Brief,
 		Contract:   node.Contract,
+		Subharness: node.Subharness,
 		OutputHint: SuggestPath(node.ID, node.Title),
 	}
 	if strings.TrimSpace(task.Brief) == "" {
@@ -592,6 +639,23 @@ func (s *Scheduler) apply(graph *plan.Graph, nodeID int, outcome *Outcome, err e
 		detail += ", wrote " + strings.Join(outcome.Artifacts, ", ")
 	}
 	s.emit(Event{NodeID: nodeID, Title: node.Title, State: plan.StateDone, Detail: detail, Elapsed: time.Since(started)})
+}
+
+// progressDetail renders one within-node step for a line of terminal output.
+// It is the same shape the chat surface's rows carry, said in one line, because
+// the two surfaces are reporting the same fact and a reader moving between them
+// should not have to learn it twice.
+func progressDetail(phase string, done, total int, latest string) string {
+	line := phase
+	if total > 0 {
+		line += fmt.Sprintf(" · %d of %d", done, total)
+	} else if done > 0 {
+		line += fmt.Sprintf(" · %d", done)
+	}
+	if latest = strings.TrimSpace(latest); latest != "" {
+		line += " · " + latest
+	}
+	return line
 }
 
 func (s *Scheduler) emit(event Event) {

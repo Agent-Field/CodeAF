@@ -248,7 +248,68 @@ carry 2.2M prompt tokens and run out of budget, which a stronger model does not
 fix. That is an at-scale failure, not a capability one, and routing is the wrong
 instrument for it.
 
-## 4. Caveats
+## 4. The subharness grid — 2026-08-09
+
+The first measurement of the swe subharness (docs/SUBHARNESSES.md): the same
+four issues, three aforge shapes, every cell pinned to base `6c978ff` — the
+last commit with all four issues open, because the repository has since merged
+fixes for #23 and #21 and an unpinned clone passes the suite before any
+harness arrives. Suite baseline at the pin: 317 passing. The pi and opencode
+rows above are the recorded bar, per protocol; they were not re-run.
+
+Two iterations, because the first one measured the integration rather than
+the worker, and what it found is part of the record:
+
+**Iteration 1 (strict config)** — the engine's inner flash-tier auditor
+refused every finished change over clause-coverage matrices while build,
+tests, and lint were green; two runs died at a 30-minute watchdog with their
+suites already grown to 572 and 598 passing. Real work — 9 to 13 files
+committed per issue — landed as failures. Three knobs came out of it: the
+inner auditor yields to aforge's own delivery gate (mechanical verification
+stays on), the deadline floor is the hour the anchors promise, and the
+choice prior licenses swe for *discovered* work, not every coding issue.
+
+**Iteration 2 (shipping config):**
+
+| issue | linear | swe forced | select (full stack) | pi (recorded) | opencode (recorded) |
+| --- | --- | --- | --- | --- | --- |
+| #20 | 32s · $0.008 | 3m14s · $0.08 · pass | 4m35s · $0.15 | 3m0s | 1m02s |
+| #21 | 43s · $0.018 · 317 | 9m04s · $0.28 · **526** | 30m · $1.23 · **535** | 12m15s · 548 | 23m35s · 539 |
+| #22 | 2m07s · $0.027 · 317 | 5m46s · $0.21 · **543** | 36m · $1.29 · **564** | 10m56s · 580 | 40m DNF |
+| #23 | 1m37s · $0.009 | 2m57s · $0.11 · pass | 12m24s · $0.81 | 2m37s · 324 | 3m30s · 321 |
+
+Counts are tests passing after the run; every aforge cell finished with zero
+failures and its work committed (the engine commits, so `git status` reads
+clean — the change accounting is `git diff` against the pin).
+
+What the grid establishes:
+
+- **swe forced beats pi's recorded wall clock on every comparable row** and
+  completes the #22 that opencode could not, at self-reported cost between
+  eight and twenty-eight cents. On raw counts pi's recorded runs still lead
+  the two big issues (548/580 against 526/543) — count measures test-writing
+  volume as much as correctness, but it is the recorded table's metric and
+  the gap is real at this model tier with a single-model pool.
+- **The layered product improves the engine's work.** Select's #22 landed 564
+  against forced swe's 543: the delivery gate judged the engine's deliverable
+  and bought a revision that added twenty-one green tests. The stack paid for
+  it in wall and dollars — the gate's price is real too.
+- **Selection chose swe four of four**, including the two issues linear
+  settles for a cent. The boundary prior plus one session of measured
+  history does not yet route small issues away from the specialist; the
+  evidence records that should move it (audit-ceiling notes, cost under the
+  generalist's median) are on file and recalibration reads them.
+- **The drift control moved.** Today's linear is five to eight times faster
+  than its own recorded rows (43s against 5m56s on #21) and writes no tests
+  where the recorded run grew the suite — the harness got faster and
+  shallower over five days of development, which is exactly what the control
+  row exists to catch.
+
+Levers deliberately not pulled, for a future round: the engine's stock
+multi-tier model pools (pinned here to the one benchmark model for
+like-for-like), hard mode, and further boundary-learning iterations.
+
+## 5. Caveats
 
 **pi and opencode cost figures are unreliable.** The starred figures in the #21
 table are account-level credit readings taken around the runs. The API key is

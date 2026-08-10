@@ -355,11 +355,20 @@ func (r *Reconciler) birthTasteCandidate() {
 	if err != nil {
 		return
 	}
+	// The shelves are the same for every correction in this pass, so their
+	// bodies are tokenized once instead of once per correction. The tokenizer
+	// allocates a map, a slice and a sort every time it is handed a sentence,
+	// and this scan is hundreds of corrections wide — it was doing that work
+	// over the same handful of rule bodies on every tick.
+	standing := make([][]string, len(open))
+	for i := range open {
+		standing[i] = tasteTokens(open[i].Body)
+	}
 	for _, correction := range corrections {
 		// A correction that is already one shelf's evidence must not open a
 		// second shelf saying the same thing in the user's other words.
 		if store.TasteScope(correction.Scope, correction.Body) == "" ||
-			coveredByTasteRule(open, correction) {
+			coveredByTasteRule(standing, correction) {
 			continue
 		}
 		repeats, err := similarCorrections(r.store, correction.Body, correction.Seq)
@@ -378,10 +387,11 @@ func (r *Reconciler) birthTasteCandidate() {
 
 // coveredByTasteRule reports whether an open shelf already stands for this
 // correction, by the same similarity the shelf's own evidence is counted with.
-func coveredByTasteRule(rules []store.Fact, correction store.Fact) bool {
+// standing is the open shelves' bodies already tokenized, in any order.
+func coveredByTasteRule(standing [][]string, correction store.Fact) bool {
 	tokens := tasteTokens(correction.Body)
-	for _, rule := range rules {
-		if sentenceTokenSimilarity(tasteTokens(rule.Body), tokens) >= TasteSimilarityFloor {
+	for _, rule := range standing {
+		if sentenceTokenSimilarity(rule, tokens) >= TasteSimilarityFloor {
 			return true
 		}
 	}
