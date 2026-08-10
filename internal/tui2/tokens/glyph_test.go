@@ -260,3 +260,35 @@ func indexOf(set []string, s string) int {
 	}
 	return -1
 }
+
+// TestSparklineCoversItsRamp: the braille burn-trend swaps cells as a value
+// changes, so every cell must be reachable and the walk must be monotone —
+// a trend that fell as the number rose would be a chart telling the opposite
+// story.
+func TestSparklineCoversItsRamp(t *testing.T) {
+	reached := map[string]bool{}
+	prev := 0
+	for i := range 201 {
+		f := float64(i-50) / 100
+		cell := Sparkline(f)
+		reached[cell] = true
+		idx := indexOf(SparklineCells[:], cell)
+		if idx < 0 {
+			t.Fatalf("Sparkline(%v) returned %q, which is not on the ramp", f, cell)
+		}
+		if idx < prev {
+			t.Fatalf("Sparkline(%v) fell from cell %d to %d", f, prev, idx)
+		}
+		prev = idx
+	}
+	for i, c := range SparklineCells {
+		if !reached[c] {
+			t.Errorf("sparkline cell %d (%q) is unreachable", i, c)
+		}
+	}
+	for i, c := range GaugeCells {
+		if Gauge(float64(i)/float64(len(GaugeCells))+0.01) != c {
+			t.Errorf("gauge cell %d (%q) is unreachable", i, c)
+		}
+	}
+}

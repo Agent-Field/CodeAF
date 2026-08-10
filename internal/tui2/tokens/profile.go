@@ -33,7 +33,8 @@ const (
 	profileCount
 )
 
-// String names the profile; also the accepted spelling for AFORGE_COLOR.
+// String names the profile. These are also the spellings [ParseProfile]
+// accepts, so a settings row and a log line use one vocabulary.
 func (p Profile) String() string {
 	switch p {
 	case NoColor:
@@ -55,6 +56,19 @@ func (p Profile) String() string {
 // accents entirely rather than draw two neighbours the same color: a lying
 // identity is worse than no identity (5.20, the affordance never lies).
 func (p Profile) IdentityDistinct() bool { return p >= ANSI256 }
+
+// BandTintDistinct reports whether the identity TINT on the selection band
+// survives this profile. It is a separate question from [IdentityDistinct] and
+// the answer is different: the tint is 8% of a hue mixed into a near-black
+// ground (5.16 wants it "answered peripherally, never noticed"), and no
+// 256-palette entry is that close to another. All eight tinted bands resolve to
+// the same grey below truecolor.
+//
+// A shell that asks and gets false should draw the plain [Band] rather than
+// [BandFor]: the two produce identical bytes there, so the difference is only
+// wasted work — but a shell that believed the tint was showing would also
+// believe the room was announced, and it would not be.
+func (p Profile) BandTintDistinct() bool { return p >= TrueColor }
 
 // SelectionStyle says how selection must be drawn under this profile. 5.16
 // wants a background band; at 16 colors the only available "raised background"
@@ -223,55 +237,138 @@ func nearest256(c Color) uint8 {
 	return uint8(best)
 }
 
+// minSeparation256 is how far apart two 256-palette entries must sit before the
+// eye will call them different colours. The cube's coarsest step is 40 in one
+// channel (175 → 215 → 255), which [distance] scores at 3200 on red, 6400 on
+// green and 4800 on blue — so a threshold of 3000 means "at least one full cube
+// step in at least one channel". Below that, two entries are the same colour
+// wearing different numbers.
+const minSeparation256 = 3000
+
+// nearestDistinct256 is [nearest256] constrained to entries that are visibly
+// different from every already-claimed index. It is how the identity wheel
+// survives a 256-color terminal (see buildTable for why it must).
+//
+// If no candidate clears the separation — which cannot happen for this palette,
+// and is asserted by profile_test.go — it falls back to the plain nearest
+// entry rather than returning nothing. A slightly-wrong colour is a
+// degradation; no colour is a bug.
+func nearestDistinct256(c Color, claimed []uint8) uint8 {
+	floor := chroma(c) / 2
+	best, bestDist := -1, 1<<30
+	fallback, fallbackDist := 16, 1<<30
+	for i := 16; i < 256; i++ {
+		cand := color256(i)
+		d := distance(c, cand)
+		if d < fallbackDist {
+			fallback, fallbackDist = i, d
+		}
+		if chroma(cand) < floor || crowded256(cand, claimed) {
+			continue
+		}
+		if d < bestDist {
+			best, bestDist = i, d
+		}
+	}
+	if best < 0 {
+		return uint8(fallback)
+	}
+	return uint8(best)
+}
+
+// chroma is how colourful a value is: the spread between its brightest and
+// dimmest channel. [nearestDistinct256] uses it as a FLOOR, and the reason is
+// specific to what an identity accent is for.
+//
+// Plain RGB distance is happy to answer a desaturated blue with a grey of the
+// same lightness — the grey is genuinely nearer in the cube. For a semantic hue
+// that would be an acceptable approximation of brightness; for an identity
+// accent it is a total loss, because the accent's entire job is to be a HUE the
+// eye recognizes across a rail. So a candidate must keep at least half the
+// target's colourfulness, and the walk gives up lightness accuracy to hold it.
+func chroma(c Color) int {
+	hi, lo := int(c.R), int(c.R)
+	for _, v := range [2]int{int(c.G), int(c.B)} {
+		if v > hi {
+			hi = v
+		}
+		if v < lo {
+			lo = v
+		}
+	}
+	return hi - lo
+}
+
+func crowded256(c Color, claimed []uint8) bool {
+	for _, i := range claimed {
+		if distance(c, color256(int(i))) < minSeparation256 {
+			return true
+		}
+	}
+	return false
+}
+
+// ParseProfile parses a profile by name ("none", "16", "256", "truecolor",
+// plus the obvious synonyms), reporting whether the spelling was recognized.
+//
+// It exists so an explicit override has a door WITHOUT this package minting an
+// environment pin of its own. Colour capability is a decided value that the
+// shell passes down — from a settings row when Wave 4 adds one, from a flag, or
+// from [DetectProfile] — and an unrecognized spelling reports false rather than
+// guessing, because an override that silently did something else would be the
+// affordance lying about what it accepted (5.20).
+func ParseProfile(s string) (Profile, bool) {
+	switch strings.ToLower(strings.TrimSpace(s)) {
+	case "none", "no", "off", "0":
+		return NoColor, true
+	case "16", "ansi":
+		return ANSI16, true
+	case "256":
+		return ANSI256, true
+	case "truecolor", "24bit", "rgb":
+		return TrueColor, true
+	}
+	return NoColor, false
+}
+
 // Env reads one environment variable. Detection takes it as a parameter rather
 // than calling os.Getenv so the decision table is a pure function and the tests
 // below it are a table, not a fixture.
 type Env func(name string) string
 
-// DetectProfile decides a terminal's color vocabulary. The governing rule from
-// 10.1.2 is that COLORTERM is never trusted on its own: inside a multiplexer it
-// is the multiplexer's claim about itself, not the outer terminal's capability,
-// and tmux's own documentation is explicit that it forwards what it is told.
+// DetectProfile decides a terminal's color vocabulary from the STANDARD
+// ecosystem variables only — NO_COLOR, TERM, COLORTERM, TMUX, TERM_PROGRAM.
+// This package deliberately mints no environment pin of its own: an explicit
+// override arrives as a [Profile] value through [ParseProfile], so there is one
+// door for capability and it is the shell's to open.
+//
+// The governing rule from 10.1.2 is that COLORTERM is never trusted on its own:
+// inside a multiplexer it is the multiplexer's claim about itself, not the
+// outer terminal's capability, and tmux's own documentation is explicit that it
+// forwards what it is told.
 //
 // The ladder, highest precedence first:
 //
-//  1. AFORGE_COLOR — the operator's explicit override ("none", "16", "256",
-//     "truecolor"). Plumbing, not a settings row.
-//  2. NO_COLOR (any non-empty value) — the cross-tool convention; honored
+//  1. NO_COLOR (any non-empty value) — the cross-tool convention; honored
 //     unconditionally.
-//  3. TERM unset or "dumb" — no color.
-//  4. TERM naming a direct-color terminfo entry ("*-direct", "*-truecolor").
+//  2. TERM unset or "dumb" — no color.
+//  3. TERM naming a direct-color terminfo entry ("*-direct", "*-truecolor").
 //     This is the one truecolor claim we accept without corroboration, because
 //     it is a claim about a terminfo database entry that exists on this
 //     machine, not a string a program can wish into the environment.
-//  5. Inside tmux or screen (TMUX set, or TERM prefixed "tmux"/"screen"):
+//  4. Inside tmux or screen (TMUX set, or TERM prefixed "tmux"/"screen"):
 //     capped at 256 regardless of COLORTERM. A multiplexer that really does
 //     pass RGB through is expected to advertise it via a *-direct TERM, which
-//     rule 4 already caught.
-//  6. TERM_PROGRAM=Apple_Terminal — capped at 256. Terminal.app is the standard
+//     rule 3 already caught.
+//  5. TERM_PROGRAM=Apple_Terminal — capped at 256. Terminal.app is the standard
 //     example of an emulator whose environment can end up carrying a truecolor
 //     claim it cannot honor.
-//  7. COLORTERM in {truecolor, 24bit} — truecolor.
-//  8. TERM containing "256" — 256 colors.
-//  9. Anything else with a TERM — 16 colors.
+//  6. COLORTERM in {truecolor, 24bit} — truecolor.
+//  7. TERM containing "256" — 256 colors.
+//  8. Anything else with a TERM — 16 colors.
 func DetectProfile(env Env) Profile {
 	if env == nil {
 		return NoColor
-	}
-	if v := strings.TrimSpace(env("AFORGE_COLOR")); v != "" {
-		switch strings.ToLower(v) {
-		case "none", "no", "off", "0":
-			return NoColor
-		case "16", "ansi":
-			return ANSI16
-		case "256":
-			return ANSI256
-		case "truecolor", "24bit", "rgb":
-			return TrueColor
-		}
-		// An unrecognized override is ignored rather than obeyed: guessing at
-		// what someone meant by AFORGE_COLOR=bright would be the affordance
-		// lying about what it accepted.
 	}
 	if env("NO_COLOR") != "" {
 		return NoColor

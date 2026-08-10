@@ -273,14 +273,19 @@ func Percent(fraction float64) string {
 }
 
 // AppendPercentCell is [AppendPercent] right-aligned in [PercentCellWidth].
+// It pads by CELLS, not by bytes: AppendPercent renders [GlyphMissing] for a
+// fraction that does not exist, and that mark is three bytes wide and one cell
+// wide. Padding it by byte length would leave the column two cells short —
+// which is exactly the dancing-neighbour bug 5.21 forbids, arriving only when a
+// number goes missing.
 func AppendPercentCell(dst []byte, fraction float64) []byte {
 	var buf [PercentCellWidth]byte
-	return appendCell(dst, AppendPercent(buf[:0], fraction), PercentCellWidth)
+	return appendCellRunes(dst, AppendPercent(buf[:0], fraction), PercentCellWidth)
 }
 
 // PercentCell is [AppendPercentCell] as a string.
 func PercentCell(fraction float64) string {
-	var buf [PercentCellWidth]byte
+	var buf [PercentCellWidth + 2]byte
 	return string(AppendPercentCell(buf[:0], fraction))
 }
 
