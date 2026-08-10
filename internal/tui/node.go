@@ -11,6 +11,7 @@ import (
 	"github.com/Agent-Field/aforge-v2/internal/store"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/charmbracelet/x/ansi"
 )
 
 type graphRow struct {
@@ -182,7 +183,15 @@ func (m *Model) openNodeByID(nodeID string) tea.Cmd {
 	}
 	m.returnFocus = m.focus
 	m.chatDraft = m.input.Value()
+	// The chips belong to the line they were attached to, and that line stays
+	// in the thread: carried into a steer they are dropped on the way back out,
+	// and they were never the steer's attachments to begin with.
 	m.chatAttachments = append([]string(nil), m.attachments...)
+	m.attachments = nil
+	// A recall walk belongs to the composer that started it. Left standing, it
+	// captured the thread's arrows for the rest of the session after a visit
+	// here, because the steer line never types the walk to an end.
+	m.inputRecall = 0
 	m.nodeViewID = node.ID
 	m.inspectedNode = node
 	m.nodeMessages = nil
@@ -223,6 +232,7 @@ func (m *Model) closeNodeView() {
 	m.input.Reset()
 	m.input.Placeholder = composerPlaceholder
 	m.input.SetValue(m.chatDraft)
+	m.inputRecall = 0
 	m.attachments = append([]string(nil), m.chatAttachments...)
 	m.chatDraft = ""
 	m.chatAttachments = nil
@@ -308,6 +318,9 @@ func (m *Model) submitSteer() tea.Cmd {
 	if strings.HasPrefix(body, "/") {
 		return m.executeSlash(body)
 	}
+	// A steer is a sent turn like any other, so the arrows reach it: the ring is
+	// the composer's undo, and the steer line is the composer.
+	m.rememberSubmission(body)
 	m.input.Reset()
 	m.err = nil
 	message := store.Message{
@@ -327,6 +340,10 @@ func (m *Model) submitSteer() tea.Cmd {
 	}
 }
 
+// landOptimisticNodeMessage swaps the echoed steer for the journaled one. The
+// swap is the machine catching up with what the person already sent, not an act
+// of theirs — so it follows the feed only for a reader who was already at the
+// bottom, and leaves a reader who scrolled up where they are.
 func (m *Model) landOptimisticNodeMessage(nodeID string, posted store.Message) {
 	if nodeID != m.nodeViewID {
 		return
@@ -335,15 +352,18 @@ func (m *Model) landOptimisticNodeMessage(nodeID string, posted store.Message) {
 		message := &m.nodeMessages[index]
 		if message.Seq == 0 && message.Role == posted.Role && message.Body == posted.Body {
 			*message = posted
-			m.refreshNodeView(true)
+			m.refreshNodeView(false)
 			return
 		}
 	}
 	m.nodeMessages = append(m.nodeMessages, posted)
-	m.refreshNodeView(true)
+	m.refreshNodeView(false)
 }
 
-func (m *Model) appendNodeMessages(messages []store.Message) {
+// appendNodeMessages reports whether anything the document draws actually
+// arrived: a poll that carried no new turn has nothing to re-render for.
+func (m *Model) appendNodeMessages(messages []store.Message) bool {
+	changed := false
 	for _, incoming := range messages {
 		duplicate := false
 		for index := range m.nodeMessages {
@@ -355,14 +375,17 @@ func (m *Model) appendNodeMessages(messages []store.Message) {
 			if existing.Seq == 0 && existing.Role == incoming.Role && existing.Body == incoming.Body {
 				*existing = incoming
 				duplicate = true
+				changed = true
 				break
 			}
 		}
 		if !duplicate {
 			m.nodeMessages = append(m.nodeMessages, incoming)
+			changed = true
 		}
 		m.nodeLastSeq = max(m.nodeLastSeq, incoming.Seq)
 	}
+	return changed
 }
 
 // toggleNodeSteerFocus hands the keyboard between the steer line and the feed.
@@ -411,7 +434,7 @@ func (m *Model) refreshNodeView(force bool) {
 		m.nodePinTop = false
 	}
 	follow := force || m.nodeTrace.AtBottom()
-	offset := m.nodeTrace.YOffset
+	anchor := m.feedAnchorAt()
 	m.nodeTrace.SetContent(m.renderActivityFeed(max(1, m.nodeTrace.Width)))
 	switch {
 	case m.nodePinTop:
@@ -419,8 +442,74 @@ func (m *Model) refreshNodeView(force bool) {
 	case follow:
 		m.nodeTrace.GotoBottom()
 	default:
-		m.nodeTrace.SetYOffset(offset)
+		m.restoreFeedAnchor(anchor)
 	}
+}
+
+// feedAnchor is where the reader is, said in the document's own terms: the
+// block under the top visible line, and how far into that block they are. A
+// line number is only true of the document that produced it — the trace window
+// slides off its own head every time the log passes its byte budget, a block
+// opens, a resize rewraps the lot — and restoring one across any of those is
+// the yank a reader feels as being thrown around every poll. The block's
+// identity survives all three, because it is derived from the block's content.
+type feedAnchor struct {
+	key    string
+	within int
+	offset int
+}
+
+func (m *Model) feedAnchorAt() feedAnchor {
+	anchor := feedAnchor{offset: m.nodeTrace.YOffset}
+	start := 0
+	for index, row := range m.feedRows {
+		if index == 0 || row.block != m.feedRows[index-1].block {
+			start = row.line
+		}
+		if row.line != anchor.offset {
+			continue
+		}
+		if row.block < len(m.feedKeys) {
+			anchor.key, anchor.within = m.feedKeys[row.block], row.line-start
+		}
+		break
+	}
+	return anchor
+}
+
+// restoreFeedAnchor puts the reader back on the same words. A block that is
+// gone — scrolled off the window's head, or never keyed, as the document's own
+// descriptive head is not — falls back to the line number, which is the best
+// answer left.
+func (m *Model) restoreFeedAnchor(anchor feedAnchor) {
+	if anchor.key != "" {
+		for block, key := range m.feedKeys {
+			if key != anchor.key {
+				continue
+			}
+			for _, row := range m.feedRows {
+				if row.block == block {
+					m.nodeTrace.SetYOffset(row.line + anchor.within)
+					return
+				}
+			}
+			break
+		}
+	}
+	m.nodeTrace.SetYOffset(anchor.offset)
+}
+
+// nodeDocumentMoved reports whether the parts of a node the scrolling document
+// draws — its own words, how it ended, what it chose — actually changed. The
+// clock in the sticky header is drawn outside the document and ticks on its
+// own, so it is no reason to rebuild one.
+func nodeDocumentMoved(before, after store.Node) bool {
+	return before.ID != after.ID || before.Status != after.Status ||
+		before.Brief != after.Brief || before.Summary != after.Summary ||
+		before.Error != after.Error ||
+		before.Provenance.WorkModel != after.Provenance.WorkModel ||
+		before.Provenance.PlanModel != after.Provenance.PlanModel ||
+		settledWorker(before) != settledWorker(after)
 }
 
 // releaseNodeTopPin hands the document back to the reader: any scroll they make
@@ -443,9 +532,9 @@ func (m *Model) toggleFeedBlockAt(x, y int) bool {
 		}
 		key := m.feedKeys[row.block]
 		m.feedExpanded[key] = !m.feedExpanded[key]
-		offset := m.nodeTrace.YOffset
+		anchor := m.feedAnchorAt()
 		m.nodeTrace.SetContent(m.renderActivityFeed(max(1, m.nodeTrace.Width)))
-		m.nodeTrace.SetYOffset(offset)
+		m.restoreFeedAnchor(anchor)
 		return true
 	}
 	return false
@@ -635,7 +724,43 @@ func traceMediaReferences(chunk string) []string {
 	if chunk == "" {
 		return nil
 	}
-	return mediaReferences(strings.ReplaceAll(chunk, "⏎", " "))
+	return mediaReferences(strings.ReplaceAll(sanitizeTraceBytes(chunk), "⏎", " "))
+}
+
+// sanitizeTraceBytes is what stands between a subprocess's stdout and our
+// frame. What the executor recorded is a copy of somebody else's terminal
+// session — SGR colors, carriage returns, erase and cursor-motion sequences, an
+// OSC that renames the window — and none of it is ours to replay: an escape run
+// that survives into a row makes the row measure one width and print another,
+// which is the soft wrap that scrolls the alt-screen and leaves a ghost header
+// standing above. Newlines are the one control the feed keeps, because the feed
+// reads a line at a time; a tab becomes the run of spaces the panes expand it
+// to anyway.
+func sanitizeTraceBytes(chunk string) string {
+	if strings.IndexFunc(chunk, traceControl) < 0 {
+		return chunk
+	}
+	var out strings.Builder
+	out.Grow(len(chunk))
+	for _, r := range ansi.Strip(chunk) {
+		switch {
+		case r == '\n':
+			out.WriteByte('\n')
+		case r == '\t':
+			out.WriteString(styleTabStop)
+		case traceControl(r):
+			// Dropped: nothing a worker prints may move our cursor.
+		default:
+			out.WriteRune(r)
+		}
+	}
+	return out.String()
+}
+
+// traceControl reports a rune the feed must not print: the C0 controls but the
+// newline, delete, and the C1 range an escape-stripped stream can still carry.
+func traceControl(r rune) bool {
+	return (r < 0x20 && r != '\n') || r == 0x7f || (r >= 0x80 && r <= 0x9f)
 }
 
 // appendFeedBlockKeys derives a stable identity per block from its own content
@@ -695,7 +820,7 @@ func appendTraceBlocks(blocks []feedBlock, chunk string, width int) []feedBlock 
 	if chunk == "" {
 		return blocks
 	}
-	for _, line := range strings.Split(chunk, "\n") {
+	for _, line := range strings.Split(sanitizeTraceBytes(chunk), "\n") {
 		if strings.TrimSpace(line) == "" {
 			continue
 		}
@@ -940,7 +1065,18 @@ func (m *Model) nodeTiming(now time.Time) string {
 	return string(node.Status)
 }
 
+// updateNodeViewport hands a key the document did not claim to the document
+// itself. Pointer motion is not one: with cell motion reporting on, the
+// terminal names every cell the pointer crosses, and a hand that brushed the
+// trackpad has decided nothing — it used to release the reading pin and drop a
+// settled worker's reader out of the brief they had just opened. Only a wheel
+// or a click is a decision.
 func (m *Model) updateNodeViewport(message tea.Msg) {
+	if mouse, ok := message.(tea.MouseMsg); ok {
+		if tea.MouseEvent(mouse).Action == tea.MouseActionMotion {
+			return
+		}
+	}
 	m.releaseNodeTopPin()
 	updated, _ := m.nodeTrace.Update(message)
 	m.nodeTrace = updated
@@ -962,16 +1098,6 @@ func (m *Model) scrollNodeFeed(down bool) {
 	} else {
 		m.nodeTrace.SetYOffset(m.nodeTrace.YOffset - 3)
 	}
-}
-
-// scrollNodeAt scrolls the feed for a wheel event anywhere inside the node
-// pane. One pane, one scroll — no per-section focus to guess at.
-func (m *Model) scrollNodeAt(x, y int, down bool) bool {
-	if !m.nodeBounds.contains(x, y) {
-		return false
-	}
-	m.scrollNodeFeed(down)
-	return true
 }
 
 func (m *Model) updateMouseClick(x, y int) (tea.Cmd, bool) {

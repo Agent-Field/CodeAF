@@ -2206,7 +2206,18 @@ func (c *chatCommander) NodeTraceSince(
 	if err != nil {
 		return "", none, true
 	}
-	return string(data), stamp, true
+	text := string(data)
+	if offset > 0 {
+		// A tail cut at a byte is a tail cut mid-line, and the fragment it
+		// begins with is a different fragment on every poll: the window's first
+		// block is re-keyed each cycle, the reader's anchor with it, and the
+		// parser's kept prefix can never hold. The head moves to the next line
+		// boundary so what arrives is always whole lines.
+		if at := strings.IndexByte(text, '\n'); at >= 0 {
+			text = text[at+1:]
+		}
+	}
+	return text, stamp, true
 }
 
 func (c *chatCommander) ResolveMediaPath(nodeID, relative string) (string, bool) {

@@ -730,6 +730,51 @@ func clampLines(lines []string, width int) {
 	}
 }
 
+// clampNodeLines is clampLines with one column of slack for the rows that can
+// be measured wrong. The task page is the one surface that prints the whole
+// terminal width, and the glyphs its chrome is made of — the middot, the
+// guillemet, the hairline, the feed's legend — are East-Asian *ambiguous*: a
+// terminal is free to give them two cells where lipgloss counted one. A row
+// measured to exactly the width then soft-wraps, the frame runs one row past
+// the alt-screen bottom, the screen scrolls, and the header the clock re-stamps
+// every tick is left standing above its own ghost. A row that cannot be
+// miscounted keeps the whole width; the slack is a trailing blank column on
+// rows nothing paints a background behind, so it is invisible either way.
+func clampNodeLines(lines []string, width int) {
+	for index := range lines {
+		room := width
+		if hasAmbiguousWidth(lines[index]) {
+			room = max(1, width-1)
+		}
+		clampLines(lines[index:index+1], room)
+	}
+}
+
+// ambiguousWidthRanges are the East-Asian ambiguous blocks, given as ranges
+// rather than a glyph list so a new glyph inherits the slack. Over-inclusive on
+// purpose: counting an accented letter as ambiguous costs one blank column and
+// counting a box rule as narrow costs the frame.
+var ambiguousWidthRanges = [...][2]rune{
+	{0x00A1, 0x00FF}, {0x2010, 0x2027}, {0x2030, 0x205E}, {0x2100, 0x21FF},
+	{0x2200, 0x22FF}, {0x2300, 0x23FF}, {0x2460, 0x24FF}, {0x2500, 0x257F},
+	{0x2580, 0x259F}, {0x25A0, 0x25FF}, {0x2600, 0x27BF}, {0x2B00, 0x2BFF},
+	{0xE000, 0xF8FF}, {0xFFFD, 0xFFFD},
+}
+
+func hasAmbiguousWidth(line string) bool {
+	for _, r := range line {
+		if r < ambiguousWidthRanges[0][0] {
+			continue
+		}
+		for _, span := range ambiguousWidthRanges {
+			if r >= span[0] && r <= span[1] {
+				return true
+			}
+		}
+	}
+	return false
+}
+
 // styleTabStop is what a styled Width renders a tab as: a flat run of spaces,
 // not a stop the column is counted to.
 const styleTabStop = "    "
@@ -848,8 +893,10 @@ func (m *Model) renderNodePane() string {
 	if receipt != "" {
 		// Right-aligned, and only where the title still fits without it: a
 		// receipt that pushed the name off the screen would be the wrong trade.
+		// One column short of flush: every glyph on this row is one a terminal
+		// may print two cells wide, and the row is the full width of the frame.
 		if gap := innerWidth - lipgloss.Width(header) - lipgloss.Width(receipt); gap >= 2 {
-			header += strings.Repeat(" ", gap) + mutedStyle.Render(receipt)
+			header += spaces(gap-1) + mutedStyle.Render(receipt)
 		}
 	}
 
@@ -870,7 +917,7 @@ func (m *Model) renderNodePane() string {
 	if len(lines) > m.chatHeight {
 		lines = lines[:m.chatHeight]
 	}
-	clampLines(lines, m.width)
+	clampNodeLines(lines, m.width)
 	return strings.Join(lines, "\n")
 }
 
