@@ -74,6 +74,13 @@ this happened, and `blocked_on` exists so it cannot happen again.
   "deliverable": "the answer, in full — never a receipt, never a pointer",
   "artifacts": ["/abs/path/to/any/file/it/made"],
   "spend": 0.0731,
+  "usage": {
+    "calls": 9,
+    "prompt_tokens": 18240,
+    "completion_tokens": 1930,
+    "cached_tokens": 0,
+    "cost": 0.0731
+  },
   "nodes": 6,
   "seconds": 184.2,
   "settled": true,
@@ -86,7 +93,8 @@ this happened, and `blocked_on` exists so it cannot happen again.
 | --- | --- |
 | `deliverable` | The final state of the work, whole and to its last byte. Never a plan, a pointer, or a progress receipt. Empty when `blocked_on` is set. |
 | `artifacts` | Absolute paths to files the run produced. |
-| `spend` | Dollars **this run** cost — measured as the delta of today's spend across the run, not a per-call estimate. |
+| `spend` | Dollars **this run** cost — measured from the durable provider-usage ledger, not estimated from text length. |
+| `usage` | Provider calls, prompt/completion/cache tokens, and measured cost attributable to this run. `cached_tokens` is currently `0` until the durable ledger records cache reads. |
 | `nodes` | How many graph nodes the errand came to. A structural read of how large the work turned out to be. |
 | `seconds` | Wall clock. |
 | `settled` | Nothing pending can still move. See the matrix above — this is not a verdict. |

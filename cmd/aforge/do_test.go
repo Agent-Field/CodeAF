@@ -171,12 +171,13 @@ func TestDoJSONCarriesTheWholeOutcome(t *testing.T) {
 		t.Fatalf("errand: %v\n%s", err, stderr.String())
 	}
 	var outcome struct {
-		Deliverable string   `json:"deliverable"`
-		Artifacts   []string `json:"artifacts"`
-		Spend       float64  `json:"spend"`
-		Nodes       int      `json:"nodes"`
-		Seconds     float64  `json:"seconds"`
-		Settled     bool     `json:"settled"`
+		Deliverable string        `json:"deliverable"`
+		Artifacts   []string      `json:"artifacts"`
+		Spend       float64       `json:"spend"`
+		Usage       headlessUsage `json:"usage"`
+		Nodes       int           `json:"nodes"`
+		Seconds     float64       `json:"seconds"`
+		Settled     bool          `json:"settled"`
 	}
 	if err := json.Unmarshal([]byte(stdout.String()), &outcome); err != nil {
 		t.Fatalf("stdout is not one JSON object: %v\n%s", err, stdout.String())
@@ -192,6 +193,22 @@ func TestDoJSONCarriesTheWholeOutcome(t *testing.T) {
 	}
 	if outcome.Seconds <= 0 {
 		t.Fatal("json reported no elapsed time")
+	}
+	if outcome.Usage.Calls <= 0 || outcome.Usage.PromptTokens <= 0 || outcome.Usage.CompletionTokens <= 0 {
+		t.Fatalf("json usage is not benchmarkable: %+v", outcome.Usage)
+	}
+	if outcome.Spend != outcome.Usage.Cost {
+		t.Fatalf("spend = %v, usage cost = %v", outcome.Spend, outcome.Usage.Cost)
+	}
+}
+
+func TestUsageDeltaNeverReportsNegativeMeasurements(t *testing.T) {
+	got := usageDelta(
+		store.TotalUsage{Nodes: 5, PromptTokens: 100, CompletionTokens: 50, Cost: 1},
+		store.TotalUsage{Nodes: 3, PromptTokens: 90, CompletionTokens: 40, Cost: 0.5},
+	)
+	if got.Calls != 0 || got.PromptTokens != 0 || got.CompletionTokens != 0 || got.Cost != 0 {
+		t.Fatalf("negative usage escaped into the envelope: %+v", got)
 	}
 }
 

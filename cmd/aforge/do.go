@@ -65,6 +65,19 @@ const (
 	exitTimeout exitStatus = 2
 )
 
+// headlessUsage is the measured provider work attributable to this errand.
+// Calls are usage-ledger rows, not graph nodes: planning, execution, repair,
+// and the delivery gate all count because all of them spend tokens. Keeping
+// this nested under usage gives harnesses one stable benchmark surface while
+// the human-facing node count remains structural.
+type headlessUsage struct {
+	Calls            int     `json:"calls"`
+	PromptTokens     int     `json:"prompt_tokens"`
+	CompletionTokens int     `json:"completion_tokens"`
+	CachedTokens     int     `json:"cached_tokens"`
+	Cost             float64 `json:"cost"`
+}
+
 // headlessOutcome is what one errand came to, in the shape --json prints.
 //
 // Settled means the errand is over — nothing this process is waiting for can
@@ -76,12 +89,13 @@ const (
 // field recorded an interactive charter card as the answer to a bank
 // reconciliation and never learned the task was not attempted.
 type headlessOutcome struct {
-	Deliverable string   `json:"deliverable"`
-	Artifacts   []string `json:"artifacts"`
-	Spend       float64  `json:"spend"`
-	Nodes       int      `json:"nodes"`
-	Seconds     float64  `json:"seconds"`
-	Settled     bool     `json:"settled"`
+	Deliverable string        `json:"deliverable"`
+	Artifacts   []string      `json:"artifacts"`
+	Spend       float64       `json:"spend"`
+	Usage       headlessUsage `json:"usage"`
+	Nodes       int           `json:"nodes"`
+	Seconds     float64       `json:"seconds"`
+	Settled     bool          `json:"settled"`
 	// BlockedOn is the question this run could not answer, verbatim. It is
 	// empty on every run that was not stopped by one, and non-empty only
 	// alongside a non-zero exit code and an empty deliverable.
@@ -173,7 +187,7 @@ func doErrand(request doRequest) error {
 	defer window.close()
 	graph := window.graph
 
-	spentBefore, _ := graph.SpendToday()
+	usageBefore, _ := graph.Usage()
 
 	// The command is the whole interface. A verbatim ask is referentially
 	// closed by definition — there is no conversation for it to point back
@@ -227,10 +241,24 @@ func doErrand(request doRequest) error {
 		return err
 	}
 	outcome.Seconds = time.Since(started).Seconds()
-	if spentNow, spendErr := graph.SpendToday(); spendErr == nil {
-		outcome.Spend = spentNow - spentBefore
+	if usageAfter, usageErr := graph.Usage(); usageErr == nil {
+		outcome.Usage = usageDelta(usageBefore, usageAfter)
+		outcome.Spend = outcome.Usage.Cost
 	}
 	return reportErrand(request, outcome)
+}
+
+func usageDelta(before, after store.TotalUsage) headlessUsage {
+	return headlessUsage{
+		Calls:            max(0, after.Nodes-before.Nodes),
+		PromptTokens:     max(0, after.PromptTokens-before.PromptTokens),
+		CompletionTokens: max(0, after.CompletionTokens-before.CompletionTokens),
+		// The durable usage ledger does not record cache reads yet. The field is
+		// explicit so benchmark readers never mistake absence for an unknown
+		// schema and the contract can gain measured cache reads additively.
+		CachedTokens: 0,
+		Cost:         max(0, after.Cost-before.Cost),
+	}
 }
 
 // headlessBrain builds and returns the brain this process will run, or nothing

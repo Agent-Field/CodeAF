@@ -101,6 +101,8 @@ func run() error {
 		return runWake(os.Args[2:])
 	case "doctor":
 		return runDoctor(os.Args[2:])
+	case "version":
+		return runVersion()
 	case "rebuild":
 		return runRebuild(os.Args[2:])
 	case "why":
@@ -132,6 +134,7 @@ const usageText = `aforge — build and revise task graphs
   aforge services stop <name> [--db path]
   aforge wake [--db path] [--max-seconds N]  run one full resident pass and exit
   aforge doctor [--db path]     show the brain, resident, watch, spend, and open counts
+  aforge version                print the installed version without requiring an API key
   aforge rebuild [--db path] [--yes]  discard every derived table and replay the journal
   aforge why self [--db path]   show today's self-spend receipts
 
