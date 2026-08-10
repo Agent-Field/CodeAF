@@ -1738,3 +1738,37 @@ The legacy path dies with the old chat, one wave after the default flips.
    AST (constants unexported); the store-kind gate hand-mirrors exported
    CommandKind constants. Multiple doors sharing one Kind (cancel ×3) is by
    design.
+
+### 12.5 Three laws from a real failed session (2026-08-10, session bd3c78ed)
+
+Evidence: user asked for an SVG architecture diagram; head authored it inline as
+prose; the reply was truncated mid-stream at 1,611 chars (final call exactly 600
+completion tokens — an output cap), journaled unmarked as if complete; asked to
+save-and-open, the head offered, then discovered it held only the fragment, and
+stopped — never considering redrawing. Net: 12 provider calls, ~78k prompt
+tokens, zero deliverable, zero commands journaled. The pattern: the doc
+regulated how the head SPEAKS but not what its speech may CARRY. Three laws:
+
+1. **The artifact law** (binds Wave 2 structured-parts design + Wave 3 head
+   prompt/tools): anything the user will USE outside the conversation — a
+   diagram, a file, code, a document — is born on disk and referenced by a
+   card/path, never carried inline as its only copy. Prose is for meaning; the
+   journal is for record; the workspace is for artifacts. (Part 2.11's
+   smuggling indictment, applied to outputs.) The head's belt must include a
+   write-artifact door so "answer inline" is never the only route.
+2. **The truncation law** (binds Wave 2 parts + the provider seam): a turn
+   ended by anything other than its own completion (length cap, stream drop,
+   interrupt) journals HOW it ended, and renders visibly cut. The provider
+   already hands us finish_reason; it must ride the keyed StreamEvents and land
+   as a message part, not be dropped. An unmarked half-artifact presented as an
+   answer is a lie of omission.
+3. **The repair doctrine** (binds the Wave 3 head system prompt): when a
+   deliverable is lost or broken and the means of production still exist, the
+   default is re-produce and say so — apology is the fallback, never the first
+   move. Capability honesty (5.20) additionally requires checking deliverability
+   BEFORE offering ("just say the word" then failing is the worst shape).
+
+Scorecard for the rest of that session's failures: head unable to re-read its
+own transcript → 8.2.10 `read thread://` (Wave 5); no open-affordance → 7.2
+clickable paths + cards (Waves 2-3); 4-calls-per-turn machinery → the one
+tool-loop head (Wave 3) + volatility cache (landed, 12.4.1).
