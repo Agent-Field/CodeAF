@@ -101,6 +101,22 @@ func (client *fakeClient) systemPrompt() string {
 	return text.String()
 }
 
+// userPrompt is everything the last call said below the system message. Tests
+// that pin where a block sits need both halves, because "which message carries
+// it" is now part of what is being asserted.
+func (client *fakeClient) userPrompt() string {
+	client.mutex.Lock()
+	defer client.mutex.Unlock()
+	if len(client.seen) < 2 {
+		return ""
+	}
+	var text strings.Builder
+	for _, part := range client.seen[1].Content {
+		text.WriteString(part.Text)
+	}
+	return text.String()
+}
+
 func TestHeadPostsReply(t *testing.T) {
 	graphStore := openHeadStore(t)
 	client := &fakeClient{responses: []string{

@@ -90,14 +90,20 @@ func (h *Head) composeRevision(ctx context.Context, user store.Message, kind sto
 	if err != nil || client == nil {
 		return revisionDecision{}
 	}
+	// Assembled by volatility, not by subject. The work's name and what was done
+	// with the user's words hold still for the whole job, so they lead and the
+	// appending thread follows them. The audience is a count of steps that are
+	// mid-turn right now — it changes as workers finish, which is every few
+	// seconds — so it rides at the bottom beside the message it is about, where
+	// a new value invalidates nothing but itself.
 	body := "The work: " + label +
-		"\nWhat has already been done with their words: " + revisionFacts(kind) +
-		fmt.Sprintf("\nSteps of that work already under way, which hear their words verbatim: %d", audience)
+		"\nWhat has already been done with their words: " + revisionFacts(kind)
 	if recent, err := h.recentThread(user.SessionID, user.Seq); err == nil {
 		body += "\n\nRecent thread before this message:\n" + h.renderThread(recent)
 	}
 	body += "\n\nNotebook (durable memory across jobs and conversations):\n" +
 		renderNotebook(h.store, user.Body, "") +
+		fmt.Sprintf("\n\nSteps of that work already under way, which hear their words verbatim: %d", audience) +
 		"\n\nCurrent user message (verbatim):\n" + strings.TrimSpace(user.Body)
 	response, err := client.CompleteWithMessages(ctx, []ai.Message{
 		textMessage("system", resident.VoicePrompt(h.store, revisionVoicePrompt)),

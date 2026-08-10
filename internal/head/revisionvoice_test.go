@@ -96,6 +96,43 @@ func TestRedirectAlwaysAnswersInTheThread(t *testing.T) {
 	}
 }
 
+// Position by volatility, not by semantic category. The audience count reads as
+// a fact about the work, which is why it was written up beside the work's name;
+// it is a count of steps that are mid-turn AT THIS INSTANT, and it moves as
+// workers finish their turns. So it rides at the bottom, just above the message
+// it is about, where a new value invalidates nothing but itself — while the
+// job's name, what was done with the user's words, and the appending thread
+// hold the front.
+func TestRevisionAudienceCountSitsJustAboveTheMessage(t *testing.T) {
+	graph := openHeadStore(t)
+	seedLiveRedirectJob(t, graph)
+	client := &fakeClient{responses: []string{`{"reply":"Taking that to the parser rewrite.","remember":null}`}}
+	user := postUser(t, graph, "steer", overStudyMessage)
+
+	if handled, err := New(client, graph).manageRedirect(context.Background(), user); err != nil || !handled {
+		t.Fatalf("redirect not handled: handled=%t err=%v", handled, err)
+	}
+	prompt := client.userPrompt()
+	work := strings.Index(prompt, "The work: ")
+	thread := strings.Index(prompt, "Recent thread before this message:")
+	notebook := strings.Index(prompt, "Notebook (durable memory")
+	audience := strings.Index(prompt, "Steps of that work already under way")
+	message := strings.Index(prompt, "Current user message (verbatim):")
+	for name, index := range map[string]int{
+		"the work": work, "the thread": thread, "the notebook": notebook,
+		"the audience count": audience, "the message": message,
+	} {
+		if index < 0 {
+			t.Fatalf("%s never reached the composer:\n%s", name, prompt)
+		}
+	}
+	if !(work < thread && thread < notebook && notebook < audience && audience < message) {
+		t.Fatalf("the composer's prompt is not ordered by volatility "+
+			"(work=%d thread=%d notebook=%d audience=%d message=%d):\n%s",
+			work, thread, notebook, audience, message, prompt)
+	}
+}
+
 // A composer that fails is not a licence to go quiet: the command is already
 // journaled when it runs, so the plain sentence goes out in its place.
 func TestRedirectSpeaksEvenWhenTheComposerFails(t *testing.T) {

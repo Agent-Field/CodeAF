@@ -24,6 +24,7 @@ import (
 	"github.com/Agent-Field/aforge-v2/internal/provider"
 	"github.com/Agent-Field/aforge-v2/internal/resident"
 	"github.com/Agent-Field/aforge-v2/internal/store"
+	"github.com/Agent-Field/aforge-v2/internal/thread"
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 )
 
@@ -789,22 +790,31 @@ func (h *Head) route(ctx context.Context, user store.Message) (routeDecision, er
 	// The one user message is assembled stable-first, and the reason is money.
 	// Every endpoint we ride caches by prefix: the bytes before the earliest
 	// change are billed at a tenth, everything from that byte onward at full
-	// price. So the order is a cost decision, not a rhetorical one. Measured
-	// self-knowledge moves with completed jobs and the thread now moves in big
-	// steps, so both sit at the front where they can be reused message after
-	// message. Below them is the volatile floor: the snapshot ticks with every
-	// status, the notebook is retrieved against this message's words, the
-	// question-cued blocks appear and vanish with the question, and the spend
-	// line moves with every cent — each of them, wherever it sits, invalidates
-	// everything after it, so they are gathered together at the bottom where
-	// there is nothing left to invalidate but the message itself.
+	// price. So the order is a cost decision, not a rhetorical one — and the
+	// ordering rule is position by volatility, never by semantic category.
+	//
+	// The thread is first because it is the one block that only ever appends:
+	// a new message extends it and every byte before the extension is reused,
+	// and it moves its own front in big steps rather than every turn. Measured
+	// self-knowledge is stable BETWEEN jobs and rewritten in place DURING one —
+	// its medians, run counts and costs move as leaves finish — so above the
+	// thread it spent the thread's whole prefix to say the same paragraph
+	// slightly differently. It reads like standing evidence, which is why it
+	// sat at the front; it is measured, which is why it sits here.
+	//
+	// Below it is the volatile floor: the snapshot ticks with every status, the
+	// notebook is retrieved against this message's words, the question-cued
+	// blocks appear and vanish with the question, and the spend line moves with
+	// every cent — each of them, wherever it sits, invalidates everything after
+	// it, so they are gathered together at the bottom where there is nothing
+	// left to invalidate but the message itself.
 	var body strings.Builder
+	body.WriteString("Recent thread before this message:\n" + threadContext)
 	if h.knowledge != nil {
 		if measured := strings.TrimSpace(h.knowledge()); measured != "" {
-			body.WriteString("Measured execution history (evidence for routing priors):\n" + measured + "\n\n")
+			body.WriteString("\n\nMeasured execution history (evidence for routing priors):\n" + measured)
 		}
 	}
-	body.WriteString("Recent thread before this message:\n" + threadContext)
 	body.WriteString("\n\nLive graph snapshot:\n" + graphContext)
 	body.WriteString("\n\nNotebook (durable memory across jobs and conversations):\n" + renderNotebook(h.store, user.Body, threadContext))
 	// The belt normally answers self-questions, but it needs a client and a
@@ -1181,7 +1191,7 @@ func (h *Head) postAgent(sessionID, body string, commandSeq int64) error {
 }
 
 func (h *Head) postSystem(sessionID, body string) error {
-	_, err := h.store.PostMessage(store.Message{
+	_, err := thread.Post(h.store, store.Message{
 		SessionID: sessionID,
 		Role:      store.RoleSystem,
 		Body:      body,
@@ -1194,7 +1204,7 @@ func (h *Head) postSystem(sessionID, body string) error {
 }
 
 func (h *Head) postAgentModel(sessionID, body string, commandSeq int64, model string) error {
-	_, err := h.store.PostMessage(store.Message{
+	_, err := thread.Post(h.store, store.Message{
 		SessionID:  sessionID,
 		Role:       store.RoleAgent,
 		Body:       body,

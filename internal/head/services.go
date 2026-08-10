@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/Agent-Field/aforge-v2/internal/store"
+	"github.com/Agent-Field/aforge-v2/internal/thread"
 )
 
 // shutdownInstruction is the verbatim reason journaled on every command the
@@ -148,7 +149,7 @@ func (h *Head) shutDownEverything(user store.Message) error {
 		{Label: "yes, cancel them", Value: cancelAllOptionValue},
 		{Label: "keep them running", Value: keepWorkOptionValue},
 	}
-	_, err = h.store.PostMessage(store.Message{
+	_, err = thread.Post(h.store, store.Message{
 		SessionID: user.SessionID, Role: store.RoleAgent,
 		Body: store.QuestionMessageBody(prompt, options, store.QuestionConfig{
 			Kind: store.QuestionConfirm, Default: "2", AllowFree: &allowFree,

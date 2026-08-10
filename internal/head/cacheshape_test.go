@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/Agent-Field/aforge-v2/internal/resident"
 	"github.com/Agent-Field/aforge-v2/internal/store"
@@ -28,38 +29,46 @@ func sharedPrefix(first, second string) int {
 }
 
 // The router's prompt across one ordinary state tick — a cent of spend, one more
-// message in the thread. Everything that moved must be behind everything that
-// did not, which is the only property that makes the prefix worth anything.
-func TestRouterPromptChurnStaysInTheSuffix(t *testing.T) {
+// message in the thread, and a measured history that moved because a job landed.
+//
+// Position is by volatility, never by semantic category. The thread leads
+// because it is the only block that appends: a turn extends its tail and every
+// byte before the extension is reused. Everything that is REWRITTEN IN PLACE —
+// measured history, the snapshot, the notebook, the clock, the spend line —
+// belongs below it, in the order of how fast it moves, because a block that
+// changes in place invalidates everything after it and nothing before it.
+func TestRouterPromptChurnStaysBelowTheAppendOnlyThread(t *testing.T) {
 	graph := openHeadStore(t)
 	seedResultBoard(t, graph)
 	for index := 0; index < 4; index++ {
 		postUser(t, graph, "steady", fmt.Sprintf("earlier message %d", index))
 	}
 
-	route := func(body string) (system, user string) {
+	route := func(body, measured string) (system, user string) {
 		t.Helper()
 		client := &fakeClient{responses: []string{`{"reply":"noted","command":null}`}}
 		message := postUser(t, graph, "steady", body)
 		head := New(client, graph).WithDailyBudgetUSD(20).
-			WithSelfKnowledge(func() string { return "reflex: median 200 tokens, 2 turns; n=10" })
+			WithSelfKnowledge(func() string { return measured })
 		if err := head.answer(context.Background(), message); err != nil {
 			t.Fatalf("answer %q: %v", body, err)
 		}
 		if len(client.seen) < 2 {
 			t.Fatalf("%q never reached the router: %+v", body, client.seen)
 		}
-		return client.seen[0].Content[0].Text, client.seen[1].Content[0].Text
+		return client.systemPrompt(), client.userPrompt()
 	}
 
-	firstSystem, first := route("what is running?")
+	firstSystem, first := route("what is running?", "reflex: median 200 tokens, 2 turns; n=10")
 	if err := graph.RecordUsage(store.NodeUsage{NodeID: store.RootID, Cost: 0.01}); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := graph.RecordFact("", "user", store.FactPreference, "keep replies short with no preamble"); err != nil {
 		t.Fatal(err)
 	}
-	secondSystem, second := route("and now?")
+	// A job finished mid-session, so the measured block is a different string —
+	// which is exactly the churn that used to cost the thread above it.
+	secondSystem, second := route("and now?", "reflex: median 900 tokens, 5 turns; n=11")
 
 	// The system message is one constant plus standing voice. A new voice
 	// preference may extend it; the message the user just typed may not change
@@ -71,17 +80,29 @@ func TestRouterPromptChurnStaysInTheSuffix(t *testing.T) {
 		t.Fatalf("system message diverged inside the constant prompt at byte %d", sharedPrefix(firstSystem, secondSystem))
 	}
 
-	floor := strings.Index(first, "\n\nLive graph snapshot:")
+	// The thread is first, and the first block after it is the boundary every
+	// in-place churner must sit below. A prompt that diverges before this byte
+	// has spent the whole conversation to say something else slightly
+	// differently.
+	if !strings.HasPrefix(first, "Recent thread before this message:\n") {
+		t.Fatalf("the append-only block is no longer first:\n%s", first)
+	}
+	floor := strings.Index(first, "\n\nMeasured execution history")
 	if floor <= 0 {
-		t.Fatalf("no volatile floor in the router prompt:\n%s", first)
+		t.Fatalf("no measured block under the thread:\n%s", first)
 	}
 	if shared := sharedPrefix(first, second); shared < floor {
-		t.Fatalf("router prompt churned at byte %d, before the volatile floor at %d:\n%s", shared, floor, first[:floor])
+		t.Fatalf("router prompt churned at byte %d, above the thread's end at %d:\n%s", shared, floor, first[:floor])
 	}
-	// And the fast-moving facts really are down there, under everything else.
+	// And every fast-moving fact really is down there, each under the one that
+	// moves more slowly than it does.
+	snapshot := strings.Index(first, "\n\nLive graph snapshot:")
+	if snapshot < floor {
+		t.Fatalf("the snapshot sits above the measured block: snapshot=%d measured=%d", snapshot, floor)
+	}
 	spend := strings.Index(first, "today's spend: $")
-	if spend < floor {
-		t.Fatalf("the spend line sits above the volatile floor: spend=%d floor=%d", spend, floor)
+	if spend < snapshot {
+		t.Fatalf("the spend line sits above the snapshot: spend=%d snapshot=%d", spend, snapshot)
 	}
 	if message := strings.Index(first, "\n\nCurrent user message (verbatim):"); spend > message {
 		t.Fatalf("the spend line is not the last thing before the message: spend=%d message=%d", spend, message)
@@ -168,6 +189,36 @@ func TestBoardCostRendersInDimes(t *testing.T) {
 	dear := []boardRow{{node: store.Node{ID: "job", Status: store.Running}, running: 1, cost: 1.44}}
 	if !strings.Contains(renderBoard(dear), "$1.40") {
 		t.Fatalf("board cost rounded away from the nearest dime: %s", renderBoard(dear))
+	}
+}
+
+// The board's rule is the prompt's rule, not the board's own: a figure said to a
+// model may only be as precise as it is stable. The deep slice opens the job the
+// user just asked about — usually the live one — and at cent precision its spend
+// rewrote a block that sits above the notebook, the clock and the message.
+func TestDeepSliceCostRendersInDimesLikeTheBoard(t *testing.T) {
+	graph := openHeadStore(t)
+	spliceSurgeryJob(t, graph, "finance-close", "Finance close", "close the finance books for Q3")
+	completeNodeWith(t, graph, "finance-close", financeFinding)
+	if err := graph.RecordUsage(store.NodeUsage{NodeID: "finance-close", Cost: 0.37}); err != nil {
+		t.Fatal(err)
+	}
+	node, found, err := graph.Node("finance-close")
+	if err != nil || !found {
+		t.Fatalf("read node: found=%t err=%v", found, err)
+	}
+	head := New(nil, graph)
+	now := time.Now()
+
+	before := head.renderDeepSlice(node, financeFinding, now)
+	if !strings.Contains(before, "$0.40") {
+		t.Fatalf("the deep slice cost was not rounded to a dime:\n%s", before)
+	}
+	if err := graph.RecordUsage(store.NodeUsage{NodeID: "finance-close", Cost: 0.01}); err != nil {
+		t.Fatal(err)
+	}
+	if after := head.renderDeepSlice(node, financeFinding, now); after != before {
+		t.Fatalf("a cent of spend rewrote the deep slice:\n%s\n%s", before, after)
 	}
 }
 

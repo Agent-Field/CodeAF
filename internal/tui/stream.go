@@ -164,8 +164,14 @@ func (m *Model) applyStreamEvent(event StreamEvent) {
 		}
 		m.streamThinking = false
 		m.streamRaw.WriteString(event.Delta)
+		// This is the other half of the sanitizer chokepoint (see
+		// internal/tui/sanitize.go): a real provider stream's tokens land
+		// here, over the in-process channel, before the durable message
+		// exists for poll() to sanitize. reply is the full decoded
+		// reply-so-far, so sanitizing it is what streamShown — and
+		// therefore what the thread actually draws while streaming — sees.
 		if reply, found := partialJSONReply(m.streamRaw.String()); found {
-			m.streamTarget = reply
+			m.streamTarget = sanitizeText(reply)
 		}
 		// A delta moves only the target. What the thread draws is streamShown,
 		// which advances on the animation tick, so re-rendering here would
