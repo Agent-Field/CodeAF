@@ -245,6 +245,14 @@ func (c *Compiler) WithSubharnessMenu(menu func() string, known func(string) boo
 // the top of the prompt, because that line is the prompt every process has and
 // adding an unusable field to it would break the byte-identical baseline for a
 // choice that does not exist.
+//
+// It rides the user message rather than the system one. Position by volatility,
+// not by semantic category: this reads as law — here are the workers, here is
+// how to choose between them — and law belongs with the law. But the menu
+// carries each specialist's measured line, and those are run counts and a
+// four-decimal average cost that move every time a leaf of that worker
+// finishes. Sent as part of the system message it rewrote, mid-session, the one
+// string in the whole compile that could have been identical from job to job.
 func (c *Compiler) subharnessBrief() string {
 	if c == nil || c.menu == nil {
 		return ""
@@ -308,9 +316,12 @@ func (c *Compiler) Compile(ctx context.Context, instruction string, graphContext
 			choice = settleAnsweredAmbiguity(choice)
 		}
 	}
+	// Assembled stable-first, and the menu is last for the same reason the head's
+	// spend line is: it is the fastest-moving thing said here, so it sits where
+	// there is nothing left behind it to invalidate.
 	user := "Current graph context:\n" + graphContext +
 		"\n\nUser instruction (verbatim; preserve exactly):\n" + instruction +
-		settledQuestionBrief(instruction) + c.surfaceBrief()
+		settledQuestionBrief(instruction) + c.surfaceBrief() + c.subharnessBrief()
 	// The compile reply carries the goal with the verbatim ask inside it, the
 	// title, the task method, and any bundle parts — all in one JSON object,
 	// which is exactly why a completion cap sized for the goal alone became a
@@ -321,9 +332,11 @@ func (c *Compiler) Compile(ctx context.Context, instruction string, graphContext
 	// try at double room — a compile is the cheapest call in the job and the
 	// only one whose loss forfeits everything after it.
 	compileTokens := compileReplyTokens(instruction)
-	system := compilerSystemPrompt + c.subharnessBrief()
+	// The system message is the constant and nothing else, for every process
+	// this compiler runs in: measured content that moves within a session is
+	// added below, in the user message, never here.
 	response, err := c.client.CompleteWithMessages(ctx, []ai.Message{
-		textMessage("system", system),
+		textMessage("system", compilerSystemPrompt),
 		textMessage("user", user),
 	}, ai.WithMaxTokens(compileTokens))
 	if err != nil {
@@ -336,7 +349,7 @@ func (c *Compiler) Compile(ctx context.Context, instruction string, graphContext
 	var brief Brief
 	if err := decodeJSONObject(response.Text(), &brief); err != nil {
 		retry, retryErr := c.client.CompleteWithMessages(ctx, []ai.Message{
-			textMessage("system", system),
+			textMessage("system", compilerSystemPrompt),
 			textMessage("user", user),
 		}, ai.WithMaxTokens(compileTokens*2))
 		if retryErr != nil || retry == nil {
