@@ -1,8 +1,10 @@
 package plan
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"testing"
 	"unicode/utf8"
@@ -107,7 +109,9 @@ func TestRenderTerrainStaysUnderTheCap(t *testing.T) {
 	root := buildTerrain(t, layout)
 
 	got := RenderTerrain(root, "read everything")
-	if len(got) > terrainBytes+len("…") {
+	// The marker is charged against the cap, not added on top of it: the cap is
+	// the promise made to every planning call in the run.
+	if len(got) > terrainBytes {
 		t.Fatalf("terrain is %d bytes, over the %d-byte cap", len(got), terrainBytes)
 	}
 	if !strings.HasSuffix(got, "…") {
@@ -132,7 +136,7 @@ func TestRenderTerrainClipsTheOpeningLineOnARuneBoundary(t *testing.T) {
 	if !strings.HasPrefix(opening, "README.md: ") {
 		t.Fatalf("the README line is missing:\n%s", got)
 	}
-	if len(opening) > len("README.md: ")+terrainReadmeBytes+len("…") {
+	if len(opening) > len("README.md: ")+terrainReadmeBytes {
 		t.Errorf("the opening line was not clipped: %d bytes", len(opening))
 	}
 	if !utf8.ValidString(got) {
@@ -208,6 +212,135 @@ func TestRenderTerrainOpensOnlyTheDirectoriesTheGoalNames(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+// TestRenderTerrainKeepsTheNamedDirectoryWhenThereAreTooManyToShow is the hole
+// the cue mechanism used to fall into. Selection truncated alphabetically and
+// only then asked which names the goal had mentioned, so in a workspace with
+// more directories than fit — which is every workspace the cue was written for —
+// the one the goal was about could be dropped before it was ever considered.
+func TestRenderTerrainKeepsTheNamedDirectoryWhenThereAreTooManyToShow(t *testing.T) {
+	layout := map[string]string{"zebra-responses/north.csv": "a\n"}
+	for index := 0; index < terrainDirs+6; index++ {
+		layout[string(rune('a'+index))+"-filler/thing.txt"] = "x\n"
+	}
+	root := buildTerrain(t, layout)
+
+	got := RenderTerrain(root, "summarise the responses")
+	if !strings.Contains(got, "zebra-responses/") {
+		t.Fatalf("the directory the goal named was truncated away:\n%s", got)
+	}
+	if !strings.Contains(got, "  north.csv") {
+		t.Errorf("the named directory was listed but never opened:\n%s", got)
+	}
+	// Alphabetical order survives the cue-first selection.
+	if index := strings.Index(got, "zebra-responses/"); index >= 0 && strings.Index(got, "a-filler/") > index {
+		t.Errorf("the rows are no longer in name order:\n%s", got)
+	}
+}
+
+// TestRenderTerrainMatchesCuesAcrossSeparatorsAndForms covers the tokenizer on
+// both sides of the match. Only the goal used to be split, so a separator in a
+// directory name defeated the cue outright, and two spellings of the same
+// character were compared as bytes and called strangers.
+func TestRenderTerrainMatchesCuesAcrossSeparatorsAndForms(t *testing.T) {
+	for _, testcase := range []struct {
+		name      string
+		directory string
+		goal      string
+		opens     bool
+	}{
+		{"a hyphen in the name", "survey-responses", "summarise the survey", true},
+		{"an underscore in the name", "survey_responses", "summarise the survey", true},
+		{"a dot in the name", "survey.responses", "summarise the responses", true},
+		{"the goal writes it hyphenated", "surveys", "check the survey-responses", true},
+		{"composed against decomposed", "re\u0301sume\u0301s", "read the r\u00e9sum\u00e9s", true},
+		{"different case", "RESPONSES", "summarise the responses", true},
+		{"a real plural", "archive", "read the archives end to end", true},
+		{"a short stem is not a plural", "news", "write the report", false},
+		{"nothing in common", "ledgers", "write a short poem", false},
+	} {
+		t.Run(testcase.name, func(t *testing.T) {
+			root := buildTerrain(t, map[string]string{
+				testcase.directory + "/inside.csv": "a\n",
+			})
+			got := RenderTerrain(root, testcase.goal)
+			opened := strings.Contains(got, "  inside.csv")
+			if opened != testcase.opens {
+				t.Errorf("opened = %v, want %v:\n%s", opened, testcase.opens, got)
+			}
+		})
+	}
+}
+
+// TestTerrainRollupSaysWhatItActuallyCounted is the label bug. A walk cut short
+// inside a tree of directories had counted no files at all, and the line said
+// "over 0 empty" — both wrong and the exact opposite of the truth.
+func TestTerrainRollupSaysWhatItActuallyCounted(t *testing.T) {
+	for _, testcase := range []struct {
+		name   string
+		rollup terrainRollup
+		want   string
+	}{
+		{"nothing in it", terrainRollup{}, "empty"},
+		{"one file", terrainRollup{files: 1}, "1 file"},
+		{"several files", terrainRollup{files: 41}, "41 files"},
+		{"directories but no files", terrainRollup{directories: 7}, "no files, 7 directories"},
+		{"cut short over files", terrainRollup{files: 4000, clipped: true}, "over 4000 files"},
+		{"cut short over directories", terrainRollup{directories: 4000, clipped: true}, "over no files, 4000 directories"},
+		{"cut short before anything", terrainRollup{clipped: true}, "not read"},
+		{"kinds are named", terrainRollup{files: 3, extensions: []string{".csv", ".md"}}, "3 files (.csv, .md)"},
+	} {
+		t.Run(testcase.name, func(t *testing.T) {
+			if got := testcase.rollup.label(); got != testcase.want {
+				t.Errorf("label = %q, want %q", got, testcase.want)
+			}
+		})
+	}
+}
+
+// TestTerrainReadsOnlyWhatItAgreedTo pins the bounded read. A pathological
+// directory must not be pulled into memory and sorted whole for a listing that
+// shows a couple of dozen rows, and the render has to say that it did not look
+// at everything rather than implying it did.
+func TestTerrainReadsOnlyWhatItAgreedTo(t *testing.T) {
+	root := t.TempDir()
+	for index := 0; index < terrainListLimit+40; index++ {
+		if err := os.WriteFile(filepath.Join(root, fmt.Sprintf("%05d.csv", index)), []byte("a\n"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	kept, unread := terrainEntries(root, terrainListLimit)
+	if !unread {
+		t.Fatal("a directory larger than the limit should report that more was left unread")
+	}
+	if len(kept) > terrainListLimit {
+		t.Fatalf("kept %d entries, over the %d-entry read bound", len(kept), terrainListLimit)
+	}
+	if !sort.SliceIsSorted(kept, func(i, j int) bool { return kept[i].Name() < kept[j].Name() }) {
+		t.Error("what was kept was not sorted, so the render would not be reproducible")
+	}
+	if got := RenderTerrain(root, "read it"); !strings.Contains(got, "over ") {
+		t.Errorf("a partial read should be reported as a floor:\n%s", got)
+	}
+}
+
+// TestRenderTerrainKeepsTheOpeningLineValidAcrossTheReadBoundary is the other
+// half of the UTF-8 promise. The head of a README is read by byte count, so a
+// character can straddle the boundary; the fragment must never reach a prompt.
+func TestRenderTerrainKeepsTheOpeningLineValidAcrossTheReadBoundary(t *testing.T) {
+	// One 3-byte rune repeated so that the last one crosses terrainReadmeHead,
+	// on a single line with no newline before the boundary.
+	body := strings.Repeat("観", terrainReadmeHead/3+8)
+	root := buildTerrain(t, map[string]string{"README.md": body})
+
+	got := RenderTerrain(root, "read it")
+	if !utf8.ValidString(got) {
+		t.Fatal("a character split by the 4KB read reached the render")
+	}
+	if !strings.HasPrefix(got, "README.md: 観") {
+		t.Errorf("the opening line was lost:\n%s", got)
 	}
 }
 
@@ -384,6 +517,111 @@ func TestGraphRoundTripsTheTerrain(t *testing.T) {
 	}
 	if !strings.Contains(loaded.context(), terrain) {
 		t.Error("the reloaded graph's preamble no longer carries the workspace it was planned against")
+	}
+}
+
+// planningReply answers any of the three pre-graph passes, chosen by the system
+// prompt that identifies them.
+func planningReply(system, _ string) string {
+	switch {
+	case strings.Contains(system, "You settle what a goal leaves unsaid"):
+		return `{"settled":[],"open":[],"evidence":"Read what is there and cite it."}`
+	case strings.Contains(system, "You break a goal into its ordered stages"):
+		return `{"stages":[{"title":"Read","summary":"Read the responses"}]}`
+	default:
+		return `{"mode":"decompose","reason":"several bodies of material"}`
+	}
+}
+
+// TestThePassesBeforeTheGraphSeeTheTerrain is the fix for the hole that made the
+// whole feature nearly ornamental. Grounding, the spine and the ensemble
+// judgment all run before there is a graph to read a preamble from, and each
+// assembled its own goal-only message — so the pass that settles a goal's free
+// variables by fiat was still doing it blind, which is the exact failure terrain
+// exists to prevent.
+//
+// The empty half is the compatibility promise, and it is checked as bytes: the
+// message has to be the string these passes have always sent, not a rearranged
+// equivalent of it.
+func TestThePassesBeforeTheGraphSeeTheTerrain(t *testing.T) {
+	const goal = "summarise the responses"
+	const terrain = "responses/               41 files (.csv)"
+
+	for _, testcase := range []struct {
+		name string
+		call func(t *testing.T, client Completer, terrain string)
+	}{
+		{
+			name: "grounding",
+			call: func(t *testing.T, client Completer, terrain string) {
+				if _, _, err := GroundWith(t.Context(), client, goal, terrain, nil); err != nil {
+					t.Fatal(err)
+				}
+			},
+		},
+		{
+			name: "the spine",
+			call: func(t *testing.T, client Completer, terrain string) {
+				if _, _, err := Spine(t.Context(), client, goal, terrain, 1); err != nil {
+					t.Fatal(err)
+				}
+			},
+		},
+		{
+			name: "the ensemble judgment",
+			call: func(t *testing.T, client Completer, terrain string) {
+				if _, _, err := DecidePanel(t.Context(), client, goal, terrain, nil); err != nil {
+					t.Fatal(err)
+				}
+			},
+		},
+	} {
+		t.Run(testcase.name, func(t *testing.T) {
+			bare := &stubClient{reply: planningReply}
+			testcase.call(t, bare, "")
+			if got, want := bare.prompts[0], "Goal:\n"+goal; got != want {
+				t.Fatalf("an empty terrain changed the prompt\n got: %q\nwant: %q", got, want)
+			}
+
+			sighted := &stubClient{reply: planningReply}
+			testcase.call(t, sighted, terrain)
+			prompt := sighted.prompts[0]
+			for _, want := range []string{"The workspace this run stands on", "  " + terrain} {
+				if !strings.Contains(prompt, want) {
+					t.Errorf("the prompt does not carry %q:\n%s", want, prompt)
+				}
+			}
+			// One wording, shared with the preamble every later pass reads.
+			if !strings.HasPrefix(prompt, (&Graph{Goal: goal, Terrain: terrain}).context()) {
+				t.Errorf("this pass words the workspace differently from the shared preamble:\n%s", prompt)
+			}
+		})
+	}
+}
+
+// TestBuildHandsTheTerrainToTheOpeners is the same guarantee through Build,
+// where the two openers run concurrently and take the snapshot from the options
+// rather than from the half-built graph.
+func TestBuildHandsTheTerrainToTheOpeners(t *testing.T) {
+	const terrain = "responses/               41 files (.csv)"
+	client := &stubClient{reply: planningReply}
+
+	if _, err := Build(t.Context(), client, "summarise the responses", Options{
+		Terrain:   terrain,
+		Undivided: true,
+		Ensemble:  EnsembleNever,
+	}); err != nil {
+		t.Fatalf("Build: %v", err)
+	}
+	seen := 0
+	for _, prompt := range client.prompts {
+		if strings.Contains(prompt, terrain) {
+			seen++
+		}
+	}
+	// Grounding and the spine, both of them, before anything is decided.
+	if seen < 2 {
+		t.Fatalf("only %d of the opening calls saw the workspace: %#v", seen, client.prompts)
 	}
 }
 

@@ -210,7 +210,7 @@ func TestSpineProgressFaultDoesNotWedgeTheSamples(t *testing.T) {
 	var choice *SpineChoice
 	var err error
 	finishes(t, func() {
-		choice, _, err = spineWithProgress(context.Background(), client, "ship it", 3, progress)
+		choice, _, err = spineWithProgress(context.Background(), client, "ship it", "", 3, progress)
 	})
 
 	if err != nil {
@@ -241,7 +241,7 @@ func TestSpineSampleFaultLeavesTheOthersToChooseFrom(t *testing.T) {
 	var choice *SpineChoice
 	var err error
 	finishes(t, func() {
-		choice, _, err = spineWithProgress(context.Background(), client, "ship it", 3, nil)
+		choice, _, err = spineWithProgress(context.Background(), client, "ship it", "", 3, nil)
 	})
 
 	if err != nil {

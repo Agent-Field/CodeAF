@@ -250,10 +250,19 @@ func Build(ctx context.Context, client Completer, goal string, options Options) 
 	graph := &Graph{Goal: goal, NextID: 1, Terrain: options.Terrain}
 	emitProgress(progress, "grounding", "settling what to look at", "")
 
-	// Grounding and the spine both need only the goal, so they run together and
-	// the grounding is free. It has to finish before the fan-out, though, and
-	// that ordering is the point: the fan-out is where one decision would
-	// otherwise get made independently several times over.
+	// Grounding and the spine both need only the goal and the workspace it
+	// stands on, so they run together and the grounding is free. It has to
+	// finish before the fan-out, though, and that ordering is the point: the
+	// fan-out is where one decision would otherwise get made independently
+	// several times over.
+	//
+	// Both are handed the terrain from the options rather than reading it off
+	// the graph. The value is the same one — it was copied onto the graph a few
+	// lines up and nothing writes it again — but these two run before the graph
+	// has a preamble worth rendering, and a pass that read a half-built graph
+	// while the other goroutine was writing to it would be a data race for the
+	// sake of nothing.
+	terrain := options.Terrain
 	var choice *SpineChoice
 	var spineUsage, groundUsage Usage
 	var spineErr, groundErr error
@@ -270,7 +279,7 @@ func Build(ctx context.Context, client Completer, goal string, options Options) 
 				choice, spineErr = nil, guard.Note("plan/build spine", recovered)
 			}
 		}()
-		choice, spineUsage, spineErr = spineWithProgress(ctx, client, goal, options.SpineSamples, progress)
+		choice, spineUsage, spineErr = spineWithProgress(ctx, client, goal, terrain, options.SpineSamples, progress)
 	}()
 	go func() {
 		defer opening.Done()
@@ -279,7 +288,7 @@ func Build(ctx context.Context, client Completer, goal string, options Options) 
 				groundErr = guard.Note("plan/build ground", recovered)
 			}
 		}()
-		grounding, usage, err := GroundWith(ctx, client, goal, options.Recall)
+		grounding, usage, err := GroundWith(ctx, client, goal, terrain, options.Recall)
 		groundUsage.Add(usage)
 		graph.Settled, graph.Open, graph.Evidence, groundErr = grounding.Settled, grounding.Open, grounding.Evidence, err
 	}()

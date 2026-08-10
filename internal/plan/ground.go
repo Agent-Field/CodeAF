@@ -121,15 +121,24 @@ type Grounding struct {
 // spine — both need only the goal — so it costs no wall clock, and its output
 // joins the prefix every later call already shares, so it costs no cache either.
 func Ground(ctx context.Context, client Completer, goal string) (Grounding, *ai.Usage, error) {
-	return GroundWith(ctx, client, goal, nil)
+	return GroundWith(ctx, client, goal, "", nil)
 }
 
-// GroundWith resolves the goal with optional folded history. Keeping Ground as
-// the empty-memory wrapper is the compatibility boundary: callers without a
-// store send exactly the same prompt bytes they did before recall existed.
-func GroundWith(ctx context.Context, client Completer, goal string, recall []store.RecallHit) (Grounding, *ai.Usage, error) {
+// GroundWith resolves the goal with the workspace it stands on and optional
+// folded history. Keeping Ground as the bare wrapper is the compatibility
+// boundary: callers with neither send exactly the same prompt bytes they did
+// before either existed.
+//
+// The terrain matters more here than anywhere else in the package. This pass is
+// the one that binds a goal's free variables by fiat — which three cities, which
+// formats, how many of them — and it was doing so without ever being shown that
+// the answer was sitting in the workspace under four file names. A grounding
+// that settles "the responses" as three regions when four are on disk is the
+// exact failure terrain exists to prevent, and it happens before any graph
+// exists, so the terrain is handed in directly rather than read off one.
+func GroundWith(ctx context.Context, client Completer, goal, terrain string, recall []store.RecallHit) (Grounding, *ai.Usage, error) {
 	ctx = provider.WithCall(ctx, provider.ClassPlanGround)
-	user := "Goal:\n" + strings.TrimSpace(goal)
+	user := goalBlock(strings.TrimSpace(goal), terrain)
 	if remembered := store.FormatRecall(recall, 8<<10); remembered != "" {
 		user += "\n\n" + remembered
 	}
@@ -168,24 +177,7 @@ func GroundWith(ctx context.Context, client Completer, goal string, recall []sto
 // which is the failure this whole file exists to prevent.
 func (g *Graph) context() string {
 	var block strings.Builder
-	block.WriteString("Goal:\n")
-	block.WriteString(g.Goal)
-	// The terrain sits here, between the goal and what was settled about it,
-	// because that is the order the reader needs: what was asked for, then what
-	// is actually lying around, then the decisions taken over the two. It is
-	// indented and left otherwise verbatim — it was rendered in code, and this is
-	// not the place to reinterpret it. An empty terrain writes nothing at all,
-	// which is what keeps a run with no workspace byte-identical to the runs that
-	// came before terrain existed.
-	if g.Terrain != "" {
-		block.WriteString("\n\nThe workspace this run stands on (rendered from the material itself; it may\nbe incomplete, and it is what was there when planning began):\n")
-		for index, line := range strings.Split(g.Terrain, "\n") {
-			if index > 0 {
-				block.WriteString("\n")
-			}
-			block.WriteString("  " + line)
-		}
-	}
+	block.WriteString(goalBlock(g.Goal, g.Terrain))
 	if len(g.Settled) > 0 {
 		block.WriteString("\n\nSettled for this goal. Use these exactly as written. Never substitute\nyour own choice for one of these, and never leave one of them vague:\n")
 		for _, item := range g.Settled {
@@ -201,6 +193,46 @@ func (g *Graph) context() string {
 	if g.Evidence != "" {
 		block.WriteString("\nThe evidence this goal warrants. It is the ceiling as well as the floor: no\npart of the work may buy stronger evidence than this, and none may settle for\nweaker:\n")
 		fmt.Fprintf(&block, "  - %s\n", g.Evidence)
+	}
+	return block.String()
+}
+
+// goalBlock is how the ask is put to a call that has no graph to render a
+// preamble from — grounding, the spine, and the ensemble judgment, all three of
+// which run before a graph exists or is worth reading.
+//
+// It exists so there is exactly one wording. Those three passes decide what the
+// goal means, what its stages are, and whether it wants a panel at all, and the
+// whole point of terrain is that they stop deciding those things blind. Had each
+// assembled its own version of the block, the four calls would have described the
+// same workspace four ways, and the prefix every later pass shares would have
+// matched none of them.
+func goalBlock(goal, terrain string) string {
+	return "Goal:\n" + goal + terrainBlock(terrain)
+}
+
+// terrainBlock renders the workspace, or nothing at all.
+//
+// The nothing is the load-bearing half. An empty terrain writes zero bytes, so a
+// run with no workspace — which is most of them — sends the prompt bytes it sent
+// before terrain existed, down to the newline.
+//
+// It sits between the goal and whatever follows because that is the order a
+// reader needs: what was asked for, then what is actually lying around, then the
+// decisions taken over the two. The lines are indented and otherwise verbatim;
+// they were rendered deterministically in one place and this is not the place to
+// reinterpret them.
+func terrainBlock(terrain string) string {
+	if terrain == "" {
+		return ""
+	}
+	var block strings.Builder
+	block.WriteString("\n\nThe workspace this run stands on (rendered from the material itself; it may\nbe incomplete, and it is what was there when planning began):\n")
+	for index, line := range strings.Split(terrain, "\n") {
+		if index > 0 {
+			block.WriteString("\n")
+		}
+		block.WriteString("  " + line)
 	}
 	return block.String()
 }
