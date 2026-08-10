@@ -210,10 +210,15 @@ func (p *Panel) normalize(goal string) {
 // decomposition. The spine is passed as evidence rather than as instruction:
 // how many gates the planner found in the goal is the cheapest available signal
 // about whether the work is one body of material or several.
-func DecidePanel(ctx context.Context, client Completer, goal string, stages []Stage) (*Panel, *ai.Usage, error) {
+//
+// The terrain is part of that evidence and not decoration. The question here is
+// whether the goal is one body of material judged several times or several
+// bodies split up, and what the workspace holds is the most direct answer
+// available to it: one document is a panel, forty are a division. An empty
+// terrain leaves the prompt byte for byte the one this pass has always sent.
+func DecidePanel(ctx context.Context, client Completer, goal, terrain string, stages []Stage) (*Panel, *ai.Usage, error) {
 	var evidence strings.Builder
-	evidence.WriteString("Goal:\n")
-	evidence.WriteString(strings.TrimSpace(goal))
+	evidence.WriteString(goalBlock(strings.TrimSpace(goal), terrain))
 	if len(stages) > 0 {
 		evidence.WriteString("\n\nThe stages the planner drew for it:\n")
 		evidence.WriteString(spineBlock(stages))
@@ -537,7 +542,7 @@ func ensembleHook(ctx context.Context, client Completer, graph *Graph, options O
 	emitProgress(progress, "ensemble", "deciding whether independent passes beat splitting the work", "")
 	forced := options.Ensemble >= 2
 
-	panel, usage, err := DecidePanel(ctx, client, graph.Goal, graph.Stages)
+	panel, usage, err := DecidePanel(ctx, client, graph.Goal, graph.Terrain, graph.Stages)
 	graph.Usage.Add(usage)
 	switch {
 	case err != nil && !forced:
