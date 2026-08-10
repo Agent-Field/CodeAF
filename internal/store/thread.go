@@ -136,6 +136,15 @@ const (
 	CommandResume       CommandKind = "resume"
 	CommandReprioritize CommandKind = "reprioritize"
 	CommandRestart      CommandKind = "restart"
+	// CommandSetModel re-points what a job's remaining work runs on without
+	// touching the work itself: Target names the subtree, Instruction names the
+	// model. It is a surgery verb rather than a setting because the pin is
+	// provenance — it lives on the nodes, it is journaled, and it survives a
+	// restart — and because the change has to be as revisable and as visible as
+	// every other mid-run correction. It never interrupts anything: a leaf
+	// already handed to a model finishes there, and the new pin is read by the
+	// next one to be claimed.
+	CommandSetModel CommandKind = "set_model"
 
 	// Charter commands are requested through the same durable reconciler queue
 	// as graph mutations. Their target names a charter rather than a node.
@@ -241,6 +250,10 @@ type Command struct {
 	Time      time.Time
 	SessionID string
 	Kind      CommandKind
+	// Issuer names who asked — see issuer.go. Empty is the legacy value and
+	// reads as IssuerUser, which is what every command written before the axis
+	// existed actually was.
+	Issuer CommandIssuer
 	// Reflex asks the reconciler to admit exactly one verbatim micro-leaf
 	// without compiling or planning it. It remains a splice command so a
 	// promotion can enqueue the ordinary path with the same instruction.
@@ -284,6 +297,7 @@ CREATE TABLE IF NOT EXISTS commands (
     ts          TEXT NOT NULL,
     session_id  TEXT NOT NULL DEFAULT '',
     kind        TEXT NOT NULL,
+    issuer      TEXT NOT NULL DEFAULT '',
     reflex      INTEGER NOT NULL DEFAULT 0 CHECK (reflex IN (0, 1)),
     fresh       INTEGER NOT NULL DEFAULT 0 CHECK (fresh IN (0, 1)),
     target      TEXT NOT NULL DEFAULT '',
@@ -318,13 +332,14 @@ type seenPayload struct {
 }
 
 type commandPayload struct {
-	SessionID   string      `json:"session_id,omitempty"`
-	Kind        CommandKind `json:"kind"`
-	Reflex      bool        `json:"reflex,omitempty"`
-	Fresh       bool        `json:"fresh,omitempty"`
-	Target      string      `json:"target,omitempty"`
-	Instruction string      `json:"instruction"`
-	Attachments []string    `json:"attachments,omitempty"`
+	SessionID   string        `json:"session_id,omitempty"`
+	Kind        CommandKind   `json:"kind"`
+	Issuer      CommandIssuer `json:"issuer,omitempty"`
+	Reflex      bool          `json:"reflex,omitempty"`
+	Fresh       bool          `json:"fresh,omitempty"`
+	Target      string        `json:"target,omitempty"`
+	Instruction string        `json:"instruction"`
+	Attachments []string      `json:"attachments,omitempty"`
 }
 
 type commandResolvedPayload struct {
@@ -648,6 +663,13 @@ func validateCommandRequest(command Command) error {
 // the caller's transaction. Keeping this primitive shared lets a question
 // resolution and its continuation command commit as one journaled decision.
 func requestCommandTx(tx *sql.Tx, command Command) (Command, error) {
+	// Who asked is checked here rather than in validateCommandRequest because
+	// this is the primitive both entry paths share, and an unauthorized command
+	// must be refused whichever door it arrived through.
+	command.Issuer = command.Issuer.normalized()
+	if !command.Issuer.valid() {
+		return Command{}, fmt.Errorf("request command: %w: unknown issuer %q", ErrInvalid, command.Issuer)
+	}
 	if command.Target != "" {
 		if isCharterCommand(command.Kind) {
 			if err := requireCharter(tx, command.Target); err != nil {
@@ -673,9 +695,16 @@ func requestCommandTx(tx *sql.Tx, command Command) (Command, error) {
 			}
 		}
 	}
+	// Outside the block above on purpose: an untargeted command is inside
+	// nobody's subtree, so a task that writes one must be refused rather than
+	// skipped.
+	if err := authorizeCommandIssuer(tx, command); err != nil {
+		return Command{}, err
+	}
 	payload := commandPayload{
 		SessionID:   command.SessionID,
 		Kind:        command.Kind,
+		Issuer:      command.Issuer,
 		Reflex:      command.Reflex,
 		Fresh:       command.Fresh,
 		Target:      command.Target,
@@ -786,7 +815,7 @@ func (s *Store) ResolveCommand(seq int64, status CommandStatus, result string) e
 
 func (s *Store) queryCommands(where string, args []any) ([]Command, error) {
 	rows, err := s.db.Query(`
-		SELECT seq, ts, session_id, kind, reflex, fresh, target, instruction, attachments, status, result, updated_seq
+		SELECT seq, ts, session_id, kind, issuer, reflex, fresh, target, instruction, attachments, status, result, updated_seq
 		FROM commands WHERE `+where, args...)
 	if err != nil {
 		return nil, fmt.Errorf("list commands: %w", err)
@@ -798,7 +827,7 @@ func (s *Store) queryCommands(where string, args []any) ([]Command, error) {
 		var command Command
 		var reflex, fresh int
 		var timestamp, attachments string
-		if err := rows.Scan(&command.Seq, &timestamp, &command.SessionID, &command.Kind,
+		if err := rows.Scan(&command.Seq, &timestamp, &command.SessionID, &command.Kind, &command.Issuer,
 			&reflex, &fresh, &command.Target, &command.Instruction, &attachments, &command.Status, &command.Result,
 			&command.UpdatedSeq); err != nil {
 			return nil, fmt.Errorf("list commands: %w", err)
@@ -951,9 +980,9 @@ func applyCommandView(tx *sql.Tx, payload commandPayload, seq int64, at time.Tim
 		return err
 	}
 	_, err = tx.Exec(`
-		INSERT INTO commands (seq, ts, session_id, kind, reflex, fresh, target, instruction, attachments, status, result, updated_seq)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, '', ?)`,
-		seq, formatTime(at), payload.SessionID, payload.Kind, payload.Reflex, payload.Fresh, payload.Target,
+		INSERT INTO commands (seq, ts, session_id, kind, issuer, reflex, fresh, target, instruction, attachments, status, result, updated_seq)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, '', ?)`,
+		seq, formatTime(at), payload.SessionID, payload.Kind, payload.Issuer, payload.Reflex, payload.Fresh, payload.Target,
 		payload.Instruction, string(attachments), CommandPending, seq)
 	return err
 }
@@ -994,7 +1023,7 @@ func validRole(role Role) bool {
 func validCommandKind(kind CommandKind) bool {
 	switch kind {
 	case CommandSplice, CommandAmend, CommandCancel, CommandRedirect, CommandExpedite, CommandPause, CommandResume,
-		CommandReprioritize, CommandRestart, CommandCharterRatify,
+		CommandReprioritize, CommandRestart, CommandSetModel, CommandCharterRatify,
 		CommandCharterPause, CommandCharterRetire, CommandCharterCadence, CommandCharterWording,
 		CommandCharterOnce,
 		CommandCharterFire, CommandCharterDecline, CommandCharterAlways, CommandCharterNever, CommandCharterProbation,
@@ -1034,7 +1063,11 @@ func validateNodeCommand(tx *sql.Tx, kind CommandKind, target string) error {
 		return fmt.Errorf("%s target %q is not executable work: %w", kind, target, ErrInvalid)
 	}
 	switch kind {
-	case CommandCancel, CommandPause, CommandAmend, CommandRedirect, CommandExpedite:
+	// A model change is a claim about work still to be done, so it wants the
+	// same live target the other mid-run verbs do: a settled subtree has
+	// nothing left to re-point, and saying so at the funnel is cheaper than
+	// letting the reconciler discover it.
+	case CommandCancel, CommandPause, CommandAmend, CommandRedirect, CommandExpedite, CommandSetModel:
 		if status != Pending && status != Claimed && status != Running {
 			return fmt.Errorf("%s target %q is %s: %w", kind, target, status, ErrInvalid)
 		}

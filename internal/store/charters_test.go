@@ -263,6 +263,12 @@ func TestLegacyThreadSchemaMigratesForOptionsAndCharterCommands(t *testing.T) {
 	if found, err := tableHasColumn(reopened.db, "commands", "attachments"); err != nil || !found {
 		t.Fatalf("command attachments migration: found=%t err=%v", found, err)
 	}
+	// The issuer axis has to survive the same rebuild that lifts the legacy kind
+	// CHECK, or every command written before the upgrade loses the one column
+	// that says who wrote it.
+	if found, err := tableHasColumn(reopened.db, "commands", "issuer"); err != nil || !found {
+		t.Fatalf("command issuer migration: found=%t err=%v", found, err)
+	}
 	if _, err := reopened.PostMessage(Message{
 		SessionID: "legacy", Role: RoleAgent, Body: "which one?",
 		Attachments: []string{"/tmp/render.png"},
