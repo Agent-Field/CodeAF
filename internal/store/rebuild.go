@@ -353,6 +353,18 @@ func replayEvent(tx *sql.Tx, event Event) error {
 		}
 		return applyMessageView(tx, payload, event.Seq, event.Time)
 
+	case EventSessionOpened:
+		// A room minted before its first message is journal-native like every
+		// other projection here: the sessions table is dropped above and this
+		// arm is what puts an empty room back. Without it a rebuild would
+		// silently delete every conversation nobody had got around to speaking
+		// in — the exact rooms a thread switcher creates.
+		var payload sessionOpenedPayload
+		if err := json.Unmarshal(event.Payload, &payload); err != nil {
+			return err
+		}
+		return applySessionOpened(tx, payload, event.Time)
+
 	case EventCommandRequested:
 		var payload commandPayload
 		if err := json.Unmarshal(event.Payload, &payload); err != nil {

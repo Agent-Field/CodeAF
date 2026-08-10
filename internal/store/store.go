@@ -116,9 +116,17 @@ const (
 
 	// Thread events: the conversation and its asynchronous mutation requests
 	// live in the same journal as the graph they act on.
-	EventMessagePosted         EventKind = "message_posted"
-	EventCommandRequested      EventKind = "command_requested"
-	EventCommandResolved       EventKind = "command_resolved"
+	EventMessagePosted    EventKind = "message_posted"
+	EventCommandRequested EventKind = "command_requested"
+	EventCommandResolved  EventKind = "command_resolved"
+	// EventSessionOpened is a room's birth certificate. Until it existed the
+	// sessions table was a projection of the messages naming a session and
+	// nothing else, so a room could not be created before somebody spoke in it
+	// — which is exactly what a thread switcher does when it opens a new,
+	// empty conversation. It is a separate event rather than a flag on the
+	// first message because the two facts are separate: a room being opened,
+	// and something being said in it.
+	EventSessionOpened         EventKind = "session_opened"
 	EventSeenTouched           EventKind = "seen_touched"
 	EventAgentQuestionQueued   EventKind = "agent_question_queued"
 	EventAgentQuestionSurfaced EventKind = "agent_question_surfaced"
