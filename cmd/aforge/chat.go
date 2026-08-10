@@ -1317,7 +1317,7 @@ func buildBrain(w *chatWindow, session string, opts brainOptions) (*chatBrain, e
 	// 600/600 completion tokens of thought and zero answer on the default model.
 	brain.serveHead = func(ctx context.Context) {
 		headContext := provider.WithStreamObserver(settings.Context(ctx, "head"), func(event provider.StreamEvent) {
-			translated := tui.StreamEvent{Delta: event.Delta}
+			translated := tui.StreamEvent{Delta: event.Delta, Session: event.Session}
 			switch event.Kind {
 			case provider.StreamStarted:
 				translated.Kind = tui.StreamStarted

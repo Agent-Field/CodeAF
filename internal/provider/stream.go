@@ -22,15 +22,21 @@ const (
 // StreamEvent carries provider text as it arrives. Delta is populated only
 // for StreamDelta; the terminal events deliberately carry no provider error
 // text because the normal completion return remains the error authority.
+// Session names the room this call's turn belongs to (empty in the one
+// caller — the belt/router tests — that streams without ever setting one).
+// Today there is exactly one room, so every event's Session is the same
+// value; keyed events are the prerequisite, not a multi-room consumer.
 type StreamEvent struct {
-	Kind  StreamEventKind
-	Delta string
+	Kind    StreamEventKind
+	Delta   string
+	Session string
 }
 
 // StreamObserver receives provider deltas synchronously and in order.
 type StreamObserver func(StreamEvent)
 
 type streamObserverContextKey struct{}
+type streamSessionContextKey struct{}
 
 // WithStreamObserver asks the adapter to stream this completion while still
 // returning the ordinary accumulated response to its existing caller.
@@ -44,4 +50,17 @@ func WithStreamObserver(ctx context.Context, observer StreamObserver) context.Co
 func streamObserverFrom(ctx context.Context) StreamObserver {
 	observer, _ := ctx.Value(streamObserverContextKey{}).(StreamObserver)
 	return observer
+}
+
+// WithStreamSession stamps the room a turn is answering for. The caller that
+// owns the turn (the head, one per turn) sets this on the turn's context
+// before making the provider call; every StreamEvent that call emits carries
+// it, so a consumer fed by more than one room can tell them apart.
+func WithStreamSession(ctx context.Context, session string) context.Context {
+	return context.WithValue(ctx, streamSessionContextKey{}, session)
+}
+
+func streamSessionFrom(ctx context.Context) string {
+	session, _ := ctx.Value(streamSessionContextKey{}).(string)
+	return session
 }
