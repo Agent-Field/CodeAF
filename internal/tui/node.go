@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/Agent-Field/aforge-v2/internal/store"
+	"github.com/Agent-Field/aforge-v2/internal/thread"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/x/ansi"
@@ -335,7 +336,7 @@ func (m *Model) submitSteer() tea.Cmd {
 
 	backend := m.backend
 	return func() tea.Msg {
-		posted, err := backend.PostMessage(message)
+		posted, err := thread.Post(backend, message)
 		return postResultMsg{message: posted, nodeID: message.NodeID, err: err}
 	}
 }

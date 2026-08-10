@@ -18,6 +18,7 @@ import (
 
 	"github.com/Agent-Field/aforge-v2/internal/craft"
 	"github.com/Agent-Field/aforge-v2/internal/store"
+	"github.com/Agent-Field/aforge-v2/internal/thread"
 )
 
 // CraftSource loads one learned workflow by name at the craft repository's
@@ -938,7 +939,7 @@ func (c *CraftRunner) post(node store.Node, body string) {
 			return
 		}
 	}
-	_, _ = c.graph.PostMessage(store.Message{
+	_, _ = thread.Post(c.graph, store.Message{
 		SessionID: node.Provenance.SessionID,
 		Role:      store.RoleSystem,
 		NodeID:    node.ID,

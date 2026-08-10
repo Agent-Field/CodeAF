@@ -24,6 +24,7 @@ import (
 	"github.com/Agent-Field/aforge-v2/internal/provider"
 	"github.com/Agent-Field/aforge-v2/internal/resident"
 	"github.com/Agent-Field/aforge-v2/internal/store"
+	"github.com/Agent-Field/aforge-v2/internal/thread"
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 )
 
@@ -1181,7 +1182,7 @@ func (h *Head) postAgent(sessionID, body string, commandSeq int64) error {
 }
 
 func (h *Head) postSystem(sessionID, body string) error {
-	_, err := h.store.PostMessage(store.Message{
+	_, err := thread.Post(h.store, store.Message{
 		SessionID: sessionID,
 		Role:      store.RoleSystem,
 		Body:      body,
@@ -1194,7 +1195,7 @@ func (h *Head) postSystem(sessionID, body string) error {
 }
 
 func (h *Head) postAgentModel(sessionID, body string, commandSeq int64, model string) error {
-	_, err := h.store.PostMessage(store.Message{
+	_, err := thread.Post(h.store, store.Message{
 		SessionID:  sessionID,
 		Role:       store.RoleAgent,
 		Body:       body,

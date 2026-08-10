@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/Agent-Field/aforge-v2/internal/store"
+	"github.com/Agent-Field/aforge-v2/internal/thread"
 )
 
 // DefaultBriefAfter is long enough that an ordinary lunch break stays quiet.
@@ -121,7 +122,7 @@ func (r *Reconciler) SessionOpening(sessionID, surface string, after time.Durati
 		}
 		message := materializeBrief(previous.Seq, throughSeq, activity, draft)
 		message.SessionID = sessionID
-		if _, err := r.store.PostMessage(message); err != nil {
+		if _, err := thread.Post(r.store, message); err != nil {
 			return fmt.Errorf("open resident session: post brief: %w", err)
 		}
 		return nil
