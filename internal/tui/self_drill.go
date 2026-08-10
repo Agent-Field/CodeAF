@@ -288,19 +288,15 @@ func shortCommit(commit string) string {
 	return commit
 }
 
-// craftShelf is the craft repository, when there is a commander holding one.
-// Without one the Crafts row still renders — as an honest zero — rather than
-// the place refusing to open.
-func (m *Model) craftShelf() (Commander, bool) {
-	return m.commander, m.commander != nil
-}
-
+// openSelfCraft reads the craft repository the commander holds. Without a
+// commander the Crafts row still renders — as an honest zero — rather than the
+// place refusing to open, and a shelf that has never heard of this name says so
+// with the bool rather than by not having the method.
 func (m *Model) openSelfCraft(name string) {
-	shelf, ok := m.craftShelf()
-	if !ok {
+	if m.commander == nil {
 		return
 	}
-	detail, found := shelf.CraftDetail(name)
+	detail, found := m.commander.CraftDetail(name)
 	if !found {
 		return
 	}

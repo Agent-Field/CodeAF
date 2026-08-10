@@ -17,11 +17,20 @@ import (
 	"github.com/muesli/termenv"
 )
 
+// The two shared bases every fake in this package is built on. A fake that
+// embeds one of these is a whole Backend or a whole Commander by construction,
+// so a method added to either interface lands in exactly one place and a test
+// that forgets it fails the build rather than losing a feature at runtime —
+// which is the point of the interface collapse (chat-rebuild Part 2 item 17,
+// Part 4.5). Streams rides Commander, so the third interface is covered too.
+var (
+	_ Backend   = (*fakeBackend)(nil)
+	_ Commander = (*fakeCommander)(nil)
+	_ Streams   = (*fakeCommander)(nil)
+)
+
 // fakeBackend is the whole Backend, once. Every other backend in this package
-// embeds it and overrides the handful of methods its own test is about, so a
-// method added to Backend lands here and nowhere else — and a fake that forgets
-// one fails the build rather than losing a feature at runtime, which is the
-// whole point of the interface collapse (chat-rebuild Part 2 item 17).
+// embeds it and overrides the handful of methods its own test is about.
 //
 // The defaults below are the honest empty answers a store with nothing in it
 // would give, with one deliberate exception noted on LatestEventSeq.
