@@ -12,6 +12,7 @@ import (
 	executor "github.com/Agent-Field/aforge-v2/internal/exec"
 	"github.com/Agent-Field/aforge-v2/internal/guard"
 	"github.com/Agent-Field/aforge-v2/internal/store"
+	"github.com/Agent-Field/aforge-v2/internal/thread"
 )
 
 const (
@@ -745,7 +746,7 @@ func (r *Runner) noteFault(node store.Node) {
 	if r.graph == nil {
 		return
 	}
-	_, _ = r.graph.PostMessage(store.Message{
+	_, _ = thread.Post(r.graph, store.Message{
 		SessionID: node.Provenance.SessionID,
 		Role:      store.RoleSystem,
 		NodeID:    node.ID,

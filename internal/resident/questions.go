@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/Agent-Field/aforge-v2/internal/store"
+	"github.com/Agent-Field/aforge-v2/internal/thread"
 )
 
 // compileAskWindow is how long a clarifying question about a request stays
@@ -236,7 +237,16 @@ func (r *Reconciler) rehomeOrphanedBlockingLocked() error {
 			continue
 		}
 		original := strings.TrimSpace(question.SessionID)
-		if original == "" || original == live {
+		// The live surface adopts an orphan; under owner-pinned rooms the task's
+		// own thread does, because a blocking question is part of its task's
+		// record and the room somebody happens to be sitting in is not. A
+		// question already home is left exactly where it is, which is what stops
+		// the pinned policy from moving anything at all in the ordinary case.
+		destination := live
+		if home, pinned := r.pinnedQuestionRoom(question); pinned {
+			destination = home
+		}
+		if original == "" || original == destination {
 			continue
 		}
 		// A second window that is still being used is not an orphan. If anything
@@ -250,12 +260,41 @@ func (r *Reconciler) rehomeOrphanedBlockingLocked() error {
 		if len(since) > 0 {
 			continue
 		}
-		if _, err := r.store.ResurfaceQuestion(question.Seq, live); err != nil &&
+		if _, err := r.store.ResurfaceQuestion(question.Seq, destination); err != nil &&
 			!errors.Is(err, store.ErrInvalid) {
 			return err
 		}
 	}
 	return nil
+}
+
+// pinnedQuestionRoom names the thread that commissioned a question, and answers
+// only under the owner-pinned policy. The second return is whether an owner was
+// found at all: a question with no node behind it — the compiler's "which
+// airport?", asked before any work exists — belongs to no task, so there is
+// nothing to pin it to and the legacy rescue stays the only thing that can make
+// it answerable again.
+//
+// The node read is a lookup by primary key, taken on the question-rescue sweep
+// for each unresolved blocking question that names a node — never on a delivery
+// or a per-node path, both of which already hold the node they are announcing.
+func (r *Reconciler) pinnedQuestionRoom(question store.AgentQuestion) (string, bool) {
+	if r.roomPolicy() != roomsOwnerPinned || r == nil || r.store == nil {
+		return "", false
+	}
+	nodeID := strings.TrimSpace(question.OriginNodeID)
+	if nodeID == "" {
+		return "", false
+	}
+	node, found, err := r.store.Node(nodeID)
+	if err != nil || !found {
+		return "", false
+	}
+	home := r.effectiveSessionID(node)
+	if home == "" {
+		return "", false
+	}
+	return home, true
 }
 
 func (r *Reconciler) expireQuestionsLocked() error {
@@ -305,7 +344,7 @@ func (r *Reconciler) sayTheRequestLapsed(question store.AgentQuestion, reason st
 	}
 	body := "That question lapsed unanswered (" + reason + "), so the request behind it never went ahead: " +
 		clipLabel(firstLine(question.Text), 160) + " — ask again whenever you want it."
-	_, err := r.store.PostMessage(store.Message{
+	_, err := thread.Post(r.store, store.Message{
 		SessionID: sessionID,
 		Role:      store.RoleSystem,
 		Body:      boundMessage(body),

@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/Agent-Field/aforge-v2/internal/store"
+	"github.com/Agent-Field/aforge-v2/internal/thread"
 )
 
 // "That's wrong" is the strongest quality signal a person ever emits, and it
@@ -202,7 +203,7 @@ func (h *Head) askWhatIsWrong(user store.Message, job store.Node, previous strin
 		body += " — " + summary
 	}
 	body += ". " + correctionAskTail
-	_, err := h.store.PostMessage(store.Message{
+	_, err := thread.Post(h.store, store.Message{
 		SessionID: user.SessionID,
 		Role:      store.RoleAgent,
 		Body:      body,

@@ -117,6 +117,13 @@ var OperatorEnvPins = []string{
 	// The subharness sets it on the children it spawns; a user who set it
 	// would simply lose their own program.
 	"AFORGE_SWEPRO",
+	// AFORGE_CHAT_V2 selects the chat surface being built beside the current
+	// one, and with it the resident's room-addressing policy. It is plumbing
+	// for the same reason AFORGE_SWEPRO is — it decides which program the
+	// binary is before anything reads a preference — and it is temporary
+	// besides: it disappears one wave after the new surface becomes the
+	// default, which is exactly the lifetime a persisted setting must not have.
+	"AFORGE_CHAT_V2",
 }
 
 // Defaults the registry owns beyond the ones config.go already declares.

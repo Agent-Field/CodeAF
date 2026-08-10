@@ -93,6 +93,18 @@ func migrateThreadSchema(db *sql.DB) error {
 		}
 	}
 
+	// An existing database's commands were all written by a person, and the
+	// empty default is exactly how the issuer axis says so.
+	hasIssuer, err := tableHasColumn(db, "commands", "issuer")
+	if err != nil {
+		return err
+	}
+	if !hasIssuer {
+		if _, err := db.Exec(`ALTER TABLE commands ADD COLUMN issuer TEXT NOT NULL DEFAULT ''`); err != nil {
+			return err
+		}
+	}
+
 	if err := addJSONColumn(db, "messages", "attachments"); err != nil {
 		return err
 	}
@@ -108,7 +120,8 @@ func migrateThreadSchema(db *sql.DB) error {
 		return nil
 	}
 	// The rebuild lifts the legacy kind CHECK so charter commands replay. The
-	// attachments column was added above, so it must survive the copy.
+	// attachments and issuer columns were added above, so they must survive the
+	// copy.
 	_, err = db.Exec(`
 		ALTER TABLE commands RENAME TO commands_legacy;
 		CREATE TABLE commands (
@@ -116,6 +129,7 @@ func migrateThreadSchema(db *sql.DB) error {
 		    ts          TEXT NOT NULL,
 		    session_id  TEXT NOT NULL DEFAULT '',
 		    kind        TEXT NOT NULL,
+		    issuer      TEXT NOT NULL DEFAULT '',
 		    reflex      INTEGER NOT NULL DEFAULT 0 CHECK (reflex IN (0, 1)),
 		    fresh       INTEGER NOT NULL DEFAULT 0 CHECK (fresh IN (0, 1)),
 		    target      TEXT NOT NULL DEFAULT '',
@@ -125,7 +139,7 @@ func migrateThreadSchema(db *sql.DB) error {
 		    result      TEXT NOT NULL DEFAULT '',
 		    updated_seq INTEGER NOT NULL
 		);
-		INSERT INTO commands SELECT seq, ts, session_id, kind, reflex, fresh, target,
+		INSERT INTO commands SELECT seq, ts, session_id, kind, issuer, reflex, fresh, target,
 		    instruction, attachments, status, result, updated_seq FROM commands_legacy;
 		DROP TABLE commands_legacy;
 		CREATE INDEX commands_status_seq ON commands (status, seq);

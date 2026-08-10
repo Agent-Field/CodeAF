@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/Agent-Field/aforge-v2/internal/store"
+	"github.com/Agent-Field/aforge-v2/internal/thread"
 )
 
 // redirectSteerPrefix marks the user's words in a worker's transcript. The
@@ -332,7 +333,7 @@ func BroadcastRedirection(graph *store.Store, jobRoot, sessionID, message string
 	}
 	informed := 0
 	for _, id := range redirectAudience(nodes, jobRoot) {
-		if _, err := graph.PostMessage(store.Message{
+		if _, err := thread.Post(graph, store.Message{
 			SessionID: sessionID, Role: store.RoleUser, NodeID: id,
 			Body: redirectSteerPrefix + strings.TrimSpace(message),
 		}); err != nil {
@@ -395,7 +396,7 @@ func (r *Reconciler) reportMissedDirection(node store.Node) error {
 	if !directionMissed(node.FinishedAt, arrived) {
 		return nil
 	}
-	_, err = r.store.PostMessage(store.Message{
+	_, err = thread.Post(r.store, store.Message{
 		SessionID: r.deliverySessionID(sessionID),
 		Role:      store.RoleAgent,
 		Body: "Your words reached " + surgeryLabel(node) +
