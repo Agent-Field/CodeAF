@@ -226,6 +226,54 @@ func TestRestartCarriesTheModelTheAskNamed(t *testing.T) {
 	}
 }
 
+// A restart that names a model moves the work, so the "ran by" half of the
+// split has to move with it: inheriting the dead attempt's answer would print a
+// receipt for a run that is not happening. Who planned the shape does not move —
+// nobody replanned anything.
+func TestRestartOnANewModelMovesWhoRanIt(t *testing.T) {
+	graph := openStore(t)
+	if err := graph.Splice(store.RootID, store.Subtree{Nodes: []store.NodeSpec{{
+		ID: "split-draft", Brief: "draft the essay", Title: "Essay draft", Stage: 1,
+	}}}, store.Provenance{
+		Origin: store.OriginUser, SessionID: "restart", Intent: "draft the essay",
+		PlanModel: "zai/glm-5-2", RunModel: "~deepseek/deepseek-v4-flash",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	claim, won, err := graph.Claim("split-draft", "worker")
+	if err != nil || !won {
+		t.Fatalf("claim won=%t err=%v", won, err)
+	}
+	if err := graph.Start(claim); err != nil {
+		t.Fatal(err)
+	}
+	if err := graph.Fail(claim, "thin"); err != nil {
+		t.Fatal(err)
+	}
+	command, err := graph.RequestCommand(store.Command{
+		SessionID: "restart", Kind: store.CommandRestart, Target: "split-draft",
+		Instruction: "rerun that with the better model\n\n" + RestartModelMarker + " " + RestartBoostModel,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	reconciler := New(graph, nil, nil).WithModelResolver(
+		func([]string, bool) (string, bool) { return "anthropic/claude-opus", true })
+	if err := reconciler.Tick(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	retry, found, err := graph.Node("retry-" + fmt.Sprint(command.Seq) + "-1")
+	if err != nil || !found {
+		t.Fatalf("retry: found=%t err=%v", found, err)
+	}
+	if retry.Provenance.RunModel != "anthropic/claude-opus" {
+		t.Fatalf("the receipt still names the dead attempt's model: %+v", retry.Provenance)
+	}
+	if retry.Provenance.PlanModel != "zai/glm-5-2" {
+		t.Fatalf("a restart rewrote who planned the work: %+v", retry.Provenance)
+	}
+}
+
 func TestRestartSaysSoWhenTheModelItWasAskedForIsNotThere(t *testing.T) {
 	graph := openStore(t)
 	failedJobToRestart(t, graph)
@@ -261,7 +309,8 @@ func TestRestartInheritsWhatItsPredecessorKnew(t *testing.T) {
 		ID: "failed-audit", Brief: "audit the service", Title: "Audit", Stage: 1,
 	}}}, store.Provenance{
 		Origin: store.OriginUser, SessionID: "restart", Intent: "audit the service",
-		WorkModel: "strong/two", Attachments: []string{"/docs/contract.pdf"},
+		WorkModel: "strong/two", PlanModel: "zai/glm-5-2", RunModel: "strong/two",
+		Attachments: []string{"/docs/contract.pdf"},
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -294,6 +343,11 @@ func TestRestartInheritsWhatItsPredecessorKnew(t *testing.T) {
 	}
 	if retry.Provenance.WorkModel != "strong/two" {
 		t.Fatalf("the pinned model was dropped on the retry: %+v", retry.Provenance)
+	}
+	// The split the predecessor was admitted under is part of what it was, and a
+	// retry nobody re-aimed runs under the same one.
+	if retry.Provenance.PlanModel != "zai/glm-5-2" || retry.Provenance.RunModel != "strong/two" {
+		t.Fatalf("the retry forgot the split: %+v", retry.Provenance)
 	}
 	if len(retry.Provenance.Attachments) != 1 {
 		t.Fatalf("attachments = %v", retry.Provenance.Attachments)

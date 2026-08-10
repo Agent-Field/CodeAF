@@ -273,6 +273,14 @@ type Provenance struct {
 	// inseparable from the model that drew it, and a slot moved an hour later
 	// must not be able to rewrite the answer to "who planned this".
 	PlanModel string `json:"plan_model,omitempty"`
+	// RunModel is the model this job's leaves were handed to work on, recorded
+	// only in the same breath as PlanModel — when the plan slot split from the
+	// work slot. It is what makes "planned by <model>" legible instead of
+	// alarming: a reader who is told who structured the job and never told who
+	// worked it concludes the wrong thing about both. It is deliberately not
+	// WorkModel: "the model you named" and "the model the work ran on" are two
+	// different claims, and only one of them is ever the user's.
+	RunModel string `json:"run_model,omitempty"`
 	// Craft names the learned workflow this subtree compiled from, as
 	// "name@commit". Empty is ordinary planned work. Every node of a craft run
 	// carries it: survival is measured per workflow version, so the version a
@@ -434,6 +442,7 @@ CREATE TABLE IF NOT EXISTS nodes (
 	service_intent INTEGER NOT NULL DEFAULT 0 CHECK (service_intent IN (0, 1)),
 	work_model     TEXT NOT NULL DEFAULT '',
 	plan_model     TEXT NOT NULL DEFAULT '',
+	run_model      TEXT NOT NULL DEFAULT '',
 	craft          TEXT NOT NULL DEFAULT '',
 	subharness     TEXT NOT NULL DEFAULT '',
 	splice_subharness TEXT NOT NULL DEFAULT '',

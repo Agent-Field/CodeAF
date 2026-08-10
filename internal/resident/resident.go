@@ -366,25 +366,31 @@ func (r *Reconciler) WithModelsInForce(models func() (plan, work string)) *Recon
 	return r
 }
 
-// splitPlanModel is the durable answer to "who structured this job", and it is
-// deliberately silent in the ordinary case. The plan slot follows the work slot
-// by default, so recording the same name twice would be a fact about nothing —
-// and a surface reading it back would announce a split that never happened. The
-// model the user pinned for the work outranks the slot, because that is the
-// model this job's leaves will actually run on.
-func (r *Reconciler) splitPlanModel(pinnedWork string) string {
+// splitModelSlots is the durable answer to "who structured this job and who
+// worked it", and it is deliberately silent in the ordinary case. The plan slot
+// follows the work slot by default, so recording the same name twice would be a
+// fact about nothing — and a surface reading it back would announce a split that
+// never happened. The model the user pinned for the work outranks the slot,
+// because that is the model this job's leaves will actually run on.
+//
+// The two names are returned together because they are one fact: a split. A
+// build that recorded only the planner taught every surface to say "planned by
+// <a model nobody recognizes>" and never who the work went to, which reads as an
+// accusation rather than a receipt. Either both names are worth recording or
+// neither is.
+func (r *Reconciler) splitModelSlots(pinnedWork string) (plan, run string) {
 	if r == nil || r.modelsInForce == nil {
-		return ""
+		return "", ""
 	}
 	plan, work := r.modelsInForce()
-	plan = strings.TrimSpace(plan)
+	plan, work = strings.TrimSpace(plan), strings.TrimSpace(work)
 	if pinned := strings.TrimSpace(pinnedWork); pinned != "" {
 		work = pinned
 	}
-	if plan == "" || strings.EqualFold(plan, strings.TrimSpace(work)) {
-		return ""
+	if plan == "" || strings.EqualFold(plan, work) {
+		return "", ""
 	}
-	return plan
+	return plan, work
 }
 
 // chosenSubharness is the one place the two sources of the choice meet.
@@ -1246,6 +1252,7 @@ func (r *Reconciler) splice(ctx context.Context, command store.Command) (command
 	subtree = r.wireContinuity(subtree, compiled.BuildsOn)
 	r.titleSubtree(ctx, &subtree, compiled)
 
+	planModel, runModel := r.splitModelSlots(compiled.WorkModel)
 	provenance := store.Provenance{
 		Origin:        store.OriginUser,
 		SessionID:     command.SessionID,
@@ -1253,7 +1260,8 @@ func (r *Reconciler) splice(ctx context.Context, command store.Command) (command
 		TrialOf:       compiled.TrialOf,
 		ServiceIntent: compiled.ServiceIntent,
 		WorkModel:     strings.TrimSpace(compiled.WorkModel),
-		PlanModel:     r.splitPlanModel(compiled.WorkModel),
+		PlanModel:     planModel,
+		RunModel:      runModel,
 		Attachments:   append([]string(nil), command.Attachments...),
 		Craft:         use.reference,
 		Subharness:    r.chosenSubharness(compiled),

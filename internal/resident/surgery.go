@@ -195,6 +195,7 @@ func (r *Reconciler) restart(command store.Command) (commandOutcome, error) {
 		RetryOf:       predecessor.ID,
 		WorkModel:     predecessor.Provenance.WorkModel,
 		PlanModel:     predecessor.Provenance.PlanModel,
+		RunModel:      predecessor.Provenance.RunModel,
 		Craft:         predecessor.Provenance.Craft,
 		TrialOf:       predecessor.Provenance.TrialOf,
 		ServiceIntent: predecessor.Provenance.ServiceIntent,
@@ -209,6 +210,11 @@ func (r *Reconciler) restart(command store.Command) (commandOutcome, error) {
 	provenance.WorkModel = model
 	if model == "" {
 		provenance.WorkModel = strings.TrimSpace(predecessor.Provenance.WorkModel)
+	} else if strings.TrimSpace(provenance.RunModel) != "" {
+		// "Who ran it" is a fact about this attempt, not the dead one. A restart
+		// that names a model moves the work; inheriting the predecessor's answer
+		// here would print a receipt for a run that is not happening.
+		provenance.RunModel = model
 	}
 	if err := r.store.Splice(parent, subtree, provenance); err != nil {
 		root, found, readErr := r.store.Node(remap[command.Target])

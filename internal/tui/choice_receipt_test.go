@@ -29,7 +29,22 @@ func TestChoiceReceiptSpeaksOnlyForChoices(t *testing.T) {
 		{"all three", jobCard{
 			Subharness: "swe", WorkModel: "moonshotai/kimi-k2", PlanModel: "anthropic/claude-opus-5"},
 			"swe · kimi-k2 · planned by claude-opus-5"},
-		{"whitespace is not a choice", jobCard{Subharness: "  ", WorkModel: " ", PlanModel: "\t"}, ""},
+		// The ordinary split: nobody pinned anything, the plan slot is its own
+		// model, and the line has to name the one that did the work first.
+		{"a split names who ran it and who planned it", jobCard{
+			RunModel: "~deepseek/deepseek-v4-flash", PlanModel: "zai/glm-5-2"},
+			"ran by deepseek-v4-flash · planned by glm-5-2"},
+		{"worker and a split", jobCard{
+			Subharness: "swe", RunModel: "~deepseek/deepseek-v4-flash", PlanModel: "zai/glm-5-2"},
+			"swe · ran by deepseek-v4-flash · planned by glm-5-2"},
+		{"a pinned model is not said twice", jobCard{
+			WorkModel: "moonshotai/kimi-k2", RunModel: "moonshotai/kimi-k2", PlanModel: "zai/glm-5-2"},
+			"kimi-k2 · planned by glm-5-2"},
+		{"a row from before the split was recorded", jobCard{PlanModel: "zai/glm-5-2"},
+			"planned by glm-5-2"},
+		{"nothing split, nothing to say", jobCard{RunModel: "~deepseek/deepseek-v4-flash"}, ""},
+		{"whitespace is not a choice", jobCard{
+			Subharness: "  ", WorkModel: " ", RunModel: " ", PlanModel: "\t"}, ""},
 	} {
 		t.Run(probe.name, func(t *testing.T) {
 			if got := cardChoiceReceipt(probe.card); got != probe.want {
@@ -214,6 +229,49 @@ func TestNodeDrillDownCarriesTheUntruncatedChoice(t *testing.T) {
 	model.inspectedNode = store.Node{ID: "chore", Brief: "Read the file", Status: store.Running}
 	if plain := ansi.Strip(model.renderNodeDetailsContent(100)); strings.Contains(plain, "planned by") {
 		t.Fatalf("an ordinary node spoke:\n%s", plain)
+	}
+}
+
+// The confusion this exists to end: a job that announced a planner nobody had
+// chosen and never said who did the work. When the store recorded a split, both
+// spellings name both models — and a row written before the run model was
+// recorded still says only what that build knew.
+func TestSplitSlotsNameTheModelThatRanTheWork(t *testing.T) {
+	split := store.Node{
+		ID: "job-leaf", Parent: "job", Brief: "Land the migration", Status: store.Running,
+		Provenance: store.Provenance{
+			RunModel: "~deepseek/deepseek-v4-flash", PlanModel: "zai/glm-5-2",
+		},
+	}
+	if got := nodeChoiceReceiptShort(split); got != "ran by deepseek-v4-flash · planned by glm-5-2" {
+		t.Fatalf("the sticky badge = %q", got)
+	}
+	if got := nodeChoiceReceipt(split); got != "ran by ~deepseek/deepseek-v4-flash · planned by zai/glm-5-2" {
+		t.Fatalf("the full receipt = %q", got)
+	}
+
+	legacy := split
+	legacy.Provenance.RunModel = ""
+	if got := nodeChoiceReceipt(legacy); got != "planned by zai/glm-5-2" {
+		t.Fatalf("an older row grew a fact it never had: %q", got)
+	}
+	if got := nodeChoiceReceiptShort(legacy); got != "planned by glm-5-2" {
+		t.Fatalf("an older row's badge = %q", got)
+	}
+
+	// The plan slot following the work slot is nearly every job, and it stays
+	// exactly as silent as it was.
+	follow := store.Node{ID: "chore", Brief: "Read the file", Status: store.Running}
+	if got := nodeChoiceReceipt(follow) + nodeChoiceReceiptShort(follow); got != "" {
+		t.Fatalf("an ordinary job spoke: %q", got)
+	}
+
+	model := New(&fakeBackend{}, "split-receipt")
+	model.setSize(110, 34)
+	model.inspectedNode = split
+	details := ansi.Strip(model.renderNodeDetailsContent(100))
+	if !strings.Contains(details, "ran by ~deepseek/deepseek-v4-flash · planned by zai/glm-5-2") {
+		t.Fatalf("the document lost the split:\n%s", details)
 	}
 }
 
