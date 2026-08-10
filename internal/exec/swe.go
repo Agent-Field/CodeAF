@@ -36,7 +36,7 @@ import (
 // The law it is written against is docs/SUBHARNESSES.md, "A swe leaf is an
 // ordinary node — the checklist". Control between events, steering drained at
 // the same boundary, milestones through Share, stage transitions through
-// Progress, the whole stream to .obs/<node>.trace.log, spend in Usage, and a
+// Progress, the whole stream to the node's flight recorder, spend in Usage, and a
 // verdict this executor sets itself because — alone among the workers — it owns
 // a verifier.
 type SWE struct {
@@ -151,20 +151,16 @@ func (s *SWE) Run(ctx context.Context, task Task) (*Outcome, error) {
 	defer trace.close()
 
 	directory := s.workspace.Root()
-	initialized, err := ensureGitRepository(runCtx, directory)
-	if err == nil {
-		// The leaf's spilled output and its own flight recorder both live in the
-		// workspace, and the engine audits the change set it finds there. It
-		// git-excludes its own sidecars; ours get the same treatment, or a
-		// 47,000-line trace of the run shows up in the diff and the auditor —
-		// correctly — refuses to ship it. Both directories are named because
-		// the recorder moved out of .obs and an exclusion that covered it by
-		// accident would stop covering it silently. info/exclude, never
-		// .gitignore: the repository's tracked files are the deliverable and are
-		// not ours to edit.
-		excludeFromGit(directory, obsDir+"/")
-		excludeFromGit(directory, traceDir+"/")
-	}
+	// The leaf's spilled output and its own flight recorder both live in the
+	// workspace, and the engine audits the change set it finds there. It
+	// git-excludes its own sidecars; ours get the same treatment, or a
+	// 47,000-line trace of the run shows up in the diff and the auditor —
+	// correctly — refuses to ship it. Both directories are named because the
+	// recorder moved out of .obs and an exclusion that covered it by accident
+	// would stop covering it silently. They are handed to the initializer
+	// rather than written after it, because the recorder is already open by now
+	// and an exclusion that arrives after the baseline commit excludes nothing.
+	initialized, err := ensureGitRepository(runCtx, directory, obsDir+"/", traceDir+"/")
 	if err != nil {
 		outcome.Stop = StopError
 		outcome.Text = err.Error()
@@ -761,14 +757,31 @@ func porcelainPath(line string) string {
 // excludeFromGit appends a pattern to the repository's local exclude file,
 // once. Local means .git/info/exclude: invisible to the diff, gone with the
 // clone, and never an edit to anything the repository tracks.
-func excludeFromGit(directory, pattern string) {
-	gitDir := filepath.Join(directory, ".git")
-	if info, err := os.Stat(gitDir); err != nil || !info.IsDir() {
-		// A worktree or an absent repository; a wrong write is worse than a
-		// visible trace, so do nothing.
+// excludeFromGit adds one pattern to the repository's untracked-file exclusions.
+//
+// The path comes from git rather than from string arithmetic. `.git` is a
+// directory in an ordinary clone and a file pointing elsewhere in a worktree,
+// and the previous version — which stat'd `.git` and refused anything that was
+// not a directory — therefore did nothing at all in a worktree, silently, on
+// the layout a person is most likely to hand a coding worker. `rev-parse
+// --git-path info/exclude` answers with the file git will actually read in
+// either layout, and answers with an error outside a repository, which is the
+// one case where doing nothing is still right.
+//
+// info/exclude, never .gitignore: the repository's tracked files are the
+// deliverable and are not ours to edit.
+func excludeFromGit(ctx context.Context, directory, pattern string) {
+	lines := gitLines(ctx, directory, "rev-parse", "--git-path", "info/exclude")
+	if len(lines) == 0 {
 		return
 	}
-	path := filepath.Join(gitDir, "info", "exclude")
+	path := strings.TrimSpace(lines[0])
+	if path == "" {
+		return
+	}
+	if !filepath.IsAbs(path) {
+		path = filepath.Join(directory, path)
+	}
 	if existing, err := os.ReadFile(path); err == nil {
 		for _, line := range strings.Split(string(existing), "\n") {
 			if strings.TrimSpace(line) == pattern {
@@ -787,14 +800,32 @@ func excludeFromGit(directory, pattern string) {
 	fmt.Fprintln(handle, pattern)
 }
 
-func ensureGitRepository(ctx context.Context, directory string) (bool, error) {
-	if gitQuiet(ctx, directory, "rev-parse", "--verify", "HEAD") == nil {
-		return false, nil
-	}
-	if gitQuiet(ctx, directory, "rev-parse", "--git-dir") != nil {
+// ensureGitRepository leaves the workspace as a repository with at least one
+// commit, and reports whether it had to make one.
+//
+// exclude names the harness's own directories, and it is applied here rather
+// than by the caller afterwards because of when the baseline is written. The
+// leaf's flight recorder is opened before this runs — it has to be, or the
+// repository work itself goes unrecorded — so by the time `add -A` sees the
+// workspace the trace file already exists. Excluding it afterwards is too late
+// twice over: it is in the baseline commit, and git will keep reporting its
+// modifications because exclusions only ever apply to untracked files. So the
+// patterns go in between the repository existing and anything being staged,
+// which is the one window where they do what they are for.
+func ensureGitRepository(ctx context.Context, directory string, exclude ...string) (bool, error) {
+	committed := gitQuiet(ctx, directory, "rev-parse", "--verify", "HEAD") == nil
+	if !committed && gitQuiet(ctx, directory, "rev-parse", "--git-dir") != nil {
 		if err := gitQuiet(ctx, directory, "init"); err != nil {
 			return false, fmt.Errorf("the swe worker needs a git repository and could not make one here: %w", err)
 		}
+	}
+	for _, pattern := range exclude {
+		excludeFromGit(ctx, directory, pattern)
+	}
+	if committed {
+		// An existing repository keeps its own history; it needed the
+		// exclusions above and nothing else.
+		return false, nil
 	}
 	if err := gitQuiet(ctx, directory, "add", "-A"); err != nil {
 		return false, fmt.Errorf("the swe worker could not stage the workspace: %w", err)

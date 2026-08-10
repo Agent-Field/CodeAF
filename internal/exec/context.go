@@ -8,13 +8,24 @@ import (
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 )
 
-// observationBudget is the floor on how many bytes of raw tool output the
-// transcript carries before older results start fading. Everything past it is
-// still referenced, just not quoted. These bound the window at both ends,
-// whatever observationWindow computes between them.
+// How many bytes of raw tool output the transcript may carry before older
+// results start fading. Everything past the window is still referenced, just
+// not quoted.
 const (
+	// observationBudget is the minimum the unknown-context default may fall to,
+	// and nothing else. It is deliberately not a floor under the computed
+	// window: when a model's context really is small, the honest answer is a
+	// small window, and clamping it upwards would size a prompt past what the
+	// model accepts in order to look generous.
 	observationBudget    = 24 << 10
 	maxObservationBudget = 256 << 10
+
+	// minObservationBudget is arithmetic protection rather than policy. Below
+	// it the fixed floor and the completion reserve have already eaten the
+	// model's whole context and this loop cannot run there at all; the window
+	// stops at a value the decay pass can still reason about instead of going
+	// to zero or negative.
+	minObservationBudget = 4 << 10
 
 	// defaultObservationBudget is the window a leaf carries when nothing can
 	// say how much context its model actually has.
@@ -25,16 +36,20 @@ const (
 	// request. At the default budget that arithmetic produced a 25KB window in
 	// front of a model holding hundreds of thousands of tokens, so a single
 	// 26KB subject did not fit in the memory meant to hold it and the leaf
-	// re-read what it had already been shown. Measured: the loop used under a
-	// tenth of the context available to it while paying for 12.5% of its
-	// observation bytes two and three times over.
+	// re-read what it had already been shown.
 	//
-	// 128KB is roughly 32k tokens of raw output. It fits inside the smallest
-	// context any model on the panel offers with the fixed floor, the brief,
-	// the reasoning and a completion reserve still comfortably clear, and it
-	// holds several whole documents at once, which is the case the old window
-	// could not serve at all.
-	defaultObservationBudget = 128 << 10
+	// The number is conservative on purpose, and that is the correction to the
+	// obvious first instinct. Not knowing a model's context length is not
+	// evidence that it is large: an offline catalog, an unrecognised slug and a
+	// row cached before the field was kept all look identical here, and a
+	// small-context model is exactly the kind that goes unrecognised. A
+	// generous default would be a silent regression for it — prompts sized past
+	// what it accepts, failing as provider rejections rather than as
+	// degradation. So the unknown case buys back a little room over the 25KB the
+	// spend ceiling used to give, and no more; the real win is claimed only when
+	// the catalog actually answers, which is the ordinary case on every surface
+	// that loads one.
+	defaultObservationBudget = 32 << 10
 
 	// observationBytesPerToken converts a context length into the byte budget
 	// this package actually measures. Four is the conservative direction for
@@ -65,19 +80,20 @@ const (
 // wrong by turn ten, and the failure would arrive as a provider rejection
 // rather than as degradation.
 //
-// contextTokens of zero means nobody could say — an offline catalog, a slug it
-// has never heard of, a row cached before the field was kept. That case takes
-// the default rather than a small number, because a window that is too small
-// costs re-reads on every run while a window that is merely generous costs
-// nothing until it is actually filled.
+// A known context always gets the formula's own answer, including when that
+// answer is small. Only the unknown case takes a default, and only the default
+// gets a floor under it — see observationBudget.
 func observationWindow(contextTokens int) int {
-	budget := defaultObservationBudget
-	if contextTokens > 0 {
-		usable := contextTokens/2 - observationFixedFloorTokens - observationCompletionReserve
-		budget = usable * observationBytesPerToken
+	if contextTokens <= 0 {
+		if defaultObservationBudget < observationBudget {
+			return observationBudget
+		}
+		return defaultObservationBudget
 	}
-	if budget < observationBudget {
-		return observationBudget
+	usable := contextTokens/2 - observationFixedFloorTokens - observationCompletionReserve
+	budget := usable * observationBytesPerToken
+	if budget < minObservationBudget {
+		return minObservationBudget
 	}
 	if budget > maxObservationBudget {
 		return maxObservationBudget
@@ -211,13 +227,62 @@ type decayer struct {
 	// same transcript every turn, and without it the same result would be
 	// re-spilled and re-stubbed each time.
 	spilled map[string]string
+	// preserved is the set of results whose bytes are already on disk before
+	// any decay pass has looked at them, and the path each one went to. Only
+	// the pointer mechanism puts anything here — see observations.preserve —
+	// and it is deliberately not the same map as spilled, which doubles as the
+	// already-stubbed detector: a result recorded there would never be stubbed
+	// at all.
+	//
+	// It carries an invariant the pointer mechanism depends on absolutely. A
+	// pointer written into the transcript is never revisited, so its target
+	// must still be readable at the end of the run as well as at the moment it
+	// was written. Preserving first and stubbing later is what makes that true
+	// regardless of what happens on the way: the retire pass below reads a
+	// preserved path instead of writing a fresh spill, so a disk that has
+	// filled up or a directory that has gone away between the two can no longer
+	// turn a live target into a pathless tombstone with pointers aimed at it.
+	preserved map[string]string
 	// inflow is what this leaf actually adds per turn, which is what decides
 	// how deep a firing pass has to reach. See decayHeadroomTurns.
 	inflow inflowMeter
 }
 
 func newDecayer(labels map[string]string, spill spillFunc) *decayer {
-	return &decayer{labels: labels, spill: spill, spilled: map[string]string{}}
+	return &decayer{labels: labels, spill: spill,
+		spilled: map[string]string{}, preserved: map[string]string{}}
+}
+
+// preserve writes a result's bytes to the workspace ahead of any decay, and
+// reports the path they can be read back from. It is idempotent by key: the
+// same result is written once however many times it repeats.
+//
+// ok=false means these bytes cannot be given a durable address, and the caller
+// must then treat them as unpointable rather than claiming a path that does not
+// exist.
+func (d *decayer) preserve(key, body string) (string, bool) {
+	if path := d.preserved[key]; path != "" {
+		return path, true
+	}
+	// Decay may already have written exactly these bytes under exactly this
+	// key, in which case the address exists and writing it again would only
+	// cost a syscall to produce the same file.
+	if path := d.spilled[key]; path != "" {
+		d.preserved[key] = path
+		return path, true
+	}
+	if d.spill == nil {
+		return "", false
+	}
+	path, ok := d.spill(key, body)
+	if !ok {
+		// Not recorded as a failure: a full disk now may not be a full disk in
+		// three turns, and the only cost of asking again is one write attempt
+		// on a body that has already repeated once.
+		return "", false
+	}
+	d.preserved[key] = path
+	return path, true
 }
 
 // observe records one turn's worth of new raw tool output. The loop calls it
@@ -347,14 +412,23 @@ func (d *decayer) retire(messages []ai.Message, budget, lowWater int) int {
 		}
 		// Preserve the bytes before shortening the message: decay must defer
 		// detail, never destroy it.
+		//
+		// A result the pointer mechanism already preserved is not written
+		// again, and its recorded path is used verbatim. That is not an
+		// optimisation: pointers elsewhere in the transcript already name that
+		// path and are never rewritten, so the stub replacing their target has
+		// to agree with them, and a fresh write here could fail and leave the
+		// target pathless with pointers still aimed at it.
 		d.spilled[key] = ""
-		if d.spill != nil {
-			if path, ok := d.spill(key, body); ok {
-				withPath := fmt.Sprintf("[%s — %d bytes, spilled to %s]", label, len(body), path)
-				if len(withPath) < len(body) {
-					stub = withPath
-					d.spilled[key] = path
-				}
+		path, kept := d.preserved[key]
+		if !kept && d.spill != nil {
+			path, kept = d.spill(key, body)
+		}
+		if kept {
+			withPath := fmt.Sprintf("[%s — %d bytes, spilled to %s]", label, len(body), path)
+			if len(withPath) < len(body) {
+				stub = withPath
+				d.spilled[key] = path
 			}
 		}
 		messages[index].Content = text(stub)
@@ -404,12 +478,27 @@ func contentOf(message ai.Message) string {
 // expensive part; it is the second and third copy of the same material riding
 // every remaining turn of the leaf.
 //
-// A pointer is only ever emitted at something the model can still reach. The
-// decay pass is running underneath this, retiring old results to spill files,
-// so the earlier copy may be live in the transcript, stubbed with its bytes on
-// disk, or stubbed with nowhere to point — and in that last case the bytes are
-// re-emitted in full, because a pointer to something unreachable is worse than
-// the material it was trying to save.
+// A pointer is only ever emitted at something the model can still reach, and
+// reachability is established before the pointer exists rather than checked as
+// it is written.
+//
+// The difference matters because a pointer, once in the transcript, is never
+// revisited — rewriting a message is exactly the cost this mechanism exists to
+// avoid. Checking at write time is therefore a check about the present tense
+// used to make a promise about the future: a target that is live when the
+// pointer is written can decay three turns later, and if the spill that decay
+// attempts happens to fail, the target becomes a pathless tombstone with
+// pointers already aimed at it and no way left to reach the bytes.
+//
+// So the first time a body repeats, the canonical copy is written to the
+// workspace before any pointer at it is emitted, and the decay pass reuses that
+// exact path when it later stubs the message. If that write cannot be made, no
+// pointer is emitted at all and the bytes are carried again — the saving is
+// forfeited, which is the cheap failure. The expensive one is a model sent to
+// read something that is not there.
+//
+// The cost is one file per body that actually repeats, written with the content
+// already in hand, and never a file for a body that only ever appears once.
 type observations struct {
 	fade *decayer
 	// first maps the hash of a body to the earliest copy of it still in play.
@@ -419,12 +508,14 @@ type observations struct {
 }
 
 // observationCopy is where one body's earliest copy lives: which turn produced
-// it, what the call was, and the decayer's key for the message holding it —
-// which is what makes the spill state readable from here.
+// it, what the call was, the decayer's key for the message holding it — which
+// is what makes the spill state readable from here — and the durable path its
+// bytes were written to before anything was allowed to point at them.
 type observationCopy struct {
 	turn  int
 	key   string
 	label string
+	path  string
 }
 
 func newObservations(fade *decayer) *observations {
@@ -452,6 +543,15 @@ func (o *observations) admit(turn int, call ai.ToolCall, result Result) string {
 	sum := sha256.Sum256([]byte(body))
 	hash := hex.EncodeToString(sum[:])
 	if earlier, repeated := o.first[hash]; repeated {
+		// The bytes in hand are the canonical copy's bytes — that is what the
+		// hash match means — so the durable copy can be written from here, now,
+		// without going back to whatever produced it.
+		if earlier.path == "" {
+			if path, ok := o.fade.preserve(earlier.key, body); ok {
+				earlier.path = path
+				o.first[hash] = earlier
+			}
+		}
 		// A pointer that is not shorter than what it replaces has saved
 		// nothing and cost the model a hop; the same discipline the decay
 		// stub applies to itself.
@@ -464,27 +564,25 @@ func (o *observations) admit(turn int, call ai.ToolCall, result Result) string {
 }
 
 // pointerTo names where the earlier copy of some bytes can be read, or reports
-// that it can no longer be read anywhere.
+// that no pointer may be emitted at it.
 //
-// The middle case is the one worth naming: an earlier copy that decay has
-// already stubbed still has its bytes on disk, and the stub in the transcript
-// names that file too — so a pointer written before the decay fired stays
-// followable through the stub that replaced its target. Pointers are never
-// rewritten to keep up, because rewriting a message is precisely the cost this
-// whole mechanism exists to avoid.
+// Every pointer names the durable path, whether or not the earlier copy is
+// still quoted in the transcript, and that redundancy is the point: the "above"
+// half of the sentence is true when it is written and may stop being true when
+// decay stubs the target, while the path half was made true before the pointer
+// existed and stays true for the rest of the run.
 func (o *observations) pointerTo(earlier observationCopy) (string, bool) {
-	path, stubbed := o.fade.spilled[earlier.key]
-	switch {
-	case !stubbed:
-		return fmt.Sprintf("[identical to the result of %s at turn %d — read it there rather than here]",
-			earlier.label, earlier.turn), true
-	case path != "":
-		return fmt.Sprintf("[identical to the result of %s at turn %d, whose bytes are in %s — read the part you need with sh]",
-			earlier.label, earlier.turn, path), true
+	if earlier.path == "" {
+		// Nothing durable behind those bytes, so nothing may point at them and
+		// this copy is carried in full instead.
+		return "", false
 	}
-	// Stubbed with no file behind it: those bytes are gone from everywhere the
-	// model can reach, so this copy becomes the one that is carried.
-	return "", false
+	if _, stubbed := o.fade.spilled[earlier.key]; !stubbed {
+		return fmt.Sprintf("[identical to the result of %s at turn %d — read it above, or from %s]",
+			earlier.label, earlier.turn, earlier.path), true
+	}
+	return fmt.Sprintf("[identical to the result of %s at turn %d, whose bytes are in %s — read the part you need with sh]",
+		earlier.label, earlier.turn, earlier.path), true
 }
 
 // callLabel is what a decayed result is remembered as. It names the tool and
