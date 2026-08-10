@@ -46,6 +46,11 @@ type StreamEvent struct {
 // the channel rather than merely failing to set it. It is also where a keyed,
 // per-room feed lands when rooms arrive; the Session field on StreamEvent is
 // already the key.
+//
+// The collapse widens nothing and narrows nothing here: whatever a turn's end
+// carries — the truncation law's finish_reason above all (chat-rebuild 12.5.2)
+// — rides StreamEvent, and adding it is a field on the struct rather than a
+// method on this interface. Nothing downstream has to re-negotiate the seam.
 type Streams interface {
 	StreamEvents() <-chan StreamEvent
 }

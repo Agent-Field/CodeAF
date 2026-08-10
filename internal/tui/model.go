@@ -165,6 +165,13 @@ type Backend interface {
 // Notebook with an empty slice, Settings with a nil registry, VoiceRecorder and
 // VoiceTranscriber with a nil recorder. Those are the answers a visitor
 // commander — one holding no head and no model clients — actually gives.
+//
+// Three methods here are named without being reached today, because each is the
+// unnarrowed form of a read the surface currently makes through its narrower
+// sibling: Catalog beside CatalogFor, NodeTrace beside NodeTraceSince,
+// ResolveMediaPath beside ResolveWorkspacePath. They were the fallbacks the
+// type assertions chose between, and they stay in the vocabulary rather than
+// being deleted out from under an implementation that still offers them.
 type Commander interface {
 	Streams
 
@@ -962,12 +969,10 @@ func (m *Model) adoptCommander(commander Commander) {
 		m.voiceRecorder = commander.VoiceRecorder()
 		m.voiceTranscriber = commander.VoiceTranscriber()
 		m.streamEvents = commander.StreamEvents()
-		// The registry is merely set, never cleared: a commander with no
-		// profile directory of its own has no opinion about the one already
-		// installed, and the settings sheet stays open on it.
-		if registry := commander.Settings(); registry != nil {
-			m.settingsRegistry = registry
-		}
+		// The registry is set from whoever holds the window now, exactly as the
+		// capability probe that used to stand here did: a commander answers it
+		// or it does not exist, and there is no third state to preserve.
+		m.settingsRegistry = commander.Settings()
 	} else {
 		m.voiceRecorder, m.voiceTranscriber = nil, nil
 		m.streamEvents = nil
@@ -1832,26 +1837,23 @@ func (m *Model) poll() tea.Cmd {
 		}
 		var journalSeq int64
 		var journalRead bool
-		{
-			seq, err := backend.LatestEventSeq()
-			if err == nil {
-				journalSeq, journalRead = seq, true
-				if !force && seq == knownSeq {
-					// The node pane's trace is tailed from the executor's file,
-					// not the journal, so it is read even on a quiet cycle. Its
-					// SQL — the node row and its messages — is journal-backed
-					// like everything else, so the watermark still speaks for it
-					// and the quiet path stays quiet with a node view open.
-					quiet := pollResultMsg{
-						quiet: true, journalSeq: seq, journalRead: true, sessionID: sessionID,
-						residency: residency, residencyRead: residencyRead, adopt: adopt,
-					}
-					if nodeID != "" && commander != nil {
-						quiet.nodeID = nodeID
-						quiet.nodeTrace, quiet.nodeTraceStamp, quiet.nodeTraceMoved = readTrace()
-					}
-					return quiet
+		if seq, err := backend.LatestEventSeq(); err == nil {
+			journalSeq, journalRead = seq, true
+			if !force && seq == knownSeq {
+				// The node pane's trace is tailed from the executor's file,
+				// not the journal, so it is read even on a quiet cycle. Its
+				// SQL — the node row and its messages — is journal-backed
+				// like everything else, so the watermark still speaks for it
+				// and the quiet path stays quiet with a node view open.
+				quiet := pollResultMsg{
+					quiet: true, journalSeq: seq, journalRead: true, sessionID: sessionID,
+					residency: residency, residencyRead: residencyRead, adopt: adopt,
 				}
+				if nodeID != "" && commander != nil {
+					quiet.nodeID = nodeID
+					quiet.nodeTrace, quiet.nodeTraceStamp, quiet.nodeTraceMoved = readTrace()
+				}
+				return quiet
 			}
 		}
 		messages, messagesErr := backend.Messages(sessionID, afterSeq, pollLimit)

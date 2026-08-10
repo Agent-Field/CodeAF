@@ -1073,11 +1073,18 @@ func firstNonEmptyString(values ...string) string {
 	return ""
 }
 
-// The surface's whole vocabulary, in one line. It used to take five, one per
+// The surface's whole vocabulary, in two lines. It used to take five, one per
 // capability shard, because internal/tui declared a small interface per method
 // and found this object behind each of them with a type assertion — and the
 // five were only the shards that had names. The collapse (chat-rebuild 4.5's
 // Backend/Commander/Streams) folded all of them into tui.Commander, so a
 // removed or renamed method is now a compile error here, in the package that
 // owns it, rather than a capability that quietly stops being offered.
-var _ tui.Commander = (*Commander)(nil)
+//
+// Streams is named separately although Commander embeds it: it is the seam the
+// assembly wave wires the live region to, and a window that has just lost the
+// resident role reaches for it alone.
+var (
+	_ tui.Commander = (*Commander)(nil)
+	_ tui.Streams   = (*Commander)(nil)
+)
