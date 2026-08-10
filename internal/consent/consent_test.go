@@ -1,4 +1,4 @@
-package main
+package consent
 
 import (
 	"context"
@@ -61,13 +61,13 @@ func consentSettings(threshold float64) config.Config {
 // front of them; now the last free moment carries a count and a price.
 func TestConsentGateAsksBeforeALargePlanSpendsAnything(t *testing.T) {
 	graph := consentGraph(t, 8, 0.75)
-	desk := newConsentDesk(graph)
+	desk := NewDesk(graph)
 	first, found, err := graph.Node(leafID(0))
 	if err != nil || !found {
 		t.Fatal(err)
 	}
 
-	if !desk.gate(consentSettings(3), &profile.Profile{}, first) {
+	if !desk.Gate(consentSettings(3), &profile.Profile{}, first) {
 		t.Fatal("an eight-step job at $0.75 a step started without asking")
 	}
 
@@ -95,7 +95,7 @@ func TestConsentGateAsksBeforeALargePlanSpendsAnything(t *testing.T) {
 	if !strings.Contains(question.Text, "8 steps") || !strings.Contains(question.Text, "$6.00") {
 		t.Fatalf("the question does not quote the count and the price: %q", question.Text)
 	}
-	if len(question.Options) != 2 || question.Options[0].Label != planConsentApprove {
+	if len(question.Options) != 2 || question.Options[0].Label != Approve {
 		t.Fatalf("options = %+v", question.Options)
 	}
 
@@ -105,7 +105,7 @@ func TestConsentGateAsksBeforeALargePlanSpendsAnything(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !desk.gate(consentSettings(3), &profile.Profile{}, second) {
+	if !desk.Gate(consentSettings(3), &profile.Profile{}, second) {
 		t.Fatal("a sibling ran while the price was still unanswered")
 	}
 	if questions, err := graph.QuestionsForNode("job", 10); err != nil || len(questions) != 1 {
@@ -121,7 +121,7 @@ func TestConsentGateStaysOutOfTheWayOfSmallWork(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if newConsentDesk(cheap).gate(consentSettings(3), &profile.Profile{}, first) {
+	if NewDesk(cheap).Gate(consentSettings(3), &profile.Profile{}, first) {
 		t.Fatal("a two-step job worth $0.40 was held for consent")
 	}
 	if questions, err := cheap.QuestionsForNode("job", 10); err != nil || len(questions) != 0 {
@@ -133,7 +133,7 @@ func TestConsentGateStaysOutOfTheWayOfSmallWork(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if newConsentDesk(unmeasured).gate(consentSettings(3), &profile.Profile{}, wide) {
+	if NewDesk(unmeasured).Gate(consentSettings(3), &profile.Profile{}, wide) {
 		t.Fatal("a job was held on an estimate nothing had measured")
 	}
 
@@ -143,7 +143,7 @@ func TestConsentGateStaysOutOfTheWayOfSmallWork(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if newConsentDesk(priced).gate(consentSettings(0), &profile.Profile{}, node) {
+	if NewDesk(priced).Gate(consentSettings(0), &profile.Profile{}, node) {
 		t.Fatal("a zero threshold still asked")
 	}
 }
@@ -153,12 +153,12 @@ func TestConsentGateStaysOutOfTheWayOfSmallWork(t *testing.T) {
 // made once — a job the user released by hand is never re-held.
 func TestConsentAnswerReleasesOrLeavesTheWorkHeld(t *testing.T) {
 	graph := consentGraph(t, 8, 0.75)
-	desk := newConsentDesk(graph)
+	desk := NewDesk(graph)
 	first, _, err := graph.Node(leafID(0))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !desk.gate(consentSettings(3), &profile.Profile{}, first) {
+	if !desk.Gate(consentSettings(3), &profile.Profile{}, first) {
 		t.Fatal("the gate did not fire")
 	}
 	questions, err := graph.QuestionsForNode("job", 10)
@@ -169,9 +169,9 @@ func TestConsentAnswerReleasesOrLeavesTheWorkHeld(t *testing.T) {
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	go desk.serve(ctx)
+	go desk.Serve(ctx)
 
-	if err := graph.ResolveQuestion(seq, store.QuestionAnswered, planConsentApprove); err != nil {
+	if err := graph.ResolveQuestion(seq, store.QuestionAnswered, Approve); err != nil {
 		t.Fatal(err)
 	}
 	deadline := time.Now().Add(5 * time.Second)
@@ -195,23 +195,23 @@ func TestConsentAnswerReleasesOrLeavesTheWorkHeld(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if desk.gate(consentSettings(3), &profile.Profile{}, second) {
+	if desk.Gate(consentSettings(3), &profile.Profile{}, second) {
 		t.Fatal("an approved job was held again")
 	}
 }
 
 func TestConsentHoldAnswerLeavesThePlanForTrimming(t *testing.T) {
 	graph := consentGraph(t, 8, 0.75)
-	desk := newConsentDesk(graph)
+	desk := NewDesk(graph)
 	first, _, err := graph.Node(leafID(0))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !desk.gate(consentSettings(3), &profile.Profile{}, first) {
+	if !desk.Gate(consentSettings(3), &profile.Profile{}, first) {
 		t.Fatal("the gate did not fire")
 	}
 	questions, _ := graph.QuestionsForNode("job", 10)
-	if err := graph.ResolveQuestion(questions[0].Seq, store.QuestionAnswered, planConsentHold); err != nil {
+	if err := graph.ResolveQuestion(questions[0].Seq, store.QuestionAnswered, Hold); err != nil {
 		t.Fatal(err)
 	}
 	desk.settle("job", mustQuestion(t, graph, questions[0].Seq))
@@ -223,7 +223,7 @@ func TestConsentHoldAnswerLeavesThePlanForTrimming(t *testing.T) {
 		t.Fatal("a job the user declined to start was released anyway")
 	}
 	// And it is never asked about again — the plan is theirs to cancel down.
-	if desk.gate(consentSettings(3), &profile.Profile{}, node) {
+	if desk.Gate(consentSettings(3), &profile.Profile{}, node) {
 		t.Fatal("a settled consent question re-held the job")
 	}
 }
@@ -236,18 +236,18 @@ func TestConsentRehydratesAfterARestart(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !newConsentDesk(graph).gate(consentSettings(3), &profile.Profile{}, first) {
+	if !NewDesk(graph).Gate(consentSettings(3), &profile.Profile{}, first) {
 		t.Fatal("the gate did not fire")
 	}
 	questions, _ := graph.QuestionsForNode("job", 10)
-	if err := graph.ResolveQuestion(questions[0].Seq, store.QuestionAnswered, planConsentApprove); err != nil {
+	if err := graph.ResolveQuestion(questions[0].Seq, store.QuestionAnswered, Approve); err != nil {
 		t.Fatal(err)
 	}
 
 	// A brand-new desk, as a relaunch would build: nothing in memory, the
 	// approval already recorded, the plan still held.
-	revived := newConsentDesk(graph)
-	revived.rehydrate()
+	revived := NewDesk(graph)
+	revived.Rehydrate()
 	node, _, err := graph.Node(leafID(0))
 	if err != nil {
 		t.Fatal(err)
