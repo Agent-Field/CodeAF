@@ -280,8 +280,14 @@ func newMessageBlock(message store.Message, style *tokens.Styler, board jobSourc
 		block.dressBrief(message)
 	case isDelivery(message):
 		block.dressDelivery(message, board)
-	case message.NodeID != "":
-		block.dressWork(message)
+	// A NODE UNDER A ROW DOES NOT MAKE THE ROW A JOB'S. A steer is a user message
+	// anchored to the worker it was aimed at (rooms.go's steerNode), and dressing
+	// it as work drew the reader's own sentence as a card titled with the node it
+	// was sent to, under a `$—` — "as if the user's sentence had a price"
+	// (13.8 finding 6). Who SPOKE is the role's answer and the node only says
+	// where; so a user's words are speech in every room they land in.
+	case message.NodeID != "" && message.Role != store.RoleUser:
+		block.dressWork(message, board)
 	case message.Role == store.RoleSystem && message.CommandSeq != 0:
 		block.dressCommission(message)
 	case message.Role == store.RoleSystem:
@@ -534,10 +540,24 @@ func (b *messageBlock) dressDelivery(message store.Message, board jobSource) {
 // read yet, so it renders as the missing-data glyph — 8.2.20's law is "missing
 // data renders —, never an estimate", and an absent money cell would be the
 // estimate zero.
-func (b *messageBlock) dressWork(message store.Message) {
+// THE TITLE IS THE JOB'S NAME AND NEVER ITS ID (5.14, 13.8 finding 6). It used
+// to be nodeLabel — the id's own last segment — so a narrator's progress line in
+// a real room was headed `job-wisp` while the card beside it said `wisp-parity`,
+// which is 5.14's never-shown tier on screen and two names for one thing on the
+// same frame. The board already answers this for the delivery card (13.10); it
+// answers for every other node-anchored row now, and falls back to the id's tail
+// only where the board has never heard of the node.
+func (b *messageBlock) dressWork(message store.Message, board jobSource) {
+	title := nodeLabel(message.NodeID)
+	if board != nil {
+		if facts, known := board.jobFacts(message.NodeID); known &&
+			strings.TrimSpace(facts.Name) != "" {
+			title = facts.Name
+		}
+	}
 	b.head = blocks.Header{
 		Glyph: workGlyph(message),
-		Title: nodeLabel(message.NodeID),
+		Title: title,
 		State: blocks.StateSettled,
 	}
 	// The identity pastel goes through the one header grammar now that Header
