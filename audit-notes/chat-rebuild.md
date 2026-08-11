@@ -4551,13 +4551,14 @@ compiler rule above is written so that it will widen the moment the join is
 honest, and this lane will re-measure on request. Nothing under `internal/plan`,
 `internal/exec` or `internal/resident` was touched.
 
-**State.** `internal/head` green. `make check` cannot be read on the shared tree
-right now: `internal/tui2/chat/scope.go` and `internal/tui2/palette` are another
-lane's in-flight edits and fail `vet` and the build, taking `cmd/aforge` with
-them; this lane's binaries were therefore built in a detached worktree at HEAD
-with only `internal/head` copied over. Outside that, the reds are the known
+**State.** `internal/head` green. The reds on the final pass are the known
 `internal/plan` `TestRenderTerrainStaysUnderTheCap` (CJK filename length) and
-`internal/swepro`, both pre-existing and out of scope.
+`internal/swepro`, both pre-existing and out of scope. For part of this lane
+`internal/tui2/chat/scope.go` and `internal/tui2/palette` were mid-edit in
+another lane and failed `vet` and the build, taking `cmd/aforge` with them; the
+measured binaries were therefore built in a detached worktree at HEAD with only
+`internal/head` copied over, and that breakage has since cleared. Nothing under
+`internal/tui2` was touched or committed by this lane.
 
 ### 13.10 Delivery-dressing lane: a finished job is a card, not its own transcript (3bf84c1)
 
