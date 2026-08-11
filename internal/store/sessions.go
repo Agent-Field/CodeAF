@@ -153,6 +153,105 @@ func applySessionOpened(tx *sql.Tx, payload sessionOpenedPayload, at time.Time) 
 	return err
 }
 
+// sessionRenamedPayload is a room taking a new title on the wire. There is no
+// time field for the same reason sessionOpenedPayload has none: the event's
+// own journal timestamp is available to any reader that wants "when", and a
+// rename does not need it anyway — applySessionRenamed deliberately does not
+// touch last_active_at, so the payload carries nothing that could disagree
+// with the envelope.
+type sessionRenamedPayload struct {
+	SessionID string `json:"session_id"`
+	Title     string `json:"title"`
+}
+
+// RenameSession retitles an existing room. It is the door OpenSession
+// deliberately is not: OpenSession refuses to re-title a room that already
+// exists, because a second birthday would be a false fact, but a person
+// renaming a tab is not claiming the room was just born — they are stating a
+// new name for something that already has one. Renaming a room that does not
+// exist is refused rather than minting it: a rename names an intent about an
+// existing place, and a caller with no room to rename has a bug, not a new
+// room to open.
+//
+// Renaming to the title the room already has journals nothing, the same
+// idempotence OpenSession gives a second open: two switchers racing to set
+// the identical name must not put two facts in the journal for one true
+// state, and a rebuild replaying the single event they agree on must land on
+// the same row either way.
+//
+// The projection write touches only the title. A rename is not activity —
+// nobody spoke, nothing happened in the room — so created_at and
+// last_active_at are exactly what they were before this call.
+func (s *Store) RenameSession(id, title string) (Session, error) {
+	id = strings.TrimSpace(id)
+	if id == "" {
+		return Session{}, fmt.Errorf("rename session: %w: empty id", ErrInvalid)
+	}
+	title = bounded(title, MaxSessionTitleBytes)
+
+	tx, err := s.db.Begin()
+	if err != nil {
+		return Session{}, fmt.Errorf("rename session: %w", err)
+	}
+	defer tx.Rollback()
+
+	existing, err := readSessionTx(tx, id)
+	if errors.Is(err, sql.ErrNoRows) {
+		return Session{}, fmt.Errorf("rename session: %w: %q", ErrNotFound, id)
+	}
+	if err != nil {
+		return Session{}, fmt.Errorf("rename session: %w", err)
+	}
+	if existing.Title == title {
+		return existing, nil
+	}
+
+	payload := sessionRenamedPayload{SessionID: id, Title: title}
+	// The room is not a node, the same shape OpenSession's mint uses.
+	_, _, err = appendEvent(tx, "", EventSessionRenamed, payload)
+	if err != nil {
+		return Session{}, fmt.Errorf("rename session: %w", err)
+	}
+	if err := applySessionRenamed(tx, payload); err != nil {
+		return Session{}, fmt.Errorf("rename session: %w", err)
+	}
+	renamed, err := readSessionTx(tx, id)
+	if err != nil {
+		return Session{}, fmt.Errorf("rename session: %w", err)
+	}
+	if err := tx.Commit(); err != nil {
+		return Session{}, fmt.Errorf("rename session: %w", err)
+	}
+	return renamed, nil
+}
+
+// applySessionRenamed is the projection write for a room's retitling. It
+// updates title alone: created_at and last_active_at are untouched, so a
+// rename can never be mistaken for the activity that a message or an open
+// records. It targets a row that must already exist — Rebuild replays every
+// event in journal order, and a rename can only follow the open or the
+// message that minted its room — so a missing row here is a corrupt journal
+// rather than a case to tolerate quietly.
+func applySessionRenamed(tx *sql.Tx, payload sessionRenamedPayload) error {
+	id := strings.TrimSpace(payload.SessionID)
+	if id == "" {
+		return fmt.Errorf("session renamed without an id")
+	}
+	result, err := tx.Exec(`UPDATE sessions SET title = ? WHERE id = ?`,
+		bounded(payload.Title, MaxSessionTitleBytes), id)
+	if err != nil {
+		return err
+	}
+	changed, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if changed != 1 {
+		return fmt.Errorf("session renamed but %q has no row", id)
+	}
+	return nil
+}
+
 // EnsureSession mints the row for a session the first time it is seen and
 // raises its activity mark, and is safe to call on every message. An empty id
 // is not a session: messages the machine posts to no room in particular carry

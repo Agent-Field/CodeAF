@@ -1,6 +1,7 @@
 package store
 
 import (
+	"errors"
 	"path/filepath"
 	"reflect"
 	"strings"
@@ -397,6 +398,189 @@ func TestEmptyRoomsSurviveARebuild(t *testing.T) {
 	}
 	if rebuilt != opened {
 		t.Fatalf("the rebuilt empty room is %+v, want %+v", rebuilt, opened)
+	}
+}
+
+// A rename is not a birthday and not activity: it changes the one field it
+// says it changes and leaves everything else — including the room's own
+// existence, which OpenSession refuses to grant twice — alone.
+func TestRenameSessionRetitlesWithoutTouchingBirthdayOrActivity(t *testing.T) {
+	s := openThreadStore(t)
+
+	opened, err := s.OpenSession("chat-1", "First name", "tui")
+	if err != nil {
+		t.Fatal(err)
+	}
+	renamed, err := s.RenameSession("chat-1", "Second name")
+	if err != nil {
+		t.Fatalf("rename: %v", err)
+	}
+	if renamed.Title != "Second name" {
+		t.Fatalf("title = %q, want %q", renamed.Title, "Second name")
+	}
+	if !renamed.Created.Equal(opened.Created) {
+		t.Fatalf("rename moved the birthday to %v, want %v", renamed.Created, opened.Created)
+	}
+	if !renamed.LastActive.Equal(opened.LastActive) {
+		t.Fatalf("rename moved the activity mark to %v, want %v — a rename is not activity",
+			renamed.LastActive, opened.LastActive)
+	}
+	read, _, err := s.Session("chat-1")
+	if err != nil || read != renamed {
+		t.Fatalf("read after rename = %+v (err %v), want %+v", read, err, renamed)
+	}
+
+	// Renaming works on a room a message minted too, and on a room with
+	// nothing said in it yet (open, no message, rename).
+	if _, err := s.PostMessage(Message{SessionID: "chat-2", Role: RoleUser, Body: "hi"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.RenameSession("chat-2", "Named later"); err != nil {
+		t.Fatalf("rename a message-born room: %v", err)
+	}
+	if _, err := s.OpenSession("chat-empty", "", "tui"); err != nil {
+		t.Fatal(err)
+	}
+	stillEmpty, err := s.RenameSession("chat-empty", "Named before anyone spoke")
+	if err != nil {
+		t.Fatalf("rename an empty room: %v", err)
+	}
+	messages, err := s.Messages("chat-empty", 0, 0)
+	if err != nil || len(messages) != 0 {
+		t.Fatalf("renaming said something in the room: %d messages (%v)", len(messages), err)
+	}
+	if stillEmpty.Title != "Named before anyone spoke" {
+		t.Fatalf("title = %q, want the rename to have landed", stillEmpty.Title)
+	}
+
+	if _, err := s.RenameSession("  ", "anything"); err == nil {
+		t.Fatal("renaming a nameless room should be refused")
+	}
+	if _, err := s.RenameSession("never-opened", "anything"); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("renaming a room that does not exist returned %v, want %v", err, ErrNotFound)
+	}
+}
+
+// RenameSession bounds an over-long title instead of refusing it, the same
+// promise OpenSession makes: what a person types into a rename box should
+// never fail to save.
+func TestRenameSessionBoundsAnOverLongTitle(t *testing.T) {
+	s := openThreadStore(t)
+	if _, err := s.OpenSession("chat-1", "short", "tui"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.RenameSession("chat-1", strings.Repeat("x", MaxSessionTitleBytes*2)); err != nil {
+		t.Fatalf("an over-long rename should be bounded, not refused: %v", err)
+	}
+	long, _, err := s.Session("chat-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(long.Title) > MaxSessionTitleBytes {
+		t.Fatalf("title is %d bytes, want at most %d", len(long.Title), MaxSessionTitleBytes)
+	}
+}
+
+// Renaming to the title a room already has is a no-op fact, not a new one:
+// two switchers racing to set the identical name must not both mint a
+// journal entry for one true state.
+func TestRenamingToTheSameTitleJournalsNothing(t *testing.T) {
+	s := openThreadStore(t)
+	opened, err := s.OpenSession("chat-1", "Same name", "tui")
+	if err != nil {
+		t.Fatal(err)
+	}
+	before := countEvents(t, s, EventSessionRenamed)
+
+	same, err := s.RenameSession("  chat-1  ", "Same name")
+	if err != nil {
+		t.Fatalf("rename to the same title: %v", err)
+	}
+	if same != opened {
+		t.Fatalf("renaming to the same title produced %+v, want the room as it stands %+v", same, opened)
+	}
+	if after := countEvents(t, s, EventSessionRenamed); after != before {
+		t.Fatalf("renaming to the same title journaled %d renames, want %d", after, before)
+	}
+}
+
+// Replay-compat for the rename event: an open-then-rename journal replays to
+// the renamed title, and a rename that landed before any message was ever
+// posted survives the same way an empty room does.
+func TestSessionRenameSurvivesARebuild(t *testing.T) {
+	s := openThreadStore(t)
+	if _, err := s.OpenSession("chat-1", "Original", "tui"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.RenameSession("chat-1", "Renamed"); err != nil {
+		t.Fatal(err)
+	}
+	// Rename-before-any-message: an empty room, renamed, still empty.
+	if _, err := s.OpenSession("chat-empty", "", "tui"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.RenameSession("chat-empty", "Named while empty"); err != nil {
+		t.Fatal(err)
+	}
+	beforeRebuild := readSessionRows(t, s)
+
+	if err := s.Rebuild(); err != nil {
+		t.Fatalf("rebuild: %v", err)
+	}
+	afterRebuild := readSessionRows(t, s)
+	if !reflect.DeepEqual(beforeRebuild, afterRebuild) {
+		t.Fatalf("a rebuild produced %v, want the identical rows %v", afterRebuild, beforeRebuild)
+	}
+
+	renamed, ok, err := s.Session("chat-1")
+	if err != nil || !ok {
+		t.Fatalf("read rebuilt room: %v (found %v)", err, ok)
+	}
+	if renamed.Title != "Renamed" {
+		t.Fatalf("rebuilt title = %q, want %q", renamed.Title, "Renamed")
+	}
+	stillEmpty, ok, err := s.Session("chat-empty")
+	if err != nil || !ok {
+		t.Fatalf("read rebuilt empty room: %v (found %v)", err, ok)
+	}
+	if stillEmpty.Title != "Named while empty" {
+		t.Fatalf("rebuilt empty-room title = %q, want %q", stillEmpty.Title, "Named while empty")
+	}
+	messages, err := s.Messages("chat-empty", 0, 0)
+	if err != nil || len(messages) != 0 {
+		t.Fatalf("the rebuilt empty room has %d messages (%v), want none", len(messages), err)
+	}
+}
+
+// Replay-compat: a journal written before session_renamed existed contains
+// only message_posted (and, after the sibling lane landed, session_opened)
+// events, and replays to the byte-identical sessions table it always
+// replayed to. Nothing this lane added may appear in, or change, an old
+// journal.
+func TestOldJournalsReplayToIdenticalSessionsAcrossRename(t *testing.T) {
+	s := openThreadStore(t)
+	if _, err := s.PostMessage(Message{SessionID: "chat-1", Role: RoleUser, Body: "review the PR"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.OpenSession("chat-2", "Opened, never renamed", "tui"); err != nil {
+		t.Fatal(err)
+	}
+
+	journalBefore := readEventRows(t, s)
+	if countEvents(t, s, EventSessionRenamed) != 0 {
+		t.Fatal("the fixture contains a session_renamed event; it is not a pre-rename journal")
+	}
+	sessionsBefore := readSessionRows(t, s)
+
+	if err := s.Rebuild(); err != nil {
+		t.Fatalf("rebuild: %v", err)
+	}
+	if journalAfter := readEventRows(t, s); !reflect.DeepEqual(journalBefore, journalAfter) {
+		t.Fatalf("the rebuild rewrote the journal:\n after %v\n want %v", journalAfter, journalBefore)
+	}
+	sessionsAfter := readSessionRows(t, s)
+	if !reflect.DeepEqual(sessionsBefore, sessionsAfter) {
+		t.Fatalf("a pre-rename journal replayed to %v, want the identical %v", sessionsAfter, sessionsBefore)
 	}
 }
 

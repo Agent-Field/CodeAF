@@ -126,7 +126,14 @@ const (
 	// empty conversation. It is a separate event rather than a flag on the
 	// first message because the two facts are separate: a room being opened,
 	// and something being said in it.
-	EventSessionOpened         EventKind = "session_opened"
+	EventSessionOpened EventKind = "session_opened"
+	// EventSessionRenamed is a room keeping its birthday and taking a new name.
+	// It is a separate event from EventSessionOpened for the same reason opening
+	// is separate from speaking: a room's title changing is not the room being
+	// born again, and folding the two into one mint-or-rename event would let a
+	// rename raise last_active — a retitle is not activity, and the projection
+	// write below is what keeps that true.
+	EventSessionRenamed        EventKind = "session_renamed"
 	EventSeenTouched           EventKind = "seen_touched"
 	EventAgentQuestionQueued   EventKind = "agent_question_queued"
 	EventAgentQuestionSurfaced EventKind = "agent_question_surfaced"

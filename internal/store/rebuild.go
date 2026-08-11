@@ -365,6 +365,17 @@ func replayEvent(tx *sql.Tx, event Event) error {
 		}
 		return applySessionOpened(tx, payload, event.Time)
 
+	case EventSessionRenamed:
+		// A room's title is journal-native the same way its birth is: Rebuild
+		// drops the sessions table above, so replay is the only thing that puts
+		// a rename back. It runs in journal order after whichever open or
+		// message minted the row, so the row it targets is always there.
+		var payload sessionRenamedPayload
+		if err := json.Unmarshal(event.Payload, &payload); err != nil {
+			return err
+		}
+		return applySessionRenamed(tx, payload)
+
 	case EventCommandRequested:
 		var payload commandPayload
 		if err := json.Unmarshal(event.Payload, &payload); err != nil {
