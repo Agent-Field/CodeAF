@@ -4702,3 +4702,109 @@ no card. Confirmed live in the same session: a fresh window reads
 `make check`: `vet` clean, every package green apart from the known non-blocker
 (`internal/plan` `TestRenderTerrainStaysUnderTheCap`, Linux-only CJK filename
 length, co-working territory — reported, not touched).
+
+### 13.11 Task-scope-tree lane: 5.15's tree, built and photographed (1a4b4aa)
+
+R4 and R1 closed at the source, not at the renderer. The rail already knew how
+to draw every line in this section — `shapeOf` grows a card under focus,
+`dotsLine` draws plan progress, `treeLine` puts a clock flush right of a member
+row, `waitsLine` names what a row sits behind. **It was never handed the data.**
+`internal/tui2/rail` needed no change of any kind; the whole lane is
+`chat/scope.go` plus its own test file.
+
+**The wireframe, row by row, against the read that fills it.**
+
+| 5.15's row | what fills it | where it comes from |
+|---|---|---|
+| `‹ ◐ wisp-parity ›` | the CARD, re-kinded as the surface (12.14) | `taskCard`, unchanged |
+| `✓ XhrSyn` | member row, glyph from `store.Status` | snapshot node |
+| `◐ H2      28m` | member row + elapsed flush right | `StartedAt`, or the longest clock under it |
+| ` ◐ H2Probe` (indented) | the parent edge | `children` map; depth is the walk's own |
+| `⚑ KeyCutter` / `waits on H2` | the waits-on edge, in names | `snapshot.Edges`, already computed |
+| `●◐⚑ 3/7` on a focused card | plan dots | the root's own children, in splice order |
+| per-worker rows on a focused card | the subtree's leaves, live before history | same walk |
+
+**Four decisions worth their line.**
+
+1. **Elapsed is for work that has not stopped.** 5.15 draws `◐ H2 28m` and
+   leaves `✓ XhrSyn` bare, and it is right to: a number beside a settled row
+   reads as a clock still running. A step with no clock of its own borrows the
+   longest one underneath it, because "this branch has been at it for 28m" is
+   the question that was being asked.
+2. **The join for idea 15 is the parent edge and nothing else.** A step is lit
+   while a node UNDER it is running — never a name match — and the lift only
+   ever moves a row out of QUEUED. Settled stays settled, held stays held,
+   failed stays failed; those are facts about the row, and this is a fact about
+   its subtree. `Claimed` does not light a row either: a claim is a worker
+   picking the work up, and the state axis may only brighten on work that moves.
+3. **The job's own parts sit at depth 0.** An indent everything shares says
+   nothing and costs two of a 28-column rail's columns. The indent now means one
+   thing — this worker belongs to that step — which is what makes the tree worth
+   the word.
+4. **In the room, the tree IS the card's expansion.** Row 0 keeps the `3/7`
+   (a summary that survives a fold) and drops the per-worker rows, or the room
+   would draw every part twice — 12.13's tripled name in the other axis.
+
+**What focus reveals, and what is always shown.** Always: the tree rows, their
+glyphs, their clocks, and `waits on <name>` under a blocked member — the room
+exists to make that structure visible, so nothing in it hides. On focus only:
+the home card's plan dots and its per-worker rows (5.9's progressive
+disclosure), where the ⚑ arrives per worker as the glyph. The names of what a
+worker waits on stay one room away, which is the same ladder 5.9 sets for
+everything else: card → focused card → room.
+
+**Two read gaps, filed on [Graph] rather than faked on a row** (8.2.20: a
+missing glyph is honest, an invented number is not). Per-worker MONEY: 5.9's
+focused card wants `NavCtx2 · K3 · $0.37 · 4.2% ctx · 5m`, and `TopLevelJobUsage`
+answers per JOB ROOT — what is needed is one read of the same shape keyed by
+node, for one subtree. Per-surface CONTEXT: 5.9 already records that executors
+must journal window high-water marks; until they do there is nothing to read, so
+no gauge is drawn anywhere on this rail. The model word is the same story one
+step further out — it belongs to the role binding, not to the snapshot.
+
+**13.8 finding 4's surface half, closed here.** The permanent spine is a node
+with `status='running'` that never finishes. The head has always filtered it
+(`beltAddressable`); the rail counted it, so one screen said "1 running ·
+Permanent Aforge spine · 1 part running" while the head said "nothing is running
+right now". It is plumbing (5.14, and `prompt.go` says so in the head's own
+words): `headStatus` and `taskRows` both skip `store.RootID` now. It also
+retires the room 12.14's screenshots kept landing in.
+
+**Verified live, in a pty, at `1a4b4aa`** — evidence under
+`uiverify/tree-shots/`, with `.txt` character grids beside every `.png`, driven
+through `harness/run_tree.py` and replayed with 13.8's SU/SD-aware
+`render_live`. Three runs:
+
+- `task-fanout/` and the first `task-tree/` run are the reason the third exists:
+  **today's planner compiles both of these to a single leaf.** "plan and run
+  this as two dependent steps, not one" and a three-way comparison with a
+  dependent final table each produced ONE node with no children (`nodes` table
+  in `tree-homes/*/graph.db`), so the head cannot currently produce a job with a
+  shape to draw. That is a producer finding, not a surface one, and it belongs
+  to the fan-out lane's territory.
+- `task-live/` and `task-lit/` splice a six-part job with a `blocks` edge
+  through the store's own path (`harness/seed_tree.go.txt`) and then let the
+  REAL resident claim and run it. Everything after the splice is the product.
+  `task-live/11-tree` is 5.15's wireframe on screen: `‹ ◐ wisp-parity ›`, the
+  hairline, `✓ XhrSyn`, `◐ H2  2s · 1 worker`, an indented `✓ H2Probe`,
+  `◐ T3Infra  4s`, `⚑ KeyCutter` and `waits on H2`. `02-card-focused` is 5.9's
+  card expanding in place at home. `31-narrow` is the same rows as a full-pane
+  list at 80 columns; `32-tight-rail` is the same tree in 28.
+- The lit join was caught against the journal rather than assumed:
+  `tree-shots/task-lit-db.log` polls the graph once a second beside the frames,
+  and at T+2/T+3 `job-wisp/h2` is `pending` while `job-wisp/h2/probe` is
+  `running`. The job root is `pending` for the whole run and the card is drawn
+  `◐ wisp-parity` throughout — before this change that card was `○`.
+
+**Two things seen while looking, both outside this lane.** The footer breadcrumb
+in an entered room reads `‹ untitled room ‹ wisp-parity ‹ wisp-parity` — the
+scope title and the main pane's title are the same word, printed twice, which is
+12.13.2's merge law asked of the footer instead of the rail. And at the time of
+writing **branch HEAD does not build**: `chat/app.go` at `0f5ec5e` calls
+`app.slashCommands`, `app.runSlash`, `shell.GrowComposer` and
+`composerPane.HintRows`, whose definitions are still untracked or unstaged in
+the shared tree (`chat/slash.go`, `composer/slash.go`, `shell.go`,
+`chat/composer.go`). Nothing was added on another lane's behalf; this lane's
+own tests were run in a detached worktree at its own commit, and again with the
+in-flight files copied in, where the only failure is that lane's own
+`TestTypingSlashSettingsOpensSettings`.
