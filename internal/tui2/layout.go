@@ -28,6 +28,29 @@ const (
 	zOverlay      = 10
 )
 
+// railSeam is the column between the transcript and the rail, and it belongs to
+// neither: no slot claims it, so nothing is ever drawn in it.
+//
+// It exists because the two panes were flush. A transcript line that ran the
+// full width put its last character against the rail's first cell, and a
+// selected rail row's background band started in the cell after a word — two
+// rooms with no wall between them, which reads as one room with a glitch. 5.13
+// asks for exactly this and asks for nothing more: "cards separated by
+// whitespace not boxes; hairline rules only at room boundaries (the current
+// TUI's heavy box-drawing recedes)", and 7.1 spends the same sentence on
+// borrowed box styles. A drawn divider here would be the box; a column of
+// ground is the wall.
+//
+// It is the same decision the floating dialog's margin makes (see the dialog
+// anatomy note below), and it is deliberately the same answer: this surface
+// separates rooms with space, in every place it separates them.
+//
+// It is a constant rather than a Metrics field because it is not responsive —
+// there is no width at which two panes should touch, and 10.5.24's table is for
+// numbers that CHANGE with the terminal. The rail keeps its full RailWidth; the
+// column comes out of the lens, which is the pane that can afford it.
+const railSeam = 1
+
 // slot is one pane's allotment. Rect is absolute, in cells, with Min at the
 // top-left; it is the only geometry in the surface.
 type slot struct {
@@ -100,7 +123,7 @@ func solveInto(slots []slot, w, h int, m Metrics, md mode) layout {
 	// cost more than it showed.
 	railW := 0
 	if !md.Linear && w >= m.RailBreakpoint && m.RailWidth > 0 && bodyH+composerH > 0 {
-		if w-m.RailWidth >= m.MinMainWidth {
+		if w-m.RailWidth-railSeam >= m.MinMainWidth {
 			railW = m.RailWidth
 		}
 	}
@@ -108,7 +131,11 @@ func solveInto(slots []slot, w, h int, m Metrics, md mode) layout {
 	// one row tall has no column to give the rail either, and scope has to be
 	// reachable the narrow way in both cases.
 	l.Narrow = railW == 0
-	mainW := w - railW
+	seamW := 0
+	if railW > 0 {
+		seamW = railSeam
+	}
+	mainW := w - railW - seamW
 
 	// In a narrow frame the scope map is not a column, it is the pane: the
 	// same rows, the same keys, the same selection, drawn where the transcript
@@ -125,8 +152,9 @@ func solveInto(slots []slot, w, h int, m Metrics, md mode) layout {
 	if railW > 0 {
 		// The rail stands beside the transcript and the composer both — it is
 		// the stable element and the main column is the lens, so it does not
-		// stop at the composer's top edge.
-		l.Slots = append(l.Slots, slot{ID: LayerRail, Rect: image.Rect(mainW, 0, w, bodyH+composerH), Z: zBase})
+		// stop at the composer's top edge. It starts one column further right
+		// than the transcript ends: see railSeam.
+		l.Slots = append(l.Slots, slot{ID: LayerRail, Rect: image.Rect(mainW+seamW, 0, w, bodyH+composerH), Z: zBase})
 	}
 	if composerH > 0 && mainW > 0 {
 		l.Slots = append(l.Slots, slot{ID: LayerComposer, Rect: image.Rect(0, bodyH, mainW, bodyH+composerH), Z: zBase})
