@@ -51,6 +51,11 @@ type Dispatch struct {
 	// the way the user wrote it, and stripping the word would make the sent
 	// message and the echo row disagree about what was said.
 	Text string
+	// Attachments are the files the draft captured (attach.go), if any. They
+	// ride the dispatch rather than being dropped for it: a person who drags a
+	// screenshot into an addressed draft is showing it to the task they
+	// addressed, and a routing decision is not a reason to lose the picture.
+	Attachments []Attachment
 }
 
 // submit is the send path for both chords. OnDispatch fires only for a draft
@@ -64,20 +69,34 @@ type Dispatch struct {
 // still share this one door.
 func (m *Model) submit(follow bool) tea.Cmd {
 	trimmed := strings.TrimSpace(string(m.value))
-	if trimmed == "" {
+	// An attachment IS speech. A draft with no words but a captured file sends;
+	// a draft with neither still does not, which is the blank-enter rule
+	// unchanged for every composer that never adopted attachments.
+	if trimmed == "" && len(m.attachments) == 0 {
 		return nil
 	}
-	if mn, ok := m.firstMention(); ok && m.onDispatch != nil {
+	attachments := append([]Attachment(nil), m.attachments...)
+	mn, addressed := m.firstMention()
+	switch {
+	case addressed && m.onDispatch != nil:
 		m.onDispatch(Dispatch{
-			TargetID: mn.target.ID,
-			Settled:  mn.target.Settled,
-			Follow:   follow,
-			Text:     trimmed,
+			TargetID:    mn.target.ID,
+			Settled:     mn.target.Settled,
+			Follow:      follow,
+			Text:        trimmed,
+			Attachments: attachments,
 		})
-	} else if m.onSubmit != nil {
+	case len(attachments) > 0 && m.onSend != nil:
+		m.onSend(Send{Text: trimmed, Attachments: attachments})
+	case m.onSubmit != nil:
 		m.onSubmit(trimmed)
 	}
-	m.remember(trimmed)
+	// The ring holds words. A send that carried only a file typed nothing to
+	// recall, and an empty entry in the ring would be an ↑ that appears to do
+	// nothing (history.go refuses it anyway; this states why).
+	if trimmed != "" {
+		m.remember(trimmed)
+	}
 	m.reset()
 	return nil
 }

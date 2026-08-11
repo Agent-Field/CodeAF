@@ -1,6 +1,8 @@
 package composer
 
 import (
+	tea "charm.land/bubbletea/v2"
+
 	"github.com/Agent-Field/aforge-v2/internal/tui2/tokens"
 )
 
@@ -72,6 +74,44 @@ type Options struct {
 	// whether the send asked to follow, and the text. Everything downstream of
 	// that is the wiring's.
 	OnDispatch func(Dispatch)
+
+	// Attach decides whether one shell-shaped token in the draft names a file
+	// that may ride along, and describes it (see attach.go). It is called on
+	// every edit, once per token, so it should be cheap and it must not block.
+	//
+	// A nil Attach is the whole opt-out, exactly as a nil Targets is for the `@`
+	// grammar: no token is ever captured, no chip is ever drawn, and the bytes
+	// this package renders are what they were before attachments existed. The
+	// composer never touches the filesystem itself — this is the only door
+	// through which a path becomes an attachment.
+	Attach func(token string) (Attachment, bool)
+
+	// Commands supplies the ONE command catalog the `/` line filters (5.22 rule
+	// 3: "a slash command is never a separate implementation; it's a text-shaped
+	// view of the registry"). It is called when a line opens and never per
+	// keystroke, so a snapshot is enough; the wiring already holds one.
+	//
+	// A nil Commands is the whole opt-out, on the same rule as Targets: no line
+	// ever opens, no row is ever drawn, and a '/' is the ordinary character it
+	// always was.
+	Commands func() []Command
+
+	// OnCommand performs the completed row. The composer never decides what a
+	// command MEANS — it hands back the id it was given and clears the draft,
+	// and the wiring routes that id to the same executor its palette and its `?`
+	// sheet already use. That is what makes the slash surface a view of the
+	// catalog rather than a second copy of it.
+	OnCommand func(id string) tea.Cmd
+
+	// OnSend is called INSTEAD of OnSubmit when the sent draft carries
+	// attachments, on the same additive rule OnDispatch follows: a composer with
+	// a nil OnSend can never hold an attachment either (Attach is what captures
+	// them), so wiring cannot half-adopt this into a state where a send is lost.
+	//
+	// [Send.Text] may be empty. A person who attaches a file and presses enter
+	// has sent something, and the body for that message is the wiring's to write
+	// — it is the half that knows what a picture is.
+	OnSend func(Send)
 }
 
 // Model is the composer. The zero value is not meaningful; construct one
@@ -79,7 +119,11 @@ type Options struct {
 type Model struct {
 	onSubmit    func(string)
 	onDispatch  func(Dispatch)
+	onSend      func(Send)
 	targets     func() []Target
+	commands    func() []Command
+	onCommand   func(string) tea.Cmd
+	attach      func(string) (Attachment, bool)
 	styler      *tokens.Styler
 	sendKey     string
 	newlineKeys []string
@@ -97,6 +141,18 @@ type Model struct {
 	mentions []mention
 	// filter is the open inline `@` session, if any (see filter.go).
 	filter mentionFilter
+
+	// slash is the open `/` line, if any (slash.go). It is a sibling of filter
+	// rather than a mode of it: the two grammars are independent, only one can be
+	// open at a time by construction (a draft that begins with `/` has no word
+	// boundary for an `@` to open at), and neither knows the other exists.
+	slash slashFilter
+	// attachments are the files the draft has captured (see attach.go). Unlike
+	// mentions they are HELD rather than derived, because capture takes the
+	// token out of the text: there is nothing left in the draft to derive them
+	// from, which is exactly what makes them objects the send carries rather
+	// than words the send says.
+	attachments []Attachment
 }
 
 // New builds a composer from opts. It never fails: a missing OnSubmit means
@@ -119,7 +175,11 @@ func New(opts Options) *Model {
 	return &Model{
 		onSubmit:    opts.OnSubmit,
 		onDispatch:  opts.OnDispatch,
+		onSend:      opts.OnSend,
 		targets:     opts.Targets,
+		commands:    opts.Commands,
+		onCommand:   opts.OnCommand,
+		attach:      opts.Attach,
 		styler:      opts.Styler,
 		sendKey:     sendKey,
 		newlineKeys: newlineKeys,

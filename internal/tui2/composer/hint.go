@@ -63,18 +63,38 @@ const (
 // guarantee: no targets, no extra rows, no arithmetic done differently, so
 // Render's output is what it was before this file existed.
 func (m *Model) hintRows(sty *tokens.Styler, width, budget int) []string {
-	if budget <= 0 || width <= 0 || m.targets == nil {
+	if budget <= 0 || width <= 0 {
 		return nil
 	}
+	// Attachment chips sit closest to the draft and stay there. They are the
+	// only chrome here that describes what the SEND will carry rather than what
+	// the cursor is doing, so they are the one row that must not move when a
+	// filter opens under them — a chip that jumped a row every time an '@' was
+	// typed would be 5.21's dancing, in the small.
+	rows := m.attachRows(sty, width, budget)
+	budget -= len(rows)
+	if budget <= 0 {
+		return rows
+	}
+	// The slash line, checked before the `@` opt-out because the two grammars
+	// are independent: a wiring may supply commands and no mention targets, and
+	// a composer with neither renders exactly the bytes it rendered before
+	// either existed.
+	if m.slash.open {
+		return append(rows, m.slashRows(sty, width, budget)...)
+	}
+	if m.targets == nil {
+		return rows
+	}
 	if m.filter.open {
-		return m.filterRows(sty, width, budget)
+		return append(rows, m.filterRows(sty, width, budget)...)
 	}
 	if mn, ok := m.firstMention(); ok {
 		if row := m.chipRow(sty, mn.target, width); row != "" {
-			return []string{row}
+			rows = append(rows, row)
 		}
 	}
-	return nil
+	return rows
 }
 
 // -- the candidate list -------------------------------------------------------
@@ -293,6 +313,45 @@ func (l *hintLine) addClipped(text string, tok tokens.Token) {
 	l.b.WriteString(paint(l.sty, text, tok))
 	l.w += ansi.StringWidth(text)
 }
+
+// pad advances the line by n blank cells. It is how a right-aligned cell finds
+// its edge without a second pass over the row.
+func (l *hintLine) pad(n int) {
+	if n <= 0 {
+		return
+	}
+	if n > l.room() {
+		n = l.room()
+	}
+	l.b.WriteString(strings.Repeat(" ", n))
+	l.w += n
+}
+
+// addClippedWithin is addClipped against a budget SMALLER than the room left,
+// so a cell reserved further right survives. Passing the budget rather than
+// letting the caller truncate first is what keeps the ellipsis decision in the
+// one place that knows the width rules.
+func (l *hintLine) addClippedWithin(text string, tok tokens.Token, budget int) {
+	if budget <= 0 || text == "" {
+		return
+	}
+	if budget > l.room() {
+		budget = l.room()
+	}
+	if ansi.StringWidth(text) > budget {
+		text = ansi.Truncate(text, budget, "…")
+		if text == "" {
+			return
+		}
+	}
+	l.b.WriteString(paint(l.sty, text, tok))
+	l.w += ansi.StringWidth(text)
+}
+
+// displayWidth is the printable width of a plain string, named here so the
+// slash line does not reach past this file for the measure its rows are fitted
+// against.
+func displayWidth(s string) int { return ansi.StringWidth(s) }
 
 // addMatched appends text with the bytes at pos painted one tier brighter than
 // base — the fzf highlight of 5.18/5.21, and the reason a user watching the
