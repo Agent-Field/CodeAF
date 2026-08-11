@@ -80,11 +80,25 @@ record 'user turns / agent+system replies' "$users / $agents"
 # bare stream cursor is silence wearing a message id — the exact sin the law
 # names. One live cursor is a reply in flight; a screen full of them is not.
 snap final-thread
-cursors="$(pane | grep -c '^[[:space:]]*▌[[:space:]]*$')"
-record 'thread rows that are a bare stream cursor with no words' "$cursors"
-[ "${cursors:-0}" -le 1 ] \
-  && _check yes 'agent messages render their words, not an empty stream cursor' 'at most one live cursor on screen' "$cursors" \
-  || _check no 'agent messages render their words, not an empty stream cursor' 'at most one live cursor on screen' "$cursors bare cursors — journaled replies are drawing blank"
+if is_v2; then
+  # v2 draws no stream cursor at all: a turn in flight is a titled block
+  # ("aforge", poll.go:588) with an awaiting line beneath it, so counting bare
+  # ▌ rows would be a check that can only pass and would say nothing. The law
+  # is the same law, so v2 measures it where v2 can be caught: a journaled
+  # agent message whose body is empty IS silence wearing a message id,
+  # whatever the surface does with it.
+  blanks="$(journal "select count(*) from messages where role in ('agent','system') and trim(body) = ''")"
+  record 'journaled agent messages with an empty body' "${blanks:-0}"
+  [ "${blanks:-0}" = "0" ] \
+    && _check yes 'agent messages carry words, not an empty message id' 'no agent message with an empty body' "${blanks:-0}" \
+    || _check no 'agent messages carry words, not an empty message id' 'no agent message with an empty body' "$blanks empty bodies — journaled replies that said nothing"
+else
+  cursors="$(pane | grep -c '^[[:space:]]*▌[[:space:]]*$')"
+  record 'thread rows that are a bare stream cursor with no words' "$cursors"
+  [ "${cursors:-0}" -le 1 ] \
+    && _check yes 'agent messages render their words, not an empty stream cursor' 'at most one live cursor on screen' "$cursors" \
+    || _check no 'agent messages render their words, not an empty stream cursor' 'at most one live cursor on screen' "$cursors bare cursors — journaled replies are drawing blank"
+fi
 
 {
   echo
