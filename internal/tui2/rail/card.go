@@ -88,7 +88,7 @@ func (v *View) shapeOf(r Row, sel bool) rowShape {
 func (v *View) appendRow(r Row, sel bool, width, limit int, band tokens.Token, banded bool, ident tokens.Token) {
 	s := v.shapeOf(r, sel)
 	banded = banded && sel
-	indent := gutterFor(width) + r.Depth*indentStep
+	indent := gutterFor(width) + v.leadWidth() + r.Depth*indentStep
 	sub := indent + indentStep
 
 	switch r.Kind {
@@ -130,6 +130,13 @@ func (v *View) cardLine(r Row, width, indent int, sel, banded bool, band, ident 
 	l := &v.line
 	l.reset(width)
 	v.gutter(l, sel, banded, ident)
+	// The scope header's ‹ , when this row has absorbed it (renderMap). It sits
+	// between the gutter and the glyph so the row still reads left to right as
+	// "out of here · what this is · what it is called", and the indent it takes
+	// was already budgeted by [View.leadWidth] so the lines under it line up.
+	if v.lead != "" && l.room() > 0 {
+		l.add(v.lead, tokens.TextTertiary)
+	}
 	l.padTo(indent)
 	v.addGlyph(l, r, ident)
 
@@ -452,6 +459,16 @@ func fitMeta(cells []metaCell, room int) int {
 		cells[n-1].text = strings.TrimLeft(cells[n-1].text, " ")
 	}
 	return n
+}
+
+// leadWidth is what the merged scope header costs the row it rides on: the ‹
+// and the space after it. Zero when there is no lead, which is every row but
+// one and every scope that gave its surface a word of its own.
+func (v *View) leadWidth() int {
+	if v.lead == "" {
+		return 0
+	}
+	return blocks.Width(v.lead) + 1
 }
 
 // gutterFor is the left column's width at a given row width. Below

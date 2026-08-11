@@ -782,3 +782,115 @@ func assertLines(t *testing.T, got, want []string) {
 		}
 	}
 }
+
+// atomicRoom is the shape a pty screenshot caught: an entered room whose source
+// has ONE word for the scope and for its surface row. chat's taskScope names row
+// 0 after the task, the homes package names row 0 after the home, and
+// Scope.normalize fills the name in from the title when a source leaves it
+// empty — so this is not one source's habit, it is the shape the rail has to
+// render well.
+func atomicRoom() *fakeSource {
+	const room = "Permanent Aforge spine"
+	f := &fakeSource{scopes: map[string]Scope{
+		HomeScopeID: {ID: HomeScopeID, Title: "aforge", Rows: []Row{
+			{ID: "home", Kind: RowSurface, Name: "aforge", Composer: ComposerChat},
+			{ID: "task", Kind: RowTask, Name: room, Life: LifeWorking, Seed: "task"},
+		}},
+		"task": {ID: "task", Title: room, Seed: "task", Rows: []Row{
+			{
+				ID: "task", Kind: RowSurface, Name: room,
+				Status: "1 part running", Life: LifeWorking,
+				Composer: ComposerSteer, Seed: "task",
+			},
+		}},
+	}}
+	return f
+}
+
+func enteredAtomic(t *testing.T) *Model {
+	t.Helper()
+	m := New(atomicRoom())
+	if _, ok := m.SelectID("task"); !ok {
+		t.Fatal("the task is missing from the scene")
+	}
+	if ev := m.Enter(); ev.Kind != EventScopeEntered {
+		t.Fatalf("enter = %+v", ev)
+	}
+	return m
+}
+
+// THE DEFECT: an entered room said its own name three times — scope header, row
+// 0, and the detail card in the main pane. 5.15's wireframe says the header and
+// row 0 are for two different things ("‹ wisp-parity" names the ROOM, "●
+// orchestrator" says what row 0 IS), and when a source has only one word for
+// both the rail draws one row rather than the word twice.
+func TestAnEnteredRoomSaysItsNameOnce(t *testing.T) {
+	const room = "Permanent Aforge spine"
+	for _, mode := range []Mode{ModeRail, ModeList} {
+		lines := copyOf(plainView().Render(enteredAtomic(t), mode, 40, 20))
+		if n := countLinesContaining(lines, room); n != 1 {
+			t.Fatalf("%s: the room named itself %d times, want once:\n%s",
+				mode, n, strings.Join(lines, "\n"))
+		}
+		// Every affordance the merge absorbed is still on the row it merged into.
+		first := lines[0]
+		for _, want := range []string{
+			tokens.GlyphScopeUp,     // the way out is still clickable (5.15)
+			tokens.GlyphWorking,     // the lifecycle glyph (5.17)
+			room,                    // the room, named once
+			tokens.GlyphPromptSteer, // 5.11's composer mark, still promised
+		} {
+			if !strings.Contains(first, want) {
+				t.Fatalf("%s: the merged row lost %q: %q", mode, want, first)
+			}
+		}
+		// And the surface row's own lines survive under it.
+		if len(lines) < 2 || !strings.Contains(lines[1], "1 part running") {
+			t.Fatalf("%s: the surface row lost its status line:\n%s", mode, strings.Join(lines, "\n"))
+		}
+	}
+}
+
+// The merge fires ONLY on the collision. A room whose source gave row 0 a word
+// of its own gets 5.15's wireframe exactly: the header names the room, row 0
+// says what it is, and both keep their line.
+func TestAScopeWithItsOwnSurfaceWordKeepsBothLines(t *testing.T) {
+	lines := copyOf(plainView().Render(entered(t), ModeRail, 28, 24))
+	if len(lines) < 2 {
+		t.Fatalf("task scope rendered %d lines", len(lines))
+	}
+	if !strings.HasPrefix(strings.TrimSpace(lines[0]), tokens.GlyphScopeUp) {
+		t.Fatalf("the scope header is gone: %q", lines[0])
+	}
+	if !strings.Contains(lines[0], "wisp-parity") {
+		t.Fatalf("the header stopped naming the room: %q", lines[0])
+	}
+	if !strings.Contains(lines[1], "orchestrator") {
+		t.Fatalf("row 0 stopped saying what it is: %q", lines[1])
+	}
+	if strings.Contains(lines[1], tokens.GlyphScopeUp) {
+		t.Fatalf("row 0 absorbed a header it did not collide with: %q", lines[1])
+	}
+}
+
+// Home has no header to merge, so nothing changes there: row 0 is the only
+// place the word `aforge` can live and it keeps it.
+func TestHomeIsUntouchedByTheMerge(t *testing.T) {
+	lines := copyOf(plainView().Render(New(atomicRoom()), ModeRail, 40, 20))
+	if strings.Contains(strings.Join(lines, "\n"), tokens.GlyphScopeUp) {
+		t.Fatalf("home drew a scope-up glyph:\n%s", strings.Join(lines, "\n"))
+	}
+	if !strings.Contains(lines[0], "aforge") {
+		t.Fatalf("home lost its surface row: %q", lines[0])
+	}
+}
+
+func countLinesContaining(lines []string, want string) int {
+	n := 0
+	for _, line := range lines {
+		if strings.Contains(line, want) {
+			n++
+		}
+	}
+	return n
+}
