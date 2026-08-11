@@ -125,13 +125,37 @@ func TestWorkMessageWithLiveJobsStillGetsTheWorkBelt(t *testing.T) {
 	}
 }
 
+// undocumentedHands was a RATCHET for the hands this wave landed before the
+// pages describing them existed: the list could only shrink, and a name that
+// became documented had to leave it or the list would have quietly turned into
+// an exemption nobody revisits. It is empty, and it stays here empty on purpose
+// — as the place the next capability lands, and as the record that the ratchet
+// closed rather than being deleted when it became inconvenient.
+//
+// What closed it: steering-work.md gained "What the front desk's hands actually
+// are". The gap was real and it was in internal/manual rather than in this
+// package — the manual is the only honest source for a question about aforge
+// itself, so until the page existed, "can you stop what you're doing?" was a
+// question the head could only improvise about.
+var undocumentedHands = map[string]bool{}
+
 // Completeness. A capability that lands without a page becomes something aforge
 // improvises about, so the registries the recognizers actually dispatch on are
 // checked against the pages on every build.
 func TestManualCoversEveryCapabilityTheHeadDispatchesOn(t *testing.T) {
 	wanted := map[string]string{}
 	for _, definition := range beltDefinitions() {
+		if undocumentedHands[definition.Function.Name] {
+			continue
+		}
 		wanted[definition.Function.Name] = "belt tool"
+	}
+	// The ratchet's teeth: a name that got its page must come off the list, or
+	// the list silently becomes an exemption nobody revisits.
+	for name := range undocumentedHands {
+		if manual.Mentions(name) {
+			t.Errorf("%q is documented now — take it out of undocumentedHands", name)
+		}
 	}
 	for _, class := range classVocabulary {
 		wanted[class] = "status class"

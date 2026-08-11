@@ -19,7 +19,7 @@ func TestTheProductPitchRidesTheStablePromptExactlyOnce(t *testing.T) {
 
 	render := func(body string) string {
 		t.Helper()
-		client := &fakeClient{responses: []string{`{"reply":"noted","command":null}`}}
+		client := &fakeClient{responses: []string{"noted"}}
 		message := postUser(t, graph, "pitch", body)
 		if err := New(client, graph).answer(context.Background(), message); err != nil {
 			t.Fatalf("answer %q: %v", body, err)
@@ -56,9 +56,11 @@ func TestTheProductPitchRidesTheStablePromptExactlyOnce(t *testing.T) {
 			t.Fatalf("the pitch reached the prompt without %q", phrase)
 		}
 	}
-	// And it is grounding, not scripture: the routing law still comes after it.
-	if strings.Index(first, manual.Pitch) > strings.Index(first, "The reply contract.") {
-		t.Fatal("the pitch was appended past the reply contract")
+	// And it is grounding, not scripture: the law the head is held to still comes
+	// after it. There is one prompt now, so "after it" is a byte offset inside
+	// that prompt rather than a claim about which of two prompts got the pitch.
+	if strings.Index(first, manual.Pitch) > strings.Index(first, "Law you do not get to bend.") {
+		t.Fatal("the pitch was appended past the law it is grounding for")
 	}
 }
 

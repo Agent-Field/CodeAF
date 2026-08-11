@@ -22,8 +22,13 @@ import (
 // they assert is a mark, not a change: the body posted must be byte for byte
 // what it was before parts existed, and the fact that it was cut must ride
 // beside it where a renderer can find it.
+//
+// The one thing that moved with the tool loop is what the wire carries. There is
+// no router envelope any more: a turn that calls no tool speaks in plain prose
+// and that prose IS the reply, so these fixtures stream words rather than JSON.
+// The finish_reason seam they exercise is untouched by that.
 
-// finishReasonServer answers every routing call with the same reply and the
+// finishReasonServer answers every answering call with the same reply and the
 // finish reason under test.
 func finishReasonServer(reply, finishReason string) http.Handler {
 	return http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
@@ -71,7 +76,7 @@ func TestATurnCutByTheOutputCapJournalsThatItWasCut(t *testing.T) {
 	const half = "The architecture has three layers: the journal, the projections and the"
 	reply := servedReply(t, "truncated",
 		"draw me the architecture",
-		finishReasonServer(`{\"reply\":\"`+half+`\",\"command\":null}`, "length"))
+		finishReasonServer(half, "length"))
 
 	// The words are untouched. A mark that also edits the message is a second
 	// behaviour change hiding inside a record.
@@ -92,7 +97,7 @@ func TestATurnCutByTheOutputCapJournalsThatItWasCut(t *testing.T) {
 
 func TestATurnThatFinishedCarriesNoMarkAtAll(t *testing.T) {
 	reply := servedReply(t, "complete", "hello",
-		finishReasonServer(`{\"reply\":\"hi there\",\"command\":null}`, "stop"))
+		finishReasonServer("hi there", "stop"))
 	if reply.Body != "hi there" {
 		t.Fatalf("reply body = %q", reply.Body)
 	}
@@ -106,7 +111,7 @@ func TestATurnThatFinishedCarriesNoMarkAtAll(t *testing.T) {
 // able to tell them apart.
 func TestAStreamThatStopsWithoutSayingWhyIsMarkedAsDropped(t *testing.T) {
 	reply := servedReply(t, "dropped", "hello",
-		finishReasonServer(`{\"reply\":\"partway thro\",\"command\":null}`, ""))
+		finishReasonServer("partway thro", ""))
 	if reply.Body != "partway thro" {
 		t.Fatalf("reply body = %q", reply.Body)
 	}

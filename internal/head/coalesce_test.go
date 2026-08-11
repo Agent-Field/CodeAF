@@ -15,10 +15,15 @@ import (
 // was shown rather than only how many times it was called. hold runs before the
 // answer and may block or write to the journal, which is how a message arriving
 // mid-turn is staged.
+//
+// turns are scripted tool calls, served in order before the plain reply. Folding
+// is about how many TURNS the head takes, and a turn is several provider calls
+// now, so a fixture about work being commissioned has to be able to say so.
 type foldClient struct {
 	mutex   sync.Mutex
 	prompts []string
 	reply   string
+	turns   []beltTurn
 	hold    func(call int, ctx context.Context)
 }
 
@@ -28,12 +33,22 @@ func (client *foldClient) CompleteWithMessages(ctx context.Context, messages []a
 	client.prompts = append(client.prompts, promptText(messages))
 	call := len(client.prompts)
 	hold := client.hold
+	var turn *beltTurn
+	if len(client.turns) > 0 {
+		turn = &client.turns[0]
+		client.turns = client.turns[1:]
+	}
 	client.mutex.Unlock()
 	if hold != nil {
 		hold(call, ctx)
 	}
 	if err := ctx.Err(); err != nil {
 		return nil, err
+	}
+	if turn != nil {
+		response := textResponse(turn.text)
+		response.Choices[0].Message.ToolCalls = turn.calls
+		return response, nil
 	}
 	return textResponse(client.reply), nil
 }
@@ -80,7 +95,7 @@ func postUserLine(t *testing.T, graphStore *store.Store, sessionID, body string)
 // sentences, and one reply.
 func TestTwoMessagesTypedInOneBreathAreOneTurn(t *testing.T) {
 	graphStore := openHeadStore(t)
-	client := &foldClient{reply: `{"reply":"This quarter: 12,004.","command":null}`}
+	client := &foldClient{reply: "This quarter: 12,004."}
 	first := postUserLine(t, graphStore, "one-breath", "how are the totals?")
 	second := postUserLine(t, graphStore, "one-breath", "actually, this quarter only")
 
@@ -128,21 +143,34 @@ func TestTwoMessagesTypedInOneBreathAreOneTurn(t *testing.T) {
 }
 
 // Folding is about how many times the head speaks, never about how much work
-// gets done. Five things said in one breath still run as five jobs — the fan-out
+// gets done. Two things said in one breath still run as two jobs — the fan-out
 // reads them out of the folded words — and the person still gets one answer.
+//
+// One turn is several provider calls now rather than exactly one, so the count
+// that says "one turn" is the number of times the turn was OPENED: the fold
+// builds one prompt from both rows and every call after it carries that same
+// prompt plus tool traffic.
 func TestAFoldedTurnStillFansOutIntoSeparateWork(t *testing.T) {
 	graphStore := openHeadStore(t)
-	client := &foldClient{reply: `{"reply":"On both — I'll report back as each lands.","command":null,` +
-		`"commands":[{"kind":"splice","instruction":"book the flights"},` +
-		`{"kind":"splice","instruction":"find somewhere to eat"}]}`}
-	postUserLine(t, graphStore, "fan-out", "book the flights")
+	client := &foldClient{
+		reply: "On both — I'll report back as each lands.",
+		turns: []beltTurn{{calls: []ai.ToolCall{beltCall("s1", beltToolSpawn, map[string]any{
+			"orders": []string{"book the flights", "find somewhere to eat"}})}}},
+	}
+	first := postUserLine(t, graphStore, "fan-out", "book the flights")
 	last := postUserLine(t, graphStore, "fan-out", "and find somewhere to eat")
 
 	if err := New(client, graphStore).poll(context.Background(), newSessionCursors(0)); err != nil {
 		t.Fatalf("poll: %v", err)
 	}
-	if calls := client.callCount(); calls != 1 {
-		t.Fatalf("provider calls = %d, want one turn", calls)
+	// The spawn and the sentence after it: one turn, two calls, one prompt built
+	// once from both of the person's rows.
+	if calls := client.callCount(); calls != 2 {
+		t.Fatalf("provider calls = %d, want the spawn and the sentence of one turn", calls)
+	}
+	opening := client.prompt(0)
+	if !strings.Contains(opening, first.Body) || !strings.Contains(opening, last.Body) {
+		t.Fatalf("the turn did not open with both of the person's sentences:\n%s", opening)
 	}
 	commands, err := graphStore.PendingCommands(20)
 	if err != nil {
@@ -238,7 +266,7 @@ func TestFoldAheadReadsOneTurnOutOfThePage(t *testing.T) {
 // and it would never be answered at all.
 func TestAFoldNeverStepsOverAnotherWindowsTurn(t *testing.T) {
 	graphStore := openHeadStore(t)
-	client := &foldClient{reply: `{"reply":"Noted.","command":null}`}
+	client := &foldClient{reply: "Noted."}
 	here := postUserLine(t, graphStore, "this-window", "how are the totals?")
 	visitor := postUserLine(t, graphStore, "that-window", "what is running?")
 	back := postUserLine(t, graphStore, "this-window", "actually, this quarter only")
@@ -267,7 +295,7 @@ func TestAFoldNeverStepsOverAnotherWindowsTurn(t *testing.T) {
 func TestAMessageArrivingMidTurnIsAbsorbedIntoIt(t *testing.T) {
 	graphStore := openHeadStore(t)
 	var second store.Message
-	client := &foldClient{reply: `{"reply":"This quarter: 12,004.","command":null}`}
+	client := &foldClient{reply: "This quarter: 12,004."}
 	client.hold = func(call int, ctx context.Context) {
 		if call != 1 {
 			return
@@ -307,7 +335,7 @@ func TestContinuousTypingStillEndsInAnAnswer(t *testing.T) {
 	graphStore := openHeadStore(t)
 	typed := make([]store.Message, 0, foldLimit)
 	var typedMutex sync.Mutex
-	client := &foldClient{reply: `{"reply":"Here is everything you asked.","command":null}`}
+	client := &foldClient{reply: "Here is everything you asked."}
 	client.hold = func(call int, ctx context.Context) {
 		if call >= foldLimit {
 			return

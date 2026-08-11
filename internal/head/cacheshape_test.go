@@ -28,15 +28,21 @@ func sharedPrefix(first, second string) int {
 	return limit
 }
 
-// The router's prompt across one ordinary state tick — a cent of spend, one more
-// message in the thread, and a measured history that moved because a job landed.
+// The head's one prompt across one ordinary state tick — a cent of spend, one
+// more message in the thread, and a measured history that moved because a job
+// landed.
 //
 // Position is by volatility, never by semantic category. The thread leads
 // because it is the only block that appends: a turn extends its tail and every
 // byte before the extension is reused. Everything that is REWRITTEN IN PLACE —
-// measured history, the snapshot, the notebook, the clock, the spend line —
+// measured history, the board, the notebook, the clock, the spend line —
 // belongs below it, in the order of how fast it moves, because a block that
 // changes in place invalidates everything after it and nothing before it.
+//
+// The rule survives the collapse into one loop intact and matters more than it
+// did: there used to be a router prompt and a belt prompt, so no single string
+// was the whole stable prefix. orchestratorPrompt is, now, and every byte of the
+// user message under it is billed against exactly one cache.
 func TestRouterPromptChurnStaysBelowTheAppendOnlyThread(t *testing.T) {
 	graph := openHeadStore(t)
 	seedResultBoard(t, graph)
@@ -46,7 +52,7 @@ func TestRouterPromptChurnStaysBelowTheAppendOnlyThread(t *testing.T) {
 
 	route := func(body, measured string) (system, user string) {
 		t.Helper()
-		client := &fakeClient{responses: []string{`{"reply":"noted","command":null}`}}
+		client := &fakeClient{responses: []string{"noted"}}
 		message := postUser(t, graph, "steady", body)
 		head := New(client, graph).WithDailyBudgetUSD(20).
 			WithSelfKnowledge(func() string { return measured })
@@ -54,7 +60,7 @@ func TestRouterPromptChurnStaysBelowTheAppendOnlyThread(t *testing.T) {
 			t.Fatalf("answer %q: %v", body, err)
 		}
 		if len(client.seen) < 2 {
-			t.Fatalf("%q never reached the router: %+v", body, client.seen)
+			t.Fatalf("%q never reached the model: %+v", body, client.seen)
 		}
 		return client.systemPrompt(), client.userPrompt()
 	}
@@ -92,17 +98,27 @@ func TestRouterPromptChurnStaysBelowTheAppendOnlyThread(t *testing.T) {
 		t.Fatalf("no measured block under the thread:\n%s", first)
 	}
 	if shared := sharedPrefix(first, second); shared < floor {
-		t.Fatalf("router prompt churned at byte %d, above the thread's end at %d:\n%s", shared, floor, first[:floor])
+		t.Fatalf("head prompt churned at byte %d, above the thread's end at %d:\n%s", shared, floor, first[:floor])
 	}
 	// And every fast-moving fact really is down there, each under the one that
-	// moves more slowly than it does.
-	snapshot := strings.Index(first, "\n\nLive graph snapshot:")
-	if snapshot < floor {
-		t.Fatalf("the snapshot sits above the measured block: snapshot=%d measured=%d", snapshot, floor)
+	// moves more slowly than it does: the board ticks with every status, the
+	// notebook is retrieved against this message, the clock moves every minute
+	// and the spend line moves every cent.
+	board := strings.Index(first, "\n\nLive board (the work you can read and act on):")
+	if board < floor {
+		t.Fatalf("the board sits above the measured block: board=%d measured=%d", board, floor)
+	}
+	notebook := strings.Index(first, "\n\nNotebook (")
+	if notebook < board {
+		t.Fatalf("the notebook sits above the board: notebook=%d board=%d", notebook, board)
+	}
+	clock := strings.Index(first, "\n\nnow: ")
+	if clock < notebook {
+		t.Fatalf("the clock sits above the notebook: clock=%d notebook=%d", clock, notebook)
 	}
 	spend := strings.Index(first, "today's spend: $")
-	if spend < snapshot {
-		t.Fatalf("the spend line sits above the snapshot: spend=%d snapshot=%d", spend, snapshot)
+	if spend < clock {
+		t.Fatalf("the spend line sits above the clock: spend=%d clock=%d", spend, clock)
 	}
 	if message := strings.Index(first, "\n\nCurrent user message (verbatim):"); spend > message {
 		t.Fatalf("the spend line is not the last thing before the message: spend=%d message=%d", spend, message)

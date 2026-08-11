@@ -19,12 +19,14 @@ import (
 // The belt's calls go through the real adapter here, streamed, because that is
 // the only place the defect lived: the accumulator dropped tool calls, so every
 // belt turn came back with none, the loop spent a full board-and-notebook round
-// trip that could not succeed, and the message fell through to the router
-// anyway. The assertion is the one that matters — the tools actually ran — and
-// the count is what says the round trip was not wasted.
+// trip that could not succeed, and the message was paid for a second time.
+// The assertion is the one that matters — the tools actually ran — and the count
+// is what says the round trip was not wasted.
 
-// beltStreamServer answers the belt with tool calls and the router with text,
-// all over the event stream, and records what it was asked.
+// beltStreamServer answers with tool calls and then with text, all over the
+// event stream, and records what it was asked. Every call the loop makes carries
+// tools now, so a call with none is itself a finding: nothing in the head speaks
+// to a model without offering it hands.
 type beltStreamServer struct {
 	mutex  sync.Mutex
 	tooled int
@@ -122,30 +124,34 @@ func TestStreamedControlBeltActsInsteadOfBurningTheCall(t *testing.T) {
 	tooled, plain := server.counts()
 	// Two tooled calls: the one that asked for the board and the one that spoke
 	// with the board's answer in hand. A belt whose tool calls are dropped makes
-	// one tooled call, learns nothing from it, and pays the router as well.
+	// one tooled call and learns nothing from it.
 	if tooled != 2 {
 		t.Fatalf("belt made %d tooled calls, want the read and the answer", tooled)
 	}
 	if plain != 0 {
-		t.Fatalf("the belt answered and the router was still paid %d times", plain)
+		t.Fatalf("the turn made %d calls with no tools offered at all", plain)
 	}
 	if thinking == 0 {
 		t.Fatal("the reasoning phase reached the surface as dead air")
 	}
 }
 
-// A message with nothing to act on costs exactly ONE call.
+// A turn that touches nothing costs exactly one call, and that call speaks.
 //
-// This was the decline path: the belt spoke a sentinel, the router was paid a
-// second time, and an ordinary greeting cost two provider calls plus whatever
-// the ten recognizers had already spent. There is nothing to decline to now, so
-// the floor and the ceiling are the same number — one call, one reply.
-func TestAMessageWithNothingToActOnCostsOneCall(t *testing.T) {
+// This used to be the decline path: the loop said a sentinel, the sentinel was
+// swallowed, and the message was paid for a second time at the router. There is
+// no second engine to fall through to now, so the property worth pinning is the
+// one the fall-through was hiding — a message with no verb in it is answered
+// once, in words, by the same call that was offered the tools and did not need
+// them, and nothing is journaled on the way past.
+func TestATurnThatTouchesNothingSpeaksOnceAndPaysOnce(t *testing.T) {
 	graph := openHeadStore(t)
 	seedExceptBoard(t, graph)
-	answering := http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+	const said = "Nothing has stopped — that poem is not something on the board."
+	answering := http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
 		writer.Header().Set("Content-Type", "text/event-stream")
-		_, _ = writer.Write([]byte(`data: {"choices":[{"index":0,"delta":{"content":"Nothing to stop."},"finish_reason":"stop"}]}` + "\n\n"))
+		_, _ = writer.Write([]byte(`data: {"choices":[{"index":0,"delta":{"content":"` +
+			said + `"},"finish_reason":"stop"}]}` + "\n\n"))
 		_, _ = writer.Write([]byte("data: [DONE]\n\n"))
 	})
 	server := &beltStreamServer{}
@@ -162,23 +168,29 @@ func TestAMessageWithNothingToActOnCostsOneCall(t *testing.T) {
 		answering.ServeHTTP(writer, request)
 	})
 
-	session := "belt-decline"
-	user := postUser(t, graph, session, "thanks, that is all for now")
+	session := "belt-quiet"
+	user := postUser(t, graph, session, "finish reading me that Auden poem")
 	client := streamedProviderClient(t, counting)
 	ctx := provider.WithStreamObserver(context.Background(), func(provider.StreamEvent) {})
 	if err := New(client, graph).answer(ctx, user); err != nil {
 		t.Fatal(err)
 	}
 	reply := waitForAgentReply(t, graph, session, user.Seq)
-	if reply.Body != "Nothing to stop." {
-		t.Fatalf("the reply was not the words the model spoke: %q", reply.Body)
+	if reply.Body != said {
+		t.Fatalf("the turn's own words were not the reply: %q", reply.Body)
 	}
 	tooled, plain := server.counts()
 	if tooled != 1 {
-		t.Fatalf("an ordinary message made %d tooled calls, want one", tooled)
+		t.Fatalf("a turn that touched nothing made %d tooled calls, want one", tooled)
 	}
 	if plain != 0 {
-		t.Fatalf("something below the loop was still paid %d times — there is no second brain", plain)
+		t.Fatalf("a turn that touched nothing was paid for %d more times", plain)
+	}
+	if commands, _ := graph.PendingCommands(10); len(commands) != 0 {
+		t.Fatalf("a turn that touched nothing journaled: %+v", commands)
+	}
+	if reply.CommandSeq != 0 {
+		t.Fatalf("a turn that touched nothing carried command seq %d", reply.CommandSeq)
 	}
 }
 
@@ -192,7 +204,7 @@ func TestServeStampsStreamEventsWithTheAnsweringSession(t *testing.T) {
 	graph := openHeadStore(t)
 	handler := http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
 		writer.Header().Set("Content-Type", "text/event-stream")
-		_, _ = writer.Write([]byte(`data: {"choices":[{"index":0,"delta":{"content":"{\"reply\":\"hi there\",\"command\":null}"},"finish_reason":"stop"}]}` + "\n\n"))
+		_, _ = writer.Write([]byte(`data: {"choices":[{"index":0,"delta":{"content":"hi there"},"finish_reason":"stop"}]}` + "\n\n"))
 		_, _ = writer.Write([]byte("data: [DONE]\n\n"))
 	})
 	client := streamedProviderClient(t, handler)

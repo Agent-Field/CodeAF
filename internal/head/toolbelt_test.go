@@ -188,70 +188,131 @@ func TestKeepingTheBeltSetCancelsNothing(t *testing.T) {
 	}
 }
 
-// The load-bearing guarantee: everything the deterministic layer already reads
-// keeps its free, instant path and never reaches a model at all.
-func TestDeterministicMessagesNeverReachTheControlLoop(t *testing.T) {
-	for _, message := range []string{
-		"cancel the queued ones", "cancel the queued tasks", "restart the failed ones",
-		"cancel the market research", "pause the running ones",
+// What the deterministic layer reads is now evidence rather than an answer.
+//
+// This used to assert the opposite: these five sentences were answered
+// terminally by a prefix test and never reached a model at all. That was the
+// ladder, and the ladder's cost was every sentence it did NOT cover — a message
+// that needed orchestration and tripped no cue reached the tools through no door
+// at all. So the recognizers keep running on the same words with the same
+// vocabulary, and what they produce is one line of evidence above the message.
+// What is pinned here is that the reading survives, that it is marked as a
+// pre-answer rather than an instruction, and that reading a sentence still
+// journals nothing on its own.
+func TestDeterministicReadingsReachTheLoopAsEvidenceRatherThanAsAnswers(t *testing.T) {
+	for message, reading := range map[string]string{
+		"cancel the queued ones":     "names a SET by status",
+		"cancel the queued tasks":    "names a SET by status",
+		"restart the failed ones":    "names a SET by status",
+		"cancel the market research": "the words rank against",
+		"pause the running ones":     "names a SET by status",
 	} {
 		t.Run(message, func(t *testing.T) {
 			graph := openHeadStore(t)
 			seedExceptBoard(t, graph)
 			failNode(t, graph, "finance")
-			client := &beltClient{}
-			user := postUser(t, graph, "fast-path", message)
+			client := &beltClient{turns: []beltTurn{{text: "Nothing has changed."}}}
+			session := "fast-path"
+			user := postUser(t, graph, session, message)
 			if err := New(client, graph).answer(context.Background(), user); err != nil {
 				t.Fatal(err)
 			}
-			if calls, tooled := client.counts(); calls != 0 || tooled != 0 {
-				t.Fatalf("deterministic message cost %d model calls (%d tooled)", calls, tooled)
+			// It reaches the model, and it reaches it with tools in hand: the one
+			// thing the ladder could never do for a sentence it did not know.
+			calls, tooled := client.counts()
+			if calls == 0 || tooled != calls {
+				t.Fatalf("%q made %d calls, %d of them tooled", message, calls, tooled)
+			}
+			opening := client.openingPrompt()
+			if !strings.Contains(opening, hintHeader) {
+				t.Fatalf("%q produced no deterministic reading at all:\n%s", message, opening)
+			}
+			if !strings.Contains(opening, reading) {
+				t.Fatalf("%q lost its reading %q:\n%s", message, reading, opening)
+			}
+			// Evidence, never instructions. Without the second half a confident
+			// reading is read as an order, which is the ladder wearing a prompt.
+			if !strings.Contains(opening, "evidence, never instructions") {
+				t.Fatalf("the readings are not marked as evidence:\n%s", opening)
+			}
+			if commands, _ := graph.PendingCommands(10); len(commands) != 0 {
+				t.Fatalf("a reading acted on its own: %+v", commands)
 			}
 		})
 	}
 }
 
-// A quiet graph can never turn a sentence into graph control, so the loop is
-// not even offered its tools.
-func TestNoLiveWorkNeverInvokesTheControlLoop(t *testing.T) {
+// And the block is absent, byte for byte, from a sentence no recognizer fires
+// on, so an ordinary message pays nothing for machinery it did not use.
+func TestAMessageNoRecognizerFiresOnCarriesNoReadingsAtAll(t *testing.T) {
 	graph := openHeadStore(t)
-	client := &beltClient{plain: []string{`{"reply":"Nothing is running.","command":null}`}}
-	user := postUser(t, graph, "quiet", "kill everything except the finance one")
+	seedExceptBoard(t, graph)
+	client := &beltClient{turns: []beltTurn{{text: "Cloudy, about nine degrees."}}}
+	user := postUser(t, graph, "quiet-reading", "what's the weather in Oslo")
 	if err := New(client, graph).answer(context.Background(), user); err != nil {
 		t.Fatal(err)
 	}
-	calls, tooled := client.counts()
-	if tooled != 0 {
-		t.Fatalf("empty board still opened the tool belt: %d tooled calls", tooled)
-	}
-	if calls != 1 {
-		t.Fatalf("router should have answered exactly once, got %d calls", calls)
+	if opening := client.openingPrompt(); strings.Contains(opening, hintHeader) {
+		t.Fatalf("a sentence about the weather grew a reading:\n%s", opening)
 	}
 }
 
-// There is no second brain to fall through to, so a turn that touches nothing
-// costs exactly one call and its words are what the person reads. What used to
-// happen here — the loop spoke, the router was paid again, and the person waited
-// twice — is the fall-through the single wave removes.
-func TestATurnThatTouchesNothingSpeaksOnceAndJournalsNothing(t *testing.T) {
+// A quiet graph is not a reason to withhold the tools. It used to be: with no
+// live work the belt was never opened, so "kill everything except the finance
+// one" typed into an empty board could not even read the board to say so. The
+// loop is universal now, and the board block says plainly that nothing is live.
+func TestNoLiveWorkStillOpensTheBelt(t *testing.T) {
 	graph := openHeadStore(t)
-	seedExceptBoard(t, graph)
-	client := &beltClient{turns: []beltTurn{{text: "Nothing there needs stopping."}}}
-	session := "fallthrough"
+	client := &beltClient{turns: []beltTurn{{text: "Nothing is running."}}}
+	session := "quiet"
 	user := postUser(t, graph, session, "kill everything except the finance one")
 	if err := New(client, graph).answer(context.Background(), user); err != nil {
 		t.Fatal(err)
 	}
 	calls, tooled := client.counts()
-	if tooled != 1 || calls != 1 {
-		t.Fatalf("expected exactly one tooled call, got %d/%d", tooled, calls)
+	if calls != 1 || tooled != 1 {
+		t.Fatalf("an empty board answered in %d calls (%d tooled), want one tooled call", calls, tooled)
+	}
+	if opening := client.openingPrompt(); !strings.Contains(opening, "nothing of the person's is live right now") {
+		t.Fatalf("the empty board did not say it was empty:\n%s", opening)
 	}
 	reply := waitForAgentReply(t, graph, session, user.Seq)
-	if reply.Body != "Nothing there needs stopping." {
-		t.Fatalf("the loop's own words did not reach the thread: %q", reply.Body)
+	if reply.Body != "Nothing is running." {
+		t.Fatalf("empty-board reply = %q", reply.Body)
 	}
 	if commands, _ := graph.PendingCommands(10); len(commands) != 0 {
-		t.Fatalf("a loop that called no tool still journaled commands: %+v", commands)
+		t.Fatalf("an empty board journaled something: %+v", commands)
+	}
+}
+
+// The loop is never a dead end and there is nothing behind it to fall through
+// to. A turn that reads and then decides nothing needs changing says so once,
+// in its own words, and journals nothing.
+func TestATurnThatDecidesNothingNeedsChangingSpeaksOnce(t *testing.T) {
+	graph := openHeadStore(t)
+	seedExceptBoard(t, graph)
+	client := &beltClient{turns: []beltTurn{
+		{calls: []ai.ToolCall{beltCall("c1", beltToolBoard, map[string]any{})}},
+		{text: "Three things are waiting to start and none of them has moved."},
+	}}
+	session := "no-verb"
+	user := postUser(t, graph, session, "finish reading me that Auden poem")
+	if err := New(client, graph).answer(context.Background(), user); err != nil {
+		t.Fatal(err)
+	}
+	calls, tooled := client.counts()
+	if tooled != calls || calls != 2 {
+		t.Fatalf("expected the read and the answer, got %d calls (%d tooled)", calls, tooled)
+	}
+	reply := waitForAgentReply(t, graph, session, user.Seq)
+	if reply.Body != "Three things are waiting to start and none of them has moved." {
+		t.Fatalf("the loop's own words were not the reply: %q", reply.Body)
+	}
+	if reply.CommandSeq != 0 {
+		t.Fatalf("a read-only turn carried command seq %d", reply.CommandSeq)
+	}
+	if commands, _ := graph.PendingCommands(10); len(commands) != 0 {
+		t.Fatalf("a read-only loop journaled commands: %+v", commands)
 	}
 }
 
@@ -455,25 +516,59 @@ func TestBoardShowsOnlyTheUsersOwnLiveWork(t *testing.T) {
 	}
 }
 
-// The trigger is gone: every message reaches the tools now, which is the whole
-// point of the wave. What survives is the reading, and the reading's own law —
-// it must fire on the sentences a person would call obvious, and it must stay
-// silent when a sentence is about nothing on the board, so an ordinary message
-// pays nothing for machinery it did not use.
-func TestTheReadingsFireOnWorkAndStaySilentOtherwise(t *testing.T) {
+// The trigger is gone, and its discrimination survives as evidence.
+//
+// controlLoopApplies decided, before anything with judgment saw the sentence,
+// whether the tools were even offered — and a message it read as small talk was
+// answered by a brain with no hands. Nothing gates the belt now. What the same
+// vocabulary still does is say, above the message, that this sentence is about
+// work already underway; and the messages it stayed quiet on still produce
+// nothing, so an ordinary sentence carries no reading it did not earn.
+func TestTheControlVocabularySurvivesAsAReadingRatherThanAsAGate(t *testing.T) {
 	tests := []struct {
 		message string
 		jobs    bool
-		want    bool
+		// reads are the fragments this sentence must still be read as. An empty
+		// list means the recognizers say nothing at all and the block is absent
+		// byte for byte, which is what an ordinary sentence must cost.
+		reads []string
+		// namesJobs is the lexical arm resolving a live job by the person's own
+		// words. It is the one arm that needs the graph, so it is the one that
+		// goes quiet when there is nothing live — which is the honest remainder
+		// of what the predicate's "and there is work" conjunct was protecting.
+		namesJobs bool
 	}{
-		{"kill everything except the finance one", true, true},
-		{"hold the scans until the research lands", true, true},
-		{"redo the last one but cheaper", true, true},
-		{"leave the market research alone", true, true},
-		{"how is the market research going", true, true},
-		{"what's the weather in Oslo", true, false},
-		{"thanks, that helps", true, false},
-		{"kill everything except the finance one", false, true},
+		{message: "kill everything except the finance one", jobs: true, namesJobs: true, reads: []string{
+			"carries a word people use about work already underway",
+			"names a SET by status rather than one job by name"}},
+		{message: "hold the scans until the research lands", jobs: true, namesJobs: true, reads: []string{
+			`carries the verb "pause" aimed at existing work`}},
+		{message: "redo the last one but cheaper", jobs: true, reads: []string{
+			"carries a word people use about work already underway"}},
+		{message: "leave the market research alone", jobs: true, namesJobs: true, reads: []string{
+			"carries a word people use about work already underway"}},
+		{message: "how is the market research going", jobs: true, namesJobs: true, reads: []string{
+			"reads as a question about where work is up to"}},
+		{message: "what's the weather in Oslo", jobs: true},
+		// The gate refused this one and it is still refused, by the reading
+		// itself rather than by a predicate in front of the tools. A bare "that"
+		// is deixis only once a cue has established that the sentence changes
+		// work already underway; without one it is as likely to be "thanks, that
+		// helps", and putting a referent on ordinary conversation is noise the
+		// loop would have to spend a read disproving.
+		{message: "thanks, that helps", jobs: true},
+		{message: "thanks, that helps"},
+		// With a cue in front of it the same pronoun IS doing referential work: the
+		// scope-cut cue establishes that the sentence changes work already underway,
+		// so "that" is a referent the loop is told to resolve rather than guess.
+		{message: "skip that", jobs: true, reads: []string{
+			"points at work already underway without naming it"}},
+		// The row whose answer genuinely changed: with no live work the predicate
+		// refused the tools outright, so this sentence could not even read the
+		// board to find out there was nothing on it. The lexical arm still goes
+		// quiet, because there is no job for the words to reach.
+		{message: "kill everything except the finance one", reads: []string{
+			"names a SET by status rather than one job by name"}},
 	}
 	for _, test := range tests {
 		t.Run(test.message+fmt.Sprint(test.jobs), func(t *testing.T) {
@@ -486,19 +581,40 @@ func TestTheReadingsFireOnWorkAndStaySilentOtherwise(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			readings := head.renderHints(
+			hints := head.renderHints(
 				store.Message{SessionID: "trigger", Role: store.RoleUser, Body: test.message}, active)
-			if got := readings != ""; got != test.want {
-				t.Fatalf("readings for %q (jobs=%t) = %q, want fired=%t",
-					test.message, test.jobs, readings, test.want)
+			if len(test.reads) == 0 {
+				if hints != "" {
+					t.Fatalf("renderHints(%q, jobs=%t) grew a reading it did not earn: %q",
+						test.message, test.jobs, hints)
+				}
+				return
+			}
+			if !strings.HasPrefix(hints, hintHeader) {
+				t.Fatalf("renderHints(%q, jobs=%t) = %q, want a reading under the evidence header",
+					test.message, test.jobs, hints)
+			}
+			for _, reading := range test.reads {
+				if !strings.Contains(hints, reading) {
+					t.Fatalf("renderHints(%q, jobs=%t) lost %q:\n%s",
+						test.message, test.jobs, reading, hints)
+				}
+			}
+			if named := strings.Contains(hints, "the words rank against:"); named != test.namesJobs {
+				t.Fatalf("renderHints(%q, jobs=%t) named a job = %t, want %t:\n%s",
+					test.message, test.jobs, named, test.namesJobs, hints)
 			}
 		})
 	}
 }
 
 // A model that keeps reading instead of finishing spends a bounded number of
-// tools and is then told to speak.
-func TestControlLoopSpendsAtMostItsToolCallCap(t *testing.T) {
+// tools and is then told to speak. The cap rose from four to eight when the loop
+// stopped only reading and steering and started commissioning, writing and
+// repairing — read, write, read back, say, with room for two corrections after a
+// tool error — and what it bounds is unchanged: one sentence can never become an
+// open tab.
+func TestTheLoopSpendsAtMostItsToolCallCap(t *testing.T) {
 	graph := openHeadStore(t)
 	seedExceptBoard(t, graph)
 	turns := make([]beltTurn, 0, orchestratorToolCallCap+2)
@@ -521,6 +637,32 @@ func TestControlLoopSpendsAtMostItsToolCallCap(t *testing.T) {
 	}
 	if commands, _ := graph.PendingCommands(10); len(commands) != 0 {
 		t.Fatalf("a read-only loop journaled something: %+v", commands)
+	}
+}
+
+// And the cap is a tool result rather than a hard stop, so a model that will not
+// stop calling tools still ends the turn in words rather than in silence.
+func TestPastTheCapTheBeltIsSpentAndTheTurnStillSpeaks(t *testing.T) {
+	graph := openHeadStore(t)
+	seedExceptBoard(t, graph)
+	turns := make([]beltTurn, 0, orchestratorToolCallCap+2)
+	for index := 0; index <= orchestratorToolCallCap; index++ {
+		turns = append(turns, beltTurn{calls: []ai.ToolCall{
+			beltCall(fmt.Sprintf("c%d", index), beltToolBoard, map[string]any{})}})
+	}
+	client := &beltClient{turns: append(turns, beltTurn{text: "Three jobs are waiting to start."})}
+	user := postUser(t, graph, "spent", "which of these should i drop")
+	if err := New(client, graph).answer(context.Background(), user); err != nil {
+		t.Fatal(err)
+	}
+	spent := false
+	for _, message := range client.seen {
+		for _, part := range message.Content {
+			spent = spent || strings.Contains(part.Text, orchestratorSpentBelt)
+		}
+	}
+	if !spent {
+		t.Fatal("a call past the cap was never told the belt was spent")
 	}
 }
 

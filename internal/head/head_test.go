@@ -29,8 +29,10 @@ func TestHeadRoutesImagePartAndPreservesAttachmentOnCommand(t *testing.T) {
 	if err := os.WriteFile(path, []byte("pixels"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	client := &fakeClient{responses: []string{
-		`{"reply":"I’ll inspect that.","command":{"kind":"splice","target":"","instruction":"inspect the diagram"}}`,
+	client := &beltClient{turns: []beltTurn{
+		{calls: []ai.ToolCall{beltCall("s1", beltToolSpawn, map[string]any{
+			"instruction": "inspect the diagram"})}},
+		{text: "I’ll inspect that."},
 	}}
 	user, err := graph.PostMessage(store.Message{
 		SessionID: "vision", Role: store.RoleUser, Body: "inspect the diagram", Attachments: []string{path},
@@ -119,9 +121,9 @@ func (client *fakeClient) userPrompt() string {
 
 func TestHeadPostsReply(t *testing.T) {
 	graphStore := openHeadStore(t)
-	client := &fakeClient{responses: []string{
-		`{"reply":"The graph is ready and waiting for work.","command":null}`,
-	}}
+	// One call, no tools asked for, and the words are the reply. There is no
+	// envelope to parse any more: what the model says IS what the person reads.
+	client := &fakeClient{responses: []string{"The graph is ready and waiting for work."}}
 	if _, err := graphStore.PostMessage(store.Message{SessionID: "chat-1", Role: store.RoleUser, Body: "what is happening?"}); err != nil {
 		t.Fatalf("post user message: %v", err)
 	}
@@ -142,12 +144,8 @@ func TestHeadPostsReply(t *testing.T) {
 
 func TestHeadUsesPerMessageClientAndPersistsResolvedReplyModel(t *testing.T) {
 	graph := openHeadStore(t)
-	talk := &fakeClient{model: "cheap/talk", responses: []string{
-		`{"reply":"ordinary answer","command":null}`,
-	}}
-	boost := &fakeClient{model: "anthropic/claude-opus-5-2026-08-01", responses: []string{
-		`{"reply":"boosted answer","command":null}`,
-	}}
+	talk := &fakeClient{model: "cheap/talk", responses: []string{"ordinary answer"}}
+	boost := &fakeClient{model: "anthropic/claude-opus-5-2026-08-01", responses: []string{"boosted answer"}}
 	var selected []string
 	conversationalHead := New(talk, graph).WithMessageClient(func(message store.Message) (Client, error) {
 		selected = append(selected, message.Model)
@@ -228,8 +226,12 @@ func TestHeadResolvesReferencedAgentQuestionWithoutRoutingNewWork(t *testing.T) 
 
 func TestHeadRequestsSpliceAndLinksReply(t *testing.T) {
 	graphStore := openHeadStore(t)
-	client := &fakeClient{responses: []string{
-		`{"reply":"Splicing that in — I'll report when it lands.","command":{"kind":"splice","target":"","instruction":"make me X"}}`,
+	// Commissioning work is a tool call inside the turn rather than the turn's
+	// terminal decision, and the receipt still has to be tied to the command the
+	// tool journaled — otherwise a reply claims work that has no row.
+	client := &beltClient{turns: []beltTurn{
+		{calls: []ai.ToolCall{beltCall("s1", beltToolSpawn, map[string]any{"instruction": "make me X"})}},
+		{text: "Splicing that in — I'll report when it lands."},
 	}}
 	user, err := graphStore.PostMessage(store.Message{SessionID: "chat-2", Role: store.RoleUser, Body: "make me X"})
 	if err != nil {
@@ -303,7 +305,7 @@ func TestHeadLearningQuestionCarriesSeededNotebookFact(t *testing.T) {
 		t.Fatal(err)
 	}
 	client := &fakeClient{responses: []string{
-		`{"reply":"I learned that card receipts stay with their originating job.","command":null,"remember":null,"retract":null}`,
+		"I learned that card receipts stay with their originating job.",
 	}}
 	user, err := graph.PostMessage(store.Message{
 		SessionID: "learning-question", Role: store.RoleUser,
@@ -324,6 +326,17 @@ func TestHeadLearningQuestionCarriesSeededNotebookFact(t *testing.T) {
 	}
 }
 
+// THE HEAD LOST ITS RETRACTION DOOR IN THIS WAVE. The router's `retract` field
+// was the only caller of the quarantine seam, and the belt has no tool that
+// reaches it — so "that's wrong, forget that" can be replied to warmly and
+// change nothing, which is the exact accumulation failure the note tool's
+// supersession exists to prevent from the other side.
+//
+// The seam itself is intact and is what this pins: quarantine still retires a
+// numbered belief, still keeps the user's own message as the evidence for it,
+// still hides it from head retrieval, and still survives a rebuild of the
+// journal. Everything a door would need is here; the door is what is missing,
+// and it is recorded as a gap rather than papered over with a passing test.
 func TestHeadRetractsNumberedNotebookBelief(t *testing.T) {
 	graphStore := openHeadStore(t)
 	fact, err := graphStore.RecordFact(store.RootID, "tool:git", store.FactQuirk,
@@ -331,9 +344,6 @@ func TestHeadRetractsNumberedNotebookBelief(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	client := &fakeClient{responses: []string{fmt.Sprintf(
-		`{"reply":"I'll forget that.","command":null,"remember":null,"retract":{"seq":%d}}`, fact.Seq,
-	)}}
 	user, err := graphStore.PostMessage(store.Message{
 		SessionID: "chat-retract", Role: store.RoleUser, Body: "that's wrong — forget that",
 	})
@@ -341,13 +351,19 @@ func TestHeadRetractsNumberedNotebookBelief(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if err := New(client, graphStore).answer(context.Background(), user); err != nil {
-		t.Fatal(err)
+	// The door back. The router's `retract` field was the only caller of this
+	// seam and it died with the router; the forget tool is what reaches it now,
+	// and this test is what says the behaviour on the far side of it is
+	// unchanged — the belief is quarantined rather than deleted, the evidence is
+	// the message that retired it, and the retirement replays.
+	run := &beltRun{head: New(nil, graphStore), user: user}
+	message, failed := run.execute(beltToolForget, beltArguments(t,
+		map[string]any{"belief": fact.Seq}))
+	if failed {
+		t.Fatalf("the belt could not let go of a belief the person retracted: %s", message)
 	}
-	messages, err := graphStore.Messages("chat-retract", user.Seq, 0)
-	if err != nil || len(messages) != 1 || messages[0].Role != store.RoleSystem ||
-		messages[0].Body != "· let go — "+fact.Body {
-		t.Fatalf("retraction moment = %+v err=%v", messages, err)
+	if run.commandSeq != 0 {
+		t.Fatalf("letting go of a belief journaled a graph command: %d", run.commandSeq)
 	}
 	quarantined, found, err := graphStore.FactBySeq(fact.Seq)
 	if err != nil || !found || quarantined.Status != store.FactQuarantined ||
@@ -454,9 +470,7 @@ func TestHeadRestartSkipsAnsweredHistory(t *testing.T) {
 	if _, err := graphStore.PostMessage(store.Message{SessionID: "chat-4", Role: store.RoleAgent, Body: "old answer"}); err != nil {
 		t.Fatalf("post old agent message: %v", err)
 	}
-	client := &fakeClient{responses: []string{
-		`{"reply":"new answer","command":null}`,
-	}}
+	client := &fakeClient{responses: []string{"new answer"}}
 
 	stop := startServing(t, New(client, graphStore))
 	defer stop()
@@ -537,14 +551,20 @@ func textResponse(text string) *ai.Response {
 	}}}
 }
 
+// A reflex is the model's judgment, passed as an argument to spawn rather than
+// encoded in a command kind on a terminal routing decision. What has to survive
+// that move is the pair of properties the terminal position guaranteed: the flag
+// reaches the journaled row, and the words that travel are the person's own.
 func TestHeadParsesReflexAndAnchorsVerbatimIntent(t *testing.T) {
 	graphStore := openHeadStore(t)
-	client := &fakeClient{responses: []string{
-		`{"reply":"Doing that now.","command":{"kind":"reflex","target":"","instruction":"model rewrite"}}`,
+	const ask = "Read VERSION and tell me the value."
+	client := &beltClient{turns: []beltTurn{
+		{calls: []ai.ToolCall{beltCall("s1", beltToolSpawn, map[string]any{
+			"instruction": ask, "reflex": true})}},
+		{text: "Doing that now."},
 	}}
 	user, err := graphStore.PostMessage(store.Message{
-		SessionID: "chat-reflex", Role: store.RoleUser,
-		Body: "Read VERSION and tell me the value.",
+		SessionID: "chat-reflex", Role: store.RoleUser, Body: ask,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -564,15 +584,28 @@ func TestHeadParsesReflexAndAnchorsVerbatimIntent(t *testing.T) {
 	if command.Kind != store.CommandSplice || !command.Reflex || command.Instruction != user.Body {
 		t.Fatalf("parsed reflex command = %+v, want verbatim %q", command, user.Body)
 	}
+	// The tool the model reads is what tells it the flag is narrow. A permission
+	// with no stated bound is a permission with no bound.
+	spawnDescription := ""
+	for _, definition := range beltDefinitions() {
+		if definition.Function.Name == beltToolSpawn {
+			spawnDescription = definition.Function.Description
+		}
+	}
+	if !strings.Contains(spawnDescription, "do not improve or summarize them") {
+		t.Errorf("the verbatim rule is no longer stated where the model reads it: %q", spawnDescription)
+	}
 }
 
-// The consequence gate moved INTO the tool (Part 6 decision 2), which is the
-// only place it can still be true: the flag is now an argument a model passes
-// rather than a field on a decision object, so the last check before the row
-// exists is the last check there is. A reflex whose words buy, delete or publish
-// is journaled as ordinary work the person gets to see coming, with their own
-// sentence intact.
-func TestSpawnPromotesAConsequentialReflexAtTheJournalingDoor(t *testing.T) {
+// The consequence gate, moved with the judgment it guards.
+//
+// It used to run at routing-decision validation, before persistence, because
+// that was the last place a reflex could still be caught. The judgment is an
+// argument to a tool now, so the gate moved to the journaling door — the last
+// place it can still be true, rather than trusted from wherever the flag was
+// set. Same three asks, same verdict: the reflex is dropped, the work is
+// ordinary work the person sees coming, and the words are untouched.
+func TestHeadPromotesConsequentialReflexBeforePersistence(t *testing.T) {
 	for _, ask := range []string{
 		"Pay the vendor five dollars.",
 		"Delete /etc/obsolete.conf.",
@@ -580,76 +613,52 @@ func TestSpawnPromotesAConsequentialReflexAtTheJournalingDoor(t *testing.T) {
 	} {
 		t.Run(ask, func(t *testing.T) {
 			graphStore := openHeadStore(t)
-			user, err := graphStore.PostMessage(store.Message{
-				SessionID: "chat-consequence", Role: store.RoleUser, Body: ask,
-			})
-			if err != nil {
-				t.Fatal(err)
+			if !consequenceGated(ask) {
+				t.Fatalf("%q is no longer read as consequential", ask)
 			}
+			user := postUser(t, graphStore, "chat-consequence", ask)
 			run := &beltRun{head: New(nil, graphStore), user: user}
-			message, failed := run.execute(beltToolSpawn, beltArguments(t, map[string]any{
-				"instruction": ask, "reflex": true,
-			}))
+			result, failed := run.execute(beltToolSpawn, beltArguments(t, map[string]any{
+				"instruction": ask, "reflex": true}))
 			if failed {
-				t.Fatalf("spawn refused a consequential ask outright: %s", message)
+				t.Fatalf("spawn refused %q outright: %s", ask, result)
 			}
-			commands, err := graphStore.PendingCommands(0)
-			if err != nil {
-				t.Fatal(err)
-			}
+			commands := pendingCommandsOf(t, graphStore)
 			if len(commands) != 1 {
-				t.Fatalf("pending commands = %+v", commands)
+				t.Fatalf("%q journaled %d commands: %+v", ask, len(commands), commands)
 			}
-			if commands[0].Reflex {
+			command := commands[0]
+			if command.Kind != store.CommandSplice || strings.TrimSpace(command.Target) != "" {
+				t.Fatalf("command for %q = %s at %q, want an ordinary splice", ask, command.Kind, command.Target)
+			}
+			if command.Reflex {
 				t.Fatalf("consequential ask %q remained a reflex", ask)
 			}
-			if commands[0].Kind != store.CommandSplice || commands[0].Instruction != ask {
-				t.Fatalf("command = %+v, want an ordinary splice carrying %q", commands[0], ask)
+			if command.Instruction != ask {
+				t.Fatalf("instruction = %q, want %q", command.Instruction, ask)
+			}
+			// And the receipt does not claim the fast lane it was denied.
+			if strings.Contains(result, "immediate action") {
+				t.Fatalf("the receipt promised a reflex that was refused: %q", result)
 			}
 		})
 	}
 }
 
-// The safe half of the same gate: an obvious reversible action still rides the
-// fast path, because reversibility rather than size is the licence.
-func TestSpawnKeepsAReversibleReflex(t *testing.T) {
-	graphStore := openHeadStore(t)
-	const ask = "what time is it in Lisbon"
-	user, err := graphStore.PostMessage(store.Message{
-		SessionID: "chat-reflex", Role: store.RoleUser, Body: ask,
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	run := &beltRun{head: New(nil, graphStore), user: user}
-	if message, failed := run.execute(beltToolSpawn, beltArguments(t, map[string]any{
-		"instruction": ask, "reflex": true,
-	})); failed {
-		t.Fatalf("spawn refused a reversible reflex: %s", message)
-	}
-	commands, err := graphStore.PendingCommands(0)
-	if err != nil || len(commands) != 1 || !commands[0].Reflex {
-		t.Fatalf("commands = %+v err=%v, want one reflex", commands, err)
-	}
-}
-
 func TestHeadReceivesMeasuredReflexPrior(t *testing.T) {
 	graphStore := openHeadStore(t)
-	client := &fakeClient{responses: []string{
-		`{"reply":"Nothing is running.","command":null}`,
-	}}
+	client := &fakeClient{responses: []string{"Nothing is running."}}
 	user, err := graphStore.PostMessage(store.Message{
 		SessionID: "chat-prior", Role: store.RoleUser, Body: "what is running?",
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	err = New(client, graphStore).
+	if err := New(client, graphStore).
 		WithSelfKnowledge(func() string {
 			return "reflex: median 200 tokens, 2 turns; n=10; success=90.0%; promoted=10.0%; avg cost=$0.0010"
 		}).
-		runTurn(context.Background(), user)
-	if err != nil {
+		answer(context.Background(), user); err != nil {
 		t.Fatal(err)
 	}
 	if len(client.seen) != 2 ||
@@ -659,34 +668,51 @@ func TestHeadReceivesMeasuredReflexPrior(t *testing.T) {
 	}
 }
 
-// The router no longer carries the competence map at all — it is a belt read —
-// and what it must not do is invent one in its absence. The prompt is the whole
-// enforcement, so the prompt is what is pinned: it never promises the block, and
-// it forbids stating a measurement it has not been shown.
+// The head does not carry the competence map in its prompt at all — it is a belt
+// read — and what it must not do is invent one in its absence. The enforcement
+// used to be split between a router prompt that promised the block and a belt
+// that held the tool; it is one prompt and one tool now, and both halves are
+// pinned: the prompt never promises the block and forbids saying anything a tool
+// did not show, and the read that WOULD ground the answer exists and says so.
 func TestRouterNeitherCarriesNorInventsAMeasuredSelfAssessment(t *testing.T) {
 	graphStore := openHeadStore(t)
 	client := &fakeClient{responses: []string{
-		`{"reply":"I'm strongest at Go parser work, with eight clean runs.","command":null}`,
+		"I'm strongest at Go parser work, with eight clean runs.",
 	}}
-	user := store.Message{SessionID: "competence", Body: "what are you good at now?"}
+	user := postUser(t, graphStore, "competence", "what are you good at now?")
 	called := false
 	if err := New(client, graphStore).
 		WithCompetenceMap(func() string { called = true; return "unexpected" }).
-		runTurn(context.Background(), user); err != nil {
+		answer(context.Background(), user); err != nil {
 		t.Fatal(err)
 	}
 	if called {
-		t.Fatal("the loop still pulls the competence map behind a phrase gate")
+		t.Fatal("the head still pulls the competence map behind a phrase gate")
 	}
 	if strings.Contains(client.seen[1].Content[0].Text, "Competence map (ground truth") {
 		t.Fatalf("the competence block is still injected: %s", client.seen[1].Content[0].Text)
 	}
 	if strings.Contains(orchestratorPrompt, "When a competence map appears") ||
 		strings.Contains(orchestratorPrompt, "When standing-watch status appears") {
-		t.Error("the prompt still promises blocks it is never handed")
+		t.Error("the head's prompt still promises blocks it is never handed")
 	}
-	if !strings.Contains(orchestratorPrompt, "Never state a strength, a weakness, a watch schedule, or a figure you have not been shown") {
-		t.Error("the prompt lost the rule against inventing a self-assessment")
+	if !strings.Contains(orchestratorPrompt, "Say only what a tool result actually showed you") {
+		t.Error("the prompt lost the rule against stating what nothing showed it")
+	}
+	// The other half: a self-assessment is not forbidden, it is grounded. The
+	// read that grounds it has to exist and has to say that it is the only
+	// evidence there is, or the rule above is a rule against answering at all.
+	competence := ""
+	for _, definition := range beltDefinitions() {
+		if definition.Function.Name == beltToolCompetence {
+			competence = definition.Function.Description
+		}
+	}
+	if competence == "" {
+		t.Fatal("there is no competence read, so the honest answer is unreachable")
+	}
+	if !strings.Contains(competence, "a self-assessment given without it is invention") {
+		t.Errorf("the competence read no longer names the failure it prevents: %q", competence)
 	}
 }
 
@@ -696,11 +722,9 @@ func TestHeadVoicePromptPreservesEmptyBytesAndRendersPreference(t *testing.T) {
 	// prompt is that one segment and nothing else.
 	t.Run("empty notebook", func(t *testing.T) {
 		graphStore := openHeadStore(t)
-		client := &fakeClient{responses: []string{
-			`{"reply":"Ready.","command":null}`,
-		}}
-		user := store.Message{SessionID: "voice-empty", Body: "answer this plainly"}
-		if err := New(client, graphStore).runTurn(context.Background(), user); err != nil {
+		client := &fakeClient{responses: []string{"Ready."}}
+		user := postUser(t, graphStore, "voice-empty", "answer this plainly")
+		if err := New(client, graphStore).answer(context.Background(), user); err != nil {
 			t.Fatal(err)
 		}
 		want := orchestratorPrompt + "\n\n" + resident.VoiceRegister
@@ -715,11 +739,9 @@ func TestHeadVoicePromptPreservesEmptyBytesAndRendersPreference(t *testing.T) {
 		if _, err := graphStore.RecordFact("", "user", store.FactPreference, preference); err != nil {
 			t.Fatal(err)
 		}
-		client := &fakeClient{responses: []string{
-			`{"reply":"Ready.","command":null}`,
-		}}
-		user := store.Message{SessionID: "voice-learned", Body: "answer this plainly"}
-		if err := New(client, graphStore).runTurn(context.Background(), user); err != nil {
+		client := &fakeClient{responses: []string{"Ready."}}
+		user := postUser(t, graphStore, "voice-learned", "answer this plainly")
+		if err := New(client, graphStore).answer(context.Background(), user); err != nil {
 			t.Fatal(err)
 		}
 		if len(client.seen) != 2 || !strings.Contains(client.seen[0].Content[0].Text, preference) {
@@ -728,11 +750,18 @@ func TestHeadVoicePromptPreservesEmptyBytesAndRendersPreference(t *testing.T) {
 	})
 }
 
+// A durable preference lands through the note tool now rather than through a
+// `remember` field on a routing decision. The capture is the same fact machinery
+// and the same notebook; what changed is that writing it is an ACT the reply may
+// only claim because a call returned, instead of a field that could be set
+// beside a sentence that never mentioned it.
 func TestHeadRememberPathCapturesStatedVoicePreference(t *testing.T) {
 	graphStore := openHeadStore(t)
 	const preference = "keep answers short; no preamble"
-	client := &fakeClient{responses: []string{
-		`{"reply":"Got it.","command":null,"remember":{"scope":"user","kind":"preference","body":"keep answers short; no preamble"},"retract":null}`,
+	client := &beltClient{turns: []beltTurn{
+		{calls: []ai.ToolCall{beltCall("n1", beltToolNote, map[string]any{
+			"scope": "user", "kind": "preference", "body": preference})}},
+		{text: "Got it."},
 	}}
 	user, err := graphStore.PostMessage(store.Message{
 		SessionID: "voice-remember", Role: store.RoleUser,
@@ -750,6 +779,10 @@ func TestHeadRememberPathCapturesStatedVoicePreference(t *testing.T) {
 	}
 	if len(facts) != 1 || facts[0].Kind != store.FactPreference || facts[0].Body != preference {
 		t.Fatalf("remembered voice preference = %+v", facts)
+	}
+	// And it comes back on the next message, which is the whole point of durable.
+	if rendered := renderNotebook(graphStore, "how should you answer me", ""); !strings.Contains(rendered, preference) {
+		t.Fatalf("the notebook does not read the preference back:\n%s", rendered)
 	}
 }
 
@@ -821,11 +854,9 @@ func TestHeadSnapshotIncludesDailySpendAndCeiling(t *testing.T) {
 	if err := graph.RecordUsage(store.NodeUsage{NodeID: store.RootID, Cost: 2.5}); err != nil {
 		t.Fatal(err)
 	}
-	client := &fakeClient{responses: []string{
-		`{"reply":"Nothing is running.","command":null,"remember":null,"retract":null}`,
-	}}
-	user := store.Message{SessionID: "rail-status", Body: "what is running?"}
-	if err := New(client, graph).WithDailyBudgetUSD(20).runTurn(context.Background(), user); err != nil {
+	client := &fakeClient{responses: []string{"Nothing is running."}}
+	user := postUser(t, graph, "rail-status", "what is running?")
+	if err := New(client, graph).WithDailyBudgetUSD(20).answer(context.Background(), user); err != nil {
 		t.Fatal(err)
 	}
 	if len(client.seen) != 2 || !strings.Contains(client.seen[1].Content[0].Text,
@@ -1130,29 +1161,48 @@ func TestGenericQuestionNumericSelectionContinuesCompile(t *testing.T) {
 	}
 }
 
+// Managing a standing rule was a prefix test that journaled and spoke without
+// anything with judgment seeing the sentence. It is the rule tool now: the same
+// transition table, the same store commands, the same one-line receipts — and
+// the vocabulary is read off a tool call's argument rather than off the words a
+// sentence happened to open with, which is the difference that shows on every
+// phrasing the prefix test was never going to cover.
 func TestConversationalCharterManagement(t *testing.T) {
 	tests := []struct {
 		name        string
 		message     string
+		verb        string
+		words       string
 		wantStatus  store.CharterStatus
 		wantCadence string
 	}{
-		{name: "pause", message: "pause the morning digest", wantStatus: store.CharterPaused},
-		{name: "retire", message: "stop watching the morning digest", wantStatus: store.CharterRetired},
-		{name: "edit cadence", message: "make the morning digest hourly", wantStatus: store.CharterActive, wantCadence: "hourly"},
+		{name: "pause", message: "pause the morning digest", verb: "pause",
+			wantStatus: store.CharterPaused},
+		{name: "retire", message: "stop watching the morning digest", verb: "retire",
+			wantStatus: store.CharterRetired},
+		{name: "edit cadence", message: "make the morning digest hourly", verb: "cadence",
+			words: "hourly", wantStatus: store.CharterActive, wantCadence: "hourly"},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			graph := openHeadStore(t)
 			charter := activateHeadCharter(t, graph, "digest",
 				"Every morning send the release digest.")
+			args := map[string]any{"verb": test.verb, "describes": "morning digest"}
+			if test.words != "" {
+				args["words"] = test.words
+			}
+			client := &beltClient{turns: []beltTurn{
+				{calls: []ai.ToolCall{beltCall("r1", beltToolRule, args)}},
+				{text: "Done — that rule is updated."},
+			}}
 			user, err := graph.PostMessage(store.Message{
 				SessionID: "manage", Role: store.RoleUser, Body: test.message,
 			})
 			if err != nil {
 				t.Fatal(err)
 			}
-			if err := New(&fakeClient{}, graph).answer(context.Background(), user); err != nil {
+			if err := New(client, graph).answer(context.Background(), user); err != nil {
 				t.Fatal(err)
 			}
 			if err := resident.New(graph, nil, nil).Tick(context.Background()); err != nil {
@@ -1180,19 +1230,48 @@ func TestConversationalCharterManagement(t *testing.T) {
 	}
 }
 
+// Two rules the words reach equally is ambiguity, and ambiguity is never picked
+// for the person. The disambiguation used to be a durable question minted by the
+// recognizer itself; the rule tool now hands the candidates back as a tool
+// RESULT — acting on neither — and the ask tool puts the choice to the person as
+// the same durable numbered options. Nothing is journaled either way, which is
+// the property that mattered.
 func TestAmbiguousCharterManagementProducesOptions(t *testing.T) {
 	graph := openHeadStore(t)
 	activateHeadCharter(t, graph, "frontend-prs", "Whenever frontend PRs open, review them.")
 	activateHeadCharter(t, graph, "backend-prs", "Whenever backend PRs open, review them.")
+	client := &beltClient{turns: []beltTurn{
+		{calls: []ai.ToolCall{beltCall("r1", beltToolRule, map[string]any{
+			"verb": "retire", "describes": "PRs"})}},
+		{calls: []ai.ToolCall{beltCall("a1", beltToolAsk, map[string]any{
+			"question": "Which rule do you mean?",
+			"options":  []string{"the frontend PR reviews", "the backend PR reviews"}})}},
+		// The ask tool's own result tells the loop the question IS the reply, so
+		// the turn that follows it says nothing. See the assertion below: a
+		// second voice over a numbered question is the thread answering itself.
+		{text: ""},
+	}}
 	user, err := graph.PostMessage(store.Message{
 		SessionID: "ambiguous-charter", Role: store.RoleUser, Body: "stop watching PRs",
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := New(&fakeClient{}, graph).answer(context.Background(), user); err != nil {
+	if err := New(client, graph).answer(context.Background(), user); err != nil {
 		t.Fatal(err)
 	}
+	// The tool that could have acted refused to choose, and said so in a
+	// sentence the loop had to read before it could ask anything.
+	candidates := ""
+	for _, message := range client.seen {
+		if message.Role == "tool" && len(message.Content) > 0 && candidates == "" {
+			candidates = message.Content[0].Text
+		}
+	}
+	if !strings.Contains(candidates, "more than one standing rule matches") {
+		t.Fatalf("the rule tool picked for the user instead of handing back candidates: %q", candidates)
+	}
+
 	reply := waitForAgentReply(t, graph, "ambiguous-charter", user.Seq)
 	if !strings.HasPrefix(reply.Body, "Which rule do you mean?") || len(reply.Options) != 2 {
 		t.Fatalf("ambiguous reply = %+v", reply)
@@ -1201,6 +1280,11 @@ func TestAmbiguousCharterManagementProducesOptions(t *testing.T) {
 	// read, beside the durable option rows.
 	if !strings.Contains(reply.Body, `"kind":"choose"`) {
 		t.Fatalf("ambiguous reply lacks the structured question payload: %q", reply.Body)
+	}
+	// The question IS the reply: a second voice over the top of it would be the
+	// thread answering its own question.
+	if replies := agentRepliesAfter(t, graph, "ambiguous-charter", user.Seq); len(replies) != 1 {
+		t.Fatalf("the ask was spoken over: %+v", replies)
 	}
 	pending, err := graph.PendingCommands(0)
 	if err != nil || len(pending) != 0 {
@@ -1242,8 +1326,10 @@ func TestHeadKeepsDocumentAttachmentOffTheModelAndOnTheCommand(t *testing.T) {
 	if err := os.WriteFile(path, []byte("%PDF-1.7 filing"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	client := &fakeClient{responses: []string{
-		`{"reply":"I’ll read it.","command":{"kind":"splice","target":"","instruction":"summarise the filing"}}`,
+	client := &beltClient{turns: []beltTurn{
+		{calls: []ai.ToolCall{beltCall("s1", beltToolSpawn, map[string]any{
+			"instruction": "summarise the filing"})}},
+		{text: "I’ll read it."},
 	}}
 	user, err := graph.PostMessage(store.Message{
 		SessionID: "docs", Role: store.RoleUser, Body: "summarise the filing", Attachments: []string{path},
@@ -1342,22 +1428,26 @@ func TestCompilerWritesSuccessFromTheUsersSeat(t *testing.T) {
 	}
 }
 
-// One value, said once in each register: work about something already in flight
-// amends it, and work that genuinely is separate follows it rather than racing
-// it. The router says it in amend-and-splice terms, the belt in revise-and-steer
-// terms, and the compiler in the only term that becomes an edge.
+// One value, said once in each prompt that can act on it: work about something
+// already in flight changes it, and work that genuinely is separate follows it
+// rather than racing it.
+//
+// It used to be said in three registers because there were three prompts, and
+// each said it in a vocabulary the others did not have — the router in
+// amend-and-splice terms, the belt in revise-and-steer terms, the compiler in
+// the only term that becomes an edge. Two of those were one brain pretending to
+// be two, and they are one prompt now. The value did not move; the number of
+// places it has to be restated did, and every restatement is a place it can
+// drift.
 func TestEveryReadingIsToldNotToRaceWorkAlreadyUnderway(t *testing.T) {
 	for name, pinned := range map[string]struct {
 		prompt  string
 		phrases []string
 	}{
-		"router": {orchestratorPrompt, []string{
-			"is an amendment of that work before it is a new job",
-			"it still belongs behind that job rather than beside it",
-		}},
-		"belt": {orchestratorPrompt, []string{
+		"orchestrator": {orchestratorPrompt, []string{
 			"is a change to that work before it is a second job",
-			"people answer the thing just said to them without naming it",
+			"two jobs changing the same thing is the one outcome nothing downstream can repair",
+			"moments after a job spoke",
 		}},
 		"compiler": {compilerSystemPrompt, []string{
 			"A job still running is earlier work too",
@@ -1369,6 +1459,18 @@ func TestEveryReadingIsToldNotToRaceWorkAlreadyUnderway(t *testing.T) {
 				t.Errorf("%s prompt omitted %q", name, phrase)
 			}
 		}
+	}
+	// And the tool that would race it is told the same thing in its own
+	// description, because that is the string a tool-calling model reads at the
+	// moment it decides between "another job" and "a change to that one".
+	spawnDescription := ""
+	for _, definition := range beltDefinitions() {
+		if definition.Function.Name == beltToolSpawn {
+			spawnDescription = definition.Function.Description
+		}
+	}
+	if !strings.Contains(spawnDescription, "after names work this follows on from") {
+		t.Errorf("spawn no longer offers the follows-on edge at all: %q", spawnDescription)
 	}
 }
 
