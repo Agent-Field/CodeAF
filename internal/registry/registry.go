@@ -19,7 +19,11 @@
 // here instead of their own tables) is Waves 2–3.
 package registry
 
-import "github.com/Agent-Field/aforge-v2/internal/store"
+import (
+	"unicode/utf8"
+
+	"github.com/Agent-Field/aforge-v2/internal/store"
+)
 
 // Scope is a predicate over where an entry applies, expressed as a bitmask
 // rather than a function: composing two scopes is a bitwise OR, and testing
@@ -57,6 +61,52 @@ const ScopeAny = ScopeThread | ScopeNode | ScopeTalk
 // one surface (alt+g closes the node view and toggles the rail either way)
 // is found from any of them.
 func (s Scope) Has(other Scope) bool { return s&other != 0 }
+
+// Surface is the registry's second binding axis. [Scope] says WHERE an entry
+// applies; Surface says HOW the surface holding the keyboard there is even able
+// to SPELL an accelerator.
+//
+// They are different questions, and "toggle receipts" is the proof. The action
+// applies in the room — ScopeThread — on both surfaces that have ever drawn a
+// room. The v1 window routes it from a bare "v", because there the keyboard is
+// not always the composer's. The v2 chat surface cannot: it is composer-first
+// by design (5.15), a focused composer owns every printable key it is handed,
+// and so it binds ctrl+r instead. One Key string cannot be true of both, and a
+// registry that is the single source of truth (5.22) may not be false about
+// either — a footer built from a row that names an unbindable key teaches a
+// keystroke that does nothing, which is worse than teaching none.
+//
+// The alternatives were both worse. Re-keying the row moves the lie rather than
+// removing it. A second entry for the same action puts the verb in the palette
+// twice and makes the catalog drift from itself by construction, which is the
+// exact failure mode one registry exists to prevent.
+type Surface uint8
+
+const (
+	// SurfaceDefault is the surface an entry's [Entry.Key] is written for: one
+	// where the keyboard is not permanently the composer's, so a bare letter
+	// can be an accelerator. Zero value, so every query that does not ask
+	// about surfaces keeps the answer it always gave.
+	SurfaceDefault Surface = iota
+	// SurfaceComposerFirst is a surface where a focused composer holds every
+	// printable key, so only chords are bindable. A bare-letter entry has no
+	// accelerator here — and saying so is the honest answer, not a gap: the
+	// action still exists, still belongs in the palette and the `?` overlay,
+	// and still reaches the user through the visible object it lives on
+	// (5.22's law is that typing is the accelerator, never the only door).
+	SurfaceComposerFirst
+)
+
+// String names the surface.
+func (s Surface) String() string {
+	switch s {
+	case SurfaceDefault:
+		return "default"
+	case SurfaceComposerFirst:
+		return "composer-first"
+	}
+	return "invalid"
+}
 
 // Journal names the durable record an entry's action leaves, when it leaves
 // one. Most entries here are pure surface — open a picker, scroll, toggle a
@@ -99,6 +149,16 @@ type Entry struct {
 	// chord (ctrl+t and alt+g both toggle the task list), Key names the one
 	// the help screen leads with; the synonym is not a second registration.
 	Key string
+	// ChordKey is this entry's accelerator on a [SurfaceComposerFirst]
+	// surface, where Key's bare letter cannot be bound at all. It is recorded
+	// only when a surface really binds the chord — the registry names doors
+	// that exist, never doors it would like to exist — so most rows leave it
+	// empty, and a row whose Key is already a chord never needs one.
+	//
+	// Read it through [Entry.KeyOn] or [Entry.On] rather than directly: those
+	// answer the question a render surface actually has, which is "what, if
+	// anything, do I tell the user to press here."
+	ChordKey string
 	// Slash is the alias typed after "/" in the composer or a task's steer
 	// line, without the leading slash. Empty when the entry has none.
 	Slash string
@@ -106,6 +166,50 @@ type Entry struct {
 	Journal Journal
 
 	lowerVerb, lowerDescription string
+}
+
+// KeyOn is the accelerator this entry actually has on surface, which is the
+// only form of the question a render surface can honestly ask. It returns "" —
+// no accelerator here — rather than a key the surface cannot bind.
+//
+// On a [SurfaceComposerFirst] surface a recorded [Entry.ChordKey] wins, and a
+// bare-letter Key resolves to nothing at all, because the composer will consume
+// that letter as text. A chord Key ("ctrl+j", "alt+g") is bindable on every
+// surface and is returned unchanged.
+func (e Entry) KeyOn(surface Surface) string {
+	if surface != SurfaceComposerFirst {
+		return e.Key
+	}
+	if e.ChordKey != "" {
+		return e.ChordKey
+	}
+	if barePrintable(e.Key) {
+		return ""
+	}
+	return e.Key
+}
+
+// On projects the entry onto a surface: the same id, verb, description, scope
+// and journal, with Key resolved by [Entry.KeyOn]. It reports false when the
+// entry has no accelerator on that surface, so a caller building a key-shaped
+// strip (the contextual footer of 5.22 rule 4) can drop the row with one test
+// and never has to correct a key by hand — a surface that hand-corrects the
+// registry's keys is a second source of truth wearing the first one's clothes.
+func (e Entry) On(surface Surface) (Entry, bool) {
+	key := e.KeyOn(surface)
+	if key == "" {
+		return Entry{}, false
+	}
+	e.Key, e.ChordKey = key, ""
+	return e, true
+}
+
+// barePrintable reports whether key is a single printable character rather
+// than a chord or a named key. Bubble Tea spells every named key as a word
+// ("tab", "esc", "enter") and every chord with a "+", so one rune is exactly
+// the case a composer swallows as text.
+func barePrintable(key string) bool {
+	return utf8.RuneCountInString(key) == 1
 }
 
 // entries is the seeded catalog, built once at package init from
@@ -175,6 +279,29 @@ func ByKey(scope Scope, key string) (Entry, bool) {
 	for _, entry := range entries {
 		if entry.Key == key && entry.Scope.Has(scope) {
 			return entry, true
+		}
+	}
+	return Entry{}, false
+}
+
+// ByKeyOn is [ByKey] asked from a surface: it finds the entry that key
+// actually triggers in scope on that surface, matching against [Entry.KeyOn]
+// rather than the raw Key field. A composer-first surface routing ctrl+r finds
+// the receipts row; the same surface can never resolve "v", which is correct,
+// because "v" there is a letter the user typed into a draft.
+//
+// The returned entry is already projected onto the surface, so its Key is the
+// chord the caller matched and not the one the catalog was seeded with.
+func ByKeyOn(scope Scope, surface Surface, key string) (Entry, bool) {
+	if key == "" {
+		return Entry{}, false
+	}
+	for _, entry := range entries {
+		if !entry.Scope.Has(scope) {
+			continue
+		}
+		if bound, ok := entry.On(surface); ok && bound.Key == key {
+			return bound, true
 		}
 	}
 	return Entry{}, false

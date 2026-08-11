@@ -114,8 +114,14 @@ func nodeKeyRows() []Entry {
 func threadKeyRows() []Entry {
 	const everywhere = ScopeThread | ScopeNode
 	return []Entry{
+		// The one row with two true accelerators. internal/tui routes it from
+		// a bare "v" (help.go names it); internal/tui2/chat routes it from
+		// ctrl+r, because a composer-first room hands every printable key to
+		// the draft. Both are real bindings in live code, so both are
+		// recorded — see [Surface] for why neither may be dropped or
+		// rewritten into the other.
 		{ID: "key.thread.receipts", Verb: "toggle receipts", Description: "expand or collapse reading receipts",
-			Scope: ScopeThread, Key: "v"},
+			Scope: ScopeThread, Key: "v", ChordKey: "ctrl+r"},
 		{ID: "key.thread.copy-answer", Verb: "copy answer", Description: "copy the focused answer to the clipboard",
 			Scope: ScopeThread, Key: "y"},
 		{ID: "key.thread.copy-file", Verb: "copy file", Description: "copy the path of the file the answer produced",
