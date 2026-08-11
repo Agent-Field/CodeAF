@@ -1,6 +1,7 @@
 package chat
 
 import (
+	"log"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -84,13 +85,11 @@ func settle(t *testing.T, app *App) {
 	t.Helper()
 	for i := 0; i < 20; i++ {
 		before := app.journal
-		reads := 0
 		app.polling = true
 		cmd := app.pollCmd()
 		result := cmd().(pollResultMsg)
 		app.applyPoll(result)
 		app.polling = false
-		reads++
 		if result.quiet && app.journal == before {
 			return
 		}
@@ -114,6 +113,74 @@ func assertJournalOnScreen(t *testing.T, graph *store.Store, app *App) {
 			t.Errorf("journal seq %d (%s %q) never reached the screen",
 				message.Seq, message.Role, message.Body)
 		}
+	}
+}
+
+// -- the trace ---------------------------------------------------------------
+
+func TestTheTraceIsSilentUntilItIsAskedFor(t *testing.T) {
+	for value, want := range map[string]bool{
+		"": false, "0": false, "false": false, "no": false, "off": false, " OFF ": false,
+		"1": true, "true": true, "yes": true, "please": true,
+	} {
+		if got := tracingWanted(value); got != want {
+			t.Errorf("tracingWanted(%q) = %v, want %v", value, got, want)
+		}
+	}
+
+	graph := openJournal(t)
+	reply(t, graph, "a row")
+	app := newJournalApp(t, graph, nil, nil)
+
+	var sink strings.Builder
+	restore := log.Writer()
+	log.SetOutput(&sink)
+	t.Cleanup(func() { log.SetOutput(restore) })
+
+	was := chatTracing.Load()
+	t.Cleanup(func() { chatTracing.Store(was) })
+
+	chatTracing.Store(false)
+	settle(t, app)
+	if sink.Len() != 0 {
+		t.Fatalf("the trace wrote with the switch off:\n%s", sink.String())
+	}
+
+	chatTracing.Store(true)
+	reply(t, graph, "another row")
+	settle(t, app)
+	out := sink.String()
+	for _, want := range []string{"poll", "current-through", "read-through"} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("the trace does not say %q:\n%s", want, out)
+		}
+	}
+}
+
+// The one line that is never gated states a thing that cannot happen, so an
+// ordinary run — including the long drain of a cold open on a room with a
+// history — must never produce it.
+func TestTheUngatedTraceLineIsSilentOnAnOrdinaryDrain(t *testing.T) {
+	graph := openJournal(t)
+	for i := 0; i < 3*messagePage; i++ {
+		reply(t, graph, "row")
+	}
+
+	var sink strings.Builder
+	restore := log.Writer()
+	log.SetOutput(&sink)
+	t.Cleanup(func() { log.SetOutput(restore) })
+	was := chatTracing.Load()
+	chatTracing.Store(false)
+	t.Cleanup(func() { chatTracing.Store(was) })
+
+	app := newJournalApp(t, graph, nil, nil)
+	settle(t, app)
+	send(t, app, "a question")
+	settle(t, app)
+
+	if sink.Len() != 0 {
+		t.Fatalf("an ordinary run wrote to the log:\n%s", sink.String())
 	}
 }
 

@@ -154,6 +154,43 @@ func TestARealHeadsReplyIsFiledUnderTheRoomTheSurfaceIsWatching(t *testing.T) {
 	}
 }
 
+// 13.2's P0 on the real Serve path: a room with more history than one page, a
+// real head answering into it, and a reply that must arrive on screen rather
+// than only in the store.
+func TestARealHeadsReplyIntoARoomWithAHistoryReachesTheScreen(t *testing.T) {
+	graph := openJournal(t)
+	for i := 0; i < 3*messagePage; i++ {
+		reply(t, graph, "an older row")
+	}
+	model := &scriptedModel{replies: []string{`{"reply":"the answer at last"}`}}
+
+	ctx, stop := context.WithCancel(context.Background())
+	defer stop()
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		_ = head.New(model, graph).Serve(ctx)
+	}()
+	t.Cleanup(func() {
+		stop()
+		<-done
+	})
+
+	app := newJournalApp(t, graph, &fakeCommander{}, nil)
+	send(t, app, "a fresh question")
+
+	out, found := waitForScreen(t, app, "the answer at last")
+	if !found {
+		t.Fatalf("the head's reply never reached the screen behind a room's history "+
+			"(current-through=%d read-through=%d, turn still live=%v):\n%s",
+			app.journal, app.watermark, app.turn.active, out)
+	}
+	if app.turn.active {
+		t.Fatal("the awaiting line outlived the reply")
+	}
+	assertJournalOnScreen(t, graph, app)
+}
+
 // Two turns through the real head, back to back: the second reply must not be
 // stranded behind the first turn's watermark.
 func TestTwoRealTurnsBackToBackBothReachTheScreen(t *testing.T) {
