@@ -2663,3 +2663,36 @@ esc ladder per 8.2.21. These are what make v2 feel like a product, not a demo.
 Waves 3 (rooms/rail/one-loop head) and 4 (chips/full settings grammar) are
 unchanged — but nothing about their ordering licenses shipping a grey wall in
 the meantime.
+
+### 13.3 Second hands-on triage (2026-08-10 21:08) — four bugs, three unwired, one head edge
+
+BUGS (fix in current lanes, before more features):
+1. **Question machinery leaks raw into the transcript**: choose-kind JSON and
+   the charter/reflex proposal prose render as a plain aforge message. The
+   producer still smuggles options through the body (Part 2.10/2.11); v1's
+   brace-scanner hid it, v2's honest renderer exposes it. Fix at the source:
+   questions post as question PARTS (the parts model landed for this), and the
+   v2 renderer draws a question block with numbered options; consent questions
+   get the inline y/n strip (5.20 rule 2). No brace-scanning in v2, ever.
+2. **Pipe-tables render as soup** — no width-aware table layout in the
+   markdown path. Tables need real layout (column measure, wrap-in-cell,
+   overflow-x scroll per the responsive law) or a designed degradation.
+3. **"No live work" beside "I've queued a job"** — determine which is lying:
+   if no command journaled, the head fabricated a queue claim (predictability
+   law 5.20 rule 1 violation at the source); if journaled, the rail's
+   live-work query misses pending/queued states. Either way this is the exact
+   trust failure the visible-dispatch law exists to prevent.
+4. **Raw session id in the rail** violates 5.14 (never show ids). Wire the
+   scribe: name sessions (the sessions.title column exists), show the name.
+
+UNWIRED (scheduled, keep Wave 3/4 ordering but say so in the UI):
+- click/interaction layer (compositor hit-testing exists; 5.22 wiring is
+  Wave 3/4) — until then nothing should LOOK clickable.
+- home-scope rail content: thread list (5.24 row-0), task cards, graph depth.
+- status line data: spend from usage table (plumbing only); ctx% needs the
+  window high-water journaling (5.9 note — small engine piece, still unbuilt).
+
+HEAD EDGE: charter proposal wrote incoherent economics ("$20.00 a run" from a
+"$0.0017 measured cost"). The one-loop head lane is mid-rewrite; its money
+sentences must go through the deterministic-first law (5.23) — template the
+arithmetic, never let the model do multiplication in prose.
