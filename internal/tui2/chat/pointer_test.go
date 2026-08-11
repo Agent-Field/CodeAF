@@ -9,7 +9,9 @@ import (
 	"github.com/charmbracelet/x/ansi"
 
 	"github.com/Agent-Field/aforge-v2/internal/store"
+	"github.com/Agent-Field/aforge-v2/internal/tui2/composer"
 	"github.com/Agent-Field/aforge-v2/internal/tui2/footer"
+	"github.com/Agent-Field/aforge-v2/internal/tui2/rail"
 	"github.com/Agent-Field/aforge-v2/internal/tui2/tokens"
 )
 
@@ -314,6 +316,151 @@ func TestAPointerSweepChangesNoState(t *testing.T) {
 	}
 	if got := ansi.Strip(app.Frame(w, h)); got != before {
 		t.Fatal("a sweep that ended outside every pane left the frame changed")
+	}
+}
+
+// -- the keyboard follows the pointer -----------------------------------------
+//
+// 5.14's rule, read for a hand: you talk to what you are looking at, and
+// pointing IS looking. 13.14 wired the map's half ("pointing at the map is
+// talking to the map") and nothing wired the way back, so custody was a one-way
+// door and ctrl+o was the only key out of it. These four tests are the round
+// trip, asserted where it is felt — on what a KEYSTROKE does afterwards, never
+// on the flag, because the flag was never what the reader complained about.
+
+// clickComposer clicks the first row of the draft, wherever the region's chrome
+// has left it, at column x of the draft's own text.
+func clickComposer(t *testing.T, app *App, col int) *composerStack {
+	t.Helper()
+	stack, ok := app.composer.(*composerStack)
+	if !ok {
+		t.Skip("the composer region is not the stack this test drives")
+	}
+	top, body := stack.draftBand()
+	if body <= 0 {
+		t.Fatal("the composer region drew no draft rows")
+	}
+	// The draft's text starts after the prompt glyph and its space; the pointer
+	// asks for a text column and this is where that column is on screen.
+	x := composer.TextColumn(stack.lastWidth) + col
+	stack.Mouse(clickAt(x, top), image.Point{X: x, Y: top})
+	return stack
+}
+
+// THE REPORT, verbatim: "clicking on the typing part or anywhere does not seem
+// to go there — I have to press ctrl+o."
+func TestClickingTheComposerTakesTheKeyboardBackFromTheMap(t *testing.T) {
+	app, _ := boardApp(t)
+	_ = app.Frame(120, 30)
+
+	press(app, "ctrl+o")
+	if !app.railFocus {
+		t.Fatal("the fixture did not put the keyboard on the map")
+	}
+
+	clickComposer(t, app, 0)
+	if app.railFocus {
+		t.Fatal("clicking the composer left the keyboard on the map")
+	}
+
+	// The assertion that matters is not the flag: it is that the letters of a
+	// sentence arrive. j and k are the map's movement keys, so a draft typed at
+	// a map that still held the keyboard came out with holes in it — 13.14's
+	// "jack knife kayak" → "ac nife aya", the same fault reached by a pointer.
+	typeInto(app, "jack knife kayak")
+	if got := app.composer.Draft(); got != "jack knife kayak" {
+		t.Fatalf("the draft took %q — the map was still eating the keyboard", got)
+	}
+}
+
+// The transcript is the other half of the conversation side. A click on prose
+// answers nothing and folds nothing (the two tests above), and it still settles
+// who the reader is talking to.
+func TestClickingTheTranscriptTakesTheKeyboardBackFromTheMap(t *testing.T) {
+	app, _ := boardApp(t)
+	_ = app.Frame(120, 30)
+	press(app, "ctrl+o")
+	if !app.railFocus {
+		t.Fatal("the fixture did not put the keyboard on the map")
+	}
+
+	app.pane.Mouse(clickAt(4, 2), image.Point{X: 4, Y: 2})
+	if app.railFocus {
+		t.Fatal("clicking the transcript left the keyboard on the map")
+	}
+	typeInto(app, "kg")
+	if got := app.composer.Draft(); got != "kg" {
+		t.Fatalf("the draft took %q after a click on the conversation", got)
+	}
+	// And the transcript's own vocabulary is the scroll keys, which the ladder
+	// routes here whoever holds custody — so a reader who clicked to read can
+	// still read.
+	if cmd := app.key(tea.KeyPressMsg{Code: tea.KeyPgUp}); cmd != nil {
+		t.Fatal("pgup produced a command; it should only have scrolled")
+	}
+}
+
+// The map's direction, asserted the same way: after a click, j walks.
+func TestClickingARailRowLetsJAndKWalkAtOnce(t *testing.T) {
+	app, _ := boardApp(t)
+	_ = app.Frame(120, 30)
+	if app.railFocus {
+		t.Fatal("the fixture opened with the keyboard already on the map")
+	}
+
+	app.scopePoint(railPoint{row: 1})
+	before := app.railModel.Cursor()
+	press(app, "j")
+	if app.railModel.Cursor() == before {
+		t.Fatal("j did not walk the map after a click on it")
+	}
+	if got := app.composer.Draft(); got != "" {
+		t.Fatalf("j reached the draft as a letter: %q", got)
+	}
+}
+
+// The one refusal, and it is [handOverTheKeyboard]'s own: a composer that takes
+// no draft may not take the keyboard either, or the click would move the cursor
+// to a pane that refuses every key and leave j/k walking nothing.
+func TestAClickCannotHandTheKeyboardToADisabledComposer(t *testing.T) {
+	app, _ := boardApp(t)
+	_ = app.Frame(120, 30)
+	press(app, "ctrl+o")
+
+	target := -1
+	for i, row := range app.railModel.Rows() {
+		if row.ID == rowNewRoomID {
+			target = i
+		}
+	}
+	if target < 0 {
+		t.Fatal("no + new room row in the fixture")
+	}
+	app.scopePoint(railPoint{row: target})
+	if app.composerMode().mode != rail.ComposerDisabled {
+		t.Fatalf("previewing + new room left the composer at %v", app.composerMode().mode)
+	}
+
+	app.pane.Mouse(clickAt(4, 2), image.Point{X: 4, Y: 2})
+	if !app.railFocus {
+		t.Fatal("a click handed the keyboard to a composer that refuses every key")
+	}
+}
+
+// 5.22's parity clause on the caret: a click in the draft puts the caret where
+// the finger went, which is what every other text surface on the machine does.
+func TestClickingInsideTheDraftPlacesTheCaret(t *testing.T) {
+	app, _ := boardApp(t)
+	_ = app.Frame(120, 30)
+	typeInto(app, "hello world")
+	if got := app.composer.Draft(); got != "hello world" {
+		t.Fatalf("the fixture draft is %q", got)
+	}
+
+	clickComposer(t, app, 5)
+	typeInto(app, ",")
+	if got := app.composer.Draft(); got != "hello, world" {
+		t.Fatalf("the caret landed elsewhere: %q", got)
 	}
 }
 

@@ -53,6 +53,13 @@ type transcriptPane struct {
 	// belongs to the app, which is where the reader's per-row decision is
 	// remembered across the rebuilds that would otherwise lose it (disclose.go).
 	fold func(block *messageBlock) tea.Cmd
+	// focus asks for the keyboard, because pointing IS looking (5.14). The
+	// transcript's own keys are the scroll vocabulary, which the app's ladder
+	// routes here whatever holds custody; what a click on the conversation
+	// actually settles is that the MAP no longer does, so the next letter is a
+	// letter and the next j is a j. Same seam as answer and fold: the pane knows
+	// it was pointed at, the app knows where the keyboard is.
+	focus func() bool
 	// width is the rectangle the pane was last drawn at, kept because an option
 	// row's position depends on how tall its block rendered.
 	width int
@@ -178,6 +185,13 @@ func (p *transcriptPane) Mouse(msg tea.MouseMsg, local image.Point) tea.Cmd {
 	if click, isClick := msg.(tea.MouseClickMsg); isClick {
 		if click.Button != tea.MouseLeft {
 			return nil
+		}
+		// The keyboard comes with the pointer, before the row is resolved and
+		// whether or not it resolves to anything: a click on prose answers no
+		// question and opens no fold, and it is still the reader saying "I am
+		// reading this, not walking the map".
+		if p.focus != nil {
+			p.focus()
 		}
 		if p.answer != nil {
 			if block, _, number, ok := p.optionAt(local.Y); ok {
