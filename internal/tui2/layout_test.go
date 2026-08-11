@@ -220,3 +220,36 @@ func TestLayoutOverlaySitsAboveEverything(t *testing.T) {
 		}
 	}
 }
+
+// TestLayoutOverlayFullscreensOnShortButWideFrames covers the height door:
+// a frame wide enough for a floating dialog but too short for one has the
+// same "nothing left to float over" problem a narrow frame has (10.5.24,
+// consentui.ForcedFullscreen's both-axes semantics). Width alone must not be
+// enough to keep the overlay a centered panel.
+func TestLayoutOverlayFullscreensOnShortButWideFrames(t *testing.T) {
+	m := DefaultMetrics()
+	w, h := 120, m.DialogFullscreenBelowHeight-1 // wide, but one row under the height door
+	l := solve(w, h, m, mode{OverlayOpen: true})
+	found := false
+	for _, slot := range l.Slots {
+		if slot.ID != LayerOverlay {
+			continue
+		}
+		found = true
+		if slot.Rect != image.Rect(0, 0, w, h) {
+			t.Fatalf("short-but-wide overlay should be fullscreen, got %v", slot.Rect)
+		}
+	}
+	if !found {
+		t.Fatalf("no overlay slot at %dx%d", w, h)
+	}
+
+	// Just above the height door, at the same generous width, it goes back to
+	// being a centered panel rather than the whole frame.
+	tall := solve(w, m.DialogFullscreenBelowHeight+10, m, mode{OverlayOpen: true})
+	for _, slot := range tall.Slots {
+		if slot.ID == LayerOverlay && slot.Rect == image.Rect(0, 0, w, m.DialogFullscreenBelowHeight+10) {
+			t.Fatalf("overlay should be a centered panel once both doors clear, got %v", slot.Rect)
+		}
+	}
+}

@@ -41,9 +41,17 @@ type Metrics struct {
 	// user why it looks the way it does.
 	StatusHeight int
 
-	// DialogFullscreenBelow is the width under which a dialog stops being a
-	// centered panel and takes the whole frame. Wave 3 consumes it.
-	DialogFullscreenBelow int
+	// DialogFullscreenBelowWidth is the width under which a dialog stops being
+	// a centered panel and takes the whole frame.
+	DialogFullscreenBelowWidth int
+
+	// DialogFullscreenBelowHeight is the height under which a dialog stops
+	// being a centered panel and takes the whole frame. Below it there is no
+	// room to float a panel over three rows of transcript, which is the same
+	// "nothing left to float over" reasoning the width door uses — see
+	// consentui.ForcedFullscreen, which forces on both axes for the same
+	// reason.
+	DialogFullscreenBelowHeight int
 
 	// SplitDiffBreakpoint is the width at or above which a diff renders as two
 	// columns rather than unified. Wave 3 consumes it.
@@ -57,16 +65,28 @@ type Metrics struct {
 // DefaultMetrics is the provisional table. RailBreakpoint matches the old
 // surface's railAtWidth so the two windows agree about when a terminal is
 // wide; everything else is a starting number the tokens sibling may replace.
+//
+// The two DialogFullscreenBelow* numbers are the exception: they are not
+// starting numbers, they are pinned. tokens.DialogFullscreenBelowWidth (72)
+// and tokens.DialogFullscreenBelowHeight (20) are the 10.5.24 table's answer
+// to "forced fullscreen below a stated size threshold" (10.4.17), and this
+// root package cannot import the tokens sibling without inverting the
+// dependency the tokens → tui2 seam is built on (see the SEAM note above), so
+// the values are restated here as literals rather than read off the constant.
+// TestDefaultMetricsAgreesWithTokenBreakpoints (metrics_tokens_test.go) pins
+// the two literals to the tokens constants from outside this package, so
+// drift between the two fails a test instead of shipping quietly.
 func DefaultMetrics() Metrics {
 	return Metrics{
-		RailBreakpoint:         100,
-		RailWidth:              28,
-		MinMainWidth:           56,
-		ComposerHeight:         3,
-		StatusHeight:           1,
-		DialogFullscreenBelow:  80,
-		SplitDiffBreakpoint:    120,
-		PasteToAttachmentLines: 8,
+		RailBreakpoint:              100,
+		RailWidth:                   28,
+		MinMainWidth:                56,
+		ComposerHeight:              3,
+		StatusHeight:                1,
+		DialogFullscreenBelowWidth:  72,
+		DialogFullscreenBelowHeight: 20,
+		SplitDiffBreakpoint:         120,
+		PasteToAttachmentLines:      8,
 	}
 }
 
