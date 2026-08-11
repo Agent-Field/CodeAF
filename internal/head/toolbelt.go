@@ -378,6 +378,13 @@ type beltConfirm struct {
 }
 
 func (run *beltRun) execute(name, arguments string) (string, bool) {
+	// One guard for every tool rather than one per tool. Three of the reads
+	// already carried their own because a surface can legitimately register no
+	// competence map; this is the other kind of absence — no graph at all — and
+	// a tool belt that panicked on it would take the conversation down with it.
+	if run == nil || run.head == nil || run.head.store == nil {
+		return "this surface has no graph behind it, so nothing can be read or changed here", true
+	}
 	args := map[string]any{}
 	if trimmed := strings.TrimSpace(arguments); trimmed != "" && trimmed != "null" {
 		if err := json.Unmarshal([]byte(trimmed), &args); err != nil {
