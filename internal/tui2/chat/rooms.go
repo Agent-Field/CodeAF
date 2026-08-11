@@ -706,7 +706,10 @@ func (a *App) openTaskRoom(row rail.Row, node string) tea.Cmd {
 	// read, and it lands underneath when it arrives.
 	a.paintRoom()
 	a.shell.Invalidate()
-	return a.readNodeCmd(node, 0)
+	// Two reads, one entry: the journal's trail, and what the workers under this
+	// node actually did. The second is a file the executor writes outside the
+	// journal, so nothing else in this window would ever ask for it (trace.go).
+	return tea.Batch(a.readNodeCmd(node, 0), a.readTraceCmd(node))
 }
 
 // paintRoom rebuilds the open task room from the record.
@@ -734,7 +737,7 @@ func (a *App) paintRoom() {
 	}
 	view.stamp = stamp
 
-	rows := roomBlocks(record, view.messages, a.style, a.source)
+	rows := roomBlocks(record, view.messages, a.style, a.source, a.traces)
 	// AN EMPTY ROOM MUST SAY IT IS EMPTY (12.14 finding 4), and it must say so
 	// only while it is TRUE. The teaching line used to appear whenever the
 	// message trail was empty, which for a resident-run task is nearly always —

@@ -270,6 +270,13 @@ type App struct {
 	// rebuild — the flag cannot live on a block that is thrown away and rebuilt
 	// on every journal move. See disclose.go.
 	folds map[string]bool
+	// traces is what each worker's recorder said, as this window last read it,
+	// keyed by node id. It is the source the journal does not have (trace.go):
+	// the tool calls, the results and the model's own words between them. It is
+	// kept on the APP rather than on the view so a reader who leaves a room and
+	// comes back does not pay for the whole tail again — the stamp beside the
+	// text is what makes the re-read a stat.
+	traces map[string]nodeTrace
 	// foldable says the transcript holds at least one row the fold can act on.
 	// The footer offers the accelerator only while that is true: 5.20 rule 3
 	// forbids advertising a door that opens nothing, and the cells it saves are
@@ -682,6 +689,10 @@ func (a *App) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case nodeMessagesMsg:
 		a.applyNodeMessages(msg)
+		return a, nil
+
+	case traceReadMsg:
+		a.applyTraceRead(msg)
 		return a, nil
 
 	case roomOpenedMsg:
