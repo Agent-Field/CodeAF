@@ -6,9 +6,11 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 
+	"github.com/Agent-Field/aforge-v2/internal/store"
 	"github.com/Agent-Field/aforge-v2/internal/tui2"
 	"github.com/Agent-Field/aforge-v2/internal/tui2/blocks"
 	"github.com/Agent-Field/aforge-v2/internal/tui2/composer"
+	"github.com/Agent-Field/aforge-v2/internal/tui2/modelui"
 	"github.com/Agent-Field/aforge-v2/internal/tui2/placeline"
 	"github.com/Agent-Field/aforge-v2/internal/tui2/rail"
 	"github.com/Agent-Field/aforge-v2/internal/tui2/tokens"
@@ -297,34 +299,67 @@ type metaStrip struct {
 	haveUsage bool
 }
 
+// chip is the strip's model cell (5.10, 5.23): the one surface model economics
+// is said on, rendered by the component that owns its grammar.
+//
+// It carries the role word because this cell has no column beside it naming
+// one — the chip IS the sentence "the voice runs on this" — and it carries no
+// gauge because the strip's own ctx cell is 10.5.23's context home and a second
+// gauge two cells away would be the same fact drawn twice. What the chip adds
+// over the hand-rolled word this replaced is the effort suffix, which 5.10 says
+// rides the chip and which the bare word had nowhere to put.
+//
+// Boosted stays false: the escalation is real (8.2.16) but the engine seam this
+// surface holds has no way to ask whether it is on, and a chip that guessed
+// would be claiming a binding that is not there.
+func (m *metaStrip) chip() modelui.Chip {
+	return modelui.Chip{
+		Role:   store.RoleOrchestrate,
+		Model:  strings.TrimSpace(m.model),
+		Styler: m.style,
+	}
+}
+
 // render draws the strip at width.
 func (m *metaStrip) render(width int) string {
 	if m == nil || width <= 0 {
 		return ""
 	}
 	type cell struct {
-		id       string
-		text     string
-		token    tokens.Token
+		id    string
+		text  string
+		token tokens.Token
+		// paint replaces the token when a cell owns its own colours. The chip is
+		// the only one: it is a run of differently-tiered spans (the model word
+		// one tier above the effort suffix beside it), and flattening it to a
+		// single token here would be this strip re-deciding what a chip looks
+		// like — the one thing modelui's doc says a consumer may not do.
+		paint    func(width int) string
 		priority int
 	}
 	cells := make([]cell, 0, 4)
-	if model := modelWord(m.model); model != "" {
-		cells = append(cells, cell{"model", model, tokens.TextTertiary, 60})
+	if chip := m.chip(); chip.Width() > 0 {
+		cells = append(cells, cell{id: "model", text: chip.Text(),
+			paint: chip.Render, priority: 60})
 	}
 	if m.live {
-		cells = append(cells, cell{"elapsed", tokens.Elapsed(m.elapsed), tokens.TextTertiary, 70})
+		cells = append(cells, cell{id: "elapsed", text: tokens.Elapsed(m.elapsed),
+			token: tokens.TextTertiary, priority: 70})
 	}
 	if m.haveCost {
-		cells = append(cells, cell{"cost", tokens.Money(m.cost), tokens.Green, 100})
+		cells = append(cells, cell{id: "cost", text: tokens.Money(m.cost),
+			token: tokens.Green, priority: 100})
 	} else {
-		cells = append(cells, cell{"cost", "$" + tokens.GlyphMissing, tokens.TextTertiary, 100})
+		cells = append(cells, cell{id: "cost", text: "$" + tokens.GlyphMissing,
+			token: tokens.TextTertiary, priority: 100})
 	}
 	if m.haveUsage {
-		cells = append(cells, cell{"ctx", tokens.Gauge(fraction(m.used, m.window)) + " " +
-			tokens.Context(m.used, m.window), tokens.ContextToken(m.used, m.window), 80})
+		cells = append(cells, cell{id: "ctx", text: tokens.Gauge(fraction(m.used, m.window)) + " " +
+			tokens.Context(m.used, m.window), token: tokens.ContextToken(m.used, m.window),
+			priority: 80})
 	} else {
-		cells = append(cells, cell{"ctx", tokens.GlyphMissing + " ctx", tokens.TextTertiary, 80})
+		cells = append(cells, cell{id: "ctx", text: tokens.GlyphMissing + " ctx",
+			token: tokens.TextTertiary, priority: 80})
 	}
 
 	const sep = " " + tokens.GlyphSeparator + " "
@@ -353,7 +388,11 @@ func (m *metaStrip) render(width int) string {
 		if written > 0 {
 			out.WriteString(m.paint(sep, tokens.TextTertiary))
 		}
-		out.WriteString(m.paint(c.text, c.token))
+		if c.paint != nil {
+			out.WriteString(c.paint(blocks.Width(c.text)))
+		} else {
+			out.WriteString(m.paint(c.text, c.token))
+		}
 		written++
 	}
 	if written == 0 {

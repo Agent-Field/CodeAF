@@ -16,5 +16,5 @@ aforge
 ~/aforge-v2
 ›  Type a message
 
-  claude-k3 · 0s · $— · — ctx
+  voice claude-k3 · 0s · $— · — ctx
 esc interrupt · ctrl+c stop or quit · alt+enter insert newline · ? help

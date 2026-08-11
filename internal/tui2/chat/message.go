@@ -6,6 +6,7 @@ import (
 
 	"github.com/Agent-Field/aforge-v2/internal/store"
 	"github.com/Agent-Field/aforge-v2/internal/tui2/blocks"
+	"github.com/Agent-Field/aforge-v2/internal/tui2/modelui"
 	"github.com/Agent-Field/aforge-v2/internal/tui2/tokens"
 )
 
@@ -629,12 +630,14 @@ func firstLine(text string) string {
 }
 
 // modelWord shortens a provider's model id to the word a person says. The
-// vendor prefix and the date suffix are provenance, not identity, and the
-// header's meta cells are the first thing width pressure takes.
-func modelWord(model string) string {
-	model = strings.TrimSpace(model)
-	if index := strings.LastIndexByte(model, '/'); index >= 0 && index+1 < len(model) {
-		model = model[index+1:]
-	}
-	return model
-}
+// vendor prefix, the variant suffix and the date suffix are provenance, not
+// identity, and the header's meta cells are the first thing width pressure
+// takes.
+//
+// It is [modelui.ModelWord] and nothing else. This package used to carry its
+// own half of the rule — the vendor prefix only — which meant a reply header
+// said "claude-sonnet-4-20250514" while the chip on the composer under it said
+// "claude-sonnet-4", and the receipt a model switch posts would have been a
+// third spelling. One word, one function: the chip, the header meta and the
+// receipt cannot disagree about what a model is called.
+func modelWord(model string) string { return modelui.ModelWord(model) }
