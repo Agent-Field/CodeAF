@@ -2,11 +2,17 @@ package main
 
 import (
 	"context"
+	"errors"
 	"flag"
 	"fmt"
+	"log"
+	"os"
+	"path/filepath"
 	"strings"
 
-	"github.com/Agent-Field/aforge-v2/internal/tui2"
+	"github.com/Agent-Field/aforge-v2/internal/tui"
+	"github.com/Agent-Field/aforge-v2/internal/tui2/chat"
+	"github.com/Agent-Field/aforge-v2/internal/tui2/tokens"
 )
 
 // The door to the v2 surface, and nothing else.
@@ -71,37 +77,165 @@ func truthyEnv(value string) bool {
 	}
 }
 
-// runChatV2 opens the v2 shell. This wave it shows the room and not what
-// happens in it: the transcript, composer, status line and scope rail exist as
-// empty panes wired through the compositor, and the engine seams land on top
-// of them in the waves that follow.
+// runChatV2 opens the v2 surface on the real engine.
+//
+// It is deliberately the same nine lines of setup runChat performs, in the same
+// order, against the same constructors: open the window, claim the residency,
+// silence the logger for as long as something else owns the terminal, run. The
+// only difference is the last step — which surface the engine is handed to.
+// That is the lens law (Decision 7) enforced by construction: there is one way
+// to build an aforge, and a second surface may choose what it draws, never what
+// it is drawing.
 func runChatV2(args []string) error {
 	flags := flag.NewFlagSet("chat --v2", flag.ContinueOnError)
 	database := flags.String("db", defaultChatDB(), "path to the durable graph database")
 	sessionID := flags.String("session", "", "thread session id; empty resumes the last one, \"new\" starts a fresh one")
 	linear := flags.Bool("linear", false,
 		"single column, no motion — the accessible rendering")
-	if err := flags.Parse(reorder(args, map[string]bool{"db": true, "session": true})); err != nil {
+	// Colour is a flag and never an environment pin of this package's own
+	// invention: the token layer detects the terminal's vocabulary from the
+	// standard ecosystem variables, and an operator who disagrees says so here.
+	colour := flags.String("color", "",
+		"colour vocabulary: none, 16, 256 or truecolor; empty asks the terminal")
+	if err := flags.Parse(reorder(args, map[string]bool{
+		"db": true, "session": true, "color": true,
+	})); err != nil {
 		return err
 	}
 	if flags.NArg() != 0 {
-		return fmt.Errorf("usage: aforge chat --v2 [--db path] [--session id|new] [--linear]")
+		return fmt.Errorf("usage: aforge chat --v2 [--db path] [--session id|new] [--linear] [--color name]")
 	}
 
-	// The store is not opened yet, so the path is expanded only far enough to
-	// show the operator the same string the old surface would have used. A
-	// shell that displayed a session it had not read would be the first lie in
-	// a surface built to stop telling them.
-	path := strings.TrimSpace(*database)
-	if expanded, err := expandHome(path); err == nil {
-		path = expanded
+	profile := tokens.DetectProfile(os.Getenv)
+	if named := strings.TrimSpace(*colour); named != "" {
+		parsed, ok := tokens.ParseProfile(named)
+		if !ok {
+			return fmt.Errorf("unknown colour vocabulary %q: use none, 16, 256 or truecolor", named)
+		}
+		profile = parsed
 	}
 
-	return tui2.Run(context.Background(), tui2.RunOptions{
-		Options: tui2.Options{
-			Linear:  resolveLinear(flags, *linear),
-			DB:      path,
-			Session: strings.TrimSpace(*sessionID),
-		},
+	path, err := expandHome(strings.TrimSpace(*database))
+	if err != nil {
+		return err
+	}
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+		return fmt.Errorf("create chat database directory: %w", err)
+	}
+	window, err := openChatWindow(path, strings.TrimSpace(*database), strings.TrimSpace(*sessionID))
+	if err != nil {
+		return err
+	}
+	defer window.close()
+
+	role := newChatResidency(window)
+	defer role.stop()
+	if err := role.claim(); err != nil {
+		return err
+	}
+
+	// Anything written to stderr or the standard logger while the alt screen is
+	// up tears straight through it as a raw row. Same fix as the old surface,
+	// for the same reason.
+	if logFile, logErr := os.OpenFile(filepath.Join(filepath.Dir(defaultChatDB()), "chat.log"),
+		os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o644); logErr == nil {
+		log.SetOutput(logFile)
+		defer func() {
+			log.SetOutput(os.Stderr)
+			_ = logFile.Close()
+		}()
+	}
+
+	ctx, stop := context.WithCancel(context.Background())
+	defer stop()
+	commander := role.commander()
+
+	err = chat.Run(ctx, chat.Options{
+		Backend:   window.graph,
+		Commander: commander,
+		Session:   window.session,
+		Database:  path,
+		Events:    bridgeStreamEvents(ctx, streamEventsOf(commander)),
+		Profile:   profile,
+		Linear:    resolveLinear(flags, *linear),
 	})
+	seenErr := role.sessionClosed()
+	role.stop()
+	return errors.Join(err, seenErr)
+}
+
+// streamEventsOf is the live token feed, or nil when there is nothing behind
+// this window to produce one. A visitor window has no head and therefore no
+// stream: its replies land whole, at the poll, which is the honest rendering of
+// "another process is doing the talking".
+func streamEventsOf(commander tui.Commander) <-chan tui.StreamEvent {
+	if commander == nil {
+		return nil
+	}
+	return commander.StreamEvents()
+}
+
+// bridgeStreamEvents translates the engine's keyed feed into the v2 surface's.
+//
+// The two vocabularies are the same five boundaries and differ only in which
+// package declares them, and that is the point: the v2 surface owns its own
+// event type, so a field added there — the truncation law's finish_reason, when
+// a later wave wants it live rather than at the poll — reaches the new window
+// without touching the struct the old one reads. The old chat keeps rendering
+// the bytes it rendered yesterday, which is the whole disconnection strategy
+// (11.1) stated as a type.
+//
+// One goroutine, for the life of the window, forwarding a struct of three
+// fields. It ends when the feed closes or the surface does.
+func bridgeStreamEvents(ctx context.Context, source <-chan tui.StreamEvent) <-chan chat.StreamEvent {
+	if source == nil {
+		return nil
+	}
+	// The buffer matches the engine's own so the bridge never becomes the
+	// narrow point: a head streaming faster than a frame can draw backs up
+	// against the surface's queue, not against the provider's reader.
+	out := make(chan chat.StreamEvent, 256)
+	go func() {
+		defer close(out)
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case event, open := <-source:
+				if !open {
+					return
+				}
+				select {
+				case out <- chat.StreamEvent{
+					Kind:    streamKindV2(event.Kind),
+					Delta:   event.Delta,
+					Session: event.Session,
+				}:
+				case <-ctx.Done():
+					return
+				}
+			}
+		}
+	}()
+	return out
+}
+
+// streamKindV2 maps one vocabulary onto the other. It is a switch rather than a
+// cast so the day either side gains a boundary the other has not heard of, the
+// compiler says so here instead of the surface silently drawing the wrong
+// phase.
+func streamKindV2(kind tui.StreamEventKind) chat.StreamKind {
+	switch kind {
+	case tui.StreamStarted:
+		return chat.StreamStarted
+	case tui.StreamDelta:
+		return chat.StreamDelta
+	case tui.StreamThinking:
+		return chat.StreamThinking
+	case tui.StreamFinished:
+		return chat.StreamFinished
+	case tui.StreamFailed:
+		return chat.StreamFailed
+	}
+	return chat.StreamFinished
 }

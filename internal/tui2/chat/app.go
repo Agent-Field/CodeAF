@@ -10,6 +10,7 @@ import (
 
 	"github.com/Agent-Field/aforge-v2/internal/tui2"
 	"github.com/Agent-Field/aforge-v2/internal/tui2/blocks"
+	"github.com/Agent-Field/aforge-v2/internal/tui2/composer"
 	"github.com/Agent-Field/aforge-v2/internal/tui2/tokens"
 )
 
@@ -294,11 +295,14 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return a, a.startTick()
 
-	case escMsg:
+	case composer.EscMsg:
+		// The composer had nothing left to protect, so it handed the key back
+		// rather than swallowing it. This side is the only one that knows what
+		// it means (8.2.21).
 		return a, a.navigate()
 	}
 
-	if cmd := a.paste(msg); cmd != nil {
+	if handled, cmd := a.paste(msg); handled {
 		return a, cmd
 	}
 	model, cmd := a.shell.Update(msg)
@@ -365,18 +369,20 @@ func (a *App) key(msg tea.KeyPressMsg) tea.Cmd {
 // paste seam yet, so the capability is asked for rather than assumed: a
 // composer without the method simply never sees a paste, and a terminal without
 // bracketed paste delivers the same text as keystrokes.
-func (a *App) paste(msg tea.Msg) tea.Cmd {
+func (a *App) paste(msg tea.Msg) (bool, tea.Cmd) {
 	pasted, ok := msg.(tea.PasteMsg)
 	if !ok || a.composer == nil {
-		return nil
+		return false, nil
 	}
-	sink, ok := a.composer.(interface{ Paste(string) })
+	sink, ok := a.composer.(interface {
+		Paste(tea.PasteMsg) tea.Cmd
+	})
 	if !ok {
-		return nil
+		return false, nil
 	}
-	sink.Paste(pasted.Content)
+	cmd := sink.Paste(pasted)
 	a.shell.Invalidate()
-	return nil
+	return true, cmd
 }
 
 // canInterrupt reports whether esc would in fact stop a turn — which is the
