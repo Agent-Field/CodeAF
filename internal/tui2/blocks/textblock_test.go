@@ -70,7 +70,7 @@ func TestTruncatedTurnRendersVisiblyCut(t *testing.T) {
 	if strings.Count(text, "cut off") < 2 {
 		t.Fatalf("the cut is marked only once; the header badge and the rule are both required:\n%s", text)
 	}
-	if !strings.Contains(text, "⌁") {
+	if !strings.Contains(text, CutMark) {
 		t.Fatalf("no cut rule under the body:\n%s", text)
 	}
 	if turn.End() != EndTruncatedByCap {
