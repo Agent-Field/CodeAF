@@ -463,25 +463,41 @@ func TestAskPostsDurableOptionsAndTheAnswerReturnsToTheLoop(t *testing.T) {
 
 // ── interrupt: turn-cancel beyond the keypress (Part 2.4, 12.3.3) ───────────
 
-// The journal is tried first on purpose: the funnel is the product's one
+// The journal is written first on purpose: the funnel is the product's one
 // authority path, and a stop that rode past it would be the second engine Part 3
-// forbids. The store's kind list is closed today, so the door reports which road
-// it took rather than degrading silently.
-func TestInterruptTriesTheJournalAndSaysWhichRoadItTook(t *testing.T) {
+// forbids. The store half of 12.3.3 has landed, so that road is real — and the
+// reconciler half has not, so the door also stops the turn in process on its way
+// out rather than reporting a stop nothing carries out.
+//
+// What this pins is the pair of properties the door owes a surface: the stop is
+// DURABLE (a row exists, replayable, reachable from a headless caller), and it
+// is EFFECTIVE (the turn in flight actually ends and the words the reader had
+// already seen survive). "Nothing happened" is still answerable — it moved to
+// ApplyInterrupt, which is the arm that will report it as the command's
+// resolution once the reconciler's one case lands.
+func TestInterruptJournalsTheStopAndStillEndsTheTurn(t *testing.T) {
 	graph := openHeadStore(t)
 	head := New(nil, graph)
 
-	// Nothing running: a surface that asked at the wrong moment must be able to
-	// tell that nothing happened.
+	// Nothing running. The row is written anyway — a stop is a durable fact
+	// whether or not this process happened to hold the turn it names — and the
+	// arm that will drain it reports that there was nothing to stop.
 	route, err := head.RequestInterrupt("stop", "the user said stop", "")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if route != InterruptNothingRunning {
-		t.Fatalf("route = %q with no turn in flight, want %q", route, InterruptNothingRunning)
+	if route != InterruptJournaled {
+		t.Fatalf("route = %q, want %q now the store carries the kind", route, InterruptJournaled)
+	}
+	commands, err := graph.PendingCommands(10)
+	if err != nil || len(commands) != 1 || commands[0].Kind != HeadInterruptKind {
+		t.Fatalf("the journaled road journaled nothing usable: %+v err=%v", commands, err)
+	}
+	if head.ApplyInterrupt(commands[0]) {
+		t.Fatal("the arm claimed it stopped a turn that was never running")
 	}
 
-	// A turn in flight: stopped, and the road is named.
+	// A turn in flight: journaled, AND actually stopped, AND the partial kept.
 	stopped := make(chan struct{})
 	head.turnMu.Lock()
 	head.turnCancel = func() { close(stopped) }
@@ -490,21 +506,19 @@ func TestInterruptTriesTheJournalAndSaysWhichRoadItTook(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if route != InterruptInProcess && route != InterruptJournaled {
-		t.Fatalf("route = %q, want one of the two real roads", route)
+	if route != InterruptJournaled {
+		t.Fatalf("route = %q, want %q", route, InterruptJournaled)
 	}
-	if route == InterruptInProcess {
-		select {
-		case <-stopped:
-		default:
-			t.Fatal("the in-process route reported a stop that did not happen")
-		}
-		if partial, was, _ := head.endTurn(); !was || partial != "half an answer" {
-			t.Fatalf("the words the reader had already seen were dropped: %q was=%t", partial, was)
-		}
+	select {
+	case <-stopped:
+	default:
+		t.Fatal("the stop was journaled and the turn kept talking — the one shape this door may not have")
 	}
-	if commands, _ := graph.PendingCommands(10); route == InterruptJournaled && len(commands) != 1 {
-		t.Fatalf("the journaled route journaled nothing: %+v", commands)
+	if partial, was, _ := head.endTurn(); !was || partial != "half an answer" {
+		t.Fatalf("the words the reader had already seen were dropped: %q was=%t", partial, was)
+	}
+	if commands, _ := graph.PendingCommands(10); len(commands) != 2 {
+		t.Fatalf("the second stop left no durable row: %+v", commands)
 	}
 }
 

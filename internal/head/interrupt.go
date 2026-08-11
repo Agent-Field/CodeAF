@@ -22,38 +22,36 @@ import (
 // when the journal cannot carry it yet. ApplyInterrupt is the arm the reconciler
 // would call — complete, tested, and callable from one line.
 //
-// # THE ONE-CASE SEAM (12.3.3), NOT TAKEN IN THIS LANE
+// # THE SEAM, HALF OPEN (12.3.3)
 //
-// The reconciler's command dispatch has no extension point: `applyCommand` and
-// its call sites live in internal/resident/resident.go with no registration
-// seam, and Wave 0 batch 2 had to grant itself a two-line exception to add
-// CommandSetModel. internal/resident is co-working territory for this campaign
-// and this lane does not edit it. internal/store's kind list is closed the same
-// way — `validCommandKind` refuses anything not in it — so journaling this kind
-// needs BOTH halves, and half of it is somebody else's file.
+// The store half has landed: `store.CommandHeadInterrupt` is a legal kind and a
+// global command, so RequestInterrupt's journal road is real and a stop is now a
+// durable row like every other authority in the product.
 //
-// The exact edit, for whoever takes it:
+// The reconciler half has NOT. `applyCommand` and its call sites live in
+// internal/resident/resident.go with no registration seam, and internal/resident
+// is co-working territory for this campaign. The remaining edit, for whoever
+// takes it, is one case:
 //
-//  1. internal/store/thread.go, in the CommandKind const block:
-//     CommandHeadInterrupt CommandKind = "head_interrupt"
-//     and add it to isGlobalCommand's set — it targets no node. It must NOT be
-//     added to validateNodeCommand's status table for the same reason.
-//  2. internal/resident/resident.go, in applyCommand's switch:
-//     case store.CommandHeadInterrupt:
-//     return h.head.ApplyInterrupt(command), nil
-//     where the resident already holds the head it serves. ApplyInterrupt is
-//     idempotent and reports whether there was a turn to stop, which is exactly
-//     the resolution the reconciler wants to journal.
+//	case store.CommandHeadInterrupt:
+//	    return h.head.ApplyInterrupt(command), nil
 //
-// Until then RequestInterrupt takes the in-process route and SAYS SO in its
-// return, because a door that silently degrades is worse than one that reports
-// which way it went.
+// where the resident already holds the head it serves. ApplyInterrupt is
+// idempotent and reports whether there was a turn to stop, which is exactly the
+// resolution the reconciler wants to journal.
+//
+// Until that case exists the row is written and nothing drains it, which is why
+// this door ALSO stops the turn in process on its way out. That is not
+// belt-and-braces and it is not a race: the two roads reach the same idempotent
+// handle, and a door that journals a stop the surface can see and then lets the
+// turn keep talking is a lie told in the one place the person is watching.
+// When the reconciler's case lands, ApplyInterrupt finds the turn already gone
+// and says so, which is a true resolution rather than a second cancellation.
 
-// HeadInterruptKind is the command kind a journaled turn-cancel will carry. It
-// is declared here rather than in the store because the store's kind list is
-// closed and this lane may not open it; the constant exists now so the door, the
-// arm and their tests are all written against one spelling rather than three.
-const HeadInterruptKind store.CommandKind = "head_interrupt"
+// HeadInterruptKind is the command kind a journaled turn-cancel carries. It is
+// an alias rather than a second spelling: the store owns the kind list, and two
+// constants holding one string is how a kind quietly becomes two kinds.
+const HeadInterruptKind = store.CommandHeadInterrupt
 
 // InterruptRoute says which way a stop actually travelled.
 type InterruptRoute string
@@ -74,11 +72,19 @@ var ErrInterruptUnreachable = errors.New("head interrupt: no route to the turn i
 
 // RequestInterrupt stops the head's turn in flight and reports how.
 //
-// It tries the journal first and on purpose: the funnel is the product's one
-// authority path, and a stop that rode past it would be the second engine Part 3
-// forbids. The store refuses the kind today, and that refusal is read as "the
-// seam above is still closed" rather than as an error — the in-process handle is
-// the same stop by a narrower road, and the caller is told which road it was.
+// It journals first and on purpose: the funnel is the product's one authority
+// path, and a stop that rode past it would be the second engine Part 3 forbids.
+// Then it stops the turn in process, because until the reconciler's one case
+// lands nothing drains that row, and a door that reports a stop while the turn
+// carries on talking is worse than one that never claimed it.
+//
+// The two roads are not a race. Both end at the same handle and the handle is
+// idempotent: whichever arrives second finds no turn and says so.
+//
+// The route reported is the durable one when the row landed, because that is the
+// fact a surface needs — a journaled stop is replayable, reaches a headless
+// caller and survives this process. NothingRunning is reserved for the case
+// where neither road found anything at all to do.
 //
 // partial is whatever of the turn the reader had already seen, so the transcript
 // keeps the words that did arrive, marked where they stopped.
@@ -90,18 +96,18 @@ func (h *Head) RequestInterrupt(sessionID, reason, partial string) (InterruptRou
 	if instruction == "" {
 		instruction = "stop the turn in flight"
 	}
-	if _, err := h.store.RequestCommand(store.Command{
+	_, journalErr := h.store.RequestCommand(store.Command{
 		SessionID: sessionID, Kind: HeadInterruptKind, Instruction: instruction,
-	}); err == nil {
-		// The seam is open. The reconciler's arm calls ApplyInterrupt; nothing is
-		// stopped here, because a command that acted at its request site would
-		// have acted twice by the time the reconciler replayed it.
+	})
+	stopped := h.Interrupt(partial)
+	switch {
+	case journalErr == nil:
 		return InterruptJournaled, nil
-	}
-	if h.Interrupt(partial) {
+	case stopped:
 		return InterruptInProcess, nil
+	default:
+		return InterruptNothingRunning, nil
 	}
-	return InterruptNothingRunning, nil
 }
 
 // ApplyInterrupt is the reconciler's arm, written here so the resident's edit is
