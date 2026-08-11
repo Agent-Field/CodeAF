@@ -151,12 +151,20 @@ func runChatV2(args []string) error {
 	defer stop()
 	commander := role.commander()
 
+	// One feed for the life of the window, re-pointed at whichever engine holds
+	// the role. The surface listens to this channel and nothing else, so a
+	// promotion changes who is talking without changing what is being listened
+	// to — see chatV2Residency.
+	feed := make(chan chat.StreamEvent, streamBridgeQueue)
+	bridgeStreamEventsInto(ctx, streamEventsOf(commander), feed)
+
 	err = chat.Run(ctx, chat.Options{
 		Backend:   window.graph,
 		Commander: commander,
 		Session:   window.session,
 		Database:  path,
-		Events:    bridgeStreamEvents(ctx, streamEventsOf(commander)),
+		Events:    feed,
+		Residents: &chatV2Residency{role: role, ctx: ctx, feed: feed},
 		Profile:   profile,
 		Linear:    resolveLinear(flags, *linear),
 	})
@@ -176,6 +184,40 @@ func streamEventsOf(commander tui.Commander) <-chan tui.StreamEvent {
 	return commander.StreamEvents()
 }
 
+// chatV2Residency is the v2 surface's residency door.
+//
+// The old window asks its commander for the role on every poll cycle and adopts
+// whatever replacement it is handed (internal/tui/model.go's applyResidency).
+// The new window had no such door at all: it captured one commander at startup
+// and kept it forever, so an `aforge chat --v2` opened while ANY other aforge
+// held the lease — including a headless `aforge do` that would release it a
+// minute later — was a visitor for its whole life, with no head in process, no
+// promotion when the lease came free, and nothing on screen saying so. The
+// stderr notice residency.go prints is swallowed whole by the alt screen.
+//
+// This closes it with the same mechanism and one difference: the stream feed is
+// not swapped. The window holds one channel and this type re-points the bridge
+// at each newly adopted engine, so the surface never has to reason about a
+// channel changing underneath a read already in flight.
+type chatV2Residency struct {
+	role *chatResidency
+	ctx  context.Context
+	feed chan chat.StreamEvent
+}
+
+// Residency implements chat.Residents.
+func (r *chatV2Residency) Residency() (chat.Residency, chat.Commander) {
+	state, adopt := r.role.Poll()
+	role := chat.Residency{Visitor: state.Visitor, PID: state.PID, Note: state.Note}
+	if adopt == nil {
+		return role, nil
+	}
+	// A promoted window has a head to listen to for the first time, and nothing
+	// else would ever go looking for it.
+	bridgeStreamEventsInto(r.ctx, streamEventsOf(adopt), r.feed)
+	return role, adopt
+}
+
 // bridgeStreamEvents translates the engine's keyed feed into the v2 surface's.
 //
 // The two vocabularies are the same five boundaries and differ only in which
@@ -186,18 +228,28 @@ func streamEventsOf(commander tui.Commander) <-chan tui.StreamEvent {
 // the bytes it rendered yesterday, which is the whole disconnection strategy
 // (11.1) stated as a type.
 //
-// One goroutine, for the life of the window, forwarding a struct of three
-// fields. It ends when the feed closes or the surface does.
-func bridgeStreamEvents(ctx context.Context, source <-chan tui.StreamEvent) <-chan chat.StreamEvent {
-	if source == nil {
-		return nil
+// One goroutine per engine the window has, forwarding a struct of three fields.
+// It ends when that engine's feed closes or the surface does.
+//
+// streamBridgeQueue matches the engine's own buffer so the bridge never becomes
+// the narrow point: a head streaming faster than a frame can draw backs up
+// against the surface's queue, not against the provider's reader.
+const streamBridgeQueue = 256
+
+// bridgeStreamEventsInto forwards one engine's feed into a channel the caller
+// owns.
+//
+// The destination is deliberately never closed. A window outlives the engines
+// that pass through it — a visitor promoted, a resident that stood down — and a
+// bridge that closed the surface's feed when ITS engine went away would tell the
+// window "there is no more talking, ever" on the very cycle the residency door
+// is telling it the opposite. What ends the forwarding is the window's own
+// context, and what ends the window is the program.
+func bridgeStreamEventsInto(ctx context.Context, source <-chan tui.StreamEvent, out chan<- chat.StreamEvent) {
+	if source == nil || out == nil {
+		return
 	}
-	// The buffer matches the engine's own so the bridge never becomes the
-	// narrow point: a head streaming faster than a frame can draw backs up
-	// against the surface's queue, not against the provider's reader.
-	out := make(chan chat.StreamEvent, 256)
 	guard.Go("chat v2 stream bridge", func() {
-		defer close(out)
 		for {
 			select {
 			case <-ctx.Done():
@@ -218,7 +270,6 @@ func bridgeStreamEvents(ctx context.Context, source <-chan tui.StreamEvent) <-ch
 			}
 		}
 	})
-	return out
 }
 
 // streamKindV2 maps one vocabulary onto the other. It is a switch rather than a

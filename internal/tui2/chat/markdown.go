@@ -261,45 +261,76 @@ type fragment struct {
 // reader who typed a lone asterisk should see a lone asterisk, and a renderer
 // that swallowed it would be editing the journal. What must never survive is a
 // PAIRED delimiter — the literal `**` 13.1 opened on.
+// The flanking rules are CommonMark's, reduced to the two that actually matter
+// for model output: a run that OPENS emphasis is not followed by a space, and a
+// run that CLOSES it is not preceded by one — which is what keeps "2 * 3 * 4"
+// arithmetic — and an underscore additionally may not open or close inside a
+// word, which is what keeps snake_case_names intact.
 func parseInline(dst []fragment, text string, base face) []fragment {
+	prev := byte(0)
+	emit := func(run string, f face) {
+		if run == "" {
+			return
+		}
+		dst = append(dst, fragment{run, f})
+		prev = run[len(run)-1]
+	}
 	for len(text) > 0 {
 		i := strings.IndexAny(text, "`*_")
 		if i < 0 {
-			return append(dst, fragment{text, base})
+			emit(text, base)
+			return dst
 		}
 		if i > 0 {
-			dst = append(dst, fragment{text[:i], base})
+			emit(text[:i], base)
 			text = text[i:]
 		}
-		switch text[0] {
+		switch delim := text[0]; delim {
 		case '`':
 			if end := strings.IndexByte(text[1:], '`'); end > 0 {
-				dst = append(dst, fragment{text[1 : 1+end], faceCode})
+				emit(text[1:1+end], faceCode)
 				text = text[end+2:]
 				continue
 			}
 		case '*', '_':
-			delim := text[0]
-			if len(text) > 1 && text[1] == delim {
-				pair := text[:2]
-				if end := strings.Index(text[2:], pair); end > 0 {
+			word := delim == '_' && isWordByte(prev)
+			if len(text) > 2 && text[1] == delim && !isSpaceByte(text[2]) && !word {
+				if end := strings.Index(text[2:], text[:2]); end > 0 &&
+					!isSpaceByte(text[end+1]) && !closesInsideWord(delim, text, end+4) {
 					dst = parseInline(dst, text[2:2+end], strongUnder(base))
 					text = text[end+4:]
+					prev = delim
 					continue
 				}
 			}
-			if end := strings.IndexByte(text[1:], delim); end > 0 {
-				dst = parseInline(dst, text[1:1+end], emphasisUnder(base))
-				text = text[end+2:]
-				continue
+			if len(text) > 1 && !isSpaceByte(text[1]) && !word {
+				if end := strings.IndexByte(text[1:], delim); end > 0 &&
+					!isSpaceByte(text[end]) && !closesInsideWord(delim, text, end+2) {
+					dst = parseInline(dst, text[1:1+end], emphasisUnder(base))
+					text = text[end+2:]
+					prev = delim
+					continue
+				}
 			}
 		}
 		// An unmatched delimiter. One byte of literal text, and the scan
 		// advances — which is what makes this loop terminate on every input.
-		dst = append(dst, fragment{text[:1], base})
+		emit(text[:1], base)
 		text = text[1:]
 	}
 	return dst
+}
+
+// closesInsideWord reports that an underscore run at `after` would be closing
+// in the middle of a word, which CommonMark forbids and snake_case relies on.
+func closesInsideWord(delim byte, text string, after int) bool {
+	return delim == '_' && after < len(text) && isWordByte(text[after])
+}
+
+func isSpaceByte(b byte) bool { return b == ' ' || b == '\t' }
+
+func isWordByte(b byte) bool {
+	return b >= 'a' && b <= 'z' || b >= 'A' && b <= 'Z' || b >= '0' && b <= '9' || b >= 0x80
 }
 
 // strongUnder and emphasisUnder keep a heading a heading and a quote a quote:

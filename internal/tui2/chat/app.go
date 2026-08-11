@@ -76,6 +76,10 @@ type Options struct {
 	// Events is the keyed stream feed. Nil means no live tokens: replies land
 	// whole, at the poll, which is exactly what a visitor window sees.
 	Events <-chan StreamEvent
+	// Residents is how this window finds out what it is. Nil means the caller
+	// is not playing the residency game at all, and the window renders as the
+	// resident it must then be. See [Residents].
+	Residents Residents
 	// Profile is the terminal's colour vocabulary, already decided by the entry
 	// point (tokens.DetectProfile or an explicit ParseProfile).
 	Profile tokens.Profile
@@ -90,6 +94,50 @@ type Options struct {
 	// Input and Output let the surface boot without a terminal.
 	Input  io.Reader
 	Output io.Writer
+}
+
+// Residency is what this window currently IS: the process running the head, or
+// a surface attached to a head that another process is running.
+//
+// The lease is one file per store directory (internal/lease), so a second
+// aforge on the same journal — a second chat window, or a headless `aforge do`
+// holding the role for the length of a job — makes this window a visitor. That
+// is an ordinary state and a legitimate one; what is not legitimate is the
+// window not saying so. A visitor cannot start a turn and cannot stop one, and
+// a surface that kept advertising "esc interrupt" over a head it does not run
+// would be failing 5.20 rule 3 in the most expensive way there is: the reader
+// presses the key, nothing happens, and the affordance has lied.
+type Residency struct {
+	// Visitor says the head is somewhere else. The zero value is the ordinary
+	// single-window journey.
+	Visitor bool
+	// PID names the process that does hold the role, when it is known.
+	PID int
+	// Note replaces the label while something is in motion — a promotion under
+	// way, a handover asked for. A short phrase, never a sentence.
+	Note string
+}
+
+// Residents is the door the entry point wires so a window can find out what it
+// is, and can stop being wrong about it.
+//
+// It is asked on every poll cycle, quiet ones included, for the reason v1
+// states at internal/tui/model.go's own Residency: the resident can die while
+// nothing at all changes in the store, so the journal watermark cannot speak
+// for the role. The implementation is expected to throttle its own probing —
+// the surface asks often because the surface cannot know when to ask.
+type Residents interface {
+	// Residency reports the window's role right now, and hands back a
+	// replacement engine EXACTLY ONCE, on the cycle the role moves. Returning
+	// the same commander twice would make a window rebuild itself for nothing.
+	Residency() (Residency, Commander)
+}
+
+// residencyMsg is one answer from the residency probe, folded in on the render
+// goroutine like every other fact.
+type residencyMsg struct {
+	state Residency
+	adopt Commander
 }
 
 // liveTurn is the one turn this room is watching being answered. It is a value
@@ -153,6 +201,13 @@ type App struct {
 	composer   composerPane
 	verbs      []registry.Entry
 
+	// The residency chain. residents is the door, residency is the last answer
+	// it gave, and probing keeps exactly one question in flight — the same
+	// discipline the poll chain keeps, for the same reason.
+	residents Residents
+	residency Residency
+	probing   bool
+
 	// receiptsOpen is the fold state every collapsible row shares. Receipts are
 	// a class of row, not a set of independent widgets: a reader who wants to
 	// see what the system has been doing wants to see all of it, and a per-row
@@ -185,14 +240,14 @@ var _ tea.Model = (*App)(nil)
 // is the seam tui2.Options.Metrics was declared for.
 func Metrics() tui2.Metrics {
 	return tui2.Metrics{
-		RailBreakpoint:         tokens.RailAtWidth,
-		RailWidth:              tokens.RailWidth,
-		MinMainWidth:           tokens.RailTranscriptFloor,
+		RailBreakpoint: tokens.RailAtWidth,
+		RailWidth:      tokens.RailWidth,
+		MinMainWidth:   tokens.RailTranscriptFloor,
 		// Four rows: the place line on the top edge (5.19), two rows of draft,
 		// and the meta strip on the bottom (10.5.23). The draft gets two
 		// because one is a text field and two is a composer — a pasted command
 		// or a second sentence has somewhere to be without the region moving.
-		ComposerHeight: 4,
+		ComposerHeight:         4,
 		StatusHeight:           1,
 		DialogFullscreenBelow:  tokens.DialogFullscreenBelowWidth,
 		SplitDiffBreakpoint:    tokens.SplitDiffAtWidth,
@@ -216,6 +271,7 @@ func New(opts Options) *App {
 		commander: opts.Commander,
 		session:   strings.TrimSpace(opts.Session),
 		events:    opts.Events,
+		residents: opts.Residents,
 		now:       now,
 		pollEvery: every,
 		linear:    opts.Linear,
@@ -255,6 +311,18 @@ func New(opts Options) *App {
 		app.place.SetGround(placeline.Segment{Path: root, Kind: placeline.SegmentRoot})
 	}
 	app.meta = &metaStrip{style: app.style}
+	// The role is asked once here, before the first frame, rather than left to
+	// the first poll a third of a second later. A window that opened as a
+	// visitor would otherwise spend that third of a second drawn as the
+	// resident it is not, and the one frame a reader sees at attach is the
+	// worst possible frame to be wrong in.
+	if app.residents != nil {
+		state, adopt := app.residents.Residency()
+		app.residency = state
+		if adopt != nil {
+			app.commander = adopt
+		}
+	}
 	if app.commander != nil {
 		app.meta.model = strings.TrimSpace(app.commander.CurrentModel("chat"))
 	}
@@ -345,7 +413,7 @@ func Run(ctx context.Context, opts Options) error {
 // Init negotiates with the terminal, reads the thread once, and starts
 // listening for tokens.
 func (a *App) Init() tea.Cmd {
-	return tea.Batch(a.shell.Init(), a.startPoll(), a.waitStream())
+	return tea.Batch(a.shell.Init(), a.startPoll(), a.waitStream(), a.probeResidency())
 }
 
 // View is the shell's. The app never draws.
@@ -363,11 +431,15 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return a, a.drain(a.key(msg))
 
 	case pollTickMsg:
-		return a, a.startPoll()
+		return a, tea.Batch(a.startPoll(), a.probeResidency())
 
 	case pollResultMsg:
 		a.applyPoll(msg)
-		return a, a.afterPoll()
+		return a, tea.Batch(a.afterPoll(), a.probeResidency())
+
+	case residencyMsg:
+		a.applyResidency(msg)
+		return a, nil
 
 	case postResultMsg:
 		a.applyPost(msg)
@@ -512,9 +584,56 @@ func (a *App) paste(msg tea.Msg) (bool, tea.Cmd) {
 
 // canInterrupt reports whether esc would in fact stop a turn — which is the
 // exact condition under which the awaiting line is allowed to say so.
+//
+// A visitor is excluded by name. Its commander is not nil — a visitor window
+// still has one, for the doors that write to the journal — but the turn being
+// answered is running in another process, and stopping it is not something this
+// window can do. An interrupt hint over a turn this window cannot reach is the
+// worst kind of lie: the reader presses the key, the turn keeps running, and
+// the surface has taught them not to believe it.
 func (a *App) canInterrupt() bool {
-	return a.turn.active && a.commander != nil && a.turn.await != nil &&
-		a.turn.await.interruptible
+	return a.turn.active && !a.residency.Visitor && a.commander != nil &&
+		a.turn.await != nil && a.turn.await.interruptible
+}
+
+// -- the residency chain -----------------------------------------------------
+
+// probeResidency asks the door what this window is, off the render goroutine
+// and one question at a time.
+func (a *App) probeResidency() tea.Cmd {
+	if a.residents == nil || a.probing {
+		return nil
+	}
+	a.probing = true
+	residents := a.residents
+	return func() tea.Msg {
+		state, adopt := residents.Residency()
+		return residencyMsg{state: state, adopt: adopt}
+	}
+}
+
+// applyResidency folds one answer in, and adopts the replacement engine when
+// the role has moved.
+//
+// The stream feed is deliberately NOT swapped here. The entry point owns one
+// durable channel for the life of the window and re-points its own bridge at
+// whatever engine currently holds the role, so a promotion changes who is
+// talking without changing what this surface is listening to — and the wait
+// already in flight stays valid instead of being orphaned on a dead channel.
+func (a *App) applyResidency(msg residencyMsg) {
+	a.probing = false
+	moved := msg.state != a.residency
+	a.residency = msg.state
+	if msg.adopt != nil {
+		a.commander = msg.adopt
+		if model := strings.TrimSpace(msg.adopt.CurrentModel("chat")); model != "" {
+			a.meta.model = model
+		}
+		moved = true
+	}
+	if moved {
+		a.refresh()
+	}
 }
 
 // interrupt stops the turn being watched, carrying in the words already on
@@ -572,6 +691,14 @@ func (a *App) toggleReceipts() tea.Cmd {
 // wrong. Everything here is read from state the app already holds; nothing is
 // computed twice and nothing is stored that a render could have derived.
 func (a *App) refresh() {
+	// A visitor cannot stop a turn it is not running, so the awaiting line's own
+	// hint is withdrawn at the same moment the footer's is. Both rows answer the
+	// same question — what will esc do — and 8.2.21's rule is that whatever the
+	// awaiting line says is what esc will do.
+	if a.residency.Visitor && a.turn.await != nil {
+		a.turn.await.interruptible = false
+	}
+	a.status.residency = a.residency
 	a.status.live = a.turn.active
 	a.status.escInterrupts = a.canInterrupt()
 	a.status.verbs = a.verbs

@@ -2,6 +2,7 @@ package chat
 
 import (
 	"image"
+	"strconv"
 	"strings"
 	"time"
 
@@ -209,6 +210,7 @@ type statusPane struct {
 	hint          string
 	escInterrupts bool
 	attention     int
+	residency     Residency
 }
 
 var _ tui2.Pane = (*statusPane)(nil)
@@ -242,8 +244,41 @@ func (p *statusPane) Render(width, height int) string {
 		Hint:          p.hint,
 		EscInterrupts: p.escInterrupts,
 		Attention:     p.attention,
+		Health:        p.health(),
 		ScopeTail:     p.scopeTail(),
 	}, width)
+}
+
+// health is 10.5.23's own column: pending-only system states, shown when they
+// are pending and absent when they are not.
+//
+// Which process runs the head is exactly such a state. A resident says nothing,
+// because being the one that answers is the ordinary case and the ordinary case
+// earns no ink (the same rule v1 states at internal/tui/residency.go, in the
+// same words, because it is the same product fact seen from a second surface).
+// A visitor says so for as long as it is true, and says what it is waiting on —
+// which is the notice that used to go to stderr and got swallowed whole by the
+// alt screen, leaving a window that looked like a dead app.
+func (p *statusPane) health() []string {
+	note := strings.TrimSpace(p.residency.Note)
+	if !p.residency.Visitor {
+		if note == "" {
+			return nil
+		}
+		return []string{note}
+	}
+	// "pid 4242" rather than v1's "resident is pid 4242": this row is a fitted
+	// column registry, and every cell it can shorten is a cell that survives one
+	// breakpoint further down (10.5.22). A visitor that dropped off a
+	// 80-column footer to make room for a longer way of saying the same thing
+	// would have spent the words on the wrong thing.
+	if note == "" && p.residency.PID > 0 {
+		note = "pid " + strconv.Itoa(p.residency.PID)
+	}
+	if note == "" {
+		return []string{"visitor"}
+	}
+	return []string{"visitor " + tokens.GlyphSeparator + " " + note}
 }
 
 // scopeTail is the breadcrumb tail, and the lowest-priority column on the row.
