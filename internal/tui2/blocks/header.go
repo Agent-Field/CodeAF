@@ -27,6 +27,24 @@ type Header struct {
 	// GlyphHue tints the glyph — the identity pastel for a task, amber for a
 	// question, coral for a failure.
 	GlyphHue Hue
+	// GlyphSeed is the task identity behind a [HueIdentity] glyph: the seed
+	// the token layer runs through the 8-hue wheel of 5.16, so this header's
+	// glyph is the same pastel as that task's rail card and breadcrumb dot.
+	// Take it from [Seed] over the task id and the two agree by construction.
+	//
+	// It matters because HueIdentity is not a colour: resolved without a seed
+	// it can only yield the wheel's first entry, so every task's header glyph
+	// comes out identically painted and the peripheral answer to "which room
+	// am I in" is wrong. A renderer holding a task id used to have to reach
+	// around this grammar and pre-paint the glyph itself, which is an ad-hoc
+	// header by another name (8.1.5 forbids exactly that). This field is the
+	// door through the grammar instead of around it.
+	//
+	// Zero means no identity is carried, and then nothing changes: the glyph
+	// is painted through [Styler.Paint] on the hue and state axes exactly as
+	// before. The seed is only consulted when it is non-zero, the hue is
+	// [HueIdentity], and the Styler implements [IdentityStyler].
+	GlyphSeed uint64
 	// State is the liveness of the row: accent while live, plain once settled.
 	// It carries the glyph and the title.
 	State State
@@ -201,7 +219,7 @@ func (h Header) Render(width int, s Styler) string {
 	var b builder
 	b.grow(width * 2)
 	if glyph != "" {
-		b.styled(st, glyph, h.State, h.GlyphHue)
+		b.identity(st, glyph, h.State, h.GlyphHue, h.GlyphSeed)
 		b.WriteByte(' ')
 	}
 	if title != "" {

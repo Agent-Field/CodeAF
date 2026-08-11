@@ -3,6 +3,8 @@ package tokens
 import (
 	"strconv"
 	"testing"
+
+	"github.com/Agent-Field/aforge-v2/internal/tui2/blocks"
 )
 
 // TestIdentityIsStable is the first of 5.16's two pulling properties: a task's
@@ -24,6 +26,35 @@ func TestIdentityIsStable(t *testing.T) {
 		}
 		if _, ok := IdentityIndex(want); !ok {
 			t.Errorf("IdentityFor(%q) = %s, which is not an identity token", id, want)
+		}
+	}
+}
+
+// TestBlockSeedsLandOnTheSameHue closes the identity seam from this side. A
+// header glyph carries a task as a SEED (blocks.Header.GlyphSeed, hashed by
+// blocks.Seed) because the block engine is a leaf and knows nothing of this
+// wheel; a rail card carries the same task as an ID and resolves it through
+// [IdentityFor]. If those two hashes ever part, one task shows two pastels on
+// one screen — the peripheral "which room am I in" answer 5.16 exists to give,
+// given wrong, in the most confusing possible way.
+//
+// blocks cannot import this package to share the hash, so the agreement is
+// pinned here, where the import edge already runs.
+func TestBlockSeedsLandOnTheSameHue(t *testing.T) {
+	ids := []string{
+		"wisp-parity", "perf-audit", "aforge", "a", "task-1", "task-2",
+		"01JD8Z9K2QW5X7YV3B4N6M8P0R",
+	}
+	styler := NewStyler(TrueColor, FocusNormal)
+	for _, id := range ids {
+		seed := blocks.Seed(id)
+		if got, want := Identity(int(seed%IdentityCount)), IdentityFor(id); got != want {
+			t.Fatalf("task %q: the header glyph would paint %s and its rail card %s", id, got, want)
+		}
+		// And through the painting door the header actually uses.
+		want := styler.PaintToken("◐", IdentityFor(id))
+		if got := styler.PaintIdentity("◐", seed, blocks.StateLive); got != want {
+			t.Fatalf("task %q: PaintIdentity disagrees with IdentityFor", id)
 		}
 	}
 }

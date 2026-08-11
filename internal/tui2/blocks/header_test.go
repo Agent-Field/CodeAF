@@ -22,6 +22,81 @@ func TestHeaderGrammar(t *testing.T) {
 	}
 }
 
+// seedStyler is a Styler with an identity door, recording what it was asked
+// for so the test can tell WHICH door the header went through.
+type seedStyler struct {
+	seeds  []uint64
+	hues   []Hue
+	states []State
+}
+
+func (s *seedStyler) Paint(text string, state State, hue Hue) string {
+	s.hues = append(s.hues, hue)
+	s.states = append(s.states, state)
+	return text
+}
+
+func (s *seedStyler) PaintIdentity(text string, seed uint64, state State) string {
+	s.seeds = append(s.seeds, seed)
+	s.states = append(s.states, state)
+	return text
+}
+
+// The identity glyph goes THROUGH the one header grammar (8.1.5). Before
+// [Header.GlyphSeed] existed a renderer holding a task id had to pre-paint the
+// glyph and hand the grammar a finished string, because HueIdentity without a
+// seed can only resolve to the wheel's first entry — an ad-hoc header by
+// another name.
+func TestHeaderGlyphResolvesItsIdentitySeed(t *testing.T) {
+	sty := &seedStyler{}
+	h := Header{Glyph: "◐", GlyphHue: HueIdentity, GlyphSeed: Seed("wisp-parity"), Title: "wisp"}
+	if got := h.Render(40, sty); got != "◐ wisp" {
+		t.Fatalf("the seed changed the printable row: %q", got)
+	}
+	if len(sty.seeds) != 1 || sty.seeds[0] != Seed("wisp-parity") {
+		t.Fatalf("the glyph did not go through the identity door: seeds %v", sty.seeds)
+	}
+	// The seed reaches the wheel; the title beside it does not. Identity is
+	// the glyph's, never the prose's (5.16: accent hues never colorize
+	// running text).
+	for _, hue := range sty.hues {
+		if hue == HueIdentity {
+			t.Fatal("a non-glyph cell was painted as an identity")
+		}
+	}
+}
+
+// The new field is inert at its zero value: same door, same bytes, same
+// arguments as before it existed.
+func TestHeaderWithoutASeedIsUnchanged(t *testing.T) {
+	seeded := &seedStyler{}
+	Header{Glyph: "◐", GlyphHue: HueIdentity, Title: "wisp"}.Render(40, seeded)
+	if len(seeded.seeds) != 0 {
+		t.Fatalf("a zero seed reached the identity wheel: %v", seeded.seeds)
+	}
+	if len(seeded.hues) == 0 || seeded.hues[0] != HueIdentity {
+		t.Fatalf("a zero seed stopped painting the glyph on the hue axis: %v", seeded.hues)
+	}
+	// And a Styler with no identity door keeps working when a seed IS set:
+	// the seam is optional on the token layer's side.
+	h := Header{Glyph: "◐", GlyphHue: HueIdentity, GlyphSeed: Seed("wisp"), Title: "wisp"}
+	if got := h.Render(40, Plain); got != "◐ wisp" {
+		t.Fatalf("a plain Styler could not render a seeded header: %q", got)
+	}
+}
+
+func TestSeedIsStableAndEmptyMeansNoIdentity(t *testing.T) {
+	if Seed("") != 0 {
+		t.Fatal("an empty task id produced an identity")
+	}
+	if Seed("aforge") != Seed("aforge") {
+		t.Fatal("the seed is not stable for one id")
+	}
+	if Seed("aforge") == Seed("aforge2") {
+		t.Fatal("two task ids share one seed")
+	}
+}
+
 func TestHeaderFlattensNewlines(t *testing.T) {
 	h := Header{Title: "a\ntitle", Desc: "with\ta\r\ntab", Meta: []string{"one\ntwo"}}
 	got := h.Render(80, Plain)
