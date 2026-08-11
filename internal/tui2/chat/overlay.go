@@ -6,6 +6,7 @@ import (
 	"github.com/Agent-Field/aforge-v2/internal/config"
 	"github.com/Agent-Field/aforge-v2/internal/registry"
 	"github.com/Agent-Field/aforge-v2/internal/tui2"
+	"github.com/Agent-Field/aforge-v2/internal/tui2/dialogchrome"
 	"github.com/Agent-Field/aforge-v2/internal/tui2/homes"
 	"github.com/Agent-Field/aforge-v2/internal/tui2/palette"
 	"github.com/Agent-Field/aforge-v2/internal/tui2/rail"
@@ -122,6 +123,13 @@ func (a *App) settingsRegistry() *config.Settings {
 func (a *App) raise(kind overlayKind, pane tui2.Pane) tea.Cmd {
 	a.overlay = kind
 	a.shell.SetPane(tui2.LayerOverlay, pane)
+	// The boundary, painted. 12.11 shipped the slot and left the paint owed —
+	// "a lane that wants it tinted binds a pane to LayerDialogChrome like any
+	// other layer" — and this is that binding, made here because this is where
+	// a dialog becomes a thing on screen. It is built per raise rather than
+	// held: the ring has no state, and a field for it would be one more thing
+	// to keep in step with the profile.
+	a.shell.SetPane(tui2.LayerDialogChrome, dialogchrome.New(a.style))
 	a.shell.SetOverlay(true)
 	a.composer.Focus(false)
 	a.refresh()
@@ -142,6 +150,7 @@ func (a *App) closeOverlay() tea.Cmd {
 	a.overlay = overlayNone
 	a.shell.SetOverlay(false)
 	a.shell.SetPane(tui2.LayerOverlay, nil)
+	a.shell.SetPane(tui2.LayerDialogChrome, nil)
 	a.composer.Focus(!a.railFocus)
 	a.refresh()
 	return nil
@@ -454,13 +463,13 @@ func (a *App) entryReason(entryID string) string {
 	// lane that lands the verb; runEntry's default and this list are checked
 	// against each other by a test, so neither can be forgotten.
 	case "slash.node":
-		return "open a piece of work from the map — click or enter its row"
+		return "open it from the map instead"
 	case "slash.open":
-		return "opening a deliverable in your OS is not wired on this surface yet"
+		return "no OS-open on this surface yet"
 	case "slash.session":
-		return "the room and its process are on the footer already"
+		return "the footer already says both"
 	case "slash.cancel":
-		return "cancelling from a list is not wired yet — steer the room instead"
+		return "steer the room instead, for now"
 	case "slash.new":
 		if a.source == nil || a.source.rooms == nil {
 			return "this window cannot open rooms"
@@ -472,15 +481,15 @@ func (a *App) entryReason(entryID string) string {
 	// and three of the four are not gaps at all — they are 5.15 and 8.3 having
 	// replaced the thing the chord was for.
 	case "key.thread.cycle-focus":
-		return "this surface has one cursor (5.15) — ctrl+o moves it to the map"
+		return "one cursor here — ctrl+o moves it"
 	case "key.thread.newline":
-		return "a newline is typed, not run — alt+enter inside the draft"
+		return "typed, not run — alt+enter"
 	case "key.thread.narrow-split", "key.thread.widen-split":
-		return "the split is not resizable on this surface yet"
+		return "the split is fixed here for now"
 	case "key.voice":
-		return "voice input is not on this surface"
+		return "not on this surface"
 	case "key.boost":
-		return "boost is not on this surface yet"
+		return "not on this surface yet"
 	}
 	return ""
 }
