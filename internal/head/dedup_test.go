@@ -3,7 +3,6 @@ package head
 import (
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/Agent-Field/aforge-v2/internal/store"
 )
@@ -15,25 +14,67 @@ import (
 // collided, and the notebook was deduped only against itself while the head
 // manufactured the thread-versus-notebook collision on the previous turn.
 
+// failJob settles one job the way a failure settles it: claimed, started, and
+// ended with what it has to say for itself. A failure is still a finding, and
+// nodeResult reads it as one.
+func failJob(t *testing.T, graph *store.Store, id, title, intent, finding string) {
+	t.Helper()
+	spliceSurgeryJob(t, graph, id, title, intent)
+	claim, ok, err := graph.Claim(id, "tester")
+	if err != nil || !ok {
+		t.Fatalf("claim %s: ok=%t err=%v", id, ok, err)
+	}
+	if err := graph.Start(claim); err != nil {
+		t.Fatalf("start %s: %v", id, err)
+	}
+	if err := graph.Fail(claim, finding); err != nil {
+		t.Fatalf("fail %s: %v", id, err)
+	}
+}
+
+// seedDeliveredBoard is the shape the board dedup is about: work that has a
+// finding AND is still on the live board.
+//
+// The board enumerates what is moving now, so a job that finished cleanly leaves
+// it and can no longer collide with anything. What stays is work that has said
+// something and is not yet closed out — a failure most of all, which is both the
+// most important row on a board and the one whose account of itself gets quoted
+// twice.
+func seedDeliveredBoard(t *testing.T, graph *store.Store) {
+	t.Helper()
+	failJob(t, graph, "finance-close", "Finance close", "close the finance books for Q3",
+		financeFinding+"\n"+financeDetail)
+	failJob(t, graph, "podcast-edit", "Podcast edit", "edit the podcast episode",
+		podcastFinding+"\n"+podcastDetail)
+	spliceSurgeryJob(t, graph, "line-scans", "Line scans", "scan the lines")
+}
+
 // TestBoardDropsTheClauseTheDeepSliceIsAboutToQuote is #37. For every job the
 // slice opens, the identifying line appears twice by design and the summary's
 // first line appeared twice by accident — which costs budget and reads to a
 // model as two independent statements of one finding.
 func TestBoardDropsTheClauseTheDeepSliceIsAboutToQuote(t *testing.T) {
 	graph := openHeadStore(t)
-	seedResultBoard(t, graph)
+	seedDeliveredBoard(t, graph)
+	head := New(nil, graph)
 
 	// With nothing opened the board says what it has always said.
-	whole := New(nil, graph).boardFor("dedup", "", nil, time.Now())
+	whole, err := head.renderTurnBoard("dedup", "", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
 	if !strings.Contains(whole, "result: "+financeFinding) {
 		t.Fatalf("the board lost its result clause entirely:\n%s", whole)
 	}
 
-	deep, opened := New(nil, graph).renderDeep("what happened with the finance thing", "")
+	deep, opened := head.renderDeep("what happened with the finance thing", "")
 	if !opened["finance-close"] || !strings.Contains(deep, financeFinding) {
 		t.Fatalf("the fixture never opened the finance job:\n%s", deep)
 	}
-	deduped := New(nil, graph).boardFor("dedup", "", opened, time.Now())
+	deduped, err := head.renderTurnBoard("dedup", "", opened)
+	if err != nil {
+		t.Fatal(err)
+	}
 	if strings.Contains(deduped, "result: "+financeFinding) {
 		t.Fatalf("the board still states the finding the slice quotes in full:\n%s", deduped)
 	}
@@ -51,15 +92,18 @@ func TestBoardDropsTheClauseTheDeepSliceIsAboutToQuote(t *testing.T) {
 }
 
 // TestBoardDropsTheSummaryTheThreadAlreadyPosted is #39. announceNode posts a
-// settled job's summary into the thread as a system message; renderGraph then
+// settled job's summary into the thread as a system message; the board then
 // rendered the same first line independently. Every settled job spent its
 // summary twice in the prompt, and the pair that always collides was the one
 // pair nothing deduped.
 func TestBoardDropsTheSummaryTheThreadAlreadyPosted(t *testing.T) {
 	graph := openHeadStore(t)
-	seedResultBoard(t, graph)
+	seedDeliveredBoard(t, graph)
 	thread := "system: " + financeFinding
-	board := New(nil, graph).boardFor("dedup", thread, nil, time.Now())
+	board, err := New(nil, graph).renderTurnBoard("dedup", thread, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
 	if strings.Contains(board, "result: "+financeFinding) {
 		t.Fatalf("the board repeated a summary the thread already carries:\n%s", board)
 	}
@@ -115,7 +159,7 @@ func TestNotebookDropsWhatTheThreadAlreadyShows(t *testing.T) {
 // The three seams together, in one real prompt, with the budgets intact.
 func TestDedupNeverCostsTheBoardItsFloor(t *testing.T) {
 	graph := openHeadStore(t)
-	seedResultBoard(t, graph)
+	seedDeliveredBoard(t, graph)
 	prompt := routerPrompt(t, graph, "dedup", "what happened with the finance thing")
 	if strings.Count(prompt, financeFinding) != 1 {
 		t.Fatalf("the finance finding appears %d times in one prompt:\n%s",

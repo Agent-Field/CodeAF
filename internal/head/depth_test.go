@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Agent-Field/aforge-v2/internal/manual"
 	"github.com/Agent-Field/aforge-v2/internal/store"
 )
 
@@ -63,19 +64,26 @@ func completeNodeWith(t *testing.T, graph *store.Store, id, summary string) {
 }
 
 // routerPrompt runs one message all the way through the head and returns what
-// the routing client was actually asked. Everything below is an assertion about
-// that one string, because that string is the whole of what the model knows.
+// the model was actually asked. Everything below is an assertion about that one
+// string, because that string is the whole of what the model knows.
+//
+// It keeps its name because other test files call it, and because what it means
+// did not change: there is one prompt now instead of a router's and a belt's,
+// and this is it. The client is scripted to speak once and call nothing, so the
+// prompt returned is the opening one — the turn as it was handed over, before
+// any tool result was appended to it.
 func routerPrompt(t *testing.T, graph *store.Store, session, body string) string {
 	t.Helper()
-	client := &fakeClient{responses: []string{`{"reply":"noted","command":null}`}}
+	client := &beltClient{turns: []beltTurn{{text: "noted"}}}
 	user := postUser(t, graph, session, body)
 	if err := New(client, graph).answer(context.Background(), user); err != nil {
 		t.Fatalf("answer %q: %v", body, err)
 	}
-	if len(client.seen) < 2 {
-		t.Fatalf("%q never reached the router: %+v", body, client.seen)
+	opening := client.openingPrompt()
+	if opening == "" {
+		t.Fatalf("%q never reached the loop", body)
 	}
-	return client.seen[1].Content[0].Text
+	return opening
 }
 
 // The failure itself: "it was completed" was all the head could say because the
@@ -87,30 +95,41 @@ func TestFinanceQuestionCarriesTheFindingsAndNotTheOtherJobs(t *testing.T) {
 
 	for _, wanted := range []string{financeFinding, financeDetail, financeFile} {
 		if !strings.Contains(prompt, wanted) {
-			t.Fatalf("router prompt missed the finance substance %q:\n%s", wanted, prompt)
+			t.Fatalf("prompt missed the finance substance %q:\n%s", wanted, prompt)
 		}
 	}
-	for _, unwanted := range []string{podcastDetail, podcastFile} {
+	for _, unwanted := range []string{podcastFinding, podcastDetail, podcastFile} {
 		if strings.Contains(prompt, unwanted) {
 			t.Fatalf("an unmatched job leaked into the prompt: %q", unwanted)
 		}
 	}
-	// The board is the floor, not the casualty. Every job still has its line.
-	for _, id := range []string{"finance-close", "podcast-edit", "line-scans"} {
-		if !strings.Contains(prompt, "- "+id+" | ") {
-			t.Fatalf("depth evicted %s from the board:\n%s", id, prompt)
-		}
+	// The board is the floor, not the casualty: the depth budget is spent
+	// entirely on one job and the work that is still moving keeps its line.
+	if !strings.Contains(prompt, "- line-scans | ") {
+		t.Fatalf("depth evicted live work from the board:\n%s", prompt)
+	}
+	// What the board no longer carries is settled work, and that is the design
+	// rather than a loss: the board is what is moving, and a job that is over is
+	// reached by a read aimed with the user's own words — which is also the only
+	// place a finding can come from.
+	rows, err := New(nil, graph).boardRows("finance", "podcast episode", "", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	aimed := renderBoard(rows)
+	if !strings.Contains(aimed, "- podcast-edit | ") || !strings.Contains(aimed, podcastFinding) {
+		t.Fatalf("settled work is unreachable by the words the user would use:\n%s", aimed)
 	}
 }
 
-// splitNowLine removes the one volatile clock line from a router prompt and
-// returns it beside the rest, so a byte-for-byte assertion can be made about
-// everything that is not the current time.
+// splitNowLine removes the one volatile clock line from a prompt and returns it
+// beside the rest, so a byte-for-byte assertion can be made about everything
+// that is not the current time.
 func splitNowLine(t *testing.T, prompt string) (string, string) {
 	t.Helper()
 	start := strings.Index(prompt, "\n\nnow: ")
 	if start < 0 {
-		t.Fatalf("the router prompt carries no clock:\n%s", prompt)
+		t.Fatalf("the prompt carries no clock:\n%s", prompt)
 	}
 	end := strings.Index(prompt[start+2:], "\n")
 	if end < 0 {
@@ -121,17 +140,20 @@ func splitNowLine(t *testing.T, prompt string) (string, string) {
 }
 
 // The regression guard. A message about nothing on the graph must produce the
-// prompt it produced before any of this existed, to the byte.
+// prompt it produces today, to the byte — no depth, no readings, no services.
+//
+// The blocks moved when the router and the belt became one turn: the manual's
+// page list joined the stable half, the snapshot became the live board under its
+// own heading, and depth, services and the deterministic readings each appear
+// only when they have something to say. The ORDER is still position by
+// volatility, and a greeting still pays nothing for machinery it did not use —
+// which is what this test exists to hold.
 func TestGreetingProducesTodaysContextExactly(t *testing.T) {
 	graph := openHeadStore(t)
 	seedResultBoard(t, graph)
 	greeting := "good morning"
 	prompt := routerPrompt(t, graph, "greeting", greeting)
 
-	// The order is stable-first: thread, then the snapshot and the notebook that
-	// move with every message, then the message. It changed once, deliberately,
-	// when the router was reshaped for prefix caching; the blocks and their
-	// bytes did not.
 	thread := "(no earlier messages in this session)"
 	// The clock is lifted out before the comparison rather than reconstructed
 	// into it: it is the one block whose bytes are a function of the wall clock,
@@ -140,8 +162,13 @@ func TestGreetingProducesTodaysContextExactly(t *testing.T) {
 	if _, err := time.ParseInLocation(nowLineLayout, strings.TrimSuffix(strings.TrimPrefix(clock, "now: "), " local"), time.Local); err != nil {
 		t.Fatalf("the clock line does not parse as its own layout: %q", clock)
 	}
+	board, err := New(nil, graph).renderTurnBoard("greeting", thread, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
 	want := "Recent thread before this message:\n" + thread +
-		"\n\nLive graph snapshot:\n" + New(nil, graph).boardFor("greeting", thread, nil, time.Now()) +
+		"\n\nManual pages available: " + strings.Join(manual.Pages(), ", ") +
+		"\n\nLive board (the work you can read and act on):\n" + board +
 		"\n\nNotebook (durable memory across jobs and conversations):\n" + renderNotebook(graph, greeting, thread) +
 		"\n\nCurrent user message (verbatim):\n" + greeting
 	if prompt != want {
@@ -149,6 +176,11 @@ func TestGreetingProducesTodaysContextExactly(t *testing.T) {
 	}
 	if deep, _ := New(nil, graph).renderDeep(greeting, ""); deep != "" {
 		t.Fatalf("a greeting bought depth: %q", deep)
+	}
+	// The readings block is absent byte for byte from a message no recognizer
+	// fires on, which is the other half of the same promise.
+	if reading := New(nil, graph).renderHints(postUser(t, graph, "greeting", greeting), nil); reading != "" {
+		t.Fatalf("a greeting bought a reading: %q", reading)
 	}
 }
 
@@ -190,11 +222,11 @@ func TestResultAlreadyInTheThreadGetsNoDeepSlice(t *testing.T) {
 func TestBreadthAndDepthKeepTheirOwnBudgets(t *testing.T) {
 	graph := openHeadStore(t)
 	long := strings.Repeat("the reconciliation notes go on and on and on. ", 60)
+	// Live work with fat briefs, so the board is genuinely up against its own
+	// ceiling while the depth block is being bought beside it.
 	for index := 0; index < 40; index++ {
-		id := fmt.Sprintf("routine-%02d", index)
-		spliceSurgeryJob(t, graph, id, fmt.Sprintf("Routine errand %02d", index),
-			fmt.Sprintf("run errand %02d", index))
-		completeNodeWith(t, graph, id, fmt.Sprintf("Errand %02d closed clean.\n%s", index, long))
+		spliceSurgeryJob(t, graph, fmt.Sprintf("routine-%02d", index), "",
+			fmt.Sprintf("run errand %02d. %s", index, long))
 	}
 	for index := 0; index < 4; index++ {
 		id := fmt.Sprintf("ledger-%02d", index)
@@ -205,8 +237,15 @@ func TestBreadthAndDepthKeepTheirOwnBudgets(t *testing.T) {
 		completeNodeWith(t, graph, id, fmt.Sprintf("Ledger pass %02d closed clean.\n%s\n/tmp/aforge/ledger/%02d.md",
 			index, long, index))
 	}
-	if skeleton := New(nil, graph).boardFor("", "", nil, time.Now()); len(skeleton) > maxGraphContextBytes {
+	skeleton, err := New(nil, graph).renderTurnBoard("budget", "", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(skeleton) > maxGraphContextBytes {
 		t.Fatalf("board skeleton = %d bytes, over its %d budget", len(skeleton), maxGraphContextBytes)
+	}
+	if !strings.Contains(skeleton, "- routine-") {
+		t.Fatalf("the board dropped the live work it is the floor for:\n%s", skeleton)
 	}
 	deep, _ := New(nil, graph).renderDeep("what did the ledger reconciliation conclude", "")
 	if deep == "" {
@@ -316,6 +355,12 @@ func TestDedupProbeMeasuresBeforeItTrims(t *testing.T) {
 // TestTruncationMarkersFitTheirBudget counts the marker against the ceiling it
 // announces. Written after the check rather than reserved before it, it put the
 // block over the very budget the check exists to hold.
+//
+// The board reaches that ceiling differently now. BoardRowCap bounds a board to
+// a dozen rows before bytes ever bite, so a spread of narrow rows can no longer
+// overflow it and the sweep is over row widths wide enough that a dozen of them
+// do — which is the same property being tested, at the width where it is now
+// reachable.
 func TestTruncationMarkersFitTheirBudget(t *testing.T) {
 	// Uniform 64-byte lines tile the 4KB budget exactly, so the last line that
 	// fits leaves no slack at all and the marker has to have been reserved.
@@ -336,17 +381,20 @@ func TestTruncationMarkersFitTheirBudget(t *testing.T) {
 	// The board's rows are the store's to shape, so the budget is checked across
 	// a spread of row widths: whatever the last row that fits leaves behind, the
 	// marker has to fit inside it.
-	for width := 56; width <= 72; width++ {
+	for width := 460; width <= 476; width++ {
 		graph := openHeadStore(t)
-		prefix := len("- board-00 | " + string(store.Pending) + " | \n")
+		prefix := len("- board-00 |  | queued | 0 running, 1 queued | $0.00\n")
 		if width <= prefix {
 			t.Fatalf("row width %d leaves no room for a brief", width)
 		}
 		brief := strings.Repeat("b", width-prefix)
-		for index := 0; index < 2*maxGraphContextBytes/width; index++ {
+		for index := 0; index < BoardRowCap; index++ {
 			spliceSurgeryJob(t, graph, fmt.Sprintf("board-%02d", index), "", brief)
 		}
-		board := New(nil, graph).boardFor("", "", nil, time.Now())
+		board, err := New(nil, graph).renderTurnBoard("", "", nil)
+		if err != nil {
+			t.Fatal(err)
+		}
 		if !strings.Contains(board, strings.TrimSpace(snapshotTruncatedMark)) {
 			t.Fatalf("width %d: the board never truncated, so the marker is untested", width)
 		}

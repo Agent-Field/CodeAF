@@ -3,9 +3,11 @@ package head
 import (
 	"context"
 	"regexp"
+	"strings"
 	"testing"
 
 	"github.com/Agent-Field/aforge-v2/internal/store"
+	"github.com/Agent-Field/agentfield/sdk/go/ai"
 )
 
 // jargonWords is docs/JOURNEY.md's design filter as something a test can run.
@@ -98,30 +100,55 @@ func containsPhrase(text, phrase string) bool {
 // design filter that forbids it. It is a reading of intent now, made where
 // every other reading of a message is made, and carried to the engine as a flag
 // on the work order.
-func TestFreshRidesTheRouteDecisionOntoTheWorkOrder(t *testing.T) {
-	for name, response := range map[string]string{
-		"asked for": `{"reply":"Working it out from scratch.","command":{"kind":"splice","target":"","instruction":"do the investor update, but don't use the template this time"},"remember":null,"retract":null,"fresh":true}`,
-		"not asked": `{"reply":"On it.","command":{"kind":"splice","target":"","instruction":"do the investor update"},"remember":null,"retract":null,"fresh":false}`,
-	} {
+func TestFreshRidesTheReadingOntoTheWorkOrder(t *testing.T) {
+	for name, fresh := range map[string]bool{"asked for": true, "not asked": false} {
 		t.Run(name, func(t *testing.T) {
 			graphStore := openHeadStore(t)
+			ask := "do the investor update"
+			if fresh {
+				ask += ", but don't use the template this time"
+			}
 			user, err := graphStore.PostMessage(store.Message{
-				SessionID: "fresh", Role: store.RoleUser, Body: "do the investor update",
+				SessionID: "fresh", Role: store.RoleUser, Body: ask,
 			})
 			if err != nil {
 				t.Fatal(err)
 			}
-			if err := New(&fakeClient{responses: []string{response}}, graphStore).
-				answer(context.Background(), user); err != nil {
+			client := &beltClient{turns: []beltTurn{
+				{calls: []ai.ToolCall{beltCall("c1", beltToolSpawn, map[string]any{
+					"instruction": ask, "fresh": fresh})}},
+				{text: "On it."},
+			}}
+			if err := New(client, graphStore).answer(context.Background(), user); err != nil {
 				t.Fatal(err)
 			}
 			commands, err := graphStore.PendingCommands(10)
 			if err != nil || len(commands) != 1 {
 				t.Fatalf("commands = %+v err=%v", commands, err)
 			}
-			if want := name == "asked for"; commands[0].Fresh != want {
-				t.Fatalf("journaled command Fresh = %t, want %t", commands[0].Fresh, want)
+			if commands[0].Fresh != fresh {
+				t.Fatalf("journaled command Fresh = %t, want %t", commands[0].Fresh, fresh)
+			}
+			if commands[0].Instruction != ask {
+				t.Fatalf("the person's own words did not survive: %q", commands[0].Instruction)
 			}
 		})
+	}
+
+	// And the reading is offered where the model reads it, in the words people
+	// actually use, so the escape hatch never again requires saying "craft".
+	spawn := ""
+	for _, definition := range beltDefinitions() {
+		if definition.Function.Name == beltToolSpawn {
+			spawn = definition.Function.Parameters["properties"].(map[string]any)["fresh"].(map[string]any)["description"].(string)
+		}
+	}
+	for _, phrase := range []string{"first principles", "don't use the template this time", "It is about method, never content"} {
+		if !strings.Contains(spawn, phrase) {
+			t.Errorf("the fresh reading is not stated where the model makes it: %q", spawn)
+		}
+	}
+	if strings.Contains(strings.ToLower(spawn), "craft") {
+		t.Error("the escape hatch is asking for the internal noun again")
 	}
 }

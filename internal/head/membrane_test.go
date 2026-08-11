@@ -3,7 +3,6 @@ package head
 import (
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/Agent-Field/aforge-v2/internal/store"
 )
@@ -30,19 +29,27 @@ func spliceOriginJob(t *testing.T, graph *store.Store, origin store.Origin, sess
 // that job", and the belt replied that there is no work of the user's with that
 // id. One conversation, one table, three rules, and the head denying a job it
 // had just described.
+//
+// There is one table now — the prompt's board and the belt's board are the same
+// query through the same renderer — so the three rules can no longer disagree by
+// construction. The test still walks all three surfaces, because "they cannot
+// disagree" is a claim about the code and this is the evidence for it.
 func TestCharterFiredJobIsListableAndCancellable(t *testing.T) {
 	graph := openHeadStore(t)
 	spliceOriginJob(t, graph, store.OriginTrigger, "membrane",
 		"firing-charter-1-1", "Nightly security sweep", "sweep the new pull requests for vulnerabilities")
 
-	// One: the router describes it.
-	board := New(nil, graph).boardFor("membrane", "", nil, time.Now())
+	// One: the prompt the head speaks from describes it.
+	head := New(nil, graph)
+	board, err := head.renderTurnBoard("membrane", "", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
 	if !strings.Contains(board, "firing-charter-1-1") {
-		t.Fatalf("the snapshot the head speaks from omits the charter job:\n%s", board)
+		t.Fatalf("the board the head speaks from omits the charter job:\n%s", board)
 	}
 
 	// Two: the belt lists it, which is the read the loop chooses a target from.
-	head := New(nil, graph)
 	rows, err := head.boardRows("membrane", "", "", "")
 	if err != nil {
 		t.Fatal(err)
@@ -74,15 +81,18 @@ func TestTheOneMembraneStillHidesTheResidentsOwnWork(t *testing.T) {
 	spliceOriginJob(t, graph, store.OriginSelf, "", "self-upkeep", "Practice", "practice the weak spot")
 	spliceOriginJob(t, graph, store.OriginUser, "membrane", "user-job", "Finance close", "close the books")
 
-	board := New(nil, graph).boardFor("membrane", "", nil, time.Now())
+	head := New(nil, graph)
+	board, err := head.renderTurnBoard("membrane", "", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
 	if strings.Contains(board, "self-upkeep") {
-		t.Fatalf("the resident's own work reached the snapshot:\n%s", board)
+		t.Fatalf("the resident's own work reached the board:\n%s", board)
 	}
 	if !strings.Contains(board, "user-job") {
-		t.Fatalf("the user's own work fell out of the snapshot:\n%s", board)
+		t.Fatalf("the user's own work fell off the board:\n%s", board)
 	}
 
-	head := New(nil, graph)
 	rows, err := head.boardRows("membrane", "", "", "")
 	if err != nil {
 		t.Fatal(err)
@@ -109,7 +119,11 @@ func TestCrossSessionWorkIsMarkedRatherThanHidden(t *testing.T) {
 	spliceOriginJob(t, graph, store.OriginUser, "terminal", "local-job", "Ledger", "reconcile the ledger")
 	spliceOriginJob(t, graph, store.OriginUser, "browser", "remote-job", "Podcast", "edit the podcast")
 
-	board := New(nil, graph).boardFor("terminal", "", nil, time.Now())
+	head := New(nil, graph)
+	board, err := head.renderTurnBoard("terminal", "", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
 	for _, line := range strings.Split(board, "\n") {
 		switch {
 		case strings.Contains(line, "local-job") && strings.Contains(line, crossSessionMark):
@@ -119,7 +133,7 @@ func TestCrossSessionWorkIsMarkedRatherThanHidden(t *testing.T) {
 		}
 	}
 
-	rows, err := New(nil, graph).boardRows("terminal", "", "", "")
+	rows, err := head.boardRows("terminal", "", "", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -129,17 +143,15 @@ func TestCrossSessionWorkIsMarkedRatherThanHidden(t *testing.T) {
 	}
 	for _, line := range strings.Split(rendered, "\n") {
 		if strings.Contains(line, "remote-job") != strings.Contains(line, crossSessionMark) {
-			t.Fatalf("board provenance disagrees with the snapshot's: %q", line)
+			t.Fatalf("the belt's read disagrees with the prompt's about provenance: %q", line)
 		}
 	}
-	// And the one prompt says what the marker means, or it is four bytes of
-	// noise. There were two prompts saying it in two registers; there is one
-	// now, which is one place for it to go missing rather than two.
-	if !strings.Contains(orchestratorPrompt, `"elsewhere"`) {
-		t.Error("the marker is rendered but never explained to the model")
-	}
-	if !strings.Contains(orchestratorPrompt, "the receipt for a change lands where the job began") {
-		t.Error("the prompt no longer says why the window matters")
+	// The two boards that used to disagree are now one function called twice, so
+	// the marker cannot mean one thing in the prompt and another in a tool
+	// result. That equality is the assertion: same rows, same marks.
+	if strings.TrimSpace(board) != strings.TrimSpace(rendered) {
+		t.Fatalf("the prompt's board and the belt's read have drifted apart:\nprompt:\n%s\nbelt:\n%s",
+			board, rendered)
 	}
 	// Work with no session at all — the resident's, a charter's — is nobody's
 	// window and must never be marked as another person's.

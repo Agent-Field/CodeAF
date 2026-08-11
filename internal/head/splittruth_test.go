@@ -56,11 +56,22 @@ func TestSplitParentPresentsItsContinuationRatherThanItsOwnStaleSummary(t *testi
 
 // The board is the read a status question is answered from, so the substitution
 // has to survive the board's own budgeting and truncation.
+//
+// The read is an AIMED one here, and that is the shape of the question rather
+// than a weakening of it: a job that ran out of budget and was continued is over,
+// and the moving board is what is moving. "How is the browser build going" names
+// the work, and a read aimed by the person's own words or by an id reaches
+// settled work — which is the only reason result and read are usable at all.
 func TestBoardRowForASplitJobShowsTheLandedPiece(t *testing.T) {
 	graph := openHeadStore(t)
 	seedSplitJob(t, graph, "Everything is verified. The browser builds cleanly and launches a window.", true)
 
-	board := New(nil, graph).boardFor("surgery", "", nil, time.Now())
+	head := New(nil, graph)
+	rows, err := head.boardRowsAt("surgery", "", "", "task-3171", time.Now())
+	if err != nil {
+		t.Fatal(err)
+	}
+	board := renderBoard(rows)
 	row := ""
 	for _, line := range strings.Split(board, "\n") {
 		if strings.HasPrefix(line, "- task-3171 |") {

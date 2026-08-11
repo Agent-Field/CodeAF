@@ -258,6 +258,7 @@ func beltDefinitions() []ai.ToolDefinition {
 				"items": map[string]any{"type": "string"}},
 			"reflex": beltProp("boolean", "one obvious reversible action; skips compilation and planning"),
 			"after":  beltProp("string", "id of work this continues, from a board read"),
+			"fresh":  beltProp("boolean", `true only when they ask for THIS piece of work to be figured out from first principles rather than done the way it has been done before — "don't use the template this time", "plan this one properly", "start over on this". It is about method, never content: a fresh draft, fresh data or a fresh look at a file is not it. Almost every message leaves it false`),
 		}),
 		beltTool(beltToolControl, "Cancel, pause, resume, restart, or reprioritize the ids you name. Ids come from a board read, never from memory. A set large or expensive enough to need consent comes back as needs_confirmation and nothing changes until the user answers. When the user described the work instead of naming it and you cannot tell which row they mean, pass describes instead of ids and this hands back the candidates — jobs and standing rules alike — for you to name or to ask about.", map[string]any{
 			"verb":      beltProp("string", "cancel, pause, resume, restart, or reprioritize"),
@@ -1655,15 +1656,6 @@ func (h *Head) boardRowsAt(sessionID, query, status, id string, now time.Time) (
 	// made the belt's result tool unreachable for precisely the questions it
 	// was written to answer.
 	targeted := strings.TrimSpace(id) != "" || strings.TrimSpace(query) != ""
-	// A targeted read is a shortlist to choose from and stays short. The plain
-	// board is the head's whole picture of the workforce, and a picture that
-	// silently omits a job is the one reality it must never be handed — so it is
-	// bounded by the byte budget that actually bites in a prompt, and by a row
-	// count that only stops a thousand-node graph from being assembled at all.
-	cap := BoardRowCap
-	if !targeted {
-		cap = boardEnumerationCap
-	}
 
 	waits := boardWaits(snapshot, byID)
 	rows := make([]boardRow, 0, len(candidates))
@@ -1711,7 +1703,7 @@ func (h *Head) boardRowsAt(sessionID, query, status, id string, now time.Time) (
 			continue
 		}
 		rows = append(rows, row)
-		if len(rows) == cap {
+		if len(rows) == BoardRowCap {
 			break
 		}
 	}
@@ -1746,10 +1738,6 @@ func (h *Head) recalledCandidates(query string) ([]store.SurgeryTarget, error) {
 	return targets, nil
 }
 
-// boardEnumerationCap bounds the plain board. It is larger than BoardRowCap
-// because that cap answers a different question.
-const boardEnumerationCap = 40
-
 // boardEnumeration lists the work, jobs before their parts, live first and
 // newest first within each band — the same ordering rule the router's snapshot
 // followed, and for the same reason: what is happening now must never be the
@@ -1767,10 +1755,10 @@ func boardEnumeration(nodes []store.Node, byID map[string]store.Node) []store.Su
 		if node.ID == store.RootID || !beltAddressable(node) {
 			continue
 		}
-		// A fold root is packed history: reachable, and last in line for the
-		// budget. Dropping it is how a job the retrospective tidied away became
-		// invisible to the one read that is supposed to show the workforce.
-		if node.Folded && !node.FoldRoot {
+		// Packed history is not the moving board. A job a territory swallowed is
+		// reached by an aimed read, which falls back to the fold index for
+		// exactly this case.
+		if node.Folded {
 			continue
 		}
 		roots = append(roots, node)
@@ -1819,12 +1807,15 @@ func boardEnumeration(nodes []store.Node, byID map[string]store.Node) []store.Su
 // root node, because "the running ones" means jobs with somebody working on
 // them, not jobs whose root happens to carry a running status.
 //
-// The unnarrowed board says everything, settled work included, and that is not
-// laxness — it is the one thing the board must never do, which is omit a job the
-// person can see. Live work leads and the freshest history follows it, so the
-// budget drops the oldest settled row rather than the job running right now;
-// what a settled row is FOR is that "what did you find?" and "what did you do
-// yesterday" can be answered without spending a call to discover an id.
+// The unnarrowed board is what is MOVING, and cleanly-finished work is left off
+// it deliberately. That was tried the other way — settled rows on the plain
+// board — and it costs more than it buys: an unmatched job's finding leaks into
+// every prompt, which is exactly the pollution the deep slice's relevance floor
+// exists to prevent, and the budget then spends itself on history while the job
+// running right now competes for what is left. Settled work is reached instead
+// by the four reads written for it: an aimed board read by id or by the person's
+// own words, result, history, and search. Failed work stays, because a failure
+// is not finished business.
 func boardRowMatches(row boardRow, class string) bool {
 	switch class {
 	case classRunning:
@@ -1834,7 +1825,8 @@ func boardRowMatches(row boardRow, class string) bool {
 	case classFailed:
 		return row.failed > 0 || row.node.Status == store.Failed
 	default:
-		return true
+		return row.running > 0 || row.queued > 0 || row.failed > 0 ||
+			classOpen(row.node.Status) || row.node.Status == store.Failed
 	}
 }
 
