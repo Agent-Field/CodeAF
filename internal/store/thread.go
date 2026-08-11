@@ -182,6 +182,18 @@ const (
 	// ignoring it, which is how a requester learns it must wait for the
 	// heartbeat to go stale instead.
 	CommandHandover CommandKind = "handover"
+
+	// CommandHeadInterrupt is a turn-cancel promoted from a keypress to a
+	// journaled command (12.3.3, 12.8.10): a stop rides the same funnel as
+	// every other authority in the product instead of a narrower in-process
+	// road. It targets no node — the turn in flight belongs to the head
+	// serving the session, not to a subtree — so it joins isGlobalCommand and
+	// deliberately does NOT enter validateNodeCommand's status table. Its
+	// value must stay byte-identical to internal/head's HeadInterruptKind,
+	// which duplicates this constant because the store's kind list was closed
+	// to that lane; TestHeadInterruptKindMatchesHeadPackage pins the two
+	// together.
+	CommandHeadInterrupt CommandKind = "head_interrupt"
 )
 
 // CommandStatus is the lifecycle of a requested command. Commands are durable
@@ -1080,7 +1092,8 @@ func validCommandKind(kind CommandKind) bool {
 		CommandCharterOnce,
 		CommandCharterFire, CommandCharterDecline, CommandCharterAlways, CommandCharterNever, CommandCharterProbation,
 		CommandServiceStop, CommandServiceRestart, CommandServiceAutoRestart,
-		CommandStandingWatchEnable, CommandStandingWatchDecline, CommandHandover:
+		CommandStandingWatchEnable, CommandStandingWatchDecline, CommandHandover,
+		CommandHeadInterrupt:
 		return true
 	default:
 		return false
@@ -1152,8 +1165,9 @@ func isCharterCommand(kind CommandKind) bool {
 
 // isGlobalCommand names the kinds that address the whole store rather than a
 // node in the graph. A handover joins them: it is about which process is
-// serving, and there is no node it could point at.
+// serving, and there is no node it could point at. A head interrupt joins
+// them for the same reason: the turn in flight is not a node either.
 func isGlobalCommand(kind CommandKind) bool {
 	return kind == CommandStandingWatchEnable || kind == CommandStandingWatchDecline ||
-		kind == CommandHandover
+		kind == CommandHandover || kind == CommandHeadInterrupt
 }
