@@ -136,12 +136,14 @@ func solveInto(slots []slot, w, h int, m Metrics, md mode) layout {
 	return l
 }
 
-// overlayRect centers a dialog, or gives it the whole frame under the
-// fullscreen breakpoint (10.5.24). Wave 3 decides what goes inside it; the
-// geometry is settled here so the overlay plane is a real, testable region
-// from the first wave rather than a Wave 3 discovery.
+// overlayRect centers a dialog, or gives it the whole frame under either
+// fullscreen breakpoint (10.5.24) — width or height, matching
+// consentui.ForcedFullscreen's both-axes semantics: a wide-but-short frame
+// has as little room to float a panel as a narrow one does. Wave 3 decides
+// what goes inside it; the geometry is settled here so the overlay plane is a
+// real, testable region from the first wave rather than a Wave 3 discovery.
 func overlayRect(w, h int, m Metrics) image.Rectangle {
-	if w < m.DialogFullscreenBelow {
+	if w < m.DialogFullscreenBelowWidth || h < m.DialogFullscreenBelowHeight {
 		return image.Rect(0, 0, w, h)
 	}
 	dw := min(w-4, max(40, w*2/3))
