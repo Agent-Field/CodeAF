@@ -121,6 +121,20 @@ func (e EndState) String() string {
 	}
 }
 
+// CutMark is the truncation law's mark (12.5.2), and there is exactly one of
+// it. The severed double-dash is deliberately NOT the overflow ellipsis: an
+// ellipsis says "there is more, ask for it", a cut says "this stopped and
+// should not have", and conflating the two is the lie of omission 12.5 found.
+//
+// The vocabulary authority for every glyph in this tree is
+// internal/tui2/tokens (tokens.GlyphCut). blocks cannot import it — the edge
+// runs tokens → blocks so blocks stays a leaf — so the byte lives here twice
+// and tokens' own glyph_test pins the two equal. A drift fails a test rather
+// than shipping two marks for one meaning.
+//
+// U+254C is Neutral width: one cell under every ruler, including a CJK locale.
+const CutMark = "╌"
+
 // CutRule renders the visible cut a finalized-but-incomplete block ends with:
 // a dashed rule carrying the reason, filling the width. It returns "" for
 // endings that need no mark, and never panics at width 1.
@@ -136,7 +150,7 @@ func CutRule(end EndState, width int, s Styler) string {
 	st := styler(s)
 	// Narrow terminals get the mark alone, then a single glyph, then nothing.
 	if width < 4 {
-		return st.Paint(truncate("⌁", width), StateChrome, end.Hue())
+		return st.Paint(truncate(CutMark, width), StateChrome, end.Hue())
 	}
 	var b builder
 	b.grow(width + 16)
@@ -145,7 +159,7 @@ func CutRule(end EndState, width int, s Styler) string {
 		b.styled(st, truncate(mark, width), StateChrome, end.Hue())
 		return b.String()
 	}
-	b.styled(st, "⌁ ", StateChrome, end.Hue())
+	b.styled(st, CutMark+" ", StateChrome, end.Hue())
 	b.styled(st, mark, StateChrome, end.Hue())
 	rest := width - 2 - markWidth - 1
 	if rest > 0 {

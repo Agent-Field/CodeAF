@@ -8,6 +8,8 @@ import (
 
 	"github.com/charmbracelet/x/ansi"
 	"golang.org/x/text/width"
+
+	"github.com/Agent-Field/aforge-v2/internal/tui2/blocks"
 )
 
 // The rulers are imported HERE and only here; the shipping package measures
@@ -249,6 +251,24 @@ func TestCutIsNotEllipsis(t *testing.T) {
 	}
 	if isAmbiguous([]rune(GlyphCut)[0]) {
 		t.Error("the cut mark must not be ambiguous-width: it appears at the end of a live row")
+	}
+}
+
+// TestCutMarkIsOneMark closes the seam the vocabulary law leaves open. 12.5.2's
+// mark must be ONE thing, and it is spelled in two packages: this one is the
+// vocabulary authority, and internal/tui2/blocks — which cannot import tokens,
+// because the edge runs tokens → blocks to keep blocks a leaf — has to carry
+// the byte itself to draw the cut rule.
+//
+// The test is the import edge doing the work the compiler cannot: tokens
+// already depends on blocks, so tokens is the one place that can hold the two
+// spellings side by side and fail when they part. blocks drew "⌁" for a while
+// against this package's "╌", which is exactly the two-vocabularies-for-one-
+// mark drift this pins shut.
+func TestCutMarkIsOneMark(t *testing.T) {
+	if GlyphCut != blocks.CutMark {
+		t.Fatalf("two vocabularies for one cut mark (12.5.2): tokens %q, blocks %q",
+			GlyphCut, blocks.CutMark)
 	}
 }
 
