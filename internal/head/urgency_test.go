@@ -184,10 +184,15 @@ func TestSpeedAsARequirementStillCompilesAsNewWork(t *testing.T) {
 // answers depending on which arm caught it. There is one prompt now, and the
 // constraint survives inside it: the mechanism is named, what it does is named,
 // and promising a time is still forbidden.
+//
+// The clause this used to pin — "say the new work is queued behind it" — was a
+// promise in the other direction, and 13.6 measured it false: the runner claims
+// every ready leaf it has a slot for, so a second job commissioned while a first
+// one runs starts beside it rather than after it. The receipt is still forbidden
+// to promise a time; what it may no longer do is invent a queue.
 func TestSpliceReceiptIsForbiddenFromPromisingAcceleration(t *testing.T) {
 	for _, phrase := range []string{
-		"New work starts when the workforce reaches it",
-		"say the new work is queued behind it",
+		"never say something is waiting its turn or is behind anything else unless a board row you have read this turn says it is queued",
 		"never that it is done, never a completion time",
 	} {
 		if !strings.Contains(orchestratorPrompt, phrase) {

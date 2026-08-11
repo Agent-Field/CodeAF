@@ -4412,3 +4412,149 @@ undrained today, they are actively REJECTED by `applyCommand`'s default arm
 that in fact happened. The fan-out lane's 13.6 remains unlanded; its exec asks
 are recorded as pending, not invented. `go build ./...` green at compile time;
 no code touched.
+
+### 13.6 Fan-out lane: does a parallelisable ask actually fan out? (measured, 2026-08-11)
+
+The question was whether the head serialises work the graph could run side by
+side. The answer is that it does not, that the one place work WAS serialised was
+a prompt inventing a dependency, and that the gate which reads 0.89 is measuring
+something other than serialisation. Everything below is measured against real
+binaries on disposable homes under `AFORGE_DAILY_BUDGET=1.00`, work and talk
+both on `~deepseek/deepseek-v4-flash-latest`; the driver is a tmux harness that
+says one or two sentences into `chat --v2` and then reads the journal.
+
+**The ceiling is not the problem, and neither is the belt.** The runner claims
+every ready leaf it has a slot for: `chatWorkerCeiling = 32`
+(cmd/aforge/chat.go:476), a governor that admits unconditionally under three in
+flight (`GovernorMinInFlight`, internal/exec/governor.go:48), and independent
+splices applied concurrently four at a time (`concurrentCommands`,
+internal/resident/resident.go:784). `Ready(0)` is graph-wide and keys on nothing
+per-root (internal/store/query.go:445). Measured: one message naming three
+unrelated summaries became three commands journaled in the same MILLISECOND, and
+their three nodes started within 2ms of each other — execution concurrency 2.62.
+A ten-item list collapses past `fanOutLimit` into one order and the compiler's
+`parts` picks it up: ten leaves, all ten running at once, concurrency 3.09-4.24
+across runs. Nothing in head, resident or exec queues independent work.
+
+**What WAS serialised: a dependency the compiler invented.** Second message
+while a first job ran — two unrelated histories, the second introduced by
+"also". The journal: `subtree_spliced` at 03:26:27.944, then nothing for 8.67
+seconds, then `node_completed` for the first job at 03:26:36.610 and
+`node_claimed` for the second at 03:26:36.611 — one millisecond later, which is
+a dependency releasing, not a poll interval. `edges` held
+`task-8 -> task-22 (feeds_into)`. The head had passed no target; the edge came
+from `Compiled.BuildsOn`, and BuildsOn came from compiler.go's rule that named
+builds_on for an instruction that "continues, improves, or refers to" earlier
+work. "Refers to" is a linguistic relation and "also" tripped it. The rule now
+requires the instruction to NEED the earlier result, and a new rule states what
+the edge costs — that it is a hard wait, that relatedness and additive
+connectives are not dependencies, and that [] is the safe answer under doubt.
+After: no edge, and the second job starts 3.4s BEFORE the first finishes. The
+true-dependency case is unharmed — "now translate that same file" still wires
+`task-8 -> task-24` and still waits, which is the regression guard that matters.
+
+**The head was also telling the person a queue existed.** prompt.go's voice
+section ended "if something is already running, say the new work is queued
+behind it", and the head duly said "queued behind the Silk Road one that's
+already running" while the rail beside it read "2 running". Under this prompt's
+own HONESTY law that is a false claim about the world. It now says the workforce
+is wide, that running work does not hold new work back, and that nothing may be
+called queued unless a board row read this turn says so. Measured after: "It's
+running alongside the Silk Road piece." `TestSpliceReceiptIsForbiddenFromPromisingAcceleration`
+is repinned to the replacement with the reason recorded in the test.
+
+**Why J15 reads below 1.0 without anything being serial.** The journey divides
+summed node seconds by the person's whole wall clock, and the wall clock
+includes the head turn and the compile+plan that precede any node. With three
+two-second jobs and roughly four seconds of fixed pipeline in front of them the
+ratio cannot reach 1.3 however perfect the parallelism. Reproduced at 0.67 and
+0.89 before, 1.17 after — while the three nodes in the very same run started at
+:47.019, :47.020 and :47.519 and all ended by :49.960, an execution concurrency
+of 2.41 with zero edges between them. The gate is red for a real reason (the
+fixed pipeline IS the person's wait) but its sentence — "the graph held three
+jobs but ran them one after another" — is not what happened. Left alone
+deliberately: rewording a gate to pass it is the thing 11.1 forbids. Its owner
+should decide between measuring the execution span and keeping the wall.
+
+**The expensive lesson: splitting does not divide work, it multiplies it.** A
+first attempt at within-job width told the compiler that one deliverable does
+not mean one worker. It worked, structurally: one comparison report became eight
+leaves, four concurrent, concurrency 2.58. It was also a disaster — wall 51s to
+397s and cost $0.023 to $0.266. The per-leaf numbers say why: the parts ran
+123s, 211s and 204s each against a whole job that took 103s unsplit, and three
+of them exhausted their resources and needed continuations. Every part is
+briefed alone and works to the size of ITS brief, so a part described as broadly
+as the job does the job again. Bounding the parts fixed the parts (average 190s
+to 45s, no exhaustion) and still did not pay, for a second reason recorded as a
+handoff below. The rule that survives is the general one: coordination is nearly
+free because the workers are agents, appetite is not, and width pays exactly
+when the brief narrows as it widens.
+
+**What the prompt stack turned out to be.** Four prompts decide shape, and only
+the first two are this lane's. `head/prompt.go` decides whether a message
+becomes work at all. `head/toolbelt.go`'s spawn description decides one message
+into N jobs — now told to split by what the person gets back and never for
+speed, since one order becomes as many workers as its work has independent
+pieces either way. `head/compiler.go` decides `scale`, and scale is the gate on
+whether a plan pass happens at all. Then `plan/spine.go` orders the stages,
+`plan/fanout.go` sets the width inside one, and `plan/bind.go` decides the
+waits-on edges — the critical path. The last three are the co-working
+campaign's and were read only. They are already meta-level and already say the
+right things; bind.go:64-72 rejects topic-sharing as a dependency and calls the
+empty list normal, and fanout.go:78 forbids a merge part outright.
+
+**What was removed and what was added, at the level that is ours.** Removed:
+every case-shaped rule from the first drafts — the counted-file and named-list
+illustrations, the country-comparison illustration, and the connective word
+list, all of which taught shapes instead of reasoning. Added, as three compact
+bullets a model applies to any ask: that width is free to coordinate and not
+free in appetite, so parts and their bounds are named together or neither is;
+that every ordering must be challenged before it is written, that only
+consumption or shared-state mutation orders two pieces, and that a bound stated
+up front in the goal beats making the second piece wait to be told it; and that
+scale is that judgement's answer rather than a label chosen first. No task shape
+appears in any of them.
+
+**Measured across four shapes, checking width AND correctness.** An enumerated
+list: ten leaves, ten concurrent, 3.09. A build with real internal interfaces
+(tokenizer, parser, evaluator, tests): four leaves, three concurrent, 1.96 —
+width found where a contract can be stated up front. One report drawn from
+unbounded sources: one worker, 1.00, $0.027 — correct, since the split cost
+$0.115-$0.266 and never beat it on the clock. A genuine pipeline (fetch, then
+count, then write): one worker, 1.00, and NOT three nodes with invented edges.
+Wide where width is real, narrow where it is not, and no false ordering in
+either direction.
+
+**Handoff to the plan campaign — the reason within-job width still does not pay.**
+Two prompts there are being disobeyed, and together they cost a serial tail
+longer than the parallel section it follows.
+
+1. `internal/plan/bind.go:74-77` states the gatherer exception: a node that
+   assembles what others produce must name them, because "it would start
+   alongside the very work it exists to consume". That is exactly what happened.
+   In the split run the leaf titled "Assemble the three country sections"
+   started at 52:26.267 — the same instant as the three research leaves at
+   52:26.262, .263 and .265 — and `select * from edges where to_id='task-8-n4'`
+   returns nothing. The synthesis ran blind, concurrently with its own inputs.
+   The rule exists; the pass did not apply it. Worth checking whether the
+   gatherer arm is reachable at all for a stage-1 part, given the same prompt
+   restricts same-stage edges to STATE.
+2. `internal/plan/fanout.go:72-78` says no part of a stage may produce the one
+   final deliverable and "Do not include a merge or summary part". The stage
+   produced exactly such a part anyway, and the bundle's own "Deliver together"
+   node then re-synthesised on top of it: 71s of assemble followed by 22s of
+   deliver, against a parallel section of about 70s. Two syntheses where the
+   design intends one.
+
+Fix either and one report from independent sources becomes worth splitting; the
+compiler rule above is written so that it will widen the moment the join is
+honest, and this lane will re-measure on request. Nothing under `internal/plan`,
+`internal/exec` or `internal/resident` was touched.
+
+**State.** `internal/head` green. `make check` cannot be read on the shared tree
+right now: `internal/tui2/chat/scope.go` and `internal/tui2/palette` are another
+lane's in-flight edits and fail `vet` and the build, taking `cmd/aforge` with
+them; this lane's binaries were therefore built in a detached worktree at HEAD
+with only `internal/head` copied over. Outside that, the reds are the known
+`internal/plan` `TestRenderTerrainStaysUnderTheCap` (CJK filename length) and
+`internal/swepro`, both pre-existing and out of scope.
