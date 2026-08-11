@@ -391,3 +391,17 @@ func rowFor(t *testing.T, catalog modelui.Catalog, role store.ModelRole) modelui
 	t.Fatalf("the catalog carries no %s row", role)
 	return modelui.RoleRow{}
 }
+
+// runAll drives a command and everything a batch under it carries, which is
+// what the runtime does and what a test asserting on a batched send has to.
+func runAll(t *testing.T, cmd tea.Cmd) {
+	t.Helper()
+	if cmd == nil {
+		return
+	}
+	if batch, ok := cmd().(tea.BatchMsg); ok {
+		for _, sub := range batch {
+			runAll(t, sub)
+		}
+	}
+}

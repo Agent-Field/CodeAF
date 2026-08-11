@@ -625,8 +625,16 @@ func (a *App) submit(text string) tea.Cmd {
 // verb — 4.6's v1 promise is that a room's composer uses the verbs that already
 // exist, and this is that promise as four fields.
 func (a *App) steerCmd(text string) tea.Cmd {
+	return a.steerNode(a.composerBind.node, text)
+}
+
+// steerNode is the same door, aimed by the caller rather than by the binding.
+// The `@` grammar needs it (5.18): a mention addresses a task the composer is
+// not bound to, and the alternative — rebinding the composer to send — would
+// teleport the reader's context, which is the one thing 5.18 refuses.
+func (a *App) steerNode(node, text string) tea.Cmd {
 	text = strings.TrimSpace(text)
-	node := a.composerBind.node
+	node = strings.TrimSpace(node)
 	if text == "" || node == "" || a.backend == nil {
 		return nil
 	}
