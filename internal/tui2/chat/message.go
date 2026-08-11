@@ -7,6 +7,7 @@ import (
 	"github.com/Agent-Field/aforge-v2/internal/store"
 	"github.com/Agent-Field/aforge-v2/internal/tui2/blocks"
 	"github.com/Agent-Field/aforge-v2/internal/tui2/modelui"
+	"github.com/Agent-Field/aforge-v2/internal/tui2/rail"
 	"github.com/Agent-Field/aforge-v2/internal/tui2/tokens"
 )
 
@@ -83,6 +84,12 @@ type messageBlock struct {
 	// count walks back to: a question stops being open the moment the reader
 	// speaks again.
 	user bool
+	// artifacts says the deliverable card already drew this row's artifact
+	// references, so absorbParts must not draw them a second time. The card
+	// draws them ABOVE the fold (12.5: a deliverable is referenced by its path,
+	// and a path a fold is holding is a path nobody has been given); the parts
+	// walk would put the same rows below the body.
+	artifacts bool
 	// questions is how many askbacks this row carries, for the footer's amber
 	// attention column (5.16: amber only ever means a human is actually
 	// needed).
@@ -256,7 +263,12 @@ func messageID(seq int64) string { return "msg-" + strconv.FormatInt(seq, 10) }
 // The dispatch below is the whole of 13.1 item 2's taxonomy, read off fields the
 // journal already carries and nothing else. No regex reads a body to guess what
 // kind of row it is; a row is what its columns say it is.
-func newMessageBlock(message store.Message, style *tokens.Styler) *messageBlock {
+//
+// board is the graph slice a settled deliverable is dressed from — the name,
+// the money and the lifecycle a message cannot carry — and it may be nil. A
+// surface with no board draws the same card without them, never an invented
+// one; see delivery.go.
+func newMessageBlock(message store.Message, style *tokens.Styler, board jobSource) *messageBlock {
 	block := &messageBlock{
 		id:     messageID(message.Seq),
 		seq:    message.Seq,
@@ -266,6 +278,8 @@ func newMessageBlock(message store.Message, style *tokens.Styler) *messageBlock 
 	switch {
 	case message.Brief != nil:
 		block.dressBrief(message)
+	case isDelivery(message):
+		block.dressDelivery(message, board)
 	case message.NodeID != "":
 		block.dressWork(message)
 	case message.Role == store.RoleSystem && message.CommandSeq != 0:
@@ -296,27 +310,53 @@ func newMessageBlock(message store.Message, style *tokens.Styler) *messageBlock 
 // The voice hierarchy is carried by the header and the tier, and by nothing
 // else — no second header grammar, no per-role box, no colour (5.16: an accent
 // hue never colorizes running text, and a whole coloured sentence means
-// something is wrong). "you" is the quiet one: a reader knows what they typed
-// and the row exists to prove it landed, so its label sits in the chrome tier
-// behind the composer glyph they typed it at. "aforge" is named at full
-// contrast with the model that answered as its meta, because the answer is the
-// thing the reader came for and the model is the fact they will ask about.
+// something is wrong).
+//
+// TWO SPEAKERS, ONE GRAMMAR. Both of these rows are the same grammatical thing —
+// a name over what was said — and until this wave they were drawn as two
+// different things. "aforge" carried no glyph, so it started at column 0 while
+// "you" started at column 2 behind the composer glyph, and the two speaker rows
+// in one transcript sat on two different left edges. "aforge" was also painted
+// at [blocks.StateSettled], which [tokens.ResolveToken] resolves to the PRIMARY
+// grey — the same tier as the answer under it — so the label and the substance
+// were indistinguishable and the transcript read flat. 8.1.5's one-grammar law
+// is not only about which fields exist; it is about the row being the same row
+// for the same job.
+//
+// So the label is chrome on BOTH sides and the speech stays primary on both:
+// 5.13 assigns the primary tier to speech and the dimmest to chrome, and a
+// speaker's name is chrome by 5.14's own litmus — ask what the reader would DO
+// with a cell, and the answer for a name they already know is nothing. The
+// hierarchy the transcript was missing is that one step, label under substance,
+// and it is now the same step on both sides of the conversation. The model word
+// rides as the head's meta, where it was, because that is the fact they will
+// ask about.
+//
+// Both rows now carry a prompt glyph, and it is the one they typed at: 5.15's
+// two composer prompts already mean "this landed in the conversation" and "this
+// left it", and an answer belongs to the conversation as much as the question
+// did.
 func (b *messageBlock) dressSpeech(message store.Message) {
 	switch message.Role {
 	case store.RoleUser:
 		b.user = true
 		b.head = blocks.Header{
-			Glyph: tokens.GlyphPromptChat,
+			Glyph: b.style.Glyph(tokens.GPromptChat),
 			Title: "you",
 			State: blocks.StateChrome,
 		}
+		b.appendBody(message, tokens.TextPrimary, bodyIndent)
 	default:
-		b.head = blocks.Header{Title: "aforge", State: blocks.StateSettled}
+		b.head = blocks.Header{
+			Glyph: b.style.Glyph(tokens.GPromptChat),
+			Title: "aforge",
+			State: blocks.StateChrome,
+		}
 		if model := modelWord(message.Model); model != "" {
 			b.head.Meta = append(b.head.Meta, model)
 		}
+		b.appendBody(message, tokens.TextPrimary, bodyIndent)
 	}
-	b.appendBody(message, tokens.TextPrimary, bodyIndent)
 }
 
 // -- receipts ----------------------------------------------------------------
@@ -371,6 +411,94 @@ func (b *messageBlock) dressCommission(message store.Message) {
 		Title:    "commissioned",
 		Desc:     summary,
 		State:    blocks.StateChrome,
+	}
+	if rest == "" {
+		return
+	}
+	b.collapsible = true
+	b.hidden = strings.Count(rest, "\n") + 1
+	b.head.Hint = blocks.ExpandHint(false, b.hidden)
+	b.segs = append(b.segs, segment{
+		kind: segProse, text: rest, tier: tokens.TextSecondary,
+		indent: bodyIndent, folded: true,
+	})
+}
+
+// -- the settled deliverable card --------------------------------------------
+
+// dressDelivery is 4.3's other sentence — "settled deliverable cards stay inline
+// at birth position" — and 5.9's progressive disclosure applied to the one row
+// that never had it.
+//
+// Collapsed, it is 5.9's card anatomy, line for line:
+//
+//	✓ three river haiku                            · $0.0012  ▸ 6 lines
+//	  rivers.txt is written with three original haiku, each about rivers:
+//	  ▸ /…/workspace/task-16/rivers.txt
+//
+// Line 1 answers "does it need me" and "what did it cost". The glyph and its hue
+// say how it ended — green for delivered, because green is the word for money
+// AND success (5.16), coral for a failure, and neither unless the board actually
+// said so, because a failure drawn green is the one mistake this row can make.
+// The title is the job's human name (5.14 keeps its id off the screen). The
+// money and the fold affordance ride in the header's own cells.
+//
+// Line 2 is the brief — the first line the job wrote, at the secondary tier
+// 5.13 gives a status line — and it is the whole reason this row is readable:
+// it is what a reader needs to decide whether to open the rest.
+//
+// THE BRIEF DOES NOT RIDE IN THE HEADER'S DESCRIPTION, and that is a decision
+// rather than a layout accident. The header degrades meta-first, so a brief long
+// enough to be worth reading would push the money and the fold hint off the row
+// at any ordinary width — the two cells 5.9 says a card must never lose. A card
+// whose own text eats its money is not a card.
+//
+// THE ARTIFACT ROWS ARE NEVER FOLDED. 12.5's artifact law is that a deliverable
+// is born on disk and referenced by its PATH, and a path a collapsed row is
+// holding has not been handed over. The rest of the prose is what folds — whole
+// and unedited, because the dressing is a presentation of the record and never a
+// rewrite of it (13.1 item 3: a chatty result is the head's to fix, not the
+// transcript's).
+func (b *messageBlock) dressDelivery(message store.Message, board jobSource) {
+	brief, rest := splitHeadline(message.Body)
+	facts, known := jobFacts{}, false
+	if board != nil {
+		facts, known = board.jobFacts(message.NodeID)
+	}
+
+	title := "delivered"
+	if known && strings.TrimSpace(facts.Name) != "" {
+		title = facts.Name
+	}
+	b.head = blocks.Header{
+		Glyph: tokens.GlyphCollapsed,
+		Title: title,
+		State: blocks.StateSettled,
+	}
+	// The state axis, read off the board and never off the prose. An unknown
+	// lifecycle keeps the neutral collapsed glyph: 8.2.20's law is that missing
+	// data is drawn as missing, and a hue is a claim.
+	switch facts.Life {
+	case rail.LifeSettled:
+		b.head.Glyph, b.head.GlyphHue = b.style.Glyph(tokens.GSettled), blocks.HueMoney
+	case rail.LifeFailed, rail.LifeCancelled:
+		b.head.Glyph, b.head.GlyphHue = b.style.Glyph(tokens.GFailed), blocks.HueBroken
+	}
+	if facts.HasCost {
+		b.head.Meta = append(b.head.Meta, tokens.Money(facts.Cost))
+	}
+
+	if brief != "" {
+		b.segs = append(b.segs, segment{
+			kind: segProse, text: brief, tier: tokens.TextSecondary, indent: bodyIndent,
+		})
+	}
+	for _, path := range deliveryFiles(message) {
+		b.artifacts = true
+		b.segs = append(b.segs, segment{
+			kind: segRef, glyph: tokens.GlyphCollapsed, text: path,
+			hue: blocks.HueMoney, state: blocks.StateSettled, indent: bodyIndent,
+		})
 	}
 	if rest == "" {
 		return
@@ -557,7 +685,7 @@ func (b *messageBlock) absorbParts(message store.Message) {
 			// The artifact law's rendering half (12.5.1): the deliverable is a
 			// thing on disk with a path, and that is what the row says. It never
 			// carries the bytes and it never pretends to.
-			if part.Artifact == nil {
+			if part.Artifact == nil || b.artifacts {
 				continue
 			}
 			label := part.Artifact.Path

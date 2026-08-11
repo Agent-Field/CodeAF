@@ -297,7 +297,7 @@ func (a *App) absorb(messages []store.Message) int {
 			continue
 		}
 		sanitizeMessage(&message)
-		block := newMessageBlock(message, a.style)
+		block := newMessageBlock(message, a.style, a.source)
 		a.foldable = a.foldable || block.collapsible
 		a.transcript.Append(block)
 		appended++
@@ -378,7 +378,7 @@ func (a *App) applyPost(result postResultMsg) {
 	if _, exists := a.transcript.IndexOf(messageID(result.message.Seq)); !exists {
 		message := result.message
 		sanitizeMessage(&message)
-		a.transcript.Append(newMessageBlock(message, a.style))
+		a.transcript.Append(newMessageBlock(message, a.style, a.source))
 		a.status.turns++
 		// One mark per COMMITTED user message: the row is in the store, with the
 		// sequence the store gave it, so the terminal's prompt navigation is
