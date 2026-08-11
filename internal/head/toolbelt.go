@@ -252,12 +252,12 @@ func beltDefinitions() []ai.ToolDefinition {
 			"q":      beltProp("string", "free text naming the work, matched against titles and briefs"),
 			"id":     beltProp("string", "one id from an earlier board read"),
 		}),
-		beltTool(beltToolSpawn, "Commission new work. This is how anything the workforce does gets started: pass the user's own words verbatim in instruction — do not improve, summarize or reinterpret them. When one message names things that are genuinely INDEPENDENT of each other, each with its own outcome and none waiting on the others, pass orders instead: one entry per thing, each carrying that thing's own words. Four faults read out in one breath are four; a trip with flights, a hotel and somewhere to eat is one, because it is one plan and one thing to hand back. When it could be read either way it is one. Set reflex only for a single obvious, unambiguous, reversible, seconds-scale action; anything that spends money, sends or publishes, deletes beyond the workspace, or is otherwise hard to undo is never a reflex and is refused as one. after names work this follows on from, when it continues something already on the board.", map[string]any{
+		beltTool(beltToolSpawn, "Commission new work — the only way anything the workforce does gets started. Pass the user's own words verbatim; do not improve or summarize them. Use orders, one entry per thing, only when a message names pieces that are genuinely independent: each with its own outcome, none waiting on the others. Four faults read out in one breath are four; a trip with flights, a hotel and somewhere to eat is one. When it could be read either way it is one. reflex is for a single obvious reversible seconds-scale action and is refused for anything that spends, sends, publishes or deletes beyond the workspace. after names work this follows on from.", map[string]any{
 			"instruction": beltProp("string", "the user's words for the work, verbatim"),
-			"orders": map[string]any{"type": "array", "description": "several independent pieces of work, each with its own verbatim words",
+			"orders": map[string]any{"type": "array", "description": "several independent pieces of work, each with that piece's own verbatim words",
 				"items": map[string]any{"type": "string"}},
-			"reflex": beltProp("boolean", "one obvious reversible action, seconds-scale; skips compilation and planning"),
-			"after":  beltProp("string", "id of work this continues, from a board read; omit for work that stands alone"),
+			"reflex": beltProp("boolean", "one obvious reversible action; skips compilation and planning"),
+			"after":  beltProp("string", "id of work this continues, from a board read"),
 		}),
 		beltTool(beltToolControl, "Cancel, pause, resume, restart, or reprioritize the ids you name. Ids come from a board read, never from memory. A set large or expensive enough to need consent comes back as needs_confirmation and nothing changes until the user answers. When the user described the work instead of naming it and you cannot tell which row they mean, pass describes instead of ids and this hands back the candidates — jobs and standing rules alike — for you to name or to ask about.", map[string]any{
 			"verb":      beltProp("string", "cancel, pause, resume, restart, or reprioritize"),
@@ -308,11 +308,11 @@ func beltDefinitions() []ai.ToolDefinition {
 			"kind":     beltProp("string", `"preference" for how they want things done, "fact" for something that is simply true`),
 			"replaces": beltProp("integer", "the number of the notebook line this makes untrue, when what they just said contradicts one of the numbered lines in front of you; the old line retires into the new one. Omit it when nothing shown is contradicted, and never name a number you were not shown"),
 		}, "body"),
-		beltTool(beltToolWrite, "Write a document to disk and hand back its path. This is how ANYTHING the user will use outside this conversation is produced: a diagram, a document, code, data, a script, a long structured answer they will keep. Never author one of those into your reply instead — a reply is one output cap away from being half a document, and half a document presented as a whole one is the worst thing you can produce. Write it, then say what it is and where it is. Short answers, explanations and what work found stay in the reply; the test is whether they will open it, edit it, run it, or send it on.", map[string]any{
-			"name": beltProp("string", "the file's own name with its extension, like architecture.svg or notes.md — a plain name, no directories"),
+		beltTool(beltToolWrite, "Put a document on disk and hand back its path. This is how anything the user will USE outside this conversation is produced — a diagram, a document, code, data, a script. Never author one into your reply instead. Short answers and what work found stay in the reply; the test is whether they will open it, edit it, run it, or send it on.", map[string]any{
+			"name": beltProp("string", "the file's own name with its extension, like architecture.svg — a plain name, no directories"),
 			"body": beltProp("string", "the whole document, exactly as it should be on disk"),
 			"what": beltProp("string", "one short line saying what it is, for the receipt"),
-		}, "name", "body"),
+		}),
 		beltTool(beltToolCorrect, "Redo a deliverable that was wrong. The job goes again with its previous version and the user's criticism in hand, and whatever they did not object to is kept. Use it whenever they reject, dispute or ask you to change something already delivered — including politely: \"make it warmer\", \"shorter please\", \"soften the second paragraph\" are all this, not new work. Pass their words verbatim. A job with nothing delivered cannot be corrected; commission new work instead.", map[string]any{
 			"job":   beltProp("string", "id of the finished job whose deliverable was wrong, from a board or search read"),
 			"words": beltProp("string", "what the user said is wrong with it, verbatim"),

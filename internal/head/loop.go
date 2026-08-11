@@ -2,7 +2,6 @@ package head
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -315,11 +314,6 @@ func boardBlock(rows []boardRow, thread string, opened map[string]bool) string {
 // blind: a read aimed by id or by the person's own words still reaches finished
 // work, which is where findings live.
 const emptyBoardLine = "(nothing of the person's is live right now — a read aimed by id or by their own words still reaches finished work)"
-
-// errNoTurn is returned when a turn cannot be assembled at all. It is separated
-// so the caller can still say something rather than going quiet, which is the
-// one thing a route may never do.
-var errNoTurn = errors.New("serve head: turn could not be assembled")
 
 // boardFor is the one board a caller outside the turn can ask for: the same
 // query, the same renderer, the same dedup, with the clock passed in. Every
