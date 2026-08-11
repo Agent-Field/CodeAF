@@ -1875,3 +1875,27 @@ settings), Wave 5 (resident orchestrators).
 - Co-working campaign owns internal/plan, internal/exec, internal/resident and
   merges onto chat-v2 rebasing over it. Terrain wiring markers are placed at
   cmd/aforge/chat.go:2947, :3134 and internal/revision/sentinel.go:39, :93.
+
+### 13.1 First hands-on of v2 (user, 2026-08-10 20:20) — polish priorities
+
+Screenshot findings, triaged. NOT cache corruption — the assembly wave renders
+the raw journal with identity styling, so three distinct gaps stack visually:
+
+1. **Wire tokens into the message renderer NOW (finish of Wave 2, top
+   priority)**: markdown rendering (bold shows as literal `**`; port/adapt the
+   old internal/tui/markdown.go approach through the sanitizer), the three type
+   tiers (5.13: speech full-contrast, status dim, telemetry dimmest), role
+   voice hierarchy (aforge label vs you vs system), spacing rhythm (blank line
+   between turns), five-hue semantics where earned (5.16). The transcript must
+   stop being one grey wall.
+2. **Journal-row dressing (Wave 2/3 seam)**: system receipts (`· reflected`)
+   render as dim collapsed rows, not naked lines; the arrival brief becomes the
+   first transcript block styled as such (5.24); work rows become cards at
+   birth/settle (THREAD-UX). Rendering the raw journal was correct for
+   assembly; it is not the product.
+3. **The self-narrating triple-repeat reply is the HEAD, not the UI** — the
+   deliberation is in the message body in the journal (old chat showed the
+   same words). Cause: the old router head + a chatty flash-tier talk model.
+   Fix lands with the Wave 3 one-tool-loop head (5.12: thinking never in home;
+   one answer, once). Do not try to regex it away in the renderer — that would
+   be lying about the journal; fix the speaker, not the transcript.
