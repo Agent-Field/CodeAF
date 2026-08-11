@@ -1,6 +1,7 @@
 package consentui
 
 import (
+	"regexp"
 	"strings"
 	"testing"
 
@@ -52,6 +53,13 @@ func consentQuestion() Question {
 		},
 	})
 }
+
+// plain strips SGR so an assertion can read the frame the way a person does.
+// Painting splits a row into runs, and a test that matched raw bytes would be
+// asserting the escape boundaries rather than the words.
+var sgr = regexp.MustCompile("\x1b\\[[0-9;]*m")
+
+func plain(frame string) string { return sgr.ReplaceAllString(frame, "") }
 
 type harness struct {
 	model    *Model
@@ -441,12 +449,60 @@ func TestAnsweringAdvancesTheQueueAndTheCountFalls(t *testing.T) {
 	}
 }
 
-func TestPushingTheSameQuestionTwiceDoesNotStackIt(t *testing.T) {
+func TestARepollingCallerDoesNotStackDisturbOrReraiseTheDialog(t *testing.T) {
 	h := newHarness(t)
 	h.model.Push(consentQuestion())
 	h.model.Push(consentQuestion())
 	if h.model.Pending() != 1 {
 		t.Fatalf("pending = %d, want 1", h.model.Pending())
+	}
+
+	// Mid-redirect, the poll comes round again with the same row.
+	press(t, h.model, "h")
+	typeText(t, h.model, "half a sen")
+	h.model.Push(consentQuestion())
+	if h.model.mode != modeSteer {
+		t.Fatalf("a re-poll threw the reader out of the redirect")
+	}
+	if h.model.Draft(41) != "half a sen" {
+		t.Fatalf("a re-poll ate the draft: %q", h.model.Draft(41))
+	}
+
+	// And a dialog the reader put away stays away.
+	press(t, h.model, "esc")
+	press(t, h.model, "esc")
+	if h.model.Open() {
+		t.Fatalf("esc did not close the dialog")
+	}
+	h.model.Push(consentQuestion())
+	if h.model.Open() {
+		t.Fatalf("a re-poll of the same question reopened a dismissed dialog")
+	}
+	// A genuinely new question is a different matter: it raises.
+	h.model.Push(secondQuestion())
+	if !h.model.Open() {
+		t.Fatalf("a new question did not raise the dialog")
+	}
+}
+
+func TestAChangedRowRedrawsAndKeepsTheDraft(t *testing.T) {
+	h := newHarness(t)
+	h.model.Push(consentQuestion())
+	press(t, h.model, "h")
+	typeText(t, h.model, "trim it")
+
+	changed := consentQuestion()
+	changed.Consequence = "cancel 9 running workers, ~$5.40 in flight"
+	h.model.Push(changed)
+
+	if h.model.mode != modeAnswer {
+		t.Fatalf("a changed row did not return the reader to the answers")
+	}
+	if h.model.Draft(41) != "trim it" {
+		t.Fatalf("a changed row destroyed the draft: %q", h.model.Draft(41))
+	}
+	if !strings.Contains(h.model.Render(100, 30), "~$5.40") {
+		t.Fatalf("the new blast radius is not on screen")
 	}
 }
 
@@ -625,8 +681,8 @@ func TestASelectionIsAlwaysVisible(t *testing.T) {
 		h := newHarness(t)
 		tc.setup(h.model)
 		h.model.Push(consentQuestion())
-		frame := h.model.Render(100, 30)
-		if !strings.Contains(frame, tokens.GlyphAccentRail+" y") {
+		frame := plain(h.model.Render(100, 30))
+		if !strings.Contains(frame, tokens.GlyphAccentRail+" y  "+consent.Approve) {
 			t.Fatalf("%s: the selection is invisible:\n%s", tc.name, frame)
 		}
 	}

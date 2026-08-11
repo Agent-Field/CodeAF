@@ -108,23 +108,37 @@ func New(opts Options) *Model {
 
 // Push enqueues a question and raises the dialog.
 //
-// A question already in the queue is REPLACED in place rather than appended: a
-// poll that re-reads the same open row must not stack it, and the row may have
-// legitimately changed (a re-surfaced question moves session). Its stashed
-// draft survives, because the draft belongs to the seq and not to the copy.
+// A question already in the queue is REPLACED in place rather than appended,
+// and a replacement that says the same thing changes nothing at all. Both halves
+// matter, because the caller is a poll: it re-reads the open rows every couple
+// of seconds and hands them all back. Appending would stack one question into a
+// hundred; resetting the view on every pass would yank a user out of the
+// steering editor twice a minute; and raising the dialog on every pass would
+// make esc a key that closes a dialog for two seconds. So only a question that
+// is genuinely NEW — or genuinely different — moves anything.
 func (m *Model) Push(q Question) {
 	q = q.normalize()
 	if q.Seq != 0 {
 		for i := range m.queue {
-			if m.queue[i].Seq == q.Seq {
+			if m.queue[i].Seq != q.Seq {
+				continue
+			}
+			if sameShape(m.queue[i], q) {
 				m.queue[i] = q
-				if i == 0 {
-					m.resetForCurrent()
-				}
-				m.open = true
-				m.touch()
 				return
 			}
+			if i == 0 {
+				// The row changed under the reader. Whatever they had typed is
+				// still theirs, so it goes to the stash on the way through and
+				// comes back out of it on the other side.
+				m.stashDraft()
+			}
+			m.queue[i] = q
+			if i == 0 {
+				m.resetForCurrent()
+			}
+			m.touch()
+			return
 		}
 	}
 	m.queue = append(m.queue, q)
@@ -133,6 +147,44 @@ func (m *Model) Push(q Question) {
 	}
 	m.open = true
 	m.touch()
+}
+
+// sameShape reports whether two readings of one question would draw the same
+// dialog. It compares what is on screen rather than every field: a row whose
+// session moved (a resurfaced question, 9.7) is the same question to look at,
+// and re-drawing it would be a flicker with no fact behind it.
+func sameShape(a, b Question) bool {
+	if a.Prompt != b.Prompt || a.Consequence != b.Consequence ||
+		a.DetailTitle != b.DetailTitle || a.Default != b.Default ||
+		a.Class != b.Class || len(a.Options) != len(b.Options) || len(a.Detail) != len(b.Detail) {
+		return false
+	}
+	for i := range a.Options {
+		if a.Options[i].Label != b.Options[i].Label ||
+			a.Options[i].Hint != b.Options[i].Hint ||
+			a.Options[i].Rejecting != b.Options[i].Rejecting ||
+			!sameStrings(a.Options[i].Scope, b.Options[i].Scope) {
+			return false
+		}
+	}
+	for i := range a.Detail {
+		if a.Detail[i] != b.Detail[i] {
+			return false
+		}
+	}
+	return true
+}
+
+func sameStrings(a, b []string) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i] != b[i] {
+			return false
+		}
+	}
+	return true
 }
 
 // Remove drops a question the dialog no longer owns — answered in another
