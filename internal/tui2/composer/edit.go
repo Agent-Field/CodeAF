@@ -64,6 +64,40 @@ func (m *Model) deleteForward() {
 	m.afterEdit()
 }
 
+// KillToStart is ctrl+u: readline's unix-line-discard, and the clear-the-draft
+// reflex every Unix terminal has had for longer than this product has existed
+// (13.5's third finding — the key was unbound here, so the reflex left the
+// draft intact). Everything from the start of the draft to the cursor goes; the
+// cursor lands where the text began; whatever the cursor had ahead of it stays.
+// That is exactly what internal/tui's own editor does with the chord, and what
+// internal/tui2/consentui does with it, so one chord means one thing across
+// every editable surface this tree ships.
+//
+// The killed text is STASHED rather than dropped, because this package's one
+// standing promise is that nothing typed here is ever thrown away (history.go).
+// esc already moves a draft into the stash instead of destroying it; a kill is
+// the same act asked for with a different key, so the very next ↑ from an empty
+// draft brings the words back exactly as it does after an esc. It overwrites a
+// previous stash for the reason [Model.stash] gives: an unrestored stash is
+// superseded, never stacked.
+//
+// It is exported because the same act has a second door: the command registry
+// carries `key.thread.clear-draft`, and 5.22's law is that the key is an
+// accelerator for a verb on a visible object — the `?` sheet and the palette
+// list the verb, and picking it there must perform the same edit rather than a
+// second implementation of it.
+func (m *Model) KillToStart() {
+	if m.cursor == 0 {
+		return
+	}
+	killed := string(m.value[:m.cursor])
+	m.value = append(m.value[:0], m.value[m.cursor:]...)
+	m.cursor = 0
+	m.historyStep = 0
+	m.stash(killed)
+	m.afterEdit()
+}
+
 // moveLeft/moveRight step the cursor by one rune, clamped to the buffer. Both
 // re-validate an open `@` filter: walking out of the needle ends the session,
 // which is filter.go's rule and not a second opinion here.

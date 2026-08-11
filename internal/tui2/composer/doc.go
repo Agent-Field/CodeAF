@@ -41,6 +41,18 @@
 // here — the draft is protected by this package, and the interrupt decision
 // is handed, not eaten, to the package that can actually make it.
 //
+// # Clearing a draft on purpose (ctrl+u)
+//
+// esc is not the clear key, and it never was: it is the ladder key (interrupt,
+// pop scope, go to the live edge) and 8.2.21's non-negotiable is that it never
+// destroys a draft. So the draft has its own kill chord, ctrl+u —
+// [Model.KillToStart], readline's unix-line-discard, the same act
+// internal/tui and internal/tui2/consentui bind it to. What it removes goes
+// into the stash below rather than into nothing, so the ring brings it back.
+// It is listed in the command registry as `key.thread.clear-draft` and is
+// therefore in the `?` sheet and the palette, per 5.22: a key is an
+// accelerator for a verb on a visible object, never the only door.
+//
 // The recall ring doubles as the "esc-restore" 7.2 asks for: the design note
 // allows either a dedicated restore chord or making the stash reachable
 // through the existing ring, and this package takes the ring, because it is
