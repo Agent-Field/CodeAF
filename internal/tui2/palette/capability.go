@@ -107,10 +107,14 @@ func (c *Capability) header(width int) string {
 	return l.emit(&c.buf, c.list.profile, c.list.focus, width, false, tokens.Band)
 }
 
-// Key implements [tui2.PaneKeys]. There is no text field here, so the reading
-// vocabulary gets the bare letters a reader expects — j/k alongside the arrows
-// — and esc is consumed for the same reason it is in the palette (8.2.21: an
-// open overlay is what you are watching).
+// Key implements [tui2.PaneKeys].
+//
+// There is no text field here, so the reading vocabulary gets the bare letters
+// a reader expects: j/k and g/G alongside the arrows and the page keys. Three
+// keys close — esc, q, and `?` itself, because the key that opened the surface
+// must not become a key that does nothing while it is up. esc is consumed for
+// the same reason it is in the palette (8.2.21: an open overlay is what you
+// are watching).
 func (c *Capability) Key(msg tea.KeyPressMsg) tea.Cmd {
 	switch s := msg.String(); s {
 	case "esc", "?", "q":
