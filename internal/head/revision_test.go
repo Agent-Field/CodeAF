@@ -39,16 +39,31 @@ func TestRedirectRecognitionNeedsCueAnchorAndLiveWork(t *testing.T) {
 			if test.jobs {
 				spliceSurgeryJob(t, graph, "api-client", "v1 API client", "write a client for the v1 API")
 			}
-			intent, fires, err := New(&fakeClient{}, graph).recognizeRedirect(
-				store.Message{SessionID: "recognize", Role: store.RoleUser, Body: test.message})
+			// The reading survives; its authority does not. Both halves are
+			// asserted: the cue class the vocabulary reads, and — for the
+			// sentences that used to fire terminally — that the reading reaches
+			// the loop naming the live job it is about, so nothing that used to
+			// resolve is now invisible to it.
+			head := New(&fakeClient{}, graph)
+			user := store.Message{SessionID: "recognize", Role: store.RoleUser, Body: test.message}
+			cue, cued := redirectCue(test.message)
+			if !cued {
+				cue = ""
+			}
+			if test.fires && cue != test.cue {
+				t.Fatalf("cue = %q, want %q", cue, test.cue)
+			}
+			active, err := head.activeUserJobs()
 			if err != nil {
 				t.Fatal(err)
 			}
-			if fires != test.fires || intent.Cue != test.cue {
-				t.Fatalf("fires/cue = %t/%q, want %t/%q", fires, intent.Cue, test.fires, test.cue)
+			readings := head.renderHints(user, active)
+			named := strings.Contains(readings, "api-client")
+			if test.fires && !named {
+				t.Fatalf("a sentence that used to resolve reaches the loop naming nothing:\n%s", readings)
 			}
-			if fires && (!intent.Certain || intent.Candidates[0].Node.ID != "api-client") {
-				t.Fatalf("single live job should resolve without asking: %+v", intent)
+			if !test.jobs && named {
+				t.Fatalf("a reading named live work on a graph with none:\n%s", readings)
 			}
 		})
 	}
@@ -247,18 +262,24 @@ func TestNewWorkBesideARunningJobIsSplicedBehindIt(t *testing.T) {
 	graph := openHeadStore(t)
 	session := "adjacent-new"
 	seedSpeakingJob(t, graph, session)
-	client := &beltClient{
-		turns: []beltTurn{{text: controlNotWorkSentinel}},
-		plain: []string{`{"reply":"On it — it follows the work already underway.",` +
-			`"command":{"kind":"splice","target":"","instruction":"` + adjacentReviewAsk + `"}}`},
-	}
+	client := &beltClient{turns: []beltTurn{
+		{calls: []ai.ToolCall{beltCall("c1", beltToolSpawn, map[string]any{
+			"instruction": adjacentReviewAsk, "after": "middleware"})}},
+		{text: "On it — it follows the work already underway."},
+	}}
 	user := postUser(t, graph, session, adjacentReviewAsk)
 	if err := New(client, graph).answer(context.Background(), user); err != nil {
 		t.Fatal(err)
 	}
+	// The adjacency reading is what tells the loop which job this follows, and it
+	// is in the prompt rather than applied behind its back.
+	if opening := client.openingPrompt(); !strings.Contains(opening,
+		"the last thing said in this conversation was middleware") {
+		t.Fatalf("the adjacency reading never reached the loop:\n%s", opening)
+	}
 	commands, err := graph.PendingCommands(10)
 	if err != nil || len(commands) != 1 || commands[0].Kind != store.CommandSplice {
-		t.Fatalf("router fallback = %+v err=%v", commands, err)
+		t.Fatalf("commands = %+v err=%v", commands, err)
 	}
 	if commands[0].Target != "middleware" {
 		t.Fatalf("spliced work did not name the job it arrived beside: %+v", commands[0])
@@ -300,9 +321,11 @@ func TestAdjacencyIsBoundedByQuietAndByTheThreadWindow(t *testing.T) {
 	if _, adjoins, err := conversational.adjacencyTarget(buried, active); err != nil || adjoins {
 		t.Fatalf("a line pushed out of the window still anchored: adjoins=%t err=%v", adjoins, err)
 	}
-	applies, err := conversational.controlLoopApplies(buried)
-	if err != nil || applies {
-		t.Fatalf("the belt opened on a job that stopped speaking: applies=%t err=%v", applies, err)
+	// And the reading the loop is handed says nothing about a job that stopped
+	// speaking, so position cannot resolve a referent it no longer supports.
+	if readings := conversational.renderHints(buried, active); strings.Contains(readings,
+		"the last thing said in this conversation") {
+		t.Fatalf("a job pushed out of the window is still offered as the referent:\n%s", readings)
 	}
 }
 
@@ -322,18 +345,32 @@ func TestDecisiveWordsBeatAdjacencyByAskingRatherThanBySilence(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	conversational := New(&fakeClient{}, graph)
+	conversational := New(&beltClient{turns: []beltTurn{
+		{calls: []ai.ToolCall{beltCall("c1", beltToolAsk, map[string]any{
+			"question": "Apply that to the v1 API client, or to the English audio?",
+			"options":  []string{"v1 API client", "English audio"},
+		})}},
+		{text: ""},
+	}}, graph)
 	user := postUser(t, graph, session, "actually the API client should speak v2")
-	intent, fires, err := conversational.recognizeRedirect(user)
-	if err != nil || !fires {
-		t.Fatalf("fires=%t err=%v", fires, err)
+	active, err := conversational.activeUserJobs()
+	if err != nil {
+		t.Fatal(err)
 	}
-	if intent.Certain {
-		t.Fatalf("a disagreement was settled silently: %+v", intent)
+	// Both readings reach the loop, and the words lead: they are the more
+	// deliberate signal. Neither is applied, because a disagreement settled
+	// silently is the wrong plan edited without anybody being asked.
+	readings := conversational.renderHints(user, active)
+	words := strings.Index(readings, "the words rank against")
+	adjacent := strings.Index(readings, "the last thing said in this conversation")
+	if words < 0 || adjacent < 0 {
+		t.Fatalf("a disagreement did not reach the loop as two readings:\n%s", readings)
 	}
-	if len(intent.Candidates) != 2 || intent.Candidates[0].Node.ID != "api-client" ||
-		intent.Candidates[1].Node.ID != "audio" {
-		t.Fatalf("candidates = %+v, want the named job first and the adjacent one beside it", intent.Candidates)
+	if words > adjacent {
+		t.Fatalf("the conversation's pointer outranked the user's own words:\n%s", readings)
+	}
+	if !strings.Contains(readings[words:adjacent], "api-client") {
+		t.Fatalf("the named job is not the one the words reached:\n%s", readings)
 	}
 
 	if err := conversational.answer(context.Background(), user); err != nil {
@@ -342,8 +379,8 @@ func TestDecisiveWordsBeatAdjacencyByAskingRatherThanBySilence(t *testing.T) {
 	if commands, _ := graph.PendingCommands(10); len(commands) != 0 {
 		t.Fatalf("a disagreement edited a plan: %+v", commands)
 	}
-	questions, err := graph.UnresolvedQuestions(10)
-	if err != nil || len(questions) != 1 || questions[0].Category != store.QuestionCategoryRedirectTarget {
-		t.Fatalf("questions = %+v err=%v", questions, err)
+	messages, err := graph.Messages(session, user.Seq, 10)
+	if err != nil || len(messages) != 1 || len(messages[0].Options) != 2 {
+		t.Fatalf("the user was never asked with options: %+v err=%v", messages, err)
 	}
 }

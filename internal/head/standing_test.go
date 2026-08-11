@@ -8,6 +8,7 @@ import (
 
 	"github.com/Agent-Field/aforge-v2/internal/resident"
 	"github.com/Agent-Field/aforge-v2/internal/store"
+	"github.com/Agent-Field/agentfield/sdk/go/ai"
 )
 
 // theObservedFailure is the message that shipped the bug, typos and trailing
@@ -15,13 +16,19 @@ import (
 // wrote a notebook fact; no command, no charter, no ratification card.
 const theObservedFailure = "whenever a new pr comes to agentfield org, make sure to check for security scan and vulnerability..."
 
-func TestRecognizedStandingLanguageDraftsACharterWithoutTheRoutingModel(t *testing.T) {
+// The failure this test was written for was a routing model reading durable
+// language as a notebook preference: no command, no charter, no ratification
+// card. The recognizer that fixed it used to PRE-EMPT the model. It does not any
+// more — nothing does — so what is asserted here is the two things that actually
+// keep the fix: the durable reading reaches the model as evidence it cannot miss,
+// and the work commissioned from it carries the person's words verbatim, which is
+// what the compiler's temporal path turns into a charter.
+func TestDurableLanguageIsReadAsStandingIntentAndDraftsACharter(t *testing.T) {
 	graph := openHeadStore(t)
-	// The router is loaded with exactly the decision that caused the failure.
-	// If the head consults it at all, this test fails on both counts.
-	router := &fakeClient{responses: []string{
-		`{"reply":"Noting it as a durable rule.","command":null,` +
-			`"remember":{"scope":"user","kind":"preference","body":"Check new agentfield PRs for security scans."}}`,
+	client := &beltClient{turns: []beltTurn{
+		{calls: []ai.ToolCall{beltCall("c1", beltToolSpawn,
+			map[string]any{"instruction": theObservedFailure})}},
+		{text: "Reading that as a standing rule — writing it up for you to confirm."},
 	}}
 	user, err := graph.PostMessage(store.Message{
 		SessionID: "standing", Role: store.RoleUser, Body: theObservedFailure,
@@ -29,12 +36,15 @@ func TestRecognizedStandingLanguageDraftsACharterWithoutTheRoutingModel(t *testi
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := New(router, graph).answer(context.Background(), user); err != nil {
+	if err := New(client, graph).answer(context.Background(), user); err != nil {
 		t.Fatal(err)
 	}
 
-	if calls := router.callCount(); calls != 0 {
-		t.Fatalf("routing model was consulted %d times; recognition must not depend on it", calls)
+	// The reading is in the prompt, marked as a reading, above the message it is
+	// about. A model that ignores it still gets the sentence; a model that reads
+	// it cannot mistake a standing rule for one errand.
+	if opening := client.openingPrompt(); !strings.Contains(opening, "reads as DURABLE intent") {
+		t.Fatalf("the durable reading never reached the loop:\n%s", opening)
 	}
 	facts, err := graph.RecentFacts(10)
 	if err != nil {
@@ -53,7 +63,7 @@ func TestRecognizedStandingLanguageDraftsACharterWithoutTheRoutingModel(t *testi
 		t.Fatal(err)
 	}
 	if len(messages) != 1 || messages[0].Role != store.RoleAgent ||
-		messages[0].Body != standingDraftReply || messages[0].CommandSeq != commands[0].Seq {
+		messages[0].CommandSeq != commands[0].Seq {
 		t.Fatalf("thread after recognition = %+v", messages)
 	}
 

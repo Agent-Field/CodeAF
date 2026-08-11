@@ -22,13 +22,9 @@ import (
 func TestBoardDropsTheClauseTheDeepSliceIsAboutToQuote(t *testing.T) {
 	graph := openHeadStore(t)
 	seedResultBoard(t, graph)
-	snapshot, err := graph.ActiveSnapshot()
-	if err != nil {
-		t.Fatal(err)
-	}
 
 	// With nothing opened the board says what it has always said.
-	whole := New(nil, graph).renderGraph(snapshot, "dedup", "", nil, time.Now())
+	whole := New(nil, graph).boardFor("dedup", "", nil, time.Now())
 	if !strings.Contains(whole, "result: "+financeFinding) {
 		t.Fatalf("the board lost its result clause entirely:\n%s", whole)
 	}
@@ -37,7 +33,7 @@ func TestBoardDropsTheClauseTheDeepSliceIsAboutToQuote(t *testing.T) {
 	if !opened["finance-close"] || !strings.Contains(deep, financeFinding) {
 		t.Fatalf("the fixture never opened the finance job:\n%s", deep)
 	}
-	deduped := New(nil, graph).renderGraph(snapshot, "dedup", "", opened, time.Now())
+	deduped := New(nil, graph).boardFor("dedup", "", opened, time.Now())
 	if strings.Contains(deduped, "result: "+financeFinding) {
 		t.Fatalf("the board still states the finding the slice quotes in full:\n%s", deduped)
 	}
@@ -62,12 +58,8 @@ func TestBoardDropsTheClauseTheDeepSliceIsAboutToQuote(t *testing.T) {
 func TestBoardDropsTheSummaryTheThreadAlreadyPosted(t *testing.T) {
 	graph := openHeadStore(t)
 	seedResultBoard(t, graph)
-	snapshot, err := graph.ActiveSnapshot()
-	if err != nil {
-		t.Fatal(err)
-	}
 	thread := "system: " + financeFinding
-	board := New(nil, graph).renderGraph(snapshot, "dedup", thread, nil, time.Now())
+	board := New(nil, graph).boardFor("dedup", thread, nil, time.Now())
 	if strings.Contains(board, "result: "+financeFinding) {
 		t.Fatalf("the board repeated a summary the thread already carries:\n%s", board)
 	}

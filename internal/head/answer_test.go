@@ -132,19 +132,23 @@ func TestAnEmptyNoteIsRefusedRatherThanReceipted(t *testing.T) {
 	}
 }
 
-// The consequence of a note not claiming the message: a sentence carrying both
-// a durable preference and a piece of work keeps the preference and still
-// reaches the router, which is the only thing that can queue the work.
-func TestANoteBesideTheSentinelKeepsTheFactAndStillFallsThrough(t *testing.T) {
+// The consequence of a note not claiming the turn: a sentence carrying both a
+// durable preference and a piece of work keeps the preference AND commissions
+// the work — in one turn, which is the whole difference the loop makes. Under
+// the ladder the note tool had to hand the sentence back to a router to get the
+// work queued, and the fall-through was the only mechanism there was.
+func TestANoteBesideWorkKeepsTheFactAndStillCommissionsTheWork(t *testing.T) {
 	graph := openHeadStore(t)
 	seedExceptBoard(t, graph)
 	const preference = "always answer from the task result itself"
 	client := &beltClient{
 		turns: []beltTurn{
-			{calls: []ai.ToolCall{beltCall("c1", beltToolNote, map[string]any{"body": preference})}},
-			{text: controlNotWorkSentinel},
+			{calls: []ai.ToolCall{
+				beltCall("c1", beltToolNote, map[string]any{"body": preference}),
+				beltCall("c2", beltToolSpawn, map[string]any{"instruction": "rerun the scans"}),
+			}},
+			{text: "Noted, and the scans are queued."},
 		},
-		plain: []string{`{"reply":"On it — rerunning the scans.","command":{"kind":"splice","target":"","instruction":"rerun the scans"}}`},
 	}
 	user := postUser(t, graph, "both", "always answer from the task result itself, and rerun the scans")
 	if err := New(client, graph).answer(context.Background(), user); err != nil {
@@ -159,7 +163,7 @@ func TestANoteBesideTheSentinelKeepsTheFactAndStillFallsThrough(t *testing.T) {
 		kept = kept || fact.Body == preference
 	}
 	if !kept {
-		t.Fatalf("the preference was lost on the fall-through: %+v", facts)
+		t.Fatalf("the preference was lost: %+v", facts)
 	}
 	commands, err := graph.PendingCommands(20)
 	if err != nil {
@@ -167,6 +171,9 @@ func TestANoteBesideTheSentinelKeepsTheFactAndStillFallsThrough(t *testing.T) {
 	}
 	if len(commands) != 1 || commands[0].Kind != store.CommandSplice {
 		t.Fatalf("the work in the same sentence was swallowed: %+v", commands)
+	}
+	if commands[0].Instruction != "rerun the scans" {
+		t.Fatalf("the work did not carry the user's own words: %q", commands[0].Instruction)
 	}
 }
 
@@ -224,12 +231,12 @@ func TestTheBeltAndTheRouterBothStateWhatTheyCanActuallyDo(t *testing.T) {
 		if !names[name] {
 			t.Fatalf("the belt does not offer %q, so the prompt's law describes a tool that is not there", name)
 		}
-		if !strings.Contains(controlSystemPrompt, "- "+name+" ") {
+		if !strings.Contains(orchestratorPrompt, "- "+name+" ") {
 			t.Fatalf("the control prompt does not introduce %q", name)
 		}
 	}
 	for name, prompt := range map[string]string{
-		"control": controlSystemPrompt, "router": headSystemPrompt,
+		"control": orchestratorPrompt, "router": orchestratorPrompt,
 	} {
 		if !strings.Contains(prompt, "never") && !strings.Contains(prompt, "Never") {
 			t.Fatalf("%s prompt lost its prohibitions entirely", name)
@@ -238,7 +245,7 @@ func TestTheBeltAndTheRouterBothStateWhatTheyCanActuallyDo(t *testing.T) {
 	// Values, not phrases: what is pinned is that both prompts refuse an
 	// unbacked promise and an offer to fetch what is already reachable.
 	for name, prompt := range map[string]string{
-		"control": controlSystemPrompt, "router": headSystemPrompt,
+		"control": orchestratorPrompt, "router": orchestratorPrompt,
 	} {
 		if !strings.Contains(prompt, "never offer") && !strings.Contains(prompt, "never say you will") &&
 			!strings.Contains(prompt, "never offer a capability") && !strings.Contains(prompt, "Never promise a behaviour") &&

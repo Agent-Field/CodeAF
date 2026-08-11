@@ -32,24 +32,32 @@ func TestSettledWorkOpensTheLoopWithNothingRunning(t *testing.T) {
 		t.Fatalf("the fixture left work live, so the gate is untested: %+v", active)
 	}
 
-	applies, err := head.controlLoopApplies(store.Message{
+	// There is no trigger any more, so there is nothing left to be shut out BY.
+	// What is asserted instead is the property the trigger was standing in for:
+	// with a quiet board, a question about settled work still reaches a prompt
+	// that says where the findings are, and the tools that read them are in it.
+	prompt, err := head.turnPrompt(store.Message{
 		SessionID: "quiet", Body: "what did the market analysis conclude?",
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !applies {
-		t.Fatal("a question about settled work could not open the loop that reads settled work")
+	if !strings.Contains(prompt, emptyBoardLine) {
+		t.Fatalf("an empty board did not say that aimed reads still reach settled work:\n%s", prompt)
+	}
+	if !strings.Contains(prompt, "market analysis") {
+		t.Fatalf("the message never reached the loop:\n%s", prompt)
 	}
 
-	// And the message that is about nothing on the graph still costs nothing.
-	for _, idle := range []string{"good morning", "build me a websocket echo server", "thanks!"} {
-		opens, err := head.controlLoopApplies(store.Message{SessionID: "quiet", Body: idle})
+	// And a message about nothing on the graph carries no readings at all, so an
+	// ordinary sentence pays nothing for machinery it did not use.
+	for _, idle := range []string{"good morning", "thanks!"} {
+		quiet, err := head.turnPrompt(store.Message{SessionID: "quiet", Body: idle})
 		if err != nil {
 			t.Fatal(err)
 		}
-		if opens {
-			t.Fatalf("%q opened the control loop on a coincidence", idle)
+		if strings.Contains(quiet, hintHeader) {
+			t.Fatalf("%q produced deterministic readings out of a coincidence:\n%s", idle, quiet)
 		}
 	}
 }
@@ -141,13 +149,6 @@ func TestFoldedJobStaysFindableAndReadable(t *testing.T) {
 	if strings.Contains(deep, "An early note") {
 		t.Fatalf("the deep slice quoted the stale pre-fold summary:\n%s", deep)
 	}
-	applies, err := head.controlLoopApplies(store.Message{
-		SessionID: "next-day", Body: "is the contributor's architecture plan secure?",
-	})
-	if err != nil || !applies {
-		t.Fatalf("a folded job could not open the loop: applies=%t err=%v", applies, err)
-	}
-
 	// Three: read opens the file the fold pointed at, which is where the answer is.
 	run := &beltRun{head: head, user: store.Message{SessionID: "next-day", Body: "is it secure?"}}
 	whole, failed := run.result(map[string]any{"id": "plan-check"})

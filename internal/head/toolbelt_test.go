@@ -229,53 +229,29 @@ func TestNoLiveWorkNeverInvokesTheControlLoop(t *testing.T) {
 	}
 }
 
-// The loop is never a dead end. A turn that touches nothing has no grounding in
-// the board, so whatever it says is handed back to the router.
-func TestControlLoopWithoutToolsFallsThroughToTheRouter(t *testing.T) {
+// There is no second brain to fall through to, so a turn that touches nothing
+// costs exactly one call and its words are what the person reads. What used to
+// happen here — the loop spoke, the router was paid again, and the person waited
+// twice — is the fall-through the single wave removes.
+func TestATurnThatTouchesNothingSpeaksOnceAndJournalsNothing(t *testing.T) {
 	graph := openHeadStore(t)
 	seedExceptBoard(t, graph)
-	client := &beltClient{
-		turns: []beltTurn{{text: "sure, whatever you say"}},
-		plain: []string{`{"reply":"Routed instead.","command":null}`},
-	}
+	client := &beltClient{turns: []beltTurn{{text: "Nothing there needs stopping."}}}
 	session := "fallthrough"
 	user := postUser(t, graph, session, "kill everything except the finance one")
 	if err := New(client, graph).answer(context.Background(), user); err != nil {
 		t.Fatal(err)
 	}
 	calls, tooled := client.counts()
-	if tooled != 1 || calls != 2 {
-		t.Fatalf("expected one tooled loop call then one router call, got %d/%d", tooled, calls)
+	if tooled != 1 || calls != 1 {
+		t.Fatalf("expected exactly one tooled call, got %d/%d", tooled, calls)
 	}
 	reply := waitForAgentReply(t, graph, session, user.Seq)
-	if reply.Body != "Routed instead." {
-		t.Fatalf("router did not answer: %q", reply.Body)
+	if reply.Body != "Nothing there needs stopping." {
+		t.Fatalf("the loop's own words did not reach the thread: %q", reply.Body)
 	}
 	if commands, _ := graph.PendingCommands(10); len(commands) != 0 {
-		t.Fatalf("a groundless loop still journaled commands: %+v", commands)
-	}
-}
-
-// The sentinel is how the loop says "this was not about the board" without
-// costing the user an answer.
-func TestControlLoopSentinelFallsThroughToTheRouter(t *testing.T) {
-	graph := openHeadStore(t)
-	seedExceptBoard(t, graph)
-	client := &beltClient{
-		turns: []beltTurn{
-			{calls: []ai.ToolCall{beltCall("c1", beltToolBoard, map[string]any{})}},
-			{text: controlNotWorkSentinel},
-		},
-		plain: []string{`{"reply":"Starting that.","command":null}`},
-	}
-	session := "sentinel"
-	user := postUser(t, graph, session, "finish reading me that Auden poem")
-	if err := New(client, graph).answer(context.Background(), user); err != nil {
-		t.Fatal(err)
-	}
-	reply := waitForAgentReply(t, graph, session, user.Seq)
-	if reply.Body != "Starting that." {
-		t.Fatalf("sentinel did not fall through: %q", reply.Body)
+		t.Fatalf("a loop that called no tool still journaled commands: %+v", commands)
 	}
 }
 
@@ -479,9 +455,12 @@ func TestBoardShowsOnlyTheUsersOwnLiveWork(t *testing.T) {
 	}
 }
 
-// The trigger is meant to be broad and cheap on both sides: it fires on any
-// control-ish word or any anchor to live work, and stays quiet otherwise.
-func TestControlTriggerPredicate(t *testing.T) {
+// The trigger is gone: every message reaches the tools now, which is the whole
+// point of the wave. What survives is the reading, and the reading's own law —
+// it must fire on the sentences a person would call obvious, and it must stay
+// silent when a sentence is about nothing on the board, so an ordinary message
+// pays nothing for machinery it did not use.
+func TestTheReadingsFireOnWorkAndStaySilentOtherwise(t *testing.T) {
 	tests := []struct {
 		message string
 		jobs    bool
@@ -494,7 +473,7 @@ func TestControlTriggerPredicate(t *testing.T) {
 		{"how is the market research going", true, true},
 		{"what's the weather in Oslo", true, false},
 		{"thanks, that helps", true, false},
-		{"kill everything except the finance one", false, false},
+		{"kill everything except the finance one", false, true},
 	}
 	for _, test := range tests {
 		t.Run(test.message+fmt.Sprint(test.jobs), func(t *testing.T) {
@@ -502,13 +481,16 @@ func TestControlTriggerPredicate(t *testing.T) {
 			if test.jobs {
 				seedExceptBoard(t, graph)
 			}
-			applies, err := New(&beltClient{}, graph).controlLoopApplies(
-				store.Message{SessionID: "trigger", Role: store.RoleUser, Body: test.message})
+			head := New(&beltClient{}, graph)
+			active, err := head.activeUserJobs()
 			if err != nil {
 				t.Fatal(err)
 			}
-			if applies != test.want {
-				t.Fatalf("controlLoopApplies(%q) = %t, want %t", test.message, applies, test.want)
+			readings := head.renderHints(
+				store.Message{SessionID: "trigger", Role: store.RoleUser, Body: test.message}, active)
+			if got := readings != ""; got != test.want {
+				t.Fatalf("readings for %q (jobs=%t) = %q, want fired=%t",
+					test.message, test.jobs, readings, test.want)
 			}
 		})
 	}
@@ -519,22 +501,19 @@ func TestControlTriggerPredicate(t *testing.T) {
 func TestControlLoopSpendsAtMostItsToolCallCap(t *testing.T) {
 	graph := openHeadStore(t)
 	seedExceptBoard(t, graph)
-	turns := make([]beltTurn, 0, controlToolCallCap+2)
-	for index := 0; index <= controlToolCallCap; index++ {
+	turns := make([]beltTurn, 0, orchestratorToolCallCap+2)
+	for index := 0; index <= orchestratorToolCallCap; index++ {
 		turns = append(turns, beltTurn{calls: []ai.ToolCall{
 			beltCall(fmt.Sprintf("c%d", index), beltToolBoard, map[string]any{})}})
 	}
-	client := &beltClient{
-		turns: append(turns, beltTurn{text: "Three jobs are waiting to start."}),
-		plain: []string{`{"reply":"Routed instead.","command":null}`},
-	}
+	client := &beltClient{turns: append(turns, beltTurn{text: "Three jobs are waiting to start."})}
 	session := "cap"
 	user := postUser(t, graph, session, "which of these should i drop")
 	if err := New(client, graph).answer(context.Background(), user); err != nil {
 		t.Fatal(err)
 	}
-	if _, tooled := client.counts(); tooled > controlToolCallCap+2 {
-		t.Fatalf("loop ran %d tooled turns, cap is %d tool calls", tooled, controlToolCallCap)
+	if _, tooled := client.counts(); tooled > orchestratorToolCallCap+2 {
+		t.Fatalf("loop ran %d tooled turns, cap is %d tool calls", tooled, orchestratorToolCallCap)
 	}
 	reply := waitForAgentReply(t, graph, session, user.Seq)
 	if reply.Body != "Three jobs are waiting to start." {

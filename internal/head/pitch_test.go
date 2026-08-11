@@ -39,7 +39,7 @@ func TestTheProductPitchRidesTheStablePromptExactlyOnce(t *testing.T) {
 	if count := strings.Count(first, manual.Pitch); count != 1 {
 		t.Fatalf("the pitch appears %d times in the head's system message", count)
 	}
-	if !strings.Contains(headSystemPrompt, manual.Pitch) {
+	if !strings.Contains(orchestratorPrompt, manual.Pitch) {
 		t.Fatal("the pitch is not part of the head's constant prompt")
 	}
 	// A state change moved the notebook, which lives below the system message.

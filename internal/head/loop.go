@@ -295,17 +295,40 @@ func (h *Head) turnPrompt(user store.Message) (string, error) {
 // and the two disagreeing is how the head once described a job in one sentence
 // and denied its existence in the next.
 func (h *Head) renderTurnBoard(sessionID, thread string, opened map[string]bool) (string, error) {
-	rows, err := h.boardRows(sessionID, "", "", "")
+	rows, err := h.boardRowsAt(sessionID, "", "", "", time.Now())
 	if err != nil {
 		return "", fmt.Errorf("serve head: read board: %w", err)
 	}
-	if len(rows) == 0 {
-		return "(nothing of the person's is live right now — a read aimed by id or by their own words still reaches finished work)", nil
-	}
-	return renderBoardWithin(rows, thread, opened, maxGraphContextBytes), nil
+	return boardBlock(rows, thread, opened), nil
 }
+
+// boardBlock is the prompt's board as a string, clock and all, so the ordering
+// and truncation rules have one spelling rather than one per caller.
+func boardBlock(rows []boardRow, thread string, opened map[string]bool) string {
+	if len(rows) == 0 {
+		return emptyBoardLine
+	}
+	return renderBoardWithin(rows, thread, opened, maxGraphContextBytes)
+}
+
+// emptyBoardLine says what an empty board means without saying the head is
+// blind: a read aimed by id or by the person's own words still reaches finished
+// work, which is where findings live.
+const emptyBoardLine = "(nothing of the person's is live right now — a read aimed by id or by their own words still reaches finished work)"
 
 // errNoTurn is returned when a turn cannot be assembled at all. It is separated
 // so the caller can still say something rather than going quiet, which is the
 // one thing a route may never do.
 var errNoTurn = errors.New("serve head: turn could not be assembled")
+
+// boardFor is the one board a caller outside the turn can ask for: the same
+// query, the same renderer, the same dedup, with the clock passed in. Every
+// assertion about what the head can SEE goes through it, which is the point —
+// there is no second board to assert against any more.
+func (h *Head) boardFor(sessionID, thread string, opened map[string]bool, now time.Time) string {
+	rows, err := h.boardRowsAt(sessionID, "", "", "", now)
+	if err != nil {
+		return emptyBoardLine
+	}
+	return boardBlock(rows, thread, opened)
+}

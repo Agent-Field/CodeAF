@@ -566,14 +566,13 @@ func TestHeadParsesReflexAndAnchorsVerbatimIntent(t *testing.T) {
 	}
 }
 
-func TestHeadPromotesConsequentialReflexDecisionBeforePersistence(t *testing.T) {
-	unsafe := routeDecision{
-		Reply:   "On it.",
-		Command: &routeCommand{Kind: routeReflexKind, Instruction: "Pay the vendor five dollars."},
-	}
-	if err := unsafe.validate(); err == nil {
-		t.Fatal("routing decision validation accepted a money-shaped reflex")
-	}
+// The consequence gate moved INTO the tool (Part 6 decision 2), which is the
+// only place it can still be true: the flag is now an argument a model passes
+// rather than a field on a decision object, so the last check before the row
+// exists is the last check there is. A reflex whose words buy, delete or publish
+// is journaled as ordinary work the person gets to see coming, with their own
+// sentence intact.
+func TestSpawnPromotesAConsequentialReflexAtTheJournalingDoor(t *testing.T) {
 	for _, ask := range []string{
 		"Pay the vendor five dollars.",
 		"Delete /etc/obsolete.conf.",
@@ -581,30 +580,56 @@ func TestHeadPromotesConsequentialReflexDecisionBeforePersistence(t *testing.T) 
 	} {
 		t.Run(ask, func(t *testing.T) {
 			graphStore := openHeadStore(t)
-			client := &fakeClient{responses: []string{
-				`{"reply":"On it.","command":{"kind":"reflex","target":"","instruction":"ignored"}}`,
-			}}
 			user, err := graphStore.PostMessage(store.Message{
 				SessionID: "chat-consequence", Role: store.RoleUser, Body: ask,
 			})
 			if err != nil {
 				t.Fatal(err)
 			}
-			decision, err := New(client, graphStore).route(context.Background(), user)
+			run := &beltRun{head: New(nil, graphStore), user: user}
+			message, failed := run.execute(beltToolSpawn, beltArguments(t, map[string]any{
+				"instruction": ask, "reflex": true,
+			}))
+			if failed {
+				t.Fatalf("spawn refused a consequential ask outright: %s", message)
+			}
+			commands, err := graphStore.PendingCommands(0)
 			if err != nil {
 				t.Fatal(err)
 			}
-			if decision.Command == nil || decision.Command.Kind != string(store.CommandSplice) {
-				t.Fatalf("decision for %q = %+v, want ordinary splice", ask, decision.Command)
+			if len(commands) != 1 {
+				t.Fatalf("pending commands = %+v", commands)
 			}
-			_, reflex, _ := commandKind(decision.Command.Kind)
-			if reflex {
+			if commands[0].Reflex {
 				t.Fatalf("consequential ask %q remained a reflex", ask)
 			}
-			if decision.Command.Instruction != ask {
-				t.Fatalf("instruction = %q, want %q", decision.Command.Instruction, ask)
+			if commands[0].Kind != store.CommandSplice || commands[0].Instruction != ask {
+				t.Fatalf("command = %+v, want an ordinary splice carrying %q", commands[0], ask)
 			}
 		})
+	}
+}
+
+// The safe half of the same gate: an obvious reversible action still rides the
+// fast path, because reversibility rather than size is the licence.
+func TestSpawnKeepsAReversibleReflex(t *testing.T) {
+	graphStore := openHeadStore(t)
+	const ask = "what time is it in Lisbon"
+	user, err := graphStore.PostMessage(store.Message{
+		SessionID: "chat-reflex", Role: store.RoleUser, Body: ask,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	run := &beltRun{head: New(nil, graphStore), user: user}
+	if message, failed := run.execute(beltToolSpawn, beltArguments(t, map[string]any{
+		"instruction": ask, "reflex": true,
+	})); failed {
+		t.Fatalf("spawn refused a reversible reflex: %s", message)
+	}
+	commands, err := graphStore.PendingCommands(0)
+	if err != nil || len(commands) != 1 || !commands[0].Reflex {
+		t.Fatalf("commands = %+v err=%v, want one reflex", commands, err)
 	}
 }
 
@@ -619,11 +644,11 @@ func TestHeadReceivesMeasuredReflexPrior(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, err = New(client, graphStore).
+	err = New(client, graphStore).
 		WithSelfKnowledge(func() string {
 			return "reflex: median 200 tokens, 2 turns; n=10; success=90.0%; promoted=10.0%; avg cost=$0.0010"
 		}).
-		route(context.Background(), user)
+		runTurn(context.Background(), user)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -645,23 +670,23 @@ func TestRouterNeitherCarriesNorInventsAMeasuredSelfAssessment(t *testing.T) {
 	}}
 	user := store.Message{SessionID: "competence", Body: "what are you good at now?"}
 	called := false
-	if _, err := New(client, graphStore).
+	if err := New(client, graphStore).
 		WithCompetenceMap(func() string { called = true; return "unexpected" }).
-		route(context.Background(), user); err != nil {
+		runTurn(context.Background(), user); err != nil {
 		t.Fatal(err)
 	}
 	if called {
-		t.Fatal("the router still pulls the competence map behind a phrase gate")
+		t.Fatal("the loop still pulls the competence map behind a phrase gate")
 	}
 	if strings.Contains(client.seen[1].Content[0].Text, "Competence map (ground truth") {
 		t.Fatalf("the competence block is still injected: %s", client.seen[1].Content[0].Text)
 	}
-	if strings.Contains(headSystemPrompt, "When a competence map appears") ||
-		strings.Contains(headSystemPrompt, "When standing-watch status appears") {
-		t.Error("the router prompt still promises blocks it is never handed")
+	if strings.Contains(orchestratorPrompt, "When a competence map appears") ||
+		strings.Contains(orchestratorPrompt, "When standing-watch status appears") {
+		t.Error("the prompt still promises blocks it is never handed")
 	}
-	if !strings.Contains(headSystemPrompt, "Never state a strength, a weakness, a watch schedule, or a figure you have not been shown") {
-		t.Error("the router prompt lost the rule against inventing a self-assessment")
+	if !strings.Contains(orchestratorPrompt, "Never state a strength, a weakness, a watch schedule, or a figure you have not been shown") {
+		t.Error("the prompt lost the rule against inventing a self-assessment")
 	}
 }
 
@@ -675,10 +700,10 @@ func TestHeadVoicePromptPreservesEmptyBytesAndRendersPreference(t *testing.T) {
 			`{"reply":"Ready.","command":null}`,
 		}}
 		user := store.Message{SessionID: "voice-empty", Body: "answer this plainly"}
-		if _, err := New(client, graphStore).route(context.Background(), user); err != nil {
+		if err := New(client, graphStore).runTurn(context.Background(), user); err != nil {
 			t.Fatal(err)
 		}
-		want := headSystemPrompt + "\n\n" + resident.VoiceRegister
+		want := orchestratorPrompt + "\n\n" + resident.VoiceRegister
 		if len(client.seen) != 2 || client.seen[0].Content[0].Text != want {
 			t.Fatalf("empty-notebook head system prompt changed: %+v", client.seen)
 		}
@@ -694,7 +719,7 @@ func TestHeadVoicePromptPreservesEmptyBytesAndRendersPreference(t *testing.T) {
 			`{"reply":"Ready.","command":null}`,
 		}}
 		user := store.Message{SessionID: "voice-learned", Body: "answer this plainly"}
-		if _, err := New(client, graphStore).route(context.Background(), user); err != nil {
+		if err := New(client, graphStore).runTurn(context.Background(), user); err != nil {
 			t.Fatal(err)
 		}
 		if len(client.seen) != 2 || !strings.Contains(client.seen[0].Content[0].Text, preference) {
@@ -800,7 +825,7 @@ func TestHeadSnapshotIncludesDailySpendAndCeiling(t *testing.T) {
 		`{"reply":"Nothing is running.","command":null,"remember":null,"retract":null}`,
 	}}
 	user := store.Message{SessionID: "rail-status", Body: "what is running?"}
-	if _, err := New(client, graph).WithDailyBudgetUSD(20).route(context.Background(), user); err != nil {
+	if err := New(client, graph).WithDailyBudgetUSD(20).runTurn(context.Background(), user); err != nil {
 		t.Fatal(err)
 	}
 	if len(client.seen) != 2 || !strings.Contains(client.seen[1].Content[0].Text,
@@ -1326,11 +1351,11 @@ func TestEveryReadingIsToldNotToRaceWorkAlreadyUnderway(t *testing.T) {
 		prompt  string
 		phrases []string
 	}{
-		"router": {headSystemPrompt, []string{
+		"router": {orchestratorPrompt, []string{
 			"is an amendment of that work before it is a new job",
 			"it still belongs behind that job rather than beside it",
 		}},
-		"belt": {controlSystemPrompt, []string{
+		"belt": {orchestratorPrompt, []string{
 			"is a change to that work before it is a second job",
 			"people answer the thing just said to them without naming it",
 		}},

@@ -36,16 +36,33 @@ func TestUrgencyNeedsBothTheCueAndTheAnchor(t *testing.T) {
 				spliceSurgeryJob(t, graph, "finance", "finance research",
 					"research the finance question the user asked about")
 			}
-			intent, fires, err := New(&fakeClient{}, graph).recognizeRedirect(
-				store.Message{SessionID: "urgency", Role: store.RoleUser, Body: test.message})
+			head := New(&fakeClient{}, graph)
+			user := store.Message{SessionID: "urgency", Role: store.RoleUser, Body: test.message}
+			cue, cued := redirectCue(test.message)
+			if !cued {
+				cue = ""
+			}
+			if test.fires && cue != test.cue {
+				t.Fatalf("cue = %q, want %q", cue, test.cue)
+			}
+			active, err := head.activeUserJobs()
 			if err != nil {
 				t.Fatal(err)
 			}
-			if fires != test.fires || intent.Cue != test.cue {
-				t.Fatalf("fires/cue = %t/%q, want %t/%q", fires, intent.Cue, test.fires, test.cue)
+			readings := head.renderHints(user, active)
+			// Impatience is the one class that may never ask, so the reading has
+			// to hand the loop the job as well as the class: what a person
+			// waiting is waiting on is the longest-running thing.
+			if test.fires && test.cue == urgencyCue {
+				if !strings.Contains(readings, "reads as pressure on delivery") {
+					t.Fatalf("impatience did not reach the loop as impatience:\n%s", readings)
+				}
+				if !strings.Contains(readings, "the longest-running thing is finance research") {
+					t.Fatalf("impatience reached the loop with nothing to press:\n%s", readings)
+				}
 			}
-			if fires && intent.Candidates[0].Node.ID != "finance" {
-				t.Fatalf("anchored elsewhere: %+v", intent.Candidates[0].Node)
+			if !test.fires && strings.Contains(readings, "reads as pressure on delivery") {
+				t.Fatalf("a requirement about speed was read as impatience:\n%s", readings)
 			}
 		})
 	}
@@ -165,15 +182,15 @@ func TestSpliceReceiptIsForbiddenFromPromisingAcceleration(t *testing.T) {
 		// be the same dishonesty from the generous side.
 		"goes next, ahead of the rest of what is queued",
 	} {
-		if !strings.Contains(headSystemPrompt, phrase) {
+		if !strings.Contains(orchestratorPrompt, phrase) {
 			t.Fatalf("the router prompt no longer constrains the splice receipt: %q", phrase)
 		}
 	}
-	if strings.Contains(headSystemPrompt, "no way to make existing work go faster") {
+	if strings.Contains(orchestratorPrompt, "no way to make existing work go faster") {
 		t.Error("the router still denies a capability the belt exercises")
 	}
 	// Both prompts tell one story about it, which is the whole of the fix.
-	if !strings.Contains(controlSystemPrompt, "expedite makes a job arrive sooner") {
+	if !strings.Contains(orchestratorPrompt, "expedite makes a job arrive sooner") {
 		t.Error("the control prompt lost the capability the router now defers to")
 	}
 }

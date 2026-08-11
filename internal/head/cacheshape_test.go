@@ -73,10 +73,10 @@ func TestRouterPromptChurnStaysBelowTheAppendOnlyThread(t *testing.T) {
 	// The system message is one constant plus standing voice. A new voice
 	// preference may extend it; the message the user just typed may not change
 	// it at all, which is what dropping the retrieval cue bought.
-	if !strings.HasPrefix(secondSystem, headSystemPrompt) || !strings.HasPrefix(firstSystem, headSystemPrompt) {
+	if !strings.HasPrefix(secondSystem, orchestratorPrompt) || !strings.HasPrefix(firstSystem, orchestratorPrompt) {
 		t.Fatal("the head's system message no longer opens with its constant prompt")
 	}
-	if sharedPrefix(firstSystem, secondSystem) < len(headSystemPrompt) {
+	if sharedPrefix(firstSystem, secondSystem) < len(orchestratorPrompt) {
 		t.Fatalf("system message diverged inside the constant prompt at byte %d", sharedPrefix(firstSystem, secondSystem))
 	}
 
@@ -229,11 +229,11 @@ func TestVoiceSectionAppendsRatherThanReordering(t *testing.T) {
 	if _, err := graph.RecordFact("", "user", store.FactPreference, "keep replies short"); err != nil {
 		t.Fatal(err)
 	}
-	before := resident.VoicePrompt(graph, headSystemPrompt)
+	before := resident.VoicePrompt(graph, orchestratorPrompt)
 	if _, err := graph.RecordFact("", "user", store.FactPreference, "never open with an apology in a reply"); err != nil {
 		t.Fatal(err)
 	}
-	after := resident.VoicePrompt(graph, headSystemPrompt)
+	after := resident.VoicePrompt(graph, orchestratorPrompt)
 	if before == after {
 		t.Fatal("the new preference never reached the voice section")
 	}

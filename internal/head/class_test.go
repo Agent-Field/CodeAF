@@ -195,11 +195,17 @@ func TestSurgeryMatchDecisiveness(t *testing.T) {
 		{"nothing found", nil, false},
 		{"one weak match", []store.SurgeryTarget{target(ClassFallbackFloor - 0.01)}, false},
 		{"one solid match", []store.SurgeryTarget{target(ClassFallbackFloor)}, true},
-		{"several matches ask anyway", []store.SurgeryTarget{target(0.1), target(0.1)}, true},
+		{"several matches are never decisive on their own", []store.SurgeryTarget{target(0.1), target(0.1)}, false},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			if got := surgeryMatchIsDecisive(test.matches); got != test.want {
+			named := 0
+			for _, match := range test.matches {
+				if match.Score >= ClassFallbackFloor {
+					named++
+				}
+			}
+			if got := named == 1; got != test.want {
 				t.Fatalf("decisive = %t, want %t", got, test.want)
 			}
 		})

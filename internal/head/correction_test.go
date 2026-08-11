@@ -161,10 +161,10 @@ func TestQuestionShapedCueIsNotACorrection(t *testing.T) {
 // a rejected BELIEF to retract, and it must say out loud that a correction of
 // work is not that.
 func TestRoutingLawNoLongerTeachesThatsWrongAsARetraction(t *testing.T) {
-	if strings.Contains(headSystemPrompt, `("forget that", "that's wrong")`) {
+	if strings.Contains(orchestratorPrompt, `("forget that", "that's wrong")`) {
 		t.Fatal("the router still reads a correction of work as a notebook retraction")
 	}
-	if !strings.Contains(headSystemPrompt, "is not a notebook retraction") {
+	if !strings.Contains(orchestratorPrompt, "is not a notebook retraction") {
 		t.Fatal("the router is not told what a correction of work is instead")
 	}
 }

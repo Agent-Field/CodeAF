@@ -36,11 +36,7 @@ func TestCharterFiredJobIsListableAndCancellable(t *testing.T) {
 		"firing-charter-1-1", "Nightly security sweep", "sweep the new pull requests for vulnerabilities")
 
 	// One: the router describes it.
-	snapshot, err := graph.ActiveSnapshot()
-	if err != nil {
-		t.Fatal(err)
-	}
-	board := New(nil, graph).renderGraph(snapshot, "membrane", "", nil, time.Now())
+	board := New(nil, graph).boardFor("membrane", "", nil, time.Now())
 	if !strings.Contains(board, "firing-charter-1-1") {
 		t.Fatalf("the snapshot the head speaks from omits the charter job:\n%s", board)
 	}
@@ -78,11 +74,7 @@ func TestTheOneMembraneStillHidesTheResidentsOwnWork(t *testing.T) {
 	spliceOriginJob(t, graph, store.OriginSelf, "", "self-upkeep", "Practice", "practice the weak spot")
 	spliceOriginJob(t, graph, store.OriginUser, "membrane", "user-job", "Finance close", "close the books")
 
-	snapshot, err := graph.ActiveSnapshot()
-	if err != nil {
-		t.Fatal(err)
-	}
-	board := New(nil, graph).renderGraph(snapshot, "membrane", "", nil, time.Now())
+	board := New(nil, graph).boardFor("membrane", "", nil, time.Now())
 	if strings.Contains(board, "self-upkeep") {
 		t.Fatalf("the resident's own work reached the snapshot:\n%s", board)
 	}
@@ -117,11 +109,7 @@ func TestCrossSessionWorkIsMarkedRatherThanHidden(t *testing.T) {
 	spliceOriginJob(t, graph, store.OriginUser, "terminal", "local-job", "Ledger", "reconcile the ledger")
 	spliceOriginJob(t, graph, store.OriginUser, "browser", "remote-job", "Podcast", "edit the podcast")
 
-	snapshot, err := graph.ActiveSnapshot()
-	if err != nil {
-		t.Fatal(err)
-	}
-	board := New(nil, graph).renderGraph(snapshot, "terminal", "", nil, time.Now())
+	board := New(nil, graph).boardFor("terminal", "", nil, time.Now())
 	for _, line := range strings.Split(board, "\n") {
 		switch {
 		case strings.Contains(line, "local-job") && strings.Contains(line, crossSessionMark):
@@ -145,8 +133,8 @@ func TestCrossSessionWorkIsMarkedRatherThanHidden(t *testing.T) {
 		}
 	}
 	// And both prompts say what the marker means, or it is four bytes of noise.
-	if !strings.Contains(headSystemPrompt, `"elsewhere"`) ||
-		!strings.Contains(controlSystemPrompt, `"elsewhere"`) {
+	if !strings.Contains(orchestratorPrompt, `"elsewhere"`) ||
+		!strings.Contains(orchestratorPrompt, `"elsewhere"`) {
 		t.Error("the marker is rendered but never explained to the model")
 	}
 	// Work with no session at all — the resident's, a charter's — is nobody's

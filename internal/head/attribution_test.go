@@ -90,11 +90,7 @@ func TestBoardLeadsWithJobsAndNamesTheOwnerOfEveryPart(t *testing.T) {
 	}}, store.Provenance{Origin: store.OriginUser, SessionID: "board", Intent: "work issue 41"}); err != nil {
 		t.Fatal(err)
 	}
-	snapshot, err := graph.ActiveSnapshot()
-	if err != nil {
-		t.Fatal(err)
-	}
-	board := New(nil, graph).renderGraph(snapshot, "board", "", nil, time.Now())
+	board := New(nil, graph).boardFor("board", "", nil, time.Now())
 
 	jobLine, partLine := "", ""
 	for _, line := range strings.Split(board, "\n") {
