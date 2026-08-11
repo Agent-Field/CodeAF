@@ -313,3 +313,51 @@ func TestALongResultFoldsEvenWithoutALineBreak(t *testing.T) {
 		t.Fatalf("the gist did not end at a sentence: %q", gist)
 	}
 }
+
+// 13.8 finding 6: "Work speaks under its raw node id." A narrator's line in a
+// real room was headed `job-wisp` while the card beside it said `wisp-parity` —
+// 5.14's never-shown tier on screen, and two names for one thing on one frame.
+func TestANodeAnchoredRowSpeaksUnderTheJobsNameNotItsID(t *testing.T) {
+	backend := recordBoard()
+	backend.node["job-3"] = []store.Message{{
+		Seq: 41, SessionID: testSession, Role: store.RoleAgent, NodeID: "job-3",
+		Body: "picked the transport work back up",
+	}}
+	app := newTestApp(backend, &fakeCommander{model: "anthropic/claude-k3"}, nil)
+	poll(t, app)
+	enterRoom(t, app, "5")
+
+	frame := ansi.Strip(app.Frame(120, 30))
+	if !strings.Contains(frame, "picked the transport work back up") {
+		t.Fatalf("the room dropped the narrator's line:\n%s", frame)
+	}
+	if strings.Contains(frame, "job-3") {
+		t.Fatalf("a node id reached a cell (5.14):\n%s", frame)
+	}
+}
+
+// The other half of the same finding: a steer is the READER's sentence, and it
+// was drawn as a work card titled with the node it was aimed at, under a `$—`,
+// "as if the user's sentence had a price".
+func TestASteerReadsBackAsSpeechAndNotAsAPricedCard(t *testing.T) {
+	backend := recordBoard()
+	backend.node["job-3"] = []store.Message{{
+		Seq: 41, SessionID: testSession, Role: store.RoleUser, NodeID: "job-3",
+		Body: "skip the H2 part",
+	}}
+	app := newTestApp(backend, &fakeCommander{model: "anthropic/claude-k3"}, nil)
+	poll(t, app)
+	enterRoom(t, app, "5")
+
+	block, ok := app.view.transcript.Block(app.view.transcript.Len() - 1).(*messageBlock)
+	if !ok {
+		t.Fatal("the steer is not a message block")
+	}
+	if !block.user || block.head.Title != "you" {
+		t.Fatalf("the reader's own steer is not attributed to them: %+v", block.head)
+	}
+	frame := ansi.Strip(app.Frame(120, 30))
+	if !strings.Contains(frame, "skip the H2 part") {
+		t.Fatalf("the room dropped the steer:\n%s", frame)
+	}
+}
