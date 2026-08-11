@@ -12,7 +12,9 @@ import (
 
 func mics() []Mic {
 	out := []Mic{}
-	for _, state := range []MicState{MicUnavailable, MicIdle, MicListening, MicTranscribing, MicRefused} {
+	for _, state := range []MicState{
+		MicUnavailable, MicIdle, MicStarting, MicListening, MicTranscribing, MicRefused,
+	} {
 		for _, target := range []rail.ComposerMode{
 			rail.ComposerNone, rail.ComposerChat, rail.ComposerSteer, rail.ComposerDisabled,
 		} {
@@ -43,10 +45,10 @@ func TestMicNeverOverflowsAndNeverPanics(t *testing.T) {
 	}
 }
 
-// With no recogniser there is no control. A permanently dead mic on every
-// composer in the product would be an affordance that lies, four hundred frames
-// a day.
-func TestNoRecogniserMeansNoControlAtAll(t *testing.T) {
+// A nil recorder or transcriber means no control at all — the seam internal/voice
+// exposes can be absent, and a permanently dead mic on every composer in the
+// product would be an affordance that lies, four hundred frames a day.
+func TestANilVoiceSeamMeansNoControlAtAll(t *testing.T) {
 	m := Mic{}
 	if m.State != MicUnavailable {
 		t.Fatal("the zero mic is not the unavailable one")
@@ -75,7 +77,7 @@ func TestDictationIntoASteerLineIsVisiblyOneWay(t *testing.T) {
 	}
 	// The mark rides every state the mic can be in, not only while it listens:
 	// a person about to press the key deserves to know where the words go.
-	for _, state := range []MicState{MicIdle, MicListening, MicTranscribing, MicRefused} {
+	for _, state := range []MicState{MicIdle, MicStarting, MicListening, MicTranscribing, MicRefused} {
 		m := Mic{State: state, Target: rail.ComposerSteer}
 		if !strings.Contains(m.Text(), tokens.GlyphPromptSteer) {
 			t.Fatalf("%v lost the one-way mark", state)
@@ -95,7 +97,7 @@ func TestTheMicBorrowsTheVocabularyAndInventsNothing(t *testing.T) {
 		}
 	}
 	for _, set := range []tokens.GlyphSet{tokens.Plain, tokens.NerdFont} {
-		for _, state := range []MicState{MicIdle, MicListening, MicTranscribing, MicRefused} {
+		for _, state := range []MicState{MicIdle, MicStarting, MicListening, MicTranscribing, MicRefused} {
 			m := Mic{State: state}
 			if g := m.glyph(set); !known[g] {
 				t.Fatalf("%v/%v drew %q, which is not in the vocabulary", set, state, g)
@@ -109,7 +111,7 @@ func TestTheMicBorrowsTheVocabularyAndInventsNothing(t *testing.T) {
 func TestAListeningMicIsAliveAndNeverAmber(t *testing.T) {
 	st := tokens.NewStyler(tokens.TrueColor, tokens.FocusNormal)
 	amber := tokens.Amber.Fg(tokens.TrueColor, tokens.FocusNormal)
-	for _, state := range []MicState{MicIdle, MicListening, MicTranscribing, MicRefused} {
+	for _, state := range []MicState{MicIdle, MicStarting, MicListening, MicTranscribing, MicRefused} {
 		m := Mic{State: state, Elapsed: time.Minute, Reason: "no"}
 		if strings.Contains(m.Render(st, 40), amber) {
 			t.Fatalf("%v painted amber", state)
