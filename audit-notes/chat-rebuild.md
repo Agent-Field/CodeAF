@@ -2929,3 +2929,161 @@ HEAD EDGE: charter proposal wrote incoherent economics ("$20.00 a run" from a
 "$0.0017 measured cost"). The one-loop head lane is mid-rewrite; its money
 sentences must go through the deterministic-first law (5.23) — template the
 arithmetic, never let the model do multiplication in prose.
+
+### 13.4 Part 11.1 parity-gate audit (read-only lane, 2026-08-10 late evening)
+
+Audited at HEAD `ee73240` (a moving target: 23c43b6 glyph tier and ee73240
+model chip landed DURING the audit; the picker→CommandSetModel funnel
+(`chat/model.go`) and the 5.24 homes package sit uncommitted in a sibling's
+tree right now — items they cover are marked **landing**, not MISSING). Status
+is from reading the code, not the ledger. Verdicts: PASS = implemented AND
+wired into `internal/tui2/chat`; PARTIAL = partly there or component-only;
+landing = component committed, chat wiring visibly in flight; MISSING = no v2
+substrate.
+
+**Standing laws — all hold at HEAD.**
+- Old chat: `go test ./internal/tui/... -count=1` green; branch touched
+  internal/tui only under 13's lane-3 license (da117d8 collapse, cda1a06
+  seam), assertions intact.
+- One binary: `make build` → `bin/aforge` only; no other non-test
+  `package main`.
+- No leak either way: zero `internal/tui2` imports under `internal/tui`;
+  `internal/tui2` never imports `internal/tui`; only `cmd/aforge/chatv2.go`
+  bridges (by design, `chat/engine.go:17-32`).
+- All v2 suites green at HEAD `-count=1` (the WORKING TREE does not build —
+  untracked `chat/model.go` references an App field not yet written; that is
+  the sibling's mid-flight state, verified green-at-HEAD in a throwaway
+  worktree).
+
+**Gate-level findings (worst first).**
+1. **The gate cannot be measured**: all 19 `test/ux/journeys/*.sh` launch v1
+   only (`run.sh:158`, `lib.sh:230`); nothing under `test/` sets `--v2` or
+   `AFORGE_CHAT_V2`. Three scripts fail v2 BY DESIGN as written: `10-money.sh`
+   scrapes header row 1 (v2 has no header), `13-second-window.sh` greps the
+   literal "second window" in row 0 (v2 says "visitor · pid N" in the footer),
+   and `lib.sh:72 answer_number()` sends a bare digit with no Enter — which in
+   v2 lands in the draft and stalls every question-answering journey.
+2. **Half-pinned policy config**: `aforge chat --v2` (flag, no env) runs the
+   v2 surface while `internal/resident/resident.go:1978 resolveRoomPolicy`
+   reads only the env → legacy re-homing under v2 rooms, the exact combination
+   the comment at :1973 rules out. No `Setenv` anywhere in cmd. One line
+   closes it.
+3. **13.2's P0 is regression-locked**: `chat/journal_test.go` covers every
+   post/teardown order plus the never-gated divergence trace
+   (`engine.go:190-200`); `serve_test.go` drives the real head.
+4. **13.3 bug 1 is fixed at both ends** (12.9.1 QuestionPart producer,
+   `chat/question.go` renderer) — but only the RENDER half: see J6 below.
+5. **consentui has zero importers**; modelui's chip is wired
+   (`chat/composer.go:315`), its picker is the uncommitted in-flight half.
+
+**Journeys 5.3–5.5.**
+
+| Journey | Status | Evidence | Gap |
+|---|---|---|---|
+| 5.3 direction change | PARTIAL | engine whole: 12.8 belt (steer/revise/control), redirect cues, `resident/redirect.go`; v2 rooms are node-anchored views, composer steers (`rooms.go:394,613`) | in-room speech journals a steer row, not the same command row 5.3 promises; legal under 4.6 v1 phasing, letter closes in Wave 5 |
+| 5.4 escalation | PARTIAL | question parts land + render (`question.go:55-90`); rail attention glyphs; shell owns Notify/title (`shell.go:242,254,444`) | chat never calls Notify/SetAttention (zero call sites — the 84a59b8 hook contract is unconsumed); owner-pinning behind env only (finding 2); no surface answer keys (J6) |
+| 5.5 lifecycle | PARTIAL | engine whole (spawn guards 12.8.3, revise, deliverable gate); lifecycle on rail cards | no c/r cancel-restart in v2 (registry rows `catalog.go:99-102` exist, no key path); Delivered→owner behind env |
+
+**JOURNEY.md's 19** (engine is shared; verdicts are the v2 SURFACE).
+
+| # | Journey | Status | Evidence / gap |
+|---|---|---|---|
+| 1 | ask small thing | PASS | `poll.go:341-376` single door, no dead-air; stream `poll.go:452-520` |
+| 2 | commission | PASS | `dressCommission message.go:348`, artifact rows `:538`, rail `scope.go:458-553` |
+| 3 | watch progress | PASS | rail rebuilt once per journal move `scope.go:263-276`; narrow HUD `app.go:518` |
+| 4 | steer | PASS | `postCmd` to head; node steer `rooms.go:613-644` with prompt swap |
+| 5 | correct | PASS | engine-shared; work cards render `message.go:385-429` |
+| 6 | answer questions | PARTIAL | renders field-driven (`question.go`), but NO digit/arrow/click input — digits fall into the draft (`app.go:653-729`); `footer.KeyModeAnswer` never set (`panes.go:271-279`). Works only as type-number+Enter via head `answer_question`. v1 binds digits (`tui/model.go:1473`) |
+| 7 | teach lesson | PASS | surface-neutral; receipt rows fold |
+| 8 | charter | PASS* | numbered options in producer order `question.go:74-89`; *J6 caveat on the keystroke |
+| 9 | approve spend | PARTIAL | `consentShape` exact-match (`question.go:122-152`) never matches the real labels (`consent/consent.go:42-43` "yes, start it") so the y/n strip never fires on the actual gate; where it would, y/n are unbound; consentui built, unimported |
+| 10 | money | PARTIAL | spend fully wired (`poll.go:118-193`, meta strip `composer.go`, room rows) — but v2 HAS NO HEADER; "costs in header" has no home; node money hardcoded `$—` (`message.go:405`) |
+| 11 | what learned | PASS | surface-neutral |
+| 12 | leave/return | PASS | same `openChatWindow`/`resolveChatSession`; brief dressed first-class (`dressBrief message.go:453-487`) |
+| 13 | second window | PARTIAL | adoption closed + tested (`chatv2.go:202-219`); but says "visitor · pid N" in the FOOTER vs v1's "second window" in the header — journey text and UX script assert the words |
+| 14 | repeat workflow | PASS | engine-shared |
+| 15 | watch it learn | MISSING→landing | territory filtered off the rail (`scope.go:488`); homes fronted by an inert "more" row (`scope.go:341-351`); the 5.24 homes package is in flight uncommitted |
+| 16 | models in words | PARTIAL | words route head-side; chip on meta strip + reply header (ee73240); NO slash layer at all in tui2 (no /model /open /new); picker funnel in flight |
+| 17 | attach things | MISSING | no attachment path: `@` addresses tasks not files; chat wires no `Targets`; `Commander` (`engine.go:69-83`) lacks KeepAttachment/vision; paste never converts |
+| 18 | take things out | MISSING | no clipboard in tui2 (v1 `tui/clipboard.go`); no /open; paths plain text — `Shell.Linker`/OSC 8 built (`osc.go:267-303`) and never called |
+| 19 | what can you do | PASS | head-side pitch; minor: `?` sheet reachable only with rail focus while footer advertises it always |
+
+**7.2 micro-backlog.**
+
+| Item | Status | Evidence / gap |
+|---|---|---|
+| C1 ↑/↓ history recall | PASS | `composer/key.go:100-118`, ring+stash `history.go`; one composer rebound per room so parity holds |
+| C2 esc stashes draft | PASS | `key.go:88-98`; `TestEscFromAnEmptyDraftReturnsToTheLiveEdge` |
+| C3 type-ahead folds | PARTIAL | second send posts immediately (`app.go:632-646 drain`) and the head folds it; visible as transcript rows, no queue UI |
+| C4 ctrl+j / paste laws | PARTIAL | bracketed paste never auto-sends (`composer/paste.go:15-23`); ctrl+j deliberately replaced by alt+enter/shift+enter (`caps.go:279,284`, note `app.go:412`) — documented deviation |
+| C5 @task mention | landing | full component 0c8e52e (`mention.go`, filter, ctrl+enter follow `dispatch.go:31`, echo row); chat wires neither `Targets` nor `OnDispatch` — filter never opens |
+| C6 queued chips + esc hint | PARTIAL | esc-interrupt hint wired (`footer.go:145`, `app.go:687`); queue chips MISSING — `footer.InputQueued` unreachable (`app.go:895-901`) |
+| C7 place line | PARTIAL | wired, fish-abbreviated (`app.go:358-360`, placeline); no click/`y` copy (no Mouse), no completion root |
+| C8 `/` palette | MISSING | no slash layer anywhere in tui2; ctrl+k palette exists but is a different door; numbers do not answer questions |
+| C9 tab completion; backspace-attachment | MISSING | no completion; no attachments at all |
+| N1 j/k rail + follow | PASS | `rooms.go:202-205` + `showCard` preview (rail focus via ctrl+o first) |
+| N2 enter/esc scope; ‹ clickable | PARTIAL | enter/esc `rooms.go:211-221`; breadcrumb not clickable (rail pane has no Mouse) |
+| N3 ctrl+k switcher | PASS | `overlay.go:52`, fuzzy `palette/filter.go`, settled under history grouping `overlay.go:289` |
+| N4 1–9 jump | PASS | `rooms.go:223-225` |
+| N5 back-to-now / unread / reading position | MISSING | `switchRoom` resets transcript+watermark (`rooms.go:419-421`); no pill, no unread counts |
+| N6 `[` `]` resize persisted | MISSING | nothing in v2 (v1 exists-keep item) |
+| N7 shift+j/k reprioritize | MISSING | not in `scopeKey` |
+| R1 card expands telemetry | PARTIAL | `showCard`/`cardTelemetry` (`rooms.go:384,582`) previews in main pane, not in place on the card |
+| R2 model chip → palette → SetModel | landing | chip committed (composer strip + reply header, ee73240); interactive picker + funnel is the uncommitted `chat/model.go`; not on rail cards |
+| R3 c/r cancel-restart inline | MISSING | registry rows `catalog.go:99-102` unrunnable; no key path, no confirm |
+| R4 ⚑ waits-on on focus | PARTIAL | waitsOn computed and carried (`scope.go:482,505`); shown in task scope, not focus-revealed on cards |
+| R5 stable ordering | PASS | `rail/fold.go:25-26` "never re-sort (7.2)" + fold tests |
+| T1 anchor-preserving scroll | PASS | `blocks/anchor.go:21-129`, `transcript.go:340-377`; anchor test family |
+| T2 per-block collapse; `v` | PARTIAL | fold survives re-render (`dress_test.go:182`) but toggle is GLOBAL on ctrl+r (`app.go:837-852`); registry carries v/ctrl+r pair (`catalog.go:123-124`); no per-block toggle, no click |
+| T3 y/Y copy | MISSING | zero clipboard/OSC 52 in tui2; registry copy rows unrunnable (`overlay.go:219-230`); no block-focus substrate |
+| T4 ctrl+f FTS search | MISSING | `store.SearchMessages` has only the head as caller; no UI in either surface |
+| T5 clickable paths | MISSING | artifact rows plain text (`message.go:539-560`); Linker unused; compositor already preserves links (`attention_test.go:519`) — pure call-site gap |
+| T6 timestamps on focus | MISSING | no wall-clock in headers; no block focus |
+| G1 `?` per-scope help | PARTIAL | wired (`overlay.go:68-78`) but only while rail holds focus (`app.go:705-713`); scope hard-coded to ScopeThread (`overlay.go:258-266`) |
+| G2 settings surface | PARTIAL | fuzzy/arrows/live-apply all tested (settings pkg); mounts as centred dialog, not full-screen (`layout.go:145-157`) |
+| G3 calm mode | PARTIAL | `blocks.Clock.Calm` tested, enabled only in the golden harness; only `linear` is user-reachable |
+| G4 key/click parity | PARTIAL | overlays clickable; rail rows, transcript blocks, composer, footer, placeline take no clicks |
+| G5 title + bell | landing | component complete (`attention.go`, `osc.go:149-233,305`, `shell.go:242,254,444`, tests); chat calls none of it — count reaches the footer only (`app.go:876`) |
+| G6 alt+↑ dequeue | MISSING | no type-ahead queue; the footer hint string exists unreached (`footer.go:31,69`) |
+| G7 OSC 133 marks | landing | `Shell.MarkPrompt` built + tested with a documented SEAM note (`shell.go:282-310`); zero callers |
+| G8 OSC 8 + `—` honesty | SPLIT | honesty PASS everywhere (`tokens.GlyphMissing`, `format.go:392-405`, `poll.go:186-188`); OSC 8 never called from chat |
+
+**Verdict: NOT flippable yet — but the distance is mostly wiring, not
+architecture.** Tally: 18 PASS, 19 PARTIAL, ~11 MISSING, 5 landing. The
+pattern is one-directional: `internal/tui2`'s component layer (blocks, tokens,
+osc, attention, palette, settings, composer, modelui, consentui) is materially
+ahead of `internal/tui2/chat`, and several gaps are one-line calls against
+seams that already name their caller (`shell.go:282-310`, `:247-259`,
+`:312-320`). The engine is at or past parity everywhere audited. What blocks
+the flip is (a) input paths that exist in v1 and not in v2 (question keys,
+copy, cancel/restart, attachments), (b) the unmeasurable gate (UX suite is
+v1-only), and (c) two product decisions v2 must make rather than inherit:
+where money and residency words live without a header, and what "full-screen"
+settings means in the overlay model.
+
+**Top 5 gaps by user-visible impact.**
+1. **Question answering has no keys** (J6/J8/J9; C8's "numbers answer"):
+   digits/y/n/arrows/click all dead; every consent, charter and spend flow
+   degrades to type-number+Enter, and the y/n strip never fires on the real
+   consent labels (`question.go:122-152` vs `consent/consent.go:42-43`). Also
+   stalls the whole UX harness (`lib.sh:72`). Close: bind digits + y/n while
+   a question is open, set `footer.KeyMode`, loosen/route consentShape
+   through the consent labels, or wire consentui.
+2. **Nothing leaves the terminal** (J18, T3, T5): no y/Y clipboard, no /open,
+   no clickable paths — deliverables are trapped on screen. Close: port
+   `tui/clipboard.go` (OSC 52 first), call `Shell.Linker()` from
+   `message.go:539-560`, add /open or a palette verb.
+3. **Attachments do not exist** (J17, C9): no CAS mention, no paste-to-
+   attachment, no vision fallback; `Commander` needs `KeepAttachment` +
+   image-support surface. Biggest single build item on the list.
+4. **The attention machinery is built and silent** (5.4, G5, G7): title
+   count, bell/notify, prompt marks — all tested components with zero chat
+   call sites. Close: three call sites in `chat` (question/delivery/failure →
+   `Notify`, `openQuestions()` → `SetAttention`, submit → `MarkPrompt`).
+5. **The gate itself cannot run** : UX suite is v1-only and three scripts
+   assert v1's anatomy (header money, header "second window", digit-no-Enter).
+   Close: make `test/ux` run both surfaces (env slot already exists), fix
+   `answer_number` to send Enter, and re-word 10/13 assertions to v2's
+   anatomy once the money/residency-placement decision (verdict item c) is
+   made. Plus the one-line half-pinned-policy fix (finding 2) so `--v2`
+   alone is never a config nobody wants.
