@@ -108,7 +108,22 @@ func (c *core) choose() tea.Cmd {
 	if !ok {
 		return nil
 	}
-	return tea.Batch(c.emit(res), c.close())
+	// CLOSE FIRST, and the order is the whole point.
+	//
+	// A host wires OnChoose and OnClose as ordinary calls, so both run right
+	// here, synchronously, before either returned command has reached the
+	// runtime. The act a row performs may itself raise a door — settings, the
+	// model palette, the capability sheet — onto a plane that holds exactly one
+	// overlay. Emitting first meant the close ran second and tore down the door
+	// the row had just opened: every row on this list that opens something
+	// answered enter and answered a click by politely closing and doing
+	// nothing, which is the bug a user reported as "the slash commands in the
+	// question-mark sheet are not executed".
+	//
+	// Two statements rather than two arguments to Batch, because the sequence
+	// IS the fix and an argument list does not read like one.
+	closed := c.close()
+	return tea.Batch(closed, c.emit(res))
 }
 
 func (c *core) emit(res Result) tea.Cmd {

@@ -217,12 +217,18 @@ func orPreview(model *rail.Model, event rail.Event) rail.Event {
 	return event
 }
 
-// runEntry performs a registry action chosen from the palette.
+// runEntry performs a registry action chosen from the palette, the `?` sheet or
+// the slash line. It is the ONE executor: three surfaces render the catalog and
+// exactly one place turns a row of it into an act.
 //
-// Only the rows this surface actually binds are performed. An entry the palette
-// listed but this room cannot run is refused here rather than half-performed,
-// and the catalog's own Reason already told the reader why before they pressed
-// enter — so this branch is the second line of the same defence, not the first.
+// The rule this function has to keep is 5.22's, and it is stronger than "run
+// what we can". Every row the reader can see and reach must either DO its verb
+// or say why it cannot (5.20 rule 3) — a live-looking row that answers a click
+// with silence is worse than no row, because it teaches the reader that the
+// surface does not respond to pointing. The default branch below is therefore
+// paired with [App.entryReason]: an id that lands there has a sentence there,
+// and the parity test in overlay_test.go is what keeps that true as rows are
+// added.
 func (a *App) runEntry(id string) tea.Cmd {
 	switch id {
 	case settings.EntryID:
@@ -232,6 +238,53 @@ func (a *App) runEntry(id string) tea.Cmd {
 		// nothing with. A row that named a door and opened none is the exact
 		// shape 5.22 rule 5 refuses.
 		return a.openModelPicker()
+	case helpEntryID:
+		// `?` from inside `?` is not a loop: the sheet was raised over the room
+		// the reader is in, and raising it again re-reads that room's catalog.
+		return a.openCapability()
+
+	// The map. "show tasks" opens it; "focus tasks" also puts the keyboard on
+	// it. Two verbs, two different amounts of commitment, one flag — which is
+	// why they are not the same row.
+	case "slash.graph":
+		return a.setScope(true)
+	case "slash.tasks":
+		cmd := a.setScope(true)
+		a.focusScope(true)
+		return cmd
+
+	// The four rooms of 5.24, reached by their own names. jumpTo is the rail's
+	// SelectID, so a slash lands the reader exactly where walking there with j
+	// and k would have — but the group is collapsed by default, and a jump to a
+	// row inside a closed lid would find nothing. Opening it first is not a
+	// special case for the pointer: it is what the reader would have had to do.
+	case "slash.self":
+		return a.openHome(homes.HomeSelf)
+	case "slash.notebook", "slash.memory":
+		return a.openHome(homes.HomeNotebook)
+	case "slash.standing":
+		return a.openHome(homes.HomeStanding)
+
+	case "slash.new":
+		return a.openRoomCmd()
+	case "slash.history":
+		// Finished work lives in the palette's own history grouping — the same
+		// list, off the same Attention (overlay.go's catalogRooms). The verb
+		// says "find finished work in permanent memory"; this is where it is.
+		return a.openPalette()
+	case "slash.budget":
+		// The daily limit is a settings row, and the sheet is its one home
+		// (8.2.16). The key is named rather than left to the reader's search so
+		// the day openSettingRow's REQUESTED SEAM closes, this lands on the row.
+		return a.openSettingRow(config.KeyDailyBudget)
+
+	// The two place chords, which name places this surface has (5.15's home
+	// scope and its map) rather than v1's two pages.
+	case "key.place-thread":
+		return a.jumpTo(rowHomeID)
+	case "key.place-board":
+		return a.setScope(true)
+
 	case "key.thread.receipts":
 		return a.toggleReceipts()
 	case "key.thread.clear-draft":
@@ -240,11 +293,27 @@ func (a *App) runEntry(id string) tea.Cmd {
 		return a.copyAnswer()
 	case "key.thread.copy-file":
 		return a.copyFile()
-	case "key.quit":
+	case "key.quit", "slash.quit":
 		return tea.Quit
 	}
 	return nil
 }
+
+// openHome takes the reader to one of 5.24's four rooms, opening the collapsed
+// group on the way if that is what stands between them and it.
+func (a *App) openHome(home homes.Home) tea.Cmd {
+	if a.railModel == nil {
+		return nil
+	}
+	if a.source != nil && !a.source.homes.Expanded {
+		a.toggleHomes()
+	}
+	return a.jumpTo(home.ScopeID())
+}
+
+// helpEntryID is the registry row for the capability sheet, named once for the
+// same reason modelEntryID is.
+const helpEntryID = "slash.help"
 
 // modelEntryID is the registry row for the model palette. It is named once so
 // the door, the reason and the footer cannot drift apart.
@@ -375,6 +444,43 @@ func (a *App) entryReason(entryID string) string {
 		if a.latestArtifact() == "" {
 			return "nothing on disk from this room yet"
 		}
+
+	// The four rows this surface does not yet perform. They are in the registry
+	// because they are real verbs of the product, and they are refused HERE
+	// rather than dropped from the catalog, because 5.20 rule 3 is that a door
+	// this room cannot open says so — a reader who has used the old window and
+	// looks for /open must be told it is not here, not left to conclude that
+	// clicking does nothing on this surface. Each sentence is deleted by the
+	// lane that lands the verb; runEntry's default and this list are checked
+	// against each other by a test, so neither can be forgotten.
+	case "slash.node":
+		return "open a piece of work from the map — click or enter its row"
+	case "slash.open":
+		return "opening a deliverable in your OS is not wired on this surface yet"
+	case "slash.session":
+		return "the room and its process are on the footer already"
+	case "slash.cancel":
+		return "cancelling from a list is not wired yet — steer the room instead"
+	case "slash.new":
+		if a.source == nil || a.source.rooms == nil {
+			return "this window cannot open rooms"
+		}
+
+	// Four rows the old window had and this one deliberately does not, each
+	// refused in the words of the decision rather than as "unavailable". A
+	// reader who learned these chords is owed the reason they stopped working,
+	// and three of the four are not gaps at all — they are 5.15 and 8.3 having
+	// replaced the thing the chord was for.
+	case "key.thread.cycle-focus":
+		return "this surface has one cursor (5.15) — ctrl+o moves it to the map"
+	case "key.thread.newline":
+		return "a newline is typed, not run — alt+enter inside the draft"
+	case "key.thread.narrow-split", "key.thread.widen-split":
+		return "the split is not resizable on this surface yet"
+	case "key.voice":
+		return "voice input is not on this surface"
+	case "key.boost":
+		return "boost is not on this surface yet"
 	}
 	return ""
 }
