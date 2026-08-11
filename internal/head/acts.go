@@ -271,7 +271,11 @@ func (run *beltRun) answerQuestion(args map[string]any) (string, bool) {
 	if err != nil {
 		return "that question could not be read: " + err.Error(), true
 	}
-	if !found || question.Status != store.QuestionPending {
+	// Open means unresolved, not unsurfaced. A question the person has already
+	// been shown is still waiting on an answer — that is the whole state this
+	// tool exists to see — and refusing it as "not open" would make the one
+	// question the head can legitimately settle the one it cannot reach.
+	if !found || (question.Status != store.QuestionPending && question.Status != store.QuestionAsked) {
 		return fmt.Sprintf("there is no open question numbered %d — read the open questions again", seq), true
 	}
 	if question.Class != store.QuestionInformational {

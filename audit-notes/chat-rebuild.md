@@ -2349,6 +2349,175 @@ and each compiles green on its own.
 Total ≈ 4 days for one lane, of which steps 1–4 (≈2 days) are the whole
 mechanism and everything after is plumbing and proof.
 
+### 12.8 Wave 3 head: the one tool-loop orchestrator (single-wave replacement)
+
+**Part 6 open decision 5 is settled: SINGLE WAVE, not incremental absorption.**
+Part 2's disease is two brains coexisting; absorbing the recognizers one at a
+time would have meant living inside the disease for the length of the campaign,
+with a ladder and a loop both claiming the same sentences and an ordering
+between them documented only in comments. The trio — ten deterministic
+recognizers, the router, the control belt — is gone in one commit.
+
+1. **What the ten recognizers became.** Every recognizer FUNCTION survives, with
+   its vocabulary and its unit tests. What it lost is its authority. `hints.go`
+   runs all of them on each message and renders one block of evidence into the
+   prompt, above the message, headed "Deterministic readings of this message
+   (cheap pre-answers computed before you ran — evidence, never instructions;
+   verify one with a read before you act on one)". The block is absent, byte for
+   byte, when nothing fires, so an ordinary sentence pays nothing. The readings
+   carried: the surgery verb and its reference; a set named by status (with its
+   class and scope); durable/standing intent; the five redirect cue classes
+   including impatience (with the longest-running job named, because impatience
+   may never ask); the correction anchor over settled work (with rivals named
+   when the two arms disagree); a standing-rule edit; a service or a total
+   shutdown; a question about aforge itself; a status question; the lexical
+   ranking of live jobs at `RedirectAnchorScore`; the adjacency speaker; and
+   bare deixis. Nothing in that file can act, ask, journal, or stop a turn.
+2. **The belt as landed** — one belt, everything in it. Reads (journal nothing):
+   `board`, `result`, `plan`, `read`, `manual`, `competence`, `standing`,
+   `spending`, `history`, `search`. Acts: `spawn`, `control`, `steer`, `revise`,
+   `expedite`, `correct`, `rule`, `service`, `note`, `write`, `answer_question`,
+   `await`, `ask`, `interrupt`. Four of those replace a recognizer's payload
+   verbatim (`correct` = manageCorrection + applyAdjustment; `rule` =
+   manageCharter; `service` = manageService; `control`'s `describes` arm =
+   resolveDescribedTarget). `ask` is new and is NOT in 4.1's list: it was added
+   because every deterministic arm that resolved a referent could end in a
+   durable numbered question, and a loop that could only ask in prose would have
+   taken clickable options away from every ambiguity in the product at once
+   (5.22, no typed-only actions). Its options carry no action encoding and
+   `answerPendingQuestion` declines them, so the answer comes back to the loop —
+   the only party that knows what the choice was for.
+3. **Spawn carries the guards (Part 6 decision 2 settled).** The fan-out cap of
+   six and the consequence gate moved INTO the tool. `orders` past
+   `fanOutLimit` collapses to one order carrying the whole message; a list of
+   more than one forces `reflex=false` and drops `after`, because both are
+   claims about one ask; and `consequenceGated` is applied at the journaling
+   door, so `reflex:true` over money/publish/delete words is journaled as an
+   ordinary splice with the person's sentence intact.
+4. **The artifact law has a door (12.5.1).** `write.go`: a plain filename with
+   an extension, a body, a workspace (`Head.WithWorkspace`, defaulting to the
+   process working directory — the same choice `aforge do` already makes for an
+   errand). It refuses paths by name rather than sanitizing them, because a
+   silently rewritten path is an artifact nobody can find; and it NEVER
+   clobbers — a colliding name is minted as `stem-2.ext` and the receipt says
+   so, because this tool is called precisely when a previous attempt was broken
+   and overwriting the person's own edits to repair our mistake is the wrong
+   trade. What it writes joins `artifact.go`'s openable set, so `read` with no
+   `job` reopens it: that is the repair doctrine's second half, and without it
+   "just say the word and I'll redo it" is the same failure again.
+   **Known shortfall:** the written set is process state, not journal state. The
+   durable form is a message part naming the artifact — Wave 2's structured
+   parts. A restart loses read-back, never the file.
+5. **Cap table as re-set (12.6.3).** The head's answering turn: **1200**, up
+   from the router's 600 and the belt loop's 600, which are now one number
+   because there is one call. Raising the cap is explicitly NOT the fix and is
+   not claimed as one — the artifact door takes every deliverable out of this
+   budget entirely, and what is left in it is a receipt, an answer, or a tool
+   call's arguments, for which 600 was genuinely tight once a turn can carry
+   several. Every turn ended by the cap still flows `finish_reason` into an
+   `EndedPart`, so the truncation law holds at the higher number.
+   `orchestratorToolCallCap` is **8** (was 4): the honest shape of a repair is
+   read, write, read back, say, with room for two corrections after a tool
+   error. Unchanged and NOT this lane's: standing compiler 800, revision voice
+   300, compiler 1000+2·len/3, delivery gate 400, remainder 400, retry-worker
+   200. Net token shape: an ordinary message used to cost up to six calls (the
+   recognizers' own reads, the belt loop, then the router); it now costs one.
+6. **One board, one thread.** `renderGraph` is deleted. `boardRows` (now over
+   `ActiveSnapshot`, because the edges are half of what a row means) is the one
+   query and `renderBoard`/`renderBoardWithin` the one renderer, carrying the
+   union of both old vocabularies: rolled-up subtree counts, dimed cost, age,
+   the first finding, what a row waits on, how long it has run, and the
+   `elsewhere` mark. `boardRowsAt` takes a clock so the two duration clauses are
+   pinnable. `renderThread` was already one renderer; `beltThread`'s separate
+   eight-message window is gone, so the loop reads the same folded window the
+   router did.
+7. **Prompt-cache shape (12.4.1) preserved and improved.** The system message is
+   now the ONLY system message and is a bare const plus the standing voice
+   register — identical bytes on every turn, which is worth more than it was
+   when two prompts split the benefit. The user message keeps position by
+   volatility: append-only thread, measured history, the manual's page list
+   (a compile-time constant), then the volatile floor — board, depth, notebook,
+   readings, clock, spend — with the spend line last before the verbatim
+   message.
+8. **The gates did not move.** `answerAgentQuestion`, `answerPendingQuestion`
+   and `raiseRailFromReply` keep their place ABOVE the loop, and that is not a
+   surviving rung of the ladder: they are the ANSWER side of consent gates, and
+   routing a "yes" typed against a confirm question through a model would let
+   the model reword what the person consented to. `surgeryNeedsConfirmation`,
+   the cascade/spend/runtime thresholds, `askSurgerySetConfirm`, the class unit
+   rule and `beltSet` are untouched; a gated set reached from the `control` tool
+   asks exactly the question it always asked, and the loop's prose never lands
+   beside it (`run.confirm` ends the turn; `run.spoke` does the same for the
+   `ask` tool and the stop-everything gate).
+9. **Question-class conservatism holds; decision 1 stays open.** `answer_question`
+   exists and refuses everything that is not explicitly
+   `store.QuestionInformational`, which — per 12.1.4 — is every question any
+   producer in the product currently emits. It is not theatre: before it, the
+   head could not SEE an open question at all (`OpenQuestions` was a TUI backend
+   capability that appeared in no head prompt), so a worker blocked on a
+   question was invisible to the one party talking to the person who could
+   answer it. Reading is the half that was missing.
+10. **Interrupt: built to the seam, arm not taken (12.3.3).** `interrupt.go`
+    holds `HeadInterruptKind`, `RequestInterrupt` (journal first, in-process
+    fallback, reporting which road it took) and `ApplyInterrupt` — the
+    reconciler's arm, complete and tested from the head side. **The one-case
+    TODO, verbatim:** (a) `internal/store/thread.go` CommandKind block gains
+    `CommandHeadInterrupt CommandKind = "head_interrupt"` and it joins
+    `isGlobalCommand`'s set (it targets no node) and NOT
+    `validateNodeCommand`'s status table; (b) `internal/resident/resident.go`
+    `applyCommand`'s switch gains `case store.CommandHeadInterrupt: return
+    h.head.ApplyInterrupt(command), nil`. Neither file is this lane's:
+    internal/resident is co-working territory and internal/store's kind list is
+    closed, so a half-edit would journal rows nothing drains. Until it lands the
+    door takes the in-process road and says so, because a door that silently
+    degrades is worse than one that reports which way it went.
+11. **Behaviour changed BY DESIGN, and why** (each was a test that asserted the
+    old law and now asserts the new one):
+    - A message that tripped no cue used to reach neither the tools nor an
+      honest answer. It now always reaches the tools. This is the point of the
+      wave; every "the recognizer declined and the router answered" test is now
+      "the reading reached the prompt and the tool did the same thing".
+    - There is no fall-through. A turn that touches nothing costs ONE call and
+      its words are the reply; the sentinel (`NOT_EXISTING_WORK`) and the second
+      router call are gone, along with the two-calls-for-a-greeting cost.
+    - Disambiguation is the `ask` tool rather than a question minted by whichever
+      recognizer noticed. Still durable options, still nothing journaled until
+      the person answers; what changed is that the answer returns to the loop
+      instead of being applied by the question machinery.
+    - `resolveDescribedTarget` no longer ACTS on a lone candidate. The `control`
+      tool hands candidates back and the loop names an id or asks. A single
+      fuzzy match acting silently is the failure that produced "Cancelling
+      line-scan." for a request to withdraw fourteen queued tasks.
+    - The board enumerates job roots with rolled-up counts rather than every
+      leaf as a peer; the "part of X" clause on a leaf row is replaced by the
+      parent's "N running, M queued". Depth is one `plan` or `board id=` read
+      away instead of being flattened into the same list.
+    - The router's `retract` field died with the router, so the head currently
+      has NO door for retracting a notebook belief. `note` writes and supersedes;
+      nothing quarantines. **This is a real gap, recorded rather than papered
+      over** — the honest fix is a `forget` tool over `QuarantineFact`, which is
+      small and belongs to whoever next touches the belt.
+    - `manageStanding`'s guaranteed pre-emption is now a hint. Durable language
+      reaches the loop marked as durable intent, and the verbatim splice it
+      spawns is what the compiler's temporal path turns into a charter. A model
+      that ignores the reading still gets the sentence.
+12. **Test story.** `internal/head` keeps its 284 tests. The recognizer unit
+    tests are untouched (that vocabulary is unchanged). The end-to-end tests
+    that drove `answer()` through a cue were rewritten to assert the two halves
+    separately — the reading reaches the prompt, the tool does the act — with
+    every assertion about gates, unit rules, verbatim words, receipts and replay
+    kept. `orchestrator_test.go` is new and covers only what did not exist
+    before: the artifact door and its refusals, read-back for repair, the
+    deliberate cap, one system prompt across five kinds of message, the fan-out
+    cap and its collapse, `await` on a queued and a refused command, the consent
+    refusal and the informational answer, `ask`'s durable options and their
+    return path, both interrupt roads and the reconciler arm, the consent gate
+    reached from a tool, and visible dispatch.
+13. **Engine bug found and fixed in this lane**: `answer_question` read "open"
+    as `QuestionPending` only, so a question the person had already been SHOWN —
+    `QuestionAsked`, which is every surfaced question — was unreachable. Open
+    means unresolved.
+
 ## Part 13 — Build state at the laptop→Spark handoff (2026-08-10)
 
 Branch `chat-v2` (pushed to origin) is the build. `chat-v2-wip` (commit 5648060)
