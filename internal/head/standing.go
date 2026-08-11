@@ -4,9 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"math"
 	"regexp"
-	"strconv"
 	"strings"
 	"time"
 
@@ -17,14 +15,14 @@ import (
 const standingCompilerPrompt = `You compile durable intent into one inert charter draft.
 
 Return exactly one JSON object with this shape and no text outside it:
-{"invariant":"the user's exact words","watch":{"kind":"cron|file|graph|poll","cadence":"human cadence words","schedule":"structured schedule"},"sentinel":"cheap wake-time judgment","action":"what a firing does after re-grounding","rails":{"estimated_cost_usd":0.0,"max_per_day":0,"max_per_day_justification":"","expiry":""}}
+{"invariant":"the user's exact words","watch":{"kind":"cron|file|graph|poll","cadence":"human cadence words","schedule":"structured schedule"},"sentinel":"cheap wake-time judgment","action":"what a firing does after re-grounding","rails":{"max_per_day":0,"expiry":""}}
 
 Rules:
 - Preserve the instruction exactly in invariant.
 - Keep the sentinel to one cheap judgment: whether the invariant is threatened or its condition occurred.
 - State an action that can be re-grounded when it fires; do not freeze today's world into it.
-- Use measured execution costs from context when they exist.
-- Leave a rail field zero or empty only when evidence does not settle it; deterministic defaults are applied after this reading.
+- Never write a cost, a rate or any figure in dollars. What a firing costs is measured from this system's own journaled runs after you have answered, and a number written here would be a guess presented to the user as a measurement.
+- max_per_day is how many firings a day the intent could reasonably need; leave it 0 when the words do not settle it and a default is applied after this reading.
 - Reminders are degenerate charters: cron watch, one firing, action = say the reminder.
 - Return a draft only. Never claim it is active or ratified.`
 
@@ -56,7 +54,6 @@ var (
 		regexp.MustCompile(`(?i)\bat\s+\d{1,2}(?::\d{2})?\s*(?:am|pm)?\b`),
 		regexp.MustCompile(`(?i)\b\d{1,2}(?::\d{2})?\s*(?:am|pm)\b`),
 	}
-	measuredCostPattern = regexp.MustCompile(`(?i)(?:avg(?:erage)?\s+cost|cost)\s*[:=]?\s*\$([0-9]+(?:\.[0-9]+)?)`)
 )
 
 // RecognizesStandingIntent is the compiler's temporal reading: true means the
@@ -129,28 +126,14 @@ func normalizeCharterSpec(spec store.CharterSpec, instruction, graphContext stri
 	} else if strings.TrimSpace(spec.Action) == "" {
 		spec.Action = "Re-ground the request at firing time, then carry it out: " + instruction
 	}
-	if measured, ok := measuredStandingCost(graphContext); ok {
-		spec.Rails.EstimatedCostUSD = measured
-	} else if spec.Rails.EstimatedCostUSD <= 0 || math.IsNaN(spec.Rails.EstimatedCostUSD) ||
-		math.IsInf(spec.Rails.EstimatedCostUSD, 0) {
-		spec.Rails.EstimatedCostUSD = 0.15
-	}
-	if spec.Rails.MaxPerDay <= 0 {
-		spec.Rails.MaxPerDay = 10
-		if reminder {
-			spec.Rails.MaxPerDay = 1
-		}
-	}
+	// Every figure in the rails is computed from journaled measurement, and the
+	// model's own numbers are discarded rather than defaulted around. 13.3's
+	// head edge is exactly this line: a proposal that said "$20.00 a run" over a
+	// measured $0.0017 because the guess survived whenever the measurement could
+	// not be read, and because the justification beside it was free prose with a
+	// dollar figure in it. money.go argues the whole rule.
+	spec.Rails = standingRails(spec.Rails, reminder, graphContext)
 	recurring := store.RecurringWatch(spec.Watch.Spec)
-	if strings.TrimSpace(spec.Rails.MaxPerDayJustification) == "" {
-		if reminder {
-			spec.Rails.MaxPerDayJustification = "one a day is all a reminder needs"
-		} else {
-			worst := spec.Rails.EstimatedCostUSD * float64(spec.Rails.MaxPerDay)
-			spec.Rails.MaxPerDayJustification = fmt.Sprintf(
-				"caps the default worst day at about $%.2f", worst)
-		}
-	}
 	if strings.TrimSpace(spec.Rails.Expiry) == "" {
 		spec.Rails.Expiry = "never"
 		// A reminder ends when its one moment passes — and only then. Reading
@@ -245,15 +228,6 @@ func extractCadence(instruction string) string {
 		}
 	}
 	return ""
-}
-
-func measuredStandingCost(context string) (float64, bool) {
-	match := measuredCostPattern.FindStringSubmatch(context)
-	if len(match) != 2 {
-		return 0, false
-	}
-	cost, err := strconv.ParseFloat(match[1], 64)
-	return cost, err == nil && cost >= 0 && !math.IsNaN(cost) && !math.IsInf(cost, 0)
 }
 
 func isReminder(instruction string) bool {

@@ -703,6 +703,13 @@ func (run *beltRun) spending(args map[string]any) (string, bool) {
 		}
 		rendered.WriteString(strings.Join(lines, "\n") + "\n")
 	}
+	// The rate and the projections, computed rather than left to be worked out
+	// in a sentence (5.23's ordering law; 13.3's head edge). A window the caller
+	// left open still gets a rate, because "what does this cost me" is a
+	// question about a span even when it was asked without one.
+	if lines := run.head.spendRateBlock(since, until); len(lines) > 0 {
+		rendered.WriteString(strings.Join(lines, "\n") + "\n")
+	}
 	if run.head.dailyRailSet {
 		if rail, err := run.head.store.DailyRailToday(run.head.dailyBudgetUSD); err == nil {
 			if rail.Unlimited {
