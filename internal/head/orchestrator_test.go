@@ -136,6 +136,18 @@ func TestWhatTheHeadWroteItCanReadBackToRepair(t *testing.T) {
 	}
 }
 
+// Every hand the loop actually has must be named in the prompt that tells it
+// what its hands are. A tool the prompt never mentions is one the model reaches
+// for by accident or not at all — and the two prompts this replaced disagreed
+// about the belt for exactly as long as there were two of them.
+func TestThePromptNamesEveryToolOnTheBelt(t *testing.T) {
+	for _, definition := range beltDefinitions() {
+		if !strings.Contains(orchestratorPrompt, definition.Function.Name) {
+			t.Errorf("the prompt never names the %s tool", definition.Function.Name)
+		}
+	}
+}
+
 // ── The conscious cap (12.6.3) ──────────────────────────────────────────────
 
 // The cap was 600 and 600 is the exact number that cut the diagram in half.
