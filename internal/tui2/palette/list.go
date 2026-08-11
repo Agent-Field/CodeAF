@@ -19,11 +19,29 @@ import (
 // Geometry. The numbers are stated here rather than discovered inside a render
 // (10.5.24), and each one is derived rather than picked.
 const (
-	// gutter is the glyph column: one cell for a room's state glyph and one
-	// space after it. Non-room rows pad through it so every verb in the list
-	// starts at the same column — a ragged left edge in a list this dense
-	// reads as two lists.
-	gutter = 2
+	// markerCol is the selection column: one cell holding [tokens.GlyphAccentRail]
+	// on the selected row and a space on every other. It is 5.21's left accent
+	// rail ("structure without boxes"), and it is drawn ALONGSIDE the band
+	// rather than instead of it — which is where this surface parts company
+	// with the rail's own gutter, on purpose.
+	//
+	// The rail marks XOR bands because its one gutter cell is already spoken
+	// for by an identity glyph and because a dimmed pane may not carry a band
+	// at all (12.11.2). A dialog is never the unfocused pane, and it has the
+	// cell: so it spends it, and gets three things for one column. Selection
+	// survives `--color none`, where this surface previously drew NOTHING at
+	// all — [lineBuf.emit] refuses a band with no bytes to spend, and no other
+	// carrier existed, which is exactly the defect 12.11.2 closed in the rail
+	// and left standing here. The band on a sheet is a rung shallower than the
+	// band on the ground ([tokens.SheetSeparationMin]), so it wants the second
+	// carrier anyway. And a selected row now reads at a glance from the left
+	// edge, which is what a list of thirty verbs is scanned from.
+	markerCol = 1
+	// gutter is the marker column plus the glyph column: one cell for a room's
+	// state glyph and one space after it. Non-room rows pad through it so every
+	// verb in the list starts at the same column — a ragged left edge in a list
+	// this dense reads as two lists.
+	gutter = markerCol + 2
 	// verbColMin and verbColMax bound the verb column. Below 6 a verb is
 	// initials; above 22 the description has no room left on an overlay that
 	// is itself only two thirds of the frame.
@@ -47,11 +65,16 @@ const (
 	accelColMax = 16
 )
 
-// item is one line of the rendered list: a section header, or a row.
+// item is one line of the rendered list: a section header, the blank that opens
+// a group, or a row.
 type item struct {
 	header bool
-	sec    section
-	// hit indexes the surviving set, and is meaningless on a header.
+	// blank is the one line of ground that separates a group from the group
+	// above it. 5.13's spacing rhythm — "cards separated by whitespace not
+	// boxes" — applied to the only structure this list has.
+	blank bool
+	sec   section
+	// hit indexes the surviving set, and is meaningless on a header or a blank.
 	hit int32
 }
 
@@ -273,28 +296,67 @@ func (l *list) render(width, height int) []string {
 	if len(l.hits) == 0 {
 		l.line.reset(width)
 		l.line.add(blocks.Truncate(l.emptyText, width), tokens.TextTertiary)
-		l.out = append(l.out, l.line.emit(&l.buf, l.profile, l.focus, width, false, tokens.Band))
+		l.out = append(l.out, l.line.emit(&l.buf, l.profile, l.focus, width, false, tokens.Band, sheetGround))
 		l.lineOf = append(l.lineOf, -1)
 		return l.out
 	}
 
 	l.buildItems()
 	l.clampCursor()
-	l.scroll(height)
+
+	// The overflow cue costs a line, so the body is measured before the scroll
+	// is computed — a window sized against a height the cue then takes back is a
+	// window whose last row is always the one the reader wanted.
+	body := height
+	if len(l.items) > height && height > 1 {
+		body = height - 1
+	}
+	l.scroll(body)
 	lay := l.layout(width)
 
-	for i := l.top; i < len(l.items) && len(l.out) < height; i++ {
+	shown := 0
+	for i := l.top; i < len(l.items) && len(l.out) < body; i++ {
 		it := l.items[i]
-		if it.header {
+		switch {
+		case it.blank:
+			// Never as the first line: a window that opens on the gap above a
+			// group has spent its top row saying nothing.
+			if len(l.out) == 0 {
+				continue
+			}
+			l.out = append(l.out, blankLine(&l.line, &l.buf, l.profile, l.focus, width))
+			l.lineOf = append(l.lineOf, -1)
+		case it.header:
 			l.out = append(l.out, l.renderHeader(it.sec, width))
 			l.lineOf = append(l.lineOf, -1)
-			continue
+		default:
+			r := &l.rows[l.hits[it.hit].idx]
+			l.out = append(l.out, l.renderRow(r, int(it.hit) == l.cursor, lay, width))
+			l.lineOf = append(l.lineOf, it.hit)
+			shown++
 		}
-		r := &l.rows[l.hits[it.hit].idx]
-		l.out = append(l.out, l.renderRow(r, int(it.hit) == l.cursor, lay, width))
-		l.lineOf = append(l.lineOf, it.hit)
+	}
+	if hidden := len(l.hits) - shown; hidden > 0 && len(l.out) < height {
+		l.out = append(l.out, l.renderMore(hidden, width))
+		l.lineOf = append(l.lineOf, -1)
 	}
 	return l.out
+}
+
+// renderMore is the honest bottom of a clipped list: how many surviving rows
+// are not on screen, above and below taken together.
+//
+// It is here because 5.20's affordance rule cuts both ways. A sheet showing
+// thirteen of thirty verbs with no mark at all is not a short list, it is a
+// list that lies about its length — and this is the surface whose entire job is
+// to answer "what can this room do" without the reader having to guess. The
+// count is of ROWS, not of lines: headers and gaps are chrome and were never
+// what the reader was counting.
+func (l *list) renderMore(hidden, width int) string {
+	l.line.reset(width)
+	l.line.padTo(gutter)
+	l.line.add(strconv.Itoa(hidden)+" more", tokens.TextTertiary)
+	return l.line.emit(&l.buf, l.profile, l.focus, width, false, tokens.Band, sheetGround)
 }
 
 // buildItems interleaves section headers into the surviving set. The hits are
@@ -306,6 +368,9 @@ func (l *list) buildItems() {
 	for i := range l.hits {
 		sec := l.rows[l.hits[i].idx].sec
 		if sec != prev {
+			if len(l.items) > 0 {
+				l.items = append(l.items, item{blank: true, hit: -1})
+			}
 			l.items = append(l.items, item{header: true, sec: sec, hit: -1})
 			prev = sec
 		}
@@ -360,6 +425,17 @@ type layout struct {
 
 func (l *list) layout(width int) layout {
 	verbW := clampInt(l.verbW, verbColMin, verbColMax)
+	// No column takes more than a third of the sheet. The absolute cap above is
+	// measured against the CATALOG, so one outlier — a room titled "Permanent
+	// Aforge spine", an alias row spelling out what it aliases — sets the
+	// column for every row and pushes twenty descriptions into an ellipsis to
+	// spell one verb in full. internal/tui2/settings reached the same rule for
+	// the same column ("never more than a third of the frame, so a long label
+	// never pushes the value off a narrow terminal"), and two surfaces of one
+	// product answering this question differently is how a language drifts.
+	if third := width / 3; verbW > third && third >= verbColMin {
+		verbW = third
+	}
 	if room := width - gutter; verbW > room {
 		verbW = room
 	}
@@ -387,7 +463,26 @@ func (l *list) layout(width int) layout {
 	return lay
 }
 
-// renderHeader draws one dim group name with its surviving count.
+// ruleGap is the space on either side of a header's hairline, so the rule never
+// touches the word it separates from or the count it runs to.
+const ruleGap = 1
+
+// renderHeader draws one group name, its hairline, and its surviving count.
+//
+// The rule is the whole reason a header reads as a header here. Every column of
+// this list is a grey (5.16 spends hue on meaning, and a group name means
+// nothing), so a name drawn in the chrome tier among rows drawn in the primary
+// tier is quieter than its rows but not structurally different from them — and
+// with four groups on one sheet the reader needs the boundary, not just the
+// word. 5.13 allows exactly one mark for this and names it: "hairline rules
+// only at room boundaries", which is the same sentence 12.11 read to give the
+// dialog its two rules. A group inside the sheet is the smaller boundary of the
+// same kind, and it gets the same hairline — one line thick, drawn on the
+// header's own row so it costs no line of its own, at the chrome tier so it
+// recedes under everything it separates.
+//
+// The count keeps the right edge. It is what makes a filtered group legible as
+// a filter ("actions 3" after typing) and it is the one number a group has.
 func (l *list) renderHeader(sec section, width int) string {
 	l.line.reset(width)
 	l.line.add(sec.title(), tokens.TextTertiary)
@@ -398,18 +493,31 @@ func (l *list) renderHeader(sec section, width int) string {
 		}
 	}
 	count := strconv.Itoa(n)
-	if right := width - blocks.Width(count); right > l.line.w {
-		l.line.padTo(right)
-		l.line.add(count, tokens.TextTertiary)
+	right := width - blocks.Width(count)
+	if right <= l.line.w {
+		return l.line.emit(&l.buf, l.profile, l.focus, width, false, tokens.Band, sheetGround)
 	}
-	return l.line.emit(&l.buf, l.profile, l.focus, width, false, tokens.Band)
+	// The rule fills what is left between the name and the count. Under two
+	// cells of gap there is no rule worth drawing and the gap stays whitespace,
+	// which is the same structure spent more quietly.
+	if span := right - l.line.w - 2*ruleGap; span > 0 {
+		l.line.padTo(l.line.w + ruleGap)
+		l.line.add(strings.Repeat(tokens.GlyphTreeDash, span), tokens.TextTertiary)
+	}
+	l.line.padTo(right)
+	l.line.add(count, tokens.TextTertiary)
+	return l.line.emit(&l.buf, l.profile, l.focus, width, false, tokens.Band, sheetGround)
 }
 
-// renderRow draws one row: glyph, verb, description, right column.
+// renderRow draws one row: marker, glyph, verb, description, right column.
 func (l *list) renderRow(r *row, selected bool, lay layout, width int) string {
 	l.line.reset(width)
 	verbTok, descTok, accelTok := rowTokens(r, selected)
 
+	if selected {
+		l.line.add(tokens.GlyphAccentRail, l.markerToken(r))
+	}
+	l.line.padTo(markerCol)
 	if r.glyph != "" {
 		l.line.add(r.glyph, r.glyphTok)
 	}
@@ -449,7 +557,24 @@ func (l *list) renderRow(r *row, selected bool, lay layout, width int) string {
 	if lay.rightW > 0 {
 		l.renderRight(r, accelTok, width, lay.rightW)
 	}
-	return l.line.emit(&l.buf, l.profile, l.focus, width, selected, r.band)
+	return l.line.emit(&l.buf, l.profile, l.focus, width, selected, r.band, sheetGround)
+}
+
+// markerToken tints the selection marker. A room carries its task's identity
+// pastel (5.16: the identity hue answers "which room am I in" peripherally),
+// and everything else carries the secondary grey — the same fallback
+// [rail.View.gutter] makes, so the two surfaces mark a cursor the same way.
+//
+// The identity is dropped below 256 colours rather than approximated, because
+// [tokens.Profile.IdentityDistinct] is explicit that a lying identity is worse
+// than none: at 16 colours eight pastels collapse onto six slots, and a marker
+// that told the reader two different rooms were the same task would be the
+// affordance lying (5.20) in the one cell built to stop it.
+func (l *list) markerToken(r *row) tokens.Token {
+	if i, ok := tokens.IdentityIndex(r.band); ok && l.profile.IdentityDistinct() {
+		return tokens.Identity(i)
+	}
+	return tokens.TextSecondary
 }
 
 // renderRight lays the count chip and the accelerator against the right edge.
@@ -493,13 +618,30 @@ func (l *list) renderRight(r *row, accelTok tokens.Token, width, rightW int) {
 	l.line.add(accel, accelTok)
 }
 
-// rowTokens is the three-tier assignment, and it is where 5.22's checklist item
-// about interactive controls is enforced.
+// rowTokens is the three-tier assignment, and the tier is spent on the COLUMN
+// rather than on the cursor. That is the correction: 5.13's hierarchy is
+// "primary for speech and TITLES, secondary for status lines, tertiary for
+// telemetry", and a row here is exactly those three things left to right — the
+// verb is the title, the description is the status line about it, the
+// accelerator is the key it answers to. Drawn that way a reader scanning thirty
+// rows sees three columns; drawn the old way — verb secondary, description and
+// accelerator both tertiary — they saw two greys a shade apart, which is the
+// "near-uniform grey with no hierarchy" this lane was opened for.
 //
-// A choosable row is secondary at rest and PRIMARY when selected; in a dim
-// group (history, settings) it is tertiary at rest and secondary when selected.
-// Either way it brightens exactly one tier on focus and never lives permanently
-// in the dimmest tier while being interactive.
+// Selection does not brighten the row, and that is 5.16 verbatim: "Selection is
+// a background band, not a foreground color — text keeps its tier color." The
+// band and the ▎ marker carry the cursor, and a row that also changed tier
+// would be saying the same thing three times while destroying the column
+// hierarchy on exactly the row the reader is looking hardest at.
+//
+// The ACCELERATOR is the one exception and it is 5.22's own checklist item:
+// "an interactive chip may never live permanently in the dimmest tier — dim at
+// rest, secondary on focus". It is also the thing this surface exists to teach,
+// so the row under the cursor is where it is worth reading.
+//
+// A DIM GROUP (history, settings) is the whole row one tier down: reference
+// material a reader scrolls to on purpose should not compete with the verbs the
+// palette opened for.
 //
 // A DISABLED row stays tertiary in every column even under the selection band,
 // because it is the one row here that is not interactive, and dimness is the
@@ -508,13 +650,12 @@ func rowTokens(r *row, selected bool) (verb, desc, accel tokens.Token) {
 	if r.disabled != "" {
 		return tokens.TextTertiary, tokens.TextTertiary, tokens.TextTertiary
 	}
-	verb = tokens.TextSecondary
+	verb, desc, accel = tokens.TextPrimary, tokens.TextSecondary, tokens.TextTertiary
 	if r.sec.dim() {
-		verb = tokens.TextTertiary
+		verb, desc = tokens.Demote(verb), tokens.Demote(desc)
 	}
-	desc, accel = tokens.TextTertiary, tokens.TextTertiary
 	if selected {
-		verb, desc, accel = tokens.Promote(verb), tokens.Promote(desc), tokens.Promote(accel)
+		accel = tokens.Promote(accel)
 	}
 	return verb, desc, accel
 }

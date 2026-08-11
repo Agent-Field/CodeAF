@@ -141,13 +141,14 @@ func (p *Palette) Render(width, height int) string {
 	p.out = p.out[:0]
 	p.out = append(p.out, p.header(width))
 	if height >= 3 {
-		p.out = append(p.out, "")
+		p.out = append(p.out, blankLine(&p.line, &p.buf, p.list.profile, p.list.focus, width))
 	}
 	p.bodyTop = len(p.out)
 	p.out = append(p.out, p.list.render(width, height-p.bodyTop)...)
 	if len(p.out) > height {
 		p.out = p.out[:height]
 	}
+	p.out = padSheet(p.out, &p.line, &p.buf, p.list.profile, p.list.focus, width, height)
 	return strings.Join(p.out, "\n")
 }
 
@@ -181,7 +182,7 @@ func (p *Palette) header(width int) string {
 	// hint is a constant they learn once.
 	count := strconv.Itoa(p.list.count()) + "/" + strconv.Itoa(len(p.list.rows))
 	addTail(l, width, count+" "+tokens.GlyphSeparator+" "+escHint, count)
-	return l.emit(&p.buf, p.list.profile, p.list.focus, width, false, tokens.Band)
+	return l.emit(&p.buf, p.list.profile, p.list.focus, width, false, tokens.Band, sheetGround)
 }
 
 // addTail right-aligns the first candidate that fits with a space to spare,

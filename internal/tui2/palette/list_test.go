@@ -1,6 +1,7 @@
 package palette
 
 import (
+	"strconv"
 	"strings"
 	"testing"
 
@@ -335,10 +336,15 @@ func TestColumnsDoNotDanceWhileTyping(t *testing.T) {
 	}
 }
 
-// TestMatchedCharactersBrightenOneTier is the fzf highlight (5.18, 5.21) and
-// the 5.22 checklist item about tiers, checked on the spans themselves so the
-// assertion cannot be satisfied by an accident of escape-sequence ordering.
-func TestMatchedCharactersBrightenOneTier(t *testing.T) {
+// TestMatchedCharactersStandOneTierAboveTheRest is the fzf highlight (5.18,
+// 5.21), checked on the spans themselves so the assertion cannot be satisfied
+// by an accident of escape-sequence ordering.
+//
+// The relationship is what is pinned, not the direction: the matched letters
+// read one tier above the letters around them. They get there by the surround
+// DROPPING rather than by the match rising, because the columns now carry the
+// hierarchy and a verb already sits at the top tier — see [lineBuf.addMatched].
+func TestMatchedCharactersStandOneTierAboveTheRest(t *testing.T) {
 	var l lineBuf
 	l.reset(40)
 	pos := appendPositions(nil, "cancel", "cnl")
@@ -347,9 +353,9 @@ func TestMatchedCharactersBrightenOneTier(t *testing.T) {
 	var bright, base []string
 	for _, s := range l.spans {
 		switch s.tok {
-		case tokens.TextPrimary:
-			bright = append(bright, s.text)
 		case tokens.TextSecondary:
+			bright = append(bright, s.text)
+		case tokens.TextTertiary:
 			base = append(base, s.text)
 		default:
 			t.Fatalf("unexpected token %v on span %q", s.tok, s.text)
@@ -383,7 +389,7 @@ func TestHighlightNeverPaintsIntoTheEllipsis(t *testing.T) {
 	pos := appendPositions(nil, "cancel everything", "cg")
 	l.addMatched("cancel everything", tokens.TextSecondary, pos, 0)
 	for _, s := range l.spans {
-		if s.text == ellipsis && s.tok != tokens.TextSecondary {
+		if s.text == ellipsis && s.tok != tokens.TextTertiary {
 			t.Errorf("the cut mark was highlighted")
 		}
 	}
@@ -507,6 +513,210 @@ func TestModelProseCannotEscapeARow(t *testing.T) {
 	for _, line := range strings.Split(frame, "\n") {
 		if strings.ContainsAny(line, "\r\v\f") {
 			t.Errorf("a row smuggled a line break: %q", line)
+		}
+	}
+}
+
+// -- the sheet's own paint (the aesthetics lane) ------------------------------
+
+// styledPalette is the fixture for the paint tests: the same catalog, bound to a
+// real profile, because everything below is about bytes a headless Styler never
+// writes.
+func styledPalette(t *testing.T, profile tokens.Profile) *Palette {
+	t.Helper()
+	p := New(Options{Styler: tokens.NewStyler(profile, tokens.FocusNormal)})
+	p.SetCatalog(demoCatalog())
+	return p
+}
+
+// TestEveryRowStandsOnTheSheetsGround is 12.11's owed half, closed here: the
+// dialog's boundary was drawn around a panel that painted no ground, so the
+// sheet and the transcript it floats over had the same floor — the terminal's —
+// and two rooms with one floor read as one room (12.13's wall finding, on the
+// other axis).
+func TestEveryRowStandsOnTheSheetsGround(t *testing.T) {
+	p := styledPalette(t, tokens.TrueColor)
+	const width, height = 70, 20
+	ground := tokens.Sheet.Bg(tokens.TrueColor, tokens.FocusNormal)
+	band := tokens.Band.Bg(tokens.TrueColor, tokens.FocusNormal)
+	lines := strings.Split(p.Render(width, height), "\n")
+	if len(lines) != height {
+		t.Fatalf("the sheet rendered %d of its %d rows; the rest show the room behind it", len(lines), height)
+	}
+	for i, line := range lines {
+		if strings.Contains(line, band) || strings.Contains(line, tokens.Reverse(tokens.TrueColor)) {
+			continue // the selected row carries the band instead
+		}
+		if !strings.Contains(line, ground) {
+			t.Errorf("row %d has no ground under it: %q", i, line)
+		}
+		if got := blocks.Width(line); got != width {
+			t.Errorf("row %d paints %d of %d cells; the rest is the room behind it", i, got, width)
+		}
+	}
+}
+
+// TestNoGroundBelow256: at 16 colours the only raised background is the
+// terminal theme's bright black and PaintOn's fallback is reverse video, so a
+// sheet drawn there would be a slab. The boundary survives as the hairline the
+// chrome draws (internal/tui2/dialogchrome).
+func TestNoGroundBelow256(t *testing.T) {
+	for _, profile := range []tokens.Profile{tokens.NoColor, tokens.ANSI16} {
+		p := styledPalette(t, profile)
+		out := p.Render(60, 12)
+		if strings.Contains(out, tokens.Sheet.Bg(profile, tokens.FocusNormal)) &&
+			tokens.Sheet.Bg(profile, tokens.FocusNormal) != "" {
+			t.Errorf("%v painted a ground it cannot draw honestly", profile)
+		}
+	}
+}
+
+// TestSelectionIsMarkedAtEveryProfile is 12.11.2's invariant, applied to the
+// surface it was not applied to: at NoColor this list drew no band (there are no
+// bytes to spend) and had no other carrier, so not one cell differed between the
+// selected row and its neighbours.
+func TestSelectionIsMarkedAtEveryProfile(t *testing.T) {
+	for _, profile := range []tokens.Profile{tokens.NoColor, tokens.ANSI16, tokens.ANSI256, tokens.TrueColor} {
+		p := styledPalette(t, profile)
+		lines := rowsOf(p, 70, 30)
+		marked := 0
+		for _, line := range lines {
+			if strings.Contains(line, tokens.GlyphAccentRail) {
+				marked++
+			}
+		}
+		if marked != 1 {
+			t.Errorf("%v: %d rows carry the selection marker, want exactly 1", profile, marked)
+		}
+	}
+}
+
+// TestTheThreeColumnsAreThreeTiers is the correction this lane was opened for:
+// a row is a title, the status line about it, and the key it answers to (5.13),
+// and drawn at one tier they are a wall of grey.
+func TestTheThreeColumnsAreThreeTiers(t *testing.T) {
+	rows := buildRows(nil, demoCatalog())
+	var live *row
+	for i := range rows {
+		if rows[i].sec == sectionActions && rows[i].disabled == "" {
+			live = &rows[i]
+			break
+		}
+	}
+	if live == nil {
+		t.Fatal("no live action row in the fixture")
+	}
+	verb, desc, accel := rowTokens(live, false)
+	if verb != tokens.TextPrimary || desc != tokens.TextSecondary || accel != tokens.TextTertiary {
+		t.Errorf("columns are %v/%v/%v, want primary/secondary/tertiary", verb, desc, accel)
+	}
+	// 5.16: "selection is a background band, not a foreground color — text
+	// keeps its tier color". Only the accelerator moves, and only because
+	// 5.22's checklist forbids an interactive chip from living permanently in
+	// the dimmest tier.
+	selVerb, selDesc, selAccel := rowTokens(live, true)
+	if selVerb != verb || selDesc != desc {
+		t.Errorf("selection changed the text tiers to %v/%v", selVerb, selDesc)
+	}
+	if selAccel != tokens.Promote(accel) {
+		t.Errorf("the selected row's accelerator is %v, want one tier up", selAccel)
+	}
+}
+
+// TestGroupsAreRuledAndSpaced: 5.13 allows exactly one mark at a boundary and
+// names it — a hairline — and 12.11 read the same sentence to give the dialog
+// its own two rules. A group inside the sheet is the smaller boundary of the
+// same kind.
+func TestGroupsAreRuledAndSpaced(t *testing.T) {
+	p := newTestPalette(t, demoCatalog())
+	lines := rowsOf(p, 80, 120)
+	ruled := 0
+	for i, line := range lines {
+		if !strings.Contains(line, tokens.GlyphTreeDash) {
+			continue
+		}
+		ruled++
+		if i == 0 {
+			continue // the first group opens the list and needs no gap above it
+		}
+		if strings.TrimSpace(lines[i-1]) != "" {
+			t.Errorf("group header %q has no blank line above it", strings.TrimSpace(line))
+		}
+	}
+	if ruled != 4 {
+		t.Errorf("%d group headers carry a rule, want one per section (4)", ruled)
+	}
+}
+
+// TestAClippedListSaysHowMuchIsHidden: 5.20's affordance rule cuts both ways.
+// A `?` sheet showing thirteen of thirty verbs with no mark is not a short list,
+// it is a list lying about its length — on the one surface built to answer
+// "what can this room do" without the reader guessing.
+func TestAClippedListSaysHowMuchIsHidden(t *testing.T) {
+	p := newTestPalette(t, demoCatalog())
+	total := p.Total()
+	lines := rowsOf(p, 80, 8)
+	last := strings.TrimSpace(lines[len(lines)-1])
+	if !strings.HasSuffix(last, "more") {
+		t.Fatalf("a clipped list ends with %q, want a count of what is hidden", last)
+	}
+	shown := 0
+	for _, line := range lines[:len(lines)-1] {
+		if text := strings.TrimSpace(line); text != "" &&
+			!strings.Contains(line, tokens.GlyphTreeDash) {
+			shown++
+		}
+	}
+	if got := last; !strings.HasPrefix(got, strconv.Itoa(total-shown)) {
+		t.Errorf("the cue says %q with %d rows on screen of %d", got, shown, total)
+	}
+	// A list that fits says nothing at all: a cue on a complete list is chrome
+	// that answers no question.
+	full := rowsOf(p, 80, 120)
+	for _, line := range full {
+		if strings.HasSuffix(strings.TrimSpace(line), "more") {
+			t.Errorf("an unclipped list still claims rows are hidden: %q", line)
+		}
+	}
+}
+
+// TestNoColumnTakesMoreThanAThird: the verb column is measured against the
+// CATALOG, so one long room title would otherwise set the column for every row
+// and push every description into an ellipsis.
+func TestNoColumnTakesMoreThanAThird(t *testing.T) {
+	c := demoCatalog()
+	c.Rooms = append(c.Rooms, Room{ID: "t-long", Title: strings.Repeat("verylongname", 3),
+		Attention: rail.AttnQueued, Summary: "a room with an outlier for a name"})
+	p := newTestPalette(t, c)
+	for _, width := range []int{40, 60, 80, 100} {
+		if got := p.list.layout(width).verbW; got > width/3 && got > verbColMin {
+			t.Errorf("at width %d the verb column is %d cells, past the third", width, got)
+		}
+	}
+}
+
+// TestAReversedBandIsOneRun is the 16-colour defect a screenshot found: SGR 7
+// swaps the colours in use, so the tier colours the row wrote inside it landed
+// on its BACKGROUND and the selected row came out striped — one inverted block
+// per span with the padding between them uninverted.
+func TestAReversedBandIsOneRun(t *testing.T) {
+	p := styledPalette(t, tokens.ANSI16)
+	if tokens.ANSI16.SelectionStyle() != tokens.SelectionReverse {
+		t.Skip("16 colours no longer reverses; this test guards that path")
+	}
+	var selected string
+	for _, line := range rowsOf(p, 70, 30) {
+		if strings.Contains(line, tokens.Reverse(tokens.ANSI16)) {
+			selected = line
+			break
+		}
+	}
+	if selected == "" {
+		t.Fatal("no row carries the reversed band")
+	}
+	for _, tok := range []tokens.Token{tokens.TextPrimary, tokens.TextSecondary, tokens.TextTertiary} {
+		if strings.Contains(selected, tok.Fg(tokens.ANSI16, tokens.FocusNormal)) {
+			t.Errorf("a %s foreground is written inside the reversed band: %q", tok, selected)
 		}
 	}
 }
