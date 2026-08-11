@@ -4914,3 +4914,146 @@ prerequisite**, and it lives in `internal/head`, not here.
 
 `make check` is green but for the standing `internal/plan` CJK
 `file name too long` failure.
+
+### 13.13 Aesthetics lane: the `?` sheet had no floor (4d33a1a, efd936b, ad955e6, e49d0b1)
+
+*(Appended at the tail because the doc is append-only and shared; 13.12 landed
+while this lane was measuring.)*
+
+The user, from a live session: *"the question-mark part seems really badly
+designed — blank color, no separator with bg, no color aesthetics at all."*
+Three complaints, and the pty harness confirmed all three in one colour dump of
+`shots/help-overlay/01-help` — every cell of the panel at `bg=default`, the two
+hairlines at `fg=default`, and every word of the list within one tier of every
+other word.
+
+**The finding that explains the other two: 12.11 drew a boundary around a room
+with no floor.** 12.11.1 settles that a floating dialog gets "a one-cell margin
+of its own ground, ruled top and bottom", and both halves shipped as geometry
+only — the panel painted no background and the margin was drawn unpainted, by
+the shell, at the terminal's default foreground. So the sheet's floor WAS the
+transcript's floor (both unpainted), and the brightest cell on the whole surface
+was the dialog's own frame. That is 12.13.3's wall finding arriving on the other
+axis: there two rooms were flush and needed a column of ground between them,
+here two rooms shared one ground and needed a plane of it. It is also 8.1.6
+inverted — chrome outranking everything it surrounds.
+
+#### The token: an elevation, gated as a ladder
+
+`tokens.Sheet` is derived, not authored: `Mix(ground, band, SheetTowardBand)`,
+0.45, which is pinned from both ends and both are tight. Below ~0.35 the sheet
+resolves to the same xterm-256 greyscale entry as the ground and the elevation
+is real in truecolor and gone everywhere else — the degradation failing in the
+one direction nobody screenshots. Above 0.5 the band it carries stops reading as
+raised against it. At 0.45 the three rungs land on **233 / 234 / 235** at 256
+colours, in that order, which `TestSheetLadder` asserts alongside the authored
+ratios (1.091 sheet over ground, 1.144 band over sheet).
+
+`TestBandSeparation` now skips it and says why, because the two surfaces answer
+different questions: **a band is a pill ON a ground and has to be found at a
+glance; a sheet IS a ground and has to be the smallest step that still reads as
+another plane.** A sheet held to the band's 1.15 floor would spend the whole
+ground→band range on the first rung and leave selection nothing to be raised
+above. `SheetSeparationMin` (1.08) is the floor both rungs sign.
+
+`Profile.SheetGround()` is the one place that answers where it may be drawn,
+with `SelectionStyle`'s reasoning verbatim: at 16 colours the only raised
+background is bright black — the user's theme's, and the tier the chrome already
+lives in — and at `NoColor` there are no bytes to spend. **Nothing is lost where
+it is false**: 12.11's boundary is a hairline, and a hairline is a character.
+
+#### What the tier was being spent on
+
+The second complaint had a precise cause. The palette spent its tier axis on the
+CURSOR, not on the COLUMN — verb secondary, description and accelerator both
+tertiary, everything promoted one tier when selected. Two greys a shade apart is
+exactly "near-uniform grey". A row is 5.13's three tiers read left to right (the
+verb is the title, the description is the status line about it, the accelerator
+is the key it answers to), so it is drawn primary / secondary / tertiary and
+**selection no longer changes any of them** — 5.16 in as many words: "selection
+is a background band, not a foreground color — text keeps its tier color." Only
+the accelerator still brightens on the selected row, which is 5.22's checklist
+item about an interactive chip never living permanently in the dimmest tier, and
+it is also the thing the palette exists to teach.
+
+One consequence worth knowing before someone re-reads it as a regression: **the
+fzf highlight had to invert.** `addMatched` promoted the matched runes, and a
+verb now at the primary tier has nothing above it — the highlight would have
+vanished on the one column the reader types at. It demotes the surround instead,
+which preserves the one-tier relationship at every base and is what
+`internal/tui2/settings`' own highlighter already did.
+
+#### Three defects the frames found on the way
+
+1. **Selection was invisible at `--color none`.** The band needs bytes the
+   profile has none of, and this list had no second carrier — not one cell
+   differed between the selected row and its neighbours, with trailing spaces
+   trimmed. This is 12.11.2's defect exactly, closed in the rail and left
+   standing one package over. Every selected row now draws the `▎` accent rail
+   (5.21) in a marker column, **alongside the band rather than instead of it**.
+   That is where this surface parts company with the rail's own gutter, on
+   purpose: the rail marks XOR bands because its one gutter cell is spoken for
+   and because a dimmed pane may not band at all, while a dialog is never the
+   unfocused pane and has the cell to spend. Three things for one column —
+   `--color none` gets a selection, the shallower band on a sheet gets a second
+   carrier, and a thirty-row list becomes scannable from its left edge.
+
+2. **At 16 colours the selected row was STRIPED.** `SGR 7` swaps the two colours
+   in use, so every tier colour the row wrote inside the reversed band landed on
+   its BACKGROUND: one inverted block per span, with the padding runs between
+   them uninverted. A reversed row is now one run in the terminal's own two
+   colours, which is what reverse video means and what
+   `Profile.SelectionStyle`'s own doc says it is for. **The same code is in two
+   other packages** — see the filed list.
+
+3. **The sheet showed 13 of 30 verbs and said nothing about the other 17.** On
+   the one surface built to answer "what can this room do" without the reader
+   guessing (5.20 rule 3), that is not a short list, it is a list lying about its
+   length. A clipped list now ends with the count of what is hidden.
+
+#### Audit table
+
+Read at 120×32 and 80×24, truecolor / 256 / 16 / none / linear, frames in the
+lane's scratchpad harness (`shots/` after, `shots-BEFORE/` for the `?` sheet).
+
+| surface | violation | verdict |
+|---|---|---|
+| `?` capability sheet | no ground; hairlines at default fg; one tier for three columns; no group separators; selection invisible at `--color none`; 17 rows hidden silently | **fixed** (ad955e6, efd936b) |
+| ctrl+k palette | same list, same fixes; one outlier verb sized the column for every row | **fixed** (ad955e6) |
+| settings sheet | no ground; blank rows and the rows below the last one left the transcript showing through | **fixed** (e49d0b1) |
+| consent dialog | same, and it is the surface where "is this part of the transcript or a decision I am being asked for" matters most | **fixed** (e49d0b1) |
+| model picker | same ground, same reversed-band striping | **fixed** (e49d0b1) |
+| dialog margin + rules | the loudest cells on the sheet, and a margin made of the room behind it | **fixed** (efd936b) |
+| dialog SIZE | `2/3 × 2/3` of the lens: at 120×32 that is a 60×18 panel where 12 of 30 descriptions truncate; at 80×24 it is 8 content rows for a 56-row catalog | **filed** — `internal/tui2/layout.go:238-239`. The linear-mode frame is the proof: at 96 columns every description fits and nothing truncates. A list surface wants ~3/4 of the width and more of the height; the two axes need not share a fraction. |
+| rail, homes | the reversed-band striping of finding 2, same function | **filed** — `internal/tui2/rail/paint.go:104`, `internal/tui2/homes/line.go:171`. The fix is three lines; see `palette/line.go`'s `reversed`. |
+| rail identity at 16 colours | `identityOr` paints the identity pastel whatever the profile, but `Profile.IdentityDistinct()` is false below 256 and says a lying identity is worse than none | **filed** — `internal/tui2/rail/render.go:650` |
+| home transcript, cold open | an entirely blank lens. 5.22 rule 6 asks an empty state to TEACH ("three clickable example actions instead of a blank transcript"); the entered room at least says a sentence (`chat/rooms.go:646`) | **filed** — `internal/tui2/chat/panes.go:57` |
+| the lens's left edge | place line, composer and footer start at column 0 while the meta strip starts at column 2. 5.13 asks for a spacing rhythm and this is four surfaces disagreeing about where a room begins | **filed** — `chat/panes.go`, `internal/tui2/composer`, `internal/tui2/footer` |
+| empty-room note | model-facing prose at the primary tier, running the full width of the lens with no measure. It is chrome about an absence, not speech | **filed** — `internal/tui2/chat/rooms.go:646` |
+| palette + modelui in linear mode | no `Linear` door at all, so they paint a ground and a band where `settings` and `consentui` drop both | **filed** — one `Options.Linear` field each plus the flag in `chat/overlay.go`'s three constructors |
+
+#### Two notes for whoever reads this next
+
+**The chrome pane is a package, not a method.** `internal/tui2/dialogchrome` is
+~60 lines and could have lived on any one surface. It does not, because the ring
+belongs to the DIALOG rather than to what is inside it — four components float
+through one slot and must not each grow their own answer. Its binding is two
+lines in `chat`'s `raise()`/`closeOverlay()`, which landed inside 0a25314
+(another lane committed the file while both of us had it open; the lines are
+`a.shell.SetPane(tui2.LayerDialogChrome, dialogchrome.New(a.style))` and its nil
+on close).
+
+**Method note, since it generalises and 12.11 already said half of it.** Three
+of the defects above were invisible to the component suites because the suites
+assert on SPANS and the law is about the FRAME. A span carrying `TextTertiary`
+is correct in isolation and wrong when every span on the sheet carries a
+neighbouring tier; a band written as `SGR 7` is correct until a foreground is
+written inside it; a row is correct at its last letter and lying at the panel's
+edge. The tests added here are all frame-shaped for that reason — every row of
+the rectangle, at every profile, measured after paint — and the harness colour
+dump (`fg`/`bg` per cell, replayed from the recorded pty stream) is what turned
+"looks flat" into four named causes in one pass. It costs about forty lines of
+Python and it belongs in any lane that is going to argue about a screenshot.
+
+`make check` is green but for the standing `internal/plan` CJK
+`file name too long` failure.
