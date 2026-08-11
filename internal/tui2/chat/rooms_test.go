@@ -880,3 +880,140 @@ func contains(haystack []string, needle string) bool {
 	}
 	return false
 }
+
+// THE DEFECT: entering a task knew LESS about it than the card you entered
+// from. The card falls back to "1 part running" when the root itself says
+// nothing (13.3.3) and carries the cost, the elapsed and the atomic mark;
+// taskScope built row 0 from the node a second time and carried none of it. On a
+// job root — which "usually carries no status of its own worth showing", as
+// taskCard's own comment says — the difference was the whole row.
+//
+// 5.15 makes the card a PREVIEW of the room, and a preview that outranks the
+// thing it previews is the affordance lying in the one direction nobody checks.
+func TestAnEnteredRoomKnowsWhatItsCardKnew(t *testing.T) {
+	app, _ := boardApp(t)
+	press(app, "ctrl+o")
+
+	for _, tc := range []struct{ digit, name string }{
+		{"5", "wisp-parity"},
+		{"6", "perf-audit"}, // atomic, settled: the shape the screenshot caught
+	} {
+		press(app, tc.digit)
+		card := app.railModel.Selected()
+		if card.Name != tc.name {
+			t.Fatalf("digit %s selected %q, want %q", tc.digit, card.Name, tc.name)
+		}
+		press(app, "enter")
+		surface := app.railModel.Rows()[0]
+
+		if surface.Kind != rail.RowSurface {
+			t.Fatalf("%s: row 0 is %v, not the conversational surface", tc.name, surface.Kind)
+		}
+		if surface.Status != card.Status {
+			t.Fatalf("%s: the room says %q and the card said %q", tc.name, surface.Status, card.Status)
+		}
+		if surface.Meta != card.Meta {
+			t.Fatalf("%s: the room's telemetry is %+v and the card's was %+v",
+				tc.name, surface.Meta, card.Meta)
+		}
+		if surface.Life != card.Life || surface.Seed != card.Seed {
+			t.Fatalf("%s: the room's lifecycle or identity moved: %+v vs %+v", tc.name, surface, card)
+		}
+		press(app, "esc")
+	}
+}
+
+// THE DEFECT: a task whose subtree has journaled nothing rendered a completely
+// blank main pane — the same picture an unwired room draws, which is exactly
+// what 12.10 warns must never happen. A room that is empty has to SAY it is
+// empty (5.20 rule 1).
+func TestAnEmptyTaskRoomSaysSoRatherThanDrawingNothing(t *testing.T) {
+	app, _ := boardApp(t)
+	press(app, "ctrl+o")
+	press(app, "6") // perf-audit: no rows under it in the fixture
+	msg := press(app, "enter")
+
+	if app.view == nil || app.view.kind != viewNode {
+		t.Fatalf("enter did not open the room: %+v", app.view)
+	}
+	if trail, ok := msg.(nodeMessagesMsg); ok {
+		app.applyNodeMessages(trail)
+	}
+
+	// The note wraps at transcript width, so the assertion is on the phrase
+	// that carries the meaning rather than on the whole sentence.
+	frame := ansi.Strip(app.Frame(120, 30))
+	if !strings.Contains(frame, "nothing journaled here yet") {
+		t.Fatalf("an empty room drew no teaching line:\n%s", frame)
+	}
+	// And it is not empty of the task either: the card the reader entered from
+	// is still on screen, so the room is never poorer than the preview.
+	if !strings.Contains(frame, "perf-audit") {
+		t.Fatalf("the empty room forgot which task it is:\n%s", frame)
+	}
+
+	// The teaching is only on screen while it is true: the first journaled row
+	// retires it.
+	app.applyNodeMessages(nodeMessagesMsg{node: "job-2", messages: []store.Message{
+		{Seq: 400, SessionID: testSession, Role: store.RoleAgent, NodeID: "job-2",
+			Body: "the audit finished"},
+	}})
+	frame = ansi.Strip(app.Frame(120, 30))
+	if strings.Contains(frame, "nothing journaled here yet") {
+		t.Fatalf("the teaching line outlived the emptiness it described:\n%s", frame)
+	}
+	if !strings.Contains(frame, "the audit finished") {
+		t.Fatalf("the room did not take its first row:\n%s", frame)
+	}
+}
+
+// THE DEFECT: esc out of a room re-opened it. A pop commits, the committed row
+// is the one just left, and openTaskRoom sees the same node and returns early —
+// so the main pane stayed in the room the reader had escaped from, at home, for
+// the rest of the session. 5.15: "selection previews; enter opens", and esc is a
+// movement of the map.
+func TestEscOutOfARoomLeavesIt(t *testing.T) {
+	app, _ := boardApp(t)
+	press(app, "ctrl+o")
+	press(app, "5")
+	press(app, "enter")
+	if app.view == nil || app.view.kind != viewNode || app.view.node != "job-1" {
+		t.Fatalf("enter did not open the room: %+v", app.view)
+	}
+
+	press(app, "esc")
+	if app.railModel.Depth() != 0 {
+		t.Fatalf("esc did not pop the scope: depth = %d", app.railModel.Depth())
+	}
+	if app.view != nil && app.view.kind == viewNode {
+		t.Fatalf("the main pane stayed in the room esc left: %+v", app.view)
+	}
+	frame := ansi.Strip(app.Frame(120, 30))
+	if !strings.Contains(frame, "wisp-parity") {
+		t.Fatalf("popping back lost the card the cursor is on:\n%s", frame)
+	}
+}
+
+// The same rule, one floor down: esc out of a home must not bounce straight back
+// into it. The homes branch of bind calls Enter again on a commit, so a
+// committing pop re-entered the room it had just left.
+func TestEscOutOfAHomeLeavesIt(t *testing.T) {
+	app, _ := boardApp(t)
+	press(app, "ctrl+o")
+	press(app, "end")
+	if app.railModel.Selected().ID != homes.GroupRowID {
+		t.Fatalf("the last row is %q, not the homes group", app.railModel.Selected().ID)
+	}
+	press(app, "enter") // the group is a lid: it expands in place
+	press(app, "down")
+	press(app, "enter") // into the first home
+	depth := app.railModel.Depth()
+	if depth == 0 {
+		t.Fatalf("enter did not descend into a home")
+	}
+
+	press(app, "esc")
+	if got := app.railModel.Depth(); got >= depth {
+		t.Fatalf("esc left the depth at %d, want less than %d — the pop re-entered", got, depth)
+	}
+}
