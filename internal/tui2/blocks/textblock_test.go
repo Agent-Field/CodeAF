@@ -143,6 +143,129 @@ func TestWrapKeepsWordsAndHonoursBreaks(t *testing.T) {
 	}
 }
 
+// Depth is a real narrowing, not a shove: an indented block wraps inside the
+// room it has left, so it never overflows the terminal it was drawn in.
+func TestIndentNarrowsRatherThanOverflows(t *testing.T) {
+	const width = 40
+	for _, indent := range []int{0, 1, 2, 4, 9} {
+		b := NewText("turn", Header{Glyph: "◐", Title: "aforge", Desc: "streaming a reply"})
+		b.Indent = indent
+		b.Write("the quick brown fox jumps over the lazy dog and keeps going for a while")
+		b.Finalize(EndTruncatedByCap)
+		rows := b.Rows(width)
+		if len(rows) < 3 {
+			t.Fatalf("indent %d: %d rows, expected a header, a body and a cut rule", indent, len(rows))
+		}
+		for i, row := range rows {
+			if w := Width(row); w > width {
+				t.Fatalf("indent %d row %d is %d cells: %q", indent, i, w, row)
+			}
+			if indent > 0 && !strings.HasPrefix(row, strings.Repeat(" ", indent)) {
+				t.Fatalf("indent %d row %d does not sit at depth: %q", indent, i, row)
+			}
+		}
+		if n := b.SettledRows(width); n != len(rows) {
+			t.Fatalf("indent %d: a finalized block settled %d of %d rows", indent, n, len(rows))
+		}
+	}
+}
+
+// The whole reason the field exists (P1 seam 1): a streamed preview and the
+// journaled twin it becomes must occupy the same columns, or the text jumps
+// sideways at the moment the stream finalizes and reads as a different thing.
+func TestIndentedPreviewLinesUpWithItsTwin(t *testing.T) {
+	const (
+		width  = 50
+		indent = 3
+		body   = "an answer that wraps across more than one row so the depth shows"
+	)
+	preview := NewText("preview", Header{Glyph: "◐", Title: "aforge"})
+	preview.Indent = indent
+	preview.Write(body)
+
+	twin := NewText("journaled", Header{Glyph: "✓", Title: "aforge"})
+	twin.Indent = indent
+	twin.Write(body)
+	twin.Finalize(EndCompleted)
+
+	live, settled := preview.Rows(width), twin.Rows(width)
+	if len(live) != len(settled) {
+		t.Fatalf("preview has %d rows, its twin %d", len(live), len(settled))
+	}
+	for i := 1; i < len(live); i++ { // row 0 is the header; its glyph differs
+		if live[i] != settled[i] {
+			t.Fatalf("body row %d moved when the stream finalized:\n live %q\n twin %q",
+				i, live[i], settled[i])
+		}
+	}
+}
+
+// Zero is not a special case with a shortcut — it is the old behaviour, byte
+// for byte, and this is the test that says so.
+func TestZeroIndentIsTheOldBehaviour(t *testing.T) {
+	build := func(indent int) []string {
+		b := NewText("t", Header{Glyph: "◐", Title: "aforge", Desc: "x"})
+		b.Indent = indent
+		b.Write("the quick brown fox jumps over the lazy dog")
+		b.Finalize(EndInterrupted)
+		return append([]string(nil), b.Rows(36)...)
+	}
+	flush, negative := build(0), build(-4)
+	if len(flush) != len(negative) {
+		t.Fatalf("a negative indent changed the row count: %d vs %d", len(flush), len(negative))
+	}
+	for i := range flush {
+		if flush[i] != negative[i] {
+			t.Fatalf("a negative indent moved row %d:\n %q\n %q", i, flush[i], negative[i])
+		}
+		if strings.HasPrefix(flush[i], " ") {
+			t.Fatalf("a zero indent padded row %d: %q", i, flush[i])
+		}
+	}
+}
+
+// An indent wider than the terminal is clamped, not obeyed: something honest
+// beats nothing at all, and no row may ever exceed the width it was given.
+func TestIndentIsClampedNotObeyed(t *testing.T) {
+	for width := 1; width <= 20; width++ {
+		b := NewText("t", Header{Glyph: "◐", Title: "aforge"})
+		b.Indent = 30
+		b.Write("body text that has to go somewhere")
+		rows := b.Rows(width)
+		if len(rows) == 0 {
+			t.Fatalf("width %d: an over-indented block rendered nothing", width)
+		}
+		for _, row := range rows {
+			if w := Width(row); w > width {
+				t.Fatalf("width %d: row %q is %d cells", width, row, w)
+			}
+		}
+		if n := b.SettledRows(width); n > len(rows) {
+			t.Fatalf("width %d: settled %d of %d rows", width, n, len(rows))
+		}
+	}
+}
+
+// The incremental door has to agree with the whole-block door at depth too,
+// or a streaming frame paints a different indent than a rebuild does.
+func TestIndentedAppendRowsFromMatchesRows(t *testing.T) {
+	b := NewText("t", Header{Glyph: "◐", Title: "aforge"})
+	b.Indent = 4
+	b.Write("a body long enough to wrap several times at this width, several times over")
+	rows := b.Rows(28)
+	for start := 0; start <= len(rows); start++ {
+		got := b.AppendRowsFrom(nil, 28, start)
+		if len(got) != len(rows)-start {
+			t.Fatalf("start %d: %d rows, want %d", start, len(got), len(rows)-start)
+		}
+		for i := range got {
+			if got[i] != rows[start+i] {
+				t.Fatalf("start %d row %d:\n got %q\nwant %q", start, i, got[i], rows[start+i])
+			}
+		}
+	}
+}
+
 func TestEmptyTextBlockHasNoPhantomRow(t *testing.T) {
 	b := NewText("t", Header{Glyph: "◐", Title: "aforge"})
 	if got := len(b.Rows(40)); got != 1 {

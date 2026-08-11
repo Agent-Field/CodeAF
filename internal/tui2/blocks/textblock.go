@@ -24,6 +24,23 @@ type TextBlock struct {
 	Styler Styler
 	// BodyState is the liveness the body is painted at.
 	BodyState State
+	// Indent inches the whole block right by that many cells — header, body,
+	// and cut rule alike — and takes the cells out of its own wrap width, so
+	// an indented block is a narrower block and not an overflowing one.
+	//
+	// It exists for one shape: a streamed preview of a reply and the journaled
+	// twin it becomes must sit at the SAME depth, or the moment the stream
+	// finalizes the text jumps sideways and the eye reads it as a different
+	// thing happening. Depth is the surface's to decide (a reply nested under
+	// its turn, a tool row under its card); the block only has to be able to
+	// hold one.
+	//
+	// Zero is flush left and costs nothing: no padding is measured, built, or
+	// concatenated, and every row is the string it was before this field
+	// existed. An Indent that would leave less than one cell of content is
+	// clamped rather than refused — a block on a 4-column terminal renders
+	// something honest instead of nothing.
+	Indent int
 
 	id      string
 	body    string
@@ -119,7 +136,7 @@ func (b *TextBlock) SettledRows(width int) int {
 	if b.HeaderLive {
 		return 0
 	}
-	b.reflow(width)
+	b.reflow(b.inner(width))
 	return b.headRows() + len(b.stable)
 }
 
@@ -135,33 +152,50 @@ func (b *TextBlock) AppendRowsFrom(dst []string, width, start int) []string {
 	if width < 1 {
 		width = 1
 	}
-	b.reflow(width)
+	inner := b.inner(width)
+	// repeat slices a preallocated run, so the indent itself never allocates.
+	pad := repeat(' ', width-inner)
+	b.reflow(inner)
 	st := styler(b.Styler)
 	// No closure: a captured dst would escape to the heap and cost an
 	// allocation on every streaming frame.
 	row := 0
 	if b.hasHead() {
 		if row >= start {
-			dst = append(dst, b.Head.Render(width, st))
+			dst = append(dst, shift(pad, b.Head.Render(inner, st)))
 		}
 		row++
 	}
 	for _, line := range b.stable {
 		if row >= start {
-			dst = append(dst, st.Paint(truncate(line, width), b.BodyState, HueNone))
+			dst = append(dst, shift(pad, st.Paint(truncate(line, inner), b.BodyState, HueNone)))
 		}
 		row++
 	}
 	for _, line := range b.tail {
 		if row >= start {
-			dst = append(dst, st.Paint(truncate(line, width), b.BodyState, HueNone))
+			dst = append(dst, shift(pad, st.Paint(truncate(line, inner), b.BodyState, HueNone)))
 		}
 		row++
 	}
-	if rule := CutRule(b.end, width, st); rule != "" && row >= start {
-		dst = append(dst, rule)
+	if rule := CutRule(b.end, inner, st); rule != "" && row >= start {
+		dst = append(dst, shift(pad, rule))
 	}
 	return dst
+}
+
+// inner is the width the block's own content is laid out in: the terminal's
+// width less the indent, and never less than one cell. Every measurement in
+// this type goes through it, so the wrap state, the settled-head count and the
+// rendered rows can never disagree about how wide the block is.
+func (b *TextBlock) inner(width int) int {
+	if b.Indent <= 0 {
+		return width
+	}
+	if inner := width - b.Indent; inner >= 1 {
+		return inner
+	}
+	return 1
 }
 
 func (b *TextBlock) hasHead() bool {
@@ -177,7 +211,7 @@ func (b *TextBlock) headRows() int {
 }
 
 func (b *TextBlock) rowCount(width int) int {
-	b.reflow(width)
+	b.reflow(b.inner(width))
 	n := b.headRows() + len(b.stable) + len(b.tail)
 	if b.end.Mark() != "" {
 		n++
