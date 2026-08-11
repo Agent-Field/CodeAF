@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"math"
 	"sort"
@@ -716,6 +717,281 @@ func (s *Store) SpendByJob(since, until time.Time, limit int) ([]JobSpend, error
 		}
 	}
 	return spends, nil
+}
+
+// SpendSlice is one class of runs inside a window: how many there were, what
+// they cost, and the tokens they moved. It is a slice of a bill rather than a
+// bill, because a room's bill has two parts the journal knows differently well
+// and reporting them as one number would be reporting the weaker half's
+// certainty as the stronger half's.
+type SpendSlice struct {
+	Runs             int
+	Cost             float64
+	PromptTokens     int
+	CompletionTokens int
+	CachedTokens     int
+}
+
+func (slice *SpendSlice) add(other SpendSlice) {
+	slice.Runs += other.Runs
+	slice.Cost += other.Cost
+	slice.PromptTokens += other.PromptTokens
+	slice.CompletionTokens += other.CompletionTokens
+	slice.CachedTokens += other.CachedTokens
+}
+
+// RoomSpend is what one room of conversation has cost, split by how well the
+// journal can say so.
+//
+// "A usage row carries a node and a time, never a session" was true when it was
+// written and is now true of exactly half the bill:
+//
+//   - Work commissioned FROM a room carries the room on its node. The splice
+//     stamps Provenance.SessionID on every node it admits, and every repair,
+//     revision and retry underneath copies it forward, so summing usage rows
+//     whose node names this room is exact — no window, no guess, no double
+//     counting.
+//   - The head's OWN calls — routing a message, compiling an instruction,
+//     writing the reply — bill the spine, which belongs to no room at all
+//     (pool.SpendNode defaults to RootID for precisely that reason). Nothing
+//     in the row says which room was being answered. Only the window says it,
+//     and only while one room is talking.
+//
+// So this carries two figures and a warning rather than one number. Work is
+// this room's, exactly. Spine is what conversation cost inside the window,
+// which is this room's alone only when this room was the only one live —
+// Shared says it was not, and a renderer that quotes Spine anyway is quoting
+// an upper bound.
+type RoomSpend struct {
+	SessionID string
+	// SinceSeq and Since are the journal row the window opens at: the room's
+	// first message for a whole-room read, the room's newest user message for
+	// a turn. Zero means there was nothing to open at.
+	SinceSeq int64
+	Since    time.Time
+	// Last is the newest usage row inside the window, or the zero time when
+	// there is none. It is the journal's own timestamp rather than a clock
+	// read here, so two lenses asking the same question agree.
+	Last time.Time
+
+	Work  SpendSlice
+	Spine SpendSlice
+
+	// Shared says another room was live inside this window — it spent against
+	// its own nodes, or it was spoken in. Spine is then a ceiling on this
+	// room's conversational cost and not its bill.
+	Shared bool
+
+	// HeadPrompt is the largest single prompt any spine call sent inside the
+	// window, which is the closest thing to the head's context occupancy the
+	// journal can currently produce.
+	//
+	// It is honest for the head and for nothing else. A spine row is written
+	// once per provider call, so its prompt_tokens IS that call's whole
+	// context — the answering call's prompt dominates the routing and
+	// compiling calls beside it, which see one instruction rather than the
+	// thread. A leaf's row is the SUM of a whole tool loop's calls, so the
+	// same maximum taken over Work rows would be a number with no referent;
+	// that is why this is measured over Spine alone.
+	//
+	// It is NOT 5.9's durable context figure and must never be labelled as
+	// one. 5.9 needs executors to journal window-size high-water marks, which
+	// no executor does yet; until they do, this is what the journal can say,
+	// it can only say it about the conversation, and it says nothing at all
+	// when Shared is true.
+	HeadPrompt int
+}
+
+// Recorded reports whether the journal has a single run to show for the
+// window. It is the distinction a bare float64 cannot make and the one the
+// renderer's missing-data law (8.2.20) turns on: false means nothing has been
+// billed here — absence, drawn as — — while true with a zero Cost means runs
+// that genuinely cost nothing, which is $0.00 and a different sentence.
+func (spend RoomSpend) Recorded() bool { return spend.Work.Runs+spend.Spine.Runs > 0 }
+
+// Runs is every run the window counted, room work and conversation together.
+func (spend RoomSpend) Runs() int { return spend.Work.Runs + spend.Spine.Runs }
+
+// Cost is the whole window's measured money. It folds the ambiguous half in,
+// so a caller that shows it while Shared is true is showing a ceiling; a
+// caller that wants only what it can defend shows Work.Cost.
+func (spend RoomSpend) Cost() float64 { return spend.Work.Cost + spend.Spine.Cost }
+
+// SessionSpend is one room's whole bill, from its first message to now.
+//
+// The second return is presence, not emptiness: false means this room has
+// never been spoken in, so there is no window and nothing to say. A room that
+// exists and has billed nothing returns true with Recorded false, which is a
+// different fact and renders as a different glyph.
+func (s *Store) SessionSpend(sessionID string) (RoomSpend, bool, error) {
+	sessionID = strings.TrimSpace(sessionID)
+	if sessionID == "" {
+		return RoomSpend{}, false, nil
+	}
+	seq, at, found, err := firstMessageOf(s.db, sessionID)
+	if err != nil {
+		return RoomSpend{}, false, fmt.Errorf("session spend %q: %w", sessionID, err)
+	}
+	if !found {
+		return RoomSpend{}, false, nil
+	}
+	spend, err := roomSpendSince(s.db, sessionID, seq)
+	if err != nil {
+		return RoomSpend{}, false, fmt.Errorf("session spend %q: %w", sessionID, err)
+	}
+	spend.Since = at
+	return spend, true, nil
+}
+
+// TurnSpend is what the room's newest turn has cost so far: the window that
+// opens at the room's newest user message and runs to the end of the journal.
+//
+// A turn is bounded by the message that asked for it because that is the only
+// boundary the journal draws for one. There is no turn row and no turn id —
+// the head answers a message, spends against the spine while it does, and the
+// work it commissions bills its own nodes. The user's last word is where all
+// three start.
+//
+// The second return is false when the room holds no user message: nothing has
+// been asked, so no turn exists to cost. That is absence and not zero.
+func (s *Store) TurnSpend(sessionID string) (RoomSpend, bool, error) {
+	sessionID = strings.TrimSpace(sessionID)
+	if sessionID == "" {
+		return RoomSpend{}, false, nil
+	}
+	seq, at, found, err := latestUserMessageOf(s.db, sessionID)
+	if err != nil {
+		return RoomSpend{}, false, fmt.Errorf("turn spend %q: %w", sessionID, err)
+	}
+	if !found {
+		return RoomSpend{}, false, nil
+	}
+	spend, err := roomSpendSince(s.db, sessionID, seq)
+	if err != nil {
+		return RoomSpend{}, false, fmt.Errorf("turn spend %q: %w", sessionID, err)
+	}
+	spend.Since = at
+	return spend, true, nil
+}
+
+// firstMessageOf and latestUserMessageOf open the two windows above. Both read
+// one row off messages_session_seq / messages_session_role_seq, which carry
+// every column they touch, so opening a window is an index seek rather than a
+// scan of the room.
+func firstMessageOf(query rowQuerier, sessionID string) (int64, time.Time, bool, error) {
+	return messageBound(query, `
+		SELECT seq, ts FROM messages WHERE session_id = ?
+		ORDER BY seq LIMIT 1`, sessionID)
+}
+
+func latestUserMessageOf(query rowQuerier, sessionID string) (int64, time.Time, bool, error) {
+	return messageBound(query, `
+		SELECT seq, ts FROM messages WHERE session_id = ? AND role = ?
+		ORDER BY seq DESC LIMIT 1`, sessionID, string(RoleUser))
+}
+
+func messageBound(query rowQuerier, statement string, args ...any) (int64, time.Time, bool, error) {
+	var seq int64
+	var stamp string
+	err := query.QueryRow(statement, args...).Scan(&seq, &stamp)
+	if errors.Is(err, sql.ErrNoRows) {
+		return 0, time.Time{}, false, nil
+	}
+	if err != nil {
+		return 0, time.Time{}, false, err
+	}
+	at, parseErr := parseTime(stamp)
+	if parseErr != nil {
+		at = time.Time{}
+	}
+	return seq, at, true, nil
+}
+
+// roomSpendSince is the one query both reads above are made of.
+//
+// Shape notes, against 12.1.6's perf ledger. The outer table is usage under a
+// range constraint on its own primary key (`seq` IS the rowid), so the scan is
+// the tail of the journal from the window's first row and never the whole
+// table; nodes is entered by primary key, once per row in that tail, through a
+// LEFT JOIN, which additionally fixes the join order the way the subtree
+// query's CROSS JOIN has to fix it by hand. No index is added for this: the
+// two it uses already exist, and an index that measured nothing is a write
+// tax on every executed node.
+func roomSpendSince(query rowQuerier, sessionID string, sinceSeq int64) (RoomSpend, error) {
+	spend := RoomSpend{SessionID: sessionID, SinceSeq: sinceSeq}
+	args := []any{sessionID, sessionID, sessionID, sessionID, sessionID, sessionID, sinceSeq}
+	var elsewhere int
+	var last string
+	if err := query.QueryRow(roomSpendQuery, args...).Scan(
+		&spend.Work.Runs, &spend.Work.Cost, &spend.Work.PromptTokens,
+		&spend.Work.CompletionTokens, &spend.Work.CachedTokens,
+		&spend.Spine.Runs, &spend.Spine.Cost, &spend.Spine.PromptTokens,
+		&spend.Spine.CompletionTokens, &spend.Spine.CachedTokens,
+		&spend.HeadPrompt, &elsewhere, &last,
+	); err != nil {
+		return RoomSpend{}, err
+	}
+	if last != "" {
+		if at, err := parseTime(last); err == nil {
+			spend.Last = at
+		}
+	}
+	spend.Shared = elsewhere != 0
+	if !spend.Shared {
+		// A room that spent nothing can still have been talked over: the other
+		// room's own conversation bills the spine under no name at all, so the
+		// only trace of it inside this window is that somebody else was
+		// speaking. One primary-key range read over the same tail answers it.
+		spoken, err := otherRoomsSpokeSince(query, sessionID, sinceSeq)
+		if err != nil {
+			return RoomSpend{}, err
+		}
+		spend.Shared = spoken
+	}
+	if spend.Shared {
+		// The head-window figure is the one number here that cannot be a
+		// ceiling and still mean anything: half a context is not a context.
+		// Two rooms in the window means the largest prompt may be the other
+		// room's, so this room says nothing rather than something borrowed.
+		spend.HeadPrompt = 0
+	}
+	return spend, nil
+}
+
+// roomSpendQuery separates the room's own rows from the spine's with one CASE
+// in one pass rather than with two statements, because two statements over the
+// same tail read it twice and can straddle a write. It is named rather than
+// inlined so the plan test can explain the statement the code actually runs.
+const roomSpendQuery = `
+		SELECT
+		    COALESCE(SUM(CASE WHEN nodes.session_id = ? THEN 1 ELSE 0 END), 0),
+		    COALESCE(SUM(CASE WHEN nodes.session_id = ? THEN usage.cost ELSE 0 END), 0),
+		    COALESCE(SUM(CASE WHEN nodes.session_id = ? THEN usage.prompt_tokens ELSE 0 END), 0),
+		    COALESCE(SUM(CASE WHEN nodes.session_id = ? THEN usage.completion_tokens ELSE 0 END), 0),
+		    COALESCE(SUM(CASE WHEN nodes.session_id = ? THEN usage.cached_tokens ELSE 0 END), 0),
+		    COALESCE(SUM(CASE WHEN COALESCE(nodes.session_id, '') = '' THEN 1 ELSE 0 END), 0),
+		    COALESCE(SUM(CASE WHEN COALESCE(nodes.session_id, '') = '' THEN usage.cost ELSE 0 END), 0),
+		    COALESCE(SUM(CASE WHEN COALESCE(nodes.session_id, '') = '' THEN usage.prompt_tokens ELSE 0 END), 0),
+		    COALESCE(SUM(CASE WHEN COALESCE(nodes.session_id, '') = '' THEN usage.completion_tokens ELSE 0 END), 0),
+		    COALESCE(SUM(CASE WHEN COALESCE(nodes.session_id, '') = '' THEN usage.cached_tokens ELSE 0 END), 0),
+		    COALESCE(MAX(CASE WHEN COALESCE(nodes.session_id, '') = '' THEN usage.prompt_tokens ELSE 0 END), 0),
+		    COALESCE(MAX(CASE WHEN COALESCE(nodes.session_id, '') NOT IN ('', ?) THEN 1 ELSE 0 END), 0),
+		    COALESCE(MAX(usage.ts), '')
+		FROM usage LEFT JOIN nodes ON nodes.id = usage.node_id
+		WHERE usage.seq >= ?`
+
+// otherRoomsSpokeSince reports whether any room but this one was spoken in
+// after seq. Messages are keyed by seq, so this is the tail of one index.
+func otherRoomsSpokeSince(query rowQuerier, sessionID string, sinceSeq int64) (bool, error) {
+	var spoke int
+	if err := query.QueryRow(`
+		SELECT EXISTS(
+		    SELECT 1 FROM messages
+		    WHERE seq >= ? AND session_id <> '' AND session_id <> ?
+		)`, sinceSeq, sessionID).Scan(&spoke); err != nil {
+		return false, err
+	}
+	return spoke != 0, nil
 }
 
 // NodeModels names every model that served one node's subtree, most expensive
