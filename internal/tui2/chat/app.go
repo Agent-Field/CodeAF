@@ -938,8 +938,18 @@ func (a *App) navigate() tea.Cmd {
 func (a *App) toggleReceipts() tea.Cmd {
 	a.receiptsOpen = !a.receiptsOpen
 	moved := false
-	for i := 0; i < a.transcript.Len(); i++ {
-		if block, ok := a.transcript.Block(i).(*messageBlock); ok {
+	// The transcript the READER IS LOOKING AT, which is not always the room's
+	// own: a task room and a preview card each carry their own block list, and
+	// the fold used to walk the conversation's regardless — so ctrl+r inside a
+	// task room opened rows nobody could see and left the ones on screen shut.
+	// 5.20 rule 5's UI duty is rendering receipts in the room the user is
+	// looking at, and the fold is the same rule said as a keystroke.
+	transcript := a.pane.transcript
+	if transcript == nil {
+		transcript = a.transcript
+	}
+	for i := 0; i < transcript.Len(); i++ {
+		if block, ok := transcript.Block(i).(*messageBlock); ok {
 			moved = block.SetExpanded(a.receiptsOpen) || moved
 		}
 	}
