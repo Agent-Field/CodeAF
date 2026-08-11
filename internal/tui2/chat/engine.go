@@ -44,6 +44,21 @@ type Backend interface {
 	// indexed row, and an unchanged answer means the whole thread is unchanged.
 	// It is what keeps the poll from being a scan.
 	LatestEventSeq() (int64, error)
+
+	// SessionSpend and TurnSpend are 10.5.23's two money windows: what this
+	// room has cost since it opened, and what the turn on screen has cost.
+	// They are separate reads because they answer different questions in
+	// different places — the room's bill belongs to the status line, the
+	// turn's to the composer's meta strip, and the split is the whole of
+	// 10.5.23's "these never mix".
+	//
+	// The middle return is PRESENCE and not emptiness. A room nobody has ever
+	// spoken in has no window to measure, which is different from a window that
+	// measured nothing; and [store.RoomSpend.Recorded] separates "nothing was
+	// billed" from "a run cost zero". Every one of those distinctions is a
+	// different glyph under 8.2.20, so none of them may collapse into a float.
+	SessionSpend(sessionID string) (store.RoomSpend, bool, error)
+	TurnSpend(sessionID string) (store.RoomSpend, bool, error)
 }
 
 // Commander is the slice of the live engine this surface commands. A nil
@@ -59,6 +74,12 @@ type Commander interface {
 	Interrupt(partial string) bool
 	// CurrentModel names the model in a role slot, for the status line.
 	CurrentModel(role string) string
+	// ContextWindow is how many tokens the model in a role slot will accept —
+	// the DENOMINATOR of the context gauge (5.17). The numerator comes from the
+	// journal; this comes from the catalog, and known is false for a model the
+	// catalog cannot speak for. An unknown window renders no gauge rather than
+	// a guessed one.
+	ContextWindow(role string) (tokens int, known bool)
 }
 
 // StreamKind names the provider-stream boundary. The ordinals match

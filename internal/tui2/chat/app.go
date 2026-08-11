@@ -15,6 +15,7 @@ import (
 	"github.com/Agent-Field/aforge-v2/internal/tui2/composer"
 	"github.com/Agent-Field/aforge-v2/internal/tui2/footer"
 	"github.com/Agent-Field/aforge-v2/internal/tui2/placeline"
+	"github.com/Agent-Field/aforge-v2/internal/tui2/rail"
 	"github.com/Agent-Field/aforge-v2/internal/tui2/tokens"
 )
 
@@ -149,8 +150,12 @@ type liveTurn struct {
 	// what esc consults (8.2.21).
 	active bool
 	// reply is the streamed text, created on the first delta that decodes to
-	// something a reader can be shown.
+	// something a reader can be shown. label is the header row above it: the
+	// two are one preview and are split only so the header can sit flush left
+	// while the prose sits at the depth its journaled twin will have. See
+	// newReplyBlock.
 	reply *blocks.TextBlock
+	label *blocks.TextBlock
 	// await is the awaiting line, present for as long as the turn is.
 	await *awaitingBlock
 	// raw is the provider's bytes as they arrive; shown is what has been drawn.
@@ -195,11 +200,37 @@ type App struct {
 	transcript *blocks.Transcript
 	pane       *transcriptPane
 	status     *statusPane
-	rail       *railPane
 	place      *placeline.Model
 	meta       *metaStrip
 	composer   composerPane
 	verbs      []registry.Entry
+
+	// The scope map (5.15). source is the adapter onto the store, railModel is
+	// the one scope model, railView paints it, and scope is its place in the
+	// shell. railFocus says the map holds the keyboard; termWidth is the
+	// terminal's own width, which is what decides the rendering — a pane is only
+	// ever told its own rectangle, and the rail's column is not the terminal.
+	source    *scopeSource
+	railModel *rail.Model
+	railView  *rail.View
+	scope     *scopePane
+	// hudModel and hudView are the bounded summary's own pair (8.2.8). They are
+	// separate from the rail's because the HUD shows a different scope — the
+	// work only, never the navigation — and because a shared View's line buffer
+	// is valid only until its next render, and both draw in the same frame.
+	hudModel *rail.Model
+	hudView  *rail.View
+
+	railFocus  bool
+	scopeOpen  bool
+	termWidth  int
+	termHeight int
+
+	// view is the main pane's current lens: nil is the room's own conversation,
+	// anything else is a task room or the card a cursor move previewed.
+	view *mainView
+	// composerBind is what the composer is talking to (5.15's one rule).
+	composerBind composerBind
 
 	// The residency chain. residents is the door, residency is the last answer
 	// it gave, and probing keeps exactly one question in flight — the same
@@ -213,6 +244,12 @@ type App struct {
 	// see what the system has been doing wants to see all of it, and a per-row
 	// fold would make that N keystrokes.
 	receiptsOpen bool
+	// foldable says the transcript holds at least one row the fold can act on.
+	// The footer offers the accelerator only while that is true: 5.20 rule 3
+	// forbids advertising a door that opens nothing, and the cells it saves are
+	// cells the health column keeps — 10.5.22's drop order puts verbs above
+	// health, so an idle verb costs a real notice at 80 columns.
+	foldable bool
 
 	// The poll chain. There is exactly one: a read in flight sets polling, a
 	// request that arrives while it is set becomes a poke the result honours,
@@ -247,11 +284,12 @@ func Metrics() tui2.Metrics {
 		// and the meta strip on the bottom (10.5.23). The draft gets two
 		// because one is a text field and two is a composer — a pasted command
 		// or a second sentence has somewhere to be without the region moving.
-		ComposerHeight:         4,
-		StatusHeight:           1,
-		DialogFullscreenBelow:  tokens.DialogFullscreenBelowWidth,
-		SplitDiffBreakpoint:    tokens.SplitDiffAtWidth,
-		PasteToAttachmentLines: tokens.PasteAttachRows,
+		ComposerHeight:              4,
+		StatusHeight:                1,
+		DialogFullscreenBelowWidth:  tokens.DialogFullscreenBelowWidth,
+		DialogFullscreenBelowHeight: tokens.DialogFullscreenBelowHeight,
+		SplitDiffBreakpoint:         tokens.SplitDiffAtWidth,
+		PasteToAttachmentLines:      tokens.PasteAttachRows,
 	}
 }
 
@@ -299,7 +337,6 @@ func New(opts Options) *App {
 		bar:     footer.New(footer.Options{Styler: app.style}),
 		session: app.session,
 	}
-	app.rail = &railPane{style: app.style, session: app.session}
 
 	// The place line's ground. One room exists, so the ground is one leg: the
 	// resident root this process is standing in (5.19). The day a task room
@@ -328,18 +365,27 @@ func New(opts Options) *App {
 	}
 
 	newline := app.shell.Capabilities().NewlineKeys()
-	app.composer = newComposer(composerOptions{
+	stack := newComposer(composerOptions{
 		OnSubmit:    func(text string) { app.pending = append(app.pending, text) },
 		Styler:      app.style,
 		SendKey:     tui2.SendKey,
 		NewlineKeys: newline,
 	}, app.place, app.meta)
+	stack.mode = app.composerMode
+	stack.hud = app.hudRows
+	app.composer = stack
 	app.verbs = boundVerbs(app.shell.Capabilities().NewlineKey())
+
+	// The scope map is built before the panes are bound, because binding the
+	// rail pane means handing the shell an object that already knows what it is
+	// showing — a rail that drew nothing for one frame and then filled in would
+	// be the same attach-time lie the residency probe exists to avoid.
+	app.buildScope()
 
 	app.shell.SetPane(tui2.LayerTranscript, app.pane)
 	app.shell.SetPane(tui2.LayerComposer, app.composer)
 	app.shell.SetPane(tui2.LayerStatus, app.status)
-	app.shell.SetPane(tui2.LayerRail, app.rail)
+	app.shell.SetPane(tui2.LayerRail, app.scope)
 	app.composer.Focus(true)
 	app.refresh()
 	return app
@@ -356,7 +402,7 @@ func New(opts Options) *App {
 // its accelerator is corrected to the truth. Correcting a key is more honest
 // than dropping the row; inventing the words would be less.
 func boundVerbs(newlineKey string) []registry.Entry {
-	out := make([]registry.Entry, 0, 2)
+	out := make([]registry.Entry, 0, 3)
 	if quit, ok := registry.ByID("key.quit"); ok && quit.Key == "ctrl+c" {
 		out = append(out, quit)
 	}
@@ -364,8 +410,25 @@ func boundVerbs(newlineKey string) []registry.Entry {
 		newline.Key = newlineKey
 		out = append(out, newline)
 	}
+	// The receipts fold now has a registry-recorded accelerator for THIS kind of
+	// surface: the catalog carries v1's bare "v" and a ChordKey for a surface
+	// where the composer holds every printable key, and Entry.On projects the
+	// row onto the one this surface actually binds. The hand-corrected key this
+	// file used to need is gone — 5.22 rule 4 wants the strip read out of the
+	// registry, not written beside it.
+	if receipts, ok := registry.ByID("key.thread.receipts"); ok {
+		if projected, bound := receipts.On(registry.SurfaceComposerFirst); bound &&
+			projected.Key == receiptsKey {
+			out = append(out, projected)
+		}
+	}
 	return out
 }
+
+// receiptsKey is the accelerator this surface actually binds for the receipts
+// fold. It is named once so the ladder in App.key and the footer's own claim
+// about it cannot drift apart.
+const receiptsKey = "ctrl+r"
 
 // rootDir resolves the place line's root leg: what the caller named, or the
 // directory this process is standing in. A working directory that cannot be
@@ -421,7 +484,47 @@ func (a *App) View() tea.View { return a.shell.View() }
 
 // Frame renders one frame at a size with no terminal involved — the door the
 // golden harness and the tests drive.
-func (a *App) Frame(width, height int) string { return a.shell.Frame(width, height) }
+func (a *App) Frame(width, height int) string {
+	a.termWidth, a.termHeight = width, height
+	return a.shell.Frame(width, height)
+}
+
+// composerMode is what the composer region asks to know: what the selected row
+// bound it to (5.15). It is a function rather than a copied field so the region
+// and the rail can never hold two answers.
+func (a *App) composerMode() composerBind {
+	if a.composerBind.mode == rail.ComposerNone {
+		return composerBind{mode: rail.ComposerChat}
+	}
+	return a.composerBind
+}
+
+// hudRows is the bounded sticky summary above the composer (8.2.8).
+//
+// It draws only where the rail does not: 8.3 adopts the HUD-only layout as the
+// NARROW fallback and refuses it beside a rail, because two renderings of the
+// same live work on one screen is the control room the scoped master-detail
+// replaced. It draws nothing at all when nothing is live, so a settled window
+// spends no rows on saying so.
+func (a *App) hudRows(width, height int) []string {
+	if a.wide() || a.hudView == nil || a.hudModel == nil || height <= 0 {
+		return nil
+	}
+	if a.railFocus {
+		// The map is already the main pane; a summary of it above the composer
+		// would be the same rows twice.
+		return nil
+	}
+	rows := a.hudView.HUD(a.hudModel, width, height)
+	if len(rows) == 0 {
+		return nil
+	}
+	// The view's slice aliases its own buffer and is valid only until the next
+	// render. Copying is the whole price of holding lines across two paints.
+	out := make([]string, len(rows))
+	copy(out, rows)
+	return out
+}
 
 // Update folds a message into the app, handing down everything it does not
 // claim.
@@ -430,12 +533,33 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.KeyPressMsg:
 		return a, a.drain(a.key(msg))
 
+	case tea.WindowSizeMsg:
+		// The terminal's own width decides which of the scope map's three
+		// renderings this frame wants (5.15, Part 9.12). A pane is told its
+		// rectangle and nothing else, so the number is recorded here — the one
+		// place it arrives — rather than guessed from a column's width.
+		a.termWidth, a.termHeight = msg.Width, msg.Height
+		model, cmd := a.shell.Update(msg)
+		_ = model
+		return a, cmd
+
+	case nodeMessagesMsg:
+		a.applyNodeMessages(msg)
+		return a, nil
+
+	case roomOpenedMsg:
+		return a, a.applyRoomOpened(msg)
+
+	case steerResultMsg:
+		a.applySteer(msg)
+		return a, a.startPoll()
+
 	case pollTickMsg:
 		return a, tea.Batch(a.startPoll(), a.probeResidency())
 
 	case pollResultMsg:
 		a.applyPoll(msg)
-		return a, tea.Batch(a.afterPoll(), a.probeResidency())
+		return a, tea.Batch(a.afterPoll(), a.probeResidency(), a.followNode(msg))
 
 	case residencyMsg:
 		a.applyResidency(msg)
@@ -502,7 +626,7 @@ func (a *App) drain(cmd tea.Cmd) tea.Cmd {
 		cmds = append(cmds, cmd)
 	}
 	for _, text := range a.pending {
-		cmds = append(cmds, a.postCmd(text))
+		cmds = append(cmds, a.submit(text))
 	}
 	a.pending = a.pending[:0]
 	a.shell.Invalidate()
@@ -523,9 +647,7 @@ func (a *App) key(msg tea.KeyPressMsg) tea.Cmd {
 		return tea.Quit
 
 	case "ctrl+o":
-		// The shell owns the scope gesture; Wave 3 gives it something to show.
-		_, cmd := a.shell.Update(msg)
-		return cmd
+		return a.setScope(!a.scopeOpen)
 
 	case "esc":
 		// 8.2.21, the reconciling rule: esc acts on what you are watching. A
@@ -548,6 +670,17 @@ func (a *App) key(msg tea.KeyPressMsg) tea.Cmd {
 
 	case "pgup", "pgdown", "shift+up", "shift+down", "ctrl+home", "ctrl+end":
 		return a.pane.Key(msg)
+	}
+
+	// The map holds the keyboard only while it has focus. That is the whole of
+	// 5.15's answer to "how does a chat surface have a navigable list in it":
+	// not a mode, not a focus carousel, one chord in and one chord (or esc at
+	// home) out — and while the composer has focus, j and k are letters.
+	if a.railFocus {
+		if cmd, claimed := a.scopeKey(msg); claimed {
+			a.shell.Invalidate()
+			return cmd
+		}
 	}
 
 	if a.composer == nil {
@@ -699,9 +832,13 @@ func (a *App) refresh() {
 		a.turn.await.interruptible = false
 	}
 	a.status.residency = a.residency
+	if a.source != nil {
+		a.status.room = a.source.RoomTitle(a.session)
+	}
 	a.status.live = a.turn.active
 	a.status.escInterrupts = a.canInterrupt()
 	a.status.verbs = a.verbs
+	a.status.foldable = a.foldable
 	a.status.input, a.status.hint = a.inputState()
 	a.status.attention = a.openQuestions()
 
@@ -763,11 +900,11 @@ func (a *App) openQuestions() int {
 // so the version bumps, which is the only coherent way to change bytes a cache
 // has already committed (8.1.1), and it happens once per turn.
 func (a *App) voiceLivePreview() {
-	if a.turn.voiced || a.turn.reply == nil {
+	if a.turn.voiced || a.turn.label == nil {
 		return
 	}
 	a.turn.voiced = true
-	a.turn.reply.Mutate(func(block *blocks.TextBlock) {
+	a.turn.label.Mutate(func(block *blocks.TextBlock) {
 		block.Head.State = blocks.StateSettled
 	})
 }

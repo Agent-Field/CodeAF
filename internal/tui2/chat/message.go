@@ -258,6 +258,16 @@ func newMessageBlock(message store.Message, style *tokens.Styler) *messageBlock 
 		block.dressSpeech(message)
 	}
 	block.absorbParts(message)
+	// A question that arrived without a typed part is still a question: the
+	// producer wrote its lifecycle sequence and its options into the message's
+	// own columns before the parts model existed, and those columns are fields
+	// like any other. What is NOT read is the body — 13.3.1's rule is that v2
+	// never scans prose back into structure, and this branch does not.
+	if block.questions == 0 && (message.QuestionSeq != 0 || len(message.Options) > 0) &&
+		message.Role != store.RoleUser {
+		block.questions++
+		block.dressQuestion(message)
+	}
 	return block
 }
 
@@ -374,9 +384,17 @@ func (b *messageBlock) dressCommission(message store.Message) {
 // estimate zero.
 func (b *messageBlock) dressWork(message store.Message) {
 	b.head = blocks.Header{
-		Glyph: b.identityGlyph(workGlyph(message), message.NodeID),
+		Glyph: workGlyph(message),
 		Title: nodeLabel(message.NodeID),
 		State: blocks.StateSettled,
+	}
+	// The identity pastel goes through the one header grammar now that Header
+	// carries a seed beside its hue (the seam this file used to reach around).
+	// The guard is the whole of the old workaround's honesty: a message with no
+	// node has no identity, and a seedless HueIdentity would resolve to wheel
+	// entry zero and give every such row the same accent.
+	if seed := blocks.Seed(message.NodeID); seed != 0 {
+		b.head.GlyphHue, b.head.GlyphSeed = blocks.HueIdentity, seed
 	}
 	b.appendBody(message, tokens.TextSecondary, bodyIndent)
 
@@ -408,25 +426,6 @@ func workGlyph(message store.Message) string {
 		}
 	}
 	return tokens.GlyphWorking
-}
-
-// identityGlyph paints a card's glyph in the per-task pastel of 5.16, which is
-// the one thing that answers "which task is this" peripherally.
-//
-// It paints BEFORE handing the glyph to [blocks.Header] because Header carries
-// a [blocks.Hue] and a hue has no seed: HueIdentity resolves to the first wheel
-// entry for every task, which would give every card on screen the same accent
-// and defeat the mechanism. Header measures its glyph ANSI-aware and paints
-// around whatever it is given, so a pre-painted glyph is correct at every width
-// and identical under NoColor.
-//
-// REQUESTED SEAM: blocks.Header should carry an identity seed beside GlyphHue,
-// so this can go back through the one header grammar instead of around it.
-func (b *messageBlock) identityGlyph(glyph, seed string) string {
-	if b.style == nil || seed == "" {
-		return glyph
-	}
-	return b.style.PaintToken(glyph, tokens.IdentityFor(seed))
 }
 
 // nodeLabel is the name a card wears. Node ids are never shown (5.14's "never
@@ -583,10 +582,9 @@ func (b *messageBlock) absorbParts(message store.Message) {
 				continue
 			}
 			b.questions++
-			b.segs = append(b.segs, segment{
-				kind: segRef, glyph: tokens.GlyphNeedsHuman, text: "waiting on you",
-				hue: blocks.HueAttention, state: blocks.StateSettled, indent: bodyIndent,
-			})
+			// 13.3.1: the options are drawn from the message's own field, never
+			// scanned back out of its prose. question.go owns the two shapes.
+			b.dressQuestion(message)
 
 		case store.PartEnded:
 			if part.Ended == nil {

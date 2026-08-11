@@ -21,4 +21,4 @@ aforge · claude-k3
 ›  Type a message
 
   claude-k3 · $— · — ctx
-ctrl+c stop or quit · alt+enter insert newline · ‹ session- · ? help
+ctrl+c stop or quit · alt+enter insert newline · ‹ untitled room · ? help

@@ -211,6 +211,36 @@ type statusPane struct {
 	escInterrupts bool
 	attention     int
 	residency     Residency
+	// room is the humane name of the room this window is in, and breadcrumb is
+	// how deep inside it the reader has navigated. Neither is ever an id
+	// (13.3.4); an unnamed room says it is unnamed.
+	room       string
+	breadcrumb string
+	// foldable says the transcript holds a row the receipts fold can act on.
+	// The accelerator is only offered while it does — 5.20 rule 3 forbids
+	// naming a door that opens nothing.
+	foldable bool
+}
+
+// offeredVerbs is the verb strip at THIS width: the permanent bindings, plus
+// the contextual ones when the door exists and the row can afford to name it.
+//
+// The width test is not a second fitting algorithm — the footer owns that — it
+// is about the GRANULARITY of the one it has. 10.5.22 fits the verb column as a
+// unit, so a contextual third entry that overflows does not shorten the row; it
+// takes quit and newline off it entirely. Two permanent doors are worth more
+// than one contextual accelerator, and below the breakpoint the fold is still
+// discoverable where it acts: every collapsible row draws its own expand hint.
+func (p *statusPane) offeredVerbs(width int) []registry.Entry {
+	if p.foldable && width >= tokens.RailAtWidth {
+		return p.verbs
+	}
+	for i := range p.verbs {
+		if p.verbs[i].ID == "key.thread.receipts" {
+			return p.verbs[:i:i]
+		}
+	}
+	return p.verbs
 }
 
 var _ tui2.Pane = (*statusPane)(nil)
@@ -239,7 +269,7 @@ func (p *statusPane) Render(width, height int) string {
 		return ""
 	}
 	return p.bar.Render(footer.FocusContext{
-		Verbs:         p.verbs,
+		Verbs:         p.offeredVerbs(width),
 		Input:         p.input,
 		Hint:          p.hint,
 		EscInterrupts: p.escInterrupts,
@@ -282,66 +312,22 @@ func (p *statusPane) health() []string {
 }
 
 // scopeTail is the breadcrumb tail, and the lowest-priority column on the row.
-// One room exists today, so it names the room: the session the window is
-// looking at, in the form a person reads back.
-func (p *statusPane) scopeTail() string {
-	if p.session == "" {
-		return ""
-	}
-	return tokens.GlyphScopeUp + " " + shortID(p.session)
-}
-
-// railPane is the scope map's place, held honestly empty.
 //
-// Wave 3 fills it with live task cards and the scope ladder (5.15). Until then
-// it says what it is and what is in it, because a rail that drew a fake card
-// would be the first lie in a surface built to stop telling them — and a rail
-// that drew a debug box would tell the operator about the build instead of
-// about their work.
-type railPane struct {
-	style   *tokens.Styler
-	session string
-}
-
-var _ tui2.Pane = (*railPane)(nil)
-
-// Render draws the empty rail.
-func (p *railPane) Render(width, height int) string {
-	if width <= 0 || height <= 0 {
+// It says WHERE the reader is, in the words they navigated by: the room's name,
+// and then the scope they have descended into. 13.3.4 is why it can never fall
+// back to the session id — 5.14 puts ids in the never-shown tier, and a
+// truncated uuid on the footer was the rule being broken in the one place a
+// reader looks when they are lost. A room nobody has named says so.
+func (p *statusPane) scopeTail() string {
+	room := strings.TrimSpace(p.room)
+	if room == "" && p.session != "" {
+		room = untitledRoom
+	}
+	if room == "" {
 		return ""
 	}
-	lines := []string{
-		tokens.GlyphScopeUp + " scope",
-		"",
-		"session " + shortID(p.session),
-		"",
-		"no live work",
+	if crumbs := strings.TrimSpace(p.breadcrumb); crumbs != "" {
+		room += " " + tokens.GlyphScopeUp + " " + crumbs
 	}
-	if len(lines) > height {
-		lines = lines[:height]
-	}
-	for i := range lines {
-		lines[i] = blocks.Truncate(lines[i], width)
-		if p.style != nil {
-			state := blocks.StateChrome
-			if i == 0 {
-				state = blocks.StateSettled
-			}
-			lines[i] = p.style.Paint(lines[i], state, blocks.HueNone)
-		}
-	}
-	return strings.Join(lines, "\n")
-}
-
-// shortID abbreviates an identifier for a strip of chrome. A session id is a
-// UUID and the first octet is what a person actually reads back.
-func shortID(id string) string {
-	id = strings.TrimSpace(id)
-	if id == "" {
-		return tokens.GlyphMissing
-	}
-	if len(id) > 8 {
-		return id[:8]
-	}
-	return id
+	return tokens.GlyphScopeUp + " " + room
 }
