@@ -243,6 +243,59 @@ func TestKey_UnboundCtrlChordNeverInsertsText(t *testing.T) {
 	}
 }
 
+// --- ctrl+u, the clear-the-draft chord (13.5 finding 3) ---
+
+func TestCtrlU_ClearsTheDraftAndTheRingBringsItBack(t *testing.T) {
+	m := New(Options{})
+	typeString(m, "a whole sentence nobody wants any more")
+	m.Key(ctrlKey('u'))
+	if m.Value() != "" {
+		t.Fatalf("ctrl+u left %q, want an empty draft", m.Value())
+	}
+	// Nothing typed here is ever thrown away (history.go): the kill stashes,
+	// so the next ↑ from the now-empty draft is the words coming back — the
+	// same restore path esc has.
+	m.Key(upKey())
+	if m.Value() != "a whole sentence nobody wants any more" {
+		t.Fatalf("↑ after ctrl+u recalled %q, want the killed draft", m.Value())
+	}
+}
+
+func TestCtrlU_KillsToTheStartAndKeepsWhatIsAhead(t *testing.T) {
+	// readline's unix-line-discard, which is what internal/tui and
+	// internal/tui2/consentui already bind the chord to: the text behind the
+	// cursor goes, the text ahead of it stays, and the cursor lands at 0.
+	m := New(Options{})
+	typeString(m, "drop this keep that")
+	for i := 0; i < len("keep that"); i++ {
+		m.Key(leftKey())
+	}
+	m.Key(ctrlKey('u'))
+	if m.Value() != "keep that" {
+		t.Fatalf("ctrl+u = %q, want %q", m.Value(), "keep that")
+	}
+	m.Key(charKey('X'))
+	if m.Value() != "Xkeep that" {
+		t.Fatalf("the cursor did not land at the start: %q", m.Value())
+	}
+}
+
+func TestCtrlU_OnAnEmptyDraftIsANoop(t *testing.T) {
+	m := New(Options{})
+	m.Key(ctrlKey('u'))
+	if m.Value() != "" {
+		t.Fatalf("ctrl+u on an empty draft produced %q", m.Value())
+	}
+	// And it must not have stashed an empty string over a real one.
+	typeString(m, "keep me")
+	m.Key(escKey())
+	m.Key(ctrlKey('u'))
+	m.Key(upKey())
+	if m.Value() != "keep me" {
+		t.Fatalf("a no-op ctrl+u ate the stash: %q", m.Value())
+	}
+}
+
 // --- basic editing, exercised because paste/cursor tests build on it ---
 
 func TestEditing_BackspaceAndDelete(t *testing.T) {

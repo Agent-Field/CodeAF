@@ -46,6 +46,14 @@ func (m *Model) Key(msg tea.KeyPressMsg) tea.Cmd {
 		m.deleteBackward()
 	case "delete":
 		m.deleteForward()
+	case "ctrl+u":
+		// The clear-the-draft chord (13.5 finding 3). It sits with the other
+		// editing keys and not with esc on purpose: esc is the ladder key —
+		// interrupt, pop scope, jump to the live edge — and 8.2.21's own
+		// non-negotiable is that it never destroys a draft. A draft a person
+		// wants gone needs a key that means only that, and readline named it
+		// forty years ago. See [Model.KillToStart] for why the words are stashed.
+		m.KillToStart()
 	case "left":
 		m.moveLeft()
 	case "right":
