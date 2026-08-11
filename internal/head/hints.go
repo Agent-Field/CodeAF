@@ -38,6 +38,11 @@ const (
 	hintTargetCap = 3
 	// hintLabelBytes keeps one named job to the width of a title.
 	hintLabelBytes = 48
+	// hintPhraseBytes bounds a phrase lifted out of the person's own sentence.
+	// Every recognizer that quotes a reference quotes THEIR words, and a
+	// paragraph typed into the composer would otherwise arrive twice in one
+	// prompt: once as the message, once as several readings of it.
+	hintPhraseBytes = 64
 )
 
 // renderHints is every recognizer's reading of one message, or the empty string.
@@ -60,7 +65,7 @@ func (h *Head) renderHints(user store.Message, active []store.SurgeryTarget) str
 	if intent, cued := nodeSurgery(message); cued {
 		if reference := strings.TrimSpace(intent.Reference); reference != "" {
 			add("carries the verb %q aimed at existing work, describing it as %q",
-				surgeryVerb(intent.Kind), reference)
+				surgeryVerb(intent.Kind), truncateBytes(reference, hintPhraseBytes))
 		} else {
 			add("carries the verb %q aimed at existing work, naming nothing in particular",
 				surgeryVerb(intent.Kind))
@@ -75,7 +80,7 @@ func (h *Head) renderHints(user store.Message, active []store.SurgeryTarget) str
 	if class, isClass := classSelector(message); isClass {
 		scope := ""
 		if class.Scope != "" {
-			scope = fmt.Sprintf(", scoped to %q", class.Scope)
+			scope = fmt.Sprintf(", scoped to %q", truncateBytes(class.Scope, hintPhraseBytes))
 		}
 		sweeping := ""
 		if class.Sweeping {
@@ -94,8 +99,20 @@ func (h *Head) renderHints(user store.Message, active []store.SurgeryTarget) str
 		add("reads as DURABLE intent — work spawned from it becomes a standing rule the person is asked to ratify, not a one-off errand")
 	}
 
-	// The five redirect cue classes, including impatience.
-	if cue, cued := redirectCue(message); cued {
+	// The five redirect cue classes, including impatience. `cued` also decides
+	// how much a bare pronoun is worth further down: with a cue in hand "it" is
+	// doing referential work and the only open question is which job, and
+	// without one the same word is as likely to be "thanks, that helps".
+	cue, cued := redirectCue(message)
+	// Four of the five classes are claims about work already underway, and a
+	// claim about work that does not exist is not a cheap pre-answer, it is
+	// noise the loop has to spend a read disproving. The old recognizer refused
+	// to fire at all without live work and it was right to; only correction is
+	// exempt, because what it is about has by definition already finished.
+	if cued && cue != "correction" && len(active) == 0 {
+		cued = false
+	}
+	if cued {
 		switch cue {
 		case urgencyCue:
 			pressed := ""
@@ -132,7 +149,7 @@ func (h *Head) renderHints(user store.Message, active []store.SurgeryTarget) str
 	// A standing rule addressed by name or by verb.
 	if intent, managing := charterManagement(message); managing {
 		add("reads as an edit to a STANDING RULE (%s), described as %q",
-			charterOptionAction(intent.Kind), intent.Reference)
+			charterOptionAction(intent.Kind), truncateBytes(intent.Reference, hintPhraseBytes))
 	}
 
 	// A service the person is running. recognizesShutdownAll is the one total
@@ -143,7 +160,8 @@ func (h *Head) renderHints(user store.Message, active []store.SurgeryTarget) str
 		if action == "" {
 			add("mentions a service or server without naming what to do with it")
 		} else {
-			add("reads as %q aimed at a running service, described as %q", action, reference)
+			add("reads as %q aimed at a running service, described as %q",
+				action, truncateBytes(reference, hintPhraseBytes))
 		}
 	}
 
@@ -168,9 +186,15 @@ func (h *Head) renderHints(user store.Message, active []store.SurgeryTarget) str
 	}
 	// Deixis without vocabulary: "the job", "that one", "what you're doing". It
 	// points at live work while borrowing none of its words, which is precisely
-	// the case no lexical ranking can reach.
-	if len(active) > 0 && refersToLiveWork(message, true, len(active)) {
-		add("points at work already underway without naming it — resolve the referent before acting, never guess it")
+	// the case no lexical ranking can reach — and with exactly one job live
+	// there is nothing else it could mean, so the reading says which.
+	if len(active) > 0 && refersToLiveWork(message, cued, len(active)) {
+		if len(active) == 1 {
+			add("points at work already underway without naming it, and only %s (%s) is live — there is nothing else it could mean",
+				active[0].Node.ID, truncateBytes(surgeryTargetLabel(active[0].Node), hintLabelBytes))
+		} else {
+			add("points at work already underway without naming it — resolve the referent before acting, never guess it")
+		}
 	}
 
 	if len(lines) == 0 {
