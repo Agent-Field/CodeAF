@@ -8,6 +8,7 @@ import (
 
 	"github.com/Agent-Field/aforge-v2/internal/resident"
 	"github.com/Agent-Field/aforge-v2/internal/store"
+	"github.com/Agent-Field/agentfield/sdk/go/ai"
 )
 
 // activateReminder stands up one say-only weekly rule, the one the everyday
@@ -41,6 +42,11 @@ func activateReminder(t *testing.T, graph *store.Store, id, invariant, cadence, 
 // reference, and answered with eight rows of work — from which standing rules
 // are explicitly excluded. There was no sentence that moved a reminder to
 // another day.
+//
+// The reading that knows better is now evidence rather than a verdict: it says
+// the sentence edits a standing rule and what it reads the new rhythm as, above
+// the message, and the rule tool is what journals it. A live job on the board
+// must still not be the thing that gets changed.
 func TestChangeItToTuesdayReachesTheRule(t *testing.T) {
 	graph := openHeadStore(t)
 	charter := activateReminder(t, graph, "plants",
@@ -49,7 +55,16 @@ func TestChangeItToTuesdayReachesTheRule(t *testing.T) {
 	spliceSurgeryJob(t, graph, "lisbon", "Lisbon trip research", "look into flights and hotels")
 
 	user := postUser(t, graph, "rules", "change it to tuesday")
-	if err := New(&fakeClient{}, graph).answer(context.Background(), user); err != nil {
+	reading := deterministicReading(t, New(nil, graph), user)
+	if !strings.Contains(reading, "reads as an edit to a STANDING RULE (cadence)") {
+		t.Fatalf("the rule reading never reached the loop:\n%s", reading)
+	}
+
+	head, _ := beltHead(graph,
+		beltTurn{calls: []ai.ToolCall{beltCall("c1", beltToolRule, map[string]any{
+			"verb": "cadence", "words": "tuesday"})}},
+		beltTurn{text: "The plant reminder moves to Tuesdays."})
+	if err := head.answer(context.Background(), user); err != nil {
 		t.Fatal(err)
 	}
 	commands, err := graph.PendingCommands(10)
@@ -94,7 +109,11 @@ func TestPushTheReminderToEightPmReachesTheRule(t *testing.T) {
 		"remind me every sunday to water the plants", "every sunday", "water the plants")
 
 	user := postUser(t, graph, "rules", "push the reminder to 8pm")
-	if err := New(&fakeClient{}, graph).answer(context.Background(), user); err != nil {
+	head, _ := beltHead(graph,
+		beltTurn{calls: []ai.ToolCall{beltCall("c1", beltToolRule, map[string]any{
+			"verb": "cadence", "describes": "the reminder", "words": "8pm"})}},
+		beltTurn{text: "It moves to 8pm."})
+	if err := head.answer(context.Background(), user); err != nil {
 		t.Fatal(err)
 	}
 	commands, err := graph.PendingCommands(10)
@@ -120,7 +139,19 @@ func TestRewordingARuleIsSayable(t *testing.T) {
 
 	user := postUser(t, graph, "rules",
 		"change the plant reminder to say water the plants and take the bins out")
-	if err := New(&fakeClient{}, graph).answer(context.Background(), user); err != nil {
+	// The wording cue is read before the rhythm: the sentence names a day and is
+	// not about the day, and the reading says which of the two it is.
+	reading := deterministicReading(t, New(nil, graph), user)
+	if !strings.Contains(reading, "reads as an edit to a STANDING RULE (wording)") {
+		t.Fatalf("a rewording was read as a retiming:\n%s", reading)
+	}
+
+	head, _ := beltHead(graph,
+		beltTurn{calls: []ai.ToolCall{beltCall("c1", beltToolRule, map[string]any{
+			"verb": "wording", "describes": "the plant reminder",
+			"words": "water the plants and take the bins out"})}},
+		beltTurn{text: "It will say that from now on."})
+	if err := head.answer(context.Background(), user); err != nil {
 		t.Fatal(err)
 	}
 	commands, err := graph.PendingCommands(10)
@@ -154,7 +185,10 @@ func TestRewordingARuleIsSayable(t *testing.T) {
 
 // TestAnUndescribedRuleReferenceAsksOnePlainQuestion is the ambiguity rule from
 // the design filter: never pick for the user, never a picker, one short
-// question in plain words.
+// question in plain words. The tool refuses to choose and hands back both rules
+// in the words they were ratified in; the question is the ask tool's, and the
+// day survives the round trip because the answer comes back to the loop with
+// the question and the choice both in front of it.
 func TestAnUndescribedRuleReferenceAsksOnePlainQuestion(t *testing.T) {
 	graph := openHeadStore(t)
 	activateReminder(t, graph, "plants",
@@ -163,7 +197,14 @@ func TestAnUndescribedRuleReferenceAsksOnePlainQuestion(t *testing.T) {
 		"remind me every friday to put the bins out", "every friday", "put the bins out")
 
 	user := postUser(t, graph, "rules", "change it to tuesday")
-	if err := New(&fakeClient{}, graph).answer(context.Background(), user); err != nil {
+	head, client := beltHead(graph,
+		beltTurn{calls: []ai.ToolCall{beltCall("c1", beltToolRule, map[string]any{
+			"verb": "cadence", "words": "tuesday"})}},
+		beltTurn{calls: []ai.ToolCall{beltCall("c2", beltToolAsk, map[string]any{
+			"question": "Which rule do you mean?",
+			"options": []string{"remind me every sunday to water the plants",
+				"remind me every friday to put the bins out"}})}})
+	if err := head.answer(context.Background(), user); err != nil {
 		t.Fatal(err)
 	}
 	reply := waitForAgentReply(t, graph, "rules", user.Seq)
@@ -171,9 +212,6 @@ func TestAnUndescribedRuleReferenceAsksOnePlainQuestion(t *testing.T) {
 		t.Fatalf("askback = %+v", reply)
 	}
 	for _, option := range reply.Options {
-		if !strings.HasSuffix(option.Value, ":tuesday") {
-			t.Fatalf("option loses the new day: %+v", option)
-		}
 		if !strings.Contains(option.Label, "remind me every") {
 			t.Fatalf("option is not named by its plain description: %+v", option)
 		}
@@ -182,32 +220,62 @@ func TestAnUndescribedRuleReferenceAsksOnePlainQuestion(t *testing.T) {
 	if err != nil || len(commands) != 0 {
 		t.Fatalf("an ambiguous reference changed something: %+v err=%v", commands, err)
 	}
+	// The words the model asked with are the rules' own, because that is what the
+	// tool handed it rather than a pair of ids.
+	offered := &beltRun{head: New(nil, graph), user: user}
+	candidates, failed := offered.execute(beltToolRule, beltArguments(t, map[string]any{
+		"verb": "cadence", "words": "tuesday"}))
+	if failed || !strings.Contains(candidates, "water the plants") ||
+		!strings.Contains(candidates, "put the bins out") {
+		t.Fatalf("the candidate list is not both rules by name:\n%s", candidates)
+	}
+	if offered.acted {
+		t.Fatal("offering candidates journaled something")
+	}
 
-	// Answering the question by number carries the day through to the rule.
+	// Answering the question by number carries the day through to the rule: the
+	// choice is not applied by the question machinery, it comes back as an
+	// ordinary turn with both halves of the exchange in the prompt.
+	client.turns = append(client.turns, beltTurn{calls: []ai.ToolCall{
+		beltCall("c3", beltToolRule, map[string]any{
+			"verb": "cadence", "id": "plants", "words": "tuesday"})}},
+		beltTurn{text: "Moved to Tuesdays."})
 	answer := postUser(t, graph, "rules", "1")
-	if err := New(&fakeClient{}, graph).answer(context.Background(), answer); err != nil {
+	if err := head.answer(context.Background(), answer); err != nil {
 		t.Fatal(err)
+	}
+	settling := latestPrompt(client)
+	if !strings.Contains(settling, "change it to tuesday") ||
+		!strings.Contains(settling, "Which rule do you mean?") {
+		t.Fatalf("the answering turn was not given the exchange it settles:\n%s", settling)
 	}
 	commands, err = graph.PendingCommands(10)
 	if err != nil || len(commands) != 1 || commands[0].Kind != store.CommandCharterCadence ||
-		commands[0].Instruction != "tuesday" {
+		commands[0].Target != "plants" || commands[0].Instruction != "tuesday" {
 		t.Fatalf("answered askback = %+v err=%v", commands, err)
 	}
 }
 
 // TestRuleVerbsStillFallThroughWhenNoRuleExists keeps the shared vocabulary
-// shared: with no standing rule to mean, "change it to tuesday" is about work.
+// shared: with no standing rule to mean, "change it to tuesday" is about work,
+// and the tool says so rather than inventing a rule to edit.
 func TestRuleVerbsStillFallThroughWhenNoRuleExists(t *testing.T) {
 	graph := openHeadStore(t)
 	spliceSurgeryJob(t, graph, "lisbon", "Lisbon trip research", "look into flights and hotels")
-	client := &fakeClient{responses: []string{`{"reply":"Which one do you mean?","command":null}`}}
 	user := postUser(t, graph, "no-rules", "change it to tuesday")
-	if err := New(client, graph).answer(context.Background(), user); err != nil {
+	head, _ := beltHead(graph,
+		beltTurn{calls: []ai.ToolCall{beltCall("c1", beltToolRule, map[string]any{
+			"verb": "cadence", "words": "tuesday"})}},
+		beltTurn{text: "Which one do you mean?"})
+	if err := head.answer(context.Background(), user); err != nil {
 		t.Fatal(err)
 	}
 	charters, err := graph.ActiveCharters()
 	if err != nil || len(charters) != 0 {
 		t.Fatalf("charters = %+v err=%v", charters, err)
+	}
+	if commands, err := graph.PendingCommands(10); err != nil || len(commands) != 0 {
+		t.Fatalf("a rule edit with no rule journaled something: %+v err=%v", commands, err)
 	}
 	if reply := waitForAgentReply(t, graph, "no-rules", user.Seq); strings.TrimSpace(reply.Body) == "" {
 		t.Fatal("the sentence dead-ended in charter management")
