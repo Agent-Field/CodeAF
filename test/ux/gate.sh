@@ -10,6 +10,11 @@
 #   test/ux/gate.sh                    both surfaces, journeys + quality
 #   test/ux/gate.sh --suite journeys   the 19 journeys only
 #   test/ux/gate.sh --only 06,10,13    a subset, both surfaces
+#   test/ux/gate.sh --compare-only     re-read the two evidence trees and
+#                                      rewrite parity.md, spending nothing —
+#                                      also how to build the table when the two
+#                                      surfaces were run in parallel by hand
+#                                      (`run.sh --surface v1 &` `--surface v2 &`)
 #
 # Every flag is passed straight through to run.sh, except --surface, which is
 # what this script is for. Each surface gets its OWN disposable brain: they
@@ -30,9 +35,32 @@ set -uo pipefail
 UX_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO="$(cd "$UX_ROOT/../.." && pwd)"
 
+COMPARE_ONLY=0
+ARGS=()
+for arg in "$@"; do
+  case "$arg" in
+    --compare-only) COMPARE_ONLY=1 ;;
+    *) ARGS+=("$arg") ;;
+  esac
+done
+set -- ${ARGS+"${ARGS[@]}"}
+
+if [ "$COMPARE_ONLY" = "1" ]; then
+  v1_code=compare-only
+  v2_code=compare-only
+else
+
 BIN="${UX_BIN:-$REPO/bin/aforge}"
-echo "building $BIN once, for both surfaces"
-( cd "$REPO" && go build -o "$BIN" ./cmd/aforge ) || exit 2
+# UX_SKIP_BUILD=1 already in the environment means somebody has handed us the
+# binary to measure — a build from a known commit while the working tree is
+# mid-edit, say. Otherwise build it here, once, for both surfaces.
+if [ "${UX_SKIP_BUILD:-0}" = "1" ]; then
+  [ -x "$BIN" ] || { echo "UX_SKIP_BUILD=1 but $BIN is not executable" >&2; exit 2; }
+  echo "measuring $BIN (build skipped)"
+else
+  echo "building $BIN once, for both surfaces"
+  ( cd "$REPO" && go build -o "$BIN" ./cmd/aforge ) || exit 2
+fi
 export UX_BIN="$BIN" UX_SKIP_BUILD=1
 
 echo
@@ -44,6 +72,8 @@ echo
 echo "════ surface v2 — aforge chat --v2 ════"
 "$UX_ROOT/run.sh" --surface v2 "$@"
 v2_code=$?
+
+fi
 
 python3 - "$UX_ROOT" "$v1_code" "$v2_code" <<'PY'
 import csv, os, sys
