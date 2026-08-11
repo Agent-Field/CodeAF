@@ -24,13 +24,16 @@ import (
 // value opens v2, because someone who exported it meant it.
 const chatV2Env = "AFORGE_CHAT_V2"
 
-// Linear mode (10.1.5) is a flag here and nothing else, deliberately. Somebody
-// who wants the accessible rendering every time wants it PERSISTED, and a
-// persisted preference belongs in the settings registry — where it gets a row,
-// a group and a live preview (8.2.19) — not in a second environment variable
-// this file invented. The registry's completeness gate says the same thing by
-// failing the build for an unregistered pin. Wave 4 owns that surface and the
-// row lands with it; until then the flag is the whole door.
+// Linear mode (10.1.5) used to be a flag here and nothing else, deliberately:
+// somebody who wants the accessible rendering every time wants it PERSISTED,
+// and a persisted preference belongs in the settings registry — where it gets
+// a row, a group and a live preview (8.2.19) — not in a second environment
+// variable this file invented. That row has landed
+// (internal/config/settings.go: KeyLinearMode, LinearModeAt,
+// AFORGE_CHAT_LINEAR) and the registry's completeness gate covers the pin.
+// resolveLinear (chatv2_linear.go) is the seam: an explicit --linear on this
+// command line still outranks the registry, the same way --v2 outranks
+// AFORGE_CHAT_V2 above.
 
 // wantChatV2 reports whether this invocation asked for the new surface, and
 // returns the arguments with the switch removed so the rest parses normally.
@@ -96,7 +99,7 @@ func runChatV2(args []string) error {
 
 	return tui2.Run(context.Background(), tui2.RunOptions{
 		Options: tui2.Options{
-			Linear:  *linear,
+			Linear:  resolveLinear(flags, *linear),
 			DB:      path,
 			Session: strings.TrimSpace(*sessionID),
 		},
