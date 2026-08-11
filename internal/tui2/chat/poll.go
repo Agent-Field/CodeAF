@@ -264,6 +264,9 @@ func (a *App) refreshScope(journal int64) {
 	if !a.source.refresh(journal, false) {
 		return
 	}
+	// Delivery and failure are read off the rebuilt board, here, because this is
+	// the one moment the lifecycles moved.
+	a.noticeWork()
 	a.railModel.Refresh()
 	if a.hudModel != nil {
 		a.hudModel.Refresh()
@@ -299,6 +302,13 @@ func (a *App) absorb(messages []store.Message) int {
 		appended++
 		if message.Role == store.RoleUser {
 			a.status.turns++
+		}
+		// The needs-input event, raised where the ask ARRIVES rather than where
+		// the count is painted: a question is an interruption once, when it is
+		// asked, and a notification driven off the standing count would fire
+		// again on every poll for as long as nobody answered.
+		if block.questions > 0 && !block.user {
+			a.noticeQuestion(message.Body)
 		}
 		if a.turn.active && endsTurn(message, a.turn.since) {
 			settled = true
@@ -369,6 +379,10 @@ func (a *App) applyPost(result postResultMsg) {
 		sanitizeMessage(&message)
 		a.transcript.Append(newMessageBlock(message, a.style))
 		a.status.turns++
+		// One mark per COMMITTED user message: the row is in the store, with the
+		// sequence the store gave it, so the terminal's prompt navigation is
+		// anchored to a turn that really happened.
+		a.noticePrompt()
 	}
 	a.beginTurn(result.message.Seq)
 	a.transcript.GotoBottom()
@@ -392,6 +406,9 @@ func (a *App) beginTurn(since int64) {
 		traceTurn(a, "rearmed")
 		return
 	}
+	// The progress channel opens here and closes in endTurn — the two states
+	// 10.5.27 allows, around the live turn and nothing else.
+	a.noticeBusy(true)
 	a.turn = liveTurn{
 		active: true,
 		since:  since,
@@ -412,6 +429,7 @@ func (a *App) beginTurn(since int64) {
 // how it ended.
 func (a *App) endTurn() {
 	traceTurn(a, "ended")
+	a.noticeBusy(false)
 	a.detachLive()
 	a.turn = liveTurn{}
 	a.refresh()

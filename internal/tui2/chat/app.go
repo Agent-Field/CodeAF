@@ -286,6 +286,21 @@ type App struct {
 	// mean re-deriving the target from the text the composer already parsed.
 	pending    []string
 	dispatches []composer.Dispatch
+
+	// hooks is the terminal-protocol queue (10.5.27, shell.go's contract). The
+	// shell's hooks return bytes as commands and nothing writes them but the
+	// runtime, so a hook raised inside the poll chain waits here until Update
+	// hands it back. See Update.
+	hooks []tea.Cmd
+	// notify is the shell's Notify behind a field, so the interruption budget's
+	// three occasions can be asserted. See raiseNotice.
+	notify func(tui2.AttentionKind, string, string) tea.Cmd
+	// lives is the last lifecycle this window saw for each task, so a delivery
+	// and a failure can be noticed as the TRANSITIONS they are. A notification
+	// keyed off a state rather than off a change would fire on every poll for as
+	// long as the state lasted, which is the interruption budget spent on one
+	// event forever.
+	lives map[string]rail.Lifecycle
 }
 
 var _ tea.Model = (*App)(nil)
@@ -345,6 +360,7 @@ func New(opts Options) *App {
 		Session: app.session,
 	})
 
+	app.notify = app.shell.Notify
 	app.pane = &transcriptPane{
 		transcript: app.transcript,
 		now:        now,
@@ -550,9 +566,45 @@ func (a *App) hudRows(width, height int) []string {
 	return out
 }
 
-// Update folds a message into the app, handing down everything it does not
-// claim.
+// Update folds a message into the app and returns whatever the fold produced,
+// plus whatever the terminal hooks queued while it ran.
+//
+// The wrapper exists because of the hook contract's one hard rule (shell.go):
+// a returned command must be returned onwards, and there is no background
+// writer — the command IS the write. The facts that raise a hook are noticed
+// deep inside the poll chain, in functions that were built to return nothing,
+// and threading a tea.Cmd back out of every one of them would put the contract
+// at the mercy of the next branch somebody adds. So the hooks queue and this
+// one door drains, which makes "no hook command is ever dropped" a property of
+// the shape rather than a rule each caller has to remember.
 func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	model, cmd := a.update(msg)
+	if hooks := a.drainHooks(); hooks != nil {
+		cmd = tea.Batch(cmd, hooks)
+	}
+	return model, cmd
+}
+
+// hook queues one terminal-protocol write. A nil command is the common case —
+// most notifications are suppressed, and an unchanged busy state costs nothing
+// — so it is dropped here rather than at four call sites.
+func (a *App) hook(cmd tea.Cmd) {
+	if cmd != nil {
+		a.hooks = append(a.hooks, cmd)
+	}
+}
+
+// drainHooks hands the queue over as one command.
+func (a *App) drainHooks() tea.Cmd {
+	if len(a.hooks) == 0 {
+		return nil
+	}
+	batch := tea.Batch(a.hooks...)
+	a.hooks = a.hooks[:0]
+	return batch
+}
+
+func (a *App) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.KeyPressMsg:
 		return a, a.drain(a.key(msg))
@@ -913,6 +965,8 @@ func (a *App) refresh() {
 	a.status.foldable = a.foldable
 	a.status.input, a.status.hint = a.inputState()
 	a.status.attention = a.openQuestions()
+	// The terminal's title carries the same count the footer paints (10.5.27).
+	a.noticeAttention(a.status.attention)
 
 	a.meta.live = a.turn.active
 	if a.turn.active {
