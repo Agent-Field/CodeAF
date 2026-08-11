@@ -4,6 +4,8 @@ import (
 	"image"
 	"strings"
 	"testing"
+
+	"github.com/charmbracelet/x/ansi"
 )
 
 func TestCompositorDrawsLayersInZOrder(t *testing.T) {
@@ -221,4 +223,69 @@ func TestSolveIntoReusesItsSlice(t *testing.T) {
 
 func testingAllocs(f func()) float64 {
 	return testing.AllocsPerRun(200, f)
+}
+
+// A frame is a picture of every cell in the terminal, and a row that stops
+// early says nothing about the cells past the cut — so whatever the LAST frame
+// left there stays on screen. The screenshot harness caught that ghost three
+// ways in one scrape of a task room: a rail row reading two different frames
+// superimposed ("1 running Aforge spine ↦"), an "○ more" left over from the home
+// scope under a task scope with no members, and a three-row gap where the
+// previous frame's rows had been. All three read as rail-content bugs and none
+// of them was one: the rail rendered two lines and meant two lines.
+//
+// The invariant, pinned at the compositor because that is where the contract
+// with the terminal lives: every row of a frame is exactly as wide as the frame,
+// and there are exactly as many rows as the frame is tall — whatever the panes
+// did or did not fill.
+func TestFrameStatesEveryCellSoAShorterPaneCannotGhost(t *testing.T) {
+	var c compositor
+	c.setLayout(layout{
+		Width: 20, Height: 4,
+		Slots: []slot{
+			{ID: LayerTranscript, Rect: image.Rect(0, 0, 12, 4), Z: zBase},
+			{ID: LayerRail, Rect: image.Rect(12, 0, 20, 4), Z: zBase},
+		},
+	})
+
+	// A tall frame, then the same layout with a rail that got shorter and a
+	// transcript that emptied — the exact transition the ghost appears in.
+	c.setContent(LayerTranscript, "aaaa\nbbbb\ncccc\ndddd")
+	c.setContent(LayerRail, "r0\nr1\nr2\nr3")
+	_ = c.render()
+
+	c.setContent(LayerTranscript, "")
+	c.setContent(LayerRail, "r0")
+	got := c.render()
+
+	lines := strings.Split(got, "\n")
+	if len(lines) != 4 {
+		t.Fatalf("frame is %d rows, want 4: %q", len(lines), got)
+	}
+	for i, line := range lines {
+		if w := ansi.StringWidth(line); w != 20 {
+			t.Fatalf("row %d is %d cells, want 20: %q", i, w, line)
+		}
+	}
+	for i, line := range lines[1:] {
+		if strings.TrimSpace(line) != "" {
+			t.Fatalf("row %d kept the previous frame's content: %q", i+1, line)
+		}
+	}
+	if strings.TrimSpace(lines[0]) != "r0" {
+		t.Fatalf("row 0 = %q, want only the rail's one line", lines[0])
+	}
+}
+
+// The padding must not cost bandwidth on a settled screen: a frame that already
+// fills its width is returned untouched, and the shell's repaint gate means an
+// unchanged frame is never rebuilt at all (TestShellFrameIsStableWhenNothingMoved).
+func TestFramePaddingIsFreeWhenNothingIsShort(t *testing.T) {
+	full := "abcde\nfghij"
+	if got := padFrame(full, 5); got != full {
+		t.Fatalf("a full-width frame was rewritten: %q", got)
+	}
+	if got := padFrame("ab\ncd", 0); got != "ab\ncd" {
+		t.Fatalf("a zero-width frame was rewritten: %q", got)
+	}
 }

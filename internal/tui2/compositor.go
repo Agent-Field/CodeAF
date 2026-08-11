@@ -2,9 +2,11 @@ package tui2
 
 import (
 	"image"
+	"strings"
 
 	"charm.land/lipgloss/v2"
 	uv "github.com/charmbracelet/ultraviolet"
+	"github.com/charmbracelet/x/ansi"
 )
 
 // The compositor is the one place in the v2 surface that knows where anything
@@ -207,7 +209,66 @@ func (c *compositor) render() string {
 		}
 		l.body.Draw(c.canvas, l.rect)
 	}
-	return c.canvas.Render()
+	return padFrame(c.canvas.Render(), c.w)
+}
+
+// padFrame states every blank cell instead of implying it.
+//
+// THE DEFECT THIS CLOSES. The canvas is cleared and redrawn per frame, so what
+// it holds is always exactly right — but its Render trims each row's trailing
+// whitespace, and a row that is blank from column 40 rightwards arrives as a
+// string 40 cells long. A frame is a picture of every cell in the terminal; one
+// that stops early is a frame that says nothing about the cells past the cut,
+// and what fills them is whatever the last frame left there.
+//
+// That is a ghost, and the screenshot harness caught it three ways in one
+// scrape of a task room: a rail row reading "1 running Aforge spine ↦" — two
+// different frames superimposed on one row — an "○ more" left over from the
+// home scope under a task scope that has no members, and a three-row gap where
+// the previous frame's rows had been. All three were read as rail-content bugs.
+// None of them was: the rail rendered two lines and meant two lines.
+//
+// It is fixed here rather than in any pane because it is not a pane's business.
+// A pane is given a box and told to fill it; whether the cells it did not fill
+// are ASSERTED blank is the compositor's contract with the terminal, and there
+// is exactly one place that contract is written.
+//
+// The bandwidth cost is zero in the steady state and that is structural, not
+// lucky: what reaches the wire is decided by Bubble Tea's diffing renderer
+// (10.1.1), which compares this frame with the last one cell by cell. A
+// trailing space that was already a trailing space is not a change. What the
+// padding buys is the transition — the frame where a pane got SHORTER — and
+// that is the only frame the ghost ever appears in.
+func padFrame(frame string, w int) string {
+	if w <= 0 {
+		return frame
+	}
+	// The common case on a settled screen is that nothing needs padding, and it
+	// costs one width measurement per row to find out.
+	short := false
+	for line := range strings.SplitSeq(frame, "\n") {
+		if ansi.StringWidth(line) < w {
+			short = true
+			break
+		}
+	}
+	if !short {
+		return frame
+	}
+	var b strings.Builder
+	b.Grow(len(frame) + w)
+	first := true
+	for line := range strings.SplitSeq(frame, "\n") {
+		if !first {
+			b.WriteByte('\n')
+		}
+		first = false
+		b.WriteString(line)
+		for pad := w - ansi.StringWidth(line); pad > 0; pad-- {
+			b.WriteByte(' ')
+		}
+	}
+	return b.String()
 }
 
 // hit answers which pane owns a cell, and where in that pane the cell is. The
