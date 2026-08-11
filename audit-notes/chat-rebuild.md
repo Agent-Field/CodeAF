@@ -4393,3 +4393,22 @@ anything unbuilt. The engine is not what makes this feel unfinished; what makes
 it feel unfinished is that the surface cannot show what the head did, and the
 head cannot read what it did either — findings 2 and 3 are one wound seen from
 both sides, and closing them closes 4, 8 and 14's material half as well.
+
+### 13.9 Wave-5 handoff lane: the co-working asks, compiled (read-only)
+
+Wave 5 is hard-blocked on the co-working campaign's territory
+(internal/resident, internal/exec, internal/plan), and the asks this campaign
+accumulated against that territory were scattered across 12.3.3, 12.6, 12.8.10,
+12.9.7, 12.12.8, 13.3, 13.4 and 13.8. They are now ONE document —
+`audit-notes/wave5-coworking-handoff.md` — eight items (H1-H8), each verified
+against the code at HEAD `0b94a83` with file:line citations, ordered by
+unblocking value, with a suggested sequencing. The two findings the compilation
+itself produced: (a) 12.8.10's one-line interrupt sketch is wrong about the
+resident holding a head — it holds none and cannot import one
+(resident.go:1497-1501), so the edit is one case plus one func seam in the
+existing `With*` idiom; and (b) journaled `head_interrupt` rows are not merely
+undrained today, they are actively REJECTED by `applyCommand`'s default arm
+(resident.go:1087-1093) with a visible "not supported" receipt beside a stop
+that in fact happened. The fan-out lane's 13.6 remains unlanded; its exec asks
+are recorded as pending, not invented. `go build ./...` green at compile time;
+no code touched.
