@@ -20,7 +20,8 @@ ux_launch "$UX_SESSION"
 sleep 6
 snap returned
 
-assert_screen 'aforge' 'aforge came back up' 60
+# alive_re: v1 signs its header, v2 signs its footer (see lib.sh, 13.4).
+assert_screen "$(alive_re)" 'aforge came back up' 60
 
 # The one thing that must be true on return: the conversation is still there.
 assert_screen 'heron|haiku|river|stretch|water|learned' \

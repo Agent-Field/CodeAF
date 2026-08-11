@@ -32,6 +32,13 @@ set -uo pipefail
 
 is_v2() { [ "$UX_SURFACE" = "v2" ]; }
 
+# alive_re matches "the surface drew a frame of its own". v1 signs its header
+# row with "aforge". v2 has no header at all (13.4) — what it always draws is
+# the footer's help door, "? help", the one column footer.go:290 calls "the one
+# column with nothing to test for: it is always there", still present in a
+# 40-column frame. Same question, each surface's own answer.
+alive_re() { if is_v2; then printf '%s' '\? help'; else printf '%s' 'aforge'; fi; }
+
 # surface_note records, in the evidence, which anatomy an assertion followed —
 # so a reader of the v2 report can tell "asserted something else" from
 # "asserted the same thing and it was missing".
@@ -69,7 +76,26 @@ record() { printf -- '- **%s**: %s\n' "$1" "$2" >> "$UX_DIR/notes.md"; printf --
 # been answered stays in the composer and silently prefixes the next sentence
 # ("2stand down the stretch reminder"), which would make the suite lie about
 # what the user said.
-clear_composer() { tmux send-keys -t "${1:-$UX_SESSION}" C-u; sleep 0.3; }
+#
+# v1 clears with ctrl+u. v2's composer does not bind ctrl+u at all (nor ctrl+w,
+# ctrl+a, ctrl+e — internal/tui2/composer/key.go binds enter, esc, backspace,
+# delete, the arrows and insertion, and nothing else), and its documented clear
+# is esc — which, while a reply is streaming, means INTERRUPT (app.go esc arm)
+# and, on an already-empty draft, means jump-to-live-edge. A suite must not
+# interrupt a turn it is waiting for, so v2 erases the draft with backspaces:
+# the one gesture with no second meaning. Drafts the suite creates are a digit
+# or a short sentence, so a bounded run of them is a clear.
+clear_composer() {
+  local sess="${1:-$UX_SESSION}"
+  if is_v2; then
+    local keys=() i
+    for i in $(seq 1 80); do keys+=(BSpace); done
+    tmux send-keys -t "$sess" "${keys[@]}"
+  else
+    tmux send-keys -t "$sess" C-u
+  fi
+  sleep 0.3
+}
 
 say() {
   local text="$1" sess="${2:-$UX_SESSION}"
@@ -91,7 +117,44 @@ press() { tmux send-keys -t "${2:-$UX_SESSION}" "$1"; note "pressed: $1"; }
 # bare digit that submits itself, so it must NOT be followed by a newline.
 type_raw() { tmux send-keys -t "${2:-$UX_SESSION}" -l -- "$1"; note "typed: $1"; }
 
-answer_number() { type_raw "$1" "${2:-$UX_SESSION}"; sleep 3; }
+# answer_number answers a numbered question.
+#
+# v1 binds digits while a question is open (tui/model.go:1473): a bare digit
+# with an empty composer submits itself, so it must NOT be followed by Enter.
+#
+# v2 has no answer keys yet — 13.4's top gap 1 and J6: digits, y/n and arrows
+# are all unbound while a question is open (app.go's key ladder sends every
+# printable key to the composer unless the rail holds focus), so the digit
+# lands in the draft and the journey stalls forever. Until the question-keys
+# lane in internal/tui2/chat binds them, the number is sent the way a v2 user
+# has to send it today: type the number, press Enter, and the head's
+# answer_question takes it (13.4 J6: "works only as type-number+Enter").
+#
+# The Enter is conditional on the question still being open, so this keeps
+# working the day digits ARE bound: a bound digit answers on its own, the
+# journal says so within the grace window, and no stray Enter is sent. Every
+# journey asserts the OUTCOME — the question is recorded answered, by the
+# user's own message — never the keystroke, so neither binding changes a
+# verdict.
+answer_number() {
+  local number="$1" sess="${2:-$UX_SESSION}"
+  type_raw "$number" "$sess"
+  if is_v2; then
+    local waited=0 open
+    while [ "$waited" -lt 4 ]; do
+      open="$(journal "select count(*) from agent_questions where status in ('pending','asked')")"
+      [ "${open:-0}" = "0" ] && break
+      sleep 1; waited=$((waited + 1))
+    done
+    if [ "${open:-1}" != "0" ]; then
+      tmux send-keys -t "$sess" Enter
+      note "…and Enter: v2 binds no digit while a question is open (13.4 gap 1)"
+    else
+      note "…the bare digit answered it: v2 now binds question keys"
+    fi
+  fi
+  sleep 3
+}
 
 # ---------------------------------------------------------------- the eyes
 

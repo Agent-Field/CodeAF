@@ -42,7 +42,16 @@ else
   fi
 fi
 
-if pane | head -1 | grep -q '»'; then
+# The glance that says which model is answering. v1 pins it in the header with
+# "talk »"; v2 has no header and carries the model chip on the composer's meta
+# strip and on every reply header (5.10/5.23, landed ee73240 — 13.4 J16/R2), as
+# "<role word> <model word>", e.g. "voice deepseek-v4-flash". Reported, not
+# graded, on both — the graded half of this journey is the durable routing
+# above.
+if is_v2; then
+  record 'meta strip' "$(pane | tail -4 | grep -E '\$|ctx' | head -1 | sed 's/^ *//')"
+  record 'model chip on reply headers' "$(pane | grep -Eo 'aforge · [^ ]+' | tail -1)"
+elif pane | head -1 | grep -q '»'; then
   record 'header' "boost pin visible in the header glance: $(pane | head -1 | grep -o 'talk »[^·]*')"
 fi
 
