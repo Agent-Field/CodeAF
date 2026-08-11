@@ -86,47 +86,6 @@ func RecognizesStandingIntent(instruction string) bool {
 	return false
 }
 
-// standingDraftReply is the receipt for a deterministically recognized durable
-// ask. It promises a draft and nothing else: ratification is still the user's.
-const standingDraftReply = "Reading that as a standing rule — writing it up for you to confirm."
-
-// manageStanding gives durable language the same treatment node surgery already
-// has: the deterministic reading runs BEFORE the routing model, so recognized
-// standing intent reaches the charter-draft path whatever the model's mood.
-//
-// The failure this exists for was live: "whenever a new pr comes to agentfield
-// org, make sure to check for security scan and vulnerability..." routed to the
-// notebook as a preference fact, because the recognizer only ran inside the
-// compiler — downstream of a routing decision that never arrived there.
-//
-// The cue set is deliberately unchanged. A false positive costs one ratification
-// card; a false negative costs the whole feature.
-func (h *Head) manageStanding(user store.Message) (bool, error) {
-	instruction := strings.TrimSpace(user.Body)
-	if !RecognizesStandingIntent(instruction) {
-		return false, nil
-	}
-	// "What happens every day while I'm gone?" carries the cadence words and
-	// none of the intent. A question about aforge is never a rule for aforge,
-	// so it goes on to the loop that can actually answer it.
-	if selfQuestionPhrased(strings.ToLower(instruction)) {
-		return false, nil
-	}
-	// The same untargeted splice the routing model would have emitted. The
-	// reconciler compiles it, and the compiler's temporal path turns it into a
-	// CharterSpec plus the ratification card.
-	command, err := h.store.RequestCommand(store.Command{
-		SessionID:   user.SessionID,
-		Kind:        store.CommandSplice,
-		Instruction: instruction,
-		Attachments: append([]string(nil), user.Attachments...),
-	})
-	if err != nil {
-		return true, h.postAgent(user.SessionID, commandErrorReply, 0)
-	}
-	return true, h.postAgent(user.SessionID, standingDraftReply, command.Seq)
-}
-
 func (c *Compiler) compileStanding(ctx context.Context, instruction, graphContext string) (Brief, error) {
 	user := "Current graph context and measured self-knowledge:\n" + graphContext +
 		"\n\nUser instruction (verbatim; preserve exactly):\n" + instruction

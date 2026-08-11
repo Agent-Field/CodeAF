@@ -5,7 +5,6 @@ import (
 	"time"
 
 	"github.com/Agent-Field/aforge-v2/internal/store"
-	"github.com/Agent-Field/aforge-v2/internal/thread"
 )
 
 // "That's wrong" is the strongest quality signal a person ever emits, and it
@@ -106,61 +105,6 @@ func SpliceCorrection(words string, job store.Node, previous string, files []str
 	return block.String()
 }
 
-// manageCorrection reads the message as a rejection of work already delivered.
-//
-// It runs after manageRedirect on purpose. Redirection owns work still in
-// flight — that is a plan edit and it must not become a re-delivery — so this
-// path only ever sees a correction that redirection declined, which is exactly
-// the case where the job is over and there is a deliverable to be wrong about.
-func (h *Head) manageCorrection(user store.Message) (bool, error) {
-	message := strings.TrimSpace(user.Body)
-	if message == "" {
-		return false, nil
-	}
-	asked, waiting, err := h.openCorrectionAsk(user)
-	if err != nil {
-		return false, err
-	}
-	anchor := correctionAnchor{Job: asked}
-	anchored := waiting
-	if !waiting {
-		if cue, cued := redirectCue(message); !cued || cue != "correction" {
-			return false, nil
-		}
-		// A question about a deliverable is a question. "sorry, what was that?"
-		// carries a correction cue and rejects nothing, and turning it into a
-		// re-run would spend money on an answer the reader already has — so the
-		// question mark hands it back to the readers that answer questions.
-		if strings.HasSuffix(message, "?") {
-			return false, nil
-		}
-		anchor, anchored, err = h.correctionTarget(user, message)
-		if err != nil || !anchored {
-			return false, err
-		}
-	}
-	job := anchor.Job
-	if len(anchor.Rivals) > 1 {
-		return true, h.askWhichWork(user, message, anchor.Rivals)
-	}
-	previous := h.jobResult(job)
-	if strings.TrimSpace(previous) == "" {
-		// Nothing was delivered, so there is nothing to be wrong. Whatever this
-		// sentence is about, it is not a revision of this job.
-		return false, nil
-	}
-	if redirectReference(message) == "" {
-		if waiting {
-			// The answer to the question was as contentless as the sentence that
-			// raised it. Asking twice is a loop; the router can hold a
-			// conversation and this path cannot.
-			return false, nil
-		}
-		return true, h.askWhatIsWrong(user, job, previous)
-	}
-	return true, h.requestCorrection(user, job, message, previous)
-}
-
 // requestCorrection journals the revision and says which deliverable it is
 // about. The receipt names the work rather than the mechanism, and it promises
 // only what the command actually does: the same job, done again, with the
@@ -183,62 +127,6 @@ func (h *Head) requestCorrection(user store.Message, job store.Node, message, pr
 	return h.postAgent(user.SessionID,
 		"Taking that back to "+surgeryTargetLabel(job)+" — redoing it with the previous version and your correction in hand.",
 		command.Seq)
-}
-
-// askWhatIsWrong is the one question this path may ask, and it exists because
-// the alternative is worse than a question. "This is wrong" with no specifics
-// compiles into an assumption wearing a receipt — a re-guess at the same job
-// with nothing new in it — or, worse, into a brand-new unrelated job. Naming
-// what was delivered is what makes it one honest question rather than a shrug:
-// the user learns which thing is being talked about in the same breath they are
-// asked what is wrong with it.
-//
-// It is anchored to the node so the answer is adjacent to this job for every
-// reader that already understands adjacency, and it ends in a fixed sentence so
-// the next message — which will carry no cue at all — is read as the critique.
-func (h *Head) askWhatIsWrong(user store.Message, job store.Node, previous string) error {
-	summary := truncateBytes(firstLine(previous), correctionAskLineBytes)
-	body := "That was " + surgeryTargetLabel(job)
-	if summary != "" {
-		body += " — " + summary
-	}
-	body += ". " + correctionAskTail
-	_, err := thread.Post(h.store, store.Message{
-		SessionID: user.SessionID,
-		Role:      store.RoleAgent,
-		Body:      body,
-		NodeID:    job.ID,
-	})
-	return err
-}
-
-// openCorrectionAsk reports that the last thing said to the user was this
-// path's own question, and which job it was about. A question the user is
-// answering right now outranks every cue test: they are not going to repeat
-// "that's wrong", they are going to say what is wrong.
-func (h *Head) openCorrectionAsk(user store.Message) (store.Node, bool, error) {
-	recent, err := h.recentThread(user.SessionID, user.Seq)
-	if err != nil {
-		return store.Node{}, false, err
-	}
-	for index := len(recent) - 1; index >= 0; index-- {
-		message := recent[index]
-		if message.Role == store.RoleUser {
-			continue
-		}
-		if message.Role != store.RoleAgent ||
-			!strings.HasSuffix(strings.TrimSpace(message.Body), correctionAskTail) ||
-			strings.TrimSpace(message.NodeID) == "" {
-			// Something else was the last word, so no question is open.
-			return store.Node{}, false, nil
-		}
-		node, found, err := h.store.Node(message.NodeID)
-		if err != nil || !found || !beltAddressable(node) {
-			return store.Node{}, false, err
-		}
-		return node, true, nil
-	}
-	return store.Node{}, false, nil
 }
 
 // correctionAnchor is which delivered work a correction is about. Rivals is
@@ -401,86 +289,6 @@ func (h *Head) correctableOwner(nodeID string) (store.Node, bool) {
 		nodeID = node.Parent
 	}
 	return store.Node{}, false
-}
-
-// askWhichWork is the whole of what ambiguity is allowed to cost: one short
-// question in plain words, naming the candidates the way the user would
-// recognise them, and no picker, no error, no mode. It reuses the redirect
-// target question because it is the same question — which work did you mean —
-// and a second spelling of it would be a second thing for a person to learn.
-//
-// The assume-the-default shortcut is deliberately not consulted. This question
-// only ever exists because two readings disagreed; there is no default here that
-// is evidence, and applying one silently is exactly the wrong revision bought
-// without asking.
-func (h *Head) askWhichWork(user store.Message, message string, rivals []store.Node) error {
-	if len(rivals) < 2 {
-		return nil
-	}
-	if len(rivals) > RedirectCandidateLimit {
-		rivals = rivals[:RedirectCandidateLimit]
-	}
-	options := make([]store.QuestionOption, 0, len(rivals))
-	labels := make([]string, 0, len(rivals))
-	for _, job := range rivals {
-		label := surgeryTargetLabel(job)
-		labels = append(labels, label)
-		options = append(options, store.QuestionOption{
-			Label: label,
-			Hint:  string(job.Status),
-			Value: store.RedirectOptionValue("correct", job.ID, message),
-		})
-	}
-	prompt := "Which one — " + strings.Join(labels[:len(labels)-1], ", ") +
-		", or " + labels[len(labels)-1] + "?"
-	body := store.QuestionMessageBody(prompt, options, store.QuestionConfig{
-		Kind: store.QuestionChoose, Category: store.QuestionCategoryRedirectTarget, Default: "1",
-	})
-	question, err := h.store.AskQuestion(store.AgentQuestion{
-		SessionID: user.SessionID, Text: body, OriginNodeID: rivals[0].ID,
-		Urgency: store.QuestionBlocking, Category: store.QuestionCategoryRedirectTarget,
-		DefaultAnswer: "1", Options: options,
-	})
-	if err != nil {
-		return err
-	}
-	_, err = h.store.SurfaceQuestion(question.Seq)
-	return err
-}
-
-// applyAdjustment is the polite half of the same event. "That's wrong" was the
-// only sentence that reached this path, because the gate above is a frozen list
-// of conflict vocabulary — and "make it warmer, less legal" matches none of it,
-// so every mannerly revision of a delivered draft became a brand-new job:
-// re-planned, re-priced, without the previous version in hand and without the
-// line that says the user outranks the predecessor's account of itself. Three
-// revisions of one email were four jobs.
-//
-// The cue list does not grow; it stays the fast path it always was. What judges
-// the sentences it was never going to cover is the model, on the routing call
-// that was already happening. Once the reading arrives, everything downstream is
-// the correction path unchanged — same resolution, same workspace inheritance,
-// same dispute line — because a polite adjustment and a blunt rejection are the
-// same event said in two registers.
-func (h *Head) applyAdjustment(user store.Message) (bool, error) {
-	message := strings.TrimSpace(user.Body)
-	if message == "" {
-		return false, nil
-	}
-	anchor, anchored, err := h.correctionTarget(user, message)
-	if err != nil || !anchored {
-		return false, err
-	}
-	if len(anchor.Rivals) > 1 {
-		return true, h.askWhichWork(user, message, anchor.Rivals)
-	}
-	previous := h.jobResult(anchor.Job)
-	if strings.TrimSpace(previous) == "" {
-		// Nothing was delivered, so there is nothing to adjust. Whatever the
-		// sentence is, it is new work and the ordinary path owns it.
-		return false, nil
-	}
-	return true, h.requestCorrection(user, anchor.Job, message, previous)
 }
 
 // correctable is the membrane: the user's own work, finished, and not the

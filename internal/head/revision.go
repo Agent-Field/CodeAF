@@ -2,7 +2,6 @@ package head
 
 import (
 	"context"
-	"fmt"
 	"strings"
 	"time"
 	"unicode"
@@ -35,123 +34,6 @@ const (
 	// live job it belongs to. A job is a root and its parts, so this is slack.
 	adjacencyAncestorDepth = 8
 )
-
-// redirectIntent is one recognized mid-flight redirection: which cue class
-// heard it, and the live jobs it could plausibly be aimed at, best first.
-type redirectIntent struct {
-	Cue        string
-	Candidates []store.SurgeryTarget
-	Certain    bool
-	// Floorless marks a question assembled without a single candidate clearing
-	// the anchor floor. Nothing about the ranking is evidence in that case, so
-	// the question must actually be asked rather than quietly assumed away.
-	Floorless bool
-}
-
-// manageRedirect reads the user's message as a revision event for work already
-// in flight. It is deterministic for the same reason surgery is: whether a
-// sentence redirects the running plan or asks for something new is a question
-// about the live graph, and a routing model that guesses it wrong either edits
-// a plan nobody touched or starts a second job doing the same thing twice.
-//
-// It runs after surgery on purpose. "cancel", "pause", and their neighbours
-// are surgery's vocabulary and stay surgery's, unchanged.
-func (h *Head) manageRedirect(ctx context.Context, user store.Message) (bool, error) {
-	intent, redirecting, err := h.recognizeRedirect(user)
-	if err != nil || !redirecting {
-		return false, err
-	}
-	if intent.Cue == urgencyCue {
-		// Urgency is the one class that never asks. The question would spend
-		// the wait it is meant to shorten, and everything expedite does is
-		// reversible, so the best-ranked live job takes the pressure and the
-		// receipt names it.
-		//
-		// When nothing cleared the anchor floor the ranking is not evidence and
-		// the first row of an arbitrary list is not a choice. The oldest thing
-		// still running is: it is what the person has been waiting on longest,
-		// which is what impatience is about, and the receipt names it so a wrong
-		// guess costs one word.
-		pressed := intent.Candidates[0]
-		if intent.Floorless {
-			pressed = oldestRunningTarget(intent.Candidates)
-		}
-		return true, h.requestRevision(ctx, user, store.CommandExpedite, pressed.Node.ID, user.Body)
-	}
-	if intent.Certain {
-		return true, h.requestRedirect(ctx, user, intent.Candidates[0].Node.ID, user.Body)
-	}
-	return true, h.askRedirectTarget(ctx, user, intent)
-}
-
-// recognizeRedirect requires two independent signals before it fires: a cue
-// that the sentence corrects, adds, cuts, or redirects, and an anchor tying it
-// to work that is actually live. Either alone is ordinary conversation.
-//
-// The anchor has two arms. Vocabulary is the older one and it is not enough:
-// "make sure you review the changes" shares no word with a job whose brief says
-// middleware, and means that job entirely, because that job spoke a moment ago.
-// So adjacency reads position in the conversation instead, and rides in as a
-// candidate with a strong prior — strong enough to anchor a sentence no word
-// anchors, never strong enough to overrule a job the user's own words name.
-func (h *Head) recognizeRedirect(user store.Message) (redirectIntent, bool, error) {
-	message := strings.TrimSpace(user.Body)
-	cue, cued := redirectCue(message)
-	if !cued {
-		return redirectIntent{}, false, nil
-	}
-	active, err := h.activeUserJobs()
-	if err != nil || len(active) == 0 {
-		return redirectIntent{}, false, err
-	}
-	ranked, err := h.rankRedirectTargets(message, active)
-	if err != nil {
-		return redirectIntent{}, false, err
-	}
-	anchored := make([]store.SurgeryTarget, 0, len(ranked))
-	for _, target := range ranked {
-		if target.Score >= RedirectAnchorScore {
-			anchored = append(anchored, target)
-		}
-	}
-	adjacent, adjoins, err := h.adjacencyTarget(user, active)
-	if err != nil {
-		return redirectIntent{}, false, err
-	}
-	switch {
-	case len(anchored) == 1 && (!adjoins || anchored[0].Node.ID == adjacent.Node.ID):
-		return redirectIntent{Cue: cue, Candidates: anchored, Certain: true}, true, nil
-	case len(anchored) == 1:
-		// The words name one job and the conversation points at another, and
-		// both readings are as good as this path ever gets. Choosing either
-		// silently edits a plan the user may not have meant, so the words go
-		// first — they are the more deliberate signal — and the question settles
-		// it.
-		return redirectIntent{Cue: cue, Candidates: []store.SurgeryTarget{anchored[0], adjacent}}, true, nil
-	case len(anchored) > 1:
-		return redirectIntent{Cue: cue, Candidates: clipTargets(promoteTarget(anchored, adjacent, adjoins))}, true, nil
-	case adjoins:
-		// No shared vocabulary at all, and the job the user is replying to said
-		// something a moment ago. That is the whole signal, and it is the one a
-		// person would use.
-		return redirectIntent{Cue: cue, Candidates: []store.SurgeryTarget{adjacent}, Certain: true}, true, nil
-	case !refersToLiveWork(message, true, len(active)):
-		return redirectIntent{}, false, nil
-	case len(active) == 1:
-		// One job running and the user said "the job". There is nothing else
-		// they could mean, and asking would be theatre.
-		return redirectIntent{Cue: cue, Candidates: active, Certain: true}, true, nil
-	default:
-		// Nothing cleared the floor. The ranked list is therefore not a shortlist
-		// of what the user might have meant — it is the set of jobs whose briefs
-		// happen to share a word with the sentence, which is the coincidence the
-		// floor exists to reject. Offering only those hid the user's actual work
-		// behind a 0.05 match, and the assume-the-default path below could pick
-		// that match without ever showing it. So the offer is the user's live
-		// jobs, and this question is one they answer themselves.
-		return redirectIntent{Cue: cue, Candidates: clipTargets(active), Floorless: true}, true, nil
-	}
-}
 
 // adjacencyTarget is the anchor's discourse arm: the live job of the user's own
 // whose message — progress, narration, a delivery, a question — is the last
@@ -213,40 +95,6 @@ func (h *Head) adjacencyOwner(nodeID string, live map[string]store.SurgeryTarget
 		nodeID = node.Parent
 	}
 	return store.SurgeryTarget{}, false
-}
-
-// spliceContinuity is the last thing the adjacency reading is good for. Every
-// layer above it declined, so this genuinely is new work — but new work typed
-// while a job was mid-sentence is work about that job often enough that running
-// the two side by side is never the safer guess. Target on a splice already
-// means "the prior work this one continues", which is how a promoted reflex
-// hands its partial forward; a job that has not finished yet is the same claim.
-func (h *Head) spliceContinuity(user store.Message) string {
-	active, err := h.activeUserJobs()
-	if err != nil || len(active) == 0 {
-		return ""
-	}
-	adjacent, adjoins, err := h.adjacencyTarget(user, active)
-	if err != nil || !adjoins {
-		return ""
-	}
-	return adjacent.Node.ID
-}
-
-// promoteTarget puts the adjacent job at the head of a candidate list it is
-// already part of. The question is the same question; the strong prior only
-// decides which option is offered as the default.
-func promoteTarget(candidates []store.SurgeryTarget, adjacent store.SurgeryTarget, adjoins bool) []store.SurgeryTarget {
-	if !adjoins {
-		return candidates
-	}
-	promoted := []store.SurgeryTarget{adjacent}
-	for _, candidate := range candidates {
-		if candidate.Node.ID != adjacent.Node.ID {
-			promoted = append(promoted, candidate)
-		}
-	}
-	return promoted
 }
 
 // activeUserJobs is the whole precondition for this path: the user's own work,
@@ -324,50 +172,6 @@ func (h *Head) journalRevision(user store.Message, kind store.CommandKind, targe
 	return command.Seq, nil
 }
 
-// askRedirectTarget is the single structured question this path is allowed:
-// the same words could steer a running job or start a new one, and picking for
-// the user either edits the wrong plan or duplicates the work.
-func (h *Head) askRedirectTarget(ctx context.Context, user store.Message, intent redirectIntent) error {
-	message := strings.TrimSpace(user.Body)
-	options := make([]store.QuestionOption, 0, len(intent.Candidates)+1)
-	for _, candidate := range intent.Candidates {
-		options = append(options, store.QuestionOption{
-			Label: "apply it to " + surgeryTargetLabel(candidate.Node),
-			Hint:  surgeryTargetHint(candidate),
-			Value: store.RedirectOptionValue("apply", candidate.Node.ID, message),
-		})
-	}
-	options = append(options, store.QuestionOption{
-		Label: "start it as new work",
-		Value: store.RedirectOptionValue("new", "", message),
-	})
-	prompt := fmt.Sprintf("Apply that to %s, or start it as new work?",
-		surgeryTargetLabel(intent.Candidates[0].Node))
-	// The assume-the-default shortcut is for a question whose default is
-	// evidence. When nothing cleared the anchor floor there is no evidence to
-	// default to, and steering a plan on the first row of an arbitrary list is
-	// precisely the wrong edit made silently.
-	if ask, _, err := h.store.ShouldAsk(store.QuestionCategoryRedirectTarget); err == nil && !ask && !intent.Floorless {
-		if err := h.store.RecordAssumedWithDefault(store.QuestionCategoryRedirectTarget, "1",
-			user.SessionID, prompt); err == nil {
-			return h.requestRedirect(ctx, user, intent.Candidates[0].Node.ID, message)
-		}
-	}
-	body := store.QuestionMessageBody(prompt, options, store.QuestionConfig{
-		Kind: store.QuestionChoose, Category: store.QuestionCategoryRedirectTarget, Default: "1",
-	})
-	question, err := h.store.AskQuestion(store.AgentQuestion{
-		SessionID: user.SessionID, Text: body, OriginNodeID: intent.Candidates[0].Node.ID,
-		Urgency: store.QuestionBlocking, Category: store.QuestionCategoryRedirectTarget,
-		DefaultAnswer: "1", Options: options,
-	})
-	if err != nil {
-		return err
-	}
-	_, err = h.store.SurfaceQuestion(question.Seq)
-	return err
-}
-
 // applyRedirectOption settles every redirection answer: which job the words
 // were for, and whether a running leaf the revision wanted gone may be stopped.
 func (h *Head) applyRedirectOption(ctx context.Context, user store.Message, option store.QuestionOption) (bool, error) {
@@ -404,52 +208,6 @@ func (h *Head) applyRedirectOption(ctx context.Context, user store.Message, opti
 	return false, nil
 }
 
-// applyUrgency is impatience the frozen cue list was never going to catch.
-//
-// "taking too long" is in the phrase list and "taking forever" is not, and no
-// amount of adding phrases fixes that — the next one is always the one nobody
-// wrote down. So the list stays exactly as it is, keeps being the fast path, and
-// the sentences it misses are read by the model in the routing call that was
-// already happening. What happens after the reading is the cue path's own
-// machinery, unchanged: expedite the job, never ask, name it in the receipt.
-//
-// Which job takes the pressure follows the same order every other referent
-// follows: what the words name, then what the conversation points at, and only
-// then the oldest thing still running — which is what a person waiting is
-// waiting on.
-func (h *Head) applyUrgency(ctx context.Context, user store.Message) (bool, error) {
-	active, err := h.activeUserJobs()
-	if err != nil || len(active) == 0 {
-		return false, err
-	}
-	ranked, err := h.rankRedirectTargets(strings.TrimSpace(user.Body), active)
-	if err != nil {
-		return false, err
-	}
-	anchored := make([]store.SurgeryTarget, 0, len(ranked))
-	for _, target := range ranked {
-		if target.Score >= RedirectAnchorScore {
-			anchored = append(anchored, target)
-		}
-	}
-	pressed := store.SurgeryTarget{}
-	switch {
-	case len(anchored) == 1:
-		pressed = anchored[0]
-	default:
-		adjacent, adjoins, adjacentErr := h.adjacencyTarget(user, active)
-		if adjacentErr != nil {
-			return false, adjacentErr
-		}
-		if adjoins {
-			pressed = adjacent
-		} else {
-			pressed = oldestRunningTarget(active)
-		}
-	}
-	return true, h.requestRevision(ctx, user, store.CommandExpedite, pressed.Node.ID, user.Body)
-}
-
 // oldestRunningTarget is the answer to "which one" when nothing in the sentence
 // and nothing in the conversation says. Somebody impatient is impatient about
 // the thing that has been going longest, and work that has actually started
@@ -472,13 +230,6 @@ func oldestRunningTarget(targets []store.SurgeryTarget) store.SurgeryTarget {
 
 func runningStatus(node store.Node) bool {
 	return node.Status == store.Running || node.Status == store.Claimed
-}
-
-func clipTargets(targets []store.SurgeryTarget) []store.SurgeryTarget {
-	if len(targets) > RedirectCandidateLimit {
-		return targets[:RedirectCandidateLimit]
-	}
-	return targets
 }
 
 // redirectCue names the five ways a person changes work already underway. They

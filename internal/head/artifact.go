@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"unicode/utf8"
 
@@ -108,6 +109,12 @@ func (h *Head) readArtifact(node store.Node, name string) (string, error) {
 		return "", fmt.Errorf("%q is not a file that job wrote; it wrote: %s",
 			name, strings.Join(paths, ", "))
 	}
+	return readArtifactAt(picked)
+}
+
+// readArtifactAt is the opening half, shared by both recorded sets. Whatever
+// chose the path, what happens to it afterwards is one rule.
+func readArtifactAt(picked string) (string, error) {
 	real, err := artifactRealPath(picked)
 	if err != nil {
 		return "", err
@@ -132,6 +139,29 @@ func (h *Head) readArtifact(node store.Node, name string) (string, error) {
 		return picked + " (" + artifactSize(info.Size()) + ")\nthe file is empty", nil
 	}
 	return picked + " (" + artifactSize(info.Size()) + ")\n" + body, nil
+}
+
+// readWrittenArtifact opens one file this head wrote. It is readArtifact with a
+// different recorded set and the identical boundary: the argument only ever
+// CHOOSES among paths the system already recorded, and the chosen path must
+// still resolve inside the directory it was recorded in. Nothing here builds a
+// path out of what a caller typed, which is the whole of why the boundary holds.
+func (h *Head) readWrittenArtifact(name string) (string, error) {
+	paths := h.writtenArtifacts()
+	if len(paths) == 0 {
+		return "", fmt.Errorf("nothing has been written from this conversation — name the job that wrote the file, or write it first")
+	}
+	sort.Strings(paths)
+	picked, chosen := artifactPick(paths, name)
+	if !chosen {
+		if strings.TrimSpace(name) == "" {
+			return "", fmt.Errorf("more than one file has been written from this conversation — name one of: %s",
+				strings.Join(paths, ", "))
+		}
+		return "", fmt.Errorf("%q is not a file written from this conversation; these are: %s",
+			name, strings.Join(paths, ", "))
+	}
+	return readArtifactAt(picked)
 }
 
 // artifactPick turns whatever the caller typed into one entry of the recorded

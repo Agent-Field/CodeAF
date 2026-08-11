@@ -20,61 +20,6 @@ const (
 	keepWorkOptionValue  = "services:keep-work"
 )
 
-func (h *Head) manageService(user store.Message) (bool, error) {
-	if recognizesShutdownAll(user.Body) {
-		return true, h.shutDownEverything(user)
-	}
-	action, reference, explicit := serviceManagement(user.Body)
-	if action == "status" {
-		services, err := h.store.ActiveServices()
-		if err != nil {
-			return true, err
-		}
-		if len(services) == 0 {
-			return true, h.postAgent(user.SessionID, "No services are running.", 0)
-		}
-		lines := make([]string, 0, len(services))
-		for _, service := range services {
-			lines = append(lines, fmt.Sprintf("%s is %s · %s", service.Name, service.Status, service.Health.Suffix()))
-		}
-		return true, h.postAgent(user.SessionID, strings.Join(lines, "\n"), 0)
-	}
-	if action == "" {
-		return false, nil
-	}
-	var matches []store.Service
-	var err error
-	if action == "restart" {
-		matches, err = h.store.SearchRestartableServices(reference)
-	} else {
-		matches, err = h.store.SearchServices(reference)
-	}
-	if err != nil {
-		return true, err
-	}
-	if len(matches) == 0 {
-		if explicit {
-			return true, h.postAgent(user.SessionID, "I couldn't match that to a running service.", 0)
-		}
-		return false, nil
-	}
-	kind, known := serviceCommandKind(action)
-	if !known {
-		return false, nil
-	}
-	if len(matches) > 1 {
-		options := make([]store.QuestionOption, 0, len(matches))
-		for _, service := range matches {
-			options = append(options, store.QuestionOption{
-				Label: service.Name + " · " + service.Health.Suffix(),
-				Value: "service:" + action + ":" + service.ID,
-			})
-		}
-		return true, h.postQuestion(user.SessionID, "Which service do you mean?", 0, options)
-	}
-	return true, h.requestServiceCommand(user, kind, matches[0], action)
-}
-
 // recognizesShutdownAll is terse on purpose: only unmistakably total phrasings
 // take the whole-workspace path, so "stop the dev server" still means one
 // service and nothing else is swept up with it.
