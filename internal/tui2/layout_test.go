@@ -426,3 +426,70 @@ func TestDialogFullscreenDoorsOnBothAxes(t *testing.T) {
 		}
 	}
 }
+
+// THE DEFECT: the transcript and the rail were flush. A transcript line that
+// ran the full width put its last character against the rail's first cell, and
+// a selected rail row's band started in the cell after a word — two rooms with
+// no wall between them. 5.13 separates rooms with whitespace, not with a drawn
+// divider, so the wall is one column that belongs to neither pane.
+//
+// Pinned as an invariant over every size and mode: wherever a rail column and a
+// main pane are both on screen, there is at least one column between them that
+// no slot claims.
+func TestTheRailAndTheLensNeverTouch(t *testing.T) {
+	tables := []Metrics{DefaultMetrics(), chatShapedMetrics()}
+	modes := []mode{{}, {ScopeOpen: true}, {OverlayOpen: true}, {ScopeOpen: true, OverlayOpen: true}}
+	for _, m := range tables {
+		for _, md := range modes {
+			for w := 0; w <= 200; w++ {
+				for h := 0; h <= 40; h++ {
+					l := solve(w, h, m, md)
+					if l.Narrow {
+						continue
+					}
+					rail, ok := find(l, LayerRail)
+					if !ok {
+						continue
+					}
+					for _, id := range []LayerID{LayerTranscript, LayerComposer} {
+						other, present := find(l, id)
+						if !present {
+							continue
+						}
+						if gap := rail.Min.X - other.Max.X; gap < railSeam {
+							t.Fatalf("%dx%d %+v: %v ends at column %d and the rail starts at %d — gap %d, want at least %d",
+								w, h, md, id, other.Max.X-1, rail.Min.X, gap, railSeam)
+						}
+					}
+					// The rail keeps its whole width; the seam comes out of the
+					// lens, which is the pane that can afford it.
+					if rail.Dx() != m.RailWidth {
+						t.Fatalf("%dx%d: rail is %d columns, want %d", w, h, rail.Dx(), m.RailWidth)
+					}
+					if rail.Max.X != w {
+						t.Fatalf("%dx%d: rail does not reach the right edge: %v", w, h, rail)
+					}
+				}
+			}
+		}
+	}
+}
+
+// The seam is ground, not a slot: nothing may claim it, or it stops being the
+// whitespace 5.13 asked for and becomes a pane that happens to be blank.
+func TestTheSeamBelongsToNobody(t *testing.T) {
+	l := solve(120, 32, chatShapedMetrics(), mode{ScopeOpen: true})
+	rail, ok := find(l, LayerRail)
+	if !ok {
+		t.Fatal("120x32 lost the rail")
+	}
+	// Only over the rows the rail occupies: the status line runs the full width
+	// underneath everything, which is 10.5.22's footer and not a wall to knock
+	// a hole in.
+	seam := image.Rect(rail.Min.X-railSeam, rail.Min.Y, rail.Min.X, rail.Max.Y)
+	for _, sl := range l.Slots {
+		if sl.Rect.Overlaps(seam) {
+			t.Fatalf("%v claimed the seam %v with %v", sl.ID, seam, sl.Rect)
+		}
+	}
+}
