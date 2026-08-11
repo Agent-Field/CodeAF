@@ -21,6 +21,12 @@
 // it. This is [Model.Key] fully consuming the keystroke — typed text is
 // never destroyed, only moved aside.
 //
+// One thing sits in front of that law, and only one: an OPEN `@` filter (see
+// below) takes esc to close itself, leaving the draft exactly as typed. That is
+// not an exception to the law but the same rule 8.2.21 settles it with — esc
+// acts on what the user is watching — and the moment the filter is closed, esc
+// means what it always meant here.
+//
 // Esc against an EMPTY draft is NOT the composer's decision. Whether that
 // esc should interrupt a turn the user is watching or pop scope/navigate
 // depends on state the composer does not have (is the current room
@@ -42,6 +48,46 @@
 // oldest-to-newest and then, last, the stashed draft — so the very next ↑
 // after an esc brings the stashed words back, cursor at the end, ready to
 // keep typing.
+//
+// # The `@` grammar (5.18, 5.22), and how a room adopts it
+//
+// Typing '@' at a word boundary opens an inline as-you-type filter over the
+// wiring's dispatch targets: live tasks first with their attention glyph and
+// identity hue, then a dim `history` group of settled ones, fuzzy over task
+// word + title with the typed characters lit (filter.go, hint.go). Enter or tab
+// completes the mention into the draft as a hue-marked token; esc closes the
+// filter and touches nothing. Once a token exists, the dispatch chip appears
+// under the draft — `↵ stay · ⌃↵ follow` — because 5.22 does not allow the
+// power chord to be invisible while it is relevant.
+//
+// A completed mention is one object: backspace at its edge removes the whole
+// token, and it comes back whole out of the esc stash and the recall ring. It
+// is not tracked across edits to achieve that — a mention is derived from the
+// draft text and the current target list on every edit (mention.go), so the
+// text and the token can never disagree and a target that leaves the rail stops
+// being addressable at once.
+//
+// Adoption is two fields and nothing else:
+//
+//	composer.New(composer.Options{
+//		OnSubmit:   send,                 // unchanged; still fires for plain prose
+//		Targets:    func() []composer.Target { ... },
+//		OnDispatch: func(d composer.Dispatch) { ... },
+//	})
+//
+// Targets is a cheap snapshot of what may be addressed, called when a filter
+// opens and thereafter only while the draft holds an '@'. OnDispatch receives
+// the addressed sends: the target's ID, whether it was Settled (5.18: settled
+// targets are addressed ABOUT, not TO — route those to the main head as
+// referenced context), whether the send asked to Follow (ctrl+enter), and the
+// trimmed Text with its token still in it. Everything else stays where it was:
+// unaddressed prose goes to OnSubmit, and so does an addressed draft when
+// OnDispatch is nil, so wiring Targets first and OnDispatch later is safe.
+//
+// A nil Targets is the whole opt-out, tested byte-for-byte: no filter, no
+// token, no chip, no chord, and Render's output identical to this package's
+// before the grammar existed. The composer never journals, never routes, and
+// never decides what a dispatch means — it reports what the user addressed.
 //
 // # Paste
 //

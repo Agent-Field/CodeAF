@@ -25,30 +25,38 @@ func (m *Model) Render(width, height int) string {
 	}
 	usable := width - prefixWidth
 
+	// The `@` grammar's chrome (5.18, 5.22) borrows from the bottom of the
+	// rectangle and never from the draft's last row — see hint.go. A composer
+	// with no [Options.Targets] never enters this path at all, which is what
+	// keeps its output byte-identical to the pre-`@` composer's.
+	hints := m.hintRows(sty, width, height-1)
+	drafted := height - len(hints)
+
 	rows := layoutRows(m.value, usable)
 	cursorRow := rowOf(rows, m.cursor)
 	total := len(rows)
 
-	visible := height
+	visible := drafted
 	if visible > total {
 		visible = total
 	}
 	scrollTop := 0
-	if total > height {
-		scrollTop = cursorRow - (height - 1)
+	if total > drafted {
+		scrollTop = cursorRow - (drafted - 1)
 		if scrollTop < 0 {
 			scrollTop = 0
 		}
-		if maxTop := total - height; scrollTop > maxTop {
+		if maxTop := total - drafted; scrollTop > maxTop {
 			scrollTop = maxTop
 		}
 	}
 
 	empty := len(m.value) == 0
-	lines := make([]string, 0, visible)
+	lines := make([]string, 0, visible+len(hints))
 	for i := scrollTop; i < scrollTop+visible; i++ {
 		lines = append(lines, m.renderRow(sty, rows[i], i, i == cursorRow, empty, width, prefixWidth))
 	}
+	lines = append(lines, hints...)
 	return strings.Join(lines, "\n")
 }
 
