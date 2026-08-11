@@ -42,9 +42,11 @@ const (
 	// as a column boundary without a rule; one space reads as a wrapped word.
 	tableGap = 2
 	// tableMinCol is the narrowest a column may be squeezed to before rung 3
-	// takes over. Three cells holds a short word's stem and is where a wrapped
-	// cell stops being readable at all.
-	tableMinCol = 3
+	// takes over. Five cells holds a short word — `model`, `$8.65`, `cheap` —
+	// and below that a cell starts breaking ordinary words across rows, which
+	// is the point at which a grid has stopped being easier to read than the
+	// labelled records rung 3 falls back to.
+	tableMinCol = 5
 	// tableMaxCol caps a natural column width so one essay-length cell cannot
 	// starve every other column before the squeeze even begins.
 	tableMaxCol = 40
