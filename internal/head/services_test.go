@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/Agent-Field/aforge-v2/internal/store"
+	"github.com/Agent-Field/agentfield/sdk/go/ai"
 )
 
 func headServiceFixture(t *testing.T, graph *store.Store, id, name, node string, pid int) store.Service {
@@ -28,37 +29,43 @@ func headServiceFixture(t *testing.T, graph *store.Store, id, name, node string,
 	return service
 }
 
-// serviceTool is how a sentence about a running service reaches the store now.
-// The prefix tests that used to claim these sentences terminally are hints; the
-// act is a tool the loop calls with what it read, and every rule that made the
-// act safe — the kinds, the unconditional stop, the one gate over live work —
-// is where it always was.
-func serviceTool(t *testing.T, h *Head, user store.Message, args map[string]any) (string, bool) {
+// serviceTool runs one service call the way the loop does and hands back what
+// the tool told it, plus the run so a test can see whether the tool spoke for
+// the whole turn. Services are the person's own persistent effects rather than
+// graph work, which is why stopping one is done rather than queued behind a
+// gate — and why the recognizer that used to claim these sentences was the wrong
+// place for that judgment.
+func serviceTool(t *testing.T, graph *store.Store, user store.Message, args map[string]any) (*beltRun, string, bool) {
 	t.Helper()
-	run := &beltRun{head: h, user: user}
-	return run.execute(beltToolService, beltArguments(t, args))
+	run := &beltRun{head: New(nil, graph), user: user}
+	result, failed := run.execute(beltToolService, beltArguments(t, args))
+	return run, result, failed
 }
 
 func TestServiceConversationUniqueStopAndRestart(t *testing.T) {
 	graph := openHeadStore(t)
 	service := headServiceFixture(t, graph, "svc", "dev-server", "leaf", 41)
-	h := New(nil, graph)
 	user, _ := graph.PostMessage(store.Message{SessionID: "services", Role: store.RoleUser, Body: "stop the dev server"})
-	if message, failed := serviceTool(t, h, user, map[string]any{
-		"verb": "stop", "describes": "dev server"}); failed {
-		t.Fatalf("stop refused: %s", message)
+	run, result, failed := serviceTool(t, graph, user, map[string]any{
+		"verb": "stop", "describes": "the dev server"})
+	if failed {
+		t.Fatalf("stop refused: %s", result)
+	}
+	if !run.acted {
+		t.Fatalf("stopping a service recorded no receipt: %q", result)
 	}
 	commands, _ := graph.PendingCommands(10)
 	if len(commands) != 1 || commands[0].Kind != store.CommandServiceStop || commands[0].Target != service.ID {
 		t.Fatalf("stop commands = %+v", commands)
 	}
 
+	// "restart it" with one thing running: the description is empty and the one
+	// running service is what it can only mean.
 	graph2 := openHeadStore(t)
 	service2 := headServiceFixture(t, graph2, "svc", "preview", "leaf", 42)
-	h2 := New(nil, graph2)
 	user2, _ := graph2.PostMessage(store.Message{SessionID: "services", Role: store.RoleUser, Body: "restart it"})
-	if message, failed := serviceTool(t, h2, user2, map[string]any{"verb": "restart"}); failed {
-		t.Fatalf("restart refused: %s", message)
+	if _, result, failed := serviceTool(t, graph2, user2, map[string]any{"verb": "restart"}); failed {
+		t.Fatalf("restart refused: %s", result)
 	}
 	commands, _ = graph2.PendingCommands(10)
 	if len(commands) != 1 || commands[0].Kind != store.CommandServiceRestart || commands[0].Target != service2.ID {
@@ -72,10 +79,9 @@ func TestStoppedServiceCanResolveStartItAgain(t *testing.T) {
 	if err := graph.StopService(service.ID, "stale at startup"); err != nil {
 		t.Fatal(err)
 	}
-	h := New(nil, graph)
 	user, _ := graph.PostMessage(store.Message{SessionID: "services", Role: store.RoleUser, Body: "start it again"})
-	if message, failed := serviceTool(t, h, user, map[string]any{"verb": "restart"}); failed {
-		t.Fatalf("start-again refused: %s", message)
+	if _, result, failed := serviceTool(t, graph, user, map[string]any{"verb": "restart"}); failed {
+		t.Fatalf("start-again refused: %s", result)
 	}
 	commands, _ := graph.PendingCommands(10)
 	if len(commands) != 1 || commands[0].Kind != store.CommandServiceRestart || commands[0].Target != service.ID {
@@ -83,58 +89,52 @@ func TestStoppedServiceCanResolveStartItAgain(t *testing.T) {
 	}
 }
 
-// Ambiguity still costs a question and never a guess — the two halves have just
-// been separated. The tool refuses to choose and hands both candidates back; the
-// ask tool is what turns them into rows the person can pick. Nothing is
-// journaled until they answer, which is the property that mattered.
-func TestServiceAmbiguityHandsBackBothAndAsksRatherThanChoosing(t *testing.T) {
+// Two services a description reaches equally. The tool refuses to choose and
+// names both; the durable numbered question is the ask tool's, and the choice
+// comes back as an ordinary turn — so nothing is journaled until the person has
+// said which.
+func TestServiceConversationAmbiguityUsesOptions(t *testing.T) {
 	graph := openHeadStore(t)
 	first := headServiceFixture(t, graph, "one", "api-preview", "leaf-one", 51)
 	second := headServiceFixture(t, graph, "two", "web-preview", "leaf-two", 52)
-	h := New(nil, graph)
 	user, _ := graph.PostMessage(store.Message{SessionID: "services", Role: store.RoleUser, Body: "restart it"})
 
-	run := &beltRun{head: h, user: user}
-	message, failed := run.execute(beltToolService, beltArguments(t, map[string]any{"verb": "restart"}))
+	run, result, failed := serviceTool(t, graph, user, map[string]any{"verb": "restart"})
 	if failed {
-		t.Fatalf("an ambiguous service call errored instead of handing back candidates: %s", message)
+		t.Fatalf("an ambiguous restart errored instead of offering candidates: %s", result)
 	}
-	if !strings.Contains(message, first.ID) || !strings.Contains(message, second.ID) {
-		t.Fatalf("the candidates were not handed back: %s", message)
+	if !strings.Contains(result, "more than one service matches") ||
+		!strings.Contains(result, first.Name) || !strings.Contains(result, second.Name) {
+		t.Fatalf("the candidate list is not both services by name:\n%s", result)
 	}
 	if run.acted {
-		t.Fatal("an ambiguous service call acted")
+		t.Fatal("an ambiguous restart acted anyway")
 	}
 	if commands, _ := graph.PendingCommands(10); len(commands) != 0 {
-		t.Fatalf("something was journaled before the user was asked: %+v", commands)
+		t.Fatalf("an ambiguous restart journaled work: %+v", commands)
 	}
 
-	asked, failed := run.execute(beltToolAsk, beltArguments(t, map[string]any{
-		"question": "Which one — api-preview or web-preview?",
-		"options":  []string{"api-preview", "web-preview"},
-	}))
-	if failed {
-		t.Fatalf("the question could not be asked: %s", asked)
+	head, client := beltHead(graph, beltTurn{calls: []ai.ToolCall{
+		beltCall("c1", beltToolAsk, map[string]any{
+			"question": "Which service do you mean?",
+			"options":  []string{first.Name, second.Name}})}})
+	if err := head.answer(context.Background(), user); err != nil {
+		t.Fatal(err)
 	}
 	messages, _ := graph.Messages("services", user.Seq, 10)
-	if len(messages) != 1 || len(messages[0].Options) != 2 || !strings.Contains(messages[0].Body, "Which one") {
+	if len(messages) != 1 || len(messages[0].Options) != 2 || !strings.Contains(messages[0].Body, "Which service") {
 		t.Fatalf("ambiguity message = %+v", messages)
 	}
 
-	// The answer comes back to the loop rather than being applied by the question
-	// machinery: the loop asked, so the loop is the only party that knows what the
-	// answer settles.
+	client.turns = append(client.turns, beltTurn{calls: []ai.ToolCall{
+		beltCall("c2", beltToolService, map[string]any{
+			"verb": "restart", "describes": "web"})}}, beltTurn{})
 	answer, _ := graph.PostMessage(store.Message{SessionID: "services", Role: store.RoleUser, Body: "2"})
-	handled, err := h.answerPendingQuestion(context.Background(), answer)
-	if err != nil || handled {
-		t.Fatalf("an ask answer was claimed by the question machinery: handled=%v err=%v", handled, err)
-	}
-	if message, failed := serviceTool(t, h, answer, map[string]any{
-		"verb": "restart", "describes": "web-preview"}); failed {
-		t.Fatalf("the chosen service could not be restarted: %s", message)
+	if err := head.answer(context.Background(), answer); err != nil {
+		t.Fatal(err)
 	}
 	commands, _ := graph.PendingCommands(10)
-	if len(commands) != 1 || commands[0].Target != second.ID {
+	if len(commands) != 1 || commands[0].Target != second.ID || commands[0].Target == first.ID {
 		t.Fatalf("selected command = %+v", commands)
 	}
 }
@@ -153,8 +153,23 @@ func TestShutItAllDownStopsServicesAndGatesInFlightWork(t *testing.T) {
 	}
 	h := New(nil, graph)
 	user, _ := graph.PostMessage(store.Message{SessionID: "services", Role: store.RoleUser, Body: "shut it all down"})
-	if message, failed := serviceTool(t, h, user, map[string]any{"verb": "stop_everything"}); failed {
-		t.Fatalf("shutdown refused: %s", message)
+	// The total phrasing is still recognized, and the reading says out loud how
+	// far it reaches before anything is done about it.
+	if !recognizesShutdownAll(user.Body) {
+		t.Fatal("the one total phrasing is no longer recognized")
+	}
+	if reading := deterministicReading(t, h, user); !strings.Contains(reading,
+		`reads as "stop everything" — every running service AND every live job; ask before the jobs`) {
+		t.Fatalf("the blast radius was not reported to the loop:\n%s", reading)
+	}
+	run, result, failed := serviceTool(t, graph, user, map[string]any{"verb": "stop_everything"})
+	if failed {
+		t.Fatalf("stop_everything refused: %s", result)
+	}
+	// The gate owns the words: a consent question is the whole reply, and the
+	// loop must not speak over it.
+	if !run.spoke || !run.acted {
+		t.Fatalf("the shutdown gate did not claim the turn: spoke=%t acted=%t", run.spoke, run.acted)
 	}
 	commands, _ := graph.PendingCommands(10)
 	if len(commands) != 2 {
@@ -202,10 +217,9 @@ func TestShutItAllDownStopsServicesAndGatesInFlightWork(t *testing.T) {
 
 func TestShutItAllDownWithNothingRunningStaysCalm(t *testing.T) {
 	graph := openHeadStore(t)
-	h := New(nil, graph)
 	user, _ := graph.PostMessage(store.Message{SessionID: "services", Role: store.RoleUser, Body: "stop everything"})
-	if message, failed := serviceTool(t, h, user, map[string]any{"verb": "stop_everything"}); failed {
-		t.Fatalf("empty shutdown refused: %s", message)
+	if _, result, failed := serviceTool(t, graph, user, map[string]any{"verb": "stop_everything"}); failed {
+		t.Fatalf("empty shutdown refused: %s", result)
 	}
 	messages, _ := graph.Messages("services", user.Seq, 10)
 	if len(messages) != 1 || messages[0].Body != "Nothing is running." || len(messages[0].Options) != 0 {

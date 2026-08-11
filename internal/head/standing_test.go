@@ -16,36 +16,38 @@ import (
 // wrote a notebook fact; no command, no charter, no ratification card.
 const theObservedFailure = "whenever a new pr comes to agentfield org, make sure to check for security scan and vulnerability..."
 
-// The failure this test was written for was a routing model reading durable
-// language as a notebook preference: no command, no charter, no ratification
-// card. The recognizer that fixed it used to PRE-EMPT the model. It does not any
-// more — nothing does — so what is asserted here is the two things that actually
-// keep the fix: the durable reading reaches the model as evidence it cannot miss,
-// and the work commissioned from it carries the person's words verbatim, which is
-// what the compiler's temporal path turns into a charter.
-func TestDurableLanguageIsReadAsStandingIntentAndDraftsACharter(t *testing.T) {
+// The reading survives; its authority does not. "whenever a new PR comes in…"
+// is still recognized as durable intent, and that reading is now put in front of
+// the loop as evidence — with the consequence spelled out, because commissioning
+// durable intent is not commissioning an errand. What must not happen is what
+// happened: the ask filed as a notebook line, with no command, no charter and no
+// ratification card behind it.
+func TestRecognizedStandingLanguageDraftsACharterFromTheVerbatimAsk(t *testing.T) {
 	graph := openHeadStore(t)
-	client := &beltClient{turns: []beltTurn{
-		{calls: []ai.ToolCall{beltCall("c1", beltToolSpawn,
-			map[string]any{"instruction": theObservedFailure})}},
-		{text: "Reading that as a standing rule — writing it up for you to confirm."},
-	}}
 	user, err := graph.PostMessage(store.Message{
 		SessionID: "standing", Role: store.RoleUser, Body: theObservedFailure,
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := New(client, graph).answer(context.Background(), user); err != nil {
+	if !RecognizesStandingIntent(theObservedFailure) {
+		t.Fatal("the durable ask is no longer recognized as standing intent")
+	}
+	reading := deterministicReading(t, New(nil, graph), user)
+	if !strings.Contains(reading, "reads as DURABLE intent") ||
+		!strings.Contains(reading, "standing rule the person is asked to ratify") {
+		t.Fatalf("the loop was not told this is durable intent:\n%s", reading)
+	}
+
+	// The words travel verbatim, because the compiler behind the splice reads
+	// the sentence itself: an improved paraphrase is a different rule.
+	head, _ := beltHead(graph, beltTurn{calls: []ai.ToolCall{
+		beltCall("c1", beltToolSpawn, map[string]any{"instruction": theObservedFailure})}},
+		beltTurn{text: "I'll set that up as a standing rule and check with you before it stands."})
+	if err := head.answer(context.Background(), user); err != nil {
 		t.Fatal(err)
 	}
 
-	// The reading is in the prompt, marked as a reading, above the message it is
-	// about. A model that ignores it still gets the sentence; a model that reads
-	// it cannot mistake a standing rule for one errand.
-	if opening := client.openingPrompt(); !strings.Contains(opening, "reads as DURABLE intent") {
-		t.Fatalf("the durable reading never reached the loop:\n%s", opening)
-	}
 	facts, err := graph.RecentFacts(10)
 	if err != nil {
 		t.Fatal(err)
@@ -121,24 +123,27 @@ func TestNonStandingPhrasingStaysOnTheOrdinaryPath(t *testing.T) {
 				t.Fatalf("cues fired on non-standing phrasing")
 			}
 			graph := openHeadStore(t)
-			router := &fakeClient{responses: []string{
-				`{"reply":"On it.","command":{"kind":"splice","target":"","instruction":"` + message + `"}}`,
-			}}
+			client := &fakeClient{responses: []string{"On it."}}
 			user, err := graph.PostMessage(store.Message{
 				SessionID: "ordinary", Role: store.RoleUser, Body: message,
 			})
 			if err != nil {
 				t.Fatal(err)
 			}
-			if err := New(router, graph).answer(context.Background(), user); err != nil {
+			// Nothing here says the ask is durable, so nothing in front of the
+			// loop suggests a rule — and one ordinary turn is one call.
+			if reading := New(nil, graph).renderHints(user, nil); strings.Contains(reading, "DURABLE intent") {
+				t.Fatalf("a one-shot ask was reported as durable:\n%s", reading)
+			}
+			if err := New(client, graph).answer(context.Background(), user); err != nil {
 				t.Fatal(err)
 			}
-			if calls := router.callCount(); calls != 1 {
-				t.Fatalf("routing model calls = %d, want 1", calls)
+			if calls := client.callCount(); calls != 1 {
+				t.Fatalf("provider calls = %d, want 1", calls)
 			}
 			reply := waitForAgentReply(t, graph, "ordinary", user.Seq)
 			if reply.Body != "On it." {
-				t.Fatalf("reply = %q, want the routing model's own answer", reply.Body)
+				t.Fatalf("reply = %q, want the model's own answer", reply.Body)
 			}
 			charters, err := graph.Charters()
 			if err != nil || len(charters) != 0 {
