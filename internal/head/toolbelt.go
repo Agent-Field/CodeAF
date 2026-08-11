@@ -146,6 +146,15 @@ const (
 	// had just issued and re-plan on it. This waits, briefly and boundedly, for
 	// exactly that receipt.
 	beltToolAwait = "await"
+	// beltToolForget is note's opposite, and it exists because the wave would
+	// otherwise have been a net loss. The router carried a `retract` field: a
+	// numbered notebook line the person had just said was untrue, quarantined
+	// rather than superseded, because they were throwing a belief away rather
+	// than giving you the new version of it. That field died with the router and
+	// nothing replaced it, so the head could accumulate beliefs and never let one
+	// go — which is the accumulation failure the consolidator then has to clean
+	// up by guessing.
+	beltToolForget = "forget"
 	// beltToolAsk is the numbered question, kept as a mechanism rather than left
 	// to prose. Every deterministic arm that resolved a referent could end in one
 	// — "Which job do you mean?" with the candidates as durable options — and the
@@ -325,6 +334,9 @@ func beltDefinitions() []ai.ToolDefinition {
 		beltTool(beltToolAwait, "Wait, briefly, for the receipt of a command you just issued, and hand back how it settled. Use it when what you do next depends on whether the change actually landed — never as a way to watch work finish, which takes minutes and this does not. It returns as soon as the receipt exists, or says plainly that it is still queued.", map[string]any{
 			"command": beltProp("integer", "the command number an acting tool handed back; omit for the last one you issued"),
 		}),
+		beltTool(beltToolForget, "Let go of one numbered notebook line the user has just told you is untrue — \"forget that\", \"I don't work that way any more\", a line said back to you as wrong. Name the exact number shown beside that belief; never a number you were not shown, and never more than one. If several lines could be meant, ask instead. This is NOT for a correction aimed at WORK — a figure a job got wrong, a deliverable that missed the point — which is correct, and quietly deleting a belief in answer to one loses the correction entirely. When they are giving you the NEW version of a belief rather than throwing it away, use note with replaces instead: the old line retires into the new.", map[string]any{
+			"belief": beltProp("integer", "the #number shown beside the notebook line"),
+		}, "belief"),
 		beltTool(beltToolAsk, "Put one short numbered question to the user, with the candidates as options they can pick. Use it the moment more than one thing plausibly matches what they meant — never pick for them. Name each option the way THEY would recognise it, in their own words for the work, not by id. This ends the turn: their next message is the answer, and you will have both in front of you.", map[string]any{
 			"question": beltProp("string", "one short question, in their terms"),
 			"options": map[string]any{"type": "array", "description": "two to four choices, each named the way the user would recognise it",
@@ -417,6 +429,8 @@ func (run *beltRun) execute(name, arguments string) (string, bool) {
 		return run.answerQuestion(args)
 	case beltToolAwait:
 		return run.await(args)
+	case beltToolForget:
+		return run.forget(args)
 	case beltToolAsk:
 		return run.ask(args)
 	case beltToolInterrupt:

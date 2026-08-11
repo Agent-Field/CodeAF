@@ -607,3 +607,51 @@ func TestWorkCommissionedInATurnAlwaysLeavesAReceipt(t *testing.T) {
 		t.Fatalf("the receipt does not name what was commissioned: %q", reply.Body)
 	}
 }
+
+// ── forget: the retraction door the router used to be (12.8.11) ─────────────
+
+// The router carried a `retract` field and the wave nearly dropped it, which
+// would have left a head that can accumulate beliefs and never let one go. This
+// is the door back: one numbered line, quarantined rather than superseded,
+// because the person is throwing a belief away rather than giving you its next
+// version.
+func TestForgettingRetiresExactlyTheNumberedBeliefAndNothingElse(t *testing.T) {
+	graph := openHeadStore(t)
+	kept, err := graph.RecordFact("", "user", store.FactPreference, "always cc finance on invoices")
+	if err != nil {
+		t.Fatal(err)
+	}
+	doomed, err := graph.RecordFact("", "user", store.FactPreference, "I prefer the long form report")
+	if err != nil {
+		t.Fatal(err)
+	}
+	user := postUser(t, graph, "forget", "forget that, I don't work that way any more")
+	run := &beltRun{head: New(nil, graph), user: user}
+
+	for _, seq := range []int64{0, -1, doomed.Seq + 500} {
+		if message, failed := run.execute(beltToolForget, beltArguments(t,
+			map[string]any{"belief": seq})); !failed {
+			t.Fatalf("belief %d was accepted: %s", seq, message)
+		}
+	}
+
+	message, failed := run.execute(beltToolForget, beltArguments(t,
+		map[string]any{"belief": doomed.Seq}))
+	if failed {
+		t.Fatalf("an active belief could not be let go: %s", message)
+	}
+	gone, found, err := graph.FactBySeq(doomed.Seq)
+	if err != nil || !found || gone.Status == store.FactActive {
+		t.Fatalf("the belief is still active: %+v found=%t err=%v", gone, found, err)
+	}
+	survivor, found, err := graph.FactBySeq(kept.Seq)
+	if err != nil || !found || survivor.Status != store.FactActive {
+		t.Fatalf("an unrelated belief was taken with it: %+v found=%t err=%v", survivor, found, err)
+	}
+	if len(run.did) != 1 || !strings.Contains(run.did[0], "long form report") {
+		t.Fatalf("the receipt does not say which belief went: %v", run.did)
+	}
+	if run.commandSeq != 0 {
+		t.Fatalf("letting go of a belief journaled a graph command: %d", run.commandSeq)
+	}
+}
