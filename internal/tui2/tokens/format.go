@@ -323,10 +323,33 @@ func ContextCell(used, window int64) string {
 	return string(AppendContextCell(buf[:0], used, window))
 }
 
-// AppendMoney writes money at the resolution the TUI reads it: exact cents up
-// to $999.99, then the count ladder ("$1.2K"). This is the surface form; the
-// prompt form is [AppendMoneyDime], and the difference is deliberate — see
-// that function.
+// subCentScale is the sub-cent rung's resolution: four decimals, because
+// "$0.0017" is seven cells and [MoneyCellWidth] is seven. The rung was chosen to
+// fit the column the ladder already promised rather than the column widened to
+// fit a rung — a money cell that grew by one would move every number to the
+// right of it on every card (5.21's width-stability law).
+const subCentScale = 10_000
+
+// AppendMoney writes money at the resolution the TUI reads it: four decimals
+// below a cent, exact cents up to $999.99, then the count ladder ("$1.2K").
+// This is the surface form; the prompt form is [AppendMoneyDime], and the
+// difference is deliberate — see that function.
+//
+// THE SUB-CENT RUNG (12.9.2, adopted here from the head at 12.10.6's finding).
+// Two decimals turned a measured $0.0017 into "$0.00", and "$0.00" does not read
+// as "very small" — it reads as FREE. 12.9.2 found that at its worst: a model
+// shown a rate it had been told was zero reached for a figure that was not, and
+// wrote "$20.00 a run". The head's moneyUSD learned to render at the precision a
+// figure actually has; the token layer did not follow, so every surface reading
+// a real rate under half a cent showed nothing. It follows now.
+//
+// The law the rung keeps, stated as the invariant the test pins: A POSITIVE
+// FIGURE NEVER RENDERS AS ZERO. Below the fourth decimal the ladder has run out
+// of digits, and it spends its last one rather than rounding down into a lie —
+// $0.00001 renders "$0.0001". That is an overstatement bounded by one hundredth
+// of a cent, and it is the honest direction to be wrong in: the reader learns
+// "smaller than this instrument resolves", never "free". Exact zero is still
+// "$0.00", because zero is a fact and not a rounding.
 func AppendMoney(dst []byte, usd float64) []byte {
 	if math.IsNaN(usd) {
 		return append(dst, GlyphMissing...)
@@ -335,6 +358,16 @@ func AppendMoney(dst []byte, usd float64) []byte {
 		usd = 0
 	}
 	cents := int64(math.Round(usd * 100))
+	if cents == 0 && usd > 0 {
+		// The cent ladder would render this as nothing. Spend four decimals on
+		// it instead, and never fewer than one unit of the last one.
+		frac := int64(math.Round(usd * subCentScale))
+		if frac <= 0 {
+			frac = 1
+		}
+		dst = append(dst, '$', '0', '.')
+		return appendPad4(dst, frac)
+	}
 	if cents >= 100_000 {
 		dst = append(dst, '$')
 		return AppendCount(dst, cents/100)
@@ -449,6 +482,24 @@ func appendPad2(dst []byte, n int64) []byte {
 		n = 0
 	}
 	if n < 10 {
+		dst = append(dst, '0')
+	}
+	return appendInt(dst, n)
+}
+
+// appendPad4 zero-pads to four digits, for the sub-cent rung. Its input is
+// bounded above by [subCentScale]/100 (a value the cent ladder would have taken)
+// and below by one, so it never has to widen the money cell.
+func appendPad4(dst []byte, n int64) []byte {
+	if n < 0 {
+		n = 0
+	}
+	switch {
+	case n < 10:
+		dst = append(dst, '0', '0', '0')
+	case n < 100:
+		dst = append(dst, '0', '0')
+	case n < 1000:
 		dst = append(dst, '0')
 	}
 	return appendInt(dst, n)
