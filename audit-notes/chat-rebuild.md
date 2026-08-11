@@ -4064,3 +4064,63 @@ does not name in 11.1). And OSC traffic — title, bell, prompt marks, hyperlink
 — is written beside the frame, never into it, so `capture-pane` can never
 assert 13.4's gap 4; that half of the gate needs a Go-level test driving
 `Shell.Frame()`, not a tmux journey.
+
+### 13.5.1 Bug 6 closed at the producer — a question says its options once
+
+Landed on `chat-v2` as b32c63e. `go vet ./...` clean; every package green apart
+from the known non-blocker (`internal/plan` `TestRenderTerrainStaysUnderTheCap`,
+Linux-only CJK filename length, co-working territory — reported, not touched).
+
+**Where the smuggling actually was, and it was not where 12.9.1 left it.** The
+audit of every durable-question producer says the contract is already whole:
+the head's gates, the consent desk, the resident's service, taste, craft-budget
+and probation asks all build their body through `QuestionMessageBody` or
+`QuestionBodyFor`, and `QuestionPrompt` strips both of those spellings back off
+before `PartsForQuestion` puts the prose in a text part. The double draw came
+from the ONE producer that never went through that door: `store.OfferStandingWatch`
+and its stand-down mirror wrote their choices into the SENTENCE —
+`"…when you're not here? ▸ 1 yes, always · ▸ 2 only while I'm around"` — with
+the same two options in the typed column beside it. 12.9.1's rule is per-LINE,
+and inline options are not a line, so the sentence survived into the text part
+and the question block drew the same two choices under it. The constants are
+the ask and only the ask now, and both asks are journaled through
+`standingWatchBody` → `QuestionBodyFor` like everything else.
+
+**The second half of the same bug: the offer had no parts at all.** It is the
+one durable question in the product that posts its own message inside its own
+transaction rather than through `surfaceQuestion`, so 12.9.1's chokepoint never
+reached it. A message with no text part falls back to `Body` in v2's
+`appendBody`, which means that even with a clean sentence the humane numbered
+rows would have been drawn as the agent's own prose above the honest block. It
+now attaches blocks from `PartsForQuestion` off the row it just wrote — the same
+builder, not a second opinion.
+
+**11.1, checked rather than assumed, and it decided the shape of the fix.** The
+existing chat reads question options out of the BODY and only the body:
+`internal/tui/cards.go`'s `isQuestionMessage`/`readQuestionComponent` take
+`message.Body`, and `message.Options` has zero read sites in `internal/tui`. So
+"the body must carry only the prose" would have cost v1 its standing-watch
+consent gate — a blocking question would have rendered as free text with no
+choices. The body therefore keeps the numbered rows, in the ONE-PER-LINE
+spelling `QuestionPrompt` can strip; what stops existing is the copy inside the
+sentence. v1's render is not merely preserved but slightly repaired: its
+segment reader used to hand back `"yes, always ·"` with the middot separator
+glued on, and the humane spelling has no separator to glue.
+
+**The decoder covers the class, not the caller.** `QuestionPrompt` now reverses
+the inline spelling too, by the existing chat's own rule — a run starts at the
+first marker and every segment after it has to read as `N label`, or the line is
+prose that merely contains a glyph and is kept whole (the aside stub
+`▸ asked → answered` is the case that proves it). It is still a decoder for
+spellings this package writes. The point is that a producer which lists its own
+options in its own sentence is a class of mistake, and the next one to make it
+cannot double-draw.
+
+**Regression is the failure at its own wording.** `internal/store/question_parts_test.go`
+feeds `PartsForQuestion` the exact pre-fix standing-watch sentence and asserts
+the prompt comes back with no options in it; drives `OfferStandingWatch` and the
+stand-down surfacing end to end and asserts the choices appear only in fields;
+and proves the v1 half with an oracle that mirrors `internal/tui`'s
+`numberedQuestionPayload`/`parseQuestionOptionSegment` line for line, so the
+claim "the old chat still draws the same prompt and the same two labels" is a
+test rather than a paragraph.
