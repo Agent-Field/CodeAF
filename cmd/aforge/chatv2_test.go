@@ -89,10 +89,8 @@ func TestBridgeStreamEventsCarriesTheRoomKey(t *testing.T) {
 	source := make(chan tui.StreamEvent, 4)
 	ctx, stop := context.WithCancel(context.Background())
 	defer stop()
-	out := bridgeStreamEvents(ctx, source)
-	if out == nil {
-		t.Fatal("a live feed produced no bridge")
-	}
+	out := make(chan chat.StreamEvent, 4)
+	bridgeStreamEventsInto(ctx, source, out)
 
 	source <- tui.StreamEvent{Kind: tui.StreamDelta, Delta: "hi", Session: "room-7"}
 	select {
@@ -104,22 +102,35 @@ func TestBridgeStreamEventsCarriesTheRoomKey(t *testing.T) {
 		t.Fatal("the bridge delivered nothing")
 	}
 
-	// A closed feed closes the bridge rather than leaking the goroutine.
+	// A closed engine feed ends its own forwarding without closing the window's
+	// feed: the window outlives the engines that pass through it, and a bridge
+	// that closed the surface's channel would tell the window there is no more
+	// talking on the very cycle a promotion is telling it the opposite.
 	close(source)
 	select {
-	case _, open := <-out:
-		if open {
-			t.Fatal("the bridge outlived its source")
+	case event, open := <-out:
+		t.Fatalf("the window's feed was disturbed by an engine going away: %+v open=%v", event, open)
+	case <-time.After(50 * time.Millisecond):
+	}
+
+	// A second engine takes over the same feed, which is what a promotion does.
+	promoted := make(chan tui.StreamEvent, 4)
+	bridgeStreamEventsInto(ctx, promoted, out)
+	promoted <- tui.StreamEvent{Kind: tui.StreamStarted, Session: "room-7"}
+	select {
+	case event := <-out:
+		if event.Kind != chat.StreamStarted {
+			t.Fatalf("the promoted engine's feed did not reach the window: %+v", event)
 		}
 	case <-time.After(time.Second):
-		t.Fatal("the bridge did not close with its source")
+		t.Fatal("the promoted engine's feed never reached the window")
 	}
 }
 
 func TestBridgeStreamEventsIsNilWithoutAFeed(t *testing.T) {
-	if bridgeStreamEvents(context.Background(), nil) != nil {
-		t.Fatal("a window with no feed was given one anyway")
-	}
+	// A window with no engine behind it forwards nothing, and asking for it
+	// costs neither a goroutine nor a panic.
+	bridgeStreamEventsInto(context.Background(), nil, make(chan chat.StreamEvent))
 	if streamEventsOf(nil) != nil {
 		t.Fatal("a window with no commander was given a feed")
 	}

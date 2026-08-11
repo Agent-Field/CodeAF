@@ -85,8 +85,13 @@ func newTestApp(backend Backend, commander Commander, events <-chan StreamEvent)
 		// about what the row SAYS, and an escape sequence in the middle of the
 		// haystack proves nothing either way.
 		Profile:   tokens.NoColor,
-		Now:       func() time.Time { return time.Unix(1_700_000_000, 0) },
+		Now:       fixedNow,
 		PollEvery: time.Millisecond,
+		// A ground and a home the frame can be compared against on any
+		// machine: without them the place line would render whichever
+		// directory the test binary happened to be run from.
+		Root: "/home/someone/aforge-v2",
+		Home: "/home/someone",
 	})
 }
 

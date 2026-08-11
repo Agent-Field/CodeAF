@@ -1,0 +1,16 @@
+aforge [cut off — output cap]
+  Here is the diagram you asked for, in full:
+
+  ```svg
+    <svg viewBox="0 0 10 10">
+⌁ cut off — output cap ─────────────────────────────────────────────────────────
+
+
+
+
+
+~/aforge-v2
+›  Type a message
+
+  claude-k3 · $— · — ctx
+ctrl+c stop or quit · alt+enter insert newline · ‹ session- · ? help
