@@ -46,6 +46,23 @@ import (
 // shows.
 //
 // *store.Store satisfies it, structurally, with no adapter at the entry point.
+//
+// TWO READS 5.9 ASKS FOR AND THIS SEAM CANNOT MAKE. They are named here rather
+// than faked on a row, because 8.2.20's missing glyph is an honest answer and an
+// invented number is not:
+//
+//   - PER-WORKER MONEY. 5.9's focused card draws `NavCtx2 · K3 · $0.37 · 4.2%
+//     ctx · 5m`. TopLevelJobUsage answers per JOB ROOT — the store has no
+//     per-node cost rollup a rail can ask for in one query — so a worker row
+//     carries its clock and no dollars. What is needed is one read shaped like
+//     TopLevelJobUsage keyed by node, for one subtree.
+//   - PER-SURFACE CONTEXT. The card's ctx% is the orchestrator's window and each
+//     worker row shows its own; 5.9 already records that executors must journal
+//     window-size high-water marks, and until they do there is nothing to read.
+//     No gauge is drawn anywhere on this rail for that reason.
+//
+// Both are absent cells, never wrong ones. The model word is the same story one
+// step further out: it belongs to the role binding, not to the snapshot.
 type Graph interface {
 	// ActiveSnapshot is the board: the live nodes and the edges between them.
 	ActiveSnapshot() (store.Snapshot, error)
@@ -369,9 +386,19 @@ func (s *scopeSource) buildHome(sessions []store.Session, snapshot store.Snapsho
 // "no live work" beside a reply that had just queued a job, and a board reading
 // that only sees `running` is a board that calls an admitted, unstarted job
 // nothing at all.
+// 13.8 finding 4 is the other half of the count: the permanent spine is a node
+// with `status='running'` that never finishes, so a board reading that counts
+// every node says "1 running" at a window where nothing is. The head has always
+// filtered it (beltAddressable), the rail did not, and the two then disagreed on
+// one screen — rail "1 running", head "nothing is running right now". The spine
+// is plumbing (5.14, and prompt.go says the same in the head's own words), so it
+// is not counted here and gets no card below.
 func (s *scopeSource) headStatus(snapshot store.Snapshot) string {
 	running, queued, blocked := 0, 0, 0
 	for i := range snapshot.Nodes {
+		if snapshot.Nodes[i].ID == store.RootID {
+			continue
+		}
 		switch snapshot.Nodes[i].Status {
 		case store.Running, store.Claimed:
 			running++
@@ -491,9 +518,22 @@ func (s *scopeSource) taskRows(snapshot store.Snapshot, usage map[string]store.J
 	waits := s.waitsOn(snapshot, byID)
 	asks := questionCounts(questions, byID)
 	now := s.now()
+	// One post-order pass answers "how many parts, how many of them are moving,
+	// how long has the longest been at it, and is a worker running under this
+	// row" for every node at once. Asking each row for itself would walk the
+	// subtree once per row, and the tree rows below need the same four numbers
+	// the cards do.
+	rolls := rollups(snapshot.Nodes, byID, children, now)
 
 	roots := make([]store.Node, 0, 8)
 	for _, node := range snapshot.Nodes {
+		// The permanent spine is not a job (13.8 finding 4). It is the thing
+		// jobs hang from, it is `running` forever, and a card for it is a
+		// mystery job with a clock nobody can stop — which is also the room
+		// 12.14's screenshots kept landing in.
+		if node.ID == store.RootID {
+			continue
+		}
 		if isJobRoot(node, byID) && node.Group != store.TerritoryGroup {
 			roots = append(roots, node)
 		}
@@ -511,30 +551,43 @@ func (s *scopeSource) taskRows(snapshot store.Snapshot, usage map[string]store.J
 		if len(rows) >= maxTaskRows {
 			break
 		}
-		card := s.taskCard(root, byID, children, usage, waits, asks, now)
+		card := s.taskCard(root, byID, children, usage, waits, asks, rolls, now)
 		rows = append(rows, card)
-		s.tasks[rowTaskPrefix+root.ID] = s.taskScope(card, root, byID, children, waits, asks, now)
+		s.tasks[rowTaskPrefix+root.ID] = s.taskScope(card, root, byID, children, waits, asks, rolls, now)
 	}
 	return rows
 }
 
-// taskCard is 5.9's three-line anatomy filled from the graph.
+// taskCard is 5.9's three-line anatomy filled from the graph, plus what the card
+// expands into when the cursor rests on it.
+//
+// PROGRESSIVE DISCLOSURE IS DATA, NOT A MODE (5.9: "collapsed = 3 lines;
+// focused/entered expands to plan progress and per-worker rows"). The rail
+// decides how many of these lines to draw from whether the row is selected
+// (rail's shapeOf); this builder always carries the plan dots and the worker
+// rows, because a card that only learned its own plan once the cursor arrived
+// would be a store read behind a keystroke — the one thing this file exists to
+// prevent.
 func (s *scopeSource) taskCard(root store.Node, byID map[string]store.Node,
 	children map[string][]string, usage map[string]store.JobUsage,
-	waits map[string][]string, asks map[string]int, now time.Time) rail.Row {
+	waits map[string][]string, asks map[string]int, rolls map[string]roll,
+	now time.Time) rail.Row {
 
 	row := rail.Row{
 		ID:        rowTaskPrefix + root.ID,
 		Kind:      rail.RowTask,
 		Name:      s.label[root.ID],
 		Status:    nodeStatusLine(root),
-		Life:      lifeOf(root),
+		Life:      litLife(root, rolls),
 		Composer:  rail.ComposerSteer,
 		Seed:      root.ID,
 		WaitsOn:   waits[root.ID],
 		Questions: asks[root.ID],
+		Steps:     s.planSteps(root, byID, children, waits, rolls),
+		Workers:   s.workerRows(root, byID, children, waits, asks, rolls, now),
 	}
-	workers, running, longest := subtree(root, byID, children, now)
+	sum := rolls[root.ID]
+	workers, running, longest := sum.parts, sum.active, sum.longest
 	if job, ok := usage[root.ID]; ok {
 		row.Meta.Cost, row.Meta.HasCost = job.Cost, true
 	}
@@ -582,24 +635,33 @@ func (s *scopeSource) taskCard(root store.Node, byID map[string]store.Node,
 // the affordance lying in the one direction nobody checks. So the card is the
 // row, and the only thing that changes is what it IS here: a scope's
 // conversational surface rather than a member of the scope above.
+// THE MEMBERS ARE THE WIREFRAME'S TREE. A plan step or a worker is one line
+// with its clock flush right (`◐ H2      28m`) and a `waits on H2` line under it
+// when it is sitting behind a sibling — rail's own tree-row anatomy — and the
+// indent is what says which worker belongs to which step. The root's own parts
+// therefore sit at depth 0, flush under the surface row exactly as 5.15 draws
+// them: an indent that everything shares says nothing, and it costs two of the
+// twenty-eight columns the clock needs.
 func (s *scopeSource) taskScope(card rail.Row, root store.Node, byID map[string]store.Node,
 	children map[string][]string, waits map[string][]string,
-	asks map[string]int, now time.Time) rail.Scope {
+	asks map[string]int, rolls map[string]roll, now time.Time) rail.Scope {
 
 	surface := card
 	surface.Kind = rail.RowSurface
 	surface.Depth = 0
 	surface.Composer = composerFor(root, children)
+	// The card's per-worker expansion is what the HOME rail shows instead of the
+	// tree. In here the tree IS on screen, and a surface row that expanded into
+	// the same workers a hairline below it would draw every part twice — 12.13's
+	// tripled name in the other axis. The plan dots stay: `3/7` is a summary of
+	// the tree, not a copy of it, and it survives the fold that hides rows.
+	surface.Workers = nil
 
 	rows := make([]rail.Row, 0, 8)
 	rows = append(rows, surface)
 	var walk func(id string, depth int)
 	walk = func(id string, depth int) {
-		kids := append([]string(nil), children[id]...)
-		sort.SliceStable(kids, func(i, j int) bool {
-			return byID[kids[i]].CreatedSeq < byID[kids[j]].CreatedSeq
-		})
-		for _, kid := range kids {
+		for _, kid := range childrenInOrder(children[id], byID) {
 			if len(rows) >= maxSubtreeRows {
 				return
 			}
@@ -608,25 +670,168 @@ func (s *scopeSource) taskScope(card rail.Row, root store.Node, byID map[string]
 			if len(children[kid]) > 0 {
 				kind = rail.RowStep
 			}
-			rows = append(rows, rail.Row{
-				ID:        rowTaskPrefix + kid,
-				Kind:      kind,
-				Depth:     depth,
-				Name:      s.label[kid],
-				Status:    nodeStatusLine(node),
-				Life:      lifeOf(node),
-				Composer:  rail.ComposerSteer,
-				WaitsOn:   waits[kid],
-				Questions: asks[kid],
-				Seed:      root.ID,
-			})
+			row := s.treeRow(node, kind, waits, asks, rolls, now)
+			row.Depth = depth
+			row.Seed = root.ID
+			rows = append(rows, row)
 			walk(kid, depth+1)
 		}
 	}
-	walk(root.ID, 1)
+	walk(root.ID, 0)
 	// A scope with members is a room to descend into; one without is a leaf,
 	// and the rail's Enter opens its surface in the main pane instead.
 	return rail.Scope{ID: rowTaskPrefix + root.ID, Title: s.label[root.ID], Seed: root.ID, Rows: rows}
+}
+
+// treeRow is one plan step or one worker, in the anatomy 5.15's wireframe draws:
+// state glyph, name, elapsed at the right, and the waits-on flag when the row is
+// sitting behind a sibling.
+//
+// It is the ONE builder for a member row, and the focused card's per-worker rows
+// come out of it too — so a worker says the same thing about itself under a card
+// as it does inside the room, which is 12.14's law ("a preview that outranks the
+// thing it previews is the affordance lying") pointed the other way.
+func (s *scopeSource) treeRow(node store.Node, kind rail.RowKind, waits map[string][]string,
+	asks map[string]int, rolls map[string]roll, now time.Time) rail.Row {
+
+	return rail.Row{
+		ID:        rowTaskPrefix + node.ID,
+		Kind:      kind,
+		Name:      s.label[node.ID],
+		Status:    nodeStatusLine(node),
+		Life:      litLife(node, rolls),
+		Composer:  rail.ComposerSteer,
+		WaitsOn:   waits[node.ID],
+		Questions: asks[node.ID],
+		Meta:      treeMeta(node, rolls[node.ID], now),
+	}
+}
+
+// treeMeta is what a tree row can afford to say about itself on its own line.
+//
+// ELAPSED IS FOR WORK THAT IS STILL HAPPENING. 5.15's wireframe spends the right
+// column on `◐ H2 28m` and leaves `✓ XhrSyn` bare, and it is right to: a number
+// beside a settled row reads as a clock still running. A step with no clock of
+// its own borrows the longest one underneath it, because "this branch has been
+// at it for 28m" is the same fact the reader was asking for.
+//
+// There is no money cell and no context gauge here, and that is a READ GAP
+// rather than a decision — see the note on [Graph]. Per-node cost would need a
+// per-node usage rollup the store does not expose (TopLevelJobUsage answers per
+// JOB), and inventing `$—` on every worker row would spend the column on a
+// glyph that says nothing.
+func treeMeta(node store.Node, r roll, now time.Time) rail.Telemetry {
+	var meta rail.Telemetry
+	if !settled(node.Status) {
+		switch {
+		case !node.StartedAt.IsZero():
+			if elapsed := now.Sub(node.StartedAt); elapsed > 0 {
+				meta.Elapsed, meta.HasElapsed = elapsed, true
+			}
+		case r.longest > 0:
+			meta.Elapsed, meta.HasElapsed = r.longest, true
+		}
+	}
+	if r.parts > 0 {
+		meta.Workers, meta.HasWorkers = r.parts, true
+	}
+	return meta
+}
+
+// planSteps is the plan behind a card's `3/7` (5.9, 5.21): one dot per step, in
+// the order the plan was spliced.
+//
+// A JOB'S PLAN IS ITS ROOT'S OWN CHILDREN. That is the join, and it is exact —
+// the steps are the nodes the planner spliced under this job, not a guess made
+// from names. A step blocked behind a sibling takes the amber ⚑ dot, which is
+// the same waits-on edge the room draws in words.
+func (s *scopeSource) planSteps(root store.Node, byID map[string]store.Node,
+	children map[string][]string, waits map[string][]string, rolls map[string]roll) []rail.Step {
+
+	kids := childrenInOrder(children[root.ID], byID)
+	if len(kids) == 0 {
+		return nil
+	}
+	steps := make([]rail.Step, 0, len(kids))
+	for _, kid := range kids {
+		node := byID[kid]
+		life := litLife(node, rolls)
+		steps = append(steps, rail.Step{
+			Name:    s.label[kid],
+			Life:    life,
+			Blocked: life == rail.LifeQueued && len(waits[kid]) > 0,
+		})
+	}
+	return steps
+}
+
+// workerRows are the per-worker rows a FOCUSED card expands into (5.9). They are
+// the leaves of the job — the parts that actually do work — because the steps
+// above them are already accounted for by the dots.
+//
+// Unsettled first, then history, each half in the order it was spliced. It is
+// the rule the card list itself uses (maxTaskRows): a cap that drops rows should
+// only ever drop what has stopped moving.
+func (s *scopeSource) workerRows(root store.Node, byID map[string]store.Node,
+	children map[string][]string, waits map[string][]string, asks map[string]int,
+	rolls map[string]roll, now time.Time) []rail.Row {
+
+	if len(children[root.ID]) == 0 {
+		return nil
+	}
+	live := make([]rail.Row, 0, 8)
+	var done []rail.Row
+	var walk func(id string)
+	walk = func(id string) {
+		for _, kid := range childrenInOrder(children[id], byID) {
+			if len(live)+len(done) >= maxSubtreeRows {
+				return
+			}
+			if len(children[kid]) > 0 {
+				walk(kid)
+				continue
+			}
+			node := byID[kid]
+			row := s.treeRow(node, rail.RowWorker, waits, asks, rolls, now)
+			if settled(node.Status) {
+				done = append(done, row)
+				continue
+			}
+			live = append(live, row)
+		}
+	}
+	walk(root.ID)
+	return append(live, done...)
+}
+
+// childrenInOrder is the splice order of one node's parts. Sorting here rather
+// than at every call site is what keeps the tree, the dots and the worker rows
+// listing the same plan in the same order.
+func childrenInOrder(kids []string, byID map[string]store.Node) []string {
+	if len(kids) < 2 {
+		return kids
+	}
+	out := append([]string(nil), kids...)
+	sort.SliceStable(out, func(i, j int) bool {
+		return byID[out[i]].CreatedSeq < byID[out[j]].CreatedSeq
+	})
+	return out
+}
+
+// litLife is 10.5 idea 15: "plan steps lit by live execution — our DAG knows the
+// join exactly, so light the plan-step row accent while its worker runs".
+//
+// The join is the parent edge and nothing else: a row is lit because a node
+// UNDER IT is running, never because a name matched. It only ever lifts a row
+// out of queued — a settled step stays settled, a failed one stays failed, and a
+// held one stays held, because those are facts about the row itself and this is
+// a fact about its subtree.
+func litLife(node store.Node, rolls map[string]roll) rail.Lifecycle {
+	life := lifeOf(node)
+	if life == rail.LifeQueued && rolls[node.ID].lit {
+		return rail.LifeWorking
+	}
+	return life
 }
 
 // composerFor is 5.11's fork: a job with a plan has a chat, an atomic one has a
@@ -655,39 +860,95 @@ func isJobRoot(node store.Node, byID map[string]store.Node) bool {
 	return !ok || owner.Group == store.TerritoryGroup
 }
 
-// subtree counts a job's parts and finds the longest thing running under it.
-// Queued parts are counted (13.3.3): a job with three admitted, unstarted
-// workers is not an empty job.
-func subtree(root store.Node, byID map[string]store.Node, children map[string][]string,
-	now time.Time) (workers, running int, longest time.Duration) {
+// roll is what one node's subtree adds up to. Every number a card or a tree row
+// needs about the work under it is here, so no row walks the graph for itself.
+type roll struct {
+	// parts is how many nodes are under this one. Queued parts count (13.3.3):
+	// a job with three admitted, unstarted workers is not an empty job.
+	parts int
+	// active is this node and its parts that are running, claimed or pending —
+	// the reading behind "1 part running".
+	active int
+	// longest is the longest thing running in here, this node included.
+	longest time.Duration
+	// lit says a node UNDERNEATH this one is running now (idea 15's join).
+	lit bool
+}
 
-	seen := make(map[string]bool, 8)
-	stack := []string{root.ID}
-	for len(stack) > 0 {
-		id := stack[len(stack)-1]
-		stack = stack[:len(stack)-1]
-		if seen[id] {
+// rollups computes a roll for every node in one post-order pass.
+//
+// Iterative rather than recursive, with a three-state mark: a snapshot is data
+// from disk, and a parent cycle in it must leave the rail standing rather than
+// blow the stack. A node caught mid-visit is simply not counted twice.
+func rollups(nodes []store.Node, byID map[string]store.Node,
+	children map[string][]string, now time.Time) map[string]roll {
+
+	const (
+		unseen = iota
+		visiting
+		finished
+	)
+	out := make(map[string]roll, len(nodes))
+	state := make(map[string]uint8, len(nodes))
+	stack := make([]string, 0, 16)
+	for i := range nodes {
+		if state[nodes[i].ID] != unseen {
 			continue
 		}
-		seen[id] = true
-		node := byID[id]
-		if id != root.ID {
-			workers++
-		}
-		switch node.Status {
-		case store.Running, store.Claimed:
-			running++
-			if !node.StartedAt.IsZero() {
-				if elapsed := now.Sub(node.StartedAt); elapsed > longest {
-					longest = elapsed
+		stack = append(stack[:0], nodes[i].ID)
+		for len(stack) > 0 {
+			id := stack[len(stack)-1]
+			switch state[id] {
+			case unseen:
+				state[id] = visiting
+				for _, kid := range children[id] {
+					if state[kid] == unseen {
+						stack = append(stack, kid)
+					}
 				}
+			case visiting:
+				stack = stack[:len(stack)-1]
+				state[id] = finished
+				out[id] = rollOf(byID[id], children[id], byID, out, now)
+			default:
+				stack = stack[:len(stack)-1]
 			}
-		case store.Pending:
-			running++
 		}
-		stack = append(stack, children[id]...)
 	}
-	return workers, running, longest
+	return out
+}
+
+// rollOf folds one node's own state together with the rolls of its parts.
+func rollOf(node store.Node, kids []string, byID map[string]store.Node,
+	done map[string]roll, now time.Time) roll {
+
+	var r roll
+	switch node.Status {
+	case store.Running, store.Claimed:
+		r.active++
+		if !node.StartedAt.IsZero() {
+			if elapsed := now.Sub(node.StartedAt); elapsed > r.longest {
+				r.longest = elapsed
+			}
+		}
+	case store.Pending:
+		r.active++
+	}
+	for _, kid := range kids {
+		part := done[kid]
+		r.parts += 1 + part.parts
+		r.active += part.active
+		if part.longest > r.longest {
+			r.longest = part.longest
+		}
+		// Running, not merely claimed: a claim is a worker picking the job up,
+		// and a step lit by a claim would say "in flight" a moment before
+		// anything is. The state axis may only brighten on work that is moving.
+		if byID[kid].Status == store.Running || part.lit {
+			r.lit = true
+		}
+	}
+	return r
 }
 
 // waitsOn derives "what is this row sitting behind" from the edges the snapshot
