@@ -72,6 +72,7 @@ const (
 	KeyAttribution    = "attribution"
 	KeySplitPct       = "split_pct"
 	KeyLinearMode     = "linear_mode"
+	KeyNerdFont       = "nerd_font"
 )
 
 // ModelSettingSlots is the palette's slot order, kept identical so the sheet
@@ -176,6 +177,14 @@ const (
 	// (10.1.5) is a door someone walks through on purpose, not a default they
 	// have to walk back out of.
 	DefaultLinearMode = false
+
+	// DefaultNerdFont draws the v2 chrome with Nerd Font icons, because that is
+	// what the user asked the surface to look like (12.7). Default-on is only
+	// defensible because turning it off costs nothing: the plain tier is not a
+	// degradation but the designed floor — same segments, same order, same
+	// tints, same widths, asserted by a parity gate rather than hoped for — so
+	// a user whose font is not patched loses one keystroke and no layout.
+	DefaultNerdFont = true
 )
 
 // Setting is one row: what it is called, what it reads now, and what happens
@@ -454,6 +463,16 @@ func (s *Settings) build() []Setting {
 			read:  func() string { return formatBool(LinearModeAt(dir)) },
 			write: func(raw string) error { return writeBool(dir, KeyLinearMode, raw) },
 		},
+		Setting{
+			Key: KeyNerdFont, Category: CategoryAppearance, Kind: SettingBool,
+			Label: "nerd font", Env: "AFORGE_NERD_FONT",
+			Hint: "draw the v2 chrome with Nerd Font icons instead of the plain glyphs. " +
+				"Turn it off if icons show as boxes — nothing moves, the same marks are drawn " +
+				"as plain characters. Patched fonts work best in their Mono variant. " +
+				"A change lands the next time aforge starts.",
+			read:  func() string { return formatBool(NerdFontAt(dir)) },
+			write: func(raw string) error { return writeBool(dir, KeyNerdFont, raw) },
+		},
 	)
 	return rows
 }
@@ -695,6 +714,30 @@ func LinearModeAt(profileDir string) bool {
 		return value
 	}
 	return DefaultLinearMode
+}
+
+// NerdFontAt resolves whether the v2 chat surface draws its chrome with Nerd
+// Font icons (12.7). It is shaped exactly like [LinearModeAt], including the
+// forgiveness: a malformed pin reads as the default rather than refusing a
+// launch over a rendering preference.
+//
+// This is only the persisted layer of the answer. The command line outranks it,
+// and two things outrank everything: linear mode forces the plain tier — a
+// screen reader reads a private-use codepoint as nothing or as garbage, and a
+// tier that made the accessible mode less accessible would be the affordance
+// lying — and a terminal that cannot draw private use at all vetoes it. See
+// cmd/aforge/chatv2_nerdfont.go, which is where those four layers meet.
+func NerdFontAt(profileDir string) bool {
+	if raw := strings.TrimSpace(os.Getenv("AFORGE_NERD_FONT")); raw != "" {
+		if value, err := parseBool(raw); err == nil {
+			return value
+		}
+		return DefaultNerdFont
+	}
+	if value, ok := persistedBool(profileDir, KeyNerdFont); ok {
+		return value
+	}
+	return DefaultNerdFont
 }
 
 // DocumentEngineAt resolves the document-reading rung.
