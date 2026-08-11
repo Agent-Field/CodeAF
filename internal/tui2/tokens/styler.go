@@ -39,13 +39,23 @@ var (
 type Styler struct {
 	profile Profile
 	focus   Focus
+	glyphs  GlyphSet
 	// enabled is the profile check hoisted out of the hot path: under NoColor
 	// every Paint is the identity function and must not touch the palette at
 	// all.
 	enabled bool
+	// upgrading is the same hoist for the glyph tier, and it is a SEPARATE
+	// question from enabled: the tier is orthogonal to colour, so a NoColor
+	// terminal with a patched font still draws icons and a truecolor terminal
+	// on the plain tier still draws the 5.17 floor.
+	upgrading bool
 }
 
-// NewStyler returns a Styler for a terminal profile and a pane focus.
+// NewStyler returns a Styler for a terminal profile and a pane focus, on the
+// plain glyph tier. Its signature is unchanged and always will be: every
+// construction site written before the tier existed keeps compiling and keeps
+// rendering exactly what it rendered, which is the whole contract of an
+// enhancement ladder.
 //
 // An out-of-range profile or focus is clamped rather than panicking. This is
 // the one place in the package that forgives bad input, and the reason is that
@@ -53,13 +63,30 @@ type Styler struct {
 // because an emulator lied about itself, and the honest degradation for
 // "capability unknown" is no colour.
 func NewStyler(p Profile, f Focus) *Styler {
+	return NewStylerIn(p, f, Plain)
+}
+
+// NewStylerIn is [NewStyler] with the third axis: the glyph repertoire tier
+// (12.7). It composes with profile and focus and changes neither — the tier
+// decides which character lands in a cell, never how many cells a line takes,
+// which token tints it, or where a segment sits.
+func NewStylerIn(p Profile, f Focus, g GlyphSet) *Styler {
 	if p >= profileCount {
 		p = NoColor
 	}
 	if f >= focusCount {
 		f = FocusNormal
 	}
-	return &Styler{profile: p, focus: f, enabled: p != NoColor}
+	if g >= glyphSetCount {
+		g = Plain
+	}
+	return &Styler{
+		profile:   p,
+		focus:     f,
+		glyphs:    g,
+		enabled:   p != NoColor,
+		upgrading: g != Plain,
+	}
 }
 
 // Profile reports the terminal profile this Styler paints for.
@@ -67,6 +94,9 @@ func (s *Styler) Profile() Profile { return s.profile }
 
 // Focus reports the pane focus this Styler paints for.
 func (s *Styler) Focus() Focus { return s.focus }
+
+// GlyphSet reports the glyph repertoire tier this Styler draws in.
+func (s *Styler) GlyphSet() GlyphSet { return s.glyphs }
 
 // WithFocus returns a Styler identical to s but painting at the given focus.
 // Dimming is a property of the pane (8.3), so a compositor that has just lost
@@ -78,7 +108,33 @@ func (s *Styler) WithFocus(f Focus) *Styler {
 	if f == s.focus {
 		return s
 	}
-	return NewStyler(s.profile, f)
+	return NewStylerIn(s.profile, f, s.glyphs)
+}
+
+// WithGlyphSet returns a Styler identical to s but drawing in the given tier.
+// It mirrors [Styler.WithFocus], and it is what a settings sheet's live preview
+// renders its two sample lines through.
+func (s *Styler) WithGlyphSet(g GlyphSet) *Styler {
+	if g >= glyphSetCount {
+		g = Plain
+	}
+	if g == s.glyphs {
+		return s
+	}
+	return NewStylerIn(s.profile, s.focus, g)
+}
+
+// Glyph is the EXPLICIT door to the vocabulary: it resolves a slot in this
+// Styler's tier. Every consumer can use it, and the six slots whose plain side
+// is ASCII — "?" needs-human, "=" paused, "$" spend, "/" folder and the diff
+// signs — have no other door, because those characters are things a user types
+// and the automatic path must never rewrite one (12.7 D.3).
+func (s *Styler) Glyph(id GlyphID) string { return s.glyphs.Glyph(id) }
+
+// PaintGlyph resolves a slot in this tier and paints it on the state and hue
+// axes, which is the whole grammar of a glyph cell in one call.
+func (s *Styler) PaintGlyph(id GlyphID, state blocks.State, hue blocks.Hue) string {
+	return s.Paint(s.glyphs.Glyph(id), state, hue)
 }
 
 // Paint implements [blocks.Styler]: it wraps text in the escape sequences for
@@ -126,6 +182,7 @@ func (s *Styler) PaintToken(text string, t Token) string {
 // [Legal] governs which pairs may be drawn at all, and the contrast gate has
 // measured every one of them.
 func (s *Styler) PaintOn(text string, fg, bg Token) string {
+	text = s.upgrade(text)
 	if !s.enabled || text == "" {
 		return text
 	}
@@ -157,10 +214,30 @@ func (s *Styler) Token(state blocks.State, hue blocks.Hue) Token {
 // never silently clears a caller's bold or underline on the same row.
 const sgrResetAll = "\x1b[39;49m"
 
+// upgrade is the glyph tier's whole automatic path (12.7 D.2, rule (a)): a
+// painted cell that is exactly one rune, and is an auto-upgradable slot's plain
+// glyph, becomes this tier's icon. Everything else passes through untouched —
+// never a substring rewrite, never an ASCII slot, never a lead rune inside a
+// longer string.
+//
+// The warrant is the header grammar: blocks paints the glyph cell as its own
+// span, so it arrives here as a whole one-rune string. That is how four
+// consumer packages written before the tier existed get the tier without an
+// edit. What it costs on the hot path is one branch under the plain tier, and
+// under the nerd-font tier one rune decode plus a binary search over two dozen
+// entries — a bounded rune check, not a map probe per cell.
+func (s *Styler) upgrade(text string) string {
+	if !s.upgrading {
+		return text
+	}
+	return s.glyphs.Upgrade(text)
+}
+
 // paint is the one place a painted string is assembled. It is a single
 // allocation — the Builder is sized exactly — and the escape sequences it
 // concatenates were computed once by buildTable, so no frame ever formats one.
 func (s *Styler) paint(text string, t Token) string {
+	text = s.upgrade(text)
 	if !s.enabled || text == "" {
 		return text
 	}
