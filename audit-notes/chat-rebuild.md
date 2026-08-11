@@ -5870,6 +5870,54 @@ actually writes, which is deliberately the same fixture shape v1's parser test
 drives: one source, two renderings, and a writer that moves fails both surfaces
 on the same commit for the same reason.
 
+**FRESH-TASK VERIFICATION: the chat path decomposes, and the tree renders on
+entry.** `uiverify/harness/run_commission.py`, isolated home,
+`AFORGE_DAILY_BUDGET=1.00`, the profile's own deepseek default, driven at 120x36
+through the CHAT surface and not through `aforge do`. The ask was fan-out
+shaped — "Compare three vector databases … for each one write a short section on
+indexing, on filtering, and on operational cost. Then give me a final
+recommendation." The planner spliced FOUR parts (`task-12-n1..n4`) and the run
+grew a repair sub-job with two parts of its own. On entry, by pointer:
+
+```
+ ‹ ● Deliver together                    Deliver together · $0.11 · 7 parts  ▸ 6 lines
+     I now have all four se…              The 4 results above were asked for in one breath…
+     $0.11 · 7 workers
+     ●●●●●  5/5                          Write a short section on filtering for Qdrant,  ▸ 12 lines
+ ──────────                                The filtering section is written to 24-write-a-…
+ ✓ Write a short section o
+      ✓ Write a short sect                turn 8 · 101 tok
+ ✓ Write a short section o                thinking  ▸ 1 line
+ ✓ Write a final recommend                  The trace log is the full conversation.
+   ✓ Synthesis       2 wor
+   ✓ Cost comparison                     ✓ sh · 8KB  ▸ 5 lines
+     ✓ integrate-cost-find                  sed -n '230,278p' .aforge/trace/24.trace.log
+```
+
+So **d2e02d7's scale gate does reach the chat path** — there was no divergence
+from `aforge do` left to find, and the charge, the plan, the per-part results and
+the execution rows all render over work commissioned minutes earlier. The nested
+depth is drawn too, which the reporter's own journal could not exercise.
+
+**Two things that run photographed and this lane did not fix.**
+
+1. **A new card lands below the collapsed homes group**, so two `down`s from home
+   walked past it — 13.15 recorded the same stable-order merge behaviour and it
+   is still the first thing a hand does wrong after commissioning.
+2. **The room's first screen is narrator chatter.** Five consecutive
+   `setting working standards · N of 5` cards sit between the charge and the
+   first part row. This is H13's own measurement arriving on fresh work — thirty
+   of forty-three messages under their `task-234` were this exact line — and it
+   is now the LOUDEST thing in a room that finally has a record worth reading.
+   It is a producer question (what is worth journaling as a message) and not a
+   dressing one, so it is filed here rather than papered over with a filter that
+   would have to guess.
+
+**A last confirmation, from the run itself.** One of the workers read its own
+recorder with `sed` and wrote, in its trace: *"The cost worker's turns are
+interleaved with the others in the trace."* The shared-recorder fact above was
+found twice, independently, by a reader and by a worker.
+
 **Still open in this territory.** Per-node money remains 13.11's filed read gap
 (H13 item 4 notes the data is journaled and only the read is missing). The
 shared-recorder interleave above is a producer fact and is filed, not fixed. And
