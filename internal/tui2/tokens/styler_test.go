@@ -418,3 +418,20 @@ func BenchmarkPaintProse(b *testing.B) {
 }
 
 var sink string
+
+// TestNilStylerResolvesTheFloor: a nil *Styler is a real state in this tree —
+// a block built before a profile was chosen holds one — and adopting the tier
+// means replacing a package-level constant with a method call. A lookup that
+// panicked where the constant could not would make a one-token adoption change
+// when a renderer crashes.
+func TestNilStylerResolvesTheFloor(t *testing.T) {
+	var s *Styler
+	if got := s.GlyphSet(); got != Plain {
+		t.Errorf("a nil Styler reports tier %v", got)
+	}
+	for _, id := range []GlyphID{GNeedsHuman, GWorking, GSpend, GFolder} {
+		if got := s.Glyph(id); got != Plain.Glyph(id) {
+			t.Errorf("a nil Styler resolved slot %d to %q, want the plain glyph %q", id, got, Plain.Glyph(id))
+		}
+	}
+}
