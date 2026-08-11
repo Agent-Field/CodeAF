@@ -155,13 +155,13 @@ func uniqueWord(word string, seen map[string]int) string {
 func (a *App) dispatchCmd(dispatch composer.Dispatch) tea.Cmd {
 	node := strings.TrimPrefix(dispatch.TargetID, rowTaskPrefix)
 	if node == "" || node == dispatch.TargetID {
-		return a.postCmd(dispatch.Text)
+		return a.postCmd(dispatch.Text, dispatch.Attachments...)
 	}
 	var cmd tea.Cmd
 	if dispatch.Settled {
-		cmd = a.postCmd(aboutText(a.mentionWord(dispatch.TargetID), dispatch.Text))
+		cmd = a.postCmd(aboutText(a.mentionWord(dispatch.TargetID), dispatch.Text), dispatch.Attachments...)
 	} else {
-		cmd = a.steerNode(node, dispatch.Text)
+		cmd = a.steerNode(node, dispatch.Text, dispatch.Attachments...)
 	}
 	if !dispatch.Follow {
 		return cmd
