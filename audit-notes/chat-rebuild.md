@@ -3929,3 +3929,138 @@ them apart is to ask what the SOURCE handed over.
 level, and `homes` states its empty rooms in its own words (`route.go`,
 `state.go`) while `chat` now states this one in `emptyRoomNote`. Two packages,
 two spellings of the same doctrine — worth one voice when someone owns both.
+
+### 13.5 The gate, made runnable — and what it says (UX-gate lane, 2026-08-10 late)
+
+13.4's worst finding was that 11.1's gate could not be measured: all 19
+`test/ux/journeys/*.sh` launched v1 and three of them asserted v1's anatomy.
+That is closed. The suite is now dual-surface, both surfaces were run end to
+end against one binary built from `1a1bb78`, and the table below is the first
+measured reading of the parity gate.
+
+**What the suite now measures.**
+
+- `test/ux/run.sh --surface v1|v2` — one surface per run. The ONLY difference
+  is the argument vector after `chat`, carried in `UX_CHAT_ARGS`, so every
+  window a journey opens for itself (J9's consent relaunch, J12's return,
+  J13's second window) is the surface the runner opened. Evidence and report
+  file themselves per surface (`evidence-v2/`, `report-v2.md`), so neither run
+  can overwrite the other's evidence.
+- `test/ux/gate.sh` — the gate as one command: build once, run both, write
+  `parity.md`. Its exit status IS the gate — non-zero only when v1 passes a
+  journey v2 does not. `--compare-only` redraws the table from evidence on
+  disk, spending nothing, which is also how to compare two surfaces run in
+  parallel.
+- Deliberately flag-only: no `AFORGE_CHAT_V2` in the environment, because
+  13.4's finding 2 says the flag alone leaves `resolveRoomPolicy` on the legacy
+  arm, and a suite that quietly pinned the environment too would measure a
+  configuration no user has. `UX_CHAT_V2_ENV=1` pins it for anyone who wants to
+  see the difference. **The finding is still open** — nothing in this lane
+  touched `cmd/`.
+- Two portability repairs the gate needed: the provider key may come from
+  `OPENROUTER_API_KEY` (which `config.Load` reads FIRST) as well as from a
+  persisted `config.json` — the old hard requirement made the suite unrunnable
+  on a box that had never run `aforge` interactively — and `UX_SKIP_BUILD=1`
+  measures a binary somebody else built, so both halves of a comparison are the
+  same program even when the tree moves under an hour-long run.
+
+**The six divergences, each citing its section at the assertion.** No v1
+assertion was loosened; every branch keeps the v1 arm byte-for-byte.
+
+| what | v1 | v2, per the doc |
+|---|---|---|
+| answering a numbered question | bare digit, no Enter | digit **+ Enter** (13.4 gap 1). The Enter is conditional on the question still being open, so the day the question-keys lane binds digits the digit answers alone and nothing extra is sent — the journeys assert the outcome (recorded answered, by the user's own message), never the keystroke |
+| clearing the draft | `ctrl+u` | backspaces. v2's composer binds no ctrl+u, and its documented clear (esc) also means interrupt-the-stream and jump-to-live-edge; a suite must not interrupt a turn it is waiting for |
+| always-on money (J10) | header row 1 | the composer meta strip (13.4 J10 — v2 has no header). Measured live: `voice deepseek-v4-flash-latest · $0.00 · ▁ 0.9%/1M` |
+| residency (J13) | "second window" in the header | `visitor · pid N` in the footer (`panes.go:292-312`); promotion is that whole cell **disappearing**, not a header rewritten |
+| option rows (J6) | `▸ 1 ` | four spaces, the option's own number, the label (`question.go:55-90`). ▸ means "collapsed" in 5.17 |
+| the help door (J18) | bare `?` | `ctrl+o` then `?`, and hand the keyboard back afterwards — closing the sheet leaves focus on the scope map, where Enter opens a rail row instead of sending a draft |
+
+Plus: "it drew a frame" (J12/J13) reads v2's always-present `? help` footer
+door rather than a header word; and Q5's bare-stream-cursor count has no v2
+equivalent (a live turn is a titled block), so v2 measures the same law in the
+journal — no agent message with an empty body.
+
+**The scoreboard.** 19 journeys, both surfaces, binary `1a1bb78`, work model
+`~deepseek/deepseek-v4-flash-latest`, tmux 200x50. v1 $0.052 / v2 $0.052.
+
+| journey | v1 | v2 | gate |
+|---|---|---|---|
+| 01 ask small | PASS 5/5 | PASS 5/5 | parity |
+| 02 commission | FAIL 6/8 | FAIL 6/8 | both red |
+| 03 status read | PASS 4/4 | PASS 4/4 | parity |
+| 04 steer | PASS 3/3 | FAIL 1/3 | **flaky — see below** |
+| 05 correct | FAIL 2/5 | FAIL 2/5 | both red |
+| 06 answer question | PASS 7/7 | PASS 7/7 | parity |
+| 07 teach | PASS 6/6 | PASS 6/6 | parity |
+| 08 charter | PASS 8/8 | PASS 8/8 | parity |
+| 09 consent | PASS 5/5 | PASS 5/5 | parity |
+| 10 money | PASS 3/3 | PASS 3/3 | parity |
+| 11 what learned | PASS 4/4 | PASS 4/4 | parity |
+| 12 leave/return | PASS 6/6 | PASS 6/6 | parity |
+| 13 second window | PASS 7/7 | PASS 7/7 | parity |
+| 14 craft | OBSERVED | OBSERVED | parity |
+| 15 fanout | FAIL 6/7 | FAIL 6/7 | both red |
+| 16 models in words | PASS 2/2 | PASS 2/2 | parity |
+| 17 attachments | PASS 4/4 | **FAIL 3/4** | **v2 behind** |
+| 18 take things out | PASS 4/4 | PASS 4/4 | parity |
+| 19 what can you do | PASS 4/4 | PASS 4/4 | parity |
+
+**Verdict: on the 19 journeys, exactly ONE real parity regression — J17.**
+Fifteen journeys agree; three fail identically on both surfaces and are
+therefore engine or head gaps, not surface gaps (J2 and J5: this work model
+answered in prose instead of commissioning, so no splice was journaled; J15:
+concurrency factor 0.89 on both — the three jobs ran one after another). This
+is a much better reading than 13.4's component tally implied: everything the
+audit called PARTIAL for J6/J8/J9/J10/J13 **passes the journey** once the
+keystroke and the two placement decisions are taken as v2 renders them.
+
+**Real v2 bugs found, for the lanes that own them (this lane touched nothing
+outside `test/ux`).**
+
+1. **J17 — no attachment path at all** (confirms 13.4 J17/C9, top gap 3). Same
+   sentence, same 1×1 PNG: v1 journals
+   `["cas://c414cd…/dot.png"]` and the CAS gains an object; v2 journals the
+   JSON literal `null` and the CAS stays empty. The `null` is its own small
+   trap — it is `!= '[]'`, so a check written for v1 passed on nothing until it
+   was tightened. Whatever writes that column should write `[]`.
+2. **`?` is advertised everywhere and answers nowhere** (13.4 G1/J19, measured
+   from the outside now): the footer draws `? help` unconditionally, and with
+   the composer focused `?` goes into the draft. Only `ctrl+o` then `?` opens
+   the sheet — 5.22's discoverability law is being broken by the surface's own
+   footer. Cheap fix in the key ladder or honest fix in the footer, but not
+   both ways.
+3. **`ctrl+u` is unbound** in the v2 composer, so a Unix reflex older than
+   the terminal leaves the draft intact. `esc` clears, and also interrupts and
+   also navigates.
+4. **Closing an overlay leaves the keyboard on the scope map.** After `esc`
+   closes the capability sheet, Enter opens a rail row rather than sending the
+   draft, with no visible sign of where focus went; the user has to know to
+   press `ctrl+o`. 5.20's predictability rule.
+5. **The reply header's model chip did not appear in any captured v2 frame.**
+   The chip is on the composer meta strip in every snapshot, but every reply
+   header captured at 200x50 reads bare `aforge` with no `· <model>` meta cell
+   (13.4 J16/R2 says both). Observation, not a diagnosis — the header's degrade
+   order drops meta first, and this lane did not read the layout.
+6. **The producer still smuggles options into the body** (13.3 bug 1's
+   remaining half): the standing-watch question's body carries
+   `▸ 1 yes, always · 2 only while I'm around` as prose, so v2 draws the
+   options twice — once in the sentence, once in the honest question block.
+   The render half is fixed; the producer half is not.
+
+**Standing caveat — J4 is head-nondeterministic.** Whether a steer becomes a
+journaled redirect command or is absorbed into a plain reply is a model
+decision that flips between runs on the same surface: a paired re-run had v1
+journal nothing and v2 journal an applied redirect, the exact opposite of the
+run in the table. The journey now says so in its own evidence. A v1/v2
+disagreement there is evidence of nothing until it repeats. J4 also fails a
+second way on both surfaces for a wording reason — the head's honest reply
+("done — the poem is now about the sea instead") matches none of the journey's
+keywords — which is a journey to re-word, not a product to fix.
+
+**What the gate still cannot see.** The quality suite is dual-surface too but
+was not run here (it doubles a run's money and minutes for journeys the doc
+does not name in 11.1). And OSC traffic — title, bell, prompt marks, hyperlinks
+— is written beside the frame, never into it, so `capture-pane` can never
+assert 13.4's gap 4; that half of the gate needs a Go-level test driving
+`Shell.Frame()`, not a tmux journey.
