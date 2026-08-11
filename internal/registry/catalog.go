@@ -132,6 +132,17 @@ func threadKeyRows() []Entry {
 			Scope: ScopeThread, Key: "y", ChordKey: "ctrl+y"},
 		{ID: "key.thread.copy-file", Verb: "copy file", Description: "copy the path of the file the answer produced",
 			Scope: ScopeThread, Key: "Y", ChordKey: "alt+y"},
+		// The composer's own kill chord. It is seeded from a live handler like
+		// every other row here — internal/tui2/composer's Model.KillToStart,
+		// bound to ctrl+u — and it is in the catalog rather than left as a
+		// muscle-memory chord because 5.22's law admits no typed-only action:
+		// the key is the accelerator, and the `?` sheet and the ctrl+k palette
+		// are the visible doors. Its Key is already a chord, so it needs no
+		// ChordKey to survive a composer-first surface (see [Entry.KeyOn]) —
+		// which is the whole reason ctrl+u is bindable in a room where "v" and
+		// "y" are not.
+		{ID: "key.thread.clear-draft", Verb: "clear draft", Description: "clear the draft from the cursor back to its start",
+			Scope: ScopeThread, Key: "ctrl+u"},
 		{ID: "key.thread.narrow-split", Verb: "narrow split", Description: "narrow the chat/task split",
 			Scope: ScopeThread, Key: "["},
 		{ID: "key.thread.widen-split", Verb: "widen split", Description: "widen the chat/task split",

@@ -111,6 +111,20 @@ func (s *composerStack) Focus(focused bool) {
 // Draft is the current buffer.
 func (s *composerStack) Draft() string { return s.draft.Value() }
 
+// KillToStart is the clear-draft verb reached from the `?` sheet or the palette
+// rather than from ctrl+u. The chord itself never comes through here — it is an
+// ordinary keystroke and Key hands it to the draft like any other — so this
+// exists only so the registry row has a handler, and it goes through the same
+// [composer.Model.KillToStart] the chord does rather than clearing the buffer a
+// second way. A disabled composer has no draft to clear and refuses, on the same
+// rule Key states above it.
+func (s *composerStack) KillToStart() {
+	if s.disabled() {
+		return
+	}
+	s.draft.KillToStart()
+}
+
 // Render lays the three parts out from the outside in: the place line takes the
 // top edge, the meta strip the bottom, and the draft absorbs whatever is left.
 // A region too short for all three loses them in that order — the draft is the
