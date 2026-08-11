@@ -705,21 +705,41 @@ the five-word color language above; (3) they read as notification confetti, not
 instrument. Emoji remain welcome in *user content*. Chrome uses single-width,
 tintable, metric-safe unicode:
 
-| glyph | meaning |
-|---|---|
-| ○ ◐ ✓ ✕ | queued · working · settled · failed |
-| ? | waiting on a human (always amber) |
-| ⚑ | waiting on a sibling (waits-on edge) |
-| ▸ ▾ | collapsed · expanded |
-| › | composer prompt (chat) |
-| ↦ | composer prompt (steer line) |
-| ⚡ | boosted |
-| ▁▂▄▆█ | one-cell context gauge (see below) |
-| · | telemetry separator |
-| ‹ | scope header / go up |
+| glyph | meaning | nerd-font tier (12.7) |
+|---|---|---|
+| ○ ◐ ✓ ✕ | queued · working · settled · failed | `nf-fa-circle_o` `nf-fa-adjust` `nf-fa-check` `nf-fa-times` |
+| ? | waiting on a human (always amber) | `nf-fa-question_circle` |
+| ⚑ | waiting on a sibling (waits-on edge) | `nf-fa-flag` |
+| ▸ ▾ | collapsed · expanded | `nf-fa-chevron_right` `nf-fa-chevron_down` |
+| › | composer prompt (chat) | `nf-fa-angle_right` |
+| ↦ | composer prompt (steer line) | `nf-fa-long_arrow_right` |
+| ⚡ | boosted | `nf-fa-bolt` — see below |
+| ▁▂▄▆█ | one-cell context gauge (see below) | *(geometry: unchanged)* |
+| · | telemetry separator | *(geometry: unchanged)* |
+| ‹ | scope header / go up | `nf-fa-angle_left` |
+| ⌂ / ⋔ | place line: workspace · folder · git branch (5.19) | `nf-fa-home` `nf-fa-folder` `nf-pl-branch` |
+| ◇ $ | status line: model · spend | `nf-fa-microchip` `nf-fa-dollar` |
 
 Banned for width-instability: ⏸ ⏵ ⏹, all emoji, most dingbats. Paused = `=`
 glyph or dim `○`.
+
+**⚡ is the amendment worth reading twice.** The left column above asks for it
+and cannot have it: U+26A1 measures TWO cells under both rulers this surface
+renders through, so 5.17's own width law refuses 5.17's own glyph. Boost
+therefore ships as `⇡` in the plain tier — and the nerd-font tier recovers the
+original intent, because `nf-fa-bolt` is the bolt at one cell.
+
+**The third column is a repertoire tier, not a skin** (12.7, shipped): one axis
+swaps the CHARACTERS that say these meanings, 1:1, and changes nothing else —
+not a hue, not a bracket, not a separator, not a column. Every icon inherits
+its meaning, its tint token and its cell budget from the glyph it replaces; the
+plain column is the designed floor and their widths are asserted equal by a
+build gate. It is on by default, off at three doors (`--no-nerd-font`,
+`AFORGE_NERD_FONT=0`, the `nerd font` settings row), and forced off in linear
+mode. Slots marked *geometry* are deliberately untouched: box drawing and block
+elements are already the right characters for a grid, and Nerd Fonts ships no
+rotation-phase spinner set. 8.3's refusal of the nerd-font PRESET stands
+unchanged — see 12.7 A for why both are true.
 
 **The one-cell context gauge**: context % as a single eighth-block character
 next to the model word — `K3 ▄ $8.65` reads as "half the window gone" at a
@@ -1310,6 +1330,14 @@ never skin. Items below are the ledger the build waves work from.
   `⟦⟧` badge brackets, 98 themes, nerd-font preset, rainbow ultrathink
   gradient, emoji telemetry icons (`💾 ⚡ 👥` violate 5.17). Our five-hue pastel
   language + grey ramp stands.
+  **Read "nerd-font preset" precisely — it is the PRESET that is refused, and
+  the refusal stands.** What ships instead is 12.7's repertoire TIER: one axis
+  inside our own language that swaps which characters say the 5.17 meanings,
+  carrying none of their colours, brackets, chrome or layout. The powerline
+  separators named in this same bullet stay banned there too — `BannedGlyphs`
+  now enforces it at build time — while U+E0A0, the powerline *branch symbol*,
+  is adopted, because it is an icon that stands alone rather than a shape-join
+  that needs someone else's background to tile against. See 12.7 A and G.
 - **HUD-only layout** (no rail) — refused for wide terminals; the rail is our
   scope map (5.15) and the user's stated preference. Adopted only as the
   narrow fallback (8.2.8).
@@ -1811,10 +1839,42 @@ tool-loop head (Wave 3) + volatility cache (landed, 12.4.1).
    revision/sentinel.go:39, revision/sentinel.go:93 for the world-grounded-
    planning handoff.
 
-### 12.7 The Nerd Font glyph tier — DESIGN PLAN (approved direction, implementation pending)
+### 12.7 The Nerd Font glyph tier — SHIPPED (sections A–G remain the contract)
 
-**Status: design plan. No code has been written. A future lane executes section H
-1:1.** Sections A–G are the contract that lane builds against.
+**Status: built. Section H steps 1–7, 9 and 11 landed; sections A–G are the
+contract it was built against and still describe what runs.** What the lane
+found, and where the built thing differs from the plan:
+
+- **The vocabulary shipped exactly as B.1 specifies.** All 26 codepoints
+  verified against ryanoasis/nerd-fonts `glyphnames.json` **v3.2.1**, a trimmed
+  extract of which is vendored at `internal/tui2/tokens/testdata/`. Every name
+  resolved at the address B.1 predicted, so **none of the named alternates was
+  needed** — `nf-fa-microchip` U+F2DB and `nf-fa-long_arrow_right` U+F178, the
+  two flagged for drift risk, both verified. Every glyph on both sides measures
+  one cell under both rulers, and B.3's ambiguity table is confirmed exactly.
+- **D.2's rule (b) — the automatic chrome-lead rewrite — was DROPPED, by the
+  escape hatch D.2 itself wrote.** Its warrant was that no content path paints
+  `StateChrome`, and in this tree content does: `blocks.Header` paints Title and
+  Desc at the caller's state, and the v2 chat surface dresses a receipt's own
+  headline (from the journal) and a commission's summary (of the user's own
+  words) as chrome. An automatic lead-rune rewrite would have edited a sentence
+  somebody wrote. The behaviour ships as `GlyphSet.UpgradeChrome`, an explicit
+  door a caller opens by name, and a test fails if the premise ever becomes
+  true again. Rule (a), whole-cell, is unchanged and is the automatic path.
+  Consequence for D.4's edit list: `blocks.ExpandHint`'s `"▸ 12 lines"` and
+  `blocks.CutRule`'s `"╌ "` lead do not upgrade by themselves; each is one
+  token at its call site when its owner wants it.
+- **Step 8 (the two one-line `internal/tui2/chat` edits plus the `GlyphSet`
+  field on `chat.Options`) and step 10 (the first-run probe) are outstanding.**
+  Both are owned by other lanes. Nothing breaks unadopted: `NewStyler` keeps
+  its signature and returns a Plain styler, so an un-edited consumer renders
+  exactly what it rendered before the tier existed. `cmd/aforge/chatv2.go`
+  likewise owes two additive lines — the flag registration and the resolved
+  tier — which is why the resolver lives in `chatv2_nerdfont.go`.
+- **F.12 has a number.** The upgrade lookup is an array index into a table
+  built at init: 37.5 ns/op under the tier against 38.5 ns/op plain, one
+  allocation each. A first cut used a binary search and cost 60% more per glyph
+  cell, which is why the index window exists and why a test guards it.
 
 #### A. The decision, and how it reconciles with 8.3
 
