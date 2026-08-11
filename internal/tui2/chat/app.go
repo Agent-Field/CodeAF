@@ -281,7 +281,11 @@ type App struct {
 
 	// drafts submitted by the composer during a Key call, drained into commands
 	// once it returns. A callback cannot return a tea.Cmd, so it queues one.
-	pending []string
+	// dispatches is the same queue for the `@` grammar's addressed sends (5.18),
+	// kept apart because the two carry different facts and merging them would
+	// mean re-deriving the target from the text the composer already parsed.
+	pending    []string
+	dispatches []composer.Dispatch
 }
 
 var _ tea.Model = (*App)(nil)
@@ -380,7 +384,13 @@ func New(opts Options) *App {
 
 	newline := app.shell.Capabilities().NewlineKeys()
 	stack := newComposer(composerOptions{
-		OnSubmit:    func(text string) { app.pending = append(app.pending, text) },
+		OnSubmit: func(text string) { app.pending = append(app.pending, text) },
+		// The `@` grammar (5.18). Targets alone is a legal adoption — the filter
+		// opens, the token completes, and an addressed send goes to OnSubmit like
+		// any other — so the two are wired together here only because both halves
+		// are ready, not because the composer requires it.
+		Targets:     app.mentionTargets,
+		OnDispatch:  func(d composer.Dispatch) { app.dispatches = append(app.dispatches, d) },
 		Styler:      app.style,
 		SendKey:     tui2.SendKey,
 		NewlineKeys: newline,
@@ -652,17 +662,21 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 // drain turns any drafts the composer submitted during a keystroke into
 // commands. The callback could not return one, so it queued the text instead.
 func (a *App) drain(cmd tea.Cmd) tea.Cmd {
-	if len(a.pending) == 0 {
+	if len(a.pending) == 0 && len(a.dispatches) == 0 {
 		return cmd
 	}
-	cmds := make([]tea.Cmd, 0, len(a.pending)+1)
+	cmds := make([]tea.Cmd, 0, len(a.pending)+len(a.dispatches)+1)
 	if cmd != nil {
 		cmds = append(cmds, cmd)
 	}
 	for _, text := range a.pending {
 		cmds = append(cmds, a.submit(text))
 	}
+	for _, dispatch := range a.dispatches {
+		cmds = append(cmds, a.dispatchCmd(dispatch))
+	}
 	a.pending = a.pending[:0]
+	a.dispatches = a.dispatches[:0]
 	a.shell.Invalidate()
 	return tea.Batch(cmds...)
 }
