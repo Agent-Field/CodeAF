@@ -67,7 +67,13 @@ func TestContrastTableIsReadable(t *testing.T) {
 // "slightly raised background pill"; 5.13 forbids boxes.
 func TestBandSeparation(t *testing.T) {
 	for _, tok := range All() {
-		if !tok.IsSurface() || tok == Ground {
+		if !tok.IsSurface() || tok == Ground || tok == Sheet {
+			// [Sheet] is not a band and is gated by TestSheetLadder instead. The
+			// two surfaces answer different questions: a band is a pill ON a
+			// ground and must be seen at a glance, while a sheet IS a ground and
+			// must be the smallest step that still reads as another plane — a
+			// sheet held to the band's floor would be the slab 5.13 refuses, and
+			// would leave the band it carries nowhere to go.
 			continue
 		}
 		sep := Contrast(tok.Color(FocusNormal), Ground.Color(FocusNormal))
@@ -77,6 +83,56 @@ func TestBandSeparation(t *testing.T) {
 		}
 		t.Logf("%-18s separation %.3f", tok, sep)
 	}
+}
+
+// TestSheetLadder is the dialog elevation, gated as a LADDER rather than as
+// three separate colours: ground → sheet → band, each rung a real step, in that
+// order, at the authored values and after the 256-colour degradation both.
+//
+// The 256 half is not ceremony. The xterm greyscale ramp steps by 10 per
+// channel in exactly the corner this palette's grounds live in, so a sheet
+// authored a shade too close to the ground resolves to the ground's own entry
+// and the elevation silently disappears on the majority profile — visible in
+// truecolor, gone everywhere else, which is the degradation ladder failing in
+// the one direction nobody screenshots.
+func TestSheetLadder(t *testing.T) {
+	ground, sheet, band := Ground.Color(FocusNormal), Sheet.Color(FocusNormal), Band.Color(FocusNormal)
+	if !(ground.Luminance() < sheet.Luminance() && sheet.Luminance() < band.Luminance()) {
+		t.Errorf("the ladder is out of order: ground %s, sheet %s, band %s",
+			ground.Hex(), sheet.Hex(), band.Hex())
+	}
+	rungs := []struct {
+		name   string
+		on, of Color
+	}{
+		{"sheet over ground", sheet, ground},
+		{"band over sheet", band, sheet},
+	}
+	for _, r := range rungs {
+		sep := Contrast(r.on, r.of)
+		if sep < SheetSeparationMin {
+			t.Errorf("%s separates by %.3f, under the %.2f floor", r.name, sep, SheetSeparationMin)
+		}
+		t.Logf("%-18s %.3f authored", r.name, sep)
+	}
+	// The sheet must stay UNDER the band's own floor: a sheet raised as far as a
+	// band is a slab, and 5.13 spends the structure budget on whitespace.
+	if sep := Contrast(sheet, ground); sep >= BandSeparationMin {
+		t.Errorf("the sheet is %.3f over the ground, at or past the band's own floor %.2f",
+			sep, BandSeparationMin)
+	}
+
+	i, j, k := Ground.Index(ANSI256, FocusNormal), Sheet.Index(ANSI256, FocusNormal), Band.Index(ANSI256, FocusNormal)
+	if i == j || j == k {
+		t.Errorf("at 256 colours the ladder collapses: ground %d, sheet %d, band %d", i, j, k)
+	}
+	g2, s2, b2 := color256(int(i)), color256(int(j)), color256(int(k))
+	if !(g2.Luminance() < s2.Luminance() && s2.Luminance() < b2.Luminance()) {
+		t.Errorf("at 256 colours the ladder is out of order: %s %s %s", g2.Hex(), s2.Hex(), b2.Hex())
+	}
+	t.Logf("at 256: ground %d %s, sheet %d %s, band %d %s (rungs %.3f, %.3f)",
+		i, g2.Hex(), j, s2.Hex(), k, b2.Hex(),
+		Contrast(s2, g2), Contrast(b2, s2))
 }
 
 // TestPairingCoverage proves the gate has no blind spot: every foreground token

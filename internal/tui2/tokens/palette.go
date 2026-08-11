@@ -23,12 +23,30 @@ const (
 	// tier still clears 3.0 on the tinted band — the tint is meant to be
 	// answered peripherally, never noticed.
 	BandIdentityTint = 0.08
+
+	// SheetTowardBand is how far the floating dialog's own ground travels from
+	// the [Ground] toward the [Band] — the one derivation that makes the
+	// elevation ladder ground → sheet → band monotone by construction rather
+	// than by three hand-picked literals.
+	//
+	// 0.45 is chosen by the two ends it has to satisfy at once, and both are
+	// tight: below about 0.35 the sheet resolves to the SAME xterm-256
+	// greyscale entry as the ground (the cube is coarse in this corner — see
+	// [Sheet]) and the elevation disappears on the majority profile; above 0.5
+	// the band it carries stops reading as raised against it. At 0.45 the sheet
+	// is 1.09 over the ground and the band is 1.14 over the sheet, and the
+	// three rungs land on three different 256 entries in the right order.
+	SheetTowardBand = 0.45
 )
 
 // Base values. These are the only hand-authored colors in the package.
 var (
 	groundBase = MustHex("#12121A") // the default dark ground
 	bandBase   = MustHex("#262633") // selection band: the ground raised one step
+	// sheetBase is DERIVED, not authored: see [SheetTowardBand]. It is written
+	// here beside its neighbours so the whole ladder can be read at once, and
+	// palette_test.go re-derives it, so the literal and the law cannot drift.
+	sheetBase = Mix(groundBase, bandBase, SheetTowardBand) // #1B1B25
 
 	// Three-tier grey ramp (5.13): primary speech and titles, secondary status
 	// lines and receipts, tertiary telemetry.
@@ -93,6 +111,26 @@ const (
 
 	Ground // the default dark ground
 	Band   // selection band background (5.16: selection is a band, not a color)
+	// Sheet is a floating dialog's OWN ground — the palette, the `?` capability
+	// surface, the settings sheet, the consent dialog, and the one-cell margin
+	// 12.11 rules top and bottom.
+	//
+	// It exists because 12.11's boundary was drawn and never painted, and an
+	// unpainted panel has no ground: it inherits whatever the terminal's
+	// default background is, which is the same nothing the transcript behind it
+	// inherits. Two rooms with the same floor read as one room, which is 12.13's
+	// wall finding arriving on the other axis — there the fix was a column of
+	// ground, here it is a PLANE of it.
+	//
+	// It is deliberately the smallest step that survives every profile rather
+	// than the largest step that looks impressive: 5.13 spends the structure
+	// budget on whitespace and hairlines, and a dialog that announced itself
+	// with a loud slab would be the box 5.21 refuses wearing a background.
+	// [Profile.SheetGround] is the one place that says where it may be drawn at
+	// all — at 16 colours the only raised background is bright black, which is
+	// the user's theme's to define, so the sheet keeps its hairline boundary
+	// and paints no ground there.
+	Sheet
 
 	BandIdentity0 // selection band tinted with identity 0..7, used inside that
 	BandIdentity1 // task's scope so "which room am I in" is answered
@@ -159,6 +197,23 @@ const (
 	BandSeparationMin = 1.15
 	BandSeparationMax = 1.70
 )
+
+// SheetSeparationMin is the smallest step at which one plane reads as another
+// plane on this ground, and it is the gate BOTH rungs of the dialog's ladder
+// sign: the [Sheet] over the [Ground], and the [Band] over the Sheet.
+//
+// It is lower than [BandSeparationMin] on purpose. A band is a mark the eye
+// must FIND — it says which of twenty rows the keyboard is on, unaided. A plane
+// is a mark the eye only has to BELIEVE: it is bounded by 12.11's hairline, it
+// is a rectangle of hundreds of cells rather than one row, and an edge between
+// two large fields is visible far below the ratio a small mark needs. Holding a
+// sheet to the band's floor would spend the whole ground→band range on the
+// first rung and leave the selection nothing to be raised above.
+//
+// The band on a sheet keeps its own second carrier regardless: every list on
+// these surfaces draws [GlyphAccentRail] on the selected row as well, which is
+// 12.11.2's ruling that a state colour carries applied one plane up.
+const SheetSeparationMin = 1.08
 
 // Focus is whether the pane owning a row currently has the user's attention.
 // Dimming is a property of the pane (8.3: "dim/tint global chrome while scoped
@@ -244,6 +299,10 @@ func buildTable() [tokenCount]entry {
 	// contrast number in this package is stated against a floor that holds.
 	set(Ground, "ground", ClassSurface, groundBase, groundBase, 0, 0)
 	set(Band, "band", ClassSurface, bandBase, dimmed(bandBase), 8, 0)
+	// The sheet's 16-colour value is black for completeness and is never drawn:
+	// [Profile.SheetGround] refuses the profile before a renderer can ask for
+	// it, for the reason [Profile.SelectionStyle] refuses the band there.
+	set(Sheet, "sheet", ClassSurface, sheetBase, dimmed(sheetBase), 0, 0)
 	for i := range IdentityCount {
 		tint := Mix(bandBase, identityBase[i], BandIdentityTint)
 		set(BandIdentity0+Token(i), "band.identity."+string(rune('0'+i)), ClassSurface,
@@ -383,9 +442,10 @@ type Pairing struct {
 //
 //  1. A surface token is never a foreground, and a non-surface token is never a
 //     ground. Backgrounds and text are different vocabularies.
-//  2. A focused foreground may sit on the ground, on the plain band, or on any
-//     identity-tinted band. All eighteen combinations are drawn in practice
-//     (any tier of text can land on a selected rail row) and all are gated.
+//  2. A focused foreground may sit on the ground, on the [Sheet], on the plain
+//     band, or on any identity-tinted band. Every combination is drawn in
+//     practice — any tier of text can land on a selected rail row, and the
+//     whole grey ramp lands on a dialog's own ground — and all are gated.
 //  3. A DIMMED foreground may sit only on the ground. This is the design law
 //     that keeps the dim state honest: an unfocused pane draws no selection
 //     band at all — it marks its selection with the dim identity accent rail

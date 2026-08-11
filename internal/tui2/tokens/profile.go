@@ -102,6 +102,20 @@ const (
 	SelectionMarker
 )
 
+// SheetGround reports whether a floating dialog may paint [Sheet] as its own
+// ground under this profile. It is the same question [SelectionStyle] answers
+// about the band, and it has the same answer for the same reason: below 256
+// colours there is no raised background this palette owns. At [ANSI16] the only
+// candidate is bright black — a different shade in every theme, and the one the
+// chrome tier already lives in — so a sheet painted there would either vanish
+// into the text or into the terminal's own background, depending on a setting
+// we do not control. At [NoColor] there are no bytes to spend at all.
+//
+// The dialog does not lose its boundary when this is false: 12.11's boundary is
+// a one-cell margin ruled top and bottom, and the rule is a CHARACTER. The
+// ground is the enhancement; the hairline is the floor.
+func (p Profile) SheetGround() bool { return p >= ANSI256 }
+
 // SelectionStyle returns the selection idiom available under this profile.
 func (p Profile) SelectionStyle() SelectionStyle {
 	switch {

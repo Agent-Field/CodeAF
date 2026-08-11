@@ -27,6 +27,7 @@ var goldenPalette = map[string][2]string{
 	"identity.7": {"#E6B3BF", "#876B75"},
 
 	"ground": {"#12121A", "#12121A"},
+	"sheet":  {"#1B1B25", "#171720"},
 	"band":   {"#262633", "#1D1D28"},
 
 	"band.identity.0": {"#35353D", "#25252D"},
@@ -78,6 +79,9 @@ func TestDerivation(t *testing.T) {
 		if got := BandFor(Identity(i)).Color(FocusNormal); got != want {
 			t.Errorf("band for identity %d = %s, derivation says %s", i, got.Hex(), want.Hex())
 		}
+	}
+	if want := Mix(ground, Band.Color(FocusNormal), SheetTowardBand); Sheet.Color(FocusNormal) != want {
+		t.Errorf("sheet = %s, derivation says %s", Sheet.Hex(FocusNormal), want.Hex())
 	}
 }
 
