@@ -86,10 +86,19 @@ func RecognizesStandingIntent(instruction string) bool {
 func (c *Compiler) compileStanding(ctx context.Context, instruction, graphContext string) (Brief, error) {
 	user := "Current graph context and measured self-knowledge:\n" + graphContext +
 		"\n\nUser instruction (verbatim; preserve exactly):\n" + instruction
+	// standingReplyTokens is a ceiling and not a purchase, and on a reasoning
+	// model the thinking is spent out of it before a single character of the
+	// charter is written. At the flat 800 it carried, an ask that took any
+	// deliberation came back `finish_reason:"length"` with `content:null` and
+	// the whole standing route failed — measured live, and the ordinary
+	// compiler's floor had the same fault for the same reason. The number that
+	// matters is what the reply can legitimately need, not what it usually
+	// costs; a call that stops early is billed for what it wrote.
+	const standingReplyTokens = 8000
 	response, err := c.client.CompleteWithMessages(ctx, []ai.Message{
 		textMessage("system", standingCompilerPrompt),
 		textMessage("user", user),
-	}, ai.WithMaxTokens(800))
+	}, ai.WithMaxTokens(standingReplyTokens))
 	if err != nil {
 		return Brief{}, fmt.Errorf("compile standing intent: %w", err)
 	}
@@ -99,7 +108,19 @@ func (c *Compiler) compileStanding(ctx context.Context, instruction, graphContex
 
 	var spec store.CharterSpec
 	if err := decodeJSONObject(response.Text(), &spec); err != nil {
-		return Brief{}, fmt.Errorf("compile standing intent: %w", err)
+		// One more try at double the room, on the ordinary compiler's precedent:
+		// this is the cheapest call on the route and the only one whose loss
+		// forfeits the whole standing rule.
+		retry, retryErr := c.client.CompleteWithMessages(ctx, []ai.Message{
+			textMessage("system", standingCompilerPrompt),
+			textMessage("user", user),
+		}, ai.WithMaxTokens(standingReplyTokens*2))
+		if retryErr != nil || retry == nil {
+			return Brief{}, fmt.Errorf("compile standing intent: %w", err)
+		}
+		if err := decodeJSONObject(retry.Text(), &spec); err != nil {
+			return Brief{}, fmt.Errorf("compile standing intent: %w", err)
+		}
 	}
 	spec = normalizeCharterSpec(spec, instruction, graphContext)
 	return Brief{

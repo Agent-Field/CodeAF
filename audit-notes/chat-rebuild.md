@@ -5383,3 +5383,148 @@ room instead of from the thread.
 
 `make check`: green but for the standing `internal/plan` CJK `file name too
 long` failure, which is Linux-only and another lane's territory.
+
+### 13.16 Adversarial review of 51287ca, and the two questions `scale` was answering at once
+
+Verdict on the prompt work in 51287ca: **the principles held, the mechanism did
+not.** Every claim 13.6 makes about its own text is true — the width/appetite
+trade, the ordering challenge, the builds_on wait — and re-measured on fresh
+shapes those rules do what they say. What the lane did not catch is that the
+rules it wrote could not reach the decision they were written for, because
+`scale` was being asked two different questions under one label and answering
+only the easier one. Measured on shapes 13.6 never used, on isolated homes,
+`~deepseek/deepseek-v4-flash-latest`, `AFORGE_DAILY_BUDGET=1.50`.
+
+**Not a regression, and that is the finding.** The two shapes the task-tree lane
+reports as single leaves (13.11's `task-tree` and `task-fanout` homes) were
+compiled against the prompt at 51287ca AND against the prompt at 51287ca^, three
+trials each, same cap: `scale:"task"` six times out of six on both. 51287ca
+neither caused this nor fixed it. `git show 51287ca^` is the control and it reads
+identically, so the rewrite is exonerated and the defect is older than it.
+
+**What was actually wrong: `scale` is the gate on whether a plan pass happens,
+and it was being decided by asking how many ANSWERS come back.** Those are not
+the same question. A job with one deliverable and three stages inside it has
+structure that someone must lay out; asking "one worker or many?" and using the
+answer to decide "does anyone lay this out at all?" loses that job's structure
+outright, and there is no later pass that rediscovers stages nobody was asked to
+name. 51287ca's own new sentence made it worse in one specific way — it defined
+project as pieces that "can be bounded and set going at once", which makes
+simultaneity the test and quietly kills the stratify arm two rules above it. A
+chain has no pieces that start at once, so an explicitly staged ask read as
+"task" by the letter of the rule that was supposed to widen it.
+
+**The model had the judgement and was never made to reach it.** The prompt
+already said "scale is that judgement's answer, not a label chosen first", and
+the measurement is that this was exactly the failure: on the notes-then-table
+ask the SAME model, same prompt, same sentence, answered `task` three times out
+of three when it wrote the label straight out, and `project` both times it was
+additionally asked to quote the rule it was following. Nothing was missing from
+the model or from the reasoning; nothing made the reading happen before the
+label. So the reading became a field. `structure` is now the FIRST key in the
+object — `enumerates | stratifies | one_judgement | single_act` — and
+`reconcileScale` makes the label follow it in code rather than in a paragraph.
+It only ever WIDENS, and the asymmetry is the point: "project" buys one planning
+pass and commits nothing about worker count, so a wrong widening costs a cheap
+call while a wrong narrowing costs the shape of the job. A "lookup" is never
+promoted; its answer IS the deliverable and there is nothing to plan.
+
+**Measured, live, on the task-tree lane's own sentence.** "plan and run this as
+two dependent steps, not one … step two must not start before step one is done."
+Before: `spliced 1 nodes`, no edges. After: `spliced 3 nodes`, edges
+`task-8-n1 -> task-8-n2` and `task-8-n2 -> task-8`, and the ordering held to the
+millisecond — n1 ran 05:06:17.709→20.809, n2 was claimed at **20.811**, two
+milliseconds after its input landed, which is a dependency releasing rather than
+a poll interval. Execution concurrency 1.00, correctly: it is a chain, and a
+chain that runs as a chain is the right answer, not a failure to fan out.
+
+**And on a shape that should widen.** "a short note on each of three brewing
+methods … then one comparison table at the end that uses all three notes, one
+markdown file": one leaf before (twice, $0.0047 and $0.0031), five nodes after
+(twice). The good layout, `w4`: three notes started at :25.156, :25.157 and
+:25.158 — within 2ms of each other — the table started at :27.911, **one
+millisecond** after the last note finished, on three real `feeds_into` edges.
+Stage-1 concurrency 2.41, whole-job 1.26, $0.0134. The other run, `w3`, put the
+table in stage 1 ALONGSIDE its own inputs and paid $0.0401 for it — which is
+H10 item 1 reproducing exactly as filed, in the plan layer, on the same day. The
+compiler now opens the pass; what the pass does with it is still H10's.
+
+**The adversarial shapes, where naive width would be wrong, both held.** A
+repo-wide rename touching three packages plus a doc regeneration: one node, no
+parts, no simultaneous editors — shared-state mutation is still an ordering.
+Reading one 40-page document to find every clause of a kind: `one_judgement`,
+`task`, three times out of three. The boundary needed tightening to survive the
+rewrite and now reads as being about READING something whole rather than
+PRODUCING something whole, because "reaching one judgement" alone swallowed
+every synthesis on the board.
+
+**A separate defect this lane found by accident, and it is the expensive one.**
+`compileReplyTokens` sized the compile's `max_tokens` at `1000 + 2·len(ask)/3`.
+On a reasoning model `max_tokens` is the WHOLE completion budget and the
+thinking is spent out of it before the first character of the answer — so three
+ordinary multi-part asks came back `finish_reason:"length"`, `content:null`, and
+`completion_tokens` equal to the cap TO THE DIGIT: 1106 of 1106, 1100 of 1100,
+1124 of 1124. The retry at double the room did the same. Nothing was truncated,
+because nothing was ever written, and the compile is the one call whose loss
+forfeits the whole job. The bug was the QUANTITY, not the size: a reply's length
+tracks how many pieces the WORK has, and the ask's own length says nothing about
+that — "six things:" is nine characters. Since a cap is a ceiling and not a
+purchase, the floor is now sized to the widest brief this prompt can legitimately
+produce (measured successful compiles: 827–5565 completion tokens) and short asks
+pay nothing for headroom they do not use. `compileStanding` had the same fault
+worse — a flat 800 with no retry at all — and now has both.
+
+**Why nobody had seen it.** `config.Context` puts the operator's configured
+reasoning effort on every planning-class call, and it is deliberately low ("the
+economy that makes planning fast"). Live, the compile barely reasons — 426
+completion tokens — so the old floor rarely bit. It bites the moment reasoning is
+configured up, the model changes, or the ask is wide enough to need thinking.
+The same fact is why `structure` had to become the object's FIRST key rather
+than merely a rule about ordering: under a shallow read the model writes the
+fields in the order it is given them, and a reading asked for after the goal is a
+reading reconstructed to fit one.
+
+**Residual example-shapes, hunted and removed.** The spawn brief still taught by
+illustration — four faults are four, a trip with flights and a hotel is one —
+which is a case rule wearing a story. It now states the test itself: a piece is
+its own order when the person would still want it back if the rest never
+arrived, and pieces that only mean anything delivered together are one thing.
+The scale rule's "gathering, verifying, and synthesizing" list is gone for a
+general clause. The title rule's two illustrations are deliberately KEPT: they
+teach naming, not decomposition, and the bar 13.6 was written to is about the
+latter. `structure_test.go` fails the prompt if any shape of work is named in it.
+
+**Three principles the bar names that 13.6 had not encoded, now stated.**
+Speculative width — where a wait exists only because nobody yet knows which of
+several routes works and each is small beside the job, take them all at once and
+keep what lands, since uncertainty is a reason for width rather than a reason to
+go one at a time. Contracts up front — an interface fixed in the goal is what
+MAKES the pieces on either side of it independent, so it is a constructive move
+rather than a fallback. And the resource bound 13.6 measured at 51s→397s but
+recorded only as brief-width: a piece must be bounded to what one worker can
+carry to the end IN ONE GO, because a piece that outruns that is not finished and
+handed over, it is stopped and resumed, and the chain being shortened grows a
+link nobody planned.
+
+**The head's delivery voice — 13.10's head-side half, taken as (b).** The voice
+said a commission's receipt promises to report back. Nothing can keep it:
+`announceNode` posts a SYSTEM row anchored to a node, and `answerable`
+(coalesce.go:106) takes a row only when it is `RoleUser` AND belongs to no node,
+so no delivery can ever wake the head. That is the HONESTY law's own case —
+"Never promise a behaviour you have not recorded" — and an affordance promising
+what the machine cannot do is the affordance lying. The promise is gone; the
+true thing is said in its place, that the finished work arrives in the
+conversation by itself. Live, first try: "In hand — one job writing a single
+markdown file … **It'll arrive here with the file path when it's done.**"
+The (a) arm — waking the head so it writes the brief in its own voice — is NOT
+taken here and is filed as H12, because the row a wake would hand the head today
+is one undressed prose blob (H9): a head woken now would translate a dump it can
+only re-read, and H9 is `internal/resident`'s. `reportback_test.go` pins the
+voice AND pins `answerable`, so the wave that wires the wake has to come back
+through this test and say so.
+
+**State.** `internal/head` green (its suite plus two new files). `make check`:
+the one red is the standing `internal/plan` `TestRenderTerrainStaysUnderTheCap`
+CJK failure, Linux-only, another lane's. Nothing under `internal/plan`,
+`internal/exec`, `internal/resident`, `internal/tui`, `internal/tui2` or
+`cmd/aforge` was touched.

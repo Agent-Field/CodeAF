@@ -631,3 +631,52 @@ artifact reference — but the command door needs no new reader.
 surface stays unable to show what the head did, and the head stays unable to
 read what it did — 13.8's own summary is that these "are one wound seen from
 both sides, and closing them closes 4, 8 and 14's material half as well."
+
+## H12 — Wake the head on a delivery so it reports back in its own voice (appended 2026-08-11, adversarial-review lane)
+
+**Status: the honesty half is CLOSED, the wiring half is open.** 13.10 named two
+arms and said either would do. The (b) arm is taken: `orchestratorVoice` no
+longer tells the head to promise a report-back, because nothing could keep the
+promise and a promise the machinery cannot keep is the affordance lying. What
+remains is (a), which is the arm that actually gives the person what 13.10's
+report asked for — "the chat should translate the completion into what the user
+wants to know".
+
+**Why it could not be taken now.** Not because the wake is somebody else's file
+— it is not, the whole predicate lives in `internal/head`. Because the ROW is
+not ready. `announceNode` posts `node.Summary` verbatim with `parts=null`
+(H9), so a head woken today would be handed one undressed prose blob and asked
+to translate a dump it can only re-read. **H9 sequences before this item.**
+
+**The exact edit, when H9 has landed.**
+
+1. `internal/head/coalesce.go:106`. `answerable` is the one predicate the poll
+   consults and it reads
+   `message.Role == store.RoleUser && strings.TrimSpace(message.NodeID) == ""`.
+   A delivery is `store.RoleSystem` with `NodeID` set and no command seq — which
+   is 13.10's own three-column reading of what a delivery IS. Admitting that
+   shape is the whole wake.
+2. It cannot simply be widened. The fold machinery around it
+   (`foldable`, `foldStep`, `beginTurn`) builds a turn out of the PERSON's
+   contiguous words, and a delivery has no words of theirs in it. A delivery
+   must open a turn of its own that folds nothing, or it will absorb the next
+   thing the person types and that row will go silent — `foldStep`'s own comment
+   states that hazard.
+3. The turn it opens is not an ordinary turn. It needs its own brief and its own
+   cap: ONE short sentence translating the completion, and no belt, because the
+   delivery card beside it already carries the name, the money and the artifact
+   rows (13.10), and a second copy of those facts is the duplication that lane
+   deleted. `aside.go` is the precedent for a turn with its own prompt, its own
+   cache key and no tool definitions.
+4. Cost is the reason to be careful, not a footnote: this is one paid head turn
+   per settled job root. Decide deliberately whether it fires for every job or
+   only for one the person is not currently looking at.
+5. **`internal/head/reportback_test.go` fails the moment `answerable` admits a
+   delivery**, deliberately: it asserts a delivery row is NOT answerable, with
+   the message "the wake landed, so the voice may promise a report-back again".
+   That test is the handshake — whoever wires this comes back through it and
+   restores the promise in `orchestratorVoice` in the same commit, so the voice
+   and the machinery can never again disagree about what the head can do.
+
+**Size.** One predicate, one turn kind, one prompt. **Owner.** `internal/head`.
+**Blocked by.** H9.

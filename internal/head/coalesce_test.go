@@ -153,7 +153,7 @@ func TestTwoMessagesTypedInOneBreathAreOneTurn(t *testing.T) {
 func TestAFoldedTurnStillFansOutIntoSeparateWork(t *testing.T) {
 	graphStore := openHeadStore(t)
 	client := &foldClient{
-		reply: "On both — I'll report back as each lands.",
+		reply: "On both — each lands here as it finishes.",
 		turns: []beltTurn{{calls: []ai.ToolCall{beltCall("s1", beltToolSpawn, map[string]any{
 			"orders": []string{"book the flights", "find somewhere to eat"}})}}},
 	}

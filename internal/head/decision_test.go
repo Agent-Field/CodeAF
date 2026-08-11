@@ -45,7 +45,7 @@ func TestOneMessageNamingIndependentWorkBecomesSeveralJobs(t *testing.T) {
 		beltToolTurn("s1", beltToolSpawn, map[string]any{"orders": []string{
 			"work issue 12 on my repo", "work issue 41 on my repo",
 			"work issue 77 on my repo", "work issue 93 on my repo"}}),
-		beltTurn{text: "On it — four of them, I'll report back as each lands."})
+		beltTurn{text: "On it — four of them, each landing here as it finishes."})
 
 	commands := pendingCommandsOf(t, graph)
 	if len(commands) != 4 {
