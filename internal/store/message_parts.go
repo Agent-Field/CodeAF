@@ -54,6 +54,16 @@ const (
 	PartArtifact PartKind = "artifact"
 	// PartEnded says how the turn that produced this message ended.
 	PartEnded PartKind = "ended"
+	// PartAside is a side-channel exchange, kept whole and shown collapsed.
+	//
+	// 8.2.9's law is that statements are durable and questions may be ephemeral:
+	// a curiosity question about running work is asked and answered without
+	// taking a turn's worth of the orchestrator's context. "Ephemeral" there
+	// means ephemeral to the MODEL's context, never to the record — journal-is-
+	// truth and 5.20's no-dead-air rule both still hold — so the exchange lands
+	// as one collapsed row that can be opened, referred back to, and searched.
+	// The body is the collapsed line; this part is what opening it shows.
+	PartAside PartKind = "aside"
 )
 
 // QuestionPart is the ask, said in types instead of smuggled through prose.
@@ -181,6 +191,21 @@ const (
 	EndInterrupted EndKind = "interrupted"
 )
 
+// AsidePart is one side-channel exchange, kept in full under a collapsed line.
+//
+// Both halves are stored because both are the record: the question is what was
+// asked, and dropping it would leave an answer to nothing. They are stored HERE
+// rather than as two text parts because a reader has to be able to tell which is
+// which, and a pair of anonymous blocks cannot say.
+type AsidePart struct {
+	Question string `json:"question"`
+	Answer   string `json:"answer"`
+	// Model is what served the answer, recorded for the same reason a reply
+	// records it: an aside is a real provider call that really cost money, and
+	// "which model said that" is unanswerable afterwards without this.
+	Model string `json:"model,omitempty"`
+}
+
 // EndedPart is the truncation law's carrier. FinishReason is the provider's own
 // word, kept verbatim beside our reading of it: the vocabulary of finish
 // reasons is not ours and grows without asking, so the raw string is the only
@@ -201,6 +226,7 @@ type MessagePart struct {
 	Progress *ProgressPart
 	Artifact *ArtifactPart
 	Ended    *EndedPart
+	Aside    *AsidePart
 
 	// raw holds a part this build does not understand, exactly as it arrived.
 	// Forward compatibility is not politeness here: parts are journaled, and a
@@ -249,6 +275,11 @@ func EndedMark(ended EndedPart) MessagePart {
 	return MessagePart{Kind: PartEnded, Ended: &ended}
 }
 
+// AsideRef carries one side-channel exchange under its collapsed line.
+func AsideRef(aside AsidePart) MessagePart {
+	return MessagePart{Kind: PartAside, Aside: &aside}
+}
+
 // maxMessageParts bounds one message's block list. A message is a thing a
 // person reads; past this it is a document, and a document is an artifact.
 const maxMessageParts = 64
@@ -270,6 +301,7 @@ type partEnvelope struct {
 	Progress *ProgressPart `json:"progress,omitempty"`
 	Artifact *ArtifactPart `json:"artifact,omitempty"`
 	Ended    *EndedPart    `json:"ended,omitempty"`
+	Aside    *AsidePart    `json:"aside,omitempty"`
 }
 
 // MarshalJSON writes the envelope for a known kind and the original bytes for
@@ -291,6 +323,7 @@ func (p MessagePart) MarshalJSON() ([]byte, error) {
 		Progress: p.Progress,
 		Artifact: p.Artifact,
 		Ended:    p.Ended,
+		Aside:    p.Aside,
 	})
 }
 
@@ -322,6 +355,7 @@ func (p *MessagePart) UnmarshalJSON(data []byte) error {
 		Progress: envelope.Progress,
 		Artifact: envelope.Artifact,
 		Ended:    envelope.Ended,
+		Aside:    envelope.Aside,
 	}
 	return nil
 }
@@ -338,7 +372,7 @@ func compactPart(data []byte) json.RawMessage {
 
 func knownPartKind(kind PartKind) bool {
 	switch kind {
-	case PartText, PartQuestion, PartCard, PartProgress, PartArtifact, PartEnded:
+	case PartText, PartQuestion, PartCard, PartProgress, PartArtifact, PartEnded, PartAside:
 		return true
 	default:
 		return false
@@ -506,6 +540,23 @@ func normalizeMessagePart(part MessagePart) (MessagePart, error) {
 		ended := *part.Ended
 		ended.FinishReason = strings.TrimSpace(ended.FinishReason)
 		return MessagePart{Kind: PartEnded, Ended: &ended}, nil
+
+	case PartAside:
+		if part.Aside == nil {
+			return MessagePart{}, fmt.Errorf("aside part carries no exchange")
+		}
+		aside := *part.Aside
+		aside.Question = strings.TrimSpace(aside.Question)
+		aside.Answer = strings.TrimSpace(aside.Answer)
+		aside.Model = strings.TrimSpace(aside.Model)
+		// Both halves or neither. An answer with no question is an answer to
+		// nothing, and a question with no answer is a turn that never happened —
+		// the collapsed line claims an exchange, so the block under it has to be
+		// one.
+		if aside.Question == "" || aside.Answer == "" {
+			return MessagePart{}, fmt.Errorf("aside part is missing one half of the exchange")
+		}
+		return MessagePart{Kind: PartAside, Aside: &aside}, nil
 
 	default:
 		// An unknown kind is passed through exactly as it arrived. There is
