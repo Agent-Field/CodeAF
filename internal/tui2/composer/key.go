@@ -24,6 +24,11 @@ func (m *Model) Key(msg tea.KeyPressMsg) tea.Cmd {
 		m.insert("\n")
 		return nil
 	}
+	if m.slash.open {
+		if cmd, handled := m.slashKey(s); handled {
+			return cmd
+		}
+	}
 	if m.filter.open {
 		if cmd, handled := m.filterKey(s); handled {
 			return cmd
@@ -43,6 +48,13 @@ func (m *Model) Key(msg tea.KeyPressMsg) tea.Cmd {
 
 	switch s {
 	case "backspace":
+		// 7.2's standing row: backspace on an EMPTY draft removes the last
+		// attachment. The empty-draft condition is what makes it unambiguous —
+		// a chip is not in the text, so the only caret position that can mean
+		// "the chip" is the one where backspace has no rune to take instead.
+		if len(m.value) == 0 && m.removeLastAttachment() {
+			break
+		}
 		m.deleteBackward()
 	case "delete":
 		m.deleteForward()
@@ -76,6 +88,12 @@ func (m *Model) Key(msg tea.KeyPressMsg) tea.Cmd {
 			// dismiss to keep typing.
 			if len(text) == 1 && text == "@" && !m.filter.open && mentionBoundary(m.value, m.cursor-1) {
 				m.openMentionFilter(m.cursor - 1)
+			}
+			// And one typed '/' on an empty draft opens the slash line. Same
+			// guard, same reason: a paste that begins with a slash is a path
+			// somebody copied, not a reach for the command grammar.
+			if len(text) == 1 && text == "/" && !m.slash.open && slashBoundary(m.value, m.cursor-1) {
+				m.openSlashFilter(m.cursor - 1)
 			}
 		}
 	}

@@ -189,8 +189,15 @@ func (m *Model) syncFilter() {
 // what keeps that composer byte-identical to the one this package shipped
 // before the `@` grammar existed.
 func (m *Model) afterEdit() {
+	// Attachment capture runs first because it is the one sync that EDITS the
+	// draft (attach.go). Mentions and the open filter are derived from the text,
+	// so they must be derived from the text as it finally stands — deriving a
+	// span and then splicing the buffer under it is how a token and its
+	// highlight come to disagree.
+	m.syncAttachments()
 	m.syncMentions()
 	m.syncFilter()
+	m.syncSlash()
 }
 
 // -- ranking ------------------------------------------------------------------

@@ -187,11 +187,19 @@ func (m *Model) moveDown() bool {
 
 // reset clears the draft and cursor without touching history or the stash.
 // Used after a successful submit.
+//
+// Attachments go with it. They belong to the draft that captured them: a file
+// still chipped under a composer whose words have been sent would ride along
+// with the NEXT message, which is the surface deciding to attach something the
+// person did not attach to it. esc reaches here too (key.go), and clearing them
+// there is v1's behaviour as well — the stash carries words, and a path that was
+// taken out of the words is not one of them.
 func (m *Model) reset() {
 	m.value = m.value[:0]
 	m.cursor = 0
 	m.historyStep = 0
 	m.mentions = m.mentions[:0]
+	m.attachments = m.attachments[:0]
 	m.closeMentionFilter()
 }
 
