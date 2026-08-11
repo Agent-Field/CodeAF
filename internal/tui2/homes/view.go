@@ -91,6 +91,9 @@ func (v *View) Render(state State, sel Selection, width, height int) []string {
 // nothing else; every other rendering decision is the token layer's.
 func (v *View) colored() bool { return v.profile != tokens.NoColor }
 
+// clean is the View's door for prose somebody else wrote. See [cleanFor].
+func (v *View) clean(s string) string { return cleanFor(v.profile, s) }
+
 // glyph resolves a vocabulary slot through the tier (12.7), so a nerd-font
 // terminal gets the icon and every other one gets the designed floor.
 func (v *View) glyph(id tokens.GlyphID) string { return v.glyphs.Glyph(id) }
@@ -108,7 +111,7 @@ func (v *View) push(line string, limit int) bool {
 func (v *View) text(s string, tok tokens.Token, width, limit int) bool {
 	l := &v.line
 	l.reset(width)
-	l.add(clean(s), tok)
+	l.add(v.clean(s), tok)
 	return v.push(l.emit(&v.buf, v.profile, v.focus, width, false, tokens.Ground), limit)
 }
 
@@ -131,7 +134,7 @@ func (v *View) heading(glyph string, tok tokens.Token, title string, width, limi
 		l.add(glyph, tok)
 		l.add(" ", tokens.TextTertiary)
 	}
-	l.add(clean(title), tokens.TextPrimary)
+	l.add(v.clean(title), tokens.TextPrimary)
 	return v.push(l.emit(&v.buf, v.profile, v.focus, width, false, tokens.Ground), limit)
 }
 
@@ -139,7 +142,7 @@ func (v *View) heading(glyph string, tok tokens.Token, title string, width, limi
 // this package draws more than one line of somebody else's words, and it is
 // bounded by the height budget like everything else.
 func (v *View) prose(body string, tok tokens.Token, width, limit int) bool {
-	body = clean(body)
+	body = v.clean(body)
 	if body == "" {
 		return len(v.lines) < limit
 	}
@@ -160,9 +163,9 @@ func (v *View) pair(label, value string, width, limit int) bool {
 	l := &v.line
 	l.reset(width)
 	col := labelColumn(width)
-	l.add(clean(label), tokens.TextTertiary)
+	l.add(v.clean(label), tokens.TextTertiary)
 	l.padTo(col)
-	l.add(clean(value), tokens.TextSecondary)
+	l.add(v.clean(value), tokens.TextSecondary)
 	return v.push(l.emit(&v.buf, v.profile, v.focus, width, false, tokens.Ground), limit)
 }
 
@@ -171,9 +174,9 @@ func (v *View) pair(label, value string, width, limit int) bool {
 func (v *View) pairPath(label, path string, width, limit int) bool {
 	l := &v.line
 	l.reset(width)
-	l.add(clean(label), tokens.TextTertiary)
+	l.add(v.clean(label), tokens.TextTertiary)
 	l.padTo(labelColumn(width))
-	l.addPath(clean(path), tokens.TextSecondary)
+	l.addPath(v.clean(path), tokens.TextSecondary)
 	return v.push(l.emit(&v.buf, v.profile, v.focus, width, false, tokens.Ground), limit)
 }
 
@@ -201,7 +204,7 @@ func (v *View) row(glyph string, gtok tokens.Token, name, note string, tok token
 		l.add(glyph, gtok)
 		l.add(" ", tokens.TextTertiary)
 	}
-	note = clean(note)
+	note = v.clean(note)
 	noteW := blocks.Width(note)
 	if noteW > 0 {
 		noteW++
@@ -210,7 +213,7 @@ func (v *View) row(glyph string, gtok tokens.Token, name, note string, tok token
 	if room < 0 {
 		room = 0
 	}
-	name = clean(name)
+	name = v.clean(name)
 	if blocks.Width(name) > room {
 		name = blocks.Truncate(name, room)
 	}
@@ -228,7 +231,7 @@ func (v *View) row(glyph string, gtok tokens.Token, name, note string, tok token
 
 // indented lays a dim continuation line under a list row.
 func (v *View) indented(s string, width, limit int) bool {
-	s = clean(s)
+	s = v.clean(s)
 	if s == "" {
 		return len(v.lines) < limit
 	}
@@ -274,10 +277,10 @@ func (v *View) verbs(list []Verb, width, limit int) bool {
 			}
 		}
 		if list[i].Key != "" {
-			l.add(clean(list[i].Key), tokens.TextTertiary)
+			l.add(v.clean(list[i].Key), tokens.TextTertiary)
 			l.add(" ", tokens.TextTertiary)
 		}
-		l.add(clean(list[i].Label), tok)
+		l.add(v.clean(list[i].Label), tok)
 	}
 	if l.w == 0 {
 		return len(v.lines) < limit

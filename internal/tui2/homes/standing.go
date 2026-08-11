@@ -131,12 +131,28 @@ func (v *View) charter(c Charter, state State, width, height int) {
 //
 // 12.9.2 is the law here and it was written from a real failure: a model wrote
 // "$20.00 a run" beside a measured $0.0017, and the surface let it stand. A
-// figure this pane cannot compute is a figure this pane does not print — and it
-// does not print $0.00 either, because two decimals turn a real fraction of a
-// cent into something that reads as free.
+// figure this pane cannot compute is a figure this pane does not print.
+//
+// The second clause of that section — "moneyUSD renders at the precision a
+// figure actually has, because two decimals turned a real $0.0017 into '$0.00',
+// which reads as free" — is NOT yet true of the token layer:
+// [tokens.AppendMoney] rounds to cents with no sub-cent rung, so every measured
+// rate under half a cent renders as free. That is a gap in tokens and not this
+// package's to close (see the adoption note, 12.10.6). Until it closes, a
+// positive rate too small for the ladder is stated in WORDS, which is true at
+// every magnitude and cannot be misread as nothing.
 func charterCost(c Charter) string {
 	if !c.HasCost {
 		return "not measured yet"
 	}
+	if c.CostPerRun > 0 && c.CostPerRun < moneyFloor {
+		return "under a cent a run"
+	}
 	return tokens.Money(c.CostPerRun) + " a run"
 }
+
+// moneyFloor is where [tokens.AppendMoney]'s rounding turns a real figure into
+// "$0.00". It is half a cent because that formatter rounds rather than
+// truncates, and the number is written down here rather than assumed so a
+// change to the ladder fails a test instead of quietly re-introducing the bug.
+const moneyFloor = 0.005

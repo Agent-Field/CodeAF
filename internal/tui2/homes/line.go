@@ -3,6 +3,8 @@ package homes
 import (
 	"strings"
 
+	"github.com/charmbracelet/x/ansi"
+
 	"github.com/Agent-Field/aforge-v2/internal/sanitize"
 	"github.com/Agent-Field/aforge-v2/internal/tui2/blocks"
 	"github.com/Agent-Field/aforge-v2/internal/tui2/tokens"
@@ -226,4 +228,23 @@ var sanitizeChokepoint = sanitize.Table(tokens.ANSI16Remap)
 // into a pane whose height has already been budgeted.
 func clean(s string) string {
 	return blocks.Flatten(sanitize.TextWithPalette(s, sanitizeChokepoint))
+}
+
+// cleanFor is [clean] with the one extra rule a no-colour profile needs.
+//
+// The sanitiser deliberately PRESERVES SGR and remaps it into the palette —
+// that is the right trade for a colour terminal, where a service log's own red
+// is information the log meant to carry. On a profile that has told us it has
+// no colour it is the wrong trade twice over: the surface has promised to emit
+// no escapes, and the likeliest consumers of that promise are a dumb pipe and a
+// golden file, both of which read a preserved SGR as corruption.
+//
+// The strip runs only when a byte 0x1B survived the sanitiser, so benign
+// text — the overwhelming case — pays one IndexByte.
+func cleanFor(p tokens.Profile, s string) string {
+	out := clean(s)
+	if p == tokens.NoColor && strings.IndexByte(out, 0x1b) >= 0 {
+		return ansi.Strip(out)
+	}
+	return out
 }

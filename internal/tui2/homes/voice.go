@@ -164,6 +164,10 @@ func (m Mic) Render(st *tokens.Styler, width int) string {
 		return ""
 	}
 	g := glyphSetOf(st)
+	profile, focus := tokens.NoColor, tokens.FocusNormal
+	if st != nil {
+		profile, focus = st.Profile(), st.Focus()
+	}
 	var l lineBuf
 	var buf strings.Builder
 	l.reset(width)
@@ -178,11 +182,7 @@ func (m Mic) Render(st *tokens.Styler, width int) string {
 	}
 	if m.State == MicRefused && m.Reason != "" {
 		l.add(" ", tokens.TextTertiary)
-		l.add(clean(m.Reason), tokens.TextTertiary)
-	}
-	profile, focus := tokens.NoColor, tokens.FocusNormal
-	if st != nil {
-		profile, focus = st.Profile(), st.Focus()
+		l.add(cleanFor(profile, m.Reason), tokens.TextTertiary)
 	}
 	return l.emit(&buf, profile, focus, width, false, tokens.Ground)
 }

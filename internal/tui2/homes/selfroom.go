@@ -130,7 +130,7 @@ func (v *View) item(it Item, width, height int) bool {
 	l := &v.line
 	l.reset(width)
 	l.padTo(indentStep)
-	l.addPath(clean(it.Path), tokens.TextTertiary)
+	l.addPath(v.clean(it.Path), tokens.TextTertiary)
 	return v.push(l.emit(&v.buf, v.profile, v.focus, width, false, tokens.Ground), height)
 }
 
