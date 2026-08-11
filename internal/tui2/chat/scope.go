@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/Agent-Field/aforge-v2/internal/store"
+	"github.com/Agent-Field/aforge-v2/internal/tui2/homes"
 	"github.com/Agent-Field/aforge-v2/internal/tui2/rail"
 )
 
@@ -81,7 +82,6 @@ type Rooms interface {
 const (
 	rowHomeID     = "home"
 	rowNewRoomID  = "new-room"
-	rowMoreID     = "more"
 	rowRoomPrefix = "room:"
 	rowTaskPrefix = "task:"
 )
@@ -118,6 +118,12 @@ type scopeSource struct {
 	// scope that always exists, even when nothing else does.
 	home  rail.Scope
 	tasks map[string]rail.Scope
+
+	// homes is 5.24's other half: the four rooms that are not the conversation
+	// and not the work. The state is the wiring's to fill and this source's to
+	// carry; homeSource answers the rail for every scope under it.
+	homes      homes.State
+	homeSource *homes.Source
 
 	// stamp is the journal position the cache was built at, and ready says a
 	// build has happened. Together they are the whole invalidation rule: the
@@ -157,6 +163,7 @@ func newScopeSource(backend Backend, session string, now func() time.Time) *scop
 	if rooms, ok := backend.(Rooms); ok {
 		source.rooms = rooms
 	}
+	source.homeSource = homes.NewSource(source.homes)
 	return source
 }
 
@@ -171,6 +178,13 @@ func (s *scopeSource) Scope(id string) (rail.Scope, bool) {
 	}
 	if id == rail.HomeScopeID {
 		return s.home, true
+	}
+	// The homes answer for their own ids and refuse every other, which is what
+	// keeps this from being a second registry of what a scope id means.
+	if s.homeSource != nil {
+		if scope, ok := s.homeSource.Scope(id); ok {
+			return scope, true
+		}
 	}
 	scope, ok := s.tasks[id]
 	return scope, ok
@@ -270,6 +284,8 @@ func (s *scopeSource) refresh(journal int64, force bool) bool {
 	sessions := s.readSessions()
 	snapshot, usage, questions := s.readGraph()
 
+	s.homes.Now = s.now()
+	s.homeSource.SetState(s.homes)
 	s.tasks = make(map[string]rail.Scope, len(s.tasks))
 	s.home = s.buildHome(sessions, snapshot, usage, questions)
 	return true
@@ -338,17 +354,10 @@ func (s *scopeSource) buildHome(sessions []store.Session, snapshot store.Snapsho
 	})
 	rows = append(rows, s.roomRows(sessions)...)
 	rows = append(rows, s.taskRows(snapshot, usage, questions)...)
-	rows = append(rows, rail.Row{
-		// 5.24's collapsed dim group. The rows behind it are real parts of the
-		// product with real rooms coming; the honest rendering today is one row
-		// that says what is in there and opens nothing, rather than four rows
-		// that look like doors and are not.
-		ID:       rowMoreID,
-		Kind:     rail.RowStep,
-		Name:     "more",
-		Status:   "notebook, self, standing, services",
-		Composer: rail.ComposerNone,
-	})
+	// 5.24's collapsed dim group, and the four rooms behind it. It used to be a
+	// placeholder row that cited this section by name and opened nothing;
+	// internal/tui2/homes is what it was a placeholder FOR.
+	rows = append(rows, homes.Rows(s.homes)...)
 	return rail.Scope{ID: rail.HomeScopeID, Title: "aforge", Rows: rows}
 }
 

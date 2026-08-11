@@ -10,6 +10,7 @@ import (
 
 	"github.com/Agent-Field/aforge-v2/internal/store"
 	"github.com/Agent-Field/aforge-v2/internal/tui2/blocks"
+	"github.com/Agent-Field/aforge-v2/internal/tui2/homes"
 	"github.com/Agent-Field/aforge-v2/internal/tui2/palette"
 	"github.com/Agent-Field/aforge-v2/internal/tui2/rail"
 	"github.com/Agent-Field/aforge-v2/internal/tui2/tokens"
@@ -163,7 +164,9 @@ func TestHomeScopeCarriesRoomsTasksAndTheCollapsedGroup(t *testing.T) {
 		"aforge",
 		"the wisp parity push", "importer rewrite", "+ new room",
 		"wisp-parity", "perf-audit",
-		"more",
+		// 5.24's collapsed group, now the real one (12.10) rather than the
+		// placeholder row that cited the section and opened nothing.
+		homes.GroupWord,
 	}
 	if len(names) != len(want) {
 		t.Fatalf("home scope rows = %q, want %q", names, want)
@@ -806,4 +809,74 @@ func shown(t *testing.T, app *App, width int) string {
 		}
 	}
 	return out.String()
+}
+
+// 5.24's four rooms, as rail scopes. The placeholder row that named them and
+// opened nothing is gone; the group is a LID, so enter expands it in place
+// rather than descending into a fifth surface.
+func TestTheHomesGroupIsALidAndItsRoomsAreScopes(t *testing.T) {
+	app, _ := boardApp(t)
+	press(app, "ctrl+o")
+	if _, found := app.railModel.SelectID(homes.GroupRowID); !found {
+		t.Fatalf("the rail carries no homes group: %q", rowNames(app))
+	}
+	before := len(rowNames(app))
+	press(app, "enter")
+	after := rowNames(app)
+	if len(after) <= before {
+		t.Fatalf("enter on the lid did not expand it: %q", after)
+	}
+	for _, word := range []string{"notebook", "self", "standing", "services"} {
+		if !contains(after, word) {
+			t.Fatalf("the expanded group is missing %q: %q", word, after)
+		}
+	}
+	// The lid closes again in place.
+	press(app, "enter")
+	if len(rowNames(app)) != before {
+		t.Fatalf("enter did not close the lid: %q", rowNames(app))
+	}
+}
+
+// A service is not a conversation. The row's own ComposerNone cannot say so —
+// composerMode coerces None to Chat — so this side must disable it by name.
+func TestAServiceRowGetsADisabledComposer(t *testing.T) {
+	app, _ := boardApp(t)
+	app.bind(rail.Event{RowID: homes.ServiceRowPrefix + "watcher"}, false)
+	if app.composerBind.mode != rail.ComposerDisabled {
+		t.Fatalf("a service row bound composer mode %v", app.composerBind.mode)
+	}
+	if app.composerMode().mode != rail.ComposerDisabled {
+		t.Fatal("the coercion at composerMode reached a service row")
+	}
+	if app.composerBind.note == "" {
+		t.Fatal("a disabled composer with no words is a dead end (5.20 rule 3)")
+	}
+}
+
+// A home is a room the palette can jump to by name; the LID is not one.
+func TestThePaletteJumpsToAHomeButNotToTheLid(t *testing.T) {
+	app, _ := boardApp(t)
+	app.source.homes.Expanded = true
+	app.source.refresh(app.journal, true)
+	app.railModel.Refresh()
+	var ids []string
+	for _, room := range app.catalogRooms() {
+		ids = append(ids, room.ID)
+	}
+	if !contains(ids, homes.HomeNotebook.ScopeID()) {
+		t.Fatalf("the palette cannot reach the notebook: %q", ids)
+	}
+	if contains(ids, homes.GroupRowID) {
+		t.Fatalf("the palette offered the lid as a room: %q", ids)
+	}
+}
+
+func contains(haystack []string, needle string) bool {
+	for _, item := range haystack {
+		if item == needle {
+			return true
+		}
+	}
+	return false
 }

@@ -37,6 +37,12 @@ type transcriptPane struct {
 	transcript *blocks.Transcript
 	now        func() time.Time
 	invalidate func()
+	// homes is the one lens whose rows are not blocks (5.24). When it is set
+	// the pane draws it INSTEAD of a transcript, because a notebook fact and a
+	// charter are not turns of conversation and dressing them as messages would
+	// be the transcript claiming they were said. It is a function rather than
+	// the View itself so this pane never learns what a home is.
+	homes func(width, height int) []string
 }
 
 var (
@@ -49,6 +55,12 @@ var (
 // layout time because the pane is told its rectangle and nothing else, which is
 // exactly the information a viewport needs.
 func (p *transcriptPane) Render(width, height int) string {
+	if p.homes != nil {
+		return strings.Join(p.homes(width, height), "\n")
+	}
+	if p.transcript == nil {
+		return ""
+	}
 	p.transcript.SetSize(width, height)
 	return strings.Join(p.transcript.Frame(p.now()).Rows, "\n")
 }
@@ -56,6 +68,9 @@ func (p *transcriptPane) Render(width, height int) string {
 // Key handles the scroll vocabulary. Everything else on the keyboard belongs to
 // the composer and never reaches here — see the app's key ladder.
 func (p *transcriptPane) Key(msg tea.KeyPressMsg) tea.Cmd {
+	if p.transcript == nil {
+		return nil
+	}
 	before := p.transcript.YOffset()
 	switch msg.String() {
 	case "pgup":
@@ -83,7 +98,7 @@ func (p *transcriptPane) Key(msg tea.KeyPressMsg) tea.Cmd {
 // means the same thing everywhere inside the transcript.
 func (p *transcriptPane) Mouse(msg tea.MouseMsg, _ image.Point) tea.Cmd {
 	wheel, ok := msg.(tea.MouseWheelMsg)
-	if !ok {
+	if !ok || p.transcript == nil {
 		return nil
 	}
 	before := p.transcript.YOffset()
