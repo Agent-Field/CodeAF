@@ -102,6 +102,66 @@ const (
 	// about pricing?" has no idea which of the three holds the answer and should
 	// not have to.
 	beltToolSearch = "search"
+	// beltToolSpawn is the tool that ends the split brain.
+	//
+	// Spawning used to be the TERMINAL decision of a router turn (targets.go's
+	// ancestor, fanout.go) and the belt was explicitly forbidden from queuing —
+	// so the head could read the board, or commission work, and never both in one
+	// breath. Part 6 decision 2 moves the two things that made that terminal
+	// position safe INTO the tool: the fan-out cap of six, and the consequence
+	// gate that refuses to let anything irreversible ride a reflex.
+	beltToolSpawn = "spawn"
+	// beltToolWrite is the artifact law's door (12.5.1). Without it, "answer
+	// inline" was the only route a deliverable had: session bd3c78ed's SVG was
+	// authored into a reply, cut in half by an output cap, journaled unmarked,
+	// and then unrecoverable because the only copy was the truncated one. A
+	// document, a diagram, code or data is born on disk and referenced by path.
+	beltToolWrite = "write"
+	// beltToolCorrect is the settled-work half of revision. revise edits the
+	// remaining plan of a job still in flight; this hands a job that already
+	// DELIVERED its own previous attempt plus what the user says is wrong with
+	// it. correction.go holds the whole doctrine, including the line that says
+	// the user outranks the predecessor's account of itself.
+	beltToolCorrect = "correct"
+	// beltToolRule changes a standing rule without touching the work: retire it,
+	// hold it, retime it, reword it, put it back on probation. The verbs were a
+	// cue vocabulary; the transitions they mapped onto are the store's own.
+	beltToolRule = "rule"
+	// beltToolService acts on the persistent things the person is running. They
+	// are their own effects rather than graph work, which is why stopping them
+	// is unconditional and why stopping EVERYTHING asks once about the jobs.
+	beltToolService = "service"
+	// beltToolAnswerQuestion settles a worker's open question. Part 6 decision 1
+	// is still open and this tool does not settle it: 12.1.4 found that every
+	// existing AskQuestion producer is consent-bearing and none is labeled
+	// informational, so the conservative default from 9.4 — unlabeled means
+	// consent means escalate — is the ONLY behaviour this tool has today. It
+	// exists so the head can put a worker's question to the person in its own
+	// words instead of being unable to see it at all, and it refuses, in a
+	// sentence the loop must speak to, every question it is not licensed to end.
+	beltToolAnswerQuestion = "answer_question"
+	// beltToolAwait is the feedback loop async commands never had. control,
+	// revise and the rest return "queueing" and the outcome arrives later as a
+	// reconciler receipt, so a turn could not observe the result of a command it
+	// had just issued and re-plan on it. This waits, briefly and boundedly, for
+	// exactly that receipt.
+	beltToolAwait = "await"
+	// beltToolAsk is the numbered question, kept as a mechanism rather than left
+	// to prose. Every deterministic arm that resolved a referent could end in one
+	// — "Which job do you mean?" with the candidates as durable options — and the
+	// options are what the surfaces render as rows a person clicks (5.22: no
+	// typed-only actions). A loop that could only ask in prose would have taken
+	// that affordance away from every ambiguity in the product at once.
+	//
+	// It carries no action encoding on purpose. The answer is not applied by the
+	// question machinery; it comes back to the loop as an ordinary turn with the
+	// question and the choice both in the thread, which is the only party that
+	// knows what the choice was FOR.
+	beltToolAsk = "ask"
+	// beltToolInterrupt is turn-cancel as something other than a keypress. It is
+	// reachable from the loop today and from the journal the moment the one-arm
+	// seam in 12.3.3 opens; interrupt.go holds both halves and the exact edit.
+	beltToolInterrupt = "interrupt"
 	// beltToolNote is the belt's only write that never touches the graph. The
 	// loop could change work and answer questions and had nowhere at all to put
 	// a durable instruction about its own behaviour, so "always answer from the
@@ -183,10 +243,18 @@ func beltDefinitions() []ai.ToolDefinition {
 			"q":      beltProp("string", "free text naming the work, matched against titles and briefs"),
 			"id":     beltProp("string", "one id from an earlier board read"),
 		}),
-		beltTool(beltToolControl, "Cancel, pause, resume, restart, or reprioritize the ids you name. Ids come from a board read, never from memory. A set large or expensive enough to need consent comes back as needs_confirmation and nothing changes until the user answers.", map[string]any{
-			"verb": beltProp("string", "cancel, pause, resume, restart, or reprioritize"),
-			"ids":  map[string]any{"type": "array", "description": "ids from a board read", "items": map[string]any{"type": "string"}},
-		}, "verb", "ids"),
+		beltTool(beltToolSpawn, "Commission new work. This is how anything the workforce does gets started: pass the user's own words verbatim in instruction — do not improve, summarize or reinterpret them. When one message names things that are genuinely INDEPENDENT of each other, each with its own outcome and none waiting on the others, pass orders instead: one entry per thing, each carrying that thing's own words. Four faults read out in one breath are four; a trip with flights, a hotel and somewhere to eat is one, because it is one plan and one thing to hand back. When it could be read either way it is one. Set reflex only for a single obvious, unambiguous, reversible, seconds-scale action; anything that spends money, sends or publishes, deletes beyond the workspace, or is otherwise hard to undo is never a reflex and is refused as one. after names work this follows on from, when it continues something already on the board.", map[string]any{
+			"instruction": beltProp("string", "the user's words for the work, verbatim"),
+			"orders": map[string]any{"type": "array", "description": "several independent pieces of work, each with its own verbatim words",
+				"items": map[string]any{"type": "string"}},
+			"reflex": beltProp("boolean", "one obvious reversible action, seconds-scale; skips compilation and planning"),
+			"after":  beltProp("string", "id of work this continues, from a board read; omit for work that stands alone"),
+		}),
+		beltTool(beltToolControl, "Cancel, pause, resume, restart, or reprioritize the ids you name. Ids come from a board read, never from memory. A set large or expensive enough to need consent comes back as needs_confirmation and nothing changes until the user answers. When the user described the work instead of naming it and you cannot tell which row they mean, pass describes instead of ids and this hands back the candidates — jobs and standing rules alike — for you to name or to ask about.", map[string]any{
+			"verb":      beltProp("string", "cancel, pause, resume, restart, or reprioritize"),
+			"ids":       map[string]any{"type": "array", "description": "ids from a board read", "items": map[string]any{"type": "string"}},
+			"describes": beltProp("string", "the user's own words for the work, when you have no id for it yet"),
+		}, "verb"),
 		beltTool(beltToolSteer, "Say something to the parts of a job already under way right now, without changing its plan. Use it when the user is adding a constraint or a hint to work already in motion.", map[string]any{
 			"job":     beltProp("string", "job id from a board read"),
 			"message": beltProp("string", "what the work already under way should hear, in the user's own terms"),
@@ -231,6 +299,40 @@ func beltDefinitions() []ai.ToolDefinition {
 			"kind":     beltProp("string", `"preference" for how they want things done, "fact" for something that is simply true`),
 			"replaces": beltProp("integer", "the number of the notebook line this makes untrue, when what they just said contradicts one of the numbered lines in front of you; the old line retires into the new one. Omit it when nothing shown is contradicted, and never name a number you were not shown"),
 		}, "body"),
+		beltTool(beltToolWrite, "Write a document to disk and hand back its path. This is how ANYTHING the user will use outside this conversation is produced: a diagram, a document, code, data, a script, a long structured answer they will keep. Never author one of those into your reply instead — a reply is one output cap away from being half a document, and half a document presented as a whole one is the worst thing you can produce. Write it, then say what it is and where it is. Short answers, explanations and what work found stay in the reply; the test is whether they will open it, edit it, run it, or send it on.", map[string]any{
+			"name": beltProp("string", "the file's own name with its extension, like architecture.svg or notes.md — a plain name, no directories"),
+			"body": beltProp("string", "the whole document, exactly as it should be on disk"),
+			"what": beltProp("string", "one short line saying what it is, for the receipt"),
+		}, "name", "body"),
+		beltTool(beltToolCorrect, "Redo a deliverable that was wrong. The job goes again with its previous version and the user's criticism in hand, and whatever they did not object to is kept. Use it whenever they reject, dispute or ask you to change something already delivered — including politely: \"make it warmer\", \"shorter please\", \"soften the second paragraph\" are all this, not new work. Pass their words verbatim. A job with nothing delivered cannot be corrected; commission new work instead.", map[string]any{
+			"job":   beltProp("string", "id of the finished job whose deliverable was wrong, from a board or search read"),
+			"words": beltProp("string", "what the user said is wrong with it, verbatim"),
+		}, "job"),
+		beltTool(beltToolRule, "Change a standing rule: retire it, hold it, change when it runs, change what it says, or put it back to asking before each run. Rules are not jobs and are not on the board — read standing to see them, or pass describes and this hands back the ones the words reach. Retiring and holding are the two things a \"stop\" or \"pause\" aimed at a rule can mean.", map[string]any{
+			"verb":      beltProp("string", "retire, pause, cadence, wording, or probation"),
+			"id":        beltProp("string", "the rule's id, from a standing read or from this tool's own candidate list"),
+			"describes": beltProp("string", "the user's own words for the rule, when you have no id for it"),
+			"words":     beltProp("string", "the new rhythm for cadence, or the new message for wording"),
+		}, "verb"),
+		beltTool(beltToolService, "Act on something the person is running: stop it, restart it, or turn its auto-restart on or off. Services are their own persistent effects rather than graph work, so stopping one is done rather than queued. verb=stop_everything is the total one — every running service, and it asks once before touching live jobs.", map[string]any{
+			"verb":      beltProp("string", "stop, restart, auto_restart_on, auto_restart_off, or stop_everything"),
+			"describes": beltProp("string", "the user's own words for the service; omit for stop_everything"),
+		}, "verb"),
+		beltTool(beltToolAnswerQuestion, "Settle a worker's open question. Read what is open first by calling it with no arguments. A question that is not explicitly marked informational is a CONSENT question — it is the user's to answer, never yours — and this refuses it and tells you so; put it to them in your own words and leave it open. This is the one tool whose refusal is the correct outcome most of the time.", map[string]any{
+			"question": beltProp("integer", "the question's number, from this tool's own list"),
+			"answer":   beltProp("string", "the answer, in the words the worker asked for"),
+		}),
+		beltTool(beltToolAwait, "Wait, briefly, for the receipt of a command you just issued, and hand back how it settled. Use it when what you do next depends on whether the change actually landed — never as a way to watch work finish, which takes minutes and this does not. It returns as soon as the receipt exists, or says plainly that it is still queued.", map[string]any{
+			"command": beltProp("integer", "the command number an acting tool handed back; omit for the last one you issued"),
+		}),
+		beltTool(beltToolAsk, "Put one short numbered question to the user, with the candidates as options they can pick. Use it the moment more than one thing plausibly matches what they meant — never pick for them. Name each option the way THEY would recognise it, in their own words for the work, not by id. This ends the turn: their next message is the answer, and you will have both in front of you.", map[string]any{
+			"question": beltProp("string", "one short question, in their terms"),
+			"options": map[string]any{"type": "array", "description": "two to four choices, each named the way the user would recognise it",
+				"items": map[string]any{"type": "string"}},
+		}, "question", "options"),
+		beltTool(beltToolInterrupt, "Stop the head turn in flight. Use it only when the person has asked you to stop what you are DOING in this conversation rather than to cancel work on the board — cancelling work is control. Whatever has already been said stays, marked where it stopped.", map[string]any{
+			"reason": beltProp("string", "one short line for the record, in the user's terms"),
+		}),
 	}
 }
 
@@ -244,6 +346,14 @@ type beltRun struct {
 	commandSeq int64
 	confirm    *beltConfirm
 	did        []string
+	// spoke records that a tool already posted this turn's whole reply — a consent
+	// question, or the interrupted line. The loop must not post a second voice over
+	// the top of it.
+	spoke bool
+	// issued is every command seq this run journaled, oldest first. await with no
+	// argument means the last of them, which is what "did that land?" means when
+	// a turn issued exactly one thing.
+	issued []int64
 }
 
 // beltConfirm is a change the gates stopped. Nothing has been journalled; the
@@ -293,6 +403,24 @@ func (run *beltRun) execute(name, arguments string) (string, bool) {
 		return run.search(args)
 	case beltToolNote:
 		return run.note(args)
+	case beltToolSpawn:
+		return run.spawn(args)
+	case beltToolWrite:
+		return run.write(args)
+	case beltToolCorrect:
+		return run.correct(args)
+	case beltToolRule:
+		return run.rule(args)
+	case beltToolService:
+		return run.service(args)
+	case beltToolAnswerQuestion:
+		return run.answerQuestion(args)
+	case beltToolAwait:
+		return run.await(args)
+	case beltToolAsk:
+		return run.ask(args)
+	case beltToolInterrupt:
+		return run.interrupt(args)
 	}
 	return fmt.Sprintf("there is no tool named %q", name), true
 }
@@ -315,9 +443,15 @@ func (run *beltRun) control(args map[string]any) (string, bool) {
 		return "verb must be one of cancel, pause, resume, restart, reprioritize", true
 	}
 	ids := beltStrings(args, "ids")
+	if len(ids) == 0 {
+		// The verb knows what it wants to do and not what to do it to. That is an
+		// ordinary thing to say, and the union of the live jobs and the standing
+		// rules the words reach is the honest answer to it — handed back as
+		// candidates rather than acted on, because choosing for the user is how a
+		// request to withdraw fourteen queued tasks became "Cancelling line-scan."
+		return run.controlCandidates(kind, beltString(args, "describes"))
+	}
 	switch {
-	case len(ids) == 0:
-		return "ids must name at least one id from a board read", true
 	case len(ids) > beltControlIDCap:
 		return fmt.Sprintf("that is %d ids; name the jobs rather than their steps", len(ids)), true
 	}
@@ -458,6 +592,18 @@ func (run *beltRun) plan(args map[string]any) (string, bool) {
 // is decided entirely in artifact.go, which is where the security boundary and
 // its reasons are written down.
 func (run *beltRun) read(args map[string]any) (string, bool) {
+	// A file this head wrote is recorded exactly as firmly as a file a worker
+	// wrote, so it belongs to the same openable set rather than to a second door
+	// beside it. This is the repair doctrine's second half: a head that wrote a
+	// document an hour ago can open it to fix it, instead of offering to and then
+	// discovering it cannot.
+	if job := strings.TrimSpace(beltString(args, "job")); job == "" {
+		rendered, err := run.head.readWrittenArtifact(beltString(args, "file"))
+		if err != nil {
+			return err.Error(), true
+		}
+		return rendered, false
+	}
 	node, err := run.head.beltRecordedJob(beltString(args, "job"), "job")
 	if err != nil {
 		return err.Error(), true
@@ -1174,6 +1320,7 @@ func (run *beltRun) record(seq int64, receipt string) {
 	run.acted = true
 	if seq != 0 {
 		run.commandSeq = seq
+		run.issued = append(run.issued, seq)
 	}
 	if receipt != "" {
 		run.did = append(run.did, receipt)
@@ -1370,6 +1517,21 @@ type boardRow struct {
 	queued    int
 	failed    int
 	cost      float64
+	// waits is what this row is sitting behind, in the names of the jobs it is
+	// waiting on. The edges have been in the snapshot the whole time; without
+	// this clause the board could say three steps are queued without saying what
+	// they are queued behind, which describes a workforce as a number.
+	waits string
+	// runningFor is how long the longest-running step at or under this row has
+	// been going. A job root usually carries no start time of its own — its parts
+	// do the work — so a row that said "running" with no duration was the whole
+	// reason the head could describe a job forty-nine minutes in as if it had
+	// just been asked for.
+	runningFor time.Duration
+	// result is the row's own first finding. A settled row's finding is what
+	// "what did you find?" gets answered from without spending a call; it is
+	// dropped when the same words are already elsewhere in the prompt.
+	result string
 }
 
 // boardRows is the belt's whole read side. It is the ordinary surgery search
@@ -1396,10 +1558,14 @@ func (h *Head) boardRows(sessionID, query, status, id string) ([]boardRow, error
 		}
 		class = named
 	}
-	nodes, err := h.store.ActiveNodes()
+	// The snapshot rather than the node list, because the edges are half of what
+	// a board row means: what a row is waiting on is the one structural fact the
+	// head could never read, and it has been sitting in the same query all along.
+	snapshot, err := h.store.ActiveSnapshot()
 	if err != nil {
 		return nil, fmt.Errorf("the board could not be read: %w", err)
 	}
+	nodes := snapshot.Nodes
 	byID := make(map[string]store.Node, len(nodes))
 	for _, node := range nodes {
 		byID[node.ID] = node
@@ -1460,6 +1626,7 @@ func (h *Head) boardRows(sessionID, query, status, id string) ([]boardRow, error
 	// was written to answer.
 	targeted := strings.TrimSpace(id) != "" || strings.TrimSpace(query) != ""
 
+	waits := boardWaits(snapshot, byID)
 	now := time.Now()
 	rows := make([]boardRow, 0, len(candidates))
 	for _, candidate := range candidates {
@@ -1467,7 +1634,9 @@ func (h *Head) boardRows(sessionID, query, status, id string) ([]boardRow, error
 			continue
 		}
 		row := boardRow{node: candidate.Node, age: candidate.Age,
-			elsewhere: crossSession(candidate.Node, sessionID)}
+			elsewhere: crossSession(candidate.Node, sessionID),
+			waits:     waits[candidate.Node.ID],
+			result:    firstLine(h.jobResult(candidate.Node))}
 		for _, member := range beltSubtree(byID, children, candidate.Node.ID) {
 			switch byID[member].Status {
 			case store.Running, store.Claimed:
@@ -1478,6 +1647,7 @@ func (h *Head) boardRows(sessionID, query, status, id string) ([]boardRow, error
 				row.failed++
 			}
 		}
+		row.runningFor = boardRunningFor(candidate.Node, byID, children, now)
 		if impact, err := h.store.Impact(candidate.Node.ID, now); err == nil {
 			row.cost = impact.Cost
 		}
@@ -1586,28 +1756,60 @@ func dimeUSD(cost float64) string {
 	return fmt.Sprintf("$%.2f", math.Round(cost*10)/10)
 }
 
+// renderBoard is THE board renderer. There were two — the router's renderGraph
+// over a raw snapshot and the belt's boardRows over ranked job roots — with
+// different budgets, different ownership rules, different vocabularies and no
+// agreement about what a row even was. They disagreed in production: a
+// charter-fired job passed one and failed the other, so the head described the
+// job in one sentence and answered "there is no work of the user's with that id"
+// to "stop it" in the next. One renderer, one query, one membrane.
 func renderBoard(rows []boardRow) string {
-	lines := make([]string, 0, len(rows))
+	return renderBoardWithin(rows, "", nil, 0)
+}
+
+// renderBoardWithin is renderBoard with the prompt's two extra jobs: a byte
+// ceiling that says out loud when it bites, and the dedup against what the rest
+// of the prompt has already said. A finding the person can read in the thread
+// above, or one the depth block below is about to quote in full, is the same
+// sentence stated twice — which costs budget and reads to a model as
+// corroboration.
+func renderBoardWithin(rows []boardRow, thread string, opened map[string]bool, budget int) string {
+	var rendered strings.Builder
 	for _, row := range rows {
 		line := fmt.Sprintf("- %s | %s | %s | %d running, %d queued",
 			row.node.ID, surgeryTargetLabel(row.node), boardRowStatus(row), row.running, row.queued)
 		if row.failed > 0 {
 			line += fmt.Sprintf(", %d failed", row.failed)
 		}
-		// Dimes, not cents. Within one control loop the board is written once and
-		// the transcript is append-only, so the damage was at the seam between
+		// Dimes, not cents. Within one turn the board is written once and the
+		// transcript is append-only, so the damage was at the seam between
 		// messages: a single cent ticking on a single live job rewrote the board,
-		// and the board is the first thing in the prompt.
+		// and the board is the first volatile thing in the prompt.
 		line += " | " + dimeUSD(row.cost)
 		if age := strings.TrimSpace(row.age); age != "" {
 			line += " | " + age
 		}
+		if result := strings.TrimSpace(row.result); result != "" &&
+			!opened[row.node.ID] && !deepAlreadyInThread(thread, result) {
+			line += " | result: " + result
+		}
+		if row.waits != "" {
+			line += " | waits on " + row.waits
+		}
+		if row.runningFor > 0 {
+			line += " | running " + boardElapsed(row.runningFor)
+		}
 		if row.elsewhere {
 			line += crossSessionMark
 		}
-		lines = append(lines, line)
+		line += "\n"
+		if budget > 0 && rendered.Len()+len(line) > budget-len(snapshotTruncatedMark) {
+			rendered.WriteString(snapshotTruncatedMark)
+			break
+		}
+		rendered.WriteString(line)
 	}
-	return strings.Join(lines, "\n")
+	return strings.TrimSuffix(rendered.String(), "\n")
 }
 
 func boardRowStatus(row boardRow) string {

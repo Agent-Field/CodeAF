@@ -209,6 +209,13 @@ func (h *Head) answerPendingQuestion(ctx context.Context, user store.Message) (b
 	if err != nil || !pending {
 		return false, err
 	}
+	if isAskQuestion(question.Options) {
+		// The loop asked it, so the loop settles it. Declining here is what sends
+		// the message on with both halves — the question and the choice — in the
+		// thread the loop is about to read, which is the only place the answer
+		// means anything.
+		return false, nil
+	}
 	option, selected := selectQuestionOption(user.Body, question.Options)
 	if selected {
 		if question.QuestionSeq != 0 {
@@ -557,38 +564,6 @@ const charterAskbackCap = 4
 // an utterance that describes nothing — "change it to Tuesday". A rule nobody
 // has touched or run in a month is not what "it" means.
 const charterReferenceWindow = 30 * 24 * time.Hour
-
-func (h *Head) manageCharter(user store.Message) (bool, error) {
-	intent, managing := charterManagement(user.Body)
-	if !managing {
-		return false, nil
-	}
-	matches, err := h.charterCandidates(intent.Reference)
-	if err != nil {
-		return true, err
-	}
-	if len(matches) == 0 {
-		// These verbs are shared vocabulary. If they name no standing rule,
-		// let ordinary node surgery try the live graph before claiming a miss:
-		// "change it to tuesday" is about a rule when a rule exists and about a
-		// job when one does not.
-		switch intent.Kind {
-		case store.CommandCharterPause, store.CommandCharterCadence, store.CommandCharterWording:
-			return false, nil
-		}
-		return true, h.postAgent(user.SessionID, "I couldn't find a standing rule like that.", 0)
-	}
-	if len(matches) > 1 {
-		options := make([]store.QuestionOption, 0, len(matches))
-		for _, charter := range matches {
-			options = append(options, store.QuestionOption{
-				Label: firstLine(charter.Invariant), Value: charterOptionValue(intent, charter.ID),
-			})
-		}
-		return true, h.postQuestion(user.SessionID, "Which rule do you mean?", 0, options)
-	}
-	return true, h.requestCharterCommand(user, intent.Kind, matches[0].ID, managementInstruction(intent))
-}
 
 // charterCandidates resolves what the user pointed at. A description is matched
 // against the rules themselves; a sentence that describes nothing — "change it
