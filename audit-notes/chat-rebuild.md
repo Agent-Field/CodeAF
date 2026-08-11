@@ -3764,3 +3764,101 @@ block focus (7.2 T2/T6 — no hit-testing substrate in the transcript);
 `Shell.Linker` call sites so artifact paths become clickable (13.4 T5, a pure
 call-site gap this lane did not reach); the type-ahead queue chips (C6/G6);
 `/` slash layer (C8); attachments (JOURNEY 17); 12.10 hunks D, F, G, H.
+
+### 12.13 Defect-fix lane, second pass: the ghost, the tripled name, and the wall (9befd64, 8b28a80, 9b0eda3, f42bb08)
+
+Four more screenshot defects, and the first finding is that three of them were
+one defect wearing a disguise. Appended to Part 12 rather than folded into 12.11
+because the doc is append-only and 12.12 landed between them.
+
+1. **THE GHOST — a frame must state every cell (9befd64).** 12.12's "left for
+   other lanes" reported three separate rail faults in one scrape of a task
+   room: a rail row showing two frames superimposed (`1 running Aforge spine ↦`),
+   an orphan `○ more` from the home scope sitting under a task scope that has no
+   members, and a three-row gap where the previous frame's rows had been. None of
+   them was a rail fault. **The rail rendered two lines and meant two lines.**
+
+   The canvas is cleared and redrawn per frame, so what it HOLDS is always
+   exactly right — but its `Render` trims each row's trailing whitespace, and a
+   row blank from column 40 rightwards arrives as a string 40 cells long. A
+   frame is a picture of every cell in the terminal; one that stops early says
+   nothing about the cells past the cut, and what fills them is whatever the last
+   frame left there. The compositor now pads every row out to the frame's width.
+
+   **It is the compositor's, not a pane's.** A pane is given a box and told to
+   fill it; whether the cells it did not fill are ASSERTED blank is the
+   compositor's contract with the terminal, and there is one place that contract
+   is written. Bandwidth is unaffected structurally rather than luckily: what
+   reaches the wire is Bubble Tea's cell diff (10.1.1), and a trailing space that
+   was already a trailing space is not a change. The padding buys the one frame
+   where a pane got SHORTER, which is the only frame the ghost appears in; the
+   repaint gate is untouched and an idle surface still rebuilds nothing.
+
+   **Consequence for `internal/tui2/golden` (8b28a80)**: a snapshot is a picture
+   of CONTENT, and the terminal contract is pinned by the compositor's own test.
+   So `render` trims unstyled trailing spaces before comparing and before
+   writing — recording them would spend forty cells of every reference line
+   saying "blank", which is the noise that stops a human reading a golden diff.
+   Only bare spaces go: a row ending inside a selection band ends with its reset
+   AFTER the cells the band painted, so a painted ground survives, which is right
+   because a ground is content. One decision in the harness rather than the same
+   decision in each view function.
+
+   **The generalisation worth keeping**: the three reported symptoms were all
+   *absences* — a gap, a leftover, a superimposition — and every one of them
+   pointed the reader at the component whose content was missing rather than at
+   the layer that failed to erase. When a screenshot shows something that should
+   not be there, ask what was supposed to overwrite it before asking who drew it.
+
+2. **THE TRIPLED NAME — 5.15's two objects, given one word (9b0eda3).** An
+   entered room said "Permanent Aforge spine" in the scope header, again on row
+   0, and a third time on the detail card. 5.15's wireframe is explicit that the
+   first two are different objects saying different things: `‹ wisp-parity` names
+   the ROOM and is the way out of it, `● orchestrator` says what row 0 IS inside
+   it. Drawn that way both are worth their line.
+
+   The collision is not one source's habit, which is why it is fixed in the
+   rail: chat's `taskScope` names row 0 after the task, `homes` names row 0 after
+   the home, and `Scope.normalize` fills the name in from the title when a source
+   leaves it empty. The rail is the last place that can SEE the collision.
+
+   **The rail draws one row instead of the same word twice** — the surface row,
+   with the header's `‹` riding on it — **and it does not invent the second
+   word.** That restraint is the decision: 5.15 supplies "orchestrator" for a
+   task room and nothing for a notebook, and a word chosen in `rail` would be
+   that package claiming to know what a room it has never heard of contains,
+   which is 5.20's affordance lying with extra steps. 5.14's litmus settles which
+   of the two lines goes: a line whose whole content is the line above it answers
+   "what would the user do with this right now?" with nothing. Every affordance
+   survives the merge — the row is still row 0, selectable, speakable, carrying
+   its lifecycle glyph, status, meta and composer mark; the `‹` is still there to
+   click and esc still pops the scope. The one loss is 10.3.10's `(2 of 5)`
+   counter, because the merged row's right edge belongs to 5.11's composer mark
+   and an affordance outranks a count.
+
+   **The door back to the wireframe is open and costs one word.** A source that
+   gives row 0 a name of its own gets 5.15's two lines verbatim, today, with no
+   further rail change — the merge fires only on the collision, and a test pins
+   both halves. If `chat`'s `taskScope` ever sets `Name: "orchestrator"` (and
+   `homes` whatever a home's surface should be called), the rail stops merging on
+   its own.
+
+3. **THE WALL — a column of ground between the lens and the rail (f42bb08).**
+   The two panes were flush: a transcript line at full width put its last
+   character against the rail's first cell, and a selected rail row's band began
+   in the cell after a word. Two rooms with no wall between them read as one room
+   with a glitch. 5.13 asks for exactly one thing and nothing more — "cards
+   separated by whitespace not boxes; hairline rules only at room boundaries" —
+   and 7.1 spends the same sentence refusing borrowed box styles. A drawn divider
+   would be the box; a column of ground is the wall. **The seam belongs to
+   neither pane**: no slot claims it, so nothing is ever drawn in it and a click
+   there lands on no pane at all. The rail keeps its whole `RailWidth`; the
+   column comes out of the lens, and the breakpoint arithmetic counts it so
+   `MinMainWidth` still means what it says. A constant, not a `Metrics` field:
+   there is no width at which two panes should touch, and 10.5.24's table is for
+   numbers that CHANGE with the terminal.
+
+   Note the consistency this makes explicit, since it is now the surface's habit
+   in three places: the dialog's margin (12.11.1), the rail seam, and 5.13's own
+   card spacing all separate rooms with SPACE. This surface has one wall and it
+   is made of ground.
