@@ -66,6 +66,17 @@ const (
 	// the palette and the ? surfaces. It exists here so the z discipline is
 	// exercised by the skeleton instead of invented later.
 	LayerOverlay
+	// LayerDialogChrome is the floating dialog's boundary: the one-cell margin
+	// around the panel, ruled top and bottom (see the dialog anatomy note in
+	// layout.go). It is a slot rather than a reservation inside the panel
+	// because a pane is given its whole rectangle and the shell reserves
+	// nothing inside it (pane.go). It exists only while a dialog FLOATS; a
+	// fullscreen dialog's boundary is the frame's own edge.
+	//
+	// It is chrome in the strict sense — it never takes focus and it holds no
+	// content — but it is a real layer so that a click on the margin is absorbed
+	// by the dialog rather than falling through to the transcript underneath.
+	LayerDialogChrome
 
 	// numLayers bounds the shell's pane array. Keep it last.
 	numLayers
@@ -84,6 +95,8 @@ func (id LayerID) String() string {
 		return "status"
 	case LayerOverlay:
 		return "overlay"
+	case LayerDialogChrome:
+		return "dialog-chrome"
 	default:
 		return "none"
 	}
