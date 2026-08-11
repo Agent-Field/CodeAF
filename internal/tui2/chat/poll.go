@@ -193,18 +193,37 @@ func (a *App) applySpend(result pollResultMsg) {
 	a.meta.haveUsage = true
 }
 
-// followNode keeps an open task room current. A task room is a lens over the
-// same journal (4.6), so it moves when the journal does and never on a timer of
-// its own — one more watermarked read on the cycle the conversation already
-// paid for, and nothing at all on a quiet one.
+// followNode keeps an open task room current.
+//
+// A task room is a lens over the same journal (4.6), so its TRAIL moves when the
+// journal does and never on a timer of its own — one more watermarked read on
+// the cycle the conversation already paid for, and nothing at all on a quiet
+// one.
+//
+// ITS TRACE IS THE EXCEPTION, and the exception is the whole reason the trace
+// exists as a separate source. A worker appending to its recorder journals
+// nothing, so `quiet` — the cheap proof that the THREAD has not moved — is no
+// proof at all that the WORK has not. A room that re-read the recorder only on
+// journal moves would freeze mid-run and look exactly like a worker that had
+// stopped, which is the picture this whole lane was reported as. v1's poll makes
+// the same exception for the same reason, in the same words
+// (internal/tui/model.go: "the executor appends outside the journal").
+//
+// The stamp is what makes the exception affordable: a recorder that has not
+// grown costs one open and one stat per node, and only a file that actually
+// moved is read at all.
 func (a *App) followNode(result pollResultMsg) tea.Cmd {
-	if result.quiet || result.err != nil {
+	if result.err != nil {
 		return nil
 	}
 	if a.view == nil || a.view.kind != viewNode {
 		return nil
 	}
-	return a.readNodeCmd(a.view.node, a.view.watermark)
+	trace := a.readTraceCmd(a.view.node)
+	if result.quiet {
+		return trace
+	}
+	return tea.Batch(a.readNodeCmd(a.view.node, a.view.watermark), trace)
 }
 
 // behind reports that this window has read messages the journal numbered below

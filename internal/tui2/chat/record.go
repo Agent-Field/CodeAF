@@ -350,6 +350,37 @@ func workCells(row rail.Row) string {
 // the question is asked of the four things that would be worth reading — a part,
 // a message, the job's brief, or the job's own account of how it went — and the
 // teaching line survives exactly as long as all four are absent.
+// nodeTraceBlocks is one part's execution rows, or none when its worker has not
+// written a recorder — which is the ordinary case for a node that plans rather
+// than runs, and is an ABSENT row and never an empty one.
+func nodeTraceBlocks(item workRow, traces map[string]nodeTrace,
+	style *tokens.Styler) []blocks.Block {
+
+	held, ok := traces[item.node.ID]
+	if !ok {
+		return nil
+	}
+	return traceBlocks(item.node.ID, parseTrace(held.text), style)
+}
+
+// hasTrace says a room has execution rows to draw even if the journal has
+// nothing to say about it.
+//
+// It exists because of the exact shape of the bug this lane fixes: a worker can
+// be fifteen seconds into a run, have made four tool calls, and have journaled
+// NOTHING but `node_started` — H13 measured precisely that. Without this clause
+// such a room would draw 12.14's teaching line ("nothing journaled here yet")
+// over a trace sitting on disk beside it, which is the same class of lie one
+// layer further in.
+func hasTrace(record []workRow, traces map[string]nodeTrace) bool {
+	for i := range record {
+		if held, ok := traces[record[i].node.ID]; ok && strings.TrimSpace(held.text) != "" {
+			return true
+		}
+	}
+	return false
+}
+
 func hasRecord(record []workRow, messages []store.Message) bool {
 	if len(messages) > 0 || len(record) > 1 {
 		return true
@@ -370,10 +401,18 @@ func hasRecord(record []workRow, messages []store.Message) bool {
 // leaderboard. Messages sit at their own sequence, which is the same counter
 // (the `messages` table's seq IS the event seq), so the two interleave without
 // anything having to be reconciled.
+//
+// THE EXECUTION ROWS SIT UNDER THE PART THAT PRODUCED THEM, and that placement
+// is decided by the sort rather than by a second list. A node's trace entries
+// carry the node's own seq and order — the same pair its work row carries — and
+// [sort.SliceStable] keeps insertion order among equals, so "what this part did"
+// lands directly beneath "this part", wherever the part itself lands. The root's
+// trace carries the root's birth, which puts it directly under the charge, which
+// is v1's own document order (brief, `── execution ──`, then the thread).
 func roomBlocks(record []workRow, messages []store.Message, style *tokens.Styler,
-	board jobSource) []blocks.Block {
+	board jobSource, traces map[string]nodeTrace) []blocks.Block {
 
-	if !hasRecord(record, messages) {
+	if !hasRecord(record, messages) && !hasTrace(record, traces) {
 		return nil
 	}
 
@@ -421,16 +460,25 @@ func roomBlocks(record []workRow, messages []store.Message, style *tokens.Styler
 				block: workBlock(record[0], style),
 			})
 		}
+		for _, block := range nodeTraceBlocks(record[0], traces, style) {
+			entries = append(entries, entry{
+				seq: record[0].node.CreatedSeq, order: record[0].node.CreatedOrder, block: block,
+			})
+		}
 	}
 	for i := 1; i < len(record); i++ {
-		if delivered[record[i].node.ID] {
-			continue
+		if !delivered[record[i].node.ID] {
+			entries = append(entries, entry{
+				seq:   record[i].node.CreatedSeq,
+				order: record[i].node.CreatedOrder,
+				block: workBlock(record[i], style),
+			})
 		}
-		entries = append(entries, entry{
-			seq:   record[i].node.CreatedSeq,
-			order: record[i].node.CreatedOrder,
-			block: workBlock(record[i], style),
-		})
+		for _, block := range nodeTraceBlocks(record[i], traces, style) {
+			entries = append(entries, entry{
+				seq: record[i].node.CreatedSeq, order: record[i].node.CreatedOrder, block: block,
+			})
+		}
 	}
 	for i := range messages {
 		message := messages[i]

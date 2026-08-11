@@ -799,48 +799,79 @@ func (c *Commander) NodeTrace(nodeID string, maxBytes int) string {
 	return text
 }
 
-// NodeTraceSince tails the worker's trace file only when the file has moved.
+// NodeTraceSince is the old window's door onto [Commander.NodeTraceTail],
+// spelled in that window's own stamp type. It carries no logic of its own: one
+// reader, two vocabularies, because two readers is how the surfaces end up
+// disagreeing about what a worker did.
+func (c *Commander) NodeTraceSince(
+	nodeID string, maxBytes int, since tui.NodeTraceStamp,
+) (string, tui.NodeTraceStamp, bool) {
+	text, size, mod, fresh := c.NodeTraceTail(nodeID, maxBytes, since.Size, since.Mod)
+	return text, tui.NodeTraceStamp{Size: size, Mod: mod}, fresh
+}
+
+// NodeTraceTail tails the worker's recorder only when the file has moved.
+//
 // The window asks for the trace on every poll — the executor appends to it
 // outside the journal, so nothing else can say whether it changed — and the
 // stat that decides where to seek is already on the path to the read. Handing
 // its answer back turns a worker that is thinking rather than writing into an
 // open and a stat, instead of 64KB read, allocated, and compared against the
-// copy the window already holds.
-func (c *Commander) NodeTraceSince(
-	nodeID string, maxBytes int, since tui.NodeTraceStamp,
-) (string, tui.NodeTraceStamp, bool) {
-	var none tui.NodeTraceStamp
+// copy the window already holds. The stamp is (size, modtime); a caller that
+// has never read hands in a zero time and gets everything.
+//
+// THE PATH COMES FROM [exec.TracePath] AND NOT FROM HERE, and that is a repair
+// rather than tidiness. This function used to spell `.obs/<seq>.trace.log` by
+// hand. The recorder MOVED to `.aforge/trace/` — deliberately, so a leaf
+// listing its own workspace could not read its siblings' transcripts — and
+// exec/workspace.go's comment on that move predicted this exact aftermath in
+// these words: "A reader left behind does not fail: it opens nothing, renders
+// empty, and looks exactly like a worker that is thinking rather than writing."
+// That is what it did. Measured on a real profile: every job run since the move
+// has its trace under `.aforge/trace/` and no `.obs` directory at all, so the
+// node page had been drawing an empty execution feed for every recent run and
+// saying nothing was wrong. TracePath is the one spelling, and it already falls
+// back to the pre-move location so a run recorded before it stays readable.
+//
+// It is exported without the old window's stamp type because internal/tui is
+// the surface being replaced, and a second surface that had to import the first
+// one's structs to read a log file would be a dependency on a thing whose whole
+// purpose is to be deleted.
+func (c *Commander) NodeTraceTail(
+	nodeID string, maxBytes int, sinceSize int64, sinceMod time.Time,
+) (string, int64, time.Time, bool) {
+	var noTime time.Time
 	if c == nil || c.store == nil || c.workspaceRoot == "" || nodeID == "" || maxBytes <= 0 {
-		return "", none, true
+		return "", 0, noTime, true
 	}
 	node, ok, err := c.store.Node(nodeID)
 	if err != nil || !ok {
-		return "", none, true
+		return "", 0, noTime, true
 	}
 	jobDir := filepath.Join(c.workspaceRoot, c.jobDir(node))
-	file, err := os.Open(filepath.Join(jobDir, ".obs", fmt.Sprintf("%d.trace.log", node.CreatedSeq)))
+	file, err := os.Open(exec.TracePath(jobDir, int64(node.CreatedSeq)))
 	if err != nil {
-		return "", none, true
+		return "", 0, noTime, true
 	}
 	defer file.Close()
 	info, err := file.Stat()
 	if err != nil {
-		return "", none, true
+		return "", 0, noTime, true
 	}
-	stamp := tui.NodeTraceStamp{Size: info.Size(), Mod: info.ModTime()}
-	if stamp.Size == since.Size && stamp.Mod.Equal(since.Mod) && !since.Mod.IsZero() {
-		return "", stamp, false
+	size, mod := info.Size(), info.ModTime()
+	if size == sinceSize && mod.Equal(sinceMod) && !sinceMod.IsZero() {
+		return "", size, mod, false
 	}
-	offset := info.Size() - int64(maxBytes)
+	offset := size - int64(maxBytes)
 	if offset < 0 {
 		offset = 0
 	}
 	if _, err := file.Seek(offset, io.SeekStart); err != nil {
-		return "", none, true
+		return "", 0, noTime, true
 	}
 	data, err := io.ReadAll(io.LimitReader(file, int64(maxBytes)))
 	if err != nil {
-		return "", none, true
+		return "", 0, noTime, true
 	}
 	text := string(data)
 	if offset > 0 {
@@ -853,7 +884,7 @@ func (c *Commander) NodeTraceSince(
 			text = text[at+1:]
 		}
 	}
-	return text, stamp, true
+	return text, size, mod, true
 }
 
 func (c *Commander) ResolveMediaPath(nodeID, relative string) (string, bool) {
