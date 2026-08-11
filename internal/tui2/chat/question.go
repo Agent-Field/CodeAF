@@ -346,7 +346,7 @@ func (a *App) answerKey(key string) (tea.Cmd, bool) {
 	if a.overlay != overlayNone || a.railFocus {
 		return nil, false
 	}
-	if a.composer != nil && strings.TrimSpace(a.composer.Draft()) != "" {
+	if a.drafting() {
 		// A draft is a sentence in progress. Digits belong to it.
 		return nil, false
 	}
@@ -462,7 +462,7 @@ func (a *App) keyMode() (footer.KeyMode, int) {
 	if a.overlay != overlayNone {
 		return footer.KeyModeNone, 0
 	}
-	if a.composer != nil && strings.TrimSpace(a.composer.Draft()) != "" {
+	if a.drafting() {
 		return footer.KeyModeNone, 0
 	}
 	block := a.openAsk()
