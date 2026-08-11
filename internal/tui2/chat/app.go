@@ -88,6 +88,9 @@ type Options struct {
 	Profile tokens.Profile
 	// Linear selects the accessible rendering (10.1.5): one column, no motion.
 	Linear bool
+	// GlyphSet is the glyph repertoire tier (12.7), decided by the entry point.
+	// The zero value is tokens.Plain, so an unset field renders the 5.17 floor.
+	GlyphSet tokens.GlyphSet
 
 	// Now and PollEvery exist so the app can be driven without a wall clock or
 	// a real cadence. Tests set both; nothing else does.
@@ -324,7 +327,7 @@ func New(opts Options) *App {
 		linear:    opts.Linear,
 		// The token layer implements both of blocks' seams directly, so the
 		// transcript is styled by handing it one of these and nothing else.
-		style:      tokens.NewStyler(opts.Profile, tokens.FocusNormal),
+		style:      tokens.NewStylerIn(opts.Profile, tokens.FocusNormal, opts.GlyphSet),
 		transcript: blocks.New(80, 24),
 	}
 

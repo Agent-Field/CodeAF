@@ -93,6 +93,11 @@ func runChatV2(args []string) error {
 	sessionID := flags.String("session", "", "thread session id; empty resumes the last one, \"new\" starts a fresh one")
 	linear := flags.Bool("linear", false,
 		"single column, no motion — the accessible rendering")
+	// The glyph tier's launch ladder (12.7 E.1). It is registered here and
+	// resolved below, after the log redirect, because the resolver writes the
+	// reason it chose a tier into chat.log — and a line written before the
+	// redirect would tear through the alt screen instead.
+	nerdFont := registerNerdFont(flags)
 	// Colour is a flag and never an environment pin of this package's own
 	// invention: the token layer detects the terminal's vocabulary from the
 	// standard ecosystem variables, and an operator who disagrees says so here.
@@ -104,7 +109,7 @@ func runChatV2(args []string) error {
 		return err
 	}
 	if flags.NArg() != 0 {
-		return fmt.Errorf("usage: aforge chat --v2 [--db path] [--session id|new] [--linear] [--color name]")
+		return fmt.Errorf("usage: aforge chat --v2 [--db path] [--session id|new] [--linear] [--color name] [--nerd-font|--no-nerd-font]")
 	}
 
 	profile := tokens.DetectProfile(os.Getenv)
@@ -147,6 +152,12 @@ func runChatV2(args []string) error {
 		}()
 	}
 
+	// Both tiers are resolved here, below the redirect: linear because the glyph
+	// ladder's highest rung reads it (10.1.5 outranks an explicit --nerd-font),
+	// and the glyph tier because resolving it logs which rung answered.
+	linearOn := resolveLinear(flags, *linear)
+	glyphs := resolveGlyphSet(flags, nerdFont, linearOn)
+
 	ctx, stop := context.WithCancel(context.Background())
 	defer stop()
 	commander := role.commander()
@@ -166,7 +177,8 @@ func runChatV2(args []string) error {
 		Events:    feed,
 		Residents: &chatV2Residency{role: role, ctx: ctx, feed: feed},
 		Profile:   profile,
-		Linear:    resolveLinear(flags, *linear),
+		Linear:    linearOn,
+		GlyphSet:  glyphs,
 	})
 	seenErr := role.sessionClosed()
 	role.stop()
