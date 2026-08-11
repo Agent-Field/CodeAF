@@ -39,20 +39,27 @@ func isAmbiguous(r rune) bool {
 // TestGlyphsAreSingleCell is 5.17's law enforced rather than asserted. A glyph
 // that measures two cells shifts every column to its right on the row it
 // appears in, which is how the current chat acquired its ghost frames.
+// It walks EVERY tier (12.7 F.1), because the whole promise of the glyph tier
+// is that flipping it does not move a column: a two-cell icon in the nerd-font
+// repertoire would break the plain tier's layout the moment a user turned the
+// tier on, and the plain tier is measured beside it so the parity is a fact
+// about both sides rather than a claim about one.
 func TestGlyphsAreSingleCell(t *testing.T) {
-	for _, g := range Glyphs() {
-		if utf8.RuneCountInString(g.Glyph) != 1 {
-			t.Errorf("%s (%q) is not a single rune", g.Name, g.Glyph)
-			continue
-		}
-		if r := []rune(g.Glyph)[0]; r != g.Rune {
-			t.Errorf("%s: table says %U, constant is %U", g.Name, g.Rune, r)
-		}
-		if w := ansi.StringWidth(g.Glyph); w != 1 {
-			t.Errorf("%s (%q, %U): grapheme width is %d cells, must be 1", g.Name, g.Glyph, g.Rune, w)
-		}
-		if w := ansi.StringWidthWc(g.Glyph); w != 1 {
-			t.Errorf("%s (%q, %U): wcwidth is %d cells, must be 1", g.Name, g.Glyph, g.Rune, w)
+	for set := GlyphSet(0); set < glyphSetCount; set++ {
+		for _, g := range GlyphsIn(set) {
+			if utf8.RuneCountInString(g.Glyph) != 1 {
+				t.Errorf("%s %s (%q) is not a single rune", set, g.Name, g.Glyph)
+				continue
+			}
+			if r := []rune(g.Glyph)[0]; r != g.Rune {
+				t.Errorf("%s %s: table says %U, constant is %U", set, g.Name, g.Rune, r)
+			}
+			if w := ansi.StringWidth(g.Glyph); w != 1 {
+				t.Errorf("%s %s (%q, %U): grapheme width is %d cells, must be 1", set, g.Name, g.Glyph, g.Rune, w)
+			}
+			if w := ansi.StringWidthWc(g.Glyph); w != 1 {
+				t.Errorf("%s %s (%q, %U): wcwidth is %d cells, must be 1", set, g.Name, g.Glyph, g.Rune, w)
+			}
 		}
 	}
 }
@@ -61,6 +68,13 @@ func TestGlyphsAreSingleCell(t *testing.T) {
 // Unicode property itself. The flags are how a shell decides whether to reserve
 // a column under a CJK locale; metadata that drifted from reality would be
 // worse than no metadata.
+// It runs over both tiers (12.7 F.2), and the nerd-font side is asserted
+// POSITIVELY: all of private use is Ambiguous, so an NF glyph reporting
+// anything else would mean the table had drifted off the codepoints it claims.
+// This is also the measured fact behind the CJK veto in [DetectGlyphSet] —
+// under ambiguous-wide the icons draw at two cells while several plain glyphs
+// draw at one, so tier width parity, which holds under both shipping rulers,
+// would break there.
 func TestAmbiguousWidthFlags(t *testing.T) {
 	ambiguous := 0
 	for _, g := range Glyphs() {
@@ -75,6 +89,17 @@ func TestAmbiguousWidthFlags(t *testing.T) {
 	}
 	t.Logf("%d of %d glyphs are East_Asian_Width=Ambiguous — one cell for us, two "+
 		"under a CJK-locale terminal with ambiguous-wide enabled", ambiguous, len(Glyphs()))
+
+	for _, g := range GlyphsIn(NerdFont) {
+		if !isAmbiguous(g.Rune) {
+			t.Errorf("nerdfont %s (%U) is East_Asian_Width=%v; every private-use codepoint "+
+				"is Ambiguous, so this table no longer names the codepoint it thinks it does",
+				g.Name, g.Rune, width.LookupRune(g.Rune).Kind())
+		}
+		if !g.AmbiguousWidth {
+			t.Errorf("nerdfont %s (%U): NFAmbiguous is false", g.Name, g.Rune)
+		}
+	}
 }
 
 // TestAnimatedSetsAgreeOnWidth is the reason the ◐◓◑◒ set of 5.21 is not
@@ -113,15 +138,17 @@ func TestNoBannedGlyphs(t *testing.T) {
 	for _, b := range BannedGlyphs {
 		banned[b.Rune] = b.Reason
 	}
-	for _, g := range Glyphs() {
-		if reason, bad := banned[g.Rune]; bad {
-			t.Errorf("%s uses banned glyph %q (%U): %s", g.Name, g.Glyph, g.Rune, reason)
-		}
-		switch {
-		case g.Rune >= 0x1F000:
-			t.Errorf("%s (%U) is in the emoji planes; chrome carries no emoji (5.17)", g.Name, g.Rune)
-		case g.Rune == 0xFE0F || g.Rune == 0xFE0E:
-			t.Errorf("%s carries a variation selector", g.Name)
+	for set := GlyphSet(0); set < glyphSetCount; set++ {
+		for _, g := range GlyphsIn(set) {
+			if reason, bad := banned[g.Rune]; bad {
+				t.Errorf("%s %s uses banned glyph %q (%U): %s", set, g.Name, g.Glyph, g.Rune, reason)
+			}
+			switch {
+			case g.Rune >= 0x1F000:
+				t.Errorf("%s %s (%U) is in the emoji planes; chrome carries no emoji (5.17)", set, g.Name, g.Rune)
+			case g.Rune == 0xFE0F || g.Rune == 0xFE0E:
+				t.Errorf("%s %s carries a variation selector", set, g.Name)
+			}
 		}
 	}
 	// The ban list itself must stay meaningful: every entry needs a reason.

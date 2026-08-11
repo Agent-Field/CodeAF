@@ -275,4 +275,29 @@ var BannedGlyphs = []struct {
 	{'★', "dingbat: Ambiguous width and no meaning in the five-word vocabulary (5.16)"},
 	{'❯', "powerline-adjacent prompt chevron: font-fragile (8.3); the prompt is ›"},
 	{'\uFE0F', "variation selector: forces emoji presentation and desynchronizes width"},
+
+	// The powerline separator block (12.7 G). These measure one cell like every
+	// other private-use codepoint, so the width law alone would let them in \u2014
+	// they are banned on a different ground, and it is worth stating precisely,
+	// because the glyph TIER admits their neighbour U+E0A0.
+	//
+	// A separator triangle is not an icon. It is a shape-join that must tile
+	// pixel-exactly against a NEIGHBOURING BACKGROUND to look like anything, so
+	// it drags a background-colour grammar in behind it, it breaks the line
+	// grid wherever the tiling is off, and it is the single most common source
+	// of "my prompt looks wrong" (8.3, 10.1.2, 5.19). \u00B7 remains the separator,
+	// in both tiers. The branch symbol U+E0A0 is adopted precisely because it
+	// is an icon that stands alone and joins to nothing.
+	{'\uE0B0', "powerline separator: a shape-join that needs a neighbouring background to tile against (8.3); the separator is ·"},
+	{'\uE0B1', "powerline thin separator: same join, same refusal"},
+	{'\uE0B2', "powerline separator, left-facing: same join, same refusal"},
+	{'\uE0B3', "powerline thin separator, left-facing: same join, same refusal"},
+	{'\uE0B8', "powerline slant seam: same join, same refusal"},
+	{'\uE0B9', "powerline slant seam: same join, same refusal"},
+	{'\uE0BA', "powerline slant seam: same join, same refusal"},
+	{'\uE0BB', "powerline slant seam: same join, same refusal"},
+	{'\uE0BC', "powerline slant seam: same join, same refusal"},
+	{'\uE0BD', "powerline slant seam: same join, same refusal"},
+	{'\uE0BE', "powerline slant seam: same join, same refusal"},
+	{'\uE0BF', "powerline slant seam: same join, same refusal"},
 }
