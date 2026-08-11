@@ -5057,3 +5057,152 @@ Python and it belongs in any lane that is going to argue about a screenshot.
 
 `make check` is green but for the standing `internal/plan` CJK
 `file name too long` failure.
+
+### 13.14 Pointer-and-slash lane: the click chain, end to end, and 5.22's third surface (6f4e4cc, 0b94a83, 44ae8f4, 0a25314, 5041f64, b890fc4)
+
+USER REPORT, verbatim: "clicks are not working at all in the UI, no slash
+command popup, no way to go to settings by click". A second, later: "none of
+the slash commands work when clicking on things inside the question-mark
+sheet — those things are not executed."
+
+**Where the chain was actually broken, which was not where it looked.**
+Everything upstream of the pane boundary already worked and had been shipped:
+`View.MouseMode` is set declaratively (`shell.go`), the shell type-switches
+`tea.MouseMsg`, the compositor hit-tests per layer top-down and hands a pane a
+pane-LOCAL point, and `chat.App.update` falls through to the shell. A pty probe
+confirmed `?1002h` + `?1006h` on the wire from the first frame. **Then four of
+the five chat panes did not implement `PaneMouse` and the event was dropped on
+the floor.** Only the overlays took clicks — and the overlays can only be opened
+from the keyboard, so from a user's chair the surface had no pointer at all.
+That is the whole diagnosis: not a missing transport, a missing consumer, four
+times.
+
+**The second fault, which the first was hiding.** With the overlays reachable,
+clicking a row inside them still did nothing, and neither did pressing enter on
+one — this was never a mouse bug. `palette.core.choose` emitted the result and
+THEN closed. A host wires `OnChoose`/`OnClose` as ordinary calls, so both ran
+synchronously before either returned command reached the runtime, and the act a
+row performs may itself raise a door onto a plane that holds exactly one
+overlay. The close ran second and tore down what the row had just opened. Every
+row on the list that OPENS something answered by politely closing and doing
+nothing. `closed := c.close()` before `c.emit(res)`, written as two statements
+because the sequence is the fix.
+
+**The third: the executor knew seven ids.** The catalog renders every registry
+row for the scope; `runEntry` had a hardcoded switch. "show tasks", "open self",
+"focus tasks", "browse notebook", "find history", "change budget", "list
+standing", "new session" and both place chords rendered as live rows and
+returned nil. Now every reachable row either DOES its verb or says why it cannot
+(5.20 rule 3), and `TestEveryReachableRowIsADoorOrASentence` walks
+`ForScope(ScopeThread)` and fails any row that is neither. The four v1 chords
+this surface deliberately lacks refuse in the words of the decision — `tab`
+because 5.15 killed the focus carousel, `ctrl+j` because alt+enter replaced it —
+rather than as "unavailable".
+
+**The click map as shipped.** Rail row → preview; the same row again → enter
+(5.15's select/open split reached by a second hand, which reads as a
+double-click and is the documented law). The `‹` pops: the whole header line
+where the header has one, the glyph alone where 12.13.2 merged it into row 0,
+because the rest of that line is the room's own name. Wheel over the map walks
+the selection — the rail has no viewport, the fold accounts for what does not
+fit. Wheel over the transcript scrolls it (already shipped). Question option row
+→ answers, through `App.answer`; the question's own prose answers nothing.
+Footer verb → runs its registry row; `? help` → the sheet it has advertised
+since this surface existed; breadcrumb tail → pops. Model chip → model palette.
+Place line → copies the ground. `/` candidate → runs.
+
+**The pointer table is derived, never recorded.** Part 2's anti-pattern 14 is
+click maps written during `View()`, and it is on that list because it forces a
+call order. The rail's table is written by `push` — the ONE appender, which is
+also what silently drops a line past the height budget — so it has exactly as
+many entries as there are lines and cannot describe a frame that was not drawn.
+The footer's, the meta strip's and the composer's are re-derived on demand from
+the same `fit`/`hintRows`/`layoutRows` the paint calls. A click cannot land on a
+word the paint dropped, and "is the map stale?" is not a question that exists.
+
+**Hover: all-motion, and the bandwidth law kept rather than waived.**
+`MouseModeAllMotion` replaces cell motion, and the earlier comment's reasoning
+is re-weighed rather than reversed. 10.1.1 makes bandwidth the metric; a motion
+report is six INBOUND bytes on a link whose inbound direction carries keystrokes
+and nothing else, and it produces output only when the pointer crosses into a
+different TARGET. Sweeping the rail costs one repainted row per row crossed and
+zero for the cells between — which is what "bandwidth proportional to what
+actually changed" says, not an exception to it. `PaneHover` is a separate door
+from `PaneMouse` and nothing reachable through it returns a `tea.Cmd`, so a
+hover cannot post, answer, navigate or spend; 5.14's one cursor stays one.
+
+Hover paints with `tokens.Promote` — one tier brighter, which is 5.22's own rule
+for "a control that is also telemetry: dim at rest, secondary on focus" — and
+never a band, because the band IS the cursor (5.16) and two marks for one
+meaning is the confusion the split exists to prevent. **One correction came from
+a pty frame rather than from the doctrine**: the map is normally drawn dimmed
+(the composer holds the keyboard), and one tier inside the dimmed ramp is a
+difference a reader has to hunt for. The hovered row now paints at the UNDIMMED
+rung too. That is legal — `tokens.Legal` forbids a dimmed foreground on a raised
+band, and a hovered row has no band.
+
+**The slash layer, closing 13.4's C8.** 5.22's kill list names "the 17-command
+slash table as a parallel system", and v1 has exactly such a table, so the test
+that matters is not that `/settings` works: it is that `internal/tui2/composer`
+CANNOT ENUMERATE A COMMAND. It is handed `Commands`/`OnCommand` the way it is
+handed `Targets`/`OnDispatch`, and `chat` fills both from `internal/registry`
+and from the same `runEntry` the palette and the sheet reach. A registry row
+with an alias appears on all three surfaces on the same commit with one
+description and one accelerator, and is refused on all three in one sentence.
+Shape is the `@` filter's on purpose — lens not buffer, six rows below the
+draft, tab/enter completes, esc forgets an index and every character stays.
+Completing CLEARS the draft, which is the one place the grammars differ and the
+difference is what they are. It opens only on a `/` typed first on an empty
+draft: a slash inside a sentence is a path, a fraction or a date.
+
+`Shell.GrowComposer` is what makes the list a list — the completion draws inside
+the composer's rectangle, which the metric table budgets for a draft and two
+strips, so without it the reader saw one candidate of seventeen. It is a REQUEST
+and not a size: the layout still solves top-down, so a short window gives back
+less and never eats the transcript.
+
+**Two faults from other lanes, fixed here because they are the same law.**
+
+1. **13.8 gap 1, and it was two bugs.** Entering a room did not hand the
+   keyboard over — `bind` now does, on a COMMIT and only on a commit (a preview
+   keeps the map so j/k stay walking, a pop keeps it because the reader is
+   navigating, a disabled composer keeps it because `+ new room` takes no
+   draft). And **the map did not keep the keyboard it held**: a key the map did
+   not claim fell through to the composer, so `jack knife kayak` arrived as
+   `ac nife aya` — the map claims j, k, g, G and the digits, everything else
+   reached the draft. That is what made the missing hand-off dangerous rather
+   than annoying: a one-way instruction to a worker that silently said something
+   other than what was typed. One cursor has to mean one keyboard. Two
+   consequences: esc from the composer pops the scope once there is nothing
+   nearer to do (`App.navigate`), and `ctrl+o` toggles WHERE THE KEYBOARD IS
+   rather than a flag — the two were the same question until entering started
+   handing the keyboard away, after which toggling the flag answered "let me
+   back on the map" by closing the map.
+2. **The doubled breadcrumb** the tree lane photographed
+   (`‹ untitled room ‹ wisp-parity ‹ wisp-parity`): the rail's last crumb and
+   the main pane's title are the same object seen from two sides. 12.13.2's
+   merge law, one surface further down.
+
+**Harness.** `harness/pty_driver.py` gained SGR mouse output — `click`, `move`,
+`wheel`, one-based on the wire and zero-based to callers — and `run.py` gained
+the matching steps. Two scenarios: `pointer` (hover a row, click to preview,
+click again to enter, click the ‹ to pop, wheel to walk, click the footer's
+help words, click the model chip) and `slash` (open, narrow, esc keeps the
+draft, hover a candidate, click a refused one, click a runnable one). Frames in
+`shots/pointer/*` and `shots/slash/*`. **`run.py` now replays through
+`render_live`**: the plain replay has no CSI S and was silently dropping the
+place line out of every frame where the composer region had grown — a defect in
+the picture, not in the program, and one that would have been reported as a bug
+if the Go-level frame had not disagreed with it. Whoever screenshots next should
+assume the live replay, per 13.8's own note.
+
+**Still open in this territory.** Step dots are display and not targets on a
+narrow rail (5.22's checklist already says so). Transcript blocks have no
+per-block fold-on-click, because there is no block-focus substrate yet (13.4
+T2). Artifact paths are still plain text — `Shell.Linker`/OSC 8 remain
+uncalled (13.4 T5), which is a different lane's one-line call site. The `?`
+sheet and the palette are clickable and now runnable; their VISUAL rendering
+belongs to 13.13's lane and was not touched here.
+
+`make check` is green but for the standing `internal/plan` CJK
+`file name too long` failure.
