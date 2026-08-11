@@ -405,3 +405,52 @@ func runAll(t *testing.T, cmd tea.Cmd) {
 		}
 	}
 }
+
+// -- taking things out (JOURNEY 18) ---------------------------------------------
+
+// The registry has named both copy doors since before this surface existed, and
+// neither opened. What leaves is the RECORD — what was said and where the file
+// is — never the rendering, which carries indents, glyphs and fold hints nobody
+// wants in a paste.
+func TestTheCopyDoorsTakeTheRecordAndNotTheRendering(t *testing.T) {
+	backend := &fakeBackend{}
+	backend.add(store.Message{SessionID: testSession, Role: store.RoleAgent,
+		Body: "Here is the plan:\n\n- read navctx.rs",
+		Parts: []store.MessagePart{{Kind: store.PartArtifact,
+			Artifact: &store.ArtifactPart{Path: "workspace/wisp/plan.md"}}}})
+	app := newTestApp(backend, &fakeCommander{}, nil)
+	poll(t, app)
+
+	if got := app.latestAnswer(); got != "Here is the plan:\n\n- read navctx.rs" {
+		t.Fatalf("copy answer would paste %q", got)
+	}
+	if got := app.latestArtifact(); got != "workspace/wisp/plan.md" {
+		t.Fatalf("copy file would paste %q", got)
+	}
+	if cmd := app.copyAnswer(); cmd == nil {
+		t.Fatal("the copy-answer door produced no command")
+	}
+	if cmd := app.copyFile(); cmd == nil {
+		t.Fatal("the copy-file door produced no command")
+	}
+	// Both are runnable from the palette, which is where 5.22's no-typed-only
+	// rule is actually satisfied for a chord this footer has no room for.
+	if cmd := app.runEntry("key.thread.copy-answer"); cmd == nil {
+		t.Fatal("the palette cannot run the copy-answer row")
+	}
+}
+
+// An empty room says why rather than putting nothing on the clipboard and
+// looking like it worked (5.20 rule 3).
+func TestCopyingFromAnEmptyRoomSaysWhy(t *testing.T) {
+	app := newTestApp(&fakeBackend{}, &fakeCommander{}, nil)
+	if cmd := app.copyAnswer(); cmd != nil {
+		t.Fatal("an empty room produced a clipboard write")
+	}
+	if app.status.err == "" {
+		t.Fatal("a refused copy said nothing")
+	}
+	if reason := app.entryReason("key.thread.copy-file"); reason == "" {
+		t.Fatal("the palette row offers a door with nothing behind it and no reason")
+	}
+}

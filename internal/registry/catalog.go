@@ -122,10 +122,16 @@ func threadKeyRows() []Entry {
 		// rewritten into the other.
 		{ID: "key.thread.receipts", Verb: "toggle receipts", Description: "expand or collapse reading receipts",
 			Scope: ScopeThread, Key: "v", ChordKey: "ctrl+r"},
+		// Both copies carry a chord beside their bare key for the reason the
+		// receipts row above them does: in a composer-first surface every
+		// printable character is text, so a surface that binds these binds the
+		// chord, and Entry.On projects the row onto whichever key that surface
+		// really has. Recording only the bare key made both rows unrunnable
+		// wherever the composer holds the keyboard.
 		{ID: "key.thread.copy-answer", Verb: "copy answer", Description: "copy the focused answer to the clipboard",
-			Scope: ScopeThread, Key: "y"},
+			Scope: ScopeThread, Key: "y", ChordKey: "ctrl+y"},
 		{ID: "key.thread.copy-file", Verb: "copy file", Description: "copy the path of the file the answer produced",
-			Scope: ScopeThread, Key: "Y"},
+			Scope: ScopeThread, Key: "Y", ChordKey: "alt+y"},
 		{ID: "key.thread.narrow-split", Verb: "narrow split", Description: "narrow the chat/task split",
 			Scope: ScopeThread, Key: "["},
 		{ID: "key.thread.widen-split", Verb: "widen split", Description: "widen the chat/task split",
