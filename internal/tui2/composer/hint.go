@@ -95,7 +95,7 @@ func (m *Model) filterRows(sty *tokens.Styler, width, budget int) []string {
 		budget = maxFilterRows
 	}
 	if len(f.hits) == 0 {
-		return []string{m.plainRow(sty, noMatch, width)}
+		return []string{plainRow(sty, noMatch, width)}
 	}
 
 	items := make([]hintItem, 0, len(f.hits)+1)
@@ -130,7 +130,7 @@ func (m *Model) filterRows(sty *tokens.Styler, width, budget int) []string {
 	rows := make([]string, 0, end-start)
 	for _, it := range items[start:end] {
 		if it.header {
-			rows = append(rows, m.groupRow(sty, width))
+			rows = append(rows, groupRow(sty, width))
 			continue
 		}
 		var row string
@@ -178,11 +178,11 @@ func (m *Model) candidateRow(sty *tokens.Styler, r filterRow, selected bool, wid
 
 // groupRow draws the dim `history` heading, with its own limit spelled out when
 // the row is wide enough to say it.
-func (m *Model) groupRow(sty *tokens.Styler, width int) string {
+func groupRow(sty *tokens.Styler, width int) string {
 	l := hintLine{sty: sty, max: width}
 	l.add(hintIndent, tokens.TextTertiary)
 	l.add(historyGroup, tokens.TextTertiary)
-	if l.room() >= len(hintSep)+len(historyGroupNote) {
+	if l.room() >= ansi.StringWidth(hintSep)+ansi.StringWidth(historyGroupNote) {
 		l.add(hintSep, tokens.TextTertiary)
 		l.add(historyGroupNote, tokens.TextTertiary)
 	}
@@ -190,7 +190,7 @@ func (m *Model) groupRow(sty *tokens.Styler, width int) string {
 }
 
 // plainRow draws one dim indented sentence.
-func (m *Model) plainRow(sty *tokens.Styler, text string, width int) string {
+func plainRow(sty *tokens.Styler, text string, width int) string {
 	l := hintLine{sty: sty, max: width}
 	l.add(hintIndent, tokens.TextTertiary)
 	l.addClipped(text, tokens.TextTertiary)
