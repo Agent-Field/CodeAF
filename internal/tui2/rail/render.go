@@ -284,7 +284,7 @@ func (v *View) sizeMembers(members []Row, sel int) {
 	v.heights = v.heights[:len(members)]
 	v.shape = v.shape[:len(members)]
 	for i := range members {
-		v.shape[i] = shapeOf(members[i], i == sel)
+		v.shape[i] = v.shapeOf(members[i], i == sel)
 		v.heights[i] = v.shape[i].height()
 	}
 }
@@ -378,8 +378,8 @@ func (v *View) hudLine(r Row, width int, ident tokens.Token) string {
 	if rightW > 0 {
 		nameRoom--
 	}
-	name := clean(r.Name)
-	if status := clean(r.Status); status != "" && nameRoom > blocks.Width(name)+minNameWidth+sepWidth {
+	name := v.clean(r.Name)
+	if status := v.clean(r.Status); status != "" && nameRoom > blocks.Width(name)+minNameWidth+sepWidth {
 		l.add(blocks.Truncate(name, nameRoom), v.nameToken(r))
 		room := l.max - l.w - rightW
 		if rightW > 0 {
@@ -435,7 +435,7 @@ func (v *View) scopeHeader(scope Scope, sel, members int, ident tokens.Token, wi
 	if posW > 0 {
 		room--
 	}
-	l.add(blocks.Truncate(clean(scope.Title), room), ident)
+	l.add(blocks.Truncate(v.clean(scope.Title), room), ident)
 	if pos != "" && l.max-l.w >= posW {
 		l.padTo(l.max - posW)
 		l.add(pos, tokens.TextTertiary)

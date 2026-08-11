@@ -587,6 +587,39 @@ func TestFocusDoesNotShiftTheLayout(t *testing.T) {
 	}
 }
 
+// 12.10.6's second finding, at the rail's door. The sanitiser PRESERVES SGR
+// and remaps it into the palette — the right trade for a colour terminal, where
+// a worker's own red is information it meant to carry. At tokens.NoColor it is
+// the wrong trade: the surface has promised no escapes, and the readers of that
+// promise are a dumb pipe and a golden file, both of which read a surviving SGR
+// as corruption.
+//
+// The promise is total, so the test is: at NoColor, no rendered cell contains
+// an ESC, whatever the prose brought with it. At a colour profile the same
+// prose keeps its colour, because erasing it there would be a different bug.
+func TestNoColourEmitsNoEscapesEvenWhenTheProseBroughtSome(t *testing.T) {
+	row := Row{
+		Kind:   RowTask,
+		Name:   "\x1b[31mred name\x1b[0m",
+		Status: "\x1b[1;32mit went green\x1b[m",
+		Life:   LifeWorking,
+	}
+	src := oneRow(row)
+
+	for _, mode := range []Mode{ModeRail, ModeList, ModeHUD} {
+		plain := plainView().Render(New(src), mode, 60, 12)
+		for i, line := range plain {
+			if strings.ContainsRune(line, 0x1b) {
+				t.Fatalf("%s line %d carried an escape at the no-colour profile: %q", mode, i, line)
+			}
+		}
+		coloured := colourView(tokens.FocusNormal).Render(New(src), mode, 60, 12)
+		if !strings.ContainsRune(strings.Join(coloured, ""), 0x1b) {
+			t.Fatalf("%s: a colour profile lost the prose's own colour entirely: %v", mode, coloured)
+		}
+	}
+}
+
 // Model-written prose reaches this surface as names and status lines. It may
 // not move the cursor or smuggle a second row.
 func TestProseCannotEscapeItsRow(t *testing.T) {

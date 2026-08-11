@@ -53,7 +53,7 @@ func (s rowShape) height() int {
 
 // shapeOf decides a row's lines. The progressive-disclosure rule of 5.9 is the
 // whole of it: collapsed is the summary, focused expands in place.
-func shapeOf(r Row, sel bool) rowShape {
+func (v *View) shapeOf(r Row, sel bool) rowShape {
 	var s rowShape
 	switch r.Kind {
 	case RowStep, RowWorker:
@@ -63,11 +63,11 @@ func shapeOf(r Row, sel bool) rowShape {
 		// focus, where the reader has asked for it.
 		s.waits = len(r.WaitsOn) > 0
 		if sel {
-			s.status = clean(r.Status) != ""
+			s.status = v.clean(r.Status) != ""
 			s.artifact = !r.Artifact.Empty()
 		}
 	default:
-		s.status = clean(r.Status) != ""
+		s.status = v.clean(r.Status) != ""
 		s.meta = !r.Meta.Empty()
 		s.waits = len(r.WaitsOn) > 0
 		if sel {
@@ -86,7 +86,7 @@ func shapeOf(r Row, sel bool) rowShape {
 // appendRow draws one row's lines into the View's buffer, stopping at the
 // height limit. Every line it produces is at most width printable cells.
 func (v *View) appendRow(r Row, sel bool, width, limit int, band tokens.Token, banded bool, ident tokens.Token) {
-	s := shapeOf(r, sel)
+	s := v.shapeOf(r, sel)
 	banded = banded && sel
 	indent := gutterFor(width) + r.Depth*indentStep
 	sub := indent + indentStep
@@ -149,7 +149,7 @@ func (v *View) cardLine(r Row, width, indent int, sel, banded bool, band, ident 
 		rightW++
 	}
 	room := l.max - l.w - rightW
-	l.add(blocks.Truncate(clean(r.Name), room), v.nameToken(r))
+	l.add(blocks.Truncate(v.clean(r.Name), room), v.nameToken(r))
 	if rightW > 0 && l.max-l.w >= rightW {
 		l.padTo(l.max - rightW)
 		if chip != "" {
@@ -184,7 +184,7 @@ func (v *View) treeLine(r Row, width, indent int, sel, banded bool, band, ident 
 			rightW = metaWidth(v.meta[:n]) + 1
 		}
 	}
-	l.add(blocks.Truncate(clean(r.Name), l.room()-rightW), v.nameToken(r))
+	l.add(blocks.Truncate(v.clean(r.Name), l.room()-rightW), v.nameToken(r))
 	if n > 0 && l.room() >= rightW {
 		l.padTo(l.max - rightW + 1)
 		v.addMeta(l, n)
@@ -205,7 +205,7 @@ func (v *View) statusLine(r Row, width, indent int, banded bool, band tokens.Tok
 		cutW = 2 // a space and the mark
 	}
 	room := l.max - l.w - cutW
-	l.add(blocks.Truncate(clean(r.Status), room), tokens.TextSecondary)
+	l.add(blocks.Truncate(v.clean(r.Status), room), tokens.TextSecondary)
 	if r.Cut != tokens.CutNone {
 		tok := tokens.CutToken(r.Cut)
 		if word := cutMark(r.Cut); word != "" && l.max-l.w > blocks.Width(word)+3 {
@@ -236,7 +236,7 @@ func (v *View) waitsLine(r Row, width, indent int, banded bool, band tokens.Toke
 		if i > 0 {
 			l.add(sep, tokens.TextTertiary)
 		}
-		l.add(blocks.Truncate(clean(name), l.room()), tokens.TextTertiary)
+		l.add(blocks.Truncate(v.clean(name), l.room()), tokens.TextTertiary)
 	}
 	return v.emit(width, banded, band)
 }
@@ -303,7 +303,7 @@ func (v *View) artifactLine(ref Ref, width, indent int, banded bool, band tokens
 	if text == "" {
 		text = ref.Label
 	}
-	l.add(blocks.TruncatePath(clean(text), l.room()), tokens.TextSecondary)
+	l.add(blocks.TruncatePath(v.clean(text), l.room()), tokens.TextSecondary)
 	return v.emit(width, banded, band)
 }
 
@@ -382,12 +382,12 @@ func (v *View) buildMeta(t Telemetry) int {
 		n++
 	}
 	if t.Model != "" {
-		model := clean(t.Model)
+		model := v.clean(t.Model)
 		if t.Boosted {
 			model = model + tokens.GlyphBoosted
 		}
 		if t.Effort != "" {
-			add(model+sep+clean(t.Effort), model, tokens.TextTertiary, prioModel)
+			add(model+sep+v.clean(t.Effort), model, tokens.TextTertiary, prioModel)
 		} else {
 			add(model, "", tokens.TextTertiary, prioModel)
 		}
