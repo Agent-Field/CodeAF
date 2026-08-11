@@ -48,6 +48,11 @@ type transcriptPane struct {
 	// a row, and the ACT belongs to the app — this one is question.go's own
 	// [App.answer], the same call the digits make.
 	answer func(block *messageBlock, number int) tea.Cmd
+	// fold opens or closes the one block a pointer landed on. Same seam as
+	// answer, for the same reason: the pane resolves a cell to a row and the ACT
+	// belongs to the app, which is where the reader's per-row decision is
+	// remembered across the rebuilds that would otherwise lose it (disclose.go).
+	fold func(block *messageBlock) tea.Cmd
 	// width is the rectangle the pane was last drawn at, kept because an option
 	// row's position depends on how tall its block rendered.
 	width int
@@ -55,6 +60,12 @@ type transcriptPane struct {
 	// index and the one-based option number. Zero option means no row.
 	hoverBlock  int
 	hoverOption int
+	// hoverFold is the block whose fold row the pointer rests on, one-based, or
+	// zero for none. It is kept apart from hoverBlock because the two marks are
+	// different marks on different rows: an option row moves the question's own
+	// answer cursor, a fold row only brightens. One field could not clear the
+	// right one when the pointer crossed from a card into the question under it.
+	hoverFold int
 }
 
 var (
@@ -105,6 +116,28 @@ func (p *transcriptPane) optionAt(y int) (*messageBlock, int, int, bool) {
 	return block, index, number, true
 }
 
+// foldAt resolves a pane-local cell to a block whose fold that row opens.
+//
+// It is [optionAt] one row up: the same BlockAtScreenRow lookup against the
+// layout the last frame actually produced, and the same refusal to consult x.
+// Nothing here is recorded during Render — Part 2's anti-pattern 14 — because
+// the transcript's own cache IS the map, and a click cannot land on a row the
+// paint did not draw.
+func (p *transcriptPane) foldAt(y int) (*messageBlock, int, bool) {
+	if p.transcript == nil || p.homes != nil {
+		return nil, 0, false
+	}
+	index, line, ok := p.transcript.BlockAtScreenRow(y)
+	if !ok {
+		return nil, 0, false
+	}
+	block, ok := p.transcript.Block(index).(*messageBlock)
+	if !ok || !block.isFoldRow(line) {
+		return nil, 0, false
+	}
+	return block, index, true
+}
+
 // Key handles the scroll vocabulary. Everything else on the keyboard belongs to
 // the composer and never reaches here — see the app's key ladder.
 func (p *transcriptPane) Key(msg tea.KeyPressMsg) tea.Cmd {
@@ -143,14 +176,26 @@ func (p *transcriptPane) Mouse(msg tea.MouseMsg, local image.Point) tea.Cmd {
 	// pointer is a second hand on that key and not a second way to answer —
 	// [App.answer] is what the digit reaches too.
 	if click, isClick := msg.(tea.MouseClickMsg); isClick {
-		if click.Button != tea.MouseLeft || p.answer == nil {
+		if click.Button != tea.MouseLeft {
 			return nil
 		}
-		block, _, number, ok := p.optionAt(local.Y)
-		if !ok {
-			return nil
+		if p.answer != nil {
+			if block, _, number, ok := p.optionAt(local.Y); ok {
+				return p.answer(block, number)
+			}
 		}
-		return p.answer(block, number)
+		// A click on a fold row opens THAT row, and a click on it again shuts
+		// it — 7.2's per-block expand/collapse, reached by the hand that is
+		// already pointing at the `▸`. The order matters and only trivially:
+		// an option row is never a block's header, so the two targets cannot
+		// overlap, and asking the more consequential question first is the
+		// safer habit to leave behind.
+		if p.fold != nil {
+			if block, _, ok := p.foldAt(local.Y); ok {
+				return p.fold(block)
+			}
+		}
+		return nil
 	}
 	wheel, ok := msg.(tea.MouseWheelMsg)
 	if !ok || p.transcript == nil {
@@ -182,6 +227,8 @@ func (p *transcriptPane) Mouse(msg tea.MouseMsg, local image.Point) tea.Cmd {
 // mark for one meaning. Enter still answers whatever the mark is on, so the
 // pointer and the keyboard agree about which choice is live.
 func (p *transcriptPane) Hover(local image.Point, inside bool) bool {
+	moved := p.hoverFoldRow(local, inside)
+
 	block, index, number, ok := (*messageBlock)(nil), 0, 0, false
 	if inside {
 		block, index, number, ok = p.optionAt(local.Y)
@@ -190,7 +237,7 @@ func (p *transcriptPane) Hover(local image.Point, inside bool) bool {
 		index, number = 0, 0
 	}
 	if p.hoverBlock == index && p.hoverOption == number {
-		return false
+		return moved
 	}
 	// Clear the mark on the row the pointer left, then set it where it is now.
 	if p.hoverOption != 0 && p.transcript != nil && p.hoverBlock < p.transcript.Len() {
@@ -201,6 +248,42 @@ func (p *transcriptPane) Hover(local image.Point, inside bool) bool {
 	p.hoverBlock, p.hoverOption = index, number
 	if block != nil {
 		block.SetChosen(number)
+	}
+	return true
+}
+
+// hoverFoldRow makes the `▸` row LOOK like the door it now is.
+//
+// 5.22's amendment is that an interactive control may never live permanently in
+// the dimmest tier — "dim at rest, secondary on focus" — and until this lane the
+// fold hint lived there permanently with no focus to rise to. It rises one tier
+// under the pointer (13.14's hover law, tokens.Promote, never a band), and that
+// promotion is the whole difference between chrome a reader reads past and an
+// affordance they reach for.
+//
+// It touches paint and nothing else. No cursor moves, no command is returned,
+// and the pane's own state is one int — which is what keeps the hover door the
+// side-effect-free door its type promises.
+func (p *transcriptPane) hoverFoldRow(local image.Point, inside bool) bool {
+	index := 0
+	if inside {
+		if _, at, ok := p.foldAt(local.Y); ok {
+			index = at + 1
+		}
+	}
+	if p.hoverFold == index {
+		return false
+	}
+	if p.hoverFold != 0 && p.transcript != nil && p.hoverFold-1 < p.transcript.Len() {
+		if old, isMessage := p.transcript.Block(p.hoverFold - 1).(*messageBlock); isMessage {
+			old.SetHovered(false)
+		}
+	}
+	p.hoverFold = index
+	if index != 0 {
+		if block, isMessage := p.transcript.Block(index - 1).(*messageBlock); isMessage {
+			block.SetHovered(true)
+		}
 	}
 	return true
 }

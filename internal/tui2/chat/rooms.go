@@ -727,12 +727,13 @@ func (a *App) paintRoom() {
 	foldable := false
 	for _, block := range rows {
 		if message, ok := block.(*messageBlock); ok {
-			// A fold that is already open stays open across a repaint. The
-			// toggle is one flag for the whole surface (app.go's
-			// toggleReceipts), so a block born after ctrl+r has to be told the
-			// state it was born into or the room would silently re-close every
-			// row the reader had opened.
-			message.SetExpanded(a.receiptsOpen)
+			// A fold that is already open stays open across a repaint, and this
+			// is the line that makes 7.2's "state that survives re-render" true:
+			// the whole list is rebuilt on every journal move (13.15's decision
+			// 2), so without it a row the reader opened would slam shut the next
+			// time any part of the job breathed. The reader's own per-row answer
+			// outranks the room-wide one; both live in disclose.go.
+			a.applyFold(message)
 			foldable = foldable || message.collapsible
 		}
 		view.transcript.Append(block)

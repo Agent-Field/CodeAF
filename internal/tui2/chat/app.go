@@ -264,6 +264,12 @@ type App struct {
 	// see what the system has been doing wants to see all of it, and a per-row
 	// fold would make that N keystrokes.
 	receiptsOpen bool
+	// folds is the reader's own answer for individual rows, keyed by block id,
+	// and it OUTRANKS receiptsOpen for as long as it holds one. It is what makes
+	// 7.2's "state that survives re-render" true across 13.15's whole-list
+	// rebuild — the flag cannot live on a block that is thrown away and rebuilt
+	// on every journal move. See disclose.go.
+	folds map[string]bool
 	// foldable says the transcript holds at least one row the fold can act on.
 	// The footer offers the accelerator only while that is true: 5.20 rule 3
 	// forbids advertising a door that opens nothing, and the cells it saves are
@@ -378,6 +384,7 @@ func New(opts Options) *App {
 		now:        now,
 		invalidate: app.shell.Invalidate,
 		answer:     app.answerByPointer,
+		fold:       app.toggleFold,
 	}
 	app.status = &statusPane{
 		style:   app.style,
@@ -1156,6 +1163,11 @@ func (a *App) navigate() tea.Cmd {
 // re-renders exactly the rows that changed and nothing else.
 func (a *App) toggleReceipts() tea.Cmd {
 	a.receiptsOpen = !a.receiptsOpen
+	// The room-wide key is what makes the room-wide state true again. A reader
+	// who opened three rows by hand and then asked for all of them has asked for
+	// ALL of them, and an override surviving that would be three rows quietly
+	// disagreeing with the key that was just pressed (disclose.go).
+	a.clearFolds()
 	moved := false
 	// The transcript the READER IS LOOKING AT, which is not always the room's
 	// own: a task room and a preview card each carry their own block list, and
