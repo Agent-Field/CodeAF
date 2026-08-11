@@ -46,6 +46,13 @@ type composerOptions struct {
 	NewlineKeys []string
 }
 
+// newComposer builds the composer the app binds. It is a variable so adopting
+// internal/tui2/composer is one assignment, in one place, with nothing else in
+// the package aware that the swap happened.
+var newComposer = func(opts composerOptions) composerPane {
+	return newFallbackComposer(opts)
+}
+
 // escMsg is the fallback composer's "not consumed" signal: esc arrived against
 // an empty draft, so the decision belongs to whoever knows whether this room is
 // streaming. It is the same shape internal/tui2/composer's EscMsg carries, and

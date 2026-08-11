@@ -195,11 +195,11 @@ func (p *statusPane) Render(width, height int) string {
 	if width <= 0 || height <= 0 {
 		return ""
 	}
-	state := "ready"
+	phase := "ready"
 	if p.live {
-		state = "answering"
+		phase = "answering"
 	}
-	cols := []string{"aforge v2", state, "session " + shortID(p.session)}
+	cols := []string{"aforge v2", phase, "session " + shortID(p.session)}
 	if p.model != "" {
 		cols = append(cols, p.model)
 	}
