@@ -1,8 +1,11 @@
 package chat
 
 import (
+	"log"
+	"os"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"unicode/utf16"
 	"unicode/utf8"
 
@@ -78,6 +81,24 @@ const (
 	StreamFailed
 )
 
+// String names the boundary for the trace. It is the surface's own vocabulary
+// spelled out, so a log line reads as what happened rather than as an ordinal.
+func (k StreamKind) String() string {
+	switch k {
+	case StreamStarted:
+		return "started"
+	case StreamDelta:
+		return "delta"
+	case StreamThinking:
+		return "thinking"
+	case StreamFinished:
+		return "finished"
+	case StreamFailed:
+		return "failed"
+	}
+	return "unknown"
+}
+
 // StreamEvent is one boundary on the live feed. Session names the room it
 // belongs to; an event whose session disagrees with the one on screen is
 // dropped rather than drawn, which is what keeps a second room's tokens out of
@@ -86,6 +107,102 @@ type StreamEvent struct {
 	Kind    StreamKind
 	Delta   string
 	Session string
+}
+
+// -- the field trace ---------------------------------------------------------
+//
+// 13.2's P0 was a divergence between what the store held and what the screen
+// held, and it survived a build wave because neither side ever said what it
+// thought the other one had. That is the gap this closes: at the two seams
+// where the journal becomes the transcript — the poll, and the fold-in that
+// retires a live turn — the surface states its own numbers, so the next report
+// of "no reply appeared" is answerable from a file instead of from a guess.
+//
+// Three properties keep it affordable to leave in forever.
+//
+//   - The switch is read once, at process start, into an atomic bool. A trace
+//     that is off costs one atomic load per seam and allocates nothing, which is
+//     what lets the poll stay the cheap thing the whole design rests on.
+//   - It is off by default and writes through the standard logger, which the v2
+//     entry has already pointed at ~/.aforge/chat.log for the life of the alt
+//     screen. Nothing this package writes can tear through the frame.
+//   - Exactly one line is never gated, and it states a thing that cannot
+//     happen: a poll that came back QUIET — the answer that means "the store
+//     holds nothing you have not seen" — while this window is still holding
+//     rows it has read past. That pairing IS the P0, stated as an invariant,
+//     and a condition that eats replies does not get to be invisible because
+//     nobody thought to export a variable first. It is silent in every ordinary
+//     run, including the long drain of a cold open, which is why it can be left
+//     on forever.
+
+// chatTraceEnv is the operator's switch. Anything but an explicitly false value
+// turns the trace on, because someone who exported it meant it.
+const chatTraceEnv = "AFORGE_CHAT_TRACE"
+
+var chatTracing atomic.Bool
+
+func init() { chatTracing.Store(tracingWanted(os.Getenv(chatTraceEnv))) }
+
+func tracingWanted(value string) bool {
+	switch strings.ToLower(strings.TrimSpace(value)) {
+	case "", "0", "false", "no", "off":
+		return false
+	default:
+		return true
+	}
+}
+
+// trace writes one line when the switch is on, and does nothing at all when it
+// is not — including evaluating nothing, which is why every caller passes plain
+// values rather than a formatted string.
+func trace(format string, args ...any) {
+	if !chatTracing.Load() {
+		return
+	}
+	log.Printf("chat/v2 "+format, args...)
+}
+
+// traceJournal states one poll: the journal position this window claims to be
+// current through, the position it has actually read messages through, how much
+// came back and how much of it reached the screen. drew below page is the
+// visible signature of rows this window read and did not draw.
+func traceJournal(a *App, result pollResultMsg, drew int) {
+	if result.quiet && a.behind() {
+		// Never gated: the window answered "nothing new" while holding rows it
+		// has read past its own claim. See the note above.
+		log.Printf("chat/v2 JOURNAL-VS-SCREEN DIVERGENCE: a quiet poll while current-through=%d is below read-through=%d — this room's tail is in the store and not on screen (13.2 P0)",
+			a.journal, a.watermark)
+	}
+	trace("poll current-through=%d read-through=%d page=%d drew=%d more=%v quiet=%v turn=%v since=%d",
+		a.journal, a.watermark, len(result.messages), drew, result.more, result.quiet,
+		a.turn.active, a.turn.since)
+}
+
+// traceTurn states one live-region boundary. The three words it can carry —
+// began, rearmed, ended — are the whole state machine, so a log that shows a
+// turn beginning and never ending is a turn whose durable reply never arrived,
+// and one that shows it ending with nothing drawn is a reply that arrived and
+// was not rendered.
+func traceTurn(a *App, what string) {
+	trace("turn %s since=%d read-through=%d journal=%d streamed=%d",
+		what, a.turn.since, a.watermark, a.journal, len(a.turn.shown))
+}
+
+// traceStream states one boundary of the provider feed, and in particular every
+// event this window dropped for naming another room. A reply that streams into
+// nothing and then never lands is 13.2's hypothesis (b) with the session as the
+// culprit, and this is the line that says so.
+func traceStream(a *App, event StreamEvent, dropped bool) {
+	if !chatTracing.Load() {
+		return
+	}
+	if !dropped && event.Kind == StreamDelta {
+		// A line per token is not a trace, it is a second transcript. The
+		// deltas that matter are the ones thrown away.
+		return
+	}
+	log.Printf("chat/v2 stream %s session=%q room=%q dropped=%v turn=%v",
+		event.Kind, event.Session, a.session, dropped, a.turn.active)
 }
 
 // sanitizeChokepoint is the v2 surface's half of 10.2.6/7, and the only place

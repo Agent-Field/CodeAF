@@ -34,9 +34,18 @@ type animTickMsg struct{}
 // pollResultMsg is one store read. quiet says the journal watermark had not
 // moved, so no other field was read and none carries meaning — the whole point
 // of the poll being cheap.
+//
+// more says the page came back full, which is the store's way of saying it had
+// to stop rather than that it had finished. It exists because the two watermarks
+// in this struct measure different things: journal counts every event the engine
+// ever wrote, and the read watermark counts only this room's messages, so one
+// page of messages can cover an arbitrary span of journal. A read that stopped
+// mid-room has consumed no journal watermark at all, and saying otherwise is
+// what stranded the tail of long rooms — see applyPoll.
 type pollResultMsg struct {
 	journal  int64
 	quiet    bool
+	more     bool
 	messages []store.Message
 	err      error
 }
@@ -83,20 +92,33 @@ func (a *App) pollCmd() tea.Cmd {
 		if err != nil {
 			return pollResultMsg{journal: seq, err: err}
 		}
-		return pollResultMsg{journal: seq, messages: messages}
+		return pollResultMsg{journal: seq, messages: messages,
+			more: len(messages) >= messagePage}
 	}
 }
 
 // afterPoll re-arms the chain: at once if something asked while the read was
-// out, on the cadence otherwise.
+// out or the last page did not reach the end of the room, on the cadence
+// otherwise.
+//
+// The immediate re-arm cannot spin. A full page is only reported when the store
+// handed over messagePage rows, every one of which raises the read watermark, so
+// each extra read strictly advances and the run ends at the first short page —
+// the same drain-to-empty loop the head runs over the same journal
+// (internal/head/head.go, poll).
 func (a *App) afterPoll() tea.Cmd {
 	a.polling = false
-	if a.poke {
+	if a.poke || a.behind() {
 		a.poke = false
 		return a.startPoll()
 	}
 	return tea.Tick(a.pollEvery, func(time.Time) tea.Msg { return pollTickMsg{} })
 }
+
+// behind reports that this window has read messages the journal numbered below
+// its own watermark and has not caught up. It is the one condition under which
+// an unmoved journal is NOT proof that the screen is current.
+func (a *App) behind() bool { return a.journal < a.watermark }
 
 // applyPoll folds one read into the transcript.
 func (a *App) applyPoll(result pollResultMsg) {
@@ -109,11 +131,28 @@ func (a *App) applyPoll(result pollResultMsg) {
 		a.status.err = ""
 		a.shell.Invalidate()
 	}
-	a.journal = result.journal
+	// The journal watermark is recorded only by a read that reached the end of
+	// the room, because that number is a claim — "this window is current as of
+	// here" — and the whole cheap path downstream believes it. A full page is a
+	// read that stopped early, so it makes no claim and leaves the old one
+	// standing; afterPoll comes straight back for the rest.
+	//
+	// Recording it unconditionally is what ate replies in every room with a
+	// history: one page of messages can span thousands of journal rows, so a
+	// window that had read the first five hundred messages declared itself
+	// current as of the newest event and then answered every later poll with
+	// "quiet" — while the reply the reader was waiting for sat in the store, a
+	// page or ten below the read watermark, with the awaiting line spinning
+	// above it forever (13.2's P0).
+	if !result.more {
+		a.journal = result.journal
+	}
 	if result.quiet || len(result.messages) == 0 {
+		traceJournal(a, result, 0)
 		return
 	}
-	a.absorb(result.messages)
+	appended := a.absorb(result.messages)
+	traceJournal(a, result, appended)
 	a.refresh()
 }
 
@@ -123,9 +162,12 @@ func (a *App) applyPoll(result pollResultMsg) {
 // whole reconciliation: a preview may never sit above a row the store numbered
 // after it, and a preview whose durable reply has landed may not sit anywhere
 // at all.
-func (a *App) absorb(messages []store.Message) {
+// It reports how many rows it put on screen, which is the number the trace
+// compares against the page the store handed over: a page absorbed short is the
+// signature of a row this window read and did not draw.
+func (a *App) absorb(messages []store.Message) int {
 	a.detachLive()
-	settled := false
+	settled, appended := false, 0
 	for i := range messages {
 		message := messages[i]
 		if message.Seq > a.watermark {
@@ -136,6 +178,7 @@ func (a *App) absorb(messages []store.Message) {
 		}
 		sanitizeMessage(&message)
 		a.transcript.Append(newMessageBlock(message, a.style))
+		appended++
 		if message.Role == store.RoleUser {
 			a.status.turns++
 		}
@@ -145,9 +188,10 @@ func (a *App) absorb(messages []store.Message) {
 	}
 	if settled {
 		a.endTurn()
-		return
+		return appended
 	}
 	a.attachLive()
+	return appended
 }
 
 // endsTurn reports that this journaled message is the reply the live turn was
@@ -220,6 +264,14 @@ func (a *App) applyPost(result postResultMsg) {
 func (a *App) beginTurn(since int64) {
 	if a.turn.active {
 		a.turn.since = since
+		// The live blocks may be detached right now — applyPost takes them down
+		// before it lands the row it is about to open a turn for — and this
+		// branch is the only one that would have left them there. A second send
+		// while the first turn is still being answered used to blank the
+		// awaiting line and the words already streamed until the next journal
+		// row happened to arrive, which is a chat that stops saying it heard you.
+		a.attachLive()
+		traceTurn(a, "rearmed")
 		return
 	}
 	a.turn = liveTurn{
@@ -234,20 +286,31 @@ func (a *App) beginTurn(since int64) {
 		},
 	}
 	a.attachLive()
+	traceTurn(a, "began")
 }
 
 // endTurn closes the live region. What replaces it is already in the
 // transcript: the durable reply, with whatever mark the engine journaled about
 // how it ended.
 func (a *App) endTurn() {
+	traceTurn(a, "ended")
 	a.detachLive()
 	a.turn = liveTurn{}
 	a.refresh()
 }
 
 // attachLive puts the live blocks back at the tail, reply first.
+//
+// It is idempotent: a live region that is already attached is left exactly
+// where it is. Callers pair it with detachLive, and one that did not — because
+// a branch returned early, because two seams both thought they owned the
+// pairing — used to leave the reader's turn either doubled on screen or missing
+// from it. Neither is worth a rule nobody can check, so the function checks.
 func (a *App) attachLive() {
-	if !a.turn.active {
+	if !a.turn.active || a.turn.await == nil {
+		return
+	}
+	if _, attached := a.transcript.IndexOf(a.turn.await.ID()); attached {
 		return
 	}
 	if a.turn.reply != nil {
@@ -271,8 +334,10 @@ func (a *App) applyStream(event StreamEvent) bool {
 	// no room at all is this one's, which is what every existing emitter means
 	// by an empty key.
 	if event.Session != "" && event.Session != a.session {
+		traceStream(a, event, true)
 		return false
 	}
+	traceStream(a, event, false)
 
 	switch event.Kind {
 	case StreamStarted:
