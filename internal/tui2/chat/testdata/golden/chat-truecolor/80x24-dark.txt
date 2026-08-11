@@ -21,4 +21,4 @@
 [38;2;164;215;234m› [38;2;230;230;240;48;2;38;38;51m [38;2;124;130;150;49mType a message[m
 
   [38;2;124;130;150mclaude-k3 · $— · — ctx[m
-[38;2;124;130;150mctrl+c stop or quit · alt+enter insert newline · ‹ session- · ? help[m
+[38;2;124;130;150mctrl+c stop or quit · alt+enter insert newline · ‹ untitled room · ? help[m

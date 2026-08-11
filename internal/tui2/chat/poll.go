@@ -48,6 +48,15 @@ type pollResultMsg struct {
 	more     bool
 	messages []store.Message
 	err      error
+
+	// room and turn are the two money windows (10.5.23), read on the same trip
+	// as the messages because they answer the same watermark: a journal that
+	// did not move cannot have billed anything, so a quiet poll carries neither
+	// and the numbers on screen stay exactly as they were.
+	room, turn  store.RoomSpend
+	haveRoom    bool
+	haveTurn    bool
+	spendFailed bool
 }
 
 type postResultMsg struct {
@@ -92,8 +101,32 @@ func (a *App) pollCmd() tea.Cmd {
 		if err != nil {
 			return pollResultMsg{journal: seq, err: err}
 		}
-		return pollResultMsg{journal: seq, messages: messages,
+		result := pollResultMsg{journal: seq, messages: messages,
 			more: len(messages) >= messagePage}
+		result.readSpend(backend, session)
+		return result
+	}
+}
+
+// readSpend asks the two money windows on the same trip as the messages.
+//
+// A failed read is recorded and NOT raised: money is one cell on two strips, and
+// a chat that stopped rendering its transcript because the usage table would not
+// answer would have let an ornament take the surface down. What a failure does
+// is keep the missing glyph, which is the same thing an unanswered question
+// always renders as here (8.2.20).
+func (r *pollResultMsg) readSpend(backend Backend, session string) {
+	room, ok, err := backend.SessionSpend(session)
+	if err != nil {
+		r.spendFailed = true
+	} else if ok {
+		r.room, r.haveRoom = room, true
+	}
+	turn, ok, err := backend.TurnSpend(session)
+	if err != nil {
+		r.spendFailed = true
+	} else if ok {
+		r.turn, r.haveTurn = turn, true
 	}
 }
 
@@ -113,6 +146,64 @@ func (a *App) afterPoll() tea.Cmd {
 		return a.startPoll()
 	}
 	return tea.Tick(a.pollEvery, func(time.Time) tea.Msg { return pollTickMsg{} })
+}
+
+// applySpend folds the two money windows into the two strips that carry them.
+//
+// 10.5.23's split is the hard line and it is enforced here rather than trusted:
+// the ROOM's bill goes to the status line, THIS TURN's to the composer's meta
+// strip, and neither number is written to the other. Every "not answered" case
+// keeps the missing glyph — a room with no window, a window with no runs, a
+// model whose catalog entry has no size — because 8.2.20 forbids an estimate
+// standing in for a fact, and a zero is the loudest estimate there is.
+func (a *App) applySpend(result pollResultMsg) {
+	if result.quiet {
+		return
+	}
+	// The room's own bill goes to the ROOM ROW in the rail, not to the status
+	// line: 10.5.23 gives that row system health and the question count and says
+	// in as many words that nothing on it mentions money. The rail card is where
+	// 5.9 puts a room's money, and it is the one place it is not a duplicate.
+	if a.source != nil {
+		a.source.SetRoomSpend(a.session, result.room.Cost(),
+			result.haveRoom && result.room.Recorded())
+	}
+	if !result.haveTurn || !result.turn.Recorded() {
+		a.meta.haveCost, a.meta.haveUsage = false, false
+		return
+	}
+	a.meta.cost, a.meta.haveCost = result.turn.Cost(), true
+
+	// The gauge needs both halves and takes neither on faith. The numerator is
+	// zero when the window was SHARED — half a context is not a context, and the
+	// journal says so rather than guessing — and it is an upper bound when a
+	// summed spine row landed inside the window, which is the safe direction for
+	// a health signal: a gauge that errs toward amber sends a person to look.
+	a.meta.haveUsage = false
+	if a.commander == nil || result.turn.SpinePromptHighWater <= 0 {
+		return
+	}
+	window, known := a.commander.ContextWindow("talk")
+	if !known || window <= 0 {
+		return
+	}
+	a.meta.used = int64(result.turn.SpinePromptHighWater)
+	a.meta.window = int64(window)
+	a.meta.haveUsage = true
+}
+
+// followNode keeps an open task room current. A task room is a lens over the
+// same journal (4.6), so it moves when the journal does and never on a timer of
+// its own — one more watermarked read on the cycle the conversation already
+// paid for, and nothing at all on a quiet one.
+func (a *App) followNode(result pollResultMsg) tea.Cmd {
+	if result.quiet || result.err != nil {
+		return nil
+	}
+	if a.view == nil || a.view.kind != viewNode {
+		return nil
+	}
+	return a.readNodeCmd(a.view.node, a.view.watermark)
 }
 
 // behind reports that this window has read messages the journal numbered below
@@ -147,6 +238,8 @@ func (a *App) applyPoll(result pollResultMsg) {
 	if !result.more {
 		a.journal = result.journal
 	}
+	a.applySpend(result)
+	a.refreshScope(result.journal)
 	if result.quiet || len(result.messages) == 0 {
 		traceJournal(a, result, 0)
 		return
@@ -154,6 +247,29 @@ func (a *App) applyPoll(result pollResultMsg) {
 	appended := a.absorb(result.messages)
 	traceJournal(a, result, appended)
 	a.refresh()
+}
+
+// refreshScope rebuilds the scope map when the journal moved, and then lets the
+// rail re-merge it.
+//
+// The order matters and the split is the production bar this wave is held to:
+// the SOURCE is rebuilt at most once per journal move (one snapshot read, one
+// usage read, one question read), and the RAIL's own Refresh — which keeps the
+// visible order and the cursor's row by id (7.2) — runs only when the source
+// actually produced something new. A quiet poll costs one integer comparison.
+func (a *App) refreshScope(journal int64) {
+	if a.source == nil || a.railModel == nil {
+		return
+	}
+	if !a.source.refresh(journal, false) {
+		return
+	}
+	a.railModel.Refresh()
+	if a.hudModel != nil {
+		a.hudModel.Refresh()
+	}
+	a.status.breadcrumb = a.breadcrumb()
+	a.shell.Invalidate()
 }
 
 // absorb appends the journal rows this window has not seen.
@@ -177,7 +293,9 @@ func (a *App) absorb(messages []store.Message) int {
 			continue
 		}
 		sanitizeMessage(&message)
-		a.transcript.Append(newMessageBlock(message, a.style))
+		block := newMessageBlock(message, a.style)
+		a.foldable = a.foldable || block.collapsible
+		a.transcript.Append(block)
 		appended++
 		if message.Role == store.RoleUser {
 			a.status.turns++
@@ -314,6 +432,9 @@ func (a *App) attachLive() {
 		return
 	}
 	if a.turn.reply != nil {
+		if a.turn.label != nil {
+			a.transcript.Append(a.turn.label)
+		}
 		a.transcript.Append(a.turn.reply)
 	}
 	a.transcript.Append(a.turn.await)
@@ -412,6 +533,7 @@ func (a *App) writeReply(text string) {
 	}
 	if a.turn.reply == nil {
 		a.detachLive()
+		a.turn.label = a.newReplyLabel()
 		a.turn.reply = a.newReplyBlock()
 		a.attachLive()
 	}
@@ -436,13 +558,37 @@ func (a *App) writeReply(text string) {
 // speaking, and a body that grows. Its header is static on purpose — the moving
 // glyph belongs to the awaiting line below it, so the reply's first row is
 // byte-stable and everything above the tail stays out of the rebuild.
+//
+// The live preview is TWO blocks, and that is the seam this wave closes.
+//
+// A journaled reply draws its header flush left and its prose one depth under
+// it (message.go's dressSpeech, at [bodyIndent]). The streamed preview used to
+// be a single block with both at column zero, so at the instant a turn settled
+// every line the reader had just watched arrive slid two columns sideways —
+// nothing had changed but which renderer owned the words, which is exactly the
+// motion 8.1.6 forbids on the row a reader is watching most closely.
+//
+// [blocks.TextBlock.Indent] moves a whole block, header included, so one block
+// cannot hold both depths. Two can: a header-only block flush left, and a
+// headerless body block indented to match its journaled twin. They are appended
+// and dropped together and are never separately addressable, so the live region
+// is still one thing to every caller outside this pair.
 func (a *App) newReplyBlock() *blocks.TextBlock {
-	block := blocks.NewText("live-reply", blocks.Header{
+	block := blocks.NewText("live-reply", blocks.Header{})
+	block.Styler = a.style
+	block.BodyState = blocks.StateSettled
+	block.Indent = bodyIndent
+	return block
+}
+
+// newReplyLabel is the preview's header row: who is speaking, flush left, at
+// exactly the depth the journaled reply's header will occupy.
+func (a *App) newReplyLabel() *blocks.TextBlock {
+	block := blocks.NewText("live-reply-label", blocks.Header{
 		Title: "aforge",
 		State: blocks.StateChrome,
 	})
 	block.Styler = a.style
-	block.BodyState = blocks.StateSettled
 	return block
 }
 

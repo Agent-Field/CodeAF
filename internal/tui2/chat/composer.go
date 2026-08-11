@@ -10,6 +10,7 @@ import (
 	"github.com/Agent-Field/aforge-v2/internal/tui2/blocks"
 	"github.com/Agent-Field/aforge-v2/internal/tui2/composer"
 	"github.com/Agent-Field/aforge-v2/internal/tui2/placeline"
+	"github.com/Agent-Field/aforge-v2/internal/tui2/rail"
 	"github.com/Agent-Field/aforge-v2/internal/tui2/tokens"
 )
 
@@ -54,6 +55,16 @@ type composerStack struct {
 	place *placeline.Model
 	draft *composer.Model
 	meta  *metaStrip
+
+	// mode reports what the composer is bound to right now (5.15). It is a
+	// function rather than a field because the binding is the app's state and
+	// this region renders it; a copy here would be a second truth that ages by
+	// one keystroke.
+	mode func() composerBind
+	// hud draws the bounded live summary above the draft (8.2.8). It returns
+	// the rows it wants and never more than it is offered; nil means this frame
+	// has a rail and does not need one.
+	hud func(width, height int) []string
 }
 
 var (
@@ -63,13 +74,23 @@ var (
 )
 
 // newComposer builds the region the app binds.
-func newComposer(opts composerOptions, place *placeline.Model, meta *metaStrip) composerPane {
+func newComposer(opts composerOptions, place *placeline.Model, meta *metaStrip) *composerStack {
 	return &composerStack{place: place, draft: composer.New(opts), meta: meta}
 }
 
 // Key hands every keystroke to the draft. The place line and the meta strip are
 // read-only chrome; neither has an affordance that takes the keyboard.
-func (s *composerStack) Key(msg tea.KeyPressMsg) tea.Cmd { return s.draft.Key(msg) }
+//
+// A DISABLED composer takes nothing. 5.15's one rule is that a settled row's
+// composer is disabled, and a disabled composer that quietly accepted a draft
+// nobody could send would be the affordance lying in the most frustrating way
+// available: the reader types a paragraph and only then finds out.
+func (s *composerStack) Key(msg tea.KeyPressMsg) tea.Cmd {
+	if s.disabled() {
+		return nil
+	}
+	return s.draft.Key(msg)
+}
 
 // Paste is offered only when the draft accepts one, which is how the app's
 // paste door finds it (app.go asks the pane for the method rather than assuming
@@ -106,10 +127,22 @@ func (s *composerStack) Render(width, height int) string {
 	if wantMeta {
 		body--
 	}
+	// The bounded HUD (8.2.8) borrows from the DRAFT and from nothing else, and
+	// never takes its last row. The place line names the ground and the meta
+	// strip carries the money; a summary that displaced either would have spent
+	// a permanent row on a transient fact. What it cannot fit, its fold line
+	// accounts for — that is what "bounded" means here.
+	var summary []string
+	if s.hud != nil && body > 1 {
+		if summary = s.hud(width, body-1); len(summary) > 0 {
+			body -= len(summary)
+		}
+	}
 	if wantPlace {
 		rows = append(rows, s.place.Render(width))
 	}
-	drafted := strings.Split(s.draft.Render(width, body), "\n")
+	rows = append(rows, summary...)
+	drafted := strings.Split(s.renderDraft(width, body), "\n")
 	if len(drafted) == 1 && drafted[0] == "" {
 		drafted = nil
 	}
@@ -128,6 +161,98 @@ func (s *composerStack) Render(width, height int) string {
 		rows = append(rows, s.meta.render(width))
 	}
 	return strings.Join(rows, "\n")
+}
+
+// -- what the composer is bound to (5.15) ------------------------------------
+
+// steerPlaceholder is the steer line's idle hint (5.11: "steer — one-way").
+const steerPlaceholder = "steer — one-way"
+
+// chatPlaceholder mirrors internal/tui2/composer's own idle hint. It is
+// duplicated rather than imported because that package deliberately does not
+// make it configurable — see its comment — so this is the one string this file
+// has to know to be able to replace it.
+//
+// REQUESTED SEAM: composer.Options should carry Prompt and Placeholder. A room
+// whose composer means something different needs to SAY so, and the two glyphs
+// 5.11 spends on exactly that distinction currently have to be swapped from
+// outside.
+const chatPlaceholder = "Type a message"
+
+// bind reports what this region is bound to, defaulting to an ordinary chat so
+// a stack built without an app behind it is still a composer.
+func (s *composerStack) bind() composerBind {
+	if s.mode == nil {
+		return composerBind{mode: rail.ComposerChat}
+	}
+	return s.mode()
+}
+
+func (s *composerStack) disabled() bool { return s.bind().mode == rail.ComposerDisabled }
+
+// renderDraft draws the draft in whatever mode the selected row bound.
+//
+// A DISABLED composer is not a greyed-out text field: it is a sentence saying
+// why, drawn where the draft would have been (5.20 rule 3). Nothing takes the
+// keyboard, no caret is shown, and no prompt glyph promises a send.
+//
+// A STEER composer is the ordinary draft with its two visible words changed —
+// the prompt glyph and the idle hint — because everything else about typing one
+// line of text is the same and forking the editor would fork its bugs. The
+// glyph swap is width-preserving by construction: both prompts are single-cell
+// glyphs from the same table (5.17), so the row's fit is unchanged.
+func (s *composerStack) renderDraft(width, body int) string {
+	if body <= 0 || width <= 0 {
+		return ""
+	}
+	bind := s.bind()
+	if bind.mode == rail.ComposerDisabled {
+		note := bind.note
+		if note == "" {
+			note = "this work is settled — ask aforge about it"
+		}
+		line := blocks.Truncate(tokens.GlyphMissing+" "+note, width)
+		if s.draft != nil {
+			line = paintDim(s.styler(), line)
+		}
+		rows := make([]string, body)
+		rows[0] = line
+		return strings.Join(rows, "\n")
+	}
+	drawn := s.draft.Render(width, body)
+	if bind.mode != rail.ComposerSteer {
+		return drawn
+	}
+	head, rest, hasRest := strings.Cut(drawn, "\n")
+	head = strings.Replace(head, tokens.GlyphPromptChat, tokens.GlyphPromptSteer, 1)
+	if strings.TrimSpace(s.draft.Value()) == "" && strings.Contains(head, chatPlaceholder) {
+		// The hint only changes when the replacement still fits. A row that was
+		// already cut to width keeps the words it has rather than growing past
+		// the edge to say something friendlier.
+		if grown := strings.Replace(head, chatPlaceholder, steerPlaceholder, 1); blocks.Width(grown) <= width {
+			head = grown
+		}
+	}
+	if !hasRest {
+		return head
+	}
+	return head + "\n" + rest
+}
+
+// styler is the region's painter, at the focus the draft is drawn with.
+func (s *composerStack) styler() *tokens.Styler {
+	if s.meta == nil {
+		return nil
+	}
+	return s.meta.style
+}
+
+// paintDim draws chrome-tier text, or plain text when there is no profile.
+func paintDim(style *tokens.Styler, text string) string {
+	if style == nil {
+		return text
+	}
+	return style.PaintToken(text, tokens.TextTertiary)
 }
 
 // -- the meta strip ----------------------------------------------------------

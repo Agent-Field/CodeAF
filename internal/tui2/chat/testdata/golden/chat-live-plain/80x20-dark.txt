@@ -11,7 +11,7 @@
   ▸ workspace/wisp/plan.md  1.6KB
 
 aforge
-Reading navctx.rs now
+  Reading navctx.rs now
 ◑ replying · esc interrupt
 ~/aforge-v2
 ›  Type a message

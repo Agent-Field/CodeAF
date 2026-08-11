@@ -154,9 +154,22 @@ func (p prose) rows(dst []string, text string, width, indent int) []string {
 		indent = 0
 	}
 	fenced := false
-	for _, line := range strings.Split(strings.ReplaceAll(text, "\r\n", "\n"), "\n") {
-		line = strings.TrimRight(line, " \t")
+	lines := strings.Split(strings.ReplaceAll(text, "\r\n", "\n"), "\n")
+	for index := 0; index < len(lines); index++ {
+		line := strings.TrimRight(lines[index], " \t")
 		trimmed := strings.TrimSpace(line)
+
+		// A table is recognized before anything else outside a fence, because
+		// its rows are ordinary text to every other rule here and the ordinary
+		// rules would wrap them into soup (13.3.2). Inside a fence it is
+		// preformatted content and stays exactly as it was written.
+		if !fenced {
+			if grid, used, ok := tableAt(lines, index); ok {
+				dst = p.tableRows(dst, grid, width, indent)
+				index += used - 1
+				continue
+			}
+		}
 
 		if strings.HasPrefix(trimmed, "```") || strings.HasPrefix(trimmed, "~~~") {
 			fenced = !fenced

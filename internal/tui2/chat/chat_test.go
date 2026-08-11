@@ -24,6 +24,10 @@ type fakeBackend struct {
 	posted   []store.Message
 	reads    int
 	seq      int64
+
+	room, turn         store.RoomSpend
+	haveRoom, haveTurn bool
+	spendErr           error
 }
 
 func (f *fakeBackend) LatestEventSeq() (int64, error) { return f.journal, nil }
@@ -49,6 +53,20 @@ func (f *fakeBackend) PostMessage(message store.Message) (store.Message, error) 
 	return message, nil
 }
 
+// The two money windows (10.5.23). The default fake has never billed anything,
+// which is the state the missing-data law renders as — — so every existing
+// assertion about the strips keeps meaning what it meant. A test that wants
+// numbers sets room/turn and flips the presence bits, which is the only way to
+// get a figure on screen: presence, recorded-ness and a known window are three
+// separate facts and none of them defaults to true.
+func (f *fakeBackend) SessionSpend(string) (store.RoomSpend, bool, error) {
+	return f.room, f.haveRoom, f.spendErr
+}
+
+func (f *fakeBackend) TurnSpend(string) (store.RoomSpend, bool, error) {
+	return f.turn, f.haveTurn, f.spendErr
+}
+
 // add journals a message the way the engine would, and moves the watermark the
 // poll reads.
 func (f *fakeBackend) add(message store.Message) store.Message {
@@ -64,6 +82,10 @@ type fakeCommander struct {
 	interrupted []string
 	stopped     bool
 	model       string
+	// window is the context denominator. Zero is a model the catalog cannot
+	// speak for, which draws no gauge — the honest default, since inventing a
+	// window would put a percentage of nothing on screen.
+	window int
 }
 
 func (f *fakeCommander) Interrupt(partial string) bool {
@@ -72,6 +94,8 @@ func (f *fakeCommander) Interrupt(partial string) bool {
 }
 
 func (f *fakeCommander) CurrentModel(string) string { return f.model }
+
+func (f *fakeCommander) ContextWindow(string) (int, bool) { return f.window, f.window > 0 }
 
 const testSession = "session-one"
 
