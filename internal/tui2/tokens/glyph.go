@@ -79,6 +79,29 @@ const (
 	GlyphTreeLast   = "└"
 	GlyphTreeVert   = "│"
 	GlyphTreeDash   = "─"
+
+	// The place line (5.19): where work lands on disk. These three were drawn
+	// in 5.19's own example before they had names here, and they are plain-tier
+	// glyphs in their own right — the glyph TIER (12.7) upgrades them, it did
+	// not invent them.
+	//
+	// GlyphHome is U+2302 HOUSE, Neutral width and universally covered, which
+	// is why 5.19 reached for it. GlyphFolder is the ASCII slash, because a
+	// slash already means "directory" in every shell anyone has ever used and
+	// no font can fail to draw it. GlyphGitBranch is U+22D4 PITCHFORK, Neutral
+	// and one cell; where a font cannot draw it the documented substitute is
+	// ":" — the "git:main" convention — which is ASCII and the same width.
+	GlyphHome      = "⌂"
+	GlyphFolder    = "/"
+	GlyphGitBranch = "⋔"
+
+	// The status line (5.17's "K3 ▄ $8.65"). The model mark is U+25C7 WHITE
+	// DIAMOND, one cell under both rulers and Ambiguous exactly as the gauge
+	// beside it already is. The spend mark is the dollar the money cell was
+	// already carrying, named so the tier can swap it as a slot rather than as
+	// a substring.
+	GlyphModel = "◇"
+	GlyphSpend = "$"
 )
 
 // GaugeCells is the one-cell context gauge (5.17): context % as a single
@@ -198,6 +221,11 @@ func Glyphs() []GlyphInfo {
 		{"TreeLast", GlyphTreeLast, '└', true},
 		{"TreeVert", GlyphTreeVert, '│', true},
 		{"TreeDash", GlyphTreeDash, '─', true},
+		{"Home", GlyphHome, '⌂', false},
+		{"Folder", GlyphFolder, '/', false},
+		{"GitBranch", GlyphGitBranch, '⋔', false},
+		{"Model", GlyphModel, '◇', true},
+		{"Spend", GlyphSpend, '$', false},
 		{"Gauge0", GaugeCells[0], '▁', true},
 		{"Gauge1", GaugeCells[1], '▂', true},
 		{"Gauge2", GaugeCells[2], '▄', true},

@@ -221,6 +221,7 @@ func TestGlyphInventoryIsComplete(t *testing.T) {
 		GlyphAccentRail, GlyphDragHandle, GlyphStepDone, GlyphStepRunning,
 		GlyphStepPending, GlyphStepBlocked, GlyphQueuePill, GlyphDiffAdd,
 		GlyphDiffDel, GlyphTreeBranch, GlyphTreeLast, GlyphTreeVert, GlyphTreeDash,
+		GlyphHome, GlyphFolder, GlyphGitBranch, GlyphModel, GlyphSpend,
 	}
 	declared = append(declared, GaugeCells[:]...)
 	declared = append(declared, SpinnerFrames[:]...)
