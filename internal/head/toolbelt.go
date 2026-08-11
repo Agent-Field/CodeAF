@@ -1549,6 +1549,8 @@ type boardRow struct {
 	// reason the head could describe a job forty-nine minutes in as if it had
 	// just been asked for.
 	runningFor time.Duration
+	// owner is the job a part belongs to, empty on a job root.
+	owner string
 	// result is the row's own first finding. A settled row's finding is what
 	// "what did you find?" gets answered from without spending a call; it is
 	// dropped when the same words are already elsewhere in the prompt.
@@ -1653,6 +1655,15 @@ func (h *Head) boardRowsAt(sessionID, query, status, id string, now time.Time) (
 	// made the belt's result tool unreachable for precisely the questions it
 	// was written to answer.
 	targeted := strings.TrimSpace(id) != "" || strings.TrimSpace(query) != ""
+	// A targeted read is a shortlist to choose from and stays short. The plain
+	// board is the head's whole picture of the workforce, and a picture that
+	// silently omits a job is the one reality it must never be handed — so it is
+	// bounded by the byte budget that actually bites in a prompt, and by a row
+	// count that only stops a thousand-node graph from being assembled at all.
+	cap := BoardRowCap
+	if !targeted {
+		cap = boardEnumerationCap
+	}
 
 	waits := boardWaits(snapshot, byID)
 	rows := make([]boardRow, 0, len(candidates))
@@ -1685,6 +1696,13 @@ func (h *Head) boardRowsAt(sessionID, query, status, id string, now time.Time) (
 				row.failed++
 			}
 		}
+		if !boardJobRoot(candidate.Node, byID) {
+			// A part says whose part it is, by the job's own name — the same name
+			// the thread, the cards and the receipts use. Without it, sixteen
+			// leaves and four roots read as twenty peers and the model has to
+			// invent which of them are the workstreams a person would name.
+			row.owner = boardOwnerLabel(candidate.Node, byID)
+		}
 		row.runningFor = boardRunningFor(candidate.Node, byID, children, now)
 		if impact, err := h.store.Impact(candidate.Node.ID, now); err == nil {
 			row.cost = impact.Cost
@@ -1693,7 +1711,7 @@ func (h *Head) boardRowsAt(sessionID, query, status, id string, now time.Time) (
 			continue
 		}
 		rows = append(rows, row)
-		if len(rows) == BoardRowCap {
+		if len(rows) == cap {
 			break
 		}
 	}
@@ -1728,9 +1746,21 @@ func (h *Head) recalledCandidates(query string) ([]store.SurgeryTarget, error) {
 	return targets, nil
 }
 
-// boardEnumeration lists every job root, live first and newest first within
-// each band — the same ordering rule the router's snapshot follows, and for the
-// same reason: what is happening now must never be the thing the cap drops.
+// boardEnumerationCap bounds the plain board. It is larger than BoardRowCap
+// because that cap answers a different question.
+const boardEnumerationCap = 40
+
+// boardEnumeration lists the work, jobs before their parts, live first and
+// newest first within each band — the same ordering rule the router's snapshot
+// followed, and for the same reason: what is happening now must never be the
+// thing the cap drops.
+//
+// Parts are rows, and that was argued for from both directions. A flat list of
+// sixteen leaves and four roots as twenty peers left the model to invent which
+// of them were the workstreams a person would name; a roll-up with no parts at
+// all left it unable to say which step is queued behind which, which is most of
+// what "how is it going" means. So the jobs lead with their counts rolled up,
+// and a part says whose part it is.
 func boardEnumeration(nodes []store.Node, byID map[string]store.Node) []store.SurgeryTarget {
 	roots := make([]store.Node, 0, len(nodes))
 	for _, node := range nodes {
@@ -1743,15 +1773,7 @@ func boardEnumeration(nodes []store.Node, byID map[string]store.Node) []store.Su
 		if node.Folded && !node.FoldRoot {
 			continue
 		}
-		// boardJobRoot's own rule, and it must be that rule rather than a second
-		// spelling of it: a node whose parent is not in the snapshot at all is a
-		// root, because there is nothing to attribute it to and dropping it is
-		// never an option. A job that split and continued elsewhere is exactly
-		// that shape, and a board that omits it is the one reality the head must
-		// never be handed.
-		if boardJobRoot(node, byID) {
-			roots = append(roots, node)
-		}
+		roots = append(roots, node)
 	}
 	rank := func(node store.Node) int {
 		switch {
@@ -1767,6 +1789,10 @@ func boardEnumeration(nodes []store.Node, byID map[string]store.Node) []store.Su
 		}
 	}
 	sort.SliceStable(roots, func(i, j int) bool {
+		// Jobs before their parts, always: the flat list was a lie of omission.
+		if pi, pj := boardJobRoot(roots[i], byID), boardJobRoot(roots[j], byID); pi != pj {
+			return pi
+		}
 		ri, rj := rank(roots[i]), rank(roots[j])
 		if ri != rj {
 			return ri < rj
@@ -1859,6 +1885,9 @@ func renderBoardWithin(rows []boardRow, thread string, opened map[string]bool, b
 		if result := strings.TrimSpace(row.result); result != "" &&
 			!opened[row.node.ID] && !deepAlreadyInThread(thread, result) {
 			line += " | result: " + result
+		}
+		if row.owner != "" {
+			line += " | part of " + row.owner
 		}
 		if row.waits != "" {
 			line += " | waits on " + row.waits
