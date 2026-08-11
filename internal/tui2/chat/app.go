@@ -789,6 +789,16 @@ func (a *App) key(msg tea.KeyPressMsg) tea.Cmd {
 		return a.pane.Key(msg)
 	}
 
+	// An open question owns the bare answer keys, and owns them BEFORE the rail
+	// and the composer see them (JOURNEY 6). It claims nothing while a draft is
+	// in progress, while an overlay is raised, or while the map holds the
+	// keyboard — question.go's answerKey states each of those refusals — so the
+	// only keystrokes it takes are the ones the row on screen just named.
+	if cmd, claimed := a.answerKey(key); claimed {
+		a.shell.Invalidate()
+		return cmd
+	}
+
 	// The map holds the keyboard only while it has focus. That is the whole of
 	// 5.15's answer to "how does a chat surface have a navigable list in it":
 	// not a mode, not a focus carousel, one chord in and one chord (or esc at
@@ -967,6 +977,7 @@ func (a *App) refresh() {
 	a.status.attention = a.openQuestions()
 	// The terminal's title carries the same count the footer paints (10.5.27).
 	a.noticeAttention(a.status.attention)
+	a.status.keyMode, a.status.keyCount = a.keyMode()
 
 	a.meta.live = a.turn.active
 	if a.turn.active {

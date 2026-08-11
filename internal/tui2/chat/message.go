@@ -87,6 +87,16 @@ type messageBlock struct {
 	// attention column (5.16: amber only ever means a human is actually
 	// needed).
 	questions int
+	// ask is the answerable question this row carries, or nil. It is what the
+	// keyboard acts on (question.go), and it is held on the block rather than
+	// re-derived per keystroke because the block is where the option rows were
+	// drawn: the number on screen and the number a key answers cannot disagree
+	// if they are the same slice.
+	ask *pendingAsk
+	// chosen is the option the cursor rests on, one-based, or zero for none. It
+	// is the only thing about a journaled row that moves, and it moves through
+	// the version counter like every other committed change (8.1.1).
+	chosen int
 
 	version  uint64
 	width    int
@@ -267,7 +277,7 @@ func newMessageBlock(message store.Message, style *tokens.Styler) *messageBlock 
 	if block.questions == 0 && (message.QuestionSeq != 0 || len(message.Options) > 0) &&
 		message.Role != store.RoleUser {
 		block.questions++
-		block.dressQuestion(message)
+		block.dressQuestion(message, nil)
 	}
 	return block
 }
@@ -585,7 +595,7 @@ func (b *messageBlock) absorbParts(message store.Message) {
 			b.questions++
 			// 13.3.1: the options are drawn from the message's own field, never
 			// scanned back out of its prose. question.go owns the two shapes.
-			b.dressQuestion(message)
+			b.dressQuestion(message, part.Question)
 
 		case store.PartEnded:
 			if part.Ended == nil {

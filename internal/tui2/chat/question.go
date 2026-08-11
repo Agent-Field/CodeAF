@@ -4,8 +4,12 @@ import (
 	"strconv"
 	"strings"
 
+	tea "charm.land/bubbletea/v2"
+
 	"github.com/Agent-Field/aforge-v2/internal/store"
+	"github.com/Agent-Field/aforge-v2/internal/thread"
 	"github.com/Agent-Field/aforge-v2/internal/tui2/blocks"
+	"github.com/Agent-Field/aforge-v2/internal/tui2/footer"
 	"github.com/Agent-Field/aforge-v2/internal/tui2/tokens"
 )
 
@@ -46,13 +50,59 @@ const questionOptionCap = 9
 // consentKeys are the two keys the y/n strip names.
 var consentKeys = [2]string{"y", "n"}
 
+// pendingAsk is one answerable question, as the keyboard needs it.
+//
+// It holds the SAME option slice the rows were drawn from, which is the whole
+// reason it exists: 12.9.1's numbering is positional, so the number on screen
+// and the number a key answers are the same index or they are a bug. Deriving
+// the options a second time at keystroke would be two readings of one fact.
+type pendingAsk struct {
+	// seq is the durable agent_questions row this answer aims at. Zero is legal
+	// and meaningful — the ask lives on the message alone — and it is carried
+	// through so a bare "3" is never guessed at when two questions are open.
+	seq int64
+	// options are the answer set, in producer order.
+	options []store.QuestionOption
+	// consent says the row was drawn as the y/n strip, so y and n are the keys
+	// that answer it and the digits are not what the reader is looking at.
+	consent bool
+	// answered marks a row whose answer has been sent, so a second keystroke
+	// on the same question cannot post a second reply.
+	answered bool
+}
+
+// answerable reports that this ask still takes a keystroke.
+func (a *pendingAsk) answerable() bool {
+	return a != nil && !a.answered && len(a.options) > 0
+}
+
+// option resolves a one-based row number to what the answer must carry.
+//
+// The body is the option's VALUE and falls back to its label, matching what the
+// v1 surface posts for the same row: the answer router reads a reply against
+// the durable options column, and a label is what a person would have typed.
+func (a *pendingAsk) option(number int) (store.QuestionOption, bool) {
+	if !a.answerable() || number < 1 || number > len(a.options) || number > questionOptionCap {
+		return store.QuestionOption{}, false
+	}
+	return a.options[number-1], true
+}
+
+// answerBody is what a chosen option sends as user speech.
+func answerBody(option store.QuestionOption) string {
+	if value := strings.TrimSpace(option.Value); value != "" {
+		return value
+	}
+	return strings.TrimSpace(option.Label)
+}
+
 // dressQuestion draws the askback: the amber marker row that says a person is
 // blocked, and then whichever option shape the message actually carries.
 //
 // It reports nothing: the caller has already counted the question for the
 // footer's attention column, because "how many questions are open" is a fact
 // about the thread and not about how this one is drawn.
-func (b *messageBlock) dressQuestion(message store.Message) {
+func (b *messageBlock) dressQuestion(message store.Message, part *store.QuestionPart) {
 	b.segs = append(b.segs, segment{
 		kind: segRef, glyph: tokens.GlyphNeedsHuman, text: "waiting on you",
 		hue: blocks.HueAttention, state: blocks.StateSettled, indent: bodyIndent,
@@ -61,32 +111,99 @@ func (b *messageBlock) dressQuestion(message store.Message) {
 	if len(options) == 0 {
 		return
 	}
-	if keys, ok := consentShape(options); ok {
-		for i, option := range options[:2] {
-			b.segs = append(b.segs, segment{
-				kind: segRef, glyph: keys[i], text: optionLabel(option),
-				hue: blocks.HueAttention, state: blocks.StateSettled,
-				indent: bodyIndent + optionIndent,
-			})
+	consent := consentShape(options, part)
+	b.ask = &pendingAsk{seq: questionSeq(message, part), options: options, consent: consent}
+	b.optionRows()
+}
+
+// questionSeq is the durable row an answer aims at. The part is authoritative
+// where it exists — it is written off the durable row — and the message's own
+// column answers for a producer that predates the parts model.
+func questionSeq(message store.Message, part *store.QuestionPart) int64 {
+	if part != nil && part.Seq != 0 {
+		return part.Seq
+	}
+	return message.QuestionSeq
+}
+
+// optionRows draws the option rows, and redraws them when the cursor moves.
+//
+// It is a rebuild rather than a mutation of individual segments because the two
+// shapes have different row counts and the cap row appears or does not: keeping
+// one function that produces the whole run means the cursor can never land on a
+// row the shape does not have.
+func (b *messageBlock) optionRows() {
+	b.segs = b.segs[:b.optionSeam()]
+	ask := b.ask
+	if ask == nil {
+		return
+	}
+	if ask.consent {
+		for i, option := range ask.options[:2] {
+			b.segs = append(b.segs, b.optionRow(i+1, consentKeys[i], optionLabel(option)))
 		}
 		return
 	}
-	for i, option := range options {
+	for i, option := range ask.options {
 		if i >= questionOptionCap {
 			b.segs = append(b.segs, segment{
 				kind: segRef, glyph: tokens.GlyphCollapsed,
-				text: strconv.Itoa(len(options)-questionOptionCap) + " more, answer in words",
+				text: strconv.Itoa(len(ask.options)-questionOptionCap) + " more, answer in words",
 				hue:  blocks.HueNone, state: blocks.StateChrome,
 				indent: bodyIndent + optionIndent,
 			})
 			break
 		}
-		b.segs = append(b.segs, segment{
-			kind: segRef, glyph: strconv.Itoa(i + 1), text: optionLabel(option),
-			hue: blocks.HueAttention, state: blocks.StateSettled,
-			indent: bodyIndent + optionIndent,
-		})
+		b.segs = append(b.segs, b.optionRow(i+1, strconv.Itoa(i+1), optionLabel(option)))
 	}
+}
+
+// optionSeam is where the option rows begin: everything up to and including the
+// "waiting on you" marker is the dressing, and everything after it is the run
+// optionRows owns.
+func (b *messageBlock) optionSeam() int {
+	for i := range b.segs {
+		if b.segs[i].kind == segRef && b.segs[i].text == waitingRow {
+			return i + 1
+		}
+	}
+	return len(b.segs)
+}
+
+// waitingRow is the marker's words, named once so the seam and the row cannot
+// drift apart.
+const waitingRow = "waiting on you"
+
+// optionRow is one answerable row. The cursor is shown by promoting the row's
+// own glyph cell to the selection mark — not by a background band, because the
+// row sits inside a transcript whose rows are not a list and a band would claim
+// it is one.
+func (b *messageBlock) optionRow(number int, key, label string) segment {
+	row := segment{
+		kind: segRef, glyph: key, text: label,
+		hue: blocks.HueAttention, state: blocks.StateSettled,
+		indent: bodyIndent + optionIndent,
+	}
+	if b.chosen == number {
+		row.text = tokens.GlyphAccentRail + " " + label
+	}
+	return row
+}
+
+// SetChosen moves the answer cursor and reports whether anything moved. Zero
+// clears it, which is what an answered or superseded question wants.
+func (b *messageBlock) SetChosen(number int) bool {
+	if b.ask == nil || b.chosen == number {
+		return false
+	}
+	if number < 0 || number > len(b.ask.options) || number > questionOptionCap {
+		return false
+	}
+	b.chosen = number
+	b.optionRows()
+	b.measured = false
+	b.version++
+	return true
 }
 
 // optionIndent sets the options one step under the marker row that introduced
@@ -108,44 +225,251 @@ func optionLabel(option store.QuestionOption) string {
 	return label
 }
 
-// consentShape recognizes the two-option consent question and returns the keys
-// to name it with.
+// consentShape recognizes the two-option consent question.
 //
-// The class axis lives on [store.AgentQuestion], not on the message, and this
-// surface renders messages — so the SHAPE is what it reads: exactly two
-// options, the first affirmative and the second negative. That is a narrower
-// claim than the class and a safer one, because being wrong renders a numbered
-// pair instead of the wrong keys.
+// THE REQUESTED SEAM IS CLOSED, so the first question this asks is the right
+// one: 12.9.1 put the class and the kind on [store.QuestionPart], written off
+// the durable row by the one producer every ask goes through. A part that says
+// confirm IS a confirm, and a part that says consent is a consent gate, and
+// neither of those is a guess about prose.
 //
-// REQUESTED SEAM: a question message should carry its own class, so a consent
-// question with unusually worded options is still drawn as one.
-func consentShape(options []store.QuestionOption) ([2]string, bool) {
+// The word heuristic survives underneath it for the producers that predate the
+// part — a message with options and no typed part is still a question this
+// surface has to draw. What it does NOT do any more is demand that a label BE a
+// word: the real consent gate's options read "yes, start it" and "hold it —
+// I'll trim it first" (internal/consent), so an exact match on the whole label
+// meant the y/n strip never fired on the one gate 5.20 rule 2 was written for.
+// It now reads the FIRST WORD, which is the word the key stands for and the
+// only part of the label a key could ever have meant.
+//
+// It is still not a brace-scanner and never becomes one: the input is the typed
+// options column, one word of one field, and never the message body.
+func consentShape(options []store.QuestionOption, part *store.QuestionPart) bool {
 	if len(options) != 2 {
-		return consentKeys, false
+		return false
 	}
-	if !affirmative(options[0]) || !negative(options[1]) {
-		return consentKeys, false
+	if part != nil {
+		switch {
+		case part.Kind == store.QuestionConfirm:
+			return true
+		case part.Kind == store.QuestionChoose:
+			// The producer said this is a numbered choice. Two options that
+			// happen to start with "yes" and "no" do not outrank it.
+			return false
+		}
 	}
-	return consentKeys, true
+	return affirmative(options[0]) && negative(options[1])
 }
 
 func affirmative(option store.QuestionOption) bool {
-	return matchesWord(option, "y", "yes", "ok", "okay", "approve", "confirm", "go ahead", "do it")
+	return leadsWith(option, "y", "yes", "ok", "okay", "approve", "approved",
+		"confirm", "go", "do", "start", "proceed")
 }
 
 func negative(option store.QuestionOption) bool {
-	return matchesWord(option, "n", "no", "cancel", "stop", "don't", "do not", "abort", "leave it")
+	return leadsWith(option, "n", "no", "nope", "cancel", "stop", "hold", "don't",
+		"do not", "abort", "leave", "wait", "skip")
 }
 
-func matchesWord(option store.QuestionOption, words ...string) bool {
+// leadsWith matches the first word of the option's value or label.
+//
+// A label is a sentence a person reads ("hold it — I'll trim it first") and a
+// value is a token a router reads ("hold"). Both are checked, and only the
+// leading word of either, because a word further in is not what a key stands
+// for — "leave it running" must not read as a refusal because it contains
+// "leave" in the middle.
+func leadsWith(option store.QuestionOption, words ...string) bool {
 	for _, field := range []string{option.Value, option.Label} {
-		field = strings.ToLower(strings.TrimSpace(field))
-		field = strings.TrimRight(field, ".!")
+		lead := leadWord(field)
+		if lead == "" {
+			continue
+		}
 		for _, word := range words {
-			if field == word {
+			if lead == word {
 				return true
 			}
 		}
 	}
 	return false
+}
+
+// leadWord is the first word of a field, lowercased and stripped of the
+// punctuation a sentence hangs off it.
+func leadWord(field string) string {
+	field = strings.ToLower(strings.TrimSpace(field))
+	for i, r := range field {
+		if r == ' ' || r == ',' || r == ';' || r == ':' || r == '.' || r == '!' || r == '—' || r == '-' {
+			return field[:i]
+		}
+	}
+	return field
+}
+
+// -- answering -----------------------------------------------------------------
+//
+// JOURNEY 6, and the reason it was a PARTIAL: the question rendered honestly
+// and no key answered it. A digit fell into the draft, so every consent,
+// charter and spend flow degraded to type-a-number-then-enter — which works,
+// and which is not what the row on screen says. An affordance that names a key
+// must bind it (5.20 rule 3, 5.22).
+//
+// The bare keys are claimed only where they cannot mean anything else: an EMPTY
+// draft, no overlay raised, and a question actually open at the tail. A reader
+// mid-sentence keeps their digits, which is the same rule v1 settled on
+// (internal/tui/model.go's `m.input.Value() == ""` guard) for the same reason.
+
+// openAsk is the question the keyboard acts on: the newest unanswered one above
+// the reader's own last turn.
+//
+// It walks backwards and stops at the reader's own speech, which is the same
+// walk the attention count makes and for the same reason — a question stops
+// being open the moment the reader answers, and the row that proves they did is
+// their own next message.
+func (a *App) openAsk() *messageBlock {
+	for i := a.transcript.Len() - 1; i >= 0; i-- {
+		block, ok := a.transcript.Block(i).(*messageBlock)
+		if !ok {
+			continue
+		}
+		if block.user {
+			return nil
+		}
+		if block.ask.answerable() {
+			return block
+		}
+	}
+	return nil
+}
+
+// answerKey is the answering ladder. It reports whether it claimed the key.
+func (a *App) answerKey(key string) (tea.Cmd, bool) {
+	if a.overlay != overlayNone || a.railFocus {
+		return nil, false
+	}
+	if a.composer != nil && strings.TrimSpace(a.composer.Draft()) != "" {
+		// A draft is a sentence in progress. Digits belong to it.
+		return nil, false
+	}
+	block := a.openAsk()
+	if block == nil {
+		return nil, false
+	}
+	ask := block.ask
+	switch {
+	case ask.consent && (key == consentKeys[0] || key == consentKeys[1]):
+		// 5.20 rule 2's inline strip: each key beside the consequence it buys.
+		number := 1
+		if key == consentKeys[1] {
+			number = 2
+		}
+		return a.answer(block, number), true
+
+	case len(key) == 1 && key[0] >= '1' && key[0] <= '9' && !ask.consent:
+		return a.answer(block, int(key[0]-'0')), true
+
+	case key == "up" || key == "down":
+		return nil, a.moveChoice(block, key == "down")
+
+	case key == "enter" && block.chosen > 0:
+		return a.answer(block, block.chosen), true
+	}
+	return nil, false
+}
+
+// moveChoice walks the answer cursor. It reports whether the key was claimed,
+// which it is only while there is somewhere to walk: an arrow over a question
+// with one option is an arrow the transcript should still get.
+func (a *App) moveChoice(block *messageBlock, down bool) bool {
+	count := min(len(block.ask.options), questionOptionCap)
+	if count < 2 {
+		return false
+	}
+	next := block.chosen
+	switch {
+	case down:
+		next++
+	case next == 0:
+		next = count
+	default:
+		next--
+	}
+	if next > count {
+		next = 1
+	}
+	if next < 1 {
+		next = count
+	}
+	if !block.SetChosen(next) {
+		return false
+	}
+	a.shell.Invalidate()
+	return true
+}
+
+// answer sends one option as user speech.
+//
+// The question's own sequence rides with it, because a bare "3" is the right
+// answer only by luck once a second question is open: what the reader did was
+// point at a row of a PARTICULAR question, and the store honours an explicit
+// reference rather than guessing (the rule v1 states at cards.go:1692).
+//
+// The ask is marked answered before the post is even attempted, and that is
+// deliberate: the row must stop taking keystrokes at the moment the reader
+// pressed one, or a second press posts a second answer to a question that
+// already has one. If the post fails, the status line says so — the question is
+// still in the journal, and the next poll draws it again.
+func (a *App) answer(block *messageBlock, number int) tea.Cmd {
+	option, ok := block.ask.option(number)
+	if !ok {
+		return nil
+	}
+	block.ask.answered = true
+	block.SetChosen(0)
+	a.shell.Invalidate()
+	return a.answerCmd(block.ask.seq, answerBody(option))
+}
+
+// answerCmd posts the answer through the same single door every other draft
+// takes. Answering IS speaking: the head is watching that door, and a surface
+// that also poked it would be a second way to end a wait.
+func (a *App) answerCmd(seq int64, body string) tea.Cmd {
+	body = strings.TrimSpace(body)
+	if body == "" || a.backend == nil {
+		return nil
+	}
+	backend, session := a.backend, a.session
+	return func() tea.Msg {
+		posted, err := thread.Post(backend, store.Message{
+			SessionID:   session,
+			Role:        store.RoleUser,
+			Body:        body,
+			QuestionSeq: seq,
+		})
+		return postResultMsg{message: posted, err: err}
+	}
+}
+
+// keyMode is what a bare digit does right now, for the footer's own column.
+//
+// It is derived from exactly the state answerKey consults, so the row that says
+// "1-3 answer" and the key that answers cannot disagree. Rail focus wins because
+// the map binds the digits as jumps there, and an empty draft is required
+// because a digit typed into a sentence is a digit.
+func (a *App) keyMode() (footer.KeyMode, int) {
+	if a.railFocus {
+		return footer.KeyModeRooms, min(a.railModel.Len(), 9)
+	}
+	if a.overlay != overlayNone {
+		return footer.KeyModeNone, 0
+	}
+	if a.composer != nil && strings.TrimSpace(a.composer.Draft()) != "" {
+		return footer.KeyModeNone, 0
+	}
+	block := a.openAsk()
+	if block == nil || block.ask.consent {
+		// The consent strip names y and n, not digits, so the digit column would
+		// be advertising keys that do nothing (5.20 rule 3).
+		return footer.KeyModeNone, 0
+	}
+	return footer.KeyModeAnswer, min(len(block.ask.options), questionOptionCap)
 }

@@ -210,7 +210,14 @@ type statusPane struct {
 	hint          string
 	escInterrupts bool
 	attention     int
-	residency     Residency
+	// keyMode and keyCount are 5.22's digit-precedence answer: what a bare
+	// number does RIGHT NOW. The footer says it because the transcript cannot —
+	// an option row can name its own key, but nothing on screen could otherwise
+	// tell a reader that the digits currently belong to a question rather than
+	// to the rail.
+	keyMode   footer.KeyMode
+	keyCount  int
+	residency Residency
 	// room is the humane name of the room this window is in, and breadcrumb is
 	// how deep inside it the reader has navigated. Neither is ever an id
 	// (13.3.4); an unnamed room says it is unnamed.
@@ -274,6 +281,8 @@ func (p *statusPane) Render(width, height int) string {
 		Hint:          p.hint,
 		EscInterrupts: p.escInterrupts,
 		Attention:     p.attention,
+		KeyMode:       p.keyMode,
+		KeyModeCount:  p.keyCount,
 		Health:        p.health(),
 		ScopeTail:     p.scopeTail(),
 	}, width)
