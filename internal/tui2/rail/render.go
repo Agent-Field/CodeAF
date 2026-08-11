@@ -132,7 +132,7 @@ type View struct {
 	heights []int
 	shape   []rowShape
 
-	hudRows   []Row
+	hudRows   []int
 	hudStates []blocks.ItemState
 	hudFolder blocks.Folder
 
@@ -296,16 +296,20 @@ func (v *View) renderHUD(m *Model, width, height int) {
 	if budget <= 0 {
 		return
 	}
+	scope := m.Scope()
+	members := scope.Members()
+	// Indices rather than copies: a Row is a wide struct and the HUD re-filters
+	// on every frame.
 	v.hudRows = v.hudRows[:0]
 	v.hudStates = v.hudStates[:0]
 	live := false
-	for _, r := range m.Scope().Members() {
-		if !hudWorthy(r) {
+	for i := range members {
+		if !hudWorthy(members[i]) {
 			continue
 		}
-		v.hudRows = append(v.hudRows, r)
-		v.hudStates = append(v.hudStates, r.itemState())
-		if r.Attention().Live() {
+		v.hudRows = append(v.hudRows, i)
+		v.hudStates = append(v.hudStates, members[i].itemState())
+		if members[i].Attention().Live() {
 			live = true
 		}
 	}
@@ -323,13 +327,13 @@ func (v *View) renderHUD(m *Model, width, height int) {
 	}
 	prev := tokens.Token(255)
 	for _, i := range p.Shown {
-		r := v.hudRows[i]
+		r := &members[v.hudRows[i]]
 		ident := prev
 		if r.Kind == RowTask {
-			ident = v.identity(seedOf(r, m.Scope().Seed), prev)
+			ident = v.identity(seedOf(*r, scope.Seed), prev)
 			prev = ident
 		}
-		v.push(v.hudLine(r, width, ident), budget)
+		v.push(v.hudLine(*r, width, ident), budget)
 	}
 	if !p.FoldAtTop && p.Fold != "" {
 		v.push(v.foldLine(p.Fold, width), budget)
