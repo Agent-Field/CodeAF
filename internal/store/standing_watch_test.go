@@ -76,7 +76,8 @@ func assertStandingWatchQuestion(t *testing.T, graph *Store) {
 		{Label: "yes, always", Value: "standing-watch:enable"},
 		{Label: "only while I'm around", Value: "standing-watch:decline"},
 	}
-	if len(questions) != 1 || questions[0].Role != RoleAgent || questions[0].Body != standingWatchQuestion ||
+	if len(questions) != 1 || questions[0].Role != RoleAgent ||
+		questions[0].Body != standingWatchBody(standingWatchQuestion, wantOptions) ||
 		!reflect.DeepEqual(questions[0].Options, wantOptions) {
 		t.Fatalf("standing-watch questions = %+v", questions)
 	}
