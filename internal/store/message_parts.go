@@ -56,9 +56,76 @@ const (
 	PartEnded PartKind = "ended"
 )
 
-// QuestionPart names the durable question this block belongs to.
+// QuestionPart is the ask, said in types instead of smuggled through prose.
+//
+// Part 2.11's indictment lands here more sharply than anywhere else: a question
+// existed in five places at once — a durable question row, a message row, a JSON
+// blob inside that message's body, an options column beside it, and an FTS copy
+// of the lot — and the surface that had to draw it recovered its components with
+// a hand-rolled brace scanner over the body while the typed columns went unread.
+// 13.3's first bug is that scanner's bill coming due: the moment a renderer drew
+// the journal honestly, the smuggled JSON appeared on screen as an agent's own
+// words.
+//
+// So this part is the whole render contract, and the rule that keeps it from
+// becoming a sixth place the same fact lives is CardPart's rule: it carries what
+// nothing else carries, and REFERS to everything else.
+//
+//   - The options are NOT here. They are Message.Options on the same row —
+//     already typed, already normalized by this package, already durable, and
+//     already the thing a reply of "3" is validated against. Copying them here
+//     would be a second truth that ages.
+//   - The prompt is NOT here. It is the message's text part, and the body.
+//   - What IS here is everything the body used to smuggle and nothing else
+//     records: how the question is drawn, whether it may be answered in free
+//     text, which option stands if the person says nothing, and what the
+//     question is about.
+//
+// Seq refers to the durable agent-question lifecycle, and it is the same number
+// Message.QuestionSeq carries. Zero is legal and means exactly one thing: this
+// ask lives on the message alone, with no lifecycle row behind it — the shape
+// every conversational askback has always had.
 type QuestionPart struct {
 	Seq int64 `json:"seq"`
+	// Kind is how the question is drawn: a numbered list, an inline yes/no
+	// strip, or a plain prompt. It was previously recoverable only by parsing
+	// the body, which is why a confirm question and a choose question were
+	// indistinguishable to anything that did not brace-scan.
+	Kind QuestionKind `json:"kind,omitempty"`
+	// Class is the consent axis (9.4). It rides on the part because the surface
+	// that draws the question is the surface that must not offer to answer a
+	// consent question on the person's behalf, and it should not have to open a
+	// second table to find out which kind it is holding.
+	Class QuestionClass `json:"class,omitempty"`
+	// Category is the gate this question is asked under, which is what a
+	// "don't ask me this again" affordance acts on.
+	Category QuestionCategory `json:"category,omitempty"`
+	// Default is the option key that stands if the person says nothing. It is a
+	// key rather than a label because the label is the option's to change.
+	Default string `json:"default,omitempty"`
+	// AllowFree says whether an answer outside the options is accepted. It is
+	// spelled positively and defaults to false, so a part written by a producer
+	// that forgot the field offers the narrower affordance rather than the wider
+	// one — the same direction Class defaults in, and for the same reason.
+	AllowFree bool `json:"allow_free,omitempty"`
+	// NodeID and CharterID are what the question is about, when it is about
+	// something. Both are references; neither carries a title, a status or a
+	// spend, because those are the referent's to answer.
+	NodeID    string `json:"node_id,omitempty"`
+	CharterID string `json:"charter_id,omitempty"`
+}
+
+// validQuestionKind reports a drawable spelling. It is separate from the
+// question package's own vocabulary check because an unrecognized kind here is
+// not an error — it means this part says nothing about how to draw, which is the
+// same as a part that never named a kind.
+func validQuestionKind(kind QuestionKind) bool {
+	switch kind {
+	case QuestionChoose, QuestionConfirm, QuestionText:
+		return true
+	default:
+		return false
+	}
 }
 
 // CardPart names the graph node this block is about. Only the reference is
@@ -147,9 +214,19 @@ type MessagePart struct {
 // field pairs with which kind, which is the one way to build an invalid part.
 func TextPart(text string) MessagePart { return MessagePart{Kind: PartText, Text: text} }
 
-// QuestionRef points one part at a durable question by sequence.
+// QuestionRef points one part at a durable question by sequence. It carries the
+// conservative class explicitly rather than by omission, so the value a reader
+// gets from the constructor is the value the normalizer would have given it.
 func QuestionRef(seq int64) MessagePart {
-	return MessagePart{Kind: PartQuestion, Question: &QuestionPart{Seq: seq}}
+	return MessagePart{Kind: PartQuestion, Question: &QuestionPart{Seq: seq, Class: QuestionConsent}}
+}
+
+// QuestionBlock is the full render contract for one ask. It exists beside
+// QuestionRef rather than replacing it because the two say different things: a
+// ref names a lifecycle row and leaves the drawing to whoever finds it, and a
+// block is the ask as it should appear, whether or not a lifecycle row exists.
+func QuestionBlock(question QuestionPart) MessagePart {
+	return MessagePart{Kind: PartQuestion, Question: &question}
 }
 
 // CardRef points one part at a graph node.
@@ -354,10 +431,31 @@ func normalizeMessagePart(part MessagePart) (MessagePart, error) {
 		return MessagePart{Kind: PartText, Text: part.Text}, nil
 
 	case PartQuestion:
-		if part.Question == nil || part.Question.Seq <= 0 {
+		if part.Question == nil {
 			return MessagePart{}, fmt.Errorf("question part names no question")
 		}
 		reference := *part.Question
+		reference.Default = strings.TrimSpace(reference.Default)
+		reference.NodeID = strings.TrimSpace(reference.NodeID)
+		reference.CharterID = strings.TrimSpace(reference.CharterID)
+		if !validQuestionKind(reference.Kind) {
+			// An unreadable spelling says nothing about how to draw, and saying
+			// nothing is a state this part already has a value for. Keeping a
+			// kind nobody recognizes would make every renderer guess.
+			reference.Kind = ""
+		}
+		if reference.Class != QuestionInformational {
+			// The conservative default is law (9.4): silence never widens
+			// autonomy, so anything that is not explicitly informational reads
+			// back as consent — on the part exactly as in the table.
+			reference.Class = QuestionConsent
+		}
+		// A question part must name a question one way or the other: a durable
+		// lifecycle row, or a drawable ask living on this message alone. Neither
+		// is a part that refers to nothing, which is what QuestionRef(0) is.
+		if reference.Seq <= 0 && reference.Kind == "" {
+			return MessagePart{}, fmt.Errorf("question part names no question")
+		}
 		return MessagePart{Kind: PartQuestion, Question: &reference}, nil
 
 	case PartCard:

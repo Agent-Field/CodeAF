@@ -9,7 +9,6 @@ import (
 	"unicode"
 
 	"github.com/Agent-Field/aforge-v2/internal/store"
-	"github.com/Agent-Field/aforge-v2/internal/thread"
 )
 
 // craftContinueOption and craftStopOption are the two answers a craft run's
@@ -530,18 +529,6 @@ func (h *Head) acknowledgeCharterCommand(user store.Message, command store.Comma
 		reply = "I’ll ask before firing again."
 	}
 	return h.postAgent(user.SessionID, reply, command.Seq)
-}
-
-// postQuestion carries the same choices twice on purpose: durable option rows
-// for continuation and validation, and the structured JSON payload inside the
-// body that the TUI's question components render.
-func (h *Head) postQuestion(sessionID, body string, commandSeq int64, options []store.QuestionOption) error {
-	_, err := thread.Post(h.store, store.Message{
-		SessionID: sessionID, Role: store.RoleAgent,
-		Body:       store.QuestionMessageBody(body, options),
-		CommandSeq: commandSeq, Options: options,
-	})
-	return err
 }
 
 // charterIntent is one recognized instruction about a standing rule: which

@@ -400,10 +400,24 @@ func (s *Store) surfaceQuestionInto(seq int64, neutralSessionID string, rehome b
 	if messageSessionID == "" || rehome {
 		messageSessionID = neutralSessionID
 	}
+	// The blocks are attached HERE rather than by each producer, because the
+	// smuggling this ends (Part 2.11, 13.3 bug 1) was never one caller's habit:
+	// every durable question in the product reaches a transcript through this
+	// one function, so this is the one place that can make all of them typed.
+	// Nothing is invented — PartsForQuestion says only what the row and the body
+	// it already holds say — and the body is left exactly as written, because
+	// the chat that has never heard of parts reads the body and only the body.
+	parts, err := normalizeMessageParts(PartsForQuestion(question))
+	if err != nil {
+		// A question that cannot describe itself still has to reach the person.
+		// Dropping the blocks costs the new renderer its structure; dropping the
+		// question costs them the request.
+		parts = nil
+	}
 	payload := messagePayload{
 		SessionID: messageSessionID, Role: RoleAgent, Body: question.Text,
 		NodeID: question.OriginNodeID, CommandSeq: question.OriginCommandSeq,
-		QuestionSeq: question.Seq, Options: question.Options,
+		QuestionSeq: question.Seq, Options: question.Options, Parts: parts,
 	}
 	messageSeq, messageAt, err := appendEvent(tx, question.OriginNodeID, EventMessagePosted, payload)
 	if err != nil {
@@ -431,6 +445,7 @@ func (s *Store) surfaceQuestionInto(seq int64, neutralSessionID string, rehome b
 		Role: RoleAgent, Body: question.Text, NodeID: question.OriginNodeID,
 		CommandSeq: question.OriginCommandSeq, QuestionSeq: question.Seq,
 		Options: append([]QuestionOption(nil), question.Options...),
+		Parts:   parts,
 	}, nil
 }
 

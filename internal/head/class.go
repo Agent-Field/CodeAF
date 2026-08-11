@@ -460,10 +460,8 @@ func (h *Head) askSurgerySetConfirm(user store.Message, prompt string, set class
 			return h.postAgent(user.SessionID, "Assuming the default: "+keep.Label+".", 0)
 		}
 	}
-	body := store.QuestionMessageBody(prompt, options, store.QuestionConfig{
-		Kind: store.QuestionConfirm, Category: store.QuestionCategorySurgeryConfirm,
-		Default: "2", AllowFree: &allowFree,
-	})
+	body := askBody(prompt, options, askConfig(store.QuestionConfirm,
+		store.QuestionCategorySurgeryConfirm, "2", allowFree))
 	question, err := h.store.AskQuestion(store.AgentQuestion{
 		SessionID: user.SessionID, Text: body, OriginNodeID: set.Units[0].ID,
 		Urgency: store.QuestionBlocking, Category: store.QuestionCategorySurgeryConfirm,
