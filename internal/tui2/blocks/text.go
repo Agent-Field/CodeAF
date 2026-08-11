@@ -139,6 +139,17 @@ func repeat(r rune, n int) string {
 	return strings.Repeat(string(r), n)
 }
 
+// shift moves a finished row right by a prebuilt pad. The empty-pad case is a
+// branch and not a concatenation, so a block at depth zero — every block until
+// a surface asks for one — hands back the exact string it built, with no copy
+// and no allocation on a streaming frame.
+func shift(pad, row string) string {
+	if pad == "" {
+		return row
+	}
+	return pad + row
+}
+
 // Pad right-fills s with spaces to exactly width cells, or cuts it if it is
 // over. Used where a live cell must be width-stable so nothing to its right
 // ever dances (5.21).
