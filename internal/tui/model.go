@@ -211,7 +211,7 @@ type Commander interface {
 	// ContextWindow is how many tokens the model in a role slot will accept,
 	// and whether anything could say. It is the denominator of 5.9's ctx% and
 	// the half of that figure the store cannot hold: the numerator is journaled
-	// (store.RoomSpend.HeadPrompt), the size of the window is a property of the
+	// (store.RoomSpend.SpinePromptHighWater), the size of the window is a property of the
 	// model, and only the live engine knows which model is in the slot and what
 	// the catalog says about it.
 	//

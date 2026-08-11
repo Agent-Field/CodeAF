@@ -100,8 +100,8 @@ func TestRoomSpendSeparatesWorkItCommissionedFromConversationItCannotClaim(t *te
 	// The head's window occupancy is the largest prompt the conversation sent,
 	// never the sum of them and never the leaf's, whose row is a whole tool
 	// loop added up.
-	if spend.HeadPrompt != 9000 {
-		t.Fatalf("HeadPrompt = %d; want the answering call's 9000", spend.HeadPrompt)
+	if spend.SpinePromptHighWater != 9000 {
+		t.Fatalf("SpinePromptHighWater = %d; want the answering call's 9000", spend.SpinePromptHighWater)
 	}
 }
 
@@ -117,7 +117,7 @@ func TestATurnCostsWhatWasBilledAfterTheMessageThatAskedForIt(t *testing.T) {
 	if err != nil || !found {
 		t.Fatalf("TurnSpend = found %v, err %v", found, err)
 	}
-	if turn.Spine.Runs != 1 || turn.Cost() != 0.02 || turn.HeadPrompt != 2000 {
+	if turn.Spine.Runs != 1 || turn.Cost() != 0.02 || turn.SpinePromptHighWater != 2000 {
 		t.Fatalf("newest turn = %+v; want only the second ask's run", turn)
 	}
 
@@ -148,7 +148,7 @@ func TestAnotherRoomInTheWindowMakesConversationCostACeilingAndTheContextUnsayab
 	if err != nil {
 		t.Fatal(err)
 	}
-	if before.Shared || before.HeadPrompt != 3000 {
+	if before.Shared || before.SpinePromptHighWater != 3000 {
 		t.Fatalf("alone in the window = %+v; want claimable with a context figure", before)
 	}
 
@@ -163,9 +163,9 @@ func TestAnotherRoomInTheWindowMakesConversationCostACeilingAndTheContextUnsayab
 	if !after.Shared {
 		t.Fatalf("two rooms live = %+v; want Shared", after)
 	}
-	if after.HeadPrompt != 0 {
-		t.Fatalf("HeadPrompt = %d with two rooms live; want silence, not a borrowed context",
-			after.HeadPrompt)
+	if after.SpinePromptHighWater != 0 {
+		t.Fatalf("SpinePromptHighWater = %d with two rooms live; want silence, not a borrowed context",
+			after.SpinePromptHighWater)
 	}
 	// Work stays exact through all of it: it is attributed by node, not by
 	// window, so nothing another room does can move it.
@@ -292,7 +292,7 @@ func TestRoomSpendSurvivesRebuild(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if before.Work != after.Work || before.Spine != after.Spine || before.HeadPrompt != after.HeadPrompt {
+	if before.Work != after.Work || before.Spine != after.Spine || before.SpinePromptHighWater != after.SpinePromptHighWater {
 		t.Fatalf("rebuild changed the bill: %+v then %+v", before, after)
 	}
 }
