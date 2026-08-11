@@ -1811,6 +1811,544 @@ tool-loop head (Wave 3) + volatility cache (landed, 12.4.1).
    revision/sentinel.go:39, revision/sentinel.go:93 for the world-grounded-
    planning handoff.
 
+### 12.7 The Nerd Font glyph tier — DESIGN PLAN (approved direction, implementation pending)
+
+**Status: design plan. No code has been written. A future lane executes section H
+1:1.** Sections A–G are the contract that lane builds against.
+
+#### A. The decision, and how it reconciles with 8.3
+
+The user has directed that the v2 surface render Nerd Font (nerdfonts.com) icons
+by default. 8.3 refused oh-my-pi's "nerd-font preset". Both stand, because they
+are about different objects:
+
+- **What 8.3 refused is a SKIN** — a preset that arrives carrying someone else's
+  colours, brackets, powerline chrome and status-bar layout (7.1: "if a ported
+  idea arrives wearing oh-my-pi's clothes, the port is not done"). That refusal
+  is untouched. Nothing below changes a hue, a separator, a bracket, a
+  breakpoint or a line grammar.
+- **What lands is a REPERTOIRE TIER** — one axis, `GlyphSet`, that swaps the
+  *characters* used for meanings the 5.17 table already fixed, 1:1, inside our
+  own language. Every NF glyph inherits its meaning, its tint token and its cell
+  budget from the plain glyph it replaces. This is the enhancement-ladder
+  pattern the doc already uses twice (KKP as enhancement-only, 10.1.2; the DAG
+  render ladder, 10.3.29).
+
+The honesty concern behind 8.3 — **unpatched terminals draw PUA icons as tofu** —
+survives as law, and default-on raises it rather than lowers it. It is paid for
+in section E by four things: a veto-only detector, a one-question first-run
+probe, a real opt-out, and the fact that the plain tier is not a degradation but
+a fully designed floor whose widths are asserted equal to the tier's (section F).
+
+**The governing invariant, stated once**: *the tier changes which glyph is drawn
+in a cell; it never changes how many cells a line occupies, which token tints
+it, or where a segment sits.* Flipping `nerd_font` must not move one column.
+
+#### B. The vocabulary
+
+Two rules decide what the tier touches:
+
+1. **Icons for meaning, geometry for structure.** A slot whose glyph carries a
+   *semantic* (a state, an attention, a place, a prompt) is upgradable. A slot
+   whose glyph is *line geometry* — a separator, an accent rail, a spawn-tree
+   corner, a gauge step, a sparkline cell, a diff sign — is not. Box drawing and
+   block elements are already the right characters for a grid; an icon there
+   would be strictly worse, and it would break the animated-set homogeneity the
+   glyph tests already enforce.
+2. **BMP private-use only, Font-Awesome-4-era and Powerline first.** Those
+   codepoints have been at the same addresses since Nerd Fonts v1 and are
+   present in every patched font, including minimal Powerline-only patches.
+   `nf-md-*` (Material) is refused: NF v3 relocated the whole set from
+   U+F500–U+FD46 into plane 15 (U+F0001–U+F1AF0), so a v2-era patched font has
+   nothing at the new addresses; astral-plane PUA also has the worst terminal
+   and font-fallback support. `nf-cod-*` (codicons) is held in reserve as the
+   documented alternate for slots where FA4 has no good shape.
+
+**Measured, not argued.** Every codepoint below was measured against the two
+rulers this package's tests use (`ansi.StringWidth`, grapheme; `ansi.StringWidthWc`,
+wcwidth) and against `golang.org/x/text/width` for the East-Asian property, at
+the versions in go.mod (x/ansi v0.11.7, x/text v0.40.0). **Every one measures 1
+cell under both rulers.** All of PUA — BMP and plane 15 alike — is
+`East_Asian_Width=Ambiguous`; see the caveat at the end of this section.
+
+##### B.1 Upgraded slots
+
+`usual tint` documents the token the slot is normally painted with; it is
+documentation, not a binding. Tinting stays a pure product of the state × hue
+axes through `ResolveToken` — that composition is untouched, and it is the whole
+reason a mono icon is admissible where an emoji is not (5.17 reason 2).
+
+| surface | slot | plain (5.17) | NF name | hex | usual tint | notes |
+|---|---|---|---|---|---|---|
+| card line 1, rail card, agent row | Queued | `○` | `nf-fa-circle_o` | U+F10C | TextTertiary | plain side already Ambiguous |
+| " | Working | `◐` | `nf-fa-adjust` | U+F042 | Cyan | half-filled circle: same shape language |
+| " | Settled | `✓` | `nf-fa-check` | U+F00C | Green | plain `✓` is Neutral, NF is Ambiguous — see caveat |
+| " | Failed | `✕` | `nf-fa-times` | U+F00D | Coral | " |
+| " | Paused | `=` | `nf-fa-pause` | U+F04C | TextTertiary | ASCII plain side — see D.3 |
+| attention | NeedsHuman (question badge) | `?` | `nf-fa-question_circle` | U+F059 | Amber | always amber (5.16); ASCII plain side |
+| " | WaitsOn (waits-on edge) | `⚑` | `nf-fa-flag` | U+F024 | Amber | |
+| disclosure | Collapsed | `▸` | `nf-fa-chevron_right` | U+F054 | TextTertiary | |
+| " | Expanded | `▾` | `nf-fa-chevron_down` | U+F078 | TextTertiary | |
+| " | Truncated (overflow) | `⋯` | `nf-fa-ellipsis_h` | U+F141 | TextTertiary | |
+| truncation law (12.5.2) | Cut | `╌` | `nf-fa-scissors` | U+F0C4 | CutToken | the cut mark stays distinct from the overflow mark |
+| scope / breadcrumb | ScopeUp | `‹` | `nf-fa-angle_left` | U+F104 | identity / TextTertiary | thin chevron matches the guillemet |
+| composer | PromptChat | `›` | `nf-fa-angle_right` | U+F105 | TextSecondary | |
+| " | PromptSteer | `↦` | `nf-fa-long_arrow_right` | U+F178 | identity | "maps into"; alternate `nf-fa-sign_in` U+F090 |
+| meta | Boosted | `⇡` | `nf-fa-bolt` | U+F0E7 | Amber | **the tier recovers 5.17's original intent**: 5.17 asked for ⚡, glyph.go had to refuse it because U+26A1 measures two cells. `nf-fa-bolt` is the bolt at one cell. |
+| plan progress (5.21 step dots) | StepDone | `●` | `nf-fa-circle` | U+F111 | Green | |
+| " | StepRunning | `◐` | `nf-fa-adjust` | U+F042 | Cyan | same rune as Working, by design |
+| " | StepPending | `○` | `nf-fa-circle_o` | U+F10C | TextTertiary | |
+| " | StepBlocked | `⚑` | `nf-fa-flag` | U+F024 | Amber | |
+| queue pills (10.3.13) | QueuePill | `▶` | `nf-fa-caret_right` | U+F0DA | TextTertiary | |
+| pending row (5.22) | DragHandle | `⋮` | `nf-fa-ellipsis_v` | U+F142 | TextTertiary | |
+| **place line (5.19)** | Home / task workspace | `⌂` **(new plain slot)** | `nf-fa-home` | U+F015 | TextTertiary | `⌂` U+2302 is already the character 5.19's own example uses; it is Neutral width and universally covered. Adding it to the plain tier is a prerequisite, not an NF-only segment. |
+| " | Folder / region | `/` **(new plain slot)** | `nf-fa-folder` | U+F07B | TextTertiary | ASCII slash: universal coverage, and it already means "directory" |
+| " | GitBranch | `⋔` **(new plain slot)** | `nf-pl-branch` | U+E0A0 | TextTertiary | U+22D4 PITCHFORK measured Neutral, 1 cell. **U+E0A0 is the single highest-coverage NF codepoint that exists** — present even in Powerline-only patches. Alternate `nf-oct-git_branch` U+F418. Documented substitute if U+22D4 fails a font-coverage smoke test: `:` (the `git:main` convention), one cell, ASCII. |
+| **status line (5.17 `K3 ▄ $8.65`)** | Model | `◇` **(new plain slot)** | `nf-fa-microchip` | U+F2DB | TextTertiary | U+25C7 is Ambiguous, 1 cell. Alternate if the FA4.7 codepoint fails provenance: `nf-fa-cube` U+F1B2 (FA4.1, older and safer). |
+| " | Spend | `$` (already the mark in `$8.65`) | `nf-fa-dollar` | U+F155 | Green | the cleanest parity case in the set: one cell swaps for one cell inside an existing run |
+
+##### B.2 Slots the tier deliberately does NOT touch (the geometry rule)
+
+`Separator ·` · `AccentRail ▎` · `Missing —` · `Estimate ~` · `DiffAdd +` ·
+`DiffDel −` · `TreeBranch ├` · `TreeLast └` · `TreeVert │` · `TreeDash ─` ·
+`GaugeCells ▁▂▄▆█` · `SparklineCells ⣀⣄⣤⣦⣶⣷⣿` · `SpinnerFrames ⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏`.
+
+The three set-valued ones need their reasons stated, because the brief asked for
+NF spinners specifically:
+
+- **The spinner stays braille in both tiers.** Nerd Fonts ships no rotation-phase
+  set. There is `nf-fa-spinner` U+F110 and `nf-cod-loading` U+EB19, but each is a
+  *single* glyph meant to be rotated by CSS — a terminal cannot rotate it, so a
+  "set" would have to be fabricated from unrelated shapes, and its frames would
+  not agree about weight or centre. That is exactly the failure
+  `TestAnimatedSetsAgreeOnWidth` exists to prevent, one level up from width. The
+  braille spinner is already the house spinner, is width-homogeneous under every
+  mode, and phase-locks on the one shared clock (8.1.3). Clock-face and moon-phase
+  sets are refused twice over: emoji plane and two cells.
+- **The context gauge stays eighth-blocks.** It is a five-step ramp of a
+  *continuous* quantity; icons do not ramp. Also 5.17 named it as a
+  one-cell-costs-one-cell trick, which the blocks already are.
+- **The sparkline stays braille** for the same reason, plus 5.21 named it braille.
+
+##### B.3 The one honest width caveat, recorded
+
+Every plain glyph and every NF glyph in this plan measures **1 cell under both
+shipping rulers**. But the East-Asian property differs on some slots:
+
+| slot | plain EAW | NF EAW |
+|---|---|---|
+| Settled `✓` → U+F00C | Neutral | Ambiguous |
+| Failed `✕` → U+F00D | Neutral | Ambiguous |
+| Cut `╌` → U+F0C4 | Neutral | Ambiguous |
+| WaitsOn `⚑` → U+F024 | Neutral | Ambiguous |
+| Collapsed/Expanded/ScopeUp/prompts/ellipses | Neutral | Ambiguous |
+| Home `⌂` → U+F015, GitBranch `⋔` → U+E0A0 | Neutral | Ambiguous |
+| Queued/Working/StepDone/QueuePill/Model | Ambiguous | Ambiguous |
+
+**All of private use — BMP U+E000–U+F8FF and plane 15 U+F0000–U+FFFFD alike — is
+`East_Asian_Width=Ambiguous`.** So on a terminal running a CJK locale with
+ambiguous-wide enabled, the NF tier draws every icon at two cells while the plain
+tier draws several of them at one: tier width parity holds under the rulers we
+ship against and **breaks under ambiguous-wide**. That is not a bug to fix, it is
+a fact to act on: **`DetectGlyphSet` vetoes the tier when the locale environment
+names an East-Asian locale** (E.2). This is a genuinely checkable signal, unlike
+the font itself.
+
+##### B.4 Codepoint provenance (a gate, not a footnote)
+
+The hex values above are the best-known bindings for these Nerd Font class
+names; **the NAME is the contract and the hex is a binding that must be verified
+before it ships.** The implementation lane verifies every one against the
+authoritative `glyphnames.json` published by ryanoasis/nerd-fonts at a pinned v3
+release, either by vendoring a trimmed extract into the package as testdata or
+by freezing a hand-checked table with the release version recorded in a comment.
+`nf-fa-microchip` (FA4.7-era) and `nf-fa-long_arrow_right` (FA4.4-era) are the
+two with the most drift risk and each carries a named alternate above.
+
+#### C. The tokens API (additive; every existing name keeps its current value)
+
+Nothing in glyph.go changes value. `GlyphWorking` is still `"◐"`, and a consumer
+that never learns about the tier keeps rendering exactly what it renders today.
+The tier is a new axis alongside profile and focus, resolved once and carried on
+the `Styler`.
+
+```go
+// GlyphSet is the glyph repertoire tier: which characters say the 5.17
+// meanings. It composes with Profile and Focus and changes neither.
+type GlyphSet uint8
+
+const (
+    Plain    GlyphSet = iota // the 5.17 floor: metric-safe in every terminal
+    NerdFont                 // the patched-font tier
+    glyphSetCount
+)
+
+func (g GlyphSet) String() string                     // "plain" | "nerdfont"
+func ParseGlyphSet(s string) (GlyphSet, bool)         // plain/none/off, nerd/nerdfont/nf/on
+
+// GlyphID names one vocabulary SLOT — the meaning, independent of tier.
+type GlyphID uint8
+
+const (
+    GQueued GlyphID = iota
+    GWorking; GSettled; GFailed; GPaused
+    GNeedsHuman; GWaitsOn
+    GCollapsed; GExpanded; GScopeUp; GTruncated; GCut
+    GPromptChat; GPromptSteer
+    GBoosted; GSeparator; GMissing; GEstimate
+    GAccentRail; GDragHandle
+    GStepDone; GStepRunning; GStepPending; GStepBlocked
+    GQueuePill; GDiffAdd; GDiffDel
+    GTreeBranch; GTreeLast; GTreeVert; GTreeDash
+    GHome; GFolder; GGitBranch          // new place-line slots (B.1)
+    GModel; GSpend                      // new status-line slots (B.1)
+    glyphIDCount
+)
+
+// Glyph resolves a slot under a tier. It is one array index into a table
+// built at package initialization — no map, no allocation, nothing on the
+// hot path (the production bar).
+func (g GlyphSet) Glyph(id GlyphID) string
+
+// Upgrade is the automatic path (D.2): it rewrites a plain glyph cell into
+// this tier's, and is the identity function for Plain.
+func (g GlyphSet) Upgrade(cell string) string
+func (g GlyphSet) UpgradeChrome(cell string) string
+
+// The data table, walked by tests, by `?` help, and by a glyph-preview screen.
+type GlyphBinding struct {
+    ID              GlyphID
+    Name            string  // "Working"
+    Meaning         string  // the 5.17 meaning, carried verbatim
+    Plain           string  // the 5.17 glyph — ALWAYS non-empty
+    NerdFont        string  // "" when the geometry rule keeps the slot plain
+    NFName          string  // "nf-fa-adjust" — the provenance contract (B.4)
+    UsualTint       Token
+    PlainAmbiguous  bool
+    NFAmbiguous     bool
+    Geometry        bool    // true = deliberately not upgraded (B.2)
+    AutoUpgrade     bool    // false for ASCII plain sides (D.3)
+}
+
+func Vocabulary() []GlyphBinding      // every slot, declaration order
+func GlyphsIn(g GlyphSet) []GlyphInfo // the existing width-gate walk, per tier
+
+// Styler carries the tier alongside profile and focus.
+func NewStylerIn(p Profile, f Focus, g GlyphSet) *Styler   // NewStyler == NewStylerIn(p, f, Plain)
+func (s *Styler) GlyphSet() GlyphSet
+func (s *Styler) WithGlyphSet(g GlyphSet) *Styler          // mirrors WithFocus
+func (s *Styler) Glyph(id GlyphID) string                  // the explicit door
+func (s *Styler) PaintGlyph(id GlyphID, st blocks.State, h blocks.Hue) string
+
+// Detection and the tier's own honesty surface.
+func DetectGlyphSet(env Env) (GlyphSet, string)  // tier + the reason, for the log line
+func GlyphProbeLine(g GlyphSet) string           // the first-run sample (E.4)
+```
+
+`NewStyler` keeps its exact current signature and returns a Plain styler, so
+every existing construction site compiles and behaves identically.
+
+#### D. Who has to be edited, and who does not — the chokepoint, honestly
+
+The brief hoped for zero consumer edits. That is **almost** true, and the part
+that is not true has to be named rather than wished away.
+
+**D.1 Why it cannot be entirely free.** Consumers reference `tokens.GlyphWorking`
+and friends as untyped string *constants*. A Go constant cannot vary at runtime.
+So a consumer that names a constant can only be upgraded by something that
+rewrites its output downstream — or by being edited.
+
+**D.2 The automatic path, and why it is safe.** Every chrome string in this
+surface is painted through `*tokens.Styler`, which every pane already holds
+(`chat/panes.go` `statusPane`, `railPane`; `chat/app.go` builds one and hands it
+to the composer; the sibling rail/placeline/footer packages take one). And
+`blocks/header.go:203` paints the glyph cell as **its own span**:
+
+```go
+if glyph != "" {
+    b.styled(st, glyph, h.State, h.GlyphHue)
+    b.WriteByte(' ')
+}
+```
+
+So the glyph arrives at `Paint` as a whole one-rune string. `Styler.Paint`
+therefore upgrades under two precise conditions and no others:
+
+- **(a) whole-cell**: the entire painted string is exactly one rune, and that
+  rune is an `AutoUpgrade` slot's plain glyph.
+- **(b) chrome-lead**: `state == blocks.StateChrome` **and** the string's first
+  rune is an `AutoUpgrade` slot's plain glyph followed by a space.
+
+(b) exists for exactly one caller: `blocks.ExpandHint` returns `"▸ 12 lines"`
+(header.go:72-88), which is not a single rune. Its warrant is blocks' own
+definition of the state — `StateChrome` is "separators, meta, fold lines, hints"
+(blocks/style.go:15-16) — so prose never travels that path. **The lane must add a
+test asserting no content path paints `StateChrome`**; if that test cannot be
+made to hold, rule (b) is dropped and `blocks.ExpandHint` joins the edit list in
+D.4 instead. Never a substring rewrite anywhere in a line.
+
+**D.3 The ASCII carve-out.** Six slots have an ASCII plain glyph: `?` NeedsHuman,
+`=` Paused, `+`/`−` diff, `~` Estimate, `$` Spend, `/` Folder, `:` (the git
+substitute). A whole painted line that is exactly `?` is *plausible content* —
+5.20 rule 3 makes `?` a thing a user types. So **ASCII slots carry
+`AutoUpgrade: false`** and never fire under rule (a) or (b). They are adopted
+explicitly, by the one consumer that owns each, with a one-token edit. This is
+the difference between a mechanism that is clever and one that cannot lie.
+
+**D.4 The edit list, exhaustive.**
+
+| package | edits | why |
+|---|---|---|
+| `internal/tui2/blocks` | **zero** | It never names a semantic glyph except `ExpandHint`'s `▸`/`▾`, which rules (a) and (b) both cover. It paints everything through the Styler seam. |
+| `internal/tui2/tokens` | the whole mechanism | glyph.go additive, styler.go gains the axis, new nerdfont.go + glyphset.go + tests |
+| `internal/tui2/chat/app.go` | **1 line** | `tokens.NewStyler(opts.Profile, tokens.FocusNormal)` → `tokens.NewStylerIn(opts.Profile, tokens.FocusNormal, opts.GlyphSet)`; plus one `GlyphSet` field on `chat.Options` |
+| `internal/tui2/chat/message.go` | **1 line** | `tokens.GlyphNeedsHuman` (ASCII slot) → `app.style.Glyph(tokens.GNeedsHuman)`. The other three uses there (`GlyphCollapsed`, `GlyphStepRunning`, `GlyphPromptChat`) are non-ASCII and upgrade automatically. |
+| `internal/tui2/chat/panes.go` | **0–1 lines** | `GlyphWorking`, `GlyphFailed`, `GlyphScopeUp` upgrade automatically; `GlyphSeparator` and `GlyphMissing` are geometry and must not change. One edit only if the status line renders `$` itself. |
+| `internal/tui2/rail`, `placeline`, `footer` (siblings in flight) | **1 line each, at most** | They already hold a `*Styler`; they take the tier for free. Only a `$`/`?`/`=` they render themselves needs the explicit door. The place line's three new slots (`⌂ / ⋔`) are new plain glyphs those packages adopt anyway. |
+| `cmd/aforge` | new file + 1 line | section E |
+| `internal/config` | one settings row + one resolver | section E |
+
+So: **blocks needs nothing; the four consumer packages need at most one line
+each; the axis itself is the only real work.**
+
+#### E. Default-on mechanics
+
+**E.1 Resolution order** (highest first) — the shape mirrors the landed
+`linear_mode` pattern exactly (`config.LinearModeAt`, `cmd/aforge/chatv2_linear.go`):
+
+1. `--nerd-font` / `--no-nerd-font` / `--nerd-font=false` typed on this command
+   line. A flag typed now outranks a variable exported once (the rule
+   `wantChatV2` already states).
+2. `AFORGE_NERD_FONT` — registered as the settings row's `Env`, so
+   `TestRegistryCoversEveryUserFacingEnvironmentPin` passes. A malformed value
+   reads as the default rather than refusing a launch over a rendering
+   preference (the `LinearModeAt` rule).
+3. The persisted `nerd_font` row in the profile's config.json.
+4. `DetectGlyphSet(os.Getenv)` — **veto only** (E.2).
+5. Default: **NerdFont**.
+
+Plus two unconditional overrides that sit *above* everything, including an
+explicit flag, because they are correctness rather than taste:
+
+- **Linear mode forces Plain.** 10.1.5's accessible rendering exists for screen
+  readers, and a screen reader reads a private-use codepoint as nothing or as
+  garbage. A tier that made the accessible mode less accessible would be the
+  affordance lying (5.20). `Linear ⇒ Plain`, no exceptions.
+- **The golden harness renders Plain by default**, so the existing corpus does
+  not churn, with a second small NF corpus for the parity test only (F.7).
+
+**E.2 Detection: what signals actually exist, and what they are worth.**
+
+The honest headline: **no terminal reliably reports its font.** There is no
+standard escape sequence that answers "are you patched"; iTerm2's OSC 1337 and
+kitty's remote-control protocol are proprietary, opt-in, and answer a different
+question. Therefore **detection may only VETO, never confirm.** `DetectGlyphSet`
+follows `DetectProfile`'s exact shape — a pure function over an `Env` closure,
+so it is a table test rather than a fixture — and returns the tier plus the
+reason string, so the chat.log records why.
+
+*Hard vetoes (act on these):*
+
+| signal | why it is a veto | failure mode |
+|---|---|---|
+| `TERM=linux` | the Linux console runs a 256/512-glyph bitmap font and **cannot** render PUA at all | none: this one is certain |
+| `TERM` unset, or `TERM=dumb` | no capability claim at all; already the NoColor floor | none |
+| `TERM_PROGRAM=Apple_Terminal` | Terminal.app ships SF Mono/Menlo, neither of which has PUA, and its users are the population least likely to have patched a font. `DetectProfile` already special-cases it for colour. | false negative for the rare Terminal.app user who did install a patched font — they set the flag once |
+| CJK locale in `LC_ALL`/`LC_CTYPE`/`LANG` (`zh`, `ja`, `ko`) | **B.3**: all PUA is `East_Asian_Width=Ambiguous`, so ambiguous-wide draws every icon at two cells and tier width parity breaks | false negative for a CJK-locale user whose terminal does *not* run ambiguous-wide; they set the flag once |
+| Windows legacy console (`ConEmuANSI` absent with `MSYSTEM` set, conhost) | the legacy console's font fallback for PUA is unreliable | rare on this project's platforms |
+
+*Weak positive signals (worth logging, NOT worth acting on):* `TERM_PROGRAM` ∈
+{WezTerm, ghostty, iTerm.app, WarpTerminal}, `KITTY_WINDOW_ID`,
+`WEZTERM_EXECUTABLE`, `GHOSTTY_RESOURCES_DIR`, `ALACRITTY_WINDOW_ID`,
+`LC_TERMINAL`. Every one of these says which *terminal* is running and **nothing
+about which font it was configured with**. A WezTerm user on stock JetBrains
+Mono (unpatched) is a false positive, and false positives are precisely the tofu
+case. Since the default is already on, a positive signal buys nothing anyway —
+which is the tidy argument for reading them only into the log line.
+
+*Neutral, and worth stating because it differs from colour:* tmux and screen are
+**not** a veto. The font belongs to the outer terminal and passes straight
+through, unlike `COLORTERM`, which inside tmux is tmux's claim about itself
+(10.1.2). The colour ladder caps under a multiplexer; the glyph ladder must not.
+
+**E.3 The opt-out.** Three doors, one setting:
+
+- `aforge chat --v2 --no-nerd-font` (and `--nerd-font=false`), for right now.
+- `AFORGE_NERD_FONT=0`, for a machine or a shell profile.
+- The settings sheet row — `nerd_font`, `CategoryAppearance`, `SettingBool`,
+  `Env: "AFORGE_NERD_FONT"`, `DefaultNerdFont = true`, hint naming what it does
+  and that a change lands at the next start — sitting next to `linear mode` and
+  `chat width`, with the live preview 8.2.19 gives that sheet. The preview is
+  where this row earns its place: it renders one sample line in both tiers, so
+  the user *sees* the answer instead of reading about it.
+
+**E.4 The first-run probe — the only font detector that works.**
+
+The first time the v2 surface starts with the NerdFont tier chosen **by default**
+— not by flag, not by env, not by a persisted row — the status line carries one
+dismissible line:
+
+```
+  ⚑ ▸ ✓ ⇡   do these render as icons?   y  ·  n = plain glyphs
+```
+
+rendered *in the NF tier*, so the four sample glyphs are the actual test. `y` or
+`n` writes the `nerd_font` row and the line never returns for this profile; the
+question is asked exactly once, ever, per profile. This is 5.20 rule 3
+(capability honesty) pointed at the terminal instead of at the orchestrator, and
+it is the honest resolution of 8.3: we cannot detect the font, so we ask the one
+instrument that can see it. It is a transient status row (5.21), not a modal and
+not a banner.
+
+If the user never answers, nothing breaks: the tier stays on and the line decays
+like any other transient row, reachable again from the settings sheet.
+
+**E.5 The fallback experience when glyphs tofu.** This is what makes default-on
+defensible at all: **the plain tier is not a degradation, it is the designed
+floor.** Same segments, same order, same tints, same widths — asserted by F.7,
+not hoped for. A user who answers `n`, or types `--no-nerd-font`, does not get a
+broken surface or a lesser one; they get 5.17 exactly as the doc specified it.
+The cost of guessing wrong is one keystroke and zero layout damage, which is the
+only ground on which a default may be turned on at all.
+
+#### F. Shipping gates the implementation must pass
+
+The existing gates keep working unchanged; these are what the tier adds. All of
+them live in `internal/tui2/tokens` and run under `make check`.
+
+1. **Both rulers, every tier.** `TestGlyphsAreSingleCell` extends to walk
+   `GlyphsIn(Plain)` **and** `GlyphsIn(NerdFont)`: `ansi.StringWidth` and
+   `ansi.StringWidthWc` must both be 1 for every glyph in both tiers. (Measured
+   in advance for every codepoint in B.1: all pass.)
+2. **Ambiguity flags stay true to Unicode.** `TestAmbiguousWidthFlags` extends to
+   both tiers against `golang.org/x/text/width`. Expect **every** NF glyph to
+   report `Ambiguous`; the test should assert that positively, since a PUA glyph
+   that reported otherwise would mean the table drifted.
+3. **The banned set still holds, and grows.** `TestNoBannedGlyphs` walks both
+   tiers. `BannedGlyphs` gains the powerline separator block with reasons —
+   U+E0B0, U+E0B1, U+E0B2, U+E0B3 and the E0B8–E0BF slant/seam family — so the
+   8.3/10.1.2 refusal is enforced by the build rather than by review. The general
+   rules are unchanged and now cover the tier: single rune, nothing in the emoji
+   planes, no variation selector.
+4. **BMP only.** A new assertion: every NF codepoint is `< 0x10000` (B.2's
+   plane-15 refusal, enforced).
+5. **Animated sets unchanged.** `TestAnimatedSetsAgreeOnWidth` is untouched and
+   must stay green: spinner, gauge and sparkline are geometry (B.2) and have no
+   NF side, so the homogeneity law cannot be broken by the tier.
+6. **Tier completeness and fallback law.** A new test: every `GlyphBinding` has a
+   non-empty `Plain`; that `Plain` is byte-identical to the corresponding
+   existing exported constant (so the fallback provably *is* the 5.17 glyph);
+   `NerdFont` is empty exactly when `Geometry` is true; every NF string is one
+   rune; `NFName` is non-empty for every non-geometry slot; no duplicate IDs;
+   `Vocabulary()` covers every declared `GlyphID`.
+7. **Width parity across tiers — the golden proof.** A golden-style test renders
+   one sample line per surface in **both** tiers and asserts identical printable
+   width under both rulers:
+   - card line 1 (header grammar: `<glyph> <Title>: <desc> [badge] · meta`),
+   - the place line (`~/a/v2 · ⌂ /tmp/wisp-parity · src/navigate.rs` with the
+     git segment),
+   - the status line segments (`◇ K3 ▄ $8.65`),
+   - the composer prompt, chat and steer,
+   - a fold hint (`▸ 12 lines`) and a cut row.
+   Both tiers' bytes are recorded as golden files so the *shapes* are reviewable
+   and the *widths* are asserted equal. This is 5.21's "width-stable everything"
+   made a build gate across the new axis.
+8. **Composition unchanged.** A test that `ResolveToken(hue, state)` and every
+   `Styler.Paint*` produce identical SGR bytes for the same (state, hue) in both
+   tiers — the tier changes the glyph between the escape sequences and nothing
+   else.
+9. **No auto-upgrade of ASCII, no substring rewrites.** Table tests for
+   `Upgrade`: `"?"` is unchanged under NerdFont; `"why? because"` is unchanged;
+   `"◐"` upgrades; `"◐ working on it"` upgrades only under `StateChrome` via
+   rule (b) and not under `StateLive`/`StateSettled`; and the assertion that no
+   content path paints `StateChrome` (D.2).
+10. **Provenance.** Every `NFName`/hex pair checked against the pinned
+    nerd-fonts `glyphnames.json` extract (B.4).
+11. **Registry completeness.** `AFORGE_NERD_FONT` registered as the `nerd_font`
+    row's `Env`, so `TestRegistryCoversEveryUserFacingEnvironmentPin` passes
+    without touching `OperatorEnvPins` — this is a setting, not plumbing.
+12. **Hot path.** Tables built once at package initialization; `GlyphSet.Glyph`
+    is an array index; `Upgrade` is a bounded rune check, not a map lookup per
+    cell. A benchmark alongside the existing `blocks` bench proves the paint path
+    did not regress.
+
+#### G. What stays refused, and why
+
+- **Powerline triangle separators** (U+E0B0–E0B3 and the seam/slant family).
+  Font-fragile shape-joins that must tile pixel-exactly against a neighbouring
+  background to look like anything; they break the line grid and they are the
+  single most common source of "my prompt looks wrong" (8.3, 10.1.2, 5.19).
+  `·` remains the separator, in both tiers. Now enforced by `BannedGlyphs` (F.3).
+  Note the distinction: **U+E0A0, the powerline *branch symbol*, is adopted** —
+  it is an icon, not a joining separator, and it is the highest-coverage glyph in
+  the whole NF repertoire.
+- **`nf-md-*` / plane-15 PUA** — relocated between NF v2 and v3, absent from
+  older patched fonts, worst terminal support (B.2).
+- **Non-Mono Nerd Font variants as a target.** The tier targets the **Mono**
+  variants, whose icons are drawn to one cell by construction. The plain "Nerd
+  Font" and "Nerd Font Propo" variants draw many icons at roughly two cells wide
+  over a **one-cell advance** — the terminal grid still advances one, so this is
+  clipping and overlap, not reflow. Layout is safe either way; legibility is not.
+  Recorded here so the symptom is diagnosable, and named in the settings row's
+  hint.
+- **An NF spinner set** — none exists; braille stays (B.2).
+- **Emoji in chrome** (5.17) — unchanged and unaffected. NF icons are admissible
+  precisely on the three counts emoji fail: one cell, monochrome and therefore
+  tintable by our tokens, and instrument-shaped rather than confetti.
+- **The nerd-font *preset*** in oh-my-pi's sense — a skin carrying its colours,
+  brackets and status-bar layout. Still refused (8.3, 7.1). What ships is a
+  repertoire axis inside our own language.
+- **`⟦⟧` badge brackets, 98 themes, rainbow gradients, emoji telemetry icons** —
+  8.3's list is untouched.
+
+#### H. Implementation checklist, in build order
+
+Sizes are rough half-days for one lane. Steps 1–4 are one coherent commit each
+and each compiles green on its own.
+
+1. **`tokens/glyphset.go`** — `GlyphSet`, `GlyphID`, `GlyphBinding`,
+   `Vocabulary()`, the two resolution tables built once at init, `Glyph`,
+   `Upgrade`/`UpgradeChrome`, `ParseGlyphSet`, `String`. Add the five new *plain*
+   slots (`⌂ / ⋔ ◇ $`) to glyph.go and to `Glyphs()` first, so the existing width
+   gate covers them before anything NF exists. **~0.5d.**
+2. **`tokens/nerdfont.go`** — the B.1 table as data, with `NFName`, meaning,
+   usual tint, ambiguity flags, `Geometry` and `AutoUpgrade`. Provenance extract
+   as testdata. **~0.5d.**
+3. **`tokens/glyph_test.go` + `glyphset_test.go`** — gates F.1–F.6, F.9, F.10.
+   The banned-list additions (F.3) land here. **~0.5d.**
+4. **`tokens/styler.go`** — the axis on the Styler: `NewStylerIn`,
+   `WithGlyphSet`, `Glyph`, `PaintGlyph`, and the two upgrade rules inside
+   `paint`. `NewStyler` keeps its signature. Gate F.8 and the hot-path benchmark
+   F.12. **~0.5d.**
+5. **`tokens/detect.go`** — `DetectGlyphSet(Env) (GlyphSet, string)`, veto ladder
+   E.2, as a table test mirroring `TestDetectProfile`. **~0.25d.**
+6. **`internal/config/settings.go`** — `KeyNerdFont = "nerd_font"`,
+   `DefaultNerdFont = true`, the `CategoryAppearance` row with
+   `Env: "AFORGE_NERD_FONT"`, and `NerdFontAt(profileDir) bool` shaped exactly
+   like `LinearModeAt`. Test mirroring
+   `TestLinearModeDefaultsOffPersistsAndHonorsItsEnvironmentPin`, plus the
+   registry gate F.11. **~0.25d.**
+7. **`cmd/aforge/chatv2_nerdfont.go`** — `resolveGlyphSet(flags, flagValue,
+   linear)` implementing E.1 including the linear override; `--nerd-font` /
+   `--no-nerd-font` registered in `runChatV2`'s flag set and threaded into
+   `chat.Options.GlyphSet`; the reason string written to chat.log. Kept in its
+   own file for the same reason `chatv2_linear.go` is. **~0.25d.**
+8. **`internal/tui2/chat`** — the two one-line consumer edits from D.4 plus the
+   `GlyphSet` field on `Options`. **~0.1d.**
+9. **The parity golden (F.7)** — sample line per surface, both tiers, equal
+   printable width under both rulers, bytes recorded. **~0.5d.**
+10. **The first-run probe (E.4)** — the transient status row, the `y`/`n`
+    binding, the once-per-profile write. This one depends on the status/footer
+    sibling landing and should be sequenced last; **the tier ships without it if
+    it must**, since the flag, the env pin and the settings row already give
+    three working doors. **~0.5d.**
+11. **Doc**: fold the shipped vocabulary back into 5.17 as a second column and
+    amend 8.3's bullet to point at this subsection, so a reader of 8.3 is not
+    left believing nerd fonts were refused outright. **~0.1d.**
+
+Total ≈ 4 days for one lane, of which steps 1–4 (≈2 days) are the whole
+mechanism and everything after is plumbing and proof.
+
 ## Part 13 — Build state at the laptop→Spark handoff (2026-08-10)
 
 Branch `chat-v2` (pushed to origin) is the build. `chat-v2-wip` (commit 5648060)
