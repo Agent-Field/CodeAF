@@ -95,8 +95,15 @@ func (s *Styler) Profile() Profile { return s.profile }
 // Focus reports the pane focus this Styler paints for.
 func (s *Styler) Focus() Focus { return s.focus }
 
-// GlyphSet reports the glyph repertoire tier this Styler draws in.
-func (s *Styler) GlyphSet() GlyphSet { return s.glyphs }
+// GlyphSet reports the glyph repertoire tier this Styler draws in. A nil
+// Styler reports [Plain] — see [Styler.Glyph] for why that is safe here and
+// not for painting.
+func (s *Styler) GlyphSet() GlyphSet {
+	if s == nil {
+		return Plain
+	}
+	return s.glyphs
+}
 
 // WithFocus returns a Styler identical to s but painting at the given focus.
 // Dimming is a property of the pane (8.3), so a compositor that has just lost
@@ -129,7 +136,22 @@ func (s *Styler) WithGlyphSet(g GlyphSet) *Styler {
 // is ASCII — "?" needs-human, "=" paused, "$" spend, "/" folder and the diff
 // signs — have no other door, because those characters are things a user types
 // and the automatic path must never rewrite one (12.7 D.3).
-func (s *Styler) Glyph(id GlyphID) string { return s.glyphs.Glyph(id) }
+//
+// A nil Styler resolves the plain glyph rather than panicking, and that
+// forgiveness is deliberate where [Styler.Paint]'s is not. A nil Styler is a
+// real state in this tree — a block built before a profile was chosen holds one
+// — and a consumer adopting the tier replaces a package-level CONSTANT with
+// this call. If the call could panic where the constant could not, adoption
+// would be a one-token edit that changes when a renderer crashes, and every
+// consumer would have to grow a nil check for a lookup that reads no colour and
+// makes no decision. Painting is different: it must produce escape bytes, and
+// there is no honest answer to "which colour" without a profile.
+func (s *Styler) Glyph(id GlyphID) string {
+	if s == nil {
+		return Plain.Glyph(id)
+	}
+	return s.glyphs.Glyph(id)
+}
 
 // PaintGlyph resolves a slot in this tier and paints it on the state and hue
 // axes, which is the whole grammar of a glyph cell in one call.
