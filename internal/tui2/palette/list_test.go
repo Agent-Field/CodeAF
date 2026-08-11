@@ -308,6 +308,33 @@ func TestAcceleratorOutranksDescription(t *testing.T) {
 	}
 }
 
+// TestColumnsDoNotDanceWhileTyping is 5.21's "width-stable everything" applied
+// to the one surface that redraws on every keystroke: the columns are measured
+// from the WHOLE catalog, not from the filtered set, so narrowing the list can
+// never shift the text under the user's eye.
+func TestColumnsDoNotDanceWhileTyping(t *testing.T) {
+	const desc = "open every setting in one place"
+	p := newTestPalette(t, demoCatalog())
+
+	columnOf := func() int {
+		for _, line := range rowsOf(p, 90, 60) {
+			if at := strings.Index(line, desc); at >= 0 {
+				return at
+			}
+		}
+		t.Fatalf("the settings action never rendered")
+		return -1
+	}
+	before := columnOf()
+	for _, q := range []string{"o", "op", "ope", "open s"} {
+		p.Reset()
+		typeText(p, q)
+		if got := columnOf(); got != before {
+			t.Errorf("query %q moved the description column from %d to %d", q, before, got)
+		}
+	}
+}
+
 // TestMatchedCharactersBrightenOneTier is the fzf highlight (5.18, 5.21) and
 // the 5.22 checklist item about tiers, checked on the spans themselves so the
 // assertion cannot be satisfied by an accident of escape-sequence ordering.

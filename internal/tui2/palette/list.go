@@ -426,12 +426,17 @@ func (l *list) renderRow(r *row, selected bool, lay layout, width int) string {
 		if r.disabled != "" {
 			text, matched = r.disabled, false
 		}
-		if text != "" {
+		cells := width - lay.rightW - rightGap - lay.descAt
+		if lay.rightW == 0 {
+			cells = width - lay.descAt
+		}
+		// [layout] already guarantees cells >= descColMin whenever showDesc is
+		// true; the check is the backstop that keeps a future column from
+		// silently writing over the accelerator's reserved cells. The pad is
+		// inside the guard so a row with no description leaves no trailing
+		// whitespace behind it.
+		if text != "" && cells > 0 {
 			l.line.padTo(lay.descAt)
-			cells := width - lay.rightW - rightGap - l.line.w
-			if lay.rightW == 0 {
-				cells = width - l.line.w
-			}
 			if matched {
 				l.pos = appendPositions(l.pos[:0], r.lowerDesc, l.needle)
 				l.line.addMatched(text, descTok, l.pos, cells)
