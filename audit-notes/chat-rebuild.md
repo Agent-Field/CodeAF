@@ -2424,13 +2424,18 @@ recognizers, the router, the control belt — is gone in one commit.
    recognizers' own reads, the belt loop, then the router); it now costs one.
 6. **One board, one thread.** `renderGraph` is deleted. `boardRows` (now over
    `ActiveSnapshot`, because the edges are half of what a row means) is the one
-   query and `renderBoard`/`renderBoardWithin` the one renderer, carrying the
-   union of both old vocabularies: rolled-up subtree counts, dimed cost, age,
-   the first finding, what a row waits on, how long it has run, and the
-   `elsewhere` mark. `boardRowsAt` takes a clock so the two duration clauses are
-   pinnable. `renderThread` was already one renderer; `beltThread`'s separate
-   eight-message window is gone, so the loop reads the same folded window the
-   router did.
+   query and `renderBoard`/`renderBoardWithin` the one renderer, and the prompt's
+   board and the `board` tool are that one function called twice. A row carries
+   the union of both old vocabularies: the job's rolled-up subtree counts, dimed
+   cost, age, the first finding, what it waits on, how long it has run, "part of
+   <job>" on a part, and the `elsewhere` mark. `boardRowsAt` takes a clock so the
+   two duration clauses are pinnable. Two arguments the merge had to settle: the
+   plain board lists jobs AND their parts (a roll-up alone cannot say which step
+   is queued behind which), and it lists what is MOVING (a settled row leaks an
+   unmatched job's finding into every prompt and spends the budget on history
+   while the running job competes for what is left). `renderThread` was already
+   one renderer; `beltThread`'s separate eight-message window is gone, so the
+   loop reads the same folded window the router did.
 7. **Prompt-cache shape (12.4.1) preserved and improved.** The system message is
    now the ONLY system message and is a bare const plus the standing voice
    register — identical bytes on every turn, which is worth more than it was
@@ -2471,40 +2476,85 @@ recognizers, the router, the control belt — is gone in one commit.
     closed, so a half-edit would journal rows nothing drains. Until it lands the
     door takes the in-process road and says so, because a door that silently
     degrades is worse than one that reports which way it went.
-11. **Behaviour changed BY DESIGN, and why** (each was a test that asserted the
-    old law and now asserts the new one):
-    - A message that tripped no cue used to reach neither the tools nor an
-      honest answer. It now always reaches the tools. This is the point of the
-      wave; every "the recognizer declined and the router answered" test is now
-      "the reading reached the prompt and the tool did the same thing".
-    - There is no fall-through. A turn that touches nothing costs ONE call and
-      its words are the reply; the sentinel (`NOT_EXISTING_WORK`) and the second
-      router call are gone, along with the two-calls-for-a-greeting cost.
-    - Disambiguation is the `ask` tool rather than a question minted by whichever
-      recognizer noticed. Still durable options, still nothing journaled until
-      the person answers; what changed is that the answer returns to the loop
-      instead of being applied by the question machinery.
-    - `resolveDescribedTarget` no longer ACTS on a lone candidate. The `control`
-      tool hands candidates back and the loop names an id or asks. A single
-      fuzzy match acting silently is the failure that produced "Cancelling
-      line-scan." for a request to withdraw fourteen queued tasks.
-    - The board enumerates job roots with rolled-up counts rather than every
-      leaf as a peer; the "part of X" clause on a leaf row is replaced by the
-      parent's "N running, M queued". Depth is one `plan` or `board id=` read
-      away instead of being flattened into the same list.
-    - The router's `retract` field died with the router and was very nearly a
-      net loss: a head that can accumulate beliefs and never let one go is the
-      accumulation failure the consolidator has to clean up by guessing. It came
-      back as the `forget` tool over `QuarantineFact`, deliberately separate from
-      `note`'s `replaces` — replacing is being given a belief's next version and
-      retiring the old one as evidence for it; forgetting is being told the
-      belief should not exist, and collapsing the two would silently create a
-      successor nobody stated.
-    - `manageStanding`'s guaranteed pre-emption is now a hint. Durable language
-      reaches the loop marked as durable intent, and the verbatim splice it
+11. **Behaviour changed BY DESIGN — the full log.** Grouped by the law that
+    moved, because the same move explains many tests at once.
+    - *The envelope is gone.* Every fixture that scripted
+      `{"reply":…,"command":…}` now scripts either plain prose (a turn that
+      calls no tool speaks, and that prose IS the reply, verbatim) or a tool
+      call. That is one change and it touches most of head_test, coalesce,
+      cacheshape, pitch, decision, supersede and vocabulary.
+    - *Work is commissioned by a tool, not by a terminal field.* splice →
+      `spawn`; the `commands` array → spawn's `orders`; `reflex` → spawn's
+      boolean, with the consequence gate re-run at the journaling door; `adjust`
+      → `correct`; `urgent` → the impatience reading plus `expedite`; `remember`
+      → `note`; `retract` → `forget`; `fresh` → spawn's boolean. In every case
+      the receipt still has to tie to the row that was journaled, and the
+      person's verbatim words still have to survive.
+    - *Recognizers answer nothing.* Every test that proved "this sentence is
+      handled without a model" now proves two things instead: the reading
+      reaches the prompt (asserted against `renderHints` or the opening prompt,
+      fragment by fragment), and the tool does exactly what the recognizer used
+      to do (asserted against `run.execute`). `TestDeterministicMessagesNever\
+      ReachTheControlLoop` inverted into
+      `TestDeterministicReadingsReachTheLoopAsEvidenceRatherThanAsAnswers`, and
+      gained a sibling proving a sentence no recognizer fires on carries no
+      block at all.
+    - *There is nothing to fall through to.* The sentinel, the router second
+      call, and the "groundless loop" arm are gone; a turn that touches nothing
+      costs ONE call and speaks in its own words. Three tests merged into
+      `TestATurnThatTouchesNothingSpeaksOnceAndPaysOnce`.
+    - *Ambiguity is a mechanism, not prose.* Every recognizer askback became
+      `ask`: still durable numbered options a person clicks, still nothing
+      journaled first, but the answer returns to the LOOP
+      (`answerPendingQuestion` declines an `isAskQuestion`) because the loop is
+      the only party that knows what the choice settles. This covers the surgery
+      "which job", the charter "which rule", the service "which server", the
+      redirect target and the correction rivals.
+    - *A description never acts.* `resolveDescribedTarget` used to act when
+      exactly one candidate matched. `control` with `describes` hands the
+      candidates back — jobs and standing rules in one list — and refuses to
+      choose. A single fuzzy match acting silently is how a request to withdraw
+      fourteen queued tasks became "Cancelling line-scan."
+    - *The board settled its own argument twice.* Parts are rows again with
+      "part of <job>" (a roll-up alone cannot say which step is queued behind
+      which, which is most of what "how is it going" means), and the plain board
+      is what is MOVING (settled rows leak an unmatched job's finding into every
+      prompt — the exact pollution the deep slice's floor exists to prevent —
+      and spend the budget on history while the running job competes for what is
+      left). Settled work is reached by the four reads written for it: an aimed
+      board read by id or by the person's own words, `result`, `history`,
+      `search`. Tests asserting a settled row on the plain board were repointed
+      at those; the dedup fixtures moved to FAILED roots, the one shape where
+      the collision they guard can still occur.
+    - *One prompt means one place for a law to go missing.* Assertions that
+      pinned a sentence in BOTH prompts now pin it once, and the pair that
+      disagreed — whether work can be made faster — is one sentence. The
+      "elsewhere" marker's explanation was lost in the merge and restored.
+    - *The retraction door came back rather than being lost.* The router's
+      `retract` field was the only caller of `store.QuarantineFact`; nothing
+      replaced it at first, which would have left a head that accumulates
+      beliefs and can never let one go. `forget` is that door, deliberately
+      separate from `note`'s `replaces` — replacing is being given a belief's
+      next version and retiring the old one as evidence for it; forgetting is
+      being told the belief should not exist, and collapsing the two would
+      silently create a successor nobody stated. Its description says out loud
+      that it is NOT for a correction aimed at work, because quietly deleting a
+      belief in answer to a rejected deliverable loses the correction entirely.
+    - *`fresh` came back the same way.* `store.Command.Fresh` had migrated,
+      replayed and been consumed by the craft mind all along; between the
+      router's death and spawn's boolean, nothing a person could say reached it.
+      The reading is stated in the argument's own description, in the words
+      people use, so the one escape hatch in the product never again requires
+      saying "craft".
+    - *`manageStanding`'s guaranteed pre-emption is a hint.* Durable language
+      reaches the loop marked as durable intent and the verbatim splice it
       spawns is what the compiler's temporal path turns into a charter. A model
       that ignores the reading still gets the sentence.
-12. **Test story.** `internal/head` keeps its 284 tests. The recognizer unit
+    - *`recognizeRedirect`'s conflated cases separated.* The old table could not
+      tell a named anchor from a deictic one; the rewritten one asserts the cue
+      is read even when it anchors on nothing, and that "fires" means cue AND
+      anchor AND live work.
+12. **Test story.** `internal/head` holds 303 tests (284 before the wave) and every one of them passes. The recognizer unit
     tests are untouched (that vocabulary is unchanged). The end-to-end tests
     that drove `answer()` through a cue were rewritten to assert the two halves
     separately — the reading reaches the prompt, the tool does the act — with
