@@ -81,6 +81,25 @@ type mainView struct {
 	// (openTaskRoom). The first journaled row clears it, so the line is on
 	// screen only while it is true.
 	teaching bool
+
+	// card is the rail row the reader entered from. It is kept because the room
+	// is repainted whenever the record moves, and 12.14's rule is that an
+	// entered room never knows less about a task than the card above it — so
+	// the empty-room block is drawn from the same row every time, not from
+	// whatever the rail happens to be selecting later.
+	card rail.Row
+	// messages is the node-anchored trail this room has read, kept whole.
+	//
+	// It used to live only as blocks in the transcript, which was enough while
+	// the room was append-only. It is not enough now: the record a room draws is
+	// the trail INTERLEAVED with the graph's own account of the same subtree
+	// (record.go), and a part that finishes changes a row that is already on
+	// screen — so the transcript is rebuilt from the record rather than grown,
+	// and the record has to still exist to be rebuilt from.
+	messages []store.Message
+	// stamp is what the transcript was last built from (recordStamp). A journal
+	// move that did not touch this task costs one string comparison.
+	stamp string
 }
 
 // composerBind is what the composer is talking to right now (5.15: "you talk to
@@ -637,15 +656,95 @@ func (a *App) openTaskRoom(row rail.Row, node string) tea.Cmd {
 		return nil
 	}
 	transcript := blocks.New(80, 24)
-	transcript.Append(cardBlock(row, emptyRoomNote, a.style))
 	a.view = &mainView{
 		kind: viewNode, node: node, title: row.Name,
-		transcript: transcript, teaching: true,
+		transcript: transcript, card: row,
 	}
 	a.pane.homes = nil
 	a.pane.transcript = transcript
+	// The room is painted from the RECORD before the trail is asked for, and
+	// that ordering is the whole of this wave. The record is already in hand —
+	// it is the same snapshot the rail drew the card and the tree from — so a
+	// room over work that has journaled a plan, a part or a result opens holding
+	// them, in the same frame the key was pressed in. Only the trail costs a
+	// read, and it lands underneath when it arrives.
+	a.paintRoom()
 	a.shell.Invalidate()
 	return a.readNodeCmd(node, 0)
+}
+
+// paintRoom rebuilds the open task room from the record.
+//
+// It is a REBUILD and not an append, because the record is not append-only: a
+// part that starts, finishes or fails changes a row the reader is already
+// looking at, and a room that could only grow would keep drawing "queued" over
+// work that had finished. The cost of that is bounded twice over — the subtree
+// is capped at maxSubtreeRows and the trail at messagePage — and it is paid only
+// when [recordStamp] says something this task owns actually moved.
+//
+// The reader's place survives it. A transcript that was following the tail keeps
+// following it; one the reader had scrolled back into keeps its offset, because
+// the blocks are keyed by ids that do not move (record.go) and the transcript
+// anchors on ids rather than on indices.
+func (a *App) paintRoom() {
+	view := a.view
+	if view == nil || view.kind != viewNode || view.transcript == nil {
+		return
+	}
+	record := a.source.workRecord(view.node)
+	stamp := recordStamp(record, view.messages)
+	if view.stamp == stamp && view.transcript.Len() > 0 {
+		return
+	}
+	view.stamp = stamp
+
+	rows := roomBlocks(record, view.messages, a.style, a.source)
+	// AN EMPTY ROOM MUST SAY IT IS EMPTY (12.14 finding 4), and it must say so
+	// only while it is TRUE. The teaching line used to appear whenever the
+	// message trail was empty, which for a resident-run task is nearly always —
+	// so a room over a job with a plan, six parts and seven thousand characters
+	// of journaled result said "nothing journaled here yet". It is the record
+	// that decides now, and the record is everything the journal holds about
+	// this subtree.
+	if len(rows) == 0 {
+		view.teaching = true
+		view.transcript.Truncate(0)
+		view.transcript.Append(cardBlock(view.card, emptyRoomNote, a.style))
+		a.shell.Invalidate()
+		return
+	}
+	view.teaching = false
+
+	// Truncate rather than Reset, and the difference is the reader's place.
+	// Reset re-pins the transcript to the bottom, so a reader who had scrolled
+	// back to read what an early part said would be thrown to the tail every
+	// time any part of the job moved — a row moving under the eye that is
+	// reading it, which is the one motion 8.1.6 forbids outright. Truncate keeps
+	// the offset, the follow flag and the anchor, and the anchor is by block id;
+	// the ids here do not move, so the rows come back where they were.
+	following := view.transcript.Following()
+	view.transcript.Truncate(0)
+	foldable := false
+	for _, block := range rows {
+		if message, ok := block.(*messageBlock); ok {
+			// A fold that is already open stays open across a repaint. The
+			// toggle is one flag for the whole surface (app.go's
+			// toggleReceipts), so a block born after ctrl+r has to be told the
+			// state it was born into or the room would silently re-close every
+			// row the reader had opened.
+			message.SetExpanded(a.receiptsOpen)
+			foldable = foldable || message.collapsible
+		}
+		view.transcript.Append(block)
+	}
+	// The accelerator is advertised for the room ON SCREEN (13.10, and app.go's
+	// own note on the fold): a task room's rows are the ones a reader can act on
+	// while they are in it.
+	a.foldable = a.foldable || foldable
+	if following {
+		view.transcript.GotoBottom()
+	}
+	a.shell.Invalidate()
 }
 
 // emptyRoomNote is what a task room says before its subtree has journaled
@@ -785,35 +884,34 @@ func (a *App) applyNodeMessages(msg nodeMessagesMsg) {
 	if a.view == nil || a.view.kind != viewNode || a.view.node != msg.node {
 		return
 	}
-	appended := false
 	for i := range msg.messages {
 		message := msg.messages[i]
 		if message.Seq > a.view.watermark {
 			a.view.watermark = message.Seq
 		}
-		if _, exists := a.view.transcript.IndexOf(messageID(message.Seq)); exists {
-			continue
-		}
-		if a.view.teaching {
-			// The first real row retires the teaching card. Truncate rather
-			// than replace: the card is the only block in the room at this
-			// point, and a room that kept it above its first journaled line
-			// would be saying "nothing here yet" over the thing that arrived.
-			a.view.transcript.Truncate(0)
-			a.view.teaching = false
-		}
 		sanitizeMessage(&message)
-		block := newMessageBlock(message, a.style, a.source)
-		// The fold's accelerator is offered while the room on screen has
-		// something to fold, and a task room's rows are the ones on screen.
-		a.foldable = a.foldable || block.collapsible
-		a.view.transcript.Append(block)
-		appended = true
+		a.view.absorb(message)
 	}
-	if appended {
-		a.view.transcript.GotoBottom()
+	a.paintRoom()
+}
+
+// absorb keeps one journaled row in the room's own record, in sequence order and
+// without duplicates.
+//
+// The dedup is against the trail rather than against the transcript, because the
+// transcript is now a rendering of the trail and not the place it is kept: a
+// steer that landed through applySteer and then came back on the next poll is one
+// row that arrived twice, and the record has to hold it once.
+func (v *mainView) absorb(message store.Message) {
+	at := sort.Search(len(v.messages), func(i int) bool {
+		return v.messages[i].Seq >= message.Seq
+	})
+	if at < len(v.messages) && v.messages[at].Seq == message.Seq {
+		return
 	}
-	a.shell.Invalidate()
+	v.messages = append(v.messages, store.Message{})
+	copy(v.messages[at+1:], v.messages[at:])
+	v.messages[at] = message
 }
 
 // -- the preview card --------------------------------------------------------
@@ -965,15 +1063,13 @@ func (a *App) applySteer(result steerResultMsg) {
 	}
 	a.status.err = ""
 	if a.view != nil && a.view.kind == viewNode && a.view.node == result.message.NodeID {
-		if _, exists := a.view.transcript.IndexOf(messageID(result.message.Seq)); !exists {
-			message := result.message
-			sanitizeMessage(&message)
-			a.view.transcript.Append(newMessageBlock(message, a.style, a.source))
-			a.view.transcript.GotoBottom()
-		}
+		message := result.message
+		sanitizeMessage(&message)
+		a.view.absorb(message)
 		if result.message.Seq > a.view.watermark {
 			a.view.watermark = result.message.Seq
 		}
+		a.paintRoom()
 	}
 	a.refresh()
 }

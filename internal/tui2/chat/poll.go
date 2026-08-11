@@ -269,6 +269,14 @@ func (a *App) refreshScope(journal int64) {
 	// the one moment the lifecycles moved.
 	a.noticeWork()
 	a.refreshHomes()
+	// An open task room is a lens on the board, and the board is what just
+	// moved. Its transcript therefore follows the SNAPSHOT and not only the
+	// message trail: a part that claimed, started, finished or failed changed a
+	// row that is on screen, and none of those is a message (record.go). A room
+	// that repainted only on new messages would show a job's parts frozen as
+	// they were the moment it was opened, which is the same picture a dead
+	// surface draws.
+	a.paintRoom()
 	a.railModel.Refresh()
 	if a.hudModel != nil {
 		a.hudModel.Refresh()
