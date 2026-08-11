@@ -3435,3 +3435,118 @@ already has everything it needs to fill `Mic.State` from
 `(*command.Commander).VoiceRecorder`/`.VoiceTranscriber` and a v2 port of
 `internal/tui/voice.go`'s state machine. `Mic.Target` comes from the selected
 rail row's `rail.ComposerMode`, and it is the only new fact.
+
+### 12.11 Defect-fix lane: dialog siting, no-colour selection, the sub-cent rung, and the prose door (87e4e89, fb152e8, a3ba5af, 73240dc)
+
+A pty screenshot harness drove the real binary and found four defects the
+component suites could not see, because each is a fact about how two correct
+pieces meet. All four are closed; two of them settle a question the doc had left
+open, and both settlements are stated here because a later lane will meet them.
+
+1. **A dialog floats over the LENS, never over the persistent chrome — and it
+   owns a boundary.** `overlayRect` centred on the FULL frame, so at 120×32 an
+   80-column panel landed at columns 20–99 while the rail held 92–119: eight
+   columns of every rail row overwritten mid-word ("esc closenent Aforge
+   spine"). At 80×24 the same arithmetic put the panel's last row on the
+   composer's place line. This is 13.4's G2 ("mounts as centred dialog, not
+   full-screen") and the verdict's open decision (c) ("what 'full-screen'
+   settings means in the overlay model"), and the answer is neither of the two
+   the audit offered: it is **centred, but centred in the main pane's body rect
+   rather than in the frame**. The doc had already said so three ways — 5.15
+   opens by refusing the full-screen task room *because the rail must persist*
+   and closes with "the rail is the stable element; the main pane is the lens";
+   10.3.15 makes it law that "our rail must always carry every live thing — no
+   silent lanes"; 8.3 refuses a fullscreen roster on wide terminals. A help
+   sheet that hides running work is the silent lane, arriving by a different
+   door. The fullscreen doors are untouched: under either (10.4.17, numbered by
+   10.5.24, pinned in tokens at 72×20) there is nothing left to float over and
+   the dialog takes the frame, both axes, matching `consentui.ForcedFullscreen`.
+
+   **The boundary is not a border, and that is a decision the doc had already
+   made three times**: 5.21's anti-catalog refuses "nested box-drawing frames",
+   5.13 spends the structure budget on "cards separated by whitespace not boxes;
+   hairline rules only at room boundaries", 7.1 refuses another harness's box
+   style outright. A floating dialog IS a room boundary, so it gets exactly the
+   two things allowed: a one-cell margin of its own ground, ruled top and
+   bottom. No corners, no verticals — add those two and it becomes the frame
+   5.21 refuses. The margin is a real slot (`LayerDialogChrome`, one plane under
+   the panel) rather than a reservation inside the panel, because a pane is
+   given its WHOLE rectangle and the shell reserves nothing inside it. It never
+   takes focus and it absorbs the clicks that land on it, so the modal
+   discipline covers the boundary too.
+
+   **Owed:** the chrome draws unpainted. The root `tui2` package cannot import
+   `tokens` without inverting the tokens → tui2 seam `metrics.go` documents, so
+   the hairline is restated as a literal and pinned from outside by a test that
+   drives the real shell — the same bind, and the same answer, as
+   `DefaultMetrics`'s two breakpoints. A lane that wants it tinted binds a pane
+   to `LayerDialogChrome` like any other layer.
+
+2. **Selection survives `--color none`.** At the no-colour profile the rail lost
+   selection entirely: it was conveyed only by the background band, `NoColor`
+   writes no background, and so not one cell differed between the selected row
+   and its neighbours — two harness frames identical except for a cursor nobody
+   could see. The law was already written on `tokens.NoColor` itself ("every
+   state that color carries also has a glyph (5.17), which is why this profile
+   is a degradation and not a failure"), so `Profile.SelectionStyle` grows a
+   third rung, `SelectionMarker`, and the idiom it names is not new: it is the ▎
+   accent rail (5.21, "structure without boxes") that an UNFOCUSED pane already
+   draws, for the same reason — `tokens.Legal` forbids a dimmed foreground on a
+   raised band, so the marker path was built and tested before this profile
+   needed it. One decision in one place: `SelectionStyle` is the only function
+   that answers "how is selection drawn here", and the rail asks rather than
+   deciding. `PaintOn` still returns the text unpainted there and now says why —
+   a marker is a CELL, and painting may not change printable width.
+
+   The test is the invariant, not the bytes: at every profile and both focus
+   states a selected row must differ from the same row unselected in at least
+   one cell, **with trailing spaces trimmed** — a band that resolved to nothing
+   still padded its row to the pane's edge, which is exactly what made the
+   defect look like a difference to a byte comparison and like nothing to a
+   reader. Behaviour elsewhere is unchanged: `palette`, `modelui` and `homes`
+   test for `SelectionReverse` and fall through to a band that resolves to zero
+   bytes at `NoColor` either way.
+
+3. **12.10.6.1 closed: money grows its sub-cent rung.** `AppendMoney` rounded to
+   cents, so every measured rate below half a cent rendered `$0.00` — which does
+   not read as "very small", it reads as FREE, and 12.9.2 traced that reading to
+   its worst outcome. The rung is four decimals, and **the number was chosen by
+   the column rather than the column by the number**: `$0.0017` is seven cells
+   and `MoneyCellWidth` is seven, so the ladder gains a rung without moving a
+   single figure to the right of it (5.21's width-stability law). The cent path
+   decides the boundary — the sub-cent rung is entered exactly when the cent
+   ladder would have printed nothing — so half a cent and up is unchanged, which
+   is the boundary `homes` wrote down as `moneyFloor` while it waited. The
+   invariant pinned: **a positive figure never renders as zero, at any magnitude
+   a float64 can hold**; below the fourth decimal the ladder spends its last
+   digit rather than rounding down into a lie, so `$0.00001` reads `$0.0001` —
+   an overstatement bounded by one hundredth of a cent, and the honest direction
+   to be wrong in, because the reader learns "smaller than this instrument
+   resolves" and never "free". Exact zero still reads `$0.00`: zero is a fact and
+   not a rounding. `homes` can now collapse `moneyFloor` and its
+   words-instead-of-a-figure branch onto the shared rung; that is its lane's
+   call and its test passes either way.
+
+4. **12.10.6.2, one of three: the rail's prose door.** `rail`'s `clean` now
+   strips SGR at `NoColor`, and `clean`/`shapeOf` move onto the `View` so the
+   profile is known at the one door — a shape decided against different bytes
+   than the line renders is a shape that is wrong at exactly one profile. Test:
+   at `NoColor` no rendered cell carries an ESC whatever the prose brought, in
+   all three renderings; at a colour profile the same prose keeps its colour,
+   because erasing it there would be a different bug.
+
+   **Still owed**, and named in the code so it is not rediscovered: the shared
+   decision 12.10.6.2 asked for. `homes.cleanFor` made the same call locally and
+   the chat engine's chokepoint still preserves SGR at `NoColor`. The shared
+   home cannot be `tokens` — `remap.go` is explicit that the package stays a leaf
+   and its test file is "the only place tokens touches internal/sanitize" — so
+   the factoring needs a home of its own and an owner holding all three call
+   sites.
+
+**Method note, since it generalises.** Two of the four defects were invisible to
+the component suites for the same reason: the assertion was written against
+BYTES where the law is about a READING. A no-colour selected row differed (by
+trailing spaces) and was invisible; `$0.00` was arithmetically correct and read
+as free. Where a law is about what a person perceives, the test has to be
+written with the imperceptible differences removed — trimmed padding, a
+magnitude sweep — or it passes for the wrong reason.
