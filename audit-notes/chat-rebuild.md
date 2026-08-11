@@ -2516,10 +2516,34 @@ recognizers, the router, the control belt — is gone in one commit.
     refusal and the informational answer, `ask`'s durable options and their
     return path, both interrupt roads and the reconciler arm, the consent gate
     reached from a tool, and visible dispatch.
-13. **Engine bug found and fixed in this lane**: `answer_question` read "open"
-    as `QuestionPending` only, so a question the person had already been SHOWN —
-    `QuestionAsked`, which is every surfaced question — was unreachable. Open
-    means unresolved.
+13. **Corrections found while building, all fixed in this lane.**
+    - `answer_question` read "open" as `QuestionPending` only, so a question the
+      person had already been SHOWN — `QuestionAsked`, which is every surfaced
+      question — was unreachable. Open means unresolved.
+    - The consent gate ended the loop; the numbered question, the total
+      shutdown's gate and the stop did not, so a model could have answered its
+      own question in the same breath. `run.spoke` now ends a turn the way
+      `run.confirm` does.
+    - A tool turn cut by the output cap set the truncation mark, and if the belt
+      was then spent before a speaking turn, that mark rode the head's OWN
+      fallback receipt — words that are complete. The mark is dropped when the
+      posted sentence is not the model's.
+    - One nil-graph guard at the belt's dispatch replaces twenty-five absent
+      ones. Three reads already carried their own, for the different absence of
+      an unregistered competence map.
+    - `spawn` and `write` had descriptions that restated laws the system prompt
+      already carries. Definitions are resent every turn and cached only as a
+      prefix, so that is paid for twice; both were cut back to the thing that
+      goes wrong without being said. The belt is 25 tools / ~4.4k tokens and the
+      prompt ~2.7k, all of it one stable prefix — against a previous shape where
+      an ordinary message could pay for the router prompt, the belt prompt and
+      the belt definitions across up to six calls.
+14. **The manual was extended, because 5.20.3 makes it load-bearing.** Capability
+    honesty says `?` answers from the room's ACTUAL tool belt, and
+    `TestManualCoversEveryCapabilityTheHeadDispatchesOn` enforces that every belt
+    tool is named in a manual page. `steering-work.md` gained "What the front
+    desk's hands actually are" and now also tells a reader the thing that
+    changed for them: there is no cue list, every message reaches the hands.
 
 ## Part 13 — Build state at the laptop→Spark handoff (2026-08-10)
 
