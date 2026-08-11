@@ -97,8 +97,17 @@ func (h *Head) adjacencyOwner(nodeID string, live map[string]store.SurgeryTarget
 	return store.SurgeryTarget{}, false
 }
 
-// activeUserJobs is the whole precondition for this path: the user's own work,
-// still open. A quiet graph can never turn a sentence into a redirection.
+// activeUserJobs is the person's own work, still open. It is what every reading
+// about work already underway is measured against, and a quiet graph can never
+// turn a sentence into one.
+//
+// The membrane is beltAddressable and nothing else, which is the same membrane
+// the board sits behind. It used to be `Origin == OriginUser` on top of it, and
+// the extra conjunct was a bug with a transcript: a charter-fired job carries
+// OriginTrigger, so it appeared on the board, was described in one sentence, and
+// was then invisible to every reading about live work in the next. Trigger work
+// IS the person's — it came from a rule they ratified — and one board must not
+// disagree with the readings printed underneath it.
 func (h *Head) activeUserJobs() ([]store.SurgeryTarget, error) {
 	targets, err := h.store.SearchSurgeryTargets("", false, store.Pending, store.Claimed, store.Running)
 	if err != nil {
@@ -106,7 +115,7 @@ func (h *Head) activeUserJobs() ([]store.SurgeryTarget, error) {
 	}
 	active := make([]store.SurgeryTarget, 0, len(targets))
 	for _, target := range targets {
-		if target.Node.Provenance.Origin == store.OriginUser {
+		if beltAddressable(target.Node) && target.Node.ID != store.RootID {
 			active = append(active, target)
 		}
 	}
