@@ -154,6 +154,16 @@ type scopeSource struct {
 	// label caches each node's drawable name, so the DAG walk names a waits-on
 	// edge without re-deriving the label per edge.
 	label map[string]string
+	// nodes is the board itself, kept from the same walk the rows were built
+	// from, so a task room can read the PROSE a 28-column rail had no room for
+	// — the whole brief, the whole summary, the whole error (record.go).
+	//
+	// It is the same map `taskRows` already builds to answer parent edges, held
+	// rather than dropped. A room that re-read the graph for its own transcript
+	// would be a second opinion about the same subtree taken at a different
+	// time, which is the exact fault scope.go's first property exists to
+	// prevent.
+	nodes map[string]store.Node
 
 	// spendCost is what the CURRENT room has cost, and haveSpend is whether the
 	// journal has a run to show for it. See SetRoomSpend.
@@ -495,6 +505,7 @@ func (s *scopeSource) taskRows(snapshot store.Snapshot, usage map[string]store.J
 	questions []store.AgentQuestion) []rail.Row {
 
 	if len(snapshot.Nodes) == 0 {
+		s.nodes = nil
 		return nil
 	}
 	byID := make(map[string]store.Node, len(snapshot.Nodes))
@@ -502,6 +513,10 @@ func (s *scopeSource) taskRows(snapshot store.Snapshot, usage map[string]store.J
 	for _, node := range snapshot.Nodes {
 		byID[node.ID] = node
 	}
+	// The room's own reading of the same board (record.go). It is assigned and
+	// never mutated after this pass, so the transcript and the rail are looking
+	// at one snapshot rather than two.
+	s.nodes = byID
 	for _, node := range snapshot.Nodes {
 		if node.Parent == "" || node.Parent == store.RootID {
 			continue
