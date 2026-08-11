@@ -339,3 +339,142 @@ func TestReflexCommandSurvivesJournalRebuild(t *testing.T) {
 		t.Fatalf("targeted reflex error = %v, want ErrInvalid", err)
 	}
 }
+
+// TestHeadInterruptIsAGlobalCommand pins 12.8.10's store half: the turn-cancel
+// kind is reachable from any surface through the ordinary funnel, needs no
+// target because it targets no node, and still runs the ordinary node-target
+// validation on the rare command that supplies one anyway (a caller error, not
+// a shape the door ever produces — see internal/head/interrupt.go, which never
+// sets Target).
+func TestHeadInterruptIsAGlobalCommand(t *testing.T) {
+	s := openThreadStore(t)
+
+	if !isGlobalCommand(CommandHeadInterrupt) {
+		t.Fatal("CommandHeadInterrupt must be a global command: it targets no node")
+	}
+	if !validCommandKind(CommandHeadInterrupt) {
+		t.Fatal("CommandHeadInterrupt must be a valid command kind")
+	}
+
+	command, err := s.RequestCommand(Command{
+		SessionID: "s1", Kind: CommandHeadInterrupt, Instruction: "stop the turn in flight",
+	})
+	if err != nil {
+		t.Fatalf("untargeted head interrupt: expected acceptance, got %v", err)
+	}
+	if command.Status != CommandPending {
+		t.Fatalf("new command status = %s", command.Status)
+	}
+	pending, err := s.PendingCommands(0)
+	if err != nil || len(pending) != 1 || pending[0].Seq != command.Seq {
+		t.Fatalf("pending queue = %+v, err=%v", pending, err)
+	}
+	if err := s.ResolveCommand(command.Seq, CommandApplied, "stopped"); err != nil {
+		t.Fatalf("resolve command: %v", err)
+	}
+
+	// A node target is not required (unlike CommandCancel et al.), but a
+	// caller that supplies one anyway still walks ordinary node validation
+	// rather than being silently accepted because the kind is global.
+	if _, err := s.RequestCommand(Command{
+		Kind: CommandHeadInterrupt, Target: "ghost", Instruction: "stop it",
+	}); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("head interrupt at unknown target: expected ErrNotFound, got %v", err)
+	}
+	if _, err := s.RequestCommand(Command{
+		Kind: CommandHeadInterrupt, Target: RootID, Instruction: "stop it",
+	}); !errors.Is(err, ErrInvalid) {
+		t.Fatalf("head interrupt at the spine: expected ErrInvalid, got %v", err)
+	}
+}
+
+// TestOldJournalsReplayToIdenticalCommandsAcrossHeadInterrupt is replay-compat
+// for 12.8.10: a journal written before head_interrupt existed replays to the
+// byte-identical commands table it always replayed to, and adding a head
+// interrupt to that same journal changes nothing about the rows already there
+// — mirroring sessions_test.go's TestOldJournalsReplayToIdenticalSessions.
+func TestOldJournalsReplayToIdenticalCommandsAcrossHeadInterrupt(t *testing.T) {
+	s := openThreadStore(t)
+
+	spliced, err := s.RequestCommand(Command{
+		SessionID: "s1", Kind: CommandSplice, Instruction: "benchmark the parser",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := s.ResolveCommand(spliced.Seq, CommandApplied, "spliced 3 nodes"); err != nil {
+		t.Fatal(err)
+	}
+
+	journalBefore := readEventRows(t, s)
+	commandsBefore := readCommandRows(t, s)
+	if countEvents(t, s, EventCommandRequested) == 0 {
+		t.Fatal("the fixture contains no command_requested events; it proves nothing")
+	}
+
+	if err := s.Rebuild(); err != nil {
+		t.Fatalf("rebuild: %v", err)
+	}
+	if journalAfter := readEventRows(t, s); !reflect.DeepEqual(journalBefore, journalAfter) {
+		t.Fatalf("the rebuild rewrote the journal:\n after %v\n want %v", journalAfter, journalBefore)
+	}
+	if commandsAfter := readCommandRows(t, s); !reflect.DeepEqual(commandsBefore, commandsAfter) {
+		t.Fatalf("a pre-head_interrupt journal replayed to %v, want the identical %v",
+			commandsAfter, commandsBefore)
+	}
+
+	// Adding a head interrupt to that same journal changes nothing about the
+	// rows already there: replay only ever adds a row.
+	interrupted, err := s.RequestCommand(Command{
+		SessionID: "s1", Kind: CommandHeadInterrupt, Instruction: "stop the turn in flight",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := s.Rebuild(); err != nil {
+		t.Fatalf("rebuild after head interrupt: %v", err)
+	}
+	mixed := readCommandRows(t, s)
+	if len(mixed) != len(commandsBefore)+1 {
+		t.Fatalf("a mixed journal replayed to %d commands, want the old %d plus one",
+			len(mixed), len(commandsBefore))
+	}
+	if !reflect.DeepEqual(mixed[:len(commandsBefore)], commandsBefore) {
+		t.Fatalf("the pre-existing commands replayed to %v, want the identical %v",
+			mixed[:len(commandsBefore)], commandsBefore)
+	}
+	rebuilt, ok, err := s.CommandBySeq(interrupted.Seq)
+	if err != nil || !ok {
+		t.Fatalf("head interrupt after rebuild: ok=%v err=%v", ok, err)
+	}
+	if rebuilt.Kind != CommandHeadInterrupt || rebuilt.Target != "" || rebuilt.SessionID != "s1" {
+		t.Fatalf("rebuilt head interrupt = %+v", rebuilt)
+	}
+}
+
+// readCommandRows renders the commands table as comparable strings, the same
+// shape readSessionRows and readEventRows use for replay-compat proofs.
+func readCommandRows(t *testing.T, s *Store) []string {
+	t.Helper()
+	rows, err := s.db.Query(`
+		SELECT seq || '|' || ts || '|' || session_id || '|' || kind || '|' || issuer || '|' ||
+			reflex || '|' || fresh || '|' || target || '|' || instruction || '|' || attachments || '|' ||
+			status || '|' || result || '|' || updated_seq
+		FROM commands ORDER BY seq`)
+	if err != nil {
+		t.Fatalf("read command rows: %v", err)
+	}
+	defer rows.Close()
+	var rendered []string
+	for rows.Next() {
+		var row string
+		if err := rows.Scan(&row); err != nil {
+			t.Fatalf("scan command row: %v", err)
+		}
+		rendered = append(rendered, row)
+	}
+	if err := rows.Err(); err != nil {
+		t.Fatalf("read command rows: %v", err)
+	}
+	return rendered
+}
