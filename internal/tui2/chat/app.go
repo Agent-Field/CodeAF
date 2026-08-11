@@ -385,6 +385,7 @@ func New(opts Options) *App {
 		invalidate: app.shell.Invalidate,
 		answer:     app.answerByPointer,
 		fold:       app.toggleFold,
+		focus:      app.focusConversation,
 	}
 	app.status = &statusPane{
 		style:   app.style,
@@ -457,6 +458,10 @@ func New(opts Options) *App {
 	// door JOURNEY 18 opened for `y`.
 	stack.openModels = app.openModelPicker
 	stack.copy = app.copyPath
+	// And the region's whole rectangle is a door onto the keyboard, which is the
+	// half of 13.14's pointer law that only ran in one direction (rooms.go's
+	// focusConversation).
+	stack.focus = app.focusConversation
 	app.composer = stack
 	app.verbs = boundVerbs(app.shell.Capabilities().NewlineKey())
 

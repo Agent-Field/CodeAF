@@ -566,6 +566,42 @@ func (a *App) handOverTheKeyboard(commit bool) {
 	a.focusScope(false)
 }
 
+// focusConversation is [handOverTheKeyboard] reached by a hand instead of by a
+// commitment: a click landed on the conversation side — the transcript or the
+// composer region — so that is what the reader is talking to.
+//
+// 5.14 says you talk to what you are looking at, and 13.14 already read the
+// pointer half of that rule in the map's direction ("pointing at the map is
+// talking to the map"). This is the same sentence read backwards, and until this
+// lane it was the half nobody had written: `scopePoint` moved custody TOWARD the
+// map and nothing moved it back, so the surface had a one-way door. Reported
+// verbatim, from a live session: "clicking on the typing part or anywhere does
+// not seem to go there — I have to press ctrl+o".
+//
+// The shell was not the missing piece and adding a rule there would not have
+// fixed it. `Shell.setFocus` already moves its own LayerID on every click, and
+// the composer already REPAINTS as focused because of it — which is why the bug
+// was invisible in a screenshot and only findable from a keyboard. What decides
+// where a keystroke goes in this surface is [App.railFocus], and the shell has
+// never known about it (App.key routes before the shell sees a key at all).
+//
+// It refuses in exactly one case, and it is [handOverTheKeyboard]'s own: a
+// DISABLED composer takes no draft, so handing it the keyboard would move the
+// cursor to a pane that refuses every key and leave j/k walking nothing. A
+// reader previewing `+ new room` who clicks the card beside it keeps the map,
+// which is the state the card itself is describing.
+func (a *App) focusConversation() bool {
+	if !a.railFocus {
+		return true
+	}
+	if a.composer == nil || a.composerBind.mode == rail.ComposerDisabled {
+		return false
+	}
+	a.focusScope(false)
+	a.shell.Invalidate()
+	return true
+}
+
 // bindWork is 5.15's one rule applied to a work row.
 //
 // Every work row in v1 binds the STEER line, not a chat. 4.6 is explicit that a

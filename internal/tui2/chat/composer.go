@@ -82,6 +82,15 @@ type composerStack struct {
 	// chip, and the act belongs to the app.
 	openModels func() tea.Cmd
 	copy       func(text string) tea.Cmd
+	// focus is 5.14's "you talk to what you are looking at", read for a hand
+	// instead of an eye: POINTING IS LOOKING, so a click anywhere in this
+	// rectangle asks for the keyboard. It is a function for the same reason the
+	// two above are — this region can tell that it was pointed at and cannot
+	// know whether the keyboard is currently on the map, which is the app's
+	// flag. It reports whether custody actually moved, because a disabled
+	// composer refuses it (App.focusConversation) and a caret must not be placed
+	// in a draft nobody may type into.
+	focus func() bool
 	// The rectangle this stack was last drawn at, so a pointer can be resolved
 	// against the row that is actually on screen.
 	lastWidth, lastHeight int
@@ -192,14 +201,30 @@ func (s *composerStack) draftBand() (top, body int) {
 // that does not know it is a door.
 const placeChipID = "place"
 
-// Mouse performs a chip. Nothing else in the region takes a click: the draft is
-// where the keyboard already is by the time this runs.
+// Mouse takes the keyboard, places the caret, and performs a chip.
+//
+// The first of those three is the correction this lane exists for. The comment
+// that used to stand here said "the draft is where the keyboard already is by
+// the time this runs", and it was reading the SHELL's rule (a click focuses the
+// layer it hit) as though it were the whole story. It is not: this surface
+// keeps its own custody flag, because the map's keyboard is the app's and not
+// the shell's (rooms.go), and the shell moving its own LayerID changed nothing
+// a key would do. So the map kept the keyboard through a click on the draft,
+// and the only way back was ctrl+o — reported verbatim as "clicking on the
+// typing part or anywhere does not seem to go there — I have to press ctrl+o".
 func (s *composerStack) Mouse(msg tea.MouseMsg, local image.Point) tea.Cmd {
 	click, ok := msg.(tea.MouseClickMsg)
 	if !ok || click.Button != tea.MouseLeft {
 		return nil
 	}
-	// The candidate list first: it is drawn inside this rectangle, between the
+	// Pointing at the composer is talking to the composer. It happens before
+	// anything below decides what the click also DID, because it is true of
+	// every cell of this rectangle including the two chips and the empty rows
+	// between them — one rule for the whole region, which is what makes it a
+	// rule a reader can hold rather than a map they have to learn.
+	took := s.focus == nil || s.focus()
+
+	// The candidate list next: it is drawn inside this rectangle, between the
 	// two chips, and it is the only part of the region where a row means
 	// something on its own. draftTop is where the composer's own rows begin —
 	// the place line and the HUD sit above them.
@@ -208,6 +233,13 @@ func (s *composerStack) Mouse(msg tea.MouseMsg, local image.Point) tea.Cmd {
 		if body > 0 {
 			if cmd, taken := s.draft.ClickHint(s.lastWidth, body, local.Y-top); taken {
 				return cmd
+			}
+			// The caret goes where the finger went. It is offered only to a
+			// composer that actually holds the keyboard: placing a caret in a
+			// draft that refuses every key would be the affordance lying in the
+			// quietest way it can, and a disabled composer refuses (5.15).
+			if took && !s.disabled() {
+				s.draft.ClickCaret(s.lastWidth, body, local.X, local.Y-top)
 			}
 		}
 	}
