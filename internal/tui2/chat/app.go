@@ -377,6 +377,7 @@ func New(opts Options) *App {
 		transcript: app.transcript,
 		now:        now,
 		invalidate: app.shell.Invalidate,
+		answer:     app.answerByPointer,
 	}
 	app.status = &statusPane{
 		style:   app.style,
@@ -444,6 +445,11 @@ func New(opts Options) *App {
 	}, app.place, app.meta)
 	stack.mode = app.composerMode
 	stack.hud = app.hudRows
+	// The region's two chips (5.22 rule 5). Both are doors that already exist:
+	// the model palette the registry's own /model row opens, and the clipboard
+	// door JOURNEY 18 opened for `y`.
+	stack.openModels = app.openModelPicker
+	stack.copy = app.copyPath
 	app.composer = stack
 	app.verbs = boundVerbs(app.shell.Capabilities().NewlineKey())
 
@@ -911,6 +917,30 @@ func (a *App) key(msg tea.KeyPressMsg) tea.Cmd {
 	a.sizeComposer()
 	a.shell.Invalidate()
 	return cmd
+}
+
+// answerByPointer answers an option row a click landed on. It is [App.answer]
+// with a repaint: the digits that reach the same call come through the key
+// ladder, which invalidates on its own way out, and a click has no such path.
+func (a *App) answerByPointer(block *messageBlock, number int) tea.Cmd {
+	cmd := a.answer(block, number)
+	a.refresh()
+	return cmd
+}
+
+// copyPath puts a path on the clipboard from a pointer. It is the same door
+// copyFile opens and says the same thing when there is nothing to say — 5.19's
+// "click/`y` copies" is one act with two hands, not two acts.
+func (a *App) copyPath(text string) tea.Cmd {
+	text = strings.TrimSpace(text)
+	if text == "" {
+		a.status.err = "nothing to copy — this room has no ground"
+		a.shell.Invalidate()
+		return nil
+	}
+	a.status.err = ""
+	a.refresh()
+	return tea.SetClipboard(text)
 }
 
 // runFooterVerb performs a word on the contextual footer.

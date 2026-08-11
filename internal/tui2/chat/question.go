@@ -190,6 +190,63 @@ func (b *messageBlock) optionRow(number int, key, label string) segment {
 	return row
 }
 
+// optionAtLine answers which option a line inside this block is, by NUMBER —
+// the same one-based number the row draws and the keyboard answers with.
+//
+// It is arithmetic on the block's own shape rather than a second render. The
+// option rows are the tail of the segment run (optionRows rebuilds them there
+// and nowhere else), every one of them is a segRef and so exactly one screen
+// row, and what follows them is the cut rule and the trailing blank. So the
+// run's last row is len(rows) minus that trailing, and the run's length is what
+// optionRows would have drawn. Nothing about the width enters into it, which is
+// why a click lands on the same option at 80 columns and at 200.
+//
+// A capped list's final row ("N more, answer in words") is drawn and is not an
+// option; it answers zero, and a click there does nothing rather than answering
+// the last real row by accident.
+func (b *messageBlock) optionAtLine(line, width int) (int, bool) {
+	if b == nil || !b.ask.answerable() {
+		return 0, false
+	}
+	drawn := b.drawnOptionRows()
+	if drawn == 0 {
+		return 0, false
+	}
+	rows := len(b.Rows(width))
+	trailing := 1 // the blank row Rows always appends
+	if blocks.CutRule(b.end, width, b.styler()) != "" {
+		trailing++
+	}
+	last := rows - trailing
+	first := last - drawn
+	if line < first || line >= last {
+		return 0, false
+	}
+	number := line - first + 1
+	if _, ok := b.ask.option(number); !ok {
+		return 0, false
+	}
+	return number, true
+}
+
+// drawnOptionRows is how many rows optionRows put at the tail, INCLUDING the
+// "N more" row when the list was capped. It restates that function's own
+// branching rather than counting segments, because the segment slice is rebuilt
+// whenever the cursor moves and a count taken at the wrong moment would be a
+// click that landed one row off.
+func (b *messageBlock) drawnOptionRows() int {
+	if b.ask == nil {
+		return 0
+	}
+	if b.ask.consent {
+		return 2
+	}
+	if n := len(b.ask.options); n > questionOptionCap {
+		return questionOptionCap + 1
+	}
+	return len(b.ask.options)
+}
+
 // SetChosen moves the answer cursor and reports whether anything moved. Zero
 // clears it, which is what an answered or superseded question wants.
 func (b *messageBlock) SetChosen(number int) bool {

@@ -430,6 +430,97 @@ func capRows(n int) int {
 	return n
 }
 
+// -- the pointer ---------------------------------------------------------------
+
+// ClickHint performs the candidate a click landed on, and reports whether the
+// click was on one at all.
+//
+// The geometry is DERIVED, from the same three calls Render makes at the same
+// size: how many rows the chrome wants, how many rows the draft wraps to, and
+// which of the chrome rows are this line's. Nothing is recorded during a paint
+// (Part 2's anti-pattern 14), and there is no arrangement of width, draft and
+// attachment chips under which the answer can disagree with the picture,
+// because it is the picture's own arithmetic run again.
+//
+// The x is not consulted: a candidate is a whole row of a list, and asking the
+// reader to hit the word rather than the row would be a target narrower than
+// the thing it stands for.
+func (m *Model) ClickHint(width, height, y int) (tea.Cmd, bool) {
+	if !m.slash.open || width <= 0 || height <= 0 || y < 0 {
+		return nil, false
+	}
+	sty := m.activeStyler()
+	hints := m.hintRows(sty, width, height-1)
+	if len(hints) == 0 {
+		return nil, false
+	}
+	// The draft rows Render would draw above the chrome.
+	drafted := height - len(hints)
+	total := len(layoutRows(m.value, usable(width)))
+	visible := min(drafted, total)
+
+	// The slash list is the TAIL of the chrome — hintRows appends it after the
+	// attachment chips — so its first row is found by asking how many rows it
+	// wants rather than by assuming it starts at the top.
+	mine := len(m.slashRows(sty, width, height-1))
+	first := visible + len(hints) - mine
+	at := y - first
+	if at < 0 || at >= mine {
+		return nil, false
+	}
+
+	// A frame that shows the no-match sentence has one row and no candidate.
+	if len(m.slash.hits) == 0 {
+		return nil, true
+	}
+	// slashRows scrolls so the selection is visible; the same start is what
+	// turns a row on screen back into an index.
+	budget := min(mine, maxFilterRows)
+	start := 0
+	if m.slash.sel >= budget {
+		start = m.slash.sel - budget + 1
+	}
+	index := start + at
+	if index < 0 || index >= len(m.slash.hits) {
+		return nil, true
+	}
+	m.slash.sel = index
+	return m.completeSlash(), true
+}
+
+// HoverHint moves the highlight to the candidate under the pointer, and reports
+// whether the frame moved. It selects and never completes: pointing at a row is
+// not choosing it (5.14).
+func (m *Model) HoverHint(width, height, y int) bool {
+	if !m.slash.open {
+		return false
+	}
+	before := m.slash.sel
+	sty := m.activeStyler()
+	hints := m.hintRows(sty, width, height-1)
+	mine := len(m.slashRows(sty, width, height-1))
+	if len(hints) == 0 || mine == 0 || len(m.slash.hits) == 0 {
+		return false
+	}
+	total := len(layoutRows(m.value, usable(width)))
+	visible := min(height-len(hints), total)
+	at := y - (visible + len(hints) - mine)
+	if at < 0 || at >= mine {
+		return false
+	}
+	budget := min(mine, maxFilterRows)
+	start := 0
+	if before >= budget {
+		start = before - budget + 1
+	}
+	index := start + at
+	if index < 0 || index >= len(m.slash.hits) || index == before {
+		return false
+	}
+	m.slash.sel = index
+	return true
+}
+
 // noSlashMatch is what an open line says when nothing matches. A sentence reads
 // as an answer; an empty list reads as a rendering bug.
 const noSlashMatch = "no command by that name"

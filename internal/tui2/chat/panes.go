@@ -43,12 +43,25 @@ type transcriptPane struct {
 	// be the transcript claiming they were said. It is a function rather than
 	// the View itself so this pane never learns what a home is.
 	homes func(width, height int) []string
+	// answer performs an option row a pointer landed on. It is a function for
+	// the reason every other pointer seam here is: the pane resolves a cell to
+	// a row, and the ACT belongs to the app — this one is question.go's own
+	// [App.answer], the same call the digits make.
+	answer func(block *messageBlock, number int) tea.Cmd
+	// width is the rectangle the pane was last drawn at, kept because an option
+	// row's position depends on how tall its block rendered.
+	width int
+	// hoverBlock and hoverOption are the row the pointer rests on: the block
+	// index and the one-based option number. Zero option means no row.
+	hoverBlock  int
+	hoverOption int
 }
 
 var (
 	_ tui2.Pane      = (*transcriptPane)(nil)
 	_ tui2.PaneKeys  = (*transcriptPane)(nil)
 	_ tui2.PaneMouse = (*transcriptPane)(nil)
+	_ tui2.PaneHover = (*transcriptPane)(nil)
 )
 
 // Render assembles one screenful. The size is applied here rather than at
@@ -62,7 +75,34 @@ func (p *transcriptPane) Render(width, height int) string {
 		return ""
 	}
 	p.transcript.SetSize(width, height)
+	p.width = width
 	return strings.Join(p.transcript.Frame(p.now()).Rows, "\n")
+}
+
+// optionAt resolves a pane-local cell to an answerable option row: which block,
+// and which one-based option on it.
+//
+// The x is deliberately not consulted. An option row is a whole row of the
+// conversation and the reader is pointing at the CHOICE, not at the four
+// characters of its label — asking them to hit the words would be a target
+// narrower than the thing it stands for.
+func (p *transcriptPane) optionAt(y int) (*messageBlock, int, int, bool) {
+	if p.transcript == nil || p.homes != nil {
+		return nil, 0, 0, false
+	}
+	index, line, ok := p.transcript.BlockAtScreenRow(y)
+	if !ok {
+		return nil, 0, 0, false
+	}
+	block, ok := p.transcript.Block(index).(*messageBlock)
+	if !ok {
+		return nil, 0, 0, false
+	}
+	number, ok := block.optionAtLine(line, p.width)
+	if !ok {
+		return nil, 0, 0, false
+	}
+	return block, index, number, true
 }
 
 // Key handles the scroll vocabulary. Everything else on the keyboard belongs to
@@ -96,7 +136,22 @@ func (p *transcriptPane) Key(msg tea.KeyPressMsg) tea.Cmd {
 
 // Mouse handles the wheel. The point is pane-local and unused: a wheel notch
 // means the same thing everywhere inside the transcript.
-func (p *transcriptPane) Mouse(msg tea.MouseMsg, _ image.Point) tea.Cmd {
+func (p *transcriptPane) Mouse(msg tea.MouseMsg, local image.Point) tea.Cmd {
+	// A click on an option row answers the question, which is 5.22's law read
+	// at the one place it matters most: a blocked human is the most expensive
+	// state this product has (5.9), and the row already names its own key. The
+	// pointer is a second hand on that key and not a second way to answer —
+	// [App.answer] is what the digit reaches too.
+	if click, isClick := msg.(tea.MouseClickMsg); isClick {
+		if click.Button != tea.MouseLeft || p.answer == nil {
+			return nil
+		}
+		block, _, number, ok := p.optionAt(local.Y)
+		if !ok {
+			return nil
+		}
+		return p.answer(block, number)
+	}
 	wheel, ok := msg.(tea.MouseWheelMsg)
 	if !ok || p.transcript == nil {
 		return nil
@@ -114,6 +169,40 @@ func (p *transcriptPane) Mouse(msg tea.MouseMsg, _ image.Point) tea.Cmd {
 		p.invalidate()
 	}
 	return nil
+}
+
+// Hover previews the option row under the pointer by moving the block's OWN
+// answer cursor — the same cursor ↑/↓ walk (question.go's moveChoice) and the
+// same mark it draws.
+//
+// This is the one hover on the surface that touches a cursor, and it is
+// allowed for the reason 5.14 states rather than in spite of it: there is only
+// one answer cursor, it belongs to the question, and nothing else on the screen
+// is reading it. A hover that lit an option a different way would be a second
+// mark for one meaning. Enter still answers whatever the mark is on, so the
+// pointer and the keyboard agree about which choice is live.
+func (p *transcriptPane) Hover(local image.Point, inside bool) bool {
+	block, index, number, ok := (*messageBlock)(nil), 0, 0, false
+	if inside {
+		block, index, number, ok = p.optionAt(local.Y)
+	}
+	if !ok {
+		index, number = 0, 0
+	}
+	if p.hoverBlock == index && p.hoverOption == number {
+		return false
+	}
+	// Clear the mark on the row the pointer left, then set it where it is now.
+	if p.hoverOption != 0 && p.transcript != nil && p.hoverBlock < p.transcript.Len() {
+		if old, isMessage := p.transcript.Block(p.hoverBlock).(*messageBlock); isMessage {
+			old.SetChosen(0)
+		}
+	}
+	p.hoverBlock, p.hoverOption = index, number
+	if block != nil {
+		block.SetChosen(number)
+	}
+	return true
 }
 
 // awaitingBlock is the awaiting line (5.20 rule 6, 8.2.21).
