@@ -105,6 +105,17 @@ type FocusContext struct {
 	// "the first thing that can go" (it is the lowest-priority column here
 	// on purpose, see [priorityOf]). Empty omits the column.
 	ScopeTail string
+
+	// Hover is the id of the target the pointer is resting on (hit.go), or ""
+	// for none. It brightens that run by one tier and does nothing else: 5.22's
+	// own rule for a control that is also telemetry — dim at rest, secondary on
+	// focus — and it can never be confused with the cursor, because the cursor
+	// on this surface is a background band (5.16) and this is a foreground.
+	//
+	// It is in the CONTEXT rather than on the Model because the row is a pure
+	// function of this struct and the width, and a pointer position kept beside
+	// it would be a second input the render silently read.
+	Hover string
 }
 
 // Options configures a [Model].
@@ -206,30 +217,16 @@ func priorityOf(id string) int {
 // Render draws the footer at width cells. It is a pure function of ctx and
 // width: never more than one row, never wider than width, never a panic,
 // down to width=1 and a zero-valued ctx alike.
+//
+// The survivor computation lives in [Model.fit] (hit.go) because the pointer
+// needs the same answer: which columns are on this row, in this order, at this
+// width. Two copies of that would be a click landing on a word the paint had
+// dropped. Nothing is recorded here — the hit test re-derives, which is what
+// keeps this function honest about being pure (Part 2's anti-pattern 14).
 func (m *Model) Render(ctx FocusContext, width int) string {
-	if width <= 0 {
+	survivors, ok := m.fit(ctx, width)
+	if !ok {
 		return ""
-	}
-	parts := buildParts(ctx)
-	if len(parts) == 0 {
-		return ""
-	}
-
-	cols := make([]tokens.FooterColumn, len(parts))
-	for i, p := range parts {
-		w := blocks.Width(p.text)
-		if i > 0 {
-			w += sepWidth
-		}
-		cols[i] = tokens.FooterColumn{ID: p.id, MinWidth: w, Priority: priorityOf(p.id)}
-	}
-	kept := tokens.FitFooter(cols, width)
-	if len(kept) == 0 {
-		return ""
-	}
-	keepAt := make(map[string]bool, len(kept))
-	for _, c := range kept {
-		keepAt[c.ID] = true
 	}
 
 	// Assemble the PLAIN line first — painting happens only once the exact
@@ -237,23 +234,18 @@ func (m *Model) Render(ctx FocusContext, width int) string {
 	// never fire; [tokens.FitFooter]'s own accounting already guarantees the
 	// fit) can never cut a painted string and orphan its reset sequence
 	// (blocks.Header's own documented reason for the same ordering).
-	survivors := make([]part, 0, len(parts))
 	var plain strings.Builder
-	for _, p := range parts {
-		if !keepAt[p.id] {
-			continue
-		}
+	for _, p := range survivors {
 		if plain.Len() > 0 {
 			plain.WriteString(sep)
 		}
 		plain.WriteString(p.text)
-		survivors = append(survivors, p)
 	}
 
 	if blocks.Width(plain.String()) > width {
 		return blocks.Truncate(plain.String(), width)
 	}
-	return m.paintParts(survivors)
+	return m.paintParts(survivors, ctx)
 }
 
 // buildParts composes every candidate column in DISPLAY order, including
@@ -350,13 +342,79 @@ func verbLabel(e registry.Entry) string {
 // paintParts paints the already-fitted survivors, one Styler call per part
 // and one per separator, so a nil Styler still returns the plain text (the
 // [Model.paint] guard) rather than panicking.
-func (m *Model) paintParts(parts []part) string {
+func (m *Model) paintParts(parts []part, ctx FocusContext) string {
 	var b strings.Builder
 	for i, p := range parts {
 		if i > 0 {
 			b.WriteString(m.paint(sep, tokens.TextTertiary))
 		}
-		b.WriteString(m.paint(p.text, p.tok))
+		if p.id == "verbs" && hoveredVerb(ctx) {
+			// The verb column is fitted as one unit and painted as several, so
+			// the hovered verb can brighten without the row moving a cell.
+			b.WriteString(m.paintVerbs(ctx))
+			continue
+		}
+		tok := p.tok
+		if hoverTargetOf(p.id) == ctx.Hover && ctx.Hover != "" {
+			tok = tokens.Promote(tok)
+		}
+		b.WriteString(m.paint(p.text, tok))
+	}
+	return b.String()
+}
+
+// hoveredVerb reports that the pointer is on one of the verbs actually drawn.
+// The guard matters: paintVerbs paints the column entry by entry, which is a
+// different byte sequence from one painted whole, so taking that path for a
+// hover the row does not carry would repaint for nothing.
+func hoveredVerb(ctx FocusContext) bool {
+	if ctx.Hover == "" {
+		return false
+	}
+	n := len(ctx.Verbs)
+	if n > maxVerbs {
+		n = maxVerbs
+	}
+	for _, e := range ctx.Verbs[:n] {
+		if e.ID == ctx.Hover {
+			return true
+		}
+	}
+	return false
+}
+
+// hoverTargetOf maps a column id to the target id a pointer would report for
+// it. Only the two whole-column targets need it; the verbs carry registry ids
+// and are handled a level down.
+func hoverTargetOf(id string) string {
+	switch id {
+	case "help":
+		return HelpTarget
+	case "scope":
+		return ScopeTarget
+	}
+	return ""
+}
+
+// paintVerbs paints the verb column entry by entry so exactly one of them can
+// be a tier brighter. The text it produces is character-for-character what
+// verbsText produced for the fitting — the same labels, the same separator —
+// so nothing the pointer does can change the row's width.
+func (m *Model) paintVerbs(ctx FocusContext) string {
+	n := len(ctx.Verbs)
+	if n > maxVerbs {
+		n = maxVerbs
+	}
+	var b strings.Builder
+	for i, e := range ctx.Verbs[:n] {
+		if i > 0 {
+			b.WriteString(m.paint(sep, tokens.TextTertiary))
+		}
+		tok := tokens.TextTertiary
+		if e.ID == ctx.Hover {
+			tok = tokens.Promote(tok)
+		}
+		b.WriteString(m.paint(verbLabel(e), tok))
 	}
 	return b.String()
 }

@@ -517,6 +517,31 @@ func TestEnteringARoomHandsTheKeyboardToItsComposer(t *testing.T) {
 	}
 }
 
+// 12.13.2's merge law, asked of the footer: an entered room says its name once.
+// The tree lane caught `‹ untitled room ‹ wisp-parity ‹ wisp-parity` on a live
+// frame — the rail's last crumb and the main pane's title are the same object
+// seen from two sides, and appending both read as a level of nesting that does
+// not exist.
+func TestAnEnteredRoomNamesItselfOnceOnTheFooter(t *testing.T) {
+	app, _ := boardApp(t)
+	press(app, "ctrl+o")
+	press(app, "5")
+	press(app, "enter")
+
+	crumbs := app.breadcrumb()
+	if crumbs == "" {
+		t.Fatal("an entered room left no breadcrumb")
+	}
+	if n := strings.Count(crumbs, "wisp-parity"); n != 1 {
+		t.Fatalf("the breadcrumb names the room %d times: %q", n, crumbs)
+	}
+	frame := ansi.Strip(app.Frame(120, 30))
+	footer := frame[strings.LastIndex(frame, "\n")+1:]
+	if n := strings.Count(footer, "wisp-parity"); n > 1 {
+		t.Fatalf("the footer names the room %d times: %q", n, footer)
+	}
+}
+
 // A steered draft becomes a node-anchored user message through the one door
 // every writer uses — the same verb the old window's steer line posts.
 func TestASteeredDraftIsJournaledAgainstItsNode(t *testing.T) {

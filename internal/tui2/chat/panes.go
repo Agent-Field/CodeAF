@@ -242,6 +242,20 @@ type statusPane struct {
 	// The accelerator is only offered while it does — 5.20 rule 3 forbids
 	// naming a door that opens nothing.
 	foldable bool
+
+	// run performs a footer word, and pop is the breadcrumb's way out. Both are
+	// functions for the reason the rail's are: the row knows which word was
+	// pointed at and nothing else — the acts belong to the app, and they are
+	// the same acts the keyboard reaches.
+	run func(entryID string) tea.Cmd
+	pop func() tea.Cmd
+	// hover is the word the pointer is resting on, or "" for none.
+	hover string
+	// lastWidth is the width the row was last drawn at, so a pointer can be
+	// resolved against the row that is actually on screen. It is written by
+	// Render — the one number a pane may keep, because it IS the rectangle the
+	// pane was told about and nothing else can know it.
+	lastWidth int
 }
 
 // offeredVerbs is the verb strip at THIS width: the permanent bindings, plus
@@ -265,13 +279,18 @@ func (p *statusPane) offeredVerbs(width int) []registry.Entry {
 	return p.verbs
 }
 
-var _ tui2.Pane = (*statusPane)(nil)
+var (
+	_ tui2.Pane      = (*statusPane)(nil)
+	_ tui2.PaneMouse = (*statusPane)(nil)
+	_ tui2.PaneHover = (*statusPane)(nil)
+)
 
 // Render composes the footer at width.
 func (p *statusPane) Render(width, height int) string {
 	if width <= 0 || height <= 0 {
 		return ""
 	}
+	p.lastWidth = width
 	// A read that failed is the one state 5.16 hands a whole coloured sentence
 	// to: "a whole coloured sentence means something is wrong" is the doctrine,
 	// and a surface that cannot reach its own journal is exactly that. It
@@ -290,7 +309,15 @@ func (p *statusPane) Render(width, height int) string {
 	if p.bar == nil {
 		return ""
 	}
-	return p.bar.Render(footer.FocusContext{
+	return p.bar.Render(p.focusContext(width), width)
+}
+
+// focusContext is what the row says right now, built once so the paint and the
+// pointer are answering about the same row. Every field it leaves at zero is a
+// column that does not appear — the affordance never lies, and that includes
+// lying by presence.
+func (p *statusPane) focusContext(width int) footer.FocusContext {
+	return footer.FocusContext{
 		Verbs:         p.offeredVerbs(width),
 		Input:         p.input,
 		Hint:          p.hint,
@@ -300,7 +327,56 @@ func (p *statusPane) Render(width, height int) string {
 		KeyModeCount:  p.keyCount,
 		Health:        p.health(),
 		ScopeTail:     p.scopeTail(),
-	}, width)
+		Hover:         p.hover,
+	}
+}
+
+// Mouse makes the footer's words live (5.22 rule 4 and rule 5: the contextual
+// footer is drawn FROM the registry, so a click on one of its verbs runs the
+// registry row it was drawn from).
+//
+// This is the click parity that costs the least chrome: nothing is added to the
+// screen, and the row that has been advertising `? help` since this surface
+// existed becomes the door it names. The footer never takes focus — the shell's
+// focusable list refuses it — so clicking a verb does not move the cursor, only
+// performs the verb, which is what a button is.
+func (p *statusPane) Mouse(msg tea.MouseMsg, local image.Point) tea.Cmd {
+	click, ok := msg.(tea.MouseClickMsg)
+	if !ok || click.Button != tea.MouseLeft || p.bar == nil {
+		return nil
+	}
+	id, found := p.bar.TargetAt(p.focusContext(p.lastWidth), p.lastWidth, local.X)
+	if !found {
+		return nil
+	}
+	switch id {
+	case footer.ScopeTarget:
+		if p.pop != nil {
+			return p.pop()
+		}
+		return nil
+	case footer.HelpTarget:
+		id = helpEntryID
+	}
+	if p.run == nil {
+		return nil
+	}
+	return p.run(id)
+}
+
+// Hover lights the word under the pointer and nothing else.
+func (p *statusPane) Hover(local image.Point, inside bool) bool {
+	next := ""
+	if inside && p.bar != nil {
+		if id, ok := p.bar.TargetAt(p.focusContext(p.lastWidth), p.lastWidth, local.X); ok {
+			next = id
+		}
+	}
+	if p.hover == next {
+		return false
+	}
+	p.hover = next
+	return true
 }
 
 // health is 10.5.23's own column: pending-only system states, shown when they
