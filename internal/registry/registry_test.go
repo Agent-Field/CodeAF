@@ -238,6 +238,96 @@ func TestByIDAndBySlashAndByKeyFindSeededRows(t *testing.T) {
 	}
 }
 
+// TestSurfaceResolvesTheReceiptsBinding is the seam this axis was added to
+// close. The chat surface binds ctrl+r for the receipts fold and had to say so
+// in a code comment, because the registry could only offer v1's "v" — which
+// that surface cannot bind at all — so the footer had no honest row to render
+// and the accelerator went untaught.
+func TestSurfaceResolvesTheReceiptsBinding(t *testing.T) {
+	entry, ok := ByID("key.thread.receipts")
+	if !ok {
+		t.Fatal("the receipts row is gone")
+	}
+	if got := entry.KeyOn(SurfaceDefault); got != "v" {
+		t.Fatalf("the v1 window's binding changed: %q", got)
+	}
+	if got := entry.KeyOn(SurfaceComposerFirst); got != "ctrl+r" {
+		t.Fatalf("the chat surface's binding is %q, want ctrl+r", got)
+	}
+	bound, ok := entry.On(SurfaceComposerFirst)
+	if !ok {
+		t.Fatal("the receipts row has no accelerator on a composer-first surface")
+	}
+	if bound.Key != "ctrl+r" || bound.Verb != entry.Verb || bound.ID != entry.ID {
+		t.Fatalf("projection lost the row's identity or words: %+v", bound)
+	}
+	if found, ok := ByKeyOn(ScopeThread, SurfaceComposerFirst, "ctrl+r"); !ok || found.ID != entry.ID {
+		t.Fatalf("ByKeyOn could not route ctrl+r: %+v, %v", found, ok)
+	}
+	if _, ok := ByKeyOn(ScopeThread, SurfaceComposerFirst, "v"); ok {
+		t.Fatal("a composer-first surface resolved a bare letter — that letter is draft text")
+	}
+	if found, ok := ByKey(ScopeThread, "v"); !ok || found.ID != entry.ID {
+		t.Fatal("the surface-blind query stopped answering the way it always did")
+	}
+}
+
+// A bare letter is not bindable where a composer holds the keyboard, and the
+// registry says so instead of handing a surface a key that would do nothing.
+// A chord is bindable everywhere and comes back unchanged.
+func TestBareLettersDoNotBindOnAComposerFirstSurface(t *testing.T) {
+	for _, entry := range entries {
+		key := entry.KeyOn(SurfaceComposerFirst)
+		if key != "" && barePrintable(key) {
+			t.Errorf("entry %q offers bare %q to a surface whose composer would eat it",
+				entry.ID, key)
+		}
+		if entry.ChordKey == "" && !barePrintable(entry.Key) && key != entry.Key {
+			t.Errorf("entry %q lost its chord %q on a composer-first surface", entry.ID, entry.Key)
+		}
+		if got := entry.KeyOn(SurfaceDefault); got != entry.Key {
+			t.Errorf("entry %q: the default surface no longer reports Key (%q vs %q)",
+				entry.ID, got, entry.Key)
+		}
+	}
+	if _, ok := (Entry{Key: "y", Verb: "copy answer"}).On(SurfaceComposerFirst); ok {
+		t.Error("a bare-letter entry claimed an accelerator on a composer-first surface")
+	}
+}
+
+// A ChordKey is a record of a binding that exists, never one we wish existed:
+// it has to be a real chord, and it may not collide inside a scope any more
+// than a Key may (the uniqueness law of TestLiveKeyBindingsAreUniquePerScope,
+// asked on the other surface).
+func TestChordKeysAreRealAndUniquePerScope(t *testing.T) {
+	for _, entry := range entries {
+		if entry.ChordKey == "" {
+			continue
+		}
+		if barePrintable(entry.ChordKey) {
+			t.Errorf("entry %q records a bare %q as its composer-first binding", entry.ID, entry.ChordKey)
+		}
+		if entry.ChordKey == entry.Key {
+			t.Errorf("entry %q repeats its Key as a ChordKey, which records nothing", entry.ID)
+		}
+	}
+	for i, a := range entries {
+		keyA := a.KeyOn(SurfaceComposerFirst)
+		if keyA == "" {
+			continue
+		}
+		for j, b := range entries {
+			if i == j || b.KeyOn(SurfaceComposerFirst) != keyA {
+				continue
+			}
+			if a.Scope.Has(b.Scope) {
+				t.Fatalf("chord %q is bound to both %q and %q in an overlapping scope",
+					keyA, a.ID, b.ID)
+			}
+		}
+	}
+}
+
 // TestFuzzyMatchRanksPrefixesFirst pins the scoring behavior FuzzyMatch's
 // doc comment promises: a query that prefixes a verb outright beats the same
 // letters found scattered through a longer one.
