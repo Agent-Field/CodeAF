@@ -253,3 +253,176 @@ func TestLayoutOverlayFullscreensOnShortButWideFrames(t *testing.T) {
 		}
 	}
 }
+
+// find is the slot lookup the dialog tests share.
+func find(l layout, id LayerID) (image.Rectangle, bool) {
+	for _, sl := range l.Slots {
+		if sl.ID == id {
+			return sl.Rect, true
+		}
+	}
+	return image.Rectangle{}, false
+}
+
+// A dialog floats over the LENS and never over the persistent chrome (5.15:
+// "the rail is the stable element; the main pane is the lens"; 10.3.15: the rail
+// must always carry every live thing). This is the regression that motivated the
+// rule: at 120×32 the old solver centred an 80-column panel on the FULL frame,
+// at columns 20–99, while the rail held 92–119 — eight columns of every rail row
+// overwritten mid-word.
+//
+// Stated as an invariant rather than as one size: whenever the dialog is a
+// floating panel, neither it nor its chrome may touch the rail, the composer or
+// the status line, at any size or in any mode. The one exemption is the
+// fullscreen door, which is checked to be exactly the frame instead.
+func TestDialogNeverCoversTheRailOrTheComposer(t *testing.T) {
+	tables := []Metrics{DefaultMetrics(), chatShapedMetrics()}
+	modes := []mode{{OverlayOpen: true}, {OverlayOpen: true, ScopeOpen: true}}
+	for _, m := range tables {
+		for _, md := range modes {
+			for w := 0; w <= 200; w++ {
+				for h := 0; h <= 48; h++ {
+					l := solve(w, h, m, md)
+					panel, ok := find(l, LayerOverlay)
+					if !ok {
+						if w > 0 && h > 0 {
+							t.Fatalf("%dx%d %+v: overlay asked for and not laid out", w, h, md)
+						}
+						continue
+					}
+					chrome, floating := find(l, LayerDialogChrome)
+					if !floating {
+						// The fullscreen door: nothing left to float over, so
+						// the dialog is the frame and covering is the point.
+						if panel != image.Rect(0, 0, w, h) {
+							t.Fatalf("%dx%d %+v: a non-floating dialog must be the whole frame, got %v",
+								w, h, md, panel)
+						}
+						continue
+					}
+					if !panel.In(chrome) {
+						t.Fatalf("%dx%d %+v: panel %v escapes its chrome %v", w, h, md, panel, chrome)
+					}
+					for _, id := range []LayerID{LayerRail, LayerComposer, LayerStatus} {
+						other, present := find(l, id)
+						if !present {
+							continue
+						}
+						// A narrow frame renders scope AS the main pane, so the
+						// lens and the rail are the same rectangle there and a
+						// dialog has nowhere else to be. The law is about the
+						// rail as a COLUMN beside the transcript.
+						if id == LayerRail && l.Narrow {
+							continue
+						}
+						if chrome.Overlaps(other) {
+							t.Fatalf("%dx%d %+v: dialog chrome %v overlaps %v %v",
+								w, h, md, chrome, id, other)
+						}
+					}
+				}
+			}
+		}
+	}
+}
+
+// chatShapedMetrics is the table internal/tui2/chat actually passes (a four-row
+// composer with the place line on its top edge, 5.19). The defect was reported
+// against those numbers, so the invariant is checked against them and not only
+// against the provisional defaults.
+func chatShapedMetrics() Metrics {
+	m := DefaultMetrics()
+	m.ComposerHeight = 4
+	return m
+}
+
+// The 120×32 and 80×24 frames the screenshot harness caught, named so a
+// regression reads as the defect it is rather than as a bounds arithmetic
+// puzzle.
+func TestDialogAtTheTwoReportedSizes(t *testing.T) {
+	m := chatShapedMetrics()
+	for _, size := range [][2]int{{120, 32}, {80, 24}} {
+		w, h := size[0], size[1]
+		l := solve(w, h, m, mode{OverlayOpen: true, ScopeOpen: true})
+		chrome, floating := find(l, LayerDialogChrome)
+		if !floating {
+			t.Fatalf("%dx%d is above both fullscreen doors and should float", w, h)
+		}
+		// The place line is the composer's top row (5.19). Nothing may cover it.
+		composer, ok := find(l, LayerComposer)
+		if !ok {
+			t.Fatalf("%dx%d lost the composer", w, h)
+		}
+		if chrome.Max.Y > composer.Min.Y {
+			t.Fatalf("%dx%d: dialog reaches row %d, the place line is row %d",
+				w, h, chrome.Max.Y-1, composer.Min.Y)
+		}
+		if rail, ok := find(l, LayerRail); ok && !l.Narrow && chrome.Max.X > rail.Min.X {
+			t.Fatalf("%dx%d: dialog reaches column %d, the rail starts at %d",
+				w, h, chrome.Max.X-1, rail.Min.X)
+		}
+	}
+}
+
+// The margin is a real slot, not a reservation inside the panel: a pane is given
+// its whole rectangle and the shell reserves nothing inside it (pane.go).
+func TestDialogChromeIsAMarginAroundThePanel(t *testing.T) {
+	l := solve(120, 32, chatShapedMetrics(), mode{OverlayOpen: true})
+	chrome, ok := find(l, LayerDialogChrome)
+	if !ok {
+		t.Fatal("no chrome slot for a floating dialog")
+	}
+	panel, ok := find(l, LayerOverlay)
+	if !ok {
+		t.Fatal("no panel slot")
+	}
+	if got := chrome.Inset(dialogMargin); got != panel {
+		t.Fatalf("panel = %v, want the chrome inset by %d = %v", panel, dialogMargin, got)
+	}
+	// Chrome under the panel: drawn first, clicked second.
+	var chromeZ, panelZ int
+	for _, sl := range l.Slots {
+		switch sl.ID {
+		case LayerDialogChrome:
+			chromeZ = sl.Z
+		case LayerOverlay:
+			panelZ = sl.Z
+		}
+	}
+	if !(zBase < chromeZ && chromeZ < panelZ) {
+		t.Fatalf("planes out of order: base %d, chrome %d, panel %d", zBase, chromeZ, panelZ)
+	}
+}
+
+// The fullscreen doors are two doors, not one, and neither of them draws a
+// margin: a dialog that owns the frame is already bounded by the frame's edge
+// (10.4.17, consentui.ForcedFullscreen's both-axes semantics).
+func TestDialogFullscreenDoorsOnBothAxes(t *testing.T) {
+	m := DefaultMetrics()
+	cases := []struct {
+		w, h       int
+		fullscreen bool
+		why        string
+	}{
+		{m.DialogFullscreenBelowWidth - 1, 40, true, "one column under the width door"},
+		{200, m.DialogFullscreenBelowHeight - 1, true, "one row under the height door"},
+		{m.DialogFullscreenBelowWidth - 1, m.DialogFullscreenBelowHeight - 1, true, "under both"},
+		{m.DialogFullscreenBelowWidth, m.DialogFullscreenBelowHeight, false, "exactly on both doors"},
+	}
+	for _, c := range cases {
+		l := solve(c.w, c.h, m, mode{OverlayOpen: true})
+		panel, ok := find(l, LayerOverlay)
+		if !ok {
+			t.Fatalf("%s (%dx%d): no overlay", c.why, c.w, c.h)
+		}
+		_, floating := find(l, LayerDialogChrome)
+		if floating == c.fullscreen {
+			t.Fatalf("%s (%dx%d): floating = %v, want fullscreen = %v",
+				c.why, c.w, c.h, floating, c.fullscreen)
+		}
+		if c.fullscreen && panel != image.Rect(0, 0, c.w, c.h) {
+			t.Fatalf("%s (%dx%d): fullscreen panel = %v, want the whole frame",
+				c.why, c.w, c.h, panel)
+		}
+	}
+}

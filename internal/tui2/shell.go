@@ -574,10 +574,12 @@ func (s *Shell) mouse(msg tea.MouseMsg) tea.Cmd {
 	return nil
 }
 
-// setFocus moves the conversation. The status line is chrome and never takes
-// focus — clicking a footer must not change what the composer is bound to.
+// setFocus moves the conversation. The status line and the dialog's margin are
+// chrome and never take focus — clicking a footer must not change what the
+// composer is bound to, and clicking the ring around a dialog must not move the
+// conversation to a region that holds no content.
 func (s *Shell) setFocus(id LayerID) {
-	if id == LayerStatus || id == LayerNone || id == s.focus {
+	if !focusable(id) || id == s.focus {
 		return
 	}
 	if p, ok := s.paneFor(s.focus).(PaneFocus); ok {
@@ -595,11 +597,22 @@ func (s *Shell) setFocus(id LayerID) {
 // always a region that is actually on screen.
 func (s *Shell) firstFocusable() LayerID {
 	for _, sl := range s.layout.Slots {
-		if sl.ID != LayerStatus {
+		if focusable(sl.ID) {
 			return sl.ID
 		}
 	}
 	return LayerNone
+}
+
+// focusable is the one list of regions the conversation can move to. Chrome —
+// the footer that explains the surface, the ring that bounds a dialog — is
+// drawn, is clickable, and is never talked to.
+func focusable(id LayerID) bool {
+	switch id {
+	case LayerNone, LayerStatus, LayerDialogChrome:
+		return false
+	}
+	return id < numLayers
 }
 
 func (s *Shell) paneFor(id LayerID) Pane {
@@ -617,9 +630,15 @@ func (s *Shell) render() string {
 	for _, sl := range s.layout.Slots {
 		w, h := sl.Rect.Dx(), sl.Rect.Dy()
 		var content string
-		if p := s.paneFor(sl.ID); p != nil {
+		switch p := s.paneFor(sl.ID); {
+		case p != nil:
 			content = p.Render(w, h)
-		} else {
+		case sl.ID == LayerDialogChrome:
+			// The dialog's boundary is the shell's to draw, because the shell is
+			// what decided the dialog floats (layout.go). A caller that wants it
+			// tinted binds its own pane and takes the first branch.
+			content = dialogChrome(w, h)
+		default:
 			content = s.placeholder(sl.ID, w, h)
 		}
 		s.comp.setContent(sl.ID, content)

@@ -18,10 +18,14 @@ import "image"
 
 // z planes. Panes share the base plane because they tile rather than overlap;
 // the overlay plane sits above all of them so a dialog takes both the pixels
-// and the clicks without any pane knowing a dialog exists.
+// and the clicks without any pane knowing a dialog exists. The dialog's chrome
+// sits one plane under its body: it is drawn before the panel and clicked after
+// it, which is what makes the boundary part of the dialog rather than a hole in
+// the modal discipline.
 const (
-	zBase    = 0
-	zOverlay = 10
+	zBase         = 0
+	zDialogChrome = 9
+	zOverlay      = 10
 )
 
 // slot is one pane's allotment. Rect is absolute, in cells, with Min at the
@@ -131,27 +135,86 @@ func solveInto(slots []slot, w, h int, m Metrics, md mode) layout {
 		l.Slots = append(l.Slots, slot{ID: LayerStatus, Rect: image.Rect(0, h-statusH, w, h), Z: zBase})
 	}
 	if md.OverlayOpen {
-		l.Slots = append(l.Slots, slot{ID: LayerOverlay, Rect: overlayRect(w, h, m), Z: zOverlay})
+		// The lens is what a dialog may float over: the main pane's body, and
+		// nothing else. See overlayRects.
+		lens := image.Rect(0, 0, mainW, bodyH)
+		chrome, panel, floating := overlayRects(w, h, lens, m)
+		if floating {
+			l.Slots = append(l.Slots, slot{ID: LayerDialogChrome, Rect: chrome, Z: zDialogChrome})
+		}
+		l.Slots = append(l.Slots, slot{ID: LayerOverlay, Rect: panel, Z: zOverlay})
 	}
 	return l
 }
 
-// overlayRect centers a dialog, or gives it the whole frame under either
-// fullscreen breakpoint (10.5.24) — width or height, matching
-// consentui.ForcedFullscreen's both-axes semantics: a wide-but-short frame
-// has as little room to float a panel as a narrow one does. Wave 3 decides
-// what goes inside it; the geometry is settled here so the overlay plane is a
-// real, testable region from the first wave rather than a Wave 3 discovery.
-func overlayRect(w, h int, m Metrics) image.Rectangle {
+// Dialog anatomy and siting.
+//
+// WHERE A DIALOG MAY FLOAT. It floats over the LENS and never over the persistent
+// chrome. "The rail is the stable element; the main pane is the lens" (5.15) is
+// the sentence this implements: 5.15 opens by refusing the full-screen task room
+// precisely because the rail must persist, 10.3.15 makes it a law that "our rail
+// must always carry every live thing — no silent lanes", and 8.3 refuses a
+// fullscreen roster on wide terminals for the same reason. A dialog that covered
+// the rail would hide running work behind a help sheet; one that covered the
+// composer's place line would hide where the next answer lands (5.19). So the
+// float region is the main pane's body rect, and the panel is centred inside
+// THAT rather than inside the frame.
+//
+// (The defect this replaces: centring on the full frame put an 80-column panel
+// at cols 20–99 of a 120-column terminal while the rail held 92–119, so eight
+// columns of every rail row were overwritten mid-word.)
+//
+// WHEN IT STOPS FLOATING. Under either fullscreen door (10.4.17's "forced
+// fullscreen below a stated size threshold", numbered by 10.5.24 and pinned in
+// tokens at 72×20) there is nothing left to float over, so the dialog takes the
+// whole frame — both axes, matching consentui.ForcedFullscreen. The same answer
+// covers a lens too small to hold a panel.
+//
+// WHAT ITS BOUNDARY IS. Not a border. That is a decision the doc already made
+// three times: 5.21's anti-catalog refuses "nested box-drawing frames", 5.13
+// spends the structure budget on "whitespace not boxes; hairline rules only at
+// room boundaries", and 7.1 refuses another harness's box style outright. A
+// floating dialog IS a room boundary, so it gets exactly the two things the doc
+// allows — a one-cell margin of its own ground on every side, and a hairline
+// rule along the top and bottom edge of that margin. The margin is a real slot
+// (LayerDialogChrome) rather than a reservation inside the panel, because a pane
+// is given its WHOLE rectangle and the shell reserves nothing inside it (pane.go).
+const (
+	// dialogMargin is the whitespace ring the chrome slot owns, in cells. One
+	// cell is enough: the ring is opaque, so it separates the panel's text from
+	// the transcript's by a full column on every side.
+	dialogMargin = 1
+	// dialogMinWidth and dialogMinHeight are the smallest OUTER panel worth
+	// floating, margin included. Below them the lens has no room for a dialog
+	// and a dialog with no room is a fullscreen dialog.
+	dialogMinWidth  = 40
+	dialogMinHeight = 8
+)
+
+// overlayRects sites one dialog. It returns the chrome rectangle (the panel plus
+// its margin), the panel rectangle the overlay pane is given, and whether the
+// dialog is floating at all — a fullscreen dialog has no margin to draw, because
+// the frame's own edge is already its boundary.
+//
+// It is a pure function of two integers, the lens and the metrics table, so
+// every dialog shape this surface can take is reachable from a test.
+func overlayRects(w, h int, lens image.Rectangle, m Metrics) (chrome, panel image.Rectangle, floating bool) {
+	full := image.Rect(0, 0, w, h)
 	if w < m.DialogFullscreenBelowWidth || h < m.DialogFullscreenBelowHeight {
-		return image.Rect(0, 0, w, h)
+		return full, full, false
 	}
-	dw := min(w-4, max(40, w*2/3))
-	dh := min(h-2, max(6, h*2/3))
-	if dw <= 0 || dh <= 0 {
-		return image.Rect(0, 0, w, h)
+	lens = lens.Intersect(full)
+	if lens.Dx() < dialogMinWidth || lens.Dy() < dialogMinHeight {
+		return full, full, false
 	}
-	x := (w - dw) / 2
-	y := (h - dh) / 2
-	return image.Rect(x, y, x+dw, y+dh)
+	cw := min(lens.Dx(), max(dialogMinWidth, lens.Dx()*2/3))
+	ch := min(lens.Dy(), max(dialogMinHeight, lens.Dy()*2/3))
+	x := lens.Min.X + (lens.Dx()-cw)/2
+	y := lens.Min.Y + (lens.Dy()-ch)/2
+	chrome = image.Rect(x, y, x+cw, y+ch)
+	panel = chrome.Inset(dialogMargin)
+	if panel.Empty() {
+		return full, full, false
+	}
+	return chrome, panel, true
 }
