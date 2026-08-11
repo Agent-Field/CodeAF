@@ -75,6 +75,10 @@ type mainView struct {
 	transcript *blocks.Transcript
 	// watermark is how far into the node trail this view has read.
 	watermark int64
+	// teaching says the transcript holds the empty-room card and nothing else
+	// (openTaskRoom). The first journaled row clears it, so the line is on
+	// screen only while it is true.
+	teaching bool
 }
 
 // composerBind is what the composer is talking to right now (5.15: "you talk to
@@ -281,8 +285,19 @@ func (a *App) applyScope(event rail.Event) tea.Cmd {
 	if event.Empty() {
 		return nil
 	}
-	commit := event.Kind == rail.EventOpened || event.Kind == rail.EventScopeEntered ||
-		event.Kind == rail.EventScopePopped
+	// A POP IS NOT AN OPEN. EventScopePopped means "the cursor is back on the
+	// row it descended from" (rail's own words), and that row is the one the
+	// reader has just chosen to leave. Committing on it re-opened the room they
+	// escaped from: esc out of a task left the main pane pointing at that task's
+	// room — openTaskRoom sees the same node and returns early, so the pane
+	// stayed there at home, for the rest of the session — and esc out of a home
+	// bounced straight back in, because the homes branch calls Enter again on a
+	// commit. Both were caught in one screenshot pass.
+	//
+	// 5.15 settles it without ambiguity: "selection previews; enter opens", and
+	// "esc pops scope, never just selection". A pop is a movement of the map, so
+	// what it produces is the preview any other movement produces.
+	commit := event.Kind == rail.EventOpened || event.Kind == rail.EventScopeEntered
 	return a.bind(event, commit)
 }
 
@@ -315,7 +330,17 @@ func (a *App) bind(event rail.Event, commit bool) tea.Cmd {
 
 	case homes.Owns(id):
 		home, _ := homes.ParseScopeID(id)
-		if commit {
+		// DESCEND ONLY FROM OUTSIDE. A home is reachable by two rows that carry
+		// the same id: the RowStep in the group at home, which you enter, and
+		// the RowSurface at the top of the home's own scope, which you are
+		// already standing on. rail.Model.Enter on a surface row returns
+		// EventOpened for that same id — a surface has nothing beneath it — so a
+		// branch that entered again on every commit called itself with an
+		// identical event forever. It was a real stack overflow two keystrokes
+		// from the home rail, and it is why this guard is on the row's KIND
+		// rather than on the event: the kind is the thing that actually says
+		// whether there is anywhere left to go.
+		if commit && row.Kind != rail.RowSurface {
 			cmd = a.applyScope(a.railModel.Enter())
 		}
 		a.showHome(homes.Selection{Home: home})
@@ -354,7 +379,7 @@ func (a *App) bind(event rail.Event, commit bool) tea.Cmd {
 	case strings.HasPrefix(id, rowTaskPrefix):
 		node := strings.TrimPrefix(id, rowTaskPrefix)
 		if commit {
-			cmd = a.openTaskRoom(node, row.Name)
+			cmd = a.openTaskRoom(row, node)
 		} else {
 			a.showCard(row, "")
 		}
@@ -429,19 +454,44 @@ func (a *App) showCard(row rail.Row, note string) {
 
 // openTaskRoom swaps the main pane to a task's room: the node-anchored trail and
 // its receipts, dressed by the same renderers the conversation uses (4.6).
-func (a *App) openTaskRoom(node, title string) tea.Cmd {
+//
+// IT OPENS ON THE CARD, NOT ON NOTHING. The room used to open on an empty
+// transcript and fill it when readNodeCmd came back, which is right for a task
+// that has journaled something and a void for one that has not — and a task
+// seconds old has not. A screenshot caught the void: enter on a running atomic
+// job produced a completely blank main pane, which is the same picture an
+// unwired room draws, and 12.10's warning is exactly that those two must never
+// look alike. 5.20's first rule says the surface may not leave a reader
+// guessing which of the two they are looking at.
+//
+// So the room opens holding the card the reader entered from, plus the line
+// saying what will appear here and why nothing has. It costs one block and no
+// read — every cell comes from the row the rail already handed over — and the
+// moment the first real row lands it is cleared away (applyNodeMessages), so
+// the teaching is only ever on screen while it is true.
+func (a *App) openTaskRoom(row rail.Row, node string) tea.Cmd {
 	if node == "" {
 		return nil
 	}
 	if a.view != nil && a.view.kind == viewNode && a.view.node == node {
 		return nil
 	}
-	a.view = &mainView{kind: viewNode, node: node, title: title, transcript: blocks.New(80, 24)}
+	transcript := blocks.New(80, 24)
+	transcript.Append(cardBlock(row, emptyRoomNote, a.style))
+	a.view = &mainView{
+		kind: viewNode, node: node, title: row.Name,
+		transcript: transcript, teaching: true,
+	}
 	a.pane.homes = nil
-	a.pane.transcript = a.view.transcript
+	a.pane.transcript = transcript
 	a.shell.Invalidate()
 	return a.readNodeCmd(node, 0)
 }
+
+// emptyRoomNote is what a task room says before its subtree has journaled
+// anything. It states the two facts a reader needs and invents no third: that
+// nothing is here YET, and what will be here when it is.
+const emptyRoomNote = "nothing journaled here yet — this room fills with what this task and its parts say, as they say it"
 
 // switchRoom is the thread switcher (12.1.3, 5.24's visible door).
 //
@@ -583,6 +633,14 @@ func (a *App) applyNodeMessages(msg nodeMessagesMsg) {
 		}
 		if _, exists := a.view.transcript.IndexOf(messageID(message.Seq)); exists {
 			continue
+		}
+		if a.view.teaching {
+			// The first real row retires the teaching card. Truncate rather
+			// than replace: the card is the only block in the room at this
+			// point, and a room that kept it above its first journaled line
+			// would be saying "nothing here yet" over the thing that arrived.
+			a.view.transcript.Truncate(0)
+			a.view.teaching = false
 		}
 		sanitizeMessage(&message)
 		block := newMessageBlock(message, a.style)
