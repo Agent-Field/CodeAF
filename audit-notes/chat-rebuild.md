@@ -3087,3 +3087,306 @@ settings means in the overlay model.
    anatomy once the money/residency-placement decision (verdict item c) is
    made. Plus the one-line half-pinned-policy fix (finding 2) so `--v2`
    alone is never a config nobody wants.
+
+### 12.10 The homes: 5.24's rooms as a component package (`internal/tui2/homes`)
+
+*(A Part 12 build-ledger entry, appended at the tail because the doc is
+append-only and shared across concurrent lanes.)*
+
+Landed on `chat-v2` as 4c5089a, f7c1f97, 63642dd. `internal/tui2/homes` is
+self-contained: it imports `rail`, `tokens`, `blocks`, `sanitize` and `x/ansi`,
+reaches no store, journals nothing, and holds no client. `internal/tui2/chat`
+was NOT touched — the whole integration is the hunks in §5 below.
+
+#### 1. What the package is
+
+The four homes of 5.24 as **rail scopes plus a detail renderer**, not as pages.
+Every one has the anatomy the rail already draws: row 0 is the room's
+conversational surface, the members are its contents, `enter` descends, `esc`
+pops, `j`/`k` moves, and the main pane shows whichever row the cursor rests on
+(5.15). What died with the old surfaces is the thing 5.24 named: a page-local
+key grammar, a `place` enum, a per-page focus zone, and a per-page esc ladder —
+four of them, one per surface.
+
+| file | what it holds |
+|---|---|
+| `home.go` | `Home` (notebook/self/standing/services), scope ids under the `home:` prefix, `Owns`, per-home blurb and composer mode |
+| `route.go` | `RouteID` — self's eight routes, their words, explainers, empty-state teaching, row ids; `Lifecycle` aliased from `rail` |
+| `state.go` | **`State`, the whole input contract**, with the read behind every field named and the gaps marked GAP |
+| `group.go` | `Rows(State) []rail.Row` — 5.24's collapsed dim group, and the attention roll-up |
+| `scope.go` | `Source` (`rail.ScopeSource`), `Scope(State, Home) rail.Scope`, the member row prefixes |
+| `lines.go` | the one-line summaries a card says about itself |
+| `line.go` | the span painter (fourth copy — see §6.3) and the sanitiser chokepoint |
+| `view.go` | `View` — the main-pane renderer, its primitives, the verb strip |
+| `notebook.go` / `selfroom.go` / `standing.go` / `services.go` | the four rooms' briefs and detail panes |
+| `spend.go` | `Spend` — the status-line money segment and its inline numeric editor |
+| `voice.go` | `Mic` — the composer place-line affordance and the one-way steer mark |
+
+Public API, in the order a wiring meets it:
+
+```go
+homes.All() []Home                          // the four, in rail order
+homes.Rows(state) []rail.Row                // the group, to append below the task cards
+homes.Owns(id) bool                         // "is this scope id mine"
+homes.NewSource(state) *Source              // implements rail.ScopeSource
+(*Source).SetState(State)
+(*Source).Scope(id string) (rail.Scope, bool)
+homes.Scope(state, home) rail.Scope         // the pure form, for tests and narrow mode
+homes.NewView(*tokens.Styler) *View
+(*View).SetStyler(*tokens.Styler)
+(*View).Render(state, Selection{Home, Row}, width, height) []string
+homes.NewSpend(*tokens.Styler) *Spend       // Open/Cancel/Commit/Key/Render/Width/Text
+homes.Mic{State, Target, Elapsed, Reason}   // Render/Width/Text; zero value draws nothing
+```
+
+#### 2. Four design questions 5.24 left open, settled here
+
+1. **"self re-scopes to its 9 sub-routes" reconciles to one scope and EIGHT
+   rows.** The old page had nine routes, of which `root` was the list of the
+   other eight. Under the scope model that root IS the scope — row 0, the
+   surface you speak into — and it is not a member of itself. No route was lost.
+2. **The group's lid is a row, not a chrome header.** 5.15 says selection is
+   navigation and there is one cursor. A header the cursor cannot land on is a
+   control the keyboard cannot reach; a header it can land on that does nothing
+   on `enter` is an affordance that lies. So the lid is `homes.GroupRowID`,
+   `enter` on it toggles, and `Owns` deliberately returns **false** for it — it
+   expands, it does not re-scope.
+3. **A shut group still carries its attention.** Collapsed, the lid takes the
+   whole group's question count, and a dead service gives it `LifeFailed`
+   instead. A charter waiting to be stood up may not become invisible because
+   the room it lives in is closed (10.3.15). The lid's status line says *"1 room
+   needs you"* when something is asking and names the four rooms when nothing
+   is — a summary that read the same in both states would only ever be
+   decoration.
+4. **One collection is never counted twice.** Beliefs are reachable from the
+   notebook home and from self's beliefs route; charters from standing and from
+   self's watches; services likewise. The attention roll-up counts each in ONE
+   room (`State.NeedsIn` returns 0 for the notebook by construction), so one
+   unsettled belief is never reported as two people-blocking facts.
+
+#### 3. The composer rule, enforced in exactly one place
+
+`Home.Composer()` returns `rail.ComposerNone` for services and
+`rail.ComposerChat` for the other three, and every service member row carries
+it too. That is 5.24's one silencing and the reason it is explicit: a log tail
+LOOKS like a transcript, and a prompt under it invites a person to talk to a
+process that cannot hear. Notebook, self and standing keep an ordinary chat —
+a person may always ask aforge about a belief or a charter, and the reply lands
+in the home thread they were already speaking into.
+
+**`chat` must still enforce it**: `App.composerMode` (`app.go:504-509`) coerces
+`ComposerNone` to `ComposerChat`, so the row's mode alone does not disable
+anything. See hunk C.
+
+#### 4. Read gaps — precisely, and none of them invented around
+
+| gap | what is missing | where it would come from |
+|---|---|---|
+| **notebook count** | every belief read is a WINDOW (`Facts(limit)`, `RecentFacts(limit)`); nothing counts the table. The old self page worked around it with a 500-row scan ceiling and the string `500+`. | `func (s *Store) FactCount(status string) (int, error)` in `internal/store/facts.go` — one `SELECT COUNT(*)` with the filter `ActiveFacts` already writes. Until then the wiring sets `Notebook.AtCeiling` and the count renders `500+`, which is a floor wearing its own clothes rather than a count that is quietly wrong. |
+| **charter `probation` verb** | 5.24 names pause/probation/cadence/retire as the four affordances. `store.CommandCharterProbation` exists (`thread.go:165`) and is reachable **only conversationally** from `internal/head`; the old TUI never offered it and `internal/registry/catalog.go` has no entry. | a `registry.Entry` in `catalog.go` whose journal mapping is that command kind. `homes.CharterVerbs` already lists the id in draw order so the strip is complete the day the entry lands. |
+| **service log tail** | not a store read at all. `internal/tui/services.go readServiceLogTail` opens `store.Service.LogPath`, `ReadAt`s the last 32KiB, strips ANSI, keeps ten lines — in a package v2 may not import. | the wiring owns the read and fills `Service.Log` already-stripped plus `Service.Dropped`. The package renders `Dropped` with `tokens.GlyphCut` (12.5.2), never an ellipsis. |
+| **craft types live in `internal/tui`** | `CraftSummary` / `CraftDetail` / `CraftStep` / `CraftVersion` are declared in `internal/tui/self_drill.go:22-58` and returned by `(*command.Commander).Crafts()`. | a MOVE into `internal/craft` or `internal/command`, not a new read. The wiring maps them into `homes.Item` today. |
+| **spend projection** | 12.9.2's day/week/thirty-day rate lives in `internal/head`'s `spending` read, not in the store. `usage.go` has `SpendBetween`, `SpendByJob`, `MeasuredCostPerRun` and `localDayBounds` and no extrapolator. | out of scope here; `SpendState` carries only figures that exist. |
+| **notebook retract has no registry verb** | `(*command.Commander).RetractNotebook(seq)` → `store.QuarantineFact` is the door; nothing names it in the registry, so 5.22's "no typed-only actions" is not yet satisfied for it. | a `registry.Entry`; `Belief` already renders the let-go state, so only the verb is missing. |
+| **voice** | there is no dictation in this tree: no recogniser, no audio seam, no setting, no key. | `MicUnavailable` is the zero value and draws **nothing** — a permanently dead control on every composer would be an affordance that lies. The slot, the four states and the one-way mark ship so the day a recogniser lands nobody relitigates where the control goes. |
+
+#### 5. Adoption note — the exact hunks `internal/tui2/chat` needs
+
+**A. Scope registration** — `internal/tui2/chat/scope.go`.
+
+A.1 `buildHome` (`scope.go:328`) currently appends a placeholder that cites
+5.24 by name (`scope.go:341-351`, the `rowMoreID` row). Replace that whole
+`rows = append(rows, rail.Row{…})` block with:
+
+```go
+	rows = append(rows, homes.Rows(s.homes)...)
+```
+
+where `s.homes homes.State` is a new field beside `home`/`tasks`
+(`scope.go:119-120`), filled in `refresh` (`scope.go:263`). `rowMoreID`
+(`scope.go:83`) goes with the block; `homes.GroupRowID` replaces it.
+
+A.2 `Scope` (`scope.go:168`) gains one branch between the `HomeScopeID` case
+and the map lookup:
+
+```go
+	if scope, ok := s.homeSource.Scope(id); ok {
+		return scope, true
+	}
+```
+
+with `homeSource *homes.Source` built once and `SetState`-d in `refresh`. The
+`ready` guard above it is unchanged, and `hudSource` (`scope.go:201`) needs no
+edit at all — it already filters to `rowTaskPrefix`, so navigation rows stay
+out of the bounded live summary by construction, which is what 8.2.8 wants.
+
+**B. Key routes** — `internal/tui2/chat/rooms.go`.
+
+`scopeKey`'s `"enter"` case (`rooms.go:210-211`) gains the lid toggle ahead of
+`Enter()`, because the lid expands rather than descending:
+
+```go
+	case "enter":
+		if a.railModel.Selected().ID == homes.GroupRowID {
+			a.homesExpanded = !a.homesExpanded
+			return a.refreshScopeNow(), true
+		}
+		return a.applyScope(a.railModel.Enter()), true
+```
+
+No other key changes. Everything else — `j`/`k`, digits, `esc`, `ctrl+o` — works
+on a home scope unmodified, which is the point of the whole exercise.
+
+**C. Composer binding** — `internal/tui2/chat/rooms.go` `bind` (`rooms.go:279`),
+the switch at `rooms.go:284-330`. Replace the `rowMoreID` case (`rooms.go:297-300`)
+with four cases before `default`:
+
+```go
+	case id == homes.GroupRowID:
+		a.showCard(row, "enter opens the rest of aforge")
+		a.composerBind = composerBind{mode: rail.ComposerDisabled,
+			note: "press enter to open these rooms"}
+
+	case homes.Owns(id):
+		if commit {
+			cmd = a.applyScope(a.railModel.Enter())
+		}
+		a.showHome(homes.Selection{Home: mustHome(id)})
+		a.composerBind = composerBind{mode: rail.ComposerChat}
+
+	case strings.HasPrefix(id, homes.ServiceRowPrefix):
+		a.showHome(homes.Selection{Home: homes.HomeServices, Row: id})
+		a.composerBind = composerBind{mode: rail.ComposerDisabled,
+			note: "a service is not a conversation — ask aforge about it"}
+
+	case strings.HasPrefix(id, homes.BeliefRowPrefix),
+		strings.HasPrefix(id, homes.CharterRowPrefix),
+		strings.HasPrefix(id, "self/"):
+		a.showHome(homes.Selection{Home: a.scopeHome(), Row: id})
+		a.composerBind = composerBind{mode: rail.ComposerChat}
+```
+
+The service case MUST set `ComposerDisabled` here rather than relying on the
+row's `ComposerNone`, because `composerMode` (`app.go:504-509`) coerces `None`
+to `Chat`. That coercion is correct for its own reason and this is the one row
+kind it must not reach.
+
+`showHome` is the new sibling of `showCard`/`showThread`: it sets
+`a.homesSel` and points the main pane at the homes view. Handle fields go in
+the block at `app.go:233-236`:
+
+```go
+	homesSource   *homes.Source
+	homesView     *homes.View
+	homesState    homes.State
+	homesSel      homes.Selection
+	homesExpanded bool
+	spend         *homes.Spend
+```
+
+**D. Filling the state** — `internal/tui2/chat/poll.go` `refreshScope`
+(`poll.go:260`). One assembly per journal move, from the reads named in
+`state.go`: `Facts`/`RecentFacts`, `CompetenceMap`, `SkillFacts`, `Charters`,
+`ActiveServices`, `SelfReceipts`, `SelfSpendToday`, `Settings().Groups()`
+filtered to `config.CategoryLearning`, plus the wiring-owned log tail. Set
+`State.Now` from `a.now` and `State.Visitor` from the residency seam — the
+latter is 5.24's multi-window rule and it disables every verb at once.
+
+**E. Palette** — `internal/tui2/chat/overlay.go`. `catalogRooms`'s switch
+(`overlay.go:283-287`) gains `homes.Owns(row.ID)` so `ctrl+k` can jump to a
+home by name, and `runEntry` (`overlay.go:220`) gains the cases for the seven
+verb ids once they exist in the registry.
+
+**F. Registry** — `internal/registry/catalog.go`, inside `threadKeyRows()`
+(`catalog.go:114`). Seven entries, ids matching `homes.CharterVerbs` and
+`homes.ServiceVerbs`, journal-mapped to `store.CommandCharterPause` /
+`CharterProbation` / `CharterCadence` / `CharterRetire` and
+`store.CommandServiceStop` / `ServiceRestart` / `ServiceAutoRestart`. The
+wiring resolves them into `[]homes.Verb` per focused row; a verb the registry
+does not carry is simply dropped, so the strip can never teach a key the
+palette does not have.
+
+**G. Spend segment** — `internal/tui2/chat/composer.go:350` already assembles a
+`cost` cell on the place-line row. Replace it with `a.spend.Render(w)` /
+`a.spend.Width()`, route a click and a focus key to `Open()`, route keys while
+`Editing()` to `Key(msg)`, and send a committed `SpendResult` to
+`(*command.Commander).Budget([]string{formatted})` — the `default <amt>` arm for
+the standing default, the bare `<amt>` arm for today's ceiling. `SpendState`
+comes from `SpendToday()` and `DailyRailToday(base)`.
+
+**H. Mic** — the same place-line row: `mic.Render(styler, w)` with
+`Target` set from the SELECTED row's composer mode (not the focused pane's), so
+the one-way `↦` appears exactly when dictation would land in a steer line.
+Today every construction is the zero value and draws nothing.
+
+#### 6. Findings for other lanes
+
+1. **`tokens.AppendMoney` has no sub-cent rung.** It rounds to cents, so every
+   measured rate below half a cent renders `$0.00` — which reads as free, and
+   is the exact reading 12.9.2 names ("two decimals turned a real $0.0017 into
+   '$0.00'… and a model told the measurement is meaningless reaches for one
+   that is not"). 12.9.2's `moneyUSD` fixed this on the head side; the token
+   layer did not follow. `homes` works around it (`moneyFloor = 0.005`, and a
+   positive rate under it is stated in words), and the workaround is pinned by
+   a test so a change to the ladder fails loudly. **The real fix belongs in
+   `tokens/format.go`** and is one rung: below a cent, render significant
+   digits rather than two decimals.
+2. **The sanitiser preserves SGR, which is wrong for a `NoColor` profile.**
+   `sanitize.TextWithPalette` deliberately keeps and remaps SGR — right for a
+   colour terminal, where a service log's own red is information. On a profile
+   that has told us it has no colour it is wrong twice: the surface has promised
+   to emit no escapes, and the likeliest consumers of that promise are a dumb
+   pipe and a golden file. `homes.cleanFor` strips on `NoColor` and pays one
+   `IndexByte` when there is nothing to strip. **`rail` and `chat` have the same
+   hole** — `rail/paint.go clean` and the chat engine's chokepoint both preserve
+   content SGR at `NoColor`. Worth one shared decision rather than three.
+3. **The span painter is now in four packages** (`rail`, `palette`, `modelui`,
+   `homes`), each with a comment saying the next copy is the one that should
+   trigger the factoring. This is that copy. It was not done in this lane
+   because a lane that both introduced a package and refactored three siblings
+   is a lane nobody can review, and because the shared form needs a home that is
+   not a public API in front of forty lines of span arithmetic — most likely
+   unexported inside `tokens` with a `blocks.Styler`-shaped seam.
+4. **`rail` has no vocabulary for a row that is not work.** A belief, a dial and
+   a competence scope are not queued, running, settled or failed; today they
+   take `LifeQueued`, which resolves to the dim `○` in the chrome tier and reads
+   correctly, but only by accident of that being the one lifecycle with no hue.
+   If `rail.Lifecycle` ever grows an inert member, the mapping here is one line
+   in `scope.go`. Related: `rail.Row` has no disclosure field, which is why the
+   group's lid renders its state through its status line rather than through
+   `tokens.GlyphCollapsed`/`GlyphExpanded`.
+5. **`rail.Telemetry` has no plain count.** A collection size beside a row can
+   only be spelled through `Workers`, which renders `8w`. `homes` puts the count
+   in the row NAME (`beliefs · 500+`) rather than a number wearing the wrong
+   word.
+
+#### 7. Test story
+
+`internal/tui2/homes` ships six test files and no golden. The gates:
+
+- **The width sweep**: widths 1→140 × four states (rich / hostile / zero /
+  60-row) × every selection every home can be scoped to (including ids that are
+  not in the state) × six heights. At most `height` lines, never wider than
+  `width`, never a newline inside a row, never a panic.
+- **Every styler, and none**: four profiles × two focus states × both glyph
+  tiers × a nil `*tokens.Styler`. A nil styler additionally must emit **no
+  escape byte at all**.
+- **Foreign prose cannot drive the terminal**: the hostile fixture carries a CSI
+  clear, an OSC title set, an OSC 8 hyperlink, a BEL and NULs through belief
+  bodies, charter invariants, verb labels and service log lines; none survives.
+- **Ids never reach the frame** (5.14), asserted with unmistakable sentinel ids.
+- **The strike costs no cells**, measured against the same ruler the renderer
+  uses, and is absent entirely on a profile with no colour.
+- **The zero state teaches** rather than going blank, in all four rooms.
+- **A missing clock drops ages** rather than dating the frame from the epoch.
+- Plus the room rules: one silenced composer, the shut lid's attention, one
+  collection counted once, eight self rows on an unwired state, the ceiling's
+  `+`, the truncated log's cut mark and count, the verb strip's one reason.
+- `Spend`: the refusal to open on a read-only rail, the seed with nothing to
+  delete, the tiny grammar, a refused commit that keeps the draft, `esc` and
+  focus-loss dropping it, a poll not clearing an open field, `parseUSD`'s
+  refusals, the self-reported width, and amber only on a reached rail.
+- `Mic`: nothing at all with no recogniser, the one-way mark in every state,
+  no glyph outside `tokens.Vocabulary()`, and never amber.
+
+`go test -race` clean.
