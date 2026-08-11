@@ -1323,6 +1323,13 @@ func buildBrain(w *chatWindow, session string, opts brainOptions) (*chatBrain, e
 	// now is a handle on this process, and the commander is where the surface
 	// keeps its handles.
 	conversationalHead := head.New(chatClient, graph).
+		// Where the artifact door writes. Unset, the head writes into the
+		// process's working directory, which is the right default for a person
+		// typing in a terminal and the wrong one for a chat serving a job
+		// workspace: a diagram born beside the binary is a diagram nobody finds
+		// beside the work it belongs to. The commander already resolved this
+		// root for every other file the job touches, so the head uses the same.
+		WithWorkspace(workspaceRoot).
 		// The pool answers with its own concrete client; the head asks for its
 		// own interface. The lift is written out rather than passed as a method
 		// value so a failed pin returns a nil interface rather than a non-nil
