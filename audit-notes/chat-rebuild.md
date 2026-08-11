@@ -4124,3 +4124,114 @@ and proves the v1 half with an oracle that mirrors `internal/tui`'s
 `numberedQuestionPayload`/`parseQuestionOptionSegment` line for line, so the
 claim "the old chat still draws the same prompt and the same two labels" is a
 test rather than a paragraph.
+
+### 13.7 Three keyboard faults from the gate, fixed where the doc points (7b71a2b, af8c558, b67f906)
+
+(Numbered 13.7 and not 13.6: a concurrent head lane had already cited a
+13.6 of its own in `internal/head/urgency_test.go` before either section was
+appended, and two sections wearing one number is worse than one appearing
+out of order — this file already carries 12.10 below 13.4.)
+
+13.5's findings 2, 3 and 4 are the same fault three times: a key the surface
+advertises, a key the surface forgot, and a keyboard nobody said had moved.
+Each one is closed at the layer the doc names, and none of them by convenience.
+
+**1. `?` fires from where the reader is standing (b67f906).** The footer draws
+`? help` on every frame and the key only worked after `ctrl+o`. 13.5 offers two
+repairs and says to take exactly one — "cheap fix in the key ladder or honest
+fix in the footer, but not both ways" — and the ladder is the one the rest of
+the doc argues for. 5.20 rule 3 writes the door as a bare `?` "in any room";
+5.22 rule 4 writes it the same way; and 5.22's checklist CLOSES by demanding the
+`?` surface keep a permanent visible door, because "the capability-honesty
+surface cannot itself be a memory test". Withdrawing the footer's door in the
+state a reader spends most of their time in would have made it exactly that
+again — and 13.5's own scoreboard reads that permanent door as the proof v2
+"drew a frame" in J12 and J13, so the honest-footer repair would have moved the
+gate as well as the surface.
+
+So the key is claimed the way 12.12.6 claims the question digits, in that
+section's own words: **"only where they cannot mean anything else — empty draft,
+no overlay, rail unfocused"**. A sentence in progress keeps `?` as the character
+it is (the composer already distinguishes an empty draft from a written one, for
+esc); on an empty draft nothing is being written and the rune can only have been
+the door. `test/ux/lib.sh` has told its own journeys never to open a sentence
+with `?` since before this lane, for v1, which binds it the same way — so the
+gate wanted this shape and was already written for it.
+
+One predicate now answers "is a sentence in progress" for the help key, the
+answer ladder and the footer's digit column (`App.drafting`). Three guards that
+each spelled the same test were three chances to disagree about what a
+surface-wide law meant.
+
+**2. `ctrl+u` clears the draft, and the catalog says so (7b71a2b, af8c558).**
+`esc` was the only clear on this surface, and 8.2.21 spends esc on three other
+things while forbidding it the one thing a clear is: it "never destroys a
+non-empty draft". A draft a person wants gone needs a key that means only that,
+and readline named it forty years ago. `composer.Model.KillToStart` is
+unix-line-discard, the same act `internal/tui`'s editor and
+`internal/tui2/consentui` already bind the chord to — one chord, one meaning,
+across every editable surface in the tree.
+
+What it removes goes into the **esc stash**, not into nothing: history.go's
+standing promise is that nothing typed here is ever thrown away, so the next ↑
+brings the words back exactly as it does after an esc. Verified on the real
+binary, not only in a unit test (`uiverify/overlay-close-then-send`, shots 03
+and 04).
+
+The chord is in the one catalog as `key.thread.clear-draft` — 5.22 admits no
+typed-only action, and a chord nobody wrote down is precisely that. Its `Key` is
+already a chord, so `Entry.KeyOn` passes it through on a composer-first surface
+with no `ChordKey` needed, which is the whole reason `ctrl+u` is bindable in a
+room where `v` and `y` are not (12.12.7). It is deliberately NOT on the footer's
+verb strip, for 12.12.7's reason: that column drops lowest-priority-first and
+already carries its three. The palette row performs the edit through the same
+`KillToStart` the chord does, asked of the pane the way `paste` asks — a second
+implementation of one edit is how two doors start disagreeing.
+
+**A small finding worth keeping: a reason is not free.** The first cut gave the
+row an `entryReason` of "nothing typed to clear" for an empty draft. A disabled
+palette row renders its reason INSTEAD of its accelerator — and `?` from the
+composer only opens on an empty draft, so the row would have been dimmed every
+single time anyone could read it, and the one thing the sheet exists to teach
+(the chord) would have been the one thing it never showed. **5.20 rule 3's
+reasons are for doors this room cannot open; they are not for a buffer that
+happens to be empty this second.** The row carries no reason.
+
+**3. "A pop is not an open" was most of finding 4; the rest was the door
+(b67f906).** 12.14.2 had already fixed the pop. `closeOverlay` was correct on
+its own terms too — it restores the keyboard from `railFocus`, which nothing
+between `raise` and `close` moves — so, read literally, closing an overlay
+already returned focus to where it was. **What put the reader on the scope map
+was that the only door to `?` moved the keyboard first**, and `ctrl+o` was a
+means of pressing `?`, never a navigation the reader intended. Finding 1
+dissolves finding 4's path: opened from the composer, esc returns to the
+conversation and Enter sends.
+
+That is a shape worth recording. *A focus bug can live entirely in the route to
+a door rather than in the door's own bookkeeping* — the state machine here was
+right at every step and the reader still ended up somewhere they did not ask to
+be, because one step of the route had a side effect that was not the reason they
+took it. Both directions are now pinned by test, and by the law rather than by
+the path: opened from the composer, esc lands on the composer and the draft
+sends; opened from the map, esc lands on the map (the footer's `1–5 rooms` cell
+is the visible proof, and it is the same `keyMode` derivation the digits use).
+
+**Tests.** `internal/tui2/composer`: three on `ctrl+u` (clears and the ring
+brings it back; kills to the start and keeps what is ahead; a no-op at column 0
+does not eat a waiting stash). `internal/tui2/chat`: `?` opens from a
+composer-focused empty draft and does not also land in the draft; `?` inside a
+sentence stays the character "why?"; closing either overlay (`?` and `ctrl+k`)
+leaves Enter meaning send, asserted through a real post; closing from the map
+leaves the map holding the keyboard; `ctrl+u` clears and the row is in the `?`
+sheet with its chord; the palette row performs the edit. The pty harness gained
+`overlay-close-then-send` and `help-overlay` grew its composer-side half, so
+both directions of the focus law are photographed against the real binary.
+
+**Still owed in this territory.** `?` is dead — neither typed nor a door — in the
+one state where the composer is DISABLED (a settled row, a service row) and a
+draft typed earlier is still in the buffer; `drafting` is true, so the ladder
+hands the rune to a composer that refuses it. The same is true of the answer
+digits and has been since 12.12.6, which is why the predicate was left as one
+thing rather than special-cased here. The fix, when someone owns it, is for
+`drafting` to ask whether the draft can be TYPED INTO, not whether it has
+characters in it.
