@@ -728,16 +728,39 @@ func LinearModeAt(profileDir string) bool {
 // lying — and a terminal that cannot draw private use at all vetoes it. See
 // cmd/aforge/chatv2_nerdfont.go, which is where those four layers meet.
 func NerdFontAt(profileDir string) bool {
+	value, _ := NerdFontChosenAt(profileDir)
+	return value
+}
+
+// The sources [NerdFontChosenAt] can name, and the empty string it returns when
+// nobody has chosen at all.
+const (
+	NerdFontSourceNone      = ""
+	NerdFontSourceEnv       = "AFORGE_NERD_FONT"
+	NerdFontSourcePersisted = KeyNerdFont
+)
+
+// NerdFontChosenAt is [NerdFontAt] that also says WHO chose, so a launcher can
+// tell a decision from a default. It matters for exactly one reason: the
+// terminal veto (tokens.DetectGlyphSet) sits BELOW a human's choice and above
+// the built-in default, and a resolver that could not tell the two apart would
+// either override a user or never veto anything.
+//
+// The source is empty when nobody chose — including when the pin is set to
+// something unparseable, because a value nobody can read is not a choice, and
+// it is not a reason to refuse a launch either: it reads as the default,
+// exactly where [LinearModeAt] stops.
+func NerdFontChosenAt(profileDir string) (bool, string) {
 	if raw := strings.TrimSpace(os.Getenv("AFORGE_NERD_FONT")); raw != "" {
 		if value, err := parseBool(raw); err == nil {
-			return value
+			return value, NerdFontSourceEnv
 		}
-		return DefaultNerdFont
+		return DefaultNerdFont, NerdFontSourceNone
 	}
 	if value, ok := persistedBool(profileDir, KeyNerdFont); ok {
-		return value
+		return value, NerdFontSourcePersisted
 	}
-	return DefaultNerdFont
+	return DefaultNerdFont, NerdFontSourceNone
 }
 
 // DocumentEngineAt resolves the document-reading rung.

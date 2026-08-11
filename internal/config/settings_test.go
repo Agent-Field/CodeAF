@@ -500,4 +500,22 @@ func TestNerdFontDefaultsOnPersistsAndHonorsItsEnvironmentPin(t *testing.T) {
 	if !NerdFontAt(dir) {
 		t.Fatal("a malformed pin did not fall back to the default")
 	}
+
+	// And the second answer the launcher needs: WHO chose. A value nobody can
+	// parse is not a choice, which is what lets the terminal veto run only
+	// where no human has spoken (12.7 E.1).
+	if _, source := NerdFontChosenAt(dir); source != NerdFontSourceNone {
+		t.Errorf("an unparseable pin was reported as a choice by %q", source)
+	}
+	t.Setenv("AFORGE_NERD_FONT", "off")
+	if value, source := NerdFontChosenAt(dir); value || source != NerdFontSourceEnv {
+		t.Errorf("the pin did not name itself: %v, %q", value, source)
+	}
+	t.Setenv("AFORGE_NERD_FONT", "")
+	if value, source := NerdFontChosenAt(dir); value || source != NerdFontSourcePersisted {
+		t.Errorf("the persisted row did not name itself: %v, %q", value, source)
+	}
+	if _, source := NerdFontChosenAt(t.TempDir()); source != NerdFontSourceNone {
+		t.Errorf("an untouched profile reported a chooser: %q", source)
+	}
 }
