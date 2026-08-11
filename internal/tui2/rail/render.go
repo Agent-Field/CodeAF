@@ -139,6 +139,12 @@ type View struct {
 	meta  [5]metaCell
 	rule  string
 	ruleW int
+
+	// lead is the glyph the surface row carries when it has absorbed the scope
+	// header (see renderMap). It is render-scoped state, set immediately before
+	// row 0 is appended and cleared immediately after, so no other row can pick
+	// it up.
+	lead string
 }
 
 // NewView returns a View painting for a Styler's profile and focus. A nil
@@ -226,13 +232,46 @@ func (v *View) renderMap(m *Model, width, height int) {
 	banded := v.focus == tokens.FocusNormal &&
 		v.profile.SelectionStyle() != tokens.SelectionMarker
 
-	if m.Depth() > 0 {
+	// The scope header and the surface row are two different objects, and 5.15's
+	// wireframe says two different things in them: `‹ wisp-parity` names the
+	// ROOM and is the way out of it; `● orchestrator` says what row 0 IS inside
+	// that room. Drawn that way they are both worth their line.
+	//
+	// A source with only ONE word for both draws it twice, and a pty screenshot
+	// caught the result: an entered task room said "Permanent Aforge spine" in
+	// the header, again on row 0, and a third time on the detail card in the
+	// main pane. It is not one source's habit — chat's taskScope and the homes
+	// package both name row 0 after the scope, and Scope.normalize fills the
+	// name in from the title when a source leaves it empty, so the rail is the
+	// last place that can see the collision at all.
+	//
+	// So the rail draws ONE row instead of the same word twice: the surface row,
+	// with the header's ‹ riding on it. It does NOT invent the second word.
+	// 5.15 supplies "orchestrator" for a task room and nothing for a notebook,
+	// and a word chosen here would be this package claiming to know what a room
+	// it has never heard of contains — which is the affordance lying (5.20) with
+	// extra steps. 5.14's litmus settles which of the two lines goes: a line
+	// whose whole content is the line above it answers "what would the user do
+	// with this right now?" with nothing.
+	//
+	// Every affordance survives the merge. The row is still row 0, still
+	// selectable, still carries its lifecycle glyph, its status and meta lines
+	// and its composer mark (5.11); the ‹ is still there to click and esc still
+	// pops the scope. The one thing dropped is 10.3.10's `(2 of 5)` counter,
+	// because the merged row's right edge belongs to the composer mark — an
+	// affordance outranks a count (5.14).
+	merged := m.Depth() > 0 && surfaceRepeatsScope(scope)
+	if m.Depth() > 0 && !merged {
 		v.push(v.scopeHeader(scope, sel, len(rows)-1, ident, width), height)
 	}
 
 	// Row 0 is the conversational surface and is never folded away: a scope you
 	// cannot speak into is not a scope (5.15).
+	if merged {
+		v.lead = tokens.GlyphScopeUp
+	}
 	v.appendRow(rows[0], sel == 0, width, height, band, banded, ident)
+	v.lead = ""
 
 	members := rows[1:]
 	if len(members) == 0 {
@@ -273,6 +312,19 @@ func (v *View) renderMap(m *Model, width, height int) {
 	if !p.atTop && p.fold != "" {
 		v.push(v.foldLine(p.fold, width), height)
 	}
+}
+
+// surfaceRepeatsScope reports that row 0 has nothing to say that the scope
+// header is not already saying. The comparison is on the CLEANED, trimmed words
+// rather than on the raw strings, because a source that pads or that lets a
+// model's own spacing through would otherwise dodge the check and draw the
+// duplicate anyway.
+func surfaceRepeatsScope(s Scope) bool {
+	if len(s.Rows) == 0 {
+		return false
+	}
+	title := strings.TrimSpace(s.Title)
+	return title != "" && title == strings.TrimSpace(s.Rows[0].Name)
 }
 
 // sizeMembers measures every member so the fold can budget in lines.
