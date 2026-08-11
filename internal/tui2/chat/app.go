@@ -14,8 +14,10 @@ import (
 	"github.com/Agent-Field/aforge-v2/internal/tui2/blocks"
 	"github.com/Agent-Field/aforge-v2/internal/tui2/composer"
 	"github.com/Agent-Field/aforge-v2/internal/tui2/footer"
+	"github.com/Agent-Field/aforge-v2/internal/tui2/palette"
 	"github.com/Agent-Field/aforge-v2/internal/tui2/placeline"
 	"github.com/Agent-Field/aforge-v2/internal/tui2/rail"
+	"github.com/Agent-Field/aforge-v2/internal/tui2/settings"
 	"github.com/Agent-Field/aforge-v2/internal/tui2/tokens"
 )
 
@@ -225,6 +227,13 @@ type App struct {
 	scopeOpen  bool
 	termWidth  int
 	termHeight int
+
+	// The overlay plane (5.22): one door at a time, each built on first use so
+	// a window that never presses ctrl+k never pays for a palette.
+	overlay    overlayKind
+	palette    *palette.Palette
+	capability *palette.Capability
+	settings   *settings.Model
 
 	// view is the main pane's current lens: nil is the room's own conversation,
 	// anything else is a task room or the card a cursor move previewed.
@@ -642,9 +651,26 @@ func (a *App) drain(cmd tea.Cmd) tea.Cmd {
 // and a chat where clicking the transcript stopped you being able to type would
 // be a chat nobody could use.
 func (a *App) key(msg tea.KeyPressMsg) tea.Cmd {
-	switch key := msg.String(); key {
-	case "ctrl+c":
+	key := msg.String()
+	if key == "ctrl+c" {
 		return tea.Quit
+	}
+	// A raised overlay owns the keyboard (5.22). The compositor already gives it
+	// the cells and the clicks; anything less here would let a keystroke reach a
+	// draft the reader cannot see.
+	if cmd, taken := a.overlayKey(msg); taken {
+		a.shell.Invalidate()
+		return cmd
+	}
+
+	switch key {
+	case "ctrl+k":
+		// The cross-scope jump (8.3: "ctrl+k covers cross-scope jumps", which is
+		// why this surface has no fullscreen roster).
+		return a.openPalette()
+
+	case "alt+,":
+		return a.openSettings()
 
 	case "ctrl+o":
 		return a.setScope(!a.scopeOpen)
@@ -677,6 +703,13 @@ func (a *App) key(msg tea.KeyPressMsg) tea.Cmd {
 	// not a mode, not a focus carousel, one chord in and one chord (or esc at
 	// home) out — and while the composer has focus, j and k are letters.
 	if a.railFocus {
+		if key == "?" {
+			// The capability door 5.20 rule 3 promises in EVERY room. It can be
+			// a bare `?` only where the composer does not hold every printable
+			// key, which is exactly where the map has focus — and it is the same
+			// door the footer already names.
+			return a.openCapability()
+		}
 		if cmd, claimed := a.scopeKey(msg); claimed {
 			a.shell.Invalidate()
 			return cmd
