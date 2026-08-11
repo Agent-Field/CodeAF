@@ -1,6 +1,7 @@
 package chat
 
 import (
+	"image"
 	"sort"
 	"strings"
 	"time"
@@ -112,12 +113,30 @@ type scopePane struct {
 	// ever told its own rectangle (pane.go's contract).
 	mode func() rail.Mode
 	keys func(tea.KeyPressMsg) (tea.Cmd, bool)
+	// point is what the pointer did to the map. It is a function for the same
+	// reason keys is: the ACT belongs to the app — selecting, entering, popping
+	// — and the pane's whole job is to say which row was pointed at.
+	point func(railPoint) tea.Cmd
+}
+
+// railPoint is one pointer gesture over the map, resolved to rows rather than
+// to cells. Exactly one field is ever set.
+type railPoint struct {
+	// row is the model row index a click landed on, or -1 for none.
+	row int
+	// up says the click was on the way out of the scope (the ‹).
+	up bool
+	// wheel is -1 for a notch up and +1 for a notch down; 0 when the gesture
+	// was not a wheel.
+	wheel int
 }
 
 var (
 	_ tui2.Pane      = (*scopePane)(nil)
 	_ tui2.PaneKeys  = (*scopePane)(nil)
 	_ tui2.PaneFocus = (*scopePane)(nil)
+	_ tui2.PaneMouse = (*scopePane)(nil)
+	_ tui2.PaneHover = (*scopePane)(nil)
 )
 
 // Render draws the scope at whichever rendering the frame asked for.
@@ -140,6 +159,54 @@ func (p *scopePane) Key(msg tea.KeyPressMsg) tea.Cmd {
 	}
 	cmd, _ := p.keys(msg)
 	return cmd
+}
+
+// Mouse is 5.15's "j/k (or click) moves the rail selection", plus the way out.
+//
+// It resolves a cell to a row and hands the row on; it decides nothing about
+// what pointing at a row MEANS. That split is what makes click parity a fact
+// rather than a promise: the app answers the pointer with the same calls the
+// keyboard reaches (Move, Select, Enter, Escape), so a gesture cannot grow a
+// behaviour the keyboard does not have.
+func (p *scopePane) Mouse(msg tea.MouseMsg, local image.Point) tea.Cmd {
+	if p == nil || p.point == nil {
+		return nil
+	}
+	switch event := msg.(type) {
+	case tea.MouseWheelMsg:
+		switch event.Button {
+		case tea.MouseWheelUp:
+			return p.point(railPoint{row: -1, wheel: -1})
+		case tea.MouseWheelDown:
+			return p.point(railPoint{row: -1, wheel: 1})
+		}
+		return nil
+	case tea.MouseClickMsg:
+		if event.Button != tea.MouseLeft {
+			return nil
+		}
+		if p.pane.ScopeUpAt(local.X, local.Y) {
+			return p.point(railPoint{row: -1, up: true})
+		}
+		row, ok := p.pane.RowAt(local.Y)
+		if !ok {
+			// The empty space under a short rail is not the room at the top of
+			// it. A click there is a click on nothing, and answering it with a
+			// navigation would be the surface guessing.
+			return nil
+		}
+		return p.point(railPoint{row: row})
+	}
+	return nil
+}
+
+// Hover previews. It never returns a command and never moves the cursor — the
+// pointer resting on a row is not the reader being in it (5.14).
+func (p *scopePane) Hover(local image.Point, inside bool) bool {
+	if p == nil {
+		return false
+	}
+	return p.pane.Hover(local.X, local.Y, inside)
 }
 
 // Focus re-points the view's styler. The contrast law (tokens.Legal) forbids a
@@ -173,6 +240,7 @@ func (a *App) buildScope() {
 		style: a.style,
 		mode:  a.railMode,
 		keys:  a.scopeKey,
+		point: a.scopePoint,
 	}
 	a.scope.Focus(false)
 	a.bind(a.railModel.Preview(), false)
@@ -242,6 +310,56 @@ func (a *App) scopeKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 		return a.applyScope(a.railModel.Select(int(key[0] - '1'))), true
 	}
 	return nil, false
+}
+
+// scopePoint is the map's pointer, and it is the keyboard's grammar reached by
+// a different hand. Every branch below ends in a call scopeKey also makes.
+//
+// The one decision this function makes on its own is what a SECOND click means,
+// and it is taken from the enter law rather than invented: 5.15 splits select
+// from open — "selection previews; enter opens" — so a click on a row the
+// cursor is not on previews it, and a click on the row the cursor is already on
+// is the enter. That reads as a double-click to a hand and as the documented
+// law to a reader, which is the good case of a convention agreeing with a rule.
+// It also means a pointer can never commit to a room the reader has not first
+// seen the preview of — one click, one preview, one more click, one room.
+func (a *App) scopePoint(pt railPoint) tea.Cmd {
+	if a.railModel == nil {
+		return nil
+	}
+	switch {
+	case pt.wheel != 0:
+		// A wheel over the map moves the selection, not a viewport: the rail
+		// has no scroll of its own — the fold is what accounts for rows that do
+		// not fit (rail/fold.go) — so the only thing a notch can honestly move
+		// is the cursor.
+		a.focusScope(true)
+		return a.applyScope(a.railModel.Move(pt.wheel))
+	case pt.up:
+		// The header is the breadcrumb tail and is the way out (5.15).
+		event := a.railModel.Escape()
+		if event.Empty() {
+			return nil
+		}
+		a.focusScope(true)
+		return a.applyScope(event)
+	case pt.row < 0:
+		return nil
+	}
+
+	// Pointing at the map is talking to the map: the keyboard comes with the
+	// pointer, so the next j or enter lands where the eye already is. This is
+	// the shell's focus rule (a click focuses what it hit) stated in the app's
+	// own terms, because the rail's focus is the app's flag and not the shell's.
+	second := a.railFocus && a.railModel.Cursor() == pt.row
+	a.focusScope(true)
+	if !second {
+		return a.applyScope(a.railModel.Select(pt.row))
+	}
+	if a.railModel.Selected().ID == homes.GroupRowID {
+		return a.toggleHomes()
+	}
+	return a.applyScope(a.railModel.Enter())
 }
 
 // scopeToggle is the chord the shell records the scope gesture under. It is
