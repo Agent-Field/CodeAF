@@ -382,6 +382,12 @@ func New(opts Options) *App {
 		style:   app.style,
 		bar:     footer.New(footer.Options{Styler: app.style}),
 		session: app.session,
+		// The footer's words become live here and nowhere else. run is the ONE
+		// executor the palette, the `?` sheet and the `/` line already reach —
+		// a fourth hand on the same door, not a fourth door — and pop is the
+		// breadcrumb's way out, which is esc and the rail's ‹ said a third way.
+		run: app.runFooterVerb,
+		pop: app.popScope,
 	}
 
 	// The place line's ground. One room exists, so the ground is one leg: the
@@ -905,6 +911,29 @@ func (a *App) key(msg tea.KeyPressMsg) tea.Cmd {
 	a.sizeComposer()
 	a.shell.Invalidate()
 	return cmd
+}
+
+// runFooterVerb performs a word on the contextual footer.
+//
+// It routes through runEntry unchanged, and the invalidate is here rather than
+// inside runEntry because the keyboard paths that also call it already repaint
+// on their own way out. A click has no such path — the shell repaints what the
+// pointer changed, and what this changed is somewhere else entirely.
+func (a *App) runFooterVerb(id string) tea.Cmd {
+	cmd := a.runEntry(id)
+	a.refresh()
+	return cmd
+}
+
+// popScope is the breadcrumb's click: one step out, the same step esc takes
+// (App.navigate) and the same step the rail's ‹ takes (scopePoint). A
+// breadcrumb at home pops nothing and says nothing, because there is nowhere
+// above home to go.
+func (a *App) popScope() tea.Cmd {
+	if a.railModel == nil || a.railModel.Depth() == 0 {
+		return nil
+	}
+	return a.applyScope(a.railModel.Escape())
 }
 
 // sizeComposer asks the region for however many rows its open inline completion
