@@ -695,6 +695,12 @@ func (a *App) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		a.applyTraceRead(msg)
 		return a, nil
 
+	case subtreeReadMsg:
+		a.applySubtreeRead(msg)
+		// The plan may name parts whose recorders were never asked for, because
+		// the board did not know they existed a moment ago.
+		return a, a.readTraceCmd(msg.node)
+
 	case roomOpenedMsg:
 		return a, a.applyRoomOpened(msg)
 

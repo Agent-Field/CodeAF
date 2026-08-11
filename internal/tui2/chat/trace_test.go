@@ -139,6 +139,27 @@ func TestTheSalientArgumentIsFoundNotTabulated(t *testing.T) {
 	}
 }
 
+// The recorder truncates an argument object at 300 characters, so the calls a
+// reader most wants named — a heredoc, a written file — arrive as INVALID JSON
+// with the closing brace cut off. Measured on the reporter's own recorder before
+// the scan existed: those rows drew raw `{"cmd":"cd … << 'EOF'\n\nprint(\"…`.
+func TestATruncatedArgumentObjectStillNamesItsSubject(t *testing.T) {
+	cut := `{"cmd":"cd /home/x/work && cat >> validate.py << 'EOF'⏎⏎print(\"win rate\")⏎EO`
+	if got := salientArg(cut); !strings.HasPrefix(got, "cd /home/x/work && cat >> validate.py") {
+		t.Fatalf("a cut heredoc named %q", got)
+	}
+	// The key the row wants may sit before the one that was cut.
+	written := `{"path":"/home/x/work/report.md","text":"# Why the signal fails,⏎⏎1. Diagnos`
+	if got := salientArg(written); got != "/home/x/work/report.md" {
+		t.Fatalf("a cut write named %q", got)
+	}
+	// And the row that comes out of it shows the first line, not the transport.
+	event := parseCall("sh " + cut)
+	if strings.Contains(event.gist, `{"cmd"`) || strings.Contains(event.gist, "⏎") {
+		t.Fatalf("the row drew the recorder's own encoding: %q", event.gist)
+	}
+}
+
 // A recorder that grows a sixth shape tomorrow must not make the room go quiet.
 func TestAnUnknownRecorderLineIsDrawnAndNotDropped(t *testing.T) {
 	events := parseTrace("some shape this build has never seen\n")
