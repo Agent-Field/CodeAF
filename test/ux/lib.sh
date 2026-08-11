@@ -9,12 +9,33 @@
 #
 # Sourced by every journeys/*.sh under an environment run.sh exports:
 #   UX_BIN UX_HOME UX_STATE UX_DB UX_SESSION UX_EVIDENCE UX_CAP UX_JOURNEY
+#   UX_SURFACE UX_CHAT_ARGS
 
 set -uo pipefail
 
 : "${UX_REPLY_TIMEOUT:=120}"   # a conversational reply
 : "${UX_JOB_TIMEOUT:=300}"     # a commissioned job
 : "${UX_POLL:=2}"
+
+# ---------------------------------------------------------------- the surface
+#
+# UX_SURFACE is `v1` (the old chat) or `v2` (`aforge chat --v2`). chat-rebuild
+# 11.1 keeps both alive until the parity checklist passes, so every journey is
+# written ONCE and run TWICE. What a journey says, and everything it asks the
+# journal, is identical on both. A journey branches only where 13.4 records
+# that v2 legitimately draws the same fact somewhere else — and every such
+# branch cites the section it follows. The v1 side of a branch is never
+# loosened to make the v2 side agree: a v2 gap is a red journey and a finding,
+# not a re-worded assertion.
+: "${UX_SURFACE:=v1}"
+: "${UX_CHAT_ARGS:=}"
+
+is_v2() { [ "$UX_SURFACE" = "v2" ]; }
+
+# surface_note records, in the evidence, which anatomy an assertion followed —
+# so a reader of the v2 report can tell "asserted something else" from
+# "asserted the same thing and it was missing".
+surface_note() { note "[$UX_SURFACE] $*"; }
 
 UX_FAILURES=0
 UX_CHECKS=0
@@ -32,7 +53,8 @@ head_line() { printf '\n## %s\n\n' "$*" >> "$UX_DIR/notes.md"; printf '  %s\n' "
 # transcript never has to go and look up what number 4 was.
 journey_is() {
   printf '# %s — %s\n\n' "$UX_JOURNEY" "$*" >> "$UX_DIR/notes.md"
-  printf '\n\033[1m▶ %s — %s\033[0m\n' "$UX_JOURNEY" "$*" >&2
+  printf '_surface: %s (`aforge chat %s`)_\n\n' "$UX_SURFACE" "$UX_CHAT_ARGS" >> "$UX_DIR/notes.md"
+  printf '\n\033[1m▶ %s [%s] — %s\033[0m\n' "$UX_JOURNEY" "$UX_SURFACE" "$*" >&2
 }
 
 record() { printf -- '- **%s**: %s\n' "$1" "$2" >> "$UX_DIR/notes.md"; printf -- '    · %s: %s\n' "$1" "$2" >&2; }
@@ -227,10 +249,12 @@ ux_launch() {
   local sess="$1"; shift
   local extra="${*:-}"
   tmux kill-session -t "$sess" 2>/dev/null
+  # $UX_CHAT_ARGS carries the surface (empty for v1, --v2 for v2), so a window
+  # a journey opens for itself is the same surface the runner opened.
   tmux new-session -d -s "$sess" -x "$UX_WIDTH" -y "$UX_HEIGHT" \
-    "env $UX_ENV $extra '$UX_BIN' chat; echo AFORGE-EXITED; sleep 900"
+    "env $UX_ENV $extra '$UX_BIN' chat $UX_CHAT_ARGS; echo AFORGE-EXITED; sleep 900"
   sleep 8
-  note "launched window $sess"
+  note "launched window $sess ($UX_SURFACE)"
 }
 
 ux_kill() { tmux kill-session -t "$1" 2>/dev/null; note "killed window $1"; }
