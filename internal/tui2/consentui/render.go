@@ -226,20 +226,25 @@ func (m *Model) optionRows(q Question, width int, hints bool) []string {
 		if key == "" {
 			key = strconv.Itoa(option.Index)
 		}
-		body := key + "  " + option.Label
-		if selected && m.bandable() {
-			rows = append(rows, m.band(blocks.Pad(blocks.Truncate("  "+body, width), width)))
-		} else if selected {
-			rows = append(rows, m.tint(blocks.Truncate(
-				tokens.GlyphAccentRail+" "+body, width), tokens.TextPrimary))
-		} else {
+		switch {
+		case selected && m.bandable():
+			rows = append(rows, m.band(blocks.Pad(
+				blocks.Truncate("  "+key+"  "+option.Label, width), width)))
+		case selected:
+			rows = append(rows, m.paintSegments([]segment{
+				{tokens.GlyphAccentRail + " ", tokens.TextPrimary},
+				{key + "  ", tokens.TextSecondary},
+				{option.Label, tokens.TextPrimary},
+			}, width))
+		default:
 			// The letter is an interactive chip at rest, which the palette puts
 			// on tier 3 — NOT amber. Amber means a human is needed, and a column
 			// of amber letters would spend the one word this surface most needs
 			// to keep sharp (5.16).
-			lead := "  " + key
-			rows = append(rows, m.tint(blocks.Truncate(lead, width), tokens.TextTertiary)+
-				m.tint(blocks.Truncate("  "+option.Label, width-blocks.Width(lead)), tokens.TextPrimary))
+			rows = append(rows, m.paintSegments([]segment{
+				{"  " + key + "  ", tokens.TextTertiary},
+				{option.Label, tokens.TextPrimary},
+			}, width))
 		}
 		if !hints || !selected || option.Hint == "" {
 			continue
