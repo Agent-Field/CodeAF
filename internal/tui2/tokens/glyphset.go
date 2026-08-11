@@ -184,15 +184,33 @@ func Vocabulary() []GlyphBinding {
 // map, no allocation, nothing on the hot path.
 var glyphTable [glyphSetCount][glyphIDCount]string
 
-// upgradeTable is the whole-cell rewrite table, sorted by plain rune so a
-// lookup is a bounded binary search over a few dozen entries rather than a map
-// probe per painted cell.
+// upgradeTable is the whole-cell rewrite table, sorted by plain rune. It is
+// walked directly only for a key outside [upgradeLo, upgradeHi); everything
+// inside that window — which is every glyph the vocabulary actually carries —
+// resolves through upgradeIndex in one array index, because this runs once per
+// painted cell and the production bar (12.7 F.12) says no map probe there.
 var upgradeTable [glyphSetCount][]upgradeEntry
 
 type upgradeEntry struct {
 	from rune
 	to   string
 }
+
+// The window every semantic glyph in the 5.17 vocabulary falls in: general
+// punctuation, arrows, technical symbols, geometric shapes, miscellaneous
+// symbols and dingbats run from U+2000 to the braille block at U+2800. The
+// index is one byte per codepoint in it — four kilobytes of package data, built
+// once — holding the upgrade entry's position plus one, so zero means "not an
+// upgradable cell". A key outside the window still resolves, through the binary
+// search below; glyphset_test.go reports if one ever appears, because it would
+// be the one cell on the screen paying more than its neighbours.
+const (
+	upgradeLo   rune = 0x2000
+	upgradeHi   rune = 0x2800
+	upgradeSpan      = upgradeHi - upgradeLo
+)
+
+var upgradeIndex [glyphSetCount][upgradeSpan]uint8
 
 func init() {
 	for id := GlyphID(0); id < glyphIDCount; id++ {
@@ -231,6 +249,17 @@ func init() {
 	sort.Slice(upgradeTable[NerdFont], func(i, j int) bool {
 		return upgradeTable[NerdFont][i].from < upgradeTable[NerdFont][j].from
 	})
+	for set := GlyphSet(0); set < glyphSetCount; set++ {
+		for i, e := range upgradeTable[set] {
+			if e.from < upgradeLo || e.from >= upgradeHi {
+				continue
+			}
+			if i+1 > 0xFF {
+				panic("tokens: the upgrade index cannot address this many slots")
+			}
+			upgradeIndex[set][e.from-upgradeLo] = uint8(i + 1)
+		}
+	}
 }
 
 func bindingOf(id GlyphID) (GlyphBinding, bool) {
@@ -315,10 +344,18 @@ func (g GlyphSet) UpgradeChrome(cell string) string {
 	return cell
 }
 
-// lookupUpgrade is the bounded rune check the hot path is allowed: a binary
-// search over a table of a couple of dozen entries, built once at init.
+// lookupUpgrade is the bounded rune check the hot path is allowed: one array
+// index for every glyph the vocabulary carries, and a binary search over a
+// couple of dozen entries for a key outside the index's window.
 func lookupUpgrade(g GlyphSet, r rune) (string, bool) {
 	table := upgradeTable[g]
+	if r >= upgradeLo && r < upgradeHi {
+		i := upgradeIndex[g][r-upgradeLo]
+		if i == 0 {
+			return "", false
+		}
+		return table[i-1].to, true
+	}
 	lo, hi := 0, len(table)-1
 	for lo <= hi {
 		mid := int(uint(lo+hi) >> 1)

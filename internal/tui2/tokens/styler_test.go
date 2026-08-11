@@ -304,3 +304,117 @@ func TestStylerSatisfiesBlocksAtRuntime(t *testing.T) {
 		t.Errorf("through the identity interface: %q", got)
 	}
 }
+
+// TestTierChangesTheGlyphAndNothingElse is 12.7 F.8: the tier changes the
+// character between the escape sequences and not one byte of the escape
+// sequences themselves. Colour is resolved by the state × hue axes through
+// [ResolveToken], and that composition is exactly what a repertoire tier is not
+// allowed to touch — it is the reason a mono icon is admissible in this chrome
+// where an emoji is not (5.17 reason 2).
+func TestTierChangesTheGlyphAndNothingElse(t *testing.T) {
+	for p := Profile(0); p < profileCount; p++ {
+		for f := Focus(0); f < focusCount; f++ {
+			plain := NewStylerIn(p, f, Plain)
+			nf := NewStylerIn(p, f, NerdFont)
+			for st := blocks.State(0); st <= blocks.StateChrome; st++ {
+				for h := blocks.Hue(0); h <= blocks.HueIdentity; h++ {
+					if plain.Token(st, h) != nf.Token(st, h) {
+						t.Fatalf("%v/%v/%v/%v: the tier moved a token", p, f, st, h)
+					}
+					// A word is not a glyph, so both tiers must paint it
+					// byte-identically — same sequence, same reset.
+					if a, b := plain.Paint("aforge", st, h), nf.Paint("aforge", st, h); a != b {
+						t.Fatalf("%v/%v/%v/%v: prose differs between tiers\nplain %q\nnf    %q", p, f, st, h, a, b)
+					}
+					if a, b := plain.PaintIdentity("aforge", 7, st), nf.PaintIdentity("aforge", 7, st); a != b {
+						t.Fatalf("%v/%v/%v: identity prose differs between tiers", p, f, st)
+					}
+					// A glyph cell differs in exactly one place: the cell.
+					a := plain.PaintGlyph(GWorking, st, h)
+					b := nf.PaintGlyph(GWorking, st, h)
+					if strings.Replace(a, GlyphWorking, NerdFont.Glyph(GWorking), 1) != b {
+						t.Fatalf("%v/%v/%v/%v: the tier changed more than the glyph\nplain %q\nnf    %q",
+							p, f, st, h, a, b)
+					}
+				}
+			}
+			for tok := Token(0); tok < tokenCount; tok++ {
+				if a, b := plain.PaintToken("aforge", tok), nf.PaintToken("aforge", tok); a != b {
+					t.Fatalf("%v/%v/%v: PaintToken differs between tiers", p, f, tok)
+				}
+				if a, b := plain.PaintOn("aforge", tok, Band), nf.PaintOn("aforge", tok, Band); a != b {
+					t.Fatalf("%v/%v/%v: PaintOn differs between tiers", p, f, tok)
+				}
+			}
+		}
+	}
+}
+
+// TestStylerCarriesTheTierAcrossEveryDoor: the tier is a property of the
+// Styler, so the derived Stylers a compositor makes when a pane loses focus
+// must keep it. A WithFocus that quietly dropped back to the plain tier would
+// redraw half the screen in the other repertoire.
+func TestStylerCarriesTheTierAcrossEveryDoor(t *testing.T) {
+	s := NewStylerIn(TrueColor, FocusNormal, NerdFont)
+	if s.GlyphSet() != NerdFont {
+		t.Fatalf("GlyphSet() = %v", s.GlyphSet())
+	}
+	if got := s.WithFocus(FocusDimmed).GlyphSet(); got != NerdFont {
+		t.Errorf("WithFocus dropped the tier: %v", got)
+	}
+	if got := s.WithGlyphSet(Plain); got.GlyphSet() != Plain || got.Profile() != TrueColor {
+		t.Errorf("WithGlyphSet(%v) = tier %v, profile %v", Plain, got.GlyphSet(), got.Profile())
+	}
+	if s.WithGlyphSet(NerdFont) != s {
+		t.Error("WithGlyphSet to the same tier should return the same Styler")
+	}
+	if got := s.WithGlyphSet(GlyphSet(200)).GlyphSet(); got != Plain {
+		t.Errorf("an out-of-range tier resolved to %v, want the plain floor", got)
+	}
+	if got := NewStyler(TrueColor, FocusNormal).GlyphSet(); got != Plain {
+		t.Errorf("NewStyler must stay on the plain tier for every caller written before the tier: %v", got)
+	}
+	// The tier is orthogonal to colour: a NoColor terminal with a patched font
+	// still draws icons, and painting adds no escape bytes there.
+	if got := NewStylerIn(NoColor, FocusNormal, NerdFont).Paint(GlyphWorking, blocks.StateLive, blocks.HueAlive); got != NerdFont.Glyph(GWorking) {
+		t.Errorf("NoColor + NerdFont painted %q", got)
+	}
+}
+
+// BenchmarkPaintGlyph is 12.7 F.12: the tier must not cost the paint path
+// anything a frame would notice. Under Plain it is one predictable branch;
+// under NerdFont it is a rune decode and a binary search over a table built at
+// package initialization.
+func BenchmarkPaintGlyph(b *testing.B) {
+	for _, c := range []struct {
+		name string
+		set  GlyphSet
+	}{{"plain", Plain}, {"nerdfont", NerdFont}} {
+		s := NewStylerIn(TrueColor, FocusNormal, c.set)
+		b.Run(c.name, func(b *testing.B) {
+			b.ReportAllocs()
+			for i := 0; i < b.N; i++ {
+				sink = s.Paint(GlyphWorking, blocks.StateLive, blocks.HueAlive)
+			}
+		})
+	}
+}
+
+// BenchmarkPaintProse is the same measurement for the case that dominates a
+// frame: text that is not a glyph and must fall straight through the tier.
+func BenchmarkPaintProse(b *testing.B) {
+	for _, c := range []struct {
+		name string
+		set  GlyphSet
+	}{{"plain", Plain}, {"nerdfont", NerdFont}} {
+		s := NewStylerIn(TrueColor, FocusNormal, c.set)
+		b.Run(c.name, func(b *testing.B) {
+			b.ReportAllocs()
+			for i := 0; i < b.N; i++ {
+				sink = s.Paint("the answer the reader came for", blocks.StateSettled, blocks.HueNone)
+			}
+		})
+	}
+}
+
+var sink string

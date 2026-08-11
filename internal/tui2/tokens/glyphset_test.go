@@ -373,3 +373,34 @@ func TestPowerlineSeparatorsAreBannedButTheBranchIsNot(t *testing.T) {
 		t.Errorf("the branch slot draws %q, want U+E0A0", got)
 	}
 }
+
+// TestUpgradeIndexCoversTheWholeVocabulary keeps the production bar honest
+// (12.7 F.12). The upgrade path is allowed one array index per painted cell,
+// and it is only one index while every key sits inside the index's window; a
+// key outside it still resolves, through the binary search, but it would be the
+// one cell on the screen paying more than the others, which is exactly the kind
+// of quiet asymmetry that goes unnoticed until a profile says so.
+func TestUpgradeIndexCoversTheWholeVocabulary(t *testing.T) {
+	for set := GlyphSet(0); set < glyphSetCount; set++ {
+		for _, e := range upgradeTable[set] {
+			if e.from < upgradeLo || e.from >= upgradeHi {
+				t.Errorf("%s: the upgrade key %U falls outside the index window %U..%U",
+					set, e.from, upgradeLo, upgradeHi)
+			}
+		}
+	}
+	// Every auto-upgradable slot is reachable, and no other slot is.
+	for _, b := range Vocabulary() {
+		r, _ := utf8.DecodeRuneInString(b.Plain)
+		_, found := lookupUpgrade(NerdFont, r)
+		if b.AutoUpgrade && !found {
+			t.Errorf("%s does not resolve through the upgrade index", b.Name)
+		}
+		if !b.AutoUpgrade && found && b.Plain != GlyphStepRunning && b.Plain != GlyphStepPending {
+			t.Errorf("%s upgrades automatically and must not", b.Name)
+		}
+	}
+	if _, found := lookupUpgrade(Plain, []rune(GlyphWorking)[0]); found {
+		t.Error("the plain tier upgrades nothing")
+	}
+}
