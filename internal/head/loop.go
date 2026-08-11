@@ -189,6 +189,11 @@ func (h *Head) runTurn(ctx context.Context, user store.Message) error {
 		// also 5.20's visible-dispatch rule holding when the words fail: prose
 		// turned into work is never a silent side effect.
 		final = run.summary()
+		// And the mark does not travel with it. Whatever cut the model's last
+		// call describes words that are not being posted; these are the head's
+		// own and they are complete. Marking them would be a lie in the other
+		// direction, which the truncation law has no more use for than the first.
+		ended = nil
 	}
 	return h.postAgentFloor(user.SessionID, final, run.commandSeq,
 		replyModel(user, client, servedModel), endedParts(ended))
