@@ -255,7 +255,12 @@ func (v *View) renderMap(m *Model, width, height int) {
 			rowIdent = v.identity(seedOf(r, scope.Seed), prev)
 			prev = rowIdent
 		}
-		v.appendRow(r, sel == i+1, width, height, tokens.BandFor(rowIdent), banded, rowIdent)
+		// The band is the SCOPE's, never the row's: 5.16 spends the identity
+		// tint on "which room am I in", so it is plain at home and tinted
+		// inside a task's scope. A home rail that tinted each selection with
+		// the selected card's hue would answer a question nobody asked and
+		// make the band change colour as the cursor moves.
+		v.appendRow(r, sel == i+1, width, height, band, banded, rowIdent)
 	}
 	if !p.atTop && p.fold != "" {
 		v.push(v.foldLine(p.fold, width), height)
