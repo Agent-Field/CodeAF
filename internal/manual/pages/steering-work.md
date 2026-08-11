@@ -89,11 +89,50 @@ is heard as work, not impatience.
 ## Sentences no rule anticipated
 
 "Kill everything except the finance one." "Hold the scans until the research
-lands." For these, aforge reads the live board and then acts through a small
-fixed set of verbs against ids it actually saw there. It cannot invent a target,
-and every safety rule above — the confirm gates, the state rules — still governs
-it. A misread sentence therefore costs you one question, never a silent wrong
-action.
+lands." There is no cue list any of these has to match. Every message you send
+reaches the front desk's own hands, which are a fixed set of typed tools over
+the live board: it reads the board, then acts against ids it actually saw
+there. It cannot invent a target, and every safety rule above — the confirm
+gates, the state rules — still governs it. A misread sentence therefore costs
+you one question, never a silent wrong action.
+
+## What the front desk's hands actually are
+
+Reading is always safe and never needs permission: the board, one job's result,
+its plan, a file it wrote, the manual, what has been spent, what is on watch,
+what was finished in a window of time, and a search across everything
+remembered. Reads never queue anything.
+
+The rest change something and each one journals:
+
+- **spawn** — commission new work. This is how anything gets started, and it
+  carries your words verbatim. When one message names things that are genuinely
+  independent, it becomes one piece of work each.
+- **cancel, pause, resume, restart, reprioritize** — the verbs above.
+- **steer** — tell the people already working something, right now, without
+  changing what the job is.
+- **revise** — change what a running job is FOR; its remaining plan is edited.
+- **expedite** — the same deliverable sooner. It never adds work.
+- **correct** — redo a deliverable that was wrong, with the previous version and
+  your criticism in hand.
+- **write** — put a document on disk and hand you the path. Anything you will
+  use outside the conversation — a diagram, a document, code, data — is born as
+  a file rather than typed into a reply.
+- **note** and **forget** — write one durable thing into what aforge has
+  learned, or let one numbered line go when you say it is no longer true.
+- **ask** — one short numbered question when more than one thing plausibly
+  matches what you meant. It never picks for you.
+- **answer_question** — settle a question a worker is blocked on. Aforge may
+  only do this for questions explicitly marked informational; anything that
+  needs your consent comes to you and stays open until you answer it.
+- **await** — wait, briefly, for the receipt of a change it just made, so it can
+  tell you whether it actually landed rather than assuming.
+- **interrupt** — stop the turn the front desk is in the middle of. That is
+  different from cancelling work on the board, and it is deliberately not the
+  same verb.
+
+The front desk does all of that inside one reply. It can read the board, decide,
+commission work, and report back without handing you off to anything.
 
 ## Receipts count and name things
 
