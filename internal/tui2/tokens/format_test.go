@@ -238,7 +238,7 @@ func TestMoneyForms(t *testing.T) {
 		{0, "$0.00", "$0.00"},
 		{8.65, "$8.65", "$8.70"},
 		{8.64, "$8.64", "$8.60"},
-		{0.004, "$0.00", "$0.00"},
+		{0.004, "$0.0040", "$0.00"},
 		{999.994, "$999.99", "$1000.00"},
 		{1000, "$1K", "$1000.00"},
 		{1234, "$1.2K", "$1234.00"},
@@ -249,6 +249,51 @@ func TestMoneyForms(t *testing.T) {
 		}
 		if got := MoneyDime(c.usd); got != c.dime {
 			t.Errorf("MoneyDime(%v) = %q, want %q", c.usd, got, c.dime)
+		}
+	}
+}
+
+// TestASubCentFigureIsNeverFree is 12.9.2's law at the token layer, and it is
+// written as an invariant rather than as a table because the failure it guards
+// is a READING, not an arithmetic: "$0.00" beside real work does not read as
+// "very small", it reads as free, and 12.9.2 traced a model writing "$20.00 a
+// run" to having been shown a measurement it was told was nothing.
+//
+// Three things are pinned: a positive figure never renders as zero, at any
+// magnitude a float64 can hold; exact zero still does, because zero is a fact
+// and not a rounding; and the whole ladder still fits [MoneyCellWidth], because
+// a money cell that grew by one would move every number to the right of it.
+func TestASubCentFigureIsNeverFree(t *testing.T) {
+	if got := Money(0); got != "$0.00" {
+		t.Fatalf("Money(0) = %q, want $0.00 — zero is a fact, not a rounding", got)
+	}
+	// The measured rate from the real failure, and the magnitudes around it.
+	positives := []float64{
+		0.0017, 0.005, 0.0049, 0.004, 0.001, 0.0001, 0.00005,
+		1e-6, 1e-9, 1e-30, math.SmallestNonzeroFloat64,
+	}
+	for _, usd := range positives {
+		got := Money(usd)
+		if got == "$0.00" {
+			t.Errorf("Money(%v) = %q — a measured figure rendered as free", usd, got)
+		}
+		if w := len(got); w > MoneyCellWidth {
+			t.Errorf("Money(%v) = %q is %d cells, MoneyCellWidth is %d", usd, got, w, MoneyCellWidth)
+		}
+	}
+	// The rung reads at the precision the figure has, not at two decimals.
+	if got := Money(0.0017); got != "$0.0017" {
+		t.Errorf("Money(0.0017) = %q, want $0.0017", got)
+	}
+	// Half a cent and up is the cent ladder's, unchanged: this is the boundary
+	// internal/tui2/homes wrote down as moneyFloor while it waited for this rung.
+	if got := Money(0.005); got != "$0.01" {
+		t.Errorf("Money(0.005) = %q, want $0.01", got)
+	}
+	// Every form still right-aligns into the cell without widening it.
+	for _, usd := range append(positives, 0, 8.65, 999.99, 1234) {
+		if w := len([]rune(MoneyCell(usd))); w != MoneyCellWidth {
+			t.Errorf("MoneyCell(%v) = %q is %d cells, want %d", usd, MoneyCell(usd), w, MoneyCellWidth)
 		}
 	}
 }
