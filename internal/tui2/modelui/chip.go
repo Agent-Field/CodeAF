@@ -178,7 +178,7 @@ func (c Chip) Render(width int) string {
 	for _, s := range c.Spans(width) {
 		line.add(s.Text, s.Token)
 	}
-	return line.emit(&buf, profile, focus, width, false, tokens.Band)
+	return line.emit(&buf, profile, focus, width, false, tokens.Band, tokens.Ground)
 }
 
 // fit resolves the five parts against a width budget, walking the drop ladder.

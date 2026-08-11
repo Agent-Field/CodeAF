@@ -63,7 +63,7 @@ func (m *Model) Render(width, height int) string {
 		push(m.tabBar(width), -1)
 	}
 	if height >= 8 {
-		push("", -1)
+		push(blank(m.styler, width, m.ground()), -1)
 	}
 
 	hint := ""
@@ -79,15 +79,36 @@ func (m *Model) Render(width, height int) string {
 	}
 	if hint != "" {
 		for len(lines) < height-1 {
-			lines = append(lines, "")
+			lines = append(lines, blank(m.styler, width, m.ground()))
 			rows = append(rows, -1)
 		}
 		lines = append(lines, hint)
 		rows = append(rows, -1)
 	}
+	// The sheet stands on its whole rectangle. A pane is given a box and told to
+	// fill it (pane.go); one that returns fewer lines leaves the room it floats
+	// over showing through the bottom of it, which is 12.13's ghost one plane up.
+	for len(lines) < height {
+		lines = append(lines, blank(m.styler, width, m.ground()))
+		rows = append(rows, -1)
+	}
 
 	m.rowAtLine = append(m.rowAtLine, rows...)
 	return strings.Join(lines, "\n")
+}
+
+// ground is the floor this surface paints under everything that is not banded.
+//
+// Linear mode (10.1.5) gets none, and for the same reason it gets no selection
+// band: a background fill is what a screen reader cannot see and what a
+// high-contrast terminal may render as a solid block. Nothing is lost by
+// dropping it — the ground carries no information, only elevation — which is
+// exactly why it is the part that yields.
+func (m *Model) ground() tokens.Token {
+	if m.linear {
+		return tokens.Ground
+	}
+	return tokens.Sheet
 }
 
 // header is the scope line: where you are, and how much is here.
@@ -106,7 +127,7 @@ func (m *Model) header(width int) string {
 		right = strconv.Itoa(len(m.visible)) + " of " + strconv.Itoa(len(m.rows))
 	}
 	line.right(right, tokens.TextTertiary)
-	return line.render(m.styler, false)
+	return line.render(m.styler, false, m.ground())
 }
 
 // tabBar is the groups — or, while a search is running, the filter breadcrumb
@@ -117,13 +138,13 @@ func (m *Model) tabBar(width int) string {
 		crumbs := m.filterBreadcrumb()
 		if len(crumbs) == 0 {
 			line.add("no group matches", tokens.TextTertiary)
-			return line.render(m.styler, false)
+			return line.render(m.styler, false, m.ground())
 		}
 		const lead = "across "
 		line.add(lead, tokens.TextTertiary)
 		text := strings.Join(crumbs, " "+tokens.GlyphSeparator+" ")
 		line.add(ansi.Truncate(text, max(1, width-len(lead)), tokens.GlyphTruncated), tokens.TextSecondary)
-		return line.render(m.styler, false)
+		return line.render(m.styler, false, m.ground())
 	}
 
 	first, last := m.tabWindow(width)
@@ -147,7 +168,7 @@ func (m *Model) tabBar(width int) string {
 	if last < len(m.tabs)-1 {
 		line.right(tokens.GlyphTruncated, tokens.TextTertiary)
 	}
-	return line.render(m.styler, false)
+	return line.render(m.styler, false, m.ground())
 }
 
 // tabWindow picks the run of tabs to show. A tab bar too wide for the frame
@@ -298,7 +319,7 @@ func (m *Model) rowLine(r row, position int, selected bool, labels, width int) s
 	// accent rail above already carries the same fact in a printable cell, so
 	// linear mode keeps the marker and drops the fill rather than replacing
 	// one with the other.
-	return line.render(m.styler, selected && !m.linear)
+	return line.render(m.styler, selected && !m.linear, m.ground())
 }
 
 // chip is the right-hand column of a row line.
@@ -330,7 +351,7 @@ func (m *Model) detailLines(r row, width int) []string {
 			line := newLine(width)
 			line.add(indent, tokens.TextSecondary)
 			line.add(text, tokens.TextSecondary)
-			out = append(out, line.render(m.styler, false))
+			out = append(out, line.render(m.styler, false, m.ground()))
 		}
 	}
 
@@ -338,7 +359,7 @@ func (m *Model) detailLines(r row, width int) []string {
 		line := newLine(width)
 		line.add(indent, tokens.TextTertiary)
 		line.add(sample, tokens.TextSecondary)
-		out = append(out, line.render(m.styler, false))
+		out = append(out, line.render(m.styler, false, m.ground()))
 	}
 
 	switch {
@@ -347,7 +368,7 @@ func (m *Model) detailLines(r row, width int) []string {
 		line.add(indent, tokens.TextTertiary)
 		line.add(tokens.GlyphPromptSteer+" ", tokens.Cyan)
 		line.addCursor(m.editor.text(), m.editor.cursor)
-		out = append(out, line.render(m.styler, false))
+		out = append(out, line.render(m.styler, false, m.ground()))
 
 	case m.picking:
 		line := newLine(width)
@@ -362,7 +383,7 @@ func (m *Model) detailLines(r row, width int) []string {
 			}
 			line.add(choice, tokens.TextTertiary)
 		}
-		out = append(out, line.render(m.styler, false))
+		out = append(out, line.render(m.styler, false, m.ground()))
 	}
 
 	if failure := m.failed[r.setting.Key]; failure != "" {
@@ -371,14 +392,14 @@ func (m *Model) detailLines(r row, width int) []string {
 			line := newLine(width)
 			line.add(indent, tokens.Coral)
 			line.add(text, tokens.Coral)
-			out = append(out, line.render(m.styler, false))
+			out = append(out, line.render(m.styler, false, m.ground()))
 		}
 	}
 
 	line := newLine(width)
 	line.add(indent, tokens.TextTertiary)
 	line.add(m.metaLine(r), tokens.TextTertiary)
-	out = append(out, line.render(m.styler, false))
+	out = append(out, line.render(m.styler, false, m.ground()))
 	return out
 }
 
@@ -447,14 +468,14 @@ func (m *Model) hintLine(width int) string {
 		}
 		line.add(column.ID, tokens.TextTertiary)
 	}
-	return line.render(m.styler, false)
+	return line.render(m.styler, false, m.ground())
 }
 
 func (m *Model) notice(text string, width int) string {
 	line := newLine(width)
 	line.add("  ", tokens.TextSecondary)
 	line.add(text, tokens.TextSecondary)
-	return line.render(m.styler, false)
+	return line.render(m.styler, false, m.ground())
 }
 
 // labelWidth is the label column: wide enough for the widest label on screen,

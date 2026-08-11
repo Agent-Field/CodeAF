@@ -147,22 +147,31 @@ func (l *lineBuf) padTo(target int) {
 // foreground on a raised ground. An overlay is by definition the thing the user
 // is watching, so that branch should never fire; it is here so a caller who
 // dims one anyway degrades to a legal frame instead of an illegible one.
-func (l *lineBuf) emit(buf *strings.Builder, profile tokens.Profile, focus tokens.Focus, width int, banded bool, band tokens.Token) string {
+func (l *lineBuf) emit(buf *strings.Builder, profile tokens.Profile, focus tokens.Focus, width int, banded bool, band, ground tokens.Token) string {
 	colored := profile != tokens.NoColor
 	banded = banded && colored && focus == tokens.FocusNormal
+	grounded := !banded && colored && ground != tokens.Ground && profile.SheetGround()
+	// See internal/tui2/palette's copy of this function: SGR 7 swaps the two
+	// colours in use, so a tier colour written inside a reversed band lands on
+	// the row's background and the row comes out striped. A reversed row is one
+	// run in the terminal's own two colours.
+	reversed := banded && profile.SelectionStyle() == tokens.SelectionReverse
 	buf.Reset()
 	buf.Grow(width * 2)
 	wrote := false
-	if banded {
-		if profile.SelectionStyle() == tokens.SelectionReverse {
-			buf.WriteString(tokens.Reverse(profile))
-		} else {
-			buf.WriteString(band.Bg(profile, focus))
-		}
+	switch {
+	case reversed:
+		buf.WriteString(tokens.Reverse(profile))
+		wrote = true
+	case banded:
+		buf.WriteString(band.Bg(profile, focus))
+		wrote = true
+	case grounded:
+		buf.WriteString(ground.Bg(profile, focus))
 		wrote = true
 	}
 	for i := range l.spans {
-		if colored {
+		if colored && !reversed {
 			if seq := l.spans[i].tok.Fg(profile, focus); seq != "" {
 				buf.WriteString(seq)
 				wrote = true
@@ -170,11 +179,11 @@ func (l *lineBuf) emit(buf *strings.Builder, profile tokens.Profile, focus token
 		}
 		buf.WriteString(l.spans[i].text)
 	}
-	if banded && l.w < width {
+	if (banded || grounded) && l.w < width {
 		buf.WriteString(spaces(width - l.w))
 	}
 	if wrote {
-		if banded {
+		if banded || grounded {
 			buf.WriteString(tokens.Reset(profile))
 		} else {
 			buf.WriteString(tokens.ResetFg(profile))
@@ -188,6 +197,20 @@ func (l *lineBuf) emit(buf *strings.Builder, profile tokens.Profile, focus token
 		out = blocks.Truncate(out, width)
 	}
 	return out
+}
+
+// sheetGround is the floor the picker stands on: it is a floating dialog
+// (12.11), and [tokens.Sheet] is the ground the boundary was drawn around. The
+// chip is NOT — it lives in the meta strip on the base plane, where the floor is
+// the terminal's and no component owns it — so it emits [tokens.Ground] and
+// paints none.
+const sheetGround = tokens.Sheet
+
+// blankLine is one empty row of the sheet's own ground. A blank line inside a
+// painted plane that emitted no cells is a hole in that plane.
+func blankLine(l *lineBuf, buf *strings.Builder, profile tokens.Profile, focus tokens.Focus, width int) string {
+	l.reset(width)
+	return l.emit(buf, profile, focus, width, false, tokens.Band, sheetGround)
 }
 
 const spaceRun = "                                                                                                                                "

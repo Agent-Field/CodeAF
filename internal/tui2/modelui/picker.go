@@ -304,12 +304,15 @@ func (p *Picker) Render(width, height int) string {
 		p.out = append(p.out, p.chromeLine(note, width))
 	}
 	if height >= 3 {
-		p.out = append(p.out, "")
+		p.out = append(p.out, blankLine(&p.line, &p.buf, p.profile(), p.focus(), width))
 	}
 	p.bodyTop = len(p.out)
 	p.out = p.body(p.out, width, height-p.bodyTop)
 	if len(p.out) > height {
 		p.out = p.out[:height]
+	}
+	for len(p.out) < height {
+		p.out = append(p.out, blankLine(&p.line, &p.buf, p.profile(), p.focus(), width))
 	}
 	return strings.Join(p.out, "\n")
 }
@@ -338,7 +341,7 @@ func (p *Picker) header(width int) string {
 		// "5" beside a list of five is a cell spent saying what the reader can
 		// already see.
 		p.addTail(l, width, escClose)
-		return l.emit(&p.buf, p.profile(), p.focus(), width, false, tokens.Band)
+		return l.emit(&p.buf, p.profile(), p.focus(), width, false, tokens.Band, sheetGround)
 	}
 	// The models level names the role it is binding and the scope that binding
 	// lands in, in that order. Both, always: "which role" and "how far" are the
@@ -356,7 +359,7 @@ func (p *Picker) header(width int) string {
 	}
 	count := strconv.Itoa(len(p.hits)) + "/" + strconv.Itoa(len(p.rows))
 	p.addTail(l, width, count+scopeSeparator+escBack, count)
-	return l.emit(&p.buf, p.profile(), p.focus(), width, false, tokens.Band)
+	return l.emit(&p.buf, p.profile(), p.focus(), width, false, tokens.Band, sheetGround)
 }
 
 // addTail right-aligns the first candidate that fits with a space to spare, and
@@ -394,7 +397,7 @@ func (p *Picker) effortNote() string {
 func (p *Picker) chromeLine(text string, width int) string {
 	p.line.reset(width)
 	p.line.add(blocks.Truncate(text, width), tokens.TextTertiary)
-	return p.line.emit(&p.buf, p.profile(), p.focus(), width, false, tokens.Band)
+	return p.line.emit(&p.buf, p.profile(), p.focus(), width, false, tokens.Band, sheetGround)
 }
 
 // emptyText is what a level with nothing on it says. Only the models level can
@@ -420,7 +423,7 @@ func (p *Picker) body(rows []string, width, height int) []string {
 		p.line.reset(width)
 		p.line.add(blocks.Truncate(p.emptyText(), width), tokens.TextTertiary)
 		p.lineOf = append(p.lineOf, -1)
-		return append(rows, p.line.emit(&p.buf, p.profile(), p.focus(), width, false, tokens.Band))
+		return append(rows, p.line.emit(&p.buf, p.profile(), p.focus(), width, false, tokens.Band, sheetGround))
 	}
 
 	p.clampCursor()
@@ -559,7 +562,7 @@ func (p *Picker) renderRow(r *row, selected bool, lay layout, width int) string 
 			l.add(r.right, rightTok)
 		}
 	}
-	return l.emit(&p.buf, p.profile(), p.focus(), width, selected, tokens.Band)
+	return l.emit(&p.buf, p.profile(), p.focus(), width, selected, tokens.Band, sheetGround)
 }
 
 // addChip folds a role row's chip into the line. The chip keeps its own tokens
