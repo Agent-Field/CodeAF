@@ -313,18 +313,21 @@ func (a *App) applyStream(event StreamEvent) bool {
 			return false
 		}
 		// The provider is done; the durable line is on its way. The awaiting
-		// line stops offering an interrupt it can no longer perform, and the
-		// poll is poked so the wait is a store round trip rather than a tick.
-		a.turn.await.phase = "settling"
+		// line stops offering an interrupt it can no longer perform.
 		a.turn.await.interruptible = false
+		if !a.turn.stopped {
+			a.turn.await.phase = "settling"
+		}
 		return true
 
 	case StreamFailed:
 		if !a.turn.active {
 			return false
 		}
-		a.turn.await.phase = "stream lost"
 		a.turn.await.interruptible = false
+		if !a.turn.stopped {
+			a.turn.await.phase = "stream lost"
+		}
 		return true
 	}
 	return false

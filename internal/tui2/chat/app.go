@@ -99,6 +99,12 @@ type liveTurn struct {
 	// since is the journal position the turn started from. The durable reply
 	// that ends it is the first agent line above this.
 	since int64
+	// stopped says the person ended this turn. It outranks whatever the
+	// provider says next, because a call cancelled on purpose reports itself as
+	// a failure and it is not one: an interrupt is chrome, never coral (5.16),
+	// and a surface that answered esc with "stream lost" would be blaming the
+	// reader for pressing the key it advertised.
+	stopped bool
 }
 
 // App is the v2 chat: one Bubble Tea v2 program wrapping the shell.
@@ -362,7 +368,13 @@ func (a *App) key(msg tea.KeyPressMsg) tea.Cmd {
 	if a.composer == nil {
 		return nil
 	}
-	return a.composer.Key(msg)
+	// A keystroke the composer takes is a fact that moved: the draft grew, the
+	// caret walked, the ring turned. The shell cannot see any of that from the
+	// outside, so this is where it is told — and a frame that turns out
+	// identical still costs nothing, because Bubble Tea diffs it to no bytes.
+	cmd := a.composer.Key(msg)
+	a.shell.Invalidate()
+	return cmd
 }
 
 // paste routes bracketed paste to a composer that accepts it. The shell has no
@@ -399,6 +411,7 @@ func (a *App) canInterrupt() bool {
 // it, which is what keeps the record and the screen the same thing.
 func (a *App) interrupt() tea.Cmd {
 	a.commander.Interrupt(a.turn.shown)
+	a.turn.stopped = true
 	a.turn.await.phase = "stopping"
 	a.turn.await.interruptible = false
 	a.refresh()
