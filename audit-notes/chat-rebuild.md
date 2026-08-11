@@ -5662,3 +5662,216 @@ line is a preamble, one node-anchored ending and the session's turns around it.
 **State.** `internal/tui2/chat` green. `make check`: the standing `internal/plan`
 CJK red. Nothing under `internal/head`, `internal/plan`, `internal/exec`,
 `internal/resident` or `internal/tui` was touched.
+
+### 13.17 Click-focus and task-view-parity lane: the pointer's other direction, the recorder nobody asked, and the tree that breaks when a job gets old (2f12b1c, 099412e, 257800f)
+
+USER REPORT, verbatim and live: "I don't see any actual conversation inside a
+task at all. Nothing is forward or clickable. We need to be very clear what the
+task is and what tools are used — very similar to how it was in v1. I still
+don't see any tree hierarchy when I click on a task. And clicking on the typing
+part or anywhere does not seem to go there — I have to press ctrl+o."
+
+Four complaints, three causes, and **not one of them was in a renderer**. Each is
+a surface asking the wrong thing: the wrong flag, the wrong table, the wrong
+read. That is the finding worth keeping from this lane, because it is the third
+time in four sections — 13.15 (the room read one table), 13.16 (the record was
+behind a `▸`), and now this — that the drawing was correct and the reader was
+right anyway.
+
+**1. The pointer law only ran in one direction (`2f12b1c`).**
+
+13.14 shipped "pointing at the map is talking to the map" and nothing shipped
+the way back, so custody was a ONE-WAY DOOR and `ctrl+o` was the only key out of
+it. The reason it survived a lane whose whole subject was the pointer is worth
+naming: `Shell.setFocus` DOES move on every click, and the composer DOES repaint
+as focused because of it, **so the bug is invisible in a screenshot and only
+findable from a keyboard.** What decides where a keystroke goes in this surface
+is `App.railFocus` — the map's keyboard is the app's, not the shell's — and
+`App.key` routes before the shell ever sees a key.
+
+The measured cost was worse than the doc's own prediction. 13.14 records
+"jack knife kayak" arriving as "ac nife aya" when the map kept keys it should
+have released. **Photographed here, before the fix, at 120x36 on a real pty: the
+draft after clicking the composer and typing all sixteen characters reads
+`›  Type a message`.** Not a mangled sentence — an empty one. The map claims j,
+k, g, G and the digits and swallows the rest (13.14's own "AND THE MAP KEEPS
+IT"), so a reader who pointed at the composer and typed a paragraph put every
+character of it into a sink.
+
+`focusConversation` is `handOverTheKeyboard` reached by a hand instead of by a
+commitment, and it refuses in that function's own single case: a DISABLED
+composer takes no draft, so a click may not hand it the keyboard — otherwise the
+cursor moves to a pane that refuses every key and j/k walk nothing. The
+transcript and the whole composer rectangle are both doors onto it. **The footer
+is not**, and its existing test (`TestClickingTheFooterDoesNotMoveTheCursor`)
+still passes unchanged, which is the check that the new rule did not become "any
+click anywhere": chrome explains the surface and is never talked to.
+
+**The caret goes where the finger went.** `composer.ClickCaret` is `ClickHint`'s
+shape — Render's own arithmetic run again, nothing recorded during a paint (Part
+2's anti-pattern 14) — with one deliberate difference: **x IS consulted.** A
+candidate row is a whole row and the reader is pointing at the choice; a
+character in a sentence is a position, and a caret that ignored the column would
+answer "somewhere on this line" to someone who pointed at a word. Before:
+`compare three enginesX`. After: `compare Xthree engines`.
+
+**2. The trace was never missing. It was in a file nobody had asked (`099412e`).**
+
+H13 answered "the task page has no tool use or conversation" by measuring the
+JOURNAL — no tool-call `PartKind`, no worker turns, six of seven part kinds
+never written — and concluding "a room can show a RESULT and a RECEIPT and can
+never show a TRACE, and no renderer can close that." **Every measurement in it is
+correct and the conclusion is wrong, because v1 never read the journal for this.**
+
+`internal/tui/node.go`'s activity feed reads a FILE the executor writes beside
+the work: `<job>/.aforge/trace/<seq>.trace.log`, written by
+`internal/exec/trace.go`, one line per model turn, per tool call and per tool
+result. It is on disk right now for **twenty-two** jobs on the reporter's own
+profile — including `task-1300`, the deep-research job the complaint was written
+about, whose 3,266-byte recorder holds all three of its `web` calls with their
+queries and their results. The lens law (Decision 7) was never in question here;
+the lens had simply never been pointed at this source.
+
+**And v1 could not read it either, which is why the report says "very similar to
+how it was in v1" rather than "v1 shows it".** `command.NodeTraceSince` spelled
+`<job>/.obs/<seq>.trace.log` by hand. The recorder MOVED to `.aforge/trace/`,
+deliberately — so a leaf listing its own workspace could not read its siblings'
+transcripts — and `exec/workspace.go`'s comment on that move predicted this
+aftermath in these exact words: *"A reader left behind does not fail: it opens
+nothing, renders empty, and looks exactly like a worker that is thinking rather
+than writing."* Measured: not one job on this machine still has a `.obs`
+directory. **The v1 node page has been drawing an empty execution feed for every
+recent run and saying nothing was wrong.** `NodeTraceTail` goes through
+`exec.TracePath` — the single spelling that already exists — and
+`NodeTraceSince` becomes its wrapper: one reader, two vocabularies, and the
+tui-typed stamp stays out of the new door because `internal/tui` is the surface
+being replaced.
+
+**The rows are 4.3's, which have never had a renderer.** That section has asked
+for "inline collapsed tool-call rows … the head's actions visible in-thread,
+expandable, exactly like a coding-agent harness renders tool use" since it was
+written, and it is the one bullet of its transcript anatomy that had no producer
+— because the producer was never the missing half. Four block kinds, all
+collapsed at rest, all opened by the click 13.16 made a door:
+
+```
+ structured-noise-quant · $0.14 · 4 parts  ▸ 8 lines
+  Deliver the result of invent and validate a novel quant algorithm…
+
+turn 3 · 237 tok
+
+thinking  ▸ 1 line
+  Now let me look at the backtest data and the earlier backtest work…
+
+✓ sh · 300B  ▸ 13 lines
+  cd /home/santosh/.aforge/workspace/ && ls -la
+```
+
+Four decisions worth their line.
+
+- **NO NEW GLYPH.** 5.17's vocabulary has no tool marks and this is not the lane
+  to add eight of them; 4.3's own example is `▸ control: cancelled wisp-nav2` —
+  the fold mark and the verb. A call that returned wears `✓` and one that failed
+  wears `✕`, which is 5.17's state vocabulary asked of the smallest unit of work
+  there is, and it means a failed call reads coral at a glance the way v1's `✗`
+  did.
+- **THE RESULT FOLDS ONTO ITS CALL.** v1 drew three lines of output under every
+  call; a five-call turn filled a screen with bytes nobody asked to read. Here
+  the size is one telemetry cell and the content is behind the `▸`.
+- **THE SALIENT ARGUMENT IS SEARCHED FOR, NOT TABULATED.** v1 has a per-tool
+  switch (`sh:cmd`, `web:q`, `write:path`), which is a list of the tools that
+  existed the day it was written; a room that met a new one would draw `{…}`.
+  The search is over the object. **And it needs two passes, where the second is
+  the common case rather than a fallback**: `snip` truncates arguments at 300
+  characters, so every heredoc and every written file arrives as INVALID JSON
+  with its closing brace gone — measured, those are exactly the calls a reader
+  most wants named, and they were the ones drawing raw
+  `{"cmd":"cd … << 'EOF'\n\nprint(\"…` at them.
+- **IT RUNS ON QUIET POLL CYCLES.** A worker appending to a recorder journals
+  nothing, so `quiet` — the cheap proof that the THREAD has not moved — is no
+  proof at all that the WORK has not. v1's poll makes the same exception in the
+  same words. The stamp is what makes it affordable: an unchanged recorder costs
+  one open and one stat.
+
+**One producer fact found while reading, recorded and not hidden.** The executor
+names a recorder by the node's CREATED SEQUENCE, and a planner splices every
+part of a job in one transaction — so **every part of a multi-part job shares one
+recorder and all of its workers append to the same file.** `task-1961` is five
+nodes at seq 1974 with one 120KB `1974.trace.log` between them. A room that asked
+per node would draw it five times, so `traceNodes` deduplicates on the seq, which
+is the recorder's own identity read correctly rather than a workaround. The
+consequence a reader sees is turn numbering that restarts mid-document
+(`turn 10 · final` followed by `turn 1`); the rows are in append order, which is
+the order the work happened in, and the turn rules are what separates them.
+
+**3. The tree does not break when a job is complicated. It breaks when a job
+gets old (`257800f`).**
+
+`store.ActiveNodes` — what `Graph.ActiveSnapshot` is built from — returns a
+fold's outermost representative and NOT its members. That is right for a home
+rail, which must not list a settled job's four parts as four jobs. It is wrong
+for the job itself, and **folding is what happens to every job shortly after it
+settles.** From that moment the snapshot says the job has no children at all: the
+card says `atomic`, the scope has one row, the room draws no part row, no
+per-part result and no interleave.
+
+It was caught by comparing two real four-part jobs on the reporter's profile.
+`task-1961` (`folded = 1` on all five rows) drew `$0.16 · atomic` and an empty
+scope; `craft-2088`, the same shape and not yet folded, drew `$0.14 · 4 workers`
+and all four parts. **Then the pty run settled it beyond argument: the same
+pristine journal copy, driven twice, and `craft-2088` was folded BY THE RESIDENT
+DURING THE THIRTY-SECOND RUN** — `folded=0` in the source, `folded=1,
+fold_root=1` in the home afterwards. A reader can watch a job's plan disappear
+while they are looking at it.
+
+`store.SubtreeNodes` is the read that ignores folding. It is asked **once per
+room the reader ENTERS** — the gesture the report names — and never on a poll: a
+home rail is a list of jobs and does not need any job's parts, and paying for
+every subtree on the board to fix the one room a reader is standing in is the
+wrong trade in the one place this design cannot afford one. The result is
+spliced into the board rather than handed to the room, so the card, the tree and
+the transcript are all built from one slice; a room drawing four parts beside a
+card still saying `atomic` would be 12.14's finding 1 exactly. The snapshot's own
+rows win on a collision, because a live node is described by the live read and
+the subtree read is a photograph.
+
+This is the SIBLING of 13.16's filed `AddressableNodes` finding and deliberately
+not the same edit. That one is about which JOBS a home rail lists and 13.16 was
+right that it is a product decision; this one is about whether a job the reader
+has already chosen knows its own plan, and there is no reading of 11.1 under
+which the answer is no.
+
+**Before and after, on the reporter's own journal and recorders, at 120x36.**
+`uiverify/harness/run_trace.py` seeds an isolated home with a read-only copy of
+`~/.aforge/graph.db` **and** of every `workspace/**/.aforge/trace/*.trace.log`,
+which is what `run_repro.py` could not do because the trace is not in the graph.
+Both binaries drive identical pristine homes.
+
+| frame | before (`76a3567`) | after |
+|---|---|---|
+| `click-focus/04-typed` | `›  Type a message` | `› jack knife kayak` |
+| `caret-click/02-caret-moved` | `compare three enginesX` | `compare Xthree engines` |
+| `tree-live/03-tree` | `$0.14 · atomic`, one row | `$0.14 · 4 workers`, `●●●● 4/4`, four parts |
+| `tree-folded/03-tree` | `$0.16 · atomic`, one row | `$0.16 · 4 workers`, four named parts |
+| `tree-live/04-room-top` | charge `· atomic`, then narrator chatter | charge `· 4 parts`, then `turn 3 · 237 tok`, `thinking`, `✓ sh · 300B` |
+
+`click-focus` also photographs the round trip with **no `ctrl+o` anywhere in the
+scenario**: the map takes the keyboard, a click on the composer takes it back,
+sixteen characters land, a click on the transcript keeps it there, a click on a
+rail row takes it again, and `j` walks twice.
+
+**Tests.** `pointer_test.go` gains the custody round trip asserted on what a
+KEYSTROKE does afterwards and never on the flag, because the flag is not what
+was reported. `composer/caret_test.go` finds every column in the PAINTED frame
+rather than computing one — and its own first draft was wrong in the instructive
+way, using `strings.Index` for a column when the prompt glyph is three bytes and
+one cell. `trace_test.go` drives the byte grammar `internal/exec/trace.go`
+actually writes, which is deliberately the same fixture shape v1's parser test
+drives: one source, two renderings, and a writer that moves fails both surfaces
+on the same commit for the same reason.
+
+**Still open in this territory.** Per-node money remains 13.11's filed read gap
+(H13 item 4 notes the data is journaled and only the read is missing). The
+shared-recorder interleave above is a producer fact and is filed, not fixed. And
+7.2's click/keyboard parity stays half-open on the fold row exactly as 13.16
+left it — this lane added no chord and took none away.
