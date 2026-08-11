@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/Agent-Field/aforge-v2/internal/store"
+	"github.com/Agent-Field/aforge-v2/internal/tui2/footer"
 	"github.com/Agent-Field/aforge-v2/internal/tui2/tokens"
 )
 
@@ -174,5 +175,184 @@ func TestAnAskbackFeedsTheAttentionCount(t *testing.T) {
 	poll(t, app)
 	if got := app.openQuestions(); got != 1 {
 		t.Fatalf("the attention count is %d", got)
+	}
+}
+
+// -- answering (JOURNEY 6) -----------------------------------------------------
+
+// askedApp is a window with one open question in it.
+func askedApp(t *testing.T, options ...store.QuestionOption) (*App, *fakeBackend) {
+	t.Helper()
+	backend := &fakeBackend{}
+	backend.add(askback(options...))
+	app := newTestApp(backend, &fakeCommander{}, nil)
+	poll(t, app)
+	return app, backend
+}
+
+// The gap this closes: the row said "1 the CSV importer" and the digit fell
+// into the draft. A named key that does nothing is 5.20 rule 3 broken by the
+// affordance that names it.
+func TestADigitAnswersTheOpenQuestion(t *testing.T) {
+	app, backend := askedApp(t,
+		store.QuestionOption{Label: "the CSV importer", Value: "csv"},
+		store.QuestionOption{Label: "the JSON importer", Value: "json"},
+	)
+	msg := press(app, "2")
+	if msg == nil {
+		t.Fatal("a digit over an open question did nothing")
+	}
+	if draft := app.composer.Draft(); draft != "" {
+		t.Fatalf("the digit fell into the draft: %q", draft)
+	}
+	if _, ok := msg.(postResultMsg); !ok {
+		t.Fatalf("answering produced %#v", msg)
+	}
+	posted := backend.posted[len(backend.posted)-1]
+	if posted.Body != "json" {
+		t.Fatalf("the answer said %q, want the option's value", posted.Body)
+	}
+	// A bare "2" is the right answer only by luck once a second question is
+	// open: what the reader pointed at goes with the words.
+	if posted.QuestionSeq != 42 {
+		t.Fatalf("the answer aims at question %d, want 42", posted.QuestionSeq)
+	}
+	if posted.Role != store.RoleUser {
+		t.Fatalf("the answer was journaled as %q", posted.Role)
+	}
+}
+
+// One question takes one answer. A second keystroke on a row already answered
+// would post a second reply to a question that has one.
+func TestAQuestionTakesOneAnswer(t *testing.T) {
+	app, _ := askedApp(t,
+		store.QuestionOption{Label: "yes please", Value: "a"},
+		store.QuestionOption{Label: "no thanks", Value: "b"},
+		store.QuestionOption{Label: "later", Value: "c"},
+	)
+	if msg := press(app, "1"); msg == nil {
+		t.Fatal("the first answer did nothing")
+	}
+	if msg := press(app, "2"); msg != nil {
+		t.Fatalf("an answered question took a second answer: %#v", msg)
+	}
+}
+
+// A draft in progress keeps its digits. The reader is mid-sentence, and a
+// number in a sentence is a number.
+func TestADraftInProgressKeepsItsDigits(t *testing.T) {
+	app, _ := askedApp(t,
+		store.QuestionOption{Label: "the CSV importer", Value: "csv"},
+		store.QuestionOption{Label: "the JSON importer", Value: "json"},
+	)
+	press(app, "n")
+	press(app, "o")
+	if draft := app.composer.Draft(); draft != "no" {
+		t.Fatalf("draft = %q, want the two letters typed", draft)
+	}
+	press(app, "2")
+	if draft := app.composer.Draft(); draft != "no2" {
+		t.Fatalf("a digit was stolen from a draft in progress: %q", draft)
+	}
+}
+
+// 5.20 rule 2's inline strip, on the gate it was written for. The real consent
+// options read "yes, start it" and "hold it — I'll trim it first"
+// (internal/consent), which an exact whole-label match never recognized.
+func TestTheRealConsentGateGetsTheYesNoStrip(t *testing.T) {
+	options := []store.QuestionOption{
+		{Label: "yes, start it", Value: "approve"},
+		{Label: "hold it — I'll trim it first", Value: "hold"},
+	}
+	if !consentShape(options, nil) {
+		t.Fatal("the real consent gate does not render as a consent question")
+	}
+	app, backend := askedApp(t, options...)
+	out := whole(t, app, 80)
+	for _, want := range []string{"y yes, start it", "n hold it"} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("the y/n strip is missing %q:\n%s", want, out)
+		}
+	}
+	if msg := press(app, "y"); msg == nil {
+		t.Fatal("y did not answer the consent gate")
+	}
+	if posted := backend.posted[len(backend.posted)-1]; posted.Body != "approve" {
+		t.Fatalf("y answered with %q", posted.Body)
+	}
+}
+
+// The producer's own word outranks the heuristic: a part that says this is a
+// numbered choice is a numbered choice, whatever its labels start with.
+func TestTheQuestionPartOutranksTheWordHeuristic(t *testing.T) {
+	options := []store.QuestionOption{{Label: "yes, start it"}, {Label: "no, stop"}}
+	if !consentShape(options, nil) {
+		t.Fatal("two yes/no labels are not recognized without a part")
+	}
+	choose := &store.QuestionPart{Kind: store.QuestionChoose}
+	if consentShape(options, choose) {
+		t.Fatal("a part saying choose was overruled by the labels")
+	}
+	confirm := &store.QuestionPart{Kind: store.QuestionConfirm}
+	if !consentShape([]store.QuestionOption{{Label: "left"}, {Label: "right"}}, confirm) {
+		t.Fatal("a part saying confirm was ignored")
+	}
+}
+
+// A word further into a label is not what a key stands for.
+func TestOnlyTheLeadingWordDecidesAConsentLabel(t *testing.T) {
+	options := []store.QuestionOption{
+		{Label: "rewrite it and say yes when done"},
+		{Label: "leave it running, no rush"},
+	}
+	if consentShape(options, nil) {
+		t.Fatal("a label that merely contains yes/no was read as a consent gate")
+	}
+}
+
+// Arrows walk the options and enter takes the one under the cursor.
+func TestArrowsWalkTheOptionsAndEnterAnswers(t *testing.T) {
+	app, backend := askedApp(t,
+		store.QuestionOption{Label: "the CSV importer", Value: "csv"},
+		store.QuestionOption{Label: "the JSON importer", Value: "json"},
+	)
+	press(app, "down")
+	block := app.openAsk()
+	if block == nil || block.chosen != 1 {
+		t.Fatalf("down did not put the cursor on the first option: %#v", block)
+	}
+	press(app, "down")
+	if block.chosen != 2 {
+		t.Fatalf("the cursor is on %d, want 2", block.chosen)
+	}
+	if !strings.Contains(whole(t, app, 80), tokens.GlyphAccentRail+" the JSON importer") {
+		t.Fatalf("the cursor is not visible:\n%s", whole(t, app, 80))
+	}
+	if msg := press(app, "enter"); msg == nil {
+		t.Fatal("enter over a chosen option did nothing")
+	}
+	if posted := backend.posted[len(backend.posted)-1]; posted.Body != "json" {
+		t.Fatalf("enter answered with %q", posted.Body)
+	}
+}
+
+// 5.22's digit precedence, said out loud: the footer names what a bare number
+// does right now, from exactly the state the key ladder consults.
+func TestTheFooterSaysWhatADigitDoes(t *testing.T) {
+	app, _ := askedApp(t,
+		store.QuestionOption{Label: "the CSV importer", Value: "csv"},
+		store.QuestionOption{Label: "the JSON importer", Value: "json"},
+	)
+	if app.status.keyMode != footer.KeyModeAnswer || app.status.keyCount != 2 {
+		t.Fatalf("the footer says mode %d over %d rows", app.status.keyMode, app.status.keyCount)
+	}
+	// A consent gate names y and n, so the digit column would be advertising
+	// keys that do nothing.
+	consent, _ := askedApp(t,
+		store.QuestionOption{Label: "yes, start it", Value: "approve"},
+		store.QuestionOption{Label: "hold it — I'll trim it first", Value: "hold"},
+	)
+	if consent.status.keyMode == footer.KeyModeAnswer {
+		t.Fatal("a consent gate advertised digits")
 	}
 }
