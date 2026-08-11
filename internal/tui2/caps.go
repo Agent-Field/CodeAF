@@ -1,8 +1,11 @@
 package tui2
 
 import (
+	"strings"
+
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/colorprofile"
+	uv "github.com/charmbracelet/ultraviolet"
 	"github.com/charmbracelet/x/ansi"
 )
 
@@ -22,6 +25,11 @@ import (
 // frame is worth the most, and tmux 3.7 honors mode 2026. So the shell asks
 // again in Init. The query is a DECRQM: a terminal that does not know it says
 // nothing, and nothing is a correct answer.
+//
+// The second thing we ask is whether the terminal speaks the kitty
+// desktop-notification protocol, because that is the one rung of the
+// notification ladder (10.5.27) an answer exists for. It comes with a trailing
+// question whose only job is to date the silence — see negotiate.
 
 // support is a three-state answer, because "we have not asked yet" and "the
 // terminal said no" are different facts and the status line should not print
@@ -68,11 +76,78 @@ type Capabilities struct {
 	// worth knowing even though Bubble Tea acts on it for us.
 	UnicodeCore support
 
+	// Notification reports the kitty desktop-notification protocol, OSC 99.
+	// It is the top rung of the notification ladder (10.5.27) and the only rung
+	// there is evidence for, because it is the only one that answers a
+	// question. See notifyProbe and notifyTier.
+	Notification support
+
+	// Mux is the multiplexer between this process and the terminal emulator.
+	//
+	// This is read from the environment, and that is not the COLORTERM mistake
+	// repeated. COLORTERM is a claim the environment makes about a TERMINAL we
+	// could ask instead; $TMUX is set by tmux, in our own process, about our
+	// own process — it is not a claim about anyone, it is a fact about where we
+	// are running, and there is no query that answers it better.
+	Mux Multiplexer
+
 	// Color is the profile Bubble Tea detected. Verified says whether the
 	// terminal itself confirmed truecolor through a terminfo query, as opposed
 	// to something in the environment having said so.
 	Color    colorprofile.Profile
 	Verified bool
+}
+
+// Multiplexer names what is sitting between us and the emulator. It matters to
+// exactly one decision in this package — which rung of the notification ladder
+// is reachable — because a multiplexer is the first reader of every escape we
+// write, and an escape it does not know dies there instead of arriving.
+type Multiplexer uint8
+
+const (
+	// MuxNone means we are talking to the terminal emulator directly.
+	MuxNone Multiplexer = iota
+	// MuxTmux is tmux. It forwards OSC 9;4 as of 3.7 (10.1.2), ships focus
+	// reporting off, and will never speak the kitty keyboard protocol.
+	MuxTmux
+	// MuxScreen is GNU screen.
+	MuxScreen
+)
+
+func (m Multiplexer) String() string {
+	switch m {
+	case MuxTmux:
+		return "tmux"
+	case MuxScreen:
+		return "screen"
+	default:
+		return "none"
+	}
+}
+
+// detectMultiplexer asks the environment where we are running.
+//
+// The order is evidence-first: $TMUX and $STY are set BY the multiplexer for
+// its own children and mean what they say. TERM is the weaker signal and comes
+// last, because tmux commonly sets TERM=screen-256color, which would name the
+// wrong multiplexer if it were consulted before $TMUX.
+func detectMultiplexer(lookup func(string) string) Multiplexer {
+	if lookup == nil {
+		return MuxNone
+	}
+	if lookup("TMUX") != "" {
+		return MuxTmux
+	}
+	if lookup("STY") != "" {
+		return MuxScreen
+	}
+	switch term := lookup("TERM"); {
+	case strings.HasPrefix(term, "tmux"):
+		return MuxTmux
+	case strings.HasPrefix(term, "screen"):
+		return MuxScreen
+	}
+	return MuxNone
 }
 
 // negotiate is the command the shell issues once at startup. It asks the two
@@ -89,6 +164,20 @@ func negotiate() tea.Cmd {
 		// keep whatever profile was detected and lose nothing but gradients.
 		tea.RequestCapability("RGB"),
 		tea.RequestCapability("Tc"),
+		// The notification probe, and the question that dates its silence.
+		//
+		// A terminal answers queries in the order it was asked them, so a DA1
+		// reply arriving with no OSC 99 reply in front of it IS the OSC 99
+		// reply: this terminal does not know the protocol. That turns an
+		// absence into an answer, which is the difference between "we have not
+		// asked yet" and "the terminal said no" that the support type exists
+		// to keep apart. It has to be a Sequence and not part of the Batch
+		// above — a Batch runs its commands concurrently, and two writes with
+		// no order between them cannot date each other.
+		tea.Sequence(
+			tea.Raw(notifyProbe),
+			tea.Raw(ansi.RequestPrimaryDeviceAttributes),
+		),
 	)
 }
 
@@ -131,6 +220,23 @@ func (c *Capabilities) observe(msg tea.Msg) bool {
 		}
 		c.Color = msg.Profile
 		return true
+
+	case uv.UnknownOscEvent:
+		// Any OSC 99 coming back at all is the answer. The protocol also uses
+		// OSC 99 to report that a human clicked one of our notifications, and
+		// that is evidence of support too — so this matches the introducer and
+		// deliberately does not parse the body. A reply shape we did not
+		// predict must upgrade us, not confuse us.
+		if s := string(msg); strings.HasPrefix(s, "\x1b]99;") || strings.HasPrefix(s, "\x9d99;") {
+			return c.setSupport(&c.Notification, true)
+		}
+
+	case uv.PrimaryDeviceAttributesEvent:
+		// The trailing question came back (see negotiate). If the notification
+		// probe has still not been answered by now, it never will be.
+		if c.Notification == supportUnknown {
+			return c.setSupport(&c.Notification, false)
+		}
 
 	case tea.CapabilityMsg:
 		// The terminal answered a terminfo query itself. This is the only
