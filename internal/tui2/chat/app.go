@@ -14,6 +14,7 @@ import (
 	"github.com/Agent-Field/aforge-v2/internal/tui2/blocks"
 	"github.com/Agent-Field/aforge-v2/internal/tui2/composer"
 	"github.com/Agent-Field/aforge-v2/internal/tui2/footer"
+	"github.com/Agent-Field/aforge-v2/internal/tui2/modelui"
 	"github.com/Agent-Field/aforge-v2/internal/tui2/palette"
 	"github.com/Agent-Field/aforge-v2/internal/tui2/placeline"
 	"github.com/Agent-Field/aforge-v2/internal/tui2/rail"
@@ -237,6 +238,7 @@ type App struct {
 	palette    *palette.Palette
 	capability *palette.Capability
 	settings   *settings.Model
+	models     *modelui.Picker
 
 	// view is the main pane's current lens: nil is the room's own conversation,
 	// anything else is a task room or the card a cursor move previewed.
@@ -611,6 +613,26 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			a.refresh()
 		}
 		return a, a.startTick()
+
+	case settings.ModelMsg:
+		// The settings sheet asked for the models door. It is the one row kind
+		// that surface deliberately does not edit itself (8.2.16: one home), so
+		// the host opens the palette and the sheet stands down.
+		return a, a.openModelSlot(msg)
+
+	case modelResultMsg:
+		return a, a.applyModelResult(msg)
+
+	case receiptPostedMsg:
+		if msg.err != nil {
+			a.status.err = msg.err.Error()
+			a.shell.Invalidate()
+			return a, nil
+		}
+		// The row is in the store. The poll draws it there, so nothing is
+		// appended here — a receipt drawn twice would be a surface keeping its
+		// own copy of the journal.
+		return a, a.startPoll()
 
 	case composer.EscMsg:
 		// The composer had nothing left to protect, so it handed the key back

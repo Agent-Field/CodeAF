@@ -45,6 +45,10 @@ const (
 	overlayCapability
 	// overlaySettings is the settings sheet.
 	overlaySettings
+	// overlayModel is the model palette (5.10): five role rows, and one role's
+	// models beneath. It is raised by the settings sheet's model rows, by the
+	// registry's own `/model` entry, and by nothing that bypasses either.
+	overlayModel
 )
 
 // -- raising and dropping ----------------------------------------------------
@@ -152,6 +156,8 @@ func (a *App) overlayKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 		return a.capability.Key(msg), true
 	case overlaySettings:
 		return a.settings.Key(msg), true
+	case overlayModel:
+		return a.models.Key(msg), true
 	}
 	return nil, false
 }
@@ -220,6 +226,11 @@ func (a *App) runEntry(id string) tea.Cmd {
 	switch id {
 	case settings.EntryID:
 		return a.openSettings()
+	case modelEntryID:
+		// The registry's own model door, which this surface listed and then did
+		// nothing with. A row that named a door and opened none is the exact
+		// shape 5.22 rule 5 refuses.
+		return a.openModelPicker()
 	case "key.thread.receipts":
 		return a.toggleReceipts()
 	case "key.quit":
@@ -227,6 +238,10 @@ func (a *App) runEntry(id string) tea.Cmd {
 	}
 	return nil
 }
+
+// modelEntryID is the registry row for the model palette. It is named once so
+// the door, the reason and the footer cannot drift apart.
+const modelEntryID = "slash.model"
 
 // openSettingRow opens the settings sheet for one setting.
 //
@@ -329,6 +344,10 @@ func (a *App) entryReason(entryID string) string {
 		if a.settingsRegistry() == nil {
 			return "no engine behind this window"
 		}
+	case modelEntryID:
+		// The palette's own whole-surface reason, asked one door earlier so the
+		// reader learns it before they press enter rather than after.
+		return a.modelDisabled()
 	}
 	return ""
 }

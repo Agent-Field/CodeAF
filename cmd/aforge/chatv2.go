@@ -27,6 +27,14 @@ import (
 // The default flips only when the parity checklist passes, and the old surface
 // is deleted a wave after that, never in the same one.
 
+// The engine the v2 surface is handed is the engine the old one is handed, and
+// the model palette's door is one of the seams that proves it. chat.ModelControl
+// is asked for by type assertion at runtime — it is optional, and a visitor
+// window legitimately has none — so this is where a signature drifting apart
+// from it becomes a build failure rather than a palette that silently stops
+// offering a door (12.6.2's finding, applied to a new seam).
+var _ chat.ModelControl = (*chatCommander)(nil)
+
 // chatV2Env is the operator's other door. Anything but an explicitly false
 // value opens v2, because someone who exported it meant it.
 const chatV2Env = "AFORGE_CHAT_V2"
