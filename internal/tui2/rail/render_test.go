@@ -894,3 +894,73 @@ func countLinesContaining(lines []string, want string) int {
 	}
 	return n
 }
+
+// The merge removes ONE LINE — the header that was saying the row's own word —
+// and touches nothing else. A screenshot of an entered room showed a single row
+// where a card's worth of rows had been, and the reading was that the merge had
+// eaten the scope. It had not: the room's own source was handing the rail one
+// bare row. This pins the difference so the two failures can never be confused
+// again — whatever a scope contains, merging costs it the header line and no
+// other line.
+func TestTheMergeCostsTheHeaderLineAndNothingElse(t *testing.T) {
+	const room = "Permanent Aforge spine"
+	rich := []Row{
+		{
+			ID: "task", Kind: RowSurface, Name: room,
+			Status: "1 part running", Life: LifeWorking, Composer: ComposerSteer,
+			Meta: Telemetry{Cost: 8.65, HasCost: true, Atomic: true},
+		},
+		{ID: "task/a", Kind: RowWorker, Depth: 1, Name: "XhrSyn", Life: LifeSettled},
+		{ID: "task/b", Kind: RowWorker, Depth: 1, Name: "H2", Life: LifeWorking},
+		{ID: "task/c", Kind: RowWorker, Depth: 1, Name: "KeyCutter", Life: LifeQueued,
+			WaitsOn: []string{"H2"}},
+	}
+
+	merging := &fakeSource{scopes: map[string]Scope{
+		HomeScopeID: {ID: HomeScopeID, Title: "aforge", Rows: []Row{
+			{ID: "home", Kind: RowSurface, Name: "aforge", Composer: ComposerChat},
+			{ID: "task", Kind: RowTask, Name: room, Life: LifeWorking},
+		}},
+		"task": {ID: "task", Title: room, Rows: rich},
+	}}
+	// The same scope, with a word of its own for row 0: no merge, both lines.
+	named := &fakeSource{scopes: map[string]Scope{}}
+	for id, sc := range merging.scopes {
+		named.scopes[id] = sc
+	}
+	distinct := append([]Row(nil), rich...)
+	distinct[0].Name = "orchestrator"
+	named.scopes["task"] = Scope{ID: "task", Title: room, Rows: distinct}
+
+	enter := func(src *fakeSource) []string {
+		m := New(src)
+		if _, ok := m.SelectID("task"); !ok {
+			t.Fatal("the task is missing")
+		}
+		if ev := m.Enter(); ev.Kind != EventScopeEntered {
+			t.Fatalf("enter = %+v", ev)
+		}
+		return copyOf(plainView().Render(m, ModeRail, 30, 24))
+	}
+
+	mergedLines := enter(merging)
+	namedLines := enter(named)
+
+	if len(namedLines)-len(mergedLines) != 1 {
+		t.Fatalf("the merge cost %d lines, want exactly 1:\nmerged:\n%s\nnamed:\n%s",
+			len(namedLines)-len(mergedLines),
+			strings.Join(mergedLines, "\n"), strings.Join(namedLines, "\n"))
+	}
+	// Every row the scope carries still has its line, and so does the surface's
+	// own status. Only the header's separate line is gone.
+	for _, want := range []string{"1 part running", "XhrSyn", "H2", "KeyCutter", "waits on"} {
+		if countLinesContaining(mergedLines, want) == 0 {
+			t.Fatalf("the merge ate %q:\n%s", want, strings.Join(mergedLines, "\n"))
+		}
+	}
+	// The hairline at the room boundary survives too (5.13): there are members
+	// to separate from the surface.
+	if countLinesContaining(mergedLines, tokens.GlyphTreeDash) == 0 {
+		t.Fatalf("the merge ate the room boundary:\n%s", strings.Join(mergedLines, "\n"))
+	}
+}
