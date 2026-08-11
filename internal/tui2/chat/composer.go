@@ -46,6 +46,12 @@ type composerPane interface {
 	// (10.5.26) is read off it, and nothing else consults it — the app never
 	// reaches into the draft to change it.
 	Draft() string
+	// HintRows is how many rows an open inline completion wants under the
+	// draft. The region is budgeted by the layout for a draft and two strips,
+	// so a list of candidates needs the region to grow — and only the composer
+	// knows whether there is a list. See [App.refresh], which is where the
+	// answer becomes rows.
+	HintRows() int
 }
 
 // composerOptions is the composer's own option struct, named here so the app
@@ -110,6 +116,11 @@ func (s *composerStack) Focus(focused bool) {
 
 // Draft is the current buffer.
 func (s *composerStack) Draft() string { return s.draft.Value() }
+
+// HintRows is how many rows the draft's open inline completion wants. The stack
+// adds nothing to the number: the place line and the meta strip are already in
+// the metric table, and what the region is short of is room for the LIST.
+func (s *composerStack) HintRows() int { return s.draft.HintRows() }
 
 // KillToStart is the clear-draft verb reached from the `?` sheet or the palette
 // rather than from ctrl+u. The chord itself never comes through here — it is an

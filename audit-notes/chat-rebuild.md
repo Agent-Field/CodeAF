@@ -4808,3 +4808,9 @@ the shared tree (`chat/slash.go`, `composer/slash.go`, `shell.go`,
 own tests were run in a detached worktree at its own commit, and again with the
 in-flight files copied in, where the only failure is that lane's own
 `TestTypingSlashSettingsOpensSettings`.
+
+**13.9 addendum (2026-08-11).** 13.6 and 13.10 landed after the compilation;
+`wave5-coworking-handoff.md` gains H9 (announceNode typed parts, 13.10's
+producer half) and H10 (the two disobeyed plan prompts, 13.6's handoff), plus
+an H6 addendum recording that no exec ask survived 13.6 — all re-verified at
+`0f5ec5e`.

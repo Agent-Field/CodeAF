@@ -18,6 +18,11 @@ compiled: a head lane citing a future ledger section "13.6"
 13.8 finding 1 in `internal/tui2/chat/rooms.go`/`scope.go`. Citations below say
 which tree they were read from; everything else is HEAD.
 
+**Appended 2026-08-11 at HEAD `0f5ec5e`**: H9 (delivery typed parts, from the
+now-landed 13.10) and H10 (plan prompt disobedience, from the now-landed 13.6),
+plus the H6 addendum the landing of 13.6 makes necessary. Everything in the
+append is re-verified at `0f5ec5e`.
+
 ## Summary table
 
 | # | item | owner half needed | size | ledger source | risk if skipped |
@@ -30,6 +35,8 @@ which tree they were read from; everything else is HEAD.
 | H6 | worker-pool ceiling / no queue between jobs | exec/resident runner | PENDING from fan-out lane | 13.6 (not landed; test citation only) | prompt law already updated to match measured behaviour; ledger entry missing |
 | H7 | Wave 5 proper: per-task orchestrator loops | resident (scoped below) | the wave | 4.6, 5.5, 11.2, 12.1.5, 13.4 | v1 phasing stays law; 5.3's "same command row" promise stays open |
 | H8 | standing co-working notices (sweep) | plan/resident | report-only | 12.6, 12.9, 13.8 | known items get rediscovered |
+| H9 | delivery typed parts on `announceNode` | resident: one producer, both event kinds | small | 13.10 | the delivery card's artifacts stay a prose-scrape; every renderer re-derives what the producer knows |
+| H10 | plan prompt disobedience: gatherer edge + merge part | plan: two prompt/pass fixes | two scoped fixes | 13.6 (landed) | within-job width never pays; a 93s serial tail follows every ~70s parallel section |
 
 ---
 
@@ -316,6 +323,23 @@ ceiling's owner should expect that ask to arrive with Wave 5.
 section that does not exist); Wave-5 scheduling lands against an undocumented
 ceiling.
 
+**ADDENDUM (2026-08-11): 13.6 has landed and this item mostly dissolves.**
+The fan-out lane's measured verdict: "The ceiling is not the problem, and
+neither is the belt … Nothing in head, resident or exec queues independent
+work." Its numbers, re-verified at `0f5ec5e`: `chatWorkerCeiling = 32`
+(`cmd/aforge/chat.go:476`), governor admits unconditionally under three in
+flight (`GovernorMinInFlight = 3`, `internal/exec/governor.go:48`), four
+independent splices applied concurrently (`concurrentCommands = 4`,
+`internal/resident/resident.go:784`), `Ready` graph-wide with nothing keyed
+per-root (`internal/store/query.go:445`). So NO exec ask survives from this
+lane; the one serialisation it found was a compiler-invented edge, fixed
+head-side (`51287ca`). What the lane filed instead is against `internal/plan`
+— see **H10**. The Wave-5 stake stated here stands unchanged: orchestrator
+turns will contend for the same slots, and 13.6's J15 note (the gate divides
+by wall clock including the fixed pipeline; "its owner should decide between
+measuring the execution span and keeping the wall") is a gate-owner decision
+Wave 5 inherits.
+
 ---
 
 ## H7 — Wave 5 proper: what the per-task orchestrator loop needs from the resident
@@ -414,6 +438,112 @@ every task.
 
 ---
 
+## H9 — Delivery typed parts: `announceNode` posts prose where the contract exists
+
+**What.** `internal/resident`'s `announceNode` attaches typed message parts to
+the delivery it posts — a one-line `PartText` brief, one `PartArtifact` per
+recorded file, and the ending — instead of one prose blob. Same door for
+`EventNodeFailed`.
+
+**Why.** 13.10 (delivery-dressing lane): a settled job landed in the
+commissioning room as a 497-byte `parts=null` system row — the worker's whole
+account including its own prose "Files:" section — breaking 5.14 (the `task-16`
+heading was a node id), 5.9 (no fold; a long answer pushed the conversation off
+screen), and 12.5's artifact-law rendering half (the path was "the eleventh
+line of a dump rather than … a row a reader can find, which is the same as
+absent"). The renderer half landed in chat-v2 (`3bf84c1`); 13.10 names the
+producer half explicitly as not that lane's territory: "`announceNode` should
+attach typed parts … (`internal/resident`.)"
+
+**State at HEAD `0f5ec5e`.**
+- Producer: `internal/resident/resident.go:2046-2096` — on
+  `EventNodeCompleted` for a spine-parented node it posts
+  `Body: node.Summary` verbatim (`:2068-2075`); `EventNodeFailed` takes the
+  same door (`:2076-2082`); the `thread.Post` call (`:2086-2091`) sets no
+  `Parts`. The one door already carries them: typed parts "ride here too, on
+  `store.Message.Parts`" (`internal/thread/thread.go:14`) — this is the same
+  chokepoint pattern 12.9.1 used for questions (`PartsForQuestion` via
+  `surfaceQuestion`), applied to deliveries.
+- The vocabulary exists: `store.PartText` / `store.PartArtifact`
+  (`internal/store/message_parts.go:42,54`), constructors at `:241,:270`.
+- The reader is already waiting: `internal/tui2/chat/delivery.go:115-146` —
+  "The typed part is the truth when it is there: `store.PartArtifact` is the
+  producer saying what it made" — with a fallback that mirrors
+  `internal/head/depth.go:256-281`'s `collectResultFiles`: `FoldPointers`
+  plus scraping `nodeResult` PROSE for path-shaped fields, trimming
+  punctuation. That scrape is the fragile half typed parts retire.
+
+**Exact change.** In `announceNode`'s completed arm, build parts beside the
+body: `store.TextPart(<one-line brief>)`, one artifact part per
+`collectResultFiles`-equivalent read of the node (the resident owns the node
+row; it should enumerate recorded files from the durable fields, not re-scrape
+its own prose), and set them on the posted `store.Message`. Failed arm: a text
+part carrying the failure line. Body stays byte-identical — 13.10 verified v1
+"renders the same journal row … byte-identical", and the parts model was
+designed additive (12.9.1: a part "carries what nothing else carries and
+REFERS to everything else").
+
+**Evidence.** 13.10's live run: journal row 31, `parts=null`, 497 bytes;
+after the renderer-half fix both cards derive name/cost from
+`scopeSource.jobFacts` — correct but re-derived; the artifact list still comes
+from the prose scrape. 13.10's paired second ask (wake the head on delivery,
+or stop `orchestratorVoice` promising "I'll report back") is HEAD territory —
+the fan-out lane holds that paragraph — and is noted here only so the two
+halves land coherently.
+
+**Risk if skipped.** Every present and future renderer (v2 card, v1, any
+headless reader) keeps its own path-scraper over worker prose; a worker whose
+summary spells a path oddly loses its artifact row; 12.5's artifact law stays
+enforced by regex instead of by the journal.
+
+---
+
+## H10 — Plan prompts measurably disobeyed: the gatherer edge and the merge part
+
+**What.** Two `internal/plan` prompts state the right law and the passes
+produce output that breaks it. Fixing either widens within-job concurrency
+with no compiler change (the head-side compiler rule was already rewritten to
+"widen the moment the join is honest", 13.6/`51287ca`).
+
+**Why.** 13.6's handoff paragraph, filed explicitly to "the plan campaign —
+the reason within-job width still does not pay": together the two cost "a
+serial tail longer than the parallel section it follows."
+
+**The two findings, verified against the prompts at `0f5ec5e`.**
+1. **The gatherer exception never fires.** `internal/plan/bind.go:74-77`:
+   a node that gathers "would start alongside the very work it exists to
+   consume. Name the nodes whose outputs it assembles." Measured (13.6): the
+   leaf "Assemble the three country sections" started at 52:26.267 — the same
+   instant as its three inputs (.262, .263, .265) — and
+   `select * from edges where to_id='task-8-n4'` returned nothing; "The
+   synthesis ran blind, concurrently with its own inputs." 13.6's reachability
+   question is visible in the prompt itself: `bind.go:79-82` restricts
+   same-stage edges to STATE ("only for STATE — the parts of one stage were
+   written to run at the same time"), and a stage-1 gatherer's inputs ARE
+   same-stage siblings — so the gatherer arm may be unreachable exactly where
+   it is needed. The fix is the pass's to choose: exempt gatherers from the
+   STATE-only restriction, or stop fanout emitting a same-stage gatherer
+   (see 2), but not neither.
+2. **The forbidden merge part is produced anyway.** `internal/plan/fanout.go:72-78`:
+   when the goal names one final deliverable "no part of this stage produces
+   it" and "Do not include a merge or summary part" (`:78`). Measured (13.6):
+   the stage produced exactly such a part, and the bundle's own "Deliver
+   together" node re-synthesised on top of it — "71s of assemble followed by
+   22s of deliver, against a parallel section of about 70s. Two syntheses
+   where the design intends one."
+
+**Evidence.** All timestamps and costs in 13.6 (`chat-rebuild.md:4528-4552`),
+measured on real binaries against disposable homes; the wider context — the
+unsplit job took 103s while the split ran 397s / $0.266 — is what makes these
+two the difference between width paying and not.
+
+**Risk if skipped.** 13.6's compiler rule now widens jobs whose join is
+honest, so an unfixed join makes widening a REGRESSION: every split report
+pays a double synthesis and a blind assembly. The fan-out lane offered to
+re-measure on request once either fix lands.
+
+---
+
 ## Suggested sequencing
 
 1. **H1 first, alone** — ten lines, fully specified, its absence produces
@@ -439,3 +569,10 @@ every task.
 6. **H3's remaining tenancies close themselves at the flip** — schedule the
    `LastSeen`/legacy-arm deletion one wave after the default flips (12.2),
    once a home room owns the ownerless (12.3.6).
+7. *(appended 2026-08-11)* **H9 rides whichever resident pass takes H1** —
+   same file, same producer-side discipline, and its reader is already
+   shipped; land it before Wave 5's orchestrators start posting deliveries of
+   their own, so they are born speaking typed parts. **H10 is independent of
+   everything above** — two plan-pass fixes with their own measured
+   re-test offer — and supersedes step 4: 13.6 has landed, and no exec
+   ceiling ask survives it (H6 addendum).

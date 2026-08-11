@@ -92,7 +92,10 @@ type Shell struct {
 
 	scopeOpen   bool
 	overlayOpen bool
-	focus       LayerID
+	// composerGrow is the extra rows the composer region has asked for, so its
+	// inline completions have somewhere to be (GrowComposer).
+	composerGrow int
+	focus        LayerID
 
 	hitID LayerID
 	hitAt image.Point
@@ -191,6 +194,35 @@ func (s *Shell) SetOverlay(open bool) {
 
 // OverlayOpen reports whether the overlay plane is raised.
 func (s *Shell) OverlayOpen() bool { return s.overlayOpen }
+
+// GrowComposer asks the composer region for extra rows, on top of the metric
+// table's own, and reports nothing — the frame simply gets taller there and
+// shorter above.
+//
+// It exists because the composer's inline completions (the `@` filter and the
+// `/` line) draw INSIDE the composer's rectangle, below the draft, and the
+// metric table budgets that rectangle for a draft and two strips. A list that
+// had to fit in the one spare row would show one candidate out of seventeen,
+// which is a list only in the sense that it is not zero.
+//
+// It is deliberately a REQUEST and not a size. The layout still solves top-down
+// from the terminal's own height, so a short window gives back less than was
+// asked for and gives back nothing at all rather than eating the transcript
+// whole — the pane contract's promise that a pane is told its rectangle and
+// takes no row from anyone else, kept while letting the region breathe.
+//
+// Zero restores the table's number, and calling it with the value it already
+// has costs nothing: the layout is only re-solved when the answer moved.
+func (s *Shell) GrowComposer(rows int) {
+	if rows < 0 {
+		rows = 0
+	}
+	if s.composerGrow == rows {
+		return
+	}
+	s.composerGrow = rows
+	s.relayout()
+}
 
 // Linear reports the accessible rendering (10.1.5). Panes read it to drop
 // motion, drawn frames and cursor jumps; it is a mode, never a theme.
@@ -520,7 +552,9 @@ func (s *Shell) applySize() {
 // previous slot slice goes back in so a resize storm reuses one allocation
 // instead of leaving a frame's worth of garbage per event.
 func (s *Shell) relayout() {
-	s.layout = solveInto(s.layout.Slots, s.width, s.height, s.metrics, mode{
+	metrics := s.metrics
+	metrics.ComposerHeight += s.composerGrow
+	s.layout = solveInto(s.layout.Slots, s.width, s.height, metrics, mode{
 		Linear:      s.linear,
 		ScopeOpen:   s.scopeOpen,
 		OverlayOpen: s.overlayOpen,
