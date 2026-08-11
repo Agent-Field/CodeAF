@@ -4,7 +4,7 @@
   reworking NavCtx after the worker died
   claude-k3 · $—
 
-aforge · claude-k3
+› aforge · claude-k3
   Here is the plan:
 
   • read navctx.rs end to end

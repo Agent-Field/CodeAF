@@ -1,4 +1,4 @@
-aforge [cut off — output cap]
+› aforge [cut off — output cap]
   Here is the diagram you asked for, in full:
 
   ```svg
