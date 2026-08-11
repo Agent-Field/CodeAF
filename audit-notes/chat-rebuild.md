@@ -4815,3 +4815,102 @@ in-flight files copied in, where the only failure is that lane's own
 producer half) and H10 (the two disobeyed plan prompts, 13.6's handoff), plus
 an H6 addendum recording that no exec ask survived 13.6 — all re-verified at
 `0f5ec5e`.
+
+### 13.12 Attachments lane: J17 closed, and the two doors it has (ea5353d, 0f5ec5e)
+
+13.4's J17 row and 13.5's parity table both said the same thing: *no attachment
+path at all*. Same PNG, and v1 journals
+`["cas://c414cd0e…/dot.png"]` while the CAS gains an object; v2 journaled the
+literal `null` and the CAS stayed empty. That is now closed. **Measured, both
+surfaces, same run shape** (`test/ux/report-j17-v1.md`, `report-j17-v2.md`):
+
+| surface | verdict | attachments column | CAS |
+|---|---|---|---|
+| v1 | PASS 4/4 · 27s · $0.0006 | `["cas://c414cd0e…/dot.png"]` | 0 → 1 |
+| v2 | PASS 4/4 · 27s · $0.0006 | `["cas://c414cd0e…/dot.png"]` | 0 → 1 |
+
+**The digest is the same digest.** Not "an equivalent reference" — the identical
+64 hex characters, because the same bytes went through the same
+`exec.KeepAttachment` into the same store. That is the strongest available form
+of Decision 7's lens law: the engine cannot tell which window was typing,
+because there is nothing in the row that differs.
+
+**What was reused rather than built.** All of it, on the engine side. `internal/cas`
+(`Put`/`PutFile`/`Reference`/`SourcePath`), `exec.KeepAttachment` and its 25 MB
+guard, `command.AttachmentStoreRoot`, `store.Message.Attachments`, and the
+existing `message_posted` event with `attachments` inline. **No new event kind,
+no v2-only column, no second reference shape.** The head's vision seam, the
+workspace stager and the fold already read attachments; none of them was
+touched.
+
+**The one seam that had to be widened, and how.** 13.4 noted `Commander`
+(`engine.go:69-83`) lacks `KeepAttachment`. It is added as an OPTIONAL interface
+reached by assertion — `AttachmentKeeper`, the same idiom `ModelControl` already
+uses — rather than as a method on `Commander`. The concrete engine `cmd/aforge`
+builds satisfies it structurally with zero wiring, and every test fake and every
+engine-less window keeps compiling. A window with no keeper, or a keeper that
+fails, journals the person's own path: **a weaker record, never a lost file**,
+which is exactly v1's degradation (`internal/tui/attachments.go`'s
+`keepAttachment`).
+
+**Two doors, and the second one was not obvious.** The gate TYPES the path, so
+it only proves `composer.Key`. A terminal dropping a file sends the same
+characters wrapped in `ESC[200~ … ESC[201~`, which arrives as `tea.PasteMsg` at
+`composer.Paste` — a different entry point entirely. A pty scenario (bracketed
+paste, isolated home, 120×36) confirms the paste door captures identically:
+draft `what colour is`, chip `▸ pasted.png · 70B`, journal
+`["cas://c414cd0e…/pasted.png"]`, one CAS object, unchanged after the original
+is deleted. Both doors converge because capture hangs off `afterEdit`, which
+every edit path already leaves through.
+
+**The grammar, stated once.**
+
+- **Capture REMOVES the token from the draft**, where a mention is derived and
+  left in place. This is the one place the two grammars deliberately differ: a
+  mention is a word the sentence needs ("ask @wisp-parity to stop"); a dragged
+  path is not something anybody means to say out loud. v1 removes it too, so
+  the journaled body is the same body on either surface. One adjacent space
+  goes with it, so pulling a path out of a sentence leaves no double space.
+- **The composer never touches the filesystem.** `Options.Attach` is the only
+  door through which a path becomes an attachment, exactly as `Options.Targets`
+  is the only door through which a task becomes addressable. Whether a file
+  exists, whose `~` that is, and which kinds may ride are answered in
+  `tui2/chat`, which knows which process this is. Every composer-side test is a
+  pure function of a draft and a stub.
+- **Chip**: `  ▸ name · size`, under the draft, above the meta strip, in the
+  shape the dispatch chip already uses. It wears `GlyphCollapsed` — the mark
+  this surface already spends on a `PartArtifact` row — so the chip is a
+  PREVIEW of the reference row it becomes, not a second vocabulary for one
+  object. Capped at three rows; past that they fold into a count.
+- **Transcript**: a `segRef` row naming the person's own path through
+  `cas.SourcePath`, never the digest and never the bytes (12.5.1 in the inbound
+  direction). **No size**, deliberately: the journal does not carry one, and
+  stat-ing at render time would make a finalized block depend on a filesystem
+  that can change under it — and would print `—` for exactly the file the CAS
+  still has.
+- **Backspace on an empty draft removes the last attachment** (7.2's standing
+  row). The empty-draft condition is what makes it unambiguous: a chip is not in
+  the text, so the only caret position that can mean "the chip" is the one where
+  backspace has no rune to take instead.
+
+**A bug the tests found, worth naming because it is a whole class.** Capture runs
+per keystroke, so for `see "/tmp/my shots/dot.png"` the draft ONE KEY BEFORE the
+closing quote is already a complete, existing path. Capturing there strands the
+quote the person types next as a lone `"`. The rule now is that **a quote is a
+promise of a second quote, and nothing is taken until it is kept** — an
+unterminated quoted token, or one ending on a dangling backslash, is never
+offered. The same shape will bite any future per-keystroke capture.
+
+**Not done, and named rather than left to be discovered.** There is still no
+paste of image BYTES (a screenshot on the clipboard with no file behind it).
+v1 has no such door either — its only door is a path in the composer — so this
+is parity, not a gap against v1, but it is a gap against what people expect of a
+terminal in 2026. The reason it is not a two-line addition: `cas.Reference` with
+a synthetic name yields `cas://<digest>/pasted.png`, whose `SourcePath` is a
+path that never existed, and `head.imageContentPart` reads the SOURCE PATH off
+disk to build its data URL. A byte-origin attachment is therefore invisible to
+the front desk until that seam learns to read the blob. **That is the real
+prerequisite**, and it lives in `internal/head`, not here.
+
+`make check` is green but for the standing `internal/plan` CJK
+`file name too long` failure.
