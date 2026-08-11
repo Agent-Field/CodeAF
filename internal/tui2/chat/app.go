@@ -815,6 +815,12 @@ func (a *App) key(msg tea.KeyPressMsg) tea.Cmd {
 		return a.pane.Key(msg)
 	}
 
+	// The capability door 5.20 rule 3 promises in EVERY room, reachable from the
+	// state a reader is actually in. See [App.helpKeyLive].
+	if key == helpKey && a.helpKeyLive() {
+		return a.openCapability()
+	}
+
 	// An open question owns the bare answer keys, and owns them BEFORE the rail
 	// and the composer see them (JOURNEY 6). It claims nothing while a draft is
 	// in progress, while an overlay is raised, or while the map holds the
@@ -830,13 +836,6 @@ func (a *App) key(msg tea.KeyPressMsg) tea.Cmd {
 	// not a mode, not a focus carousel, one chord in and one chord (or esc at
 	// home) out — and while the composer has focus, j and k are letters.
 	if a.railFocus {
-		if key == "?" {
-			// The capability door 5.20 rule 3 promises in EVERY room. It can be
-			// a bare `?` only where the composer does not hold every printable
-			// key, which is exactly where the map has focus — and it is the same
-			// door the footer already names.
-			return a.openCapability()
-		}
 		if cmd, claimed := a.scopeKey(msg); claimed {
 			a.shell.Invalidate()
 			return cmd
@@ -853,6 +852,46 @@ func (a *App) key(msg tea.KeyPressMsg) tea.Cmd {
 	cmd := a.composer.Key(msg)
 	a.shell.Invalidate()
 	return cmd
+}
+
+// helpKey is the bare rune the footer has been advertising on every frame since
+// this surface existed. It is named once so the ladder that binds it and the
+// door that draws it cannot drift apart.
+const helpKey = "?"
+
+// helpKeyLive reports whether a bare `?` reaches the capability sheet right now.
+//
+// 13.5's second finding: the footer drew `? help` unconditionally while the only
+// way to fire it was ctrl+o first, so the surface's own footer was breaking
+// 5.22's discoverability law and 5.20 rule 3's promise that "`?` in any room
+// lists what this orchestrator can do". The doc offers two repairs and says to
+// take exactly one — "cheap fix in the key ladder or honest fix in the footer,
+// but not both ways" — and the ladder is the one the rest of the doc already
+// argues for: 5.20 rule 3 and 5.22 rule 4 both write the door as a bare `?`,
+// and 5.22's checklist closes by demanding the `?` surface have a permanent
+// visible door because "the capability-honesty surface cannot itself be a
+// memory test". A footer that withdrew the door in the state a reader is most
+// often in would make it exactly that again.
+//
+// So `?` is claimed the way 12.12.6 claims the question digits, in that
+// section's own words: "only where they cannot mean anything else — empty
+// draft, no overlay, rail unfocused". A draft in progress keeps `?` as the
+// character it is, because a sentence is a sentence; on an empty draft nothing
+// is being written and the rune can only have been the door. The map's own
+// focus is the third case and the one this surface already had.
+func (a *App) helpKeyLive() bool {
+	if a.overlay != overlayNone {
+		return false
+	}
+	return a.railFocus || !a.drafting()
+}
+
+// drafting reports whether a sentence is in progress. It is the one predicate
+// every bare-key guard on this surface consults — the answer ladder, the
+// footer's digit column and the help door — so the keys and the rows that
+// advertise them cannot disagree about what "empty draft" means.
+func (a *App) drafting() bool {
+	return a.composer != nil && strings.TrimSpace(a.composer.Draft()) != ""
 }
 
 // paste routes bracketed paste to a composer that accepts it. The shell has no
@@ -873,6 +912,26 @@ func (a *App) paste(msg tea.Msg) (bool, tea.Cmd) {
 	cmd := sink.Paste(pasted)
 	a.shell.Invalidate()
 	return true, cmd
+}
+
+// clearDraft is the registry's `key.thread.clear-draft` performed from a
+// palette row rather than from its accelerator (5.22: the key is never the only
+// door, and a row the sheet lists must do what it says).
+//
+// The method is asked for rather than assumed, exactly as [App.paste] asks for
+// its own: a composer that cannot kill a draft simply never gets the door, and
+// the pane interface stays the three calls it has always been.
+func (a *App) clearDraft() tea.Cmd {
+	if a.composer == nil {
+		return nil
+	}
+	killer, ok := a.composer.(interface{ KillToStart() })
+	if !ok {
+		return nil
+	}
+	killer.KillToStart()
+	a.refresh()
+	return nil
 }
 
 // canInterrupt reports whether esc would in fact stop a turn — which is the

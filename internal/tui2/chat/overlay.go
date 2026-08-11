@@ -234,6 +234,8 @@ func (a *App) runEntry(id string) tea.Cmd {
 		return a.openModelPicker()
 	case "key.thread.receipts":
 		return a.toggleReceipts()
+	case "key.thread.clear-draft":
+		return a.clearDraft()
 	case "key.thread.copy-answer":
 		return a.copyAnswer()
 	case "key.thread.copy-file":
@@ -356,6 +358,15 @@ func (a *App) entryReason(entryID string) string {
 		// The palette's own whole-surface reason, asked one door earlier so the
 		// reader learns it before they press enter rather than after.
 		return a.modelDisabled()
+	// key.thread.clear-draft deliberately has NO reason, and the omission is the
+	// decision: an empty draft is not a room that cannot clear one, it is a
+	// buffer with nothing in it a moment ago. The distinction matters here
+	// because a disabled row renders its reason INSTEAD of its accelerator, and
+	// `?` is reachable from the composer only on an empty draft — so a row
+	// refused for emptiness would be a row that is refused every single time
+	// anyone can read it, and the one thing the sheet exists to teach (the
+	// chord) would be the one thing it never showed. 5.22's sheet teaches
+	// accelerators; 5.20 rule 3's reasons are for doors this room cannot open.
 	case "key.thread.copy-answer":
 		if a.latestAnswer() == "" {
 			return "no answer in this room yet"

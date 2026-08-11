@@ -8,6 +8,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
 
+	"github.com/Agent-Field/aforge-v2/internal/registry"
 	"github.com/Agent-Field/aforge-v2/internal/store"
 	"github.com/Agent-Field/aforge-v2/internal/tui2/blocks"
 	"github.com/Agent-Field/aforge-v2/internal/tui2/homes"
@@ -128,6 +129,8 @@ func press(app *App, key string) tea.Msg {
 		msg = tea.KeyPressMsg{Code: 'o', Mod: tea.ModCtrl}
 	case "ctrl+k":
 		msg = tea.KeyPressMsg{Code: 'k', Mod: tea.ModCtrl}
+	case "ctrl+u":
+		msg = tea.KeyPressMsg{Code: 'u', Mod: tea.ModCtrl}
 	case "up":
 		msg = tea.KeyPressMsg{Code: tea.KeyUp}
 	case "down":
@@ -645,6 +648,137 @@ func TestTheCapabilitySheetNamesTheRoomAndItsRefusals(t *testing.T) {
 	}
 	if reason := app.entryReason("key.thread.receipts"); reason == "" {
 		t.Fatal("an unavailable action offered no reason (5.20 rule 3)")
+	}
+}
+
+// 13.5 finding 2: the footer draws `? help` on every frame, so the key has to
+// fire from the state a reader is actually in — the composer, with nothing
+// typed. 5.20 rule 3 writes the door as a bare `?` "in any room"; 12.12.6 says
+// where a bare key may be claimed: "empty draft, no overlay, rail unfocused".
+func TestTheHelpDoorOpensFromTheComposerOnAnEmptyDraft(t *testing.T) {
+	app, _ := boardApp(t)
+	if app.railFocus {
+		t.Fatal("the window opened with the map holding the keyboard")
+	}
+	press(app, "?")
+	if app.overlay != overlayCapability {
+		t.Fatalf("? from the composer raised %v, want the capability sheet", app.overlay)
+	}
+	if app.composer.Draft() != "" {
+		t.Fatalf("the help key also landed in the draft: %q", app.composer.Draft())
+	}
+}
+
+// The other half of the same law: a sentence in progress owns the rune. `?` is
+// a character before it is a door, and the composer already distinguishes an
+// empty draft from a written one for esc.
+func TestTheHelpKeyIsATypedCharacterInsideASentence(t *testing.T) {
+	app, _ := boardApp(t)
+	press(app, "w")
+	press(app, "h")
+	press(app, "y")
+	press(app, "?")
+	if app.overlay != overlayNone {
+		t.Fatalf("? inside a sentence raised %v", app.overlay)
+	}
+	if got := app.composer.Draft(); got != "why?" {
+		t.Fatalf("draft = %q, want %q", got, "why?")
+	}
+}
+
+// 13.5 finding 4 / 5.15: closing an overlay puts the keyboard back where it
+// was. Opened from the composer, esc must leave the reader talking to the
+// conversation — Enter sends the draft, it does not open a rail row.
+func TestClosingAnOverlayLeavesTheKeyboardOnTheComposer(t *testing.T) {
+	for _, door := range []string{"?", "ctrl+k"} {
+		t.Run(door, func(t *testing.T) {
+			app, backend := boardApp(t)
+			press(app, door)
+			if app.overlay == overlayNone {
+				t.Fatalf("%q opened nothing", door)
+			}
+			press(app, "esc")
+			if app.overlay != overlayNone {
+				t.Fatalf("esc left the plane at %v", app.overlay)
+			}
+			if app.railFocus {
+				t.Fatal("closing the sheet handed the keyboard to the scope map")
+			}
+			press(app, "h")
+			press(app, "i")
+			if got := app.composer.Draft(); got != "hi" {
+				t.Fatalf("typing after the sheet closed gave %q", got)
+			}
+			press(app, "enter")
+			if len(backend.posted) != 1 || backend.posted[0].Body != "hi" {
+				t.Fatalf("enter posted %+v, want the draft", backend.posted)
+			}
+		})
+	}
+}
+
+// And the same law read from the other side: opened from the map, closing it
+// gives the map the keyboard back. Where it was is where it goes.
+func TestClosingAnOverlayLeavesTheKeyboardOnTheMapItWasOpenedFrom(t *testing.T) {
+	app, _ := boardApp(t)
+	press(app, "ctrl+o")
+	press(app, "?")
+	if app.overlay != overlayCapability {
+		t.Fatalf("? from the map raised %v", app.overlay)
+	}
+	press(app, "esc")
+	if !app.railFocus {
+		t.Fatal("closing the sheet took the keyboard off the map that opened it")
+	}
+}
+
+// 13.5 finding 3: ctrl+u clears the draft, and the `?` sheet lists it — a key
+// that is not in the one catalog is a typed-only action (5.22).
+func TestCtrlUClearsTheDraftAndIsInTheCatalog(t *testing.T) {
+	app, _ := boardApp(t)
+	press(app, "d")
+	press(app, "o")
+	press(app, "h")
+	if app.composer.Draft() != "doh" {
+		t.Fatalf("draft = %q", app.composer.Draft())
+	}
+	press(app, "ctrl+u")
+	if got := app.composer.Draft(); got != "" {
+		t.Fatalf("ctrl+u left %q in the draft", got)
+	}
+	entry, ok := registry.ByID("key.thread.clear-draft")
+	if !ok {
+		t.Fatal("the clear-draft verb is in no catalog")
+	}
+	if bound, ok := entry.On(registry.SurfaceComposerFirst); !ok || bound.Key != "ctrl+u" {
+		t.Fatalf("the catalog offers %q on a composer-first surface, want ctrl+u", bound.Key)
+	}
+	// It is in the sheet the reader can actually open, with its accelerator.
+	press(app, "?")
+	sheet := ansi.Strip(app.Frame(120, 60))
+	if !strings.Contains(sheet, "clear draft") || !strings.Contains(sheet, "ctrl+u") {
+		t.Fatalf("the `?` sheet does not teach the clear-draft key:\n%s", sheet)
+	}
+}
+
+// The palette row is a door, not a label: choosing it performs the same edit
+// the chord does (5.22 rule 5 — an affordance never lies).
+func TestTheClearDraftRowPerformsTheEdit(t *testing.T) {
+	app, _ := boardApp(t)
+	press(app, "n")
+	press(app, "o")
+	if cmd := app.choose(palette.RunEntry{ID: "key.thread.clear-draft"}); cmd != nil {
+		cmd()
+	}
+	if got := app.composer.Draft(); got != "" {
+		t.Fatalf("the palette row left %q in the draft", got)
+	}
+	// The row is never dimmed for an empty draft: a disabled row renders its
+	// reason instead of its key, and `?` from the composer only opens on an
+	// empty draft — so a reason here would hide the chord from every reader who
+	// could have read it (see entryReason's own note).
+	if reason := app.entryReason("key.thread.clear-draft"); reason != "" {
+		t.Fatalf("the clear-draft row went dim and took its key with it: %q", reason)
 	}
 }
 
