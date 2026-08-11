@@ -118,15 +118,54 @@ type traceReadMsg struct {
 // What keeps that affordable is the stamp. A recorder that has not grown costs
 // one open and one stat; only a file that actually moved is read, allocated and
 // re-parsed.
+// traceNodes is which nodes under a room have a recorder worth asking for, and
+// it is ONE PER RECORDER rather than one per node.
+//
+// The executor names a recorder by the node's CREATED SEQUENCE
+// (`internal/exec/linear.go` hands `task.NodeID` to `newTracer`, and
+// `exec.TraceFile` spells it), and a planner splices every part of a job in ONE
+// transaction — so every part of a four-part job shares one created seq and
+// therefore ONE recorder, which all four workers append to. Measured on the
+// reporter's own profile: `task-1961` has five nodes, all at seq 1974, and one
+// 120KB `1974.trace.log` between them.
+//
+// A room that asked per node would draw that same file five times. Deduplicating
+// on the seq is not a workaround for that; it is the recorder's own identity
+// read correctly. The FIRST node holding a seq keeps it, and workRecord puts the
+// surface row first, so a shared recorder lands under the job it belongs to
+// rather than under whichever part happened to be walked first.
+//
+// (That several workers interleave into one file is a producer fact this surface
+// does not get to fix and must not hide. The rows come out in append order,
+// which is the order the work happened in, and the turn rules between them are
+// what a reader has to separate them by. Filed rather than papered over.)
+func (a *App) traceNodes(root string) []string {
+	nodes := a.source.subtreeNodes(root)
+	out := make([]string, 0, len(nodes))
+	seen := make(map[int64]bool, len(nodes))
+	for _, id := range nodes {
+		node, known := a.source.nodes[id]
+		if !known {
+			continue
+		}
+		if seen[node.CreatedSeq] {
+			continue
+		}
+		seen[node.CreatedSeq] = true
+		out = append(out, id)
+		if len(out) == traceMaxNodes {
+			break
+		}
+	}
+	return out
+}
+
 func (a *App) readTraceCmd(root string) tea.Cmd {
 	reader, ok := a.commander.(Trace)
 	if !ok || a.source == nil || root == "" {
 		return nil
 	}
-	nodes := a.source.subtreeNodes(root)
-	if len(nodes) > traceMaxNodes {
-		nodes = nodes[:traceMaxNodes]
-	}
+	nodes := a.traceNodes(root)
 	if len(nodes) == 0 {
 		return nil
 	}
@@ -342,26 +381,87 @@ func parseCall(rest string) traceEvent {
 var salientKeys = []string{"cmd", "q", "query", "path", "file", "prompt", "url", "urls", "pattern", "text"}
 
 // salientArg finds the one argument worth putting on the row.
+//
+// TWO PASSES, AND THE SECOND IS NOT A FALLBACK SO MUCH AS THE COMMON CASE.
+// internal/exec/trace.go's `snip` truncates an argument object at 300
+// characters, so ANY call whose arguments are longer than a tweet reaches this
+// function as INVALID JSON with its closing brace cut off — a heredoc handed to
+// `sh`, a file handed to `write`. Measured on the reporter's own recorder: the
+// strict parse fails on exactly the calls a reader most wants named, and the row
+// then falls back to drawing raw `{"cmd":"cd … << 'EOF'\n\nprint(\"…` at them.
+// The scan reads the one key it wants and stops, so a cut object answers as well
+// as a whole one.
 func salientArg(args string) string {
+	restored := strings.ReplaceAll(args, "⏎", "\\n")
 	var object map[string]json.RawMessage
-	if err := json.Unmarshal([]byte(strings.ReplaceAll(args, "⏎", "\\n")), &object); err != nil {
+	if err := json.Unmarshal([]byte(restored), &object); err == nil {
+		for _, key := range salientKeys {
+			raw, ok := object[key]
+			if !ok {
+				continue
+			}
+			var one string
+			if err := json.Unmarshal(raw, &one); err == nil {
+				return strings.TrimSpace(one)
+			}
+			var many []string
+			if err := json.Unmarshal(raw, &many); err == nil && len(many) > 0 {
+				return strings.Join(many, "  ")
+			}
+		}
 		return ""
 	}
+	return salientScan(restored)
+}
+
+// salientScan reads one string-valued key out of an object that may end
+// mid-token. It is deliberately not a JSON parser: it looks for the key it
+// already wants, walks its value honouring escapes, and stops at the closing
+// quote or at the end of what survived the truncation.
+func salientScan(args string) string {
 	for _, key := range salientKeys {
-		raw, ok := object[key]
-		if !ok {
+		needle := `"` + key + `":`
+		at := strings.Index(args, needle)
+		if at < 0 {
 			continue
 		}
-		var one string
-		if err := json.Unmarshal(raw, &one); err == nil {
-			return strings.TrimSpace(one)
+		rest := strings.TrimLeft(args[at+len(needle):], " ")
+		if !strings.HasPrefix(rest, `"`) {
+			continue
 		}
-		var many []string
-		if err := json.Unmarshal(raw, &many); err == nil && len(many) > 0 {
-			return strings.Join(many, "  ")
-		}
+		return strings.TrimSpace(unquoteRun(rest[1:]))
 	}
 	return ""
+}
+
+// unquoteRun walks a JSON string body to its closing quote, or to the end of a
+// value the recorder cut short.
+func unquoteRun(rest string) string {
+	var out strings.Builder
+	for i := 0; i < len(rest); i++ {
+		switch rest[i] {
+		case '"':
+			return out.String()
+		case '\\':
+			if i+1 >= len(rest) {
+				return out.String()
+			}
+			switch rest[i+1] {
+			case 'n':
+				out.WriteByte('\n')
+			case 't':
+				out.WriteByte('\t')
+			case 'r':
+				out.WriteByte('\r')
+			default:
+				out.WriteByte(rest[i+1])
+			}
+			i++
+		default:
+			out.WriteByte(rest[i])
+		}
+	}
+	return out.String()
 }
 
 // absorbResult folds `  → 1652B: search: …` onto the call above it.

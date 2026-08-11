@@ -79,6 +79,37 @@ type Graph interface {
 	NodeMessages(nodeID string, afterSeq int64, limit int) ([]store.Message, error)
 }
 
+// Subtrees is the optional read that makes a FILED job's plan visible again.
+//
+// THE DEFECT, in the reporter's words: "I still don't see any tree hierarchy
+// when I click on a task." Measured on their own journal, and it is not the
+// renderer: [store.ActiveNodes] — which is what [Graph.ActiveSnapshot] is built
+// from — returns a fold's outermost representative and NOT its members. That is
+// correct for a home rail, which must not list a settled job's four parts as
+// four jobs. It is wrong for the job itself, because folding is what happens to
+// every job shortly after it settles, and from that moment the snapshot says the
+// job has no children at all. Their `task-1961` is a real four-part job with
+// `folded = 1` on all five rows: the card says `atomic`, the scope has one row,
+// the room draws no part and no per-part result. Their `craft-2088`, the same
+// shape but not yet folded, draws all four. **The tree does not break when a job
+// is complicated; it breaks when a job gets old.**
+//
+// [store.SubtreeNodes] is the read that ignores folding, and it is bounded by
+// the subtree it is given. It is asked ONCE PER ROOM THE READER ENTERS rather
+// than on every poll: a home rail is a list of jobs and does not need any job's
+// parts, and paying for every subtree on the board to fix the one room a reader
+// is standing in would be the wrong trade in the one place this design cannot
+// afford one.
+//
+// It is separate from [Graph] for the reason [Trace] is separate from
+// [Commander]: adding a method to Graph would make a Backend that lacks it lose
+// the WHOLE rail, and a capability some hosts have belongs behind its own
+// assertion. *store.Store satisfies it with no adapter.
+type Subtrees interface {
+	// SubtreeNodes is root and every descendant, folded or not, in splice order.
+	SubtreeNodes(root string) ([]store.Node, error)
+}
+
 // Rooms is the optional thread-switcher slice (12.1.3 item 3, 5.24).
 //
 // OpenSession is what makes an EMPTY room possible: until that event existed a
@@ -126,10 +157,18 @@ const (
 
 // scopeSource is the [rail.ScopeSource] over a real store.
 type scopeSource struct {
-	graph   Graph
-	rooms   Rooms
-	now     func() time.Time
-	session string
+	graph    Graph
+	subtrees Subtrees
+	rooms    Rooms
+	now      func() time.Time
+	session  string
+
+	// opened is the full subtree of every task room the reader has entered this
+	// session, keyed by root — the rows [Subtrees] answers with and
+	// ActiveSnapshot cannot. It is spliced into the board on every rebuild
+	// (readGraph), so the card and the tree agree about how many parts a job has
+	// rather than one of them learning it and the other not (12.14 finding 1).
+	opened map[string][]store.Node
 
 	// built scopes, keyed by scope id. home is held apart because it is the one
 	// scope that always exists, even when nothing else does.
@@ -186,6 +225,9 @@ func newScopeSource(backend Backend, session string, now func() time.Time) *scop
 	}
 	if graph, ok := backend.(Graph); ok {
 		source.graph = graph
+	}
+	if subtrees, ok := backend.(Subtrees); ok {
+		source.subtrees = subtrees
 	}
 	if rooms, ok := backend.(Rooms); ok {
 		source.rooms = rooms
@@ -355,7 +397,62 @@ func (s *scopeSource) readGraph() (store.Snapshot, map[string]store.JobUsage, []
 	if err != nil {
 		questions = nil
 	}
-	return snapshot, usage, questions
+	return s.withOpenedSubtrees(snapshot), usage, questions
+}
+
+// withOpenedSubtrees puts the parts of an entered job back on the board.
+//
+// ActiveSnapshot answers with a fold's outermost representative and not its
+// members, which is right for a list of jobs and wrong for a job (see
+// [Subtrees]). Splicing the rooms the reader has actually entered is the whole
+// repair: it changes nothing about which jobs the home rail lists — every id
+// added here is a DESCENDANT of a row that was already on it — and it makes the
+// card, the tree and the room agree, because all three are built from this one
+// slice.
+//
+// The snapshot's own rows WIN on a collision. A node that is live is described
+// by the live read; the subtree read is a photograph taken when the room was
+// entered, and a stale status drawn over a fresh one is the one way this could
+// make a surface lie.
+func (s *scopeSource) withOpenedSubtrees(snapshot store.Snapshot) store.Snapshot {
+	if len(s.opened) == 0 {
+		return snapshot
+	}
+	known := make(map[string]bool, len(snapshot.Nodes))
+	for i := range snapshot.Nodes {
+		known[snapshot.Nodes[i].ID] = true
+	}
+	for _, nodes := range s.opened {
+		for i := range nodes {
+			if known[nodes[i].ID] {
+				continue
+			}
+			known[nodes[i].ID] = true
+			snapshot.Nodes = append(snapshot.Nodes, nodes[i])
+		}
+	}
+	return snapshot
+}
+
+// rememberSubtree records one entered job's full plan and reports whether it
+// told the board anything it did not already know.
+func (s *scopeSource) rememberSubtree(root string, nodes []store.Node) bool {
+	root = strings.TrimSpace(root)
+	if root == "" || len(nodes) == 0 {
+		return false
+	}
+	if s.opened == nil {
+		s.opened = make(map[string][]store.Node, 4)
+	}
+	fresh := false
+	for i := range nodes {
+		if _, seen := s.nodes[nodes[i].ID]; !seen {
+			fresh = true
+			break
+		}
+	}
+	s.opened[root] = nodes
+	return fresh
 }
 
 // -- the home scope ----------------------------------------------------------

@@ -706,10 +706,12 @@ func (a *App) openTaskRoom(row rail.Row, node string) tea.Cmd {
 	// read, and it lands underneath when it arrives.
 	a.paintRoom()
 	a.shell.Invalidate()
-	// Two reads, one entry: the journal's trail, and what the workers under this
-	// node actually did. The second is a file the executor writes outside the
-	// journal, so nothing else in this window would ever ask for it (trace.go).
-	return tea.Batch(a.readNodeCmd(node, 0), a.readTraceCmd(node))
+	// Three reads, one entry, and each one answers a question the other two
+	// cannot: the journal's trail, the job's own PLAN (which the board's
+	// snapshot drops the moment the job is filed away — see [Subtrees]), and
+	// what the workers under it actually DID, which is a file the executor
+	// writes outside the journal entirely (trace.go).
+	return tea.Batch(a.readNodeCmd(node, 0), a.readTraceCmd(node), a.readSubtreeCmd(node))
 }
 
 // paintRoom rebuilds the open task room from the record.
@@ -866,6 +868,57 @@ func (a *App) applyRoomOpened(msg roomOpenedMsg) tea.Cmd {
 func newRoomID(at time.Time) string { return "chat-" + at.Format("20060102-150405.000000") }
 
 // -- the node room's feed ----------------------------------------------------
+
+// subtreeReadMsg is one entered job's full plan, folded or not.
+type subtreeReadMsg struct {
+	node  string
+	nodes []store.Node
+}
+
+// readSubtreeCmd reads the plan of the job a reader has just entered.
+//
+// It is the answer to "I still don't see any tree hierarchy when I click on a
+// task", and the emphasis is on CLICK: the read happens on entry and nowhere
+// else. See [Subtrees] for why the board's own snapshot cannot answer — folding
+// is what happens to every job shortly after it settles, and a folded job's
+// parts are not in it.
+func (a *App) readSubtreeCmd(node string) tea.Cmd {
+	if a.source == nil || a.source.subtrees == nil || node == "" {
+		return nil
+	}
+	subtrees := a.source.subtrees
+	return func() tea.Msg {
+		nodes, err := subtrees.SubtreeNodes(node)
+		if err != nil {
+			return subtreeReadMsg{node: node}
+		}
+		return subtreeReadMsg{node: node, nodes: nodes}
+	}
+}
+
+// applySubtreeRead puts the plan back on the board and redraws everything built
+// from it.
+//
+// It rebuilds the SCOPE and not only the room, because the card on the rail is
+// the same fact seen from one column over: a room that had drawn four parts
+// beside a card still saying `atomic` would be 12.14's finding 1 exactly — an
+// entered room and its own preview disagreeing about the work.
+func (a *App) applySubtreeRead(msg subtreeReadMsg) {
+	if a.source == nil || !a.source.rememberSubtree(msg.node, msg.nodes) {
+		return
+	}
+	a.source.refresh(a.journal, true)
+	a.railModel.Refresh()
+	if a.view != nil && a.view.kind == viewNode && a.view.node == msg.node {
+		// The stamp fingerprints the record, and the record just gained rows the
+		// journal position cannot see. Clearing it makes the next paint
+		// unconditional and the one after it cheap again.
+		a.view.stamp = ""
+		a.paintRoom()
+	}
+	a.refresh()
+	a.shell.Invalidate()
+}
 
 // nodeMessagesMsg is one read of a task room's trail.
 type nodeMessagesMsg struct {
