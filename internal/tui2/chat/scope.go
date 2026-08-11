@@ -806,3 +806,36 @@ func itoa(n int) string {
 	}
 	return string(buf[i:])
 }
+
+// subtreeNodes is every node a task room's trail is read from: the root and
+// whatever the rail already built beneath it.
+//
+// It reads the scope this source built rather than walking the graph again, for
+// the reason the whole file exists: the walk happened once, at the last journal
+// move, and a second one here would be a second opinion about the same subtree
+// read at a different time. A root with no scope — a leaf worker, an atomic job
+// — answers with itself, which is exactly its own trail.
+func (s *scopeSource) subtreeNodes(root string) []string {
+	root = strings.TrimSpace(root)
+	if root == "" {
+		return nil
+	}
+	scope, ok := s.tasks[rowTaskPrefix+root]
+	if !ok {
+		return []string{root}
+	}
+	out := make([]string, 0, len(scope.Rows)+1)
+	seen := make(map[string]bool, len(scope.Rows)+1)
+	add := func(id string) {
+		if id == "" || seen[id] {
+			return
+		}
+		seen[id] = true
+		out = append(out, id)
+	}
+	add(root)
+	for i := range scope.Rows {
+		add(strings.TrimPrefix(scope.Rows[i].ID, rowTaskPrefix))
+	}
+	return out
+}

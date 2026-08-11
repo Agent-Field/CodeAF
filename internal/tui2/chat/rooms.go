@@ -1,6 +1,7 @@
 package chat
 
 import (
+	"sort"
 	"strings"
 	"time"
 
@@ -486,15 +487,39 @@ type nodeMessagesMsg struct {
 	err      error
 }
 
-// readNodeCmd reads a node's trail after a watermark, off the render goroutine.
+// readNodeCmd reads a task room's trail after a watermark, off the render
+// goroutine.
+//
+// IT READS THE SUBTREE AND NOT THE ROOT. A planned job's root node usually says
+// nothing at all — its parts do the work and its workers do the talking — so a
+// room that read only the root drew a title, a status line and nothing else,
+// which is the shape of a room with no conversation in it rather than the shape
+// of a job with three workers in it. 4.6 says a task room IS a view over the
+// same journal filtered to one node; the node it is filtered to is the SUBTREE
+// that node roots, because that is what "this task" means to a reader.
+//
+// One command, N reads, on the cycles the journal moved and only while the room
+// is open. The fan-out is bounded by the scope the rail already built, which is
+// itself capped at maxSubtreeRows, so this cannot grow with the graph. Merging
+// happens here, in sequence order, because the journal's own numbering is the
+// only ordering that means anything across nodes.
 func (a *App) readNodeCmd(node string, after int64) tea.Cmd {
 	if a.source == nil || a.source.graph == nil || node == "" {
 		return nil
 	}
 	graph := a.source.graph
+	nodes := a.source.subtreeNodes(node)
 	return func() tea.Msg {
-		messages, err := graph.NodeMessages(node, after, messagePage)
-		return nodeMessagesMsg{node: node, messages: messages, err: err}
+		var merged []store.Message
+		for _, id := range nodes {
+			messages, err := graph.NodeMessages(id, after, messagePage)
+			if err != nil {
+				return nodeMessagesMsg{node: node, err: err}
+			}
+			merged = append(merged, messages...)
+		}
+		sort.SliceStable(merged, func(i, j int) bool { return merged[i].Seq < merged[j].Seq })
+		return nodeMessagesMsg{node: node, messages: merged}
 	}
 }
 
@@ -522,7 +547,11 @@ func (a *App) applyNodeMessages(msg nodeMessagesMsg) {
 			continue
 		}
 		sanitizeMessage(&message)
-		a.view.transcript.Append(newMessageBlock(message, a.style))
+		block := newMessageBlock(message, a.style)
+		// The fold's accelerator is offered while the room on screen has
+		// something to fold, and a task room's rows are the ones on screen.
+		a.foldable = a.foldable || block.collapsible
+		a.view.transcript.Append(block)
 		appended = true
 	}
 	if appended {

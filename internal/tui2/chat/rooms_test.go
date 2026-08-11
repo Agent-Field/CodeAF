@@ -9,6 +9,7 @@ import (
 	"github.com/charmbracelet/x/ansi"
 
 	"github.com/Agent-Field/aforge-v2/internal/store"
+	"github.com/Agent-Field/aforge-v2/internal/tui2/blocks"
 	"github.com/Agent-Field/aforge-v2/internal/tui2/palette"
 	"github.com/Agent-Field/aforge-v2/internal/tui2/rail"
 	"github.com/Agent-Field/aforge-v2/internal/tui2/tokens"
@@ -701,4 +702,108 @@ func TestTheCardClockIsTheAppsClock(t *testing.T) {
 		return
 	}
 	t.Fatal("no card to read a clock off")
+}
+
+// A task room is a view over the SUBTREE, not over the root node's own trail.
+// A planned job's root usually says nothing — its parts do the work and its
+// workers do the talking — so a room that read only the root drew a title and
+// a status line and looked like a job with nothing in it.
+func TestATaskRoomShowsTheWholeSubtreesTrail(t *testing.T) {
+	app, backend := boardApp(t)
+	backend.node["job-1/h2"] = []store.Message{{Seq: 91, SessionID: testSession,
+		Role: store.RoleAgent, NodeID: "job-1/h2", Body: "H2 is green"}}
+	backend.node["job-1/keycutter"] = []store.Message{{Seq: 92, SessionID: testSession,
+		Role: store.RoleAgent, NodeID: "job-1/keycutter", Body: "KeyCutter waiting on H2"}}
+	backend.journal++
+	poll(t, app)
+
+	press(app, "ctrl+o")
+	for range 10 {
+		if app.view != nil && app.view.kind == viewNode {
+			break
+		}
+		press(app, "down")
+		press(app, "enter")
+	}
+	if app.view == nil || app.view.kind != viewNode {
+		t.Fatalf("never reached a task room: %#v", app.view)
+	}
+	if msg, ok := run(t, app.readNodeCmd(app.view.node, 0)).(nodeMessagesMsg); ok {
+		app.applyNodeMessages(msg)
+	} else {
+		t.Fatal("the task room read did not answer with messages")
+	}
+	out := shown(t, app, 80)
+	for _, want := range []string{"picked up NavCtx again", "H2 is green", "KeyCutter waiting on H2"} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("the task room is missing %q:\n%s", want, out)
+		}
+	}
+}
+
+// The subtree read is derived from the scope the rail already built, so it can
+// never disagree with what the room shows, and it is bounded by that scope.
+func TestTheSubtreeReadFollowsTheRailsOwnScope(t *testing.T) {
+	app, _ := boardApp(t)
+	nodes := app.source.subtreeNodes("job-1")
+	want := map[string]bool{"job-1": true, "job-1/h2": true, "job-1/keycutter": true}
+	if len(nodes) != len(want) {
+		t.Fatalf("subtree = %q, want the three of job-1", nodes)
+	}
+	for _, id := range nodes {
+		if !want[id] {
+			t.Fatalf("subtree carries %q, which is not job-1's", id)
+		}
+	}
+	if nodes[0] != "job-1" {
+		t.Fatalf("the root is not first: %q", nodes)
+	}
+	// A leaf answers with itself: that is exactly its own trail.
+	if leaf := app.source.subtreeNodes("job-1/h2"); len(leaf) != 1 || leaf[0] != "job-1/h2" {
+		t.Fatalf("a leaf's subtree = %q", leaf)
+	}
+}
+
+// 5.20 rule 5's UI duty is rendering receipts in the room the reader is looking
+// at, and the fold is the same rule as a keystroke. It used to walk the
+// conversation's block list from inside another room, so it opened rows nobody
+// could see and left the ones on screen shut.
+func TestTheReceiptsFoldActsOnTheRoomOnScreen(t *testing.T) {
+	app, _ := boardApp(t)
+	receipt := store.Message{Seq: 500, SessionID: testSession, Role: store.RoleSystem,
+		Body: "reflected\nthe long half nobody reads until they do"}
+	// One receipt in the room's own conversation, one in the room on screen.
+	app.transcript.Append(newMessageBlock(receipt, app.style))
+	view := blocks.New(80, 24)
+	other := receipt
+	other.Seq = 501
+	view.Append(newMessageBlock(other, app.style))
+	app.view = &mainView{kind: viewNode, node: "job-1", title: "wisp-parity", transcript: view}
+	app.pane.transcript = view
+
+	if before := shown(t, app, 80); strings.Contains(before, "nobody reads") {
+		t.Fatalf("the receipt was already open:\n%s", before)
+	}
+	app.toggleReceipts()
+	if after := shown(t, app, 80); !strings.Contains(after, "nobody reads") {
+		t.Fatalf("ctrl+r did not open the room on screen:\n%s", after)
+	}
+}
+
+// shown is [whole] over the transcript the main pane is actually drawing, which
+// is not the room's own once a task room or a preview card is open.
+func shown(t *testing.T, app *App, width int) string {
+	t.Helper()
+	transcript := app.pane.transcript
+	if transcript == nil {
+		transcript = app.transcript
+	}
+	var out strings.Builder
+	for i := 0; i < transcript.Len(); i++ {
+		for _, row := range transcript.Block(i).Rows(width) {
+			out.WriteString(ansi.Strip(row))
+			out.WriteByte('\n')
+		}
+	}
+	return out.String()
 }
