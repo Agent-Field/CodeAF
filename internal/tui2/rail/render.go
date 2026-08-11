@@ -145,13 +145,33 @@ type View struct {
 	// row 0 is appended and cleared immediately after, so no other row can pick
 	// it up.
 	lead string
+
+	// The pointer table (hit.go). marks runs parallel to lines and says which
+	// model row each screen line belongs to; up* is where the way out of the
+	// scope was drawn. Both are written by push and by cardLine as a side
+	// effect of the ONE loop that already knows both facts, which is what keeps
+	// the map from drifting away from the picture — the old surface's 30
+	// hand-maintained rectangles are the failure this avoids.
+	marks                []int32
+	mark                 int32
+	upLine, upFrom, upTo int
+
+	// hover is the row the pointer is resting on, and hovered says the line
+	// being painted right now is that row. They are separate because the paint
+	// happens several calls below the loop that knows which row it is on, and
+	// threading a row index through six line builders to reach one boolean
+	// would be the wrong kind of honesty.
+	hover   int32
+	hovered bool
 }
 
 // NewView returns a View painting for a Styler's profile and focus. A nil
 // Styler means no colour, which is the honest degradation for a terminal that
 // would not say what it can do.
 func NewView(st *tokens.Styler) *View {
-	v := &View{}
+	// A zero hover would be row 0, so it is set explicitly: a View nobody has
+	// pointed at must light nothing.
+	v := &View{hover: markNoHover}
 	v.SetStyler(st)
 	return v
 }
@@ -180,6 +200,10 @@ func (v *View) Focus() tokens.Focus { return v.focus }
 // Render. Callers that keep lines across frames must copy them.
 func (v *View) Render(m *Model, mode Mode, width, height int) []string {
 	v.lines = v.lines[:0]
+	v.marks = v.marks[:0]
+	v.mark = markChrome
+	v.hovered = false
+	v.upLine, v.upFrom, v.upTo = -1, 0, 0
 	if m == nil || width <= 0 || height <= 0 {
 		return v.lines
 	}
@@ -262,7 +286,17 @@ func (v *View) renderMap(m *Model, width, height int) {
 	// affordance outranks a count (5.14).
 	merged := m.Depth() > 0 && surfaceRepeatsScope(scope)
 	if m.Depth() > 0 && !merged {
+		// The whole header line is the way out, because the whole header line
+		// says the name of the room you would be leaving (5.15: "the rail's
+		// scope header is the breadcrumb tail and is clickable to go up").
+		v.mark = markChrome
+		v.upLine, v.upFrom, v.upTo = len(v.lines), 0, width
+		v.hovered = v.hover == markScopeUp
 		v.push(v.scopeHeader(scope, sel, len(rows)-1, ident, width), height)
+		v.hovered = false
+		if v.upLine >= len(v.lines) {
+			v.upLine = -1
+		}
 	}
 
 	// Row 0 is the conversational surface and is never folded away: a scope you
@@ -270,8 +304,12 @@ func (v *View) renderMap(m *Model, width, height int) {
 	if merged {
 		v.lead = tokens.GlyphScopeUp
 	}
+	v.mark = 0
+	v.hovered = v.hover == 0 && sel != 0
 	v.appendRow(rows[0], sel == 0, width, height, band, banded, ident)
+	v.hovered = false
 	v.lead = ""
+	v.mark = markChrome
 
 	members := rows[1:]
 	if len(members) == 0 {
@@ -307,7 +345,13 @@ func (v *View) renderMap(m *Model, width, height int) {
 		// inside a task's scope. A home rail that tinted each selection with
 		// the selected card's hue would answer a question nobody asked and
 		// make the band change colour as the cursor moves.
+		v.mark = int32(i + 1)
+		// The band already says which row the cursor is on, so a selected row
+		// is never also drawn as hovered: one target, one statement.
+		v.hovered = v.hover == v.mark && sel != i+1
 		v.appendRow(r, sel == i+1, width, height, band, banded, rowIdent)
+		v.hovered = false
+		v.mark = markChrome
 	}
 	if !p.atTop && p.fold != "" {
 		v.push(v.foldLine(p.fold, width), height)
@@ -518,10 +562,17 @@ func (v *View) foldLine(text string, width int) string {
 	return v.emit(width, false, tokens.Ground)
 }
 
-// push appends a line while there is room in the height budget.
+// push appends a line while there is room in the height budget, and records
+// which row that line belongs to.
+//
+// Recording it HERE rather than at the call sites is the whole trick: push is
+// also what silently drops a line that does not fit, so a table built anywhere
+// else would claim a row on a line the frame never got. One append, one mark,
+// always the same length.
 func (v *View) push(line string, limit int) {
 	if len(v.lines) < limit {
 		v.lines = append(v.lines, line)
+		v.marks = append(v.marks, v.mark)
 	}
 }
 

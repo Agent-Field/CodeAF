@@ -135,7 +135,21 @@ func (v *View) cardLine(r Row, width, indent int, sel, banded bool, band, ident 
 	// "out of here · what this is · what it is called", and the indent it takes
 	// was already budgeted by [View.leadWidth] so the lines under it line up.
 	if v.lead != "" && l.room() > 0 {
+		// The lead's column range is recorded as it is drawn, because a click
+		// on this row means two different things either side of the glyph: on
+		// the ‹ it pops the scope, anywhere else it is row 0 like any other row.
+		// Measuring the span from the buffer rather than from an assumed gutter
+		// width is what keeps that true at the narrow widths where the gutter
+		// is not there at all (see gutterFor).
+		from := l.w
 		l.add(v.lead, tokens.TextTertiary)
+		if l.w > from {
+			// The target is the glyph AND the space [View.leadWidth] budgeted
+			// after it. One cell is a target you have to aim at; two is a target
+			// you can hit, and the second cell belongs to the lead already —
+			// nothing else is ever drawn there.
+			v.upLine, v.upFrom, v.upTo = len(v.lines), from, from+v.leadWidth()
+		}
 	}
 	l.padTo(indent)
 	v.addGlyph(l, r, ident)

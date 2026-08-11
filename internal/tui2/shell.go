@@ -98,6 +98,13 @@ type Shell struct {
 	hitAt image.Point
 	hitOK bool
 
+	// hoverID is the layer the pointer is resting over, and hoverOK says the
+	// pointer is over anything at all. They exist so the pane the pointer LEFT
+	// can be told it lost the pointer without every pane having to notice its
+	// own absence.
+	hoverID LayerID
+	hoverOK bool
+
 	// The terminal-protocol side. term is the operator's permissions, note
 	// decides whether an event becomes a notification, and attn/busy are the
 	// two facts the title and the taskbar are computed from.
@@ -417,10 +424,24 @@ func (s *Shell) View() tea.View {
 	// Alt screen is not negotiable (8.1.1).
 	v.AltScreen = true
 
-	// Cell motion rather than all motion: we want clicks, wheel and drags, and
-	// we do not want a message per mouse move on an idle screen. Bandwidth is
-	// the metric.
-	v.MouseMode = tea.MouseModeCellMotion
+	// All motion, not cell motion — and the reasoning is the doctrine's own,
+	// re-weighed rather than reversed.
+	//
+	// 10.1.1 makes bandwidth the metric, and the earlier reading took that to
+	// forbid a message per mouse move. But the cost that matters is the FRAME,
+	// not the report: a motion report is six inbound bytes on a link whose
+	// inbound direction carries keystrokes and nothing else, and it produces
+	// output only when the pointer crosses from one target to a DIFFERENT one.
+	// A pointer sweeping the rail therefore costs one repainted row per row
+	// crossed and zero bytes for every cell in between — which is exactly
+	// "bandwidth proportional to what actually changed", not an exception to it.
+	//
+	// What it buys is the other half of 5.22 rule 5: an interactive chip has to
+	// SAY it is interactive, and on a surface with no boxes and no icon bars
+	// (5.21) the only thing left to say it with is the target answering the
+	// pointer. Without the report there is no honest way to draw that, and
+	// affordances that cannot be seen are the failure 5.22 exists to prevent.
+	v.MouseMode = tea.MouseModeAllMotion
 
 	// Focus reporting stays off, permanently. tmux ships it disabled, so a
 	// surface that behaves differently when focused behaves differently for
@@ -511,6 +532,7 @@ func (s *Shell) relayout() {
 	if _, ok := s.comp.rect(s.focus); !ok {
 		s.focus = s.firstFocusable()
 	}
+	s.clearHover()
 	s.hitOK = false
 	s.hitID = LayerNone
 	s.dirty = true
@@ -561,6 +583,12 @@ func (s *Shell) mouse(msg tea.MouseMsg) tea.Cmd {
 			s.hitID, s.hitAt, s.hitOK = id, local, ok
 			s.dirty = true
 		}
+	case tea.MouseMotionMsg:
+		// A bare pointer move is a hover and nothing else. It never reaches
+		// PaneMouse, never moves focus and never returns a command: 5.14 allows
+		// one cursor, and the pointer resting somewhere is not it.
+		s.hover(id, local, ok)
+		return nil
 	}
 	if !ok {
 		return nil
@@ -572,6 +600,42 @@ func (s *Shell) mouse(msg tea.MouseMsg) tea.Cmd {
 		return p.Mouse(msg, local)
 	}
 	return nil
+}
+
+// hover moves the pointer preview from one pane to another.
+//
+// The pane the pointer LEFT is told first, so the frame never holds two
+// highlights for one pointer, and each pane answers whether the move actually
+// changed its bytes. A pointer travelling across cells inside one target
+// answers false twice and the shell stays clean — which is what makes an idle
+// screen under a moving pointer cost nothing.
+func (s *Shell) hover(id LayerID, local image.Point, ok bool) {
+	if s.hoverOK && (!ok || s.hoverID != id) {
+		if p, okp := s.paneFor(s.hoverID).(PaneHover); okp && p.Hover(image.Point{}, false) {
+			s.dirty = true
+		}
+	}
+	s.hoverID, s.hoverOK = id, ok
+	if !ok {
+		return
+	}
+	if p, okp := s.paneFor(id).(PaneHover); okp && p.Hover(local, true) {
+		s.dirty = true
+	}
+}
+
+// clearHover drops the pointer preview outright. A layout change is the case
+// that needs it: the cell the pointer is over may now belong to a different
+// pane, and nothing will say so until the pointer moves again.
+func (s *Shell) clearHover() {
+	if !s.hoverOK {
+		return
+	}
+	if p, ok := s.paneFor(s.hoverID).(PaneHover); ok && p.Hover(image.Point{}, false) {
+		s.dirty = true
+	}
+	s.hoverOK = false
+	s.hoverID = LayerNone
 }
 
 // setFocus moves the conversation. The status line and the dialog's margin are

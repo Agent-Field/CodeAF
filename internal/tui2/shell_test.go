@@ -468,7 +468,12 @@ func TestShellRequestsNoKeyboardEnhancements(t *testing.T) {
 	if !view.AltScreen {
 		t.Fatal("the shell left the alt screen")
 	}
-	if view.MouseMode != tea.MouseModeCellMotion {
+	// All motion, because a hover preview is what makes a wordless affordance
+	// visible (5.22 rule 5) and there is no other report that carries it. The
+	// bandwidth law is kept on the OUTPUT side instead: a motion that does not
+	// change which target is under the pointer produces no frame at all —
+	// TestAPointerCrossingOneTargetCostsNothing is that promise.
+	if view.MouseMode != tea.MouseModeAllMotion {
 		t.Fatalf("mouse mode = %v", view.MouseMode)
 	}
 }

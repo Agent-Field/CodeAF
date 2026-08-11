@@ -110,7 +110,16 @@ func (v *View) emit(width int, banded bool, band tokens.Token) string {
 	}
 	for i := range l.spans {
 		if colored {
-			if seq := l.spans[i].tok.Fg(v.profile, v.focus); seq != "" {
+			tok := l.spans[i].tok
+			if v.hovered {
+				// The pointer preview (hit.go): one tier brighter, nothing else.
+				// 5.22's own rule for a control that is also telemetry — "dim at
+				// rest, secondary on focus" — and it cannot be confused with the
+				// cursor, because the cursor is a BACKGROUND band (5.16) and this
+				// is a foreground. Two axes, two meanings, one screen.
+				tok = tokens.Promote(tok)
+			}
+			if seq := tok.Fg(v.profile, v.focus); seq != "" {
 				v.buf.WriteString(seq)
 				wrote = true
 			}
