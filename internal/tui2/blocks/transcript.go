@@ -461,6 +461,34 @@ func (t *Transcript) blockAt(row int) int {
 	return lo - 1
 }
 
+// BlockAtScreenRow answers which block a VIEWPORT row belongs to, and how far
+// into that block the row is.
+//
+// It is the transcript's whole contribution to the click layer, and it is a
+// pure lookup against the layout the last Frame produced: the caller hands in
+// a pane-local y, the scroll offset turns it into a document row, and the same
+// binary search the renderer uses names the block. Nothing is recorded and
+// nothing is recomputed — a click cannot disagree with the picture because it
+// is reading the picture's own arithmetic.
+//
+// The second return is the line's index INSIDE the block, which is what lets a
+// block that knows its own shape (an option list, an artifact row) say which of
+// its rows was pointed at without ever learning where it is on screen.
+func (t *Transcript) BlockAtScreenRow(y int) (index, line int, ok bool) {
+	if y < 0 || y >= t.height {
+		return 0, 0, false
+	}
+	row := t.yOffset + y
+	if row >= t.total {
+		return 0, 0, false
+	}
+	i := t.blockAt(row)
+	if i < 0 || i >= len(t.ents) {
+		return 0, 0, false
+	}
+	return i, row - t.ents[i].start, true
+}
+
 // visibleRange is the half-open block range the viewport touches.
 func (t *Transcript) visibleRange() (int, int) {
 	if len(t.ents) == 0 {

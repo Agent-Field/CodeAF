@@ -13,17 +13,26 @@ import (
 // pane.go's contract, and every returned line is truncated to width as a
 // last, unconditional step so the compositor never receives an over-run row
 // regardless of how the layout above got there (see wrap.go and doc.go).
+// usable is the draft's own text width: the rectangle less the prompt glyph and
+// the space after it. It is a function rather than two lines inside Render
+// because the pointer has to wrap the draft the same way the paint does, and
+// two spellings of one number is how a click lands on the wrong row.
+func usable(width int) int {
+	prefixWidth := 2
+	if width < 2 {
+		prefixWidth = 1
+	}
+	return width - prefixWidth
+}
+
 func (m *Model) Render(width, height int) string {
 	if width <= 0 || height <= 0 {
 		return ""
 	}
 	sty := m.activeStyler()
 
-	prefixWidth := 2
-	if width < 2 {
-		prefixWidth = 1
-	}
-	usable := width - prefixWidth
+	prefixWidth := width - usable(width)
+	usable := usable(width)
 
 	// The `@` grammar's chrome (5.18, 5.22) borrows from the bottom of the
 	// rectangle and never from the draft's last row — see hint.go. A composer

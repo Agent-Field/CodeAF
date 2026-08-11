@@ -111,15 +111,26 @@ func (v *View) emit(width int, banded bool, band tokens.Token) string {
 	for i := range l.spans {
 		if colored {
 			tok := l.spans[i].tok
+			focus := v.focus
 			if v.hovered {
-				// The pointer preview (hit.go): one tier brighter, nothing else.
-				// 5.22's own rule for a control that is also telemetry — "dim at
-				// rest, secondary on focus" — and it cannot be confused with the
-				// cursor, because the cursor is a BACKGROUND band (5.16) and this
-				// is a foreground. Two axes, two meanings, one screen.
+				// The pointer preview (hit.go): one tier brighter, at the
+				// UNDIMMED rung, and nothing else.
+				//
+				// 5.22's rule for a control that is also telemetry is "dim at
+				// rest, secondary on focus", and the promotion alone says that.
+				// The rung matters because of where this row usually is: the
+				// map is drawn while the composer holds the keyboard, so the
+				// whole pane is dimmed (8.3), and one tier inside the dimmed
+				// ramp is a difference a reader has to hunt for. Un-dimming the
+				// row the pointer is over is the same statement said where it
+				// can be seen — and it is legal, because tokens.Legal's rule is
+				// about a dimmed foreground on a raised band, and this row has
+				// no band: the band is the CURSOR (5.16), which is exactly the
+				// thing a hover must never be mistaken for.
 				tok = tokens.Promote(tok)
+				focus = tokens.FocusNormal
 			}
-			if seq := tok.Fg(v.profile, v.focus); seq != "" {
+			if seq := tok.Fg(v.profile, focus); seq != "" {
 				v.buf.WriteString(seq)
 				wrote = true
 			}

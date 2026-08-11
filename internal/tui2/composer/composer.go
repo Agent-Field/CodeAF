@@ -194,6 +194,13 @@ func (m *Model) Value() string { return string(m.value) }
 // paints with — it never touches the text or the cursor position.
 func (m *Model) Focus(focused bool) { m.focused = focused }
 
+// Focused reports whether the draft has the keyboard. It exists for the one
+// caller that has to know without owning the answer: the region draws a place
+// line whose "show the whole path" tier is its own focus, and a pointer resting
+// on that line reveals the same thing — so the region has to be able to put the
+// focus back where the keyboard actually is when the pointer leaves.
+func (m *Model) Focused() bool { return m.focused }
+
 // activeStyler resolves the styler to paint with at the current focus. A nil
 // base Styler stays nil (plain text); WithFocus is a no-op allocation when
 // the base already matches, so a composer that never loses focus never pays

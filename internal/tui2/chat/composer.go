@@ -1,6 +1,7 @@
 package chat
 
 import (
+	"image"
 	"strings"
 	"time"
 
@@ -42,6 +43,8 @@ type composerPane interface {
 	tui2.Pane
 	tui2.PaneKeys
 	tui2.PaneFocus
+	tui2.PaneMouse
+	tui2.PaneHover
 	// Draft is the text currently in the buffer. The footer's input-state axis
 	// (10.5.26) is read off it, and nothing else consults it — the app never
 	// reaches into the draft to change it.
@@ -73,6 +76,17 @@ type composerStack struct {
 	// the rows it wants and never more than it is offered; nil means this frame
 	// has a rail and does not need one.
 	hud func(width, height int) []string
+	// openModels is 5.22 rule 5's "click model chip → model palette", and copy
+	// is 5.19's "click/`y` copies" on the place line. Both are functions for
+	// the reason every other pointer seam is: this stack resolves a cell to a
+	// chip, and the act belongs to the app.
+	openModels func() tea.Cmd
+	copy       func(text string) tea.Cmd
+	// The rectangle this stack was last drawn at, so a pointer can be resolved
+	// against the row that is actually on screen.
+	lastWidth, lastHeight int
+	// hoverChip is which of the two chips the pointer is on: "" for neither.
+	hoverChip string
 }
 
 var (
@@ -117,6 +131,132 @@ func (s *composerStack) Focus(focused bool) {
 // Draft is the current buffer.
 func (s *composerStack) Draft() string { return s.draft.Value() }
 
+// -- the region's two chips (5.22 rule 5) ------------------------------------
+
+// chipAt resolves a pane-local cell to one of the region's two doors: the place
+// line on the top edge, and the model chip on the meta strip at the bottom.
+//
+// The rows between them are the draft and its completions, and they are
+// deliberately not doors — a click there is the reader putting the keyboard
+// back on the composer, which the shell has already done by the time this is
+// asked.
+func (s *composerStack) chipAt(local image.Point) string {
+	if s.lastHeight <= 0 {
+		return ""
+	}
+	switch {
+	case s.place != nil && s.lastHeight >= 3 && local.Y == 0:
+		if s.place.CopyText() == "" {
+			return ""
+		}
+		return placeChipID
+	case s.meta != nil && s.lastHeight >= 2 && local.Y == s.lastHeight-1:
+		from, to, ok := s.meta.chipSpan(s.lastWidth)
+		if !ok || local.X < from || local.X >= to {
+			return ""
+		}
+		return metaChipID
+	}
+	return ""
+}
+
+// draftBand is where the composer's own rows sit inside this region and how
+// many of them there are: the place line takes the top edge, the meta strip the
+// bottom, and the bounded HUD borrows from the middle. It restates Render's own
+// reservations rather than recording them, so the pointer and the paint answer
+// the same question from the same numbers.
+func (s *composerStack) draftBand() (top, body int) {
+	height := s.lastHeight
+	if height <= 0 {
+		return 0, 0
+	}
+	body = height
+	if height >= 3 && s.place != nil {
+		body--
+		top++
+	}
+	if height >= 2 && s.meta != nil {
+		body--
+	}
+	if s.hud != nil && body > 1 {
+		if rows := len(s.hud(s.lastWidth, body-1)); rows > 0 {
+			body -= rows
+			top += rows
+		}
+	}
+	return top, body
+}
+
+// The two chip ids, as the pointer names them. metaChipID is the meta strip's
+// own; the place line's is declared here because the place line is a component
+// that does not know it is a door.
+const placeChipID = "place"
+
+// Mouse performs a chip. Nothing else in the region takes a click: the draft is
+// where the keyboard already is by the time this runs.
+func (s *composerStack) Mouse(msg tea.MouseMsg, local image.Point) tea.Cmd {
+	click, ok := msg.(tea.MouseClickMsg)
+	if !ok || click.Button != tea.MouseLeft {
+		return nil
+	}
+	// The candidate list first: it is drawn inside this rectangle, between the
+	// two chips, and it is the only part of the region where a row means
+	// something on its own. draftTop is where the composer's own rows begin —
+	// the place line and the HUD sit above them.
+	if s.draft != nil {
+		top, body := s.draftBand()
+		if body > 0 {
+			if cmd, taken := s.draft.ClickHint(s.lastWidth, body, local.Y-top); taken {
+				return cmd
+			}
+		}
+	}
+	switch s.chipAt(local) {
+	case placeChipID:
+		// 5.19: the place line is the room's ground, and click or `y` copies
+		// it. The component already knows what the full, unabbreviated path is
+		// — the same text it reveals on focus — so nothing here re-derives it.
+		if s.copy != nil {
+			return s.copy(s.place.CopyText())
+		}
+	case metaChipID:
+		if s.openModels != nil {
+			return s.openModels()
+		}
+	}
+	return nil
+}
+
+// Hover lights whichever chip the pointer is on.
+func (s *composerStack) Hover(local image.Point, inside bool) bool {
+	moved := false
+	if inside && s.draft != nil {
+		top, body := s.draftBand()
+		if body > 0 && s.draft.HoverHint(s.lastWidth, body, local.Y-top) {
+			moved = true
+		}
+	}
+	next := ""
+	if inside {
+		next = s.chipAt(local)
+	}
+	if s.hoverChip == next {
+		return moved
+	}
+	s.hoverChip = next
+	// The place line's own focus state IS the "show me the whole path" tier
+	// (5.19), so a pointer resting on it reveals exactly what focusing it
+	// reveals — one meaning, one rendering. The chip is left to the meta
+	// strip's own paint, which promotes it a tier.
+	if s.place != nil {
+		s.place.Focus(s.hoverChip == placeChipID || s.draft.Focused())
+	}
+	if s.meta != nil {
+		s.meta.hover = s.hoverChip == metaChipID
+	}
+	return true
+}
+
 // HintRows is how many rows the draft's open inline completion wants. The stack
 // adds nothing to the number: the place line and the meta strip are already in
 // the metric table, and what the region is short of is room for the LIST.
@@ -144,6 +284,7 @@ func (s *composerStack) Render(width, height int) string {
 	if width <= 0 || height <= 0 {
 		return ""
 	}
+	s.lastWidth, s.lastHeight = width, height
 	rows := make([]string, 0, height)
 	body := height
 	wantPlace := height >= 3 && s.place != nil
@@ -322,6 +463,11 @@ type metaStrip struct {
 	used      int64
 	window    int64
 	haveUsage bool
+
+	// hover says the pointer is resting on the model chip, which brightens it
+	// one tier and changes nothing else (5.22: a control that is also telemetry
+	// is dim at rest and secondary on focus).
+	hover bool
 }
 
 // chip is the strip's model cell (5.10, 5.23): the one surface model economics
@@ -345,50 +491,63 @@ func (m *metaStrip) chip() modelui.Chip {
 	}
 }
 
-// render draws the strip at width.
-func (m *metaStrip) render(width int) string {
-	if m == nil || width <= 0 {
-		return ""
-	}
-	type cell struct {
-		id    string
-		text  string
-		token tokens.Token
-		// paint replaces the token when a cell owns its own colours. The chip is
-		// the only one: it is a run of differently-tiered spans (the model word
-		// one tier above the effort suffix beside it), and flattening it to a
-		// single token here would be this strip re-deciding what a chip looks
-		// like — the one thing modelui's doc says a consumer may not do.
-		paint    func(width int) string
-		priority int
-	}
-	cells := make([]cell, 0, 4)
+// metaCell is one column of the strip.
+type metaCell struct {
+	id    string
+	text  string
+	token tokens.Token
+	// paint replaces the token when a cell owns its own colours. The chip is
+	// the only one: it is a run of differently-tiered spans (the model word
+	// one tier above the effort suffix beside it), and flattening it to a
+	// single token here would be this strip re-deciding what a chip looks
+	// like — the one thing modelui's doc says a consumer may not do.
+	paint    func(width int) string
+	priority int
+}
+
+// metaChipID names the model cell, which is the one cell on this strip that is
+// also a door (5.22 rule 5: "click model chip → model palette").
+const metaChipID = "model"
+
+// cells is what the strip would draw, before fitting. It is shared by the paint
+// and by the pointer for the same reason the footer's fit is: two computations
+// of one row is a click landing on a cell the paint dropped.
+func (m *metaStrip) cells() []metaCell {
+	cells := make([]metaCell, 0, 4)
 	if chip := m.chip(); chip.Width() > 0 {
-		cells = append(cells, cell{id: "model", text: chip.Text(),
+		cells = append(cells, metaCell{id: metaChipID, text: chip.Text(),
 			paint: chip.Render, priority: 60})
 	}
 	if m.live {
-		cells = append(cells, cell{id: "elapsed", text: tokens.Elapsed(m.elapsed),
+		cells = append(cells, metaCell{id: "elapsed", text: tokens.Elapsed(m.elapsed),
 			token: tokens.TextTertiary, priority: 70})
 	}
 	if m.haveCost {
-		cells = append(cells, cell{id: "cost", text: tokens.Money(m.cost),
+		cells = append(cells, metaCell{id: "cost", text: tokens.Money(m.cost),
 			token: tokens.Green, priority: 100})
 	} else {
-		cells = append(cells, cell{id: "cost", text: "$" + tokens.GlyphMissing,
+		cells = append(cells, metaCell{id: "cost", text: "$" + tokens.GlyphMissing,
 			token: tokens.TextTertiary, priority: 100})
 	}
 	if m.haveUsage {
-		cells = append(cells, cell{id: "ctx", text: tokens.Gauge(fraction(m.used, m.window)) + " " +
+		cells = append(cells, metaCell{id: "ctx", text: tokens.Gauge(fraction(m.used, m.window)) + " " +
 			tokens.Context(m.used, m.window), token: tokens.ContextToken(m.used, m.window),
 			priority: 80})
 	} else {
-		cells = append(cells, cell{id: "ctx", text: tokens.GlyphMissing + " ctx",
+		cells = append(cells, metaCell{id: "ctx", text: tokens.GlyphMissing + " ctx",
 			token: tokens.TextTertiary, priority: 80})
 	}
+	return cells
+}
 
-	const sep = " " + tokens.GlyphSeparator + " "
-	sepWidth := blocks.Width(sep)
+// metaSep is the strip's separator and its width, named once so the paint and
+// the pointer step by the same amount.
+const metaSep = " " + tokens.GlyphSeparator + " "
+
+// fit is which cells survive at width, in display order.
+func (m *metaStrip) fit(width int) []metaCell {
+	cells := m.cells()
+	sepWidth := blocks.Width(metaSep)
 	columns := make([]tokens.FooterColumn, len(cells))
 	for i, c := range cells {
 		w := blocks.Width(c.text)
@@ -402,19 +561,57 @@ func (m *metaStrip) render(width int) string {
 	for _, c := range kept {
 		keep[c.ID] = true
 	}
+	out := make([]metaCell, 0, len(cells))
+	for _, c := range cells {
+		if keep[c.id] {
+			out = append(out, c)
+		}
+	}
+	return out
+}
 
+// chipSpan is the model chip's column range on the strip, or ok=false when the
+// fit dropped it. The indent is included, so the answer is in the same
+// coordinates a pane-local pointer arrives in.
+func (m *metaStrip) chipSpan(width int) (from, to int, ok bool) {
+	if m == nil || width <= 0 {
+		return 0, 0, false
+	}
+	x := blocks.Width(metaIndent)
+	for i, c := range m.fit(width) {
+		if i > 0 {
+			x += blocks.Width(metaSep)
+		}
+		w := blocks.Width(c.text)
+		if c.id == metaChipID {
+			return x, x + w, true
+		}
+		x += w
+	}
+	return 0, 0, false
+}
+
+// render draws the strip at width.
+func (m *metaStrip) render(width int) string {
+	if m == nil || width <= 0 {
+		return ""
+	}
 	var out strings.Builder
 	out.WriteString(metaIndent)
 	written := 0
-	for _, c := range cells {
-		if !keep[c.id] {
-			continue
-		}
+	for _, c := range m.fit(width) {
 		if written > 0 {
-			out.WriteString(m.paint(sep, tokens.TextTertiary))
+			out.WriteString(m.paint(metaSep, tokens.TextTertiary))
 		}
 		if c.paint != nil {
-			out.WriteString(c.paint(blocks.Width(c.text)))
+			if c.id == metaChipID && m.hover {
+				// The chip brightens whole rather than span by span: it is one
+				// control, and lighting half of it would say the model word and
+				// the effort suffix are two different targets.
+				out.WriteString(m.paint(c.text, tokens.TextPrimary))
+			} else {
+				out.WriteString(c.paint(blocks.Width(c.text)))
+			}
 		} else {
 			out.WriteString(m.paint(c.text, c.token))
 		}
