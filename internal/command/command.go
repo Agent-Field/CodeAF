@@ -513,6 +513,36 @@ func (c *Commander) ImageInputSupportFor(role string) (string, bool) {
 	return model, c.models != nil && c.models.Supports(model, "input", "image")
 }
 
+// ContextWindow is how many tokens the model in a role slot will accept.
+//
+// It is the denominator of the context figure on a room's meta strip; the
+// numerator is journaled by the calls themselves (store.RoomSpend.HeadPrompt)
+// and needs no help from here. The two halves live apart because they are
+// different kinds of fact: what a turn actually sent is history, and how much
+// the model would have held is a property of the model, true before the turn
+// started and unchanged by it.
+//
+// The bool is the honest half of a slot whose model the catalog cannot size —
+// a catalog that never loaded, a visitor commander that holds none, a slug
+// cached before the field was kept. Zero is returned with it, and a caller
+// that renders a percentage anyway would be inventing a health signal that
+// errs toward calm: the gauge would read "plenty of room" for a model whose
+// window nobody knows.
+func (c *Commander) ContextWindow(role string) (int, bool) {
+	if c == nil || c.models == nil {
+		return 0, false
+	}
+	model := strings.TrimSpace(c.CurrentModel(role))
+	if model == "" {
+		return 0, false
+	}
+	tokens := c.models.ContextLength(model)
+	if tokens <= 0 {
+		return 0, false
+	}
+	return tokens, true
+}
+
 func (c *Commander) ModelFollows(role string) bool {
 	c.mu.Lock()
 	defer c.mu.Unlock()

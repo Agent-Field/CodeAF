@@ -86,6 +86,46 @@ func (f *fakeBackend) RecentFacts(int) ([]store.Fact, error) { return nil, nil }
 
 func (f *fakeBackend) SkillFacts(string, int) ([]store.Fact, error) { return nil, nil }
 
+// SessionSpend and TurnSpend answer off the fake's own thread, which is the
+// faithful default rather than the empty one. Presence is a fact about the
+// conversation and the fake has a conversation: a room that has been spoken in
+// has a window, a room that has not does not, and a turn opens at the newest
+// user message exactly as the store's does. What neither has is a usage
+// journal, so the window is present and has billed nothing — which is the pair
+// of answers a real store gives for a fresh room, and the pair the renderer's
+// missing-data law turns on. A fake returning a bare zero would have collapsed
+// them into "this cost $0.00" and hidden the distinction the seam exists for.
+func (f *fakeBackend) SessionSpend(sessionID string) (store.RoomSpend, bool, error) {
+	return f.roomSpend(sessionID, false)
+}
+
+func (f *fakeBackend) TurnSpend(sessionID string) (store.RoomSpend, bool, error) {
+	return f.roomSpend(sessionID, true)
+}
+
+func (f *fakeBackend) roomSpend(sessionID string, turn bool) (store.RoomSpend, bool, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	spend := store.RoomSpend{SessionID: sessionID}
+	found := false
+	for _, message := range f.messages {
+		if message.SessionID != sessionID {
+			continue
+		}
+		if turn && message.Role != store.RoleUser {
+			continue
+		}
+		// A room's window opens at its first message and a turn's at the room's
+		// newest user message, so one keeps the first match and the other the
+		// last.
+		if !found || turn {
+			spend.SinceSeq, spend.Since = message.Seq, message.Time
+		}
+		found = true
+	}
+	return spend, found, nil
+}
+
 // fakeCommander is the whole Commander, once, on the same terms as fakeBackend
 // above: every commander in this package embeds it and overrides only what its
 // test asserts.
@@ -95,10 +135,14 @@ func (f *fakeBackend) SkillFacts(string, int) ([]store.Fact, error) { return nil
 // implement a capability, written down instead of inferred. Each is marked
 // where it sits.
 type fakeCommander struct {
-	models     []string
-	catalog    []ModelChoice
-	catalogs   map[string][]ModelChoice
-	current    map[string]string
+	models   []string
+	catalog  []ModelChoice
+	catalogs map[string][]ModelChoice
+	current  map[string]string
+	// windows is what the catalog would say about each slot's model. Absent is
+	// the default and the honest one — a fake holds no catalog — so a test that
+	// wants a context figure seeds the slot it is about.
+	windows    map[string]int
 	setRole    string
 	setModel   string
 	newSession string
@@ -133,6 +177,19 @@ func (f *fakeCommander) ModelFollows(role string) bool {
 
 func (f *fakeCommander) ImageInputSupportFor(role string) (string, bool) {
 	return f.current[role], false
+}
+
+// ContextWindow answers from the seeded windows and nowhere else. An unseeded
+// slot is a slot whose model the catalog cannot size, which is what a
+// commander holding no catalog actually is — and false there is load-bearing:
+// a zero returned as if it were known would let a caller divide by it, or
+// worse, render a calm-looking gauge for a window nobody measured.
+func (f *fakeCommander) ContextWindow(role string) (int, bool) {
+	tokens, known := f.windows[role]
+	if !known || tokens <= 0 {
+		return 0, false
+	}
+	return tokens, true
 }
 
 func (f *fakeCommander) Interrupt(string) bool { return false }
