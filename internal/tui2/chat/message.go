@@ -289,6 +289,12 @@ func newMessageBlock(message store.Message, style *tokens.Styler, board jobSourc
 	default:
 		block.dressSpeech(message)
 	}
+	// What the message CARRIED sits between what it said and what it produced:
+	// after the body, because an attachment is shown with the words it came
+	// with, and before the parts, because a part is the turn's output and a
+	// reference row for an input above it keeps the reading order causal
+	// (attach.go).
+	block.appendAttachments(message)
 	block.absorbParts(message)
 	// A question that arrived without a typed part is still a question: the
 	// producer wrote its lifecycle sequence and its options into the message's

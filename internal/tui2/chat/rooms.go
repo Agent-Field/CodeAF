@@ -12,6 +12,7 @@ import (
 	"github.com/Agent-Field/aforge-v2/internal/thread"
 	"github.com/Agent-Field/aforge-v2/internal/tui2"
 	"github.com/Agent-Field/aforge-v2/internal/tui2/blocks"
+	"github.com/Agent-Field/aforge-v2/internal/tui2/composer"
 	"github.com/Agent-Field/aforge-v2/internal/tui2/homes"
 	"github.com/Agent-Field/aforge-v2/internal/tui2/rail"
 	"github.com/Agent-Field/aforge-v2/internal/tui2/tokens"
@@ -908,9 +909,17 @@ func (a *App) steerCmd(text string) tea.Cmd {
 // The `@` grammar needs it (5.18): a mention addresses a task the composer is
 // not bound to, and the alternative — rebinding the composer to send — would
 // teleport the reader's context, which is the one thing 5.18 refuses.
-func (a *App) steerNode(node, text string) tea.Cmd {
+//
+// Attachments ride here too, on the same rule postCmd states (attach.go): a
+// person steering a worker with a screenshot is showing it the thing they mean,
+// and a door that dropped the picture would make the steer line the one surface
+// where a file cannot be shown.
+func (a *App) steerNode(node, text string, attachments ...composer.Attachment) tea.Cmd {
 	text = strings.TrimSpace(text)
 	node = strings.TrimSpace(node)
+	if text == "" {
+		text = attachmentBody(attachments)
+	}
 	if text == "" || node == "" || a.backend == nil {
 		return nil
 	}
@@ -921,7 +930,10 @@ func (a *App) steerNode(node, text string) tea.Cmd {
 		Body:      text,
 		NodeID:    node,
 	}
+	keeper, _ := a.commander.(AttachmentKeeper)
+	files := append([]composer.Attachment(nil), attachments...)
 	return func() tea.Msg {
+		message.Attachments = keepAttachments(keeper, files)
 		posted, err := thread.Post(backend, message)
 		return steerResultMsg{message: posted, err: err}
 	}

@@ -290,8 +290,14 @@ type App struct {
 	// dispatches is the same queue for the `@` grammar's addressed sends (5.18),
 	// kept apart because the two carry different facts and merging them would
 	// mean re-deriving the target from the text the composer already parsed.
+	// sends is the third queue: a draft that captured files (5.11, attach.go).
+	// It is kept apart for the reason dispatches are — the composer already
+	// resolved which tokens were paths and took them out of the text, and
+	// re-deriving that here from a string would be this side parsing the draft a
+	// second time and getting a different answer.
 	pending    []string
 	dispatches []composer.Dispatch
+	sends      []composer.Send
 
 	// hooks is the terminal-protocol queue (10.5.27, shell.go's contract). The
 	// shell's hooks return bytes as commands and nothing writes them but the
@@ -411,8 +417,21 @@ func New(opts Options) *App {
 		// opens, the token completes, and an addressed send goes to OnSubmit like
 		// any other — so the two are wired together here only because both halves
 		// are ready, not because the composer requires it.
-		Targets:     app.mentionTargets,
-		OnDispatch:  func(d composer.Dispatch) { app.dispatches = append(app.dispatches, d) },
+		Targets:    app.mentionTargets,
+		OnDispatch: func(d composer.Dispatch) { app.dispatches = append(app.dispatches, d) },
+		// The `/` grammar (5.22 rule 3), adopted the same way and just as
+		// separably: Commands is the catalog and OnCommand is the executor the
+		// palette already uses, so the slash line is a third door onto one room
+		// rather than a second room.
+		Commands:  app.slashCommands,
+		OnCommand: app.runSlash,
+		// The attachment grammar (5.11, 7.2, JOURNEY 17), adopted the same way
+		// again: Attach is the only door through which a path in the draft
+		// becomes a file, and OnSend is where a send that captured one lands.
+		// Both are this side's because both need the filesystem and the engine,
+		// and the composer is allowed to know about neither (attach.go).
+		Attach:      attachmentCandidate,
+		OnSend:      func(s composer.Send) { app.sends = append(app.sends, s) },
 		Styler:      app.style,
 		SendKey:     tui2.SendKey,
 		NewlineKeys: newline,
@@ -732,10 +751,10 @@ func (a *App) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 // drain turns any drafts the composer submitted during a keystroke into
 // commands. The callback could not return one, so it queued the text instead.
 func (a *App) drain(cmd tea.Cmd) tea.Cmd {
-	if len(a.pending) == 0 && len(a.dispatches) == 0 {
+	if len(a.pending) == 0 && len(a.dispatches) == 0 && len(a.sends) == 0 {
 		return cmd
 	}
-	cmds := make([]tea.Cmd, 0, len(a.pending)+len(a.dispatches)+1)
+	cmds := make([]tea.Cmd, 0, len(a.pending)+len(a.dispatches)+len(a.sends)+1)
 	if cmd != nil {
 		cmds = append(cmds, cmd)
 	}
@@ -745,8 +764,12 @@ func (a *App) drain(cmd tea.Cmd) tea.Cmd {
 	for _, dispatch := range a.dispatches {
 		cmds = append(cmds, a.dispatchCmd(dispatch))
 	}
+	for _, send := range a.sends {
+		cmds = append(cmds, a.submitSend(send))
+	}
 	a.pending = a.pending[:0]
 	a.dispatches = a.dispatches[:0]
+	a.sends = a.sends[:0]
 	a.shell.Invalidate()
 	return tea.Batch(cmds...)
 }
@@ -874,8 +897,24 @@ func (a *App) key(msg tea.KeyPressMsg) tea.Cmd {
 	// outside, so this is where it is told — and a frame that turns out
 	// identical still costs nothing, because Bubble Tea diffs it to no bytes.
 	cmd := a.composer.Key(msg)
+	// The keystroke may have opened, narrowed or closed an inline completion,
+	// and that list lives inside the composer's rectangle. Asking here rather
+	// than through refresh keeps the per-keystroke path what it was — refresh
+	// walks the transcript to count open questions, which is not a price a
+	// letter should pay.
+	a.sizeComposer()
 	a.shell.Invalidate()
 	return cmd
+}
+
+// sizeComposer asks the region for however many rows its open inline completion
+// wants, and for none when nothing is open. GrowComposer re-solves the layout
+// only when the answer moved, so a draft nobody is completing costs nothing.
+func (a *App) sizeComposer() {
+	if a.composer == nil {
+		return
+	}
+	a.shell.GrowComposer(a.composer.HintRows())
 }
 
 // helpKey is the bare rune the footer has been advertising on every frame since
@@ -1097,6 +1136,7 @@ func (a *App) refresh() {
 		a.turn.await.interruptible = false
 	}
 	a.status.residency = a.residency
+	a.sizeComposer()
 	if a.source != nil {
 		a.status.room = a.source.RoomTitle(a.session)
 	}

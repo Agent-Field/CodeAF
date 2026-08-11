@@ -9,6 +9,7 @@ import (
 	"github.com/Agent-Field/aforge-v2/internal/store"
 	"github.com/Agent-Field/aforge-v2/internal/thread"
 	"github.com/Agent-Field/aforge-v2/internal/tui2/blocks"
+	"github.com/Agent-Field/aforge-v2/internal/tui2/composer"
 )
 
 // The two feeds, and the one transcript they agree on.
@@ -349,14 +350,27 @@ func sanitizeMessage(message *store.Message) {
 // writer uses (internal/thread). The head is watching that door; posting IS
 // triggering the turn, and a surface that also poked the head would be a second
 // way to start work.
-func (a *App) postCmd(text string) tea.Cmd {
+// Attachments ride the same door (attach.go): they are part of the message, not
+// a second write, so there is exactly one place a user turn enters the journal.
+// The content-addressed copy is made INSIDE the returned command — hashing a
+// file is IO, and the render goroutine does none.
+func (a *App) postCmd(text string, attachments ...composer.Attachment) tea.Cmd {
 	text = strings.TrimSpace(text)
+	if text == "" {
+		// A send with files and no words still says something; the body for it
+		// is this side's to write, because the composer does not know what a
+		// picture is. Still empty means there was nothing at all.
+		text = attachmentBody(attachments)
+	}
 	if text == "" || a.backend == nil {
 		return nil
 	}
 	backend := a.backend
 	message := store.Message{SessionID: a.session, Role: store.RoleUser, Body: text}
+	keeper, _ := a.commander.(AttachmentKeeper)
+	files := append([]composer.Attachment(nil), attachments...)
 	return func() tea.Msg {
+		message.Attachments = keepAttachments(keeper, files)
 		posted, err := thread.Post(backend, message)
 		return postResultMsg{message: posted, err: err}
 	}
