@@ -461,9 +461,9 @@ func (b *messageBlock) dressBrief(message store.Message) {
 		count int
 		hue   blocks.Hue
 	}{
-		{tokens.GlyphSettled, brief.Done, blocks.HueMoney},
-		{tokens.GlyphFailed, brief.Failed + brief.Cancelled, blocks.HueBroken},
-		{tokens.GlyphNeedsHuman, brief.Questions + brief.Waiting, blocks.HueAttention},
+		{b.style.Glyph(tokens.GSettled), brief.Done, blocks.HueMoney},
+		{b.style.Glyph(tokens.GFailed), brief.Failed + brief.Cancelled, blocks.HueBroken},
+		{b.style.Glyph(tokens.GNeedsHuman), brief.Questions + brief.Waiting, blocks.HueAttention},
 	} {
 		if badge.count > 0 {
 			b.head.Badges = append(b.head.Badges, blocks.CountBadge(badge.glyph, badge.count, badge.hue))
