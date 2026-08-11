@@ -234,6 +234,10 @@ func (a *App) runEntry(id string) tea.Cmd {
 		return a.openModelPicker()
 	case "key.thread.receipts":
 		return a.toggleReceipts()
+	case "key.thread.copy-answer":
+		return a.copyAnswer()
+	case "key.thread.copy-file":
+		return a.copyFile()
 	case "key.quit":
 		return tea.Quit
 	}
@@ -352,6 +356,14 @@ func (a *App) entryReason(entryID string) string {
 		// The palette's own whole-surface reason, asked one door earlier so the
 		// reader learns it before they press enter rather than after.
 		return a.modelDisabled()
+	case "key.thread.copy-answer":
+		if a.latestAnswer() == "" {
+			return "no answer in this room yet"
+		}
+	case "key.thread.copy-file":
+		if a.latestArtifact() == "" {
+			return "nothing on disk from this room yet"
+		}
 	}
 	return ""
 }

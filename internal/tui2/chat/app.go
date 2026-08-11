@@ -473,6 +473,13 @@ func boundVerbs(newlineKey string) []registry.Entry {
 			out = append(out, projected)
 		}
 	}
+	// The two copy doors are deliberately NOT here. They are bound (see
+	// copy.go) and they are listed by the `?` sheet and the palette, which read
+	// the registry directly — but the footer's verb column is scarce and drops
+	// lowest-priority-first (10.5.22), so two more permanent rows would push a
+	// health notice off an 80-column strip to advertise a key nobody presses
+	// twice a session. 5.22's rule is that nothing is typed-only; it is not that
+	// everything is on the footer.
 	return out
 }
 
@@ -785,6 +792,14 @@ func (a *App) key(msg tea.KeyPressMsg) tea.Cmd {
 		if a.canInterrupt() {
 			return a.interrupt()
 		}
+
+	case copyAnswerKey:
+		// JOURNEY 18: the registry has named this door since before this surface
+		// existed and nothing here opened it.
+		return a.copyAnswer()
+
+	case copyFileKey:
+		return a.copyFile()
 
 	case "ctrl+r":
 		// The receipts fold (5.20 rule 5: receipts are law, and the UI duty is

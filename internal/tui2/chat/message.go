@@ -87,6 +87,12 @@ type messageBlock struct {
 	// attention column (5.16: amber only ever means a human is actually
 	// needed).
 	questions int
+	// source is the journal row this block was dressed from. It is kept because
+	// taking things out (JOURNEY 18) needs the RECORD and not the rendering: a
+	// paste wants what was said, not the indents, glyphs and fold hints the
+	// rendering added. One pointer per row, against a second store read on a
+	// keystroke a person expects to be instant.
+	source *store.Message
 	// ask is the answerable question this row carries, or nil. It is what the
 	// keyboard acts on (question.go), and it is held on the block rather than
 	// re-derived per keystroke because the block is where the option rows were
@@ -252,9 +258,10 @@ func messageID(seq int64) string { return "msg-" + strconv.FormatInt(seq, 10) }
 // kind of row it is; a row is what its columns say it is.
 func newMessageBlock(message store.Message, style *tokens.Styler) *messageBlock {
 	block := &messageBlock{
-		id:    messageID(message.Seq),
-		seq:   message.Seq,
-		style: style,
+		id:     messageID(message.Seq),
+		seq:    message.Seq,
+		style:  style,
+		source: &message,
 	}
 	switch {
 	case message.Brief != nil:
