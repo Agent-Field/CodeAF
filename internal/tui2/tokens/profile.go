@@ -70,24 +70,48 @@ func (p Profile) IdentityDistinct() bool { return p >= ANSI256 }
 // believe the room was announced, and it would not be.
 func (p Profile) BandTintDistinct() bool { return p >= TrueColor }
 
-// SelectionStyle says how selection must be drawn under this profile. 5.16
-// wants a background band; at 16 colors the only available "raised background"
-// is bright black, which is a different shade in every theme and can land on
-// top of the text tier. Reverse video is the honest fallback: it is defined
-// relative to whatever the terminal's own foreground and background are.
+// SelectionStyle says how selection must be drawn under this profile, and it is
+// the ONE place that question is answered — a renderer asks here and never
+// decides for itself, so the three answers cannot drift apart.
+//
+// 5.16 wants a background band. At 16 colors the only available "raised
+// background" is bright black, which is a different shade in every theme and can
+// land on top of the text tier; reverse video is the honest fallback there,
+// because it is defined relative to whatever the terminal's own foreground and
+// background are. At [NoColor] there is no SGR to spend at all — the profile is
+// NO_COLOR, TERM=dumb, or a pipe — and a selection drawn in bytes that must not
+// be written is a selection nobody can see.
+//
+// So the degradation ladder ends where the ladder for every other state ends:
+// "every state that color carries also has a glyph (5.17), which is why this
+// profile is a degradation and not a failure" (see [NoColor]). Under
+// [SelectionMarker] the cursor is carried by a CHARACTER — the ▎ accent rail
+// (5.21: "structure without boxes"), in the gutter the map renderings already
+// reserve. That is not a new idiom either: it is exactly what an unfocused pane
+// already draws, because [Legal] forbids a dimmed foreground on a raised band,
+// so the marker path was built and tested before this profile needed it.
 type SelectionStyle uint8
 
 const (
 	SelectionBand    SelectionStyle = iota // draw [Band] / [BandFor] as a background
 	SelectionReverse                       // SGR 7; no band token is used
+	// SelectionMarker draws no ground at all: the row is marked with
+	// [GlyphAccentRail] in the gutter. It is the only answer that costs zero
+	// escape bytes, which is what makes it the right one for a profile defined
+	// by having none to spend.
+	SelectionMarker
 )
 
 // SelectionStyle returns the selection idiom available under this profile.
 func (p Profile) SelectionStyle() SelectionStyle {
-	if p >= ANSI256 {
+	switch {
+	case p >= ANSI256:
 		return SelectionBand
+	case p == NoColor:
+		return SelectionMarker
+	default:
+		return SelectionReverse
 	}
-	return SelectionReverse
 }
 
 type layer uint8
