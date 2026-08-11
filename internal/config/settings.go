@@ -125,6 +125,16 @@ var OperatorEnvPins = []string{
 	// besides: it disappears one wave after the new surface becomes the
 	// default, which is exactly the lifetime a persisted setting must not have.
 	"AFORGE_CHAT_V2",
+	// AFORGE_CHAT_TRACE turns on the v2 chat surface's journal-versus-screen
+	// trace (internal/tui2/chat/engine.go), which writes into the chat.log the
+	// entry point already opens. It is plumbing rather than a setting for the
+	// reason the whole list exists: it changes nothing about the product, only
+	// how much the build says about itself while a fault is being chased, and a
+	// preference the sheet offered to persist would be a preference for a
+	// noisier log forever. The one line that reports an actual divergence is not
+	// behind it — that one is always on, because a condition that eats replies
+	// does not get to wait for an operator to opt in.
+	"AFORGE_CHAT_TRACE",
 }
 
 // Defaults the registry owns beyond the ones config.go already declares.
