@@ -103,11 +103,21 @@ its plan, a file it wrote, the manual, what has been spent, what is on watch,
 what was finished in a window of time, and a search across everything
 remembered. Reads never queue anything.
 
+One read is about conversations rather than about work: **thread** opens another
+of your chats and hands back the end of it. It is only ever read when the front
+desk needs it — nothing about another room is carried around in the background —
+and the chat you are in is already in front of it, so it never re-reads that one.
+
 The rest change something and each one journals:
 
 - **spawn** — commission new work. This is how anything gets started, and it
   carries your words verbatim. When one message names things that are genuinely
   independent, it becomes one piece of work each.
+- **fork** — commission new work that inherits this conversation. Use it when
+  the requirements live in what you have been discussing rather than in one
+  sentence: you settle a shape together, you say go, and the work starts with
+  that conversation in hand instead of asking you all of it again. It is spawn
+  with the context attached, so every guard on spawn applies to it unchanged.
 - **cancel, pause, resume, restart, reprioritize** — the verbs above.
 - **steer** — tell the people already working something, right now, without
   changing what the job is.

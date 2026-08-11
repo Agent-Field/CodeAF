@@ -171,6 +171,19 @@ const (
 	// reachable from the loop today and from the journal the moment the one-arm
 	// seam in 12.3.3 opens; interrupt.go holds both halves and the exact edit.
 	beltToolInterrupt = "interrupt"
+	// beltToolFork is 8.2.12: spawn, carrying the conversation. It is a variant
+	// rather than a mechanism — fork.go composes a brief and calls spawn, so
+	// every guard that makes commissioning safe applies without being restated —
+	// and it exists because a person who has spent ten minutes settling what
+	// they want and then says "go do it" has put the requirements in the chat.
+	beltToolFork = "fork"
+	// beltToolThread is 8.2.10's on-demand transcript read, and it is the one
+	// amendment 5.7's knowledge contract takes: the head still never sees another
+	// room's conversation AMBIENTLY — that would put every room in every prompt
+	// and answer this room's question with that room's context — but it can now
+	// go and READ one when the person refers to it. transcript.go holds the
+	// bounds, the scope and the sanitizing, and the reason each one is there.
+	beltToolThread = "thread"
 	// beltToolNote is the belt's only write that never touches the graph. The
 	// loop could change work and answer questions and had nowhere at all to put
 	// a durable instruction about its own behaviour, so "always answer from the
@@ -303,6 +316,14 @@ func beltDefinitions() []ai.ToolDefinition {
 		beltTool(beltToolSearch, "Search everything you remember for words: the conversation itself, the notebook, and jobs that have long since finished. Always safe. Read it whenever the user refers to something from the past that is not in front of you — a decision you reached together, something they told you once, a job from last month — instead of reconstructing it. It is the only read that reaches what was merely said and never became work. If it comes back empty, say so plainly; that is a true answer and inventing one is not.", map[string]any{
 			"q": beltProp("string", "the words to look for, in the user's own terms"),
 		}, "q"),
+		beltTool(beltToolFork, "Commission work that inherits what you and the person have just been discussing. Use it instead of spawn when the requirements are in this conversation rather than in one sentence — you have settled a shape together and they say go, or their message only makes sense against what came before it. The recent conversation travels with the work as context; their own words for what to do go in instruction.", map[string]any{
+			"instruction": beltProp("string", "what to go and do, in their words; omit it when their message is the instruction"),
+			"after":       beltProp("string", "id of work this continues, from a board read"),
+			"fresh":       beltProp("boolean", "true only when they ask for this to be figured out from first principles rather than done the way it has been done before"),
+		}),
+		beltTool(beltToolThread, "Read another of the person's conversations. Always safe. Call it with no arguments to see which rooms exist, then pass one id as room to read the end of that conversation. Use it when they refer to something said in another window of theirs — \"like we agreed in the other chat\" — instead of reconstructing it. THIS conversation is already in front of you at the top of this prompt and cannot be read again through here.", map[string]any{
+			"room": beltProp("string", "one conversation id, from this tool's own list"),
+		}),
 		beltTool(beltToolNote, "Write one durable thing the user has just told you into the notebook: how they want answers given, a correction to how something was done for them, a lasting fact about them or their setup. The test is whether it will still matter after this conversation is forgotten — task details and one-off instructions fail it. Call it before you tell them it is noted, because this call is the only thing that makes that true.", map[string]any{
 			"body":     beltProp("string", "one sharp sentence, in the user's own terms"),
 			"scope":    beltProp("string", `what it is about: "user" for a personal preference, otherwise tool:<name>, repo:<path>, file:<path>, or domain:<topic>`),
@@ -421,10 +442,14 @@ func (run *beltRun) execute(name, arguments string) (string, bool) {
 		return run.history(args)
 	case beltToolSearch:
 		return run.search(args)
+	case beltToolThread:
+		return run.thread(args)
 	case beltToolNote:
 		return run.note(args)
 	case beltToolSpawn:
 		return run.spawn(args)
+	case beltToolFork:
+		return run.fork(args)
 	case beltToolWrite:
 		return run.write(args)
 	case beltToolCorrect:
