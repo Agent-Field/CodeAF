@@ -545,3 +545,21 @@ func TestFrameSurvivesEveryWidth(t *testing.T) {
 func stream(app *App, events ...StreamEvent) {
 	app.Update(streamBatchMsg{events: events})
 }
+
+// An interrupt is the reader's own decision, so the provider's verdict on the
+// call they cancelled must not overwrite what the surface says about it (5.16:
+// the user's esc key is never painted as a failure).
+func TestAnInterruptOutranksTheProvidersVerdict(t *testing.T) {
+	app := newTestApp(&fakeBackend{}, &fakeCommander{stopped: true}, nil)
+	stream(app, StreamEvent{Kind: StreamStarted, Session: testSession})
+	app.key(tea.KeyPressMsg{Code: tea.KeyEscape})
+	stream(app, StreamEvent{Kind: StreamFailed, Session: testSession})
+
+	out := frame(app)
+	if strings.Contains(out, "stream lost") {
+		t.Fatalf("a cancelled call was reported as a failure:\n%s", out)
+	}
+	if !strings.Contains(out, "stopping") {
+		t.Fatalf("the awaiting line does not say the turn is being stopped:\n%s", out)
+	}
+}
