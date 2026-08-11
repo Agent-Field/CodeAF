@@ -71,6 +71,7 @@ const (
 	KeyVisionModel    = "vision_model"
 	KeyAttribution    = "attribution"
 	KeySplitPct       = "split_pct"
+	KeyLinearMode     = "linear_mode"
 )
 
 // ModelSettingSlots is the palette's slot order, kept identical so the sheet
@@ -159,6 +160,12 @@ const (
 	DefaultSplitPct = 80
 	MinSplitPct     = 25
 	MaxSplitPct     = 85
+
+	// DefaultLinearMode leaves the full v2 surface running: most people want
+	// the motion and the layout, so the accessible single-column rendering
+	// (10.1.5) is a door someone walks through on purpose, not a default they
+	// have to walk back out of.
+	DefaultLinearMode = false
 )
 
 // Setting is one row: what it is called, what it reads now, and what happens
@@ -429,6 +436,14 @@ func (s *Settings) build() []Setting {
 			write: func(raw string) error { return writeBool(dir, KeyAttribution, raw) },
 		},
 		s.splitRow(),
+		Setting{
+			Key: KeyLinearMode, Category: CategoryAppearance, Kind: SettingBool,
+			Label: "linear mode", Env: "AFORGE_CHAT_LINEAR",
+			Hint: "single column, no motion, no spinners — the accessible rendering (10.1.5) " +
+				"in the v2 chat surface. A change lands the next time aforge starts.",
+			read:  func() string { return formatBool(LinearModeAt(dir)) },
+			write: func(raw string) error { return writeBool(dir, KeyLinearMode, raw) },
+		},
 	)
 	return rows
 }
@@ -653,6 +668,23 @@ func AttributionAt(profileDir string) bool {
 		return value
 	}
 	return DefaultAttribution
+}
+
+// LinearModeAt resolves whether the v2 chat surface renders in the accessible
+// single-column mode (10.1.5): one column, no motion, no spinners. A
+// malformed pin reads as the default rather than refusing a launch over a
+// rendering preference.
+func LinearModeAt(profileDir string) bool {
+	if raw := strings.TrimSpace(os.Getenv("AFORGE_CHAT_LINEAR")); raw != "" {
+		if value, err := parseBool(raw); err == nil {
+			return value
+		}
+		return DefaultLinearMode
+	}
+	if value, ok := persistedBool(profileDir, KeyLinearMode); ok {
+		return value
+	}
+	return DefaultLinearMode
 }
 
 // DocumentEngineAt resolves the document-reading rung.

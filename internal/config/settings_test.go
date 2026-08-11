@@ -381,6 +381,55 @@ func TestAttributionDefaultsOnPersistsAndHonorsItsEnvironmentPin(t *testing.T) {
 	}
 }
 
+// Linear mode is off until someone says otherwise — the opposite default from
+// attribution, so the pin and the persisted file are both exercised in the
+// direction that actually turns something on.
+func TestLinearModeDefaultsOffPersistsAndHonorsItsEnvironmentPin(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("AFORGE_CHAT_LINEAR", "")
+	rows := registry(t, dir)
+	row, ok := rows.Row(KeyLinearMode)
+	if !ok {
+		t.Fatal("linear mode is not registered")
+	}
+	if row.Category != CategoryAppearance || row.Kind != SettingBool || row.Label != "linear mode" {
+		t.Fatalf("linear mode row = %+v", row)
+	}
+	if row.Value() != "off" || LinearModeAt(dir) {
+		t.Fatalf("linear mode does not default off: %q", row.Value())
+	}
+	if err := row.Apply("on"); err != nil {
+		t.Fatal(err)
+	}
+	if !LinearModeAt(dir) {
+		t.Fatal("on did not persist")
+	}
+	reread, _ := registry(t, dir).Row(KeyLinearMode)
+	if reread.Value() != "on" {
+		t.Fatalf("the reread row lost the persisted choice: %q", reread.Value())
+	}
+
+	t.Setenv("AFORGE_CHAT_LINEAR", "off")
+	if LinearModeAt(dir) {
+		t.Fatal("the environment lost to the persisted file")
+	}
+	pinned, _ := registry(t, dir).Row(KeyLinearMode)
+	name, isPinned := pinned.PinnedBy()
+	if !isPinned || name != "AFORGE_CHAT_LINEAR" {
+		t.Fatalf("linear mode did not report its pin: %q", name)
+	}
+	if err := pinned.Apply("on"); err == nil || !strings.Contains(err.Error(), name) {
+		t.Fatalf("a pinned linear mode accepted an edit: %v", err)
+	}
+
+	// A hand-typed pin that means nothing reads as the default rather than
+	// stopping a launch over a rendering preference.
+	t.Setenv("AFORGE_CHAT_LINEAR", "sure")
+	if LinearModeAt(dir) {
+		t.Fatal("a malformed pin did not fall back to the default")
+	}
+}
+
 func TestSplitPercentClampsAndSavesThroughTheRegistry(t *testing.T) {
 	saved := 0
 	rows := NewSettings(SettingsOptions{
