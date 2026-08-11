@@ -4558,3 +4558,146 @@ them; this lane's binaries were therefore built in a detached worktree at HEAD
 with only `internal/head` copied over. Outside that, the reds are the known
 `internal/plan` `TestRenderTerrainStaysUnderTheCap` (CJK filename length) and
 `internal/swepro`, both pre-existing and out of scope.
+
+### 13.10 Delivery-dressing lane: a finished job is a card, not its own transcript (3bf84c1)
+
+The report, from a live session: "I see 'task 234 response' or similar raw task
+results in my main chat when a task completes. It doesn't make sense there —
+shouldn't it be something clickable/expandable? The chat should translate the
+completion into what the user wants to know, not dump the raw result. Also the
+typographic hierarchy between the 'aforge' speaker name and the content seems
+weird."
+
+**Traced with a real run**, isolated home, deepseek-v4-flash, $0.0029 the whole
+session. Commissioned "spawn a job that writes three haiku about rivers into
+rivers.txt and tells me what it wrote"; the job settled; this is what landed in
+the room that commissioned it:
+
+```
+ task-16
+  rivers.txt is written with three original haiku, each in the 5-7-5 pattern, …
+  Silver thread unwinds
+  through stone and shadowed valleys,
+  … eighteen more lines …
+  Files:
+  /…/home/state/workspace/task-16/rivers.txt
+  $—
+```
+
+**The producer is `internal/resident/resident.go`'s `Reconciler.announceNode`**
+(~line 2046). On `EventNodeCompleted` for a node parented on the spine it posts
+`Body: node.Summary`, verbatim, `Role: RoleSystem`, `NodeID: node.ID`, **no
+typed parts at all** — journal row 31 of the run, `parts=null`, 497 bytes, the
+worker's whole account of itself including its own prose "Files:" section.
+`EventNodeFailed` takes the same door.
+
+**The renderer is `internal/tui2/chat/message.go`'s `dressWork`**, reached
+because the dispatch in `newMessageBlock` sends every node-anchored row there.
+It titles the row `nodeLabel(message.NodeID)` — which for `task-16` is
+`task-16` — and appends the body whole, at the secondary tier, with a telemetry
+line that could only say `$—`.
+
+Three laws broken at once, and it is worth naming them separately because only
+one of them is about prose. **5.14's never-shown tier names node ids
+explicitly**, and that heading was one. **5.9's progressive disclosure** says a
+card is collapsed until it is asked to open; that row had no fold at all, so a
+job that wrote a long answer pushed the conversation off the screen. **12.5's
+artifact law rendering half** says a deliverable is REFERENCED by its path; the
+path was present, as the eleventh line of a dump rather than as a row a reader
+can find, which is the same as absent.
+
+**What lands now**, 4.3's sentence ("settled deliverable cards stay inline at
+birth position") drawn to 5.9's anatomy, measured live at 160 columns:
+
+```
+ Rivers haiku file · $0.0012  ▸ 18 lines
+  The file has 10 lines (3 haiku of 3 lines each, plus 1 blank line between
+  them), confirming exactly three haiku.
+  ▸ /…/home/state/workspace/task-8/rivers.txt
+```
+
+Line 1 is glyph + name + money + fold affordance; ✓ in green because green is
+the word for money AND success (5.16). Line 2 is the brief at the status-line
+tier. Line 3 is the artifact. **The artifact rows are never folded** — a path a
+collapsed row is holding has not been handed over — while the rest of the prose
+is what folds, whole and unedited, because the dressing is a presentation of the
+record and never a rewrite of it (13.1 item 3). `ctrl+r` opens it in place and
+gives back every word; the footer advertises the key the moment a foldable row
+exists, so 5.22 is satisfied without a new binding.
+
+**The brief deliberately does not ride in the header's description.** The header
+degrades meta-first (8.1.5), so a brief long enough to be worth reading pushes
+the money and the fold hint off the row at any ordinary width — the two cells
+5.9 says a card must never lose. Measured: with the brief in `Desc`, an 80-column
+render dropped both.
+
+**Where the name and the money come from, and why they cannot drift.** A
+delivery message carries a node id and nothing else a renderer may draw, so
+`delivery.go` asks the board — the same walk, cached at the same journal
+watermark, that built the rail card for the same job (`scopeSource.jobFacts`).
+The card in the thread and the card in the rail are therefore the same numbers
+by construction, and the live run shows it: both say `Rivers haiku file` and
+both say `$0.0012`. **No board means an honest card**: no name (the heading
+falls back to the word "delivered", never to the id), no money, and no hue —
+because a failure drawn green is the one mistake this row can make, so a hue is
+only ever a claim the board actually made (8.2.20).
+
+**The reading that decides a row IS a delivery is columns, never prose**
+(13.3.1): a system row, anchored to a node, belonging to no command. A
+narrator's progress line and a charter notice are agent rows; an applied
+command's receipt carries a command seq; none of them changes dressing.
+
+**THE PRODUCER HALF IS STILL OPEN, and it is the half the report's second
+sentence is about.** "The chat should translate the completion into what the
+user wants to know" is a job for whoever writes the message, and nobody does:
+`announceNode` copies `node.Summary`, and the head is never woken by a delivery
+at all (`postAside`'s own comment states the rule — "the head's own poll never
+answers a system row"). So the head says "I'll let you know when it lands" and
+then never speaks again, which its own prompt forbids ("Never promise a
+behaviour you have not recorded"). The brief this card shows is therefore the
+first line of a worker's prose, dressed well, rather than a translation written
+for the person. Two things are needed and neither is in this lane's territory:
+
+1. `announceNode` should attach typed parts — a one-line `PartText` brief, a
+   `PartArtifact` per recorded file, and the ending — instead of one prose blob.
+   `deliveryFiles` already prefers `store.PartArtifact` the day it does, and
+   falls back to the reading `internal/head/depth.go`'s `collectResultFiles`
+   already performs on the same field until then. (`internal/resident`.)
+2. Either the head is woken on a delivery so it can write the brief itself, or
+   `orchestratorVoice`'s "say that you will report back" stops being said,
+   because it currently manufactures a promise the machine cannot keep.
+   (`internal/head`, and the fan-out lane holds that paragraph.)
+
+**v1 is unaffected**: `internal/tui` renders the same journal row and this lane
+changed no column, no body and no part. The shape it reads is byte-identical.
+
+**The typography, same territory, same report.** Both speaker rows are the same
+grammatical thing — a name over what was said — and were drawn as two different
+things. `aforge` carried no glyph, so it started at column 0 while `you` started
+at column 2 behind its composer glyph: two speaker rows in one transcript on two
+different left edges. And `aforge` was painted at `StateSettled`, which
+`ResolveToken` resolves to the PRIMARY grey — the same tier as the answer under
+it — so the label and the substance were indistinguishable and the transcript
+read flat. Before and after, from the truecolor golden:
+
+```
+- [38;2;230;230;240maforge[38;2;124;130;150m · claude-k3
++ [38;2;124;130;150m›[m [38;2;124;130;150maforge · claude-k3
+```
+
+The label is chrome on both sides now, both wear the prompt glyph they were
+typed at, and speech stays primary on both — 5.13 assigns primary to speech and
+the dimmest tier to chrome, and 5.14's litmus asks what a reader would DO with a
+name they already know. The hierarchy that was missing is that one step, label
+under substance, and it is now the same step on both sides of the conversation.
+
+**The board-truth item raised mid-lane (rail "1 running" beside a head that says
+nothing is) was already closed by the co-working lane** in the same working
+tree: `scopeSource.headStatus` and `taskRows` both skip `store.RootID`, and
+`scope_test.go` pins it exactly as asked — spine alone shows no running count and
+no card. Confirmed live in the same session: a fresh window reads
+`nothing running` with no spine row. Nothing was duplicated here.
+
+`make check`: `vet` clean, every package green apart from the known non-blocker
+(`internal/plan` `TestRenderTerrainStaysUnderTheCap`, Linux-only CJK filename
+length, co-working territory — reported, not touched).
