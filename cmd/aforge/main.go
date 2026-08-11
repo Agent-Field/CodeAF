@@ -105,6 +105,8 @@ func run() error {
 		return runRevise(os.Args[2:])
 	case "run":
 		return runExecute(os.Args[2:])
+	case "exec":
+		return runExec(os.Args[2:])
 	case "show":
 		return runShow(os.Args[2:])
 	case "models":
@@ -145,6 +147,8 @@ const usageText = `aforge — build and revise task graphs
   aforge run  <graph.json> [-w dir] [-j 8] [-o done.json] [--yes-spend] [--model slug] [--plan-model slug]
                          plan and run are the static pipeline: a graph written to a file, then executed
                          exactly as written. Kept for reading, editing, and inspecting a plan by hand.
+  aforge exec ["<prompt>"] [-w dir] [--system text] [-turns N] [-budget N] [--json] [-o file]
+                         run one linear worker with no resident planning graph
   aforge show <graph.json>
   aforge models
   aforge notebook [--db path]
