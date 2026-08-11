@@ -5528,3 +5528,137 @@ the one red is the standing `internal/plan` `TestRenderTerrainStaysUnderTheCap`
 CJK failure, Linux-only, another lane's. Nothing under `internal/plan`,
 `internal/exec`, `internal/resident`, `internal/tui`, `internal/tui2` or
 `cmd/aforge` was touched.
+
+### 13.16 Click-expand lane: the record was drawn, and every word of it was behind a `▸` (c2bc56f)
+
+The report, live, on the reporter's own profile with 13.15 already in their
+binary: "I asked a deep research bitcoin and it shows nothing when I click and go
+there. I can't open anything in chat when it has a drop-down-like thing — it
+should all be click-to-expand and click-somewhere-inside-to-collapse for
+EVERYTHING we show. And the task page has no tool use or conversation or
+anything."
+
+Three complaints, and they are one bug, one missing door and one missing
+producer, in that order.
+
+**Reproduced against their own journal.** `~/.aforge/graph.db` copied read-only
+into an isolated home (never opened live — resident lock, and their state is
+not this lane's to move), driven through the pty harness at 120x36. Their
+`task-1300` is root-parented, `done`, ATOMIC, with a 1,601-character brief, a
+5,507-character summary, and exactly one message — its own announced ending.
+
+The room 13.15 built **worked**. It drew the charge and it drew the delivery
+card. Here is the entire frame:
+
+```
+ Bitcoin current state briefing · $0.0029 · atomic  ▸ 7 lines
+  Report the current state of Bitcoin: the live price, price movement over the last day and
+  week, and the concrete drivers behind it — major news, market
+
+ Bitcoin current state briefing · $0.0029  ▸ 62 lines
+  I have solid data now. Let me consolidate what I have:
+```
+
+**That is the defect, whole.** Two headers, one truncated brief, and one line of
+the answer — and the line is the worker clearing its throat. Sixty-nine folded
+lines, including every word the room was entered for, behind two `▸`s. The pty
+frames pin what happened next: a click on the fold row produced a byte-identical
+screen, and so did a hover. **"It shows nothing when I click and go there" is a
+precise and correct description of that frame**, and the only door to the
+content was `ctrl+r`, advertised in the footer as "toggle receipts".
+
+**The finding worth keeping.** 13.15's own lesson was that a room rendering
+faithfully from an empty table and a room that is broken look identical. This is
+that lesson one turn further and one layer out: **a room that has drawn the whole
+record and a room that has drawn nothing also look identical, when the record is
+folded and the fold has no door.** Both times the surface was telling the truth
+and the reader could not tell. The way to distinguish them was, again, not to
+read the renderer — it was to ask what a HAND could reach.
+
+**What lands (`c2bc56f`).** 7.2's transcript backlog has asked for "per-block
+expand/collapse (▸/▾) with state that survives re-render" since it was written;
+13.4 answered T2 PARTIAL ("toggle is GLOBAL on ctrl+r … no per-block toggle, no
+click") and 13.14 filed the same gap in its own still-open list, blocked on there
+being no block-focus substrate. **It turns out none was needed.** Block focus is
+a KEYBOARD problem — a cursor that has to exist before a key can name a row. A
+pointer names the row by pointing at it.
+
+- **The whole header row is the target**, resolved by `foldAt`, which is
+  `optionAt` one row up: the same `BlockAtScreenRow` lookup against the layout
+  the paint actually produced. The `▸ 62 lines` hint is a trailing CELL of the
+  header (`blocks.Header.Hint`), not a row of its own, so the affordance a reader
+  sees and the row a pointer must hit are the same line by construction — and x
+  is not consulted, for the reason `optionAtLine` does not consult it either.
+  Nothing is recorded during `View()` (Part 2's anti-pattern 14): the
+  transcript's own cache IS the map, so a click cannot land on a row the paint
+  dropped.
+- **The state is keyed by BLOCK ID, not held on the block**, and that is the
+  whole of 7.2's actual requirement. A task room rebuilds its ENTIRE block list
+  on every journal move (13.15's decision 2), so a flag living on a block would
+  be thrown away several times a second while a job runs. `msg-<seq>`,
+  `room-charge` and `room-work-<node>` are stable across those rebuilds by
+  construction, so `App.folds` survives them and a row the reader opened comes
+  back open.
+- **`ctrl+r` clears the overrides**, and that is the one design decision here
+  worth its line. A reader who opened three rows by hand and then pressed "open
+  everything" has asked for everything; a global toggle that quietly left three
+  rows on the other side would be two doors disagreeing about one state, in the
+  one direction nobody checks.
+- **The row now looks like a door.** 5.22's amendment is that an interactive
+  control may never live permanently in the dimmest tier — "dim at rest,
+  secondary on focus" — and the fold hint did exactly that, `StateChrome`
+  forever, with no focus to rise to. It rises one tier under the pointer through
+  `tokens.Promote`, the same call the rail's hovered row makes (13.14's hover
+  law), and never a band, because the band is the cursor (5.16). Only the HEADER
+  promotes: the body under a hovered fold row is the record, not the affordance.
+- **A conversation turn is born on the side of the fold its room is on.** The
+  room's blocks were always told (13.15); the conversation's never were, so a
+  reader who pressed `ctrl+r` watched every subsequent turn arrive shut.
+
+**Keyboard parity is NOT claimed, deliberately.** 7.2 names no chord for
+per-block folding — its only key on that line is `v`, which the same sentence
+gives to receipts — and 5.22's `y copy · v expand` strip hangs on a focused
+block, which 13.4 marks MISSING (T3, T6) for want of a substrate that still does
+not exist. Inventing a chord here would put a third opinion on `v` and a second
+cursor in the transcript (5.14 forbids the second outright). `ctrl+r` remains the
+keyboard's door, unchanged and still room-scoped; **7.2's "every keyboard action
+has click parity and vice versa" is now half-open in the OTHER direction on this
+one row, and that is filed rather than papered over.**
+
+**The third complaint is a producer gap and is filed as H13.** Measured on their
+journal: `SELECT DISTINCT kind FROM json_each(messages.parts)` over all 148
+messages returns exactly one row, `ended` — of the seven kinds
+`store.PartKind` defines, six have never been written by any producer on this
+machine, and **there is no tool-call kind at all**. Their six-part `task-234`
+holds 43 message events of which **thirty are `setting working standards · N of
+4`**, 818 characters between them, while the same subtree's `nodes.summary`
+columns hold over 30,000 characters of result. A task room can therefore show a
+RESULT and a RECEIPT and can never show a TRACE, and no renderer can close that.
+`wave5-coworking-handoff.md` H13 names the four rows the engine must journal and
+who owns each.
+
+**One more thing their journal says, filed and not fixed here.** Four of their
+real jobs — `task-148`, `task-180`, `task-201` and `task-234`, the only
+multi-part work they have — appear on NO surface in chat. `FormTerritory`
+re-parented them under `territory-fa66b66a41d4`, which is itself a fold root, so
+`ActiveNodes`' outermost-representative clause excludes them, and the rail drops
+the territory itself for being a territory. The store already has the read that
+fixes it and its doc comment is the indictment: `AddressableNodes` exists because
+"membership in a territory is a filing decision made hours after a job landed; it
+was never meant to be the thing that decides whether the job can be spoken
+about." Switching the chat's `Graph` to it is a small edit and a real decision
+about what a home rail is FOR, which is not a bug-fix lane's to make. **The
+consequence to record: every task room the reporter can currently reach is
+atomic, so no room on their machine can draw a part row or an interleave at all.**
+
+**Evidence.** `uiverify/harness/run_repro.py` drives their journal copy —
+scenarios `bitcoin-room`, `rail-walk`, `bitcoin-task-room`, `fold-click`,
+`room-fold-click`. Before: `repro-shots-before/fold-click/03-click-fold.txt` is
+byte-identical to `01-before.txt`. After: the same click yields the whole
+briefing. `disclose_test.go` reproduces the SHAPE and none of the content — a
+spine-parented settled atomic job with a long brief, a long summary whose first
+line is a preamble, one node-anchored ending and the session's turns around it.
+
+**State.** `internal/tui2/chat` green. `make check`: the standing `internal/plan`
+CJK red. Nothing under `internal/head`, `internal/plan`, `internal/exec`,
+`internal/resident` or `internal/tui` was touched.

@@ -38,6 +38,7 @@ append is re-verified at `0f5ec5e`.
 | H9 | delivery typed parts on `announceNode` | resident: one producer, both event kinds | small | 13.10 | the delivery card's artifacts stay a prose-scrape; every renderer re-derives what the producer knows |
 | H10 | plan prompt disobedience: gatherer edge + merge part | plan: two prompt/pass fixes | two scoped fixes | 13.6 (landed) | within-job width never pays; a 93s serial tail follows every ~70s parallel section |
 | H11 | the head's belt writes/controls journal nothing | head: one door per action kind | producer-side only | 13.8 f.2+f.3, 13.15 | the surface cannot show what the head did and the head cannot read it back; it denies its own work and duplicates it |
+| H13 | a worker journals its ending and nothing of its doing | exec: one part kind + two write sites | producer-side only | 13.16, 4.3 | "the task page has no tool use or conversation" is unanswerable; a room can show a RESULT and never a TRACE |
 
 ---
 
@@ -680,3 +681,92 @@ to translate a dump it can only re-read. **H9 sequences before this item.**
 
 **Size.** One predicate, one turn kind, one prompt. **Owner.** `internal/head`.
 **Blocked by.** H9.
+
+## H13 — A worker's run journals its ending and nothing of its doing (appended 2026-08-11, click-expand/real-journal lane)
+
+**The report this comes from**, live, on the reporter's own profile: "the task
+page has no tool use or conversation or anything."
+
+It is true, and it is not a rendering gap. **The journal has nothing to render.**
+
+**Measured on their real graph** (`~/.aforge/graph.db` copied read-only into an
+isolated home; 26 nodes, 148 `message_posted` events, nine settled job roots):
+
+- **Not one tool call is journaled anywhere.** `SELECT DISTINCT
+  json_extract(value,'$.kind') FROM messages, json_each(messages.parts)` over
+  the WHOLE journal returns exactly one row: `ended`. Of the seven kinds
+  `internal/store/message_parts.go:42-67` defines — `text`, `question`, `card`,
+  `progress`, `artifact`, `ended`, `aside` — six have never been written by any
+  producer on this machine. There is no tool-call kind at all, so even a
+  producer that wanted to write one has no shape to write it in.
+- **A worker's inner conversation is not journaled either.** Their largest job,
+  `task-234`, is a six-part bundle whose subtree holds **43 `message_posted`
+  events**, and reading them is the finding: **30 of the 40 anchored to the root
+  are `setting working standards · N of 4`** — 818 characters across all thirty —
+  and the remaining ten agent lines total 1,817 characters. Against that, the
+  same subtree's `nodes.summary` columns hold **over 30,000 characters** of
+  actual result. The messages are the narrator; the work is in a column the
+  narrator never quotes.
+- **An atomic job is thinner still.** `task-1300` (a deep research run) journals
+  ten events end to end — `subtree_spliced`, `node_claimed`, `node_started`, two
+  `fact_injected`, two `usage_recorded`, `delivery_gate`, `node_completed`,
+  `message_posted` — and exactly ONE of them is a message. Between `node_started`
+  and `node_completed`, fifteen seconds apart, the journal records that money was
+  spent and nothing about what was done with it.
+
+**So the honest statement of what a task room can say today**, after 13.15 and
+this lane: the charge (`nodes.brief`), the plan (child rows), each part's own
+account of itself (`nodes.summary`/`nodes.error`), the lifecycle and clock, and
+the narrator's progress chatter. That is a RESULT and a RECEIPT. It is not a
+TRACE, and no surface can make it one.
+
+**What the engine must journal for the room to show a real trace.** Each is a
+row the renderer already knows how to draw — 13.15's work rows and 13.10's card
+are both fed from typed columns, and this lane made every one of them openable
+with a click — so the whole of the ask is producer-side.
+
+1. **A tool-call part kind, and one part per call.** `PartKind` is documented as
+   an OPEN set ("a part whose kind this build does not recognize is carried
+   through reads, writes and rebuilds byte for byte"), so adding it costs no
+   migration. One part per call carrying: the tool's name, the arguments as the
+   caller passed them, the result or the error, and the elapsed. 4.3 has asked
+   for exactly this row since it was written — "inline collapsed tool-call rows
+   (`▸ control: cancelled wisp-nav2`, `▸ spawn: 3 work orders`) — the head's
+   actions visible in-thread, expandable, exactly like a coding-agent harness
+   renders tool use" — and it is the one bullet of 4.3's transcript anatomy that
+   has never had a producer.
+2. **The worker's turns, anchored to the node that ran them.** Today a worker's
+   provider turns exist only inside the exec loop's memory; only the final
+   `summary` survives. The row the reporter expected is the conversation a
+   coding-agent harness shows: what the worker was told, what it said, what it
+   called, what came back. Anchoring is the whole of the ask — a message with
+   `node_id` set already reaches the right room (`NodeMessages`), and 13.15's
+   interleave already places it by sequence.
+3. **`PartArtifact` on any message that produced a file.** This is H9, restated
+   from the other end: `deliveryFiles` currently scrapes prose for paths because
+   the typed column the producer could fill is empty in every row of this
+   journal.
+4. **Per-node usage.** `usage_recorded` is written **164 times** and carries
+   `node_id` in its payload, but the only read exposed is
+   `TopLevelJobUsage`, which answers per JOB ROOT. So a part row shows a clock
+   and no money and 8.2.20's missing glyph is the honest answer — the DATA is
+   already journaled, and this one is a read, not a write. (Same gap 13.11 filed
+   on `[Graph]`; recorded here because the count makes it concrete.)
+
+**What the reporter expected vs what the journal can currently say.**
+
+| they expected | the journal holds | who must write it |
+|---|---|---|
+| the tool calls a research task made | nothing — no part kind exists | exec (+ one `PartKind`) |
+| the worker's conversation | the final summary only | exec |
+| the files it produced | a path inside prose, scraped back out | resident (`announceNode`, H9) |
+| what each part cost | `usage_recorded` per node, unreadable per node | store (one read) |
+| what it concluded | **this it has**, in `nodes.summary` — and until this lane every word of it was behind a `▸` no click opened | (landed) |
+
+**Size.** One part kind plus one write site per call (1); one write site per
+worker turn (2). **Owner.** `internal/exec` for 1 and 2, `internal/resident`
+for 3, `internal/store` for 4. **Relation to H5 and H11.** H5 asks the same
+producer for the window occupancy of each call and H11 asks the head for its
+own belt actions; all three are the same missing habit — **the engine journals
+that work happened and never what the work was** — and a producer touching the
+call site for any one of them should write all three rows at once.
