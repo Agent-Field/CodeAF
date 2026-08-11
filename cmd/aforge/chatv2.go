@@ -96,6 +96,18 @@ func truthyEnv(value string) bool {
 // to build an aforge, and a second surface may choose what it draws, never what
 // it is drawing.
 func runChatV2(args []string) error {
+	// The room policy rides this variable rather than carrying a flag of its own
+	// (internal/resident's resolveRoomPolicy), and the reason it does is stated
+	// there: a HALF-pinned surface — v2 rooms with legacy re-homing — is not a
+	// configuration anyone wants. `--v2` typed without the variable exported was
+	// exactly that combination, because the flag reached this file and the
+	// resident only ever read the environment. Setting it here is not a second
+	// door: it is this door telling the rest of the process which surface it
+	// opened, before anything that reads it is built.
+	if err := os.Setenv(chatV2Env, "1"); err != nil {
+		return fmt.Errorf("select the v2 room policy: %w", err)
+	}
+
 	flags := flag.NewFlagSet("chat --v2", flag.ContinueOnError)
 	database := flags.String("db", defaultChatDB(), "path to the durable graph database")
 	sessionID := flags.String("session", "", "thread session id; empty resumes the last one, \"new\" starts a fresh one")
