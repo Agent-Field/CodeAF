@@ -509,8 +509,41 @@ func (a *App) bind(event rail.Event, commit bool) tea.Cmd {
 	}
 
 	a.status.breadcrumb = a.breadcrumb()
+	a.handOverTheKeyboard(commit)
 	a.refresh()
 	return cmd
+}
+
+// handOverTheKeyboard is 5.15's one rule at the moment it matters most: you
+// talk to what you are looking at, and after a commitment what you are looking
+// at is a room with a live composer under it.
+//
+// The bug this closes was reported from a live conversation and is worth
+// naming, because "the affordance never lies" is usually about what is drawn
+// and this was about what a key does. Entering a room left the keyboard on the
+// map while the composer redrew as live, so a sentence typed into it was eaten
+// letter by letter by the map's own bindings — "jack knife kayak" arrived as
+// "ac nife aya", because j and k are the map's movement keys and g, G and the
+// digits are its jumps — and Enter opened a rail row instead of sending. One
+// extra ctrl+o fixed it, which is the definition of a state the reader had to
+// know about and could not see.
+//
+// It is deliberately scoped to a COMMIT and to a composer that will actually
+// take a draft:
+//
+//   - A PREVIEW keeps the keyboard on the map. Walking with j and k has to stay
+//     walking, or the map would be usable for exactly one row.
+//   - A POP keeps the keyboard on the map, because applyScope does not count a
+//     pop as a commit: the reader who pressed esc is navigating, not arriving.
+//   - A DISABLED composer keeps the keyboard on the map. `+ new room`, the 5.24
+//     group lid and a settled service take no draft, so handing them the
+//     keyboard would move it to a pane that refuses every key — the same
+//     invisible dead end in the other direction.
+func (a *App) handOverTheKeyboard(commit bool) {
+	if !commit || !a.railFocus || a.composerBind.mode == rail.ComposerDisabled {
+		return
+	}
+	a.focusScope(false)
 }
 
 // bindWork is 5.15's one rule applied to a work row.
@@ -761,7 +794,7 @@ func (a *App) applyNodeMessages(msg nodeMessagesMsg) {
 			a.view.teaching = false
 		}
 		sanitizeMessage(&message)
-		block := newMessageBlock(message, a.style)
+		block := newMessageBlock(message, a.style, a.source)
 		// The fold's accelerator is offered while the room on screen has
 		// something to fold, and a task room's rows are the ones on screen.
 		a.foldable = a.foldable || block.collapsible
@@ -915,7 +948,7 @@ func (a *App) applySteer(result steerResultMsg) {
 		if _, exists := a.view.transcript.IndexOf(messageID(result.message.Seq)); !exists {
 			message := result.message
 			sanitizeMessage(&message)
-			a.view.transcript.Append(newMessageBlock(message, a.style))
+			a.view.transcript.Append(newMessageBlock(message, a.style, a.source))
 			a.view.transcript.GotoBottom()
 		}
 		if result.message.Seq > a.view.watermark {
