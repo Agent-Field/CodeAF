@@ -121,10 +121,32 @@ type Backend interface {
 	// the rest of the product already speaks in: the daily limit, the pause
 	// question, the /budget line and the self figure beside it in the header are
 	// all today, and the store answers it off an indexed range rather than a
-	// full-table scan. Session spend is not offered because it cannot be told
-	// the truth: a usage row carries a node and a time, never a session.
+	// full-table scan.
 	SpendToday() (float64, error)
 	TopLevelJobUsage() (map[string]store.JobUsage, error)
+
+	// SessionSpend and TurnSpend are the same money read at the two scopes a
+	// room asks it at: everything this conversation has cost, and what the
+	// turn now being answered has cost so far. They are what the composer's
+	// meta strip (10.5.23 — this-turn cost lives beside the composer, system
+	// health lives in the footer) and the v2 status line are made of.
+	//
+	// This comment used to say session spend was not offered "because it
+	// cannot be told the truth: a usage row carries a node and a time, never a
+	// session". Exactly half of that survived. Work commissioned from a room
+	// carries the room on its node, so that half is exact; the head's own
+	// calls bill the spine and belong to no room, so that half is bounded by
+	// the window and flagged when a second room shared it. store.RoomSpend
+	// keeps the two apart rather than adding them into one confident number,
+	// and it is the store's doc comment that explains which is which.
+	//
+	// The bool is presence: false means there is no window at all — a room
+	// nobody has spoken in, a room with no user message to answer — which is
+	// absence and renders as — (8.2.20). A window that exists and has billed
+	// nothing answers true with Recorded false, which is the same glyph today
+	// and a different fact, and only one of the two can ever become a number.
+	SessionSpend(sessionID string) (store.RoomSpend, bool, error)
+	TurnSpend(sessionID string) (store.RoomSpend, bool, error)
 
 	// Questions. OpenQuestions is every question still waiting on the user,
 	// surfaced or not: "waiting on you" is a fact about the question, not about
@@ -185,6 +207,19 @@ type Commander interface {
 	ModelFollows(role string) bool
 	SetModel(role, slug string) error
 	ImageInputSupportFor(role string) (model string, supported bool)
+
+	// ContextWindow is how many tokens the model in a role slot will accept,
+	// and whether anything could say. It is the denominator of 5.9's ctx% and
+	// the half of that figure the store cannot hold: the numerator is journaled
+	// (store.RoomSpend.HeadPrompt), the size of the window is a property of the
+	// model, and only the live engine knows which model is in the slot and what
+	// the catalog says about it.
+	//
+	// The bool is not decoration. A catalog that never loaded, a slug it does
+	// not carry, a row cached before the field was kept — all answer false, and
+	// a percentage computed against a guessed window is a health signal that
+	// lies in the direction of calm. Absent stays absent.
+	ContextWindow(role string) (tokens int, known bool)
 
 	// Sessions and the head's turn. Interrupt stops the turn being answered
 	// right now, carrying in the words the reader has already seen so the
