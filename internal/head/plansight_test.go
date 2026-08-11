@@ -40,11 +40,7 @@ func seedLedgerAudit(t *testing.T, graph *store.Store) {
 func TestTheBoardSaysWhatWaitsOnWhatAndHowLongItHasRun(t *testing.T) {
 	graph := openHeadStore(t)
 	seedLedgerAudit(t, graph)
-	snapshot, err := graph.ActiveSnapshot()
-	if err != nil {
-		t.Fatal(err)
-	}
-	board := New(nil, graph).renderGraph(snapshot, "surgery", "", nil, time.Now().Add(20*time.Minute))
+	board := New(nil, graph).boardFor("surgery", "", nil, time.Now().Add(20*time.Minute))
 
 	rows := make(map[string]string)
 	for _, line := range strings.Split(board, "\n") {
@@ -75,11 +71,7 @@ func TestTheBoardSaysWhatWaitsOnWhatAndHowLongItHasRun(t *testing.T) {
 		spec("audit-n1", "audit", "Read the ledger", "read the ledger"),
 		needing(spec("audit-n2", "audit", "Write the report", "write the report"), "audit-n1"))
 	completeNodeWith(t, landed, "audit-n1", "The ledger balances.")
-	settled, err := landed.ActiveSnapshot()
-	if err != nil {
-		t.Fatal(err)
-	}
-	after := New(nil, landed).renderGraph(settled, "surgery", "", nil, time.Now())
+	after := New(nil, landed).boardFor("surgery", "", nil, time.Now())
 	if strings.Contains(after, "waits on Read the ledger") {
 		t.Fatalf("a settled upstream still reads as something to wait for:\n%s", after)
 	}
@@ -127,13 +119,13 @@ func TestAStatusQuestionOpensTheBeltAndThePlanReadAnswersIt(t *testing.T) {
 
 	session := "plan-question"
 	user := postUser(t, graph, session, "hows it going what is the plan dag we have?")
-	head := New(&beltClient{}, graph)
-	applies, err := head.controlLoopApplies(user)
-	if err != nil {
+	// The reading survives as evidence: a status question is marked as one in the
+	// prompt, above the message, so a model that reads it knows plan is the tool
+	// that answers "what's the plan" rather than a pair of counts.
+	if prompt, err := New(&beltClient{}, graph).turnPrompt(user); err != nil {
 		t.Fatal(err)
-	}
-	if !applies {
-		t.Fatal("a status question over live multi-part work never opened the belt")
+	} else if !strings.Contains(prompt, "the shape of it, not just its temperature") {
+		t.Fatalf("the status reading never reached the loop:\n%s", prompt)
 	}
 
 	client := &beltClient{turns: []beltTurn{
@@ -212,17 +204,21 @@ func TestStatusPhrasingSurvivesTheTrigger(t *testing.T) {
 	}
 }
 
-// With nothing live these words are ordinary conversation, and the reads have
-// nothing to be about.
-func TestAStatusQuestionOverAnEmptyBoardStaysWithTheRouter(t *testing.T) {
+// With nothing live these words are ordinary conversation. The reading is still
+// computed — it costs a map lookup — but it says nothing about work, because
+// there is no work for it to be about, and the board says so in one line.
+func TestAStatusQuestionOverAnEmptyBoardHasNothingToBeAbout(t *testing.T) {
 	graph := openHeadStore(t)
 	user := postUser(t, graph, "quiet", "hows it going what is the plan dag we have?")
-	applies, err := New(nil, graph).controlLoopApplies(user)
+	prompt, err := New(nil, graph).turnPrompt(user)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if applies {
-		t.Fatal("a status question with no work at all spent a belt call")
+	if !strings.Contains(prompt, emptyBoardLine) {
+		t.Fatalf("an empty board did not say so:\n%s", prompt)
+	}
+	if strings.Contains(prompt, "the words rank against") {
+		t.Fatalf("a quiet graph still produced a lexical reading:\n%s", prompt)
 	}
 }
 

@@ -1550,6 +1550,13 @@ type boardRow struct {
 // sessionID is the conversation asking. It marks rather than filters: the board
 // is global on purpose, and the row says which window a job came from.
 func (h *Head) boardRows(sessionID, query, status, id string) ([]boardRow, error) {
+	return h.boardRowsAt(sessionID, query, status, id, time.Now())
+}
+
+// boardRowsAt is boardRows with the clock passed in. Two of the board's clauses
+// are durations — how long a row has been going, how long ago it landed — and a
+// clock a caller cannot move is a clause a test cannot pin.
+func (h *Head) boardRowsAt(sessionID, query, status, id string, now time.Time) ([]boardRow, error) {
 	class := classAll
 	if word := strings.ToLower(strings.TrimSpace(status)); word != "" {
 		named, ok := classVocabulary[word]
@@ -1627,7 +1634,6 @@ func (h *Head) boardRows(sessionID, query, status, id string) ([]boardRow, error
 	targeted := strings.TrimSpace(id) != "" || strings.TrimSpace(query) != ""
 
 	waits := boardWaits(snapshot, byID)
-	now := time.Now()
 	rows := make([]boardRow, 0, len(candidates))
 	for _, candidate := range candidates {
 		if !beltAddressable(candidate.Node) {

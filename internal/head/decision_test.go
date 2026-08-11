@@ -81,7 +81,7 @@ func TestOnePlanWithManyPartsStaysOneJob(t *testing.T) {
 		commands[0].Instruction != ask {
 		t.Fatalf("a one-entry list did not collapse to one job: %+v", commands)
 	}
-	if !strings.Contains(headSystemPrompt, "genuinely independent") {
+	if !strings.Contains(orchestratorPrompt, "genuinely independent") {
 		t.Error("the independence test is not stated to the model that applies it")
 	}
 }

@@ -52,8 +52,12 @@ func TestTheDeterministicRepliesSpeakPlainly(t *testing.T) {
 	// the worst possible place to say "charter" or "node".
 	assertPlain(t, "the honest refusal", unclearCommandReply, noSuchTargetReply,
 		commandErrorReply, providerErrorReply)
-	assertPlain(t, "the which-one question", describedChoicePrompt(2, 0),
-		describedChoicePrompt(0, 2), describedChoicePrompt(1, 1))
+	// The which-one question is the ask tool's now and its words are the model's,
+	// so what is pinned here is the sentence the belt hands it to ask FROM.
+	assertPlain(t, "the standing-rule receipt",
+		charterAcknowledgement(store.CommandCharterRetire),
+		charterAcknowledgement(store.CommandCharterPause),
+		charterAcknowledgement(store.CommandCharterCadence))
 }
 
 // TestTheBackstageListsNameTheWordsThatActuallyLeak pins the second half of the
@@ -64,8 +68,7 @@ func TestTheBackstageListsNameTheWordsThatActuallyLeak(t *testing.T) {
 	for _, word := range []string{"node", "leaf", "graph", "splice", "worker",
 		"charter", "craft", "rail", "firing", "notebook"} {
 		for name, prompt := range map[string]string{
-			"the router prompt":       headSystemPrompt,
-			"the control-loop prompt": controlSystemPrompt,
+			"the orchestrator prompt": orchestratorPrompt,
 			"the revision prompt":     revisionVoicePrompt,
 		} {
 			if !promptCarriesWord(prompt, word) {

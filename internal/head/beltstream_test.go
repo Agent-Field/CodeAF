@@ -134,20 +134,18 @@ func TestStreamedControlBeltActsInsteadOfBurningTheCall(t *testing.T) {
 	}
 }
 
-// A message the belt cannot settle still costs exactly one tooled call before
-// the router answers — the loop declines on the first turn rather than looping.
-func TestStreamedBeltDeclineCostsOneCall(t *testing.T) {
+// A message with nothing to act on costs exactly ONE call.
+//
+// This was the decline path: the belt spoke a sentinel, the router was paid a
+// second time, and an ordinary greeting cost two provider calls plus whatever
+// the ten recognizers had already spent. There is nothing to decline to now, so
+// the floor and the ceiling are the same number — one call, one reply.
+func TestAMessageWithNothingToActOnCostsOneCall(t *testing.T) {
 	graph := openHeadStore(t)
 	seedExceptBoard(t, graph)
-	declining := http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
-		payload, _ := io.ReadAll(request.Body)
+	answering := http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 		writer.Header().Set("Content-Type", "text/event-stream")
-		if strings.Contains(string(payload), `"tools"`) {
-			_, _ = writer.Write([]byte(`data: {"choices":[{"index":0,"delta":{"content":"` +
-				controlNotWorkSentinel + `"},"finish_reason":"stop"}]}` + "\n\n"))
-		} else {
-			_, _ = writer.Write([]byte(`data: {"choices":[{"index":0,"delta":{"content":"{\"reply\":\"Nothing to stop.\",\"command\":null}"},"finish_reason":"stop"}]}` + "\n\n"))
-		}
+		_, _ = writer.Write([]byte(`data: {"choices":[{"index":0,"delta":{"content":"Nothing to stop."},"finish_reason":"stop"}]}` + "\n\n"))
 		_, _ = writer.Write([]byte("data: [DONE]\n\n"))
 	})
 	server := &beltStreamServer{}
@@ -161,22 +159,26 @@ func TestStreamedBeltDeclineCostsOneCall(t *testing.T) {
 		}
 		server.mutex.Unlock()
 		request.Body = io.NopCloser(strings.NewReader(string(payload)))
-		declining.ServeHTTP(writer, request)
+		answering.ServeHTTP(writer, request)
 	})
 
 	session := "belt-decline"
-	user := postUser(t, graph, session, "kill everything except the finance one")
+	user := postUser(t, graph, session, "thanks, that is all for now")
 	client := streamedProviderClient(t, counting)
 	ctx := provider.WithStreamObserver(context.Background(), func(provider.StreamEvent) {})
 	if err := New(client, graph).answer(ctx, user); err != nil {
 		t.Fatal(err)
 	}
 	reply := waitForAgentReply(t, graph, session, user.Seq)
-	if strings.Contains(reply.Body, controlNotWorkSentinel) {
-		t.Fatalf("the sentinel reached the thread: %q", reply.Body)
+	if reply.Body != "Nothing to stop." {
+		t.Fatalf("the reply was not the words the model spoke: %q", reply.Body)
 	}
-	if tooled, _ := server.counts(); tooled != 1 {
-		t.Fatalf("a declining belt made %d tooled calls, want one", tooled)
+	tooled, plain := server.counts()
+	if tooled != 1 {
+		t.Fatalf("an ordinary message made %d tooled calls, want one", tooled)
+	}
+	if plain != 0 {
+		t.Fatalf("something below the loop was still paid %d times — there is no second brain", plain)
 	}
 }
 

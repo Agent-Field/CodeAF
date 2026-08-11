@@ -54,6 +54,12 @@ func agentReplies(t *testing.T, graph *store.Store, session string) []store.Mess
 	return replies
 }
 
+// The revision voice is reached from one door now: the answer to a redirection
+// question, which is where a person's choice becomes a plan edit. The belt's
+// revise tool journals without speaking, because in a tool loop the loop is the
+// voice — so what these tests drive is requestRevision itself, which is the
+// exact call applyRedirectOption makes and the only caller left.
+//
 // The live bug. A redirection informed two running workers, the reconciler filed
 // its receipt under the job's own card, and the thread said nothing at all — so
 // the user sat watching a still conversation wondering whether their words had
@@ -66,9 +72,9 @@ func TestRedirectAlwaysAnswersInTheThread(t *testing.T) {
 	}}
 	user := postUser(t, graph, "steer", overStudyMessage)
 
-	handled, err := New(client, graph).manageRedirect(context.Background(), user)
-	if err != nil || !handled {
-		t.Fatalf("redirect not handled: handled=%t err=%v", handled, err)
+	if err := New(client, graph).requestRevision(context.Background(), user,
+		store.CommandRedirect, "parser", user.Body); err != nil {
+		t.Fatalf("redirect not handled: %v", err)
 	}
 	commands := pendingCommandsOf(t, graph)
 	if len(commands) != 1 || commands[0].Kind != store.CommandRedirect || commands[0].Target != "parser" {
@@ -109,8 +115,9 @@ func TestRevisionAudienceCountSitsJustAboveTheMessage(t *testing.T) {
 	client := &fakeClient{responses: []string{`{"reply":"Taking that to the parser rewrite.","remember":null}`}}
 	user := postUser(t, graph, "steer", overStudyMessage)
 
-	if handled, err := New(client, graph).manageRedirect(context.Background(), user); err != nil || !handled {
-		t.Fatalf("redirect not handled: handled=%t err=%v", handled, err)
+	if err := New(client, graph).requestRevision(context.Background(), user,
+		store.CommandRedirect, "parser", user.Body); err != nil {
+		t.Fatalf("redirect not handled: %v", err)
 	}
 	prompt := client.userPrompt()
 	work := strings.Index(prompt, "The work: ")
@@ -142,8 +149,9 @@ func TestRedirectSpeaksEvenWhenTheComposerFails(t *testing.T) {
 	client := &fakeClient{}
 	user := postUser(t, graph, "steer", overStudyMessage)
 
-	if handled, err := New(client, graph).manageRedirect(context.Background(), user); err != nil || !handled {
-		t.Fatalf("redirect not handled: handled=%t err=%v", handled, err)
+	if err := New(client, graph).requestRevision(context.Background(), user,
+		store.CommandRedirect, "parser", user.Body); err != nil {
+		t.Fatalf("redirect not handled: %v", err)
 	}
 	replies := agentReplies(t, graph, "steer")
 	if len(replies) != 1 || strings.TrimSpace(replies[0].Body) == "" {
@@ -169,8 +177,9 @@ func TestRedirectCapturesTheLessonItCarries(t *testing.T) {
 	}}
 	user := postUser(t, graph, "steer", overStudyMessage)
 
-	if handled, err := New(client, graph).manageRedirect(context.Background(), user); err != nil || !handled {
-		t.Fatalf("redirect not handled: handled=%t err=%v", handled, err)
+	if err := New(client, graph).requestRevision(context.Background(), user,
+		store.CommandRedirect, "parser", user.Body); err != nil {
+		t.Fatalf("redirect not handled: %v", err)
 	}
 	facts, err := graph.RecentFacts(10)
 	if err != nil {
@@ -205,8 +214,9 @@ func TestRedirectWithNothingToTeachRecordsNothing(t *testing.T) {
 	}}
 	user := postUser(t, graph, "steer", "focus on the tokenizer instead of the parser")
 
-	if handled, err := New(client, graph).manageRedirect(context.Background(), user); err != nil || !handled {
-		t.Fatalf("redirect not handled: handled=%t err=%v", handled, err)
+	if err := New(client, graph).requestRevision(context.Background(), user,
+		store.CommandRedirect, "parser", user.Body); err != nil {
+		t.Fatalf("redirect not handled: %v", err)
 	}
 	facts, err := graph.RecentFacts(10)
 	if err != nil {

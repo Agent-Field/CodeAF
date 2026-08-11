@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/Agent-Field/aforge-v2/internal/store"
 )
@@ -54,33 +55,34 @@ func TestSubFloorMatchesNeverBecomeTheOffer(t *testing.T) {
 		}
 	}
 
-	intent, redirecting, err := head.recognizeRedirect(user)
-	if err != nil || !redirecting {
-		t.Fatalf("the sentence was not read as a redirection: redirecting=%t err=%v", redirecting, err)
+	// The floor's job survives the loop: a sub-floor coincidence never becomes a
+	// name the model can act on. What the readings say instead is that the
+	// sentence points at live work without naming any of it — which is an
+	// instruction to resolve the referent, not a candidate to act on.
+	readings := head.renderHints(user, active)
+	if strings.Contains(readings, "the words rank against") {
+		t.Fatalf("a sub-floor coincidence was named as a candidate:\n%s", readings)
 	}
-	if intent.Certain {
-		t.Fatalf("a sub-floor match was treated as certain: %+v", intent.Candidates)
+	if !strings.Contains(readings, "points at work already underway without naming it") {
+		t.Fatalf("the deictic reading was lost, so nothing tells the loop to resolve:\n%s", readings)
 	}
-	if !intent.Floorless {
-		t.Fatal("the question was assembled from sub-floor evidence without saying so")
-	}
-	offered := map[string]bool{}
-	for _, candidate := range intent.Candidates {
-		offered[candidate.Node.ID] = true
-	}
-	if !offered["ledger"] {
-		t.Fatalf("the user's own live work stayed hidden behind coincidences: offered %v", offered)
+
+	// And the user's own live work is not hidden: the board is one board and it
+	// carries every addressable job, ranked or not.
+	if board := head.boardFor("floor", "", nil, time.Now()); !strings.Contains(board, "ledger") {
+		t.Fatalf("the user's own live work stayed off the board:\n%s", board)
 	}
 }
 
-// And the silent shortcut is closed. askRedirectTarget may assume the default
-// when the default is evidence; with nothing above the floor there is no
-// evidence, and steering a plan on the first row of an arbitrary list is
-// precisely the wrong edit, made without ever showing it.
+// And the silent shortcut is closed, by construction rather than by a flag. The
+// verbs that edit a plan take an id and nothing else: there is no branch in
+// which the head picks the first row of an arbitrary list, because there is no
+// branch in which the head picks at all.
 func TestNothingAboveTheFloorIsEverSilentlySteered(t *testing.T) {
 	graph := openHeadStore(t)
 	seedSubFloorGraph(t, graph)
-	// Drive the category past its asking threshold, so the shortcut is live.
+	// Drive the category past its asking threshold, so the old shortcut would
+	// have been live.
 	for index := 0; index < 12; index++ {
 		if err := graph.RecordAssumedWithDefault(store.QuestionCategoryRedirectTarget, "1",
 			"floor", "earlier question"); err != nil {
@@ -90,9 +92,15 @@ func TestNothingAboveTheFloorIsEverSilentlySteered(t *testing.T) {
 
 	head := New(nil, graph)
 	user := postUser(t, graph, "floor", "actually do the job differently")
-	handled, err := head.manageRedirect(context.Background(), user)
-	if err != nil || !handled {
-		t.Fatalf("redirect not handled: handled=%t err=%v", handled, err)
+	run := &beltRun{head: head, user: user}
+
+	// A revision with no id cannot be journaled at all.
+	message, failed := run.execute(beltToolRevise, beltArguments(t, map[string]any{"words": user.Body}))
+	if !failed {
+		t.Fatalf("a revision with no target was accepted: %s", message)
+	}
+	if run.acted {
+		t.Fatal("a refused revision recorded an action")
 	}
 	commands, err := graph.PendingCommands(50)
 	if err != nil {
@@ -103,9 +111,22 @@ func TestNothingAboveTheFloorIsEverSilentlySteered(t *testing.T) {
 			t.Fatalf("a plan was steered on a sub-floor coincidence: %+v", command)
 		}
 	}
-	questions, err := graph.UnresolvedQuestions(10)
-	if err != nil || len(questions) != 1 {
-		t.Fatalf("the user was never asked: %+v err=%v", questions, err)
+
+	// The honest route is the question, and it is a mechanism rather than prose:
+	// durable options the person picks, nothing journaled until they do.
+	asked, failed := run.execute(beltToolAsk, beltArguments(t, map[string]any{
+		"question": "Which one do you mean?",
+		"options":  []string{"Ledger reconciliation", "Artwork 0"},
+	}))
+	if failed {
+		t.Fatalf("the question could not be asked: %s", asked)
+	}
+	messages, err := graph.Messages("floor", user.Seq, 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(messages) != 1 || len(messages[0].Options) != 2 {
+		t.Fatalf("the user was never asked with options: %+v", messages)
 	}
 }
 

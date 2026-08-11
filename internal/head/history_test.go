@@ -38,11 +38,7 @@ func TestRouterPromptCarriesAClockBelowTheVolatileFloor(t *testing.T) {
 func TestSnapshotRowsCarryTheirAge(t *testing.T) {
 	graph := openHeadStore(t)
 	seedResultBoard(t, graph)
-	snapshot, err := graph.ActiveSnapshot()
-	if err != nil {
-		t.Fatal(err)
-	}
-	board := New(nil, graph).renderGraph(snapshot, "age", "", nil, time.Now().Add(3*time.Hour))
+	board := New(nil, graph).boardFor("age", "", nil, time.Now().Add(3*time.Hour))
 	if !strings.Contains(board, "finance-close | done | close the finance books for Q3 | finished 3h ago") {
 		t.Fatalf("a settled row carries no age:\n%s", board)
 	}

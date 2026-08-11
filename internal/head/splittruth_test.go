@@ -60,11 +60,7 @@ func TestBoardRowForASplitJobShowsTheLandedPiece(t *testing.T) {
 	graph := openHeadStore(t)
 	seedSplitJob(t, graph, "Everything is verified. The browser builds cleanly and launches a window.", true)
 
-	snapshot, err := graph.Snapshot()
-	if err != nil {
-		t.Fatal(err)
-	}
-	board := New(nil, graph).renderGraph(snapshot, "surgery", "", nil, time.Now())
+	board := New(nil, graph).boardFor("surgery", "", nil, time.Now())
 	row := ""
 	for _, line := range strings.Split(board, "\n") {
 		if strings.HasPrefix(line, "- task-3171 |") {
