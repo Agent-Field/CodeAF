@@ -1276,11 +1276,9 @@ func TestAmbiguousCharterManagementProducesOptions(t *testing.T) {
 	if !strings.HasPrefix(reply.Body, "Which rule do you mean?") || len(reply.Options) != 2 {
 		t.Fatalf("ambiguous reply = %+v", reply)
 	}
-	// The body carries the structured payload the TUI's question components
-	// read, beside the durable option rows.
-	if !strings.Contains(reply.Body, `"kind":"choose"`) {
-		t.Fatalf("ambiguous reply lacks the structured question payload: %q", reply.Body)
-	}
+	// It is a row the person can click, and it says so in types rather than in
+	// a JSON blob inside its own prose (13.3 bug 1).
+	assertClickableAsk(t, reply, "Which rule do you mean?", "the frontend PR reviews", "the backend PR reviews")
 	// The question IS the reply: a second voice over the top of it would be the
 	// thread answering its own question.
 	if replies := agentRepliesAfter(t, graph, "ambiguous-charter", user.Seq); len(replies) != 1 {

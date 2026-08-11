@@ -215,9 +215,7 @@ func TestTwoLiveJobsWithWeakAnchorAskOnceWithTheRankedDefault(t *testing.T) {
 	if !isAskQuestion(question.Options) {
 		t.Fatalf("the question was not minted by the loop, so its answer would never come back: %+v", question.Options)
 	}
-	if !strings.Contains(question.Body, `"kind":"choose"`) {
-		t.Fatalf("the question is not a row the person can click: %q", question.Body)
-	}
+	assertClickableAsk(t, question, "Which one do you mean?", "English audio", "French audio")
 
 	answering := &beltClient{turns: []beltTurn{
 		{calls: []ai.ToolCall{beltCall("c2", beltToolRevise, map[string]any{
