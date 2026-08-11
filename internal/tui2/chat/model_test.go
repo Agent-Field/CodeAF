@@ -454,3 +454,25 @@ func TestCopyingFromAnEmptyRoomSaysWhy(t *testing.T) {
 		t.Fatal("the palette row offers a door with nothing behind it and no reason")
 	}
 }
+
+// The money seam, end to end, at the magnitude that broke it on screen: a real
+// billed turn of $0.0017 rendered "$0.00", which reads as free. The rung is
+// tokens', the seam is this package's, and this asserts they meet.
+func TestASubCentTurnReachesTheStripAsAFigure(t *testing.T) {
+	backend := &fakeBackend{}
+	backend.turn = store.RoomSpend{Spine: store.SpendSlice{Runs: 1, Cost: 0.0017}}
+	backend.haveTurn = true
+	backend.add(store.Message{SessionID: testSession, Role: store.RoleAgent, Body: "done"})
+	app := newTestApp(backend, &fakeCommander{model: "claude-k3"}, nil)
+	poll(t, app)
+	if !app.meta.haveCost {
+		t.Fatal("a recorded turn spend never reached the meta strip")
+	}
+	row := ansi.Strip(app.meta.render(60))
+	if strings.Contains(row, "$0.00 ") || strings.HasSuffix(row, "$0.00") {
+		t.Fatalf("a billed turn reads as free: %q", row)
+	}
+	if !strings.Contains(row, "$0.0017") {
+		t.Fatalf("the strip does not carry the figure: %q", row)
+	}
+}
