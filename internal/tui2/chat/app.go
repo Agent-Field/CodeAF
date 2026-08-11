@@ -782,7 +782,18 @@ func (a *App) key(msg tea.KeyPressMsg) tea.Cmd {
 		return a.openSettings()
 
 	case "ctrl+o":
-		return a.setScope(!a.scopeOpen)
+		// The chord toggles WHERE THE KEYBOARD IS, not whether a flag is set.
+		//
+		// The two used to be the same question, and they stopped being it the
+		// moment entering a room started handing the keyboard to that room's
+		// composer (rooms.go's handOverTheKeyboard): the map is still open, the
+		// reader is just no longer typing into it. Toggling scopeOpen there
+		// answered ctrl+o by CLOSING the map the reader was asking to go back
+		// to. Asking about focus instead makes the chord mean one thing in
+		// every state — "let me talk to the map" and, from the map, "let me
+		// talk to the room" — which is the round trip that makes the hand-off
+		// learnable rather than a rule to remember.
+		return a.setScope(!a.railFocus)
 
 	case "esc":
 		// 8.2.21, the reconciling rule: esc acts on what you are watching. A
@@ -840,6 +851,19 @@ func (a *App) key(msg tea.KeyPressMsg) tea.Cmd {
 			a.shell.Invalidate()
 			return cmd
 		}
+		// AND THE MAP KEEPS IT. A key the map does not claim is not a letter
+		// for the composer to take, and letting it fall through was the second
+		// half of 13.8's first gap: the map claims j, k, g, G and the digits,
+		// everything else reached the draft, and a sentence typed at the map
+		// arrived with the navigation keys missing from it. "jack knife kayak"
+		// became "ac nife aya" — a steer that silently said something other
+		// than what was typed, which is the worst shape a surface can fail in.
+		//
+		// One cursor (5.14) has to mean one keyboard, or the composer is a
+		// second cursor that only accepts some of the alphabet. The composer is
+		// already drawn unfocused here; refusing the key is that picture told
+		// the truth. ctrl+o hands the keyboard back, and the footer says so.
+		return nil
 	}
 
 	if a.composer == nil {
@@ -1003,14 +1027,26 @@ func (a *App) interrupt() tea.Cmd {
 }
 
 // navigate is what esc means when there is no turn to stop and no draft to
-// protect: return to the live edge. It never destroys anything.
+// protect. It never destroys anything, and it walks outward one step at a time:
+// back to the live edge first, and then out of the scope.
+//
+// The second step is not new behaviour, it is the same rule reached from the
+// other side of the keyboard. 5.15 says esc pops scope, never just selection,
+// and the map's own grammar has always done that (scopeKey). Once entering a
+// room hands the keyboard to that room's composer (bind's handOverTheKeyboard),
+// the map is no longer where esc arrives — so without this the reader who
+// entered a task would have had no way out but a chord, and "esc pops scope"
+// would have quietly become "esc pops scope if you first press ctrl+o".
 func (a *App) navigate() tea.Cmd {
-	if a.transcript.AtBottom() {
+	if !a.transcript.AtBottom() {
+		a.transcript.GotoBottom()
+		a.shell.Invalidate()
 		return nil
 	}
-	a.transcript.GotoBottom()
-	a.shell.Invalidate()
-	return nil
+	if a.railModel == nil || a.railModel.Depth() == 0 {
+		return nil
+	}
+	return a.applyScope(a.railModel.Escape())
 }
 
 // toggleReceipts opens or closes every folded row in the transcript.

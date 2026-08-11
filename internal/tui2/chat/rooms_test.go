@@ -145,6 +145,24 @@ func press(app *App, key string) tea.Msg {
 	return cmd()
 }
 
+// pressThrough is press plus the one thing a terminal does that press does not:
+// it folds the message the keystroke produced back into the app, the way the
+// Bubble Tea runtime would. It exists for esc, which the composer answers by
+// handing the key back as a [composer.EscMsg] rather than by acting — so a test
+// that stopped at the returned message would be asserting about half a
+// keystroke.
+func pressThrough(app *App, key string) tea.Msg {
+	msg := press(app, key)
+	for i := 0; msg != nil && i < 4; i++ {
+		_, cmd := app.update(msg)
+		if cmd == nil {
+			return msg
+		}
+		msg = cmd()
+	}
+	return msg
+}
+
 // rowNames is what the rail is showing, in order, with the ids it is never
 // allowed to draw kept out of the comparison.
 func rowNames(app *App) []string {
@@ -356,11 +374,18 @@ func TestEnterDescendsAndEscPops(t *testing.T) {
 		t.Fatalf("the task scope rows are %q", names)
 	}
 
-	press(app, "esc")
+	// Entering handed the keyboard to the room (bind's handOverTheKeyboard), so
+	// esc arrives at the composer's ladder rather than at the map's — and pops
+	// the scope from there, because 5.15's "esc pops scope" is a law about the
+	// key and not about which pane happens to hold it (App.navigate).
+	if app.railFocus {
+		t.Fatal("entering a room left the keyboard on the map")
+	}
+	pressThrough(app, "esc")
 	if app.railModel.Depth() != 0 {
 		t.Fatalf("esc did not pop the scope: depth = %d", app.railModel.Depth())
 	}
-	press(app, "esc")
+	pressThrough(app, "esc")
 	if app.railFocus {
 		t.Fatal("esc at home did not hand the keyboard back to the conversation")
 	}
@@ -398,6 +423,10 @@ func TestTheComposerBindsWhatTheCursorRestsOn(t *testing.T) {
 	press(app, "ctrl+o")
 	press(app, "5")
 	press(app, "enter")
+	// Entering gave the keyboard to the room, so walking the task's DAG asks for
+	// it back. The chord is the same one that took it in the first place, which
+	// is what makes the round trip learnable rather than a rule to remember.
+	press(app, "ctrl+o")
 	press(app, "j")
 	if bind := app.composerMode(); bind.mode != rail.ComposerSteer || bind.node != "job-1/h2" {
 		t.Fatalf("a worker row binds %+v", bind)
@@ -418,6 +447,7 @@ func TestTheSteerLineDrawsItsOwnPromptAndHint(t *testing.T) {
 	press(app, "ctrl+o")
 	press(app, "5")
 	press(app, "enter")
+	press(app, "ctrl+o")
 	press(app, "j")
 
 	frame := ansi.Strip(app.Frame(120, 30))
@@ -447,6 +477,46 @@ func TestADisabledComposerRefusesTheKeyboardAndSaysWhy(t *testing.T) {
 	}
 }
 
+// THE DEFECT (13.8 gap 1), pinned at the keystroke it was reported at: entering
+// a room left the keyboard on the scope map while the composer redrew as live,
+// so every letter that happened to be a map binding was eaten on its way to the
+// draft — "jack knife kayak" arrived as "ac nife aya", because j and k walk the
+// map — and Enter opened a rail row instead of journaling the steer.
+//
+// This drives the exact reported sentence and asserts the two things the reader
+// could see go wrong: what the draft says, and whether Enter reached the
+// journal. It presses no chord in between, which is the whole point — the fix
+// is that none is needed.
+func TestEnteringARoomHandsTheKeyboardToItsComposer(t *testing.T) {
+	app, backend := boardApp(t)
+	press(app, "ctrl+o")
+	press(app, "5")
+	press(app, "enter")
+
+	if app.railFocus {
+		t.Fatal("entering the room left the keyboard on the map")
+	}
+	const sentence = "jack knife kayak"
+	for _, key := range strings.Split(sentence, "") {
+		press(app, key)
+	}
+	if got := app.composer.Draft(); got != sentence {
+		t.Fatalf("the draft reads %q, want %q — the map ate the keystrokes", got, sentence)
+	}
+
+	msg := press(app, "enter")
+	result, ok := msg.(steerResultMsg)
+	if !ok {
+		t.Fatalf("enter did not journal the steer: %T", msg)
+	}
+	if result.message.NodeID != "job-1" || result.message.Body != sentence {
+		t.Fatalf("the steer landed as %+v", result.message)
+	}
+	if len(backend.posted) != 1 {
+		t.Fatalf("the journal took %d writes", len(backend.posted))
+	}
+}
+
 // A steered draft becomes a node-anchored user message through the one door
 // every writer uses — the same verb the old window's steer line posts.
 func TestASteeredDraftIsJournaledAgainstItsNode(t *testing.T) {
@@ -454,6 +524,9 @@ func TestASteeredDraftIsJournaledAgainstItsNode(t *testing.T) {
 	press(app, "ctrl+o")
 	press(app, "5")
 	press(app, "enter")
+	// Entering handed the keyboard to the room; ctrl+o asks for the map back so
+	// the cursor can walk to the worker the draft is aimed at.
+	press(app, "ctrl+o")
 	press(app, "j")
 	// ctrl+o and not esc: esc pops the SCOPE (5.15), which would take the
 	// cursor off the worker the draft is aimed at. Leaving the map is the other
@@ -854,10 +927,14 @@ func TestATaskRoomShowsTheWholeSubtreesTrail(t *testing.T) {
 	backend.journal++
 	poll(t, app)
 
-	press(app, "ctrl+o")
 	for range 10 {
 		if app.view != nil && app.view.kind == viewNode {
 			break
+		}
+		// The map is re-taken each round: an enter that opened a room handed
+		// the keyboard to it, which is the law this walk is walking past.
+		if !app.railFocus {
+			press(app, "ctrl+o")
 		}
 		press(app, "down")
 		press(app, "enter")
@@ -910,11 +987,11 @@ func TestTheReceiptsFoldActsOnTheRoomOnScreen(t *testing.T) {
 	receipt := store.Message{Seq: 500, SessionID: testSession, Role: store.RoleSystem,
 		Body: "reflected\nthe long half nobody reads until they do"}
 	// One receipt in the room's own conversation, one in the room on screen.
-	app.transcript.Append(newMessageBlock(receipt, app.style))
+	app.transcript.Append(newMessageBlock(receipt, app.style, nil))
 	view := blocks.New(80, 24)
 	other := receipt
 	other.Seq = 501
-	view.Append(newMessageBlock(other, app.style))
+	view.Append(newMessageBlock(other, app.style, nil))
 	app.view = &mainView{kind: viewNode, node: "job-1", title: "wisp-parity", transcript: view}
 	app.pane.transcript = view
 
@@ -1032,6 +1109,9 @@ func TestAnEnteredRoomKnowsWhatItsCardKnew(t *testing.T) {
 		{"5", "wisp-parity"},
 		{"6", "perf-audit"}, // atomic, settled: the shape the screenshot caught
 	} {
+		if !app.railFocus {
+			press(app, "ctrl+o")
+		}
 		press(app, tc.digit)
 		card := app.railModel.Selected()
 		if card.Name != tc.name {
@@ -1053,7 +1133,10 @@ func TestAnEnteredRoomKnowsWhatItsCardKnew(t *testing.T) {
 		if surface.Life != card.Life || surface.Seed != card.Seed {
 			t.Fatalf("%s: the room's lifecycle or identity moved: %+v vs %+v", tc.name, surface, card)
 		}
-		press(app, "esc")
+		// Back out to home for the next digit. esc arrives at the composer's
+		// ladder now — entering handed it the keyboard — and pops the scope
+		// from there, which is the same law read from the other pane.
+		pressThrough(app, "esc")
 	}
 }
 
@@ -1115,7 +1198,7 @@ func TestEscOutOfARoomLeavesIt(t *testing.T) {
 		t.Fatalf("enter did not open the room: %+v", app.view)
 	}
 
-	press(app, "esc")
+	pressThrough(app, "esc")
 	if app.railModel.Depth() != 0 {
 		t.Fatalf("esc did not pop the scope: depth = %d", app.railModel.Depth())
 	}
@@ -1146,7 +1229,7 @@ func TestEscOutOfAHomeLeavesIt(t *testing.T) {
 		t.Fatalf("enter did not descend into a home")
 	}
 
-	press(app, "esc")
+	pressThrough(app, "esc")
 	if got := app.railModel.Depth(); got >= depth {
 		t.Fatalf("esc left the depth at %d, want less than %d — the pop re-entered", got, depth)
 	}
