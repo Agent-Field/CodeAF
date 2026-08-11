@@ -134,7 +134,16 @@ func (b *lineBuf) right(text string, token tokens.Token) {
 // render paints the line. banded raises the whole row onto the selection band
 // and pads it to full width, because a band that stops at the last letter is a
 // highlight rather than a selection (5.16).
-func (b *lineBuf) render(styler *tokens.Styler, banded bool) string {
+//
+// ground is the sheet's own floor under everything that is not banded, and it
+// pads for the same reason the band does: this surface is a floating dialog
+// (12.11), and a plane with unpainted gaps in it is not a plane. Pass
+// [tokens.Ground] to paint no floor at all — the shape linear mode takes, and
+// the shape every pane on the base plane takes, where the floor is the
+// terminal's and no component owns it.
+func (b *lineBuf) render(styler *tokens.Styler, banded bool, ground tokens.Token) string {
+	grounded := !banded && styler != nil && ground != tokens.Ground &&
+		styler.Profile().SheetGround()
 	segments := b.segments
 	if b.tailWidth > 0 {
 		// Two spaces of breathing room, or the tail is dropped — a right-hand
@@ -145,7 +154,7 @@ func (b *lineBuf) render(styler *tokens.Styler, banded bool) string {
 			segments = append(segments, b.tail...)
 		}
 	}
-	if banded {
+	if banded || grounded {
 		used := 0
 		for _, s := range segments {
 			used += ansi.StringWidth(s.text)
@@ -165,11 +174,22 @@ func (b *lineBuf) render(styler *tokens.Styler, banded bool) string {
 			out.WriteString(styler.PaintOn(s.text, s.fg, s.bg))
 		case banded:
 			out.WriteString(styler.PaintOn(s.text, s.fg, tokens.Band))
+		case grounded:
+			out.WriteString(styler.PaintOn(s.text, s.fg, ground))
 		default:
 			out.WriteString(styler.PaintToken(s.text, s.fg))
 		}
 	}
 	return out.String()
+}
+
+// blank is one row of the sheet's own ground and nothing else. A blank line
+// inside a painted plane that emitted no cells is a hole in that plane, and
+// this surface spends its whole structure budget on blank lines (5.13:
+// "separated by whitespace not boxes") — so the whitespace has to be part of
+// the room rather than a gap in it.
+func blank(styler *tokens.Styler, width int, ground tokens.Token) string {
+	return newLine(width).render(styler, false, ground)
 }
 
 func isASCII(s string) bool {

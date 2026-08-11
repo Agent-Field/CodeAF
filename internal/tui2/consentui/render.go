@@ -36,7 +36,40 @@ func (m *Model) Render(width, height int) string {
 	if len(rows) > height {
 		rows = rows[:height]
 	}
-	return strings.Join(rows, "\n")
+	return strings.Join(m.stand(rows, width, height), "\n")
+}
+
+// stand puts the composed rows on the dialog's own ground and fills the rest of
+// the rectangle with it (12.11's boundary, given the floor it was drawn around —
+// see [tokens.Sheet]).
+//
+// Two jobs, and they are the same job: a row painted only as far as its last
+// letter leaves the room behind it showing through the right-hand end of it,
+// and a pane that returns fewer rows than it was given leaves that room showing
+// through the bottom. A pane is given a box and told to fill it (pane.go); this
+// is where this one fills it.
+func (m *Model) stand(rows []string, width, height int) []string {
+	if !m.grounded() {
+		return rows
+	}
+	for i := range rows {
+		rows[i] = m.padRow(rows[i], width)
+	}
+	for len(rows) < height {
+		rows = append(rows, m.padRow("", width))
+	}
+	return rows
+}
+
+// padRow fills one row out to width with the dialog's ground. A row that
+// already reaches the edge is returned untouched rather than re-measured into a
+// new allocation.
+func (m *Model) padRow(row string, width int) string {
+	gap := width - blocks.Width(row)
+	if gap <= 0 {
+		return row
+	}
+	return row + m.style.PaintOn(strings.Repeat(" ", gap), tokens.TextTertiary, tokens.Sheet)
 }
 
 // section is one run of rows with its own survival rules.
@@ -476,7 +509,29 @@ func (m *Model) tint(text string, token tokens.Token) string {
 	if m.style == nil || text == "" {
 		return text
 	}
+	if m.grounded() {
+		return m.style.PaintOn(text, token, tokens.Sheet)
+	}
 	return m.style.PaintToken(text, token)
+}
+
+// grounded reports whether this dialog paints [tokens.Sheet] as its own floor.
+//
+// The list is [Model.bandable]'s, with one addition, and every entry is a real
+// state rather than a defensive check: linear mode (10.1.5) gets no background
+// fill for the reason it gets no band; an unfocused pane may not, because
+// [tokens.Legal] forbids a dimmed foreground on any raised ground; and below
+// 256 colours there is no raised background this palette owns
+// ([tokens.Profile.SheetGround]) — at 16 the only candidate is the terminal
+// theme's bright black and the reverse-video fallback would turn the whole
+// dialog into a slab.
+//
+// Nothing is lost where it is false. The ground carries no information, only
+// elevation, which is exactly why it is the part that yields — the hairline
+// boundary and the accent-rail selection are the floor and both survive
+// everywhere.
+func (m *Model) grounded() bool {
+	return !m.linear && m.focused && m.style != nil && m.style.Profile().SheetGround()
 }
 
 // bandable reports whether the selection may be drawn as a background band
