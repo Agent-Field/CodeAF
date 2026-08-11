@@ -56,6 +56,33 @@ type IdentityStyler interface {
 	PaintIdentity(text string, seed uint64, state State) string
 }
 
+// Seed turns a task id into the identity seed [Header.GlyphSeed] carries and
+// [IdentityStyler.PaintIdentity] resolves. It is FNV-1a/64 over the id bytes —
+// allocation-free, and byte-for-byte the same hash the token layer's own
+// identity wheel uses, so a glyph seeded from a task id here lands on the SAME
+// pastel that layer assigns the task's rail card. The tokens package pins that
+// agreement with a test; it is the whole reason the hash is written out rather
+// than left to each caller to choose.
+//
+// An empty id returns zero — "no identity" — which is the honest answer for a
+// block that belongs to no task and the value [Header.GlyphSeed] treats as
+// unset.
+func Seed(taskID string) uint64 {
+	if taskID == "" {
+		return 0
+	}
+	const (
+		offset = 14695981039346656037
+		prime  = 1099511628211
+	)
+	h := uint64(offset)
+	for i := 0; i < len(taskID); i++ {
+		h ^= uint64(taskID[i])
+		h *= prime
+	}
+	return h
+}
+
 // Plain is the identity Styler: it returns text unchanged. It is the default
 // for headless tests and the golden harness, and it is what a nil Styler
 // resolves to.

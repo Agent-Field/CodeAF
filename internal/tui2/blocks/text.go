@@ -191,3 +191,25 @@ func (b *builder) styled(s Styler, text string, state State, hue Hue) {
 	}
 	b.WriteString(s.Paint(text, state, hue))
 }
+
+// identity paints a cell that may carry a task identity. A non-zero seed on a
+// [HueIdentity] cell resolves through the token layer's 8-hue wheel when the
+// Styler can do it; everything else — a zero seed, another hue, a Styler with
+// no identity door — falls through to [builder.styled] and is byte-identical
+// to what it drew before this existed.
+//
+// The type assertion is a pointer compare against an itab, not a lookup, and
+// it is reached only by a cell that actually carries a seed, so the ordinary
+// header pays nothing for it and nothing here allocates.
+func (b *builder) identity(s Styler, text string, state State, hue Hue, seed uint64) {
+	if text == "" {
+		return
+	}
+	if seed != 0 && hue == HueIdentity {
+		if id, ok := s.(IdentityStyler); ok {
+			b.WriteString(id.PaintIdentity(text, seed, state))
+			return
+		}
+	}
+	b.WriteString(s.Paint(text, state, hue))
+}
