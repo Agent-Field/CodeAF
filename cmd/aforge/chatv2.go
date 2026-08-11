@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/Agent-Field/aforge-v2/internal/guard"
 	"github.com/Agent-Field/aforge-v2/internal/tui"
 	"github.com/Agent-Field/aforge-v2/internal/tui2/chat"
 	"github.com/Agent-Field/aforge-v2/internal/tui2/tokens"
@@ -195,7 +196,7 @@ func bridgeStreamEvents(ctx context.Context, source <-chan tui.StreamEvent) <-ch
 	// narrow point: a head streaming faster than a frame can draw backs up
 	// against the surface's queue, not against the provider's reader.
 	out := make(chan chat.StreamEvent, 256)
-	go func() {
+	guard.Go("chat v2 stream bridge", func() {
 		defer close(out)
 		for {
 			select {
@@ -216,7 +217,7 @@ func bridgeStreamEvents(ctx context.Context, source <-chan tui.StreamEvent) <-ch
 				}
 			}
 		}
-	}()
+	})
 	return out
 }
 
