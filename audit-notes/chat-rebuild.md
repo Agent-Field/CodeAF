@@ -4235,3 +4235,161 @@ digits and has been since 12.12.6, which is why the predicate was left as one
 thing rather than special-cased here. The fix, when someone owns it, is for
 `drafting` to ask whether the draft can be TYPED INTO, not whether it has
 characters in it.
+
+### 13.8 Live-use lane: twelve conversations with the real binary (read-only, 2026-08-10 late)
+
+Not a code review and not the parity gate. A user sat down and talked to
+`bin/aforge chat --v2` through a real pty, twelve conversations with realistic
+follow-ups, and judged every frame against Parts 1–5: THREAD-UX, the
+interruption budget, "you talk to what you are looking at", 5.14 (never show
+ids), 5.19, 5.20, 5.23. Evidence is `uiverify/live-shots/<scenario>/<slug>.png`
+(and `.txt`, the same screen as a character grid); byte streams and disposable
+`AFORGE_HOME`s are beside them under `live-raw/` and `live-homes/`. Driven at
+`becbc1a`; every finding below that touches the keyboard, the rail or the head
+was **re-driven at `39f9d42`** (post-13.7) in a detached worktree and still
+reproduces. Model `~deepseek/deepseek-v4-flash-latest`, about $0.06 in total.
+
+**Harness correction other lanes need first.** pyte implements DECSTBM but not
+CSI S. The v2 surface optimises a transcript scroll as `ESC[5;31r ESC[31;1H
+ESC[6S ESC[1;36r` and then repaints only the rows the scroll could not fill, so
+a replay without SU silently drops the move and the screen shows a conversation
+that never happened — a user line duplicated, a reply with no header, a
+paragraph gone. It is convincing, and it is the harness. `harness/render_live.py`
+implements SU/SD and registers them on pyte's CSI table; anything replaying v2's
+bytes must do the same or it will report a transcript-corruption bug the
+surface does not have. With SU replayed, four-turn scrolling is exact.
+
+**What is right, and worth not breaking.** Context carry is solid four turns
+deep — "of the reasons you just gave, which one bites first?" answers from the
+content of the previous reply, not the topic (`talk-context/05`). Markdown
+tables now lay out for real, measured columns, wrapped in cell, and reflow at
+80 columns without touching the rail (`markdown-dress/01`, `/04`) — 13.3 bug 2
+is closed. Question blocks draw honestly with numbered rows, the footer says
+`?1 · 1–3 answer`, and a bare digit answers (`question-flow/01`, `/02`) — 13.4
+gap 1 is closed at the surface, and 13.5's finding 6 double-draw is gone.
+The esc cut is exemplary: `aforge [stopped by you]`, "— interrupted before I had
+anything to say", a `╌ stopped by you` rule, and the NEXT turn narrates the cut
+correctly (`interrupt2/05`, `/06`). Commissioned work gets a commission row, a
+rail card, a ✓ and a summary (`delivery/01`→`/04`). And 13.4's top-gap 4 is
+closed: the byte stream carries `OSC 777 notify` on delivery, question and
+cancellation, the title goes to `aforge (1)` while a question is open, and
+`OSC 133;A` marks the prompt. `OSC 8` is still never emitted.
+
+**The gaps, worst first.**
+
+1. **An entered task room leaves the keyboard on the scope map while the
+   composer looks live — so a steer loses its letters and Enter does not send.**
+   `j` and `k` are eaten by the map: typing `jack knife kayak` into a room draws
+   `↦ ac nife aya` (`room-input/03`), and the steer-room run typed "make it
+   about a river" and composed "mae it about a river". Enter then leaves the
+   draft sitting there and journals nothing (`room-input/04`; the room's
+   `messages`/`commands` tables are empty). esc carries the mangled steer draft
+   back to the home scope still in `↦` mode, where further typing appends to it
+   (`room-input/05`, `/06`). One extra `ctrl+o` fixes everything — all sixteen
+   characters land and Enter journals the steer (`room-input2/02`, `/03`) — so
+   the path works and only the focus hand-off is missing. This is 13.7's fault
+   family one room deeper: the surface advertises a composer it has not given
+   the keyboard to. Severity: a one-way instruction to a worker that silently
+   says something other than what was typed. **Surface.**
+
+2. **Work the head does with its own tools is invisible — no tool row, no card,
+   no artifact row.** "create a file called tea-notes.md in my workspace" comes
+   back "Created tea-notes.md in your workspace…" with an empty rail
+   (`commission/02`); the file really is on disk. Same for the poem
+   (`steer-room/01`): `sea.md` written, and the journal holds two messages, zero
+   commands, zero nodes. 4.3 asks for inline collapsed tool-call rows precisely
+   so doing and claiming look different; today they are the same frame.
+   **Surface (the rows do not exist) over engine (the actions are not
+   journaled as anything the transcript could draw).**
+
+3. **And so the head denies its own work.** Asked "did that land? where is the
+   file?" it answered "The earlier attempt didn't actually land — there's no
+   record of the file being written, and the board shows no work. So I've
+   written it now for real", and wrote a second file (`commission/05`). Both
+   files exist. The head has no read-back of its own tool actions, so its second
+   turn contradicts its first and duplicates the work. This is the trust failure
+   13.3 bug 3 names, arriving from the opposite direction. **Engine/head.**
+
+4. **The rail and the voice disagree about what is running, on one screen.**
+   Rail: `1 running · ◐ Permanent Aforge spine · 1 part running`. Head, same
+   frame: "Nothing is running right now — the board is empty. No work in flight,
+   nothing queued" (`board-truth/01`, repeated in `mention/04` and
+   `talk-context/02`). Cause is pinned, not guessed: the `nodes` row `id='root'`
+   ("Permanent Aforge spine") is permanently `status='running'`, the rail's
+   live-work query counts it and the head filters it. One of the two has to
+   change; a permanently-running mystery job with a forever-climbing clock is
+   also just noise on a new user's first screen. **Surface + prompt, one
+   decision.**
+
+5. **Answering a question posts the machine token as the user's own words.**
+   Pressing `1` writes ` you / charter:ratify:charter-14` into the transcript
+   (`question-flow/02`). It should read back the label the user chose. 5.14.
+   **Surface.**
+
+6. **Work speaks under its raw node id.** The delivery is attributed `task-12`
+   though the card beside it is named "Ampersand history one-pager"
+   (`delivery/03`), and the user's own steer echoes as ` root` with a `$—`
+   under it, as if the user's sentence had a price (`room-input2/03`). 5.14
+   again, and the sessions/nodes titles exist. **Surface.**
+
+7. **Delivery is a wall, not a card.** The finished worker report lands as
+   twenty lines of prose in the middle of an unrelated conversation about cat
+   names — summary, bullets, sources, raw path — with no fold and no expand
+   (`delivery/04`). THREAD-UX licenses the interruption; it does not license the
+   size. The block also ends `$—` while the rail card beside it knows `$0.0036`.
+   **Surface.**
+
+8. **Money in prose is rounded into a lie, and one sentence stutters.** "Today's
+   spend is $0.00" with `$0.0023` on the rail two columns away
+   (`money-honesty/02`) — 12.11 built the sub-cent rung for the rail and the
+   head's sentence does not use it. And the standing-watch proposal reads
+   "costs: about $0.15 a run, at most 10 a day — $0.15 (nothing measured yet) a
+   run, at most 10 a day, so the worst day is about $1.50"
+   (`question-flow/01`): two templates concatenated, which is 5.23's
+   deterministic-first law failing at the seam rather than in the arithmetic.
+   **Prompt/producer.**
+
+9. **Day-spend-against-the-rail has no home on screen.** The meta strip's money
+   is this-turn cost, which is correct per 10.5.23 — but it is unlabelled, it
+   resets to `$—` while a draft is open, and it sits a few columns from the
+   rail's cumulative room total at a different precision (`$0.0006` beside
+   `$0.01`). 4.3's "spend vs rail" is nowhere, so the only way to ask is to ask,
+   and finding 8 is what comes back. **Surface (a placement decision 13.4's
+   verdict item (c) already flagged).**
+
+10. **A plain question sometimes becomes a paid job.** "what were the main
+    design mistakes in early unix terminal handling?" was commissioned as work
+    with a card and a cost (`interrupt2/02`, `/03`), while "who invented the
+    ampersand?" was answered in chat (`trivia/01`). Head-nondeterministic in the
+    same way 13.5's J4 caveat describes, and it is the expensive direction of
+    the coin. **Prompt.**
+
+11. **`@` addresses nothing.** Typing `@` does open a target row — but it draws
+    the raw slug beside the name (`mention/01`, `/02`), nothing says how to
+    accept it, and after a space the mention decays to literal text: the message
+    went to the head, which answered as itself (`mention/04`). C5's component
+    has landed as far as the filter; the dispatch half has not. **Surface.**
+
+12. **The place a deliverable lands is misstated in prose.** The delivery says
+    "saved as ampersand.md in the workspace root"; the `Files:` line under it
+    says `…/workspace/task-12/ampersand.md`, which is the truth. The path is
+    raw, wraps mid-token across two rows, and is not a hyperlink (zero `OSC 8`
+    in any stream). 5.19 + T5/J18. **Prompt for the sentence, surface for the
+    path.**
+
+13. **Fenced code renders its fences.** The code body is dressed (indent plus a
+    filled ground) but ` ```bash ` and the closing fence are drawn as literal
+    text above and below it (`markdown-dress/01`). **Surface.**
+
+14. **Small talk is answered with a board report.** "hey, how's it going?" →
+    "Hey! All quiet on the board right now — nothing of yours is running or
+    queued, and today's spend is $0.00 of the $1.00 daily rail"
+    (`talk-context/02`). Two of those three clauses are finding 4 and finding 8.
+    **Prompt.**
+
+**Shape of the tally.** Nine of the fourteen are surface, and of those, five
+(1, 5, 6, 7, 11) are missing wiring against seams that already exist rather than
+anything unbuilt. The engine is not what makes this feel unfinished; what makes
+it feel unfinished is that the surface cannot show what the head did, and the
+head cannot read what it did either — findings 2 and 3 are one wound seen from
+both sides, and closing them closes 4, 8 and 14's material half as well.
