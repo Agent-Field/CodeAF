@@ -3550,3 +3550,217 @@ trailing spaces) and was invisible; `$0.00` was arithmetically correct and read
 as free. Where a law is about what a person perceives, the test has to be
 written with the imperceptible differences removed — trimmed padding, a
 magnitude sweep — or it passes for the wrong reason.
+
+### 12.12 Integration lane: three component adoptions, the parity gaps in the chat surface, and two screenshot defects
+
+*(A Part 12 build-ledger entry, appended at the tail because the doc is
+append-only and shared across concurrent lanes.)*
+
+Landed on `chat-v2` as 23c43b6, ee73240, 8b91add, bbcb3c8, 0fa72c2, 5cb0f01,
+92d92f0, 04a18f5, 10aee67, 26606a6, 20bd65b. Every one touches
+`internal/tui2/chat`; three touch `cmd/aforge/chatv2.go` and one touches
+`internal/registry`. `internal/plan`, `internal/exec`, `internal/resident` and
+`internal/tui` were not edited. `make check` is green apart from the known
+non-blocker (`internal/plan` `TestRenderTerrainStaysUnderTheCap`, Linux-only CJK
+filename length, co-working territory — reported, not touched).
+
+**The shape of the wave.** Four component lanes had finished packages that
+documented "adoption hunks" instead of self-integrating, and the parity audit
+(13.4) had measured what that cost: five `landing` verdicts and a tally where
+the distance to the gate was "mostly wiring, not architecture". This lane is
+that wiring, plus the gaps 13.4 and a pty screenshot pass found inside the
+surface itself.
+
+1. **The model chip and the palette (5.10, 5.23, 8.2.16).** The composer's meta
+   strip spelled the model by hand — vendor prefix off, nothing else — so a
+   reply header read `claude-sonnet-4-20250514` while the strip under it read
+   `claude-sonnet-4`. `modelWord` IS `modelui.ModelWord` now, which makes the
+   chip, the header meta and the switch receipt one spelling. The chip carries
+   the role word (its cell has no column naming one) and no gauge (10.5.23's
+   context home is the strip's own ctx cell, and a second gauge two cells away
+   would draw one fact twice); it gains the effort suffix, which 5.10 says rides
+   the chip and the bare word had nowhere to put.
+   The palette is an overlay pane raised by `settings.ModelMsg`, by the
+   registry's `slash.model` row (listed and dead until now), and by nothing that
+   bypasses either. **Two optional seams**, declared at their narrowest and
+   satisfied structurally: `RoleBindings` (the roles table, `*store.Store`) and
+   `ModelControl` (`SetModel`/`Models`, `*command.Commander`), both asserted at
+   compile time because 12.6.2's finding was that a shard nobody implements does
+   not fail the build — it fails as a feature that quietly stopped being offered.
+   **The write order is a law**: the durable binding first, then the funnel. A
+   funnel asked before the storage answered could leave running work on one
+   model and the table saying another. Only the WORK slot walks the
+   `RequestCommand`/`CommandSetModel` door, because it is the slot the graph
+   carries (12.6.5) — so 5.10's "switching remaining work to X" is reserved for
+   it, the other roles get the weaker sentence that is true of them, and a
+   binding that changed nothing gets no receipt at all. The receipt is posted
+   AFTER the write returned, as a system row through `internal/thread`'s one
+   door, and the poll draws it: the surface never claims a mutation it did not
+   perform, and never keeps a second copy of the journal.
+   **Three altitudes of disabled reason, in this surface's words**: a visitor
+   window (the head is in another process), a role no caller reads yet (nothing
+   in the tree resolves verify or scribe, so the binding would sit unread — 5.22
+   rule 5), and a node whose model was pinned. The palette's scope follows the
+   room: global at home, `task:<node>` inside a task room, which is what gives
+   the pinned reason a real home.
+   **Two adoption gaps found.** (a) `Picker` has no door to open AT one role, so
+   a settings model row lands the reader one keystroke above the slot they
+   pressed enter on. (b) `ModelOption.Window` and `Note` stay empty: the
+   per-slug context length and price live on `*catalog.Catalog`, which this seam
+   cannot reach without importing the v1 window's `ModelChoice` — and
+   `engine.go` refuses that edge by name. Both render as the missing mark, which
+   is 8.2.20 working rather than a lie.
+
+2. **The `@` grammar (5.18).** `Targets` is a projection of the rail's
+   already-built home scope — one slice walk per edit while the draft holds an
+   `@`, no store call — so a task that leaves the rail stops being addressable
+   the moment it does, which is the property the composer's derived-mention
+   design was built to buy. The WORD is derived, because nothing in the graph
+   carries one (a node has a title, a brief and an id, and 5.14 forbids showing
+   the id); two tasks never share a token, because a duplicate would silently
+   address whichever came first. The hue is the rail's own seed and not a second
+   hash of the row id. A LIVE target takes the steer door; a SETTLED one takes
+   the room's post door with the task named as context; a target that finished
+   mid-draft still lands the words in the room they were typed in. `ctrl+enter`
+   follows; `enter` never moves the reader.
+   **Deliberately left**: 5.18's durable dispatch echo row with 8.2.11's receipt
+   vocabulary. A steer's own journaled row already appears in the sending room
+   as a work row, so a send is not dead air — but the echo that UPDATES IN PLACE
+   when a task settles before absorbing needs a row identity this surface does
+   not have.
+
+3. **The terminal hooks (10.5.27).** All five members were built, tested and had
+   zero callers. Four moments close it, and the budget is spent on exactly the
+   three occasions the section allows: needs-input where the ask ARRIVES (driven
+   off the standing count it would fire on every poll for as long as nobody
+   answered), delivery and failure as TRANSITIONS read off the rail's
+   lifecycles, and `SetBusy` around the live turn. The first pass after a cold
+   open says nothing: a window that announced the board it found would have
+   interrupted about history. `MarkPrompt` fires once per COMMITTED user
+   message, from the post result rather than from the send, because a draft that
+   failed to journal is not a prompt.
+   **`Update` now wraps the fold and drains a hook queue.** The contract's rule
+   that a returned command must be returned onwards is not something each branch
+   of the poll chain can be trusted with — the facts are noticed inside
+   functions built to return nothing — so "no hook command is dropped" is a
+   property of the shape. `Notify` goes through one field so the three occasions
+   are assertable: the shell's notifier is right to suppress nearly everything,
+   and that makes the surface's DECISION invisible from outside.
+
+4. **The glyph tier (12.7 step 8).** `chat.Options.GlyphSet`, zero-valued to the
+   5.17 floor; the app's one Styler built through `NewStylerIn`, which is the
+   only place the tier could enter because every block in the package paints
+   through it; the arrival brief's three badges asking for their glyphs by SLOT.
+   `cmd/aforge/chatv2.go` hoists `linear` (the ladder's highest rung reads it)
+   and resolves the tier BELOW the log redirect, because the resolver states its
+   reason into `chat.log` and a line above the redirect tears the frame.
+
+5. **The homes (12.10 hunks A, B, C, E).** The rail carried a row that cited
+   5.24 by name and opened nothing. The group and its four rooms now come from
+   `homes.Rows`/`homes.Source`; the hud source needed no edit at all, because it
+   filters to the task prefix and navigation rows stay out of the bounded live
+   summary by construction. The group is a LID — enter expands in place, because
+   5.24 collapses it so live work keeps the top and a reader opening it wants the
+   four rows, not a fifth surface. A SERVICE row disables the composer by name
+   rather than leaning on `ComposerNone`, exactly as §5C warns: `composerMode`
+   coerces None to Chat, and this is the one row kind that coercion must not
+   reach. The main pane grows a third lens, because a notebook fact and a charter
+   are not turns of conversation and dressing them as messages would be the
+   transcript claiming they were said.
+   **Wired half only.** `Now` and `Visitor` are filled (the latter is 5.24's
+   multi-window rule and disables every verb at once). The notebook, competence
+   map, charters and service table each need a store read `chat.Backend` does not
+   declare, so they stay EMPTY rather than faked and the package draws its own
+   teaching line: an unwired room and a genuinely empty one show the same true
+   thing. **Hunks D, F, G and H are open** — the full state assembly, the seven
+   registry verb rows, the spend segment, the mic.
+
+6. **JOURNEY 6 and 9: the question rows get their keys, and the consent gate
+   gets its strip.** The rows rendered honestly and no key answered them; a digit
+   fell into the draft, so every consent, charter and spend flow degraded to
+   type-a-number-then-enter. Digits answer the numbered shape, `y`/`n` answer the
+   consent strip, arrows walk and enter takes. The cursor is the row's own glyph
+   cell promoted to the accent mark, never a band: these rows sit in a transcript
+   and a band would claim the transcript is a list. The keys are claimed only
+   where they cannot mean anything else — empty draft, no overlay, rail
+   unfocused — which is v1's guard for v1's reason. The answer carries the
+   question's own sequence, because a bare "2" is right only by luck once a
+   second question is open. One question takes one answer, marked at the
+   keystroke rather than at the post. The footer says what a bare digit does
+   right now (5.22's digit precedence), derived from exactly the state the ladder
+   consults.
+   **`consentShape`'s finding, and it is the instructive one.** It matched whole
+   labels exactly, and the real gate's options read `yes, start it` and `hold
+   it — I'll trim it first` — so the y/n strip never fired on the one question
+   5.20 rule 2 was written for. The REQUESTED SEAM the function asked for was
+   already closed and nobody had noticed: 12.9.1 put `Kind` and `Class` on
+   `store.QuestionPart`, written off the durable row by the one producer every
+   ask goes through. So the part is asked first, and the word heuristic survives
+   underneath it for producers that predate the part — reading the FIRST WORD of
+   an option, which is the only part of a label a key could ever have meant. It
+   is still not a brace-scanner: the input is the typed options column, one word
+   of one field, and never the message body.
+
+7. **JOURNEY 18: the two copy doors.** Both registry rows named bare `y`/`Y`,
+   which a composer-first surface cannot bind, so both were unrunnable; both now
+   carry a chord beside the bare key and `Entry.On` projects them. What leaves is
+   the RECORD and not the rendering — a paste wants what was said, not the
+   indents, glyphs and fold hints the dressing added — so the block keeps its
+   journal row. Two doors and not one, because 12.5.1 makes them two acts on two
+   objects. **Deliberately NOT on the footer's verb strip**: that column drops
+   lowest-priority-first (10.5.22), and two permanent rows would push a health
+   notice off an 80-column strip to advertise a key nobody presses twice a
+   session. 5.22's rule is that nothing is typed-only, not that everything is on
+   the footer.
+
+8. **13.4 finding 2, closed in one line.** `aforge chat --v2` ran the v2 surface
+   while `internal/resident`'s `resolveRoomPolicy` read only the environment, so
+   the flag alone gave v2 rooms with legacy re-homing — the exact half-pinned
+   combination that function's own comment rules out. `runChatV2` now exports the
+   variable before anything that reads it is built. `internal/resident` untouched.
+
+9. **Screenshot defect: a task room showed the task's ROOT and not the task.**
+   One word in `readNodeCmd`. A planned job's root usually says nothing at all —
+   its parts do the work and its workers do the talking — so the room drew a
+   title, a status line and nothing else. 4.6 says a task room is a view over the
+   same journal filtered to one node; the node it is filtered to is the SUBTREE
+   that node roots, because that is what "this task" means to a reader. The
+   subtree comes from the scope the rail already built, so the room and the map
+   cannot disagree and the fan-out is bounded by that scope's own cap rather than
+   by the graph. And `ctrl+r` folded the conversation's block list regardless of
+   which room was open, so inside a task room it opened rows nobody could see —
+   5.20 rule 5's UI duty is rendering receipts in the room the user is LOOKING
+   at, and the fold is the same rule as a keystroke.
+
+10. **Screenshot defect: `$0.00` after a real billed call.** Root-caused by the
+    homes lane to `tokens.AppendMoney` and fixed there (12.11). This lane pinned
+    the SEAM at the magnitude that broke it: a `$0.0017` turn spend reaching the
+    meta strip as a figure. 12.9.2 had already settled the same law for the
+    head's prose; the surface owed it too.
+
+**Findings for other lanes.**
+
+- **The rail's task-scope header is drawn three times** (screenshot
+  `task-room/02-entered.png`): the scope-back header, the selected row and the
+  detail card all say the task's title, and the divider between them vanishes.
+  `taskScope` (`chat/scope.go`) puts a `RowSurface` row 0 carrying the scope's
+  own id, which is 5.15's stated anatomy and which the homes package repeats —
+  so the duplication is in the rail's RENDERING of a scope whose first row is
+  its own surface, not in either source. Left to the rail lane.
+- **The transcript's longest wrapped lines abut the rail divider**: no gutter.
+  Layout, not content.
+- **`chat.Backend` is the narrow three-call interface by design**, and 12.10's
+  hunk D needs eight more reads. The pattern this package already uses for that
+  is `Graph` and `Rooms`: optional interfaces the concrete store satisfies
+  structurally, asserted at construction. A homes lane adding them should follow
+  it rather than widening `Backend`, which every test fake in the package
+  implements.
+- **`registry` carries `key.thread.copy-answer`/`copy-file` with chords now.**
+  A surface that binds different chords should project through `Entry.On` rather
+  than hand-correcting the row, which is the mechanism 5.22 rule 4 wants.
+
+**Still open in this territory, in priority order**: click on option rows and
+block focus (7.2 T2/T6 — no hit-testing substrate in the transcript);
+`Shell.Linker` call sites so artifact paths become clickable (13.4 T5, a pure
+call-site gap this lane did not reach); the type-ahead queue chips (C6/G6);
+`/` slash layer (C8); attachments (JOURNEY 17); 12.10 hunks D, F, G, H.
