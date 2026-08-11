@@ -1,6 +1,7 @@
 package rail
 
 import (
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -212,6 +213,83 @@ func TestSelectionIsABandWhenFocusedAndAnAccentWhenNot(t *testing.T) {
 	if !strings.HasPrefix(dimmed[2], "\x1b") || !strings.Contains(dimmed[2], tokens.GlyphAccentRail) {
 		t.Fatalf("a dimmed pane did not mark its cursor with the accent rail: %q", dimmed[2])
 	}
+}
+
+// 5.16: the identity pastel appears in the glyph and in the selection band
+// tint, and nowhere else — an accent hue never colourises text, and the band is
+// the scope's ("which room am I in"), not the row's.
+func TestIdentityLivesOnlyInTheGlyphAndTheBand(t *testing.T) {
+	v := colourView(tokens.FocusNormal)
+
+	home := New(scene())
+	home.Select(1)
+	line := copyOf(v.Render(home, ModeRail, 28, 20))[2]
+	ident := tokens.IdentityFor(idWisp).Fg(tokens.TrueColor, tokens.FocusNormal)
+	if strings.Count(line, ident) != 1 {
+		t.Fatalf("the identity pastel is not on exactly the glyph: %q", line)
+	}
+	if !strings.Contains(line, tokens.Band.Bg(tokens.TrueColor, tokens.FocusNormal)) {
+		t.Fatalf("the home band is tinted; identity answers which ROOM (5.16): %q", line)
+	}
+
+	task := entered(t)
+	task.Select(2)
+	inside := copyOf(v.Render(task, ModeRail, 28, 20))[6]
+	tint := tokens.BandFor(tokens.IdentityFor(idWisp)).Bg(tokens.TrueColor, tokens.FocusNormal)
+	if !strings.Contains(inside, tint) {
+		t.Fatalf("a task scope's band is not tinted with its identity: %q", inside)
+	}
+}
+
+// 5.16: no two ADJACENT rail cards share a hue, and a card's hue does not
+// change because a sibling appeared.
+func TestAdjacentCardsNeverShareAnIdentity(t *testing.T) {
+	a, b := collidingIDs(t)
+	src := &fakeSource{scopes: map[string]Scope{
+		HomeScopeID: {ID: HomeScopeID, Title: "aforge", Rows: []Row{
+			{ID: "home", Kind: RowSurface, Name: "aforge"},
+			{ID: a, Kind: RowTask, Name: "alpha", Life: LifeWorking},
+			{ID: b, Kind: RowTask, Name: "bravo", Life: LifeWorking},
+		}},
+	}}
+	v := colourView(tokens.FocusNormal)
+	lines := copyOf(v.Render(New(src), ModeRail, 28, 20))
+	first, second := sgrBefore(lines[2], tokens.GlyphWorking), sgrBefore(lines[3], tokens.GlyphWorking)
+	if first == "" || first == second {
+		t.Fatalf("adjacent cards share the pastel %q:\n%s", first, strings.Join(lines, "\n"))
+	}
+}
+
+// collidingIDs finds two ids the stable hash sends to the same wheel entry, so
+// the adjacency rule has something to resolve.
+func collidingIDs(t *testing.T) (string, string) {
+	t.Helper()
+	seen := map[tokens.Token]string{}
+	for i := 0; i < 4096; i++ {
+		id := "task-" + strconv.Itoa(i)
+		h := tokens.IdentityFor(id)
+		if prev, ok := seen[h]; ok {
+			return prev, id
+		}
+		seen[h] = id
+	}
+	t.Fatal("no two ids collided on an eight-hue wheel, which is impossible")
+	return "", ""
+}
+
+// sgrBefore is the colour a glyph was painted in: the SGR sequence immediately
+// preceding it on the row.
+func sgrBefore(line, glyph string) string {
+	at := strings.Index(line, glyph)
+	if at <= 0 {
+		return ""
+	}
+	head := line[:at]
+	i := strings.LastIndex(head, "\x1b[")
+	if i < 0 || !strings.HasSuffix(head, "m") {
+		return ""
+	}
+	return head[i:]
 }
 
 // 8.1.6: shape encodes the state CATEGORY and changes only at a true
