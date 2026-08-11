@@ -307,6 +307,10 @@ func (a *App) absorb(messages []store.Message) int {
 		}
 		sanitizeMessage(&message)
 		block := newMessageBlock(message, a.style, a.source)
+		// A row is born on the side of the fold this room is on. Before this
+		// the conversation's own blocks were born collapsed regardless, so a
+		// reader who had pressed ctrl+r watched every new turn arrive shut.
+		a.applyFold(block)
 		a.foldable = a.foldable || block.collapsible
 		a.transcript.Append(block)
 		appended++

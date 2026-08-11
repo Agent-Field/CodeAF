@@ -79,6 +79,10 @@ type messageBlock struct {
 	expanded    bool
 	// hidden is how many rows the fold is holding, for the expand hint.
 	hidden int
+	// hovered says the pointer is resting on this block's fold row. It paints
+	// the header one tier brighter and changes nothing else — see [Rows] and
+	// 13.14's hover law, which this is the transcript's share of.
+	hovered bool
 
 	// user marks the reader's own turn. It is the boundary the open-question
 	// count walks back to: a question stops being open the moment the reader
@@ -150,6 +154,53 @@ func (b *messageBlock) SetExpanded(open bool) bool {
 	return true
 }
 
+// Expanded is whether this block's fold is open. A block with nothing folded is
+// never "expanded": there is no fold to be on either side of.
+func (b *messageBlock) Expanded() bool { return b.collapsible && b.expanded }
+
+// isFoldRow says whether the given intra-block line is this block's disclosure
+// row — the one a click opens or closes.
+//
+// IT IS THE HEADER, AND ONLY THE HEADER, AND THE WHOLE OF IT. The `▸ 62 lines`
+// hint is a trailing CELL of the header row (blocks.Header.Hint), not a row of
+// its own, so the affordance a reader sees and the row a pointer must hit are
+// the same line by construction. Asking them to hit the eight characters of the
+// hint would be a target far narrower than the thing it stands for, which is
+// the same reason [optionAtLine] does not consult x either.
+//
+// Line 0 is the header whenever there is one — [Rows] appends it first — so
+// this needs no measurement and cannot drift from what was drawn.
+func (b *messageBlock) isFoldRow(line int) bool {
+	return b != nil && b.collapsible && b.hasHead() && line == 0
+}
+
+// SetHovered lights this block's fold row for the pointer and reports whether
+// anything moved. It changes one tier of paint and no state a keystroke can
+// read, which is what makes it legal through the hover door (13.14: nothing
+// reachable through PaneHover returns a tea.Cmd).
+func (b *messageBlock) SetHovered(on bool) bool {
+	if b == nil || b.hovered == on {
+		return false
+	}
+	b.hovered = on
+	b.measured = false
+	b.version++
+	return true
+}
+
+// hoverPaint is the styler the header is drawn with while the pointer rests on
+// it: one tier brighter on the grey ramp, hues untouched.
+//
+// It is 5.22's rule for "a control that is also telemetry — dim at rest,
+// secondary on focus" said through [tokens.Promote], the same call the rail's
+// own hovered row makes (rail/paint.go). It is a promotion and never a band,
+// because the band IS the cursor (5.16) and the transcript's cursor is not this.
+type hoverPaint struct{ base *tokens.Styler }
+
+func (h hoverPaint) Paint(text string, state blocks.State, hue blocks.Hue) string {
+	return h.base.PaintToken(text, tokens.Promote(h.base.Token(state, hue)))
+}
+
 // Rows renders the block at width, reusing the last render when the width has
 // not moved.
 //
@@ -174,7 +225,14 @@ func (b *messageBlock) Rows(width int) []string {
 	st := b.styler()
 	rows := b.rows[:0]
 	if b.hasHead() {
-		rows = append(rows, b.head.Render(width, st))
+		head := st
+		// Only the HEADER promotes, and only while the pointer is on it. The
+		// body under a hovered fold row is the record and not the affordance;
+		// brightening it too would say the reader was pointing at the words.
+		if b.hovered && b.style != nil {
+			head = hoverPaint{base: b.style}
+		}
+		rows = append(rows, b.head.Render(width, head))
 	}
 	for i := range b.segs {
 		seg := &b.segs[i]
