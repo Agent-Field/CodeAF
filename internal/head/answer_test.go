@@ -132,22 +132,22 @@ func TestAnEmptyNoteIsRefusedRatherThanReceipted(t *testing.T) {
 	}
 }
 
-// The consequence of a note not claiming the turn: a sentence carrying both a
-// durable preference and a piece of work keeps the preference AND commissions
-// the work — in one turn, which is the whole difference the loop makes. Under
-// the ladder the note tool had to hand the sentence back to a router to get the
-// work queued, and the fall-through was the only mechanism there was.
-func TestANoteBesideWorkKeepsTheFactAndStillCommissionsTheWork(t *testing.T) {
+// The consequence of a note not claiming the message: a sentence carrying both
+// a durable preference and a piece of work keeps the preference AND queues the
+// work. It used to take two brains to do that — a note on the belt, then a
+// sentinel handing the sentence to the router, which was the only thing that
+// could spawn. One loop does both in one turn, and the property under test is
+// unchanged: neither half swallows the other.
+func TestANoteBesideOtherWorkKeepsTheFactAndStillQueuesTheWork(t *testing.T) {
 	graph := openHeadStore(t)
 	seedExceptBoard(t, graph)
 	const preference = "always answer from the task result itself"
 	client := &beltClient{
 		turns: []beltTurn{
-			{calls: []ai.ToolCall{
-				beltCall("c1", beltToolNote, map[string]any{"body": preference}),
-				beltCall("c2", beltToolSpawn, map[string]any{"instruction": "rerun the scans"}),
-			}},
-			{text: "Noted, and the scans are queued."},
+			{calls: []ai.ToolCall{beltCall("c1", beltToolNote, map[string]any{"body": preference})}},
+			{calls: []ai.ToolCall{beltCall("c2", beltToolSpawn, map[string]any{
+				"instruction": "rerun the scans"})}},
+			{text: "Noted, and I'm rerunning the scans."},
 		},
 	}
 	user := postUser(t, graph, "both", "always answer from the task result itself, and rerun the scans")
@@ -163,23 +163,32 @@ func TestANoteBesideWorkKeepsTheFactAndStillCommissionsTheWork(t *testing.T) {
 		kept = kept || fact.Body == preference
 	}
 	if !kept {
-		t.Fatalf("the preference was lost: %+v", facts)
+		t.Fatalf("the preference was lost beside the work: %+v", facts)
 	}
 	commands, err := graph.PendingCommands(20)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(commands) != 1 || commands[0].Kind != store.CommandSplice {
+	if len(commands) != 1 || commands[0].Kind != store.CommandSplice ||
+		commands[0].Instruction != "rerun the scans" {
 		t.Fatalf("the work in the same sentence was swallowed: %+v", commands)
 	}
-	if commands[0].Instruction != "rerun the scans" {
-		t.Fatalf("the work did not carry the user's own words: %q", commands[0].Instruction)
+	// One sentence, one answer, and the answer is the loop's — not the note's
+	// receipt standing in for it.
+	if replies := agentRepliesAfter(t, graph, "both", user.Seq); len(replies) != 1 ||
+		replies[0].Body != "Noted, and I'm rerunning the scans." {
+		t.Fatalf("the turn spoke %d times: %+v", len(replies), replies)
 	}
 }
 
 // The other half of the same failure: a loop that could change the user's work
 // while being blind to what the user had already told it. The notebook rides in
 // its own budget, after the board, which is the floor and is never starved.
+//
+// There is one prompt now and the board's header moved with it, but the
+// ordering law it encodes is the same one and is asserted here for the reason it
+// always was: a memory block that could evict a board row would make the head
+// deny the existence of work it had described a sentence earlier.
 func TestTheControlLoopCarriesTheNotebookUnderTheBoard(t *testing.T) {
 	graph := openHeadStore(t)
 	seedExceptBoard(t, graph)
@@ -205,11 +214,18 @@ func TestTheControlLoopCarriesTheNotebookUnderTheBoard(t *testing.T) {
 	if !strings.Contains(prompt, preference) {
 		t.Fatalf("the control loop never saw the notebook:\n%s", prompt)
 	}
-	board, notebook := strings.Index(prompt, "Board (the user's live work):"), strings.Index(prompt, "Notebook (")
+	board := strings.Index(prompt, "Live board (the work you can read and act on):")
+	notebook := strings.Index(prompt, "Notebook (")
 	if board < 0 || notebook < board {
 		t.Fatalf("the notebook was written before the board: board=%d notebook=%d", board, notebook)
 	}
-	if notebookBlock := prompt[notebook:strings.Index(prompt, "Manual pages available:")]; len(notebookBlock) > notebookContextBytes+200 {
+	// The notebook block runs from its header to the clock, which is the next
+	// unconditional block under it.
+	clock := strings.Index(prompt, "\n\nnow: ")
+	if clock < notebook {
+		t.Fatalf("the notebook block has no end: notebook=%d clock=%d", notebook, clock)
+	}
+	if notebookBlock := prompt[notebook:clock]; len(notebookBlock) > notebookContextBytes+200 {
 		t.Fatalf("the notebook block is %d bytes, past its budget", len(notebookBlock))
 	}
 	for _, id := range []string{"finance", "research", "scans"} {
@@ -219,38 +235,68 @@ func TestTheControlLoopCarriesTheNotebookUnderTheBoard(t *testing.T) {
 	}
 }
 
-// The belt's grammar has to state what it can do, or the model offers to do
+// The head's grammar has to state what it can do, or the model offers to do
 // what it will not: the failure's second sentence was "I can pull the specific
 // verdict from that file if you want", an offer nothing behind it could fulfil.
+//
+// There were two prompts making this promise and they made it in different
+// vocabularies — which was the disease rather than belt-and-braces, because a
+// sentence that tripped no cue reached neither of them. One prompt now states
+// what the hands are, and every hand it names has to exist.
 func TestTheBeltAndTheRouterBothStateWhatTheyCanActuallyDo(t *testing.T) {
 	names := map[string]bool{}
 	for _, definition := range beltDefinitions() {
 		names[definition.Function.Name] = true
 	}
-	for _, name := range []string{beltToolRead, beltToolNote} {
+	// Every tool the one prompt names as a hand must be a tool the belt really
+	// offers. A prompt that promises a verb the belt does not carry is the exact
+	// shape of the failure: an offer with nothing behind it.
+	for _, name := range []string{
+		beltToolBoard, beltToolResult, beltToolPlan, beltToolRead, beltToolManual,
+		beltToolCompetence, beltToolStanding, beltToolSpending, beltToolHistory, beltToolSearch,
+		beltToolSpawn, beltToolControl, beltToolSteer, beltToolRevise, beltToolExpedite,
+		beltToolCorrect, beltToolRule, beltToolService, beltToolNote, beltToolWrite,
+		beltToolAnswerQuestion, beltToolAwait, beltToolAsk, beltToolInterrupt,
+	} {
 		if !names[name] {
 			t.Fatalf("the belt does not offer %q, so the prompt's law describes a tool that is not there", name)
 		}
-		if !strings.Contains(orchestratorPrompt, "- "+name+" ") {
-			t.Fatalf("the control prompt does not introduce %q", name)
+		if !strings.Contains(orchestratorPrompt, name) {
+			t.Fatalf("the head's prompt never names %q, so the model is not told it has that hand", name)
 		}
 	}
-	for name, prompt := range map[string]string{
-		"control": orchestratorPrompt, "router": orchestratorPrompt,
-	} {
-		if !strings.Contains(prompt, "never") && !strings.Contains(prompt, "Never") {
-			t.Fatalf("%s prompt lost its prohibitions entirely", name)
+	// And nothing is named as a hand that is not one: a verb in the prompt with
+	// no tool behind it is what the loop then offers to do and cannot.
+	for _, promised := range strings.Split(
+		strings.TrimPrefix(orchestratorHands, "The tools are your only hands, and they are the only thing that makes anything true."), "\n") {
+		for _, word := range strings.Fields(promised) {
+			word = strings.Trim(word, "(),.:;")
+			if strings.HasSuffix(word, "_question") && !names[word] {
+				t.Fatalf("the prompt names %q as a hand and the belt has no such tool", word)
+			}
 		}
 	}
-	// Values, not phrases: what is pinned is that both prompts refuse an
-	// unbacked promise and an offer to fetch what is already reachable.
-	for name, prompt := range map[string]string{
-		"control": orchestratorPrompt, "router": orchestratorPrompt,
-	} {
-		if !strings.Contains(prompt, "never offer") && !strings.Contains(prompt, "never say you will") &&
-			!strings.Contains(prompt, "never offer a capability") && !strings.Contains(prompt, "Never promise a behaviour") &&
-			!strings.Contains(prompt, "Never promise a lasting change") {
-			t.Fatalf("%s prompt no longer forbids promising what it cannot do", name)
+
+	if !strings.Contains(orchestratorPrompt, "never") && !strings.Contains(orchestratorPrompt, "Never") {
+		t.Fatal("the head's prompt lost its prohibitions entirely")
+	}
+	// Values, not phrases: what is pinned is that the prompt refuses an unbacked
+	// promise and an offer to fetch what is already reachable.
+	if !strings.Contains(orchestratorPrompt, "Never promise a behaviour you have not recorded") {
+		t.Error("the prompt no longer forbids promising a behaviour nothing recorded")
+	}
+	if !strings.Contains(orchestratorPrompt, "Never offer a route you have no tool to take") {
+		t.Error("the prompt no longer forbids offering a route it cannot take")
+	}
+	// The failure's own sentence, named in the tool that answers it: an offer to
+	// fetch what this call could have fetched already.
+	openable := ""
+	for _, definition := range beltDefinitions() {
+		if definition.Function.Name == beltToolRead {
+			openable = definition.Function.Description
 		}
+	}
+	if !strings.Contains(openable, "Never offer to fetch something you can fetch with this call right now") {
+		t.Errorf("the read tool no longer refuses the offer it exists to replace: %q", openable)
 	}
 }

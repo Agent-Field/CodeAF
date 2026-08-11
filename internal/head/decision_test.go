@@ -1,26 +1,51 @@
 package head
 
 import (
+	"context"
 	"fmt"
 	"strings"
 	"testing"
 
 	"github.com/Agent-Field/aforge-v2/internal/store"
+	"github.com/Agent-Field/agentfield/sdk/go/ai"
 )
+
+// runBelt drives one whole turn against a scripted tool loop and returns the
+// message it answered. The judgment that used to be a field on a router decision
+// is now an argument to a tool, so the fixture is a tool call rather than a JSON
+// envelope — and what is asserted underneath it did not move at all.
+func runBelt(t *testing.T, graph *store.Store, session, body string, turns ...beltTurn) (store.Message, *beltClient) {
+	t.Helper()
+	user := postUser(t, graph, session, body)
+	client := &beltClient{turns: turns}
+	if err := New(client, graph).answer(context.Background(), user); err != nil {
+		t.Fatalf("answer %q: %v", body, err)
+	}
+	return user, client
+}
+
+func beltToolTurn(id, name string, args map[string]any) beltTurn {
+	return beltTurn{calls: []ai.ToolCall{beltCall(id, name, args)}}
+}
 
 // Four faults read out in one breath are four jobs. The store still refuses a
 // multi-root subtree and nothing about that rule moved: the head journals one
 // splice per piece of work, so each compiles on its own and lands as its own
 // root, its own card and its own deliverable — which is the graph the person was
 // picturing when they typed the sentence.
+//
+// What moved is where the judgment sits. It used to be a `commands` array on a
+// terminal router decision made before anything had been read; it is now the
+// spawn tool's `orders` argument, callable after a board read. The arithmetic
+// the terminal position guarded — one splice per order, verbatim words, no
+// target — is inside the tool and is what this pins.
 func TestOneMessageNamingIndependentWorkBecomesSeveralJobs(t *testing.T) {
 	graph := openHeadStore(t)
-	user := answerWith(t, graph, "fan", "work issues 12, 41, 77 and 93 on my repo",
-		`{"reply":"On it — four of them, I'll report back as each lands.","command":null,"commands":[
-			{"kind":"splice","instruction":"work issue 12 on my repo"},
-			{"kind":"splice","instruction":"work issue 41 on my repo"},
-			{"kind":"splice","instruction":"work issue 77 on my repo"},
-			{"kind":"splice","instruction":"work issue 93 on my repo"}]}`)
+	user, _ := runBelt(t, graph, "fan", "work issues 12, 41, 77 and 93 on my repo",
+		beltToolTurn("s1", beltToolSpawn, map[string]any{"orders": []string{
+			"work issue 12 on my repo", "work issue 41 on my repo",
+			"work issue 77 on my repo", "work issue 93 on my repo"}}),
+		beltTurn{text: "On it — four of them, I'll report back as each lands."})
 
 	commands := pendingCommandsOf(t, graph)
 	if len(commands) != 4 {
@@ -49,7 +74,8 @@ func TestOneMessageNamingIndependentWorkBecomesSeveralJobs(t *testing.T) {
 		t.Fatalf("four work orders produced %d job roots: %+v", len(roots), roots)
 	}
 
-	// One sentence, one answer.
+	// One sentence, one answer. A turn that spends several provider calls is
+	// still one turn, and the person hears from it exactly once.
 	if replies := agentRepliesAfter(t, graph, "fan", user.Seq); len(replies) != 1 {
 		t.Fatalf("four jobs earned %d replies, want one: %+v", len(replies), replies)
 	}
@@ -61,8 +87,9 @@ func TestOneMessageNamingIndependentWorkBecomesSeveralJobs(t *testing.T) {
 func TestOnePlanWithManyPartsStaysOneJob(t *testing.T) {
 	graph := openHeadStore(t)
 	const ask = "plan a trip to Lisbon in October — flights, a hotel, and somewhere to eat"
-	answerWith(t, graph, "trip", ask,
-		`{"reply":"On it — I'll come back with the whole plan.","command":{"kind":"splice","target":"","instruction":"`+ask+`"}}`)
+	runBelt(t, graph, "trip", ask,
+		beltToolTurn("s1", beltToolSpawn, map[string]any{"instruction": ask}),
+		beltTurn{text: "On it — I'll come back with the whole plan."})
 
 	commands := pendingCommandsOf(t, graph)
 	if len(commands) != 1 {
@@ -72,17 +99,31 @@ func TestOnePlanWithManyPartsStaysOneJob(t *testing.T) {
 		t.Fatalf("the trip lost the user's own words: %q", commands[0].Instruction)
 	}
 
-	// A list of one is not a fan-out, it is a job; and the law the model judges
-	// by is written down where the model reads it.
+	// A list of one is not a fan-out, it is a job.
 	graphTwo := openHeadStore(t)
-	answerWith(t, graphTwo, "trip", ask,
-		`{"reply":"On it.","command":null,"commands":[{"kind":"splice","instruction":"`+ask+`"}]}`)
+	runBelt(t, graphTwo, "trip", ask,
+		beltToolTurn("s1", beltToolSpawn, map[string]any{"orders": []string{ask}}),
+		beltTurn{text: "On it."})
 	if commands := pendingCommandsOf(t, graphTwo); len(commands) != 1 ||
 		commands[0].Instruction != ask {
 		t.Fatalf("a one-entry list did not collapse to one job: %+v", commands)
 	}
-	if !strings.Contains(orchestratorPrompt, "genuinely independent") {
-		t.Error("the independence test is not stated to the model that applies it")
+
+	// And the law the model judges by is written down where the model reads it.
+	// That used to be the router's system prompt; the judgment is an argument to
+	// spawn now, so the test the model applies belongs in spawn's own
+	// description — the one string a tool-calling model is shown for it.
+	spawnDescription := ""
+	for _, definition := range beltDefinitions() {
+		if definition.Function.Name == beltToolSpawn {
+			spawnDescription = definition.Function.Description
+		}
+	}
+	if !strings.Contains(spawnDescription, "genuinely independent") {
+		t.Errorf("the independence test is not stated to the model that applies it: %q", spawnDescription)
+	}
+	if !strings.Contains(spawnDescription, "When it could be read either way it is one") {
+		t.Error("the tie-break that keeps a trip one job is no longer stated")
 	}
 }
 
@@ -93,11 +134,12 @@ func TestTooManyOrdersFallBackToOneJobCarryingTheWholeAsk(t *testing.T) {
 	graph := openHeadStore(t)
 	orders := make([]string, 0, fanOutLimit+2)
 	for index := 0; index < fanOutLimit+2; index++ {
-		orders = append(orders, fmt.Sprintf(`{"kind":"splice","instruction":"work item %d"}`, index))
+		orders = append(orders, fmt.Sprintf("work item %d", index))
 	}
 	const ask = "work every open item on the board"
-	answerWith(t, graph, "many", ask,
-		`{"reply":"On it.","command":null,"commands":[`+strings.Join(orders, ",")+`]}`)
+	runBelt(t, graph, "many", ask,
+		beltToolTurn("s1", beltToolSpawn, map[string]any{"orders": orders}),
+		beltTurn{text: "On it."})
 
 	commands := pendingCommandsOf(t, graph)
 	if len(commands) != 1 {
@@ -113,6 +155,10 @@ func TestTooManyOrdersFallBackToOneJobCarryingTheWholeAsk(t *testing.T) {
 // sentence as an adjustment of what was handed over, and everything downstream
 // is the correction path unchanged: same job, previous version in hand, and the
 // marker the workspace inheritance keys off.
+//
+// The door it comes through is the correct tool now rather than an `adjust` flag
+// on a router decision. A blunt rejection and a polite adjustment are one tool
+// because they are one event said in two registers.
 func TestPoliteAdjustmentLandsAsACorrectionOfTheDeliveredWork(t *testing.T) {
 	graph := openHeadStore(t)
 	const delivered = "Dear Mr Okafor, I am writing to formally notify you of persistent mould in the bathroom."
@@ -120,8 +166,10 @@ func TestPoliteAdjustmentLandsAsACorrectionOfTheDeliveredWork(t *testing.T) {
 		"write my landlord about the mould", delivered)
 
 	const ask = "make it warmer and less legal"
-	user := answerWith(t, graph, "polite", ask,
-		`{"reply":"Warming it up and taking the legal edge off.","command":null,"adjust":true}`)
+	user, _ := runBelt(t, graph, "polite", ask,
+		beltToolTurn("c1", beltToolCorrect, map[string]any{
+			"job": "landlord-letter", "words": ask}),
+		beltTurn{text: "Warming it up and taking the legal edge off."})
 
 	// The cue list is untouched: this sentence still matches nothing in it.
 	if cue, cued := redirectCue(ask); cued {
@@ -149,28 +197,51 @@ func TestPoliteAdjustmentLandsAsACorrectionOfTheDeliveredWork(t *testing.T) {
 		t.Fatalf("the revision lost the line that says who outranks whom:\n%s", command.Instruction)
 	}
 	reply := waitForAgentReply(t, graph, "polite", user.Seq)
-	if !strings.Contains(reply.Body, "Landlord mould letter") {
-		t.Fatalf("the receipt does not name what is being changed: %q", reply.Body)
+	if strings.TrimSpace(reply.Body) == "" || reply.CommandSeq != command.Seq {
+		t.Fatalf("the receipt is not tied to the work it changed: %+v", reply)
 	}
 }
 
-// An adjustment with nothing delivered to adjust is not an adjustment. The
-// reading hands the message back rather than inventing a target for it.
+// An adjustment with nothing delivered to adjust is not an adjustment. The tool
+// refuses it in a sentence the loop must speak to, and journals nothing —
+// where the router's `adjust` flag used to silently fall through to ordinary
+// work, the refusal is now visible and the loop has to choose the honest route.
 func TestAdjustmentWithNothingDeliveredFallsBackToOrdinaryWork(t *testing.T) {
 	graph := openHeadStore(t)
-	answerWith(t, graph, "nothing", "make it warmer",
-		`{"reply":"On it.","command":{"kind":"splice","target":"","instruction":"make it warmer"},"adjust":true}`)
+	spliceSurgeryJob(t, graph, "unstarted", "Warm letter", "write the letter")
+	user := postUser(t, graph, "nothing", "make it warmer")
+	run := &beltRun{head: New(nil, graph), user: user}
+
+	refusal, failed := run.execute(beltToolCorrect, beltArguments(t, map[string]any{
+		"job": "unstarted", "words": "make it warmer"}))
+	if !failed {
+		t.Fatalf("correcting work that delivered nothing was accepted: %s", refusal)
+	}
+	if !strings.Contains(refusal, "correction is for work that already delivered") {
+		t.Fatalf("the refusal does not say why: %q", refusal)
+	}
+	if run.acted || len(pendingCommandsOf(t, graph)) != 0 {
+		t.Fatalf("a refused correction journaled something: acted=%t commands=%+v",
+			run.acted, pendingCommandsOf(t, graph))
+	}
+
+	// The honest route the refusal points at: ordinary, untargeted, uncorrected.
+	if _, failed := run.execute(beltToolSpawn, beltArguments(t, map[string]any{
+		"instruction": "make it warmer"})); failed {
+		t.Fatal("spawn refused the work the correction handed back")
+	}
 	commands := pendingCommandsOf(t, graph)
 	if len(commands) != 1 || commands[0].Target != "" || IsCorrection(commands[0].Instruction) {
-		t.Fatalf("an unanchored adjustment did not fall through to ordinary work: %+v", commands)
+		t.Fatalf("the fall-through did not land as ordinary work: %+v", commands)
 	}
 }
 
 // "taking too long" is in the frozen phrase list and "taking forever" is not,
 // and the next phrasing is always the one nobody wrote down. The list stays
-// frozen; what it misses is read by the model, and the expedite lane it reaches
-// is the one that was already there — no question, and the receipt names the job
-// that took the pressure.
+// frozen; what it misses is now reached because there is no list standing
+// between the sentence and the tools at all. The expedite lane it reaches is the
+// one that was already there — no question, and the receipt names the job that
+// took the pressure.
 func TestUrgencyIsReachedWithoutACuePhrase(t *testing.T) {
 	graph := openHeadStore(t)
 	spliceSurgeryJob(t, graph, "old-job", "Market research", "research the market")
@@ -191,8 +262,16 @@ func TestUrgencyIsReachedWithoutACuePhrase(t *testing.T) {
 		t.Fatal("the fixture no longer exercises the gap in the phrase list")
 	}
 
-	user := answerWith(t, graph, "urgent", ask,
-		`{"reply":"Pushing the market research up the queue.","command":null,"urgent":true}`)
+	user, client := runBelt(t, graph, "urgent", ask,
+		beltToolTurn("b1", beltToolBoard, map[string]any{}),
+		beltToolTurn("e1", beltToolExpedite, map[string]any{"job": "old-job"}),
+		beltTurn{text: "Pushing the market research up the queue."})
+
+	// A message no phrase list covers still arrives with the board in hand, so
+	// the id the verb needs is there to be read rather than guessed.
+	if opening := client.openingPrompt(); !strings.Contains(opening, "- old-job | ") {
+		t.Fatalf("the uncued message reached the loop without the board:\n%s", opening)
+	}
 
 	commands := pendingCommandsOf(t, graph)
 	if len(commands) != 1 {
@@ -202,7 +281,7 @@ func TestUrgencyIsReachedWithoutACuePhrase(t *testing.T) {
 		t.Fatalf("urgency did not reach the expedite lane: %s", commands[0].Kind)
 	}
 	if commands[0].Target != "old-job" {
-		t.Fatalf("the pressure landed on %q, want the oldest thing running", commands[0].Target)
+		t.Fatalf("the pressure landed on %q, want the thing that is running", commands[0].Target)
 	}
 	if replies := agentRepliesAfter(t, graph, "urgent", user.Seq); len(replies) != 1 {
 		t.Fatalf("urgency produced %d replies, want one: %+v", len(replies), replies)
