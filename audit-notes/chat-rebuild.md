@@ -1899,3 +1899,33 @@ the raw journal with identity styling, so three distinct gaps stack visually:
    Fix lands with the Wave 3 one-tool-loop head (5.12: thinking never in home;
    one answer, once). Do not try to regex it away in the renderer — that would
    be lying about the journal; fix the speaker, not the transcript.
+
+### 13.2 User verdict on the skeleton + a P0 (2026-08-10 evening)
+
+User verdict on v2 as-is: "plainer than v1, no theme, no color, settings
+unchanged — is the proper UI coming?" Answer recorded here so priorities are
+unambiguous: the skeleton was the milestone, not the product. REPRIORITIZE:
+
+**P0 — reply sometimes never appears.** User reports: send a message, the
+thinking/awaiting state shows, then NO reply renders. Journal-vs-screen
+divergence — the reply either (a) never posts, (b) posts but the v2 poll
+misses it (cursor/session mismatch), or (c) streams and the final fold-in
+races the stream teardown. Instrument tui2/chat/poll.go + engine.go, drive the
+real Serve path in a test that ends turns in every order (post-then-teardown,
+teardown-then-post), and check the journal for the user's session (their rows
+exist — compare seq coverage against what the screen held). This outranks all
+polish: a chat that eats replies is not a chat.
+
+**P1 — the entire visual identity, pulled forward (was "polish tail")**: 13.1
+items 1 and 2 in full (tokens into renderer: markdown, tiers, hues, voice
+hierarchy, spacing; receipts/briefs/cards dressed), PLUS the status line
+formatted per 10.5.22-23 and the composer place line (5.19). v2 must look
+like the doc's product, not scaffolding, before the user drives it again.
+
+**P2 — visible parity anchors**: settings surface entry (even if it opens the
+existing settings data in the new shell), ? capability overlay (5.20 rule 3),
+esc ladder per 8.2.21. These are what make v2 feel like a product, not a demo.
+
+Waves 3 (rooms/rail/one-loop head) and 4 (chips/full settings grammar) are
+unchanged — but nothing about their ordering licenses shipping a grey wall in
+the meantime.
