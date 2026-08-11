@@ -16,7 +16,10 @@
 //	metrics.go     the responsive numbers table (seam: internal/tui2/tokens)
 //	pane.go        the renderer seam (seam: internal/tui2/blocks)
 //	caps.go        what the terminal can do, asked rather than assumed
-//	shell.go       the program model (seam: internal/tui2/golden, via Frame)
+//	osc.go         the terminal protocols spoken outside the frame — the bytes
+//	attention.go   the interruption budget (10.5.27) — who is allowed to say them
+//	shell.go       the program model (seam: internal/tui2/golden, via Frame;
+//	               seam: internal/tui2/chat, via the terminal hook contract)
 package tui2
 
 import (

@@ -2,6 +2,8 @@ package tui2
 
 import (
 	"image"
+	"os"
+	"strings"
 	"time"
 
 	tea "charm.land/bubbletea/v2"
@@ -51,6 +53,13 @@ type Options struct {
 	// motion, no cursor jumps. Same product, less motion.
 	Linear bool
 
+	// Terminal configures what the surface says to the terminal from outside
+	// the frame — title, taskbar progress, desktop notifications, prompt marks,
+	// hyperlinks. Nil takes [DefaultTerminalOptions]; a zero
+	// [TerminalOptions{}] value turns every channel off, which is what a
+	// headless driver wants and what the golden harness gets.
+	Terminal *TerminalOptions
+
 	// DB and Session are the operator plumbing the v2 entry point was given.
 	// Nothing is opened this wave — the shell only reports what it was handed,
 	// which is the honest thing for a surface that cannot yet use it.
@@ -89,6 +98,27 @@ type Shell struct {
 	hitAt image.Point
 	hitOK bool
 
+	// The terminal-protocol side. term is the operator's permissions, note
+	// decides whether an event becomes a notification, and attn/busy are the
+	// two facts the title and the taskbar are computed from.
+	//
+	// out is the pending out-of-band write queue. Everything here except the
+	// title travels beside the frame rather than inside it, because the frame
+	// is composed into a CELL BUFFER: a cell holds a rune, a style and a
+	// hyperlink, and there is nowhere in it to put a notification or a prompt
+	// mark. So those bytes are queued and flushed as a Bubble Tea command, and
+	// the queue is what makes "zero bytes when nothing changed" structural —
+	// a setter that changed nothing appends nothing, and a flush with nothing
+	// to flush is a nil command rather than an empty write.
+	//
+	// The queue exists so that two facts moving in the same message — a turn
+	// ends AND it was worth interrupting for — leave as one write.
+	term TerminalOptions
+	note notifier
+	attn int
+	busy bool
+	out  []string
+
 	// dirty and frame are the repaint gate. A pane whose content changed
 	// without the shell seeing why says so through Invalidate.
 	dirty bool
@@ -104,12 +134,19 @@ func NewShell(opts Options) *Shell {
 	if opts.Metrics != nil {
 		metrics = *opts.Metrics
 	}
+	term := DefaultTerminalOptions()
+	if opts.Terminal != nil {
+		term = *opts.Terminal
+	}
 	return &Shell{
 		metrics: metrics.sane(),
 		linear:  opts.Linear,
 		db:      opts.DB,
 		session: opts.Session,
 		focus:   LayerTranscript,
+		term:    term.sane(),
+		note:    newNotifier(),
+		caps:    Capabilities{Mux: detectMultiplexer(os.Getenv)},
 		dirty:   true,
 	}
 }
@@ -161,34 +198,213 @@ func (s *Shell) Capabilities() Capabilities { return s.caps }
 // it lands, asks here before it ticks.
 func (s *Shell) Motion() bool { return !s.linear }
 
-// Init asks the terminal the two questions whose answers change how we draw.
+// THE TERMINAL HOOK CONTRACT — internal/tui2/chat wires to exactly these five
+// members and nothing else in this file.
+//
+// The shape is deliberate. Four of the five return a tea.Cmd, because the bytes
+// they produce leave the program beside the frame and Bubble Tea owns the
+// output; a caller returns the command the way it returns any other, and a
+// command that would write nothing is nil, so `return s.SetBusy(true)` on an
+// already-busy shell is free. Nothing here starts a goroutine, sleeps, or reads
+// the clock outside the notifier, so every one of them is safe to call from
+// inside Update.
+//
+// A returned command must be returned onwards. There is no background writer
+// and no queue that drains itself: the command IS the write. Dropping one
+// drops bytes, and because the shell's own state has already moved, dropping
+// [Shell.SetBusy]'s command means the taskbar disagrees with s.busy until the
+// next transition puts them back in step. This is stated rather than defended
+// against, because the alternative — a shell that writes to the terminal from
+// outside Bubble Tea's output — is the bug that atomic frames exist to prevent.
+//
+//	Notify(kind, title, body) tea.Cmd  one of the three events reached the
+//	                                   interruption budget (10.5.27)
+//	SetAttention(n int)                how many things are waiting for the human;
+//	                                   drives the title, no command needed
+//	SetBusy(running bool) tea.Cmd      a turn is streaming / has stopped;
+//	                                   drives OSC 9;4 taskbar progress
+//	MarkPrompt() tea.Cmd               a user message was just committed to the
+//	                                   transcript (OSC 133 A)
+//	Linker() Linker                    the OSC 8 helper for trusted chrome
+//
+// What the contract deliberately does NOT offer: a way to send arbitrary bytes,
+// a fourth notification kind, a percentage for the progress bar, and a
+// notification on progress. Each of those is a door 10.5.27 closed on purpose.
+
+// Notify raises one of the three interruption-budget events.
+//
+// It returns the command that delivers it, or nil — and nil is the common
+// case, because most calls are suppressed: the terminal is focused, the
+// operator turned notifications off, or this exact event was already announced.
+// The caller does not need to know which; "I noticed something worth
+// interrupting for" is the caller's whole job, and whether that becomes an
+// interruption is this shell's.
+func (s *Shell) Notify(kind AttentionKind, title, body string) tea.Cmd {
+	s.queue(s.note.emit(s.term, s.caps, kind, title, body))
+	return s.flush()
+}
+
+// SetAttention records how many things are waiting for a human. The count
+// reaches the terminal through the title, which Bubble Tea diffs for us, so an
+// unchanged count costs no bytes and this returns no command.
+//
+// It is a count and not a list on purpose (7.2): the title is glanced at from
+// another workspace, and "is anything waiting" is the only question a glance
+// can ask.
+func (s *Shell) SetAttention(n int) {
+	if n < 0 {
+		n = 0
+	}
+	s.attn = n
+}
+
+// Attention reports the current count.
+func (s *Shell) Attention() int { return s.attn }
+
+// SetBusy says whether a turn is running. It drives OSC 9;4 taskbar progress:
+// indeterminate while something streams, cleared when it stops.
+//
+// Progress never becomes a notification (10.5.27). This is the whole of the
+// progress channel, and it is two states wide.
+func (s *Shell) SetBusy(running bool) tea.Cmd {
+	if s.busy == running {
+		return nil
+	}
+	s.busy = running
+	if s.term.Progress {
+		s.queue(progressBytes(running))
+	}
+	return s.flush()
+}
+
+// Busy reports whether the shell believes a turn is running.
+func (s *Shell) Busy() bool { return s.busy }
+
+// MarkPrompt marks the point where a user message was committed, so the
+// terminal's own "jump to previous prompt" navigates the conversation (7.2).
+//
+// SEAM — internal/tui2/chat: call this once per committed user message, at the
+// moment it is appended to the transcript.
+//
+// It is called from here and not from a block renderer, and that is forced
+// rather than chosen. A prompt mark is a position, and positions in this
+// surface are owned by the compositor's cell buffer, which carries runes,
+// styles and hyperlinks and has no room for a semantic zone — an OSC 133
+// written into a pane's rows would be parsed away during composition and never
+// reach the terminal. So the mark is written beside the frame, at the moment
+// the fact is true, and internal/tui2/blocks needed no seam for it: blocks has
+// no notion of who wrote a block anyway, so a marker hook there would have had
+// to be told, by chat, exactly what chat can tell us directly.
+//
+// The honest limit, stated where it is implemented: inside the alt screen the
+// mark lands wherever the cursor happens to be, so a terminal that anchors
+// prompt zones to a row anchors this one to the row we were on. Terminals that
+// keep a list of marks — which is what every "previous prompt" binding actually
+// walks — get exactly what they need.
+func (s *Shell) MarkPrompt() tea.Cmd {
+	if !s.term.PromptMarks {
+		return nil
+	}
+	s.queue(promptMarkBytes)
+	return s.flush()
+}
+
+// Linker returns the OSC 8 helper for trusted chrome (5.21). The result is a
+// value: a renderer can hold it, and it renders plain text when hyperlinks are
+// off, so there is no capability check at the call site.
+//
+// It links what the caller authored. It never scans content for paths to
+// linkify — internal/sanitize strips OSC 8 out of model and tool output for
+// exactly that reason, and a helper that put one back would be walking around
+// the chokepoint from the inside.
+func (s *Shell) Linker() Linker { return Linker{on: s.term.Hyperlinks} }
+
+// TerminalOptions reports the channels this shell was permitted.
+func (s *Shell) TerminalOptions() TerminalOptions { return s.term }
+
+// queue appends an out-of-band write. Empty is the ordinary answer from every
+// producer above, and appending nothing is what makes an unchanged fact cost
+// nothing.
+func (s *Shell) queue(seq string) {
+	if seq != "" {
+		s.out = append(s.out, seq)
+	}
+}
+
+// flush turns the queue into one command and empties it. One write per flush
+// rather than one per sequence: a notification at the same instant as a
+// progress change is two escapes and should be one syscall.
+func (s *Shell) flush() tea.Cmd {
+	switch len(s.out) {
+	case 0:
+		return nil
+	case 1:
+		seq := s.out[0]
+		s.out = s.out[:0]
+		return tea.Raw(seq)
+	default:
+		seq := strings.Join(s.out, "")
+		s.out = s.out[:0]
+		return tea.Raw(seq)
+	}
+}
+
+// withFlush attaches any pending out-of-band writes to a command. It keeps nil
+// meaning nil: a message that changed nothing still returns no command, which
+// is what the resize-storm test measures and what the bandwidth budget wants.
+func (s *Shell) withFlush(cmd tea.Cmd) tea.Cmd {
+	pending := s.flush()
+	switch {
+	case pending == nil:
+		return cmd
+	case cmd == nil:
+		return pending
+	default:
+		return tea.Batch(cmd, pending)
+	}
+}
+
+// Init asks the terminal the questions whose answers change how we draw, and
+// the one whose answer changes how we interrupt.
 func (s *Shell) Init() tea.Cmd { return negotiate() }
 
 // Update folds a message into the shell.
 func (s *Shell) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
-		return s, s.sizeChanged(msg.Width, msg.Height)
+		return s, s.withFlush(s.sizeChanged(msg.Width, msg.Height))
 
 	case resizeSettledMsg:
 		if msg.epoch == s.resizeEpoch {
 			s.resizeArmed = false
 			s.applySize()
 		}
-		return s, nil
+		return s, s.withFlush(nil)
 
 	case tea.KeyPressMsg:
-		return s, s.key(msg)
+		return s, s.withFlush(s.key(msg))
 
 	case tea.MouseMsg:
-		return s, s.mouse(msg)
+		return s, s.withFlush(s.mouse(msg))
+
+	case tea.FocusMsg:
+		// Focus reporting is never requested (View.ReportFocus stays false,
+		// 10.1.2), so these arrive only when something else in the terminal's
+		// history turned it on. We take the fact when it is offered and require
+		// it never: the notifier's gate treats "we were never told" as "notify".
+		s.note.setFocus(true)
+		return s, s.withFlush(nil)
+
+	case tea.BlurMsg:
+		s.note.setFocus(false)
+		return s, s.withFlush(nil)
 	}
 
 	// Everything else is the terminal answering a question we asked at start.
 	if s.caps.observe(msg) {
 		s.dirty = true
 	}
-	return s, nil
+	return s, s.withFlush(nil)
 }
 
 // View declares the frame and the terminal state that frame wants. Bubble Tea
@@ -218,6 +434,16 @@ func (s *Shell) View() tea.View {
 	// The cursor belongs to the composer, and there is no composer yet. Nil is
 	// a hidden cursor, which is also what linear mode wants (10.1.5).
 	v.Cursor = nil
+
+	// The title carries the attention count and nothing else (7.2). It is
+	// declared rather than written: Bubble Tea's renderer compares it with the
+	// last one and emits OSC 2 only when it moved, so an idle surface that
+	// re-renders sixty times a second sends the title zero times. Leaving it
+	// empty when titles are off means the renderer never emits one at all —
+	// not an empty one.
+	if s.term.Title {
+		v.WindowTitle = attentionTitle(s.term.AppName, s.attn)
+	}
 
 	return v
 }
@@ -295,6 +521,15 @@ func (s *Shell) relayout() {
 func (s *Shell) key(msg tea.KeyPressMsg) tea.Cmd {
 	switch msg.String() {
 	case "ctrl+c":
+		// Clear the taskbar first. A progress state is the one thing here that
+		// outlives the process — Bubble Tea restores the title on its way out,
+		// but nobody owns an indeterminate taskbar bar except whoever set it,
+		// and a bar left spinning after the program exits is our litter on the
+		// user's dock. Sequence, not Batch: the reset has to reach the terminal
+		// before the program stops writing to it.
+		if clear := s.SetBusy(false); clear != nil {
+			return tea.Sequence(clear, tea.Quit)
+		}
 		return tea.Quit
 	case "ctrl+o":
 		// Provisional, and named here so Wave 3 can move it deliberately: show
