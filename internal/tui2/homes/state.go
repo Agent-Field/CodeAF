@@ -135,13 +135,21 @@ import "time"
 //	               hands back a [SpendResult]; it never writes.
 //
 //	── Voice ─────────────────────────────────────────────────────────────────
-//	Mic            GAP, and the honest kind: there is no dictation subsystem in
-//	               this tree at all — no recogniser, no audio seam, no setting.
-//	               [Mic] renders the AFFORDANCE and its four states so the place
-//	               line has its slot and the one-way steer mark (5.24) exists
-//	               where it is specified; [MicUnavailable] is the state a
-//	               product with no recogniser is honestly in, and it is the zero
-//	               value for exactly that reason.
+//	Mic.State      internal/voice is SHIPPED — microphone capture and OpenRouter
+//	               speech-to-text behind voice.Recorder and voice.Transcriber,
+//	               constructed in cmd/aforge/chat.go and handed over by
+//	               (*command.Commander).VoiceRecorder / .VoiceTranscriber. The
+//	               state machine that drives them is internal/tui/voice.go's
+//	               idle / starting / recording / finalizing, and [MicState] maps
+//	               onto it one for one. A nil seam is [MicUnavailable].
+//	Mic.Target     the SELECTED rail row's rail.ComposerMode. This is the field
+//	               with no source in the old surface at all, and it is the one
+//	               5.24 legislates: nothing in internal/tui/voice.go knows
+//	               whether the draft it merges into is a chat or a steer line.
+//	Mic.Elapsed    the wiring's own clock over the recording.
+//	               NOT a gap, but worth stating: voice.Transcript.Usage.Cost is
+//	               journaled by the old surface (recordVoiceUsage) and belongs
+//	               in the spend reading, not on this cell.
 //
 //	── Everywhere ────────────────────────────────────────────────────────────
 //	Visitor        5.24's multi-window rule: a window without the resident lease

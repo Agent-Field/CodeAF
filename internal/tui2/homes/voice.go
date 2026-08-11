@@ -21,33 +21,56 @@ import (
 // person did not think they were putting it. So the mark travels with the mic,
 // and it is the composer's own prompt glyph, so the two can never disagree.
 //
-// # The gap, stated plainly
+// # What already exists, and what this adds
 //
-// There is no dictation in this tree: no recogniser, no audio seam, no setting,
-// no key. [MicUnavailable] is therefore the zero value and the state a truthful
-// product is currently in, and it draws NOTHING — a permanently dead control on
-// every composer in the product would be four hundred frames a day of an
-// affordance that lies (5.20). What this file delivers is the slot, its four
-// states, and the one-way mark, so the day a recogniser lands the surface does
-// not have to relitigate where the control goes or what it may not do.
+// The dictation stack is REAL and shipped: internal/voice owns microphone
+// capture and OpenRouter speech-to-text behind two small interfaces
+// (voice.Recorder, voice.Transcriber), cmd/aforge/chat.go constructs both, and
+// (*command.Commander).VoiceRecorder / .VoiceTranscriber hand them over. The
+// old chat drives them from internal/tui/voice.go with a four-state machine —
+// idle, starting, recording, finalizing — chunked by a VAD so partial text
+// merges into the draft while the person is still talking.
+//
+// What was missing is 5.24's half: a PLACE for the control and a rule about
+// where the words land. The old surface has neither — the mic is a key with a
+// transient hint line, it draws no cell of its own, and nothing in it knows
+// whether the draft is bound to a chat or to a steer line. So this file adds
+// the slot on the place-line row, the five states mapped 1:1 onto the machine
+// that exists, and the one-way mark. It runs nothing and records nothing.
 
-// MicState is what the mic is doing.
+// MicState is what the mic is doing. The five map onto internal/tui/voice.go's
+// four-state machine one for one, plus the refusal that surface has no state
+// for:
+//
+//	voiceIdle       → [MicIdle], or [MicUnavailable] when the seam is nil
+//	voiceStarting   → [MicStarting]
+//	voiceRecording  → [MicListening]
+//	voiceFinalizing → [MicTranscribing]
 type MicState uint8
 
 const (
-	// MicUnavailable is no recogniser. It is the zero value and it draws
-	// nothing at all. See the gap note above.
+	// MicUnavailable is no recorder or no transcriber — the nil seam the old
+	// surface answers with "mic unavailable — check System Settings › Privacy ›
+	// Microphone". It is the zero value, and it draws NOTHING: a permanently
+	// dead control on every composer in the product would be four hundred
+	// frames a day of an affordance that lies (5.20). The wiring says why in
+	// the hint line, where a sentence fits.
 	MicUnavailable MicState = iota
 	// MicIdle is ready and not listening.
 	MicIdle
+	// MicStarting is opening the device — the window in which the old machine
+	// discovers the microphone permission was refused.
+	MicStarting
 	// MicListening is taking audio now.
 	MicListening
-	// MicTranscribing is turning what it heard into text.
+	// MicTranscribing is turning what it heard into text (the machine's
+	// finalizing state).
 	MicTranscribing
-	// MicRefused is a mic that will not open here, with [Mic.Reason] saying
+	// MicRefused is a mic that will not open HERE, with [Mic.Reason] saying
 	// why: a settled row, a service room, a visitor window. It draws the idle
 	// glyph in the chrome tier and the reason beside it — the affordance
-	// stating its own limit rather than disappearing (5.20 rule 3).
+	// stating its own limit rather than disappearing (5.20 rule 3). This is the
+	// state the old surface has no room for, because it has no cell.
 	MicRefused
 )
 
@@ -56,6 +79,8 @@ func (m MicState) String() string {
 	switch m {
 	case MicIdle:
 		return "idle"
+	case MicStarting:
+		return "starting"
 	case MicListening:
 		return "listening"
 	case MicTranscribing:
@@ -103,7 +128,7 @@ func (m Mic) glyph(g tokens.GlyphSet) string {
 	switch m.State {
 	case MicListening:
 		return g.Glyph(tokens.GStepDone)
-	case MicTranscribing:
+	case MicStarting, MicTranscribing:
 		return g.Glyph(tokens.GStepRunning)
 	}
 	return g.Glyph(tokens.GStepPending)
@@ -114,7 +139,7 @@ func (m Mic) glyph(g tokens.GlyphSet) string {
 // spends amber on the one meaning.
 func (m Mic) token() tokens.Token {
 	switch m.State {
-	case MicListening, MicTranscribing:
+	case MicStarting, MicListening, MicTranscribing:
 		return tokens.ResolveToken(tokens.HueAlive, tokens.StateLive)
 	}
 	return tokens.TextTertiary

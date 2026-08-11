@@ -3390,3 +3390,48 @@ Today every construction is the zero value and draws nothing.
   no glyph outside `tokens.Vocabulary()`, and never amber.
 
 `go test -race` clean.
+
+#### 8. Correction to §4 and §5.H: voice is NOT a gap
+
+Filed as a gap above, and it is wrong. `internal/voice` is **shipped**:
+microphone capture plus OpenRouter speech-to-text behind two small interfaces
+(`voice.Recorder`, `voice.Transcriber`), with a VAD that chunks on silence, a
+`ScriptedRecorder` for headless tests, and a `guard` sweep entry for its
+goroutine. `cmd/aforge/chat.go:1289-1308` constructs both,
+`(*command.Commander).VoiceRecorder` / `.VoiceTranscriber`
+(`command.go:340-341`) hand them over, and `internal/tui/voice.go` drives them
+with a four-state machine — idle, starting, recording, finalizing — merging
+partial transcripts into the draft while the person is still talking and
+journaling `voice.Transcript.Usage.Cost` through `recordVoiceUsage`.
+
+What is actually missing is the half 5.24 legislates, and it is smaller and
+sharper than "no recogniser":
+
+1. **The mic has no cell.** It is a key with a transient hint line. There is
+   nowhere on screen that says the mic exists, which is 5.22's law broken for
+   the one input that cannot be discovered by reading.
+2. **Nothing in it knows where the words land.** `mergeVoiceText` merges into
+   the draft; no part of the stack asks whether that draft is bound to a chat or
+   to a steer line. This is the one-way problem 5.24 names, and it is a real
+   hole rather than a cosmetic one: speech carries no addressee, so dictation is
+   precisely the input that can put a sentence in a room the person did not
+   think they were addressing.
+3. **There is no refusal state.** A settled row, a service room and a visitor
+   window are all places the mic must not open, and the old machine has no state
+   for "not here" because it has no cell to render one in.
+
+`homes.MicState` is therefore mapped 1:1 onto the machine that exists —
+`voiceIdle → MicIdle` (or `MicUnavailable` on a nil seam, which is the
+"mic unavailable — check System Settings › Privacy › Microphone" case),
+`voiceStarting → MicStarting`, `voiceRecording → MicListening`,
+`voiceFinalizing → MicTranscribing` — plus `MicRefused`, which is the state the
+old surface has no room for. `Mic.Target` is the field with no source in the old
+stack at all, and it is the one that carries `↦`. The zero value still draws
+nothing, for the reason stated: an absent seam must not put a dead control on
+every composer.
+
+Adoption hunk §5.H is unchanged in shape; what changes is that the wiring
+already has everything it needs to fill `Mic.State` from
+`(*command.Commander).VoiceRecorder`/`.VoiceTranscriber` and a v2 port of
+`internal/tui/voice.go`'s state machine. `Mic.Target` comes from the selected
+rail row's `rail.ComposerMode`, and it is the only new fact.
