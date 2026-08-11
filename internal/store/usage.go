@@ -782,24 +782,40 @@ type RoomSpend struct {
 	// room's conversational cost and not its bill.
 	Shared bool
 
-	// HeadPrompt is the largest single prompt any spine call sent inside the
-	// window, which is the closest thing to the head's context occupancy the
-	// journal can currently produce.
+	// SpinePromptHighWater is the largest prompt_tokens on any single spine row
+	// inside the window. It is named for what it measures rather than for what
+	// it is wanted for, because those are not quite the same thing and the gap
+	// is the whole of what 5.9 still owes.
 	//
-	// It is honest for the head and for nothing else. A spine row is written
-	// once per provider call, so its prompt_tokens IS that call's whole
-	// context — the answering call's prompt dominates the routing and
+	// What it is wanted for: the head's context occupancy, the numerator of
+	// ctx%. Most spine rows are written one per provider call by
+	// pool.recordStructuringSpend, so such a row's prompt_tokens IS that call's
+	// whole context — and the answering call's prompt dominates the routing and
 	// compiling calls beside it, which see one instruction rather than the
-	// thread. A leaf's row is the SUM of a whole tool loop's calls, so the
-	// same maximum taken over Work rows would be a number with no referent;
-	// that is why this is measured over Spine alone.
+	// thread. For a turn that was pure conversation, this is the head's window,
+	// exactly.
 	//
-	// It is NOT 5.9's durable context figure and must never be labelled as
-	// one. 5.9 needs executors to journal window-size high-water marks, which
-	// no executor does yet; until they do, this is what the journal can say,
-	// it can only say it about the conversation, and it says nothing at all
-	// when Shared is true.
-	HeadPrompt int
+	// Where it stops being exact: three call sites journal ONE spine row for
+	// MANY calls, summing their prompts — the planner's passes
+	// (journalPlanSpend) and headless preparation and run totals. A summed
+	// prompt is not a context occupancy, so a window containing one of those
+	// makes this an upper bound. That is the safe direction for a health signal
+	// — a context gauge that errs toward alarm sends a person to look, while
+	// one that errs toward calm is why nobody could answer "why did it get
+	// dumber" — but it is an error and it is written down here rather than
+	// dressed up at the seam.
+	//
+	// It is deliberately measured over Spine alone. A leaf's row is a whole
+	// tool loop summed by construction, so the same maximum over Work rows
+	// would be a number with no referent at all.
+	//
+	// It is NOT 5.9's durable context figure and must never be labelled as one.
+	// That one needs executors to journal window-size high-water marks — the
+	// window a call actually occupied, per call, as its own fact — which no
+	// executor does yet. Until they do, this is what the journal can say, it
+	// can only say it about the conversation, and it says nothing at all when
+	// Shared is true.
+	SpinePromptHighWater int
 }
 
 // Recorded reports whether the journal has a single run to show for the
@@ -927,7 +943,7 @@ func roomSpendSince(query rowQuerier, sessionID string, sinceSeq int64) (RoomSpe
 		&spend.Work.CompletionTokens, &spend.Work.CachedTokens,
 		&spend.Spine.Runs, &spend.Spine.Cost, &spend.Spine.PromptTokens,
 		&spend.Spine.CompletionTokens, &spend.Spine.CachedTokens,
-		&spend.HeadPrompt, &elsewhere, &last,
+		&spend.SpinePromptHighWater, &elsewhere, &last,
 	); err != nil {
 		return RoomSpend{}, err
 	}
@@ -953,7 +969,7 @@ func roomSpendSince(query rowQuerier, sessionID string, sinceSeq int64) (RoomSpe
 		// ceiling and still mean anything: half a context is not a context.
 		// Two rooms in the window means the largest prompt may be the other
 		// room's, so this room says nothing rather than something borrowed.
-		spend.HeadPrompt = 0
+		spend.SpinePromptHighWater = 0
 	}
 	return spend, nil
 }
