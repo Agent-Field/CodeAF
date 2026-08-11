@@ -37,6 +37,7 @@ append is re-verified at `0f5ec5e`.
 | H8 | standing co-working notices (sweep) | plan/resident | report-only | 12.6, 12.9, 13.8 | known items get rediscovered |
 | H9 | delivery typed parts on `announceNode` | resident: one producer, both event kinds | small | 13.10 | the delivery card's artifacts stay a prose-scrape; every renderer re-derives what the producer knows |
 | H10 | plan prompt disobedience: gatherer edge + merge part | plan: two prompt/pass fixes | two scoped fixes | 13.6 (landed) | within-job width never pays; a 93s serial tail follows every ~70s parallel section |
+| H11 | the head's belt writes/controls journal nothing | head: one door per action kind | producer-side only | 13.8 f.2+f.3, 13.15 | the surface cannot show what the head did and the head cannot read it back; it denies its own work and duplicates it |
 
 ---
 
@@ -576,3 +577,57 @@ re-measure on request once either fix lands.
    everything above** — two plan-pass fixes with their own measured
    re-test offer — and supersedes step 4: 13.6 has landed, and no exec
    ceiling ask survives it (H6 addendum).
+
+---
+
+## H11 — The head's own belt actions leave no journal trace (appended 2026-08-11, task-room-record lane)
+
+**What.** When the head acts with its own belt — writing a file, issuing a
+control action — `internal/head` journals something a transcript can draw: a
+`commands` row, or an event naming the action and its target. Today it journals
+nothing at all.
+
+**Why.** 13.8 finding 2 ("Work the head does with its own tools is invisible —
+no tool row, no card, no artifact row") and finding 3 ("And so the head denies
+its own work"). 4.3 asks for inline collapsed tool-call rows *precisely* so that
+doing and claiming look different; without a journaled action they are the same
+frame, and the head's next turn has nothing to read back — in 13.8's capture it
+answered "there's no record of the file being written, and the board shows no
+work. So I've written it now for real" and wrote a second file. Both existed.
+
+**Measured at this lane's HEAD**, against the two live homes where the head
+really did write a file (`uiverify/live-homes/commission`,
+`uiverify/live-homes/steer-room`):
+
+- `commands`: **0 rows** in both.
+- `nodes`: only `root` and the bootstrap practice-loop charter — no node for the
+  write.
+- `events`, every kind present, both homes: `spine_created`, `seen_touched`,
+  `resident_watermarked`, `charter_created`, `charter_watch_advanced`,
+  `message_posted`, `usage_recorded`. Nothing else. The file is on disk and the
+  journal does not mention it.
+
+**The spawn half is already closed and is NOT part of this ask.** A splice IS
+journaled — `command_requested` → `commands` row → `command_resolved`, plus a
+system message carrying `command_seq` — and the v2 transcript has been drawing
+it as `commissioned: <the head's own reading>` since `dressCommission`. Verified
+live in this lane at `uiverify/room-shots/room-repro/01-home-commissioned.txt`.
+So the gap is exactly the belt actions that never become commands.
+
+**Why it cannot be closed at the surface.** There is nothing to read. This lane
+renders the work record from the journal and files what is not there rather than
+faking it (8.2.20); a transcript that inferred "it probably wrote a file" from a
+`usage_recorded` row would be inventing the one class of fact 5.20 rule 1 exists
+to keep honest. `internal/head` is the owner.
+
+**Shape of the fix.** The cheapest version is the one the surface is already
+waiting for: route belt writes through the same `commands` door a splice uses,
+so `dressCommission`'s row draws them with no renderer change at all. A control
+action wants the same. If a command row is too heavy for a file write, an event
+kind naming the action and its path is enough for a collapsed row plus 12.5's
+artifact reference — but the command door needs no new reader.
+
+**Size.** Producer-side only; one door per action kind. **Risk if skipped.** The
+surface stays unable to show what the head did, and the head stays unable to
+read what it did — 13.8's own summary is that these "are one wound seen from
+both sides, and closing them closes 4, 8 and 14's material half as well."

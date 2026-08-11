@@ -5206,3 +5206,180 @@ belongs to 13.13's lane and was not touched here.
 
 `make check` is green but for the standing `internal/plan` CJK
 `file name too long` failure.
+
+### 13.15 Task-room-record lane: the room read one table, and the work was in the others (535c6a5, ba9c0d6)
+
+The report, from live hands-on: "when I click a task on the right side and go
+inside it, I see nothing. No tree, no actual chat, no what-it-did, no plan,
+nothing. Maybe it shows the final answer — it doesn't show that either. It just
+remains empty."
+
+Every clause of it was true, and one of them was true for a different reason
+than the rest.
+
+**What the session actually contained.** 4.6 says a v1 task room is "a view over
+the same journal, filtered to one node", and the filter was one table:
+`NodeMessages` over the subtree the rail had already walked. A resident-run task
+barely writes into that table. Two live runs, isolated homes, deepseek-v4-flash,
+about $0.05 in total:
+
+- **A commissioned atomic job** (`room-homes/room-repro/graph.db`, "spawn a job
+  that writes three haiku about rivers into rivers.txt"). Under `task-12`:
+  EIGHT events — `subtree_spliced`, `node_claimed`, `node_started`, two
+  `usage_recorded`, `delivery_gate`, `node_completed`, `message_posted` — and
+  exactly ONE message, the last of them. Enter the room while it runs and the
+  filter answers with nothing; enter it after it settles and the filter answers
+  with one collapsed card. The head's own reading of the commission — "Here's my
+  reading: Create rivers.txt containing three haiku…", which is the PLAN — is
+  journaled with `node_id = ''`, so it belongs to the owner thread and never
+  reaches the room it is about.
+- **A real six-part job** (`room-homes/room-tree/graph.db`, spliced through
+  13.11's harness and run by the real resident). Six parts, five settled, one
+  worker under a step, one `blocks` edge. `messages` by node: **eleven rows, all
+  eleven anchored to the ROOT**, none to any part. `nodes.summary` across those
+  parts: **7,270 characters of journaled result**. The room drew the narrator's
+  progress chatter and not one word of the work.
+
+So the picture the reader described is exactly what the code does, and 12.14's
+teaching line — right when it landed, over a task seconds old — had become the
+permanent state of nearly every room, sitting over jobs that had produced a
+plan, parts, results and failures.
+
+**The reading that matters.** The record was never missing. It was in the
+columns beside the ones the room read. A node's `brief` is what it was asked to
+do, its `summary` is what it says it did, its `error` is how it failed, and its
+`status`, clock and waits-on edges are its lifecycle — and the rail has been
+drawing all of it as a tree since 13.11. One reading, two renderings, and only
+one of them had been wired. This is 12.14's general lesson one turn further:
+there, the layer that stopped drawing and the layer that never had anything to
+draw looked identical; here, a room that renders faithfully from an empty table
+and a room that is broken look identical too, and the way to tell them apart was
+again to ask what the SOURCE was handed.
+
+**What lands (`535c6a5`).** `chat/record.go` draws the same reading as a
+transcript. Three kinds of row, one order:
+
+```
+ wisp-parity · $0.04 · 6 parts
+  Bring the wisp browser to parity with the reference on four fronts.
+
+ XhrSyn  ▸ 1 line
+  The answer is clear from the sources. Two sentences:
+
+ H2 · 1 part  ▸ 2 lines
+  Now let me verify the file is consistent and complete.
+    ✓ H2Probe  ▸ 7 lines
+      I'll write three sentences on this topic…
+
+ KeyCutter
+  waits on H2
+```
+
+- **The charge, first and always**: the job's name, its telemetry and its brief.
+  It is the plan an ATOMIC job has — the one shape with no parts for a plan to be
+  made of — and it is why a room that has produced nothing yet is worth
+  entering, because it says what is being worked on while it is being worked on.
+- **One row per part, at its birth position, collapsed** behind 4.3's `▸`
+  grammar: the state glyph 5.17 assigns, the name, the clock, what it waits on,
+  and the part's own words folded. A part with nothing to say is still a row —
+  that it exists and is queued IS the record at that moment, and a room that
+  drew nothing for it would be hiding the plan.
+- **The journaled messages, unchanged**, interleaved by sequence, so 13.10's
+  delivery card stays exactly the card 13.10 built.
+
+**Four decisions worth their line.**
+
+1. **The room follows the SNAPSHOT, not only the trail.** A part that claims,
+   starts, finishes or fails journals no message at all, so a room repainting on
+   messages alone would show a job's parts frozen as they were the moment it was
+   opened — the same picture a dead surface draws.
+2. **It is a rebuild and not an append**, because those same events change rows
+   already on screen. Bounded twice (`maxSubtreeRows`, `messagePage`), gated on a
+   stamp so an unrelated journal move costs one string comparison, and done with
+   `Truncate` rather than `Reset` — `Reset` re-pins to the bottom, so a reader
+   who had scrolled back to read an early part would be thrown to the tail every
+   time any part moved, which is the one motion 8.1.6 forbids outright.
+3. **A node whose ending the trail already carries gets no second row for it**,
+   decided on columns (`isDelivery`) and never on prose. The delivery card knows
+   the money, the hue and the artifact rows a work row cannot read, so where both
+   exist the card wins. The converse matters more: `announceNode` posts a
+   delivery only for a node parented on the spine, so a sub-job — and any job
+   whose ending has not been announced yet — keeps its whole result in
+   `nodes.summary`, and that row is the literal answer to "maybe it shows the
+   final answer — it doesn't show that either."
+4. **12.14's teaching line survives, on the right question.** A room is empty
+   when the JOURNAL has nothing to say about it — no part, no message, no brief,
+   no ending — not when its trail is empty, which is nearly every real task. A
+   name and a status are not a record; they are the card, and the card is what
+   the empty room still draws beside the line explaining why nothing is under it.
+
+**And a long result folds at a sentence when it has no line break to fold at.**
+`splitHeadline` cuts at the first newline, which is the right boundary for a
+worker that wrote a headline and then its detail and NO boundary at all for one
+that wrote a single four-hundred-character paragraph. Measured at 120 columns
+before the fix: one part's unbroken result took six rows and pushed the job's
+charge and three sibling parts off the screen — 13.10's own finding ("a job that
+wrote a long answer pushed the conversation off the screen") arriving one
+surface later, against 5.9's progressive disclosure. `splitGist` cuts at the
+last sentence end before the cap, or the last word boundary when the paragraph
+has no sentence in it, and the fold keeps every word it moved (13.1 item 3).
+
+**No new store read, and no invented cell.** The nodes are the map `taskRows`
+already builds to answer parent edges, held rather than dropped, so the
+transcript and the tree are looking at one snapshot rather than two. There is
+still no per-part money: that is 13.11's read gap filed on `[Graph]`, and
+8.2.20's missing glyph is the honest answer until a per-node usage rollup
+exists.
+
+**13.8 finding 6, both halves, caught again in this lane's own frames
+(`ba9c0d6`).** The narrator's line in the six-part room was headed `job-wisp`
+while the card one column over said `wisp-parity` — 5.14's never-shown tier on
+screen, and two names for one thing on one frame. `dressWork` titled the row
+`nodeLabel(message.NodeID)`, the id's own last segment; the board already
+answers that question for the delivery card (`jobFacts`, over the same scope
+cache the rail was built from), and answers for every node-anchored row now. And
+a node under a row does not make the row a job's: a steer is a user message
+anchored to the worker it was aimed at, so the dispatch was sending the reader's
+own sentence to `dressWork` — drawn as a work card, titled with the node it was
+sent to, under a `$—`, "as if the user's sentence had a price". The branch asks
+the role first now.
+
+**13.8 finding 2 is half closed and half filed, and the halves are not the ones
+the finding assumed.** SPAWN is journaled and has been rendered all along:
+`command_requested` → a `commands` row → `command_resolved`, plus a system
+message carrying `command_seq`, which `dressCommission` draws as
+`commissioned: <the head's own reading>` — photographed live at
+`room-shots/room-repro/01-home-commissioned`. WRITE and CONTROL journal
+**nothing**: measured across both live homes where the head really did write a
+file (`live-homes/commission`, `live-homes/steer-room`), zero `commands` rows,
+zero nodes, and an `events` table whose only kinds are `spine_created`,
+`seen_touched`, `resident_watermarked`, `charter_*`, `message_posted` and
+`usage_recorded`. The file is on disk and the journal does not mention it, so
+there is nothing for a transcript to draw and inferring one would be the surface
+inventing the one class of fact 5.20 rule 1 exists to keep honest. Filed as
+**H11** on the Wave-5 handoff (`internal/head`), with the note that routing belt
+writes through the `commands` door the splice already uses needs no renderer
+change at all.
+
+**Verified live, in a pty, with 13.8's SU/SD-aware replay.** Evidence under
+`uiverify/room-shots/` (before) and `uiverify/room-shots-after/` (after), with a
+`.txt` character grid beside every `.png`, driven by `harness/run_room.py` (a
+real commission, entered mid-run and after settlement) and
+`harness/run_roomtree.py` (the six-part job of 13.11's seeder, entered at once
+and photographed for ninety-five seconds). The before/after pair worth looking
+at is `room-tree/095-room`: the same job, the same second, drawn from the same
+journal — eleven narrator rows under a raw node id, and then the charge, six
+parts, five results, a fold hint on each and the waits-on edge, all inside one
+screen.
+
+**Two things seen while looking, both outside this lane.** The rail's
+stable-order merge (7.2) puts a NEWLY arrived task card BELOW the collapsed
+homes group rather than at the top of the work, because the group was on screen
+before the task existed — `taskRows` sorts newest-first and the merge is what
+the reader actually sees, so a first commission lands in the fifth row rather
+than the fourth. And the head still says "I'll let you know when it lands" and
+then never speaks again, which is 13.10's open producer half (H9) seen from the
+room instead of from the thread.
+
+`make check`: green but for the standing `internal/plan` CJK `file name too
+long` failure, which is Linux-only and another lane's territory.
