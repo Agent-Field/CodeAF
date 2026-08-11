@@ -7,13 +7,23 @@
 # builds the real binary, gives it a disposable brain that shares nothing with
 # the user's, opens it in a real terminal, and types.
 #
-#   test/ux/run.sh                     everything
+#   test/ux/run.sh                     everything, on the v1 surface
+#   test/ux/run.sh --surface v2        the same journeys against `aforge chat --v2`
 #   test/ux/run.sh --only 01,02,05     these journeys
 #   test/ux/run.sh --suite quality     the quality suite only
 #   test/ux/run.sh --keep              leave the tmux session and home behind
 #   test/ux/run.sh --work-model SLUG   repin the model that does the work
 #   test/ux/run.sh --tag NAME          write evidence-NAME/ and report-NAME.md
+#   test/ux/gate.sh                    both surfaces, then the 11.1 parity table
 #   test/ux/tier-matrix.sh             the same journeys on two work models
+#
+# Surfaces (chat-rebuild.md 11.1): the old chat and the new one live side by
+# side until the parity checklist passes, so the suite has to be able to ask the
+# same question of both. `--surface v1` launches `aforge chat`, exactly as it
+# always did; `--surface v2` launches `aforge chat --v2`. Everything a journey
+# says and every journal assertion is identical across the two — only the
+# handful of places where 13.4 records that v2 legitimately renders something
+# elsewhere branch, and each of those branches cites the section it follows.
 #
 # Money: every model call lands in the disposable store's usage table, and the
 # cumulative total is checked between journeys against UX_CAP (default $5).
@@ -36,11 +46,13 @@ KEEP=0
 WORK_MODEL=""
 TAG=""
 REPORT_OVERRIDE=""
+SURFACE="${UX_SURFACE:-v1}"
 
 while [ $# -gt 0 ]; do
   case "$1" in
     --only) ONLY="$2"; shift 2 ;;
     --suite) SUITES=("$2"); shift 2 ;;
+    --surface) SURFACE="$2"; shift 2 ;;
     --keep) KEEP=1; shift ;;
     --cap) UX_CAP="$2"; shift 2 ;;
     # --work-model repins the model that does the WORK for this whole run. The
@@ -58,6 +70,24 @@ for tool in tmux sqlite3 python3; do
   command -v "$tool" >/dev/null || { echo "run.sh needs $tool on PATH" >&2; exit 2; }
 done
 
+# ---------------------------------------------------------------- the surface
+#
+# UX_CHAT_ARGS is the ONLY difference between the two runs: the argument vector
+# after `chat`. Both this runner and the journeys that relaunch a window build
+# their tmux command from it, so a window opened by journey 12 or 13 is the same
+# surface the suite has been talking to all along.
+#
+# Deliberately flag-only, no AFORGE_CHAT_V2 in the environment: 13.4 finding 2
+# records that `--v2` alone leaves resolveRoomPolicy on the legacy arm, and a
+# suite that quietly pinned the environment as well would measure a
+# configuration no user has. Set UX_CHAT_V2_ENV=1 to pin it anyway and see the
+# difference the finding describes.
+case "$SURFACE" in
+  v1) UX_CHAT_ARGS="" ;;
+  v2) UX_CHAT_ARGS="--v2" ;;
+  *)  echo "unknown surface $SURFACE (want v1 or v2)" >&2; exit 2 ;;
+esac
+
 # ------------------------------------------------------------------ the home
 #
 # Disposable, fresh per run, and named nothing like the user's. HOME is moved
@@ -72,11 +102,15 @@ UX_RUN="${UX_RUN:-$(mktemp -d "${TMPDIR:-/tmp}/aforge-ux-$RUN_ID-XXXX")}"
 UX_HOME="$UX_RUN/home"
 UX_STATE="$UX_HOME/state"
 UX_DB="$UX_STATE/graph.db"
+# Evidence is filed under the surface unless the caller named a tag, so a v2 run
+# can never overwrite the v1 evidence the parity table is about to compare it
+# against. .gitignore already covers evidence-*/ and report-*.md.
+: "${TAG:=$SURFACE}"
 UX_EVIDENCE="$UX_ROOT/evidence${TAG:+-$TAG}"
 UX_REPORT="${REPORT_OVERRIDE:-$UX_ROOT/report${TAG:+-$TAG}.md}"
 UX_SESSION="aforge-ux-$$"
 UX_SESSION_B="aforge-ux-$$-b"
-UX_BIN="$REPO/bin/aforge"
+UX_BIN="${UX_BIN:-$REPO/bin/aforge}"
 
 mkdir -p "$UX_STATE" "$UX_HOME/Library/LaunchAgents"
 rm -rf "$UX_EVIDENCE"; mkdir -p "$UX_EVIDENCE"
@@ -100,8 +134,13 @@ trap cleanup EXIT INT TERM
 # The one and only read of the user's real store: the API key, and the model
 # pins as a baseline. Nothing is ever written back there.
 
-if [ ! -f "$UX_REAL_HOME/.aforge/config.json" ]; then
-  echo "no $UX_REAL_HOME/.aforge/config.json — the suite needs a provider key" >&2
+# A machine that keeps its key in the environment (OPENROUTER_API_KEY, the same
+# variable aforge itself reads first) is as valid a source as a persisted
+# config.json, and refusing it made the suite unrunnable on boxes that have
+# never run `aforge` interactively. Neither source is ever written back.
+if [ ! -f "$UX_REAL_HOME/.aforge/config.json" ] \
+   && [ -z "${OPENROUTER_API_KEY:-}${OPENAI_API_KEY:-}" ]; then
+  echo "no $UX_REAL_HOME/.aforge/config.json and no OPENROUTER_API_KEY — the suite needs a provider key" >&2
   exit 2
 fi
 
@@ -109,10 +148,13 @@ python3 - "$UX_REAL_HOME/.aforge" "$UX_STATE" "$WORK_MODEL" <<'PY'
 import json, os, sys
 real, disposable = sys.argv[1], sys.argv[2]
 work_model = sys.argv[3] if len(sys.argv) > 3 else ""
-config = json.load(open(os.path.join(real, "config.json")))
-key = config.get("api_key", "")
+try:
+    config = json.load(open(os.path.join(real, "config.json")))
+except FileNotFoundError:
+    config = {}
+key = config.get("api_key", "") or os.environ.get("OPENROUTER_API_KEY", "") or os.environ.get("OPENAI_API_KEY", "")
 if not key:
-    raise SystemExit("the real config.json has no api_key")
+    raise SystemExit("no api_key in the real config.json and none in the environment")
 json.dump({"api_key": key}, open(os.path.join(disposable, "config.json"), "w"))
 os.chmod(os.path.join(disposable, "config.json"), 0o600)
 
@@ -138,8 +180,16 @@ PY
 
 # ------------------------------------------------------------------- binary
 
-echo "building $UX_BIN"
-( cd "$REPO" && go build -o bin/aforge ./cmd/aforge ) || exit 2
+# UX_SKIP_BUILD=1 with a pre-set UX_BIN runs a binary somebody else built —
+# what the parity gate wants, so both surfaces are measured on the same bytes
+# even when the tree moves underneath a long run.
+if [ "${UX_SKIP_BUILD:-0}" = "1" ]; then
+  [ -x "$UX_BIN" ] || { echo "UX_SKIP_BUILD=1 but $UX_BIN is not executable" >&2; exit 2; }
+  echo "using $UX_BIN (build skipped)"
+else
+  echo "building $UX_BIN"
+  ( cd "$REPO" && go build -o "$UX_BIN" ./cmd/aforge ) || exit 2
+fi
 
 # UX_ENV is the one description of the disposable brain. Both this runner and
 # the journeys that relaunch it (leave-and-return, second window) build their
@@ -148,15 +198,17 @@ echo "building $UX_BIN"
 UX_ENV="HOME=$UX_HOME AFORGE_HOME=$UX_STATE AFORGE_PROFILE_DIR=$UX_STATE"
 UX_ENV="$UX_ENV AFORGE_DAILY_BUDGET=$UX_CAP AFORGE_BRIEF_AFTER=0 AFORGE_PRACTICE_BUDGET=0"
 UX_ENV="$UX_ENV TERM=xterm-256color"
+[ "${UX_CHAT_V2_ENV:-0}" = "1" ] && [ "$SURFACE" = "v2" ] && UX_ENV="$UX_ENV AFORGE_CHAT_V2=1"
 
 export UX_BIN UX_HOME UX_STATE UX_DB UX_EVIDENCE UX_CAP UX_ROOT REPO UX_RUN UX_ENV
 export UX_SESSION UX_SESSION_B UX_WIDTH UX_HEIGHT
+export UX_SURFACE="$SURFACE" UX_CHAT_ARGS
 
 launch() {
   local sess="$1"; shift
   tmux kill-session -t "$sess" 2>/dev/null
   tmux new-session -d -s "$sess" -x "$UX_WIDTH" -y "$UX_HEIGHT" \
-    "env $UX_ENV $* '$UX_BIN' chat; echo AFORGE-EXITED; sleep 900"
+    "env $UX_ENV $* '$UX_BIN' chat $UX_CHAT_ARGS; echo AFORGE-EXITED; sleep 900"
   sleep 6
 }
 
@@ -189,14 +241,25 @@ wanted() {
 echo
 echo "aforge UX suite — $(date)"
 echo "  binary   $UX_BIN"
+echo "  surface  $SURFACE  (aforge chat $UX_CHAT_ARGS)"
 echo "  home     $UX_HOME  (real home untouched: $UX_REAL_HOME)"
 echo "  session  $UX_SESSION at ${UX_WIDTH}x${UX_HEIGHT}"
 echo "  cap      \$$UX_CAP"
 echo
 
 launch "$UX_SESSION"
-if ! tmux capture-pane -t "$UX_SESSION" -p | grep -q 'aforge'; then
+# The first frame, on either surface: v1 writes "aforge" into its header, v2
+# has no header at all (13.4) and signs itself on the footer's place line and
+# in the greeting. Accepting either is not a weakened check — the point of it
+# is "the program drew something of its own", and AFORGE-EXITED on the pane
+# means it did not.
+if ! tmux capture-pane -t "$UX_SESSION" -p | grep -Eq 'aforge|▌|›'; then
   echo "aforge did not draw a first frame; aborting" >&2
+  tmux capture-pane -t "$UX_SESSION" -p
+  exit 1
+fi
+if tmux capture-pane -t "$UX_SESSION" -p | grep -q 'AFORGE-EXITED'; then
+  echo "aforge exited instead of drawing a frame; aborting" >&2
   tmux capture-pane -t "$UX_SESSION" -p
   exit 1
 fi
@@ -307,9 +370,9 @@ PLIST="$(ls "$UX_HOME/Library/LaunchAgents" 2>/dev/null | tr '\n' ' ')"
 # ------------------------------------------------------------------ report
 
 {
-  echo "# aforge UX suite — which journeys are true today"
+  echo "# aforge UX suite — which journeys are true today (surface **$SURFACE**)"
   echo
-  echo "Run $(date -u '+%Y-%m-%d %H:%M UTC') · binary \`$(cd "$REPO" && git rev-parse --short HEAD)\` · wall ${WALL}s"
+  echo "Run $(date -u '+%Y-%m-%d %H:%M UTC') · binary \`$(cd "$REPO" && git rev-parse --short HEAD)\` · surface \`aforge chat $UX_CHAT_ARGS\` · wall ${WALL}s"
   echo
   echo "Real binary, real terminal (tmux ${UX_WIDTH}x${UX_HEIGHT}), real provider (OpenRouter),"
   echo "disposable brain at \`\$AFORGE_HOME\`. Models: $(python3 -c "
