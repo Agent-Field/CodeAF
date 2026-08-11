@@ -29,7 +29,13 @@ note "said: tell me in one word what colour this image is: $img"
 sleep 25
 snap answered
 
-assert_journal "select count(*) from messages where seq > $since and role='user' and attachments != '[]'" \
+# "Not the empty list" is not the same as "an attachment". A surface that never
+# captured the mention writes the JSON literal `null` into the column, which is
+# also != '[]' — and the check passed on nothing. The column has to hold a
+# populated list for this to mean what it says. v1's value is unchanged by the
+# tightening; it writes ["cas://…"].
+assert_journal "select count(*) from messages where seq > $since and role='user'
+   and attachments is not null and attachments not in ('[]','null','')" \
   'the mention is journaled as an attachment on the user message' 60
 record 'attachments recorded' "$(journal "select attachments from messages where seq > $since and role='user' order by seq limit 1")"
 
