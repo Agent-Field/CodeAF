@@ -42,6 +42,13 @@ import (
 // the way to a reader that has never heard of parts.
 const questionOptionBullet = "▸ "
 
+// questionOptionMarker is the bullet without its space. A producer that wrote
+// its options INLINE — inside the question's own sentence, separated by middots
+// rather than by newlines — used the same glyph and no trailing layout, so the
+// marker and the bullet are two spellings of one mark and the decoder needs
+// both.
+const questionOptionMarker = "▸"
+
 // QuestionParts is the render contract for one ask: the prompt as prose, and the
 // ask as types. It is the ONLY constructor callers should use, so that "which
 // blocks does a question message carry" has one answer rather than one per
@@ -112,14 +119,22 @@ func QuestionBodyFor(prompt string, options []QuestionOption, config QuestionCon
 }
 
 // QuestionPrompt recovers the prose from a body this package wrote. It is a
-// decoder, not a scanner: QuestionMessageBody and HumaneQuestionBody are the two
-// spellings that exist, both are written here, and this reverses exactly those
-// two and nothing else.
+// decoder, not a scanner: QuestionMessageBody, HumaneQuestionBody and the inline
+// numbered spelling are the spellings that exist, all of them are written in
+// this package, and this reverses exactly those and nothing else.
 //
 // It exists because the durable question row stores its RENDERED body as its
 // text, so the prompt a text part should carry has to be read back out of it —
 // and reading it back in one owned place is the difference between a codec and
 // the brace scanner this whole file exists to retire.
+//
+// 13.5 bug 6 is why the inline spelling is decoded here too. A producer that
+// wrote its choices into the SENTENCE — "…not here? ▸ 1 yes, always · ▸ 2 only
+// while I'm around" — put them somewhere a per-line rule could not reach, so the
+// text part carried the options as prose and the honest question block drew them
+// again underneath. Every producer of that shape is fixed at its own source, and
+// the decoder covers the shape as well, because a prompt that lists its own
+// options is a class of mistake rather than one caller's habit.
 func QuestionPrompt(body string) string {
 	if fence := strings.Index(body, "\n\n```\n{"); fence >= 0 {
 		body = body[:fence]
@@ -127,12 +142,58 @@ func QuestionPrompt(body string) string {
 	lines := strings.Split(strings.ReplaceAll(body, "\r\n", "\n"), "\n")
 	kept := make([]string, 0, len(lines))
 	for _, line := range lines {
-		if strings.HasPrefix(strings.TrimSpace(line), questionOptionBullet) {
+		prose, options := splitInlineOptions(line)
+		if !options {
+			kept = append(kept, line)
 			continue
 		}
-		kept = append(kept, line)
+		if prose != "" {
+			kept = append(kept, prose)
+		}
 	}
 	return strings.TrimSpace(strings.Join(kept, "\n"))
+}
+
+// splitInlineOptions separates one line's prose from a numbered-option run at
+// its end, and reports whether the run was there at all.
+//
+// The rule is the reader's rule, restated: a run begins at the first marker and
+// everything after it has to parse as numbered segments, or the line is prose
+// that merely contains a glyph and is kept whole. A line that is nothing but a
+// run yields empty prose, which is how the one-option-per-line spelling keeps
+// disappearing exactly as it always did.
+func splitInlineOptions(line string) (string, bool) {
+	first := strings.Index(line, questionOptionMarker)
+	if first < 0 {
+		return line, false
+	}
+	rest := line[first:]
+	for rest != "" {
+		rest = strings.TrimSpace(strings.TrimPrefix(rest, questionOptionMarker))
+		segment := rest
+		if next := strings.Index(rest, questionOptionMarker); next >= 0 {
+			segment, rest = rest[:next], rest[next:]
+		} else {
+			rest = ""
+		}
+		if !numberedOptionSegment(segment) {
+			return line, false
+		}
+	}
+	return strings.TrimSpace(line[:first]), true
+}
+
+// numberedOptionSegment reports that one segment reads as "N label" — the shape
+// HumaneQuestionBody writes and the shape the existing chat's numbered fallback
+// parses. The number may wear a trailing separator because both spellings of it
+// ("1." and "1") are already in the journal.
+func numberedOptionSegment(segment string) bool {
+	fields := strings.Fields(strings.TrimSpace(segment))
+	if len(fields) < 2 {
+		return false
+	}
+	number, err := strconv.Atoi(strings.TrimRight(fields[0], ".):"))
+	return err == nil && number >= 1
 }
 
 // questionBodyPayload is the shape QuestionMessageBody writes. It is declared

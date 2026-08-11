@@ -10,13 +10,38 @@ import (
 	"time"
 )
 
-const standingWatchQuestion = "Should I keep watching this when you're not here? ▸ 1 yes, always · ▸ 2 only while I'm around"
+// standingWatchQuestion is the ask, and it is ONLY the ask.
+//
+// 13.5 bug 6: this sentence used to carry its own choices — "…not here? ▸ 1 yes,
+// always · ▸ 2 only while I'm around" — and the options rode the message's typed
+// column beside them. A surface that draws the journal honestly therefore drew
+// them twice, once as the agent's prose and once as the question block, and the
+// prose copy could not be stripped by a per-line rule because it was inside the
+// sentence. The choices live in one place now: the options, which are the thing
+// a reply is validated against. standingWatchBody puts them back into a BODY for
+// the chat that reads bodies and only bodies (11.1).
+const standingWatchQuestion = "Should I keep watching this when you're not here?"
 
 // standingWatchStandDownQuestion is the mirror of the offer, asked in the same
 // words from the other side. It reuses the enable/decline option codes exactly:
 // the decision is one switch and it should read like one switch, whichever way
 // it is currently thrown.
-const standingWatchStandDownQuestion = "Nothing stands any more, and I'm still checking every few minutes with no terminal open. Keep watching? ▸ 1 keep watching · ▸ 2 stand down"
+const standingWatchStandDownQuestion = "Nothing stands any more, and I'm still checking every few minutes with no terminal open. Keep watching?"
+
+// standingWatchBody journals one standing-watch ask the way every other durable
+// question is journaled: through the one door that decides what a body carries.
+//
+// Both of these are plain choose questions — nothing is preselected and free
+// text is accepted — so the door hands back the humane numbered spelling, which
+// is what the existing chat's fallback parses and what QuestionPrompt strips
+// back off for the parts. The old chat sees the same prompt and the same two
+// numbered choices it has always seen; the new one sees the sentence once.
+func standingWatchBody(prompt string, options []QuestionOption) string {
+	allowFree := true
+	return QuestionBodyFor(prompt, options, QuestionConfig{
+		Kind: QuestionChoose, AllowFree: &allowFree,
+	})
+}
 
 // StandingWatchDecision is the journal-derived global policy state.
 type StandingWatchDecision string
@@ -101,8 +126,9 @@ func (s *Store) OfferStandingWatch(sessionID, charterID string) (bool, error) {
 		{Label: "yes, always", Value: "standing-watch:enable"},
 		{Label: "only while I'm around", Value: "standing-watch:decline"},
 	}
+	body := standingWatchBody(standingWatchQuestion, options)
 	questionPayload := agentQuestionPayload{
-		SessionID: sessionID, Text: standingWatchQuestion, OriginCharterID: charterID,
+		SessionID: sessionID, Text: body, OriginCharterID: charterID,
 		Urgency: QuestionBlocking, Options: options,
 	}
 	questionSeq, questionAt, err := appendEvent(tx, charterID, EventAgentQuestionQueued, questionPayload)
@@ -112,9 +138,25 @@ func (s *Store) OfferStandingWatch(sessionID, charterID string) (bool, error) {
 	if err := applyAgentQuestionView(tx, questionPayload, questionSeq, questionAt); err != nil {
 		return false, fmt.Errorf("offer standing watch: %w", err)
 	}
+	// This offer posts its own message inside the same transaction rather than
+	// going through surfaceQuestion, so it is the one durable question in the
+	// product that has to attach its own blocks — and it attaches them from the
+	// SAME builder, off the row it just wrote, so there is no second opinion
+	// about what a question message carries. Without them the new surface has no
+	// text part, falls back to the body, and draws the numbered rows the old chat
+	// needs as if the agent had said them.
+	parts, err := normalizeMessageParts(PartsForQuestion(AgentQuestion{
+		Seq: questionSeq, SessionID: sessionID, Text: body,
+		OriginCharterID: charterID, Urgency: QuestionBlocking, Options: options,
+	}))
+	if err != nil {
+		// Losing the blocks costs the new renderer its structure. Losing the
+		// question costs the person the request, so the question goes.
+		parts = nil
+	}
 	messagePayload := messagePayload{
-		SessionID: sessionID, Role: RoleAgent, Body: standingWatchQuestion,
-		QuestionSeq: questionSeq, Options: options,
+		SessionID: sessionID, Role: RoleAgent, Body: body,
+		QuestionSeq: questionSeq, Options: options, Parts: parts,
 	}
 	messageSeq, messageAt, err := appendEvent(tx, charterID, EventMessagePosted, messagePayload)
 	if err != nil {
@@ -252,7 +294,7 @@ func (s *Store) OfferStandingWatchStandDown(sessionID string) (bool, error) {
 		{Label: "stand down", Value: "standing-watch:decline"},
 	}
 	question := agentQuestionPayload{
-		SessionID: sessionID, Text: standingWatchStandDownQuestion,
+		SessionID: sessionID, Text: standingWatchBody(standingWatchStandDownQuestion, options),
 		Urgency: QuestionNextNaturalMoment, Options: options,
 	}
 	questionSeq, questionAt, err := appendEvent(tx, RootID, EventAgentQuestionQueued, question)
