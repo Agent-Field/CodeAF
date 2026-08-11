@@ -14,6 +14,7 @@ import (
 	"github.com/Agent-Field/aforge-v2/internal/tui2/blocks"
 	"github.com/Agent-Field/aforge-v2/internal/tui2/composer"
 	"github.com/Agent-Field/aforge-v2/internal/tui2/footer"
+	"github.com/Agent-Field/aforge-v2/internal/tui2/homes"
 	"github.com/Agent-Field/aforge-v2/internal/tui2/modelui"
 	"github.com/Agent-Field/aforge-v2/internal/tui2/palette"
 	"github.com/Agent-Field/aforge-v2/internal/tui2/placeline"
@@ -234,6 +235,11 @@ type App struct {
 
 	// The overlay plane (5.22): one door at a time, each built on first use so
 	// a window that never presses ctrl+k never pays for a palette.
+	// The four homes of 5.24, as rail scopes with one detail renderer. The lid's
+	// own state lives on the scope source beside the rows it decides.
+	homesView  *homes.View
+	homesSel   homes.Selection
+	homesPane  func(width, height int) []string
 	overlay    overlayKind
 	palette    *palette.Palette
 	capability *palette.Capability
@@ -421,6 +427,11 @@ func New(opts Options) *App {
 	// showing — a rail that drew nothing for one frame and then filled in would
 	// be the same attach-time lie the residency probe exists to avoid.
 	app.buildScope()
+	// The homes' detail renderer. It is handed to the pane as a closure so the
+	// pane never learns what a home is, and the View's own line buffer is
+	// copied out because it is valid only until the next Render.
+	app.homesView = homes.NewView(app.style)
+	app.homesPane = app.renderHomes
 
 	app.shell.SetPane(tui2.LayerTranscript, app.pane)
 	app.shell.SetPane(tui2.LayerComposer, app.composer)

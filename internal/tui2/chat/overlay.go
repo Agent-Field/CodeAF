@@ -6,6 +6,7 @@ import (
 	"github.com/Agent-Field/aforge-v2/internal/config"
 	"github.com/Agent-Field/aforge-v2/internal/registry"
 	"github.com/Agent-Field/aforge-v2/internal/tui2"
+	"github.com/Agent-Field/aforge-v2/internal/tui2/homes"
 	"github.com/Agent-Field/aforge-v2/internal/tui2/palette"
 	"github.com/Agent-Field/aforge-v2/internal/tui2/rail"
 	"github.com/Agent-Field/aforge-v2/internal/tui2/settings"
@@ -296,7 +297,10 @@ func (a *App) catalogRooms() []palette.Room {
 	for i := range rows {
 		row := rows[i]
 		switch {
-		case row.Kind == rail.RowSurface, isRoomRow(row.ID), isTaskRow(row.ID):
+		case row.Kind == rail.RowSurface, isRoomRow(row.ID), isTaskRow(row.ID),
+			homes.Owns(row.ID):
+			// The four homes are rooms and jump like rooms (5.24). The GROUP row
+			// is not one — it is a lid — so it stays out by not being Owns.
 		default:
 			continue
 		}

@@ -11,6 +11,7 @@ import (
 	"github.com/Agent-Field/aforge-v2/internal/thread"
 	"github.com/Agent-Field/aforge-v2/internal/tui2"
 	"github.com/Agent-Field/aforge-v2/internal/tui2/blocks"
+	"github.com/Agent-Field/aforge-v2/internal/tui2/homes"
 	"github.com/Agent-Field/aforge-v2/internal/tui2/rail"
 	"github.com/Agent-Field/aforge-v2/internal/tui2/tokens"
 )
@@ -55,6 +56,11 @@ const (
 	// viewCard is the lightweight preview a cursor move produces. It is built
 	// from the rail row already in hand and reads nothing.
 	viewCard
+	// viewHome is one of 5.24's four rooms, drawn by internal/tui2/homes' own
+	// View. It is the one lens whose rows are not blocks: a notebook fact and a
+	// charter are not turns of conversation, and dressing them as messages would
+	// be the transcript claiming they were said.
+	viewHome
 )
 
 // mainView is the main pane's current lens.
@@ -209,6 +215,13 @@ func (a *App) scopeKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 	case "end", "G":
 		return a.applyScope(a.railModel.Select(a.railModel.Len() - 1)), true
 	case "enter":
+		// The group is a LID and not a room: enter expands it in place rather
+		// than descending, because 5.24 collapses it so live work keeps the top
+		// of the rail and a reader opening it wants the four rows, not a fifth
+		// surface between them and the rooms.
+		if a.railModel.Selected().ID == homes.GroupRowID {
+			return a.toggleHomes(), true
+		}
 		return a.applyScope(a.railModel.Enter()), true
 	case "esc":
 		event := a.railModel.Escape()
@@ -295,10 +308,32 @@ func (a *App) bind(event rail.Event, commit bool) tea.Cmd {
 		a.composerBind = composerBind{mode: rail.ComposerDisabled,
 			note: "press enter to start a new room"}
 
-	case id == rowMoreID:
-		a.showCard(row, "notebook, self, standing and services get their rooms in a later wave")
+	case id == homes.GroupRowID:
+		a.showCard(row, "enter opens the rest of aforge")
 		a.composerBind = composerBind{mode: rail.ComposerDisabled,
-			note: "not built yet — ask aforge about it"}
+			note: "press enter to open these rooms"}
+
+	case homes.Owns(id):
+		home, _ := homes.ParseScopeID(id)
+		if commit {
+			cmd = a.applyScope(a.railModel.Enter())
+		}
+		a.showHome(homes.Selection{Home: home})
+		a.composerBind = composerBind{mode: home.Composer()}
+
+	case strings.HasPrefix(id, homes.ServiceRowPrefix):
+		a.showHome(homes.Selection{Home: homes.HomeServices, Row: id})
+		// This case MUST disable the composer rather than leaning on the row's
+		// own ComposerNone: composerMode (app.go) coerces None to Chat, which is
+		// right for its own reason and is the one row kind it must not reach.
+		a.composerBind = composerBind{mode: rail.ComposerDisabled,
+			note: "a service is not a conversation — ask aforge about it"}
+
+	case strings.HasPrefix(id, homes.BeliefRowPrefix),
+		strings.HasPrefix(id, homes.CharterRowPrefix),
+		strings.HasPrefix(id, selfRowPrefix):
+		a.showHome(homes.Selection{Home: a.scopeHome(), Row: id})
+		a.composerBind = composerBind{mode: rail.ComposerChat}
 
 	case strings.HasPrefix(id, rowRoomPrefix):
 		session := strings.TrimPrefix(id, rowRoomPrefix)
@@ -373,6 +408,7 @@ func (a *App) breadcrumb() string {
 // showThread points the main pane back at the room's own conversation.
 func (a *App) showThread() {
 	a.view = nil
+	a.pane.homes = nil
 	a.pane.transcript = a.transcript
 	a.shell.Invalidate()
 }
@@ -386,6 +422,7 @@ func (a *App) showCard(row rail.Row, note string) {
 	transcript := blocks.New(80, 24)
 	transcript.Append(cardBlock(row, note, a.style))
 	a.view = &mainView{kind: viewCard, title: row.Name, transcript: transcript}
+	a.pane.homes = nil
 	a.pane.transcript = transcript
 	a.shell.Invalidate()
 }
@@ -400,6 +437,7 @@ func (a *App) openTaskRoom(node, title string) tea.Cmd {
 		return nil
 	}
 	a.view = &mainView{kind: viewNode, node: node, title: title, transcript: blocks.New(80, 24)}
+	a.pane.homes = nil
 	a.pane.transcript = a.view.transcript
 	a.shell.Invalidate()
 	return a.readNodeCmd(node, 0)
@@ -709,4 +747,95 @@ func (a *App) applySteer(result steerResultMsg) {
 		}
 	}
 	a.refresh()
+}
+
+// -- the homes (5.24) ----------------------------------------------------------
+
+// selfRowPrefix is what the self room's route rows are keyed under. It is
+// spelled here rather than exported from internal/tui2/homes because the routes
+// are that package's own vocabulary and this side only needs to recognize one
+// prefix; a constant it exported would be a second name for one string.
+const selfRowPrefix = "self/"
+
+// showHome points the main pane at one of the four rooms.
+//
+// It is the third sibling of showThread and showCard, and it is a pane swap
+// rather than a mode: the homes View draws its own rows, so what changes is
+// which renderer the main pane is holding and nothing about how the surface
+// behaves. Every key that worked on a task scope works here unchanged, which is
+// the whole point of the homes being rail scopes rather than pages (5.24).
+func (a *App) showHome(sel homes.Selection) {
+	a.homesSel = sel
+	a.view = &mainView{kind: viewHome, title: sel.Home.Word()}
+	a.pane.transcript = nil
+	a.pane.homes = a.homesPane
+	a.shell.Invalidate()
+}
+
+// scopeHome is which home the rail is currently inside, for a member row that
+// could belong to more than one of them.
+func (a *App) scopeHome() homes.Home {
+	if a.railModel == nil {
+		return a.homesSel.Home
+	}
+	if home, ok := homes.ParseScopeID(a.railModel.Scope().ID); ok {
+		return home
+	}
+	return a.homesSel.Home
+}
+
+// toggleHomes opens or closes 5.24's collapsed group and rebuilds the rail
+// around it.
+//
+// The lid's state belongs to this side rather than to internal/tui2/homes,
+// exactly as that package's State field says: it is the RAIL's state, and who
+// remembers it is the model that owns the cursor.
+func (a *App) toggleHomes() tea.Cmd {
+	if a.source == nil || a.railModel == nil {
+		return nil
+	}
+	a.source.homes.Expanded = !a.source.homes.Expanded
+	a.source.refresh(a.journal, true)
+	a.railModel.Refresh()
+	a.refresh()
+	return nil
+}
+
+// renderHomes draws the selected home's detail pane.
+//
+// The View's returned slice aliases its own buffer and is valid only until the
+// next Render, so the rows are copied — the same price the bounded HUD pays for
+// the same reason (app.go's hudRows).
+func (a *App) renderHomes(width, height int) []string {
+	if a.homesView == nil || a.source == nil || width <= 0 || height <= 0 {
+		return nil
+	}
+	rows := a.homesView.Render(a.source.homes, a.homesSel, width, height)
+	out := make([]string, len(rows))
+	copy(out, rows)
+	return out
+}
+
+// refreshHomes keeps the homes' facts current on the cycles the journal moved.
+//
+// Two of 5.24's fields are wired and the rest are the reads named in
+// internal/tui2/homes' state.go, which this surface does not yet make: the
+// notebook, the competence map, the charters and the service table each need a
+// store read this Backend does not declare. They are left EMPTY rather than
+// faked, and the package renders an empty room as its own teaching line — so an
+// unwired room and a genuinely empty one show the same true thing, which is the
+// property that lets this land in halves.
+//
+// Visitor is wired because it is 5.24's multi-window rule and it disables every
+// verb at once: a window that cannot act must not offer to.
+func (a *App) refreshHomes() {
+	if a.source == nil {
+		return
+	}
+	a.source.homes.Now = a.now()
+	a.source.homes.Visitor = ""
+	if a.residency.Visitor {
+		a.source.homes.Visitor = "visitor window — only the resident may act"
+	}
+	a.source.homeSource.SetState(a.source.homes)
 }

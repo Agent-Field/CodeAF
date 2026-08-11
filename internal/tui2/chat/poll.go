@@ -267,6 +267,7 @@ func (a *App) refreshScope(journal int64) {
 	// Delivery and failure are read off the rebuilt board, here, because this is
 	// the one moment the lifecycles moved.
 	a.noticeWork()
+	a.refreshHomes()
 	a.railModel.Refresh()
 	if a.hudModel != nil {
 		a.hudModel.Refresh()
