@@ -511,8 +511,9 @@ func (s *scopeSource) taskRows(snapshot store.Snapshot, usage map[string]store.J
 		if len(rows) >= maxTaskRows {
 			break
 		}
-		rows = append(rows, s.taskCard(root, byID, children, usage, waits, asks, now))
-		s.tasks[rowTaskPrefix+root.ID] = s.taskScope(root, byID, children, waits, asks, now)
+		card := s.taskCard(root, byID, children, usage, waits, asks, now)
+		rows = append(rows, card)
+		s.tasks[rowTaskPrefix+root.ID] = s.taskScope(card, root, byID, children, waits, asks, now)
 	}
 	return rows
 }
@@ -564,20 +565,34 @@ func (s *scopeSource) taskCard(root store.Node, byID map[string]store.Node,
 // taskScope is the room behind a card: the orchestrator surface, then the plan
 // steps and workers as an indented tree with the waits-on structure visible
 // (5.15).
-func (s *scopeSource) taskScope(root store.Node, byID map[string]store.Node,
+//
+// ROW 0 IS THE CARD, RE-KINDED. It was built here from the node a second time,
+// and the two builders did not know the same things: the card falls back to
+// "1 part running" when the root itself says nothing (13.3.3) and carries the
+// cost, the elapsed and the atomic mark, and this one carried
+// nodeStatusLine(root) and no telemetry at all. On a job root — which "usually
+// carries no status of its own worth showing", as taskCard says in its own
+// comment — that difference is the whole row: a screenshot of an entered atomic
+// task showed a room whose surface row was a bare name, under a card that had
+// just said "1 part running · 1s · atomic" one keystroke earlier.
+//
+// Entering a task must never know LESS about it than the card you entered from.
+// 5.15 makes the card a PREVIEW of the room ("selecting a task card shows a
+// preview of that task"), and a preview that outranks the thing it previews is
+// the affordance lying in the one direction nobody checks. So the card is the
+// row, and the only thing that changes is what it IS here: a scope's
+// conversational surface rather than a member of the scope above.
+func (s *scopeSource) taskScope(card rail.Row, root store.Node, byID map[string]store.Node,
 	children map[string][]string, waits map[string][]string,
 	asks map[string]int, now time.Time) rail.Scope {
 
+	surface := card
+	surface.Kind = rail.RowSurface
+	surface.Depth = 0
+	surface.Composer = composerFor(root, children)
+
 	rows := make([]rail.Row, 0, 8)
-	rows = append(rows, rail.Row{
-		ID:       rowTaskPrefix + root.ID,
-		Kind:     rail.RowSurface,
-		Name:     s.label[root.ID],
-		Status:   nodeStatusLine(root),
-		Composer: composerFor(root, children),
-		Life:     lifeOf(root),
-		Seed:     root.ID,
-	})
+	rows = append(rows, surface)
 	var walk func(id string, depth int)
 	walk = func(id string, depth int) {
 		kids := append([]string(nil), children[id]...)
