@@ -132,10 +132,14 @@ func TestCrossSessionWorkIsMarkedRatherThanHidden(t *testing.T) {
 			t.Fatalf("board provenance disagrees with the snapshot's: %q", line)
 		}
 	}
-	// And both prompts say what the marker means, or it is four bytes of noise.
-	if !strings.Contains(orchestratorPrompt, `"elsewhere"`) ||
-		!strings.Contains(orchestratorPrompt, `"elsewhere"`) {
+	// And the one prompt says what the marker means, or it is four bytes of
+	// noise. There were two prompts saying it in two registers; there is one
+	// now, which is one place for it to go missing rather than two.
+	if !strings.Contains(orchestratorPrompt, `"elsewhere"`) {
 		t.Error("the marker is rendered but never explained to the model")
+	}
+	if !strings.Contains(orchestratorPrompt, "the receipt for a change lands where the job began") {
+		t.Error("the prompt no longer says why the window matters")
 	}
 	// Work with no session at all — the resident's, a charter's — is nobody's
 	// window and must never be marked as another person's.

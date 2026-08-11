@@ -1660,7 +1660,18 @@ func (h *Head) boardRowsAt(sessionID, query, status, id string, now time.Time) (
 		if !beltAddressable(candidate.Node) {
 			continue
 		}
-		row := boardRow{node: candidate.Node, age: candidate.Age,
+		age := strings.TrimSpace(candidate.Age)
+		if age == "" {
+			// The search paths carry an age; the plain enumeration does not, and
+			// the head was handed an ordering it could not read as one — asked
+			// "what did you do yesterday" with no way to tell yesterday from an
+			// hour ago. The age is coarse on purpose, so a row does not rewrite
+			// itself between two messages the way a running clock would.
+			if settled := store.AgeLabel(candidate.Node.FinishedAt, now); settled != "" {
+				age = "finished " + settled
+			}
+		}
+		row := boardRow{node: candidate.Node, age: age,
 			elsewhere: crossSession(candidate.Node, sessionID),
 			waits:     waits[candidate.Node.ID],
 			result:    firstLine(h.jobResult(candidate.Node))}
@@ -1723,28 +1734,48 @@ func (h *Head) recalledCandidates(query string) ([]store.SurgeryTarget, error) {
 func boardEnumeration(nodes []store.Node, byID map[string]store.Node) []store.SurgeryTarget {
 	roots := make([]store.Node, 0, len(nodes))
 	for _, node := range nodes {
-		if node.ID == store.RootID || node.Folded || !beltAddressable(node) {
+		if node.ID == store.RootID || !beltAddressable(node) {
 			continue
 		}
-		if node.Parent == store.RootID || byID[node.Parent].Group == store.TerritoryGroup {
+		// A fold root is packed history: reachable, and last in line for the
+		// budget. Dropping it is how a job the retrospective tidied away became
+		// invisible to the one read that is supposed to show the workforce.
+		if node.Folded && !node.FoldRoot {
+			continue
+		}
+		// boardJobRoot's own rule, and it must be that rule rather than a second
+		// spelling of it: a node whose parent is not in the snapshot at all is a
+		// root, because there is nothing to attribute it to and dropping it is
+		// never an option. A job that split and continued elsewhere is exactly
+		// that shape, and a board that omits it is the one reality the head must
+		// never be handed.
+		if boardJobRoot(node, byID) {
 			roots = append(roots, node)
 		}
 	}
 	rank := func(node store.Node) int {
-		switch node.Status {
-		case store.Running, store.Claimed:
+		switch {
+		case node.Status == store.Running || node.Status == store.Claimed:
 			return 0
-		case store.Pending:
+		case node.Status == store.Pending:
 			return 1
-		case store.Failed:
-			return 2
-		default:
+		case node.FoldRoot:
+			// Packed history: reachable, but last in line for the budget.
 			return 3
+		default:
+			return 2
 		}
 	}
 	sort.SliceStable(roots, func(i, j int) bool {
-		if ri, rj := rank(roots[i]), rank(roots[j]); ri != rj {
+		ri, rj := rank(roots[i]), rank(roots[j])
+		if ri != rj {
 			return ri < rj
+		}
+		if ri >= 2 {
+			// Settled work is ordered by when it settled, because the question it
+			// answers is "what happened", and creation order answers a different
+			// one.
+			return roots[i].FinishedAt.After(roots[j].FinishedAt)
 		}
 		return roots[i].CreatedSeq > roots[j].CreatedSeq
 	})
@@ -1758,6 +1789,16 @@ func boardEnumeration(nodes []store.Node, byID map[string]store.Node) []store.Su
 // boardRowMatches reads the class off the job as a whole rather than off its
 // root node, because "the running ones" means jobs with somebody working on
 // them, not jobs whose root happens to carry a running status.
+// boardRowMatches reads the class off the job as a whole rather than off its
+// root node, because "the running ones" means jobs with somebody working on
+// them, not jobs whose root happens to carry a running status.
+//
+// The unnarrowed board says everything, settled work included, and that is not
+// laxness — it is the one thing the board must never do, which is omit a job the
+// person can see. Live work leads and the freshest history follows it, so the
+// budget drops the oldest settled row rather than the job running right now;
+// what a settled row is FOR is that "what did you find?" and "what did you do
+// yesterday" can be answered without spending a call to discover an id.
 func boardRowMatches(row boardRow, class string) bool {
 	switch class {
 	case classRunning:
@@ -1767,8 +1808,7 @@ func boardRowMatches(row boardRow, class string) bool {
 	case classFailed:
 		return row.failed > 0 || row.node.Status == store.Failed
 	default:
-		return row.running > 0 || row.queued > 0 || row.failed > 0 ||
-			classOpen(row.node.Status) || row.node.Status == store.Failed
+		return true
 	}
 }
 

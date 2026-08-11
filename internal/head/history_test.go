@@ -39,10 +39,25 @@ func TestSnapshotRowsCarryTheirAge(t *testing.T) {
 	graph := openHeadStore(t)
 	seedResultBoard(t, graph)
 	board := New(nil, graph).boardFor("age", "", nil, time.Now().Add(3*time.Hour))
-	if !strings.Contains(board, "finance-close | done | close the finance books for Q3 | finished 3h ago") {
+	// The board was sorted by time and never labelled by it, so the head was
+	// handed an ordering it could not read as one and asked "what did you do
+	// yesterday" with no way to tell yesterday from an hour ago. The age is
+	// coarse on purpose: a row must not rewrite itself between two messages the
+	// way a running clock would.
+	settled := ""
+	unsettled := ""
+	for _, line := range strings.Split(board, "\n") {
+		switch {
+		case strings.HasPrefix(line, "- finance-close |"):
+			settled = line
+		case strings.HasPrefix(line, "- line-scans |"):
+			unsettled = line
+		}
+	}
+	if !strings.Contains(settled, "finished 3h ago") {
 		t.Fatalf("a settled row carries no age:\n%s", board)
 	}
-	if strings.Contains(board, "line-scans | pending | scan the lines | finished") {
+	if strings.Contains(unsettled, "finished") {
 		t.Fatalf("work that has not finished was given a finish age:\n%s", board)
 	}
 }
