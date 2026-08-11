@@ -50,7 +50,10 @@ fi
 # above.
 if is_v2; then
   record 'meta strip' "$(pane | tail -4 | grep -E '\$|ctx' | head -1 | sed 's/^ *//')"
-  record 'model chip on reply headers' "$(pane | grep -Eo 'aforge · [^ ]+' | tail -1)"
+  # The reply header is the chip's other home (message.go:297-300, "aforge ·
+  # <model word>"). Record the whole header row rather than a match, so the
+  # evidence shows what was there when the meta cell is not.
+  record 'last reply header' "$(pane | grep -E '^aforge' | tail -1 | sed 's/ *$//')"
 elif pane | head -1 | grep -q '»'; then
   record 'header' "boost pin visible in the header glance: $(pane | head -1 | grep -o 'talk »[^·]*')"
 fi

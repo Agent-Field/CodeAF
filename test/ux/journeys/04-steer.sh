@@ -4,6 +4,13 @@ source "$(dirname "${BASH_SOURCE[0]}")/../lib.sh"
 journey_is 'J4 Steer running work — words reach running workers; words arriving after landing are called out, not eaten'
 
 expect_nodes 1
+# Whether a steer becomes a journaled redirect COMMAND or is absorbed by the
+# head into a plain reply is a model decision, and it flips between runs on the
+# same surface: a paired re-run for the parity gate had v1 journal nothing and
+# v2 journal an applied redirect, the exact opposite of the run before it. So a
+# v1/v2 disagreement on this journey is evidence of nothing until it repeats —
+# read it beside a re-run before calling it a surface gap.
+note 'this journey is head-nondeterministic: the redirect command appears on some runs and not others, on both surfaces'
 since="$(mark)"
 
 say "write a 6-verse poem about mountains, one verse at a time, into a file"
