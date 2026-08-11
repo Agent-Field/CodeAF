@@ -12,5 +12,5 @@ aforge [cut off — output cap]
 ~/aforge-v2
 ›  Type a message
 
-  claude-k3 · $— · — ctx
+  voice claude-k3 · $— · — ctx
 ctrl+c stop or quit · alt+enter insert newline · ‹ untitled room · ? help

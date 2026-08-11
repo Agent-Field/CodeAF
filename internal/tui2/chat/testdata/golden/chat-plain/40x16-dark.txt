@@ -12,5 +12,5 @@
 ~/aforge-v2
 ›  Type a message
 
-  claude-k3 · $— · — ctx
+  voice claude-k3 · $— · — ctx
 ? help
