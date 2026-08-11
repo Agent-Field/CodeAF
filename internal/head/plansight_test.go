@@ -292,12 +292,20 @@ func TestTheBeltPromptCarriesTheConversation(t *testing.T) {
 	if !strings.Contains(opening, "start the northern market work please") {
 		t.Fatalf("the belt could not see what the user asked for:\n%s", opening)
 	}
-	// The board is still the floor, and it is still first.
-	if board := strings.Index(opening, "Board (the user's live work):"); board != 0 {
-		t.Fatalf("the conversation displaced the board from the top of the prompt: board at %d", board)
+	// The board is still the floor and is still written before the notebook, so
+	// memory can crowd out nothing. What changed is what leads: the append-only
+	// thread does, because it is the one block that only ever appends and every
+	// byte before its extension is reused (12.4.1). The board is volatile and
+	// belongs under it, not above it.
+	if !strings.HasPrefix(opening, "Recent thread before this message:\n") {
+		t.Fatalf("the append-only block is no longer first:\n%s", opening)
 	}
-	if strings.Index(opening, "\n\nRecent thread before this message:") <
-		strings.Index(opening, "\n\nNotebook (durable memory") {
-		t.Fatalf("the thread crowded the notebook down the prompt:\n%s", opening)
+	board := strings.Index(opening, "\n\nLive board (the work you can read and act on):")
+	notebook := strings.Index(opening, "\n\nNotebook (durable memory")
+	if board < 0 || notebook < 0 {
+		t.Fatalf("the prompt lost the board or the notebook:\n%s", opening)
+	}
+	if board > notebook {
+		t.Fatalf("the notebook crowded the board down the prompt: board=%d notebook=%d", board, notebook)
 	}
 }

@@ -19,11 +19,13 @@ func TestRouterPromptCarriesAClockBelowTheVolatileFloor(t *testing.T) {
 	prompt := routerPrompt(t, graph, "clock", "what did you do yesterday")
 
 	clock := strings.Index(prompt, "\nnow: ")
-	floor := strings.Index(prompt, "\n\nLive graph snapshot:")
+	floor := strings.Index(prompt, "\n\nLive board (the work you can read and act on):")
 	message := strings.Index(prompt, "\n\nCurrent user message (verbatim):")
 	switch {
 	case clock < 0:
-		t.Fatalf("the router prompt carries no clock:\n%s", prompt)
+		t.Fatalf("the prompt carries no clock:\n%s", prompt)
+	case floor < 0:
+		t.Fatalf("the prompt carries no board:\n%s", prompt)
 	case clock < floor:
 		t.Fatalf("the clock sits above the volatile floor: clock=%d floor=%d", clock, floor)
 	case clock > message:
@@ -35,30 +37,46 @@ func TestRouterPromptCarriesAClockBelowTheVolatileFloor(t *testing.T) {
 }
 
 // And the other half: a settled row says when it settled.
+//
+// Which row that is has moved. The board enumerates work that is moving, so a
+// job that finished cleanly is no longer a row on it at all and its age travels
+// with the read that does reach it — the deep slice the question buys, and the
+// aimed board read behind it. The claim is unchanged: a reader can tell how old
+// the thing they are being told about is, and work that has not finished is
+// never given a finish age.
 func TestSnapshotRowsCarryTheirAge(t *testing.T) {
 	graph := openHeadStore(t)
 	seedResultBoard(t, graph)
-	board := New(nil, graph).boardFor("age", "", nil, time.Now().Add(3*time.Hour))
-	// The board was sorted by time and never labelled by it, so the head was
-	// handed an ordering it could not read as one and asked "what did you do
-	// yesterday" with no way to tell yesterday from an hour ago. The age is
-	// coarse on purpose: a row must not rewrite itself between two messages the
-	// way a running clock would.
-	settled := ""
-	unsettled := ""
-	for _, line := range strings.Split(board, "\n") {
-		switch {
-		case strings.HasPrefix(line, "- finance-close |"):
-			settled = line
-		case strings.HasPrefix(line, "- line-scans |"):
-			unsettled = line
-		}
+	head := New(nil, graph)
+
+	deep, opened := head.renderDeep("close the finance books for Q3", "")
+	if !opened["finance-close"] {
+		t.Fatalf("the settled job was never opened:\n%s", deep)
 	}
-	if !strings.Contains(settled, "finished 3h ago") {
-		t.Fatalf("a settled row carries no age:\n%s", board)
+	if !strings.Contains(deep, "- finance-close | done | Finance close | finished ") {
+		t.Fatalf("a settled row carries no age:\n%s", deep)
 	}
-	if strings.Contains(unsettled, "finished") {
-		t.Fatalf("work that has not finished was given a finish age:\n%s", board)
+	if strings.Contains(deep, "line-scans") {
+		t.Fatalf("work that has not finished was opened as though it had:\n%s", deep)
+	}
+
+	// The board's own rows carry an age too, on the read that reaches settled
+	// work, and the row for work that has not finished carries no finish age.
+	rows, err := head.boardRows("age", "close the finance books", "", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	board := renderBoard(rows)
+	if !strings.Contains(board, "- finance-close | ") || !strings.Contains(board, "ago") &&
+		!strings.Contains(board, "just now") {
+		t.Fatalf("an aimed board read lost the row's age:\n%s", board)
+	}
+	live, err := head.renderTurnBoard("age", "", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(live, "finished") {
+		t.Fatalf("work that has not finished was given a finish age:\n%s", live)
 	}
 }
 

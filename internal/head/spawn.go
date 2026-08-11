@@ -43,6 +43,14 @@ func (run *beltRun) spawn(args map[string]any) (string, bool) {
 	}
 
 	reflex := beltBool(args, "reflex")
+	// The opt-out from learned know-how. It is a reading of what a sentence MEANT
+	// — "don't use the template this time", "plan this one properly", "start over
+	// on this" are all the same intent and no phrase list will hold them — and it
+	// has to be made here or it is made by a list somewhere downstream that has
+	// to be taught every spelling. The field has existed on the command, migrated,
+	// replayed and been consumed by the craft mind all along; between the router's
+	// death and this argument, nothing a person could say reached it.
+	fresh := beltBool(args, "fresh")
 	after := strings.TrimSpace(beltString(args, "after"))
 	if after != "" {
 		// Target on a splice means "the prior work this one continues", which is
@@ -95,6 +103,7 @@ func (run *beltRun) spawn(args map[string]any) (string, bool) {
 			SessionID:   run.user.SessionID,
 			Kind:        store.CommandSplice,
 			Reflex:      asReflex,
+			Fresh:       fresh,
 			Target:      after,
 			Instruction: instruction,
 			Attachments: append([]string(nil), run.user.Attachments...),

@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/Agent-Field/aforge-v2/internal/store"
+	"github.com/Agent-Field/agentfield/sdk/go/ai"
 )
 
 // "We don't target enterprise any more" used to land BESIDE the belief it
@@ -21,9 +22,17 @@ func TestCorrectingABeliefRetiresItInsteadOfAccumulatingBesideIt(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	client := &fakeClient{responses: []string{
-		`{"reply":"Got it — small teams from here.","command":null,"remember":{"scope":"domain:positioning","kind":"fact","body":"small teams are the primary segment, not enterprise","replaces":` +
-			itoa(stale.Seq) + `}}`,
+	// The capture used to be a field on a routing decision; it is the note tool's
+	// `replaces` argument now, written by the party that can see the numbered
+	// notebook the new belief contradicts. Everything on the far side of it —
+	// which line retires, how, and under whose origin — is unchanged.
+	client := &beltClient{turns: []beltTurn{
+		{calls: []ai.ToolCall{beltCall("c1", beltToolNote, map[string]any{
+			"scope": "domain:positioning", "kind": "fact",
+			"body":     "small teams are the primary segment, not enterprise",
+			"replaces": stale.Seq,
+		})}},
+		{text: "Got it — small teams from here."},
 	}}
 	user, err := graph.PostMessage(store.Message{
 		SessionID: "chat", Role: store.RoleUser,
@@ -73,9 +82,13 @@ func TestASupersessionPointingAtNothingChangesNothing(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	client := &fakeClient{responses: []string{
-		`{"reply":"noted","command":null,"remember":{"scope":"user","kind":"preference","body":"they want figures in dollars","replaces":` +
-			itoa(standing.Seq) + `}}`,
+	client := &beltClient{turns: []beltTurn{
+		{calls: []ai.ToolCall{beltCall("c1", beltToolNote, map[string]any{
+			"scope": "user", "kind": "preference",
+			"body":     "they want figures in dollars",
+			"replaces": standing.Seq,
+		})}},
+		{text: "noted"},
 	}}
 	user, err := graph.PostMessage(store.Message{
 		SessionID: "chat", Role: store.RoleUser, Body: "always give me figures in dollars",
