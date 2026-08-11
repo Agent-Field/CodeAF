@@ -3862,3 +3862,70 @@ because the doc is append-only and 12.12 landed between them.
    in three places: the dialog's margin (12.11.1), the rail seam, and 5.13's own
    card spacing all separate rooms with SPACE. This surface has one wall and it
    is made of ground.
+
+### 12.14 What the entered task room was hiding (8a0c6c2, 2d4f3f0, 0fc98ca)
+
+12.13's ghost fix stopped the frame lying about its blank cells, and an entered
+task room went from "rich" to almost nothing. Nothing regressed: the richness had
+been the home frame's cells, left on screen. What the ghost had been covering
+was four separate faults in the entered-room path, three of them in
+`internal/tui2/chat` and one of them a crash.
+
+**The reading that matters.** The first instinct — and the one the lane was
+handed — was that the rail's header merge (12.13.2) had eaten the scope. It had
+not: the room's own source was handing the rail one bare row. A test now pins the
+difference at the rail (`0fc98ca`): render a rich scope twice, once with a
+colliding surface name and once with a word of its own, and the merge must cost
+**exactly one line**, with every member row, the surface's own status and the
+room-boundary hairline still there. The general lesson is 12.13's, one turn
+further: when a frame is missing content, the layer that stopped drawing and the
+layer that never had anything to draw look identical, and the only way to tell
+them apart is to ask what the SOURCE handed over.
+
+1. **An entered room knew less about a task than the card you entered from
+   (8a0c6c2).** `taskScope` built row 0 from the node a second time.
+   `taskCard` falls back to "1 part running" when the root itself says nothing
+   (13.3.3) and carries the cost, the elapsed and the atomic mark; `taskScope`
+   carried `nodeStatusLine(root)` and no telemetry at all. On a job root —
+   which "usually carries no status of its own worth showing", in `taskCard`'s
+   own words — that difference is the whole row. 5.15 makes the card a PREVIEW
+   of the room, and **a preview that outranks the thing it previews is the
+   affordance lying in the one direction nobody checks**. The card IS the row
+   now; the only thing that changes crossing into the scope is what it IS there.
+   One node, one description.
+
+2. **A pop is not an open (2d4f3f0).** `applyScope` committed on
+   `EventScopePopped`, whose own definition is "the cursor is back on the row it
+   descended from" — the row the reader has just chosen to leave. Committing
+   re-opened it, and because `openTaskRoom` sees the same node and returns early
+   the main pane STAYED in the room, at home, for the rest of the session. 5.15
+   settles it twice: "selection previews; enter opens", and esc is a movement of
+   the map, so it produces the preview every other movement produces.
+
+3. **A stack overflow two keystrokes from the home rail (2d4f3f0).** A home is
+   reachable by two rows carrying the same id: the `RowStep` in the group, which
+   you enter, and the `RowSurface` at the top of the home's own scope, which you
+   are already standing on. `rail.Model.Enter` on a surface row returns
+   `EventOpened` for that same id — a surface has nothing beneath it — so
+   `bind`'s homes branch, which re-enters on every commit, called itself with an
+   identical event forever. **Pre-existing and independent of finding 2**
+   (verified against the old line). The guard is on the row's KIND, because the
+   kind is what actually says whether there is anywhere left to go. Worth
+   recording as a shape rather than a bug: any branch that answers a commit by
+   producing another commit needs a reason it cannot produce the same one twice.
+
+4. **An empty room must say it is empty (2d4f3f0).** The room opened on an empty
+   transcript and filled it when `readNodeCmd` returned — right for a task that
+   has journaled something, a void for one that has not, and a task seconds old
+   has not. Enter on a running atomic job produced a completely blank main pane,
+   **which is the picture an unwired room draws**, and 12.10's warning is exactly
+   that those two must never look alike (5.20 rule 1). The room now opens holding
+   the card the reader entered from plus the line saying what will appear here
+   and why nothing has — one block, no read, every cell from the row the rail
+   already handed over — and the first journaled row retires it, so the teaching
+   is on screen only while it is true.
+
+**Still owed here**: the `?` sheet's own emptiness rule is untested at this
+level, and `homes` states its empty rooms in its own words (`route.go`,
+`state.go`) while `chat` now states this one in `emptyRoomNote`. Two packages,
+two spellings of the same doctrine — worth one voice when someone owns both.
