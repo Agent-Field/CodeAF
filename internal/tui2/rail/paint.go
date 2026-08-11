@@ -3,6 +3,8 @@ package rail
 import (
 	"strings"
 
+	"github.com/charmbracelet/x/ansi"
+
 	"github.com/Agent-Field/aforge-v2/internal/sanitize"
 	"github.com/Agent-Field/aforge-v2/internal/tui2/blocks"
 	"github.com/Agent-Field/aforge-v2/internal/tui2/tokens"
@@ -154,9 +156,39 @@ func spaces(n int) string {
 // text — the overwhelming case — returns from the scan unallocated.
 var sanitizeChokepoint = sanitize.Table(tokens.ANSI16Remap)
 
-// clean is the one door prose takes on its way onto a row: sanitised, then
+// clean is the one door prose takes on its way onto a row: sanitised,
 // newline-flattened so a status carrying a stray "\n" cannot smuggle a second
-// row into a card whose height the fold has already budgeted.
-func clean(s string) string {
-	return blocks.Flatten(sanitize.TextWithPalette(s, sanitizeChokepoint))
+// row into a card whose height the fold has already budgeted, and — at a
+// profile that has told us it has no colour — stripped of the SGR the sanitiser
+// deliberately kept.
+//
+// That last clause is the fix for 12.10.6's second finding. The sanitiser
+// PRESERVES SGR and remaps it into the palette, which is the right trade for a
+// colour terminal: a worker's own red is information the worker meant to carry,
+// and [ANSI16Remap] exists to make it legible rather than to erase it. At
+// [tokens.NoColor] it is the wrong trade twice over — the surface has promised
+// to emit no escapes, and the likeliest readers of that promise are a dumb pipe
+// and a golden file, both of which read a surviving SGR as corruption. The rail
+// is where a model's own words land as row names and status lines, so it is a
+// door the promise has to hold at.
+//
+// It is a method rather than a package function because the profile is the
+// View's, and one door that knows the profile is better than two doors that
+// disagree about it. The strip runs only when an ESC survived the sanitiser, so
+// benign text — the overwhelming case — pays one IndexByte.
+//
+// STILL OWED (12.10.6.2 asked for one shared decision, and this is one of
+// three): internal/tui2/homes made the same call locally in cleanFor, and the
+// chat engine's chokepoint still preserves SGR at NoColor. The shared home
+// cannot be tokens — remap.go is explicit that the package stays a leaf and its
+// test file is "the only place tokens touches internal/sanitize" — so the
+// factoring needs a home of its own and an owner who holds all three call
+// sites. Fixed here, where the defect is; named here, so the other two are not
+// left to be rediscovered.
+func (v *View) clean(s string) string {
+	out := blocks.Flatten(sanitize.TextWithPalette(s, sanitizeChokepoint))
+	if v.profile == tokens.NoColor && strings.IndexByte(out, 0x1b) >= 0 {
+		return ansi.Strip(out)
+	}
+	return out
 }
