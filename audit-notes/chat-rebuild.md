@@ -4799,8 +4799,9 @@ through `harness/run_tree.py` and replayed with 13.8's SU/SD-aware
 **Two things seen while looking, both outside this lane.** The footer breadcrumb
 in an entered room reads `‹ untitled room ‹ wisp-parity ‹ wisp-parity` — the
 scope title and the main pane's title are the same word, printed twice, which is
-12.13.2's merge law asked of the footer instead of the rail. And at the time of
-writing **branch HEAD does not build**: `chat/app.go` at `0f5ec5e` calls
+12.13.2's merge law asked of the footer instead of the rail. And for about an
+hour **branch HEAD did not build** (closed by `0a25314`, which added the files):
+`chat/app.go` at `0f5ec5e` called
 `app.slashCommands`, `app.runSlash`, `shell.GrowComposer` and
 `composerPane.HintRows`, whose definitions are still untracked or unstaged in
 the shared tree (`chat/slash.go`, `composer/slash.go`, `shell.go`,
