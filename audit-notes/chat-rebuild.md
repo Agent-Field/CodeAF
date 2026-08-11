@@ -2377,7 +2377,7 @@ recognizers, the router, the control belt — is gone in one commit.
    `board`, `result`, `plan`, `read`, `manual`, `competence`, `standing`,
    `spending`, `history`, `search`. Acts: `spawn`, `control`, `steer`, `revise`,
    `expedite`, `correct`, `rule`, `service`, `note`, `write`, `answer_question`,
-   `await`, `ask`, `interrupt`. Four of those replace a recognizer's payload
+   `await`, `ask`, `forget`, `interrupt`. Four of those replace a recognizer's payload
    verbatim (`correct` = manageCorrection + applyAdjustment; `rule` =
    manageCharter; `service` = manageService; `control`'s `describes` arm =
    resolveDescribedTarget). `ask` is new and is NOT in 4.1's list: it was added
@@ -2492,11 +2492,14 @@ recognizers, the router, the control belt — is gone in one commit.
       leaf as a peer; the "part of X" clause on a leaf row is replaced by the
       parent's "N running, M queued". Depth is one `plan` or `board id=` read
       away instead of being flattened into the same list.
-    - The router's `retract` field died with the router, so the head currently
-      has NO door for retracting a notebook belief. `note` writes and supersedes;
-      nothing quarantines. **This is a real gap, recorded rather than papered
-      over** — the honest fix is a `forget` tool over `QuarantineFact`, which is
-      small and belongs to whoever next touches the belt.
+    - The router's `retract` field died with the router and was very nearly a
+      net loss: a head that can accumulate beliefs and never let one go is the
+      accumulation failure the consolidator has to clean up by guessing. It came
+      back as the `forget` tool over `QuarantineFact`, deliberately separate from
+      `note`'s `replaces` — replacing is being given a belief's next version and
+      retiring the old one as evidence for it; forgetting is being told the
+      belief should not exist, and collapsing the two would silently create a
+      successor nobody stated.
     - `manageStanding`'s guaranteed pre-emption is now a hint. Durable language
       reaches the loop marked as durable intent, and the verbatim splice it
       spawns is what the compiler's temporal path turns into a charter. A model

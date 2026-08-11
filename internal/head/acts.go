@@ -487,3 +487,35 @@ func beltBool(args map[string]any, key string) bool {
 	}
 	return false
 }
+
+// forget is note's opposite, and the one memory operation that destroys rather
+// than accumulates — which is why everything checkable is checked here and the
+// only judgment left to the model is which line the person meant.
+//
+// It is separate from note's `replaces` on purpose, and the difference is the
+// person's own intent. Replacing is being given the new version of a belief and
+// retiring the old one as evidence for it; forgetting is being told the belief
+// should not exist. Collapsing the two would mean a retraction silently
+// creating a successor belief nobody stated.
+func (run *beltRun) forget(args map[string]any) (string, bool) {
+	seq := beltInt(args, "belief")
+	if seq <= 0 {
+		return "belief must be the #number shown beside one notebook line", true
+	}
+	fact, found, err := run.head.store.FactBySeq(seq)
+	if err != nil {
+		return "that belief could not be read: " + err.Error(), true
+	}
+	if !found || fact.Status != store.FactActive {
+		return fmt.Sprintf("there is no active notebook belief #%d — name a number you were actually shown", seq), true
+	}
+	if err := run.head.store.QuarantineFact(seq, run.user.Seq, store.FactOriginUser); err != nil {
+		return "that belief could not be let go: " + err.Error(), true
+	}
+	// Retraction is reversible, so it is confirmed plainly rather than turned
+	// into new work. The receipt quotes the line so the person can see which
+	// belief actually went.
+	run.record(0, "Let go — "+firstLine(fact.Body))
+	return fmt.Sprintf("notebook belief #%d is retired: %q. Say so plainly and make nothing else of it",
+		seq, truncateBytes(firstLine(fact.Body), beltNoteBytes)), false
+}
