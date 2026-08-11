@@ -213,10 +213,18 @@ func (v *View) renderMap(m *Model, width, height int) {
 	sel := m.Cursor()
 	ident := v.identity(scope.Seed, tokens.Token(255))
 	band := tokens.BandFor(ident)
-	// The contrast law (tokens.Legal): a dimmed foreground may sit only on the
-	// ground, so an unfocused pane draws no band at all and marks its selection
-	// with the accent rail instead.
-	banded := v.focus == tokens.FocusNormal
+	// Whether this row wears a band at all. Two things can take it away, and
+	// both hand the selection to the gutter's accent rail instead (see
+	// [View.gutter]):
+	//
+	//   - FOCUS. The contrast law (tokens.Legal): a dimmed foreground may sit
+	//     only on the ground, so an unfocused pane draws no band.
+	//   - PROFILE. tokens.SelectionMarker is the answer at `--color none`, where
+	//     there are no escape bytes to spend on a ground. Without this the
+	//     no-colour tier lost selection entirely: the band was the ONLY thing
+	//     saying which row the cursor was on, and it resolved to nothing.
+	banded := v.focus == tokens.FocusNormal &&
+		v.profile.SelectionStyle() != tokens.SelectionMarker
 
 	if m.Depth() > 0 {
 		v.push(v.scopeHeader(scope, sel, len(rows)-1, ident, width), height)

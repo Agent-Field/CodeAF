@@ -129,7 +129,11 @@ func TestNeverRendersIdentifiers(t *testing.T) {
 	}
 }
 
-// 5.9's anatomy, pinned. Colourless so the assertion is about layout.
+// 5.9's anatomy, pinned. Colourless so the assertion is about layout — which
+// is also why the selected row wears ▎ here: at [tokens.NoColor] there is no
+// band to draw, so the cursor is carried by the gutter marker
+// ([tokens.SelectionMarker]) and the row is not padded to a ground it does not
+// have.
 func TestCardAnatomy(t *testing.T) {
 	m := New(scene())
 	m.Select(1) // wisp-parity, focused, so the card expands in place
@@ -137,10 +141,10 @@ func TestCardAnatomy(t *testing.T) {
 	want := []string{
 		" ● aforge",
 		"────────────────────────────",
-		" ◐ wisp-parity            › ",
+		"▎◐ wisp-parity            ›",
 		"   reworking NavCtx after t…",
-		"   K3 · ▁ · $8.65 · 41m     ",
-		"   ●◐◐⚑○  1/5               ",
+		"   K3 · ▁ · $8.65 · 41m",
+		"   ●◐◐⚑○  1/5",
 		"   ◐ H2          $0.37 · 28m",
 		"   ◐ NavCtx2      $0.12 · 5m",
 		" ? data-clean             ›",
@@ -168,8 +172,8 @@ func TestTaskScopeAnatomy(t *testing.T) {
 		" ✓ XhrSyn                12m",
 		" ◐ H2                    28m",
 		" ◐ T3Infra               21m",
-		" ⚑ KeyCutter                ",
-		"   waits on H2              ",
+		"▎⚑ KeyCutter",
+		"   waits on H2",
 		"   ◐ NavCtx2      $0.37 · 5m",
 	}
 	assertLines(t, got, want)
@@ -212,6 +216,67 @@ func TestSelectionIsABandWhenFocusedAndAnAccentWhenNot(t *testing.T) {
 	}
 	if !strings.HasPrefix(dimmed[2], "\x1b") || !strings.Contains(dimmed[2], tokens.GlyphAccentRail) {
 		t.Fatalf("a dimmed pane did not mark its cursor with the accent rail: %q", dimmed[2])
+	}
+}
+
+// THE DEFECT: at `--color none` the rail lost selection entirely. Selection was
+// conveyed only by the background tint, the no-colour profile writes no
+// background, and so not one cell differed between the selected row and its
+// neighbours — the screenshot harness caught two frames that were byte-identical
+// except for the cursor the user could not see.
+//
+// The law being kept is 5.16's degradation philosophy, stated in tokens'
+// [tokens.NoColor]: "every state that colour carries also has a glyph (5.17),
+// which is why this profile is a degradation and not a failure". The answer is
+// [tokens.SelectionMarker] — the same ▎ accent rail an unfocused pane already
+// uses, for the same reason (there is no ground to raise).
+//
+// The test is written as the invariant rather than as one profile's bytes: at
+// EVERY profile, and at both focus states, a selected row must differ from an
+// unselected one in at least one cell. A future profile, a future band token
+// and a future marker all have to keep it.
+func TestSelectionIsVisibleAtEveryProfile(t *testing.T) {
+	profiles := []tokens.Profile{tokens.NoColor, tokens.ANSI16, tokens.ANSI256, tokens.TrueColor}
+	focuses := []tokens.Focus{tokens.FocusNormal, tokens.FocusDimmed}
+	modes := []Mode{ModeRail, ModeList}
+	// Widths at and above the gutter floor: below it there is no column to
+	// spend on a marker and no ground to raise either, and the renderer says so
+	// by [gutterFor] returning zero.
+	widths := []int{gutterFloor, 20, tokens.RailWidth, 60, 110}
+
+	for _, profile := range profiles {
+		for _, focus := range focuses {
+			v := NewView(tokens.NewStyler(profile, focus))
+			for _, mode := range modes {
+				for _, width := range widths {
+					m := New(scene())
+					// Row 1 is wisp-parity, and its first line is line 2 of the
+					// map in both renders — surface row, hairline, then members.
+					// Selecting it expands the card underneath, which is why the
+					// comparison is of that ONE line and not of the pane.
+					m.Select(1)
+					selected := copyOf(v.Render(m, mode, width, 24))
+					m.Select(2)
+					elsewhere := copyOf(v.Render(m, mode, width, 24))
+					if len(selected) < 3 || len(elsewhere) < 3 {
+						t.Fatalf("%s/%s %s w=%d: nothing rendered", profile, focus, mode, width)
+					}
+					// Trailing spaces are trimmed on purpose: a band that
+					// resolved to nothing still pads its row to the pane's edge,
+					// and a column of invisible spaces is not an affordance.
+					// That padding is exactly what made the defect look like a
+					// difference to a byte comparison while looking like nothing
+					// to a reader.
+					a := strings.TrimRight(selected[2], " ")
+					b := strings.TrimRight(elsewhere[2], " ")
+					if a == b {
+						t.Fatalf("%s/%s %s w=%d: the selected row is indistinguishable from the same row unselected — "+
+							"selection is invisible at this profile:\n %q",
+							profile, focus, mode, width, a)
+					}
+				}
+			}
+		}
 	}
 }
 

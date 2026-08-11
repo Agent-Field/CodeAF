@@ -203,6 +203,12 @@ func (s *Styler) PaintToken(text string, t Token) string {
 // fallback, defined relative to whatever the terminal's own colours are.
 // [Legal] governs which pairs may be drawn at all, and the contrast gate has
 // measured every one of them.
+//
+// Under [SelectionMarker] it returns the text unpainted, and that is the whole
+// of what this function may do: painting must not change printable width (the
+// blocks contract), and a marker is a CELL. A renderer whose profile answers
+// [SelectionMarker] therefore has to draw [GlyphAccentRail] in its gutter — ask
+// [Profile.SelectionStyle] before drawing a row, not this function after.
 func (s *Styler) PaintOn(text string, fg, bg Token) string {
 	text = s.upgrade(text)
 	if !s.enabled || text == "" {

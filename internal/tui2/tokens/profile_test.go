@@ -77,6 +77,30 @@ func TestProfileDegradationIsOrdered(t *testing.T) {
 			t.Errorf("profile %d has no name", p)
 		}
 	}
+
+	// The ladder ends in a rung that spends no bytes at all. Without it the
+	// no-colour tier had NO selection idiom: [PaintOn] writes nothing there, so
+	// a surface that asked only "band or reverse" drew a cursor nobody could
+	// see. 5.16's degradation philosophy is stated on [NoColor] itself — every
+	// state colour carries also has a glyph — and [SelectionMarker] is that
+	// sentence applied to the cursor.
+	wantStyle := map[Profile]SelectionStyle{
+		NoColor:   SelectionMarker,
+		ANSI16:    SelectionReverse,
+		ANSI256:   SelectionBand,
+		TrueColor: SelectionBand,
+	}
+	for p, want := range wantStyle {
+		if got := p.SelectionStyle(); got != want {
+			t.Errorf("%s.SelectionStyle() = %d, want %d", p, got, want)
+		}
+	}
+	// The marker rung is the one that must cost nothing: a profile reached
+	// because NO_COLOR is set, or because the output is a pipe, cannot pay for
+	// its cursor in escape bytes.
+	if Reverse(NoColor) != "" || Band.Bg(NoColor, FocusNormal) != "" {
+		t.Fatal("the no-colour profile emitted a selection ground; SelectionMarker exists because it cannot")
+	}
 	// At 16 colours the eight identity hues collapse onto six chromatic slots,
 	// which is WHY IdentityDistinct is false there. Prove the collapse is real
 	// rather than assumed, so the promise and the data cannot drift.
