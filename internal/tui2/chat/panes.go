@@ -2,14 +2,15 @@ package chat
 
 import (
 	"image"
-	"strconv"
 	"strings"
 	"time"
 
 	tea "charm.land/bubbletea/v2"
 
+	"github.com/Agent-Field/aforge-v2/internal/registry"
 	"github.com/Agent-Field/aforge-v2/internal/tui2"
 	"github.com/Agent-Field/aforge-v2/internal/tui2/blocks"
+	"github.com/Agent-Field/aforge-v2/internal/tui2/footer"
 	"github.com/Agent-Field/aforge-v2/internal/tui2/tokens"
 )
 
@@ -174,18 +175,40 @@ func (b *awaitingBlock) Rows(width int) []string {
 	return b.rows[:]
 }
 
-// statusPane is the contextual footer (10.5.22): a registry of columns that
-// drop lowest-priority-first rather than wrapping. It says where you are, who
-// is answering and whether anything is wrong — and nothing about this turn's
-// cost or context, which belong on the composer's meta strip and never mix.
+// statusPane is the contextual footer (10.5.22, 5.22 rule 4): a registry of
+// columns that drop lowest-priority-first rather than wrapping.
+//
+// The columns, the priorities and the fitting all come from
+// internal/tui2/footer, which already implements the mechanic against
+// [tokens.FitFooter] — re-implementing the drop order here would be two copies
+// of one law drifting apart. This type's whole job is to fill a
+// [footer.FocusContext] honestly from state the app actually holds, and every
+// field it leaves at zero is a column that does not appear (the affordance
+// never lies, 5.20, and that includes lying by presence).
+//
+// 10.5.23's split is the hard line: system health and the open-question count
+// live here; this-turn cost and context live on the composer's meta strip and
+// are not duplicated. Nothing on this row mentions money.
 type statusPane struct {
 	style *tokens.Styler
+	bar   *footer.Model
 
+	// Filled once, at construction.
 	session string
 	model   string
-	turns   int
-	live    bool
-	err     string
+
+	// Filled by the poll and the composer's turn; poll.go writes turns and err.
+	turns int
+	live  bool
+	err   string
+
+	// Filled every frame by the app's refresh, from the state that decides
+	// them. See App.refresh.
+	verbs         []registry.Entry
+	input         footer.InputState
+	hint          string
+	escInterrupts bool
+	attention     int
 }
 
 var _ tui2.Pane = (*statusPane)(nil)
@@ -195,29 +218,42 @@ func (p *statusPane) Render(width, height int) string {
 	if width <= 0 || height <= 0 {
 		return ""
 	}
-	phase := "ready"
-	if p.live {
-		phase = "answering"
-	}
-	cols := []string{"aforge v2", phase, "session " + shortID(p.session)}
-	if p.model != "" {
-		cols = append(cols, p.model)
-	}
-	cols = append(cols, strconv.Itoa(p.turns)+" turns")
-
-	// Truncation happens before painting, always. Cutting a painted string can
-	// take its reset sequence with it and leave the rest of the frame wearing
-	// the footer's colour.
-	line, state, hue := strings.Join(cols, " "+tokens.GlyphSeparator+" "),
-		blocks.StateChrome, blocks.HueNone
+	// A read that failed is the one state 5.16 hands a whole coloured sentence
+	// to: "a whole coloured sentence means something is wrong" is the doctrine,
+	// and a surface that cannot reach its own journal is exactly that. It
+	// replaces the row rather than joining it, because a footer that kept
+	// offering verbs beside a dead store would be advertising doors that no
+	// longer open. Truncation happens before painting, always — cutting a
+	// painted string can take its reset with it and leave the rest of the frame
+	// wearing the footer's colour.
 	if p.err != "" {
-		line, state, hue = tokens.GlyphFailed+" "+p.err, blocks.StateSettled, blocks.HueBroken
+		line := blocks.Truncate(tokens.GlyphFailed+" "+p.err, width)
+		if p.style == nil {
+			return line
+		}
+		return p.style.Paint(line, blocks.StateSettled, blocks.HueBroken)
 	}
-	line = blocks.Truncate(line, width)
-	if p.style == nil {
-		return line
+	if p.bar == nil {
+		return ""
 	}
-	return p.style.Paint(line, state, hue)
+	return p.bar.Render(footer.FocusContext{
+		Verbs:         p.verbs,
+		Input:         p.input,
+		Hint:          p.hint,
+		EscInterrupts: p.escInterrupts,
+		Attention:     p.attention,
+		ScopeTail:     p.scopeTail(),
+	}, width)
+}
+
+// scopeTail is the breadcrumb tail, and the lowest-priority column on the row.
+// One room exists today, so it names the room: the session the window is
+// looking at, in the form a person reads back.
+func (p *statusPane) scopeTail() string {
+	if p.session == "" {
+		return ""
+	}
+	return tokens.GlyphScopeUp + " " + shortID(p.session)
 }
 
 // railPane is the scope map's place, held honestly empty.
