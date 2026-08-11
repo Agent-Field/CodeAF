@@ -2595,6 +2595,129 @@ recognizers, the router, the control belt — is gone in one commit.
     desk's hands actually are" and now also tells a reader the thing that
     changed for them: there is no cue list, every message reaches the hands.
 
+### 12.9 Head follow-up wave: 13.3's producer half, the money edge, and three mechanisms the doc had already specified
+
+Landed on `chat-v2` as 9b3a8b7, 40c4915, 103d4ff, 9d7c0fb, 16ae5b7, f0a0215.
+`internal/head` holds **327 tests** (303 before) and every one passes; `make
+check` is green apart from the known non-blocker (`internal/plan`
+`TestRenderTerrainStaysUnderTheCap`, Linux-only CJK filename length, co-working
+territory — reported, not touched).
+
+1. **13.3 bug 1, at the source: questions stop smuggling options through prose.**
+   The fix is one place rather than one per producer, because the smuggling was
+   never one caller's habit. `store.QuestionPart` grows from a bare seq into the
+   whole render contract — `Kind` (choose/confirm/text), `Class`, `Category`,
+   `Default`, `AllowFree`, `NodeID`, `CharterID` — and `store.PartsForQuestion`
+   builds it off the durable row. `surfaceQuestion` attaches it, so EVERY
+   producer of a durable question in the product (the head, the resident, the
+   compiler, a worker) emits the contract without knowing it exists.
+   **The part shape, for the renderer:** a question message carries
+   `[TextPart(prompt), QuestionBlock(QuestionPart{…})]` and its options in
+   `Message.Options`. The options are deliberately NOT copied into the part —
+   CardPart's rule, that a part carries what nothing else carries and REFERS to
+   everything else — because the typed options column is already durable,
+   already normalized, and already what a reply of "3" is validated against.
+   Numbering is positional: option N is `Options[N-1]`. `Seq` is the durable
+   `agent_questions` row, and **zero is legal and meaningful**: it says this ask
+   lives on the message alone, with the answer coming back to the loop that
+   asked it. `Class` is written explicitly and defaults to consent on every read
+   path (9.4's conservative default, at the part as at the table).
+   **The body stays humane** where prose carries the whole meaning: prompt, then
+   one `▸ N. label` row per option — the spelling the existing chat's numbered
+   fallback already parses at full fidelity, so 11.1 costs nothing. It keeps the
+   payload on exactly the questions prose cannot carry: a preselected default and
+   a refusal of free text, both of which are consent semantics on the gates that
+   have them, and the old chat reads bodies and only bodies. `QuestionBodyFor`
+   makes that choice once, where four call sites used to make it inline.
+   `QuestionPrompt` reads the prose back out of a stored body; it is a decoder
+   for the two spellings this package writes, not a scanner.
+2. **13.3's head edge: money is computed, never spoken into existence.**
+   The failure was "$20.00 a run" against a measured $0.0017. Nothing had
+   computed $20.00 — a model wrote it in prose beside numbers it had been shown,
+   and `normalizeCharterSpec` let it stand because it only ever replaced a rail
+   the model had left EMPTY. 5.23's ordering law says anything a template can say
+   stays a template, and money is that law's extreme case: an invented figure
+   about tokens is a wrong answer, an invented figure about dollars is a wrong
+   answer the person ACTS on. So the rails are computed (`money.go`): the rate
+   comes from the measured block — now the MEDIAN of every specialist's line
+   rather than whichever sorted first — or from the store's own backstop, and the
+   justification sentence is assembled from that rate rather than accepted as
+   prose. The standing compiler is no longer ASKED for a figure in dollars,
+   because asking was the invitation. An unmeasured rate says it is unmeasured.
+   `moneyUSD` renders at the precision a figure actually has, because two
+   decimals turned a real $0.0017 into "$0.00", which reads as free — and a model
+   told the measurement is meaningless reaches for one that is not. The
+   `spending` read now hands over finished figures: the window's rate, the
+   journal's median run (`store.MeasuredCostPerRun`, which existed and was
+   reached from nowhere in the head), and the day/week/thirty-day projections
+   that rate continues to, labelled as a rate rather than as a forecast. The one
+   prompt gains **FIGURES ARE QUOTED, NEVER WORKED OUT**: every number must
+   appear, as that figure, in something already in front of you; never carry a
+   number from one label to another; a daily limit is not what one run costs.
+   Regression test is the failure itself, at its exact magnitude.
+3. **`thread` — 8.2.10's on-demand transcript read**, and the ONE amendment 5.7's
+   knowledge contract takes. Never ambient: it costs a call, its ids come from
+   its own room list, it is bounded to the END of a room, and it is sanitized —
+   these bytes were written by another room's model and land in a prompt and then
+   in a transcript. The room being stood in is refused, because that transcript
+   is already the prompt's first block. `store.MessageTail` is the additive read
+   behind it: `Messages` is a forward tailing primitive and would page two
+   hundred rows forward to throw all but twenty away.
+4. **`fork` — 8.2.12, a spawn VARIANT and not a mechanism.** It composes a brief
+   and calls `spawn`, once, so the fan-out cap, the consequence gate at the
+   journaling door, the dedupe and the receipt apply without being restated —
+   proved by making the gate fire THROUGH the fork. The inherited turns are
+   fenced and labelled as context rather than pasted in as more instruction,
+   because a worker that reads a passing remark as an order is the failure that
+   framing exists to prevent. Reflex is not offered: work that needed a
+   conversation to specify is not a reversible seconds-scale action.
+5. **Ephemeral asks — 8.2.9.** `Head.Ask` is the side channel. The exchange
+   journals ONE collapsed row (`▸ asked → answered · <what was asked>`) with both
+   halves under it as a new `store.PartAside`; the full exchange stays out of the
+   orchestrator's context because the window renders bodies. **The cache story:
+   its own key, not a position below the floor.** 12.4.1's ordering is
+   regression-tested and paid for on every ordinary message, so an ephemeral turn
+   sharing that prefix would compete with it for one entry and cost more than the
+   turn it saved. The aside prompt shares not one leading byte, which makes "its
+   own cache key" a property a test states exactly rather than an argument about
+   how much prefix an endpoint forgives; the 12.4.1 order is re-asserted with an
+   aside in the room. No belt is sent — curiosity has no authority, and the
+   definitions are the largest single block a call can avoid paying for. The row
+   is SYSTEM, which forecloses three failures at once: the poll never answers a
+   system row so an aside cannot trigger a turn; the existing chat's question
+   reader only looks at agent rows, so a stub ending in "?" can never be misread
+   as an askback; and every surface already draws system rows as the dim tier a
+   collapsed row belongs to. Deltas are keyed apart from the room's own turn
+   (`AsideStreamSession`), because one key per ROOM is not enough when an aside
+   can run while that room's turn is streaming. It reads the journal directly
+   rather than through the turn's kept fold, so an aside beside an in-flight turn
+   cannot make that turn re-fold the day, and it touches no turn state at all.
+6. **`WithWorkspace` is wired (12.8.4's dangling builder).** `cmd/aforge/chat.go`
+   passes the commander's `workspaceRoot`, so the artifact door writes where the
+   work lives rather than where the binary ran.
+7. **12.3.3's seam is half open, and the head stopped lying about it.** The store
+   half landed (`store.CommandHeadInterrupt`, 8ff2b4e), so `RequestInterrupt`'s
+   journal road is real — and the reconciler half did not, so nothing drains that
+   row. The door as written took the journal road, returned "journaled", and left
+   the turn talking. It now journals for the RECORD and stops in process for the
+   EFFECT; the two roads are not a race because both end at the same idempotent
+   handle, and when the resident's one case lands `ApplyInterrupt` will find the
+   turn already gone and journal that as a true resolution. `HeadInterruptKind`
+   became an alias of the store's constant rather than a second spelling of one
+   string. **The remaining edit is unchanged and still one line** in
+   `internal/resident/resident.go`'s `applyCommand`.
+8. **Behaviour changed by design.** Two tests asserted `"kind":"choose"` inside a
+   message body — they asserted the smuggling. They now assert the contract
+   through one shared helper (`assertClickableAsk`): typed options in order, a
+   question part saying how to draw it, the prompt as its own text part, numbered
+   rows a person can read, and NO machinery anywhere in the prose.
+   `TestInterruptTriesTheJournalAndSaysWhichRoadItTook` became
+   `TestInterruptJournalsTheStopAndStillEndsTheTurn`, with "nothing happened"
+   still asserted — on `ApplyInterrupt`, which is where that answer now lives.
+   No assertion was weakened. The belt is **27 tools**; the prompt's hands list
+   and `steering-work.md` both refused the wave until they named the new two,
+   which is the 5.20.3 ratchet working.
+
 ## Part 13 — Build state at the laptop→Spark handoff (2026-08-10)
 
 Branch `chat-v2` (pushed to origin) is the build. `chat-v2-wip` (commit 5648060)
