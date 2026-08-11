@@ -1,0 +1,98 @@
+{
+ "METADATA": {
+  "date": "2024-04-12 14:40:46+00:00",
+  "development-website": "https://github.com/ryanoasis/nerd-fonts",
+  "version": "3.2.1",
+  "website": "https://www.nerdfonts.com"
+ },
+ "nf-fa-adjust": {
+  "code": "f042"
+ },
+ "nf-fa-angle_left": {
+  "code": "f104"
+ },
+ "nf-fa-angle_right": {
+  "code": "f105"
+ },
+ "nf-fa-bolt": {
+  "code": "f0e7"
+ },
+ "nf-fa-caret_right": {
+  "code": "f0da"
+ },
+ "nf-fa-check": {
+  "code": "f00c"
+ },
+ "nf-fa-chevron_down": {
+  "code": "f078"
+ },
+ "nf-fa-chevron_right": {
+  "code": "f054"
+ },
+ "nf-fa-circle": {
+  "code": "f111"
+ },
+ "nf-fa-circle_o": {
+  "code": "f10c"
+ },
+ "nf-fa-cube": {
+  "code": "f1b2"
+ },
+ "nf-fa-dollar": {
+  "code": "f155"
+ },
+ "nf-fa-ellipsis_h": {
+  "code": "f141"
+ },
+ "nf-fa-ellipsis_v": {
+  "code": "f142"
+ },
+ "nf-fa-flag": {
+  "code": "f024"
+ },
+ "nf-fa-folder": {
+  "code": "f07b"
+ },
+ "nf-fa-home": {
+  "code": "f015"
+ },
+ "nf-fa-long_arrow_right": {
+  "code": "f178"
+ },
+ "nf-fa-microchip": {
+  "code": "f2db"
+ },
+ "nf-fa-pause": {
+  "code": "f04c"
+ },
+ "nf-fa-question_circle": {
+  "code": "f059"
+ },
+ "nf-fa-scissors": {
+  "code": "f0c4"
+ },
+ "nf-fa-sign_in": {
+  "code": "f090"
+ },
+ "nf-fa-times": {
+  "code": "f00d"
+ },
+ "nf-oct-git_branch": {
+  "code": "f418"
+ },
+ "nf-pl-branch": {
+  "code": "e0a0"
+ },
+ "nf-pl-left_hard_divider": {
+  "code": "e0b0"
+ },
+ "nf-pl-left_soft_divider": {
+  "code": "e0b1"
+ },
+ "nf-pl-right_hard_divider": {
+  "code": "e0b2"
+ },
+ "nf-pl-right_soft_divider": {
+  "code": "e0b3"
+ }
+}
