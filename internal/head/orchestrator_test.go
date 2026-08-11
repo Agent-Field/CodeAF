@@ -667,3 +667,37 @@ func TestForgettingRetiresExactlyTheNumberedBeliefAndNothingElse(t *testing.T) {
 		t.Fatalf("letting go of a belief journaled a graph command: %d", run.commandSeq)
 	}
 }
+
+// A tool that already spoke for the whole turn ends it. Letting the loop carry
+// on past a posted question would let it answer its own question in the same
+// breath — the thread talking to itself in front of the person.
+func TestATurnThatAlreadySpokeStopsThere(t *testing.T) {
+	graph := openHeadStore(t)
+	session := "spoke"
+	user := postUser(t, graph, session, "cancel it")
+	client := &beltClient{turns: []beltTurn{
+		{calls: []ai.ToolCall{beltCall("c1", beltToolAsk, map[string]any{
+			"question": "Which one do you mean?",
+			"options":  []string{"Ledger audit", "Market research"},
+		})}},
+		// Scripted but unreachable: a loop that asked for another turn here would
+		// consume it, and the assertion below would find the extra call.
+		{text: "I picked the first one for you."},
+	}}
+	if err := New(client, graph).answer(context.Background(), user); err != nil {
+		t.Fatal(err)
+	}
+	if _, tooled := client.counts(); tooled != 1 {
+		t.Fatalf("the turn ran %d calls after posting its own question, want one", tooled)
+	}
+	messages, err := graph.Messages(session, user.Seq, 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(messages) != 1 {
+		t.Fatalf("the loop spoke over its own question: %+v", messages)
+	}
+	if len(messages[0].Options) != 2 {
+		t.Fatalf("the one message is not the question: %+v", messages[0])
+	}
+}

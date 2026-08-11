@@ -167,7 +167,11 @@ func (h *Head) runTurn(ctx context.Context, user store.Message) error {
 		}
 		// A tool that stopped at a consent gate ends the turn: the question IS the
 		// reply, and the gates own the words a consent decision is described in.
-		if run.confirm != nil {
+		// So does a tool that already spoke for the whole turn — the numbered
+		// question, the total shutdown's gate, the stop. Letting the loop carry on
+		// past either would let it say a second thing over the top of the first,
+		// which is the thread talking to itself in front of the person.
+		if run.confirm != nil || run.spoke {
 			break
 		}
 	}
