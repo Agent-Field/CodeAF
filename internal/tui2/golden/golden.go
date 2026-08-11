@@ -300,6 +300,21 @@ func render(v View, size Size, theme Theme) (lines []string, problems []string) 
 			problems = append(problems,
 				fmt.Sprintf("line %d has visible width %d; viewport width is %d: %q", index+1, width, size.Width, plain))
 		}
+		// UNSTYLED trailing spaces are not content, and a snapshot is a picture
+		// of content. The compositor pads every row of a frame out to the
+		// frame's width, because a row that stops early says nothing about the
+		// cells past the cut and the terminal keeps whatever the last frame left
+		// there (see tui2.padFrame). That padding is the compositor's contract
+		// with the TERMINAL, it is pinned by the compositor's own test, and
+		// recording it here would spend forty cells of every reference line
+		// saying "blank" — which is exactly the noise a golden must not carry if
+		// a human is to read its diff.
+		//
+		// Only bare spaces go. A row that ends inside a selection band ends with
+		// its reset sequence AFTER the padding it painted, so the band's own
+		// cells are not trailing spaces and survive — which is right, because a
+		// painted ground IS content.
+		lines[index] = strings.TrimRight(line, " ")
 	}
 	return lines, problems
 }
