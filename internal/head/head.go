@@ -145,6 +145,13 @@ type Head struct {
 	// room and every one of them reads as a delivery (absorb.go).
 	absorbedMu sync.Mutex
 	absorbed   map[string]bool
+	// awaitingReceipt is every command a head turn journaled and has not yet
+	// heard back about, and receiptMu guards it. It is registered as the command
+	// is journaled and claimed when its receipt lands, which makes one map answer
+	// both of the wake's questions — did a head turn start this, and has anything
+	// been said about it already (wake.go).
+	receiptMu       sync.Mutex
+	awaitingReceipt map[int64]bool
 }
 
 // WithRoomNaming turns on the post-turn clerk that names rooms (scribe.go).
@@ -314,6 +321,14 @@ func (h *Head) poll(ctx context.Context, cursors *sessionCursors) error {
 			// under their reply to it.
 			if deliveredRow(message) {
 				h.absorbDeliveryBounded(ctx, message)
+			}
+			// A change the head put in hand has settled. One short turn says
+			// what the workforce actually made of it — or takes back what the
+			// head said, when the change was refused (wake.go). It runs inline
+			// beside the delivery wake and for the same reason: this sentence
+			// is about the row above it.
+			if receiptRow(message) {
+				h.wakeReceiptBounded(ctx, message)
 			}
 			if answerable(message) {
 				answered, err := h.answerTurn(ctx, foldAhead(messages[index:]))

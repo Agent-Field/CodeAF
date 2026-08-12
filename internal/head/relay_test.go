@@ -2,13 +2,18 @@ package head
 
 import (
 	"context"
+	"errors"
+	"os"
+	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/Agent-Field/aforge-v2/internal/store"
+	"github.com/Agent-Field/agentfield/sdk/go/ai"
 )
 
-// §13.4, pinned.
+// §13.4 and what actually answers it.
 //
 // Twelve leaves spent twelve minutes and twelve dollars' worth of tokens
 // verifying twelve technical profiles against live documentation. The head then
@@ -17,26 +22,30 @@ import (
 // agreed with the other: one said Chroma keeps SQLite-backed metadata, the
 // other that it stores collections as Parquet files, and the verified result
 // said something different again. Two generations disagreeing on fact is proof
-// they were generated; nothing relayed can disagree with itself.
+// they were generated.
 //
-// The closure contract says the head owns the discourse — one mouth — and this
-// is what that costs it: when a job delivers, the delivered text IS the answer.
-// The head may put a sentence in front of it and may not rewrite its substance.
-func TestASettledJobsAnswerCarriesTheDeliverableItself(t *testing.T) {
+// For a while the answer to that was to relay: the head wrote one sentence and
+// the code pasted the whole deliverable underneath it. That made generation
+// impossible and made the person's answer a machine's raw output. The answer
+// contract (chat-simplify §2.6) fixes the actual cause instead — the turn was
+// shown a QUARTER of the deliverable and asked to speak about the whole — so
+// what this pins now is that the turn is given all of it.
+func TestTheDeliveryTurnIsGivenTheWholeDeliverableAndNotAClipOfIt(t *testing.T) {
 	graph := openHeadStore(t)
 	ask := postUser(t, graph, "room", "profile Milvus, Qdrant and Chroma for me")
-	// Long enough that the old path could only ever have shown the head its
-	// opening, which is exactly how a paraphrase became the rest.
+	// Four times the old four-kilobyte clip, with the finding that decides the
+	// answer sitting past where that clip ended.
 	result := strings.Join([]string{
 		"**Milvus** — a shared-storage architecture with fully disaggregated compute. " + strings.Repeat("Detail. ", 300),
 		"**Qdrant** — a Rust engine with payload-aware HNSW filtering. " + strings.Repeat("Detail. ", 300),
 		"**Chroma** — an embedded store that keeps collections on local disk. " + strings.Repeat("Detail. ", 300),
+		"VERDICT: Qdrant for this workload.",
 	}, "\n\n")
 	delivered := settledJob(t, graph, "task-41", "Vector database profiles",
 		"profile Milvus, Qdrant and Chroma for me", result)
 
 	client := &fakeClient{model: "test/model", responses: []string{
-		"Here are the three, in the order you named them.",
+		"Qdrant, for the filtering you described — the three profiles are in the card above.",
 	}}
 	head := New(client, graph)
 	cursors := newSessionCursors(ask.Seq)
@@ -45,41 +54,127 @@ func TestASettledJobsAnswerCarriesTheDeliverableItself(t *testing.T) {
 		t.Fatalf("poll: %v", err)
 	}
 
+	given := client.userPrompt()
+	if !strings.Contains(given, "VERDICT: Qdrant for this workload.") {
+		t.Fatalf("the delivery turn was shown a clip of the deliverable, not the whole of it: %d bytes given, %d bytes delivered",
+			len(given), len(result))
+	}
+	if len(given) < len(result) {
+		t.Fatalf("the prompt (%d bytes) is smaller than the result (%d bytes) it is supposed to carry",
+			len(given), len(result))
+	}
+
+	// And what lands in the room is the head's composed answer — not the raw
+	// deliverable a second time. The delivery row itself is the record.
 	reply := waitForAgentReply(t, graph, "room", delivered.Seq)
-	settled, found, err := graph.Node("task-41")
-	if err != nil || !found {
-		t.Fatalf("node: found=%t err=%v", found, err)
+	if !strings.HasPrefix(reply.Body, "Qdrant, for the filtering") {
+		t.Fatalf("the head's answer is not what was posted: %.200q", reply.Body)
 	}
-	if !strings.Contains(reply.Body, strings.TrimSpace(settled.Summary)) {
-		t.Fatalf("the head's answer does not carry the deliverable — it is a paraphrase of it.\n"+
-			"answer (%d bytes): %.400q\ndeliverable (%d bytes): %.400q",
-			len(reply.Body), reply.Body, len(settled.Summary), settled.Summary)
-	}
-	if !strings.HasPrefix(reply.Body, "Here are the three, in the order you named them.") {
-		t.Fatalf("the head's own framing was dropped: %.200q", reply.Body)
+	if strings.Contains(reply.Body, "shared-storage architecture") {
+		t.Fatalf("the answer re-posted the deliverable that is already journaled: %d bytes", len(reply.Body))
 	}
 }
 
-// The frame is optional and the deliverable is not. A provider that refused, or
-// a turn with nothing worth adding, costs the person a sentence of context; it
-// may never cost them the answer, because relaying is the whole job.
-func TestTheDeliverableStillReachesThemWhenTheHeadHasNothingToAdd(t *testing.T) {
-	if body := RelayDelivery("", "the finished answer"); body != "the finished answer" {
-		t.Fatalf("an unframed delivery came out as %q", body)
+// The delivery turn is armed with the READS and nothing else. It is woken by an
+// outcome, and a turn woken by an outcome must not be able to start another one
+// — so the definitions it is offered carry no acts, and a call to one anyway is
+// refused rather than dispatched.
+func TestTheDeliveryTurnCarriesReadsAndNoHands(t *testing.T) {
+	for _, definition := range beltReadDefinitions() {
+		if !beltReadOnly(definition.Function.Name) {
+			t.Fatalf("the delivery turn was offered %q, which changes something", definition.Function.Name)
+		}
 	}
-	if body := RelayDelivery("here it is", ""); body != "here it is" {
-		t.Fatalf("a frame with nothing to relay came out as %q", body)
+	names := map[string]bool{}
+	for _, definition := range beltReadDefinitions() {
+		names[definition.Function.Name] = true
 	}
-	// Where both will not fit one message, the frame gives way rather than the
-	// work: a missing courtesy costs nothing, a missing paragraph costs the ask.
-	long := strings.Repeat("x", store.MaxMessageBytes-4)
-	body := RelayDelivery("a sentence of context", long)
-	if !strings.HasPrefix(body, "xxx") {
-		t.Fatalf("the deliverable lost its place to the frame: %.80q", body)
+	for _, read := range []string{beltToolBoard, beltToolResult, beltToolPlan, beltToolRead} {
+		if !names[read] {
+			t.Fatalf("the delivery turn cannot %s, so it cannot go and get what it is asked about", read)
+		}
 	}
-	if len(body) > store.MaxMessageBytes {
-		t.Fatalf("the relay overran what a message may carry: %d bytes", len(body))
+	if names[beltToolSpawn] || names[beltToolControl] || names[beltToolWrite] {
+		t.Fatal("the delivery turn was handed a hand")
 	}
+}
+
+// It reads before it answers, and the reading is bounded. A turn that opened the
+// file where the substance actually lived is the whole point of arming it; a
+// turn that browses forever is a poll that stopped answering the person.
+func TestTheDeliveryTurnReadsTheFileTheResultOnlyPointsAt(t *testing.T) {
+	graph := openHeadStore(t)
+	ask := postUser(t, graph, "room", "how fast did each region grow?")
+	path := filepath.Join(t.TempDir(), "regions.md")
+	if err := os.WriteFile(path, []byte("North 14%, South 9%, East 3%\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	delivered := settledJob(t, graph, "task-77", "Regional growth read",
+		"how fast did each region grow?",
+		"Numbers are in regions.md — see the file for the per-region figures.\nFiles:\n"+path)
+
+	client := &toolingClient{turns: []beltTurn{
+		{calls: []ai.ToolCall{beltCall("r1", beltToolRead, map[string]any{
+			"job": "task-77", "file": "regions.md"})}},
+		// A hand, reached for out of habit. It must be refused rather than run.
+		{calls: []ai.ToolCall{beltCall("s1", beltToolSpawn, map[string]any{
+			"instruction": "go and check the numbers again"})}},
+		{text: "North 14%, South 9%, East 3% — the full table is in regions.md."},
+	}}
+	head := New(client, graph)
+	cursors := newSessionCursors(ask.Seq)
+	cursors.mark("room", ask.Seq)
+	if err := head.poll(context.Background(), cursors); err != nil {
+		t.Fatalf("poll: %v", err)
+	}
+
+	if !client.calledRead {
+		t.Fatal("the delivery turn never opened the file the result pointed at")
+	}
+	if commands, _ := graph.PendingCommands(10); len(commands) != 0 {
+		t.Fatalf("a turn woken by finished work started something: %+v", commands)
+	}
+	if !client.toldHandless {
+		t.Fatal("the act was dispatched instead of being refused in the loop")
+	}
+	reply := waitForAgentReply(t, graph, "room", delivered.Seq)
+	if !strings.Contains(reply.Body, "North 14%") {
+		t.Fatalf("the composed answer never reached the room: %q", reply.Body)
+	}
+}
+
+// toolingClient scripts a tool-calling turn and watches what came back for the
+// refusals the loop is supposed to produce itself.
+type toolingClient struct {
+	mutex        sync.Mutex
+	turns        []beltTurn
+	calledRead   bool
+	toldHandless bool
+}
+
+func (client *toolingClient) CompleteWithMessages(_ context.Context, messages []ai.Message,
+	_ ...ai.Option) (*ai.Response, error) {
+	client.mutex.Lock()
+	defer client.mutex.Unlock()
+	for _, message := range messages {
+		for _, part := range message.Content {
+			if strings.Contains(part.Text, absorbHandless) {
+				client.toldHandless = true
+			}
+			if strings.Contains(part.Text, "North 14%, South 9%, East 3%") &&
+				message.Role == "tool" {
+				client.calledRead = true
+			}
+		}
+	}
+	if len(client.turns) == 0 {
+		return nil, errors.New("no scripted turn left")
+	}
+	turn := client.turns[0]
+	client.turns = client.turns[1:]
+	response := textResponse(turn.text)
+	response.Choices[0].Message.ToolCalls = turn.calls
+	return response, nil
 }
 
 // §13.6's duplicate, pinned. One settle, one answer.

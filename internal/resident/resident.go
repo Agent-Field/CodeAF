@@ -1006,7 +1006,7 @@ func (r *Reconciler) settleCommand(command store.Command, outcome commandOutcome
 	// thread read takes the whole session and a node under a row does not
 	// remove it. So the anchored half now carries no session: the head said the
 	// one thread sentence this command gets, in its own voice, before the
-	// command was even journaled (headSpeaksFor), and the job's record keeps
+	// command was even journaled (HeadSpeaksFor), and the job's record keeps
 	// the receipt for whoever opens the room. A refusal is unanchored by
 	// receiptAnchor and still speaks — it is the one case where the head having
 	// spoken first is the wrong answer, not a duplicate one.
@@ -1053,13 +1053,13 @@ func receiptVoice(command store.Command, status store.CommandStatus) store.Role 
 	if status == store.CommandRejected {
 		return store.RoleAgent
 	}
-	if receiptAnchor(command, status) != "" || headSpeaksFor(command.Kind) {
+	if receiptAnchor(command, status) != "" || HeadSpeaksFor(command.Kind) {
 		return store.RoleSystem
 	}
 	return store.RoleAgent
 }
 
-// headSpeaksFor is the audit, written down: every kind here is journaled by a
+// HeadSpeaksFor is the audit, written down: every kind here is journaled by a
 // route that answers the user in its own voice in the same breath — surgery and
 // revision, charters, services, splices — and handover, whose outcome the
 // residency narrates while it waits for it. A kind absent from this list is one
@@ -1067,7 +1067,12 @@ func receiptVoice(command store.Command, status store.CommandStatus) store.Role 
 // Silence is the failure this list exists to prevent; a kind that grows a spoken
 // reply and is not added here says the same thing twice, which is the cheaper
 // mistake and the one a reader can see.
-func headSpeaksFor(kind store.CommandKind) bool {
+//
+// It is exported because the head reads the same list from the other end. This
+// list is exactly the set of receipts the head has already spoken over, so it is
+// exactly the set whose SETTLEMENT the head is on the hook for — the wake that
+// says what the workforce actually made of the change (internal/head/wake.go).
+func HeadSpeaksFor(kind store.CommandKind) bool {
 	switch kind {
 	case store.CommandSplice, store.CommandAmend, store.CommandCancel, store.CommandRedirect,
 		store.CommandExpedite, store.CommandPause, store.CommandResume,

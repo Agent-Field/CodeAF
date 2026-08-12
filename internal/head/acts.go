@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
-	"time"
 
 	"github.com/Agent-Field/aforge-v2/internal/craft"
 	"github.com/Agent-Field/aforge-v2/internal/store"
@@ -415,57 +414,38 @@ func (h *Head) renderOpenQuestions(sessionID string) string {
 	return strings.Join(lines, "\n")
 }
 
-const (
-	// beltAwaitWindow is how long one await may hold the turn. It is short on
-	// purpose: this watches for a RECEIPT, which the reconciler writes within a
-	// tick or two, not for work to finish, which takes minutes. A turn that
-	// blocked for minutes would be a conversation that stopped answering.
-	beltAwaitWindow = 3 * time.Second
-	// beltAwaitPoll is how often the receipt is looked for. It matches the head's
-	// own poll so an await never spins faster than the loop it lives in.
-	beltAwaitPoll = pollInterval
-)
+// sayBytes bounds one interim line. This is a sentence said in passing, not a
+// place to put an answer: a paragraph posted here would be the turn delivering
+// its reply early and then delivering it again at the end.
+const sayBytes = 600
 
-// await closes the loop that async commands never had. control, revise, spawn
-// and the rest return "queueing" and the outcome lands later as a reconciler
-// receipt, so a turn could not observe the result of a command it had just
-// issued and re-plan on it — Part 2.6. This is that observation, bounded.
-func (run *beltRun) await(args map[string]any) (string, bool) {
-	seq := beltInt(args, "command")
-	if seq <= 0 {
-		if len(run.issued) == 0 {
-			return "nothing has been queued in this turn to wait for", true
-		}
-		seq = run.issued[len(run.issued)-1]
+// say is the turn talking while it is still working.
+//
+// The tool that used to stand here was `await`: three seconds of blocking on a
+// receipt, because the turn had exactly one chance to speak and could not
+// observe anything that happened after it. Both halves of that are gone — the
+// receipt comes back as a wake (wake.go), and the turn can now speak more than
+// once. What is left is the simple half: put one line in front of them now.
+//
+// It goes through the ordinary posting door, unannotated and unmarked, because
+// it is an ordinary thing for the head to say. Every surface already draws it:
+// there is no new class of message here, only a message that arrives before the
+// turn is over.
+func (run *beltRun) say(args map[string]any) (string, bool) {
+	line := strings.TrimSpace(beltString(args, "text"))
+	if line == "" {
+		return "text must be the one line to say now, in the person's own terms", true
 	}
-	deadline := time.Now().Add(beltAwaitWindow)
-	for {
-		command, found, err := run.head.store.CommandBySeq(seq)
-		if err != nil {
-			return "that command could not be read: " + err.Error(), true
-		}
-		if !found {
-			return fmt.Sprintf("there is no command numbered %d", seq), true
-		}
-		if command.Status != store.CommandPending {
-			return awaitReceipt(command), false
-		}
-		if !time.Now().Before(deadline) {
-			return fmt.Sprintf("command %d is still queued — the workforce has not reached it yet. Say it is in hand, not that it is done", seq), false
-		}
-		time.Sleep(beltAwaitPoll)
+	if err := run.head.postAgent(run.user.SessionID, truncateBytes(line, sayBytes), 0); err != nil {
+		return "that line could not be posted: " + err.Error(), true
 	}
-}
-
-func awaitReceipt(command store.Command) string {
-	if command.Status == store.CommandRejected {
-		reason := strings.TrimSpace(command.Result)
-		if reason == "" {
-			reason = "no reason recorded"
-		}
-		return fmt.Sprintf("command %d was REFUSED: %s. Nothing changed — say so plainly", command.Seq, reason)
-	}
-	return fmt.Sprintf("command %d was applied", command.Seq)
+	// Deliberately not `acted`: saying something changes nothing in the world, and
+	// a turn that only spoke owes no receipt. `said` is the narrower fact — this
+	// turn has already put words on their screen — and the only thing it buys is
+	// the right to end without a second message when there is nothing to add.
+	run.said = true
+	return "said — they are reading that now. The turn continues; do not say it again, " +
+		"and your closing words are still their own message", false
 }
 
 // controlCandidates answers a verb that knows what it wants to do and not what
