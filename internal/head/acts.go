@@ -1,6 +1,7 @@
 package head
 
 import (
+	"errors"
 	"fmt"
 	"strconv"
 	"strings"
@@ -532,6 +533,9 @@ func (run *beltRun) ask(args map[string]any) (string, bool) {
 			Label: label, Value: fmt.Sprintf("%s%d", askOptionPrefix, index+1),
 		})
 	}
+	if category := askCategory(beltString(args, "category")); category != "" {
+		return run.askLearned(category, prompt, options)
+	}
 	if err := run.head.postQuestion(run.user.SessionID, prompt, 0, options); err != nil {
 		return "that question could not be asked: " + err.Error(), true
 	}
@@ -539,6 +543,102 @@ func (run *beltRun) ask(args map[string]any) (string, bool) {
 	// thread answering its own question.
 	run.acted, run.spoke = true, true
 	return "asked; their next message is the answer and you will have both in front of you", false
+}
+
+// askCategory reads the one argument that turns an askback into a measurement.
+//
+// Exactly one value means anything today, and an unknown one is not an error:
+// the model naming a category this build has never heard of has still asked a
+// perfectly good question, and refusing it would cost the person their answer
+// to protect a statistic. So anything unrecognised falls through to the ordinary
+// conversational ask, which is what would have happened without the argument.
+func askCategory(value string) store.QuestionCategory {
+	switch strings.ToLower(strings.TrimSpace(value)) {
+	case string(store.QuestionCategoryScope):
+		return store.QuestionCategoryScope
+	default:
+		return ""
+	}
+}
+
+// askLearned is the same question asked through the meta loop.
+//
+// A categorized ask differs from the conversational one in two ways, and both
+// follow from the fact that it is now evidence. It goes onto the durable
+// question row so its answer can be counted (QuestionCategoryStats reads
+// agent_questions, and only rows carrying a category and an offered default),
+// and it is gated: once ShouldAsk says asking has stopped paying, the question
+// is not put at all. The assumption is journaled either way, so a person who
+// corrects it afterwards is counted against it and the gate reopens.
+//
+// The learned default is the FIRST option the model listed. CategoryStats
+// measures acceptance of the offered default, not the frequency of each choice,
+// so there is no honest way to name "the option most often chosen" from it —
+// what it does certify is that the offered default has been accepted enough for
+// asking to stop paying, and the offered default is option one.
+func (run *beltRun) askLearned(category store.QuestionCategory,
+	prompt string, options []store.QuestionOption) (string, bool) {
+	// "1" is the index spelling every durable default in this package uses; the
+	// journal of skipped asks carries the label instead, because that is the one
+	// a correction would be typed in.
+	const offered = "1"
+	preferred := strings.TrimSpace(options[0].Label)
+	if ask, stat, err := run.head.store.ShouldAsk(category); err == nil && !ask {
+		if err := run.head.store.RecordAssumedWithDefault(category,
+			preferred, run.user.SessionID, prompt); err == nil {
+			// The turn CONTINUES. Nothing was put to the person, so nothing owns
+			// the words yet — the loop carries on and says the assumption itself.
+			return fmt.Sprintf("assumed: %s (learned from %d earlier answers) — proceed on "+
+				"that, and say so in one clause so they can correct it.", preferred, stat.N), false
+		}
+	}
+	allowFree := true
+	body := askBody(prompt, options, askConfig(store.QuestionChoose, category, offered, allowFree))
+	question, err := run.head.store.AskQuestion(store.AgentQuestion{
+		SessionID: run.user.SessionID, Text: body, Urgency: store.QuestionBlocking,
+		Category: category, DefaultAnswer: offered, Options: options,
+	})
+	if err != nil {
+		return "that question could not be asked: " + err.Error(), true
+	}
+	if _, err := run.head.store.SurfaceQuestion(question.Seq); err != nil {
+		return "that question could not be asked: " + err.Error(), true
+	}
+	run.acted, run.spoke = true, true
+	return "asked; their next message is the answer and you will have both in front of you", false
+}
+
+// settleLearnedAsk records the answer to a categorized ask on its durable row,
+// and settles nothing else. It is a MEASUREMENT: both answer paths call it and
+// both then decline to handle the message, so the words carry on to the loop
+// that asked — the only party that knows what the choice was for.
+//
+// The resolution is normalized to the chosen option's value when the reply names
+// one, because that is the spelling the acceptance projection compares against
+// the offered default. A reply in the person's own words is kept verbatim and
+// counts as a different answer, which is the honest reading: they had something
+// to say that the options did not, so the ask paid for itself.
+//
+// It is safe to call twice. Both answer paths can see the same reply, and a row
+// somebody already settled is not this turn's problem — it is certainly not a
+// reason to swallow the person's answer.
+func (h *Head) settleLearnedAsk(questionSeq int64, options []store.QuestionOption,
+	body string, answerSeq int64) error {
+	if questionSeq == 0 {
+		return nil
+	}
+	resolution := strings.TrimSpace(body)
+	if option, selected := selectQuestionOption(body, options); selected {
+		resolution = option.Value
+	}
+	if resolution == "" {
+		return nil
+	}
+	err := h.store.ResolveQuestion(questionSeq, store.QuestionAnswered, resolution, answerSeq)
+	if err == nil || errors.Is(err, store.ErrInvalid) || errors.Is(err, store.ErrNotFound) {
+		return nil
+	}
+	return err
 }
 
 // beltBool reads a boolean argument through the shapes providers actually emit

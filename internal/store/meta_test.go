@@ -141,6 +141,32 @@ func TestVOIGateExceptionsJournalAndReturnToAsking(t *testing.T) {
 	}
 }
 
+// Scope — "the quick look now, or the proper job?" — is an ordinary VOI-gated
+// ask, and the consent-bearing categories stay exempt no matter how consistently
+// they are answered. The exemption is the whole safety property of the gate:
+// learning that a person always says yes is not permission to stop asking them.
+func TestScopeIsGatedWhileConsentCategoriesStayExempt(t *testing.T) {
+	graph := metaStore(t)
+	consenting := []QuestionCategory{
+		QuestionCategoryCharterRatification, QuestionCategoryRailRaise, QuestionCategoryServiceConsent,
+	}
+	for _, category := range append([]QuestionCategory{QuestionCategoryScope}, consenting...) {
+		for index := 0; index < VOIMinSamples; index++ {
+			answerMetaQuestion(t, graph, category, "1")
+		}
+	}
+	ask, stat, err := graph.ShouldAsk(QuestionCategoryScope)
+	if err != nil || ask {
+		t.Fatalf("scope never learned its default: ask=%t stat=%+v err=%v", ask, stat, err)
+	}
+	for _, category := range consenting {
+		ask, _, err := graph.ShouldAsk(category)
+		if err != nil || !ask {
+			t.Fatalf("consent category %s stopped asking: ask=%t err=%v", category, ask, err)
+		}
+	}
+}
+
 func TestFiveTraitProjectionSupersedesSingletons(t *testing.T) {
 	graph := metaStore(t)
 	if err := graph.Splice(RootID, Subtree{Nodes: []NodeSpec{{ID: "trait-job", Brief: "make a detailed release plan", Stage: 1}}}, Provenance{Origin: OriginUser, SessionID: "traits", Intent: "make a detailed release plan"}); err != nil {
