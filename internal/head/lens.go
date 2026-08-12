@@ -594,7 +594,7 @@ func (h *Head) lensOpen(id, job string, raw bool, part int) (string, error) {
 	if service, found, err := h.store.Service(id); err == nil && found {
 		return lensPage(id, lensServiceRecord(service), part), nil
 	}
-	if rendered, err, resolved := h.lensAnyFile(id, part); resolved {
+	if rendered, resolved, err := h.lensAnyFile(id, part); resolved {
 		return rendered, err
 	}
 	return "", fmt.Errorf("nothing here is called %q — ids come from a board or recall read: a job id, a file a job wrote (pass job: as well when two jobs wrote the same name), a standing rule's id, a service's name, or a #number from the notebook. A learned way of working is not reachable from this conversation", id)
@@ -770,20 +770,20 @@ func (h *Head) lensJobFile(node store.Node, name string, part int) (string, erro
 // for a job that recorded that name. Two jobs with the same file name is the one
 // genuine ambiguity, and it comes back as a question rather than as a guess.
 //
-// The third return says whether the id was recognised as a file at all, so the
+// The middle return says whether the id was recognised as a file at all, so the
 // caller can fall through to its own not-found sentence rather than replacing it
 // with a file-shaped one.
-func (h *Head) lensAnyFile(name string, part int) (string, error, bool) {
+func (h *Head) lensAnyFile(name string, part int) (string, bool, error) {
 	if written := h.writtenArtifacts(); len(written) > 0 {
 		sort.Strings(written)
 		if picked, chosen := artifactPick(written, name); chosen {
 			rendered, err := lensFilePage(picked, name, part)
-			return rendered, err, true
+			return rendered, true, err
 		}
 	}
 	nodes, err := h.store.AddressableNodes()
 	if err != nil {
-		return "", nil, false
+		return "", false, nil
 	}
 	owners := make([]store.Node, 0, 2)
 	picks := make([]string, 0, 2)
@@ -809,17 +809,17 @@ func (h *Head) lensAnyFile(name string, part int) (string, error, bool) {
 	}
 	switch len(picks) {
 	case 0:
-		return "", nil, false
+		return "", false, nil
 	case 1:
 		rendered, fileErr := lensFilePage(picks[0], name, part)
-		return rendered, fileErr, true
+		return rendered, true, fileErr
 	}
 	names := make([]string, 0, len(owners))
 	for _, owner := range owners {
 		names = append(names, owner.ID+" ("+surgeryTargetLabel(owner)+")")
 	}
-	return "", fmt.Errorf("more than one job recorded a file called %q — say which with open(%q, job:<id>): %s",
-		name, name, strings.Join(names, ", ")), true
+	return "", true, fmt.Errorf("more than one job recorded a file called %q — say which with open(%q, job:<id>): %s",
+		name, name, strings.Join(names, ", "))
 }
 
 // lensFilePage reads one page of one recorded file, straight off the disk at
@@ -1138,6 +1138,11 @@ func (h *Head) lensNodeEvents(members map[string]bool, limit int) ([]store.Event
 func lensPage(id, body string, part int) string {
 	pages := lensPageBounds(body)
 	if len(pages) <= 1 {
+		if part > 1 {
+			// Handing back page one under the name of page two is how a loop
+			// comes to believe it has read something twice.
+			return fmt.Sprintf("%s fits on one page; there is no part %d — what follows is the whole of it\n\n%s", id, part, body)
+		}
 		return body
 	}
 	if part > len(pages) {
@@ -1395,10 +1400,14 @@ func (h *Head) lensHealth() string {
 	if seq, err := h.store.LatestEventSeq(); err == nil {
 		fmt.Fprintf(&rendered, "journal: %d events recorded\n", seq)
 	}
-	if questions := strings.TrimSpace(h.renderOpenQuestions("")); questions != "" {
+	// Every room's open questions, not this one's: a system page that showed
+	// only the questions asked in the room being read would call the system
+	// quiet while a worker in another window waited on an answer.
+	questions := strings.TrimSpace(h.renderOpenQuestions(""))
+	if strings.HasPrefix(questions, "-") {
 		rendered.WriteString("questions waiting on the person:\n" + questions + "\n")
 	} else {
-		rendered.WriteString("nothing is waiting on an answer from the person.\n")
+		rendered.WriteString(questions + "\n")
 	}
 	return strings.TrimSpace(rendered.String())
 }

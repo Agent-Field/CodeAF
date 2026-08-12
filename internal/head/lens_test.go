@@ -359,6 +359,34 @@ func TestOpenRawHandsBackTheJournalRows(t *testing.T) {
 	}
 }
 
+// A part number past what there is must never come back as page one under
+// another name. Handing back the opening of something as its continuation is
+// how a loop comes to believe it has read a document twice.
+func TestOpenRefusesAPartThatIsNotThere(t *testing.T) {
+	graph := openHeadStore(t)
+	spliceSurgeryJob(t, graph, "short", "Short job", "do the short thing")
+	completeNodeWith(t, graph, "short", "It is done and it took a sentence to say so.")
+	run := lensRun(t, graph, "short")
+
+	whole, failed := run.execute(beltToolOpen, mustJSON(map[string]any{"id": "short"}))
+	if failed {
+		t.Fatalf("open failed: %s", whole)
+	}
+	if strings.Contains(whole, "part 1 of") {
+		t.Fatalf("a one-page read announced paging it did not do:\n%s", whole)
+	}
+	beyond, failed := run.execute(beltToolOpen, mustJSON(map[string]any{"id": "short", "part": 3}))
+	if failed {
+		t.Fatalf("open part 3 failed: %s", beyond)
+	}
+	if !strings.Contains(beyond, "there is no part 3") {
+		t.Fatalf("a part past a one-page read was served silently:\n%s", beyond)
+	}
+	if !strings.Contains(beyond, "It is done and it took a sentence") {
+		t.Fatalf("refusing the part also lost the thing itself:\n%s", beyond)
+	}
+}
+
 // The other things a person owns open as their full record, by the ids and
 // names they were shown rather than by a second naming scheme.
 func TestOpenReachesRulesServicesAndNotebookLines(t *testing.T) {
