@@ -98,7 +98,7 @@ func TestAConsequenceGatedCommandIsRefusedWithASpawnRedirect(t *testing.T) {
 		if !failed {
 			t.Fatalf("%s: %q was allowed to run: %s", name, command, result)
 		}
-		if !strings.Contains(result, beltToolSpawn) {
+		if !strings.Contains(result, beltToolTask) {
 			t.Fatalf("%s: the refusal is a wall rather than a redirect: %s", name, result)
 		}
 	}
@@ -135,7 +135,7 @@ func TestAnActIsBoundedInTimeAndInWhatItHandsBack(t *testing.T) {
 	if elapsed := time.Since(started); elapsed > 5*time.Second {
 		t.Fatalf("the window did not bound the turn: %s", elapsed)
 	}
-	if !strings.Contains(slow, "still running") || !strings.Contains(slow, beltToolSpawn) {
+	if !strings.Contains(slow, "still running") || !strings.Contains(slow, beltToolTask) {
 		t.Fatalf("a command too slow to be an instant act was not said to be one:\n%s", slow)
 	}
 
@@ -155,7 +155,7 @@ func TestAnActIsBoundedInTimeAndInWhatItHandsBack(t *testing.T) {
 	// A script is a deliverable, and a deliverable is work.
 	long, failed := run.execute(beltToolAct, beltArguments(t, map[string]any{
 		"command": "echo " + strings.Repeat("x", actCommandBytes)}))
-	if !failed || !strings.Contains(long, beltToolSpawn) {
+	if !failed || !strings.Contains(long, beltToolTask) {
 		t.Fatalf("a command the length of a script was accepted: %s", long)
 	}
 }
@@ -180,8 +180,8 @@ func TestTheActBoundaryIsStatedWhereTheModelReadsIt(t *testing.T) {
 		"instant, reversible command",
 		"two seconds without thinking",
 		"produces a deliverable",
-		"use spawn",
-		"When unsure, spawn",
+		"use task",
+		"When unsure, task",
 	} {
 		if !strings.Contains(description, want) {
 			t.Errorf("the act description no longer states %q:\n%s", want, description)
@@ -190,7 +190,7 @@ func TestTheActBoundaryIsStatedWhereTheModelReadsIt(t *testing.T) {
 	if !strings.Contains(orchestratorPrompt, "one instant, reversible command a person at the keyboard would run in two seconds without thinking") {
 		t.Error("the head's prompt no longer states the boundary, so the hand is one the model is never told it has")
 	}
-	if !strings.Contains(orchestratorPrompt, "When unsure, spawn") {
+	if !strings.Contains(orchestratorPrompt, "When unsure, hand it over") {
 		t.Error("the prompt lost the tie-breaker, which is the only part of the boundary that decides anything at the margin")
 	}
 }

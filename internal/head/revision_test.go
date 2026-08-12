@@ -137,8 +137,8 @@ func TestSurgeryVocabularyWinsOverRedirection(t *testing.T) {
 	}
 
 	client := &beltClient{turns: []beltTurn{
-		{calls: []ai.ToolCall{beltCall("c1", beltToolControl, map[string]any{
-			"verb": "cancel", "ids": []string{"api-client"}})}},
+		{calls: []ai.ToolCall{beltCall("c1", beltToolStop, map[string]any{
+			"targets": []string{"api-client"}})}},
 		{text: ""},
 	}}
 	if err := New(client, graph).answer(context.Background(), user); err != nil {
@@ -156,8 +156,8 @@ func TestOneLiveJobIsRedirectedWithoutAsking(t *testing.T) {
 	spliceSurgeryJob(t, graph, "api-client", "v1 API client", "write a client for the v1 API")
 	const words = "no, use the v2 API not v1"
 	client := &beltClient{turns: []beltTurn{
-		{calls: []ai.ToolCall{beltCall("c1", beltToolRevise, map[string]any{
-			"job": "api-client", "words": words})}},
+		{calls: []ai.ToolCall{beltCall("c1", beltToolChange, map[string]any{
+			"target": "api-client", "words": words})}},
 		{text: ""},
 	}}
 	user := postUser(t, graph, "single", words)
@@ -218,8 +218,8 @@ func TestTwoLiveJobsWithWeakAnchorAskOnceWithTheRankedDefault(t *testing.T) {
 	assertClickableAsk(t, question, "Which one do you mean?", "English audio", "French audio")
 
 	answering := &beltClient{turns: []beltTurn{
-		{calls: []ai.ToolCall{beltCall("c2", beltToolRevise, map[string]any{
-			"job": "audio-en", "words": words})}},
+		{calls: []ai.ToolCall{beltCall("c2", beltToolChange, map[string]any{
+			"target": "audio-en", "words": words})}},
 		{text: ""},
 	}}
 	answer := postUser(t, graph, "ambiguous", "1")
@@ -258,7 +258,7 @@ func TestRedirectQuestionCanStartTheWordsAsNewWork(t *testing.T) {
 		t.Fatal(err)
 	}
 	answering := &beltClient{turns: []beltTurn{
-		{calls: []ai.ToolCall{beltCall("c2", beltToolSpawn, map[string]any{"instruction": words})}},
+		{calls: []ai.ToolCall{beltCall("c2", beltToolTask, map[string]any{"instruction": words})}},
 		{text: ""},
 	}}
 	answer := postUser(t, graph, "new-work", "3")
@@ -318,8 +318,8 @@ func TestWorkRaisedBesideARunningJobRevisesItRatherThanRacingIt(t *testing.T) {
 	seedSpeakingJob(t, graph, session)
 	client := &beltClient{turns: []beltTurn{
 		{calls: []ai.ToolCall{beltCall("c1", beltToolBoard, map[string]any{})}},
-		{calls: []ai.ToolCall{beltCall("c2", beltToolRevise, map[string]any{
-			"job": "middleware", "words": adjacentReviewAsk})}},
+		{calls: []ai.ToolCall{beltCall("c2", beltToolChange, map[string]any{
+			"target": "middleware", "words": adjacentReviewAsk})}},
 		{text: "Adding the review before it commits."},
 	}}
 	user := postUser(t, graph, session, adjacentReviewAsk)
@@ -365,7 +365,7 @@ func TestNewWorkBesideARunningJobIsSplicedBehindIt(t *testing.T) {
 	session := "adjacent-new"
 	seedSpeakingJob(t, graph, session)
 	client := &beltClient{turns: []beltTurn{
-		{calls: []ai.ToolCall{beltCall("c1", beltToolSpawn, map[string]any{
+		{calls: []ai.ToolCall{beltCall("c1", beltToolTask, map[string]any{
 			"instruction": adjacentReviewAsk, "after": "middleware"})}},
 		{text: "Queued behind the work already underway."},
 	}}

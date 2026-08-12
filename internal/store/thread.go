@@ -318,7 +318,13 @@ type Command struct {
 	// made where every other reading of a message is made, and carried here
 	// because the engine that would reach for learned know-how runs long after
 	// the sentence is gone.
-	Fresh       bool
+	Fresh bool
+	// Deliberate is the person saying, in so many words, that this ask runs
+	// BESIDE work already under way — the one override on the duplicate guard
+	// in admission.go. It is transient: no column, no replay, no meaning past
+	// the moment of admission, because what it records is a fact about the
+	// sentence rather than a property of the work.
+	Deliberate  bool
 	Target      string
 	Instruction string
 	Attachments []string
@@ -720,6 +726,19 @@ func (s *Store) NodeMessages(nodeID string, afterSeq int64, limit int) ([]Messag
 func (s *Store) RequestCommand(command Command) (Command, error) {
 	if err := validateCommandRequest(command); err != nil {
 		return Command{}, fmt.Errorf("request command: %w", err)
+	}
+	// Admission control (admission.go). It sits here rather than in the head's
+	// commissioning tool so that every door onto new work — the conversation, a
+	// headless `aforge do`, any surface with its own composer — gets the same
+	// duplicate protection.
+	if command.Kind == CommandSplice && !command.Deliberate {
+		twin, duplicate, err := s.pendingSpliceTwin(command.SessionID, command.Instruction)
+		if err != nil {
+			return Command{}, fmt.Errorf("request command: %w", err)
+		}
+		if duplicate {
+			return Command{}, duplicateAsk(twin)
+		}
 	}
 
 	tx, err := s.db.BeginTx(context.Background(), nil)

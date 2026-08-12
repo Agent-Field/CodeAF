@@ -7,33 +7,50 @@ import (
 	"github.com/Agent-Field/aforge-v2/internal/store"
 )
 
-// The three things a person says about a way of working — do it again, that
-// last version was worse, stop doing it that way — journal the same three
-// commands the notebook page journals. One executor, two doors.
-func TestTheCraftToolJournalsTheSameCommandsThePageDoes(t *testing.T) {
+// forgeCraft records that this brain has learned a way of working by that name.
+// The repository still owns what the craft IS; the journal is where a process
+// without the repository open finds out that the name exists at all, which is
+// what the verb triad resolves a target against.
+func forgeCraft(t *testing.T, graph *store.Store, name string) {
+	t.Helper()
+	if _, err := graph.RecordCraftForged(store.CraftForged{Name: name, Commit: "abc123"}); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// The two things a person SAYS about a way of working that are not simply
+// asking for work — that last version was worse, stop doing it that way — reach
+// the same commands the notebook page journals. One executor, two doors. Doing
+// it that way again is not one of them any more: naming the way IS the ask, and
+// it travels in a task's own words to the recognizer that knows the names.
+func TestTheVerbTriadJournalsTheSameCraftCommandsThePageDoes(t *testing.T) {
 	for _, spoken := range []struct {
-		verb    string
-		words   string
+		tool    string
+		args    map[string]any
 		kind    store.CommandKind
+		words   string
 		receipt string
 	}{
-		{verb: "run", words: "on the Q3 numbers", kind: store.CommandCraftRun,
-			receipt: "Doing release-notes the way you have before."},
-		{verb: "revert", words: "the new link check misses half of them", kind: store.CommandCraftRevert,
+		{tool: beltToolChange,
+			args:    map[string]any{"target": "release-notes", "words": "the new link check misses half of them"},
+			kind:    store.CommandCraftRevert,
+			words:   "the new link check misses half of them",
 			receipt: "Putting release-notes back to the version before this one."},
-		{verb: "retire", words: "we ship notes by hand now", kind: store.CommandCraftRetire,
+		{tool: beltToolStop,
+			args:    map[string]any{"targets": []string{"release-notes"}, "words": "we ship notes by hand now"},
+			kind:    store.CommandCraftRetire,
+			words:   "we ship notes by hand now",
 			receipt: "Not working the release-notes way any more."},
 	} {
-		t.Run(spoken.verb, func(t *testing.T) {
+		t.Run(string(spoken.kind), func(t *testing.T) {
 			graph := openHeadStore(t)
-			user := postUser(t, graph, "craft-"+spoken.verb, "the release notes thing")
+			forgeCraft(t, graph, "release-notes")
+			user := postUser(t, graph, "craft-"+string(spoken.kind), "the release notes thing")
 			run := &beltRun{head: New(nil, graph), user: user}
 
-			answer, failed := run.execute(beltToolCraft, beltArguments(t, map[string]any{
-				"verb": spoken.verb, "name": "release-notes", "words": spoken.words,
-			}))
+			answer, failed := run.execute(spoken.tool, beltArguments(t, spoken.args))
 			if failed {
-				t.Fatalf("%s failed: %s", spoken.verb, answer)
+				t.Fatalf("%s failed: %s", spoken.kind, answer)
 			}
 			commands, err := graph.PendingCommands(0)
 			if err != nil || len(commands) != 1 {
@@ -60,13 +77,14 @@ func TestTheCraftToolJournalsTheSameCommandsThePageDoes(t *testing.T) {
 // without a reason, and the conversation is still in hand right here.
 func TestRevertingAWayOfWorkingWithoutAReasonIsRefusedAtTheBelt(t *testing.T) {
 	graph := openHeadStore(t)
+	forgeCraft(t, graph, "release-notes")
 	user := postUser(t, graph, "craft-thin", "put it back")
 	run := &beltRun{head: New(nil, graph), user: user}
 
-	answer, failed := run.execute(beltToolCraft, beltArguments(t, map[string]any{
-		"verb": "revert", "name": "release-notes", "words": "worse",
+	answer, failed := run.execute(beltToolChange, beltArguments(t, map[string]any{
+		"target": "release-notes", "words": "worse",
 	}))
-	if !failed || !strings.Contains(answer, "what the newer version got wrong") {
+	if !failed || !strings.Contains(answer, "got wrong") {
 		t.Fatalf("a reasonless revert answered %q (failed=%v)", answer, failed)
 	}
 	commands, err := graph.PendingCommands(0)
@@ -75,16 +93,23 @@ func TestRevertingAWayOfWorkingWithoutAReasonIsRefusedAtTheBelt(t *testing.T) {
 	}
 }
 
-func TestTheCraftToolRefusesAVerbItDoesNotHave(t *testing.T) {
+// A name nothing answers to is refused at the belt, and the refusal names all
+// four places that were looked in. Making a craft the fall-through was the
+// obvious shape and it was wrong: a mistyped job id would have gone off as a
+// command against a workflow nobody has ever forged.
+func TestAnUnknownNameIsRefusedNamingEverywhereItLooked(t *testing.T) {
 	graph := openHeadStore(t)
 	user := postUser(t, graph, "craft-bad", "do something to it")
 	run := &beltRun{head: New(nil, graph), user: user}
 
-	answer, failed := run.execute(beltToolCraft, beltArguments(t, map[string]any{
-		"verb": "delete", "name": "release-notes",
+	answer, failed := run.execute(beltToolChange, beltArguments(t, map[string]any{
+		"target": "release-notes", "words": "no",
 	}))
-	if !failed || !strings.Contains(answer, "run, revert, retire") {
-		t.Fatalf("an unknown verb answered %q (failed=%v)", answer, failed)
+	if !failed || !strings.Contains(answer, "no learned way of working is called") {
+		t.Fatalf("an unknown name answered %q (failed=%v)", answer, failed)
+	}
+	if commands, _ := graph.PendingCommands(0); len(commands) != 0 {
+		t.Fatalf("a refused change journaled %+v", commands)
 	}
 }
 
@@ -161,13 +186,13 @@ func TestTheSameWordsCommissionedTwiceInOneTurnAreOneJob(t *testing.T) {
 	user := postUser(t, graph, "double", "audit last quarter's billing code")
 	run := &beltRun{head: New(nil, graph), user: user}
 
-	first, failed := run.execute(beltToolSpawn, beltArguments(t, map[string]any{
+	first, failed := run.execute(beltToolTask, beltArguments(t, map[string]any{
 		"instruction": "audit last quarter's billing code",
 	}))
 	if failed {
 		t.Fatalf("the first spawn failed: %s", first)
 	}
-	second, failed := run.execute(beltToolSpawn, beltArguments(t, map[string]any{
+	second, failed := run.execute(beltToolTask, beltArguments(t, map[string]any{
 		"instruction": "audit last quarter's billing code",
 	}))
 	if failed {
@@ -194,7 +219,7 @@ func TestTwoDifferentAsksInOneTurnAreStillTwoJobs(t *testing.T) {
 	run := &beltRun{head: New(nil, graph), user: user}
 
 	for _, instruction := range []string{"audit the billing code", "write the release notes"} {
-		if answer, failed := run.execute(beltToolSpawn, beltArguments(t, map[string]any{
+		if answer, failed := run.execute(beltToolTask, beltArguments(t, map[string]any{
 			"instruction": instruction,
 		})); failed {
 			t.Fatalf("%q failed: %s", instruction, answer)

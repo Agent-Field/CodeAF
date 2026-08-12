@@ -16,7 +16,7 @@ import (
 //
 // The reading is read at the journaling door rather than in a recognizer, which
 // is why it survived the recognizers being demoted: every route to a restart —
-// the control tool's verb, a set, a confirmed question replayed later — goes
+// the change tool's words, a set, a confirmed question replayed later — goes
 // through the same funnel and picks up the same mark.
 func TestRestartCarriesTheModelWordsItWasGiven(t *testing.T) {
 	graph := openHeadStore(t)
@@ -25,8 +25,8 @@ func TestRestartCarriesTheModelWordsItWasGiven(t *testing.T) {
 
 	user := postUser(t, graph, "escalate", "rerun the market scan with the better model")
 	head, _ := beltHead(graph, beltTurn{calls: []ai.ToolCall{
-		beltCall("c1", beltToolControl, map[string]any{
-			"verb": "restart", "ids": []string{"market-scan"}})}}, beltTurn{})
+		beltCall("c1", beltToolChange, map[string]any{
+			"target": "market-scan", "words": user.Body})}}, beltTurn{})
 	if err := head.answer(context.Background(), user); err != nil {
 		t.Fatal(err)
 	}

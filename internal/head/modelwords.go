@@ -142,6 +142,13 @@ type ModelResolver func(ModelWords) WorkModelChoice
 func RecognizeModelWords(instruction string) (ModelWords, bool) {
 	answer, answered := LastCompilerAnswer(instruction)
 	if !answered {
+		// The task tool's own argument outranks the regexes, because it is a
+		// reading the model made deliberately rather than one a pattern found in
+		// prose. It is read AFTER an answer, never before: an answer is younger
+		// than the words that raised the question.
+		if words, marked := TaskModel(instruction); marked {
+			return words, true
+		}
 		return recognizeModelWords(instruction)
 	}
 	if words, ok := recognizeModelWords(answer); ok {
@@ -268,6 +275,47 @@ func MarkRestartModel(instruction string) string {
 		choice = words.Names[0]
 	}
 	return strings.TrimSpace(instruction) + "\n\n" + RestartModelPrefix + " " + choice
+}
+
+// TaskModelPrefix marks the model a task tool's own `model` argument named. It
+// is the RestartModelPrefix idiom for the commissioning half: store.Command has
+// no model column, the instruction is the durable payload, and the head cannot
+// resolve a name because the catalog lives with the surface that owns the slots.
+// So the head writes down what was asked for and leaves resolution there.
+const TaskModelPrefix = "Run this on:"
+
+// MarkTaskModel appends the head's reading of a task's model words. An empty
+// argument comes back byte-identical, so every task that named no model stays
+// exactly what the person said.
+func MarkTaskModel(instruction, model string) string {
+	model = strings.TrimSpace(model)
+	if model == "" || strings.Contains(instruction, TaskModelPrefix) {
+		return instruction
+	}
+	// The words are read the way any other model words are read, so "the better
+	// model" reaches the boost slot rather than the catalog.
+	choice := model
+	if words, wanted := recognizeModelWords("use " + model + " model"); wanted && words.Boost {
+		choice = RestartModelBoost
+	}
+	return strings.TrimSpace(instruction) + "\n\n" + TaskModelPrefix + " " + choice
+}
+
+// TaskModel reads back what MarkTaskModel wrote.
+func TaskModel(instruction string) (ModelWords, bool) {
+	index := strings.LastIndex(instruction, TaskModelPrefix)
+	if index < 0 {
+		return ModelWords{}, false
+	}
+	choice := strings.TrimSpace(firstMarkedLine(instruction[index+len(TaskModelPrefix):]))
+	switch {
+	case choice == "":
+		return ModelWords{}, false
+	case choice == RestartModelBoost:
+		return ModelWords{Boost: true}, true
+	default:
+		return ModelWords{Names: []string{choice}, Explicit: true}, true
+	}
 }
 
 // RestartModel reads back what MarkRestartModel wrote. The second return is

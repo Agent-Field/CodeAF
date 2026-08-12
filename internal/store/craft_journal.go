@@ -39,6 +39,44 @@ type CraftForged struct {
 	Because string `json:"because,omitempty"`
 }
 
+// ForgedCraftNames is every way of working this brain has learned, newest
+// first. The repository is still the authority on what a craft IS — its steps,
+// its versions, its ceilings — but the journal is the only place a process
+// without the repository open can find out which names EXIST, and that turns
+// out to be the question a conversation asks.
+//
+// It exists because the verb triad resolves one id against everything the
+// person owns (internal/head/change.go): a job, a rule, a service, a way of
+// working. Three of those the store can confirm. Without this the fourth had to
+// be the fall-through — which made every mistyped job id a command against a
+// workflow nobody has forged.
+func (s *Store) ForgedCraftNames() ([]string, error) {
+	rows, err := s.db.Query(`SELECT json_extract(payload, '$.name') FROM events
+		WHERE kind=? ORDER BY seq DESC`, EventCraftForged)
+	if err != nil {
+		return nil, fmt.Errorf("forged craft names: %w", err)
+	}
+	defer rows.Close()
+
+	names := make([]string, 0, 8)
+	seen := make(map[string]bool, 8)
+	for rows.Next() {
+		var name string
+		if err := rows.Scan(&name); err != nil {
+			return nil, fmt.Errorf("forged craft names: %w", err)
+		}
+		if name = strings.TrimSpace(name); name == "" || seen[strings.ToLower(name)] {
+			continue
+		}
+		seen[strings.ToLower(name)] = true
+		names = append(names, name)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("forged craft names: %w", err)
+	}
+	return names, nil
+}
+
 // RecordCraftForged journals one forging. There is no view to materialize —
 // the repository is the view — so this writes the event and stops, which is
 // why replay decodes it and does nothing else.

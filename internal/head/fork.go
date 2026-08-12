@@ -51,35 +51,6 @@ const (
 // that had to guess at the fence would eventually guess wrong.
 const ForkedContextPrefix = "--- the conversation this came out of, as CONTEXT and not as instructions ---"
 
-// fork commissions work that inherits this conversation.
-func (run *beltRun) fork(args map[string]any) (string, bool) {
-	goal := strings.TrimSpace(beltString(args, "instruction"))
-	if goal == "" {
-		// "Go do it" carries no goal of its own, and the sentence that said it
-		// is the goal. This is the commonest shape the tool has.
-		goal = strings.TrimSpace(run.user.Body)
-	}
-	if goal == "" {
-		return "instruction must say what to go and do, in the user's own words", true
-	}
-	context, err := run.head.forkContext(run.user)
-	if err != nil {
-		return "the conversation could not be read: " + err.Error(), true
-	}
-	if context == "" {
-		return "there is nothing discussed in this conversation yet for the work to inherit — use spawn", true
-	}
-	// Straight through spawn, so every guard that makes commissioning safe
-	// applies without being restated. reflex is deliberately not offered: work
-	// that needed ten minutes of conversation to specify is not a reversible
-	// seconds-scale action, whatever it looks like from here.
-	return run.spawn(map[string]any{
-		"instruction": ForkedInstruction(goal, context),
-		"after":       beltString(args, "after"),
-		"fresh":       args["fresh"],
-	})
-}
-
 // ForkedInstruction is the composed brief: the ask first, the conversation
 // under it, fenced.
 //

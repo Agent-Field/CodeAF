@@ -42,7 +42,7 @@ func TestRecognizedStandingLanguageDraftsACharterFromTheVerbatimAsk(t *testing.T
 	// The words travel verbatim, because the compiler behind the splice reads
 	// the sentence itself: an improved paraphrase is a different rule.
 	head, _ := beltHead(graph, beltTurn{calls: []ai.ToolCall{
-		beltCall("c1", beltToolSpawn, map[string]any{"instruction": theObservedFailure})}},
+		beltCall("c1", beltToolTask, map[string]any{"instruction": theObservedFailure})}},
 		beltTurn{text: "I'll set that up as a standing rule and check with you before it stands."})
 	if err := head.answer(context.Background(), user); err != nil {
 		t.Fatal(err)

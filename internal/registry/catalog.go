@@ -179,27 +179,31 @@ func threadKeyRows() []Entry {
 
 // beltRows are the head belt verbs that journal a real store command,
 // reachable only through the user's own words — never a key, never a slash.
-// internal/head/toolbelt.go's control tool carries five of them behind one
-// verb argument (beltVerbKind), and revise and expedite are one tool each;
-// all seven share the property that a model composing the belt, not a typed
-// accelerator, is the only door.
+// Seven store verbs, two tools: internal/head/toolbelt.go's stop tool withdraws
+// and its change tool carries everything else, with no verb argument at all —
+// the words go over the funnel and the revision judge reads them. The rows stay
+// one per store kind because this catalog is an index of what the product can
+// DO, and what a surface renders is a verb rather than a tool.
 func beltRows() []Entry {
-	const controlTool = "control"
+	const (
+		stopTool   = "stop"
+		changeTool = "change"
+	)
 	return []Entry{
 		{ID: "belt.cancel", Verb: "cancel", Description: "cancel the jobs named in the conversation",
-			Scope: ScopeTalk, Journal: Journal{Kind: store.CommandCancel, Tool: controlTool}},
+			Scope: ScopeTalk, Journal: Journal{Kind: store.CommandCancel, Tool: stopTool}},
 		{ID: "belt.pause", Verb: "pause", Description: "pause the jobs named in the conversation",
-			Scope: ScopeTalk, Journal: Journal{Kind: store.CommandPause, Tool: controlTool}},
+			Scope: ScopeTalk, Journal: Journal{Kind: store.CommandPause, Tool: stopTool}},
 		{ID: "belt.resume", Verb: "resume", Description: "resume the jobs named in the conversation",
-			Scope: ScopeTalk, Journal: Journal{Kind: store.CommandResume, Tool: controlTool}},
+			Scope: ScopeTalk, Journal: Journal{Kind: store.CommandResume, Tool: changeTool}},
 		{ID: "belt.restart", Verb: "restart", Description: "restart the jobs named in the conversation",
-			Scope: ScopeTalk, Journal: Journal{Kind: store.CommandRestart, Tool: controlTool}},
+			Scope: ScopeTalk, Journal: Journal{Kind: store.CommandRestart, Tool: changeTool}},
 		{ID: "belt.reprioritize", Verb: "reprioritize", Description: "move the jobs named in the conversation ahead of the rest",
-			Scope: ScopeTalk, Journal: Journal{Kind: store.CommandReprioritize, Tool: controlTool}},
+			Scope: ScopeTalk, Journal: Journal{Kind: store.CommandReprioritize, Tool: changeTool}},
 		{ID: "belt.revise", Verb: "revise", Description: "edit a job's remaining plan to match what the user just said",
-			Scope: ScopeTalk, Journal: Journal{Kind: store.CommandRedirect, Tool: "revise"}},
+			Scope: ScopeTalk, Journal: Journal{Kind: store.CommandRedirect, Tool: changeTool}},
 		{ID: "belt.expedite", Verb: "expedite", Description: "push a job to the front of the queue and trim its unstarted tail",
-			Scope: ScopeTalk, Journal: Journal{Kind: store.CommandExpedite, Tool: "expedite"}},
+			Scope: ScopeTalk, Journal: Journal{Kind: store.CommandExpedite, Tool: changeTool}},
 	}
 }
 

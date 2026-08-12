@@ -66,7 +66,7 @@ const (
 // actSpawnInstead is what both refusals say. It is one sentence rather than two
 // because the loop's next move is the same either way, and it names spawn out
 // loud so a model that reads the refusal already knows the route.
-const actSpawnInstead = " — that is not an instant reversible act, it is work the person gets to see coming. Commission it with spawn, in their own words."
+const actSpawnInstead = " — that is not an instant reversible act, it is work the person gets to see coming. Commission it with task, in their own words."
 
 // actWindowOf is how long this head gives one act. The field is unset in the
 // running product, where the constant is the answer; it exists so a test can
@@ -90,7 +90,7 @@ func (run *beltRun) act(args map[string]any) (string, bool) {
 		return "command must be the one short command to run, exactly as it would be typed", true
 	}
 	if len(command) > actCommandBytes {
-		return fmt.Sprintf("that is %d characters of shell — a command that long is a script, and a script is work: spawn it",
+		return fmt.Sprintf("that is %d characters of shell — a command that long is a script, and a script is work: commission it with task",
 			len(command)), true
 	}
 	if reason, gated := actGated(command); gated {
@@ -131,7 +131,7 @@ func actResult(command, root string, output []byte, runErr error, timedOut bool,
 	var verdict string
 	switch {
 	case timedOut:
-		verdict = fmt.Sprintf("`%s` was still running after %s and was stopped. It is not an instant act; if the person wants it done, spawn it",
+		verdict = fmt.Sprintf("`%s` was still running after %s and was stopped. It is not an instant act; if the person wants it done, commission it with task",
 			command, window)
 	case runErr == nil:
 		verdict = fmt.Sprintf("`%s` ran in %s and exited 0", command, root)

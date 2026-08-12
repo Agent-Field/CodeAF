@@ -78,7 +78,7 @@ func TestSpeakingMidTurnStillLeavesADispatchVisible(t *testing.T) {
 	client := &beltClient{turns: []beltTurn{
 		{calls: []ai.ToolCall{beltCall("s1", beltToolSay, map[string]any{
 			"text": "That is a real piece of work — handing it over."})}},
-		{calls: []ai.ToolCall{beltCall("w1", beltToolSpawn, map[string]any{
+		{calls: []ai.ToolCall{beltCall("w1", beltToolTask, map[string]any{
 			"instruction": "profile the four reverse proxies"})}},
 		{text: ""},
 	}}
