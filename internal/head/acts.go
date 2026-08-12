@@ -5,7 +5,6 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/Agent-Field/aforge-v2/internal/craft"
 	"github.com/Agent-Field/aforge-v2/internal/store"
 )
 
@@ -18,123 +17,6 @@ import (
 // dispute line, the same charter transition table, the same service kinds, the
 // same gates. What moved is who decides, and the difference shows up on exactly
 // the sentences the prefix tests were never going to cover.
-
-// correct is the settled-work half of revision, and it is one tool rather than
-// two because a blunt rejection and a polite adjustment are the same event said
-// in two registers. "That's wrong" and "make it warmer, less legal" both mean:
-// the thing you handed me is not right, here is what is wrong with it, do it
-// again. Three revisions of one email used to be four separate jobs, each
-// re-planned, re-priced, without the previous version in hand.
-func (run *beltRun) correct(args map[string]any) (string, bool) {
-	id := strings.TrimSpace(beltString(args, "job"))
-	if id == "" {
-		return "job must name the finished work whose deliverable was wrong, from a board or search read", true
-	}
-	node, found, err := run.head.store.Node(id)
-	if err != nil {
-		return "that job could not be read: " + err.Error(), true
-	}
-	if !found || !correctable(node) {
-		return fmt.Sprintf("there is no finished work of the user's with id %q — correction is for work that already delivered; read the board again", id), true
-	}
-	previous := run.head.jobResult(node)
-	if strings.TrimSpace(previous) == "" {
-		return surgeryTargetLabel(node) + " recorded nothing, so there is no deliverable to be wrong. If they want something new, spawn it", true
-	}
-	words := strings.TrimSpace(beltString(args, "words"))
-	if words == "" {
-		words = strings.TrimSpace(run.user.Body)
-	}
-	if words == "" {
-		return "words must say what is wrong with it, in the user's own terms", true
-	}
-	command, err := run.head.store.RequestCommand(store.Command{
-		SessionID:   run.user.SessionID,
-		Kind:        store.CommandSplice,
-		Target:      node.ID,
-		Instruction: SpliceCorrection(words, node, previous, resultFiles(node)),
-		Attachments: append([]string(nil), run.user.Attachments...),
-	})
-	if err != nil {
-		return "that could not be queued: " + err.Error(), true
-	}
-	run.record(command.Seq, "Taking that back to "+surgeryTargetLabel(node)+
-		" — redoing it with the previous version and the correction in hand.")
-	return "queued as a revision of " + surgeryTargetLabel(node) +
-		": it goes again with its previous version and those words, and keeps everything they did not object to", false
-}
-
-// ruleVerbs is the charter transition table, read from the words a tool call
-// carries rather than from the words a sentence opened with. Retiring and
-// holding are also what a "stop" or "pause" aimed at a rule means, which is why
-// charterTransition maps the graph verbs onto two of these.
-func ruleVerbKind(verb string) (store.CommandKind, bool) {
-	switch strings.ToLower(strings.TrimSpace(verb)) {
-	case "retire", "stop":
-		return store.CommandCharterRetire, true
-	case "pause", "hold":
-		return store.CommandCharterPause, true
-	case "cadence", "retime":
-		return store.CommandCharterCadence, true
-	case "wording", "reword":
-		return store.CommandCharterWording, true
-	case "probation", "ask":
-		return store.CommandCharterProbation, true
-	}
-	return "", false
-}
-
-func (run *beltRun) rule(args map[string]any) (string, bool) {
-	kind, known := ruleVerbKind(beltString(args, "verb"))
-	if !known {
-		return "verb must be one of retire, pause, cadence, wording, probation", true
-	}
-	id := strings.TrimSpace(beltString(args, "id"))
-	if id == "" {
-		describes := strings.TrimSpace(beltString(args, "describes"))
-		candidates, err := run.head.charterCandidates(charterReference(strings.ToLower(describes), ""))
-		if err != nil {
-			return "the standing rules could not be read: " + err.Error(), true
-		}
-		switch len(candidates) {
-		case 0:
-			return "no standing rule matches that. Read standing to see what is on watch", true
-		case 1:
-			id = candidates[0].ID
-		default:
-			lines := make([]string, 0, len(candidates))
-			for _, candidate := range candidates {
-				lines = append(lines, "- "+candidate.ID+" | "+firstLine(candidate.Invariant))
-			}
-			return "more than one standing rule matches those words — name one id, or ask which they mean:\n" +
-				strings.Join(lines, "\n"), false
-		}
-	}
-	words := strings.TrimSpace(beltString(args, "words"))
-	switch kind {
-	case store.CommandCharterCadence:
-		if cadence := extractCadence(words); cadence != "" {
-			words = cadence
-		}
-		if words == "" {
-			return "words must say the new rhythm, in the user's own terms", true
-		}
-	case store.CommandCharterWording:
-		if words == "" {
-			return "words must say what the rule should say now", true
-		}
-	default:
-		words = string(kind)
-	}
-	command, err := run.head.store.RequestCommand(store.Command{
-		SessionID: run.user.SessionID, Kind: kind, Target: id, Instruction: words,
-	})
-	if err != nil {
-		return "that could not be queued: " + err.Error(), true
-	}
-	run.record(command.Seq, charterAcknowledgement(kind))
-	return "queued: " + charterAcknowledgement(kind), false
-}
 
 // charterAcknowledgement is acknowledgeCharterCommand's sentence without the
 // posting. The question-answer path still posts it directly, because an answer
@@ -160,73 +42,6 @@ func charterAcknowledgement(kind store.CommandKind) string {
 	return "Updating that standing rule."
 }
 
-// craftVerbKind is the craft transition table, the same shape ruleVerbKind is:
-// the words a tool call carries, mapped onto the store's own kinds. "stop" and
-// "don't use" are what retiring sounds like when nobody says the word retire.
-func craftVerbKind(verb string) (store.CommandKind, bool) {
-	switch strings.ToLower(strings.TrimSpace(verb)) {
-	case "run", "use":
-		return store.CommandCraftRun, true
-	case "revert", "roll_back", "rollback", "undo":
-		return store.CommandCraftRevert, true
-	case "retire", "stop", "forget":
-		return store.CommandCraftRetire, true
-	}
-	return "", false
-}
-
-// craft is the conversational door onto a learned way of working. It journals
-// the same three commands the notebook's own verb strip journals and reaches
-// the same executor — one implementation, two doors, which is the whole reason
-// these are command kinds rather than methods.
-//
-// The name is passed through as the user said it rather than resolved here: the
-// craft repository is not in this process's store, so the honest place to find
-// out that no such workflow exists is where the repository is, and the refusal
-// comes back in words in the same breath.
-func (run *beltRun) craft(args map[string]any) (string, bool) {
-	kind, known := craftVerbKind(beltString(args, "verb"))
-	if !known {
-		return "verb must be one of run, revert, retire", true
-	}
-	name := strings.TrimSpace(beltString(args, "name"))
-	if name == "" {
-		return "name must be the workflow's own name, the way the user named it", true
-	}
-	words := strings.TrimSpace(beltString(args, "words"))
-	if words == "" {
-		// Their own sentence is the fallback for the two verbs that read prose:
-		// it is where a run's parameters live and it is usually the reason for a
-		// retirement in the first place.
-		words = strings.TrimSpace(run.user.Body)
-	}
-	switch kind {
-	case store.CommandCraftRevert:
-		// The repository refuses a version change that cannot say why, and it is
-		// worth saying so HERE rather than letting the refusal come back a tick
-		// later: the model still has the conversation in hand and can ask.
-		if len(strings.Fields(words)) < craft.MinReasonWords {
-			return "words must say what the newer version got wrong — a few words at least, or ask them", true
-		}
-	case store.CommandCraftRun:
-		if words == "" {
-			words = "run " + name
-		}
-	default:
-		if words == "" {
-			words = "you asked me to stop using this"
-		}
-	}
-	command, err := run.head.store.RequestCommand(store.Command{
-		SessionID: run.user.SessionID, Kind: kind, Target: name, Instruction: words,
-	})
-	if err != nil {
-		return "that could not be queued: " + err.Error(), true
-	}
-	run.record(command.Seq, craftAcknowledgement(kind, name))
-	return "queued: " + strings.ToLower(craftAcknowledgement(kind, name)), false
-}
-
 // retirementReason is why something was taken off the shelf: their own sentence
 // when there is one, and the plain fact of it when they clicked instead.
 func retirementReason(said string) string {
@@ -244,77 +59,6 @@ func craftAcknowledgement(kind store.CommandKind, name string) string {
 		return "Putting " + name + " back to the version before this one."
 	}
 	return "Not working the " + name + " way any more."
-}
-
-func (run *beltRun) service(args map[string]any) (string, bool) {
-	verb := strings.ToLower(strings.TrimSpace(beltString(args, "verb")))
-	if verb == "stop_everything" {
-		// The one total phrasing, and it keeps its own gate: services are stopped
-		// unconditionally because they are the person's own persistent effects,
-		// and the live jobs are asked about once with what they cost quoted. The
-		// gate owns the words — the loop must not speak over a consent question.
-		if err := run.head.shutDownEverything(run.user); err != nil {
-			return "that could not be done: " + err.Error(), true
-		}
-		run.acted, run.spoke = true, true
-		return "every running service is being stopped, and the user has been asked about the live jobs; nothing else to say", false
-	}
-	action, known := serviceVerbAction(verb)
-	if !known {
-		return "verb must be one of stop, restart, auto_restart_on, auto_restart_off, stop_everything", true
-	}
-	describes := strings.TrimSpace(beltString(args, "describes"))
-	var matches []store.Service
-	var err error
-	if action == "restart" {
-		matches, err = run.head.store.SearchRestartableServices(describes)
-	} else {
-		matches, err = run.head.store.SearchServices(describes)
-	}
-	if err != nil {
-		return "the services could not be read: " + err.Error(), true
-	}
-	switch len(matches) {
-	case 0:
-		return "no running service matches that", true
-	case 1:
-	default:
-		lines := make([]string, 0, len(matches))
-		for _, service := range matches {
-			lines = append(lines, "- "+service.ID+" | "+service.Name+" | "+service.Health.Suffix())
-		}
-		return "more than one service matches those words — narrow it, or ask which they mean:\n" +
-			strings.Join(lines, "\n"), false
-	}
-	service := matches[0]
-	kind, ok := serviceCommandKind(action)
-	if !ok {
-		return "that is not something that can be done to a service", true
-	}
-	command, err := run.head.store.RequestCommand(store.Command{
-		SessionID: run.user.SessionID, Kind: kind, Target: service.ID, Instruction: action,
-	})
-	if err != nil {
-		return "that could not be queued: " + err.Error(), true
-	}
-	run.record(command.Seq, serviceReceipt(kind, service, action))
-	return strings.ToLower(serviceReceipt(kind, service, action)), false
-}
-
-// serviceVerbAction maps the tool's vocabulary onto services.go's own action
-// words, so one table decides what a service command means.
-func serviceVerbAction(verb string) (string, bool) {
-	switch verb {
-	case "stop":
-		return "stop", true
-	case "restart":
-		return "restart", true
-	case "auto_restart_on":
-		return "auto-restart", true
-	case "auto_restart_off":
-		return "disable-auto-restart", true
-	}
-	return "", false
 }
 
 func serviceReceipt(kind store.CommandKind, service store.Service, action string) string {
@@ -472,7 +216,7 @@ func (run *beltRun) controlCandidates(kind store.CommandKind, describes string) 
 	for _, candidate := range candidates {
 		if candidate.isRule() {
 			lines = append(lines, "- standing rule "+candidate.rule.ID+" | "+firstLine(candidate.rule.Invariant)+
-				" | use the rule tool, not control")
+				" | a standing rule, not work")
 			continue
 		}
 		lines = append(lines, "- "+candidate.job.Node.ID+" | "+surgeryTargetLabel(candidate.job.Node)+
