@@ -164,12 +164,16 @@ const (
 	// words instead of being unable to see it at all, and it refuses, in a
 	// sentence the loop must speak to, every question it is not licensed to end.
 	beltToolAnswerQuestion = "answer_question"
-	// beltToolAwait is the feedback loop async commands never had. control,
-	// revise and the rest return "queueing" and the outcome arrives later as a
-	// reconciler receipt, so a turn could not observe the result of a command it
-	// had just issued and re-plan on it. This waits, briefly and boundedly, for
-	// exactly that receipt.
-	beltToolAwait = "await"
+	// beltToolSay is the turn learning to talk while it is still working.
+	//
+	// Everything the head said used to be the LAST thing it did: one message, at
+	// the end, after every read and every act. So "have a quick look and tell me
+	// what you find" was answered by a silence the length of the looking, and a
+	// turn that found something worth saying halfway through had two choices —
+	// stop and say it, or carry on and say it in the past tense. This posts one
+	// line into the room now and leaves the turn running. The final reply is
+	// unchanged and still lands; this is the sentence in front of it.
+	beltToolSay = "say"
 	// beltToolForget is note's opposite, and it exists because the wave would
 	// otherwise have been a net loss. The router carried a `retract` field: a
 	// numbered notebook line the person had just said was untrue, quarantined
@@ -282,15 +286,18 @@ func beltProp(kind, description string) map[string]any {
 // are resent every turn, but each one states the thing that goes wrong without
 // being said: reads are free, ids are never invented, and the two revision
 // verbs differ in whether the plan changes or only the people working it.
-// beltReadOnly separates looking from acting, which is the split the belt
-// budget is divided along (see orchestratorReadCap).
+// beltReadOnly separates looking from acting. The turn's own budget no longer
+// divides along it — one runaway bound covers the whole belt now — but the
+// DELIVERY turn is armed from it (absorb.go): a turn woken by finished work has
+// everything to find out and nothing left to do.
 //
 // The reads are named rather than the acts, and deliberately: the set of tools
 // that change nothing is closed and every one of them is described as "always
 // safe" in its own definition, while acts are added whenever the head grows a
 // new hand. A tool nobody classified is therefore treated as an act, which is
-// the harmless direction — an act miscounted as an act still runs; a read
-// miscounted as an act only means the turn keeps one more call for looking.
+// the harmless direction — an unclassified act is simply out of the delivery
+// turn's reach, and a read misfiled as an act costs that turn one way of looking
+// rather than costing anybody a guarantee.
 func beltReadOnly(name string) bool {
 	switch strings.TrimSpace(name) {
 	case beltToolBoard, beltToolResult, beltToolPlan, beltToolRead, beltToolManual,
@@ -299,6 +306,21 @@ func beltReadOnly(name string) bool {
 		return true
 	}
 	return false
+}
+
+// beltReadDefinitions is the looking half of the belt, as definitions. It is
+// filtered from the one list rather than written as a second one, so a read
+// added to the belt reaches the delivery turn the moment it exists and there is
+// no way for the two accounts of "what can be read" to disagree.
+func beltReadDefinitions() []ai.ToolDefinition {
+	whole := beltDefinitions()
+	reads := make([]ai.ToolDefinition, 0, len(whole))
+	for _, definition := range whole {
+		if beltReadOnly(definition.Function.Name) {
+			reads = append(reads, definition)
+		}
+	}
+	return reads
 }
 
 func beltDefinitions() []ai.ToolDefinition {
@@ -405,9 +427,9 @@ func beltDefinitions() []ai.ToolDefinition {
 			"question": beltProp("integer", "the question's number, from this tool's own list"),
 			"answer":   beltProp("string", "the answer, in the words the worker asked for"),
 		}),
-		beltTool(beltToolAwait, "Wait, briefly, for the receipt of a command you just issued, and hand back how it settled. Use it when what you do next depends on whether the change actually landed — never as a way to watch work finish, which takes minutes and this does not. It returns as soon as the receipt exists, or says plainly that it is still queued.", map[string]any{
-			"command": beltProp("integer", "the command number an acting tool handed back; omit for the last one you issued"),
-		}),
+		beltTool(beltToolSay, "Say one line to the person right now, without ending the turn. Use it when something is worth knowing before you are finished — what you are about to do when the doing will take a few reads, or the first real finding of a longer look. It is one short line in your own voice; the turn carries straight on afterwards and your final words are still their own message. Never use it to say the same thing twice, and never to narrate tool calls.", map[string]any{
+			"text": beltProp("string", "one short line, in their terms"),
+		}, "text"),
 		beltTool(beltToolForget, "Let go of one numbered notebook line the user has just told you is untrue — \"forget that\", \"I don't work that way any more\", a line said back to you as wrong. Name the exact number shown beside that belief; never a number you were not shown, and never more than one. If several lines could be meant, ask instead. This is NOT for a correction aimed at WORK — a figure a job got wrong, a deliverable that missed the point — which is correct, and quietly deleting a belief in answer to one loses the correction entirely. When they are giving you the NEW version of a belief rather than throwing it away, use note with replaces instead: the old line retires into the new.", map[string]any{
 			"belief": beltProp("integer", "the #number shown beside the notebook line"),
 		}, "belief"),
@@ -436,10 +458,12 @@ type beltRun struct {
 	// question, or the interrupted line. The loop must not post a second voice over
 	// the top of it.
 	spoke bool
-	// issued is every command seq this run journaled, oldest first. await with no
-	// argument means the last of them, which is what "did that land?" means when
-	// a turn issued exactly one thing.
-	issued []int64
+	// said records that a tool posted an INTERIM line — the say tool. It is the
+	// opposite of spoke in the one way that matters: the turn carries on, and its
+	// final words are still owed. All it suppresses is the empty-reply floor, so a
+	// turn that said everything it had to say mid-flight does not follow it with
+	// an apology for having nothing to add (loop.go).
+	said bool
 	// commissioned is the words this turn has already turned into work. spawn
 	// dedupes the orders inside ONE call; nothing stopped a loop from calling it
 	// twice with the same sentence, and the second call was a second job — a
@@ -541,8 +565,8 @@ func (run *beltRun) execute(name, arguments string) (string, bool) {
 		return run.craft(args)
 	case beltToolAnswerQuestion:
 		return run.answerQuestion(args)
-	case beltToolAwait:
-		return run.await(args)
+	case beltToolSay:
+		return run.say(args)
 	case beltToolForget:
 		return run.forget(args)
 	case beltToolAsk:
@@ -1455,7 +1479,10 @@ func (run *beltRun) record(seq int64, receipt string) {
 	run.acted = true
 	if seq != 0 {
 		run.commandSeq = seq
-		run.issued = append(run.issued, seq)
+		// And the head remembers it is owed a receipt for this one. That is the
+		// whole registration the wake needs: a command nobody in a head turn
+		// journaled never wakes anybody (wake.go).
+		run.head.expectReceipt(seq)
 	}
 	if receipt != "" {
 		run.did = append(run.did, receipt)

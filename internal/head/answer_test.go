@@ -256,7 +256,7 @@ func TestTheBeltAndTheRouterBothStateWhatTheyCanActuallyDo(t *testing.T) {
 		beltToolCompetence, beltToolStanding, beltToolSpending, beltToolHistory, beltToolSearch,
 		beltToolSpawn, beltToolAct, beltToolControl, beltToolSteer, beltToolRevise, beltToolExpedite,
 		beltToolCorrect, beltToolRule, beltToolService, beltToolNote, beltToolWrite,
-		beltToolAnswerQuestion, beltToolAwait, beltToolAsk, beltToolInterrupt,
+		beltToolAnswerQuestion, beltToolSay, beltToolAsk, beltToolInterrupt,
 	} {
 		if !names[name] {
 			t.Fatalf("the belt does not offer %q, so the prompt's law describes a tool that is not there", name)

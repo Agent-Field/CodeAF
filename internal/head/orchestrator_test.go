@@ -148,13 +148,18 @@ func TestThePromptNamesEveryToolOnTheBelt(t *testing.T) {
 	}
 }
 
-// ── The conscious cap (12.6.3) ──────────────────────────────────────────────
+// ── The cap that died (12.6.3, then chat-simplify §2.6) ─────────────────────
 
-// The cap was 600 and 600 is the exact number that cut the diagram in half.
-// Raising it was never the fix; the artifact door is. What this pins is that
-// the number is chosen rather than inherited, and that it is the ONE number —
-// there is no second answering call on a different ceiling any more.
-func TestTheAnswerTurnCarriesOneDeliberateCap(t *testing.T) {
+// The ceiling was 600 — the exact number that cut session bd3c78ed's diagram in
+// half — and was then re-set to 1,200 in the belief that a chosen ceiling is
+// safer than an inherited one. It is not: a ceiling cuts ANSWERS, and the answer
+// is the product. What actually fixed the incident was the artifact door, which
+// takes every deliverable out of the reply entirely, and the truncation mark,
+// which makes a cut visible wherever one happens.
+//
+// So the answering call now carries no ceiling at all, and the mark's own tests
+// (truncation_test.go) still pin the seam that reports a provider-side cut.
+func TestTheAnswerTurnSetsNoOutputCeiling(t *testing.T) {
 	graph := openHeadStore(t)
 	seen := &capturingClient{reply: "Nothing is running."}
 	user := postUser(t, graph, "caps", "what is running?")
@@ -164,12 +169,9 @@ func TestTheAnswerTurnCarriesOneDeliberateCap(t *testing.T) {
 	if len(seen.maxTokens) != 1 {
 		t.Fatalf("one message cost %d answering calls: %v", len(seen.maxTokens), seen.maxTokens)
 	}
-	if seen.maxTokens[0] != orchestratorMaxTokens {
-		t.Fatalf("the answering call ran at %d tokens, want the deliberate cap %d",
-			seen.maxTokens[0], orchestratorMaxTokens)
-	}
-	if orchestratorMaxTokens == 600 {
-		t.Fatal("the cap is still the one that cut session bd3c78ed's diagram in half")
+	if seen.maxTokens[0] != 0 {
+		t.Fatalf("the answering call was capped at %d tokens — a reply as long as its content is correct",
+			seen.maxTokens[0])
 	}
 	if !seen.tooled[0] {
 		t.Fatal("the answering call carried no tools, so the head cannot act at all")
@@ -292,12 +294,18 @@ func TestSpawnJournalsOneCommandPerIndependentPieceOfWork(t *testing.T) {
 	}
 }
 
-// ── await: the feedback loop async commands never had (Part 2.6) ────────────
+// ── The command a head turn journals is one it will hear back about ─────────
 
-func TestAwaitReportsHowTheCommandItJustIssuedSettled(t *testing.T) {
+// await used to stand here: three seconds of a turn's life spent blocking on a
+// receipt, because a turn had exactly one chance to speak. Both halves of that
+// are gone — the turn can speak more than once (say), and the settlement comes
+// back as a wake (wake.go). What survives is the registration the wake needs,
+// and it is taken at the one place a run learns it acted.
+func TestJournalingACommandLeavesTheHeadOwedItsReceipt(t *testing.T) {
 	graph := openHeadStore(t)
-	user := postUser(t, graph, "await", "start the audit")
-	run := &beltRun{head: New(nil, graph), user: user}
+	head := New(nil, graph)
+	user := postUser(t, graph, "wake", "start the audit")
+	run := &beltRun{head: head, user: user}
 	if message, failed := run.execute(beltToolSpawn, beltArguments(t,
 		map[string]any{"instruction": "start the audit"})); failed {
 		t.Fatalf("spawn refused: %s", message)
@@ -306,30 +314,18 @@ func TestAwaitReportsHowTheCommandItJustIssuedSettled(t *testing.T) {
 	if err != nil || len(commands) != 1 {
 		t.Fatalf("commands = %+v err=%v", commands, err)
 	}
-
-	// Still queued: the honest answer is that it is in hand, never that it is done.
-	queued, failed := run.execute(beltToolAwait, beltArguments(t, map[string]any{}))
-	if failed {
-		t.Fatalf("await errored on a live command: %s", queued)
+	if !head.claimReceipt(commands[0].Seq) {
+		t.Fatal("a command journaled by a head turn left the head owing nothing for it")
 	}
-	if !strings.Contains(queued, "still queued") {
-		t.Fatalf("await claimed something about work that has not been reached: %s", queued)
+	// And exactly once: a second claim on the same command is what stops one
+	// settlement being spoken twice.
+	if head.claimReceipt(commands[0].Seq) {
+		t.Fatal("the same command could be claimed twice")
 	}
-
-	// Refused: the loop is told, in words it must speak to, that nothing changed.
-	if err := graph.ResolveCommand(commands[0].Seq, store.CommandRejected, "no such target"); err != nil {
-		t.Fatal(err)
-	}
-	refused, failed := run.execute(beltToolAwait, beltArguments(t,
-		map[string]any{"command": commands[0].Seq}))
-	if failed {
-		t.Fatalf("await errored on a settled command: %s", refused)
-	}
-	if !strings.Contains(refused, "REFUSED") || !strings.Contains(refused, "no such target") {
-		t.Fatalf("a refusal did not come back as one: %s", refused)
-	}
-	if !strings.Contains(refused, "Nothing changed") {
-		t.Fatalf("the loop was not told that nothing changed: %s", refused)
+	// A command nobody in a head turn journaled — a page's own button — is not
+	// this head's to narrate.
+	if head.claimReceipt(commands[0].Seq + 900) {
+		t.Fatal("a command no head turn issued was claimable")
 	}
 }
 
