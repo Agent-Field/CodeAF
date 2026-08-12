@@ -32,11 +32,11 @@ import (
 // about what the head is able to do.
 func TestTheHeadOnlyPromisesWhatTheWakeCanKeep(t *testing.T) {
 	for name, want := range map[string]string{
-		"the receipt survives":        "the reply is a receipt: say what you have put in hand",
-		"the backed promise is named": "You may say you will come back to them with what it finds",
-		"the wake is the reason":      "work you commission wakes you when it lands",
-		"the unbacked ones are not":   "Never promise to open, preview, display or run anything for them",
-		"the true thing still said":   "the finished work arrives in this conversation by itself",
+		"the receipt survives":        "say what you have put in hand",
+		"the backed promise is named": "you may say you will come back with what it finds",
+		"the wake is the reason":      "Finished work returns to this conversation by itself",
+		"the unbacked ones are not":   "never promise to open, preview, run or watch anything later",
+		"the channel is named once":   "no other channel to reach them on",
 	} {
 		if !strings.Contains(orchestratorVoice, want) {
 			t.Errorf("the voice no longer states %s: %q missing", name, want)

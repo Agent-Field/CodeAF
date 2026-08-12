@@ -59,7 +59,7 @@ func TestTheProductPitchRidesTheStablePromptExactlyOnce(t *testing.T) {
 	// And it is grounding, not scripture: the law the head is held to still comes
 	// after it. There is one prompt now, so "after it" is a byte offset inside
 	// that prompt rather than a claim about which of two prompts got the pitch.
-	if strings.Index(first, manual.Pitch) > strings.Index(first, "Law you do not get to bend.") {
+	if strings.Index(first, manual.Pitch) > strings.Index(first, "Judgment.") {
 		t.Fatal("the pitch was appended past the law it is grounding for")
 	}
 }

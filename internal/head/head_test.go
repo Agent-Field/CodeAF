@@ -696,7 +696,7 @@ func TestRouterNeitherCarriesNorInventsAMeasuredSelfAssessment(t *testing.T) {
 		strings.Contains(orchestratorPrompt, "When standing-watch status appears") {
 		t.Error("the head's prompt still promises blocks it is never handed")
 	}
-	if !strings.Contains(orchestratorPrompt, "Say only what a tool result actually showed you") {
+	if !strings.Contains(orchestratorPrompt, "Ground every claim in something a tool showed you this turn") {
 		t.Error("the prompt lost the rule against stating what nothing showed it")
 	}
 	// The other half: a self-assessment is not forbidden, it is grounded. The
@@ -1443,9 +1443,7 @@ func TestEveryReadingIsToldNotToRaceWorkAlreadyUnderway(t *testing.T) {
 		phrases []string
 	}{
 		"orchestrator": {orchestratorPrompt, []string{
-			"is a change to that work before it is a second job",
-			"two jobs changing the same thing is the one outcome nothing downstream can repair",
-			"moments after a job spoke",
+			"A follow-up about work in flight is a change to that work before it is a second job",
 		}},
 		"compiler": {compilerSystemPrompt, []string{
 			"A job still running is earlier work too",

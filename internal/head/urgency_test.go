@@ -192,7 +192,7 @@ func TestSpeedAsARequirementStillCompilesAsNewWork(t *testing.T) {
 // to promise a time; what it may no longer do is invent a queue.
 func TestSpliceReceiptIsForbiddenFromPromisingAcceleration(t *testing.T) {
 	for _, phrase := range []string{
-		"never say something is waiting its turn or is behind anything else unless a board row you have read this turn says it is queued",
+		"Never say a job is waiting its turn unless a board row you read this turn says it is queued",
 		"never that it is done, never a completion time",
 	} {
 		if !strings.Contains(orchestratorPrompt, phrase) {

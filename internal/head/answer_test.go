@@ -248,9 +248,10 @@ func TestTheBeltAndTheRouterBothStateWhatTheyCanActuallyDo(t *testing.T) {
 	for _, definition := range beltDefinitions() {
 		names[definition.Function.Name] = true
 	}
-	// Every tool the one prompt names as a hand must be a tool the belt really
-	// offers. A prompt that promises a verb the belt does not carry is the exact
-	// shape of the failure: an offer with nothing behind it.
+	// Every hand the loop reaches for must exist on the belt. The prompt no
+	// longer recites all of them — that was the belt's own schemas said twice —
+	// so what is checked is that the capability groups it describes are really
+	// there, and that the few verbs it names are real tools.
 	for _, name := range []string{
 		beltToolBoard, beltToolResult, beltToolPlan, beltToolRead, beltToolManual,
 		beltToolCompetence, beltToolStanding, beltToolSpending, beltToolHistory, beltToolSearch,
@@ -259,21 +260,15 @@ func TestTheBeltAndTheRouterBothStateWhatTheyCanActuallyDo(t *testing.T) {
 		beltToolAnswerQuestion, beltToolAwait, beltToolAsk, beltToolInterrupt,
 	} {
 		if !names[name] {
-			t.Fatalf("the belt does not offer %q, so the prompt's law describes a tool that is not there", name)
-		}
-		if !strings.Contains(orchestratorPrompt, name) {
-			t.Fatalf("the head's prompt never names %q, so the model is not told it has that hand", name)
+			t.Fatalf("the belt does not offer %q, so the prompt describes a hand that is not there", name)
 		}
 	}
 	// And nothing is named as a hand that is not one: a verb in the prompt with
 	// no tool behind it is what the loop then offers to do and cannot.
-	for _, promised := range strings.Split(
-		strings.TrimPrefix(orchestratorHands, "The tools are your only hands, and they are the only thing that makes anything true."), "\n") {
-		for _, word := range strings.Fields(promised) {
-			word = strings.Trim(word, "(),.:;")
-			if strings.HasSuffix(word, "_question") && !names[word] {
-				t.Fatalf("the prompt names %q as a hand and the belt has no such tool", word)
-			}
+	for _, word := range strings.Fields(orchestratorHands) {
+		word = strings.Trim(word, "(),.:;")
+		if strings.HasSuffix(word, "_question") && !names[word] {
+			t.Fatalf("the prompt names %q as a hand and the belt has no such tool", word)
 		}
 	}
 
@@ -282,10 +277,10 @@ func TestTheBeltAndTheRouterBothStateWhatTheyCanActuallyDo(t *testing.T) {
 	}
 	// Values, not phrases: what is pinned is that the prompt refuses an unbacked
 	// promise and an offer to fetch what is already reachable.
-	if !strings.Contains(orchestratorPrompt, "Never promise a behaviour you have not recorded") {
+	if !strings.Contains(orchestratorPrompt, "Say a thing will hold from now on only when note recorded it this turn") {
 		t.Error("the prompt no longer forbids promising a behaviour nothing recorded")
 	}
-	if !strings.Contains(orchestratorPrompt, "Never offer a route you have no tool to take") {
+	if !strings.Contains(orchestratorPrompt, "offer only routes you have a tool to take") {
 		t.Error("the prompt no longer forbids offering a route it cannot take")
 	}
 	// The failure's own sentence, named in the tool that answers it: an offer to

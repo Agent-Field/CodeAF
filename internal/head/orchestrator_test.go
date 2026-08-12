@@ -51,10 +51,11 @@ func TestADeliverableIsBornOnDiskAndReferencedByPath(t *testing.T) {
 	if !strings.Contains(reply.Body, "architecture.svg") {
 		t.Fatalf("the reply does not name the path the person has to open: %q", reply.Body)
 	}
-	// And the prompt says the law out loud, because a door nobody is told about
-	// is a door nobody uses.
-	if !strings.Contains(orchestratorPrompt, "THE ARTIFACT LAW") {
-		t.Fatal("the prompt no longer states the artifact law")
+	// And the prompt says it out loud, because a door nobody is told about is a
+	// door nobody uses. It is a principle rather than a statute now — what is
+	// pinned is the principle, not the shouted heading it used to wear.
+	if !strings.Contains(orchestratorPrompt, "Deliverables are files") {
+		t.Fatal("the prompt no longer states that a deliverable is a file")
 	}
 	if !strings.Contains(orchestratorPrompt, "born on disk and referenced by its path") {
 		t.Fatal("the prompt no longer says where a deliverable is born")
@@ -128,22 +129,47 @@ func TestWhatTheHeadWroteItCanReadBackToRepair(t *testing.T) {
 	if !failed {
 		t.Fatalf("an invented path was opened: %s", invented)
 	}
-	if !strings.Contains(orchestratorPrompt, "THE REPAIR DOCTRINE") {
-		t.Fatal("the prompt no longer states the repair doctrine")
+	// The doctrine survives as one sentence: remake it now rather than offer to,
+	// which is the same rule with the deliverability check folded into it —
+	// there is nothing to check before an offer you never make.
+	if !strings.Contains(orchestratorPrompt, "make it again now instead of offering to") {
+		t.Fatal("the prompt no longer says to remake a broken deliverable instead of offering to")
 	}
-	if !strings.Contains(orchestratorPrompt, "check deliverability BEFORE you offer") {
+	if !strings.Contains(orchestratorPrompt, "offer only routes you have a tool to take") {
 		t.Fatal("the prompt lost the rule against offering what it cannot deliver")
 	}
 }
 
-// Every hand the loop actually has must be named in the prompt that tells it
-// what its hands are. A tool the prompt never mentions is one the model reaches
-// for by accident or not at all — and the two prompts this replaced disagreed
-// about the belt for exactly as long as there were two of them.
-func TestThePromptNamesEveryToolOnTheBelt(t *testing.T) {
+// The prompt used to recite all twenty-nine tool names, which is the belt's own
+// schemas said twice. What it owes the model instead is the SHAPE of the belt —
+// which capability groups exist, and which few verbs the judgment section
+// actually reasons about by name. Every one of those named verbs must be a tool
+// that exists, because a hand the prompt promises and the belt lacks is the
+// exact failure this test was written for.
+func TestThePromptDescribesTheBeltItActuallyHas(t *testing.T) {
+	names := map[string]bool{}
 	for _, definition := range beltDefinitions() {
-		if !strings.Contains(orchestratorPrompt, definition.Function.Name) {
-			t.Errorf("the prompt never names the %s tool", definition.Function.Name)
+		names[definition.Function.Name] = true
+	}
+	for _, named := range []string{
+		beltToolBoard, beltToolSpawn, beltToolAct, beltToolWrite,
+		beltToolNote, beltToolForget, beltToolAsk, beltToolExpedite,
+	} {
+		if !names[named] {
+			t.Fatalf("the prompt reasons about %q and the belt has no such tool", named)
+		}
+		if !strings.Contains(orchestratorPrompt, named) {
+			t.Errorf("the prompt never names the %s verb it decides with", named)
+		}
+	}
+	// And the groups the rest of the belt falls into are described, so nothing
+	// on it is a hand the model was never told it had.
+	for _, group := range []string{
+		"Reads are always safe", "The work verbs commission new work",
+		"change work already under way", "the manual",
+	} {
+		if !strings.Contains(orchestratorPrompt, group) {
+			t.Errorf("the prompt no longer describes the %q half of the belt", group)
 		}
 	}
 }
