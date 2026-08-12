@@ -295,7 +295,12 @@ func beltReadOnly(name string) bool {
 	switch strings.TrimSpace(name) {
 	case beltToolBoard, beltToolResult, beltToolPlan, beltToolRead, beltToolManual,
 		beltToolCompetence, beltToolStanding, beltToolSpending, beltToolHistory,
-		beltToolSearch, beltToolThread:
+		beltToolSearch, beltToolThread,
+		// The lens (lens.go). All three change nothing: one searches, one opens,
+		// one reports. They join the closed set for the same reason the others
+		// are in it — a read miscounted as an act only costs the turn a call it
+		// did not need to spend.
+		beltToolRecall, beltToolOpen, beltToolStatus:
 		return true
 	}
 	return false
@@ -360,6 +365,20 @@ func beltDefinitions() []ai.ToolDefinition {
 		beltTool(beltToolSearch, "Search everything you remember for words: the conversation itself, the notebook, and jobs that have long since finished. Always safe. Read it whenever the user refers to something from the past that is not in front of you — a decision you reached together, something they told you once, a job from last month — instead of reconstructing it. It is the only read that reaches what was merely said and never became work. If it comes back empty, say so plainly; that is a true answer and inventing one is not.", map[string]any{
 			"q": beltProp("string", "the words to look for, in the user's own terms"),
 		}, "q"),
+		beltTool(beltToolRecall, "Search everything settled or said at once — the conversation, the notebook, work live and finished, standing rules and services — and get back real content with an id for each hit that open takes. Always safe. Narrow with kind when you know which sort of thing you want, with since/until worked out from the current time you were given, or with session for one conversation; leave them off to search everything. If it comes back empty, say so plainly.", map[string]any{
+			"q":       beltProp("string", "the words to look for, in the user's own terms"),
+			"kind":    beltProp("string", "message, job, result, belief, rule, or service; omit to search all six"),
+			"since":   beltProp("string", `local date or time the window starts, "2026-08-06" or "2026-08-06T09:00"`),
+			"until":   beltProp("string", "local date or time the window ends, same spelling"),
+			"session": beltProp("string", "one conversation id, to look only in that room"),
+		}, "q"),
+		beltTool(beltToolOpen, "Open one thing whole: work still running comes back as its plan with every step's state, what its workers are saying right now, the files it has written and what it has spent; work that finished comes back as its whole result, its files, its spend and how each part ended; a file comes back as its actual bytes; a standing rule, a service or a #notebook line comes back as its full record. Always safe. Anything longer than one page is PAGED, never cut — the reply says which part of how many it is and how to ask for the next, so read on with part when it does.", map[string]any{
+			"id":   beltProp("string", "what to open: a job id from a board or recall read, a file's name, a standing rule's id, a service's name, or a #number from the notebook"),
+			"job":  beltProp("string", "the job that wrote the file, when two jobs wrote a file of the same name"),
+			"part": beltProp("integer", "which page to read, from a part-of line you have been shown; omit for the first"),
+			"raw":  beltProp("boolean", "true to get the journal's own rows for it — every event and every message anchored to it, unredacted. Use it when they ask what actually happened rather than what it amounts to"),
+		}, "id"),
+		beltTool(beltToolStatus, "Read the whole system on one page: what is running, queued and failed, what today has cost against the daily limit, what you are keeping watch over and when each check is next, what is running as a service, your measured competence, and what is waiting on an answer. Always safe. Read it for any question about how things are in general rather than about one job.", map[string]any{}),
 		beltTool(beltToolFork, "Commission work that inherits what you and the person have just been discussing. Use it instead of spawn when the requirements are in this conversation rather than in one sentence — you have settled a shape together and they say go, or their message only makes sense against what came before it. The recent conversation travels with the work as context; their own words for what to do go in instruction.", map[string]any{
 			"instruction": beltProp("string", "what to go and do, in their words; omit it when their message is the instruction"),
 			"after":       beltProp("string", "id of work this continues, from a board read"),
@@ -519,6 +538,12 @@ func (run *beltRun) execute(name, arguments string) (string, bool) {
 		return run.history(args)
 	case beltToolSearch:
 		return run.search(args)
+	case beltToolRecall:
+		return run.recall(args)
+	case beltToolOpen:
+		return run.open(args)
+	case beltToolStatus:
+		return run.status()
 	case beltToolThread:
 		return run.thread(args)
 	case beltToolNote:
@@ -1230,6 +1255,15 @@ func (h *Head) journaledPlan(node store.Node) (string, store.PlanGraph, bool) {
 // which is the same reason the executor re-derives state from the store when it
 // rehydrates a plan, by the same id mapping.
 func (h *Head) renderPlan(node store.Node) (string, bool) {
+	return h.renderPlanWithin(node, planStepCap, beltResultBytes)
+}
+
+// renderPlanWithin is renderPlan with its two bounds passed in, and it exists
+// so the lens can borrow the renderer without borrowing the belt's budget. A
+// non-positive stepCap spells every step; a non-positive byteCap clips nothing.
+// The plan tool's own call above passes exactly the constants it always used,
+// so nothing about that read changed.
+func (h *Head) renderPlanWithin(node store.Node, stepCap, byteCap int) (string, bool) {
 	prefix, journaled, found := h.journaledPlan(node)
 	if !found {
 		return fmt.Sprintf("%s was taken on as a single step, so there is no breakdown to read — result is what it has to say for itself.",
@@ -1251,7 +1285,11 @@ func (h *Head) renderPlan(node store.Node) (string, bool) {
 		titles[step.ID] = planStepLabel(step)
 	}
 	done, running, waiting := 0, 0, 0
-	lines := make([]string, 0, planStepCap)
+	capacity := stepCap
+	if capacity <= 0 {
+		capacity = len(document.Nodes)
+	}
+	lines := make([]string, 0, capacity)
 	truncated := false
 	for level, wave := range document.Waves() {
 		for _, id := range wave {
@@ -1268,7 +1306,7 @@ func (h *Head) renderPlan(node store.Node) (string, bool) {
 			case surgeryStatusWord(store.Pending):
 				waiting++
 			}
-			if len(lines) >= planStepCap {
+			if stepCap > 0 && len(lines) >= stepCap {
 				truncated = true
 				continue
 			}
@@ -1309,7 +1347,10 @@ func (h *Head) renderPlan(node store.Node) (string, bool) {
 	if truncated {
 		rendered.WriteString("\n" + planTruncatedMark)
 	}
-	body := truncateBytes(strings.TrimSpace(rendered.String()), beltResultBytes)
+	body := strings.TrimSpace(rendered.String())
+	if byteCap > 0 {
+		body = truncateBytes(body, byteCap)
+	}
 	return body, false
 }
 
