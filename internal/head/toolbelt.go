@@ -278,10 +278,12 @@ func beltProp(kind, description string) map[string]any {
 	return map[string]any{"type": kind, "description": description}
 }
 
-// beltDefinitions are what the model sees. Descriptions are terse because they
-// are resent every turn, but each one states the thing that goes wrong without
-// being said: reads are free, ids are never invented, and the two revision
-// verbs differ in whether the plan changes or only the people working it.
+// beltDefinitions are what the model sees. Each description is one sentence of
+// interface plus its arguments, because policy is stated once in the prompt's
+// judgment section and a description that repeats it is the same doctrine paid
+// for twice on every turn. What survives here is only what changes the call
+// itself: the person's words travel verbatim, ids come from a read, act's
+// boundary, and ask ending the turn.
 // beltReadOnly separates looking from acting, which is the split the belt
 // budget is divided along (see orchestratorReadCap).
 //
@@ -303,120 +305,120 @@ func beltReadOnly(name string) bool {
 
 func beltDefinitions() []ai.ToolDefinition {
 	return []ai.ToolDefinition{
-		beltTool(beltToolBoard, "Read the work. Always safe, always allowed, and the only place ids come from. Call it with no arguments for everything live; narrow with status, or with q when the user named the work in their own words — a read aimed with q or id also reaches jobs that have already finished, which is where findings live.", map[string]any{
+		beltTool(beltToolBoard, "Read the work: every live job, one line each, and the only place ids come from. Aim it with q or id to reach finished jobs too.", map[string]any{
 			"status": beltProp("string", `"running", "queued", "failed", or "all"`),
 			"q":      beltProp("string", "free text naming the work, matched against titles and briefs"),
 			"id":     beltProp("string", "one id from an earlier board read"),
 		}),
-		beltTool(beltToolSpawn, "Commission new work — the only way anything the workforce does gets started. Pass the user's own words verbatim; do not improve or summarize them. Use orders, one entry per thing, only when a message names pieces that are genuinely independent: each with its own outcome, none waiting on the others, and each one the person would still want back on its own if the rest never arrived. Pieces that only mean anything delivered together are one thing, however many nouns it took to say. When it could be read either way it is one. Split by what the person gets back, never for speed: one order becomes as many workers as its work has independent pieces and they run at the same time either way, so the only thing orders buys is separate jobs to watch, steer and receive — and a single question split into several never gets its one answer back. reflex is for a single obvious reversible seconds-scale action and is refused for anything that spends, sends, publishes or deletes beyond the workspace. after names work this follows on from.", map[string]any{
+		beltTool(beltToolSpawn, "Commission new work — the only way anything the workforce does gets started. Pass the user's own words verbatim; do not improve or summarize them. Use orders only for pieces that are genuinely independent. When it could be read either way it is one. after names work this follows on from.", map[string]any{
 			"instruction": beltProp("string", "the user's words for the work, verbatim"),
 			"orders": map[string]any{"type": "array", "description": "several independent pieces of work, each with that piece's own verbatim words",
 				"items": map[string]any{"type": "string"}},
-			"reflex":   beltProp("boolean", "one obvious reversible action; skips compilation and planning"),
+			"reflex":   beltProp("boolean", "one obvious reversible seconds-scale action; refused for anything that spends, sends, publishes or deletes"),
 			"after":    beltProp("string", "id of work this continues, from a board read"),
-			"separate": beltProp("boolean", `true ONLY when the person has said in so many words that this is a job BESIDE work already running — "as well as", "a separate one", "keep that going and also". A sentence that corrects or adds to work in flight is a change to it and is journaled as one however this is set; do not reach for this to get around that`),
-			"fresh":    beltProp("boolean", `true only when they ask for THIS piece of work to be figured out from first principles rather than done the way it has been done before — "don't use the template this time", "plan this one properly", "start over on this". It is about method, never content: a fresh draft, fresh data or a fresh look at a file is not it. Almost every message leaves it false`),
+			"separate": beltProp("boolean", `true ONLY when they say in so many words that this is a job BESIDE work already running — "as well as", "a separate one"`),
+			"fresh":    beltProp("boolean", `true only when they ask for this to be worked out from first principles rather than the way it has been done before — "don't use the template this time". It is about method, never content`),
 		}),
-		beltTool(beltToolControl, "Cancel, pause, resume, restart, or reprioritize the ids you name. Ids come from a board read, never from memory. A set large or expensive enough to need consent comes back as needs_confirmation and nothing changes until the user answers. When the user described the work instead of naming it and you cannot tell which row they mean, pass describes instead of ids and this hands back the candidates — jobs and standing rules alike — for you to name or to ask about.", map[string]any{
+		beltTool(beltToolControl, "Cancel, pause, resume, restart, or reprioritize the ids you name; ids come from a board read. Pass describes instead when you have no id, and it hands back the candidates.", map[string]any{
 			"verb":      beltProp("string", "cancel, pause, resume, restart, or reprioritize"),
 			"ids":       map[string]any{"type": "array", "description": "ids from a board read", "items": map[string]any{"type": "string"}},
-			"describes": beltProp("string", "the user's own words for the work, when you have no id for it yet"),
+			"describes": beltProp("string", "the user's own words for the work, when you have no id for it"),
 		}, "verb"),
-		beltTool(beltToolSteer, "Say something to the parts of a job already under way right now, without changing its plan. Use it when the user is adding a constraint or a hint to work already in motion.", map[string]any{
+		beltTool(beltToolSteer, "Tell the parts of a job already under way something now, without changing its plan.", map[string]any{
 			"job":     beltProp("string", "job id from a board read"),
 			"message": beltProp("string", "what the work already under way should hear, in the user's own terms"),
 		}, "job", "message"),
-		beltTool(beltToolRevise, "Hand the user's own words to a job so its remaining plan is edited to match them. Use it when what the job is FOR has changed. Pass their words verbatim — do not improve or summarize them.", map[string]any{
+		beltTool(beltToolRevise, "Hand the user's words, verbatim, to a job so its remaining plan is edited to match them.", map[string]any{
 			"job":   beltProp("string", "job id from a board read"),
 			"words": beltProp("string", "the user's message, verbatim"),
 		}, "job", "words"),
-		beltTool(beltToolExpedite, "Make a job arrive sooner: it goes next in the queue and its unstarted tail is trimmed to the shortest path to the deliverable. It never adds work. Use it for impatience, never for a change of goal.", map[string]any{
+		beltTool(beltToolExpedite, "Make a job arrive sooner: it goes next, and its unstarted tail is trimmed to the shortest path to the deliverable. It never adds work.", map[string]any{
 			"job": beltProp("string", "job id from a board read"),
 		}, "job"),
-		beltTool(beltToolManual, "Read aforge's own manual: what it can do, how one of its mechanisms works, why it behaved the way it did. Always safe. Search with q, or read a whole topic with page. This is the only place answers about aforge itself may come from.", map[string]any{
+		beltTool(beltToolManual, "Read aforge's own manual — what it can do, how a mechanism works, why it behaved that way — the only source for answers about aforge itself.", map[string]any{
 			"q":    beltProp("string", "the question, in the user's own words"),
 			"page": beltProp("string", "one page name to read whole, from a page list you have seen"),
 		}),
-		beltTool(beltToolResult, "Read what one job actually produced: its findings in full, the files it wrote, what it spent, and how its parts ended. Always safe. Read it whenever the user asks what work found, produced, concluded or decided — the board only says how a job ended, and how it ended is not what it found.", map[string]any{
+		beltTool(beltToolResult, "Read what one job produced: findings in full, the files it wrote, what it spent, and how its parts ended.", map[string]any{
 			"id": beltProp("string", "one id from a board read"),
 		}, "id"),
-		beltTool(beltToolPlan, "Read how one job was broken up: every step in it, in the order they can run, what each step is waiting on, how each one is going, what each cost, and the method a step was given. Always safe. Read it whenever the user asks what the plan is, how far along something is, what is left, what is holding it up, or which part is slow — the board says how many parts are moving, and how many is not what the shape of the work is.", map[string]any{
+		beltTool(beltToolPlan, "Read how one job was broken up: every step in order, what each waits on, how each is going, what each cost.", map[string]any{
 			"job": beltProp("string", "one id from a board read"),
 		}, "job"),
-		beltTool(beltToolRead, "Open a file a job wrote and read what is inside it. Always safe. Use it the moment the answer to the question is in a document and what the job recorded only names that document — a result that says where the answer is has not given you the answer, and this is how you go and get it. Never offer to fetch something you can fetch with this call right now. Only files a job actually recorded can be opened.", map[string]any{
+		beltTool(beltToolRead, "Open a file a job recorded and read what is inside it. Never offer to fetch something you can fetch with this call right now.", map[string]any{
 			"job":  beltProp("string", "the job that wrote it, id from a board or result read"),
-			"file": beltProp("string", "the path or filename, as that job recorded it; omit it when the job wrote only one file"),
+			"file": beltProp("string", "the path or filename as that job recorded it; omit it when the job wrote one file"),
 		}, "job"),
-		beltTool(beltToolCompetence, "Read the measured view of your own current strengths, weak spots and learning frontier, derived from how your work has actually gone. Always safe. Read it before answering anything about what you are good at, where you struggle, whether you are improving, or whether the user is asking too much of you — this is the only evidence for those answers, and a self-assessment given without it is invention.", map[string]any{}),
-		beltTool(beltToolStanding, "Read what you are keeping watch over: whether checks continue with no terminal open, the last wake, the next check, and every standing rule with what it watches for and how often. Always safe. Read it for any question about what you are watching, what runs while the user is away, or what happens overnight.", map[string]any{}),
-		beltTool(beltToolSpending, "Read what has been spent: today's total against the daily limit, and separately what your own upkeep — practice, learning, self-maintenance — has cost and what it bought. Always safe. Read it whenever the question is about money in general rather than one job's cost. For any window other than today — this week, this month, since Friday — bound it with since and until worked out from the current time you were given, and it comes back as that window's total with the work the money went on, named and priced, heaviest first.", map[string]any{
-			"since": beltProp("string", `local date or time the window starts, "2026-08-06" or "2026-08-06T09:00"`),
-			"until": beltProp("string", "local date or time the window ends, same spelling"),
+		beltTool(beltToolCompetence, "Read the measured view of your own strengths, weak spots and learning frontier; a self-assessment given without it is invention.", map[string]any{}),
+		beltTool(beltToolStanding, "Read what you keep watch over: the last wake, the next check, and every standing rule with what it watches for and how often.", map[string]any{}),
+		beltTool(beltToolSpending, "Read what has been spent: today against the daily limit, your own upkeep separately, or any window you bound with since and until.", map[string]any{
+			"since": beltProp("string", `where the window starts, "2026-08-06" or "2026-08-06T09:00"`),
+			"until": beltProp("string", "where it ends, same spelling"),
 		}),
-		beltTool(beltToolHistory, "Read what has actually been done, in time order, newest first: one line per finished job with what it concluded and what it cost. Always safe. This is the only read that answers a question about WHEN — yesterday, this week, last month — and the only one that still finds work old enough to have been packed away. Bound it with since and until from the current time given to you; omit both for the most recent work.", map[string]any{
-			"since": beltProp("string", `local date or time the window starts, "2026-08-06" or "2026-08-06T09:00"`),
-			"until": beltProp("string", "local date or time the window ends, same spelling"),
+		beltTool(beltToolHistory, "Read what has been done, newest first, with what each job concluded and what it cost — the read that answers WHEN.", map[string]any{
+			"since": beltProp("string", `where the window starts, "2026-08-06" or "2026-08-06T09:00"`),
+			"until": beltProp("string", "where it ends, same spelling"),
 		}),
-		beltTool(beltToolSearch, "Search everything you remember for words: the conversation itself, the notebook, and jobs that have long since finished. Always safe. Read it whenever the user refers to something from the past that is not in front of you — a decision you reached together, something they told you once, a job from last month — instead of reconstructing it. It is the only read that reaches what was merely said and never became work. If it comes back empty, say so plainly; that is a true answer and inventing one is not.", map[string]any{
+		beltTool(beltToolSearch, "Search everything you remember — this conversation, the notebook, jobs long finished — the only read that reaches what was merely said.", map[string]any{
 			"q": beltProp("string", "the words to look for, in the user's own terms"),
 		}, "q"),
-		beltTool(beltToolFork, "Commission work that inherits what you and the person have just been discussing. Use it instead of spawn when the requirements are in this conversation rather than in one sentence — you have settled a shape together and they say go, or their message only makes sense against what came before it. The recent conversation travels with the work as context; their own words for what to do go in instruction.", map[string]any{
+		beltTool(beltToolFork, "Commission new work that inherits this conversation, for when the requirements are in what you just discussed rather than in one sentence.", map[string]any{
 			"instruction": beltProp("string", "what to go and do, in their words; omit it when their message is the instruction"),
 			"after":       beltProp("string", "id of work this continues, from a board read"),
-			"fresh":       beltProp("boolean", "true only when they ask for this to be figured out from first principles rather than done the way it has been done before"),
+			"fresh":       beltProp("boolean", "true only when they ask for this to be worked out from first principles"),
 		}),
-		beltTool(beltToolThread, "Read another of the person's conversations. Always safe. Call it with no arguments to see which rooms exist, then pass one id as room to read the end of that conversation. Use it when they refer to something said in another window of theirs — \"like we agreed in the other chat\" — instead of reconstructing it. THIS conversation is already in front of you at the top of this prompt and cannot be read again through here.", map[string]any{
+		beltTool(beltToolThread, "Read another of the person's conversations; call it with no arguments to list the rooms. This conversation is already in front of you.", map[string]any{
 			"room": beltProp("string", "one conversation id, from this tool's own list"),
 		}),
-		beltTool(beltToolNote, "Write one durable thing the user has just told you into the notebook: how they want answers given, a correction to how something was done for them, a lasting fact about them or their setup. The test is whether it will still matter after this conversation is forgotten — task details and one-off instructions fail it. Call it before you tell them it is noted, because this call is the only thing that makes that true.", map[string]any{
+		beltTool(beltToolNote, "Write one durable thing into the notebook — a preference, a correction, a lasting fact about them or their setup. The test is whether it still matters after this conversation is forgotten.", map[string]any{
 			"body":     beltProp("string", "one sharp sentence, in the user's own terms"),
-			"scope":    beltProp("string", `what it is about: "user" for a personal preference, otherwise tool:<name>, repo:<path>, file:<path>, or domain:<topic>`),
-			"kind":     beltProp("string", `"preference" for how they want things done, "fact" for something that is simply true`),
-			"replaces": beltProp("integer", "the number of the notebook line this makes untrue, when what they just said contradicts one of the numbered lines in front of you; the old line retires into the new one. Omit it when nothing shown is contradicted, and never name a number you were not shown"),
+			"scope":    beltProp("string", `"user" for a personal preference, otherwise tool:<name>, repo:<path>, file:<path>, or domain:<topic>`),
+			"kind":     beltProp("string", `"preference" for how they want things done, "fact" for something simply true`),
+			"replaces": beltProp("integer", "the number of the notebook line this makes untrue; never a number you were not shown"),
 		}, "body"),
-		beltTool(beltToolWrite, "Put a document on disk and hand back its path. This is how anything the user will USE outside this conversation is produced — a diagram, a document, code, data, a script. Never author one into your reply instead. Short answers and what work found stay in the reply; the test is whether they will open it, edit it, run it, or send it on.", map[string]any{
-			"name": beltProp("string", "the file's own name with its extension, like architecture.svg — a plain name, no directories"),
+		beltTool(beltToolWrite, "Put a document on disk and hand back its path: how anything they will use outside this conversation is produced.", map[string]any{
+			"name": beltProp("string", "the file's own name with its extension, like architecture.svg — no directories"),
 			"body": beltProp("string", "the whole document, exactly as it should be on disk"),
 			"what": beltProp("string", "one short line saying what it is, for the receipt"),
 		}),
-		beltTool(beltToolAct, "Run one instant shell command in the workspace and read what actually happened. The boundary is time and consequence, never subject: one instant, reversible command a person at the keyboard would run in two seconds without thinking — open a file or a URL, list a directory, read a small file. If it needs planning, more than one command, produces a deliverable, touches anything you cannot undo, or should leave a record for later, it is work: use spawn. When unsure, spawn. What comes back — the exit status and everything it printed — is the only thing you may say happened; never describe an outcome this result does not show you.", map[string]any{
+		beltTool(beltToolAct, "Run one instant shell command and read what actually happened: the boundary is one instant, reversible command a person at the keyboard would run in two seconds without thinking, so anything that produces a deliverable, takes real time or cannot be undone is work — use spawn. When unsure, spawn.", map[string]any{
 			"command": beltProp("string", "the one command, exactly as it would be typed at a shell"),
 		}, "command"),
-		beltTool(beltToolCorrect, "Redo a deliverable that was wrong. The job goes again with its previous version and the user's criticism in hand, and whatever they did not object to is kept. Use it whenever they reject, dispute or ask you to change something already delivered — including politely: \"make it warmer\", \"shorter please\", \"soften the second paragraph\" are all this, not new work. Pass their words verbatim. A job with nothing delivered cannot be corrected; commission new work instead.", map[string]any{
+		beltTool(beltToolCorrect, "Redo a deliverable that was wrong, keeping whatever they did not object to — for whenever they reject, dispute or ask you to change something already delivered. Pass their words verbatim.", map[string]any{
 			"job":   beltProp("string", "id of the finished job whose deliverable was wrong, from a board or search read"),
 			"words": beltProp("string", "what the user said is wrong with it, verbatim"),
 		}, "job"),
-		beltTool(beltToolRule, "Change a standing rule: retire it, hold it, change when it runs, change what it says, or put it back to asking before each run. Rules are not jobs and are not on the board — read standing to see them, or pass describes and this hands back the ones the words reach. Retiring and holding are the two things a \"stop\" or \"pause\" aimed at a rule can mean.", map[string]any{
+		beltTool(beltToolRule, "Change a standing rule: retire it, hold it, re-time it, reword it, or put it back to asking before each run. Read standing for ids, or pass describes.", map[string]any{
 			"verb":      beltProp("string", "retire, pause, cadence, wording, or probation"),
-			"id":        beltProp("string", "the rule's id, from a standing read or from this tool's own candidate list"),
+			"id":        beltProp("string", "the rule's id, from a standing read or this tool's candidate list"),
 			"describes": beltProp("string", "the user's own words for the rule, when you have no id for it"),
 			"words":     beltProp("string", "the new rhythm for cadence, or the new message for wording"),
 		}, "verb"),
-		beltTool(beltToolService, "Act on something the person is running: stop it, restart it, or turn its auto-restart on or off. Services are their own persistent effects rather than graph work, so stopping one is done rather than queued. verb=stop_everything is the total one — every running service, and it asks once before touching live jobs.", map[string]any{
+		beltTool(beltToolService, "Act on something the person is running: stop it, restart it, or turn its auto-restart on or off; stop_everything is the total one.", map[string]any{
 			"verb":      beltProp("string", "stop, restart, auto_restart_on, auto_restart_off, or stop_everything"),
 			"describes": beltProp("string", "the user's own words for the service; omit for stop_everything"),
 		}, "verb"),
-		beltTool(beltToolCraft, "Act on a learned way of working — a whole workflow the resident worked out from jobs it has already done. run does it that way again; revert puts it back to the version before the current one, and needs a few words saying what the newer one got wrong; retire stops it being reached for at all, keeping the file and its history. Name it the way the user did; nothing is deleted by any of these.", map[string]any{
+		beltTool(beltToolCraft, "Act on a learned way of working: run does it that way again, revert goes back one version, retire stops it being reached for. Nothing is deleted.", map[string]any{
 			"verb":  beltProp("string", "run, revert, or retire"),
 			"name":  beltProp("string", "the workflow's own name, as the user named it"),
-			"words": beltProp("string", "for run, what it should work on, in the user's terms; for revert, what the newer version got wrong; for retire, why"),
+			"words": beltProp("string", "for run, what to work on; for revert, what the newer version got wrong; for retire, why"),
 		}, "verb", "name"),
-		beltTool(beltToolAnswerQuestion, "Settle a worker's open question. Read what is open first by calling it with no arguments. A question that is not explicitly marked informational is a CONSENT question — it is the user's to answer, never yours — and this refuses it and tells you so; put it to them in your own words and leave it open. This is the one tool whose refusal is the correct outcome most of the time.", map[string]any{
+		beltTool(beltToolAnswerQuestion, "Settle a worker's open question; call it with no arguments to see what is open. A question not marked informational is a consent question and is refused here.", map[string]any{
 			"question": beltProp("integer", "the question's number, from this tool's own list"),
 			"answer":   beltProp("string", "the answer, in the words the worker asked for"),
 		}),
-		beltTool(beltToolAwait, "Wait, briefly, for the receipt of a command you just issued, and hand back how it settled. Use it when what you do next depends on whether the change actually landed — never as a way to watch work finish, which takes minutes and this does not. It returns as soon as the receipt exists, or says plainly that it is still queued.", map[string]any{
-			"command": beltProp("integer", "the command number an acting tool handed back; omit for the last one you issued"),
+		beltTool(beltToolAwait, "Wait briefly for the receipt of a command you just issued and hand back how it settled; not a way to watch work finish.", map[string]any{
+			"command": beltProp("integer", "the command number an acting tool handed back; omit for the last one"),
 		}),
-		beltTool(beltToolForget, "Let go of one numbered notebook line the user has just told you is untrue — \"forget that\", \"I don't work that way any more\", a line said back to you as wrong. Name the exact number shown beside that belief; never a number you were not shown, and never more than one. If several lines could be meant, ask instead. This is NOT for a correction aimed at WORK — a figure a job got wrong, a deliverable that missed the point — which is correct, and quietly deleting a belief in answer to one loses the correction entirely. When they are giving you the NEW version of a belief rather than throwing it away, use note with replaces instead: the old line retires into the new.", map[string]any{
+		beltTool(beltToolForget, "Let go of one numbered notebook line they have told you is untrue. NOT for a correction aimed at work — deleting a belief in answer to a rejected deliverable loses the correction entirely, so use correct, or note with replaces for a new version.", map[string]any{
 			"belief": beltProp("integer", "the #number shown beside the notebook line"),
 		}, "belief"),
-		beltTool(beltToolAsk, "Put one short numbered question to the user, with the candidates as options they can pick. Use it the moment more than one thing plausibly matches what they meant — never pick for them. Name each option the way THEY would recognise it, in their own words for the work, not by id. This ends the turn: their next message is the answer, and you will have both in front of you.", map[string]any{
+		beltTool(beltToolAsk, "Put one short numbered question to the person, with the candidates as options named the way THEY would recognise them. This ends the turn: their next message is the answer.", map[string]any{
 			"question": beltProp("string", "one short question, in their terms"),
 			"options": map[string]any{"type": "array", "description": "two to four choices, each named the way the user would recognise it",
 				"items": map[string]any{"type": "string"}},
 		}, "question", "options"),
-		beltTool(beltToolInterrupt, "Stop the head turn in flight. Use it only when the person has asked you to stop what you are DOING in this conversation rather than to cancel work on the board — cancelling work is control. Whatever has already been said stays, marked where it stopped.", map[string]any{
+		beltTool(beltToolInterrupt, "Stop the head turn in flight, only when they asked you to stop what you are doing in this conversation; cancelling work on the board is control.", map[string]any{
 			"reason": beltProp("string", "one short line for the record, in the user's terms"),
 		}),
 	}

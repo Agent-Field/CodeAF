@@ -179,12 +179,12 @@ func TestAnUnpricedJournalRefusesToQuoteARate(t *testing.T) {
 // The law that makes the templates load-bearing has to actually be in front of
 // the model, in the one prompt there now is.
 func TestTheOnePromptForbidsArithmeticInProse(t *testing.T) {
-	if !strings.Contains(orchestratorPrompt, "FIGURES ARE QUOTED, NEVER WORKED OUT") {
-		t.Fatal("the one prompt no longer carries the deterministic-first law about figures")
+	if !strings.Contains(orchestratorPrompt, "Numbers are quoted, never worked out") {
+		t.Fatal("the one prompt no longer carries the deterministic-first principle about figures")
 	}
 	for _, clause := range []string{
-		"must appear, as that figure, in something already in front of you",
-		"never carry a number from one label to another",
+		"must appear as that figure in something already in front of you",
+		"Never carry a number from one label to another",
 		"a daily limit is not what one run costs",
 	} {
 		if !strings.Contains(orchestratorPrompt, clause) {
