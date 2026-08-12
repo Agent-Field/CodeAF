@@ -57,6 +57,15 @@ func sameAsk(words, theirs map[string]bool) bool {
 	if len(words) < 3 || len(theirs) < 3 {
 		return false
 	}
+	// A DIFFERENT NUMBER is a different ask, whatever the rest of the sentence
+	// shares. "work issue 12 on my repo" and "work issue 41 on my repo" have
+	// every content word in common except the only one that says which piece of
+	// work it is, and collapsing them would swallow three of four jobs the
+	// person asked for in one breath.
+	mine, yours := askNumbers(words), askNumbers(theirs)
+	if len(mine) > 0 && len(yours) > 0 && !sameNumbers(mine, yours) {
+		return false
+	}
 	shorter, longer := words, theirs
 	if len(theirs) < len(words) {
 		shorter, longer = theirs, words
@@ -77,12 +86,49 @@ func askContentWords(sentence string) map[string]bool {
 	for _, word := range strings.FieldsFunc(strings.ToLower(sentence), func(r rune) bool {
 		return !('a' <= r && r <= 'z' || '0' <= r && r <= '9')
 	}) {
-		if len(word) < 3 || askStopWords[word] {
+		// Numbers are kept whatever their length, because a number is usually the
+		// whole of what makes one ask different from another.
+		if (len(word) < 3 && !allDigits(word)) || askStopWords[word] {
 			continue
 		}
 		words[word] = true
 	}
 	return words
+}
+
+func allDigits(word string) bool {
+	if word == "" {
+		return false
+	}
+	for _, r := range word {
+		if r < '0' || r > '9' {
+			return false
+		}
+	}
+	return true
+}
+
+// askNumbers is the numeric half of one ask's content words.
+func askNumbers(words map[string]bool) map[string]bool {
+	numbers := make(map[string]bool, 2)
+	for word := range words {
+		if allDigits(word) {
+			numbers[word] = true
+		}
+	}
+	return numbers
+}
+
+func sameNumbers(mine, yours map[string]bool) bool {
+	if len(mine) != len(yours) {
+		return false
+	}
+	for number := range mine {
+		if !yours[number] {
+			return false
+		}
+	}
+	return true
 }
 
 var askStopWords = map[string]bool{

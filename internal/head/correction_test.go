@@ -41,8 +41,8 @@ func TestCorrectionOfDeliveredWorkJournalsARevisionCarryingCritiqueAndAnchor(t *
 	// itself reported — which is what makes the assertion about the receipt an
 	// assertion about the engine rather than about the fixture.
 	client := &beltClient{turns: []beltTurn{
-		{calls: []ai.ToolCall{beltCall("c1", beltToolCorrect, map[string]any{
-			"job": "q3-numbers", "words": critique})}},
+		{calls: []ai.ToolCall{beltCall("c1", beltToolTask, map[string]any{
+			"amends": "q3-numbers", "instruction": critique})}},
 		{text: ""},
 	}}
 	user := postUser(t, graph, "correct", critique)
@@ -152,8 +152,8 @@ func TestAnswerToTheClarifyingQuestionBecomesTheRevision(t *testing.T) {
 
 	const answer = "the revenue figure is from 2023, not 2024"
 	answering := &beltClient{turns: []beltTurn{
-		{calls: []ai.ToolCall{beltCall("c1", beltToolCorrect, map[string]any{
-			"job": "q3-numbers", "words": answer})}},
+		{calls: []ai.ToolCall{beltCall("c1", beltToolTask, map[string]any{
+			"amends": "q3-numbers", "instruction": answer})}},
 		{text: ""},
 	}}
 	second := postUser(t, graph, "answered", answer)
@@ -190,17 +190,17 @@ func TestCorrectionLeavesLiveWorkToRedirection(t *testing.T) {
 
 	const words = "actually, that's wrong — use the audited ledger"
 	refusing := &beltRun{head: New(nil, graph), user: postUser(t, graph, "refuse", words)}
-	message, failed := refusing.correct(map[string]any{"job": "live-audit", "words": words})
-	if !failed || !strings.Contains(message, "correction is for work that already delivered") {
-		t.Fatalf("correct reached live work: failed=%t %q", failed, message)
+	message, failed := refusing.task(map[string]any{"amends": "live-audit", "instruction": words})
+	if !failed || !strings.Contains(message, "amends is for work that already delivered") {
+		t.Fatalf("amends reached live work: failed=%t %q", failed, message)
 	}
 	if commands := pendingCommandsOf(t, graph); len(commands) != 0 {
 		t.Fatalf("a refused correction still journaled: %+v", commands)
 	}
 
 	client := &beltClient{turns: []beltTurn{
-		{calls: []ai.ToolCall{beltCall("c1", beltToolRevise, map[string]any{
-			"job": "live-audit", "words": words})}},
+		{calls: []ai.ToolCall{beltCall("c1", beltToolChange, map[string]any{
+			"target": "live-audit", "words": words})}},
 		{text: ""},
 	}}
 	user := postUser(t, graph, "live", words)
@@ -283,15 +283,17 @@ func TestRoutingLawNoLongerTeachesThatsWrongAsARetraction(t *testing.T) {
 	}
 	correction := ""
 	for _, definition := range beltDefinitions() {
-		if definition.Function.Name == beltToolCorrect {
-			correction = definition.Function.Description
+		if definition.Function.Name == beltToolTask {
+			properties, _ := definition.Function.Parameters["properties"].(map[string]any)
+			amends, _ := properties["amends"].(map[string]any)
+			correction, _ = amends["description"].(string)
 		}
 	}
 	if correction == "" {
-		t.Fatal("there is no correction tool for a rejection of delivered work to reach")
+		t.Fatal("there is no correction route for a rejection of delivered work to reach")
 	}
-	if !strings.Contains(correction, "reject, dispute or ask you to change something already delivered") {
-		t.Fatalf("the correction tool does not claim the sentence the retraction verb used to take:\n%s", correction)
+	if !strings.Contains(correction, "reject, dispute or want changed something already delivered") {
+		t.Fatalf("the amends argument does not claim the sentence the retraction verb used to take:\n%s", correction)
 	}
 }
 
@@ -311,8 +313,8 @@ func TestCorrectionCarriesTheDisputeAgainstTheDeliverablesOwnVerification(t *tes
 
 	const critique = "that's wrong — the browser is not working properly, no page ever loads"
 	client := &beltClient{turns: []beltTurn{
-		{calls: []ai.ToolCall{beltCall("c1", beltToolCorrect, map[string]any{
-			"job": "ui-browser", "words": critique})}},
+		{calls: []ai.ToolCall{beltCall("c1", beltToolTask, map[string]any{
+			"amends": "ui-browser", "instruction": critique})}},
 		{text: ""},
 	}}
 	user := postUser(t, graph, "dispute", critique)

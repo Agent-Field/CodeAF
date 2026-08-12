@@ -200,7 +200,7 @@ func (run *beltRun) say(args map[string]any) (string, bool) {
 func (run *beltRun) controlCandidates(kind store.CommandKind, describes string) (string, bool) {
 	describes = strings.TrimSpace(describes)
 	if describes == "" {
-		return "ids must name at least one id from a board read, or describes must carry the user's own words for the work", true
+		return "targets must name at least one id from a read, or words must carry the user's own words for the thing", true
 	}
 	candidates, err := run.head.describedTargets(kind, describes)
 	if err != nil {
@@ -216,7 +216,7 @@ func (run *beltRun) controlCandidates(kind store.CommandKind, describes string) 
 	for _, candidate := range candidates {
 		if candidate.isRule() {
 			lines = append(lines, "- standing rule "+candidate.rule.ID+" | "+firstLine(candidate.rule.Invariant)+
-				" | a standing rule, not work")
+				" | a standing rule — stopping it retires it")
 			continue
 		}
 		lines = append(lines, "- "+candidate.job.Node.ID+" | "+surgeryTargetLabel(candidate.job.Node)+

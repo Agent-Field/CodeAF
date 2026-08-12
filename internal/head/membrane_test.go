@@ -64,7 +64,7 @@ func TestCharterFiredJobIsListableAndCancellable(t *testing.T) {
 
 	// Three: and the verb reaches it, which is the sentence that failed.
 	run := &beltRun{head: head, user: store.Message{SessionID: "membrane", Body: "stop that job"}}
-	result, failed := run.control(map[string]any{"verb": "cancel", "ids": []any{"firing-charter-1-1"}})
+	result, failed := run.stop(map[string]any{"targets": []any{"firing-charter-1-1"}})
 	if failed {
 		t.Fatalf("cancelling a charter-fired job was refused: %s", result)
 	}
@@ -103,7 +103,7 @@ func TestTheOneMembraneStillHidesTheResidentsOwnWork(t *testing.T) {
 		}
 	}
 	run := &beltRun{head: head, user: store.Message{SessionID: "membrane", Body: "cancel that"}}
-	if answer, failed := run.control(map[string]any{"verb": "cancel", "ids": []any{"self-upkeep"}}); !failed ||
+	if answer, failed := run.stop(map[string]any{"targets": []any{"self-upkeep"}}); !failed ||
 		!strings.Contains(answer, "not the user's work") {
 		t.Fatalf("the belt let a verb reach the resident's own work: failed=%t %s", failed, answer)
 	}

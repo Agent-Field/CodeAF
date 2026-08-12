@@ -27,11 +27,12 @@ import (
 // and journalUnits is the single commit path. Nothing about the gate knows this
 // tool is new.
 
-// stopEverythingTargets are the two ways the total withdrawal is named. It is a
-// reserved word rather than an argument because it is the one stop that is not
-// about ids at all — it reaches every service the person is running, and asks
-// once about the live work.
-var stopEverythingTargets = map[string]bool{"everything": true, "all": true}
+// stopEverythingTarget is how the total withdrawal is named. It is a reserved
+// word rather than an argument because it is the one stop that is not about ids
+// at all — it reaches every service the person is running, and asks once about
+// the live work. Exactly one spelling is reserved, and deliberately: "all" is a
+// word a person might plausibly have called something.
+const stopEverythingTarget = "everything"
 
 func (run *beltRun) stop(args map[string]any) (string, bool) {
 	targets := beltStrings(args, "targets")
@@ -64,7 +65,7 @@ func (run *beltRun) stop(args map[string]any) (string, bool) {
 		if target == "" {
 			continue
 		}
-		if stopEverythingTargets[strings.ToLower(target)] {
+		if strings.EqualFold(target, stopEverythingTarget) {
 			// The one total phrasing, and it keeps its own gate: services are
 			// stopped unconditionally because they are the person's own persistent
 			// effects, and the live jobs are asked about once with what they cost
@@ -83,8 +84,12 @@ func (run *beltRun) stop(args map[string]any) (string, bool) {
 			rules = append(rules, found.rule)
 		case targetService:
 			services = append(services, found.service)
+		case targetCraft:
+			crafts = append(crafts, found.craft)
+		case targetForeign:
+			return quoted(target) + " is not the user's work and is not yours to change", true
 		default:
-			crafts = append(crafts, target)
+			return unknownTarget(target), true
 		}
 	}
 

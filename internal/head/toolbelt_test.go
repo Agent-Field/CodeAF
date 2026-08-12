@@ -116,8 +116,8 @@ func TestKillEverythingExceptTheFinanceOneAsksThenCancelsTheRest(t *testing.T) {
 	seedExceptBoard(t, graph)
 	client := &beltClient{turns: []beltTurn{
 		{calls: []ai.ToolCall{beltCall("c1", beltToolBoard, map[string]any{})}},
-		{calls: []ai.ToolCall{beltCall("c2", beltToolControl, map[string]any{
-			"verb": "cancel", "ids": []string{"research", "scans"}})}},
+		{calls: []ai.ToolCall{beltCall("c2", beltToolStop, map[string]any{
+			"targets": []string{"research", "scans"}})}},
 		{text: "I've asked you to confirm before anything stops."},
 	}}
 	session := "except"
@@ -164,8 +164,8 @@ func TestKeepingTheBeltSetCancelsNothing(t *testing.T) {
 	graph := openHeadStore(t)
 	seedExceptBoard(t, graph)
 	client := &beltClient{turns: []beltTurn{
-		{calls: []ai.ToolCall{beltCall("c1", beltToolControl, map[string]any{
-			"verb": "cancel", "ids": []string{"research", "scans"}})}},
+		{calls: []ai.ToolCall{beltCall("c1", beltToolStop, map[string]any{
+			"targets": []string{"research", "scans"}})}},
 		{text: "asked"},
 	}}
 	session := "belt-keep"
@@ -318,7 +318,7 @@ func TestATurnThatDecidesNothingNeedsChangingSpeaksOnce(t *testing.T) {
 
 // Tool errors are the belt's whole safety story on the model's side: a
 // misreading comes back as a sentence it can act on, never as an action.
-func TestControlRefusesIllegalIdsAndVerbStatusMismatches(t *testing.T) {
+func TestStopAndChangeRefuseIllegalIdsAndStatusMismatches(t *testing.T) {
 	graph := openHeadStore(t)
 	seedExceptBoard(t, graph)
 	spliceJobTree(t, graph, store.OriginSelf, store.PracticeGroup,
@@ -328,26 +328,24 @@ func TestControlRefusesIllegalIdsAndVerbStatusMismatches(t *testing.T) {
 
 	tests := []struct {
 		name string
+		tool string
 		args map[string]any
 		want string
 	}{
-		{"unknown verb", map[string]any{"verb": "detonate", "ids": []string{"finance"}},
-			"verb must be one of"},
-		{"no ids", map[string]any{"verb": "cancel"}, "at least one id"},
-		{"invented id", map[string]any{"verb": "cancel", "ids": []string{"ghost"}},
-			`no live work with id "ghost"`},
-		{"verb-status mismatch", map[string]any{"verb": "restart", "ids": []string{"finance"}},
-			"only applies to failed or cancelled work"},
-		{"resume what is not paused", map[string]any{"verb": "resume", "ids": []string{"finance"}},
-			"only applies to paused work"},
-		{"not the user's work", map[string]any{"verb": "cancel", "ids": []string{"practice"}},
+		{"no targets", beltToolStop, map[string]any{}, "at least one id"},
+		{"invented id", beltToolStop, map[string]any{"targets": []string{"ghost"}, "words": "no"},
+			"no learned way of working is called"},
+		{"not the user's work", beltToolStop, map[string]any{"targets": []string{"practice"}},
 			"not the user's work"},
+		{"resume what is not paused", beltToolChange,
+			map[string]any{"target": "finance", "words": "resume it"},
+			"only applies to paused work"},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			result, failed := run.execute(beltToolControl, mustJSON(test.args))
+			result, failed := run.execute(test.tool, mustJSON(test.args))
 			if !failed {
-				t.Fatalf("illegal control succeeded: %q", result)
+				t.Fatalf("an illegal withdrawal succeeded: %q", result)
 			}
 			if !strings.Contains(result, test.want) {
 				t.Fatalf("tool error = %q, want it to mention %q", result, test.want)
@@ -355,7 +353,7 @@ func TestControlRefusesIllegalIdsAndVerbStatusMismatches(t *testing.T) {
 		})
 	}
 	if commands, _ := graph.PendingCommands(10); len(commands) != 0 {
-		t.Fatalf("a refused control still journaled: %+v", commands)
+		t.Fatalf("a refused withdrawal still journaled: %+v", commands)
 	}
 	if run.acted {
 		t.Fatal("a refused control counted as an action")
@@ -410,30 +408,16 @@ func TestSteerReviseExpediteJournalExistingCommandKinds(t *testing.T) {
 	user := postUser(t, graph, "belt-verbs", "hold the scans until the research lands")
 	run := &beltRun{head: New(&beltClient{}, graph), user: user}
 
-	result, failed := run.execute(beltToolSteer, mustJSON(map[string]any{
-		"job": "api", "message": "prefer the v2 endpoints"}))
-	if failed || !strings.Contains(result, "told 1 step of API client already under way") {
-		t.Fatalf("steer = %q failed=%t", result, failed)
+	// Telling the workers and editing the plan were two tools and are one now,
+	// because they were always one intent: the redirect path broadcasts the words
+	// first and revises the remaining plan under them (redirect.go). What the head
+	// hands over is the sentence; the split is the judge's.
+	result, failed := run.execute(beltToolChange, mustJSON(map[string]any{
+		"target": "api", "words": "prefer the v2 endpoints"}))
+	if failed || !strings.Contains(result, "hear those words") {
+		t.Fatalf("change = %q failed=%t", result, failed)
 	}
-	anchored := 0
-	messages, err := graph.Messages("", 0, 0)
-	if err != nil {
-		t.Fatal(err)
-	}
-	for _, message := range messages {
-		if message.NodeID == "api-a" && strings.Contains(message.Body, "prefer the v2 endpoints") {
-			anchored++
-		}
-	}
-	if anchored != 1 {
-		t.Fatalf("steer posted %d node-anchored messages, want 1", anchored)
-	}
-
-	if result, failed = run.execute(beltToolRevise, mustJSON(map[string]any{
-		"job": "api", "words": "actually make it v2 only"})); failed {
-		t.Fatalf("revise = %q", result)
-	}
-	if result, failed = run.execute(beltToolExpedite, mustJSON(map[string]any{"job": "api"})); failed {
+	if result, failed = run.execute(beltToolChange, mustJSON(map[string]any{"target": "api", "words": "hurry up"})); failed {
 		t.Fatalf("expedite = %q", result)
 	}
 	if !run.acted || run.commandSeq == 0 {
